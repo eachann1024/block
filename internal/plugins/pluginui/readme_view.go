@@ -98,6 +98,15 @@ func (ctrl *Controller) closeStoreReadme() {
 	}
 }
 
+// CloseReadmeWindow handles the native menu accelerator for this window.
+func (ctrl *Controller) CloseReadmeWindow(win *mygo.Window) bool {
+	if win == nil || win != ctrl.storeReadmeWindow {
+		return false
+	}
+	win.Close()
+	return true
+}
+
 func (ctrl *Controller) renderStoreReadme(c *ui.Context) {
 	preview := ctrl.storeReadme
 	if preview == nil {
