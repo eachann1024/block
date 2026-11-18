@@ -61,7 +61,7 @@ func RenderPage(
 					SingleLine().
 					Ellipsis("…")
 				if page.Status != "" {
-					renderStatusPill(c, page.Status)
+					renderStatusText(c, page.Status)
 				}
 			})
 			if len(page.HeaderActions) > 0 {
@@ -81,17 +81,18 @@ func RenderPage(
 	})
 }
 
-func renderStatusPill(c *ui.Context, text string) {
+func renderStatusText(c *ui.Context, text string) {
 	pal := theme.Ocean()
-	ui.Row(c).Height(theme.HeightControl).PaddingX(theme.Space12).Radius(theme.RadiusMD).
-		Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, text).
-			FontSize(theme.FontBody).
-			FixedLineHeight(theme.LineBody).
-			FontWeight(theme.WeightControl).
-			TextColor(pal.Text).
-			SingleLine()
-	})
+	el := ui.Text(c, text).
+		FontSize(theme.FontSmall).
+		FixedLineHeight(theme.LineSmall).
+		TextColor(pal.TextSecondary).
+		MaxWidth(280).
+		MinWidth(0).
+		Shrink(1).
+		SingleLine().
+		Ellipsis("…")
+	bui.WrappedTooltip(c, el, text)
 }
 
 func renderPageCards(
@@ -234,12 +235,12 @@ func renderItem(
 		ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).Gap(theme.Space16).
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-				TextColor(pal.Text).SingleLine().Shrink(0)
+				TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			onLbl := theme.Tr("已关闭", "Off")
 			if curBool {
 				onLbl = theme.Tr("已开启", "On")
 			}
-			if bui.TogglePill(c, "plugin-sw-"+pluginID+"-"+item.ID, onLbl, &curBool, false) {
+			if bui.TogglePill(c, "plugin-sw-"+pluginID+"-"+item.ID, onLbl, &curBool, busyAction != "") {
 				values[item.ID] = curBool
 				if onChange != nil {
 					onChange(item.ID, curBool, true)

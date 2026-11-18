@@ -109,24 +109,48 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 		return
 	}
 	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
-	if !ok || pluginID == "" || !c.sup.IsInstalled(pluginID) {
+	if !ok || pluginID == "" {
+		return
+	}
+	inst, ok := c.sup.GetInstalled(pluginID)
+	if !ok {
 		return
 	}
 
-	vs := c.sup.EnsurePluginView(pluginID)
-	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-		statusText := strings.TrimSpace(vs.Notice)
-		if statusText == "" && vs.Page != nil {
-			statusText = strings.TrimSpace(vs.Page.Status)
-		}
-		if vs.PendingSaves > 0 {
-			statusText = strconv.Itoa(vs.PendingSaves) + theme.Tr(" 项待处理", " pending")
-		}
-		if statusText != "" {
-			renderStatusPill(ctx, statusText)
+	var vs plugins.PluginViewState
+	if inst.Enabled {
+		vs = c.sup.EnsurePluginView(pluginID)
+	}
+	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space10).AlignItems(ui.Center).MinWidth(0).Shrink(1).Children(func() {
+		if inst.Enabled {
+			statusText := strings.TrimSpace(vs.Notice)
+			if statusText == "" && vs.Page != nil {
+				statusText = strings.TrimSpace(vs.Page.Status)
+			}
+			if vs.PendingSaves > 0 {
+				statusText = strconv.Itoa(vs.PendingSaves) + theme.Tr(" 项待处理", " pending")
+			}
+			if statusText != "" {
+				renderStatusText(ctx, statusText)
+			}
+		} else {
+			renderStatusText(ctx, theme.Tr("已停用", "Disabled"))
 		}
 
-		if vs.Page != nil {
+		enabled := inst.Enabled
+		toggleTip := theme.Tr("已停用", "Disabled")
+		if enabled {
+			toggleTip = theme.Tr("已启用", "Enabled")
+		}
+		toggleWrap := ui.Row(ctx.Key("plugin-hdr-enable-wrap-" + pluginID)).AlignItems(ui.Center).Shrink(0)
+		bui.Tooltip(ctx, toggleWrap, toggleTip)
+		toggleWrap.Children(func() {
+			if bui.TogglePill(ctx, "plugin-hdr-enable-"+pluginID, theme.Tr("启用扩展", "Enable Extension"), &enabled, vs.BusyAction != "") {
+				c.sup.SetPluginEnabled(pluginID, enabled)
+			}
+		})
+
+		if inst.Enabled && vs.Page != nil {
 			for _, btn := range vs.Page.HeaderActions {
 				b := btn
 				el := bui.ActionButton(ctx, "plugin-hdr-act-"+pluginID+"-"+b.ID, b.Label, nil, mapButtonStyle(b.Variant), vs.BusyAction != "")
@@ -160,7 +184,8 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 	if !ok || pluginID == "" {
 		return
 	}
-	if !c.sup.IsInstalled(pluginID) {
+	inst, isInstalled := c.sup.GetInstalled(pluginID)
+	if !isInstalled {
 		pal := theme.Ocean()
 		ctx.Key("plugin-not-installed-" + pluginID)
 		bui.Card(ctx, func() {
@@ -170,6 +195,21 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 				btn := bui.ActionButton(ctx, "plugin-go-store-"+pluginID, theme.Tr("前往应用商店", "Go to App Store"), nil, bui.ButtonSecondary, false)
 				if btn.Clicked() && onSelectTab != nil {
 					onSelectTab(modals.TabAppStore)
+				}
+			})
+		})
+		return
+	}
+	if !inst.Enabled {
+		pal := theme.Ocean()
+		ctx.Key("plugin-disabled-" + pluginID)
+		bui.Card(ctx, func() {
+			ui.Row(ctx).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(ctx, theme.Tr("已停用", "Disabled")).
+					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
+				btn := bui.ActionButton(ctx, "plugin-enable-"+pluginID, theme.Tr("启用", "Enable"), nil, bui.ButtonSecondary, false)
+				if btn.Clicked() {
+					c.sup.SetPluginEnabled(pluginID, true)
 				}
 			})
 		})

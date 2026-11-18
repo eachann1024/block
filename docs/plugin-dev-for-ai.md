@@ -173,13 +173,13 @@ block-sync/
 
 ## 4. 声明式 UI Schema（`UIPage`）精确定义
 
-同一 `UIPage` 内：所有 `card.id` 唯一、所有表单控件 `item.id` 唯一、所有按钮 `button.id`（含 `header_actions` 与 `actions` 项）唯一。宿主已自带「卸载」按钮，插件无需自己声明卸载按钮。
+同一 `UIPage` 内：所有 `card.id` 唯一、所有表单控件 `item.id` 唯一、所有按钮 `button.id`（含 `header_actions` 与 `actions` 项）唯一。宿主已在顶栏自动提供插件启用开关（`TogglePill`）与「卸载」按钮，插件无需自己声明启用总开关或卸载按钮。
 
 ### `UIPage` 顶层结构
 ```json
 {
   "title": "同步",
-  "status": "本地镜像 · 已就绪",
+  "status": "上次同步 14:20",
   "header_actions": [
     { "id": "sync_now", "label": "立即同步", "variant": "primary" }
   ],
@@ -193,7 +193,7 @@ block-sync/
 }
 ```
 - `title`：必填非空字符串。
-- `status`：可选状态胶囊短文本。
+- `status`：可选只读次级状态短文本（仅用于展示真实执行结果或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"`、`"xxx · 已就绪"` 等占位文案）。
 - `header_actions`：可选顶栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（必填）、`items`（必填非空数组）。
 
@@ -202,6 +202,7 @@ block-sync/
 交互设计准则
 
 - 选择本地文件夹时直接使用 `folder`，点击即打开系统选择器。远端路径和分支等可编辑文本使用 `input`，并提供合适的默认值。`select` 用于真实的多项选择，例如笔记列表。
+- 布尔开关（`switch`）、分段（`segmented`）、下拉选单（`select`）与本地文件夹（`folder`）这类离散控件在用户切换后应立即在 `plugin.render` 中持久化生效，不要强制用户再额外点击「保存」；仅在包含远端地址、密钥等多项文本输入时提供「测试连接 / 保存」按钮。
 - 页面只展示完成当前任务所需的设置和状态。路径优先显示名称，完整路径放进宿主提供的悬停提示。预览仅在需要核对结果或确认变更时展示。
 
 任意 `UIItem` 均支持可选字段 **`visible_when`**，用于按其他表单控件当前值**零延迟动态显隐对应配置项**：

@@ -130,6 +130,7 @@ type StoreManager struct {
 	IndexURLs []string
 	HTTP      *http.Client
 	dlMu      sync.Mutex
+	stateMu   sync.Mutex
 	installMu sync.Mutex
 }
 
@@ -162,6 +163,60 @@ func (s *StoreManager) cacheIndexPath() string {
 
 func (s *StoreManager) downloadCountsPath() string {
 	return filepath.Join(s.CacheRoot, "download-counts.json")
+}
+
+func (s *StoreManager) disabledPluginsPath() string {
+	return filepath.Join(s.CacheRoot, "disabled-plugins.json")
+}
+
+func (s *StoreManager) loadDisabledLocked() map[string]bool {
+	out := map[string]bool{}
+	raw, err := os.ReadFile(s.disabledPluginsPath())
+	if err != nil {
+		return out
+	}
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
+func (s *StoreManager) saveDisabledLocked(disabled map[string]bool) error {
+	if len(disabled) == 0 {
+		if err := os.Remove(s.disabledPluginsPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	raw, err := json.MarshalIndent(disabled, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.disabledPluginsPath(), raw, 0o644)
+}
+
+// IsEnabled reports whether pluginID is currently enabled (defaults to true).
+func (s *StoreManager) IsEnabled(pluginID string) bool {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	return !s.loadDisabledLocked()[pluginID]
+}
+
+// SetEnabled persists the enabled/disabled state for an installed plugin.
+func (s *StoreManager) SetEnabled(pluginID string, enabled bool) error {
+	if !pluginIDRe.MatchString(pluginID) {
+		return fmt.Errorf("invalid plugin id %q", pluginID)
+	}
+	if err := s.EnsureDirs(); err != nil {
+		return err
+	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	disabled := s.loadDisabledLocked()
+	if enabled {
+		delete(disabled, pluginID)
+	} else {
+		disabled[pluginID] = true
+	}
+	return s.saveDisabledLocked(disabled)
 }
 
 func (s *StoreManager) loadDownloadDeltasLocked() map[string]int {
@@ -311,6 +366,9 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.stateMu.Lock()
+	disabled := s.loadDisabledLocked()
+	s.stateMu.Unlock()
 	var out []InstalledApp
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasSuffix(e.Name(), ".installing") {
@@ -332,7 +390,7 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 			Manifest:    *m,
 			InstallDir:  dir,
 			DataDir:     dataDir,
-			Enabled:     true,
+			Enabled:     !disabled[m.ID],
 			InstalledAt: installedAt,
 		})
 	}
@@ -585,7 +643,8 @@ func (s *StoreManager) InstallFromDirectory(srcDir string) (*InstalledApp, error
 	}
 	backup := filepath.Join(s.CacheRoot, m.ID+".previous")
 	_, err = os.Stat(dstDir)
-	if err == nil {
+	wasInstalled := err == nil
+	if wasInstalled {
 		// Initialize the candidate with isolated storage before replacing the working copy.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -614,11 +673,14 @@ func (s *StoreManager) InstallFromDirectory(srcDir string) (*InstalledApp, error
 		return nil, err
 	}
 	_ = os.RemoveAll(backup)
+	if !wasInstalled {
+		_ = s.SetEnabled(m.ID, true)
+	}
 	return &InstalledApp{
 		Manifest:    *m,
 		InstallDir:  dstDir,
 		DataDir:     dataDir,
-		Enabled:     true,
+		Enabled:     s.IsEnabled(m.ID),
 		InstalledAt: time.Now(),
 	}, nil
 }
@@ -635,6 +697,13 @@ func (s *StoreManager) Uninstall(pluginID string, purgeData bool) error {
 	if err := os.RemoveAll(filepath.Join(s.AppsRoot, pluginID)); err != nil {
 		return err
 	}
+	s.stateMu.Lock()
+	disabled := s.loadDisabledLocked()
+	if disabled[pluginID] {
+		delete(disabled, pluginID)
+		_ = s.saveDisabledLocked(disabled)
+	}
+	s.stateMu.Unlock()
 	if purgeData {
 		return os.RemoveAll(filepath.Join(s.DataRoot, pluginID))
 	}

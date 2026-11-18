@@ -45,6 +45,9 @@ func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
 }
 
 func (s *Supervisor) HasPluginError(id string) bool {
+	if inst, ok := s.GetInstalled(id); !ok || !inst.Enabled {
+		return false
+	}
 	key := viewKey{id, s.NotebookRoot()}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
