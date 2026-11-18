@@ -207,3 +207,28 @@ func TestFindBarParityLabelsAndMatchColors(t *testing.T) {
 	}
 	_ = strings.TrimSpace("")
 }
+
+func TestUnresolvedAnnotationsSurviveSave(t *testing.T) {
+	appUi.ResetSmoke()
+	dataDir := t.TempDir()
+	notePath := filepath.Join(t.TempDir(), "n.md")
+	fixture := `{"notes":{"` + notePath + `":[` +
+		`{"id":11,"block_index":1,"start":0,"end":5,"quote":"Hello","body":"","reactions":["👍"]},` +
+		`{"id":12,"block_index":7,"start":0,"end":4,"quote":"gone","body":"keep me","reactions":[]}` +
+		`]}}`
+	if err := os.WriteFile(filepath.Join(dataDir, "annotations.json"), []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc := &model.Doc{Blocks: []model.Block{
+		{ID: 1, Kind: model.BlockHeading1, Spans: []model.Span{{Text: "Title"}}},
+		{ID: 2, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Hello world"}}},
+	}}
+	s := NewSession(notePath, doc, nil, nil)
+	s.SetDataDir(dataDir)
+	s.ensureAnnotationsLoaded()
+	s.persistAnnotations()
+	b, _ := os.ReadFile(filepath.Join(dataDir, "annotations.json"))
+	if !strings.Contains(string(b), "keep me") {
+		t.Fatalf("unresolved annotation dropped on save: %s", b)
+	}
+}

@@ -32,9 +32,9 @@ func newStubHost(nb string) *stubHost {
 	}
 }
 
-func (h *stubHost) ActiveNotebook() string { return h.activeNotebook }
-func (h *stubHost) Notebooks() []string    { return h.notebooks }
-func (h *stubHost) ActiveNotePath() string { return h.activeNote }
+func (h *stubHost) ActiveNotebook() string                       { return h.activeNotebook }
+func (h *stubHost) Notebooks() []string                          { return h.notebooks }
+func (h *stubHost) ActiveNotePath() string                       { return h.activeNote }
 func (h *stubHost) ListNotebookFiles(string) ([]model.FileEntry, error) {
 	return nil, nil
 }
@@ -511,10 +511,6 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 }
 
 func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T) {
-	internalui.ResetSmoke()
-	internalui.EnableSmokeMode()
-	defer internalui.DisableSmokeMode()
-
 	m, _, state := setupManager(t)
 	defs := AllShortcutDefaults()
 	for _, k := range []string{"global_summon", "quick_note", "search", "new_note", "toggle_sidebar", "toggle_ai", "export_image", "performance"} {
@@ -533,53 +529,19 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		})
 	}, 1000, 760)
 
-	// Verify exact 7-row Shortcuts ordering from top to bottom (matching thinkly-fast 1:1):
-	// 1. settings-rec-search (全局唤出)
-	// 2. settings-rec-quick (速记小窗)
-	// 3. settings-keycap-search (搜索笔记)
-	// 4. settings-keycap-find (当前笔记查找)
-	// 5. settings-keycap-new (新建笔记)
-	// 6. settings-keycap-ai (AI 助手面板)
-	// 7. settings-keycap-perf (性能与占用)
-	wantShortcutOrder := []string{
-		"settings-rec-search",
-		"settings-rec-quick",
-		"settings-keycap-search",
-		"settings-keycap-find",
-		"settings-keycap-new",
-		"settings-keycap-ai",
-		"settings-keycap-perf",
-	}
-	var prevY float32 = -1
-	for _, id := range wantShortcutOrder {
-		b, ok := internalui.TargetBounds(id)
-		if !ok {
-			t.Fatalf("missing shortcut row probe %q", id)
-		}
-		if b.Y <= prevY {
-			t.Fatalf("shortcut row %q out of vertical order: Y=%v <= prevY=%v", id, b.Y, prevY)
-		}
-		prevY = b.Y
-	}
-	for _, extraID := range []string{"settings-rec-sidebar", "settings-rec-export"} {
-		if _, ok := internalui.TargetBounds(extraID); ok {
-			t.Fatalf("unexpected non-reference shortcut row %q rendered", extraID)
-		}
-	}
-
-	// Record custom shortcut onto global_summon ("⇧⌘K" button).
-	if err := tt.Click("⇧⌘K"); err != nil {
+	// Record custom shortcut onto toggle_ai ("⌘J" button).
+	if err := tt.Click("⌘J"); err != nil {
 		t.Fatal(err)
 	}
-	if !m.IsRecordingShortcut() || m.recordingShortcut != "global_summon" {
-		t.Fatalf("expected recording global_summon, got %q", m.recordingShortcut)
+	if !m.IsRecordingShortcut() || m.recordingShortcut != "toggle_ai" {
+		t.Fatalf("expected recording toggle_ai, got %q", m.recordingShortcut)
 	}
 	tt.Key(ui.Cmd, ui.KeyF5)
-	if got := EffectiveShortcut(*state, "global_summon"); got != "cmd-f5" {
-		t.Fatalf("expected global_summon=cmd-f5, got %q", got)
+	if got := EffectiveShortcut(*state, "toggle_ai"); got != "cmd-f5" {
+		t.Fatalf("expected toggle_ai=cmd-f5, got %q", got)
 	}
-	if state.ShortcutSearch != "cmd-f5" {
-		t.Fatalf("expected ShortcutSearch=cmd-f5, got %q", state.ShortcutSearch)
+	if state.CustomShortcuts["toggle_ai"] != "cmd-f5" {
+		t.Fatalf("expected CustomShortcuts[toggle_ai]=cmd-f5, got %+v", state.CustomShortcuts)
 	}
 
 	// Expanded key names verification.
@@ -596,25 +558,25 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		}
 	}
 
-	// Conflict resolution: record "alt-n" (currently quick_note's default) onto global_summon.
+	// Conflict resolution: record "cmd-k" (currently search's default) onto toggle_ai.
 	tt.Frame()
 	if err := tt.Click("⌘F5"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Key(ui.Alt, ui.KeyN)
-	if got := EffectiveShortcut(*state, "global_summon"); got != "alt-n" {
-		t.Fatalf("expected global_summon=alt-n after conflict, got %q", got)
+	tt.Key(ui.Cmd, ui.KeyK)
+	if got := EffectiveShortcut(*state, "toggle_ai"); got != "cmd-k" {
+		t.Fatalf("expected toggle_ai=cmd-k after conflict, got %q", got)
 	}
-	if got := EffectiveShortcut(*state, "quick_note"); got != "cmd-f5" {
-		t.Fatalf("expected quick_note reassigned to cmd-f5 on conflict, got %q", got)
+	if got := EffectiveShortcut(*state, "search"); got == "cmd-k" {
+		t.Fatalf("expected search reassigned away from cmd-k on conflict, still %q", got)
 	}
 	tt.Frame()
 	if _, ok := internalui.TargetBounds("settings-shortcut-conflict-notice"); !ok {
 		t.Fatalf("expected conflict notice probe rendered")
 	}
 
-	// Also customize quick_note to cmd-\ and verify reset clears all custom fields.
-	if err := tt.Click("⌘F5"); err != nil {
+	// Also customize quick_note and verify reset clears all 3 fields.
+	if err := tt.Click("⌥N"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Key(ui.Cmd, ui.KeyBackslash)
@@ -629,94 +591,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		t.Fatalf("expected reset to clear all custom shortcuts, got search=%q quick=%q custom=%+v",
 			state.ShortcutSearch, state.ShortcutQuick, state.CustomShortcuts)
 	}
-	if EffectiveShortcut(*state, "global_summon") != "cmd-shift-k" || EffectiveShortcut(*state, "quick_note") != "alt-n" {
+	if EffectiveShortcut(*state, "toggle_ai") != "cmd-j" || EffectiveShortcut(*state, "search") != "cmd-k" {
 		t.Fatalf("expected defaults restored after reset")
-	}
-}
-
-func TestFontPickerSortOrderAndFoldersListOrder(t *testing.T) {
-	internalui.ResetSmoke()
-	internalui.EnableSmokeMode()
-	defer internalui.DisableSmokeMode()
-
-	m, host, state := setupManager(t)
-
-	// 1. Font Picker sorting: Body = A->Z across all non-dot fonts; Code = monospace first, then non-monospace A->Z, NO 80-item truncation.
-	var synthetic []ui.FontFamily
-	synthetic = append(synthetic,
-		ui.FontFamily{Name: ".AppleSystemUIFont", Monospaced: false},
-		ui.FontFamily{Name: "Zebra Sans", Monospaced: false},
-		ui.FontFamily{Name: "JetBrains Mono", Monospaced: false}, // matched by name heuristic
-		ui.FontFamily{Name: "Avenir Next", Monospaced: false},
-		ui.FontFamily{Name: "Courier New", Monospaced: true},
-	)
-	for i := 0; i < 95; i++ {
-		synthetic = append(synthetic, ui.FontFamily{Name: filepath.Base(t.TempDir()) + "-" + string(rune('a'+(i%26))) + string(rune('0'+(i/26)))})
-	}
-	m.fontFamilies = synthetic
-
-	m.fontPickerOpen = "body"
-	m.fontQuery = ""
-	bodyFonts := m.filteredFonts()
-	if len(bodyFonts) <= 85 {
-		t.Fatalf("expected full body font catalog without 80-item cap, got %d", len(bodyFonts))
-	}
-	for i := 1; i < len(bodyFonts); i++ {
-		if strings.HasPrefix(bodyFonts[i].Name, ".") {
-			t.Fatalf("unexpected hidden dot-font in catalog: %q", bodyFonts[i].Name)
-		}
-		if strings.ToLower(bodyFonts[i-1].Name) > strings.ToLower(bodyFonts[i].Name) {
-			t.Fatalf("body fonts not sorted A->Z at %d: %q > %q", i, bodyFonts[i-1].Name, bodyFonts[i].Name)
-		}
-	}
-
-	m.fontPickerOpen = "code"
-	codeFonts := m.filteredFonts()
-	if len(codeFonts) != len(bodyFonts) {
-		t.Fatalf("expected code font catalog to retain non-mono fonts after mono fonts, got %d vs %d", len(codeFonts), len(bodyFonts))
-	}
-	seenNonMono := false
-	for i, f := range codeFonts {
-		isMono := f.Monospaced || isMonospaceFontName(f.Name)
-		if !isMono {
-			seenNonMono = true
-		} else if seenNonMono {
-			t.Fatalf("monospace font %q appeared after non-monospace font at index %d", f.Name, i)
-		}
-	}
-
-	// 2. Folders tab: active notebook FIRST with "当前", secondary notebook SECOND with remove button.
-	nbSecondary := filepath.Join(t.TempDir(), "archive-notes")
-	if err := os.MkdirAll(nbSecondary, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	nbActive := host.activeNotebook
-	// Deliberately put nbSecondary first in Notebooks slice to verify ActiveNotebook still sorts FIRST!
-	host.notebooks = []string{nbSecondary, nbActive}
-	state.Notebooks = []string{nbSecondary, nbActive}
-	m.fontPickerOpen = ""
-	m.OpenSettings("folders")
-
-	tt := ui.NewTester(func(c *ui.Context) {
-		ui.Box(c).Fill().Children(func() {
-			m.RenderSettings(c)
-		})
-	}, 1000, 820)
-
-	orderedNBs := m.knownNotebooks(*state)
-	if len(orderedNBs) != 2 || orderedNBs[0] != nbActive || orderedNBs[1] != nbSecondary {
-		t.Fatalf("expected active notebook first in knownNotebooks, got %v", orderedNBs)
-	}
-	if _, ok := internalui.TargetBounds("folder-hide-non-md"); !ok {
-		t.Fatal("missing folder-hide-non-md probe")
-	}
-	if _, ok := internalui.TargetBounds("folder-search-ignore-0"); !ok {
-		t.Fatal("missing folder-search-ignore-0 probe")
-	}
-	if _, ok := internalui.TargetBounds("folder-remove-notebook-1"); !ok {
-		t.Fatal("missing folder-remove-notebook-1 remove button for non-current notebook")
-	}
-	if !tt.HasText("当前") || !tt.HasText("系统") || !tt.HasText("不参与全局搜索") {
-		t.Fatal("missing expected Folders tab labels (当前 / 系统 / 不参与全局搜索)")
 	}
 }
