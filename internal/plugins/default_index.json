@@ -97,50 +97,6 @@
     },
     {
       "app": "blockmd",
-      "id": "block-publisher",
-      "name": {
-        "zh": "发布与导出",
-        "en": "Publisher"
-      },
-      "version": "1.1.0",
-      "author": "Block Community",
-      "repo": "blockmd-plugins/block-publisher",
-      "summary": {
-        "zh": "将笔记导出为静态博客站点、微信公众号排版 HTML 与小红书图文分段稿",
-        "en": "Export notes to static blog sites, WeChat MP HTML, and Xiaohongshu card drafts"
-      },
-      "download_url": "https://github.com/blockmd-plugins/block-publisher/releases/download/v1.1.0/block-publisher-v1.1.0.tar.gz",
-      "sha256": "87a7a81db50194465f73319eb2e05f05bc03c6e9f5341be311903c9e36d75187",
-      "downloads": 761,
-      "stars": 0,
-      "verified": true,
-      "updated_at": "2026-11-18T13:53:45Z",
-      "permissions": [
-        "storage",
-        "notes:read"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
-        ],
-        "stroke_paths": [
-          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z",
-          "M14 4v5h5",
-          "M8 15h8"
-        ],
-        "accent_paths": [
-          "M12 10l3 3",
-          "M12 10l-3 3",
-          "M12 10v7"
-        ]
-      }
-    },
-    {
-      "app": "blockmd",
       "id": "block-migrator",
       "name": {
         "zh": "笔记迁移",
