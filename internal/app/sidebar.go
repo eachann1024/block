@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -362,9 +361,10 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 
 				nnBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
-					ID:      "new-note",
-					Variant: blockui.IconBordered,
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("新建笔记", "New Note"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n"))),
+					ID:       "new-note",
+					Variant:  blockui.IconBordered,
+					Tooltip:  theme.Tr("新建笔记", "New Note"),
+					Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
 				})
 				if nnBtn.Clicked() && p.OnNewNote != nil {
 					p.OnNewNote()
@@ -512,10 +512,11 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				ui.Box(c).Size(1, 16).Shrink(0).Background(pal.SidebarBorder)
 
 				setBtn := blockui.IconButton(c, icons.Sliders, blockui.IconButtonOptions{
-					ID:      "settings-button",
-					Size:    30,
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("设置", "Settings"), blockui.FormatShortcutDisplay("cmd-,")),
-					Active:  p.SettingsOpen,
+					ID:       "settings-button",
+					Size:     30,
+					Tooltip:  theme.Tr("设置", "Settings"),
+					Shortcut: blockui.FormatShortcutDisplay("cmd-,"),
+					Active:   p.SettingsOpen,
 				})
 				if setBtn.Clicked() && p.OnOpenSettings != nil {
 					p.OnOpenSettings()

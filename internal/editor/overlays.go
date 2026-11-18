@@ -178,7 +178,9 @@ func (s *Session) renderFindBar(c *ui.Context) {
 
 			prevBtn := appUi.IconButton(c, icons.ChevronUp, appUi.IconButtonOptions{
 				ID:       "find-prev",
-				Label:    theme.Tr("上一个", "Previous match"),
+				Label:    theme.Tr("上一处", "Previous match"),
+				Tooltip:  theme.Tr("上一处", "Previous match"),
+				Shortcut: formatShortcutDisplay("⇧↩", "Shift+Enter"),
 				Size:     theme.ControlHeight,
 				IconSize: theme.IconInline,
 				Disabled: len(s.findMatches) == 0,
@@ -189,7 +191,9 @@ func (s *Session) renderFindBar(c *ui.Context) {
 
 			nextBtn := appUi.IconButton(c, icons.ChevronDown, appUi.IconButtonOptions{
 				ID:       "find-next",
-				Label:    theme.Tr("下一个", "Next match"),
+				Label:    theme.Tr("下一处", "Next match"),
+				Tooltip:  theme.Tr("下一处", "Next match"),
+				Shortcut: formatShortcutDisplay("↩", "Enter"),
 				Size:     theme.ControlHeight,
 				IconSize: theme.IconInline,
 				Disabled: len(s.findMatches) == 0,
@@ -201,6 +205,8 @@ func (s *Session) renderFindBar(c *ui.Context) {
 			closeBtn := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
 				ID:       "find-close",
 				Label:    theme.Tr("关闭查找", "Close find"),
+				Tooltip:  theme.Tr("关闭查找", "Close find"),
+				Shortcut: "Esc",
 				Size:     theme.ControlHeight,
 				IconSize: theme.IconInline,
 			})
@@ -666,6 +672,11 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							AlignItems(ui.Center).Radius(6).Background(pal.Selected).
 							Border(1, pal.Accent).Cursor(ui.CursorPointer).
 							Label(it.Label)
+						appUi.RichTooltip(c, aiBtn, appUi.TooltipSpec{
+							Pill:      true,
+							Placement: appUi.TooltipAbove,
+							Rows:      []appUi.TooltipRow{{Trigger: it.Label}},
+						})
 						aiBtn.Children(func() {
 							icons.Draw(c, icons.Sparkles, 15, pal.MonoIconColors(pal.Accent))
 							ui.Text(c, it.Label).FontSize(14).TextColor(pal.Text).SingleLine()
@@ -682,6 +693,13 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 					if it.HasSubmenu {
 						btn := ui.ButtonBase(c.Key(it.ID)).Height(28).MinWidth(41).PaddingX(5).Gap(2).
 							Center().Radius(6).Cursor(ui.CursorPointer).Label(it.Label)
+						if !active {
+							appUi.RichTooltip(c, btn, appUi.TooltipSpec{
+								Pill:      true,
+								Placement: appUi.TooltipAbove,
+								Rows:      []appUi.TooltipRow{{Trigger: it.Label, Shortcut: it.Shortcut}},
+							})
+						}
 						if active {
 							btn.Background(pal.Selected)
 						} else if btn.Hovered() {
@@ -702,7 +720,15 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						}
 					} else {
 						btn := appUi.IconButton(c, it.Icon, appUi.IconButtonOptions{
-							ID: it.ID, Label: it.Label, Size: 28, IconSize: 16, Active: active,
+							ID:           it.ID,
+							Label:        it.Label,
+							Tooltip:      it.Label,
+							Shortcut:     it.Shortcut,
+							TooltipPill:  true,
+							TooltipAbove: true,
+							Size:         28,
+							IconSize:     16,
+							Active:       active,
 						})
 						s.recordOverlayBtn(it.ID, btn)
 						if btn.Clicked() {
@@ -722,8 +748,15 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							break
 						}
 					}
+					moreLbl := theme.Tr("更多格式", "More formatting")
+					moreTip := moreLbl
+					if s.toolbarPop == "more" {
+						moreTip = ""
+					}
 					moreBtn := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
-						ID: "tb-more", Label: theme.Tr("更多格式", "More formatting"), Size: 28, IconSize: 16, Active: moreActive,
+						ID: "tb-more", Label: moreLbl, Tooltip: moreTip,
+						TooltipPill: true, TooltipAbove: true,
+						Size: 28, IconSize: 16, Active: moreActive,
 					})
 					s.recordOverlayBtn("tb-more", moreBtn)
 					if moreBtn.Clicked() {
@@ -1050,8 +1083,9 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, vp ui.Rect, winW, winH fl
 			s.toolbarPop = ""
 		}
 		if hasLink {
+			rmLbl := theme.Tr("移除链接", "Remove link")
 			rmBtn := appUi.IconButton(c, icons.LinkOff, appUi.IconButtonOptions{
-				ID: "link-remove", Label: theme.Tr("移除链接", "Remove link"), Size: 28, IconSize: 15, Danger: true,
+				ID: "link-remove", Label: rmLbl, Tooltip: rmLbl, Size: 28, IconSize: 15, Danger: true,
 			})
 			if rmBtn.Clicked() {
 				s.ApplyLinkOnSelection("")

@@ -563,6 +563,11 @@ func (h *PageHistoryView) Render(
 ) {
 	pal := theme.Ocean()
 	tb := c.TitleBar()
+	vpW, _ := c.Size()
+	if vpW <= 0 {
+		vpW = 1100
+	}
+	narrowHist := vpW < 780
 	leftLead := float32(12)
 	if theme.IsMacOS() {
 		leftLead = max(82, tb.Left+12)
@@ -606,20 +611,20 @@ func (h *PageHistoryView) Render(
 				}
 			})
 
-			center := ui.Row(c).Grow(1).MinWidth(16).FillHeight().PaddingX(16).AlignItems(ui.Center).
-				Justify(ui.SpaceBetween).Gap(12).DragWindow()
+			center := ui.Row(c).Grow(1).MinWidth(16).FillHeight().PaddingX(12).AlignItems(ui.Center).
+				Justify(ui.SpaceBetween).Gap(10).Clip().DragWindow()
 			blockui.Probe(center, "history-titlebar-drag")
 			center.Children(func() {
 				noteName := noteDisplayTitle(h.NotePath, false)
-				pill := ui.Row(c).Height(28).PaddingX(10).MaxWidth(360).AlignItems(ui.Center).
+				pill := ui.Row(c).Height(28).PaddingX(10).MaxWidth(360).Shrink(1).MinWidth(0).AlignItems(ui.Center).
 					Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent)
 				pill.Children(func() {
 					ui.Text(c, fmt.Sprintf("%s · %s", noteName, theme.Tr("页面历史", "Page History"))).
-						FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontSize(14).FontWeight(500).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				ts := h.selectedTimestamp()
-				if ts != "" {
-					ui.Text(c, ts).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+				if ts != "" && !narrowHist {
+					ui.Text(c, ts).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).Shrink(2).MinWidth(0).SingleLine().Ellipsis("…")
 				}
 			})
 
@@ -658,7 +663,9 @@ func (h *PageHistoryView) Render(
 					blockui.ButtonPrimary,
 					!canRestore || h.ConfirmOpen,
 				)
-				resBtn.Tooltip(restoreHint)
+				if restoreHint != "" {
+					blockui.Tooltip(c, resBtn, restoreHint)
+				}
 				if resBtn.Clicked() && canRestore {
 					h.ConfirmOpen = true
 				}
@@ -671,11 +678,15 @@ func (h *PageHistoryView) Render(
 			leftWrap := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(pal.Paper)
 			leftWrap.Children(func() {
 				if h.ExternalConflict {
-					ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
+					bannerMarginX := float32(28)
+					if narrowHist {
+						bannerMarginX = 16
+					}
+					ui.Row(c).FillWidth().MinWidth(0).Margin(12, bannerMarginX, 0, bannerMarginX).Padding(10, 12, 10, 14).
 						Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.Hairline).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 						ui.Text(c, theme.Tr("页面已更新，请重新对比。", "Page has been updated externally; please re-diff.")).
-							FontSize(14).TextColor(pal.TextSecondary)
+							FontSize(14).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
 						reBtn := blockui.ActionButton(c, "history-error-action", theme.Tr("重新对比", "Re-diff"), nil, blockui.ButtonSecondary, false)
 						if reBtn.Clicked() && onRetry != nil {
 							onRetry()
@@ -683,7 +694,11 @@ func (h *PageHistoryView) Render(
 					})
 				}
 
-				previewCol := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, 36, 40, 36).Background(pal.Paper)
+				previewPadX := float32(36)
+				if narrowHist {
+					previewPadX = 20
+				}
+				previewCol := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
 				blockui.Probe(previewCol, "history-preview")
 				edFont, codeFont, _ := theme.Typography()
 				if strings.TrimSpace(codeFont) == "" {
@@ -729,9 +744,9 @@ func (h *PageHistoryView) Render(
 								bg = pal.DiffDelBG
 								fg = pal.DiffDelFG
 							}
-							row := ui.Row(c).FillWidth().Padding(3, 10, 3, 10).Radius(4).Background(bg)
+							row := ui.Row(c).FillWidth().MinWidth(0).Padding(3, 10, 3, 10).Radius(4).Background(bg)
 							row.Children(func() {
-								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(fg)
+								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(fg).Grow(1).MinWidth(0)
 							})
 						}
 					})
@@ -739,7 +754,11 @@ func (h *PageHistoryView) Render(
 			})
 
 			// Right Timeline Sidebar.
-			side := ui.Column(c).Width(268).Shrink(0).FillHeight().Background(pal.Sidebar).
+			timelineW := float32(268)
+			if narrowHist {
+				timelineW = 220
+			}
+			side := ui.Column(c).Width(timelineW).Shrink(0).FillHeight().Background(pal.Sidebar).
 				BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder)
 			blockui.Probe(side, "history-timeline")
 			side.Children(func() {

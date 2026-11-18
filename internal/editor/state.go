@@ -759,6 +759,26 @@ func (s *Session) isBlockHiddenByFold(idx int) bool {
 	return false
 }
 
+func (s *Session) headingSectionChildCount(idx int) int {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0
+	}
+	head := &s.doc.Blocks[idx]
+	if !head.Kind.IsHeading() {
+		return 0
+	}
+	lvl := head.Kind.HeadingLevel()
+	count := 0
+	for i := idx + 1; i < len(s.doc.Blocks); i++ {
+		cur := &s.doc.Blocks[i]
+		if cur.Kind.IsHeading() && cur.Kind.HeadingLevel() <= lvl {
+			break
+		}
+		count++
+	}
+	return count
+}
+
 func (s *Session) toggleFold(id model.BlockID) {
 	if s.folded[id] {
 		delete(s.folded, id)
