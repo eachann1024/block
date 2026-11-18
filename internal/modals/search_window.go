@@ -1,7 +1,6 @@
 package modals
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +32,6 @@ type SearchWindowController struct {
 	selected    int
 	errMsg      string
 	inputHandle ui.Handle
-	openGen     uint64
 	st          searchPaletteState
 }
 
@@ -197,7 +195,6 @@ func (s *SearchWindowController) Open() {
 	s.st.clearAsync()
 	s.visible = true
 	s.shownAt = time.Now()
-	s.openGen++
 	win := s.win
 	s.mu.Unlock()
 
@@ -358,9 +355,6 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 	if s.st.syncFolders(s.notebookFolders()) && strings.TrimSpace(s.query) != "" {
 		s.runSearch()
 	}
-	s.mu.Lock()
-	openGen := s.openGen
-	s.mu.Unlock()
 	wasScopeOpen := s.st.scopeMenuOpen
 
 	root := ui.Column(c.Key("search-window")).Fill().
@@ -372,47 +366,44 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 
 	var scopeTrigger ui.Element
 	root.Children(func() {
-		ui.Column(c.Key(fmt.Sprintf("search-window-stage-%d", openGen))).Fill().
-			Transition(internalui.SurfaceStageTransition()).Children(func() {
-			scopeTrigger = renderSearchHeaderView(
-				c, pal, &s.st, &s.query, &s.lastQuery, &s.inputHandle,
-				searchHeaderCallbacks{
-					onRunSearch: s.runSearch,
-					onMoveSelection: func(delta int) {
-						stepHitSelection(&s.selected, len(s.hits), &s.st, delta)
-					},
-					onAcceptScope: func() {
-						if s.st.acceptScopeCursor() {
-							s.runSearch()
-						}
-						s.inputHandle.Focus()
-					},
-					onOpenSelected: func() {
-						s.openHit(s.selected)
-					},
-					onCycleScope: func(delta int) {
-						if s.st.cycleScope(delta) {
-							s.runSearch()
-						}
-					},
-					onResetScopeAll: func() {
-						if s.st.resetScopeAll() {
-							s.runSearch()
-						}
-					},
-					onClose: s.Hide,
+		scopeTrigger = renderSearchHeaderView(
+			c, pal, &s.st, &s.query, &s.lastQuery, &s.inputHandle,
+			searchHeaderCallbacks{
+				onRunSearch: s.runSearch,
+				onMoveSelection: func(delta int) {
+					stepHitSelection(&s.selected, len(s.hits), &s.st, delta)
 				},
-			)
-			renderSearchBodyView(
-				c, pal, &s.st, s.query, s.hits, s.selected, s.errMsg,
-				true, 0, s.SearchFn != nil,
-				func(idx int) {
-					s.selected = idx
-					s.openHit(idx)
+				onAcceptScope: func() {
+					if s.st.acceptScopeCursor() {
+						s.runSearch()
+					}
+					s.inputHandle.Focus()
 				},
-			)
-			renderSearchFooter(c, pal, true)
-		})
+				onOpenSelected: func() {
+					s.openHit(s.selected)
+				},
+				onCycleScope: func(delta int) {
+					if s.st.cycleScope(delta) {
+						s.runSearch()
+					}
+				},
+				onResetScopeAll: func() {
+					if s.st.resetScopeAll() {
+						s.runSearch()
+					}
+				},
+				onClose: s.Hide,
+			},
+		)
+		renderSearchBodyView(
+			c, pal, &s.st, s.query, s.hits, s.selected, s.errMsg,
+			true, 0, s.SearchFn != nil,
+			func(idx int) {
+				s.selected = idx
+				s.openHit(idx)
+			},
+		)
+		renderSearchFooter(c, pal, true)
 	})
 
 	if scopeTrigger.Valid() {
