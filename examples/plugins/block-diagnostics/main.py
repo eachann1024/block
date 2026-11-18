@@ -5,12 +5,14 @@ import os
 import posixpath
 import re
 import resource
+import shutil
 import sys
 from urllib.parse import unquote
 
 DEFAULT_CONFIG = {
     "check_orphan_assets": True,
-    "check_broken_links_and_empty": True,
+    "check_broken_links": True,
+    "check_empty_notes": True,
     "large_asset_threshold": "5mb",
 }
 
@@ -43,6 +45,9 @@ class HostBridge:
             line = sys.stdin.readline()
             if not line:
                 raise RuntimeError("stdin closed while awaiting host response")
+            line = line.strip()
+            if not line:
+                continue
             msg = json.loads(line)
             if str(msg.get("id")) == req_id:
                 if "error" in msg and msg["error"]:
@@ -134,6 +139,45 @@ class DiagnosticsPlugin:
         }
         return metrics, notes_meta, note_contents, assets
 
+    def analyze_references(self, notes_meta, note_contents, assets):
+        note_paths_norm = {normalize_rel_path(item.get("path") or "") for item in notes_meta if item.get("path")}
+        referenced_paths = set()
+        referenced_basenames = set()
+        broken_links = []
+        empty_notes = []
+
+        for note_path, content in note_contents.items():
+            note_norm = normalize_rel_path(note_path)
+            if content.strip() == "":
+                empty_notes.append(note_norm)
+
+            targets = extract_link_targets(content)
+            for raw_target, is_wiki in targets:
+                resolved, candidate_name = resolve_relative_target(note_norm, raw_target, is_wiki)
+                if resolved is not None:
+                    referenced_paths.add(resolved)
+                if candidate_name:
+                    referenced_basenames.add(candidate_name)
+
+                if not target_exists(
+                    self.notebook_root,
+                    note_norm,
+                    raw_target,
+                    is_wiki,
+                    note_paths_norm,
+                    assets,
+                ):
+                    broken_links.append((note_norm, raw_target))
+
+        orphan_assets = []
+        for asset in assets:
+            rel_norm = asset["rel_path"]
+            base_name = posixpath.basename(rel_norm)
+            if rel_norm not in referenced_paths and base_name not in referenced_basenames:
+                orphan_assets.append(asset)
+
+        return empty_notes, broken_links, orphan_assets
+
     def run_scan(self, bridge, config):
         metrics, notes_meta, note_contents, assets = self.collect_workspace_data(bridge, read_contents=True)
         now_str = datetime.now().strftime("%H:%M:%S")
@@ -151,58 +195,37 @@ class DiagnosticsPlugin:
                     }
                 )
 
-        note_paths_norm = {normalize_rel_path(item.get("path") or "") for item in notes_meta if item.get("path")}
-        referenced_paths = set()
-        referenced_basenames = set()
+        empty_notes, broken_links, orphan_assets = self.analyze_references(notes_meta, note_contents, assets)
 
-        for note_path, content in note_contents.items():
-            note_norm = normalize_rel_path(note_path)
-            if config["check_broken_links_and_empty"] and content.strip() == "":
+        if config["check_empty_notes"]:
+            for note_norm in empty_notes:
                 issues.append(
                     {
-                        "title": f"空笔记：{note_norm}",
+                        "title": f"空白笔记：{note_norm}",
                         "time": now_str,
                         "status": "空内容",
                     }
                 )
 
-            targets = extract_link_targets(content)
-            for raw_target, is_wiki in targets:
-                resolved, candidate_name = resolve_relative_target(note_norm, raw_target, is_wiki)
-                if resolved is not None:
-                    referenced_paths.add(resolved)
-                if candidate_name:
-                    referenced_basenames.add(candidate_name)
+        if config["check_broken_links"]:
+            for note_norm, raw_target in broken_links:
+                issues.append(
+                    {
+                        "title": f"失效链接：{note_norm} -> {raw_target}",
+                        "time": now_str,
+                        "status": "目标缺失",
+                    }
+                )
 
-                if config["check_broken_links_and_empty"]:
-                    if not target_exists(
-                        self.notebook_root,
-                        note_norm,
-                        raw_target,
-                        is_wiki,
-                        note_paths_norm,
-                        assets,
-                    ):
-                        issues.append(
-                            {
-                                "title": f"失效链接：{note_norm} -> {raw_target}",
-                                "time": now_str,
-                                "status": "目标缺失",
-                            }
-                        )
-
-        if config["check_orphan_assets"] and assets:
-            for asset in assets:
-                rel_norm = asset["rel_path"]
-                base_name = posixpath.basename(rel_norm)
-                if rel_norm not in referenced_paths and base_name not in referenced_basenames:
-                    issues.append(
-                        {
-                            "title": f"孤立附件：{rel_norm}（{format_bytes(asset['size'])}）",
-                            "time": now_str,
-                            "status": "未引用",
-                        }
-                    )
+        if config["check_orphan_assets"]:
+            for asset in orphan_assets:
+                issues.append(
+                    {
+                        "title": f"孤立附件：{asset['rel_path']}（{format_bytes(asset['size'])}）",
+                        "time": now_str,
+                        "status": "未引用",
+                    }
+                )
 
         if not issues:
             entries = [
@@ -226,6 +249,73 @@ class DiagnosticsPlugin:
 
         return metrics, entries, status
 
+    def archive_orphans(self, bridge, config, old_entries):
+        metrics, notes_meta, note_contents, assets = self.collect_workspace_data(bridge, read_contents=True)
+        now_str = datetime.now().strftime("%H:%M:%S")
+        _, _, orphan_assets = self.analyze_references(notes_meta, note_contents, assets)
+
+        if not self.notebook_root or not orphan_assets:
+            entry = {
+                "title": "附件检查：未发现需要清理的孤立附件",
+                "time": now_str,
+                "status": "健康",
+            }
+            entries = ([entry] + old_entries)[:MAX_LOG_ENTRIES]
+            status = "工作区健康 · 暂无孤立附件需要归档"
+            return metrics, entries, status
+
+        nb_real = os.path.realpath(self.notebook_root)
+        trash_root = os.path.join(nb_real, ".trash-assets")
+        os.makedirs(trash_root, exist_ok=True)
+
+        moved_count = 0
+        moved_bytes = 0
+        archive_entries = []
+
+        for asset in orphan_assets:
+            rel_norm = asset["rel_path"]
+            src_abs = os.path.realpath(os.path.join(nb_real, rel_norm))
+            if not src_abs.startswith(nb_real + os.sep) or not os.path.isfile(src_abs):
+                continue
+
+            sub_rel = rel_norm[len("assets/"):] if rel_norm.startswith("assets/") else rel_norm
+            dst_abs = os.path.join(trash_root, sub_rel)
+            os.makedirs(os.path.dirname(dst_abs), exist_ok=True)
+            if os.path.exists(dst_abs):
+                stem, ext = os.path.splitext(dst_abs)
+                idx = 1
+                while os.path.exists(f"{stem}_{idx}{ext}"):
+                    idx += 1
+                dst_abs = f"{stem}_{idx}{ext}"
+
+            try:
+                shutil.move(src_abs, dst_abs)
+                moved_count += 1
+                moved_bytes += asset["size"]
+                archive_entries.append(
+                    {
+                        "title": f"已归档孤立附件：{rel_norm} -> .trash-assets/{os.path.relpath(dst_abs, trash_root).replace(os.sep, '/')}",
+                        "time": now_str,
+                        "status": "已归档",
+                    }
+                )
+            except OSError as exc:
+                archive_entries.append(
+                    {
+                        "title": f"归档失败：{rel_norm}（{exc}）",
+                        "time": now_str,
+                        "status": "失败",
+                    }
+                )
+
+        metrics, _, _, _ = self.collect_workspace_data(bridge, read_contents=True)
+        entries = (archive_entries + old_entries)[:MAX_LOG_ENTRIES]
+        if moved_count > 0:
+            status = f"已安全归档 {moved_count} 个孤立附件至 .trash-assets（{format_bytes(moved_bytes)}）"
+        else:
+            status = "归档未完成，请检查文件权限"
+        return metrics, entries, status
+
     def build_page(self, metrics, config, entries, status):
         return {
             "title": "性能与诊断",
@@ -236,26 +326,22 @@ class DiagnosticsPlugin:
             "cards": [
                 {
                     "id": "workspace-metrics",
-                    "title": "工作区体积与占用",
+                    "title": "工作区核心指标",
                     "items": [
                         {
-                            "kind": "kv",
-                            "rows": [
-                                {"label": "Markdown 笔记总篇数", "value": f"{metrics['note_count']} 篇"},
-                                {"label": "Markdown 总字符数", "value": f"{metrics['total_chars']:,} 字符"},
-                                {"label": "Markdown 文本体积", "value": format_bytes(metrics["md_bytes"])},
-                                {
-                                    "label": "assets 附件数量与体积",
-                                    "value": f"{metrics['asset_count']} 个 / {format_bytes(metrics['asset_bytes'])}",
-                                },
-                                {"label": "诊断进程内存占用 (RSS)", "value": format_bytes(metrics["rss_bytes"])},
+                            "kind": "metrics",
+                            "metrics": [
+                                {"label": "笔记篇数", "value": f"{metrics['note_count']} 篇"},
+                                {"label": "总字符数", "value": f"{metrics['total_chars']:,}"},
+                                {"label": "附件总体积", "value": format_bytes(metrics["asset_bytes"])},
+                                {"label": "运行内存 RSS", "value": format_bytes(metrics["rss_bytes"])},
                             ],
                         }
                     ],
                 },
                 {
                     "id": "health-checks",
-                    "title": "健康巡检项",
+                    "title": "健康巡检与安全清理",
                     "items": [
                         {
                             "kind": "switch",
@@ -265,9 +351,15 @@ class DiagnosticsPlugin:
                         },
                         {
                             "kind": "switch",
-                            "id": "check_broken_links_and_empty",
-                            "label": "检测失效相对链接与空笔记",
-                            "value": config["check_broken_links_and_empty"],
+                            "id": "check_broken_links",
+                            "label": "检测失效相对链接",
+                            "value": config["check_broken_links"],
+                        },
+                        {
+                            "kind": "switch",
+                            "id": "check_empty_notes",
+                            "label": "检测空白笔记",
+                            "value": config["check_empty_notes"],
                         },
                         {
                             "kind": "segmented",
@@ -284,13 +376,14 @@ class DiagnosticsPlugin:
                             "kind": "actions",
                             "buttons": [
                                 {"id": "save_config", "label": "保存配置", "variant": "primary"},
+                                {"id": "archive_orphans", "label": "归档孤立附件至 .trash-assets", "variant": "secondary"},
                             ],
                         },
                     ],
                 },
                 {
                     "id": "diagnostics-log",
-                    "title": "诊断结果与巡检记录",
+                    "title": "巡检报告明细",
                     "items": [
                         {
                             "kind": "log_list",
@@ -310,11 +403,19 @@ class DiagnosticsPlugin:
     def action(self, bridge, params):
         action_id = params.get("action_id") or ""
         values = params.get("values") or {}
-        _, entries, status = self.load_state(bridge)
-        config = normalize_config(values)
+        old_config, entries, status = self.load_state(bridge)
+        merged = dict(old_config)
+        merged.update(values)
+        config = normalize_config(merged)
 
         if action_id == "scan_now":
             metrics, entries, status = self.run_scan(bridge, config)
+            self.save_state(bridge, config, entries, status)
+            page = self.build_page(metrics, config, entries, status)
+            return {"values": config, "page": page, "status": status}
+
+        if action_id == "archive_orphans":
+            metrics, entries, status = self.archive_orphans(bridge, config, entries)
             self.save_state(bridge, config, entries, status)
             page = self.build_page(metrics, config, entries, status)
             return {"values": config, "page": page, "status": status}
@@ -334,10 +435,18 @@ class DiagnosticsPlugin:
 
 def normalize_config(raw):
     cfg = dict(DEFAULT_CONFIG)
+    if not isinstance(raw, dict):
+        return cfg
     if isinstance(raw.get("check_orphan_assets"), bool):
         cfg["check_orphan_assets"] = raw["check_orphan_assets"]
-    if isinstance(raw.get("check_broken_links_and_empty"), bool):
-        cfg["check_broken_links_and_empty"] = raw["check_broken_links_and_empty"]
+    if isinstance(raw.get("check_broken_links"), bool):
+        cfg["check_broken_links"] = raw["check_broken_links"]
+    elif isinstance(raw.get("check_broken_links_and_empty"), bool):
+        cfg["check_broken_links"] = raw["check_broken_links_and_empty"]
+    if isinstance(raw.get("check_empty_notes"), bool):
+        cfg["check_empty_notes"] = raw["check_empty_notes"]
+    elif isinstance(raw.get("check_broken_links_and_empty"), bool):
+        cfg["check_empty_notes"] = raw["check_broken_links_and_empty"]
     threshold = raw.get("large_asset_threshold")
     if threshold in THRESHOLD_BYTES:
         cfg["large_asset_threshold"] = threshold
