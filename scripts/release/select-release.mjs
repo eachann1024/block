@@ -43,22 +43,18 @@ export function releaseVersion(root = ROOT, sha = "HEAD") {
   return `1.0.${count}`;
 }
 
-export function readCargoVersion(root = ROOT) {
-  const cargo = readFileSync(resolve(root, "Cargo.toml"), "utf8");
-  const m = /^version\s*=\s*"(\d+\.\d+\.\d+)"/m.exec(cargo);
-  assert.ok(m, "Cargo.toml is missing a valid package version");
-  return m[1];
-}
-
-export function setCargoTomlVersion(text, version) {
-  return text.replace(/^(version\s*=\s*)"\d+\.\d+\.\d+"/m, `$1"${version}"`);
-}
-
-export function setCargoLockVersion(text, version) {
-  return text.replace(
-    /(\[\[package\]\]\r?\nname = "block"\r?\nversion = )"\d+\.\d+\.\d+"(\r?\ndependencies =)/,
-    `$1"${version}"$2`,
-  );
+export function readPackageVersion(root = ROOT) {
+  const pkgPath = resolve(root, "package.json");
+  if (existsSync(pkgPath)) {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    if (typeof pkg.version === "string" && /^\d+\.\d+\.\d+$/.test(pkg.version)) return pkg.version;
+  }
+  const mygoPath = resolve(root, "mygo.json");
+  if (existsSync(mygoPath)) {
+    const mygo = JSON.parse(readFileSync(mygoPath, "utf8"));
+    if (typeof mygo.version === "string" && /^\d+\.\d+\.\d+$/.test(mygo.version)) return mygo.version;
+  }
+  throw new Error("package.json / mygo.json is missing a valid version");
 }
 
 export function setPackageJsonVersion(text, version) {
@@ -67,9 +63,15 @@ export function setPackageJsonVersion(text, version) {
   return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
+export function setMyGoJsonVersion(text, version) {
+  const mygo = JSON.parse(text);
+  mygo.version = version;
+  return `${JSON.stringify(mygo, null, 2)}\n`;
+}
+
 export function applyReleasePlanVersion() {
   const planPath = resolve(ROOT, "release-plan.json");
-  let version = readCargoVersion(ROOT);
+  let version = readPackageVersion(ROOT);
   if (existsSync(planPath)) {
     const plan = JSON.parse(readFileSync(planPath, "utf8"));
     if (typeof plan.version === "string" && plan.version) {
@@ -81,12 +83,14 @@ export function applyReleasePlanVersion() {
 }
 
 export function syncVersionFiles(root, version) {
-  const cargoPath = resolve(root, "Cargo.toml");
-  writeFileSync(cargoPath, setCargoTomlVersion(readFileSync(cargoPath, "utf8"), version));
-  const lockPath = resolve(root, "Cargo.lock");
-  writeFileSync(lockPath, setCargoLockVersion(readFileSync(lockPath, "utf8"), version));
   const pkgPath = resolve(root, "package.json");
-  writeFileSync(pkgPath, setPackageJsonVersion(readFileSync(pkgPath, "utf8"), version));
+  if (existsSync(pkgPath)) {
+    writeFileSync(pkgPath, setPackageJsonVersion(readFileSync(pkgPath, "utf8"), version));
+  }
+  const mygoPath = resolve(root, "mygo.json");
+  if (existsSync(mygoPath)) {
+    writeFileSync(mygoPath, setMyGoJsonVersion(readFileSync(mygoPath, "utf8"), version));
+  }
 }
 
 function shanghaiDay(isoString) {
@@ -189,7 +193,7 @@ async function main() {
   const publishInput = process.env.PUBLISH !== "false";
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
-  const cargoVersion = readCargoVersion(ROOT);
+  const currentVersion = readPackageVersion(ROOT);
   let version = releaseVersion(ROOT, headSha);
   const releases = getReleases();
   const stable = releases
@@ -202,9 +206,9 @@ async function main() {
     const lastDay = shanghaiDay(previous.published_at);
     if (today === lastDay) {
       summary(`今日（${today}）已发布过 ${previous.tag_name}，每日最多自动发布一次，本次跳过。`);
-      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+      const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
       return;
     }
   }
@@ -212,9 +216,9 @@ async function main() {
   const previousSha = resolveTagCommit(previous);
   if (previousSha && previousSha === headSha && !force) {
     summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
-    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+    const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
     return;
   }
 
@@ -226,24 +230,24 @@ async function main() {
       if (resolved.note) summary(resolved.note);
     } catch (error) {
       summary(error?.message || String(error));
-      const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous?.tag_name || "", commit: headSha };
+      const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous?.tag_name || "", commit: headSha };
       writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous?.tag_name || "" });
+      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous?.tag_name || "" });
       return;
     }
   }
 
   if (force) version = versionAboveExisting(version, releases);
-  const autoBump = version !== cargoVersion;
+  const autoBump = version !== currentVersion;
   const commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
   if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
   let notes = await buildReleaseNotes({ version, commits });
 
   if (previous && notes.skip && !force) {
     summary(`自 ${previous.tag_name} 以来${notes.reason}（共扫描 ${commits.length} 条提交），跳过自动发布。`);
-    const plan = { shouldBuild: false, publish: false, version: cargoVersion, tag: previous.tag_name, commit: headSha };
+    const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
     writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: cargoVersion, release_tag: previous.tag_name });
+    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
     return;
   }
 

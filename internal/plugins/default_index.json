@@ -1,0 +1,229 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "topic": "blockmd-plugin",
+  "updated_at": "2026-11-18T13:54:40Z",
+  "apps": [
+    {
+      "app": "blockmd",
+      "id": "block-sync",
+      "name": {
+        "zh": "同步",
+        "en": "Sync"
+      },
+      "version": "1.1.0",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-sync",
+      "summary": {
+        "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
+        "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.1.0/block-sync-v1.1.0.tar.gz",
+      "sha256": "289ede719235eea47bcc206435ce593a10a3de7c0d26586356dcc763cfa91a5a",
+      "downloads": 1281,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-18T13:53:57Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "network",
+        "events:note_saved"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"
+        ],
+        "stroke_paths": [
+          "M7.5 10.5A5 5 0 0 1 16.2 8.5",
+          "M16.5 13.5A5 5 0 0 1 7.8 15.5"
+        ],
+        "accent_paths": [
+          "M16.5 5.8V8.8H13.5",
+          "M7.5 18.2V15.2H10.5"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-image-host",
+      "name": {
+        "zh": "图床上传",
+        "en": "Image Host"
+      },
+      "version": "1.1.0",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-image-host",
+      "summary": {
+        "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
+        "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-image-host/releases/download/v1.1.0/block-image-host-v1.1.0.tar.gz",
+      "sha256": "00ee55f831f60213b8b109c2578e2cda3e3a367997c85fcccb409c4c1ba839b5",
+      "downloads": 941,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-18T13:54:00Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "network",
+        "events:note_saved"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"
+        ],
+        "accent_paths": [
+          "M16.5 14V7.5",
+          "M14 10l2.5-2.5L19 10",
+          "M9 9.25a1.25 1.25 0 1 0 0 .01"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-publisher",
+      "name": {
+        "zh": "发布与导出",
+        "en": "Publisher"
+      },
+      "version": "1.1.0",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-publisher",
+      "summary": {
+        "zh": "将笔记导出为静态博客站点、微信公众号排版 HTML 与小红书图文分段稿",
+        "en": "Export notes to static blog sites, WeChat MP HTML, and Xiaohongshu card drafts"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-publisher/releases/download/v1.1.0/block-publisher-v1.1.0.tar.gz",
+      "sha256": "87a7a81db50194465f73319eb2e05f05bc03c6e9f5341be311903c9e36d75187",
+      "downloads": 761,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-18T13:53:45Z",
+      "permissions": [
+        "storage",
+        "notes:read"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"
+        ],
+        "stroke_paths": [
+          "M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z",
+          "M14 4v5h5",
+          "M8 15h8"
+        ],
+        "accent_paths": [
+          "M12 10l3 3",
+          "M12 10l-3 3",
+          "M12 10v7"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-migrator",
+      "name": {
+        "zh": "笔记迁移",
+        "en": "Migrator"
+      },
+      "version": "1.1.0",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-migrator",
+      "summary": {
+        "zh": "从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件",
+        "en": "Migrate notes from Obsidian, Notion, and Yuque exports with syntax cleanup and asset copy"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-migrator/releases/download/v1.1.0/block-migrator-v1.1.0.tar.gz",
+      "sha256": "4b4637854eae143ed42a3af0299de2418c5532bbffc8ddb89e2ba2b0d040cf02",
+      "downloads": 616,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-18T13:54:01Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M8 13h8"
+        ],
+        "accent_paths": [
+          "M13 10l3 3-3 3",
+          "M8 16h3"
+        ]
+      }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-diagnostics",
+      "name": {
+        "zh": "性能与诊断",
+        "en": "Diagnostics"
+      },
+      "version": "1.1.0",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-diagnostics",
+      "summary": {
+        "zh": "统计工作区体积、笔记与附件占用，巡检孤立附件与失效链接并导出报告",
+        "en": "Inspect workspace size, note and asset usage, orphan assets, broken links, and export reports"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.1.0/block-diagnostics-v1.1.0.tar.gz",
+      "sha256": "6d9c5520ccd05a85df6da4e12b2e68a3c2860d96e8ee6a70cd1dc0667ebb4d8a",
+      "downloads": 321,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-18T13:54:14Z",
+      "permissions": [
+        "storage",
+        "notes:read"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"
+        ],
+        "stroke_paths": [
+          "M4.6 16.5A9 9 0 1 1 19.4 16.5",
+          "M12 4.5V6.5",
+          "M4.5 12H6.5",
+          "M17.5 12H19.5"
+        ],
+        "accent_paths": [
+          "M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"
+        ]
+      }
+    }
+  ]
+}
