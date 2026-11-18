@@ -12,14 +12,15 @@ import (
 
 // Tab metrics (thinkly-fast app_tabs_menu.rs / app_tabs.rs).
 const (
-	tabAnimMs     = 150
-	tabBasisW     = 220
-	tabMinW       = 76
-	tabMaxW       = 220
-	tabFadeW      = 20
-	singleTabMaxW = 240
-	tabPillH      = 28
-	tabStripGap   = 4
+	tabAnimMs      = 150
+	tabBasisW      = 220
+	tabMinW        = 76
+	tabMaxW        = 220
+	tabFadeW       = 20
+	singleTabMaxW  = 240
+	tabPillH       = 28
+	tabStripGap    = 4
+	tabDragSpacerW = 16
 )
 
 // tabTransition is the 150ms ease-out-quint open/close/reflow motion of a multi-tab pill.
@@ -28,10 +29,21 @@ func tabTransition() ui.ElementTransition {
 		Duration: tabAnimMs * time.Millisecond,
 		Ease:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Position: true,
-		Width:    true,
 		Enter:    &ui.Motion{Collapse: true},
 		Exit:     &ui.Motion{Collapse: true},
 	}
+}
+
+// multiTabWidth shares the strip among n tabs as flex-basis 220 / shrink /
+// min 76 does, from the tab cell's laid-out width (padding, new-tab button
+// and drag spacer taken out). Past 76 the strip scrolls.
+func multiTabWidth(centerW float32, n int) float32 {
+	if centerW <= 0 || n <= 0 {
+		return tabBasisW
+	}
+	avail := centerW - 20 - (theme.ChromeBoxSize + tabStripGap) - (tabDragSpacerW + tabStripGap)
+	w := (avail - float32(n-1)*tabStripGap) / float32(n)
+	return max(min(w, tabMaxW), tabMinW)
 }
 
 // tabFade is the right-edge ramp from transparent col to col that clips a long title.
@@ -49,10 +61,17 @@ func tabDirtyDot(c *ui.Context) ui.Element {
 }
 
 // renderTabStrip renders the titlebar tab pills (thinkly-fast render_tab_pill).
-// Pills take flex-basis 220 and shrink together down to 76 as the strip narrows.
-func renderTabStrip(c *ui.Context, p TitlebarProps) {
+// renderTabStrip lays out the pills; past their 76px minimum the strip scrolls.
+func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
+	// Pills are sized from the last frame's cell width: ask for one more
+	// frame whenever it changed so they settle on the current one.
+	if p.MenuState != nil && (centerW <= 0 || centerW != p.MenuState.tabCenterW) {
+		p.MenuState.tabCenterW = centerW
+		c.After(16 * time.Millisecond)
+	}
+	tabW := multiTabWidth(centerW, len(p.Tabs))
 	c.Key("titlebar-tab-strip")
-	strip := ui.Row(c).FillHeight().Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(tabStripGap).Clip()
+	strip := ui.ScrollHorizontal(c).FillHeight().Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(tabStripGap).Scrollbars(false)
 	blockui.Probe(strip, "titlebar-tab-strip")
 	strip.Children(func() {
 		if len(p.Tabs) == 1 {
@@ -60,7 +79,7 @@ func renderTabStrip(c *ui.Context, p TitlebarProps) {
 			return
 		}
 		for ix, tabPath := range p.Tabs {
-			renderMultiTab(c, p, ix, tabPath)
+			renderMultiTab(c, p, ix, tabPath, tabW)
 		}
 	})
 }
@@ -93,13 +112,13 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	blockui.Probe(pill, "tab:"+path)
 }
 
-func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string) {
+func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW float32) {
 	pal := theme.Ocean()
 	active := path == p.ActiveTab
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	label := tabTitle(path)
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).Width(tabBasisW).MinWidth(tabMinW).MaxWidth(tabMaxW).Shrink(1).Height(tabPillH).Padding(0, 6, 0, 10).
+	pill := ui.ButtonBase(c).Width(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 10).
 		Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
 		Role(ui.RoleTab).Selected(active).Label(label).Transition(tabTransition())
 	hovered := pill.Hovered()
