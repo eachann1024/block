@@ -5,6 +5,7 @@ import (
 
 	"block/internal/model"
 	"block/internal/theme"
+	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -89,7 +90,7 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 		s.tableColCache[id] = cached
 	}
 
-	borderOverhead := float32(cols + 1) // 1px outer left/right + 1px shared divider per inner column gap
+	borderOverhead := float32(cols+1) * appUi.TableGridRuleWidth
 	innerAvail := max(availGrid-borderOverhead, float32(cols))
 	sumMin := float32(cols) * tMinColW
 	var sumWant float32
@@ -136,48 +137,41 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 	return colWidths, false
 }
 
-// paintSingleTableBorders draws a single 1px outer rounded perimeter, 1px continuous shared
-// vertical column dividers, and 1px non-overlapping horizontal row dividers.
-func paintSingleTableBorders(p *ui.Painter, gr ui.Rect, colSpans [][2]float32, rowBottoms []float32, borderCol ui.Color, radius float32) {
-	if gr.W <= 2 || gr.H <= 2 {
-		return
+func tableGridCell(c *ui.Context, row, col int, width float32, fixedWidth bool) ui.Element {
+	cell := ui.Column(c.Key(tableCellPosKey{row: row, col: col})).
+		Justify(ui.Center).AlignItems(ui.Stretch).MinWidth(0)
+	if fixedWidth {
+		return cell.Width(width).Shrink(0)
 	}
-	cols := len(colSpans)
-	innerH := max(gr.H-2, 0)
+	return cell.Basis(width).Grow(width).Shrink(1)
+}
 
-	// Continuous shared 1px vertical column dividers from top to bottom
-	for cIdx := 0; cIdx+1 < cols; cIdx++ {
-		cSpan := colSpans[cIdx]
-		if cSpan[1] <= 0 {
-			continue
-		}
-		divX := cSpan[0] + cSpan[1]
-		divW := float32(1)
-		if nextStart := colSpans[cIdx+1][0]; nextStart > divX {
-			divW = nextStart - divX
-		}
-		p.Fill(ui.Rect{X: divX, Y: gr.Y + 1, W: divW, H: innerH}, borderCol, 0)
+func renderPlainTableRows[T any](c *ui.Context, grid ui.Element, rows [][]T, fontSize, zoom float32, cellText func(T) string) {
+	cols := 0
+	for _, row := range rows {
+		cols = max(cols, len(row))
 	}
-
-	// Shared 1px horizontal row dividers per column segment (no double fill at intersections)
-	for rIdx := 0; rIdx+1 < len(rowBottoms); rIdx++ {
-		divY := rowBottoms[rIdx]
-		if divY <= gr.Y+1 || divY >= gr.Y+gr.H-1 {
-			continue
-		}
-		if cols > 0 && colSpans[0][1] > 0 {
-			for cIdx := 0; cIdx < cols; cIdx++ {
-				if colSpans[cIdx][1] > 0 {
-					p.Fill(ui.Rect{X: colSpans[cIdx][0], Y: divY, W: colSpans[cIdx][1], H: 1}, borderCol, 0)
-				}
+	pal := theme.Ocean()
+	grid.Children(func() {
+		for r, row := range rows {
+			bg, weight := pal.Paper, theme.WeightRegular
+			if r == 0 {
+				bg, weight = pal.Table().HeaderBG, theme.WeightTitle
 			}
-		} else {
-			p.Fill(ui.Rect{X: gr.X + 1, Y: divY, W: max(gr.W-2, 0), H: 1}, borderCol, 0)
+			appUi.TableGridRow(c.Key(tableRowUIKey{row: r})).Children(func() {
+				for col := 0; col < cols; col++ {
+					text := ""
+					if col < len(row) {
+						text = cellText(row[col])
+					}
+					tableGridCell(c, r, col, 1, false).Padding(theme.Space6*zoom, theme.Space8*zoom).
+						Background(bg).Children(func() {
+						ui.Text(c, text).FontSize(fontSize).FontWeight(weight).TextColor(pal.Text).FillWidth()
+					})
+				}
+			})
 		}
-	}
-
-	// Single 1px rounded outer border
-	p.Stroke(ui.Rect{X: gr.X + 0.5, Y: gr.Y + 0.5, W: gr.W - 1, H: gr.H - 1}, borderCol, radius, 1)
+	})
 }
 
 // tableAddColIconTop returns the top offset inside table-add-col so the '+' icon stays
