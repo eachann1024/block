@@ -37,23 +37,79 @@ func (p Palette) Syntax() SyntaxColors {
 	}
 }
 
-// TableColors holds border and header fill colours shared by editor and AI diff tables.
+// TableColors holds border, header, edge-pill handle, selection ring and tint colours for tables.
 type TableColors struct {
-	Border   ui.Color
-	HeaderBG ui.Color
+	Border          ui.Color
+	HeaderBG        ui.Color
+	SelectedTint    ui.Color
+	OuterSelectRing ui.Color
+	HandleBG        ui.Color
+	HandleHoverBG   ui.Color
+	HandleBorder    ui.Color
+	HandleFG        ui.Color
+	HandleActiveBG  ui.Color
+	HandleActiveFG  ui.Color
+	TintSlate       ui.Color
+	TintOcean       ui.Color
+	TintEmerald     ui.Color
+	SwatchSlate     ui.Color
+	SwatchOcean     ui.Color
+	SwatchEmerald   ui.Color
 }
 
-// Table returns the table border and header background colours.
+// CellTint resolves a subtle row/column background fill for a semantic tint name.
+func (tc TableColors) CellTint(name string) (ui.Color, bool) {
+	switch name {
+	case "slate":
+		return tc.TintSlate, true
+	case "ocean":
+		return tc.TintOcean, true
+	case "emerald":
+		return tc.TintEmerald, true
+	default:
+		return ui.Transparent, false
+	}
+}
+
+// Table returns the table border, header, handle, selection and tint colours.
 func (p Palette) Table() TableColors {
 	if p.Dark {
 		return TableColors{
-			Border:   p.MenuBorder,
-			HeaderBG: p.CodeBlockBG,
+			Border:          p.MenuBorder,
+			HeaderBG:        p.CodeBlockBG,
+			SelectedTint:    ui.Hex("#1f2b40"),
+			OuterSelectRing: p.Accent.Alpha(0.22),
+			HandleBG:        p.Menu,
+			HandleHoverBG:   p.Hover,
+			HandleBorder:    p.BtnBorder,
+			HandleFG:        p.TextSecondary,
+			HandleActiveBG:  p.Accent,
+			HandleActiveFG:  ui.Hex("#141820"),
+			TintSlate:       ui.Hex("#2a2d32"),
+			TintOcean:       ui.Hex("#1f2d46"),
+			TintEmerald:     ui.Hex("#1c3329"),
+			SwatchSlate:     ui.Hex("#3a3f47"),
+			SwatchOcean:     ui.Hex("#314972"),
+			SwatchEmerald:   ui.Hex("#275340"),
 		}
 	}
 	return TableColors{
-		Border:   p.Hairline,
-		HeaderBG: p.CodeBlockBG,
+		Border:          p.Hairline,
+		HeaderBG:        p.CodeBlockBG,
+		SelectedTint:    p.Hover,
+		OuterSelectRing: p.Accent.Alpha(0.20),
+		HandleBG:        p.Paper,
+		HandleHoverBG:   p.Hover,
+		HandleBorder:    p.BtnBorder,
+		HandleFG:        p.TextSecondary,
+		HandleActiveBG:  p.AccentHover,
+		HandleActiveFG:  ui.Hex("#ffffff"),
+		TintSlate:       ui.Hex("#f1f3f6"),
+		TintOcean:       ui.Hex("#e8f0fe"),
+		TintEmerald:     ui.Hex("#e7f5ee"),
+		SwatchSlate:     ui.Hex("#dfe4ec"),
+		SwatchOcean:     ui.Hex("#c9d8f3"),
+		SwatchEmerald:   ui.Hex("#bce6d1"),
 	}
 }
 

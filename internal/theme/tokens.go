@@ -122,6 +122,27 @@ const (
 	ImageResizePillHotH     float32 = 56 // 52px solid accent bar + 2px paper halo top/bottom
 	ImageResizeHaloWidth    float32 = 2
 
+	// Table border handles, seam splitters & context menu metrics (Scheme A).
+	TableSelectBorderWidth float32 = 1.5
+	TableOuterHaloSpread   float32 = 2
+	TableColHandleW        float32 = 28
+	TableColHandleH        float32 = 14
+	TableRowHandleW        float32 = 14
+	TableRowHandleH        float32 = 26
+	TableHandleHoverBand   float32 = 16
+	TableSplitHitSize      float32 = 12
+	TableSplitPinSize      float32 = 20
+	TableSplitHaloWidth    float32 = 2
+	TableGripDotRadius     float32 = 1
+	TableGripDotStepX      float32 = 3.5
+	TableGripDotStepY      float32 = 2.6
+	TableSwatchSize        float32 = 18
+	TableSwatchRingWidth   float32 = 2
+	TableMenuWidth         float32 = 244
+	TableAlignSegBoxW      float32 = 26
+	TableAlignSegBoxH      float32 = 22
+	TableResizeBadgeH      float32 = 24
+
 	MotionMs = 160 // shared popup enter/exit duration
 
 	ThreeColumnMinMain float32 = 560 // narrowest editor column before the sidebar yields

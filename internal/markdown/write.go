@@ -263,7 +263,9 @@ func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 }
 
 func tablesEqual(a, b *model.TableData) bool {
-	if a.WasHTML != b.WasHTML || len(a.Rows) != len(b.Rows) || len(a.Aligns) != len(b.Aligns) || len(a.Widths) != len(b.Widths) {
+	if a.WasHTML != b.WasHTML || a.NoHeaderRow != b.NoHeaderRow ||
+		len(a.Rows) != len(b.Rows) || len(a.Aligns) != len(b.Aligns) || len(a.Widths) != len(b.Widths) ||
+		len(a.ColTints) != len(b.ColTints) || len(a.RowTints) != len(b.RowTints) {
 		return false
 	}
 	for i := range a.Aligns {
@@ -273,6 +275,16 @@ func tablesEqual(a, b *model.TableData) bool {
 	}
 	for i := range a.Widths {
 		if a.Widths[i] != b.Widths[i] {
+			return false
+		}
+	}
+	for i := range a.ColTints {
+		if a.ColTints[i] != b.ColTints[i] {
+			return false
+		}
+	}
+	for i := range a.RowTints {
+		if a.RowTints[i] != b.RowTints[i] {
 			return false
 		}
 	}
@@ -570,10 +582,67 @@ func formatFloat(v float32) string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 32)
 }
 
+func serializeTableMetaComment(t *model.TableData, out *strings.Builder) {
+	var parts []string
+	if t.NoHeaderRow {
+		parts = append(parts, "header=0")
+	}
+	hasW := false
+	for _, w := range t.Widths {
+		if w > 0 {
+			hasW = true
+			break
+		}
+	}
+	if hasW {
+		ws := make([]string, len(t.Widths))
+		for i, w := range t.Widths {
+			if w > 0 {
+				ws[i] = formatFloat(w)
+			}
+		}
+		parts = append(parts, "widths="+strings.Join(ws, ","))
+	}
+	hasCT := false
+	for _, ct := range t.ColTints {
+		if ct != "" {
+			hasCT = true
+			break
+		}
+	}
+	if hasCT {
+		cs := make([]string, len(t.ColTints))
+		for i, ct := range t.ColTints {
+			cs[i] = string(ct)
+		}
+		parts = append(parts, "coltints="+strings.Join(cs, ","))
+	}
+	hasRT := false
+	for _, rt := range t.RowTints {
+		if rt != "" {
+			hasRT = true
+			break
+		}
+	}
+	if hasRT {
+		rs := make([]string, len(t.RowTints))
+		for i, rt := range t.RowTints {
+			rs[i] = string(rt)
+		}
+		parts = append(parts, "rowtints="+strings.Join(rs, ","))
+	}
+	if len(parts) > 0 {
+		out.WriteString("<!-- thinkly:table ")
+		out.WriteString(strings.Join(parts, " "))
+		out.WriteString(" -->\n")
+	}
+}
+
 func serializeTable(t *model.TableData, out *strings.Builder) {
 	if len(t.Rows) == 0 {
 		return
 	}
+	serializeTableMetaComment(t, out)
 	if t.WasHTML {
 		out.WriteString("<table>\n")
 		if len(t.Widths) > 0 {
@@ -586,7 +655,7 @@ func serializeTable(t *model.TableData, out *strings.Builder) {
 		for r, row := range t.Rows {
 			out.WriteString("<tr>")
 			tag := "td"
-			if r == 0 {
+			if r == 0 && !t.NoHeaderRow {
 				tag = "th"
 			}
 			for c, cell := range row {

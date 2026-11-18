@@ -494,7 +494,8 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	overlayBlocking := s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0 || s.isTableExtending()
 	isDraggingBlock := s.dragBlockID != 0
 	isDraggingAny := isDraggingBlock || s.isMouseDragging() || s.isTableExtending()
-	showHandles := !s.minimal && !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || hasBlockFocus)) || s.dragBlockID == id)
+	tableWholeActive := b.Kind == model.BlockTable && s.isTableWholeSelected(id)
+	showHandles := !s.minimal && !readOnly && ((!overlayBlocking && ((!isDraggingAny && (isHovered || hasBlockFocus)) || s.dragBlockID == id)) || tableWholeActive)
 	showBlankAdd := !s.minimal && !readOnly && !overlayBlocking && !isDraggingAny && (isHovered || s.hoveredBlock == idx)
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
@@ -619,10 +620,12 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								gripPressed := grip.Pressed()
 								gripActive := s.dragBlockID == id && !s.dragCanceled
 								gripHovered := grip.Hovered()
-								if !gripActive && !gripPressed && s.blockMenu == nil {
+								if !gripActive && !gripPressed && s.blockMenu == nil && !tableWholeActive {
 									clickDetail := theme.Tr("打开块菜单", "to open menu")
-									if !(idx == 0 && isFrontmatterBlock(0, b)) &&
-										(b.PlainText() != "" || b.Code != "" || b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider) {
+									if b.Kind == model.BlockTable {
+										clickDetail = theme.Tr("选中整表边框", "to select table")
+									} else if !(idx == 0 && isFrontmatterBlock(0, b)) &&
+										(b.PlainText() != "" || b.Code != "" || b.Kind == model.BlockImage || b.Kind == model.BlockDivider) {
 										clickDetail = theme.Tr("转换块", "to turn into")
 									}
 									appUi.RichTooltip(c, grip, appUi.TooltipSpec{
@@ -646,13 +649,19 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 									grip.Cursor(ui.CursorGrab)
 								}
 								gripBG := ui.Transparent
-								if gripActive || gripPressed || gripHovered {
+								gripBD := ui.Transparent
+								if tableWholeActive {
+									gripBG = pal.Selected
+									gripBD = pal.Accent
+								} else if gripActive || gripPressed || gripHovered {
 									gripBG = gripHoverBG
 								}
-								appUi.AnimateSurfaceColors(grip, gripBG, ui.Transparent, false)
-								appUi.TactileButton(grip, gripHovered || gripActive, gripPressed, false)
+								appUi.AnimateSurfaceColors(grip, gripBG, gripBD, tableWholeActive)
+								appUi.TactileButton(grip, gripHovered || gripActive || tableWholeActive, gripPressed, tableWholeActive)
 								gripIcon := pal.MonoIconColors(pal.TextSecondary)
-								if gripActive || gripPressed || gripHovered {
+								if tableWholeActive {
+									gripIcon = pal.MonoIconColors(pal.Accent)
+								} else if gripActive || gripPressed || gripHovered {
 									gripIcon = pal.DuoIconColors(pal.Text)
 								}
 								grip.Children(func() {
@@ -2051,32 +2060,8 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	_, _, tMinRowH, tMinColW, _, _, _ := s.tableMetrics()
 	bleed := s.bandBleed()
 	wrap := ui.Column(c.Key("table-wrap")).FillWidth().Gap(s.scale(4))
-	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id || s.isTableExtendingBlock(id))
+	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id || s.isTableExtendingBlock(id) || s.tableResizeBlock == id || s.tableDragBlock == id)
 	wrap.Children(func() {
-		// Top bar sits inside the top gutter so hover changes never shift blocks below.
-		if showChrome {
-			bar := ui.Row(c.Key("table-top-bar")).Absolute().Top(-s.scale(24)).Right(0).Height(s.scale(22)).Justify(ui.End).Gap(s.scale(4))
-			bar.Children(func() {
-				moreID := fmt.Sprintf("table-more-%d", id)
-				more := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
-					ID:       moreID,
-					Label:    theme.Tr("表格操作", "Table options"),
-					Size:     s.scale(22),
-					IconSize: s.scale(14),
-				})
-				s.recordOverlayBtn(moreID, more)
-				if more.Clicked() {
-					if s.tableMenuBlock == id {
-						s.tableMenuBlock = 0
-						s.tableMenuKind = ""
-					} else {
-						s.tableMenuBlock = id
-						s.tableMenuKind = "cell"
-					}
-				}
-			})
-		}
-
 		gridRow := ui.Row(c.Key("table-grid-row")).FillWidth().AlignItems(ui.Stretch)
 		gridRow.Children(func() {
 			indentPx := float32(min(max(b.Indent, 0), 12)) * s.indentStep()
@@ -2098,7 +2083,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				} else {
 					grid.FillWidth()
 				}
-				grid.DrawOver(func(_ *ui.Painter, gr ui.Rect) {
+				grid.DrawOver(func(p *ui.Painter, gr ui.Rect) {
 					docY := gr.Y - s.scrollRect.Y + s.bodyScroll.Y
 					prev, ok := s.tableGridGeoms[id]
 					if !ok || math.Abs(float64(prev.docY-docY)) > 0.5 || math.Abs(float64(prev.h-gr.H)) > 0.5 {
@@ -2111,6 +2096,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 							c.Invalidate()
 						}
 					}
+					s.paintTableSelectionFrames(p, gr, id, tbl, colWidths, pal, tblCols)
 				})
 				grid.Children(func() {
 					for rIdx := range tbl.Rows {
@@ -2137,6 +2123,10 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				buildGrid()
 			}
 
+			if showChrome {
+				s.renderTableBorderChrome(c, idx, id, tbl, colWidths, availGrid, needHScroll, isFocused)
+			}
+
 			// Right add column bar sits in the right gutter so table width aligns 1:1 with other blocks.
 			if showChrome {
 				colSlot := ui.Box(c.Key("table-add-col-slot")).Absolute()
@@ -2148,7 +2138,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					colSlot.Top(0).Bottom(0).Right(-s.scale(26)).Width(s.scale(22))
 				}
 				colSlot.Children(func() {
-					iconSz := s.scale(14)
+					iconSz := s.scale(theme.IconAction)
 					iconTop, stickyOK := s.tableAddColIconTop(id, slotInset, iconSz)
 					isColDrag := s.isTableExtendingAxis(id, tableExtendCol)
 					colCursor := ui.CursorPointer
@@ -2240,22 +2230,16 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 	if !readOnly {
 		box.Cursor(ui.CursorText)
 	}
-	bg := pal.Paper
-	if cellSelected {
-		bg = pal.SelectionBG.Alpha(0.42).Over(bg)
-	} else if isCellFocused {
-		bg = pal.Selected
-	} else if rIdx == 0 {
-		bg = headerBG
-	}
+	_ = headerBG
+	bg := s.resolveTableCellFill(blockID, tbl, rIdx, cIdx, pal, pal.Table(), isCellFocused, cellSelected)
 	if jumpTarget {
 		bg = pal.EditorSelectionBG().Alpha(s.jumpAlpha).Over(bg)
 	}
 	box.Background(bg)
-	weight := 400
+	weight := theme.WeightRegular
 	textCol := pal.Text
-	if rIdx == 0 {
-		weight = 600
+	if rIdx == 0 && !tbl.NoHeaderRow {
+		weight = theme.WeightTitle
 		textCol = pal.TextSecondary
 	}
 	lhFactor := tableCellLineHeight / tableCellFontSize
@@ -2789,7 +2773,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 				commentLbl := theme.Tr("添加批注", "Add annotation")
 				commentBtn := appUi.IconButton(c, icons.TbComment, appUi.IconButtonOptions{
 					ID: "img-tb-comment", Label: commentLbl, Tooltip: commentLbl,
-					Shortcut: formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"),
+					Shortcut:    formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"),
 					TooltipPill: true, TooltipAbove: true,
 					Size: theme.HeightCompact, IconSize: theme.IconAction,
 					Active: s.toolbarPop == "comment",
