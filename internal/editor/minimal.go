@@ -121,20 +121,31 @@ func (s *Session) ClearFormattingOnSelection() {
 		return
 	}
 	a, b := s.orderedSelection()
-	s.pushUndo()
 	changed := false
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		blk := &s.doc.Blocks[idx]
-		if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage || blk.Kind == model.BlockTable {
-			continue
-		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
 		if lo >= hi {
 			continue
 		}
-		left := sliceSpans(blk.Spans, 0, lo)
-		mid := sliceSpans(blk.Spans, lo, hi)
-		right := sliceSpans(blk.Spans, hi, len([]rune(blk.PlainText())))
+		targetSpans := &blk.Spans
+		totalLen := len([]rune(blk.PlainText()))
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, ok := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !ok {
+				continue
+			}
+			targetSpans, lo, hi = cellSpans, cLo, cHi
+			totalLen = len([]rune(model.PlainTextOfSpans(*cellSpans)))
+		} else if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			continue
+		}
+		if !changed {
+			s.pushUndo()
+		}
+		left := sliceSpans(*targetSpans, 0, lo)
+		mid := sliceSpans(*targetSpans, lo, hi)
+		right := sliceSpans(*targetSpans, hi, totalLen)
 		for i := range mid {
 			mid[i].Marks = 0
 			mid[i].FGColor = ""
@@ -145,7 +156,7 @@ func (s *Session) ClearFormattingOnSelection() {
 		merged = append(merged, left...)
 		merged = append(merged, mid...)
 		merged = append(merged, right...)
-		blk.Spans = normalizeSpans(merged)
+		*targetSpans = normalizeSpans(merged)
 		blk.Dirty = true
 		blk.CleanSource = ""
 		changed = true
