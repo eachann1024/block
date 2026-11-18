@@ -603,6 +603,10 @@ func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
 }
 
 func (s *Session) hasAnyOverlayOpen() bool {
+	return s.hasBlockingOverlay() || s.hasNonEmptySelection()
+}
+
+func (s *Session) hasBlockingOverlay() bool {
 	return s.blockMenu != nil ||
 		s.toolbarPop != "" ||
 		s.inlineAI != nil ||
