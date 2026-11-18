@@ -191,6 +191,7 @@ const (
 	UpdaterModalMaxHeight  float32 = 650
 	UpdaterNotesMaxHeight  float32 = 350
 	UpdaterHeaderIconBox   float32 = 36
+	UpdaterHeaderMarkSize  float32 = 30
 	UpdaterProgressHeight  float32 = 6
 	UpdaterBadgeButtonSize float32 = 30
 	UpdaterBadgeDotSize    float32 = 6
