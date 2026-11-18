@@ -3229,15 +3229,23 @@ func (w *Workspace) Render(c *ui.Context) {
 		body := ui.Row(c.Key("workspace-body")).Grow(1).MinHeight(0).FillWidth()
 		body.Children(func() {
 			// Docked Sidebar (File Tree in workspace mode, Category Nav in Settings mode).
+			// One persistent slot keeps its width across workspace ↔ settings and only
+			// cross-fades its content, so the main column never collapses and regrows.
 			if !aiImmersive && layout.SidebarDocked {
-				if inSettings {
-					w.modals.RenderSettingsSidebar(c, false, nil)
-				} else {
-					ui.Row(c.Key("docked-sidebar-slot")).Shrink(0).FillHeight().
-						Transition(blockui.DockedPanelTransition(false)).Children(func() {
-						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
-					})
-				}
+				ui.Row(c.Key("docked-sidebar-slot")).Shrink(0).FillHeight().
+					Transition(blockui.DockedPanelTransition(false)).Children(func() {
+					if inSettings {
+						ui.Row(c.Key("docked-sidebar-settings")).Shrink(0).FillHeight().
+							Transition(blockui.PanelContentSwapTransition()).Children(func() {
+							w.modals.RenderSettingsSidebar(c, false, nil)
+						})
+					} else {
+						ui.Row(c.Key("docked-sidebar-workspace")).Shrink(0).FillHeight().
+							Transition(blockui.PanelContentSwapTransition()).Children(func() {
+							w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+						})
+					}
+				})
 			}
 
 			// Center Content (Settings Canvas, Note Editor, Non-Markdown Surface, or Empty Mascot State).
