@@ -222,32 +222,36 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				if p.SidebarWide && !p.InSettings {
 					renderTitlebarSidebarActions(c, p)
 				}
+				sidebarOpen := p.SidebarWide || p.SidebarFloating
 				glyph := icons.SidebarExpand
-				if p.SidebarWide {
+				if sidebarOpen {
 					glyph = icons.SidebarCollapse
 				}
 				sbSc := p.ShortcutSidebar
 				if sbSc == "" {
 					sbSc = "alt-b"
 				}
-				tip := theme.Tr("展开侧栏", "Expand Sidebar")
-				if p.SidebarWide {
-					tip = theme.Tr("收起侧栏", "Collapse Sidebar")
-				}
-				sbShortcut := blockui.FormatShortcutDisplay(sbSc)
-				if p.SidebarAutoHidden {
-					sbShortcut = ""
-					if p.InSettings {
-						tip = theme.Tr("窗口较窄，设置导航已让出。点击以浮层打开", "Settings navigation stepped aside. Click to open it over the page")
+				var tip string
+				if p.InSettings {
+					if sidebarOpen {
+						tip = theme.Tr("收起导航", "Collapse Navigation")
 					} else {
-						tip = theme.Tr("窗口较窄，侧栏已让出。点击打开，笔记保持可读宽度", "The sidebar stepped aside so the note stays readable. Click to open it")
+						tip = theme.Tr("展开导航", "Expand Navigation")
+					}
+				} else {
+					if sidebarOpen {
+						tip = theme.Tr("收起侧栏", "Collapse Sidebar")
+					} else {
+						tip = theme.Tr("展开侧栏", "Expand Sidebar")
 					}
 				}
+				sbShortcut := blockui.FormatShortcutDisplay(sbSc)
 				sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
-					ID:       "sidebar-toggle",
-					Tooltip:  tip,
-					Shortcut: sbShortcut,
-					Active:   p.SidebarFloating,
+					ID:          "sidebar-toggle",
+					Tooltip:     tip,
+					Shortcut:    sbShortcut,
+					Active:      p.SidebarFloating,
+					ActiveStyle: blockui.ActiveAccent,
 				})
 				if sbBtn.Clicked() && p.OnToggleSidebar != nil {
 					p.OnToggleSidebar()
