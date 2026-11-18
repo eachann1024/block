@@ -81,6 +81,9 @@ type AIProviderConfig struct {
 
 // AIBackendAdapterOptions stores per-CLI-adapter preferences in ai-backends.json.
 type AIBackendAdapterOptions struct {
+	Added           bool   `json:"added,omitempty"`
+	Name            string `json:"name,omitempty"`
+	BinaryPath      string `json:"binaryPath,omitempty"`
 	Enabled         *bool  `json:"enabled,omitempty"`
 	Model           string `json:"model,omitempty"`
 	ThinkingLevel   string `json:"thinkingLevel,omitempty"` // "low", "medium", "high"

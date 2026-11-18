@@ -182,6 +182,18 @@ type Controller struct {
 	addProvTestOK    bool
 	addProvTestErr   string
 
+	addAgentModalOpen bool
+	addAgentShowMore  bool
+	addAgentKind      model.BackendKind
+	addAgentName      string
+	addAgentBinPath   string
+	addAgentThinking  string
+	addAgentProbing   bool
+	addAgentStatus    BackendStatus
+	addAgentHasStatus bool
+	addAgentCopiedCmd string
+	addAgentErr       string
+
 	annotCfg            model.AnnotationConfig
 	annotMenuOpen       bool
 	annotMenuBackend    model.BackendKind
@@ -348,6 +360,7 @@ func enforceAllBackendsFullPermissions(cfg *model.AIBackendsConfig) {
 		}
 		opt := cfg.Adapters[string(k)]
 		opt.FullPermissions = true
+		setCustomCLIBinaryPath(k, opt.BinaryPath)
 		cfg.Adapters[string(k)] = opt
 	}
 	for k, opt := range cfg.Adapters {
@@ -363,6 +376,14 @@ func (c *Controller) readBackendsFile() model.AIBackendsConfig {
 	}
 	if cfg.Selected == "" {
 		cfg.Selected = model.BackendBuiltin
+	}
+	if cfg.Adapters != nil {
+		for k, opt := range cfg.Adapters {
+			if k != string(model.BackendBuiltin) && opt.Enabled != nil && *opt.Enabled {
+				opt.Added = true
+				cfg.Adapters[k] = opt
+			}
+		}
 	}
 	enforceAllBackendsFullPermissions(&cfg)
 	return cfg
@@ -1035,8 +1056,12 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
 	opt := c.backendsCfg.Adapters[string(kind)]
+	if on && kind != model.BackendBuiltin {
+		opt.Added = true
+	}
 	val := on
 	opt.Enabled = &val
+	opt.FullPermissions = true
 	c.backendsCfg.Adapters[string(kind)] = opt
 	c.ensureValidSelectionLocked()
 	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
@@ -1047,6 +1072,104 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 	c.mu.Unlock()
 	c.requestRedraw()
 	return nil
+}
+
+// AddAgentEntry registers and enables a local CLI agent instance (T3 Code style provider onboarding).
+func (c *Controller) AddAgentEntry(kind model.BackendKind, displayName, binaryPath, thinking string) error {
+	if kind == "" || kind == model.BackendBuiltin {
+		return errors.New("invalid local agent kind")
+	}
+	switch thinking {
+	case "low", "medium", "high":
+	default:
+		thinking = "high"
+	}
+	c.mu.Lock()
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	on := true
+	opt.Added = true
+	opt.Enabled = &on
+	opt.Name = strings.TrimSpace(displayName)
+	opt.BinaryPath = strings.TrimSpace(binaryPath)
+	opt.ThinkingLevel = thinking
+	opt.FullPermissions = true
+	c.backendsCfg.Adapters[string(kind)] = opt
+	setCustomCLIBinaryPath(kind, opt.BinaryPath)
+	c.settingsExpandedAg = kind
+	c.ensureValidSelectionLocked()
+	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
+	shouldProbe := !c.mockResponder
+	if _, hasOv := c.statusOverrides[kind]; hasOv {
+		shouldProbe = false
+	}
+	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if shouldProbe {
+		go func() {
+			st := ProbeBackend(kind)
+			c.mu.Lock()
+			c.backendStatuses[kind] = st
+			c.ensureValidSelectionLocked()
+			c.mu.Unlock()
+			c.refreshModelsAsync(kind)
+			c.requestRedraw()
+		}()
+	}
+	c.requestRedraw()
+	return nil
+}
+
+// UpdateAgentEntry mutates an added local CLI agent's options (such as BinaryPath or Name).
+func (c *Controller) UpdateAgentEntry(kind model.BackendKind, mutate func(opt *model.AIBackendAdapterOptions)) error {
+	c.mu.Lock()
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	mutate(&opt)
+	opt.BinaryPath = strings.TrimSpace(opt.BinaryPath)
+	opt.Name = strings.TrimSpace(opt.Name)
+	opt.FullPermissions = true
+	c.backendsCfg.Adapters[string(kind)] = opt
+	setCustomCLIBinaryPath(kind, opt.BinaryPath)
+	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
+	c.mu.Unlock()
+	c.requestRedraw()
+	return err
+}
+
+// RemoveAgentEntry removes a local CLI agent from the added list.
+func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
+	if kind == model.BackendBuiltin {
+		return nil
+	}
+	c.mu.Lock()
+	if isBackendEnabled(c.backendsCfg, kind) && !c.canDisableBackendLocked(kind) {
+		c.mu.Unlock()
+		return errors.New(theme.Tr("至少需要保留一个启用的 AI 后端", "At least one AI backend must remain enabled"))
+	}
+	if c.backendsCfg.Adapters == nil {
+		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	opt := c.backendsCfg.Adapters[string(kind)]
+	off := false
+	opt.Added = false
+	opt.Enabled = &off
+	opt.FullPermissions = true
+	c.backendsCfg.Adapters[string(kind)] = opt
+	if c.settingsExpandedAg == kind {
+		c.settingsExpandedAg = ""
+	}
+	c.ensureValidSelectionLocked()
+	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
+	c.mu.Unlock()
+	c.requestRedraw()
+	return err
 }
 
 // SetBackendLocked sets the locked flag for a backend adapter and persists it.
@@ -1077,8 +1200,12 @@ func (c *Controller) PromoteBackend(kind model.BackendKind) error {
 		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
 	opt := c.backendsCfg.Adapters[string(kind)]
+	if kind != model.BackendBuiltin {
+		opt.Added = true
+	}
 	on := true
 	opt.Enabled = &on
+	opt.FullPermissions = true
 	c.backendsCfg.Adapters[string(kind)] = opt
 
 	recognized := c.recognizedBackendsLocked()
