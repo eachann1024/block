@@ -163,7 +163,7 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
       throw new Error(detail || `go tool mygo build exited ${result.status}`);
     }
   }
-  const ldflags = [];
+  const ldflags = [`-X block/internal/updater.BuildVersion=${readAppVersion(root)}`];
   if (profile === "release" || goos !== "darwin") {
     ldflags.push("-s", "-w");
   }

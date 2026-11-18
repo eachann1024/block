@@ -15,6 +15,7 @@ import (
 	"block/internal/model"
 	"block/internal/theme"
 	internalui "block/internal/ui"
+	"block/internal/updater"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -203,13 +204,9 @@ type Manager struct {
 	exportErr         string
 
 	// Updater modal state.
-	updaterOpen     bool
-	updaterChecking bool
-	updaterUpdating bool
-	updaterProgress float64
-	updaterStatus   string
-	updaterLatest   string
-	updaterNotes    []string
+	Updater       *updater.Service
+	updaterOpen   bool
+	updaterScroll ui.ScrollState
 }
 
 // NewManager creates a modal and settings manager bound to `dataDir` and `host`.
@@ -223,7 +220,6 @@ func NewManager(dataDir string, host model.WorkspaceHost) *Manager {
 		historyMode:      "diff",
 		exportFormat:     model.ExportMarkdown,
 		exportTheme:      "current",
-		updaterLatest:    "1.0.379",
 	}
 	m.initDefaultPerfCategories()
 	return m
@@ -761,6 +757,79 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					m.mutateState(func(s *model.AppState) {
 						s.LineHeight = picked
 					})
+				}
+			})
+		})
+
+		// Card 3: Application Updates & Channel Source.
+		internalui.Card(c, func() {
+			cardTitle(c, theme.Tr("应用更新", "App Updates"))
+
+			curVer := updater.CurrentVersion()
+			var snap updater.Snapshot
+			if m.Updater != nil {
+				snap = m.Updater.Snapshot()
+				curVer = snap.CurrentVersion
+			}
+
+			verTitle := fmt.Sprintf("v%s", curVer)
+			if snap.HasActionableUpdate() && snap.LatestVersion != "" {
+				verTitle = fmt.Sprintf("v%s → v%s", curVer, snap.LatestVersion)
+			}
+			settingRow(c, fmt.Sprintf("%s %s", theme.Tr("当前版本", "Version"), verTitle), func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+					if snap.HasActionableUpdate() {
+						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
+						if snap.Status == updater.StatusReady {
+							btnLabel = fmt.Sprintf(theme.Tr("重启更新 v%s", "Restart to v%s"), snap.LatestVersion)
+						}
+						btn := internalui.ActionButton(c, "settings-open-updater", btnLabel, nil, internalui.ButtonPrimary, false)
+						if btn.Clicked() {
+							m.OpenUpdater()
+						}
+					} else {
+						checking := snap.Status == updater.StatusChecking
+						btnLabel := theme.Tr("检查更新", "Check for Updates")
+						if checking {
+							btnLabel = theme.Tr("正在检查…", "Checking…")
+						}
+						btn := internalui.ActionButton(c, "settings-check-updates", btnLabel, nil, internalui.ButtonSecondary, checking)
+						if btn.Clicked() {
+							m.OpenUpdater()
+							if m.Updater != nil {
+								m.Updater.CheckAsync(true)
+							}
+						}
+					}
+				})
+			})
+
+			srcMode := updater.NormalizeSourceMode(st.UpdateSource)
+			if m.Updater != nil {
+				srcMode = snap.SourceMode
+			}
+			srcIdx := 0
+			switch srcMode {
+			case updater.SourceMirror:
+				srcIdx = 1
+			case updater.SourceGitHub:
+				srcIdx = 2
+			}
+			settingRow(c, theme.Tr("更新源", "Update Source"), func() {
+				if internalui.SegmentedControl(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
+					{ID: "settings-upd-src-auto", Label: theme.Tr("自动优选", "Auto")},
+					{ID: "settings-upd-src-mirror", Label: theme.Tr("国内加速", "Mirror")},
+					{ID: "settings-upd-src-github", Label: "GitHub"},
+				}) {
+					modes := []updater.SourceMode{updater.SourceAuto, updater.SourceMirror, updater.SourceGitHub}
+					picked := modes[srcIdx]
+					if m.Updater != nil {
+						m.Updater.SetSourceMode(picked)
+					} else {
+						m.mutateState(func(s *model.AppState) {
+							s.UpdateSource = string(picked)
+						})
+					}
 				}
 			})
 		})
