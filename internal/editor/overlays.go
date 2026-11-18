@@ -159,17 +159,19 @@ func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 			Icon: icons.Sparkles, Label: theme.Tr("AI 改写", "AI Rewrite"),
 		})
 	}
-	items = append(items,
-		toolbarItemSpec{
-			Kind: tbComment, ID: "tb-comment", Group: 1, Width: 28,
-			Icon: icons.TbComment, Label: theme.Tr("添加批注", "Add annotation"),
-			Shortcut: formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"),
-		},
-		toolbarItemSpec{
-			Kind: tbReaction, ID: "tb-reaction", Group: 1, Width: 28,
-			Icon: icons.TbReaction, Label: theme.Tr("添加表情回应", "Add reaction"),
-		},
-	)
+	if !s.minimal {
+		items = append(items,
+			toolbarItemSpec{
+				Kind: tbComment, ID: "tb-comment", Group: 1, Width: 28,
+				Icon: icons.TbComment, Label: theme.Tr("添加批注", "Add annotation"),
+				Shortcut: formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"),
+			},
+			toolbarItemSpec{
+				Kind: tbReaction, ID: "tb-reaction", Group: 1, Width: 28,
+				Icon: icons.TbReaction, Label: theme.Tr("添加表情回应", "Add reaction"),
+			},
+		)
+	}
 	if caps.BlockType {
 		items = append(items, toolbarItemSpec{
 			Kind: tbTextType, ID: "tb-type", Group: 2, Width: 41,

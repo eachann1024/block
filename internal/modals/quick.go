@@ -157,6 +157,8 @@ type QuickNoteController struct {
 	wheelAccum      float32
 	lastWheelEvent  time.Time
 	lastWheelSwitch time.Time
+	lastBodyScroll  time.Time
+	inlineAIRespond func(ctx, orig, draft, instruction string) string
 	zoom            float32
 	notice          string
 	savedFlash      bool
@@ -197,10 +199,26 @@ func (q *QuickNoteController) initSessionsLocked() {
 		sess := editor.NewSession(q.slotFilePath(i), doc, q.codec, q.sessHost)
 		sess.SetMinimal(true)
 		sess.SetDataDir(q.dataDir)
+		if q.inlineAIRespond != nil {
+			sess.SetInlineAIResponder(q.inlineAIRespond)
+		}
 		sess.OnPickImages = func(blockID model.BlockID, replace bool) {
 			q.pickImagesForSlot(slotIdx, blockID, replace)
 		}
 		q.sessions[i] = sess
+	}
+}
+
+// SetInlineAIResponder configures the Inline AI responder for all Quick Note editor slots.
+func (q *QuickNoteController) SetInlineAIResponder(fn func(ctx, orig, draft, instruction string) string) {
+	q.mu.Lock()
+	q.inlineAIRespond = fn
+	sessions := q.sessions
+	q.mu.Unlock()
+	for _, sess := range sessions {
+		if sess != nil {
+			sess.SetInlineAIResponder(fn)
+		}
 	}
 }
 
@@ -602,20 +620,20 @@ func (q *QuickNoteController) AttachDesktop() {
 		rect, hasExplicit := q.resolveBounds()
 
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:                theme.Tr("速记", "Quick Note"),
-			X:                    rect.X,
-			Y:                    rect.Y,
-			Width:                rect.Width,
-			Height:               rect.Height,
-			MinWidth:             quickMinWidth,
-			MinHeight:            quickMinHeight,
-			Hidden:               true,
-			Panel:                true,
-			AlwaysOnTop:          true,
-			TitleBarStyle:        mygo.TitleBarHidden,
-			TrafficLightPosition: &mygo.Point{X: 16, Y: 16},
-			BackgroundColor:      "light-dark(#ffffff, #161920)",
-			Content:              ui.View(q.RenderView),
+			Title:             theme.Tr("速记", "Quick Note"),
+			X:                 rect.X,
+			Y:                 rect.Y,
+			Width:             rect.Width,
+			Height:            rect.Height,
+			MinWidth:          quickMinWidth,
+			MinHeight:         quickMinHeight,
+			Hidden:            true,
+			Panel:             true,
+			AlwaysOnTop:       true,
+			TitleBarStyle:     mygo.TitleBarHidden,
+			HideWindowButtons: true,
+			BackgroundColor:   "light-dark(#ffffff, #161920)",
+			Content:           ui.View(q.RenderView),
 		})
 		if hasExplicit || rect.X != 0 || rect.Y != 0 {
 			win.SetBounds(rect)
@@ -971,6 +989,7 @@ func (q *QuickNoteController) switchSlot(slot int) {
 	if q.activeSlot != slot {
 		q.syncSessionToDiskLocked(q.activeSlot)
 		q.activeSlot = slot
+		q.lastBodyScroll = time.Time{}
 		q.ensureSlotFileLocked(slot)
 		q.noticeSeq++
 		if q.noticeTimer != nil {
@@ -1401,44 +1420,61 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 		}
 	}
 
-	winW, _ := c.Size()
+	winW, winH := c.Size()
 	if winW <= 0 {
 		winW = quickDefaultWidth
+	}
+	if winH <= 0 {
+		winH = quickDefaultHeight
+	}
+	if sess != nil {
+		sess.SetMinCanvasHeight(max(winH-44, 0))
 	}
 
 	root := ui.Column(c.Key("quick-note-root")).Fill().Background(pal.Paper).TextColor(pal.Text).Clip()
 	internalui.Probe(root, "quick-note-root")
-	root.ObserveInput(func(ev ui.InputEvent) {
+	root.HandleInput(func(ev ui.InputEvent) bool {
 		if ev.Kind != ui.InputScroll || ev.Momentum {
-			return
+			return false
 		}
 		if ev.Mods&(ui.Ctrl|ui.Alt|ui.Super) != 0 {
-			return
-		}
-		inHeader := ev.Y <= 44
-		shiftHeld := ev.Mods&ui.Shift != 0
-		canSwitchDirect := inHeader || shiftHeld || (sess != nil && !sess.HasScrollablePopupOpen() && !sess.CanScrollVertically())
-		if !canSwitchDirect {
-			return
+			return false
 		}
 		axis := ev.DY
 		if math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY)) {
 			axis = ev.DX
 		}
-		if math.Abs(float64(axis)) >= 0.5 {
-			q.OnWheelScroll(axis)
+		if math.Abs(float64(axis)) < 0.5 {
+			return false
 		}
+		inHeader := ev.Y <= 44
+		shiftHeld := ev.Mods&ui.Shift != 0
+		if !shiftHeld && sess != nil && sess.HasScrollablePopupOpen() {
+			return false
+		}
+		if !inHeader && !shiftHeld && sess != nil && sess.CanScrollVertically() {
+			sy, maxY := sess.VerticalScrollBounds()
+			scrollingInterior := (ev.DY > 0 && sy < maxY-0.5) || (ev.DY < 0 && sy > 0.5)
+			if scrollingInterior {
+				q.mu.Lock()
+				q.lastBodyScroll = time.Now()
+				q.mu.Unlock()
+				return false
+			}
+			q.mu.Lock()
+			recentBody := !q.lastBodyScroll.IsZero() && time.Since(q.lastBodyScroll) < 240*time.Millisecond
+			q.mu.Unlock()
+			if recentBody {
+				return false
+			}
+		}
+		q.OnWheelScroll(axis)
+		return true
 	})
 	root.Children(func() {
-		// Minimalist 44px drag header with centered pill/dot pager & save-to-note action.
-		leadPad := float32(16)
-		rightPad := float32(4)
-		if theme.IsMacOS() {
-			leadPad = 78
-			rightPad = 12
-		}
+		// Minimalist 44px drag header: no top-left window buttons, centered pill/dot pager, right save + close.
 		header := ui.Row(c.Key("quick-header")).FillWidth().Height(44).Shrink(0).
-			Padding(0, rightPad, 0, leadPad).AlignItems(ui.Center).Justify(ui.End).Gap(4).
+			Padding(0, 12, 0, 16).AlignItems(ui.Center).Justify(ui.End).Gap(4).
 			Background(pal.Paper)
 		header.DragWindow()
 		internalui.Probe(header, "quick-header")
@@ -1459,16 +1495,12 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 				})
 			})
 
-			// Save-to-notebook + non-macOS window close control (macOS uses native traffic lights).
+			// Right actions: Save-to-Note + Close (matching original Thinkly Quick Note header).
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				saveIcon := icons.NoteCheck
 				saveTip := theme.Tr("存入正式笔记", "Save to Note")
 				if savedFlash {
 					saveIcon = icons.Check
-					saveTip := theme.Tr("已存入正式笔记", "Saved to Note")
-					_ = saveTip
-				}
-				if savedFlash {
 					saveTip = theme.Tr("已存入正式笔记", "Saved to Note")
 				}
 				saveBtn := internalui.IconButton(c, saveIcon, internalui.IconButtonOptions{
@@ -1484,16 +1516,14 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 				if saveBtn.Clicked() {
 					_, _ = q.SaveToNotebook()
 				}
-				if !theme.IsMacOS() {
-					closeBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:      "quick-close",
-						Label:   theme.Tr("隐藏", "Hide"),
-						Tooltip: theme.Tr("隐藏速记", "Hide Quick Note"),
-						Danger:  true,
-					})
-					if closeBtn.Clicked() {
-						q.Hide()
-					}
+
+				closeBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+					ID:      "quick-close",
+					Label:   theme.Tr("关闭", "Close"),
+					Tooltip: theme.Tr("关闭 (Esc)", "Close (Esc)"),
+				})
+				if closeBtn.Clicked() {
+					q.Hide()
 				}
 			})
 		})

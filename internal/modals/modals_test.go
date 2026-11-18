@@ -1,6 +1,7 @@
 package modals
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -470,17 +471,29 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 	if math.Abs(float64(pagerCenter-220)) > 6 {
 		t.Fatalf("expected centered quick-pager near x=220, got center=%.1f (rect=%+v)", pagerCenter, pagerRect)
 	}
-	probes := []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "quick-save", "save-to-note", "quick-note-editor"}
-	if !theme.IsMacOS() {
-		probes = append(probes, "quick-close")
-	}
+	probes := []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "quick-save", "save-to-note", "quick-close", "quick-note-editor"}
 	for _, probeID := range probes {
 		if _, ok := internalui.TargetBounds(probeID); !ok {
 			t.Fatalf("expected probe %q recorded", probeID)
 		}
 	}
 
-	// Scroll switching (no Shift required): OnWheelScroll positive DY -> next, negative -> previous.
+	// Real UI wheel events WITHOUT Shift on both header (y=22) and editor body (y=260) switch slots!
+	if q.Session().CanScrollVertically() {
+		t.Fatalf("expected short slot not to report vertical overflow")
+	}
+	tt.Wheel(220, 260, 0, 24)
+	if q.ActiveSlot() != 1 {
+		t.Fatalf("expected vertical wheel on editor body without Shift to advance to slot 1, got %d", q.ActiveSlot())
+	}
+	time.Sleep(170 * time.Millisecond)
+	tt.Wheel(220, 22, 0, -24)
+	if q.ActiveSlot() != 0 {
+		t.Fatalf("expected upward wheel on header without Shift to return to slot 0, got %d", q.ActiveSlot())
+	}
+	time.Sleep(170 * time.Millisecond)
+
+	// Direct OnWheelScroll threshold & cooldown checks.
 	if got := q.OnWheelScroll(8); got != 0 {
 		t.Fatalf("expected partial +8 delta not to switch yet, got slot %d", got)
 	}
@@ -493,6 +506,31 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 	time.Sleep(170 * time.Millisecond)
 	if got := q.OnWheelScroll(-20); got != 0 || q.ActiveSlot() != 0 {
 		t.Fatalf("expected negative DY after cooldown to move back to slot 0, got %d", got)
+	}
+
+	// Block Editor features in Quick Note: block handles (⋮⋮ grip + ▾ heading fold) & full Slash menu.
+	q.SetText("# Heading\nBody paragraph")
+	internalui.ClearTargets()
+	tt.Frame()
+	doc := q.Session().Doc()
+	if len(doc.Blocks) < 2 {
+		t.Fatalf("expected 2 blocks in quick note, got %d", len(doc.Blocks))
+	}
+	headingID := doc.Blocks[0].ID
+	q.Session().FocusBlock(0)
+	internalui.ClearTargets()
+	tt.Frame()
+	for _, handleProbe := range []string{
+		fmt.Sprintf("block-grip-%d", headingID),
+		fmt.Sprintf("block-fold-%d", headingID),
+	} {
+		if _, ok := internalui.TargetBounds(handleProbe); !ok {
+			t.Fatalf("expected block handle probe %q rendered in Quick Note", handleProbe)
+		}
+	}
+	q.Session().SelectAllBlocks()
+	if !q.Session().IsSelectionToolbarOpen() {
+		t.Fatalf("expected selection formatting toolbar enabled in Quick Note")
 	}
 
 	// QuickEditorZoom 10% step shortcuts: Cmd+= (1.1 -> 1.2), Cmd+- (1.1), Cmd+0 (1.0).
