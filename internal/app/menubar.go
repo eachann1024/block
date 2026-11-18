@@ -98,8 +98,8 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 		{ID: "menu-toggle-ai", Label: theme.Tr("AI 面板", "AI Panel"), Accelerator: accel("toggle_ai", "cmd-j"), Click: call(act.OnToggleAIPanel)},
 		mygo.Separator(),
 		{ID: "menu-zoom-reset", Label: theme.Tr("实际大小 (100%)", "Actual Size (100%)"), Accelerator: "CmdOrCtrl+0", Click: call(act.OnZoomReset)},
-		{ID: "menu-zoom-in", Label: theme.Tr("放大 (110%)", "Zoom In (110%)"), Accelerator: "CmdOrCtrl+=", Click: call(act.OnZoomIn)},
-		{ID: "menu-zoom-out", Label: theme.Tr("缩小 (90%)", "Zoom Out (90%)"), Accelerator: "CmdOrCtrl+-", Click: call(act.OnZoomOut)},
+		{ID: "menu-zoom-in", Label: theme.Tr("放大", "Zoom In"), Accelerator: "CmdOrCtrl+=", Click: call(act.OnZoomIn)},
+		{ID: "menu-zoom-out", Label: theme.Tr("缩小", "Zoom Out"), Accelerator: "CmdOrCtrl+-", Click: call(act.OnZoomOut)},
 		mygo.Separator(),
 		{Role: mygo.RoleToggleFullScreen, Label: theme.Tr("进入或退出全屏幕", "Toggle Full Screen")},
 	}
