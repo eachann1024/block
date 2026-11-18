@@ -53,6 +53,17 @@ func (s *Session) hasMultiBlockSelection() bool {
 	return a.Block != b.Block
 }
 
+func (s *Session) isPreviewOnlyCodeBlock(idx int) bool {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Kind != model.BlockCode {
+		return false
+	}
+	return isPreviewLang(canonicalLangTag(b.Language)) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
+}
+
 func (s *Session) hasWholeAtomicSelection() bool {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return false
@@ -61,11 +72,12 @@ func (s *Session) hasWholeAtomicSelection() bool {
 	if a.Block != b.Block || a.Block < 0 || a.Block >= len(s.doc.Blocks) {
 		return false
 	}
-	k := s.doc.Blocks[a.Block].Kind
-	if k != model.BlockImage && k != model.BlockDivider {
+	rlen := s.blockSelectionLen(a.Block)
+	if a.Offset != 0 || b.Offset < rlen {
 		return false
 	}
-	return a.Offset == 0 && b.Offset >= s.blockSelectionLen(a.Block)
+	k := s.doc.Blocks[a.Block].Kind
+	return k == model.BlockImage || k == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block) || (k == model.BlockTable && rlen > 0)
 }
 
 func (s *Session) hasFocusedAtomicBlock() bool {
@@ -76,7 +88,7 @@ func (s *Session) hasFocusedAtomicBlock() bool {
 		return false
 	}
 	k := s.doc.Blocks[s.focusedBlock].Kind
-	return k == model.BlockImage || k == model.BlockDivider
+	return k == model.BlockImage || k == model.BlockDivider || s.isPreviewOnlyCodeBlock(s.focusedBlock)
 }
 
 func (s *Session) needsDetachedSelectionFocus() bool {
@@ -135,6 +147,49 @@ func (s *Session) blockSelectionSpanRange(idx int) (lo, hi int, fullBlock, selec
 		return 0, 0, false, false
 	}
 	return lo, hi, lo == 0 && hi == rlen, true
+}
+
+func (s *Session) hasMultipleVisibleBlocks() bool {
+	first, last := s.firstAndLastVisibleBlocks()
+	return first >= 0 && first != last
+}
+
+// SelectCurrentBlockOrAll selects the focused block first, or selects every visible block
+// when the focused block is already selected in full (or has no selectable text).
+func (s *Session) SelectCurrentBlockOrAll() {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	if s.hasMultiBlockSelection() {
+		s.SelectAllBlocks()
+		return
+	}
+	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
+	if s.isBlockHiddenByFold(idx) {
+		if first, _ := s.firstAndLastVisibleBlocks(); first >= 0 {
+			idx = first
+		}
+	}
+	rlen := s.blockSelectionLen(idx)
+	a, b := s.orderedSelection()
+	curFull := s.hasNonEmptySelection() && a.Block == idx && b.Block == idx && a.Offset == 0 && b.Offset >= rlen
+	if !curFull && rlen > 0 {
+		s.SelectRange(idx, 0, idx, rlen)
+		if !s.needsDetachedSelectionFocus() && !s.readOnly {
+			s.focusPending = true
+		}
+		return
+	}
+	if s.hasMultipleVisibleBlocks() {
+		s.SelectAllBlocks()
+		return
+	}
+	if rlen > 0 {
+		s.SelectRange(idx, 0, idx, rlen)
+	}
+	if !s.needsDetachedSelectionFocus() && !s.readOnly {
+		s.focusPending = true
+	}
 }
 
 // SelectAllBlocks selects every visible block in the document.
@@ -200,7 +255,7 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 		rlen := s.blockSelectionLen(idx)
 		whole := a.Offset == 0 && b.Offset >= rlen
 
-		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole) {
+		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole) || (whole && s.isPreviewOnlyCodeBlock(idx)) {
 			if insert != "" || len(s.doc.Blocks) == 1 {
 				nb := model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
 				nb.SetText(insert)
@@ -528,7 +583,7 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 			}
 			return true
 		case "selectAll":
-			s.SelectAllBlocks()
+			s.SelectCurrentBlockOrAll()
 			return true
 		case "delete":
 			if !s.readOnly {
@@ -565,7 +620,7 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 	case ui.InputKeyDown:
 		switch {
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyA:
-			s.SelectAllBlocks()
+			s.SelectCurrentBlockOrAll()
 			return true
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyC:
 			copyAtomic()
@@ -1086,7 +1141,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		if idx < 0 {
 			return
 		}
-		if k := s.doc.Blocks[idx].Kind; k == model.BlockDivider || k == model.BlockImage {
+		if k := s.doc.Blocks[idx].Kind; k == model.BlockDivider || k == model.BlockImage || s.isPreviewOnlyCodeBlock(idx) {
 			s.FocusBlock(idx)
 			s.focusPreventScroll = true
 			if readOnly {

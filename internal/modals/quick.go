@@ -639,6 +639,15 @@ func (q *QuickNoteController) AttachDesktop() {
 		if hasExplicit || rect.X != 0 || rect.Y != 0 {
 			win.SetBounds(rect)
 		}
+		win.OnFocus(func() {
+			q.mu.Lock()
+			sess := q.sessions[q.activeSlot]
+			q.mu.Unlock()
+			if sess != nil {
+				sess.EnsureEditorFocus()
+			}
+			win.Invalidate()
+		})
 		win.OnMove(func() { q.scheduleSaveBounds() })
 		win.OnResize(func() { q.scheduleSaveBounds() })
 		win.OnFileDrop(func(e *mygo.FileDropEvent) {
@@ -1490,7 +1499,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 		// Minimalist 44px V1 drag header: quiet top-left dismiss dot, centered recessed-track bead pager, single Duo save action on right.
 		header := ui.Row(c.Key("quick-header")).FillWidth().Height(44).Shrink(0).
 			Padding(0, 12, 0, 16).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-			Background(pal.Paper)
+			Background(pal.Paper).KeepFocus()
 		header.DragWindow()
 		internalui.Probe(header, "quick-header")
 		header.HandleInput(func(ev ui.InputEvent) bool {
@@ -1520,7 +1529,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 				theme.Tr("关闭", "Close"),
 				theme.Tr("隐藏速记", "Hide Quick Note"),
 				"Esc",
-			).Margin(0, 0, 0, -4)
+			).Margin(0, 0, 0, -4).KeepFocus()
 			if closeBtn.Clicked() {
 				q.Hide()
 			}
@@ -1566,7 +1575,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 				Shortcut:  saveSc,
 				Active:    savedFlash,
 				AlwaysDuo: !savedFlash,
-			})
+			}).KeepFocus()
 			saveBtn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				internalui.RecordBounds("quick-save", r)
 				internalui.RecordBounds("save-to-note", r)

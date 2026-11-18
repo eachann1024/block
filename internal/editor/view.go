@@ -310,8 +310,8 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd, ui.KeyV) && s.inlineAI == nil && !s.findOpen {
 		s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyA) && s.inlineAI == nil && !s.findOpen && s.needsDetachedSelectionFocus() {
-		s.SelectAllBlocks()
+	if c.Shortcut(ui.Cmd, ui.KeyA) && !s.hasBlockingOverlay() {
+		s.SelectCurrentBlockOrAll()
 	}
 	s.handleGlobalBlockShortcuts(c)
 }
@@ -1281,7 +1281,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				switch {
 				case mods == ui.Cmd && key == ui.KeyA:
 					rlen := len([]rune(curText))
-					if len(s.doc.Blocks) > 1 && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
+					if s.hasMultipleVisibleBlocks() && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
 						s.SelectAllBlocks()
 						return true
 					}
@@ -1615,13 +1615,20 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 	id := b.ID
 	canon := canonicalLangTag(b.Language)
 	previewable := isPreviewLang(canon)
+	previewOnly := s.isPreviewOnlyCodeBlock(idx)
 
 	card := ui.Column(c.Key("code-card")).FillWidth().Radius(theme.RadiusSM).
 		Background(pal.CodeBlockBG).Padding(s.scale(34), s.scale(12), s.scale(10), s.scale(12)).Gap(s.scale(8))
-	if _, _, _, selOk := s.blockSelectionSpanRange(idx); selOk && s.hasMultiBlockSelection() {
+	_, _, fullCodeSel, codeBlockSelOk := s.blockSelectionSpanRange(idx)
+	if (codeBlockSelOk && (s.hasMultiBlockSelection() || (previewOnly && fullCodeSel))) || (isFocused && previewOnly) {
 		accent := pal.Accent
+		tintFill := codeBlockSelOk && (s.hasMultiBlockSelection() || (previewOnly && fullCodeSel))
+		selTint := pal.SelectionBG.Alpha(0.22)
 		card.DrawOver(func(p *ui.Painter, r ui.Rect) {
 			if r.W > 1 && r.H > 1 {
+				if tintFill {
+					p.Fill(r, selTint, theme.RadiusSM)
+				}
 				p.Stroke(ui.Rect{X: r.X + 0.5, Y: r.Y + 0.5, W: r.W - 1, H: r.H - 1}, accent, 6, 1)
 			}
 		})
@@ -1669,6 +1676,18 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					appUi.Probe(srcBtn, fmt.Sprintf("cb-source-toggle-%d", id))
 					if srcBtn.Clicked() {
 						b.ShowSource = !b.ShowSource
+						if b.ShowSource && !readOnly {
+							endOff := len([]rune(b.Code))
+							s.focusedBlock = idx
+							s.selAnchor = Position{Block: idx, Offset: endOff}
+							s.selHead = s.selAnchor
+							s.multiSelFocusPending = false
+							s.focusPending = true
+							s.selSyncPending = true
+						} else if !b.ShowSource && s.focusedBlock == idx && s.needsDetachedSelectionFocus() {
+							s.multiSelFocusPending = true
+							s.focusPending = false
+						}
 					}
 				}
 			})
@@ -1809,11 +1828,23 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 				if len(ranges) > 0 {
 					ta.TextRanges(ranges...)
 				}
+				isFullCodeBlockSelected := func(textLen int) bool {
+					if textLen <= 0 {
+						return true
+					}
+					a, bSel := s.orderedSelection()
+					return a.Block == idx && bSel.Block == idx && a.Offset == 0 && bSel.Offset >= textLen
+				}
+				ta.ObserveInput(func(ev ui.InputEvent) {
+					if ev.Kind == ui.InputCommand && ev.Text == "selectAll" {
+						if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(s.doc.Blocks[idx].Code))) {
+							s.SelectAllBlocks()
+						}
+					}
+				})
 				ta.OnTextKey(func(k ui.TextKey) bool {
 					if k.Mods == ui.Cmd && k.Key == ui.KeyA {
-						rlen := len([]rune(k.Text()))
-						selLo, selHi := ta.TextSelection()
-						if len(s.doc.Blocks) > 1 && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
+						if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(k.Text()))) {
 							s.SelectAllBlocks()
 							return true
 						}
@@ -2421,10 +2452,25 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				OnOpenLink: func(url string) {
 					s.openBlockLink(c.Services(), url)
 				},
-				OnKey: func(key ui.Key, mods ui.Modifiers, _ string, _, _ int) bool {
+				OnKey: func(key ui.Key, mods ui.Modifiers, curCellText string, cAnchor, cCaret int) bool {
 					s.caretHidden = false
 					if s.hasMenuPopupOpen() {
 						return false
+					}
+					if mods == ui.Cmd && key == ui.KeyA {
+						cLo, cHi := min(cAnchor, cCaret), max(cAnchor, cCaret)
+						rlen := len([]rune(curCellText))
+						if rlen == 0 || (cLo == 0 && cHi >= rlen) {
+							tblLen := s.blockSelectionLen(blockIdx)
+							if tblLen > 0 {
+								s.SelectRange(blockIdx, 0, blockIdx, tblLen)
+								return true
+							}
+							if s.hasMultipleVisibleBlocks() {
+								s.SelectAllBlocks()
+								return true
+							}
+						}
 					}
 					if key == ui.KeyTab {
 						if mods == ui.Shift {
