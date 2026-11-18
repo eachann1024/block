@@ -372,7 +372,7 @@ func TestExportAllFormats(t *testing.T) {
 		t.Fatalf("ExportHTML missing expected Ocean Paper content")
 	}
 
-	// 3. PNG (2x scale)
+	// 3. PNG (ExportScale)
 	pngBytes, err := ExportDocument(doc, notePath, model.ExportPNG, prefs)
 	if err != nil {
 		t.Fatalf("ExportPNG failed: %v", err)
@@ -381,8 +381,8 @@ func TestExportAllFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportPNG invalid PNG: %v", err)
 	}
-	if cfg.Width != 816*2 || cfg.Height < 400 {
-		t.Fatalf("unexpected 2x PNG dimensions: %dx%d", cfg.Width, cfg.Height)
+	if cfg.Width != int(816*ExportScale) || cfg.Height < 400 {
+		t.Fatalf("unexpected PNG dimensions: %dx%d", cfg.Width, cfg.Height)
 	}
 
 	// 4. PDF (single-page and multi-page)
@@ -525,14 +525,14 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 			Title: "自定义标题",
 		}
 
-		// PNG (2x)
+		// PNG (ExportScale)
 		pngBytes, err := ExportDocument(doc, notePath, model.ExportPNG, prefs)
 		if err != nil {
 			t.Fatalf("theme %s ExportPNG failed: %v", th, err)
 		}
 		cfg, err := png.DecodeConfig(bytes.NewReader(pngBytes))
-		if err != nil || cfg.Width != defaultExportWidth*2 || cfg.Height < 200 {
-			t.Fatalf("theme %s invalid 2x PNG %dx%d err=%v", th, cfg.Width, cfg.Height, err)
+		if err != nil || cfg.Width != int(defaultExportWidth*ExportScale) || cfg.Height < 200 {
+			t.Fatalf("theme %s invalid PNG %dx%d err=%v", th, cfg.Width, cfg.Height, err)
 		}
 
 		// HTML: defaults ShowTitle=true, Watermark=true ("Block"), table link preserves theme color, no extra theme badge
