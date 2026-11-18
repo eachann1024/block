@@ -316,17 +316,9 @@ func (st *searchPaletteState) effectiveRoots() []string {
 func (st *searchPaletteState) toggleScopeMenu() {
 	st.scopeMenuOpen = !st.scopeMenuOpen
 	if st.scopeMenuOpen {
-		st.scopeCursor = 0
-		if st.scopeFolder != "" {
-			for i, f := range st.folders {
-				if cleanPathEqual(f, st.scopeFolder) {
-					st.scopeCursor = i + 1
-					break
-				}
-			}
-		}
+		st.scopeCursor = -1
 		st.revealScopeCursor = false
-		st.scopeScroll.Y = 0
+		st.scopeScroll = ui.ScrollState{}
 	}
 }
 
@@ -339,21 +331,21 @@ func (st *searchPaletteState) stepScopeMenu(down bool) bool {
 		return true
 	}
 	cur := st.scopeCursor
-	if cur >= count {
-		cur = count - 1
-	}
-	next := cur
-	if down {
-		if cur+1 < count {
-			next = cur + 1
+	if cur < 0 || cur >= count {
+		if down {
+			st.scopeCursor = 0
+		} else {
+			st.scopeCursor = count - 1
 		}
-	} else if cur > 0 {
-		next = cur - 1
-	}
-	if next != st.scopeCursor {
-		st.scopeCursor = next
 		st.revealScopeCursor = true
+		return true
 	}
+	step := -1
+	if down {
+		step = 1
+	}
+	st.scopeCursor = (cur + step + count) % count
+	st.revealScopeCursor = true
 	return true
 }
 
@@ -371,7 +363,7 @@ func (st *searchPaletteState) selectScopeIndex(idx int) bool {
 }
 
 func (st *searchPaletteState) acceptScopeCursor() bool {
-	if !st.scopeMenuOpen {
+	if !st.scopeMenuOpen || st.scopeCursor < 0 {
 		return false
 	}
 	idx := st.scopeCursor
@@ -953,11 +945,13 @@ func renderScopeMenuPopoverView(
 		panel.AttachTo(trigger, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(4, 0, 0, 0)
 		internalui.MenuSurface(panel).Width(searchScopeMenuW).MaxHeight(menuMaxH).Column().
 			Transition(internalui.PopoverSpringTransition())
+		internalui.ObserveMenuPointer(c, panel, &st.scopeCursor)
 		internalui.Probe(panel, "search-scope-menu")
 
 		folderIcon := icons.Folder
+		suppressHover := st.scopeCursor >= 0
 		internalui.Scroll(c.Key("search-scope-scroll"), &st.scopeScroll).
-			FillWidth().MaxHeight(menuMaxH - 2*theme.MenuPadding).
+			FillWidth().MaxHeight(internalui.MenuInnerMaxHeight(menuMaxH)).
 			ScrollbarStyle(ui.ScrollbarStyle{
 				TrackWidth: theme.ScrollGutter,
 				ThumbWidth: theme.ScrollThumbWidth,
@@ -966,11 +960,12 @@ func renderScopeMenuPopoverView(
 			}).
 			Children(func() {
 				ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
-					row0 := internalui.MenuRow(c, internalui.MenuItemSpec{
-						ID:      "search-scope-0",
-						Label:   theme.Tr("全部文件夹", "All Folders"),
-						Icon:    &folderIcon,
-						Checked: st.scopeFolder == "",
+					internalui.MenuRow(c, internalui.MenuItemSpec{
+						ID:            "search-scope-0",
+						Label:         theme.Tr("全部文件夹", "All Folders"),
+						Icon:          &folderIcon,
+						Checked:       st.scopeFolder == "",
+						SuppressHover: suppressHover,
 						OnClick: func() {
 							if onPickScope != nil {
 								onPickScope(0)
@@ -980,10 +975,6 @@ func renderScopeMenuPopoverView(
 							}
 						},
 					}, st.scopeCursor == 0).TabStop(false)
-					if st.scopeCursor == 0 && st.revealScopeCursor {
-						internalui.RevealActiveItem(row0)
-						st.revealScopeCursor = false
-					}
 
 					if len(st.folders) > 0 {
 						internalui.MenuRow(c, internalui.MenuItemSpec{Separator: true}, false)
@@ -992,11 +983,12 @@ func renderScopeMenuPopoverView(
 					for i, folderPath := range st.folders {
 						idx := i + 1
 						fp := folderPath
-						row := internalui.MenuRow(c, internalui.MenuItemSpec{
-							ID:      fmt.Sprintf("search-scope-%d", idx),
-							Label:   searchFolderName(fp),
-							Icon:    &folderIcon,
-							Checked: cleanPathEqual(st.scopeFolder, fp),
+						internalui.MenuRow(c, internalui.MenuItemSpec{
+							ID:            fmt.Sprintf("search-scope-%d", idx),
+							Label:         searchFolderName(fp),
+							Icon:          &folderIcon,
+							Checked:       cleanPathEqual(st.scopeFolder, fp),
+							SuppressHover: suppressHover,
 							OnClick: func() {
 								if onPickScope != nil {
 									onPickScope(idx)
@@ -1006,10 +998,6 @@ func renderScopeMenuPopoverView(
 								}
 							},
 						}, st.scopeCursor == idx).TabStop(false)
-						if st.scopeCursor == idx && st.revealScopeCursor {
-							internalui.RevealActiveItem(row)
-							st.revealScopeCursor = false
-						}
 					}
 				})
 			})

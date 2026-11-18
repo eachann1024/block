@@ -3,8 +3,15 @@ package ui
 import (
 	"time"
 
+	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
+
+// MenuInnerMaxHeight returns the inner scroll viewport cap for a MenuSurface
+// of outer MaxHeight maxH (accounting for top/bottom MenuPadding and 1px border).
+func MenuInnerMaxHeight(maxH float32) float32 {
+	return max(maxH-theme.MenuPadding*2-2, 1)
+}
 
 // MenuFollowSpring is a critically-damped zero-overshoot spring (~200ms) used when stepping
 // through menus, pickers, or tab strips by keyboard so scrolling tracks smoothly without bounce.
@@ -68,20 +75,42 @@ func RevealOnHighlight(el ui.Element, highlighted bool) {
 	}
 }
 
+// ObserveMenuPointer clears *cursor to -1 whenever the pointer moves or scrolls
+// over panel so hover and mouse-wheel scrolling cleanly take over from keyboard
+// selection without consuming InputScroll events needed by child scroll containers.
+func ObserveMenuPointer(c *ui.Context, panel ui.Element, cursor *int) {
+	if !panel.Valid() || cursor == nil {
+		return
+	}
+	svc := c.Services()
+	panel.HandleInput(func(ev ui.InputEvent) bool {
+		switch ev.Kind {
+		case ui.InputPointerMove:
+			if *cursor >= 0 {
+				*cursor = -1
+				return true
+			}
+		case ui.InputScroll:
+			if *cursor >= 0 {
+				*cursor = -1
+				svc.Invalidate()
+			}
+		}
+		return false
+	})
+}
+
 // NavigateMenu handles keyboard navigation (Up/Down/Left/Right/Enter) for a floating menu.
 // A negative *cursor means no item is keyboard-selected yet (the default when a menu opens);
-// pointer movement inside the panel clears *cursor so hover and keyboard never highlight two rows at once.
+// pointer movement or wheel scrolling inside the panel clears *cursor so hover and keyboard
+// never highlight two rows at once while leaving scroll events free for the menu's Scroll box.
 // Disabled entries and dividers are skipped in both directions.
-func NavigateMenu(panel ui.Element, items []MenuItemSpec, cursor *int) {
+func NavigateMenu(c *ui.Context, panel ui.Element, items []MenuItemSpec, cursor *int) {
 	if len(items) == 0 {
 		*cursor = -1
 		return
 	}
-	panel.ObserveInput(func(ev ui.InputEvent) {
-		if ev.Kind == ui.InputPointerMove && *cursor >= 0 {
-			*cursor = -1
-		}
-	})
+	ObserveMenuPointer(c, panel, cursor)
 	active := func(i int) bool { return i >= 0 && i < len(items) && !items[i].Separator && !items[i].Disabled }
 	if *cursor < 0 || *cursor >= len(items) || !active(*cursor) {
 		*cursor = -1

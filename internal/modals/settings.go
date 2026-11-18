@@ -864,7 +864,9 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 func (m *Manager) openFontPicker(role string) {
 	m.fontPickerOpen = role
 	m.fontQuery = ""
-	m.fontCursor = 0
+	m.fontCursor = -1
+	m.fontScrollToCursor = false
+	m.fontScroll = ui.ScrollState{}
 	base := m.fontFamilies
 	if len(base) == 0 {
 		base = ui.FontFamilies()
@@ -1162,6 +1164,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 			Width(popW).MaxHeight(maxH).Padding(theme.Space6).Gap(theme.Space4).Radius(theme.RadiusXL).
 			Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
 			Transition(internalui.PopoverSpringTransition()), theme.ElevationPopover)
+		internalui.ObserveMenuPointer(c, panel, &m.fontCursor)
 		internalui.Probe(panel, "font-picker-menu")
 
 		panel.Children(func() {
@@ -1179,32 +1182,50 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					internalui.Probe(in, "font-picker-search")
 					if in.Changed() {
 						m.fontCursor = 0
-						m.fontScrollToCursor = true
 						fonts = m.filteredFonts()
+						curRows := len(fonts)
+						if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
+							curRows++
+						}
 						curListH := float32(48)
-						if len(fonts) > 0 {
-							curListH = min(float32(min(len(fonts), 7))*34, listCapH)
+						if curRows > 0 {
+							curListH = min(float32(min(curRows, 7))*34, listCapH)
 						}
 						nx, ny := internalui.ResolveOrigin(spec, popW, min(curListH+54, maxH), winW, winH)
 						panel.Left(nx).Top(ny)
 					}
 					in.OnTextKey(func(k ui.TextKey) bool {
+						hasDef := role == "body" && strings.TrimSpace(m.fontQuery) == ""
+						total := len(fonts)
+						if hasDef {
+							total++
+						}
 						switch k.Key {
 						case ui.KeyDown:
-							if len(fonts) > 0 && m.fontCursor < len(fonts)-1 {
-								m.fontCursor++
-								m.fontScrollToCursor = true
+							if total > 0 {
+								m.fontCursor = (m.fontCursor + 1 + total) % total
 							}
 							return true
 						case ui.KeyUp:
-							if m.fontCursor > 0 {
-								m.fontCursor--
-								m.fontScrollToCursor = true
+							if total > 0 {
+								if m.fontCursor <= 0 {
+									m.fontCursor = total - 1
+								} else {
+									m.fontCursor--
+								}
 							}
 							return true
 						case ui.KeyEnter:
-							if len(fonts) > 0 && m.fontCursor < len(fonts) {
-								m.selectFont(role, fonts[m.fontCursor].Name)
+							if m.fontCursor >= 0 && m.fontCursor < total {
+								if hasDef {
+									if m.fontCursor == 0 {
+										m.selectFont(role, "")
+									} else {
+										m.selectFont(role, fonts[m.fontCursor-1].Name)
+									}
+								} else {
+									m.selectFont(role, fonts[m.fontCursor].Name)
+								}
 							}
 							return true
 						case ui.KeyEscape:
@@ -1215,13 +1236,18 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					})
 				})
 
+			hasDefaultRow := role == "body" && strings.TrimSpace(m.fontQuery) == ""
 			curRows := len(fonts)
-			if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
+			if hasDefaultRow {
 				curRows++
 			}
 			curListH := float32(48)
 			if curRows > 0 {
 				curListH = min(float32(min(curRows, 7))*34, listCapH)
+			}
+			rowOffset := 0
+			if hasDefaultRow {
+				rowOffset = 1
 			}
 			internalui.Scroll(c.Key("font-picker-list-"+role), &m.fontScroll).
 				FillWidth().Height(curListH).Gap(0).Children(func() {
@@ -1231,23 +1257,25 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					})
 					return
 				}
-				if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
+				if hasDefaultRow {
 					defLabel := defaultBodyFontLabel()
 					defSelected := current == ""
+					defHighlighted := m.fontCursor == 0
 					defRow := ui.ButtonBase(c.Key("font-row-default")).FillWidth().Height(34).PaddingX(10).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(defLabel)
-					defHov := defRow.Hovered()
+					internalui.RevealOnHighlight(defRow, defHighlighted)
+					defHov := m.fontCursor < 0 && defRow.Hovered()
 					defPressed := defRow.Pressed()
 					defBG := ui.Transparent
 					switch {
 					case defSelected, defPressed:
 						defBG = pal.Selected
-					case defHov:
+					case defHighlighted || defHov:
 						defBG = pal.MenuHover
 					}
 					internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
-					internalui.TactileCard(defRow, defHov, defPressed, defSelected, false)
+					internalui.TactileCard(defRow, defHov || defHighlighted, defPressed, defSelected, false)
 					defRow.Children(func() {
 						ui.Text(c, defLabel).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
 						if defSelected {
@@ -1260,11 +1288,12 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 				}
 				for i, f := range fonts {
 					selected := strings.EqualFold(f.Name, current)
-					highlighted := i == m.fontCursor
+					highlighted := i+rowOffset == m.fontCursor
 					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(34).PaddingX(10).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(f.Name)
-					hovered := row.Hovered()
+					internalui.RevealOnHighlight(row, highlighted)
+					hovered := m.fontCursor < 0 && row.Hovered()
 					pressed := row.Pressed()
 					bg := ui.Transparent
 					switch {
@@ -1277,10 +1306,6 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					}
 					internalui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
 					internalui.TactileCard(row, hovered || highlighted, pressed, selected, false)
-					if highlighted && m.fontScrollToCursor {
-						internalui.RevealActiveItem(row)
-						m.fontScrollToCursor = false
-					}
 					row.Children(func() {
 						ui.Text(c, f.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
 						if selected {
