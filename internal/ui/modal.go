@@ -41,7 +41,7 @@ func Dialog(c *ui.Context, id, title string, open *bool, layout ModalLayout, bod
 			layer.Justify(ui.Center)
 		}
 		layer.Children(func() {
-			card := ui.Scroll(c.Key(id)).Column().Width(width).MaxHeight(height).
+			card := Scroll(c.Key(id)).Column().Width(width).MaxHeight(height).
 				Left(layout.Offset.X).Top(layout.Offset.Y).Radius(theme.RadiusSurface).
 				Background(pal.Menu).Border(1, pal.MenuBorder).
 				Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, .08)).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, .14)).

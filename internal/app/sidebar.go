@@ -396,7 +396,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 				treeFocus.Children(func() {
 					c.Key("file-tree-root")
-					treeScroll := ui.Scroll(c).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
+					treeScroll := blockui.Scroll(c).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
 					blockui.Probe(treeScroll, "file-tree-root")
 					treeScroll.Children(func() {
 						if p.ActiveNotebook == "" {
@@ -437,7 +437,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					noticeBar := ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).MaxHeight(48).
 						Padding(4, 20, 4, 20).Background(pal.Sidebar)
 					noticeBar.Children(func() {
-						ui.Scroll(c).MaxHeight(40).Children(func() {
+						blockui.Scroll(c).MaxHeight(40).Children(func() {
 							ui.Text(c, p.Notice).FontSize(theme.FontMeta).TextColor(pal.TextSecondary)
 						})
 					})
@@ -840,7 +840,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
-				ui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				blockui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for ix, nb := range p.Notebooks {
 							ix := ix
@@ -1125,7 +1125,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			ox, oy := blockui.ResolveOrigin(mainSpec, menuW, popH, vpW, vpH)
 
 			c.Key("tree-menu-pop")
-			mainCard := blockui.MenuSurface(ui.Scroll(c).Column().Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+			mainCard := blockui.MenuSurface(blockui.Scroll(c).Column().Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			if !p.State.MoveSubmenuOpen {
 				blockui.NavigateMenu(mainCard, items, &p.State.MenuCursor)
 			}
@@ -1180,7 +1180,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				}
 
 				subCard.Children(func() {
-					ui.Scroll(c).MaxHeight(subMaxH - theme.MenuPadding*2).Children(func() {
+					blockui.Scroll(c).MaxHeight(subMaxH - theme.MenuPadding*2).Children(func() {
 						ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 							if len(dests) == 0 {
 								ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).AlignItems(ui.Center).Children(func() {

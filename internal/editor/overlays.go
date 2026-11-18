@@ -821,7 +821,7 @@ func (s *Session) renderToolbarMoreMenu(c *ui.Context, vp ui.Rect, winW, winH fl
 	s.recordOverlayPanel("toolbar-more-menu", panel)
 
 	panel.Children(func() {
-		ui.Scroll(c.Key("toolbar-more-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+		appUi.Scroll(c.Key("toolbar-more-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 			ui.Column(c.Key("toolbar-more-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 				hasPrev := false
 				var lastGroup uint8
@@ -917,7 +917,7 @@ func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH f
 	appUi.Probe(panel, "toolbar-kind-menu")
 	s.recordOverlayPanel("toolbar-kind-menu", panel)
 	panel.Children(func() {
-		ui.Scroll(c.Key("toolbar-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+		appUi.Scroll(c.Key("toolbar-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 			ui.Column(c.Key("toolbar-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 				for _, it := range items {
 					ic := it.icon
@@ -959,7 +959,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	s.recordOverlayPanel("palette-panel", panel)
 
 	panel.Children(func() {
-		ui.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+		appUi.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 			ui.Column(c.Key("palette-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
 					TextColor(pal.MenuMuted).Padding(4, 10)
@@ -1298,7 +1298,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		s.recordOverlayPanel("callout-kind-menu", shell)
 
 		shell.Children(func() {
-			ui.Scroll(c.Key("callout-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			appUi.Scroll(c.Key("callout-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 				ui.Column(c.Key("callout-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 					for ix, k := range allCalloutKinds {
 						kind := k
@@ -1423,7 +1423,7 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 		s.recordOverlayPanel("block-menu", shell)
 
 		shell.Children(func() {
-			sc := ui.Scroll(c.Key("block-menu-scroll")).TrackScroll(&menu.Scroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2)
+			sc := appUi.Scroll(c.Key("block-menu-scroll"), &menu.Scroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2)
 			sc.Children(func() {
 				list := ui.Column(c.Key("block-menu-list")).FillWidth().Gap(theme.MenuGap)
 				list.Children(func() {
@@ -1546,7 +1546,7 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 		appUi.Probe(shell, "code-lang-menu")
 		s.recordOverlayPanel("code-lang-menu", shell)
 		shell.Children(func() {
-			ui.Scroll(c.Key("code-lang-scroll")).TrackScroll(&s.codeLangScroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).
+			appUi.Scroll(c.Key("code-lang-scroll"), &s.codeLangScroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).
 				Children(func() {
 					ui.Column(c.Key("code-lang-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for i, lang := range codeLanguages {
@@ -1663,7 +1663,7 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 		appUi.Probe(shell, "table-menu")
 		s.recordOverlayPanel("table-menu", shell)
 		shell.Children(func() {
-			ui.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			appUi.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
 				ui.Column(c.Key("table-menu-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
 					for _, it := range entries {
 						appUi.MenuRow(c, it, false)
@@ -1870,7 +1870,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 				appUi.Probe(card, "outline-popover")
 
 				card.Children(func() {
-					ui.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - 12).Children(func() {
+					appUi.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - 12).Children(func() {
 						for idx, it := range items {
 							item := it
 							isActive := idx == activeItemIdx
@@ -2531,7 +2531,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 			})
 
 			// Diff body with per-line checkboxes
-			ui.Scroll(c.Key("plan-diff-scroll")).TrackScroll(&s.planDiffScroll).FillWidth().Grow(1).
+			appUi.Scroll(c.Key("plan-diff-scroll"), &s.planDiffScroll).FillWidth().Grow(1).
 				MaxHeight(maxH-64).Padding(10, 12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(8).Children(func() {
 					codeFont := resolvedCodeFont()
