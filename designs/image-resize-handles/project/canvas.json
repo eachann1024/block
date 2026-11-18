@@ -1,0 +1,74 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T05:57:00Z"
+  },
+  "title": "图片左右边框缩放把手",
+  "launch": {
+    "view": "canvas",
+    "page": "handles"
+  },
+  "pages": [
+    {
+      "id": "handles",
+      "name": "图片边框缩放把手"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 860,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "handles",
+      "title": "方案 A（推荐）· 实心蓝条白护边"
+    },
+    "V2-GripCapsule.dc.html": {
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 860,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "handles",
+      "title": "方案 B · 白底蓝框双竖纹握把"
+    },
+    "V3-CADEdgeNode.dc.html": {
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 860,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "handles",
+      "title": "方案 C · 边框融合方锚块"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "V2-GripCapsule.dc.html",
+    "V3-CADEdgeNode.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -250,
+      "text": "图片左右边框缩放把手 · 仅选中显示",
+      "kind": "title1",
+      "maxW": 4000,
+      "page": "handles"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "Ocean Paper",
+      "namespace": "ocean-paper",
+      "artifact": "designs/selection-styles/project/ds/ocean-paper",
+      "version": null,
+      "copiedAt": "2026-11-18T05:57:00Z"
+    }
+  ]
+}
