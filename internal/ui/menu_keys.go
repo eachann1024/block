@@ -134,3 +134,17 @@ func NavigateMenu(panel ui.Element, items []MenuItemSpec, cursor *int) {
 		item.OnClick()
 	}
 }
+
+// menuNavKeys are the keys an open overlay menu navigates with.
+var menuNavKeys = []ui.Key{ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight, ui.KeyEnter}
+
+// ReserveMenuNavKeys claims the menu navigation keys for the window this frame.
+// MyGo only counts focus and window shortcuts as claimed, so without it a key the
+// focused text field leaves scrolls the page under the menu (browser-style arrow
+// scrolling) instead of reaching the menu. Overlay shortcuts still route first.
+// Call it after the overlays render, so window shortcuts they read are not taken.
+func ReserveMenuNavKeys(c *ui.Context) {
+	for _, k := range menuNavKeys {
+		c.Shortcut(0, k)
+	}
+}
