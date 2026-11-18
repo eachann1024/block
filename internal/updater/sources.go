@@ -65,8 +65,14 @@ func IsTrustedReleaseAsset(asset ReleaseAsset, tag string) bool {
 	if asset.EffectiveSHA256() == "" {
 		return false
 	}
-	expected := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", PublicRepo, url.PathEscape(tag), asset.Name)
-	return asset.DownloadURL == expected
+	cleanTag := strings.TrimSpace(tag)
+	vTag := cleanTag
+	if cleanTag != "" && !strings.HasPrefix(strings.ToLower(cleanTag), "v") {
+		vTag = "v" + cleanTag
+	}
+	expected := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", PublicRepo, url.PathEscape(cleanTag), asset.Name)
+	expectedV := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", PublicRepo, url.PathEscape(vTag), asset.Name)
+	return asset.DownloadURL == expected || asset.DownloadURL == expectedV
 }
 
 func newHTTPTransportClient(respHeaderTimeout time.Duration) *http.Client {
@@ -203,16 +209,16 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 		return nil, errors.New("empty update feed")
 	}
 	out := make([]ReleaseEntry, 0, len(doc.Releases))
-	for _, r := range doc.Releases {
-		ver, tag, _, ok := ParseReleaseTag(r.Version)
+	for idx, r := range doc.Releases {
+		ver, tag, _, ok := ParseReleaseTag(r.Tag)
 		if !ok {
-			ver, tag, _, ok = ParseReleaseTag(r.Tag)
+			ver, tag, _, ok = ParseReleaseTag(r.Version)
 		}
 		if !ok {
 			continue
 		}
 		r.Version = ver
-		if r.Tag == "" {
+		if tag == "" || !strings.HasPrefix(strings.ToLower(tag), "v") {
 			r.Tag = "v" + ver
 		} else {
 			r.Tag = tag
@@ -224,11 +230,17 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 				filtered = append(filtered, a)
 			}
 		}
+		if idx == 0 && len(r.Assets) > 0 && len(filtered) == 0 {
+			logWarn("check.feed_assets_rejected", "version", r.Version, "tag", r.Tag, "raw_assets", len(r.Assets))
+		}
 		r.Assets = filtered
 		out = append(out, r)
 	}
 	if len(out) == 0 {
 		return nil, errors.New("no valid releases in feed")
+	}
+	if len(out[0].Assets) == 0 {
+		return nil, fmt.Errorf("latest release %s in feed has no trusted installer assets", out[0].Tag)
 	}
 	return out, nil
 }
