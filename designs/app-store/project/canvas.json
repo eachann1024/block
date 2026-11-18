@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T08:05:00Z"
+  },
+  "title": "Block 应用商店与同步设置",
+  "launch": {
+    "view": "canvas",
+    "page": "app-store"
+  },
+  "pages": [
+    {
+      "id": "app-store",
+      "name": "应用商店与同步设置"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1360,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "app-store",
+      "title": "方案 A · 侧栏上下分区直挂（上方原生 4 项 + 分割线下挂商店与已装应用）"
+    }
+  },
+  "order": [
+    "Main.dc.html"
+  ],
+  "notes": {},
+  "designSystems": [
+    {
+      "title": "Ocean Paper",
+      "namespace": "ocean-paper",
+      "artifact": "designs/design-audit/project/ds/ocean-paper",
+      "version": null,
+      "copiedAt": "2026-11-18T08:05:00Z"
+    }
+  ]
+}

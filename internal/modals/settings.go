@@ -101,6 +101,7 @@ type Manager struct {
 	GetState              func() model.AppState
 	OnStateChanged        func(func(*model.AppState))
 	RenderAISettings      func(c *ui.Context)
+	PluginHost            PluginSettingsHost
 	SidebarWidth          *float32
 	OnSidebarWidthChanged func(float32)
 	OnForgetNotebook      func(string)
@@ -266,16 +267,23 @@ func (m *Manager) ActiveSettingsTab() string {
 	return m.settingsTab
 }
 
+// ActiveSettingsTabTitle returns the localized display title for the active Settings tab.
+func (m *Manager) ActiveSettingsTabTitle() string {
+	return m.resolveSettingsTabTitle(m.ActiveSettingsTab())
+}
+
 // IsRecordingShortcut reports whether the shortcut recorder is actively capturing keys
 // (including the remainder of the frame in which a key was just captured).
 func (m *Manager) IsRecordingShortcut() bool {
 	return m.settingsOpen && (m.recordingShortcut != "" || m.justRecordedShortcut)
 }
 
-// OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts").
+// OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts", "app-store", or "plugin:<id>").
 func (m *Manager) OpenSettings(tab string) {
-	switch tab {
-	case "ai", "appearance", "folders", "shortcuts":
+	switch {
+	case tab == "ai" || tab == "appearance" || tab == "folders" || tab == "shortcuts":
+		m.settingsTab = tab
+	case IsPluginSystemTab(tab):
 		m.settingsTab = tab
 	default:
 		m.settingsTab = "ai"
@@ -319,6 +327,21 @@ var settingsTabs = []settingsTabSpec{
 	{id: "appearance", icon: icons.Sliders, zh: "外观与字体", en: "Appearance & Fonts"},
 	{id: "folders", icon: icons.Folder, zh: "文件夹", en: "Folders"},
 	{id: "shortcuts", icon: icons.Code, zh: "快捷键", en: "Shortcuts"},
+}
+
+func (m *Manager) resolveSettingsTabTitle(tab string) string {
+	if IsPluginSystemTab(tab) {
+		if m.PluginHost != nil {
+			if t := strings.TrimSpace(m.PluginHost.TabTitle(tab)); t != "" {
+				return t
+			}
+		}
+		if tab == TabAppStore {
+			return theme.Tr("应用商店", "App Store")
+		}
+		return strings.TrimPrefix(tab, TabPluginPrefix)
+	}
+	return settingsTabTitle(tab)
 }
 
 func settingsTabTitle(tab string) string {
@@ -425,6 +448,63 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 							m.selectSettingsTab(spec.id)
 						}
 					}
+
+					if m.PluginHost != nil {
+						pluginNavs := m.PluginHost.NavEntries()
+						if len(pluginNavs) > 0 {
+							ui.Box(c.Key("settings-plugin-divider")).FillWidth().Padding(theme.Space8, theme.Space6).Children(func() {
+								ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+							})
+							baseIdx := len(settingsTabs)
+							for j, entry := range pluginNavs {
+								ent := entry
+								active := tab == ent.TabID
+								navID := "settings-tab-" + ent.TabID
+								btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space8).
+									AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+									Label(ent.Title).Transition(internalui.CascadeRowTransition(baseIdx + j))
+								hovered := btn.Hovered()
+								pressed := btn.Pressed()
+								if active {
+									btn.Background(pal.Selected).Border(1, pal.Accent)
+								} else if pressed {
+									btn.Background(pal.Selected).Border(1, ui.Transparent)
+								} else if hovered {
+									btn.Background(pal.Hover).Border(1, ui.Transparent)
+								} else {
+									btn.Border(1, ui.Transparent)
+								}
+								internalui.TactileCard(btn, hovered, pressed, active, false)
+								btn.Children(func() {
+									ic := pal.MonoIconColors(pal.TextSecondary)
+									if active {
+										ic = pal.DuoIconColors(pal.Accent)
+									} else if hovered || pressed {
+										ic = pal.DuoIconColors(pal.Text)
+									}
+									if ent.DrawIcon != nil {
+										ent.DrawIcon(c, theme.IconRow, ic)
+									}
+									col := pal.TextSecondary
+									weight := theme.WeightRegular
+									if active {
+										col = pal.Text
+										weight = theme.WeightControl
+									} else if hovered || pressed {
+										col = pal.Text
+									}
+									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+								})
+								internalui.Probe(btn, navID)
+								if btn.Clicked() {
+									if isDrawer && onDismissDrawer != nil {
+										onDismissDrawer()
+									}
+									m.selectSettingsTab(ent.TabID)
+								}
+							}
+						}
+					}
 				})
 			})
 		if !isDrawer && m.SidebarWidth != nil {
@@ -474,16 +554,21 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 	root.Children(func() {
 		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).Fill().
 			Background(pal.SettingsBG).Padding(40, padX, 64, padX).Gap(28).Children(func() {
-			ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
-				ui.Text(c, settingsTabTitle(tab)).FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-					ID:      "settings-back",
-					Label:   theme.Tr("返回", "Back"),
-					Tooltip: theme.Tr("关闭设置", "Close Settings"),
+			ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+				ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+					if IsPluginSystemTab(tab) && m.PluginHost != nil {
+						m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
+					}
+					backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+						ID:      "settings-back",
+						Label:   theme.Tr("返回", "Back"),
+						Tooltip: theme.Tr("关闭设置", "Close Settings"),
+					})
+					if backBtn.Clicked() {
+						m.CloseSettings()
+					}
 				})
-				if backBtn.Clicked() {
-					m.CloseSettings()
-				}
 			})
 
 			ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
@@ -497,6 +582,10 @@ func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 					m.renderSettingsFoldersTab(c)
 				case "shortcuts":
 					m.renderSettingsShortcutsTab(c)
+				default:
+					if IsPluginSystemTab(tab) && m.PluginHost != nil {
+						m.PluginHost.RenderTabBody(c, tab, m.selectSettingsTab)
+					}
 				}
 			})
 		})

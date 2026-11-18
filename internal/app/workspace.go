@@ -20,6 +20,8 @@ import (
 	"block/internal/markdown"
 	"block/internal/modals"
 	"block/internal/model"
+	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo"
@@ -64,6 +66,7 @@ type Workspace struct {
 
 	ai        *ai.Controller
 	modals    *modals.Manager
+	pluginsUI *pluginui.Controller
 	quick     *modals.QuickNoteController
 	searchWin *modals.SearchWindowController
 
@@ -126,6 +129,20 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
 	w.modals = modals.NewManager(actualDir, w)
+	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
+		AppDataDir:  actualDir,
+		HostVersion: "1.0.379",
+		GetNotebookRoot: func() string {
+			return w.State().Folder
+		},
+		GetLocale: func() string {
+			return string(theme.Language())
+		},
+		OnChanged: func() {
+			w.RescanNotebook()
+			w.RequestRedraw()
+		},
+	}))
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
 
@@ -502,6 +519,7 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.RenderAISettings = func(c *ui.Context) {
 		w.ai.RenderSettingsTab(c)
 	}
+	w.modals.PluginHost = w.pluginsUI
 	w.modals.SidebarWidth = &w.sidebarWidth
 	w.modals.OnSidebarWidthChanged = func(nw float32) {
 		clamped := ClampSidebarWidth(nw)
@@ -1083,8 +1101,23 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 	w.mu.Unlock()
 
 	w.RescanNotebook()
+	w.notifyPluginNoteSaved(clean)
 	w.RequestRedraw()
 	return nil
+}
+
+// Plugins returns the decoupled plugin Supervisor, or nil if uninitialized.
+func (w *Workspace) Plugins() *plugins.Supervisor {
+	if w.pluginsUI == nil {
+		return nil
+	}
+	return w.pluginsUI.Supervisor()
+}
+
+func (w *Workspace) notifyPluginNoteSaved(absPath string) {
+	if sup := w.Plugins(); sup != nil {
+		sup.NotifyNoteSaved(absPath)
+	}
 }
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {
@@ -2552,6 +2585,7 @@ func (w *Workspace) flushSingleSession(path string) error {
 		w.lastSnapAt[path] = now
 		w.mu.Unlock()
 	}
+	w.notifyPluginNoteSaved(path)
 	return nil
 }
 
@@ -2973,7 +3007,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				SidebarAutoHidden: sidebarAutoHidden,
 				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
-				SettingsTabLabel:  w.modals.ActiveSettingsTab(),
+				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
 				AIImmersive:       aiImmersive,
 				AIOpen:            w.ai.IsOpen(),
 				FeedbackOpen:      w.modals.IsFeedbackOpen(),
