@@ -17,6 +17,9 @@ import (
 type SidebarUIState struct {
 	ExpandedDirs map[string]bool
 	FocusDir     string
+	// RevealRoot is the folder most recently expanded by the user; its visible
+	// descendants unfold top-down as one sequence.
+	RevealRoot string
 
 	RenamingPath string
 	RenamingDir  bool
@@ -52,6 +55,16 @@ func NewSidebarUIState() *SidebarUIState {
 		ExpandedDirs: make(map[string]bool),
 		MenuCursor:   -1,
 		MoveCursor:   -1,
+	}
+}
+
+// ToggleDir expands or collapses a folder, remembering an expansion as the
+// reveal root so its rows cascade in tree order.
+func (s *SidebarUIState) ToggleDir(path string) {
+	expand := !s.ExpandedDirs[path]
+	s.ExpandedDirs[path] = expand
+	if expand {
+		s.RevealRoot = path
 	}
 }
 
@@ -162,10 +175,11 @@ type SidebarProps struct {
 }
 
 type flatTreeRow struct {
-	Entry    model.FileEntry
-	Depth    int
-	ChildIdx int
-	Expanded bool
+	Entry       model.FileEntry
+	Depth       int
+	ChildIdx    int
+	Expanded    bool
+	RevealOrder int
 }
 
 func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bool, out *[]flatTreeRow) {
@@ -179,6 +193,28 @@ func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bo
 		})
 		if exp && len(e.Children) > 0 {
 			flattenEntries(e.Children, depth+1, expanded, out)
+		}
+	}
+}
+
+// assignRevealOrder numbers the rows under root by their flat position so an
+// expansion unfolds top-down as one sequence, nested open folders included.
+// Rows elsewhere fall back to their index among siblings.
+func assignRevealOrder(rows []flatTreeRow, root string) {
+	rootIdx, rootDepth := -1, 0
+	for i := range rows {
+		r := &rows[i]
+		r.RevealOrder = r.ChildIdx
+		if root != "" && rootIdx < 0 && r.Entry.Path == root {
+			rootIdx, rootDepth = i, r.Depth
+			continue
+		}
+		if rootIdx >= 0 {
+			if r.Depth <= rootDepth {
+				rootIdx = -2 // left the subtree; stop matching
+				continue
+			}
+			r.RevealOrder = i - rootIdx - 1
 		}
 	}
 }
@@ -330,6 +366,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			// 1. Top drop strip: dropping here moves an entry before the first root sibling.
 			var rows []flatTreeRow
 			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
+			assignRevealOrder(rows, p.State.RevealRoot)
 
 			c.Key("tree-top-drop")
 			topDrop := ui.Box(c).FillWidth().Height(8).Shrink(0)
@@ -610,7 +647,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
 	if r.Depth > 0 {
-		btn.Transition(blockui.CascadeRowTransition(r.ChildIdx))
+		btn.Transition(blockui.TreeRevealTransition(r.RevealOrder))
 	}
 	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
 	if !entry.IsDir {
@@ -725,7 +762,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				chevBox.Rotate(chevDeg)
 			}
 			chevBox.Children(func() {
-				icons.Draw(c, icons.TbChevronRight, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+				icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 			})
 			folderGlyph := icons.Folder
 			if r.Expanded {
@@ -840,7 +877,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		p.State.ClearDrag()
 		p.State.ClosePopups()
 		if entry.IsDir {
-			p.State.ExpandedDirs[entry.Path] = !p.State.ExpandedDirs[entry.Path]
+			p.State.ToggleDir(entry.Path)
 			p.State.FocusDir = entry.Path
 		} else {
 			p.State.FocusDir = ""
