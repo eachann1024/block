@@ -61,6 +61,13 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 
 	pal := theme.Ocean()
 	root := ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
+	root.ObserveInput(s.onGutterInput)
+	if s.typingPointer != nil {
+		x, y, over := root.PointerPosition()
+		if over && *s.typingPointer != (ui.Point{X: x, Y: y}) {
+			s.typingPointer = nil
+		}
+	}
 	s.frameRoot = root
 	defer func() { s.frameRoot = ui.Element{} }()
 
@@ -499,8 +506,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	isDraggingBlock := s.dragBlockID != 0
 	isDraggingAny := isDraggingBlock || s.isMouseDragging() || s.isTableExtending()
 	tableWholeActive := b.Kind == model.BlockTable && s.isTableWholeSelected(id)
-	showHandles := !s.minimal && !readOnly && ((!overlayBlocking && ((!isDraggingAny && (isHovered || hasBlockFocus)) || s.dragBlockID == id)) || tableWholeActive)
-	showBlankAdd := !s.minimal && !readOnly && !overlayBlocking && !isDraggingAny && (isHovered || s.hoveredBlock == idx)
+	showIdleHandles := !overlayBlocking && !isDraggingAny && s.typingPointer == nil
+	showHandles := !s.minimal && !readOnly && ((showIdleHandles && (isHovered || hasBlockFocus)) || (!overlayBlocking && s.dragBlockID == id) || tableWholeActive)
+	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (isHovered || s.hoveredBlock == idx)
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
 	listCtx := meta.List
