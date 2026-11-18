@@ -24,6 +24,25 @@ type tableGridGeom struct {
 	h    float32
 }
 
+func tableCellTextWeight(tbl *model.TableData, row int) int {
+	if row == 0 && !tbl.NoHeaderRow {
+		return theme.WeightTitle
+	}
+	return theme.WeightRegular
+}
+
+func tableCellTextAlign(tbl *model.TableData, col int) ui.Align {
+	if col < len(tbl.Aligns) {
+		switch tbl.Aligns[col] {
+		case model.ColAlignCenter:
+			return ui.Center
+		case model.ColAlignRight:
+			return ui.End
+		}
+	}
+	return ui.Start
+}
+
 // resolveTableColWidths computes shared column widths across all rows of tbl so every row
 // aligns to identical column boundaries, returning per-column interior widths and whether
 // horizontal scrolling is required.
@@ -47,10 +66,7 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 			wantW[c] = tMinColW
 		}
 		for rIdx, row := range tbl.Rows {
-			weight := theme.WeightRegular
-			if rIdx == 0 {
-				weight = theme.WeightTitle
-			}
+			weight := tableCellTextWeight(tbl, rIdx)
 			fnt := ui.Font{
 				Family:     edFont,
 				Size:       tFontSz,

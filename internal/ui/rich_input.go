@@ -100,6 +100,8 @@ type RichInputOptions struct {
 	OpaqueRanges      [][2]int
 	HasChipBG         bool
 
+	// OnBounds reports the input box after layout.
+	OnBounds func(ui.Rect)
 	// OnChange runs synchronously on every edit. If the caller normalizes or transforms
 	// the text (e.g. "->" to "→" or "# " heading conversion), it may call st.Sync(...)
 	// inside OnChange so subsequent keystrokes in the same frame see the transformed text.
@@ -336,7 +338,7 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 }
 
 func (s *RichInputState) ensureLayout(width float32) *ui.TextLayout {
-	w := max(float32(math.Round(float64(width)*2)/2), 1)
+	w := max(width, 1)
 	key := richLayoutKey{
 		text:      s.displayText,
 		spans:     spansLayoutSig(s.displaySpans),
@@ -1716,6 +1718,9 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 
 	box.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		st.lastRect = r
+		if opts.OnBounds != nil {
+			opts.OnBounds(r)
+		}
 	})
 
 	return box

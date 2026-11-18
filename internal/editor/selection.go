@@ -1770,31 +1770,18 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 	}
 	cr := s.tableCellRects[tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}]
 	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
-	lx := wx - (cr.X + tPadX)
-	ly := wy - (cr.Y + tPadY)
-	weight := 400
-	if rIdx == 0 {
-		weight = 600
-	}
-	lh := tLineH / tFontSz
+	weight := tableCellTextWeight(b.Table, rIdx)
 	cellBlock := model.Block{ID: b.ID, Kind: model.BlockParagraph, Spans: cell.Spans}
 	uiSpans := s.buildPureDisplaySpans(&cellBlock, tFontSz, weight)
-	align := ui.Start
-	if cIdx < len(b.Table.Aligns) {
-		switch b.Table.Aligns[cIdx] {
-		case model.ColAlignCenter:
-			align = ui.Center
-		case model.ColAlignRight:
-			align = ui.End
-		}
-	}
 	layout := ui.ShapeRichTextWith(uiSpans, ui.Font{
 		Family:     resolvedEditorFont(),
 		Size:       tFontSz,
 		Weight:     weight,
-		LineHeight: lh,
-	}, ui.TextShape{Width: max(cr.W-2*tPadX, s.scale(40)), Align: align})
-	cp := layout.PositionAt(ui.Point{X: lx, Y: max(ly, 0)})
+		LineHeight: tableCellLineHeight / tableCellFontSize,
+	}, ui.TextShape{Width: max(cr.W-2*tPadX, 1), Align: tableCellTextAlign(b.Table, cIdx)})
+	_, textH := layout.Size()
+	textY := cr.Y + max((cr.H-max(tLineH, textH))*0.5, tPadY)
+	cp := layout.PositionAt(ui.Point{X: wx - cr.X - tPadX, Y: wy - textY})
 	return clampInt(base+utf16OffsetToRuneOffset(cellPlain, cp.Index), 0, totalLen)
 }
 
@@ -1813,7 +1800,7 @@ func (s *Session) cachedShapeBlock(
 	if s.textLayoutCache == nil {
 		s.textLayoutCache = make(map[model.BlockID]cachedBlockLayout)
 	}
-	wRounded := float32(math.Round(float64(width)*2) / 2)
+	width = max(width, 1)
 	epoch := theme.FontEpoch()
 	if entry, ok := s.textLayoutCache[id]; ok &&
 		entry.text == plain &&
@@ -1823,7 +1810,7 @@ func (s *Session) cachedShapeBlock(
 		entry.fontSize == fontSize &&
 		entry.weight == weight &&
 		entry.lineHeight == lineHeight &&
-		entry.width == wRounded &&
+		entry.width == width &&
 		entry.fontEpoch == epoch &&
 		entry.layout != nil {
 		return entry.layout
@@ -1842,9 +1829,9 @@ func (s *Session) cachedShapeBlock(
 			u, _ := buildPureSpan(sp, fontSize, weight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 			uiSpans = append(uiSpans, u)
 		}
-		layout = ui.ShapeRichText(uiSpans, font, max(wRounded, 1))
+		layout = ui.ShapeRichText(uiSpans, font, width)
 	} else {
-		layout = ui.ShapeText(plain, font, max(wRounded, 1))
+		layout = ui.ShapeText(plain, font, width)
 	}
 	s.textLayoutCache[id] = cachedBlockLayout{
 		text:       plain,
@@ -1854,7 +1841,7 @@ func (s *Session) cachedShapeBlock(
 		fontSize:   fontSize,
 		weight:     weight,
 		lineHeight: lineHeight,
-		width:      wRounded,
+		width:      width,
 		fontEpoch:  epoch,
 		layout:     layout,
 	}
