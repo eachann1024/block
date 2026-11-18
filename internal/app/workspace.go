@@ -1222,6 +1222,10 @@ func (w *Workspace) Plugins() *plugins.Supervisor {
 	return w.pluginsUI.Supervisor()
 }
 
+func (w *Workspace) ClosePluginReadmeWindow(win *mygo.Window) bool {
+	return w.pluginsUI != nil && w.pluginsUI.CloseReadmeWindow(win)
+}
+
 func (w *Workspace) notifyPluginNoteSaved(absPath string) {
 	if sup := w.Plugins(); sup != nil {
 		sup.NotifyNoteSaved(absPath)
