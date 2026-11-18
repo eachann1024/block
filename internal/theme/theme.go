@@ -108,9 +108,17 @@ type Palette struct {
 	MenuDangerFG      ui.Color
 	MenuDangerHoverBG ui.Color
 	MenuDangerHoverFG ui.Color
-	TooltipBG         ui.Color
-	TooltipFG         ui.Color
-	TooltipBorder     ui.Color
+	TooltipBG           ui.Color
+	TooltipFG           ui.Color
+	TooltipBorder       ui.Color
+	TooltipDivider      ui.Color
+	TooltipMuted        ui.Color
+	TooltipAccent       ui.Color
+	TooltipDanger       ui.Color
+	TooltipDangerBorder ui.Color
+	TooltipPillBG       ui.Color
+	TooltipPillBorder   ui.Color
+	TooltipPillFG       ui.Color
 	ScrollThumb       ui.Color
 	ScrollThumbHover  ui.Color
 	Link              ui.Color
@@ -185,9 +193,17 @@ var OceanLight = Palette{
 	MenuDangerFG:      ui.Hex("#8e2626"),
 	MenuDangerHoverBG: ui.Hex("#d03b3b"),
 	MenuDangerHoverFG: ui.Hex("#ffffff"),
-	TooltipBG:         ui.Hex("#0f0f0f"),
-	TooltipFG:         ui.Hex("#ffffff"),
-	TooltipBorder:     ui.Transparent,
+	TooltipBG:           ui.Hex("#ffffff"),
+	TooltipFG:           ui.Hex("#1f1e1d"),
+	TooltipBorder:       ui.Hex("#d8dee9"),
+	TooltipDivider:      ui.Hex("#edf0f5"),
+	TooltipMuted:        ui.Hex("#586272"),
+	TooltipAccent:       ui.Hex("#2f57a6"),
+	TooltipDanger:       ui.Hex("#b82e2e"),
+	TooltipDangerBorder: ui.Hex("#f1c6c6"),
+	TooltipPillBG:       ui.Hex("#f2f4f8"),
+	TooltipPillBorder:   ui.Hex("#dfe4ed"),
+	TooltipPillFG:       ui.Hex("#3e4c63"),
 	ScrollThumb:       ui.RGBA(0x0b, 0x0b, 0x0b, 0.20),
 	ScrollThumbHover:  ui.RGBA(0x0b, 0x0b, 0x0b, 0.35),
 	Link:              ui.Hex("#256abf"),
@@ -262,9 +278,17 @@ var OceanDark = Palette{
 	MenuDangerFG:      ui.Hex("#f28b82"),
 	MenuDangerHoverBG: ui.Hex("#d03b3b"),
 	MenuDangerHoverFG: ui.Hex("#ffffff"),
-	TooltipBG:         ui.Hex("#202020"),
-	TooltipFG:         ui.Hex("#ececec"),
-	TooltipBorder:     ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
+	TooltipBG:           ui.Hex("#25272d"),
+	TooltipFG:           ui.Hex("#f2f4f8"),
+	TooltipBorder:       ui.Hex("#3a3e48"),
+	TooltipDivider:      ui.Hex("#343842"),
+	TooltipMuted:        ui.Hex("#a8b0bf"),
+	TooltipAccent:       ui.Hex("#8bb0f9"),
+	TooltipDanger:       ui.Hex("#ff8f8f"),
+	TooltipDangerBorder: ui.Hex("#5a3238"),
+	TooltipPillBG:       ui.Hex("#30343e"),
+	TooltipPillBorder:   ui.Hex("#434957"),
+	TooltipPillFG:       ui.Hex("#dce3f0"),
 	ScrollThumb:       ui.RGBA(0xff, 0xff, 0xff, 0.20),
 	ScrollThumbHover:  ui.RGBA(0xff, 0xff, 0xff, 0.35),
 	Link:              ui.Hex("#256abf"),

@@ -62,6 +62,18 @@ func parseShortcutSegments(text string) (segs []shortcutSegment, hasKey bool) {
 	return segs, hasKey
 }
 
+func keyGlyphSize(glyph icons.Icon, fontSize float32) float32 {
+	const targetInkEm float32 = 0.78
+	switch glyph {
+	case icons.KeyCommand:
+		// key-command spans 16.8 / 24 units (5:5:5 Apple loop proportions).
+		return fontSize * (targetInkEm / (16.8 / 24.0))
+	default:
+		// key-option, key-shift, key-return, key-backspace, key-control span ~14.5 / 24 units.
+		return fontSize * (targetInkEm / (14.5 / 24.0))
+	}
+}
+
 // ShortcutLabel renders text with embedded keycap glyphs (`⌘`, `⌥`, `↩`, `⇧`, `⌃`, `⌫`, `↑`, `↓`)
 // as centered vector icons sharing one vertical center with surrounding text (thinkly-fast ui/shortcut_label.rs).
 func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Element {
@@ -77,26 +89,17 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 		}
 		return t
 	}
-	const keyInkRatio float32 = 15.6 / 24.0
-	const keyInkEm float32 = 0.9
-	const keyGap float32 = 2.0
-	iconSize := style.FontSize * (keyInkEm / keyInkRatio)
 	pal := theme.Ocean()
 
 	row := ui.Row(c).Height(lineH).Shrink(0).AlignItems(ui.Center)
 	row.Children(func() {
-		prevKey := false
 		for _, seg := range segs {
 			if seg.key != "" {
-				if prevKey {
-					ui.Box(c).Width(keyGap).Shrink(0)
-				}
-				prevKey = true
+				iconSize := keyGlyphSize(seg.key, style.FontSize)
 				ic := icons.Draw(c, seg.key, iconSize, pal.MonoIconColors(style.Color))
 				ic.Center()
 				continue
 			}
-			prevKey = false
 			t := ui.Text(c, seg.text).FontSize(style.FontSize).FixedLineHeight(lineH).TextColor(style.Color).SingleLine().Shrink(0)
 			if style.FontWeight > 0 {
 				t.FontWeight(style.FontWeight)

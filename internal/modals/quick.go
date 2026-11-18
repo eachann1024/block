@@ -1482,13 +1482,20 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 			// Centered 3-slot pill/dot pager inside a pass-through layer so drag & right buttons work.
 			ui.Row(c.Key("quick-pager-layer")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 				Center().PassThrough().Children(func() {
-				pagerTip := theme.Tr("切换便签（上下滚动）", "Switch Note (Scroll)")
 				internalui.DotPager(c, internalui.DotPagerOptions{
 					PagerID:  "quick-pager",
 					IDPrefix: "quick-slot",
 					Count:    quickSlotCount,
 					Active:   activeSlot,
-					Tooltip:  pagerTip,
+					SlotTooltip: func(slot int) *internalui.TooltipSpec {
+						return &internalui.TooltipSpec{
+							Rows: []internalui.TooltipRow{{
+								Trigger:     fmt.Sprintf(theme.Tr("速记页 %d", "Note %d"), slot+1),
+								Detail:      theme.Tr("点击或滚轮切换", "Click or scroll"),
+								SplitDetail: true,
+							}},
+						}
+					},
 					OnSelect: func(slot int) {
 						q.switchSlot(slot)
 					},

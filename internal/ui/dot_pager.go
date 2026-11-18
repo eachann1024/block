@@ -9,12 +9,13 @@ import (
 
 // DotPagerOptions configures a minimalist dot/pill slot indicator (thinkly-fast ui/dot_pager.rs).
 type DotPagerOptions struct {
-	PagerID  string
-	IDPrefix string
-	Count    int
-	Active   int
-	Tooltip  string
-	OnSelect func(index int)
+	PagerID     string
+	IDPrefix    string
+	Count       int
+	Active      int
+	Tooltip     string
+	SlotTooltip func(index int) *TooltipSpec
+	OnSelect    func(index int)
 }
 
 // DotPager renders a centered horizontal row of clickable slot indicators where the
@@ -42,7 +43,11 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 			btn := ui.ButtonBase(c.Key(dotID)).Size(22, 24).Center().
 				Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 				Label(fmt.Sprintf("Slot %d", slot+1))
-			if opts.Tooltip != "" {
+			if opts.SlotTooltip != nil {
+				if spec := opts.SlotTooltip(slot); spec != nil {
+					RichTooltip(c, btn, *spec)
+				}
+			} else if opts.Tooltip != "" {
 				Tooltip(c, btn, opts.Tooltip)
 			}
 			hovered := btn.Hovered()

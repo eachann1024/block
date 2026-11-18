@@ -412,7 +412,11 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 								delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(24, 24).Center().
 									Radius(6).Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.4)).
 									KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line"))
-								appUi.Tooltip(c, delBtn, theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"))
+								appUi.TooltipTrigger(c, delBtn,
+									theme.Tr("再按 ⌫ 或点击", "Press ⌫ or click"),
+									theme.Tr("删除首行", "to delete first line"),
+									true,
+								)
 								delBtn.Children(func() {
 									icons.Draw(c, icons.KeyBackspace, 14, pal.MonoIconColors(pal.Danger))
 								})
@@ -424,22 +428,48 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 							} else if blankPara {
 								if showBlankAdd {
 									addID := fmt.Sprintf("block-add-%d", id)
+									optClick := theme.Tr("⌥ + 点击", "⌥ + Click")
+									if !theme.IsMacOS() {
+										optClick = theme.Tr("Alt + 点击", "Alt + Click")
+									}
+									addTip := appUi.TooltipSpec{
+										Rows: []appUi.TooltipRow{
+											{
+												Trigger:     theme.Tr("点击", "Click"),
+												TriggerTone: appUi.TooltipToneAccent,
+												Detail:      theme.Tr("在下方插入新块", "to insert block"),
+											},
+											{
+												Trigger:     optClick,
+												TriggerTone: appUi.TooltipToneAccent,
+												Detail:      theme.Tr("在上方插入新块", "to insert block above"),
+											},
+										},
+									}
 									addBtn := appUi.IconButton(c, icons.Plus, appUi.IconButtonOptions{
-										ID:       addID,
-										Label:    theme.Tr("插入块", "Insert block"),
-										Size:     24,
-										IconSize: 14,
+										ID:          addID,
+										Label:       theme.Tr("插入块", "Insert block"),
+										TooltipSpec: &addTip,
+										Size:        24,
+										IconSize:    14,
 									})
 									addBtn.KeepFocus()
 									s.recordOverlayBtn(addID, addBtn)
 									if addBtn.Clicked() {
 										s.pressJustBegan = false
-										s.FocusBlock(idx)
-										trigger := s.blockTextRects[id]
-										if trigger.W <= 0 {
-											trigger = s.blockRects[id]
+										if (addBtn.ClickModifiers()&ui.Alt) != 0 && !(idx == 0 && isFrontmatterBlock(0, &s.doc.Blocks[0])) {
+											s.pushUndo()
+											s.spliceBlocks(idx, idx, []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}})
+											s.FocusBlock(idx)
+											s.markDirty()
+										} else {
+											s.FocusBlock(idx)
+											trigger := s.blockTextRects[id]
+											if trigger.W <= 0 {
+												trigger = s.blockRects[id]
+											}
+											s.openSlashMenu(idx, trigger)
 										}
-										s.openSlashMenu(idx, trigger)
 									}
 								}
 							} else if showHandles {
@@ -452,6 +482,22 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 								gripPressed := grip.Pressed()
 								gripActive := s.dragBlockID == id && !s.dragCanceled
 								gripHovered := grip.Hovered()
+								if !gripActive && !gripPressed && s.blockMenu == nil {
+									appUi.RichTooltip(c, grip, appUi.TooltipSpec{
+										Rows: []appUi.TooltipRow{
+											{
+												Trigger:     theme.Tr("拖动", "Drag"),
+												TriggerTone: appUi.TooltipToneAccent,
+												Detail:      theme.Tr("调整块顺序", "to move"),
+											},
+											{
+												Trigger:     theme.Tr("点击", "Click"),
+												TriggerTone: appUi.TooltipToneAccent,
+												Detail:      theme.Tr("打开块菜单", "to open menu"),
+											},
+										},
+									})
+								}
 								if gripActive || gripPressed {
 									grip.Cursor(ui.CursorGrabbing)
 								} else {
@@ -474,16 +520,31 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 							if showFold {
 								glyph := icons.ChevronDown
 								tip := theme.Tr("折叠章节", "Collapse section")
+								childCount := s.headingSectionChildCount(idx)
+								var detail string
+								if childCount > 0 {
+									detail = fmt.Sprintf(theme.Tr("收起 %d 项", "Hide %d"), childCount)
+								}
 								if isFolded {
 									glyph = icons.ChevronRight
 									tip = theme.Tr("展开章节", "Expand section")
+									if childCount > 0 {
+										detail = fmt.Sprintf(theme.Tr("展开 %d 项", "Show %d"), childCount)
+									}
+								}
+								foldSpec := appUi.TooltipSpec{
+									Rows: []appUi.TooltipRow{{
+										Trigger:     tip,
+										Detail:      detail,
+										SplitDetail: detail != "",
+									}},
 								}
 								foldBtn := appUi.IconButton(c, glyph, appUi.IconButtonOptions{
-									ID:       fmt.Sprintf("block-fold-%d", id),
-									Label:    theme.Tr("折叠章节", "Toggle fold"),
-									Tooltip:  tip,
-									Size:     24,
-									IconSize: 14,
+									ID:          fmt.Sprintf("block-fold-%d", id),
+									Label:       theme.Tr("折叠章节", "Toggle fold"),
+									TooltipSpec: &foldSpec,
+									Size:        24,
+									IconSize:    14,
 								})
 								foldBtn.KeepFocus()
 								if foldBtn.Clicked() {
@@ -2058,7 +2119,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 		bar.Children(func() {
 			if !s.minimal {
 				commentBtn := appUi.IconButton(c, icons.TbComment, appUi.IconButtonOptions{
-					ID: "img-tb-comment", Label: theme.Tr("添加批注", "Add annotation"), Size: 28, IconSize: 16,
+					ID: "img-tb-comment", Label: theme.Tr("添加批注", "Add annotation"), Tooltip: theme.Tr("添加批注", "Add annotation"), Shortcut: formatShortcutDisplay("⌥⌘M", "Ctrl+Alt+M"), TooltipPill: true, TooltipAbove: true, Size: 28, IconSize: 16,
 					Active: s.toolbarPop == "comment",
 				})
 				s.recordOverlayBtn("img-tb-comment", commentBtn)
@@ -2068,7 +2129,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 				}
 
 				reactBtn := appUi.IconButton(c, icons.TbReaction, appUi.IconButtonOptions{
-					ID: "img-tb-reaction", Label: theme.Tr("添加表情回应", "Add reaction"), Size: 28, IconSize: 16,
+					ID: "img-tb-reaction", Label: theme.Tr("添加表情回应", "Add reaction"), Tooltip: theme.Tr("添加表情回应", "Add reaction"), TooltipPill: true, TooltipAbove: true, Size: 28, IconSize: 16,
 					Active: s.toolbarPop == "reactions",
 				})
 				s.recordOverlayBtn("img-tb-reaction", reactBtn)
@@ -2091,7 +2152,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 				{"img-align-right", icons.AlignRight, model.ImageAlignRight, theme.Tr("右对齐", "Align right")},
 			} {
 				btn := appUi.IconButton(c, item.glyph, appUi.IconButtonOptions{
-					ID: item.id, Label: item.label, Size: 28, IconSize: 16, Active: b.ImageAlign == item.align,
+					ID: item.id, Label: item.label, Tooltip: item.label, TooltipPill: true, TooltipAbove: true, Size: 28, IconSize: 16, Active: b.ImageAlign == item.align,
 				})
 				if btn.Clicked() {
 					s.pushUndo()
@@ -2106,6 +2167,9 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			cropBtn := appUi.IconButton(c, icons.Crop, appUi.IconButtonOptions{
 				ID:       "img-crop",
 				Label:    theme.Tr("裁剪图片", "Crop image"),
+				Tooltip:      theme.Tr("裁剪图片", "Crop image"),
+				TooltipPill:  true,
+				TooltipAbove: true,
 				Size:     28,
 				IconSize: 16,
 				Active:   s.imagePopBlock == id && s.imagePopKind == "crop",
@@ -2123,6 +2187,9 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			sizeBtn := appUi.IconButton(c, icons.Sliders, appUi.IconButtonOptions{
 				ID:       "img-size",
 				Label:    theme.Tr("设置图片尺寸", "Set image size"),
+				Tooltip:      theme.Tr("设置图片尺寸", "Set image size"),
+				TooltipPill:  true,
+				TooltipAbove: true,
 				Size:     28,
 				IconSize: 16,
 				Active:   s.imagePopBlock == id && s.imagePopKind == "size",
@@ -2138,7 +2205,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			}
 
 			delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-				ID: "img-delete", Label: theme.Tr("删除图片", "Delete image"), Size: 28, IconSize: 16, Danger: true,
+				ID: "img-delete", Label: theme.Tr("删除图片", "Delete image"), Tooltip: theme.Tr("删除图片", "Delete image"), TooltipPill: true, TooltipAbove: true, Size: 28, IconSize: 16, Danger: true,
 			})
 			if delBtn.Clicked() {
 				s.imagePopBlock = 0

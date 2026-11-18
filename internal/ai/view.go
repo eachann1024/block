@@ -88,12 +88,27 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 	histOpen := c.historyOpen
 	c.mu.RUnlock()
 
-	header := ui.Row(cUI.Key("ai-header")).FillWidth().Height(52).Shrink(0).PaddingX(16).Gap(6).
+	leftPad := float32(16)
+	rightPad := float32(16)
+	if fullscreen {
+		tb := cUI.TitleBar()
+		if theme.IsMacOS() {
+			leftPad = max(82, tb.Left+12)
+		} else if tb.Right > 0 {
+			rightPad = tb.Right + 8
+		}
+	}
+
+	header := ui.Row(cUI.Key("ai-header")).FillWidth().Height(52).Shrink(0).
+		Padding(0, rightPad, 0, leftPad).Gap(6).
 		AlignItems(ui.Center).Background(pal.Paper).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+	if fullscreen {
+		header.DragWindow()
+	}
 
 	var histAnchor ui.Element
 	header.Children(func() {
-		ui.Text(cUI, title).FontSize(15).FontWeight(600).TextColor(pal.Text).Grow(1).SingleLine()
+		ui.Text(cUI, title).FontSize(15).FontWeight(600).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 
 		if !blocked {
 			newBtn := bui.IconButton(cUI, icons.AiPlus, bui.IconButtonOptions{
@@ -1870,14 +1885,28 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 				} else {
 					canSend := strings.TrimSpace(draft) != ""
+					sendTip := bui.TooltipSpec{
+						Placement: bui.TooltipAbove,
+						Rows: []bui.TooltipRow{
+							{
+								Trigger:     "Enter",
+								TriggerTone: bui.TooltipToneAccent,
+								Detail:      theme.Tr("发送消息", "to send"),
+							},
+							{
+								Trigger: "⇧ + Enter",
+								Detail:  theme.Tr("换行输入", "for new line"),
+							},
+						},
+					}
 					sendBtn := bui.IconButton(cUI, icons.ArrowUp, bui.IconButtonOptions{
-						ID:       "ai-chat-send",
-						Label:    theme.Tr("发送", "Send"),
-						Tooltip:  theme.Tr("发送（回车）", "Send (Enter)"),
-						Size:     28,
-						IconSize: 16,
-						Active:   canSend,
-						Disabled: !canSend,
+						ID:          "ai-chat-send",
+						Label:       theme.Tr("发送", "Send"),
+						TooltipSpec: &sendTip,
+						Size:        28,
+						IconSize:    16,
+						Active:      canSend,
+						Disabled:    !canSend,
 					})
 					if sendBtn.Clicked() && canSend {
 						c.SendPrompt(draft)
@@ -1929,6 +1958,11 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	mdl := c.backendModelLocked(kind)
 	thinking := c.backendThinkingLocked(kind)
 	open := c.deckOpen
+	fullscreen := c.fullscreen
+	panelW := c.renderWidth
+	if panelW <= 0 {
+		panelW = c.panelWidth
+	}
 	c.mu.RUnlock()
 
 	label := backendLabel(kind)
@@ -1936,7 +1970,15 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 		label = mdl
 	}
 
+	maxTrigW := float32(212)
+	if fullscreen {
+		maxTrigW = 360
+	} else if panelW > 0 {
+		maxTrigW = min(max(panelW-92, 140), 220)
+	}
+
 	btn := ui.ButtonBase(cUI.Key("ai-deck-trigger")).Height(30).PaddingX(10).Gap(6).
+		MaxWidth(maxTrigW).Shrink(1).MinWidth(0).
 		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(label)
 	if open {
 		btn.Background(pal.Selected).Border(1, pal.Accent)
@@ -1952,8 +1994,8 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 
 	btn.Children(func() {
 		icons.Brand(cUI, kind, 15, pal.Text)
-		ui.Text(cUI, label).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
-		ui.Text(cUI, strings.ToUpper(thinking[:1])+thinking[1:]).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+		ui.Text(cUI, label).FontSize(14).FontWeight(500).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(cUI, strings.ToUpper(thinking[:1])+thinking[1:]).FontSize(14).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 		chev := icons.ChevronDown
 		if open {
 			chev = icons.ChevronUp
@@ -2091,7 +2133,8 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						}()
 						btn := ui.ButtonBase(cUI.Key(cardID)).Size(btnSz, btnSz).Center().
 							Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-							Label(backendLabel(k)).Tooltip(backendLabel(k))
+							Label(backendLabel(k))
+						bui.Tooltip(cUI, btn, backendLabel(k))
 						if active {
 							btn.Background(pal.Selected).Border(1, pal.Accent)
 						} else {
@@ -2412,18 +2455,44 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		focused = recognized[0]
 	}
 
-	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().Gap(24)
+	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().MinWidth(0).Gap(24)
 	bui.Probe(root, "ai-settings-section")
+
+	secW := root.Bounds().W
+	if secW <= 0 {
+		winW, _ := cUI.Size()
+		if winW <= 0 {
+			winW = 1100
+		}
+		if winW >= 920 {
+			secW = winW - 240 - 56
+		} else if winW >= 560 {
+			secW = winW - 56
+		} else {
+			secW = max(winW-32, 300)
+		}
+	}
+	stackedSplit := secW < 560
+	railW := float32(260)
+	detailPadX := float32(20)
+	if secW < 720 {
+		railW = 196
+		detailPadX = 18
+	}
+	detailInnerW := secW - detailPadX*2
+	if !stackedSplit {
+		detailInnerW = secW - railW - detailPadX*2
+	}
 
 	root.Children(func() {
 		renderEnabledHeader := func() {
-			ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("AI 与本机 Agent", "AI & Local Agents")).FontSize(16).FontWeight(600).TextColor(pal.Text)
+			ui.Row(cUI).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(cUI, theme.Tr("AI 与本机 Agent", "AI & Local Agents")).FontSize(16).FontWeight(600).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				enLbl := theme.Tr("已关闭", "Disabled")
 				if cfg.Enabled {
 					enLbl = theme.Tr("已开启", "Enabled")
 				}
-				swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(32).PaddingX(12).Gap(6).
+				swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(32).PaddingX(12).Gap(6).Shrink(0).
 					AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
 					Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
 				if cfg.Enabled {
@@ -2451,87 +2520,103 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		}
 
 		if !cfg.Enabled {
-			ui.Column(cUI).FillWidth().Padding(18, 20).Radius(theme.RadiusSurface).
+			ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Radius(theme.RadiusSurface).
 				Background(cardBG).Border(1, pal.Hairline).Children(func() {
 				renderEnabledHeader()
 			})
 			return
 		}
 
-		// 1. Agent Overview: Header row + Split Card (260px flush left rail + right detail pane).
-		ui.Column(cUI).FillWidth().Gap(12).Children(func() {
+		// 1. Agent Overview: Header row + Responsive Split Card (flush left rail + right detail pane, or stacked when < 560px).
+		ui.Column(cUI).FillWidth().MinWidth(0).Gap(12).Children(func() {
 			renderEnabledHeader()
 
-			ui.Row(cUI).FillWidth().MinHeight(320).Radius(theme.RadiusSurface).
-				Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-				// Left 260px flush agent_card rail
-				ui.Column(cUI).Width(260).Shrink(0).FillHeight().Background(pal.Sidebar).
-					BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).Children(func() {
-					total := len(recognized)
-					for idx, kind := range recognized {
-						k := kind
-						enabled := isBackendEnabled(backends, k)
-						suffix := backendProbeSuffix(k)
-						cardID := "ai-backend-card-" + suffix
-						toggleID := "ai-backend-toggle-" + suffix
-						isFocused := focused == k
-						lbl := backendLabel(k)
+			renderBackendList := func() {
+				total := len(recognized)
+				cardPadX := float32(14)
+				if !stackedSplit && railW < 220 {
+					cardPadX = 12
+				}
+				for idx, kind := range recognized {
+					k := kind
+					enabled := isBackendEnabled(backends, k)
+					suffix := backendProbeSuffix(k)
+					cardID := "ai-backend-card-" + suffix
+					toggleID := "ai-backend-toggle-" + suffix
+					isFocused := focused == k
+					lbl := backendLabel(k)
 
-						card := ui.Row(cUI.Key(cardID)).FillWidth().Height(50).PaddingX(14).Gap(10).
-							AlignItems(ui.Center).Justify(ui.SpaceBetween)
-						if idx+1 < total {
-							card.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
-						}
-						if isFocused {
-							card.Background(selBG)
-						} else if card.Hovered() {
-							card.Background(pal.Hover)
-						}
-						bui.Probe(card, cardID)
+					card := ui.Row(cUI.Key(cardID)).FillWidth().MinWidth(0).Height(50).PaddingX(cardPadX).Gap(8).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween)
+					if idx+1 < total {
+						card.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+					}
+					if isFocused {
+						card.Background(selBG)
+					} else if card.Hovered() {
+						card.Background(pal.Hover)
+					}
+					bui.Probe(card, cardID)
 
-						card.Children(func() {
-							selBtn := ui.ButtonBase(cUI.Key("focus-" + cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
-								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
-							selBtn.Children(func() {
-								ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(6).
-									Background(cardBG).Border(1, pal.Hairline).Children(func() {
-									icons.Brand(cUI, k, 16, pal.Text)
-								})
-								ui.Text(cUI, lbl).FontSize(14).FontWeight(550).TextColor(pal.Text).
-									Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					card.Children(func() {
+						selBtn := ui.ButtonBase(cUI.Key("focus-" + cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
+							AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
+						selBtn.Children(func() {
+							ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(6).
+								Background(cardBG).Border(1, pal.Hairline).Children(func() {
+								icons.Brand(cUI, k, 16, pal.Text)
 							})
-							if selBtn.Clicked() {
-								c.mu.Lock()
-								c.settingsFocused = k
-								c.settingsTestErr = ""
-								c.settingsTestOK = false
-								c.mu.Unlock()
-							}
-
-							on := enabled
-							if bui.TogglePill(cUI, toggleID, lbl, &on, false) {
-								c.mu.Lock()
-								c.settingsFocused = k
-								c.mu.Unlock()
-								if err := c.SetBackendEnabled(k, on); err != nil {
-									c.mu.Lock()
-									c.settingsTestErr = err.Error()
-									c.mu.Unlock()
-								}
-							}
+							ui.Text(cUI, lbl).FontSize(14).FontWeight(550).TextColor(pal.Text).
+								Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						})
-					}
-				})
+						if selBtn.Clicked() {
+							c.mu.Lock()
+							c.settingsFocused = k
+							c.settingsTestErr = ""
+							c.settingsTestOK = false
+							c.mu.Unlock()
+						}
 
-				// Right detail pane
-				ui.Column(cUI).Grow(1).MinWidth(0).Padding(16, 20).Gap(14).Children(func() {
+						on := enabled
+						if bui.TogglePill(cUI, toggleID, lbl, &on, false) {
+							c.mu.Lock()
+							c.settingsFocused = k
+							c.mu.Unlock()
+							if err := c.SetBackendEnabled(k, on); err != nil {
+								c.mu.Lock()
+								c.settingsTestErr = err.Error()
+								c.mu.Unlock()
+							}
+						}
+					})
+				}
+			}
+
+			renderDetailPane := func() {
+				ui.Column(cUI).Grow(1).FillWidth().MinWidth(0).Padding(16, detailPadX).Gap(14).Children(func() {
 					if focused == model.BackendBuiltin {
-						c.renderBuiltinSettings(cUI, pal, cfg, backends, baseURL, apiKey, showKey, testing, testOK, testErr)
+						c.renderBuiltinSettings(cUI, pal, cfg, backends, baseURL, apiKey, showKey, testing, testOK, testErr, detailInnerW)
 					} else {
-						c.renderAgentSettings(cUI, pal, focused, backends, testErr)
+						c.renderAgentSettings(cUI, pal, focused, backends, testErr, detailInnerW)
 					}
 				})
-			})
+			}
+
+			if stackedSplit {
+				ui.Column(cUI).FillWidth().MinWidth(0).Radius(theme.RadiusSurface).
+					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
+					ui.Column(cUI).FillWidth().MinWidth(0).Background(pal.Sidebar).
+						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(renderBackendList)
+					renderDetailPane()
+				})
+			} else {
+				ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(320).Radius(theme.RadiusSurface).
+					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
+					ui.Column(cUI).Width(railW).Shrink(0).FillHeight().Background(pal.Sidebar).
+						BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).Children(renderBackendList)
+					renderDetailPane()
+				})
+			}
 
 			// Hidden programmatic priority probes (matching settings_agent.rs:104-111)
 			ui.Row(cUI).Height(0).Clip().Children(func() {
@@ -2612,17 +2697,18 @@ func (c *Controller) renderInlineDisabledBanner(cUI *ui.Context, pal theme.Palet
 	})
 }
 
-func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, cfg model.AIProviderConfig, backends model.AIBackendsConfig, baseURL, apiKey string, showKey, testing, testOK bool, testErr string) {
+func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, cfg model.AIProviderConfig, backends model.AIBackendsConfig, baseURL, apiKey string, showKey, testing, testOK bool, testErr string, innerW float32) {
 	cardBG := settingsCardSurface(pal)
 	selBG := settingsSelectedSurface(pal)
 	enabled := isBackendEnabled(backends, model.BackendBuiltin)
 	opt := backends.Adapters[string(model.BackendBuiltin)]
 
-	ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).
+	ui.Row(cUI).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 		Padding(0, 0, 12, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
 			icons.Brand(cUI, model.BackendBuiltin, 18, pal.Text)
-			ui.Text(cUI, backendLabel(model.BackendBuiltin)).FontSize(16).FontWeight(600).TextColor(pal.Text)
+			ui.Text(cUI, backendLabel(model.BackendBuiltin)).FontSize(16).FontWeight(600).TextColor(pal.Text).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 		testLabel := theme.Tr("连接测试", "Test Connection")
 		testIcon := icons.Sparkles
@@ -2643,13 +2729,25 @@ func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, c
 	}
 
 	// 3 provider cards (`DeepSeek`, `OpenAI 协议`, `Claude 协议`) with 26x26 icon wells
-	ui.Row(cUI).FillWidth().Gap(8).Children(func() {
+	stackCards := innerW > 0 && innerW < 360
+	cardPadX := float32(10)
+	cardGap := float32(8)
+	if !stackCards && innerW > 0 && innerW < 420 {
+		cardPadX = 8
+		cardGap = 6
+	}
+	renderProviderCards := func() {
 		for _, p := range providerPresets {
 			preset := p
 			active := cfg.Provider == preset.ID
 			lbl := theme.Tr(preset.Zh, preset.En)
-			btn := ui.ButtonBase(cUI.Key("ai-pcard-"+preset.ID)).Grow(1).MinWidth(0).Padding(9, 10).Gap(8).
+			btn := ui.ButtonBase(cUI.Key("ai-pcard-"+preset.ID)).MinWidth(0).Padding(9, cardPadX).Gap(cardGap).
 				AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(lbl)
+			if stackCards {
+				btn.FillWidth()
+			} else {
+				btn.Grow(1)
+			}
 			if active {
 				btn.Background(selBG).Border(1, pal.Accent)
 			} else {
@@ -2687,28 +2785,48 @@ func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, c
 				_ = c.SaveProviderConfig(next)
 			}
 		}
-	})
+	}
+	if stackCards {
+		ui.Column(cUI).FillWidth().MinWidth(0).Gap(8).Children(renderProviderCards)
+	} else {
+		ui.Row(cUI).FillWidth().MinWidth(0).Gap(8).Children(renderProviderCards)
+	}
+
+	stackFields := innerW > 0 && innerW < 340
+	lblW := float32(84)
+	if innerW >= 440 {
+		lblW = 96
+	}
 
 	// Base URL (with bottom hairline matching settings_view.rs:89-90)
-	ui.Box(cUI).FillWidth().Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(96).Shrink(0).FontSize(14).TextColor(pal.Text)
+	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+		renderBaseURLInput := func() {
 			u := baseURL
-			in := ui.TextInput(cUI.Key("ai-settings-baseurl"), &u).Grow(1).FontSize(14).Placeholder("https://api.example.com/v1")
+			in := ui.TextInput(cUI.Key("ai-settings-baseurl"), &u).Grow(1).MinWidth(0).FillWidth().FontSize(14).Placeholder("https://api.example.com/v1")
 			if in.Changed() {
 				next := cfg
 				next.BaseURL = u
 				_ = c.SaveProviderConfig(next)
 			}
-		})
+		}
+		if stackFields {
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(14).TextColor(pal.Text).SingleLine()
+				renderBaseURLInput()
+			})
+		} else {
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(lblW).Shrink(0).FontSize(14).TextColor(pal.Text).SingleLine()
+				renderBaseURLInput()
+			})
+		}
 	})
 
 	// API Key
-	ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-		ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(96).Shrink(0).FontSize(14).TextColor(pal.Text)
-		ui.Row(cUI).Grow(1).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+	renderAPIKeyControls := func() {
+		ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
 			k := apiKey
-			in := ui.TextInput(cUI.Key("ai-settings-apikey"), &k).Grow(1).FontSize(14).Placeholder("sk-…")
+			in := ui.TextInput(cUI.Key("ai-settings-apikey"), &k).Grow(1).MinWidth(0).FontSize(14).Placeholder("sk-…")
 			if !showKey {
 				in.Password()
 			}
@@ -2728,17 +2846,28 @@ func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, c
 				c.mu.Unlock()
 			}
 		})
-	})
+	}
+	if stackFields {
+		ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
+			ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(14).TextColor(pal.Text).SingleLine()
+			renderAPIKeyControls()
+		})
+	} else {
+		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(lblW).Shrink(0).FontSize(14).TextColor(pal.Text).SingleLine()
+			renderAPIKeyControls()
+		})
+	}
 
 	if testErr != "" {
-		ui.Box(cUI).FillWidth().Padding(8, 12).Radius(theme.RadiusControl).
+		ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusControl).
 			Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
 			ui.Text(cUI, testErr).FontSize(14).TextColor(pal.Danger)
 		})
 	}
 }
 
-func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kind model.BackendKind, backends model.AIBackendsConfig, testErr string) {
+func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kind model.BackendKind, backends model.AIBackendsConfig, testErr string, _ float32) {
 	enabled := isBackendEnabled(backends, kind)
 	opt := backends.Adapters[string(kind)]
 	locked := !enabled || opt.Locked
@@ -2749,14 +2878,15 @@ func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kin
 	c.mu.RUnlock()
 	verTag := formatBackendVersionTag(st, hasSt)
 
-	ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).
+	ui.Row(cUI).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 		Padding(0, 0, 12, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
 			icons.Brand(cUI, kind, 18, pal.Text)
-			ui.Text(cUI, backendLabel(kind)).FontSize(15).FontWeight(600).TextColor(pal.Text)
+			ui.Text(cUI, backendLabel(kind)).FontSize(15).FontWeight(600).TextColor(pal.Text).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 		if verTag != "" {
-			ui.Text(cUI, verTag).Font("monospace").FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Text(cUI, verTag).Font("monospace").FontSize(14).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 		}
 	})
 
@@ -2768,19 +2898,19 @@ func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kin
 	if found, ok := resolveCLIBinary(string(kind)); ok {
 		binPath = found
 	}
-	ui.Box(cUI).FillWidth().Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("可执行文件路径", "Binary Path")).Shrink(0).FontSize(14).TextColor(pal.Text)
+	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			ui.Text(cUI, theme.Tr("可执行文件路径", "Binary Path")).Shrink(0).SingleLine().FontSize(14).TextColor(pal.Text)
 			ui.Box(cUI).Height(32).PaddingX(12).Center().Radius(theme.RadiusControl).
-				Background(pal.Shell).Border(1, pal.Hairline).MaxWidth(420).Children(func() {
-				ui.Text(cUI, binPath).Font("monospace").FontSize(14).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+				Background(pal.Shell).Border(1, pal.Hairline).MaxWidth(420).Shrink(1).MinWidth(0).Children(func() {
+				ui.Text(cUI, binPath).Font("monospace").FontSize(14).TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 			})
 		})
 	})
 
-	ui.Box(cUI).FillWidth().Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Shrink(0).FontSize(14).TextColor(pal.Text)
+	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Shrink(0).SingleLine().FontSize(14).TextColor(pal.Text)
 			levels := []string{"low", "medium", "high"}
 			lvIdx := 2
 			for i, lv := range levels {
@@ -2800,8 +2930,8 @@ func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kin
 		})
 	})
 
-	ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-		ui.Text(cUI, theme.Tr("最大权限", "Full Permissions")).Shrink(0).FontSize(14).TextColor(pal.Text)
+	ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+		ui.Text(cUI, theme.Tr("最大权限", "Full Permissions")).Shrink(0).SingleLine().FontSize(14).TextColor(pal.Text)
 		fp := opt.FullPermissions
 		if bui.TogglePill(cUI, "ai-agent-full-permissions", theme.Tr("最大权限", "Full Permissions"), &fp, locked) {
 			c.mu.Lock()
@@ -2841,12 +2971,13 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 	ui.Column(cUI).FillWidth().Gap(12).Children(func() {
 		ui.Text(cUI, theme.Tr("普通功能", "General Features")).FontSize(16).FontWeight(600).TextColor(pal.Text)
 
-		ui.Column(cUI).FillWidth().Padding(18, 20).Radius(theme.RadiusSurface).
+		ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Radius(theme.RadiusSurface).
 			Background(cardBG).Border(1, pal.Hairline).Children(func() {
-			ui.Row(cUI).FillWidth().MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("标注功能", "Annotations")).FontSize(14).TextColor(pal.Text)
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(cUI, theme.Tr("标注功能", "Annotations")).FontSize(14).TextColor(pal.Text).Shrink(0).SingleLine()
 
 				trig := ui.ButtonBase(cUI.Key("annotation-model-trigger")).Height(34).PaddingX(12).Gap(8).
+					MaxWidth(360).Shrink(1).MinWidth(0).
 					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 					Label(lbl)
 				trigAnchor = trig
@@ -2867,9 +2998,9 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 				})
 				trig.Children(func() {
 					icons.Brand(cUI, kind, 15, pal.Text)
-					ui.Text(cUI, lbl).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
-					ui.Text(cUI, "·").FontSize(14).TextColor(pal.TextSecondary)
-					ui.Text(cUI, thinkLbl).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(cUI, lbl).FontSize(14).FontWeight(500).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+					ui.Text(cUI, "·").FontSize(14).TextColor(pal.TextSecondary).Shrink(0)
+					ui.Text(cUI, thinkLbl).FontSize(14).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 					chev := icons.ChevronDown
 					if annotOpen {
 						chev = icons.ChevronUp
@@ -2926,10 +3057,15 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	if trigger.W <= 0 {
 		trigger = ui.Rect{X: max(winW-220, 16), Y: max(winH-120, 80), W: 180, H: 34}
 	}
-	popW := min(float32(520), max(winW-16, 300))
+	popW := min(float32(520), max(winW-16, 260))
+	widePop := popW >= 460
+	targetH := float32(256)
+	if !widePop {
+		targetH = 292
+	}
 	spec := bui.PlaceAbove(trigger).WithAlignX(bui.AlignX{Kind: bui.AlignRight}).WithGap(6).WithMargin(8)
-	maxH := bui.MaxHeightForSpec(spec, winW, winH, 256)
-	popH := min(float32(256), maxH)
+	maxH := bui.MaxHeightForSpec(spec, winW, winH, targetH)
+	popH := min(targetH, maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
 	ui.Overlay(cUI, func() {
@@ -2949,7 +3085,8 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					id := "annotation-backend-" + backendProbeSuffix(bk)
 					sel := bk == activeKind
 					btn := ui.ButtonBase(cUI.Key(id)).Size(34, 34).Center().Radius(8).
-						Cursor(ui.CursorPointer).Label(backendLabel(bk)).Tooltip(backendLabel(bk))
+						Cursor(ui.CursorPointer).Label(backendLabel(bk))
+					bui.Tooltip(cUI, btn, backendLabel(bk))
 					if sel {
 						btn.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
 					} else {
@@ -2972,13 +3109,13 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 				}
 			})
 
-			// 2. Center model search + list
+			// 2. Center model search + list (+ compact bottom thinking row when !widePop)
 			ui.Column(cUI).Grow(1).MinWidth(0).FillHeight().Children(func() {
 				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).Gap(8).AlignItems(ui.Center).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 					in := ui.TextInputBase(cUI.Key("annotation-model-search"), &c.annotMenuSearch).
-						Grow(1).Height(28).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+						Grow(1).MinWidth(0).Height(28).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
 						CaretColor(pal.Accent).CaretWidth(2).
 						Placeholder(theme.Tr("搜索模型…", "Search models…")).Bind(&c.annotSearchHandle).AutoFocus()
 					bui.Probe(in, "annotation-model-search")
@@ -3045,52 +3182,79 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 						})
 					}
 				})
-			})
 
-			// 3. Right Thinking Level column
-			ui.Column(cUI).Width(140).Shrink(0).FillHeight().
-				BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
-				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).AlignItems(ui.Center).
-					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-					ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(14).TextColor(pal.TextSecondary)
-				})
-				ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
-					for _, lv := range []struct{ id, label string }{
-						{"low", "Low"},
-						{"medium", "Medium"},
-						{"high", "High"},
-					} {
-						level := lv.id
-						isAct := annotCfg.Thinking == level || (annotCfg.Thinking == "" && level == "high")
-						btnID := "annotation-thinking-" + level
-						btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(32).PaddingX(10).
-							AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
-							Cursor(ui.CursorPointer).Label(lv.label)
-						if isAct {
-							btn.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
-						} else {
-							if btn.Hovered() {
-								btn.Background(pal.Hover)
-							}
-							btn.Border(1, ui.Transparent)
+				if !widePop {
+					levels := []string{"low", "medium", "high"}
+					lvIdx := 2
+					for i, lv := range levels {
+						if annotCfg.Thinking == lv {
+							lvIdx = i
 						}
-						bui.Probe(btn, btnID)
-						btn.Children(func() {
-							ui.Text(cUI, lv.label).FontSize(14).FontWeight(500).TextColor(pal.Text)
-							if isAct {
-								icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
-							}
-						})
-						if btn.Clicked() {
+					}
+					ui.Row(cUI).FillWidth().Padding(6, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+						ui.Text(cUI, theme.Tr("思考强度", "Thinking")).FontSize(12).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+						if bui.SegmentedControl(cUI, "annotation-thinking-compact", &lvIdx, []bui.SegmentOption{
+							{ID: "annotation-thinking-low", Label: "Low"},
+							{ID: "annotation-thinking-medium", Label: "Medium"},
+							{ID: "annotation-thinking-high", Label: "High"},
+						}) {
 							c.mu.Lock()
 							next := c.annotCfg
-							next.Thinking = level
+							next.Thinking = levels[lvIdx]
 							_ = c.saveAnnotationConfigLocked(next)
 							c.mu.Unlock()
 						}
-					}
-				})
+					})
+				}
 			})
+
+			// 3. Right Thinking Level column in wide mode
+			if widePop {
+				ui.Column(cUI).Width(140).Shrink(0).FillHeight().
+					BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
+					ui.Row(cUI).FillWidth().Height(40).PaddingX(10).AlignItems(ui.Center).
+						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+						ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(14).TextColor(pal.TextSecondary)
+					})
+					ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
+						for _, lv := range []struct{ id, label string }{
+							{"low", "Low"},
+							{"medium", "Medium"},
+							{"high", "High"},
+						} {
+							level := lv.id
+							isAct := annotCfg.Thinking == level || (annotCfg.Thinking == "" && level == "high")
+							btnID := "annotation-thinking-" + level
+							btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(32).PaddingX(10).
+								AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
+								Cursor(ui.CursorPointer).Label(lv.label)
+							if isAct {
+								btn.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
+							} else {
+								if btn.Hovered() {
+									btn.Background(pal.Hover)
+								}
+								btn.Border(1, ui.Transparent)
+							}
+							bui.Probe(btn, btnID)
+							btn.Children(func() {
+								ui.Text(cUI, lv.label).FontSize(14).FontWeight(500).TextColor(pal.Text)
+								if isAct {
+									icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+								}
+							})
+							if btn.Clicked() {
+								c.mu.Lock()
+								next := c.annotCfg
+								next.Thinking = level
+								_ = c.saveAnnotationConfigLocked(next)
+								c.mu.Unlock()
+							}
+						}
+					})
+				})
+			}
 		})
 
 		if panel.OverlayShortcut(0, ui.KeyEscape) || ((!anchor.Valid() || !anchor.PressedInside()) && panel.PressedOutside()) {
