@@ -247,6 +247,17 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 			i++
 
 		case '[':
+			if i+2 < n && s[i+1] == '^' {
+				if closeFn := strings.IndexByte(s[i+2:], ']'); closeFn > 0 {
+					fnLabel := s[i+2 : i+2+closeFn]
+					afterFn := i + 2 + closeFn + 1
+					if !strings.ContainsAny(fnLabel, " \t\r\n[]") && (afterFn >= n || s[afterFn] != '(') {
+						toks = append(toks, &inlineTok{kind: tokText, text: s[i:afterFn]})
+						i = afterFn
+						continue
+					}
+				}
+			}
 			if label, dest, consumed, ok := tryParseLinkOrImage(s[i:], defs, false); ok {
 				toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
 				innerToks := scanInlineTokens(label, defs)
@@ -1394,7 +1405,7 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx 
 			} else {
 				out.WriteByte('>')
 			}
-		case '\\', '`', '*', '~':
+		case '\\', '`', '*', '~', '_':
 			out.WriteByte('\\')
 			out.WriteRune(r)
 		case '[', ']':
@@ -1410,7 +1421,7 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx 
 }
 
 func textContainsLinkSyntax(s string) bool {
-	return strings.ContainsRune(s, '[') && (strings.Contains(s, "](") || strings.Contains(s, "]["))
+	return strings.ContainsRune(s, '[') && (strings.Contains(s, "](") || strings.Contains(s, "][") || strings.Contains(s, "[^"))
 }
 
 func simplifyInlineEscapes(src string, expected []model.Span) string {
@@ -1418,14 +1429,33 @@ func simplifyInlineEscapes(src string, expected []model.Span) string {
 		return src
 	}
 	exp := coalesceSpans(expected)
-	for _, ch := range []string{"~", "*", "[", "]", "`", "<", "&", "\\"} {
-		esc := `\` + ch
-		if !strings.Contains(src, esc) {
-			continue
-		}
-		cand := strings.ReplaceAll(src, esc, ch)
-		if spansEqual(ParseInline(cand), exp) {
-			src = cand
+	for _, ch := range []byte{'~', '*', '_', '[', ']', '`', '<', '&', '\\'} {
+		pos := 0
+		for pos+1 < len(src) {
+			idx := strings.IndexByte(src[pos:], '\\')
+			if idx < 0 {
+				break
+			}
+			bs := pos + idx
+			if bs+1 >= len(src) {
+				break
+			}
+			// Count preceding backslashes so we only test an active escape backslash.
+			backRun := 0
+			for k := bs - 1; k >= 0 && src[k] == '\\'; k-- {
+				backRun++
+			}
+			if backRun%2 == 1 || src[bs+1] != ch {
+				pos = bs + 1
+				continue
+			}
+			cand := src[:bs] + src[bs+1:]
+			if spansEqual(ParseInline(cand), exp) {
+				src = cand
+				pos = bs + 1
+			} else {
+				pos = bs + 2
+			}
 		}
 	}
 	return src
@@ -1572,9 +1602,13 @@ func recoverEntityEscapedMarkdown(s string) string {
 }
 
 func normalizePastedLine(line string) string {
-	// Trim trailing spaces/tabs/fullwidth spaces on whitespace-only lines.
+	// Trim trailing spaces/tabs/fullwidth spaces on whitespace-only lines (unless TSV row with >=1 tab and non-tab cells? No, pure whitespace has no cell text).
 	if strings.Trim(line, " \t\u3000") == "" {
 		return ""
+	}
+	// Preserve tab-separated (TSV) columns verbatim so leading/trailing empty cells survive paste.
+	if strings.ContainsRune(line, '\t') {
+		return strings.TrimRight(line, " \u3000")
 	}
 	// Preserve intentional 2-space hard breaks, otherwise trim trailing horizontal whitespace.
 	hasHardBreak := strings.HasSuffix(line, "  ")

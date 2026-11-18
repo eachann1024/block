@@ -737,7 +737,17 @@ func parseImageLine(line string) (model.Block, bool) {
 	if !strings.HasPrefix(s, "![") || !strings.HasSuffix(s, ")") {
 		return model.Block{}, false
 	}
-	mid := strings.Index(s, "](")
+	mid := -1
+	for k := 2; k+1 < len(s); k++ {
+		if s[k] == '\\' {
+			k++
+			continue
+		}
+		if s[k] == ']' && s[k+1] == '(' {
+			mid = k
+			break
+		}
+	}
 	if mid < 0 {
 		return model.Block{}, false
 	}
@@ -1648,14 +1658,35 @@ func parseCustomContainerBlock(lines []string, defs map[string]refDef) (model.Bl
 	}, end, true
 }
 
-func parseBlockquoteBlock(lines []string, defs map[string]refDef) (model.Block, int, bool) {
+func blockquoteNeedsStructuredParse(inner []string) bool {
+	for i, line := range inner {
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" {
+			if i > 0 && i+1 < len(inner) {
+				return true
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, ">") || strings.HasPrefix(trimmed, "#") ||
+			strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") ||
+			strings.HasPrefix(trimmed, "|") || isThematicBreak(line) {
+			return true
+		}
+		if _, ok := classifyListMarker(line); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func parseBlockquoteBlocks(lines []string, defs map[string]refDef) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
-		return model.Block{}, 0, false
+		return nil, 0, false
 	}
 	first := trimLineEnding(lines[0])
 	trimmed := strings.TrimLeft(first, " ")
 	if len(first)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, ">") {
-		return model.Block{}, 0, false
+		return nil, 0, false
 	}
 	var inner []string
 	end := 0
@@ -1675,7 +1706,34 @@ func parseBlockquoteBlock(lines []string, defs map[string]refDef) (model.Block, 
 		end++
 	}
 	if end == 0 {
-		return model.Block{}, 0, false
+		return nil, 0, false
+	}
+	origSrc := strings.Join(lines[:end], "")
+	if blockquoteNeedsStructuredParse(inner) {
+		var innerBuf strings.Builder
+		for _, l := range inner {
+			innerBuf.WriteString(l)
+			innerBuf.WriteByte('\n')
+		}
+		children := swallowSeparators(parseBlocksWithDefs(innerBuf.String(), defs, nil))
+		var out []model.Block
+		for _, ch := range children {
+			if isBlankBlock(&ch) && len(children) > 1 {
+				continue
+			}
+			ch.QuoteDepth++
+			if ch.Kind == model.BlockParagraph && ch.Indent == 0 {
+				ch.Kind = model.BlockQuote
+			}
+			ch.CleanSource = ""
+			out = append(out, ch)
+		}
+		if len(out) == 1 {
+			out[0].CleanSource = origSrc
+		}
+		if len(out) > 0 {
+			return out, end, true
+		}
 	}
 	var spans []model.Span
 	for i, body := range inner {
@@ -1686,12 +1744,13 @@ func parseBlockquoteBlock(lines []string, defs map[string]refDef) (model.Block, 
 			spans = append(spans, parseInlineWithDefs(body, defs)...)
 		}
 	}
-	return model.Block{
+	return []model.Block{{
 		ID:          model.NewBlockID(),
 		Kind:        model.BlockQuote,
+		QuoteDepth:  1,
 		Spans:       coalesceSpans(spans),
-		CleanSource: strings.Join(lines[:end], ""),
-	}, end, true
+		CleanSource: origSrc,
+	}}, end, true
 }
 
 func startsBlockInList(line string, nextRaw string, tail []string) bool {
@@ -2003,8 +2062,8 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			i += count
 			continue
 		}
-		if b, count, ok := parseBlockquoteBlock(lines[i:], defs); ok {
-			result = append(result, b)
+		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs); ok {
+			result = append(result, qBlocks...)
 			i += count
 			continue
 		}
@@ -2017,6 +2076,13 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			result = append(result, b)
 			i += count
 			continue
+		}
+		if lowerTrim := strings.ToLower(strings.TrimLeft(line, " \t")); strings.HasPrefix(lowerTrim, "<ul") || strings.HasPrefix(lowerTrim, "<ol") {
+			if listBlocks, count, ok := parseHTMLListLines(lines[i:], defs); ok {
+				result = append(result, listBlocks...)
+				i += count
+				continue
+			}
 		}
 		if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " \t")), "<table") {
 			count := htmlTableLineCount(lines[i:])
@@ -2171,7 +2237,8 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 			i++
 			continue
 		}
-		if indentCols <= 3 && i+1 < len(lines) {
+		_, _, _, isUnusedRefDef := parseRefDefLines(lines[i:])
+		if !isUnusedRefDef && indentCols <= 3 && i+1 < len(lines) {
 			nextLine := trimLineEnding(lines[i+1])
 			nextBody := strings.TrimLeft(nextLine, " ")
 			if len(nextLine)-len(nextBody) <= 3 {
@@ -2210,6 +2277,172 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 		i++
 	}
 	return result
+}
+
+func parseHTMLListLines(lines []string, defs map[string]refDef) ([]model.Block, int, bool) {
+	if len(lines) == 0 {
+		return nil, 0, false
+	}
+	depth := 0
+	lineCount := 0
+	for idx, l := range lines {
+		pos := 0
+		for pos < len(l) {
+			lt := strings.IndexByte(l[pos:], '<')
+			if lt < 0 {
+				break
+			}
+			pos += lt
+			name, _, closed, empty, consumed, ok := parseTagRaw(l[pos:])
+			if !ok {
+				pos++
+				continue
+			}
+			if (name == "ul" || name == "ol") && !empty {
+				if closed {
+					depth--
+					if depth == 0 {
+						lineCount = idx + 1
+						break
+					}
+				} else {
+					depth++
+				}
+			}
+			pos += consumed
+		}
+		if lineCount > 0 {
+			break
+		}
+	}
+	if lineCount == 0 {
+		return nil, 0, false
+	}
+	src := strings.Join(lines[:lineCount], "")
+	type listFrame struct {
+		ordered bool
+		nextNum int
+	}
+	var stack []listFrame
+	var out []model.Block
+	var curBuf strings.Builder
+	inLI := false
+	liTodo := false
+	liChecked := false
+
+	flushLI := func() {
+		if !inLI || len(stack) == 0 {
+			curBuf.Reset()
+			return
+		}
+		raw := strings.TrimSpace(curBuf.String())
+		curBuf.Reset()
+		if raw == "" && !liTodo {
+			return
+		}
+		top := &stack[len(stack)-1]
+		indent := (len(stack) - 1) * 2
+		kind := model.BlockBullet
+		listIdx := 0
+		if liTodo {
+			kind = model.BlockTodo
+		} else if top.ordered {
+			kind = model.BlockNumbered
+			listIdx = top.nextNum
+			top.nextNum++
+		}
+		out = append(out, model.Block{
+			ID:        model.NewBlockID(),
+			Kind:      kind,
+			Indent:    indent,
+			ListIndex: listIdx,
+			Checked:   liChecked,
+			Spans:     parseInlineWithDefs(raw, defs),
+		})
+		liTodo = false
+		liChecked = false
+	}
+
+	pos := 0
+	for pos < len(src) {
+		lt := strings.IndexByte(src[pos:], '<')
+		if lt < 0 {
+			if inLI {
+				curBuf.WriteString(src[pos:])
+			}
+			break
+		}
+		if inLI && lt > 0 {
+			curBuf.WriteString(src[pos : pos+lt])
+		}
+		pos += lt
+		name, attrs, closed, empty, consumed, ok := parseTagRaw(src[pos:])
+		if !ok {
+			if inLI {
+				curBuf.WriteByte(src[pos])
+			}
+			pos++
+			continue
+		}
+		switch name {
+		case "ul", "ol":
+			if !closed && !empty {
+				flushLI()
+				inLI = false
+				startNum := 1
+				if name == "ol" {
+					if sv := strings.TrimSpace(attrVal(attrs, "start")); sv != "" {
+						if n, err := strconv.Atoi(sv); err == nil && n > 0 {
+							startNum = n
+						}
+					}
+				}
+				stack = append(stack, listFrame{ordered: name == "ol", nextNum: startNum})
+			} else if closed && len(stack) > 0 {
+				flushLI()
+				inLI = false
+				stack = stack[:len(stack)-1]
+			}
+		case "li":
+			if !closed && !empty {
+				flushLI()
+				inLI = true
+				liTodo = false
+				liChecked = false
+			} else if closed {
+				flushLI()
+				inLI = false
+			}
+		case "input":
+			if inLI && !closed && strings.EqualFold(strings.TrimSpace(attrVal(attrs, "type")), "checkbox") {
+				liTodo = true
+				liChecked = false
+				for _, kv := range attrs {
+					if kv[0] == "checked" {
+						liChecked = true
+						break
+					}
+				}
+			}
+		case "p", "div":
+			if inLI && closed && curBuf.Len() > 0 {
+				curBuf.WriteByte('\n')
+			}
+		default:
+			if inLI {
+				curBuf.WriteString(src[pos : pos+consumed])
+			}
+		}
+		pos += consumed
+	}
+	flushLI()
+	if len(out) == 0 {
+		return nil, 0, false
+	}
+	if len(out) == 1 {
+		out[0].CleanSource = src
+	}
+	return out, lineCount, true
 }
 
 func stripPreTags(s string) string {

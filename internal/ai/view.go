@@ -44,12 +44,27 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 	if fullscreen {
 		panel.FillWidth().Grow(1)
 	} else {
-		panel.Width(panelW).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline)
+		panel.Width(panelW).Shrink(0)
+	}
+	if b := panel.Bounds(); b.W > 0 {
+		c.mu.Lock()
+		c.panelBox = b
+		c.mu.Unlock()
 	}
 	bui.Probe(panel, "ai-chat-panel")
 
+	c.mu.RLock()
+	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
+	anyOverlayOpen := c.historyOpen || c.deckOpen
+	c.mu.RUnlock()
+	if !anyOverlayOpen && pickerOpen && panel.Shortcut(0, ui.KeyEscape) {
+		c.mu.Lock()
+		c.pickerDismissed = true
+		c.mu.Unlock()
+	}
+
 	panel.Children(func() {
-		c.renderPanelHeader(cUI, pal, fullscreen, blocked)
+		c.renderPanelHeader(cUI, pal, fullscreen, blocked, panelW)
 
 		if blocked {
 			c.renderBlockedCover(cUI, pal, fullscreen, provCfg.Enabled)
@@ -60,11 +75,11 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 		c.renderTurnError(cUI, pal, fullscreen)
 		c.renderDeferredDraftBanner(cUI, pal, fullscreen)
 		c.renderPicker(cUI, pal, fullscreen)
-		c.renderComposerArea(cUI, pal, fullscreen)
+		c.renderComposerArea(cUI, pal, fullscreen, panelW)
 	})
 }
 
-func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fullscreen bool, blocked bool) {
+func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fullscreen bool, blocked bool, panelW float32) {
 	c.mu.RLock()
 	title := theme.Tr("新会话", "New Chat")
 	if conv := c.findConvLocked(c.currentID); conv != nil && strings.TrimSpace(conv.Title) != "" {
@@ -115,11 +130,17 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 				Active:  histOpen,
 			})
 			histAnchor = histBtn
+			if b := histBtn.Bounds(); b.W > 0 {
+				c.mu.Lock()
+				c.histTriggerBox = b
+				c.mu.Unlock()
+			}
 			if histBtn.Clicked() {
 				c.mu.Lock()
 				c.historyOpen = !c.historyOpen
 				if c.historyOpen {
 					c.deckOpen = false
+					c.pickerDismissed = true
 				}
 				c.mu.Unlock()
 			}
@@ -136,13 +157,15 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 	})
 
 	if !blocked && histAnchor.Valid() {
-		c.renderHistoryPopover(cUI, pal, histAnchor)
+		c.renderHistoryPopover(cUI, pal, histAnchor, fullscreen, panelW)
 	}
 }
 
-func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, anchor ui.Element) {
+func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, anchor ui.Element, fullscreen bool, panelW float32) {
 	c.mu.RLock()
 	open := c.historyOpen
+	trigger := c.histTriggerBox
+	panelBox := c.panelBox
 	convs := make([]model.Conversation, 0, len(c.convs))
 	for _, conv := range c.convs {
 		if len(conv.Messages) > 0 {
@@ -156,66 +179,135 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 		return
 	}
 
-	ui.PopoverBase(cUI.Key("ai-history-popover"), anchor, &open, func(panel ui.Element) {
-		panel.Width(300).MaxHeight(340).Padding(6).Radius(theme.RadiusSurface).
-			Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16)).Column().Gap(2)
-		bui.Probe(panel, "ai-history-list")
+	winW, winH := cUI.Size()
+	if winW <= 0 {
+		winW = 1100
+	}
+	if winH <= 0 {
+		winH = 760
+	}
+	if panelBox.W <= 0 {
+		px := max(winW-panelW, 0)
+		if fullscreen {
+			px = 0
+			panelW = winW
+		}
+		panelBox = ui.Rect{X: px, Y: 0, W: panelW, H: winH}
+	}
+	if trigger.W <= 0 {
+		trigger = ui.Rect{X: max(panelBox.X+panelBox.W-42, 8), Y: panelBox.Y + 13, W: 26, H: 26}
+	}
 
-		if len(convs) == 0 {
-			ui.Text(cUI, theme.Tr("暂无历史会话", "No chat history")).
-				FontSize(14).TextColor(pal.TextSecondary).Padding(12)
-			return
+	menuRoom := panelW
+	if fullscreen {
+		menuRoom = winW
+	}
+	menuW := min(max(menuRoom-32, 220), 320)
+	menuW = min(menuW, max(winW-16, 1))
+	capH := float32(304)
+	if fullscreen {
+		capH = 420
+	}
+	historyMaxH := min(max(winH-140, 160), capH)
+	spec := bui.PlaceBelow(trigger).WithAlignX(bui.AlignX{Kind: bui.AlignRight}).WithGap(6).WithMargin(8)
+	maxH := bui.MaxHeightForSpec(spec, winW, winH, historyMaxH)
+	estH := float32(44)
+	if len(convs) > 0 {
+		estH = min(float32(len(convs))*32+float32(max(len(convs)-1, 0))*2+theme.MenuPadding*2+2, maxH)
+	}
+	x, y := bui.ResolveOrigin(spec, menuW, estH, winW, winH)
+
+	scrimAlpha := float32(0.08)
+	if fullscreen {
+		if theme.IsDark() {
+			scrimAlpha = 0.46
+		} else {
+			scrimAlpha = 0.28
+		}
+	} else if theme.IsDark() {
+		scrimAlpha = 0.28
+	}
+
+	ui.Overlay(cUI, func() {
+		scrim := ui.Box(cUI.Key("ai-history-scrim")).Absolute().
+			Left(panelBox.X).Top(panelBox.Y + 52).Width(panelBox.W).Height(max(panelBox.H-52, 0)).
+			Background(ui.RGBA(0, 0, 0, scrimAlpha)).
+			Transition(ui.ElementTransition{
+				Duration: time.Duration(theme.MotionMs) * time.Millisecond,
+				Ease:     ui.EaseOut,
+				Enter:    &ui.Motion{Opacity: 0.01},
+				Exit:     &ui.Motion{},
+			})
+		if scrim.Clicked() {
+			c.mu.Lock()
+			c.historyOpen = false
+			c.mu.Unlock()
 		}
 
-		ui.Scroll(cUI).FillWidth().MaxHeight(320).Children(func() {
-			ui.Column(cUI).FillWidth().Gap(2).Children(func() {
-				for _, conv := range convs {
-					convID := conv.ID
-					active := convID == curID
-					rowID := fmt.Sprintf("conv-%d", convID)
-					row := ui.Row(cUI.Key(rowID)).FillWidth().Height(34).PaddingX(8).Gap(8).
-						AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent)
-					if active {
-						row.Background(pal.Selected)
-					} else if row.Hovered() {
-						row.Background(pal.Hover)
+		panel := ui.Column(cUI.Key("ai-history-popover")).Absolute().Left(x).Top(y).
+			Width(menuW).MaxHeight(maxH).Padding(theme.MenuPadding).Gap(2).
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder).
+			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16)).Clip().
+			Transition(bui.PopupTransition())
+		bui.Probe(panel, "ai-history-list")
+
+		panel.Children(func() {
+			if len(convs) == 0 {
+				ui.Text(cUI, theme.Tr("暂无历史会话", "No chat history")).
+					FontSize(14).TextColor(pal.TextSecondary).Padding(12)
+				return
+			}
+
+			ui.Scroll(cUI.Key("ai-history-scroll")).TrackScroll(&c.historyScroll).
+				FillWidth().MaxHeight(max(maxH-theme.MenuPadding*2, 48)).Children(func() {
+				ui.Column(cUI).FillWidth().Gap(2).Children(func() {
+					for _, conv := range convs {
+						convID := conv.ID
+						active := convID == curID
+						rowID := fmt.Sprintf("conv-%d", convID)
+						row := ui.Row(cUI.Key(rowID)).FillWidth().Height(32).PaddingX(8).Gap(8).
+							AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent)
+						if active {
+							row.Background(pal.Selected).Border(1, pal.Accent)
+						} else if row.Hovered() {
+							row.Background(pal.Hover)
+						}
+						bui.Probe(row, rowID)
+						row.Children(func() {
+							selBtn := ui.ButtonBase(cUI.Key("sel-" + rowID)).Grow(1).MinWidth(0).FillHeight().
+								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(conv.Title)
+							selBtn.Children(func() {
+								ui.Text(cUI, conv.Title).FontSize(14).TextColor(pal.Text).SingleLine().Ellipsis("…")
+							})
+							if selBtn.Clicked() {
+								c.SelectConversation(convID)
+							}
+
+							ui.Text(cUI, backendLabel(conv.Backend)).FontSize(13).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+
+							delID := fmt.Sprintf("conv-del-%d", convID)
+							delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
+								ID:       delID,
+								Label:    theme.Tr("删除会话 ", "Delete ") + conv.Title,
+								Size:     22,
+								IconSize: 14,
+								Danger:   true,
+							})
+							if delBtn.Clicked() {
+								c.deleteConversation(convID)
+							}
+						})
 					}
-					bui.Probe(row, rowID)
-					row.Children(func() {
-						selBtn := ui.ButtonBase(cUI.Key("sel-"+rowID)).Grow(1).FillHeight().
-							AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(conv.Title)
-						selBtn.Children(func() {
-							ui.Text(cUI, conv.Title).FontSize(14).TextColor(pal.Text).SingleLine()
-						})
-						if selBtn.Clicked() {
-							c.SelectConversation(convID)
-						}
-
-						ui.Text(cUI, backendLabel(conv.Backend)).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
-
-						delID := fmt.Sprintf("conv-del-%d", convID)
-						delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
-							ID:       delID,
-							Label:    theme.Tr("删除会话 ", "Delete ") + conv.Title,
-							Size:     24,
-							IconSize: 14,
-							Danger:   true,
-						})
-						if delBtn.Clicked() {
-							c.deleteConversation(convID)
-						}
-					})
-				}
+				})
 			})
 		})
-	})
 
-	if !open {
-		c.mu.Lock()
-		c.historyOpen = false
-		c.mu.Unlock()
-	}
+		if panel.OverlayShortcut(0, ui.KeyEscape) || (!anchor.PressedInside() && panel.PressedOutside()) {
+			c.mu.Lock()
+			c.historyOpen = false
+			c.mu.Unlock()
+		}
+	})
 }
 
 func (c *Controller) deleteConversation(id uint64) {
@@ -561,7 +653,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 		headline = theme.Tr("已停止", "Stopped")
 	}
 
-	card := ui.Column(cUI.Key("ai-process-card-" + turnKey)).FillWidth().Padding(8, 10).Gap(6).
+	card := ui.Column(cUI.Key("ai-process-card-"+turnKey)).FillWidth().Padding(8, 10).Gap(6).
 		Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.Hairline)
 	bui.Probe(card, "ai-process-card")
 
@@ -698,9 +790,9 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 					btn.Background(pal.Hover)
 				}
 				btn.Children(func() {
-					icons.Draw(cUI, icons.Note, 15, pal.DuoIconColors(pal.Text))
-					ui.Text(cUI, src.Title+".md").FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).SingleLine()
-					icons.Draw(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(cUI, icons.Note, theme.IconRow, pal.DuoIconColors(pal.Text))
+					ui.Text(cUI, src.Title+".md").FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
+					icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 				})
 				if btn.Clicked() && c.host != nil {
 					_ = c.host.OpenNote(src.Path, 0)
@@ -710,10 +802,48 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 	})
 }
 
+func isDiffTableRowLine(trimmed string) bool {
+	return strings.HasPrefix(trimmed, "|") && strings.Count(trimmed, "|") >= 2
+}
+
+func isDiffTableScaffolding(trimmed string) bool {
+	if !strings.HasPrefix(trimmed, "|") {
+		return false
+	}
+	inner := strings.Trim(trimmed, "|")
+	if strings.TrimSpace(inner) == "" {
+		return false
+	}
+	for _, cell := range strings.Split(inner, "|") {
+		t := strings.TrimSpace(cell)
+		t = strings.TrimPrefix(t, ":")
+		t = strings.TrimSuffix(t, ":")
+		if t == "" || strings.Trim(t, "-") != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func parseDiffTableCells(trimmed string) []string {
+	s := strings.TrimSpace(trimmed)
+	if !strings.HasPrefix(s, "|") {
+		return nil
+	}
+	s = strings.TrimPrefix(s, "|")
+	s = strings.TrimSuffix(s, "|")
+	parts := strings.Split(s, "|")
+	out := make([]string, len(parts))
+	for i, p := range parts {
+		out[i] = strings.TrimSpace(p)
+	}
+	return out
+}
+
 func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID uint64, msgIdx int, plan *model.BatchPlan) {
 	cardID := fmt.Sprintf("plan-op-%d-0", msgIdx)
-	card := ui.Column(cUI.Key(cardID)).FillWidth().Radius(theme.RadiusCard).
-		Background(pal.Shell).Border(1, pal.BtnBorder)
+	card := ui.Column(cUI.Key(cardID)).FillWidth().Radius(12).Clip().
+		Background(pal.Paper).Border(1, pal.Hairline)
 	bui.Probe(card, "ai-plan-card")
 
 	pending := plan.Status == "pending"
@@ -741,21 +871,22 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 	}
 
 	card.Children(func() {
-		topBtn := ui.ButtonBase(cUI.Key("plan-open-"+cardID)).FillWidth().Padding(12).Gap(6).
+		topBtn := ui.ButtonBase(cUI.Key("plan-open-"+cardID)).FillWidth().Padding(10, 14).Gap(6).
+			Radius(11, 11, 0, 0).Background(pal.Shell).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			Column().AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(title)
 		bui.Probe(topBtn, cardID)
 		topBtn.Children(func() {
 			ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				icons.Draw(cUI, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent))
-				ui.Text(cUI, title).FontSize(14).FontWeight(600).TextColor(pal.Text).Grow(1).SingleLine()
+				ui.Text(cUI, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).SingleLine()
 				if isCreate && pending {
-					ui.Box(cUI).Padding(2, 6).Radius(5).Background(pal.Selected).Children(func() {
-						ui.Text(cUI, theme.Tr("新建预览", "Create preview")).FontSize(14).TextColor(pal.Accent)
+					ui.Box(cUI).Padding(2, 7).Radius(5).Background(pal.Selected).Children(func() {
+						ui.Text(cUI, theme.Tr("新建预览", "Create preview")).FontSize(theme.FontSmall).TextColor(pal.Accent)
 					})
 				}
 			})
 			if plan.Summary != "" {
-				ui.Text(cUI, plan.Summary).FontSize(14).TextColor(pal.TextSecondary)
+				ui.Text(cUI, plan.Summary).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			}
 		})
 		if topBtn.Clicked() {
@@ -784,47 +915,140 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 
 		if preview != nil && pending {
 			lines := c.PlanDiffLines(convID, msgIdx, preview.Page, preview.BeforeText, preview.AfterText)
-			previewBox := ui.Column(cUI.Key("ai-plan-preview-"+cardID)).FillWidth().Padding(8, 12).Gap(4).
-				Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
-			if preview.IsCreate {
-				bui.Probe(previewBox, "ai-create-preview")
-			} else {
-				bui.Probe(previewBox, "ai-editor-plan-card")
-			}
-			previewBox.Children(func() {
-				for _, dl := range lines {
-					if dl.Change == 0 {
-						continue
-					}
-					rowBg := pal.DiffAddBG
-					rowFg := pal.DiffAddFG
-					prefix := "+ "
-					if dl.Change < 0 {
-						rowBg = pal.DiffDelBG
-						rowFg = pal.DiffDelFG
-						prefix = "- "
-					}
-					if !dl.Included {
-						rowBg = pal.Hover
-						rowFg = pal.TextSecondary
-					}
-					lineID := fmt.Sprintf("ai-plan-diff-line-%d", dl.Index)
-					rowBtn := ui.ButtonBase(cUI.Key(lineID)).FillWidth().Padding(3, 8).Radius(4).
-						Background(rowBg).Cursor(ui.CursorPointer).Label(prefix + strings.TrimSpace(dl.Text))
-					bui.Probe(rowBtn, lineID)
-					rowBtn.Children(func() {
-						ui.Text(cUI, prefix+strings.TrimRight(dl.Text, "\r\n")).FontSize(14).TextColor(rowFg)
-					})
-					if rowBtn.Clicked() {
-						c.TogglePlanDiffLine(convID, msgIdx, preview.Page, dl.SelectionIndex)
-					}
+			var visible []PlanDiffLine
+			for _, dl := range lines {
+				if isDiffTableScaffolding(strings.TrimSpace(dl.Text)) {
+					continue
 				}
+				visible = append(visible, dl)
+			}
+			previewWrap := ui.Column(cUI.Key("ai-plan-preview-" + cardID)).FillWidth().Padding(14).
+				Background(pal.Paper)
+			if preview.IsCreate {
+				bui.Probe(previewWrap, "ai-create-preview")
+			} else {
+				bui.Probe(previewWrap, "ai-editor-plan-card")
+			}
+			headerBG := ui.Hex("#f5f3ed")
+			if theme.IsDark() {
+				headerBG = ui.RGBA(255, 255, 255, 0.03)
+			}
+			previewWrap.Children(func() {
+				listBox := ui.Column(cUI.Key("ai-plan-diff-list-"+cardID)).FillWidth().Radius(10).
+					Border(1, pal.Hairline).Background(pal.Paper).Clip()
+				listBox.Children(func() {
+					totalVis := len(visible)
+					for pos, dl := range visible {
+						trimmed := strings.TrimSpace(dl.Text)
+						isFirst := pos == 0
+						isLast := pos+1 == totalVis
+						isTable := isDiffTableRowLine(trimmed)
+						nextIsTable := pos+1 < totalVis && isDiffTableRowLine(strings.TrimSpace(visible[pos+1].Text))
+						isHeader := (dl.Index+1 < len(lines) && isDiffTableScaffolding(strings.TrimSpace(lines[dl.Index+1].Text))) ||
+							strings.Contains(strings.ToLower(trimmed), "<th")
+
+						rowBg := pal.Paper
+						rowFg := pal.Text
+						gutterSym := ""
+						gutterFg := pal.TextSecondary
+						switch {
+						case !dl.Included:
+							rowBg = pal.Paper
+							rowFg = pal.TextSecondary
+							if dl.Change < 0 {
+								gutterSym = "−"
+							} else if dl.Change > 0 {
+								gutterSym = "+"
+							}
+						case dl.Change < 0:
+							rowBg = pal.DiffDelBG
+							rowFg = pal.DiffDelFG
+							gutterSym = "−"
+							gutterFg = pal.DiffDelFG
+						case dl.Change > 0:
+							rowBg = pal.DiffAddBG
+							rowFg = pal.DiffAddFG
+							gutterSym = "+"
+							gutterFg = pal.DiffAddFG
+						case isHeader:
+							rowBg = headerBG
+						}
+						showBottomBorder := !isLast && (isTable || nextIsTable || visible[pos+1].Change != dl.Change)
+
+						lineID := fmt.Sprintf("ai-plan-diff-line-%d", dl.Index)
+						var tl, tr, br, bl float32
+						if isFirst {
+							tl, tr = 9, 9
+						}
+						if isLast {
+							br, bl = 9, 9
+						}
+						if dl.Change != 0 {
+							rowBtn := ui.ButtonBase(cUI.Key(lineID)).FillWidth().Padding(4, 10).Gap(8).
+								AlignItems(ui.Center).Radius(tl, tr, br, bl).Background(rowBg).
+								BorderWidth(0, 0, boolToBorder(showBottomBorder), 0).BorderColor(pal.Hairline).
+								Cursor(ui.CursorPointer).Label(gutterSym + " " + trimmed)
+							bui.Probe(rowBtn, lineID)
+							selIdx := dl.SelectionIndex
+							rowBtn.Children(func() {
+								ui.Text(cUI, gutterSym).Width(12).FontSize(theme.FontBody).TextColor(gutterFg).SingleLine()
+								if isTable {
+									cells := parseDiffTableCells(trimmed)
+									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
+										for ci, cellTxt := range cells {
+											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
+												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
+												Children(func() {
+													w := theme.WeightRegular
+													if isHeader {
+														w = theme.WeightControl
+													}
+													ui.Text(cUI, cellTxt).FontSize(theme.FontBody).FontWeight(w).TextColor(rowFg)
+												})
+										}
+									})
+								} else {
+									ui.Text(cUI, strings.TrimRight(dl.Text, "\r\n")).FontSize(theme.FontBody).TextColor(rowFg).Grow(1)
+								}
+							})
+							if rowBtn.Clicked() {
+								c.TogglePlanDiffLine(convID, msgIdx, preview.Page, selIdx)
+							}
+						} else {
+							ctxRow := ui.Row(cUI.Key(lineID)).FillWidth().Padding(4, 10).Gap(8).
+								AlignItems(ui.Center).Radius(tl, tr, br, bl).Background(rowBg).
+								BorderWidth(0, 0, boolToBorder(showBottomBorder), 0).BorderColor(pal.Hairline)
+							ctxRow.Children(func() {
+								ui.Box(cUI).Width(12).Shrink(0)
+								if isTable {
+									cells := parseDiffTableCells(trimmed)
+									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
+										for ci, cellTxt := range cells {
+											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
+												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
+												Children(func() {
+													w := theme.WeightRegular
+													if isHeader {
+														w = theme.WeightControl
+													}
+													ui.Text(cUI, cellTxt).FontSize(theme.FontBody).FontWeight(w).TextColor(pal.Text)
+												})
+										}
+									})
+								} else {
+									ui.Text(cUI, strings.TrimRight(dl.Text, "\r\n")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1)
+								}
+							})
+						}
+					}
+				})
 			})
 		}
 
-		ui.Row(cUI).FillWidth().Padding(10, 12).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+		ui.Row(cUI).FillWidth().Padding(10, 14).Gap(8).Radius(0, 0, 11, 11).Background(pal.Shell).
+			AlignItems(ui.Center).Justify(ui.SpaceBetween).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-			ui.Text(cUI, badge).FontSize(14).FontWeight(500).TextColor(badgeCol)
+			ui.Text(cUI, badge).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(badgeCol)
 			ui.Row(cUI).Gap(8).Children(func() {
 				switch plan.Status {
 				case "pending":
@@ -928,7 +1152,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 				row := ui.ButtonBase(cUI.Key(optID+"-"+qKey)).FillWidth().MinHeight(32).Padding(6, 8).Gap(8).
 					AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(opt.Label)
 				if on {
-					row.Background(pal.Selected)
+					row.Background(pal.Selected).Border(1, pal.Accent)
 				} else if row.Hovered() {
 					row.Background(pal.Hover)
 				}
@@ -1086,7 +1310,9 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 			selected := choice == dec
 			row := ui.ButtonBase(cUI.Key(id+"-"+aKey)).FillWidth().MinHeight(30).Padding(5, 8).Gap(8).
 				AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(label)
-			if row.Hovered() {
+			if selected {
+				row.Background(pal.Selected).Border(1, pal.Accent)
+			} else if row.Hovered() {
 				row.Background(pal.Hover)
 			}
 			bui.Probe(row, id)
@@ -1402,6 +1628,12 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 	loading := c.pickerLoading
 	c.mu.RUnlock()
 
+	_, winH := cUI.Size()
+	if winH <= 0 {
+		winH = 760
+	}
+	pickerMaxH := min(max(winH-260, 80), 200)
+
 	isRef := strings.HasPrefix(token, "@")
 	probeID := "ai-skill-picker"
 	headerTitle := theme.Tr("指令与技能", "Commands & Skills")
@@ -1412,14 +1644,15 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 		emptyMsg = theme.Tr("没有匹配的文件", "No matching files")
 	}
 
-	wrap := ui.Column(cUI.Key(probeID)).FillWidth().PaddingX(16)
+	wrap := ui.Column(cUI.Key("ai-picker-wrap")).FillWidth().Padding(0, 16, 4, 16).
+		Transition(bui.PopupTransition())
 	if fullscreen {
 		wrap.MaxWidth(720).Margin(0, ui.Auto)
 	}
 	wrap.Children(func() {
-		card := ui.Column(cUI).FillWidth().MaxHeight(216).Radius(theme.RadiusSurface).
-			Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.12))
+		card := ui.Column(cUI.Key(probeID)).FillWidth().MaxHeight(pickerMaxH).Radius(theme.RadiusSurface).
+			Background(pal.Menu).Border(1, pal.MenuBorder).
+			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.12)).Clip()
 		bui.Probe(card, probeID)
 		card.Children(func() {
 			ui.Text(cUI, headerTitle).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).Padding(8, 12, 4, 12)
@@ -1432,7 +1665,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				return
 			}
 
-			listH := min(float32(len(items))*36, 180)
+			listH := min(float32(len(items))*36, max(pickerMaxH-32, 36))
 			c.pickerList.Key = func(i int) any {
 				return fmt.Sprintf("%d:%s", items[i].kind, items[i].value)
 			}
@@ -1455,13 +1688,13 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 					case pickPage:
 						ic = icons.Note
 					}
-					icons.Draw(cUI, ic, 16, pal.MonoIconColors(pal.TextSecondary))
-					ui.Text(cUI, it.label).FontSize(14).TextColor(pal.Text).Grow(1).SingleLine()
+					icons.Draw(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+					ui.Text(cUI, it.label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 					if it.hint != "" {
-						ui.Text(cUI, it.hint).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+						ui.Text(cUI, it.hint).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					}
 					if it.kind == pickFolder {
-						icons.Draw(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary))
+						icons.Draw(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 					}
 				})
 				if row.Clicked() {
@@ -1479,7 +1712,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 	})
 }
 
-func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
+func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, fullscreen bool, panelW float32) {
 	c.mu.RLock()
 	draft := c.draftText
 	refs := append([]string(nil), c.draftRefs...)
@@ -1488,6 +1721,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	busy := c.streaming || c.hasPendingQuestionLocked()
 	hasConv := c.currentID != 0
 	selectEnd := c.composerSelectEnd
+	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
 	c.mu.RUnlock()
 
 	ph := theme.Tr("向 AI 提问，/ 调用技能，@ 引用文件…", "Ask AI, / for skills, @ to reference files…")
@@ -1495,7 +1729,11 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 		ph = theme.Tr("继续追问…", "Ask a follow-up…")
 	}
 
-	outer := ui.Column(cUI.Key("ai-composer-outer")).FillWidth().Padding(10, 16, 16, 16).
+	padTop := float32(12)
+	if pickerOpen {
+		padTop = 0
+	}
+	outer := ui.Column(cUI.Key("ai-composer-outer")).FillWidth().Padding(padTop, 16, 16, 16).
 		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
 	if fullscreen {
 		outer.MaxWidth(720).Margin(0, ui.Auto)
@@ -1519,7 +1757,8 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 
 			composerKey := fmt.Sprintf("ai-composer-%d", epoch)
 			inputEl := ui.TextAreaBase(cUI.Key(composerKey), &draft).
-				FillWidth().Lines(2, 6).FontSize(14).TextColor(pal.Text).
+				FillWidth().Lines(1, 6).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+				CaretColor(pal.Accent).CaretWidth(2).
 				Placeholder(ph).Bind(&c.composerHandle).
 				Label(theme.Tr("AI 输入框", "AI composer"))
 			bui.Probe(inputEl, "ai-composer")
@@ -1649,7 +1888,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	})
 
 	if deckAnchor.Valid() {
-		c.renderDeckPopover(cUI, pal, deckAnchor)
+		c.renderDeckPopover(cUI, pal, deckAnchor, fullscreen, panelW)
 	}
 }
 
@@ -1662,8 +1901,8 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 	}
 	ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(6).
 		Background(pal.Paper).Border(1, pal.BtnBorder).Children(func() {
-		icons.Draw(cUI, ic, 14, pal.MonoIconColors(pal.Accent))
-		ui.Text(cUI, label).FontSize(14).TextColor(pal.Text)
+		icons.Draw(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent))
+		ui.Text(cUI, label).FontSize(theme.FontBody).TextColor(pal.Text)
 		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:       id + "-x",
 			Label:    theme.Tr("移除 ", "Remove ") + label,
@@ -1704,6 +1943,11 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	} else {
 		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
 	}
+	if b := btn.Bounds(); b.W > 0 {
+		c.mu.Lock()
+		c.deckTriggerBox = b
+		c.mu.Unlock()
+	}
 	bui.Probe(btn, "ai-deck-trigger")
 
 	btn.Children(func() {
@@ -1721,6 +1965,7 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 		c.deckOpen = !c.deckOpen
 		if c.deckOpen {
 			c.historyOpen = false
+			c.pickerDismissed = true
 			c.deckSearch = ""
 		}
 		c.mu.Unlock()
@@ -1732,9 +1977,11 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	return btn
 }
 
-func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, anchor ui.Element) {
+func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, anchor ui.Element, fullscreen bool, panelW float32) {
 	c.mu.RLock()
 	open := c.deckOpen
+	trigger := c.deckTriggerBox
+	panelBox := c.panelBox
 	visible := c.visibleBackendsLocked()
 	selected := c.selectedBackendLocked()
 	search := c.deckSearch
@@ -1749,144 +1996,325 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 		return
 	}
 
-	ui.PopoverBase(cUI.Key("ai-deck-popover"), anchor, &open, func(panel ui.Element) {
-		panel.Width(380).MaxHeight(420).Padding(8).Gap(8).Radius(theme.RadiusSurface).
-			Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.18)).Column()
+	winW, winH := cUI.Size()
+	if winW <= 0 {
+		winW = 1100
+	}
+	if winH <= 0 {
+		winH = 760
+	}
+	if panelBox.W <= 0 {
+		px := max(winW-panelW, 0)
+		if fullscreen {
+			px = 0
+			panelW = winW
+		}
+		panelBox = ui.Rect{X: px, Y: 0, W: panelW, H: winH}
+	}
+	if trigger.W <= 0 {
+		trigger = ui.Rect{X: max(panelBox.X+16, 16), Y: max(winH-54, 80), W: 140, H: 30}
+	}
+
+	wide := fullscreen || panelW >= 500
+	var targetW float32
+	if fullscreen {
+		targetW = 688
+	} else if wide {
+		targetW = min(max(panelW-24, 460), 640)
+	} else {
+		targetW = min(max(panelW-24, 308), 420)
+	}
+	popW := min(targetW, max(winW-16, 1))
+
+	spec := bui.PlaceAbove(trigger).WithAlignX(bui.AlignX{Kind: bui.AlignPinLeft}).WithGap(4).WithMargin(8)
+	maxH := bui.MaxHeightForSpec(spec, winW, winH, max(winH-16, bui.MinScrollHeight))
+
+	headerH := float32(38)
+	headerPX := float32(10)
+	listH := float32(172)
+	listPad := float32(6)
+	listGap := float32(2)
+	footerH := float32(36)
+	footerPX := float32(10)
+	railW := float32(42)
+	railPadY, railPadX, railGap := float32(8), float32(4), float32(6)
+	btnSz, icoSz := float32(34), float32(18)
+	rowH, rowPX := float32(34), float32(10)
+	if wide {
+		headerH = 44
+		headerPX = 14
+		listH = 220
+		listPad = 8
+		listGap = 3
+		footerH = 40
+		footerPX = 12
+		railW = 54
+		railPadY, railPadX, railGap = 10, 6, 8
+		btnSz, icoSz = 38, 20
+		rowH, rowPX = 38, 12
+	}
+	if fullscreen {
+		listH = 276
+	}
+	overhead := headerH + footerH + 4
+	if !wide {
+		overhead += 38
+	}
+	effectiveListH := min(listH, max(maxH-overhead, 64))
+	popH := min(effectiveListH+overhead, maxH)
+	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
+
+	ui.Overlay(cUI, func() {
+		panel := ui.Column(cUI.Key("ai-agent-deck")).Absolute().Left(x).Top(y).
+			Width(popW).MaxHeight(maxH).Radius(theme.RadiusSurface).
+			Background(pal.Menu).Border(1, pal.MenuBorder).
+			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.18)).Clip().
+			Transition(bui.PopupTransition())
 		bui.Probe(panel, "ai-deck")
 
-		// Single-row backend switcher cards (height <= 42px).
-		ui.Row(cUI).FillWidth().Gap(6).Wrap().Children(func() {
-			for _, kind := range visible {
-				cardID := "ai-backend-" + backendProbeSuffix(kind)
-				active := kind == selected
-				btn := ui.ButtonBase(cUI.Key(cardID)).Height(36).PaddingX(10).Gap(6).
-					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-					Label(backendLabel(kind))
-				if active {
-					btn.Background(pal.Selected).Border(1, pal.Accent)
-				} else {
-					btn.Background(pal.Shell).Border(1, pal.Hairline)
-				}
-				bui.Probe(btn, cardID)
-				btn.Children(func() {
-					icons.Brand(cUI, kind, 16, pal.Text)
-					ui.Text(cUI, backendLabel(kind)).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
-				})
-				if btn.Clicked() {
-					c.mu.Lock()
-					c.selectBackendLocked(kind)
-					c.mu.Unlock()
-					c.refreshModelsAsync(kind)
-				}
-			}
-		})
-
-		q := search
-		sInput := ui.TextInput(cUI.Key("ai-deck-search"), &q).FillWidth().FontSize(14).
-			Placeholder(theme.Tr("搜索模型…", "Search models…"))
-		if sInput.Changed() {
-			c.mu.Lock()
-			c.deckSearch = q
-			c.mu.Unlock()
-		}
-
-		lowQ := strings.ToLower(strings.TrimSpace(q))
-		var filtered []ModelOption
-		for _, m := range models {
-			if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
-				filtered = append(filtered, m)
-			}
-		}
-
-		ui.Scroll(cUI).FillWidth().MaxHeight(160).Children(func() {
-			ui.Column(cUI).FillWidth().Gap(2).Children(func() {
-				if len(filtered) == 0 {
-					msg := theme.Tr("暂无可选模型", "No models available")
-					if mStatus == "loading" {
-						msg = theme.Tr("正在获取模型…", "Loading models…")
-					}
-					ui.Text(cUI, msg).FontSize(14).TextColor(pal.TextSecondary).Padding(8)
-					return
-				}
-				for idx, m := range filtered {
-					active := m.Value == curModel
-					mID := fmt.Sprintf("ai-model-%d", idx)
-					row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(34).PaddingX(10).Gap(8).
-						AlignItems(ui.Center).Radius(6).Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(m.Label)
-					if active {
-						row.Background(pal.Selected)
-					} else if row.Hovered() {
-						row.Background(pal.Hover)
-					}
-					bui.Probe(row, mID)
-					row.Children(func() {
-						ui.Text(cUI, m.Label).FontSize(14).TextColor(pal.Text).Grow(1).SingleLine()
+		panel.Children(func() {
+			// Upper split: left backend rail + center search/models + (wide) right thinking column.
+			ui.Row(cUI).FillWidth().MinWidth(0).Children(func() {
+				// 1. Left backend icon rail (matching chat_deck.rs:57-77).
+				ui.Column(cUI).Width(railW).Shrink(0).Padding(railPadY, railPadX).Gap(railGap).
+					Background(pal.Shell).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
+					AlignItems(ui.Center).Children(func() {
+					for _, kind := range visible {
+						k := kind
+						cardID := "ai-backend-" + backendProbeSuffix(k)
+						active := k == selected
+						ready := k == model.BackendBuiltin || func() bool {
+							c.mu.RLock()
+							st, ok := c.backendStatuses[k]
+							c.mu.RUnlock()
+							return ok && (st.State == BackendStateReady || st.State == BackendStateInstalled)
+						}()
+						btn := ui.ButtonBase(cUI.Key(cardID)).Size(btnSz, btnSz).Center().
+							Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+							Label(backendLabel(k)).Tooltip(backendLabel(k))
 						if active {
-							icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+							btn.Background(pal.Selected).Border(1, pal.Accent)
+						} else {
+							if btn.Hovered() {
+								btn.Background(pal.Hover)
+							}
+							btn.Border(1, ui.Transparent)
+						}
+						bui.Probe(btn, cardID)
+						btn.Children(func() {
+							icCol := pal.TextSecondary
+							if active {
+								icCol = pal.Text
+							}
+							icons.Brand(cUI, k, icoSz, icCol)
+							if !ready {
+								ui.Box(cUI).Absolute().Right(4).Bottom(4).Size(5, 5).
+									Radius(theme.RadiusPill).Background(pal.TextSecondary)
+							}
+						})
+						if btn.Clicked() {
+							c.mu.Lock()
+							changed := c.selectedBackendLocked() != k
+							c.selectBackendLocked(k)
+							c.mu.Unlock()
+							if changed {
+								c.refreshModelsAsync(k)
+							}
+						}
+					}
+				})
+
+				// 2. Center search + model list (+ compact thinking row when !wide).
+				ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
+					ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).Gap(8).AlignItems(ui.Center).
+						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+						icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+						q := search
+						sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
+							Grow(1).Height(24).Padding(0).FontSize(14).TextColor(pal.Text).
+							CaretColor(pal.Accent).CaretWidth(2).
+							Placeholder(theme.Tr("搜索模型…", "Search models…")).
+							Bind(&c.deckSearchHandle).AutoFocus()
+						bui.Probe(sInput, "ai-deck-search")
+						if sInput.Changed() {
+							c.mu.Lock()
+							c.deckSearch = q
+							c.mu.Unlock()
+						}
+						sInput.OnTextKey(func(k ui.TextKey) bool {
+							if k.Key == ui.KeyEscape {
+								c.mu.Lock()
+								c.deckOpen = false
+								c.mu.Unlock()
+								return true
+							}
+							return false
+						})
+					})
+
+					lowQ := strings.ToLower(strings.TrimSpace(search))
+					var filtered []ModelOption
+					for _, m := range models {
+						if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
+							filtered = append(filtered, m)
+						}
+					}
+
+					ui.Scroll(cUI.Key("ai-deck-models")).TrackScroll(&c.deckScroll).
+						FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
+						if len(filtered) == 0 {
+							msg := theme.Tr("暂无可选模型", "No models available")
+							if lowQ != "" {
+								msg = theme.Tr("无匹配模型", "No matching models")
+							} else if mStatus == "loading" {
+								msg = theme.Tr("正在获取模型…", "Loading models…")
+							}
+							ui.Box(cUI).Height(36).PaddingX(12).AlignItems(ui.Center).Children(func() {
+								ui.Text(cUI, msg).FontSize(14).TextColor(pal.TextSecondary)
+							})
+							return
+						}
+						for idx, m := range filtered {
+							active := m.Value == curModel
+							mID := fmt.Sprintf("ai-model-%d", idx)
+							row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
+								AlignItems(ui.Center).Radius(theme.RadiusControl).Border(1, ui.Transparent).
+								Cursor(ui.CursorPointer).Label(m.Label)
+							if active {
+								row.Background(pal.Selected).Border(1, pal.Accent)
+							} else if row.Hovered() {
+								row.Background(pal.Hover)
+							}
+							bui.Probe(row, mID)
+							row.Children(func() {
+								icons.Brand(cUI, selected, 15, pal.Text)
+								ui.Text(cUI, m.Label).FontSize(14).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+								if active {
+									icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+								}
+							})
+							if row.Clicked() {
+								c.mu.Lock()
+								_ = c.setBackendModelLocked(selected, m.Value)
+								c.deckOpen = false
+								c.mu.Unlock()
+							}
 						}
 					})
-					if row.Clicked() {
+
+					if !wide {
+						levels := []string{"low", "medium", "high"}
+						levelIdx := 2
+						for i, lv := range levels {
+							if lv == curThinking {
+								levelIdx = i
+							}
+						}
+						ui.Row(cUI).FillWidth().Padding(6, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+							BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+							ui.Text(cUI, "Thinking Level").FontSize(12).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+							if bui.SegmentedControl(cUI, "ai-deck-thinking", &levelIdx, []bui.SegmentOption{
+								{ID: "ai-thinking-low", Label: "Low"},
+								{ID: "ai-thinking-medium", Label: "Medium"},
+								{ID: "ai-thinking-high", Label: "High"},
+							}) {
+								c.mu.Lock()
+								_ = c.setBackendThinkingLocked(selected, levels[levelIdx])
+								c.mu.Unlock()
+							}
+						})
+					}
+				})
+
+				// 3. Right Thinking Level column in wide/fullscreen mode.
+				if wide {
+					thinkW := float32(176)
+					if fullscreen {
+						thinkW = 216
+					}
+					ui.Column(cUI).Width(thinkW).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
+						ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).AlignItems(ui.Center).
+							BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+							ui.Text(cUI, "Thinking Level").FontSize(13).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
+						})
+						ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
+							for _, lv := range []struct{ id, label string }{
+								{"low", "Low"},
+								{"medium", "Medium"},
+								{"high", "High"},
+							} {
+								level := lv.id
+								isAct := curThinking == level || (curThinking == "" && level == "high")
+								btnID := "ai-thinking-" + level
+								btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(36).PaddingX(12).
+									AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
+									Cursor(ui.CursorPointer).Label(lv.label)
+								if isAct {
+									btn.Background(pal.Selected).Border(1, pal.Accent)
+								} else {
+									if btn.Hovered() {
+										btn.Background(pal.Hover)
+									}
+									btn.Border(1, ui.Transparent)
+								}
+								bui.Probe(btn, btnID)
+								btn.Children(func() {
+									ui.Text(cUI, lv.label).FontSize(14).FontWeight(theme.WeightControl).TextColor(pal.Text)
+									if isAct {
+										icons.Draw(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+									}
+								})
+								if btn.Clicked() {
+									c.mu.Lock()
+									_ = c.setBackendThinkingLocked(selected, level)
+									c.mu.Unlock()
+								}
+							}
+						})
+					})
+				}
+			})
+
+			// Footer row
+			ui.Row(cUI).FillWidth().Height(footerH).PaddingX(footerPX).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+				setIcon := icons.Sliders
+				setBtn := bui.ActionButton(cUI, "ai-deck-settings", theme.Tr("AI 设置", "AI settings"), &setIcon, bui.ButtonGhost, false)
+				if setBtn.Clicked() {
+					c.mu.Lock()
+					c.deckOpen = false
+					c.mu.Unlock()
+					if c.host != nil {
+						c.host.OpenSettings("ai")
+					}
+				}
+
+				permLabel := theme.Tr("标准权限", "Standard access")
+				if fullPerm {
+					permLabel = "Full access"
+				}
+				permBtn := bui.ActionButton(cUI, "ai-deck-permissions", permLabel, nil, bui.ButtonGhost, false)
+				if permBtn.Clicked() {
+					if selected == model.BackendBuiltin && c.host != nil {
 						c.mu.Lock()
-						_ = c.setBackendModelLocked(selected, m.Value)
 						c.deckOpen = false
+						c.mu.Unlock()
+						c.host.OpenSettings("ai")
+					} else {
+						c.mu.Lock()
+						_ = c.setBackendFullPermissionsLocked(selected, !fullPerm)
 						c.mu.Unlock()
 					}
 				}
 			})
 		})
 
-		// Thinking level selector
-		levels := []string{"low", "medium", "high"}
-		levelIdx := 2
-		for i, lv := range levels {
-			if lv == curThinking {
-				levelIdx = i
-			}
-		}
-		if bui.SegmentedControl(cUI, "ai-deck-thinking", &levelIdx, []bui.SegmentOption{
-			{ID: "ai-thinking-low", Label: "Low"},
-			{ID: "ai-thinking-medium", Label: "Medium"},
-			{ID: "ai-thinking-high", Label: "High"},
-		}) {
+		if panel.OverlayShortcut(0, ui.KeyEscape) || (!anchor.PressedInside() && panel.PressedOutside()) {
 			c.mu.Lock()
-			_ = c.setBackendThinkingLocked(selected, levels[levelIdx])
+			c.deckOpen = false
 			c.mu.Unlock()
 		}
-
-		ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			setBtn := bui.ActionButton(cUI, "ai-deck-settings", theme.Tr("AI 设置", "AI settings"), nil, bui.ButtonGhost, false)
-			if setBtn.Clicked() {
-				c.mu.Lock()
-				c.deckOpen = false
-				c.mu.Unlock()
-				if c.host != nil {
-					c.host.OpenSettings("ai")
-				}
-			}
-
-			permLabel := theme.Tr("标准权限", "Standard access")
-			if fullPerm {
-				permLabel = "Full access"
-			}
-			permBtn := bui.ActionButton(cUI, "ai-deck-permissions", permLabel, nil, bui.ButtonGhost, false)
-			if permBtn.Clicked() {
-				if selected == model.BackendBuiltin && c.host != nil {
-					c.host.OpenSettings("ai")
-				} else {
-					c.mu.Lock()
-					_ = c.setBackendFullPermissionsLocked(selected, !fullPerm)
-					c.mu.Unlock()
-				}
-			}
-		})
 	})
-
-	if !open {
-		c.mu.Lock()
-		c.deckOpen = false
-		c.mu.Unlock()
-	}
 }
 
 func backendLabel(k model.BackendKind) string {
@@ -2062,7 +2490,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 						bui.Probe(card, cardID)
 
 						card.Children(func() {
-							selBtn := ui.ButtonBase(cUI.Key("focus-"+cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
+							selBtn := ui.ButtonBase(cUI.Key("focus-" + cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
 								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
 							selBtn.Children(func() {
 								ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(6).
@@ -2120,12 +2548,12 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		})
 
 		// 2. General Features (`普通功能` -> `标注功能`) matching settings_general.rs 1:1.
-		c.renderGeneralFeaturesSection(cUI, pal, cardBG, annotCfg, annotOpen)
-	})
+		annotAnchor := c.renderGeneralFeaturesSection(cUI, pal, cardBG, annotCfg, annotOpen)
 
-	if cfg.Enabled && annotOpen {
-		c.renderAnnotationModelPopover(cUI, pal, recognized, backends)
-	}
+		if cfg.Enabled && annotOpen {
+			c.renderAnnotationModelPopover(cUI, pal, recognized, backends, annotAnchor)
+		}
+	})
 }
 
 func backendProbeSuffix(k model.BackendKind) string {
@@ -2398,7 +2826,7 @@ func thinkingDisplayLabel(lv string) string {
 	}
 }
 
-func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Palette, cardBG ui.Color, annotCfg model.AnnotationConfig, annotOpen bool) {
+func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Palette, cardBG ui.Color, annotCfg model.AnnotationConfig, annotOpen bool) ui.Element {
 	kind := annotCfg.Backend
 	if kind == "" {
 		kind = model.BackendBuiltin
@@ -2409,6 +2837,7 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 	}
 	thinkLbl := thinkingDisplayLabel(annotCfg.Thinking)
 
+	var trigAnchor ui.Element
 	ui.Column(cUI).FillWidth().Gap(12).Children(func() {
 		ui.Text(cUI, theme.Tr("普通功能", "General Features")).FontSize(16).FontWeight(600).TextColor(pal.Text)
 
@@ -2420,6 +2849,7 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 				trig := ui.ButtonBase(cUI.Key("annotation-model-trigger")).Height(34).PaddingX(12).Gap(8).
 					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 					Label(lbl)
+				trigAnchor = trig
 				if annotOpen {
 					trig.Background(settingsSelectedSurface(pal)).Border(1, pal.Accent)
 				} else {
@@ -2467,9 +2897,10 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 			})
 		})
 	})
+	return trigAnchor
 }
 
-func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Palette, recognized []model.BackendKind, backends model.AIBackendsConfig) {
+func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Palette, recognized []model.BackendKind, backends model.AIBackendsConfig, anchor ui.Element) {
 	c.mu.RLock()
 	trigger := c.annotMenuTriggerBox
 	activeKind := c.annotMenuBackend
@@ -2492,15 +2923,20 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	if winH <= 0 {
 		winH = 760
 	}
+	if trigger.W <= 0 {
+		trigger = ui.Rect{X: max(winW-220, 16), Y: max(winH-120, 80), W: 180, H: 34}
+	}
 	popW := min(float32(520), max(winW-16, 300))
-	popH := float32(256)
 	spec := bui.PlaceAbove(trigger).WithAlignX(bui.AlignX{Kind: bui.AlignRight}).WithGap(6).WithMargin(8)
+	maxH := bui.MaxHeightForSpec(spec, winW, winH, 256)
+	popH := min(float32(256), maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
 	ui.Overlay(cUI, func() {
 		panel := ui.Row(cUI.Key("annotation-model-menu")).Absolute().Left(x).Top(y).Width(popW).Height(popH).
-			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.22)).Clip()
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder).
+			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.22)).Clip().
+			Transition(bui.PopupTransition())
 		bui.Probe(panel, "annotation-model-menu")
 
 		panel.Children(func() {
@@ -2540,15 +2976,25 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 			ui.Column(cUI).Grow(1).MinWidth(0).FillHeight().Children(func() {
 				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).Gap(8).AlignItems(ui.Center).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-					icons.Draw(cUI, icons.FindSearch, 15, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 					in := ui.TextInputBase(cUI.Key("annotation-model-search"), &c.annotMenuSearch).
-						Grow(1).Height(28).FontSize(14).TextColor(pal.Text).
-						Placeholder(theme.Tr("搜索模型…", "Search models…")).Bind(&c.annotSearchHandle)
+						Grow(1).Height(28).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+						CaretColor(pal.Accent).CaretWidth(2).
+						Placeholder(theme.Tr("搜索模型…", "Search models…")).Bind(&c.annotSearchHandle).AutoFocus()
 					bui.Probe(in, "annotation-model-search")
+					in.OnTextKey(func(k ui.TextKey) bool {
+						if k.Key == ui.KeyEscape {
+							c.mu.Lock()
+							c.annotMenuOpen = false
+							c.mu.Unlock()
+							return true
+						}
+						return false
+					})
 				})
 
 				ui.Scroll(cUI.Key("annotation-model-list")).TrackScroll(&c.annotMenuScroll).
-					Grow(1).FillWidth().Padding(6).Gap(2).Children(func() {
+					Grow(1).MinHeight(0).FillWidth().Padding(6).Gap(2).Children(func() {
 					matched := 0
 					for idx, m := range choices {
 						opt := m
@@ -2647,7 +3093,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 			})
 		})
 
-		if panel.PressedOutside() {
+		if panel.OverlayShortcut(0, ui.KeyEscape) || ((!anchor.Valid() || !anchor.PressedInside()) && panel.PressedOutside()) {
 			c.mu.Lock()
 			c.annotMenuOpen = false
 			c.mu.Unlock()
@@ -2691,4 +3137,11 @@ func removeString(list []string, target string) []string {
 		}
 	}
 	return out
+}
+
+func boolToBorder(v bool) float32 {
+	if v {
+		return 1
+	}
+	return 0
 }

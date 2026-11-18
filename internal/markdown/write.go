@@ -29,18 +29,42 @@ func SerializeMarkdown(doc *model.Doc) string {
 
 	var out strings.Builder
 	var num listNumbering
+	var listStack []int
 	blocks := doc.Blocks
 	nexts := nextNonBlankBlocks(blocks)
 
 	for i := 0; i < len(blocks); i++ {
 		b := &blocks[i]
-		n := num.next(b)
+		n := 0
+		if !isBlankBlock(b) {
+			n = num.next(b)
+		}
+		for len(listStack) > 0 && !isBlankBlock(b) && b.Indent <= listStack[len(listStack)-1] {
+			if b.Kind.IsList() && b.Indent == listStack[len(listStack)-1] {
+				listStack = listStack[:len(listStack)-1]
+				break
+			}
+			listStack = listStack[:len(listStack)-1]
+		}
+		inListChild := len(listStack) > 0 && b.Indent > listStack[len(listStack)-1]
+		if b.Kind.IsList() {
+			listStack = append(listStack, b.Indent)
+		}
 
 		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
 			out.WriteByte('\n')
 		}
-		if i > 0 && needsSeparator(&blocks[i-1], nexts[i-1]) && !strings.HasSuffix(out.String(), "\n\n") {
-			out.WriteByte('\n')
+		if i > 0 && needsSeparator(&blocks[i-1], nexts[i-1]) {
+			prevQ := effectiveQuoteDepth(&blocks[i-1])
+			curQ := effectiveQuoteDepth(b)
+			if prevQ > 0 && curQ > 0 {
+				qSep := strings.TrimRight(strings.Repeat("> ", minInt(prevQ, curQ)), " ") + "\n"
+				if !strings.HasSuffix(out.String(), "\n"+qSep) && !strings.HasSuffix(out.String(), "\n\n") {
+					out.WriteString(qSep)
+				}
+			} else if !strings.HasSuffix(out.String(), "\n\n") {
+				out.WriteByte('\n')
+			}
 		}
 
 		if canUseCleanSource(b, n, defs) {
@@ -48,7 +72,14 @@ func SerializeMarkdown(doc *model.Doc) string {
 			continue
 		}
 
-		serializeBlock(b, i == 0, n, &out)
+		extraQ := extraQuotePrefixCount(b)
+		if extraQ > 0 {
+			var sub strings.Builder
+			serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
+			prefixQuoteLines(sub.String(), extraQ, &out)
+		} else {
+			serializeBlockWithCtx(b, i == 0, n, inListChild, &out)
+		}
 	}
 
 	res := out.String()
@@ -70,7 +101,10 @@ func isDocUntouched(doc *model.Doc, defs map[string]refDef) bool {
 	var num listNumbering
 	for i := range doc.Blocks {
 		b := &doc.Blocks[i]
-		n := num.next(b)
+		n := 0
+		if !isBlankBlock(b) {
+			n = num.next(b)
+		}
 		if !canUseCleanSource(b, n, defs) {
 			return false
 		}
@@ -127,8 +161,56 @@ func canUseCleanSource(b *model.Block, listNum int, defs map[string]refDef) bool
 	return blockMatchesCleanSource(b, defs)
 }
 
+func effectiveQuoteDepth(b *model.Block) int {
+	if b == nil {
+		return 0
+	}
+	if b.Kind == model.BlockQuote && b.QuoteDepth < 1 {
+		return 1
+	}
+	return b.QuoteDepth
+}
+
+func extraQuotePrefixCount(b *model.Block) int {
+	if b == nil || b.QuoteDepth <= 0 {
+		return 0
+	}
+	if b.Kind == model.BlockQuote {
+		return max(b.QuoteDepth-1, 0)
+	}
+	return b.QuoteDepth
+}
+
+func prefixQuoteLines(raw string, depth int, out *strings.Builder) {
+	if depth <= 0 || raw == "" {
+		out.WriteString(raw)
+		return
+	}
+	fullPrefix := strings.Repeat("> ", depth)
+	barePrefix := strings.TrimRight(fullPrefix, " ")
+	trimmed := strings.TrimSuffix(raw, "\n")
+	for _, line := range strings.Split(trimmed, "\n") {
+		if line == "" {
+			out.WriteString(barePrefix)
+		} else {
+			out.WriteString(fullPrefix)
+			out.WriteString(line)
+		}
+		out.WriteByte('\n')
+	}
+}
+
 func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 	clean := b.CleanSource
+	expectedIndent := b.Indent
+	if b.Indent >= 4 && b.Kind != model.BlockCode && b.Kind != model.BlockRawHTML && !strings.HasPrefix(strings.TrimSpace(clean), "<p ") {
+		var sb strings.Builder
+		for _, ln := range splitLinesInclusive(clean) {
+			sb.WriteString(stripColumns(ln, b.Indent))
+		}
+		clean = sb.String()
+		expectedIndent = 0
+	}
 	parsed := parseBlocksWithDefs(clean, defs, nil)
 	if len(parsed) != 1 {
 		// Multi-block clean source is only valid if it was a single list item or raw block.
@@ -138,16 +220,16 @@ func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 	if p.Kind != b.Kind || p.Checked != b.Checked || p.Callout != b.Callout {
 		return false
 	}
+	if effectiveQuoteDepth(p) != effectiveQuoteDepth(b) {
+		return false
+	}
 	if p.Language != b.Language || p.Code != b.Code {
 		return false
 	}
 	if p.ImageSrc != b.ImageSrc || p.ImageAlt != b.ImageAlt || p.ImageWidth != b.ImageWidth || p.ImageAlign != b.ImageAlign || p.ImageCrop != b.ImageCrop {
 		return false
 	}
-	if b.Kind != model.BlockNumbered && p.Indent != b.Indent {
-		return false
-	}
-	if b.Kind == model.BlockNumbered && p.Indent != b.Indent {
+	if p.Indent != expectedIndent {
 		return false
 	}
 	if !spansEqual(p.Spans, b.Spans) {
@@ -190,6 +272,10 @@ func tablesEqual(a, b *model.TableData) bool {
 }
 
 func serializeBlock(b *model.Block, isFirst bool, listNum int, out *strings.Builder) {
+	serializeBlockWithCtx(b, isFirst, listNum, false, out)
+}
+
+func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChild bool, out *strings.Builder) {
 	switch b.Kind {
 	case model.BlockDivider:
 		out.WriteString(strings.Repeat(" ", b.Indent))
@@ -371,12 +457,15 @@ func serializeBlock(b *model.Block, isFirst bool, listNum int, out *strings.Buil
 			out.WriteString("<!-- thinkly:empty-block=paragraph -->\n")
 			return
 		}
-		if b.Indent > 0 {
+		if b.Indent > 0 && !inListChild {
 			ind := minInt(b.Indent, 12)
 			out.WriteString(fmt.Sprintf(`<p data-indent="%d">`, ind))
 			serializeInlineHTML(b.Spans, out)
 			out.WriteString("</p>\n")
 			return
+		}
+		if b.Indent > 0 && inListChild {
+			out.WriteString(strings.Repeat(" ", b.Indent))
 		}
 		inlineStr := SerializeInline(b.Spans)
 		if strings.HasPrefix(inlineStr, "$$") || strings.HasPrefix(inlineStr, ":::") {

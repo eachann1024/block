@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"time"
@@ -126,6 +127,7 @@ type Session struct {
 
 	// Selection floating toolbar & format popovers
 	toolbarPop          string // "", "more", "kinds", "lists", "palette", "link", "reactions", "comment"
+	toolbarMoreIndex    int
 	linkDraft           string
 	linkInputHandle     ui.Handle
 	linkFocusPending    bool
@@ -134,11 +136,15 @@ type Session struct {
 	commentFocusPending bool
 
 	// Inline AI
-	dataDir           string
-	promptStore       *inlinePromptStore
-	inlineAIResponder func(ctx, orig, draft, instruction string) string
-	inlineAI          *inlineAISession
-	copyPending       bool
+	dataDir                 string
+	promptStore             *inlinePromptStore
+	inlineAIResponder       func(ctx, orig, draft, instruction string) string
+	inlineAIStreamResponder func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)
+	inlineAI                *inlineAISession
+	copyPending             bool
+	savedMarkdown           string
+	caretHidden             bool
+	footPickerAnnotID       string
 
 	// Find bar
 	findOpen         bool
@@ -221,44 +227,51 @@ type Session struct {
 	dragDropTo      int
 
 	// Layout & Scroll
-	bodyScroll     ui.ScrollState
-	viewportWidth  float32
-	viewportHeight float32
-	editorRect     ui.Rect
-	scrollRect     ui.Rect
-	rootHandle     ui.Handle
-	frameRoot      ui.Element
-	toolbarRect     ui.Rect
-	readOnly        bool
-	minimal         bool
-	minCanvasHeight float32
-	OnPickImages    func(blockID model.BlockID, replace bool)
+	bodyScroll        ui.ScrollState
+	viewportWidth     float32
+	viewportHeight    float32
+	editorRect        ui.Rect
+	scrollRect        ui.Rect
+	rootHandle        ui.Handle
+	frameRoot         ui.Element
+	toolbarRect       ui.Rect
+	overlayBtnRects   map[string]ui.Rect
+	overlayPanelRects map[string]ui.Rect
+	annotRowHeights   map[string]float32
+	readOnly          bool
+	minimal           bool
+	minCanvasHeight   float32
+	OnPickImages      func(blockID model.BlockID, replace bool)
 }
 
 // NewSession constructs a Session for a note path and document.
 func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host model.WorkspaceHost) *Session {
 	d := normalizeDoc(doc)
 	s := &Session{
-		notePath:         notePath,
-		doc:              d,
-		codec:            codec,
-		host:             host,
-		focusedBlock:     0,
-		hoveredBlock:     -1,
-		dragOverIdx:      -1,
-		dragDropFrom:     -1,
-		dragDropTo:       -1,
-		mouseOriginBlock: -1,
-		blockHandles:     make(map[model.BlockID]ui.Handle),
-		blockRects:       make(map[model.BlockID]ui.Rect),
-		blockTextRects:   make(map[model.BlockID]ui.Rect),
-		tableCellRects:   make(map[tableCellKey]ui.Rect),
-		textLayoutCache:  make(map[model.BlockID]cachedBlockLayout),
-		folded:           make(map[model.BlockID]bool),
-		imageCache:       make(map[string]ui.ImageSource),
-		imageFailed:      make(map[string]bool),
-		imageRects:       make(map[model.BlockID]ui.Rect),
+		notePath:          notePath,
+		doc:               d,
+		codec:             codec,
+		host:              host,
+		focusedBlock:      0,
+		hoveredBlock:      -1,
+		dragOverIdx:       -1,
+		dragDropFrom:      -1,
+		dragDropTo:        -1,
+		mouseOriginBlock:  -1,
+		blockHandles:      make(map[model.BlockID]ui.Handle),
+		blockRects:        make(map[model.BlockID]ui.Rect),
+		blockTextRects:    make(map[model.BlockID]ui.Rect),
+		tableCellRects:    make(map[tableCellKey]ui.Rect),
+		textLayoutCache:   make(map[model.BlockID]cachedBlockLayout),
+		folded:            make(map[model.BlockID]bool),
+		imageCache:        make(map[string]ui.ImageSource),
+		imageFailed:       make(map[string]bool),
+		imageRects:        make(map[model.BlockID]ui.Rect),
+		overlayBtnRects:   make(map[string]ui.Rect),
+		overlayPanelRects: make(map[string]ui.Rect),
+		annotRowHeights:   make(map[string]float32),
 	}
+	s.savedMarkdown = s.Markdown()
 	return s
 }
 
@@ -333,11 +346,19 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.activeAnnotID = ""
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
+	s.footPickerAnnotID = ""
+	s.caretHidden = false
+	s.toolbarMoreIndex = 0
 	clear(s.folded)
 	clear(s.blockRects)
 	clear(s.blockTextRects)
 	clear(s.tableCellRects)
 	clear(s.textLayoutCache)
+	clear(s.overlayBtnRects)
+	clear(s.overlayPanelRects)
+	clear(s.annotRowHeights)
+	s.toolbarRect = ui.Rect{}
+	s.savedMarkdown = s.Markdown()
 	s.ensureAnnotationsLoaded()
 	if s.findOpen {
 		s.recomputeFind(false)
@@ -350,6 +371,23 @@ func (s *Session) Dirty() bool {
 
 func (s *Session) MarkSaved() {
 	s.dirty = false
+	s.savedMarkdown = s.Markdown()
+}
+
+func (s *Session) ClearTransientOverlays() {
+	s.closeTransientOverlays()
+}
+
+func (s *Session) IsBusy() bool {
+	if s.inlineAI != nil && s.inlineAI.Status == aiStatusThinking {
+		return true
+	}
+	for _, a := range s.annotations {
+		if a != nil && a.RewriteBusy {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Session) CanUndo() bool {
@@ -378,10 +416,17 @@ func (s *Session) FocusBlock(idx int) {
 	s.focusedBlock = idx
 	s.selAnchor = Position{Block: idx, Offset: 0}
 	s.selHead = Position{Block: idx, Offset: 0}
-	s.focusPending = true
-	s.selSyncPending = true
-	s.multiSelFocusPending = false
+	if s.needsDetachedSelectionFocus() {
+		s.multiSelFocusPending = true
+		s.focusPending = false
+		s.selSyncPending = false
+	} else {
+		s.multiSelFocusPending = false
+		s.focusPending = true
+		s.selSyncPending = true
+	}
 	s.firstLineDeleteArmed = false
+	s.caretHidden = false
 }
 
 func (s *Session) FirstLineDeleteArmed() bool {
@@ -526,13 +571,16 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.selAnchor = snap.Anchor
 	s.selHead = snap.Head
 	s.annotations = s.cloneAnnotations(snap.Annotations)
-	s.dirty = true
+	s.dirty = s.Markdown() != s.savedMarkdown
 	s.focusPending = true
 	s.selSyncPending = true
+	s.caretHidden = false
 	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
 	s.blockMenu = nil
 	s.toolbarPop = ""
+	s.toolbarMoreIndex = 0
+	s.footPickerAnnotID = ""
 	s.cancelInlineAI()
 	s.inlineAI = nil
 	s.copyPending = false
@@ -603,6 +651,7 @@ func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
 		s.selSyncPending = true
 	}
 	s.firstLineDeleteArmed = false
+	s.caretHidden = false
 }
 
 func (s *Session) hasAnyOverlayOpen() bool {
@@ -617,14 +666,17 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.codeLangMenuBlock != 0 ||
 		s.calloutMenuBlock != 0 ||
 		s.imagePopKind != "" ||
-		s.tableMenuKind != "" ||
-		s.activeAnnotID != "" ||
-		s.editingAnnotID != ""
+		(s.tableMenuBlock != 0 && s.tableMenuKind != "") ||
+		s.editingAnnotID != "" ||
+		s.footPickerAnnotID != "" ||
+		s.activePlan != nil ||
+		s.outlineHovered
 }
 
 func (s *Session) closeTransientOverlays() {
 	s.blockMenu = nil
 	s.toolbarPop = ""
+	s.toolbarMoreIndex = 0
 	s.codeLangMenuBlock = 0
 	s.calloutMenuBlock = 0
 	s.calloutMenuIndex = 0
@@ -634,6 +686,7 @@ func (s *Session) closeTransientOverlays() {
 	s.tableMenuKind = ""
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
+	s.footPickerAnnotID = ""
 }
 
 func (s *Session) blockIndexByID(id model.BlockID) int {
@@ -659,20 +712,21 @@ func (s *Session) numberedListIndex(idx int) int {
 	n := 1
 	for i := idx - 1; i >= 0; i-- {
 		b := &s.doc.Blocks[i]
-		if !b.Kind.IsList() {
-			break
+		if b.Kind == model.BlockParagraph && b.Indent == 0 && len(b.Spans) == 0 {
+			continue
+		}
+		if b.Indent > target.Indent {
+			continue
 		}
 		if b.Indent < target.Indent {
 			break
 		}
-		if b.Indent == target.Indent {
-			if b.Kind != model.BlockNumbered {
-				break
-			}
-			n++
-			if b.ListIndex > 1 {
-				return n + b.ListIndex - 1
-			}
+		if b.Kind != model.BlockNumbered {
+			break
+		}
+		n++
+		if b.ListIndex > 1 {
+			return n + b.ListIndex - 1
 		}
 	}
 	if target.ListIndex > 1 {
@@ -723,20 +777,9 @@ func (s *Session) notifyFocusBlock(idx int) {
 	s.focusedBlock = idx
 	s.focusPending = true
 	s.firstLineDeleteArmed = false
+	s.caretHidden = false
 }
 
 func trimSpaces(s string) string {
 	return strings.TrimSpace(s)
-}
-
-func (s *Session) IsBusy() bool {
-	if s.inlineAI != nil && s.inlineAI.Status == aiStatusThinking {
-		return true
-	}
-	for _, a := range s.annotations {
-		if a != nil && a.RewriteBusy {
-			return true
-		}
-	}
-	return false
 }

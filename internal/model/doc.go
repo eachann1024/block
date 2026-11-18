@@ -175,6 +175,7 @@ type Block struct {
 	ID          BlockID     `json:"id"`
 	Kind        BlockKind   `json:"kind"`
 	Indent      int         `json:"indent,omitempty"`
+	QuoteDepth  int         `json:"quoteDepth,omitempty"`
 	ListIndex   int         `json:"listIndex,omitempty"`
 	Checked     bool        `json:"checked,omitempty"`
 	Callout     CalloutKind `json:"callout,omitempty"`
@@ -281,7 +282,13 @@ func (d *Doc) Title() string {
 	if d == nil {
 		return ""
 	}
-	for _, b := range d.Blocks {
+	for i, b := range d.Blocks {
+		if i == 0 && b.Kind == BlockCode && b.Language == "yaml-frontmatter" {
+			continue
+		}
+		if b.Kind == BlockDivider || b.Kind == BlockImage {
+			continue
+		}
 		s := strings.TrimSpace(b.PlainText())
 		if s != "" {
 			if nl := strings.IndexByte(s, '\n'); nl >= 0 {
