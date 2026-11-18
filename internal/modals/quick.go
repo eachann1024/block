@@ -937,7 +937,8 @@ func (q *QuickNoteController) pickImagesForSlot(slot int, blockID model.BlockID,
 	}
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Title: theme.Tr("导入图片", "Import Image"),
+			Title:    theme.Tr("导入图片", "Import Image"),
+			Multiple: true,
 			Filters: []mygo.FileFilter{
 				{
 					Name:       theme.Tr("图片", "Images"),

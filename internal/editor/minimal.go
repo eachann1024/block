@@ -393,12 +393,11 @@ func copyAssetFile(src, dst string) error {
 // ImportImageFiles copies local image files into `<noteDir>/assets/` and inserts image blocks
 // into the document (replacing targetID when replace is true, or inserting after targetID).
 func (s *Session) ImportImageFiles(paths []string, targetID model.BlockID, replace bool) int {
-	if s.doc == nil || s.notePath == "" {
+	if s.doc == nil || s.readOnly || len(paths) == 0 {
 		return 0
 	}
-	noteDir := filepath.Dir(s.notePath)
-	assetsDir := filepath.Join(noteDir, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+	assetsDir, ok := s.resolveAssetsDir()
+	if !ok {
 		return 0
 	}
 
@@ -415,7 +414,7 @@ func (s *Session) ImportImageFiles(paths []string, targetID model.BlockID, repla
 		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
 		stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
 		stem = strings.NewReplacer("[", "", "]", "").Replace(stem)
-		name := uniqueAssetFilename(assetsDir, ext)
+		name := uniqueTypedAssetFilename(assetsDir, "img", ext)
 		if err := copyAssetFile(p, filepath.Join(assetsDir, name)); err != nil {
 			continue
 		}
@@ -432,35 +431,5 @@ func (s *Session) ImportImageFiles(paths []string, targetID model.BlockID, repla
 	if len(inserted) == 0 {
 		return 0
 	}
-
-	count := len(inserted)
-	inserted = append(inserted, model.Block{
-		ID:    model.NewBlockID(),
-		Kind:  model.BlockParagraph,
-		Dirty: true,
-	})
-
-	idx := s.blockIndexByID(targetID)
-	if idx < 0 {
-		idx = clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
-		replace = false
-	}
-	indent := s.doc.Blocks[idx].Indent
-	for i := range inserted {
-		inserted[i].Indent = indent
-	}
-
-	s.pushUndo()
-	start := idx + 1
-	end := idx + 1
-	if replace {
-		start = idx
-		end = idx + 1
-	}
-	s.spliceBlocks(start, end, inserted)
-	trailIdx := clampInt(start+len(inserted)-1, 0, len(s.doc.Blocks)-1)
-	s.FocusBlock(trailIdx)
-	s.markDirty()
-	s.requestRedraw()
-	return count
+	return s.insertImportedBlocks(inserted, targetID, replace)
 }
