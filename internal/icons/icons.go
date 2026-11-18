@@ -149,6 +149,7 @@ const (
 	KeyShift        Icon = "key-shift"
 	KeyControl      Icon = "key-control"
 	KeyBackspace    Icon = "key-backspace"
+	KeyPlus         Icon = "key-plus"
 	Refresh         Icon = "refresh"
 	Spinner         Icon = "spinner"
 	UpdateTangle    Icon = "update-tangle"
