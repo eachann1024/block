@@ -3,13 +3,15 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
-import { cargoRelease } from "./cargo-release.mjs";
+import { goRelease } from "./go-release.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const ARCH = process.env.BLOCK_ARCH || (process.arch === "arm64" ? "arm64" : "x64");
-if (ARCH !== "x64") throw new Error(`Linux packages are built for x64 only, got ${ARCH}`);
-const APPIMAGE_NAME = installerFor({ platform: "linux", arch: ARCH, kind: "AppImage" });
-const SQUASH_ARCH = process.env.APPIMAGE_ARCH || (ARCH === "arm64" ? "aarch64" : "x86_64");
+if (ARCH !== "x64" && ARCH !== "amd64") {
+  throw new Error(`Linux packages are built for x64 only, got ${ARCH}`);
+}
+const APPIMAGE_NAME = installerFor({ platform: "linux", arch: "x64", kind: "AppImage" });
+const SQUASH_ARCH = process.env.APPIMAGE_ARCH || "x86_64";
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const HOST_LIB = /^(ld-linux|linux-vdso\.|libc\.|libm\.|libdl\.|libpthread\.|librt\.|libresolv\.|libutil\.|libvulkan\.|libGL\.|libGLX\.|libGLdispatch\.|libEGL\.|libOpenGL\.|librenderdoc\.)/;
 
@@ -21,16 +23,25 @@ function run(cmd, args, extra = {}) {
 
 function linkedLibraries(binary) {
   const listed = spawnSync("ldd", [binary], { encoding: "utf8" });
-  if (listed.status !== 0) throw new Error(`ldd failed for ${binary}`);
+  const combined = `${listed.stdout ?? ""}\n${listed.stderr ?? ""}`;
+  if (listed.status !== 0) {
+    if (/not a dynamic executable|statically linked/i.test(combined)) {
+      return { dynamic: false, paths: [] };
+    }
+    throw new Error(`ldd failed for ${binary}: ${combined.trim()}`);
+  }
+  if (/not a dynamic executable|statically linked/i.test(combined)) {
+    return { dynamic: false, paths: [] };
+  }
   const paths = [];
-  for (const line of listed.stdout.split("\n")) {
+  for (const line of (listed.stdout ?? "").split("\n")) {
     const mapped = line.match(/=>\s+(\/\S+)/);
     const absolute = line.match(/^\s*(\/\S+)\s+\(/);
     const path = mapped?.[1] || absolute?.[1];
     if (!path || HOST_LIB.test(basename(path))) continue;
     paths.push(path);
   }
-  return paths;
+  return { dynamic: true, paths };
 }
 
 function soname(path) {
@@ -63,17 +74,18 @@ function dlopenLibraries(binary) {
 }
 
 function collectLibraries(binary) {
+  const linked = linkedLibraries(binary);
   const seen = new Map();
-  const queue = [...linkedLibraries(binary), ...dlopenLibraries(binary)];
+  const queue = [...linked.paths, ...dlopenLibraries(binary)];
   while (queue.length > 0) {
     const path = queue.pop();
     if (seen.has(path)) continue;
     seen.set(path, soname(path));
-    for (const next of linkedLibraries(path)) {
+    for (const next of linkedLibraries(path).paths) {
       if (!seen.has(next)) queue.push(next);
     }
   }
-  return seen;
+  return { dynamic: linked.dynamic, libs: seen };
 }
 
 function writeAppDir(binary, appDir) {
@@ -85,13 +97,18 @@ function writeAppDir(binary, appDir) {
   const staged = join(binDir, "block");
   copyFileSync(binary, staged);
   chmodSync(staged, 0o755);
-  for (const [path, name] of collectLibraries(binary)) {
+
+  const { dynamic, libs } = collectLibraries(binary);
+  for (const [path, name] of libs) {
     copyFileSync(path, join(libDir, name));
   }
-  run("patchelf", ["--set-rpath", "$ORIGIN/../lib", staged]);
-  for (const name of collectLibraries(binary).values()) {
+  if (dynamic) {
+    run("patchelf", ["--set-rpath", "$ORIGIN/../lib", staged]);
+  }
+  for (const name of libs.values()) {
     run("patchelf", ["--set-rpath", "$ORIGIN", join(libDir, name)]);
   }
+
   copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(appDir, "block.png"));
   writeFileSync(join(appDir, "block.desktop"), [
     "[Desktop Entry]",
@@ -117,8 +134,7 @@ export async function packageLinux() {
   assert.equal(process.platform, "linux", "Linux is required to build the AppImage");
   assert.equal(process.arch, "x64", `Linux packages are built for x64 only, got ${process.arch}`);
   const version = applyReleasePlanVersion();
-  cargoRelease();
-  const binary = resolve(ROOT, "target/release/block");
+  const binary = goRelease({ goos: "linux", goarch: "amd64" });
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   const appDir = resolve(ROOT, "dist/Block.AppDir");
   writeAppDir(binary, appDir);

@@ -1,0 +1,564 @@
+{
+  "schema_version": 1,
+  "repo": "eachann1024/block",
+  "updated_at": "2026-11-18T15:08:23.869Z",
+  "latest_version": "1.0.633",
+  "latest_tag": "v1.0.633",
+  "releases": [
+    {
+      "version": "1.0.633",
+      "tag": "v1.0.633",
+      "published_at": "2026-11-18T15:08:22Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.633",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "修复静态更新索引解析安装包标签时偶发漏匹配的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Fixed release tag normalization when matching installer assets from the update feed."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-macos-arm64.dmg",
+          "size": 11086338,
+          "sha256": "8f7d1396efcc7ed1408110053de2ed092c33785fab76e818d74bee4fd3d66987"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-macos-x64.dmg",
+          "size": 12208089,
+          "sha256": "dcfc8c9ffcae447a44656585e758eb91fa03fc4419468ca2267d57c64f3f4016"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-windows-x64-setup.exe",
+          "size": 8951884,
+          "sha256": "0e8d69e47ba5270f6bcb1ef7b07582f6cfa201ff371306ea4787d577c6ba09ac"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-linux-x64.deb",
+          "size": 8142686,
+          "sha256": "0cedd6e942519f7860aa3ed3b9035cb36c75a5a55750f6e99b7c6b55c4f2f06f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-linux-x64.AppImage",
+          "size": 20675064,
+          "sha256": "f27de88ba8d10d02c8f5f21960da857f59d9e0816fd0afabafd6f814bc21d10c"
+        }
+      ]
+    },
+    {
+      "version": "1.0.631",
+      "tag": "v1.0.631",
+      "published_at": "2026-11-18T14:49:56Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.631",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "助手与模型选择器支持搜索过滤与思考强度调节。",
+          "助手给出的多处修改会直接展示增删对比，包括表格变动。",
+          "助手设置改为左右分栏卡片，切换与配置智能体更直观。",
+          "优化段落批注与表情回应的展示和交互细节。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "侧栏文件列表与笔记本支持拖拽排序，并带有清晰的插入指示线。",
+          "在标题行首增减井号即可快速切换标题级别。",
+          "手动拖拽排好的笔记文件顺序会在切换笔记本后继续保留。",
+          "导出窗口会自动记住你上次选择的纸张主题与页眉页脚开关。",
+          "助手设置支持接入本地智能体服务协同编辑笔记。",
+          "选中笔记里的图片或附件卡片后，可以直接复制为文件粘贴到别处。",
+          "行内助手支持保存常用提问、实时流式生成，取消后恢复原先输入。",
+          "打开任意笔记都会直接转为原生段落与块结构进行编辑。",
+          "行内助手常用指令升级为可收藏的快捷标签，最多紧凑展示三行。",
+          "编辑器加入呼吸闪烁光标、空行快捷提示、多级列表引导线与纸感待办框。",
+          "窄窗口下表情回应与批注卡片会直接贴在对应段落下方展示。",
+          "支持选择电脑上已安装的任意字体，文字光标高度会随所选字体自动贴合。",
+          "新增应用内自动更新，自动汇总跨版本中英双语更新日志，支持国内加速镜像与 GitHub 原生源切换及重启前自动保存笔记。",
+          "升级应用内更新弹窗为紧凑分类卡片，支持中英文一键预览、跨版本来源标记与全链路诊断日志。"
+        ],
+        "improvements": [
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "优化了界面细节与日常编辑操作的顺滑度。",
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化全局搜索、页内查找与大纲定位体验。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "优化笔记导出排版、纸张主题与图片渲染效果。",
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。",
+          "窗口变窄时会尽可能保留设置页左侧分类导航。",
+          "顶栏右侧操作按钮的边距与窗口左上角交通灯对称协调。",
+          "助手回复直接采用与正文一致的排版样式展示。",
+          "空白标题行会显示淡淡的层级占位提示。",
+          "日志纸张导出主题去掉背景点阵，版面更干净。",
+          "新插入的图片默认铺满正文宽度，两侧缩放手柄更好拖拽。",
+          "导出长图与网页时使用统一简洁的品牌角标。",
+          "跨段落、列表与表格的复制粘贴行为更加统一自然。",
+          "设置页里的文件夹规则排版更紧凑，名称输入框更宽。",
+          "打开模型选择器时直接展示已缓存列表，不必每次重新加载。",
+          "精简设置页左侧导航栏，去掉重复的状态文字。",
+          "导出笔记时会记住上次保存的文件夹位置。",
+          "导出可编辑文档时的字号与行距同纸张预览保持一致。",
+          "启动时并行加载界面字体，主窗口打开更快。",
+          "启动应用时首屏直接呈现上次打开的笔记，无需等待闪烁。",
+          "全应用的图标字号、选中态底色与字阶层级做了统一梳理。",
+          "展开箭头与关闭按钮换用更纤细利落的线条图标。",
+          "提示块去掉右上角多余标签，图标与标题垂直居中对齐。",
+          "列表与菜单行首图标尺寸统一放大，视觉对齐更清晰。",
+          "划词工具栏保持单行紧凑排列，超出项自动收入更多菜单。",
+          "空行左侧的插入加号只在鼠标指向该行时显示，编辑区更安静。"
+        ],
+        "fixes": [
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "优化段落批注与表情回应的展示和交互细节。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "优化运行性能与资源占用表现。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "改进表格编辑、列宽调整与单元格选择体验。",
+          "优化全局搜索、页内查找与大纲定位体验。",
+          "打开笔记本切换菜单时准确高亮当前所在的笔记本。",
+          "修复云盘同步冲突与高频对话刷新时的偶发卡顿。",
+          "特殊字符与转义符号在保存和重新打开后保持原样。",
+          "重启应用后自动恢复笔记本文件夹访问授权，无需重复选择。",
+          "缺少斜体字库的字体也能正常渲染斜体样式。",
+          "拆分或导入有序列表后会自动重新连续编号。",
+          "没有自带粗体字重的字体也能清晰显示加粗效果。",
+          "点击大纲标题跳转章节时不会打乱当前文字光标的位置。",
+          "划词工具栏只在支持文字排版的段落中弹出。",
+          "导出文档时完整保留表格列宽，并正常渲染本地与网络图片。",
+          "多篇笔记切换时各自保留独立的视图滚动与段落尺寸。",
+          "在标题、引用和列表中复制粘贴行内格式文字更加准确。",
+          "助手设置面板边缘圆角与卡片布局更加稳固整齐。",
+          "导出包含链接的表格时，单元格里的链接样式完整保留。",
+          "连续输入或删除文字时，页面滚动位置平稳不跳动。",
+          "修复若干异常退出与配置保存问题，提升长时间使用稳定性。",
+          "复制选中文本时会完整保留粗体、链接与列表等原有格式。",
+          "复制多层缩进列表或局部表格时，粘贴格式更干净规整。",
+          "打开弹窗或菜单时自动收起段落把手，输入框文字垂直居中。",
+          "滚动长笔记或切换窗口时，正在进行的行内助手预览不会中断。",
+          "改进复杂块结构的读写还原，反复保存不会丢失原本排版。",
+          "行内助手预览内容的段落与列表缩进同正文完全一致。",
+          "批注高亮底色与行内代码圆角框的高度整齐一致。",
+          "文字光标与字体基线精准对齐，并在行尾留出舒适间距。",
+          "点选表情回应后会自动收起文字光标，批注修改也支持撤销。",
+          "窄窗口下的块底批注在长文档滚动和标题折叠时保持稳定显示。",
+          "空段落保存为干净的空行，不再写入旧版注释标记。",
+          "中文输入法拼写过程中会自动隐藏空行快捷键提示，避免遮挡输入文字。"
+        ],
+        "other": [
+          "精简不再使用的语音听写辅助模块，减小安装包体积。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The agent and model picker adds search filtering and thinking depth controls.",
+          "Assistant edit plans display inline additions and deletions, including table changes.",
+          "Redesigned assistant settings into a split view for easier agent setup.",
+          "Add independent annotation model and reasoning settings.",
+          "Support dragging blocks into nested list content.",
+          "Support persistent notebook drag reordering.",
+          "Sidebar files and notebooks can be reordered by dragging with clear drop lines.",
+          "Typing or removing hash marks at the start of a heading changes its level.",
+          "Manual file ordering in the sidebar stays intact when switching notebooks.",
+          "Export remembers your chosen paper theme and page element toggles.",
+          "Added local agent integration for collaborative note editing.",
+          "Selected images and file cards in a note can be copied directly as files.",
+          "Inline assistant supports saved prompts, live streaming output, and input recovery on cancel.",
+          "Every note opens directly as native editable blocks without fallback views.",
+          "Inline assistant presets are unified into starred prompt chips arranged in up to three rows.",
+          "Added a blinking caret, empty-line shortcut hints, nested list guides, and paper-style to-do boxes.",
+          "In narrow windows, reactions and annotations sit directly beneath their block.",
+          "You can pick any font installed on your computer, and the text caret adapts to the font metrics.",
+          "Added in-app updates with cross-version bilingual release notes, mirror and GitHub failover, and automatic note saving before restart.",
+          "Redesigned the in-app update dialog with grouped category cards, instant language preview, version badges, and full diagnostic logging."
+        ],
+        "improvements": [
+          "Refine AI deck thinking header and enlarge fullscreen popover layout.",
+          "Improve local build feedback and development iteration.",
+          "Use SF Pro as the default interface font.",
+          "Seat chrome buttons flush against the window and sidebar edges.",
+          "Anchor the search folder menu to its trigger button.",
+          "Anchor floating menus to the trigger that is on screen now.",
+          "Reuse shared interface controls without changing Ocean Paper visuals.",
+          "Keep block drags captured until release and separate insertion slots.",
+          "Make nested block drops easier to target and more visible.",
+          "Settings keeps its side navigation visible longer before collapsing in narrow windows.",
+          "Title-bar buttons match the edge spacing of the window controls.",
+          "Assistant replies render with the same clean typography as the note editor.",
+          "Empty headings display a subtle level placeholder.",
+          "Removed the background dot grid from the Journal export paper theme.",
+          "Newly inserted images fit the content width by default with smoother resize handles.",
+          "Exported images and pages share a cleaner, consistent watermark.",
+          "Copy and paste work consistently across paragraphs, lists, and tables.",
+          "Folder rule settings have a tighter layout and a wider name field.",
+          "The model picker opens right away using its cached list.",
+          "Removed duplicate status labels from the settings navigation sidebar.",
+          "Exporting a note remembers the folder you chose last time.",
+          "Exported documents match the typography shown in the paper preview.",
+          "Interface fonts load in parallel on startup so the window opens faster.",
+          "Launching the app shows your last open note immediately on the first frame.",
+          "Icon sizes, selection highlights, and type sizes are unified across the app.",
+          "Chevrons and close buttons use cleaner, lighter stroke icons.",
+          "Callout blocks drop extra corner tags and center their icon with the heading.",
+          "Leading icons in lists and menus are slightly larger and cleaner to scan.",
+          "The selection toolbar stays on a single row and tucks extra actions into a menu.",
+          "The plus button on an empty line only appears when you point at that line."
+        ],
+        "fixes": [
+          "List every commit since the previous release.",
+          "Hide titlebar batch send button when AI is disabled.",
+          "Make the trash shortcut readable on the danger row.",
+          "Add status for the settings agent rail.",
+          "Stop live usage numbers from shifting the layout.",
+          "Add spacing beside the titlebar sidebar toggle.",
+          "Add a visible line after a folded heading without expanding it.",
+          "Fix progressive select all in table cells.",
+          "Fix global search content previews and match navigation.",
+          "Opening the notebook switcher highlights the active notebook right away.",
+          "Fixed occasional stalls during cloud drive sync conflicts and rapid chat updates.",
+          "Special characters and entities round-trip cleanly when saving notes.",
+          "Notebook folder permissions are restored automatically across restarts.",
+          "Fonts without a native italic face still render slanted text cleanly.",
+          "Numbered lists renumber cleanly after splitting or importing items.",
+          "Fonts without a dedicated bold face still render clear bold text.",
+          "Clicking an outline heading scrolls to the section without moving your caret.",
+          "The selection toolbar only appears inside text blocks that support formatting.",
+          "Exports preserve table column widths and include both local and web images.",
+          "Switching notes keeps each note's scroll position and block layout separate.",
+          "Copying and pasting styled text inside headings, quotes, and lists is more accurate.",
+          "Agent settings keep a steady layout with cleaner rounded corners.",
+          "Links inside table cells keep their theme styling when exported.",
+          "Typing or deleting text no longer causes the scroll position to bounce.",
+          "Fixed several stability and state-saving issues during long sessions.",
+          "Copying selected text preserves bold, links, lists, and other formatting.",
+          "Copying indented list items or partial table selections produces cleaner text.",
+          "Block handles stay hidden while a dialog or menu is open, and input text sits centered.",
+          "Scrolling the note or switching windows no longer interrupts an active inline assistant session.",
+          "Complex blocks keep their formatting reliably across repeated saves.",
+          "Inline assistant previews match the spacing and list markers of the note.",
+          "Annotation highlights now line up cleanly with inline code chips.",
+          "The text caret aligns with the font baseline and leaves comfortable space at the end of a line.",
+          "Picking a reaction hides the text caret, and annotation edits can be undone.",
+          "Inline block-foot annotations in narrow windows stay stable while scrolling or folding headings.",
+          "Empty paragraphs now save as clean blank lines without legacy comment markers.",
+          "Empty-line shortcut hints now hide automatically while typing with an input method."
+        ],
+        "other": [
+          "Removed the legacy dictation helper to keep the app lean."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.379",
+      "tag": "v1.0.379",
+      "published_at": "2026-11-07T11:28:00Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.379",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "可以显示或收起侧栏；指向顶栏上的按钮时，会说明它是做什么的。",
+          "内置助手不再绑在总开关上。每个智能体可以单独设置启动参数和优先级。",
+          "性能监视器改到 Block 菜单里打开，并有了快捷键。",
+          "性能监视器可以拖动，会显示正在加载，统计笔记本占用时会跳过你设为忽略的文件夹。",
+          "笔记的修改建议会直接在编辑器里打开给你看，不再单独放一个审阅按钮。",
+          "选择智能体和启用它分成了两步，智能体卡片也更大。"
+        ],
+        "improvements": [
+          "每次打开速记，它都单独待着，不再跟着主窗口绑在一起。",
+          "反馈的类型更少、说法更清楚，写完后顶部标题会收起。",
+          "常用控件重新画过，AI 对话看起来更简单。",
+          "挑选智能体时不会立刻启用，确认后才会保存。",
+          "编辑器里查看 AI 修改的卡片重新排过，不再出现空行。",
+          "AI 设置收成完整权限开关，以及后端实际提供的模型列表。"
+        ],
+        "fixes": [
+          "对话框和下面的按钮对齐了，发送图标也更清楚。",
+          "新建的表格会适应页面宽度；整张表被选中时，可以把它删掉。",
+          "提示优先出现在按钮上方，靠近屏幕边缘时会挪开，避免被挡住。",
+          "在 macOS 上把笔记移到废纸篓不再因为权限失败；也可以把文件夹拖到侧栏来打开。",
+          "审阅卡片里的文字不再溢出；代码块两端的标记行不会被当成修改。",
+          "嵌套列表里的代码能正常显示；AI 给出的笔记修改会先检查，再写入。"
+        ],
+        "other": [
+          "性能监视器的设计稿可以点着试用。",
+          "本地构建和发版构建走了更短的同一条流水线。",
+          "更新说明先写英文，下面再写中文。",
+          "发布页只放给人下载的安装包。",
+          "发布之后会再核对一遍，多出来的附件会被去掉。",
+          "本地构建不再在你没要求时重新打开 Block。",
+          "安装包固定为五个；手动强制构建时，也会带上自上一个版本以来的全部更新说明。",
+          "可以用 Linux 安装包给 Arch 用户发布。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "You can show or hide the sidebar, and the title bar explains the control when you point at it.",
+          "The built-in assistant is no longer tied to one master switch. Each agent can have its own launch options and priority.",
+          "The performance monitor opens from the Block menu, and it has a shortcut.",
+          "The performance monitor can be dragged, shows a loading state, and skips folders you set to ignore when measuring the notebook.",
+          "A suggested change to a note opens in the editor for review, without a separate review button.",
+          "Choosing an agent is separate from turning it on, and the agent cards are larger."
+        ],
+        "improvements": [
+          "Quick Note stays on its own each time you open it, instead of tying itself to the main window.",
+          "Feedback types are fewer and the wording is clearer, and the header hides when you finish.",
+          "Shared controls were redrawn, and AI chat is simpler to look at.",
+          "You can look through agents without turning one on, and the choice is saved when you confirm.",
+          "The card that reviews an AI change in the note was redesigned, and it no longer shows empty rows.",
+          "AI settings are a switch for full permissions and the model list the backend actually returns."
+        ],
+        "fixes": [
+          "The chat box lines up with the buttons under it, and the send icon is sharper.",
+          "A new table fits the page, and selecting the whole table deletes it.",
+          "Tips prefer to appear above a control, and they move so they stay on screen.",
+          "Moving a note to the Trash on macOS no longer fails with a permission error, and you can drop a folder on the sidebar to open it.",
+          "Text in the review card stays inside the card, and the opening and closing lines of a code block are not shown as changes.",
+          "Code inside a nested list renders correctly, and an AI suggestion is checked before it changes the note."
+        ],
+        "other": [
+          "The performance monitor design board can be clicked through.",
+          "Local builds and release builds now share a shorter pipeline.",
+          "Release notes are written in English first, with Chinese below.",
+          "The release page only keeps the installers people download.",
+          "After publishing, the release is checked again and extra files are removed.",
+          "A local build no longer restarts Block when you did not ask it to.",
+          "The release ships the five installers, and a forced build still gets notes for every commit since the previous release.",
+          "The Linux package can be published for Arch users."
+        ]
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.355",
+      "tag": "v1.0.355",
+      "published_at": "2026-11-07T05:00:27Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.355",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "AI 对话新增 Pi 后端，可在设置中选择显示哪些后端，智能体默认使用完整权限。",
+          "编辑器左上角新增大纲栏，悬停可查看标题，窄窗口下自动隐藏。",
+          "新增实时性能与存储监视器，用于查看应用运行状态与笔记本占用情况。",
+          "鼠标悬停在 AI 回复上时，右下角显示复制按钮。"
+        ],
+        "improvements": [
+          "AI 执行过程改为轻量文字展示，步骤默认折叠，并支持展开收起动画。",
+          "待确认的笔记修改计划可直接从对话中打开并在编辑器内审阅。",
+          "文件引用支持打开所在文件夹，并统一图标。",
+          "文件列表默认隐藏非 Markdown 文件，可在设置中调整。",
+          "调整设置页的关闭按钮和侧栏布局。",
+          "性能与存储信息改为统一卡片展示，笔记本占用单独列出。",
+          "macOS 主窗口与速记窗口可独立显示和隐藏，重新打开应用时显示主窗口。"
+        ],
+        "fixes": [
+          "修复新建对话后输入框没有获得焦点的问题。",
+          "修复切换对话时可能卡顿的问题。",
+          "修复“关于”窗口打开时的菜单响应问题。",
+          "恢复粘贴 Markdown 内容时的格式识别，以及使用快捷键唤出隐藏主窗口的功能。",
+          "修复小窗口中斜杠菜单滚动时抖动的问题。",
+          "修复跨多个选中块添加批注或回应时的问题，多行内容保存在同一条记录中。",
+          "修复工具栏、级联菜单和弹出窗口的位置与边缘对齐问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Added Pi backend for AI chat, settings to choose visible backends, and default full agent permissions.",
+          "Added an outline bar in the top-left corner of the editor that displays headings on hover and automatically hides in narrow windows.",
+          "Added a real-time performance and storage monitor to view application activity and notebook disk usage.",
+          "Hovering over an AI response now displays a copy button in the bottom-right corner."
+        ],
+        "improvements": [
+          "Streamlined the AI process view into lightweight text, with steps collapsed by default and animated expand and collapse.",
+          "Pending note modification plans can now be opened directly from chat into the editor for review.",
+          "File references now support opening the containing folder and use consistent icons.",
+          "The file list now hides non-Markdown files by default, which can be configured in settings.",
+          "Adjusted the settings page layout by updating the close button and simplifying the sidebar.",
+          "Consolidated performance and storage information into unified cards, with notebook storage listed separately.",
+          "The macOS main window and quick-note window can now be shown or hidden independently, and reopening the app displays the main window."
+        ],
+        "fixes": [
+          "Fixed an issue where the input box did not gain focus after starting a new chat.",
+          "Fixed potential stutter when switching between chats.",
+          "Fixed menu responsiveness issues when opening the About window.",
+          "Restored Markdown formatting recognition when pasting content, and restored the shortcut to summon the hidden main window.",
+          "Fixed scrolling jitter in the slash menu within compact windows.",
+          "Fixed issues when adding annotations or reactions across multiple selected blocks, keeping multiline content in a single record.",
+          "Fixed positioning and edge alignment issues for toolbars, cascading menus, and popups."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.325",
+      "tag": "v1.0.325",
+      "published_at": "2026-11-06T13:32:06Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.325",
+      "zh": {
+        "highlights": "implement scheme C unified agent deck, folio empty state, and fullscreen toggle；simplify header, empty state capabilities, and composer controls。",
+        "new": [
+          "implement scheme C unified agent deck, folio empty state, and fullscreen toggle。",
+          "simplify header, empty state capabilities, and composer controls。",
+          "replace disabled-state error banner with clickable enable cover。",
+          "Make the AI sidebar resizable with persistent width。",
+          "Clarify isolated in-app acceptance and computer-use boundaries。",
+          "Enable AI message selection and report interrupted responses。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "Avoid redundant file opens and workspace traversal。",
+          "prevent agent deck layout jitter on selection and fit input placeholder。",
+          "anchor model picker beside its trigger。",
+          "Fix closing the last tab window without quitting on macOS。",
+          "Fix selected feedback chip text contrast in dark mode。",
+          "Fix chat composer multiline wrapping and bounded growth。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "implement scheme C unified agent deck, folio empty state, and fullscreen toggle; simplify header, empty state capabilities, and composer controls.",
+        "new": [
+          "implement scheme C unified agent deck, folio empty state, and fullscreen toggle.",
+          "simplify header, empty state capabilities, and composer controls.",
+          "replace disabled-state error banner with clickable enable cover.",
+          "Make the AI sidebar resizable with persistent width.",
+          "Clarify isolated in-app acceptance and computer-use boundaries.",
+          "Enable AI message selection and report interrupted responses."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Avoid redundant file opens and workspace traversal.",
+          "prevent agent deck layout jitter on selection and fit input placeholder.",
+          "anchor model picker beside its trigger.",
+          "Fix closing the last tab window without quitting on macOS.",
+          "Fix selected feedback chip text contrast in dark mode.",
+          "Fix chat composer multiline wrapping and bounded growth."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.301",
+      "tag": "v1.0.301",
+      "published_at": "2026-11-06T05:30:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.301",
+      "zh": {
+        "highlights": "本次无面向用户的可见更新。",
+        "new": [],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "No user-facing changes in this release.",
+        "new": [],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.288",
+      "tag": "v1.0.288",
+      "published_at": "2026-11-05T14:18:02Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.288",
+      "zh": {
+        "highlights": "修复选择「下载或安装」类型时反馈可能提交失败的问题。",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "修复选择「下载或安装」类型时反馈可能提交失败的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "Fixed feedback sometimes failing to send when the \"Download or install\" type was selected.",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Fixed feedback sometimes failing to send when the \"Download or install\" type was selected."
+        ],
+        "other": []
+      },
+      "assets": []
+    },
+    {
+      "version": "1.0.225",
+      "tag": "v1.0.225",
+      "published_at": "2026-11-05T07:44:30Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.225",
+      "zh": {
+        "highlights": "笔记正文可以按比例缩放并记住，从速记回到主窗口时窗口会到前台；表格、代码块等块的上方也可以插入新段落。",
+        "new": [
+          "笔记正文可以按比例缩放并记住，从速记回到主窗口时窗口会到前台。",
+          "表格、代码块等块的上方也可以插入新段落。"
+        ],
+        "improvements": [
+          "侧栏加宽后，搜索框可以完整显示。",
+          "行内代码不再弹出悬停提示。",
+          "复制行内代码后会立刻出现已复制的提示。",
+          "行内代码改成描边样式，光标走到边缘后可以继续移出。",
+          "设置页会显示当前版本号。",
+          "标签页不再显示文档小图标，顶栏更干净。"
+        ],
+        "fixes": [
+          "窄侧栏里的搜索文字不再被截断。",
+          "速记里按下修饰键时，不再打断中文输入。",
+          "可以用原来的快捷键重新打开刚关掉的标签页。",
+          "切换浅色或深色时不再突然退出。",
+          "行内代码里划选文字时，选中范围不再高出文字。",
+          "窗口不在前台时，文字光标不再一直留在笔记上。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "Note content can now be zoomed and remembered, and switching back from Quick Note brings the main window to the front. You can also insert a new paragraph directly above tables, code blocks, and other blocks.",
+        "new": [
+          "Note content can now be zoomed and remembered, and switching back from Quick Note brings the main window to the front.",
+          "You can now insert a new paragraph directly above tables, code blocks, and other blocks."
+        ],
+        "improvements": [
+          "The search box now shows completely when the sidebar is widened.",
+          "Inline code no longer shows a tip when you point at it.",
+          "Copying inline code now immediately shows a copied notification.",
+          "Inline code now uses an outlined style, and the cursor can move past its edges.",
+          "Settings now displays the current version number.",
+          "Tabs no longer show document icons, keeping the top bar cleaner."
+        ],
+        "fixes": [
+          "Search text in a narrow sidebar is no longer cut off.",
+          "Pressing modifier keys in Quick Note no longer interrupts Chinese input.",
+          "You can now reopen recently closed tabs with the original shortcut.",
+          "Switching between light and dark mode no longer unexpectedly quits the app.",
+          "Highlighting text in inline code no longer extends above the text.",
+          "The text cursor no longer stays visible on notes when the window is in the background."
+        ],
+        "other": []
+      },
+      "assets": []
+    }
+  ]
+}
