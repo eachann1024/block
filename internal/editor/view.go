@@ -416,11 +416,16 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	id := b.ID
 
 	topGap := s.blockGap(meta.PrevVisible, b)
+	bandBleed := s.bandBleed()
+	rowBleed := float32(0)
+	if isSurfaceBleedBlock(b.Kind) {
+		rowBleed = bandBleed
+	}
 	leftPad := float32(0)
 	if s.minimal {
-		leftPad = minimalLeftInset
+		leftPad = max(minimalLeftInset-rowBleed, 0)
 	}
-	rightPad := s.rightContentInset()
+	rightPad := max(s.rightContentInset()-rowBleed, 0)
 
 	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
 	if !readOnly && b.Kind != model.BlockImage && b.Kind != model.BlockDivider {
@@ -436,12 +441,13 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		leftGutter := s.leftContentGutter()
 		rightInset := s.rightContentInset()
 		hiFill := pal.Selected
+		padY := s.scale(2)
 		row.Draw(func(p *ui.Painter, r ui.Rect) {
 			band := ui.Rect{
-				X: r.X + leftGutter - 8,
-				Y: r.Y + topGap - 2,
-				W: max(r.W-leftGutter-rightInset+16, 0),
-				H: max(r.H-topGap+4, 0),
+				X: r.X + leftGutter - bandBleed,
+				Y: r.Y + topGap - padY,
+				W: max(r.W-leftGutter-rightInset+2*bandBleed, 0),
+				H: max(r.H-topGap+2*padY, 0),
 			}
 			if band.W > 0 && band.H > 0 {
 				p.Fill(band, hiFill, theme.RadiusSM)
@@ -477,7 +483,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	listCtx := meta.List
 
 	if s.inlineAI != nil {
-		s.paintInlineAIOutline(c, row, id)
+		s.paintInlineAIOutline(c, row, id, topGap)
 	}
 
 	gripHoverBG := pal.Editor().GripHoverBG
@@ -493,7 +499,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 				hasGutterControls := showDeleteArm || (blankPara && showBlankAdd) || (!blankPara && showHandles) || showFold
 
 				gutter := ui.Box(c.Key("gutter")).Width(s.handleWidth()).Height(0).Shrink(0).
-					Margin(0, s.rowGap(), 0, 0)
+					Margin(0, max(s.rowGap()-rowBleed, 0), 0, 0)
 				if hasGutterControls {
 					gutter.Children(func() {
 						handleTop := s.blockHandleTopScaled(b, topGap)
@@ -678,9 +684,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 				ui.Box(c.Key("indent-pad")).Width(indentPx).Shrink(0)
 			}
 
-			// Standard 672px body column (scaled by editor zoom; no full-width switch)
+			// Standard 672px body column (scaled by editor zoom; surface blocks expand by 2*bandBleed to match empty-line-band)
 			stdW := s.standardWidth()
-			bodyMaxW := stdW
+			bodyMaxW := max(stdW-indentPx, s.scale(240)) + 2*rowBleed
 			if b.Kind.IsList() {
 				bodyMaxW = max(stdW-markerW-indentPx, s.scale(240))
 			}
@@ -1469,7 +1475,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 	previewable := isPreviewLang(canon)
 
 	card := ui.Column(c.Key("code-card")).FillWidth().Radius(theme.RadiusSM).
-		Background(pal.CodeBlockBG).Padding(s.scale(34), s.scale(11.7), s.scale(9.75), s.scale(11.7)).Gap(s.scale(8))
+		Background(pal.CodeBlockBG).Padding(s.scale(34), s.scale(12), s.scale(10), s.scale(12)).Gap(s.scale(8))
 	if _, _, _, selOk := s.blockSelectionSpanRange(idx); selOk && s.hasMultiBlockSelection() {
 		accent := pal.Accent
 		card.DrawOver(func(p *ui.Painter, r ui.Rect) {
@@ -1482,8 +1488,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 
 	card.Children(func() {
 		// Top controls bar: left Source toggle (for Mermaid/LaTeX/CSV), right Copy + Lang pill
-		hdr := ui.Row(c.Key("code-hdr")).Absolute().Top(theme.Space6).Left(theme.Space12).Right(theme.Space6).Height(theme.HeightMicro).
-			AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8)
+		hdr := ui.Row(c.Key("code-hdr")).Absolute().Top(s.scale(theme.Space6)).Left(s.scale(theme.Space12)).Right(s.scale(theme.Space8)).Height(s.scale(theme.HeightMicro)).
+			AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(s.scale(theme.Space8))
 		hdr.Children(func() {
 			left := ui.Row(c.Key("code-hdr-left")).AlignItems(ui.Center).Gap(theme.Space6)
 			left.Children(func() {
@@ -1829,7 +1835,7 @@ func (s *Session) renderCodePreview(c *ui.Context, id model.BlockID, canon, src 
 				tr := ui.Row(c.Key(tableRowUIKey{row: rIdx})).FillWidth().
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 				if rIdx == 0 {
-					tr.Background(pal.Shell)
+					tr.Background(pal.CodeBlockBG)
 				}
 				tr.Children(func() {
 					for cIdx, cell := range row {
@@ -1979,13 +1985,14 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	borderCol := tblCols.Border
 	headerBG := tblCols.HeaderBG
 
-	_, _, tMinRowH, tMinColW, tMaxColW, _, _ := s.tableMetrics()
+	_, _, tMinRowH, tMinColW, _, _, _ := s.tableMetrics()
+	bleed := s.bandBleed()
 	wrap := ui.Column(c.Key("table-wrap")).FillWidth().Gap(s.scale(4))
 	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id)
 	wrap.Children(func() {
 		// Top bar sits inside the top gutter so hover changes never shift blocks below.
 		if showChrome {
-			bar := ui.Row(c.Key("table-top-bar")).Absolute().Top(-s.scale(24)).Right(s.scale(26)).Height(s.scale(22)).Justify(ui.End).Gap(s.scale(4))
+			bar := ui.Row(c.Key("table-top-bar")).Absolute().Top(-s.scale(24)).Right(0).Height(s.scale(22)).Justify(ui.End).Gap(s.scale(4))
 			bar.Children(func() {
 				moreID := fmt.Sprintf("table-more-%d", id)
 				more := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
@@ -2007,18 +2014,18 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			})
 		}
 
-		gridRow := ui.Row(c.Key("table-grid-row")).FillWidth().AlignItems(ui.Stretch).Gap(s.scale(4))
+		gridRow := ui.Row(c.Key("table-grid-row")).FillWidth().AlignItems(ui.Stretch)
 		gridRow.Children(func() {
-			availGrid := max(s.standardWidth()-s.scale(26), 200)
+			availGrid := max(s.standardWidth()+2*bleed, 200)
 			if s.viewportWidth > 0 {
-				availGrid = min(availGrid, max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset()-s.scale(26), 200))
+				availGrid = min(availGrid, max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset()+2*bleed, 200))
 			}
 			buildGrid := func(needHScroll bool) {
 				grid := ui.Column(c.Key("table-grid")).Radius(theme.RadiusSM).Border(1, borderCol).Clip()
 				if needHScroll {
 					grid.MinWidth(float32(cols) * tMinColW)
 				} else {
-					grid.Grow(1).Shrink(1).MaxWidth(float32(max(cols, 1)) * tMaxColW)
+					grid.FillWidth()
 				}
 				grid.Children(func() {
 					for rIdx := range tbl.Rows {
@@ -2032,7 +2039,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						}
 						rowEl.Children(func() {
 							for cIdx := range row {
-								s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, borderCol, readOnly)
+								s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, borderCol, needHScroll, readOnly)
 							}
 						})
 					}
@@ -2047,13 +2054,23 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				buildGrid(false)
 			}
 
-			// Right add column bar (reserve 22px slot so column width stays stable)
-			colSlot := ui.Box(c.Key("table-add-col-slot")).Width(s.scale(22)).Shrink(0)
+			// Right add column bar sits in the right gutter so table width aligns 1:1 with other blocks.
 			if showChrome {
+				colSlot := ui.Box(c.Key("table-add-col-slot")).Absolute()
+				if s.minimal {
+					colSlot.Top(s.scale(2)).Bottom(s.scale(2)).Right(s.scale(2)).Width(s.scale(20))
+				} else {
+					colSlot.Top(0).Bottom(0).Right(-s.scale(26)).Width(s.scale(22))
+				}
 				colSlot.Children(func() {
 					addCol := ui.ButtonBase(c.Key("table-add-col")).Fill().Center().
-						Radius(theme.RadiusXS).Background(pal.Hover).Cursor(ui.CursorPointer).
+						Radius(theme.RadiusXS).Cursor(ui.CursorPointer).
 						Label(theme.Tr("添加列", "Add column"))
+					if addCol.Hovered() || addCol.Pressed() {
+						addCol.Background(pal.Hover)
+					} else {
+						addCol.Background(pal.CodeBlockBG)
+					}
 					addCol.Children(func() {
 						icons.Draw(c, icons.Plus, s.scale(14), pal.HoverIconColors(addCol.Hovered() || addCol.Pressed()))
 					})
@@ -2070,8 +2087,13 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		if showChrome {
 			rowSlot.Children(func() {
 				addRow := ui.ButtonBase(c.Key("table-add-row")).Fill().Center().
-					Radius(theme.RadiusXS).Background(pal.Hover).Cursor(ui.CursorPointer).
+					Radius(theme.RadiusXS).Cursor(ui.CursorPointer).
 					Label(theme.Tr("添加行", "Add row"))
+				if addRow.Hovered() || addRow.Pressed() {
+					addRow.Background(pal.Hover)
+				} else {
+					addRow.Background(pal.CodeBlockBG)
+				}
 				addRow.Children(func() {
 					icons.Draw(c, icons.Plus, s.scale(14), pal.HoverIconColors(addRow.Hovered() || addRow.Pressed()))
 				})
@@ -2084,7 +2106,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	})
 }
 
-func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, borderCol ui.Color, readOnly bool) {
+func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, borderCol ui.Color, needHScroll, readOnly bool) {
 	pal := theme.Ocean()
 	tFontSz, tLineH, _, tMinColW, tMaxColW, tPadY, tPadX := s.tableMetrics()
 	cell := &tbl.Rows[rIdx][cIdx]
@@ -2100,8 +2122,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 		((cellLen == 0 && selLo <= cellBase && selHi >= cellBase) || (selHi > cellBase && selLo < cellBase+cellLen))
 
 	box := ui.Box(c.Key(tableCellPosKey{row: rIdx, col: cIdx})).Grow(1).Shrink(1).
-		MinWidth(tMinColW).MaxWidth(tMaxColW).Padding(tPadY, tPadX).
+		MinWidth(tMinColW).Padding(tPadY, tPadX).
 		BorderWidth(0, boolToBorder(cIdx+1 < len(tbl.Rows[rIdx])), 0, 0).BorderColor(borderCol)
+	if needHScroll {
+		box.MaxWidth(tMaxColW)
+	}
 	box.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.recordTableCellRect(blockID, rIdx, cIdx, r)
 	})
@@ -2466,7 +2491,7 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			} else if imgSrc, ok := s.resolveImageSource(b.ImageSrc); ok {
 				ui.Image(c, imgSrc).FillWidth()
 			} else {
-				ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8).Background(pal.Shell)
+				ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
 				ph.Children(func() {
 					icons.Draw(c, icons.Image, 20, pal.MonoIconColors(pal.TextSecondary))
 					lbl := b.ImageAlt
@@ -2486,8 +2511,9 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				if b.ImageAlign == model.ImageAlignCenter {
 					scale = 2
 				}
-				stdW := s.standardWidth()
-				availW := min(max(s.editorRect.W-s.leftContentGutter()-s.rightContentInset(), 200), stdW)
+				bleed := s.bandBleed()
+				stdW := s.standardWidth() + 2*bleed
+				availW := min(max(s.editorRect.W-s.leftContentGutter()-s.rightContentInset()+2*bleed, 200), stdW)
 				if availW <= 0 {
 					availW = stdW
 				}

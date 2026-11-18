@@ -48,12 +48,12 @@ func (p Palette) Table() TableColors {
 	if p.Dark {
 		return TableColors{
 			Border:   p.MenuBorder,
-			HeaderBG: ui.RGBA(255, 255, 255, 0.031),
+			HeaderBG: p.CodeBlockBG,
 		}
 	}
 	return TableColors{
-		Border:   ui.Hex("#e8e5dc"),
-		HeaderBG: ui.Hex("#f5f3ed"),
+		Border:   p.Hairline,
+		HeaderBG: p.CodeBlockBG,
 	}
 }
 
@@ -97,13 +97,13 @@ type EditorColors struct {
 func (p Palette) Editor() EditorColors {
 	if p.Dark {
 		return EditorColors{
-			GripHoverBG:      ui.Hex("#2c2c2a"),
+			GripHoverBG:      p.CodeBlockBG,
 			ResizeHandleBG:   ui.RGBA(34, 34, 34, 0.85),
 			InlineAIDiffTint: ui.RGBA(43, 53, 72, 0.42),
 		}
 	}
 	return EditorColors{
-		GripHoverBG:      ui.Hex("#f5f4ed"),
+		GripHoverBG:      p.CodeBlockBG,
 		ResizeHandleBG:   ui.RGBA(255, 255, 255, 0.85),
 		InlineAIDiffTint: p.Hover.Alpha(0.72),
 	}

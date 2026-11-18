@@ -385,7 +385,7 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 	player, ok := s.resolveVideoPlayer(b.ImageSrc)
 	if ok {
 		vw, vh := player.Size()
-		stage := ui.Column(c.Key(fmt.Sprintf("video-stage-%d", id))).FillWidth().Background(pal.Shell)
+		stage := ui.Column(c.Key(fmt.Sprintf("video-stage-%d", id))).FillWidth().Background(pal.CodeBlockBG)
 		stage.Children(func() {
 			if player.Ready() && vw > 0 && vh > 0 {
 				vidEl := ui.Video(c, player).FillWidth().Cursor(ui.CursorPointer)
@@ -397,7 +397,7 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 					}
 				}
 			} else {
-				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(theme.Space8).Background(pal.Shell)
+				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
 				ph.Children(func() {
 					ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 				})
@@ -449,7 +449,7 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 
 	// Graceful fallback card when the OS codec cannot decode the video inline or file is external.
 	card := ui.Row(c.Key(fmt.Sprintf("video-fallback-%d", id))).FillWidth().Height(64).PaddingX(theme.Space16).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space10).Background(pal.Shell).Cursor(ui.CursorPointer)
+		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space10).Background(pal.CodeBlockBG).Cursor(ui.CursorPointer)
 	card.Children(func() {
 		left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Shrink(1)
 		left.Children(func() {
