@@ -1407,6 +1407,18 @@ func (w *Workspace) RequestRedraw() {
 	}
 }
 
+// InvalidateAllWindows marks the main workspace, Quick Note, and standalone search
+// windows dirty (e.g. after background CDN font registration completes).
+func (w *Workspace) InvalidateAllWindows() {
+	w.RequestRedraw()
+	if w.quick != nil {
+		w.quick.Invalidate()
+	}
+	if w.searchWin != nil {
+		w.searchWin.Invalidate()
+	}
+}
+
 // --- Notebook, File, Reorder, and Tab Operations ---
 
 // SetNotebook switches the active notebook folder (adding it to recent notebooks),
@@ -2853,9 +2865,8 @@ func (w *Workspace) Render(c *ui.Context) {
 	}
 	theme.SetZoom(zoom)
 
-	edFont, _, _ := theme.Typography()
 	pal := theme.Ocean()
-	uiTheme := pal.ToUITheme(edFont)
+	uiTheme := pal.ToUITheme("")
 	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
 		TrackWidth: theme.ScrollGutter,
 		ThumbWidth: theme.ScrollThumbWidth,

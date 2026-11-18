@@ -366,10 +366,42 @@ func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	base.FocusRingOffset = 1
 	base.Radius = RadiusMD
 	base.FontSize = FontBody
-	base.Font = fontFamily
+	if strings.TrimSpace(fontFamily) == "" {
+		base.Font = DefaultUIFontStack()
+	} else {
+		base.Font = fontFamily
+	}
 	base.Scrollbar = p.ScrollThumb
 	base.ScrollbarWidth = ScrollThumbWidth
 	return base
+}
+
+// DefaultUIFontStack returns the primary application UI font stack:
+// SF Pro (via system-ui on macOS) for Latin/numbers paired with HarmonyOS Sans SC for CJK,
+// with immediate system CJK fallbacks while CDN weights finish caching on first launch.
+func DefaultUIFontStack() string {
+	switch runtime.GOOS {
+	case "darwin", "js":
+		return "system-ui, HarmonyOS Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans SC"
+	case "windows":
+		return "Segoe UI, HarmonyOS Sans SC, Microsoft YaHei, Noto Sans SC, sans-serif"
+	default:
+		return "Inter, Cantarell, Ubuntu, DejaVu Sans, HarmonyOS Sans SC, Noto Sans CJK SC, Noto Sans SC, sans-serif"
+	}
+}
+
+// ResolvedEditorFont resolves the configured editor body font into a complete CSS/CoreText family list.
+func ResolvedEditorFont() string {
+	edFont, _, _ := Typography()
+	f := strings.TrimSpace(edFont)
+	switch f {
+	case "", "system-sans":
+		return DefaultUIFontStack()
+	case "system-serif":
+		return "LXGW WenKai, LXGW WenKai Screen, Kaiti SC, Songti SC, Source Han Serif SC, Noto Serif CJK SC, SimSun, serif"
+	default:
+		return f + ", HarmonyOS Sans SC, PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
+	}
 }
 
 // Inline highlight/text colors supported in selection palette & Markdown spans.
@@ -436,15 +468,27 @@ func ResolveNamedBG(name string, dark bool) (ui.Color, bool) {
 
 // Global reactive runtime theme/language/folder-rule state.
 var (
-	langAtomic atomic.Int32 // 0 = unset, 1 = Zh, 2 = En
-	darkAtomic atomic.Bool
-	modeMu     sync.RWMutex
-	themeMode  = model.ThemeSystem
-	editorFont = ""
-	codeFont   = "Menlo"
-	lineHeight = model.LineHeightNormal
-	zoomLevel  = float32(1.0)
+	langAtomic      atomic.Int32 // 0 = unset, 1 = Zh, 2 = En
+	darkAtomic      atomic.Bool
+	fontEpochAtomic atomic.Uint64
+	modeMu          sync.RWMutex
+	themeMode       = model.ThemeSystem
+	editorFont      = ""
+	codeFont        = "Menlo"
+	lineHeight      = model.LineHeightNormal
+	zoomLevel       = float32(1.0)
 )
+
+// BumpFontEpoch increments the global font-registration generation so cached layouts
+// and font pickers refresh as soon as runtime CDN fonts finish registering.
+func BumpFontEpoch() uint64 {
+	return fontEpochAtomic.Add(1)
+}
+
+// FontEpoch returns the current runtime font-registration generation.
+func FontEpoch() uint64 {
+	return fontEpochAtomic.Load()
+}
 
 func SystemLanguage() model.LanguageMode {
 	for _, env := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
