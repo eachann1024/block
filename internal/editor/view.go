@@ -85,6 +85,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			bottomPad = minimalBottomPad
 			bottomMinH = 36
 		}
+		if s.dragActive && s.dragSavedHeight > 0 {
+			bottomMinH += s.dragSavedHeight
+		}
 
 		// Main scrollable document body
 		scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
@@ -415,10 +418,11 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	b := &s.doc.Blocks[idx]
 	id := b.ID
 
+	isCollapsedDrag := s.isCollapsedDragRow(id)
 	topGap := s.blockGap(meta.PrevVisible, b)
 	bandBleed := s.bandBleed()
 	rowBleed := float32(0)
-	if isSurfaceBleedBlock(b.Kind) {
+	if isSurfaceBleedBlock(b.Kind) && !isCollapsedDrag {
 		rowBleed = bandBleed
 	}
 	leftPad := float32(0)
@@ -502,8 +506,11 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 					Margin(0, max(s.rowGap()-rowBleed, 0), 0, 0)
 				if hasGutterControls {
 					gutter.Children(func() {
-						handleTop := s.blockHandleTopScaled(b, topGap)
 						btn24 := s.scale(24)
+						handleTop := s.blockHandleTopScaled(b, topGap)
+						if isCollapsedDrag {
+							handleTop = max((s.scale(theme.HeightCompact)-btn24)*0.5, -topGap)
+						}
 						ic14 := s.scale(14)
 						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(btn24).
 							Justify(ui.End).AlignItems(ui.Center).Gap(s.scale(2)).PassThrough()
@@ -692,7 +699,11 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 			}
 			body := ui.Column(c.Key("body")).Grow(1).Shrink(1).MaxWidth(bodyMaxW)
 			body.Children(func() {
-				s.renderBlockBody(c, idx, b, isFocused, isHovered, readOnly, deleteArmed)
+				if isCollapsedDrag {
+					s.renderCollapsedDragBlock(c, idx, b)
+				} else {
+					s.renderBlockBody(c, idx, b, isFocused, isHovered, readOnly, deleteArmed)
+				}
 			})
 		})
 	})
