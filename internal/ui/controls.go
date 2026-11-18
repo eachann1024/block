@@ -75,12 +75,14 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	if opts.ID != "" {
 		c.Key(opts.ID)
 	}
+	cursor := ui.CursorPointer
+	if opts.Disabled {
+		cursor = ui.CursorDefault
+	}
 	btn := ui.ButtonBase(c).Size(boxSize, boxSize).Shrink(0).Center().
-		Radius(radius).Cursor(ui.CursorPointer).Disabled(opts.Disabled).DimDisabled(false)
+		Radius(radius).Cursor(cursor).Disabled(opts.Disabled).DimDisabled(false)
 	if opts.Variant == IconBordered {
 		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
-	} else {
-		btn.Border(1, ui.Transparent)
 	}
 	if opts.Label != "" {
 		btn.Label(opts.Label)
@@ -96,33 +98,34 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	pressed := btn.Pressed() && !opts.Disabled
 
 	switch {
-	case opts.Disabled:
-		btn.Opacity(theme.DisabledOpacity)
-	case opts.Danger && (hovered || pressed):
+	case opts.Danger && pressed:
+		btn.Background(pal.Danger.Alpha(0.22))
+	case opts.Danger && hovered:
 		btn.Background(pal.DangerSurface)
 	case opts.Active && opts.ActiveStyle == ActiveAccentFlat:
 		btn.Background(pal.Selected)
-	case opts.Active && opts.ActiveStyle == ActiveAccent:
-		btn.Background(pal.Selected).Border(1, pal.Accent)
 	case opts.Active:
-		btn.Background(pal.Selected)
+		btn.Background(pal.Selected).Border(1, pal.Accent)
 	case pressed:
 		btn.Background(pal.Selected)
-	case hovered && opts.Variant == IconBordered:
-		btn.Background(pal.BtnHover)
 	case hovered:
 		btn.Background(pal.Hover)
+	}
+	if opts.Disabled {
+		btn.Opacity(theme.DisabledOpacity)
 	}
 
 	btn.Children(func() {
 		var ic theme.IconColors
 		switch {
-		case opts.Danger && (hovered || opts.Active):
+		case opts.Danger && (hovered || pressed || opts.Active):
 			ic = pal.MonoIconColors(pal.Danger)
 		case opts.Active && opts.ActiveStyle != ActiveOutlined:
 			ic = pal.DuoIconColors(pal.Accent)
-		case opts.Active || hovered:
+		case opts.Active || hovered || pressed:
 			ic = pal.DuoIconColors(pal.Text)
+		case opts.Variant == IconBordered:
+			ic = pal.MonoIconColors(pal.Text)
 		default:
 			ic = pal.MonoIconColors(pal.TextSecondary)
 		}
@@ -149,8 +152,12 @@ func ActionButton(c *ui.Context, id, label string, leading *icons.Icon, style Ac
 	if id != "" {
 		c.Key(id)
 	}
+	cursor := ui.CursorPointer
+	if disabled {
+		cursor = ui.CursorDefault
+	}
 	btn := ui.ButtonBase(c).Height(32).PaddingX(12).Gap(6).AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Disabled(disabled).Label(label)
+		Radius(theme.RadiusControl).Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(label)
 	hovered := btn.Hovered() && !disabled
 	pressed := btn.Pressed() && !disabled
 
@@ -168,13 +175,18 @@ func ActionButton(c *ui.Context, id, label string, leading *icons.Icon, style Ac
 	case ButtonDanger:
 		fg = pal.Danger
 		bg := pal.DangerSurface
-		if hovered || pressed {
+		if pressed {
+			bg = pal.Danger.Alpha(0.26)
+		} else if hovered {
 			bg = pal.Danger.Alpha(0.18)
 		}
 		btn.Background(bg).Border(1, pal.Danger.Alpha(0.35))
 	case ButtonGhost:
 		fg = pal.TextSecondary
-		if hovered || pressed {
+		if pressed {
+			fg = pal.Text
+			btn.Background(pal.Selected)
+		} else if hovered {
 			fg = pal.Text
 			btn.Background(pal.Hover)
 		}
@@ -188,12 +200,19 @@ func ActionButton(c *ui.Context, id, label string, leading *icons.Icon, style Ac
 		}
 		btn.Background(bg).Border(1, pal.BtnBorder)
 	}
+	if disabled {
+		btn.Opacity(theme.DisabledOpacity)
+	}
 
 	btn.Children(func() {
 		if leading != nil {
-			icons.Draw(c, *leading, 16, pal.MonoIconColors(fg))
+			ic := pal.MonoIconColors(fg)
+			if (style == ButtonSecondary || style == ButtonGhost) && (hovered || pressed) {
+				ic = pal.DuoIconColors(fg)
+			}
+			icons.Draw(c, *leading, 16, ic)
 		}
-		ui.Text(c, label).FontSize(14).FontWeight(500).TextColor(fg).SingleLine()
+		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(20).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
 	})
 	if id != "" {
 		Probe(btn, id)
@@ -217,28 +236,38 @@ func SegmentedControl(c *ui.Context, id string, active *int, options []SegmentOp
 		c.Key(id)
 	}
 	seg := ui.SegmentedBase(c, active, len(options))
-	track := seg.Track.Height(32).Padding(3).Gap(2).Radius(theme.RadiusControl).
-		Background(pal.Shell).Border(1, pal.Hairline)
+	track := seg.Track.Height(30).Padding(2).Gap(2).Radius(theme.RadiusControl).
+		Background(pal.Paper).Border(1, pal.BtnBorder)
 	if id != "" {
 		Probe(track, id)
 	}
 	track.Children(func() {
 		for i, opt := range options {
-			item := seg.Segment(i).Height(24).PaddingX(12).Center().Radius(6).Cursor(ui.CursorPointer).Label(opt.Label)
+			item := seg.Segment(i).Height(24).PaddingX(10).Center().Radius(6).Border(1, ui.Transparent).Label(opt.Label)
+			disabled := item.IsDisabled()
+			if disabled {
+				item.Cursor(ui.CursorDefault)
+			} else {
+				item.Cursor(ui.CursorPointer)
+			}
+			hovered := item.Hovered() && !disabled
+			pressed := item.Pressed() && !disabled
 			if i == *active {
-				item.Background(pal.Card).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
-			} else if item.Hovered() {
-				item.Background(pal.Hover.Alpha(0.6))
+				item.Background(pal.Selected).Border(1, pal.Accent)
+			} else if pressed {
+				item.Background(pal.Selected)
+			} else if hovered {
+				item.Background(pal.Hover)
 			}
 			if opt.ID != "" {
 				Probe(item, opt.ID)
 			}
 			item.Children(func() {
 				col := pal.TextSecondary
-				if i == *active {
+				if i == *active || hovered || pressed {
 					col = pal.Text
 				}
-				ui.Text(c, opt.Label).FontSize(14).FontWeight(500).TextColor(col).SingleLine()
+				ui.Text(c, opt.Label).FontSize(theme.FontBody).FixedLineHeight(20).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 			})
 		}
 	})
@@ -252,13 +281,36 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 	if id != "" {
 		c.Key(id)
 	}
-	sw := ui.SwitchBase(c, value).Size(38, 22).Shrink(0).Padding(2).Radius(theme.RadiusPill).
-		Cursor(ui.CursorPointer).Disabled(disabled).Label(label)
+	cursor := ui.CursorPointer
+	if disabled {
+		cursor = ui.CursorDefault
+	}
+	sw := ui.SwitchBase(c, value).Size(38, 22).Shrink(0).Padding(2).AlignItems(ui.Center).Radius(theme.RadiusPill).
+		Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(label)
+	hovered := sw.Hovered() && !disabled
+	pressed := sw.Pressed() && !disabled
 	bg := pal.BtnBorder
 	if *value {
-		bg = pal.Accent
+		switch {
+		case pressed:
+			bg = pal.AccentPressed
+		case hovered:
+			bg = pal.AccentHover
+		default:
+			bg = pal.Accent
+		}
+	} else {
+		switch {
+		case pressed:
+			bg = pal.BtnBorder.Mix(pal.Text, 0.22)
+		case hovered:
+			bg = pal.BtnBorder.Mix(pal.Text, 0.12)
+		}
 	}
 	sw.Background(bg)
+	if disabled {
+		sw.Opacity(theme.DisabledOpacity)
+	}
 	sw.Children(func() {
 		knobX := float32(0)
 		if *value {
@@ -324,25 +376,34 @@ type MenuItemSpec struct {
 func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	pal := theme.Ocean()
 	if item.Separator {
-		return ui.Box(c).FillWidth().Height(1).MarginY(3).Background(pal.MenuSeparator)
+		return ui.Box(c).FillWidth().Height(1).Shrink(0).MarginY(3).Background(pal.MenuSeparator)
 	}
 	if item.ID != "" {
 		c.Key(item.ID)
 	}
-	row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).AlignItems(ui.Center).
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Disabled(item.Disabled).Label(item.Label)
+	cursor := ui.CursorPointer
+	if item.Disabled {
+		cursor = ui.CursorDefault
+	}
+	row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
+		AlignItems(ui.Center).Justify(ui.Start).
+		Radius(theme.RadiusControl).Cursor(cursor).Disabled(item.Disabled).DimDisabled(false).Label(item.Label)
 	hovered := (row.Hovered() || highlighted) && !item.Disabled
+	pressed := row.Pressed() && !item.Disabled
+	active := hovered || pressed
 	fg, iconLine := pal.Text, pal.MenuIcon
 	switch {
-	case item.Danger && hovered:
+	case item.Danger && active:
 		row.Background(pal.MenuDangerHoverBG)
 		fg, iconLine = pal.MenuDangerHoverFG, pal.MenuDangerHoverFG
 	case item.Danger:
 		fg, iconLine = pal.MenuDangerFG, pal.MenuDangerFG
-	case hovered:
-		row.Background(pal.MenuHover)
 	case item.Checked:
 		row.Background(pal.MenuChecked)
+	case pressed:
+		row.Background(pal.Selected)
+	case hovered:
+		row.Background(pal.MenuHover)
 	}
 	if item.Disabled {
 		row.Opacity(theme.DisabledOpacity)
@@ -351,23 +412,38 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		if item.Icon != nil {
 			var ic theme.IconColors
 			switch {
+			case item.Danger && active:
+				ic = theme.IconColors{Line: pal.MenuDangerHoverFG, Fill: ui.RGBA(255, 255, 255, 0.20), Accent: pal.MenuDangerHoverFG}
 			case item.Danger:
 				ic = pal.MonoIconColors(iconLine)
-			case hovered || item.Checked:
+			case active || item.Checked:
 				ic = pal.DuoIconColors(iconLine)
 			default:
 				ic = pal.MonoIconColors(iconLine)
 			}
 			icons.Draw(c, *item.Icon, theme.IconRow, ic)
 		}
-		ui.Text(c, item.Label).FontSize(theme.FontBody).TextColor(fg).Grow(1).SingleLine()
-		switch {
-		case item.Checked:
+		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(20).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if item.Shortcut != "" {
+			hintCol := pal.MenuMuted
+			if item.Danger && active {
+				hintCol = pal.MenuDangerHoverFG
+			}
+			ShortcutLabel(c, item.Shortcut, ShortcutLabelStyle{
+				FontSize:   theme.FontMeta,
+				LineHeight: 16,
+				Color:      hintCol,
+			})
+		}
+		if item.HasSubmenu {
+			chevCol := pal.MenuMuted
+			if item.Danger && active {
+				chevCol = pal.MenuDangerHoverFG
+			}
+			icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol))
+		}
+		if item.Checked {
 			icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
-		case item.Shortcut != "":
-			ui.Text(c, item.Shortcut).FontSize(theme.FontSmall).TextColor(pal.MenuMuted).SingleLine()
-		case item.HasSubmenu:
-			icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.MenuMuted))
 		}
 	})
 	if item.ID != "" {

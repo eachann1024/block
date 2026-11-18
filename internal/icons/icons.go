@@ -202,6 +202,9 @@ func AgentBrandSVG(kind model.BackendKind) *ui.SVG {
 
 // Draw stacks the .fill, .line, and .accent SVG masks of a Scheme A Duo icon.
 func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.Element {
+	if size <= 0 {
+		return ui.Box(c).Size(0, 0).Shrink(0)
+	}
 	root := ui.Box(c).Size(size, size).Shrink(0)
 	root.Children(func() {
 		if colors.Fill.A > 0 {
@@ -209,8 +212,10 @@ func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.E
 				ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Fill)
 			}
 		}
-		if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
-			ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Line)
+		if colors.Line.A > 0 {
+			if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
+				ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Line)
+			}
 		}
 		if colors.Accent.A > 0 {
 			if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
@@ -232,6 +237,9 @@ func Duo(c *ui.Context, glyph Icon, size float32, active bool) ui.Element {
 
 // Brand renders an AI backend brand mark at `size`.
 func Brand(c *ui.Context, kind model.BackendKind, size float32, tint ui.Color) ui.Element {
+	if size <= 0 {
+		return ui.Box(c).Size(0, 0).Shrink(0)
+	}
 	s := AgentBrandSVG(kind)
 	if s == nil {
 		return Duo(c, Sparkles, size, true)
@@ -244,8 +252,8 @@ func Mascot(c *ui.Context, state MascotState, maxWidth float32) ui.Element {
 	const fullW float32 = 280
 	const fullH float32 = 220
 	w := fullW
-	if maxWidth > 1 && maxWidth < fullW {
-		w = maxWidth
+	if maxWidth > 0 && maxWidth < fullW {
+		w = max(maxWidth, 1)
 	}
 	h := fullH * w / fullW
 	pal := theme.Ocean()
