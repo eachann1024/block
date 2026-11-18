@@ -88,7 +88,7 @@ func (s *Session) SelectedDoc() *model.Doc {
 			}
 		}
 
-		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider) {
+		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block)) {
 			cp := blk.Clone()
 			cp.Dirty = true
 			cp.CleanSource = ""
@@ -178,7 +178,7 @@ func (s *Session) SelectedMarkdown() string {
 			return serializeTableMultiCellMarkdown(blk.Table, a.Offset, b.Offset, s.codec)
 		}
 
-		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider) {
+		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block)) {
 			cp := blk.Clone()
 			cp.ID = model.NewBlockID()
 			cp.Dirty = true
