@@ -33,14 +33,18 @@ const (
 )
 
 type IconButtonOptions struct {
-	ID       string
-	Label    string
-	Tooltip  string
-	Variant  IconButtonVariant
-	Size     float32 // Outer square size override (default from Variant)
-	IconSize float32 // Inner glyph size override (default from Variant)
-	Radius   float32 // Corner radius override (default from Variant)
-	Active   bool
+	ID           string
+	Label        string
+	Tooltip      string
+	Shortcut     string
+	TooltipPill  bool
+	TooltipAbove bool
+	TooltipSpec  *TooltipSpec
+	Variant      IconButtonVariant
+	Size         float32 // Outer square size override (default from Variant)
+	IconSize     float32 // Inner glyph size override (default from Variant)
+	Radius       float32 // Corner radius override (default from Variant)
+	Active       bool
 	// ActiveStyle refines how Active is drawn.
 	ActiveStyle IconActiveStyle
 	Disabled    bool
@@ -91,8 +95,21 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	} else if opts.ID != "" {
 		btn.Label(opts.ID)
 	}
-	if opts.Tooltip != "" {
-		Tooltip(c, btn, opts.Tooltip)
+	if opts.TooltipSpec != nil {
+		RichTooltip(c, btn, *opts.TooltipSpec)
+	} else if opts.Tooltip != "" || opts.Shortcut != "" {
+		placement := TooltipBelow
+		if opts.TooltipAbove {
+			placement = TooltipAbove
+		}
+		RichTooltip(c, btn, TooltipSpec{
+			Pill:      opts.TooltipPill,
+			Placement: placement,
+			Rows: []TooltipRow{{
+				Trigger:  opts.Tooltip,
+				Shortcut: opts.Shortcut,
+			}},
+		})
 	}
 	hovered := btn.Hovered() && !opts.Disabled
 	pressed := btn.Pressed() && !opts.Disabled

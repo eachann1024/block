@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"strconv"
 
 	"block/internal/icons"
@@ -71,7 +70,8 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 	sc := nonEmptyOr(p.ShortcutAI, "cmd-j")
 	btn := blockui.IconButton(c, icons.Sparkles, blockui.IconButtonOptions{
 		ID:          "titlebar-ai",
-		Tooltip:     fmt.Sprintf("%s %s", theme.Tr("AI 助手", "AI Assistant"), blockui.FormatShortcutDisplay(sc)),
+		Tooltip:     theme.Tr("AI 助手", "AI Assistant"),
+		Shortcut:    blockui.FormatShortcutDisplay(sc),
 		Active:      p.AIOpen,
 		ActiveStyle: blockui.ActiveAccent,
 	})

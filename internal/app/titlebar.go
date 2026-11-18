@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -213,8 +212,13 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				if sbSc == "" {
 					sbSc = "alt-b"
 				}
-				tip := fmt.Sprintf("%s %s", theme.Tr("侧边栏", "Sidebar"), blockui.FormatShortcutDisplay(sbSc))
+				tip := theme.Tr("展开侧栏", "Expand Sidebar")
+				if p.SidebarWide {
+					tip = theme.Tr("收起侧栏", "Collapse Sidebar")
+				}
+				sbShortcut := blockui.FormatShortcutDisplay(sbSc)
 				if p.SidebarAutoHidden {
+					sbShortcut = ""
 					if p.InSettings {
 						tip = theme.Tr("窗口较窄，设置导航已让出。点击以浮层打开", "Settings navigation stepped aside. Click to open it over the page")
 					} else {
@@ -222,8 +226,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					}
 				}
 				sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
-					ID:      "sidebar-toggle",
-					Tooltip: tip,
+					ID:       "sidebar-toggle",
+					Tooltip:  tip,
+					Shortcut: sbShortcut,
 				})
 				if sbBtn.Clicked() && p.OnToggleSidebar != nil {
 					p.OnToggleSidebar()
@@ -238,11 +243,11 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		centerW := center.Bounds().W
 		center.Children(func() {
 			if p.InSettings {
-				crumb := ui.Row(c).Fill().AlignItems(ui.Center).Gap(6).PaddingX(6).DragWindow()
+				crumb := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(6).PaddingX(6).DragWindow()
 				crumb.Children(func() {
-					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-					ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-					ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+					ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+					ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				return
 			}
@@ -251,9 +256,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				if p.NotebookPath != "" {
 					title = noteDisplayTitle(p.NotebookPath, true)
 				}
-				drag := ui.Row(c).Fill().AlignItems(ui.Center).DragWindow()
+				drag := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).DragWindow()
 				drag.Children(func() {
-					ui.Text(c, title).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, title).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				return
 			}
@@ -266,7 +271,8 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					ID:       "tab-new",
 					Size:     theme.ChromeBoxSize,
 					IconSize: 16,
-					Tooltip:  fmt.Sprintf("%s %s", theme.Tr("新建标签页", "New Tab"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t"))),
+					Tooltip:  theme.Tr("新建标签页", "New Tab"),
+					Shortcut: blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewTab, "cmd-t")),
 					Disabled: p.Busy,
 				})
 				if newTabBtn.Clicked() && !p.Busy && p.OnNewNote != nil {
@@ -313,12 +319,14 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 
 func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind) {
 	pal := theme.Ocean()
+	vpW, _ := c.Size()
+	showStatus := p.SourceStatus != "" && (vpW <= 0 || vpW >= 860)
 	switch surface {
 	case SurfaceImagePreview:
 		renderZoomCluster(c, "tb-img-zoom", p)
 		renderRevealButton(c, p)
 	case SurfaceSVG:
-		if p.SourceStatus != "" {
+		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		svgIdx := 0
@@ -336,7 +344,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		}
 		renderRevealButton(c, p)
 	case SurfaceHTML:
-		if p.SourceStatus != "" {
+		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		icOpen := icons.LinkOpen
@@ -346,7 +354,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		}
 		renderRevealButton(c, p)
 	case SurfaceCode:
-		if p.SourceStatus != "" {
+		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		renderRevealButton(c, p)
