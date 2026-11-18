@@ -443,7 +443,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 		blk := &s.doc.Blocks[a.Block]
 		rlen := s.blockSelectionLen(a.Block)
 		if a.Offset == 0 && b.Offset >= rlen {
-			if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
+			if r, ok := s.blockRect(blk.ID); ok && r.W > 0 {
 				tbl := ui.Rect{
 					X: r.X + s.leftContentGutter(),
 					Y: r.Y,
@@ -454,7 +454,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 			}
 		} else if blk.Table != nil {
 			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-				if cr, okC := s.tableCellRects[tableCellKey{BlockID: blk.ID, Row: row, Col: col}]; okC && cr.W > 0 {
+				if cr, okC := s.tableCellRect(blk.ID, row, col); okC && cr.W > 0 {
 					return cr, false, inVP(cr)
 				}
 			}
@@ -469,7 +469,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 			break
 		}
 		// Shaping offscreen blocks on every frame makes large selections stall.
-		if r, ok := s.blockRects[s.doc.Blocks[idx].ID]; ok && r.H > 0 && !inVP(r) {
+		if r, ok := s.blockRect(s.doc.Blocks[idx].ID); ok && r.H > 0 && !inVP(r) {
 			sawMeasured = true
 			continue
 		}
@@ -478,7 +478,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 			continue
 		}
 		blk := &s.doc.Blocks[idx]
-		if tr, ok := s.blockTextRects[blk.ID]; ok && tr.W > 0 && tr.H > 0 {
+		if tr, ok := s.blockTextRect(blk.ID); ok && tr.W > 0 && tr.H > 0 {
 			sawMeasured = true
 			var layout *ui.TextLayout
 			var plain string
@@ -510,7 +510,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 				}
 			}
 		}
-		if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
+		if r, ok := s.blockRect(blk.ID); ok && r.W > 0 {
 			sawMeasured = true
 			cand := ui.Rect{
 				X: r.X + s.leftContentGutter(),
@@ -557,7 +557,7 @@ func (s *Session) toolbarDropSpec(btnID string, align appUi.AlignXKind, gap floa
 		ok = true
 	}
 	if !ok && s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
-		if r, rOk := s.blockRects[s.doc.Blocks[s.focusedBlock].ID]; rOk && r.W > 0 {
+		if r, rOk := s.blockRect(s.doc.Blocks[s.focusedBlock].ID); rOk && r.W > 0 {
 			trigger = r
 			ok = true
 		}
@@ -1193,7 +1193,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 
 	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("callout-pill-%d", b.ID))
 	if !ok {
-		trigger = s.blockRects[b.ID]
+		trigger = s.blockRectValue(b.ID)
 	}
 	if trigger.W <= 0 {
 		trigger = ui.Rect{X: 120, Y: 100, W: 140, H: 28}
@@ -1327,9 +1327,9 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 			}
 		}
 		if trigger.W <= 0 {
-			if tr, ok := s.blockTextRects[bid]; ok && tr.W > 0 {
+			if tr, ok := s.blockTextRect(bid); ok && tr.W > 0 {
 				trigger = tr
-			} else if r, ok := s.blockRects[bid]; ok && r.W > 0 {
+			} else if r, ok := s.blockRect(bid); ok && r.W > 0 {
 				trigger = ui.Rect{
 					X: r.X + s.leftContentGutter(),
 					Y: r.Y,
@@ -1511,7 +1511,7 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 	vp, winW, winH := s.overlayViewport(c)
 	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("code-lang-%d", b.ID))
 	if !ok {
-		if r, rOk := s.blockRects[b.ID]; rOk && r.W > 0 {
+		if r, rOk := s.blockRect(b.ID); rOk && r.W > 0 {
 			trigger = ui.Rect{X: max(r.X+r.W-88, r.X), Y: r.Y + 6, W: 80, H: 22}
 		} else {
 			trigger = ui.Rect{X: vp.X + 200, Y: vp.Y + 100, W: 80, H: 22}
@@ -1581,7 +1581,7 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 		if r, ok := s.overlayPanelRects["image-toolbar"]; ok && r.W > 0 {
 			return r
 		}
-		if r, ok := s.imageRects[b.ID]; ok && r.W > 0 {
+		if r, ok := s.imageRect(b.ID); ok && r.W > 0 {
 			return r
 		}
 		return ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 28, H: 28}
@@ -2187,7 +2187,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 			continue
 		}
 		targetY := float32(24)
-		if r, ok := s.blockRects[ann.StartBlockID]; ok && r.H > 0 {
+		if r, ok := s.blockRect(ann.StartBlockID); ok && r.H > 0 {
 			targetY = max(r.Y-railTop, 24)
 		}
 		h, g := estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)

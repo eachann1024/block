@@ -623,7 +623,7 @@ func (s *Session) paintTableSelectionFrames(
 		if row < 0 || row >= len(tbl.Rows) {
 			return
 		}
-		cellR, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: row, Col: 0}]
+		cellR, ok := s.tableCellRect(id, row, 0)
 		if !ok || cellR.H <= 0 {
 			return
 		}
@@ -699,7 +699,7 @@ func (s *Session) renderTableBorderChrome(
 	}
 
 	// Compute row vertical offsets & heights relative to gridRow top using recorded cell rects.
-	firstCell, hasFirst := s.tableCellRects[tableCellKey{BlockID: id, Row: 0, Col: 0}]
+	firstCell, hasFirst := s.tableCellRect(id, 0, 0)
 	gridWinTop := firstCell.Y - ruleW
 	gridWinLeft := firstCell.X - ruleW + scrollX
 	if needHScroll {
@@ -711,7 +711,7 @@ func (s *Session) renderTableBorderChrome(
 	var curY float32 = ruleW
 	for ri := 0; ri < rows; ri++ {
 		if hasFirst {
-			if cr, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: ri, Col: 0}]; ok && cr.H > 0 {
+			if cr, ok := s.tableCellRect(id, ri, 0); ok && cr.H > 0 {
 				rowTops[ri] = cr.Y - gridWinTop
 				rowHeights[ri] = cr.H
 				curY = rowTops[ri] + cr.H + ruleW
@@ -1126,7 +1126,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 	case "col":
 		trigger, hasTrig = s.overlayBtnBounds(fmt.Sprintf("table-col-handle-%d-%d", id, targetCol))
 		if !hasTrig {
-			if cr, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: 0, Col: targetCol}]; ok && cr.W > 0 {
+			if cr, ok := s.tableCellRect(id, 0, targetCol); ok && cr.W > 0 {
 				trigger, hasTrig = ui.Rect{X: cr.X, Y: cr.Y, W: cr.W, H: theme.HeightMicro}, true
 			}
 		}
@@ -1134,7 +1134,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 	case "row":
 		trigger, hasTrig = s.overlayBtnBounds(fmt.Sprintf("table-row-handle-%d-%d", id, targetRow))
 		if !hasTrig {
-			if cr, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: targetRow, Col: 0}]; ok && cr.H > 0 {
+			if cr, ok := s.tableCellRect(id, targetRow, 0); ok && cr.H > 0 {
 				trigger, hasTrig = ui.Rect{X: cr.X, Y: cr.Y, W: theme.HeightMicro, H: cr.H}, true
 			}
 		}
@@ -1148,7 +1148,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		alignKind = appUi.AlignRight
 	}
 	if !hasTrig {
-		if br, ok := s.blockRects[id]; ok && br.W > 0 {
+		if br, ok := s.blockRect(id); ok && br.W > 0 {
 			trigger = ui.Rect{X: br.X + s.leftContentGutter(), Y: max(br.Y, vp.Y), W: theme.HeightCompact, H: theme.HeightCompact}
 		} else {
 			trigger = ui.Rect{X: vp.X + 160, Y: vp.Y + 120, W: theme.HeightCompact, H: theme.HeightCompact}

@@ -584,7 +584,7 @@ func (s *Session) OpenInlineAIOnSelection() {
 	orig := s.SelectedMarkdown()
 	var anchor ui.Rect
 	lastID := parts[len(parts)-1].BlockID
-	if r, ok := s.blockRects[lastID]; ok {
+	if r, ok := s.blockRect(lastID); ok {
 		anchor = r
 	}
 	s.startInlineAI(a, b, parts, orig, s.precedingContext(a.Block), anchor)
@@ -612,7 +612,7 @@ func (s *Session) OpenInlineAIOnBlock(idx int) {
 	if rlen > 0 {
 		orig = strings.TrimSpace(s.serializeBlocks([]model.Block{b.Clone()}))
 	}
-	s.startInlineAI(posA, posB, []aiTargetPart{{BlockID: b.ID, StartRune: 0, EndRune: rlen}}, orig, s.precedingContext(idx), s.blockRects[b.ID])
+	s.startInlineAI(posA, posB, []aiTargetPart{{BlockID: b.ID, StartRune: 0, EndRune: rlen}}, orig, s.precedingContext(idx), s.blockRectValue(b.ID))
 }
 
 func (s *Session) startInlineAI(anchor, head Position, parts []aiTargetPart, original, ctxBefore string, anchorRect ui.Rect) {
@@ -1389,6 +1389,7 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 	bleed := s.bandBleed()
 	row := ui.Row(c.Key(fmt.Sprintf("ai-preview-%d", ai.Parts[0].BlockID))).
 		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-bleed, 0), 6, max(s.leftContentGutter()-bleed, 0))
+	s.recordBlockLayoutBounds(ai.Parts[0].BlockID, row)
 	row.Children(func() {
 		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(s.standardWidth()+2*bleed).
 			Padding(8, 10).Gap(0).Radius(theme.RadiusLG).Background(tintBG)
@@ -1585,7 +1586,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 		trigger = ai.PreviewRect
 	} else {
 		for _, part := range ai.Parts {
-			if r, ok := s.blockRects[part.BlockID]; ok && r.W > 0 && r.H > 0 {
+			if r, ok := s.blockRect(part.BlockID); ok && r.W > 0 && r.H > 0 {
 				content := ui.Rect{
 					X: r.X + s.leftContentGutter(),
 					Y: r.Y,

@@ -1844,7 +1844,7 @@ func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 	// Check slash menu trigger / filter on plain paragraphs.
 	if b.Kind == model.BlockParagraph {
 		if (strings.HasPrefix(newText, "/") || strings.HasPrefix(newText, "、")) && !strings.ContainsAny(newText, " \t\n") && oldText == "" {
-			s.openSlashMenu(idx, s.blockRects[b.ID])
+			s.openSlashMenu(idx, s.blockRectValue(b.ID))
 			if newText != "/" && newText != "、" {
 				s.syncSlashMenuText(idx, newText)
 			}

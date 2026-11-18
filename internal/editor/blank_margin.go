@@ -136,8 +136,7 @@ func (s *Session) isAboveFirstVisibleBlock(wy float32) bool {
 	if firstVis < 0 {
 		return false
 	}
-	firstR := s.blockRects[s.doc.Blocks[firstVis].ID]
-	if firstR.H > 0 {
+	if firstR, ok := s.blockRect(s.doc.Blocks[firstVis].ID); ok && firstR.H > 0 {
 		return wy < firstR.Y
 	}
 	if s.scrollRect.H > 0 {
@@ -152,8 +151,7 @@ func (s *Session) isBelowLastVisibleBlock(wy float32) bool {
 	if lastVis < 0 {
 		return false
 	}
-	lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
-	if lastR.H > 0 {
+	if lastR, ok := s.blockRect(s.doc.Blocks[lastVis].ID); ok && lastR.H > 0 {
 		return wy > lastR.Y+lastR.H+blankClickSlopPx
 	}
 	return false
@@ -415,7 +413,7 @@ func (s *Session) computeTrailingAddSlot() (trailingAddSlot, bool) {
 	if isPlainEmptyParagraph(lastBlock) {
 		return trailingAddSlot{}, false
 	}
-	lastRow, ok := s.blockRects[lastBlock.ID]
+	lastRow, ok := s.blockRect(lastBlock.ID)
 	if !ok || lastRow.H <= 0 || s.scrollRect.H <= 0 {
 		return trailingAddSlot{}, false
 	}
@@ -464,7 +462,7 @@ func (s *Session) updateTrailingAddHover(c *ui.Context, root ui.Element, nextHov
 		return nextHover
 	}
 	lastBlock := &s.doc.Blocks[lastVis]
-	lastRow, ok := s.blockRects[lastBlock.ID]
+	lastRow, ok := s.blockRect(lastBlock.ID)
 	if !ok || lastRow.H <= 0 {
 		clearTrailing()
 		return nextHover
