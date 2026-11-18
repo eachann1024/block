@@ -759,12 +759,9 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	defer bui.DisableSmokeMode()
 
 	ctrl, _, _ := setupReadyController(t)
-	// Test Settings Tab rendering & interaction (Scheme A single-column accordion + Add Provider modal + enforced FullPermissions).
-	for _, k := range model.AllBackends {
-		if k != model.BackendBuiltin {
-			ctrl.SetBackendStatusOverride(k, &BackendStatus{State: BackendStateReady, Version: "1.2.0"})
-		}
-	}
+	ctrl.SetBackendStatusOverride(model.BackendCodex, &BackendStatus{State: BackendStateReady, Version: "0.42.0"})
+	ctrl.SetBackendStatusOverride(model.BackendClaude, &BackendStatus{State: BackendStateUnauth, Version: "2.1.320"})
+
 	// Verify FullPermissions is enforced on by default for all CLI backends and cannot be disabled.
 	for _, k := range []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi} {
 		if !ctrl.BackendsConfig().Adapters[string(k)].FullPermissions {
@@ -772,42 +769,22 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 		}
 	}
 
-	// Render even in a narrow window width (560px) to verify clean single-column layout.
+	// Render in a narrow window width (560px): local CLI agents are NOT auto-populated before adding.
 	ttSet := ui.NewTester(ctrl.RenderSettingsTab, 560, 760)
 	if _, ok := bui.TargetBounds("ai-settings-section"); !ok {
 		t.Fatal("missing ai-settings-section")
 	}
-	if !ttSet.HasText("API 供应商") || !ttSet.HasText("添加供应商") || !ttSet.HasText("本机 Agent") || !ttSet.HasText("普通功能") || !ttSet.HasText("标注功能") {
-		t.Fatal("missing expected AI Settings labels (API 供应商 / 添加供应商 / 本机 Agent / 普通功能 / 标注功能)")
+	if !ttSet.HasText("API 供应商") || !ttSet.HasText("添加供应商") || !ttSet.HasText("本机 Agent") || !ttSet.HasText("添加 Agent") || !ttSet.HasText("尚未添加本机 Agent") {
+		t.Fatal("missing expected AI Settings labels or empty local agent state")
 	}
 	if ttSet.HasText("最大权限") {
 		t.Fatal("FullPermissions toggle must not be shown to user")
 	}
-
-	// Verify top-to-bottom local CLI agent order: Codex -> Claude -> Dsh -> Pi -> Agy.
-	var prevRailY float32 = -1
-	for _, suffix := range []string{"Codex", "Claude", "Dsh", "Pi", "Agy"} {
-		rb, ok := bui.TargetBounds("ai-backend-card-" + suffix)
-		if !ok {
-			t.Fatalf("missing ai-backend-card-%s", suffix)
-		}
-		if rb.Y <= prevRailY {
-			t.Fatalf("ai-backend-card-%s out of vertical order: Y=%v <= %v", suffix, rb.Y, prevRailY)
-		}
-		prevRailY = rb.Y
+	if _, ok := bui.TargetBounds("ai-backend-card-Codex"); ok {
+		t.Fatal("local CLI agent must not appear in list before being explicitly added")
 	}
 
-	// Expand Codex row -> Thinking Level segmented control appears, still no FullPermissions toggle.
-	codexRect, _ := bui.TargetBounds("ai-backend-card-Codex")
-	ttSet.ClickAt(codexRect.X+24, codexRect.Y+codexRect.H*0.5)
-	if !ttSet.HasText("思考强度") {
-		t.Fatal("expected Thinking Level row after expanding Codex")
-	}
-	if ttSet.HasText("最大权限") {
-		t.Fatal("FullPermissions toggle must remain absent when CLI agent row is expanded")
-	}
-
-	// Open Add Provider modal -> pick SiliconFlow preset -> submit -> verify new provider added & expanded.
+	// 1. Open Add Provider modal -> verify ONLY 3 provider presets exist (deepseek, openai, anthropic).
 	addBtnRect, ok := bui.TargetBounds("ai-add-provider-btn")
 	if !ok {
 		t.Fatal("missing ai-add-provider-btn")
@@ -816,23 +793,62 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	if _, ok := bui.TargetBounds("ai-add-provider-modal"); !ok {
 		t.Fatal("expected ai-add-provider-modal to open")
 	}
-	sfChip, ok := bui.TargetBounds("ai-preset-siliconflow")
-	if !ok {
-		t.Fatal("missing ai-preset-siliconflow in Add Provider modal")
+	for _, pid := range []string{"deepseek", "openai", "anthropic"} {
+		if _, ok := bui.TargetBounds("ai-preset-" + pid); !ok {
+			t.Fatalf("missing expected preset chip ai-preset-%s", pid)
+		}
 	}
-	ttSet.ClickAt(sfChip.X+sfChip.W*0.5, sfChip.Y+sfChip.H*0.5)
+	for _, extra := range []string{"openrouter", "siliconflow", "ollama"} {
+		if _, ok := bui.TargetBounds("ai-preset-" + extra); ok {
+			t.Fatalf("unexpected extra preset chip ai-preset-%s (only 3 allowed)", extra)
+		}
+	}
+
+	claudeChip, _ := bui.TargetBounds("ai-preset-anthropic")
+	ttSet.ClickAt(claudeChip.X+claudeChip.W*0.5, claudeChip.Y+claudeChip.H*0.5)
 	subBtn, ok := bui.TargetBounds("ai-add-provider-submit")
 	if !ok {
 		t.Fatal("missing ai-add-provider-submit")
 	}
 	ttSet.ClickAt(subBtn.X+subBtn.W*0.5, subBtn.Y+subBtn.H*0.5)
-	if _, ok := bui.TargetBounds("ai-provider-row-siliconflow"); !ok {
-		t.Fatal("expected newly added siliconflow provider row in list")
+	if _, ok := bui.TargetBounds("ai-provider-row-anthropic"); !ok {
+		t.Fatal("expected newly added anthropic provider row in list")
 	}
-	if ctrl.ProviderConfig().Provider != "siliconflow" {
-		t.Fatalf("expected siliconflow provider active after adding, got %q", ctrl.ProviderConfig().Provider)
+	if ctrl.ProviderConfig().Provider != "anthropic" || ctrl.ProviderConfig().Protocol != model.ProtocolAnthropic {
+		t.Fatalf("expected anthropic provider active after adding, got %+v", ctrl.ProviderConfig())
 	}
 
+	// 2. Open T3 Code style Add Local Agent modal -> select Codex -> Add & Enable -> verify row & Binary Path config.
+	addAgRect, ok := bui.TargetBounds("ai-add-agent-btn")
+	if !ok {
+		t.Fatal("missing ai-add-agent-btn")
+	}
+	ttSet.ClickAt(addAgRect.X+addAgRect.W*0.5, addAgRect.Y+addAgRect.H*0.5)
+	if _, ok := bui.TargetBounds("ai-add-agent-modal"); !ok {
+		t.Fatal("expected ai-add-agent-modal to open")
+	}
+	codexDrv, ok := bui.TargetBounds("ai-agent-driver-Codex")
+	if !ok {
+		t.Fatal("missing ai-agent-driver-Codex in Add Agent modal")
+	}
+	ttSet.ClickAt(codexDrv.X+codexDrv.W*0.5, codexDrv.Y+codexDrv.H*0.5)
+	agSubmit, ok := bui.TargetBounds("ai-add-agent-submit")
+	if !ok {
+		t.Fatal("missing ai-add-agent-submit")
+	}
+	ttSet.ClickAt(agSubmit.X+agSubmit.W*0.5, agSubmit.Y+agSubmit.H*0.5)
+
+	if _, ok := bui.TargetBounds("ai-backend-card-Codex"); !ok {
+		t.Fatal("expected Codex row in Local Agents list after adding")
+	}
+	if !ttSet.HasText("可执行路径") || !ttSet.HasText("思考强度") {
+		t.Fatal("expected expanded Codex row to show Binary Path and Thinking Level")
+	}
+	if ttSet.HasText("最大权限") {
+		t.Fatal("FullPermissions toggle must remain absent when CLI agent row is expanded")
+	}
+
+	// 3. Verify Annotation Model popover still works.
 	annRect, ok := bui.TargetBounds("annotation-model-trigger")
 	if !ok {
 		t.Fatal("missing annotation-model-trigger")

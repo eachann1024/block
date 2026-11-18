@@ -160,29 +160,46 @@ button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offse
           </section>
 
           <section aria-label="本机 Agent" style="display:flex;flex-direction:column;gap:10px">
-            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">本机 Agent</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">本机 Agent</span>
+              <button type="button" onClick="{{openAddAgentModal}}" style="height:28px;padding:0 11px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-weight:500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                <span>添加 Agent</span>
+              </button>
+            </div>
             <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
-              <sc-for list="{{agents}}" as="ag" hint-placeholder-count="4">
+              <sc-for list="{{agents}}" as="ag" hint-placeholder-count="2">
                 <div style="border-bottom:{{ag.rowBorder}};display:flex;flex-direction:column">
-                  <div style="height:44px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-sizing:border-box">
-                    <button type="button" onClick="{{ag.toggleExpand}}" style="flex:1;min-width:0;height:44px;padding:0;border:0;background:transparent;color:{{t.text}};display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+                  <div style="height:46px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-sizing:border-box">
+                    <button type="button" onClick="{{ag.toggleExpand}}" style="flex:1;min-width:0;height:46px;padding:0;border:0;background:transparent;color:{{t.text}};display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
                       <span style="width:24px;height:24px;border-radius:6px;background:{{t.wellBg}};border:1px solid {{t.border}};display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600;font-size:12px;color:{{t.text}}">{{ag.short}}</span>
                       <span style="font-weight:500;color:{{t.text}}">{{ag.name}}</span>
                       <span class="mono" style="font-size:12px;color:{{t.text2}}">{{ag.version}}</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-left:auto;transform:{{ag.chevTransform}}"><path d="M6 9l6 6 6-6"></path></svg>
                     </button>
-                    <button type="button" aria-label="切换 Agent 启用状态" onClick="{{ag.toggleOn}}" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:{{ag.swBg}};display:inline-flex;align-items:center;justify-content:{{ag.swAlign}};cursor:pointer;box-sizing:border-box;flex:none">
-                      <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
-                    </button>
+                    <div style="display:flex;align-items:center;gap:8px;flex:none">
+                      <button type="button" aria-label="移除 Agent" onClick="{{ag.remove}}" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3"></path></svg>
+                      </button>
+                      <button type="button" aria-label="切换 Agent 启用状态" onClick="{{ag.toggleOn}}" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:{{ag.swBg}};display:inline-flex;align-items:center;justify-content:{{ag.swAlign}};cursor:pointer;box-sizing:border-box;flex:none">
+                        <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                      </button>
+                    </div>
                   </div>
 
                   <sc-if value="{{ag.expanded}}" hint-placeholder-val="{{false}}">
-                    <div style="padding:10px 14px 12px;border-top:1px solid {{t.divider}};background:{{t.expandBg}};display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                      <span style="color:{{t.text2}}">思考强度</span>
-                      <div style="display:inline-flex;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};gap:2px">
-                        <button type="button" onClick="{{ag.setLow}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.lowBorder}};background:{{ag.lowBg}};color:{{t.text}};cursor:pointer;font-size:12px">Low</button>
-                        <button type="button" onClick="{{ag.setMed}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.medBorder}};background:{{ag.medBg}};color:{{t.text}};cursor:pointer;font-size:12px">Medium</button>
-                        <button type="button" onClick="{{ag.setHigh}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.highBorder}};background:{{ag.highBg}};color:{{t.text}};cursor:pointer;font-size:12px">High</button>
+                    <div style="padding:10px 14px 12px;border-top:1px solid {{t.divider}};background:{{t.expandBg}};display:flex;flex-direction:column;gap:10px">
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                        <label for="{{ag.binId}}" style="width:76px;flex:none;color:{{t.text2}}">可执行路径</label>
+                        <input id="{{ag.binId}}" type="text" value="{{ag.binPath}}" placeholder="/opt/homebrew/bin/codex" class="mono" style="flex:1;min-width:180px;height:30px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box;font-size:13px">
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                        <span style="color:{{t.text2}}">思考强度</span>
+                        <div style="display:inline-flex;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};gap:2px">
+                          <button type="button" onClick="{{ag.setLow}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.lowBorder}};background:{{ag.lowBg}};color:{{t.text}};cursor:pointer;font-size:12px">Low</button>
+                          <button type="button" onClick="{{ag.setMed}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.medBorder}};background:{{ag.medBg}};color:{{t.text}};cursor:pointer;font-size:12px">Medium</button>
+                          <button type="button" onClick="{{ag.setHigh}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.highBorder}};background:{{ag.highBg}};color:{{t.text}};cursor:pointer;font-size:12px">High</button>
+                        </div>
                       </div>
                     </div>
                   </sc-if>
@@ -219,16 +236,16 @@ button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offse
           </button>
         </div>
 
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          <sc-for list="{{presets}}" as="pre" hint-placeholder-count="4">
-            <button type="button" onClick="{{pre.pick}}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{pre.border}};background:{{pre.bg}};color:{{t.text}};cursor:pointer;font-size:13px;font-weight:{{pre.weight}}">{{pre.label}}</button>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{presets}}" as="pre" hint-placeholder-count="3">
+            <button type="button" onClick="{{pre.pick}}" style="flex:1;min-width:108px;height:34px;padding:0 10px;border-radius:8px;border:1px solid {{pre.border}};background:{{pre.bg}};color:{{t.text}};cursor:pointer;font-size:13px;font-weight:{{pre.weight}}">{{pre.label}}</button>
           </sc-for>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:10px">
           <div style="display:flex;flex-direction:column;gap:5px">
             <label for="add-prov-name" style="color:{{t.text2}}">名称</label>
-            <input id="add-prov-name" type="text" value="{{draftName}}" onChange="{{onDraftName}}" placeholder="例如 SiliconFlow / OpenRouter" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+            <input id="add-prov-name" type="text" value="{{draftName}}" onChange="{{onDraftName}}" placeholder="例如 DeepSeek / 自定义中转" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
           </div>
 
           <div style="display:flex;flex-direction:column;gap:5px">
@@ -250,23 +267,78 @@ button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offse
     </div>
   </sc-if>
 
+  <sc-if value="{{agentModalOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position:absolute;inset:0;background:{{t.scrim}};display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;z-index:20">
+      <div role="dialog" aria-label="添加本机 Agent" style="width:456px;max-width:100%;background:{{t.modalBg}};border:1px solid {{t.border}};border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box;box-shadow:0 20px 48px rgba(0,0,0,0.42)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="font-size:16px;line-height:22px;font-weight:560;color:{{t.text}}">添加本机 Agent</span>
+          <button type="button" aria-label="关闭添加 Agent 弹窗" onClick="{{closeAddAgentModal}}" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{agentDrivers}}" as="drv" hint-placeholder-count="4">
+            <button type="button" onClick="{{drv.pick}}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{drv.border}};background:{{drv.bg}};color:{{t.text}};display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:{{drv.weight}}">
+              <span>{{drv.label}}</span>
+              <span style="width:6px;height:6px;border-radius:3px;background:{{drv.dot}}"></span>
+            </button>
+          </sc-for>
+        </div>
+
+        <div style="padding:10px 12px;border-radius:8px;background:{{t.expandBg}};border:1px solid {{t.border}};display:flex;flex-direction:column;gap:6px">
+          <span style="color:{{t.text}}">{{selDriverInfo.statusText}}</span>
+          <sc-if value="{{selDriverInfo.hasCmd}}" hint-placeholder-val="{{false}}">
+            <div style="padding:6px 10px;border-radius:6px;background:{{t.cardBg}};border:1px solid {{t.border}};display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span class="mono" style="font-size:12px;color:{{t.text2}}">{{selDriverInfo.cmd}}</span>
+              <span style="font-size:12px;color:{{t.accent}}">复制</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label for="add-ag-name" style="color:{{t.text2}}">显示名称</label>
+            <input id="add-ag-name" type="text" value="{{agDraftName}}" onChange="{{onAgName}}" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label for="add-ag-bin" style="color:{{t.text2}}">可执行文件路径</label>
+            <input id="add-ag-bin" type="text" value="{{agDraftBin}}" onChange="{{onAgBin}}" placeholder="{{selDriverInfo.autoPath}}" class="mono" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box;font-size:13px">
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px">
+          <button type="button" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer">重新检测</button>
+          <div style="display:flex;gap:8px">
+            <button type="button" onClick="{{closeAddAgentModal}}" style="height:32px;padding:0 14px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer">取消</button>
+            <button type="button" onClick="{{confirmAddAgent}}" style="height:32px;padding:0 16px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:550;cursor:pointer">添加并启用</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
 </div>
 </x-dc>
 
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","label":"主题","options":["dark","light"],"default":"dark"},"sidebar":{"editor":"boolean","label":"展开设置侧栏（测试660px窄区）","default":false},"addDialog":{"editor":"boolean","label":"预览添加供应商弹窗","default":false},"$preview":{"width":860,"height":720}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","label":"主题","options":["dark","light"],"default":"dark"},"sidebar":{"editor":"boolean","label":"展开设置侧栏（测试660px窄区）","default":false},"addDialog":{"editor":"boolean","label":"预览添加供应商弹窗","default":false},"addAgentDialog":{"editor":"boolean","label":"预览添加本机Agent弹窗","default":false},"$preview":{"width":860,"height":720}}'>
 class Component extends DCLogic {
   constructor() {
     super();
     this.state = {
       sidebarOverride: null,
       modalOverride: null,
+      agentModalOverride: null,
       masterOn: true,
       expandedProv: 'deepseek',
       expandedAgent: '',
       draftPreset: 'openai',
-      draftName: 'SiliconFlow',
-      draftUrl: 'https://api.siliconflow.cn/v1',
-      draftKey: 'sk-sf98a7bc65d4e3f2',
+      draftName: 'OpenAI 兼容',
+      draftUrl: 'https://api.openai.com/v1',
+      draftKey: 'sk-proj-98a7bc65d4e3f2',
+      agDriver: 'claude',
+      agDraftName: 'Claude',
+      agDraftBin: '',
       providers: [
         {
           id: 'deepseek',
@@ -279,25 +351,10 @@ class Component extends DCLogic {
           tested: false,
           custom: false,
           brandColor: '#5b7cfa'
-        },
-        {
-          id: 'openrouter',
-          name: 'OpenRouter',
-          protocol: 'openai',
-          baseUrl: 'https://openrouter.ai/api/v1',
-          apiKey: 'sk-or-v1-889900112233',
-          enabled: true,
-          showKey: false,
-          tested: false,
-          custom: true,
-          brandColor: '#10a37f'
         }
       ],
       agents: [
-        { id: 'codex', short: 'Cx', name: 'Codex', version: 'v0.42.0', enabled: true, thinking: 'medium', fullPerm: false },
-        { id: 'claude', short: 'Cl', name: 'Claude', version: 'v1.0.88', enabled: true, thinking: 'high', fullPerm: false },
-        { id: 'dsh', short: 'ds', name: 'dsh', version: '未登录', enabled: false, thinking: 'medium', fullPerm: false },
-        { id: 'pi', short: 'Pi', name: 'Pi', version: 'v0.19.2', enabled: false, thinking: 'medium', fullPerm: false }
+        { id: 'codex', short: 'Cx', name: 'Codex', version: 'v0.42.0', binPath: '/opt/homebrew/bin/codex', enabled: true, thinking: 'high' }
       ]
     };
   }
@@ -312,6 +369,7 @@ class Component extends DCLogic {
     const isDark = (this.props.theme ?? 'dark') === 'dark';
     const sidebarOpen = this.state.sidebarOverride !== null ? this.state.sidebarOverride : Boolean(this.props.sidebar ?? false);
     const modalOpen = this.state.modalOverride !== null ? this.state.modalOverride : Boolean(this.props.addDialog ?? false);
+    const agentModalOpen = this.state.agentModalOverride !== null ? this.state.agentModalOverride : Boolean(this.props.addAgentDialog ?? false);
 
     const t = isDark
       ? {
@@ -362,10 +420,9 @@ class Component extends DCLogic {
         };
 
     const presetDefs = [
-      { id: 'openai', label: 'OpenAI 兼容', name: 'SiliconFlow', url: 'https://api.siliconflow.cn/v1' },
-      { id: 'claude', label: 'Claude 协议', name: 'Anthropic', url: 'https://api.anthropic.com/v1' },
-      { id: 'openrouter', label: 'OpenRouter', name: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
-      { id: 'ollama', label: 'Ollama 本地', name: 'Ollama', url: 'http://127.0.0.1:11434/v1' }
+      { id: 'deepseek', label: 'DeepSeek', name: 'DeepSeek', url: 'https://api.deepseek.com/v1' },
+      { id: 'openai', label: 'OpenAI 兼容', name: 'OpenAI 兼容', url: 'https://api.openai.com/v1' },
+      { id: 'claude', label: 'Claude 协议', name: 'Claude 协议', url: 'https://api.anthropic.com/v1' }
     ];
 
     const presets = presetDefs.map((p) => {
@@ -378,6 +435,33 @@ class Component extends DCLogic {
         pick: () => this.setState({ draftPreset: p.id, draftName: p.name, draftUrl: p.url })
       };
     });
+
+    const driverDefs = [
+      { id: 'codex', short: 'Cx', label: 'Codex', dot: '#4ade80', autoPath: '/opt/homebrew/bin/codex', statusText: '已检测到可用 CLI · v0.42.0', cmd: '' },
+      { id: 'claude', short: 'Cl', label: 'Claude', dot: '#f59e0b', autoPath: '/usr/local/bin/claude', statusText: '已检测到 CLI，请先在终端完成登录', cmd: 'claude auth login' },
+      { id: 'dsh', short: 'ds', label: 'dsh', dot: '#64748b', autoPath: '留空自动从 PATH 查找，或输入 ~/.local/bin/dsh', statusText: '未在系统 PATH 中检测到可执行文件', cmd: 'curl -fsSL https://dsh.deepseek.com/install.sh | sh' },
+      { id: 'pi', short: 'Pi', label: 'Pi', dot: '#4ade80', autoPath: '/opt/homebrew/bin/pi', statusText: '已检测到可用 CLI · v0.19.2', cmd: '' }
+    ];
+
+    const agentDrivers = driverDefs.map((d) => {
+      const sel = this.state.agDriver === d.id;
+      return {
+        label: d.label,
+        dot: d.dot,
+        bg: sel ? t.selBg : t.wellBg,
+        border: sel ? t.accent : t.border,
+        weight: sel ? '550' : '450',
+        pick: () => this.setState({ agDriver: d.id, agDraftName: d.label, agDraftBin: '' })
+      };
+    });
+
+    const curDrv = driverDefs.find((d) => d.id === this.state.agDriver) || driverDefs[0];
+    const selDriverInfo = {
+      statusText: curDrv.statusText,
+      hasCmd: Boolean(curDrv.cmd),
+      cmd: curDrv.cmd,
+      autoPath: curDrv.autoPath
+    };
 
     const provLen = this.state.providers.length;
     const providers = this.state.providers.map((p, idx) => {
@@ -451,6 +535,8 @@ class Component extends DCLogic {
         short: a.short,
         name: a.name,
         version: a.version,
+        binId: 'ag-bin-' + a.id,
+        binPath: a.binPath,
         expanded: expanded,
         rowBorder: idx + 1 < agLen ? '1px solid ' + t.divider : '0',
         chevTransform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -462,10 +548,8 @@ class Component extends DCLogic {
         medBorder: a.thinking === 'medium' ? '1px solid ' + t.accent : '1px solid transparent',
         highBg: a.thinking === 'high' ? t.selBg : 'transparent',
         highBorder: a.thinking === 'high' ? '1px solid ' + t.accent : '1px solid transparent',
-        permBg: a.fullPerm ? t.selBg : t.wellBg,
-        permBorder: a.fullPerm ? t.accent : t.border,
-        permLabel: a.fullPerm ? '已开启' : '关闭',
         toggleExpand: () => this.setState({ expandedAgent: expanded ? '' : a.id }),
+        remove: () => this.setState({ agents: this.state.agents.filter((it) => it.id !== a.id) }),
         toggleOn: () => {
           const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, enabled: !it.enabled } : it));
           this.setState({ agents: next });
@@ -481,10 +565,6 @@ class Component extends DCLogic {
         setHigh: () => {
           const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, thinking: 'high' } : it));
           this.setState({ agents: next });
-        },
-        togglePerm: () => {
-          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, fullPerm: !it.fullPerm } : it));
-          this.setState({ agents: next });
         }
       };
     });
@@ -493,6 +573,7 @@ class Component extends DCLogic {
       t,
       sidebarOpen,
       modalOpen,
+      agentModalOpen,
       masterOn: this.state.masterOn,
       masterLabel: this.state.masterOn ? '已开启' : '已关闭',
       masterBg: this.state.masterOn ? t.selBg : t.wellBg,
@@ -500,16 +581,24 @@ class Component extends DCLogic {
       providers,
       agents,
       presets,
+      agentDrivers,
+      selDriverInfo,
       draftName: this.state.draftName,
       draftUrl: this.state.draftUrl,
       draftKey: this.state.draftKey,
+      agDraftName: this.state.agDraftName,
+      agDraftBin: this.state.agDraftBin,
       toggleSidebar: () => this.setState({ sidebarOverride: !sidebarOpen }),
       toggleMaster: () => this.setState({ masterOn: !this.state.masterOn }),
       openAddModal: () => this.setState({ modalOverride: true }),
       closeAddModal: () => this.setState({ modalOverride: false }),
+      openAddAgentModal: () => this.setState({ agentModalOverride: true }),
+      closeAddAgentModal: () => this.setState({ agentModalOverride: false }),
       onDraftName: (e) => this.setState({ draftName: e && e.target ? e.target.value : '' }),
       onDraftUrl: (e) => this.setState({ draftUrl: e && e.target ? e.target.value : '' }),
       onDraftKey: (e) => this.setState({ draftKey: e && e.target ? e.target.value : '' }),
+      onAgName: (e) => this.setState({ agDraftName: e && e.target ? e.target.value : '' }),
+      onAgBin: (e) => this.setState({ agDraftBin: e && e.target ? e.target.value : '' }),
       confirmAdd: () => {
         const name = (this.state.draftName || '').trim() || '自定义供应商';
         const id = 'custom-' + Date.now();
@@ -529,6 +618,17 @@ class Component extends DCLogic {
           providers: [...this.state.providers, nextProv],
           expandedProv: id,
           modalOverride: false
+        });
+      },
+      confirmAddAgent: () => {
+        const drv = curDrv;
+        const nm = (this.state.agDraftName || '').trim() || drv.label;
+        const bp = (this.state.agDraftBin || '').trim() || drv.autoPath;
+        const filtered = this.state.agents.filter((x) => x.id !== drv.id);
+        this.setState({
+          agents: [...filtered, { id: drv.id, short: drv.short, name: nm, version: '已就绪', binPath: bp, enabled: true, thinking: 'high' }],
+          expandedAgent: drv.id,
+          agentModalOverride: false
         });
       }
     };
