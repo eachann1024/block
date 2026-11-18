@@ -20,17 +20,14 @@ const (
 )
 
 const (
-	edgeFloatDwellDuration = theme.EdgeFloatDwellMs * time.Millisecond
 	edgeFloatLeaveDuration = theme.EdgeFloatLeaveMs * time.Millisecond
 )
 
 // EdgeFloatController drives Scheme A's colored left/right window-edge hot-zones,
-// 140ms dwell summoning, rounded Ocean Paper floating Sidebar / AI cards, and
+// instant hover summoning, rounded Ocean Paper floating Sidebar / AI cards, and
 // synchronized handle-safe editor insets so block handles are never occluded.
 type EdgeFloatController struct {
 	active                  edgeFloatSide
-	dwellSide               edgeFloatSide
-	dwellStart              time.Time
 	leaveStart              time.Time
 	suppressLeftUntilLeave  bool
 	suppressRightUntilLeave bool
@@ -38,6 +35,8 @@ type EdgeFloatController struct {
 	primaryDown             bool
 	pressedInCard           bool
 	cardHovered             bool
+	leftZoneHovered         bool
+	rightZoneHovered        bool
 	openedWithoutHover      bool
 	leftCardHandle          ui.Handle
 	rightCardHandle         ui.Handle
@@ -55,14 +54,13 @@ func (ef *EdgeFloatController) RightOpen() bool {
 
 // DismissAll closes any open floating edge card immediately.
 func (ef *EdgeFloatController) DismissAll(w *Workspace) {
-	if ef.active == edgeSideNone && ef.dwellSide == edgeSideNone {
+	if ef.active == edgeSideNone {
 		return
 	}
 	ef.closeSide(w, ef.active, false)
-	ef.dwellSide = edgeSideNone
 }
 
-// DismissRightWithCooldown closes the right floating AI card and suppresses dwell
+// DismissRightWithCooldown closes the right floating AI card and suppresses hover
 // re-opening until the pointer leaves the right edge zone.
 func (ef *EdgeFloatController) DismissRightWithCooldown(w *Workspace) {
 	if ef.active == edgeSideRight {
@@ -72,7 +70,6 @@ func (ef *EdgeFloatController) DismissRightWithCooldown(w *Workspace) {
 
 func (ef *EdgeFloatController) openSide(side edgeFloatSide, sess *editor.Session, fromHover bool) {
 	ef.active = side
-	ef.dwellSide = edgeSideNone
 	ef.leaveStart = time.Time{}
 	ef.openedWithoutHover = !fromHover
 	if sess != nil {
@@ -209,8 +206,15 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	activeSess *editor.Session,
 ) {
 	if !canLeft && !canRight {
-		ef.dwellSide = edgeSideNone
+		ef.leftZoneHovered = false
+		ef.rightZoneHovered = false
 		return
+	}
+	if !canLeft {
+		ef.leftZoneHovered = false
+	}
+	if !canRight {
+		ef.rightZoneHovered = false
 	}
 
 	if !c.WindowActive() {
@@ -249,8 +253,8 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	bodyH := body.Bounds().H
 	inVertBounds := over && py >= 0 && (bodyH <= 0 || py <= bodyH)
 
-	inLeftZone := canLeft && inVertBounds && px >= 0 && px <= theme.EdgeHotZoneWidth
-	inRightZone := canRight && inVertBounds && px >= vpW-theme.EdgeHotZoneWidth && px <= vpW
+	inLeftZone := canLeft && ((inVertBounds && px >= 0 && px <= theme.EdgeHotZoneWidth) || ef.leftZoneHovered)
+	inRightZone := canRight && ((inVertBounds && px >= vpW-theme.EdgeHotZoneWidth && px <= vpW) || ef.rightZoneHovered)
 
 	if !inLeftZone {
 		ef.suppressLeftUntilLeave = false
@@ -262,40 +266,20 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	editorBusy := activeSess != nil && activeSess.IsBusyForEdgeFloat()
 	editorScrolling := activeSess != nil && activeSess.IsScrollingRecently(now)
 
-	// 1. Edge dwell state machine (140ms hover on outer 8px strip opens floating card).
+	// 1. Instant edge hover summoning (opens floating card as soon as pointer enters outer strip).
 	switch {
 	case inLeftZone && ef.active != edgeSideLeft && !ef.suppressLeftUntilLeave && !ef.primaryDown && !editorBusy:
-		if ef.dwellSide != edgeSideLeft {
-			ef.dwellSide = edgeSideLeft
-			ef.dwellStart = now
-		}
-		elapsed := now.Sub(ef.dwellStart)
-		if elapsed >= edgeFloatDwellDuration {
-			ef.openSide(edgeSideLeft, activeSess, true)
-			c.Invalidate()
-		} else {
-			c.After(edgeFloatDwellDuration - elapsed + 5*time.Millisecond)
-		}
+		ef.openSide(edgeSideLeft, activeSess, true)
+		c.Invalidate()
 	case inRightZone && ef.active != edgeSideRight && !ef.suppressRightUntilLeave && !ef.primaryDown && !editorBusy && !editorScrolling:
-		if ef.dwellSide != edgeSideRight {
-			ef.dwellSide = edgeSideRight
-			ef.dwellStart = now
-		}
-		elapsed := now.Sub(ef.dwellStart)
-		if elapsed >= edgeFloatDwellDuration {
-			ef.openSide(edgeSideRight, activeSess, true)
-			c.Invalidate()
-		} else {
-			c.After(edgeFloatDwellDuration - elapsed + 5*time.Millisecond)
-		}
-	default:
-		ef.dwellSide = edgeSideNone
+		ef.openSide(edgeSideRight, activeSess, true)
+		c.Invalidate()
 	}
 
 	// 2. Active card hold / 160ms leave-grace state machine.
 	switch ef.active {
 	case edgeSideLeft:
-		inCardCorridor := (inVertBounds && px <= theme.EdgeFloatInset+leftCardW+theme.EdgeFloatHoverBuffer) || ef.cardHovered
+		inCardCorridor := (inVertBounds && px <= theme.EdgeFloatInset+leftCardW+theme.EdgeFloatHoverBuffer) || ef.cardHovered || ef.leftZoneHovered
 		if inCardCorridor {
 			ef.openedWithoutHover = false
 		}
@@ -319,7 +303,7 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 			}
 		}
 	case edgeSideRight:
-		inCardCorridor := (inVertBounds && px >= vpW-theme.EdgeFloatInset-rightCardW-theme.EdgeFloatHoverBuffer) || ef.cardHovered
+		inCardCorridor := (inVertBounds && px >= vpW-theme.EdgeFloatInset-rightCardW-theme.EdgeFloatHoverBuffer) || ef.cardHovered || ef.rightZoneHovered
 		if inCardCorridor {
 			ef.openedWithoutHover = false
 		}
@@ -396,43 +380,55 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 
 	// 5. Colored Left & Right Edge Hot-Zones (Scheme A visible Ocean Accent strip + tactile spring).
 	if canLeft {
-		renderColoredEdgeHotZone(
+		prevHover := ef.leftZoneHovered
+		ef.leftZoneHovered = renderColoredEdgeHotZone(
 			c,
 			"edge-hotzone-left",
 			"edge-strip-left",
 			false,
-			inLeftZone || ef.dwellSide == edgeSideLeft || ef.active == edgeSideLeft,
+			inLeftZone || ef.active == edgeSideLeft,
 			efPal,
 			theme.Tr("贴边唤出浮动侧栏", "Float Sidebar"),
 			func() {
 				if ef.active == edgeSideLeft {
 					ef.closeSide(w, edgeSideLeft, true)
 				} else {
-					ef.openSide(edgeSideLeft, activeSess, inVertBounds)
+					ef.openSide(edgeSideLeft, activeSess, true)
 				}
 				c.Invalidate()
 			},
 		)
+		if ef.leftZoneHovered && !prevHover && ef.active != edgeSideLeft &&
+			!ef.suppressLeftUntilLeave && !ef.primaryDown && !editorBusy {
+			ef.openSide(edgeSideLeft, activeSess, true)
+			c.Invalidate()
+		}
 	}
 
 	if canRight {
-		renderColoredEdgeHotZone(
+		prevHover := ef.rightZoneHovered
+		ef.rightZoneHovered = renderColoredEdgeHotZone(
 			c,
 			"edge-hotzone-right",
 			"edge-strip-right",
 			true,
-			inRightZone || ef.dwellSide == edgeSideRight || ef.active == edgeSideRight,
+			inRightZone || ef.active == edgeSideRight,
 			efPal,
 			theme.Tr("贴边唤出浮动 AI", "Float AI Panel"),
 			func() {
 				if ef.active == edgeSideRight {
 					ef.closeSide(w, edgeSideRight, true)
 				} else {
-					ef.openSide(edgeSideRight, activeSess, inVertBounds)
+					ef.openSide(edgeSideRight, activeSess, true)
 				}
 				c.Invalidate()
 			},
 		)
+		if ef.rightZoneHovered && !prevHover && ef.active != edgeSideRight &&
+			!ef.suppressRightUntilLeave && !ef.primaryDown && !editorBusy && !editorScrolling {
+			ef.openSide(edgeSideRight, activeSess, true)
+			c.Invalidate()
+		}
 	}
 }
 
@@ -444,7 +440,7 @@ func renderColoredEdgeHotZone(
 	efPal theme.EdgeFloatColors,
 	label string,
 	onClick func(),
-) {
+) bool {
 	zone := ui.ButtonBase(c.Key(zoneID)).Absolute().Top(0).Bottom(0).
 		Width(theme.EdgeHotZoneWidth).Clip().
 		Cursor(ui.CursorPointer).KeepFocus().Label(label)
@@ -500,6 +496,7 @@ func renderColoredEdgeHotZone(
 	if zone.Clicked() && onClick != nil {
 		onClick()
 	}
+	return hovered
 }
 
 func (w *Workspace) renderFloatingSidebarCard(
@@ -513,6 +510,7 @@ func (w *Workspace) renderFloatingSidebarCard(
 	notice string,
 ) {
 	fw := cardWidth
+	hasUpd, updBusy, updReady, updTip := w.sidebarUpdaterProps()
 	RenderSidebar(c, SidebarProps{
 		State:           w.sidebarUI,
 		Width:           &fw,
@@ -523,6 +521,10 @@ func (w *Workspace) renderFloatingSidebarCard(
 		ActiveNote:      activeNote,
 		Notice:          notice,
 		SettingsOpen:    w.modals.IsSettingsOpen(),
+		HasUpdate:       hasUpd,
+		UpdateBusy:      updBusy,
+		UpdateReady:     updReady,
+		UpdateTooltip:   updTip,
 		ShortcutNewNote: w.shortcutForSidebar(stSnap),
 		OnNewFolder: func() {
 			_, _ = w.CreateNewFolder()
