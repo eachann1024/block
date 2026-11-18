@@ -1419,6 +1419,9 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 	}
 	menu := s.blockMenu
 	menuW := float32(224)
+	if menu.Mode == menuSlash {
+		menuW = 248
+	}
 	vp, winW, winH := s.overlayViewport(c)
 
 	var trigger ui.Rect
@@ -1511,10 +1514,15 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 						}
 						cmd := item.Kind
 						ic := cmdIcon(cmd)
+						shortcut, hint := item.Hint, ""
+						if menu.Mode == menuSlash {
+							shortcut, hint = "", item.Hint
+						}
 						row := appUi.MenuRow(c, appUi.MenuItemSpec{
 							ID:            fmt.Sprintf("block-menu-item-%d", i),
 							Label:         item.Label,
-							Shortcut:      item.Hint,
+							Shortcut:      shortcut,
+							Hint:          hint,
 							Icon:          &ic,
 							Danger:        item.Danger,
 							SuppressHover: !menu.PointerActive,
