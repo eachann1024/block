@@ -41,7 +41,7 @@ block-sync/
   },
   "version": "1.0.0",
   "author": "Block Community",
-  "repo": "blockmd-community/block-sync",
+  "repo": "blockmd-plugins/block-sync",
   "summary": {
     "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
     "en": "Incremental notebook sync via local mirror, WebDAV, and Git"

@@ -4,9 +4,9 @@
   "block-publisher",
   "block-migrator",
   "block-diagnostics",
-  "blockmd-community/block-sync",
-  "blockmd-community/block-image-host",
-  "blockmd-community/block-publisher",
-  "blockmd-community/block-migrator",
-  "blockmd-community/block-diagnostics"
+  "blockmd-plugins/block-sync",
+  "blockmd-plugins/block-image-host",
+  "blockmd-plugins/block-publisher",
+  "blockmd-plugins/block-migrator",
+  "blockmd-plugins/block-diagnostics"
 ]
