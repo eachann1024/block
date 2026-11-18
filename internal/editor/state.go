@@ -8,6 +8,7 @@ import (
 
 	"block/internal/files"
 	"block/internal/model"
+	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -79,6 +80,7 @@ type undoSnapshot struct {
 	Anchor      Position
 	Head        Position
 	Annotations []*model.Annotation
+	FoldTails   map[model.BlockID]model.BlockID
 }
 
 // Session holds all document, selection, overlay, and collaboration state for an editor instance.
@@ -97,17 +99,22 @@ type Session struct {
 	selAnchor            Position
 	selHead              Position
 	focusPending         bool
+	focusPreventScroll   bool
 	selSyncPending       bool
 	multiSelFocusPending bool
 	firstLineDeleteArmed bool
 	caretLineHint        int
 
 	blockHandles    map[model.BlockID]ui.Handle
+	richInputs      map[model.BlockID]*appUi.RichInputState
+	tableInputs     map[tableCellKey]*appUi.RichInputState
 	blockRects      map[model.BlockID]ui.Rect
 	blockTextRects  map[model.BlockID]ui.Rect
 	tableCellRects  map[tableCellKey]ui.Rect
 	textLayoutCache map[model.BlockID]cachedBlockLayout
 	folded          map[model.BlockID]bool
+	foldTails       map[model.BlockID]model.BlockID
+	trailingPlus    bool
 
 	// Mouse multi-block / marquee selection
 	mouseMode        mouseSelMode
@@ -199,6 +206,8 @@ type Session struct {
 	imageAltHandle    ui.Handle
 	imageCache        map[string]ui.ImageSource
 	imageFailed       map[string]bool
+	videoPlayers      map[string]*ui.VideoPlayer
+	videoFailed       map[string]bool
 	imageRects        map[model.BlockID]ui.Rect
 	imgResizeBlock    model.BlockID
 	imgResizeStartPct float32
@@ -259,13 +268,18 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		dragDropTo:        -1,
 		mouseOriginBlock:  -1,
 		blockHandles:      make(map[model.BlockID]ui.Handle),
+		richInputs:        make(map[model.BlockID]*appUi.RichInputState),
+		tableInputs:       make(map[tableCellKey]*appUi.RichInputState),
 		blockRects:        make(map[model.BlockID]ui.Rect),
 		blockTextRects:    make(map[model.BlockID]ui.Rect),
 		tableCellRects:    make(map[tableCellKey]ui.Rect),
 		textLayoutCache:   make(map[model.BlockID]cachedBlockLayout),
 		folded:            make(map[model.BlockID]bool),
+		foldTails:         make(map[model.BlockID]model.BlockID),
 		imageCache:        make(map[string]ui.ImageSource),
 		imageFailed:       make(map[string]bool),
+		videoPlayers:      make(map[string]*ui.VideoPlayer),
+		videoFailed:       make(map[string]bool),
 		imageRects:        make(map[model.BlockID]ui.Rect),
 		overlayBtnRects:   make(map[string]ui.Rect),
 		overlayPanelRects: make(map[string]ui.Rect),
@@ -318,6 +332,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredBlock = -1
 	s.selAnchor = Position{}
 	s.selHead = Position{}
+	s.focusPreventScroll = false
 	s.multiSelFocusPending = false
 	s.mouseMode = mouseSelNone
 	s.mouseOriginBlock = -1
@@ -349,7 +364,12 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.footPickerAnnotID = ""
 	s.caretHidden = false
 	s.toolbarMoreIndex = 0
+	s.closeVideoPlayers()
+	s.trailingPlus = false
 	clear(s.folded)
+	clear(s.foldTails)
+	clear(s.richInputs)
+	clear(s.tableInputs)
 	clear(s.blockRects)
 	clear(s.blockTextRects)
 	clear(s.tableCellRects)
@@ -423,6 +443,7 @@ func (s *Session) FocusBlock(idx int) {
 	} else {
 		s.multiSelFocusPending = false
 		s.focusPending = true
+		s.focusPreventScroll = false
 		s.selSyncPending = true
 	}
 	s.firstLineDeleteArmed = false
@@ -495,6 +516,30 @@ func (s *Session) setBlockHandle(id model.BlockID, h ui.Handle) {
 	s.blockHandles[id] = h
 }
 
+func (s *Session) richInputState(id model.BlockID) *appUi.RichInputState {
+	if s.richInputs == nil {
+		s.richInputs = make(map[model.BlockID]*appUi.RichInputState)
+	}
+	st, ok := s.richInputs[id]
+	if !ok || st == nil {
+		st = &appUi.RichInputState{}
+		s.richInputs[id] = st
+	}
+	return st
+}
+
+func (s *Session) tableInputState(key tableCellKey) *appUi.RichInputState {
+	if s.tableInputs == nil {
+		s.tableInputs = make(map[tableCellKey]*appUi.RichInputState)
+	}
+	st, ok := s.tableInputs[key]
+	if !ok || st == nil {
+		st = &appUi.RichInputState{}
+		s.tableInputs[key] = st
+	}
+	return st
+}
+
 func (s *Session) cloneAnnotations(src []*model.Annotation) []*model.Annotation {
 	if len(src) == 0 {
 		return nil
@@ -518,6 +563,7 @@ func (s *Session) pushUndo() {
 		Anchor:      s.selAnchor,
 		Head:        s.selHead,
 		Annotations: s.cloneAnnotations(s.annotations),
+		FoldTails:   cloneFoldTails(s.foldTails),
 	}
 	s.undoStack = append(s.undoStack, snap)
 	if len(s.undoStack) > 200 {
@@ -536,6 +582,7 @@ func (s *Session) Undo() bool {
 		Anchor:      s.selAnchor,
 		Head:        s.selHead,
 		Annotations: s.cloneAnnotations(s.annotations),
+		FoldTails:   cloneFoldTails(s.foldTails),
 	}
 	s.redoStack = append(s.redoStack, cur)
 	prev := s.undoStack[len(s.undoStack)-1]
@@ -554,6 +601,7 @@ func (s *Session) Redo() bool {
 		Anchor:      s.selAnchor,
 		Head:        s.selHead,
 		Annotations: s.cloneAnnotations(s.annotations),
+		FoldTails:   cloneFoldTails(s.foldTails),
 	}
 	s.undoStack = append(s.undoStack, cur)
 	next := s.redoStack[len(s.redoStack)-1]
@@ -571,6 +619,11 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.selAnchor = snap.Anchor
 	s.selHead = snap.Head
 	s.annotations = s.cloneAnnotations(snap.Annotations)
+	clear(s.foldTails)
+	for k, v := range snap.FoldTails {
+		s.foldTails[k] = v
+	}
+	s.trailingPlus = false
 	s.dirty = s.Markdown() != s.savedMarkdown
 	s.focusPending = true
 	s.selSyncPending = true
@@ -687,6 +740,7 @@ func (s *Session) closeTransientOverlays() {
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
 	s.footPickerAnnotID = ""
+	s.trailingPlus = false
 }
 
 func (s *Session) blockIndexByID(id model.BlockID) int {
@@ -736,24 +790,16 @@ func (s *Session) numberedListIndex(idx int) int {
 }
 
 func (s *Session) isBlockHiddenByFold(idx int) bool {
-	if s.doc == nil || idx <= 0 || idx >= len(s.doc.Blocks) {
+	if s.doc == nil || len(s.folded) == 0 || idx <= 0 || idx >= len(s.doc.Blocks) {
 		return false
 	}
-	b := &s.doc.Blocks[idx]
-	bLevel := 99
-	if b.Kind.IsHeading() {
-		bLevel = b.Kind.HeadingLevel()
-	}
-	for i := idx - 1; i >= 0; i-- {
-		prev := &s.doc.Blocks[i]
-		if prev.Kind.IsHeading() {
-			lvl := prev.Kind.HeadingLevel()
-			if lvl < bLevel && s.folded[prev.ID] {
-				return true
-			}
-			if lvl <= bLevel {
-				bLevel = lvl
-			}
+	for hIdx := 0; hIdx < idx; hIdx++ {
+		head := &s.doc.Blocks[hIdx]
+		if !head.Kind.IsHeading() || !s.folded[head.ID] {
+			continue
+		}
+		if idx < s.foldSectionEnd(hIdx) && !s.tailReveals(hIdx, idx) {
+			return true
 		}
 	}
 	return false
@@ -763,23 +809,14 @@ func (s *Session) headingSectionChildCount(idx int) int {
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return 0
 	}
-	head := &s.doc.Blocks[idx]
-	if !head.Kind.IsHeading() {
+	if !s.doc.Blocks[idx].Kind.IsHeading() {
 		return 0
 	}
-	lvl := head.Kind.HeadingLevel()
-	count := 0
-	for i := idx + 1; i < len(s.doc.Blocks); i++ {
-		cur := &s.doc.Blocks[i]
-		if cur.Kind.IsHeading() && cur.Kind.HeadingLevel() <= lvl {
-			break
-		}
-		count++
-	}
-	return count
+	return max(s.foldSectionEnd(idx)-idx-1, 0)
 }
 
 func (s *Session) toggleFold(id model.BlockID) {
+	delete(s.foldTails, id)
 	if s.folded[id] {
 		delete(s.folded, id)
 	} else {
