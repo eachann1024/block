@@ -17,6 +17,7 @@ const (
 const (
 	IconChrome      float32 = 18 // standalone icon buttons (titlebar, panel headers, sidebar footer)
 	IconRow         float32 = 18 // leading icon of list rows (tree, menu, settings nav, search box)
+	IconMenuCheck   float32 = 16 // trailing check / action glyph inside 28px menu rows
 	IconInline      float32 = 14 // chevrons, close, status, check marks
 	IconMicro       float32 = 12 // icons beside 12px text
 	ChromeBoxSize   float32 = 26 // titlebar standalone button box

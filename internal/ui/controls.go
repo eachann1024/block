@@ -429,7 +429,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol))
 		}
 		if item.Checked {
-			icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
 		}
 	})
 	if item.ID != "" {
@@ -439,6 +439,101 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		item.OnClick()
 	}
 	return row
+}
+
+// InlineConfirmOptions configures an in-place two-step confirmation bar inside a row.
+type InlineConfirmOptions struct {
+	ID           string
+	ConfirmLabel string
+	CancelLabel  string
+	Danger       bool
+}
+
+// InlineConfirm renders compact [Cancel] [Confirm] actions in-place at the trailing
+// end of a list/menu row (confirm sits at the trailing edge under the pointer).
+func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancelled bool) {
+	pal := theme.Ocean()
+	cancelText := opts.CancelLabel
+	if cancelText == "" {
+		cancelText = theme.Tr("取消", "Cancel")
+	}
+	confirmText := opts.ConfirmLabel
+	if confirmText == "" {
+		confirmText = theme.Tr("确认", "Confirm")
+	}
+	if opts.ID != "" {
+		c.Key(opts.ID + "-confirm-group")
+	}
+	ui.Row(c).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
+		cancelID := ""
+		if opts.ID != "" {
+			cancelID = opts.ID + "-cancel"
+			c.Key(cancelID)
+		}
+		cancelBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).PaddingX(7).Shrink(0).Center().
+			Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).Label(cancelText)
+		cancelHover := cancelBtn.Hovered()
+		cancelPress := cancelBtn.Pressed()
+		cancelFG := pal.TextSecondary
+		switch {
+		case cancelPress:
+			cancelBtn.Background(pal.Selected)
+			cancelFG = pal.Text
+		case cancelHover:
+			cancelBtn.Background(pal.MenuHover)
+			cancelFG = pal.Text
+		}
+		cancelBtn.Children(func() {
+			ui.Text(c, cancelText).FontSize(theme.FontSmall).FixedLineHeight(16).
+				FontWeight(theme.WeightControl).TextColor(cancelFG).SingleLine()
+		})
+		if cancelID != "" {
+			Probe(cancelBtn, cancelID)
+		}
+		cancelled = cancelBtn.Clicked()
+
+		confirmID := ""
+		if opts.ID != "" {
+			confirmID = opts.ID + "-confirm"
+			c.Key(confirmID)
+		}
+		confirmBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).PaddingX(8).Shrink(0).Center().
+			Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).Label(confirmText)
+		confirmHover := confirmBtn.Hovered()
+		confirmPress := confirmBtn.Pressed()
+		var confirmFG ui.Color
+		if opts.Danger {
+			switch {
+			case confirmPress:
+				confirmBtn.Background(pal.Danger).Border(1, pal.Danger)
+				confirmFG = pal.MenuDangerHoverFG
+			case confirmHover:
+				confirmBtn.Background(pal.MenuDangerHoverBG).Border(1, pal.MenuDangerHoverBG)
+				confirmFG = pal.MenuDangerHoverFG
+			default:
+				confirmBtn.Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35))
+				confirmFG = pal.Danger
+			}
+		} else {
+			confirmFG = pal.AccentText
+			bg := pal.Accent
+			if confirmPress {
+				bg = pal.AccentPressed
+			} else if confirmHover {
+				bg = pal.AccentHover
+			}
+			confirmBtn.Background(bg)
+		}
+		confirmBtn.Children(func() {
+			ui.Text(c, confirmText).FontSize(theme.FontSmall).FixedLineHeight(16).
+				FontWeight(theme.WeightControl).TextColor(confirmFG).SingleLine()
+		})
+		if confirmID != "" {
+			Probe(confirmBtn, confirmID)
+		}
+		confirmed = confirmBtn.Clicked()
+	})
+	return confirmed, cancelled
 }
 
 // PopupTransition returns the shared 160ms enter/exit transition for menus and popovers.
