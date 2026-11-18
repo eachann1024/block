@@ -2114,7 +2114,6 @@ func (w *Workspace) Render(c *ui.Context) {
 	notice := w.notice
 	hasFBDraft := w.state.FeedbackDraft != nil
 	toast := w.historyToast
-	recPath := w.recoveryPath
 	stSnap := w.state
 	w.mu.Unlock()
 
@@ -2304,9 +2303,6 @@ func (w *Workspace) Render(c *ui.Context) {
 			if !aiImmersive {
 				mainCol := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(pal.Paper)
 				mainCol.Children(func() {
-					if recPath != "" {
-						w.renderRecoveryBanner(c, recPath)
-					}
 					if toast != nil && toast.Active && toast.NotePath == activeTab {
 						toast.RenderBanner(
 							c,
@@ -2390,33 +2386,6 @@ func (w *Workspace) Render(c *ui.Context) {
 
 		// 4. Visual Smoke HUD (click ripple + step banner when smoke mode is enabled).
 		blockui.RenderSmokeHUD(c)
-	})
-}
-
-func (w *Workspace) renderRecoveryBanner(c *ui.Context, recPath string) {
-	pal := theme.Ocean()
-	c.Key("recovery-banner")
-	row := ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
-		Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12)
-	blockui.Probe(row, "recovery-banner")
-	row.Children(func() {
-		msg := fmt.Sprintf("%s：%s", theme.Tr("发现未保存的恢复草稿", "Found unsaved recovery draft"), filepath.Base(recPath))
-		ui.Text(c, msg).FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(8).Children(func() {
-			applyBtn := blockui.ActionButton(c, "recovery-restore", theme.Tr("恢复草稿", "Recover Draft"), nil, blockui.ButtonPrimary, false)
-			if applyBtn.Clicked() {
-				_, _ = w.ApplyPendingRecoveryDraft()
-			}
-			dismissBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
-				ID:      "recovery-dismiss",
-				Variant: blockui.IconPlain,
-				Tooltip: theme.Tr("忽略草稿", "Discard"),
-			})
-			if dismissBtn.Clicked() {
-				w.DismissPendingRecoveryDraft()
-			}
-		})
 	})
 }
 
