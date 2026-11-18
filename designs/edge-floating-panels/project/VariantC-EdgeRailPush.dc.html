@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 C · 双侧微导轨与临时内推分栏</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #256abf; text-decoration: none; }
+    a:hover { color: #184f95; text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 820px; padding: 28px 24px 36px; display: flex; flex-direction: column; align-items: center; gap: 20px; background: #e4e7ec; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; color: #1f1e1d; -webkit-font-smoothing: antialiased">
+
+  <div style="width: 100%; max-width: 780px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+    <div role="group" aria-label="微导轨内推状态" style="display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <sc-for list="{{railTabs}}" as="tab" hint-placeholder-count="3">
+        <button type="button" onClick="{{tab.pick}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 7px; background: {{tab.bg}}; color: {{tab.fg}}; font-size: 14px; font-weight: {{tab.weight}}">{{tab.label}}</button>
+      </sc-for>
+    </div>
+
+    <button type="button" onClick="{{togglePin}}" style="height: 38px; padding: 0 14px; border: 1px solid {{pinBorder}}; border-radius: 10px; background: {{pinBg}}; color: {{pinFg}}; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05)">
+      <span>{{pinLabel}}</span>
+    </button>
+  </div>
+
+  <div style="width: 100%; max-width: 780px; min-height: 696px; border-radius: 14px; overflow: hidden; background: #ffffff; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12), 0 18px 44px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column">
+
+    <header style="height: 40px; padding: 0 14px 0 16px; display: flex; align-items: center; gap: 8px; background: #f1f1f1; border-bottom: 1px solid #e6e6e6; flex-shrink: 0">
+      <div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; margin-right: 8px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+      </div>
+      <div style="height: 28px; padding: 0 12px; border-radius: 6px; background: #ffffff; border: 1px solid #e4e6ea; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #1f1e1d">
+        <span>技术架构拆解</span>
+      </div>
+      <span style="flex: 1"></span>
+      <span style="padding: 2px 8px; border-radius: 6px; background: #eef3fc; color: #184f95; font-family: 'JetBrains Mono', monospace; font-size: 12px">780px</span>
+    </header>
+
+    <div style="flex: 1; display: flex; min-height: 0; background: #ffffff">
+
+      <div style="width: 36px; padding: 10px 0; background: #f6f7f9; border-right: 1px solid #e6e6e6; display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0">
+        <button type="button" aria-label="展开左侧文件栏" onMouseEnter="{{openLeftSplit}}" onClick="{{toggleLeftSplit}}" style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: {{leftRailBtnBg}}; color: {{leftRailBtnFg}}; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+        </button>
+        <button type="button" aria-label="快速搜索笔记" style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        </button>
+      </div>
+
+      <sc-if value="{{isLeftSplit}}" hint-placeholder-val="{{ false }}">
+        <aside aria-label="临时内推文件栏" style="width: 204px; background: #fafafa; border-right: 1px solid #d8dee9; display: flex; flex-direction: column; flex-shrink: 0">
+          <div style="height: 36px; padding: 0 10px 0 12px; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between">
+            <span style="font-size: 13px; font-weight: 560; color: #1f1e1d">创业团队</span>
+            <button type="button" aria-label="收起文件栏" onClick="{{collapseAll}}" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+            </button>
+          </div>
+          <div style="padding: 8px 6px; display: flex; flex-direction: column; gap: 2px; flex: 1">
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#2f57a6" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>技术架构拆解</span>
+            </div>
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>状态机与布局</span>
+            </div>
+            <div style="height: 30px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1f1e1d">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path></svg>
+              <span>快捷键映射表</span>
+            </div>
+          </div>
+        </aside>
+      </sc-if>
+
+      <main style="flex: 1; min-width: 0; padding: 52px 20px 40px 8px; display: flex; flex-direction: column; gap: 14px; background: #ffffff">
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 32px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-right: 12px">
+            <sc-if value="{{sel0}}" hint-placeholder-val="{{ true }}">
+              <button type="button" aria-label="折叠章节" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+              <button type="button" aria-label="拖动标题块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{select0}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{bg0}}; text-align: left; font-size: 20px; line-height: 30px; font-weight: 600; color: #1f1e1d">
+            可见微导轨 + 同屏临时内推
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; margin-right: 12px">
+            <sc-if value="{{sel1}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-label="拖动段落块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{select1}}" style="flex: 1; min-width: 0; padding: 2px 8px; border: 0; border-radius: 6px; background: {{bg1}}; text-align: left; font-size: 15px; line-height: 25px; font-weight: 400; color: #1f1e1d">
+            左右各保留 36px 实体微导轨，由细分割线将「边缘唤出区」与「54px 块把手走廊」在视觉和点击边界上彻底切开。
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: flex-start">
+          <div style="width: 54px; height: 26px; padding-right: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; margin-right: 12px">
+            <sc-if value="{{sel2}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-label="拖动说明块" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: #eef3fc; color: #1f1e1d; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7" fill="#547dd0"></circle><circle cx="15" cy="6" r="1.7"></circle><circle cx="9" cy="12" r="1.7"></circle><circle cx="15" cy="12" r="1.7" fill="#547dd0"></circle><circle cx="9" cy="18" r="1.7"></circle><circle cx="15" cy="18" r="1.7"></circle></svg>
+              </button>
+            </sc-if>
+          </div>
+          <button type="button" onClick="{{select2}}" style="flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #e4e6ea; border-radius: 8px; background: {{bg2}}; text-align: left; font-size: 14px; line-height: 22px; color: #1f1e1d">
+            悬停微导轨图标时，紧凑侧栏在导轨内侧弹性推开，块把手始终紧贴正文左槽，支持一边对照目录或 AI 建议一边拖拽块顺序。
+          </button>
+        </div>
+
+      </main>
+
+      <sc-if value="{{isRightSplit}}" hint-placeholder-val="{{ true }}">
+        <aside aria-label="临时内推 AI 栏" style="width: 248px; background: #fafafa; border-left: 1px solid #d8dee9; display: flex; flex-direction: column; flex-shrink: 0">
+          <div style="height: 36px; padding: 0 10px 0 12px; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between">
+            <span style="font-size: 13px; font-weight: 560; color: #1f1e1d">AI 协同</span>
+            <button type="button" aria-label="收起 AI 栏" onClick="{{collapseAll}}" style="width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #52514e; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+            </button>
+          </div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1">
+            <div style="padding: 9px 10px; border-radius: 8px; background: #ffffff; border: 1px solid #e4e6ea; font-size: 13px; line-height: 19px; color: #1f1e1d">
+              已同步读取当前章节，可直接在左侧拖移段落调整结构，右侧实时跟进评审。
+            </div>
+            <div style="padding: 8px 10px; border-radius: 8px; background: #eaf6ef; border: 1px solid #b8dfc6; font-size: 12px; line-height: 18px; color: #1e6b3f">
+              后台回答已完成 · 导轨圆点可随时感知
+            </div>
+          </div>
+          <div style="padding: 8px; border-top: 1px solid #e6e6e6">
+            <div style="height: 34px; padding: 0 10px; border-radius: 7px; background: #ffffff; border: 1px solid #dcdcdc; display: flex; align-items: center; font-size: 12px; color: #586272">
+              输入指令…
+            </div>
+          </div>
+        </aside>
+      </sc-if>
+
+      <div style="width: 36px; padding: 10px 0; background: #f6f7f9; border-left: 1px solid #e6e6e6; display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0">
+        <button type="button" aria-label="展开右侧 AI 栏" onMouseEnter="{{openRightSplit}}" onClick="{{toggleRightSplit}}" style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: {{rightRailBtnBg}}; color: {{rightRailBtnFg}}; display: flex; align-items: center; justify-content: center; position: relative">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path></svg>
+          <span style="position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 3px; background: #2e8b57"></span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"splitSide":{"editor":"enum","default":"both_collapsed","options":["left","right","both_collapsed"],"section":"Micro Rail"},"$preview":{"width":1200,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { side: 'left', sel: 0, pinned: false };
+  }
+  renderVals() {
+    const side = this.state.side ?? this.props.splitSide ?? 'left';
+    const sel = this.state.sel ?? 0;
+    const pinned = this.state.pinned ?? false;
+    const isLeftSplit = side === 'left';
+    const isRightSplit = side === 'right';
+
+    const railDefs = [
+      { id: 'left', label: '左导轨展开 · 文件内推' },
+      { id: 'right', label: '右导轨展开 · AI 内推' },
+      { id: 'both_collapsed', label: '双侧收束 · 36px 微导轨' }
+    ];
+    const railTabs = railDefs.map((r) => {
+      const active = side === r.id;
+      return {
+        label: r.label,
+        bg: active ? '#2f57a6' : 'transparent',
+        fg: active ? '#ffffff' : '#3d3c39',
+        weight: active ? 560 : 460,
+        pick: () => this.setState({ side: r.id })
+      };
+    });
+
+    return {
+      railTabs,
+      isLeftSplit,
+      isRightSplit,
+      sel0: sel === 0,
+      sel1: sel === 1,
+      sel2: sel === 2,
+      bg0: sel === 0 ? '#f4f7fd' : 'transparent',
+      bg1: sel === 1 ? '#f4f7fd' : 'transparent',
+      bg2: sel === 2 ? '#eef3fc' : '#f8f8f6',
+      leftRailBtnBg: isLeftSplit ? '#e5edfc' : 'transparent',
+      leftRailBtnFg: isLeftSplit ? '#184f95' : '#52514e',
+      rightRailBtnBg: isRightSplit ? '#e5edfc' : 'transparent',
+      rightRailBtnFg: isRightSplit ? '#184f95' : '#52514e',
+      pinBg: pinned ? '#e5edfc' : '#ffffff',
+      pinFg: pinned ? '#184f95' : '#3d3c39',
+      pinBorder: pinned ? '#547dd0' : '#d8dee9',
+      pinLabel: pinned ? '已锁定导轨内推' : '悬停自动收放',
+      openLeftSplit: () => { if (!pinned) this.setState({ side: 'left' }); },
+      openRightSplit: () => { if (!pinned) this.setState({ side: 'right' }); },
+      toggleLeftSplit: () => this.setState({ side: isLeftSplit ? 'both_collapsed' : 'left' }),
+      toggleRightSplit: () => this.setState({ side: isRightSplit ? 'both_collapsed' : 'right' }),
+      collapseAll: () => this.setState({ side: 'both_collapsed', pinned: false }),
+      togglePin: () => this.setState({ pinned: !pinned }),
+      select0: () => this.setState({ sel: 0 }),
+      select1: () => this.setState({ sel: 1 }),
+      select2: () => this.setState({ sel: 2 })
+    };
+  }
+}
+</script>
+</body>
+</html>
