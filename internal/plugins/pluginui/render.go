@@ -73,11 +73,11 @@ func RenderPage(
 
 func renderStatusPill(c *ui.Context, text string) {
 	pal := theme.Ocean()
-	ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space10).Radius(theme.RadiusPill).
+	ui.Row(c).Height(theme.HeightControl).PaddingX(theme.Space12).Radius(theme.RadiusMD).
 		Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, text).
-			FontSize(theme.FontSmall).
-			FixedLineHeight(theme.LineSmall).
+			FontSize(theme.FontBody).
+			FixedLineHeight(theme.LineBody).
 			FontWeight(theme.WeightControl).
 			TextColor(pal.Text).
 			SingleLine()
