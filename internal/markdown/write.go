@@ -30,6 +30,9 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 	if isDocUntouched(doc, defs) {
 		return doc.CleanRaw
 	}
+	if len(doc.Blocks) == 1 && isBlankBlock(&doc.Blocks[0]) {
+		return ""
+	}
 
 	var out strings.Builder
 	var num listNumbering
@@ -62,7 +65,15 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
 			out.WriteByte('\n')
 		}
-		if i > 0 && needsSeparator(&blocks[i-1], nexts[i-1]) {
+		wantSep := false
+		if i > 0 {
+			if isBlankBlock(b) {
+				wantSep = swallowableSeparator(&blocks[i-1], nexts[i-1])
+			} else {
+				wantSep = needsSeparator(&blocks[i-1], nexts[i-1])
+			}
+		}
+		if wantSep {
 			prevQ := effectiveQuoteDepth(&blocks[i-1])
 			curQ := effectiveQuoteDepth(b)
 			if prevQ > 0 && curQ > 0 {
@@ -99,8 +110,8 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 
 	res := out.String()
 	// Respect explicit lack of trailing newline if original file had none.
-	if doc.CleanRaw != "" && doc.TrailingLine == "" {
-		res = strings.TrimRight(res, "\r\n")
+	if doc.CleanRaw != "" && doc.TrailingLine == "" && !isBlankBlock(&blocks[len(blocks)-1]) {
+		res = strings.TrimSuffix(res, "\n")
 	} else if doc.TrailingLine == "\r\n" {
 		res = strings.ReplaceAll(strings.ReplaceAll(res, "\r\n", "\n"), "\n", "\r\n")
 	}
@@ -128,18 +139,21 @@ func isDocUntouched(doc *model.Doc, defs map[string]refDef) bool {
 			return false
 		}
 		gap := decoded[cursor : cursor+idx]
-		if !isIgnorableCleanGap(gap, defs) {
+		if !isIgnorableCleanGap(gap, defs, i > 0) {
 			return false
 		}
 		cursor += idx + len(b.CleanSource)
 	}
 	tail := decoded[cursor:]
-	return isIgnorableCleanGap(tail, defs)
+	return isIgnorableCleanGap(tail, defs, false)
 }
 
-func isIgnorableCleanGap(gap string, defs map[string]refDef) bool {
-	if strings.TrimSpace(gap) == "" {
+func isIgnorableCleanGap(gap string, defs map[string]refDef, allowSeparator bool) bool {
+	if gap == "" {
 		return true
+	}
+	if strings.TrimSpace(gap) == "" {
+		return allowSeparator && countCleanLines(gap) == 1
 	}
 	if len(defs) == 0 {
 		return false
@@ -484,7 +498,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 
 	default: // BlockParagraph
 		if len(b.Spans) == 0 {
-			out.WriteString("<!-- thinkly:empty-block=paragraph -->\n")
+			out.WriteByte('\n')
 			return
 		}
 		if b.Indent > 0 && !inListChild {
