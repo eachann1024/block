@@ -91,6 +91,7 @@ type EditorColors struct {
 	GripHoverBG      ui.Color
 	ResizeHandleBG   ui.Color
 	InlineAIDiffTint ui.Color
+	JumpRing         ui.Color
 }
 
 // Editor returns editor-specific chrome and overlay colours.
@@ -100,11 +101,13 @@ func (p Palette) Editor() EditorColors {
 			GripHoverBG:      p.CodeBlockBG,
 			ResizeHandleBG:   ui.RGBA(34, 34, 34, 0.85),
 			InlineAIDiffTint: ui.RGBA(43, 53, 72, 0.42),
+			JumpRing:         p.Accent.Alpha(0.68),
 		}
 	}
 	return EditorColors{
 		GripHoverBG:      p.CodeBlockBG,
 		ResizeHandleBG:   ui.RGBA(255, 255, 255, 0.85),
 		InlineAIDiffTint: p.Hover.Alpha(0.72),
+		JumpRing:         p.Accent.Alpha(0.58),
 	}
 }

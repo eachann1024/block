@@ -55,11 +55,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.viewportWidth = viewportWidth
 	s.viewportHeight = winH
 
-	// Expire outline jump highlight only if wall clock passed and not in a static frame.
-	if s.highlightedBlockID != 0 && !s.highlightUntil.IsZero() && timeAfter(s.highlightUntil) {
-		s.highlightedBlockID = 0
-		s.highlightUntil = s.highlightUntil.Add(-s.highlightUntil.Sub(s.highlightUntil))
-	}
+	s.jumpAlpha = s.jumpHighlight(c)
 
 	s.handleGlobalShortcuts(c, readOnly)
 
@@ -379,7 +375,7 @@ func (s *Session) canVirtualizeBlock(idx int, id model.BlockID) (ui.Rect, bool) 
 	if idx == 0 || idx == len(s.doc.Blocks)-1 || idx == s.focusedBlock || idx == s.hoveredBlock {
 		return ui.Rect{}, false
 	}
-	if s.dragBlockID != 0 || s.isMouseDragging() || s.hasNonEmptySelection() || s.highlightedBlockID == id {
+	if s.dragBlockID != 0 || s.isMouseDragging() || s.hasNonEmptySelection() || s.jump.block == id {
 		return ui.Rect{}, false
 	}
 	if s.inlineAI != nil || s.blockMenu != nil || s.findOpen || len(s.annotations) > 0 {
@@ -437,26 +433,25 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	}
 	isHovered := row.Hovered()
 	isFocused := s.focusedBlock == idx
-	isHighlighted := s.highlightedBlockID == id
+	isHighlighted := s.jump.block == id && s.jump.row < 0
 	deleteArmed := idx == 0 && s.firstLineDeleteArmed && s.canArmFirstLineDelete()
 
 	dragTarget := s.dragActive && s.dragOverIdx == idx
+	var highlightBand func(ui.Rect) ui.Rect
 	if isHighlighted {
 		leftGutter := s.leftContentGutter()
 		rightInset := s.rightContentInset()
-		hiFill := pal.Selected
-		padY := s.scale(2)
-		row.Draw(func(p *ui.Painter, r ui.Rect) {
-			band := ui.Rect{
+		padY := s.scale(theme.Space2)
+		highlightBand = func(r ui.Rect) ui.Rect {
+			return ui.Rect{
 				X: r.X + leftGutter - bandBleed,
 				Y: r.Y + topGap - padY,
 				W: max(r.W-leftGutter-rightInset+2*bandBleed, 0),
 				H: max(r.H-topGap+2*padY, 0),
 			}
-			if band.W > 0 && band.H > 0 {
-				p.Fill(band, hiFill, theme.RadiusSM)
-				appUi.RecordBounds("outline-target-highlight", band)
-			}
+		}
+		row.Draw(func(p *ui.Painter, r ui.Rect) {
+			p.Fill(highlightBand(r), pal.EditorSelectionBG().Alpha(s.jumpAlpha), theme.RadiusSM)
 		})
 	}
 	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
@@ -468,6 +463,11 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		}
 		if appUi.IsProbeEnabled() {
 			appUi.RecordBounds(fmt.Sprintf("block-%d", id), r)
+		}
+		if highlightBand != nil {
+			band := highlightBand(r)
+			p.Stroke(band, pal.Editor().JumpRing.Alpha(s.jumpAlpha), theme.RadiusSM, theme.JumpHighlightBorderW)
+			appUi.RecordBounds("outline-target-highlight", band)
 		}
 		if dragTarget {
 			s.paintBlockDropMarker(p, r, b, pal)
@@ -493,6 +493,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	gripHoverBG := pal.Editor().GripHoverBG
 
 	row.Children(func() {
+		if isHighlighted {
+			s.revealJump(c, topGap)
+		}
 		drawListGuides(c, id, listCtx, s.leftContentGutter(), s.zoom())
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
@@ -2214,9 +2217,14 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 	cellSelected := hasBlockSel && (s.hasMultiBlockSelection() || !(selLo >= cellBase && selHi <= cellBase+cellLen)) &&
 		((cellLen == 0 && selLo <= cellBase && selHi >= cellBase) || (selHi > cellBase && selLo < cellBase+cellLen))
 
+	jumpTarget := s.jump.block == blockID && s.jump.row == rIdx && s.jump.col == cIdx
 	box := tableGridCell(c, rIdx, cIdx, colW, needHScroll).Padding(tPadY, tPadX)
-	box.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+	box.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		s.recordTableCellRect(blockID, rIdx, cIdx, r)
+		if jumpTarget {
+			p.Stroke(r, pal.Editor().JumpRing.Alpha(s.jumpAlpha), theme.RadiusXS, theme.JumpHighlightBorderW)
+			appUi.RecordBounds("search-target-cell", r)
+		}
 	})
 	if !readOnly {
 		box.Cursor(ui.CursorText)
@@ -2228,6 +2236,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 		bg = pal.Selected
 	} else if rIdx == 0 {
 		bg = headerBG
+	}
+	if jumpTarget {
+		bg = pal.EditorSelectionBG().Alpha(s.jumpAlpha).Over(bg)
 	}
 	box.Background(bg)
 	weight := 400
@@ -2249,6 +2260,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 	}
 
 	box.Children(func() {
+		if jumpTarget {
+			s.revealJump(c, 0)
+		}
 		cellBlock := model.Block{ID: blockID, Kind: model.BlockParagraph, Spans: cell.Spans}
 		if isCellFocused {
 			draft := cell.PlainText()
@@ -2873,8 +2887,4 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			s.renderImageSubPopover(c, idx, b)
 		}
 	})
-}
-
-func timeAfter(t interface{ IsZero() bool }) bool {
-	return false // Expiry handled explicitly via timers/actions so tests remain deterministic.
 }

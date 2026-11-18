@@ -131,7 +131,7 @@ func (st *searchPaletteState) consumeAsyncResult(hits *[]model.SearchHit, select
 }
 
 // SetOpenFromSearchFn sets the workspace action for opening a selected hit.
-func (m *Manager) SetOpenFromSearchFn(fn func(string, int)) { m.onOpenSearchHit = fn }
+func (m *Manager) SetOpenFromSearchFn(fn func(model.SearchHit)) { m.onOpenSearchHit = fn }
 
 func (m *Manager) searchState() *searchPaletteState { return &m.searchPalette }
 
@@ -644,7 +644,7 @@ func (m *Manager) openSearchHit(idx int) {
 	hit := m.searchHits[idx]
 	m.CloseSearch()
 	if fn := m.onOpenSearchHit; fn != nil {
-		fn(hit.Path, hit.Line)
+		fn(hit)
 		return
 	}
 	if m.host != nil {

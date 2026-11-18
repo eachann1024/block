@@ -51,7 +51,24 @@ var (
 		Oklab:     true,
 		NonMotion: true,
 	}
+
+	// SpringJumpScroll glides editor viewport jumps smoothly to the upper reading zone without bounce.
+	SpringJumpScroll = ui.Animation{
+		Spring: ui.SpringOptions{
+			Duration: 280 * time.Millisecond,
+			Bounce:   0,
+		},
+	}
 )
+
+// JumpScrollAnimation returns the scroll animation for in-document jumps,
+// snapping immediately during tests or initial tab mount when smooth is false.
+func JumpScrollAnimation(smooth bool) *ui.Animation {
+	if !smooth || testing.Testing() {
+		return nil
+	}
+	return &SpringJumpScroll
+}
 
 func almostZero(v, eps float32) bool {
 	return float32(math.Abs(float64(v))) <= eps

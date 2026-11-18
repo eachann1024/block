@@ -442,7 +442,7 @@ func (w *Workspace) wireSearchWindowCallbacks() {
 	w.searchWin.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
 		return w.SearchWorkspace(query, allNotebooks)
 	}
-	w.searchWin.OnOpenHit = func(path string, line int) {
+	w.searchWin.OnOpenHit = func(hit model.SearchHit) {
 		if w.OnRevealMainWindow != nil {
 			w.OnRevealMainWindow()
 		} else if w.win != nil {
@@ -450,7 +450,7 @@ func (w *Workspace) wireSearchWindowCallbacks() {
 			w.win.Show()
 			w.win.Focus()
 		}
-		_ = w.OpenFromSearch(path, line)
+		_ = w.OpenFromSearch(hit)
 	}
 }
 
@@ -513,8 +513,8 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
 		return w.SearchWorkspace(query, allNotebooks)
 	}
-	w.modals.SetOpenFromSearchFn(func(path string, line int) {
-		_ = w.OpenFromSearch(path, line)
+	w.modals.SetOpenFromSearchFn(func(hit model.SearchHit) {
+		_ = w.OpenFromSearch(hit)
 	})
 	w.modals.ListHistoryFn = func(notePath string) ([]model.HistorySnapshot, error) {
 		return files.ListHistorySnapshots(notePath)
@@ -990,11 +990,11 @@ func pathWithinRoot(absPath, root string) bool {
 }
 
 // OpenFromSearch opens a search hit, switching to the owning notebook if it belongs to another loaded folder.
-func (w *Workspace) OpenFromSearch(absPath string, lineHint int) error {
-	if strings.TrimSpace(absPath) == "" {
+func (w *Workspace) OpenFromSearch(hit model.SearchHit) error {
+	if strings.TrimSpace(hit.Path) == "" {
 		return errors.New("empty note path")
 	}
-	clean := filepath.Clean(absPath)
+	clean := filepath.Clean(hit.Path)
 	w.modals.CloseSearch()
 	if w.isBusy() {
 		return nil
@@ -1004,19 +1004,25 @@ func (w *Workspace) OpenFromSearch(absPath string, lineHint int) error {
 	notebooks := append([]string(nil), w.state.Notebooks...)
 	w.mu.RUnlock()
 
-	if pathWithinRoot(clean, curFolder) {
-		return w.OpenNote(clean, lineHint)
-	}
-	var bestNotebook string
-	for _, nb := range notebooks {
-		if pathWithinRoot(clean, nb) && len(filepath.Clean(nb)) > len(bestNotebook) {
-			bestNotebook = filepath.Clean(nb)
+	if !pathWithinRoot(clean, curFolder) {
+		var bestNotebook string
+		for _, nb := range notebooks {
+			if pathWithinRoot(clean, nb) && len(filepath.Clean(nb)) > len(bestNotebook) {
+				bestNotebook = filepath.Clean(nb)
+			}
+		}
+		if bestNotebook != "" {
+			_ = w.SetNotebook(bestNotebook)
 		}
 	}
-	if bestNotebook != "" {
-		_ = w.SetNotebook(bestNotebook)
+	if err := w.OpenNote(clean, 0); err != nil {
+		return err
 	}
-	return w.OpenNote(clean, lineHint)
+	if sess := w.SessionFor(clean); sess != nil {
+		sess.JumpToSearchHit(hit)
+		w.RequestRedraw()
+	}
+	return nil
 }
 
 func (w *Workspace) ReadNote(absPath string) (string, error) {
@@ -1151,8 +1157,7 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		w.nav.Push(clean)
 	}
 	if sess != nil && lineHint > 0 {
-		blockIdx := min(max(lineHint-1, 0), max(len(sess.Doc().Blocks)-1, 0))
-		sess.FocusBlock(blockIdx)
+		sess.JumpToSearchHit(model.SearchHit{Line: lineHint, Column: -1})
 	}
 	if tabsChanged {
 		w.persistTabs(tabs, active)
@@ -1698,7 +1703,7 @@ func (w *Workspace) CreateNewNote() (string, error) {
 		w.mu.Unlock()
 	}
 	w.RescanNotebook()
-	if err := w.openNoteInternal(created, true, true, 1); err != nil {
+	if err := w.openNoteInternal(created, true, true, 0); err != nil {
 		return created, err
 	}
 	if sess := w.SessionFor(created); sess != nil {
