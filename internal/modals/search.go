@@ -799,7 +799,7 @@ func (m *Manager) renderSearchHitRow(c *ui.Context, pal theme.Palette, st *searc
 	}
 
 	if selected && st.revealSelected {
-		row.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollNearest})
+		internalui.RevealActiveItem(row)
 		st.revealSelected = false
 	}
 
