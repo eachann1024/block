@@ -169,12 +169,13 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		ver = "1.0.301"
 	}
 	params := map[string]any{
-		"plugin_id":     rt.manifest.ID,
-		"data_dir":      rt.cfg.DataDir,
-		"downloads_dir": rt.cfg.DownloadsDir,
-		"notebook_root": rt.cfg.NotebookRoot,
-		"locale":        locale,
-		"host_version":  ver,
+		"plugin_id":       rt.manifest.ID,
+		"data_dir":        rt.cfg.DataDir,
+		"downloads_dir":   rt.cfg.DownloadsDir,
+		"notebook_root":   rt.cfg.NotebookRoot,
+		"locale":          locale,
+		"host_version":    ver,
+		"ui_capabilities": []string{"kv_tooltip"},
 	}
 	var res struct {
 		Ready bool `json:"ready"`
