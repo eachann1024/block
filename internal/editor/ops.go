@@ -2048,15 +2048,11 @@ func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bo
 	if prev.Kind == model.BlockDivider || prev.Kind == model.BlockImage || prev.Kind == model.BlockTable || prev.Kind == model.BlockCode {
 		if b.PlainText() == "" {
 			s.spliceBlocks(idx, idx+1, nil)
-			s.focusedBlock = idx - 1
-			endOff := len([]rune(s.doc.Blocks[idx-1].PlainText()))
-			if s.doc.Blocks[idx-1].Kind == model.BlockDivider || s.doc.Blocks[idx-1].Kind == model.BlockImage {
-				endOff = 0
+			s.FocusBlock(idx - 1)
+			if prev.Kind == model.BlockTable || prev.Kind == model.BlockCode {
+				s.selAnchor.Offset = len([]rune(s.doc.Blocks[idx-1].PlainText()))
+				s.selHead = s.selAnchor
 			}
-			s.selAnchor = Position{Block: idx - 1, Offset: endOff}
-			s.selHead = s.selAnchor
-			s.focusPending = true
-			s.selSyncPending = true
 			s.markDirty()
 			return true
 		}
@@ -2167,15 +2163,10 @@ func (s *Session) deleteBlock(idx int) {
 	s.pushUndo()
 	if len(s.doc.Blocks) == 1 {
 		s.doc.Blocks[0] = model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
-		s.focusedBlock = 0
 	} else {
 		s.spliceBlocks(idx, idx+1, nil)
-		s.focusedBlock = clampInt(idx, 0, len(s.doc.Blocks)-1)
 	}
-	s.selAnchor = Position{Block: s.focusedBlock, Offset: 0}
-	s.selHead = s.selAnchor
-	s.focusPending = true
-	s.selSyncPending = true
+	s.FocusBlock(idx)
 	s.markDirty()
 }
 
