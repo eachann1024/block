@@ -703,7 +703,7 @@ func PopupTransition() ui.ElementTransition {
 func MenuSurface(el ui.Element) ui.Element {
 	pal := theme.Ocean()
 	el.Background(pal.Menu).Radius(theme.RadiusXL).Padding(theme.MenuPadding).Gap(theme.MenuGap).
-		Border(1, pal.MenuBorder.Alpha(0.6)).
+		Border(1, pal.MenuBorder.Alpha(0.6)).Cursor(ui.CursorDefault).
 		Transition(PopupTransition())
 	return Elevate(el, theme.ElevationPopover)
 }

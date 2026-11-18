@@ -170,6 +170,22 @@ func (s *Session) ImportClipboardImageBytes(raw []byte, ext string, targetID mod
 	return s.insertImportedBlocks([]model.Block{blk}, targetID, replace) > 0
 }
 
+// RequestPickImages triggers the host image file picker for inserting or replacing blockID.
+func (s *Session) RequestPickImages(blockID model.BlockID, replace bool) {
+	if s.readOnly || s.OnPickImages == nil {
+		return
+	}
+	s.OnPickImages(blockID, replace)
+}
+
+func (s *Session) invalidateImageCache(src string) {
+	if src == "" {
+		return
+	}
+	delete(s.imageCache, src)
+	delete(s.imageFailed, src)
+}
+
 func (s *Session) insertImportedBlocks(inserted []model.Block, targetID model.BlockID, replace bool) int {
 	if len(inserted) == 0 || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return 0
@@ -179,11 +195,60 @@ func (s *Session) insertImportedBlocks(inserted []model.Block, targetID model.Bl
 	if idx < 0 {
 		idx = clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
 		cur := &s.doc.Blocks[idx]
-		if cur.Kind == model.BlockParagraph && cur.PlainText() == "" {
+		if (cur.Kind == model.BlockParagraph && cur.PlainText() == "") ||
+			(cur.Kind == model.BlockImage && cur.ImageSrc == "") {
 			replace = true
 		} else {
 			replace = false
 		}
+	}
+
+	if replace && s.doc.Blocks[idx].Kind == model.BlockImage && inserted[0].Kind == model.BlockImage {
+		orig := s.doc.Blocks[idx]
+		s.pushUndo()
+		s.invalidateImageCache(orig.ImageSrc)
+		s.invalidateImageCache(inserted[0].ImageSrc)
+
+		updated := orig
+		updated.ImageSrc = inserted[0].ImageSrc
+		updated.ImageAlt = inserted[0].ImageAlt
+		updated.ImageCrop = model.ImageCrop{}
+		if updated.ImageWidth <= 0 {
+			updated.ImageWidth = inserted[0].ImageWidth
+		}
+		updated.Dirty = true
+		updated.CleanSource = ""
+		s.doc.Blocks[idx] = updated
+
+		if len(inserted) > 1 {
+			extra := make([]model.Block, len(inserted)-1)
+			copy(extra, inserted[1:])
+			for i := range extra {
+				extra[i].Indent = orig.Indent
+				if extra[i].Kind == model.BlockImage {
+					extra[i].ImageAlign = orig.ImageAlign
+				}
+				s.invalidateImageCache(extra[i].ImageSrc)
+			}
+			s.spliceBlocks(idx+1, idx+1, extra)
+		}
+
+		lastImgIdx := idx + len(inserted) - 1
+		if lastImgIdx >= len(s.doc.Blocks)-1 {
+			s.spliceBlocks(len(s.doc.Blocks), len(s.doc.Blocks), []model.Block{{
+				ID:     model.NewBlockID(),
+				Kind:   model.BlockParagraph,
+				Indent: orig.Indent,
+				Dirty:  true,
+			}})
+		}
+
+		s.imagePopKind = ""
+		s.FocusBlock(clampInt(lastImgIdx, 0, len(s.doc.Blocks)-1))
+		s.focusPreventScroll = true
+		s.markDirty()
+		s.requestRedraw()
+		return count
 	}
 
 	inserted = append(inserted, model.Block{

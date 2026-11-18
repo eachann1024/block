@@ -440,8 +440,12 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	rightPad := max(s.rightContentInset()-rowBleed, 0)
 
 	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
-	if !readOnly && b.Kind != model.BlockImage && b.Kind != model.BlockDivider {
-		row.Cursor(ui.CursorText)
+	if !readOnly {
+		if b.Kind == model.BlockImage || b.Kind == model.BlockDivider {
+			row.Cursor(ui.CursorDefault)
+		} else {
+			row.Cursor(ui.CursorText)
+		}
 	}
 	isHovered := row.Hovered()
 	isFocused := s.focusedBlock == idx
@@ -2577,13 +2581,56 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	if borderHighlighted {
 		picBorder = pal.Accent
 	}
+	isVideo := IsSupportedVideoPath(b.ImageSrc)
+	var imgSrc ui.ImageSource
+	hasImage := false
+	if !isVideo {
+		imgSrc, hasImage = s.resolveImageSource(b.ImageSrc)
+	}
+	picCursor := ui.CursorDefault
+	if !readOnly && (isVideo || !hasImage) {
+		picCursor = ui.CursorPointer
+	}
 
 	outer := ui.Column(c.Key("img-outer")).FillWidth().AlignItems(align)
 	outer.Children(func() {
 		frameWrap := ui.Box(c.Key(fmt.Sprintf("img-wrap-%d", id)))
 		frameWrap.Children(func() {
 			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(theme.RadiusSM).Clip().
-				Cursor(ui.CursorPointer).Border(1, picBorder)
+				Cursor(picCursor).Border(1, picBorder)
+			picHovered := false
+			if !readOnly {
+				picHovered = picBox.Hovered()
+				if picBox.Clicked() {
+					mods := picBox.ClickModifiers()
+					s.pressJustBegan = false
+					s.firstLineDeleteArmed = false
+					s.closeTransientOverlays()
+					if mods&ui.Shift != 0 {
+						s.selAnchor = s.clampPos(s.selAnchor)
+						s.selHead = Position{Block: idx, Offset: s.blockSelectionLen(idx)}
+					} else {
+						s.selAnchor = Position{Block: idx, Offset: 0}
+						s.selHead = s.selAnchor
+					}
+					s.focusedBlock = idx
+					isFocused = true
+					_, _, _, imgSelected = s.blockSelectionSpanRange(idx)
+					showResizeHandles = !s.hasMultiBlockSelection() || dragging
+					borderHighlighted = true
+					picBorder = pal.Accent
+					picBox.Border(1, picBorder)
+					if s.needsDetachedSelectionFocus() {
+						s.multiSelFocusPending = true
+						s.focusPending = false
+						s.selSyncPending = false
+					}
+					s.scheduleRebuild(c)
+					if !isVideo && !hasImage && mods&(ui.Shift|ui.Alt|ui.Cmd) == 0 {
+						s.RequestPickImages(id, true)
+					}
+				}
+			}
 			picBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
 				appUi.RecordBounds(fmt.Sprintf("image-%d", id), r)
 				if s.imageRects == nil {
@@ -2607,7 +2654,6 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					p.Fill(r, pal.SelectionBG.Alpha(0.28), theme.RadiusSM)
 				}
 			})
-			isVideo := IsSupportedVideoPath(b.ImageSrc)
 			if !isVideo && !b.ImageCrop.IsZero() {
 				picBox.ClipInsetPercent(b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100, theme.RadiusSM)
 			}
@@ -2615,20 +2661,36 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			picBox.Children(func() {
 				if isVideo {
 					s.renderVideoContent(c, id, b)
-				} else if imgSrc, ok := s.resolveImageSource(b.ImageSrc); ok {
+				} else if hasImage {
 					ui.Image(c, imgSrc).FillWidth()
 				} else {
-					ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
+					phActive := picHovered && !dragging
+					phBG := pal.CodeBlockBG
+					if phActive {
+						phBG = pal.Hover
+					}
+					ph := ui.Row(c.Key("img-ph")).FillWidth().Height(120).Center().Gap(theme.Space8)
+					appUi.AnimateSurfaceColors(ph, phBG, ui.Transparent, false)
 					ph.Children(func() {
-						icons.Draw(c, icons.Image, 20, pal.MonoIconColors(pal.TextSecondary))
+						icCol := pal.MonoIconColors(pal.TextSecondary)
+						txtCol := pal.TextSecondary
+						if phActive {
+							icCol = pal.DuoIconColors(pal.Text)
+							txtCol = pal.Text
+						}
+						icons.DrawAnimated(c, icons.Image, 20, icCol, phActive)
 						lbl := b.ImageAlt
 						if lbl == "" {
 							lbl = b.ImageSrc
 						}
 						if lbl == "" {
-							lbl = theme.Tr("图片", "Image")
+							if !readOnly {
+								lbl = theme.Tr("上传图片", "Upload image")
+							} else {
+								lbl = theme.Tr("图片", "Image")
+							}
 						}
-						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(txtCol)
 					})
 				}
 			})
@@ -2661,7 +2723,7 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					{"img-resize-right", false, 1},
 				} {
 					rail := ui.Column(c.Key(fmt.Sprintf("%s-rail-%d", side.probe, id))).Absolute().
-						Top(0).Bottom(0).Width(hitW).Center().
+						Top(0).Bottom(0).Width(hitW).Center().PassThrough().
 						Transition(appUi.ResizeHandleTransition(-side.dir * s.scale(theme.Space8)))
 					if side.left {
 						rail.Left(edgeOffset)
@@ -2671,7 +2733,7 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					var h ui.Element
 					rail.Children(func() {
 						h = ui.Box(c.Key(fmt.Sprintf("%s-%d", side.probe, id))).
-							Width(hitW).Height(hitH).MaxHeightPercent(88).Center().Cursor(ui.CursorResizeColumn)
+							Width(hitW).Height(hitH).MaxHeightPercent(88).Center().Cursor(ui.CursorResizeEW)
 						hovered := h.Hovered()
 						dx, _, held := h.Dragged()
 						pillW := theme.ImageResizePillWidth
@@ -2772,13 +2834,13 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 		trigger = ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 400, H: 120}
 	}
 	spec := appUi.PlaceAbove(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
-	barW, barH := s.measuredOrEstSize("image-toolbar", 275, 38)
+	barW, barH := s.measuredOrEstSize("image-toolbar", 307, 38)
 	x, y := appUi.ResolveOrigin(spec, barW, barH, winW, winH)
 
 	ui.Overlay(c, func() {
 		bar := ui.Row(c.Key(fmt.Sprintf("image-toolbar-%d", id))).Absolute().Left(x).Top(y).
 			Height(38).PaddingX(theme.Space6).Gap(theme.Space4).AlignItems(ui.Center).
-			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
+			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).Cursor(ui.CursorDefault).
 			Transition(appUi.PopoverSpringTransition())
 		appUi.Elevate(bar, theme.ElevationPopover)
 		appUi.Probe(bar, "image-toolbar")
@@ -2842,6 +2904,26 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
 
 			if !IsSupportedVideoPath(b.ImageSrc) {
+				uploadLbl := theme.Tr("更换图片", "Replace image")
+				if b.ImageSrc == "" {
+					uploadLbl = theme.Tr("上传图片", "Upload image")
+				}
+				uploadBtn := appUi.IconButton(c, icons.Image, appUi.IconButtonOptions{
+					ID:           "img-upload",
+					Label:        uploadLbl,
+					Tooltip:      uploadLbl,
+					TooltipPill:  true,
+					TooltipAbove: true,
+					Size:         theme.HeightCompact,
+					IconSize:     theme.IconAction,
+				})
+				s.recordOverlayBtn("img-upload", uploadBtn)
+				if uploadBtn.Clicked() {
+					s.imagePopBlock = 0
+					s.imagePopKind = ""
+					s.RequestPickImages(id, true)
+				}
+
 				cropLbl := theme.Tr("裁剪图片", "Crop image")
 				cropBtn := appUi.IconButton(c, icons.Crop, appUi.IconButtonOptions{
 					ID:           "img-crop",
