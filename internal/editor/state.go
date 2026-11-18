@@ -372,6 +372,7 @@ func (s *Session) Doc() *model.Doc {
 }
 
 func (s *Session) SetDoc(doc *model.Doc) {
+	s.flushAnnotationEdit()
 	s.doc = normalizeDoc(doc)
 	s.dirty = false
 	s.undoStack = nil
@@ -803,6 +804,7 @@ func (s *Session) hasBlockingOverlay() bool {
 }
 
 func (s *Session) closeTransientOverlays() {
+	s.flushAnnotationEdit()
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.toolbarMoreIndex = 0
