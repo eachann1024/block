@@ -68,7 +68,7 @@ func RevealOnHighlight(el ui.Element, highlighted bool) {
 	}
 }
 
-// NavigateMenu handles keyboard navigation (Up/Down/Enter/Right) for a floating menu.
+// NavigateMenu handles keyboard navigation (Up/Down/Left/Right/Enter) for a floating menu.
 // A negative *cursor means no item is keyboard-selected yet (the default when a menu opens);
 // pointer movement inside the panel clears *cursor so hover and keyboard never highlight two rows at once.
 // Disabled entries and dividers are skipped in both directions.
@@ -86,11 +86,18 @@ func NavigateMenu(panel ui.Element, items []MenuItemSpec, cursor *int) {
 	if *cursor < 0 || *cursor >= len(items) || !active(*cursor) {
 		*cursor = -1
 	}
+	down := panel.OverlayShortcut(0, ui.KeyDown)
+	right := panel.OverlayShortcut(0, ui.KeyRight)
+	up := panel.OverlayShortcut(0, ui.KeyUp)
+	left := panel.OverlayShortcut(0, ui.KeyLeft)
+	enter := panel.OverlayShortcut(0, ui.KeyEnter)
+
+	curHasSubmenu := active(*cursor) && items[*cursor].HasSubmenu
 	step := 0
 	switch {
-	case panel.OverlayShortcut(0, ui.KeyDown):
+	case down || (right && !curHasSubmenu):
 		step = 1
-	case panel.OverlayShortcut(0, ui.KeyUp):
+	case up || left:
 		step = -1
 	}
 	if step != 0 {
@@ -123,7 +130,7 @@ func NavigateMenu(panel ui.Element, items []MenuItemSpec, cursor *int) {
 	if item.OnClick == nil {
 		return
 	}
-	if panel.OverlayShortcut(0, ui.KeyEnter) || item.HasSubmenu && panel.OverlayShortcut(0, ui.KeyRight) {
+	if enter || (item.HasSubmenu && right) {
 		item.OnClick()
 	}
 }

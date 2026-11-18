@@ -2290,10 +2290,9 @@ func (s *Session) openHandleMenu(idx int, triggerRect ui.Rect) {
 	s.blockMenu = &blockMenuState{
 		BlockIdx:    idx,
 		Mode:        menuHandle,
-		ActiveIndex: 0,
+		ActiveIndex: -1,
 		TriggerRect: triggerRect,
 	}
-	s.clampBlockMenuIndex()
 }
 
 func (s *Session) syncSlashMenuText(idx int, text string) {
@@ -2359,13 +2358,21 @@ func (s *Session) stepSlashMenu(down bool) bool {
 	if len(entries) == 0 {
 		return false
 	}
-	cur := clampInt(s.blockMenu.ActiveIndex, 0, len(entries)-1)
+	n := len(entries)
+	cur := s.blockMenu.ActiveIndex
+	if cur < 0 || cur >= n {
+		if down {
+			cur = -1
+		} else {
+			cur = n
+		}
+	}
 	step := -1
 	if down {
 		step = 1
 	}
-	for tries := 0; tries < len(entries); tries++ {
-		cur = (cur + step + len(entries)) % len(entries)
+	for tries := 0; tries < n; tries++ {
+		cur = (cur + step + n) % n
 		if !entries[cur].Separator {
 			s.blockMenu.ActiveIndex = cur
 			s.blockMenu.PointerActive = false
@@ -2380,10 +2387,10 @@ func (s *Session) activateSlashMenu() bool {
 		return false
 	}
 	entries := s.slashMenuEntries()
-	if len(entries) == 0 {
+	if len(entries) == 0 || s.blockMenu.ActiveIndex < 0 || s.blockMenu.ActiveIndex >= len(entries) {
 		return false
 	}
-	idx := clampInt(s.blockMenu.ActiveIndex, 0, len(entries)-1)
+	idx := s.blockMenu.ActiveIndex
 	if entries[idx].Separator {
 		return false
 	}
@@ -2438,6 +2445,9 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 	if isSlashClear {
 		b.Spans = nil
 		b.Code = ""
+		if st, ok := s.richInputs[b.ID]; ok && st != nil {
+			st.Sync("", 0, 0)
+		}
 	}
 	switch cmd {
 	case cmdTurnParagraph:

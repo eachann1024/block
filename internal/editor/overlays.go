@@ -982,16 +982,21 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 		}
 	})
 	if totalChoices > 0 {
+		down := panel.OverlayShortcut(0, ui.KeyDown)
+		right := panel.OverlayShortcut(0, ui.KeyRight)
+		up := panel.OverlayShortcut(0, ui.KeyUp)
+		left := panel.OverlayShortcut(0, ui.KeyLeft)
+		enter := panel.OverlayShortcut(0, ui.KeyEnter)
 		switch {
-		case panel.OverlayShortcut(0, ui.KeyDown):
+		case down || right:
 			*cur = (*cur + 1 + totalChoices) % totalChoices
-		case panel.OverlayShortcut(0, ui.KeyUp):
+		case up || left:
 			if *cur < 0 {
 				*cur = totalChoices - 1
 			} else {
 				*cur = (*cur - 1 + totalChoices) % totalChoices
 			}
-		case panel.OverlayShortcut(0, ui.KeyEnter) && *cur >= 0 && *cur < totalChoices:
+		case enter && *cur >= 0 && *cur < totalChoices:
 			if *cur < limit {
 				name := swatches[*cur].Name
 				s.ApplyColorOnSelection(&name, nil)
@@ -1313,6 +1318,35 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 			HandleInput(func(ev ui.InputEvent) bool {
 				return ev.Kind == ui.InputScroll
 			})
+		shell.ObserveInput(func(ev ui.InputEvent) {
+			if ev.Kind == ui.InputPointerMove && s.calloutMenuIndex >= 0 {
+				s.calloutMenuIndex = -1
+			}
+		})
+		total := len(allCalloutKinds) + 1
+		down := shell.OverlayShortcut(0, ui.KeyDown)
+		right := shell.OverlayShortcut(0, ui.KeyRight)
+		up := shell.OverlayShortcut(0, ui.KeyUp)
+		left := shell.OverlayShortcut(0, ui.KeyLeft)
+		enter := shell.OverlayShortcut(0, ui.KeyEnter)
+		switch {
+		case down || right:
+			s.calloutMenuIndex = (s.calloutMenuIndex + 1 + total) % total
+		case up || left:
+			if s.calloutMenuIndex < 0 {
+				s.calloutMenuIndex = total - 1
+			} else {
+				s.calloutMenuIndex = (s.calloutMenuIndex - 1 + total) % total
+			}
+		case enter && s.calloutMenuIndex >= 0 && s.calloutMenuIndex < total:
+			if s.calloutMenuIndex < len(allCalloutKinds) {
+				k := allCalloutKinds[s.calloutMenuIndex]
+				s.setCalloutKind(b.ID, &k)
+			} else {
+				s.setCalloutKind(b.ID, nil)
+			}
+			return
+		}
 		appUi.Probe(shell, "callout-kind-menu")
 		s.recordOverlayPanel("callout-kind-menu", shell)
 
@@ -1330,7 +1364,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 						appUi.RevealOnHighlight(row, highlighted)
 						if checked {
 							row.Background(pal.Selected).Border(1, pal.Accent)
-						} else if highlighted || row.Hovered() {
+						} else if highlighted || (s.calloutMenuIndex < 0 && row.Hovered()) {
 							row.Background(pal.Hover)
 						}
 						row.Children(func() {
@@ -1432,28 +1466,34 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 		// Absorb wheel events inside the menu so boundary scrolling never leaks to the document body!
 		shell := appUi.MenuSurface(ui.Column(c.Key("block-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 			HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputScroll {
-					next := max(0, min(menu.Scroll.Y+ev.DY, menu.Scroll.MaxY))
-					menu.Scroll.Y = next
-					return true
-				}
-				return false
+				return ev.Kind == ui.InputScroll
 			})
+		if menu.Mode == menuHandle && s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
+			fk := s.doc.Blocks[s.focusedBlock].Kind
+			if fk == model.BlockCode || fk == model.BlockRawHTML {
+				shell.Focusable().AutoFocus()
+			}
+		}
 		shell.ObserveInput(func(ev ui.InputEvent) {
 			if ev.Kind == ui.InputPointerMove {
 				menu.PointerActive = true
+				menu.ActiveIndex = -1
 			}
 		})
-		if menu.Mode == menuHandle || s.needsDetachedSelectionFocus() {
-			switch {
-			case shell.OverlayShortcut(0, ui.KeyDown):
-				s.stepSlashMenu(true)
-			case shell.OverlayShortcut(0, ui.KeyUp):
-				s.stepSlashMenu(false)
-			case shell.OverlayShortcut(0, ui.KeyEnter):
-				if s.activateSlashMenu() {
-					return
-				}
+		down := shell.OverlayShortcut(0, ui.KeyDown)
+		right := shell.OverlayShortcut(0, ui.KeyRight)
+		up := shell.OverlayShortcut(0, ui.KeyUp)
+		left := shell.OverlayShortcut(0, ui.KeyLeft)
+		enter := shell.OverlayShortcut(0, ui.KeyEnter)
+		switch {
+		case down || right:
+			s.stepSlashMenu(true)
+		case up || left:
+			s.stepSlashMenu(false)
+		case enter:
+			if s.activateSlashMenu() {
+				c.Invalidate()
+				return
 			}
 		}
 		appUi.Probe(shell, "block-menu")
@@ -1592,12 +1632,9 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		shell := appUi.MenuSurface(ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+			Focusable().AutoFocus().
 			HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputScroll {
-					s.codeLangScroll.Y = max(0, min(s.codeLangScroll.Y+ev.DY, s.codeLangScroll.MaxY))
-					return true
-				}
-				return false
+				return ev.Kind == ui.InputScroll
 			})
 		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
 		appUi.NavigateMenu(shell, specs, cur)
