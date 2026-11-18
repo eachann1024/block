@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"block/internal/files"
 	"block/internal/icons"
@@ -16,15 +18,41 @@ import (
 )
 
 const (
-	searchModalWidth   float32 = 680
-	searchModalHeight  float32 = 460
-	searchModalRadius  float32 = 12
-	searchHeaderHeight float32 = 52
-	searchFooterHeight float32 = 36
-	searchScopeMenuW   float32 = 236
-	searchScopeMenuH   float32 = 304
-	searchMaxHits              = 50
+	searchDialogWidth   float32 = 640
+	searchWindowWidth   float32 = 680
+	searchWindowHeight  float32 = 460
+	searchEmptyHeight   float32 = 96
+	searchMaxBodyHeight float32 = 460
+	searchModalRadius   float32 = 12
+	searchHeaderHeight  float32 = 52
+	searchFooterHeight  float32 = 36
+	searchScopeMenuW    float32 = 236
+	searchScopeMenuH    float32 = 304
+	searchMaxHits               = 50
+	searchHotkeyWindow          = 250 * time.Millisecond
 )
+
+var (
+	searchTriggerStart = time.Now()
+	lastSearchTrigger  atomic.Int64
+)
+
+func searchNowMS() int64 {
+	return time.Since(searchTriggerStart).Milliseconds() + 1000
+}
+
+// RecordSearchTriggered updates the search trigger timestamp so an immediate
+// duplicate OS hotkey echo can be suppressed.
+func RecordSearchTriggered() {
+	lastSearchTrigger.Store(searchNowMS())
+}
+
+// MarkSearchTriggered enforces the 250ms debounce window between global search triggers.
+func MarkSearchTriggered() bool {
+	now := searchNowMS()
+	prev := lastSearchTrigger.Swap(now)
+	return now-prev >= int64(searchHotkeyWindow/time.Millisecond)
+}
 
 type searchHitMeta struct {
 	titleMatch   bool
@@ -35,36 +63,104 @@ type searchHitMeta struct {
 }
 
 type searchPaletteState struct {
-	folders        []string
-	scopeFolder    string // "" = All Folders
-	scopeMenuOpen  bool
-	scopeCursor    int
-	scopeScroll    ui.ScrollState
-	resultsScroll  ui.ScrollState
-	revealSelected bool
-	hitMeta        []searchHitMeta
+	folders           []string
+	scopeFolder       string // "" = All Folders
+	scopeMenuOpen     bool
+	scopeCursor       int
+	revealScopeCursor bool
+	scopeScroll       ui.ScrollState
+	resultsScroll     ui.ScrollState
+	revealSelected    bool
+	hitMeta           []searchHitMeta
+
+	searchGen    atomic.Uint64
+	asyncMu      sync.Mutex
+	asyncPending bool
+	asyncGen     uint64
+	asyncHits    []model.SearchHit
+	asyncMeta    []searchHitMeta
+	asyncErr     string
 }
 
-var (
-	searchStateMu sync.Mutex
-	searchStates  = make(map[*Manager]*searchPaletteState)
-)
+func (st *searchPaletteState) clearAsync() {
+	st.asyncMu.Lock()
+	st.asyncPending = false
+	st.asyncHits = nil
+	st.asyncMeta = nil
+	st.asyncErr = ""
+	st.asyncMu.Unlock()
+}
 
-func (m *Manager) searchState() *searchPaletteState {
-	searchStateMu.Lock()
-	defer searchStateMu.Unlock()
-	st := searchStates[m]
-	if st == nil {
-		st = &searchPaletteState{}
-		searchStates[m] = st
+func (st *searchPaletteState) storeAsyncResult(gen uint64, hits []model.SearchHit, meta []searchHitMeta, errMsg string) bool {
+	if st.searchGen.Load() != gen {
+		return false
 	}
-	return st
+	st.asyncMu.Lock()
+	defer st.asyncMu.Unlock()
+	if st.searchGen.Load() != gen {
+		return false
+	}
+	st.asyncPending = true
+	st.asyncGen = gen
+	st.asyncHits = hits
+	st.asyncMeta = meta
+	st.asyncErr = errMsg
+	return true
 }
 
-// OpenSearch opens the global search palette.
+func (st *searchPaletteState) consumeAsyncResult(hits *[]model.SearchHit, selected *int, errMsg *string) {
+	st.asyncMu.Lock()
+	if !st.asyncPending || st.asyncGen != st.searchGen.Load() {
+		st.asyncMu.Unlock()
+		return
+	}
+	resHits := st.asyncHits
+	resMeta := st.asyncMeta
+	resErr := st.asyncErr
+	st.asyncPending = false
+	st.asyncHits = nil
+	st.asyncMeta = nil
+	st.asyncErr = ""
+	st.asyncMu.Unlock()
+
+	*hits = resHits
+	st.hitMeta = resMeta
+	*errMsg = resErr
+	*selected = 0
+	st.resultsScroll.Y = 0
+}
+
+// SetOpenFromSearchFn sets the workspace action for opening a selected hit.
+func (m *Manager) SetOpenFromSearchFn(fn func(string, int)) { m.onOpenSearchHit = fn }
+
+func (m *Manager) searchState() *searchPaletteState { return &m.searchPalette }
+
+// OpenSearch opens the global search palette in the main workspace.
 func (m *Manager) OpenSearch(allNotebooks bool) {
+	RecordSearchTriggered()
+	if m.settingsOpen && !m.IsRecordingShortcut() {
+		m.CloseSettings()
+	}
+
 	st := m.searchState()
 	folders := m.notebookFolders()
+	if m.searchOpen {
+		before := st.scopeFolder
+		st.syncFolders(folders)
+		if allNotebooks {
+			st.resetScopeAll()
+		} else if st.scopeFolder != "" && !containsCleanPath(folders, st.scopeFolder) {
+			st.scopeFolder = ""
+		}
+		m.searchAllNB = st.scopeFolder == ""
+		if strings.TrimSpace(m.searchQuery) != "" && !cleanPathEqual(before, st.scopeFolder) {
+			m.runSearch()
+		}
+		m.searchInputHandle.Focus()
+		m.requestRedraw()
+		return
+	}
+
 	st.folders = folders
 	active := m.searchActiveNotebookPath()
 	if allNotebooks || active == "" || !containsCleanPath(folders, active) {
@@ -75,6 +171,7 @@ func (m *Manager) OpenSearch(allNotebooks bool) {
 	m.searchAllNB = st.scopeFolder == ""
 	st.scopeMenuOpen = false
 	st.scopeCursor = 0
+	st.revealScopeCursor = false
 	st.resultsScroll.Y = 0
 
 	m.searchOpen = true
@@ -83,6 +180,8 @@ func (m *Manager) OpenSearch(allNotebooks bool) {
 	if strings.TrimSpace(m.searchQuery) != "" {
 		m.runSearch()
 	} else {
+		st.searchGen.Add(1)
+		st.clearAsync()
 		m.searchHits = nil
 		st.hitMeta = nil
 	}
@@ -106,29 +205,47 @@ func (m *Manager) IsSearchOpen() bool {
 	return m.searchOpen
 }
 
+// ResetSearchScopeAll resets the workspace search scope to All Folders (`Cmd+0`).
+func (m *Manager) ResetSearchScopeAll() {
+	if !m.searchOpen {
+		return
+	}
+	if m.resetScopeAll() {
+		m.runSearch()
+	}
+	m.searchInputHandle.Focus()
+	m.requestRedraw()
+}
+
 func (m *Manager) searchActiveNotebookPath() string {
-	st := m.currentState()
+	return activeNotebookPath(m.currentState(), m.host)
+}
+
+func activeNotebookPath(st model.AppState, host model.WorkspaceHost) string {
 	if strings.TrimSpace(st.Folder) != "" {
 		return filepath.Clean(st.Folder)
 	}
-	if m.host != nil && strings.TrimSpace(m.host.ActiveNotebook()) != "" {
-		return filepath.Clean(m.host.ActiveNotebook())
+	if host != nil && strings.TrimSpace(host.ActiveNotebook()) != "" {
+		return filepath.Clean(host.ActiveNotebook())
 	}
 	return ""
 }
 
 func (m *Manager) notebookFolders() []string {
-	appState := m.currentState()
+	return collectNotebookFolders(m.currentState(), m.host)
+}
+
+func collectNotebookFolders(appState model.AppState, host model.WorkspaceHost) []string {
 	var raw []string
 	if strings.TrimSpace(appState.Folder) != "" {
 		raw = append(raw, appState.Folder)
-	} else if m.host != nil && strings.TrimSpace(m.host.ActiveNotebook()) != "" {
-		raw = append(raw, m.host.ActiveNotebook())
+	} else if host != nil && strings.TrimSpace(host.ActiveNotebook()) != "" {
+		raw = append(raw, host.ActiveNotebook())
 	}
 	if len(appState.Notebooks) > 0 {
 		raw = append(raw, appState.Notebooks...)
-	} else if m.host != nil {
-		raw = append(raw, m.host.Notebooks()...)
+	} else if host != nil {
+		raw = append(raw, host.Notebooks()...)
 	}
 
 	seen := make(map[string]bool, len(raw))
@@ -152,7 +269,10 @@ func (m *Manager) notebookFolders() []string {
 }
 
 func (m *Manager) searchScanOptions() files.ScanOptions {
-	st := m.currentState()
+	return scanOptionsFromAppState(m.currentState())
+}
+
+func scanOptionsFromAppState(st model.AppState) files.ScanOptions {
 	hideNonMD := st.HideNonMarkdownFiles != nil && *st.HideNonMarkdownFiles
 	hideAssets := st.HideAssetsFolder == nil || *st.HideAssetsFolder
 	assets := strings.TrimSpace(st.AssetsFolder)
@@ -205,6 +325,7 @@ func (st *searchPaletteState) toggleScopeMenu() {
 				}
 			}
 		}
+		st.revealScopeCursor = false
 		st.scopeScroll.Y = 0
 	}
 }
@@ -221,18 +342,22 @@ func (st *searchPaletteState) stepScopeMenu(down bool) bool {
 	if cur >= count {
 		cur = count - 1
 	}
+	next := cur
 	if down {
 		if cur+1 < count {
-			st.scopeCursor = cur + 1
+			next = cur + 1
 		}
 	} else if cur > 0 {
-		st.scopeCursor = cur - 1
+		next = cur - 1
+	}
+	if next != st.scopeCursor {
+		st.scopeCursor = next
+		st.revealScopeCursor = true
 	}
 	return true
 }
 
-func (m *Manager) selectScopeIndex(idx int) bool {
-	st := m.searchState()
+func (st *searchPaletteState) selectScopeIndex(idx int) bool {
 	var next string
 	if idx > 0 && idx-1 < len(st.folders) {
 		next = st.folders[idx-1]
@@ -242,12 +367,10 @@ func (m *Manager) selectScopeIndex(idx int) bool {
 	changed := !cleanPathEqual(st.scopeFolder, next)
 	st.scopeFolder = next
 	st.scopeMenuOpen = false
-	m.searchAllNB = next == ""
 	return changed
 }
 
-func (m *Manager) acceptScopeCursor() bool {
-	st := m.searchState()
+func (st *searchPaletteState) acceptScopeCursor() bool {
 	if !st.scopeMenuOpen {
 		return false
 	}
@@ -255,11 +378,10 @@ func (m *Manager) acceptScopeCursor() bool {
 	if idx > len(st.folders) {
 		idx = len(st.folders)
 	}
-	return m.selectScopeIndex(idx)
+	return st.selectScopeIndex(idx)
 }
 
-func (m *Manager) cycleScope(delta int) bool {
-	st := m.searchState()
+func (st *searchPaletteState) cycleScope(delta int) bool {
 	st.scopeMenuOpen = false
 	options := make([]string, 0, 1+len(st.folders))
 	options = append(options, "")
@@ -278,73 +400,110 @@ func (m *Manager) cycleScope(delta int) bool {
 	next := options[nextIdx]
 	changed := !cleanPathEqual(st.scopeFolder, next)
 	st.scopeFolder = next
-	m.searchAllNB = next == ""
+	return changed
+}
+
+func (st *searchPaletteState) resetScopeAll() bool {
+	st.scopeMenuOpen = false
+	changed := st.scopeFolder != ""
+	st.scopeFolder = ""
+	return changed
+}
+
+func (m *Manager) selectScopeIndex(idx int) bool {
+	st := m.searchState()
+	changed := st.selectScopeIndex(idx)
+	m.searchAllNB = st.scopeFolder == ""
+	return changed
+}
+
+func (m *Manager) acceptScopeCursor() bool {
+	st := m.searchState()
+	changed := st.acceptScopeCursor()
+	m.searchAllNB = st.scopeFolder == ""
+	return changed
+}
+
+func (m *Manager) cycleScope(delta int) bool {
+	st := m.searchState()
+	changed := st.cycleScope(delta)
+	m.searchAllNB = st.scopeFolder == ""
 	return changed
 }
 
 func (m *Manager) resetScopeAll() bool {
 	st := m.searchState()
-	st.scopeMenuOpen = false
-	changed := st.scopeFolder != ""
-	st.scopeFolder = ""
+	changed := st.resetScopeAll()
 	m.searchAllNB = true
 	return changed
 }
 
-func (m *Manager) runSearch() {
-	st := m.searchState()
-	st.syncFolders(m.notebookFolders())
-	m.searchAllNB = st.scopeFolder == ""
+func executeSearchQuery(
+	st *searchPaletteState,
+	query string,
+	folders []string,
+	activeNB string,
+	scanOpts files.ScanOptions,
+	searchFn func(query string, allNotebooks bool) ([]model.SearchHit, error),
+	host model.WorkspaceHost,
+) ([]model.SearchHit, []searchHitMeta, string) {
+	st.syncFolders(folders)
+	return executeSearchWithSnapshot(
+		st.scopeFolder,
+		st.folders,
+		st.effectiveRoots(),
+		query,
+		activeNB,
+		scanOpts,
+		searchFn,
+		host,
+	)
+}
 
-	q := strings.TrimSpace(m.searchQuery)
-	m.searchLastQuery = m.searchQuery
+func executeSearchWithSnapshot(
+	scopeFolder string,
+	folders []string,
+	roots []string,
+	query string,
+	activeNB string,
+	scanOpts files.ScanOptions,
+	searchFn func(query string, allNotebooks bool) ([]model.SearchHit, error),
+	host model.WorkspaceHost,
+) ([]model.SearchHit, []searchHitMeta, string) {
+	q := strings.TrimSpace(query)
 	if q == "" {
-		m.searchHits = nil
-		st.hitMeta = nil
-		m.searchSelected = 0
-		m.searchErr = ""
-		return
+		return nil, nil, ""
 	}
 
-	roots := st.effectiveRoots()
-	if len(roots) == 0 && m.SearchFn == nil && m.host == nil {
-		m.searchHits = nil
-		st.hitMeta = nil
-		m.searchSelected = 0
-		m.searchErr = ""
-		return
+	if len(roots) == 0 && searchFn == nil && host == nil {
+		return nil, nil, ""
 	}
 
 	var hits []model.SearchHit
 	var err error
-	activeNB := m.searchActiveNotebookPath()
 	switch {
-	case st.scopeFolder == "":
-		if m.SearchFn != nil {
-			hits, err = m.SearchFn(q, true)
-		} else if m.host != nil {
-			hits, err = m.host.SearchWorkspace(q, true)
+	case scopeFolder == "":
+		if searchFn != nil {
+			hits, err = searchFn(q, true)
+		} else if host != nil {
+			hits, err = host.SearchWorkspace(q, true)
 		} else {
-			hits, err = files.SearchNotebooks(roots, q, m.searchScanOptions())
+			hits, err = files.SearchNotebooks(roots, q, scanOpts)
 		}
-	case activeNB != "" && cleanPathEqual(st.scopeFolder, activeNB):
-		if m.SearchFn != nil {
-			hits, err = m.SearchFn(q, false)
-		} else if m.host != nil {
-			hits, err = m.host.SearchWorkspace(q, false)
+	case activeNB != "" && cleanPathEqual(scopeFolder, activeNB):
+		if searchFn != nil {
+			hits, err = searchFn(q, false)
+		} else if host != nil {
+			hits, err = host.SearchWorkspace(q, false)
 		} else {
-			hits, err = files.SearchNotebooks(roots, q, m.searchScanOptions())
+			hits, err = files.SearchNotebooks(roots, q, scanOpts)
 		}
 	default:
-		hits, err = files.SearchNotebooks([]string{st.scopeFolder}, q, m.searchScanOptions())
+		hits, err = files.SearchNotebooks([]string{scopeFolder}, q, scanOpts)
 	}
 
 	if err != nil {
-		m.searchErr = err.Error()
-		m.searchHits = nil
-		st.hitMeta = nil
-		m.searchSelected = 0
-		return
+		return nil, nil, err.Error()
 	}
 
 	// Partition into Title Matches then Content Matches while preserving order within each group.
@@ -352,7 +511,10 @@ func (m *Manager) runSearch() {
 		hit  model.SearchHit
 		meta searchHitMeta
 	}
-	includeRootName := len(roots) > 1
+	includeRootName := len(folders) > 1
+	if len(roots) > 1 {
+		includeRootName = true
+	}
 	paired := make([]pairedHit, 0, len(hits))
 	for _, h := range hits {
 		titleMarks := files.FindFoldMatches(h.Title, q)
@@ -388,29 +550,91 @@ func (m *Manager) runSearch() {
 		orderedHits[i] = p.hit
 		orderedMeta[i] = p.meta
 	}
-
-	m.searchErr = ""
-	m.searchHits = orderedHits
-	st.hitMeta = orderedMeta
-	m.searchSelected = 0
-	st.resultsScroll.Y = 0
+	return orderedHits, orderedMeta, ""
 }
 
-func (m *Manager) moveSearchSelection(delta int) {
-	if len(m.searchHits) == 0 {
+func (m *Manager) runSearch() {
+	st := m.searchState()
+	m.searchLastQuery = m.searchQuery
+	folders := m.notebookFolders()
+	st.syncFolders(folders)
+	m.searchAllNB = st.scopeFolder == ""
+
+	gen := st.searchGen.Add(1)
+	st.clearAsync()
+
+	if strings.TrimSpace(m.searchQuery) == "" {
+		m.searchErr = ""
+		m.searchHits = nil
+		st.hitMeta = nil
+		m.searchSelected = 0
+		st.resultsScroll.Y = 0
 		return
 	}
-	next := m.searchSelected + delta
+
+	if internalui.IsProbeEnabled() || m.SearchFn != nil {
+		hits, meta, errMsg := executeSearchQuery(
+			st,
+			m.searchQuery,
+			folders,
+			m.searchActiveNotebookPath(),
+			m.searchScanOptions(),
+			m.SearchFn,
+			m.host,
+		)
+		m.searchAllNB = st.scopeFolder == ""
+		m.searchErr = errMsg
+		m.searchHits = hits
+		st.hitMeta = meta
+		m.searchSelected = 0
+		st.resultsScroll.Y = 0
+		return
+	}
+
+	scopeFolder := st.scopeFolder
+	roots := append([]string(nil), st.effectiveRoots()...)
+	foldersSnap := append([]string(nil), st.folders...)
+	query := m.searchQuery
+	activeNB := m.searchActiveNotebookPath()
+	scanOpts := m.searchScanOptions()
+	host := m.host
+
+	go func() {
+		hits, meta, errMsg := executeSearchWithSnapshot(
+			scopeFolder,
+			foldersSnap,
+			roots,
+			query,
+			activeNB,
+			scanOpts,
+			nil,
+			host,
+		)
+		if st.storeAsyncResult(gen, hits, meta, errMsg) {
+			m.requestRedraw()
+		}
+	}()
+}
+
+func stepHitSelection(selected *int, total int, st *searchPaletteState, delta int) {
+	if total <= 0 {
+		return
+	}
+	next := *selected + delta
 	if next < 0 {
 		next = 0
 	}
-	if next >= len(m.searchHits) {
-		next = len(m.searchHits) - 1
+	if next >= total {
+		next = total - 1
 	}
-	if next != m.searchSelected {
-		m.searchSelected = next
-		m.searchState().revealSelected = true
+	if next != *selected {
+		*selected = next
+		st.revealSelected = true
 	}
+}
+
+func (m *Manager) moveSearchSelection(delta int) {
+	stepHitSelection(&m.searchSelected, len(m.searchHits), m.searchState(), delta)
 }
 
 func (m *Manager) openSearchHit(idx int) {
@@ -419,6 +643,10 @@ func (m *Manager) openSearchHit(idx int) {
 	}
 	hit := m.searchHits[idx]
 	m.CloseSearch()
+	if fn := m.onOpenSearchHit; fn != nil {
+		fn(hit.Path, hit.Line)
+		return
+	}
 	if m.host != nil {
 		_ = m.host.OpenNote(hit.Path, hit.Line)
 	}
@@ -427,6 +655,7 @@ func (m *Manager) openSearchHit(idx int) {
 func (m *Manager) renderSearchModal(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.searchState()
+	st.consumeAsyncResult(&m.searchHits, &m.searchSelected, &m.searchErr)
 	if st.syncFolders(m.notebookFolders()) && strings.TrimSpace(m.searchQuery) != "" {
 		m.runSearch()
 	}
@@ -434,38 +663,76 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 
 	_, vpH := c.Size()
 	topPad := float32(96)
-	if vpH > 0 && vpH < searchModalHeight+topPad+24 {
-		topPad = max(float32(16), (vpH-searchModalHeight)*0.35)
+	if vpH > 0 && vpH < 360 {
+		topPad = max(float32(16), (vpH-220)*0.25)
+	}
+	maxBodyH := searchMaxBodyHeight
+	if vpH > 0 {
+		maxCardH := max(vpH-topPad-24, searchHeaderHeight+searchEmptyHeight+searchFooterHeight)
+		maxBodyH = min(searchMaxBodyHeight, max(maxCardH-searchHeaderHeight-searchFooterHeight, searchEmptyHeight))
 	}
 
 	var scopeTrigger ui.Element
 	var card ui.Element
 
 	ui.Overlay(c, func() {
-		backdrop := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-			AlignItems(ui.Center).Padding(topPad, 24, 24, 24).
-			Background(ui.RGBA(0x20, 0x24, 0x2c, 0x2e/255.0)).Modal()
+		backdrop := internalui.ModalLayer(c, "search-modal").Padding(topPad, 24, 24, 24)
 
 		backdrop.Children(func() {
 			card = ui.Column(c.Key("search-modal")).
-				Width(searchModalWidth).Height(searchModalHeight).
-				MaxWidthPercent(92).MaxHeightPercent(92).
+				Width(searchDialogWidth).
+				MaxWidthPercent(100).MaxHeightPercent(100).
 				Radius(searchModalRadius).Background(pal.Menu).
 				Border(1, pal.MenuBorder).Clip().
-				Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.08)).
-				Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.14)).
 				Role(ui.RoleDialog).Label(theme.Tr("搜索笔记", "Search Notes"))
+			internalui.Elevate(card, theme.ElevationDialog)
 			internalui.Probe(card, "search-modal")
 
 			card.Children(func() {
-				scopeTrigger = m.renderSearchHeader(c, pal, st)
-				m.renderSearchBody(c, pal, st)
-				renderSearchFooter(c, pal)
+				scopeTrigger = renderSearchHeaderView(
+					c, pal, st, &m.searchQuery, &m.searchLastQuery, &m.searchInputHandle,
+					searchHeaderCallbacks{
+						onRunSearch:     m.runSearch,
+						onMoveSelection: m.moveSearchSelection,
+						onAcceptScope: func() {
+							if m.acceptScopeCursor() {
+								m.runSearch()
+							}
+						},
+						onOpenSelected: func() {
+							m.openSearchHit(m.searchSelected)
+						},
+						onCycleScope: func(delta int) {
+							if m.cycleScope(delta) {
+								m.runSearch()
+							}
+						},
+						onResetScopeAll: func() {
+							if m.resetScopeAll() {
+								m.runSearch()
+							}
+						},
+						onClose: m.CloseSearch,
+					},
+				)
+				renderSearchBodyView(
+					c, pal, st, m.searchQuery, m.searchHits, m.searchSelected, m.searchErr,
+					false, maxBodyH, m.SearchFn != nil,
+					func(idx int) {
+						m.searchSelected = idx
+						m.openSearchHit(idx)
+					},
+				)
+				renderSearchFooter(c, pal, false)
 			})
 		})
 
-		if st.scopeMenuOpen && scopeTrigger.Valid() {
-			m.renderScopeMenuPopover(c, pal, st, scopeTrigger)
+		if scopeTrigger.Valid() {
+			renderScopeMenuPopoverView(c, pal, st, scopeTrigger, &m.searchInputHandle, func(idx int) {
+				if m.selectScopeIndex(idx) {
+					m.runSearch()
+				}
+			})
 		}
 
 		// Fallback shortcuts when the search input does not hold keyboard focus.
@@ -484,6 +751,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 				if m.acceptScopeCursor() {
 					m.runSearch()
 				}
+				m.searchInputHandle.Focus()
 			} else {
 				m.openSearchHit(m.searchSelected)
 			}
@@ -512,7 +780,25 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 	})
 }
 
-func (m *Manager) renderSearchHeader(c *ui.Context, pal theme.Palette, st *searchPaletteState) ui.Element {
+type searchHeaderCallbacks struct {
+	onRunSearch     func()
+	onMoveSelection func(delta int)
+	onAcceptScope   func()
+	onOpenSelected  func()
+	onCycleScope    func(delta int)
+	onResetScopeAll func()
+	onClose         func()
+}
+
+func renderSearchHeaderView(
+	c *ui.Context,
+	pal theme.Palette,
+	st *searchPaletteState,
+	query *string,
+	lastQuery *string,
+	inputHandle *ui.Handle,
+	cb searchHeaderCallbacks,
+) ui.Element {
 	var scopeTrigger ui.Element
 	ui.Row(c.Key("search-header")).FillWidth().Height(searchHeaderHeight).Shrink(0).
 		Padding(0, 16, 0, 16).Gap(10).AlignItems(ui.Center).
@@ -520,33 +806,33 @@ func (m *Manager) renderSearchHeader(c *ui.Context, pal theme.Palette, st *searc
 		Children(func() {
 			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
-			in := ui.TextInputBase(c.Key("search-input"), &m.searchQuery).
+			in := ui.TextInputBase(c.Key("search-input"), query).
 				Placeholder(theme.Tr("搜索标题与正文", "Search titles and content")).
 				PlaceholderColor(pal.Placeholder).
 				Label(theme.Tr("搜索", "Search")).
-				FontSize(16).TextColor(pal.Text).CaretColor(pal.Accent).
-				Bind(&m.searchInputHandle).AutoFocus().Grow(1).MinWidth(0)
+				FontSize(theme.FontEditor).TextColor(pal.Text).CaretColor(pal.Accent).
+				Bind(inputHandle).AutoFocus().Grow(1).MinWidth(0)
 			internalui.Probe(in, "search-input")
 
 			in.OnTextKey(func(k ui.TextKey) bool {
 				switch k.Key {
 				case ui.KeyDown:
-					if !st.stepScopeMenu(true) {
-						m.moveSearchSelection(1)
+					if !st.stepScopeMenu(true) && cb.onMoveSelection != nil {
+						cb.onMoveSelection(1)
 					}
 					return true
 				case ui.KeyUp:
-					if !st.stepScopeMenu(false) {
-						m.moveSearchSelection(-1)
+					if !st.stepScopeMenu(false) && cb.onMoveSelection != nil {
+						cb.onMoveSelection(-1)
 					}
 					return true
 				case ui.KeyEnter:
 					if st.scopeMenuOpen {
-						if m.acceptScopeCursor() {
-							m.runSearch()
+						if cb.onAcceptScope != nil {
+							cb.onAcceptScope()
 						}
-					} else {
-						m.openSearchHit(m.searchSelected)
+					} else if cb.onOpenSelected != nil {
+						cb.onOpenSelected()
 					}
 					return true
 				case ui.KeyTab:
@@ -555,51 +841,56 @@ func (m *Manager) renderSearchHeader(c *ui.Context, pal theme.Palette, st *searc
 						if k.Mods == ui.Shift {
 							delta = -1
 						}
-						if m.cycleScope(delta) {
-							m.runSearch()
+						if cb.onCycleScope != nil {
+							cb.onCycleScope(delta)
 						}
 						return true
 					}
 				case ui.Key0:
 					if k.Mods == ui.Cmd {
-						if m.resetScopeAll() {
-							m.runSearch()
+						if cb.onResetScopeAll != nil {
+							cb.onResetScopeAll()
 						}
 						return true
 					}
 				case ui.KeyEscape:
 					if st.scopeMenuOpen {
 						st.scopeMenuOpen = false
-					} else {
-						m.CloseSearch()
+					} else if cb.onClose != nil {
+						cb.onClose()
 					}
 					return true
 				case ui.KeyW:
 					if k.Mods == ui.Cmd {
-						m.CloseSearch()
+						if cb.onClose != nil {
+							cb.onClose()
+						}
 						return true
 					}
 				}
 				return false
 			})
-			if in.Changed() || m.searchQuery != m.searchLastQuery {
-				m.runSearch()
+			if in.Changed() || *query != *lastQuery {
+				*lastQuery = *query
+				if cb.onRunSearch != nil {
+					cb.onRunSearch()
+				}
 			}
 			if in.Submitted() {
 				if st.scopeMenuOpen {
-					if m.acceptScopeCursor() {
-						m.runSearch()
+					if cb.onAcceptScope != nil {
+						cb.onAcceptScope()
 					}
-				} else {
-					m.openSearchHit(m.searchSelected)
+				} else if cb.onOpenSelected != nil {
+					cb.onOpenSelected()
 				}
 			}
 
 			scopeLabel := st.scopeLabel()
 			scopeTrigger = ui.ButtonBase(c.Key("search-scope-trigger")).
 				Height(30).Shrink(0).Padding(0, 10, 0, 10).Gap(6).
-				AlignItems(ui.Center).Radius(theme.RadiusControl).
-				Cursor(ui.CursorPointer).Label(scopeLabel)
+				AlignItems(ui.Center).Radius(theme.RadiusMD).
+				Cursor(ui.CursorPointer).TabStop(false).Label(scopeLabel)
 
 			line := pal.TextSecondary
 			if st.scopeMenuOpen {
@@ -625,20 +916,35 @@ func (m *Manager) renderSearchHeader(c *ui.Context, pal theme.Palette, st *searc
 			internalui.Probe(scopeTrigger, "search-scope-trigger")
 			if scopeTrigger.Clicked() {
 				st.toggleScopeMenu()
+				if inputHandle != nil {
+					inputHandle.Focus()
+				}
 			}
 		})
 	return scopeTrigger
 }
 
-func (m *Manager) renderScopeMenuPopover(c *ui.Context, pal theme.Palette, st *searchPaletteState, trigger ui.Element) {
+func renderScopeMenuPopoverView(
+	c *ui.Context,
+	pal theme.Palette,
+	st *searchPaletteState,
+	trigger ui.Element,
+	inputHandle *ui.Handle,
+	onPickScope func(idx int),
+) {
+	_, vpH := c.Size()
+	menuMaxH := searchScopeMenuH
+	if vpH > 0 {
+		menuMaxH = min(searchScopeMenuH, max(vpH-96, 120))
+	}
 	ui.PopoverBase(c.Key("search-scope-menu"), trigger, &st.scopeMenuOpen, func(panel ui.Element) {
 		panel.AttachTo(trigger, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(4, 0, 0, 0)
-		internalui.MenuSurface(panel).Width(searchScopeMenuW).MaxHeight(searchScopeMenuH).Column()
+		internalui.MenuSurface(panel).Width(searchScopeMenuW).MaxHeight(menuMaxH).Column()
 		internalui.Probe(panel, "search-scope-menu")
 
 		folderIcon := icons.Folder
 		internalui.Scroll(c.Key("search-scope-scroll"), &st.scopeScroll).
-			FillWidth().MaxHeight(searchScopeMenuH - 2*theme.MenuPadding).
+			FillWidth().MaxHeight(menuMaxH - 2*theme.MenuPadding).
 			ScrollbarStyle(ui.ScrollbarStyle{
 				TrackWidth: theme.ScrollGutter,
 				ThumbWidth: theme.ScrollThumbWidth,
@@ -647,17 +953,24 @@ func (m *Manager) renderScopeMenuPopover(c *ui.Context, pal theme.Palette, st *s
 			}).
 			Children(func() {
 				ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
-					internalui.MenuRow(c, internalui.MenuItemSpec{
+					row0 := internalui.MenuRow(c, internalui.MenuItemSpec{
 						ID:      "search-scope-0",
 						Label:   theme.Tr("全部文件夹", "All Folders"),
 						Icon:    &folderIcon,
 						Checked: st.scopeFolder == "",
 						OnClick: func() {
-							if m.selectScopeIndex(0) {
-								m.runSearch()
+							if onPickScope != nil {
+								onPickScope(0)
+							}
+							if inputHandle != nil {
+								inputHandle.Focus()
 							}
 						},
-					}, st.scopeCursor == 0)
+					}, st.scopeCursor == 0).TabStop(false)
+					if st.scopeCursor == 0 && st.revealScopeCursor {
+						internalui.RevealActiveItem(row0)
+						st.revealScopeCursor = false
+					}
 
 					if len(st.folders) > 0 {
 						internalui.MenuRow(c, internalui.MenuItemSpec{Separator: true}, false)
@@ -666,36 +979,61 @@ func (m *Manager) renderScopeMenuPopover(c *ui.Context, pal theme.Palette, st *s
 					for i, folderPath := range st.folders {
 						idx := i + 1
 						fp := folderPath
-						internalui.MenuRow(c, internalui.MenuItemSpec{
+						row := internalui.MenuRow(c, internalui.MenuItemSpec{
 							ID:      fmt.Sprintf("search-scope-%d", idx),
 							Label:   searchFolderName(fp),
 							Icon:    &folderIcon,
 							Checked: cleanPathEqual(st.scopeFolder, fp),
 							OnClick: func() {
-								if m.selectScopeIndex(idx) {
-									m.runSearch()
+								if onPickScope != nil {
+									onPickScope(idx)
+								}
+								if inputHandle != nil {
+									inputHandle.Focus()
 								}
 							},
-						}, st.scopeCursor == idx)
+						}, st.scopeCursor == idx).TabStop(false)
+						if st.scopeCursor == idx && st.revealScopeCursor {
+							internalui.RevealActiveItem(row)
+							st.revealScopeCursor = false
+						}
 					}
 				})
 			})
 	})
 }
 
-func (m *Manager) renderSearchBody(c *ui.Context, pal theme.Palette, st *searchPaletteState) {
-	if m.searchErr != "" {
-		ui.Box(c).FillWidth().Grow(1).MinHeight(0).Center().Padding(16).Children(func() {
-			ui.Text(c, m.searchErr).FontSize(theme.FontSmall).TextColor(pal.Danger)
+func renderSearchBodyView(
+	c *ui.Context,
+	pal theme.Palette,
+	st *searchPaletteState,
+	query string,
+	hits []model.SearchHit,
+	selected int,
+	errMsg string,
+	fillHeight bool,
+	maxBodyH float32,
+	allowEmptyFoldersSearch bool,
+	onOpenHit func(idx int),
+) {
+	if errMsg != "" {
+		box := ui.Box(c).FillWidth().Center().Padding(16)
+		if fillHeight {
+			box.Grow(1).MinHeight(0)
+		} else {
+			box.Height(searchEmptyHeight)
+		}
+		box.Children(func() {
+			ui.Text(c, errMsg).FontSize(theme.FontSmall).TextColor(pal.Danger)
 		})
 		return
 	}
 
-	asked := strings.TrimSpace(m.searchQuery) != ""
-	if len(st.folders) == 0 && len(m.searchHits) == 0 {
+	asked := strings.TrimSpace(query) != ""
+	if len(st.folders) == 0 && len(hits) == 0 {
 		// Still allow SearchFn-backed tests when no folders are configured on disk.
-		if !asked || m.SearchFn == nil {
-			renderSearchEmpty(c, pal, theme.Tr("请先在主窗口打开文件夹", "Open a folder in the main window first"))
+		if !asked || !allowEmptyFoldersSearch {
+			renderSearchEmpty(c, pal, theme.Tr("请先在主窗口打开文件夹", "Open a folder in the main window first"), fillHeight)
 			return
 		}
 	}
@@ -704,82 +1042,104 @@ func (m *Manager) renderSearchBody(c *ui.Context, pal theme.Palette, st *searchP
 		if st.scopeFolder == "" {
 			hint = theme.Tr("输入关键词搜索全部文件夹的标题与正文", "Type keywords to search titles and content across all folders")
 		}
-		renderSearchEmpty(c, pal, hint)
+		renderSearchEmpty(c, pal, hint, fillHeight)
 		return
 	}
-	if len(m.searchHits) == 0 {
-		renderSearchEmpty(c, pal, theme.Tr("没有找到匹配的笔记", "No matching notes found"))
+	if len(hits) == 0 {
+		renderSearchEmpty(c, pal, theme.Tr("没有找到匹配的笔记", "No matching notes found"), fillHeight)
 		return
 	}
 
-	internalui.Scroll(c.Key("search-results"), &st.resultsScroll).
-		FillWidth().Grow(1).MinHeight(0).
+	scroll := internalui.Scroll(c.Key("search-results"), &st.resultsScroll).
+		FillWidth().
 		Padding(8, theme.ScrollGutter, 8, 8).Gap(2).
 		ScrollbarStyle(ui.ScrollbarStyle{
 			TrackWidth: theme.ScrollGutter,
 			ThumbWidth: theme.ScrollThumbWidth,
 			Thumb:      pal.ScrollThumb,
 			Hover:      pal.ScrollThumbHover,
-		}).
-		Children(func() {
-			groups := []struct {
-				titleGroup bool
-				label      string
-			}{
-				{true, theme.Tr("标题匹配", "Title Matches")},
-				{false, theme.Tr("正文匹配", "Content Matches")},
-			}
-			hasRows := false
-			for _, g := range groups {
-				var indices []int
-				total := 0
-				for ix := range m.searchHits {
-					meta := hitMetaAt(st, ix, m.searchHits[ix], m.searchQuery)
-					if meta.titleMatch == g.titleGroup {
-						indices = append(indices, ix)
-						cnt := meta.count
-						if cnt < 1 {
-							cnt = 1
-						}
-						total += cnt
-					}
-				}
-				if len(indices) == 0 {
-					continue
-				}
-				header := g.label
-				if !g.titleGroup {
-					if theme.IsEn() {
-						header = fmt.Sprintf("%s · %d matches", g.label, total)
-					} else {
-						header = fmt.Sprintf("%s · %d 处", g.label, total)
-					}
-				}
-				pt := float32(6)
-				if hasRows {
-					pt = 10
-				}
-				hasRows = true
-				ui.Column(c).FillWidth().Shrink(0).Padding(pt, 12, 2, 12).Children(func() {
-					ui.Text(c, header).FontSize(theme.FontMeta).LineHeight(16.0 / 12.0).
-						TextColor(pal.TextSecondary).SingleLine()
-				})
-				for _, ix := range indices {
-					meta := hitMetaAt(st, ix, m.searchHits[ix], m.searchQuery)
-					m.renderSearchHitRow(c, pal, st, ix, m.searchHits[ix], meta)
-				}
-			}
 		})
+	if fillHeight {
+		scroll.Grow(1).MinHeight(0)
+	} else {
+		if maxBodyH <= 0 {
+			maxBodyH = searchMaxBodyHeight
+		}
+		scroll.MaxHeight(maxBodyH)
+	}
+	scroll.Children(func() {
+		groups := []struct {
+			titleGroup bool
+			label      string
+		}{
+			{true, theme.Tr("标题匹配", "Title Matches")},
+			{false, theme.Tr("正文匹配", "Content Matches")},
+		}
+		hasRows := false
+		for _, g := range groups {
+			var indices []int
+			total := 0
+			for ix := range hits {
+				meta := hitMetaAt(st, ix, hits[ix], query)
+				if meta.titleMatch == g.titleGroup {
+					indices = append(indices, ix)
+					cnt := meta.count
+					if cnt < 1 {
+						cnt = 1
+					}
+					total += cnt
+				}
+			}
+			if len(indices) == 0 {
+				continue
+			}
+			header := g.label
+			if !g.titleGroup {
+				if theme.IsEn() {
+					header = fmt.Sprintf("%s · %d matches", g.label, total)
+				} else {
+					header = fmt.Sprintf("%s · %d 处", g.label, total)
+				}
+			}
+			pt := float32(6)
+			if hasRows {
+				pt = 10
+			}
+			hasRows = true
+			ui.Column(c).FillWidth().Shrink(0).Padding(pt, 12, 2, 12).Children(func() {
+				ui.Text(c, header).FontSize(theme.FontMeta).LineHeight(16.0 / 12.0).
+					TextColor(pal.TextSecondary).SingleLine()
+			})
+			for _, ix := range indices {
+				meta := hitMetaAt(st, ix, hits[ix], query)
+				renderSearchHitRowView(c, pal, st, ix, hits[ix], meta, ix == selected, onOpenHit)
+			}
+		}
+	})
 }
 
-func renderSearchEmpty(c *ui.Context, pal theme.Palette, hint string) {
-	ui.Box(c).FillWidth().Grow(1).MinHeight(0).Center().Padding(0, 24, 0, 24).Children(func() {
+func renderSearchEmpty(c *ui.Context, pal theme.Palette, hint string, fillHeight bool) {
+	box := ui.Box(c).FillWidth().Center().Padding(0, 24, 0, 24)
+	if fillHeight {
+		box.Grow(1).MinHeight(0)
+	} else {
+		box.Height(searchEmptyHeight)
+	}
+	box.Children(func() {
 		ui.Text(c, hint).FontSize(theme.FontSmall).TextColor(pal.TextSecondary)
 	})
 }
 
-func (m *Manager) renderSearchHitRow(c *ui.Context, pal theme.Palette, st *searchPaletteState, idx int, hit model.SearchHit, meta searchHitMeta) {
-	selected := idx == m.searchSelected
+func renderSearchHitRowView(
+	c *ui.Context,
+	pal theme.Palette,
+	st *searchPaletteState,
+	idx int,
+	hit model.SearchHit,
+	meta searchHitMeta,
+	selected bool,
+	onOpenHit func(idx int),
+) {
 	rowID := fmt.Sprintf("search-hit-%d", idx)
 	label := hit.Title
 	if label == "" {
@@ -787,7 +1147,7 @@ func (m *Manager) renderSearchHitRow(c *ui.Context, pal theme.Palette, st *searc
 	}
 
 	row := ui.ButtonBase(c.Key(rowID)).FillWidth().Padding(8, 12, 8, 12).Gap(2).
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(label)
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).TabStop(false).Label(label)
 	hovered := row.Hovered()
 	switch {
 	case selected:
@@ -841,23 +1201,25 @@ func (m *Manager) renderSearchHitRow(c *ui.Context, pal theme.Palette, st *searc
 	})
 
 	internalui.Probe(row, rowID)
-	if row.Clicked() {
-		m.searchSelected = idx
-		m.openSearchHit(idx)
+	if row.Clicked() && onOpenHit != nil {
+		onOpenHit(idx)
 	}
 }
 
-func renderSearchFooter(c *ui.Context, pal theme.Palette) {
-	ui.Row(c.Key("search-footer")).FillWidth().Height(searchFooterHeight).Shrink(0).
+func renderSearchFooter(c *ui.Context, pal theme.Palette, dragWindow bool) {
+	row := ui.Row(c.Key("search-footer")).FillWidth().Height(searchFooterHeight).Shrink(0).
 		Padding(0, 16, 0, 16).Gap(12).AlignItems(ui.Center).
 		Radius(0, 0, searchModalRadius-1, searchModalRadius-1).
-		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar).
-		Children(func() {
-			renderFooterHint(c, pal, []string{"↑", "↓"}, theme.Tr("选择", "Select"))
-			renderFooterHint(c, pal, []string{"↵"}, theme.Tr("打开", "Open"))
-			renderFooterHint(c, pal, []string{"Tab"}, theme.Tr("切换文件夹", "Switch Folder"))
-			renderFooterHint(c, pal, []string{"esc"}, theme.Tr("关闭", "Close"))
-		})
+		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar)
+	if dragWindow {
+		row.DragWindow()
+	}
+	row.Children(func() {
+		renderFooterHint(c, pal, []string{"↑", "↓"}, theme.Tr("选择", "Select"))
+		renderFooterHint(c, pal, []string{"↵"}, theme.Tr("打开", "Open"))
+		renderFooterHint(c, pal, []string{"Tab"}, theme.Tr("切换文件夹", "Switch Folder"))
+		renderFooterHint(c, pal, []string{"esc"}, theme.Tr("关闭", "Close"))
+	})
 }
 
 func renderFooterHint(c *ui.Context, pal theme.Palette, keys []string, label string) {

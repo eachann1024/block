@@ -105,14 +105,14 @@ func (s *Session) leftContentGutter() float32 {
 	if s.minimal {
 		return minimalLeftInset
 	}
-	return editorHandleWidth + editorRowGap
+	return s.handleWidth() + s.rowGap()
 }
 
 func (s *Session) rightContentInset() float32 {
 	if s.minimal {
 		return minimalRightInset
 	}
-	return editorRightInset
+	return editorRightInset * s.zoom()
 }
 
 // ClearFormattingOnSelection strips inline marks, colors, and links across the selected range.

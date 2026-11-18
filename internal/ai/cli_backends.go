@@ -118,8 +118,25 @@ func cliCommand(ctx context.Context, bin string, args ...string) *exec.Cmd {
 		exe = found
 	}
 	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Env = append(os.Environ(), "PATH="+enrichedPATH())
+	cmd.Env = append(envWithout(os.Environ(), "PATH"), "PATH="+enrichedPATH())
 	return cmd
+}
+
+func envWithout(env []string, dropKeys ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		skip := false
+		for _, k := range dropKeys {
+			if strings.HasPrefix(entry, k+"=") {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 func isCLIInstalled(kind model.BackendKind) bool {
@@ -483,29 +500,140 @@ func (c *Controller) setBackendFullPermissionsLocked(kind model.BackendKind, on 
 	return c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }
 
+const modelCacheFreshFor = 5 * time.Minute
+
+func (c *Controller) effectiveBackendModelLocked(kind model.BackendKind) string {
+	stored := strings.TrimSpace(c.backendModelLocked(kind))
+	choices := c.backendModels[kind]
+	if stored != "" {
+		if len(choices) == 0 {
+			return stored
+		}
+		for _, ch := range choices {
+			if ch.Value == stored {
+				return stored
+			}
+		}
+	}
+	if len(choices) > 0 {
+		return choices[0].Value
+	}
+	return stored
+}
+
+func (c *Controller) modelLabelLocked(kind model.BackendKind, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	for _, ch := range c.backendModels[kind] {
+		if ch.Value == value && strings.TrimSpace(ch.Label) != "" {
+			return ch.Label
+		}
+	}
+	return value
+}
+
+func (c *Controller) invalidateModelCacheLocked(kind model.BackendKind) {
+	c.modelGenSeq++
+	c.modelGeneration[kind] = c.modelGenSeq
+	delete(c.backendModels, kind)
+	delete(c.modelStatus, kind)
+	delete(c.modelRefreshed, kind)
+}
+
+func (c *Controller) beginModelRefreshLocked(kind model.BackendKind) (uint64, bool) {
+	if c.modelStatus[kind] == "loading" {
+		return 0, false
+	}
+	if at := c.modelRefreshed[kind]; !at.IsZero() && time.Since(at) < modelCacheFreshFor {
+		return 0, false
+	}
+	c.modelGenSeq++
+	gen := c.modelGenSeq
+	c.modelGeneration[kind] = gen
+	c.modelStatus[kind] = "loading"
+	return gen, true
+}
+
+// finishModelRefreshLocked records model discovery results without discarding a usable cached list on failure.
+func (c *Controller) finishModelRefreshLocked(kind model.BackendKind, gen uint64, opts []ModelOption, err error) bool {
+	if c.modelGeneration[kind] != gen {
+		return false
+	}
+	if err != nil {
+		c.modelStatus[kind] = "error:" + fmt.Sprintf("%s: %v", theme.Tr("获取模型列表失败", "Could not load models"), err)
+		return true
+	}
+	c.backendModels[kind] = opts
+	c.modelRefreshed[kind] = time.Now()
+	c.modelStatus[kind] = "ready"
+	if c.annotCfg.Backend == kind && strings.TrimSpace(c.annotCfg.Model) == "" && len(opts) > 0 {
+		next := c.annotCfg
+		next.Model = opts[0].Value
+		_ = c.saveAnnotationConfigLocked(next)
+	}
+	return true
+}
+
 func (c *Controller) refreshModelsAsync(kind model.BackendKind) {
 	c.mu.Lock()
-	if c.modelStatus[kind] == "loading" {
-		c.mu.Unlock()
-		return
-	}
-	c.modelStatus[kind] = "loading"
+	gen, ok := c.beginModelRefreshLocked(kind)
 	cfg := c.providerCfg
 	c.mu.Unlock()
+	if !ok {
+		return
+	}
+	c.requestRedraw()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		opts, err := listModelsForBackend(ctx, kind, cfg)
 		c.mu.Lock()
-		if err != nil {
-			c.modelStatus[kind] = "error:" + err.Error()
-		} else {
-			c.backendModels[kind] = opts
-			c.modelStatus[kind] = "ready"
-		}
+		changed := c.finishModelRefreshLocked(kind, gen, opts, err)
 		c.mu.Unlock()
-		c.requestRedraw()
+		if changed {
+			c.requestRedraw()
+		}
+	}()
+}
+
+func (c *Controller) refreshAnnotationModelsAsync(kind model.BackendKind) {
+	if kind == "" {
+		kind = model.BackendBuiltin
+	}
+	c.mu.Lock()
+	gen, ok := c.beginModelRefreshLocked(kind)
+	var cfg model.AIProviderConfig
+	var cfgErr error
+	if kind == model.BackendBuiltin && c.annotCfg.Backend == model.BackendBuiltin {
+		cfg, cfgErr = c.annotationBuiltinConfigLocked()
+	} else {
+		cfg = c.providerCfg
+	}
+	c.mu.Unlock()
+	if !ok {
+		return
+	}
+	c.requestRedraw()
+
+	go func() {
+		var opts []ModelOption
+		var err error
+		if cfgErr != nil {
+			err = cfgErr
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			opts, err = listModelsForBackend(ctx, kind, cfg)
+		}
+		c.mu.Lock()
+		changed := c.finishModelRefreshLocked(kind, gen, opts, err)
+		c.mu.Unlock()
+		if changed {
+			c.requestRedraw()
+		}
 	}()
 }
 
@@ -522,54 +650,365 @@ func listModelsForBackend(ctx context.Context, kind model.BackendKind, cfg model
 		}
 		return out, nil
 	case model.BackendDsh:
+		// Official dsh 0.2.1-rc.5 advisory defaults (dsh CLI has no model list subcommand).
 		return []ModelOption{
 			{Value: "deepseek-flash", Label: "DeepSeek-V4.1-Flash"},
 			{Value: "deepseek-v4-pro", Label: "DeepSeek-V4-Pro"},
 		}, nil
 	case model.BackendPi:
-		out, err := cliCommand(ctx, "pi", "--list-models").Output()
-		if err != nil {
-			return nil, err
-		}
-		var opts []ModelOption
-		for _, line := range strings.Split(string(out), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 || (fields[0] == "provider" && fields[1] == "model") {
-				continue
-			}
-			val := fields[0] + "/" + fields[1]
-			opts = append(opts, ModelOption{Value: val, Label: val})
-		}
-		return opts, nil
+		return listPiModels(ctx)
 	case model.BackendAgy:
-		out, err := cliCommand(ctx, "agy", "models").Output()
-		if err != nil {
-			return nil, err
-		}
-		var opts []ModelOption
-		for _, line := range strings.Split(string(out), "\n") {
-			val, label, ok := strings.Cut(line, "\t")
-			if !ok {
-				continue
-			}
-			val = strings.TrimSpace(val)
-			if val != "" {
-				opts = append(opts, ModelOption{Value: val, Label: strings.TrimSpace(label)})
-			}
-		}
-		return opts, nil
+		return listAgyModels(ctx)
 	case model.BackendCodex:
-		return []ModelOption{
-			{Value: "gpt-5.3-codex", Label: "GPT-5.3 Codex"},
-			{Value: "o3", Label: "o3"},
-		}, nil
+		return listCodexModels(ctx)
 	case model.BackendClaude:
-		return []ModelOption{
-			{Value: "claude-sonnet-4-6", Label: "Claude Sonnet 4.6"},
-			{Value: "claude-opus-4-6", Label: "Claude Opus 4.6"},
-		}, nil
+		return listClaudeModels(ctx)
 	default:
 		return nil, nil
+	}
+}
+
+func listPiModels(ctx context.Context) ([]ModelOption, error) {
+	out, err := cliCommand(ctx, "pi", "--list-models").Output()
+	if err != nil {
+		return nil, errors.New("Pi model list failed")
+	}
+	text := string(out)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(text)), "no models available") {
+		return nil, nil
+	}
+	lines := strings.Split(text, "\n")
+	hasHeader := false
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "provider" && fields[1] == "model" {
+			hasHeader = true
+			break
+		}
+	}
+	var opts []ModelOption
+	afterHeader := !hasHeader
+	for _, line := range lines {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		if fields[0] == "provider" && fields[1] == "model" {
+			afterHeader = true
+			continue
+		}
+		if !afterHeader || strings.HasPrefix(fields[0], "-") {
+			continue
+		}
+		val := fields[0] + "/" + fields[1]
+		opts = append(opts, ModelOption{Value: val, Label: val})
+	}
+	return opts, nil
+}
+
+func listAgyModels(ctx context.Context) ([]ModelOption, error) {
+	agyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, err := cliCommand(agyCtx, "agy", "models").Output()
+	if err != nil {
+		return nil, fmt.Errorf("agy models exited with %v; check agy login", err)
+	}
+	var opts []ModelOption
+	for _, line := range strings.Split(string(out), "\n") {
+		val, label, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		val = strings.TrimSpace(val)
+		label = strings.TrimSpace(label)
+		if val == "" {
+			continue
+		}
+		if label == "" {
+			label = val
+		}
+		opts = append(opts, ModelOption{Value: val, Label: label})
+	}
+	if len(opts) == 0 {
+		return nil, errors.New("agy returned no models; check agy login")
+	}
+	return opts, nil
+}
+
+func listClaudeModels(parent context.Context) ([]ModelOption, error) {
+	ctx, cancel := context.WithTimeout(parent, 12*time.Second)
+	defer cancel()
+
+	cmd := cliCommand(
+		ctx,
+		"claude",
+		"-p",
+		"--verbose",
+		"--dangerously-skip-permissions",
+		"--permission-mode", "bypassPermissions",
+		"--input-format", "stream-json",
+		"--output-format", "stream-json",
+	)
+	cmd.Env = envWithout(cmd.Env, "CLAUDECODE")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = stdin.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+
+	initReq := `{"type":"control_request","request_id":"block_models","request":{"subtype":"initialize","hooks":null}}` + "\n"
+	if _, err := io.WriteString(stdin, initReq); err != nil {
+		return nil, err
+	}
+
+	type result struct {
+		opts []ModelOption
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if !strings.HasPrefix(line, "{") {
+				continue
+			}
+			var frame struct {
+				Response *struct {
+					RequestID string `json:"request_id"`
+					Response  *struct {
+						Models []struct {
+							Value       string `json:"value"`
+							DisplayName string `json:"displayName"`
+						} `json:"models"`
+					} `json:"response"`
+				} `json:"response"`
+			}
+			if json.Unmarshal([]byte(line), &frame) != nil || frame.Response == nil {
+				continue
+			}
+			if frame.Response.RequestID != "block_models" {
+				continue
+			}
+			if frame.Response.Response == nil {
+				done <- result{err: errors.New("Claude did not return a model list")}
+				return
+			}
+			opts := make([]ModelOption, 0, len(frame.Response.Response.Models))
+			for _, m := range frame.Response.Response.Models {
+				val := strings.TrimSpace(m.Value)
+				if val == "" {
+					continue
+				}
+				lbl := strings.TrimSpace(m.DisplayName)
+				if lbl == "" {
+					lbl = val
+				}
+				opts = append(opts, ModelOption{Value: val, Label: lbl})
+			}
+			done <- result{opts: opts}
+			return
+		}
+		done <- result{err: errors.New("Claude exited before returning models")}
+	}()
+
+	select {
+	case res := <-done:
+		return res.opts, res.err
+	case <-ctx.Done():
+		return nil, errors.New("Claude model list timed out")
+	}
+}
+
+func listCodexModels(parent context.Context) ([]ModelOption, error) {
+	ctx, cancel := context.WithTimeout(parent, 12*time.Second)
+	defer cancel()
+
+	cmd := cliCommand(ctx, "codex", "app-server")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = stdin.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+
+	type result struct {
+		opts []ModelOption
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+		sendRPC := func(payload map[string]any) error {
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(stdin, "%s\n", raw)
+			return err
+		}
+		waitResponse := func(wantID int) (map[string]any, error) {
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if !strings.HasPrefix(line, "{") {
+					continue
+				}
+				var msg map[string]any
+				if json.Unmarshal([]byte(line), &msg) != nil {
+					continue
+				}
+				_, hasMethod := msg["method"]
+				idNum, hasID := rpcIntID(msg["id"])
+				if hasID && !hasMethod && idNum == wantID {
+					if errObj, hasErr := msg["error"]; hasErr && errObj != nil {
+						rawErr, _ := json.Marshal(errObj)
+						return nil, errors.New(string(rawErr))
+					}
+					res, ok := msg["result"].(map[string]any)
+					if !ok {
+						return nil, errors.New("Codex response missing result")
+					}
+					return res, nil
+				}
+				if msg["id"] != nil && hasMethod {
+					_ = sendRPC(map[string]any{
+						"id":     msg["id"],
+						"result": map[string]any{"decision": "accept"},
+					})
+				}
+			}
+			return nil, errors.New("Codex app-server exited")
+		}
+
+		if err := sendRPC(map[string]any{
+			"id":     1,
+			"method": "initialize",
+			"params": map[string]any{
+				"clientInfo":   map[string]any{"name": "block", "version": "1"},
+				"capabilities": map[string]any{"experimentalApi": true},
+			},
+		}); err != nil {
+			done <- result{err: err}
+			return
+		}
+		if _, err := waitResponse(1); err != nil {
+			done <- result{err: err}
+			return
+		}
+		if err := sendRPC(map[string]any{
+			"method": "initialized",
+			"params": map[string]any{},
+		}); err != nil {
+			done <- result{err: err}
+			return
+		}
+
+		var opts []ModelOption
+		var cursor any
+		for page := 0; page < 20; page++ {
+			reqID := 2 + page
+			if err := sendRPC(map[string]any{
+				"id":     reqID,
+				"method": "model/list",
+				"params": map[string]any{"limit": 100, "cursor": cursor},
+			}); err != nil {
+				done <- result{err: err}
+				return
+			}
+			res, err := waitResponse(reqID)
+			if err != nil {
+				done <- result{err: err}
+				return
+			}
+			data, ok := res["data"].([]any)
+			if !ok {
+				done <- result{err: errors.New("Codex model list is unavailable")}
+				return
+			}
+			for _, rawItem := range data {
+				item, ok := rawItem.(map[string]any)
+				if !ok {
+					continue
+				}
+				if hidden, _ := item["hidden"].(bool); hidden {
+					continue
+				}
+				val, _ := item["model"].(string)
+				if strings.TrimSpace(val) == "" {
+					val, _ = item["id"].(string)
+				}
+				val = strings.TrimSpace(val)
+				if val == "" {
+					continue
+				}
+				lbl, _ := item["displayName"].(string)
+				lbl = strings.TrimSpace(lbl)
+				if lbl == "" {
+					lbl = val
+				}
+				opts = append(opts, ModelOption{Value: val, Label: lbl})
+			}
+			nextCur, _ := res["nextCursor"].(string)
+			if nextCur == "" {
+				break
+			}
+			cursor = nextCur
+		}
+		done <- result{opts: opts}
+	}()
+
+	select {
+	case res := <-done:
+		return res.opts, res.err
+	case <-ctx.Done():
+		return nil, errors.New("Codex model list timed out")
+	}
+}
+
+func rpcIntID(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int(n), true
+	case int:
+		return n, true
+	case string:
+		i, err := strconv.Atoi(n)
+		return i, err == nil
+	default:
+		return 0, false
 	}
 }
 
@@ -732,7 +1171,7 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 	}
 	root := c.activeRootLocked()
 	thinking := c.backendThinkingLocked(kind)
-	selectedModel := c.backendModelLocked(kind)
+	selectedModel := c.effectiveBackendModelLocked(kind)
 	fullPerm := c.backendsCfg.Adapters[string(kind)].FullPermissions
 	nativeSession := conv.NativeSessionID
 
@@ -811,6 +1250,7 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 			c.recordTurnOutcomeLocked("completed")
 			c.sentDraft = nil
 		}
+		c.clearStreamRedrawLocked()
 		c.mu.Unlock()
 		c.requestRedraw()
 	}()
@@ -821,6 +1261,7 @@ func (c *Controller) failExternalTurn(convID uint64, serial uint64, msg string) 
 	if c.streamSerial == serial && c.currentID == convID {
 		c.streaming = false
 		c.streamCancel = nil
+		c.clearStreamRedrawLocked()
 		c.turnError = msg
 		c.recordTurnOutcomeLocked("failed")
 		c.restoreFailedDraftLocked()
@@ -858,7 +1299,10 @@ func (c *Controller) runCLIAdapterProcess(
 			},
 		})
 		args = []string{"-p", "--verbose", "--output-format", "stream-json", "--mcp-config", string(mcpCfg)}
-		if modelName != "" {
+		if thinking != "" {
+			args = append(args, "--effort", thinking)
+		}
+		if modelName != "" && modelName != "default" {
 			args = append(args, "--model", modelName)
 		}
 		if fullPerm {
@@ -896,6 +1340,9 @@ func (c *Controller) runCLIAdapterProcess(
 	}
 
 	cmd := cliCommand(ctx, string(kind), args...)
+	if kind == model.BackendClaude {
+		cmd.Env = envWithout(cmd.Env, "CLAUDECODE")
+	}
 	if root != "" {
 		if info, err := os.Stat(root); err == nil && info.IsDir() {
 			cmd.Dir = root
@@ -1002,6 +1449,7 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 	typ, _ := frame["type"].(string)
 	method, _ := frame["method"].(string)
 	turnDone := false
+	isDelta := false
 
 	upsertStep := func(step model.ProcessStep) {
 		if step.ID != "" {
@@ -1066,6 +1514,7 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 			c.partialText = res
 		}
 	case typ == "message_update":
+		isDelta = true
 		if sub, ok := frame["assistantMessageEvent"].(map[string]any); ok {
 			switch sub["type"] {
 			case "text_delta":
@@ -1090,12 +1539,14 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 			}
 		}
 	case method == "item/agentMessage/delta":
+		isDelta = true
 		if params, ok := frame["params"].(map[string]any); ok {
 			if d, ok := params["delta"].(string); ok {
 				c.partialText += d
 			}
 		}
 	case method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/textDelta":
+		isDelta = true
 		if params, ok := frame["params"].(map[string]any); ok {
 			if d, ok := params["delta"].(string); ok {
 				c.partialThink += d
@@ -1158,7 +1609,13 @@ func (c *Controller) handleCLIStreamFrame(convID, serial uint64, frame map[strin
 			},
 		})
 	}
+	if !isDelta {
+		c.clearStreamRedrawLocked()
+		c.mu.Unlock()
+		c.requestRedraw()
+		return turnDone
+	}
 	c.mu.Unlock()
-	c.requestRedraw()
+	c.requestStreamRedraw()
 	return turnDone
 }

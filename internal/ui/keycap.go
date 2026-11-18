@@ -116,11 +116,11 @@ func Keycap(c *ui.Context, label string) ui.Element {
 	pal := theme.Ocean()
 	return ui.Row(c).Height(theme.KeycapHeight).Padding(0, theme.KeycapPadX, 0, theme.KeycapPadX).
 		Shrink(0).AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusMicroSM).Background(pal.Shell).Border(1, pal.BtnBorder).
+		Radius(theme.RadiusXS).Background(pal.Shell).Border(1, pal.BtnBorder).
 		Children(func() {
 			ShortcutLabel(c, label, ShortcutLabelStyle{
 				FontSize:   theme.KeycapFontSize,
-				LineHeight: 16,
+				LineHeight: theme.LineMeta,
 				FontWeight: theme.WeightRegular,
 				Color:      pal.TextSecondary,
 			})

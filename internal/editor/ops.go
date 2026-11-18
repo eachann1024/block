@@ -2648,6 +2648,9 @@ func (s *Session) Outline() []model.OutlineItem {
 	if s.doc == nil {
 		return nil
 	}
+	if s.docRev != 0 && s.outlineRev == s.docRev && s.outlineLen == len(s.doc.Blocks) {
+		return s.outlineCache
+	}
 	var items []model.OutlineItem
 	for i := range s.doc.Blocks {
 		b := &s.doc.Blocks[i]
@@ -2669,6 +2672,9 @@ func (s *Session) Outline() []model.OutlineItem {
 			Title:      title,
 		})
 	}
+	s.outlineRev = s.docRev
+	s.outlineLen = len(s.doc.Blocks)
+	s.outlineCache = items
 	return items
 }
 
@@ -3517,29 +3523,42 @@ func isIdentChar(ch rune) bool {
 	return unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '_'
 }
 
-func langKeywords(lang string) map[string]bool {
-	var words []string
-	switch lang {
-	case "go":
-		words = []string{"package", "import", "func", "type", "struct", "interface", "return", "if", "else", "for", "range", "switch", "case", "default", "var", "const", "defer", "go", "select", "chan", "map", "make", "len", "cap", "append", "break", "continue"}
-	case "rust":
-		words = []string{"fn", "let", "mut", "pub", "struct", "enum", "impl", "trait", "for", "in", "if", "else", "match", "loop", "while", "return", "use", "mod", "crate", "self", "Self", "super", "where", "async", "await", "move", "const", "static"}
-	case "python":
-		words = []string{"def", "class", "import", "from", "as", "return", "if", "elif", "else", "for", "while", "in", "not", "and", "or", "with", "try", "except", "finally", "raise", "pass", "break", "continue", "lambda", "yield", "async", "await"}
-	case "javascript", "typescript":
-		words = []string{"function", "const", "let", "var", "return", "if", "else", "for", "while", "switch", "case", "default", "import", "export", "from", "class", "extends", "new", "async", "await", "try", "catch", "throw", "type", "interface", "enum"}
-	case "sql":
-		words = []string{"SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "JOIN", "LEFT", "RIGHT", "INNER", "ON", "GROUP", "BY", "ORDER", "LIMIT", "AS", "AND", "OR", "NOT", "select", "from", "where", "insert", "update", "delete"}
-	case "bash":
-		words = []string{"if", "then", "else", "elif", "fi", "for", "do", "done", "while", "case", "esac", "function", "export", "local", "return", "exit", "echo"}
-	default:
-		words = []string{"if", "else", "for", "while", "return", "func", "fn", "def", "class", "struct", "type", "import"}
+var (
+	langKeywordMaps = map[string]map[string]bool{
+		"go":         buildKeywordSet("package", "import", "func", "type", "struct", "interface", "return", "if", "else", "for", "range", "switch", "case", "default", "var", "const", "defer", "go", "select", "chan", "map", "make", "len", "cap", "append", "break", "continue"),
+		"rust":       buildKeywordSet("fn", "let", "mut", "pub", "struct", "enum", "impl", "trait", "for", "in", "if", "else", "match", "loop", "while", "return", "use", "mod", "crate", "self", "Self", "super", "where", "async", "await", "move", "const", "static"),
+		"python":     buildKeywordSet("def", "class", "import", "from", "as", "return", "if", "elif", "else", "for", "while", "in", "not", "and", "or", "with", "try", "except", "finally", "raise", "pass", "break", "continue", "lambda", "yield", "async", "await"),
+		"javascript": buildKeywordSet("function", "const", "let", "var", "return", "if", "else", "for", "while", "switch", "case", "default", "import", "export", "from", "class", "extends", "new", "async", "await", "try", "catch", "throw", "type", "interface", "enum"),
+		"sql":        buildKeywordSet("SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "JOIN", "LEFT", "RIGHT", "INNER", "ON", "GROUP", "BY", "ORDER", "LIMIT", "AS", "AND", "OR", "NOT", "select", "from", "where", "insert", "update", "delete"),
+		"bash":       buildKeywordSet("if", "then", "else", "elif", "fi", "for", "do", "done", "while", "case", "esac", "function", "export", "local", "return", "exit", "echo"),
 	}
+	defaultKeywordMap = buildKeywordSet("if", "else", "for", "while", "return", "func", "fn", "def", "class", "struct", "type", "import")
+
+	mathPreviewReplacer = strings.NewReplacer(
+		`\alpha`, "α", `\beta`, "β", `\gamma`, "γ", `\delta`, "δ", `\theta`, "θ", `\lambda`, "λ", `\pi`, "π", `\sigma`, "σ", `\omega`, "ω",
+		`\sum`, "∑", `\prod`, "∏", `\int`, "∫", `\infty`, "∞", `\sqrt`, "√", `\pm`, "±", `\times`, "×", `\div`, "÷",
+		`\leq`, "≤", `\geq`, "≥", `\neq`, "≠", `\approx`, "≈", `\rightarrow`, "→", `\Rightarrow`, "⇒", `\in`, "∈",
+		`\partial`, "∂", `\nabla`, "∇", `^2`, "²", `^3`, "³", `^n`, "ⁿ",
+		`$$`, "", `$`, "",
+	)
+)
+
+func buildKeywordSet(words ...string) map[string]bool {
 	m := make(map[string]bool, len(words))
 	for _, w := range words {
 		m[w] = true
 	}
 	return m
+}
+
+func langKeywords(lang string) map[string]bool {
+	if lang == "typescript" {
+		lang = "javascript"
+	}
+	if m, ok := langKeywordMaps[lang]; ok {
+		return m
+	}
+	return defaultKeywordMap
 }
 
 // --- Preview Parsers (CSV, Mermaid, LaTeX) ---
@@ -3651,14 +3670,7 @@ func formatMathPreview(src string) (string, string) {
 	if trimmed == "" {
 		return "", theme.Tr("数学公式为空", "Math formula is empty")
 	}
-	replacer := strings.NewReplacer(
-		`\alpha`, "α", `\beta`, "β", `\gamma`, "γ", `\delta`, "δ", `\theta`, "θ", `\lambda`, "λ", `\pi`, "π", `\sigma`, "σ", `\omega`, "ω",
-		`\sum`, "∑", `\prod`, "∏", `\int`, "∫", `\infty`, "∞", `\sqrt`, "√", `\pm`, "±", `\times`, "×", `\div`, "÷",
-		`\leq`, "≤", `\geq`, "≥", `\neq`, "≠", `\approx`, "≈", `\rightarrow`, "→", `\Rightarrow`, "⇒", `\in`, "∈",
-		`\partial`, "∂", `\nabla`, "∇", `^2`, "²", `^3`, "³", `^n`, "ⁿ",
-		`$$`, "", `$`, "",
-	)
-	out := strings.TrimSpace(replacer.Replace(trimmed))
+	out := strings.TrimSpace(mathPreviewReplacer.Replace(trimmed))
 	// Balance braces check for basic error bar feedback.
 	depth := 0
 	for _, ch := range trimmed {

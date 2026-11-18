@@ -397,17 +397,17 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 					}
 				}
 			} else {
-				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(8).Background(pal.Shell)
+				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(theme.Space8).Background(pal.Shell)
 				ph.Children(func() {
-					ui.Text(c, lbl).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 				})
 			}
 
-			bar := ui.Row(c.Key("vid-controls")).FillWidth().Height(34).PaddingX(10).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).
+			bar := ui.Row(c.Key("vid-controls")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).
 				Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
 			bar.Children(func() {
-				left := ui.Row(c).AlignItems(ui.Center).Gap(8).Shrink(1)
+				left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(1)
 				left.Children(func() {
 					playText := "▶"
 					playLabel := theme.Tr("播放", "Play")
@@ -415,10 +415,10 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 						playText = "❚❚"
 						playLabel = theme.Tr("暂停", "Pause")
 					}
-					playBtn := ui.ButtonBase(c.Key(fmt.Sprintf("vid-play-%d", id))).Size(24, 24).Center().
-						Radius(6).Background(pal.Hover).Cursor(ui.CursorPointer).Label(playLabel)
+					playBtn := ui.ButtonBase(c.Key(fmt.Sprintf("vid-play-%d", id))).Size(theme.IconButtonBox, theme.IconButtonBox).Center().
+						Radius(theme.RadiusSM).Background(pal.Hover).Cursor(ui.CursorPointer).Label(playLabel)
 					playBtn.Children(func() {
-						ui.Text(c, playText).FontSize(11).FontWeight(600).TextColor(pal.Text).SingleLine()
+						ui.Text(c, playText).FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 					})
 					appUi.Probe(playBtn, fmt.Sprintf("video-play-%d", id))
 					if playBtn.Clicked() {
@@ -428,15 +428,15 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 							player.Play()
 						}
 					}
-					ui.Text(c, lbl).FontSize(13).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, lbl).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 				})
 
 				openBtn := appUi.IconButton(c, icons.LinkOpen, appUi.IconButtonOptions{
 					ID:       fmt.Sprintf("vid-open-%d", id),
 					Label:    theme.Tr("用默认播放器打开", "Open in default player"),
 					Tooltip:  theme.Tr("用默认播放器打开", "Open in default player"),
-					Size:     24,
-					IconSize: 14,
+					Size:     theme.IconButtonBox,
+					IconSize: theme.IconInline,
 				})
 				if openBtn.Clicked() {
 					player.Pause()
@@ -448,22 +448,22 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 	}
 
 	// Graceful fallback card when the OS codec cannot decode the video inline or file is external.
-	card := ui.Row(c.Key(fmt.Sprintf("video-fallback-%d", id))).FillWidth().Height(64).PaddingX(14).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).Background(pal.Shell).Cursor(ui.CursorPointer)
+	card := ui.Row(c.Key(fmt.Sprintf("video-fallback-%d", id))).FillWidth().Height(64).PaddingX(theme.Space16).
+		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space10).Background(pal.Shell).Cursor(ui.CursorPointer)
 	card.Children(func() {
-		left := ui.Row(c).AlignItems(ui.Center).Gap(10).Shrink(1)
+		left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Shrink(1)
 		left.Children(func() {
-			badge := ui.Box(c).Size(32, 32).Center().Radius(8).Background(pal.Selected)
+			badge := ui.Box(c).Size(theme.HeightControl, theme.HeightControl).Center().Radius(theme.RadiusMD).Background(pal.Selected)
 			badge.Children(func() {
-				ui.Text(c, "▶").FontSize(13).FontWeight(600).TextColor(pal.Accent).SingleLine()
+				ui.Text(c, "▶").FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Accent).SingleLine()
 			})
-			ui.Text(c, lbl).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
+			ui.Text(c, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 		})
 		openBtn := appUi.IconButton(c, icons.LinkOpen, appUi.IconButtonOptions{
 			ID:       fmt.Sprintf("vid-open-%d", id),
 			Label:    theme.Tr("打开视频", "Open video"),
-			Size:     28,
-			IconSize: 15,
+			Size:     theme.HeightCompact,
+			IconSize: theme.IconAction,
 		})
 		if openBtn.Clicked() {
 			s.openBlockLink(c.Services(), b.ImageSrc)

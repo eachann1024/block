@@ -1,11 +1,15 @@
 package app
 
 import (
+	"image/color"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"block/internal/files"
+	"block/internal/theme"
+	blockui "block/internal/ui"
+	"github.com/egoist/mygo/ui"
 )
 
 func TestResolveShellLayout(t *testing.T) {
@@ -342,5 +346,59 @@ func TestWorkspaceTabsReorderReopenPersistenceAndNotebookSwitch(t *testing.T) {
 	persisted := files.LoadState()
 	if len(persisted.OpenTabs) != 0 || persisted.ActiveTab != "" {
 		t.Fatalf("expected persisted tabs cleared on notebook switch, got %+v", persisted)
+	}
+}
+
+func TestSingleTabTitleStyleHasNoBackground(t *testing.T) {
+	theme.SetDark(false)
+	pal := theme.Ocean()
+	menu := &TabMenuState{}
+	tabs := []string{"/notes/claude.md"}
+	active := "/notes/claude.md"
+
+	th := pal.ToUITheme("")
+	blockui.ClearTargets()
+	tt := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(&th)
+		RenderTitlebar(c, TitlebarProps{
+			Tabs:         tabs,
+			ActiveTab:    active,
+			SidebarWide:  true,
+			SidebarWidth: 220,
+			MenuState:    menu,
+		})
+	}, 960, 80)
+	tt.Frame()
+
+	info, ok := tt.AccessByRole(ui.RoleTab, "claude")
+	if !ok || !info.Selected {
+		t.Fatalf("expected single tab accessibility node selected, got ok=%v info=%+v", ok, info)
+	}
+
+	r, ok := blockui.TargetBounds("tab-0")
+	if !ok {
+		t.Fatal("expected tab-0 bounds recorded for single tab")
+	}
+	img := tt.Image()
+	// Sample inside the left padding of tab-0 (before label glyphs): should match pal.Shell (#f1f1f1), with no pill background.
+	gotSingle := img.RGBAAt(int(r.X+4), int(r.Y+r.H/2))
+	wantShell := color.RGBA{R: 0xf1, G: 0xf1, B: 0xf1, A: 0xff}
+	if gotSingle != wantShell {
+		t.Fatalf("expected single tab background to match titlebar shell %+v, got %+v", wantShell, gotSingle)
+	}
+
+	// Once a second tab opens, the active tab renders with its selected pill surface (#e5edfc).
+	tabs = []string{"/notes/claude.md", "/notes/other.md"}
+	tt.Frame()
+
+	rMulti, ok := blockui.TargetBounds("tab-0")
+	if !ok {
+		t.Fatal("expected tab-0 bounds recorded for multi-tab")
+	}
+	imgMulti := tt.Image()
+	gotMulti := imgMulti.RGBAAt(int(rMulti.X+4), int(rMulti.Y+rMulti.H/2))
+	wantSelected := color.RGBA{R: 0xe5, G: 0xed, B: 0xfc, A: 0xff}
+	if gotMulti != wantSelected {
+		t.Fatalf("expected multi-tab active pill background %+v, got %+v", wantSelected, gotMulti)
 	}
 }

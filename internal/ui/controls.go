@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"block/internal/icons"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
@@ -56,9 +54,9 @@ func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
 	case IconPlain:
 		box, glyph, radius = theme.IconButtonBox, theme.IconButtonGlyph, 6
 	case IconBordered:
-		box, glyph, radius = theme.ControlHeight, theme.IconRow, theme.RadiusControl
+		box, glyph, radius = theme.HeightControl, theme.IconRow, theme.RadiusMD
 	default:
-		box, glyph, radius = theme.ChromeBoxSize, theme.IconChrome, theme.RadiusControl
+		box, glyph, radius = theme.ChromeBoxSize, theme.IconChrome, theme.RadiusMD
 	}
 	if o.Size > 0 {
 		box = o.Size
@@ -114,20 +112,31 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	hovered := btn.Hovered() && !opts.Disabled
 	pressed := btn.Pressed() && !opts.Disabled
 
+	bgCol := ui.Transparent
+	bdCol := ui.Transparent
+	hasBorder := opts.Variant == IconBordered || (opts.Active && opts.ActiveStyle != ActiveAccentFlat)
+	if opts.Variant == IconBordered {
+		bgCol = pal.Paper
+		bdCol = pal.BtnBorder
+	}
 	switch {
 	case opts.Danger && pressed:
-		btn.Background(pal.Danger.Alpha(0.22))
+		bgCol = pal.Danger.Alpha(0.22)
 	case opts.Danger && hovered:
-		btn.Background(pal.DangerSurface)
+		bgCol = pal.DangerSurface
 	case opts.Active && opts.ActiveStyle == ActiveAccentFlat:
-		btn.Background(pal.Selected)
+		bgCol = pal.Selected
 	case opts.Active:
-		btn.Background(pal.Selected).Border(1, pal.Accent)
+		bgCol = pal.Selected
+		bdCol = pal.Accent
+		hasBorder = true
 	case pressed:
-		btn.Background(pal.Selected)
+		bgCol = pal.Selected
 	case hovered:
-		btn.Background(pal.Hover)
+		bgCol = pal.Hover
 	}
+	AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
+	TactileButton(btn, hovered, pressed, opts.Disabled)
 	if opts.Disabled {
 		btn.Opacity(theme.DisabledOpacity)
 	}
@@ -146,7 +155,7 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		default:
 			ic = pal.MonoIconColors(pal.TextSecondary)
 		}
-		icons.Draw(c, glyph, glyphSize, ic)
+		icons.DrawAnimated(c, glyph, glyphSize, ic, hovered || pressed)
 	})
 	if opts.ID != "" {
 		Probe(btn, opts.ID)
@@ -163,87 +172,169 @@ const (
 	ButtonDanger
 )
 
+// ActionButtonOptions configures optional sizing and layout overrides for ActionButtonWithOptions.
+type ActionButtonOptions struct {
+	ID                 string
+	Label              string
+	AccessibilityLabel string
+	Leading            *icons.Icon
+	Style              ActionButtonStyle
+	Disabled           bool
+	Height             float32
+	Width              float32
+	MinWidth           float32
+	PaddingX           float32
+	Grow               float32
+	Shrink             *float32
+	SecondaryShellBG   bool
+	RegularWeight      bool
+}
+
 // ActionButton renders a clean Ocean Paper text (+ optional leading icon) button.
 func ActionButton(c *ui.Context, id, label string, leading *icons.Icon, style ActionButtonStyle, disabled bool) ui.Element {
+	return ActionButtonWithOptions(c, ActionButtonOptions{
+		ID:       id,
+		Label:    label,
+		Leading:  leading,
+		Style:    style,
+		Disabled: disabled,
+	})
+}
+
+// ActionButtonWithOptions renders an ActionButton with optional sizing/layout overrides.
+func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element {
 	pal := theme.Ocean()
-	if id != "" {
-		c.Key(id)
+	if opts.ID != "" {
+		c.Key(opts.ID)
 	}
 	cursor := ui.CursorPointer
-	if disabled {
+	if opts.Disabled {
 		cursor = ui.CursorDefault
 	}
-	btn := ui.ButtonBase(c).Height(32).PaddingX(12).Gap(6).AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusControl).Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(label)
-	hovered := btn.Hovered() && !disabled
-	pressed := btn.Pressed() && !disabled
+	h := opts.Height
+	if h <= 0 {
+		h = theme.HeightControl
+	}
+	padX := opts.PaddingX
+	if padX <= 0 && opts.Width <= 0 {
+		padX = theme.Space12
+	}
+	a11yLabel := opts.AccessibilityLabel
+	if a11yLabel == "" {
+		a11yLabel = opts.Label
+	}
+	btn := ui.ButtonBase(c).Height(h).Gap(theme.Space6).AlignItems(ui.Center).Justify(ui.Center).
+		Radius(theme.RadiusMD).Cursor(cursor).Disabled(opts.Disabled).DimDisabled(false).Label(a11yLabel)
+	if opts.Width > 0 {
+		btn.Width(opts.Width)
+	} else if padX > 0 {
+		btn.PaddingX(padX)
+	}
+	if opts.MinWidth > 0 {
+		btn.MinWidth(opts.MinWidth)
+	}
+	if opts.Grow > 0 {
+		btn.Grow(opts.Grow)
+	}
+	if opts.Shrink != nil {
+		btn.Shrink(*opts.Shrink)
+	}
+	hovered := btn.Hovered() && !opts.Disabled
+	pressed := btn.Pressed() && !opts.Disabled
 
-	var fg ui.Color
-	switch style {
+	var fg, bg, bd ui.Color
+	hasBorder := false
+	switch opts.Style {
 	case ButtonPrimary:
 		fg = pal.AccentText
-		bg := pal.Accent
+		bg = pal.Accent
 		if pressed {
 			bg = pal.AccentPressed
 		} else if hovered {
 			bg = pal.AccentHover
 		}
-		btn.Background(bg)
 	case ButtonDanger:
 		fg = pal.Danger
-		bg := pal.DangerSurface
+		bg = pal.DangerSurface
 		if pressed {
 			bg = pal.Danger.Alpha(0.26)
 		} else if hovered {
 			bg = pal.Danger.Alpha(0.18)
 		}
-		btn.Background(bg).Border(1, pal.Danger.Alpha(0.35))
+		bd = pal.Danger.Alpha(0.35)
+		hasBorder = true
 	case ButtonGhost:
 		fg = pal.TextSecondary
 		if pressed {
 			fg = pal.Text
-			btn.Background(pal.Selected)
+			bg = pal.Selected
 		} else if hovered {
 			fg = pal.Text
-			btn.Background(pal.Hover)
+			bg = pal.Hover
 		}
 	default:
 		fg = pal.Text
-		bg := pal.Card
+		bg = pal.Card
+		if opts.SecondaryShellBG {
+			bg = pal.Shell
+		}
 		if pressed {
 			bg = pal.Selected
 		} else if hovered {
 			bg = pal.Hover
 		}
-		btn.Background(bg).Border(1, pal.BtnBorder)
+		bd = pal.BtnBorder
+		hasBorder = true
 	}
-	if disabled {
+	AnimateSurfaceColors(btn, bg, bd, hasBorder)
+	TactileCard(btn, hovered, pressed, false, opts.Disabled)
+	if opts.Disabled {
 		btn.Opacity(theme.DisabledOpacity)
 	}
 
+	weight := theme.WeightControl
+	if opts.RegularWeight {
+		weight = theme.WeightRegular
+	}
 	btn.Children(func() {
-		if leading != nil {
+		if opts.Leading != nil {
 			ic := pal.MonoIconColors(fg)
-			if (style == ButtonSecondary || style == ButtonGhost) && (hovered || pressed) {
+			if (opts.Style == ButtonSecondary || opts.Style == ButtonGhost) && (hovered || pressed) {
 				ic = pal.DuoIconColors(fg)
 			}
-			icons.Draw(c, *leading, 16, ic)
+			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
 		}
-		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(20).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+		ui.Text(c, opts.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(fg).SingleLine()
 	})
-	if id != "" {
-		Probe(btn, id)
+	if opts.ID != "" {
+		Probe(btn, opts.ID)
 	}
 	return btn
 }
 
 type SegmentOption struct {
-	ID    string
-	Label string
+	ID       string
+	Label    string
+	Disabled bool
+}
+
+// SegmentedControlOptions configures optional layout overrides for SegmentedControlWithOptions.
+type SegmentedControlOptions struct {
+	FillWidth     bool
+	TrackHeight   float32
+	TrackPadding  float32
+	SegmentHeight float32
+	SegmentRadius float32
+	ShellTrack    bool
 }
 
 // SegmentedControl renders an Ocean Paper segmented radio track.
 func SegmentedControl(c *ui.Context, id string, active *int, options []SegmentOption) bool {
+	return SegmentedControlWithOptions(c, id, active, options, SegmentedControlOptions{})
+}
+
+// SegmentedControlWithOptions renders a SegmentedControl with optional layout overrides.
+func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options []SegmentOption, opts SegmentedControlOptions) bool {
 	if len(options) == 0 {
 		return false
 	}
@@ -252,39 +343,74 @@ func SegmentedControl(c *ui.Context, id string, active *int, options []SegmentOp
 	if id != "" {
 		c.Key(id)
 	}
+	trackH := opts.TrackHeight
+	if trackH <= 0 {
+		trackH = 30
+	}
+	trackPad := opts.TrackPadding
+	if trackPad <= 0 {
+		trackPad = theme.Space2
+	}
+	segH := opts.SegmentHeight
+	if segH <= 0 {
+		segH = 24
+	}
+	segRad := opts.SegmentRadius
+	if segRad <= 0 {
+		segRad = theme.RadiusSM
+	}
+	trackBG, trackBorder := pal.Paper, pal.BtnBorder
+	if opts.ShellTrack {
+		trackBG, trackBorder = pal.Shell, pal.Hairline
+	}
 	seg := ui.SegmentedBase(c, active, len(options))
-	track := seg.Track.Height(30).Padding(2).Gap(2).Radius(theme.RadiusControl).
-		Background(pal.Paper).Border(1, pal.BtnBorder)
+	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).Radius(theme.RadiusMD).
+		Background(trackBG).Border(1, trackBorder)
+	if opts.FillWidth {
+		track.FillWidth()
+	}
 	if id != "" {
 		Probe(track, id)
 	}
 	track.Children(func() {
 		for i, opt := range options {
-			item := seg.Segment(i).Height(24).PaddingX(10).Center().Radius(6).Border(1, ui.Transparent).Label(opt.Label)
-			disabled := item.IsDisabled()
+			item := seg.Segment(i).Height(segH).Center().Radius(segRad).
+				Disabled(opt.Disabled).Label(opt.Label)
+			if opts.FillWidth {
+				item.Grow(1).MinWidth(0)
+			} else {
+				item.PaddingX(theme.Space10)
+			}
+			disabled := item.IsDisabled() || opt.Disabled
 			if disabled {
-				item.Cursor(ui.CursorDefault)
+				item.Cursor(ui.CursorDefault).Opacity(0.4)
 			} else {
 				item.Cursor(ui.CursorPointer)
 			}
 			hovered := item.Hovered() && !disabled
 			pressed := item.Pressed() && !disabled
-			if i == *active {
-				item.Background(pal.Selected).Border(1, pal.Accent)
+			isAct := i == *active
+			bg := ui.Transparent
+			bd := ui.Transparent
+			if isAct {
+				bg = pal.Selected
+				bd = pal.Accent
 			} else if pressed {
-				item.Background(pal.Selected)
+				bg = pal.Selected
 			} else if hovered {
-				item.Background(pal.Hover)
+				bg = pal.Hover
 			}
+			AnimateSurfaceColors(item, bg, bd, true)
+			TactileCard(item, hovered, pressed, isAct, disabled)
 			if opt.ID != "" {
 				Probe(item, opt.ID)
 			}
 			item.Children(func() {
 				col := pal.TextSecondary
-				if i == *active || hovered || pressed {
+				if isAct || hovered || pressed {
 					col = pal.Text
 				}
-				ui.Text(c, opt.Label).FontSize(theme.FontBody).FixedLineHeight(20).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
+				ui.Text(c, opt.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 			})
 		}
 	})
@@ -324,17 +450,24 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 			bg = pal.BtnBorder.Mix(pal.Text, 0.12)
 		}
 	}
-	sw.Background(bg)
+	sw.Background(sw.AnimateColor("swBg", bg, FadeColor))
+	TactileCard(sw, hovered, pressed, false, disabled)
 	if disabled {
 		sw.Opacity(theme.DisabledOpacity)
 	}
 	sw.Children(func() {
-		knobX := float32(0)
-		if *value {
-			knobX = 16
+		targetW := float32(18)
+		if pressed {
+			targetW = 21
 		}
-		ui.Box(c).Size(18, 18).Radius(theme.RadiusPill).Background(ui.Hex("#ffffff")).
-			Left(knobX).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.2))
+		targetX := float32(0)
+		if *value {
+			targetX = 34 - targetW
+		}
+		knobW := sw.AnimateTo("swKnobW", targetW, SpringTactile)
+		knobX := sw.AnimateTo("swKnobX", targetX, SpringTactile)
+		Elevate(ui.Box(c).Size(knobW, 18).Radius(theme.RadiusPill).Background(pal.SwitchKnob).
+			Left(knobX), theme.ElevationRaised)
 	})
 	if id != "" {
 		Probe(sw, id)
@@ -374,7 +507,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	}
 	row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
 		AlignItems(ui.Center).Justify(ui.Start).
-		Radius(theme.RadiusControl).Cursor(cursor).Disabled(item.Disabled).DimDisabled(false).Label(item.Label)
+		Radius(theme.RadiusMD).Cursor(cursor).Disabled(item.Disabled).DimDisabled(false).Label(item.Label)
 	RevealOnHighlight(row, highlighted && !item.Disabled)
 	rawHover := row.Hovered() && !item.SuppressHover
 	hovered := (rawHover || highlighted) && !item.Disabled
@@ -388,7 +521,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	case item.Danger:
 		fg, iconLine = pal.MenuDangerFG, pal.MenuDangerFG
 	case item.Checked:
-		row.Background(pal.MenuChecked)
+		row.Background(pal.Selected)
 	case pressed:
 		row.Background(pal.Selected)
 	case hovered:
@@ -402,7 +535,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			var ic theme.IconColors
 			switch {
 			case item.Danger && active:
-				ic = theme.IconColors{Line: pal.MenuDangerHoverFG, Fill: ui.RGBA(255, 255, 255, 0.20), Accent: pal.MenuDangerHoverFG}
+				ic = theme.IconColors{Line: pal.MenuDangerHoverFG, Fill: pal.MenuDangerHoverFG.Alpha(0.20), Accent: pal.MenuDangerHoverFG}
 			case item.Danger:
 				ic = pal.MonoIconColors(iconLine)
 			case active || item.Checked:
@@ -412,7 +545,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			}
 			icons.Draw(c, *item.Icon, theme.IconRow, ic)
 		}
-		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(20).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if item.Shortcut != "" {
 			hintCol := pal.MenuMuted
 			if item.Danger && active {
@@ -420,7 +553,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			}
 			ShortcutLabel(c, item.Shortcut, ShortcutLabelStyle{
 				FontSize:   theme.FontMeta,
-				LineHeight: 16,
+				LineHeight: theme.LineMeta,
 				Color:      hintCol,
 			})
 		}
@@ -474,7 +607,7 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 			c.Key(cancelID)
 		}
 		cancelBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).PaddingX(7).Shrink(0).Center().
-			Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).Label(cancelText)
+			Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(cancelText)
 		cancelHover := cancelBtn.Hovered()
 		cancelPress := cancelBtn.Pressed()
 		cancelFG := pal.TextSecondary
@@ -487,7 +620,7 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 			cancelFG = pal.Text
 		}
 		cancelBtn.Children(func() {
-			ui.Text(c, cancelText).FontSize(theme.FontSmall).FixedLineHeight(16).
+			ui.Text(c, cancelText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineMeta).
 				FontWeight(theme.WeightControl).TextColor(cancelFG).SingleLine()
 		})
 		if cancelID != "" {
@@ -501,7 +634,7 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 			c.Key(confirmID)
 		}
 		confirmBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).PaddingX(8).Shrink(0).Center().
-			Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).Label(confirmText)
+			Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(confirmText)
 		confirmHover := confirmBtn.Hovered()
 		confirmPress := confirmBtn.Pressed()
 		var confirmFG ui.Color
@@ -528,7 +661,7 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 			confirmBtn.Background(bg)
 		}
 		confirmBtn.Children(func() {
-			ui.Text(c, confirmText).FontSize(theme.FontSmall).FixedLineHeight(16).
+			ui.Text(c, confirmText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineMeta).
 				FontWeight(theme.WeightControl).TextColor(confirmFG).SingleLine()
 		})
 		if confirmID != "" {
@@ -539,26 +672,19 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 	return confirmed, cancelled
 }
 
-// PopupTransition returns the shared 160ms enter/exit transition for menus and popovers.
+// PopupTransition returns Scheme B's tactile spring enter/exit transition for menus and popovers.
 func PopupTransition() ui.ElementTransition {
-	return ui.ElementTransition{
-		Duration: time.Duration(theme.MotionMs) * time.Millisecond,
-		Ease:     ui.CubicBezier(0.16, 1, 0.3, 1),
-		Colors:   true,
-	}
+	return PopoverSpringTransition()
 }
 
-// MenuSurface styles el as a dropdown/context-menu surface: menu fill, radius 14,
-// 4px padding, 2px row gap, a hairline ring plus layered soft shadows, and 160ms popup motion.
+// MenuSurface styles el as a dropdown/context-menu surface: menu fill, RadiusXL,
+// 4px padding, 2px row gap, a hairline ring, popover elevation and 160ms popup motion.
 func MenuSurface(el ui.Element) ui.Element {
 	pal := theme.Ocean()
-	el.Background(pal.Menu).Radius(theme.RadiusSurface).Padding(theme.MenuPadding).Gap(theme.MenuGap).
+	el.Background(pal.Menu).Radius(theme.RadiusXL).Padding(theme.MenuPadding).Gap(theme.MenuGap).
 		Border(1, pal.MenuBorder.Alpha(0.6)).
-		Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
-		Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
-		Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
 		Transition(PopupTransition())
-	return el
+	return Elevate(el, theme.ElevationPopover)
 }
 
 // VerticalResizeHandle renders a vertical splitter adjusting width within [minW, maxW].

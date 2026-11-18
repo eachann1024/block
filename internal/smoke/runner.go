@@ -194,7 +194,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 			return "", fmt.Errorf("block-menu bounds missing")
 		}
 		// Scroll wheel inside slash menu and verify menu stays open without crashing or overflowing
-		mx, my := (menuRect.X+menuRect.W*0.5)*0.9, (menuRect.Y+menuRect.H*0.5)*0.9
+		mx, my := menuRect.X+menuRect.W*0.5, menuRect.Y+menuRect.H*0.5
 		for i := 0; i < 5; i++ {
 			tt.Scroll(mx, my, 0, 72)
 		}

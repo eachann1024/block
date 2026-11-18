@@ -166,6 +166,7 @@ type QuickNoteController struct {
 	noticeTimer     *time.Timer
 	savedBounds     *model.SavedWindowBounds
 	boundsTimer     *time.Timer
+	syncTimer       *time.Timer
 }
 
 // NewQuickNoteController creates a QuickNoteController backed by `dataDir/quick`.
@@ -747,6 +748,10 @@ func (q *QuickNoteController) Hide() {
 		q.boundsTimer.Stop()
 		q.boundsTimer = nil
 	}
+	if q.syncTimer != nil {
+		q.syncTimer.Stop()
+		q.syncTimer = nil
+	}
 	q.syncSessionToDiskLocked(q.activeSlot)
 	q.saveMetaLocked()
 	win := q.win
@@ -764,6 +769,10 @@ func (q *QuickNoteController) Flush() {
 	if q.boundsTimer != nil {
 		q.boundsTimer.Stop()
 		q.boundsTimer = nil
+	}
+	if q.syncTimer != nil {
+		q.syncTimer.Stop()
+		q.syncTimer = nil
 	}
 	for i := 0; i < quickSlotCount; i++ {
 		if q.sessions[i] != nil && q.sessions[i].Dirty() {
@@ -1568,21 +1577,54 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 		})
 	})
 
-	q.syncActiveSlotIfDirty()
+	q.scheduleSyncActiveSlot()
 
 	if notice != "" {
-		ui.Row(c.Key("quick-notice")).Absolute().Right(16).Bottom(14).MaxWidth(360).Height(30).PaddingX(12).
+		noticeRow := ui.Row(c.Key("quick-notice")).Absolute().Right(theme.Space16).Bottom(theme.Space16).MaxWidth(360).Height(30).PaddingX(theme.Space12).
 			AlignItems(ui.Center).Radius(theme.RadiusPill).Background(pal.Menu).
-			Border(1, pal.MenuBorder).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.12)).
+			Border(1, pal.MenuBorder).
 			Children(func() {
-				ui.Text(c, notice).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).SingleLine()
+				ui.Text(c, notice).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 			})
+		internalui.Elevate(noticeRow, theme.ElevationPopover)
 	}
+}
+
+const quickSyncDebounce = 300 * time.Millisecond
+
+func (q *QuickNoteController) scheduleSyncActiveSlot() {
+	q.mu.Lock()
+	slot := q.activeSlot
+	sess := q.sessions[slot]
+	if sess == nil || !sess.Dirty() {
+		q.mu.Unlock()
+		return
+	}
+	if q.win == nil || internalui.IsProbeEnabled() {
+		q.syncSessionToDiskLocked(slot)
+		q.mu.Unlock()
+		return
+	}
+	if q.syncTimer != nil {
+		q.syncTimer.Reset(quickSyncDebounce)
+		q.mu.Unlock()
+		return
+	}
+	q.syncTimer = time.AfterFunc(quickSyncDebounce, func() {
+		mygo.RunOnMain(func() {
+			q.syncActiveSlotIfDirty()
+		})
+	})
+	q.mu.Unlock()
 }
 
 func (q *QuickNoteController) syncActiveSlotIfDirty() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.syncTimer != nil {
+		q.syncTimer.Stop()
+		q.syncTimer = nil
+	}
 	slot := q.activeSlot
 	if sess := q.sessions[slot]; sess != nil && sess.Dirty() {
 		q.syncSessionToDiskLocked(slot)
