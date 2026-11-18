@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 C · 统一来源清单 + 侧滑预设抽屉</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#547dd0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.scr::-webkit-scrollbar{width:6px;height:6px}
+.scr::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.25);border-radius:3px}
+</style>
+</helmet>
+
+<div style="width:860px;height:720px;position:relative;box-sizing:border-box;display:flex;flex-direction:column;background:{{t.winBg}};color:{{t.text}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid {{t.shellBorder}};-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:{{t.shellBg}};border-bottom:1px solid {{t.shellBorder}};box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px;flex:none">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" aria-label="切换设置侧栏" onClick="{{toggleSidebar}}" style="width:26px;height:26px;padding:0;border-radius:6px;border:1px solid {{t.sideBtnBorder}};background:{{t.sideBtnBg}};color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"></rect>
+          <path d="M9 4.5V19.5" stroke="currentColor" stroke-width="1.6"></path>
+          <path d="M13 10L15.5 12L13 14" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span style="color:{{t.text2}}">设置</span>
+        <span style="color:{{t.text2}}">/</span>
+        <span style="color:{{t.text}};font-weight:500">AI 助手</span>
+      </div>
+    </div>
+
+    <button type="button" aria-label="关闭设置" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </button>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex;position:relative">
+    <sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="设置分类" style="width:200px;flex:none;background:{{t.sidebarBg}};border-right:1px solid {{t.shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box">
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:500;display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{t.iconFill}}" stroke="{{t.accent}}" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+          <span>AI 助手</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>通用与编辑</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>外观与字体</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>快捷键</span>
+        </button>
+      </aside>
+    </sc-if>
+
+    <main class="scr" style="flex:1;min-width:0;background:{{t.winBg}};overflow-y:auto">
+      <div style="max-width:600px;margin:0 auto;padding:24px 24px 40px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560;color:{{t.text}}">AI 助手</h1>
+            <button type="button" onClick="{{toggleMaster}}" style="height:26px;padding:0 10px;border-radius:999px;border:1px solid {{masterBorder}};background:{{masterBg}};color:{{t.text}};font-size:13px;cursor:pointer">{{masterLabel}}</button>
+          </div>
+
+          <button type="button" onClick="{{openAddDrawer}}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-weight:500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            <span>添加供应商</span>
+          </button>
+        </div>
+
+        <sc-if value="{{masterOn}}" hint-placeholder-val="{{true}}">
+          <section aria-label="模型来源" style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">模型来源</span>
+              <div style="display:inline-flex;padding:2px;border-radius:7px;background:{{t.cardBg}};border:1px solid {{t.border}};gap:2px">
+                <button type="button" onClick="{{filterAll}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{fAllBorder}};background:{{fAllBg}};color:{{t.text}};cursor:pointer;font-size:12px">全部</button>
+                <button type="button" onClick="{{filterApi}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{fApiBorder}};background:{{fApiBg}};color:{{t.text}};cursor:pointer;font-size:12px">API 供应商</button>
+                <button type="button" onClick="{{filterCli}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{fCliBorder}};background:{{fCliBg}};color:{{t.text}};cursor:pointer;font-size:12px">本机 CLI</button>
+              </div>
+            </div>
+
+            <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+              <sc-for list="{{rows}}" as="row" hint-placeholder-count="5">
+                <div style="height:48px;padding:0 14px;border-bottom:{{row.borderBottom}};background:{{row.bg}};display:flex;align-items:center;justify-content:space-between;gap:10px;box-sizing:border-box">
+                  <div style="display:flex;align-items:center;gap:9px;min-width:0;flex:1">
+                    <span style="width:24px;height:24px;border-radius:6px;background:{{t.wellBg}};border:1px solid {{t.border}};display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:12px;font-weight:600;color:{{t.text}}">{{row.short}}</span>
+                    <span style="font-weight:520;color:{{t.text}};white-space:nowrap">{{row.name}}</span>
+                    <span style="height:18px;padding:0 6px;border-radius:4px;background:{{t.wellBg}};border:1px solid {{t.border}};color:{{t.text2}};font-size:11px;line-height:18px;flex:none">{{row.badge}}</span>
+                    <span class="mono" style="color:{{t.text2}};font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{row.meta}}</span>
+                  </div>
+
+                  <div style="display:flex;align-items:center;gap:8px;flex:none">
+                    <button type="button" onClick="{{row.edit}}" style="height:26px;padding:0 9px;border-radius:6px;border:1px solid {{t.btnBorder}};background:transparent;color:{{t.text}};cursor:pointer;font-size:12px">配置</button>
+                    <button type="button" aria-label="切换来源启用" onClick="{{row.toggle}}" style="width:34px;height:20px;padding:2px;border:0;border-radius:10px;background:{{row.swBg}};display:inline-flex;align-items:center;justify-content:{{row.swAlign}};cursor:pointer;box-sizing:border-box">
+                      <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                    </button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section aria-label="普通功能" style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">普通功能</span>
+            <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;padding:0 14px;height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+              <span style="color:{{t.text}}">标注功能</span>
+              <button type="button" style="height:30px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <span style="font-weight:500">GPT-6.2-Sol</span>
+                <span style="color:{{t.text2}}">· Medium</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+            </div>
+          </section>
+        </sc-if>
+
+      </div>
+    </main>
+
+    <sc-if value="{{drawerOpen}}" hint-placeholder-val="{{true}}">
+      <aside aria-label="供应商配置面板" style="width:320px;flex:none;background:{{t.drawerBg}};border-left:1px solid {{t.shellBorder}};padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:16px;box-sizing:border-box;box-shadow:-12px 0 32px rgba(0,0,0,0.28);z-index:10">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">{{drawerTitle}}</span>
+            <button type="button" aria-label="关闭侧栏" onClick="{{closeDrawer}}" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+            </button>
+          </div>
+
+          <sc-if value="{{isDrawerAdd}}" hint-placeholder-val="{{true}}">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
+              <sc-for list="{{presets}}" as="pre" hint-placeholder-count="6">
+                <button type="button" onClick="{{pre.pick}}" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{pre.border}};background:{{pre.bg}};color:{{t.text}};display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:{{pre.weight}}">
+                  <span style="width:6px;height:6px;border-radius:3px;background:{{pre.dot}};flex:none"></span>
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{pre.label}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="c-name" style="color:{{t.text2}}">名称</label>
+              <input id="c-name" type="text" value="{{formName}}" onChange="{{onFormName}}" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span style="color:{{t.text2}}">协议</span>
+              <div style="height:32px;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};display:flex;gap:2px;box-sizing:border-box">
+                <button type="button" onClick="{{setProtoOpenAI}}" style="flex:1;border-radius:5px;border:{{protoOpenAIBorder}};background:{{protoOpenAIBg}};color:{{t.text}};cursor:pointer;font-size:13px">OpenAI 兼容</button>
+                <button type="button" onClick="{{setProtoClaude}}" style="flex:1;border-radius:5px;border:{{protoClaudeBorder}};background:{{protoClaudeBg}};color:{{t.text}};cursor:pointer;font-size:13px">Claude 协议</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="c-url" style="color:{{t.text2}}">接口地址</label>
+              <input id="c-url" type="text" value="{{formUrl}}" onChange="{{onFormUrl}}" class="mono" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box;font-size:13px">
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="c-key" style="color:{{t.text2}}">API 密钥</label>
+              <input id="c-key" type="password" value="{{formKey}}" onChange="{{onFormKey}}" placeholder="sk-..." class="mono" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid {{t.divider}}">
+          <button type="button" onClick="{{testConn}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer">{{testText}}</button>
+          <div style="display:flex;gap:8px">
+            <button type="button" onClick="{{closeDrawer}}" style="flex:1;height:32px;border-radius:8px;border:1px solid {{t.btnBorder}};background:transparent;color:{{t.text}};cursor:pointer">取消</button>
+            <button type="button" onClick="{{submitDrawer}}" style="flex:1;height:32px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:550;cursor:pointer">{{submitLabel}}</button>
+          </div>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","label":"主题","options":["dark","light"],"default":"dark"},"sidebar":{"editor":"boolean","label":"展开设置侧栏","default":false},"drawer":{"editor":"boolean","label":"默认展开右侧添加抽屉","default":true},"$preview":{"width":860,"height":720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      sidebarOverride: null,
+      drawerMode: null,
+      editingId: '',
+      filter: 'all',
+      masterOn: true,
+      selectedPreset: 'openrouter',
+      formName: 'OpenRouter',
+      formProto: 'openai',
+      formUrl: 'https://openrouter.ai/api/v1',
+      formKey: 'sk-or-v1-5566778899',
+      tested: false,
+      items: [
+        { id: 'deepseek', kind: 'api', short: 'DS', name: 'DeepSeek', proto: 'openai', url: 'https://api.deepseek.com/v1', key: 'sk-ds123456', meta: 'api.deepseek.com', enabled: true },
+        { id: 'codex', kind: 'cli', short: 'Cx', name: 'Codex', proto: 'openai', url: '/opt/homebrew/bin/codex', key: '', meta: 'Medium · CLI', enabled: true },
+        { id: 'claude', kind: 'cli', short: 'Cl', name: 'Claude', proto: 'claude', url: '/usr/local/bin/claude', key: '', meta: 'High · CLI', enabled: true },
+        { id: 'dsh', kind: 'cli', short: 'ds', name: 'dsh', proto: 'openai', url: '/usr/local/bin/dsh', key: '', meta: '未启用', enabled: false },
+        { id: 'pi', kind: 'cli', short: 'Pi', name: 'Pi', proto: 'openai', url: '/opt/homebrew/bin/pi', key: '', meta: '未启用', enabled: false }
+      ]
+    };
+  }
+
+  hostOf(url) {
+    const clean = String(url || '').replace(/^https?:\/\//, '');
+    const slash = clean.indexOf('/');
+    return slash > 0 ? clean.slice(0, slash) : clean;
+  }
+
+  renderVals() {
+    const isDark = (this.props.theme ?? 'dark') === 'dark';
+    const sidebarOpen = this.state.sidebarOverride !== null ? this.state.sidebarOverride : Boolean(this.props.sidebar ?? false);
+    const defaultDrawer = (this.props.drawer ?? true) ? 'add' : 'closed';
+    const mode = this.state.drawerMode !== null ? this.state.drawerMode : defaultDrawer;
+    const drawerOpen = mode !== 'closed';
+    const isDrawerAdd = mode === 'add';
+
+    const t = isDark
+      ? {
+          winBg: '#181818',
+          shellBg: '#222222',
+          sidebarBg: '#202020',
+          drawerBg: '#222222',
+          shellBorder: '#2e2e2e',
+          cardBg: '#222222',
+          wellBg: '#2b2b2b',
+          inputBg: '#181818',
+          border: '#2e2e2e',
+          divider: '#2d2d2d',
+          btnBorder: '#444444',
+          text: '#ececec',
+          text2: '#b4b4b4',
+          accent: '#779de8',
+          selBg: '#2e384d',
+          iconFill: '#31456a',
+          swOff: '#484848',
+          sideBtnBg: sidebarOpen ? '#2e384d' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#779de8' : 'transparent'
+        }
+      : {
+          winBg: '#f8f8f8',
+          shellBg: '#f1f1f1',
+          sidebarBg: '#fafafa',
+          drawerBg: '#ffffff',
+          shellBorder: '#e4e6ea',
+          cardBg: '#ffffff',
+          wellBg: '#f1f1f1',
+          inputBg: '#ffffff',
+          border: '#e4e6ea',
+          divider: '#eceef2',
+          btnBorder: '#dcdcdc',
+          text: '#20242c',
+          text2: '#526071',
+          accent: '#547dd0',
+          selBg: '#e5edfc',
+          iconFill: '#c9d8f3',
+          swOff: '#cfd5de',
+          sideBtnBg: sidebarOpen ? '#e5edfc' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#547dd0' : 'transparent'
+        };
+
+    const presetDefs = [
+      { id: 'openrouter', label: 'OpenRouter', proto: 'openai', url: 'https://openrouter.ai/api/v1', dot: '#10a37f' },
+      { id: 'siliconflow', label: '硅基流动', proto: 'openai', url: 'https://api.siliconflow.cn/v1', dot: '#6366f1' },
+      { id: 'deepseek', label: 'DeepSeek', proto: 'openai', url: 'https://api.deepseek.com/v1', dot: '#4d6bfe' },
+      { id: 'anthropic', label: 'Claude API', proto: 'claude', url: 'https://api.anthropic.com/v1', dot: '#d97757' },
+      { id: 'ollama', label: 'Ollama', proto: 'openai', url: 'http://127.0.0.1:11434/v1', dot: '#eab308' },
+      { id: 'custom', label: '自定义接口', proto: 'openai', url: 'https://', dot: '#94a3b8' }
+    ];
+
+    const presets = presetDefs.map((pr) => {
+      const sel = this.state.selectedPreset === pr.id;
+      return {
+        label: pr.label,
+        dot: pr.dot,
+        bg: sel ? t.selBg : t.wellBg,
+        border: sel ? t.accent : t.border,
+        weight: sel ? '550' : '450',
+        pick: () =>
+          this.setState({
+            selectedPreset: pr.id,
+            formName: pr.id === 'custom' ? '' : pr.label,
+            formProto: pr.proto,
+            formUrl: pr.url,
+            tested: false
+          })
+      };
+    });
+
+    const filtered = this.state.items.filter((it) => {
+      if (this.state.filter === 'api') return it.kind === 'api';
+      if (this.state.filter === 'cli') return it.kind === 'cli';
+      return true;
+    });
+
+    const rows = filtered.map((it, idx) => {
+      const activeEdit = mode === 'edit' && this.state.editingId === it.id;
+      return {
+        short: it.short,
+        name: it.name,
+        badge: it.kind === 'api' ? 'API' : 'CLI',
+        meta: it.meta,
+        bg: activeEdit ? t.selBg : 'transparent',
+        borderBottom: idx + 1 < filtered.length ? '1px solid ' + t.divider : '0',
+        swBg: it.enabled ? t.accent : t.swOff,
+        swAlign: it.enabled ? 'flex-end' : 'flex-start',
+        toggle: () => {
+          const next = this.state.items.map((x) => (x.id === it.id ? { ...x, enabled: !x.enabled } : x));
+          this.setState({ items: next });
+        },
+        edit: () => {
+          this.setState({
+            drawerMode: 'edit',
+            editingId: it.id,
+            formName: it.name,
+            formProto: it.proto,
+            formUrl: it.url,
+            formKey: it.key,
+            tested: false
+          });
+        }
+      };
+    });
+
+    const isOpenAI = this.state.formProto !== 'claude';
+
+    return {
+      t,
+      sidebarOpen,
+      drawerOpen,
+      isDrawerAdd,
+      drawerTitle: isDrawerAdd ? '添加供应商' : '编辑配置',
+      submitLabel: isDrawerAdd ? '完成添加' : '保存修改',
+      testText: this.state.tested ? '连接测试通过' : '连接测试',
+      masterOn: this.state.masterOn,
+      masterLabel: this.state.masterOn ? '已开启' : '已关闭',
+      masterBg: this.state.masterOn ? t.selBg : t.wellBg,
+      masterBorder: this.state.masterOn ? t.accent : t.btnBorder,
+      fAllBg: this.state.filter === 'all' ? t.selBg : 'transparent',
+      fAllBorder: this.state.filter === 'all' ? '1px solid ' + t.accent : '1px solid transparent',
+      fApiBg: this.state.filter === 'api' ? t.selBg : 'transparent',
+      fApiBorder: this.state.filter === 'api' ? '1px solid ' + t.accent : '1px solid transparent',
+      fCliBg: this.state.filter === 'cli' ? t.selBg : 'transparent',
+      fCliBorder: this.state.filter === 'cli' ? '1px solid ' + t.accent : '1px solid transparent',
+      rows,
+      presets,
+      formName: this.state.formName,
+      formUrl: this.state.formUrl,
+      formKey: this.state.formKey,
+      protoOpenAIBg: isOpenAI ? t.selBg : 'transparent',
+      protoOpenAIBorder: isOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+      protoClaudeBg: !isOpenAI ? t.selBg : 'transparent',
+      protoClaudeBorder: !isOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+      toggleSidebar: () => this.setState({ sidebarOverride: !sidebarOpen }),
+      toggleMaster: () => this.setState({ masterOn: !this.state.masterOn }),
+      filterAll: () => this.setState({ filter: 'all' }),
+      filterApi: () => this.setState({ filter: 'api' }),
+      filterCli: () => this.setState({ filter: 'cli' }),
+      openAddDrawer: () =>
+        this.setState({
+          drawerMode: 'add',
+          selectedPreset: 'openrouter',
+          formName: 'OpenRouter',
+          formProto: 'openai',
+          formUrl: 'https://openrouter.ai/api/v1',
+          formKey: '',
+          tested: false
+        }),
+      closeDrawer: () => this.setState({ drawerMode: 'closed' }),
+      setProtoOpenAI: () => this.setState({ formProto: 'openai' }),
+      setProtoClaude: () => this.setState({ formProto: 'claude' }),
+      onFormName: (e) => this.setState({ formName: e && e.target ? e.target.value : '' }),
+      onFormUrl: (e) => this.setState({ formUrl: e && e.target ? e.target.value : '', tested: false }),
+      onFormKey: (e) => this.setState({ formKey: e && e.target ? e.target.value : '', tested: false }),
+      testConn: () => this.setState({ tested: true }),
+      submitDrawer: () => {
+        if (isDrawerAdd) {
+          const nm = (this.state.formName || '').trim() || '自定义供应商';
+          const url = (this.state.formUrl || '').trim() || 'https://api.example.com/v1';
+          const nextItem = {
+            id: 'api-' + Date.now(),
+            kind: 'api',
+            short: nm.slice(0, 2).toUpperCase(),
+            name: nm,
+            proto: this.state.formProto,
+            url,
+            key: this.state.formKey || '',
+            meta: this.hostOf(url),
+            enabled: true
+          };
+          this.setState({ items: [nextItem, ...this.state.items], drawerMode: 'closed' });
+        } else {
+          const next = this.state.items.map((x) =>
+            x.id === this.state.editingId
+              ? {
+                  ...x,
+                  name: this.state.formName || x.name,
+                  proto: this.state.formProto,
+                  url: this.state.formUrl,
+                  key: this.state.formKey,
+                  meta: x.kind === 'api' ? this.hostOf(this.state.formUrl) : x.meta
+                }
+              : x
+          );
+          this.setState({ items: next, drawerMode: 'closed' });
+        }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

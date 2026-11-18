@@ -1,0 +1,66 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-19T01:33:30Z"
+  },
+  "title": "AI 助手设置简化与添加供应商",
+  "launch": {
+    "view": "canvas",
+    "page": "proposals"
+  },
+  "pages": [
+    {
+      "id": "proposals",
+      "name": "简化与添加供应商三方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 860,
+      "h": 720,
+      "title": "方案 A · 单列折叠行 + 弹窗添加供应商（推荐）",
+      "page": "proposals",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "V2-PillInline.dc.html": {
+      "x": 940,
+      "y": 0,
+      "w": 860,
+      "h": 720,
+      "title": "方案 B · 顶栏胶囊切换 + 原地内嵌添加",
+      "page": "proposals",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "V3-UnifiedSheet.dc.html": {
+      "x": 1880,
+      "y": 0,
+      "w": 860,
+      "h": 720,
+      "title": "方案 C · 统一来源清单 + 侧滑预设抽屉",
+      "page": "proposals",
+      "is_interactive": true,
+      "radius": 12
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "V2-PillInline.dc.html",
+    "V3-UnifiedSheet.dc.html"
+  ],
+  "notes": {
+    "row-main": {
+      "x": 0,
+      "y": -260,
+      "text": "AI 助手设置简化 · 去分栏窄窗自适应 + 添加供应商三种交互",
+      "kind": "title1",
+      "page": "proposals",
+      "maxW": 2740
+    }
+  },
+  "designSystems": []
+}

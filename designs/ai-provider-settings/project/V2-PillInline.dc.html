@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 B · 顶栏胶囊切换 + 原地内嵌添加</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#547dd0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.scr::-webkit-scrollbar{width:6px;height:6px}
+.scr::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.25);border-radius:3px}
+</style>
+</helmet>
+
+<div style="width:860px;height:720px;position:relative;box-sizing:border-box;display:flex;flex-direction:column;background:{{t.winBg}};color:{{t.text}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid {{t.shellBorder}};-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:{{t.shellBg}};border-bottom:1px solid {{t.shellBorder}};box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px;flex:none">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" aria-label="切换设置侧栏" onClick="{{toggleSidebar}}" style="width:26px;height:26px;padding:0;border-radius:6px;border:1px solid {{t.sideBtnBorder}};background:{{t.sideBtnBg}};color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"></rect>
+          <path d="M9 4.5V19.5" stroke="currentColor" stroke-width="1.6"></path>
+          <path d="M13 10L15.5 12L13 14" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span style="color:{{t.text2}}">设置</span>
+        <span style="color:{{t.text2}}">/</span>
+        <span style="color:{{t.text}};font-weight:500">AI 助手</span>
+      </div>
+    </div>
+
+    <button type="button" aria-label="关闭设置" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </button>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="设置分类" style="width:200px;flex:none;background:{{t.sidebarBg}};border-right:1px solid {{t.shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box">
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:500;display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{t.iconFill}}" stroke="{{t.accent}}" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+          <span>AI 助手</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>通用与编辑</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>外观与字体</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <span>快捷键</span>
+        </button>
+      </aside>
+    </sc-if>
+
+    <main class="scr" style="flex:1;min-width:0;background:{{t.winBg}};overflow-y:auto">
+      <div style="max-width:620px;margin:0 auto;padding:24px 24px 40px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560;color:{{t.text}}">AI 助手</h1>
+          <button type="button" onClick="{{toggleMaster}}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid {{masterBorder}};background:{{masterBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:460">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{t.iconFill}}" stroke="{{t.accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+            </svg>
+            <span>{{masterLabel}}</span>
+          </button>
+        </div>
+
+        <sc-if value="{{masterOn}}" hint-placeholder-val="{{true}}">
+          <section aria-label="API 供应商" style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+              <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="2">
+                <button type="button" onClick="{{tab.select}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid {{tab.border}};background:{{tab.bg}};color:{{t.text}};display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:{{tab.weight}}">
+                  <span style="width:7px;height:7px;border-radius:4px;background:{{tab.dot}}"></span>
+                  <span>{{tab.name}}</span>
+                </button>
+              </sc-for>
+
+              <button type="button" onClick="{{selectAdd}}" style="height:32px;padding:0 12px;border-radius:8px;border:1px dashed {{addTabBorder}};background:{{addTabBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-weight:500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                <span>添加供应商</span>
+              </button>
+            </div>
+
+            <sc-if value="{{isAdding}}" hint-placeholder-val="{{true}}">
+              <div style="padding:14px;border-radius:9px;background:{{t.subBg}};border:1px solid {{t.accent}};display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                  <span style="font-weight:550;color:{{t.text}}">新增 API 供应商</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <sc-for list="{{presets}}" as="pre" hint-placeholder-count="3">
+                      <button type="button" onClick="{{pre.pick}}" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid {{pre.border}};background:{{pre.bg}};color:{{t.text}};cursor:pointer;font-size:12px">{{pre.label}}</button>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px">
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <label for="b-new-name" style="color:{{t.text2}}">供应商名称</label>
+                    <input id="b-new-name" type="text" value="{{draftName}}" onChange="{{onDraftName}}" placeholder="例如 SiliconFlow" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="color:{{t.text2}}">接口协议</span>
+                    <div style="height:32px;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};display:flex;gap:2px;box-sizing:border-box">
+                      <button type="button" onClick="{{setDraftOpenAI}}" style="flex:1;border-radius:5px;border:{{draftOpenAIBorder}};background:{{draftOpenAIBg}};color:{{t.text}};cursor:pointer;font-size:13px">OpenAI 协议</button>
+                      <button type="button" onClick="{{setDraftClaude}}" style="flex:1;border-radius:5px;border:{{draftClaudeBorder}};background:{{draftClaudeBg}};color:{{t.text}};cursor:pointer;font-size:13px">Claude 协议</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <label for="b-new-url" style="color:{{t.text2}}">接口地址</label>
+                  <input id="b-new-url" type="text" value="{{draftUrl}}" onChange="{{onDraftUrl}}" class="mono" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <label for="b-new-key" style="color:{{t.text2}}">API 密钥</label>
+                  <input id="b-new-key" type="password" value="{{draftKey}}" onChange="{{onDraftKey}}" placeholder="sk-..." class="mono" style="height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                </div>
+
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-top:2px">
+                  <button type="button" onClick="{{cancelAdd}}" style="height:30px;padding:0 12px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.cardBg}};color:{{t.text}};cursor:pointer">取消</button>
+                  <button type="button" onClick="{{saveNewProv}}" style="height:30px;padding:0 14px;border-radius:7px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:550;cursor:pointer">保存并启用</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isEditing}}" hint-placeholder-val="{{false}}">
+              <div style="padding-top:4px;border-top:1px solid {{t.divider}};display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-weight:550;color:{{t.text}}">{{cur.name}}</span>
+                    <span style="height:20px;padding:0 7px;border-radius:5px;background:{{t.wellBg}};border:1px solid {{t.border}};color:{{t.text2}};font-size:12px;line-height:20px">{{cur.protoLabel}}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <button type="button" onClick="{{testCur}}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer;font-size:13px">{{cur.testLabel}}</button>
+                    <sc-if value="{{cur.custom}}" hint-placeholder-val="{{false}}">
+                      <button type="button" onClick="{{deleteCur}}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:transparent;color:{{t.text2}};cursor:pointer;font-size:13px">移除</button>
+                    </sc-if>
+                    <button type="button" aria-label="切换当前供应商启用状态" onClick="{{toggleCurOn}}" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:{{cur.swBg}};display:inline-flex;align-items:center;justify-content:{{cur.swAlign}};cursor:pointer;box-sizing:border-box">
+                      <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <label for="b-cur-url" style="width:68px;flex:none;color:{{t.text2}}">接口地址</label>
+                  <input id="b-cur-url" type="text" value="{{cur.baseUrl}}" onChange="{{onCurUrl}}" class="mono" style="flex:1;min-width:200px;height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                </div>
+
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                  <label for="b-cur-key" style="width:68px;flex:none;color:{{t.text2}}">API 密钥</label>
+                  <div style="flex:1;min-width:200px;display:flex;align-items:center;gap:8px">
+                    <input id="b-cur-key" type="{{cur.keyType}}" value="{{cur.apiKey}}" onChange="{{onCurKey}}" class="mono" style="flex:1;min-width:0;height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                    <button type="button" onClick="{{toggleCurKey}}" style="height:32px;padding:0 11px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer">{{cur.showLabel}}</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </section>
+
+          <section aria-label="本机 Agent" style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">本机 Agent</span>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:8px">
+              <sc-for list="{{agents}}" as="ag" hint-placeholder-count="4">
+                <div style="height:46px;padding:0 12px;border-radius:9px;background:{{t.cardBg}};border:1px solid {{ag.border}};display:flex;align-items:center;justify-content:space-between;gap:8px;box-sizing:border-box">
+                  <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                    <span style="width:24px;height:24px;border-radius:6px;background:{{t.wellBg}};border:1px solid {{t.border}};display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:12px;font-weight:600;color:{{t.text}}">{{ag.short}}</span>
+                    <span style="font-weight:500;color:{{t.text}};white-space:nowrap">{{ag.name}}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex:none">
+                    <button type="button" onClick="{{ag.cycleThink}}" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid {{t.border}};background:{{t.wellBg}};color:{{t.text2}};cursor:pointer;font-size:12px">{{ag.thinking}}</button>
+                    <button type="button" aria-label="切换 Agent 启用" onClick="{{ag.toggle}}" style="width:34px;height:20px;padding:2px;border:0;border-radius:10px;background:{{ag.swBg}};display:inline-flex;align-items:center;justify-content:{{ag.swAlign}};cursor:pointer;box-sizing:border-box">
+                      <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                    </button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section aria-label="普通功能" style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;padding:0 14px;height:46px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+            <span style="color:{{t.text}}">标注功能</span>
+            <button type="button" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+              <span style="font-weight:500">GPT-6.2-Sol</span>
+              <span style="color:{{t.text2}}">· Medium</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+          </section>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","label":"主题","options":["dark","light"],"default":"dark"},"sidebar":{"editor":"boolean","label":"展开设置侧栏（测试660px窄区）","default":false},"adding":{"editor":"boolean","label":"默认展示内嵌添加态","default":true},"$preview":{"width":860,"height":720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      sidebarOverride: null,
+      activeTab: null,
+      masterOn: true,
+      draftPreset: 'siliconflow',
+      draftProto: 'openai',
+      draftName: '硅基流动 SiliconFlow',
+      draftUrl: 'https://api.siliconflow.cn/v1',
+      draftKey: 'sk-sf-live-0099887766',
+      providers: [
+        {
+          id: 'deepseek',
+          name: 'DeepSeek',
+          protocol: 'openai',
+          baseUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'sk-ds9182736455aabbcc',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: false
+        },
+        {
+          id: 'claude-api',
+          name: 'Anthropic API',
+          protocol: 'claude',
+          baseUrl: 'https://api.anthropic.com/v1',
+          apiKey: 'sk-ant-api03-887766',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: true
+        }
+      ],
+      agents: [
+        { id: 'codex', short: 'Cx', name: 'Codex', thinking: 'Med', enabled: true },
+        { id: 'claude', short: 'Cl', name: 'Claude', thinking: 'High', enabled: true },
+        { id: 'dsh', short: 'ds', name: 'dsh', thinking: 'Med', enabled: false },
+        { id: 'pi', short: 'Pi', name: 'Pi', thinking: 'Low', enabled: false }
+      ]
+    };
+  }
+
+  renderVals() {
+    const isDark = (this.props.theme ?? 'dark') === 'dark';
+    const sidebarOpen = this.state.sidebarOverride !== null ? this.state.sidebarOverride : Boolean(this.props.sidebar ?? false);
+    const defaultTab = (this.props.adding ?? true) ? '__add__' : 'deepseek';
+    const activeTab = this.state.activeTab !== null ? this.state.activeTab : defaultTab;
+    const isAdding = activeTab === '__add__';
+
+    const t = isDark
+      ? {
+          winBg: '#181818',
+          shellBg: '#222222',
+          sidebarBg: '#202020',
+          shellBorder: '#2e2e2e',
+          cardBg: '#222222',
+          subBg: '#1c1c1c',
+          wellBg: '#2b2b2b',
+          inputBg: '#181818',
+          border: '#2e2e2e',
+          divider: '#2d2d2d',
+          btnBorder: '#444444',
+          text: '#ececec',
+          text2: '#b4b4b4',
+          accent: '#779de8',
+          selBg: '#2e384d',
+          iconFill: '#31456a',
+          swOff: '#484848',
+          dotOn: '#4ade80',
+          sideBtnBg: sidebarOpen ? '#2e384d' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#779de8' : 'transparent'
+        }
+      : {
+          winBg: '#f8f8f8',
+          shellBg: '#f1f1f1',
+          sidebarBg: '#fafafa',
+          shellBorder: '#e4e6ea',
+          cardBg: '#ffffff',
+          subBg: '#f5f8fe',
+          wellBg: '#f1f1f1',
+          inputBg: '#ffffff',
+          border: '#e4e6ea',
+          divider: '#eceef2',
+          btnBorder: '#dcdcdc',
+          text: '#20242c',
+          text2: '#526071',
+          accent: '#547dd0',
+          selBg: '#e5edfc',
+          iconFill: '#c9d8f3',
+          swOff: '#cfd5de',
+          dotOn: '#16a34a',
+          sideBtnBg: sidebarOpen ? '#e5edfc' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#547dd0' : 'transparent'
+        };
+
+    const tabs = this.state.providers.map((p) => {
+      const sel = activeTab === p.id;
+      return {
+        name: p.name,
+        bg: sel ? t.selBg : t.wellBg,
+        border: sel ? t.accent : t.border,
+        weight: sel ? '550' : '460',
+        dot: p.enabled ? t.dotOn : t.swOff,
+        select: () => this.setState({ activeTab: p.id })
+      };
+    });
+
+    const presetDefs = [
+      { id: 'siliconflow', label: '硅基流动', name: '硅基流动 SiliconFlow', proto: 'openai', url: 'https://api.siliconflow.cn/v1' },
+      { id: 'openrouter', label: 'OpenRouter', name: 'OpenRouter', proto: 'openai', url: 'https://openrouter.ai/api/v1' },
+      { id: 'ollama', label: 'Ollama 本地', name: 'Ollama', proto: 'openai', url: 'http://127.0.0.1:11434/v1' },
+      { id: 'custom', label: '自定义', name: '', proto: 'openai', url: 'https://' }
+    ];
+
+    const presets = presetDefs.map((pr) => {
+      const sel = this.state.draftPreset === pr.id;
+      return {
+        label: pr.label,
+        bg: sel ? t.selBg : t.cardBg,
+        border: sel ? t.accent : t.border,
+        pick: () => this.setState({ draftPreset: pr.id, draftName: pr.name, draftProto: pr.proto, draftUrl: pr.url })
+      };
+    });
+
+    const curObj = this.state.providers.find((p) => p.id === activeTab) || this.state.providers[0];
+    const cur = {
+      name: curObj.name,
+      protoLabel: curObj.protocol === 'claude' ? 'Claude 协议' : 'OpenAI 协议',
+      baseUrl: curObj.baseUrl,
+      apiKey: curObj.apiKey,
+      custom: curObj.custom,
+      keyType: curObj.showKey ? 'text' : 'password',
+      showLabel: curObj.showKey ? '隐藏' : '显示',
+      testLabel: curObj.tested ? '连接正常' : '连接测试',
+      swBg: curObj.enabled ? t.accent : t.swOff,
+      swAlign: curObj.enabled ? 'flex-end' : 'flex-start'
+    };
+
+    const orderThink = ['Low', 'Med', 'High'];
+    const agents = this.state.agents.map((a) => ({
+      short: a.short,
+      name: a.name,
+      thinking: a.thinking,
+      border: a.enabled ? t.border : t.divider,
+      swBg: a.enabled ? t.accent : t.swOff,
+      swAlign: a.enabled ? 'flex-end' : 'flex-start',
+      toggle: () => {
+        const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, enabled: !it.enabled } : it));
+        this.setState({ agents: next });
+      },
+      cycleThink: () => {
+        const idx = (orderThink.indexOf(a.thinking) + 1) % orderThink.length;
+        const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, thinking: orderThink[idx] } : it));
+        this.setState({ agents: next });
+      }
+    }));
+
+    const isDraftOpenAI = this.state.draftProto !== 'claude';
+
+    return {
+      t,
+      sidebarOpen,
+      masterOn: this.state.masterOn,
+      masterLabel: this.state.masterOn ? '已开启' : '已关闭',
+      masterBg: this.state.masterOn ? t.selBg : t.wellBg,
+      masterBorder: this.state.masterOn ? t.accent : t.btnBorder,
+      tabs,
+      presets,
+      isAdding,
+      isEditing: !isAdding,
+      addTabBg: isAdding ? t.selBg : 'transparent',
+      addTabBorder: isAdding ? t.accent : t.btnBorder,
+      draftName: this.state.draftName,
+      draftUrl: this.state.draftUrl,
+      draftKey: this.state.draftKey,
+      draftOpenAIBg: isDraftOpenAI ? t.selBg : 'transparent',
+      draftOpenAIBorder: isDraftOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+      draftClaudeBg: !isDraftOpenAI ? t.selBg : 'transparent',
+      draftClaudeBorder: !isDraftOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+      cur,
+      agents,
+      toggleSidebar: () => this.setState({ sidebarOverride: !sidebarOpen }),
+      toggleMaster: () => this.setState({ masterOn: !this.state.masterOn }),
+      selectAdd: () => this.setState({ activeTab: '__add__' }),
+      cancelAdd: () => this.setState({ activeTab: this.state.providers[0].id }),
+      setDraftOpenAI: () => this.setState({ draftProto: 'openai' }),
+      setDraftClaude: () => this.setState({ draftProto: 'claude' }),
+      onDraftName: (e) => this.setState({ draftName: e && e.target ? e.target.value : '' }),
+      onDraftUrl: (e) => this.setState({ draftUrl: e && e.target ? e.target.value : '' }),
+      onDraftKey: (e) => this.setState({ draftKey: e && e.target ? e.target.value : '' }),
+      saveNewProv: () => {
+        const id = 'p-' + Date.now();
+        const name = (this.state.draftName || '').trim() || '新供应商';
+        const nextProv = {
+          id,
+          name,
+          protocol: this.state.draftProto,
+          baseUrl: (this.state.draftUrl || '').trim() || 'https://api.example.com/v1',
+          apiKey: this.state.draftKey || '',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: true
+        };
+        this.setState({ providers: [...this.state.providers, nextProv], activeTab: id });
+      },
+      testCur: () => {
+        const next = this.state.providers.map((it) => (it.id === curObj.id ? { ...it, tested: true } : it));
+        this.setState({ providers: next });
+      },
+      deleteCur: () => {
+        const next = this.state.providers.filter((it) => it.id !== curObj.id);
+        this.setState({ providers: next, activeTab: next[0] ? next[0].id : '__add__' });
+      },
+      toggleCurOn: () => {
+        const next = this.state.providers.map((it) => (it.id === curObj.id ? { ...it, enabled: !it.enabled } : it));
+        this.setState({ providers: next });
+      },
+      toggleCurKey: () => {
+        const next = this.state.providers.map((it) => (it.id === curObj.id ? { ...it, showKey: !it.showKey } : it));
+        this.setState({ providers: next });
+      },
+      onCurUrl: (e) => {
+        const val = e && e.target ? e.target.value : curObj.baseUrl;
+        const next = this.state.providers.map((it) => (it.id === curObj.id ? { ...it, baseUrl: val, tested: false } : it));
+        this.setState({ providers: next });
+      },
+      onCurKey: (e) => {
+        const val = e && e.target ? e.target.value : curObj.apiKey;
+        const next = this.state.providers.map((it) => (it.id === curObj.id ? { ...it, apiKey: val, tested: false } : it));
+        this.setState({ providers: next });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

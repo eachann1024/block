@@ -58,21 +58,25 @@ const (
 )
 
 type ProviderProfile struct {
+	Name     string   `json:"name,omitempty"`
 	BaseURL  string   `json:"base_url,omitempty"`
 	APIKey   string   `json:"api_key,omitempty"`
 	Model    string   `json:"model,omitempty"`
 	Protocol Protocol `json:"protocol,omitempty"`
+	Enabled  *bool    `json:"enabled,omitempty"`
+	Custom   bool     `json:"custom,omitempty"`
 }
 
 // AIProviderConfig matches ~/Library/Application Support/Block/ai.json.
 type AIProviderConfig struct {
-	Enabled   bool                       `json:"enabled"`
-	Provider  string                     `json:"provider"`
-	Protocol  Protocol                   `json:"protocol"`
-	BaseURL   string                     `json:"base_url"`
-	APIKey    string                     `json:"api_key"`
-	Model     string                     `json:"model"`
-	Providers map[string]ProviderProfile `json:"providers,omitempty"`
+	Enabled       bool                       `json:"enabled"`
+	Provider      string                     `json:"provider"`
+	Protocol      Protocol                   `json:"protocol"`
+	BaseURL       string                     `json:"base_url"`
+	APIKey        string                     `json:"api_key"`
+	Model         string                     `json:"model"`
+	ProviderOrder []string                   `json:"provider_order,omitempty"`
+	Providers     map[string]ProviderProfile `json:"providers,omitempty"`
 }
 
 // AIBackendAdapterOptions stores per-CLI-adapter preferences in ai-backends.json.
