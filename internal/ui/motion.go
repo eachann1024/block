@@ -331,6 +331,26 @@ func PopoverSpringTransition() ui.ElementTransition {
 	}
 }
 
+// GutterHandleTransition shows per-row editor affordances (block handles, the
+// trailing add button) without overshoot, entering no slower than it leaves:
+// a pointer that leaves and returns mid-animation resumes from the leaving copy
+// instead of replaying the whole entrance.
+func GutterHandleTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	ease := ui.CubicBezier(0.22, 1, 0.36, 1)
+	return ui.ElementTransition{
+		Duration:     170 * time.Millisecond,
+		Ease:         ease,
+		ExitDuration: 170 * time.Millisecond,
+		ExitEase:     ease,
+		Colors:       true,
+		Enter:        &ui.Motion{Scale: 0.92, Opacity: 0.02},
+		Exit:         &ui.Motion{Scale: 0.92, Opacity: 0},
+	}
+}
+
 // SpringTo animates a scalar toward target with the tactile spring, jumping
 // straight to it under tests.
 func SpringTo(el ui.Element, key string, target float32) float32 {
