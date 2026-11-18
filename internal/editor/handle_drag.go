@@ -15,20 +15,25 @@ func blockHandleTop(b *model.Block, topGap float32) float32 {
 	if b == nil {
 		return 0
 	}
+	const stripH float32 = 24
 	switch {
 	case b.Kind == model.BlockTable:
-		return 4.9
+		return (tableMinRowHeight - stripH) * 0.5
 	case b.Kind == model.BlockImage:
 		return 4
 	case b.Kind == model.BlockCallout:
-		return max(7, -topGap)
+		return max(8, -topGap)
 	case b.Kind == model.BlockDivider:
-		return max((18-26)*0.5, -topGap)
+		return max((18-stripH)*0.5, -topGap)
 	case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
-		return max((30-26)*0.5, -topGap)
+		return max(5, -topGap)
 	default:
 		fontSize, _, lh := blockTextMetrics(b.Kind)
-		return max((fontSize*lh-26)*0.5, -topGap)
+		top := (fontSize*lh - stripH) * 0.5
+		if b.Kind == model.BlockQuote || b.QuoteDepth > 0 {
+			top += 2
+		}
+		return max(top, -topGap)
 	}
 }
 
