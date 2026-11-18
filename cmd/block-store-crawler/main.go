@@ -318,8 +318,6 @@ func defaultSeedDownloads(id string) int {
 		return 1280
 	case "block-image-host":
 		return 940
-	case "block-publisher":
-		return 760
 	case "block-migrator":
 		return 615
 	case "block-diagnostics":
