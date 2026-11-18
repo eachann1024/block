@@ -1,24 +1,19 @@
 package export
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
 	"block/internal/theme"
 	internalui "block/internal/ui"
-	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -64,36 +59,37 @@ type Controller struct {
 	watermark  bool
 	exportDir  string
 
-	previewPNG    []byte
-	previewBitmap *ui.Bitmap
-	previewW      int
-	previewH      int
-	previewErr    string
-	previewRev    uint64
-	renderedRev   uint64
+	previewBitmap  *ui.Bitmap
+	previewW       int
+	previewH       int
+	previewErr     string
+	previewRev     uint64
+	previewCancel  context.CancelFunc
+	previewRunning bool
 
-	notice    string
-	savedPath string
-	copied    bool
+	notice        string
+	savedPath     string
+	copied        bool
+	actionRunning bool
 
-	services    ui.Services
-	hasServices bool
+	services ui.Services
 
 	// Optional test hook for interactive save dialog when mygo.App is not running.
 	OnSaveDialog func(dir, suggested string, done func(string))
 }
 
-// NewController creates a new full-window export preview controller backed by dataDir.
+// NewController creates a full-window export preview controller backed by dataDir.
+// onRedraw may be called from a background worker.
 func NewController(dataDir string, onRedraw func()) *Controller {
 	c := &Controller{
-		dataDir:      strings.TrimSpace(dataDir),
-		onRedraw:     onRedraw,
-		format:       model.ExportPNG,
-		style:        model.ExportThemeMono,
-		lightStyle:   model.ExportThemeMono,
-		darkStyle:    model.ExportThemeInk,
-		showTitle:    true,
-		watermark:    true,
+		dataDir:    strings.TrimSpace(dataDir),
+		onRedraw:   onRedraw,
+		format:     model.ExportPNG,
+		style:      model.ExportThemeMono,
+		lightStyle: model.ExportThemeMono,
+		darkStyle:  model.ExportThemeInk,
+		showTitle:  true,
+		watermark:  true,
 	}
 	c.loadPreferencesLocked()
 	return c
@@ -238,8 +234,7 @@ func (c *Controller) openPreview(title, notePath string, wholeDoc, selectionDoc 
 	c.notice = ""
 	c.savedPath = ""
 	c.copied = false
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -251,6 +246,11 @@ func (c *Controller) Close() {
 		return
 	}
 	c.open = false
+	c.wholeDoc, c.selectionDoc = nil, nil
+	c.previewBitmap = nil
+	if c.previewCancel != nil {
+		c.previewCancel()
+	}
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -276,9 +276,8 @@ func (c *Controller) SetFormat(f model.ExportFormat) {
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	if wmChanged || c.previewBitmap == nil {
-		c.previewRev++
-		c.refreshPreviewLocked()
+	if wmChanged {
+		c.queuePreviewLocked()
 	}
 	c.mu.Unlock()
 	c.notifyRedraw()
@@ -307,8 +306,7 @@ func (c *Controller) SetStyle(s model.ExportTheme) {
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -332,8 +330,7 @@ func (c *Controller) setDarkGroup(dark bool) {
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -358,8 +355,7 @@ func (c *Controller) SetUseSelection(sel bool) {
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -377,8 +373,7 @@ func (c *Controller) ToggleShowTitle() {
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -396,8 +391,7 @@ func (c *Controller) ToggleWatermark() {
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	c.previewRev++
-	c.refreshPreviewLocked()
+	c.queuePreviewLocked()
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -431,226 +425,6 @@ func (c *Controller) renderPrefsLocked() model.ExportPreferences {
 	}
 }
 
-func (c *Controller) refreshPreviewLocked() {
-	doc := c.activeDocLocked()
-	if doc == nil {
-		c.previewPNG = nil
-		c.previewBitmap = nil
-		c.previewW = 0
-		c.previewH = 0
-		c.previewErr = theme.Tr("当前没有可导出的内容", "Nothing to export")
-		c.renderedRev = c.previewRev
-		return
-	}
-	prefs := c.renderPrefsLocked()
-	pngBytes, err := markdown.ExportDocument(doc, c.notePath, model.ExportPNG, prefs)
-	if err != nil {
-		c.previewPNG = nil
-		c.previewBitmap = nil
-		c.previewW = 0
-		c.previewH = 0
-		c.previewErr = err.Error()
-		c.renderedRev = c.previewRev
-		return
-	}
-	img, err := png.Decode(bytes.NewReader(pngBytes))
-	if err != nil {
-		c.previewPNG = pngBytes
-		c.previewBitmap = nil
-		c.previewW = 0
-		c.previewH = 0
-		c.previewErr = err.Error()
-		c.renderedRev = c.previewRev
-		return
-	}
-	bounds := img.Bounds()
-	bm := ui.NewBitmap(previewImage(img))
-	w, h := bounds.Dx(), bounds.Dy()
-	c.previewPNG = pngBytes
-	c.previewBitmap = bm
-	c.previewW = w
-	c.previewH = h
-	c.previewErr = ""
-	c.renderedRev = c.previewRev
-}
-
-func (c *Controller) CopyToClipboard() error {
-	c.mu.Lock()
-	doc := c.activeDocLocked()
-	if doc == nil {
-		c.mu.Unlock()
-		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
-	}
-	format := c.format
-	prefs := c.renderPrefsLocked()
-	notePath := c.notePath
-	if c.renderedRev != c.previewRev || len(c.previewPNG) == 0 {
-		c.refreshPreviewLocked()
-	}
-	pngBytes := append([]byte(nil), c.previewPNG...)
-	services := c.services
-	hasServices := c.hasServices
-	c.mu.Unlock()
-
-	var tData transfer.Data
-	switch format {
-	case model.ExportMarkdown:
-		raw, err := markdown.ExportDocument(doc, notePath, model.ExportMarkdown, prefs)
-		if err != nil {
-			return err
-		}
-		tData = transfer.New(transfer.NewItem(
-			transfer.Bytes(transfer.Text, raw),
-			transfer.Bytes(transfer.Markdown, raw),
-		))
-	case model.ExportHTML:
-		raw, err := markdown.ExportDocument(doc, notePath, model.ExportHTML, prefs)
-		if err != nil {
-			return err
-		}
-		tData = transfer.New(transfer.NewItem(
-			transfer.Bytes(transfer.Text, raw),
-			transfer.Bytes(transfer.HTML, raw),
-		))
-	default:
-		if len(pngBytes) == 0 {
-			var err error
-			pngBytes, err = markdown.ExportDocument(doc, notePath, model.ExportPNG, prefs)
-			if err != nil {
-				return err
-			}
-		}
-		tData = transfer.New(transfer.NewItem(
-			transfer.Bytes(transfer.PNG, pngBytes),
-		))
-	}
-
-	if hasServices {
-		services.WriteClipboardData(tData)
-	}
-	if mygo.App.IsReady() {
-		if err := mygo.Clipboard.Write(tData); err != nil {
-			return err
-		}
-	}
-
-	c.mu.Lock()
-	c.copied = true
-	c.notice = theme.Tr("已复制到剪贴板", "Copied to clipboard")
-	c.mu.Unlock()
-	c.notifyRedraw()
-	return nil
-}
-
-func (c *Controller) SaveToPath(outPath string) error {
-	trimmed := strings.TrimSpace(outPath)
-	if trimmed == "" {
-		return errors.New("output path cannot be empty")
-	}
-	c.mu.Lock()
-	doc := c.activeDocLocked()
-	if doc == nil {
-		c.mu.Unlock()
-		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
-	}
-	format := c.format
-	prefs := c.renderPrefsLocked()
-	notePath := c.notePath
-	c.mu.Unlock()
-
-	if err := markdown.ExportToFile(doc, notePath, trimmed, format, prefs); err != nil {
-		c.mu.Lock()
-		c.notice = err.Error()
-		c.savedPath = ""
-		c.mu.Unlock()
-		c.notifyRedraw()
-		return err
-	}
-
-	absOut, absErr := filepath.Abs(trimmed)
-	if absErr == nil {
-		trimmed = absOut
-	}
-	c.mu.Lock()
-	c.savedPath = trimmed
-	c.exportDir = filepath.Dir(trimmed)
-	c.savePreferencesLocked()
-	c.notice = fmt.Sprintf("%s %s", theme.Tr("已保存", "Saved"), filepath.Base(trimmed))
-	c.mu.Unlock()
-	c.notifyRedraw()
-	return nil
-}
-
-func (c *Controller) triggerSave() {
-	c.mu.Lock()
-	dir := c.defaultExportDirLocked()
-	name := suggestedExportFilename(c.title, c.format)
-	hook := c.OnSaveDialog
-	format := c.format
-	c.mu.Unlock()
-
-	if hook != nil {
-		hook(dir, name, func(chosen string) {
-			if strings.TrimSpace(chosen) != "" {
-				_ = c.SaveToPath(chosen)
-			}
-		})
-		return
-	}
-	if !mygo.App.IsReady() {
-		return
-	}
-	ext := exportExtension(format)
-	go func() {
-		chosen, err := files.SaveDialog(nil, mygo.SaveDialogOptions{
-			Title:             saveButtonLabel(format),
-			DefaultPath:       filepath.Join(dir, name),
-			CreateDirectories: true,
-			Filters:           []mygo.FileFilter{{Name: strings.ToUpper(ext), Extensions: []string{ext}}},
-		})
-		if err == nil && strings.TrimSpace(chosen) != "" {
-			_ = c.SaveToPath(chosen)
-		}
-	}()
-}
-
-func (c *Controller) defaultExportDirLocked() string {
-	if c.exportDir != "" {
-		cur := filepath.Clean(c.exportDir)
-		for cur != "" && cur != string(filepath.Separator) && cur != "." {
-			if info, err := os.Stat(cur); err == nil && info.IsDir() {
-				return cur
-			}
-			parent := filepath.Dir(cur)
-			if parent == cur {
-				break
-			}
-			cur = parent
-		}
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		for _, sub := range []string{"Downloads", "Documents", ""} {
-			cand := home
-			if sub != "" {
-				cand = filepath.Join(home, sub)
-			}
-			if info, err := os.Stat(cand); err == nil && info.IsDir() {
-				return cand
-			}
-		}
-	}
-	return os.TempDir()
-}
-
-func (c *Controller) revealSaved() {
-	c.mu.Lock()
-	p := c.savedPath
-	c.mu.Unlock()
-	if p != "" && mygo.App.IsReady() {
-		mygo.Shell.ShowItemInFolder(p)
-	}
-}
-
 // Render builds the full-window A-Export preview UI.
 func (c *Controller) Render(ctx *ui.Context) {
 	c.mu.Lock()
@@ -659,10 +433,6 @@ func (c *Controller) Render(ctx *ui.Context) {
 		return
 	}
 	c.services = ctx.Services()
-	c.hasServices = true
-	if c.renderedRev != c.previewRev {
-		c.refreshPreviewLocked()
-	}
 	c.mu.Unlock()
 
 	// Keyboard shortcuts: Esc close, Cmd+C copy, Cmd+S save.
@@ -671,7 +441,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 		c.Close()
 		return
 	case ctx.Shortcut(ui.Cmd, ui.KeyC):
-		_ = c.CopyToClipboard()
+		c.triggerCopy()
 	case ctx.Shortcut(ui.Cmd, ui.KeyS):
 		c.triggerSave()
 	}
@@ -691,6 +461,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 	notice := c.notice
 	savedPath := c.savedPath
 	copied := c.copied
+	busy := c.actionRunning
 	c.mu.Unlock()
 
 	pal := theme.Ocean()
@@ -715,7 +486,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 		c.renderHeader(ctx, pal, title, format, style, pw, ph, vpW)
 		ui.Row(ctx).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			c.renderStage(ctx, pal, bm, pw, ph, scale, stageW, stageH, previewErr)
-			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied, sideW)
+			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied, busy, sideW)
 		})
 	})
 }
@@ -850,6 +621,7 @@ func (c *Controller) renderSidebar(
 	notice string,
 	savedPath string,
 	copied bool,
+	busy bool,
 	sideW float32,
 ) {
 	sidebar := ui.Column(ctx.Key("export-sidebar")).Width(sideW).Shrink(0).FillHeight().
@@ -943,7 +715,7 @@ func (c *Controller) renderSidebar(
 
 			ui.Row(ctx).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				saveLbl := saveButtonLabel(format)
-				saveBtn := renderFooterButton(ctx, pal, "export-save", saveLbl, icons.Download, true)
+				saveBtn := renderFooterButton(ctx, pal, "export-save", saveLbl, icons.Download, true, busy)
 				if saveBtn.Clicked() {
 					c.triggerSave()
 				}
@@ -954,9 +726,9 @@ func (c *Controller) renderSidebar(
 					copyIcon = icons.Check
 					copyLbl = theme.Tr("已复制", "Copied")
 				}
-				copyBtn := renderFooterButton(ctx, pal, "export-copy", copyLbl, copyIcon, false)
+				copyBtn := renderFooterButton(ctx, pal, "export-copy", copyLbl, copyIcon, false, busy)
 				if copyBtn.Clicked() {
-					_ = c.CopyToClipboard()
+					c.triggerCopy()
 				}
 			})
 		})
@@ -1095,7 +867,7 @@ func renderSwitchRow(ctx *ui.Context, pal theme.Palette, id, label string, value
 	return changed
 }
 
-func renderFooterButton(ctx *ui.Context, pal theme.Palette, id, label string, glyph icons.Icon, primary bool) ui.Element {
+func renderFooterButton(ctx *ui.Context, pal theme.Palette, id, label string, glyph icons.Icon, primary, disabled bool) ui.Element {
 	style := internalui.ButtonSecondary
 	var grow float32
 	var shrink *float32
@@ -1112,6 +884,7 @@ func renderFooterButton(ctx *ui.Context, pal theme.Palette, id, label string, gl
 		AccessibilityLabel: id,
 		Leading:            &glyph,
 		Style:              style,
+		Disabled:           disabled,
 		Height:             38,
 		PaddingX:           theme.Space16,
 		Grow:               grow,

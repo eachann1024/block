@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"block/internal/markdown"
@@ -55,9 +56,9 @@ func TestControllerPreferencesPersistenceAndActions(t *testing.T) {
 	theme.SetLanguage(model.LangZh)
 	dataDir := t.TempDir()
 	outDir := filepath.Join(t.TempDir(), "exports")
-	redraws := 0
+	var redraws atomic.Int32
 
-	ctrl := NewController(dataDir, func() { redraws++ })
+	ctrl := NewController(dataDir, func() { redraws.Add(1) })
 	whole := markdown.ParseMarkdown("# 全文标题\n\n这是整篇笔记正文。\n")
 	sel := markdown.ParseMarkdown("这是选区导出内容。\n")
 
@@ -121,7 +122,7 @@ func TestControllerPreferencesPersistenceAndActions(t *testing.T) {
 			ctrl2.ActiveFormat(), ctrl2.ActiveStyle(), ctrl2.ShowTitle(), ctrl2.Watermark())
 	}
 
-	if redraws == 0 {
+	if redraws.Load() == 0 {
 		t.Fatalf("expected onRedraw callbacks to fire")
 	}
 }
