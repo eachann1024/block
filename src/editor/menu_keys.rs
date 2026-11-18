@@ -53,6 +53,7 @@ impl Editor {
                 self.pick_kind(kind, true, window, cx);
             }
             Some(super::format_cmds::FormatPop::SelectionMenu { .. }) => super::format_ui::run_selection(self, index, window, cx),
+            Some(super::format_cmds::FormatPop::BlockContextMenu { block, .. }) => super::format_ui::run_block_context(self, block, index, window, cx),
             Some(super::format_cmds::FormatPop::Palette { .. }) => super::format_cmds::palette::activate_swatch(self, index, window, cx),
             Some(super::format_cmds::FormatPop::More { .. }) => self.activate_more_slot(index, window, cx),
             _ => return false,
@@ -62,11 +63,11 @@ impl Editor {
 
     fn format_slots(&self) -> Option<Vec<Slot>> {
         let item = || Slot::Item;
-        let skip = || Slot::Skip;
         match self.format {
             Some(super::format_cmds::FormatPop::Kinds { .. }) => Some(vec![item(); super::toolbar::menu_kinds(true).len()]),
             Some(super::format_cmds::FormatPop::Lists { .. }) => Some(vec![item(); super::toolbar::menu_kinds(false).len()]),
-            Some(super::format_cmds::FormatPop::SelectionMenu { .. }) => Some(vec![item(), item(), skip(), item()]),
+            Some(super::format_cmds::FormatPop::SelectionMenu { .. }) => Some(super::format_ui::selection_menu_slots()),
+            Some(super::format_cmds::FormatPop::BlockContextMenu { .. }) => Some(super::format_ui::block_context_slots()),
             Some(super::format_cmds::FormatPop::Palette { .. }) => Some(super::format_cmds::palette::palette_slots()),
             Some(super::format_cmds::FormatPop::More { .. }) => Some(super::toolbar::more_slots(self)),
             _ => None,

@@ -43,6 +43,10 @@ pub struct Editor {
     pub(super) hover: Option<u64>,
     pub(super) hover_gen: u64,
     pub(super) dragging: Option<u64>,
+    pub(super) drag_start: Option<Point<Pixels>>,
+    pub(super) drag_moved: bool,
+    pub(super) trailing_plus: bool,
+    pub(super) editor_bounds: gpui::Bounds<Pixels>,
     pub(super) drag_ranges: std::cell::RefCell<interaction::DragRanges>,
     pub(super) painted_rows: HashMap<u64, gpui::Bounds<Pixels>>,
     pub(super) drag_over: Option<interaction::DropTarget>,
@@ -98,7 +102,7 @@ impl Editor {
         crate::dropdown::register_editor(&cx.entity()); super::zoom::register_editor(&cx.entity());
         cx.on_app_quit(|editor, _| { editor.prepare_to_quit(); async {} }).detach();
         let doc = Doc::empty(); let caret = Caret::new(doc.blocks[0].id);
-        Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None, drag_ranges: Default::default(),
+        Self { doc, caret, focus: cx.focus_handle(), preview_focus: cx.focus_handle(), preview_was_open: false, hover: None, hover_gen: 0, dragging: None, drag_start: None, drag_moved: false, trailing_plus: false, editor_bounds: Default::default(), drag_ranges: Default::default(),
             painted_rows: HashMap::new(), drag_over: None, selecting: false, block_menu: None, block_menu_scroll: Default::default(), nowrap: Default::default(), folded: Default::default(), fold_tails: Vec::new(), table_sel: None, table_menu: None, table_drag: None, table_extend: None, table_chrome: None, selection_origin: None, toolbar_anchor: None, format: None, image_menu: None, link_ui: Default::default(), layouts: HashMap::new(),
             list: ListState::new(1, ListAlignment::Top, px(120.)), scroll_top: (0, px(0.)), preferred_x: None, pending_vertical: None,
             reveal_caret: false, caret_hidden: false, dirty: false, path: None, status: String::new(),
@@ -166,6 +170,7 @@ impl Render for Editor {
             super::image_resize::track(&input_editor, input_editor.read(cx).focus.is_focused(window), window, cx);
             input_editor.update(cx, |this, cx| {
                 this.track_block_drag(window, cx);
+                this.editor_bounds = bounds;
                 this.painted_rows.clear();
                 this.layouts.clear();
                 this.source_layouts.clear();
@@ -263,9 +268,17 @@ impl Render for Editor {
                 .on_mouse_down(MouseButton::Left, cx.listener(|this, event, window, cx| this.pointer_down(event, window, cx)))
                 .on_scroll(|_, _, cx| crate::dropdown::dismiss_all(cx))
                 .on_mouse_move(cx.listener(|this, event, _, cx| this.pointer_move(event, cx)))
+                .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                    if !*hovered && (this.trailing_plus || (!this.has_active_overlay() && this.dragging.is_none() && this.hover.is_some())) {
+                        this.trailing_plus = false;
+                        this.hover = None;
+                        cx.notify();
+                    }
+                }))
                 .on_mouse_up(MouseButton::Left, cx.listener(|this, event: &gpui::MouseUpEvent, _, cx| this.finish_drag(event.position, cx)))
                 .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| { this.finish_extend(cx); this.clear_pointer(); cx.notify(); }))
                 .child(super::source_view::editor_column(self, rows, std_w, rail_slot, pad, cx))
+                .children(super::trailing_add::overlay(self, cx.entity()))
                 .when_some(self.table_chrome.clone(), |root, chrome| {
                     root.children(super::table_chrome::overlay(cx.entity(), &chrome, self.table_sel, self.table_menu, self.table_drag, self.minimal, window))
                 })

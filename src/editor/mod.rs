@@ -16,6 +16,7 @@ mod code_escape;
 mod indent;
 mod block_shortcuts;
 mod block_ops;
+mod trailing_add;
 mod keys;
 pub mod markdown;
 pub mod model;

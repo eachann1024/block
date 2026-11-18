@@ -16,7 +16,7 @@ impl Editor {
         if !self.pointer_subscriptions.is_empty() { return; }
         self.pointer_subscriptions.push(cx.observe_window_activation(window, |this, window, cx| {
             if !window.is_window_active() {
-                this.clear_pointer();
+                this.clear_pointer(); this.trailing_plus = false;
                 this.link_ui.reset_hover(); crate::editor::inline_code::clear_hover();
                 this.toolbar_anchor = None;
             } else {
@@ -31,7 +31,7 @@ impl Editor {
         }));
         self.pointer_subscriptions.push(cx.on_focus(&self.focus, window, |_, _, cx| cx.notify()));
         self.pointer_subscriptions.push(cx.on_blur(&self.focus, window, |this, _, cx| {
-            this.clear_pointer(); this.link_ui.reset_hover(); this.toolbar_anchor = None; cx.notify();
+            this.clear_pointer(); this.trailing_plus = false; this.link_ui.reset_hover(); this.toolbar_anchor = None; cx.notify();
         }));
     }
     /// Capture an active block drag even over child overlays or outside the editor.
@@ -53,17 +53,28 @@ impl Editor {
         });
     }
     pub(in crate::editor) fn clear_pointer(&mut self) {
-        self.dragging = None; self.drag_over = None; *self.drag_ranges.borrow_mut() = DragRanges::default(); self.selecting = false; self.source_drag = false;
+        self.dragging = None; self.drag_start = None; self.drag_moved = false; self.drag_over = None; *self.drag_ranges.borrow_mut() = DragRanges::default(); self.selecting = false; self.source_drag = false;
         self.selection_origin = None; self.table_drag = None; self.cancel_extend(); crate::editor::table_resize::end();
+    }
+    pub(in crate::editor) fn in_editor_paper(&self, pos: Point<Pixels>) -> bool {
+        let vp = self.list.viewport_bounds();
+        if pos.y < vp.top() || pos.y > vp.bottom() { return false; }
+        if self.editor_bounds.size.width > px(0.) {
+            let gutter = px(if self.minimal { 6. } else { crate::ui::scrollbar::GUTTER });
+            pos.x >= self.editor_bounds.left() && pos.x <= (self.editor_bounds.right() - gutter).max(self.editor_bounds.left())
+        } else {
+            vp.contains(&pos)
+        }
     }
     pub(in crate::editor) fn hover_block(&mut self, id: u64, hovered: bool, cx: &mut Context<Self>) {
         if self.minimal || self.dragging.is_some() || self.table_drag.is_some() || self.table_extend.is_some() || crate::editor::table_resize::active().is_some() || self.selecting { return; }
         if self.has_active_overlay() {
-            if self.hover.take().is_some() { cx.notify(); }
+            if self.hover.take().is_some() || self.trailing_plus { self.trailing_plus = false; cx.notify(); }
             return;
         }
         self.hover_gen = self.hover_gen.wrapping_add(1);
         if hovered {
+            self.trailing_plus = false;
             if self.hover != Some(id) { self.hover = Some(id); cx.notify(); }
             return;
         }
@@ -79,11 +90,12 @@ impl Editor {
             }).ok();
         }).detach();
     }
-    pub(in crate::editor) fn begin_drag(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub(in crate::editor) fn begin_drag(&mut self, id: u64, start: Point<Pixels>, cx: &mut Context<Self>) {
         if self.path.is_none() { return; }
         self.commit_composition(cx); self.clear_pointer(); self.link_ui.reset_hover();
         self.hover_gen = self.hover_gen.wrapping_add(1);
-        self.dragging = Some(id); self.hover = Some(id); self.toolbar_anchor = None;
+        self.dragging = Some(id); self.drag_start = Some(start); self.drag_moved = false;
+        self.trailing_plus = false; self.hover = Some(id); self.toolbar_anchor = None;
         cx.notify();
     }
     pub(in crate::editor) fn focus_block(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -124,11 +136,13 @@ impl Editor {
             return;
         }
         self.close_format(window, cx);
-        if self.path.is_none() || !self.list.viewport_bounds().contains(&event.position) { return; }
+        self.trailing_plus = false;
+        if self.path.is_none() || !self.in_editor_paper(event.position) { return; }
         if (event.modifiers.platform || (!cfg!(target_os = "macos") && event.modifiers.control))
             && (self.open_link_at(event.position, cx) || self.copy_code_at(event.position, cx)) { return; }
         self.commit_composition(cx); self.clear_pointer(); self.pending_vertical = None;
-        if !event.modifiers.shift && !event.modifiers.alt && self.try_blank_margin_insert(event.position, window, cx) { return; }
+        if event.button == gpui::MouseButton::Left && !event.modifiers.shift && !event.modifiers.alt
+            && self.try_blank_margin_insert(event.position, window, cx) { return; }
         let clicks = event.click_count.max(1);
         let at_caret = self.hit(event.position);
         let is_code = at_caret.and_then(|p| self.doc.get(p.block)).map_or(false, |b| b.meta.code_language.is_some());
@@ -248,7 +262,8 @@ impl Editor {
         if !event.dragging() {
             self.update_link_hover(event.position, cx);
             self.update_code_hover(event.position, cx);
-            if !self.minimal && !self.has_active_overlay()
+            let trailing = self.update_trailing_hover(event.position, cx);
+            if !trailing && !self.minimal && !self.has_active_overlay()
                 && let Some((&id, _)) = self.painted_rows.iter().find(|(_, b)| b.contains(&event.position))
                 && self.hover != Some(id)
             {
@@ -260,6 +275,15 @@ impl Editor {
             return;
         }
         if self.dragging.is_none() && !self.selecting { return; }
+        if self.dragging.is_some() && !self.drag_moved {
+            if self.drag_start.is_some_and(|s| (event.position - s).magnitude() > 3.) {
+                self.drag_moved = true;
+                self.block_menu = None;
+                self.table_menu = None;
+            } else {
+                return;
+            }
+        }
         let viewport = self.list.viewport_bounds();
         let mut scrolled = false;
         if event.position.y < viewport.top()+px(24.) { self.list.scroll_by(px(-18.)); scrolled = true; }
@@ -330,10 +354,16 @@ impl Editor {
             cx.notify();
             return;
         }
-        if self.dragging.is_some() { self.update_drop(position); }
+        if self.dragging.is_some() && self.drag_moved { self.update_drop(position); }
         let dragging = self.dragging; let target = self.drag_over;
+        let drag_moved = self.drag_moved;
         let selecting = self.selecting;
         self.clear_pointer();
+        if let Some(id) = dragging && !drag_moved {
+            self.toggle_handle_menu(id, position, cx);
+            cx.notify();
+            return;
+        }
         if dragging.is_none() && selecting && !self.minimal && !self.has_active_overlay() {
             let hovered = self.painted_rows.iter().find_map(|(&id, b)| b.contains(&position).then_some(id));
             if self.hover != hovered {

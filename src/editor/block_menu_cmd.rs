@@ -82,12 +82,16 @@ pub(in crate::editor) fn language_icon(tag: &str) -> Option<Icon> {
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(in crate::editor) enum Cmd {
+    InsertAbove, InsertBelow, Duplicate,
     Turn(Kind), Callout, Code(&'static str), Table, Divider, Image, Ai,
     Delete, SetLanguage(&'static str, bool),
 }
 impl Cmd {
     pub(in crate::editor) fn label(self) -> &'static str {
         match self {
+            Cmd::InsertAbove => tr("在上方插入", "Insert above"),
+            Cmd::InsertBelow => tr("在下方插入", "Insert below"),
+            Cmd::Duplicate => tr("创建副本", "Duplicate"),
             Cmd::Turn(Kind::Paragraph) => tr("正文", "Text"),
             Cmd::Turn(Kind::H1) => tr("一级标题", "Heading 1"),
             Cmd::Turn(Kind::H2) => tr("二级标题", "Heading 2"),
@@ -122,7 +126,9 @@ impl Cmd {
     }
     /// Keyboard shortcut shown at the right of a row, for commands that have one.
     pub(in crate::editor) fn hint(self) -> Option<&'static str> {
+        let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
         Some(match self {
+            Cmd::Duplicate => if mac { "⌘D" } else { "Ctrl+D" },
             Cmd::Turn(Kind::Paragraph) => "⌘⌥0",
             Cmd::Turn(Kind::H1) => "⌘⌥1",
             Cmd::Turn(Kind::H2) => "⌘⌥2",
@@ -140,8 +146,26 @@ impl Cmd {
     pub(in crate::editor) fn checked(self) -> bool {
         matches!(self, Cmd::SetLanguage(_, true))
     }
+    pub(in crate::editor) fn is_active_on(self, block: &crate::editor::model::Block) -> bool {
+        match self {
+            Cmd::SetLanguage(_, same) => same,
+            Cmd::Callout => block.meta.callout.is_some(),
+            Cmd::Code("") => block.meta.code_language.is_some()
+                && !matches!(block.meta.code_language.as_deref(), Some("mermaid" | "math" | "latex")),
+            Cmd::Turn(kind) => block.meta.callout.is_none()
+                && block.meta.code_language.is_none()
+                && block.meta.table.is_none()
+                && !block.is_atomic()
+                && block.kind == kind
+                && (kind != Kind::H3 || block.meta.heading_level.unwrap_or(3) == 3),
+            _ => false,
+        }
+    }
     pub(in crate::editor) fn leading(self) -> Option<Icon> {
         Some(match self {
+            Cmd::InsertAbove => Icon::ArrowUp,
+            Cmd::InsertBelow => Icon::ArrowDown,
+            Cmd::Duplicate => Icon::Duplicate,
             Cmd::Turn(kind) => kind_icon(kind),
             Cmd::Callout => Icon::Callout,
             Cmd::Code("mermaid") => Icon::Diagram,
@@ -152,6 +176,27 @@ impl Cmd {
             Cmd::Delete => Icon::Trash,
         })
     }
+}
+
+pub(super) fn handle_entries_for(block: &crate::editor::model::Block) -> Vec<Option<Cmd>> {
+    let mut out = vec![Some(Cmd::InsertAbove), Some(Cmd::InsertBelow)];
+    if block.meta.table.is_none() && !block.is_atomic() {
+        out.extend([
+            None,
+            Some(Cmd::Turn(Kind::Paragraph)),
+            Some(Cmd::Turn(Kind::H1)),
+            Some(Cmd::Turn(Kind::H2)),
+            Some(Cmd::Turn(Kind::H3)),
+            Some(Cmd::Turn(Kind::Bullet)),
+            Some(Cmd::Turn(Kind::Numbered)),
+            Some(Cmd::Turn(Kind::Todo)),
+            Some(Cmd::Turn(Kind::Quote)),
+            Some(Cmd::Callout),
+            Some(Cmd::Code("")),
+        ]);
+    }
+    out.extend([None, Some(Cmd::Duplicate), Some(Cmd::Delete)]);
+    out
 }
 pub(super) const SLASH: [Option<Cmd>; 17] = [
     Some(Cmd::Ai),
