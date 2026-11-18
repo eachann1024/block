@@ -2568,9 +2568,6 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		widthPct = 100
 	}
 	dragging := s.imgResizeBlock == id
-	if dragging {
-		widthPct = clampFloat32(s.imgResizeCurPct, 10, 100)
-	}
 
 	_, _, _, imgSelected := s.blockSelectionSpanRange(idx)
 	showResizeHandles := !readOnly && ((isFocused && !s.hasMultiBlockSelection()) || dragging)
@@ -2583,7 +2580,7 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 
 	outer := ui.Column(c.Key("img-outer")).FillWidth().AlignItems(align)
 	outer.Children(func() {
-		frameWrap := ui.Box(c.Key(fmt.Sprintf("img-wrap-%d", id))).WidthPercent(widthPct)
+		frameWrap := ui.Box(c.Key(fmt.Sprintf("img-wrap-%d", id)))
 		frameWrap.Children(func() {
 			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(theme.RadiusSM).Clip().
 				Cursor(ui.CursorPointer).Border(1, picBorder)
@@ -2664,7 +2661,8 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					{"img-resize-right", false, 1},
 				} {
 					rail := ui.Column(c.Key(fmt.Sprintf("%s-rail-%d", side.probe, id))).Absolute().
-						Top(0).Bottom(0).Width(hitW).Center()
+						Top(0).Bottom(0).Width(hitW).Center().
+						Transition(appUi.ResizeHandleTransition(-side.dir * s.scale(theme.Space8)))
 					if side.left {
 						rail.Left(edgeOffset)
 					} else {
@@ -2714,10 +2712,10 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					s.imgResizeBlock = 0
 					if math.Abs(float64(finalPct-startPct)) >= 0.5 {
 						s.pushUndo()
-						if finalPct >= 99.5 {
+						widthPct = float32(math.Round(float64(finalPct)))
+						b.ImageWidth = widthPct
+						if widthPct == 100 {
 							b.ImageWidth = 0
-						} else {
-							b.ImageWidth = float32(math.Round(float64(finalPct)))
 						}
 						b.Dirty = true
 						b.CleanSource = ""
@@ -2725,6 +2723,13 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					}
 				}
 			}
+
+			// Apply the drag delta to the current layout, including both rails.
+			dragging = s.imgResizeBlock == id
+			if dragging {
+				widthPct = s.imgResizeCurPct
+			}
+			frameWrap.WidthPercent(widthPct)
 
 			if dragging {
 				pctText := fmt.Sprintf("%d%%", int(math.Round(float64(widthPct))))
