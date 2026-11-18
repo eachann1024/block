@@ -51,7 +51,7 @@ var providerPresets = []ProviderPreset{
 		ID:          "openai",
 		Zh:          "OpenAI 兼容",
 		En:          "OpenAI Compatible",
-		DefaultName: "OpenAI",
+		DefaultName: "OpenAI 兼容",
 		Protocol:    model.ProtocolOpenAI,
 		BaseURL:     "https://api.openai.com/v1",
 		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
@@ -62,45 +62,12 @@ var providerPresets = []ProviderPreset{
 		ID:          "anthropic",
 		Zh:          "Claude 协议",
 		En:          "Claude Protocol",
-		DefaultName: "Claude API",
+		DefaultName: "Claude 协议",
 		Protocol:    model.ProtocolAnthropic,
 		BaseURL:     "https://api.anthropic.com/v1",
 		BrandColor:  ui.Hex("#d97757"), // design:allow brand
 		Icon:        icons.ProvAnthropic,
 		KeyRequired: true,
-	},
-	{
-		ID:          "openrouter",
-		Zh:          "OpenRouter",
-		En:          "OpenRouter",
-		DefaultName: "OpenRouter",
-		Protocol:    model.ProtocolOpenAI,
-		BaseURL:     "https://openrouter.ai/api/v1",
-		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
-		Icon:        icons.ProvOpenai,
-		KeyRequired: true,
-	},
-	{
-		ID:          "siliconflow",
-		Zh:          "硅基流动",
-		En:          "SiliconFlow",
-		DefaultName: "SiliconFlow",
-		Protocol:    model.ProtocolOpenAI,
-		BaseURL:     "https://api.siliconflow.cn/v1",
-		BrandColor:  ui.Hex("#6366f1"), // design:allow brand
-		Icon:        icons.ProvOpenai,
-		KeyRequired: true,
-	},
-	{
-		ID:          "ollama",
-		Zh:          "Ollama 本地",
-		En:          "Ollama Local",
-		DefaultName: "Ollama",
-		Protocol:    model.ProtocolOpenAI,
-		BaseURL:     "http://127.0.0.1:11434/v1",
-		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
-		Icon:        icons.ProvOpenai,
-		KeyRequired: false,
 	},
 }
 
