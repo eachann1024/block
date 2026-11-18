@@ -107,6 +107,11 @@ func main() {
 	ws.OnRevealMainWindow = func() {
 		_ = revealMainWindow()
 	}
+	ws.OnCloseMainWindow = func() {
+		if win := ws.Window(); win != nil {
+			win.Close()
+		}
+	}
 
 	menuActions := app.MenuActions{
 		OnAbout: func() {
