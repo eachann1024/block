@@ -106,8 +106,8 @@ func (ef *EdgeFloatController) closeSide(w *Workspace, side edgeFloatSide, suppr
 }
 
 func (ef *EdgeFloatController) cardWidths(vpW float32, w *Workspace) (leftW, rightW float32) {
-	leftW = min(ClampSidebarWidth(w.sidebarWidth), max(vpW-380, 220))
-	rightW = min(ClampChatWidth(w.ai.PanelWidth()), max(vpW-360, ChatMinW))
+	leftW = min(ClampSidebarWidth(w.sidebarWidth), max(vpW-40, SidebarMinW))
+	rightW = min(ClampChatWidth(w.ai.PanelWidth()), max(vpW-40, ChatMinW))
 	return leftW, rightW
 }
 
@@ -170,24 +170,17 @@ func (ef *EdgeFloatController) PrepareFrame(
 		}
 	}
 
-	leftCardW, rightCardW := ef.cardWidths(vpW, w)
-	maxInset := max(layout.MainWidth-280, 0)
-
-	if ef.active == edgeSideLeft && canLeft {
-		leftInset = min(theme.EdgeFloatInset+leftCardW+theme.EdgeFloatGutterGap, maxInset)
-	} else if canLeft && activeSess != nil {
+	// Pure floating overlay: opening or closing an edge card never pushes or reflows
+	// the main editor column; only keep a static 10px edge clearance on narrow viewports
+	// so the 54px block-handle gutter never overlaps the 8px colored edge hot-zone.
+	if canLeft && activeSess != nil {
 		naturalMargin := (layout.MainWidth - activeSess.OuterFlowWidth()) * 0.5
 		if naturalMargin < theme.EdgeFloatSafeClear {
 			leftInset = theme.EdgeFloatSafeClear
 		}
 	}
 
-	if ef.active == edgeSideRight && canRight {
-		rightInset = min(theme.EdgeFloatInset+rightCardW+theme.EdgeFloatGutterGap, maxInset)
-		if canLeft && leftInset < theme.EdgeFloatSafeClear {
-			leftInset = theme.EdgeFloatSafeClear
-		}
-	} else if canRight && activeSess != nil {
+	if canRight && activeSess != nil {
 		remW := layout.MainWidth - leftInset
 		naturalRight := (remW - activeSess.OuterFlowWidth()) * 0.5
 		if naturalRight < theme.EdgeFloatSafeClear {
