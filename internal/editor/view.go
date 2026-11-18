@@ -790,16 +790,7 @@ func (s *Session) renderDividerBlock(c *ui.Context, idx int, isFocused bool) {
 }
 
 func resolvedEditorFont() string {
-	edFont, _, _ := theme.Typography()
-	f := strings.TrimSpace(edFont)
-	switch f {
-	case "", "system-sans":
-		return ""
-	case "system-serif":
-		return "LXGW WenKai, LXGW WenKai Screen, Kaiti SC, Songti SC, Source Han Serif SC, Noto Serif CJK SC, SimSun, serif"
-	default:
-		return f + ", PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
-	}
+	return theme.ResolvedEditorFont()
 }
 
 func resolvedCodeFont() string {
