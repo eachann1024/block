@@ -15,6 +15,34 @@ import (
 
 const blockDragThreshold float64 = 4
 
+// onGutterInput hides idle block handles until the pointer moves or clicks.
+func (s *Session) onGutterInput(ev ui.InputEvent) {
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		s.typingPointer = nil
+		return
+	case ui.InputText, ui.InputCompose:
+		if ev.Text == "" {
+			return
+		}
+	case ui.InputKeyDown:
+		switch ev.Key {
+		case ui.KeyEnter, ui.KeyBackspace, ui.KeyDelete:
+		default:
+			// Native text clients can receive text directly after the key event.
+			printable := ev.Key == ui.KeySpace ||
+				ev.Key >= ui.KeyMinus && ev.Key <= ui.KeyBackquote ||
+				ev.Key >= ui.Key0 && ev.Key <= ui.KeyZ
+			if !printable || ev.Mods&(ui.Ctrl|ui.Super) != 0 {
+				return
+			}
+		}
+	default:
+		return
+	}
+	s.typingPointer = &ui.Point{X: ev.X, Y: ev.Y}
+}
+
 func blockHandleTop(b *model.Block, topGap float32) float32 {
 	if b == nil {
 		return 0
