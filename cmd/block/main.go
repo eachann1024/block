@@ -105,12 +105,20 @@ func main() {
 			ws.OpenExportStage()
 		},
 		OnCloseTab: func() {
+			if ws.QuickNote().IsFocused() {
+				ws.QuickNote().Hide()
+				return
+			}
 			ws.CloseActiveTab()
 		},
 		OnReopenTab: func() {
 			ws.ReopenClosedTab()
 		},
 		OnFind: func() {
+			if ws.QuickNote().IsFocused() {
+				ws.QuickNote().OpenFind()
+				return
+			}
 			if sess := ws.ActiveSession(); sess != nil {
 				sess.OpenFind()
 				ws.RequestRedraw()
@@ -129,9 +137,27 @@ func main() {
 		OnToggleAIPanel: func() {
 			ws.ToggleAIPanel()
 		},
-		OnZoomReset: func() { ws.SetZoomPct(100) },
-		OnZoomIn:    func() { ws.SetZoomPct(110) },
-		OnZoomOut:   func() { ws.SetZoomPct(90) },
+		OnZoomReset: func() {
+			if ws.QuickNote().IsFocused() {
+				ws.QuickNote().ResetZoom()
+				return
+			}
+			ws.SetZoomPct(100)
+		},
+		OnZoomIn: func() {
+			if ws.QuickNote().IsFocused() {
+				ws.QuickNote().StepZoom(10)
+				return
+			}
+			ws.SetZoomPct(110)
+		},
+		OnZoomOut: func() {
+			if ws.QuickNote().IsFocused() {
+				ws.QuickNote().StepZoom(-10)
+				return
+			}
+			ws.SetZoomPct(90)
+		},
 		OnNextTab:   func() { ws.StepTab(1) },
 		OnPrevTab:   func() { ws.StepTab(-1) },
 		OnNavigateBack: func() {
@@ -266,20 +292,25 @@ func main() {
 	})
 
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
-		if !hasVisibleWindows && !hiddenFlag {
-			openMainWindow()
+		if !hiddenFlag {
+			mainWin := ws.Window()
+			if !hasVisibleWindows || mainWin == nil || !mainWin.IsVisible() {
+				openMainWindow()
+			}
 		}
 	})
 
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		isQuitting = true
 		ws.FlushDirtySessions()
+		ws.QuickNote().Flush()
 	})
 
 	mygo.App.WhenReady(func() {
 		theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
 		mygo.Theme.OnUpdated(func() {
 			theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
+			ws.QuickNote().RefreshStyle()
 			ws.RequestRedraw()
 		})
 

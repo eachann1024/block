@@ -62,13 +62,13 @@ func (s *Session) computeListCtx(idx int) listCtx {
 	return listCtx{Number: num, Ancestors: ancestors}
 }
 
-func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx) {
+func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx, leftGutter float32) {
 	if len(ctx.Ancestors) == 0 {
 		return
 	}
 	pal := theme.Ocean()
 	for i, anc := range ctx.Ancestors {
-		x := float32(math.Round(float64(editorHandleWidth + editorRowGap + float32(min(anc.Indent, 12))*editorIndentStep + anc.Center)))
+		x := float32(math.Round(float64(leftGutter + float32(min(anc.Indent, 12))*editorIndentStep + anc.Center)))
 		g := ui.Box(c.Key(fmt.Sprintf("list-guide-%d-%d", id, i))).Absolute().Top(0).Bottom(0).Left(x).Width(1).
 			Background(pal.ListGuide).IgnoreInput(true)
 		appUi.Probe(g, fmt.Sprintf("list-guide-%d-%d", id, i))

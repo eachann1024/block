@@ -1347,7 +1347,7 @@ func (s *Session) outlineLeftMargin() float32 {
 }
 
 func (s *Session) renderOutlineRail(c *ui.Context) {
-	if s.outlineLeftMargin() < outlineMinLeftMargin {
+	if s.minimal || s.outlineLeftMargin() < outlineMinLeftMargin {
 		s.outlineHovered = false
 		return
 	}
@@ -1675,7 +1675,7 @@ func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height
 }
 
 func (s *Session) renderAnnotationRail(c *ui.Context) {
-	if !s.hasVisibleAnnotationRail() || !s.canFitWideAnnotationRail() {
+	if s.minimal || !s.hasVisibleAnnotationRail() || !s.canFitWideAnnotationRail() {
 		return
 	}
 	pal := theme.Ocean()
