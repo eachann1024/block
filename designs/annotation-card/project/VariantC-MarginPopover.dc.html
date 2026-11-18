@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>原文浮层</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.lt{--paper:#ffffff;--menu:#ffffff;--shell:#f1f1f1;--text:#1f1e1d;--text2:#52514e;--accent:#547dd0;--accentHover:#456ec2;--accentText:#ffffff;--iconFill:#c9d8f3;--hover:#eef3fc;--selected:#e5edfc;--hairline:#e4e6ea;--btnBorder:#dcdcdc;--annBg:#fef0d1;--annActive:#fdda8c;--dot:#f5c84c;--selFg:#184f95;--danger:#c93b3b;--pop:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.08),0 12px 32px rgba(0,0,0,.12)}
+.dk{--paper:#181818;--menu:#222222;--shell:#343434;--text:#ececec;--text2:#b4b4b4;--accent:#779de8;--accentHover:#8aabee;--accentText:#14203a;--iconFill:#31456a;--hover:#2c2c2c;--selected:#343434;--hairline:#2e2e2e;--btnBorder:#444444;--annBg:#4a3c21;--annActive:#81611e;--dot:#f5c84c;--selFg:#9dbcf5;--danger:#f26d6d;--pop:0 1px 2px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.16),0 12px 32px rgba(0,0,0,.24)}
+.mark{all:unset;cursor:pointer;border-radius:3px;padding:1px 0;transition:background 160ms}
+.chip{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:8px;max-width:100%;height:28px;padding:0 10px;border-radius:6px;cursor:pointer;font-size:14px;transition:background 160ms,box-shadow 160ms}
+.chip:hover{background:var(--hover)}
+.ta{field-sizing:content;resize:none;outline:none;border:0;background:transparent;padding:0;margin:0;width:100%;min-height:44px;font:inherit;color:var(--text);caret-color:var(--accent);overflow-wrap:anywhere}
+.ta::placeholder{color:var(--text2)}
+.ib{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;padding:0}
+.ib:hover{background:var(--hover);color:var(--text)}
+.ib.danger:hover{color:var(--danger)}
+.ghost{height:28px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--text2);font:inherit;font-size:13px;font-weight:460;cursor:pointer}
+.ghost:hover{background:var(--hover);color:var(--text)}
+.secondary{height:28px;padding:0 10px;border:1px solid var(--btnBorder);border-radius:6px;background:var(--menu);color:var(--text);font:inherit;font-size:13px;font-weight:460;cursor:pointer;display:flex;align-items:center;gap:6px}
+.secondary:hover{background:var(--hover)}
+.primary{height:28px;padding:0 12px;border:0;border-radius:6px;background:var(--accent);color:var(--accentText);font:inherit;font-size:13px;font-weight:460;cursor:pointer}
+.primary:hover{background:var(--accentHover)}
+</style>
+</helmet>
+<div class="{{ themeClass }}" style="width: 1160px; height: 760px; box-sizing: border-box; background: var(--paper); color: var(--text); font-family: -apple-system, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC', system-ui, sans-serif; display: flex; gap: 40px; padding: 72px 64px 0 120px; overflow: hidden">
+<div style="width: 640px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; font-size: 16px; line-height: 26px">
+<h1 style="margin: 0 0 8px; font-size: 28px; line-height: 36px; font-weight: 560">写作节奏的三个阶段</h1>
+<sc-for list="{{ paras }}" as="p" hint-placeholder-count="4">
+<div style="position: relative">
+<p style="margin: 0">{{ p.before }}<sc-if value="{{ p.has }}" hint-placeholder-val="{{ true }}"><button class="mark" aria-label="打开批注" onClick="{{ p.open }}" style="{{ p.markStyle }}">{{ p.mark }}</button></sc-if><sc-if value="{{ p.plain }}" hint-placeholder-val="{{ false }}">{{ p.mark }}</sc-if>{{ p.after }}</p>
+<sc-if value="{{ p.isOpen }}" hint-placeholder-val="{{ false }}">
+<div onKeyDown="{{ onPopKey }}" style="{{ p.popStyle }}">
+<div style="display: flex; align-items: center; gap: 8px; height: 26px">
+<sc-if value="{{ p.isResult }}" hint-placeholder-val="{{ false }}">
+<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="var(--iconFill)" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+</sc-if>
+<sc-if value="{{ p.isNote }}" hint-placeholder-val="{{ true }}">
+<div style="width: 6px; height: 6px; border-radius: 999px; background: var(--dot); flex-shrink: 0"></div>
+</sc-if>
+<div style="flex: 1; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ p.mark }}</div>
+<sc-if value="{{ p.isNote }}" hint-placeholder-val="{{ true }}">
+<button class="ib danger" aria-label="删除批注" onClick="{{ p.remove }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10"></path><path d="M6.5 4.5V3h3v1.5"></path><path d="M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="var(--iconFill)"></path></svg></button>
+</sc-if>
+<button class="ib" aria-label="关闭" onClick="{{ close }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+</div>
+<sc-if value="{{ p.isNote }}" hint-placeholder-val="{{ true }}">
+<label style="display: block; font-size: 14px; line-height: 20px"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">批注内容</span><textarea class="ta" rows="2" placeholder="写点什么…" value="{{ p.text }}" onChange="{{ p.onText }}" autoFocus="{{ true }}"></textarea></label>
+</sc-if>
+<sc-if value="{{ p.isPrompt }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; justify-content: flex-end">
+<button class="secondary" onClick="{{ p.apply }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="var(--iconFill)" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"></path></svg>按批注改写</button>
+</div>
+</sc-if>
+<sc-if value="{{ p.isResult }}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 15px; line-height: 24px; color: var(--selFg); overflow-wrap: anywhere">{{ p.text }}</div>
+<div style="display: flex; justify-content: flex-end; gap: 4px">
+<button class="ghost" onClick="{{ p.remove }}">忽略</button>
+<button class="primary" onClick="{{ p.accept }}">替换原文</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+<div style="width: 224px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 52px">
+<sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+<button class="chip" onClick="{{ c.open }}" style="{{ c.style }}">
+<sc-if value="{{ c.isResult }}" hint-placeholder-val="{{ false }}">
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0"><path d="M8 1.5l1.6 4.2 4.4 1.3-4.4 1.3L8 12.5 6.4 8.3 2 7l4.4-1.3z" fill="var(--iconFill)" stroke="var(--accent)" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+</sc-if>
+<sc-if value="{{ c.isNote }}" hint-placeholder-val="{{ true }}">
+<span style="width: 6px; height: 6px; border-radius: 999px; background: var(--dot); flex-shrink: 0"></span>
+</sc-if>
+<span style="min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ c.text }}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"$preview":{"width":1160,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      paras: [
+        { id: 'h1', before: '第一阶段是', mark: '快速倾倒', after: '：不管结构，把脑子里的东西尽量写下来，数量比质量重要。' },
+        { id: 'h2', before: '第二阶段是整理。把零散的段落按主题归类，', mark: '删除重复的论点', after: '，补上缺失的过渡。' },
+        { id: 'h3', before: '第三阶段才是打磨。', mark: '这一阶段需要反复朗读，留意每一句的呼吸感', after: '，必要时换一个更准确的词。' },
+        { id: 'h4', before: '', mark: '总之，好的文字往往是改出来的，而不是一次写成的。', after: '' }
+      ],
+      notes: [
+        { id: 'h1', kind: 'note', text: '可以举一个自己的例子' },
+        { id: 'h2', kind: 'note', text: '123 我就看看 1232132132131313213112313132132131313213133' },
+        { id: 'h3', kind: 'prompt', text: '改得更口语一点' },
+        { id: 'h4', kind: 'result', text: '说到底，好文章都是一遍遍改出来的。' }
+      ],
+      open: 'h2'
+    };
+  }
+  patch(id, fn) { this.setState({ notes: this.state.notes.map((n) => n.id === id ? fn(n) : n) }); }
+  drop(id) { this.setState({ notes: this.state.notes.filter((n) => n.id !== id), open: null }); }
+  renderVals() {
+    const s = this.state;
+    const find = (id) => s.notes.find((n) => n.id === id);
+    const close = () => {
+      const cur = s.open && find(s.open);
+      if (cur && cur.kind !== 'result' && !cur.text.trim()) { this.drop(cur.id); return; }
+      this.setState({ open: null });
+    };
+    const paras = s.paras.map((p) => {
+      const n = find(p.id);
+      const isOpen = !!n && s.open === p.id;
+      return {
+        ...p,
+        has: !!n, plain: !n, isOpen,
+        text: n ? n.text : '',
+        isNote: !!n && n.kind !== 'result',
+        isPrompt: !!n && n.kind === 'prompt',
+        isResult: !!n && n.kind === 'result',
+        markStyle: 'background: ' + (isOpen ? 'var(--annActive)' : 'var(--annBg)'),
+        popStyle: 'position: absolute; z-index: 5; top: 100%; margin-top: 6px; left: 0; width: 340px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 12px 14px; border-radius: 14px; background: var(--menu); box-shadow: inset 0 0 0 1px var(--hairline), var(--pop)',
+        open: () => this.setState({ open: isOpen ? null : p.id }),
+        onText: (e) => { const v = e.target.value; this.patch(p.id, (x) => ({ ...x, text: v })); },
+        remove: () => this.drop(p.id),
+        apply: () => this.patch(p.id, (x) => ({ ...x, kind: 'result', text: '这一步要反复读出声，听听每句话顺不顺' })),
+        accept: () => { const t = n.text; this.setState({ paras: s.paras.map((q) => q.id === p.id ? { ...q, mark: t } : q) }); this.drop(p.id); }
+      };
+    });
+    const chips = s.notes.map((n) => {
+      const on = s.open === n.id;
+      return {
+        ...n,
+        isNote: n.kind !== 'result',
+        isResult: n.kind === 'result',
+        style: 'color: ' + (n.kind === 'result' ? 'var(--selFg)' : (on ? 'var(--text)' : 'var(--text2)')) + (on ? '; background: var(--selected); box-shadow: inset 0 0 0 1px var(--accent)' : ''),
+        open: () => this.setState({ open: on ? null : n.id })
+      };
+    });
+    return {
+      themeClass: (this.props.dark ?? true) ? 'dk' : 'lt',
+      paras, chips, close,
+      onPopKey: (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }
+    };
+  }
+}
+</script>
+</body>
+</html>
