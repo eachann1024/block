@@ -223,9 +223,9 @@ func (s *Session) cancelTableExtend() {
 }
 
 func (s *Session) pruneTableTransientCells(id model.BlockID, rows, cols int) {
-	for k := range s.tableCellRects {
+	for k := range s.tableCellDocRects {
 		if k.BlockID == id && (k.Row >= rows || k.Col >= cols) {
-			delete(s.tableCellRects, k)
+			delete(s.tableCellDocRects, k)
 		}
 	}
 	for k := range s.tableInputs {
@@ -286,7 +286,7 @@ func (s *Session) beginTableExtend(idx int, id model.BlockID, axis tableExtendAx
 		for r := 0; r < baseRows; r++ {
 			var maxCellH float32
 			for c := 0; c < baseCols; c++ {
-				if cr, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: r, Col: c}]; ok && cr.H > maxCellH {
+				if cr, ok := s.tableCellRect(id, r, c); ok && cr.H > maxCellH {
 					maxCellH = cr.H
 				}
 			}
@@ -315,7 +315,7 @@ func (s *Session) beginTableExtend(idx int, id model.BlockID, axis tableExtendAx
 			w := colStep
 			if c < len(colWidths) && colWidths[c] > 0 {
 				w = clampFloat32(colWidths[c]+appUi.TableGridRuleWidth, minStep, maxStep)
-			} else if cr, ok := s.tableCellRects[tableCellKey{BlockID: id, Row: 0, Col: c}]; ok && cr.W > 0 {
+			} else if cr, ok := s.tableCellRect(id, 0, c); ok && cr.W > 0 {
 				w = clampFloat32(cr.W+appUi.TableGridRuleWidth, minStep, maxStep)
 			}
 			ext.removeSteps[c] = w

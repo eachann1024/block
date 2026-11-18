@@ -135,9 +135,9 @@ func (s *Session) matchLineOffsetInBlock(idx int, b *model.Block, topGap float32
 		return 0
 	}
 	var textW, padTop float32
-	if tr, ok := s.blockTextRects[b.ID]; ok && tr.W > 0 {
+	if tr, ok := s.blockTextRect(b.ID); ok && tr.W > 0 {
 		textW = tr.W
-		if r, okR := s.blockRects[b.ID]; okR && r.H > 0 {
+		if r, okR := s.blockRect(b.ID); okR && r.H > 0 {
 			padTop = min(max(tr.Y-(r.Y+topGap), 0), r.H)
 		}
 	} else {
