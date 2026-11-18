@@ -1330,7 +1330,7 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 
 	outerMaxW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
 	row := ui.Row(c.Key(fmt.Sprintf("ai-preview-%d", ai.Parts[0].BlockID))).
-		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-4, 0), 6, max(s.leftContentGutter()-8, 0))
+		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-8, 0), 6, max(s.leftContentGutter()-8, 0))
 	row.Children(func() {
 		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(theme.EditorStandardWidth+16).
 			Padding(8, 10).Gap(0).Radius(10).Background(tintBG)

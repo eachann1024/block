@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	editorHandleWidth float32 = 56
-	editorRowGap      float32 = 4
-	editorRightInset  float32 = 12
+	editorHandleWidth float32 = 54
+	editorRowGap      float32 = 14
+	editorRightInset  float32 = editorHandleWidth + editorRowGap
 	editorMarkerWidth float32 = 29.68
 	editorIndentStep  float32 = editorMarkerWidth / 2
 	editorTopPad      float32 = 64
@@ -99,7 +99,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			}
 		})
 		scroll.Children(func() {
-			// Center column: max 672px body + 56px handle gutter + 4px gap + 12px inset = 744px.
+			// Center column: max 672px body + symmetric 68px left/right gutters (54px handle gutter + 14px gap) = 808px.
 			outerMaxW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
 				Padding(topPad, 0, bottomPad, 0)
@@ -385,11 +385,10 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	}
 	topGap := s.blockGap(prev, b)
 	leftPad := float32(0)
-	rightPad := editorRightInset
 	if s.minimal {
 		leftPad = minimalLeftInset
-		rightPad = minimalRightInset
 	}
+	rightPad := s.rightContentInset()
 
 	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
 	if !readOnly && b.Kind != model.BlockImage && b.Kind != model.BlockDivider {
@@ -401,6 +400,23 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	deleteArmed := idx == 0 && s.firstLineDeleteArmed && s.canArmFirstLineDelete()
 
 	dragTarget := s.dragActive && s.dragOverIdx == idx
+	if isHighlighted {
+		leftGutter := s.leftContentGutter()
+		rightInset := s.rightContentInset()
+		hiFill := pal.Selected
+		row.Draw(func(p *ui.Painter, r ui.Rect) {
+			band := ui.Rect{
+				X: r.X + leftGutter - 8,
+				Y: r.Y + topGap - 2,
+				W: max(r.W-leftGutter-rightInset+16, 0),
+				H: max(r.H-topGap+4, 0),
+			}
+			if band.W > 0 && band.H > 0 {
+				p.Fill(band, hiFill, 6)
+				appUi.RecordBounds("outline-target-highlight", band)
+			}
+		})
+	}
 	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if prev, ok := s.blockRects[id]; !ok || prev != r {
 			s.blockRects[id] = r
@@ -409,16 +425,10 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 			}
 		}
 		appUi.RecordBounds(fmt.Sprintf("block-%d", id), r)
-		if isHighlighted {
-			appUi.RecordBounds("outline-target-highlight", r)
-		}
 		if dragTarget {
 			s.paintBlockDropMarker(p, r, b, pal)
 		}
 	})
-	if isHighlighted {
-		row.Background(pal.Selected).Radius(6)
-	}
 	if s.dragActive && s.dragBlockID == id {
 		row.Opacity(0.55)
 	}
@@ -446,7 +456,7 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
 			if !s.minimal {
-				// Left handle gutter (56px wide + 4px margin), strictly only shown on hover or focus!
+				// Left handle gutter (54px wide + 14px gap), strictly only shown on hover or focus!
 				showDeleteArm := !readOnly && !overlayBlocking && !isDraggingAny && deleteArmed
 				showFold := !readOnly && b.Kind.IsHeading() && !overlayBlocking && (!isDraggingBlock || s.dragBlockID == id) && (showHandles || isFolded)
 				hasGutterControls := showDeleteArm || (blankPara && showBlankAdd) || (!blankPara && showHandles) || showFold
@@ -456,7 +466,7 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 				if hasGutterControls {
 					gutter.Children(func() {
 						handleTop := blockHandleTop(b, topGap)
-						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(26).
+						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(24).
 							Justify(ui.End).AlignItems(ui.Center).Gap(2).PassThrough()
 						strip.Children(func() {
 							if showDeleteArm {
@@ -517,7 +527,14 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 											s.FocusBlock(idx)
 											trigger := s.blockTextRects[id]
 											if trigger.W <= 0 {
-												trigger = s.blockRects[id]
+												if r, ok := s.blockRects[id]; ok && r.W > 0 {
+													trigger = ui.Rect{
+														X: r.X + s.leftContentGutter(),
+														Y: r.Y + topGap,
+														W: max(r.W-s.leftContentGutter()-s.rightContentInset(), 120),
+														H: max(r.H-topGap, 24),
+													}
+												}
 											}
 											s.openSlashMenu(idx, trigger)
 										}
@@ -525,11 +542,8 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 								}
 							} else if showHandles {
 								gripID := fmt.Sprintf("block-grip-%d", id)
-								grip := ui.ButtonBase(c.Key(gripID)).Size(26, 26).Center().
+								grip := ui.ButtonBase(c.Key(gripID)).Size(24, 24).Center().
 									Radius(6).KeepFocus().Label(theme.Tr("块操作", "Block menu"))
-								if b.Kind == model.BlockTable {
-									grip.Margin(0, 4, 0, 0)
-								}
 								gripPressed := grip.Pressed()
 								gripActive := s.dragBlockID == id && !s.dragCanceled
 								gripHovered := grip.Hovered()
@@ -923,7 +937,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 	s.paintEmptyHintBand(wrap, hint, fontSize, lh)
 
 	wrap.Children(func() {
-		s.renderEmptyHintRow(c, hint, fontSize, lh)
+		s.renderEmptyHintRow(c, hint, fontSize, weight, lh)
 
 		textCol := pal.Text
 		if b.Kind == model.BlockHeading6 {
