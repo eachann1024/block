@@ -1045,8 +1045,9 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 	spec := ThemeSpec(st)
 	id := "export-style-" + string(st)
 	ctx.Key(id)
-	btn := ui.ButtonBase(ctx).Grow(1).MinWidth(0).Height(52).PaddingX(10).Gap(10).
-		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+	btn := ui.ButtonBase(ctx).Column().Grow(1).MinWidth(0).Height(theme.ExportThemeTileHeight).
+		Padding(theme.Space6).Gap(theme.Space6).
+		Radius(theme.RadiusLG).Cursor(ui.CursorPointer).
 		Role(ui.RoleRadio).Selected(selected).Label(id)
 
 	hovered := btn.Hovered()
@@ -1069,17 +1070,17 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 	chipBorder := pal.Export().ChipBorder
 
 	btn.Children(func() {
-		// Mini paper + accent + inner card swatch chip (28x22)
-		ui.Box(ctx).Size(28, 22).Shrink(0).Radius(theme.RadiusXS).Background(spec.Swatch[0]).
-			Border(1, chipBorder).Clip().AlignItems(ui.Center).Justify(ui.End).
-			Children(func() {
-				ui.Box(ctx).Size(18, 14).Background(spec.Swatch[2]).
-					BorderWidth(2, 0, 0, 0).BorderColor(spec.Swatch[1])
+		ui.Box(ctx).FillWidth().Height(theme.ExportThemeThumbHeight).Shrink(0).
+			Radius(theme.RadiusSM).Border(1, chipBorder).
+			Draw(func(p *ui.Painter, r ui.Rect) {
+				markdown.PaintThemeThumb(p, r, st, theme.RadiusSM)
 			})
-		ui.Text(ctx, spec.Label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if selected {
-			icons.DrawAnimated(ctx, icons.Check, 15, pal.MonoIconColors(pal.Accent), hovered || pressed)
-		}
+		ui.Row(ctx).FillWidth().PaddingX(theme.Space4).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space4).Children(func() {
+			ui.Text(ctx, spec.Label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if selected {
+				icons.DrawAnimated(ctx, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), hovered || pressed)
+			}
+		})
 	})
 	internalui.Probe(btn, id)
 	return btn.Clicked()

@@ -197,4 +197,8 @@ const (
 	UpdaterBadgeDotSize    float32 = 6
 	UpdaterBulletDotSize   float32 = 5
 	UpdaterBulletBoxWidth  float32 = 12
+
+	// Export theme picker tile metrics (designs/export-themes/project/Main.dc.html).
+	ExportThemeTileHeight  float32 = 90
+	ExportThemeThumbHeight float32 = 56
 )

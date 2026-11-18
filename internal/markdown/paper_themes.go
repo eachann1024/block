@@ -25,7 +25,7 @@ func finishSpec(s PaperThemeSpec) PaperThemeSpec {
 	if s.HeadSizes == ([3]float32{}) {
 		s.HeadSizes = [3]float32{s.BodySize * 1.65, s.BodySize * 1.3, s.BodySize * 1.12}
 	}
-	if s.Card != nil && s.Card.Fill != (ui.Color{}) {
+	if s.Card != nil && s.Card.Fill.A == 255 {
 		s.InnerCanvas = s.Card.Fill
 		s.Swatch[2] = s.Card.Fill
 	}
