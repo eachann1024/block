@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 A · 单列折叠行 + 弹窗添加供应商</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#547dd0}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+.mono{font-family:'JetBrains Mono',Menlo,ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.scr::-webkit-scrollbar{width:6px;height:6px}
+.scr::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.25);border-radius:3px}
+</style>
+</helmet>
+
+<div style="width:860px;height:720px;position:relative;box-sizing:border-box;display:flex;flex-direction:column;background:{{t.winBg}};color:{{t.text}};font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid {{t.shellBorder}};-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:{{t.shellBg}};border-bottom:1px solid {{t.shellBorder}};box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div aria-hidden="true" style="display:flex;align-items:center;gap:8px;flex:none">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <button type="button" aria-label="切换设置侧栏" onClick="{{toggleSidebar}}" style="width:26px;height:26px;padding:0;border-radius:6px;border:1px solid {{t.sideBtnBorder}};background:{{t.sideBtnBg}};color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"></rect>
+          <path d="M9 4.5V19.5" stroke="currentColor" stroke-width="1.6"></path>
+          <path d="M13 10L15.5 12L13 14" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </button>
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span style="color:{{t.text2}}">设置</span>
+        <span style="color:{{t.text2}}">/</span>
+        <span style="color:{{t.text}};font-weight:500">AI 助手</span>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <button type="button" aria-label="关闭设置" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+    <sc-if value="{{sidebarOpen}}" hint-placeholder-val="{{false}}">
+      <aside aria-label="设置分类" style="width:200px;flex:none;background:{{t.sidebarBg}};border-right:1px solid {{t.shellBorder}};padding:12px 10px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box">
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:500;display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{t.iconFill}}" stroke="{{t.accent}}" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+          <span>AI 助手</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+          <span>通用与编辑</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.5" y="4.5" width="17" height="12" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M8 20H16M12 16.5V20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+          <span>外观与字体</span>
+        </button>
+        <button type="button" style="height:32px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:{{t.text2}};display:flex;align-items:center;gap:8px;cursor:pointer;text-align:left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none"><rect x="3.25" y="5.75" width="17.5" height="12.5" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M7.5 10h2M11 10h2M14.5 10h2M7.5 14h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+          <span>快捷键</span>
+        </button>
+      </aside>
+    </sc-if>
+
+    <main class="scr" style="flex:1;min-width:0;background:{{t.winBg}};overflow-y:auto">
+      <div style="max-width:620px;margin:0 auto;padding:24px 24px 40px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <h1 style="margin:0;font-size:22px;line-height:28px;font-weight:560;color:{{t.text}}">AI 助手</h1>
+          <button type="button" onClick="{{toggleMaster}}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid {{masterBorder}};background:{{masterBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:460">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3.5L14.2 9.3L20 11.5L14.2 13.7L12 19.5L9.8 13.7L4 11.5L9.8 9.3L12 3.5Z" fill="{{t.iconFill}}" stroke="{{t.accent}}" stroke-width="1.6" stroke-linejoin="round"></path>
+              <path d="M18.5 4V7M17 5.5H20" stroke="{{t.accent}}" stroke-width="1.6" stroke-linecap="round"></path>
+            </svg>
+            <span>{{masterLabel}}</span>
+          </button>
+        </div>
+
+        <sc-if value="{{masterOn}}" hint-placeholder-val="{{true}}">
+          <section aria-label="API 供应商" style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">API 供应商</span>
+              <button type="button" onClick="{{openAddModal}}" style="height:28px;padding:0 11px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-weight:500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                <span>添加供应商</span>
+              </button>
+            </div>
+
+            <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+              <sc-for list="{{providers}}" as="prov" hint-placeholder-count="2">
+                <div style="border-bottom:{{prov.rowBorder}};background:{{prov.rowBg}};display:flex;flex-direction:column">
+                  <div style="min-height:48px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-sizing:border-box">
+                    <button type="button" onClick="{{prov.toggleExpand}}" style="flex:1;min-width:0;height:48px;padding:0;border:0;background:transparent;color:{{t.text}};display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+                      <span style="width:26px;height:26px;border-radius:6px;background:{{t.wellBg}};border:1px solid {{t.border}};display:inline-flex;align-items:center;justify-content:center;flex:none">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <circle cx="12" cy="12" r="8" fill="{{t.iconFill}}" stroke="{{prov.brandColor}}" stroke-width="1.8"></circle>
+                          <path d="M9 12.2l2 2 4-4.2" stroke="{{prov.brandColor}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                      </span>
+                      <span style="font-weight:550;color:{{t.text}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{prov.name}}</span>
+                      <span class="mono" style="height:20px;padding:0 7px;border-radius:5px;background:{{t.wellBg}};border:1px solid {{t.border}};color:{{t.text2}};font-size:12px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">{{prov.host}}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-left:auto;transform:{{prov.chevTransform}}"><path d="M6 9l6 6 6-6"></path></svg>
+                    </button>
+
+                    <div style="display:flex;align-items:center;gap:8px;flex:none">
+                      <sc-if value="{{prov.custom}}" hint-placeholder-val="{{false}}">
+                        <button type="button" aria-label="删除供应商" onClick="{{prov.remove}}" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3"></path></svg>
+                        </button>
+                      </sc-if>
+                      <button type="button" aria-label="切换供应商启用状态" onClick="{{prov.toggleOn}}" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:{{prov.swBg}};display:inline-flex;align-items:center;justify-content:{{prov.swAlign}};cursor:pointer;box-sizing:border-box;flex:none">
+                        <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <sc-if value="{{prov.expanded}}" hint-placeholder-val="{{true}}">
+                    <div style="padding:12px 14px 14px;border-top:1px solid {{t.divider}};background:{{t.expandBg}};display:flex;flex-direction:column;gap:10px">
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                        <span style="width:68px;flex:none;color:{{t.text2}}">协议类型</span>
+                        <div style="flex:1;min-width:200px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                          <div style="display:inline-flex;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};gap:2px">
+                            <button type="button" onClick="{{prov.setOpenAI}}" style="height:26px;padding:0 10px;border-radius:5px;border:{{prov.openAIBorder}};background:{{prov.openAIBg}};color:{{t.text}};cursor:pointer;font-size:13px">OpenAI 协议</button>
+                            <button type="button" onClick="{{prov.setClaude}}" style="height:26px;padding:0 10px;border-radius:5px;border:{{prov.claudeBorder}};background:{{prov.claudeBg}};color:{{t.text}};cursor:pointer;font-size:13px">Claude 协议</button>
+                          </div>
+                          <button type="button" onClick="{{prov.runTest}}" style="height:28px;padding:0 11px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.cardBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:13px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{t.accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"></path></svg>
+                            <span>{{prov.testLabel}}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                        <label for="{{prov.urlId}}" style="width:68px;flex:none;color:{{t.text2}}">接口地址</label>
+                        <input id="{{prov.urlId}}" type="text" value="{{prov.baseUrl}}" onChange="{{prov.onUrlChange}}" class="mono" style="flex:1;min-width:200px;height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                      </div>
+
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                        <label for="{{prov.keyId}}" style="width:68px;flex:none;color:{{t.text2}}">API 密钥</label>
+                        <div style="flex:1;min-width:200px;display:flex;align-items:center;gap:8px">
+                          <input id="{{prov.keyId}}" type="{{prov.keyType}}" value="{{prov.apiKey}}" onChange="{{prov.onKeyChange}}" class="mono" style="flex:1;min-width:0;height:32px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+                          <button type="button" onClick="{{prov.toggleKey}}" style="height:32px;padding:0 11px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.cardBg}};color:{{t.text}};cursor:pointer;flex:none">{{prov.showLabel}}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section aria-label="本机 Agent" style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">本机 Agent</span>
+            <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;overflow:hidden;display:flex;flex-direction:column">
+              <sc-for list="{{agents}}" as="ag" hint-placeholder-count="4">
+                <div style="border-bottom:{{ag.rowBorder}};display:flex;flex-direction:column">
+                  <div style="height:44px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-sizing:border-box">
+                    <button type="button" onClick="{{ag.toggleExpand}}" style="flex:1;min-width:0;height:44px;padding:0;border:0;background:transparent;color:{{t.text}};display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+                      <span style="width:24px;height:24px;border-radius:6px;background:{{t.wellBg}};border:1px solid {{t.border}};display:inline-flex;align-items:center;justify-content:center;flex:none;font-weight:600;font-size:12px;color:{{t.text}}">{{ag.short}}</span>
+                      <span style="font-weight:500;color:{{t.text}}">{{ag.name}}</span>
+                      <span class="mono" style="font-size:12px;color:{{t.text2}}">{{ag.version}}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-left:auto;transform:{{ag.chevTransform}}"><path d="M6 9l6 6 6-6"></path></svg>
+                    </button>
+                    <button type="button" aria-label="切换 Agent 启用状态" onClick="{{ag.toggleOn}}" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:{{ag.swBg}};display:inline-flex;align-items:center;justify-content:{{ag.swAlign}};cursor:pointer;box-sizing:border-box;flex:none">
+                      <span style="width:16px;height:16px;border-radius:8px;background:#ffffff;display:block"></span>
+                    </button>
+                  </div>
+
+                  <sc-if value="{{ag.expanded}}" hint-placeholder-val="{{false}}">
+                    <div style="padding:10px 14px 12px;border-top:1px solid {{t.divider}};background:{{t.expandBg}};display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                      <span style="color:{{t.text2}}">思考强度</span>
+                      <div style="display:inline-flex;padding:2px;border-radius:7px;background:{{t.wellBg}};border:1px solid {{t.border}};gap:2px">
+                        <button type="button" onClick="{{ag.setLow}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.lowBorder}};background:{{ag.lowBg}};color:{{t.text}};cursor:pointer;font-size:12px">Low</button>
+                        <button type="button" onClick="{{ag.setMed}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.medBorder}};background:{{ag.medBg}};color:{{t.text}};cursor:pointer;font-size:12px">Medium</button>
+                        <button type="button" onClick="{{ag.setHigh}}" style="height:24px;padding:0 9px;border-radius:5px;border:{{ag.highBorder}};background:{{ag.highBg}};color:{{t.text}};cursor:pointer;font-size:12px">High</button>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section aria-label="普通功能" style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:15px;line-height:22px;font-weight:560;color:{{t.text}}">普通功能</span>
+            <div style="background:{{t.cardBg}};border:1px solid {{t.border}};border-radius:10px;padding:0 14px;height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-sizing:border-box">
+              <span style="color:{{t.text}}">标注功能</span>
+              <button type="button" style="height:30px;padding:0 10px;border-radius:7px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <span style="font-weight:500">GPT-6.2-Sol</span>
+                <span style="color:{{t.text2}}">·</span>
+                <span style="color:{{t.text2}}">Medium</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{t.text2}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+              </button>
+            </div>
+          </section>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{modalOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position:absolute;inset:0;background:{{t.scrim}};display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;z-index:20">
+      <div role="dialog" aria-label="添加供应商" style="width:430px;max-width:100%;background:{{t.modalBg}};border:1px solid {{t.border}};border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box;box-shadow:0 20px 48px rgba(0,0,0,0.42)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="font-size:16px;line-height:22px;font-weight:560;color:{{t.text}}">添加供应商</span>
+          <button type="button" aria-label="关闭弹窗" onClick="{{closeAddModal}}" style="width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:{{t.text2}};display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <sc-for list="{{presets}}" as="pre" hint-placeholder-count="4">
+            <button type="button" onClick="{{pre.pick}}" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid {{pre.border}};background:{{pre.bg}};color:{{t.text}};cursor:pointer;font-size:13px;font-weight:{{pre.weight}}">{{pre.label}}</button>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label for="add-prov-name" style="color:{{t.text2}}">名称</label>
+            <input id="add-prov-name" type="text" value="{{draftName}}" onChange="{{onDraftName}}" placeholder="例如 SiliconFlow / OpenRouter" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label for="add-prov-url" style="color:{{t.text2}}">接口地址</label>
+            <input id="add-prov-url" type="text" value="{{draftUrl}}" onChange="{{onDraftUrl}}" placeholder="https://api.example.com/v1" class="mono" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <label for="add-prov-key" style="color:{{t.text2}}">API 密钥</label>
+            <input id="add-prov-key" type="password" value="{{draftKey}}" onChange="{{onDraftKey}}" placeholder="sk-..." class="mono" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.inputBg}};color:{{t.text}};box-sizing:border-box">
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-top:4px">
+          <button type="button" onClick="{{closeAddModal}}" style="height:32px;padding:0 14px;border-radius:8px;border:1px solid {{t.btnBorder}};background:{{t.wellBg}};color:{{t.text}};cursor:pointer">取消</button>
+          <button type="button" onClick="{{confirmAdd}}" style="height:32px;padding:0 16px;border-radius:8px;border:1px solid {{t.accent}};background:{{t.selBg}};color:{{t.text}};font-weight:550;cursor:pointer">添加并启用</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","label":"主题","options":["dark","light"],"default":"dark"},"sidebar":{"editor":"boolean","label":"展开设置侧栏（测试660px窄区）","default":false},"addDialog":{"editor":"boolean","label":"预览添加供应商弹窗","default":false},"$preview":{"width":860,"height":720}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = {
+      sidebarOverride: null,
+      modalOverride: null,
+      masterOn: true,
+      expandedProv: 'deepseek',
+      expandedAgent: '',
+      draftPreset: 'openai',
+      draftName: 'SiliconFlow',
+      draftUrl: 'https://api.siliconflow.cn/v1',
+      draftKey: 'sk-sf98a7bc65d4e3f2',
+      providers: [
+        {
+          id: 'deepseek',
+          name: 'DeepSeek',
+          protocol: 'openai',
+          baseUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'sk-ds9182736455aabbccddee',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: false,
+          brandColor: '#5b7cfa'
+        },
+        {
+          id: 'openrouter',
+          name: 'OpenRouter',
+          protocol: 'openai',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: 'sk-or-v1-889900112233',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: true,
+          brandColor: '#10a37f'
+        }
+      ],
+      agents: [
+        { id: 'codex', short: 'Cx', name: 'Codex', version: 'v0.42.0', enabled: true, thinking: 'medium', fullPerm: false },
+        { id: 'claude', short: 'Cl', name: 'Claude', version: 'v1.0.88', enabled: true, thinking: 'high', fullPerm: false },
+        { id: 'dsh', short: 'ds', name: 'dsh', version: '未登录', enabled: false, thinking: 'medium', fullPerm: false },
+        { id: 'pi', short: 'Pi', name: 'Pi', version: 'v0.19.2', enabled: false, thinking: 'medium', fullPerm: false }
+      ]
+    };
+  }
+
+  hostOf(url) {
+    const clean = String(url || '').replace(/^https?:\/\//, '');
+    const slash = clean.indexOf('/');
+    return slash > 0 ? clean.slice(0, slash) : (clean || '未填地址');
+  }
+
+  renderVals() {
+    const isDark = (this.props.theme ?? 'dark') === 'dark';
+    const sidebarOpen = this.state.sidebarOverride !== null ? this.state.sidebarOverride : Boolean(this.props.sidebar ?? false);
+    const modalOpen = this.state.modalOverride !== null ? this.state.modalOverride : Boolean(this.props.addDialog ?? false);
+
+    const t = isDark
+      ? {
+          winBg: '#181818',
+          shellBg: '#222222',
+          sidebarBg: '#202020',
+          shellBorder: '#2e2e2e',
+          cardBg: '#222222',
+          modalBg: '#242424',
+          expandBg: '#1d1d1d',
+          wellBg: '#2a2a2a',
+          inputBg: '#181818',
+          border: '#2e2e2e',
+          divider: '#2b2b2b',
+          btnBorder: '#444444',
+          text: '#ececec',
+          text2: '#b4b4b4',
+          accent: '#779de8',
+          selBg: '#2e384d',
+          iconFill: '#31456a',
+          swOff: '#484848',
+          scrim: 'rgba(0,0,0,0.56)',
+          sideBtnBg: sidebarOpen ? '#2e384d' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#779de8' : 'transparent'
+        }
+      : {
+          winBg: '#f8f8f8',
+          shellBg: '#f1f1f1',
+          sidebarBg: '#fafafa',
+          shellBorder: '#e4e6ea',
+          cardBg: '#ffffff',
+          modalBg: '#ffffff',
+          expandBg: '#fafbfc',
+          wellBg: '#f1f1f1',
+          inputBg: '#ffffff',
+          border: '#e4e6ea',
+          divider: '#eceef2',
+          btnBorder: '#dcdcdc',
+          text: '#20242c',
+          text2: '#526071',
+          accent: '#547dd0',
+          selBg: '#e5edfc',
+          iconFill: '#c9d8f3',
+          swOff: '#cfd5de',
+          scrim: 'rgba(32,36,44,0.28)',
+          sideBtnBg: sidebarOpen ? '#e5edfc' : 'transparent',
+          sideBtnBorder: sidebarOpen ? '#547dd0' : 'transparent'
+        };
+
+    const presetDefs = [
+      { id: 'openai', label: 'OpenAI 兼容', name: 'SiliconFlow', url: 'https://api.siliconflow.cn/v1' },
+      { id: 'claude', label: 'Claude 协议', name: 'Anthropic', url: 'https://api.anthropic.com/v1' },
+      { id: 'openrouter', label: 'OpenRouter', name: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
+      { id: 'ollama', label: 'Ollama 本地', name: 'Ollama', url: 'http://127.0.0.1:11434/v1' }
+    ];
+
+    const presets = presetDefs.map((p) => {
+      const on = this.state.draftPreset === p.id;
+      return {
+        label: p.label,
+        bg: on ? t.selBg : t.wellBg,
+        border: on ? t.accent : t.border,
+        weight: on ? '550' : '450',
+        pick: () => this.setState({ draftPreset: p.id, draftName: p.name, draftUrl: p.url })
+      };
+    });
+
+    const provLen = this.state.providers.length;
+    const providers = this.state.providers.map((p, idx) => {
+      const expanded = this.state.expandedProv === p.id;
+      const isOpenAI = p.protocol !== 'claude';
+      return {
+        id: p.id,
+        name: p.name,
+        host: this.hostOf(p.baseUrl),
+        baseUrl: p.baseUrl,
+        apiKey: p.apiKey,
+        custom: p.custom,
+        brandColor: p.brandColor,
+        expanded: expanded,
+        urlId: 'prov-url-' + p.id,
+        keyId: 'prov-key-' + p.id,
+        keyType: p.showKey ? 'text' : 'password',
+        showLabel: p.showKey ? '隐藏' : '显示',
+        testLabel: p.tested ? '连接正常' : '连接测试',
+        rowBorder: idx + 1 < provLen ? '1px solid ' + t.divider : '0',
+        rowBg: expanded ? t.cardBg : 'transparent',
+        chevTransform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+        swBg: p.enabled ? t.accent : t.swOff,
+        swAlign: p.enabled ? 'flex-end' : 'flex-start',
+        openAIBg: isOpenAI ? t.selBg : 'transparent',
+        openAIBorder: isOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+        claudeBg: !isOpenAI ? t.selBg : 'transparent',
+        claudeBorder: !isOpenAI ? '1px solid ' + t.accent : '1px solid transparent',
+        toggleExpand: () => this.setState({ expandedProv: expanded ? '' : p.id }),
+        toggleOn: () => {
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, enabled: !it.enabled } : it));
+          this.setState({ providers: next });
+        },
+        remove: () => {
+          const next = this.state.providers.filter((it) => it.id !== p.id);
+          this.setState({ providers: next, expandedProv: next[0] ? next[0].id : '' });
+        },
+        setOpenAI: () => {
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, protocol: 'openai' } : it));
+          this.setState({ providers: next });
+        },
+        setClaude: () => {
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, protocol: 'claude' } : it));
+          this.setState({ providers: next });
+        },
+        runTest: () => {
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, tested: true } : it));
+          this.setState({ providers: next });
+        },
+        toggleKey: () => {
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, showKey: !it.showKey } : it));
+          this.setState({ providers: next });
+        },
+        onUrlChange: (e) => {
+          const val = e && e.target ? e.target.value : p.baseUrl;
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, baseUrl: val, tested: false } : it));
+          this.setState({ providers: next });
+        },
+        onKeyChange: (e) => {
+          const val = e && e.target ? e.target.value : p.apiKey;
+          const next = this.state.providers.map((it) => (it.id === p.id ? { ...it, apiKey: val, tested: false } : it));
+          this.setState({ providers: next });
+        }
+      };
+    });
+
+    const agLen = this.state.agents.length;
+    const agents = this.state.agents.map((a, idx) => {
+      const expanded = this.state.expandedAgent === a.id;
+      return {
+        short: a.short,
+        name: a.name,
+        version: a.version,
+        expanded: expanded,
+        rowBorder: idx + 1 < agLen ? '1px solid ' + t.divider : '0',
+        chevTransform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+        swBg: a.enabled ? t.accent : t.swOff,
+        swAlign: a.enabled ? 'flex-end' : 'flex-start',
+        lowBg: a.thinking === 'low' ? t.selBg : 'transparent',
+        lowBorder: a.thinking === 'low' ? '1px solid ' + t.accent : '1px solid transparent',
+        medBg: a.thinking === 'medium' ? t.selBg : 'transparent',
+        medBorder: a.thinking === 'medium' ? '1px solid ' + t.accent : '1px solid transparent',
+        highBg: a.thinking === 'high' ? t.selBg : 'transparent',
+        highBorder: a.thinking === 'high' ? '1px solid ' + t.accent : '1px solid transparent',
+        permBg: a.fullPerm ? t.selBg : t.wellBg,
+        permBorder: a.fullPerm ? t.accent : t.border,
+        permLabel: a.fullPerm ? '已开启' : '关闭',
+        toggleExpand: () => this.setState({ expandedAgent: expanded ? '' : a.id }),
+        toggleOn: () => {
+          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, enabled: !it.enabled } : it));
+          this.setState({ agents: next });
+        },
+        setLow: () => {
+          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, thinking: 'low' } : it));
+          this.setState({ agents: next });
+        },
+        setMed: () => {
+          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, thinking: 'medium' } : it));
+          this.setState({ agents: next });
+        },
+        setHigh: () => {
+          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, thinking: 'high' } : it));
+          this.setState({ agents: next });
+        },
+        togglePerm: () => {
+          const next = this.state.agents.map((it) => (it.id === a.id ? { ...it, fullPerm: !it.fullPerm } : it));
+          this.setState({ agents: next });
+        }
+      };
+    });
+
+    return {
+      t,
+      sidebarOpen,
+      modalOpen,
+      masterOn: this.state.masterOn,
+      masterLabel: this.state.masterOn ? '已开启' : '已关闭',
+      masterBg: this.state.masterOn ? t.selBg : t.wellBg,
+      masterBorder: this.state.masterOn ? t.accent : t.btnBorder,
+      providers,
+      agents,
+      presets,
+      draftName: this.state.draftName,
+      draftUrl: this.state.draftUrl,
+      draftKey: this.state.draftKey,
+      toggleSidebar: () => this.setState({ sidebarOverride: !sidebarOpen }),
+      toggleMaster: () => this.setState({ masterOn: !this.state.masterOn }),
+      openAddModal: () => this.setState({ modalOverride: true }),
+      closeAddModal: () => this.setState({ modalOverride: false }),
+      onDraftName: (e) => this.setState({ draftName: e && e.target ? e.target.value : '' }),
+      onDraftUrl: (e) => this.setState({ draftUrl: e && e.target ? e.target.value : '' }),
+      onDraftKey: (e) => this.setState({ draftKey: e && e.target ? e.target.value : '' }),
+      confirmAdd: () => {
+        const name = (this.state.draftName || '').trim() || '自定义供应商';
+        const id = 'custom-' + Date.now();
+        const nextProv = {
+          id,
+          name,
+          protocol: this.state.draftPreset === 'claude' ? 'claude' : 'openai',
+          baseUrl: (this.state.draftUrl || '').trim() || 'https://api.example.com/v1',
+          apiKey: this.state.draftKey || '',
+          enabled: true,
+          showKey: false,
+          tested: false,
+          custom: true,
+          brandColor: '#d97757'
+        };
+        this.setState({
+          providers: [...this.state.providers, nextProv],
+          expandedProv: id,
+          modalOverride: false
+        });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -156,16 +156,31 @@ type Controller struct {
 	questionUI          map[string]*questionUIState
 	approvalUI          map[string]*approvalUIState
 
-	settingsFocused     model.BackendKind
-	settingsProbedOnce  bool
-	settingsShowKey     bool
-	settingsTesting     bool
-	settingsTestOK      bool
-	settingsTestErr     string
-	settingsModelStatus string
-	settingsBaseURL     string
-	settingsAPIKey      string
-	settingsModel       string
+	settingsFocused      model.BackendKind
+	settingsExpandedProv string
+	settingsExpandedAg   model.BackendKind
+	settingsProbedOnce   bool
+	settingsShowKey      bool
+	settingsProvShowKey  map[string]bool
+	settingsTesting      bool
+	settingsTestingProv  string
+	settingsTestOK       bool
+	settingsTestErr      string
+	settingsModelStatus  string
+	settingsBaseURL      string
+	settingsAPIKey       string
+	settingsModel        string
+
+	addProvModalOpen bool
+	addProvPreset    string
+	addProvName      string
+	addProvProto     model.Protocol
+	addProvBaseURL   string
+	addProvAPIKey    string
+	addProvShowKey   bool
+	addProvTesting   bool
+	addProvTestOK    bool
+	addProvTestErr   string
 
 	annotCfg            model.AnnotationConfig
 	annotMenuOpen       bool
@@ -205,12 +220,14 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		questionUI:          make(map[string]*questionUIState),
 		approvalUI:          make(map[string]*approvalUIState),
 		settingsFocused:     model.BackendBuiltin,
+		settingsProvShowKey: make(map[string]bool),
 	}
 	ctrl.backendStatuses[model.BackendBuiltin] = BackendStatus{
 		State:   BackendStateReady,
 		Version: "Block",
 	}
 	ctrl.loadAllFromDisk()
+	ctrl.settingsExpandedProv = ctrl.providerCfg.Provider
 	ctrl.syncSettingsFieldsLocked()
 	ctrl.loadBuiltinSkillsLocked()
 	ctrl.messagesList.FollowEnd = true
@@ -321,6 +338,24 @@ func (c *Controller) readProviderFile() model.AIProviderConfig {
 	return cfg
 }
 
+func enforceAllBackendsFullPermissions(cfg *model.AIBackendsConfig) {
+	if cfg.Adapters == nil {
+		cfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
+	}
+	for _, k := range model.AllBackends {
+		if k == model.BackendBuiltin {
+			continue
+		}
+		opt := cfg.Adapters[string(k)]
+		opt.FullPermissions = true
+		cfg.Adapters[string(k)] = opt
+	}
+	for k, opt := range cfg.Adapters {
+		opt.FullPermissions = true
+		cfg.Adapters[k] = opt
+	}
+}
+
 func (c *Controller) readBackendsFile() model.AIBackendsConfig {
 	var cfg model.AIBackendsConfig
 	if !c.readJSONFile("ai-backends.json", &cfg) {
@@ -329,9 +364,7 @@ func (c *Controller) readBackendsFile() model.AIBackendsConfig {
 	if cfg.Selected == "" {
 		cfg.Selected = model.BackendBuiltin
 	}
-	if cfg.Adapters == nil {
-		cfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
-	}
+	enforceAllBackendsFullPermissions(&cfg)
 	return cfg
 }
 
@@ -666,11 +699,18 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		norm.Providers = make(map[string]model.ProviderProfile)
 	}
 	if norm.Provider != "" {
-		norm.Providers[norm.Provider] = model.ProviderProfile{
-			Protocol: norm.Protocol,
-			BaseURL:  norm.BaseURL,
-			APIKey:   norm.APIKey,
-			Model:    norm.Model,
+		existing := norm.Providers[norm.Provider]
+		existing.Protocol = norm.Protocol
+		existing.BaseURL = norm.BaseURL
+		existing.APIKey = norm.APIKey
+		existing.Model = norm.Model
+		if existing.Enabled == nil {
+			on := true
+			existing.Enabled = &on
+		}
+		norm.Providers[norm.Provider] = existing
+		if !containsString(norm.ProviderOrder, norm.Provider) {
+			norm.ProviderOrder = append(norm.ProviderOrder, norm.Provider)
 		}
 	}
 	if err := c.writeJSONFile("ai.json", norm); err != nil {
@@ -678,6 +718,9 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 	}
 	c.mu.Lock()
 	c.providerCfg = norm
+	if c.settingsExpandedProv == "" {
+		c.settingsExpandedProv = norm.Provider
+	}
 	c.syncSettingsFieldsLocked()
 	if c.turnErrorSettings {
 		c.turnError = ""
@@ -690,6 +733,233 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.refreshModelsAsync(model.BackendBuiltin)
 	}
 	c.requestRedraw()
+	return nil
+}
+
+// AddProviderEntry appends a new API provider profile, activates & expands it, and ensures BackendBuiltin is enabled.
+func (c *Controller) AddProviderEntry(presetID, name string, proto model.Protocol, baseURL, apiKey string) (string, error) {
+	cfg := c.ProviderConfig()
+	if cfg.Providers == nil {
+		cfg.Providers = make(map[string]model.ProviderProfile)
+	}
+	trimmedName := strings.TrimSpace(name)
+	trimmedURL := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if proto == "" {
+		proto = model.ProtocolOpenAI
+	}
+	if p := findProviderPreset(presetID); p != nil {
+		if trimmedName == "" {
+			trimmedName = p.DefaultName
+		}
+		if trimmedURL == "" {
+			trimmedURL = p.BaseURL
+		}
+	}
+	if trimmedName == "" {
+		if h := endpointHostLabel(trimmedURL); h != "" {
+			trimmedName = h
+		} else {
+			trimmedName = theme.Tr("自定义供应商", "Custom Provider")
+		}
+	}
+
+	// Pick clean unique ID.
+	baseSlug := strings.ToLower(strings.TrimSpace(presetID))
+	if baseSlug == "" || baseSlug == "custom" {
+		var sb strings.Builder
+		for _, r := range strings.ToLower(trimmedName) {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				sb.WriteRune(r)
+			} else if sb.Len() > 0 && !strings.HasSuffix(sb.String(), "-") {
+				sb.WriteByte('-')
+			}
+		}
+		baseSlug = strings.Trim(sb.String(), "-")
+		if baseSlug == "" {
+			baseSlug = "provider"
+		}
+	}
+	id := baseSlug
+	if _, exists := cfg.Providers[id]; exists || id == cfg.Provider {
+		for n := 2; ; n++ {
+			cand := fmt.Sprintf("%s-%d", baseSlug, n)
+			if _, ok := cfg.Providers[cand]; !ok {
+				id = cand
+				break
+			}
+		}
+	}
+
+	on := true
+	cfg.Providers[id] = model.ProviderProfile{
+		Name:     trimmedName,
+		Protocol: proto,
+		BaseURL:  trimmedURL,
+		APIKey:   strings.TrimSpace(apiKey),
+		Enabled:  &on,
+		Custom:   true,
+	}
+	cfg.ProviderOrder = append(cfg.ProviderOrder, id)
+	cfg.Enabled = true
+	cfg.Provider = id
+	cfg.Protocol = proto
+	cfg.BaseURL = trimmedURL
+	cfg.APIKey = strings.TrimSpace(apiKey)
+	cfg.Model = ""
+
+	if err := c.SaveProviderConfig(cfg); err != nil {
+		return "", err
+	}
+	_ = c.SetBackendEnabled(model.BackendBuiltin, true)
+	c.mu.Lock()
+	c.settingsExpandedProv = id
+	c.settingsTestErr = ""
+	c.settingsTestOK = false
+	c.mu.Unlock()
+	return id, nil
+}
+
+// UpdateProviderEntry updates a specific provider profile and syncs active fields if it is the primary provider.
+func (c *Controller) UpdateProviderEntry(id string, mutate func(prof *model.ProviderProfile)) error {
+	cfg := c.ProviderConfig()
+	entries := orderedProviderEntries(cfg)
+	if cfg.Providers == nil {
+		cfg.Providers = make(map[string]model.ProviderProfile, len(entries))
+	}
+	for _, e := range entries {
+		if _, ok := cfg.Providers[e.ID]; !ok {
+			on := e.Enabled
+			cfg.Providers[e.ID] = model.ProviderProfile{
+				Name:     e.Name,
+				Protocol: e.Protocol,
+				BaseURL:  e.BaseURL,
+				APIKey:   e.APIKey,
+				Model:    e.Model,
+				Enabled:  &on,
+				Custom:   e.Custom,
+			}
+		}
+		if !containsString(cfg.ProviderOrder, e.ID) {
+			cfg.ProviderOrder = append(cfg.ProviderOrder, e.ID)
+		}
+	}
+	prof := cfg.Providers[id]
+	mutate(&prof)
+	prof.BaseURL = strings.TrimRight(strings.TrimSpace(prof.BaseURL), "/")
+	prof.APIKey = strings.TrimSpace(prof.APIKey)
+	if prof.Protocol == "" {
+		prof.Protocol = model.ProtocolOpenAI
+	}
+	cfg.Providers[id] = prof
+	if cfg.Provider == id {
+		cfg.Protocol = prof.Protocol
+		cfg.BaseURL = prof.BaseURL
+		cfg.APIKey = prof.APIKey
+		cfg.Model = prof.Model
+	}
+	return c.SaveProviderConfig(cfg)
+}
+
+// ActivateProviderEntry selects id as the active primary API provider when enabled.
+func (c *Controller) ActivateProviderEntry(id string) error {
+	cfg := c.ProviderConfig()
+	entries := orderedProviderEntries(cfg)
+	for _, e := range entries {
+		if e.ID == id {
+			cfg.Provider = e.ID
+			cfg.Protocol = e.Protocol
+			cfg.BaseURL = e.BaseURL
+			cfg.APIKey = e.APIKey
+			cfg.Model = e.Model
+			return c.SaveProviderConfig(cfg)
+		}
+	}
+	return nil
+}
+
+// SetProviderEntryEnabled toggles one API provider entry and syncs BackendBuiltin enablement.
+func (c *Controller) SetProviderEntryEnabled(id string, on bool) error {
+	cfg := c.ProviderConfig()
+	entries := orderedProviderEntries(cfg)
+	if !on {
+		otherProvEnabled := false
+		for _, e := range entries {
+			if e.ID != id && e.Enabled {
+				otherProvEnabled = true
+				break
+			}
+		}
+		if !otherProvEnabled && !c.CanDisableBackend(model.BackendBuiltin) {
+			return errors.New(theme.Tr("至少需要保留一个启用的 AI 后端", "At least one AI backend must remain enabled"))
+		}
+	}
+
+	if err := c.UpdateProviderEntry(id, func(prof *model.ProviderProfile) {
+		val := on
+		prof.Enabled = &val
+	}); err != nil {
+		return err
+	}
+
+	updated := c.ProviderConfig()
+	afterEntries := orderedProviderEntries(updated)
+	anyEnabled := false
+	var firstEnabled *ProviderEntry
+	for i := range afterEntries {
+		if afterEntries[i].Enabled {
+			anyEnabled = true
+			if firstEnabled == nil {
+				firstEnabled = &afterEntries[i]
+			}
+		}
+	}
+	if on {
+		_ = c.ActivateProviderEntry(id)
+		_ = c.SetBackendEnabled(model.BackendBuiltin, true)
+	} else if !anyEnabled {
+		_ = c.SetBackendEnabled(model.BackendBuiltin, false)
+	} else if updated.Provider == id && firstEnabled != nil {
+		_ = c.ActivateProviderEntry(firstEnabled.ID)
+	}
+	return nil
+}
+
+// RemoveProviderEntry deletes a custom provider entry from ai.json.
+func (c *Controller) RemoveProviderEntry(id string) error {
+	cfg := c.ProviderConfig()
+	entries := orderedProviderEntries(cfg)
+	if len(entries) <= 1 {
+		return nil
+	}
+	delete(cfg.Providers, id)
+	cfg.ProviderOrder = removeString(append([]string(nil), cfg.ProviderOrder...), id)
+	remaining := orderedProviderEntries(cfg)
+	if cfg.Provider == id && len(remaining) > 0 {
+		pick := remaining[0]
+		for _, r := range remaining {
+			if r.Enabled {
+				pick = r
+				break
+			}
+		}
+		cfg.Provider = pick.ID
+		cfg.Protocol = pick.Protocol
+		cfg.BaseURL = pick.BaseURL
+		cfg.APIKey = pick.APIKey
+		cfg.Model = pick.Model
+	}
+	if err := c.SaveProviderConfig(cfg); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if c.settingsExpandedProv == id {
+		if len(remaining) > 0 {
+			c.settingsExpandedProv = remaining[0].ID
+		} else {
+			c.settingsExpandedProv = ""
+		}
+	}
+	c.mu.Unlock()
 	return nil
 }
 
@@ -709,6 +979,7 @@ func (c *Controller) BackendsConfig() model.AIBackendsConfig {
 // SaveBackendsConfig persists and applies the backend adapter configuration.
 func (c *Controller) SaveBackendsConfig(cfg model.AIBackendsConfig) error {
 	cp := cloneBackendsConfig(cfg)
+	enforceAllBackendsFullPermissions(&cp)
 	c.mu.Lock()
 	prev := c.backendsCfg
 	c.backendsCfg = cp
@@ -1521,9 +1792,14 @@ func slicesEqual(a, b []string) bool {
 
 func cloneProviderConfig(cfg model.AIProviderConfig) model.AIProviderConfig {
 	cp := cfg
+	cp.ProviderOrder = append([]string(nil), cfg.ProviderOrder...)
 	if cfg.Providers != nil {
 		cp.Providers = make(map[string]model.ProviderProfile, len(cfg.Providers))
 		for k, v := range cfg.Providers {
+			if v.Enabled != nil {
+				b := *v.Enabled
+				v.Enabled = &b
+			}
 			cp.Providers[k] = v
 		}
 	}
