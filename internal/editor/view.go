@@ -741,7 +741,14 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			in.CaretColor(pal.Danger)
 		}
 
-		// Apply inline span weights/colors + find/annotation highlights via TextRanges.
+		inDragging := s.updateFocusedInputDrag(c, s.frameRoot, in, idx)
+		if s.hasMultiBlockSelection() {
+			in.SelectionColor(ui.Transparent).CaretColor(ui.Transparent)
+		} else if selLo, selHi := in.TextSelection(); selLo != selHi {
+			in.CaretColor(ui.Transparent)
+		}
+
+		// Apply inline span weights/colors + find/annotation/multi-block selection highlights via TextRanges.
 		ranges := s.buildInputTextRanges(idx, b)
 		if len(ranges) > 0 {
 			in.TextRanges(ranges...)
@@ -863,8 +870,6 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			}
 			return false
 		})
-
-		inDragging := s.updateFocusedInputDrag(c, s.frameRoot, in, idx)
 
 		if s.focusPending {
 			in.Focus()
@@ -1071,6 +1076,11 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 	}
 	// Find matches are painted as bands behind the glyphs (edit_decor.go),
 	// as in the original, rather than recoloured or bolded.
+	if s.hasMultiBlockSelection() {
+		if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
+			out = append(out, ui.TextRange{Start: selLo, End: selHi, Color: pal.SelectionFG})
+		}
+	}
 	return out
 }
 
@@ -1235,7 +1245,33 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 				ta.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					s.recordBlockTextRect(id, r)
 				})
-				if ranges := codeSyntaxRanges(draft, canon); len(ranges) > 0 {
+				taDragging := s.updateFocusedInputDrag(c, s.frameRoot, ta, idx)
+				if s.hasMultiBlockSelection() {
+					ta.SelectionColor(ui.Transparent).CaretColor(ui.Transparent)
+					if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo && ta.Bounds().W > 0 {
+						codeLay := s.cachedShapeBlock(id, draft, nil, idx, cdFont, 14, theme.WeightRegular, 1.5, ta.Bounds().W, false)
+						if codeLay != nil {
+							u0 := utf8RuneToUTF16(draft, selLo)
+							u1 := utf8RuneToUTF16(draft, selHi)
+							rects := codeLay.SelectionRects(ui.TextInputRange{Start: u0, End: u1})
+							selFill := pal.SelectionBG
+							ta.Draw(func(p *ui.Painter, r ui.Rect) {
+								for _, sr := range rects {
+									p.Fill(ui.Rect{X: r.X + sr.X, Y: r.Y + sr.Y, W: sr.W, H: sr.H}, selFill, 2)
+								}
+							})
+						}
+					}
+				} else if selLo, selHi := ta.TextSelection(); selLo != selHi {
+					ta.CaretColor(ui.Transparent)
+				}
+				ranges := codeSyntaxRanges(draft, canon)
+				if s.hasMultiBlockSelection() {
+					if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
+						ranges = append(ranges, ui.TextRange{Start: selLo, End: selHi, Color: pal.SelectionFG})
+					}
+				}
+				if len(ranges) > 0 {
 					ta.TextRanges(ranges...)
 				}
 				ta.OnTextKey(func(k ui.TextKey) bool {
@@ -1265,7 +1301,6 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 					return false
 				})
-				taDragging := s.updateFocusedInputDrag(c, s.frameRoot, ta, idx)
 				if s.focusPending {
 					ta.Focus()
 					s.focusPending = false
