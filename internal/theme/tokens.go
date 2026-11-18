@@ -9,6 +9,7 @@ package theme
 // the step minus 1 (RadiusXLInner).
 const (
 	RadiusXS      float32 = 4   // keycaps, swatches, micro buttons, thin bars, inline marks
+	RadiusBadge   float32 = 5   // 18x18 brand mark & notebook monogram badges
 	RadiusSM      float32 = 6   // list rows, menu rows, segments, chips, small badges
 	RadiusMD      float32 = 8   // buttons, inputs, icon buttons, segmented tracks
 	RadiusLG      float32 = 10  // cards, popovers, tooltips, image frames
@@ -24,6 +25,7 @@ const (
 // Type scale (6 UI steps + editor body). Every UI text uses one of these sizes
 // with its paired line height.
 const (
+	FontMicro   float32 = 11 // compact monogram badges, micro keycaps, hour-range tags
 	FontMeta    float32 = 12 // shortcut hints, counters, keycaps
 	FontSmall   float32 = 13 // tooltips, secondary lines, compact buttons
 	FontBody    float32 = 14 // controls, list rows, UI body (baseline)
