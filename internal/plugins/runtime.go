@@ -34,6 +34,7 @@ type rpcError struct {
 type HostConfig struct {
 	PluginDir    string
 	DataDir      string
+	DownloadsDir string
 	NotebookRoot string
 	ActiveNote   string
 	Locale       string
@@ -41,9 +42,11 @@ type HostConfig struct {
 }
 
 type ActionResult struct {
-	Values map[string]any `json:"values,omitempty"`
-	Page   *UIPage        `json:"page,omitempty"`
-	Status string         `json:"status,omitempty"`
+	Values     map[string]any `json:"values,omitempty"`
+	Page       *UIPage        `json:"page,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	OpenPath   string         `json:"open_path,omitempty"`
+	RevealPath string         `json:"reveal_path,omitempty"`
 }
 
 // Runtime hosts a single sandboxed out-of-process plugin speaking newline-delimited
@@ -103,6 +106,14 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	if strings.HasPrefix(cmdName, "./") || strings.HasPrefix(cmdName, ".\\") {
 		cmdName = filepath.Join(cfg.PluginDir, cmdName)
 	}
+	downloadsDir := strings.TrimSpace(cfg.DownloadsDir)
+	if downloadsDir == "" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			downloadsDir = filepath.Join(home, "Downloads")
+		}
+	}
+	cfg.DownloadsDir = downloadsDir
+
 	cmd := exec.CommandContext(ctx, cmdName, cmdArgs...)
 	cmd.Dir = cfg.PluginDir
 	cmd.Env = []string{
@@ -114,6 +125,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		"BLOCK_DATA_DIR=" + cfg.DataDir,
 		"BLOCKMD_PLUGIN_ID=" + m.ID,
 		"BLOCKMD_DATA_DIR=" + cfg.DataDir,
+		"BLOCKMD_DOWNLOADS_DIR=" + downloadsDir,
 	}
 
 	stdin, err := cmd.StdinPipe()
@@ -157,6 +169,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	params := map[string]any{
 		"plugin_id":     rt.manifest.ID,
 		"data_dir":      rt.cfg.DataDir,
+		"downloads_dir": rt.cfg.DownloadsDir,
 		"notebook_root": rt.cfg.NotebookRoot,
 		"locale":        locale,
 		"host_version":  ver,
@@ -174,13 +187,21 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 }
 
 func (rt *Runtime) Render(ctx context.Context, surface Surface) (*UIPage, error) {
+	return rt.RenderWithValues(ctx, surface, nil)
+}
+
+func (rt *Runtime) RenderWithValues(ctx context.Context, surface Surface, values map[string]any) (*UIPage, error) {
 	if !rt.manifest.HasSurface(surface) {
 		return nil, fmt.Errorf("surface %q not declared in manifest", surface)
 	}
 	var rawRes struct {
 		Page json.RawMessage `json:"page"`
 	}
-	if err := rt.call(ctx, "plugin.render", map[string]any{"surface": string(surface)}, &rawRes); err != nil {
+	params := map[string]any{"surface": string(surface)}
+	if len(values) > 0 {
+		params["values"] = values
+	}
+	if err := rt.call(ctx, "plugin.render", params, &rawRes); err != nil {
 		return nil, err
 	}
 	if len(rawRes.Page) == 0 {
@@ -194,9 +215,11 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		values = map[string]any{}
 	}
 	var rawRes struct {
-		Values map[string]any  `json:"values,omitempty"`
-		Page   json.RawMessage `json:"page,omitempty"`
-		Status string          `json:"status,omitempty"`
+		Values     map[string]any  `json:"values,omitempty"`
+		Page       json.RawMessage `json:"page,omitempty"`
+		Status     string          `json:"status,omitempty"`
+		OpenPath   string          `json:"open_path,omitempty"`
+		RevealPath string          `json:"reveal_path,omitempty"`
 	}
 	params := map[string]any{
 		"surface":   string(surface),
@@ -207,8 +230,10 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		return nil, err
 	}
 	out := &ActionResult{
-		Values: rawRes.Values,
-		Status: rawRes.Status,
+		Values:     rawRes.Values,
+		Status:     rawRes.Status,
+		OpenPath:   strings.TrimSpace(rawRes.OpenPath),
+		RevealPath: strings.TrimSpace(rawRes.RevealPath),
 	}
 	if len(rawRes.Page) > 0 && string(rawRes.Page) != "null" {
 		page, err := DecodePageStrict(rawRes.Page)
@@ -216,9 +241,9 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 			return nil, fmt.Errorf("plugin.action(%s) invalid page: %w", actionID, err)
 		}
 		out.Page = page
-	}
-	if ContainsEmoji(out.Status) {
-		return nil, errors.New("plugin.action status must not contain emoji")
+		if out.Page != nil {
+			out.Status = strings.TrimSpace(out.Status)
+		}
 	}
 	return out, nil
 }
