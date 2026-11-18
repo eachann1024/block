@@ -57,6 +57,7 @@ func KeycapWithOptions(c *ui.Context, label string, opts KeycapOptions) ui.Eleme
 			LineHeight: theme.LineMeta,
 			FontWeight: weight,
 			Color:      fg,
+			IsShortcut: true,
 		})
 	})
 }
