@@ -20,7 +20,7 @@ const (
 	editorRightInset  float32 = 12
 	editorMarkerWidth float32 = 29.68
 	editorIndentStep  float32 = editorMarkerWidth / 2
-	editorTopPad      float32 = 48
+	editorTopPad      float32 = 64
 	editorBottomPad   float32 = 160
 )
 
@@ -33,6 +33,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.doc = model.NewEmptyDoc()
 	}
 	s.readOnly = readOnly
+	s.ensureAnnotationsLoaded()
 	s.pollInlineAI()
 	if s.copyPending {
 		s.copyPending = false
@@ -71,9 +72,6 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 
 	root.Children(func() {
 		topPad := editorTopPad
-		if s.findOpen {
-			topPad = 64
-		}
 
 		// Main scrollable document body
 		scroll := ui.Scroll(c.Key("editor-scroll")).TrackScroll(&s.bodyScroll).Fill()
@@ -83,9 +81,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
 				Padding(topPad, 0, editorBottomPad, 0)
 			col.Children(func() {
-				// Top margin click area to insert/focus top paragraph.
+				// Top margin click area to insert/focus top paragraph without shifting top padding.
 				if !readOnly {
-					topClick := ui.Box(c.Key("editor-top-margin")).FillWidth().MaxWidth(outerMaxW).Height(12)
+					topClick := ui.Box(c.Key("editor-top-margin")).Absolute().Top(0).Left(0).Right(0).Height(topPad)
 					if topClick.Clicked() {
 						s.FocusBlock(0)
 					}
@@ -214,6 +212,30 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	}
 }
 
+func blockMargins(b *model.Block) (top, bottom float32) {
+	if b == nil {
+		return 9.6, 9.6
+	}
+	switch b.Kind {
+	case model.BlockHeading1:
+		return 0, 8
+	case model.BlockHeading2:
+		return 35.2, 11
+	case model.BlockHeading3:
+		return 25.2, 7.2
+	case model.BlockHeading4:
+		return 20.8, 4.8
+	case model.BlockHeading5, model.BlockHeading6:
+		return 16.8, 3.5
+	case model.BlockQuote:
+		return 12.8, 12.8
+	case model.BlockDivider:
+		return 16.5, 16.5
+	default:
+		return 9.6, 9.6
+	}
+}
+
 func blockGutterSpacing(prev, cur *model.Block) float32 {
 	if prev == nil {
 		return 0
@@ -221,19 +243,22 @@ func blockGutterSpacing(prev, cur *model.Block) float32 {
 	if prev.Kind.IsList() && cur.Kind.IsList() {
 		return 4
 	}
-	if cur.Kind == model.BlockHeading2 {
-		return 24
+	_, above := blockMargins(prev)
+	below, _ := blockMargins(cur)
+	if prev.Kind == model.BlockHeading1 && !cur.Kind.IsHeading() && cur.Kind != model.BlockDivider && cur.Kind != model.BlockTable {
+		below = 0
 	}
-	if cur.Kind.IsHeading() {
-		return 18
+	if prev.Kind == model.BlockTable {
+		nextMT := below
+		if cur.Kind == model.BlockTable {
+			nextMT = 18
+		}
+		return max(10+nextMT-24, 0)
 	}
-	if cur.Kind == model.BlockDivider || prev.Kind == model.BlockDivider {
-		return 14
+	if cur.Kind == model.BlockTable {
+		return max(above, 2) + 16
 	}
-	if cur.Kind == model.BlockTable || prev.Kind == model.BlockTable {
-		return 14
-	}
-	return 8
+	return max(above, below)
 }
 
 func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
@@ -400,148 +425,6 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	return isHovered
 }
 
-const (
-	listMarkCenter = editorMarkerWidth - 11
-	listTodoCenter = 12.8
-	listMaxScan    = 256
-)
-
-type listAncestor struct {
-	Indent int
-	Center float32
-}
-
-type listCtx struct {
-	Number    int
-	Ancestors []listAncestor
-}
-
-func (s *Session) computeListCtx(idx int) listCtx {
-	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
-		return listCtx{}
-	}
-	b := &s.doc.Blocks[idx]
-	num := 0
-	if b.Kind == model.BlockNumbered {
-		num = s.numberedListIndex(idx)
-	}
-	if !b.Kind.IsList() && b.Indent <= 0 {
-		return listCtx{Number: num}
-	}
-	var ancestors []listAncestor
-	threshold := b.Indent
-	start := max(idx-listMaxScan, 0)
-	for prev := idx - 1; prev >= start && threshold > 0; prev-- {
-		pb := &s.doc.Blocks[prev]
-		if !pb.Kind.IsList() {
-			if pb.Indent > 0 {
-				continue
-			}
-			break
-		}
-		if pb.Indent < threshold {
-			center := listMarkCenter
-			if pb.Kind == model.BlockTodo {
-				center = listTodoCenter
-			}
-			ancestors = append(ancestors, listAncestor{Indent: pb.Indent, Center: center})
-			threshold = pb.Indent
-		}
-	}
-	return listCtx{Number: num, Ancestors: ancestors}
-}
-
-func drawListGuides(c *ui.Context, id model.BlockID, ctx listCtx) {
-	if len(ctx.Ancestors) == 0 {
-		return
-	}
-	col := ui.Hex("#e6e4df")
-	if theme.IsDark() {
-		col = ui.Hex("#333333")
-	}
-	for i, anc := range ctx.Ancestors {
-		x := float32(math.Round(float64(editorHandleWidth + editorRowGap + float32(min(anc.Indent, 12))*editorIndentStep + anc.Center)))
-		g := ui.Box(c.Key(fmt.Sprintf("list-guide-%d-%d", id, i))).Absolute().Top(0).Bottom(0).Left(x).Width(1).
-			Background(col).IgnoreInput(true)
-		appUi.Probe(g, fmt.Sprintf("list-guide-%d-%d", id, i))
-	}
-}
-
-func listBulletColor() ui.Color {
-	if theme.IsDark() {
-		return ui.Hex("#a9a8a4")
-	}
-	return ui.Hex("#6f6e69")
-}
-
-func (s *Session) renderListMarker(c *ui.Context, idx int, b *model.Block, ctx listCtx, size, lineH float32, readOnly bool) {
-	pal := theme.Ocean()
-	depth := len(ctx.Ancestors)
-	switch b.Kind {
-	case model.BlockBullet:
-		d := float32(5)
-		if depth == 0 {
-			d = 6
-		}
-		cell := ui.Row(c.Key("bullet-cell")).Height(lineH).Padding(0, 11-d/2, 0, 0).AlignItems(ui.Center)
-		cell.Children(func() {
-			dot := ui.Box(c.Key(fmt.Sprintf("list-bullet-%d", b.ID))).Size(d, d).Radius(d / 2)
-			switch depth {
-			case 0:
-				dot.Background(pal.Accent)
-			case 1:
-				dot.Background(listBulletColor())
-			default:
-				dot.Border(1.25, listBulletColor())
-			}
-			appUi.Probe(dot, fmt.Sprintf("list-bullet-%d", b.ID))
-		})
-	case model.BlockNumbered:
-		col := pal.TextSecondary
-		if depth == 0 {
-			col = pal.Accent
-		}
-		cell := ui.Row(c.Key("num-cell")).Height(lineH).Padding(0, 8, 0, 0).AlignItems(ui.Center)
-		cell.Children(func() {
-			txt := ui.Text(c, fmt.Sprintf("%d.", max(ctx.Number, 1))).Font("monospace").
-				FontSize(size * 0.84).FontWeight(500).TextColor(col).SingleLine()
-			appUi.Probe(txt, fmt.Sprintf("list-number-%d", b.ID))
-		})
-	case model.BlockTodo:
-		s.renderTodoCheckbox(c, idx, b.Checked, readOnly, lineH)
-	}
-}
-
-func (s *Session) renderTodoCheckbox(c *ui.Context, idx int, checked, readOnly bool, lineH float32) {
-	pal := theme.Ocean()
-	dark := theme.IsDark()
-	id := s.doc.Blocks[idx].ID
-	bg, ring, hoverRing := ui.Hex("#f3f1ec"), ui.Hex("#dedcd6"), ui.Hex("#c4c2bb")
-	if dark {
-		bg, ring, hoverRing = ui.Hex("#242424"), ui.Hex("#3a3a3a"), ui.Hex("#5a5a5a")
-	}
-	top := max((lineH-16)*0.5, 0)
-	cb := ui.ButtonBase(c.Key(fmt.Sprintf("todo-checkbox-%d", id))).Size(16, 16).Margin(top, 0, 0, 4.8).
-		Center().Radius(5).Background(bg).Cursor(ui.CursorPointer).Disabled(readOnly).
-		Label(theme.Tr("待办复选框", "Todo checkbox"))
-	if cb.Hovered() && !readOnly {
-		cb.Border(1, hoverRing)
-	} else {
-		cb.Border(1, ring)
-	}
-	cb.Children(func() {
-		idLayer := ui.Box(c).Absolute().Left(0).Top(0).Size(16, 16).PassThrough()
-		appUi.Probe(idLayer, fmt.Sprintf("todo-checkbox-%d", id))
-		if checked {
-			icons.Draw(c, icons.Check, 12, pal.MonoIconColors(pal.Accent))
-		}
-	})
-	appUi.Probe(cb, "todo-checkbox")
-	if cb.Clicked() && !readOnly {
-		s.ToggleTodo(idx)
-	}
-}
-
 func (s *Session) renderBlockBody(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly, deleteArmed bool) {
 	switch b.Kind {
 	case model.BlockDivider:
@@ -555,6 +438,7 @@ func (s *Session) renderBlockBody(c *ui.Context, idx int, b *model.Block, isFocu
 	default:
 		s.renderRichTextBlock(c, idx, b, isFocused, readOnly, deleteArmed)
 	}
+	s.renderBlockAnnotationsFoot(c, idx, b)
 }
 
 func (s *Session) renderDividerBlock(c *ui.Context, idx int, isFocused bool) {
@@ -575,28 +459,45 @@ func (s *Session) renderDividerBlock(c *ui.Context, idx int, isFocused bool) {
 	}
 }
 
+func resolvedEditorFont() string {
+	edFont, _, _ := theme.Typography()
+	f := strings.TrimSpace(edFont)
+	switch f {
+	case "", "system-sans":
+		return ""
+	case "system-serif":
+		return "LXGW WenKai, LXGW WenKai Screen, Kaiti SC, Songti SC, Source Han Serif SC, Noto Serif CJK SC, SimSun, serif"
+	default:
+		return f + ", PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
+	}
+}
+
+func resolvedCodeFont() string {
+	_, cdFont, _ := theme.Typography()
+	f := strings.TrimSpace(cdFont)
+	if f == "" || strings.EqualFold(f, "auto") {
+		return "JetBrains Mono, Menlo, Monaco, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"
+	}
+	return f
+}
+
 func blockTextMetrics(kind model.BlockKind) (fontSize float32, weight int, lineHeight float32) {
 	switch kind {
 	case model.BlockHeading1:
-		return 30, 700, 1.3
+		return 32, 600, 1.2
 	case model.BlockHeading2:
-		return 24, 650, 1.35
+		return 22, 600, 1.3
 	case model.BlockHeading3:
-		return 20, 600, 1.4
+		return 18, 600, 1.35
 	case model.BlockHeading4:
-		return 18, 600, 1.45
-	case model.BlockHeading5, model.BlockHeading6:
-		return 16, 600, 1.5
+		return 16, 600, 1.4
+	case model.BlockHeading5:
+		return 14, 600, 1.45
+	case model.BlockHeading6:
+		return 14, 500, 1.45
 	default:
 		_, _, lhMode := theme.Typography()
-		lh := float32(1.5)
-		switch lhMode {
-		case model.LineHeightTight:
-			lh = 1.38
-		case model.LineHeightLoose:
-			lh = 1.7
-		}
-		return theme.FontBodySize, 400, lh // 16px body
+		return theme.FontBodySize, theme.WeightRegular, lhMode.Factor() // 16px body
 	}
 }
 
@@ -682,21 +583,23 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 			s.renderEditableTextBlock(c, idx, b, fontSize, weight, lh, deleteArmed)
 			return
 		}
-		spans := s.buildDisplaySpans(idx, b, fontSize, weight)
-		edFont, _, _ := theme.Typography()
+		textCol := pal.Text
+		if b.Kind == model.BlockHeading6 {
+			textCol = pal.TextSecondary
+		}
+		edFont := resolvedEditorFont()
 		var rt ui.Element
-		if len(spans) == 0 {
-			placeholder := " "
-			if idx == 0 && b.Kind == model.BlockParagraph {
-				placeholder = theme.Tr("开始输入…", "Start typing…")
-			}
-			rt = ui.Text(c.Key("rt-empty"), placeholder).FontSize(fontSize).FontWeight(weight).LineHeight(lh).
+		if len(b.Spans) == 0 || b.PlainText() == "" {
+			rt = ui.Text(c.Key("rt-empty"), " ").FontSize(fontSize).FontWeight(weight).LineHeight(lh).
 				MinHeight(fontSize * lh).TextColor(pal.Placeholder).FillWidth()
 		} else {
-			rt = ui.RichText(c.Key("rt"), spans...).FontSize(fontSize).FontWeight(weight).
-				LineHeight(lh).MinHeight(fontSize * lh).TextColor(pal.Text).FillWidth()
+			rt = ui.RichText(c.Key("rt")).FontSize(fontSize).FontWeight(weight).
+				LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
+			rt.Children(func() {
+				s.renderDisplaySpansChildren(c, idx, b, fontSize, weight)
+			})
 		}
-		if strings.TrimSpace(edFont) != "" {
+		if edFont != "" {
 			rt.Font(edFont)
 		}
 		if rt.Clicked() && !readOnly {
@@ -709,120 +612,29 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 	})
 }
 
-type emptyHintSpec struct {
-	Text     string
-	MenuKeys bool
-	Armed    bool
-}
-
-func emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
-	if b == nil || b.PlainText() != "" || b.Kind == model.BlockTable || b.Kind == model.BlockImage ||
-		b.Kind == model.BlockDivider || b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
-		return nil
-	}
-	switch b.Kind {
-	case model.BlockParagraph:
-		if deleteArmed {
-			return &emptyHintSpec{
-				Text:  theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"),
-				Armed: true,
-			}
-		}
-		return &emptyHintSpec{
-			Text:     theme.Tr("开始输入…", "Start typing…"),
-			MenuKeys: true,
-		}
-	case model.BlockHeading1:
-		return &emptyHintSpec{Text: theme.Tr("标题 1", "Heading 1")}
-	case model.BlockHeading2:
-		return &emptyHintSpec{Text: theme.Tr("标题 2", "Heading 2")}
-	case model.BlockHeading3:
-		return &emptyHintSpec{Text: theme.Tr("标题 3", "Heading 3")}
-	case model.BlockHeading4:
-		return &emptyHintSpec{Text: theme.Tr("标题 4", "Heading 4")}
-	case model.BlockHeading5:
-		return &emptyHintSpec{Text: theme.Tr("标题 5", "Heading 5")}
-	case model.BlockHeading6:
-		return &emptyHintSpec{Text: theme.Tr("标题 6", "Heading 6")}
-	default:
-		return nil
-	}
-}
-
 func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block, fontSize float32, weight int, lh float32, deleteArmed bool) {
 	pal := theme.Ocean()
-	dark := theme.IsDark()
 	draft := b.PlainText()
 	oldText := draft
 	handle := *s.blockHandle(b.ID)
 	hint := emptyHintFor(b, deleteArmed)
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
-	if hint != nil && !hint.Armed {
-		bandCol := ui.Hex("#f8f8f6")
-		if dark {
-			bandCol = ui.Hex("#1e1e1e")
-		}
-		linePx := fontSize * lh
-		wrap.Draw(func(p *ui.Painter, r ui.Rect) {
-			bandH := linePx + 4
-			band := ui.Rect{
-				X: r.X - 8,
-				Y: r.Y + (linePx-bandH)*0.5,
-				W: r.W + 16,
-				H: bandH,
-			}
-			p.Fill(band, bandCol, 6)
-			appUi.RecordBounds("empty-line-band", band)
-		})
-	}
+	paintEmptyHintBand(wrap, hint, fontSize, lh)
 
 	var in ui.Element
 	wrap.Children(func() {
-		if hint != nil {
-			hintCol := ui.Hex("#9b9a95")
-			if dark {
-				hintCol = ui.Hex("#7a7975")
-			}
-			if hint.Armed {
-				hintCol = pal.Danger
-			}
-			linePx := fontSize * lh
-			hintRow := ui.Row(c.Key("empty-hint-row")).Absolute().Top(0).Left(8).Right(0).Height(linePx).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).IgnoreInput(true)
-			hintRow.Children(func() {
-				ui.Text(c, hint.Text).FontSize(fontSize).TextColor(hintCol).SingleLine()
-				availBody := s.viewportWidth - editorHandleWidth - editorRowGap - editorRightInset
-				if availBody <= 0 {
-					availBody = theme.EditorStandardWidth
-				}
-				if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 260 {
-					keyCol := ui.Hex("#6f6e69")
-					keyBrd := ui.Hex("#dedcd6")
-					if dark {
-						keyCol = ui.Hex("#a5a4a0")
-						keyBrd = ui.Hex("#3a3a3a")
-					}
-					keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(6)
-					keys.Children(func() {
-						for _, capLbl := range []string{"/", "、"} {
-							ui.Box(c).Height(20).MinWidth(20).PaddingX(5).Center().Radius(5).Border(1, keyBrd).
-								Children(func() {
-									ui.Text(c, capLbl).Font("monospace").FontSize(12).TextColor(keyCol).SingleLine()
-								})
-						}
-						ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(13).TextColor(hintCol).SingleLine()
-					})
-					appUi.Probe(keys, "empty-hint-menu-keys")
-				}
-			})
-		}
+		s.renderEmptyHintRow(c, hint, fontSize, lh)
 
+		textCol := pal.Text
+		if b.Kind == model.BlockHeading6 {
+			textCol = pal.TextSecondary
+		}
 		in = ui.TextAreaBase(c.Key("input"), &draft).Lines(1, 500).FillWidth().
 			Padding(0).BorderWidth(0).Background(ui.Transparent).
 			FontSize(fontSize).FontWeight(weight).LineHeight(lh).MinHeight(fontSize * lh).
-			TextColor(pal.Text).CaretColor(pal.Accent).Bind(&handle)
-		if edFont, _, _ := theme.Typography(); strings.TrimSpace(edFont) != "" {
+			TextColor(textCol).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+		if edFont := resolvedEditorFont(); edFont != "" {
 			in.Font(edFont)
 		}
 
@@ -971,83 +783,116 @@ func (s *Session) estimateCaret(idx int, oldText, curText string) int {
 	return len([]rune(curText))
 }
 
-func inlineCodeStyle(baseSize float32, dark bool) (fg, bg ui.Color, padX, padY, radius float32) {
-	if dark {
-		fg = ui.Hex("#FF7369")
-		bg = ui.RGBA(255, 255, 255, 0.094)
-	} else {
-		fg = ui.Hex("#EB5757")
-		bg = ui.RGBA(135, 131, 120, 0.15)
-	}
+func inlineCodeStyle(baseSize float32) (fg, bg ui.Color, padX, padY, radius float32) {
+	pal := theme.Ocean()
+	fg = pal.InlineCodeFG
+	bg = pal.InlineCodeBG
 	scale := min(baseSize/16, 1)
 	padX = min(baseSize*0.25+1.5*scale, 9)
-	padY = 2.5 * scale
+	targetH := float32(math.Round(float64(baseSize + 5*scale)))
+	padY = max((targetH-baseSize*1.32)*0.5, 0)
 	radius = max(min(float32(math.Round(float64(4*scale))), 5), 3)
 	return
 }
 
-func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {
+func (s *Session) buildDisplaySpan(idx int, b *model.Block, sp model.Span, s0, s1 int, baseSize float32, baseWeight int, codeFG, codeBG ui.Color, codePadX, codePadY, codeRadius float32) (ui.Span, bool) {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
-	if len(b.Spans) == 0 {
-		return nil
+	u := ui.Span{Text: sp.Text}
+	if sp.Marks&model.MarkBold != 0 {
+		u.Weight = max(baseWeight, 600)
 	}
+	if sp.Marks&model.MarkItalic != 0 {
+		u.Italic = true
+	}
+	if sp.Marks&model.MarkUnderline != 0 {
+		u.Underline = true
+	}
+	if sp.Marks&model.MarkStrike != 0 {
+		u.Strikethrough = true
+	}
+	hasOverrideBG := false
+	if sp.Marks&model.MarkCode != 0 {
+		u.Font = resolvedCodeFont()
+		u.Size = baseSize
+		u.Weight = max(u.Weight, theme.WeightMonoMedium)
+		u.Color = codeFG
+		u.Background = codeBG
+		u.Radius = codeRadius
+		u.PaddingX = codePadX
+		u.PaddingY = codePadY
+	}
+	if sp.Link != "" {
+		u.Color = pal.Link
+	}
+	if col, ok := theme.ResolveNamedFG(sp.FGColor, dark); ok {
+		u.Color = col
+	}
+	if bg, ok := theme.ResolveNamedBG(sp.BGColor, dark); ok {
+		u.Background = bg
+		u.Radius = 3
+		hasOverrideBG = true
+	}
+	// Highlight annotation range or find match, aligned to inline code chip band height.
+	if annBG, ok := s.annotationHighlightColor(b.ID, s0, s1, pal); ok && (u.Background.A == 0 || sp.Marks&model.MarkCode != 0) {
+		u.Background = annBG
+		u.PaddingY = codePadY
+		if u.Radius == 0 {
+			u.Radius = 4
+		}
+		hasOverrideBG = true
+	}
+	if findBG, ok := s.findHighlightColor(idx, s0, s1, pal); ok {
+		u.Background = findBG
+		u.PaddingY = codePadY
+		if u.Radius == 0 {
+			u.Radius = 2
+		}
+		hasOverrideBG = true
+	}
+	return u, hasOverrideBG
+}
 
-	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize, dark)
-	var out []ui.Span
+func (s *Session) renderDisplaySpansChildren(c *ui.Context, idx int, b *model.Block, baseSize float32, baseWeight int) {
+	pal := theme.Ocean()
+	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
+	srcSpans := s.splitSpansForHighlights(idx, b.ID, b.Spans)
 	pos := 0
-	for _, sp := range b.Spans {
+	for i, sp := range srcSpans {
 		rlen := len([]rune(sp.Text))
 		s0, s1 := pos, pos+rlen
 		pos = s1
-		u := ui.Span{Text: sp.Text}
-		if sp.Marks&model.MarkBold != 0 {
-			u.Weight = max(baseWeight, 700)
+		u, hasOverrideBG := s.buildDisplaySpan(idx, b, sp, s0, s1, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+		isCode := sp.Marks&model.MarkCode != 0 && !hasOverrideBG
+		if isCode {
+			u.Background = ui.Color{}
 		}
-		if sp.Marks&model.MarkItalic != 0 {
-			u.Italic = true
-		}
-		if sp.Marks&model.MarkUnderline != 0 {
-			u.Underline = true
-		}
-		if sp.Marks&model.MarkStrike != 0 {
-			u.Strikethrough = true
-		}
-		if sp.Marks&model.MarkCode != 0 {
-			u.Font = "monospace"
-			u.Size = max(baseSize-2, theme.FontSmallMinSize)
-			u.Color = codeFG
-			u.Background = codeBG
-			u.Radius = codeRadius
-			u.PaddingX = codePadX
-			u.PaddingY = codePadY
-		}
-		if sp.Link != "" {
-			u.Color = pal.Accent
-			u.Underline = true
-		}
-		if col, ok := theme.ResolveNamedFG(sp.FGColor, dark); ok {
-			u.Color = col
-		}
-		if bg, ok := theme.ResolveNamedBG(sp.BGColor, dark); ok {
-			u.Background = bg
-			u.Radius = 3
-		}
-		// Highlight annotation range or find match, aligned to inline code chip band height.
-		if s.rangeHasAnnotation(b.ID, s0, s1) && (u.Background.A == 0 || sp.Marks&model.MarkCode != 0) {
-			u.Background = pal.WarningSurface
-			u.PaddingY = codePadY
-			if u.Radius == 0 {
-				u.Radius = 2
+		el := ui.RichText(c.Key(fmt.Sprintf("sp-%d", i)), u)
+		if isCode {
+			el.Background(codeBG)
+			if el.Hovered() {
+				el.Background(pal.InlineCodeHoverBG)
 			}
 		}
-		if s.rangeHasFindMatch(idx, s0, s1) {
-			u.Background = pal.SelectionBG
-			u.PaddingY = codePadY
-			if u.Radius == 0 {
-				u.Radius = 2
-			}
+		if sp.Link != "" && el.Hovered() {
+			el.Underline()
 		}
+	}
+}
+
+func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {
+	if len(b.Spans) == 0 {
+		return nil
+	}
+	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
+	srcSpans := s.splitSpansForHighlights(idx, b.ID, b.Spans)
+	out := make([]ui.Span, 0, len(srcSpans))
+	pos := 0
+	for _, sp := range srcSpans {
+		rlen := len([]rune(sp.Text))
+		s0, s1 := pos, pos+rlen
+		pos = s1
+		u, _ := s.buildDisplaySpan(idx, b, sp, s0, s1, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
 		out = append(out, u)
 	}
 	return out
@@ -1056,7 +901,6 @@ func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, b
 func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
-	codeFG, _, _, _, _ := inlineCodeStyle(theme.FontBodySize, dark)
 	var out []ui.TextRange
 	pos := 0
 	for _, sp := range b.Spans {
@@ -1066,18 +910,21 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 		var tr ui.TextRange
 		hasStyle := false
 		if sp.Marks&model.MarkBold != 0 {
-			tr.Start, tr.End, tr.Weight = s0, s1, 700
+			tr.Start, tr.End, tr.Weight = s0, s1, 600
 			hasStyle = true
 		}
 		if sp.Marks&model.MarkCode != 0 {
-			tr.Start, tr.End, tr.Color = s0, s1, codeFG
+			tr.Start, tr.End, tr.Color = s0, s1, pal.InlineCodeFG
+			if tr.Weight == 0 {
+				tr.Weight = theme.WeightMonoMedium
+			}
 			hasStyle = true
 		}
 		if col, ok := theme.ResolveNamedFG(sp.FGColor, dark); ok {
 			tr.Start, tr.End, tr.Color = s0, s1, col
 			hasStyle = true
 		} else if sp.Link != "" {
-			tr.Start, tr.End, tr.Color = s0, s1, pal.Accent
+			tr.Start, tr.End, tr.Color = s0, s1, pal.Link
 			hasStyle = true
 		}
 		if hasStyle {
@@ -1087,7 +934,11 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 	if s.findOpen {
 		for _, m := range s.findMatches {
 			if m.BlockIdx == idx {
-				out = append(out, ui.TextRange{Start: m.StartRune, End: m.EndRune, Color: pal.Accent, Weight: 600})
+				col := pal.Accent
+				if c, ok := s.findMatchColorForInput(idx, m.StartRune, m.EndRune, pal); ok {
+					col = c
+				}
+				out = append(out, ui.TextRange{Start: m.StartRune, End: m.EndRune, Color: col, Weight: 600})
 			}
 		}
 	}
@@ -1133,20 +984,19 @@ func (s *Session) rangeHasFindMatch(idx, start, end int) bool {
 
 func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly bool) {
 	pal := theme.Ocean()
+	dark := theme.IsDark()
 	id := b.ID
 	canon := canonicalLangTag(b.Language)
 	previewable := isPreviewLang(canon)
 
-	borderCol := pal.Hairline
-	if isFocused {
-		borderCol = pal.Accent
-	}
-	card := ui.Column(c.Key("code-card")).FillWidth().Radius(theme.RadiusControl).
-		Background(pal.CodeBG).Border(1, borderCol).Padding(10, 14).Gap(8)
+	card := ui.Column(c.Key("code-card")).FillWidth().Radius(6).
+		Background(pal.CodeBlockBG).Padding(34, 11.7, 9.75, 11.7).Gap(8)
+	appUi.Probe(card, fmt.Sprintf("code-card-%d", id))
 
 	card.Children(func() {
-		// Top controls bar: left Source toggle (for Mermaid/LaTeX/CSV), right Copy + Lang + Wrap
-		hdr := ui.Row(c.Key("code-hdr")).FillWidth().Height(24).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8)
+		// Top controls bar: left Source toggle (for Mermaid/LaTeX/CSV), right Copy + Lang pill
+		hdr := ui.Row(c.Key("code-hdr")).Absolute().Top(6).Left(11.7).Right(6).Height(22).
+			AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8)
 		hdr.Children(func() {
 			left := ui.Row(c.Key("code-hdr-left")).AlignItems(ui.Center).Gap(6)
 			left.Children(func() {
@@ -1156,7 +1006,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					if !srcOpen {
 						lbl = theme.Tr("预览", "Preview") + " · " + theme.Tr("源码", "Source")
 					}
-					srcBtn := ui.ButtonBase(c.Key(fmt.Sprintf("cb-source-toggle-%d", id))).Height(24).PaddingX(8).
+					srcBtn := ui.ButtonBase(c.Key(fmt.Sprintf("cb-source-toggle-%d", id))).Height(22).PaddingX(6).
 						Radius(6).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer).Label(lbl)
 					if srcOpen || srcBtn.Hovered() {
 						srcBtn.Background(pal.Hover)
@@ -1166,8 +1016,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						if srcOpen {
 							g = icons.ChevronDown
 						}
-						icons.Draw(c, g, 14, pal.MonoIconColors(pal.TextSecondary))
-						ui.Text(c, theme.Tr("源码", "Source")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+						icons.Draw(c, g, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+						ui.Text(c, theme.Tr("源码", "Source")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					})
 					appUi.Probe(srcBtn, fmt.Sprintf("cb-source-toggle-%d", id))
 					if srcBtn.Clicked() {
@@ -1187,19 +1037,35 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					copyBtn := appUi.IconButton(c, copyGlyph, appUi.IconButtonOptions{
 						ID:       fmt.Sprintf("code-copy-%d", id),
 						Label:    theme.Tr("复制代码", "Copy code"),
-						Size:     24,
-						IconSize: 14,
+						Size:     22,
+						IconSize: theme.IconInline,
 					})
 					if copyBtn.Clicked() {
 						c.WriteClipboard(b.Code)
 						s.codeCopiedBlock = id
 					}
 
-					langBtn := ui.ButtonBase(c.Key(fmt.Sprintf("code-lang-%d", id))).Height(24).PaddingX(8).
-						Radius(6).Center().Background(pal.Card).Border(1, pal.BtnBorder).
+					pillFG := pal.MenuMuted
+					pillHoverFG := pal.Text
+					pillBG := ui.Hex("#fcfcfb")
+					pillHoverBG := ui.Hex("#f4f3f0")
+					if dark {
+						pillFG = ui.Hex("#8b949e")
+						pillHoverFG = ui.Hex("#e6edf3")
+						pillBG = ui.Hex("#262a33")
+						pillHoverBG = ui.Hex("#323844")
+					}
+					langBtn := ui.ButtonBase(c.Key(fmt.Sprintf("code-lang-%d", id))).Height(22).PaddingX(8).
+						Radius(6).Center().Background(pillBG).Border(1, pal.MenuSeparator).
 						Cursor(ui.CursorPointer).Label(languageDisplayLabel(b.Language))
+					langFG := pillFG
+					if langBtn.Hovered() || s.codeLangMenuBlock == id {
+						langBtn.Background(pillHoverBG)
+						langFG = pillHoverFG
+					}
 					langBtn.Children(func() {
-						ui.Text(c, languageDisplayLabel(b.Language)).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+						ui.Text(c, languageDisplayLabel(b.Language)).FontSize(theme.FontMeta).LineHeight(1.5).
+							FontWeight(theme.WeightRegular).TextColor(langFG).SingleLine()
 					})
 					appUi.Probe(langBtn, fmt.Sprintf("code-lang-%d", id))
 					if langBtn.Clicked() && !readOnly {
@@ -1209,8 +1075,6 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 							s.codeLangMenuBlock = id
 						}
 					}
-				} else {
-					ui.Text(c, languageDisplayLabel(b.Language)).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
 				}
 			})
 		})
@@ -1222,9 +1086,10 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 
 		// Source code editor or syntax-highlighted view
 		if !previewable || b.ShowSource || strings.TrimSpace(b.Code) == "" {
-			_, cdFont, _ := theme.Typography()
-			if strings.TrimSpace(cdFont) == "" {
-				cdFont = "monospace"
+			cdFont := resolvedCodeFont()
+			codeFG := ui.Hex("#393a34")
+			if dark {
+				codeFG = pal.Text
 			}
 			if isFocused && !readOnly {
 				draft := b.Code
@@ -1232,8 +1097,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 				handle := *s.blockHandle(id)
 				ta := ui.TextAreaBase(c.Key("code-input"), &draft).Lines(1, 500).FillWidth().
 					Padding(0).BorderWidth(0).Background(ui.Transparent).
-					Font(cdFont).FontSize(14).LineHeight(1.5).TextColor(pal.Text).
-					CaretColor(pal.Accent).Bind(&handle)
+					Font(cdFont).FontSize(14).LineHeight(1.5).TextColor(codeFG).
+					CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
 				if ranges := codeSyntaxRanges(draft, canon); len(ranges) > 0 {
 					ta.TextRanges(ranges...)
 				}
@@ -1273,7 +1138,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 				} else {
 					rt := ui.RichText(c.Key("code-rt"), spans...).Font(cdFont).
-						FontSize(14).LineHeight(1.5).TextColor(pal.Text).FillWidth()
+						FontSize(14).LineHeight(1.5).TextColor(codeFG).FillWidth()
 					if rt.Clicked() && !readOnly {
 						s.FocusBlock(idx)
 					}
@@ -1440,25 +1305,41 @@ func codeSyntaxSpans(src, lang string) []ui.Span {
 
 // --- Table Block ---
 
+const (
+	tableCellFontSize   float32 = 15.04
+	tableCellLineHeight float32 = 21.808
+	tableMinRowHeight   float32 = 34.8
+	tableMinColWidth    float32 = 80
+	tableMaxColWidth    float32 = 381.5
+)
+
 func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly bool) {
 	pal := theme.Ocean()
+	dark := theme.IsDark()
 	id := b.ID
 	if b.Table == nil || len(b.Table.Rows) == 0 {
 		return
 	}
 	tbl := b.Table
+	cols := len(tbl.Rows[0])
+	borderCol := ui.Hex("#e8e5dc")
+	headerBG := ui.Hex("#f5f3ed")
+	if dark {
+		borderCol = pal.MenuBorder
+		headerBG = ui.RGBA(255, 255, 255, 0.031)
+	}
 
 	wrap := ui.Column(c.Key("table-wrap")).FillWidth().Gap(4)
 	showChrome := !readOnly && (isHovered || isFocused || s.tableMenuBlock == id)
 	wrap.Children(func() {
-		// Top bar: reserve consistent height so hover changes never shift blocks below.
-		bar := ui.Row(c.Key("table-top-bar")).FillWidth().Height(24).Justify(ui.End).Gap(4)
+		// Top bar sits inside the top gutter so hover changes never shift blocks below.
 		if showChrome {
+			bar := ui.Row(c.Key("table-top-bar")).Absolute().Top(-24).Right(26).Height(22).Justify(ui.End).Gap(4)
 			bar.Children(func() {
 				more := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
 					ID:       fmt.Sprintf("table-more-%d", id),
 					Label:    theme.Tr("表格操作", "Table options"),
-					Size:     24,
+					Size:     22,
 					IconSize: 14,
 				})
 				if more.Clicked() {
@@ -1475,25 +1356,43 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 
 		gridRow := ui.Row(c.Key("table-grid-row")).FillWidth().AlignItems(ui.Stretch).Gap(4)
 		gridRow.Children(func() {
-			grid := ui.Column(c.Key("table-grid")).Grow(1).Shrink(1).
-				Radius(6).Border(1, pal.Hairline).Clip()
-			grid.Children(func() {
-				for rIdx := range tbl.Rows {
-					row := tbl.Rows[rIdx]
-					rowEl := ui.Row(c.Key(fmt.Sprintf("tr-%d", rIdx))).FillWidth().
-						BorderWidth(0, 0, boolToBorder(rIdx+1 < len(tbl.Rows)), 0).BorderColor(pal.Hairline)
-					if rIdx == 0 {
-						rowEl.Background(pal.Shell)
-					} else {
-						rowEl.Background(pal.Paper)
-					}
-					rowEl.Children(func() {
-						for cIdx := range row {
-							s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, readOnly)
-						}
-					})
+			availGrid := max(theme.EditorStandardWidth-26, 200)
+			if s.viewportWidth > 0 {
+				availGrid = min(availGrid, max(s.viewportWidth-editorHandleWidth-editorRowGap-editorRightInset-26, 200))
+			}
+			buildGrid := func(needHScroll bool) {
+				grid := ui.Column(c.Key("table-grid")).Radius(6).Border(1, borderCol).Clip()
+				if needHScroll {
+					grid.MinWidth(float32(cols) * tableMinColWidth)
+				} else {
+					grid.Grow(1).Shrink(1).MaxWidth(float32(max(cols, 1)) * tableMaxColWidth)
 				}
-			})
+				grid.Children(func() {
+					for rIdx := range tbl.Rows {
+						row := tbl.Rows[rIdx]
+						rowEl := ui.Row(c.Key(fmt.Sprintf("tr-%d", rIdx))).FillWidth().MinHeight(tableMinRowHeight).
+							BorderWidth(0, 0, boolToBorder(rIdx+1 < len(tbl.Rows)), 0).BorderColor(borderCol)
+						if rIdx == 0 {
+							rowEl.Background(headerBG)
+						} else {
+							rowEl.Background(pal.Paper)
+						}
+						rowEl.Children(func() {
+							for cIdx := range row {
+								s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, borderCol, readOnly)
+							}
+						})
+					}
+				})
+			}
+			if float32(cols)*tableMinColWidth > availGrid {
+				hs := ui.ScrollHorizontal(c.Key("table-hscroll")).Grow(1).Shrink(1)
+				hs.Children(func() {
+					buildGrid(true)
+				})
+			} else {
+				buildGrid(false)
+			}
 
 			// Right add column bar (reserve 22px slot so column width stays stable)
 			colSlot := ui.Box(c.Key("table-add-col-slot")).Width(22).Shrink(0)
@@ -1513,8 +1412,8 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			}
 		})
 
-		// Bottom add row bar (reserve 22px height so blocks below never jump)
-		rowSlot := ui.Box(c.Key("table-add-row-slot")).FillWidth().Height(22)
+		// Bottom add row bar (reserve 20px height + 4px gap = 24px EXTEND_ROOM so blocks below never jump)
+		rowSlot := ui.Box(c.Key("table-add-row-slot")).FillWidth().Height(20)
 		if showChrome {
 			rowSlot.Children(func() {
 				addRow := ui.ButtonBase(c.Key("table-add-row")).Fill().Center().
@@ -1532,27 +1431,36 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	})
 }
 
-func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, readOnly bool) {
+func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, borderCol ui.Color, readOnly bool) {
 	pal := theme.Ocean()
 	cell := &tbl.Rows[rIdx][cIdx]
 	isCellFocused := !readOnly && s.focusedBlock == blockIdx &&
 		s.tableActiveBlock == blockID && s.tableActiveRow == rIdx && s.tableActiveCol == cIdx
 
-	box := ui.Box(c.Key(fmt.Sprintf("tc-%d-%d", rIdx, cIdx))).Grow(1).Shrink(1).Padding(6, 10).
-		BorderWidth(0, boolToBorder(cIdx+1 < len(tbl.Rows[rIdx])), 0, 0).BorderColor(pal.Hairline)
+	box := ui.Box(c.Key(fmt.Sprintf("tc-%d-%d", rIdx, cIdx))).Grow(1).Shrink(1).
+		MinWidth(tableMinColWidth).MaxWidth(tableMaxColWidth).Padding(6, 10).
+		BorderWidth(0, boolToBorder(cIdx+1 < len(tbl.Rows[rIdx])), 0, 0).BorderColor(borderCol)
 	if isCellFocused {
 		box.Background(pal.Selected)
 	}
 	weight := 400
+	textCol := pal.Text
 	if rIdx == 0 {
 		weight = 600
+		textCol = pal.TextSecondary
 	}
+	lhFactor := tableCellLineHeight / tableCellFontSize
+	edFont := resolvedEditorFont()
 
 	box.Children(func() {
 		if isCellFocused {
 			draft := cell.PlainText()
-			in := ui.TextInputBase(c.Key("cell-in"), &draft).FillWidth().FontSize(14).
-				FontWeight(weight).TextColor(pal.Text).CaretColor(pal.Accent)
+			in := ui.TextInputBase(c.Key("cell-in"), &draft).FillWidth().
+				FontSize(tableCellFontSize).LineHeight(lhFactor).MinHeight(tableCellLineHeight).
+				FontWeight(weight).TextColor(textCol).CaretColor(pal.Accent).CaretWidth(2)
+			if edFont != "" {
+				in.Font(edFont)
+			}
 			in.OnTextKey(func(k ui.TextKey) bool {
 				if k.Key == ui.KeyTab {
 					if k.Mods == ui.Shift {
@@ -1581,10 +1489,19 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 			}
 		} else {
 			txt := cell.PlainText()
+			var t ui.Element
 			if txt == "" {
-				txt = " "
+				t = ui.Text(c.Key("cell-txt"), " ").FontSize(tableCellFontSize).LineHeight(lhFactor).
+					MinHeight(tableCellLineHeight).FontWeight(weight).TextColor(textCol).FillWidth()
+			} else {
+				cellBlock := model.Block{ID: blockID, Kind: model.BlockParagraph, Spans: cell.Spans}
+				spans := s.buildDisplaySpans(blockIdx, &cellBlock, tableCellFontSize, weight)
+				t = ui.RichText(c.Key("cell-txt"), spans...).FontSize(tableCellFontSize).LineHeight(lhFactor).
+					MinHeight(tableCellLineHeight).FontWeight(weight).TextColor(textCol).FillWidth()
 			}
-			t := ui.Text(c.Key("cell-txt"), txt).FontSize(14).FontWeight(weight).TextColor(pal.Text).FillWidth()
+			if edFont != "" {
+				t.Font(edFont)
+			}
 			if cIdx < len(tbl.Aligns) {
 				switch tbl.Aligns[cIdx] {
 				case model.ColAlignCenter:

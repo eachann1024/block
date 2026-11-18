@@ -306,6 +306,8 @@ type Annotation struct {
 	Reactions     []string `json:"reactions,omitempty"`
 	RewritePrompt string   `json:"rewritePrompt,omitempty"`
 	RewriteResult string   `json:"rewriteResult,omitempty"`
+	AIError       string   `json:"aiError,omitempty"`
+	Applied       bool     `json:"applied,omitempty"`
 	RewriteBusy   bool     `json:"-"`
 	CreatedAtUnix int64    `json:"createdAt"`
 }

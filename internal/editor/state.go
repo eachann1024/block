@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"block/internal/files"
 	"block/internal/model"
 	"github.com/egoist/mygo/ui"
 )
@@ -138,6 +139,9 @@ type Session struct {
 
 	// Annotations
 	annotations           []*model.Annotation
+	annotLoadedPath       string
+	annotLoadFailed       bool                              // store unreadable: never write over it
+	annotAppliedRaw       map[string]files.StoredAnnotation // applied annotations' stored body/rewrite, kept on re-save
 	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]string
 	activeAnnotID         string
 	hoveredAnnotID        string
@@ -239,7 +243,12 @@ func (s *Session) NotePath() string {
 }
 
 func (s *Session) SetNotePath(p string) {
+	if p == s.notePath {
+		return
+	}
+	old := s.notePath
 	s.notePath = p
+	s.onNotePathChanged(old, p)
 }
 
 func (s *Session) Doc() *model.Doc {
@@ -273,10 +282,12 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.outlineHovered = false
 	s.outlinePinnedClosed = false
 	s.annotations = nil
+	s.annotLoadedPath = ""
 	s.activeAnnotID = ""
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
 	clear(s.folded)
+	s.ensureAnnotationsLoaded()
 	if s.findOpen {
 		s.recomputeFind(false)
 	}
@@ -350,6 +361,7 @@ func (s *Session) IsSelectionToolbarOpen() bool {
 }
 
 func (s *Session) Annotations() []*model.Annotation {
+	s.ensureAnnotationsLoaded()
 	out := make([]*model.Annotation, len(s.annotations))
 	copy(out, s.annotations)
 	return out
@@ -473,6 +485,7 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.copyPending = false
 	s.calloutMenuBlock = 0
 	s.imgResizeBlock = 0
+	s.persistAnnotations()
 	if s.findOpen {
 		s.recomputeFind(false)
 	}

@@ -2438,13 +2438,14 @@ func (s *Session) effectiveAnnotationRange() (a, b Position, quoted string, ok b
 }
 
 func (s *Session) AddAnnotation(note string) *model.Annotation {
+	s.ensureAnnotationsLoaded()
 	a, b, quoted, ok := s.effectiveAnnotationRange()
 	if !ok {
 		return nil
 	}
 	s.nextAnnotSeq++
 	ann := &model.Annotation{
-		ID:            fmt.Sprintf("ann-%d", s.nextAnnotSeq),
+		ID:            nextAnnotationID(),
 		StartBlockID:  s.doc.Blocks[a.Block].ID,
 		StartOffset:   a.Offset,
 		EndBlockID:    s.doc.Blocks[b.Block].ID,
@@ -2456,6 +2457,7 @@ func (s *Session) AddAnnotation(note string) *model.Annotation {
 	s.annotations = append(s.annotations, ann)
 	s.activeAnnotID = ann.ID
 	s.markDirty()
+	s.persistAnnotations()
 	return ann
 }
 
@@ -2463,6 +2465,7 @@ func (s *Session) AddReaction(emoji string) {
 	if emoji == "" {
 		return
 	}
+	s.ensureAnnotationsLoaded()
 	a, b, quoted, ok := s.effectiveAnnotationRange()
 	if !ok {
 		return
@@ -2482,7 +2485,7 @@ func (s *Session) AddReaction(emoji string) {
 
 	s.nextAnnotSeq++
 	ann := &model.Annotation{
-		ID:            fmt.Sprintf("ann-%d", s.nextAnnotSeq),
+		ID:            nextAnnotationID(),
 		StartBlockID:  startID,
 		StartOffset:   a.Offset,
 		EndBlockID:    endID,
@@ -2493,6 +2496,7 @@ func (s *Session) AddReaction(emoji string) {
 	}
 	s.annotations = append(s.annotations, ann)
 	s.markDirty()
+	s.persistAnnotations()
 }
 
 func (s *Session) toggleReactionOnIndex(idx int, emoji string) {
@@ -2512,9 +2516,11 @@ func (s *Session) toggleReactionOnIndex(idx int, emoji string) {
 		ann.Reactions = []string{emoji}
 	}
 	s.markDirty()
+	s.persistAnnotations()
 }
 
 func (s *Session) deleteAnnotationByID(id string) bool {
+	s.ensureAnnotationsLoaded()
 	for i, ann := range s.annotations {
 		if ann.ID == id {
 			s.annotations = append(s.annotations[:i], s.annotations[i+1:]...)
@@ -2525,6 +2531,7 @@ func (s *Session) deleteAnnotationByID(id string) bool {
 				s.editingAnnotID = ""
 			}
 			s.markDirty()
+			s.persistAnnotations()
 			return true
 		}
 	}
@@ -2532,11 +2539,13 @@ func (s *Session) deleteAnnotationByID(id string) bool {
 }
 
 func (s *Session) updateAnnotationNote(id, note string) bool {
+	s.ensureAnnotationsLoaded()
 	for _, ann := range s.annotations {
 		if ann.ID == id {
 			ann.Note = strings.TrimSpace(note)
 			s.editingAnnotID = ""
 			s.markDirty()
+			s.persistAnnotations()
 			return true
 		}
 	}
@@ -2548,12 +2557,13 @@ func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending [
 }
 
 func (s *Session) GeneratePendingAnnotations() int {
+	s.ensureAnnotationsLoaded()
 	if s.annotationAIResponder == nil || len(s.annotations) == 0 {
 		return 0
 	}
 	var pending []*model.Annotation
 	for _, a := range s.annotations {
-		if a != nil && strings.TrimSpace(a.Note) != "" && a.RewriteResult == "" {
+		if a != nil && !a.Applied && strings.TrimSpace(a.Note) != "" && a.RewriteResult == "" {
 			cp := *a
 			if len(a.Reactions) > 0 {
 				cp.Reactions = slices.Clone(a.Reactions)
@@ -2570,13 +2580,17 @@ func (s *Session) GeneratePendingAnnotations() int {
 	}
 	updated := 0
 	for _, a := range s.annotations {
-		if a == nil || strings.TrimSpace(a.Note) == "" || a.RewriteResult != "" {
+		if a == nil || a.Applied || strings.TrimSpace(a.Note) == "" || a.RewriteResult != "" {
 			continue
 		}
 		if res, ok := results[a.ID]; ok && strings.TrimSpace(res) != "" {
 			a.RewriteResult = res
+			a.AIError = ""
 			updated++
 		}
+	}
+	if updated > 0 {
+		s.persistAnnotations()
 	}
 	return updated
 }
@@ -2661,7 +2675,32 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	}
 
 	s.spliceBlocks(startIdx, endIdx+1, newBlocks)
-	ann.RewriteResult = replacement
+	ann.StartBlockID = newBlocks[0].ID
+	ann.StartOffset = lo
+	ann.EndBlockID = newBlocks[len(newBlocks)-1].ID
+	lastRunes := len([]rune(newBlocks[len(newBlocks)-1].PlainText()))
+	suffixLen := len(endRunes) - hi
+	ann.EndOffset = max(lastRunes-suffixLen, 0)
+	ann.QuotedText = replacement
+	ann.Applied = true
+	ann.Note = ""
+	ann.RewritePrompt = ""
+	ann.RewriteResult = ""
+	ann.AIError = ""
+	if len(ann.Reactions) == 0 {
+		for i, item := range s.annotations {
+			if item.ID == ann.ID {
+				s.annotations = append(s.annotations[:i], s.annotations[i+1:]...)
+				break
+			}
+		}
+		if s.activeAnnotID == ann.ID {
+			s.activeAnnotID = ""
+		}
+		if s.editingAnnotID == ann.ID {
+			s.editingAnnotID = ""
+		}
+	}
 	s.focusedBlock = startIdx
 	endOff := len([]rune(newBlocks[len(newBlocks)-1].PlainText()))
 	s.selAnchor = Position{Block: startIdx + len(newBlocks) - 1, Offset: endOff}
@@ -2669,6 +2708,7 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	s.focusPending = true
 	s.selSyncPending = true
 	s.markDirty()
+	s.persistAnnotations()
 	return true
 }
 

@@ -18,18 +18,30 @@ func (s *Session) renderFindBar(c *ui.Context) {
 		return
 	}
 	pal := theme.Ocean()
+	winW, _ := c.Size()
+	topY := float32(12)
+	rightX := float32(20)
+	if s.editorRect.W > 0 {
+		topY = s.editorRect.Y + 12
+		if winW > 0 {
+			rightX = max(winW-(s.editorRect.X+s.editorRect.W), 0) + 20
+		}
+	}
+
 	ui.Overlay(c, func() {
-		bar := ui.Row(c.Key("find-bar")).Absolute().Top(12).Right(20).Height(40).
-			PaddingX(10).Gap(6).AlignItems(ui.Center).
-			Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		bar := ui.Row(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).
+			Padding(4, 4, 4, 10).Gap(4).AlignItems(ui.Center).
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder).
+			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+			Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12))
 		appUi.Probe(bar, "find-bar")
 
 		bar.Children(func() {
-			icons.Draw(c, icons.FindSearch, 16, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
 			in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(180).Height(28).
-				FontSize(14).TextColor(pal.Text).CaretColor(pal.Accent).
+				Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 				Placeholder(theme.Tr("查找…", "Find…")).Label("find-input").
 				Bind(&s.findInputHandle)
 			appUi.Probe(in, "find-input")
@@ -56,17 +68,25 @@ func (s *Session) renderFindBar(c *ui.Context) {
 				s.SetFindQuery(s.findQuery)
 			}
 
-			countText := "0/0"
-			if len(s.findMatches) > 0 {
-				countText = fmt.Sprintf("%d/%d", s.findCurrent+1, len(s.findMatches))
+			countText := ""
+			if s.findQuery != "" {
+				if len(s.findMatches) == 0 {
+					countText = theme.Tr("无结果", "No results")
+				} else {
+					countText = fmt.Sprintf("%d / %d", s.findCurrent+1, len(s.findMatches))
+				}
 			}
-			ui.Text(c, countText).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Row(c).Width(72).PaddingX(6).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, countText).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+			})
+
+			ui.Box(c).Width(1).Height(18).Margin(0, 2).Background(pal.SidebarBorder)
 
 			prevBtn := appUi.IconButton(c, icons.ChevronUp, appUi.IconButtonOptions{
 				ID:       "find-prev",
 				Label:    theme.Tr("上一个", "Previous match"),
-				Size:     26,
-				IconSize: 15,
+				Size:     theme.ControlHeight,
+				IconSize: theme.IconInline,
 				Disabled: len(s.findMatches) == 0,
 			})
 			if prevBtn.Clicked() {
@@ -76,8 +96,8 @@ func (s *Session) renderFindBar(c *ui.Context) {
 			nextBtn := appUi.IconButton(c, icons.ChevronDown, appUi.IconButtonOptions{
 				ID:       "find-next",
 				Label:    theme.Tr("下一个", "Next match"),
-				Size:     26,
-				IconSize: 15,
+				Size:     theme.ControlHeight,
+				IconSize: theme.IconInline,
 				Disabled: len(s.findMatches) == 0,
 			})
 			if nextBtn.Clicked() {
@@ -87,8 +107,8 @@ func (s *Session) renderFindBar(c *ui.Context) {
 			closeBtn := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
 				ID:       "find-close",
 				Label:    theme.Tr("关闭查找", "Close find"),
-				Size:     26,
-				IconSize: 15,
+				Size:     theme.ControlHeight,
+				IconSize: theme.IconInline,
 			})
 			if closeBtn.Clicked() {
 				s.CloseFind()
@@ -610,7 +630,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, x, y float32) {
 			if theme.IsEn() {
 				lbl = sw.En
 			}
-			row := ui.ButtonBase(c.Key("fg-sw-"+name)).FillWidth().Height(28).PaddingX(8).Gap(8).
+			row := ui.ButtonBase(c.Key("fg-sw-" + name)).FillWidth().Height(28).PaddingX(8).Gap(8).
 				AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(lbl)
 			if curFG == name {
 				row.Background(pal.Selected)
@@ -644,7 +664,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, x, y float32) {
 					swatchCol = cVal
 				}
 			}
-			row := ui.ButtonBase(c.Key("bg-sw-"+bgName)).FillWidth().Height(28).PaddingX(8).Gap(8).
+			row := ui.ButtonBase(c.Key("bg-sw-" + bgName)).FillWidth().Height(28).PaddingX(8).Gap(8).
 				AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(lbl)
 			if curBG == bgName {
 				row.Background(pal.Selected)
@@ -721,25 +741,24 @@ var reactionEmojis = []string{"👍", "❤️", "🎉", "🤔", "👀", "🔥", 
 
 func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
-	w := float32(288)
+	w := float32(268)
 	minX, maxX, _, _ := s.overlayBounds(c)
 	x = clampFloat32(x, minX, max(maxX-w, minX))
 
-	bar := ui.Row(c.Key("annotate-reactions")).Absolute().Left(x).Top(y).Padding(6, 8).Gap(4).
-		AlignItems(ui.Center).Radius(theme.RadiusSurface).Background(pal.Menu).
-		Border(1, pal.Hairline).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+	bar := appUi.MenuSurface(ui.Row(c.Key("annotate-reactions")).Absolute().Left(x).Top(y)).
+		Padding(6, 8).Gap(4).AlignItems(ui.Center)
 	appUi.Probe(bar, "annotate-reactions")
 
 	bar.Children(func() {
 		for idx, emoji := range reactionEmojis {
 			id := fmt.Sprintf("pick-emoji-%d", idx)
-			btn := ui.ButtonBase(c.Key(id)).Size(30, 30).Center().Radius(6).
+			btn := ui.ButtonBase(c.Key(id)).Size(28, 28).Center().Radius(theme.RadiusControl).
 				Cursor(ui.CursorPointer).Label(emoji)
 			if btn.Hovered() {
 				btn.Background(pal.Hover)
 			}
 			btn.Children(func() {
-				ui.Text(c, emoji).FontSize(16)
+				ui.Text(c, emoji).FontSize(15)
 			})
 			appUi.Probe(btn, id)
 			if btn.Clicked() {
@@ -755,19 +774,21 @@ func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
 
 func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
 	pal := theme.Ocean()
-	w := float32(280)
+	w := float32(260)
 	minX, maxX, _, _ := s.overlayBounds(c)
 	x = clampFloat32(x, minX, max(maxX-w, minX))
 
 	card := ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
-		Padding(8, 10).Gap(6).AlignItems(ui.Center).
-		Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Accent).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		Padding(6, 10).Gap(8).AlignItems(ui.Center).
+		Radius(10).Background(pal.Menu).Border(1, pal.Accent).
+		Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.12)).
+		Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.08))
 	appUi.Probe(card, "annotate-composer")
 
 	card.Children(func() {
+		ui.Box(c).Size(8, 8).Shrink(0).Radius(4).Background(ui.Hex("#f5c84c"))
 		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).Height(28).
-			PaddingX(8).FontSize(14).TextColor(pal.Text).
+			Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).Label("annotation-note").
 			Bind(&s.commentHandle)
 		if s.commentFocusPending {
@@ -784,7 +805,18 @@ func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
 		if in.Submitted() {
 			submit()
 		}
-		btn := appUi.ActionButton(c, "annotate-submit", theme.Tr("保存", "Save"), nil, appUi.ButtonPrimary, strings.TrimSpace(s.commentDraft) == "")
+		hasText := strings.TrimSpace(s.commentDraft) != ""
+		btnBG := pal.BtnBorder
+		if hasText {
+			btnBG = pal.Accent
+		}
+		btn := ui.ButtonBase(c.Key("annotate-submit")).Size(26, 26).Shrink(0).Center().
+			Radius(13).Background(btnBG).Disabled(!hasText).Cursor(ui.CursorPointer).
+			Label(theme.Tr("保存", "Save"))
+		btn.Children(func() {
+			icons.Draw(c, icons.ArrowUp, theme.IconInline, pal.MonoIconColors(ui.Hex("#ffffff")))
+		})
+		appUi.Probe(btn, "annotate-submit")
 		if btn.Clicked() {
 			submit()
 		}
@@ -1229,7 +1261,7 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 			for _, pct := range []float32{25, 50, 75, 100} {
 				p := pct
 				lbl := fmt.Sprintf("%.0f%%", p)
-				btn := ui.ButtonBase(c.Key("img-pct-"+lbl)).Height(28).PaddingX(8).Center().
+				btn := ui.ButtonBase(c.Key("img-pct-" + lbl)).Height(28).PaddingX(8).Center().
 					Radius(6).Cursor(ui.CursorPointer).Label(lbl)
 				if int(b.ImageWidth) == int(p) || (b.ImageWidth == 0 && p == 100) {
 					btn.Background(pal.Selected)
@@ -1287,10 +1319,30 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 	_ = idx
 }
 
-// --- 5. Right-Side 4-Level Outline Rail (< 960px auto-hide) ---
+// --- 5. Left-Margin 4-Level Outline Rail (visible when left margin >= 36px) ---
+
+const outlineMinLeftMargin float32 = 36
+
+func (s *Session) outlineLeftMargin() float32 {
+	if s.outlineForceNarrow {
+		return 0
+	}
+	editorW := s.viewportWidth
+	if editorW <= 0 {
+		editorW = s.editorRect.W
+	}
+	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
+	railSlot := float32(0)
+	if s.hasVisibleAnnotationRail() && s.canFitWideAnnotationRail() {
+		railSlot = annotationRailSlot
+	}
+	innerW := max(editorW-theme.ScrollGutter, 0)
+	colW := min(innerW, stdW+railSlot)
+	return max((innerW-colW)*0.5, 0)
+}
 
 func (s *Session) renderOutlineRail(c *ui.Context) {
-	if s.outlineForceNarrow || s.viewportWidth < 960 {
+	if s.outlineLeftMargin() < outlineMinLeftMargin {
 		s.outlineHovered = false
 		return
 	}
@@ -1301,7 +1353,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 	}
 	pal := theme.Ocean()
 
-	// Determine active heading based on highlightedBlockID or focusedBlock.
+	// Determine active heading and lit section range (matching src/editor/outline.rs).
 	anchorIdx := s.focusedBlock
 	if s.highlightedBlockID != 0 {
 		if hi := s.blockIndexByID(s.highlightedBlockID); hi >= 0 {
@@ -1314,10 +1366,20 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 			activeItemIdx = i
 		}
 	}
+	activeBlockIdx := items[activeItemIdx].BlockIndex
+	activeLevel := s.doc.Blocks[activeBlockIdx].Kind.HeadingLevel()
+	sectionEnd := len(s.doc.Blocks)
+	for j := activeBlockIdx + 1; j < len(s.doc.Blocks); j++ {
+		if s.doc.Blocks[j].Kind.IsHeading() && s.doc.Blocks[j].Kind.HeadingLevel() <= activeLevel {
+			sectionEnd = j
+			break
+		}
+	}
 
 	ui.Overlay(c, func() {
-		topY := max(s.editorRect.Y+24, float32(36))
-		wrap := ui.Column(c.Key("outline-rail-wrap")).Absolute().Right(18).Top(topY).AlignItems(ui.End)
+		leftX := s.editorRect.X + 18
+		topY := s.editorRect.Y + 36
+		wrap := ui.Column(c.Key("outline-rail-wrap")).Absolute().Left(leftX).Top(topY).AlignItems(ui.Start)
 		appUi.Probe(wrap, "outline-rail")
 		hovered := wrap.Hovered()
 		if s.outlinePinnedClosed {
@@ -1333,7 +1395,10 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 			if s.outlineHovered {
 				card := ui.Column(c.Key("outline-popover")).Width(236).MaxHeight(360).
 					Padding(6).Gap(2).Radius(theme.RadiusSurface).Background(pal.Menu).
-					Border(1, pal.Hairline).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+					Border(1, pal.Hairline).
+					Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+					Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12))
 				appUi.Probe(card, "outline-popover")
 
 				card.Children(func() {
@@ -1341,27 +1406,36 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 						for idx, it := range items {
 							item := it
 							isActive := idx == activeItemIdx
-							indent := float32(8 + (item.Level-1)*10)
+							barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
+							indent := outlinePopoverIndent(item.Level)
 							row := ui.ButtonBase(c.Key(fmt.Sprintf("outline-item-%d", idx))).
 								FillWidth().Height(30).Padding(0, 8, 0, indent).Gap(8).
 								AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(item.Title)
+							textCol := pal.TextSecondary
+							fontW := theme.WeightRegular
 							if isActive {
 								row.Background(pal.Selected).Border(1, pal.Accent)
+								textCol = pal.Text
+								fontW = theme.WeightControl
 							} else {
 								row.Border(1, ui.Transparent)
+								if barLit {
+									textCol = pal.Text
+								}
 								if row.Hovered() {
 									row.Background(pal.Hover)
+									textCol = pal.Text
 								}
 							}
 							row.Children(func() {
 								barW := outlineBarWidth(item.Level)
-								barCol := pal.BtnBorder
-								if isActive {
-									barCol = pal.Accent
+								barCol := pal.OutlineBarDim
+								if barLit {
+									barCol = pal.OutlineBarLit
 								}
 								barBox := ui.Box(c).Width(barW).Height(2).Radius(1).Background(barCol).Shrink(0)
 								appUi.Probe(barBox, fmt.Sprintf("outline-bar-%d", idx))
-								ui.Text(c, item.Title).FontSize(14).TextColor(pal.Text).Grow(1).SingleLine()
+								ui.Text(c, item.Title).FontSize(theme.FontSmall).FontWeight(fontW).TextColor(textCol).Grow(1).SingleLine()
 							})
 							appUi.Probe(row, fmt.Sprintf("outline-item-%d", idx))
 							if row.Clicked() {
@@ -1371,18 +1445,19 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 					})
 				})
 			} else {
-				rail := ui.Column(c.Key("outline-rail")).Padding(4, 4, 4, 8).Gap(7).AlignItems(ui.End)
+				rail := ui.Column(c.Key("outline-rail")).Padding(4, 8, 4, 0).Gap(7).AlignItems(ui.Start)
 				rail.Children(func() {
 					for idx, it := range items {
 						item := it
 						isActive := idx == activeItemIdx
+						barLit := isActive || (item.BlockIndex > activeBlockIdx && item.BlockIndex < sectionEnd)
 						barBtn := ui.ButtonBase(c.Key(fmt.Sprintf("outline-bar-%d", idx))).
-							Height(8).PaddingX(4).AlignItems(ui.Center).Justify(ui.End).
+							Height(6).Padding(0, 6, 0, 0).AlignItems(ui.Center).Justify(ui.Start).
 							Cursor(ui.CursorPointer).Label(item.Title)
 						barBtn.Children(func() {
-							barCol := pal.BtnBorder
-							if isActive {
-								barCol = pal.Text
+							barCol := pal.OutlineBarDim
+							if barLit {
+								barCol = pal.OutlineBarLit
 							}
 							ui.Box(c).Width(outlineBarWidth(item.Level)).Height(2).Radius(1).Background(barCol)
 						})
@@ -1397,139 +1472,445 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 	})
 }
 
-func outlineBarWidth(level int) float32 {
-	switch level {
-	case 1:
-		return 20
-	case 2:
-		return 14
-	case 3:
-		return 10
+func outlinePopoverIndent(level int) float32 {
+	switch {
+	case level <= 1:
+		return 8
+	case level == 2:
+		return 18
 	default:
-		return 7
+		return 28
 	}
 }
 
-// --- 6. Annotation Rail ---
+func outlineBarWidth(level int) float32 {
+	switch {
+	case level <= 1:
+		return 20
+	case level == 2:
+		return 14
+	default:
+		return 10
+	}
+}
+
+// --- 6. Annotation Rail (Wide) & Block-Foot Strip (Narrow) ---
+
+const (
+	annotationRailWidth float32 = 224
+	annotationRailSlot  float32 = annotationRailWidth + 8
+)
+
+func (s *Session) canFitWideAnnotationRail() bool {
+	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
+	minW := stdW + annotationRailSlot + theme.ScrollGutter
+	editorW := s.viewportWidth
+	if editorW <= 0 {
+		editorW = s.editorRect.W
+	}
+	return editorW > 0 && editorW >= minW
+}
+
+func isReactionOnlyAnnotation(ann *model.Annotation) bool {
+	return ann != nil && ann.Note == "" && ann.RewriteResult == "" && ann.RewritePrompt == "" && ann.AIError == "" && len(ann.Reactions) > 0
+}
+
+func reactionPillColors(active, dark bool) (fg, bg, hoverBG, border ui.Color) {
+	if dark {
+		fg = ui.Hex("#9ec3ff")
+		bg = ui.Hex("#212e47")
+		hoverBG = ui.Hex("#2d4673")
+		border = ui.Hex("#33486e")
+		if active {
+			bg = ui.Hex("#283d63")
+			border = ui.Hex("#6f97e6")
+		}
+		return
+	}
+	fg = ui.Hex("#1757ac")
+	bg = ui.Hex("#eaf2fd")
+	hoverBG = ui.Hex("#d4e5fb")
+	border = ui.Hex("#cfe0f8")
+	if active {
+		bg = ui.Hex("#dceafb")
+		border = ui.Hex("#8cb3ec")
+	}
+	return
+}
+
+func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annotation, emoji string, active bool, hoveredOut *string) {
+	fg, bg, hoverBG, border := reactionPillColors(active, theme.IsDark())
+	pill := ui.ButtonBase(c.Key(id)).Height(24).PaddingX(9).Gap(4).Radius(theme.RadiusPill).
+		Background(bg).Border(1, border).AlignItems(ui.Center).Justify(ui.Center).
+		Cursor(ui.CursorPointer).Label(emoji)
+	if pill.Hovered() {
+		pill.Background(hoverBG)
+		*hoveredOut = ann.ID
+	}
+	pill.Children(func() {
+		ui.Text(c, emoji).FontSize(theme.FontBody)
+		ui.Text(c, "1").FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg)
+	})
+	appUi.Probe(pill, id)
+	if pill.Clicked() {
+		s.toggleReactionByID(ann.ID, emoji)
+	}
+}
+
+func (s *Session) renderAnnotationCardContent(c *ui.Context, ann *model.Annotation, isNarrow bool) {
+	pal := theme.Ocean()
+	if s.editingAnnotID == ann.ID {
+		ui.Row(c).FillWidth().Height(32).PaddingX(8).Radius(6).Background(pal.Shell).
+			Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
+			in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().
+				Height(30).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+				CaretColor(pal.Accent).Bind(&s.editingHandle)
+			if in.Submitted() {
+				s.updateAnnotationNote(ann.ID, s.editingAnnotText)
+			}
+		})
+		ui.Row(c).FillWidth().Justify(ui.End).Gap(6).Children(func() {
+			cancel := appUi.ActionButton(c, "ann-edit-cancel-"+ann.ID, theme.Tr("取消", "Cancel"), nil, appUi.ButtonGhost, false)
+			if cancel.Clicked() {
+				s.editingAnnotID = ""
+			}
+			save := appUi.ActionButton(c, "ann-edit-save-"+ann.ID, theme.Tr("保存", "Save"), nil, appUi.ButtonPrimary, false)
+			if save.Clicked() {
+				s.updateAnnotationNote(ann.ID, s.editingAnnotText)
+			}
+		})
+		return
+	}
+
+	if ann.RewriteResult != "" {
+		ui.Box(c).FillWidth().Padding(10).Radius(6).Background(pal.Selected).Children(func() {
+			ui.Text(c, ann.RewriteResult).FontSize(theme.FontBody).TextColor(pal.SelectionFG)
+		})
+		if !s.readOnly {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+				acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(30, 30).Shrink(0).Center().
+					Radius(6).Background(pal.Accent).Border(1, pal.Accent).
+					Cursor(ui.CursorPointer).Label(theme.Tr("同意，替换原文", "Accept and replace"))
+				if acc.Hovered() {
+					acc.Background(pal.AccentHover)
+				}
+				acc.Children(func() {
+					icons.Draw(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.AccentText))
+				})
+				appUi.Probe(acc, "ann-accept-"+ann.ID)
+				if acc.Clicked() {
+					s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+				}
+
+				ui.Box(c).Grow(1)
+
+				dismiss := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+					ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Size: 26, IconSize: theme.IconInline, Danger: true,
+				})
+				if dismiss.Clicked() {
+					s.dismissAnnotationRewrite(ann.ID)
+				}
+			})
+		}
+		return
+	}
+
+	ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(8).Children(func() {
+		ui.Box(c).Size(8, 8).Margin(9, 0, 0, 0).Shrink(0).Radius(4).Background(ui.Hex("#f5c84c"))
+		noteTxt := ann.Note
+		if noteTxt == "" && ann.RewritePrompt != "" {
+			noteTxt = ann.RewritePrompt
+		}
+		ui.Text(c, noteTxt).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1)
+		if !s.readOnly {
+			if ann.RewritePrompt != "" {
+				acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+					ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: 26, IconSize: theme.IconInline,
+				})
+				if acc.Clicked() {
+					s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+				}
+			}
+			editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+				ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: 26, IconSize: theme.IconInline,
+			})
+			if editBtn.Clicked() {
+				s.editingAnnotID = ann.ID
+				s.editingAnnotText = ann.Note
+			}
+			delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+				ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: 26, IconSize: theme.IconInline, Danger: true,
+			})
+			if delBtn.Clicked() {
+				s.deleteAnnotationByID(ann.ID)
+			}
+		}
+	})
+	_ = isNarrow
+}
+
+func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
+	if isReactionOnlyAnnotation(ann) {
+		return 24, 4
+	}
+	stepGap = 12
+	switch {
+	case isEditing:
+		height = 88
+	case ann.RewriteResult != "":
+		height = 96
+	default:
+		lines := max((len([]rune(ann.Note))+13)/14, 1)
+		height = 46 + float32(lines-1)*20
+	}
+	if len(ann.Reactions) > 0 {
+		height += 28
+	}
+	return height, stepGap
+}
 
 func (s *Session) renderAnnotationRail(c *ui.Context) {
-	if len(s.annotations) == 0 {
+	if !s.hasVisibleAnnotationRail() || !s.canFitWideAnnotationRail() {
 		return
 	}
 	pal := theme.Ocean()
-	// Position rail to the right of the 672px body (avoid colliding with right-side outline rail).
-	railRight := float32(64)
-	if s.viewportWidth < 1120 {
-		railRight = 16
+	editorW := s.viewportWidth
+	if editorW <= 0 {
+		editorW = s.editorRect.W
 	}
-	topOffset := float32(64)
-	if len(s.Outline()) > 0 && s.viewportWidth >= 960 && !s.outlineForceNarrow {
-		topOffset = 140
+	stdW := theme.EditorStandardWidth + editorHandleWidth + editorRowGap + editorRightInset
+	bodyRightX := s.editorRect.X + (editorW+stdW)*0.5
+	editorRight := s.editorRect.X + editorW
+	railLeft := min(bodyRightX+8, editorRight-12-annotationRailWidth)
+	railTop := s.editorRect.Y
+	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
+
+	type railEntry struct {
+		ann     *model.Annotation
+		targetY float32
+		height  float32
+		gap     float32
+		order   int
+	}
+	var rows []railEntry
+	for i, ann := range s.annotations {
+		if !isAnnotationVisible(ann) {
+			continue
+		}
+		targetY := float32(24)
+		if r, ok := s.blockRects[ann.StartBlockID]; ok && r.H > 0 {
+			targetY = max(r.Y-railTop, 24)
+		}
+		h, g := estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)
+		rows = append(rows, railEntry{ann: ann, targetY: targetY, height: h, gap: g, order: i})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0 && rows[j].targetY < rows[j-1].targetY; j-- {
+			rows[j], rows[j-1] = rows[j-1], rows[j]
+		}
 	}
 
+	nextHovered := ""
 	ui.Overlay(c, func() {
-		rail := ui.Column(c.Key("annotation-rail")).Absolute().Right(railRight).Top(topOffset).Width(224).Gap(8)
+		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(railLeft).Top(railTop).
+			Width(annotationRailWidth).Height(railHeight).PassThrough()
 		appUi.Probe(rail, "annotation-rail")
 		rail.Children(func() {
-			for _, a := range s.annotations {
-				ann := a
+			bottom := float32(12)
+			for _, row := range rows {
+				ann := row.ann
+				top := max(row.targetY, bottom+row.gap)
+				bottom = top + row.height
 				isActive := s.activeAnnotID == ann.ID
-				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().Padding(10).Gap(6).
-					Radius(theme.RadiusCard).Background(pal.Menu).
-					Border(1, boolColor(isActive, pal.Accent, pal.Hairline)).
-					Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08))
-				appUi.Probe(card, "annotation-card-"+ann.ID)
+				isHighlighted := isActive || s.hoveredAnnotID == ann.ID
 
-				card.Children(func() {
-					if ann.QuotedText != "" {
-						ui.Text(c, ann.QuotedText).FontSize(14).TextColor(pal.TextSecondary).MaxLines(2)
+				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
+					Width(annotationRailWidth).Gap(4)
+				slot.Children(func() {
+					if isReactionOnlyAnnotation(ann) {
+						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(6).Children(func() {
+							for rIdx, em := range ann.Reactions {
+								s.renderReactionPill(c, fmt.Sprintf("reaction-pill-%s-%d", ann.ID, rIdx), ann, em, isHighlighted, &nextHovered)
+							}
+						})
+						return
 					}
-					if s.editingAnnotID == ann.ID {
-						in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().
-							Height(28).PaddingX(6).Radius(6).Border(1, pal.Accent).
-							FontSize(14).TextColor(pal.Text).Bind(&s.editingHandle)
-						if in.Submitted() {
-							s.updateAnnotationNote(ann.ID, s.editingAnnotText)
+
+					borderCol := pal.Hairline
+					if isActive || s.editingAnnotID == ann.ID {
+						borderCol = pal.Accent
+					}
+					card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().
+						Padding(10, 12).Gap(10).Radius(10).Background(pal.Menu).
+						Border(1, borderCol)
+					if card.Hovered() {
+						nextHovered = ann.ID
+					}
+					appUi.Probe(card, "annotation-card-"+ann.ID)
+					card.Children(func() {
+						s.renderAnnotationCardContent(c, ann, false)
+					})
+					if card.Clicked() {
+						if s.activeAnnotID == ann.ID {
+							s.activeAnnotID = ""
+						} else {
+							s.activeAnnotID = ann.ID
 						}
-						ui.Row(c).FillWidth().Justify(ui.End).Gap(4).Children(func() {
-							cancel := appUi.ActionButton(c, "ann-edit-cancel-"+ann.ID, theme.Tr("取消", "Cancel"), nil, appUi.ButtonGhost, false)
-							if cancel.Clicked() {
-								s.editingAnnotID = ""
-							}
-							save := appUi.ActionButton(c, "ann-edit-save-"+ann.ID, theme.Tr("保存", "Save"), nil, appUi.ButtonPrimary, false)
-							if save.Clicked() {
-								s.updateAnnotationNote(ann.ID, s.editingAnnotText)
-							}
-						})
-					} else if ann.Note != "" {
-						ui.Text(c, ann.Note).FontSize(14).TextColor(pal.Text)
-					}
-
-					if ann.RewriteResult != "" {
-						ui.Box(c).FillWidth().Padding(6, 8).Radius(6).Background(pal.SuccessSurface).Children(func() {
-							ui.Text(c, ann.RewriteResult).FontSize(14).TextColor(pal.Text)
-						})
 					}
 
 					if len(ann.Reactions) > 0 {
-						ui.Row(c).FillWidth().Wrap().Gap(4).Children(func() {
+						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(6).Children(func() {
 							for rIdx, em := range ann.Reactions {
-								emoji := em
-								pill := ui.ButtonBase(c.Key(fmt.Sprintf("rx-%s-%d", ann.ID, rIdx))).
-									Height(24).PaddingX(8).Gap(4).Radius(theme.RadiusPill).
-									Background(pal.Selected).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-									Label(emoji)
-								pill.Children(func() {
-									ui.Text(c, emoji).FontSize(14)
-									ui.Text(c, "1").FontSize(14).TextColor(pal.Accent)
-								})
-								if pill.Clicked() {
-									s.AddReaction(emoji)
-								}
-							}
-						})
-					}
-
-					// Actions row
-					if !s.readOnly {
-						ui.Row(c).FillWidth().Wrap().Justify(ui.End).AlignItems(ui.Center).Gap(4).Children(func() {
-							if ann.RewriteResult != "" {
-								dismiss := appUi.ActionButton(c, "ann-dismiss-"+ann.ID, theme.Tr("忽略", "Dismiss"), nil, appUi.ButtonGhost, false)
-								if dismiss.Clicked() {
-									ann.RewriteResult = ""
-								}
-								acc := appUi.ActionButton(c, "ann-accept-"+ann.ID, theme.Tr("应用", "Apply"), nil, appUi.ButtonPrimary, false)
-								if acc.Clicked() {
-									s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
-								}
-							} else if ann.RewritePrompt != "" {
-								acc := appUi.ActionButton(c, "annotation-accept-"+ann.ID, theme.Tr("应用", "Apply"), nil, appUi.ButtonPrimary, false)
-								if acc.Clicked() {
-									s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
-								}
-							}
-							editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-								ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: 24, IconSize: 14,
-							})
-							if editBtn.Clicked() {
-								s.editingAnnotID = ann.ID
-								s.editingAnnotText = ann.Note
-							}
-							delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-								ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: 24, IconSize: 14, Danger: true,
-							})
-							if delBtn.Clicked() {
-								s.deleteAnnotationByID(ann.ID)
+								s.renderReactionPill(c, fmt.Sprintf("reaction-pill-%s-%d", ann.ID, rIdx), ann, em, isHighlighted, &nextHovered)
 							}
 						})
 					}
 				})
-				if card.Clicked() {
-					s.activeAnnotID = ann.ID
-				}
 			}
 		})
 	})
+	if nextHovered != s.hoveredAnnotID {
+		s.hoveredAnnotID = nextHovered
+		c.Invalidate()
+	}
+}
+
+func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Block) {
+	if len(s.annotations) == 0 || s.canFitWideAnnotationRail() {
+		return
+	}
+	var anchored []*model.Annotation
+	for _, ann := range s.annotations {
+		if !isAnnotationVisible(ann) {
+			continue
+		}
+		endIdx := s.blockIndexByID(ann.EndBlockID)
+		if endIdx < 0 {
+			endIdx = s.blockIndexByID(ann.StartBlockID)
+		}
+		if endIdx == idx {
+			anchored = append(anchored, ann)
+		}
+	}
+	if len(anchored) == 0 {
+		return
+	}
+	pal := theme.Ocean()
+	nextHovered := s.hoveredAnnotID
+
+	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().
+		Padding(6, 0, 2, 0).Gap(6).AlignItems(ui.Start)
+	strip.Children(func() {
+		// Reaction pills row
+		var hasReactions bool
+		for _, ann := range anchored {
+			if len(ann.Reactions) > 0 {
+				hasReactions = true
+				break
+			}
+		}
+		if hasReactions {
+			ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(6).Children(func() {
+				for _, ann := range anchored {
+					if len(ann.Reactions) == 0 {
+						continue
+					}
+					active := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID
+					s.renderReactionPill(c, fmt.Sprintf("annotation-marker-%s", ann.ID), ann, ann.Reactions[0], active, &nextHovered)
+				}
+			})
+		}
+
+		for _, a := range anchored {
+			ann := a
+			if isReactionOnlyAnnotation(ann) {
+				continue
+			}
+			isActive := s.activeAnnotID == ann.ID || s.editingAnnotID == ann.ID
+			isHighlighted := isActive || s.hoveredAnnotID == ann.ID
+			if isActive {
+				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MaxWidth(340).
+					Padding(10, 12).Gap(10).Radius(10).Background(pal.Menu).
+					Border(1, pal.Accent)
+				if card.Hovered() {
+					nextHovered = ann.ID
+				}
+				appUi.Probe(card, "annotation-card-"+ann.ID)
+				card.Children(func() {
+					s.renderAnnotationCardContent(c, ann, true)
+				})
+				continue
+			}
+
+			// Compact 28px inline capsule
+			capsuleBG := pal.Sidebar
+			capsuleBorder := pal.Hairline
+			if ann.RewriteResult != "" {
+				capsuleBG = pal.Selected
+			}
+			if isHighlighted {
+				capsuleBorder = pal.Accent
+			}
+			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MaxWidth(340).MinHeight(28).
+				Padding(2, 4, 2, 10).Gap(6).AlignItems(ui.Center).
+				Radius(theme.RadiusControl).Background(capsuleBG).Border(1, capsuleBorder)
+			if chip.Hovered() {
+				nextHovered = ann.ID
+			}
+			chip.Children(func() {
+				preview := strings.Join(strings.Fields(ann.Note), " ")
+				if ann.RewriteResult != "" {
+					preview = theme.Tr("建议改写：", "Suggested: ") + strings.Join(strings.Fields(ann.RewriteResult), " ")
+				}
+				toggle := ui.ButtonBase(c.Key("foot-toggle-" + ann.ID)).Grow(1).AlignItems(ui.Center).Gap(7).
+					Cursor(ui.CursorPointer).Label(preview)
+				toggle.Children(func() {
+					if ann.RewriteResult != "" {
+						icons.Draw(c, icons.TbComment, theme.IconInline, pal.DuoIconColors(pal.Accent))
+					} else {
+						ui.Box(c).Size(7, 7).Shrink(0).Radius(3.5).Background(ui.Hex("#f5c84c"))
+					}
+					ui.Text(c, preview).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
+				})
+				if toggle.Clicked() {
+					s.activeAnnotID = ann.ID
+				}
+				if !s.readOnly {
+					if ann.RewriteResult != "" {
+						acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(22, 22).Shrink(0).Center().
+							Radius(theme.RadiusMicroMD).Background(pal.Accent).Cursor(ui.CursorPointer).
+							Label(theme.Tr("同意，替换原文", "Accept and replace"))
+						acc.Children(func() {
+							icons.Draw(c, icons.Check, 13, pal.MonoIconColors(pal.AccentText))
+						})
+						appUi.Probe(acc, "ann-accept-"+ann.ID)
+						if acc.Clicked() {
+							s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+						}
+					} else {
+						editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+							ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: 22, IconSize: theme.IconInline,
+						})
+						if editBtn.Clicked() {
+							s.activeAnnotID = ann.ID
+							s.editingAnnotID = ann.ID
+							s.editingAnnotText = ann.Note
+						}
+						delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+							ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: 22, IconSize: theme.IconInline, Danger: true,
+						})
+						if delBtn.Clicked() {
+							s.deleteAnnotationByID(ann.ID)
+						}
+					}
+				}
+			})
+		}
+	})
+	_ = nextHovered
 }
 
 // --- 7. AI BatchPlan Diff Review Card ---

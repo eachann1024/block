@@ -130,11 +130,16 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		leftLead = max(82, tb.Left+12)
 	}
 
+	showBack := !p.InSettings && p.CanBack
+	showFwd := !p.InSettings && p.CanForward
 	navCount := 0
-	if p.CanBack || p.CanForward {
-		navCount = 2
+	if showBack {
+		navCount++
 	}
-	leftW := leftLead + 8 + 28 + float32(navCount)*(28+2)
+	if showFwd {
+		navCount++
+	}
+	leftW := leftLead + 8 + theme.ChromeBoxSize + float32(navCount)*(theme.ChromeBoxSize+2)
 	if p.AIImmersive {
 		leftW = leftLead
 	} else if p.SidebarWide {
@@ -161,19 +166,19 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 			ui.Spacer(c)
 			ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-				if navCount > 0 {
-					backBtn := blockui.IconButton(c, icons.ArrowLeft, blockui.IconButtonOptions{
-						ID:       "nav-back",
-						Tooltip:  fmt.Sprintf("%s %s", theme.Tr("后退", "Back"), blockui.FormatShortcutDisplay("cmd-[")),
-						Disabled: !p.CanBack,
+				if showBack {
+					backBtn := blockui.IconButton(c, icons.ChevronLeft, blockui.IconButtonOptions{
+						ID:      "nav-back",
+						Tooltip: theme.Tr("后退", "Back"),
 					})
 					if backBtn.Clicked() && p.OnBack != nil {
 						p.OnBack()
 					}
-					fwdBtn := blockui.IconButton(c, icons.ArrowRight, blockui.IconButtonOptions{
-						ID:       "nav-forward",
-						Tooltip:  fmt.Sprintf("%s %s", theme.Tr("前进", "Forward"), blockui.FormatShortcutDisplay("cmd-]")),
-						Disabled: !p.CanForward,
+				}
+				if showFwd {
+					fwdBtn := blockui.IconButton(c, icons.ChevronRight, blockui.IconButtonOptions{
+						ID:      "nav-forward",
+						Tooltip: theme.Tr("前进", "Forward"),
 					})
 					if fwdBtn.Clicked() && p.OnForward != nil {
 						p.OnForward()
@@ -198,7 +203,6 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
 					ID:      "sidebar-toggle",
 					Tooltip: tip,
-					Active:  p.SidebarAutoHidden && p.SidebarWide,
 				})
 				if sbBtn.Clicked() && p.OnToggleSidebar != nil {
 					p.OnToggleSidebar()
@@ -214,7 +218,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			if p.InSettings {
 				crumb := ui.Row(c).Fill().AlignItems(ui.Center).Gap(6).DragWindow()
 				crumb.Children(func() {
-					ui.Text(c, theme.Tr("偏好设置", "Settings")).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).SingleLine()
 					if p.SettingsTabLabel != "" {
 						ui.Text(c, "/").FontSize(14).TextColor(pal.TextSecondary)
 						ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
@@ -252,17 +256,21 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 						tabID := fmt.Sprintf("tab-%d", ix)
 						c.Key(tabID)
 						maxW := float32(220)
+						padR := float32(6)
+						minW := float32(76)
 						if !multi {
 							maxW = 240
+							padR = 10
+							minW = 0
 						}
-						pill := ui.ButtonBase(c).Height(28).MinWidth(84).MaxWidth(maxW).Padding(0, 8, 0, 10).
+						pill := ui.ButtonBase(c).Height(28).MinWidth(minW).MaxWidth(maxW).Padding(0, padR, 0, 10).
 							Gap(6).AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 							Role(ui.RoleTab).Selected(active).Label(label)
 						hovered := pill.Hovered()
 						switch {
 						case active && multi:
-							pill.Background(pal.Paper).Border(1, pal.Hairline)
-						case hovered:
+							pill.Background(pal.Selected).Border(1, pal.Accent)
+						case hovered && multi:
 							pill.Background(pal.Hover).Border(1, ui.Transparent)
 						default:
 							pill.Background(ui.Transparent).Border(1, ui.Transparent)
@@ -270,23 +278,29 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 						var closeClicked bool
 						pill.Children(func() {
 							fg := pal.TextSecondary
-							weight := 400
-							if active {
+							if active || (multi && hovered) {
 								fg = pal.Text
-								weight = 500
 							}
-							ui.Text(c, label).FontSize(14).FontWeight(weight).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							ui.Text(c, label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							if multi {
 								if hovered || active {
+									if active && dirty {
+										ui.Box(c).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(pal.Accent)
+									}
 									closeID := fmt.Sprintf("tab-close-%d", ix)
 									c.Key(closeID)
-									cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(4).Cursor(ui.CursorPointer).
+									cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusMicroSM).Cursor(ui.CursorPointer).
 										Label(theme.Tr("关闭标签页", "Close Tab"))
-									if cb.Hovered() {
-										cb.Background(pal.Selected)
+									closeHover := cb.Hovered()
+									if closeHover {
+										cb.Background(pal.SelectionBG)
 									}
 									cb.Children(func() {
-										icons.Draw(c, icons.Close, 13, pal.MonoIconColors(pal.TextSecondary))
+										ic := pal.MonoIconColors(pal.TextSecondary)
+										if closeHover {
+											ic = pal.DuoIconColors(pal.Text)
+										}
+										icons.Draw(c, icons.Close, theme.IconInline, ic)
 									})
 									blockui.Probe(cb, closeID)
 									if cb.Clicked() {
@@ -327,9 +341,10 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 
 			if multi {
 				newTabBtn := blockui.IconButton(c, icons.Plus, blockui.IconButtonOptions{
-					ID:      "tab-new",
-					Size:    26,
-					Tooltip: fmt.Sprintf("%s %s", theme.Tr("新建标签页", "New Tab"), blockui.FormatShortcutDisplay("cmd-t")),
+					ID:       "tab-new",
+					Size:     theme.ChromeBoxSize,
+					IconSize: 16,
+					Tooltip:  fmt.Sprintf("%s %s", theme.Tr("新建标签页", "New Tab"), blockui.FormatShortcutDisplay("cmd-t")),
 				})
 				if newTabBtn.Clicked() && p.OnNewNote != nil {
 					p.OnNewNote()
@@ -523,13 +538,12 @@ func renderRevealButton(c *ui.Context, p TitlebarProps) {
 }
 
 func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
-	if p.MenuState == nil || (!p.MenuState.TabMenuOpen && !p.MenuState.PageMenuOpen) {
-		return
-	}
-	pal := theme.Ocean()
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
+		if p.MenuState == nil || (!p.MenuState.TabMenuOpen && !p.MenuState.PageMenuOpen) {
+			return
+		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 		if p.MenuState.PageMenuOpen {
 			menuW := float32(228)
@@ -537,7 +551,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			estH := estimateMenuHeight(items)
 			anchor := p.MenuState.PageMenuAnchor
 			if anchor.W <= 0 {
-				anchor = ui.Rect{X: vpW - 40, Y: 6, W: 28, H: 28}
+				anchor = ui.Rect{X: vpW - 40, Y: 6, W: theme.ChromeBoxSize, H: theme.ChromeBoxSize}
 			}
 			spec := blockui.PlaceBelow(anchor).WithAlignX(blockui.AlignX{Kind: blockui.AlignRight})
 			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 380)
@@ -545,15 +559,15 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("page-more-menu")
-			card := ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
-				Padding(6).Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-				Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.16)).Role(ui.RoleMenu)
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			blockui.Probe(card, "page-more-menu")
 			card.Children(func() {
-				ui.Scroll(c).MaxHeight(maxH - 12).Children(func() {
-					for _, it := range items {
-						blockui.MenuRow(c, it, false)
-					}
+				ui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+						for _, it := range items {
+							blockui.MenuRow(c, it, false)
+						}
+					})
 				})
 			})
 			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
@@ -572,9 +586,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("tab-context-menu")
-			card := ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
-				Padding(6).Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-				Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.16)).Role(ui.RoleMenu)
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			blockui.Probe(card, "tab-context-menu")
 			card.Children(func() {
 				for _, it := range items {
@@ -589,12 +601,15 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 }
 
 func estimateMenuHeight(items []blockui.MenuItemSpec) float32 {
-	h := float32(12)
-	for _, it := range items {
+	h := theme.MenuPadding * 2
+	for i, it := range items {
+		if i > 0 {
+			h += theme.MenuGap
+		}
 		if it.Separator {
-			h += 9
+			h += 7
 		} else {
-			h += 32
+			h += theme.MenuItemHeight
 		}
 	}
 	return h

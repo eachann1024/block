@@ -245,6 +245,37 @@ func asciiLower(s string) string {
 	return b.String()
 }
 
+// FindFoldMatches returns all non-overlapping case-insensitive byte ranges [start, end]
+// of needle in text that align with UTF-8 rune boundaries.
+func FindFoldMatches(text, needle string) [][2]int {
+	hay := foldPreserveLen(text)
+	q := foldPreserveLen(needle)
+	if q == "" || len(hay) < len(q) {
+		return nil
+	}
+	var out [][2]int
+	offset := 0
+	for offset <= len(hay)-len(q) {
+		rel := strings.Index(hay[offset:], q)
+		if rel < 0 {
+			break
+		}
+		start := offset + rel
+		end := start + len(q)
+		if (start == 0 || utf8.RuneStart(text[start])) && (end == len(text) || utf8.RuneStart(text[end])) {
+			out = append(out, [2]int{start, end})
+			offset = end
+		} else {
+			_, sz := utf8.DecodeRuneInString(hay[start:])
+			if sz <= 0 {
+				sz = 1
+			}
+			offset = start + sz
+		}
+	}
+	return out
+}
+
 func findFoldMatch(text, needle string) (int, int, bool) {
 	hay := foldPreserveLen(text)
 	q := foldPreserveLen(needle)
