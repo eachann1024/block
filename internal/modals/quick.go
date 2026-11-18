@@ -1487,9 +1487,9 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	root := ui.Column(c.Key("quick-note-root")).Fill().Background(pal.Paper).TextColor(pal.Text).Clip()
 	internalui.Probe(root, "quick-note-root")
 	root.Children(func() {
-		// Minimalist 44px drag header: no top-left window buttons, centered pill/dot pager, right save + close.
+		// Minimalist 44px V1 drag header: quiet top-left dismiss dot, centered recessed-track bead pager, single Duo save action on right.
 		header := ui.Row(c.Key("quick-header")).FillWidth().Height(44).Shrink(0).
-			Padding(0, 12, 0, 16).AlignItems(ui.Center).Justify(ui.End).Gap(4).
+			Padding(0, 12, 0, 16).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 			Background(pal.Paper)
 		header.DragWindow()
 		internalui.Probe(header, "quick-header")
@@ -1514,7 +1514,18 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 			return true
 		})
 		header.Children(func() {
-			// Centered 3-slot pill/dot pager inside a pass-through layer so drag & right buttons work.
+			closeBtn := internalui.WindowDismissDot(
+				c,
+				"quick-close",
+				theme.Tr("关闭", "Close"),
+				theme.Tr("隐藏速记", "Hide Quick Note"),
+				"Esc",
+			).Margin(0, 0, 0, -4)
+			if closeBtn.Clicked() {
+				q.Hide()
+			}
+
+			// Centered 3-slot recessed-track bead pager inside a pass-through layer so drag & side actions work.
 			ui.Row(c.Key("quick-pager-layer")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 				Center().PassThrough().Children(func() {
 				internalui.DotPager(c, internalui.DotPagerOptions{
@@ -1537,37 +1548,32 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 				})
 			})
 
-			// Right actions: Save-to-Note + Close (matching original Thinkly Quick Note header).
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				saveIcon := icons.NoteCheck
-				saveTip := theme.Tr("存入正式笔记", "Save to Note")
-				if savedFlash {
-					saveIcon = icons.Check
-					saveTip = theme.Tr("已存入正式笔记", "Saved to Note")
-				}
-				saveBtn := internalui.IconButton(c, saveIcon, internalui.IconButtonOptions{
-					ID:      "quick-save",
-					Label:   theme.Tr("存入正式笔记", "Save to Note"),
-					Tooltip: saveTip,
-					Active:  savedFlash,
-				})
-				saveBtn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-					internalui.RecordBounds("quick-save", r)
-					internalui.RecordBounds("save-to-note", r)
-				})
-				if saveBtn.Clicked() {
-					_, _ = q.SaveToNotebook()
-				}
-
-				closeBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-					ID:      "quick-close",
-					Label:   theme.Tr("关闭", "Close"),
-					Tooltip: theme.Tr("关闭 (Esc)", "Close (Esc)"),
-				})
-				if closeBtn.Clicked() {
-					q.Hide()
-				}
+			// Right single primary action: Scheme A two-tone NoteCheck ("存入正式笔记").
+			saveIcon := icons.NoteCheck
+			saveTip := theme.Tr("存入正式笔记", "Save to Note")
+			saveSc := internalui.FormatShortcutDisplay("cmd-shift-s")
+			if savedFlash {
+				saveIcon = icons.Check
+				saveTip = theme.Tr("已存入正式笔记", "Saved to Note")
+				saveSc = ""
+			}
+			saveBtn := internalui.IconButton(c, saveIcon, internalui.IconButtonOptions{
+				ID:        "quick-save",
+				Size:      theme.HeightCompact,
+				IconSize:  theme.IconChrome,
+				Label:     theme.Tr("存入正式笔记", "Save to Note"),
+				Tooltip:   saveTip,
+				Shortcut:  saveSc,
+				Active:    savedFlash,
+				AlwaysDuo: !savedFlash,
 			})
+			saveBtn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+				internalui.RecordBounds("quick-save", r)
+				internalui.RecordBounds("save-to-note", r)
+			})
+			if saveBtn.Clicked() {
+				_, _ = q.SaveToNotebook()
+			}
 		})
 
 		// Minimal full-featured Block Markdown editor per slot.

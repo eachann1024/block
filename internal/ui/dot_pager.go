@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"block/internal/icons"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
@@ -154,4 +155,61 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 		})
 	})
 	return pager
+}
+
+// WindowDismissDot renders a quiet 12px circular dismiss dot inside a 24x24 hit target,
+// colour-matched to DotPager's recessed track at rest and blooming a crisp danger "x" on hover.
+func WindowDismissDot(c *ui.Context, id, label, tooltip, shortcut string) ui.Element {
+	pal := theme.Ocean()
+	dp := pal.DotPager()
+	kc := c
+	if id != "" {
+		kc = c.Key(id)
+	}
+	btn := ui.ButtonBase(kc).Size(theme.IconButtonBox, theme.IconButtonBox).Shrink(0).Center().
+		Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(label)
+	if tooltip != "" || shortcut != "" {
+		RichTooltip(c, btn, TooltipSpec{
+			Rows: []TooltipRow{{
+				Trigger:  tooltip,
+				Shortcut: shortcut,
+			}},
+		})
+	}
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	active := hovered || pressed
+	TactileButton(btn, hovered, pressed, false)
+
+	targetVis := float32(0)
+	dotBG := dp.TrackBG
+	dotBorder := dp.TrackBorder
+	if active {
+		targetVis = 1
+		dotBG = pal.DangerSurface
+		dotBorder = dp.CloseHoverBorder
+	}
+	vis := btn.AnimateTo("xVis", targetVis, SpringTactile)
+
+	btn.Children(func() {
+		dot := ui.Row(c).Size(theme.IconMicro, theme.IconMicro).Center().Radius(theme.RadiusPill)
+		AnimateSurfaceColors(dot, dotBG, dotBorder, true)
+		if vis > 0.02 {
+			alpha := min(max(vis, 0), 1)
+			sc := 0.72 + 0.28*vis
+			dot.Children(func() {
+				glyphWrap := ui.Row(c).Size(8, 8).Center()
+				if !almostZero(sc-1, 0.01) {
+					glyphWrap.Scale(sc, sc)
+				}
+				glyphWrap.Children(func() {
+					icons.Draw(c, icons.Close, 7, pal.MonoIconColors(pal.Danger.Alpha(alpha)))
+				})
+			})
+		}
+	})
+	if id != "" {
+		Probe(btn, id)
+	}
+	return btn
 }
