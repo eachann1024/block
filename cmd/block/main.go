@@ -302,8 +302,14 @@ func main() {
 
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		isQuitting = true
+		modals.SetAppQuitting(true)
 		ws.FlushDirtySessions()
 		ws.QuickNote().Flush()
+	})
+
+	mygo.App.OnQuitCanceled(func() {
+		isQuitting = false
+		modals.SetAppQuitting(false)
 	})
 
 	mygo.App.WhenReady(func() {
