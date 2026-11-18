@@ -12,7 +12,7 @@ import (
 
 // Tab metrics (thinkly-fast app_tabs_menu.rs / app_tabs.rs).
 const (
-	tabAnimMs      = 150
+	tabAnimMs      = 100
 	tabBasisW      = 220
 	tabMinW        = 76
 	tabMaxW        = 220
@@ -23,16 +23,15 @@ const (
 	tabDragSpacerW = 16
 )
 
-// tabTransition is Scheme B's tactile spring open/close/reflow motion of a multi-tab pill.
+// tabTransition is the short open/close/reflow motion of a multi-tab pill.
 func tabTransition() ui.ElementTransition {
 	return ui.ElementTransition{
 		Animation:    &blockui.SpringPanel,
 		ExitDuration: tabAnimMs * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Position:     true,
-		Colors:       true,
-		Enter:        &ui.Motion{Collapse: true, Scale: 0.94, Opacity: 0},
-		Exit:         &ui.Motion{Collapse: true, Scale: 0.94, Opacity: 0},
+		Enter:        &ui.Motion{Collapse: true, Opacity: 0},
+		Exit:         &ui.Motion{Collapse: true, Opacity: 0},
 	}
 }
 

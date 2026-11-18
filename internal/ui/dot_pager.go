@@ -29,7 +29,7 @@ type DotPagerOptions struct {
 }
 
 // DotPager renders the recessed-track circular bead pager ("嵌槽圆珠")
-// driven by Scheme B ("灵动弹簧 · Tactile Spring") physics.
+// driven by the shared short control animation.
 func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 	pal := theme.Ocean()
 	dp := pal.DotPager()

@@ -485,7 +485,7 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 			bg = pal.BtnBorder.Mix(pal.Text, 0.12)
 		}
 	}
-	sw.Background(sw.AnimateColor("swBg", bg, FadeColor))
+	sw.Background(bg)
 	TactileCard(sw, hovered, pressed, false, disabled)
 	if disabled {
 		sw.Opacity(theme.DisabledOpacity)
@@ -565,17 +565,6 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		bg = pal.MenuHover
 	}
 	AnimateSurfaceColors(row, bg, ui.Transparent, false)
-	if pressed {
-		sc := row.AnimateTo("mrSc", 0.98, SpringTactile)
-		if !almostZero(sc-1, 0.001) {
-			row.Scale(sc, sc)
-		}
-	} else {
-		sc := row.AnimateTo("mrSc", 1.0, SpringTactile)
-		if !almostZero(sc-1, 0.001) {
-			row.Scale(sc, sc)
-		}
-	}
 	if item.Disabled {
 		row.Opacity(theme.DisabledOpacity)
 	}
@@ -592,7 +581,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			default:
 				ic = pal.MonoIconColors(iconLine)
 			}
-			icons.DrawAnimated(c, *item.Icon, theme.IconRow, ic, active)
+			icons.Draw(c, *item.Icon, theme.IconRow, ic)
 		}
 		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if item.Hint != "" {
@@ -729,13 +718,13 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 	return confirmed, cancelled
 }
 
-// PopupTransition returns Scheme B's tactile spring enter/exit transition for menus and popovers.
+// PopupTransition returns the short enter/exit transition for menus and popovers.
 func PopupTransition() ui.ElementTransition {
 	return PopoverSpringTransition()
 }
 
 // MenuSurface styles el as a dropdown/context-menu surface: menu fill, RadiusXL,
-// 4px padding, 2px row gap, a hairline ring, popover elevation and 160ms popup motion.
+// 4px padding, 2px row gap, a hairline ring, popover elevation and short popup motion.
 func MenuSurface(el ui.Element) ui.Element {
 	pal := theme.Ocean()
 	el.Background(pal.Menu).Radius(theme.RadiusXL).Padding(theme.MenuPadding).Gap(theme.MenuGap).
