@@ -59,8 +59,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 
 	entries := buildVisibleStoreEntries(catalog, installed, installedMap, filter)
 
-	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space20).
-		OnUnmount(ctrl.closeStoreReadme)
+	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space20)
 	bodyW := body.Bounds().W
 	if bodyW <= 0 {
 		vpW, _ := c.Size()
@@ -126,7 +125,6 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			}
 		})
 	})
-	ctrl.renderStoreReadme(c)
 }
 
 func storeColumnCount(bodyW float32) int {
@@ -311,7 +309,7 @@ func renderStoreAppCard(
 	})
 
 	if openReadme {
-		ctrl.openStoreReadme(c, entry, installedApp)
+		ctrl.openStoreReadme(entry, installedApp)
 	}
 }
 
