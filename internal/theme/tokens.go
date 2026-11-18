@@ -126,6 +126,8 @@ const (
 	ThreeColumnMinMain float32 = 560 // narrowest editor column before the sidebar yields
 )
 
+
+	ComposerTailSpace = 2 * LineBody // blank lines kept below the caret in growing text areas
 // Sidebar file tree metrics.
 const (
 	TreeRowPitch    float32 = 34 // 32 row + 2 gap
