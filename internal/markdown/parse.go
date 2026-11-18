@@ -30,6 +30,10 @@ func (c *Codec) NormalizePaste(raw string) string {
 	return NormalizePasteText(raw)
 }
 
+func (c *Codec) ConvertHTMLPaste(htmlRaw, plainFallback string) (string, bool) {
+	return ConvertClipboardHTML(htmlRaw, plainFallback)
+}
+
 // ParseMarkdown parses Markdown into a lossless block-level model.Doc.
 // Untouched blocks retain CleanSource and the whole document retains CleanRaw.
 func ParseMarkdown(src string) *model.Doc {
@@ -2705,6 +2709,24 @@ func needsSeparator(this *model.Block, next *model.Block) bool {
 	return requiredSeparator(this, next) || optionalSeparator(this, next)
 }
 
+func swallowableSeparator(this *model.Block, next *model.Block) bool {
+	if isBlankBlock(this) || next == nil {
+		return false
+	}
+	if needsSeparator(this, next) {
+		return true
+	}
+	// Loose Markdown lists (`- a\n\n- b`, including nested child lists) and HTML tables
+	// followed by a blank line should not synthesize stray empty paragraph blocks.
+	if this.Kind.IsList() && next.Kind.IsList() {
+		return true
+	}
+	if this.Kind == model.BlockTable {
+		return true
+	}
+	return false
+}
+
 func swallowSeparators(blocks []model.Block) []model.Block {
 	if len(blocks) < 2 {
 		return blocks
@@ -2712,7 +2734,7 @@ func swallowSeparators(blocks []model.Block) []model.Block {
 	nexts := nextNonBlankBlocks(blocks)
 	drop := make([]bool, len(blocks))
 	for i := 0; i+1 < len(blocks); i++ {
-		if isBlankBlock(&blocks[i+1]) && needsSeparator(&blocks[i], nexts[i]) {
+		if isBlankBlock(&blocks[i+1]) && swallowableSeparator(&blocks[i], nexts[i]) {
 			drop[i+1] = true
 		}
 	}
