@@ -216,6 +216,47 @@ func (s *Supervisor) IsInstalled(pluginID string) bool {
 	return ok
 }
 
+func (s *Supervisor) IsPluginEnabled(pluginID string) bool {
+	inst, ok := s.GetInstalled(pluginID)
+	return ok && inst.Enabled
+}
+
+// SetPluginEnabled toggles an installed plugin's enabled state, shutting down its
+// background runtime immediately when disabled.
+func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
+	if err := s.store.SetEnabled(pluginID, enabled); err != nil {
+		return
+	}
+	var rt *Runtime
+	s.mu.Lock()
+	changed := false
+	for i := range s.installed {
+		if s.installed[i].Manifest.ID == pluginID {
+			if s.installed[i].Enabled != enabled {
+				s.installed[i].Enabled = enabled
+				changed = true
+			}
+		}
+	}
+	if !enabled {
+		rt = s.runtimes[pluginID]
+		delete(s.runtimes, pluginID)
+		s.deleteViewsForPluginLocked(pluginID)
+	}
+	s.mu.Unlock()
+
+	if rt != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = rt.Shutdown(ctx)
+		}()
+	}
+	if changed || rt != nil {
+		s.notifyChanged()
+	}
+}
+
 func (s *Supervisor) StoreStatus() (refreshing bool, installingID string, errMsg string, notice string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -434,6 +475,9 @@ func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
 
 // EnsurePluginView returns the current non-blocking UI snapshot and lazily starts/renders the plugin if needed.
 func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
+	if inst, ok := s.GetInstalled(pluginID); !ok || !inst.Enabled {
+		return PluginViewState{Values: map[string]any{}}
+	}
 	nbRoot := s.NotebookRoot()
 	activeNote := s.activeNoteFor(nbRoot)
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
@@ -593,6 +637,20 @@ func (s *Supervisor) activeNoteFor(root string) string {
 }
 
 func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string) (*Runtime, error) {
+	inst, ok := s.GetInstalled(pluginID)
+	if !ok {
+		return nil, osErrNotInstalled(pluginID)
+	}
+	if !inst.Enabled {
+		s.mu.Lock()
+		prev := s.runtimes[pluginID]
+		delete(s.runtimes, pluginID)
+		s.mu.Unlock()
+		if prev != nil {
+			_ = prev.Shutdown(ctx)
+		}
+		return nil, errPluginDisabled(pluginID)
+	}
 	s.mu.RLock()
 	existing := s.runtimes[pluginID]
 	s.mu.RUnlock()
@@ -606,10 +664,6 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		}
 		// Plugins receive the notebook root at initialization.
 		_ = existing.Shutdown(ctx)
-	}
-	inst, ok := s.GetInstalled(pluginID)
-	if !ok {
-		return nil, osErrNotInstalled(pluginID)
 	}
 	hostVer := s.cfg.HostVersion
 	if hostVer == "" {
@@ -661,6 +715,7 @@ func (s *Supervisor) updateControlValue(pluginID, nbRoot, controlID string, val 
 		vs.Values = map[string]any{}
 	}
 	vs.Values[controlID] = val
+	vs.Notice = ""
 	vs.editSeq++
 	seq := vs.editSeq
 	s.mu.Unlock()
@@ -987,3 +1042,9 @@ type notInstalledError string
 func (e notInstalledError) Error() string { return "plugin not installed: " + string(e) }
 
 func osErrNotInstalled(id string) error { return notInstalledError(id) }
+
+type pluginDisabledError string
+
+func (e pluginDisabledError) Error() string { return "plugin disabled: " + string(e) }
+
+func errPluginDisabled(id string) error { return pluginDisabledError(id) }
