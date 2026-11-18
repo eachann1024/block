@@ -106,12 +106,14 @@ type Session struct {
 	firstLineDeleteArmed bool
 	caretLineHint        int
 
-	blockHandles     map[model.BlockID]ui.Handle
-	richInputs       map[model.BlockID]*appUi.RichInputState
-	tableInputs      map[tableCellKey]*appUi.RichInputState
-	blockRects       map[model.BlockID]ui.Rect
-	blockTextRects   map[model.BlockID]ui.Rect
-	tableCellRects   map[tableCellKey]ui.Rect
+	blockHandles       map[model.BlockID]ui.Handle
+	richInputs         map[model.BlockID]*appUi.RichInputState
+	tableInputs        map[tableCellKey]*appUi.RichInputState
+	canvasLayoutOrigin ui.Point
+	hasCanvasOrigin    bool
+	blockDocRects      map[model.BlockID]ui.Rect
+	blockTextDocRects  map[model.BlockID]ui.Rect
+	tableCellDocRects  map[tableCellKey]tableCellGeom
 	textLayoutCache  map[model.BlockID]cachedBlockLayout
 	codeSyntaxCache  map[model.BlockID]cachedCodeSyntax
 	codePreviewCache map[model.BlockID]cachedCodePreview
@@ -142,6 +144,7 @@ type Session struct {
 	lastPressMods    ui.Modifiers
 	lastPressClicks  int
 	lastPressLocal   ui.Point
+	lastPressScrollY float32
 	pressJustBegan   bool
 
 	blockMenu *blockMenuState
@@ -230,7 +233,7 @@ type Session struct {
 	imageFailed       map[string]bool
 	videoPlayers      map[string]*ui.VideoPlayer
 	videoFailed       map[string]bool
-	imageRects        map[model.BlockID]ui.Rect
+	imageDocRects     map[model.BlockID]ui.Rect
 	imgResizeBlock    model.BlockID
 	imgResizeStartPct float32
 	imgResizeCurPct   float32
@@ -312,9 +315,9 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		blockHandles:      make(map[model.BlockID]ui.Handle),
 		richInputs:        make(map[model.BlockID]*appUi.RichInputState),
 		tableInputs:       make(map[tableCellKey]*appUi.RichInputState),
-		blockRects:        make(map[model.BlockID]ui.Rect),
-		blockTextRects:    make(map[model.BlockID]ui.Rect),
-		tableCellRects:    make(map[tableCellKey]ui.Rect),
+		blockDocRects:     make(map[model.BlockID]ui.Rect),
+		blockTextDocRects: make(map[model.BlockID]ui.Rect),
+		tableCellDocRects: make(map[tableCellKey]tableCellGeom),
 		textLayoutCache:   make(map[model.BlockID]cachedBlockLayout),
 		codeSyntaxCache:   make(map[model.BlockID]cachedCodeSyntax),
 		codePreviewCache:  make(map[model.BlockID]cachedCodePreview),
@@ -328,7 +331,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		imageFailed:       make(map[string]bool),
 		videoPlayers:      make(map[string]*ui.VideoPlayer),
 		videoFailed:       make(map[string]bool),
-		imageRects:        make(map[model.BlockID]ui.Rect),
+		imageDocRects:     make(map[model.BlockID]ui.Rect),
 		overlayBtnRects:   make(map[string]ui.Rect),
 		overlayPanelRects: make(map[string]ui.Rect),
 		annotRowHeights:   make(map[string]float32),
@@ -421,9 +424,11 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.foldTails)
 	clear(s.richInputs)
 	clear(s.tableInputs)
-	clear(s.blockRects)
-	clear(s.blockTextRects)
-	clear(s.tableCellRects)
+	clear(s.blockDocRects)
+	clear(s.blockTextDocRects)
+	clear(s.tableCellDocRects)
+	clear(s.imageDocRects)
+	s.hasCanvasOrigin = false
 	clear(s.textLayoutCache)
 	clear(s.codeSyntaxCache)
 	clear(s.codePreviewCache)
