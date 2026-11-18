@@ -757,10 +757,13 @@ func TestFontPickerSortOrderAndFoldersListOrder(t *testing.T) {
 	if _, ok := internalui.TargetBounds("folder-search-ignore-0"); !ok {
 		t.Fatal("missing folder-search-ignore-0 probe")
 	}
+	if _, ok := internalui.TargetBounds("folder-remove-notebook-0"); !ok {
+		t.Fatal("missing folder-remove-notebook-0 remove button for current notebook")
+	}
 	if _, ok := internalui.TargetBounds("folder-remove-notebook-1"); !ok {
 		t.Fatal("missing folder-remove-notebook-1 remove button for non-current notebook")
 	}
-	if !tt.HasText("当前") || !tt.HasText("系统") || !tt.HasText("不参与全局搜索") {
-		t.Fatal("missing expected Folders tab labels (当前 / 系统 / 不参与全局搜索)")
+	if !tt.HasText("系统") || !tt.HasText("不参与全局搜索") {
+		t.Fatal("missing expected Folders tab labels (系统 / 不参与全局搜索)")
 	}
 }
