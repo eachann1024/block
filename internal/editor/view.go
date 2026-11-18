@@ -749,6 +749,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		if len(ranges) > 0 {
 			in.TextRanges(ranges...)
 		}
+		s.decorateEditInput(c, in, idx, b, draft, ranges, fontSize, weight, lh, deleteArmed)
 
 		in.OnPaste(func(pasted string) bool {
 			if strings.Contains(pasted, "\n") || looksLikeMarkdownBlock(pasted) {
@@ -1040,17 +1041,8 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 			out = append(out, tr)
 		}
 	}
-	if s.findOpen {
-		for _, m := range s.findMatches {
-			if m.BlockIdx == idx {
-				col := pal.Accent
-				if c, ok := s.findMatchColorForInput(idx, m.StartRune, m.EndRune, pal); ok {
-					col = c
-				}
-				out = append(out, ui.TextRange{Start: m.StartRune, End: m.EndRune, Color: col, Weight: 600})
-			}
-		}
-	}
+	// Find matches are painted as bands behind the glyphs (edit_decor.go),
+	// as in the original, rather than recoloured or bolded.
 	return out
 }
 
