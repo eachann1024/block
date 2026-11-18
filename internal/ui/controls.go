@@ -1,38 +1,69 @@
 package ui
 
 import (
+	"time"
+
 	"block/internal/icons"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
+)
+
+// IconButtonVariant picks one of the thinkly-fast icon button families (ui/icon_button.rs).
+type IconButtonVariant uint8
+
+const (
+	// IconChrome is a standalone titlebar/panel/footer button: 26 box, 18 glyph.
+	IconChrome IconButtonVariant = iota
+	// IconPlain is an inline/compact button: 24 box, 14 glyph, radius 6.
+	IconPlain
+	// IconBordered is a sidebar-header style button: 32 box, paper fill, 1px btn border, 18 glyph.
+	IconBordered
 )
 
 type IconButtonOptions struct {
 	ID       string
 	Label    string
 	Tooltip  string
-	Size     float32 // Outer square size (default 28)
-	IconSize float32 // Inner glyph size (default 18)
+	Variant  IconButtonVariant
+	Size     float32 // Outer square size override (default from Variant)
+	IconSize float32 // Inner glyph size override (default from Variant)
 	Active   bool
 	Disabled bool
 	Danger   bool
 }
 
+func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
+	switch o.Variant {
+	case IconPlain:
+		box, glyph, radius = theme.IconButtonBox, theme.IconButtonGlyph, 6
+	case IconBordered:
+		box, glyph, radius = theme.ControlHeight, theme.IconRow, theme.RadiusControl
+	default:
+		box, glyph, radius = theme.ChromeBoxSize, theme.IconChrome, theme.RadiusControl
+	}
+	if o.Size > 0 {
+		box = o.Size
+	}
+	if o.IconSize > 0 {
+		glyph = o.IconSize
+	}
+	return
+}
+
 // IconButton renders an Ocean Paper icon button with Scheme A Duo hover/active states.
 func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Element {
 	pal := theme.Ocean()
-	boxSize := opts.Size
-	if boxSize <= 0 {
-		boxSize = 28
-	}
-	glyphSize := opts.IconSize
-	if glyphSize <= 0 {
-		glyphSize = 18
-	}
+	boxSize, glyphSize, radius := opts.metrics()
 	if opts.ID != "" {
 		c.Key(opts.ID)
 	}
 	btn := ui.ButtonBase(c).Size(boxSize, boxSize).Shrink(0).Center().
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Disabled(opts.Disabled).DimDisabled(false)
+		Radius(radius).Cursor(ui.CursorPointer).Disabled(opts.Disabled).DimDisabled(false)
+	if opts.Variant == IconBordered {
+		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
+	} else {
+		btn.Border(1, ui.Transparent)
+	}
 	if opts.Label != "" {
 		btn.Label(opts.Label)
 	} else if opts.Tooltip != "" {
@@ -41,20 +72,22 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		btn.Label(opts.ID)
 	}
 	if opts.Tooltip != "" {
-		btn.Tooltip(opts.Tooltip)
+		Tooltip(c, btn, opts.Tooltip)
 	}
 	hovered := btn.Hovered() && !opts.Disabled
 	pressed := btn.Pressed() && !opts.Disabled
 
 	switch {
 	case opts.Disabled:
-		btn.Opacity(0.45)
+		btn.Opacity(theme.DisabledOpacity)
 	case opts.Danger && (hovered || pressed):
 		btn.Background(pal.DangerSurface)
 	case opts.Active:
 		btn.Background(pal.Selected)
 	case pressed:
 		btn.Background(pal.Selected)
+	case hovered && opts.Variant == IconBordered:
+		btn.Background(pal.BtnHover)
 	case hovered:
 		btn.Background(pal.Hover)
 	}
@@ -249,60 +282,68 @@ func ModalCard(c *ui.Context, id, title string, open *bool, width float32, maxHe
 
 // MenuItemSpec describes a row in an Ocean Paper floating menu.
 type MenuItemSpec struct {
-	ID          string
-	Label       string
-	Shortcut    string
-	Icon        *icons.Icon
-	Checked     bool
-	Danger      bool
-	Separator   bool
-	Disabled    bool
-	HasSubmenu  bool
-	OnClick     func()
+	ID         string
+	Label      string
+	Shortcut   string
+	Icon       *icons.Icon
+	Checked    bool
+	Danger     bool
+	Separator  bool
+	Disabled   bool
+	HasSubmenu bool
+	OnClick    func()
 }
 
-// MenuRow renders a single standardized Ocean Paper menu item (height 32, 14px text, Duo icon).
+// MenuRow renders one dropdown/context-menu row (thinkly-fast ui/dropdown.rs):
+// 28px tall, radius 8, 18px leading icon, neutral hover, solid red danger hover,
+// tinted checked row with a 16px text-coloured check.
 func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	pal := theme.Ocean()
 	if item.Separator {
-		return ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.Hairline)
+		return ui.Box(c).FillWidth().Height(1).MarginY(3).Background(pal.MenuSeparator)
 	}
 	if item.ID != "" {
 		c.Key(item.ID)
 	}
-	row := ui.ButtonBase(c).FillWidth().Height(32).PaddingX(10).Gap(8).AlignItems(ui.Center).
-		Radius(6).Cursor(ui.CursorPointer).Disabled(item.Disabled).Label(item.Label)
-	hovered := row.Hovered() || highlighted
-	if hovered && !item.Disabled {
-		if item.Danger {
-			row.Background(pal.DangerSurface)
-		} else {
-			row.Background(pal.Hover)
-		}
+	row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).AlignItems(ui.Center).
+		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Disabled(item.Disabled).Label(item.Label)
+	hovered := (row.Hovered() || highlighted) && !item.Disabled
+	fg, iconLine := pal.Text, pal.MenuIcon
+	switch {
+	case item.Danger && hovered:
+		row.Background(pal.MenuDangerHoverBG)
+		fg, iconLine = pal.MenuDangerHoverFG, pal.MenuDangerHoverFG
+	case item.Danger:
+		fg, iconLine = pal.MenuDangerFG, pal.MenuDangerFG
+	case hovered:
+		row.Background(pal.MenuHover)
+	case item.Checked:
+		row.Background(pal.MenuChecked)
 	}
-	fg := pal.Text
-	if item.Danger {
-		fg = pal.Danger
+	if item.Disabled {
+		row.Opacity(theme.DisabledOpacity)
 	}
 	row.Children(func() {
 		if item.Icon != nil {
 			var ic theme.IconColors
-			if item.Danger {
-				ic = pal.MonoIconColors(pal.Danger)
-			} else if hovered || item.Checked {
-				ic = pal.DuoIconColors(pal.Text)
-			} else {
-				ic = pal.MonoIconColors(pal.TextSecondary)
+			switch {
+			case item.Danger:
+				ic = pal.MonoIconColors(iconLine)
+			case hovered || item.Checked:
+				ic = pal.DuoIconColors(iconLine)
+			default:
+				ic = pal.MonoIconColors(iconLine)
 			}
-			icons.Draw(c, *item.Icon, 16, ic)
+			icons.Draw(c, *item.Icon, theme.IconRow, ic)
 		}
-		ui.Text(c, item.Label).FontSize(14).TextColor(fg).Grow(1).SingleLine()
-		if item.Checked {
-			icons.Draw(c, icons.Check, 15, pal.MonoIconColors(pal.Accent))
-		} else if item.Shortcut != "" {
-			ui.Text(c, item.Shortcut).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
-		} else if item.HasSubmenu {
-			icons.Draw(c, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary))
+		ui.Text(c, item.Label).FontSize(theme.FontBody).TextColor(fg).Grow(1).SingleLine()
+		switch {
+		case item.Checked:
+			icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+		case item.Shortcut != "":
+			ui.Text(c, item.Shortcut).FontSize(theme.FontSmall).TextColor(pal.MenuMuted).SingleLine()
+		case item.HasSubmenu:
+			icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.MenuMuted))
 		}
 	})
 	if item.ID != "" {
@@ -314,13 +355,43 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	return row
 }
 
-// VerticalResizeHandle renders a 6px hit-target vertical splitter that adjusts `width` within `[minW, maxW]`.
+// PopupTransition returns the shared 160ms enter/exit transition for menus and popovers.
+func PopupTransition() ui.ElementTransition {
+	return ui.ElementTransition{
+		Duration: time.Duration(theme.MotionMs) * time.Millisecond,
+		Ease:     ui.EaseOut,
+		Enter:    &ui.Motion{Y: -4, Opacity: 0.01},
+		Exit:     &ui.Motion{Y: -4},
+	}
+}
+
+// MenuSurface styles el as a dropdown/context-menu surface: menu fill, radius 14,
+// 4px padding, 2px row gap, a hairline ring plus layered soft shadows, and 160ms popup motion.
+func MenuSurface(el ui.Element) ui.Element {
+	pal := theme.Ocean()
+	el.Background(pal.Menu).Radius(theme.RadiusSurface).Padding(theme.MenuPadding).Gap(theme.MenuGap).
+		Border(1, pal.MenuBorder.Alpha(0.6)).
+		Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+		Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+		Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+		Transition(PopupTransition())
+	return el
+}
+
+// VerticalResizeHandle renders a vertical splitter adjusting width within [minW, maxW].
 func VerticalResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, invert bool) bool {
+	return ResizeHandle(c, id, width, minW, maxW, invert, 0)
+}
+
+// ResizeHandle is VerticalResizeHandle with a double-click reset width (0 = no reset).
+// Matches thinkly-fast ui/resize_handle.rs: 8px hit centred on the edge, 2px line,
+// menu-border on hover, accent while dragging.
+func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, invert bool, reset float32) bool {
 	pal := theme.Ocean()
 	if id != "" {
 		c.Key(id)
 	}
-	h := ui.Box(c).Width(6).FillHeight().Shrink(0).Cursor(ui.CursorResizeColumn)
+	h := ui.Box(c).Width(theme.ResizeHitWidth).FillHeight().Shrink(0).Cursor(ui.CursorResizeColumn)
 	dx, _, held := h.Dragged()
 	changed := false
 	if held && dx != 0 {
@@ -334,16 +405,21 @@ func VerticalResizeHandle(c *ui.Context, id string, width *float32, minW, maxW f
 			changed = true
 		}
 	}
-	hovered := h.Hovered() || held
+	if reset > 0 && h.DoubleClicked() && *width != reset {
+		*width = max(min(reset, maxW), minW)
+		changed = true
+	}
+	hovered := h.Hovered()
 	h.Draw(func(p *ui.Painter, r ui.Rect) {
-		lineX := r.X + r.W*0.5 - 0.5
-		col := pal.SidebarBorder
-		w := float32(1)
-		if hovered {
-			col = pal.Accent
-			w = 2
+		cx := r.X + r.W*0.5
+		switch {
+		case held:
+			p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.Accent, 0)
+		case hovered:
+			p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.MenuBorder, 0)
+		default:
+			p.Fill(ui.Rect{X: cx - 0.5, Y: r.Y, W: 1, H: r.H}, pal.SidebarBorder, 0)
 		}
-		p.Fill(ui.Rect{X: lineX, Y: r.Y, W: w, H: r.H}, col, 0)
 	})
 	if id != "" {
 		Probe(h, id)

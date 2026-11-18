@@ -15,28 +15,28 @@ import (
 
 // Ocean Paper layout & radius constants (matching DESIGN.md & src/theme.rs).
 const (
-	TitleBarHeight          float32 = 40
-	FullscreenBarHeight     float32 = 52
-	TrafficX                float32 = 16
-	TrafficY                float32 = 13
-	TrafficYTall            float32 = 19
-	TrafficLeadingMacOS     float32 = 82
-	TrafficLeadingOther     float32 = 16
-	SidebarDefaultWidth     float32 = 252
-	SidebarMinWidth         float32 = 240
-	SidebarMaxWidth         float32 = 420
-	AIPanelDefaultWidth     float32 = 380
-	AIPanelMinWidth         float32 = 320
-	AIPanelMaxWidth         float32 = 620
-	EditorStandardWidth     float32 = 672
-	EditorMaxOuterWidth     float32 = 720
-	RadiusControl           float32 = 8
-	RadiusCard              float32 = 12
-	RadiusSurface           float32 = 14
-	RadiusPill              float32 = 999
-	FontBodySize            float32 = 16
-	FontUISize              float32 = 14
-	FontSmallMinSize        float32 = 14
+	TitleBarHeight      float32 = 40
+	FullscreenBarHeight float32 = 52
+	TrafficX            float32 = 16
+	TrafficY            float32 = 13
+	TrafficYTall        float32 = 19
+	TrafficLeadingMacOS float32 = 82
+	TrafficLeadingOther float32 = 16
+	SidebarDefaultWidth float32 = 240
+	SidebarMinWidth     float32 = 240
+	SidebarMaxWidth     float32 = 420
+	AIPanelDefaultWidth float32 = 380
+	AIPanelMinWidth     float32 = 320
+	AIPanelMaxWidth     float32 = 620
+	EditorStandardWidth float32 = 672
+	EditorMaxOuterWidth float32 = 720
+	RadiusControl       float32 = 8
+	RadiusCard          float32 = 14
+	RadiusSurface       float32 = 14
+	RadiusPill          float32 = 999
+	FontBodySize        float32 = 16
+	FontUISize          float32 = 14
+	FontSmallMinSize    float32 = 14
 )
 
 func IsMacOS() bool {
@@ -95,6 +95,44 @@ type Palette struct {
 	DiffAddFG      ui.Color
 	DiffDelBG      ui.Color
 	DiffDelFG      ui.Color
+
+	// Extended component tokens mirrored from thinkly-fast (theme.rs, dropdown.rs,
+	// tooltip.rs, scrollbar.rs and the editor paint modules).
+	BtnHover          ui.Color
+	MenuBorder        ui.Color
+	MenuIcon          ui.Color
+	MenuMuted         ui.Color
+	MenuHover         ui.Color
+	MenuChecked       ui.Color
+	MenuSeparator     ui.Color
+	MenuDangerFG      ui.Color
+	MenuDangerHoverBG ui.Color
+	MenuDangerHoverFG ui.Color
+	TooltipBG         ui.Color
+	TooltipFG         ui.Color
+	TooltipBorder     ui.Color
+	ScrollThumb       ui.Color
+	ScrollThumbHover  ui.Color
+	Link              ui.Color
+	InlineCodeFG      ui.Color
+	InlineCodeBG      ui.Color
+	InlineCodeHoverBG ui.Color
+	CodeBlockBG       ui.Color
+	HintBand          ui.Color
+	ListGuide         ui.Color
+	ListBullet        ui.Color
+	TodoBG            ui.Color
+	TodoRing          ui.Color
+	TodoRingHover     ui.Color
+	AnnotationBG      ui.Color
+	AnnotationActive  ui.Color
+	AnnotationDone    ui.Color
+	FindMatch         ui.Color
+	FindActive        ui.Color
+	FindRing          ui.Color
+	SearchHighlight   ui.Color
+	OutlineBarLit     ui.Color
+	OutlineBarDim     ui.Color
 }
 
 var OceanLight = Palette{
@@ -134,6 +172,42 @@ var OceanLight = Palette{
 	DiffAddFG:      ui.Hex("#1e6b3f"),
 	DiffDelBG:      ui.Hex("#fdecea"),
 	DiffDelFG:      ui.Hex("#9e2a2b"),
+
+	BtnHover:          ui.Hex("#f7f7f7"),
+	MenuBorder:        ui.Hex("#e4e4e4"),
+	MenuIcon:          ui.Hex("#3d3c39"),
+	MenuMuted:         ui.Hex("#898781"),
+	MenuHover:         ui.RGBA(0x0b, 0x0b, 0x0b, 0x0d/255.0),
+	MenuChecked:       ui.Hex("#e5edfc"),
+	MenuSeparator:     ui.RGBA(0x0b, 0x0b, 0x0b, 0x1a/255.0),
+	MenuDangerFG:      ui.Hex("#8e2626"),
+	MenuDangerHoverBG: ui.Hex("#d03b3b"),
+	MenuDangerHoverFG: ui.Hex("#ffffff"),
+	TooltipBG:         ui.Hex("#0f0f0f"),
+	TooltipFG:         ui.Hex("#ffffff"),
+	TooltipBorder:     ui.Transparent,
+	ScrollThumb:       ui.RGBA(0x0b, 0x0b, 0x0b, 0.20),
+	ScrollThumbHover:  ui.RGBA(0x0b, 0x0b, 0x0b, 0.35),
+	Link:              ui.Hex("#256abf"),
+	InlineCodeFG:      ui.Hex("#eb5757"),
+	InlineCodeBG:      ui.RGBA(135, 131, 120, 0.15),
+	InlineCodeHoverBG: ui.RGBA(135, 131, 120, 0.22),
+	CodeBlockBG:       ui.Hex("#f8f8f6"),
+	HintBand:          ui.Hex("#f8f8f6"),
+	ListGuide:         ui.Hex("#e6e4df"),
+	ListBullet:        ui.Hex("#6f6e69"),
+	TodoBG:            ui.Hex("#f3f1ec"),
+	TodoRing:          ui.Hex("#dedcd6"),
+	TodoRingHover:     ui.Hex("#c4c2bb"),
+	AnnotationBG:      ui.Hex("#fef0d1"),
+	AnnotationActive:  ui.Hex("#fdda8c"),
+	AnnotationDone:    ui.Hex("#e5edfc"),
+	FindMatch:         ui.Hex("#fbe7a6"),
+	FindActive:        ui.Hex("#f4c84f"),
+	FindRing:          ui.Hex("#c9971c"),
+	SearchHighlight:   ui.Hex("#fbe7a6"),
+	OutlineBarLit:     ui.Hex("#1f1e1d"),
+	OutlineBarDim:     ui.Hex("#cfd5de"),
 }
 
 var OceanDark = Palette{
@@ -173,6 +247,42 @@ var OceanDark = Palette{
 	DiffAddFG:      ui.Hex("#7be0a6"),
 	DiffDelBG:      ui.Hex("#3b1f21"),
 	DiffDelFG:      ui.Hex("#f59393"),
+
+	BtnHover:          ui.Hex("#2c2c2c"),
+	MenuBorder:        ui.Hex("#383838"),
+	MenuIcon:          ui.Hex("#b4b4b4"),
+	MenuMuted:         ui.Hex("#8e8d88"),
+	MenuHover:         ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
+	MenuChecked:       ui.Hex("#343434"),
+	MenuSeparator:     ui.RGBA(0xff, 0xff, 0xff, 0x1a/255.0),
+	MenuDangerFG:      ui.Hex("#f28b82"),
+	MenuDangerHoverBG: ui.Hex("#d03b3b"),
+	MenuDangerHoverFG: ui.Hex("#ffffff"),
+	TooltipBG:         ui.Hex("#202020"),
+	TooltipFG:         ui.Hex("#ececec"),
+	TooltipBorder:     ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
+	ScrollThumb:       ui.RGBA(0xff, 0xff, 0xff, 0.20),
+	ScrollThumbHover:  ui.RGBA(0xff, 0xff, 0xff, 0.35),
+	Link:              ui.Hex("#256abf"),
+	InlineCodeFG:      ui.Hex("#ff7369"),
+	InlineCodeBG:      ui.RGBA(255, 255, 255, 0.094),
+	InlineCodeHoverBG: ui.RGBA(255, 255, 255, 0.14),
+	CodeBlockBG:       ui.Hex("#1d2026"),
+	HintBand:          ui.Hex("#1e1e1e"),
+	ListGuide:         ui.Hex("#333333"),
+	ListBullet:        ui.Hex("#a9a8a4"),
+	TodoBG:            ui.Hex("#242424"),
+	TodoRing:          ui.Hex("#3a3a3a"),
+	TodoRingHover:     ui.Hex("#5a5a5a"),
+	AnnotationBG:      ui.Hex("#4a3c21"),
+	AnnotationActive:  ui.Hex("#81611e"),
+	AnnotationDone:    ui.Hex("#2d426b"),
+	FindMatch:         ui.Hex("#40361e"),
+	FindActive:        ui.Hex("#59451c"),
+	FindRing:          ui.Hex("#c9971c"),
+	SearchHighlight:   ui.Hex("#5c4813"),
+	OutlineBarLit:     ui.Hex("#c6c6c6"),
+	OutlineBarDim:     ui.Hex("#464646"),
 }
 
 type IconColors struct {
@@ -225,7 +335,7 @@ func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	base.Radius = RadiusControl
 	base.FontSize = FontUISize
 	base.Font = fontFamily
-	base.Scrollbar = p.TextSecondary.Alpha(0.32)
+	base.Scrollbar = p.ScrollThumb
 	base.ScrollbarWidth = 6
 	return base
 }

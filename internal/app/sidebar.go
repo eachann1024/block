@@ -17,16 +17,13 @@ import (
 // drag-and-drop reorder state, notebook switcher popup, and tree item context menu + Move submenu).
 type SidebarUIState struct {
 	ExpandedDirs map[string]bool
+	FocusDir     string
 
 	RenamingPath string
 	RenamingDir  bool
 	RenameBuffer string
 	RenameFocus  bool
 
-	DraggingPath   string
-	DraggingIsDir  bool
-	DragStartY     float32
-	DragActive     bool
 	DropTargetPath string
 	DropAfter      bool
 	DropIntoDir    bool
@@ -77,12 +74,20 @@ func (s *SidebarUIState) CancelRename() {
 
 // ClearDrag resets drag-and-drop tracking.
 func (s *SidebarUIState) ClearDrag() {
-	s.DraggingPath = ""
-	s.DraggingIsDir = false
-	s.DragActive = false
 	s.DropTargetPath = ""
 	s.DropAfter = false
 	s.DropIntoDir = false
+}
+
+type treeDragItem struct {
+	Path  string
+	IsDir bool
+}
+
+func isSameOrDescendant(path, ancestor string) bool {
+	cp := filepath.Clean(path)
+	ca := filepath.Clean(ancestor)
+	return cp == ca || strings.HasPrefix(cp, ca+string(filepath.Separator))
 }
 
 // SidebarProps supplies current workspace state and callbacks to RenderSidebar.
@@ -285,9 +290,32 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 		col := ui.Column(c).Grow(1).MinWidth(0).FillHeight()
 		col.Children(func() {
 			// 1. Header: Search button + New Folder + New Note.
-			ui.Row(c).FillWidth().Padding(10, 10, 8, 10).Gap(6).AlignItems(ui.Center).Children(func() {
+			var rows []flatTreeRow
+			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
+
+			headerRow := ui.Row(c).FillWidth().Padding(10, 10, 8, 10).Gap(6).AlignItems(ui.Center)
+			canDropFirst := func(item treeDragItem) bool {
+				if p.State.RenamingPath != "" || len(rows) == 0 || p.ActiveNotebook == "" {
+					return false
+				}
+				cleanNB := filepath.Clean(p.ActiveNotebook)
+				first := rows[0].Entry
+				return filepath.Dir(filepath.Clean(item.Path)) == cleanNB &&
+					item.IsDir == first.IsDir &&
+					filepath.Clean(item.Path) != filepath.Clean(first.Path)
+			}
+			if dragged, over := ui.DragOver[treeDragItem](headerRow); over && canDropFirst(dragged) {
+				headerRow.BorderWidth(0, 0, 2, 0).BorderColor(pal.Accent)
+			}
+			if dropped, ok := ui.Drop[treeDragItem](headerRow); ok && canDropFirst(dropped) {
+				p.State.ClearDrag()
+				if p.OnReorderSibling != nil {
+					p.OnReorderSibling(p.ActiveNotebook, dropped.Path, rows[0].Entry.Path, false)
+				}
+			}
+			headerRow.Children(func() {
 				c.Key("search-button")
-				searchBtn := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(32).PaddingX(10).Gap(6).
+				searchBtn := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(theme.ControlHeight).PaddingX(9).Gap(6).
 					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 					Background(pal.Paper).Label(theme.Tr("搜索", "Search"))
 				borderCol := pal.BtnBorder
@@ -296,16 +324,16 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 				searchBtn.Border(1, borderCol)
 				if searchBtn.Hovered() {
-					searchBtn.Background(pal.Hover)
+					searchBtn.Background(pal.BtnHover)
 				}
 				searchBtn.Children(func() {
 					ic := pal.MonoIconColors(pal.TextSecondary)
 					if p.SearchOpen || searchBtn.Hovered() {
 						ic = pal.DuoIconColors(pal.Text)
 					}
-					icons.Draw(c, icons.FindSearch, 16, ic)
-					ui.Text(c, theme.Tr("搜索", "Search")).FontSize(14).TextColor(pal.TextSecondary).Grow(1).SingleLine().Ellipsis("…")
-					ui.Text(c, blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutSearch, "cmd-k"))).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+					icons.Draw(c, icons.FindSearch, theme.IconRow, ic)
+					ui.Text(c, theme.Tr("搜索", "Search")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).SingleLine().Ellipsis("…")
+					blockui.ShortcutKeycap(c, nonEmptyOr(p.ShortcutSearch, "cmd-k"))
 				})
 				blockui.Probe(searchBtn, "search-button")
 				if searchBtn.Clicked() && p.OnOpenSearch != nil {
@@ -314,7 +342,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 
 				nfBtn := blockui.IconButton(c, icons.FolderPlus, blockui.IconButtonOptions{
 					ID:      "new-folder",
-					Size:    32,
+					Variant: blockui.IconBordered,
 					Tooltip: theme.Tr("新建文件夹", "New Folder"),
 				})
 				if nfBtn.Clicked() && p.OnNewFolder != nil {
@@ -323,7 +351,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 
 				nnBtn := blockui.IconButton(c, icons.NotePlus, blockui.IconButtonOptions{
 					ID:      "new-note",
-					Size:    32,
+					Variant: blockui.IconBordered,
 					Tooltip: fmt.Sprintf("%s %s", theme.Tr("新建笔记", "New Note"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n"))),
 				})
 				if nnBtn.Clicked() && p.OnNewNote != nil {
@@ -331,65 +359,77 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 			})
 
-			// 2. Scrollable File Tree.
-			var rows []flatTreeRow
-			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
-
-			c.Key("file-tree-root")
-			treeScroll := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(0, 8, 8, 8)
-			blockui.Probe(treeScroll, "file-tree-root")
-			treeScroll.Children(func() {
-				if p.ActiveNotebook == "" {
-					ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(12).AlignItems(ui.Center).Children(func() {
-						icons.Mascot(c, icons.MascotNoFolder, 112)
-						ui.Text(c, theme.Tr("尚未打开笔记本", "No notebook open")).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary)
-						chooseBtn := blockui.ActionButton(c, "sidebar-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
-						if chooseBtn.Clicked() && p.OnChooseNotebook != nil {
-							p.OnChooseNotebook()
+			// 2. Scrollable File Tree + floating workspace notice.
+			treeContainer := ui.Box(c).Grow(1).MinHeight(0).FillWidth()
+			treeContainer.Children(func() {
+				c.Key("file-tree-focus")
+				treeFocus := ui.Column(c).Fill().Focusable().FocusRing(false)
+				if p.State.RenamingPath == "" && !p.State.SwitcherOpen && !p.State.ContextOpen {
+					switch blockui.MatchTreeShortcut(treeFocus) {
+					case blockui.TreeKeyRename:
+						if p.State.FocusDir != "" {
+							p.State.StartRename(p.State.FocusDir, true)
+						} else if p.ActiveNote != "" {
+							p.State.StartRename(p.ActiveNote, false)
 						}
-					})
-					return
-				}
-				if len(rows) == 0 {
-					ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(10).AlignItems(ui.Center).Children(func() {
-						icons.Mascot(c, icons.MascotEmptyFolder, 104)
-						ui.Text(c, theme.Tr("文件夹为空，点击右上角新建笔记", "Folder is empty")).FontSize(14).TextColor(pal.TextSecondary)
-					})
-					return
-				}
-
-				anyPressed := false
-				for _, row := range rows {
-					if renderTreeRow(c, p, row) {
-						anyPressed = true
+					case blockui.TreeKeyTrash:
+						target := p.State.FocusDir
+						if target == "" {
+							target = p.ActiveNote
+						}
+						if target != "" && p.OnTrashItem != nil {
+							p.OnTrashItem(target)
+						}
 					}
 				}
-				// Commit drag drop on pointer release.
-				if p.State.DraggingPath != "" && !anyPressed {
-					if p.State.DragActive && p.State.DropTargetPath != "" && p.State.DropTargetPath != p.State.DraggingPath {
-						src := p.State.DraggingPath
-						dst := p.State.DropTargetPath
-						intoDir := p.State.DropIntoDir
-						after := p.State.DropAfter
-						p.State.ClearDrag()
-						if intoDir {
-							if p.OnMoveItem != nil {
-								p.OnMoveItem(src, dst)
+				treeFocus.Children(func() {
+					c.Key("file-tree-root")
+					treeScroll := ui.Scroll(c).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
+					blockui.Probe(treeScroll, "file-tree-root")
+					treeScroll.Children(func() {
+						if p.ActiveNotebook == "" {
+							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(12).AlignItems(ui.Center).Children(func() {
+								icons.Mascot(c, icons.MascotNoFolder, 112)
+								ui.Text(c, theme.Tr("尚未打开笔记本", "No notebook open")).FontSize(theme.FontBody).FontWeight(500).TextColor(pal.TextSecondary)
+								chooseBtn := blockui.ActionButton(c, "sidebar-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
+								if chooseBtn.Clicked() && p.OnChooseNotebook != nil {
+									p.OnChooseNotebook()
+								}
+							})
+							return
+						}
+						if len(rows) == 0 {
+							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(10).AlignItems(ui.Center).Children(func() {
+								icons.Mascot(c, icons.MascotEmptyFolder, 104)
+								ui.Text(c, theme.Tr("文件夹为空，点击右上角新建笔记", "Folder is empty")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+							})
+							return
+						}
+
+						anyDragOver := false
+						ui.Column(c).FillWidth().Gap(theme.TreeRowPitch - theme.ControlHeight).Children(func() {
+							for _, row := range rows {
+								if renderTreeRow(c, p, row, treeFocus) {
+									anyDragOver = true
+								}
 							}
-						} else if p.OnReorderSibling != nil && filepath.Dir(src) == filepath.Dir(dst) {
-							p.OnReorderSibling(filepath.Dir(src), src, dst, after)
+						})
+						if !anyDragOver && p.State.DropTargetPath != "" {
+							p.State.ClearDrag()
 						}
-					} else {
-						p.State.ClearDrag()
-					}
+					})
+				})
+
+				if p.Notice != "" {
+					noticeBar := ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).MaxHeight(48).
+						Padding(4, 20, 4, 20).Background(pal.Sidebar)
+					noticeBar.Children(func() {
+						ui.Scroll(c).MaxHeight(40).Children(func() {
+							ui.Text(c, p.Notice).FontSize(theme.FontMeta).TextColor(pal.TextSecondary)
+						})
+					})
 				}
 			})
-
-			if p.Notice != "" {
-				ui.Row(c).FillWidth().Padding(4, 12, 4, 12).Background(pal.Sidebar).Children(func() {
-					ui.Text(c, p.Notice).FontSize(14).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
-				})
-			}
 
 			// 3. Footer: Notebook Switcher + Updater Badge + Settings Button.
 			ui.Row(c).FillWidth().Padding(6, 8, 6, 8).Gap(4).AlignItems(ui.Center).
@@ -402,21 +442,24 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(30).PaddingX(8).Gap(7).
 					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 					Label(nbTitle)
+				swHovered := sw.Hovered()
 				if p.State.SwitcherOpen {
 					sw.Background(pal.Selected).Border(1, pal.Accent)
-				} else if sw.Hovered() {
+				} else if swHovered {
 					sw.Background(pal.Hover).Border(1, ui.Transparent)
 				} else {
 					sw.Border(1, ui.Transparent)
 				}
 				sw.Children(func() {
 					ic := pal.MonoIconColors(pal.Text)
-					if p.State.SwitcherOpen || sw.Hovered() {
+					if p.State.SwitcherOpen {
+						ic = pal.DuoIconColors(pal.Accent)
+					} else if swHovered {
 						ic = pal.DuoIconColors(pal.Text)
 					}
-					icons.Draw(c, icons.FolderOpen, 16, ic)
-					ui.Text(c, nbTitle).FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-					icons.Draw(c, icons.ChevronUp, 14, pal.MonoIconColors(pal.TextSecondary))
+					icons.Draw(c, icons.FolderOpen, theme.IconRow, ic)
+					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					icons.Draw(c, icons.ChevronUp, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 				})
 				blockui.Probe(sw, "notebook-switcher")
 				if b := sw.Bounds(); b.W > 0 {
@@ -429,12 +472,25 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 
 				if p.HasUpdate {
-					upBtn := blockui.IconButton(c, icons.Download, blockui.IconButtonOptions{
-						ID:      "updater-badge-button",
-						Size:    30,
-						Tooltip: theme.Tr("有可用更新", "Update available"),
-						Active:  true,
+					c.Key("updater-badge-button")
+					upBtn := ui.ButtonBase(c).Size(30, 30).Shrink(0).Center().
+						Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+						Background(pal.Paper).Border(1, pal.BtnBorder).
+						Label(theme.Tr("有可用更新", "Update available"))
+					upHover := upBtn.Hovered()
+					if upHover {
+						upBtn.Background(pal.Hover)
+					}
+					blockui.Tooltip(c, upBtn, theme.Tr("有可用更新", "Update available"))
+					upBtn.Children(func() {
+						ic := pal.MonoIconColors(pal.TextSecondary)
+						if upHover {
+							ic = pal.DuoIconColors(pal.Text)
+						}
+						icons.Draw(c, icons.Download, theme.IconChrome, ic)
+						ui.Box(c).Absolute().Top(3).Right(3).Size(5, 5).Radius(theme.RadiusPill).Background(pal.Accent)
 					})
+					blockui.Probe(upBtn, "updater-badge-button")
 					if upBtn.Clicked() && p.OnOpenUpdater != nil {
 						p.OnOpenUpdater()
 					}
@@ -456,7 +512,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 
 		// Right-edge resize splitter.
 		if p.Width != nil {
-			if blockui.VerticalResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, false) {
+			if blockui.ResizeHandle(c, "sidebar-resize", p.Width, SidebarMinW, SidebarMaxW, false, theme.SidebarDefaultWidth) {
 				if p.OnWidthChanged != nil {
 					p.OnWidthChanged(*p.Width)
 				}
@@ -469,24 +525,24 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 	renderSidebarPopups(c, p)
 }
 
-func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
+func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.Element) bool {
 	pal := theme.Ocean()
 	entry := r.Entry
-	indent := float32(8 + min(r.Depth, 8)*14)
+	indent := theme.TreeRowPadLeft + float32(r.Depth)*theme.TreeIndentStep
 	rowKey := "tree-row:" + entry.Path
 
 	if p.State.RenamingPath == entry.Path {
 		c.Key("tree-rename:" + entry.Path)
-		box := ui.Row(c).FillWidth().Height(32).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
+		box := ui.Row(c).FillWidth().Height(theme.ControlHeight).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
 			Radius(theme.RadiusControl).Background(pal.Paper).Border(1, pal.Accent)
 		box.Children(func() {
 			glyph := fileEntryIcon(filepath.Base(entry.Path))
 			if entry.IsDir {
 				glyph = icons.Folder
 			}
-			icons.Draw(c, glyph, 16, pal.DuoIconColors(pal.Accent))
+			icons.Draw(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent))
 			c.Key("tree-rename-input")
-			inp := ui.TextInput(c, &p.State.RenameBuffer).Grow(1).FontSize(14).TextColor(pal.Text).
+			inp := ui.TextInput(c, &p.State.RenameBuffer).Grow(1).FontSize(theme.FontBody).TextColor(pal.Text).
 				BorderWidth(0).Background(ui.Transparent).Padding(0)
 			if p.State.RenameFocus {
 				inp.Focus()
@@ -516,93 +572,156 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 	}
 
 	selected := !entry.IsDir && entry.Path == p.ActiveNote
+	focused := entry.IsDir && filepath.Clean(p.State.FocusDir) == filepath.Clean(entry.Path)
+	activeFolder := focused && p.ActiveNote == ""
+	highlighted := selected || activeFolder
 	menuTarget := p.State.ContextOpen && p.State.ContextPath == entry.Path
-	isDropTarget := p.State.DragActive && p.State.DropTargetPath == entry.Path
 
 	c.Key(rowKey)
-	btn := ui.ButtonBase(c).FillWidth().Height(32).Padding(0, 8, 0, indent).Gap(6).
+	btn := ui.ButtonBase(c).FillWidth().Height(theme.ControlHeight).Padding(0, 8, 0, indent).Gap(6).
 		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-		Role(ui.RoleTreeItem).Selected(selected).Label(entry.Name)
-	hovered := btn.Hovered()
-	pressed := btn.Pressed()
+		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
+	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
 
+	resolveDropMode := func(dragged treeDragItem) (ok, intoDir, after bool) {
+		if dragged.Path == "" || filepath.Clean(dragged.Path) == filepath.Clean(entry.Path) {
+			return false, false, false
+		}
+		canMoveInto := entry.IsDir &&
+			filepath.Dir(filepath.Clean(dragged.Path)) != filepath.Clean(entry.Path) &&
+			!(dragged.IsDir && isSameOrDescendant(entry.Path, dragged.Path))
+		canReorder := filepath.Dir(filepath.Clean(dragged.Path)) == filepath.Dir(filepath.Clean(entry.Path)) &&
+			dragged.IsDir == entry.IsDir
+		if !canMoveInto && !canReorder {
+			return false, false, false
+		}
+		b := btn.Bounds()
+		if b.H <= 0 {
+			b.H = theme.ControlHeight
+		}
+		_, py, hasPos := btn.PointerPosition()
+		if !hasPos && p.State.DropTargetPath == entry.Path {
+			return true, p.State.DropIntoDir, p.State.DropAfter
+		}
+		if canMoveInto && (!canReorder || (py > 8 && py < b.H-8)) {
+			return true, true, false
+		}
+		if canReorder {
+			return true, false, py >= b.H*0.5
+		}
+		return false, false, false
+	}
+
+	dragOverHere := false
+	isDropInto := false
+	isDropReorder := false
+	dropAfter := false
+	if dragged, over := ui.DragOver[treeDragItem](btn); over {
+		if ok, into, after := resolveDropMode(dragged); ok {
+			dragOverHere = true
+			isDropInto = into
+			isDropReorder = !into
+			dropAfter = after
+			p.State.DropTargetPath = entry.Path
+			p.State.DropIntoDir = into
+			p.State.DropAfter = after
+		}
+	}
+	if dropped, ok := ui.Drop[treeDragItem](btn); ok {
+		if valid, into, after := resolveDropMode(dropped); valid {
+			p.State.ClearDrag()
+			if into {
+				if p.OnMoveItem != nil {
+					p.OnMoveItem(dropped.Path, entry.Path)
+				}
+			} else if p.OnReorderSibling != nil {
+				p.OnReorderSibling(filepath.Dir(dropped.Path), dropped.Path, entry.Path, after)
+			}
+		} else {
+			p.State.ClearDrag()
+		}
+	}
+
+	hovered := btn.Hovered()
 	switch {
-	case isDropTarget && p.State.DropIntoDir:
+	case isDropInto:
 		btn.Background(pal.Selected).Border(1, pal.Accent)
-	case isDropTarget:
+	case isDropReorder:
 		btn.Background(pal.Hover).Border(1, ui.Transparent)
-	case selected:
+	case highlighted:
+		btn.Background(pal.Selected).Border(1, pal.Accent)
+	case focused:
 		btn.Background(pal.Selected).Border(1, ui.Transparent)
-	case menuTarget:
-		btn.Background(pal.Hover).Border(1, pal.Accent)
-	case hovered:
+	case menuTarget || hovered:
 		btn.Background(pal.Hover).Border(1, ui.Transparent)
 	default:
 		btn.Border(1, ui.Transparent)
 	}
 
-	// Track drag-and-drop sibling reorder & folder move.
-	if pressed {
-		b := btn.Bounds()
-		_, py, hasPos := btn.PointerPosition()
-		absY := b.Y + py
-		if p.State.DraggingPath == "" {
-			p.State.DraggingPath = entry.Path
-			p.State.DraggingIsDir = entry.IsDir
-			p.State.DragStartY = absY
-		} else if hasPos && (absY-p.State.DragStartY > 6 || p.State.DragStartY-absY > 6) {
-			p.State.DragActive = true
-		}
-	}
-	if p.State.DragActive && hovered && entry.Path != p.State.DraggingPath {
-		b := btn.Bounds()
-		_, py, _ := btn.PointerPosition()
-		if entry.IsDir && (filepath.Dir(p.State.DraggingPath) != filepath.Dir(entry.Path) || (py > 8 && py < b.H-8)) {
-			p.State.DropTargetPath = entry.Path
-			p.State.DropIntoDir = true
-			p.State.DropAfter = false
-		} else if filepath.Dir(p.State.DraggingPath) == filepath.Dir(entry.Path) && p.State.DraggingIsDir == entry.IsDir {
-			p.State.DropTargetPath = entry.Path
-			p.State.DropIntoDir = false
-			p.State.DropAfter = py >= b.H*0.5
-		}
-	}
-
+	var moreClicked bool
+	var moreBounds ui.Rect
 	btn.Children(func() {
 		if entry.IsDir {
-			chev := icons.ChevronRight
+			chev := icons.TbChevronRight
 			if r.Expanded {
-				chev = icons.ChevronDown
+				chev = icons.TbChevron
 			}
-			icons.Draw(c, chev, 13, pal.MonoIconColors(pal.TextSecondary))
+			icons.Draw(c, chev, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 			folderGlyph := icons.Folder
 			if r.Expanded {
 				folderGlyph = icons.FolderOpen
 			}
 			ic := pal.MonoIconColors(pal.TextSecondary)
-			if hovered || r.Expanded {
+			if highlighted {
+				ic = pal.DuoIconColors(pal.Accent)
+			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, folderGlyph, 16, ic)
+			icons.Draw(c, folderGlyph, theme.IconRow, ic)
 		} else {
 			ic := pal.MonoIconColors(pal.TextSecondary)
-			if selected || hovered {
+			if highlighted {
+				ic = pal.DuoIconColors(pal.Accent)
+			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), 16, ic)
+			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic)
 		}
-		fg := pal.Text
-		weight := 400
-		if selected {
-			weight = 500
+		weight := theme.WeightRegular
+		if highlighted {
+			weight = theme.WeightControl
 		}
-		ui.Text(c, entry.Name).FontSize(14).FontWeight(weight).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, entry.Name).FontSize(theme.FontBody).FontWeight(weight).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+
+		if hovered || menuTarget {
+			moreID := "row-more:" + entry.Path
+			c.Key(moreID)
+			moreBtn := ui.ButtonBase(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().
+				Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).FocusRing(false).
+				Label(theme.Tr("更多操作", "More actions"))
+			moreHover := moreBtn.Hovered()
+			if menuTarget || moreHover {
+				moreBtn.Background(pal.BtnHover)
+			}
+			moreBtn.Children(func() {
+				ic := pal.MonoIconColors(pal.TextSecondary)
+				if menuTarget || moreHover {
+					ic = pal.DuoIconColors(pal.Text)
+				}
+				icons.Draw(c, icons.More, theme.IconInline, ic)
+			})
+			blockui.Probe(moreBtn, moreID)
+			moreBounds = moreBtn.Bounds()
+			if moreBtn.Clicked() {
+				moreClicked = true
+			}
+		} else {
+			ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0)
+		}
 	})
-	dropLine := isDropTarget && !p.State.DropIntoDir
-	dropAfter := p.State.DropAfter
 	btn.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
 		blockui.RecordBounds(rowKey, rect)
-		if dropLine {
+		if isDropReorder {
 			y := rect.Y
 			if dropAfter {
 				y = rect.Y + rect.H - 2
@@ -611,12 +730,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 		}
 	})
 
-	if btn.RightClicked() {
-		b := btn.Bounds()
-		cx, cy := b.X+24, b.Y+b.H
-		if px, py, ok := btn.PointerPosition(); ok {
-			cx, cy = b.X+px, b.Y+py
-		}
+	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
 		p.State.SwitcherOpen = false
 		p.State.ContextOpen = true
@@ -625,41 +739,62 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow) bool {
 		p.State.ContextX = cx
 		p.State.ContextY = cy
 		p.State.MoveSubmenuOpen = false
-	} else if btn.Clicked() && !p.State.DragActive {
+	}
+
+	if moreClicked {
+		cx, cy := moreBounds.X, moreBounds.Y+moreBounds.H+2
+		if moreBounds.W <= 0 {
+			b := btn.Bounds()
+			cx, cy = b.X+b.W-28, b.Y+b.H
+		}
+		openContextMenu(cx, cy)
+	} else if btn.RightClicked() {
+		b := btn.Bounds()
+		cx, cy := b.X+24, b.Y+b.H
+		if px, py, ok := btn.PointerPosition(); ok {
+			cx, cy = b.X+px, b.Y+py
+		}
+		openContextMenu(cx, cy)
+	} else if btn.Clicked() {
+		treeFocus.Focus()
 		p.State.ClearDrag()
 		p.State.ClosePopups()
 		if entry.IsDir {
 			p.State.ExpandedDirs[entry.Path] = !p.State.ExpandedDirs[entry.Path]
-		} else if p.OnOpenNote != nil {
-			inNewTab := (btn.ClickModifiers() & ui.Cmd) != 0
-			p.OnOpenNote(entry.Path, inNewTab)
+			p.State.FocusDir = entry.Path
+		} else {
+			p.State.FocusDir = ""
+			if p.OnOpenNote != nil {
+				inNewTab := (btn.ClickModifiers() & ui.Cmd) != 0
+				p.OnOpenNote(entry.Path, inNewTab)
+			}
 		}
 	}
-	return pressed
+	return dragOverHere
 }
 
 func renderSidebarPopups(c *ui.Context, p SidebarProps) {
-	if !p.State.SwitcherOpen && !p.State.ContextOpen {
-		return
-	}
 	pal := theme.Ocean()
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
+		if !p.State.SwitcherOpen && !p.State.ContextOpen {
+			return
+		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 
 		if p.State.SwitcherOpen {
 			menuW := SidebarDefaultW
 			if p.Width != nil && *p.Width > 0 {
-				menuW = ClampSidebarWidth(*p.Width) - 16
-				if menuW < 220 {
-					menuW = 220
-				}
+				menuW = ClampSidebarWidth(*p.Width)
+			}
+			if menuW > theme.MenuMaxWidth {
+				menuW = theme.MenuMaxWidth
 			}
 			rowCount := len(p.Notebooks) + 1
-			estH := float32(12 + rowCount*32)
+			estH := theme.MenuPadding*2 + float32(rowCount)*theme.MenuItemHeight + float32(max(rowCount-1, 0))*theme.MenuGap
 			if len(p.Notebooks) > 0 {
-				estH += 9
+				estH += 7 + theme.MenuGap
 			}
 			anchor := p.State.SwitcherBounds
 			if anchor.W <= 0 {
@@ -671,90 +806,110 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("notebook-switcher-pop")
-			card := ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
-				Padding(6).Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-				Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18)).Role(ui.RoleMenu)
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
-				ui.Scroll(c).MaxHeight(maxH - 12).Children(func() {
-					for ix, nb := range p.Notebooks {
-						ix := ix
-						nb := nb
-						checked := nb == p.ActiveNotebook
-						c.Key("nb-item:" + nb)
-						row := ui.Row(c).FillWidth().Height(32).PaddingX(8).Gap(4).AlignItems(ui.Center).Radius(6)
-						if row.Hovered() {
-							row.Background(pal.Hover)
-						}
-						row.Children(func() {
-							sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
-								Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
-							sel.Children(func() {
-								icons.Draw(c, icons.Folder, 16, pal.DuoIconColors(pal.Text))
-								ui.Text(c, noteDisplayTitle(nb, true)).FontSize(14).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-								if checked {
-									icons.Draw(c, icons.Check, 15, pal.MonoIconColors(pal.Accent))
+				ui.Scroll(c).MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+						for ix, nb := range p.Notebooks {
+							ix := ix
+							nb := nb
+							checked := nb == p.ActiveNotebook
+							c.Key("nb-item:" + nb)
+							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusControl)
+							rowHover := row.Hovered()
+							switch {
+							case checked:
+								row.Background(pal.MenuChecked)
+							case rowHover:
+								row.Background(pal.MenuHover)
+							}
+							row.Children(func() {
+								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
+									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
+								sel.Children(func() {
+									ic := pal.MonoIconColors(pal.MenuIcon)
+									if checked || rowHover {
+										ic = pal.DuoIconColors(pal.MenuIcon)
+									}
+									icons.Draw(c, icons.Folder, theme.IconRow, ic)
+									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+									if checked {
+										icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+									}
+								})
+								blockui.Probe(sel, "nb-select:"+nb)
+								if sel.Clicked() {
+									p.State.ClosePopups()
+									if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
+										p.OnSwitchNotebook(nb)
+									}
+								}
+								if rowHover && len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
+									if ix > 0 {
+										upBtn := blockui.IconButton(c, icons.ArrowUp, blockui.IconButtonOptions{
+											ID:       "nb-up:" + nb,
+											Size:     20,
+											IconSize: theme.IconMicro,
+											Tooltip:  theme.Tr("上移", "Move Up"),
+										})
+										if upBtn.Clicked() {
+											p.OnReorderNotebooks(ix, ix-1)
+										}
+									}
+									if ix+1 < len(p.Notebooks) {
+										dnBtn := blockui.IconButton(c, icons.ArrowDown, blockui.IconButtonOptions{
+											ID:       "nb-down:" + nb,
+											Size:     20,
+											IconSize: theme.IconMicro,
+											Tooltip:  theme.Tr("下移", "Move Down"),
+										})
+										if dnBtn.Clicked() {
+											p.OnReorderNotebooks(ix, ix+1)
+										}
+									}
+								}
+								if rowHover && !checked && p.OnForgetNotebook != nil {
+									fgID := "nb-forget:" + nb
+									c.Key(fgID)
+									fgBtn := ui.ButtonBase(c).Size(20, 20).Shrink(0).Center().
+										Radius(theme.RadiusMicroSM).Cursor(ui.CursorPointer).
+										Label(theme.Tr("从列表移除", "Remove from list"))
+									fgHover := fgBtn.Hovered()
+									if fgHover {
+										fgBtn.Background(pal.BtnHover)
+									}
+									blockui.Tooltip(c, fgBtn, theme.Tr("从列表移除", "Remove from list"))
+									fgBtn.Children(func() {
+										ic := pal.MonoIconColors(pal.TextSecondary)
+										if fgHover {
+											ic = pal.DuoIconColors(pal.Text)
+										}
+										icons.Draw(c, icons.Close, theme.IconMicro, ic)
+									})
+									blockui.Probe(fgBtn, fgID)
+									if fgBtn.Clicked() {
+										p.OnForgetNotebook(nb)
+									}
 								}
 							})
-							blockui.Probe(sel, "nb-select:"+nb)
-							if sel.Clicked() {
+						}
+						if len(p.Notebooks) > 0 {
+							ui.Box(c).FillWidth().Height(1).MarginY(3).Background(pal.MenuSeparator)
+						}
+						icPlus := icons.FolderPlus
+						blockui.MenuRow(c, blockui.MenuItemSpec{
+							ID:    "add-notebook",
+							Label: theme.Tr("选择文件夹…", "Choose Folder…"),
+							Icon:  &icPlus,
+							OnClick: func() {
 								p.State.ClosePopups()
-								if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
-									p.OnSwitchNotebook(nb)
+								if p.OnChooseNotebook != nil {
+									p.OnChooseNotebook()
 								}
-							}
-							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
-								if ix > 0 {
-									upBtn := blockui.IconButton(c, icons.ArrowUp, blockui.IconButtonOptions{
-										ID:       "nb-up:" + nb,
-										Size:     20,
-										IconSize: 12,
-										Tooltip:  theme.Tr("上移", "Move Up"),
-									})
-									if upBtn.Clicked() {
-										p.OnReorderNotebooks(ix, ix-1)
-									}
-								}
-								if ix+1 < len(p.Notebooks) {
-									dnBtn := blockui.IconButton(c, icons.ArrowDown, blockui.IconButtonOptions{
-										ID:       "nb-down:" + nb,
-										Size:     20,
-										IconSize: 12,
-										Tooltip:  theme.Tr("下移", "Move Down"),
-									})
-									if dnBtn.Clicked() {
-										p.OnReorderNotebooks(ix, ix+1)
-									}
-								}
-							}
-							if !checked && p.OnForgetNotebook != nil {
-								fgBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
-									ID:       "nb-forget:" + nb,
-									Size:     22,
-									IconSize: 13,
-									Tooltip:  theme.Tr("从列表移除", "Remove from list"),
-								})
-								if fgBtn.Clicked() {
-									p.OnForgetNotebook(nb)
-								}
-							}
-						})
-					}
-					if len(p.Notebooks) > 0 {
-						ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.Hairline)
-					}
-					icPlus := icons.FolderPlus
-					blockui.MenuRow(c, blockui.MenuItemSpec{
-						ID:    "add-notebook",
-						Label: theme.Tr("选择文件夹…", "Choose Folder…"),
-						Icon:  &icPlus,
-						OnClick: func() {
-							p.State.ClosePopups()
-							if p.OnChooseNotebook != nil {
-								p.OnChooseNotebook()
-							}
-						},
-					}, false)
+							},
+						}, false)
+					})
 				})
 			})
 			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
@@ -829,7 +984,8 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					Icon:       &icMove,
 					HasSubmenu: true,
 					OnClick: func() {
-						p.State.MoveSubmenuOpen = !p.State.MoveSubmenuOpen
+						// Hover already opens the cascade; a click must not close it again.
+						p.State.MoveSubmenuOpen = true
 					},
 				},
 			)
@@ -887,9 +1043,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			ox, oy := blockui.ResolveOrigin(mainSpec, menuW, popH, vpW, vpH)
 
 			c.Key("tree-menu-pop")
-			mainCard := ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
-				Padding(6).Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-				Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18)).Role(ui.RoleMenu)
+			mainCard := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 			blockui.Probe(mainCard, "tree-menu-pop")
 			mainCard.Children(func() {
 				for _, it := range items {
@@ -913,10 +1067,10 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				dests := collectMoveDestinations(p.ActiveNotebook, p.Entries, targetPath, targetDir)
 				subW := float32(232)
 				subCount := max(len(dests), 1)
-				subEstH := float32(12 + subCount*32)
+				subEstH := theme.MenuPadding*2 + float32(subCount)*theme.MenuItemHeight + float32(max(subCount-1, 0))*theme.MenuGap
 				rowRect := p.State.MoveRowBounds
 				if rowRect.W <= 0 {
-					rowRect = ui.Rect{X: ox, Y: oy + 68, W: menuW, H: 32}
+					rowRect = ui.Rect{X: ox, Y: oy + 68, W: menuW, H: theme.MenuItemHeight}
 				}
 				subSpec := blockui.PlaceBelow(rowRect).WithAlignX(blockui.CascadeRight(8))
 				subMaxH := min(blockui.MaxHeightForSpec(subSpec, vpW, vpH, 300), float32(300))
@@ -924,43 +1078,48 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				sox, soy := blockui.ResolveOrigin(subSpec, subW, subPopH, vpW, vpH)
 
 				c.Key("tree-move-pop")
-				subCard = ui.Column(c).Absolute().Left(sox).Top(soy).Width(subW).MaxHeight(subMaxH).
-					Padding(6).Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-					Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18)).Role(ui.RoleMenu)
+				subCard = blockui.MenuSurface(ui.Column(c).Absolute().Left(sox).Top(soy).Width(subW).MaxHeight(subMaxH).Role(ui.RoleMenu))
 				blockui.Probe(subCard, "tree-move-pop")
 				subCard.Children(func() {
-					ui.Scroll(c).MaxHeight(subMaxH - 12).Children(func() {
-						if len(dests) == 0 {
-							ui.Row(c).FillWidth().Height(32).PaddingX(10).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, theme.Tr("没有可移动到的位置", "No destination available")).FontSize(14).TextColor(pal.TextSecondary)
-							})
-							return
-						}
-						for _, d := range dests {
-							d := d
-							glyph := icons.Folder
-							if d.IsRoot {
-								glyph = icons.FolderOpen
+					ui.Scroll(c).MaxHeight(subMaxH - theme.MenuPadding*2).Children(func() {
+						ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+							if len(dests) == 0 {
+								ui.Row(c).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).AlignItems(ui.Center).Children(func() {
+									ui.Text(c, theme.Tr("没有可移动到的位置", "No destination available")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+								})
+								return
 							}
-							padL := float32(10 + min(d.Depth, 6)*12)
-							c.Key("move-dest:" + d.Dir)
-							row := ui.ButtonBase(c).FillWidth().Height(32).Padding(0, 10, 0, padL).Gap(8).
-								AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(d.Label)
-							if row.Hovered() {
-								row.Background(pal.Hover)
-							}
-							row.Children(func() {
-								icons.Draw(c, glyph, 16, pal.DuoIconColors(pal.Text))
-								ui.Text(c, d.Label).FontSize(14).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-							})
-							blockui.Probe(row, "move-dest:"+d.Dir)
-							if row.Clicked() {
-								p.State.ClosePopups()
-								if p.OnMoveItem != nil {
-									p.OnMoveItem(targetPath, d.Dir)
+							for _, d := range dests {
+								d := d
+								glyph := icons.Folder
+								if d.IsRoot {
+									glyph = icons.FolderOpen
+								}
+								padL := float32(10 + min(d.Depth, 6)*12)
+								c.Key("move-dest:" + d.Dir)
+								row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 10, 0, padL).Gap(8).
+									AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(d.Label)
+								rowHover := row.Hovered()
+								if rowHover {
+									row.Background(pal.MenuHover)
+								}
+								row.Children(func() {
+									ic := pal.MonoIconColors(pal.MenuIcon)
+									if rowHover {
+										ic = pal.DuoIconColors(pal.MenuIcon)
+									}
+									icons.Draw(c, glyph, theme.IconRow, ic)
+									ui.Text(c, d.Label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+								})
+								blockui.Probe(row, "move-dest:"+d.Dir)
+								if row.Clicked() {
+									p.State.ClosePopups()
+									if p.OnMoveItem != nil {
+										p.OnMoveItem(targetPath, d.Dir)
+									}
 								}
 							}
-						}
+						})
 					})
 				})
 			}

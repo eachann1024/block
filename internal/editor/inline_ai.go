@@ -455,6 +455,8 @@ func firstUnstarredIndex(items []promptEntry) int {
 func (s *Session) SetDataDir(dir string) {
 	s.dataDir = strings.TrimSpace(dir)
 	s.promptStore = &inlinePromptStore{dir: s.dataDir}
+	s.annotLoadedPath = ""
+	s.ensureAnnotationsLoaded()
 }
 
 func (s *Session) ensurePromptStore() *inlinePromptStore {

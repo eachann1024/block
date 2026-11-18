@@ -357,8 +357,8 @@ func TestOutlineRailHoverJumpAndAutoHide(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected outline-rail visible at 1100px")
 	}
-	if rail.X < 900 {
-		t.Fatalf("expected outline-rail on the right side, got x=%v", rail.X)
+	if rail.X > 60 {
+		t.Fatalf("expected outline-rail in left margin (x=18), got x=%v", rail.X)
 	}
 
 	// Hover outline rail -> opens outline-popover
@@ -378,11 +378,11 @@ func TestOutlineRailHoverJumpAndAutoHide(t *testing.T) {
 		t.Fatalf("expected outline-target-highlight probe")
 	}
 
-	// Auto-hide when viewportWidth < 960
+	// Auto-hide when left margin < 36px (e.g. 800px viewport with 744px column -> 21px margin)
 	appUi.ResetSmoke()
-	tt.SetSize(900, 700)
+	tt.SetSize(800, 700)
 	if _, ok := appUi.TargetBounds("outline-rail"); ok {
-		t.Fatalf("expected outline-rail hidden at width 900 (<960)")
+		t.Fatalf("expected outline-rail hidden when left margin < 36px")
 	}
 	tt.SetSize(1100, 700)
 	if _, ok := appUi.TargetBounds("outline-rail"); !ok {
@@ -1054,16 +1054,16 @@ func TestEditorZeroHoverAndFocusJitter(t *testing.T) {
 
 	// Verify typography LineHeightMode and EditorFont sync in blockTextMetrics.
 	theme.SetTypography("Georgia", "JetBrains Mono", model.LineHeightTight)
-	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.38)) > 0.001 {
-		t.Fatalf("expected LineHeightTight=1.38, got %v", lh)
+	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.35)) > 0.001 {
+		t.Fatalf("expected LineHeightTight=1.35, got %v", lh)
 	}
 	theme.SetTypography("", "", model.LineHeightNormal)
 	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.5)) > 0.001 {
 		t.Fatalf("expected LineHeightNormal=1.5, got %v", lh)
 	}
 	theme.SetTypography("", "", model.LineHeightLoose)
-	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.7)) > 0.001 {
-		t.Fatalf("expected LineHeightLoose=1.7, got %v", lh)
+	if _, _, lh := blockTextMetrics(model.BlockParagraph); math.Abs(float64(lh-1.75)) > 0.001 {
+		t.Fatalf("expected LineHeightLoose=1.75, got %v", lh)
 	}
 	theme.SetTypography(origEd, origCd, origLH)
 
@@ -1115,5 +1115,109 @@ func TestEditorZeroHoverAndFocusJitter(t *testing.T) {
 	}
 	if !strings.HasPrefix(s.Doc().Blocks[2].PlainText(), "Main ") {
 		t.Fatalf("expected rewritten block text, got %q", s.Doc().Blocks[2].PlainText())
+	}
+}
+
+func TestEditorRenderingParity(t *testing.T) {
+	appUi.ResetSmoke()
+	origEd, origCd, origLH := theme.Typography()
+	defer theme.SetTypography(origEd, origCd, origLH)
+
+	// Serif font resolution.
+	theme.SetTypography("system-serif", "auto", model.LineHeightLoose)
+	if ed := resolvedEditorFont(); !strings.Contains(ed, "LXGW WenKai") || !strings.Contains(ed, "Songti SC") {
+		t.Fatalf("unexpected serif resolution: %q", ed)
+	}
+	if cd := resolvedCodeFont(); !strings.Contains(cd, "Menlo") {
+		t.Fatalf("unexpected auto code font resolution: %q", cd)
+	}
+	theme.SetTypography("", "", model.LineHeightNormal)
+
+	// Heading metrics.
+	for _, tc := range []struct {
+		kind model.BlockKind
+		sz   float32
+		w    int
+		lh   float32
+	}{
+		{model.BlockHeading1, 32, 600, 1.2},
+		{model.BlockHeading2, 22, 600, 1.3},
+		{model.BlockHeading3, 18, 600, 1.35},
+		{model.BlockHeading4, 16, 600, 1.4},
+		{model.BlockHeading5, 14, 600, 1.45},
+		{model.BlockHeading6, 14, 500, 1.45},
+	} {
+		sz, w, lh := blockTextMetrics(tc.kind)
+		if sz != tc.sz || w != tc.w || math.Abs(float64(lh-tc.lh)) > 0.001 {
+			t.Fatalf("heading %v: got (%v,%d,%v), want (%v,%d,%v)", tc.kind, sz, w, lh, tc.sz, tc.w, tc.lh)
+		}
+	}
+
+	// Collapsed block gaps.
+	h1 := &model.Block{Kind: model.BlockHeading1}
+	h2 := &model.Block{Kind: model.BlockHeading2}
+	h3 := &model.Block{Kind: model.BlockHeading3}
+	p := &model.Block{Kind: model.BlockParagraph}
+	q := &model.Block{Kind: model.BlockQuote}
+	d := &model.Block{Kind: model.BlockDivider}
+	if g := blockGutterSpacing(h1, p); g != 8 {
+		t.Fatalf("H1->P gap: got %v, want 8", g)
+	}
+	if g := blockGutterSpacing(p, h2); math.Abs(float64(g-35.2)) > 0.01 {
+		t.Fatalf("P->H2 gap: got %v, want 35.2", g)
+	}
+	if g := blockGutterSpacing(p, h3); math.Abs(float64(g-25.2)) > 0.01 {
+		t.Fatalf("P->H3 gap: got %v, want 25.2", g)
+	}
+	if g := blockGutterSpacing(p, q); math.Abs(float64(g-12.8)) > 0.01 {
+		t.Fatalf("P->Quote gap: got %v, want 12.8", g)
+	}
+	if g := blockGutterSpacing(p, d); math.Abs(float64(g-16.5)) > 0.01 {
+		t.Fatalf("P->Divider gap: got %v, want 16.5", g)
+	}
+
+	// Inline code, links, bold spans & input ranges.
+	pal := theme.Ocean()
+	richBlk := model.Block{
+		ID:   2,
+		Kind: model.BlockParagraph,
+		Spans: []model.Span{
+			{Text: "bold", Marks: model.MarkBold},
+			{Text: "code", Marks: model.MarkCode},
+			{Text: "site", Link: "https://example.com"},
+		},
+	}
+	s := NewSession("", &model.Doc{
+		Blocks: []model.Block{
+			{ID: 1, Kind: model.BlockParagraph, Spans: []model.Span{{Text: "Top"}}},
+			richBlk,
+			{ID: 3, Kind: model.BlockCode, Language: "go", Code: "x := 1"},
+		},
+	}, nil, nil)
+	spans := s.buildDisplaySpans(1, &richBlk, 16, 400)
+	if spans[0].Weight != 600 {
+		t.Fatalf("bold weight: got %d, want 600", spans[0].Weight)
+	}
+	if spans[1].Size != 16 || spans[1].Weight != 500 || spans[1].Color != pal.InlineCodeFG || spans[1].PaddingX != 5.5 || spans[1].Radius != 4 {
+		t.Fatalf("inline code span mismatch: %+v", spans[1])
+	}
+	if spans[2].Color != pal.Link || spans[2].Underline {
+		t.Fatalf("link span mismatch (expected pal.Link and no default underline): %+v", spans[2])
+	}
+	ranges := s.buildInputTextRanges(1, &richBlk)
+	if ranges[0].Weight != 600 || ranges[1].Color != pal.InlineCodeFG || ranges[2].Color != pal.Link {
+		t.Fatalf("input TextRanges mismatch: %+v", ranges)
+	}
+
+	// Top padding 64px in rendered layout + clicking unfocused rich block focuses it.
+	s.FocusBlock(0)
+	tt := ui.NewTester(makeSessionView(s, false), 900, 600)
+	r1, ok := appUi.TargetBounds("block-1")
+	if !ok || math.Abs(float64(r1.Y-64)) > 0.5 {
+		t.Fatalf("expected block-1 at Y=64, got %+v (ok=%v)", r1, ok)
+	}
+	clickProbe(t, tt, "block-2")
+	if s.FocusedBlockIndex() != 1 {
+		t.Fatalf("expected clicking block-2 to focus index 1, got %d", s.FocusedBlockIndex())
 	}
 }
