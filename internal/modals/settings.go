@@ -379,7 +379,7 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 							navID := "settings-tab-" + spec.id
 							title := theme.Tr(spec.zh, spec.en)
 							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(10).Gap(8).
-								AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+								AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
 								Label(title)
 							if active {
 								btn.Background(pal.Selected).Border(1, pal.Accent)
@@ -405,7 +405,7 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 								} else if btn.Hovered() {
 									col = pal.Text
 								}
-								ui.Text(c, title).FontSize(14).FontWeight(weight).TextColor(col).SingleLine()
+								ui.Text(c, title).FontSize(14).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							})
 							internalui.Probe(btn, navID)
 							if btn.Clicked() {
