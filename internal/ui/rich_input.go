@@ -711,13 +711,29 @@ func (s *RichInputState) moveVertical(dir int, extend bool) bool {
 	return true
 }
 
-func (s *RichInputState) linkAtRune(off int) string {
+func (s *RichInputState) linkAtPoint(pt ui.Point) string {
+	if len(s.links) == 0 || s.Composing() {
+		return ""
+	}
+	lay := s.currentLayout()
 	for _, lr := range s.links {
-		if off >= lr.Start && off < lr.End && lr.URL != "" {
-			return lr.URL
+		if lr.URL == "" || lr.End <= lr.Start {
+			continue
+		}
+		for _, rect := range richLinkRects(lay, s.text, lr) {
+			if rect.Contains(pt.X, pt.Y) {
+				return lr.URL
+			}
 		}
 	}
 	return ""
+}
+
+func richLinkRects(lay *ui.TextLayout, text string, link RichLinkRange) []ui.Rect {
+	return lay.SelectionRects(ui.TextInputRange{
+		Start: runeToUTF16Off(text, link.Start),
+		End:   runeToUTF16Off(text, link.End),
+	})
 }
 
 func (s *RichInputState) handleCommand(cmd string) bool {
@@ -1066,18 +1082,18 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		if ev.Button != 0 {
 			return false
 		}
+		s.pressPt = ui.Point{X: ev.X, Y: ev.Y}
+		s.pressMods = ev.Mods
+		s.pressLink = ""
+		if ev.Clicks == 1 && ev.Mods&ui.Cmd != 0 && s.onOpenLink != nil {
+			s.pressLink = s.linkAtPoint(s.pressPt)
+		}
 		if s.Composing() {
 			s.UnmarkText()
 		}
 		lay := s.currentLayout()
-		cp := lay.PositionAt(ui.Point{X: ev.X, Y: ev.Y})
+		cp := lay.PositionAt(s.pressPt)
 		pos := utf16ToRuneOff(s.text, cp.Index)
-		s.pressPt = ui.Point{X: ev.X, Y: ev.Y}
-		s.pressMods = ev.Mods
-		s.pressLink = ""
-		if ev.Clicks == 1 && ev.Mods&ui.Cmd != 0 {
-			s.pressLink = s.linkAtRune(pos)
-		}
 		s.dragging = true
 		s.hasDesired = false
 		s.dragUnit = min(max(ev.Clicks, 1), 3)
@@ -1493,9 +1509,7 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 			if lr.End <= lr.Start {
 				continue
 			}
-			u0 := runeToUTF16Off(text, lr.Start)
-			u1 := runeToUTF16Off(text, lr.End)
-			rects := lay.SelectionRects(ui.TextInputRange{Start: u0, End: u1})
+			rects := richLinkRects(lay, text, lr)
 			show := opts.CaretPos >= 0 && opts.CaretPos >= lr.Start && opts.CaretPos <= lr.End
 			if !show && inside && r.W > 0 {
 				for _, sr := range rects {
@@ -1656,6 +1670,9 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			localPtr = ui.Point{X: lx, Y: ly}
 			hasLocalPtr = true
 		}
+	}
+	if hasLocalPtr && opts.OnOpenLink != nil && c.Modifiers()&ui.Cmd != 0 && st.linkAtPoint(localPtr) != "" {
+		box.Cursor(ui.CursorPointer)
 	}
 
 	box.Children(func() {
