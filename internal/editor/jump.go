@@ -171,17 +171,19 @@ func (s *Session) matchLineOffsetInBlock(idx int, b *model.Block, topGap float32
 // revealJump uses the freshly laid-out row or cell. The scroll containers
 // clamp to their actual extents and reveal horizontally clipped cells too.
 func (s *Session) revealJump(c *ui.Context, contentTop float32) {
+	// Input can rebuild the view before layout. Keep the anchor in every
+	// pass so layout can apply the one-shot scroll request.
+	anchor := ui.Box(c.Key("jump-anchor")).Absolute().Top(contentTop - s.jumpTopClearance()).Left(0).Right(0).
+		Height(theme.Space2).IgnoreInput(true).AccessHidden(true)
 	if !s.jump.pending {
 		return
 	}
 	s.jump.pending = false
-	ui.Box(c.Key("jump-anchor")).Absolute().Top(contentTop - s.jumpTopClearance()).Left(0).Right(0).
-		Height(theme.Space2).IgnoreInput(true).AccessHidden(true).
-		ScrollIntoView(ui.ScrollIntoViewOptions{
-			Block:     ui.ScrollStart,
-			Inline:    ui.ScrollNearest,
-			Animation: appUI.JumpScrollAnimation(s.scrollRect.H > 0),
-		})
+	anchor.ScrollIntoView(ui.ScrollIntoViewOptions{
+		Block:     ui.ScrollStart,
+		Inline:    ui.ScrollNearest,
+		Animation: appUI.JumpScrollAnimation(s.scrollRect.H > 0),
+	})
 }
 
 func (s *Session) jumpHighlight(c *ui.Context) float32 {
