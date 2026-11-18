@@ -60,12 +60,13 @@ type blockMenuItem struct {
 }
 
 type blockMenuState struct {
-	BlockIdx    int
-	Mode        blockMenuMode
-	Filter      string
-	ActiveIndex int
-	Scroll      ui.ScrollState
-	TriggerRect ui.Rect
+	BlockIdx      int
+	Mode          blockMenuMode
+	Filter        string
+	ActiveIndex   int
+	PointerActive bool
+	Scroll        ui.ScrollState
+	TriggerRect   ui.Rect
 }
 
 type findMatch struct {

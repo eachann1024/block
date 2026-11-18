@@ -249,7 +249,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 		}
 	})
 	if shouldReveal && active {
-		pill.ScrollIntoView(ui.ScrollIntoViewOptions{Inline: ui.ScrollNearest})
+		blockui.RevealActiveItem(pill)
 	}
 	pill.DrawOver(func(pt *ui.Painter, r ui.Rect) {
 		blockui.RecordBounds(fmt.Sprintf("tab-%d", ix), r)

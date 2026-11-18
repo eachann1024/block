@@ -2317,7 +2317,11 @@ func (s *Session) syncSlashMenuText(idx int, text string) {
 		s.blockMenu = nil
 		return
 	}
-	s.blockMenu.Filter = filter
+	if s.blockMenu.Filter != filter {
+		s.blockMenu.Filter = filter
+		s.blockMenu.PointerActive = false
+		s.blockMenu.Scroll.Y = 0
+	}
 	entries := s.slashMenuEntries()
 	if len(entries) == 0 {
 		s.blockMenu = nil
@@ -2364,6 +2368,7 @@ func (s *Session) stepSlashMenu(down bool) bool {
 		cur = (cur + step + len(entries)) % len(entries)
 		if !entries[cur].Separator {
 			s.blockMenu.ActiveIndex = cur
+			s.blockMenu.PointerActive = false
 			return true
 		}
 	}
