@@ -313,9 +313,10 @@ func (s *Session) paintBlockDropMarker(p *ui.Painter, r ui.Rect, b *model.Block,
 	if b == nil || r.W <= 0 || r.H <= 0 {
 		return
 	}
-	indentPx := float32(min(max(s.dragIndent, 0), 12)) * editorIndentStep
-	leftX := r.X + s.leftContentGutter() + indentPx
-	rightX := r.X + r.W - s.rightContentInset()
+	bleed := s.bandBleed()
+	indentPx := float32(min(max(s.dragIndent, 0), 12)) * s.indentStep()
+	leftX := r.X + s.leftContentGutter() - bleed + indentPx
+	rightX := r.X + r.W - s.rightContentInset() + bleed
 	lineW := max(rightX-leftX, 0)
 	if lineW <= 0 {
 		return
