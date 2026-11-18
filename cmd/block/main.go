@@ -16,10 +16,13 @@ import (
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo"
+	_ "github.com/egoist/mygo/locales/zh-Hans"
 	"github.com/egoist/mygo/ui"
 )
 
 func main() {
+	theme.ConfigureDefaultFontSmoothing()
+
 	var (
 		dataDirFlag   string
 		notebookFlag  string
@@ -50,11 +53,15 @@ func main() {
 	}
 
 	mygo.App.SetName("Block")
+	mygo.App.SetLanguages("zh-Hans", "en")
 	if smokeFlag || os.Getenv("MYGO_AUTOMATION") != "" {
 		blockui.EnableSmokeMode()
 	}
 
 	ws := app.NewWorkspace(dataDirFlag)
+	if !isIsolatedRun {
+		files.EnsureHarmonyFontsAsync(files.AppDataDir(), ws.InvalidateAllWindows)
+	}
 	ws.SetPersistWindowBounds(!smokeFlag && !smokeOnceFlag && !hiddenFlag)
 	if mockAIFlag {
 		ws.AI().EnableMockResponder(true)

@@ -1099,14 +1099,14 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
 	card := appUi.PopoverSurface(ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
-		Padding(theme.Space6, theme.Space10).Gap(theme.Space8).AlignItems(ui.Center)).
+		Padding(theme.Space6, theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Clip()).
 		Border(1, pal.Accent)
 	appUi.Probe(card, "annotate-composer")
 	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
 		ui.Box(c).Size(theme.Space8, theme.Space8).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
-		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).Height(theme.HeightCompact).
+		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightCompact).
 			Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).Label("annotation-note").
 			Bind(&s.commentHandle)
@@ -2038,9 +2038,9 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 func (s *Session) renderAnnotationCardContent(c *ui.Context, ann *model.Annotation, isNarrow bool) {
 	pal := theme.Ocean()
 	if s.editingAnnotID == ann.ID {
-		ui.Row(c).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Radius(theme.RadiusSM).Background(pal.Shell).
-			Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().
+		ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightControl).PaddingX(theme.Space8).Radius(theme.RadiusSM).Background(pal.Shell).
+			Border(1, pal.Accent).AlignItems(ui.Center).Clip().Children(func() {
+			in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).Grow(1).MinWidth(0).
 				Height(theme.HeightCompact).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
 				CaretColor(pal.Accent).Bind(&s.editingHandle)
 			if in.Submitted() {
@@ -2061,8 +2061,8 @@ func (s *Session) renderAnnotationCardContent(c *ui.Context, ann *model.Annotati
 	}
 
 	if ann.RewriteResult != "" {
-		ui.Box(c).FillWidth().Padding(theme.Space10).Radius(theme.RadiusSM).Background(pal.Selected).Children(func() {
-			ui.Text(c, ann.RewriteResult).FontSize(theme.FontBody).TextColor(pal.SelectionFG)
+		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space10).Radius(theme.RadiusSM).Background(pal.Selected).Clip().Children(func() {
+			ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).FontSize(theme.FontBody).TextColor(pal.SelectionFG)
 		})
 		if !s.readOnly {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
@@ -2098,35 +2098,37 @@ func (s *Session) renderAnnotationCardContent(c *ui.Context, ann *model.Annotati
 		return
 	}
 
-	ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(theme.Space8).Children(func() {
-		ui.Box(c).Size(theme.Space8, theme.Space8).Margin(theme.Space8, 0, 0, 0).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
+	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(theme.Space8).Children(func() {
+		ui.Box(c).Size(theme.Space8, theme.Space8).Margin(theme.Space6, 0, 0, 0).Shrink(0).Radius(theme.RadiusXS).Background(pal.AnnotSendDot)
 		noteTxt := ann.Note
 		if noteTxt == "" && ann.RewritePrompt != "" {
 			noteTxt = ann.RewritePrompt
 		}
-		ui.Text(c, noteTxt).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1)
+		ui.Text(c, noteTxt).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).Shrink(1).MinWidth(0)
 		if !s.readOnly {
-			if ann.RewritePrompt != "" {
-				acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-					ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.HeightChrome, IconSize: theme.IconInline,
-				})
-				if acc.Clicked() {
-					s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
+				if ann.RewritePrompt != "" {
+					acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+						ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.IconButtonBox, IconSize: theme.IconInline,
+					})
+					if acc.Clicked() {
+						s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+					}
 				}
-			}
-			editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-				ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightChrome, IconSize: theme.IconInline,
+				editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+					ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.IconButtonBox, IconSize: theme.IconInline,
+				})
+				if editBtn.Clicked() {
+					s.editingAnnotID = ann.ID
+					s.editingAnnotText = ann.Note
+				}
+				delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+					ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.IconButtonBox, IconSize: theme.IconInline, Danger: true,
+				})
+				if delBtn.Clicked() {
+					s.deleteAnnotationByID(ann.ID)
+				}
 			})
-			if editBtn.Clicked() {
-				s.editingAnnotID = ann.ID
-				s.editingAnnotText = ann.Note
-			}
-			delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-				ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightChrome, IconSize: theme.IconInline, Danger: true,
-			})
-			if delBtn.Clicked() {
-				s.deleteAnnotationByID(ann.ID)
-			}
 		}
 	})
 	_ = isNarrow
@@ -2243,8 +2245,8 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 					if isActive || s.editingAnnotID == ann.ID {
 						borderCol = pal.Accent
 					}
-					card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().
-						Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG)
+					card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(0).
+						Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG).Clip()
 					cardHovered := card.Hovered()
 					if cardHovered {
 						nextHovered = ann.ID
@@ -2339,8 +2341,12 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 		botPad = theme.Space10
 	}
 	minChipW := min(float32(200), max(s.viewportWidth-48, 120))
+	maxChipW := float32(340)
+	if s.viewportWidth > 0 {
+		maxChipW = min(float32(340), max(s.viewportWidth-32, minChipW))
+	}
 
-	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().
+	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().MinWidth(0).
 		Padding(theme.Space6, 0, botPad, 0).Gap(theme.Space6).AlignItems(ui.Start)
 	strip.Children(func() {
 		// Reaction pills row
@@ -2412,8 +2418,8 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 			isActive := s.activeAnnotID == ann.ID || s.editingAnnotID == ann.ID
 			isHighlighted := isActive || s.hoveredAnnotID == ann.ID
 			if isActive {
-				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(minChipW).MaxWidth(340).
-					Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG).Background(pal.Menu).
+				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(minChipW).MaxWidth(maxChipW).
+					Padding(theme.Space10, theme.Space12).Gap(theme.Space10).Radius(theme.RadiusLG).Clip().Background(pal.Menu).
 					Border(1, pal.Accent)
 				if card.Hovered() {
 					nextHovered = ann.ID
@@ -2437,9 +2443,9 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 			if isHighlighted {
 				capsuleBorder = pal.Accent
 			}
-			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MinWidth(minChipW).MaxWidth(340).MinHeight(theme.HeightCompact).
+			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MinWidth(minChipW).MaxWidth(maxChipW).MinHeight(theme.HeightCompact).
 				Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space6).AlignItems(ui.Center).
-				Radius(theme.RadiusMD).Background(capsuleBG).Border(1, capsuleBorder)
+				Radius(theme.RadiusMD).Clip().Background(capsuleBG).Border(1, capsuleBorder)
 			if chip.Hovered() {
 				nextHovered = ann.ID
 			}

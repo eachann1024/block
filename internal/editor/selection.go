@@ -37,6 +37,7 @@ type cachedBlockLayout struct {
 	weight     int
 	lineHeight float32
 	width      float32
+	fontEpoch  uint64
 	layout     *ui.TextLayout
 }
 
@@ -1748,6 +1749,7 @@ func (s *Session) cachedShapeBlock(
 		s.textLayoutCache = make(map[model.BlockID]cachedBlockLayout)
 	}
 	wRounded := float32(math.Round(float64(width)*2) / 2)
+	epoch := theme.FontEpoch()
 	if entry, ok := s.textLayoutCache[id]; ok &&
 		entry.text == plain &&
 		entry.rich == rich &&
@@ -1757,6 +1759,7 @@ func (s *Session) cachedShapeBlock(
 		entry.weight == weight &&
 		entry.lineHeight == lineHeight &&
 		entry.width == wRounded &&
+		entry.fontEpoch == epoch &&
 		entry.layout != nil {
 		return entry.layout
 	}
@@ -1787,6 +1790,7 @@ func (s *Session) cachedShapeBlock(
 		weight:     weight,
 		lineHeight: lineHeight,
 		width:      wRounded,
+		fontEpoch:  epoch,
 		layout:     layout,
 	}
 	return layout

@@ -121,14 +121,15 @@ type RichInputOptions struct {
 }
 
 type richLayoutKey struct {
-	text   string
-	spans  string
-	width  float32
-	family string
-	size   float32
-	weight int
-	lh     float32
-	align  ui.Align
+	text      string
+	spans     string
+	width     float32
+	family    string
+	size      float32
+	weight    int
+	lh        float32
+	align     ui.Align
+	fontEpoch uint64
 }
 
 // RichInputState holds persistent editing, IME composition, selection, and cached layout state
@@ -334,14 +335,15 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 func (s *RichInputState) ensureLayout(width float32) *ui.TextLayout {
 	w := max(float32(math.Round(float64(width)*2)/2), 1)
 	key := richLayoutKey{
-		text:   s.displayText,
-		spans:  spansLayoutSig(s.displaySpans),
-		width:  w,
-		family: s.font.Family,
-		size:   s.font.Size,
-		weight: s.font.Weight,
-		lh:     s.font.LineHeight,
-		align:  s.align,
+		text:      s.displayText,
+		spans:     spansLayoutSig(s.displaySpans),
+		width:     w,
+		family:    s.font.Family,
+		size:      s.font.Size,
+		weight:    s.font.Weight,
+		lh:        s.font.LineHeight,
+		align:     s.align,
+		fontEpoch: theme.FontEpoch(),
 	}
 	if s.layout != nil && s.layKey == key {
 		return s.layout
