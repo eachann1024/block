@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"block/internal/icons"
@@ -106,20 +105,15 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 }
 
 func storeColumnCount(bodyW float32) int {
-	switch {
-	case bodyW <= 0:
+	if bodyW <= 0 {
 		return 2
-	case bodyW >= theme.StoreThreeColMinWidth:
-		return 3
-	case bodyW >= theme.StoreTwoColMinWidth:
-		return 2
-	default:
-		return 1
 	}
+	cols := int((bodyW + theme.Space16) / (theme.StoreMinColWidth + theme.Space16))
+	return min(max(cols, 1), 4)
 }
 
-// renderStoreMasonry distributes cards into shortest-first vertical columns (Xiaohongshu feed style)
-// so each card wraps its natural content height without stretched empty gaps or orphan row spacers.
+// renderStoreMasonry distributes cards into shortest-first vertical columns so each card
+// expands naturally to fit as much summary copy as needed without row-stretch empty space.
 func renderStoreMasonry(
 	c *ui.Context,
 	ctrl *Controller,
@@ -135,7 +129,7 @@ func renderStoreMasonry(
 			for _, item := range entries {
 				entry := item
 				_, isInstalled := installedMap[entry.ID]
-				renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab)
+				renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, bodyColWidth(0, 1))
 			}
 		})
 		return
@@ -150,11 +144,18 @@ func renderStoreMasonry(
 				for _, item := range colItems {
 					entry := item
 					_, isInstalled := installedMap[entry.ID]
-					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab)
+					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, 0)
 				}
 			})
 		}
 	})
+}
+
+func bodyColWidth(bodyW float32, cols int) float32 {
+	if bodyW <= 0 || cols <= 0 {
+		return 0
+	}
+	return (bodyW - float32(cols-1)*theme.Space16) / float32(cols)
 }
 
 func distributeMasonryEntries(entries []plugins.StoreAppEntry, locale string, colCount int) [][]plugins.StoreAppEntry {
@@ -175,18 +176,20 @@ func distributeMasonryEntries(entries []plugins.StoreAppEntry, locale string, co
 
 func estimateStoreCardWeight(entry plugins.StoreAppEntry, locale string) int {
 	summaryRunes := utf8.RuneCountInString(strings.TrimSpace(entry.Summary.Resolve(locale)))
-	lines := max((summaryRunes+21)/22, 1)
-	permWeight := 0
-	if len(entry.Permissions) > 0 {
-		permWeight = 28
-	}
-	return 210 + lines*20 + permWeight
+	lines := max((summaryRunes+23)/24, 1)
+	return 140 + lines*20
 }
 
 func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string, onSelectTab func(nextTab string)) {
 	pal := theme.Ocean()
-	c.Key("app-store-manual-card")
-	bui.Card(c, func() {
+	card := ui.Column(c.Key("app-store-manual-card")).FillWidth().MinWidth(0).
+		Padding(theme.Space16, theme.Space20, theme.Space16, theme.Space20).
+		Gap(theme.Space12).
+		Radius(theme.RadiusXL).
+		Background(pal.Card).
+		Border(1, pal.Hairline)
+
+	card.Children(func() {
 		ui.Text(c, theme.Tr("手动安装", "Manual Install")).
 			FontSize(theme.FontTitle).
 			FixedLineHeight(theme.LineTitle).
@@ -199,12 +202,13 @@ func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID strin
 			in := ui.TextInput(c.Key("app-store-manual-input"), &spec).
 				Placeholder(theme.Tr("输入 owner/repo、压缩包 URL 或本地目录路径", "Enter owner/repo, archive URL, or local directory path")).
 				Label(theme.Tr("手动安装插件源", "Plugin Source")).
+				Font("monospace").
 				FontSize(theme.FontBody).
 				Height(theme.HeightControl).
 				PaddingX(theme.Space10).
 				Radius(theme.RadiusMD).
 				Background(pal.Shell).
-				Border(1, pal.BtnBorder).
+				Border(1, pal.Hairline).
 				TextColor(pal.Text).
 				PlaceholderColor(pal.Placeholder).
 				Grow(1).
@@ -229,7 +233,7 @@ func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID strin
 			if manualBusy {
 				btnLbl = theme.Tr("安装中…", "Installing…")
 			}
-			btn := bui.ActionButton(c, "app-store-manual-install", btnLbl, nil, bui.ButtonPrimary, disabled)
+			btn := bui.ActionButton(c, "app-store-manual-install", btnLbl, nil, bui.ButtonAccentOutline, disabled)
 			if (btn.Clicked() || submitted) && !disabled {
 				source := spec
 				ctrl.sup.InstallFromSourceAsync(source, func(pluginID string) {
@@ -251,9 +255,9 @@ func renderStoreAppCard(
 	isInstalled bool,
 	installingID string,
 	onSelectTab func(nextTab string),
+	_ float32,
 ) {
 	pal := theme.Ocean()
-	tone := pal.StoreCard(entry.ID)
 	downloads := entry.Downloads
 	if downloads < 0 {
 		downloads = 0
@@ -266,8 +270,9 @@ func renderStoreAppCard(
 	card := ui.Column(c.Key("app-store-card-" + entry.ID)).
 		FillWidth().
 		MinWidth(0).
-		Radius(theme.RadiusXL).
-		Clip()
+		Padding(theme.CardPadY, theme.CardPadX, theme.CardPadY, theme.CardPadX).
+		Gap(theme.Space12).
+		Radius(theme.RadiusXL)
 	hovered := card.Hovered()
 	bdCol := pal.Hairline
 	if hovered {
@@ -279,18 +284,24 @@ func renderStoreAppCard(
 	}
 
 	card.Children(func() {
-		// Top Xiaohongshu-style visual cover stage with floating version & badge tags.
-		ui.Box(c).FillWidth().Height(theme.StoreCoverHeight).
-			Background(tone.CoverBG).
-			BorderWidth(0, 0, 1, 0).
-			BorderColor(pal.Hairline).
-			Center().
-			Children(func() {
-				if ver := strings.TrimSpace(entry.Version); ver != "" {
-					ui.Row(c).Absolute().Top(theme.Space10).Left(theme.Space12).
-						Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
-						Background(tone.EmblemBG).Border(1, tone.EmblemBorder).AlignItems(ui.Center).
-						Children(func() {
+		// Top header row matching Main.dc.html: 40x40 rounded icon box + Title/Version/Badge + Author + trailing CTA.
+		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
+			ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
+					Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
+					DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
+				})
+
+				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
+					ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, entry.Name.Resolve(locale)).
+							FontSize(theme.FontTitle).
+							FixedLineHeight(theme.LineTitle).
+							FontWeight(theme.WeightTitle).
+							TextColor(pal.Text).
+							SingleLine().
+							Ellipsis("…")
+						if ver := strings.TrimSpace(entry.Version); ver != "" {
 							ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
 								Font("monospace").
 								FontSize(theme.FontMeta).
@@ -298,100 +309,55 @@ func renderStoreAppCard(
 								FontWeight(theme.WeightMono).
 								TextColor(pal.TextSecondary).
 								SingleLine()
-						})
-				}
-
-				ui.Box(c).Absolute().Top(theme.Space10).Right(theme.Space12).Children(func() {
-					renderVerifiedBadge(c, entry.Verified)
-				})
-
-				emblem := ui.Box(c).Size(theme.StoreCoverEmblemBox, theme.StoreCoverEmblemBox).
-					Radius(theme.RadiusXL).
-					Background(tone.EmblemBG).
-					Border(1, tone.EmblemBorder).
-					Center()
-				bui.Elevate(emblem, theme.ElevationRaised)
-				emblem.Children(func() {
-					DrawDuoSpec(c, entry.Icon, theme.StoreCoverEmblemGlyph, theme.IconColors{
-						Line:   tone.IconLine,
-						Fill:   tone.IconFill,
-						Accent: tone.IconAccent,
+						}
+						renderVerifiedBadge(c, entry.Verified)
 					})
+
+					if author := strings.TrimSpace(entry.Author); author != "" {
+						ui.Text(c, author).
+							FontSize(theme.FontMeta).
+							FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).
+							SingleLine().
+							Ellipsis("…")
+					}
 				})
 			})
 
-		// Card content body: title, full natural-height summary, compact permission strip, and author/CTA footer.
-		ui.Column(c).FillWidth().MinWidth(0).
-			Padding(theme.Space16, theme.Space16, theme.Space12, theme.Space16).
+			ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+				renderStoreCardActions(c, ctrl, entry, isInstalled, installingID, onSelectTab)
+			})
+		})
+
+		// Natural-height summary copy (no 2-line clamp; longer descriptions flow naturally in the masonry column).
+		if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
+			ui.Text(c, summary).
+				FontSize(theme.FontSmall).
+				FixedLineHeight(theme.LineBody).
+				TextColor(pal.TextSecondary)
+		}
+
+		// Clean single-line footer matching Main.dc.html: monospace downloads on left, joined permission pill on right.
+		ui.Row(c).FillWidth().MinWidth(0).
+			Padding(theme.Space12, 0, 0, 0).
+			BorderWidth(1, 0, 0, 0).
+			BorderColor(pal.Hairline).
 			Gap(theme.Space10).
+			AlignItems(ui.Center).
+			Justify(ui.SpaceBetween).
 			Children(func() {
-				ui.Text(c, entry.Name.Resolve(locale)).
-					FontSize(theme.FontTitle).
-					FixedLineHeight(theme.LineTitle).
-					FontWeight(theme.WeightTitle).
+				ui.Text(c, theme.Tr(dlStr+" 次下载", dlStr+" downloads")).
+					Font("monospace").
+					FontSize(theme.FontMeta).
+					FixedLineHeight(theme.LineMeta).
+					FontWeight(theme.WeightMono).
 					TextColor(pal.Text).
 					SingleLine().
-					Ellipsis("…")
-
-				if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
-					ui.Text(c, summary).
-						FontSize(theme.FontSmall).
-						FixedLineHeight(theme.LineBody).
-						TextColor(pal.TextSecondary)
-				}
+					Shrink(0)
 
 				if len(entry.Permissions) > 0 {
-					renderPermissionSummaryRow(c, entry.Permissions, locale)
+					renderPermissionSummaryPill(c, entry.Permissions, locale)
 				}
-
-				// Xiaohongshu-style creator + metric + compact action footer (single-line, never wraps or pushes card uneven).
-				ui.Row(c).FillWidth().MinWidth(0).
-					Padding(theme.Space10, 0, 0, 0).
-					BorderWidth(1, 0, 0, 0).
-					BorderColor(pal.Hairline).
-					Gap(theme.Space8).
-					AlignItems(ui.Center).
-					Justify(ui.SpaceBetween).
-					Children(func() {
-						author := strings.TrimSpace(entry.Author)
-						if author == "" {
-							author = "Community"
-						}
-						ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-							ui.Box(c).Size(theme.StoreAuthorDotSize, theme.StoreAuthorDotSize).Shrink(0).
-								Radius(theme.RadiusPill).Background(tone.AuthorDotBG).Center().Children(func() {
-								ui.Text(c, authorInitial(author)).
-									FontSize(theme.FontMeta).
-									FontWeight(theme.WeightTitle).
-									TextColor(tone.AuthorDotFG).
-									SingleLine()
-							})
-							ui.Text(c, author).
-								FontSize(theme.FontMeta).
-								FixedLineHeight(theme.LineMeta).
-								TextColor(pal.TextSecondary).
-								Grow(1).
-								MinWidth(0).
-								SingleLine().
-								Ellipsis("…")
-						})
-
-						ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-							dlRow := ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0)
-							bui.Tooltip(c, dlRow, theme.Tr(dlStr+" 次下载", dlStr+" downloads"))
-							dlRow.Children(func() {
-								icons.Draw(c, icons.Download, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
-								ui.Text(c, dlStr).
-									Font("monospace").
-									FontSize(theme.FontMeta).
-									FixedLineHeight(theme.LineMeta).
-									TextColor(pal.TextSecondary).
-									SingleLine()
-							})
-
-							renderStoreCardActions(c, ctrl, entry, isInstalled, installingID, onSelectTab)
-						})
-					})
 			})
 	})
 }
@@ -408,20 +374,19 @@ func renderStoreCardActions(
 		openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 			ID:       "app-store-open-" + entry.ID,
 			Label:    theme.Tr("打开", "Open"),
-			Style:    bui.ButtonSecondary,
+			Style:    bui.ButtonAccentOutline,
 			Height:   theme.HeightCompact,
-			PaddingX: theme.Space10,
+			PaddingX: theme.Space12,
 		})
 		if openBtn.Clicked() && onSelectTab != nil {
 			onSelectTab(modals.TabPluginPrefix + entry.ID)
 		}
-		uninstBtn := bui.IconButton(c, icons.Trash, bui.IconButtonOptions{
-			ID:      "app-store-uninstall-" + entry.ID,
-			Label:   theme.Tr("卸载", "Uninstall"),
-			Tooltip: theme.Tr("卸载", "Uninstall"),
-			Variant: bui.IconPlain,
-			Size:    theme.HeightCompact,
-			Danger:  true,
+		uninstBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-uninstall-" + entry.ID,
+			Label:    theme.Tr("卸载", "Uninstall"),
+			Style:    bui.ButtonSecondary,
+			Height:   theme.HeightCompact,
+			PaddingX: theme.Space10,
 		})
 		if uninstBtn.Clicked() {
 			ctrl.uninstallPlugin(entry.ID, nil)
@@ -437,10 +402,10 @@ func renderStoreCardActions(
 	instBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 		ID:       "app-store-install-" + entry.ID,
 		Label:    lbl,
-		Style:    bui.ButtonPrimary,
+		Style:    bui.ButtonAccentOutline,
 		Disabled: installingID != "",
 		Height:   theme.HeightCompact,
-		PaddingX: theme.Space10,
+		PaddingX: theme.Space12,
 	})
 	if instBtn.Clicked() {
 		appEntry := entry
@@ -452,40 +417,33 @@ func renderStoreCardActions(
 	}
 }
 
-func renderPermissionSummaryRow(c *ui.Context, perms []plugins.Permission, locale string) {
+func renderPermissionSummaryPill(c *ui.Context, perms []plugins.Permission, locale string) {
+	pal := theme.Ocean()
+	allLabels := make([]string, 0, len(perms))
+	for _, p := range perms {
+		allLabels = append(allLabels, plugins.PermissionLabel(p, locale))
+	}
 	limit := theme.StorePermissionSummary
-	shown := perms
-	var hidden []string
-	if len(perms) > limit {
-		shown = perms[:limit]
-		for _, p := range perms[limit:] {
-			hidden = append(hidden, plugins.PermissionLabel(p, locale))
-		}
+	display := strings.Join(allLabels, " · ")
+	hasExtra := false
+	if len(allLabels) > limit {
+		display = fmt.Sprintf("%s +%d", strings.Join(allLabels[:limit], " · "), len(allLabels)-limit)
+		hasExtra = true
 	}
 
-	ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-		for _, perm := range shown {
-			renderPermissionCapsule(c, plugins.PermissionLabel(perm, locale))
-		}
-		if len(hidden) > 0 {
-			morePill := renderPermissionCapsule(c, fmt.Sprintf("+%d", len(hidden)))
-			allLabels := make([]string, 0, len(perms))
-			for _, p := range perms {
-				allLabels = append(allLabels, plugins.PermissionLabel(p, locale))
-			}
-			bui.Tooltip(c, morePill, theme.Tr("所需权限：", "Permissions: ")+strings.Join(allLabels, " · "))
-		}
+	pill := ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).MinWidth(0).Shrink(1).
+		Radius(theme.RadiusSM).Background(pal.Shell).Border(1, pal.Hairline).AlignItems(ui.Center)
+	if hasExtra {
+		bui.Tooltip(c, pill, theme.Tr("所需权限：", "Permissions: ")+strings.Join(allLabels, " · "))
+	}
+	pill.Children(func() {
+		ui.Text(c, display).
+			FontSize(theme.FontMeta).
+			FixedLineHeight(theme.LineMeta).
+			TextColor(pal.TextSecondary).
+			SingleLine().
+			Ellipsis("…")
 	})
-}
-
-func authorInitial(author string) string {
-	for _, r := range strings.TrimSpace(author) {
-		if unicode.IsSpace(r) {
-			continue
-		}
-		return strings.ToUpper(string(r))
-	}
-	return "B"
 }
 
 func formatDownloadCount(n int) string {
@@ -520,7 +478,7 @@ func renderVerifiedBadge(c *ui.Context, verified bool) {
 		label = theme.Tr("官方认证", "Official")
 		bg = pal.Selected
 		bd = pal.Accent
-		fg = pal.Accent
+		fg = pal.Text
 	}
 	ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
 		Background(bg).Border(1, bd).AlignItems(ui.Center).Children(func() {
@@ -531,20 +489,6 @@ func renderVerifiedBadge(c *ui.Context, verified bool) {
 			TextColor(fg).
 			SingleLine()
 	})
-}
-
-func renderPermissionCapsule(c *ui.Context, label string) ui.Element {
-	pal := theme.Ocean()
-	pill := ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-		Background(pal.CodeBG).Border(1, pal.Hairline).AlignItems(ui.Center)
-	pill.Children(func() {
-		ui.Text(c, label).
-			FontSize(theme.FontMeta).
-			FixedLineHeight(theme.LineMeta).
-			TextColor(pal.TextSecondary).
-			SingleLine()
-	})
-	return pill
 }
 
 func buildVisibleStoreEntries(

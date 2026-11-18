@@ -176,6 +176,7 @@ type ActionButtonStyle uint8
 const (
 	ButtonSecondary ActionButtonStyle = iota
 	ButtonPrimary
+	ButtonAccentOutline
 	ButtonGhost
 	ButtonDanger
 )
@@ -261,6 +262,16 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		} else if hovered {
 			bg = pal.AccentHover
 		}
+	case ButtonAccentOutline:
+		fg = pal.Text
+		bg = pal.Selected
+		if pressed {
+			bg = pal.Selected.Mix(pal.Accent, 0.22)
+		} else if hovered {
+			bg = pal.Selected.Mix(pal.Accent, 0.12)
+		}
+		bd = pal.Accent
+		hasBorder = true
 	case ButtonDanger:
 		fg = pal.Danger
 		bg = pal.DangerSurface
