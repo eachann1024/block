@@ -3,6 +3,7 @@ package updater
 import (
 	"block/updates"
 	"context"
+	"errors"
 	"os"
 	"runtime"
 	"sync"
@@ -40,12 +41,15 @@ type Snapshot struct {
 	ReleaseURL      string
 	SourceMode      SourceMode
 	ActiveChannel   string // "mirror" | "github" | ""
+	FetchLatencyMs  int64
+	SpeedMBps       float64
 	ViewMode        ViewMode
 	DownloadedBytes int64
 	TotalBytes      int64
 	Percent         int
 	Preparing       bool
 	DownloadPath    string
+	LogPath         string
 	InPlace         bool
 	PackageManaged  bool
 	ErrorMessage    string
@@ -82,6 +86,8 @@ type Service struct {
 	status          Status
 	sourceMode      SourceMode
 	activeChannel   string
+	fetchLatencyMs  int64
+	speedMBps       float64
 	viewMode        ViewMode
 	lastUpdatedFrom string
 	releases        []ReleaseEntry
@@ -100,13 +106,17 @@ type Service struct {
 	checkGen        uint64
 	checkRunning    bool
 	downloadRunning bool
+	downloadCancel  context.CancelFunc
 	installRunning  bool
 	autoStarted     bool
 	stopCh          chan struct{}
 }
 
-// NewService constructs a Service and immediately loads any cached feed and staged ready.json.
+// NewService constructs a Service and immediately loads bundled/cached feeds and staged ready.json.
 func NewService(cfg Config) *Service {
+	if cfg.DataDir != "" {
+		SetLogDataDir(cfg.DataDir)
+	}
 	s := &Service{
 		cfg:             cfg,
 		status:          StatusIdle,
@@ -176,12 +186,15 @@ func (s *Service) Snapshot() Snapshot {
 		ReleaseURL:      relURL,
 		SourceMode:      s.sourceMode,
 		ActiveChannel:   s.activeChannel,
+		FetchLatencyMs:  s.fetchLatencyMs,
+		SpeedMBps:       s.speedMBps,
 		ViewMode:        s.viewMode,
 		DownloadedBytes: s.downloadedBytes,
 		TotalBytes:      s.totalBytes,
 		Percent:         s.percent,
 		Preparing:       s.preparing,
 		DownloadPath:    s.downloadPath,
+		LogPath:         LogFilePath(s.cfg.DataDir),
 		InPlace:         s.inPlace,
 		PackageManaged:  s.pkgManaged,
 		ErrorMessage:    s.errorMsg,
@@ -214,6 +227,7 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 	s.sourceMode = norm
 	s.mu.Unlock()
 	if changed {
+		logInfo("config.source_mode_changed", "mode", norm)
 		if s.cfg.OnSourceModeChanged != nil {
 			s.cfg.OnSourceModeChanged(norm)
 		}
@@ -221,8 +235,34 @@ func (s *Service) SetSourceMode(mode SourceMode) {
 	}
 }
 
+// CancelDownload cancels an in-progress download and returns to StatusAvailable.
+func (s *Service) CancelDownload() {
+	s.mu.Lock()
+	cancel := s.downloadCancel
+	s.downloadCancel = nil
+	if !s.downloadRunning {
+		s.mu.Unlock()
+		return
+	}
+	s.downloadRunning = false
+	s.preparing = false
+	s.speedMBps = 0
+	s.percent = 0
+	s.downloadedBytes = 0
+	if s.latestEntry != nil {
+		s.status = StatusAvailable
+	} else {
+		s.status = StatusIdle
+	}
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	s.notify()
+}
+
 // StartAutomatic restores any previously staged update on disk, schedules an initial check
-// 15s after launch, and repeats every 4 hours while running.
+// 12s after launch, and repeats every 4 hours while running.
 func (s *Service) StartAutomatic() {
 	s.mu.Lock()
 	if s.autoStarted {
@@ -253,13 +293,12 @@ func (s *Service) StartAutomatic() {
 				}
 				s.mu.Unlock()
 				s.notify()
-				// Refresh release notes quietly so ready state has complete cross-version changelog.
 				s.CheckAsync(false)
 			}
 		}
 
 		select {
-		case <-time.After(15 * time.Second):
+		case <-time.After(12 * time.Second):
 			s.runScheduledCycle()
 		case <-s.stopCh:
 			return
@@ -336,7 +375,7 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 		ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 		defer cancel()
 
-		entries, channel, rawFeed, err := FetchReleases(ctx, mode)
+		entries, channel, latencyMs, rawFeed, err := FetchReleases(ctx, mode)
 
 		s.mu.Lock()
 		if gen != s.checkGen {
@@ -367,8 +406,11 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 		cur := CurrentVersion()
 		s.releases = entries
 		s.activeChannel = channel
+		s.fetchLatencyMs = latencyMs
 		s.notes = AggregateReleases(entries, cur, s.lastUpdatedFrom)
 		s.errorMsg = ""
+
+		logInfo("check.summary", "manual", manual, "current", cur, "latest", s.notes.ToVersion, "has_newer", s.notes.HasNewer, "aggregated_versions", s.notes.VersionCount, "channel", channel, "latency_ms", latencyMs)
 
 		if !s.notes.HasNewer || len(s.notes.Versions) == 0 {
 			s.latestEntry = nil
@@ -402,7 +444,6 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 }
 
 // StartDownload downloads and verifies the available update in the background.
-// Closing the updater modal never cancels an active background download.
 func (s *Service) StartDownload() {
 	if os.Getenv("BLOCK_MOCK_UPDATE") == "1" {
 		s.runMockDownload()
@@ -424,10 +465,13 @@ func (s *Service) StartDownload() {
 	mode := s.sourceMode
 	dataDir := s.cfg.DataDir
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	s.downloadRunning = true
+	s.downloadCancel = cancel
 	s.status = StatusDownloading
 	s.downloadedBytes = 0
 	s.totalBytes = asset.Size
+	s.speedMBps = 0
 	s.percent = 0
 	s.preparing = false
 	s.errorMsg = ""
@@ -435,15 +479,19 @@ func (s *Service) StartDownload() {
 	s.notify()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
-		rec, err := DownloadAndStage(ctx, dataDir, entry, asset, inPlace, mode, func(dl, tot int64, ch string, prep bool) {
+		rec, err := DownloadAndStage(ctx, dataDir, entry, asset, inPlace, mode, func(dl, tot int64, speed float64, ch string, prep bool) {
 			s.mu.Lock()
+			if !s.downloadRunning {
+				s.mu.Unlock()
+				return
+			}
 			s.downloadedBytes = dl
 			if tot > 0 {
 				s.totalBytes = tot
 			}
+			s.speedMBps = speed
 			if prep {
 				s.percent = 100
 				s.preparing = true
@@ -465,11 +513,21 @@ func (s *Service) StartDownload() {
 		})
 
 		s.mu.Lock()
+		if !s.downloadRunning && errors.Is(err, context.Canceled) {
+			s.mu.Unlock()
+			return
+		}
 		s.downloadRunning = false
+		s.downloadCancel = nil
 		s.preparing = false
+		s.speedMBps = 0
 		if err != nil {
-			s.status = StatusError
-			s.errorMsg = err.Error()
+			if errors.Is(err, context.Canceled) {
+				s.status = StatusAvailable
+			} else {
+				s.status = StatusError
+				s.errorMsg = err.Error()
+			}
 			s.mu.Unlock()
 			s.notify()
 			return
@@ -580,6 +638,7 @@ func (s *Service) installMockUpdate() {
 	s.targetAsset = &asset
 	s.inPlace = true
 	s.activeChannel = "mirror"
+	s.fetchLatencyMs = 38
 	s.totalBytes = asset.Size
 	s.status = StatusAvailable
 	s.mu.Unlock()
@@ -596,6 +655,7 @@ func (s *Service) runMockDownload() {
 	tot := int64(13_421_772)
 	s.totalBytes = tot
 	s.downloadedBytes = 0
+	s.speedMBps = 4.2
 	s.percent = 0
 	s.mu.Unlock()
 	s.notify()
@@ -604,6 +664,10 @@ func (s *Service) runMockDownload() {
 		for step := 1; step <= 10; step++ {
 			time.Sleep(80 * time.Millisecond)
 			s.mu.Lock()
+			if !s.downloadRunning {
+				s.mu.Unlock()
+				return
+			}
 			s.downloadedBytes = tot * int64(step) / 10
 			s.percent = step * 10
 			s.mu.Unlock()
@@ -611,6 +675,7 @@ func (s *Service) runMockDownload() {
 		}
 		s.mu.Lock()
 		s.downloadRunning = false
+		s.speedMBps = 0
 		s.status = StatusReady
 		s.mu.Unlock()
 		s.notify()

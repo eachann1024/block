@@ -24,11 +24,13 @@ const BATCH_THRESHOLD = 50;
 const BATCH_SIZE = 40;
 const BOT_AUTHORS = new Set(["github-actions[bot]", "github-actions"]);
 const VERSION_BUMP = /^chore\(release\):\s*v\d+\.\d+\.\d+\s*$/i;
+const INTERNAL_COMMIT = /^(?:chore|ci|docs|test)(?:\([^)]*\))?!?:\s|^Update README\.md$|^(?:feat|fix)\((?:src|assets|scripts|deps|designs)\):\s*(?:add|update|remove)\b/i;
 
 export function isExcludedCommit({ author = "", subject = "", releaseNote = "" }) {
   if (BOT_AUTHORS.has(author)) return true;
   if (/^none$/i.test(releaseNote.trim())) return true;
   if (VERSION_BUMP.test(subject)) return true;
+  if (!releaseNote.trim() && INTERNAL_COMMIT.test(subject.trim())) return true;
   return false;
 }
 
@@ -235,7 +237,7 @@ export function fallbackReleaseNotes(commits) {
   for (const commit of commits.filter((item) => !isExcludedCommit(item))) {
     const pair = describeCommit(commit);
     const bucket = buckets[kindIndex[pair.kind] ?? 3];
-    if (bucket.zh.includes(pair.zh)) continue;
+    if (bucket.zh.includes(pair.zh) || bucket.en.includes(pair.en)) continue;
     if (lineMixesLanguages(`- ${pair.zh}`) || lineMixesLanguages(`- ${pair.en}`)) continue;
     bucket.zh.push(pair.zh);
     bucket.en.push(pair.en);
@@ -258,7 +260,7 @@ export async function buildReleaseNotes({ version, commits, env = process.env })
   try {
     const markdown = fallbackReleaseNotes(userCommits);
     const listed = markdown ? listedItems(markdown) : 0;
-    if (markdown && listed >= userCommits.length) {
+    if (markdown && listed > 0) {
       return { skip: false, source: "fallback", reason: polished.reason, markdown };
     }
     return { skip: true, reason: `更新说明只写了 ${listed}/${userCommits.length} 条提交`, markdown: "" };
