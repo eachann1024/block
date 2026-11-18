@@ -523,7 +523,7 @@ func (s *Session) renderTrailingAddOverlay(c *ui.Context, readOnly bool) {
 	left := slot.btnRect.X - s.editorRect.X
 	top := slot.btnRect.Y - s.editorRect.Y
 	wrap := ui.Box(c.Key("trailing-add-wrap")).Absolute().Left(left).Top(top).
-		Transition(appUi.PopoverSpringTransition())
+		Transition(appUi.GutterHandleTransition())
 	wrap.Children(func() {
 		tip := appUi.TooltipSpec{
 			Placement: appUi.TooltipAbove,
