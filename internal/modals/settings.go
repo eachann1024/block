@@ -813,8 +813,9 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			if snap.HasActionableUpdate() && snap.LatestVersion != "" {
 				verTitle = fmt.Sprintf("v%s → v%s", curVer, snap.LatestVersion)
 			}
-			settingRow(c, fmt.Sprintf("%s %s", theme.Tr("当前版本", "Version"), verTitle), func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+			settingRow(c, theme.Tr("当前版本", "Version"), func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
+					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					if snap.HasActionableUpdate() {
 						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
 						if snap.Status == updater.StatusReady {
