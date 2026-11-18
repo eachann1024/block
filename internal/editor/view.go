@@ -1098,8 +1098,12 @@ func spanLinkAtOffset(b *model.Block, off int) string {
 func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block, fontSize float32, weight int, lh float32, deleteArmed bool) {
 	pal := theme.Ocean()
 	draft := b.PlainText()
-	hint := s.emptyHintFor(b, deleteArmed)
 	st := s.richInputState(b.ID)
+	var hint *emptyHintSpec
+	// IME preedit is visible before it becomes part of the block text.
+	if !st.Composing() {
+		hint = s.emptyHintFor(b, deleteArmed)
+	}
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
 	s.paintEmptyHintBand(wrap, hint, fontSize, lh)
