@@ -152,8 +152,7 @@ func NewWorkspace(dataDir string) *Workspace {
 			}
 			win := w.Window()
 			go func() {
-				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-					Parent:    win,
+				paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
 					Title:     title,
 					Directory: true,
 				})
@@ -212,8 +211,7 @@ func (w *Workspace) pickImagesForSession(sess *editor.Session, blockID model.Blo
 	}
 	win := w.Window()
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent:   win,
+		paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
 			Title:    theme.Tr("上传图片", "Upload Image"),
 			Multiple: true,
 			Filters: []mygo.FileFilter{
@@ -1708,8 +1706,7 @@ func (w *Workspace) ChooseNotebookDialog() {
 	}
 	win := w.Window()
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent:    win,
+		paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
 			Title:     theme.Tr("选择笔记本文件夹", "Choose Notebook Folder"),
 			Directory: true,
 		})
