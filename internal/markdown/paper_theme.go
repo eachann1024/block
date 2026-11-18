@@ -11,29 +11,42 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// TitleMark describes how the document title is separated from the body.
-type TitleMark uint8
+// CardKind is how a theme's page card is drawn.
+type CardKind uint8
 
 const (
-	TitleMarkRule TitleMark = iota
-	TitleMarkBar
-	TitleMarkWavy
-	TitleMarkHighlight
-	TitleMarkDoubleRule
-	TitleMarkBand
-	TitleMarkCursor
+	CardFill    CardKind = iota // a filled sheet laid on the canvas
+	CardOutline                 // a hairline frame, the canvas showing through
 )
 
-// CardSpec describes optional floating card geometry on a paper theme.
+// CardSpec describes the sheet or frame the content sits in.
 type CardSpec struct {
-	Inset     float32
-	Radius    float32
-	Border    ui.Color
+	Kind CardKind
+	// Inset is the distance from the page's sides and bottom; InsetTop from its top (0 = Inset).
+	Inset    float32
+	InsetTop float32
+	Radius   float32
+	Fill     ui.Color // 0 = InnerCanvas
+	Border   ui.Color
+	// HasBorder draws Border BorderW wide (0 = 1).
 	HasBorder bool
+	BorderW   float32
 	Shadow    ui.Color
+	ShadowY   float32 // 0 = 6
+	Blur      float32 // 0 = 16
+	// TopEdge is a highlight along the card's top edge (glass, lacquer).
+	TopEdge ui.Color
+	// Label is a template set into the top border (Terminal window title).
+	Label      string
+	LabelColor ui.Color
+	// BodyOnly keeps the meta line above the card and the footer below it,
+	// on the canvas, so the card holds only the title and body (Neon).
+	BodyOnly bool
 }
 
-// PaperThemeSpec defines the complete color palette and page geometry for a paper export theme.
+func (c *CardSpec) top() float32 { return orF(c.InsetTop, c.Inset) }
+
+// PaperThemeSpec defines the palette, page geometry and design vocabulary of a paper export theme.
 type PaperThemeSpec struct {
 	Theme         model.ExportTheme
 	Dark          bool
@@ -66,6 +79,9 @@ type PaperThemeSpec struct {
 	HeadingFamily string
 	BodyFamily    string
 	TitleBold     bool
+	// Radius rounds code, image and callout boxes.
+	Radius float32
+	Style  PaperStyle
 }
 
 const (
@@ -73,6 +89,11 @@ const (
 	fontSong = "Songti SC"
 	fontKai  = "Kaiti SC"
 	fontMono = "Menlo, monospace"
+	// Latin in the first family, CJK falling back to the second.
+	fontGeorgiaSong = "Georgia, Songti SC"
+	fontAvenir      = "Avenir Next, PingFang SC"
+	fontDidot       = "Didot, Songti SC"
+	fontMonoCJK     = "Menlo, PingFang SC"
 )
 
 func rgbHex(v uint32) ui.Color {
@@ -81,6 +102,13 @@ func rgbHex(v uint32) ui.Color {
 
 func rgbaBytes(r, g, b, a uint8) ui.Color {
 	return ui.Color{R: r, G: g, B: b, A: a}
+}
+
+// rgbaHex is rgbHex at opacity a (0–1).
+func rgbaHex(v uint32, a float32) ui.Color {
+	c := rgbHex(v)
+	c.A = uint8(a*255 + 0.5)
+	return c
 }
 
 // NormalizeExportTheme resolves t to one of the 12 supported ExportTheme values (defaulting to Mono).
@@ -104,241 +132,52 @@ func NormalizeExportTheme(t model.ExportTheme) model.ExportTheme {
 	}
 }
 
-// PaperTheme returns the 1:1 paper theme specification for any of the 12 ExportTheme styles.
+// PaperTheme returns the paper theme specification for any of the 12 ExportTheme styles.
 func PaperTheme(t model.ExportTheme) PaperThemeSpec {
-	t = NormalizeExportTheme(t)
-	open := func(dark bool, mark TitleMark, titleSize float32, titleFam, bodyFam string) PaperThemeSpec {
-		return PaperThemeSpec{
-			Theme:         t,
-			Dark:          dark,
-			PadTop:        72,
-			PadRight:      72,
-			PadBottom:     64,
-			PadLeft:       72,
-			BodySize:      17,
-			Leading:       1.75,
-			TitleSize:     titleSize,
-			HeadSizes:     [3]float32{28, 22, 19},
-			Mark:          mark,
-			TitleFamily:   titleFam,
-			HeadingFamily: titleFam,
-			BodyFamily:    bodyFam,
-			TitleBold:     true,
-		}
-	}
-	journal := func(dark bool, border ui.Color) PaperThemeSpec {
-		return PaperThemeSpec{
-			Theme: t,
-			Dark:  dark,
-			Card: &CardSpec{
-				Inset:     60,
-				Radius:    14,
-				Border:    border,
-				HasBorder: true,
-				Shadow:    rgbaBytes(90, 60, 10, 16),
-			},
-			PadTop:        54,
-			PadRight:      44,
-			PadBottom:     44,
-			PadLeft:       44,
-			BodySize:      18,
-			Leading:       1.85,
-			TitleSize:     34,
-			HeadSizes:     [3]float32{30, 25, 21},
-			Mark:          TitleMarkWavy,
-			TitleFamily:   fontKai,
-			HeadingFamily: fontKai,
-			BodyFamily:    fontPing,
-			TitleBold:     false,
-		}
-	}
-	floating := func(dark bool, border *ui.Color, shadow ui.Color) PaperThemeSpec {
-		card := &CardSpec{
-			Inset:  48,
-			Radius: 20,
-			Shadow: shadow,
-		}
-		if border != nil {
-			card.Border = *border
-			card.HasBorder = true
-		}
-		return PaperThemeSpec{
-			Theme:         t,
-			Dark:          dark,
-			Card:          card,
-			PadTop:        56,
-			PadRight:      56,
-			PadBottom:     52,
-			PadLeft:       56,
-			BodySize:      17,
-			Leading:       1.75,
-			TitleSize:     38,
-			HeadSizes:     [3]float32{27, 21, 18.5},
-			Mark:          TitleMarkBar,
-			TitleFamily:   fontPing,
-			HeadingFamily: fontPing,
-			BodyFamily:    fontPing,
-			TitleBold:     true,
-		}
-	}
-
-	var s PaperThemeSpec
-	switch t {
+	switch NormalizeExportTheme(t) {
 	case model.ExportThemeJournal:
-		s = journal(false, ui.RGB(240, 232, 208))
-		s.Canvas, s.InnerCanvas = rgbHex(0xfef9e7), rgbHex(0xfffef5)
-		s.Text, s.Title, s.Secondary = rgbHex(0x1f1e1d), rgbHex(0x1f1e1d), rgbHex(0x5e5d59)
-		s.Accent, s.Accent2 = rgbHex(0xd97706), rgbaBytes(252, 196, 57, 140)
-		s.CodeBG, s.CodeBorder = rgbHex(0xfaf5e6), rgbHex(0xe8dcc8)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x5e5d59), rgbHex(0xe8dcc8)
-		s.TableBorder, s.Divider = rgbHex(0xe8dcc8), rgbHex(0xe8dcc8)
-		s.Swatch = [3]ui.Color{rgbHex(0xfef9e7), rgbHex(0xd97706), rgbHex(0xfffef5)}
-
+		return journalTheme()
 	case model.ExportThemeRiso:
-		s = open(false, TitleMarkHighlight, 44, fontPing, fontPing)
-		s.Canvas, s.InnerCanvas = rgbHex(0xf4efe4), rgbHex(0xf4efe4)
-		s.Text, s.Title, s.Secondary = rgbHex(0x1f2a44), rgbHex(0x1d3fa8), rgbHex(0x4a5470)
-		s.Accent, s.Accent2 = rgbHex(0xff5aa8), rgbHex(0x1d3fa8)
-		s.CodeBG, s.CodeBorder = rgbHex(0xfbf7ee), rgbHex(0x1d3fa8)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xffe4f0), rgbHex(0x1f2a44), rgbHex(0xff5aa8)
-		s.TableBorder, s.Divider = rgbHex(0x9aa6cc), rgbHex(0x1d3fa8)
-		s.Swatch = [3]ui.Color{rgbHex(0xf4efe4), rgbHex(0xff5aa8), rgbHex(0xf4efe4)}
-
+		return risoTheme()
 	case model.ExportThemePress:
-		s = open(false, TitleMarkDoubleRule, 46, fontSong, fontSong)
-		s.PadTop, s.PadBottom = 64, 60
-		s.BodySize, s.Leading = 17.5, 1.8
-		s.Canvas, s.InnerCanvas = rgbHex(0xf1ead9), rgbHex(0xf1ead9)
-		s.Text, s.Title, s.Secondary = rgbHex(0x23201b), rgbHex(0x1a1814), rgbHex(0x5a5244)
-		s.Accent, s.Accent2 = rgbHex(0x9c2b1f), rgbHex(0x23201b)
-		s.CodeBG, s.CodeBorder = rgbHex(0xe8dfcb), rgbHex(0xb9ab8d)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x23201b), rgbHex(0x23201b)
-		s.TableBorder, s.Divider = rgbHex(0x8c826e), rgbHex(0x23201b)
-		s.Swatch = [3]ui.Color{rgbHex(0xf1ead9), rgbHex(0x9c2b1f), rgbHex(0xf1ead9)}
-
+		return pressTheme()
 	case model.ExportThemePoster:
-		s = open(false, TitleMarkBand, 50, fontPing, fontPing)
-		s.PadTop = 56
-		s.Canvas, s.InnerCanvas = rgbHex(0xffffff), rgbHex(0xffffff)
-		s.Text, s.Title, s.Secondary = rgbHex(0x1c1c1c), rgbHex(0x1c1c1c), rgbHex(0x5c5c5c)
-		s.Accent, s.Accent2 = rgbHex(0xd8401a), rgbHex(0xffffff)
-		s.CodeBG, s.CodeBorder = rgbHex(0xf5f3f1), rgbHex(0xebe6e1)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xfff1ea), rgbHex(0x1c1c1c), rgbHex(0xd8401a)
-		s.TableBorder, s.Divider = rgbHex(0xe0dcd8), rgbHex(0xe8e4e0)
-		s.Swatch = [3]ui.Color{rgbHex(0xffffff), rgbHex(0xe2471b), rgbHex(0xffffff)}
-
+		return posterTheme()
 	case model.ExportThemeMist:
-		s = floating(false, nil, rgbaBytes(30, 50, 90, 22))
-		s.Canvas, s.InnerCanvas = rgbHex(0xe9edf2), rgbHex(0xffffff)
-		s.Text, s.Title, s.Secondary = rgbHex(0x1e293b), rgbHex(0x0f172a), rgbHex(0x55627a)
-		s.Accent, s.Accent2 = rgbHex(0x3b6cf6), rgbHex(0x3b6cf6)
-		s.CodeBG, s.CodeBorder = rgbHex(0xf3f5f9), rgbHex(0xe3e8ef)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0xf2f6fd), rgbHex(0x1e293b), rgbHex(0x3b6cf6)
-		s.TableBorder, s.Divider = rgbHex(0xdfe5ee), rgbHex(0xe3e8ef)
-		s.Swatch = [3]ui.Color{rgbHex(0xe9edf2), rgbHex(0x3b6cf6), rgbHex(0xffffff)}
-
+		return mistTheme()
 	case model.ExportThemeInk:
-		s = open(true, TitleMarkRule, 42, fontPing, fontPing)
-		s.Canvas, s.InnerCanvas = rgbHex(0x121212), rgbHex(0x121212)
-		s.Text, s.Title, s.Secondary = rgbHex(0xe6e6e6), rgbHex(0xffffff), rgbHex(0xa3a3a3)
-		s.Accent, s.Accent2 = rgbHex(0xededed), rgbHex(0x3a3a3a)
-		s.CodeBG, s.CodeBorder = rgbHex(0x1e1e1e), rgbHex(0x2e2e2e)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xf5f5f5), rgbHex(0xededed)
-		s.TableBorder, s.Divider = rgbHex(0x3a3a3a), rgbHex(0x3a3a3a)
-		s.Swatch = [3]ui.Color{rgbHex(0x121212), rgbHex(0xededed), rgbHex(0x121212)}
-
+		return inkTheme()
 	case model.ExportThemeKraft:
-		s = journal(true, ui.RGB(58, 53, 45))
-		s.Canvas, s.InnerCanvas = rgbHex(0x1c1a17), rgbHex(0x27241f)
-		s.Text, s.Title, s.Secondary = rgbHex(0xece3cf), rgbHex(0xfbf3df), rgbHex(0xb3a78c)
-		s.Accent, s.Accent2 = rgbHex(0xf0c35a), rgbaBytes(240, 195, 90, 120)
-		s.CodeBG, s.CodeBorder = rgbHex(0x1f1d19), rgbHex(0x4a4538)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xc9bea4), rgbHex(0x5c5446)
-		s.TableBorder, s.Divider = rgbHex(0x4a4538), rgbHex(0x3d382f)
-		s.Swatch = [3]ui.Color{rgbHex(0x1c1a17), rgbHex(0xf0c35a), rgbHex(0x27241f)}
-
+		return kraftTheme()
 	case model.ExportThemeNeon:
-		s = open(true, TitleMarkBar, 44, fontPing, fontPing)
-		s.Canvas, s.InnerCanvas = rgbHex(0x14152b), rgbHex(0x14152b)
-		s.Text, s.Title, s.Secondary = rgbHex(0xecebff), rgbHex(0xffffff), rgbHex(0xa9a8d0)
-		s.Accent, s.Accent2 = rgbHex(0x3fe0d0), rgbHex(0xff6a3d)
-		s.CodeBG, s.CodeBorder = rgbHex(0x0f1024), rgbHex(0x2e3170)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0x1d1f3d), rgbHex(0xecebff), rgbHex(0x3fe0d0)
-		s.TableBorder, s.Divider = rgbHex(0x34376e), rgbHex(0x34376e)
-		s.Swatch = [3]ui.Color{rgbHex(0x14152b), rgbHex(0x3fe0d0), rgbHex(0x14152b)}
-
+		return neonTheme()
 	case model.ExportThemeFilm:
-		s = open(true, TitleMarkBar, 42, fontSong, fontPing)
-		s.Card = &CardSpec{Inset: 40, Radius: 10}
-		s.PadTop, s.PadRight, s.PadBottom, s.PadLeft = 56, 56, 52, 56
-		s.Leading = 1.8
-		s.TitleBold = false
-		s.HeadingFamily = fontPing
-		s.Canvas, s.InnerCanvas = rgbHex(0x141210), rgbHex(0x0b0a09)
-		s.Text, s.Title, s.Secondary = rgbHex(0xe8e0d0), rgbHex(0xfbf5e8), rgbHex(0xa89c86)
-		s.Accent, s.Accent2 = rgbHex(0xf2a33a), rgbHex(0xf2a33a)
-		s.CodeBG, s.CodeBorder = rgbHex(0x1f1c18), rgbHex(0x302b24)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xfbf5e8), rgbHex(0xf2a33a)
-		s.TableBorder, s.Divider = rgbHex(0x403a30), rgbHex(0x302b24)
-		s.Swatch = [3]ui.Color{rgbHex(0x141210), rgbHex(0xf2a33a), rgbHex(0x0b0a09)}
-
+		return filmTheme()
 	case model.ExportThemeNight:
-		border := ui.RGB(38, 44, 54)
-		s = floating(true, &border, ui.Transparent)
-		s.Canvas, s.InnerCanvas = rgbHex(0x0d1117), rgbHex(0x161b22)
-		s.Text, s.Title, s.Secondary = rgbHex(0xd1d7e0), rgbHex(0xf0f3f6), rgbHex(0x8b949e)
-		s.Accent, s.Accent2 = rgbHex(0x7aa2f7), rgbHex(0x7aa2f7)
-		s.CodeBG, s.CodeBorder = rgbHex(0x0f1318), rgbHex(0x262c36)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = rgbHex(0x1b2230), rgbHex(0xd1d7e0), rgbHex(0x7aa2f7)
-		s.TableBorder, s.Divider = rgbHex(0x30363d), rgbHex(0x262c36)
-		s.Swatch = [3]ui.Color{rgbHex(0x0d1117), rgbHex(0x7aa2f7), rgbHex(0x161b22)}
-
+		return nightTheme()
 	case model.ExportThemeTerminal:
-		s = open(true, TitleMarkCursor, 36, fontPing, fontPing)
-		s.TitleFamily = fontMono
-		s.Canvas, s.InnerCanvas = rgbHex(0x0c0f0c), rgbHex(0x0c0f0c)
-		s.Text, s.Title, s.Secondary = rgbHex(0xd6e4d6), rgbHex(0x8ee08a), rgbHex(0x7f957f)
-		s.Accent, s.Accent2 = rgbHex(0x7ee787), rgbHex(0x7ee787)
-		s.CodeBG, s.CodeBorder = rgbHex(0x121812), rgbHex(0x243024)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0xb8ccb8), rgbHex(0x3f6b3f)
-		s.TableBorder, s.Divider = rgbHex(0x2a3a2a), rgbHex(0x2a3a2a)
-		s.Swatch = [3]ui.Color{rgbHex(0x0c0f0c), rgbHex(0x7ee787), rgbHex(0x0c0f0c)}
-
-	default: // model.ExportThemeMono
-		s = open(false, TitleMarkRule, 42, fontPing, fontPing)
-		s.Canvas, s.InnerCanvas = rgbHex(0xffffff), rgbHex(0xffffff)
-		s.Text, s.Title, s.Secondary = rgbHex(0x1f1e1d), rgbHex(0x111111), rgbHex(0x5e5d59)
-		s.Accent, s.Accent2 = rgbHex(0x111111), rgbHex(0x111111)
-		s.CodeBG, s.CodeBorder = rgbHex(0xf4f4f2), rgbHex(0xe4e4e0)
-		s.QuoteBG, s.QuoteFG, s.QuoteBar = ui.Transparent, rgbHex(0x1f1e1d), rgbHex(0x111111)
-		s.TableBorder, s.Divider = rgbHex(0xd6d6d1), rgbHex(0xdcdcd7)
-		s.Swatch = [3]ui.Color{rgbHex(0xffffff), rgbHex(0x111111), rgbHex(0xffffff)}
-	}
-	return s
-}
-
-func (s PaperThemeSpec) Margins() (top, right, bottom, left float32) {
-	var inset float32
-	if s.Card != nil {
-		inset = s.Card.Inset
-	}
-	return s.PadTop + inset, s.PadRight + inset, s.PadBottom + inset, s.PadLeft + inset
-}
-
-func (s PaperThemeSpec) BlockRadius() float32 {
-	switch s.Theme {
-	case model.ExportThemeJournal, model.ExportThemeKraft, model.ExportThemeMist, model.ExportThemeNight:
-		return 10
-	case model.ExportThemePress, model.ExportThemeRiso, model.ExportThemeTerminal:
-		return 2
+		return terminalTheme()
 	default:
-		return 6
+		return monoTheme()
 	}
 }
 
-func (s PaperThemeSpec) UsesSquareBullets() bool {
-	return s.Theme == model.ExportThemePoster || s.Theme == model.ExportThemeTerminal || s.Theme == model.ExportThemeRiso
+// Margins is the distance from each page edge to the content.
+func (s PaperThemeSpec) Margins() (top, right, bottom, left float32) {
+	var inset, insetTop float32
+	if s.Card != nil {
+		inset, insetTop = s.Card.Inset, s.Card.top()
+	}
+	if s.Style.Sections != nil {
+		x, y := s.Style.Sections.PadX, s.Style.Sections.PadY
+		return s.PadTop + y, s.PadRight + x, s.PadBottom + y, s.PadLeft + x
+	}
+	return s.PadTop + insetTop, s.PadRight + inset, s.PadBottom + inset, s.PadLeft + inset
 }
+
+func (s PaperThemeSpec) BlockRadius() float32 { return s.Radius }
+
+func (s PaperThemeSpec) UsesSquareBullets() bool { return s.Style.List.Bullet == BulletSquare }
 
 // LinkFG returns Accent when WCAG AA contrast against InnerCanvas is >= 4.5, otherwise Title.
 func (s PaperThemeSpec) LinkFG() ui.Color {
@@ -371,6 +210,9 @@ func (s PaperThemeSpec) TableHeaderBG() ui.Color {
 }
 
 func (s PaperThemeSpec) HighlightBG() ui.Color {
+	if h := s.Style.Inline.Highlight; h != nil && h.BG.A > 0 {
+		return h.BG
+	}
 	t := float32(0.22)
 	if s.Dark {
 		t = 0.30
@@ -474,5 +316,6 @@ func legacyOceanPaperSpec(pal theme.Palette) PaperThemeSpec {
 		HeadingFamily: fontPing,
 		BodyFamily:    fontPing,
 		TitleBold:     true,
+		Radius:        6,
 	}
 }
