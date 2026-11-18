@@ -1377,7 +1377,7 @@ func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 
 	// Check immediate divider rule (---, ***, ___, －－－, ＊＊＊, ＿＿＿, ——).
 	if b.Kind == model.BlockParagraph && isImmediateDivider(newText) {
-		s.convertBlockToDivider(idx)
+		s.insertDividerWithParagraph(idx, true)
 		return
 	}
 
@@ -1641,7 +1641,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	}
 
 	if b.Kind == model.BlockParagraph && isDividerLine(rawPrefix) && rest == "" {
-		s.convertBlockToDivider(idx)
+		s.insertDividerWithParagraph(idx, true)
 		return s.focusedBlock, 0, true
 	}
 
@@ -1749,19 +1749,25 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	return 0, 0, false
 }
 
-func (s *Session) convertBlockToDivider(idx int) {
-	if idx < 0 || idx >= len(s.doc.Blocks) {
-		return
-	}
+func (s *Session) insertDividerWithParagraph(idx int, replace bool) {
 	s.blockMenu = nil
-	id := s.doc.Blocks[idx].ID
-	delete(s.richInputs, id)
-	s.doc.Blocks[idx] = model.Block{ID: id, Kind: model.BlockDivider, Dirty: true}
-	if next := s.stepVisibleBlock(idx, 1); next > idx {
-		s.FocusBlock(next)
+	divider := model.Block{Kind: model.BlockDivider, Dirty: true}
+	end := idx
+	if replace {
+		divider.ID = s.doc.Blocks[idx].ID
+		delete(s.richInputs, divider.ID)
+		end++
 	} else {
-		s.FocusBlock(idx)
+		divider.ID = model.NewBlockID()
 	}
+	paragraph := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+	s.spliceBlocks(idx, end, []model.Block{divider, paragraph})
+	if s.isBlockHiddenByFold(idx + 1) {
+		// Reveal the inserted pair as a tail without opening the folded section.
+		s.showHiddenTail(paragraph.ID)
+		s.showHiddenTail(divider.ID)
+	}
+	s.FocusBlock(idx + 1)
 	s.markDirty()
 }
 
@@ -1828,7 +1834,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 			}
 			if isDividerLine(b.PlainText()) {
 				s.pushUndo()
-				s.convertBlockToDivider(idx)
+				s.insertDividerWithParagraph(idx, true)
 				return true
 			}
 		}
@@ -2507,22 +2513,14 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		s.tableActiveRow = 0
 		s.tableActiveCol = 0
 	case cmdDivider:
-		div := model.Block{ID: model.NewBlockID(), Kind: model.BlockDivider, Dirty: true}
-		divIdx := idx
-		if isSlashClear {
-			div.ID = b.ID
-			delete(s.richInputs, b.ID)
-			s.doc.Blocks[idx] = div
-		} else {
-			s.spliceBlocks(idx+1, idx+1, []model.Block{div})
-			divIdx = idx + 1
+		if !isSlashClear {
+			if b.Kind.IsHeading() && s.folded[b.ID] {
+				idx = s.foldSectionEnd(idx)
+			} else {
+				idx++
+			}
 		}
-		focusIdx := divIdx
-		if next := s.stepVisibleBlock(divIdx, 1); next > divIdx {
-			focusIdx = next
-		}
-		s.FocusBlock(focusIdx)
-		s.markDirty()
+		s.insertDividerWithParagraph(idx, isSlashClear)
 		return
 	case cmdImage:
 		img := model.Block{

@@ -115,8 +115,12 @@ func TestChineseAndEnglishMarkdownInputRules(t *testing.T) {
 			tt := ui.NewTester(makeSessionView(s, false), 900, 600)
 			tt.Type(tc.typed)
 			if tc.wantDiv {
-				if len(s.Doc().Blocks) != 1 || s.Doc().Blocks[0].Kind != model.BlockDivider {
-					t.Fatalf("expected single divider block without trailing blank line, got %+v", s.Doc().Blocks)
+				blocks := s.Doc().Blocks
+				if len(blocks) != 2 || blocks[0].Kind != model.BlockDivider || !isPlainEmptyParagraph(&blocks[1]) {
+					t.Fatalf("expected divider followed by an empty paragraph, got %+v", blocks)
+				}
+				if s.FocusedBlockIndex() != 1 {
+					t.Fatalf("expected focus on the empty paragraph, got block %d", s.FocusedBlockIndex())
 				}
 				return
 			}
