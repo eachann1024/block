@@ -101,6 +101,7 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 			p.MenuState.PageMenuAnchor = b
 		}
 		if btn.Clicked() && p.MenuState != nil {
+			p.MenuState.MenuCursor = -1
 			p.MenuState.TabMenuOpen = false
 			p.MenuState.PageMenuOpen = !p.MenuState.PageMenuOpen
 		}
