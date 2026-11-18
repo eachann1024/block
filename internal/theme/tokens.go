@@ -168,6 +168,10 @@ const (
 	EdgeFloatDwellMs             = 140
 	EdgeFloatLeaveMs             = 120
 
+	// Top-left outline rail hover-intent & leave grace timing.
+	OutlineHoverDelayMs = 220
+	OutlineHoverLeaveMs = 90
+
 	// App Store card & header toolbar metrics.
 	StoreIconBoxSize       float32 = 40  // leading app icon box inside a store card header
 	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
