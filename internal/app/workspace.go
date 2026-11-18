@@ -321,6 +321,7 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	if w.quick == nil {
 		return
 	}
+	w.quick.SetInlineAIResponder(w.inlineAIRespond)
 	w.quick.OnSavedNote = func(path string) {
 		w.RescanNotebook()
 		_ = w.OpenNote(path, 0)

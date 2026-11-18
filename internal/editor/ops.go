@@ -1706,7 +1706,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 }
 
 func (s *Session) canArmFirstLineDelete() bool {
-	if s.minimal || s.doc == nil || len(s.doc.Blocks) <= 1 {
+	if s.doc == nil || len(s.doc.Blocks) <= 1 {
 		return false
 	}
 	first := &s.doc.Blocks[0]
@@ -1989,9 +1989,6 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 		return allHandleMenuItems(s.blockMenu.BlockIdx, n)
 	}
 	all := allSlashItems()
-	if s.minimal {
-		all = minimalSlashItems()
-	}
 	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
 	if q == "" {
 		return all
@@ -2128,9 +2125,6 @@ func (s *Session) activateSlashMenu() bool {
 func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind) {
 	s.blockMenu = nil
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
-		return
-	}
-	if s.minimal && (cmd == cmdAI || cmd == cmdCallout || cmd == cmdCodeMermaid || cmd == cmdCodeMath) {
 		return
 	}
 	b := &s.doc.Blocks[idx]

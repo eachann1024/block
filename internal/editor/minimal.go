@@ -11,21 +11,18 @@ import (
 	"time"
 
 	"block/internal/model"
-	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
 
 const (
-	minimalTopPad     float32 = 6
-	minimalBottomPad  float32 = 12
-	minimalLeftInset  float32 = 16
-	minimalRightInset float32 = 14
-	minimalRowGap     float32 = 4
+	minimalTopPad    float32 = 12
+	minimalBottomPad float32 = 20
 )
 
-// SetMinimal enables or disables Quick Note minimal editor mode (thinkly-fast editor.set_minimal):
-// compact insets, no left block-handle gutter, no floating selection toolbar, no annotations/outline/AI,
-// and the curated SLASH_MINIMAL slash menu.
+// SetMinimal enables or disables Quick Note compact editor mode:
+// compact vertical padding while retaining full Block Editor capabilities
+// (block side handles, drag-reorder, heading fold, selection toolbar, full slash menu, inline AI)
+// and omitting formal-note-only annotation/outline side rails.
 func (s *Session) SetMinimal(minimal bool) {
 	s.minimal = minimal
 }
@@ -35,9 +32,20 @@ func (s *Session) IsMinimal() bool {
 	return s.minimal
 }
 
+// SetMinCanvasHeight sets the minimum height of the scrollable canvas so short notes fill
+// the Quick Note viewport for click-to-focus without inflating bodyScroll.MaxY > 0.
+func (s *Session) SetMinCanvasHeight(h float32) {
+	s.minCanvasHeight = max(h, 0)
+}
+
 // CanScrollVertically reports whether the document body overflows the scroll viewport.
 func (s *Session) CanScrollVertically() bool {
 	return s.bodyScroll.MaxY > 1
+}
+
+// VerticalScrollBounds returns the current vertical scroll offset and maximum scroll offset.
+func (s *Session) VerticalScrollBounds() (y, maxY float32) {
+	return s.bodyScroll.Y, s.bodyScroll.MaxY
 }
 
 // HasScrollablePopupOpen reports whether an editor popup menu with internal scrolling is open.
@@ -92,34 +100,11 @@ func (s *Session) EnsureEditorFocus() {
 }
 
 func (s *Session) leftContentGutter() float32 {
-	if s.minimal {
-		return minimalLeftInset
-	}
 	return editorHandleWidth + editorRowGap
 }
 
 func (s *Session) rightContentInset() float32 {
-	if s.minimal {
-		return minimalRightInset
-	}
 	return editorRightInset
-}
-
-func minimalSlashItems() []blockMenuItem {
-	return []blockMenuItem{
-		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Keywords: "h1 heading title biaoti", Hint: "⌘⌥1"},
-		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Keywords: "h2 heading", Hint: "⌘⌥2"},
-		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Keywords: "h3 heading", Hint: "⌘⌥3"},
-		{Kind: cmdTable, Label: theme.Tr("表格", "Table"), Keywords: "table biaoge"},
-		{Separator: true},
-		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Keywords: "bullet list ul liebiao", Hint: "⌘⌥5"},
-		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Keywords: "todo task check daiban", Hint: "⌘⌥4"},
-		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Keywords: "code daima", Hint: "⌘⌥8"},
-		{Kind: cmdDivider, Label: theme.Tr("分隔线", "Divider"), Keywords: "divider hr line fengexian"},
-		{Kind: cmdImage, Label: theme.Tr("图片", "Image"), Keywords: "image picture photo tupian"},
-		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Keywords: "number ordered list ol", Hint: "⌘⌥6"},
-		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Keywords: "quote yinyong", Hint: "⌘⌥9"},
-	}
 }
 
 // ClearFormattingOnSelection strips inline marks, colors, and links across the selected range.
