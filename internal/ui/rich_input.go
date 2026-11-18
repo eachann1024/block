@@ -112,6 +112,8 @@ type RichInputOptions struct {
 	OnCut func() bool
 	// OnPaste intercepts paste commands and Cmd/Ctrl+V before plain text insertion.
 	OnPaste func(svc ui.Services, pastedText string) bool
+	// OnPastePlain intercepts pasteAndMatchStyle and Shift+Cmd/Ctrl+V for unformatted literal paste.
+	OnPastePlain func(svc ui.Services, pastedText string) bool
 	// OnKey sees non-character keys before RichInput handles them; returning true consumes the key.
 	OnKey func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
 	// OnVerticalEdge runs when Up/Down at the first/last visual line cannot move further inside this block.
@@ -170,6 +172,7 @@ type RichInputState struct {
 	onCopy         func() bool
 	onCut          func() bool
 	onPaste        func(svc ui.Services, pastedText string) bool
+	onPastePlain   func(svc ui.Services, pastedText string) bool
 	onKey          func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
 	onVerticalEdge func(dir int) bool
 	onOpenLink     func(url string)
@@ -742,12 +745,25 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 			}
 			return true
 		}
-	case "paste", "pasteAndMatchStyle":
+	case "paste":
 		if s.readOnly {
 			return true
 		}
 		clip := s.services.ReadClipboard()
 		if s.onPaste != nil && s.onPaste(s.services, clip) {
+			return true
+		}
+		if clip != "" {
+			lo, hi := s.OrderedSelection()
+			s.replaceRunes(lo, hi, clip)
+		}
+		return true
+	case "pasteAndMatchStyle":
+		if s.readOnly {
+			return true
+		}
+		clip := s.services.ReadClipboard()
+		if s.onPastePlain != nil && s.onPastePlain(s.services, clip) {
 			return true
 		}
 		if clip != "" {
@@ -866,6 +882,9 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 		case ui.KeyV:
 			return s.handleCommand("paste")
 		}
+	}
+	if (m == (ui.Cmd|ui.Shift) || m == (ui.Cmd|ui.Shift|ui.Alt)) && key == ui.KeyV {
+		return s.handleCommand("pasteAndMatchStyle")
 	}
 
 	word := (mac && m == ui.Alt) || (!mac && m == ui.Ctrl)
@@ -1536,6 +1555,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.onCopy = opts.OnCopy
 	st.onCut = opts.OnCut
 	st.onPaste = opts.OnPaste
+	st.onPastePlain = opts.OnPastePlain
 	st.onKey = opts.OnKey
 	st.onVerticalEdge = opts.OnVerticalEdge
 	st.onOpenLink = opts.OnOpenLink
