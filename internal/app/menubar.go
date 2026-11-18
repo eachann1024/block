@@ -9,6 +9,7 @@ import (
 // MenuActions carries callbacks invoked from the native application menu bar.
 type MenuActions struct {
 	OnAbout          func()
+	OnCheckUpdates   func()
 	OnPerformance    func()
 	OnSettings       func()
 	OnNewNote        func()
@@ -54,6 +55,7 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 
 	appSubmenu := []*mygo.MenuItem{
 		{ID: "menu-about", Label: theme.Tr("关于 Block", "About Block"), Click: call(act.OnAbout)},
+		{ID: "menu-check-updates", Label: theme.Tr("检查更新…", "Check for Updates…"), Click: call(act.OnCheckUpdates)},
 		{ID: "menu-perf", Label: theme.Tr("性能与占用", "Performance & Usage"), Accelerator: accel("performance", "cmd-shift-m"), Click: call(act.OnPerformance)},
 		mygo.Separator(),
 		{ID: "menu-settings", Label: theme.Tr("偏好设置…", "Settings…"), Accelerator: accel("settings", "cmd-,"), Click: call(act.OnSettings)},

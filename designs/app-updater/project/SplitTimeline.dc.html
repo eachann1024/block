@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 B · 双栏时间轴阅读器</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid #547dd0; outline-offset: 1px; }
+</style>
+</helmet>
+
+<div style="{{rootStyle}}">
+  <div style="{{windowStyle}}">
+    <div style="{{titlebarStyle}}">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span style="width: 11px; height: 11px; border-radius: 999px; background: #ff5f57"></span>
+        <span style="width: 11px; height: 11px; border-radius: 999px; background: #febc2e"></span>
+        <span style="width: 11px; height: 11px; border-radius: 999px; background: #28c840"></span>
+      </div>
+      <span style="{{titlebarTitleStyle}}">{{windowTitle}}</span>
+      <button type="button" onClick="{{toggleLang}}" style="{{langBtnStyle}}">{{langLabel}}</button>
+    </div>
+
+    <div style="flex: 1; display: flex; min-height: 0">
+      <div style="{{leftColStyle}}">
+        <div style="padding: 14px 12px 10px; display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto">
+          <button type="button" onClick="{{selectAllTimeline}}" style="{{allRowStyle}}">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{allIconStroke}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h10"></path>
+              </svg>
+              <span style="{{allRowLabelStyle}}">{{allTimelineLabel}}</span>
+            </div>
+            <span style="{{allCountPillStyle}}">4</span>
+          </button>
+
+          <div style="{{timelineDividerStyle}}"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 2px; position: relative">
+            <sc-for list="{{timelineNodes}}" as="node" hint-placeholder-count="4">
+              <button type="button" onClick="{{node.pick}}" style="{{node.rowStyle}}">
+                <div style="width: 18px; display: flex; flex-direction: column; align-items: center; align-self: stretch; justify-content: center; position: relative; flex-shrink: 0">
+                  <span style="{{node.dotStyle}}"></span>
+                </div>
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px">
+                    <span style="{{node.verStyle}}">{{node.version}}</span>
+                    <sc-if value="{{node.isLatest}}" hint-placeholder-val="{{ true }}">
+                      <span style="{{node.latestBadgeStyle}}">{{latestLabel}}</span>
+                    </sc-if>
+                  </div>
+                  <span style="{{node.subStyle}}">{{node.subtitle}}</span>
+                </div>
+              </button>
+            </sc-for>
+
+            <div style="{{currentInstalledRowStyle}}">
+              <div style="width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+                <span style="{{installedDotStyle}}"></span>
+              </div>
+              <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px">
+                <span style="{{installedVerStyle}}">v1.0.379</span>
+                <span style="{{installedTagStyle}}">{{installedLabel}}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="{{sourceCardWrapStyle}}">
+          <div style="{{sourceCardStyle}}">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px">
+              <div style="display: flex; align-items: center; gap: 6px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path d="M3.6 9h16.8M3.6 15h16.8"></path>
+                  <path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path>
+                </svg>
+                <span style="{{sourceCardTitleStyle}}">{{sourceCardTitle}}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 5px">
+                <span style="{{sourceHealthDotStyle}}"></span>
+                <span style="{{sourcePingStyle}}">{{activePing}}</span>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px">
+              <sc-for list="{{sources}}" as="src" hint-placeholder-count="3">
+                <button type="button" onClick="{{src.pick}}" style="{{src.btnStyle}}">{{src.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="{{rightColStyle}}">
+        <div style="{{readerScrollStyle}}">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+                <h1 style="{{readerHeadingStyle}}">{{readerHeading}}</h1>
+                <span style="{{readerPillStyle}}">{{readerPill}}</span>
+              </div>
+              <span style="{{readerSubStyle}}">{{readerSubtitle}}</span>
+            </div>
+
+            <sc-if value="{{isAllSelected}}" hint-placeholder-val="{{ true }}">
+              <div style="{{segTrackStyle}}">
+                <button type="button" onClick="{{pickGrouped}}" style="{{groupedBtnStyle}}">{{groupedLabel}}</button>
+                <button type="button" onClick="{{pickVersions}}" style="{{versionsBtnStyle}}">{{versionsLabel}}</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{showGroupedReader}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 24px">
+              <sc-for list="{{groupedSections}}" as="sec" hint-placeholder-count="3">
+                <div style="display: flex; flex-direction: column; gap: 10px">
+                  <div style="display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid {{hairline}}">
+                    <span style="{{sec.dotStyle}}"></span>
+                    <h2 style="{{sec.titleStyle}}">{{sec.title}}</h2>
+                    <span style="{{sec.countStyle}}">{{sec.countText}}</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 2px">
+                    <sc-for list="{{sec.items}}" as="item" hint-placeholder-count="3">
+                      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px">
+                        <div style="display: flex; align-items: flex-start; gap: 10px; min-width: 0; flex: 1">
+                          <span style="{{readerBulletStyle}}"></span>
+                          <span style="{{readerItemTextStyle}}">{{item.text}}</span>
+                        </div>
+                        <span style="{{readerVerTagStyle}}">{{item.ver}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{showVersionsReader}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 22px">
+              <sc-for list="{{visibleVersionCards}}" as="ver" hint-placeholder-count="4">
+                <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 18px; border-bottom: 1px solid {{hairline}}">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <span style="{{ver.titleStyle}}">{{ver.version}}</span>
+                      <sc-if value="{{ver.isLatest}}" hint-placeholder-val="{{ true }}">
+                        <span style="{{readerPillStyle}}">{{latestLabel}}</span>
+                      </sc-if>
+                    </div>
+                    <span style="{{ver.dateStyle}}">{{ver.date}}</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 8px">
+                    <sc-for list="{{ver.notes}}" as="note" hint-placeholder-count="3">
+                      <div style="display: flex; align-items: flex-start; gap: 10px">
+                        <span style="{{note.tagStyle}}">{{note.cat}}</span>
+                        <span style="{{readerItemTextStyle}}">{{note.text}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="{{installBarStyle}}">
+          <sc-if value="{{isIdle}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%">
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <span style="{{barTitleStyle}}">{{barIdleTitle}}</span>
+                <span style="{{barSubStyle}}">{{barIdleSub}}</span>
+              </div>
+              <button type="button" onClick="{{startDownload}}" style="{{primaryBtnStyle}}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 4v11"></path>
+                  <path d="M7.5 11.5L12 16l4.5-4.5"></path>
+                  <path d="M5 20h14"></path>
+                </svg>
+                <span>{{updateNowLabel}}</span>
+              </button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isDownloading}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 16px; width: 100%">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                  <span style="{{barTitleStyle}}">{{downloadingStatus}}</span>
+                  <span style="{{barSubStyle}}">{{speedText}}</span>
+                </div>
+                <div style="{{progressTrackStyle}}">
+                  <div style="{{progressFillStyle}}"></div>
+                </div>
+              </div>
+              <button type="button" onClick="{{cancelDownload}}" style="{{secondaryBtnStyle}}">{{cancelLabel}}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isReady}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{successColor}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path d="M8.5 12.5l2.5 2.5 4.5-5"></path>
+                </svg>
+                <div style="display: flex; flex-direction: column; gap: 2px">
+                  <span style="{{barTitleStyle}}">{{readyTitle}}</span>
+                  <span style="{{barSubStyle}}">{{readySub}}</span>
+                </div>
+              </div>
+              <button type="button" onClick="{{triggerRestart}}" style="{{primaryBtnStyle}}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"></path>
+                  <path d="M21 3v5h-5"></path>
+                  <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path>
+                </svg>
+                <span>{{restartUpdateLabel}}</span>
+              </button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isRestarting}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                  <path d="M12 3a9 9 0 1 0 9 9"></path>
+                </svg>
+                <span style="{{barTitleStyle}}">{{restartingText}}</span>
+              </div>
+              <button type="button" onClick="{{resetDemo}}" style="{{secondaryBtnStyle}}">{{resetLabel}}</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"initialStage":{"editor":"enum","options":["idle","downloading","ready"],"default":"idle"},"$preview":{"width":960,"height":660}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    var stage = props.initialStage || 'idle';
+    this.state = {
+      lang: 'zh',
+      selectedNode: 'all',
+      viewMode: 'grouped',
+      source: 'auto',
+      stage: stage,
+      progress: stage === 'downloading' ? 62 : (stage === 'ready' ? 100 : 0)
+    };
+    this._timer = null;
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.initialStage !== this.props.initialStage) {
+      this._stopTimer();
+      var nextStage = this.props.initialStage || 'idle';
+      this.setState({
+        stage: nextStage,
+        progress: nextStage === 'downloading' ? 62 : (nextStage === 'ready' ? 100 : 0)
+      });
+    }
+  }
+
+  componentWillUnmount() {
+    this._stopTimer();
+  }
+
+  _stopTimer() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  }
+
+  _beginDownload() {
+    this._stopTimer();
+    this.setState({ stage: 'downloading', progress: 10 });
+    var self = this;
+    this._timer = setInterval(function () {
+      var next = self.state.progress + 15;
+      if (next >= 100) {
+        self._stopTimer();
+        self.setState({ progress: 100, stage: 'ready' });
+      } else {
+        self.setState({ progress: next });
+      }
+    }, 220);
+  }
+
+  renderVals() {
+    var dark = !!this.props.dark;
+    var zh = this.state.lang === 'zh';
+    var stage = this.state.stage;
+    var progress = this.state.progress;
+    var selectedNode = this.state.selectedNode;
+    var self = this;
+
+    var pal = dark ? {
+      stageBG: '#262626',
+      shell: '#343434',
+      sidebar: '#222222',
+      paper: '#181818',
+      card: '#262626',
+      text: '#ececec',
+      textSec: '#b4b4b4',
+      muted: '#888888',
+      hairline: '#2e2e2e',
+      sidebarBorder: '#333333',
+      btnBorder: '#444444',
+      accent: '#779de8',
+      accentText: '#111622',
+      selected: '#2d3b55',
+      success: '#4fb87d',
+      successBG: '#1c3527',
+      warning: '#e5a54b',
+      warningBG: '#382c1a',
+      infoBG: '#1f2b40',
+      infoFG: '#9dbcf5',
+      shadow: '0 2px 6px rgba(0,0,0,0.36), 0 14px 36px rgba(0,0,0,0.52)'
+    } : {
+      stageBG: '#e9eaec',
+      shell: '#f1f1f1',
+      sidebar: '#fafafa',
+      paper: '#ffffff',
+      card: '#ffffff',
+      text: '#1f1e1d',
+      textSec: '#52514e',
+      muted: '#74726d',
+      hairline: '#e4e6ea',
+      sidebarBorder: '#e6e6e6',
+      btnBorder: '#dcdcdc',
+      accent: '#547dd0',
+      accentText: '#ffffff',
+      selected: '#e5edfc',
+      success: '#2e8b57',
+      successBG: '#eaf6ef',
+      warning: '#c9822b',
+      warningBG: '#fef5e7',
+      infoBG: '#eef4ff',
+      infoFG: '#345498',
+      shadow: '0 2px 6px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.12)'
+    };
+
+    var releases = [
+      {
+        version: 'v1.0.385',
+        date: '2026-11-18',
+        isLatest: true,
+        zhSub: '批注跳转 · 输入法修复',
+        enSub: 'Annotations · IME fix',
+        notes: [
+          { catZh: '新增', catEn: 'New', bg: pal.infoBG, fg: pal.infoFG, zh: '块级批注支持快捷键跳转与批量归档', en: 'Block annotations support quick jump and batch archive' },
+          { catZh: '优化', catEn: 'Opt', bg: pal.successBG, fg: pal.success, zh: '高分屏下侧栏树形列表字体渲染对比度提升', en: 'Improved sidebar tree font rendering on HiDPI displays' },
+          { catZh: '修复', catEn: 'Fix', bg: pal.warningBG, fg: pal.warning, zh: '修复中文输入法选词确认后偶发选区偏移', en: 'Fixed occasional caret offset after CJK IME commit' }
+        ]
+      },
+      {
+        version: 'v1.0.384',
+        date: '2026-11-14',
+        isLatest: false,
+        zhSub: '缩放跟手 · 行内代码对比度',
+        enSub: 'Resize latency · Code contrast',
+        notes: [
+          { catZh: '优化', catEn: 'Opt', bg: pal.successBG, fg: pal.success, zh: '图片缩放手柄跟手响应延迟降低至 16ms 内', en: 'Reduced image resize handle latency under 16ms' },
+          { catZh: '修复', catEn: 'Fix', bg: pal.warningBG, fg: pal.warning, zh: '修复暗色模式下行内代码高亮对比度不足', en: 'Fixed inline code highlight contrast in dark mode' }
+        ]
+      },
+      {
+        version: 'v1.0.382',
+        date: '2026-11-09',
+        isLatest: false,
+        zhSub: '表格吸附 · 搜索提速 40%',
+        enSub: 'Table snap · 40% faster search',
+        notes: [
+          { catZh: '新增', catEn: 'New', bg: pal.infoBG, fg: pal.infoFG, zh: '表格新增列宽拖拽吸附与边框手柄定位', en: 'Tables support column snap guides and border handles' },
+          { catZh: '优化', catEn: 'Opt', bg: pal.successBG, fg: pal.success, zh: '全局搜索索引增量构建速度提升 40%', en: 'Incremental search indexing accelerated by 40%' }
+        ]
+      },
+      {
+        version: 'v1.0.380',
+        date: '2026-11-03',
+        isLatest: false,
+        zhSub: 'AI 多笔记上下文 · DPI 弹窗',
+        enSub: 'AI multi-note · Multi-DPI fix',
+        notes: [
+          { catZh: '新增', catEn: 'New', bg: pal.infoBG, fg: pal.infoFG, zh: 'AI 面板支持多篇笔记上下文引用与增量预览', en: 'AI panel supports multi-note context and diff preview' },
+          { catZh: '修复', catEn: 'Fix', bg: pal.warningBG, fg: pal.warning, zh: '修复外接显示器切换 DPI 后弹窗位置偏移', en: 'Fixed popup offset when switching monitor DPI' }
+        ]
+      }
+    ];
+
+    var timelineNodes = releases.map(function (r) {
+      var active = selectedNode === r.version;
+      return {
+        version: r.version,
+        isLatest: r.isLatest,
+        subtitle: zh ? r.zhSub : r.enSub,
+        rowStyle: 'width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: ' + (active ? pal.selected : 'transparent') + '; display: flex; align-items: center; gap: 10px',
+        dotStyle: 'width: ' + (active ? '8px' : '6px') + '; height: ' + (active ? '8px' : '6px') + '; border-radius: 999px; background: ' + (active || r.isLatest ? pal.accent : pal.muted),
+        verStyle: 'font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: ' + (active ? '560' : '500') + '; color: ' + (active ? pal.accent : pal.text),
+        subStyle: 'font-size: 12px; color: ' + pal.textSec + '; white-space: nowrap; overflow: hidden; text-overflow: ellipsis',
+        latestBadgeStyle: 'height: 18px; padding: 0 6px; border-radius: 4px; background: ' + pal.infoBG + '; color: ' + pal.infoFG + '; font-size: 12px; font-weight: 560; display: inline-flex; align-items: center',
+        pick: function () { self.setState({ selectedNode: r.version }); }
+      };
+    });
+
+    var sourceDefs = [
+      { id: 'auto', zh: '自动', en: 'Auto', ping: '42 ms', ok: true },
+      { id: 'mirror', zh: '镜像', en: 'Mirror', ping: '38 ms', ok: true },
+      { id: 'github', zh: 'GitHub', en: 'GitHub', ping: '186 ms', ok: false }
+    ];
+    var activeSrc = sourceDefs[0];
+    var sources = sourceDefs.map(function (s) {
+      var active = self.state.source === s.id;
+      if (active) activeSrc = s;
+      return {
+        label: zh ? s.zh : s.en,
+        btnStyle: 'height: 26px; border-radius: 6px; border: 1px solid ' + (active ? pal.accent : pal.hairline) + '; background: ' + (active ? pal.selected : 'transparent') + '; color: ' + (active ? pal.accent : pal.textSec) + '; font-size: 12px; font-weight: ' + (active ? '560' : '460'),
+        pick: function () { self.setState({ source: s.id }); }
+      };
+    });
+
+    var groupedSections = [
+      {
+        title: zh ? '新增功能' : 'Features',
+        color: pal.accent,
+        items: [
+          { ver: 'v1.0.385', text: zh ? '块级批注支持快捷键跳转与批量归档' : 'Block annotations support quick jump and batch archive' },
+          { ver: 'v1.0.382', text: zh ? '表格新增列宽拖拽吸附与边框手柄定位' : 'Tables support column snap guides and border handles' },
+          { ver: 'v1.0.380', text: zh ? 'AI 面板支持多篇笔记上下文引用与增量预览' : 'AI panel supports multi-note context and diff preview' }
+        ]
+      },
+      {
+        title: zh ? '体验优化' : 'Improvements',
+        color: pal.success,
+        items: [
+          { ver: 'v1.0.385', text: zh ? '高分屏下侧栏树形列表字体渲染对比度提升' : 'Improved sidebar tree font rendering on HiDPI displays' },
+          { ver: 'v1.0.384', text: zh ? '图片缩放手柄跟手响应延迟降低至 16ms 内' : 'Reduced image resize handle latency under 16ms' },
+          { ver: 'v1.0.382', text: zh ? '全局搜索索引增量构建速度提升 40%' : 'Incremental search indexing accelerated by 40%' }
+        ]
+      },
+      {
+        title: zh ? '问题修复' : 'Fixes',
+        color: pal.warning,
+        items: [
+          { ver: 'v1.0.385', text: zh ? '修复中文输入法选词确认后偶发选区偏移' : 'Fixed occasional caret offset after CJK IME commit' },
+          { ver: 'v1.0.384', text: zh ? '修复暗色模式下行内代码高亮对比度不足' : 'Fixed inline code highlight contrast in dark mode' },
+          { ver: 'v1.0.380', text: zh ? '修复外接显示器切换 DPI 后弹窗位置偏移' : 'Fixed popup offset when switching monitor DPI' }
+        ]
+      }
+    ].map(function (sec) {
+      return {
+        title: sec.title,
+        countText: zh ? (sec.items.length + ' 项') : (sec.items.length + ''),
+        dotStyle: 'width: 8px; height: 8px; border-radius: 999px; background: ' + sec.color,
+        titleStyle: 'margin: 0; font-size: 15px; line-height: 22px; font-weight: 560; color: ' + pal.text,
+        countStyle: 'font-size: 12px; color: ' + pal.muted,
+        items: sec.items
+      };
+    });
+
+    var filteredReleases = selectedNode === 'all' ? releases : releases.filter(function (r) { return r.version === selectedNode; });
+    var activeSingle = filteredReleases[0] || releases[0];
+
+    var visibleVersionCards = filteredReleases.map(function (r) {
+      return {
+        version: r.version,
+        date: r.date,
+        isLatest: r.isLatest,
+        titleStyle: 'font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; font-weight: 560; color: ' + pal.text,
+        dateStyle: 'font-size: 12px; color: ' + pal.muted,
+        notes: r.notes.map(function (n) {
+          return {
+            cat: zh ? n.catZh : n.catEn,
+            text: zh ? n.zh : n.en,
+            tagStyle: 'height: 20px; padding: 0 6px; border-radius: 4px; background: ' + n.bg + '; color: ' + n.fg + '; font-size: 12px; font-weight: 560; display: inline-flex; align-items: center; flex-shrink: 0; margin-top: 1px'
+          };
+        })
+      };
+    });
+
+    var isAllSelected = selectedNode === 'all';
+    var isGrouped = this.state.viewMode === 'grouped';
+    var showGroupedReader = isAllSelected && isGrouped;
+    var showVersionsReader = !showGroupedReader;
+
+    var segBtnBase = 'height: 26px; padding: 0 10px; border: none; border-radius: 6px; font-size: 12px;';
+    var groupedBtnStyle = segBtnBase + 'font-weight: ' + (isGrouped ? '560' : '460') + '; background: ' + (isGrouped ? pal.paper : 'transparent') + '; color: ' + (isGrouped ? pal.text : pal.textSec) + '; box-shadow: ' + (isGrouped ? '0 1px 2px rgba(0,0,0,0.08)' : 'none');
+    var versionsBtnStyle = segBtnBase + 'font-weight: ' + (!isGrouped ? '560' : '460') + '; background: ' + (!isGrouped ? pal.paper : 'transparent') + '; color: ' + (!isGrouped ? pal.text : pal.textSec) + '; box-shadow: ' + (!isGrouped ? '0 1px 2px rgba(0,0,0,0.08)' : 'none');
+
+    var speedVal = this.state.source === 'github' ? '1.4 MB/s' : '6.8 MB/s';
+
+    return {
+      accent: pal.accent,
+      successColor: pal.success,
+      hairline: pal.hairline,
+      rootStyle: 'width: 960px; height: 660px; padding: 24px; background: ' + pal.stageBG + '; display: flex',
+      windowStyle: 'flex: 1; border-radius: 14px; background: ' + pal.paper + '; border: 1px solid ' + pal.hairline + '; box-shadow: ' + pal.shadow + '; display: flex; flex-direction: column; overflow: hidden',
+      titlebarStyle: 'height: 40px; padding: 0 14px; background: ' + pal.shell + '; border-bottom: 1px solid ' + pal.sidebarBorder + '; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0',
+      titlebarTitleStyle: 'font-size: 13px; font-weight: 560; color: ' + pal.text,
+      langBtnStyle: 'height: 24px; padding: 0 8px; border-radius: 6px; border: 1px solid ' + pal.btnBorder + '; background: ' + pal.paper + '; color: ' + pal.textSec + '; font-size: 12px; font-weight: 460',
+
+      leftColStyle: 'width: 280px; background: ' + pal.sidebar + '; border-right: 1px solid ' + pal.sidebarBorder + '; display: flex; flex-direction: column; flex-shrink: 0',
+      allRowStyle: 'width: 100%; height: 36px; padding: 0 10px; border: none; border-radius: 8px; background: ' + (isAllSelected ? pal.selected : 'transparent') + '; display: flex; align-items: center; justify-content: space-between; gap: 8px',
+      allIconStroke: isAllSelected ? pal.accent : pal.textSec,
+      allRowLabelStyle: 'font-size: 13px; font-weight: ' + (isAllSelected ? '560' : '460') + '; color: ' + (isAllSelected ? pal.accent : pal.text),
+      allCountPillStyle: 'height: 20px; padding: 0 7px; border-radius: 999px; background: ' + (isAllSelected ? pal.paper : pal.hairline) + '; color: ' + (isAllSelected ? pal.accent : pal.textSec) + '; font-size: 12px; font-weight: 560; display: inline-flex; align-items: center',
+      timelineDividerStyle: 'height: 1px; background: ' + pal.hairline + '; margin: 4px 6px',
+      currentInstalledRowStyle: 'padding: 8px 10px; display: flex; align-items: center; gap: 10px; opacity: 0.72',
+      installedDotStyle: 'width: 6px; height: 6px; border-radius: 999px; border: 1.5px solid ' + pal.muted + '; background: transparent',
+      installedVerStyle: 'font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: ' + pal.muted,
+      installedTagStyle: 'font-size: 12px; color: ' + pal.muted,
+
+      sourceCardWrapStyle: 'padding: 12px; border-top: 1px solid ' + pal.sidebarBorder,
+      sourceCardStyle: 'padding: 12px; border-radius: 10px; border: 1px solid ' + pal.hairline + '; background: ' + pal.card,
+      sourceCardTitleStyle: 'font-size: 12px; font-weight: 560; color: ' + pal.text,
+      sourceHealthDotStyle: 'width: 6px; height: 6px; border-radius: 999px; background: ' + (activeSrc.ok ? pal.success : pal.warning),
+      sourcePingStyle: 'font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: ' + pal.textSec,
+
+      rightColStyle: 'flex: 1; min-width: 0; background: ' + pal.paper + '; display: flex; flex-direction: column',
+      readerScrollStyle: 'flex: 1; min-height: 0; overflow-y: auto; padding: 28px 36px 24px',
+      readerHeadingStyle: 'margin: 0; font-size: 22px; line-height: 28px; font-weight: 560; color: ' + pal.text,
+      readerPillStyle: 'height: 22px; padding: 0 8px; border-radius: 999px; background: ' + pal.selected + '; color: ' + pal.accent + '; font-size: 12px; font-weight: 560; display: inline-flex; align-items: center',
+      readerSubStyle: 'font-size: 13px; color: ' + pal.textSec,
+      segTrackStyle: 'padding: 2px; border-radius: 8px; background: ' + (dark ? '#252525' : '#eef0f3') + '; display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0',
+      groupedBtnStyle: groupedBtnStyle,
+      versionsBtnStyle: versionsBtnStyle,
+      readerBulletStyle: 'width: 5px; height: 5px; border-radius: 999px; background: ' + pal.muted + '; margin-top: 8px; flex-shrink: 0',
+      readerItemTextStyle: 'font-size: 14px; line-height: 22px; color: ' + pal.text + '; flex: 1',
+      readerVerTagStyle: 'font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: ' + pal.muted + '; flex-shrink: 0',
+
+      installBarStyle: 'padding: 14px 36px; border-top: 1px solid ' + pal.hairline + '; background: ' + pal.paper + '; display: flex; align-items: center; flex-shrink: 0',
+      barTitleStyle: 'font-size: 14px; font-weight: 560; color: ' + pal.text,
+      barSubStyle: 'font-size: 12px; color: ' + pal.textSec,
+      primaryBtnStyle: 'height: 36px; padding: 0 18px; border-radius: 8px; border: none; background: ' + pal.accent + '; color: ' + pal.accentText + '; font-size: 13px; font-weight: 560; display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0',
+      secondaryBtnStyle: 'height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid ' + pal.btnBorder + '; background: transparent; color: ' + pal.text + '; font-size: 13px; font-weight: 460; flex-shrink: 0',
+      progressTrackStyle: 'width: 100%; height: 6px; border-radius: 999px; background: ' + (dark ? '#333333' : '#e4e6ea') + '; overflow: hidden',
+      progressFillStyle: 'width: ' + progress + '%; height: 100%; border-radius: 999px; background: ' + pal.accent + '; transition: width 180ms ease',
+
+      windowTitle: zh ? 'Block 更新中心' : 'Block Software Update',
+      langLabel: zh ? 'English' : '中文',
+      allTimelineLabel: zh ? '全部待更新汇总' : 'All Pending Updates',
+      latestLabel: zh ? '最新' : 'Latest',
+      installedLabel: zh ? '当前版本' : 'Installed',
+      sourceCardTitle: zh ? '下载源' : 'Source',
+      activePing: activeSrc.ping,
+      groupedLabel: zh ? '分类合并' : 'By Category',
+      versionsLabel: zh ? '按版本明细' : 'By Version',
+      readerHeading: isAllSelected ? 'v1.0.379 → v1.0.385' : ('Block ' + activeSingle.version),
+      readerPill: isAllSelected ? (zh ? '汇总 4 个版本' : '4 Releases') : activeSingle.date,
+      readerSubtitle: isAllSelected ? (zh ? '包含自 v1.0.379 以来的全部新增功能与修复' : 'Combined changes across 4 releases since v1.0.379') : (zh ? activeSingle.zhSub : activeSingle.enSub),
+      barIdleTitle: zh ? '准备更新至 v1.0.385' : 'Ready to update to v1.0.385',
+      barIdleSub: (zh ? '增量包 18.4 MB · 源: ' : 'Delta 18.4 MB · Source: ') + (zh ? activeSrc.zh : activeSrc.en),
+      updateNowLabel: zh ? '立即更新' : 'Update Now',
+      downloadingStatus: (zh ? '正在下载更新包 · ' : 'Downloading update · ') + progress + '%',
+      speedText: speedVal,
+      cancelLabel: zh ? '取消' : 'Cancel',
+      readyTitle: zh ? 'v1.0.385 已就绪' : 'v1.0.385 Ready to Install',
+      readySub: zh ? '重启 Block 后将自动完成版本切换' : 'Restart Block to finish applying this update',
+      restartUpdateLabel: zh ? '重启并更新' : 'Restart & Update',
+      restartingText: zh ? '正在重启 Block 并应用 v1.0.385…' : 'Restarting Block to apply v1.0.385…',
+      resetLabel: zh ? '重置演示' : 'Reset Demo',
+
+      timelineNodes: timelineNodes,
+      sources: sources,
+      groupedSections: groupedSections,
+      visibleVersionCards: visibleVersionCards,
+      isAllSelected: isAllSelected,
+      showGroupedReader: showGroupedReader,
+      showVersionsReader: showVersionsReader,
+      isIdle: stage === 'idle',
+      isDownloading: stage === 'downloading',
+      isReady: stage === 'ready',
+      isRestarting: stage === 'restarting',
+
+      toggleLang: function () { self.setState({ lang: zh ? 'en' : 'zh' }); },
+      selectAllTimeline: function () { self.setState({ selectedNode: 'all' }); },
+      pickGrouped: function () { self.setState({ viewMode: 'grouped' }); },
+      pickVersions: function () { self.setState({ viewMode: 'versions' }); },
+      startDownload: function () { self._beginDownload(); },
+      cancelDownload: function () {
+        self._stopTimer();
+        self.setState({ stage: 'idle', progress: 0 });
+      },
+      triggerRestart: function () {
+        self._stopTimer();
+        self.setState({ stage: 'restarting' });
+      },
+      resetDemo: function () {
+        self._stopTimer();
+        self.setState({ stage: 'idle', progress: 0 });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

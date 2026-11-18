@@ -182,6 +182,8 @@ type AppState struct {
 	LineHeight            LineHeightMode      `json:"line_height,omitempty"`
 	QuickWindowBounds     *SavedWindowBounds  `json:"quick_window_bounds,omitempty"`
 	FeedbackDraft         *FeedbackDraft      `json:"feedback_draft,omitempty"`
+	UpdateSource          string              `json:"update_source,omitempty"`
+	LastUpdatedFrom       string              `json:"last_updated_from,omitempty"`
 }
 
 func DefaultAppState(defaultLang LanguageMode) AppState {

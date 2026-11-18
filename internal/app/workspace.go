@@ -24,6 +24,7 @@ import (
 	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
+	"block/internal/updater"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -67,6 +68,7 @@ type Workspace struct {
 
 	ai        *ai.Controller
 	modals    *modals.Manager
+	updater   *updater.Service
 	pluginsUI *pluginui.Controller
 	quick     *modals.QuickNoteController
 	searchWin *modals.SearchWindowController
@@ -134,9 +136,55 @@ func NewWorkspace(dataDir string) *Workspace {
 		w.RequestRedraw()
 	})
 	w.modals = modals.NewManager(actualDir, w)
+	w.updater = updater.NewService(updater.Config{
+		DataDir:           actualDir,
+		InitialSourceMode: updater.NormalizeSourceMode(st.UpdateSource),
+		LastUpdatedFrom:   st.LastUpdatedFrom,
+		IsEn:              theme.IsEn,
+		OnSourceModeChanged: func(mode updater.SourceMode) {
+			if next, err := files.UpdateState(func(s *model.AppState) {
+				s.UpdateSource = string(mode)
+			}); err == nil {
+				w.mu.Lock()
+				w.state = next
+				w.mu.Unlock()
+			}
+		},
+		FlushBeforeUpdate: func(fromVersion string) {
+			if next, err := files.UpdateState(func(s *model.AppState) {
+				if s.LastUpdatedFrom == "" || updater.CompareVersion(fromVersion, s.LastUpdatedFrom) > 0 {
+					s.LastUpdatedFrom = fromVersion
+				}
+			}); err == nil {
+				w.mu.Lock()
+				w.state = next
+				w.mu.Unlock()
+			}
+			w.FlushWindowBounds()
+			w.FlushDirtySessions()
+			if w.quick != nil {
+				w.quick.Flush()
+			}
+			if w.pluginsUI != nil && w.pluginsUI.Supervisor() != nil {
+				w.pluginsUI.Supervisor().ShutdownAll()
+			}
+		},
+		QuitApp: func() {
+			if mygo.App.IsReady() {
+				mygo.RunOnMain(func() {
+					modals.SetAppQuitting(true)
+					mygo.App.Quit()
+				})
+			}
+		},
+		OnChange: func() {
+			w.RequestRedraw()
+		},
+	})
+	w.modals.Updater = w.updater
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
 		AppDataDir:  actualDir,
-		HostVersion: "1.0.379",
+		HostVersion: updater.CurrentVersion(),
 		GetNotebookRoot: func() string {
 			return w.State().Folder
 		},
@@ -3413,6 +3461,7 @@ func (w *Workspace) renderSidebarColumn(
 	notice string,
 	isDrawer bool,
 ) {
+	hasUpd, updBusy, updReady, updTip := w.sidebarUpdaterProps()
 	RenderSidebar(c, SidebarProps{
 		State:        w.sidebarUI,
 		Width:        &w.sidebarWidth,
@@ -3426,6 +3475,10 @@ func (w *Workspace) renderSidebarColumn(
 		ActiveNote:      activeNote,
 		Notice:          notice,
 		SettingsOpen:    w.modals.IsSettingsOpen(),
+		HasUpdate:       hasUpd,
+		UpdateBusy:      updBusy,
+		UpdateReady:     updReady,
+		UpdateTooltip:   updTip,
 		ShortcutNewNote: modals.EffectiveShortcut(stSnap, "new_note"),
 		OnNewFolder: func() {
 			_, _ = w.CreateNewFolder()
@@ -3469,6 +3522,31 @@ func (w *Workspace) renderSidebarColumn(
 			w.modals.OpenUpdater()
 		},
 	})
+}
+
+// Updater returns the application update service.
+func (w *Workspace) Updater() *updater.Service {
+	return w.updater
+}
+
+func (w *Workspace) sidebarUpdaterProps() (hasUpdate, busy, ready bool, tip string) {
+	if w.updater == nil {
+		return false, false, false, ""
+	}
+	snap := w.updater.Snapshot()
+	if !snap.HasActionableUpdate() {
+		return false, false, false, ""
+	}
+	switch snap.Status {
+	case updater.StatusDownloading:
+		return true, true, false, fmt.Sprintf(theme.Tr("正在下载 v%s · %d%%", "Downloading v%s · %d%%"), snap.LatestVersion, snap.Percent)
+	case updater.StatusInstalling:
+		return true, true, true, theme.Tr("正在保存笔记并重启…", "Saving notes and restarting…")
+	case updater.StatusReady:
+		return true, false, true, fmt.Sprintf(theme.Tr("新版本 v%s 已就绪", "Update v%s is ready"), snap.LatestVersion)
+	default:
+		return true, false, false, fmt.Sprintf(theme.Tr("发现新版本 v%s", "Update v%s available"), snap.LatestVersion)
+	}
 }
 
 func (w *Workspace) shortcutForSidebar(stSnap model.AppState) string {

@@ -2,7 +2,6 @@ package modals
 
 import (
 	"block/assets"
-	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -13,11 +12,9 @@ import (
 	"block/internal/model"
 	"block/internal/theme"
 	internalui "block/internal/ui"
-	"github.com/egoist/mygo"
+	"block/internal/updater"
 	"github.com/egoist/mygo/ui"
 )
-
-const blockAppVersion = "1.0.379"
 
 // HasActiveModal reports whether any modal dialog is currently open.
 func (m *Manager) HasActiveModal() bool {
@@ -92,7 +89,7 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 			ui.Column(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
 				ui.Image(c.Key("about-emblem"), aboutLogo()).Size(84, 84).Margin(0, 0, 6, 0)
 				ui.Text(c, "Block").FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				ui.Text(c, fmt.Sprintf("%s %s", theme.Tr("版本", "Version"), blockAppVersion)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+				ui.Text(c, fmt.Sprintf("%s v%s", theme.Tr("版本", "Version"), updater.CurrentVersion())).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 				author := ui.ButtonBase(c.Key("about-profile")).Padding(3, 12).Radius(theme.RadiusPill).Cursor(ui.CursorPointer)
 				authorHover := author.Hovered()
 				authorPress := author.Pressed()
@@ -109,8 +106,16 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 					c.OpenURL("https://github.com/eachann1024")
 				}
 			})
-			ui.Column(c).FillWidth().Padding(16, 0, 4, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				if internalui.ActionButton(c, "about-repo", "eachann1024/block", &[]icons.Icon{icons.Code}[0], internalui.ButtonSecondary, false).Height(42).FillWidth().Clicked() {
+			ui.Column(c).FillWidth().Gap(theme.Space8).Padding(16, 0, 4, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+				upIcon := icons.UpdateTangle
+				if internalui.ActionButton(c, "about-check-update", theme.Tr("检查更新…", "Check for Updates…"), &upIcon, internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
+					m.CloseAbout()
+					m.OpenUpdater()
+					if m.Updater != nil {
+						m.Updater.CheckAsync(true)
+					}
+				}
+				if internalui.ActionButton(c, "about-repo", "eachann1024/block", &[]icons.Icon{icons.Code}[0], internalui.ButtonSecondary, false).Height(theme.HeightLarge).FillWidth().Clicked() {
 					c.OpenURL("https://github.com/eachann1024/block")
 				}
 			})
@@ -921,111 +926,3 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 	}
 }
 
-// --- Updater Modal ---
-
-// OpenUpdater opens the Check for Updates modal.
-func (m *Manager) OpenUpdater() {
-	m.updaterOpen = true
-	m.updaterChecking = false
-	m.updaterUpdating = false
-	m.updaterProgress = 0
-	if m.updaterStatus == "" {
-		m.updaterStatus = theme.Tr("当前已是最新版本", "You're up to date")
-	}
-	if len(m.updaterNotes) == 0 {
-		m.updaterNotes = []string{
-			theme.Tr("全窗口设置页与快捷键录制", "Full-window Settings and shortcut recorder"),
-			theme.Tr("性能与磁盘占用 Squarified Treemap", "Performance monitor with Squarified Treemap"),
-			theme.Tr("历史版本 Myers Diff 对比与恢复", "Version history Myers Diff comparison and restore"),
-		}
-	}
-	m.requestRedraw()
-}
-
-// CloseUpdater closes the Check for Updates modal.
-func (m *Manager) CloseUpdater() {
-	if !m.updaterOpen {
-		return
-	}
-	m.updaterOpen = false
-	m.requestRedraw()
-}
-
-func (m *Manager) renderUpdaterModal(c *ui.Context) {
-	pal := theme.Ocean()
-	open := true
-	title := theme.Tr("检查更新", "Check for Updates")
-
-	internalui.ModalCard(c, "updater-modal", title, &open, 580, 0, func() {
-		ui.Column(c).FillWidth().Padding(24, 24, 20, 24).Gap(16).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					icons.DrawAnimated(c, icons.UpdateTangle, 20, pal.DuoIconColors(pal.Accent), m.updaterChecking || m.updaterUpdating)
-					ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				})
-				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-					ID:    "updater-close",
-					Label: theme.Tr("关闭", "Close"),
-				})
-				if cls.Clicked() {
-					m.CloseUpdater()
-				}
-			})
-
-			ui.Row(c).FillWidth().Padding(12).Radius(theme.RadiusMD).
-				Background(pal.Shell).Border(1, pal.Hairline).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, fmt.Sprintf("%s v%s", theme.Tr("当前版本", "Current"), blockAppVersion)).
-					FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				ui.Text(c, m.updaterStatus).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-			})
-
-			ui.Column(c).FillWidth().Gap(theme.Space8).Children(func() {
-				ui.Text(c, fmt.Sprintf("v%s %s", m.updaterLatest, theme.Tr("更新内容", "Release Notes"))).
-					FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				for i, item := range m.updaterNotes {
-					ui.Row(c.Key(fmt.Sprintf("updater-note-%d", i))).FillWidth().Gap(8).AlignItems(ui.Start).
-						Transition(internalui.CascadeItemTransition(i, false)).Children(func() {
-						ui.Text(c, "•").FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-						ui.Text(c, item).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1)
-					})
-				}
-			})
-
-			if m.updaterUpdating {
-				ui.Progress(c, m.updaterProgress).Label(theme.Tr("下载更新", "Downloading update"))
-			}
-
-			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-
-			ui.Row(c).FillWidth().Justify(ui.End).Gap(10).Children(func() {
-				cancelBtn := internalui.ActionButton(c, "updater-cancel", theme.Tr("先不更新", "Not Now"), nil, internalui.ButtonSecondary, false)
-				if cancelBtn.Clicked() {
-					m.CloseUpdater()
-				}
-				checkBtn := internalui.ActionButton(c, "updater-submit", theme.Tr("检查更新", "Check Now"), nil, internalui.ButtonPrimary, m.updaterChecking)
-				if checkBtn.Clicked() {
-					if mygo.App.IsReady() {
-						m.updaterChecking = true
-						go func() {
-							ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-							defer cancel()
-							_, _ = mygo.Updater.Check(ctx)
-							mygo.RunOnMain(func() {
-								m.updaterChecking = false
-								m.updaterStatus = theme.Tr("当前已是最新版本", "You're up to date")
-								m.requestRedraw()
-							})
-						}()
-					} else {
-						m.updaterStatus = theme.Tr("当前已是最新版本", "You're up to date")
-					}
-				}
-			})
-		})
-	})
-
-	if !open {
-		m.CloseUpdater()
-	}
-}
