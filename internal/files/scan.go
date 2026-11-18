@@ -23,6 +23,7 @@ type ScanOptions struct {
 	HideAssets      bool
 	AssetsFolder    string
 	FileOrder       map[string][]string
+	SortMode        model.TreeSortMode
 }
 
 var ignoredCommonNames = map[string]bool{
@@ -178,15 +179,18 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 		})
 	}
 
-	sortEntries(dir, out, opts.FileOrder)
+	sortEntries(dir, out, opts.FileOrder, opts.SortMode)
 	return out, nil
 }
 
-func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[string][]string) {
+func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[string][]string, mode model.TreeSortMode) {
 	sort.Slice(entries, func(i, j int) bool {
 		a, b := &entries[i], &entries[j]
 		if a.IsDir != b.IsDir {
 			return a.IsDir
+		}
+		if mode == model.TreeSortModified && a.ModUnix != b.ModUnix {
+			return a.ModUnix > b.ModUnix
 		}
 		if c := naturalCmp(a.RawName, b.RawName); c != 0 {
 			return c < 0
@@ -197,7 +201,7 @@ func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[stri
 		return a.Path < b.Path
 	})
 
-	if len(fileOrder) == 0 || len(entries) <= 1 {
+	if mode != model.TreeSortManual || len(fileOrder) == 0 || len(entries) <= 1 {
 		return
 	}
 	order, ok := lookupFileOrder(fileOrder, parentDir)

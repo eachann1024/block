@@ -686,6 +686,7 @@ func (w *Workspace) scanOptionsLocked() files.ScanOptions {
 		HideAssets:      hideAssets,
 		AssetsFolder:    assetsFolder,
 		FileOrder:       w.state.FileOrder,
+		SortMode:        w.state.TreeSort,
 	}
 }
 
@@ -3131,8 +3132,9 @@ func (w *Workspace) Render(c *ui.Context) {
 		tbSurface = SurfaceNote
 	}
 
+	chrome := pal.ShellChrome()
 	c.Key("workspace-root")
-	root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
+	root := ui.Column(c).Fill().Background(chrome.Ground).TextColor(pal.Text).Clip()
 	blockui.Probe(root, "workspace-root")
 
 	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
@@ -3140,6 +3142,13 @@ func (w *Workspace) Render(c *ui.Context) {
 	)
 
 	root.Children(func() {
+		// 0. Window-wide top brand landscape band (hidden when sidebar is collapsed or disabled).
+		if !aiImmersive && sidebarWide {
+			if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
+				blockui.BrandSceneBand(c, scID, !stSnap.BrandDeco.HideOrb)
+			}
+		}
+
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if !aiImmersive {
 			RenderTitlebar(c, TitlebarProps{
@@ -3149,6 +3158,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
 				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
+				HideMark:          stSnap.BrandDeco.HideMark,
 				AIImmersive:       aiImmersive,
 				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
 				FeedbackOpen:      w.modals.IsFeedbackOpen(),
@@ -3195,6 +3205,17 @@ func (w *Workspace) Render(c *ui.Context) {
 				MenuState: w.tabMenu,
 				OnToggleSidebar: func() {
 					w.ToggleSidebar(vpW)
+				},
+				OnCloseSettings: func() {
+					w.modals.CloseSettings()
+				},
+				OnClickNotebook: func() {
+					if sidebarWide {
+						w.sidebarUI.ClosePopups()
+						w.sidebarUI.SwitcherOpen = true
+					} else {
+						w.ToggleSidebar(vpW)
+					}
 				},
 				OnBack:    w.NavigateBack,
 				OnForward: w.NavigateForward,
@@ -3301,76 +3322,28 @@ func (w *Workspace) Render(c *ui.Context) {
 				})
 			}
 
-			// Center Content (Settings Canvas, Note Editor, Non-Markdown Surface, or Empty Mascot State).
+			// Right Floating Paper Card (Settings Canvas, or Note Editor + Docked AI Panel).
+			cardLeft := float32(8)
+			if layout.SidebarDocked {
+				cardLeft = 0
+			}
 			if inSettings {
-				minMainW := min(layout.ContentFloor, vpW)
-				ui.Column(c.Key("stage-settings")).Grow(1).MinWidth(minMainW).FillHeight().
-					Background(pal.SettingsBG).Transition(blockui.SurfaceStageTransition()).Children(func() {
-					w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
-						w.ToggleSidebar(vpW)
+				minMainW := max(min(layout.ContentFloor, vpW)-cardLeft-8, 0)
+				ui.Box(c.Key("stage-settings-slot")).Grow(1).MinWidth(minMainW).FillHeight().
+					Padding(0, 8, 8, cardLeft).Children(func() {
+					settingsCard := blockui.Elevate(
+						ui.Column(c.Key("stage-settings")).Fill().Radius(theme.RadiusLG).Clip().
+							Background(chrome.Card).Border(1, chrome.CardBorder).
+							Transition(blockui.SurfaceStageTransition()),
+						theme.ElevationCard,
+					)
+					settingsCard.Children(func() {
+						w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
+							w.ToggleSidebar(vpW)
+						})
 					})
 				})
-			} else if !aiImmersive {
-				minMainW := float32(0)
-				if !layout.ChatDocked {
-					minMainW = min(layout.ContentFloor, vpW)
-				}
-				mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
-					Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
-				mainCol.Children(func() {
-					if toast != nil && toast.Active && toast.NotePath == activeTab {
-						toast.RenderBanner(
-							c,
-							func() {
-								undoTxt := toast.UndoContent
-								target := toast.NotePath
-								w.mu.Lock()
-								w.historyToast = nil
-								w.mu.Unlock()
-								_ = w.WriteNote(target, undoTxt)
-							},
-							func() {
-								w.mu.Lock()
-								w.historyToast = nil
-								w.mu.Unlock()
-								w.RequestRedraw()
-							},
-						)
-					}
-
-					switch {
-					case activeSurf != nil:
-						activeSurf.Render(
-							c,
-							func(p, text string, bom bool) error {
-								_, err := files.WriteRawFileAtomic(p, text, bom)
-								return err
-							},
-							func(p string) {
-								if mygo.App.IsReady() {
-									mygo.Shell.ShowItemInFolder(p)
-								}
-							},
-							func(p string) {
-								if mygo.App.IsReady() {
-									_ = mygo.Shell.OpenPath(p)
-								}
-							},
-						)
-					case activeSess != nil:
-						activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
-						activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
-						activeSess.Render(c, layout.MainWidth, false)
-					default:
-						w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
-					}
-				})
-			}
-
-			// Docked or Fullscreen AI Panel (stays docked even on narrow viewports per shell_layout.rs)
-			// Immersive AI owns the panel; the docked slot is not built then, so the
-			// panel is never rendered twice in one frame.
-			if aiImmersive {
+			} else if aiImmersive {
 				if layout.ChatDocked {
 					ui.Column(c.Key("stage-ai-immersive")).Grow(1).MinWidth(0).FillHeight().
 						Transition(blockui.SurfaceStageTransition()).Children(func() {
@@ -3379,15 +3352,83 @@ func (w *Workspace) Render(c *ui.Context) {
 					})
 				}
 			} else {
-				blockui.DockPanel(c, "docked-ai-slot", layout.ChatDocked, layout.ChatWidth, true, func() {
-					chatW := w.ai.PanelWidth()
-					maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
-					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
-						w.ai.SyncPanelWidth(chatW)
-						c.Invalidate()
-					}
-					w.ai.SetRenderWidth(layout.ChatWidth)
-					w.ai.RenderPanel(c)
+				cardHorizMargin := cardLeft + 8
+				effMainW := max(layout.MainWidth-cardHorizMargin, 0)
+				minMainW := float32(0)
+				if !layout.ChatDocked {
+					minMainW = max(min(layout.ContentFloor, vpW)-cardHorizMargin, 0)
+				}
+				ui.Row(c.Key("workspace-panel-slot")).Grow(1).MinWidth(0).FillHeight().
+					Padding(0, 8, 8, cardLeft).Children(func() {
+					panelCard := blockui.Elevate(
+						ui.Row(c.Key("workspace-panel-card")).Fill().Radius(theme.RadiusLG).Clip().
+							Background(chrome.Card).Border(1, chrome.CardBorder),
+						theme.ElevationCard,
+					)
+					blockui.Probe(panelCard, "workspace-panel-card")
+					panelCard.Children(func() {
+						mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
+							Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
+						mainCol.Children(func() {
+							if toast != nil && toast.Active && toast.NotePath == activeTab {
+								toast.RenderBanner(
+									c,
+									func() {
+										undoTxt := toast.UndoContent
+										target := toast.NotePath
+										w.mu.Lock()
+										w.historyToast = nil
+										w.mu.Unlock()
+										_ = w.WriteNote(target, undoTxt)
+									},
+									func() {
+										w.mu.Lock()
+										w.historyToast = nil
+										w.mu.Unlock()
+										w.RequestRedraw()
+									},
+								)
+							}
+
+							switch {
+							case activeSurf != nil:
+								activeSurf.Render(
+									c,
+									func(p, text string, bom bool) error {
+										_, err := files.WriteRawFileAtomic(p, text, bom)
+										return err
+									},
+									func(p string) {
+										if mygo.App.IsReady() {
+											mygo.Shell.ShowItemInFolder(p)
+										}
+									},
+									func(p string) {
+										if mygo.App.IsReady() {
+											_ = mygo.Shell.OpenPath(p)
+										}
+									},
+								)
+							case activeSess != nil:
+								activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
+								activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
+								activeSess.Render(c, effMainW, false)
+							default:
+								w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
+							}
+						})
+
+						blockui.DockPanel(c, "docked-ai-slot", layout.ChatDocked, layout.ChatWidth, true, func() {
+							chatW := w.ai.PanelWidth()
+							maxChat := ChatLimit(vpW-cardHorizMargin, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
+							if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
+								w.ai.SyncPanelWidth(chatW)
+								c.Invalidate()
+							}
+							w.ai.SetRenderWidth(layout.ChatWidth)
+							w.ai.RenderPanel(c)
+						})
+					})
 				})
 			}
 
@@ -3466,6 +3507,14 @@ func (w *Workspace) renderSidebarColumn(
 	isDrawer bool,
 ) {
 	hasUpd, updBusy, updReady, updTip := w.sidebarUpdaterProps()
+	hideNonMD := true
+	if stSnap.HideNonMarkdownFiles != nil {
+		hideNonMD = *stSnap.HideNonMarkdownFiles
+	}
+	hideAssets := true
+	if stSnap.HideAssetsFolder != nil {
+		hideAssets = *stSnap.HideAssetsFolder
+	}
 	RenderSidebar(c, SidebarProps{
 		State:        w.sidebarUI,
 		Width:        &w.sidebarWidth,
@@ -3473,17 +3522,63 @@ func (w *Workspace) renderSidebarColumn(
 		OnWidthChanged: func(nw float32) {
 			w.scheduleSaveSidebarWidth(ClampSidebarWidth(nw))
 		},
-		ActiveNotebook:  activeNB,
-		Notebooks:       notebooks,
-		Entries:         entries,
-		ActiveNote:      activeNote,
-		Notice:          notice,
-		SettingsOpen:    w.modals.IsSettingsOpen(),
-		HasUpdate:       hasUpd,
-		UpdateBusy:      updBusy,
-		UpdateReady:     updReady,
-		UpdateTooltip:   updTip,
-		ShortcutNewNote: modals.EffectiveShortcut(stSnap, "new_note"),
+		ActiveNotebook:    activeNB,
+		Notebooks:         notebooks,
+		Entries:           entries,
+		ActiveNote:        activeNote,
+		Notice:            notice,
+		SettingsOpen:      w.modals.IsSettingsOpen(),
+		SearchOpen:        w.modals.IsSearchOpen(),
+		Busy:              w.isBusy(),
+		HasUpdate:         hasUpd,
+		UpdateBusy:        updBusy,
+		UpdateReady:       updReady,
+		UpdateTooltip:     updTip,
+		SortMode:          stSnap.TreeSort,
+		HideNonMarkdown:   hideNonMD,
+		HideAssets:        hideAssets,
+		ShortcutSearch:    modals.EffectiveShortcut(stSnap, "search"),
+		ShortcutNewFolder: "cmd-shift-n",
+		ShortcutNewNote:   modals.EffectiveShortcut(stSnap, "new_note"),
+		OnOpenSearch: func() {
+			if isDrawer {
+				w.mu.Lock()
+				w.sidebarPinned = false
+				w.mu.Unlock()
+			}
+			w.modals.OpenSearch(false)
+		},
+		OnSetSortMode: func(mode model.TreeSortMode) {
+			if w.modals.OnStateChanged != nil {
+				w.modals.OnStateChanged(func(s *model.AppState) {
+					s.TreeSort = mode
+				})
+			}
+		},
+		OnToggleShowNonMD: func() {
+			if w.modals.OnStateChanged != nil {
+				w.modals.OnStateChanged(func(s *model.AppState) {
+					cur := true
+					if s.HideNonMarkdownFiles != nil {
+						cur = *s.HideNonMarkdownFiles
+					}
+					next := !cur
+					s.HideNonMarkdownFiles = &next
+				})
+			}
+		},
+		OnToggleShowAssets: func() {
+			if w.modals.OnStateChanged != nil {
+				w.modals.OnStateChanged(func(s *model.AppState) {
+					cur := true
+					if s.HideAssetsFolder != nil {
+						cur = *s.HideAssetsFolder
+					}
+					next := !cur
+					s.HideAssetsFolder = &next
+				})
+			}
+		},
 		OnNewFolder: func() {
 			_, _ = w.CreateNewFolder()
 		},

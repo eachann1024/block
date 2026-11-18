@@ -52,6 +52,7 @@ func renderFeedbackButton(c *ui.Context, p TitlebarProps) {
 		Tooltip:     tip,
 		Active:      p.FeedbackOpen,
 		ActiveStyle: blockui.ActiveAccentFlat,
+		ChromeHover: true,
 	})
 	if p.HasFeedbackDraft && !p.FeedbackOpen {
 		dot := theme.Ocean().Accent
@@ -74,6 +75,7 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 		Shortcut:    blockui.FormatShortcutDisplay(sc),
 		Active:      p.AIOpen,
 		ActiveStyle: blockui.ActiveAccent,
+		ChromeHover: true,
 	})
 	if btn.Clicked() && p.OnToggleAI != nil {
 		p.OnToggleAI()
@@ -110,6 +112,7 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 			ActiveStyle: blockui.ActiveAccent,
 			Size:        theme.HeightChrome - inset,
 			Radius:      theme.RadiusMD - inset,
+			ChromeHover: !split,
 		})
 		if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
 			p.MenuState.PageMenuAnchor = b
@@ -129,15 +132,24 @@ const pillInset = 2
 // pinned to the more button's side, fading with the reveal.
 func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32) {
 	pal := theme.Ocean()
+	moving := reveal < 0.999
 	c.Key("titlebar-send-group")
-	clip := ui.Box(c).Shrink(0).ClipX().Opacity(reveal)
+	clip := ui.Box(c).Shrink(0)
+	if moving {
+		clip.ClipX().Opacity(reveal)
+	}
 	clip.Children(func() {
 		c.Key("titlebar-send-content")
 		content := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset).Padding(0, pillInset, 0, 0)
-		natural := content.Bounds().W
-		shown := natural * reveal
-		clip.Width(shown)
-		content.Translate(shown-natural, 0)
+		if moving {
+			natural := content.Bounds().W
+			if natural <= 0 {
+				c.Invalidate()
+			}
+			shown := natural * reveal
+			clip.Width(shown)
+			content.Translate(shown-natural, 0)
+		}
 		content.Children(func() {
 			renderSendAllSegment(c, p)
 			ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
