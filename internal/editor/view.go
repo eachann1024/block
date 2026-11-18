@@ -512,7 +512,6 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 							handleTop = max((s.scale(theme.HeightCompact)-btn24)*0.5, -topGap)
 						}
 						icGutter := s.scale(theme.IconChrome)
-						icGrip := s.scale(theme.IconAction)
 						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(btn24).
 							Justify(ui.End).AlignItems(ui.Center).Gap(s.scale(2)).PassThrough().
 							Transition(appUi.PopoverSpringTransition())
@@ -535,7 +534,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 									true,
 								)
 								delBtn.Children(func() {
-									icons.DrawAnimated(c, icons.KeyBackspace, icGrip, pal.MonoIconColors(pal.Danger), delHovered || delPressed)
+									icons.DrawAnimated(c, icons.KeyBackspace, s.scale(theme.IconAction), pal.MonoIconColors(pal.Danger), delHovered || delPressed)
 								})
 								appUi.Probe(delBtn, "first-line-delete-badge")
 								if delBtn.Clicked() {
@@ -640,7 +639,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 									gripIcon = pal.DuoIconColors(pal.Text)
 								}
 								grip.Children(func() {
-									icons.DrawAnimated(c, icons.Drag, icGrip, gripIcon, gripActive || gripPressed || gripHovered)
+									icons.DrawAnimated(c, icons.Drag, icGutter, gripIcon, gripActive || gripPressed || gripHovered)
 								})
 								appUi.Probe(grip, gripID)
 								s.recordOverlayBtn(gripID, grip)
