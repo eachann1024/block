@@ -1594,7 +1594,6 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 		internalui.Probe(ignoreCard, "settings-ignore-search")
 		ignoreCard.Children(func() {
 			cardTitle(c, theme.Tr("全局搜索忽略列表", "Global Search Ignore List"))
-			activeNB := m.activeNotebookPath(st)
 			notebooks := m.knownNotebooks(st)
 			if len(notebooks) == 0 {
 				ui.Text(c, theme.Tr("暂无已打开的笔记本目录", "No notebook folders yet")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
@@ -1605,7 +1604,6 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					idx := i
 					folderPath := nb
 					ignored := slices.Contains(st.IgnoredSearchFolders, folderPath)
-					isCurrent := folderPath == activeNB
 					id := fmt.Sprintf("settings-ignore-search-%d", idx)
 					folderName := filepath.Base(folderPath)
 					shortPath := theme.DisplayFolderPath(folderPath)
@@ -1656,16 +1654,12 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							}
 
 							ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-								if isCurrent {
-									ui.Text(c, theme.Tr("当前", "Current")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-								} else {
-									rmBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-										ID:    fmt.Sprintf("folder-remove-notebook-%d", idx),
-										Label: theme.Tr("移除笔记本", "Remove Notebook"),
-									})
-									if rmBtn.Clicked() {
-										m.forgetNotebook(folderPath)
-									}
+								rmBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+									ID:    fmt.Sprintf("folder-remove-notebook-%d", idx),
+									Label: theme.Tr("移除笔记本", "Remove Notebook"),
+								})
+								if rmBtn.Clicked() {
+									m.forgetNotebook(folderPath)
 								}
 							})
 						},
@@ -1719,21 +1713,32 @@ func (m *Manager) forgetNotebook(folder string) {
 		m.OnForgetNotebook(folder)
 		return
 	}
+	clean := filepath.Clean(folder)
 	m.mutateState(func(s *model.AppState) {
 		var keep []string
 		for _, nb := range s.Notebooks {
-			if nb != folder {
+			if filepath.Clean(nb) != clean {
 				keep = append(keep, nb)
 			}
 		}
 		s.Notebooks = keep
 		var keepIgnored []string
 		for _, nb := range s.IgnoredSearchFolders {
-			if nb != folder {
+			if filepath.Clean(nb) != clean {
 				keepIgnored = append(keepIgnored, nb)
 			}
 		}
 		s.IgnoredSearchFolders = keepIgnored
+		theme.SetIgnoredSearchFolders(keepIgnored)
+		if s.Folder != "" && filepath.Clean(s.Folder) == clean {
+			s.OpenTabs = nil
+			s.ActiveTab = ""
+			if len(keep) > 0 {
+				s.Folder = keep[0]
+			} else {
+				s.Folder = ""
+			}
+		}
 	})
 }
 

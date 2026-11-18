@@ -1185,7 +1185,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				if p.State.ConfirmForgetNotebook != "" {
 					stillValid := false
 					for _, nb := range p.Notebooks {
-						if nb == p.State.ConfirmForgetNotebook && nb != p.ActiveNotebook {
+						if nb == p.State.ConfirmForgetNotebook {
 							stillValid = true
 							break
 						}
@@ -1200,7 +1200,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							ix := ix
 							nb := nb
 							checked := nb == p.ActiveNotebook
-							confirming := !checked && p.State.ConfirmForgetNotebook == nb
+							confirming := p.State.ConfirmForgetNotebook == nb
 							c.Key("nb-item:" + nb)
 							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusMD)
 							nbDrop := false
@@ -1281,7 +1281,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									}
 									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, rowHover || kbActive)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-									if checked {
+									if checked && !confirming && !(rowHover && p.OnForgetNotebook != nil) {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
 											icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
 										})
@@ -1295,7 +1295,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 										choices[ix].OnClick()
 									}
 								}
-								if !checked && p.OnForgetNotebook != nil {
+								if p.OnForgetNotebook != nil {
 									fgID := "nb-forget:" + nb
 									if confirming {
 										confirmed, cancelled := blockui.InlineConfirm(c, blockui.InlineConfirmOptions{
