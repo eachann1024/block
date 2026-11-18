@@ -141,10 +141,7 @@ func (s *Session) isAboveFirstVisibleBlock(wy float32) bool {
 		return wy < firstR.Y
 	}
 	if s.scrollRect.H > 0 {
-		topPad := editorTopPad
-		if s.minimal {
-			topPad = minimalTopPad
-		}
+		topPad := s.canvasTopPad()
 		return wy < s.scrollRect.Y+topPad-s.bodyScroll.Y
 	}
 	return false

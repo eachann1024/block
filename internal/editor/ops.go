@@ -3033,7 +3033,14 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 // --- Find ---
 
 func (s *Session) OpenFind() {
+	wasOpen := s.findOpen
+	oldPad := s.canvasTopPad()
 	s.findOpen = true
+	if !wasOpen {
+		if delta := s.canvasTopPad() - oldPad; delta > 0 {
+			s.shiftScrollY(delta)
+		}
+	}
 	s.findFocusPending = true
 	s.blockMenu = nil
 	s.toolbarPop = ""
@@ -3057,9 +3064,14 @@ func (s *Session) CloseFind() {
 	if !s.findOpen {
 		return
 	}
+	oldPad := s.canvasTopPad()
 	s.findOpen = false
+	if delta := s.canvasTopPad() - oldPad; delta < 0 {
+		s.shiftScrollY(delta)
+	}
 	s.selAnchor = s.selHead
 	s.focusPending = true
+	s.focusPreventScroll = true
 }
 
 func (s *Session) SetFindQuery(q string) {
