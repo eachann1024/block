@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,35 @@ func normalizeState(st *model.AppState) {
 	if st.HideNonMarkdownFiles == nil {
 		v := false
 		st.HideNonMarkdownFiles = &v
+	}
+	if st.EditorZoom != nil {
+		v := float64(*st.EditorZoom)
+		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
+			st.EditorZoom = nil
+		} else {
+			var pct int
+			if v > 10 {
+				pct = int(math.Round(v))
+			} else {
+				pct = int(math.Round(v * 100))
+			}
+			pct = max(70, min(((pct+5)/10)*10, 130))
+			z := float32(pct) / 100.0
+			st.EditorZoom = &z
+		}
+	}
+	if st.MainWindowBounds != nil {
+		b := st.MainWindowBounds
+		invalid := false
+		for _, f := range []float32{b.X, b.Y, b.Width, b.Height} {
+			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+				invalid = true
+				break
+			}
+		}
+		if invalid || b.Width <= 0 || b.Height <= 0 {
+			st.MainWindowBounds = nil
+		}
 	}
 
 	// Deduplicate notebooks preserving order and skipping empty entries.
