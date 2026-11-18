@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -20,13 +21,25 @@ import (
 )
 
 const (
-	macBundleID      = "dev.eachann.block"
-	macLegacyID      = "com.block.notes"
-	stageDirPrefix   = ".block-update-"
-	lsregisterBinary = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+	macBundleID        = "dev.eachann.block"
+	macLegacyID        = "com.block.notes"
+	macLegacyThinklyID = "dev.eachann.thinkly-fast"
+	stageDirPrefix     = ".block-update-"
+	lsregisterBinary   = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 )
 
-var stageDirPattern = regexp.MustCompile(`^\.block-update-[0-9a-fA-F]+$`)
+var (
+	stageDirPattern    = regexp.MustCompile(`^\.block-update-[0-9a-fA-F]+$`)
+	lsregisterSuffixRe = regexp.MustCompile(`\s+\(0x[0-9a-fA-F]+\)\s*$`)
+)
+
+func markMacNeverIndex(dir string) {
+	if runtime.GOOS != "darwin" || dir == "" {
+		return
+	}
+	_ = os.MkdirAll(dir, 0o700)
+	_ = os.WriteFile(filepath.Join(dir, ".metadata_never_index"), nil, 0o600)
+}
 
 // VerifiedRecord persists a verified, staged update in <dataDir>/app-updates/ready.json.
 type VerifiedRecord struct {
@@ -180,6 +193,8 @@ func DownloadAndStage(
 		logError("download.mkdir_failed", "dir", verDir, "err", err)
 		return nil, err
 	}
+	markMacNeverIndex(updatesRoot(dataDir))
+	markMacNeverIndex(verDir)
 	finalPath := filepath.Join(verDir, asset.Name)
 	partPath := finalPath + ".part"
 
@@ -348,6 +363,7 @@ func prepareMacAppFromDMG(dmgPath, unpackedDir, expectedVersion string) (string,
 	if err := os.MkdirAll(unpackedDir, 0o700); err != nil {
 		return "", err
 	}
+	markMacNeverIndex(unpackedDir)
 	mountDir, err := os.MkdirTemp("", "block-dmg-mnt-*")
 	if err != nil {
 		return "", err
@@ -358,27 +374,29 @@ func prepareMacAppFromDMG(dmgPath, unpackedDir, expectedVersion string) (string,
 	if out, err := attach.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("mount DMG failed: %s", strings.TrimSpace(string(out)))
 	}
+	srcApp := filepath.Join(mountDir, "Block.app")
 	detached := false
 	detach := func() {
 		if detached {
 			return
 		}
 		detached = true
+		_ = exec.Command(lsregisterBinary, "-u", srcApp).Run()
 		_ = exec.Command("/usr/bin/hdiutil", "detach", mountDir, "-force").Run()
 	}
 	defer detach()
 
-	srcApp := filepath.Join(mountDir, "Block.app")
 	info, err := os.Lstat(srcApp)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", errors.New("DMG does not contain Block.app")
 	}
 
-	dstApp := filepath.Join(unpackedDir, "Block.app")
+	dstApp := filepath.Join(unpackedDir, "Block.bundle")
 	if out, err := exec.Command("/usr/bin/ditto", srcApp, dstApp).CombinedOutput(); err != nil {
 		return "", fmt.Errorf("unpack Block.app failed: %s", strings.TrimSpace(string(out)))
 	}
 	detach()
+	_ = exec.Command(lsregisterBinary, "-u", dstApp).Run()
 
 	if err := validateMacBundle(dstApp, expectedVersion); err != nil {
 		return "", err
@@ -477,12 +495,107 @@ func removeSiblingMacStages(bundle string) {
 	}
 }
 
+func pruneDuplicateMacRegistrations(canonicalBundle string) {
+	if runtime.GOOS != "darwin" || canonicalBundle == "" {
+		return
+	}
+	canonical := filepath.Clean(canonicalBundle)
+	if real, err := filepath.EvalSymlinks(canonical); err == nil {
+		canonical = real
+	}
+	cmd := exec.Command(lsregisterBinary, "-dump")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	seen := make(map[string]struct{})
+	var stale []string
+	var curPath, curID string
+	isTargetID := func(id string) bool {
+		return id == macBundleID || id == macLegacyID || id == macLegacyThinklyID
+	}
+	flush := func() {
+		if curPath != "" && isTargetID(curID) {
+			clean := filepath.Clean(curPath)
+			if real, err := filepath.EvalSymlinks(clean); err == nil {
+				clean = real
+			}
+			if clean != canonical {
+				if _, dup := seen[curPath]; !dup {
+					seen[curPath] = struct{}{}
+					stale = append(stale, curPath)
+				}
+			}
+		}
+		curPath = ""
+		curID = ""
+	}
+
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), "\r")
+		if strings.HasPrefix(line, "--------------------------------------------------------------------------------") {
+			flush()
+			continue
+		}
+		if curPath == "" && strings.HasPrefix(line, "path:") {
+			curPath = strings.TrimSpace(lsregisterSuffixRe.ReplaceAllString(line[len("path:"):], ""))
+		} else if curID == "" && strings.HasPrefix(line, "identifier:") {
+			curID = strings.TrimSpace(lsregisterSuffixRe.ReplaceAllString(line[len("identifier:"):], ""))
+		}
+	}
+	flush()
+	_ = cmd.Wait()
+
+	for _, p := range stale {
+		_ = exec.Command(lsregisterBinary, "-u", p).Run()
+	}
+	if len(stale) > 0 {
+		_ = exec.Command(lsregisterBinary, "-f", canonical).Run()
+		logInfo("startup.lsregister_pruned", "count", len(stale), "canonical", canonical)
+	}
+}
+
+func refreshMacDocumentIconCacheOnce(updatesDir, bundle string) {
+	if runtime.GOOS != "darwin" || updatesDir == "" || bundle == "" {
+		return
+	}
+	docIcon := filepath.Join(bundle, "Contents", "Resources", "DocumentIcon.icns")
+	if _, err := os.Stat(docIcon); err != nil {
+		return
+	}
+	marker := filepath.Join(updatesDir, ".docicon-v1")
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
+	_ = exec.Command(lsregisterBinary, "-f", bundle).Run()
+	if out, err := exec.Command("/usr/bin/getconf", "DARWIN_USER_CACHE_DIR").Output(); err == nil {
+		cacheDir := strings.TrimSpace(string(out))
+		if cacheDir != "" {
+			if ents, rErr := os.ReadDir(cacheDir); rErr == nil {
+				for _, ent := range ents {
+					if strings.HasPrefix(ent.Name(), "com.apple.iconservices") {
+						_ = os.RemoveAll(filepath.Join(cacheDir, ent.Name()))
+					}
+				}
+			}
+		}
+	}
+	_ = exec.Command("/usr/bin/killall", "iconservicesagent").Run()
+	_ = os.WriteFile(marker, []byte("1\n"), 0o600)
+}
+
 // AcknowledgeStartupAndClean signals any pending macOS install stage that the new version
 // launched cleanly, logs rollback anomalies if an older version booted after an attempted swap,
 // cleans sibling stage directories, and prunes outdated cached downloads.
 func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 	root := updatesRoot(dataDir)
 	_ = os.MkdirAll(root, 0o700)
+	markMacNeverIndex(root)
 
 	exe, _ := os.Executable()
 	logInfo("startup.init", "running_version", runningVersion, "os", runtime.GOOS, "arch", runtime.GOARCH, "exe", exe)
@@ -494,7 +607,6 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 				if json.Unmarshal(raw, &st) == nil && st.Path != "" && stageDirPattern.MatchString(filepath.Base(st.Path)) {
 					if st.Version == "" || CompareVersion(runningVersion, st.Version) >= 0 {
 						_ = os.WriteFile(filepath.Join(st.Path, "started"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600)
-						removeSiblingMacStages(bundle)
 						_ = os.Remove(stageRecordPath(dataDir))
 						logInfo("startup.install_acknowledged", "from_version", st.FromVersion, "installed_version", runningVersion, "stage", st.Path)
 					} else {
@@ -503,6 +615,9 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 					}
 				}
 			}
+			removeSiblingMacStages(bundle)
+			pruneDuplicateMacRegistrations(bundle)
+			refreshMacDocumentIconCacheOnce(root, bundle)
 		}
 	}
 
@@ -529,6 +644,9 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 			continue
 		}
 		if _, _, _, ok := ParseReleaseTag(name); ok {
+			if runtime.GOOS == "darwin" {
+				_ = exec.Command(lsregisterBinary, "-u", filepath.Join(root, name, "unpacked", "Block.app")).Run()
+			}
 			_ = os.RemoveAll(filepath.Join(root, name))
 			logInfo("startup.pruned_old_cache", "version", name)
 		}
@@ -602,27 +720,29 @@ remove_stage() {
 }
 rollback() {
   log "WARN executing rollback for target=$target"
-  if [ -d "$stage/previous.app" ]; then
-    if [ -e "$target" ]; then mv "$target" "$stage/failed.app" || true; fi
-    mv "$stage/previous.app" "$target" || true
+  if [ -d "$stage/previous.bundle" ]; then
+    if [ -e "$target" ]; then mv "$target" "$stage/failed.bundle" || true; fi
+    mv "$stage/previous.bundle" "$target" || true
   fi
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
   /usr/bin/open "$target" || true
   remove_stage
   log "rollback complete"
 }
 trap rollback HUP INT TERM
 
-if ! mv "$target" "$stage/previous.app"; then
-  log "ERROR mv current bundle to previous.app failed"
+if ! mv "$target" "$stage/previous.bundle"; then
+  log "ERROR mv current bundle to previous.bundle failed"
   /usr/bin/open "$target" || true
   remove_stage
   exit 1
 fi
-if ! mv "$stage/next.app" "$target"; then
-  log "ERROR mv next.app to target failed"
+if ! mv "$stage/next.bundle" "$target"; then
+  log "ERROR mv next.bundle to target failed"
   rollback
   exit 1
 fi
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
 log "bundle swapped into place; launching updated app"
 if ! /usr/bin/open "$target"; then
   log "ERROR open updated target failed"
@@ -747,7 +867,8 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			logError("install.stage_mkdir_failed", "stage", stage, "err", err)
 			return err
 		}
-		nextApp := filepath.Join(stage, "next.app")
+		markMacNeverIndex(stage)
+		nextApp := filepath.Join(stage, "next.bundle")
 		if out, err := exec.Command("/usr/bin/ditto", rec.UnpackedAppPath, nextApp).CombinedOutput(); err != nil {
 			_ = os.RemoveAll(stage)
 			logError("install.stage_ditto_failed", "err", strings.TrimSpace(string(out)))

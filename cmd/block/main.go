@@ -15,6 +15,7 @@ import (
 	"block/internal/model"
 	"block/internal/theme"
 	blockui "block/internal/ui"
+	"block/internal/updater"
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/locales/zh-Hans"
 	"github.com/egoist/mygo/ui"
@@ -30,6 +31,7 @@ func main() {
 		smokeFlag     bool
 		smokeOnceFlag bool
 		mockAIFlag    bool
+		versionFlag   bool
 	)
 	flag.StringVar(&dataDirFlag, "data-dir", "", "Override Block application data directory")
 	flag.StringVar(&notebookFlag, "notebook", "", "Open a specific notebook folder on launch")
@@ -37,7 +39,13 @@ func main() {
 	flag.BoolVar(&smokeFlag, "smoke", false, "Enable visual smoke HUD and interactive smoke runner")
 	flag.BoolVar(&smokeOnceFlag, "smoke-once", false, "Run headless/automated full click acceptance suite once and exit")
 	flag.BoolVar(&mockAIFlag, "mock-ai", false, "Enable deterministic offline AI responder for E2E verification")
+	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
 	flag.Parse()
+
+	if versionFlag {
+		fmt.Println(updater.CurrentVersion())
+		return
+	}
 
 	isIsolatedRun := smokeFlag || smokeOnceFlag || dataDirFlag != "" || os.Getenv("MYGO_AUTOMATION") != ""
 
