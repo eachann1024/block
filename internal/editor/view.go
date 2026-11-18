@@ -517,7 +517,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 						icGutter := s.scale(theme.IconChrome)
 						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(btn24).
 							Justify(ui.End).AlignItems(ui.Center).Gap(s.scale(2)).PassThrough().
-							Transition(appUi.PopoverSpringTransition())
+							Transition(appUi.GutterHandleTransition())
 						strip.Children(func() {
 							if showDeleteArm {
 								delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(btn24, btn24).Center().
