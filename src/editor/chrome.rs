@@ -32,7 +32,7 @@ pub(super) fn body_padding(block: &Block, zoom: f32) -> f32 {
 }
 
 /// CSS (margin-top, margin-bottom) of a block in the reference page.
-fn margins(block: &Block) -> (f32, f32) {
+pub(in crate::editor) fn margins(block: &Block) -> (f32, f32) {
     match (block.kind, block.meta.heading_level) {
         (Kind::H1, _) => (0., 8.),
         (Kind::H2, _) => (35.2, 11.),
@@ -121,9 +121,9 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
             .child(div().w(px(handle_w)).h(px(0.)).mr(px(ROW_GAP)).flex_none().relative()
                 .child(crate::ui::motion::reveal_fade(div().absolute().right_0().top(px(handle_top)).h(px(26. * zoom)).flex().items_center().justify_end().gap(px(2. * zoom))
                     .when(regular_handles && !blank, |row| row
-                        .child(grip_button(("drag", id as usize), grip_active, zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                        .child(grip_button(("drag", id as usize), grip_active, zoom, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             window.focus(&this.focus, cx);
-                            this.begin_drag(id, cx); cx.stop_propagation();
+                            this.begin_drag(id, event.position, cx); cx.stop_propagation();
                         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                             if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
                         }))))
@@ -140,12 +140,11 @@ pub(super) fn block_row(editor: gpui::Entity<Editor>, block: &Block, pads: (f32,
                             cx.stop_propagation();
                         }))))
                     .when(!minimal && is_table && handles, |row| row
-                        .child(table_grip_button(("tbl-grip", id as usize), grip_active, zoom, cx.listener(move |this, _: &gpui::MouseDownEvent, window, cx| {
+                        .child(table_grip_button(("tbl-grip", id as usize), grip_active, zoom, cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
                             window.focus(&this.focus, cx);
                             this.table_menu = None;
-                            this.block_menu = None;
                             this.select_whole_table(id, cx);
-                            this.begin_drag(id, cx);
+                            this.begin_drag(id, event.position, cx);
                             cx.stop_propagation();
                         })).on_mouse_up(MouseButton::Left, cx.listener(move |this, event: &gpui::MouseUpEvent, _, cx| {
                             if this.dragging == Some(id) { this.finish_drag(event.position, cx); cx.stop_propagation(); }
@@ -204,6 +203,32 @@ fn table_grip_button(id: (&'static str, usize), active: bool, zoom: f32, listene
     grip_button(id, active, zoom, listener).mr(px(4. * zoom))
 }
 impl Editor {
+    pub(in crate::editor) fn grip_bounds(&self, id: u64) -> Option<gpui::Bounds<Pixels>> {
+        let index = self.doc.index_of(id)?;
+        let block = &self.doc.blocks[index];
+        let row = *self.painted_rows.get(&id)?;
+        let zoom = super::zoom::zoom_factor(self.minimal);
+        let (pt, _) = row_pads(self, index);
+        let is_table = block.meta.table.is_some();
+        let has_image = super::image_source::spec_of(block).is_some();
+        let rule = super::block_menu::is_divider(block);
+        let (size_px, factor) = super::paint::heading_metrics(
+            block.kind, block.meta.heading_level, block.meta.code_language.is_some(),
+            self.minimal, f32::from(Theme::ocean().editor_font), zoom,
+        );
+        let line = size_px * factor;
+        let first_line_h = if rule { 16. * zoom } else if block.meta.code_language.is_some() { 30. * zoom } else { line };
+        let handle_top = if is_table { 4.9 * zoom } else if has_image { 4. * zoom }
+            else if block.meta.callout.is_some() { (7. * zoom).max(-pt) }
+            else { ((first_line_h - 26. * zoom) / 2.).max(-pt) };
+        let right_mr = if is_table { 4. * zoom } else { 0. };
+        let sz = 26. * zoom;
+        Some(gpui::Bounds::new(
+            gpui::point(row.left() + px(HANDLE_WIDTH - sz - right_mr), row.top() + px(pt + handle_top)),
+            gpui::size(px(sz), px(sz)),
+        ))
+    }
+
     /// True whenever inline AI, any floating toolbar, dropdown menu, or annotation popover is open.
     pub(in crate::editor) fn has_active_overlay(&self) -> bool {
         self.format.is_some()
@@ -233,10 +258,12 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let list = super::list_marker::ctx(this, index);
     let edge = this.drag_over.filter(|target| if target.after { target.slot.saturating_sub(1) == index } else { target.slot == index }).map(|target| (target.after, target.indent, target.nested));
     let whole_table = block.meta.table.is_some() && this.table_sel == Some((block.id, super::table_actions::TableSel::Whole));
-    let grip_active = this.dragging == Some(block.id) || whole_table;
+    let handle_menu_open = this.block_menu.is_some_and(|m| m.mode == super::block_menu::Mode::Handle && m.block == block.id);
+    let actively_dragging = this.dragging == Some(block.id) && this.drag_moved;
+    let grip_active = actively_dragging || whole_table || handle_menu_open;
     let has_overlay = this.has_active_overlay();
     let hovered = !this.minimal && !has_overlay && this.hover == Some(block.id);
-    let handles = !this.minimal && !has_overlay && (this.hover == Some(block.id) || (!this.caret_hidden && this.caret.head.block == block.id) || grip_active);
+    let handles = !this.minimal && (!has_overlay || handle_menu_open) && (this.hover == Some(block.id) || (!this.caret_hidden && this.caret.head.block == block.id) || grip_active);
     let folded = !this.minimal && this.is_heading_folded(block.id);
     let picked = this.block_sel.is_some_and(|(a, b)| a.min(b) <= index && index <= a.max(b));
     let image_pop = this.image_menu.as_ref().filter(|(mid, _)| *mid == block.id).map(|(_, p)| p.clone());
@@ -249,7 +276,7 @@ pub(super) fn render_block_row(this: &Editor, index: usize, cx: &mut gpui::Conte
     let bounds = gpui::canvas(|_, _, _| (), move |bounds, (), _, cx| {
         editor.update(cx, |this, _| { this.painted_rows.insert(id, bounds); });
     }).absolute().top_0().left_0().size_full();
-    div().relative().when(this.dragging == Some(block.id), |row| row.opacity(0.55))
+    div().relative().when(actively_dragging, |row| row.opacity(0.55))
         .when_some(picked.then_some(this.block_sel).flatten(), |d, (a, b)| d.bg(Theme::ocean().selection)
         .when(index == a.min(b), |d| d.rounded_t_md()).when(index == a.max(b), |d| d.rounded_b_md()))
         .when(this.outline.highlight == Some(id), |row| row.child(crate::ui::reveal::anchor_highlight(

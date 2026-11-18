@@ -84,8 +84,9 @@ impl Render for Workspace {
                                 .into_any_element()
                         }
                     });
+                    let chat_docked = !ai_fullscreen && !split.chat_overlay && self.settings.is_none() && crate::editor::ai::chat::is_open(cx);
                     d.child(div().flex_1().min_w_0().h_full().flex().flex_col().relative()
-                        .when(!split.chat_overlay, |col| col.min_w(column_floor))
+                        .when(!split.chat_overlay && !chat_docked, |col| col.min_w(column_floor))
                         .when(split.chat_overlay, |col| col.min_w_0().pr(px(note_pad)).bg(theme.paper))
                         .child(body))
                 })

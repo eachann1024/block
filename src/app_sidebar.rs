@@ -45,6 +45,11 @@ impl Workspace {
         let split = self.shell_split(window, cx);
         let showing = !self.sidebar_collapsed && (!split.sidebar_yielded || split.sidebar_drawer);
         if showing {
+            if split.sidebar_drawer {
+                self.sidebar_pinned = false;
+                cx.notify();
+                return;
+            }
             self.sidebar_collapsed = true;
             self.sidebar_pinned = false;
         } else {

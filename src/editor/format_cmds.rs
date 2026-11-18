@@ -20,6 +20,8 @@ pub(super) enum FormatPop {
     Ai(Box<crate::editor::ai::session::AiSession>),
     /// Right-click menu over a non-empty selection; keeps the selection alive.
     SelectionMenu { spec: crate::dropdown::PlacementSpec },
+    /// Right-click menu over a single block when no text selection is active.
+    BlockContextMenu { block: u64, spec: crate::dropdown::PlacementSpec },
 }
 
 /// Bare domains get `https://`, bare emails get `mailto:`; anything with a scheme, path or fragment is kept.
@@ -264,20 +266,49 @@ impl Editor {
         self.format = None;
         if self.selection_ranges().is_empty() { super::export_document(self, window, cx) } else { super::export_selected(self, window, cx) }
     }
-    /// Right button: over a selection it opens the context menu, otherwise it moves the caret
-    /// (and opens the table menu inside a table cell).
+    /// Right button: over a selection it opens the selection context menu; inside a table cell it
+    /// opens the table menu; otherwise it moves the caret and opens the block context menu.
     pub(super) fn right_click(&mut self, event: &gpui::MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() || self.editing_source() { return; }
+        let vp = if self.editor_bounds.size.width > px(0.) {
+            gpui::Bounds::from_corners(
+                point(self.editor_bounds.left(), self.list.viewport_bounds().top()),
+                point(self.editor_bounds.right(), self.list.viewport_bounds().bottom()),
+            )
+        } else {
+            self.list.viewport_bounds()
+        };
         if !self.selection_ranges().is_empty() {
             self.table_menu = None; self.block_menu = None;
-            let spec = crate::dropdown::PlacementSpec::point(event.position).viewport(self.list.viewport_bounds());
+            let spec = crate::dropdown::PlacementSpec::point(event.position).viewport(vp);
             super::menu_keys::arm_format(0);
             self.format = Some(FormatPop::SelectionMenu { spec });
             cx.notify();
             return;
         }
-        self.pointer_down(&gpui::MouseDownEvent { button: gpui::MouseButton::Left, click_count: 1, ..event.clone() }, window, cx);
-        self.selecting = false;
-        if let Some((id, r, c)) = self.cell_of_caret() { self.open_table_menu(id, super::table_actions::TableSel::Cell(r, c), event.position, cx); }
+        if !self.in_editor_paper(event.position) { return; }
+        let row_block = self.painted_rows.iter()
+            .find_map(|(&id, bounds)| bounds.contains(&event.position).then_some(id));
+        if let Some(id) = row_block && self.doc.get(id).is_some_and(|b| b.is_atomic()) {
+            self.table_menu = None; self.table_sel = None; self.block_menu = None; self.block_sel = None;
+            self.close_format(window, cx);
+            self.focus_block(id, window, cx);
+        } else {
+            self.pointer_down(event, window, cx);
+            self.selecting = false;
+        }
+        if let Some((id, r, c)) = self.cell_of_caret() {
+            self.open_table_menu(id, super::table_actions::TableSel::Cell(r, c), event.position, cx);
+            return;
+        }
+        let target_block = row_block.unwrap_or(self.caret.head.block);
+        if self.doc.get(target_block).is_some() {
+            self.table_menu = None; self.block_menu = None;
+            let spec = crate::dropdown::PlacementSpec::point(event.position).viewport(vp);
+            super::menu_keys::arm_format(0);
+            self.format = Some(FormatPop::BlockContextMenu { block: target_block, spec });
+            cx.notify();
+        }
     }
     pub(super) fn close_format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(FormatPop::Ai(s)) = self.format.as_ref() { s.cancel.store(true, std::sync::atomic::Ordering::Relaxed); }

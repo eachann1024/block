@@ -13,6 +13,7 @@ pub(super) fn popover(editor: Entity<Editor>, pop: &FormatPop, phase: crate::ui:
             phase, 2,
         ),
         FormatPop::SelectionMenu { spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, selection_menu(editor), phase, 2),
+        FormatPop::BlockContextMenu { block, spec } => dropdown::anchored_motion(("format-pop", pop_gen), *spec, block_context_menu(editor, *block), phase, 2),
         FormatPop::Palette { spec } => {
             let fallback = *spec;
             let placed = editor.clone();
@@ -62,28 +63,72 @@ fn toolbar_drop_spec(
         .unwrap_or_else(|| fallback.viewport(viewport))
 }
 
+pub(super) fn selection_menu_slots() -> Vec<crate::ui::menu_nav::Slot> {
+    use crate::ui::menu_nav::Slot::{Item, Skip};
+    vec![Item, Item, Skip, Item, Item, Item, Skip, Item]
+}
+
+pub(super) fn block_context_slots() -> Vec<crate::ui::menu_nav::Slot> {
+    use crate::ui::menu_nav::Slot::{Item, Skip};
+    vec![Item, Item, Skip, Item, Item, Item]
+}
+
+fn insert_below_block(editor: &mut Editor, block_id: u64, window: &mut gpui::Window, cx: &mut gpui::Context<Editor>) {
+    let Some(index) = editor.doc.index_of(block_id) else { return };
+    let insert_at = editor.list_subtree_end(index) + 1;
+    if editor.insert_paragraph_at(insert_at, cx) {
+        window.focus(&editor.focus, cx);
+    }
+}
+
 pub(super) fn run_selection(editor: &mut Editor, index: usize, window: &mut gpui::Window, cx: &mut gpui::Context<Editor>) {
     editor.format = None;
     match index {
         0 => editor.export_image(window, cx),
         1 => editor.start_annotation(window, cx),
-        3 => editor.handle(&super::view::EditorAction::Copy, window, cx),
+        3 => editor.handle(&super::view::EditorAction::Cut, window, cx),
+        4 => editor.handle(&super::view::EditorAction::Copy, window, cx),
+        5 => editor.handle(&super::view::EditorAction::Paste, window, cx),
+        7 => {
+            let (_, _, _, last_idx) = editor.ordered();
+            if let Some(b) = editor.doc.blocks.get(last_idx) {
+                let id = b.id;
+                insert_below_block(editor, id, window, cx);
+            }
+        }
         _ => {}
     }
     cx.notify();
 }
 
-/// Right-click menu over a selection: export it as an image, annotate it, or copy it.
+pub(super) fn run_block_context(editor: &mut Editor, block: u64, index: usize, window: &mut gpui::Window, cx: &mut gpui::Context<Editor>) {
+    editor.format = None;
+    match index {
+        0 => {
+            if editor.insert_above(block, cx) { window.focus(&editor.focus, cx); }
+        }
+        1 => insert_below_block(editor, block, window, cx),
+        3 => editor.handle(&super::view::EditorAction::Paste, window, cx),
+        4 => {
+            if let Some(ix) = editor.doc.index_of(block) { editor.duplicate_block_at(ix, window, cx); }
+        }
+        5 => {
+            editor.run_block_cmd(block, super::block_menu::Mode::Handle, super::block_menu::Cmd::Delete, window, cx);
+        }
+        _ => {}
+    }
+    cx.notify();
+}
+
+/// Right-click menu over a selection: export, annotate, clipboard actions, or insert paragraph below.
 fn selection_menu(editor: Entity<Editor>) -> AnyElement {
     let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
-    let active = crate::ui::menu_nav::clamp_index(super::menu_keys::format_index(), &[
-        crate::ui::menu_nav::Slot::Item, crate::ui::menu_nav::Slot::Item, crate::ui::menu_nav::Slot::Skip, crate::ui::menu_nav::Slot::Item,
-    ]);
-    let row = |id: &'static str, icon: Icon, label: &'static str, hint: &'static str, highlighted: bool, run: fn(&mut Editor, &mut gpui::Window, &mut gpui::Context<Editor>)| {
+    let active = crate::ui::menu_nav::clamp_index(super::menu_keys::format_index(), &selection_menu_slots());
+    let row = |id: &'static str, slot: usize, icon: Icon, label: &'static str, hint: Option<&'static str>| {
         let editor = editor.clone();
-        dropdown::row_with(id, RowSpec { icon: Some(icon), label: label.into(), hint: Some(hint.into()), highlighted, ..Default::default() })
+        dropdown::row_with(id, RowSpec { icon: Some(icon), label: label.into(), hint: hint.map(Into::into), highlighted: active == slot, ..Default::default() })
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                editor.update(cx, |this, cx| { this.format = None; run(this, window, cx); cx.notify(); });
+                editor.update(cx, |this, cx| run_selection(this, slot, window, cx));
                 cx.stop_propagation();
             })
     };
@@ -91,10 +136,39 @@ fn selection_menu(editor: Entity<Editor>) -> AnyElement {
         .track_scroll(&crate::ui::menu_nav::scroll("format"))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-        .child(row("sel-export-img", Icon::Image, tr("选中内容生成图片…", "Export Selection as Image…"), if mac { "⇧⌘E" } else { "Ctrl+Shift+E" }, active == 0, |this, w, cx| this.export_image(w, cx)))
-        .child(row("sel-annotate", Icon::TbComment, tr("添加批注", "Add annotation"), if mac { "⌥⌘M" } else { "Ctrl+Alt+M" }, active == 1, |this, w, cx| this.start_annotation(w, cx)))
+        .child(row("sel-export-img", 0, Icon::Image, tr("选中内容生成图片…", "Export Selection as Image…"), Some(if mac { "⇧⌘E" } else { "Ctrl+Shift+E" })))
+        .child(row("sel-annotate", 1, Icon::TbComment, tr("添加批注", "Add annotation"), Some(if mac { "⌥⌘M" } else { "Ctrl+Alt+M" })))
         .child(dropdown::separator())
-        .child(row("sel-copy", Icon::Copy, tr("复制", "Copy"), if mac { "⌘C" } else { "Ctrl+C" }, active == 3, |this, w, cx| this.handle(&super::view::EditorAction::Copy, w, cx)))
+        .child(row("sel-cut", 3, Icon::Cut, tr("剪切", "Cut"), Some(if mac { "⌘X" } else { "Ctrl+X" })))
+        .child(row("sel-copy", 4, Icon::Copy, tr("复制", "Copy"), Some(if mac { "⌘C" } else { "Ctrl+C" })))
+        .child(row("sel-paste", 5, Icon::NotePlus, tr("粘贴", "Paste"), Some(if mac { "⌘V" } else { "Ctrl+V" })))
+        .child(dropdown::separator())
+        .child(row("sel-insert-below", 7, Icon::Plus, tr("在块下方插入段落", "Insert paragraph below"), None))
+        .into_any_element()
+}
+
+/// Right-click menu over a block with no active selection.
+fn block_context_menu(editor: Entity<Editor>, block: u64) -> AnyElement {
+    let mac = cfg!(any(target_os = "macos", target_family = "wasm"));
+    let active = crate::ui::menu_nav::clamp_index(super::menu_keys::format_index(), &block_context_slots());
+    let row = |id: &'static str, slot: usize, icon: Icon, label: &'static str, hint: Option<&'static str>, danger: bool| {
+        let editor = editor.clone();
+        dropdown::row_with(id, RowSpec { icon: Some(icon), label: label.into(), hint: hint.map(Into::into), highlighted: active == slot, danger, ..Default::default() })
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                editor.update(cx, |this, cx| run_block_context(this, block, slot, window, cx));
+                cx.stop_propagation();
+            })
+    };
+    dropdown::shell("block-context-menu").w(px(224.))
+        .track_scroll(&crate::ui::menu_nav::scroll("format"))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+        .child(row("ctx-insert-above", 0, Icon::ArrowUp, tr("在上方插入", "Insert above"), None, false))
+        .child(row("ctx-insert-below", 1, Icon::Plus, tr("在块下方插入段落", "Insert paragraph below"), None, false))
+        .child(dropdown::separator())
+        .child(row("ctx-paste", 3, Icon::NotePlus, tr("粘贴", "Paste"), Some(if mac { "⌘V" } else { "Ctrl+V" }), false))
+        .child(row("ctx-duplicate", 4, Icon::Duplicate, tr("创建副本", "Duplicate"), Some(if mac { "⌘D" } else { "Ctrl+D" }), false))
+        .child(row("ctx-delete", 5, Icon::Trash, tr("删除", "Delete"), Some("⌫"), true))
         .into_any_element()
 }
 

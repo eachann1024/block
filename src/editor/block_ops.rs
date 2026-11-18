@@ -14,9 +14,18 @@ pub(super) fn is_list(block: &Block) -> bool {
 fn is_atomic(block: &Block) -> bool {
     super::image_source::spec_of(block).is_some() || is_divider(block)
 }
+pub(in crate::editor) fn is_plain_empty_paragraph(block: &Block) -> bool {
+    block.kind == Kind::Paragraph
+        && block.text.is_empty()
+        && block.meta.table.is_none()
+        && block.meta.code_language.is_none()
+        && block.meta.callout.is_none()
+        && block.meta.html_paragraph.is_none()
+        && !is_atomic(block)
+}
 
 impl Editor {
-    fn insert_paragraph_at(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+    pub(in crate::editor) fn insert_paragraph_at(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
         if self.path.is_none() || index > self.doc.blocks.len() { return false; }
         self.commit_composition(cx);
         let before = self.snapshot();
@@ -40,8 +49,7 @@ impl Editor {
     /// 聚焦顶部已有的普通空段落，否则在索引 0 插入空段落。
     pub(in crate::editor) fn insert_top_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(first) = self.doc.blocks.first().filter(|_| self.path.is_some()) else { return false };
-        if first.kind == Kind::Paragraph && first.text.is_empty() && first.meta.table.is_none()
-            && first.meta.code_language.is_none() && first.meta.html_paragraph.is_none() && !is_atomic(first) {
+        if is_plain_empty_paragraph(first) {
             let id = first.id; self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
             self.set_head(Position { block: id, offset: 0 }, false, cx); self.list.scroll_to_reveal_item(0); return true;
         }
@@ -52,23 +60,35 @@ impl Editor {
     pub(in crate::editor) fn insert_bottom_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
         !self.doc.blocks.is_empty() && self.insert_paragraph_at(self.doc.blocks.len(), cx)
     }
-    /// 在 `hit()` 吸附前处理文档顶部（64px）与底部（>=160px）留白点击插入。
+    /// 聚焦底部可见的普通空段落，否则在文档末尾追加新空段落并聚焦。
+    pub(in crate::editor) fn insert_or_focus_bottom_paragraph(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(last_idx) = self.last_visible_index().filter(|_| self.path.is_some()) else { return false };
+        let last = &self.doc.blocks[last_idx];
+        if is_plain_empty_paragraph(last) {
+            let id = last.id; self.table_sel = None; self.table_menu = None; self.block_sel = None; self.preferred_x = None;
+            self.set_head(Position { block: id, offset: 0 }, false, cx); self.list.scroll_to_reveal_item(last_idx); return true;
+        }
+        self.insert_bottom_paragraph(cx)
+    }
+    /// 在 `hit()` 吸附前处理文档顶部（64px）与底部（>=160px）及两侧留白点击插入。
     pub(in crate::editor) fn try_blank_margin_insert(&mut self, pos: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.minimal || self.path.is_none() || !self.is_markdown_note() || self.editing_source() || self.doc.blocks.is_empty() { return false; }
         // GPUI `List::bounds_for_item` 相对 viewport 顶部计算，不含列表自身的 `pt(px(64.))`。
         let (top_pad, first_id) = (px(64.), self.doc.blocks[0].id);
-        let first_top = self.list.bounds_for_item(0).map(|b| b.top() + top_pad)
+        let first_top = self.painted_rows.get(&first_id).map(|b| b.top())
+            .or_else(|| self.list.bounds_for_item(0).map(|b| b.top() + top_pad))
             .or_else(|| (self.list.logical_scroll_top().item_ix == 0).then(|| self.layouts.get(&first_id).map(|l| l.bounds.top())).flatten());
         if first_top.is_some_and(|top_y| pos.y < top_y) && self.insert_top_paragraph(cx) {
-            self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
+            self.trailing_plus = false; self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
         }
         let Some(last_idx) = self.last_visible_index() else { return false };
         let last_id = self.doc.blocks[last_idx].id;
         let row_b = self.list.bounds_for_item(last_idx).map(|b| b.bottom() + top_pad);
         let lay_b = self.layouts.get(&last_id).map(|l| l.bounds.bottom());
-        let last_bottom = row_b.zip(lay_b).map(|(a, b)| a.max(b)).or(row_b).or(lay_b);
-        if last_bottom.is_some_and(|bottom_y| pos.y > bottom_y) && self.insert_bottom_paragraph(cx) {
-            self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
+        let fallback_b = row_b.zip(lay_b).map(|(a, b)| a.max(b)).or(row_b).or(lay_b);
+        let last_bottom = self.painted_rows.get(&last_id).map(|b| b.bottom()).or(fallback_b);
+        if last_bottom.is_some_and(|bottom_y| pos.y > bottom_y) && self.insert_or_focus_bottom_paragraph(cx) {
+            self.trailing_plus = false; self.selecting = false; self.toolbar_anchor = None; window.focus(&self.focus, cx); return true;
         }
         false
     }
@@ -153,7 +173,6 @@ impl Editor {
     /// Cmd+D: duplicate the active block(s) (and any nested list children) directly below.
     pub(super) fn duplicate_blocks(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.is_markdown_note() { return; }
-        self.commit_composition(cx);
         let last_idx = self.doc.blocks.len().saturating_sub(1);
         let (lo, hi_sel, had_block_sel) = if let Some((a, b)) = self.block_sel {
             (a.min(b).min(last_idx), a.max(b).min(last_idx), true)
@@ -161,6 +180,17 @@ impl Editor {
             let (_, _, first, last) = self.ordered();
             (first.min(last_idx), last.min(last_idx), false)
         };
+        self.duplicate_range(lo, hi_sel, had_block_sel, window, cx);
+    }
+
+    pub(in crate::editor) fn duplicate_block_at(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_markdown_note() || index >= self.doc.blocks.len() { return; }
+        self.block_sel = None;
+        self.duplicate_range(index, index, false, window, cx);
+    }
+
+    fn duplicate_range(&mut self, lo: usize, hi_sel: usize, had_block_sel: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.commit_composition(cx);
         let hi_ext = self.list_subtree_end(hi_sel);
         let copies: Vec<Block> = (lo..=hi_ext).map(|i| {
             let mut b = self.doc.blocks[i].clone();

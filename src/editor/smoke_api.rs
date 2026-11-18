@@ -25,7 +25,9 @@ impl Editor {
 }
 
 impl Editor {
-    pub(crate) fn slash_menu_open(&self) -> bool { self.block_menu.is_some() }
+    pub(crate) fn slash_menu_open(&self) -> bool {
+        self.block_menu.is_some_and(|m| m.mode == super::block_menu::Mode::Slash)
+    }
     pub(crate) fn markdown_text(&self) -> String { markdown::serialize(&self.doc) }
     pub(crate) fn block_count(&self) -> usize { self.doc.blocks.len() }
     pub(crate) fn first_line_delete_armed(&self) -> bool {
