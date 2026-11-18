@@ -259,6 +259,7 @@ type Session struct {
 	editorRect        ui.Rect
 	scrollRect        ui.Rect
 	rootHandle        ui.Handle
+	detachedFocus     ui.Handle
 	frameRoot         ui.Element
 	toolbarRect       ui.Rect
 	overlayBtnRects   map[string]ui.Rect
