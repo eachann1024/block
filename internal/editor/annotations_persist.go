@@ -642,30 +642,6 @@ func (s *Session) findHighlightColor(blockIdx, start, end int, pal theme.Palette
 	return pal.FindMatch, true
 }
 
-func (s *Session) findMatchColorForInput(blockIdx, start, end int, pal theme.Palette) (ui.Color, bool) {
-	if !s.findOpen {
-		return ui.Transparent, false
-	}
-	found := false
-	active := false
-	for i, m := range s.findMatches {
-		if m.BlockIdx == blockIdx && end > m.StartRune && start < m.EndRune {
-			found = true
-			if i == s.findCurrent {
-				active = true
-				break
-			}
-		}
-	}
-	if !found {
-		return ui.Transparent, false
-	}
-	if active {
-		return pal.FindRing, true
-	}
-	return pal.Accent, true
-}
-
 func init() {
 	_ = slices.Equal[[]rune]
 }
