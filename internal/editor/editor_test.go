@@ -916,12 +916,26 @@ func TestEmptyLineHintBandKeycapsAndOverlaySuppressesHandles(t *testing.T) {
 		t.Fatalf("expected no menu keycaps on empty heading")
 	}
 
-	// Focused non-empty block shows handle; opening find overlay hides handle.
-	appUi.ResetSmoke()
+	// The active block shows its handle when the pointer enters its gutter.
 	s.FocusBlock(2)
 	tt.Frame()
+	body, ok := appUi.TargetBounds("block-3")
+	if !ok {
+		t.Fatal("expected active block bounds")
+	}
+	appUi.ResetSmoke()
+	tt.Move(body.X+body.W/2, body.Y+body.H/2)
+	tt.Type("x")
+	if s.Doc().Blocks[2].PlainText() == "Body line" {
+		t.Fatal("expected typing to edit the active block")
+	}
+	if _, ok := appUi.TargetBounds("block-grip-3"); ok {
+		t.Fatal("expected no block handle while editing text")
+	}
+	appUi.ResetSmoke()
+	tt.Move(body.X+s.handleWidth()/2, body.Y+body.H/2)
 	if _, ok := appUi.TargetBounds("block-grip-3"); !ok {
-		t.Fatalf("expected block-grip-3 when no overlay open")
+		t.Fatal("expected block-grip-3 when hovering the gutter")
 	}
 	appUi.ResetSmoke()
 	s.OpenFind()
