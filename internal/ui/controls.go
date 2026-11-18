@@ -722,6 +722,9 @@ func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, 
 		c.Key(id + "-slot")
 	}
 	slot := ui.Box(c).Width(0).FillHeight().Shrink(0)
+	if invert {
+		slot.ZIndex(1) // Keep the inward stroke above the right panel background.
+	}
 	changed := false
 	slot.Children(func() {
 		if id != "" {
@@ -746,15 +749,20 @@ func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, 
 		}
 		hovered := h.Hovered()
 		h.Draw(func(p *ui.Painter, r ui.Rect) {
-			cx := r.X + r.W*0.5
+			lineW, color := float32(1), pal.SidebarBorder
 			switch {
 			case held:
-				p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.Accent, 0)
+				lineW, color = theme.ResizeLineWidth, pal.Accent
 			case hovered:
-				p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.MenuBorder, 0)
-			default:
-				p.Fill(ui.Rect{X: cx - 0.5, Y: r.Y, W: 1, H: r.H}, pal.SidebarBorder, 0)
+				lineW, color = theme.ResizeLineWidth, pal.MenuBorder
 			}
+			edge := r.X + r.W*0.5
+			lineX := edge - lineW/2
+			if invert {
+				// The right panel clips to its left edge while opening.
+				lineX = edge
+			}
+			p.Fill(ui.Rect{X: lineX, Y: r.Y, W: lineW, H: r.H}, color, 0)
 		})
 		if id != "" {
 			Probe(h, id)
