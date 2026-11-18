@@ -886,20 +886,37 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				s.renderDisplaySpansChildren(c, idx, b, fontSize, weight)
 			})
 			bands := s.blockHighlightBands(idx, b, pal, true)
-			if len(bands) > 0 {
+			codeRanges := blockCodeRanges(b, fontSize)
+			if len(bands) > 0 || len(codeRanges) > 0 {
 				blockID := b.ID
 				spansCopy := b.Spans
 				pureSpans := s.buildPureDisplaySpans(b, fontSize, weight)
+				var selRange [2]int
+				if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
+					selRange = [2]int{selLo, selHi}
+				}
+				var ptrWin ui.Point
+				var hasPtr bool
+				if len(codeRanges) > 0 {
+					ptrWin, hasPtr = s.windowPointerStatus()
+				}
 				appUi.DrawRichDecorations(c, rt, plain, func(w float32) *ui.TextLayout {
 					return s.cachedShapeBlock(blockID, plain, spansCopy, idx, edFont, fontSize, weight, lh, w, true)
 				}, appUi.RichDecorOptions{
 					FontSize:     fontSize,
 					Spans:        pureSpans,
 					Bands:        bands,
+					CodeRanges:   codeRanges,
+					CodeBG:       pal.InlineCodeBG,
+					CodeHoverBG:  pal.InlineCodeHoverBG,
+					CodeEditBG:   pal.InlineCodeEditBG,
+					SelRange:     selRange,
 					OpaqueRanges: blockOpaqueBGRanges(b),
 					LinkColor:    pal.Link,
 					CaretPos:     -1,
 					HasChipBG:    blockHasChipBG(b),
+					PointerWin:   ptrWin,
+					HasPointer:   hasPtr,
 				})
 			}
 		}
@@ -953,6 +970,12 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			s.selSyncPending = false
 		}
 		multiSel := s.hasMultiBlockSelection()
+		var multiSelRange [2]int
+		if multiSel {
+			if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
+				multiSelRange = [2]int{selLo, selHi}
+			}
+		}
 
 		in := appUi.RichInput(c, st, appUi.RichInputOptions{
 			Key:               "input",
@@ -971,10 +994,16 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			HideCaret:         s.caretHidden,
 			SuppressSelection: multiSel,
 			SyncSelection:     syncSel,
+			FocusPending:      s.focusPending,
 			Anchor:            s.selAnchor.Offset,
 			Caret:             s.selHead.Offset,
 			Bands:             s.blockHighlightBands(idx, b, pal, multiSel),
 			Links:             blockLinkRanges(b),
+			CodeRanges:        blockCodeRanges(b, fontSize),
+			CodeBG:            pal.InlineCodeBG,
+			CodeHoverBG:       pal.InlineCodeHoverBG,
+			CodeEditBG:        pal.InlineCodeEditBG,
+			SelRange:          multiSelRange,
 			OpaqueRanges:      blockOpaqueBGRanges(b),
 			HasChipBG:         blockHasChipBG(b),
 			OnChange: func(newText string, _, caret int) {
@@ -1244,21 +1273,13 @@ func (s *Session) buildDisplaySpan(idx int, b *model.Block, sp model.Span, start
 }
 
 func (s *Session) renderDisplaySpansChildren(c *ui.Context, _ int, b *model.Block, baseSize float32, baseWeight int) {
-	pal := theme.Ocean()
 	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
 	for i, sp := range b.Spans {
 		u, hasNamedBG := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
-		isCode := sp.Marks&model.MarkCode != 0 && !hasNamedBG
-		if isCode {
+		if sp.Marks&model.MarkCode != 0 && !hasNamedBG {
 			u.Background = ui.Color{}
 		}
 		el := ui.RichText(c.Key(fmt.Sprintf("sp-%d", i)), u)
-		if isCode {
-			el.Background(codeBG)
-			if el.Hovered() {
-				el.Background(pal.InlineCodeHoverBG)
-			}
-		}
 		if sp.Link != "" {
 			if el.Hovered() {
 				el.Underline()
@@ -2010,6 +2031,25 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				relB = clampInt(s.selHead.Offset-cellBase, 0, cellLen)
 				s.selSyncPending = false
 			}
+			multiSel := s.hasMultiBlockSelection()
+			var cellBands []appUi.RichBand
+			var cellSelRange [2]int
+			if multiSel && hasBlockSel && selHi > cellBase && selLo < cellBase+cellLen {
+				relLo := max(selLo-cellBase, 0)
+				relHi := min(selHi-cellBase, cellLen)
+				if relHi > relLo {
+					cellSelRange = [2]int{relLo, relHi}
+					cellBands = []appUi.RichBand{{
+						Start:        relLo,
+						End:          relHi,
+						Fill:         pal.EditorSelectionBG(),
+						Radius:       theme.EditorSelectionRadius,
+						PadX:         theme.EditorSelectionPadX,
+						FullLineBand: true,
+						TintOver:     true,
+					}}
+				}
+			}
 			in := appUi.RichInput(c, st, appUi.RichInputOptions{
 				Key:               "cell-in",
 				Text:              draft,
@@ -2026,11 +2066,18 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				CaretColor:        pal.Accent,
 				LinkColor:         pal.Link,
 				HideCaret:         s.caretHidden,
-				SuppressSelection: s.hasMultiBlockSelection(),
+				SuppressSelection: multiSel,
 				SyncSelection:     syncSel,
+				FocusPending:      s.focusPending,
 				Anchor:            relA,
 				Caret:             relB,
+				Bands:             cellBands,
 				Links:             blockLinkRanges(&cellBlock),
+				CodeRanges:        blockCodeRanges(&cellBlock, tableCellFontSize),
+				CodeBG:            pal.InlineCodeBG,
+				CodeHoverBG:       pal.InlineCodeHoverBG,
+				CodeEditBG:        pal.InlineCodeEditBG,
+				SelRange:          cellSelRange,
 				OpaqueRanges:      blockOpaqueBGRanges(&cellBlock),
 				HasChipBG:         blockHasChipBG(&cellBlock),
 				OnChange: func(newText string, anchor, caret int) {
@@ -2112,13 +2159,46 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				t = ui.Text(c.Key("cell-txt"), "").PreserveSpaces().FontSize(tableCellFontSize).LineHeight(lhFactor).
 					MinHeight(tableCellLineHeight).FontWeight(weight).TextColor(textCol).FillWidth()
 			} else {
-				spans := s.buildPureDisplaySpans(&cellBlock, tableCellFontSize, weight)
-				t = ui.RichText(c.Key("cell-txt"), spans...).PreserveSpaces().FontSize(tableCellFontSize).LineHeight(lhFactor).
+				pureSpans := s.buildPureDisplaySpans(&cellBlock, tableCellFontSize, weight)
+				codeRanges := blockCodeRanges(&cellBlock, tableCellFontSize)
+				renderSpans := pureSpans
+				if len(codeRanges) > 0 {
+					renderSpans = make([]ui.Span, len(pureSpans))
+					copy(renderSpans, pureSpans)
+					dark := theme.IsDark()
+					for i, sp := range cellBlock.Spans {
+						if _, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark); sp.Marks&model.MarkCode != 0 && !hasNamedBG && i < len(renderSpans) {
+							renderSpans[i].Background = ui.Color{}
+						}
+					}
+				}
+				t = ui.RichText(c.Key("cell-txt"), renderSpans...).PreserveSpaces().FontSize(tableCellFontSize).LineHeight(lhFactor).
 					MinHeight(tableCellLineHeight).FontWeight(weight).TextColor(textCol).FillWidth()
+				var cellBands []appUi.RichBand
+				var cellSelRange [2]int
 				if hasBlockSel && selHi > cellBase && selLo < cellBase+cellLen {
 					relLo := max(selLo-cellBase, 0)
 					relHi := min(selHi-cellBase, cellLen)
-					spansCopy := spans
+					if relHi > relLo {
+						cellSelRange = [2]int{relLo, relHi}
+						cellBands = []appUi.RichBand{{
+							Start:        relLo,
+							End:          relHi,
+							Fill:         pal.EditorSelectionBG(),
+							Radius:       theme.EditorSelectionRadius,
+							PadX:         theme.EditorSelectionPadX,
+							FullLineBand: true,
+							TintOver:     true,
+						}}
+					}
+				}
+				if len(cellBands) > 0 || len(codeRanges) > 0 {
+					spansCopy := pureSpans
+					var ptrWin ui.Point
+					var hasPtr bool
+					if len(codeRanges) > 0 {
+						ptrWin, hasPtr = s.windowPointerStatus()
+					}
 					appUi.DrawRichDecorations(c, t, txt, func(w float32) *ui.TextLayout {
 						return ui.ShapeRichTextWith(spansCopy, ui.Font{
 							Family:     edFont,
@@ -2129,10 +2209,17 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					}, appUi.RichDecorOptions{
 						FontSize:     tableCellFontSize,
 						Spans:        spansCopy,
-						Bands:        []appUi.RichBand{{Start: relLo, End: relHi, Fill: pal.EditorSelectionBG(), Radius: theme.EditorSelectionRadius, PadX: theme.EditorSelectionPadX, FullLineBand: true, TintOver: true}},
+						Bands:        cellBands,
+						CodeRanges:   codeRanges,
+						CodeBG:       pal.InlineCodeBG,
+						CodeHoverBG:  pal.InlineCodeHoverBG,
+						CodeEditBG:   pal.InlineCodeEditBG,
+						SelRange:     cellSelRange,
 						OpaqueRanges: blockOpaqueBGRanges(&cellBlock),
 						CaretPos:     -1,
 						HasChipBG:    blockHasChipBG(&cellBlock),
+						PointerWin:   ptrWin,
+						HasPointer:   hasPtr,
 					})
 				}
 			}
