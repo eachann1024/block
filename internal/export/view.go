@@ -895,7 +895,7 @@ func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitm
 	stage := ui.Box(ctx).Grow(1).MinWidth(0).FillHeight().Background(stageBG)
 	stage.Children(func() {
 		ctx.Key("export-stage")
-		scroller := ui.ScrollBoth(ctx).Fill().Label("export-stage")
+		scroller := internalui.ScrollBoth(ctx).Fill().Label("export-stage")
 		internalui.Probe(scroller, "export-stage")
 		scroller.Children(func() {
 			align := ui.Start
@@ -949,7 +949,7 @@ func (c *Controller) renderSidebar(
 		Background(pal.Paper).BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder)
 	sidebar.Children(func() {
 		ctx.Key("export-options")
-		scrollBody := ui.Scroll(ctx).FillWidth().Grow(1).MinHeight(0).Label("export-options")
+		scrollBody := internalui.Scroll(ctx).FillWidth().Grow(1).MinHeight(0).Label("export-options")
 		internalui.Probe(scrollBody, "export-options")
 		scrollBody.Children(func() {
 			ui.Column(ctx).FillWidth().Padding(16).Gap(18).Children(func() {
