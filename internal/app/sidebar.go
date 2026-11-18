@@ -1198,10 +1198,11 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						}
 					}
 				}
-				blockui.NavigateMenu(subCard, choices, &p.State.MoveCursor)
 				if subCard.OverlayShortcut(0, ui.KeyLeft) {
 					p.State.MoveSubmenuOpen = false
 					p.State.MoveCursor = -1
+				} else {
+					blockui.NavigateMenu(subCard, choices, &p.State.MoveCursor)
 				}
 
 				subCard.Children(func() {

@@ -84,6 +84,7 @@ type RichInputOptions struct {
 	LinkColor         ui.Color
 	HideCaret         bool
 	SuppressSelection bool
+	SuppressNavKeys   bool
 	ReadOnly          bool
 	SyncSelection     bool
 	FocusPending      bool
@@ -159,9 +160,10 @@ type RichInputState struct {
 	align        ui.Align
 	lastRect     ui.Rect
 
-	services       ui.Services
-	readOnly       bool
-	links          []RichLinkRange
+	services        ui.Services
+	readOnly        bool
+	suppressNavKeys bool
+	links           []RichLinkRange
 	onChange       func(newText string, anchor, caret int)
 	onSelect       func(anchor, caret int)
 	onCopy         func() bool
@@ -792,6 +794,18 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 	// Enter split, Backspace at start of block, undo/redo, etc. first.
 	if s.onKey != nil && s.onKey(key, mods, s.text, s.anchor, s.caret) {
 		return true
+	}
+	if s.suppressNavKeys {
+		switch key {
+		case ui.KeyUp, ui.KeyDown, ui.KeyLeft, ui.KeyRight, ui.KeyHome, ui.KeyEnd, ui.KeyEnter, ui.KeyEscape:
+			return false
+		}
+		if runtime.GOOS == "darwin" && mods&^ui.Shift == ui.Ctrl {
+			switch key {
+			case ui.KeyP, ui.KeyN, ui.KeyB, ui.KeyF:
+				return false
+			}
+		}
 	}
 
 	mac := runtime.GOOS == "darwin"
@@ -1513,6 +1527,7 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Element {
 	st.services = c.Services()
 	st.readOnly = opts.ReadOnly
+	st.suppressNavKeys = opts.SuppressNavKeys
 	st.links = opts.Links
 	st.onChange = opts.OnChange
 	st.onSelect = opts.OnSelect
