@@ -78,6 +78,8 @@ type Workspace struct {
 	OnAppMenuOrHotkeysChanged func(st model.AppState)
 	// OnRevealMainWindow restores, shows, and focuses the main workspace window.
 	OnRevealMainWindow func()
+	// OnCloseMainWindow closes the main workspace window (hiding to background on macOS).
+	OnCloseMainWindow func()
 
 	watchCancel         context.CancelFunc
 	persistWindowBounds bool
@@ -2265,14 +2267,23 @@ func (w *Workspace) CloseTab(path string) {
 	w.RequestRedraw()
 }
 
-// CloseActiveTab closes the active tab.
+// CloseActiveTab closes the active tab, or closes the main window when no tab is open.
 func (w *Workspace) CloseActiveTab() {
-	if w.modals != nil && w.modals.IsSettingsOpen() {
+	if w.modals != nil && (w.modals.IsSettingsOpen() || w.modals.HasActiveModal()) {
+		return
+	}
+	if w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
 		return
 	}
 	active := w.ActiveNotePath()
 	if active != "" {
 		w.CloseTab(active)
+		return
+	}
+	if w.OnCloseMainWindow != nil {
+		w.OnCloseMainWindow()
+	} else if win := w.Window(); win != nil {
+		win.Close()
 	}
 }
 
