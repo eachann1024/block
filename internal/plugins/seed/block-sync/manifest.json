@@ -1,0 +1,43 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "block-sync",
+  "name": {
+    "zh": "同步",
+    "en": "Sync"
+  },
+  "version": "1.0.0",
+  "author": "Block Community",
+  "repo": "blockmd-community/block-sync",
+  "summary": {
+    "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
+    "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
+  },
+  "entry": {
+    "command": ["python3", "-u", "main.py"]
+  },
+  "permissions": [
+    "storage",
+    "notes:read",
+    "notes:write",
+    "network",
+    "events:note_saved"
+  ],
+  "surfaces": [
+    "settings_page"
+  ],
+  "icon": {
+    "view_box": "0 0 24 24",
+    "fill_paths": [
+      "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"
+    ],
+    "stroke_paths": [
+      "M7.5 10.5A5 5 0 0 1 16.2 8.5",
+      "M16.5 13.5A5 5 0 0 1 7.8 15.5"
+    ],
+    "accent_paths": [
+      "M16.5 5.8V8.8H13.5",
+      "M7.5 18.2V15.2H10.5"
+    ]
+  }
+}
