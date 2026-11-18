@@ -128,6 +128,7 @@ type Session struct {
 	folded           map[model.BlockID]bool
 	foldTails        map[model.BlockID]model.BlockID
 	trailingPlus     bool
+	typingPointer    *ui.Point
 
 	// Mouse multi-block / marquee selection
 	mouseMode        mouseSelMode
