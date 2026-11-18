@@ -282,16 +282,15 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 							AlignItems(ui.Center).Radius(theme.RadiusMD).
 							Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
 						hovered := row.Hovered()
+						ais := pal.AISurface()
 						bg := ui.Transparent
-						bd := ui.Transparent
 						if active {
-							bg = pal.Selected
-							bd = pal.Accent
+							bg = ais.SelectedBG
 						} else if hovered {
-							bg = pal.Hover
+							bg = ais.HoverBG
 						}
-						bui.AnimateSurfaceColors(row, bg, bd, true)
-						bui.TactileCard(row, hovered, false, active, false)
+						bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+						bui.TactileCard(row, hovered, false, false, false)
 						bui.Probe(row, rowID)
 						row.Children(func() {
 							selBtn := ui.ButtonBase(cUI.Key("sel-" + rowID)).Grow(1).MinWidth(0).FillHeight().
@@ -509,9 +508,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 }
 
 func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string) {
+	ais := pal.AISurface()
 	ui.Row(cUI.Key(fmt.Sprintf("user-row-%d-%d", convID, idx))).FillWidth().Justify(ui.End).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(idx, true))).Children(func() {
-		bubble := ui.Box(cUI).MaxWidth(320).Padding(8, 12).Radius(theme.RadiusXL).Background(pal.Hover)
+		bubble := ui.Box(cUI).MaxWidth(320).Padding(8, 12).Radius(theme.RadiusXL).Background(ais.UserBubbleBG)
 		bui.Probe(bubble, "ai-user-message")
 		bubble.Children(func() {
 			ui.Text(cUI, text).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text)
@@ -675,8 +675,9 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 		headline = theme.Tr("已停止", "Stopped")
 	}
 
+	ais := pal.AISurface()
 	card := ui.Column(cUI.Key("ai-process-card-"+turnKey)).FillWidth().Padding(8, 10).Gap(6).
-		Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
+		Radius(theme.RadiusMD).Background(ais.WellBG).Border(1, pal.Hairline).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-process-card")
 
@@ -776,7 +777,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						if i >= 6 {
 							break
 						}
-						chip := ui.Box(cUI).Padding(3, 8).Radius(theme.RadiusSM).Background(pal.Paper).Border(1, pal.BtnBorder)
+						chip := ui.Box(cUI).Padding(3, 8).Radius(theme.RadiusSM).Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
 						chip.Children(func() {
 							ui.Text(cUI, n+".md").FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 						})
@@ -791,6 +792,7 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 	c.mu.RLock()
 	expanded := c.expandedSources[turnKey]
 	c.mu.RUnlock()
+	ais := pal.AISurface()
 
 	card := ui.Column(cUI.Key("ai-sources-" + turnKey)).FillWidth().Gap(6).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
@@ -802,7 +804,7 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 		bui.Probe(toggle, "ai-sources-toggle")
 		toggle.Children(func() {
 			ui.Text(cUI, theme.Tr("参考笔记", "Sources")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-			ui.Box(cUI).Padding(2, 6).Radius(theme.RadiusXS).Background(pal.Hover).Children(func() {
+			ui.Box(cUI).Padding(2, 6).Radius(theme.RadiusXS).Background(ais.CapsuleBG).Children(func() {
 				ui.Textf(cUI, "%d", len(sources)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})
 		})
@@ -820,13 +822,13 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 					Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
 				hovered := btn.Hovered()
 				pressed := btn.Pressed()
-				bg := pal.Shell
+				bg := ais.WellBG
 				if pressed {
-					bg = pal.Selected
+					bg = ais.SelectedBG
 				} else if hovered {
-					bg = pal.Hover
+					bg = ais.HoverBG
 				}
-				bui.AnimateSurfaceColors(btn, bg, pal.BtnBorder, true)
+				bui.AnimateSurfaceColors(btn, bg, pal.Hairline, true)
 				bui.TactileCard(btn, hovered, pressed, false, false)
 				bui.Probe(btn, srcID)
 				btn.Children(func() {
@@ -912,15 +914,16 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 		badgeCol = pal.Danger
 	}
 
+	ais := pal.AISurface()
 	card.Children(func() {
 		topBtn := ui.ButtonBase(cUI.Key("plan-open-"+cardID)).FillWidth().Padding(theme.Space10, theme.Space16).Gap(theme.Space6).
 			Radius(theme.RadiusLG, theme.RadiusLG, 0, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			Column().AlignItems(ui.Start).Cursor(ui.CursorPointer).Label(title)
-		topBG := pal.Shell
+		topBG := ais.WellBG
 		if topBtn.Pressed() {
-			topBG = pal.Selected
+			topBG = ais.SelectedBG
 		} else if topBtn.Hovered() {
-			topBG = pal.Hover
+			topBG = ais.HoverBG
 		}
 		bui.AnimateSurfaceColors(topBtn, topBG, ui.Transparent, false)
 		bui.Probe(topBtn, cardID)
@@ -1091,7 +1094,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			})
 		}
 
-		ui.Row(cUI).FillWidth().Padding(theme.Space10, theme.Space16).Gap(theme.Space8).Radius(0, 0, theme.RadiusLG, theme.RadiusLG).Background(pal.Shell).
+		ui.Row(cUI).FillWidth().Padding(theme.Space10, theme.Space16).Gap(theme.Space8).Radius(0, 0, theme.RadiusLG, theme.RadiusLG).Background(ais.WellBG).
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 			ui.Text(cUI, badge).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(badgeCol)
@@ -1144,7 +1147,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 
 	if qcard.Submitted {
 		card := ui.Row(cUI.Key("ai-q-done-"+qKey)).FillWidth().Padding(10, 12).Radius(theme.RadiusMD).
-			Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
+			Background(pal.AISurface().WellBG).Border(1, pal.Hairline).Children(func() {
 			ui.Text(cUI, theme.Tr("已提交选择", "Response submitted")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 		})
 		bui.Probe(card, "ai-question-card-done")
@@ -1746,18 +1749,15 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 				hovered := row.Hovered()
 				pressed := row.Pressed()
 				isSel := i == selected
+				ais := pal.AISurface()
 				bg := ui.Transparent
-				bd := ui.Transparent
-				if isSel {
-					bg = pal.Selected
-					bd = pal.Accent
-				} else if pressed {
-					bg = pal.Selected
+				if isSel || pressed {
+					bg = ais.SelectedBG
 				} else if hovered {
-					bg = pal.Hover
+					bg = ais.HoverBG
 				}
-				bui.AnimateSurfaceColors(row, bg, bd, true)
-				bui.TactileCard(row, hovered, pressed, isSel, false)
+				bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+				bui.TactileCard(row, hovered, pressed, false, false)
 				bui.Probe(row, rowID)
 				row.Children(func() {
 					ic := icons.Sparkles
@@ -1820,10 +1820,11 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 		outer.MaxWidth(720).Margin(0, ui.Auto)
 	}
 
+	ais := pal.AISurface()
 	var deckAnchor ui.Element
 	outer.Children(func() {
 		shell := ui.Column(cUI).FillWidth().Padding(8, 10).Gap(6).Radius(theme.RadiusMD).
-			Background(pal.Hover).Border(1, pal.BtnBorder)
+			Background(ais.ComposerBG).Border(1, ais.ComposerBorder)
 		shell.Children(func() {
 			if len(refs) > 0 || len(skills) > 0 {
 				ui.Row(cUI).FillWidth().Gap(6).Wrap().Children(func() {
@@ -1989,6 +1990,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 }
 
 func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id string, isRef bool, name string) {
+	ais := pal.AISurface()
 	label := name
 	ic := icons.Note
 	if !isRef {
@@ -1996,7 +1998,7 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 		ic = icons.Sparkles
 	}
 	chip := ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
-		Background(pal.Paper).Border(1, pal.BtnBorder)
+		Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
 	chip.Children(func() {
 		icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent), chip.Hovered())
 		ui.Text(cUI, label).FontSize(theme.FontBody).TextColor(pal.Text)
@@ -2043,26 +2045,29 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	if fullscreen {
 		maxTrigW = 360
 	} else if panelW > 0 {
-		maxTrigW = min(max(panelW-92, 140), 220)
+		maxTrigW = min(max(panelW-84, 140), 340)
 	}
 
+	ais := pal.AISurface()
 	btn := ui.ButtonBase(cUI.Key("ai-deck-trigger")).Height(30).PaddingX(10).Gap(6).
 		MaxWidth(maxTrigW).Shrink(1).MinWidth(0).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(label)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	bg := pal.Paper
-	bd := pal.BtnBorder
+	bg := ais.CapsuleBG
+	bd := ais.CapsuleBorder
 	if open {
-		bg = pal.Selected
+		bg = ais.TintedSelectedBG
 		bd = pal.Accent
 	} else if pressed {
-		bg = pal.Selected
+		bg = ais.SelectedBG
+		bd = pal.Accent
 	} else if hovered {
-		bg = pal.Hover
+		bg = ais.HoverBG
+		bd = pal.Accent
 	}
 	bui.AnimateSurfaceColors(btn, bg, bd, true)
-	bui.TactileCard(btn, hovered, pressed, open, false)
+	bui.TactileCard(btn, hovered, pressed, false, false)
 	if b := btn.Bounds(); b.W > 0 {
 		c.mu.Lock()
 		c.deckTriggerBox = b
@@ -2186,6 +2191,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 	popH := min(effectiveListH+overhead, maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
+	ais := pal.AISurface()
 	ui.Overlay(cUI, func() {
 		panel := bui.Elevate(ui.Column(cUI.Key("ai-agent-deck")).Absolute().Left(x).Top(y).
 			Width(popW).MaxHeight(maxH).Radius(theme.RadiusXL).
@@ -2194,11 +2200,12 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 		bui.Probe(panel, "ai-deck")
 
 		panel.Children(func() {
-			// Upper split: left backend rail + center search/models + (wide) right thinking column.
-			ui.Row(cUI).FillWidth().MinWidth(0).Children(func() {
-				// 1. Left backend icon rail (matching chat_deck.rs:57-77).
-				ui.Column(cUI).Width(railW).Shrink(0).Padding(railPadY, railPadX).Gap(railGap).
-					Background(pal.Shell).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
+			// Full-height split: left backend rail + right (upper model/thinking split + bottom footer), matching chat_deck.rs:188.
+			ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
+				// 1. Left backend icon rail (recessed surface, full height).
+				_ = railPadX
+				ui.Column(cUI).Width(railW).Shrink(0).Padding(railPadY, 0).Gap(railGap).
+					Background(ais.RailBG).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
 					AlignItems(ui.Center).Children(func() {
 					for _, kind := range visible {
 						k := kind
@@ -2210,313 +2217,354 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							c.mu.RUnlock()
 							return ok && (st.State == BackendStateReady || st.State == BackendStateInstalled)
 						}()
-						btn := ui.ButtonBase(cUI.Key(cardID)).Size(btnSz, btnSz).Center().
-							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-							Label(backendLabel(k))
-						bui.Tooltip(cUI, btn, backendLabel(k))
-						hovered := btn.Hovered()
-						pressed := btn.Pressed()
-						bg := ui.Transparent
-						bd := ui.Transparent
-						if active {
-							bg = pal.Selected
-							bd = pal.Accent
-						} else if pressed {
-							bg = pal.Selected
-						} else if hovered {
-							bg = pal.Hover
-						}
-						bui.AnimateSurfaceColors(btn, bg, bd, true)
-						bui.TactileButton(btn, hovered, pressed, false)
-						bui.Probe(btn, cardID)
-						btn.Children(func() {
-							icCol := pal.TextSecondary
-							if active || hovered || pressed {
-								icCol = pal.Text
+						ui.Box(cUI.Key("wrap-" + cardID)).FillWidth().Height(btnSz).Center().Children(func() {
+							btn := ui.ButtonBase(cUI.Key(cardID)).Size(btnSz, btnSz).Center().
+								Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+								Label(backendLabel(k))
+							bui.Tooltip(cUI, btn, backendLabel(k))
+							hovered := btn.Hovered()
+							pressed := btn.Pressed()
+							bg := ui.Transparent
+							if active || pressed {
+								bg = ais.SelectedBG
+							} else if hovered {
+								bg = ais.HoverBG
 							}
-							icons.Brand(cUI, k, icoSz, icCol)
-							dot := ui.Box(cUI.Key("dot-"+cardID)).Absolute().Right(4).Bottom(4).Size(5, 5).
-								Radius(theme.RadiusPill).Background(pal.TextSecondary)
-							targetDot := float32(0)
-							if !ready {
-								targetDot = 1.0
-								if hovered || active {
-									targetDot = 1.25
+							bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+							bui.TactileButton(btn, hovered, pressed, false)
+							bui.Probe(btn, cardID)
+							btn.Children(func() {
+								icCol := pal.TextSecondary
+								if active || hovered || pressed {
+									icCol = pal.Text
 								}
+								icons.Brand(cUI, k, icoSz, icCol)
+								dot := ui.Box(cUI.Key("dot-"+cardID)).Absolute().Right(4).Bottom(4).Size(5, 5).
+									Radius(theme.RadiusPill).Background(pal.TextSecondary)
+								targetDot := float32(0)
+								if !ready {
+									targetDot = 1.0
+									if hovered || active {
+										targetDot = 1.25
+									}
+								}
+								dotSc := dot.AnimateTo("dotSc", targetDot, bui.SpringTactile)
+								if dotSc > 0.02 {
+									dot.Scale(dotSc, dotSc).Opacity(min(dotSc, 1))
+								} else {
+									dot.Opacity(0)
+								}
+							})
+							if active {
+								ui.Box(cUI).Absolute().Right(0).Top(8).Size(2.5, btnSz-16).
+									Radius(theme.RadiusPill).Background(pal.Accent)
 							}
-							dotSc := dot.AnimateTo("dotSc", targetDot, bui.SpringTactile)
-							if dotSc > 0.02 {
-								dot.Scale(dotSc, dotSc).Opacity(min(dotSc, 1))
-							} else {
-								dot.Opacity(0)
+							if btn.Clicked() {
+								c.mu.Lock()
+								if c.streaming {
+									c.turnError = theme.Tr("请等待当前回复结束后再切换智能体", "Wait for the current response before changing agent")
+									c.mu.Unlock()
+								} else {
+									changed := c.selectedBackendLocked() != k
+									c.selectBackendLocked(k)
+									if changed {
+										c.deckSearch = ""
+									}
+									shouldRefresh := !c.mockResponder
+									c.mu.Unlock()
+									if shouldRefresh {
+										c.refreshModelsAsync(k)
+									}
+								}
 							}
 						})
-						if btn.Clicked() {
-							c.mu.Lock()
-							if c.streaming {
-								c.turnError = theme.Tr("请等待当前回复结束后再切换智能体", "Wait for the current response before changing agent")
-								c.mu.Unlock()
-							} else {
-								changed := c.selectedBackendLocked() != k
-								c.selectBackendLocked(k)
-								if changed {
-									c.deckSearch = ""
-								}
-								shouldRefresh := !c.mockResponder
-								c.mu.Unlock()
-								if shouldRefresh {
-									c.refreshModelsAsync(k)
-								}
-							}
-						}
 					}
 				})
 
-				// 2. Center search + model list (+ compact thinking row when !wide).
-				centerCol := ui.Column(cUI).Grow(1).MinWidth(0)
-				type deckModelCursorKey struct{}
-				deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
-				centerCol.ObserveInput(func(ev ui.InputEvent) {
-					if ev.Kind == ui.InputPointerMove && *deckCursor >= 0 {
-						*deckCursor = -1
-					}
-				})
-				lowQ := strings.ToLower(strings.TrimSpace(search))
-				var filtered []ModelOption
-				for _, m := range models {
-					if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
-						filtered = append(filtered, m)
-					}
-				}
-				if *deckCursor >= len(filtered) {
-					*deckCursor = len(filtered) - 1
-				}
-				centerCol.Children(func() {
-					ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).Gap(8).AlignItems(ui.Center).
-						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-						icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
-						q := search
-						sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
-							Grow(1).Height(24).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
-							CaretColor(pal.Accent).CaretWidth(2).
-							Placeholder(theme.Tr("搜索模型…", "Search models…")).
-							Bind(&c.deckSearchHandle).AutoFocus()
-						bui.Probe(sInput, "ai-deck-search")
-						if sInput.Changed() {
-							*deckCursor = 0
-							c.mu.Lock()
-							c.deckSearch = q
-							c.mu.Unlock()
+				ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
+					ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
+						// 2. Center search + model list (+ compact thinking row when !wide).
+						centerCol := ui.Column(cUI).Grow(1).MinWidth(0)
+						type deckModelCursorKey struct{}
+						deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
+						centerCol.ObserveInput(func(ev ui.InputEvent) {
+							if ev.Kind == ui.InputPointerMove && *deckCursor >= 0 {
+								*deckCursor = -1
+							}
+						})
+						lowQ := strings.ToLower(strings.TrimSpace(search))
+						var filtered []ModelOption
+						for _, m := range models {
+							if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) {
+								filtered = append(filtered, m)
+							}
 						}
-						sInput.OnTextKey(func(k ui.TextKey) bool {
-							switch k.Key {
-							case ui.KeyEscape:
+						if *deckCursor >= len(filtered) {
+							*deckCursor = len(filtered) - 1
+						}
+						centerCol.Children(func() {
+							ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).Gap(8).AlignItems(ui.Center).
+								BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+								icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+								q := search
+								sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
+									Grow(1).Height(24).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+									CaretColor(pal.Accent).CaretWidth(2).
+									Placeholder(theme.Tr("搜索模型…", "Search models…")).
+									Bind(&c.deckSearchHandle).AutoFocus()
+								bui.Probe(sInput, "ai-deck-search")
+								if sInput.Changed() {
+									*deckCursor = 0
+									c.mu.Lock()
+									c.deckSearch = q
+									c.mu.Unlock()
+								}
+								sInput.OnTextKey(func(k ui.TextKey) bool {
+									switch k.Key {
+									case ui.KeyEscape:
+										c.mu.Lock()
+										c.deckOpen = false
+										c.mu.Unlock()
+										return true
+									case ui.KeyDown:
+										if len(filtered) > 0 {
+											*deckCursor = (*deckCursor + 1 + len(filtered)) % len(filtered)
+										}
+										return true
+									case ui.KeyUp:
+										if len(filtered) > 0 {
+											if *deckCursor <= 0 {
+												*deckCursor = len(filtered) - 1
+											} else {
+												*deckCursor--
+											}
+										}
+										return true
+									case ui.KeyEnter:
+										if *deckCursor >= 0 && *deckCursor < len(filtered) {
+											pickVal := filtered[*deckCursor].Value
+											c.mu.Lock()
+											if c.streaming {
+												c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+											} else {
+												_ = c.setBackendModelLocked(selected, pickVal)
+												c.deckOpen = false
+											}
+											c.mu.Unlock()
+											return true
+										}
+									}
+									return false
+								})
+							})
+
+							bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
+								FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
+								if len(filtered) == 0 {
+									msg := theme.Tr("暂无可选模型", "No models available")
+									if lowQ != "" {
+										msg = theme.Tr("无匹配模型", "No matching models")
+									} else if mStatus == "loading" {
+										msg = theme.Tr("正在获取模型…", "Loading models…")
+									} else if strings.HasPrefix(mStatus, "error:") {
+										msg = theme.Tr("无法获取模型", "Models unavailable")
+									}
+									ui.Box(cUI).Height(36).PaddingX(12).AlignItems(ui.Center).Children(func() {
+										ui.Text(cUI, msg).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+									})
+									return
+								}
+								for idx, m := range filtered {
+									active := m.Value == curModel
+									highlighted := idx == *deckCursor
+									mID := fmt.Sprintf("ai-model-%d", idx)
+									row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
+										AlignItems(ui.Center).Radius(theme.RadiusMD).
+										Cursor(ui.CursorPointer).Label(m.Label).
+										Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
+									bui.RevealOnHighlight(row, highlighted)
+									hovered := highlighted || (*deckCursor < 0 && row.Hovered())
+									pressed := row.Pressed()
+									bg := ui.Transparent
+									if active || pressed {
+										bg = ais.SelectedBG
+									} else if hovered {
+										bg = ais.HoverBG
+									}
+									bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+									bui.TactileCard(row, hovered, pressed, false, false)
+									bui.Probe(row, mID)
+									row.Children(func() {
+										icons.Brand(cUI, selected, 15, pal.Text)
+										fw := theme.WeightRegular
+										if active {
+											fw = theme.WeightControl
+										}
+										ui.Text(cUI, m.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+										if active {
+											icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), active)
+										}
+									})
+									if row.Clicked() {
+										c.mu.Lock()
+										if c.streaming {
+											c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+										} else {
+											_ = c.setBackendModelLocked(selected, m.Value)
+											c.deckOpen = false
+										}
+										c.mu.Unlock()
+									}
+								}
+							})
+
+							if !wide {
+								levels := []string{"low", "medium", "high"}
+								levelIdx := 2
+								for i, lv := range levels {
+									if lv == curThinking {
+										levelIdx = i
+									}
+								}
+								ui.Row(cUI).FillWidth().Padding(6, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+									BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+									ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+									if bui.SegmentedControl(cUI, "ai-deck-thinking", &levelIdx, []bui.SegmentOption{
+										{ID: "ai-thinking-low", Label: "Low"},
+										{ID: "ai-thinking-medium", Label: "Medium"},
+										{ID: "ai-thinking-high", Label: "High"},
+									}) {
+										c.mu.Lock()
+										_ = c.setBackendThinkingLocked(selected, levels[levelIdx])
+										c.mu.Unlock()
+									}
+								})
+							}
+						})
+
+						// 3. Right Thinking Level column in wide/fullscreen mode.
+						if wide {
+							thinkW := float32(176)
+							if fullscreen {
+								thinkW = 216
+							}
+							ui.Column(cUI).Width(thinkW).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
+								ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).AlignItems(ui.Center).
+									BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+									ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
+								})
+								ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
+									for _, lv := range []struct{ id, label string }{
+										{"low", "Low"},
+										{"medium", "Medium"},
+										{"high", "High"},
+									} {
+										level := lv.id
+										isAct := curThinking == level || (curThinking == "" && level == "high")
+										btnID := "ai-thinking-" + level
+										btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(36).PaddingX(12).
+											AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
+											Cursor(ui.CursorPointer).Label(lv.label)
+										hovered := btn.Hovered()
+										pressed := btn.Pressed()
+										bg := ui.Transparent
+										if isAct || pressed {
+											bg = ais.SelectedBG
+										} else if hovered {
+											bg = ais.HoverBG
+										}
+										bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+										bui.TactileCard(btn, hovered, pressed, false, false)
+										bui.Probe(btn, btnID)
+										btn.Children(func() {
+											fw := theme.WeightRegular
+											if isAct {
+												fw = theme.WeightControl
+											}
+											ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
+											if isAct {
+												icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
+											}
+										})
+										if btn.Clicked() {
+											c.mu.Lock()
+											_ = c.setBackendThinkingLocked(selected, level)
+											c.mu.Unlock()
+										}
+									}
+								})
+							})
+						}
+					})
+
+					// Footer row (inside right column beside full-height rail, matching chat_deck.rs:163-188).
+					ui.Row(cUI).FillWidth().Height(footerH).PaddingX(footerPX).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+						setLbl := theme.Tr("AI 设置", "AI settings")
+						setBtn := ui.ButtonBase(cUI.Key("ai-deck-settings")).Height(theme.HeightCompact).PaddingX(theme.Space8).Gap(theme.Space6).
+							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(setLbl)
+						setHov := setBtn.Hovered()
+						setPrs := setBtn.Pressed()
+						setBG := ui.Transparent
+						if setPrs {
+							setBG = ais.SelectedBG
+						} else if setHov {
+							setBG = ais.HoverBG
+						}
+						bui.AnimateSurfaceColors(setBtn, setBG, ui.Transparent, false)
+						bui.Probe(setBtn, "ai-deck-settings")
+						setBtn.Children(func() {
+							icons.DrawAnimated(cUI, icons.Sliders, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), setHov || setPrs)
+							ui.Text(cUI, setLbl).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+						})
+						if setBtn.Clicked() {
+							c.mu.Lock()
+							c.deckOpen = false
+							c.mu.Unlock()
+							if c.host != nil {
+								c.host.OpenSettings("ai")
+							}
+						}
+
+						permLabel := theme.Tr("标准权限", "Standard access")
+						permFG := pal.TextSecondary
+						dotCol := pal.TextSecondary
+						if fullPerm {
+							permLabel = theme.Tr("最大权限", "Full access")
+							permFG = pal.Text
+							dotCol = pal.Accent
+						}
+						permBtn := ui.ButtonBase(cUI.Key("ai-deck-permissions")).Height(theme.HeightCompact).PaddingX(theme.Space8).Gap(theme.Space6).
+							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(permLabel)
+						permHov := permBtn.Hovered()
+						permPrs := permBtn.Pressed()
+						permBG := ui.Transparent
+						if permPrs {
+							permBG = ais.SelectedBG
+						} else if permHov {
+							permBG = ais.HoverBG
+						}
+						bui.AnimateSurfaceColors(permBtn, permBG, ui.Transparent, false)
+						bui.Probe(permBtn, "ai-deck-permissions")
+						permBtn.Children(func() {
+							ui.Box(cUI).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(dotCol)
+							ui.Text(cUI, permLabel).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(permFG).SingleLine()
+							icons.DrawAnimated(cUI, icons.ChevronUp, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), permHov || permPrs)
+						})
+						if permBtn.Clicked() {
+							if selected == model.BackendBuiltin && c.host != nil {
 								c.mu.Lock()
 								c.deckOpen = false
 								c.mu.Unlock()
-								return true
-							case ui.KeyDown:
-								if len(filtered) > 0 {
-									*deckCursor = (*deckCursor + 1 + len(filtered)) % len(filtered)
-								}
-								return true
-							case ui.KeyUp:
-								if len(filtered) > 0 {
-									if *deckCursor <= 0 {
-										*deckCursor = len(filtered) - 1
-									} else {
-										*deckCursor--
-									}
-								}
-								return true
-							case ui.KeyEnter:
-								if *deckCursor >= 0 && *deckCursor < len(filtered) {
-									pickVal := filtered[*deckCursor].Value
-									c.mu.Lock()
-									if c.streaming {
-										c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
-									} else {
-										_ = c.setBackendModelLocked(selected, pickVal)
-										c.deckOpen = false
-									}
-									c.mu.Unlock()
-									return true
-								}
-							}
-							return false
-						})
-					})
-
-					bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
-						FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
-						if len(filtered) == 0 {
-							msg := theme.Tr("暂无可选模型", "No models available")
-							if lowQ != "" {
-								msg = theme.Tr("无匹配模型", "No matching models")
-							} else if mStatus == "loading" {
-								msg = theme.Tr("正在获取模型…", "Loading models…")
-							} else if strings.HasPrefix(mStatus, "error:") {
-								msg = theme.Tr("无法获取模型", "Models unavailable")
-							}
-							ui.Box(cUI).Height(36).PaddingX(12).AlignItems(ui.Center).Children(func() {
-								ui.Text(cUI, msg).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-							})
-							return
-						}
-						for idx, m := range filtered {
-							active := m.Value == curModel
-							highlighted := idx == *deckCursor
-							mID := fmt.Sprintf("ai-model-%d", idx)
-							row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).
-								Cursor(ui.CursorPointer).Label(m.Label).
-								Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
-							bui.RevealOnHighlight(row, highlighted)
-							hovered := highlighted || (*deckCursor < 0 && row.Hovered())
-							pressed := row.Pressed()
-							bg := ui.Transparent
-							bd := ui.Transparent
-							if active {
-								bg = pal.Selected
-								bd = pal.Accent
-							} else if pressed {
-								bg = pal.Selected
-							} else if hovered {
-								bg = pal.Hover
-							}
-							bui.AnimateSurfaceColors(row, bg, bd, true)
-							bui.TactileCard(row, hovered, pressed, active, false)
-							bui.Probe(row, mID)
-							row.Children(func() {
-								icons.Brand(cUI, selected, 15, pal.Text)
-								ui.Text(cUI, m.Label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-								if active {
-									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), active)
-								}
-							})
-							if row.Clicked() {
+								c.host.OpenSettings("ai")
+							} else {
 								c.mu.Lock()
-								if c.streaming {
-									c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
-								} else {
-									_ = c.setBackendModelLocked(selected, m.Value)
-									c.deckOpen = false
-								}
+								_ = c.setBackendFullPermissionsLocked(selected, !fullPerm)
 								c.mu.Unlock()
 							}
 						}
 					})
-
-					if !wide {
-						levels := []string{"low", "medium", "high"}
-						levelIdx := 2
-						for i, lv := range levels {
-							if lv == curThinking {
-								levelIdx = i
-							}
-						}
-						ui.Row(cUI).FillWidth().Padding(6, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-							BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-							ui.Text(cUI, "Thinking Level").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-							if bui.SegmentedControl(cUI, "ai-deck-thinking", &levelIdx, []bui.SegmentOption{
-								{ID: "ai-thinking-low", Label: "Low"},
-								{ID: "ai-thinking-medium", Label: "Medium"},
-								{ID: "ai-thinking-high", Label: "High"},
-							}) {
-								c.mu.Lock()
-								_ = c.setBackendThinkingLocked(selected, levels[levelIdx])
-								c.mu.Unlock()
-							}
-						})
-					}
 				})
-
-				// 3. Right Thinking Level column in wide/fullscreen mode.
-				if wide {
-					thinkW := float32(176)
-					if fullscreen {
-						thinkW = 216
-					}
-					ui.Column(cUI).Width(thinkW).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
-						ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).AlignItems(ui.Center).
-							BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-							ui.Text(cUI, "Thinking Level").FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
-						})
-						ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
-							for _, lv := range []struct{ id, label string }{
-								{"low", "Low"},
-								{"medium", "Medium"},
-								{"high", "High"},
-							} {
-								level := lv.id
-								isAct := curThinking == level || (curThinking == "" && level == "high")
-								btnID := "ai-thinking-" + level
-								btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(36).PaddingX(12).
-									AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
-									Cursor(ui.CursorPointer).Label(lv.label)
-								hovered := btn.Hovered()
-								pressed := btn.Pressed()
-								bg := ui.Transparent
-								bd := ui.Transparent
-								if isAct {
-									bg = pal.Selected
-									bd = pal.Accent
-								} else if pressed {
-									bg = pal.Selected
-								} else if hovered {
-									bg = pal.Hover
-								}
-								bui.AnimateSurfaceColors(btn, bg, bd, true)
-								bui.TactileCard(btn, hovered, pressed, isAct, false)
-								bui.Probe(btn, btnID)
-								btn.Children(func() {
-									ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
-									if isAct {
-										icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
-									}
-								})
-								if btn.Clicked() {
-									c.mu.Lock()
-									_ = c.setBackendThinkingLocked(selected, level)
-									c.mu.Unlock()
-								}
-							}
-						})
-					})
-				}
-			})
-
-			// Footer row
-			ui.Row(cUI).FillWidth().Height(footerH).PaddingX(footerPX).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-				setIcon := icons.Sliders
-				setBtn := bui.ActionButton(cUI, "ai-deck-settings", theme.Tr("AI 设置", "AI settings"), &setIcon, bui.ButtonGhost, false)
-				if setBtn.Clicked() {
-					c.mu.Lock()
-					c.deckOpen = false
-					c.mu.Unlock()
-					if c.host != nil {
-						c.host.OpenSettings("ai")
-					}
-				}
-
-				permLabel := theme.Tr("标准权限", "Standard access")
-				if fullPerm {
-					permLabel = "Full access"
-				}
-				permBtn := bui.ActionButton(cUI, "ai-deck-permissions", permLabel, nil, bui.ButtonGhost, false)
-				if permBtn.Clicked() {
-					if selected == model.BackendBuiltin && c.host != nil {
-						c.mu.Lock()
-						c.deckOpen = false
-						c.mu.Unlock()
-						c.host.OpenSettings("ai")
-					} else {
-						c.mu.Lock()
-						_ = c.setBackendFullPermissionsLocked(selected, !fullPerm)
-						c.mu.Unlock()
-					}
-				}
 			})
 		})
 
@@ -2536,7 +2584,7 @@ func backendLabel(k model.BackendKind) string {
 }
 
 func settingsSelectedSurface(pal theme.Palette) ui.Color {
-	return pal.Selected
+	return pal.AISurface().TintedSelectedBG
 }
 
 func formatBackendVersionTag(st BackendStatus, hasStatus bool) string {
@@ -2655,23 +2703,24 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 				if cfg.Enabled {
 					enLbl = theme.Tr("已开启", "Enabled")
 				}
+				ais := pal.AISurface()
 				swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(32).PaddingX(12).Gap(6).Shrink(0).
 					AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
 					Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
 				hovered := swBtn.Hovered()
 				pressed := swBtn.Pressed()
-				bg := pal.Shell
-				bd := pal.BtnBorder
+				bg := ais.CapsuleBG
+				bd := ais.CapsuleBorder
 				if cfg.Enabled {
 					bg = selBG
 					bd = pal.Accent
 				} else if pressed {
-					bg = pal.Selected
+					bg = ais.SelectedBG
 				} else if hovered {
-					bg = pal.Hover
+					bg = ais.HoverBG
 				}
 				bui.AnimateSurfaceColors(swBtn, bg, bd, true)
-				bui.TactileCard(swBtn, hovered, pressed, cfg.Enabled, false)
+				bui.TactileCard(swBtn, hovered, pressed, false, false)
 				bui.Probe(swBtn, "ai-enabled-switch")
 				swBtn.Children(func() {
 					icCol := pal.TextSecondary
@@ -2781,14 +2830,14 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 			if stackedSplit {
 				ui.Column(cUI).FillWidth().MinWidth(0).Radius(theme.RadiusXL).
 					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-					ui.Column(cUI).FillWidth().MinWidth(0).Background(pal.Sidebar).
+					ui.Column(cUI).FillWidth().MinWidth(0).Background(pal.AISurface().RailBG).
 						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(renderBackendList)
 					renderDetailPane()
 				})
 			} else {
-				ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(320).Radius(theme.RadiusXL).
+				ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(320).AlignItems(ui.Stretch).Radius(theme.RadiusXL).
 					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-					ui.Column(cUI).Width(railW).Shrink(0).FillHeight().Background(pal.Sidebar).
+					ui.Column(cUI).Width(railW).Shrink(0).Background(pal.AISurface().RailBG).
 						BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).Children(renderBackendList)
 					renderDetailPane()
 				})
@@ -2919,20 +2968,21 @@ func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, c
 			} else {
 				btn.Grow(1)
 			}
+			ais := pal.AISurface()
 			hovered := btn.Hovered()
 			pressed := btn.Pressed()
-			bg := pal.Shell
-			bd := pal.BtnBorder
+			bg := ais.CapsuleBG
+			bd := ais.CapsuleBorder
 			if active {
 				bg = selBG
 				bd = pal.Accent
 			} else if pressed {
-				bg = pal.Selected
+				bg = ais.SelectedBG
 			} else if hovered {
-				bg = pal.Hover
+				bg = ais.HoverBG
 			}
 			bui.AnimateSurfaceColors(btn, bg, bd, true)
-			bui.TactileCard(btn, hovered, pressed, active, false)
+			bui.TactileCard(btn, hovered, pressed, false, false)
 			bui.Probe(btn, "ai-pcard-"+preset.ID)
 			btn.Children(func() {
 				ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
@@ -3078,7 +3128,7 @@ func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kin
 		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Text(cUI, theme.Tr("可执行文件路径", "Binary Path")).Shrink(0).SingleLine().FontSize(theme.FontBody).TextColor(pal.Text)
 			ui.Box(cUI).Height(32).PaddingX(12).Center().Radius(theme.RadiusMD).
-				Background(pal.Shell).Border(1, pal.Hairline).MaxWidth(420).Shrink(1).MinWidth(0).Children(func() {
+				Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).MaxWidth(420).Shrink(1).MinWidth(0).Children(func() {
 				ui.Text(cUI, binPath).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 			})
 		})
@@ -3168,20 +3218,23 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 					Label(lbl)
 				trigAnchor = trig
+				ais := pal.AISurface()
 				hovered := trig.Hovered()
 				pressed := trig.Pressed()
-				bg := pal.Shell
-				bd := pal.BtnBorder
+				bg := ais.CapsuleBG
+				bd := ais.CapsuleBorder
 				if annotOpen {
 					bg = settingsSelectedSurface(pal)
 					bd = pal.Accent
 				} else if pressed {
-					bg = pal.Selected
+					bg = ais.SelectedBG
+					bd = pal.Accent
 				} else if hovered {
-					bg = pal.Hover
+					bg = ais.HoverBG
+					bd = pal.Accent
 				}
 				bui.AnimateSurfaceColors(trig, bg, bd, true)
-				bui.TactileCard(trig, hovered, pressed, annotOpen, false)
+				bui.TactileCard(trig, hovered, pressed, false, false)
 				trig.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					c.mu.Lock()
 					c.annotMenuTriggerBox = r
@@ -3264,54 +3317,61 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	popH := min(targetH, maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
+	ais := pal.AISurface()
 	ui.Overlay(cUI, func() {
 		panel := bui.Elevate(ui.Row(cUI.Key("annotation-model-menu")).Absolute().Left(x).Top(y).Width(popW).Height(popH).
-			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
+			AlignItems(ui.Stretch).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
 			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
 		bui.Probe(panel, "annotation-model-menu")
 
 		panel.Children(func() {
-			// 1. Left enabled backend icon rail
-			ui.Column(cUI).Width(46).Shrink(0).FillHeight().Padding(6).Gap(6).
-				Background(pal.Shell).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
+			// 1. Left enabled backend icon rail (recessed surface, full height).
+			ui.Column(cUI).Width(46).Shrink(0).Padding(6, 0).Gap(6).
+				Background(ais.RailBG).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
 				AlignItems(ui.Center).Children(func() {
 				for _, b := range enabledOrder {
 					bk := b
 					id := "annotation-backend-" + backendProbeSuffix(bk)
 					sel := bk == activeKind
-					btn := ui.ButtonBase(cUI.Key(id)).Size(34, 34).Center().Radius(theme.RadiusMD).
-						Cursor(ui.CursorPointer).Label(backendLabel(bk))
-					bui.Tooltip(cUI, btn, backendLabel(bk))
-					hovered := btn.Hovered()
-					pressed := btn.Pressed()
-					bg := ui.Transparent
-					bd := ui.Transparent
-					if sel {
-						bg = settingsSelectedSurface(pal)
-						bd = pal.Accent
-					} else if pressed {
-						bg = pal.Selected
-					} else if hovered {
-						bg = pal.Hover
-					}
-					bui.AnimateSurfaceColors(btn, bg, bd, true)
-					bui.TactileButton(btn, hovered, pressed, false)
-					bui.Probe(btn, id)
-					btn.Children(func() {
-						icons.Brand(cUI, bk, 16, pal.Text)
+					ui.Box(cUI.Key("wrap-" + id)).FillWidth().Height(34).Center().Children(func() {
+						btn := ui.ButtonBase(cUI.Key(id)).Size(34, 34).Center().Radius(theme.RadiusMD).
+							Cursor(ui.CursorPointer).Label(backendLabel(bk))
+						bui.Tooltip(cUI, btn, backendLabel(bk))
+						hovered := btn.Hovered()
+						pressed := btn.Pressed()
+						bg := ui.Transparent
+						if sel || pressed {
+							bg = ais.SelectedBG
+						} else if hovered {
+							bg = ais.HoverBG
+						}
+						bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+						bui.TactileButton(btn, hovered, pressed, false)
+						bui.Probe(btn, id)
+						btn.Children(func() {
+							icCol := pal.TextSecondary
+							if sel || hovered || pressed {
+								icCol = pal.Text
+							}
+							icons.Brand(cUI, bk, 16, icCol)
+						})
+						if sel {
+							ui.Box(cUI).Absolute().Right(0).Top(8).Size(2.5, 18).
+								Radius(theme.RadiusPill).Background(pal.Accent)
+						}
+						if btn.Clicked() {
+							c.mu.Lock()
+							c.annotMenuBackend = bk
+							c.annotMenuSearch = ""
+							c.mu.Unlock()
+							c.refreshAnnotationModelsAsync(bk)
+						}
 					})
-					if btn.Clicked() {
-						c.mu.Lock()
-						c.annotMenuBackend = bk
-						c.annotMenuSearch = ""
-						c.mu.Unlock()
-						c.refreshAnnotationModelsAsync(bk)
-					}
 				}
 			})
 
 			// 2. Center model search + list (+ compact bottom thinking row when !widePop)
-			ui.Column(cUI).Grow(1).MinWidth(0).FillHeight().Children(func() {
+			ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
 				ui.Row(cUI).FillWidth().Height(40).PaddingX(10).Gap(8).AlignItems(ui.Center).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
@@ -3348,21 +3408,21 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 						hovered := row.Hovered()
 						pressed := row.Pressed()
 						bg := ui.Transparent
-						bd := ui.Transparent
-						if isAct {
-							bg = settingsSelectedSurface(pal)
-							bd = pal.Accent
-						} else if pressed {
-							bg = pal.Selected
+						if isAct || pressed {
+							bg = ais.SelectedBG
 						} else if hovered {
-							bg = pal.Hover
+							bg = ais.HoverBG
 						}
-						bui.AnimateSurfaceColors(row, bg, bd, true)
-						bui.TactileCard(row, hovered, pressed, isAct, false)
+						bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+						bui.TactileCard(row, hovered, pressed, false, false)
 						bui.Probe(row, rowID)
 						row.Children(func() {
 							icons.Brand(cUI, activeKind, 15, pal.Text)
-							ui.Text(cUI, opt.Label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							fw := theme.WeightRegular
+							if isAct {
+								fw = theme.WeightControl
+							}
+							ui.Text(cUI, opt.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							if isAct {
 								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
 							}
@@ -3423,11 +3483,11 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 
 			// 3. Right Thinking Level column in wide mode
 			if widePop {
-				ui.Column(cUI).Width(140).Shrink(0).FillHeight().
+				ui.Column(cUI).Width(140).Shrink(0).
 					BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
 					ui.Row(cUI).FillWidth().Height(40).PaddingX(10).AlignItems(ui.Center).
 						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-						ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+						ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
 					})
 					ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
 						for _, lv := range []struct{ id, label string }{
@@ -3438,26 +3498,26 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							level := lv.id
 							isAct := annotCfg.Thinking == level || (annotCfg.Thinking == "" && level == "high")
 							btnID := "annotation-thinking-" + level
-							btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(32).PaddingX(10).
+							btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(34).PaddingX(10).
 								AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 								Cursor(ui.CursorPointer).Label(lv.label)
 							hovered := btn.Hovered()
 							pressed := btn.Pressed()
 							bg := ui.Transparent
-							bd := ui.Transparent
-							if isAct {
-								bg = settingsSelectedSurface(pal)
-								bd = pal.Accent
-							} else if pressed {
-								bg = pal.Selected
+							if isAct || pressed {
+								bg = ais.SelectedBG
 							} else if hovered {
-								bg = pal.Hover
+								bg = ais.HoverBG
 							}
-							bui.AnimateSurfaceColors(btn, bg, bd, true)
-							bui.TactileCard(btn, hovered, pressed, isAct, false)
+							bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+							bui.TactileCard(btn, hovered, pressed, false, false)
 							bui.Probe(btn, btnID)
 							btn.Children(func() {
-								ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
+								fw := theme.WeightRegular
+								if isAct {
+									fw = theme.WeightControl
+								}
+								ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
 								if isAct {
 									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
 								}
