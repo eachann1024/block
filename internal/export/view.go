@@ -206,6 +206,15 @@ func (c *Controller) IsOpen() bool {
 }
 
 func (c *Controller) Open(title, notePath string, wholeDoc *model.Doc, selectionDoc *model.Doc) {
+	c.openPreview(title, notePath, wholeDoc, selectionDoc, false)
+}
+
+// OpenWithSelection previews the selection when available, falling back to the whole note.
+func (c *Controller) OpenWithSelection(title, notePath string, wholeDoc, selectionDoc *model.Doc) {
+	c.openPreview(title, notePath, wholeDoc, selectionDoc, true)
+}
+
+func (c *Controller) openPreview(title, notePath string, wholeDoc, selectionDoc *model.Doc, preferSelection bool) {
 	c.mu.Lock()
 	c.loadPreferencesLocked()
 	c.open = true
@@ -232,7 +241,7 @@ func (c *Controller) Open(title, notePath string, wholeDoc *model.Doc, selection
 	} else {
 		c.selectionDoc = nil
 	}
-	c.useSelection = false
+	c.useSelection = preferSelection && c.selectionDoc != nil
 	c.zoom = 0
 	c.notice = ""
 	c.savedPath = ""
@@ -748,7 +757,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 	c.mu.Unlock()
 
 	pal := theme.Ocean()
-	vpW, _ := ctx.Size()
+	vpW, vpH := ctx.Size()
 	if vpW <= 0 {
 		vpW = 1200
 	}
@@ -756,10 +765,9 @@ func (c *Controller) Render(ctx *ui.Context) {
 	if vpW < 740 {
 		sideW = 272
 	}
-	room := vpW - sideW - 1 - previewPadX*2
-	if room < 180 {
-		room = 180
-	}
+	stageW := max(0, vpW-sideW)
+	stageH := max(0, vpH-theme.TitleBarHeight)
+	room := max(180, stageW-previewPadX*2)
 	fitScale := computeFitScale(room, pw)
 	c.mu.Lock()
 	c.lastFitScale = fitScale
@@ -776,7 +784,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 	root.Children(func() {
 		c.renderHeader(ctx, pal, title, format, style, pw, ph, zoom, vpW)
 		ui.Row(ctx).FillWidth().Grow(1).MinHeight(0).Children(func() {
-			c.renderStage(ctx, pal, bm, pw, ph, scale, previewErr)
+			c.renderStage(ctx, pal, bm, pw, ph, scale, stageW, stageH, previewErr)
 			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied, sideW)
 		})
 	})
@@ -903,7 +911,12 @@ func zoomHitButton(ctx *ui.Context, pal theme.Palette, id, label string, wide bo
 	return internalui.ActionButtonWithOptions(ctx, opts)
 }
 
-func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitmap, pw, ph int, scale float32, previewErr string) {
+func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitmap, pw, ph int, scale, viewportW, viewportH float32, previewErr string) {
+	drawW := float32(pw) / exportRasterScale * scale
+	drawH := float32(ph) / exportRasterScale * scale
+	contentW := max(viewportW, drawW+previewPadX*2)
+	contentH := max(viewportH, drawH+previewPadTop+previewPadBottom)
+
 	stageBG := pal.Export().StageBG
 	stage := ui.Box(ctx).Grow(1).MinWidth(0).FillHeight().Background(stageBG)
 	stage.Children(func() {
@@ -911,17 +924,10 @@ func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitm
 		scroller := internalui.ScrollBoth(ctx).Fill().Label("export-stage")
 		internalui.Probe(scroller, "export-stage")
 		scroller.Children(func() {
-			align := ui.Start
-			if bm == nil {
-				align = ui.Center
-			}
-			inner := ui.Column(ctx).MinWidthPercent(100).MinHeightPercent(100).
-				AlignItems(ui.Center).Justify(align).
+			inner := ui.Column(ctx).Size(contentW, contentH).Shrink(0).Center().
 				Padding(previewPadTop, previewPadX, previewPadBottom, previewPadX)
 			inner.Children(func() {
 				if bm != nil && pw > 0 && ph > 0 {
-					drawW := float32(pw) / exportRasterScale * scale
-					drawH := float32(ph) / exportRasterScale * scale
 					paperWrap := internalui.Elevate(
 						ui.Box(ctx.Key("export-preview-card")).Size(drawW, drawH).Shrink(0).
 							Transition(internalui.SurfaceStageTransition()),
