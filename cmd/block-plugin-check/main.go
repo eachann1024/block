@@ -34,11 +34,15 @@ func main() {
 	defer os.RemoveAll(sandboxDir)
 
 	notebookDir := filepath.Join(sandboxDir, "notebook")
+	downloadsDir := filepath.Join(sandboxDir, "Downloads")
 	dataDir := filepath.Join(sandboxDir, "apps-data", m.ID)
 	if err := os.MkdirAll(filepath.Join(notebookDir, "notes"), 0o755); err != nil {
 		fail("prepare sample notebook: %v", err)
 	}
-	_ = os.WriteFile(filepath.Join(notebookDir, "welcome.md"), []byte("# 欢迎使用 Block\n\n第一篇示例笔记。\n"), 0o644)
+	if err := os.MkdirAll(downloadsDir, 0o755); err != nil {
+		fail("prepare sample downloads dir: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(notebookDir, "welcome.md"), []byte("# 欢迎使用 Block\n\n第一篇示例笔记，支持 [官网](https://blockmd.app) 外链测试。\n\n---\n\n## 第二部分\n\n> 模块化引用预览段落。\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(notebookDir, "notes", "ideas.md"), []byte("# 架构手记\n\n模块化插件体系。\n"), 0o644)
 
 	// Verify StoreManager installation flow into an isolated app store directory.
@@ -54,9 +58,11 @@ func main() {
 	rt, err := plugins.StartRuntime(ctx, installed.Manifest, plugins.HostConfig{
 		PluginDir:    installed.InstallDir,
 		DataDir:      dataDir,
+		DownloadsDir: downloadsDir,
 		NotebookRoot: notebookDir,
+		ActiveNote:   "welcome.md",
 		Locale:       "zh",
-		HostVersion:  "1.0.301",
+		HostVersion:  "1.0.379",
 	})
 	if err != nil {
 		fail("start plugin runtime: %v", err)
@@ -74,14 +80,57 @@ func main() {
 			fail("plugin.render(%s): %v", surf, err)
 		}
 		values := page.ExtractDefaultValues()
+		if livePage, err := rt.RenderWithValues(ctx, surf, values); err != nil || livePage == nil {
+			fail("plugin.render(%s, values): %v", surf, err)
+		}
+		permutations := 0
+		for _, card := range page.Cards {
+			for _, item := range card.Items {
+				switch item.Kind {
+				case plugins.KindSegmented, plugins.KindSelect:
+					for _, opt := range item.Options {
+						trial := make(map[string]any, len(values))
+						for k, v := range values {
+							trial[k] = v
+						}
+						trial[item.ID] = opt.Value
+						if _, err := rt.RenderWithValues(ctx, surf, trial); err != nil {
+							fail("plugin.render(%s) failed when %s=%q: %v", surf, item.ID, opt.Value, err)
+						}
+						permutations++
+					}
+				case plugins.KindSwitch:
+					bVal, _ := item.Value.(bool)
+					trial := make(map[string]any, len(values))
+					for k, v := range values {
+						trial[k] = v
+					}
+					trial[item.ID] = !bVal
+					if _, err := rt.RenderWithValues(ctx, surf, trial); err != nil {
+						fail("plugin.render(%s) failed when %s=%v: %v", surf, item.ID, !bVal, err)
+					}
+					permutations++
+				}
+			}
+		}
 		actions := page.CollectActionIDs()
-		fmt.Printf("[OK] surface %s: title=%q cards=%d controls=%d actions=%v\n",
-			surf, page.Title, len(page.Cards), len(values), actions)
+		fmt.Printf("[OK] surface %s: title=%q cards=%d controls=%d permutations=%d actions=%v\n",
+			surf, page.Title, len(page.Cards), len(values), permutations, actions)
 
 		for _, actID := range actions {
 			res, err := rt.Action(ctx, surf, actID, values)
 			if err != nil {
 				fail("plugin.action(%s, %s): %v", surf, actID, err)
+			}
+			if res.OpenPath != "" {
+				if _, statErr := os.Stat(res.OpenPath); statErr != nil {
+					fail("plugin.action(%s, %s) returned missing open_path %q: %v", surf, actID, res.OpenPath, statErr)
+				}
+			}
+			if res.RevealPath != "" {
+				if _, statErr := os.Stat(res.RevealPath); statErr != nil {
+					fail("plugin.action(%s, %s) returned missing reveal_path %q: %v", surf, actID, res.RevealPath, statErr)
+				}
 			}
 			if res.Values != nil {
 				for k, v := range res.Values {
