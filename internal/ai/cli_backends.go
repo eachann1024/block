@@ -101,7 +101,28 @@ func enrichedPATH() string {
 	return strings.Join(parts, string(os.PathListSeparator))
 }
 
-func resolveCLIBinary(bin string) (string, bool) {
+var customCLIBinaryPaths sync.Map // map[string]string (bin name -> custom path)
+
+func setCustomCLIBinaryPath(kind model.BackendKind, customPath string) {
+	trimmed := strings.TrimSpace(customPath)
+	if trimmed == "" {
+		customCLIBinaryPaths.Delete(string(kind))
+	} else {
+		customCLIBinaryPaths.Store(string(kind), trimmed)
+	}
+}
+
+func expandHomePath(p string) string {
+	p = strings.TrimSpace(p)
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
+
+func resolveAutoCLIBinary(bin string) (string, bool) {
 	for _, dir := range filepath.SplitList(enrichedPATH()) {
 		cand := filepath.Join(dir, bin)
 		info, err := os.Stat(cand)
@@ -110,6 +131,63 @@ func resolveCLIBinary(bin string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func resolveCLIBinary(bin string) (string, bool) {
+	if raw, ok := customCLIBinaryPaths.Load(bin); ok {
+		if custom, ok2 := raw.(string); ok2 && strings.TrimSpace(custom) != "" {
+			cand := expandHomePath(custom)
+			if info, err := os.Stat(cand); err == nil && !info.IsDir() {
+				return cand, true
+			}
+			return "", false
+		}
+	}
+	return resolveAutoCLIBinary(bin)
+}
+
+// AgentDriverGuide returns CLI install and sign-in commands for the Add Agent wizard.
+func AgentDriverGuide(kind model.BackendKind) (installCmd, loginCmd string) {
+	switch kind {
+	case model.BackendCodex:
+		return "npm install -g @openai/codex", "codex login"
+	case model.BackendClaude:
+		return "npm install -g @anthropic-ai/claude-code", "claude auth login"
+	case model.BackendDsh:
+		return "curl -fsSL https://dsh.deepseek.com/install.sh | sh", "dsh login"
+	case model.BackendPi:
+		return "npm install -g @mariozechner/pi-coding-agent", "pi --login"
+	case model.BackendAgy:
+		return "brew install antigravity", "agy login"
+	default:
+		return "", ""
+	}
+}
+
+// ProbeBackendWithPath detects CLI availability and auth status using an optional custom executable path.
+func ProbeBackendWithPath(kind model.BackendKind, customPath string) BackendStatus {
+	trimmed := strings.TrimSpace(customPath)
+	if trimmed == "" {
+		return ProbeBackend(kind)
+	}
+	cand := expandHomePath(trimmed)
+	info, err := os.Stat(cand)
+	if err != nil || info.IsDir() {
+		return BackendStatus{
+			State:   BackendStateMissing,
+			Message: theme.Tr("指定的可执行文件不存在", "Specified executable path does not exist"),
+		}
+	}
+	prevVal, hadPrev := customCLIBinaryPaths.Load(string(kind))
+	customCLIBinaryPaths.Store(string(kind), cand)
+	defer func() {
+		if hadPrev {
+			customCLIBinaryPaths.Store(string(kind), prevVal)
+		} else {
+			customCLIBinaryPaths.Delete(string(kind))
+		}
+	}()
+	return ProbeBackend(kind)
 }
 
 func cliCommand(ctx context.Context, bin string, args ...string) *exec.Cmd {
@@ -286,10 +364,27 @@ func (c *Controller) isBackendRecognizedLocked(kind model.BackendKind) bool {
 	if ov, ok := c.statusOverrides[kind]; ok {
 		return ov.State != BackendStateMissing
 	}
+	opt, hasOpt := c.backendsCfg.Adapters[string(kind)]
+	if !hasOpt || !opt.Added {
+		return false
+	}
 	if st, ok := c.backendStatuses[kind]; ok {
 		return st.State != BackendStateMissing
 	}
 	return isCLIInstalled(kind)
+}
+
+func (c *Controller) addedCLIAgentsLocked() []model.BackendKind {
+	var out []model.BackendKind
+	for _, kind := range model.AllBackends {
+		if kind == model.BackendBuiltin {
+			continue
+		}
+		if opt, ok := c.backendsCfg.Adapters[string(kind)]; ok && opt.Added {
+			out = append(out, kind)
+		}
+	}
+	return out
 }
 
 func (c *Controller) recognizedBackendsLocked() []model.BackendKind {
