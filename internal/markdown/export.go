@@ -27,7 +27,9 @@ import (
 
 const (
 	defaultExportWidth = 816
-	exportScale        = 2.0
+	// ExportScale is the fixed raster density of PNG/PDF exports (device px per logical px).
+	ExportScale        = 4.0
+	exportScale        = ExportScale
 	maxPDFPageHeightPt = 1152
 	watermarkLabel     = "Block"
 )

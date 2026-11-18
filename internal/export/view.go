@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"image/png"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,10 +29,8 @@ const (
 	previewPadTop       = float32(36)
 	previewPadBottom    = float32(36)
 	minFitScale         = float32(0.75)
-	minZoomScale        = float32(0.5)
-	maxZoomScale        = float32(1.5)
 	exportPageWidth     = float32(816)
-	exportRasterScale   = float32(2)
+	exportRasterScale   = float32(markdown.ExportScale)
 )
 
 type persistedPrefs struct {
@@ -67,9 +64,6 @@ type Controller struct {
 	watermark  bool
 	exportDir  string
 
-	zoom         float32 // 0 means Fit
-	lastFitScale float32
-
 	previewPNG    []byte
 	previewBitmap *ui.Bitmap
 	previewW      int
@@ -100,7 +94,6 @@ func NewController(dataDir string, onRedraw func()) *Controller {
 		darkStyle:    model.ExportThemeInk,
 		showTitle:    true,
 		watermark:    true,
-		lastFitScale: 1.0,
 	}
 	c.loadPreferencesLocked()
 	return c
@@ -242,7 +235,6 @@ func (c *Controller) openPreview(title, notePath string, wholeDoc, selectionDoc 
 		c.selectionDoc = nil
 	}
 	c.useSelection = preferSelection && c.selectionDoc != nil
-	c.zoom = 0
 	c.notice = ""
 	c.savedPath = ""
 	c.copied = false
@@ -406,55 +398,6 @@ func (c *Controller) ToggleWatermark() {
 	c.savePreferencesLocked()
 	c.previewRev++
 	c.refreshPreviewLocked()
-	c.mu.Unlock()
-	c.notifyRedraw()
-}
-
-func (c *Controller) ZoomIn() {
-	c.mu.Lock()
-	base := c.zoom
-	if base <= 0 {
-		base = c.lastFitScale
-	}
-	if base <= 0 {
-		base = 1.0
-	}
-	next := float32(math.Round(float64((base+0.15)*20))) / 20
-	if next < minZoomScale {
-		next = minZoomScale
-	}
-	if next > maxZoomScale {
-		next = maxZoomScale
-	}
-	c.zoom = next
-	c.mu.Unlock()
-	c.notifyRedraw()
-}
-
-func (c *Controller) ZoomOut() {
-	c.mu.Lock()
-	base := c.zoom
-	if base <= 0 {
-		base = c.lastFitScale
-	}
-	if base <= 0 {
-		base = 1.0
-	}
-	next := float32(math.Round(float64((base-0.15)*20))) / 20
-	if next < minZoomScale {
-		next = minZoomScale
-	}
-	if next > maxZoomScale {
-		next = maxZoomScale
-	}
-	c.zoom = next
-	c.mu.Unlock()
-	c.notifyRedraw()
-}
-
-func (c *Controller) ZoomReset() {
-	c.mu.Lock()
-	c.zoom = 0
 	c.mu.Unlock()
 	c.notifyRedraw()
 }
@@ -721,7 +664,7 @@ func (c *Controller) Render(ctx *ui.Context) {
 	}
 	c.mu.Unlock()
 
-	// Keyboard shortcuts: Esc close, Cmd+C copy, Cmd+S save, - / = / 0 zoom.
+	// Keyboard shortcuts: Esc close, Cmd+C copy, Cmd+S save.
 	switch {
 	case ctx.Shortcut(0, ui.KeyEscape):
 		c.Close()
@@ -730,12 +673,6 @@ func (c *Controller) Render(ctx *ui.Context) {
 		_ = c.CopyToClipboard()
 	case ctx.Shortcut(ui.Cmd, ui.KeyS):
 		c.triggerSave()
-	case ctx.Shortcut(0, ui.KeyEqual) || ctx.Shortcut(ui.Shift, ui.KeyEqual):
-		c.ZoomIn()
-	case ctx.Shortcut(0, ui.KeyMinus):
-		c.ZoomOut()
-	case ctx.Shortcut(0, ui.Key0):
-		c.ZoomReset()
 	}
 
 	c.mu.Lock()
@@ -746,7 +683,6 @@ func (c *Controller) Render(ctx *ui.Context) {
 	hasSelection := c.selectionDoc != nil
 	showTitle := c.showTitle
 	watermark := c.watermark
-	zoom := c.zoom
 	bm := c.previewBitmap
 	pw := c.previewW
 	ph := c.previewH
@@ -768,21 +704,14 @@ func (c *Controller) Render(ctx *ui.Context) {
 	stageW := max(0, vpW-sideW)
 	stageH := max(0, vpH-theme.TitleBarHeight)
 	room := max(180, stageW-previewPadX*2)
-	fitScale := computeFitScale(room, pw)
-	c.mu.Lock()
-	c.lastFitScale = fitScale
-	c.mu.Unlock()
-	scale := zoom
-	if scale <= 0 {
-		scale = fitScale
-	}
+	scale := computeFitScale(room, pw)
 
 	ctx.Key("export-view")
 	root := ui.Column(ctx).Fill().Background(pal.Shell).TextColor(pal.Text).Label("export-view")
 	internalui.Probe(root, "export-view")
 
 	root.Children(func() {
-		c.renderHeader(ctx, pal, title, format, style, pw, ph, zoom, vpW)
+		c.renderHeader(ctx, pal, title, format, style, pw, ph, vpW)
 		ui.Row(ctx).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			c.renderStage(ctx, pal, bm, pw, ph, scale, stageW, stageH, previewErr)
 			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied, sideW)
@@ -805,7 +734,7 @@ func computeFitScale(room float32, pw int) float32 {
 	return s
 }
 
-func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title string, format model.ExportFormat, style model.ExportTheme, pw, ph int, zoom float32, vpW float32) {
+func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title string, format model.ExportFormat, style model.ExportTheme, pw, ph int, vpW float32) {
 	tb := ctx.TitleBar()
 	compact := vpW > 0 && vpW < 780
 	leftLead := float32(12)
@@ -846,69 +775,21 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 			}
 		})
 
-		// Right: zoom cluster + platform caption-button clearance
+		// Right: read-only output size + platform caption-button clearance
 		dimLabel := formatDimensionLabel(format, style, pw, ph)
-		zoomLabel := theme.Tr("适应", "Fit")
-		if zoom > 0 {
-			zoomLabel = fmt.Sprintf("%d%%", int(math.Round(float64(zoom*100))))
-		}
 		rightPr := float32(12)
 		if theme.IsMacOS() {
 			rightPr = 16
 		} else if tb.Right > 0 {
 			rightPr = tb.Right + 8
 		}
-		capPadL := float32(10)
-		if compact {
-			capPadL = 4
-		}
 		ui.Row(ctx).MinWidth(leftMinW).FillHeight().Shrink(0).AlignItems(ui.Center).
 			Justify(ui.End).Padding(0, rightPr, 0, 8).Children(func() {
-			capsule := ui.Row(ctx).Height(28).Shrink(0).AlignItems(ui.Center).Gap(6).
-				Padding(0, 4, 0, capPadL).Radius(theme.RadiusMD).
-				Background(pal.Paper).Border(1, pal.BtnBorder)
-			capsule.Children(func() {
-				if !compact {
-					ui.Text(ctx, dimLabel).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-					ui.Box(ctx).Width(1).Height(14).Shrink(0).Background(pal.Hairline)
-				}
-				ui.Row(ctx).Shrink(0).AlignItems(ui.Center).Gap(2).Children(func() {
-					outBtn := zoomHitButton(ctx, pal, "export-zoom-out", "−", false)
-					if outBtn.Clicked() {
-						c.ZoomOut()
-					}
-					rstBtn := zoomHitButton(ctx, pal, "export-zoom-reset", zoomLabel, true)
-					if rstBtn.Clicked() {
-						c.ZoomReset()
-					}
-					inBtn := zoomHitButton(ctx, pal, "export-zoom-in", "+", false)
-					if inBtn.Clicked() {
-						c.ZoomIn()
-					}
-				})
-			})
+			if !compact && dimLabel != "" {
+				ui.Text(ctx, dimLabel).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+			}
 		})
 	})
-}
-
-func zoomHitButton(ctx *ui.Context, pal theme.Palette, id, label string, wide bool) ui.Element {
-	shrink := float32(0)
-	opts := internalui.ActionButtonOptions{
-		ID:                 id,
-		Label:              label,
-		AccessibilityLabel: id,
-		Style:              internalui.ButtonGhost,
-		Height:             theme.HeightMicro,
-		Shrink:             &shrink,
-		RegularWeight:      true,
-	}
-	if wide {
-		opts.MinWidth = 40
-		opts.PaddingX = theme.Space6
-	} else {
-		opts.Width = theme.HeightMicro
-	}
-	return internalui.ActionButtonWithOptions(ctx, opts)
 }
 
 func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitmap, pw, ph int, scale, viewportW, viewportH float32, previewErr string) {
@@ -1295,9 +1176,9 @@ func formatDimensionLabel(f model.ExportFormat, st model.ExportTheme, pw, ph int
 	switch f {
 	case model.ExportPNG:
 		if pw > 0 && ph > 0 {
-			return fmt.Sprintf("%s × %s px · %s", fmtInt(pw), fmtInt(ph), theme.Tr("2×", "2×"))
+			return fmt.Sprintf("%s × %s px · %g×", fmtInt(pw), fmtInt(ph), exportRasterScale)
 		}
-		return theme.Tr("816 px 纸宽 · 2×", "816 px page · 2×")
+		return fmt.Sprintf(theme.Tr("%g px 纸宽 · %g×", "%g px page · %g×"), exportPageWidth, exportRasterScale)
 	case model.ExportPDF:
 		if pw > 0 && ph > 0 {
 			ptW := int(float32(pw)/exportRasterScale + 0.5)
