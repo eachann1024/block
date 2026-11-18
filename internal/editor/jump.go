@@ -39,6 +39,8 @@ func (s *Session) JumpToBlock(idx int) {
 	if s.jumpTo(idx, -1, -1) {
 		s.outlineHovered = false
 		s.outlinePinnedClosed = true
+		s.outlineHoverEnterAt = time.Time{}
+		s.outlineHoverLeaveAt = time.Time{}
 	}
 }
 

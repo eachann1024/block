@@ -181,6 +181,8 @@ type Session struct {
 	// Outline rail
 	outlineHovered      bool
 	outlinePinnedClosed bool
+	outlineHoverEnterAt time.Time
+	outlineHoverLeaveAt time.Time
 	jump                editorJump
 	jumpAlpha           float32
 	outlineForceNarrow  bool
@@ -410,6 +412,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.jump = editorJump{}
 	s.outlineHovered = false
 	s.outlinePinnedClosed = false
+	s.outlineHoverEnterAt = time.Time{}
+	s.outlineHoverLeaveAt = time.Time{}
 	s.annotations = nil
 	s.annotLoadedPath = ""
 	s.activeAnnotID = ""
@@ -826,6 +830,9 @@ func (s *Session) closeTransientOverlays() {
 	s.editingFocusPending = false
 	s.footPickerAnnotID = ""
 	s.trailingPlus = false
+	s.outlineHovered = false
+	s.outlineHoverEnterAt = time.Time{}
+	s.outlineHoverLeaveAt = time.Time{}
 }
 
 func (s *Session) blockIndexByID(id model.BlockID) int {
