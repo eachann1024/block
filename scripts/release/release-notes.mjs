@@ -1,7 +1,5 @@
-import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { request } from "node:https";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describeCommit } from "./commit-blurb.mjs";
@@ -12,13 +10,17 @@ import {
   validateReleaseNotes,
 } from "./release-notes-check.mjs";
 
-export const DEFAULT_CHANGELOG_MODEL = "antigravity/gemini-3.8-flash";
+export const DEFAULT_CHANGELOG_MODEL = "grok-4.7";
 export { lineMixesLanguages, validateReleaseNotes };
+
+const GROK_47 = /^grok-4\.7(?:@[\w.+-]{1,32})?$/;
+const MAGPIE_ORIGIN = "http://100.115.90.80:3425";
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(DIR, "../..");
 const PROMPT_PATH = resolve(DIR, "changelog-prompt.md");
 const MAX_ATTEMPTS = 2;
+// 已观察到上游 502 约 30 秒才返回。超时短于这个时间会被记成连接失败，掩盖真实状态码。
 const TIMEOUT_MS = 90_000;
 const BATCH_THRESHOLD = 50;
 const BATCH_SIZE = 40;
@@ -64,30 +66,122 @@ export function listCommits(root = ROOT, rangeSpec = "-n 20") {
   });
 }
 
-function magpieModel(env) {
-  const requested = env.CHANGELOG_MODEL?.trim() || "";
-  if (/gemini-3\.8/i.test(requested) && !/openai|anthropic|claude|gpt-|deepseek|qwen|grok|ollama/i.test(requested)) {
-    return requested;
-  }
-  return DEFAULT_CHANGELOG_MODEL;
+function shortToken(value) {
+  if (typeof value !== "string") return "";
+  const token = value.trim();
+  return /^[A-Za-z0-9_.:-]{1,40}$/.test(token) ? token : "";
 }
 
-function pinnedFetch(caFile) {
-  const ca = readFileSync(caFile, "utf8");
-  return (url, { method, headers, body, signal }) => new Promise((resolveRes, reject) => {
-    const req = request(url, { method, headers, ca, signal }, (res) => {
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolveRes({
-        ok: res.statusCode >= 200 && res.statusCode < 300,
-        status: res.statusCode,
-        json: async () => JSON.parse(Buffer.concat(chunks).toString("utf8")),
-      }));
-      res.on("error", reject);
-    });
-    req.on("error", reject);
-    req.end(body);
-  });
+function magpieErrorToken(data) {
+  if (!data || typeof data !== "object") return "";
+  const error = data.error;
+  if (typeof error === "string") return shortToken(error);
+  if (error && typeof error === "object") {
+    return shortToken(error.type) || shortToken(error.code) || shortToken(error.kind);
+  }
+  return shortToken(data.type) || shortToken(data.code);
+}
+
+export function publicFailure(err) {
+  if (typeof err?.publicReason === "string" && err.publicReason) return err.publicReason;
+  const name = err?.name || "";
+  const msg = String(err?.message || "");
+  if (name === "TimeoutError" || /The operation was aborted|timeout/i.test(msg)) {
+    return "连接 Magpie 超时，grok-4.7 没有返回结果";
+  }
+  if (name === "AbortError") return "连接 Magpie 已中止，grok-4.7 没有返回结果";
+  const http = /^HTTP (\d{3})(?: ([A-Za-z0-9_.:-]{1,40}))?$/.exec(msg);
+  if (http) {
+    const code = http[2] ? `（${http[2]}）` : "";
+    return `Magpie HTTP ${http[1]}${code}，没有可用的 grok-4.7 结果`;
+  }
+  if (/redirect/i.test(msg)) return "Magpie 拒绝跳转到其他地址，未采用该结果";
+  if (/fetch failed|ECONN|ENOTFOUND|EHOSTUNREACH|network/i.test(msg)) {
+    return "无法连接 Magpie，grok-4.7 没有返回结果";
+  }
+  return "grok-4.7 没有生成更新说明";
+}
+
+export function magpieHttpFailure(status, data) {
+  const token = magpieErrorToken(data);
+  const err = new Error(token ? `HTTP ${status} ${token}` : `HTTP ${status}`);
+  err.publicReason = publicFailure(err);
+  return err;
+}
+
+export function resolveChangelogModel(env) {
+  const requested = env.CHANGELOG_MODEL?.trim() || DEFAULT_CHANGELOG_MODEL;
+  if (!GROK_47.test(requested)) {
+    return { ok: false, reason: "CHANGELOG_MODEL 必须是 grok-4.7，未调用其他模型" };
+  }
+  return { ok: true, model: requested };
+}
+
+export function resolveMagpieChatUrl(baseUrl) {
+  const raw = String(baseUrl || "").trim();
+  if (!raw) return { ok: false, reason: "未配置 MAGPIE_BASE_URL，未调用 grok-4.7" };
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { ok: false, reason: "MAGPIE_BASE_URL 不是合法 URL，未调用模型" };
+  }
+  if (url.username || url.password) {
+    return { ok: false, reason: "MAGPIE_BASE_URL 不能携带凭据，未调用模型" };
+  }
+  if (url.protocol !== "http:" || url.hostname !== "100.115.90.80" || url.port !== "3425") {
+    return { ok: false, reason: "MAGPIE_BASE_URL 只能是 http://100.115.90.80:3425，未调用其他地址" };
+  }
+  if (url.search || url.hash) {
+    return { ok: false, reason: "MAGPIE_BASE_URL 不能带查询或片段，未调用模型" };
+  }
+  const path = url.pathname.replace(/\/+$/, "");
+  if (path !== "" && path !== "/v1") {
+    return { ok: false, reason: "MAGPIE_BASE_URL 路径只能是空或 /v1，未调用模型" };
+  }
+  return { ok: true, url: `${MAGPIE_ORIGIN}/v1/chat/completions` };
+}
+
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part) => {
+    if (typeof part === "string") return part;
+    if (part && typeof part.text === "string") return part.text;
+    return "";
+  }).join("");
+}
+
+export function readCompletion(requested, data) {
+  const used = typeof data?.model === "string" ? data.model.trim() : "";
+  if (!GROK_47.test(used) || used.toLowerCase().split("@")[0] !== "grok-4.7") {
+    const err = new Error("响应没有 model");
+    err.publicReason = "响应没有 grok-4.7 的 model，不能当作生成成功";
+    throw err;
+  }
+  if (requested.toLowerCase().split("@")[0] !== "grok-4.7") {
+    const err = new Error("请求模型不是 grok-4.7");
+    err.publicReason = "请求模型不是 grok-4.7，未采用该结果";
+    throw err;
+  }
+  const raw = messageText(data?.choices?.[0]?.message?.content);
+  if (!raw.trim()) {
+    const err = new Error("模型返回为空");
+    err.publicReason = "响应没有 choices 内容，不能当作 grok-4.7 生成成功";
+    err.retry = true;
+    throw err;
+  }
+  return { model: used, raw };
+}
+
+async function readJsonBody(res) {
+  const text = await res.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function commitLines(commits) {
@@ -100,42 +194,67 @@ function commitLines(commits) {
   });
 }
 
-async function polishBatch({ version, commits, env, fetchImpl, url, headers, model, system }) {
+async function polishBatch({ version, commits, url, headers, model, system }) {
   const inputLines = commitLines(commits);
   if (!inputLines.length) return { status: "empty", model };
   const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n")}`;
-  let lastError = "";
   let lastRaw = "";
+  let failure = "grok-4.7 没有生成更新说明";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const messages = [{ role: "system", content: system }, { role: "user", content: asked }];
     if (attempt > 1 && lastRaw) {
       messages.push({ role: "assistant", content: lastRaw });
-      messages.push({ role: "user", content: `Proofread and rewrite. ${lastError} Keep one language per line. English above ---, Simplified Chinese below. Output markdown only.` });
+      messages.push({
+        role: "user",
+        content: "Proofread and rewrite. The previous draft failed release-note validation. Keep one language per line. English above ---, Simplified Chinese below. Output markdown only.",
+      });
     }
     try {
-      const res = await fetchImpl(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers,
+        redirect: "error",
         signal: AbortSignal.timeout(TIMEOUT_MS),
         body: JSON.stringify({ model, temperature: 0.2, messages }),
       });
-      assert.ok(res.ok, `HTTP ${res.status}`);
-      const data = await res.json();
-      const used = String(data?.model || model);
-      assert.ok(/gemini-3\.8/i.test(used), `Magpie returned ${used}, expected gemini 3.8`);
-      const raw = data?.choices?.[0]?.message?.content;
-      assert.ok(typeof raw === "string" && raw.trim(), "模型返回为空");
-      lastRaw = raw;
-      const markdown = validateReleaseNotes(raw);
-      if (!markdown) return { status: "empty", model: used };
+      const data = await readJsonBody(res);
+      if (!res.ok) throw magpieHttpFailure(res.status, data);
+      if (!data) {
+        const err = new Error("响应不是 JSON");
+        err.publicReason = "响应不是 JSON，没有 grok-4.7 结果";
+        throw err;
+      }
+      const completion = readCompletion(model, data);
+      lastRaw = completion.raw;
+      let markdown = "";
+      try {
+        markdown = validateReleaseNotes(completion.raw);
+      } catch {
+        const err = new Error("生成结果未通过更新说明校验");
+        err.publicReason = "生成结果未通过更新说明校验";
+        err.retry = true;
+        throw err;
+      }
+      if (!markdown) {
+        const err = new Error("模型返回为空");
+        err.publicReason = "响应没有可用的更新说明";
+        err.retry = true;
+        throw err;
+      }
       const listed = listedItems(markdown);
-      if (listed < commits.length) throw new Error(`notes list ${listed} items for ${commits.length} commits`);
-      return { status: "polished", markdown, model: used };
+      if (listed < commits.length) {
+        const err = new Error(`notes list ${listed} items for ${commits.length} commits`);
+        err.publicReason = `条目数 ${listed}/${commits.length}`;
+        err.retry = true;
+        throw err;
+      }
+      return { status: "polished", markdown, model: completion.model };
     } catch (err) {
-      lastError = err?.message || String(err);
+      failure = publicFailure(err);
+      if (!err?.retry) break;
     }
   }
-  return { status: "fallback", reason: lastError };
+  return { status: "fallback", reason: failure };
 }
 
 function collectHalfBuckets(half, sections, buckets, lang) {
@@ -172,44 +291,47 @@ function mergePolishedBatches(markdowns) {
 }
 
 export async function polishReleaseNotes({ version, commits, env = process.env }) {
-  const baseUrl = env.MAGPIE_BASE_URL?.trim();
-  if (!baseUrl) return { status: "fallback", reason: "未配置 MAGPIE_BASE_URL" };
-  const caFile = env.MAGPIE_CA_CERT?.trim();
-  const fetchImpl = caFile ? pinnedFetch(resolve(ROOT, caFile)) : fetch;
-  const model = magpieModel(env);
+  if (env.MAGPIE_REACHABLE === "no") {
+    return { status: "fallback", reason: "CI 未连通 100.115.90.80:3425，未调用 grok-4.7" };
+  }
+  const modelResult = resolveChangelogModel(env);
+  if (!modelResult.ok) return { status: "fallback", reason: modelResult.reason };
+  const endpoint = resolveMagpieChatUrl(env.MAGPIE_BASE_URL);
+  if (!endpoint.ok) return { status: "fallback", reason: endpoint.reason };
+  const model = modelResult.model;
   if (!commits.length) return { status: "empty", model };
-  const url = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1/chat/completions`;
   const headers = { "content-type": "application/json" };
-  if (env.MAGPIE_API_KEY?.trim()) headers.authorization = `Bearer ${env.MAGPIE_API_KEY.trim()}`;
   const system = readFileSync(PROMPT_PATH, "utf8");
+  const url = endpoint.url;
 
   if (commits.length <= BATCH_THRESHOLD) {
-    return polishBatch({ version, commits, env, fetchImpl, url, headers, model, system });
+    return polishBatch({ version, commits, url, headers, model, system });
   }
 
   const batchMarkdowns = [];
-  let usedModel = model;
+  let usedModel = "";
   for (let offset = 0; offset < commits.length; offset += BATCH_SIZE) {
     const batch = commits.slice(offset, offset + BATCH_SIZE);
-    const result = await polishBatch({ version, commits: batch, env, fetchImpl, url, headers, model, system });
+    const result = await polishBatch({ version, commits: batch, url, headers, model, system });
     if (result.status !== "polished") {
       return result.status === "fallback"
         ? result
-        : { status: "fallback", reason: `batch ${offset / BATCH_SIZE + 1} returned empty` };
+        : { status: "fallback", reason: `第 ${offset / BATCH_SIZE + 1} 批没有生成结果` };
     }
-    usedModel = result.model || usedModel;
+    if (!result.model) return { status: "fallback", reason: "响应没有 grok-4.7 的 model，不能当作生成成功" };
+    usedModel = result.model;
     batchMarkdowns.push(result.markdown);
   }
   try {
     const markdown = mergePolishedBatches(batchMarkdowns);
-    if (!markdown) return { status: "empty", model: usedModel };
+    if (!markdown || !usedModel) return { status: "fallback", reason: "生成结果未通过更新说明校验" };
     const listed = listedItems(markdown);
     if (listed < commits.length) {
-      return { status: "fallback", reason: `notes list ${listed} items for ${commits.length} commits` };
+      return { status: "fallback", reason: `条目数 ${listed}/${commits.length}` };
     }
     return { status: "polished", markdown, model: usedModel };
-  } catch (err) {
-    return { status: "fallback", reason: err?.message || String(err) };
+  } catch {
+    return { status: "fallback", reason: "生成结果未通过更新说明校验" };
   }
 }
 
@@ -254,18 +376,25 @@ export async function buildReleaseNotes({ version, commits, env = process.env })
     return { skip: true, reason: "没有面向用户的新提交", markdown: "" };
   }
   const polished = await polishReleaseNotes({ version, commits: userCommits, env });
-  if (polished.status === "polished") {
-    return { skip: false, source: "polished", model: polished.model, markdown: polished.markdown };
+  if (polished.status === "polished" && polished.model) {
+    return { skip: false, source: "polished", model: polished.model, generationFailed: false, markdown: polished.markdown };
   }
+  const reason = polished.reason || "grok-4.7 没有生成更新说明";
   try {
     const markdown = fallbackReleaseNotes(userCommits);
     const listed = markdown ? listedItems(markdown) : 0;
     if (markdown && listed > 0) {
-      return { skip: false, source: "fallback", reason: polished.reason, markdown };
+      return { skip: false, source: "fallback", reason, generationFailed: true, markdown };
     }
-    return { skip: true, reason: `更新说明只写了 ${listed}/${userCommits.length} 条提交`, markdown: "" };
-  } catch (err) {
-    return { skip: true, reason: err?.message || polished.reason, markdown: "" };
+    return {
+      skip: true,
+      source: "fallback",
+      generationFailed: true,
+      reason: `本地规则只写了 ${listed}/${userCommits.length} 条（${reason}）`,
+      markdown: "",
+    };
+  } catch {
+    return { skip: true, source: "fallback", generationFailed: true, reason, markdown: "" };
   }
 }
 
@@ -278,5 +407,8 @@ if (import.meta.main) {
   const commits = listCommits(ROOT, range);
   const count = execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   const result = await buildReleaseNotes({ version: `1.0.${count}`, commits });
+  if (result.generationFailed) {
+    console.error(`警告：grok-4.7 没有生成更新说明（${result.reason}）。下面不是模型结果。`);
+  }
   console.log(result.markdown || `跳过：${result.reason}`);
 }
