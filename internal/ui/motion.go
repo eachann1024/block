@@ -174,22 +174,6 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 	}
 }
 
-// InlineRevealTransition unfolds an inline segment out of the control on its
-// right, opening its width while it slides in from that side, and folds it
-// back the same way: the titlebar send segment growing out of the more button.
-func InlineRevealTransition() ui.ElementTransition {
-	if testing.Testing() {
-		return ui.ElementTransition{Duration: -1}
-	}
-	return ui.ElementTransition{
-		Animation:    &SpringPanel,
-		ExitDuration: 200 * time.Millisecond,
-		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
-		Enter:        &ui.Motion{Collapse: true, X: 12, Opacity: 0.02},
-		Exit:         &ui.Motion{Collapse: true, X: 12, Opacity: 0},
-	}
-}
-
 // DockedSplitTransition keeps both the panel and its splitter opaque as they slide.
 func DockedSplitTransition(fromRight bool) ui.ElementTransition {
 	transition := DockedPanelTransition(fromRight)
@@ -375,6 +359,24 @@ func GutterHandleTransition() ui.ElementTransition {
 		Enter:        &ui.Motion{Scale: 0.92, Opacity: 0.02},
 		Exit:         &ui.Motion{Scale: 0.92, Opacity: 0},
 	}
+}
+
+// SpringReveal opens and folds inline segments without overshoot, so a width
+// driven by it never grows past its content nor pushes its neighbours back.
+var SpringReveal = ui.Animation{
+	Spring: ui.SpringOptions{
+		Duration: 300 * time.Millisecond,
+		Bounce:   0,
+	},
+}
+
+// RevealTo animates a 0–1 reveal progress toward target with SpringReveal,
+// jumping straight to it under tests.
+func RevealTo(el ui.Element, key string, target float32) float32 {
+	if testing.Testing() {
+		return target
+	}
+	return el.AnimateTo(key, target, SpringReveal)
 }
 
 // SpringTo animates a scalar toward target with the tactile spring, jumping
