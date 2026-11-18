@@ -1374,9 +1374,8 @@ func createUniqueQuickNoteFile(folder, title, content string) (string, error) {
 
 // RenderView renders the standalone Quick Note panel UI.
 func (q *QuickNoteController) RenderView(c *ui.Context) {
-	edFont, _, _ := theme.Typography()
 	pal := theme.Ocean()
-	uiTheme := pal.ToUITheme(edFont)
+	uiTheme := pal.ToUITheme("")
 	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
 		TrackWidth: 6,
 		ThumbWidth: theme.ScrollThumbWidth,
