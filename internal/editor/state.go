@@ -719,3 +719,15 @@ func (s *Session) notifyFocusBlock(idx int) {
 func trimSpaces(s string) string {
 	return strings.TrimSpace(s)
 }
+
+func (s *Session) IsBusy() bool {
+	if s.inlineAI != nil && s.inlineAI.Status == aiStatusThinking {
+		return true
+	}
+	for _, a := range s.annotations {
+		if a != nil && a.RewriteBusy {
+			return true
+		}
+	}
+	return false
+}

@@ -216,6 +216,22 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if readOnly {
 		return
 	}
+	if s.rootHandle.FocusWithin(c) && !s.hasAnyOverlayOpen() && !s.findOpen && s.editingAnnotID == "" {
+		for _, mods := range []ui.Modifiers{ui.Alt, ui.Cmd | ui.Alt} {
+			if c.Shortcut(mods, ui.KeyUp) {
+				s.rangeShortcut(mods, ui.KeyUp)
+				return
+			}
+			if c.Shortcut(mods, ui.KeyDown) {
+				s.rangeShortcut(mods, ui.KeyDown)
+				return
+			}
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyD) {
+			s.rangeShortcut(ui.Cmd, ui.KeyD)
+			return
+		}
+	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyZ) || c.Shortcut(ui.Cmd, ui.KeyY) {
 		s.Redo()
 	} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
@@ -759,6 +775,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					s.blockMenu = nil
 					return true
 				}
+			}
+
+			if s.rangeShortcut(k.Mods, k.Key) {
+				return true
 			}
 
 			// Document-level shortcuts inside focused text area
