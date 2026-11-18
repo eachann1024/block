@@ -53,12 +53,14 @@ func (s *Session) paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontS
 	}
 	pal := theme.Ocean()
 	linePx := fontSize * lh
+	bleed := s.bandBleed()
+	extraH := s.scale(4)
 	wrap.Draw(func(p *ui.Painter, r ui.Rect) {
-		bandH := linePx + 4
+		bandH := linePx + extraH
 		band := ui.Rect{
-			X: r.X - 8,
+			X: r.X - bleed,
 			Y: r.Y + (linePx-bandH)*0.5,
-			W: r.W + 16,
+			W: r.W + 2*bleed,
 			H: bandH,
 		}
 		p.Fill(band, pal.HintBand, theme.RadiusSM)
@@ -76,7 +78,7 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 		hintCol = pal.Danger
 	}
 	linePx := fontSize * lh
-	hintRow := ui.Row(c.Key("empty-hint-row")).Absolute().Top(0).Left(8).Right(0).Height(linePx).
+	hintRow := ui.Row(c.Key("empty-hint-row")).Absolute().Top(0).Left(s.bandBleed()).Right(0).Height(linePx).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).IgnoreInput(true)
 	hintRow.Children(func() {
 		txt := ui.Text(c, hint.Text).FontSize(fontSize).FontWeight(weight).TextColor(hintCol).SingleLine()

@@ -1351,8 +1351,9 @@ func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
 	if r.W <= 0 {
 		return false
 	}
-	contentLeft := r.X + s.leftContentGutter()
-	contentRight := r.X + r.W - s.rightContentInset()
+	bleed := s.bandBleed()
+	contentLeft := r.X + s.leftContentGutter() - bleed
+	contentRight := r.X + r.W - s.rightContentInset() + bleed
 	return wx < contentLeft-4 || wx > contentRight+4
 }
 

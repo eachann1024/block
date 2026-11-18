@@ -872,7 +872,7 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 		case model.BlockDivider:
 			ui.Box(c).FillWidth().Height(1).MarginY(8).Background(pal.Hairline)
 		case model.BlockCode, model.BlockRawHTML:
-			ui.Box(c).FillWidth().Padding(10, 14).Radius(theme.RadiusMD).Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
+			ui.Box(c).FillWidth().Padding(10, 14).Radius(theme.RadiusSM).Background(pal.CodeBlockBG).Children(func() {
 				ui.Text(c, b.Code).Font(codeFont).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text)
 			})
 		case model.BlockTable:
@@ -884,7 +884,7 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 							rowEl.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 						}
 						if rIdx == 0 {
-							rowEl.Background(pal.Shell)
+							rowEl.Background(pal.CodeBlockBG)
 						}
 						rowEl.Children(func() {
 							for _, cell := range r {
@@ -904,7 +904,7 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 			if b.Kind == model.BlockCallout && b.Callout != "" {
 				txt = fmt.Sprintf("[%s] %s", b.Callout, txt)
 			}
-			ui.Box(c).FillWidth().Padding(6, 12, 6, 14).BorderWidth(0, 0, 0, 3).BorderColor(pal.Accent).Background(pal.Shell).Radius(theme.RadiusXS).Children(func() {
+			ui.Box(c).FillWidth().Padding(6, 12, 6, 14).BorderWidth(0, 0, 0, 3).BorderColor(pal.Accent).Background(pal.CodeBlockBG).Radius(theme.RadiusXS).Children(func() {
 				t := ui.Text(c, txt).FontSize(theme.FontTitle).LineHeight(1.6).TextColor(pal.Text)
 				if edFont != "" {
 					t.Font(edFont)
