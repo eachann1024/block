@@ -333,8 +333,14 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 		}
 	}
 	topGap := blockGutterSpacing(prev, b)
+	leftPad := float32(0)
+	rightPad := editorRightInset
+	if s.minimal {
+		leftPad = minimalLeftInset
+		rightPad = minimalRightInset
+	}
 
-	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, editorRightInset, 0, 0)
+	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
 	if !readOnly && b.Kind != model.BlockImage && b.Kind != model.BlockDivider {
 		row.Cursor(ui.CursorText)
 	}
@@ -369,9 +375,9 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	overlayBlocking := s.hasAnyOverlayOpen() || s.hoveredAnnotID != "" || s.imgResizeBlock != 0
 	isDraggingBlock := s.dragBlockID != 0
 	isDraggingAny := isDraggingBlock || s.isMouseDragging()
-	showHandles := !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || isFocused)) || s.dragBlockID == id)
-	showBlankAdd := !readOnly && !overlayBlocking && !isDraggingAny && isHovered
-	isFolded := !readOnly && b.Kind.IsHeading() && s.folded[id]
+	showHandles := !s.minimal && !readOnly && !overlayBlocking && ((!isDraggingAny && (isHovered || isFocused)) || s.dragBlockID == id)
+	showBlankAdd := !s.minimal && !readOnly && !overlayBlocking && !isDraggingAny && isHovered
+	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := b.Kind == model.BlockParagraph && b.PlainText() == ""
 	listCtx := s.computeListCtx(idx)
 
@@ -388,104 +394,106 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 		drawListGuides(c, id, listCtx, s.leftContentGutter())
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
-			// Left handle gutter (56px wide + 4px margin), strictly only shown on hover or focus!
-			showDeleteArm := !readOnly && !overlayBlocking && !isDraggingAny && deleteArmed
-			showFold := !readOnly && b.Kind.IsHeading() && !overlayBlocking && (!isDraggingBlock || s.dragBlockID == id) && (showHandles || isFolded)
-			hasGutterControls := showDeleteArm || (blankPara && showBlankAdd) || (!blankPara && showHandles) || showFold
+			if !s.minimal {
+				// Left handle gutter (56px wide + 4px margin), strictly only shown on hover or focus!
+				showDeleteArm := !readOnly && !overlayBlocking && !isDraggingAny && deleteArmed
+				showFold := !readOnly && b.Kind.IsHeading() && !overlayBlocking && (!isDraggingBlock || s.dragBlockID == id) && (showHandles || isFolded)
+				hasGutterControls := showDeleteArm || (blankPara && showBlankAdd) || (!blankPara && showHandles) || showFold
 
-			gutter := ui.Box(c.Key("gutter")).Width(editorHandleWidth).Height(0).Shrink(0).
-				Margin(0, editorRowGap, 0, 0)
-			if hasGutterControls {
-				gutter.Children(func() {
-					handleTop := blockHandleTop(b, topGap)
-					strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(26).
-						Justify(ui.End).AlignItems(ui.Center).Gap(2).PassThrough()
-					strip.Children(func() {
-						if showDeleteArm {
-							delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(24, 24).Center().
-								Radius(6).Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.4)).
-								KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line"))
-							appUi.Tooltip(c, delBtn, theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"))
-							delBtn.Children(func() {
-								icons.Draw(c, icons.KeyBackspace, 14, pal.MonoIconColors(pal.Danger))
-							})
-							appUi.Probe(delBtn, "first-line-delete-badge")
-							if delBtn.Clicked() {
-								s.pressJustBegan = false
-								s.ConfirmFirstLineDelete()
+				gutter := ui.Box(c.Key("gutter")).Width(editorHandleWidth).Height(0).Shrink(0).
+					Margin(0, editorRowGap, 0, 0)
+				if hasGutterControls {
+					gutter.Children(func() {
+						handleTop := blockHandleTop(b, topGap)
+						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(26).
+							Justify(ui.End).AlignItems(ui.Center).Gap(2).PassThrough()
+						strip.Children(func() {
+							if showDeleteArm {
+								delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(24, 24).Center().
+									Radius(6).Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.4)).
+									KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line"))
+								appUi.Tooltip(c, delBtn, theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"))
+								delBtn.Children(func() {
+									icons.Draw(c, icons.KeyBackspace, 14, pal.MonoIconColors(pal.Danger))
+								})
+								appUi.Probe(delBtn, "first-line-delete-badge")
+								if delBtn.Clicked() {
+									s.pressJustBegan = false
+									s.ConfirmFirstLineDelete()
+								}
+							} else if blankPara {
+								if showBlankAdd {
+									addID := fmt.Sprintf("block-add-%d", id)
+									addBtn := appUi.IconButton(c, icons.Plus, appUi.IconButtonOptions{
+										ID:       addID,
+										Label:    theme.Tr("插入块", "Insert block"),
+										Size:     24,
+										IconSize: 14,
+									})
+									addBtn.KeepFocus()
+									s.recordOverlayBtn(addID, addBtn)
+									if addBtn.Clicked() {
+										s.pressJustBegan = false
+										s.FocusBlock(idx)
+										trigger := s.blockTextRects[id]
+										if trigger.W <= 0 {
+											trigger = s.blockRects[id]
+										}
+										s.openSlashMenu(idx, trigger)
+									}
+								}
+							} else if showHandles {
+								gripID := fmt.Sprintf("block-grip-%d", id)
+								grip := ui.ButtonBase(c.Key(gripID)).Size(26, 26).Center().
+									Radius(6).KeepFocus().Label(theme.Tr("块操作", "Block menu"))
+								if b.Kind == model.BlockTable {
+									grip.Margin(0, 4, 0, 0)
+								}
+								gripPressed := grip.Pressed()
+								gripActive := s.dragBlockID == id && !s.dragCanceled
+								gripHovered := grip.Hovered()
+								if gripActive || gripPressed {
+									grip.Cursor(ui.CursorGrabbing)
+								} else {
+									grip.Cursor(ui.CursorGrab)
+								}
+								if gripActive || gripPressed || gripHovered {
+									grip.Background(gripHoverBG)
+								}
+								gripIcon := pal.MonoIconColors(pal.TextSecondary)
+								if gripActive || gripPressed || gripHovered {
+									gripIcon = pal.DuoIconColors(pal.Text)
+								}
+								grip.Children(func() {
+									icons.Draw(c, icons.Drag, 14, gripIcon)
+								})
+								appUi.Probe(grip, gripID)
+								s.recordOverlayBtn(gripID, grip)
+								s.handleBlockGripGesture(c, grip, idx, id)
 							}
-						} else if blankPara {
-							if showBlankAdd {
-								addID := fmt.Sprintf("block-add-%d", id)
-								addBtn := appUi.IconButton(c, icons.Plus, appUi.IconButtonOptions{
-									ID:       addID,
-									Label:    theme.Tr("插入块", "Insert block"),
+							if showFold {
+								glyph := icons.ChevronDown
+								tip := theme.Tr("折叠章节", "Collapse section")
+								if isFolded {
+									glyph = icons.ChevronRight
+									tip = theme.Tr("展开章节", "Expand section")
+								}
+								foldBtn := appUi.IconButton(c, glyph, appUi.IconButtonOptions{
+									ID:       fmt.Sprintf("block-fold-%d", id),
+									Label:    theme.Tr("折叠章节", "Toggle fold"),
+									Tooltip:  tip,
 									Size:     24,
 									IconSize: 14,
 								})
-								addBtn.KeepFocus()
-								s.recordOverlayBtn(addID, addBtn)
-								if addBtn.Clicked() {
+								foldBtn.KeepFocus()
+								if foldBtn.Clicked() {
 									s.pressJustBegan = false
-									s.FocusBlock(idx)
-									trigger := s.blockTextRects[id]
-									if trigger.W <= 0 {
-										trigger = s.blockRects[id]
-									}
-									s.openSlashMenu(idx, trigger)
+									s.toggleFold(id)
 								}
 							}
-						} else if showHandles {
-							gripID := fmt.Sprintf("block-grip-%d", id)
-							grip := ui.ButtonBase(c.Key(gripID)).Size(26, 26).Center().
-								Radius(6).KeepFocus().Label(theme.Tr("块操作", "Block menu"))
-							if b.Kind == model.BlockTable {
-								grip.Margin(0, 4, 0, 0)
-							}
-							gripPressed := grip.Pressed()
-							gripActive := s.dragBlockID == id && !s.dragCanceled
-							gripHovered := grip.Hovered()
-							if gripActive || gripPressed {
-								grip.Cursor(ui.CursorGrabbing)
-							} else {
-								grip.Cursor(ui.CursorGrab)
-							}
-							if gripActive || gripPressed || gripHovered {
-								grip.Background(gripHoverBG)
-							}
-							gripIcon := pal.MonoIconColors(pal.TextSecondary)
-							if gripActive || gripPressed || gripHovered {
-								gripIcon = pal.DuoIconColors(pal.Text)
-							}
-							grip.Children(func() {
-								icons.Draw(c, icons.Drag, 14, gripIcon)
-							})
-							appUi.Probe(grip, gripID)
-							s.recordOverlayBtn(gripID, grip)
-							s.handleBlockGripGesture(c, grip, idx, id)
-						}
-						if showFold {
-							glyph := icons.ChevronDown
-							tip := theme.Tr("折叠章节", "Collapse section")
-							if isFolded {
-								glyph = icons.ChevronRight
-								tip = theme.Tr("展开章节", "Expand section")
-							}
-							foldBtn := appUi.IconButton(c, glyph, appUi.IconButtonOptions{
-								ID:       fmt.Sprintf("block-fold-%d", id),
-								Label:    theme.Tr("折叠章节", "Toggle fold"),
-								Tooltip:  tip,
-								Size:     24,
-								IconSize: 14,
-							})
-							foldBtn.KeepFocus()
-							if foldBtn.Clicked() {
-								s.pressJustBegan = false
-								s.toggleFold(id)
-							}
-						}
+						})
 					})
-				})
+				}
 			}
 
 			// List / indent marker gutter (depth-aware bullets, accent numbers, paper-tag todo box)
@@ -746,10 +754,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 	draft := b.PlainText()
 	oldText := draft
 	handle := *s.blockHandle(b.ID)
-	hint := emptyHintFor(b, deleteArmed)
+	hint := s.emptyHintFor(b, deleteArmed)
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
-	paintEmptyHintBand(wrap, hint, fontSize, lh)
+	s.paintEmptyHintBand(wrap, hint, fontSize, lh)
 
 	var in ui.Element
 	wrap.Children(func() {
@@ -1595,7 +1603,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		gridRow.Children(func() {
 			availGrid := max(theme.EditorStandardWidth-26, 200)
 			if s.viewportWidth > 0 {
-				availGrid = min(availGrid, max(s.viewportWidth-editorHandleWidth-editorRowGap-editorRightInset-26, 200))
+				availGrid = min(availGrid, max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset()-26, 200))
 			}
 			buildGrid := func(needHScroll bool) {
 				grid := ui.Column(c.Key("table-grid")).Radius(6).Border(1, borderCol).Clip()

@@ -13,7 +13,7 @@ type emptyHintSpec struct {
 	Armed    bool
 }
 
-func emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
+func (s *Session) emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
 	if b == nil || b.PlainText() != "" || b.Kind == model.BlockTable || b.Kind == model.BlockImage ||
 		b.Kind == model.BlockDivider || b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
 		return nil
@@ -25,6 +25,9 @@ func emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
 				Text:  theme.Tr("再次按删除键删除此行", "Press Backspace again to delete this line"),
 				Armed: true,
 			}
+		}
+		if s.minimal {
+			return nil
 		}
 		return &emptyHintSpec{
 			Text:     theme.Tr("开始输入…", "Start typing…"),
@@ -47,8 +50,8 @@ func emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec {
 	}
 }
 
-func paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontSize, lh float32) {
-	if hint == nil || hint.Armed {
+func (s *Session) paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontSize, lh float32) {
+	if s.minimal || hint == nil || hint.Armed {
 		return
 	}
 	pal := theme.Ocean()

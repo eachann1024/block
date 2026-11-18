@@ -119,7 +119,7 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	c.Key("tab:" + path)
 	pill := ui.Row(c).Height(tabPillH).MinWidth(0).MaxWidth(singleTabMaxW).Shrink(1).
 		Padding(0, 10, 0, 10).Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().DragWindow().
-		Role(ui.RoleTab).Selected(true).Label(tabTitle(path))
+		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
 	pill.Children(func() {
 		ui.Row(c).Shrink(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip().Children(func() {
 			tabLabel(c, tabTitle(path), pal.Text)
@@ -143,7 +143,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	c.Key("tab:" + path)
 	pill := ui.ButtonBase(c).Width(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 10).
 		Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
-		Role(ui.RoleTab).Selected(active).Label(label).Transition(tabTransition())
+		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
 	if !p.Busy && p.OnReorderTab != nil {
 		pill.Drag(tabDragItem{Path: path})
 	}

@@ -1018,7 +1018,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		idx := s.nearestVisibleBlockAtY(pt.Y)
 		if idx >= 0 {
 			r := s.blockRects[s.doc.Blocks[idx].ID]
-			contentLeft := r.X + editorHandleWidth + editorRowGap
+			contentLeft := r.X + s.leftContentGutter()
 			off := 0
 			if pt.X > contentLeft+40 {
 				off = s.blockSelectionLen(idx)
@@ -1212,8 +1212,8 @@ func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
 	if r.W <= 0 {
 		return false
 	}
-	contentLeft := r.X + editorHandleWidth + editorRowGap
-	contentRight := r.X + r.W - editorRightInset
+	contentLeft := r.X + s.leftContentGutter()
+	contentRight := r.X + r.W - s.rightContentInset()
 	return wx < contentLeft-4 || wx > contentRight+4
 }
 
