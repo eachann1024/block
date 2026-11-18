@@ -2475,22 +2475,6 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 	isSlashClear := mode == menuSlash && b.Kind == model.BlockParagraph &&
 		(b.PlainText() == "" || strings.HasPrefix(b.PlainText(), "/") || strings.HasPrefix(b.PlainText(), "、"))
 
-	if cmd == cmdImage && s.OnPickImages != nil {
-		targetID := b.ID
-		if isSlashClear {
-			b.Spans = nil
-			b.Code = ""
-			b.Dirty = true
-			b.CleanSource = ""
-			s.selAnchor = Position{Block: idx, Offset: 0}
-			s.selHead = s.selAnchor
-			s.selSyncPending = true
-			s.markDirty()
-		}
-		s.OnPickImages(targetID, isSlashClear)
-		return
-	}
-
 	switch cmd {
 	case cmdDuplicate:
 		s.duplicateBlock(idx)
@@ -2613,6 +2597,9 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		s.selSyncPending = true
 	}
 	s.markDirty()
+	if cmd == cmdImage {
+		s.RequestPickImages(b.ID, true)
+	}
 }
 
 // --- Find ---
