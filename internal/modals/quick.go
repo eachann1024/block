@@ -157,7 +157,6 @@ type QuickNoteController struct {
 	wheelAccum      float32
 	lastWheelEvent  time.Time
 	lastWheelSwitch time.Time
-	lastBodyScroll  time.Time
 	inlineAIRespond func(ctx, orig, draft, instruction string) string
 	zoom            float32
 	notice          string
@@ -1013,7 +1012,6 @@ func (q *QuickNoteController) switchSlot(slot int) {
 	if q.activeSlot != slot {
 		q.syncSessionToDiskLocked(q.activeSlot)
 		q.activeSlot = slot
-		q.lastBodyScroll = time.Time{}
 		q.ensureSlotFileLocked(slot)
 		q.noticeSeq++
 		if q.noticeTimer != nil {
@@ -1475,31 +1473,6 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 
 	root := ui.Column(c.Key("quick-note-root")).Fill().Background(pal.Paper).TextColor(pal.Text).Clip()
 	internalui.Probe(root, "quick-note-root")
-	root.HandleInput(func(ev ui.InputEvent) bool {
-		if ev.Kind != ui.InputScroll || ev.Momentum {
-			return false
-		}
-		if ev.Mods&(ui.Ctrl|ui.Alt|ui.Super) != 0 {
-			return false
-		}
-		axis := ev.DY
-		if math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY)) {
-			axis = ev.DX
-		}
-		if math.Abs(float64(axis)) < 0.5 {
-			return false
-		}
-		inHeader := ev.Y <= 44
-		shiftHeld := ev.Mods&ui.Shift != 0
-		if !inHeader && !shiftHeld {
-			return false
-		}
-		if sess != nil && sess.HasScrollablePopupOpen() {
-			return false
-		}
-		q.OnWheelScroll(axis)
-		return true
-	})
 	root.Children(func() {
 		// Minimalist 44px drag header: no top-left window buttons, centered pill/dot pager, right save + close.
 		header := ui.Row(c.Key("quick-header")).FillWidth().Height(44).Shrink(0).
@@ -1507,6 +1480,26 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 			Background(pal.Paper)
 		header.DragWindow()
 		internalui.Probe(header, "quick-header")
+		header.HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind != ui.InputScroll || ev.Momentum {
+				return false
+			}
+			if ev.Mods&(ui.Ctrl|ui.Alt|ui.Super) != 0 {
+				return false
+			}
+			if sess != nil && sess.HasScrollablePopupOpen() {
+				return false
+			}
+			axis := ev.DY
+			if math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY)) {
+				axis = ev.DX
+			}
+			if math.Abs(float64(axis)) < 0.5 {
+				return false
+			}
+			q.OnWheelScroll(axis)
+			return true
+		})
 		header.Children(func() {
 			// Centered 3-slot pill/dot pager inside a pass-through layer so drag & right buttons work.
 			ui.Row(c.Key("quick-pager-layer")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
@@ -1520,7 +1513,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 						return &internalui.TooltipSpec{
 							Rows: []internalui.TooltipRow{{
 								Trigger:     fmt.Sprintf(theme.Tr("速记页 %d", "Note %d"), slot+1),
-								Detail:      theme.Tr("点击或 Shift+滚轮切换", "Click or Shift+scroll"),
+								Detail:      theme.Tr("点击或滚轮切换", "Click or scroll"),
 								SplitDetail: true,
 							}},
 						}
