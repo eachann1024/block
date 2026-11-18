@@ -3,6 +3,7 @@ package plugins
 import (
 	"archive/tar"
 	"archive/zip"
+	"block/internal/updater"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -129,6 +130,7 @@ type StoreManager struct {
 	IndexURLs []string
 	HTTP      *http.Client
 	dlMu      sync.Mutex
+	installMu sync.Mutex
 }
 
 func NewStoreManager(blockAppDataDir string) *StoreManager {
@@ -283,8 +285,27 @@ func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 }
 
 func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
 	if err := s.EnsureDirs(); err != nil {
 		return nil, err
+	}
+	// Restore any update interrupted between the two directory renames.
+	cached, err := os.ReadDir(s.CacheRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range cached {
+		id, ok := strings.CutSuffix(e.Name(), ".previous")
+		if !ok || !pluginIDRe.MatchString(id) || !e.IsDir() {
+			continue
+		}
+		dst := filepath.Join(s.AppsRoot, id)
+		if _, err := os.Stat(dst); errors.Is(err, os.ErrNotExist) {
+			if err := os.Rename(filepath.Join(s.CacheRoot, e.Name()), dst); err != nil {
+				return nil, err
+			}
+		}
 	}
 	entries, err := os.ReadDir(s.AppsRoot)
 	if err != nil {
@@ -338,23 +359,12 @@ func (s *StoreManager) installEntryCore(ctx context.Context, entry StoreAppEntry
 	case strings.HasPrefix(u, "file://"):
 		return s.InstallFromDirectory(strings.TrimPrefix(u, "file://"))
 	case strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://"):
-		installed, err := s.InstallFromArchiveURL(ctx, u, entry.SHA256)
-		if err == nil {
-			return installed, nil
+		if strings.TrimSpace(entry.SHA256) == "" {
+			return nil, errors.New("catalog archive is missing its SHA256")
 		}
-		if fallbackInst, fbErr := s.installCatalogRepoFallback(ctx, entry); fbErr == nil {
-			return fallbackInst, nil
-		}
-		// If an official seed exists for the same ID and network is unreachable, fall back cleanly.
-		builtinMu.RLock()
-		_, hasBuiltin := builtinSeeds[entry.ID]
-		builtinMu.RUnlock()
-		if hasBuiltin {
-			return s.installBuiltin(entry.ID)
-		}
-		return nil, err
+		return s.installArchive(ctx, u, entry.SHA256, &entry)
 	default:
-		return s.installFromSourceCore(ctx, u)
+		return nil, fmt.Errorf("unsupported catalog download URL %q", u)
 	}
 }
 
@@ -411,63 +421,6 @@ func (s *StoreManager) installFromSourceCore(ctx context.Context, spec string) (
 	return nil, fmt.Errorf("unsupported plugin source %q", spec)
 }
 
-func (s *StoreManager) installCatalogRepoFallback(ctx context.Context, entry StoreAppEntry) (*InstalledApp, error) {
-	slug := strings.TrimSpace(entry.Repo)
-	if !repoSlugRe.MatchString(slug) {
-		return nil, errors.New("no valid repo slug for fallback")
-	}
-	var urls []string
-	if ver := strings.TrimPrefix(strings.TrimSpace(entry.Version), "v"); semverRe.MatchString(ver) {
-		urls = append(urls,
-			fmt.Sprintf("https://codeload.github.com/%s/tar.gz/refs/tags/v%s", slug, ver),
-			fmt.Sprintf("https://gh-proxy.com/https://github.com/%s/archive/refs/tags/v%s.tar.gz", slug, ver),
-		)
-	}
-	urls = append(urls,
-		fmt.Sprintf("https://codeload.github.com/%s/tar.gz/HEAD", slug),
-		fmt.Sprintf("https://gh-proxy.com/https://github.com/%s/archive/HEAD.tar.gz", slug),
-	)
-	var lastErr error
-	for _, cand := range urls {
-		inst, err := s.installUnpinnedArchive(ctx, cand, entry.ID)
-		if err == nil {
-			return inst, nil
-		}
-		lastErr = err
-	}
-	return nil, lastErr
-}
-
-func (s *StoreManager) installUnpinnedArchive(ctx context.Context, candURL string, expectedID string) (*InstalledApp, error) {
-	data, err := s.fetchArchiveBytes(ctx, candURL)
-	if err != nil {
-		return nil, err
-	}
-	tmpExtract, err := os.MkdirTemp(s.CacheRoot, "extract-*")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmpExtract)
-
-	if err := ExtractPluginArchive(data, candURL, tmpExtract); err != nil {
-		return nil, err
-	}
-	pluginRoot, err := FindManifestRoot(tmpExtract)
-	if err != nil {
-		return nil, err
-	}
-	if expectedID != "" {
-		m, err := LoadManifest(pluginRoot)
-		if err != nil {
-			return nil, err
-		}
-		if m.ID != expectedID {
-			return nil, fmt.Errorf("manifest id mismatch: got %q, want %q", m.ID, expectedID)
-		}
-	}
-	return s.InstallFromDirectory(pluginRoot)
-}
-
 func (s *StoreManager) installFromGitHubRepo(ctx context.Context, slug string) (*InstalledApp, error) {
 	candidates := []string{
 		fmt.Sprintf("https://codeload.github.com/%s/tar.gz/HEAD", slug),
@@ -485,6 +438,10 @@ func (s *StoreManager) installFromGitHubRepo(ctx context.Context, slug string) (
 }
 
 func (s *StoreManager) InstallFromArchiveURL(ctx context.Context, rawURL string, expectedSHA256 string) (*InstalledApp, error) {
+	return s.installArchive(ctx, rawURL, expectedSHA256, nil)
+}
+
+func (s *StoreManager) installArchive(ctx context.Context, rawURL, expectedSHA256 string, entry *StoreAppEntry) (*InstalledApp, error) {
 	if err := s.EnsureDirs(); err != nil {
 		return nil, err
 	}
@@ -525,6 +482,15 @@ func (s *StoreManager) InstallFromArchiveURL(ctx context.Context, rawURL string,
 	pluginRoot, err := FindManifestRoot(tmpExtract)
 	if err != nil {
 		return nil, err
+	}
+	if entry != nil {
+		m, err := LoadManifest(pluginRoot)
+		if err != nil {
+			return nil, err
+		}
+		if m.ID != entry.ID || m.Version != strings.TrimPrefix(entry.Version, "v") {
+			return nil, fmt.Errorf("archive manifest differs from catalog entry %s %s", entry.ID, entry.Version)
+		}
 	}
 	return s.InstallFromDirectory(pluginRoot)
 }
@@ -602,20 +568,52 @@ func (s *StoreManager) InstallFromDirectory(srcDir string) (*InstalledApp, error
 		return nil, err
 	}
 	dstDir := filepath.Join(s.AppsRoot, m.ID)
-	tmpDir := dstDir + ".installing"
-	_ = os.RemoveAll(tmpDir)
-	if err := copyDirRecursive(srcDir, tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return nil, err
-	}
-	_ = os.RemoveAll(dstDir)
-	if err := os.Rename(tmpDir, dstDir); err != nil {
-		return nil, err
-	}
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
 	dataDir := filepath.Join(s.DataRoot, m.ID)
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, err
 	}
+	staging, err := os.MkdirTemp(s.AppsRoot, ".install-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(staging)
+	tmpDir := filepath.Join(staging, "candidate")
+	if err := copyDirRecursive(srcDir, tmpDir); err != nil {
+		return nil, err
+	}
+	backup := filepath.Join(s.CacheRoot, m.ID+".previous")
+	_, err = os.Stat(dstDir)
+	if err == nil {
+		// Initialize the candidate with isolated storage before replacing the working copy.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		rt, err := StartRuntime(ctx, *m, HostConfig{PluginDir: tmpDir, DataDir: filepath.Join(staging, "data"), HostVersion: updater.CurrentVersion()})
+		if err != nil {
+			return nil, err
+		}
+		err = rt.Initialize(ctx)
+		_ = rt.Shutdown(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("update initialization: %w", err)
+		}
+		if err := os.RemoveAll(backup); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(dstDir, backup); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err := os.Rename(tmpDir, dstDir); err != nil {
+		if _, statErr := os.Stat(backup); statErr == nil {
+			return nil, errors.Join(err, os.Rename(backup, dstDir))
+		}
+		return nil, err
+	}
+	_ = os.RemoveAll(backup)
 	return &InstalledApp{
 		Manifest:    *m,
 		InstallDir:  dstDir,
@@ -626,8 +624,13 @@ func (s *StoreManager) InstallFromDirectory(srcDir string) (*InstalledApp, error
 }
 
 func (s *StoreManager) Uninstall(pluginID string, purgeData bool) error {
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
 	if !pluginIDRe.MatchString(pluginID) {
 		return fmt.Errorf("invalid plugin id %q", pluginID)
+	}
+	if err := os.RemoveAll(filepath.Join(s.CacheRoot, pluginID+".previous")); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(filepath.Join(s.AppsRoot, pluginID)); err != nil {
 		return err

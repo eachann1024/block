@@ -22,6 +22,7 @@ type PluginNavEntry struct {
 	Title     string
 	CountText string
 	StatusDot bool
+	HasError  bool
 	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
 }
 

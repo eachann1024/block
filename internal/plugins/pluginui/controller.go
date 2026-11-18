@@ -71,6 +71,7 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 			TabID:     modals.TabPluginPrefix + app.Manifest.ID,
 			Title:     app.Manifest.Name.Resolve(locale),
 			StatusDot: app.Enabled,
+			HasError:  c.sup.HasPluginError(app.Manifest.ID),
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, app.Manifest.Icon, size, colors)
 			},
@@ -115,6 +116,9 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 		if statusText == "" && vs.Page != nil {
 			statusText = strings.TrimSpace(vs.Page.Status)
 		}
+		if vs.PendingSaves > 0 {
+			statusText = strconv.Itoa(vs.PendingSaves) + theme.Tr(" 项待处理", " pending")
+		}
 		if statusText != "" {
 			renderStatusPill(ctx, statusText)
 		}
@@ -129,7 +133,7 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 			}
 		}
 
-		uninstBtn := bui.ActionButton(ctx, "plugin-hdr-uninstall-"+pluginID, theme.Tr("卸载", "Uninstall"), nil, bui.ButtonDanger, false)
+		uninstBtn := bui.ActionButton(ctx, "plugin-hdr-uninstall-"+pluginID, theme.Tr("卸载", "Uninstall"), nil, bui.ButtonDanger, vs.Loading || vs.BusyAction != "")
 		if uninstBtn.Clicked() {
 			c.uninstallPlugin(pluginID, func() {
 				if onSelectTab != nil {
@@ -174,15 +178,38 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 
 	ui.Column(ctx.Key("plugin-tab-body-" + pluginID)).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
 		if vs.Error != "" {
-			ui.Row(ctx.Key("plugin-error-" + pluginID)).FillWidth().MinWidth(0).
+			ui.Row(ctx.Key("plugin-error-"+pluginID)).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Gap(theme.Space12).Radius(theme.RadiusMD).
 				Background(pal.DangerSurface).Border(1, pal.Danger).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(ctx, vs.Error).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 					TextColor(pal.Danger).Grow(1).MinWidth(0)
-				retryBtn := bui.ActionButton(ctx, "plugin-retry-"+pluginID, theme.Tr("重试", "Retry"), nil, bui.ButtonSecondary, vs.Loading)
-				if retryBtn.Clicked() {
-					c.sup.ReloadPluginViewAsync(pluginID)
-				}
+				ui.Row(ctx.Key("plugin-error-actions-" + pluginID)).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+					busy := vs.Loading || vs.BusyAction != ""
+					label := theme.Tr("重试", "Retry")
+					if vs.RetryKind == plugins.RetryKindReload {
+						label = theme.Tr("重新加载", "Reload")
+					} else if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now") {
+						label = theme.Tr("重试同步", "Retry sync")
+					}
+					retryBtn := bui.ActionButton(ctx, "plugin-retry-"+pluginID, label, nil, bui.ButtonSecondary, busy)
+					if retryBtn.Clicked() {
+						if vs.RetryKind == plugins.RetryKindUninstall {
+							c.uninstallPlugin(pluginID, func() {
+								if onSelectTab != nil {
+									onSelectTab(modals.TabAppStore)
+								}
+							})
+						} else {
+							c.sup.RetryPluginAsync(pluginID)
+						}
+					}
+					if vs.RetryKind != plugins.RetryKindNone && vs.RetryKind != plugins.RetryKindReload {
+						reloadBtn := bui.ActionButton(ctx, "plugin-reload-"+pluginID, theme.Tr("重新加载", "Reload"), nil, bui.ButtonSecondary, busy)
+						if reloadBtn.Clicked() {
+							c.sup.ReloadPluginViewAsync(pluginID)
+						}
+					}
+				})
 			})
 		}
 
@@ -248,46 +275,77 @@ func (c *Controller) clearManualSpec() {
 }
 
 func (c *Controller) uninstallPlugin(pluginID string, onDone func()) {
-	c.clearPluginState(pluginID)
-	c.sup.UninstallAsync(pluginID, onDone)
+	c.sup.UninstallAsync(pluginID, func() {
+		c.clearPluginState(pluginID)
+		if onDone != nil {
+			onDone()
+		}
+	})
+}
+
+func (c *Controller) pluginStateKey(pluginID string) string {
+	nbRoot := ""
+	if c.sup != nil {
+		nbRoot = c.sup.NotebookRoot()
+	}
+	return nbRoot + "\x00" + pluginID
 }
 
 func (c *Controller) clearPluginState(pluginID string) {
+	suffix := "\x00" + pluginID
 	c.mu.Lock()
-	delete(c.drafts, pluginID)
-	delete(c.lastSynced, pluginID)
-	delete(c.secretRevealed, pluginID)
-	delete(c.selectStates, pluginID)
+	for k := range c.drafts {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.drafts, k)
+		}
+	}
+	for k := range c.lastSynced {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.lastSynced, k)
+		}
+	}
+	for k := range c.secretRevealed {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.secretRevealed, k)
+		}
+	}
+	for k := range c.selectStates {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.selectStates, k)
+		}
+	}
 	c.mu.Unlock()
 }
 
 func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 	return &InputBindings{
 		SelectState: func(controlID string) *bui.DropdownSelectState {
+			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			if c.selectStates[pluginID] == nil {
-				c.selectStates[pluginID] = make(map[string]*bui.DropdownSelectState)
+			if c.selectStates[stateKey] == nil {
+				c.selectStates[stateKey] = make(map[string]*bui.DropdownSelectState)
 			}
-			st := c.selectStates[pluginID][controlID]
+			st := c.selectStates[stateKey][controlID]
 			if st == nil {
 				st = &bui.DropdownSelectState{Cursor: -1}
-				c.selectStates[pluginID][controlID] = st
+				c.selectStates[stateKey][controlID] = st
 			}
 			return st
 		},
 		ResolveDraft: func(controlID, fallback string) string {
+			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			pDrafts := c.drafts[pluginID]
+			pDrafts := c.drafts[stateKey]
 			if pDrafts == nil {
 				pDrafts = make(map[string]string)
-				c.drafts[pluginID] = pDrafts
+				c.drafts[stateKey] = pDrafts
 			}
-			pSynced := c.lastSynced[pluginID]
+			pSynced := c.lastSynced[stateKey]
 			if pSynced == nil {
 				pSynced = make(map[string]string)
-				c.lastSynced[pluginID] = pSynced
+				c.lastSynced[stateKey] = pSynced
 			}
 			prevSynced, hasSynced := pSynced[controlID]
 			if !hasSynced || fallback != prevSynced {
@@ -298,28 +356,31 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			return pDrafts[controlID]
 		},
 		OnDraftChanged: func(controlID, next string) {
+			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
-			if c.drafts[pluginID] == nil {
-				c.drafts[pluginID] = make(map[string]string)
+			if c.drafts[stateKey] == nil {
+				c.drafts[stateKey] = make(map[string]string)
 			}
-			if c.lastSynced[pluginID] == nil {
-				c.lastSynced[pluginID] = make(map[string]string)
+			if c.lastSynced[stateKey] == nil {
+				c.lastSynced[stateKey] = make(map[string]string)
 			}
-			c.drafts[pluginID][controlID] = next
-			c.lastSynced[pluginID][controlID] = next
+			c.drafts[stateKey][controlID] = next
+			c.lastSynced[stateKey][controlID] = next
 			c.mu.Unlock()
 		},
 		IsSecretShown: func(controlID string) bool {
+			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			return c.secretRevealed[pluginID][controlID]
+			return c.secretRevealed[stateKey][controlID]
 		},
 		ToggleSecret: func(controlID string) {
+			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
-			if c.secretRevealed[pluginID] == nil {
-				c.secretRevealed[pluginID] = make(map[string]bool)
+			if c.secretRevealed[stateKey] == nil {
+				c.secretRevealed[stateKey] = make(map[string]bool)
 			}
-			c.secretRevealed[pluginID][controlID] = !c.secretRevealed[pluginID][controlID]
+			c.secretRevealed[stateKey][controlID] = !c.secretRevealed[stateKey][controlID]
 			c.mu.Unlock()
 		},
 		PickDirectory: func(controlID, title string) {
@@ -327,15 +388,16 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 				return
 			}
 			c.sup.PickDirectory(title, func(chosen string) {
+				stateKey := c.pluginStateKey(pluginID)
 				c.mu.Lock()
-				if c.drafts[pluginID] == nil {
-					c.drafts[pluginID] = make(map[string]string)
+				if c.drafts[stateKey] == nil {
+					c.drafts[stateKey] = make(map[string]string)
 				}
-				if c.lastSynced[pluginID] == nil {
-					c.lastSynced[pluginID] = make(map[string]string)
+				if c.lastSynced[stateKey] == nil {
+					c.lastSynced[stateKey] = make(map[string]string)
 				}
-				c.drafts[pluginID][controlID] = chosen
-				c.lastSynced[pluginID][controlID] = chosen
+				c.drafts[stateKey][controlID] = chosen
+				c.lastSynced[stateKey][controlID] = chosen
 				c.mu.Unlock()
 				c.sup.UpdateControlValue(pluginID, controlID, chosen, true)
 			})
