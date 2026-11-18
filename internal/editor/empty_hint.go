@@ -66,7 +66,7 @@ func (s *Session) paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontS
 	})
 }
 
-func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSize, lh float32) {
+func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSize float32, weight int, lh float32) {
 	if hint == nil {
 		return
 	}
@@ -82,13 +82,13 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 	hintRow := ui.Row(c.Key("empty-hint-row")).Absolute().Top(0).Left(8).Right(0).Height(linePx).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).IgnoreInput(true)
 	hintRow.Children(func() {
-		txt := ui.Text(c, hint.Text).FontSize(fontSize).TextColor(hintCol).SingleLine()
+		txt := ui.Text(c, hint.Text).FontSize(fontSize).FontWeight(weight).TextColor(hintCol).SingleLine()
 		if edFont := resolvedEditorFont(); edFont != "" {
 			txt.Font(edFont)
 		}
-		availBody := s.viewportWidth - s.leftContentGutter() - s.rightContentInset()
-		if availBody <= 0 {
-			availBody = theme.EditorStandardWidth
+		availBody := theme.EditorStandardWidth
+		if s.viewportWidth > 0 {
+			availBody = max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset(), 0)
 		}
 		if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 220 {
 			keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(6)

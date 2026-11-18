@@ -18,7 +18,7 @@ const (
 	minimalTopPad     float32 = 14
 	minimalBottomPad  float32 = 20
 	minimalLeftInset  float32 = 20
-	minimalRightInset float32 = 18
+	minimalRightInset float32 = 20
 )
 
 // SetMinimal enables or disables Quick Note compact editor mode:
