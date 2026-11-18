@@ -830,10 +830,7 @@ func (s *Session) renderToolbarMoreMenu(c *ui.Context, vp ui.Rect, winW, winH fl
 	estH := min(estimateEditorMenuHeight(len(overflow), sepCount), maxH)
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
-	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-		HandleInput(func(ev ui.InputEvent) bool {
-			return ev.Kind == ui.InputScroll
-		})
+	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 	appUi.Probe(panel, "toolbar-more-menu")
 	s.recordOverlayPanel("toolbar-more-menu", panel)
 
@@ -945,10 +942,7 @@ func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH f
 		})
 	}
 
-	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-		HandleInput(func(ev ui.InputEvent) bool {
-			return ev.Kind == ui.InputScroll
-		})
+	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
 	appUi.NavigateMenu(panel, specs, cur)
 	appUi.Probe(panel, "toolbar-kind-menu")
@@ -983,10 +977,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	bgChoices := []string{"default", "yellow"}
 	totalChoices := limit + len(bgChoices)
 
-	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-		HandleInput(func(ev ui.InputEvent) bool {
-			return ev.Kind == ui.InputScroll
-		})
+	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
 	panel.ObserveInput(func(ev ui.InputEvent) {
 		if ev.Kind == ui.InputPointerMove && *cur >= 0 {
@@ -1347,10 +1338,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		shell := appUi.MenuSurface(ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-			HandleInput(func(ev ui.InputEvent) bool {
-				return ev.Kind == ui.InputScroll
-			})
+		shell := appUi.MenuSurface(ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 		shell.ObserveInput(func(ev ui.InputEvent) {
 			if ev.Kind == ui.InputPointerMove && s.calloutMenuIndex >= 0 {
 				s.calloutMenuIndex = -1
@@ -1506,11 +1494,7 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		// Absorb wheel events inside the menu so boundary scrolling never leaks to the document body!
-		shell := appUi.MenuSurface(ui.Column(c.Key("block-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-			HandleInput(func(ev ui.InputEvent) bool {
-				return ev.Kind == ui.InputScroll
-			})
+		shell := appUi.MenuSurface(ui.Column(c.Key("block-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 		if menu.Mode == menuHandle && s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
 			fk := s.doc.Blocks[s.focusedBlock].Kind
 			if fk == model.BlockCode || fk == model.BlockRawHTML {
@@ -1687,10 +1671,7 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		shell := appUi.MenuSurface(ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-			Focusable().AutoFocus().
-			HandleInput(func(ev ui.InputEvent) bool {
-				return ev.Kind == ui.InputScroll
-			})
+			Focusable().AutoFocus()
 		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
 		appUi.NavigateMenu(shell, specs, cur)
 		appUi.Probe(shell, "code-lang-menu")
@@ -1793,10 +1774,7 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		shell := appUi.MenuSurface(ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
-			HandleInput(func(ev ui.InputEvent) bool {
-				return ev.Kind == ui.InputScroll
-			})
+		shell := appUi.MenuSurface(ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
 		appUi.NavigateMenu(shell, entries, cur)
 		appUi.Probe(shell, "table-menu")
