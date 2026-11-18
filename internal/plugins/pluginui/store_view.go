@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"block/internal/icons"
 	"block/internal/modals"
@@ -52,7 +54,16 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 
 	entries := buildVisibleStoreEntries(catalog, installed, installedMap, filter)
 
-	ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space24).Children(func() {
+	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space20)
+	bodyW := body.Bounds().W
+	if bodyW <= 0 {
+		vpW, _ := c.Size()
+		if vpW > 0 {
+			bodyW = vpW - theme.SidebarMinWidth - 2*theme.Space24
+		}
+	}
+
+	body.Children(func() {
 		if storeErr != "" {
 			ui.Row(c.Key("app-store-error")).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
@@ -83,35 +94,87 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			return
 		}
 
-		vpW, _ := c.Size()
-		twoCol := vpW == 0 || vpW >= 920
+		colCount := storeColumnCount(bodyW)
+		renderStoreMasonry(c, ctrl, entries, installedMap, locale, installingID, onSelectTab, colCount)
+	})
+}
 
+func storeColumnCount(bodyW float32) int {
+	switch {
+	case bodyW <= 0:
+		return 2
+	case bodyW >= theme.StoreThreeColMinWidth:
+		return 3
+	case bodyW >= theme.StoreTwoColMinWidth:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// renderStoreMasonry distributes cards into shortest-first vertical columns (Xiaohongshu feed style)
+// so each card wraps its natural content height without stretched empty gaps or orphan row spacers.
+func renderStoreMasonry(
+	c *ui.Context,
+	ctrl *Controller,
+	entries []plugins.StoreAppEntry,
+	installedMap map[string]plugins.InstalledApp,
+	locale string,
+	installingID string,
+	onSelectTab func(nextTab string),
+	colCount int,
+) {
+	if colCount <= 1 {
 		ui.Column(c.Key("app-store-list")).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
-			if !twoCol {
-				for _, item := range entries {
-					entry := item
-					_, isInstalled := installedMap[entry.ID]
-					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab, false)
-				}
-				return
-			}
-			for i := 0; i < len(entries); i += 2 {
-				rowIdx := i / 2
-				ui.Row(c.Key(fmt.Sprintf("app-store-row-%d", rowIdx))).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Stretch).Children(func() {
-					left := entries[i]
-					_, leftInstalled := installedMap[left.ID]
-					renderStoreAppCard(c, ctrl, left, locale, leftInstalled, installingID, onSelectTab, true)
-					if i+1 < len(entries) {
-						right := entries[i+1]
-						_, rightInstalled := installedMap[right.ID]
-						renderStoreAppCard(c, ctrl, right, locale, rightInstalled, installingID, onSelectTab, true)
-					} else {
-						ui.Box(c.Key("app-store-grid-spacer")).Grow(1).Basis(0).MinWidth(0)
-					}
-				})
+			for _, item := range entries {
+				entry := item
+				_, isInstalled := installedMap[entry.ID]
+				renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab)
 			}
 		})
+		return
+	}
+
+	buckets := distributeMasonryEntries(entries, locale, colCount)
+	ui.Row(c.Key("app-store-list")).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Start).Children(func() {
+		for colIdx := 0; colIdx < colCount; colIdx++ {
+			colItems := buckets[colIdx]
+			ui.Column(c.Key(fmt.Sprintf("app-store-col-%d", colIdx))).
+				Grow(1).Basis(0).MinWidth(0).Gap(theme.Space16).Children(func() {
+				for _, item := range colItems {
+					entry := item
+					_, isInstalled := installedMap[entry.ID]
+					renderStoreAppCard(c, ctrl, entry, locale, isInstalled, installingID, onSelectTab)
+				}
+			})
+		}
 	})
+}
+
+func distributeMasonryEntries(entries []plugins.StoreAppEntry, locale string, colCount int) [][]plugins.StoreAppEntry {
+	buckets := make([][]plugins.StoreAppEntry, colCount)
+	heights := make([]int, colCount)
+	for _, entry := range entries {
+		bestCol := 0
+		for i := 1; i < colCount; i++ {
+			if heights[i] < heights[bestCol] {
+				bestCol = i
+			}
+		}
+		buckets[bestCol] = append(buckets[bestCol], entry)
+		heights[bestCol] += estimateStoreCardWeight(entry, locale)
+	}
+	return buckets
+}
+
+func estimateStoreCardWeight(entry plugins.StoreAppEntry, locale string) int {
+	summaryRunes := utf8.RuneCountInString(strings.TrimSpace(entry.Summary.Resolve(locale)))
+	lines := max((summaryRunes+21)/22, 1)
+	permWeight := 0
+	if len(entry.Permissions) > 0 {
+		permWeight = 28
+	}
+	return 210 + lines*20 + permWeight
 }
 
 func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string, onSelectTab func(nextTab string)) {
@@ -182,9 +245,9 @@ func renderStoreAppCard(
 	isInstalled bool,
 	installingID string,
 	onSelectTab func(nextTab string),
-	inGrid bool,
 ) {
 	pal := theme.Ocean()
+	tone := pal.StoreCard(entry.ID)
 	downloads := entry.Downloads
 	if downloads < 0 {
 		downloads = 0
@@ -195,126 +258,228 @@ func renderStoreAppCard(
 	dlStr := formatDownloadCount(downloads)
 
 	card := ui.Column(c.Key("app-store-card-" + entry.ID)).
-		Padding(theme.CardPadY, theme.CardPadX, theme.CardPadY, theme.CardPadX).
-		Gap(theme.CardGap).
+		FillWidth().
+		MinWidth(0).
 		Radius(theme.RadiusXL).
-		Background(pal.Card).
-		Border(1, pal.Hairline).
-		Justify(ui.SpaceBetween)
-	if inGrid {
-		card.Grow(1).Basis(0).MinWidth(0)
-	} else {
-		card.FillWidth().MinWidth(0)
+		Clip()
+	hovered := card.Hovered()
+	bdCol := pal.Hairline
+	if hovered {
+		bdCol = pal.BtnBorder
+	}
+	bui.AnimateSurfaceColors(card, pal.Card, bdCol, true)
+	if hovered {
+		bui.Elevate(card, theme.ElevationRaised)
 	}
 
 	card.Children(func() {
-		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space12).Children(func() {
-			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
-				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Start).Children(func() {
-					ui.Box(c).Size(theme.HeightLarge, theme.HeightLarge).Shrink(0).Center().
-						Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
-						DrawDuoSpec(c, entry.Icon, theme.IconChrome, pal.DuoIconColors(pal.Text))
-					})
-
-					ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
-						ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, entry.Name.Resolve(locale)).
-								FontSize(theme.FontTitle).
-								FixedLineHeight(theme.LineTitle).
-								FontWeight(theme.WeightTitle).
-								TextColor(pal.Text).
-								SingleLine().
-								Ellipsis("…")
-							if ver := strings.TrimSpace(entry.Version); ver != "" {
-								ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
-									Font("monospace").
-									FontSize(theme.FontSmall).
-									FixedLineHeight(theme.LineSmall).
-									TextColor(pal.TextSecondary).
-									SingleLine()
-							}
+		// Top Xiaohongshu-style visual cover stage with floating version & badge tags.
+		ui.Box(c).FillWidth().Height(theme.StoreCoverHeight).
+			Background(tone.CoverBG).
+			BorderWidth(0, 0, 1, 0).
+			BorderColor(pal.Hairline).
+			Center().
+			Children(func() {
+				if ver := strings.TrimSpace(entry.Version); ver != "" {
+					ui.Row(c).Absolute().Top(theme.Space10).Left(theme.Space12).
+						Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
+						Background(tone.EmblemBG).Border(1, tone.EmblemBorder).AlignItems(ui.Center).
+						Children(func() {
+							ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
+								Font("monospace").
+								FontSize(theme.FontMeta).
+								FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightMono).
+								TextColor(pal.TextSecondary).
+								SingleLine()
 						})
+				}
 
-						ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-							renderVerifiedBadge(c, entry.Verified)
-							if author := strings.TrimSpace(entry.Author); author != "" {
-								ui.Text(c, author).
-									FontSize(theme.FontSmall).
-									FixedLineHeight(theme.LineSmall).
-									TextColor(pal.TextSecondary).
-									SingleLine().
-									Ellipsis("…")
-							}
-						})
-					})
+				ui.Box(c).Absolute().Top(theme.Space10).Right(theme.Space12).Children(func() {
+					renderVerifiedBadge(c, entry.Verified)
 				})
 
-				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-					if isInstalled {
-						openBtn := bui.ActionButton(c, "app-store-open-"+entry.ID, theme.Tr("打开", "Open"), nil, bui.ButtonSecondary, false)
-						if openBtn.Clicked() && onSelectTab != nil {
-							onSelectTab(modals.TabPluginPrefix + entry.ID)
-						}
-						uninstBtn := bui.ActionButton(c, "app-store-uninstall-"+entry.ID, theme.Tr("卸载", "Uninstall"), nil, bui.ButtonDanger, false)
-						if uninstBtn.Clicked() {
-							ctrl.uninstallPlugin(entry.ID, nil)
-						}
-						return
-					}
-
-					isThisInstalling := installingID == entry.ID
-					lbl := theme.Tr("安装", "Install")
-					if isThisInstalling {
-						lbl = theme.Tr("安装中…", "Installing…")
-					}
-					instBtn := bui.ActionButton(c, "app-store-install-"+entry.ID, lbl, nil, bui.ButtonPrimary, installingID != "")
-					if instBtn.Clicked() {
-						appEntry := entry
-						ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
-							if onSelectTab != nil {
-								onSelectTab(modals.TabPluginPrefix + pluginID)
-							}
-						})
-					}
+				emblem := ui.Box(c).Size(theme.StoreCoverEmblemBox, theme.StoreCoverEmblemBox).
+					Radius(theme.RadiusXL).
+					Background(tone.EmblemBG).
+					Border(1, tone.EmblemBorder).
+					Center()
+				bui.Elevate(emblem, theme.ElevationRaised)
+				emblem.Children(func() {
+					DrawDuoSpec(c, entry.Icon, theme.StoreCoverEmblemGlyph, theme.IconColors{
+						Line:   tone.IconLine,
+						Fill:   tone.IconFill,
+						Accent: tone.IconAccent,
+					})
 				})
 			})
 
-			if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
-				ui.Text(c, summary).
-					FontSize(theme.FontBody).
-					FixedLineHeight(theme.LineBody).
-					TextColor(pal.TextSecondary).
-					MaxLines(2).
-					Ellipsis("…")
-			}
-		})
-
-		ui.Row(c).FillWidth().MinWidth(0).
-			Padding(theme.Space10, 0, 0, 0).
-			BorderWidth(1, 0, 0, 0).
-			BorderColor(pal.Hairline).
-			Gap(theme.Space12).
-			AlignItems(ui.Center).
-			Justify(ui.SpaceBetween).
+		// Card content body: title, full natural-height summary, compact permission strip, and author/CTA footer.
+		ui.Column(c).FillWidth().MinWidth(0).
+			Padding(theme.Space16, theme.Space16, theme.Space12, theme.Space16).
+			Gap(theme.Space10).
 			Children(func() {
-				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
-					icons.Draw(c, icons.Download, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
-					ui.Text(c, theme.Tr(dlStr+" 次下载", dlStr+" downloads")).
-						FontSize(theme.FontMeta).
-						FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).
-						SingleLine()
-				})
+				ui.Text(c, entry.Name.Resolve(locale)).
+					FontSize(theme.FontTitle).
+					FixedLineHeight(theme.LineTitle).
+					FontWeight(theme.WeightTitle).
+					TextColor(pal.Text).
+					SingleLine().
+					Ellipsis("…")
+
+				if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
+					ui.Text(c, summary).
+						FontSize(theme.FontSmall).
+						FixedLineHeight(theme.LineBody).
+						TextColor(pal.TextSecondary)
+				}
 
 				if len(entry.Permissions) > 0 {
-					ui.Row(c).Grow(1).MinWidth(0).Wrap().Gap(theme.Space4).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-						for _, perm := range entry.Permissions {
-							renderPermissionCapsule(c, plugins.PermissionLabel(perm, locale))
-						}
-					})
+					renderPermissionSummaryRow(c, entry.Permissions, locale)
 				}
+
+				// Xiaohongshu-style creator + metric + compact action footer (single-line, never wraps or pushes card uneven).
+				ui.Row(c).FillWidth().MinWidth(0).
+					Padding(theme.Space10, 0, 0, 0).
+					BorderWidth(1, 0, 0, 0).
+					BorderColor(pal.Hairline).
+					Gap(theme.Space8).
+					AlignItems(ui.Center).
+					Justify(ui.SpaceBetween).
+					Children(func() {
+						author := strings.TrimSpace(entry.Author)
+						if author == "" {
+							author = "Community"
+						}
+						ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+							ui.Box(c).Size(theme.StoreAuthorDotSize, theme.StoreAuthorDotSize).Shrink(0).
+								Radius(theme.RadiusPill).Background(tone.AuthorDotBG).Center().Children(func() {
+								ui.Text(c, authorInitial(author)).
+									FontSize(theme.FontMeta).
+									FontWeight(theme.WeightTitle).
+									TextColor(tone.AuthorDotFG).
+									SingleLine()
+							})
+							ui.Text(c, author).
+								FontSize(theme.FontMeta).
+								FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).
+								Grow(1).
+								MinWidth(0).
+								SingleLine().
+								Ellipsis("…")
+						})
+
+						ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+							dlRow := ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0)
+							bui.Tooltip(c, dlRow, theme.Tr(dlStr+" 次下载", dlStr+" downloads"))
+							dlRow.Children(func() {
+								icons.Draw(c, icons.Download, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+								ui.Text(c, dlStr).
+									Font("monospace").
+									FontSize(theme.FontMeta).
+									FixedLineHeight(theme.LineMeta).
+									TextColor(pal.TextSecondary).
+									SingleLine()
+							})
+
+							renderStoreCardActions(c, ctrl, entry, isInstalled, installingID, onSelectTab)
+						})
+					})
 			})
 	})
+}
+
+func renderStoreCardActions(
+	c *ui.Context,
+	ctrl *Controller,
+	entry plugins.StoreAppEntry,
+	isInstalled bool,
+	installingID string,
+	onSelectTab func(nextTab string),
+) {
+	if isInstalled {
+		openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-open-" + entry.ID,
+			Label:    theme.Tr("打开", "Open"),
+			Style:    bui.ButtonSecondary,
+			Height:   theme.HeightCompact,
+			PaddingX: theme.Space10,
+		})
+		if openBtn.Clicked() && onSelectTab != nil {
+			onSelectTab(modals.TabPluginPrefix + entry.ID)
+		}
+		uninstBtn := bui.IconButton(c, icons.Trash, bui.IconButtonOptions{
+			ID:      "app-store-uninstall-" + entry.ID,
+			Label:   theme.Tr("卸载", "Uninstall"),
+			Tooltip: theme.Tr("卸载", "Uninstall"),
+			Variant: bui.IconPlain,
+			Size:    theme.HeightCompact,
+			Danger:  true,
+		})
+		if uninstBtn.Clicked() {
+			ctrl.uninstallPlugin(entry.ID, nil)
+		}
+		return
+	}
+
+	isThisInstalling := installingID == entry.ID
+	lbl := theme.Tr("安装", "Install")
+	if isThisInstalling {
+		lbl = theme.Tr("安装中…", "Installing…")
+	}
+	instBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+		ID:       "app-store-install-" + entry.ID,
+		Label:    lbl,
+		Style:    bui.ButtonPrimary,
+		Disabled: installingID != "",
+		Height:   theme.HeightCompact,
+		PaddingX: theme.Space10,
+	})
+	if instBtn.Clicked() {
+		appEntry := entry
+		ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
+			if onSelectTab != nil {
+				onSelectTab(modals.TabPluginPrefix + pluginID)
+			}
+		})
+	}
+}
+
+func renderPermissionSummaryRow(c *ui.Context, perms []plugins.Permission, locale string) {
+	limit := theme.StorePermissionSummary
+	shown := perms
+	var hidden []string
+	if len(perms) > limit {
+		shown = perms[:limit]
+		for _, p := range perms[limit:] {
+			hidden = append(hidden, plugins.PermissionLabel(p, locale))
+		}
+	}
+
+	ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+		for _, perm := range shown {
+			renderPermissionCapsule(c, plugins.PermissionLabel(perm, locale))
+		}
+		if len(hidden) > 0 {
+			morePill := renderPermissionCapsule(c, fmt.Sprintf("+%d", len(hidden)))
+			allLabels := make([]string, 0, len(perms))
+			for _, p := range perms {
+				allLabels = append(allLabels, plugins.PermissionLabel(p, locale))
+			}
+			bui.Tooltip(c, morePill, theme.Tr("所需权限：", "Permissions: ")+strings.Join(allLabels, " · "))
+		}
+	})
+}
+
+func authorInitial(author string) string {
+	for _, r := range strings.TrimSpace(author) {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		return strings.ToUpper(string(r))
+	}
+	return "B"
 }
 
 func formatDownloadCount(n int) string {
@@ -362,16 +527,18 @@ func renderVerifiedBadge(c *ui.Context, verified bool) {
 	})
 }
 
-func renderPermissionCapsule(c *ui.Context, label string) {
+func renderPermissionCapsule(c *ui.Context, label string) ui.Element {
 	pal := theme.Ocean()
-	ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-		Background(pal.CodeBG).Border(1, pal.Hairline).AlignItems(ui.Center).Children(func() {
+	pill := ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+		Background(pal.CodeBG).Border(1, pal.Hairline).AlignItems(ui.Center)
+	pill.Children(func() {
 		ui.Text(c, label).
 			FontSize(theme.FontMeta).
 			FixedLineHeight(theme.LineMeta).
 			TextColor(pal.TextSecondary).
 			SingleLine()
 	})
+	return pill
 }
 
 func buildVisibleStoreEntries(
