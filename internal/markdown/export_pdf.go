@@ -14,7 +14,7 @@ import (
 )
 
 func exportPNG(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
-	rgba, _ := renderDocRGBA(doc, notePath, prefs)
+	rgba := renderDocRGBA(doc, notePath, prefs)
 	if rgba == nil || rgba.Bounds().Empty() {
 		return nil, errors.New("png render returned empty image")
 	}
@@ -26,7 +26,7 @@ func exportPNG(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 }
 
 func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
-	rgba, _ := renderDocRGBA(doc, notePath, prefs)
+	rgba := renderDocRGBA(doc, notePath, prefs)
 	if rgba == nil || rgba.Bounds().Empty() {
 		return nil, errors.New("pdf render returned empty image")
 	}

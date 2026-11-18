@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"context"
 	"fmt"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -291,7 +292,7 @@ func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanSt
 	return out
 }
 
-func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPreferences) exportScene {
+func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, prefs model.ExportPreferences) exportScene {
 	pal, legacy := resolveExportPaper(prefs)
 	pageW := float32(resolveExportWidth(prefs))
 	showTitle := resolveShowTitle(prefs)
@@ -355,19 +356,22 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				}
 			}
 			if len(intro) > 0 {
-				y = appendSceneBlocks(&sc, intro, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+				y = appendSceneBlocks(ctx, &sc, intro, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 			}
 			y += sec.PadY
 			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
 		}
 
 		for _, run := range runs {
+			if ctx.Err() != nil {
+				return sc
+			}
 			if len(sc.sections) > 0 {
 				y += sec.Gap
 			}
 			cardTop := y
 			y += sec.PadY
-			y = appendSceneBlocks(&sc, run, notePath, padLeft, y, contentW, pal, legacy, &st, true)
+			y = appendSceneBlocks(ctx, &sc, run, notePath, padLeft, y, contentW, pal, legacy, &st, true)
 			y += sec.PadY
 			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
 		}
@@ -405,7 +409,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 			y += adv
 		}
 		if len(bodyBlocks) > 0 {
-			y = appendSceneBlocks(&sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+			y = appendSceneBlocks(ctx, &sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 		}
 		cardBottom := y + pal.PadBottom
 		sc.cardRect = ui.Rect{X: inset, Y: cardTop, W: outerW, H: maxFloat32(cardBottom-cardTop, 80)}
@@ -439,7 +443,7 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 			y += adv
 		}
 		if len(bodyBlocks) > 0 {
-			y = appendSceneBlocks(&sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+			y = appendSceneBlocks(ctx, &sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
 		}
 		if showFooter {
 			gap := float32(28)
@@ -861,6 +865,7 @@ type layoutCounters struct {
 // appendSceneBlocks lays out blocks starting at startY and returns the bottom Y
 // of the last rendered block (without trailing inter-block gap, so section cards hug content).
 func appendSceneBlocks(
+	ctx context.Context,
 	sc *exportScene,
 	blocks []model.Block,
 	notePath string,
@@ -873,6 +878,9 @@ func appendSceneBlocks(
 	y := startY
 	lastGap := float32(0)
 	for i := range blocks {
+		if ctx.Err() != nil {
+			break
+		}
 		b := &blocks[i]
 		ord := st.num.next(b)
 		indent := float32(b.Indent) * 12
