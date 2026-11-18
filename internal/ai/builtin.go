@@ -22,11 +22,12 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ProviderPreset defines a built-in AI API provider preset.
+// ProviderPreset defines an AI API provider preset template.
 type ProviderPreset struct {
 	ID          string
 	Zh          string
 	En          string
+	DefaultName string
 	Protocol    model.Protocol
 	BaseURL     string
 	BrandColor  ui.Color
@@ -39,6 +40,7 @@ var providerPresets = []ProviderPreset{
 		ID:          "deepseek",
 		Zh:          "DeepSeek",
 		En:          "DeepSeek",
+		DefaultName: "DeepSeek",
 		Protocol:    model.ProtocolOpenAI,
 		BaseURL:     "https://api.deepseek.com/v1",
 		BrandColor:  ui.Hex("#4d6bfe"), // design:allow brand
@@ -47,8 +49,9 @@ var providerPresets = []ProviderPreset{
 	},
 	{
 		ID:          "openai",
-		Zh:          "OpenAI 协议",
-		En:          "OpenAI Protocol",
+		Zh:          "OpenAI 兼容",
+		En:          "OpenAI Compatible",
+		DefaultName: "OpenAI",
 		Protocol:    model.ProtocolOpenAI,
 		BaseURL:     "https://api.openai.com/v1",
 		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
@@ -59,12 +62,61 @@ var providerPresets = []ProviderPreset{
 		ID:          "anthropic",
 		Zh:          "Claude 协议",
 		En:          "Claude Protocol",
+		DefaultName: "Claude API",
 		Protocol:    model.ProtocolAnthropic,
 		BaseURL:     "https://api.anthropic.com/v1",
 		BrandColor:  ui.Hex("#d97757"), // design:allow brand
 		Icon:        icons.ProvAnthropic,
 		KeyRequired: true,
 	},
+	{
+		ID:          "openrouter",
+		Zh:          "OpenRouter",
+		En:          "OpenRouter",
+		DefaultName: "OpenRouter",
+		Protocol:    model.ProtocolOpenAI,
+		BaseURL:     "https://openrouter.ai/api/v1",
+		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
+		Icon:        icons.ProvOpenai,
+		KeyRequired: true,
+	},
+	{
+		ID:          "siliconflow",
+		Zh:          "硅基流动",
+		En:          "SiliconFlow",
+		DefaultName: "SiliconFlow",
+		Protocol:    model.ProtocolOpenAI,
+		BaseURL:     "https://api.siliconflow.cn/v1",
+		BrandColor:  ui.Hex("#6366f1"), // design:allow brand
+		Icon:        icons.ProvOpenai,
+		KeyRequired: true,
+	},
+	{
+		ID:          "ollama",
+		Zh:          "Ollama 本地",
+		En:          "Ollama Local",
+		DefaultName: "Ollama",
+		Protocol:    model.ProtocolOpenAI,
+		BaseURL:     "http://127.0.0.1:11434/v1",
+		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
+		Icon:        icons.ProvOpenai,
+		KeyRequired: false,
+	},
+}
+
+// ProviderEntry represents one materialized API provider row in Settings.
+type ProviderEntry struct {
+	ID         string
+	Name       string
+	Protocol   model.Protocol
+	BaseURL    string
+	Host       string
+	APIKey     string
+	Model      string
+	Enabled    bool
+	Custom     bool
+	BrandColor ui.Color
+	Icon       icons.Icon
 }
 
 func findProviderPreset(id string) *ProviderPreset {
@@ -79,15 +131,64 @@ func findProviderPreset(id string) *ProviderPreset {
 	return nil
 }
 
-func normalizeProviderID(id string, proto model.Protocol, baseURL string) string {
+func isLocalEndpoint(baseURL string) bool {
 	low := strings.ToLower(strings.TrimSpace(baseURL))
-	if id == "deepseek" || strings.Contains(low, "deepseek") {
-		return "deepseek"
+	return strings.Contains(low, "://127.0.0.1") || strings.Contains(low, "://localhost") || strings.Contains(low, "://[::1]")
+}
+
+func endpointHostLabel(baseURL string) string {
+	s := strings.TrimSpace(baseURL)
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	if slash := strings.IndexByte(s, '/'); slash > 0 {
+		s = s[:slash]
 	}
-	if id == "anthropic" || id == "claude" || proto == model.ProtocolAnthropic || strings.Contains(low, "anthropic") {
+	return s
+}
+
+func providerBrandVisual(id string, proto model.Protocol, baseURL string) (icons.Icon, ui.Color) {
+	if p := findProviderPreset(id); p != nil {
+		return p.Icon, p.BrandColor
+	}
+	low := strings.ToLower(baseURL)
+	if strings.Contains(low, "deepseek") {
+		return icons.ProvDeepseek, ui.Hex("#4d6bfe") // design:allow brand
+	}
+	if proto == model.ProtocolAnthropic || strings.Contains(low, "anthropic") {
+		return icons.ProvAnthropic, ui.Hex("#d97757") // design:allow brand
+	}
+	return icons.ProvOpenai, ui.Hex("#10a37f") // design:allow brand
+}
+
+func providerDisplayName(id string, prof model.ProviderProfile) string {
+	if nm := strings.TrimSpace(prof.Name); nm != "" {
+		return nm
+	}
+	if p := findProviderPreset(id); p != nil {
+		if p.DefaultName != "" {
+			return p.DefaultName
+		}
+		return theme.Tr(p.Zh, p.En)
+	}
+	return id
+}
+
+func normalizeProviderID(id string, proto model.Protocol, baseURL string) string {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "claude" {
 		return "anthropic"
 	}
-	if strings.TrimSpace(id) == "" && strings.TrimSpace(baseURL) == "" {
+	if trimmed != "" {
+		return trimmed
+	}
+	low := strings.ToLower(strings.TrimSpace(baseURL))
+	if strings.Contains(low, "deepseek") {
+		return "deepseek"
+	}
+	if proto == model.ProtocolAnthropic || strings.Contains(low, "anthropic") {
+		return "anthropic"
+	}
+	if low == "" {
 		return "deepseek"
 	}
 	return "openai"
@@ -99,7 +200,9 @@ func normalizeProviderConfig(cfg model.AIProviderConfig) model.AIProviderConfig 
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.Model = strings.TrimSpace(cfg.Model)
 	if p := findProviderPreset(cfg.Provider); p != nil {
-		cfg.Protocol = p.Protocol
+		if cfg.Protocol == "" {
+			cfg.Protocol = p.Protocol
+		}
 		if cfg.BaseURL == "" {
 			cfg.BaseURL = p.BaseURL
 		}
@@ -107,25 +210,187 @@ func normalizeProviderConfig(cfg model.AIProviderConfig) model.AIProviderConfig 
 	if cfg.Protocol == "" {
 		cfg.Protocol = model.ProtocolOpenAI
 	}
+	if cfg.Providers != nil {
+		if prof, ok := cfg.Providers["claude"]; ok {
+			if _, hasAnth := cfg.Providers["anthropic"]; !hasAnth {
+				cfg.Providers["anthropic"] = prof
+			}
+			delete(cfg.Providers, "claude")
+		}
+	}
+	// Deduplicate ProviderOrder while keeping user order.
+	if len(cfg.ProviderOrder) > 0 {
+		seen := make(map[string]bool, len(cfg.ProviderOrder))
+		cleanOrder := make([]string, 0, len(cfg.ProviderOrder))
+		for _, id := range cfg.ProviderOrder {
+			if id == "claude" {
+				id = "anthropic"
+			}
+			id = strings.TrimSpace(id)
+			if id == "" || seen[id] {
+				continue
+			}
+			if cfg.Providers != nil {
+				if _, ok := cfg.Providers[id]; !ok && id != cfg.Provider {
+					continue
+				}
+			} else if id != cfg.Provider {
+				continue
+			}
+			seen[id] = true
+			cleanOrder = append(cleanOrder, id)
+		}
+		cfg.ProviderOrder = cleanOrder
+	}
 	return cfg
 }
 
+func isProviderProfileEnabled(cfg model.AIProviderConfig, id string, prof model.ProviderProfile) bool {
+	if prof.Enabled != nil {
+		return *prof.Enabled
+	}
+	return id == cfg.Provider || strings.TrimSpace(prof.APIKey) != ""
+}
+
+func orderedProviderEntries(cfg model.AIProviderConfig) []ProviderEntry {
+	norm := normalizeProviderConfig(cfg)
+	profs := make(map[string]model.ProviderProfile, len(norm.Providers)+1)
+	for k, v := range norm.Providers {
+		profs[k] = v
+	}
+	if norm.Provider != "" {
+		cur := profs[norm.Provider]
+		if norm.BaseURL != "" {
+			cur.BaseURL = norm.BaseURL
+		}
+		if norm.APIKey != "" || cur.APIKey == "" {
+			cur.APIKey = norm.APIKey
+		}
+		if norm.Model != "" {
+			cur.Model = norm.Model
+		}
+		if norm.Protocol != "" {
+			cur.Protocol = norm.Protocol
+		}
+		profs[norm.Provider] = cur
+	}
+	if len(profs) == 0 {
+		profs["deepseek"] = model.ProviderProfile{
+			BaseURL:  "https://api.deepseek.com/v1",
+			Protocol: model.ProtocolOpenAI,
+		}
+	}
+
+	seen := make(map[string]bool, len(profs))
+	var ids []string
+	addID := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		if _, ok := profs[id]; !ok {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	for _, id := range norm.ProviderOrder {
+		addID(id)
+	}
+	for _, p := range providerPresets {
+		addID(p.ID)
+	}
+	var extras []string
+	for k := range profs {
+		if !seen[k] {
+			extras = append(extras, k)
+		}
+	}
+	sort.Strings(extras)
+	for _, k := range extras {
+		addID(k)
+	}
+
+	out := make([]ProviderEntry, 0, len(ids))
+	for _, id := range ids {
+		pr := profs[id]
+		proto := pr.Protocol
+		baseURL := strings.TrimRight(strings.TrimSpace(pr.BaseURL), "/")
+		if preset := findProviderPreset(id); preset != nil {
+			if proto == "" {
+				proto = preset.Protocol
+			}
+			if baseURL == "" {
+				baseURL = preset.BaseURL
+			}
+		}
+		if proto == "" {
+			proto = model.ProtocolOpenAI
+		}
+		ic, col := providerBrandVisual(id, proto, baseURL)
+		out = append(out, ProviderEntry{
+			ID:         id,
+			Name:       providerDisplayName(id, pr),
+			Protocol:   proto,
+			BaseURL:    baseURL,
+			Host:       endpointHostLabel(baseURL),
+			APIKey:     strings.TrimSpace(pr.APIKey),
+			Model:      strings.TrimSpace(pr.Model),
+			Enabled:    isProviderProfileEnabled(norm, id, pr),
+			Custom:     pr.Custom || findProviderPreset(id) == nil,
+			BrandColor: col,
+			Icon:       ic,
+		})
+	}
+	return out
+}
+
+func splitProviderModelRef(modelRef string) (string, string) {
+	if idx := strings.Index(modelRef, "::"); idx > 0 {
+		return modelRef[:idx], modelRef[idx+2:]
+	}
+	return "", modelRef
+}
+
+func resolveProviderExecutionConfig(cfg model.AIProviderConfig) model.AIProviderConfig {
+	norm := normalizeProviderConfig(cfg)
+	provID, pureModel := splitProviderModelRef(norm.Model)
+	if provID != "" && norm.Providers != nil {
+		if prof, ok := norm.Providers[provID]; ok {
+			norm.Provider = provID
+			if prof.Protocol != "" {
+				norm.Protocol = prof.Protocol
+			}
+			if strings.TrimSpace(prof.BaseURL) != "" {
+				norm.BaseURL = strings.TrimRight(strings.TrimSpace(prof.BaseURL), "/")
+			}
+			norm.APIKey = strings.TrimSpace(prof.APIKey)
+			norm.Model = strings.TrimSpace(pureModel)
+			return normalizeProviderConfig(norm)
+		}
+	}
+	if pureModel != norm.Model {
+		norm.Model = strings.TrimSpace(pureModel)
+	}
+	return norm
+}
+
 func validateProviderConfig(cfg model.AIProviderConfig) (string, bool) {
+	cfg = resolveProviderExecutionConfig(cfg)
 	if !cfg.Enabled {
 		return theme.Tr("请先在「设置 › AI 助手」开启 AI 功能", "Enable AI Assistant in Settings › AI Assistant first"), true
 	}
 	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return theme.Tr("请前往「设置 › AI 助手」配置服务商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL"), true
+		return theme.Tr("请前往「设置 › AI 助手」配置供应商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL"), true
 	}
-	keyReq := true
-	if p := findProviderPreset(cfg.Provider); p != nil {
-		keyReq = p.KeyRequired
+	keyReq := !isLocalEndpoint(cfg.BaseURL)
+	if p := findProviderPreset(cfg.Provider); p != nil && !p.KeyRequired {
+		keyReq = false
 	}
 	if keyReq && strings.TrimSpace(cfg.APIKey) == "" {
-		return theme.Tr("请前往「设置 › AI 助手」选择服务商并填写 API 密钥", "Go to Settings › AI Assistant to select a provider and enter an API Key"), true
+		return theme.Tr("请前往「设置 › AI 助手」填写 API 密钥", "Go to Settings › AI Assistant to enter an API Key"), true
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
-		return theme.Tr("请前往「设置 › AI 助手」选择默认模型", "Go to Settings › AI Assistant to select a default model"), true
+		return theme.Tr("请前往对话栏或「设置 › AI 助手」选择默认模型", "Select a default model in chat or Settings › AI Assistant"), true
 	}
 	return "", false
 }
@@ -165,11 +430,17 @@ func (c *Controller) RefreshBuiltinModels(ctx context.Context) ([]ModelOption, e
 
 func (c *Controller) annotationBuiltinConfigLocked() (model.AIProviderConfig, error) {
 	cfg := normalizeProviderConfig(c.providerCfg)
+	rawModel := strings.TrimSpace(c.annotCfg.Model)
+	provFromModel, pureModel := splitProviderModelRef(rawModel)
 	targetProv := strings.TrimSpace(c.annotCfg.Provider)
+	if provFromModel != "" {
+		targetProv = provFromModel
+		rawModel = pureModel
+	}
 	if targetProv != "" && targetProv != cfg.Provider {
 		prof, ok := cfg.Providers[targetProv]
 		if !ok {
-			return cfg, errors.New(theme.Tr("标注使用的服务商尚未配置", "The annotation provider is not configured"))
+			return cfg, errors.New(theme.Tr("标注使用的供应商尚未配置", "The annotation provider is not configured"))
 		}
 		cfg.Provider = targetProv
 		cfg.Protocol = prof.Protocol
@@ -177,7 +448,7 @@ func (c *Controller) annotationBuiltinConfigLocked() (model.AIProviderConfig, er
 		cfg.APIKey = prof.APIKey
 		cfg = normalizeProviderConfig(cfg)
 	}
-	cfg.Model = strings.TrimSpace(c.annotCfg.Model)
+	cfg.Model = strings.TrimSpace(rawModel)
 	return cfg, nil
 }
 
@@ -188,7 +459,7 @@ func (c *Controller) TestConnection(ctx context.Context) error {
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 	}
-	cfg := normalizeProviderConfig(c.ProviderConfig())
+	cfg := resolveProviderExecutionConfig(c.ProviderConfig())
 	err := testBuiltinConnection(ctx, cfg)
 	c.mu.Lock()
 	c.settingsTesting = false
@@ -214,7 +485,7 @@ func (c *Controller) StreamPrompt(ctx context.Context, systemPrompt, userPrompt 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cfg := normalizeProviderConfig(c.ProviderConfig())
+	cfg := resolveProviderExecutionConfig(c.ProviderConfig())
 	if msg, _ := validateProviderConfig(cfg); msg != "" {
 		return "", errors.New(msg)
 	}
@@ -369,6 +640,14 @@ func listBuiltinModels(ctx context.Context, cfg model.AIProviderConfig) ([]strin
 
 // testBuiltinConnection performs a minimal completion check against the configured endpoint.
 func testBuiltinConnection(ctx context.Context, cfg model.AIProviderConfig) error {
+	cfg = resolveProviderExecutionConfig(cfg)
+	if strings.TrimSpace(cfg.Model) == "" && strings.TrimSpace(cfg.BaseURL) != "" {
+		if ids, err := listBuiltinModels(ctx, cfg); err == nil && len(ids) > 0 {
+			cfg.Model = ids[0]
+		} else if cfg.Protocol == model.ProtocolAnthropic {
+			cfg.Model = "claude-3-5-haiku-latest"
+		}
+	}
 	if msg, _ := validateProviderConfig(cfg); msg != "" {
 		return errors.New(msg)
 	}
@@ -860,7 +1139,7 @@ func builtinToolDefinitions() []any {
 
 func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 	c.mu.Lock()
-	cfg := normalizeProviderConfig(c.providerCfg)
+	cfg := resolveProviderExecutionConfig(c.providerCfg)
 	thinking := c.backendThinkingLocked(model.BackendBuiltin)
 	root := c.activeRootLocked()
 	currentPage := c.activePageLocked(root)

@@ -2192,7 +2192,6 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 	mStatus := c.modelStatus[selected]
 	curModel := c.effectiveBackendModelLocked(selected)
 	curThinking := c.backendThinkingLocked(selected)
-	fullPerm := selected == model.BackendBuiltin || c.backendsCfg.Adapters[string(selected)].FullPermissions
 	c.mu.RUnlock()
 
 	if !open {
@@ -2597,44 +2596,6 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 								c.host.OpenSettings("ai")
 							}
 						}
-
-						permLabel := theme.Tr("标准权限", "Standard access")
-						permFG := pal.TextSecondary
-						dotCol := pal.TextSecondary
-						if fullPerm {
-							permLabel = theme.Tr("最大权限", "Full access")
-							permFG = pal.Text
-							dotCol = pal.Accent
-						}
-						permBtn := ui.ButtonBase(cUI.Key("ai-deck-permissions")).Height(theme.HeightCompact).PaddingX(theme.Space8).Gap(theme.Space6).
-							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(permLabel)
-						permHov := permBtn.Hovered()
-						permPrs := permBtn.Pressed()
-						permBG := ui.Transparent
-						if permPrs {
-							permBG = ais.SelectedBG
-						} else if permHov {
-							permBG = ais.HoverBG
-						}
-						bui.AnimateSurfaceColors(permBtn, permBG, ui.Transparent, false)
-						bui.Probe(permBtn, "ai-deck-permissions")
-						permBtn.Children(func() {
-							ui.Box(cUI).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(dotCol)
-							ui.Text(cUI, permLabel).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(permFG).SingleLine()
-							icons.DrawAnimated(cUI, icons.ChevronUp, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), permHov || permPrs)
-						})
-						if permBtn.Clicked() {
-							if selected == model.BackendBuiltin && c.host != nil {
-								c.mu.Lock()
-								c.deckOpen = false
-								c.mu.Unlock()
-								c.host.OpenSettings("ai")
-							} else {
-								c.mu.Lock()
-								_ = c.setBackendFullPermissionsLocked(selected, !fullPerm)
-								c.mu.Unlock()
-							}
-						}
 					})
 				})
 			})
@@ -2690,7 +2651,7 @@ func formatBackendVersionTag(st BackendStatus, hasStatus bool) string {
 	}
 }
 
-// RenderSettingsTab renders the Settings > AI Assistant tab matching thinkly-fast 1:1.
+// RenderSettingsTab renders the Settings > AI Assistant tab (Scheme A: single-column accordion rows + Add Provider modal).
 func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	c.mu.Lock()
 	c.services = cUI.Services()
@@ -2716,224 +2677,360 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	cfg := cloneProviderConfig(c.providerCfg)
 	backends := cloneBackendsConfig(c.backendsCfg)
 	recognized := c.recognizedBackendsLocked()
-	focused := c.settingsFocused
-	showKey := c.settingsShowKey
+	expandedProv := c.settingsExpandedProv
+	expandedAg := c.settingsExpandedAg
 	testing := c.settingsTesting
+	testingProv := c.settingsTestingProv
 	testOK := c.settingsTestOK
 	testErr := c.settingsTestErr
-	baseURL := c.settingsBaseURL
-	apiKey := c.settingsAPIKey
 	annotCfg := c.annotCfg
 	annotOpen := c.annotMenuOpen
+	modalOpen := c.addProvModalOpen
 	c.mu.RUnlock()
 
-	hasFocused := false
-	for _, k := range recognized {
-		if k == focused {
-			hasFocused = true
-			break
+	provEntries := orderedProviderEntries(cfg)
+	if expandedProv != "" {
+		found := false
+		for _, p := range provEntries {
+			if p.ID == expandedProv {
+				found = true
+				break
+			}
+		}
+		if !found && len(provEntries) > 0 {
+			expandedProv = provEntries[0].ID
 		}
 	}
-	if !hasFocused && len(recognized) > 0 {
-		focused = recognized[0]
+
+	var cliAgents []model.BackendKind
+	for _, k := range recognized {
+		if k != model.BackendBuiltin {
+			cliAgents = append(cliAgents, k)
+		}
 	}
 
-	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().MinWidth(0).Gap(24)
+	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().MinWidth(0).Gap(22)
 	bui.Probe(root, "ai-settings-section")
 
 	secW := root.Bounds().W
 	if secW <= 0 {
 		winW, _ := cUI.Size()
 		if winW <= 0 {
-			winW = 1100
+			winW = 860
 		}
 		if winW >= 920 {
 			secW = winW - 240 - 56
 		} else if winW >= 560 {
 			secW = winW - 56
 		} else {
-			secW = max(winW-32, 300)
+			secW = max(winW-32, 280)
 		}
 	}
-	stackedSplit := secW < 560
-	railW := float32(260)
-	detailPadX := float32(20)
-	if secW < 720 {
-		railW = 196
-		detailPadX = 18
-	}
-	detailInnerW := secW - detailPadX*2
-	if !stackedSplit {
-		detailInnerW = secW - railW - detailPadX*2
+
+	renderMasterPill := func() {
+		enLbl := theme.Tr("已关闭", "Disabled")
+		if cfg.Enabled {
+			enLbl = theme.Tr("已开启", "Enabled")
+		}
+		ais := pal.AISurface()
+		swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(30).PaddingX(12).Gap(6).Shrink(0).
+			AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
+			Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
+		hovered := swBtn.Hovered()
+		pressed := swBtn.Pressed()
+		bg := ais.CapsuleBG
+		bd := ais.CapsuleBorder
+		if cfg.Enabled {
+			bg = selBG
+			bd = pal.Accent
+		} else if pressed {
+			bg = ais.SelectedBG
+		} else if hovered {
+			bg = ais.HoverBG
+		}
+		bui.AnimateSurfaceColors(swBtn, bg, bd, true)
+		bui.TactileCard(swBtn, hovered, pressed, false, false)
+		bui.Probe(swBtn, "ai-enabled-switch")
+		swBtn.Children(func() {
+			icCol := pal.TextSecondary
+			if cfg.Enabled {
+				icCol = pal.Accent
+			}
+			icons.DrawAnimated(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol), cfg.Enabled || hovered || pressed)
+			ui.Text(cUI, enLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+		})
+		if swBtn.Clicked() {
+			cfg.Enabled = !cfg.Enabled
+			_ = c.SaveProviderConfig(cfg)
+		}
 	}
 
 	root.Children(func() {
-		renderEnabledHeader := func() {
-			ui.Row(cUI).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("AI 与本机 Agent", "AI & Local Agents")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				enLbl := theme.Tr("已关闭", "Disabled")
-				if cfg.Enabled {
-					enLbl = theme.Tr("已开启", "Enabled")
-				}
-				ais := pal.AISurface()
-				swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(32).PaddingX(12).Gap(6).Shrink(0).
-					AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
-					Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
-				hovered := swBtn.Hovered()
-				pressed := swBtn.Pressed()
-				bg := ais.CapsuleBG
-				bd := ais.CapsuleBorder
-				if cfg.Enabled {
-					bg = selBG
-					bd = pal.Accent
-				} else if pressed {
-					bg = ais.SelectedBG
-				} else if hovered {
-					bg = ais.HoverBG
-				}
-				bui.AnimateSurfaceColors(swBtn, bg, bd, true)
-				bui.TactileCard(swBtn, hovered, pressed, false, false)
-				bui.Probe(swBtn, "ai-enabled-switch")
-				swBtn.Children(func() {
-					icCol := pal.TextSecondary
-					if cfg.Enabled {
-						icCol = pal.Accent
-					}
-					icons.DrawAnimated(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol), cfg.Enabled || hovered || pressed)
-					ui.Text(cUI, enLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-				})
-				if swBtn.Clicked() {
-					cfg.Enabled = !cfg.Enabled
-					_ = c.SaveProviderConfig(cfg)
-				}
-			})
-		}
-
 		if !cfg.Enabled {
-			ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Radius(theme.RadiusXL).
-				Background(cardBG).Border(1, pal.Hairline).Children(func() {
-				renderEnabledHeader()
+			ui.Row(cUI).FillWidth().MinWidth(0).Padding(16, 18).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).
+				Radius(theme.RadiusLG).Background(cardBG).Border(1, pal.Hairline).Children(func() {
+				ui.Text(cUI, theme.Tr("API 供应商", "API Providers")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				renderMasterPill()
 			})
 			return
 		}
 
-		// 1. Agent Overview: Header row + Responsive Split Card (flush left rail + right detail pane, or stacked when < 560px).
-		ui.Column(cUI).FillWidth().MinWidth(0).Gap(12).Children(func() {
-			renderEnabledHeader()
+		// 1. API Providers: single-column accordion rows + "+ 添加供应商" modal trigger.
+		ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
+			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(cUI, theme.Tr("API 供应商", "API Providers")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(80).SingleLine().Ellipsis("…")
 
-			renderBackendList := func() {
-				total := len(recognized)
-				cardPadX := float32(14)
-				if !stackedSplit && railW < 220 {
-					cardPadX = 12
-				}
-				for idx, kind := range recognized {
-					k := kind
-					enabled := isBackendEnabled(backends, k)
-					suffix := backendProbeSuffix(k)
-					cardID := "ai-backend-card-" + suffix
-					toggleID := "ai-backend-toggle-" + suffix
-					isFocused := focused == k
-					lbl := backendLabel(k)
-
-					card := ui.Row(cUI.Key(cardID)).FillWidth().MinWidth(0).Height(50).PaddingX(cardPadX).Gap(8).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).
-						Transition(probeSafeTransition(bui.CascadeRowTransition(idx)))
-					if idx+1 < total {
-						card.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+					addLbl := theme.Tr("添加供应商", "Add Provider")
+					addBtn := ui.ButtonBase(cUI.Key("ai-add-provider-btn")).Height(30).PaddingX(11).Gap(5).Shrink(0).
+						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(addLbl)
+					addHov := addBtn.Hovered()
+					addPrs := addBtn.Pressed()
+					addBG := selBG
+					if addPrs {
+						addBG = pal.AISurface().SelectedBG
+					} else if addHov {
+						addBG = pal.Hover
 					}
-					cardHovered := card.Hovered()
-					cardBGCol := ui.Transparent
-					if isFocused {
-						cardBGCol = selBG
-					} else if cardHovered {
-						cardBGCol = pal.Hover
+					bui.AnimateSurfaceColors(addBtn, addBG, pal.Accent, true)
+					bui.TactileCard(addBtn, addHov, addPrs, false, false)
+					bui.Probe(addBtn, "ai-add-provider-btn")
+					addBtn.Children(func() {
+						icons.Draw(cUI, icons.Plus, 14, pal.MonoIconColors(pal.Accent))
+						ui.Text(cUI, addLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+					})
+					if addBtn.Clicked() {
+						c.openAddProviderModal()
 					}
-					bui.AnimateSurfaceColors(card, cardBGCol, ui.Transparent, false)
-					bui.Probe(card, cardID)
 
-					card.Children(func() {
-						selBtn := ui.ButtonBase(cUI.Key("focus-" + cardID)).Grow(1).MinWidth(0).FillHeight().Gap(9).
-							AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
-						bui.TactileCard(selBtn, selBtn.Hovered() || cardHovered, selBtn.Pressed(), isFocused, false)
-						selBtn.Children(func() {
-							ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
-								Background(cardBG).Border(1, pal.Hairline).Children(func() {
-								icons.Brand(cUI, k, 16, pal.Text)
-							})
-							ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
-								Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						})
-						if selBtn.Clicked() {
-							c.mu.Lock()
-							c.settingsFocused = k
-							c.settingsTestErr = ""
-							c.settingsTestOK = false
-							c.mu.Unlock()
+					renderMasterPill()
+				})
+			})
+
+			ui.Column(cUI.Key("ai-providers-card")).FillWidth().MinWidth(0).Radius(theme.RadiusLG).
+				Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
+				for idx, entry := range provEntries {
+					p := entry
+					isExpanded := expandedProv == p.ID
+					rowID := "ai-provider-row-" + p.ID
+					toggleID := "ai-provider-toggle-" + p.ID
+					hasNext := idx+1 < len(provEntries)
+
+					ui.Column(cUI.Key("prov-item-" + p.ID)).FillWidth().MinWidth(0).
+						BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
+						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(48).PaddingX(14).Gap(8).
+							AlignItems(ui.Center).Justify(ui.SpaceBetween)
+						rowHov := row.Hovered()
+						rowBG := ui.Transparent
+						if rowHov && !isExpanded {
+							rowBG = pal.Hover
 						}
+						bui.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
 
-						on := enabled
-						if bui.TogglePill(cUI, toggleID, lbl, &on, false) {
-							c.mu.Lock()
-							c.settingsFocused = k
-							c.mu.Unlock()
-							if err := c.SetBackendEnabled(k, on); err != nil {
+						row.Children(func() {
+							selBtn := ui.ButtonBase(cUI.Key(rowID)).Grow(1).MinWidth(0).Height(48).Gap(10).
+								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(p.Name)
+							bui.Probe(selBtn, rowID)
+							selBtn.Children(func() {
+								ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
+									Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
+									icons.DrawAnimated(cUI, p.Icon, 16, pal.MonoIconColors(p.BrandColor), isExpanded || rowHov)
+								})
+								ui.Text(cUI, p.Name).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+									Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+								if p.Host != "" && secW >= 380 {
+									ui.Box(cUI).Height(20).PaddingX(7).Center().Shrink(1).MinWidth(0).Radius(theme.RadiusXS).
+										Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
+										ui.Text(cUI, p.Host).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
+											Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+									})
+								}
+								ui.Box(cUI).Grow(1).MinWidth(4)
+								chev := icons.ChevronDown
+								if isExpanded {
+									chev = icons.ChevronUp
+								}
+								icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+							})
+							if selBtn.Clicked() {
 								c.mu.Lock()
-								c.settingsTestErr = err.Error()
+								nextExp := p.ID
+								if isExpanded {
+									nextExp = ""
+								}
+								c.settingsExpandedProv = nextExp
+								c.settingsTestErr = ""
+								c.settingsTestOK = false
 								c.mu.Unlock()
+								if nextExp != "" && p.Enabled {
+									_ = c.ActivateProviderEntry(p.ID)
+								}
 							}
+
+							ui.Row(cUI).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+								if p.Custom && len(provEntries) > 1 {
+									delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
+										ID:      "ai-provider-delete-" + p.ID,
+										Label:   theme.Tr("删除供应商", "Delete Provider"),
+										Tooltip: theme.Tr("删除供应商", "Delete Provider"),
+										Variant: bui.IconPlain,
+										Danger:  true,
+									})
+									if delBtn.Clicked() {
+										_ = c.RemoveProviderEntry(p.ID)
+									}
+								}
+								on := p.Enabled
+								if bui.TogglePill(cUI, toggleID, p.Name, &on, false) {
+									if err := c.SetProviderEntryEnabled(p.ID, on); err != nil {
+										c.mu.Lock()
+										c.settingsExpandedProv = p.ID
+										c.settingsTestErr = err.Error()
+										c.mu.Unlock()
+									}
+								}
+							})
+						})
+
+						if isExpanded {
+							c.renderProviderDetailRows(cUI, pal, p, testing && (testingProv == "" || testingProv == p.ID), testOK && (testingProv == "" || testingProv == p.ID), testErr, secW)
 						}
 					})
-				}
-			}
-
-			renderDetailPane := func() {
-				ui.Column(cUI.Key("ai-detail-" + string(focused))).Grow(1).FillWidth().MinWidth(0).
-					Padding(16, detailPadX).Gap(14).
-					Transition(probeSafeTransition(bui.SurfaceStageTransition())).Children(func() {
-					if focused == model.BackendBuiltin {
-						c.renderBuiltinSettings(cUI, pal, cfg, backends, baseURL, apiKey, showKey, testing, testOK, testErr, detailInnerW)
-					} else {
-						c.renderAgentSettings(cUI, pal, focused, backends, testErr, detailInnerW)
-					}
-				})
-			}
-
-			if stackedSplit {
-				ui.Column(cUI).FillWidth().MinWidth(0).Radius(theme.RadiusXL).
-					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-					ui.Column(cUI).FillWidth().MinWidth(0).Background(pal.AISurface().RailBG).
-						BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(renderBackendList)
-					renderDetailPane()
-				})
-			} else {
-				ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(320).AlignItems(ui.Stretch).Radius(theme.RadiusXL).
-					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-					ui.Column(cUI).Width(railW).Shrink(0).Background(pal.AISurface().RailBG).
-						BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).Children(renderBackendList)
-					renderDetailPane()
-				})
-			}
-
-			// Hidden programmatic priority probes (matching settings_agent.rs:104-111)
-			ui.Row(cUI).Height(0).Clip().Children(func() {
-				for _, kind := range recognized {
-					k := kind
-					pillID := "ai-priority-pill-" + backendProbeSuffix(k)
-					pb := ui.ButtonBase(cUI.Key(pillID)).Size(1, 1).Label(pillID)
-					bui.Probe(pb, pillID)
-					if pb.Clicked() {
-						_ = c.PromoteBackend(k)
-					}
 				}
 			})
 		})
 
-		// 2. General Features (`普通功能` -> `标注功能`) matching settings_general.rs 1:1.
+		// 2. Local CLI Agents: single-column accordion rows (FullPermissions always enforced, no permission toggle).
+		if len(cliAgents) > 0 {
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
+				ui.Text(cUI, theme.Tr("本机 Agent", "Local Agents")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+
+				ui.Column(cUI.Key("ai-agents-card")).FillWidth().MinWidth(0).Radius(theme.RadiusLG).
+					Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
+					for idx, kind := range cliAgents {
+						k := kind
+						enabled := isBackendEnabled(backends, k)
+						suffix := backendProbeSuffix(k)
+						cardID := "ai-backend-card-" + suffix
+						toggleID := "ai-backend-toggle-" + suffix
+						isExpanded := expandedAg == k
+						lbl := backendLabel(k)
+						hasNext := idx+1 < len(cliAgents)
+
+						c.mu.RLock()
+						thinking := c.backendThinkingLocked(k)
+						st, hasSt := c.backendStatuses[k]
+						c.mu.RUnlock()
+						verTag := formatBackendVersionTag(st, hasSt)
+
+						ui.Column(cUI.Key("ag-item-" + suffix)).FillWidth().MinWidth(0).
+							BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
+							row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(46).PaddingX(14).Gap(8).
+								AlignItems(ui.Center).Justify(ui.SpaceBetween)
+							rowHov := row.Hovered()
+							rowBG := ui.Transparent
+							if rowHov && !isExpanded {
+								rowBG = pal.Hover
+							}
+							bui.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
+
+							row.Children(func() {
+								selBtn := ui.ButtonBase(cUI.Key(cardID)).Grow(1).MinWidth(0).Height(46).Gap(10).
+									AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
+								bui.Probe(selBtn, cardID)
+								selBtn.Children(func() {
+									ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
+										Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
+										icons.Brand(cUI, k, 16, pal.Text)
+									})
+									ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+										Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+									if verTag != "" {
+										ui.Text(cUI, verTag).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
+											Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+									}
+									ui.Box(cUI).Grow(1).MinWidth(4)
+									chev := icons.ChevronDown
+									if isExpanded {
+										chev = icons.ChevronUp
+									}
+									icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+								})
+								if selBtn.Clicked() {
+									c.mu.Lock()
+									if isExpanded {
+										c.settingsExpandedAg = ""
+									} else {
+										c.settingsExpandedAg = k
+									}
+									c.settingsFocused = k
+									c.mu.Unlock()
+								}
+
+								on := enabled
+								if bui.TogglePill(cUI, toggleID, lbl, &on, false) {
+									c.mu.Lock()
+									c.settingsFocused = k
+									c.mu.Unlock()
+									if err := c.SetBackendEnabled(k, on); err != nil {
+										c.mu.Lock()
+										c.settingsTestErr = err.Error()
+										c.mu.Unlock()
+									}
+								}
+							})
+
+							if isExpanded {
+								ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(10, 14).Gap(12).
+									AlignItems(ui.Center).Justify(ui.SpaceBetween).
+									Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+									ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Shrink(0).SingleLine().FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+									levels := []string{"low", "medium", "high"}
+									lvIdx := 2
+									for i, lv := range levels {
+										if lv == thinking {
+											lvIdx = i
+										}
+									}
+									if bui.SegmentedControl(cUI, "ai-agent-thinking-"+suffix, &lvIdx, []bui.SegmentOption{
+										{ID: "ai-agent-think-low-" + suffix, Label: "Low"},
+										{ID: "ai-agent-think-medium-" + suffix, Label: "Medium"},
+										{ID: "ai-agent-think-high-" + suffix, Label: "High"},
+									}) {
+										c.mu.Lock()
+										_ = c.setBackendThinkingLocked(k, levels[lvIdx])
+										c.mu.Unlock()
+									}
+								})
+							}
+						})
+					}
+				})
+			})
+		}
+
+		// Programmatic priority probes for backend promotion.
+		ui.Row(cUI).Height(0).Clip().Children(func() {
+			for _, kind := range recognized {
+				k := kind
+				pillID := "ai-priority-pill-" + backendProbeSuffix(k)
+				pb := ui.ButtonBase(cUI.Key(pillID)).Size(1, 1).Label(pillID)
+				bui.Probe(pb, pillID)
+				if pb.Clicked() {
+					_ = c.PromoteBackend(k)
+				}
+			}
+		})
+
+		// 3. General Features (`普通功能` -> `标注功能`).
 		annotAnchor := c.renderGeneralFeaturesSection(cUI, pal, cardBG, annotCfg, annotOpen)
 
 		if cfg.Enabled && annotOpen {
 			c.renderAnnotationModelPopover(cUI, pal, recognized, backends, annotAnchor)
+		}
+
+		if modalOpen {
+			c.renderAddProviderModal(cUI, pal)
 		}
 	})
 }
@@ -2957,289 +3054,369 @@ func backendProbeSuffix(k model.BackendKind) string {
 	}
 }
 
-func (c *Controller) renderInlineDisabledBanner(cUI *ui.Context, pal theme.Palette, kind model.BackendKind, opt model.AIBackendAdapterOptions, enabled bool) {
-	aic := pal.AI()
-	bg := aic.InfoBannerBG
-	brd := aic.InfoBannerBorder
-	fg := aic.InfoBannerFG
-	banner := ui.Row(cUI.Key("ai-focused-locked")).FillWidth().MinHeight(54).Padding(theme.Space10, theme.Space12).Gap(theme.Space10).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
-		Background(bg).Border(1, brd)
-	bui.Probe(banner, "ai-focused-locked")
-	banner.Children(func() {
-		msg := theme.Tr("当前未在对话栏启用，开启后可在模型切换器中选择", "Disabled in chat. Enable to select in the model switcher")
-		if enabled && opt.Locked {
-			msg = theme.Tr("该后端配置已锁定", "Backend configuration is locked")
-		}
-		ui.Row(cUI).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(8).Children(func() {
-			icons.Draw(cUI, icons.HelpCircle, 15, pal.MonoIconColors(fg))
-			ui.Text(cUI, msg).FontSize(theme.FontBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		})
-		if !enabled {
-			enBtn := bui.ActionButton(cUI, "ai-enable-focused", theme.Tr("立即启用", "Enable"), nil, bui.ButtonPrimary, false)
-			if enBtn.Clicked() {
-				_ = c.SetBackendEnabled(kind, true)
-			}
-		} else {
-			unBtn := bui.ActionButton(cUI, "ai-unlock-focused", theme.Tr("解锁", "Unlock"), nil, bui.ButtonPrimary, false)
-			if unBtn.Clicked() {
-				_ = c.SetBackendLocked(kind, false)
-			}
-		}
-	})
-}
+func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette, p ProviderEntry, testing, testOK bool, testErr string, secW float32) {
+	c.mu.RLock()
+	showKey := c.settingsProvShowKey[p.ID] || c.settingsShowKey
+	c.mu.RUnlock()
 
-func (c *Controller) renderBuiltinSettings(cUI *ui.Context, pal theme.Palette, cfg model.AIProviderConfig, backends model.AIBackendsConfig, baseURL, apiKey string, showKey, testing, testOK bool, testErr string, innerW float32) {
-	cardBG := pal.Card
-	selBG := settingsSelectedSurface(pal)
-	enabled := isBackendEnabled(backends, model.BackendBuiltin)
-	opt := backends.Adapters[string(model.BackendBuiltin)]
+	stackFields := secW > 0 && secW < 420
+	lblW := float32(76)
 
-	ui.Row(cUI).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-		Padding(0, 0, 12, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
-			icons.Brand(cUI, model.BackendBuiltin, 18, pal.Text)
-			ui.Text(cUI, backendLabel(model.BackendBuiltin)).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).
-				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		})
-		testLabel := theme.Tr("连接测试", "Test Connection")
-		testIcon := icons.Sparkles
-		if testing {
-			testLabel = theme.Tr("测试中…", "Testing…")
-		} else if testOK {
-			testLabel = theme.Tr("连接正常", "Connected")
-			testIcon = icons.Check
+	ui.Column(cUI.Key("prov-detail-" + p.ID)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
+		Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+		// Protocol + Test Connection
+		protoIdx := 0
+		if p.Protocol == model.ProtocolAnthropic {
+			protoIdx = 1
 		}
-		testBtn := bui.ActionButton(cUI, "ai-test", testLabel, &testIcon, bui.ButtonSecondary, testing)
-		if testBtn.Clicked() && !testing {
-			c.runConnectionTestAsync()
-		}
-	})
+		renderProtoControls := func() {
+			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				if bui.SegmentedControl(cUI, "ai-prov-proto-"+p.ID, &protoIdx, []bui.SegmentOption{
+					{ID: "ai-prov-openai-" + p.ID, Label: theme.Tr("OpenAI 协议", "OpenAI")},
+					{ID: "ai-prov-claude-" + p.ID, Label: theme.Tr("Claude 协议", "Claude")},
+				}) {
+					nextProto := model.ProtocolOpenAI
+					if protoIdx == 1 {
+						nextProto = model.ProtocolAnthropic
+					}
+					_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
+						prof.Protocol = nextProto
+					})
+				}
 
-	if !enabled || opt.Locked {
-		c.renderInlineDisabledBanner(cUI, pal, model.BackendBuiltin, opt, enabled)
-	}
-
-	// 3 provider cards (`DeepSeek`, `OpenAI 协议`, `Claude 协议`) with 26x26 icon wells
-	stackCards := innerW > 0 && innerW < 360
-	cardPadX := float32(10)
-	cardGap := float32(8)
-	if !stackCards && innerW > 0 && innerW < 420 {
-		cardPadX = 8
-		cardGap = 6
-	}
-	renderProviderCards := func() {
-		for _, p := range providerPresets {
-			preset := p
-			active := cfg.Provider == preset.ID
-			lbl := theme.Tr(preset.Zh, preset.En)
-			btn := ui.ButtonBase(cUI.Key("ai-pcard-"+preset.ID)).MinWidth(0).Padding(9, cardPadX).Gap(cardGap).
-				AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(lbl)
-			if stackCards {
-				btn.FillWidth()
-			} else {
-				btn.Grow(1)
-			}
-			ais := pal.AISurface()
-			hovered := btn.Hovered()
-			pressed := btn.Pressed()
-			bg := ais.CapsuleBG
-			bd := ais.CapsuleBorder
-			if active {
-				bg = selBG
-				bd = pal.Accent
-			} else if pressed {
-				bg = ais.SelectedBG
-			} else if hovered {
-				bg = ais.HoverBG
-			}
-			bui.AnimateSurfaceColors(btn, bg, bd, true)
-			bui.TactileCard(btn, hovered, pressed, false, false)
-			bui.Probe(btn, "ai-pcard-"+preset.ID)
-			btn.Children(func() {
-				ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
-					Background(cardBG).Border(1, pal.Hairline).Children(func() {
-					icons.DrawAnimated(cUI, preset.Icon, 16, pal.MonoIconColors(preset.BrandColor), active || hovered || pressed)
-				})
-				ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
-					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				testLabel := theme.Tr("连接测试", "Test Connection")
+				testIcon := icons.Sparkles
+				if testing {
+					testLabel = theme.Tr("测试中…", "Testing…")
+				} else if testOK {
+					testLabel = theme.Tr("连接正常", "Connected")
+					testIcon = icons.Check
+				}
+				testBtn := bui.ActionButton(cUI, "ai-test", testLabel, &testIcon, bui.ButtonSecondary, testing)
+				if testBtn.Clicked() && !testing {
+					c.runProviderConnectionTestAsync(p.ID)
+				}
 			})
-			if btn.Clicked() {
-				next := cfg
-				next.Provider = preset.ID
-				next.Protocol = preset.Protocol
-				if prof, ok := next.Providers[preset.ID]; ok {
-					next.BaseURL = prof.BaseURL
-					next.APIKey = prof.APIKey
-					next.Model = prof.Model
-				} else {
-					next.BaseURL = preset.BaseURL
-					next.APIKey = ""
-					next.Model = ""
-				}
-				if next.BaseURL == "" {
-					next.BaseURL = preset.BaseURL
-				}
-				_ = c.SaveProviderConfig(next)
-			}
 		}
-	}
-	if stackCards {
-		ui.Column(cUI).FillWidth().MinWidth(0).Gap(8).Children(renderProviderCards)
-	} else {
-		ui.Row(cUI).FillWidth().MinWidth(0).Gap(8).Children(renderProviderCards)
-	}
+		if stackFields {
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
+				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+				renderProtoControls()
+			})
+		} else {
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(32).Gap(12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+				renderProtoControls()
+			})
+		}
 
-	stackFields := innerW > 0 && innerW < 340
-	lblW := float32(84)
-	if innerW >= 440 {
-		lblW = 96
-	}
-
-	// Base URL (with bottom hairline matching settings_view.rs:89-90)
-	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+		// Base URL
 		renderBaseURLInput := func() {
-			u := baseURL
-			in := ui.TextInput(cUI.Key("ai-settings-baseurl"), &u).Grow(1).MinWidth(0).FillWidth().FontSize(theme.FontBody).Placeholder("https://api.example.com/v1")
+			u := p.BaseURL
+			in := ui.TextInput(cUI.Key("ai-settings-baseurl-"+p.ID), &u).Grow(1).MinWidth(0).FillWidth().
+				FontSize(theme.FontBody).Placeholder("https://api.example.com/v1")
+			bui.Probe(in, "ai-settings-baseurl")
 			if in.Changed() {
-				next := cfg
-				next.BaseURL = u
-				_ = c.SaveProviderConfig(next)
+				_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
+					prof.BaseURL = u
+				})
 			}
 		}
 		if stackFields {
 			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 				renderBaseURLInput()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 				renderBaseURLInput()
 			})
 		}
-	})
 
-	// API Key
-	renderAPIKeyControls := func() {
-		ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-			k := apiKey
-			in := ui.TextInput(cUI.Key("ai-settings-apikey"), &k).Grow(1).MinWidth(0).FontSize(theme.FontBody).Placeholder("sk-…")
-			if !showKey {
-				in.Password()
-			}
-			if in.Changed() {
-				next := cfg
-				next.APIKey = k
-				_ = c.SaveProviderConfig(next)
-			}
-			toggleLbl := theme.Tr("显示", "Show")
-			if showKey {
-				toggleLbl = theme.Tr("隐藏", "Hide")
-			}
-			tBtn := bui.ActionButton(cUI, "ai-toggle-key", toggleLbl, nil, bui.ButtonSecondary, false)
-			if tBtn.Clicked() {
-				c.mu.Lock()
-				c.settingsShowKey = !c.settingsShowKey
-				c.mu.Unlock()
-			}
-		})
-	}
-	if stackFields {
-		ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-			ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-			renderAPIKeyControls()
-		})
-	} else {
-		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-			renderAPIKeyControls()
-		})
-	}
+		// API Key
+		renderAPIKeyControls := func() {
+			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+				k := p.APIKey
+				in := ui.TextInput(cUI.Key("ai-settings-apikey-"+p.ID), &k).Grow(1).MinWidth(0).
+					FontSize(theme.FontBody).Placeholder("sk-…")
+				if !showKey {
+					in.Password()
+				}
+				bui.Probe(in, "ai-settings-apikey")
+				if in.Changed() {
+					_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
+						prof.APIKey = k
+					})
+				}
+				toggleLbl := theme.Tr("显示", "Show")
+				if showKey {
+					toggleLbl = theme.Tr("隐藏", "Hide")
+				}
+				tBtn := bui.ActionButton(cUI, "ai-toggle-key", toggleLbl, nil, bui.ButtonSecondary, false)
+				if tBtn.Clicked() {
+					c.mu.Lock()
+					if c.settingsProvShowKey == nil {
+						c.settingsProvShowKey = make(map[string]bool)
+					}
+					c.settingsProvShowKey[p.ID] = !showKey
+					c.mu.Unlock()
+				}
+			})
+		}
+		if stackFields {
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
+				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+				renderAPIKeyControls()
+			})
+		} else {
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+				renderAPIKeyControls()
+			})
+		}
 
-	if testErr != "" {
-		ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusMD).
-			Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
-			ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
-		})
-	}
-}
-
-func (c *Controller) renderAgentSettings(cUI *ui.Context, pal theme.Palette, kind model.BackendKind, backends model.AIBackendsConfig, testErr string, _ float32) {
-	enabled := isBackendEnabled(backends, kind)
-	opt := backends.Adapters[string(kind)]
-	locked := !enabled || opt.Locked
-
-	c.mu.RLock()
-	thinking := c.backendThinkingLocked(kind)
-	st, hasSt := c.backendStatuses[kind]
-	c.mu.RUnlock()
-	verTag := formatBackendVersionTag(st, hasSt)
-
-	ui.Row(cUI).FillWidth().MinWidth(0).Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-		Padding(0, 0, 12, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
-			icons.Brand(cUI, kind, 18, pal.Text)
-			ui.Text(cUI, backendLabel(kind)).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).
-				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		})
-		if verTag != "" {
-			ui.Text(cUI, verTag).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+		if testErr != "" {
+			ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusMD).
+				Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
+				ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
+			})
 		}
 	})
+}
 
-	if locked {
-		c.renderInlineDisabledBanner(cUI, pal, kind, opt, enabled)
+func (c *Controller) openAddProviderModal() {
+	c.mu.Lock()
+	c.addProvModalOpen = true
+	c.addProvPreset = "openrouter"
+	c.addProvName = "OpenRouter"
+	c.addProvProto = model.ProtocolOpenAI
+	c.addProvBaseURL = "https://openrouter.ai/api/v1"
+	c.addProvAPIKey = ""
+	c.addProvShowKey = false
+	c.addProvTesting = false
+	c.addProvTestOK = false
+	c.addProvTestErr = ""
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) {
+	c.mu.RLock()
+	open := c.addProvModalOpen
+	selPreset := c.addProvPreset
+	draftName := c.addProvName
+	draftProto := c.addProvProto
+	draftURL := c.addProvBaseURL
+	draftKey := c.addProvAPIKey
+	showKey := c.addProvShowKey
+	testing := c.addProvTesting
+	testOK := c.addProvTestOK
+	testErr := c.addProvTestErr
+	c.mu.RUnlock()
+
+	if !open {
+		return
 	}
 
-	binPath := string(kind)
-	if found, ok := resolveCLIBinary(string(kind)); ok {
-		binPath = found
-	}
-	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("可执行文件路径", "Binary Path")).Shrink(0).SingleLine().FontSize(theme.FontBody).TextColor(pal.Text)
-			ui.Box(cUI).Height(32).PaddingX(12).Center().Radius(theme.RadiusMD).
-				Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).MaxWidth(420).Shrink(1).MinWidth(0).Children(func() {
-				ui.Text(cUI, binPath).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+	modalOpen := open
+	title := theme.Tr("添加供应商", "Add Provider")
+	selBG := settingsSelectedSurface(pal)
+	ais := pal.AISurface()
+
+	bui.Dialog(cUI, "ai-add-provider-modal", title, &modalOpen, bui.ModalLayout{
+		Width:     436,
+		MaxHeight: 580,
+		Centered:  true,
+	}, func() {
+		ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Gap(14).Children(func() {
+			// Header
+			ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
+				ui.Text(cUI, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
+				closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
+					ID:      "ai-add-provider-close",
+					Label:   theme.Tr("关闭", "Close"),
+					Variant: bui.IconPlain,
+				})
+				if closeBtn.Clicked() {
+					modalOpen = false
+				}
+			})
+
+			// Quick presets (auto-wraps on narrow windows)
+			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(6).Children(func() {
+				for _, preset := range providerPresets {
+					pr := preset
+					isSel := selPreset == pr.ID
+					lbl := theme.Tr(pr.Zh, pr.En)
+					chipID := "ai-preset-" + pr.ID
+					chip := ui.ButtonBase(cUI.Key(chipID)).Height(28).PaddingX(10).Gap(6).
+						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(lbl)
+					hov := chip.Hovered()
+					prs := chip.Pressed()
+					bg := ais.CapsuleBG
+					bd := ais.CapsuleBorder
+					if isSel {
+						bg = selBG
+						bd = pal.Accent
+					} else if prs {
+						bg = ais.SelectedBG
+					} else if hov {
+						bg = ais.HoverBG
+					}
+					bui.AnimateSurfaceColors(chip, bg, bd, true)
+					bui.TactileCard(chip, hov, prs, isSel, false)
+					bui.Probe(chip, chipID)
+					chip.Children(func() {
+						icons.Draw(cUI, pr.Icon, 13, pal.MonoIconColors(pr.BrandColor))
+						ui.Text(cUI, lbl).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+					})
+					if chip.Clicked() {
+						c.mu.Lock()
+						c.addProvPreset = pr.ID
+						c.addProvName = pr.DefaultName
+						c.addProvProto = pr.Protocol
+						c.addProvBaseURL = pr.BaseURL
+						c.addProvTestOK = false
+						c.addProvTestErr = ""
+						c.mu.Unlock()
+					}
+				}
+			})
+
+			// Stacked full-width fields
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
+				ui.Column(cUI).FillWidth().MinWidth(0).Gap(5).Children(func() {
+					ui.Text(cUI, theme.Tr("名称", "Name")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					nm := draftName
+					nmIn := ui.TextInput(cUI.Key("ai-add-provider-name"), &nm).FillWidth().MinWidth(0).
+						FontSize(theme.FontBody).Placeholder(theme.Tr("例如 SiliconFlow / OpenRouter", "e.g. SiliconFlow / OpenRouter"))
+					bui.Probe(nmIn, "ai-add-provider-name")
+					if nmIn.Changed() {
+						c.mu.Lock()
+						c.addProvName = nm
+						c.mu.Unlock()
+					}
+				})
+
+				ui.Column(cUI).FillWidth().MinWidth(0).Gap(5).Children(func() {
+					ui.Text(cUI, theme.Tr("协议类型", "Protocol")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					pIdx := 0
+					if draftProto == model.ProtocolAnthropic {
+						pIdx = 1
+					}
+					if bui.SegmentedControlWithOptions(cUI, "ai-add-provider-proto", &pIdx, []bui.SegmentOption{
+						{ID: "ai-add-proto-openai", Label: theme.Tr("OpenAI 协议", "OpenAI Protocol")},
+						{ID: "ai-add-proto-claude", Label: theme.Tr("Claude 协议", "Claude Protocol")},
+					}, bui.SegmentedControlOptions{FillWidth: true}) {
+						c.mu.Lock()
+						if pIdx == 1 {
+							c.addProvProto = model.ProtocolAnthropic
+						} else {
+							c.addProvProto = model.ProtocolOpenAI
+						}
+						c.addProvTestOK = false
+						c.addProvTestErr = ""
+						c.mu.Unlock()
+					}
+				})
+
+				ui.Column(cUI).FillWidth().MinWidth(0).Gap(5).Children(func() {
+					ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					u := draftURL
+					uIn := ui.TextInput(cUI.Key("ai-add-provider-baseurl"), &u).FillWidth().MinWidth(0).
+						FontSize(theme.FontBody).Placeholder("https://api.example.com/v1")
+					bui.Probe(uIn, "ai-add-provider-baseurl")
+					if uIn.Changed() {
+						c.mu.Lock()
+						c.addProvBaseURL = u
+						c.addProvTestOK = false
+						c.addProvTestErr = ""
+						c.mu.Unlock()
+					}
+				})
+
+				ui.Column(cUI).FillWidth().MinWidth(0).Gap(5).Children(func() {
+					ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Row(cUI).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+						k := draftKey
+						kIn := ui.TextInput(cUI.Key("ai-add-provider-apikey"), &k).Grow(1).MinWidth(0).
+							FontSize(theme.FontBody).Placeholder("sk-…")
+						if !showKey {
+							kIn.Password()
+						}
+						bui.Probe(kIn, "ai-add-provider-apikey")
+						if kIn.Changed() {
+							c.mu.Lock()
+							c.addProvAPIKey = k
+							c.addProvTestOK = false
+							c.addProvTestErr = ""
+							c.mu.Unlock()
+						}
+						lbl := theme.Tr("显示", "Show")
+						if showKey {
+							lbl = theme.Tr("隐藏", "Hide")
+						}
+						visBtn := bui.ActionButton(cUI, "ai-add-toggle-key", lbl, nil, bui.ButtonSecondary, false)
+						if visBtn.Clicked() {
+							c.mu.Lock()
+							c.addProvShowKey = !showKey
+							c.mu.Unlock()
+						}
+					})
+				})
+			})
+
+			if testErr != "" {
+				ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusMD).
+					Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
+					ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
+				})
+			}
+
+			// Footer actions
+			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(4, 0, 0, 0).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				tLbl := theme.Tr("连接测试", "Test")
+				tIcon := icons.Sparkles
+				if testing {
+					tLbl = theme.Tr("测试中…", "Testing…")
+				} else if testOK {
+					tLbl = theme.Tr("连接正常", "Connected")
+					tIcon = icons.Check
+				}
+				tBtn := bui.ActionButton(cUI, "ai-add-provider-test", tLbl, &tIcon, bui.ButtonSecondary, testing)
+				if tBtn.Clicked() && !testing {
+					c.runAddDraftConnectionTestAsync()
+				}
+
+				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
+					cancelBtn := bui.ActionButton(cUI, "ai-add-provider-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
+					if cancelBtn.Clicked() {
+						modalOpen = false
+					}
+					submitBtn := bui.ActionButton(cUI, "ai-add-provider-submit", theme.Tr("添加并启用", "Add & Enable"), nil, bui.ButtonPrimary, false)
+					if submitBtn.Clicked() {
+						if strings.TrimSpace(draftURL) == "" {
+							c.mu.Lock()
+							c.addProvTestErr = theme.Tr("请填写接口地址", "Please enter a Base URL")
+							c.mu.Unlock()
+						} else if _, err := c.AddProviderEntry(selPreset, draftName, draftProto, draftURL, draftKey); err != nil {
+							c.mu.Lock()
+							c.addProvTestErr = err.Error()
+							c.mu.Unlock()
+						} else {
+							modalOpen = false
+						}
+					}
+				})
 			})
 		})
 	})
 
-	ui.Box(cUI).FillWidth().MinWidth(0).Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-		ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Shrink(0).SingleLine().FontSize(theme.FontBody).TextColor(pal.Text)
-			levels := []string{"low", "medium", "high"}
-			lvIdx := 2
-			for i, lv := range levels {
-				if lv == thinking {
-					lvIdx = i
-				}
-			}
-			if bui.SegmentedControl(cUI, "ai-agent-thinking", &lvIdx, []bui.SegmentOption{
-				{ID: "ai-agent-think-low", Label: "Low"},
-				{ID: "ai-agent-think-medium", Label: "Medium"},
-				{ID: "ai-agent-think-high", Label: "High"},
-			}) {
-				c.mu.Lock()
-				_ = c.setBackendThinkingLocked(kind, levels[lvIdx])
-				c.mu.Unlock()
-			}
-		})
-	})
-
-	ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-		ui.Text(cUI, theme.Tr("最大权限", "Full Permissions")).Shrink(0).SingleLine().FontSize(theme.FontBody).TextColor(pal.Text)
-		fp := opt.FullPermissions
-		if bui.TogglePill(cUI, "ai-agent-full-permissions", theme.Tr("最大权限", "Full Permissions"), &fp, locked) {
-			c.mu.Lock()
-			_ = c.setBackendFullPermissionsLocked(kind, fp)
-			c.mu.Unlock()
-		}
-	})
-
-	if testErr != "" {
-		ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
+	if !modalOpen {
+		c.mu.Lock()
+		c.addProvModalOpen = false
+		c.mu.Unlock()
 	}
 }
 
@@ -3663,13 +3840,14 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	})
 }
 
-func (c *Controller) runConnectionTestAsync() {
+func (c *Controller) runProviderConnectionTestAsync(provID string) {
 	c.mu.Lock()
 	if c.settingsTesting {
 		c.mu.Unlock()
 		return
 	}
 	c.settingsTesting = true
+	c.settingsTestingProv = provID
 	c.settingsTestOK = false
 	c.settingsTestErr = ""
 	c.mu.Unlock()
@@ -3678,7 +3856,68 @@ func (c *Controller) runConnectionTestAsync() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_ = c.TestConnection(ctx)
+		cfg := c.ProviderConfig()
+		entries := orderedProviderEntries(cfg)
+		for _, e := range entries {
+			if e.ID == provID {
+				cfg.Enabled = true
+				cfg.Provider = e.ID
+				cfg.Protocol = e.Protocol
+				cfg.BaseURL = e.BaseURL
+				cfg.APIKey = e.APIKey
+				cfg.Model = e.Model
+				break
+			}
+		}
+		err := testBuiltinConnection(ctx, cfg)
+		c.mu.Lock()
+		c.settingsTesting = false
+		if err != nil {
+			c.settingsTestOK = false
+			c.settingsTestErr = err.Error()
+		} else {
+			c.settingsTestOK = true
+			c.settingsTestErr = ""
+		}
+		c.mu.Unlock()
+		c.requestRedraw()
+	}()
+}
+
+func (c *Controller) runAddDraftConnectionTestAsync() {
+	c.mu.Lock()
+	if c.addProvTesting {
+		c.mu.Unlock()
+		return
+	}
+	c.addProvTesting = true
+	c.addProvTestOK = false
+	c.addProvTestErr = ""
+	draft := model.AIProviderConfig{
+		Enabled:  true,
+		Provider: c.addProvPreset,
+		Protocol: c.addProvProto,
+		BaseURL:  c.addProvBaseURL,
+		APIKey:   c.addProvAPIKey,
+	}
+	c.mu.Unlock()
+	c.requestRedraw()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err := testBuiltinConnection(ctx, draft)
+		c.mu.Lock()
+		c.addProvTesting = false
+		if err != nil {
+			c.addProvTestOK = false
+			c.addProvTestErr = err.Error()
+		} else {
+			c.addProvTestOK = true
+			c.addProvTestErr = ""
+		}
+		c.mu.Unlock()
+		c.requestRedraw()
 	}()
 }
 

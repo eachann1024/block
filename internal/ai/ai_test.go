@@ -751,24 +751,42 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 	if ctrl.BackendsConfig().Selected != model.BackendPi {
 		t.Fatalf("expected Pi selected after click, got %v", ctrl.BackendsConfig().Selected)
 	}
+}
 
-	// Test Settings Tab rendering & interaction (1:1 thinkly-fast layout & list order).
+func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
+	bui.ResetSmoke()
+	bui.EnableSmokeMode()
+	defer bui.DisableSmokeMode()
+
+	ctrl, _, _ := setupReadyController(t)
+	// Test Settings Tab rendering & interaction (Scheme A single-column accordion + Add Provider modal + enforced FullPermissions).
 	for _, k := range model.AllBackends {
 		if k != model.BackendBuiltin {
 			ctrl.SetBackendStatusOverride(k, &BackendStatus{State: BackendStateReady, Version: "1.2.0"})
 		}
 	}
-	ttSet := ui.NewTester(ctrl.RenderSettingsTab, 820, 760)
+	// Verify FullPermissions is enforced on by default for all CLI backends and cannot be disabled.
+	for _, k := range []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi} {
+		if !ctrl.BackendsConfig().Adapters[string(k)].FullPermissions {
+			t.Fatalf("expected FullPermissions default true for %s", k)
+		}
+	}
+
+	// Render even in a narrow window width (560px) to verify clean single-column layout.
+	ttSet := ui.NewTester(ctrl.RenderSettingsTab, 560, 760)
 	if _, ok := bui.TargetBounds("ai-settings-section"); !ok {
 		t.Fatal("missing ai-settings-section")
 	}
-	if !ttSet.HasText("内置 AI") || !ttSet.HasText("普通功能") || !ttSet.HasText("标注功能") {
-		t.Fatal("missing expected AI Settings labels (内置 AI / 普通功能 / 标注功能)")
+	if !ttSet.HasText("API 供应商") || !ttSet.HasText("添加供应商") || !ttSet.HasText("本机 Agent") || !ttSet.HasText("普通功能") || !ttSet.HasText("标注功能") {
+		t.Fatal("missing expected AI Settings labels (API 供应商 / 添加供应商 / 本机 Agent / 普通功能 / 标注功能)")
+	}
+	if ttSet.HasText("最大权限") {
+		t.Fatal("FullPermissions toggle must not be shown to user")
 	}
 
-	// Verify exact top-to-bottom rail order: Builtin -> Codex -> Claude -> Dsh -> Pi -> Agy.
+	// Verify top-to-bottom local CLI agent order: Codex -> Claude -> Dsh -> Pi -> Agy.
 	var prevRailY float32 = -1
-	for _, suffix := range []string{"Builtin", "Codex", "Claude", "Dsh", "Pi", "Agy"} {
+	for _, suffix := range []string{"Codex", "Claude", "Dsh", "Pi", "Agy"} {
 		rb, ok := bui.TargetBounds("ai-backend-card-" + suffix)
 		if !ok {
 			t.Fatalf("missing ai-backend-card-%s", suffix)
@@ -779,31 +797,45 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 		prevRailY = rb.Y
 	}
 
-	// Verify exact left-to-right provider card order: deepseek -> openai -> anthropic (Claude 协议).
-	var prevProvX float32 = -1
-	for _, pid := range []string{"deepseek", "openai", "anthropic"} {
-		pb, ok := bui.TargetBounds("ai-pcard-" + pid)
-		if !ok {
-			t.Fatalf("missing ai-pcard-%s", pid)
-		}
-		if pb.X <= prevProvX {
-			t.Fatalf("ai-pcard-%s out of horizontal order: X=%v <= %v", pid, pb.X, prevProvX)
-		}
-		prevProvX = pb.X
+	// Expand Codex row -> Thinking Level segmented control appears, still no FullPermissions toggle.
+	codexRect, _ := bui.TargetBounds("ai-backend-card-Codex")
+	ttSet.ClickAt(codexRect.X+24, codexRect.Y+codexRect.H*0.5)
+	if !ttSet.HasText("思考强度") {
+		t.Fatal("expected Thinking Level row after expanding Codex")
+	}
+	if ttSet.HasText("最大权限") {
+		t.Fatal("FullPermissions toggle must remain absent when CLI agent row is expanded")
 	}
 
-	if err := ttSet.Click("OpenAI 协议"); err != nil {
-		t.Fatalf("click OpenAI provider card: %v", err)
+	// Open Add Provider modal -> pick SiliconFlow preset -> submit -> verify new provider added & expanded.
+	addBtnRect, ok := bui.TargetBounds("ai-add-provider-btn")
+	if !ok {
+		t.Fatal("missing ai-add-provider-btn")
 	}
-	if ctrl.ProviderConfig().Provider != "openai" {
-		t.Fatalf("expected openai provider selected, got %q", ctrl.ProviderConfig().Provider)
+	ttSet.ClickAt(addBtnRect.X+addBtnRect.W*0.5, addBtnRect.Y+addBtnRect.H*0.5)
+	if _, ok := bui.TargetBounds("ai-add-provider-modal"); !ok {
+		t.Fatal("expected ai-add-provider-modal to open")
 	}
+	sfChip, ok := bui.TargetBounds("ai-preset-siliconflow")
+	if !ok {
+		t.Fatal("missing ai-preset-siliconflow in Add Provider modal")
+	}
+	ttSet.ClickAt(sfChip.X+sfChip.W*0.5, sfChip.Y+sfChip.H*0.5)
+	subBtn, ok := bui.TargetBounds("ai-add-provider-submit")
+	if !ok {
+		t.Fatal("missing ai-add-provider-submit")
+	}
+	ttSet.ClickAt(subBtn.X+subBtn.W*0.5, subBtn.Y+subBtn.H*0.5)
+	if _, ok := bui.TargetBounds("ai-provider-row-siliconflow"); !ok {
+		t.Fatal("expected newly added siliconflow provider row in list")
+	}
+	if ctrl.ProviderConfig().Provider != "siliconflow" {
+		t.Fatalf("expected siliconflow provider active after adding, got %q", ctrl.ProviderConfig().Provider)
+	}
+
 	annRect, ok := bui.TargetBounds("annotation-model-trigger")
 	if !ok {
 		t.Fatal("missing annotation-model-trigger")
-	}
-	if annRect.Y <= prevRailY {
-		t.Fatalf("expected annotation-model-trigger below agent rail: Y=%v <= %v", annRect.Y, prevRailY)
 	}
 	ttSet.ClickAt(annRect.X+annRect.W*0.5, annRect.Y+annRect.H*0.5)
 	if _, ok := bui.TargetBounds("annotation-model-menu"); !ok {
