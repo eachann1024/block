@@ -168,11 +168,11 @@ const (
 	EdgeFloatDwellMs             = 140
 	EdgeFloatLeaveMs             = 120
 
-	// App Store masonry card & header toolbar metrics.
+	// App Store card & header toolbar metrics.
 	StoreIconBoxSize       float32 = 40  // leading app icon box inside a store card header
 	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
 	StoreStatusDotSize     float32 = 6   // active indicator dot on installed plugin nav rows
-	StoreMinColWidth       float32 = 340 // minimum column width for dynamic multi-column store masonry
+	StoreMinColWidth       float32 = 340 // minimum column width for the multi-column store grid
 	StorePermissionSummary         = 2   // inline permission capsules before "+N" collapse
 	SegmentedControlHeight         = HeightControl
 	SegmentedInnerHeight           = HeightChrome
