@@ -108,9 +108,15 @@ type Controller struct {
 	pickerRoot      string
 	pickerRefreshed time.Time
 
-	historyOpen bool
-	deckOpen    bool
-	deckSearch  string
+	historyOpen      bool
+	historyScroll    ui.ScrollState
+	panelBox         ui.Rect
+	histTriggerBox   ui.Rect
+	deckOpen         bool
+	deckSearch       string
+	deckTriggerBox   ui.Rect
+	deckSearchHandle ui.Handle
+	deckScroll       ui.ScrollState
 
 	backendStatuses map[model.BackendKind]BackendStatus
 	backendModels   map[model.BackendKind][]ModelOption

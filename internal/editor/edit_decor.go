@@ -298,22 +298,37 @@ func (s *Session) decorateEditInput(c *ui.Context, in ui.Element, idx int, b *mo
 		in.CaretColor(ui.Transparent)
 	} else if in.Focused() && c.WindowActive() {
 		in.CaretColor(ui.Transparent)
-		now := c.Now()
-		if s.caretBlink.block != b.ID || s.caretBlink.pos != selA || s.caretBlink.epoch.IsZero() {
-			s.caretBlink = caretBlinkState{block: b.ID, pos: selA, epoch: now}
-		}
-		alpha, wait := caretBlinkPhase(float64(now.Sub(s.caretBlink.epoch).Milliseconds()))
-		c.After(time.Duration(wait) * time.Millisecond)
-		if alpha > 0 {
-			cr := m.caret(selA)
-			h := float32(math.Round(float64(size * 1.125)))
-			caretRect = ui.Rect{X: cr.X - 1, Y: cr.Y + (cr.H-h)*0.5, W: 2, H: h}
-			caretCol = pal.Accent
-			if deleteArmed {
-				caretCol = pal.Danger
+		if !s.caretHidden {
+			now := c.Now()
+			if s.caretBlink.block != b.ID || s.caretBlink.pos != selA || s.caretBlink.epoch.IsZero() {
+				s.caretBlink = caretBlinkState{block: b.ID, pos: selA, epoch: now}
 			}
-			caretCol = caretCol.Alpha(alpha)
-			drawCaret = true
+			alpha, wait := caretBlinkPhase(float64(now.Sub(s.caretBlink.epoch).Milliseconds()))
+			c.After(time.Duration(wait) * time.Millisecond)
+			if alpha > 0 {
+				cr := m.caret(selA)
+				h := float32(math.Round(float64(size * 1.125)))
+				caretY := cr.Y + (cr.H-h)*0.5
+				for _, ln := range lines {
+					if cr.Y+cr.H*0.5 >= ln.Rect.Y && cr.Y+cr.H*0.5 <= ln.Rect.Y+ln.Rect.H {
+						y := ln.Baseline - 0.95*size
+						hiY := max(ln.Rect.Y+ln.Rect.H-h, ln.Rect.Y)
+						caretY = min(max(y, ln.Rect.Y), hiY)
+						break
+					}
+				}
+				caretX := cr.X - 1
+				if selA > 0 && cr.X > 1 {
+					caretX = cr.X - 0.5
+				}
+				caretRect = ui.Rect{X: caretX, Y: caretY, W: 2, H: h}
+				caretCol = pal.Accent
+				if deleteArmed {
+					caretCol = pal.Danger
+				}
+				caretCol = caretCol.Alpha(alpha)
+				drawCaret = true
+			}
 		}
 	}
 

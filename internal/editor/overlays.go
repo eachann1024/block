@@ -2,7 +2,10 @@ package editor
 
 import (
 	"fmt"
+	"math"
+	"slices"
 	"strings"
+	"unicode/utf16"
 
 	"block/internal/icons"
 	"block/internal/model"
@@ -11,6 +14,92 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func (s *Session) overlayViewport(c *ui.Context) (vp ui.Rect, winW, winH float32) {
+	winW, winH = c.Size()
+	if winW <= 0 {
+		winW = max(s.editorRect.X+s.viewportWidth, s.viewportWidth)
+	}
+	if winH <= 0 {
+		winH = s.viewportHeight
+	}
+	if winW <= 0 {
+		winW = 1024
+	}
+	if winH <= 0 {
+		winH = 720
+	}
+	vp = ui.Rect{X: 0, Y: 0, W: winW, H: winH}
+	if s.scrollRect.W > 0 && s.scrollRect.H > 0 {
+		vp = s.scrollRect
+	} else if s.editorRect.W > 0 && s.editorRect.H > 0 {
+		vp = s.editorRect
+	}
+	return vp, winW, winH
+}
+
+func (s *Session) recordOverlayBtn(key string, el ui.Element) {
+	if key == "" || !el.Valid() {
+		return
+	}
+	if r := el.LayoutBounds(); r.W > 0 && r.H > 0 {
+		if s.overlayBtnRects == nil {
+			s.overlayBtnRects = make(map[string]ui.Rect)
+		}
+		s.overlayBtnRects[key] = r
+	}
+}
+
+func (s *Session) recordOverlayPanel(key string, el ui.Element) {
+	if key == "" || !el.Valid() {
+		return
+	}
+	if r := el.LayoutBounds(); r.W > 0 && r.H > 0 {
+		if s.overlayPanelRects == nil {
+			s.overlayPanelRects = make(map[string]ui.Rect)
+		}
+		s.overlayPanelRects[key] = r
+	}
+}
+
+func (s *Session) measuredOrEstSize(key string, estW, estH float32) (float32, float32) {
+	if r, ok := s.overlayPanelRects[key]; ok {
+		if r.W > 0 {
+			estW = r.W
+		}
+		if r.H > 0 {
+			estH = r.H
+		}
+	}
+	return estW, estH
+}
+
+func (s *Session) clearToolbarBtnRects() {
+	for k := range s.overlayBtnRects {
+		if strings.HasPrefix(k, "tb-") {
+			delete(s.overlayBtnRects, k)
+		}
+	}
+}
+
+func (s *Session) overlayBtnBounds(key string) (ui.Rect, bool) {
+	if r, ok := s.overlayBtnRects[key]; ok && r.W > 0 && r.H > 0 {
+		return r, true
+	}
+	return ui.Rect{}, false
+}
+
+func estimateEditorMenuHeight(itemCount, sepCount int) float32 {
+	totalRows := itemCount + sepCount
+	if totalRows == 0 {
+		return theme.MenuPadding * 2
+	}
+	h := theme.MenuPadding*2 + float32(itemCount)*theme.MenuItemHeight + float32(sepCount)*7
+	if totalRows > 1 {
+		h += float32(totalRows-1) * theme.MenuGap
+	}
+	return h
+}
+
 // --- 1. In-Note Find Bar (Cmd+F) ---
 
 func (s *Session) renderFindBar(c *ui.Context) {
@@ -18,29 +107,34 @@ func (s *Session) renderFindBar(c *ui.Context) {
 		return
 	}
 	pal := theme.Ocean()
-	winW, _ := c.Size()
-	topY := float32(12)
-	rightX := float32(20)
-	if s.editorRect.W > 0 {
-		topY = s.editorRect.Y + 12
-		if winW > 0 {
-			rightX = max(winW-(s.editorRect.X+s.editorRect.W), 0) + 20
-		}
+	vp, winW, _ := s.overlayViewport(c)
+	topY := clampFloat32(vp.Y+12, vp.Y+8, max(vp.Y+vp.H-48, vp.Y+8))
+	insetRight := float32(20)
+	if vp.W > 0 && vp.W < 420 {
+		insetRight = 8
+	}
+	rightX := max(winW-(vp.X+vp.W), 0) + insetRight
+	maxBarW := max(vp.W-insetRight*2, 220)
+	inputW := float32(180)
+	if vp.W > 0 && vp.W < 420 {
+		inputW = clampFloat32(180-(420-vp.W), 72, 180)
 	}
 
 	ui.Overlay(c, func() {
-		bar := ui.Row(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).
+		bar := ui.Row(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).MaxWidth(maxBarW).
 			Padding(4, 4, 4, 10).Gap(4).AlignItems(ui.Center).
 			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder).
 			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
 			Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
-			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12))
+			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+			Transition(appUi.PopupTransition())
 		appUi.Probe(bar, "find-bar")
+		s.recordOverlayPanel("find-bar", bar)
 
 		bar.Children(func() {
 			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
-			in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(180).Height(28).
+			in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(28).
 				Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 				Placeholder(theme.Tr("查找…", "Find…")).Label("find-input").
 				Bind(&s.findInputHandle)
@@ -336,34 +430,175 @@ func (s *Session) runToolbarItem(kind toolbarItemKind, fromMore bool) {
 	}
 }
 
-func (s *Session) renderSelectionToolbar(c *ui.Context) {
-	if (!s.IsSelectionToolbarOpen() && s.toolbarPop == "") || s.isMouseDragging() {
-		return
+func runeOffsetToUTF16(text string, runeOff int) int {
+	if runeOff <= 0 || text == "" {
+		return 0
 	}
-	pal := theme.Ocean()
+	units := 0
+	i := 0
+	for _, r := range text {
+		if i >= runeOff {
+			break
+		}
+		units += utf16.RuneLen(r)
+		i++
+	}
+	return units
+}
+
+func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bool, visible bool) {
+	if s.doc == nil || !s.hasNonEmptySelection() {
+		return ui.Rect{}, false, false
+	}
 	a, b := s.orderedSelection()
-	anchorY := float32(60)
-	anchorX := float32(120)
-	if a.Block >= 0 && a.Block < len(s.doc.Blocks) {
-		if r, ok := s.blockRects[s.doc.Blocks[a.Block].ID]; ok && r.W > 0 {
-			anchorX = max(r.X+editorHandleWidth, 16)
-			anchorY = r.Y - 46
-			minVisibleY := max(s.scrollRect.Y+8, 10)
-			if anchorY < minVisibleY {
-				if rb, okB := s.blockRects[s.doc.Blocks[b.Block].ID]; okB && rb.W > 0 && rb.Y+rb.H+48 < s.viewportHeight {
-					anchorY = max(rb.Y+rb.H+6, minVisibleY)
-				} else {
-					anchorY = minVisibleY
+	if a.Block < 0 || a.Block >= len(s.doc.Blocks) {
+		return ui.Rect{}, false, false
+	}
+	hasVP := s.scrollRect.W > 0 && s.scrollRect.H > 0
+	inVP := func(r ui.Rect) bool {
+		if !hasVP {
+			return true
+		}
+		return r.Y+r.H > vp.Y && r.Y < vp.Y+vp.H
+	}
+
+	if a.Block == b.Block && s.doc.Blocks[a.Block].Kind == model.BlockTable {
+		blk := &s.doc.Blocks[a.Block]
+		rlen := s.blockSelectionLen(a.Block)
+		if a.Offset == 0 && b.Offset >= rlen {
+			if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
+				tbl := ui.Rect{
+					X: r.X + editorHandleWidth + editorRowGap,
+					Y: r.Y,
+					W: max(r.W-editorHandleWidth-editorRowGap-editorRightInset, 40),
+					H: r.H,
+				}
+				return tbl, true, inVP(tbl)
+			}
+		} else if blk.Table != nil {
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+				if cr, okC := s.tableCellRects[tableCellKey{BlockID: blk.ID, Row: row, Col: col}]; okC && cr.W > 0 {
+					return cr, false, inVP(cr)
 				}
 			}
 		}
 	}
 
-	availW := s.viewportWidth
-	if s.editorRect.W > 0 && s.editorRect.W < availW {
-		availW = s.editorRect.W
+	var best ui.Rect
+	found := false
+	sawMeasured := false
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		if a.Block != b.Block && idx == b.Block && b.Offset == 0 && s.blockSelectionLen(idx) > 0 {
+			break
+		}
+		// Shaping offscreen blocks on every frame makes large selections stall.
+		if r, ok := s.blockRects[s.doc.Blocks[idx].ID]; ok && r.H > 0 && !inVP(r) {
+			sawMeasured = true
+			continue
+		}
+		lo, hi, _, selOk := s.blockSelectionSpanRange(idx)
+		if !selOk || hi <= lo {
+			continue
+		}
+		blk := &s.doc.Blocks[idx]
+		if tr, ok := s.blockTextRects[blk.ID]; ok && tr.W > 0 && tr.H > 0 {
+			sawMeasured = true
+			var layout *ui.TextLayout
+			var plain string
+			if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML {
+				plain = blk.Code
+				layout = s.cachedShapeBlock(blk.ID, plain, nil, 0, resolvedCodeFont(), 14, theme.WeightRegular, 1.5, tr.W, false)
+			} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider {
+				plain = blk.PlainText()
+				fontSize, weight, lh := blockTextMetrics(blk.Kind)
+				layout = s.cachedShapeBlock(blk.ID, plain, blk.Spans, idx, resolvedEditorFont(), fontSize, weight, lh, tr.W, true)
+			}
+			if layout != nil {
+				u0 := runeOffsetToUTF16(plain, lo)
+				u1 := runeOffsetToUTF16(plain, hi)
+				for _, sr := range layout.SelectionRects(ui.TextInputRange{Start: u0, End: u1}) {
+					cand := ui.Rect{
+						X: tr.X + sr.X,
+						Y: tr.Y + sr.Y,
+						W: max(sr.W, 2),
+						H: max(sr.H, 16),
+					}
+					if inVP(cand) && (!found || cand.Y < best.Y) {
+						best = cand
+						found = true
+					}
+				}
+				if found {
+					continue
+				}
+			}
+		}
+		if r, ok := s.blockRects[blk.ID]; ok && r.W > 0 {
+			sawMeasured = true
+			cand := ui.Rect{
+				X: r.X + editorHandleWidth + editorRowGap,
+				Y: r.Y,
+				W: max(r.W-editorHandleWidth-editorRowGap-editorRightInset, 24),
+				H: max(r.H, 24),
+			}
+			if inVP(cand) && (!found || cand.Y < best.Y) {
+				best = cand
+				found = true
+			}
+		}
 	}
-	room := max(availW-16, 48)
+	if found {
+		return best, false, true
+	}
+	if sawMeasured && hasVP {
+		return ui.Rect{}, false, false
+	}
+	return ui.Rect{X: vp.X + 120, Y: vp.Y + 60, W: 80, H: 24}, false, true
+}
+
+func (s *Session) toolbarDropSpec(btnID string, align appUi.AlignXKind, gap float32, vp ui.Rect) appUi.PlacementSpec {
+	var trigger ui.Rect
+	var ok bool
+	if s.IsSelectionToolbarOpen() {
+		trigger, ok = s.overlayBtnBounds(btnID)
+		if !ok {
+			trigger, ok = s.overlayBtnBounds("tb-more")
+		}
+	} else {
+		switch btnID {
+		case "tb-comment":
+			trigger, ok = s.overlayBtnBounds("img-tb-comment")
+		case "tb-reaction":
+			trigger, ok = s.overlayBtnBounds("img-tb-reaction")
+		}
+		if !ok {
+			trigger, ok = s.overlayBtnBounds(btnID)
+		}
+	}
+	if !ok && s.toolbarRect.W > 0 && s.toolbarRect.H > 0 {
+		trigger = s.toolbarRect
+		ok = true
+	}
+	if !ok && s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
+		if r, rOk := s.blockRects[s.doc.Blocks[s.focusedBlock].ID]; rOk && r.W > 0 {
+			trigger = r
+			ok = true
+		}
+	}
+	if !ok {
+		trigger = ui.Rect{X: vp.X + 120, Y: vp.Y + 60, W: 28, H: 28}
+	}
+	return appUi.PlaceBelow(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: align}).WithGap(gap).WithMargin(8)
+}
+
+func (s *Session) renderSelectionToolbar(c *ui.Context) {
+	if (!s.IsSelectionToolbarOpen() && s.toolbarPop == "") || s.isMouseDragging() {
+		s.clearToolbarBtnRects()
+		return
+	}
+	pal := theme.Ocean()
+	vp, winW, winH := s.overlayViewport(c)
+	room := max(vp.W-16, 48)
 	caps := s.toolbarCapabilities()
 	enabled := s.enabledToolbarItems(caps)
 	keep, barW := splitForRoom(enabled, room)
@@ -372,20 +607,49 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 	if s.toolbarPop == "more" && len(overflow) == 0 {
 		s.toolbarPop = ""
 	}
-	minX, maxX, _, _ := s.overlayBounds(c)
-	anchorX = clampFloat32(anchorX, minX, max(maxX-barW, minX))
+
+	barOpen := s.IsSelectionToolbarOpen()
+	var selRect ui.Rect
+	var isWholeTable, selVisible bool
+	if barOpen {
+		selRect, isWholeTable, selVisible = s.selectionAnchorRect(vp)
+		if !selVisible {
+			barOpen = false
+		}
+	}
+	if !barOpen {
+		s.clearToolbarBtnRects()
+	}
 
 	ui.Overlay(c, func() {
-		if s.IsSelectionToolbarOpen() {
+		if barOpen {
+			align := appUi.AlignPinLeft
+			if isWholeTable {
+				align = appUi.AlignCenter
+			}
+			spec := appUi.PlaceAbove(selRect).WithViewport(vp).
+				WithAlignX(appUi.AlignX{Kind: align}).WithGap(8).WithMargin(8)
+			estW := barW
+			if r, ok := s.overlayPanelRects["selection-toolbar"]; ok && r.W > 0 && math.Abs(float64(r.W-barW)) < 24 {
+				estW = r.W
+			}
+			anchorX, anchorY := appUi.ResolveOrigin(spec, estW, 38, winW, winH)
+
 			bar := ui.Row(c.Key("selection-toolbar")).Absolute().Left(anchorX).Top(anchorY).
 				Height(38).Padding(4, 6).Gap(2).AlignItems(ui.Center).
 				Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-				Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+				Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16)).
+				Transition(appUi.PopupTransition())
 			bar.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				s.toolbarRect = r
+				if s.overlayPanelRects == nil {
+					s.overlayPanelRects = make(map[string]ui.Rect)
+				}
+				s.overlayPanelRects["selection-toolbar"] = r
 				appUi.RecordBounds("selection-toolbar", r)
 			})
 
+			s.clearToolbarBtnRects()
 			bar.Children(func() {
 				hasPrev := false
 				var prevGroup uint8
@@ -407,6 +671,7 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							ui.Text(c, it.Label).FontSize(14).TextColor(pal.Text).SingleLine()
 						})
 						appUi.Probe(aiBtn, "tb-ai")
+						s.recordOverlayBtn("tb-ai", aiBtn)
 						if aiBtn.Clicked() {
 							s.runToolbarItem(tbAIRewrite, false)
 						}
@@ -431,6 +696,7 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							icons.Draw(c, icons.TbChevron, 10, pal.MonoIconColors(pal.TextSecondary))
 						})
 						appUi.Probe(btn, it.ID)
+						s.recordOverlayBtn(it.ID, btn)
 						if btn.Clicked() {
 							s.runToolbarItem(it.Kind, false)
 						}
@@ -438,6 +704,7 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						btn := appUi.IconButton(c, it.Icon, appUi.IconButtonOptions{
 							ID: it.ID, Label: it.Label, Size: 28, IconSize: 16, Active: active,
 						})
+						s.recordOverlayBtn(it.ID, btn)
 						if btn.Clicked() {
 							s.runToolbarItem(it.Kind, false)
 						}
@@ -458,6 +725,7 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 					moreBtn := appUi.IconButton(c, icons.More, appUi.IconButtonOptions{
 						ID: "tb-more", Label: theme.Tr("更多格式", "More formatting"), Size: 28, IconSize: 16, Active: moreActive,
 					})
+					s.recordOverlayBtn("tb-more", moreBtn)
 					if moreBtn.Clicked() {
 						s.toggleToolbarPop("more")
 					}
@@ -465,73 +733,87 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 			})
 		}
 
-		// Toolbar sub-popovers
-		popX := anchorX
-		popY := anchorY + 42
-		if s.toolbarRect.W > 0 {
-			popX = s.toolbarRect.X
-			popY = s.toolbarRect.Y + s.toolbarRect.H + 4
-		}
-		if popY+220 > s.viewportHeight-8 {
-			popY = max(anchorY-224, 8)
-		}
-
+		// Toolbar sub-popovers anchored directly to measured trigger buttons
 		switch s.toolbarPop {
 		case "more":
-			s.renderToolbarMoreMenu(c, popX+max(barW-228, 0), popY, overflow)
+			s.renderToolbarMoreMenu(c, vp, winW, winH, overflow)
 		case "kinds":
-			s.renderToolbarKindsMenu(c, popX, popY, false)
+			s.renderToolbarKindsMenu(c, vp, winW, winH, false)
 		case "lists":
-			s.renderToolbarKindsMenu(c, popX+180, popY, true)
+			s.renderToolbarKindsMenu(c, vp, winW, winH, true)
 		case "palette":
-			s.renderPalettePanel(c, popX+140, popY)
+			s.renderPalettePanel(c, vp, winW, winH)
 		case "link":
-			s.renderLinkCardPopover(c, popX+200, popY)
+			s.renderLinkCardPopover(c, vp, winW, winH)
 		case "reactions":
-			s.renderReactionPicker(c, popX+60, popY)
+			s.renderReactionPicker(c, vp, winW, winH)
 		case "comment":
-			s.renderCommentComposer(c, popX+40, popY)
+			s.renderCommentComposer(c, vp, winW, winH)
 		}
 	})
 }
 
-func (s *Session) renderToolbarMoreMenu(c *ui.Context, x, y float32, overflow []toolbarItemSpec) {
+func (s *Session) renderToolbarMoreMenu(c *ui.Context, vp ui.Rect, winW, winH float32, overflow []toolbarItemSpec) {
 	if len(overflow) == 0 {
 		return
 	}
-	pal := theme.Ocean()
+	s.toolbarMoreIndex = clampInt(s.toolbarMoreIndex, 0, len(overflow)-1)
+	if c.Shortcut(0, ui.KeyDown) {
+		s.toolbarMoreIndex = (s.toolbarMoreIndex + 1) % len(overflow)
+	} else if c.Shortcut(0, ui.KeyUp) {
+		s.toolbarMoreIndex = (s.toolbarMoreIndex - 1 + len(overflow)) % len(overflow)
+	} else if c.Shortcut(0, ui.KeyEnter) {
+		s.runToolbarItem(overflow[s.toolbarMoreIndex].Kind, true)
+		return
+	}
 	menuW := float32(228)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
+	spec := s.toolbarDropSpec("tb-more", appUi.AlignRight, 4, vp)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	sepCount := 0
+	var prevGroup uint8
+	for i, it := range overflow {
+		if i > 0 && prevGroup != it.Group {
+			sepCount++
+		}
+		prevGroup = it.Group
+	}
+	estH := min(estimateEditorMenuHeight(len(overflow), sepCount), maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
-	panel := ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).
-		Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-more-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+		HandleInput(func(ev ui.InputEvent) bool {
+			return ev.Kind == ui.InputScroll
+		})
 	appUi.Probe(panel, "toolbar-more-menu")
+	s.recordOverlayPanel("toolbar-more-menu", panel)
 
 	panel.Children(func() {
-		hasPrev := false
-		var prevGroup uint8
-		for i, item := range overflow {
-			it := item
-			if hasPrev && prevGroup != it.Group {
-				appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
-			}
-			hasPrev = true
-			prevGroup = it.Group
-			ic := it.Icon
-			appUi.MenuRow(c, appUi.MenuItemSpec{
-				ID:         fmt.Sprintf("toolbar-more-item-%d", i),
-				Label:      it.Label,
-				Shortcut:   it.Shortcut,
-				Icon:       &ic,
-				Checked:    s.toolbarItemActive(it.Kind),
-				HasSubmenu: it.HasSubmenu,
-				OnClick: func() {
-					s.runToolbarItem(it.Kind, true)
-				},
-			}, false)
-		}
+		ui.Scroll(c.Key("toolbar-more-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			ui.Column(c.Key("toolbar-more-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+				hasPrev := false
+				var lastGroup uint8
+				for i, item := range overflow {
+					it := item
+					if hasPrev && lastGroup != it.Group {
+						appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
+					}
+					hasPrev = true
+					lastGroup = it.Group
+					ic := it.Icon
+					appUi.MenuRow(c, appUi.MenuItemSpec{
+						ID:         fmt.Sprintf("toolbar-more-item-%d", i),
+						Label:      it.Label,
+						Shortcut:   it.Shortcut,
+						Icon:       &ic,
+						Checked:    s.toolbarItemActive(it.Kind),
+						HasSubmenu: it.HasSubmenu,
+						OnClick: func() {
+							s.runToolbarItem(it.Kind, true)
+						},
+					}, i == s.toolbarMoreIndex)
+				}
+			})
+		})
 	})
 	if panel.PressedOutside() {
 		s.toolbarPop = ""
@@ -540,7 +822,7 @@ func (s *Session) renderToolbarMoreMenu(c *ui.Context, x, y float32, overflow []
 
 func toolbarDivider(c *ui.Context) {
 	pal := theme.Ocean()
-	ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
+	ui.Box(c).Width(1).Height(20).MarginX(4).Background(pal.Hairline)
 }
 
 func (s *Session) toggleToolbarPop(name string) {
@@ -549,17 +831,18 @@ func (s *Session) toggleToolbarPop(name string) {
 		return
 	}
 	s.toolbarPop = name
+	s.toolbarMoreIndex = 0
 	if name == "comment" {
 		s.commentFocusPending = true
 	}
 }
 
-func (s *Session) renderToolbarKindsMenu(c *ui.Context, x, y float32, listsOnly bool) {
-	pal := theme.Ocean()
+func (s *Session) renderToolbarKindsMenu(c *ui.Context, vp ui.Rect, winW, winH float32, listsOnly bool) {
+	btnID := "tb-type"
+	if listsOnly {
+		btnID = "tb-list"
+	}
 	menuW := float32(206)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
-
 	items := []struct {
 		id    string
 		kind  model.BlockKind
@@ -584,137 +867,174 @@ func (s *Session) renderToolbarKindsMenu(c *ui.Context, x, y float32, listsOnly 
 		}
 	}
 
+	spec := s.toolbarDropSpec(btnID, appUi.AlignLeft, 4, vp)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	estH := min(estimateEditorMenuHeight(len(items), 0), maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
+
 	var curKind model.BlockKind
 	if s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
 		curKind = s.doc.Blocks[s.focusedBlock].Kind
 	}
 
-	panel := ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).
-		Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+	panel := appUi.MenuSurface(ui.Column(c.Key("toolbar-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+		HandleInput(func(ev ui.InputEvent) bool {
+			return ev.Kind == ui.InputScroll
+		})
 	appUi.Probe(panel, "toolbar-kind-menu")
+	s.recordOverlayPanel("toolbar-kind-menu", panel)
 	panel.Children(func() {
-		for _, it := range items {
-			ic := it.icon
-			appUi.MenuRow(c, appUi.MenuItemSpec{
-				ID:      it.id,
-				Label:   it.label,
-				Icon:    &ic,
-				Checked: curKind == it.kind,
-				OnClick: func() {
-					s.SetSelectionBlockKind(it.kind, listsOnly)
-					s.toolbarPop = ""
-				},
-			}, false)
-		}
+		ui.Scroll(c.Key("toolbar-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			ui.Column(c.Key("toolbar-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+				for _, it := range items {
+					ic := it.icon
+					appUi.MenuRow(c, appUi.MenuItemSpec{
+						ID:      it.id,
+						Label:   it.label,
+						Icon:    &ic,
+						Checked: curKind == it.kind,
+						OnClick: func() {
+							s.SetSelectionBlockKind(it.kind, listsOnly)
+							s.toolbarPop = ""
+						},
+					}, false)
+				}
+			})
+		})
 	})
 	if panel.PressedOutside() {
 		s.toolbarPop = ""
 	}
 }
 
-func (s *Session) renderPalettePanel(c *ui.Context, x, y float32) {
+func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
 	menuW := float32(196)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
+	spec := s.toolbarDropSpec("tb-palette", appUi.AlignLeft, 4, vp)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	_, measH := s.measuredOrEstSize("palette-panel", menuW, 296)
+	estH := min(measH, maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 	curFG, curBG := s.selectionColors()
 
-	panel := ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).
-		Padding(6).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+		HandleInput(func(ev ui.InputEvent) bool {
+			return ev.Kind == ui.InputScroll
+		})
 	appUi.Probe(panel, "palette-panel")
+	s.recordOverlayPanel("palette-panel", panel)
 
 	panel.Children(func() {
-		ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(14).FontWeight(600).
-			TextColor(pal.TextSecondary).Padding(4, 8)
-		swatches := theme.FormatPalette(dark)
-		limit := min(len(swatches), 6)
-		for _, sw := range swatches[:limit] {
-			name := sw.Name
-			lbl := sw.Zh
-			if theme.IsEn() {
-				lbl = sw.En
-			}
-			row := ui.ButtonBase(c.Key("fg-sw-" + name)).FillWidth().Height(28).PaddingX(8).Gap(8).
-				AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(lbl)
-			if curFG == name {
-				row.Background(pal.Selected)
-			} else if row.Hovered() {
-				row.Background(pal.Hover)
-			}
-			row.Children(func() {
-				ui.Box(c).Size(16, 16).Radius(4).Background(sw.FG).Border(1, pal.Hairline)
-				ui.Text(c, lbl).FontSize(14).TextColor(pal.Text).Grow(1)
-				if curFG == name {
-					icons.Draw(c, icons.Check, 14, pal.MonoIconColors(pal.Accent))
+		ui.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+			ui.Column(c.Key("palette-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
+					TextColor(pal.MenuMuted).Padding(4, 10)
+				swatches := theme.FormatPalette(dark)
+				limit := min(len(swatches), 6)
+				for _, sw := range swatches[:limit] {
+					name := sw.Name
+					lbl := sw.Zh
+					if theme.IsEn() {
+						lbl = sw.En
+					}
+					row := ui.ButtonBase(c.Key("fg-sw-" + name)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
+						AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(lbl)
+					if curFG == name {
+						row.Background(pal.MenuChecked)
+					} else if row.Hovered() {
+						row.Background(pal.MenuHover)
+					}
+					row.Children(func() {
+						ui.Box(c).Size(16, 16).Radius(theme.RadiusMicroSM).Background(sw.FG).Border(1, pal.Hairline)
+						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
+						if curFG == name {
+							icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+						}
+					})
+					appUi.Probe(row, "fg-sw-"+name)
+					if row.Clicked() {
+						s.ApplyColorOnSelection(&name, nil)
+						s.toolbarPop = ""
+					}
+				}
+
+				ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.MenuSeparator)
+				ui.Text(c, theme.Tr("高亮背景", "Highlight")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
+					TextColor(pal.MenuMuted).Padding(4, 10)
+
+				for _, bgName := range []string{"default", "yellow"} {
+					lbl := theme.Tr("无高亮", "None")
+					swatchCol := pal.Paper
+					if bgName == "yellow" {
+						lbl = theme.Tr("黄色", "Yellow")
+						if cVal, ok := theme.ResolveNamedBG("yellow", dark); ok {
+							swatchCol = cVal
+						}
+					}
+					row := ui.ButtonBase(c.Key("bg-sw-" + bgName)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).
+						AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(lbl)
+					if curBG == bgName {
+						row.Background(pal.MenuChecked)
+					} else if row.Hovered() {
+						row.Background(pal.MenuHover)
+					}
+					row.Children(func() {
+						ui.Box(c).Size(16, 16).Radius(theme.RadiusMicroSM).Background(swatchCol).Border(1, pal.BtnBorder)
+						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
+						if curBG == bgName {
+							icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
+						}
+					})
+					appUi.Probe(row, "bg-sw-"+bgName)
+					if row.Clicked() {
+						bg := bgName
+						s.ApplyColorOnSelection(nil, &bg)
+						s.toolbarPop = ""
+					}
 				}
 			})
-			appUi.Probe(row, "fg-sw-"+name)
-			if row.Clicked() {
-				s.ApplyColorOnSelection(&name, nil)
-				s.toolbarPop = ""
-			}
-		}
-
-		ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.Hairline)
-		ui.Text(c, theme.Tr("高亮背景", "Highlight")).FontSize(14).FontWeight(600).
-			TextColor(pal.TextSecondary).Padding(4, 8)
-
-		for _, bgName := range []string{"default", "yellow"} {
-			lbl := theme.Tr("无高亮", "None")
-			swatchCol := pal.Paper
-			if bgName == "yellow" {
-				lbl = theme.Tr("黄色", "Yellow")
-				if cVal, ok := theme.ResolveNamedBG("yellow", dark); ok {
-					swatchCol = cVal
-				}
-			}
-			row := ui.ButtonBase(c.Key("bg-sw-" + bgName)).FillWidth().Height(28).PaddingX(8).Gap(8).
-				AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(lbl)
-			if curBG == bgName {
-				row.Background(pal.Selected)
-			} else if row.Hovered() {
-				row.Background(pal.Hover)
-			}
-			row.Children(func() {
-				ui.Box(c).Size(16, 16).Radius(4).Background(swatchCol).Border(1, pal.BtnBorder)
-				ui.Text(c, lbl).FontSize(14).TextColor(pal.Text).Grow(1)
-				if curBG == bgName {
-					icons.Draw(c, icons.Check, 14, pal.MonoIconColors(pal.Accent))
-				}
-			})
-			appUi.Probe(row, "bg-sw-"+bgName)
-			if row.Clicked() {
-				bg := bgName
-				s.ApplyColorOnSelection(nil, &bg)
-				s.toolbarPop = ""
-			}
-		}
+		})
 	})
 	if panel.PressedOutside() {
 		s.toolbarPop = ""
 	}
 }
 
-func (s *Session) renderLinkCardPopover(c *ui.Context, x, y float32) {
+func (s *Session) renderLinkCardPopover(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	cardW := float32(320)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-cardW, minX))
+	hasLink := s.selectionLinkURL() != ""
+	estW := float32(320)
+	if hasLink {
+		estW = 354
+	}
+	cardW := min(estW, max(vp.W-16, 220))
+	_, cardH := s.measuredOrEstSize("format-link-card", cardW, 48)
+	spec := s.toolbarDropSpec("tb-link", appUi.AlignLeft, 4, vp)
+	x, y := appUi.ResolveOrigin(spec, cardW, cardH, winW, winH)
 
 	card := ui.Row(c.Key("format-link-card")).Absolute().Left(x).Top(y).Width(cardW).
 		Padding(8, 10).Gap(6).AlignItems(ui.Center).
-		Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder.Alpha(0.6)).
+		Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+		Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+		Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+		Transition(appUi.PopupTransition())
 	appUi.Probe(card, "format-link-card")
+	s.recordOverlayPanel("format-link-card", card)
 
 	card.Children(func() {
 		in := ui.TextInputBase(c.Key("link-input"), &s.linkDraft).Grow(1).Height(28).
-			PaddingX(8).Radius(6).Border(1, pal.BtnBorder).FontSize(14).
+			PaddingX(8).Radius(6).Border(1, pal.BtnBorder).FontSize(theme.FontBody).
 			TextColor(pal.Text).Placeholder("https://...").Label("link-url").
 			Bind(&s.linkInputHandle)
+		in.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEscape {
+				s.toolbarPop = ""
+				return true
+			}
+			return false
+		})
 		if s.linkFocusPending {
 			in.Focus()
 			s.linkFocusPending = false
@@ -729,7 +1049,7 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, x, y float32) {
 			s.ApplyLinkOnSelection(s.linkDraft)
 			s.toolbarPop = ""
 		}
-		if s.selectionLinkURL() != "" {
+		if hasLink {
 			rmBtn := appUi.IconButton(c, icons.LinkOff, appUi.IconButtonOptions{
 				ID: "link-remove", Label: theme.Tr("移除链接", "Remove link"), Size: 28, IconSize: 15, Danger: true,
 			})
@@ -746,15 +1066,17 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, x, y float32) {
 
 var reactionEmojis = []string{"👍", "❤️", "🎉", "🤔", "👀", "🔥", "✅", "💡"}
 
-func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
+func (s *Session) renderReactionPicker(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	w := float32(268)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-w, minX))
+	w := min(float32(268), max(vp.W-16, 200))
+	w, h := s.measuredOrEstSize("annotate-reactions", w, 42)
+	spec := s.toolbarDropSpec("tb-reaction", appUi.AlignCenter, 6, vp)
+	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
 	bar := appUi.MenuSurface(ui.Row(c.Key("annotate-reactions")).Absolute().Left(x).Top(y)).
 		Padding(6, 8).Gap(4).AlignItems(ui.Center)
 	appUi.Probe(bar, "annotate-reactions")
+	s.recordOverlayPanel("annotate-reactions", bar)
 
 	bar.Children(func() {
 		for idx, emoji := range reactionEmojis {
@@ -779,18 +1101,21 @@ func (s *Session) renderReactionPicker(c *ui.Context, x, y float32) {
 	}
 }
 
-func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
+func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	w := float32(260)
-	minX, maxX, _, _ := s.overlayBounds(c)
-	x = clampFloat32(x, minX, max(maxX-w, minX))
+	w := min(float32(260), max(vp.W-16, 200))
+	_, h := s.measuredOrEstSize("annotate-composer", w, 44)
+	spec := s.toolbarDropSpec("tb-comment", appUi.AlignLeft, 6, vp)
+	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
 	card := ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
 		Padding(6, 10).Gap(8).AlignItems(ui.Center).
 		Radius(10).Background(pal.Menu).Border(1, pal.Accent).
 		Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.12)).
-		Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.08))
+		Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.08)).
+		Transition(appUi.PopupTransition())
 	appUi.Probe(card, "annotate-composer")
+	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
 		ui.Box(c).Size(8, 8).Shrink(0).Radius(4).Background(ui.Hex("#f5c84c"))
@@ -798,6 +1123,13 @@ func (s *Session) renderCommentComposer(c *ui.Context, x, y float32) {
 			Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).Label("annotation-note").
 			Bind(&s.commentHandle)
+		in.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEscape {
+				s.toolbarPop = ""
+				return true
+			}
+			return false
+		})
 		if s.commentFocusPending {
 			in.Focus()
 			s.commentFocusPending = false
@@ -908,7 +1240,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		curKind = model.CalloutNote
 	}
 
-	trigger, ok := appUi.TargetBounds(fmt.Sprintf("callout-pill-%d", b.ID))
+	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("callout-pill-%d", b.ID))
 	if !ok {
 		trigger = s.blockRects[b.ID]
 	}
@@ -916,54 +1248,62 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 		trigger = ui.Rect{X: 120, Y: 100, W: 140, H: 28}
 	}
 	menuW := float32(204)
-	minX, maxX, winW, winH := s.overlayBounds(c)
-	spec := appUi.PlaceBelow(trigger).WithGap(4).WithMargin(8)
-	x, y := appUi.ResolveOrigin(spec, menuW, 240, winW, winH)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
+	vp, winW, winH := s.overlayViewport(c)
+	spec := appUi.PlaceBelow(trigger).WithViewport(vp).WithGap(4).WithMargin(8)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	rawH := theme.MenuPadding*2 + float32(len(allCalloutKinds))*32 + float32(len(allCalloutKinds))*theme.MenuGap + 9 + theme.MenuItemHeight
+	estH := min(rawH, maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		shell := ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).
-			Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		shell := appUi.MenuSurface(ui.Column(c.Key("callout-kind-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+			HandleInput(func(ev ui.InputEvent) bool {
+				return ev.Kind == ui.InputScroll
+			})
 		appUi.Probe(shell, "callout-kind-menu")
+		s.recordOverlayPanel("callout-kind-menu", shell)
 
 		shell.Children(func() {
-			for ix, k := range allCalloutKinds {
-				kind := k
-				st := calloutTone(kind, dark)
-				checked := kind == curKind
-				highlighted := s.calloutMenuIndex == ix
-				row := ui.ButtonBase(c.Key(fmt.Sprintf("callout-opt-%d", ix))).FillWidth().Height(32).
-					PaddingX(10).Gap(8).AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).
-					Label(calloutLabel(kind))
-				if checked {
-					row.Background(pal.Selected).Border(1, pal.Accent)
-				} else if highlighted || row.Hovered() {
-					row.Background(pal.Hover)
-				}
-				row.Children(func() {
-					ui.Box(c).Size(10, 10).Shrink(0).Radius(5).Background(st.BG).Border(1, st.Accent)
-					ui.Text(c, calloutLabel(kind)).FontSize(14).FontWeight(boolToWeight(checked)).TextColor(pal.Text).Grow(1).SingleLine()
-					ui.Text(c, string(kind)).Font("monospace").FontSize(12).TextColor(pal.TextSecondary).SingleLine()
+			ui.Scroll(c.Key("callout-kind-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				ui.Column(c.Key("callout-kind-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+					for ix, k := range allCalloutKinds {
+						kind := k
+						st := calloutTone(kind, dark)
+						checked := kind == curKind
+						highlighted := s.calloutMenuIndex == ix
+						row := ui.ButtonBase(c.Key(fmt.Sprintf("callout-opt-%d", ix))).FillWidth().Height(32).
+							PaddingX(10).Gap(8).AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).
+							Label(calloutLabel(kind))
+						if checked {
+							row.Background(pal.Selected).Border(1, pal.Accent)
+						} else if highlighted || row.Hovered() {
+							row.Background(pal.Hover)
+						}
+						row.Children(func() {
+							ui.Box(c).Size(10, 10).Shrink(0).Radius(5).Background(st.BG).Border(1, st.Accent)
+							ui.Text(c, calloutLabel(kind)).FontSize(14).FontWeight(boolToWeight(checked)).TextColor(pal.Text).Grow(1).SingleLine()
+							ui.Text(c, string(kind)).Font("monospace").FontSize(12).TextColor(pal.TextSecondary).SingleLine()
+						})
+						appUi.Probe(row, fmt.Sprintf("callout-opt-%d", ix))
+						if row.Clicked() {
+							s.setCalloutKind(b.ID, &kind)
+						}
+					}
+
+					ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.MenuSeparator)
+
+					plainHighlighted := s.calloutMenuIndex == len(allCalloutKinds)
+					ic := icons.Text
+					appUi.MenuRow(c, appUi.MenuItemSpec{
+						ID:    "callout-opt-plain",
+						Label: theme.Tr("转为普通段落", "Convert to Text"),
+						Icon:  &ic,
+						OnClick: func() {
+							s.setCalloutKind(b.ID, nil)
+						},
+					}, plainHighlighted)
 				})
-				appUi.Probe(row, fmt.Sprintf("callout-opt-%d", ix))
-				if row.Clicked() {
-					s.setCalloutKind(b.ID, &kind)
-				}
-			}
-
-			ui.Box(c).FillWidth().Height(1).MarginY(4).Background(pal.Hairline)
-
-			plainHighlighted := s.calloutMenuIndex == len(allCalloutKinds)
-			ic := icons.Text
-			appUi.MenuRow(c, appUi.MenuItemSpec{
-				ID:    "callout-opt-plain",
-				Label: theme.Tr("转为普通段落", "Convert to Text"),
-				Icon:  &ic,
-				OnClick: func() {
-					s.setCalloutKind(b.ID, nil)
-				},
-			}, plainHighlighted)
+			})
 		})
 
 		if shell.PressedOutside() {
@@ -989,30 +1329,54 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 	if len(entries) == 0 {
 		return
 	}
-	pal := theme.Ocean()
 	menu := s.blockMenu
 	menuW := float32(224)
-	trigger := menu.TriggerRect
-	if trigger.W <= 0 && menu.BlockIdx >= 0 && menu.BlockIdx < len(s.doc.Blocks) {
-		if r, ok := s.blockRects[s.doc.Blocks[menu.BlockIdx].ID]; ok {
-			trigger = r
-		} else {
-			trigger = ui.Rect{X: 80, Y: 80, W: 200, H: 28}
+	vp, winW, winH := s.overlayViewport(c)
+
+	var trigger ui.Rect
+	if menu.BlockIdx >= 0 && menu.BlockIdx < len(s.doc.Blocks) {
+		bid := s.doc.Blocks[menu.BlockIdx].ID
+		if menu.Mode == menuHandle {
+			if gr, ok := s.overlayBtnBounds(fmt.Sprintf("block-grip-%d", bid)); ok {
+				trigger = gr
+			}
+		}
+		if trigger.W <= 0 {
+			if tr, ok := s.blockTextRects[bid]; ok && tr.W > 0 {
+				trigger = tr
+			} else if r, ok := s.blockRects[bid]; ok && r.W > 0 {
+				trigger = ui.Rect{
+					X: r.X + s.leftContentGutter(),
+					Y: r.Y,
+					W: max(r.W-s.leftContentGutter()-s.rightContentInset(), 120),
+					H: r.H,
+				}
+			}
 		}
 	}
+	if trigger.W <= 0 {
+		trigger = menu.TriggerRect
+	}
+	if trigger.W <= 0 {
+		trigger = ui.Rect{X: vp.X + 80, Y: vp.Y + 80, W: 200, H: 28}
+	}
 
-	minX, maxX, winW, winH := s.overlayBounds(c)
-	spec := appUi.PlaceBelow(trigger).WithGap(4).WithMargin(8).WithReserveHeight(260)
-	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 320)
-	estH := min(float32(len(entries))*34+12, maxH)
+	spec := appUi.PlaceBelow(trigger).WithViewport(vp).WithGap(4).WithMargin(8).WithReserveHeight(304)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	itemCount, sepCount := 0, 0
+	for _, item := range entries {
+		if item.Separator {
+			sepCount++
+		} else {
+			itemCount++
+		}
+	}
+	estH := min(estimateEditorMenuHeight(itemCount, sepCount), maxH)
 	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
 
 	ui.Overlay(c, func() {
 		// Absorb wheel events inside the menu so boundary scrolling never leaks to the document body!
-		shell := ui.Column(c.Key("block-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).
-			Padding(4).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18)).
+		shell := appUi.MenuSurface(ui.Column(c.Key("block-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 			HandleInput(func(ev ui.InputEvent) bool {
 				if ev.Kind == ui.InputScroll {
 					next := max(0, min(menu.Scroll.Y+ev.DY, menu.Scroll.MaxY))
@@ -1022,15 +1386,16 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 				return false
 			})
 		appUi.Probe(shell, "block-menu")
+		s.recordOverlayPanel("block-menu", shell)
 
 		shell.Children(func() {
-			sc := ui.Scroll(c.Key("block-menu-scroll")).TrackScroll(&menu.Scroll).FillWidth().MaxHeight(maxH - 8)
+			sc := ui.Scroll(c.Key("block-menu-scroll")).TrackScroll(&menu.Scroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2)
 			sc.Children(func() {
-				list := ui.Column(c.Key("block-menu-list")).FillWidth().Gap(2)
+				list := ui.Column(c.Key("block-menu-list")).FillWidth().Gap(theme.MenuGap)
 				list.Children(func() {
 					for i, item := range entries {
 						if item.Separator {
-							ui.Box(c.Key(fmt.Sprintf("bm-sep-%d", i))).FillWidth().Height(1).MarginY(3).Background(pal.Hairline)
+							appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
 							continue
 						}
 						cmd := item.Kind
@@ -1117,25 +1482,26 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 		s.codeLangMenuBlock = 0
 		return
 	}
-	pal := theme.Ocean()
 	b := &s.doc.Blocks[idx]
 	curCanon := canonicalLangTag(b.Language)
 
-	trigger := s.blockRects[b.ID]
-	if trigger.W <= 0 {
-		trigger = ui.Rect{X: 200, Y: 100, W: 300, H: 40}
+	vp, winW, winH := s.overlayViewport(c)
+	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("code-lang-%d", b.ID))
+	if !ok {
+		if r, rOk := s.blockRects[b.ID]; rOk && r.W > 0 {
+			trigger = ui.Rect{X: max(r.X+r.W-88, r.X), Y: r.Y + 6, W: 80, H: 22}
+		} else {
+			trigger = ui.Rect{X: vp.X + 200, Y: vp.Y + 100, W: 80, H: 22}
+		}
 	}
 	menuW := float32(200)
-	minX, maxX, winW, winH := s.overlayBounds(c)
-	spec := appUi.PlaceBelow(trigger).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(4)
-	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 300)
-	x, y := appUi.ResolveOrigin(spec, menuW, maxH, winW, winH)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
+	spec := appUi.PlaceBelow(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(6).WithMargin(8).WithReserveHeight(304)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	estH := min(estimateEditorMenuHeight(len(codeLanguages), 0), maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		shell := ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).
-			Padding(4).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16)).
+		shell := appUi.MenuSurface(ui.Column(c.Key("code-lang-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
 			HandleInput(func(ev ui.InputEvent) bool {
 				if ev.Kind == ui.InputScroll {
 					s.codeLangScroll.Y = max(0, min(s.codeLangScroll.Y+ev.DY, s.codeLangScroll.MaxY))
@@ -1144,25 +1510,28 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 				return false
 			})
 		appUi.Probe(shell, "code-lang-menu")
+		s.recordOverlayPanel("code-lang-menu", shell)
 		shell.Children(func() {
-			ui.Scroll(c.Key("code-lang-scroll")).TrackScroll(&s.codeLangScroll).FillWidth().MaxHeight(maxH - 8).
+			ui.Scroll(c.Key("code-lang-scroll")).TrackScroll(&s.codeLangScroll).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).
 				Children(func() {
-					for i, lang := range codeLanguages {
-						opt := lang
-						appUi.MenuRow(c, appUi.MenuItemSpec{
-							ID:      fmt.Sprintf("code-lang-item-%d", i),
-							Label:   opt.Label,
-							Checked: curCanon == opt.Tag,
-							OnClick: func() {
-								s.pushUndo()
-								b.Language = opt.Tag
-								b.Dirty = true
-								b.CleanSource = ""
-								s.codeLangMenuBlock = 0
-								s.markDirty()
-							},
-						}, false)
-					}
+					ui.Column(c.Key("code-lang-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+						for i, lang := range codeLanguages {
+							opt := lang
+							appUi.MenuRow(c, appUi.MenuItemSpec{
+								ID:      fmt.Sprintf("code-lang-item-%d", i),
+								Label:   opt.Label,
+								Checked: curCanon == opt.Tag,
+								OnClick: func() {
+									s.pushUndo()
+									b.Language = opt.Tag
+									b.Dirty = true
+									b.CleanSource = ""
+									s.codeLangMenuBlock = 0
+									s.markDirty()
+								},
+							}, false)
+						}
+					})
 				})
 		})
 		if shell.PressedOutside() {
@@ -1181,7 +1550,6 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 		s.tableMenuKind = ""
 		return
 	}
-	pal := theme.Ocean()
 	b := &s.doc.Blocks[idx]
 	if b.Table == nil {
 		return
@@ -1189,65 +1557,85 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 	id := b.ID
 	r := s.tableActiveRow
 	col := s.tableActiveCol
-	trigger := s.blockRects[id]
-	if trigger.W <= 0 {
-		trigger = ui.Rect{X: 160, Y: 120, W: 300, H: 60}
+	vp, winW, winH := s.overlayViewport(c)
+	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("table-more-%d", id))
+	if !ok {
+		if br, rOk := s.blockRects[id]; rOk && br.W > 0 {
+			trigger = ui.Rect{X: max(br.X+br.W-52, br.X), Y: max(br.Y-24, vp.Y), W: 22, H: 22}
+		} else {
+			trigger = ui.Rect{X: vp.X + 200, Y: vp.Y + 120, W: 22, H: 22}
+		}
 	}
-	menuW := float32(210)
-	minX, maxX, winW, winH := s.overlayBounds(c)
-	spec := appUi.PlaceBelow(trigger).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(4)
-	x, y := appUi.ResolveOrigin(spec, menuW, 240, winW, winH)
-	x = clampFloat32(x, minX, max(maxX-menuW, minX))
+
+	rowInsAbove := icons.RowInsertAbove
+	rowInsBelow := icons.RowInsertBelow
+	rowDel := icons.RowDelete
+	colInsLeft := icons.ColInsertLeft
+	colInsRight := icons.ColInsertRight
+	colDel := icons.ColDelete
+	trash := icons.Trash
+
+	entries := []appUi.MenuItemSpec{
+		{ID: "tbl-row-above", Label: theme.Tr("上方插入行", "Insert row above"), Icon: &rowInsAbove, OnClick: func() {
+			s.tableAddRow(id, r)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{ID: "tbl-row-below", Label: theme.Tr("下方插入行", "Insert row below"), Icon: &rowInsBelow, OnClick: func() {
+			s.tableAddRow(id, r+1)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{ID: "tbl-row-del", Label: theme.Tr("删除当前行", "Delete row"), Icon: &rowDel, Disabled: len(b.Table.Rows) <= 1, OnClick: func() {
+			s.tableDeleteRow(id, r)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{Separator: true},
+		{ID: "tbl-col-left", Label: theme.Tr("左侧插入列", "Insert column left"), Icon: &colInsLeft, OnClick: func() {
+			s.tableAddCol(id, col)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{ID: "tbl-col-right", Label: theme.Tr("右侧插入列", "Insert column right"), Icon: &colInsRight, OnClick: func() {
+			s.tableAddCol(id, col+1)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{ID: "tbl-col-del", Label: theme.Tr("删除当前列", "Delete column"), Icon: &colDel, Disabled: len(b.Table.Rows[0]) <= 1, OnClick: func() {
+			s.tableDeleteCol(id, col)
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+		}},
+		{Separator: true},
+		{ID: "tbl-delete", Label: theme.Tr("删除表格", "Delete table"), Icon: &trash, Danger: true, OnClick: func() {
+			s.tableMenuBlock = 0
+			s.tableMenuKind = ""
+			s.deleteBlock(idx)
+		}},
+	}
+
+	menuW := float32(224)
+	spec := appUi.PlaceBelow(trigger).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignRight}).WithGap(6).WithMargin(8)
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
+	estH := min(estimateEditorMenuHeight(7, 2), maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	ui.Overlay(c, func() {
-		shell := ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).
-			Padding(4).Gap(2).Radius(theme.RadiusCard).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.16))
+		shell := appUi.MenuSurface(ui.Column(c.Key("table-menu")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu)).
+			HandleInput(func(ev ui.InputEvent) bool {
+				return ev.Kind == ui.InputScroll
+			})
 		appUi.Probe(shell, "table-menu")
+		s.recordOverlayPanel("table-menu", shell)
 		shell.Children(func() {
-			rowInsAbove := icons.RowInsertAbove
-			rowInsBelow := icons.RowInsertBelow
-			rowDel := icons.RowDelete
-			colInsLeft := icons.ColInsertLeft
-			colInsRight := icons.ColInsertRight
-			colDel := icons.ColDelete
-			trash := icons.Trash
-
-			entries := []appUi.MenuItemSpec{
-				{ID: "tbl-row-above", Label: theme.Tr("上方插入行", "Insert row above"), Icon: &rowInsAbove, OnClick: func() {
-					s.tableAddRow(id, r)
-					s.tableMenuBlock = 0
-				}},
-				{ID: "tbl-row-below", Label: theme.Tr("下方插入行", "Insert row below"), Icon: &rowInsBelow, OnClick: func() {
-					s.tableAddRow(id, r+1)
-					s.tableMenuBlock = 0
-				}},
-				{ID: "tbl-row-del", Label: theme.Tr("删除当前行", "Delete row"), Icon: &rowDel, Disabled: len(b.Table.Rows) <= 1, OnClick: func() {
-					s.tableDeleteRow(id, r)
-					s.tableMenuBlock = 0
-				}},
-				{Separator: true},
-				{ID: "tbl-col-left", Label: theme.Tr("左侧插入列", "Insert column left"), Icon: &colInsLeft, OnClick: func() {
-					s.tableAddCol(id, col)
-					s.tableMenuBlock = 0
-				}},
-				{ID: "tbl-col-right", Label: theme.Tr("右侧插入列", "Insert column right"), Icon: &colInsRight, OnClick: func() {
-					s.tableAddCol(id, col+1)
-					s.tableMenuBlock = 0
-				}},
-				{ID: "tbl-col-del", Label: theme.Tr("删除当前列", "Delete column"), Icon: &colDel, Disabled: len(b.Table.Rows[0]) <= 1, OnClick: func() {
-					s.tableDeleteCol(id, col)
-					s.tableMenuBlock = 0
-				}},
-				{Separator: true},
-				{ID: "tbl-delete", Label: theme.Tr("删除表格", "Delete table"), Icon: &trash, Danger: true, OnClick: func() {
-					s.tableMenuBlock = 0
-					s.deleteBlock(idx)
-				}},
-			}
-			for _, it := range entries {
-				appUi.MenuRow(c, it, false)
-			}
+			ui.Scroll(c.Key("table-menu-scroll")).FillWidth().MaxHeight(maxH - theme.MenuPadding*2).Children(func() {
+				ui.Column(c.Key("table-menu-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
+					for _, it := range entries {
+						appUi.MenuRow(c, it, false)
+					}
+				})
+			})
 		})
 		if shell.PressedOutside() {
 			s.tableMenuBlock = 0
@@ -1258,12 +1646,34 @@ func (s *Session) renderTableMenuOverlay(c *ui.Context) {
 
 func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) {
 	pal := theme.Ocean()
+	vp, winW, winH := s.overlayViewport(c)
+	subTrigger := func(btnID string) ui.Rect {
+		if r, ok := s.overlayBtnBounds(btnID); ok {
+			return r
+		}
+		if r, ok := s.overlayPanelRects["image-toolbar"]; ok && r.W > 0 {
+			return r
+		}
+		if r, ok := s.imageRects[b.ID]; ok && r.W > 0 {
+			return r
+		}
+		return ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 28, H: 28}
+	}
+
 	switch s.imagePopKind {
 	case "size":
-		pop := ui.Row(c.Key("img-size-pop")).Padding(6, 8).Gap(4).AlignItems(ui.Center).
-			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.14))
+		trig := subTrigger("img-size")
+		popW, popH := s.measuredOrEstSize("img-size-pop", 206, 40)
+		spec := appUi.PlaceBelow(trig).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
+		x, y := appUi.ResolveOrigin(spec, popW, popH, winW, winH)
+		pop := ui.Row(c.Key("img-size-pop")).Absolute().Left(x).Top(y).Padding(6, 8).Gap(4).AlignItems(ui.Center).
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder.Alpha(0.6)).
+			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+			Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+			Transition(appUi.PopupTransition())
 		appUi.Probe(pop, "img-size-pop")
+		s.recordOverlayPanel("img-size-pop", pop)
 		pop.Children(func() {
 			for _, pct := range []float32{25, 50, 75, 100} {
 				p := pct
@@ -1287,11 +1697,22 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 				}
 			}
 		})
+		if pop.PressedOutside() {
+			s.imagePopKind = ""
+		}
 	case "crop":
-		pop := ui.Row(c.Key("image-crop-popover")).Padding(6, 8).Gap(4).AlignItems(ui.Center).
-			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.14))
+		trig := subTrigger("img-crop")
+		popW, popH := s.measuredOrEstSize("image-crop-popover", 306, 40)
+		spec := appUi.PlaceBelow(trig).WithViewport(vp).WithAlignX(appUi.AlignX{Kind: appUi.AlignCenter}).WithGap(6).WithMargin(8)
+		x, y := appUi.ResolveOrigin(spec, popW, popH, winW, winH)
+		pop := ui.Row(c.Key("image-crop-popover")).Absolute().Left(x).Top(y).Padding(6, 8).Gap(4).AlignItems(ui.Center).
+			Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.MenuBorder.Alpha(0.6)).
+			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+			Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
+			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+			Transition(appUi.PopupTransition())
 		appUi.Probe(pop, "image-crop-popover")
+		s.recordOverlayPanel("image-crop-popover", pop)
 		pop.Children(func() {
 			presets := []struct {
 				label string
@@ -1322,6 +1743,9 @@ func (s *Session) renderImageSubPopover(c *ui.Context, idx int, b *model.Block) 
 				}
 			}
 		})
+		if pop.PressedOutside() {
+			s.imagePopKind = ""
+		}
 	}
 	_ = idx
 }
@@ -1384,8 +1808,10 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 	}
 
 	ui.Overlay(c, func() {
-		leftX := s.editorRect.X + 18
-		topY := s.editorRect.Y + 36
+		vp, _, _ := s.overlayViewport(c)
+		leftX := vp.X + 18
+		topY := vp.Y + 36
+		maxH := min(float32(360), max(vp.Y+vp.H-topY-12, 120))
 		wrap := ui.Column(c.Key("outline-rail-wrap")).Absolute().Left(leftX).Top(topY).AlignItems(ui.Start)
 		appUi.Probe(wrap, "outline-rail")
 		hovered := wrap.Hovered()
@@ -1400,16 +1826,17 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 
 		wrap.Children(func() {
 			if s.outlineHovered {
-				card := ui.Column(c.Key("outline-popover")).Width(236).MaxHeight(360).
+				card := ui.Column(c.Key("outline-popover")).Width(236).MaxHeight(maxH).
 					Padding(6).Gap(2).Radius(theme.RadiusSurface).Background(pal.Menu).
 					Border(1, pal.Hairline).
 					Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
 					Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.08)).
-					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12))
+					Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.12)).
+					Transition(appUi.PopupTransition())
 				appUi.Probe(card, "outline-popover")
 
 				card.Children(func() {
-					ui.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(348).Children(func() {
+					ui.Scroll(c.Key("outline-scroll")).FillWidth().MaxHeight(maxH - 12).Children(func() {
 						for idx, it := range items {
 							item := it
 							isActive := idx == activeItemIdx
@@ -1560,7 +1987,15 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 	})
 	appUi.Probe(pill, id)
 	if pill.Clicked() {
+		s.footPickerAnnotID = ""
 		s.toggleReactionByID(ann.ID, emoji)
+	}
+	if !s.readOnly && !s.canFitWideAnnotationRail() && pill.RightClicked() {
+		if s.footPickerAnnotID == ann.ID {
+			s.footPickerAnnotID = ""
+		} else {
+			s.footPickerAnnotID = ann.ID
+		}
 	}
 }
 
@@ -1709,6 +2144,9 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 			targetY = max(r.Y-railTop, 24)
 		}
 		h, g := estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)
+		if mh, ok := s.annotRowHeights[ann.ID]; ok && mh > 0 {
+			h = mh
+		}
 		rows = append(rows, railEntry{ann: ann, targetY: targetY, height: h, gap: g, order: i})
 	}
 	if len(rows) == 0 {
@@ -1736,6 +2174,17 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 
 				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
 					Width(annotationRailWidth).Gap(4)
+				slot.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+					if r.H > 0 {
+						if s.annotRowHeights == nil {
+							s.annotRowHeights = make(map[string]float32)
+						}
+						if prev, ok := s.annotRowHeights[ann.ID]; !ok || math.Abs(float64(prev-r.H)) > 1 {
+							s.annotRowHeights[ann.ID] = r.H
+							c.Invalidate()
+						}
+					}
+				})
 				slot.Children(func() {
 					if isReactionOnlyAnnotation(ann) {
 						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(6).Children(func() {
@@ -1785,6 +2234,31 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 	}
 }
 
+func (s *Session) visibleFootAnchorIndex(ann *model.Annotation) int {
+	if s.doc == nil || len(s.doc.Blocks) == 0 || ann == nil {
+		return -1
+	}
+	startIdx := s.blockIndexByID(ann.StartBlockID)
+	endIdx := s.blockIndexByID(ann.EndBlockID)
+	anchor := max(startIdx, endIdx)
+	if anchor < 0 {
+		for k := len(s.doc.Blocks) - 1; k >= 0; k-- {
+			if !s.isBlockHiddenByFold(k) {
+				return k
+			}
+		}
+		return 0
+	}
+	if s.isBlockHiddenByFold(anchor) {
+		for k := anchor - 1; k >= 0; k-- {
+			if !s.isBlockHiddenByFold(k) {
+				return k
+			}
+		}
+	}
+	return anchor
+}
+
 func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Block) {
 	if len(s.annotations) == 0 || s.canFitWideAnnotationRail() {
 		return
@@ -1794,11 +2268,7 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 		if !isAnnotationVisible(ann) {
 			continue
 		}
-		endIdx := s.blockIndexByID(ann.EndBlockID)
-		if endIdx < 0 {
-			endIdx = s.blockIndexByID(ann.StartBlockID)
-		}
-		if endIdx == idx {
+		if s.visibleFootAnchorIndex(ann) == idx {
 			anchored = append(anchored, ann)
 		}
 	}
@@ -1806,17 +2276,36 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 		return
 	}
 	pal := theme.Ocean()
-	nextHovered := s.hoveredAnnotID
+	ownedHover := false
+	for _, ann := range anchored {
+		if ann.ID == s.hoveredAnnotID {
+			ownedHover = true
+			break
+		}
+	}
+	nextHovered := ""
+	if !ownedHover {
+		nextHovered = s.hoveredAnnotID
+	}
+
+	botPad := float32(2)
+	if b.Kind == model.BlockTable {
+		botPad = 10
+	}
+	minChipW := min(float32(200), max(s.viewportWidth-48, 120))
 
 	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().
-		Padding(6, 0, 2, 0).Gap(6).AlignItems(ui.Start)
+		Padding(6, 0, botPad, 0).Gap(6).AlignItems(ui.Start)
 	strip.Children(func() {
 		// Reaction pills row
 		var hasReactions bool
+		var pickerTarget *model.Annotation
 		for _, ann := range anchored {
 			if len(ann.Reactions) > 0 {
 				hasReactions = true
-				break
+			}
+			if s.footPickerAnnotID != "" && ann.ID == s.footPickerAnnotID {
+				pickerTarget = ann
 			}
 		}
 		if hasReactions {
@@ -1825,10 +2314,41 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 					if len(ann.Reactions) == 0 {
 						continue
 					}
-					active := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID
+					active := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID || s.footPickerAnnotID == ann.ID
 					s.renderReactionPill(c, fmt.Sprintf("annotation-marker-%s", ann.ID), ann, ann.Reactions[0], active, &nextHovered)
 				}
 			})
+		}
+		if pickerTarget != nil && !s.readOnly {
+			targetAnn := pickerTarget
+			picker := appUi.MenuSurface(ui.Row(c.Key("foot-reaction-picker-"+targetAnn.ID))).
+				Padding(4, 6).Gap(4).AlignItems(ui.Center)
+			appUi.Probe(picker, "foot-reaction-picker")
+			picker.Children(func() {
+				for eIdx, em := range reactionEmojis {
+					emoji := em
+					btnID := fmt.Sprintf("foot-pick-emoji-%s-%d", targetAnn.ID, eIdx)
+					selected := slices.Contains(targetAnn.Reactions, emoji)
+					btn := ui.ButtonBase(c.Key(btnID)).Size(28, 28).Center().Radius(theme.RadiusControl).
+						Cursor(ui.CursorPointer).Label(emoji)
+					if selected {
+						btn.Background(pal.Selected).Border(1, pal.Accent)
+					} else if btn.Hovered() {
+						btn.Background(pal.Hover)
+					}
+					btn.Children(func() {
+						ui.Text(c, emoji).FontSize(15)
+					})
+					appUi.Probe(btn, btnID)
+					if btn.Clicked() {
+						s.footPickerAnnotID = ""
+						s.toggleReactionByID(targetAnn.ID, emoji)
+					}
+				}
+			})
+			if picker.PressedOutside() {
+				s.footPickerAnnotID = ""
+			}
 		}
 
 		for _, a := range anchored {
@@ -1839,7 +2359,7 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 			isActive := s.activeAnnotID == ann.ID || s.editingAnnotID == ann.ID
 			isHighlighted := isActive || s.hoveredAnnotID == ann.ID
 			if isActive {
-				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MaxWidth(340).
+				card := ui.Column(c.Key("annotation-card-"+ann.ID)).FillWidth().MinWidth(minChipW).MaxWidth(340).
 					Padding(10, 12).Gap(10).Radius(10).Background(pal.Menu).
 					Border(1, pal.Accent)
 				if card.Hovered() {
@@ -1849,10 +2369,13 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 				card.Children(func() {
 					s.renderAnnotationCardContent(c, ann, true)
 				})
+				if card.Clicked() && s.editingAnnotID != ann.ID {
+					s.activeAnnotID = ""
+				}
 				continue
 			}
 
-			// Compact 28px inline capsule
+			// Compact inline capsule with safe minimum width so trailing buttons never clip
 			capsuleBG := pal.Sidebar
 			capsuleBorder := pal.Hairline
 			if ann.RewriteResult != "" {
@@ -1861,8 +2384,8 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 			if isHighlighted {
 				capsuleBorder = pal.Accent
 			}
-			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MaxWidth(340).MinHeight(28).
-				Padding(2, 4, 2, 10).Gap(6).AlignItems(ui.Center).
+			chip := ui.Row(c.Key("annotation-foot-chip-"+ann.ID)).MinWidth(minChipW).MaxWidth(340).MinHeight(28).
+				Padding(4, 4, 4, 10).Gap(6).AlignItems(ui.Center).
 				Radius(theme.RadiusControl).Background(capsuleBG).Border(1, capsuleBorder)
 			if chip.Hovered() {
 				nextHovered = ann.ID
@@ -1872,7 +2395,7 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 				if ann.RewriteResult != "" {
 					preview = theme.Tr("建议改写：", "Suggested: ") + strings.Join(strings.Fields(ann.RewriteResult), " ")
 				}
-				toggle := ui.ButtonBase(c.Key("foot-toggle-" + ann.ID)).Grow(1).AlignItems(ui.Center).Gap(7).
+				toggle := ui.ButtonBase(c.Key("foot-toggle-" + ann.ID)).Grow(1).Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(7).
 					Cursor(ui.CursorPointer).Label(preview)
 				toggle.Children(func() {
 					if ann.RewriteResult != "" {
@@ -1880,44 +2403,49 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Bl
 					} else {
 						ui.Box(c).Size(7, 7).Shrink(0).Radius(3.5).Background(ui.Hex("#f5c84c"))
 					}
-					ui.Text(c, preview).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
+					ui.Text(c, preview).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).Shrink(1).MinWidth(0)
 				})
 				if toggle.Clicked() {
 					s.activeAnnotID = ann.ID
 				}
 				if !s.readOnly {
-					if ann.RewriteResult != "" {
-						acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(22, 22).Shrink(0).Center().
-							Radius(theme.RadiusMicroMD).Background(pal.Accent).Cursor(ui.CursorPointer).
-							Label(theme.Tr("同意，替换原文", "Accept and replace"))
-						acc.Children(func() {
-							icons.Draw(c, icons.Check, 13, pal.MonoIconColors(pal.AccentText))
-						})
-						appUi.Probe(acc, "ann-accept-"+ann.ID)
-						if acc.Clicked() {
-							s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+					ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(2).Children(func() {
+						if ann.RewriteResult != "" {
+							acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(22, 22).Shrink(0).Center().
+								Radius(theme.RadiusMicroMD).Background(pal.Accent).Cursor(ui.CursorPointer).
+								Label(theme.Tr("同意，替换原文", "Accept and replace"))
+							acc.Children(func() {
+								icons.Draw(c, icons.Check, 13, pal.MonoIconColors(pal.AccentText))
+							})
+							appUi.Probe(acc, "ann-accept-"+ann.ID)
+							if acc.Clicked() {
+								s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+							}
+						} else {
+							editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+								ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: 22, IconSize: theme.IconInline,
+							})
+							if editBtn.Clicked() {
+								s.activeAnnotID = ann.ID
+								s.editingAnnotID = ann.ID
+								s.editingAnnotText = ann.Note
+							}
+							delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+								ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: 22, IconSize: theme.IconInline, Danger: true,
+							})
+							if delBtn.Clicked() {
+								s.deleteAnnotationByID(ann.ID)
+							}
 						}
-					} else {
-						editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-							ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: 22, IconSize: theme.IconInline,
-						})
-						if editBtn.Clicked() {
-							s.activeAnnotID = ann.ID
-							s.editingAnnotID = ann.ID
-							s.editingAnnotText = ann.Note
-						}
-						delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-							ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: 22, IconSize: theme.IconInline, Danger: true,
-						})
-						if delBtn.Clicked() {
-							s.deleteAnnotationByID(ann.ID)
-						}
-					}
+					})
 				}
 			})
 		}
 	})
-	_ = nextHovered
+	if nextHovered != s.hoveredAnnotID {
+		s.hoveredAnnotID = nextHovered
+		c.Invalidate()
+	}
 }
 
 // --- 7. AI BatchPlan Diff Review Card ---
@@ -1928,26 +2456,33 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 	}
 	plan := s.activePlan
 	pal := theme.Ocean()
-	cardW := min(max(s.viewportWidth-32, 320), 660)
-	maxH := min(max(s.viewportHeight-48, 220), 460)
+	vp, _, winH := s.overlayViewport(c)
+	cardW := min(max(vp.W-32, 280), 660)
+	maxH := min(max(vp.H-48, 220), 460)
+	leftX := vp.X + max((vp.W-cardW)*0.5, 8)
+	bottomY := max(winH-(vp.Y+vp.H), 0) + 16
 
 	ui.Overlay(c, func() {
-		card := ui.Column(c.Key("plan-diff-card")).Absolute().Bottom(16).Left((s.viewportWidth-cardW)*0.5).
-			Width(cardW).MaxHeight(maxH).Padding(12).Gap(10).
-			Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Accent).
-			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.22))
+		card := ui.Column(c.Key("plan-diff-card")).Absolute().Bottom(bottomY).Left(leftX).
+			Width(cardW).MaxHeight(maxH).Padding(0).Gap(0).
+			Radius(12).Clip().Background(pal.Paper).Border(1, pal.Accent).
+			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.22)).
+			Transition(appUi.PopupTransition())
 		appUi.Probe(card, "plan-diff-card")
+		s.recordOverlayPanel("plan-diff-card", card)
 
 		card.Children(func() {
 			// Header
-			ui.Row(c.Key("plan-hdr")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
+			ui.Row(c.Key("plan-hdr")).FillWidth().Padding(10, 12).Radius(11, 11, 0, 0).
+				Background(pal.Sidebar).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
 				title := plan.Summary
 				if title == "" {
 					title = theme.Tr("AI 修改审阅", "AI Plan Diff Review")
 				}
 				ui.Row(c).AlignItems(ui.Center).Gap(6).Grow(1).Children(func() {
 					icons.Draw(c, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent))
-					ui.Text(c, title).FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
+					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(600).TextColor(pal.Text).SingleLine()
 				})
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					rej := appUi.ActionButton(c, "plan-reject", theme.Tr("拒绝", "Reject"), nil, appUi.ButtonDanger, false)
@@ -1963,23 +2498,42 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 
 			// Diff body with per-line checkboxes
 			ui.Scroll(c.Key("plan-diff-scroll")).TrackScroll(&s.planDiffScroll).FillWidth().Grow(1).
-				MaxHeight(maxH - 72).Children(func() {
+				MaxHeight(maxH-64).Padding(10, 12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(8).Children(func() {
+					codeFont := resolvedCodeFont()
 					for opIdx := range plan.Ops {
 						op := &plan.Ops[opIdx]
 						diff := s.ensurePlanOpLineSelection(op)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
-							Radius(6).Border(1, pal.Hairline).Clip().Children(func() {
-							ui.Row(c.Key("op-title")).FillWidth().Padding(6, 10).Background(pal.Shell).Children(func() {
-								ui.Text(c, op.Page).FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
+							Radius(10).Border(1, pal.Hairline).Clip().Children(func() {
+							ui.Row(c.Key("op-title")).FillWidth().Padding(6, 10).Radius(9, 9, 0, 0).
+								Background(pal.Shell).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+								ui.Text(c, op.Page).FontSize(theme.FontBody).FontWeight(600).TextColor(pal.Text).SingleLine()
 							})
 							selIdx := 0
 							for lineIdx, dl := range diff {
+								isLast := lineIdx == len(diff)-1
+								trimmed := strings.TrimSpace(dl.Text)
+								isTable := strings.HasPrefix(trimmed, "|") && strings.Count(trimmed, "|") >= 2
+								nextIsTable := false
+								if !isLast {
+									nt := strings.TrimSpace(diff[lineIdx+1].Text)
+									nextIsTable = strings.HasPrefix(nt, "|") && strings.Count(nt, "|") >= 2
+								}
+								needSep := !isLast && (isTable || nextIsTable || diff[lineIdx+1].Kind != dl.Kind)
+								botR := float32(0)
+								if isLast {
+									botR = 9
+								}
 								switch dl.Kind {
 								case model.DiffEqual:
-									ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().Padding(3, 10).
-										Background(pal.Paper).Children(func() {
-										ui.Text(c, "  "+dl.Text).Font("monospace").FontSize(14).TextColor(pal.TextSecondary)
+									row := ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().Padding(3, 10).
+										Radius(0, 0, botR, botR).Background(pal.Paper)
+									if needSep {
+										row.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+									}
+									row.Children(func() {
+										ui.Text(c, "  "+dl.Text).Font(codeFont).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -1994,10 +2548,13 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 									if dl.Kind == model.DiffDelete {
 										bg = pal.DiffDelBG
 										fg = pal.DiffDelFG
-										prefix = "- "
+										prefix = "− "
 									}
 									row := ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().
-										Padding(4, 10).Gap(8).AlignItems(ui.Center).Background(bg)
+										Padding(4, 10).Gap(8).AlignItems(ui.Center).Radius(0, 0, botR, botR).Background(bg)
+									if needSep {
+										row.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+									}
 									row.Children(func() {
 										cbID := fmt.Sprintf("plan-diff-line-%d-%d", opIdx, curSelIdx)
 										cb := ui.Checkbox(c.Key(cbID), &checked, "").Label(cbID)
@@ -2005,7 +2562,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										if cb.Changed() && curSelIdx < len(op.LineSelected) {
 											op.LineSelected[curSelIdx] = checked
 										}
-										ui.Text(c, prefix+dl.Text).Font("monospace").FontSize(14).TextColor(fg).Grow(1)
+										ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(theme.FontBody).TextColor(fg).Grow(1)
 									})
 								}
 							}

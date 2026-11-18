@@ -560,6 +560,9 @@ func resolveTitleText(doc *model.Doc, notePath string, prefs model.ExportPrefere
 }
 
 func exportBodyBlocks(blocks []model.Block, title string, showTitle bool) []model.Block {
+	if len(blocks) > 0 && blocks[0].Kind == model.BlockCode && blocks[0].Language == "yaml-frontmatter" {
+		blocks = blocks[1:]
+	}
 	if !showTitle || len(blocks) == 0 {
 		return blocks
 	}
@@ -1236,11 +1239,15 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 			imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
 				b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100))
 		}
-		out.WriteString(fmt.Sprintf(`<p style="text-align:%s"><img src="%s" alt="%s"`, align, escapeAttrValue(src), escapeAttrValue(b.ImageAlt)))
+		out.WriteString(fmt.Sprintf(`<figure style="margin:12px 0;text-align:%s"><img src="%s" alt="%s"`, align, escapeAttrValue(src), escapeAttrValue(b.ImageAlt)))
 		if imgCSS.Len() > 0 {
 			out.WriteString(fmt.Sprintf(` style="%s"`, imgCSS.String()))
 		}
-		out.WriteString("></p>\n")
+		out.WriteByte('>')
+		if capText := strings.TrimSpace(b.ImageAlt); capText != "" {
+			out.WriteString(fmt.Sprintf(`<figcaption style="margin-top:6px;font-size:13px;color:%s">%s</figcaption>`, uiColorCSS(pal.Secondary), escapeHTMLText(capText)))
+		}
+		out.WriteString("</figure>\n")
 
 	case b.Kind == model.BlockRawHTML:
 		out.WriteString(b.Code)
@@ -2655,13 +2662,17 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 					}
 				}
 			}
-			alt := b.ImageAlt
+			alt := strings.TrimSpace(b.ImageAlt)
 			if alt == "" {
-				alt = b.ImageSrc
+				alt = strings.TrimSpace(b.ImageSrc)
+			}
+			label := "[Image]"
+			if alt != "" {
+				label = "[Image] " + alt
 			}
 			body.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(pal.Secondary), docxTextXML("[Image] "+alt),
+				docxHex(pal.Secondary), docxTextXML(label),
 			))
 
 		case b.Kind == model.BlockTable && b.Table != nil:

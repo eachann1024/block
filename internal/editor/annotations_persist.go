@@ -110,10 +110,14 @@ func findInBlockText(text string, preferredByteStart int, needle string) (startB
 }
 
 func findSnippetInDoc(doc *model.Doc, preferredIdx, preferredByteStart int, needle string) (blockIdx, startRune, endRune int, ok bool) {
+	return findSnippetInDocExcluding(doc, preferredIdx, preferredByteStart, needle, nil)
+}
+
+func findSnippetInDocExcluding(doc *model.Doc, preferredIdx, preferredByteStart int, needle string, exclude map[model.BlockID]bool) (blockIdx, startRune, endRune int, ok bool) {
 	if doc == nil || len(doc.Blocks) == 0 || needle == "" {
 		return 0, 0, 0, false
 	}
-	if preferredIdx >= 0 && preferredIdx < len(doc.Blocks) {
+	if preferredIdx >= 0 && preferredIdx < len(doc.Blocks) && !exclude[doc.Blocks[preferredIdx].ID] {
 		text := doc.Blocks[preferredIdx].PlainText()
 		if bs, be, found := findInBlockText(text, preferredByteStart, needle); found {
 			return preferredIdx, byteOffsetToRuneOffset(text, bs), byteOffsetToRuneOffset(text, be), true
@@ -124,6 +128,9 @@ func findSnippetInDoc(doc *model.Doc, preferredIdx, preferredByteStart int, need
 	bestIdx := -1
 	bestBS, bestBE := 0, 0
 	for idx := range doc.Blocks {
+		if exclude[doc.Blocks[idx].ID] {
+			continue
+		}
 		text := doc.Blocks[idx].PlainText()
 		bs, be, found := findInBlockText(text, preferredByteStart, needle)
 		if !found {
@@ -146,20 +153,23 @@ func findSnippetInDoc(doc *model.Doc, preferredIdx, preferredByteStart int, need
 	return bestIdx, byteOffsetToRuneOffset(text, bestBS), byteOffsetToRuneOffset(text, bestBE), true
 }
 
-func resolveAnchorPos(doc *model.Doc, blockIdx, byteStart, byteEnd int, quote string) (model.BlockID, int, int, bool) {
+func resolveAnchorPos(doc *model.Doc, blockIdx, byteStart, byteEnd int, quote string, exclude map[model.BlockID]bool) (model.BlockID, int, int, bool) {
 	if doc == nil || len(doc.Blocks) == 0 {
 		return 0, 0, 0, false
 	}
 	if quote != "" {
-		if idx, rs, re, ok := findSnippetInDoc(doc, blockIdx, byteStart, quote); ok {
+		if idx, rs, re, ok := findSnippetInDocExcluding(doc, blockIdx, byteStart, quote, exclude); ok {
 			return doc.Blocks[idx].ID, rs, re, true
 		}
+		if len(exclude) > 0 {
+			if idx, rs, re, ok := findSnippetInDocExcluding(doc, blockIdx, byteStart, quote, nil); ok {
+				return doc.Blocks[idx].ID, rs, re, true
+			}
+		}
+		return 0, 0, 0, false
 	}
-	if blockIdx < 0 {
-		blockIdx = 0
-	}
-	if blockIdx >= len(doc.Blocks) {
-		blockIdx = len(doc.Blocks) - 1
+	if blockIdx < 0 || blockIdx >= len(doc.Blocks) {
+		return 0, 0, 0, false
 	}
 	text := doc.Blocks[blockIdx].PlainText()
 	rLen := utf8.RuneCountInString(text)
@@ -182,13 +192,22 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 	var startID, endID model.BlockID
 	var startRune, endRune int
 	if len(raw.Anchors) >= 2 {
-		first := raw.Anchors[0]
-		last := raw.Anchors[len(raw.Anchors)-1]
-		var ok1, ok2 bool
-		startID, startRune, _, ok1 = resolveAnchorPos(doc, first.BlockIndex, first.Start, first.End, first.Quote)
-		endID, _, endRune, ok2 = resolveAnchorPos(doc, last.BlockIndex, last.Start, last.End, last.Quote)
-		if !ok1 || !ok2 {
-			return nil
+		used := make(map[model.BlockID]bool, len(raw.Anchors))
+		for i, a := range raw.Anchors {
+			bid, rs, re, ok := resolveAnchorPos(doc, a.BlockIndex, a.Start, a.End, a.Quote, used)
+			if !ok {
+				return nil
+			}
+			used[bid] = true
+			if i == 0 {
+				startID, startRune = bid, rs
+			}
+			if i == len(raw.Anchors)-1 {
+				endID, endRune = bid, re
+			}
+		}
+		if startID == endID && endRune < startRune {
+			startRune, endRune = endRune, startRune
 		}
 	} else {
 		bIdx, bStart, bEnd, quote := raw.BlockIndex, raw.Start, raw.End, raw.Quote
@@ -204,7 +223,7 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 		}
 		if startID == 0 {
 			var ok bool
-			startID, startRune, endRune, ok = resolveAnchorPos(doc, bIdx, bStart, bEnd, quote)
+			startID, startRune, endRune, ok = resolveAnchorPos(doc, bIdx, bStart, bEnd, quote, nil)
 			if !ok {
 				return nil
 			}
@@ -385,6 +404,10 @@ func (s *Session) toggleReactionByID(id, emoji string) {
 func (s *Session) dismissAnnotationRewrite(id string) {
 	for _, ann := range s.annotations {
 		if ann.ID == id {
+			if ann.RewriteResult == "" && ann.AIError == "" {
+				return
+			}
+			s.pushUndo()
 			ann.RewriteResult = ""
 			ann.AIError = ""
 			s.persistAnnotations()

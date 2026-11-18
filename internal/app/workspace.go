@@ -138,6 +138,7 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 	sess := editor.NewSession(cleanPath, doc, w.codec, w)
 	sess.SetDataDir(w.dataDir)
 	sess.SetInlineAIResponder(w.inlineAIRespond)
+	sess.SetInlineAIStreamResponder(w.inlineAIStreamRespond)
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
 	return sess
 }
@@ -158,14 +159,12 @@ func stripOuterMarkdownFence(raw string) string {
 	return trimmed
 }
 
-func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) string {
+func (w *Workspace) inlineAIStreamRespond(ctx context.Context, ctxText, orig, draft, instruction string, onDelta func(string)) (string, error) {
 	inst := strings.TrimSpace(instruction)
-	instLower := strings.ToLower(inst)
 	src := strings.TrimSpace(orig)
 	if src == "" {
 		src = strings.TrimSpace(draft)
 	}
-
 	if w.ai != nil && w.ai.IsLiveProviderReady() {
 		sysPrompt := "You are Block's inline writing assistant. Output ONLY the requested Markdown text without preamble, commentary, or outer triple-backtick fences."
 		var userPrompt string
@@ -174,12 +173,37 @@ func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) st
 		} else {
 			userPrompt = fmt.Sprintf("Surrounding context:\n%s\n\nSelected text to transform:\n%s\n\nInstruction:\n%s", ctxText, src, inst)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		out, err := w.ai.CompletePrompt(ctx, sysPrompt, userPrompt)
-		cancel()
-		if err == nil && strings.TrimSpace(out) != "" {
-			return stripOuterMarkdownFence(out)
+		out, err := w.ai.StreamPrompt(ctx, sysPrompt, userPrompt, onDelta)
+		if err != nil {
+			return "", err
 		}
+		if strings.TrimSpace(out) != "" {
+			return stripOuterMarkdownFence(out), nil
+		}
+	}
+	out := w.inlineAIOfflineFallback(ctxText, orig, draft, instruction)
+	if onDelta != nil {
+		onDelta(out)
+	}
+	return out, nil
+}
+
+func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := w.inlineAIStreamRespond(ctx, ctxText, orig, draft, instruction, nil)
+	if err == nil && strings.TrimSpace(out) != "" {
+		return out
+	}
+	return w.inlineAIOfflineFallback(ctxText, orig, draft, instruction)
+}
+
+func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction string) string {
+	inst := strings.TrimSpace(instruction)
+	instLower := strings.ToLower(inst)
+	src := strings.TrimSpace(orig)
+	if src == "" {
+		src = strings.TrimSpace(draft)
 	}
 
 	// Empty-block generation modes (续写 / 列大纲 / 待办清单 / 头脑风暴 / 自定义)
@@ -960,8 +984,12 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	w.sidebarUI.FocusDir = ""
 
 	w.mu.Lock()
+	w.sidebarPinned = false
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) != clean {
 		w.historyToast = nil
+	}
+	if prevSess := w.sessions[w.state.ActiveTab]; prevSess != nil && w.state.ActiveTab != clean {
+		prevSess.ClearTransientOverlays()
 	}
 	if w.state.Folder != "" && strings.HasPrefix(clean, w.state.Folder+string(filepath.Separator)) {
 		dir := filepath.Dir(clean)
@@ -2068,6 +2096,9 @@ func (w *Workspace) NavigateBack() {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
 		return
 	}
+	if w.isBusy() {
+		return
+	}
 	for {
 		target := w.nav.Back()
 		if target == "" {
@@ -2083,6 +2114,9 @@ func (w *Workspace) NavigateBack() {
 // NavigateForward navigates forward in note history (`Cmd+]`).
 func (w *Workspace) NavigateForward() {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
+		return
+	}
+	if w.isBusy() {
 		return
 	}
 	for {
@@ -2572,6 +2606,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				SVGShowSource:   svgShowSource,
 				CanBack:         w.nav.CanBack(),
 				CanForward:      w.nav.CanForward(),
+				Busy:            w.isBusy(),
 				AnnotDrafts:     annDrafts,
 				AnnotGenerating: annGenerating,
 				AnnotHasAny:     annHasAny,
@@ -2685,7 +2720,11 @@ func (w *Workspace) Render(c *ui.Context) {
 
 			// Center Content (Note Editor, Non-Markdown Surface, or Empty Mascot State)
 			if !aiImmersive {
-				mainCol := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(pal.Paper)
+				minMainW := float32(0)
+				if !layout.ChatDocked {
+					minMainW = layout.ContentFloor
+				}
+				mainCol := ui.Column(c).Grow(1).MinWidth(minMainW).FillHeight().Background(pal.Paper)
 				mainCol.Children(func() {
 					if toast != nil && toast.Active && toast.NotePath == activeTab {
 						toast.RenderBanner(

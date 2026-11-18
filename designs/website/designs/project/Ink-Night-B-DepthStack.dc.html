@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>墨夜方案 B · 层叠手稿与分屏跨窗桌面</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#16181f;color:#ececec;font-family:Inter,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#ececec;text-decoration:none}
+a:hover{color:#ffffff}
+button{font:inherit;cursor:pointer}
+@keyframes softPulse{0%,100%{opacity:0.45}50%{opacity:1}}
+.live-dot{animation:softPulse 2.2s ease-in-out infinite}
+@media (max-width: 960px){
+  .row-3{grid-template-columns:minmax(0,1fr) !important}
+  .desk-grid{grid-template-columns:minmax(0,1fr) !important}
+}
+</style>
+</helmet>
+
+<div style="width:100%;display:flex;flex-direction:column;background:#16181f;color:#ececec">
+
+  <!-- ==================== 第一部分：轻快（层叠手稿透视舞台 + Ocean Dark 海雾蓝底栏） ==================== -->
+  <section style="position:relative;padding:96px 40px 100px;background:linear-gradient(180deg,#131620 0%,#171a24 100%);border-bottom:1px solid #262b38">
+    <div style="max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:48px">
+
+      <div style="max-width:740px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:16px">
+        <h2 style="margin:0;font-size:46px;line-height:1.2;font-weight:700;letter-spacing:-0.015em;color:#f5f7fb">笔记攒得再厚，翻开还是第一天那样快</h2>
+        <p style="margin:0;font-size:18px;line-height:1.72;color:#b0b8c8">从三五行的随手备忘，到写了一整年的几十万字书稿，点开那一刻正文就在眼前，滚动与落笔没有一丝拖泥带水。</p>
+      </div>
+
+      <!-- 立体层叠手稿舞台：具象表达「厚书秒翻」，取代密集碎格子与狂闪数字 -->
+      <div style="position:relative;max-width:980px;width:100%;margin:0 auto;padding-top:36px">
+        <!-- 后层第 3 叠手稿卡 -->
+        <div style="margin:0 52px;height:36px;border-radius:14px 14px 0 0;background:#1a1e29;border:1px solid #2a3042;border-bottom:0;opacity:0.55;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:12.5px;color:#8e98ad">
+          <span>2024 读书长编 · 归档卷</span>
+          <span style="font-family:'JetBrains Mono',monospace">32,000 段</span>
+        </div>
+        <!-- 中层第 2 叠手稿卡 -->
+        <div style="margin:-6px 26px 0;height:40px;border-radius:14px 14px 0 0;background:#1d2230;border:1px solid #313950;border-bottom:0;opacity:0.8;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;color:#a8b3c8">
+          <span>南方风物走访手记 · 长卷</span>
+          <span style="font-family:'JetBrains Mono',monospace">68,000 段</span>
+        </div>
+
+        <!-- 顶层当前秒开的十万段主稿窗口 -->
+        <div style="margin-top:-6px;background:#1b1e28;border:1px solid rgba(119,157,232,0.42);border-radius:14px;box-shadow:0 28px 72px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.06);overflow:hidden">
+          <div style="height:44px;padding:0 18px;background:#222633;border-bottom:1px solid #2e3446;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:11px;height:11px;border-radius:50%;background:#ec6a5e"></span>
+              <span style="width:11px;height:11px;border-radius:50%;background:#f4bf4f"></span>
+              <span style="width:11px;height:11px;border-radius:50%;background:#61c554"></span>
+              <span style="margin-left:8px;font-size:13.5px;color:#cfd6e6;font-weight:500">{{currentSheet.file}}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <sc-for list="{{sheets}}" as="sh" hint-placeholder-count="3">
+                <button type="button" onClick="{{sh.pick}}" style="{{sh.tabStyle}}">{{sh.tag}}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="padding:34px 44px 38px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">
+              <h3 style="margin:0;font-size:25px;font-weight:650;color:#f4f7fc">{{currentSheet.title}}</h3>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#9dbcf5">{{currentSheet.pos}}</span>
+            </div>
+            <p style="margin:0;font-size:16px;line-height:1.85;color:#d0d7e6">{{currentSheet.body1}}</p>
+            <p style="margin:0;font-size:16px;line-height:1.85;color:#b4bdd0">{{currentSheet.body2}}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部 Ocean Dark 原生冷色调三联条（彻底告别橙色与花哨进度条） -->
+      <div class="row-3" style="max-width:980px;width:100%;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#2a3040;border:1px solid #2a3040;border-radius:12px;overflow:hidden">
+        <sc-for list="{{metrics}}" as="m" hint-placeholder-count="3">
+          <button type="button" onClick="{{m.pick}}" style="{{m.cellStyle}}">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="live-dot" style="{{m.barStyle}}"></span>
+              <span style="font-size:18px;font-weight:600;color:#f2f5fb">{{m.name}}</span>
+            </div>
+            <span style="font-size:14.5px;line-height:1.6;color:#a8b1c4;text-align:left">{{m.sub}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== 第二部分：分屏跨窗 macOS 桌面全局速记 ==================== -->
+  <section style="position:relative;padding:96px 40px 112px;background:#16181f">
+    <div style="max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:44px">
+
+      <div style="max-width:720px;margin:0 auto;text-align:center;display:flex;flex-direction:column;gap:14px">
+        <h2 style="margin:0;font-size:42px;line-height:1.22;font-weight:700;color:#f5f7fb">跨出软件之外，全局桌面随手速记</h2>
+        <p style="margin:0;font-size:18px;line-height:1.7;color:#b0b8c8">Block 不必留在前台。无论你正在对照哪份 PDF 或是浏览网页，按下 ⌥N 独立便签窗便直接浮现在桌面上方。</p>
+      </div>
+
+      <!-- 完整 macOS 多任务桌面（含顶栏 + 左 PDF 文献 + 右网页参考 + 跨界悬浮速记窗 + 底部 Dock） -->
+      <div style="border-radius:16px;border:1px solid #2c3242;background:linear-gradient(145deg,#1a2234 0%,#12151e 55%,#192030 100%);box-shadow:0 32px 84px rgba(0,0,0,0.62);overflow:hidden;display:flex;flex-direction:column">
+
+        <!-- macOS 桌面菜单栏 -->
+        <div style="height:30px;padding:0 18px;background:rgba(12,14,20,0.84);border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#cfd6e4">
+          <div style="display:flex;align-items:center;gap:16px">
+            <span style="font-weight:700;color:#ffffff">预览</span>
+            <span style="color:#96a0b4">文件</span>
+            <span style="color:#96a0b4">编辑</span>
+            <span style="color:#96a0b4">工具</span>
+            <span style="color:#96a0b4">窗口</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="color:#9dbcf5;font-family:'JetBrains Mono',monospace">⌥N 速记已就绪</span>
+            <span style="color:#aeb6c8">22:24</span>
+          </div>
+        </div>
+
+        <!-- 双窗桌面画布 + 跨窗口边界悬浮的独立速记窗 -->
+        <div style="position:relative;padding:28px 32px 24px;min-height:520px;display:flex;flex-direction:column;justify-content:space-between;gap:24px">
+
+          <!-- 底层并排的两个桌面其他应用窗口 -->
+          <div class="desk-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;opacity:0.68">
+            <div style="background:#1c202b;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:18px 22px;min-height:330px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12.5px;color:#98a2b6">
+                <span>PDF 文献 · 现代排版与阅读节奏.pdf</span>
+                <span>第 42 / 186 页</span>
+              </div>
+              <div style="font-size:17px;font-weight:600;color:#cfd6e6">第四节：段落留白对长文理解的影响</div>
+              <p style="margin:0;font-size:14px;line-height:1.8;color:#9da7ba">实验表明，当连续文本被拆分为可独立感知的语义块时，读者在回顾与重组论点时的认知负担显著降低。</p>
+              <p style="margin:0;font-size:14px;line-height:1.8;color:#9da7ba">纸面时代的手稿批注之所以高效，正是因为便签纸可以随时夹在任意两页之间而不破坏原书装订。</p>
+            </div>
+
+            <div style="background:#191d27;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:18px 22px;min-height:330px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12.5px;color:#98a2b6">
+                <span>浏览器 · 读书会周末分享议程</span>
+                <span>在线文档</span>
+              </div>
+              <div style="font-size:17px;font-weight:600;color:#cfd6e6">周日晚八点线上读书交流提纲</div>
+              <p style="margin:0;font-size:14px;line-height:1.8;color:#9da7ba">1. 每人挑一段本周读到最受触动的原文念给大家听；</p>
+              <p style="margin:0;font-size:14px;line-height:1.8;color:#9da7ba">2. 聊聊各自平时怎么保存一闪而过的读书念头与摘句。</p>
+            </div>
+          </div>
+
+          <!-- 跨在两个桌面窗口正上方的独立 Block 全局速记窗 -->
+          <div style="position:relative;margin:-230px auto 0;width:min(560px,94%);z-index:4;background:#222632;border:1px solid {{accent}};border-radius:14px;box-shadow:0 36px 88px rgba(0,0,0,0.82),0 0 0 1px rgba(119,157,232,0.22);overflow:hidden">
+            <div style="height:44px;padding:0 12px 0 16px;background:#181818;border-bottom:1px solid #2e3444;display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:12px;height:12px;border-radius:50%;background:#ec6a5e"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#f4bf4f"></span>
+                <span style="width:12px;height:12px;border-radius:50%;background:#61c554"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:2px">
+                <sc-for list="{{noteTabs}}" as="nt" hint-placeholder-count="3">
+                  <button type="button" aria-label="{{nt.name}}" onClick="{{nt.pick}}" style="width:22px;height:24px;border:0;background:transparent;padding:0;display:inline-flex;align-items:center;justify-content:center">
+                    <span style="{{nt.style}}"></span>
+                  </button>
+                </sc-for>
+              </div>
+              <span style="width:28px;height:28px;border-radius:6px;background:#242938;border:1px solid rgba(119,157,232,0.4);display:inline-flex;align-items:center;justify-content:center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 3v5a1 1 0 0 0 1 1h5"></path>
+                  <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <path d="M9 15l2 2 4-4"></path>
+                </svg>
+              </span>
+            </div>
+
+            <div style="padding:22px 24px 24px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:17.5px;font-weight:600;color:#f5f7fc">{{activeNote.title}}</div>
+              <p style="margin:0;font-size:15.5px;line-height:1.8;color:#dce3f0">{{activeNote.text}}</p>
+            </div>
+          </div>
+
+          <!-- macOS 底部桌面 Dock 栏（强化桌面全局语境） -->
+          <div style="margin:12px auto 0;padding:7px 14px;border-radius:14px;background:rgba(28,32,44,0.78);border:1px solid rgba(255,255,255,0.10);display:inline-flex;align-items:center;gap:14px;align-self:center">
+            <div style="width:34px;height:34px;border-radius:8px;background:#2f374a;display:flex;align-items:center;justify-content:center;font-size:12px;color:#cfd6e6">访达</div>
+            <div style="width:34px;height:34px;border-radius:8px;background:#2f374a;display:flex;align-items:center;justify-content:center;font-size:12px;color:#cfd6e6">网页</div>
+            <div style="width:34px;height:34px;border-radius:8px;background:#2f374a;display:flex;align-items:center;justify-content:center;font-size:12px;color:#cfd6e6">文献</div>
+            <div style="width:1px;height:24px;background:rgba(255,255,255,0.12)"></div>
+            <div style="position:relative;display:flex;align-items:center;justify-content:center">
+              <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="Block" style="width:36px;height:36px;border-radius:9px;box-shadow:0 4px 12px rgba(0,0,0,0.45)">
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#779de8","options":["#779de8","#5d8ee6","#8fb2f2"]},"autoPlay":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1920}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { idx: 0, noteIdx: 0 };
+    this._t = null;
+  }
+  componentDidMount() { this._sync(); }
+  componentDidUpdate() { this._sync(); }
+  componentWillUnmount() { if (this._t) clearInterval(this._t); }
+  _sync() {
+    const on = this.props.autoPlay ?? true;
+    if (on && !this._t) {
+      this._t = setInterval(() => {
+        this.setState((s) => ({ idx: (s.idx + 1) % 3, noteIdx: (s.noteIdx + 1) % 3 }));
+      }, 3400);
+    } else if (!on && this._t) {
+      clearInterval(this._t);
+      this._t = null;
+    }
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#779de8';
+    const rawSheets = [
+      {
+        tag: '十万段全集',
+        file: '十年阅读与写作总编.md',
+        pos: '第 100,000 段 · 翻开即达',
+        title: '攒满十万段长稿，点开依然无需加载条',
+        body1: '整整十万段札记、书评与旅途见闻存放在本地文件夹里，点击文件名那一瞬正文便完整铺开，没有任何解析卡顿或白屏闪烁。',
+        body2: '无论是翻阅三年前的一则短批注，还是在文末继续往下写新章节，手感都像第一天新建空白笔记那样干脆利落。'
+      },
+      {
+        tag: '连续疾书',
+        file: '长篇书稿第三稿.md',
+        pos: '实时排版 · 零掉拍',
+        title: '思路涌上来的时候，光标永远贴着指尖走',
+        body1: '大文档里最怕敲字慢半拍。Block 直接以原生图形管线绘制每一行文字，哪怕在几万行的长稿中飞速输入中文，字句也是随敲随现。',
+        body2: '输入顿号唤出块菜单、抓起把手挪动整段位置，所有动作都在眨眼间自然落定。'
+      },
+      {
+        tag: '全天静默',
+        file: '日常工作台常驻.md',
+        pos: '轻量常驻 · 风扇零声响',
+        title: '从早到晚开着一整天，安静得像不存在',
+        body1: '不套笨重的浏览器外壳，不偷偷在后台跑无关索引。哪怕同时打开多篇长文全天待命，内存占用依旧克制轻量。',
+        body2: '把宝贵的电量和安静留给思考本身，合上电脑就走，掀开屏幕接着写。'
+      }
+    ];
+
+    const metricDefs = [
+      { name: '即点即开', sub: '十万段长稿无需等待加载，翻长文如翻纸书' },
+      { name: '落笔生字', sub: '输入与排版实时同步，打字再快也不掉拍' },
+      { name: '安静常驻', sub: '原生轻量低占用，开着一整天风扇也不响' }
+    ];
+
+    const sheets = rawSheets.map((s, i) => {
+      const on = i === this.state.idx;
+      return {
+        ...s,
+        pick: () => this.setState({ idx: i }),
+        tabStyle: 'padding:4px 11px;border-radius:6px;border:1px solid ' + (on ? accent : '#343b4f') + ';background:' + (on ? 'rgba(119,157,232,0.16)' : 'transparent') + ';color:' + (on ? '#f0f4ff' : '#9ca6ba') + ';font-size:12.5px'
+      };
+    });
+
+    const metrics = metricDefs.map((m, i) => {
+      const on = i === this.state.idx;
+      return {
+        ...m,
+        pick: () => this.setState({ idx: i }),
+        cellStyle: 'padding:22px 24px;background:' + (on ? '#202534' : '#191d28') + ';border:0;display:flex;flex-direction:column;gap:8px;align-items:flex-start;transition:background 180ms ease',
+        barStyle: 'width:8px;height:8px;border-radius:50%;background:' + (on ? accent : '#4a5368')
+      };
+    });
+
+    const notes = [
+      { name: '1', title: '文献批注：便签纸与块编辑', text: '刚才在 PDF 第 42 页读到「便签纸夹进书页不破坏装订」，周日读书会正好拿这个比喻讲为什么纯 Markdown 文件最自由。' },
+      { name: '2', title: '顺手记下的书单', text: '散会后记得找找《慢读的技艺》中译本，看看第三章关于手稿涂改的案例能不能引到下周文章里。' },
+      { name: '3', title: '周五采购备忘', text: '补充两袋深烘手冲豆、一盒中性笔替芯，周末在家安心改完后半篇游记。' }
+    ];
+
+    const noteTabs = notes.map((n, i) => {
+      const on = i === this.state.noteIdx;
+      return {
+        ...n,
+        pick: () => this.setState({ noteIdx: i }),
+        style: 'width:' + (on ? '18px' : '6px') + ';height:6px;border-radius:999px;background:' + (on ? accent : '#384152') + ';transition:all 180ms ease'
+      };
+    });
+
+    return {
+      accent,
+      sheets,
+      currentSheet: rawSheets[this.state.idx],
+      metrics,
+      noteTabs,
+      activeNote: notes[this.state.noteIdx]
+    };
+  }
+}
+</script>
+</body>
+</html>
