@@ -12,12 +12,15 @@ type PaperStyle struct {
 	Meta      MetaStyle
 	Title     TitleStyle
 	Heading   HeadingStyle
+	Sub       SubHeadStyle
 	Inline    InlineStyle
 	Quote     QuoteStyle
+	Callout   CalloutStyle
 	Code      CodeStyle
 	Table     TableStyle
 	List      ListStyle
 	Divider   DividerStyle
+	Image     ImageStyle
 	Footer    FooterStyle
 	// Sections wraps every H2-delimited run of blocks in its own card (Mist).
 	Sections *SectionCards
@@ -193,6 +196,113 @@ type InlineStyle struct {
 	Highlight  *HighlightStyle
 	CodeBG     ui.Color // 0 = CodeBG
 	CodeFG     ui.Color
+	// CodeRadius rounds inline code; negative = square corners, 0 = 4.
+	CodeRadius float32
+	// StrikeColor / UnderColor recolour ~~strike~~ and <u>underline</u> decorations.
+	StrikeColor ui.Color
+	UnderColor  ui.Color
+	UnderThick  float32
+}
+
+// SubMark decorates H3–H6 headings.
+type SubMark uint8
+
+const (
+	SubMarkNone      SubMark = iota
+	SubMarkDashUnder         // dashed rule under the text (Journal)
+	SubMarkBand              // marker band behind the lower half of the text (Riso)
+	SubMarkSquare            // small filled square before the text (Poster)
+)
+
+// SubHeadStyle is the treatment of H3 and below; zero keeps the H2 look at a smaller size.
+type SubHeadStyle struct {
+	Prefix      string // literal text set before the heading, e.g. "§ ", "▍", "> "
+	PrefixColor ui.Color
+	PrefixFont  string
+	Family      string
+	Color       ui.Color
+	Size        float32 // 0 = HeadSizes[2]
+	Weight      int
+	Track       float32
+	Mark        SubMark
+	MarkColor   ui.Color
+	TopGap      float32
+}
+
+// CalloutLabelPos places the callout's label.
+type CalloutLabelPos uint8
+
+const (
+	CalloutLabelAbove  CalloutLabelPos = iota // label on its own line above the body
+	CalloutLabelColumn                        // label in a fixed-width column left of the body
+	CalloutLabelInline                        // label runs into the start of the body text
+)
+
+// CalloutTone overrides one callout kind's colours; zero fields fall back to CalloutColors.
+type CalloutTone struct {
+	BG, Border, Label, LabelBG, FG ui.Color
+	TopRule                        ui.Color
+	TopRuleW                       float32
+	Dashed                         bool
+	Bold                           bool // body text set in the bold weight
+}
+
+// CalloutStyle is the treatment of > [!NOTE] … > [!CAUTION] callouts. Tones are
+// indexed NOTE, TIP, IMPORTANT, WARNING, CAUTION, so each theme can escalate the
+// five kinds from a quiet note to an inverted warning.
+type CalloutStyle struct {
+	Labels      [5]string // shown label per kind; "" = the English kind name
+	LabelPos    CalloutLabelPos
+	LabelW      float32 // column width; 0 = 92
+	LabelFamily string
+	LabelSize   float32 // 0 = 13
+	LabelTrack  float32
+	LabelWeight int // 0 = 700
+	Radius      float32
+	BorderW     float32 // 0 = 1 when a border colour is set
+	Dashed      bool
+	Bar         float32  // left accent bar width (0 = 4 for the default look, negative = none)
+	Rule        ui.Color // hairline under each untinted, unbordered callout (row lists)
+	Angle       float32  // alternating tilt (sticky notes)
+	Shadow      ui.Color
+	PadX, PadY  float32
+	Gap         float32 // space after each callout; 0 = 14
+	Tones       [5]CalloutTone
+	Custom      bool // use Tones and the fields above instead of the default tinted box
+}
+
+// ImageFrame is how a figure is mounted.
+type ImageFrame uint8
+
+const (
+	ImageFrameNone     ImageFrame = iota
+	ImageFrameBorder              // hairline border flush with the picture
+	ImageFrameMat                 // picture inset Pad inside a filled, bordered mat
+	ImageFramePolaroid            // white print with a deep bottom margin holding the caption
+)
+
+// ImageStyle is the treatment of images and their alt-text captions.
+type ImageStyle struct {
+	Frame         ImageFrame
+	Pad           float32
+	BG            ui.Color
+	Border        ui.Color
+	BorderW       float32
+	Radius        float32 // 0 = theme Radius
+	InnerRadius   float32 // picture corner radius inside a mat
+	Offset        float32 // misregistered outline offset (Riso)
+	Corners       bool    // photo-album corner brackets (Kraft)
+	Shadow        ui.Color
+	Angle         float32
+	Tape          ui.Color // washi strip across the top edge
+	Caption       bool     // show alt text as a caption
+	CaptionPrefix string   // e.g. "图 · ", "FIG.01 " ("{n}" = two-digit ordinal)
+	CaptionFamily string
+	CaptionSize   float32 // 0 = 12
+	CaptionItalic bool
+	CaptionTrack  float32
+	CaptionColor  ui.Color // 0 = Secondary
+	CaptionCenter bool
 }
 
 type QuoteKind uint8
@@ -297,6 +407,7 @@ const (
 	BulletDash
 	BulletArrow
 	BulletMiddot
+	BulletDiamond // a square turned 45°
 )
 
 type NumberKind uint8
@@ -305,6 +416,17 @@ const (
 	NumberArabic NumberKind = iota // "1."
 	NumberPadded                   // "01"
 	NumberCJK                      // "一、"
+	NumberRoman                    // "i."
+	NumberBare                     // "1"
+)
+
+// NumberShape draws a badge behind the ordinal.
+type NumberShape uint8
+
+const (
+	NumberShapeNone   NumberShape = iota
+	NumberShapeCircle             // ring (NumberStroke) and/or disc (NumberFill)
+	NumberShapeSquare             // filled square tag
 )
 
 type TodoKind uint8
@@ -319,16 +441,27 @@ type ListStyle struct {
 	Bullet      BulletKind
 	BulletSize  float32
 	BulletColor ui.Color // 0 = Accent
-	Number      NumberKind
-	NumberColor ui.Color // 0 = Title
-	NumberFont  string
-	Gutter      float32 // 0 = 28
-	Gap         float32 // space after each item; 0 = 4
-	Todo        TodoKind
-	TodoBorder  ui.Color // 0 = Accent
-	TodoCheck   ui.Color // 0 = Accent
-	DoneFG      ui.Color // checked item text colour; 0 = Text
-	DoneStrike  bool
+	// Bullet2 marks nested (indented) bullet items; Bullet2Glyph, when set, is drawn as text instead.
+	Bullet2      BulletKind
+	Bullet2Size  float32
+	Bullet2Color ui.Color // 0 = Secondary
+	Bullet2Glyph string
+	Number       NumberKind
+	NumberColor  ui.Color // 0 = Title
+	NumberFont   string
+	NumberShape  NumberShape
+	NumberFill   ui.Color
+	NumberStroke ui.Color
+	NumberSize   float32 // ordinal text size; 0 = body size (badges: 12)
+	Gutter       float32 // 0 = 28
+	Gap          float32 // space after each item; 0 = 4
+	Todo         TodoKind
+	TodoBorder   ui.Color // 0 = Accent
+	TodoCheck    ui.Color // 0 = Accent
+	TodoFill     bool     // a checked box is filled with TodoCheck and the tick drawn in the canvas colour
+	TodoRadius   float32  // 0 = 3; ≥ 7 draws a circle
+	DoneFG       ui.Color // checked item text colour; 0 = Text
+	DoneStrike   bool
 }
 
 type DividerKind uint8
@@ -337,6 +470,7 @@ const (
 	DividerLine   DividerKind = iota
 	DividerText               // Text centred
 	DividerRepeat             // Text repeated across the measure
+	DividerWave               // hand-drawn wave line
 )
 
 type DividerStyle struct {
