@@ -55,6 +55,7 @@ func main() {
 	}
 
 	ws := app.NewWorkspace(dataDirFlag)
+	ws.SetPersistWindowBounds(!smokeFlag && !smokeOnceFlag && !hiddenFlag)
 	if mockAIFlag {
 		ws.AI().EnableMockResponder(true)
 	}
@@ -138,25 +139,34 @@ func main() {
 			ws.ToggleAIPanel()
 		},
 		OnZoomReset: func() {
+			if ws.Modals().IsRecordingShortcut() || ws.Modals().IsSearchOpen() {
+				return
+			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().ResetZoom()
 				return
 			}
-			ws.SetZoomPct(100)
+			ws.ResetZoomPct()
 		},
 		OnZoomIn: func() {
+			if ws.Modals().IsRecordingShortcut() {
+				return
+			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().StepZoom(10)
 				return
 			}
-			ws.SetZoomPct(110)
+			ws.StepZoomPct(app.MainZoomStepPct)
 		},
 		OnZoomOut: func() {
+			if ws.Modals().IsRecordingShortcut() {
+				return
+			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().StepZoom(-10)
 				return
 			}
-			ws.SetZoomPct(90)
+			ws.StepZoomPct(-app.MainZoomStepPct)
 		},
 		OnNextTab:   func() { ws.StepTab(1) },
 		OnPrevTab:   func() { ws.StepTab(-1) },
@@ -211,31 +221,44 @@ func main() {
 	openMainWindow = func() *mygo.Window {
 		if existing := ws.Window(); existing != nil {
 			if !hiddenFlag {
+				if mygo.App.IsReady() && !existing.IsFullScreen() && !existing.IsMaximized() &&
+					!app.IsMainRectVisibleOnDisplays(existing.Bounds(), mygo.Screen.Displays()) {
+					resolved := ws.ResolveMainWindowOptions()
+					existing.SetBounds(resolved.Rect)
+				}
 				existing.Show()
 				existing.Focus()
 			}
 			return existing
 		}
-		stateKey := "main"
-		if isIsolatedRun {
-			stateKey = ""
-		}
-		win := mygo.NewWindow(mygo.WindowOptions{
+		resolved := ws.ResolveMainWindowOptions()
+		winOpts := mygo.WindowOptions{
 			Title:                "Block",
-			Width:                1100,
-			Height:               760,
+			Width:                resolved.Rect.Width,
+			Height:               resolved.Rect.Height,
 			MinWidth:             int(app.WindowMinW),
 			MinHeight:            int(app.WindowMinH),
 			Hidden:               hiddenFlag,
-			StateKey:             stateKey,
+			Maximized:            resolved.Maximized,
+			FullScreen:           resolved.Fullscreen,
 			TitleBarStyle:        mygo.TitleBarHidden,
 			TitleBarHeight:       int(app.TitlebarHeight),
 			TrafficLightPosition: &mygo.Point{X: 16, Y: 13},
 			BackgroundColor:      "light-dark(#f0f2f4, #14191e)",
 			Content:              ui.View(ws.Render),
-		})
+		}
+		if resolved.HasPosition {
+			winOpts.X = resolved.Rect.X
+			winOpts.Y = resolved.Rect.Y
+		}
+		win := mygo.NewWindow(winOpts)
 		ws.AttachWindow(win)
+		if resolved.HasPosition && resolved.Rect.X == 0 && resolved.Rect.Y == 0 &&
+			!resolved.Maximized && !resolved.Fullscreen && !hiddenFlag {
+			win.SetBounds(resolved.Rect)
+		}
 		win.OnClose(func(e *mygo.CloseEvent) {
+			ws.FlushWindowBounds()
 			ws.FlushDirtySessions()
 			if runtime.GOOS == "darwin" && !isIsolatedRun && !isQuitting {
 				e.PreventDefault()
@@ -303,6 +326,7 @@ func main() {
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
 		isQuitting = true
 		modals.SetAppQuitting(true)
+		ws.FlushWindowBounds()
 		ws.FlushDirtySessions()
 		ws.QuickNote().Flush()
 	})
