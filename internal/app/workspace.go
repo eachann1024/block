@@ -69,8 +69,10 @@ type Workspace struct {
 	// so main.go can live-refresh the native application menu bar and OS global hotkeys.
 	OnAppMenuOrHotkeysChanged func(st model.AppState)
 
-	watchCancel context.CancelFunc
-	lastSnapAt  map[string]time.Time
+	watchCancel         context.CancelFunc
+	persistWindowBounds bool
+	mainBoundsTimer     *time.Timer
+	lastSnapAt          map[string]time.Time
 }
 
 // NewWorkspace constructs and hydrates a Workspace backed by dataDir (or platform default when empty).
@@ -80,14 +82,20 @@ func NewWorkspace(dataDir string) *Workspace {
 	}
 	actualDir := files.AppDataDir()
 	st := files.LoadState()
+	if st.MainWindowBounds == nil {
+		if legacyBounds := loadLegacyMyGoMainWindowBounds(actualDir); legacyBounds != nil {
+			st.MainWindowBounds = legacyBounds
+		}
+	}
 	applyThemeFromState(st)
 
 	codec := markdown.NewCodec()
 	w := &Workspace{
-		dataDir:        actualDir,
-		state:          st,
-		sidebarWidth:   SidebarDefaultW,
-		zoomPct:        100,
+		dataDir:             actualDir,
+		state:               st,
+		sidebarWidth:        SidebarDefaultW,
+		zoomPct:             zoomPctFromState(st.EditorZoom),
+		persistWindowBounds: true,
 		virtualPreview: make(map[string]bool),
 		codec:          codec,
 		sessions:       make(map[string]*editor.Session),
@@ -130,6 +138,7 @@ func applyThemeFromState(st model.AppState) {
 		editorFont = "system-serif"
 	}
 	theme.SetTypography(editorFont, st.CodeFont, st.LineHeight)
+	theme.SetZoom(float32(zoomPctFromState(st.EditorZoom)) / 100.0)
 	theme.SetFolderRules(st.FolderRules)
 	theme.SetIgnoredSearchFolders(st.IgnoredSearchFolders)
 }
@@ -594,6 +603,13 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 	w.mu.Unlock()
 
 	if win != nil {
+		win.OnMove(func() { w.scheduleSaveMainBounds() })
+		win.OnResize(func() { w.scheduleSaveMainBounds() })
+		win.OnMaximize(func() { w.scheduleSaveMainBounds() })
+		win.OnUnmaximize(func() { w.scheduleSaveMainBounds() })
+		win.OnEnterFullScreen(func() { w.scheduleSaveMainBounds() })
+		win.OnLeaveFullScreen(func() { w.scheduleSaveMainBounds() })
+		win.OnHide(func() { w.FlushWindowBounds() })
 		win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			if e != nil && len(e.Paths) > 0 {
 				if sess := w.ActiveSession(); sess != nil {
@@ -2180,18 +2196,40 @@ func (w *Workspace) ToggleAIPanel() bool {
 	return true
 }
 
-// SetZoomPct sets the content zoom percentage (90, 100, or 110).
+// SetZoomPct sets and persists the main window zoom percentage within [70%, 130%] (10% steps).
 func (w *Workspace) SetZoomPct(pct int) {
-	if pct < 50 {
-		pct = 90
-	} else if pct > 200 {
-		pct = 110
-	}
+	pct = snapMainZoomPct(pct)
+	z := float32(pct) / 100.0
+
 	w.mu.Lock()
 	w.zoomPct = pct
+	w.state.EditorZoom = &z
 	w.mu.Unlock()
-	theme.SetZoom(float32(pct) / 100.0)
+
+	theme.SetZoom(z)
+	if next, err := files.UpdateState(func(st *model.AppState) {
+		zz := z
+		st.EditorZoom = &zz
+	}); err == nil {
+		w.mu.Lock()
+		w.state = next
+		w.mu.Unlock()
+	}
 	w.RequestRedraw()
+}
+
+// StepZoomPct adjusts the main window zoom by deltaPct (e.g. +10 or -10) within [70%, 130%].
+func (w *Workspace) StepZoomPct(deltaPct int) int {
+	cur := snapMainZoomPct(w.ZoomPct())
+	next := max(MainZoomMinPct, min(cur+deltaPct, MainZoomMaxPct))
+	w.SetZoomPct(next)
+	return next
+}
+
+// ResetZoomPct resets the main window zoom back to 100% and persists it.
+func (w *Workspace) ResetZoomPct() int {
+	w.SetZoomPct(MainZoomDefaultPct)
+	return MainZoomDefaultPct
 }
 
 // ZoomPct returns the current zoom percentage (default 100).
@@ -2415,18 +2453,6 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.NavigateForward()
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.Key0) {
-		w.SetZoomPct(100)
-		return
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyEqual) {
-		w.SetZoomPct(110)
-		return
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyMinus) {
-		w.SetZoomPct(90)
-		return
-	}
 	for n := 1; n <= 9; n++ {
 		if c.Shortcut(ui.Cmd, ui.Key0+ui.Key(n)) {
 			w.SelectTabOneBased(n)
@@ -2435,9 +2461,30 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	}
 }
 
+func (w *Workspace) handleGlobalZoomShortcuts(c *ui.Context) bool {
+	if w.modals.IsRecordingShortcut() {
+		return false
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
+		w.StepZoomPct(MainZoomStepPct)
+		return true
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyMinus) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyMinus) {
+		w.StepZoomPct(-MainZoomStepPct)
+		return true
+	}
+	if !w.modals.IsSearchOpen() && c.Shortcut(ui.Cmd, ui.Key0) {
+		w.ResetZoomPct()
+		return true
+	}
+	return false
+}
+
 // Render renders the complete main window UI for one frame.
 func (w *Workspace) Render(c *ui.Context) {
 	blockui.ClearTargets()
+
+	w.handleGlobalZoomShortcuts(c)
 
 	zoom := float32(w.ZoomPct()) / 100.0
 	if zoom <= 0 {
