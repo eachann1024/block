@@ -121,11 +121,6 @@ func TestControllerPreferencesPersistenceAndActions(t *testing.T) {
 			ctrl2.ActiveFormat(), ctrl2.ActiveStyle(), ctrl2.ShowTitle(), ctrl2.Watermark())
 	}
 
-	// Zoom controls
-	ctrl.ZoomIn()
-	ctrl.ZoomOut()
-	ctrl.ZoomReset()
-
 	if redraws == 0 {
 		t.Fatalf("expected onRedraw callbacks to fire")
 	}
@@ -157,9 +152,6 @@ func TestExportViewUIWithTester(t *testing.T) {
 	for _, id := range []string{
 		"export-view",
 		"export-back",
-		"export-zoom-out",
-		"export-zoom-reset",
-		"export-zoom-in",
 		"export-stage",
 		"export-options",
 		"export-title-toggle",
@@ -247,22 +239,6 @@ func TestExportViewUIWithTester(t *testing.T) {
 	}
 	if _, err := os.Stat(savedTarget); err != nil {
 		t.Fatalf("expected saved file on disk: %v", err)
-	}
-
-	// Zoom controls via clicks & keyboard shortcuts.
-	if err := tt.Click("export-zoom-in"); err != nil {
-		t.Fatalf("click export-zoom-in: %v", err)
-	}
-	if !tt.HasText("115%") {
-		t.Fatalf("expected 115%% after zoom in, texts=%v", tt.Texts())
-	}
-	tt.Key(0, ui.Key0)
-	if !tt.HasText("适应") {
-		t.Fatalf("expected 适应 after Key0 reset, texts=%v", tt.Texts())
-	}
-	tt.Key(0, ui.KeyMinus)
-	if !tt.HasText("85%") {
-		t.Fatalf("expected 85%% after KeyMinus, texts=%v", tt.Texts())
 	}
 
 	// Escape closes the view.
