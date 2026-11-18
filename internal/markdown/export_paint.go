@@ -636,6 +636,9 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy b
 			p.Clip(ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}, 0, func() {
 				p.TextLayout(b.layout, b.x, b.y+2, b.borderCol)
 			})
+		} else if !legacy && b.divKind == DividerWave {
+			ww := minFloat32(220, b.w*0.5)
+			paintWaveLine(p, b.x+(b.w-ww)*0.5, b.y+b.h*0.5, ww, 3, 22, orF(b.divWidth, 1.5), b.borderCol)
 		} else {
 			midY := b.y + b.h*0.5
 			lw := orF(b.divWidth, 1)
@@ -647,8 +650,16 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy b
 		}
 
 	case b.kind == model.BlockImage:
-		if b.img != nil {
-			p.ImageRegion(b.img.bitmap, b.img.src, b.img.dst, ui.ImageOptions{})
+		if b.frame.W > 0 {
+			paintFigure(p, b)
+		} else if b.img != nil {
+			if radius > 0.5 {
+				p.Clip(b.img.dst, radius, func() {
+					p.ImageRegion(b.img.bitmap, b.img.src, b.img.dst, ui.ImageOptions{})
+				})
+			} else {
+				p.ImageRegion(b.img.bitmap, b.img.src, b.img.dst, ui.ImageOptions{})
+			}
 		} else if b.layout != nil {
 			p.Fill(ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}, b.bgColor, 8)
 			p.Stroke(ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}, b.borderCol, 8, 1)
@@ -662,16 +673,7 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy b
 		paintCodeBlock(p, b, radius)
 
 	case b.kind == model.BlockCallout:
-		rect := ui.Rect{X: b.x, Y: b.y, W: b.w, H: b.h}
-		p.Fill(rect, b.bgColor, 8)
-		p.Stroke(rect, b.borderCol, 8, 1)
-		p.Fill(ui.Rect{X: b.x, Y: b.y, W: 4, H: b.h}, b.accentCol, 2)
-		if b.labelLay != nil {
-			p.TextLayout(b.labelLay, b.textX, b.y+12, b.accentCol)
-		}
-		if b.layout != nil {
-			p.TextLayout(b.layout, b.textX, b.textY, b.textColor)
-		}
+		paintCalloutBlock(p, b)
 
 	case b.kind == model.BlockQuote:
 		paintQuoteBlock(p, b, radius)
@@ -729,6 +731,17 @@ func paintHeadingBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy
 		}
 		if b.headRule {
 			p.Line(b.x, b.y+b.h-1, b.x+b.w, b.y+b.h-1, 1, b.headRuleCol)
+		}
+	}
+	if !legacy && b.subMark != SubMarkNone && b.layout != nil {
+		tw, th := b.layout.Size()
+		switch b.subMark {
+		case SubMarkBand:
+			p.Fill(ui.Rect{X: b.textX - 2, Y: b.textY + th*0.55, W: tw + 4, H: th * 0.36}, b.accentCol, 0)
+		case SubMarkSquare:
+			p.Fill(ui.Rect{X: b.x, Y: b.textY + th*0.5 - 7, W: 14, H: 14}, b.accentCol, 0)
+		case SubMarkDashUnder:
+			drawStyledLine(p, b.textX, b.textY+th+3, b.textX+tw, b.textY+th+3, 1.5, LineDashed, b.accentCol)
 		}
 	}
 	if b.layout != nil {
@@ -887,14 +900,39 @@ func paintListBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy bo
 				p.Stroke(ui.Rect{X: b.x + 0.75, Y: cy - 6.75, W: 13.5, H: 13.5}, b.accentCol, 3, 1.5)
 			}
 		} else {
-			p.Stroke(ui.Rect{X: b.x + 0.75, Y: cy - 6.75, W: 13.5, H: 13.5}, b.todoBorder, 3, 1.5)
-			if b.checked {
-				paintCheckmark(p, b.x+3.2, cy, b.todoCheck, 2.0)
+			r := orF(b.radius, 3)
+			box := ui.Rect{X: b.x + 0.75, Y: cy - 6.75, W: 13.5, H: 13.5}
+			if r >= 7 {
+				r = 6.75
+			}
+			if b.checked && b.todoFill {
+				p.Fill(ui.Rect{X: b.x, Y: cy - 7.5, W: 15, H: 15}, b.todoCheck, minFloat32(r+0.75, 7.5))
+				paintCheckmark(p, b.x+3.5, cy, pal.InnerCanvas, 2.0)
+			} else {
+				p.Stroke(box, b.todoBorder, r, 1.5)
+				if b.checked {
+					paintCheckmark(p, b.x+3.2, cy, b.todoCheck, 2.0)
+				}
 			}
 		}
 
 	case model.BlockNumbered:
-		if b.markerLay != nil {
+		if b.markerLay != nil && b.numShape != NumberShapeNone && b.numD > 0 {
+			d := b.numD
+			mw, mh := b.markerLay.Size()
+			rect := ui.Rect{X: b.x, Y: cy - d*0.5, W: d, H: d}
+			r := d * 0.5
+			if b.numShape == NumberShapeSquare {
+				r = 0
+			}
+			if b.numFill.A > 0 {
+				p.Fill(rect, b.numFill, r)
+			}
+			if b.numStroke.A > 0 {
+				p.Stroke(ui.Rect{X: rect.X + 0.6, Y: rect.Y + 0.6, W: d - 1.2, H: d - 1.2}, b.numStroke, r, 1.2)
+			}
+			p.TextLayout(b.markerLay, b.x+(d-mw)*0.5, cy-mh*0.5, b.markerCol)
+		} else if b.markerLay != nil {
 			p.TextLayout(b.markerLay, b.x, b.y, b.markerCol)
 		}
 
@@ -914,6 +952,12 @@ func paintListBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy bo
 				p.StrokePath(ring, 1.3, b.accentCol)
 			case BulletDash:
 				p.Fill(ui.Rect{X: b.x + 1, Y: cy - 0.8, W: 8, H: 1.6}, b.accentCol, 0.8)
+			case BulletDiamond:
+				sz := orF(b.bulletSize, 7)
+				cx := b.x + 2 + sz*0.5
+				p.Transform(ui.Rotation(45), cx, cy, func() {
+					p.Fill(ui.Rect{X: cx - sz*0.5, Y: cy - sz*0.5, W: sz, H: sz}, b.accentCol, 0)
+				})
 			default: // BulletDot
 				sz := orF(b.bulletSize, 6.4)
 				p.Fill(ui.Rect{X: b.x + 2, Y: cy - sz*0.5, W: sz, H: sz}, b.accentCol, sz*0.5)

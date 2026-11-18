@@ -25,6 +25,7 @@ func finishSpec(s PaperThemeSpec) PaperThemeSpec {
 	if s.HeadSizes == ([3]float32{}) {
 		s.HeadSizes = [3]float32{s.BodySize * 1.65, s.BodySize * 1.3, s.BodySize * 1.12}
 	}
+	applyBlockStyles(&s)
 	if s.Card != nil && s.Card.Fill.A == 255 {
 		s.InnerCanvas = s.Card.Fill
 		s.Swatch[2] = s.Card.Fill
@@ -550,12 +551,12 @@ func terminalTheme() PaperThemeSpec {
 			Heading: HeadingStyle{Prefix: HeadPrefixHashes, Weight: 700, PrefixColor: dim, TopGap: 14},
 			Inline: InlineStyle{BoldColor: bright, Highlight: &HighlightStyle{BG: rgbHex(0x1d4a24), FG: rgbHex(0xd4fcd7)},
 				LinkColor: bright, LinkDeco: dim, CodeBG: rgbHex(0x0f2a13), CodeFG: bright},
-			Table:   TableStyle{RuleColor: dim, HeaderBG: rgbHex(0x0d2410), HeaderFG: bright, PadX: 12, PadY: 4, Size: 14, Leading: 1.6},
-			List:    ListStyle{Bullet: BulletDash, BulletColor: dim, NumberColor: dim, Todo: TodoText, TodoBorder: dim, TodoCheck: bright, DoneFG: dim},
-			Quote:   QuoteStyle{Kind: QuotePrefix, Accent: dim},
-			Code:    CodeStyle{Kind: CodeFenced, Size: 14, Leading: 1.7, FG: rgbHex(0xa6f0ad), Label: dim},
-			Divider: DividerStyle{Kind: DividerRepeat, Text: "─", Color: dim},
-			Footer:  FooterStyle{Left: "-- BLOCK --", Right: "{file}  [utf-8]", Rule: FooterNone, Family: fontMonoCJK, Size: 12, Color: dim, Gap: 24},
+			Table:    TableStyle{RuleColor: dim, HeaderBG: rgbHex(0x0d2410), HeaderFG: bright, PadX: 12, PadY: 4, Size: 14, Leading: 1.6},
+			List:     ListStyle{Bullet: BulletDash, BulletColor: dim, NumberColor: dim, Todo: TodoText, TodoBorder: dim, TodoCheck: bright, DoneFG: dim},
+			Quote:    QuoteStyle{Kind: QuotePrefix, Accent: dim},
+			Code:     CodeStyle{Kind: CodeFenced, Size: 14, Leading: 1.7, FG: rgbHex(0xa6f0ad), Label: dim},
+			Divider:  DividerStyle{Kind: DividerRepeat, Text: "─", Color: dim},
+			Footer:   FooterStyle{Left: "-- BLOCK --", Right: "{file}  [utf-8]", Rule: FooterNone, Family: fontMonoCJK, Size: 12, Color: dim, Gap: 24},
 			TextGlow: rgbaHex(0x7ee787, 0.35),
 		},
 	})
