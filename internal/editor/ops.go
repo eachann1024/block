@@ -1111,13 +1111,7 @@ func (s *Session) SetSelectionBlockKind(kind model.BlockKind, toggleIfSame bool)
 		if b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider {
 			continue
 		}
-		if b.Kind == model.BlockCode {
-			b.SetText(b.Code)
-		}
-		b.Kind = kind
-		b.Callout = ""
-		b.Dirty = true
-		b.CleanSource = ""
+		convertTextBlock(b, kind)
 	}
 	s.markDirty()
 }
@@ -1873,18 +1867,7 @@ func (s *Session) moveBlock(fromIdx, toIdx int) {
 }
 
 func (s *Session) duplicateBlock(idx int) {
-	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
-		return
-	}
-	s.pushUndo()
-	cp := s.doc.Blocks[idx].Clone()
-	cp.ID = model.NewBlockID()
-	cp.Dirty = true
-	cp.CleanSource = ""
-	s.spliceBlocks(idx+1, idx+1, []model.Block{cp})
-	s.focusedBlock = idx + 1
-	s.focusPending = true
-	s.markDirty()
+	s.duplicateRange(idx, idx)
 }
 
 func (s *Session) deleteBlock(idx int) {
@@ -2115,10 +2098,10 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		s.duplicateBlock(idx)
 		return
 	case cmdMoveUp:
-		s.moveBlock(idx, idx-1)
+		s.stepBlockRange(idx, idx, false)
 		return
 	case cmdMoveDown:
-		s.moveBlock(idx, idx+1)
+		s.stepBlockRange(idx, idx, true)
 		return
 	case cmdDelete:
 		s.deleteBlock(idx)
@@ -2135,33 +2118,28 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 	}
 	switch cmd {
 	case cmdTurnParagraph:
-		b.Kind = model.BlockParagraph
+		convertTextBlock(b, model.BlockParagraph)
 		b.Callout = ""
 	case cmdTurnH1:
-		b.Kind = model.BlockHeading1
+		convertTextBlock(b, model.BlockHeading1)
 	case cmdTurnH2:
-		b.Kind = model.BlockHeading2
+		convertTextBlock(b, model.BlockHeading2)
 	case cmdTurnH3:
-		b.Kind = model.BlockHeading3
+		convertTextBlock(b, model.BlockHeading3)
 	case cmdTurnBullet:
-		b.Kind = model.BlockBullet
+		convertTextBlock(b, model.BlockBullet)
 	case cmdTurnNumbered:
-		b.Kind = model.BlockNumbered
+		convertTextBlock(b, model.BlockNumbered)
 	case cmdTurnTodo:
-		b.Kind = model.BlockTodo
+		convertTextBlock(b, model.BlockTodo)
 	case cmdTurnQuote:
-		b.Kind = model.BlockQuote
+		convertTextBlock(b, model.BlockQuote)
 		b.Callout = ""
 	case cmdCallout:
-		b.Kind = model.BlockCallout
+		convertTextBlock(b, model.BlockCallout)
 		b.Callout = model.CalloutNote
 	case cmdCode:
-		b.Kind = model.BlockCode
-		if b.Language == "" {
-			b.Language = "plaintext"
-		}
-		b.Code = b.PlainText()
-		b.Spans = nil
+		convertTextBlock(b, model.BlockCode)
 	case cmdCodeMermaid:
 		b.Kind = model.BlockCode
 		b.Language = "mermaid"
