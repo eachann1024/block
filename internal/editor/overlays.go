@@ -108,7 +108,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 	}
 	pal := theme.Ocean()
 	vp, winW, _ := s.overlayViewport(c)
-	topY := clampFloat32(vp.Y+12, vp.Y+8, max(vp.Y+vp.H-48, vp.Y+8))
+	topY := clampFloat32(vp.Y+theme.FindBarTopOffset, vp.Y+theme.Space8, max(vp.Y+vp.H-theme.FindBarHeight-theme.Space6, vp.Y+theme.Space8))
 	insetRight := float32(20)
 	if vp.W > 0 && vp.W < 420 {
 		insetRight = 8
@@ -123,7 +123,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 	ui.Overlay(c, func() {
 		bar := appUi.Elevate(ui.Row(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).MaxWidth(maxBarW).
 			Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space4).AlignItems(ui.Center).
-			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
+			Radius(theme.RadiusXL).Background(pal.Menu).Border(theme.FindBarBorderWidth, pal.MenuBorder).
 			Transition(appUi.PopoverSpringTransition()), theme.ElevationPopover)
 		appUi.Probe(bar, "find-bar")
 		s.recordOverlayPanel("find-bar", bar)

@@ -84,11 +84,10 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.preUpdateFocusedDrag(c, root)
 
 	root.Children(func() {
-		topPad := s.scale(editorTopPad)
+		topPad := s.canvasTopPad()
 		bottomPad := s.scale(editorBottomPad)
 		bottomMinH := s.scale(120)
 		if s.minimal {
-			topPad = minimalTopPad
 			bottomPad = minimalBottomPad
 			bottomMinH = 36
 		}
@@ -544,7 +543,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 
 	row.Children(func() {
 		if isHighlighted {
-			s.revealJump(c, topGap)
+			s.revealJump(c, topGap+s.matchLineOffsetInBlock(idx, b, topGap))
 		}
 		drawListGuides(c, id, listCtx, s.leftContentGutter(), s.zoom())
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
