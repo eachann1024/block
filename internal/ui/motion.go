@@ -174,6 +174,22 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 	}
 }
 
+// InlineRevealTransition unfolds an inline segment out of the control on its
+// right, opening its width while it slides in from that side, and folds it
+// back the same way: the titlebar send segment growing out of the more button.
+func InlineRevealTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Animation:    &SpringPanel,
+		ExitDuration: 200 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		Enter:        &ui.Motion{Collapse: true, X: 12, Opacity: 0.02},
+		Exit:         &ui.Motion{Collapse: true, X: 12, Opacity: 0},
+	}
+}
+
 // DockedSplitTransition keeps both the panel and its splitter opaque as they slide.
 func DockedSplitTransition(fromRight bool) ui.ElementTransition {
 	transition := DockedPanelTransition(fromRight)
