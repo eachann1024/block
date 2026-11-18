@@ -212,6 +212,31 @@ func CascadeRowTransition(index int) ui.ElementTransition {
 	}
 }
 
+// TreeRevealTransition unfolds expanded tree rows top-down as one sequence:
+// each row opens its height and fades in a step after the row above, on an
+// overshoot-free curve so the group reads as a single sweep, not separate pops.
+func TreeRevealTransition(order int) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	clamped := min(max(order, 0), 16)
+	anim := ui.Animation{
+		Duration: 200 * time.Millisecond,
+		Ease:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		Delay:    time.Duration(clamped*22) * time.Millisecond,
+	}
+	return ui.ElementTransition{
+		Animation:    &anim,
+		ExitDuration: 140 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		ExitDelay:    -1,
+		Position:     true,
+		Colors:       true,
+		Enter:        &ui.Motion{Y: -4, Opacity: 0.02, Collapse: true},
+		Exit:         &ui.Motion{Opacity: 0, Collapse: true},
+	}
+}
+
 // CascadeItemTransition is like CascadeRowTransition without layout-axis Collapse,
 // ideal for cards, AI messages, and timeline entries inside scrollable columns.
 func CascadeItemTransition(index int, fromRight bool) ui.ElementTransition {
