@@ -181,7 +181,42 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 	sess.SetInlineAIResponder(w.inlineAIRespond)
 	sess.SetInlineAIStreamResponder(w.inlineAIStreamRespond)
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
+	sess.OnPickImages = func(blockID model.BlockID, replace bool) {
+		w.pickImagesForSession(sess, blockID, replace)
+	}
 	return sess
+}
+
+func (w *Workspace) pickImagesForSession(sess *editor.Session, blockID model.BlockID, replace bool) {
+	if !mygo.App.IsReady() || sess == nil {
+		return
+	}
+	win := w.Window()
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent:   win,
+			Title:    theme.Tr("上传图片", "Upload Image"),
+			Multiple: true,
+			Filters: []mygo.FileFilter{
+				{
+					Name:       theme.Tr("图片", "Images"),
+					Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"},
+				},
+			},
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		mygo.RunOnMain(func() {
+			if sess.ImportImageFiles(paths, blockID, replace) > 0 {
+				w.flushOrScheduleDirtySessions()
+				if win != nil {
+					win.Focus()
+				}
+				w.RequestRedraw()
+			}
+		})
+	}()
 }
 
 func stripOuterMarkdownFence(raw string) string {
@@ -569,7 +604,7 @@ func (w *Workspace) wireModalCallbacks() {
 }
 
 func (w *Workspace) scanOptionsLocked() files.ScanOptions {
-	hideNonMD := false
+	hideNonMD := true
 	if w.state.HideNonMarkdownFiles != nil {
 		hideNonMD = *w.state.HideNonMarkdownFiles
 	}
@@ -682,6 +717,7 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 			if e != nil && len(e.Paths) > 0 {
 				if sess := w.ActiveSession(); sess != nil {
 					if sess.ImportFiles(e.Paths, 0, false) > 0 {
+						w.flushOrScheduleDirtySessions()
 						w.RequestRedraw()
 					}
 				}
@@ -2364,9 +2400,14 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	if w.IsPageHistoryOpen() || w.exportCtrl.IsOpen() {
 		return
 	}
+	wasEdgeLeft := w.edgeFloat.LeftOpen()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
+	if wasEdgeLeft {
+		w.RequestRedraw()
+		return
+	}
 
 	w.mu.Lock()
 	if viewportWidth <= 0 {
@@ -2983,7 +3024,7 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	inSettings := w.modals.IsSettingsOpen()
 	aiImmersive := layout.ChatFullscreen && !inSettings
-	sidebarWide := layout.SidebarDocked || layout.SidebarDrawer
+	sidebarWide := layout.SidebarDocked
 	sidebarAutoHidden := layout.SidebarYielded && !layout.SidebarDrawer
 	dockedSidebarWidth := float32(0)
 	if layout.SidebarDocked {
@@ -3036,7 +3077,7 @@ func (w *Workspace) Render(c *ui.Context) {
 			RenderTitlebar(c, TitlebarProps{
 				SidebarWide:       sidebarWide,
 				SidebarAutoHidden: sidebarAutoHidden,
-				SidebarFloating:   w.edgeFloat.LeftOpen(),
+				SidebarFloating:   w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
 				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
 				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
@@ -3278,19 +3319,27 @@ func (w *Workspace) Render(c *ui.Context) {
 				stSnap, activeNB, notebooks, entries, activeTab, notice, activeSess,
 			)
 
-			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open (Note or Settings).
+			// Floating Sidebar Card when narrow and explicitly toggled open via button / Alt+B (unified with Scheme A card).
 			if layout.SidebarDrawer && !aiImmersive {
+				if !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
+					w.ToggleSidebar(vpW)
+				}
 				c.Key("sidebar-drawer-scrim")
 				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-					Background(pal.Scrim()).Transition(blockui.ScrimFadeTransition())
+					Background(ui.Transparent)
 				blockui.Probe(scrim, "sidebar-drawer-scrim")
 				if scrim.Clicked() {
 					w.ToggleSidebar(vpW)
 				}
+				efPal := pal.EdgeFloat()
+				drawerW := min(ClampSidebarWidth(w.sidebarWidth), max(vpW-40, SidebarMinW))
 				c.Key("sidebar-drawer-panel")
 				drawer := blockui.Elevate(
-					ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth).
-						Transition(blockui.FloatingDrawerTransition()),
+					ui.Row(c).Absolute().
+						Left(theme.EdgeFloatInset).Top(theme.EdgeFloatInset).Bottom(theme.EdgeFloatInset).
+						Width(drawerW).Radius(theme.RadiusXL).Clip().
+						Background(pal.Sidebar).Border(1, efPal.CardBorder).
+						Transition(blockui.EdgeFloatCardTransition(false)),
 					theme.ElevationDrawer,
 				)
 				drawer.Children(func() {
@@ -3305,6 +3354,18 @@ func (w *Workspace) Render(c *ui.Context) {
 						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
 					}
 				})
+				renderColoredEdgeHotZone(
+					c,
+					"edge-hotzone-left",
+					"edge-strip-left",
+					false,
+					true,
+					efPal,
+					theme.Tr("收起侧栏", "Collapse Sidebar"),
+					func() {
+						w.ToggleSidebar(vpW)
+					},
+				)
 			}
 		})
 
@@ -3327,8 +3388,9 @@ func (w *Workspace) renderSidebarColumn(
 	isDrawer bool,
 ) {
 	RenderSidebar(c, SidebarProps{
-		State: w.sidebarUI,
-		Width: &w.sidebarWidth,
+		State:        w.sidebarUI,
+		Width:        &w.sidebarWidth,
+		FloatingCard: isDrawer,
 		OnWidthChanged: func(nw float32) {
 			w.scheduleSaveSidebarWidth(ClampSidebarWidth(nw))
 		},

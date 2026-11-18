@@ -171,9 +171,9 @@ func (ef *EdgeFloatController) PrepareFrame(
 	}
 
 	// Pure floating overlay: opening or closing an edge card never pushes or reflows
-	// the main editor column; only keep a static 10px edge clearance on narrow viewports
-	// so the 54px block-handle gutter never overlaps the 8px colored edge hot-zone.
-	if canLeft && activeSess != nil {
+	// the main editor column; only keep a static 10px edge clearance whenever undocked
+	// on narrow viewports so the 54px block-handle gutter never overlaps the 8px hot-zone.
+	if !blocked && !layout.SidebarDocked && activeSess != nil {
 		naturalMargin := (layout.MainWidth - activeSess.OuterFlowWidth()) * 0.5
 		if naturalMargin < theme.EdgeFloatSafeClear {
 			leftInset = theme.EdgeFloatSafeClear
