@@ -51,14 +51,19 @@ func ParseMarkdown(src string) *model.Doc {
 	defs, usedLabels := collectRefDefs(cleaned)
 	blocks := parseBlocksWithDefs(cleaned, defs, usedLabels)
 	blocks = swallowSeparators(blocks)
+	hadLegacyEmptyBlock := stripLegacyEmptyBlockComments(blocks)
 	normalizeImportedStarts(blocks)
 
 	if len(blocks) == 0 {
 		blocks = []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph}}
 	}
+	cleanRaw := src
+	if hadLegacyEmptyBlock {
+		cleanRaw = ""
+	}
 	return &model.Doc{
 		Blocks:       blocks,
-		CleanRaw:     src,
+		CleanRaw:     cleanRaw,
 		TrailingLine: trailing,
 	}
 }
@@ -2654,8 +2659,19 @@ func stripPreTags(s string) string {
 }
 
 func isBlankBlock(b *model.Block) bool {
-	return b.Kind == model.BlockParagraph && b.Indent == 0 && len(b.Spans) == 0 &&
+	return b.Kind == model.BlockParagraph && b.Indent == 0 && b.QuoteDepth == 0 && len(b.Spans) == 0 &&
 		!isEmptyBlockComment(b.CleanSource)
+}
+
+func stripLegacyEmptyBlockComments(blocks []model.Block) bool {
+	stripped := false
+	for i := range blocks {
+		if isEmptyBlockComment(blocks[i].CleanSource) || strings.Contains(blocks[i].CleanSource, "empty-block=paragraph") {
+			blocks[i].CleanSource = ""
+			stripped = true
+		}
+	}
+	return stripped
 }
 
 func isPlainTextBlock(b *model.Block) bool {
