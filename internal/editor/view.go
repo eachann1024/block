@@ -212,7 +212,10 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			}
 		}
 
-		// Render floating overlays & margin rails
+		// The outline floats above the document inside the editor, below window popups.
+		s.renderOutlineRail(c)
+
+		// Render floating overlays
 		s.renderTrailingAddOverlay(c, readOnly)
 		s.renderBoxSelectMarquee(c)
 		s.renderFindBar(c)
@@ -222,7 +225,6 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderCalloutMenuOverlay(c)
 		s.renderTableMenuOverlay(c)
 		s.renderInlineAIPanel(c)
-		s.renderOutlineRail(c)
 		s.renderAnnotationRail(c)
 		s.renderPlanDiffCard(c)
 		if s.hasMenuPopupOpen() {
