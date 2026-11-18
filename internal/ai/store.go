@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	defaultPanelWidth float32 = theme.AIPanelDefaultWidth
-	minPanelWidth     float32 = theme.AIPanelMinWidth
-	maxPanelWidth     float32 = theme.AIPanelMaxWidth
-	maxBuiltinSteps           = 8
+	defaultPanelWidth    float32 = theme.AIPanelDefaultWidth
+	minPanelWidth        float32 = theme.AIPanelMinWidth
+	maxPanelWidth        float32 = theme.AIPanelMaxWidth
+	maxBuiltinSteps              = 8
+	streamRedrawInterval         = 16 * time.Millisecond
+	draftPersistDelay            = 300 * time.Millisecond
 )
 
 type tabDraft struct {
@@ -121,11 +123,18 @@ type Controller struct {
 	backendStatuses map[model.BackendKind]BackendStatus
 	backendModels   map[model.BackendKind][]ModelOption
 	modelStatus     map[model.BackendKind]string
+	modelRefreshed  map[model.BackendKind]time.Time
+	modelGeneration map[model.BackendKind]uint64
+	modelGenSeq     uint64
 	statusOverrides map[model.BackendKind]BackendStatus
+	panelProbedOnce bool
 
 	streaming         bool
 	streamSerial      uint64
 	streamCancel      func()
+	streamRedrawLast  time.Time
+	streamRedrawTimer *time.Timer
+	draftPersistTimer *time.Timer
 	partialText       string
 	partialThink      string
 	partialSteps      []model.ProcessStep
@@ -184,6 +193,8 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		backendStatuses:     make(map[model.BackendKind]BackendStatus),
 		backendModels:       make(map[model.BackendKind][]ModelOption),
 		modelStatus:         make(map[model.BackendKind]string),
+		modelRefreshed:      make(map[model.BackendKind]time.Time),
+		modelGeneration:     make(map[model.BackendKind]uint64),
 		statusOverrides:     make(map[model.BackendKind]BackendStatus),
 		planSelections:      make(map[planSelKey]*diffSelection),
 		expandedProcess:     make(map[string]bool),
@@ -353,7 +364,35 @@ func (c *Controller) persistChatsLocked() {
 	_ = c.writeJSONFile("ai-chats.json", keep)
 }
 
+func (c *Controller) cancelDraftPersistLocked() {
+	if c.draftPersistTimer != nil {
+		c.draftPersistTimer.Stop()
+		c.draftPersistTimer = nil
+	}
+}
+
+func (c *Controller) schedulePersistActiveDraftLocked() {
+	c.cancelDraftPersistLocked()
+	var timer *time.Timer
+	timer = time.AfterFunc(draftPersistDelay, func() {
+		c.mu.Lock()
+		if c.draftPersistTimer != timer {
+			c.mu.Unlock()
+			return
+		}
+		c.draftPersistTimer = nil
+		c.writeActiveDraftLocked()
+		c.mu.Unlock()
+	})
+	c.draftPersistTimer = timer
+}
+
 func (c *Controller) persistActiveDraftLocked() {
+	c.cancelDraftPersistLocked()
+	c.writeActiveDraftLocked()
+}
+
+func (c *Controller) writeActiveDraftLocked() {
 	var convPtr *uint64
 	if c.currentID != 0 {
 		id := c.currentID
@@ -378,10 +417,54 @@ func (c *Controller) requestRedraw() {
 	svc := c.services
 	host := c.host
 	c.mu.RUnlock()
-	svc.Invalidate()
 	if host != nil {
 		host.RequestRedraw()
+		return
 	}
+	svc.Invalidate()
+}
+
+func (c *Controller) requestStreamRedraw() {
+	now := time.Now()
+	c.mu.Lock()
+	elapsed := now.Sub(c.streamRedrawLast)
+	if elapsed >= streamRedrawInterval {
+		if c.streamRedrawTimer != nil {
+			c.streamRedrawTimer.Stop()
+			c.streamRedrawTimer = nil
+		}
+		c.streamRedrawLast = now
+		c.mu.Unlock()
+		c.requestRedraw()
+		return
+	}
+	if c.streamRedrawTimer != nil {
+		c.mu.Unlock()
+		return
+	}
+	wait := streamRedrawInterval - elapsed
+	var timer *time.Timer
+	timer = time.AfterFunc(wait, func() {
+		c.mu.Lock()
+		if c.streamRedrawTimer != timer {
+			c.mu.Unlock()
+			return
+		}
+		c.streamRedrawTimer = nil
+		c.streamRedrawLast = time.Now()
+		c.mu.Unlock()
+		c.requestRedraw()
+	})
+	c.streamRedrawTimer = timer
+	c.mu.Unlock()
+}
+
+func (c *Controller) clearStreamRedrawLocked() {
+	if c.streamRedrawTimer != nil {
+		c.streamRedrawTimer.Stop()
+		c.streamRedrawTimer = nil
+	}
+	c.streamRedrawLast = time.Time{}
 }
 
 func (c *Controller) hasConvLocked(id uint64) bool {
@@ -485,15 +568,32 @@ func (c *Controller) PanelWidth() float32 {
 	return c.panelWidth
 }
 
-// SetPanelWidth clamps and updates the AI panel width.
-func (c *Controller) SetPanelWidth(w float32) {
+func clampPanelWidth(w float32) float32 {
 	if w < minPanelWidth {
-		w = minPanelWidth
+		return minPanelWidth
 	}
 	if w > maxPanelWidth {
-		w = maxPanelWidth
+		return maxPanelWidth
 	}
+	return w
+}
+
+// SyncPanelWidth clamps and updates the AI panel width without requesting a redraw.
+func (c *Controller) SyncPanelWidth(w float32) {
+	w = clampPanelWidth(w)
 	c.mu.Lock()
+	c.panelWidth = w
+	c.mu.Unlock()
+}
+
+// SetPanelWidth clamps and updates the AI panel width.
+func (c *Controller) SetPanelWidth(w float32) {
+	w = clampPanelWidth(w)
+	c.mu.Lock()
+	if c.panelWidth == w {
+		c.mu.Unlock()
+		return
+	}
 	c.panelWidth = w
 	c.mu.Unlock()
 	c.requestRedraw()
@@ -540,9 +640,12 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.turnError = ""
 		c.turnErrorSettings = false
 	}
-	c.modelStatus[model.BackendBuiltin] = ""
-	delete(c.backendModels, model.BackendBuiltin)
+	c.invalidateModelCacheLocked(model.BackendBuiltin)
+	shouldRefresh := (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
 	c.mu.Unlock()
+	if shouldRefresh {
+		c.refreshModelsAsync(model.BackendBuiltin)
+	}
 	c.requestRedraw()
 	return nil
 }
@@ -1058,6 +1161,7 @@ func (c *Controller) stopStreamingLocked() {
 	}
 	c.streaming = false
 	c.streamSerial++
+	c.clearStreamRedrawLocked()
 	partial := c.partialText
 	c.partialText = ""
 	c.partialThink = ""

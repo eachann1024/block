@@ -518,6 +518,9 @@ type inlineAISession struct {
 	ResultCh      chan aiAsyncResult
 	AnchorRect    ui.Rect
 	PreviewRect   ui.Rect
+	CachedSource  string
+	CachedBlocks  []model.Block
+	HasCachedDoc  bool
 }
 
 func (ai *inlineAISession) isEmptyCtx() bool {
@@ -864,6 +867,47 @@ func (s *Session) aiRun(instruction, restoreInput string, refineExisting bool) {
 		defer cancelCtx()
 		if streamResponder != nil {
 			var acc strings.Builder
+			var redrawMu sync.Mutex
+			var lastRedraw time.Time
+			var trailingTimer *time.Timer
+			const streamRedrawInterval = 16 * time.Millisecond
+			scheduleStreamRedraw := func() {
+				redrawMu.Lock()
+				elapsed := time.Since(lastRedraw)
+				if elapsed >= streamRedrawInterval {
+					lastRedraw = time.Now()
+					if trailingTimer != nil {
+						trailingTimer.Stop()
+						trailingTimer = nil
+					}
+					redrawMu.Unlock()
+					s.requestRedraw()
+					return
+				}
+				if trailingTimer == nil {
+					wait := streamRedrawInterval - elapsed
+					trailingTimer = time.AfterFunc(wait, func() {
+						redrawMu.Lock()
+						trailingTimer = nil
+						lastRedraw = time.Now()
+						redrawMu.Unlock()
+						if !cancel.Load() {
+							s.requestRedraw()
+						}
+					})
+				}
+				redrawMu.Unlock()
+			}
+			stopStreamTimer := func() {
+				redrawMu.Lock()
+				if trailingTimer != nil {
+					trailingTimer.Stop()
+					trailingTimer = nil
+				}
+				redrawMu.Unlock()
+			}
+			defer stopStreamTimer()
+
 			out, err := streamResponder(runCtx, ctxBefore, orig, prevDraft, instruction, func(chunk string) {
 				if cancel.Load() || chunk == "" {
 					return
@@ -873,8 +917,9 @@ func (s *Session) aiRun(instruction, restoreInput string, refineExisting bool) {
 				ai.StreamMu.Lock()
 				ai.StreamPartial = cur
 				ai.StreamMu.Unlock()
-				s.requestRedraw()
+				scheduleStreamRedraw()
 			})
+			stopStreamTimer()
 			if cancel.Load() || runCtx.Err() == context.Canceled {
 				return
 			}
@@ -1305,17 +1350,9 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 	}
 
 	pal := theme.Ocean()
-	dark := theme.IsDark()
-	tintBG := ui.RGBA(238, 243, 252, 0.72)
-	if dark {
-		tintBG = ui.RGBA(43, 53, 72, 0.42)
-	}
-	delFG := ui.Hex("#b42318")
-	delBG := ui.Hex("#fbe9e7")
-	if dark {
-		delFG = ui.Hex("#f28b82")
-		delBG = ui.RGBA(180, 35, 24, 0.28)
-	}
+	tintBG := pal.Editor().InlineAIDiffTint
+	delFG := pal.DiffDelFG
+	delBG := pal.DiffDelBG
 
 	source := ai.Draft
 	if ai.Status == aiStatusThinking {
@@ -1323,17 +1360,28 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 	}
 	var parsedBlocks []model.Block
 	if strings.TrimSpace(source) != "" {
-		if doc := s.parseMarkdownDoc(source); doc != nil {
-			parsedBlocks = doc.Blocks
+		if ai.HasCachedDoc && ai.CachedSource == source {
+			parsedBlocks = ai.CachedBlocks
+		} else {
+			if doc := s.parseMarkdownDoc(source); doc != nil {
+				parsedBlocks = doc.Blocks
+			}
+			ai.CachedSource = source
+			ai.CachedBlocks = parsedBlocks
+			ai.HasCachedDoc = true
 		}
+	} else {
+		ai.CachedSource = ""
+		ai.CachedBlocks = nil
+		ai.HasCachedDoc = true
 	}
 
-	outerMaxW := theme.EditorStandardWidth + s.leftContentGutter() + s.rightContentInset()
+	outerMaxW := s.outerFlowWidth()
 	row := ui.Row(c.Key(fmt.Sprintf("ai-preview-%d", ai.Parts[0].BlockID))).
 		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-8, 0), 6, max(s.leftContentGutter()-8, 0))
 	row.Children(func() {
-		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(theme.EditorStandardWidth+16).
-			Padding(8, 10).Gap(0).Radius(10).Background(tintBG)
+		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(s.standardWidth()+s.scale(16)).
+			Padding(8, 10).Gap(0).Radius(theme.RadiusLG).Background(tintBG)
 		box.Draw(func(p *ui.Painter, r ui.Rect) {
 			p.StrokeDashed(r, pal.Accent, 10, 1)
 		})
@@ -1364,16 +1412,16 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 						continue
 					}
 					frag := string(runes[s0:s1])
-					ui.Box(c.Key(fmt.Sprintf("ai-struck-%d", pIdx))).FillWidth().Padding(2, 6).Margin(0, 0, 4, 0).Radius(6).Background(delBG).
+					ui.Box(c.Key(fmt.Sprintf("ai-struck-%d", pIdx))).FillWidth().Padding(2, 6).Margin(0, 0, 4, 0).Radius(theme.RadiusSM).Background(delBG).
 						Children(func() {
-							ui.Text(c, frag).FontSize(theme.FontBodySize).TextColor(delFG).Strikethrough().FillWidth()
+							ui.Text(c, frag).FontSize(s.scale(theme.FontEditor)).TextColor(delFG).Strikethrough().FillWidth()
 						})
 				}
 			}
 
 			if len(parsedBlocks) == 0 && ai.Status == aiStatusThinking {
 				ui.Row(c).Height(24).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Width(2).Height(18).Radius(1).Background(pal.Accent)
+					ui.Box(c).Width(2).Height(18).Radius(theme.RadiusXS).Background(pal.Accent)
 				})
 			}
 
@@ -1419,18 +1467,18 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 	fontSize, weight, lh := s.textMetrics(b.Kind)
 	switch b.Kind {
 	case model.BlockDivider:
-		ui.Box(c.Key(fmt.Sprintf("aip-hr-%d", idx))).FillWidth().Height(1).MarginY(6).Background(pal.Hairline)
+		ui.Box(c.Key(fmt.Sprintf("aip-hr-%d", idx))).FillWidth().Height(1).MarginY(theme.Space6).Background(pal.Hairline)
 	case model.BlockCode, model.BlockRawHTML:
-		ui.Column(c.Key(fmt.Sprintf("aip-code-%d", idx))).FillWidth().Padding(10, 14).Radius(8).
+		ui.Column(c.Key(fmt.Sprintf("aip-code-%d", idx))).FillWidth().Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
 			Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
-			ui.Text(c, b.Code).Font("monospace").FontSize(14).LineHeight(1.5).TextColor(pal.Text).FillWidth()
+			ui.Text(c, b.Code).Font("monospace").FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text).FillWidth()
 		})
 	case model.BlockCallout:
 		st := calloutTone(b.Callout, theme.IsDark())
 		card := ui.Box(c.Key(fmt.Sprintf("aip-callout-%d", idx))).FillWidth().
-			Padding(38, 16, 12, 44).Radius(10).Background(st.BG).Border(1, st.Border)
+			Padding(38, theme.Space16, theme.Space12, 44).Radius(theme.RadiusLG).Background(st.BG).Border(1, st.Border)
 		card.Children(func() {
-			ui.Row(c).Absolute().Left(12).Top(7).Height(26).AlignItems(ui.Center).Gap(6).Children(func() {
+			ui.Row(c).Absolute().Left(theme.Space12).Top(theme.Space6).Height(theme.HeightChrome).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
 				icons.Draw(c, icons.Callout, 16, theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent})
 				ui.Text(c, calloutLabel(b.Callout)).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(st.Text).SingleLine()
 			})
@@ -1440,7 +1488,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 		if b.Table == nil {
 			return
 		}
-		ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Radius(8).Border(1, pal.Hairline).Clip().Children(func() {
+		ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Radius(theme.RadiusMD).Border(1, pal.Hairline).Clip().Children(func() {
 			for rIdx, row := range b.Table.Rows {
 				rEl := ui.Row(c.Key(fmt.Sprintf("aip-tr-%d-%d", idx, rIdx))).FillWidth().
 					BorderWidth(0, 0, boolToBorder(rIdx+1 < len(b.Table.Rows)), 0).BorderColor(pal.Hairline)
@@ -1454,7 +1502,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 						ui.Box(c).Grow(1).Shrink(1).Padding(6, 8).
 							BorderWidth(0, boolToBorder(cIdx+1 < len(row)), 0, 0).BorderColor(pal.Hairline).
 							Children(func() {
-								ui.Text(c, cell.PlainText()).FontSize(14).TextColor(pal.Text).FillWidth()
+								ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text).FillWidth()
 							})
 					}
 				})
@@ -1469,7 +1517,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 			if b.Kind == model.BlockTodo {
 				top := max((lineH-16)*0.5, 0)
 				marker.AlignItems(ui.Start).Children(func() {
-					cb := ui.Box(c).Margin(top, 0, 0, 4.8).Size(16, 16).Center().Radius(theme.RadiusMicroMD).
+					cb := ui.Box(c).Margin(top, 0, 0, 4.8).Size(16, 16).Center().Radius(theme.RadiusSM).
 						Background(pal.TodoBG).Border(1, pal.TodoRing)
 					if b.Checked {
 						cb.Children(func() {
@@ -1485,7 +1533,7 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 							col = pal.Accent
 						}
 						ui.Text(c, fmt.Sprintf("%d", max(listNum, 1))).Font(resolvedCodeFont()).
-							FontSize(fontSize*0.84).FontWeight(theme.WeightMonoMedium).TextColor(col).Padding(0, 8, 0, 0).SingleLine()
+							FontSize(fontSize*0.84).FontWeight(theme.WeightMono).TextColor(col).Padding(0, 8, 0, 0).SingleLine()
 					} else {
 						d := float32(5)
 						if depth == 0 {
@@ -1536,7 +1584,6 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 		return
 	}
 	pal := theme.Ocean()
-	dark := theme.IsDark()
 	busy := ai.Status == aiStatusThinking
 	emptyCtx := ai.isEmptyCtx()
 
@@ -1598,34 +1645,34 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("inline-ai")).Absolute().Left(x).Top(y).Width(panelW).
-			Padding(8).Gap(6).Radius(theme.RadiusSurface).Background(pal.Menu).Border(1, pal.Hairline).
-			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.18)).
+			Padding(theme.Space8).Gap(theme.Space6).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
 			Transition(appUi.PopupTransition())
+		appUi.Elevate(shell, theme.ElevationPopover)
 		appUi.Probe(shell, "inline-ai")
 		s.recordOverlayPanel(sizeKey, shell)
 
 		shell.Children(func() {
 			if ai.Error != "" {
-				ui.Text(c, ai.Error).FontSize(13).TextColor(pal.Danger).Padding(0, 4).FillWidth()
+				ui.Text(c, ai.Error).FontSize(theme.FontSmall).TextColor(pal.Danger).Padding(0, theme.Space4).FillWidth()
 			}
 
 			// Capsule input or Thinking row
-			capsule := ui.Row(c.Key("inline-ai-capsule")).FillWidth().Height(36).Padding(0, 6, 0, 10).
-				Gap(8).AlignItems(ui.Center).Radius(8).Background(pal.CodeBG).
+			capsule := ui.Row(c.Key("inline-ai-capsule")).FillWidth().Height(theme.HeightLarge).Padding(0, theme.Space6, 0, theme.Space10).
+				Gap(theme.Space8).AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.CodeBG).
 				Border(1, boolColor(!busy, pal.BtnBorder, pal.Hairline))
 
 			capsule.Children(func() {
 				if busy {
-					ui.Box(c).Size(8, 8).Radius(4).Background(pal.Accent)
+					ui.Box(c).Size(8, 8).Radius(theme.RadiusXS).Background(pal.Accent)
 					lbl := theme.Tr("正在生成…", "Generating…")
-					ui.Text(c, lbl).FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).SingleLine()
-					stopBtn := ui.ButtonBase(c.Key("ai-stop")).Height(26).PaddingX(8).Center().Radius(6).
+					ui.Text(c, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
+					stopBtn := ui.ButtonBase(c.Key("ai-stop")).Height(theme.HeightChrome).PaddingX(theme.Space8).Center().Radius(theme.RadiusSM).
 						Cursor(ui.CursorPointer).Label(theme.Tr("停止", "Stop"))
 					if stopBtn.Hovered() {
 						stopBtn.Background(pal.Hover)
 					}
 					stopBtn.Children(func() {
-						ui.Text(c, theme.Tr("停止", "Stop")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+						ui.Text(c, theme.Tr("停止", "Stop")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					})
 					appUi.Probe(stopBtn, "ai-stop")
 					if stopBtn.Clicked() {
@@ -1674,7 +1721,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 						sendBG = pal.Text
 						sendFG = pal.Paper
 					}
-					sendBtn := ui.ButtonBase(c.Key("ai-send")).Size(24, 24).Center().Radius(6).
+					sendBtn := ui.ButtonBase(c.Key("ai-send")).Size(24, 24).Center().Radius(theme.RadiusSM).
 						Background(sendBG).Disabled(!canSend).Cursor(ui.CursorPointer).
 						Label(theme.Tr("发送（回车）", "Send (Enter)"))
 					sendBtn.Children(func() {
@@ -1702,14 +1749,11 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 							it := entry
 							short := it.ShortLabel()
 							full := it.FullLabel()
-							bg, brd := chipPalette(it.Starred, dark)
-							chip := ui.Row(c.Key(fmt.Sprintf("ai-chip-%d", ix))).Height(inlineAIChipH).
-								Padding(0, 4, 0, 8).Gap(2).AlignItems(ui.Center).
-								Radius(6).Background(bg).Border(1, brd)
+							chip := appUi.ChipSurface(ui.Row(c.Key(fmt.Sprintf("ai-chip-%d", ix))), it.Starred)
 							chip.Children(func() {
 								runID := fmt.Sprintf("ai-saved-prompt-%d", ix)
-								runBtn := ui.ButtonBase(c.Key(runID)).Height(22).PaddingX(2).
-									AlignItems(ui.Center).Radius(4).Cursor(ui.CursorPointer).Label(full)
+								runBtn := ui.ButtonBase(c.Key(runID)).Height(theme.HeightMicro).PaddingX(theme.Space2).
+									AlignItems(ui.Center).Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(full)
 								if full != "" {
 									appUi.Tooltip(c, runBtn, full)
 								}
@@ -1718,7 +1762,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 									if runBtn.Hovered() {
 										fg = pal.Accent
 									}
-									ui.Text(c, short).FontSize(13).TextColor(fg).SingleLine()
+									ui.Text(c, short).FontSize(theme.FontSmall).TextColor(fg).SingleLine()
 								})
 								appUi.Probe(runBtn, runID)
 								if runBtn.Clicked() {
@@ -1730,7 +1774,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 								if it.Starred {
 									starTip = theme.Tr("取消收藏该提示词", "Unstar prompt")
 								}
-								starBtn := ui.ButtonBase(c.Key(starID)).Size(20, 20).Center().Radius(4).
+								starBtn := ui.ButtonBase(c.Key(starID)).Size(20, 20).Center().Radius(theme.RadiusXS).
 									Cursor(ui.CursorPointer).Label(starTip)
 								appUi.Tooltip(c, starBtn, starTip)
 								if starBtn.Hovered() {
@@ -1757,24 +1801,24 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 				if emptyCtx {
 					acceptLabel = theme.Tr("完成", "Done")
 				}
-				actions := ui.Row(c.Key("ai-review-actions")).FillWidth().Wrap().AlignItems(ui.Center).Gap(4)
+				actions := ui.Row(c.Key("ai-review-actions")).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space4)
 				actions.Children(func() {
-					accBtn := inlineAIActionChip(c, "ai-accept", acceptLabel, "↵", true)
+					accBtn := appUi.Chip(c, appUi.ChipOptions{ID: "ai-accept", Label: acceptLabel, Hint: "↵", Style: appUi.ChipPrimary})
 					if accBtn.Clicked() {
 						s.aiAccept()
 					}
 					if !emptyCtx {
-						insBtn := inlineAIActionChip(c, "ai-insert-below", theme.Tr("插入下方", "Insert Below"), "", false)
+						insBtn := appUi.Chip(c, appUi.ChipOptions{ID: "ai-insert-below", Label: theme.Tr("插入下方", "Insert Below")})
 						if insBtn.Clicked() {
 							s.aiInsertBelow()
 						}
 					}
-					retryBtn := inlineAIActionChip(c, "ai-retry", theme.Tr("重写", "Regenerate"), "", false)
+					retryBtn := appUi.Chip(c, appUi.ChipOptions{ID: "ai-retry", Label: theme.Tr("重写", "Regenerate")})
 					if retryBtn.Clicked() {
 						s.aiRetry()
 					}
 					ui.Spacer(c)
-					discBtn := inlineAIActionChip(c, "ai-discard", theme.Tr("放弃", "Discard"), "", false)
+					discBtn := appUi.Chip(c, appUi.ChipOptions{ID: "ai-discard", Label: theme.Tr("放弃", "Discard"), Style: appUi.ChipMuted})
 					if discBtn.Clicked() {
 						s.aiClose()
 					}
@@ -1790,47 +1834,6 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 			}
 		}
 	})
-}
-
-func chipPalette(starred, dark bool) (bg, border ui.Color) {
-	switch {
-	case starred && !dark:
-		return ui.Hex("#eef3fc"), ui.Hex("#c9d8f3")
-	case starred && dark:
-		return ui.Hex("#2b3548"), ui.Hex("#455f91")
-	case !starred && !dark:
-		return ui.Hex("#f3f1ec"), ui.Hex("#e4e6ea")
-	default:
-		return ui.Hex("#2a2a2a"), ui.Hex("#3d3d3d")
-	}
-}
-
-func inlineAIActionChip(c *ui.Context, id, label, hint string, primary bool) ui.Element {
-	pal := theme.Ocean()
-	btn := ui.ButtonBase(c.Key(id)).Height(28).AlignItems(ui.Center).Radius(6).Cursor(ui.CursorPointer).Label(label)
-	if primary {
-		btn.PaddingX(12).Gap(6).Background(pal.Selected).Border(1, pal.Accent)
-	} else {
-		btn.PaddingX(8).Gap(4)
-	}
-	if btn.Hovered() {
-		btn.Background(pal.Hover)
-	}
-	btn.Children(func() {
-		fg := pal.Text
-		w := 400
-		if primary {
-			w = 500
-		} else if id == "ai-discard" {
-			fg = pal.TextSecondary
-		}
-		ui.Text(c, label).FontSize(14).FontWeight(w).TextColor(fg).SingleLine()
-		if hint != "" {
-			ui.Text(c, hint).Font("monospace").FontSize(12).TextColor(pal.Accent).SingleLine()
-		}
-	})
-	appUi.Probe(btn, id)
-	return btn
 }
 
 func unionRect(a, b ui.Rect) ui.Rect {

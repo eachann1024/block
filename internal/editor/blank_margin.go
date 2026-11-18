@@ -422,16 +422,16 @@ func (s *Session) computeTrailingAddSlot() (trailingAddSlot, bool) {
 	if !ok || lastRow.H <= 0 || s.scrollRect.H <= 0 {
 		return trailingAddSlot{}, false
 	}
-	gap := blockGutterSpacing(lastBlock, &model.Block{Kind: model.BlockParagraph})
+	gap := s.blockGap(lastBlock, &model.Block{Kind: model.BlockParagraph})
 	lineTop := lastRow.Y + lastRow.H + gap
-	fontSize, _, lh := blockTextMetrics(model.BlockParagraph)
+	fontSize, _, lh := s.textMetrics(model.BlockParagraph)
 	lineH := fontSize * lh
-	const btnSize = float32(24)
+	btnSize := s.scale(24)
 	top := lineTop + max(lineH-btnSize, 0)*0.5
 	if top < s.scrollRect.Y || top+btnSize > s.scrollRect.Y+s.scrollRect.H {
 		return trailingAddSlot{}, false
 	}
-	left := lastRow.X + editorHandleWidth - btnSize
+	left := lastRow.X + s.handleWidth() - btnSize
 	return trailingAddSlot{
 		btnRect: ui.Rect{X: left, Y: top, W: btnSize, H: btnSize},
 		lineTop: lineTop,
@@ -478,11 +478,13 @@ func (s *Session) updateTrailingAddHover(c *ui.Context, root ui.Element, nextHov
 		wx >= lastRow.X-16 &&
 		wx <= lastRow.X+lastRow.W
 
+	handleW := s.handleWidth()
+	btnSz := s.scale(24)
 	if isPlainEmptyParagraph(lastBlock) {
 		clearTrailing()
-		btnLeft := lastRow.X + editorHandleWidth - 24
+		btnLeft := lastRow.X + handleW - btnSz
 		inFinalCorridor := s.hoveredBlock == lastVis &&
-			wx >= btnLeft-8 && wx <= lastRow.X+editorHandleWidth+32 &&
+			wx >= btnLeft-8 && wx <= lastRow.X+handleW+32 &&
 			wy >= lastRow.Y-6 && wy <= lastBottom+8
 		if inBlankBelow || inFinalCorridor {
 			return lastVis
@@ -496,7 +498,7 @@ func (s *Session) updateTrailingAddHover(c *ui.Context, root ui.Element, nextHov
 		return nextHover
 	}
 	inCorridor := wx >= slot.btnRect.X-8 &&
-		wx <= slot.rowLeft+editorHandleWidth+32 &&
+		wx <= slot.rowLeft+handleW+32 &&
 		wy >= min(slot.btnRect.Y, lastBottom)-6 &&
 		wy <= max(slot.btnRect.Y+slot.btnRect.H, lastBottom)+8
 	if inBlankBelow || (s.trailingPlus && inCorridor) {
@@ -532,8 +534,8 @@ func (s *Session) renderTrailingAddOverlay(c *ui.Context, readOnly bool) {
 			ID:          "trailing-add",
 			Label:       theme.Tr("添加块", "Add block"),
 			TooltipSpec: &tip,
-			Size:        24,
-			IconSize:    14,
+			Size:        s.scale(24),
+			IconSize:    s.scale(14),
 		})
 		addBtn.KeepFocus()
 		s.recordOverlayBtn("trailing-add", addBtn)

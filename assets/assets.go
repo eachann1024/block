@@ -5,7 +5,7 @@ import (
 	"path"
 )
 
-//go:embed icons/*.svg mascot/*.svg agents/*.svg skills/*.md
+//go:embed app-icon/apple-touch-icon.png icons/*.svg mascot/*.svg agents/*.svg skills/*.md
 var FS embed.FS
 
 // Read returns the embedded bytes for a relative asset path such as

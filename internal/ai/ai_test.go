@@ -1256,6 +1256,19 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
   echo '{"loggedIn":true}'
   exit 0
 fi
+case "$*" in
+  *"--input-format stream-json"*)
+    while IFS= read -r line; do
+      case "$line" in
+        *'"request_id":"block_models"'*)
+          printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"block_models","response":{"models":[{"value":"default","displayName":"Default (recommended)"},{"value":"opus","displayName":"Opus 5.5"},{"value":"sonnet","displayName":"Sonnet 5.5"}]}}}'
+          exit 0
+          ;;
+      esac
+    done
+    exit 0
+    ;;
+esac
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"claude-sess-e2e"}'
 printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Inspecting workspace note"},{"type":"tool_use","id":"tu_1","name":"readPage","input":{"pageId":"daily"}}]}}'
 printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Claude CLI E2E reply OK"}]}}'
@@ -1272,6 +1285,12 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then
 fi
 while IFS= read -r line; do
   case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\n' '{"id":1,"result":{"userAgent":"codex-test"}}'
+      ;;
+    *'"method":"model/list"'*)
+      printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-6.2-sol","model":"gpt-6.2-sol","displayName":"GPT-6.2-Sol","hidden":false},{"id":"hidden-internal","model":"hidden-internal","displayName":"Hidden","hidden":true},{"id":"gpt-6.1-terra","model":"gpt-6.1-terra","displayName":"GPT-6.1 Terra","hidden":false}],"nextCursor":null}}'
+      ;;
     *'"method":"turn/start"'*)
       printf '%s\n' '{"method":"thread/started","params":{"thread":{"id":"codex-thread-e2e"}}}'
       printf '%s\n' '{"method":"item/started","params":{"item":{"id":"it_1","type":"mcpToolCall","tool":"readPage","arguments":{"pageId":"daily"}}}}'
@@ -1284,13 +1303,79 @@ while IFS= read -r line; do
   esac
 done
 `
+	agyScript := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "agy 2.0.0"
+  exit 0
+fi
+if [ "$1" = "models" ]; then
+  printf 'gemini-4-carbon-medium\tGemini 4 Carbon (Medium)\n'
+  printf 'gemini-4-hydrogen-medium\tGemini 4 Hydrogen (Medium)\n'
+  exit 0
+fi
+exit 1
+`
+	piScript := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "1.0.0"
+  exit 0
+fi
+if [ "$1" = "--list-models" ]; then
+  if [ "$PI_EMPTY" = "1" ]; then
+    printf 'No models available. Use /login to log into a provider via OAuth or API key. See:\n  /tmp/docs/models.md\n'
+    exit 0
+  fi
+  printf 'provider  model  context\nanthropic claude-sonnet-5 200k\n'
+  exit 0
+fi
+exit 1
+`
 	if err := os.WriteFile(filepath.Join(binDir, "claude"), []byte(claudeScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(binDir, "codex"), []byte(codexScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(binDir, "agy"), []byte(agyScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "pi"), []byte(piScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// Verify real-time CLI model discovery for Claude, Codex, Agy, and Pi.
+	claudeModels, err := listModelsForBackend(context.Background(), model.BackendClaude, model.AIProviderConfig{})
+	if err != nil {
+		t.Fatalf("listModelsForBackend(Claude): %v", err)
+	}
+	if len(claudeModels) != 3 || claudeModels[0].Value != "default" || claudeModels[1].Label != "Opus 5.5" {
+		t.Fatalf("unexpected Claude models: %+v", claudeModels)
+	}
+	codexModels, err := listModelsForBackend(context.Background(), model.BackendCodex, model.AIProviderConfig{})
+	if err != nil {
+		t.Fatalf("listModelsForBackend(Codex): %v", err)
+	}
+	if len(codexModels) != 2 || codexModels[0].Value != "gpt-6.2-sol" || codexModels[0].Label != "GPT-6.2-Sol" || codexModels[1].Label != "GPT-6.1 Terra" {
+		t.Fatalf("unexpected Codex models: %+v", codexModels)
+	}
+	agyModels, err := listModelsForBackend(context.Background(), model.BackendAgy, model.AIProviderConfig{})
+	if err != nil {
+		t.Fatalf("listModelsForBackend(Agy): %v", err)
+	}
+	if len(agyModels) != 2 || agyModels[1].Value != "gemini-4-hydrogen-medium" || agyModels[1].Label != "Gemini 4 Hydrogen (Medium)" {
+		t.Fatalf("unexpected Agy models: %+v", agyModels)
+	}
+	piModels, err := listModelsForBackend(context.Background(), model.BackendPi, model.AIProviderConfig{})
+	if err != nil || len(piModels) != 1 || piModels[0].Value != "anthropic/claude-sonnet-5" {
+		t.Fatalf("unexpected Pi models: %+v, err=%v", piModels, err)
+	}
+	t.Setenv("PI_EMPTY", "1")
+	emptyPi, err := listModelsForBackend(context.Background(), model.BackendPi, model.AIProviderConfig{})
+	if err != nil || len(emptyPi) != 0 {
+		t.Fatalf("expected 0 Pi models when unauthenticated, got %+v, err=%v", emptyPi, err)
+	}
+	t.Setenv("PI_EMPTY", "")
 
 	codexSt := ProbeBackend(model.BackendCodex)
 	if codexSt.State != BackendStateReady {

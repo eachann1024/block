@@ -383,7 +383,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						if p.ActiveNotebook == "" {
 							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(12).AlignItems(ui.Center).Children(func() {
 								icons.Mascot(c, icons.MascotNoFolder, 112)
-								ui.Text(c, theme.Tr("尚未打开笔记本", "No notebook open")).FontSize(theme.FontBody).FontWeight(500).TextColor(pal.TextSecondary)
+								ui.Text(c, theme.Tr("尚未打开笔记本", "No notebook open")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
 								chooseBtn := blockui.ActionButton(c, "sidebar-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
 								if chooseBtn.Clicked() && p.OnChooseNotebook != nil {
 									p.OnChooseNotebook()
@@ -400,7 +400,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						}
 
 						anyDragOver := false
-						ui.Column(c).FillWidth().Gap(theme.TreeRowPitch - theme.ControlHeight).Children(func() {
+						ui.Column(c).FillWidth().Gap(theme.TreeRowPitch - theme.HeightControl).Children(func() {
 							for _, row := range rows {
 								if renderTreeRow(c, p, row, treeFocus) {
 									anyDragOver = true
@@ -443,7 +443,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 				c.Key("notebook-switcher")
 				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(30).PaddingX(8).Gap(7).
-					AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 					Label(nbTitle)
 				swHovered := sw.Hovered()
 				if p.State.SwitcherOpen {
@@ -477,7 +477,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				if p.HasUpdate {
 					c.Key("updater-badge-button")
 					upBtn := ui.ButtonBase(c).Size(30, 30).Shrink(0).Center().
-						Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 						Background(pal.Paper).Border(1, pal.BtnBorder).
 						Label(theme.Tr("有可用更新", "Update available"))
 					upHover := upBtn.Hovered()
@@ -537,8 +537,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 
 	if p.State.RenamingPath == entry.Path {
 		c.Key("tree-rename:" + entry.Path)
-		box := ui.Row(c).FillWidth().Height(theme.ControlHeight).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
-			Radius(theme.RadiusControl).Background(pal.Paper).Border(1, pal.Accent)
+		box := ui.Row(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
+			Radius(theme.RadiusMD).Background(pal.Paper).Border(1, pal.Accent)
 		box.Children(func() {
 			glyph := fileEntryIcon(filepath.Base(entry.Path))
 			if entry.IsDir {
@@ -582,8 +582,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	menuTarget := p.State.ContextOpen && p.State.ContextPath == entry.Path
 
 	c.Key(rowKey)
-	btn := ui.ButtonBase(c).FillWidth().Height(theme.ControlHeight).Padding(0, 8, 0, indent).Gap(6).
-		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+	btn := ui.ButtonBase(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).
+		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
 	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
 	if !entry.IsDir {
@@ -608,7 +608,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		}
 		b := btn.Bounds()
 		if b.H <= 0 {
-			b.H = theme.ControlHeight
+			b.H = theme.HeightControl
 		}
 		_, py, hasPos := btn.PointerPosition()
 		if !hasPos && p.State.DropTargetPath == entry.Path {
@@ -708,11 +708,11 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			moreID := "row-more:" + entry.Path
 			c.Key(moreID)
 			moreBtn := ui.ButtonBase(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().
-				Radius(theme.RadiusMicroMD).Cursor(ui.CursorPointer).FocusRing(false).
+				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
 				Label(theme.Tr("更多操作", "More actions"))
 			moreHover := moreBtn.Hovered()
 			if menuTarget || moreHover {
-				moreBtn.Background(pal.BtnHover)
+				moreBtn.Background(pal.MenuHover)
 			}
 			moreBtn.Children(func() {
 				ic := pal.MonoIconColors(pal.TextSecondary)
@@ -730,16 +730,20 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0)
 		}
 	})
-	btn.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
-		blockui.RecordBounds(rowKey, rect)
-		if isDropReorder {
-			y := rect.Y
-			if dropAfter {
-				y = rect.Y + rect.H - 2
+	if isDropReorder || blockui.IsProbeEnabled() {
+		btn.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
+			if blockui.IsProbeEnabled() {
+				blockui.RecordBounds(rowKey, rect)
 			}
-			pt.Fill(ui.Rect{X: rect.X + indent, Y: y, W: max(rect.W-indent-6, 16), H: 2}, pal.Accent, 1)
-		}
-	})
+			if isDropReorder {
+				y := rect.Y
+				if dropAfter {
+					y = rect.Y + rect.H - 2
+				}
+				pt.Fill(ui.Rect{X: rect.X + indent, Y: y, W: max(rect.W-indent-6, 16), H: 2}, pal.Accent, 1)
+			}
+		})
+	}
 
 	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
@@ -873,7 +877,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							checked := nb == p.ActiveNotebook
 							confirming := !checked && p.State.ConfirmForgetNotebook == nb
 							c.Key("nb-item:" + nb)
-							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusControl)
+							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusMD)
 							nbDrop := false
 							nbAfter := false
 							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
@@ -933,7 +937,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							kbActive := ix == p.State.MenuCursor
 							switch {
 							case checked:
-								row.Background(pal.MenuChecked)
+								row.Background(pal.Selected)
 							case confirming || rowHover || kbActive || nbDrop:
 								row.Background(pal.MenuHover)
 							}
@@ -980,7 +984,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 											ID:       fgID,
 											Size:     theme.TreeMoreBtnSize,
 											IconSize: theme.IconMenuCheck,
-											Radius:   theme.RadiusMicroMD,
+											Radius:   theme.RadiusSM,
 											Tooltip:  theme.Tr("从列表移除", "Remove from list"),
 											Danger:   true,
 										})
@@ -1218,7 +1222,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								padL := float32(10 + min(d.Depth, 6)*12)
 								c.Key("move-dest:" + d.Dir)
 								row := ui.ButtonBase(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 10, 0, padL).Gap(8).
-									AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(d.Label)
+									AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(d.Label)
 								rowHover := row.Hovered() || i == p.State.MoveCursor
 								if rowHover {
 									row.Background(pal.MenuHover)

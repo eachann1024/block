@@ -41,7 +41,7 @@ var providerPresets = []ProviderPreset{
 		En:          "DeepSeek",
 		Protocol:    model.ProtocolOpenAI,
 		BaseURL:     "https://api.deepseek.com/v1",
-		BrandColor:  ui.Hex("#4d6bfe"),
+		BrandColor:  ui.Hex("#4d6bfe"), // design:allow brand
 		Icon:        icons.ProvDeepseek,
 		KeyRequired: true,
 	},
@@ -51,7 +51,7 @@ var providerPresets = []ProviderPreset{
 		En:          "OpenAI Protocol",
 		Protocol:    model.ProtocolOpenAI,
 		BaseURL:     "https://api.openai.com/v1",
-		BrandColor:  ui.Hex("#10a37f"),
+		BrandColor:  ui.Hex("#10a37f"), // design:allow brand
 		Icon:        icons.ProvOpenai,
 		KeyRequired: true,
 	},
@@ -61,7 +61,7 @@ var providerPresets = []ProviderPreset{
 		En:          "Claude Protocol",
 		Protocol:    model.ProtocolAnthropic,
 		BaseURL:     "https://api.anthropic.com/v1",
-		BrandColor:  ui.Hex("#d97757"),
+		BrandColor:  ui.Hex("#d97757"), // design:allow brand
 		Icon:        icons.ProvAnthropic,
 		KeyRequired: true,
 	},
@@ -147,18 +147,38 @@ func (c *Controller) RefreshBuiltinModels(ctx context.Context) ([]ModelOption, e
 		ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 	}
-	cfg := normalizeProviderConfig(c.ProviderConfig())
+	c.mu.Lock()
+	c.modelGenSeq++
+	gen := c.modelGenSeq
+	c.modelGeneration[model.BackendBuiltin] = gen
+	c.modelStatus[model.BackendBuiltin] = "loading"
+	cfg := normalizeProviderConfig(c.providerCfg)
+	c.mu.Unlock()
+
 	opts, err := listModelsForBackend(ctx, model.BackendBuiltin, cfg)
 	c.mu.Lock()
-	if err != nil {
-		c.modelStatus[model.BackendBuiltin] = "error:" + err.Error()
-	} else {
-		c.backendModels[model.BackendBuiltin] = opts
-		c.modelStatus[model.BackendBuiltin] = "ready"
-	}
+	_ = c.finishModelRefreshLocked(model.BackendBuiltin, gen, opts, err)
 	c.mu.Unlock()
 	c.requestRedraw()
 	return opts, err
+}
+
+func (c *Controller) annotationBuiltinConfigLocked() (model.AIProviderConfig, error) {
+	cfg := normalizeProviderConfig(c.providerCfg)
+	targetProv := strings.TrimSpace(c.annotCfg.Provider)
+	if targetProv != "" && targetProv != cfg.Provider {
+		prof, ok := cfg.Providers[targetProv]
+		if !ok {
+			return cfg, errors.New(theme.Tr("标注使用的服务商尚未配置", "The annotation provider is not configured"))
+		}
+		cfg.Provider = targetProv
+		cfg.Protocol = prof.Protocol
+		cfg.BaseURL = prof.BaseURL
+		cfg.APIKey = prof.APIKey
+		cfg = normalizeProviderConfig(cfg)
+	}
+	cfg.Model = strings.TrimSpace(c.annotCfg.Model)
+	return cfg, nil
 }
 
 // TestConnection validates the built-in provider configuration against its live completion endpoint.
@@ -309,7 +329,14 @@ func readHTTPError(resp *http.Response) string {
 // listBuiltinModels queries GET /models from the configured OpenAI/DeepSeek/Anthropic endpoint.
 func listBuiltinModels(ctx context.Context, cfg model.AIProviderConfig) ([]string, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return nil, errors.New(theme.Tr("请先配置接口地址", "Configure Base URL first"))
+		return nil, errors.New(theme.Tr("请前往「设置 › AI 助手」配置服务商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL"))
+	}
+	keyReq := true
+	if p := findProviderPreset(cfg.Provider); p != nil {
+		keyReq = p.KeyRequired
+	}
+	if keyReq && strings.TrimSpace(cfg.APIKey) == "" {
+		return nil, errors.New(theme.Tr("请前往「设置 › AI 助手」选择服务商并填写 API 密钥", "Go to Settings › AI Assistant to select a provider and enter an API Key"))
 	}
 	path := "/models"
 	if cfg.Protocol == model.ProtocolAnthropic {
@@ -875,6 +902,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 			if ev.err != "" {
 				c.streaming = false
 				c.streamCancel = nil
+				c.clearStreamRedrawLocked()
 				c.turnError = ev.err
 				c.turnErrorSettings = ev.settings
 				c.partialText = ""
@@ -889,6 +917,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 			if ev.done {
 				c.streaming = false
 				c.streamCancel = nil
+				c.clearStreamRedrawLocked()
 				if len(ev.toolCalls) > 0 && step >= maxBuiltinSteps {
 					c.turnError = theme.Tr("已达到工具调用上限，请缩小范围后继续。", "Tool limit reached. Narrow the scope and continue.")
 					c.partialText = ""
@@ -938,7 +967,7 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 				return
 			}
 			c.mu.Unlock()
-			c.requestRedraw()
+			c.requestStreamRedraw()
 		}
 	}()
 }

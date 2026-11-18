@@ -67,10 +67,8 @@ func (s TooltipSpec) accessibilityText() string {
 }
 
 func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec TooltipSpec) {
-	radius := float32(9)
-	if len(spec.Rows) > 1 {
-		radius = 10
-	} else if spec.Pill {
+	radius := theme.RadiusLG
+	if spec.Pill {
 		radius = theme.RadiusPill
 	}
 	borderCol := pal.TooltipBorder
@@ -83,12 +81,7 @@ func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec Tooltip
 		Enter:    &ui.Motion{},
 		Exit:     &ui.Motion{},
 	}).Radius(radius).Background(pal.TooltipBG).Border(1, borderCol).Clip()
-	if pal.Dark {
-		tip.Shadow(0, 10, 26, 0, ui.RGBA(0, 0, 0, 0.36))
-	} else {
-		tip.Shadow(0, 8, 24, 0, ui.RGBA(15, 23, 42, 0.10)).
-			Shadow(0, 1, 3, 0, ui.RGBA(15, 23, 42, 0.06))
-	}
+	Elevate(tip, theme.ElevationPopover)
 	if spec.Placement == TooltipAbove {
 		tip.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Margin(0, 0, theme.TooltipOffset, 0)
 	} else {
@@ -97,27 +90,26 @@ func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec Tooltip
 }
 
 func renderTooltipShortcutPill(c *ui.Context, pal theme.Palette, shortcut string, roundPill bool) {
-	r := float32(5)
-	padX := float32(6)
+	r := theme.RadiusXS
+	padX := theme.Space6
 	if roundPill {
 		r = theme.RadiusPill
-		padX = 7
 	}
-	ui.Row(c).Height(19).Padding(0, padX, 0, padX).Shrink(0).
+	ui.Row(c).Height(theme.KeycapHeight).Padding(0, padX, 0, padX).Shrink(0).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Radius(r).Background(pal.TooltipPillBG).Border(1, pal.TooltipPillBorder).
 		Children(func() {
 			ShortcutLabel(c, shortcut, ShortcutLabelStyle{
-				FontSize:   11.5,
-				LineHeight: 16,
-				FontWeight: theme.WeightMonoMedium,
+				FontSize:   theme.FontMeta,
+				LineHeight: theme.LineMeta,
+				FontWeight: theme.WeightMono,
 				Color:      pal.TooltipPillFG,
 			})
 		})
 }
 
 func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill bool) {
-	triggerCol := pal.TooltipFG
+	triggerCol := pal.Text
 	switch row.TriggerTone {
 	case TooltipToneAccent:
 		triggerCol = pal.TooltipAccent
@@ -126,8 +118,8 @@ func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill boo
 	}
 	if row.Trigger != "" {
 		ShortcutLabel(c, row.Trigger, ShortcutLabelStyle{
-			FontSize:   12.5,
-			LineHeight: 17,
+			FontSize:   theme.FontSmall,
+			LineHeight: theme.LineSmall,
 			FontWeight: theme.WeightTitle,
 			Color:      triggerCol,
 		})
@@ -137,8 +129,8 @@ func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill boo
 	}
 	if row.Detail != "" {
 		ShortcutLabel(c, row.Detail, ShortcutLabelStyle{
-			FontSize:   12.5,
-			LineHeight: 17,
+			FontSize:   theme.FontSmall,
+			LineHeight: theme.LineSmall,
 			FontWeight: theme.WeightRegular,
 			Color:      pal.TooltipMuted,
 		})
