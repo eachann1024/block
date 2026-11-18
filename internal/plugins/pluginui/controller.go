@@ -10,6 +10,7 @@ import (
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -17,7 +18,9 @@ var _ modals.PluginSettingsHost = (*Controller)(nil)
 
 // Controller bridges Block's Settings UI with the App Store catalog and installed plugin Supervisor.
 type Controller struct {
-	sup *plugins.Supervisor
+	sup               *plugins.Supervisor
+	storeReadme       *storeReadmePreview
+	storeReadmeWindow *mygo.Window
 
 	mu             sync.Mutex
 	storeFilter    int

@@ -2,8 +2,6 @@ package pluginui
 
 import (
 	"fmt"
-	"golang.org/x/mod/semver"
-	"log/slog"
 	"strconv"
 	"strings"
 
@@ -12,8 +10,8 @@ import (
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"golang.org/x/mod/semver"
 )
 
 func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
@@ -67,6 +65,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		vpW, _ := c.Size()
 		if vpW > 0 {
 			bodyW = vpW - theme.SidebarMinWidth - 2*theme.Space24
+			c.Invalidate()
 		}
 	}
 
@@ -238,20 +237,8 @@ func renderStoreAppCard(
 	}
 
 	name := entry.Name.Resolve(locale)
-	readmeURL := plugins.RepositoryReadmeURL(entry.Repo)
-	if readmeURL == "" {
-		readmeURL = plugins.RepositoryReadmeURL(installedApp.Manifest.Repo)
-	}
-	var readmePath string
-	if readmeURL == "" && isInstalled {
-		readmePath = installedApp.ReadmePath()
-	}
-	hasReadme := readmeURL != "" || readmePath != ""
-	openReadme := false
-	if hasReadme {
-		card.Cursor(ui.CursorPointer)
-		openReadme = card.Clicked()
-	}
+	card.Cursor(ui.CursorPointer)
+	openReadme := card.Clicked()
 
 	card.Children(func() {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
@@ -265,14 +252,12 @@ func renderStoreAppCard(
 				title := ui.Text(c.Key("app-store-readme-"+entry.ID), name).
 					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
 					TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				if hasReadme {
-					title.Role(ui.RoleLink).Focusable().Cursor(ui.CursorPointer)
-					bui.Tooltip(c, title, theme.Tr("查看 README", "View README"))
-					if hovered {
-						title.TextColor(pal.Accent)
-					}
-					openReadme = title.Clicked() || openReadme
+				title.Role(ui.RoleButton).Focusable().Cursor(ui.CursorPointer)
+				bui.Tooltip(c, title, theme.Tr("查看详情", "View Details"))
+				if hovered {
+					title.TextColor(pal.Accent)
 				}
+				openReadme = title.Clicked() || openReadme
 
 				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 					hasUpdate := isInstalled && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
@@ -324,11 +309,7 @@ func renderStoreAppCard(
 	})
 
 	if openReadme {
-		if readmeURL != "" {
-			c.OpenURL(readmeURL)
-		} else if err := mygo.Shell.OpenPath(readmePath); err != nil {
-			slog.Warn("open plugin README", "plugin", entry.ID, "error", err)
-		}
+		ctrl.openStoreReadme(entry, installedApp)
 	}
 }
 

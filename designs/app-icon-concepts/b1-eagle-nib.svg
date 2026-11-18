@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs><clipPath id="t"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath></defs>
+<g clip-path="url(#t)"><rect x="0" y="0" width="1024" height="1024" fill="#efeeeb"/>
+
+<path d="M735 880 C790 900 830 880 870 850" fill="none" stroke="#2a2b2d" stroke-width="24" stroke-linecap="round"/>
+<path d="M-20 520 L210 420 L120 330 L350 300 L300 210 C470 190 640 230 760 330 C860 410 900 520 880 610 C870 660 850 700 815 745 C812 700 800 672 770 655 C720 630 640 620 600 650 C570 675 575 720 600 770 L520 1100 L-20 1100 Z" fill="#2a2b2d" stroke="#2a2b2d" stroke-width="16" stroke-linejoin="round"/>
+<g transform="translate(0 0)"><path d="M520 430 L780 560" stroke="#f7f6f3" stroke-width="22" stroke-linecap="round"/>
+<path d="M610 478 C600 530 650 560 720 548" fill="none" stroke="#f7f6f3" stroke-width="20" stroke-linecap="round"/>
+<circle cx="668" cy="520" r="20" fill="#f7f6f3"/></g>
+<g transform="translate(-10 -30) rotate(-12 700 720)">
+ <path d="M620 650 H780 V720 L700 900 L620 720 Z" fill="#f7f6f3" stroke="#2a2b2d" stroke-width="20" stroke-linejoin="round"/>
+ <path d="M700 760 V880" stroke="#2a2b2d" stroke-width="14" stroke-linecap="round"/>
+ <circle cx="700" cy="745" r="16" fill="#2a2b2d"/>
+</g>
+
+</g></svg>

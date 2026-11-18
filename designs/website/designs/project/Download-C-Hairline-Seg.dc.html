@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>下载方案 C · 无外框并排细线轻切（浅色版）</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#f7f9fc;color:#1f1e1d}
+a{color:#264a96;text-decoration:none}
+a:hover{color:#1b3878}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+
+<div style="width:100%;display:flex;flex-direction:column;background:#f7f9fc;color:#1f1e1d;font-family:Inter,-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased">
+
+  <!-- ==================== 首屏实景（浅色明亮版）：仅提供当前系统芯片切换下载，下方纯静态文字告知支持其他系统 ==================== -->
+  <section style="position:relative;min-height:760px;padding:0 44px 64px;background:radial-gradient(640px 420px at 50% 48%,rgba(84,125,208,0.12),transparent 72%),#f7f9fc;border-bottom:1px solid #e4e6ea;display:flex;flex-direction:column;justify-content:space-between">
+
+    <header style="height:76px;max-width:1360px;width:100%;margin:0 auto;display:flex;align-items:center;justify-content:space-between">
+      <a href="#top" style="display:inline-flex;align-items:center;gap:10px;height:44px;font-size:17px;font-weight:650;color:#181c26">
+        <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width:28px;height:28px;border-radius:7px;box-shadow:0 4px 12px rgba(24,34,56,0.12)">
+        <span>Block</span>
+      </a>
+      <a href="{{primaryHref}}" style="height:40px;padding:0 18px;border-radius:999px;background:rgba(255,255,255,0.86);border:1px solid rgba(84,125,208,0.38);color:#264a96;font-size:14.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 6px 18px rgba(24,34,56,0.06)">
+        <span>免费下载</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 2.8v7.6M4.6 7.4L8 10.8l3.4-3.4M3.5 13.2h9"></path>
+        </svg>
+      </a>
+    </header>
+
+    <div style="max-width:880px;margin:auto;text-align:center;display:flex;flex-direction:column;align-items:center;gap:22px">
+      <h1 style="margin:0;font-size:94px;line-height:1.1;font-weight:700;letter-spacing:0.01em;color:#161922">落笔成块，快若无物</h1>
+      <p style="margin:0;font-size:20px;line-height:1.65;color:#525866">不用注册登录，打开就能写，笔记全存在自己电脑里。</p>
+
+      <!-- 方案 C 优化版（Ocean Light）：主下载键 + 当前系统芯片细线组（M 系列 / Intel），下方为不可点击的纯文字说明 -->
+      <div style="margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:11px">
+        <div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px">
+          <a href="{{primaryHref}}" style="height:48px;padding:0 24px;border-radius:10px;background:{{ctaBg}};border:1px solid rgba(50,89,171,0.28);color:#ffffff;font-size:15.5px;font-weight:600;display:inline-flex;align-items:center;gap:8px;box-shadow:0 10px 26px rgba(52,92,178,0.24)">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 2.6v7.8M4.6 7.4L8 10.8l3.4-3.4M3.2 13.2h9.6"></path>
+            </svg>
+            <span>{{primaryLabel}}</span>
+          </a>
+
+          <div style="height:48px;padding:3px;border-radius:10px;border:1px solid #d6deec;background:rgba(255,255,255,0.88);display:inline-flex;align-items:center;gap:2px;box-shadow:0 4px 12px rgba(24,34,56,0.04)">
+            <sc-for list="{{segItems}}" as="s" hint-placeholder-count="2">
+              <button type="button" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <span style="font-size:13.5px;line-height:20px;color:#687387;pointer-events:none;user-select:none">{{supportText}}</span>
+      </div>
+    </div>
+
+    <div style="height:12px"></div>
+  </section>
+
+  <!-- ==================== 底部下载区同步预览 ==================== -->
+  <section style="min-height:620px;padding:88px 44px;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px">
+    <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="Block" style="width:92px;height:92px;border-radius:22px;box-shadow:0 20px 48px rgba(24,34,56,0.14)">
+    <h2 style="margin:8px 0 0;font-size:44px;line-height:1.22;font-weight:700;color:#161922">写下来的字，只留在你电脑里</h2>
+    <p style="margin:0;font-size:18px;line-height:1.65;color:#525866">免注册、没广告，今天写的笔记过多少年都能打开。</p>
+
+    <div style="margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:11px">
+      <div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px">
+        <a href="{{primaryHref}}" style="height:48px;padding:0 24px;border-radius:10px;background:{{ctaBg}};border:1px solid rgba(50,89,171,0.28);color:#ffffff;font-size:15.5px;font-weight:600;display:inline-flex;align-items:center;gap:8px;box-shadow:0 10px 26px rgba(52,92,178,0.24)">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 2.6v7.8M4.6 7.4L8 10.8l3.4-3.4M3.2 13.2h9.6"></path>
+          </svg>
+          <span>{{primaryLabel}}</span>
+        </a>
+
+        <div style="height:48px;padding:3px;border-radius:10px;border:1px solid #d6deec;background:rgba(255,255,255,0.88);display:inline-flex;align-items:center;gap:2px;box-shadow:0 4px 12px rgba(24,34,56,0.04)">
+          <sc-for list="{{segItems}}" as="s" hint-placeholder-count="2">
+            <button type="button" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <span style="font-size:13.5px;line-height:20px;color:#687387;pointer-events:none;user-select:none">{{supportText}}</span>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"ctaBg":{"editor":"color","default":"#3d67bd","options":["#3d67bd","#456ec2","#2f57a6"]},"previewOs":{"editor":"enum","default":"mac","options":["mac","win","linux"]},"$preview":{"width":1440,"height":1380}}'>
+class Component extends DCLogic {
+  constructor() {
+    super();
+    this.state = { varId: 'arm64' };
+  }
+  renderVals() {
+    const ctaBg = this.props.ctaBg ?? '#3d67bd';
+    const os = this.props.previewOs ?? 'mac';
+    const meta = {
+      mac: {
+        cta: '下载 macOS 版',
+        support: '同时支持 Windows · Linux',
+        segs: [
+          { id: 'arm64', label: 'M 系列', key: 'mac-arm64' },
+          { id: 'x64', label: 'Intel', key: 'mac-x64' }
+        ]
+      },
+      win: {
+        cta: '下载 Windows 版',
+        support: '同时支持 macOS · Linux',
+        segs: [
+          { id: 'x64', label: 'x64', key: 'win-x64' },
+          { id: 'arm64', label: 'ARM64', key: 'win-arm64' }
+        ]
+      },
+      linux: {
+        cta: '下载 Linux 版',
+        support: '同时支持 macOS · Windows',
+        segs: [
+          { id: 'appimage', label: 'AppImage', key: 'linux-appimage-x64' },
+          { id: 'deb', label: 'deb', key: 'linux-deb-x64' },
+          { id: 'rpm', label: 'rpm', key: 'linux-rpm-x64' }
+        ]
+      }
+    };
+    const cur = meta[os] || meta.mac;
+    const active = cur.segs.find((s) => s.id === this.state.varId) || cur.segs[0];
+    const segItems = cur.segs.map((s) => {
+      const on = s.id === active.id;
+      return {
+        label: s.label,
+        pick: () => this.setState({ varId: s.id }),
+        style: 'height:40px;padding:0 14px;border-radius:7px;border:1px solid ' + (on ? '#547dd0' : 'transparent') + ';background:' + (on ? '#e5edfc' : 'transparent') + ';color:' + (on ? '#1d3b78' : '#556277') + ';font-size:14px;font-weight:' + (on ? '600' : '500') + ';display:inline-flex;align-items:center;justify-content:center'
+      };
+    });
+    return {
+      ctaBg,
+      primaryLabel: cur.cta,
+      primaryHref: 'https://block.cooool.top/download?k=' + active.key + '&to=mirror',
+      supportText: cur.support,
+      segItems
+    };
+  }
+}
+</script>
+</body>
+</html>

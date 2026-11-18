@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>品牌装饰</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:default}
+.t-light{--ground:#f1f1f1;--card:#ffffff;--card-line:#e4e6ea;--text:#20242c;--text2:#526071;--text3:#6b7686;--text4:#5f6b7b;--ph:#7a8594;--accent:#547dd0;--hit:#3d63b0;--hover:rgba(32,36,44,0.07);--card-hover:#eef3fc;--sel-bg:#e5edfc;--icon-fill:#c9d8f3;--badge-fg:#2f4f8f;--field-bg:#ffffff;--field-line:#e1e4e9;--field-line-h:#c9d1de;--kbd-bg:#f3f4f6;--kbd-line:#dcdcdc;--kbd2-bg:#ffffff;--kbd2-line:#c9d1de;--tip-bg:#20242c;--tip-fg:#ffffff;--tip-kbd:#b8c2d0;--disabled:#b6bcc6;--menu:#ffffff;--menu-shadow:0 0 0 1px rgba(32,36,44,0.08),0 24px 56px rgba(32,36,44,0.2),0 4px 12px rgba(32,36,44,0.08);--scrim:rgba(32,36,44,0.22);--pi-on:#eef3fc;--divider:#eceef1;--edge:rgba(32,36,44,0.12);--body:#1f1e1d;--body2:#3a3936;--link:#3d63b0;--link-h:#2f4f8f}
+.t-dark{--ground:#222222;--card:#181818;--card-line:#2e2e2e;--text:#ececec;--text2:#b4b4b4;--text3:#9a9a9a;--text4:#9a9a9a;--ph:#7c7c7c;--accent:#779de8;--hit:#9dbcf5;--hover:rgba(255,255,255,0.07);--card-hover:#262626;--sel-bg:#2e3442;--icon-fill:#31456a;--badge-fg:#b9cdf5;--field-bg:#2a2a2a;--field-line:#3a3a3a;--field-line-h:#4c4c4c;--kbd-bg:#303030;--kbd-line:#444444;--kbd2-bg:#2c2c2c;--kbd2-line:#4a4a4a;--tip-bg:#3a3a3a;--tip-fg:#ececec;--tip-kbd:#9a9a9a;--disabled:#5c5c5c;--menu:#262626;--menu-shadow:0 0 0 1px #3a3a3a,0 24px 56px rgba(0,0,0,0.5),0 4px 12px rgba(0,0,0,0.3);--scrim:rgba(0,0,0,0.5);--pi-on:#313131;--divider:#333333;--edge:rgba(255,255,255,0.09);--body:#e6e6e6;--body2:#c4c4c4;--link:#8fb0f0;--link-h:#b3cbf7}
+a{color:var(--link)}a:hover{color:var(--link-h)}
+.ib{width:28px;height:28px;padding:0;border:none;border-radius:6px;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .12s,color .12s}
+.ib:hover{background:var(--hover);color:var(--text)}
+.ib:disabled{color:var(--disabled)}
+.ib:disabled:hover{background:transparent;color:var(--disabled)}
+.card .ib:hover{background:var(--card-hover)}
+.tw{position:relative;display:flex}
+.tw .tip{position:absolute;top:34px;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .1s;white-space:nowrap;z-index:5}
+.tw:hover .tip{opacity:1;transition-delay:.45s}
+.field{transition:box-shadow .12s,background .12s}
+.field:hover{box-shadow:0 0 0 1px var(--field-line-h),0 1px 2px rgba(0,0,0,0.05)}
+.row{transition:background .12s}
+.row:hover{background:var(--hover)}
+.crumb:hover{background:var(--hover);color:var(--text)}
+.pi{transition:background .08s}
+.pi.on{background:var(--pi-on)}
+input{caret-color:var(--accent)}
+input::placeholder{color:var(--ph)}
+.dk{-webkit-mask-image:linear-gradient(to bottom,#000 52%,transparent);mask-image:linear-gradient(to bottom,#000 52%,transparent)}
+.no-orb .orb{display:none}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(-260px)}}
+.dr1{animation:drift 38s linear infinite}
+.dr2{animation:drift 26s linear infinite}
+.dr3{animation:drift 18s linear infinite}
+.drs{animation:drift 90s linear infinite}
+.drs2{animation:drift 140s linear infinite}
+@keyframes sway{0%,100%{transform:skewX(-7deg)}50%{transform:skewX(7deg)}}
+.sw{transform-box:fill-box;transform-origin:50% 100%;animation:sway 4.6s ease-in-out infinite}
+@keyframes st{0%,100%{opacity:.2}50%{opacity:1}}
+.st{animation:st 3.6s ease-in-out infinite}
+@keyframes glow{0%,100%{opacity:.5}50%{opacity:.9}}
+.glow{animation:glow 7s ease-in-out infinite}
+@keyframes flow{to{stroke-dashoffset:-120}}
+.wl{stroke-dasharray:22 98;animation:flow 6s linear infinite}
+@keyframes shoot{0%,84%{opacity:0;transform:translate(0,0)}86%{opacity:1}94%,100%{opacity:0;transform:translate(52px,18px)}}
+.shoot{animation:shoot 13s ease-out infinite}
+@keyframes bird{from{transform:translate(-30px,0)}to{transform:translate(290px,-10px)}}
+.bird{animation:bird 46s linear infinite}
+@keyframes ffm{0%,100%{transform:translate(0,0)}25%{transform:translate(5px,-4px)}50%{transform:translate(-3px,-7px)}75%{transform:translate(-6px,-2px)}}
+.ffm{animation:ffm 8s ease-in-out infinite}
+@keyframes ffb{0%,100%{opacity:.15}40%,60%{opacity:1}}
+.ffb{animation:ffb 3.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.dk *,.th *{animation:none !important}}
+</style>
+</helmet>
+<div class="{{themeCls}}" style="width: 1200px; height: 760px; position: relative; overflow: hidden; border-radius: 12px; background: var(--ground); color: var(--text); display: flex; flex-direction: column; font-size: 14px; line-height: 20px">
+
+  <sc-if value="{{sc.dawn}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #fbe9dc 0%, rgba(241,241,241,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="41" r="6.8" fill="#ffe6cc" opacity="1"></circle><circle cx="190" cy="41" r="3.8" fill="#ffc993"></circle></g><g class="drs"><path d="M0 44 C43 38 87 38 130 44 C173 50 217 50 260 44 C303 38 347 38 390 44 C433 50 477 50 520 44 V88 H0 Z" fill="#e7ece3"></path></g><g class="dr1"><g fill="#ffffff" opacity="0.7"><rect x="20" y="40" width="90" height="5" rx="2.5"></rect><rect x="280" y="40" width="90" height="5" rx="2.5"></rect></g><g fill="#ffffff" opacity="0.6"><rect x="150" y="47" width="70" height="5" rx="2.5"></rect><rect x="410" y="47" width="70" height="5" rx="2.5"></rect></g></g><g class="dr2"><path d="M0 56 C43 61 87 61 130 56 C173 51 217 51 260 56 C303 61 347 61 390 56 C433 51 477 51 520 56 V88 H0 Z" fill="#dce6d6"></path></g><g class="drs2"><g fill="#ffffff" opacity="0.55"><rect x="60" y="58" width="110" height="5" rx="2.5"></rect><rect x="320" y="58" width="110" height="5" rx="2.5"></rect></g></g><g class="dr3"><path d="M0 64 C43 61 87 61 130 64 C173 67 217 67 260 64 C303 61 347 61 390 64 C433 67 477 67 520 64 V88 H0 Z" fill="#d2e0cb"></path><g class="sw"><g fill="none" stroke="#b2cca8" stroke-width="1.1" stroke-linecap="round"><path d="M20.0 64.2 q0.1 -2.7 0.1 -4.8"></path><path d="M280.0 64.2 q0.1 -2.9 0.3 -5.3"></path><path d="M64.0 63.0 q-0.6 -3.4 -1.4 -6.2"></path><path d="M324.0 63.0 q0.4 -2.2 1.1 -4.0"></path><path d="M112.0 64.3 q-0.3 -2.7 -0.9 -4.9"></path><path d="M372.0 64.3 q-0.0 -4.1 -0.1 -7.5"></path><path d="M170.0 67.1 q-0.0 -3.8 -0.1 -6.9"></path><path d="M430.0 67.1 q-0.4 -3.4 -1.1 -6.2"></path><path d="M214.0 67.2 q0.5 -3.4 1.2 -6.2"></path><path d="M474.0 67.2 q0.3 -3.2 0.8 -5.8"></path></g></g></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.meadow}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="40" r="6.6" fill="#fff0c4" opacity="1"></circle><circle cx="190" cy="40" r="3.6" fill="#ffdf96"></circle></g><g class="dr1"><path d="M0 41 C43 35 87 35 130 41 C173 47 217 47 260 41 C303 35 347 35 390 41 C433 47 477 47 520 41 V88 H0 Z" fill="#e2eadf"></path></g><g class="dr2"><path d="M0 50 C43 56 87 56 130 50 C173 44 217 44 260 50 C303 56 347 56 390 50 C433 44 477 44 520 50 V88 H0 Z" fill="#d6e4d0"></path></g><g class="dr3"><path d="M0 60 C43 56 87 56 130 60 C173 64 217 64 260 60 C303 56 347 56 390 60 C433 64 477 64 520 60 V88 H0 Z" fill="#cadcc2"></path><g class="sw"><g fill="none" stroke="#a9c69f" stroke-width="1.1" stroke-linecap="round"><path d="M14.0 60.2 q-0.4 -2.8 -1.1 -5.1"></path><path d="M274.0 60.2 q-0.5 -3.5 -1.4 -6.3"></path><path d="M22.0 59.7 q-0.2 -3.2 -0.4 -5.9"></path><path d="M282.0 59.7 q0.0 -2.3 0.0 -4.2"></path><path d="M57.0 58.3 q-0.1 -2.3 -0.2 -4.1"></path><path d="M317.0 58.3 q-0.5 -2.3 -1.3 -4.2"></path><path d="M63.0 58.2 q0.4 -3.0 1.0 -5.5"></path><path d="M323.0 58.2 q-0.4 -2.4 -0.9 -4.4"></path><path d="M101.0 59.3 q0.6 -3.4 1.4 -6.2"></path><path d="M361.0 59.3 q-0.1 -3.3 -0.3 -6.0"></path><path d="M139.0 61.8 q-0.6 -4.1 -1.5 -7.4"></path><path d="M399.0 61.8 q-0.3 -3.9 -0.7 -7.0"></path><path d="M146.0 62.3 q-0.5 -2.5 -1.2 -4.5"></path><path d="M406.0 62.3 q0.4 -2.8 1.0 -5.1"></path><path d="M183.0 64.1 q0.1 -2.5 0.3 -4.6"></path><path d="M443.0 64.1 q-0.2 -3.4 -0.4 -6.2"></path><path d="M224.0 63.5 q-0.6 -3.3 -1.4 -5.9"></path><path d="M484.0 63.5 q-0.4 -2.3 -0.9 -4.2"></path><path d="M231.0 63.1 q-0.1 -3.5 -0.2 -6.4"></path><path d="M491.0 63.1 q0.1 -2.8 0.3 -5.1"></path></g></g><g class="sw" style="animation-delay: -2.2s"><g fill="none" stroke="#9bbd90" stroke-width="1.1" stroke-linecap="round"><path d="M36.0 58.9 q0.6 -2.6 1.5 -4.8"></path><path d="M296.0 58.9 q0.3 -2.4 0.7 -4.4"></path><path d="M82.0 58.4 q-0.3 -2.4 -0.8 -4.3"></path><path d="M342.0 58.4 q-0.4 -4.1 -0.9 -7.5"></path><path d="M118.0 60.3 q-0.1 -3.4 -0.1 -6.2"></path><path d="M378.0 60.3 q-0.0 -3.1 -0.0 -5.6"></path><path d="M165.0 63.4 q0.4 -2.6 1.1 -4.7"></path><path d="M425.0 63.4 q-0.3 -2.4 -0.9 -4.3"></path><path d="M203.0 64.1 q-0.3 -2.2 -0.7 -4.1"></path><path d="M463.0 64.1 q0.5 -3.0 1.3 -5.4"></path><path d="M247.0 62.1 q-0.5 -2.9 -1.2 -5.3"></path><path d="M507.0 62.1 q0.6 -2.7 1.6 -4.9"></path></g></g></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.breeze}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g class="drs"><path d="M0 50 C43 45 87 45 130 50 C173 55 217 55 260 50 C303 45 347 45 390 50 C433 55 477 55 520 50 V88 H0 Z" fill="#e3ebdf"></path></g><g class="dr2"><g fill="none" stroke="#b7d1ae" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M6 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M266 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path></g><g fill="none" stroke="#c3d6ec" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M96 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M356 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path></g><g fill="none" stroke="#c3d6ec" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M170 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M430 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path></g><g fill="none" stroke="#b7d1ae" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M150 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M410 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path></g></g><g class="dr1"><path d="M0 60 C43 63 87 63 130 60 C173 57 217 57 260 60 C303 63 347 63 390 60 C433 57 477 57 520 60 V88 H0 Z" fill="#d7e5d1"></path><g class="sw"><g fill="none" stroke="#a9c69f" stroke-width="1.1" stroke-linecap="round"><path d="M18.0 62.1 q-0.2 -3.1 -0.4 -5.6"></path><path d="M278.0 62.1 q0.5 -2.5 1.2 -4.5"></path><path d="M26.0 62.5 q0.0 -2.2 0.0 -4.0"></path><path d="M286.0 62.5 q-0.5 -3.9 -1.3 -7.1"></path><path d="M74.0 63.4 q0.1 -3.3 0.4 -5.9"></path><path d="M334.0 63.4 q-0.2 -2.3 -0.4 -4.1"></path><path d="M128.0 61.3 q-0.1 -3.6 -0.2 -6.5"></path><path d="M388.0 61.3 q-0.4 -3.6 -1.1 -6.5"></path><path d="M136.0 60.9 q-0.5 -2.7 -1.2 -4.8"></path><path d="M396.0 60.9 q0.5 -3.2 1.4 -5.8"></path><path d="M196.0 59.0 q0.4 -3.3 0.9 -6.1"></path><path d="M456.0 59.0 q0.3 -2.9 0.8 -5.3"></path><path d="M238.0 60.1 q-0.3 -2.4 -0.7 -4.4"></path><path d="M498.0 60.1 q0.3 -3.5 0.7 -6.4"></path></g></g></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.dusk}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #f6dfd2 0%, #efe3ee 45%, rgba(241,241,241,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="44" r="7.2" fill="#f8d3bb" opacity="1"></circle><circle cx="190" cy="44" r="4.2" fill="#f2a679"></circle></g><g class="bird" fill="none" stroke="#b49c8e" stroke-width="0.9" stroke-linecap="round"><g transform="translate(0 30) scale(0.9)"><path d="M0 0 q2.2 -2.2 4.4 0 q2.2 -2.2 4.4 0"></path></g><g transform="translate(12 25) scale(0.7)"><path d="M0 0 q2.2 -2.2 4.4 0 q2.2 -2.2 4.4 0"></path></g></g><g class="drs"><path d="M0 46 C43 40 87 40 130 46 C173 52 217 52 260 46 C303 40 347 40 390 46 C433 52 477 52 520 46 V88 H0 Z" fill="#e8e0d8"></path></g><g class="dr1"><path d="M0 55 C43 60 87 60 130 55 C173 50 217 50 260 55 C303 60 347 60 390 55 C433 50 477 50 520 55 V88 H0 Z" fill="#ddd6cb"></path></g><g class="dr2"><path d="M0 63 C43 60 87 60 130 63 C173 66 217 66 260 63 C303 60 347 60 390 63 C433 66 477 66 520 63 V88 H0 Z" fill="#d3cfc0"></path><g class="sw"><g fill="none" stroke="#bdb6a2" stroke-width="1.1" stroke-linecap="round"><path d="M30.0 62.7 q-0.5 -2.7 -1.3 -4.8"></path><path d="M290.0 62.7 q-0.4 -3.0 -1.1 -5.4"></path><path d="M92.0 62.4 q-0.1 -2.3 -0.3 -4.2"></path><path d="M352.0 62.4 q0.4 -4.0 1.0 -7.2"></path><path d="M150.0 65.2 q-0.4 -3.7 -0.9 -6.7"></path><path d="M410.0 65.2 q-0.3 -3.2 -0.7 -5.9"></path><path d="M206.0 66.4 q-0.5 -2.5 -1.3 -4.6"></path><path d="M466.0 66.4 q0.5 -2.6 1.4 -4.8"></path></g></g></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.daybreak}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: radial-gradient(160px 46px at 190px 58px, rgba(236,160,118,0.26), rgba(236,160,118,0) 100%), linear-gradient(180deg, #1b2131 0%, rgba(34,34,34,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g fill="#dfe6f5"><circle class="st" cx="7.1" cy="6.0" r="0.8" style="animation-delay: -0.2s; animation-duration: 5.1s"></circle><circle class="st" cx="39.2" cy="29.5" r="0.55" style="animation-delay: -0.5s; animation-duration: 4.1s"></circle><circle cx="255.1" cy="5.5" r="0.55" opacity="0.89"></circle><circle class="st" cx="90.1" cy="8.6" r="0.8" style="animation-delay: -3.8s; animation-duration: 3.3s"></circle><circle class="st" cx="215.3" cy="12.6" r="0.6" style="animation-delay: -3.2s; animation-duration: 3.7s"></circle><circle class="st" cx="96.6" cy="11.9" r="0.6" style="animation-delay: -1.1s; animation-duration: 3.5s"></circle></g><g class="orb"><circle class="glow" cx="190" cy="56" r="7" fill="#f2b48a" opacity="0.35"></circle></g><g class="drs"><path d="M0 54 C43 48 87 48 130 54 C173 60 217 60 260 54 C303 48 347 48 390 54 C433 60 477 60 520 54 V88 H0 Z" fill="#2a2a33"></path></g><g class="drs2"><path d="M0 63 C43 67 87 67 130 63 C173 59 217 59 260 63 C303 67 347 67 390 63 C433 59 477 59 520 63 V88 H0 Z" fill="#23242b"></path></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.firefly}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #1b2131 0%, rgba(34,34,34,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g fill="#dfe6f5"><circle cx="100.0" cy="10.6" r="0.6" opacity="0.64"></circle><circle class="st" cx="229.9" cy="12.4" r="0.7" style="animation-delay: -2.9s; animation-duration: 4.2s"></circle><circle class="st" cx="200.9" cy="24.8" r="0.55" style="animation-delay: -0.6s; animation-duration: 3.2s"></circle><circle cx="186.2" cy="8.5" r="1.05" opacity="0.74"></circle><circle cx="189.2" cy="5.4" r="0.7" opacity="0.51"></circle><circle class="st" cx="234.1" cy="25.7" r="0.6" style="animation-delay: -1.3s; animation-duration: 4.3s"></circle></g><g class="drs"><path d="M0 52 C43 46 87 46 130 52 C173 58 217 58 260 52 C303 46 347 46 390 52 C433 58 477 58 520 52 V88 H0 Z" fill="#252b31"></path></g><g class="drs2"><path d="M0 62 C43 66 87 66 130 62 C173 58 217 58 260 62 C303 66 347 66 390 62 C433 58 477 58 520 62 V88 H0 Z" fill="#1f2428"></path><g class="sw"><g fill="none" stroke="#34413c" stroke-width="1.1" stroke-linecap="round"><path d="M22.0 64.7 q0.3 -3.4 0.8 -6.2"></path><path d="M282.0 64.7 q0.6 -3.7 1.4 -6.8"></path><path d="M70.0 66.2 q0.5 -3.6 1.4 -6.6"></path><path d="M330.0 66.2 q-0.0 -2.3 -0.1 -4.1"></path><path d="M130.0 63.2 q0.2 -4.0 0.5 -7.3"></path><path d="M390.0 63.2 q-0.5 -3.9 -1.2 -7.2"></path><path d="M188.0 60.2 q-0.3 -3.1 -0.8 -5.6"></path><path d="M448.0 60.2 q0.1 -3.2 0.2 -5.9"></path><path d="M232.0 61.3 q-0.4 -2.2 -0.9 -4.0"></path><path d="M492.0 61.3 q0.5 -2.7 1.3 -5.0"></path></g></g></g><g class="ffm" style="animation-delay: -1.3s; animation-duration: 6.9s"><g class="ffb" style="animation-delay: -3.3s"><circle cx="70.0" cy="52.1" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="70.0" cy="52.1" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -3.2s; animation-duration: 8.9s"><g class="ffb" style="animation-delay: -3.9s"><circle cx="143.5" cy="63.9" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="143.5" cy="63.9" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -4.7s; animation-duration: 10.0s"><g class="ffb" style="animation-delay: -1.4s"><circle cx="142.5" cy="55.6" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="142.5" cy="55.6" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -6.8s; animation-duration: 7.0s"><g class="ffb" style="animation-delay: -0.1s"><circle cx="108.1" cy="65.5" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="108.1" cy="65.5" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -1.4s; animation-duration: 7.5s"><g class="ffb" style="animation-delay: -2.5s"><circle cx="125.7" cy="60.8" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="125.7" cy="60.8" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -6.1s; animation-duration: 9.0s"><g class="ffb" style="animation-delay: -0.8s"><circle cx="199.0" cy="63.9" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="199.0" cy="63.9" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -3.8s; animation-duration: 9.9s"><g class="ffb" style="animation-delay: -3.6s"><circle cx="116.3" cy="61.4" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="116.3" cy="61.4" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -6.6s; animation-duration: 6.7s"><g class="ffb" style="animation-delay: -2.4s"><circle cx="208.2" cy="61.1" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="208.2" cy="61.1" r="1.1" fill="#e9fbb0"></circle></g></g><g class="ffm" style="animation-delay: -0.1s; animation-duration: 7.7s"><g class="ffb" style="animation-delay: -1.7s"><circle cx="246.7" cy="51.0" r="3.2" fill="#d7f08a" opacity="0.16"></circle><circle cx="246.7" cy="51.0" r="1.1" fill="#e9fbb0"></circle></g></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.night}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #1b2131 0%, rgba(34,34,34,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><ellipse cx="150" cy="22" rx="120" ry="9" transform="rotate(-8 150 22)" fill="#8ea4d8" opacity="0.05"></ellipse><g fill="#dfe6f5"><circle cx="236.9" cy="24.9" r="0.9" opacity="0.54"></circle><circle cx="206.6" cy="25.4" r="0.9" opacity="0.50"></circle><circle cx="80.5" cy="7.3" r="1.05" opacity="0.75"></circle><circle cx="103.8" cy="24.3" r="1.05" opacity="0.53"></circle><circle class="st" cx="7.8" cy="27.8" r="0.55" style="animation-delay: -3.5s; animation-duration: 4.2s"></circle><circle cx="200.1" cy="18.3" r="0.9" opacity="0.71"></circle><circle cx="74.1" cy="49.9" r="0.55" opacity="0.61"></circle><circle class="st" cx="21.7" cy="39.0" r="0.8" style="animation-delay: -1.2s; animation-duration: 3.0s"></circle><circle class="st" cx="8.3" cy="35.2" r="0.6" style="animation-delay: -3.6s; animation-duration: 3.9s"></circle><circle cx="251.1" cy="21.7" r="0.55" opacity="0.55"></circle><circle cx="82.4" cy="3.7" r="0.8" opacity="0.51"></circle><circle cx="66.1" cy="7.7" r="0.55" opacity="0.69"></circle><circle class="st" cx="132.2" cy="49.3" r="0.6" style="animation-delay: -1.5s; animation-duration: 3.7s"></circle><circle class="st" cx="253.5" cy="3.0" r="0.9" style="animation-delay: -3.5s; animation-duration: 3.3s"></circle><circle cx="103.4" cy="43.2" r="1.05" opacity="0.47"></circle><circle class="st" cx="6.4" cy="31.7" r="0.7" style="animation-delay: -0.3s; animation-duration: 3.3s"></circle><circle class="st" cx="164.4" cy="3.7" r="0.7" style="animation-delay: -1.8s; animation-duration: 5.1s"></circle><circle class="st" cx="222.4" cy="11.6" r="0.6" style="animation-delay: -0.9s; animation-duration: 4.3s"></circle><circle cx="186.8" cy="10.4" r="1.05" opacity="0.55"></circle><circle class="st" cx="243.4" cy="44.5" r="0.9" style="animation-delay: -0.2s; animation-duration: 3.1s"></circle><circle cx="190.4" cy="21.4" r="0.8" opacity="0.75"></circle><circle cx="77.9" cy="11.2" r="1.05" opacity="0.51"></circle><circle class="st" cx="57.5" cy="46.0" r="1.05" style="animation-delay: -1.1s; animation-duration: 3.9s"></circle><circle cx="19.2" cy="11.3" r="0.7" opacity="0.94"></circle><circle cx="27.2" cy="9.5" r="0.8" opacity="0.78"></circle><circle cx="39.4" cy="4.6" r="0.55" opacity="0.63"></circle><circle cx="82.6" cy="4.6" r="0.9" opacity="0.69"></circle><circle class="st" cx="188.1" cy="18.0" r="0.55" style="animation-delay: -2.2s; animation-duration: 4.6s"></circle></g><g class="drs"><path d="M0 56 C43 50 87 50 130 56 C173 62 217 62 260 56 C303 50 347 50 390 56 C433 62 477 62 520 56 V88 H0 Z" fill="#252a35"></path></g><g class="drs2"><path d="M0 64 C43 68 87 68 130 64 C173 60 217 60 260 64 C303 68 347 68 390 64 C433 60 477 60 520 64 V88 H0 Z" fill="#20232b"></path></g></svg></div>
+  </sc-if>
+  <sc-if value="{{sc.moon}}" hint-placeholder-val="{{ false }}">
+    <div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 260px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #1b2131 0%, rgba(34,34,34,0) 100%)"></div><svg width="260" height="88" viewBox="0 0 260 88" preserveAspectRatio="xMidYMax slice" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="189" cy="37.5" r="7.0" fill="#9fb4e6" opacity="0.12"></circle><path d="M190 33.0 A4.5 4.5 0 1 0 190 42.0 A2.97 4.5 0 1 1 190 33.0 Z" fill="#e7ecf8"></path></g><g fill="#dfe6f5"><circle class="st" cx="237.1" cy="43.8" r="0.55" style="animation-delay: -1.2s; animation-duration: 3.7s"></circle><circle class="st" cx="94.2" cy="34.5" r="0.7" style="animation-delay: -0.9s; animation-duration: 3.9s"></circle><circle class="st" cx="10.2" cy="7.6" r="1.05" style="animation-delay: -0.1s; animation-duration: 4.3s"></circle><circle cx="112.7" cy="36.4" r="0.6" opacity="0.74"></circle><circle cx="248.6" cy="19.2" r="0.7" opacity="0.59"></circle><circle class="st" cx="249.6" cy="28.1" r="0.8" style="animation-delay: -1.9s; animation-duration: 4.7s"></circle><circle cx="205.3" cy="26.4" r="1.05" opacity="0.55"></circle><circle class="st" cx="32.8" cy="8.1" r="0.55" style="animation-delay: -3.8s; animation-duration: 3.5s"></circle><circle class="st" cx="230.8" cy="26.8" r="0.8" style="animation-delay: -1.0s; animation-duration: 3.1s"></circle><circle class="st" cx="201.5" cy="33.7" r="0.8" style="animation-delay: -2.2s; animation-duration: 5.0s"></circle><circle class="st" cx="153.4" cy="43.7" r="0.6" style="animation-delay: -0.1s; animation-duration: 4.3s"></circle><circle cx="103.1" cy="10.8" r="0.6" opacity="0.94"></circle><circle cx="206.9" cy="43.9" r="0.9" opacity="0.67"></circle><circle class="st" cx="27.4" cy="4.7" r="0.8" style="animation-delay: -0.1s; animation-duration: 3.4s"></circle><circle cx="142.2" cy="35.7" r="0.8" opacity="0.56"></circle></g><g class="shoot"><path d="M44 8 l20 7" stroke="#eef2fb" stroke-width="1" stroke-linecap="round" opacity="0.85"></path></g><g class="drs"><path d="M0 60 C43 65 87 65 130 60 C173 55 217 55 260 60 C303 65 347 65 390 60 C433 55 477 55 520 60 V88 H0 Z" fill="#22262f"></path></g></svg></div>
+  </sc-if>
+
+  <header style="position: relative; z-index: 1; height: 40px; flex-shrink: 0; display: flex; align-items: center">
+    <div style="height: 40px; box-sizing: border-box; padding: 0 8px 0 16px; display: flex; align-items: center; width: {{leftW}}">
+      <div style="display: flex; gap: 8px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+      </div>
+      <div class="tw" style="margin-left: 12px">
+        <button type="button" class="ib" aria-label="{{toggleLabel}}" onClick="{{toggle}}">
+          <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path><path d="M15.5 10l-2 2 2 2" style="stroke: var(--accent)"></path></svg>
+          </sc-if>
+          <sc-if value="{{collapsed}}" hint-placeholder-val="{{ false }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path><path d="M13.5 10l2 2-2 2" style="stroke: var(--accent)"></path></svg>
+          </sc-if>
+        </button>
+        <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: var(--tip-bg); display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tip-fg)">{{toggleLabel}}<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: var(--tip-kbd)">⌥B</span></span>
+      </div>
+      <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+        <sc-if value="{{showMark}}" hint-placeholder-val="{{ true }}">
+        <div style="margin-left: 6px; height: 28px; padding: 0 4px; display: flex; align-items: center; gap: 7px">
+          <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width: 18px; height: 18px; border-radius: 5px; display: block; box-shadow: 0 0 0 1px rgba(32,36,44,0.08)">
+          <span style="font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text)">Block</span>
+        </div>
+        </sc-if>
+        <span style="flex: 1"></span>
+        <div class="tw">
+          <button type="button" class="ib" aria-label="后退" style="width: 26px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: var(--tip-bg); display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tip-fg)">后退<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: var(--tip-kbd)">⌘[</span></span>
+        </div>
+        <button type="button" class="ib" aria-label="前进" disabled="disabled" style="width: 26px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+        </button>
+      </sc-if>
+    </div>
+    <nav aria-label="位置" style="flex: 1; min-width: 0; padding-left: {{crumbPad}}; display: flex; align-items: center; gap: 2px">
+      <button type="button" class="crumb" style="height: 28px; border: none; border-radius: 6px; background: transparent; padding: 0 6px; display: flex; align-items: center; gap: 7px; color: var(--text2); font-size: 14px">
+        <span style="width: 18px; height: 18px; border-radius: 5px; background: var(--icon-fill); color: var(--badge-fg); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">创</span>
+        <span>创业团队</span>
+      </button>
+      <span aria-hidden="true" style="color: var(--disabled); font-size: 15px; padding: 0 2px">/</span>
+      <span style="padding: 0 6px; color: var(--text); font-size: 14px; font-weight: 460; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">明天汇报</span>
+    </nav>
+    <div style="padding-right: 12px; display: flex; align-items: center; gap: 2px">
+      <button type="button" class="ib" aria-label="评论">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4z"></path><path d="M8.5 9h7M8.5 12h4"></path></svg>
+      </button>
+      <button type="button" class="ib" aria-label="AI">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path><path d="M18 3v4M16 5h4" style="stroke: var(--accent)"></path></svg>
+      </button>
+      <button type="button" class="ib" aria-label="更多">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="18" cy="12" r="1.5"></circle></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="position: relative; z-index: 1; flex: 1; min-height: 0; display: flex">
+    <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+      <aside style="width: 260px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column">
+        <div style="padding: 4px 8px 6px 12px; display: flex; align-items: center; gap: 2px">
+          <button type="button" class="field" onClick="{{openSearch}}" style="flex: 1; min-width: 0; height: 30px; border: none; border-radius: 8px; background: var(--field-bg); box-shadow: 0 0 0 1px var(--field-line), 0 1px 2px rgba(32,36,44,0.04); padding: 0 6px 0 9px; margin-right: 4px; display: flex; align-items: center; gap: 7px; color: var(--text3); font-size: 14px; text-align: left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+            <span style="flex: 1">搜索</span>
+            <span style="height: 18px; padding: 0 5px; border-radius: 4px; background: var(--kbd-bg); box-shadow: inset 0 0 0 1px var(--field-line); font-family: 'JetBrains Mono',Menlo,monospace; font-size: 11px; line-height: 18px; color: var(--text2)">⌘K</span>
+          </button>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="排序与筛选">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M7 12h10"></path><path d="M10 17h4"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: var(--tip-bg); display: flex; align-items: center; font-size: 12px; color: var(--tip-fg)">排序与筛选</span>
+          </div>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="新建文件夹">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path><path d="M12 10.5v5M9.5 13h5" style="stroke: var(--accent)"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: var(--tip-bg); display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tip-fg)">新建文件夹<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: var(--tip-kbd)">⇧⌘N</span></span>
+          </div>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="新建页面">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V13"></path><path d="M18.4 3.6a2 2 0 0 1 2.9 2.9L12.5 15.3 9 16l.7-3.5z" style="stroke: var(--accent)"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: var(--tip-bg); display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tip-fg)">新建页面<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: var(--tip-kbd)">⌘N</span></span>
+          </div>
+        </div>
+
+        <nav aria-label="文件树" style="padding: 4px 8px 0 12px; display: flex; flex-direction: column; gap: 2px">
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px; display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text3)"><path d="M9 6l6 6-6 6"></path></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2)"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path></svg>
+            <span style="margin-left: 2px">backups</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>更深入调研</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>官网</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>苹果账号购买</span>
+          </button>
+          <button type="button" aria-current="page" style="height: 32px; border: none; border-radius: 6px; background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--accent); padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="fill: var(--icon-fill); stroke: var(--accent)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>明天汇报</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>claude</span>
+          </button>
+        </nav>
+
+        <span style="flex: 1"></span>
+
+        <div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 8px 12px; display: flex; align-items: center; gap: 4px">
+          <button type="button" class="row" style="flex: 1; min-width: 0; height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; text-align: left">
+            <span style="width: 18px; height: 18px; border-radius: 5px; background: var(--icon-fill); color: var(--badge-fg); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; flex-shrink: 0">创</span>
+            <span style="flex: 1">创业团队</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text3)"><path d="M8 10l4-4 4 4"></path><path d="M8 14l4 4 4-4"></path></svg>
+          </button>
+          <button type="button" class="ib" aria-label="设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+          </button>
+        </div>
+      </aside>
+    </sc-if>
+
+    <main class="card" style="flex: 1; min-width: 0; margin: 0 8px 8px {{cardLeft}}; border-radius: 10px; background: var(--card); box-shadow: 0 0 0 1px var(--card-line), 0 1px 3px rgba(32,36,44,0.05); overflow: hidden">
+      <article style="height: 100%; box-sizing: border-box; padding: 52px 32px 0">
+        <div style="max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; color: var(--body); font-size: 16px; line-height: 28px">
+          <h1 style="margin: 0 0 10px; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em">明天汇报</h1>
+          <p style="margin: 0">日本站：<a href="https://yangvela.com/jp">https://yangvela.com/jp</a></p>
+          <p style="margin: 0">英文全球站：<a href="https://yangvela.com/?lang=en">https://yangvela.com/?lang=en</a></p>
+          <p style="margin: 0">韩国站：<a href="https://yangvela.com/kr">https://yangvela.com/kr</a></p>
+          <p style="margin: 0; color: var(--body2)">本次更新重点：英、韩两站新增四大美容护理扩展产线并换上全新首屏封面。</p>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; z-index: 20">
+      <button type="button" aria-label="关闭搜索" onClick="{{close}}" style="position: absolute; inset: 0; border: none; padding: 0; background: var(--scrim)"></button>
+      <div role="dialog" aria-label="搜索" style="position: absolute; top: 92px; left: 50%; transform: translateX(-50%); width: 600px; border-radius: 14px; background: var(--menu); box-shadow: var(--menu-shadow); overflow: hidden; display: flex; flex-direction: column">
+        <div style="height: 52px; box-sizing: border-box; padding: 0 14px 0 18px; display: flex; align-items: center; gap: 12px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="stroke: var(--text2)"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+          <label for="qb" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">搜索页面或命令</label>
+          <input id="qb" ref="{{inp}}" value="{{qRaw}}" onChange="{{onQuery}}" onKeyDown="{{onKey}}" placeholder="搜索页面或命令" autocomplete="off" spellcheck="false" style="flex: 1; min-width: 0; height: 32px; border: none; outline: none; background: transparent; color: var(--text); font-size: 15px; font-family: inherit; padding: 0">
+          <span style="height: 20px; padding: 0 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--kbd-line); background: var(--kbd-bg); font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; color: var(--text2)">esc</span>
+        </div>
+        <div style="height: 1px; background: var(--divider)"></div>
+        <div style="max-height: 440px; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 1px">
+          <sc-if value="{{hasNotes}}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 8px 10px 4px; font-size: 12px; line-height: 16px; font-weight: 560; color: var(--text4)">{{notesLabel}}</div>
+            <sc-for list="{{notes}}" as="n" hint-placeholder-count="4">
+              <button type="button" class="{{n.cls}}" onClick="{{n.pick}}" onMouseEnter="{{n.hover}}" style="width: 100%; min-height: 36px; box-sizing: border-box; border: none; border-radius: 8px; background: transparent; padding: 8px 10px; display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; text-align: left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2); flex-shrink: 0; align-self: flex-start; margin-top: 2px"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-weight: 460; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.t0}}<span style="color: var(--hit); font-weight: 600">{{n.t1}}</span>{{n.t2}}</span>
+                  <sc-if value="{{n.snippet}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 13px; line-height: 18px; color: var(--text4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.b0}}<span style="color: var(--hit); font-weight: 560">{{n.b1}}</span>{{n.b2}}</span>
+                  </sc-if>
+                </span>
+                <span style="flex-shrink: 0; font-size: 13px; color: var(--text4)">{{n.p}}</span>
+                <sc-if value="{{n.on}}" hint-placeholder-val="{{ false }}">
+                  <span style="flex-shrink: 0; width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--kbd2-line); background: var(--kbd2-bg); font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: var(--text2)">↵</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{hasCmds}}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 10px 10px 4px; font-size: 12px; line-height: 16px; font-weight: 560; color: var(--text4)">命令</div>
+            <sc-for list="{{cmds}}" as="c" hint-placeholder-count="4">
+              <button type="button" class="{{c.cls}}" onClick="{{c.pick}}" onMouseEnter="{{c.hover}}" style="width: 100%; height: 36px; box-sizing: border-box; border: none; border-radius: 8px; background: transparent; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; text-align: left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="stroke: var(--text2); flex-shrink: 0"><path d="M5 8l4 4-4 4"></path><path d="M12 17h7" style="stroke: var(--accent)"></path></svg>
+                <span style="flex: 1; font-weight: 460">{{c.t0}}<span style="color: var(--hit); font-weight: 600">{{c.t1}}</span>{{c.t2}}</span>
+                <span style="display: flex; gap: 3px">
+                  <sc-for list="{{c.k}}" as="key" hint-placeholder-count="2">
+                    <span style="min-width: 20px; height: 20px; box-sizing: border-box; padding: 0 5px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--kbd-line); background: var(--kbd-bg); font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: var(--text2)">{{key}}</span>
+                  </sc-for>
+                </span>
+              </button>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 20px 10px 12px; font-size: 14px; color: var(--text4); text-align: center">没有找到「{{qTrim}}」</div>
+            <button type="button" class="pi on" onClick="{{close}}" style="width: 100%; height: 36px; box-sizing: border-box; border: none; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; text-align: left">
+              <svg width="16" height="16" viewBox="0 0 24 24" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="fill: var(--icon-fill); stroke: var(--text)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M11.2 10.5v6M8.2 13.5h6" stroke-linecap="round" style="stroke: var(--accent)"></path></svg>
+              <span style="flex: 1; font-weight: 460">新建页面「{{qTrim}}」</span>
+              <span style="width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--kbd2-line); background: var(--kbd2-bg); font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: var(--text2)">↵</span>
+            </button>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--edge); pointer-events: none; z-index: 30"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light","label":"主题"},"deco":{"editor":"enum","options":["time","dawn","meadow","breeze","dusk","daybreak","firefly","night","moon","off"],"default":"time","label":"品牌装饰"},"hour":{"editor":"int","min":-1,"max":23,"step":1,"default":-1,"label":"模拟时刻（-1 为当前）"},"orb":{"editor":"boolean","default":true,"label":"显示日月"},"mark":{"editor":"boolean","default":true,"label":"显示 Logo 与名称"},"mode":{"editor":"enum","options":["expanded","collapsed"],"default":"expanded","label":"侧栏"},"search":{"editor":"boolean","default":false,"label":"搜索面板"},"query":{"editor":"text","default":"","label":"搜索词"},"$preview":{"width":1200,"height":760}}'>
+const NOTES = [
+  { t: '明天汇报', p: '创业团队', b: '本次更新重点：英、韩两站新增四大美容护理扩展产线' },
+  { t: '更深入调研', p: '创业团队', b: '汇报前补齐竞品定价与渠道数据' },
+  { t: '官网', p: '创业团队', b: '日本站：https://yangvela.com/jp' },
+  { t: '周会纪要', p: 'backups', b: '下周一向投资人汇报 Q4 目标' },
+  { t: '苹果账号购买', p: '创业团队', b: '美区账号与礼品卡充值步骤' }
+];
+const CMDS = [
+  { t: '新建页面', k: ['⌘', 'N'] },
+  { t: '新建文件夹', k: ['⇧', '⌘', 'N'] },
+  { t: '切换侧栏', k: ['⌥', 'B'] },
+  { t: '打开设置', k: ['⌘', ','] }
+];
+function split(s, q) {
+  if (!q) return [s, '', ''];
+  const i = s.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return [s, '', ''];
+  return [s.slice(0, i), s.slice(i, i + q.length), s.slice(i + q.length)];
+}
+const LIGHT_BY_HOUR = (h) => (h >= 5 && h < 10) ? 'dawn' : (h >= 10 && h < 15) ? 'meadow' : (h >= 15 && h < 18) ? 'breeze' : 'dusk';
+const DARK_BY_HOUR = (h) => (h >= 4 && h < 7) ? 'daybreak' : (h >= 7 && h < 20) ? 'firefly' : (h >= 1 && h < 4) ? 'moon' : 'night';
+const SCENE_IDS = ['dawn', 'meadow', 'breeze', 'dusk', 'daybreak', 'firefly', 'night', 'moon'];
+function pickScene(deco, theme, hourProp) {
+  if (deco === 'off') return '';
+  if (deco && deco !== 'time' && SCENE_IDS.includes(deco)) return deco;
+  const h = (typeof hourProp === 'number' && hourProp >= 0) ? hourProp : new Date().getHours();
+  return theme === 'dark' ? DARK_BY_HOUR(h) : LIGHT_BY_HOUR(h);
+}
+function sceneFlags(id) { const o = {}; SCENE_IDS.forEach((k) => { o[k] = k === id; }); return o; }
+class Component extends DCLogic {
+  componentDidUpdate(prevProps, prevState) {
+    const was = prevState && prevState.open;
+    if (this.state && this.state.open && !was && this.inp && this.inp.current) this.inp.current.focus();
+  }
+  renderVals() {
+    const s = this.state || {};
+    const P = this.props;
+    this.inp = this.inp || React.createRef();
+    const collapsed = s.collapsed ?? (P.mode === 'collapsed');
+    const open = s.open ?? (P.search === true || P.search === 'true');
+    const qRaw = s.q ?? (P.query || '');
+    const q = qRaw.trim();
+    const lq = q.toLowerCase();
+    const noteHits = q ? NOTES.filter((n) => n.t.toLowerCase().includes(lq) || n.b.toLowerCase().includes(lq)) : NOTES.slice(0, 4);
+    const cmdHits = q ? CMDS.filter((c) => c.t.toLowerCase().includes(lq)) : CMDS;
+    const empty = !!q && noteHits.length + cmdHits.length === 0;
+    const total = Math.max(noteHits.length + cmdHits.length, 1);
+    const active = Math.min(s.active ?? 0, total - 1);
+    const close = () => this.setState({ open: false, q: '', active: 0 });
+    const notes = noteHits.map((n, i) => {
+      const [t0, t1, t2] = split(n.t, q);
+      const [b0, b1, b2] = split(n.b, q);
+      return { p: n.p, t0, t1, t2, b0, b1, b2, snippet: !!q && !t1 && !!b1, on: i === active, cls: i === active ? 'pi on' : 'pi', pick: close, hover: () => this.setState({ active: i }) };
+    });
+    const cmds = cmdHits.map((c, j) => {
+      const i = noteHits.length + j;
+      const [t0, t1, t2] = split(c.t, q);
+      return { k: c.k, t0, t1, t2, cls: i === active ? 'pi on' : 'pi', pick: close, hover: () => this.setState({ active: i }) };
+    });
+    const theme = P.theme === 'dark' ? 'dark' : 'light';
+    const hour = P.hour === undefined || P.hour === null || P.hour === '' ? -1 : Number(P.hour);
+    const sceneId = collapsed ? '' : pickScene(P.deco || 'time', theme, hour);
+    const orb = !(P.orb === false || P.orb === 'false');
+    return {
+      themeCls: 't-' + theme + (orb ? '' : ' no-orb'),
+      sc: sceneFlags(sceneId),
+      showMark: !(P.mark === false || P.mark === 'false'),
+      collapsed,
+      expanded: !collapsed,
+      leftW: collapsed ? 'auto' : '260px',
+      crumbPad: collapsed ? '2px' : '2px',
+      cardLeft: collapsed ? '8px' : '0px',
+      toggleLabel: collapsed ? '展开侧栏' : '收起侧栏',
+      open,
+      qRaw,
+      qTrim: q,
+      inp: this.inp,
+      notes,
+      cmds,
+      hasNotes: notes.length > 0,
+      hasCmds: cmds.length > 0,
+      notesLabel: q ? '页面' : '最近打开',
+      empty,
+      toggle: () => this.setState({ collapsed: !collapsed }),
+      openSearch: () => this.setState({ open: true, active: 0 }),
+      close,
+      onQuery: (e) => this.setState({ q: e.target.value, active: 0 }),
+      onKey: (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState({ active: (active + 1) % total }); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState({ active: (active - 1 + total) % total }); }
+        else if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

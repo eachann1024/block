@@ -138,7 +138,10 @@ func main() {
 		OnExportImage: func() {
 			ws.OpenExportStage()
 		},
-		OnCloseTab: func() {
+		OnCloseTab: func(win *mygo.Window) {
+			if ws.ClosePluginReadmeWindow(win) {
+				return
+			}
 			if ws.SearchWindow().IsFocused() {
 				ws.SearchWindow().Hide()
 				return

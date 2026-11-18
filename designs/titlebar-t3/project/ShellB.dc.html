@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>B · 纸面浮卡</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:Inter,-apple-system,'PingFang SC','Microsoft YaHei',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:default}
+a{color:#3d63b0}a:hover{color:#2f4f8f}
+.ib{width:28px;height:28px;padding:0;border:none;border-radius:6px;background:transparent;color:#526071;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .12s,color .12s}
+.ib:hover{background:rgba(32,36,44,0.07);color:#20242c}
+.ib:disabled{color:#b6bcc6}
+.ib:disabled:hover{background:transparent;color:#b6bcc6}
+.card .ib:hover{background:#eef3fc}
+.tw{position:relative;display:flex}
+.tw .tip{position:absolute;top:34px;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none;transition:opacity .1s;white-space:nowrap;z-index:5}
+.tw:hover .tip{opacity:1;transition-delay:.45s}
+.field{transition:box-shadow .12s,background .12s}
+.field:hover{box-shadow:0 0 0 1px #c9d1de,0 1px 2px rgba(32,36,44,0.05)}
+.row{transition:background .12s}
+.row:hover{background:rgba(32,36,44,0.06)}
+.crumb:hover{background:rgba(32,36,44,0.07);color:#20242c}
+.pi{transition:background .08s}
+.pi.on{background:#eef3fc}
+input{caret-color:#547dd0}
+input::placeholder{color:#7a8594}
+</style>
+</helmet>
+<div style="width: 1200px; height: 760px; position: relative; overflow: hidden; border-radius: 12px; background: #f1f1f1; color: #20242c; display: flex; flex-direction: column; font-size: 14px; line-height: 20px">
+
+  <header style="height: 40px; flex-shrink: 0; display: flex; align-items: center">
+    <div style="height: 40px; box-sizing: border-box; padding: 0 8px 0 16px; display: flex; align-items: center; width: {{leftW}}">
+      <div style="display: flex; gap: 8px">
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+        <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.18)"></span>
+      </div>
+      <div class="tw" style="margin-left: 12px">
+        <button type="button" class="ib" aria-label="{{toggleLabel}}" onClick="{{toggle}}">
+          <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path><path d="M15.5 10l-2 2 2 2" stroke="#547dd0"></path></svg>
+          </sc-if>
+          <sc-if value="{{collapsed}}" hint-placeholder-val="{{ false }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path><path d="M13.5 10l2 2-2 2" stroke="#547dd0"></path></svg>
+          </sc-if>
+        </button>
+        <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: #20242c; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffffff">{{toggleLabel}}<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: #b8c2d0">⌥B</span></span>
+      </div>
+      <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+        <div style="margin-left: 6px; height: 28px; padding: 0 4px; display: flex; align-items: center; gap: 7px">
+          <img src="/_blob/9b52e670533ab8f9c6df70d44b57da15" alt="" style="width: 18px; height: 18px; border-radius: 5px; display: block; box-shadow: 0 0 0 1px rgba(32,36,44,0.08)">
+          <span style="font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: #20242c">Block</span>
+        </div>
+        <span style="flex: 1"></span>
+        <div class="tw">
+          <button type="button" class="ib" aria-label="后退" style="width: 26px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: #20242c; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffffff">后退<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: #b8c2d0">⌘[</span></span>
+        </div>
+        <button type="button" class="ib" aria-label="前进" disabled="disabled" style="width: 26px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+        </button>
+      </sc-if>
+    </div>
+    <nav aria-label="位置" style="flex: 1; min-width: 0; padding-left: {{crumbPad}}; display: flex; align-items: center; gap: 2px">
+      <button type="button" class="crumb" style="height: 28px; border: none; border-radius: 6px; background: transparent; padding: 0 6px; display: flex; align-items: center; gap: 7px; color: #526071; font-size: 14px">
+        <span style="width: 18px; height: 18px; border-radius: 5px; background: #c9d8f3; color: #2f4f8f; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center">创</span>
+        <span>创业团队</span>
+      </button>
+      <span aria-hidden="true" style="color: #b6bcc6; font-size: 15px; padding: 0 2px">/</span>
+      <span style="padding: 0 6px; color: #20242c; font-size: 14px; font-weight: 460; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">明天汇报</span>
+    </nav>
+    <div style="padding-right: 12px; display: flex; align-items: center; gap: 2px">
+      <button type="button" class="ib" aria-label="评论">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4z"></path><path d="M8.5 9h7M8.5 12h4"></path></svg>
+      </button>
+      <button type="button" class="ib" aria-label="AI">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path><path d="M18 3v4M16 5h4" stroke="#547dd0"></path></svg>
+      </button>
+      <button type="button" class="ib" aria-label="更多">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="18" cy="12" r="1.5"></circle></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="flex: 1; min-height: 0; display: flex">
+    <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
+      <aside style="width: 260px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column">
+        <div style="padding: 4px 8px 6px 12px; display: flex; align-items: center; gap: 2px">
+          <button type="button" class="field" onClick="{{openSearch}}" style="flex: 1; min-width: 0; height: 30px; border: none; border-radius: 8px; background: #ffffff; box-shadow: 0 0 0 1px #e1e4e9, 0 1px 2px rgba(32,36,44,0.04); padding: 0 6px 0 9px; margin-right: 4px; display: flex; align-items: center; gap: 7px; color: #6b7686; font-size: 14px; text-align: left">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+            <span style="flex: 1">搜索</span>
+            <span style="height: 18px; padding: 0 5px; border-radius: 4px; background: #f3f4f6; box-shadow: inset 0 0 0 1px #e1e4e9; font-family: 'JetBrains Mono',Menlo,monospace; font-size: 11px; line-height: 18px; color: #526071">⌘K</span>
+          </button>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="排序与筛选">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M7 12h10"></path><path d="M10 17h4"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: #20242c; display: flex; align-items: center; font-size: 12px; color: #ffffff">排序与筛选</span>
+          </div>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="新建文件夹">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path><path d="M12 10.5v5M9.5 13h5" stroke="#547dd0"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: #20242c; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffffff">新建文件夹<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: #b8c2d0">⇧⌘N</span></span>
+          </div>
+          <div class="tw">
+            <button type="button" class="ib" aria-label="新建页面">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V13"></path><path d="M18.4 3.6a2 2 0 0 1 2.9 2.9L12.5 15.3 9 16l.7-3.5z" stroke="#547dd0"></path></svg>
+            </button>
+            <span class="tip" style="height: 24px; padding: 0 8px; border-radius: 6px; background: #20242c; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffffff">新建页面<span style="font-family: 'JetBrains Mono',Menlo,monospace; color: #b8c2d0">⌘N</span></span>
+          </div>
+        </div>
+
+        <nav aria-label="文件树" style="padding: 4px 8px 0 12px; display: flex; flex-direction: column; gap: 2px">
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px; display: flex; align-items: center; gap: 6px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7686" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path></svg>
+            <span style="margin-left: 2px">backups</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>更深入调研</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>官网</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>苹果账号购买</span>
+          </button>
+          <button type="button" aria-current="page" style="height: 32px; border: none; border-radius: 6px; background: #e5edfc; box-shadow: inset 0 0 0 1px #547dd0; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>明天汇报</span>
+          </button>
+          <button type="button" class="row" style="height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+            <span>claude</span>
+          </button>
+        </nav>
+
+        <span style="flex: 1"></span>
+
+        <div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 8px 12px; display: flex; align-items: center; gap: 4px">
+          <button type="button" class="row" style="flex: 1; min-width: 0; height: 32px; border: none; border-radius: 6px; background: transparent; padding: 0 8px; display: flex; align-items: center; gap: 8px; color: #20242c; font-size: 14px; font-weight: 460; text-align: left">
+            <span style="width: 18px; height: 18px; border-radius: 5px; background: #c9d8f3; color: #2f4f8f; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; flex-shrink: 0">创</span>
+            <span style="flex: 1">创业团队</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7686" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10l4-4 4 4"></path><path d="M8 14l4 4 4-4"></path></svg>
+          </button>
+          <button type="button" class="ib" aria-label="设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+          </button>
+        </div>
+      </aside>
+    </sc-if>
+
+    <main class="card" style="flex: 1; min-width: 0; margin: 0 8px 8px {{cardLeft}}; border-radius: 10px; background: #ffffff; box-shadow: 0 0 0 1px #e4e6ea, 0 1px 3px rgba(32,36,44,0.05); overflow: hidden">
+      <article style="height: 100%; box-sizing: border-box; padding: 52px 32px 0">
+        <div style="max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; color: #1f1e1d; font-size: 16px; line-height: 28px">
+          <h1 style="margin: 0 0 10px; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em">明天汇报</h1>
+          <p style="margin: 0">日本站：<a href="https://yangvela.com/jp">https://yangvela.com/jp</a></p>
+          <p style="margin: 0">英文全球站：<a href="https://yangvela.com/?lang=en">https://yangvela.com/?lang=en</a></p>
+          <p style="margin: 0">韩国站：<a href="https://yangvela.com/kr">https://yangvela.com/kr</a></p>
+          <p style="margin: 0; color: #3a3936">本次更新重点：英、韩两站新增四大美容护理扩展产线并换上全新首屏封面。</p>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; z-index: 20">
+      <button type="button" aria-label="关闭搜索" onClick="{{close}}" style="position: absolute; inset: 0; border: none; padding: 0; background: rgba(32,36,44,0.22)"></button>
+      <div role="dialog" aria-label="搜索" style="position: absolute; top: 92px; left: 50%; transform: translateX(-50%); width: 600px; border-radius: 14px; background: #ffffff; box-shadow: 0 0 0 1px rgba(32,36,44,0.08), 0 24px 56px rgba(32,36,44,0.2), 0 4px 12px rgba(32,36,44,0.08); overflow: hidden; display: flex; flex-direction: column">
+        <div style="height: 52px; box-sizing: border-box; padding: 0 14px 0 18px; display: flex; align-items: center; gap: 12px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+          <label for="qb" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">搜索页面或命令</label>
+          <input id="qb" ref="{{inp}}" value="{{qRaw}}" onChange="{{onQuery}}" onKeyDown="{{onKey}}" placeholder="搜索页面或命令" autocomplete="off" spellcheck="false" style="flex: 1; min-width: 0; height: 32px; border: none; outline: none; background: transparent; color: #20242c; font-size: 15px; font-family: inherit; padding: 0">
+          <span style="height: 20px; padding: 0 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px #dcdcdc; background: #f7f7f8; font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; color: #526071">esc</span>
+        </div>
+        <div style="height: 1px; background: #eceef1"></div>
+        <div style="max-height: 440px; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 1px">
+          <sc-if value="{{hasNotes}}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 8px 10px 4px; font-size: 12px; line-height: 16px; font-weight: 560; color: #5f6b7b">{{notesLabel}}</div>
+            <sc-for list="{{notes}}" as="n" hint-placeholder-count="4">
+              <button type="button" class="{{n.cls}}" onClick="{{n.pick}}" onMouseEnter="{{n.hover}}" style="width: 100%; min-height: 36px; box-sizing: border-box; border: none; border-radius: 8px; background: transparent; padding: 8px 10px; display: flex; align-items: center; gap: 10px; color: #20242c; font-size: 14px; text-align: left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; align-self: flex-start; margin-top: 2px"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-weight: 460; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.t0}}<span style="color: #3d63b0; font-weight: 600">{{n.t1}}</span>{{n.t2}}</span>
+                  <sc-if value="{{n.snippet}}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 13px; line-height: 18px; color: #5f6b7b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.b0}}<span style="color: #3d63b0; font-weight: 560">{{n.b1}}</span>{{n.b2}}</span>
+                  </sc-if>
+                </span>
+                <span style="flex-shrink: 0; font-size: 13px; color: #5f6b7b">{{n.p}}</span>
+                <sc-if value="{{n.on}}" hint-placeholder-val="{{ false }}">
+                  <span style="flex-shrink: 0; width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px #c9d1de; background: #ffffff; font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: #526071">↵</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{hasCmds}}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 10px 10px 4px; font-size: 12px; line-height: 16px; font-weight: 560; color: #5f6b7b">命令</div>
+            <sc-for list="{{cmds}}" as="c" hint-placeholder-count="4">
+              <button type="button" class="{{c.cls}}" onClick="{{c.pick}}" onMouseEnter="{{c.hover}}" style="width: 100%; height: 36px; box-sizing: border-box; border: none; border-radius: 8px; background: transparent; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: #20242c; font-size: 14px; text-align: left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#526071" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="M5 8l4 4-4 4"></path><path d="M12 17h7" stroke="#547dd0"></path></svg>
+                <span style="flex: 1; font-weight: 460">{{c.t0}}<span style="color: #3d63b0; font-weight: 600">{{c.t1}}</span>{{c.t2}}</span>
+                <span style="display: flex; gap: 3px">
+                  <sc-for list="{{c.k}}" as="key" hint-placeholder-count="2">
+                    <span style="min-width: 20px; height: 20px; box-sizing: border-box; padding: 0 5px; border-radius: 4px; box-shadow: inset 0 0 0 1px #dcdcdc; background: #f7f7f8; font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: #526071">{{key}}</span>
+                  </sc-for>
+                </span>
+              </button>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 20px 10px 12px; font-size: 14px; color: #5f6b7b; text-align: center">没有找到「{{qTrim}}」</div>
+            <button type="button" class="pi on" onClick="{{close}}" style="width: 100%; height: 36px; box-sizing: border-box; border: none; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: #20242c; font-size: 14px; text-align: left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#c9d8f3" stroke="#20242c" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M11.2 10.5v6M8.2 13.5h6" stroke="#547dd0" stroke-linecap="round"></path></svg>
+              <span style="flex: 1; font-weight: 460">新建页面「{{qTrim}}」</span>
+              <span style="width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px #c9d1de; background: #ffffff; font-family: 'JetBrains Mono',Menlo,monospace; font-size: 12px; line-height: 20px; text-align: center; color: #526071">↵</span>
+            </button>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(32,36,44,0.12); pointer-events: none; z-index: 30"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["expanded","collapsed"],"default":"expanded","label":"侧栏"},"search":{"editor":"boolean","default":false,"label":"搜索面板"},"query":{"editor":"text","default":"","label":"搜索词"},"$preview":{"width":1200,"height":760}}'>
+const NOTES = [
+  { t: '明天汇报', p: '创业团队', b: '本次更新重点：英、韩两站新增四大美容护理扩展产线' },
+  { t: '更深入调研', p: '创业团队', b: '汇报前补齐竞品定价与渠道数据' },
+  { t: '官网', p: '创业团队', b: '日本站：https://yangvela.com/jp' },
+  { t: '周会纪要', p: 'backups', b: '下周一向投资人汇报 Q4 目标' },
+  { t: '苹果账号购买', p: '创业团队', b: '美区账号与礼品卡充值步骤' }
+];
+const CMDS = [
+  { t: '新建页面', k: ['⌘', 'N'] },
+  { t: '新建文件夹', k: ['⇧', '⌘', 'N'] },
+  { t: '切换侧栏', k: ['⌥', 'B'] },
+  { t: '打开设置', k: ['⌘', ','] }
+];
+function split(s, q) {
+  if (!q) return [s, '', ''];
+  const i = s.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return [s, '', ''];
+  return [s.slice(0, i), s.slice(i, i + q.length), s.slice(i + q.length)];
+}
+class Component extends DCLogic {
+  componentDidUpdate(prevProps, prevState) {
+    const was = prevState && prevState.open;
+    if (this.state && this.state.open && !was && this.inp && this.inp.current) this.inp.current.focus();
+  }
+  renderVals() {
+    const s = this.state || {};
+    const P = this.props;
+    this.inp = this.inp || React.createRef();
+    const collapsed = s.collapsed ?? (P.mode === 'collapsed');
+    const open = s.open ?? (P.search === true || P.search === 'true');
+    const qRaw = s.q ?? (P.query || '');
+    const q = qRaw.trim();
+    const lq = q.toLowerCase();
+    const noteHits = q ? NOTES.filter((n) => n.t.toLowerCase().includes(lq) || n.b.toLowerCase().includes(lq)) : NOTES.slice(0, 4);
+    const cmdHits = q ? CMDS.filter((c) => c.t.toLowerCase().includes(lq)) : CMDS;
+    const empty = !!q && noteHits.length + cmdHits.length === 0;
+    const total = Math.max(noteHits.length + cmdHits.length, 1);
+    const active = Math.min(s.active ?? 0, total - 1);
+    const close = () => this.setState({ open: false, q: '', active: 0 });
+    const notes = noteHits.map((n, i) => {
+      const [t0, t1, t2] = split(n.t, q);
+      const [b0, b1, b2] = split(n.b, q);
+      return { p: n.p, t0, t1, t2, b0, b1, b2, snippet: !!q && !t1 && !!b1, on: i === active, cls: i === active ? 'pi on' : 'pi', pick: close, hover: () => this.setState({ active: i }) };
+    });
+    const cmds = cmdHits.map((c, j) => {
+      const i = noteHits.length + j;
+      const [t0, t1, t2] = split(c.t, q);
+      return { k: c.k, t0, t1, t2, cls: i === active ? 'pi on' : 'pi', pick: close, hover: () => this.setState({ active: i }) };
+    });
+    return {
+      collapsed,
+      expanded: !collapsed,
+      leftW: collapsed ? 'auto' : '260px',
+      crumbPad: collapsed ? '2px' : '2px',
+      cardLeft: collapsed ? '8px' : '0px',
+      toggleLabel: collapsed ? '展开侧栏' : '收起侧栏',
+      open,
+      qRaw,
+      qTrim: q,
+      inp: this.inp,
+      notes,
+      cmds,
+      hasNotes: notes.length > 0,
+      hasCmds: cmds.length > 0,
+      notesLabel: q ? '页面' : '最近打开',
+      empty,
+      toggle: () => this.setState({ collapsed: !collapsed }),
+      openSearch: () => this.setState({ open: true, active: 0 }),
+      close,
+      onQuery: (e) => this.setState({ q: e.target.value, active: 0 }),
+      onKey: (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState({ active: (active + 1) % total }); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState({ active: (active - 1 + total) % total }); }
+        else if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
