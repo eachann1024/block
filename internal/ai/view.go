@@ -273,7 +273,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 				return
 			}
 
-			ui.Scroll(cUI.Key("ai-history-scroll")).TrackScroll(&c.historyScroll).
+			bui.Scroll(cUI.Key("ai-history-scroll"), &c.historyScroll).
 				FillWidth().MaxHeight(max(maxH-theme.MenuPadding*2, 48)).Children(func() {
 				ui.Column(cUI).FillWidth().Gap(2).Children(func() {
 					for _, conv := range convs {
@@ -426,7 +426,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	partialSteps := append([]model.ProcessStep(nil), c.partialSteps...)
 	c.mu.RUnlock()
 
-	scroll := ui.Scroll(cUI.Key("ai-chat-scroll")).FillWidth().Grow(1)
+	scroll := bui.Scroll(cUI.Key("ai-chat-scroll")).FillWidth().Grow(1)
 	bui.Probe(scroll, "ai-chat-scroll")
 
 	scroll.Children(func() {
@@ -696,7 +696,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 		}
 
 		if expanded {
-			stepsWrap := ui.Scroll(cUI.Key("ai-process-steps-" + turnKey)).FillWidth().MaxHeight(180)
+			stepsWrap := bui.Scroll(cUI.Key("ai-process-steps-" + turnKey)).FillWidth().MaxHeight(180)
 			bui.Probe(stepsWrap, "ai-process-steps")
 			stepsWrap.Children(func() {
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
@@ -1684,7 +1684,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 			c.pickerList.Key = func(i int) any {
 				return fmt.Sprintf("%d:%s", items[i].kind, items[i].value)
 			}
-			ui.List(cUI.Key("ai-picker-virtual-list"), &c.pickerList, len(items), func(i int) {
+			pickerListEl := ui.List(cUI.Key("ai-picker-virtual-list"), &c.pickerList, len(items), func(i int) {
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
 				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
@@ -1723,6 +1723,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 					c.mu.Unlock()
 				}
 			}).FillWidth().Height(listH)
+			bui.AutoHideScrollbars(cUI, pickerListEl)
 		})
 	})
 }
@@ -1776,6 +1777,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 				CaretColor(pal.Accent).CaretWidth(2).
 				Placeholder(ph).Bind(&c.composerHandle).
 				Label(theme.Tr("AI 输入框", "AI composer"))
+			bui.AutoHideScrollbars(cUI, inputEl)
 			bui.Probe(inputEl, "ai-composer")
 
 			composingNow := inputEl.Composing()
@@ -2203,7 +2205,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						}
 					}
 
-					ui.Scroll(cUI.Key("ai-deck-models")).TrackScroll(&c.deckScroll).
+					bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
 						FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
 						if len(filtered) == 0 {
 							msg := theme.Tr("暂无可选模型", "No models available")
@@ -3130,7 +3132,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					})
 				})
 
-				ui.Scroll(cUI.Key("annotation-model-list")).TrackScroll(&c.annotMenuScroll).
+				bui.Scroll(cUI.Key("annotation-model-list"), &c.annotMenuScroll).
 					Grow(1).MinHeight(0).FillWidth().Padding(6).Gap(2).Children(func() {
 					matched := 0
 					for idx, m := range choices {

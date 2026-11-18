@@ -87,7 +87,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		}
 
 		// Main scrollable document body
-		scroll := ui.Scroll(c.Key("editor-scroll")).TrackScroll(&s.bodyScroll).Fill().
+		scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
 			ObserveInput(s.onScrollObserveInput)
 		scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 			s.scrollRect = r
@@ -832,6 +832,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			Padding(0).BorderWidth(0).Background(ui.Transparent).
 			FontSize(fontSize).FontWeight(weight).LineHeight(lh).MinHeight(fontSize * lh).
 			TextColor(textCol).SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+		appUi.AutoHideScrollbars(c, in)
 		if edFont := resolvedEditorFont(); edFont != "" {
 			in.Font(edFont)
 		}
@@ -1354,6 +1355,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					Padding(0).BorderWidth(0).Background(ui.Transparent).
 					Font(cdFont).FontSize(14).LineHeight(1.5).TextColor(codeFG).
 					SelectionColor(pal.SelectionBG).CaretColor(pal.Accent).CaretWidth(2).Bind(&handle)
+				appUi.AutoHideScrollbars(c, ta)
 				ta.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					s.recordBlockTextRect(id, r)
 				})
@@ -1692,7 +1694,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				})
 			}
 			if float32(cols)*tableMinColWidth > availGrid {
-				hs := ui.ScrollHorizontal(c.Key("table-hscroll")).Grow(1).Shrink(1)
+				hs := appUi.ScrollHorizontal(c.Key("table-hscroll")).Grow(1).Shrink(1)
 				hs.Children(func() {
 					buildGrid(true)
 				})

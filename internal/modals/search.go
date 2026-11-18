@@ -637,7 +637,7 @@ func (m *Manager) renderScopeMenuPopover(c *ui.Context, pal theme.Palette, st *s
 		internalui.Probe(panel, "search-scope-menu")
 
 		folderIcon := icons.Folder
-		ui.Scroll(c.Key("search-scope-scroll")).TrackScroll(&st.scopeScroll).
+		internalui.Scroll(c.Key("search-scope-scroll"), &st.scopeScroll).
 			FillWidth().MaxHeight(searchScopeMenuH - 2*theme.MenuPadding).
 			ScrollbarStyle(ui.ScrollbarStyle{
 				TrackWidth: theme.ScrollGutter,
@@ -712,7 +712,7 @@ func (m *Manager) renderSearchBody(c *ui.Context, pal theme.Palette, st *searchP
 		return
 	}
 
-	ui.Scroll(c.Key("search-results")).TrackScroll(&st.resultsScroll).
+	internalui.Scroll(c.Key("search-results"), &st.resultsScroll).
 		FillWidth().Grow(1).MinHeight(0).
 		Padding(8, theme.ScrollGutter, 8, 8).Gap(2).
 		ScrollbarStyle(ui.ScrollbarStyle{

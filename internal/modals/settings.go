@@ -414,7 +414,7 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 		})
 
 		// Right scrollable settings body matching app_settings_view.rs 1:1 (pt=40 px=28 pb=64 gap=28).
-		ui.Scroll(c.Key("settings-scroll")).TrackScroll(&m.settingsScroll).Grow(1).MinWidth(0).FillHeight().
+		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).FillHeight().
 			Background(pal.SettingsBG).Padding(40, 28, 64, 28).Gap(28).Children(func() {
 			ui.Row(c.Key("settings-header")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 				ui.Text(c, settingsTabTitle(tab)).FontSize(24).FontWeight(560).TextColor(pal.Text)
@@ -1051,7 +1051,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 			if len(fonts) > 0 {
 				curListH = min(float32(min(len(fonts), 7))*34, listCapH)
 			}
-			ui.Scroll(c.Key("font-picker-list-" + role)).TrackScroll(&m.fontScroll).
+			internalui.Scroll(c.Key("font-picker-list-"+role), &m.fontScroll).
 				FillWidth().Height(curListH).Gap(0).Children(func() {
 				if len(fonts) == 0 {
 					ui.Row(c).FillWidth().Height(48).PaddingX(10).AlignItems(ui.Center).Children(func() {
