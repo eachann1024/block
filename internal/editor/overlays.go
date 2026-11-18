@@ -2027,158 +2027,203 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32, hoveredOut *string) {
 	pal := theme.Ocean()
-	if s.editingAnnotID == ann.ID {
-		card := ui.Row(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
-			Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).
-			Gap(theme.Space6).AlignItems(ui.Center).Radius(theme.RadiusMD).Clip().
-			Background(pal.Menu).Border(1, pal.Accent)
-		if card.Hovered() {
-			*hoveredOut = ann.ID
-		}
-		appUi.Probe(card, "annotation-card-"+ann.ID)
-		card.Children(func() {
-			ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
-			in := ui.TextInputBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).Grow(1).MinWidth(0).
-				Height(theme.HeightMicro).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
-				CaretColor(pal.Accent).Bind(&s.editingHandle)
-			in.OnTextKey(func(k ui.TextKey) bool {
-				if k.Key == ui.KeyEscape {
-					s.editingAnnotID = ""
-					return true
-				}
-				return false
-			})
-			if s.editingFocusPending {
-				in.Focus()
-				s.editingFocusPending = false
-			}
-			if in.Submitted() {
-				s.updateAnnotationNote(ann.ID, s.editingAnnotText)
-			}
-			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
-				cancel := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
-					ID: "ann-edit-cancel-" + ann.ID, Label: theme.Tr("取消", "Cancel"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-				})
-				if cancel.Clicked() {
-					s.editingAnnotID = ""
-				}
-				save := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-					ID: "ann-edit-save-" + ann.ID, Label: theme.Tr("保存", "Save"), Size: theme.HeightMicro, IconSize: theme.IconInline, Active: true,
-				})
-				if save.Clicked() {
-					s.updateAnnotationNote(ann.ID, s.editingAnnotText)
-				}
-			})
-		})
-		if card.PressedOutside() {
-			s.editingAnnotID = ""
-		}
-		return
-	}
+	editing := s.editingAnnotID == ann.ID
+	isResult := !editing && ann.RewriteResult != ""
 
-	if ann.RewriteResult != "" {
-		card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
-			Padding(theme.Space8, theme.Space10).Gap(theme.Space8).Radius(theme.RadiusLG).Clip().
-			Transition(appUi.GutterHandleTransition())
-		cardHovered := card.Hovered()
-		if cardHovered {
-			*hoveredOut = ann.ID
-		}
-		borderCol := pal.Hairline
-		if cardHovered || s.hoveredAnnotID == ann.ID {
-			borderCol = pal.Accent
-		}
-		appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
-		appUi.Probe(card, "annotation-card-"+ann.ID)
-		card.Children(func() {
-			ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space8, theme.Space10).Radius(theme.RadiusSM).Background(pal.Selected).Clip().Children(func() {
-				ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.SelectionFG)
-			})
-			if !s.readOnly {
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-					acc := ui.ButtonBase(c.Key("ann-accept-"+ann.ID)).Size(theme.HeightCompact, theme.HeightCompact).Shrink(0).Center().
-						Radius(theme.RadiusSM).
-						Cursor(ui.CursorPointer).Label(theme.Tr("同意，替换原文", "Accept and replace"))
-					accHovered := acc.Hovered()
-					accPressed := acc.Pressed()
-					accBG := pal.Accent
-					if accHovered || accPressed {
-						accBG = pal.AccentHover
-					}
-					appUi.AnimateSurfaceColors(acc, accBG, pal.Accent, true)
-					appUi.TactileButton(acc, accHovered, accPressed, false)
-					acc.Children(func() {
-						icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.AccentText), accHovered || accPressed)
-					})
-					appUi.Probe(acc, "ann-accept-"+ann.ID)
-					if acc.Clicked() {
-						s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
-					}
-
-					ui.Box(c).Grow(1)
-
-					dismiss := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-						ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Size: theme.HeightCompact, IconSize: theme.IconInline, Danger: true,
-					})
-					if dismiss.Clicked() {
-						s.dismissAnnotationRewrite(ann.ID)
-					}
-				})
-			}
-		})
-		return
-	}
-
-	card := ui.Row(c.Key("annotation-card-"+ann.ID)).MaxWidth(maxW).MinWidth(0).
-		Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).
-		Gap(theme.Space6).AlignItems(ui.Start).Radius(theme.RadiusMD).Clip().
+	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
+		Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space12).
+		Gap(theme.Space4).Radius(theme.RadiusLG).Clip().
 		Transition(appUi.GutterHandleTransition())
 	cardHovered := card.Hovered()
 	if cardHovered {
 		*hoveredOut = ann.ID
 	}
+	hot := cardHovered || s.hoveredAnnotID == ann.ID
 	borderCol := pal.Hairline
-	if cardHovered || s.hoveredAnnotID == ann.ID {
+	if hot || editing {
 		borderCol = pal.Accent
 	}
 	appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
 	appUi.Probe(card, "annotation-card-"+ann.ID)
 	card.Children(func() {
-		ui.Row(c).Height(theme.HeightMicro).Shrink(0).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
-		})
-		noteTxt := ann.Note
-		if noteTxt == "" && ann.RewritePrompt != "" {
-			noteTxt = ann.RewritePrompt
-		}
-		ui.Text(c, noteTxt).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text).Shrink(1).MinWidth(0)
-		if !s.readOnly {
-			ui.Row(c).Height(theme.HeightMicro).Shrink(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
-				if ann.RewritePrompt != "" {
-					acc := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-						ID: "annotation-accept-" + ann.ID, Label: theme.Tr("应用", "Apply"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-					})
-					if acc.Clicked() {
-						s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
-					}
-				}
-				editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
-					ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-				})
-				if editBtn.Clicked() {
-					s.editingAnnotID = ann.ID
-					s.editingAnnotText = ann.Note
-					s.editingFocusPending = true
-				}
-				delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
-					ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
-				})
-				if delBtn.Clicked() {
-					s.deleteAnnotationByID(ann.ID)
-				}
-			})
+		s.renderAnnotationHeader(c, ann, isResult, hot && !editing && !isResult && !s.readOnly)
+		switch {
+		case editing:
+			s.renderAnnotationEditor(c, ann)
+		case isResult:
+			s.renderAnnotationResult(c, ann)
+		default:
+			s.renderAnnotationNote(c, ann)
 		}
 	})
+	if editing && card.PressedOutside() {
+		s.commitAnnotationEdit(ann.ID)
+	}
+}
+
+// renderAnnotationHeader draws the quote row: marker, quoted source text, hover actions.
+func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, isResult, showActions bool) {
+	pal := theme.Ocean()
+	ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightMicro).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
+			if isResult {
+				icons.Draw(c, icons.Sparkles, theme.IconInline, pal.MonoIconColors(pal.Accent))
+			} else {
+				ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
+			}
+		})
+		head := ann.QuotedText
+		if isResult {
+			head = theme.Tr("AI 改写", "AI rewrite")
+		}
+		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		if !showActions {
+			return
+		}
+		editBtn := appUi.IconButton(c, icons.Pencil, appUi.IconButtonOptions{
+			ID: "annotation-edit-" + ann.ID, Label: theme.Tr("编辑批注", "Edit annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+		})
+		if editBtn.Clicked() {
+			s.beginAnnotationEdit(ann)
+		}
+		delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+			ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightMicro, IconSize: theme.IconInline, Danger: true,
+		})
+		if delBtn.Clicked() {
+			s.deleteAnnotationByID(ann.ID)
+		}
+	})
+}
+
+func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
+	pal := theme.Ocean()
+	noteTxt := ann.Note
+	if noteTxt == "" {
+		noteTxt = ann.RewritePrompt
+	}
+	if noteTxt != "" {
+		ui.Text(c, noteTxt).FillWidth().MinWidth(0).
+			FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+	}
+	if ann.RewritePrompt == "" || s.readOnly {
+		return
+	}
+	sparkles := icons.Sparkles
+	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Children(func() {
+		apply := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "annotation-accept-" + ann.ID, Label: theme.Tr("按批注改写", "Rewrite"), Leading: &sparkles,
+			Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
+		})
+		if apply.Clicked() {
+			s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+		}
+	})
+}
+
+func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
+	pal := theme.Ocean()
+	if ann.QuotedText != "" {
+		ui.Text(c, ann.QuotedText).FillWidth().MinWidth(0).Strikethrough().
+			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+	}
+	ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).
+		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.SelectionFG)
+	if s.readOnly {
+		return
+	}
+	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+		acc := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-accept-" + ann.ID, Label: theme.Tr("替换原文", "Replace"), Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
+		})
+		if acc.Clicked() {
+			s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+		}
+		dismiss := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Style: appUi.ButtonGhost, Height: theme.HeightCompact,
+		})
+		if dismiss.Clicked() {
+			s.dismissAnnotationRewrite(ann.ID)
+		}
+	})
+}
+
+// renderAnnotationEditor edits the note in place: Enter saves, Shift+Enter breaks the line, Esc cancels.
+func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
+	pal := theme.Ocean()
+	in := ui.TextAreaBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().MinWidth(0).Lines(1, 8).
+		Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
+		Placeholder(theme.Tr("写下批注…", "Write a note…")).Label(theme.Tr("批注内容", "Annotation")).
+		Bind(&s.editingHandle)
+	in.OnTextKey(func(k ui.TextKey) bool {
+		switch {
+		case k.Key == ui.KeyEscape:
+			s.editingAnnotID = ""
+			return true
+		case k.Key == ui.KeyEnter && k.Mods == 0:
+			s.editingAnnotText = k.Text()
+			s.commitAnnotationEdit(ann.ID)
+			return true
+		}
+		return false
+	})
+	if s.editingFocusPending {
+		in.Focus()
+		s.editingFocusPending = false
+	}
+	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+		cancel := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-edit-cancel-" + ann.ID, Label: theme.Tr("取消", "Cancel"), Style: appUi.ButtonGhost, Height: theme.HeightCompact,
+		})
+		if cancel.Clicked() {
+			s.editingAnnotID = ""
+		}
+		save := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-edit-save-" + ann.ID, Label: theme.Tr("保存", "Save"), Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
+		})
+		if save.Clicked() {
+			s.commitAnnotationEdit(ann.ID)
+		}
+	})
+}
+
+func (s *Session) beginAnnotationEdit(ann *model.Annotation) {
+	s.editingAnnotID = ann.ID
+	s.editingAnnotText = ann.Note
+	if s.editingAnnotText == "" {
+		s.editingAnnotText = ann.RewritePrompt
+	}
+	s.editingFocusPending = true
+}
+
+// commitAnnotationEdit saves the draft into whichever field the card shows
+// (the note, or the rewrite prompt of a prompt-only card); clearing it removes the annotation.
+func (s *Session) commitAnnotationEdit(id string) {
+	s.ensureAnnotationsLoaded()
+	text := strings.TrimSpace(s.editingAnnotText)
+	for _, ann := range s.annotations {
+		if ann.ID != id {
+			continue
+		}
+		promptOnly := ann.Note == "" && ann.RewritePrompt != ""
+		if text == "" && len(ann.Reactions) == 0 && (promptOnly || ann.RewritePrompt == "") {
+			s.editingAnnotID = ""
+			s.deleteAnnotationByID(id)
+			return
+		}
+		if promptOnly {
+			s.editingAnnotID = ""
+			if text != "" && text != ann.RewritePrompt {
+				s.pushUndo()
+				ann.RewritePrompt = text
+				s.persistAnnotations()
+			}
+			return
+		}
+		s.updateAnnotationNote(id, text)
+		return
+	}
+	s.editingAnnotID = ""
 }
 
 func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
@@ -2188,12 +2233,15 @@ func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height
 	stepGap = 8
 	switch {
 	case isEditing:
-		height = 32
+		height = 100
 	case ann.RewriteResult != "":
-		height = 92
+		height = 122
 	default:
-		lines := max((len([]rune(ann.Note))+9)/10, 1)
-		height = 32 + float32(lines-1)*theme.LineTitle
+		lines := max((len([]rune(ann.Note))+11)/12, 1)
+		height = 64 + float32(lines-1)*theme.LineBody
+		if ann.RewritePrompt != "" {
+			height += 36
+		}
 	}
 	if len(ann.Reactions) > 0 {
 		height += 28
