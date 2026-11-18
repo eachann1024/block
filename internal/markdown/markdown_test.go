@@ -486,16 +486,24 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 	src := strings.Join([]string{
 		"# 纸面主题导出",
 		"",
-		"正文段落包含 [普通链接](https://example.com/body) 与 **加粗**。",
+		"正文段落包含 [普通链接](https://example.com/body)、<mark>高亮重点</mark> 与 **加粗**。",
 		"",
-		"| 列名 | 链接 |",
-		"| --- | --- |",
-		"| 文档 | [表格链接](https://example.com/table) |",
+		"## 核心书单",
+		"",
+		"| 列名 | 链接 | 页数 |",
+		"| --- | --- | ---: |",
+		"| 文档 | [表格链接](https://example.com/table) | 176 |",
+		"",
+		"## 读前准备",
 		"",
 		"> 引用文本",
 		"",
 		"- 列表项",
+		"1. 有序步骤",
+		"- [ ] 待办事项",
 		"- [x] 已完成",
+		"",
+		"---",
 		"",
 		"```go",
 		"fmt.Println(1)",
@@ -545,7 +553,7 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 		if !strings.Contains(htmlStr, "自定义标题") {
 			t.Fatalf("theme %s HTML missing custom Title", th)
 		}
-		if !strings.Contains(htmlStr, `<footer class="doc-footer"><span>Block</span>`) {
+		if !strings.Contains(htmlStr, `<footer class="doc-footer"`) || !strings.Contains(strings.ToUpper(htmlStr), "BLOCK") {
 			t.Fatalf("theme %s HTML missing default Block watermark", th)
 		}
 		if !strings.Contains(htmlStr, "table a,th a,td a{color:"+linkCSS) {
@@ -572,15 +580,24 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 		}
 		var docXML string
 		for _, f := range zr.File {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var b bytes.Buffer
+			_, _ = b.ReadFrom(rc)
+			_ = rc.Close()
+			if strings.HasSuffix(f.Name, ".xml") || strings.HasSuffix(f.Name, ".rels") {
+				var v any
+				if err := xml.Unmarshal(b.Bytes(), &v); err != nil {
+					t.Fatalf("theme %s DOCX invalid XML in %s: %v", th, f.Name, err)
+				}
+			}
 			if f.Name == "word/document.xml" {
-				rc, _ := f.Open()
-				var b bytes.Buffer
-				_, _ = b.ReadFrom(rc)
-				_ = rc.Close()
 				docXML = b.String()
 			}
 		}
-		if !strings.Contains(docXML, "自定义标题") || !strings.Contains(docXML, "Block") {
+		if !strings.Contains(docXML, "自定义标题") || !strings.Contains(strings.ToUpper(docXML), "BLOCK") {
 			t.Fatalf("theme %s DOCX missing title or Block watermark", th)
 		}
 	}

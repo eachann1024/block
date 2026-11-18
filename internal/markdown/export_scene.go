@@ -13,7 +13,56 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// ---- PNG & PDF Visual Rendering (fixed ExportScale Paper Styles via mygo/ui) ----
+// ---- PNG & PDF Visual Layout (12 Differentiated Paper Themes via mygo/ui) ----
+
+type metaScene struct {
+	present    bool
+	x, y, w, h float32
+	leftLay    *ui.TextLayout
+	rightLay   *ui.TextLayout
+	mastLay    *ui.TextLayout
+	leftCol    ui.Color
+	rightCol   ui.Color
+	mastCol    ui.Color
+	moon       bool
+	earBoxes   bool
+	rule       MetaRule
+	ruleCol    ui.Color
+	ruleY      float32
+}
+
+type titleScene struct {
+	present   bool
+	x, y, w   float32
+	h         float32
+	fontSize  float32
+	layout    *ui.TextLayout
+	color     ui.Color
+	mark      TitleMark
+	ruleWidth float32
+	ruleThick float32
+	ruleCol   ui.Color
+}
+
+type footerScene struct {
+	present    bool
+	x, y, w, h float32
+	textY      float32
+	leftLay    *ui.TextLayout
+	centerLay  *ui.TextLayout
+	rightLay   *ui.TextLayout
+	color      ui.Color
+	rightColor ui.Color
+	rule       FooterRule
+	ruleCol    ui.Color
+	swatches   []ui.Color
+}
+
+type ornamentScene struct {
+	spec     Ornament
+	textLay  *ui.TextLayout
+	text2Lay *ui.TextLayout
+}
 
 type paintedBlock struct {
 	kind       model.BlockKind
@@ -25,17 +74,53 @@ type paintedBlock struct {
 	bgColor    ui.Color
 	borderCol  ui.Color
 	accentCol  ui.Color
-	labelLay   *ui.TextLayout
+	glowCol    ui.Color
+	borderW    float32
+	dashed     bool
+
+	labelLay  *ui.TextLayout
+	label2Lay *ui.TextLayout
+	labelX    float32
+	labelY    float32
+	labelCol  ui.Color
+	labelBG   ui.Color
+
 	markerLay  *ui.TextLayout
 	markerCol  ui.Color
+	bulletKind BulletKind
+	bulletSize float32
+	todoKind   TodoKind
+	todoBorder ui.Color
+	todoCheck  ui.Color
 	checked    bool
-	table      *paintedTable
-	img        *paintedImage
+
+	headPrefix  HeadPrefix
+	headRule    bool
+	headRuleCol ui.Color
+
+	quoteKind  QuoteKind
+	quoteAngle float32
+	quoteBarW  float32
+	quoteCard  bool
+
+	codeKind CodeKind
+
+	divKind  DividerKind
+	divWidth float32
+
+	table *paintedTable
+	img   *paintedImage
 }
 
 type paintedTable struct {
 	colWidths []float32
 	rows      []paintedTableRow
+	noHeader  bool
+	style     TableStyle
+	padX      float32
+	padY      float32
+	ruleCol   ui.Color
+	strongCol ui.Color
 }
 
 type paintedTableRow struct {
@@ -63,52 +148,143 @@ type exportScene struct {
 	contentWidth  float32
 	pal           PaperThemeSpec
 	legacy        bool
-	titleLayout   *ui.TextLayout
-	titleX        float32
-	titleY        float32
-	titleH        float32
+	cardRect      ui.Rect
+	cardLabelLay  *ui.TextLayout
+	sections      []ui.Rect
+	ornaments     []ornamentScene
+	meta          metaScene
+	title         titleScene
 	blocks        []paintedBlock
-	footerY       float32
-	footerLeft    *ui.TextLayout
-	footerRight   *ui.TextLayout
-	showFooter    bool
+	footer        footerScene
 }
 
-func toUISpans(spans []model.Span, pal PaperThemeSpec, baseSize float32, isCodeBlock bool) []ui.Span {
+type spanStyleOpts struct {
+	family      string
+	size        float32
+	weight      int
+	italic      bool
+	track       float32
+	defaultFG   ui.Color
+	isCodeBlock bool
+	strikeAll   bool
+}
+
+func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanStyleOpts) []ui.Span {
 	if len(spans) == 0 {
-		return []ui.Span{{Text: " "}}
+		return []ui.Span{{Text: " ", Font: o.family, Size: o.size}}
 	}
+	inl := pal.Style.Inline
 	linkFG := pal.LinkFG()
 	out := make([]ui.Span, 0, len(spans))
 	for _, sp := range spans {
 		us := ui.Span{
 			Text:          sp.Text,
-			Size:          baseSize,
-			Italic:        sp.Marks&model.MarkItalic != 0,
+			Font:          o.family,
+			Size:          o.size,
+			Weight:        o.weight,
+			Italic:        o.italic || sp.Marks&model.MarkItalic != 0,
 			Underline:     sp.Marks&model.MarkUnderline != 0,
-			Strikethrough: sp.Marks&model.MarkStrike != 0,
+			Strikethrough: o.strikeAll || sp.Marks&model.MarkStrike != 0,
+			LetterSpacing: o.track * o.size,
+		}
+		if o.defaultFG.A > 0 {
+			us.Color = o.defaultFG
+		}
+		if !legacy && pal.Style.TextGlow.A > 0 {
+			us.Shadow = ui.NewTextShadow(0, 0, 6, pal.Style.TextGlow)
 		}
 		if sp.Marks&model.MarkBold != 0 {
-			us.Weight = 700
+			bw := 700
+			if !legacy && inl.BoldWeight > 0 {
+				bw = inl.BoldWeight
+			}
+			if bw > us.Weight {
+				us.Weight = bw
+			}
+			if !legacy && inl.BoldColor.A > 0 {
+				us.Color = inl.BoldColor
+			}
+			if !legacy && inl.BoldFamily != "" {
+				us.Font = inl.BoldFamily
+			}
 		}
-		if sp.Marks&model.MarkCode != 0 || isCodeBlock {
+		if sp.Marks&model.MarkCode != 0 || o.isCodeBlock {
 			us.Font = fontMono
-			if !isCodeBlock {
-				us.Background = pal.CodeBG
+			us.NoLetterSpacing = true
+			if !o.isCodeBlock {
+				us.Size = o.size * 0.9
+				cbg := pal.CodeBG
+				if !legacy && inl.CodeBG.A > 0 {
+					cbg = inl.CodeBG
+				}
+				us.Background = cbg
 				us.Radius = 4
-				us.PaddingX = 3
+				us.PaddingX = 4
+				us.PaddingY = 1
+				if !legacy && inl.CodeFG.A > 0 {
+					us.Color = inl.CodeFG
+				}
 			}
 		}
 		if sp.Link != "" {
 			us.Color = linkFG
-			us.Underline = true
+			if !legacy {
+				us.DecorationColor = orC(inl.LinkDeco, linkFG)
+				if inl.LinkThick > 0 {
+					us.DecorationThickness = inl.LinkThick
+				}
+				if inl.LinkOffset != 0 {
+					us.UnderlineOffset = inl.LinkOffset
+				}
+				switch {
+				case inl.LinkWavy:
+					us.WavyUnderline = true
+				case inl.LinkDotted:
+					us.DottedUnderline = true
+				default:
+					us.Underline = true
+				}
+				if inl.LinkMono {
+					us.Font = fontMono
+					us.Size = o.size * 0.9
+					us.NoLetterSpacing = true
+				}
+			} else {
+				us.Underline = true
+			}
 		}
-		if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
-			us.Color = c
-		}
-		if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
-			us.Background = c
-			us.Radius = 3
+		if !legacy && isDefaultHighlightSpan(sp) && inl.Highlight != nil {
+			hl := inl.Highlight
+			if hl.BG.A > 0 {
+				us.Background = hl.BG
+				us.Radius = 3
+				us.PaddingX = 3
+				us.PaddingY = 1
+			}
+			if hl.FG.A > 0 {
+				us.Color = hl.FG
+			}
+			if hl.Weight > us.Weight {
+				us.Weight = hl.Weight
+			}
+			if hl.Rule.A > 0 {
+				us.Underline = true
+				us.DecorationColor = hl.Rule
+				us.DecorationThickness = orF(hl.RuleW, 1.5)
+				us.UnderlineOffset = 3
+			}
+			if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
+				us.Color = c
+			}
+		} else {
+			if c, ok := resolveSpanColor(sp.FGColor, false, pal); ok {
+				us.Color = c
+			}
+			if c, ok := resolveSpanColor(sp.BGColor, true, pal); ok {
+				us.Background = c
+				us.Radius = 3
+				us.PaddingX = 2
+			}
 		}
 		out = append(out, us)
 	}
@@ -118,64 +294,587 @@ func toUISpans(spans []model.Span, pal PaperThemeSpec, baseSize float32, isCodeB
 func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPreferences) exportScene {
 	pal, legacy := resolveExportPaper(prefs)
 	pageW := float32(resolveExportWidth(prefs))
-	padTop, padRight, padBottom, padLeft := pal.Margins()
-	contentW := pageW - padLeft - padRight
+	showTitle := resolveShowTitle(prefs)
+	showFooter := resolveWatermark(prefs)
+	title := resolveTitleText(doc, notePath, prefs)
+	now := time.Now().UTC()
+	vars := newTemplateVars(notePath, title, now)
+	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
 
 	sc := exportScene{
-		width:        pageW,
-		marginLeft:   padLeft,
-		contentWidth: contentW,
-		pal:          pal,
-		legacy:       legacy,
+		width:  pageW,
+		pal:    pal,
+		legacy: legacy,
 	}
-	y := padTop
 
-	showTitle := resolveShowTitle(prefs)
-	title := resolveTitleText(doc, notePath, prefs)
-	if showTitle {
-		tWeight := 400
+	var st layoutCounters
+
+	switch {
+	case !legacy && pal.Style.Sections != nil:
+		sec := pal.Style.Sections
+		cardX := pal.PadLeft
+		cardW := pageW - pal.PadLeft - pal.PadRight
+		padLeft := cardX + sec.PadX
+		contentW := cardW - sec.PadX*2
+		sc.marginLeft = padLeft
+		sc.contentWidth = contentW
+
+		y := pal.PadTop
+		// Partition bodyBlocks into runs delimited by H2 headings.
+		var runs [][]model.Block
+		var intro []model.Block
+		idx := 0
+		for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
+			intro = append(intro, bodyBlocks[idx])
+			idx++
+		}
+		hasIntroCard := showTitle || len(intro) > 0 || len(bodyBlocks) == 0
+		for idx < len(bodyBlocks) {
+			start := idx
+			idx++
+			for idx < len(bodyBlocks) && bodyBlocks[idx].Kind != model.BlockHeading2 {
+				idx++
+			}
+			runs = append(runs, bodyBlocks[start:idx])
+		}
+
+		if hasIntroCard {
+			cardTop := y
+			y += sec.PadY
+			if showTitle {
+				if ms, adv := buildMetaScene(pal, vars, padLeft, y, contentW); ms.present {
+					sc.meta = ms
+					y += adv
+				}
+				ts, adv := buildTitleScene(pal, legacy, title, padLeft, y, contentW)
+				sc.title = ts
+				if len(intro) > 0 {
+					y += adv
+				} else {
+					y += ts.h + 4
+				}
+			}
+			if len(intro) > 0 {
+				y = appendSceneBlocks(&sc, intro, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+			}
+			y += sec.PadY
+			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
+		}
+
+		for _, run := range runs {
+			if len(sc.sections) > 0 {
+				y += sec.Gap
+			}
+			cardTop := y
+			y += sec.PadY
+			y = appendSceneBlocks(&sc, run, notePath, padLeft, y, contentW, pal, legacy, &st, true)
+			y += sec.PadY
+			sc.sections = append(sc.sections, ui.Rect{X: cardX, Y: cardTop, W: cardW, H: y - cardTop})
+		}
+
+		if showFooter {
+			gap := orF(pal.Style.Footer.Gap, 24)
+			sc.footer = buildFooterScene(pal, legacy, vars, cardX, y+gap, cardW)
+			y = sc.footer.y + sc.footer.h
+		} else {
+			y += 12
+		}
+		sc.height = maxFloat32(y+pal.PadBottom, 160)
+
+	case !legacy && pal.Card != nil && pal.Card.BodyOnly:
+		inset, insetTop := pal.Card.Inset, pal.Card.top()
+		outerX := inset
+		outerW := pageW - inset*2
+		padLeft := inset + pal.PadLeft
+		contentW := outerW - pal.PadLeft - pal.PadRight
+		sc.marginLeft = padLeft
+		sc.contentWidth = contentW
+
+		y := insetTop
+		if showTitle {
+			if ms, adv := buildMetaScene(pal, vars, outerX, y, outerW); ms.present {
+				sc.meta = ms
+				y += adv
+			}
+		}
+		cardTop := y
+		y = cardTop + pal.PadTop
+		if showTitle {
+			ts, adv := buildTitleScene(pal, legacy, title, padLeft, y, contentW)
+			sc.title = ts
+			y += adv
+		}
+		if len(bodyBlocks) > 0 {
+			y = appendSceneBlocks(&sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+		}
+		cardBottom := y + pal.PadBottom
+		sc.cardRect = ui.Rect{X: inset, Y: cardTop, W: outerW, H: maxFloat32(cardBottom-cardTop, 80)}
+		y = cardTop + sc.cardRect.H
+
+		if showFooter {
+			gap := orF(pal.Style.Footer.Gap, 24)
+			sc.footer = buildFooterScene(pal, legacy, vars, outerX, y+gap, outerW)
+			y = sc.footer.y + sc.footer.h
+		} else {
+			y += 8
+		}
+		sc.height = maxFloat32(y+inset, 160)
+
+	default:
+		padTop, padRight, padBottom, padLeft := pal.Margins()
+		contentW := pageW - padLeft - padRight
+		sc.marginLeft = padLeft
+		sc.contentWidth = contentW
+
+		y := padTop
+		if showTitle {
+			if !legacy {
+				if ms, adv := buildMetaScene(pal, vars, padLeft, y, contentW); ms.present {
+					sc.meta = ms
+					y += adv
+				}
+			}
+			ts, adv := buildTitleScene(pal, legacy, title, padLeft, y, contentW)
+			sc.title = ts
+			y += adv
+		}
+		if len(bodyBlocks) > 0 {
+			y = appendSceneBlocks(&sc, bodyBlocks, notePath, padLeft, y, contentW, pal, legacy, &st, false)
+		}
+		if showFooter {
+			gap := float32(28)
+			if !legacy {
+				gap = orF(pal.Style.Footer.Gap, 28)
+			}
+			sc.footer = buildFooterScene(pal, legacy, vars, padLeft, y+gap, contentW)
+			y = sc.footer.y + sc.footer.h
+		} else {
+			y += 12
+		}
+		sc.height = maxFloat32(y+padBottom, 160)
+		if pal.Card != nil {
+			inset, insetTop := pal.Card.Inset, pal.Card.top()
+			sc.cardRect = ui.Rect{
+				X: inset,
+				Y: insetTop,
+				W: pageW - inset*2,
+				H: maxFloat32(sc.height-insetTop-inset, 80),
+			}
+			if !legacy && pal.Card.Label != "" {
+				lbl := vars.expand(pal.Card.Label)
+				lf := ui.Font{Family: pal.BodyFamily, Size: 12, LineHeight: 1.2}
+				sp := ui.Span{Text: lbl, Font: pal.BodyFamily, Size: 12}
+				if pal.Style.TextGlow.A > 0 {
+					sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+				}
+				sc.cardLabelLay = ui.ShapeRichTextWith([]ui.Span{sp}, lf, ui.TextShape{Width: sc.cardRect.W - 36})
+			}
+		}
+	}
+
+	if !legacy && len(pal.Style.Ornaments) > 0 {
+		sc.ornaments = buildOrnaments(pal, vars, sc.height, showTitle)
+	}
+	return sc
+}
+
+func buildOrnaments(pal PaperThemeSpec, vars templateVars, pageH float32, showTitle bool) []ornamentScene {
+	out := make([]ornamentScene, 0, len(pal.Style.Ornaments))
+	for _, o := range pal.Style.Ornaments {
+		if !showTitle && (o.Kind == OrnamentStamp || o.Kind == OrnamentSeal) {
+			continue
+		}
+		os := ornamentScene{spec: o}
+		fam := orS(o.Family, pal.BodyFamily)
+		sz := orF(o.Size, 12)
+		switch o.Kind {
+		case OrnamentSideText:
+			txt := vars.expand(o.Text)
+			f := ui.Font{Family: fam, Size: sz, Italic: o.Italic, LineHeight: 1.2}
+			os.textLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text:          txt,
+				Font:          fam,
+				Size:          sz,
+				Italic:        o.Italic,
+				LetterSpacing: o.Track * sz,
+			}}, f, ui.TextShape{Width: maxFloat32(pageH-o.Y, 400)})
+		case OrnamentStamp:
+			txt := vars.expand(o.Text)
+			f := ui.Font{Family: fam, Size: sz, Italic: o.Italic, LineHeight: 1.2}
+			os.textLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text:          txt,
+				Font:          fam,
+				Size:          sz,
+				Italic:        o.Italic,
+				LetterSpacing: o.Track * sz,
+			}}, f, ui.TextShape{Width: 240})
+		case OrnamentSeal:
+			t1 := vars.expand(o.Text)
+			t2 := vars.expand(o.Text2)
+			s1 := orF(o.Size, 16)
+			f1 := ui.Font{Family: fam, Size: s1, Weight: 600, LineHeight: 1.1}
+			os.textLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text:          t1,
+				Font:          fam,
+				Size:          s1,
+				Weight:        600,
+				LetterSpacing: 0.08 * s1,
+			}}, f1, ui.TextShape{Width: o.W, Align: ui.Center})
+			if t2 != "" {
+				f2 := ui.Font{Family: fontMono, Size: 9, LineHeight: 1.1}
+				os.text2Lay = ui.ShapeRichTextWith([]ui.Span{{
+					Text:          t2,
+					Font:          fontMono,
+					Size:          9,
+					LetterSpacing: 0.9,
+				}}, f2, ui.TextShape{Width: o.W, Align: ui.Center})
+			}
+		}
+		out = append(out, os)
+	}
+	return out
+}
+
+func buildMetaScene(pal PaperThemeSpec, vars templateVars, x, y, w float32) (metaScene, float32) {
+	ms := pal.Style.Meta
+	left := vars.expand(ms.Left)
+	right := vars.expand(ms.Right)
+	mast := vars.expand(ms.Masthead)
+	if left == "" && right == "" && mast == "" {
+		return metaScene{}, 0
+	}
+	if ms.Upper {
+		left = strings.ToUpper(left)
+		right = strings.ToUpper(right)
+	}
+	fam := orS(ms.Family, pal.BodyFamily)
+	sz := orF(ms.Size, 12)
+	col := orC(ms.Color, pal.Secondary)
+	rCol := orC(ms.RightColor, col)
+
+	out := metaScene{
+		present:  true,
+		x:        x,
+		y:        y,
+		w:        w,
+		leftCol:  col,
+		rightCol: rCol,
+		mastCol:  pal.Title,
+		moon:     ms.Moon,
+		earBoxes: mast != "",
+		rule:     ms.Rule,
+		ruleCol:  orC(ms.RuleColor, pal.Divider),
+	}
+
+	makeMetaSpan := func(txt string) []ui.Span {
+		sp := ui.Span{
+			Text:          txt,
+			Font:          fam,
+			Size:          sz,
+			Italic:        ms.Italic,
+			LetterSpacing: ms.Track * sz,
+		}
+		if pal.Style.TextGlow.A > 0 {
+			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+		}
+		return []ui.Span{sp}
+	}
+
+	sideMaxW := w * 0.6
+	if mast != "" {
+		sideMaxW = w * 0.28
+	}
+	f := ui.Font{Family: fam, Size: sz, Italic: ms.Italic, LineHeight: 1.35}
+	var h float32
+	if left != "" {
+		out.leftLay = ui.ShapeRichTextWith(makeMetaSpan(left), f, ui.TextShape{Width: sideMaxW})
+		_, lh := out.leftLay.Size()
+		if out.earBoxes {
+			lh += 10
+		}
+		h = maxFloat32(h, lh)
+	}
+	if right != "" {
+		out.rightLay = ui.ShapeRichTextWith(makeMetaSpan(right), f, ui.TextShape{Width: sideMaxW})
+		_, rh := out.rightLay.Size()
+		if out.earBoxes {
+			rh += 10
+		}
+		h = maxFloat32(h, rh)
+	}
+	if mast != "" {
+		mfam := orS(ms.MastheadFamily, pal.TitleFamily)
+		msz := orF(ms.MastheadSize, 48)
+		mf := ui.Font{Family: mfam, Size: msz, Weight: 700, LineHeight: 1.05}
+		out.mastLay = ui.ShapeRichTextWith([]ui.Span{{
+			Text:          mast,
+			Font:          mfam,
+			Size:          msz,
+			Weight:        700,
+			LetterSpacing: ms.MastheadTrack * msz,
+		}}, mf, ui.TextShape{Width: w, Align: ui.Center})
+		_, mh := out.mastLay.Size()
+		h = maxFloat32(h, mh)
+	}
+
+	ruleSpace := float32(0)
+	switch ms.Rule {
+	case MetaRuleSingle:
+		out.ruleY = y + h + 10
+		ruleSpace = 11
+	case MetaRuleDouble:
+		out.ruleY = y + h + 12
+		ruleSpace = 19
+	}
+	out.h = h + ruleSpace
+	return out, out.h + orF(ms.Gap, 24)
+}
+
+func buildTitleScene(pal PaperThemeSpec, legacy bool, title string, x, y, w float32) (titleScene, float32) {
+	ts := pal.Style.Title
+	sz := pal.TitleSize
+	weight := ts.Weight
+	if weight == 0 {
 		if pal.TitleBold {
-			tWeight = 700
+			weight = 700
+		} else {
+			weight = 400
 		}
-		tFam := pal.HeadingFamily
-		if isASCII(title) {
-			tFam = pal.TitleFamily
-		}
-		tFont := ui.Font{Family: tFam, Size: pal.TitleSize, Weight: tWeight, LineHeight: 1.3}
-		shape := ui.TextShape{Width: contentW}
-		if pal.Mark == TitleMarkDoubleRule {
-			shape.Align = ui.Center
-		}
-		tLay := ui.ShapeRichTextWith([]ui.Span{{Text: title, Font: tFam, Weight: tWeight, Size: pal.TitleSize}}, tFont, shape)
-		_, th := tLay.Size()
-		sc.titleLayout = tLay
-		sc.titleX = padLeft
-		sc.titleY = y
-		sc.titleH = th
-		below := float32(36)
-		switch pal.Mark {
-		case TitleMarkRule:
-			below = 20 + 2 + 36
-		case TitleMarkBar:
-			below = 18 + 4 + 34
-		case TitleMarkWavy:
-			below = 8 + 12 + 30
-		case TitleMarkDoubleRule:
-			below = 18 + 7 + 34
-		case TitleMarkBand:
-			below = 44 + 52
-		}
-		if legacy {
-			below = 14 + 24
-		}
-		y += th + below
+	}
+	fam := pal.TitleFamily
+	if !isASCII(title) && fam == "" {
+		fam = pal.HeadingFamily
+	}
+	lead := orF(ts.Leading, 1.3)
+	align := ui.Start
+	if (!legacy && ts.Center) || pal.Mark == TitleMarkDoubleRule {
+		align = ui.Center
 	}
 
-	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
-	var num listNumbering
-	for i := range bodyBlocks {
-		b := &bodyBlocks[i]
-		ord := num.next(b)
+	minSz := orF(ts.MinSize, 36)
+	var tLay *ui.TextLayout
+	for {
+		spans := buildTitleSpans(pal, legacy, title, fam, sz, weight)
+		tFont := ui.Font{Family: fam, Size: sz, Weight: weight, LineHeight: lead}
+		tLay = ui.ShapeRichTextWith(spans, tFont, ui.TextShape{Width: w, Align: align})
+		if legacy || ts.MaxLines <= 0 || len(tLay.Lines()) <= ts.MaxLines || sz <= minSz {
+			break
+		}
+		sz = maxFloat32(sz-8, minSz)
+	}
+	_, th := tLay.Size()
+
+	out := titleScene{
+		present:   true,
+		x:         x,
+		y:         y,
+		w:         w,
+		h:         th,
+		fontSize:  sz,
+		layout:    tLay,
+		color:     pal.Title,
+		mark:      pal.Mark,
+		ruleWidth: ts.RuleWidth,
+		ruleThick: ts.RuleThick,
+		ruleCol:   ts.RuleColor,
+	}
+
+	if legacy {
+		return out, th + 14 + 24
+	}
+	markH := float32(0)
+	defGap := float32(34)
+	switch pal.Mark {
+	case TitleMarkRule:
+		markH = 20 + orF(ts.RuleThick, 2)
+	case TitleMarkBar:
+		markH = 18 + 4
+	case TitleMarkWavy:
+		markH = 8 + 12
+		defGap = 28
+	case TitleMarkDoubleRule:
+		markH = 18 + 7
+	case TitleMarkRing:
+		markH = 18 + 10
+	case TitleMarkBand:
+		markH = 44
+		defGap = 52
+	}
+	gap := orF(ts.Gap, defGap)
+	return out, th + markH + gap
+}
+
+func buildTitleSpans(pal PaperThemeSpec, legacy bool, title, fam string, sz float32, weight int) []ui.Span {
+	ts := pal.Style.Title
+	var baseShadow ui.TextShadow
+	glow := orC(ts.Glow, pal.Style.TextGlow)
+	if !legacy && glow.A > 0 {
+		baseShadow = ui.NewTextShadow(0, 0, 10, glow)
+	}
+	makeSpan := func(txt string) ui.Span {
+		return ui.Span{
+			Text:          txt,
+			Font:          fam,
+			Size:          sz,
+			Weight:        weight,
+			Color:         pal.Title,
+			LetterSpacing: ts.Track * sz,
+			Shadow:        baseShadow,
+		}
+	}
+	var out []ui.Span
+	if !legacy && ts.Prefix != "" {
+		ps := makeSpan(ts.Prefix)
+		ps.Color = pal.Secondary
+		out = append(out, ps)
+	}
+	if !legacy && ts.Accent != nil {
+		head, tail := splitTitleAccent(title)
+		if tail != "" {
+			if head != "" {
+				out = append(out, makeSpan(head))
+			}
+			as := makeSpan(tail)
+			as.Color = orC(ts.Accent.FG, pal.Title)
+			if ts.Accent.BG.A > 0 {
+				as.Background = ts.Accent.BG
+				as.PaddingX = maxFloat32(sz*0.07, 6)
+				as.PaddingY = 2
+			}
+			if ts.Accent.Glow.A > 0 {
+				as.Shadow = ui.NewTextShadow(0, 0, 14, ts.Accent.Glow)
+			}
+			out = append(out, as)
+			return out
+		}
+	}
+	out = append(out, makeSpan(title))
+	return out
+}
+
+func buildFooterScene(pal PaperThemeSpec, legacy bool, vars templateVars, x, y, w float32) footerScene {
+	if legacy {
+		ff := ui.Font{Family: pal.BodyFamily, Size: 14, LineHeight: 1.4}
+		left := ui.ShapeRichTextWith([]ui.Span{{Text: watermarkLabel, Font: pal.BodyFamily, Size: 14}}, ff, ui.TextShape{Width: w / 2})
+		right := ui.ShapeRichTextWith([]ui.Span{{Text: vars.expand("{date}"), Font: pal.BodyFamily, Size: 14}}, ff, ui.TextShape{Width: w / 2})
+		_, lh := left.Size()
+		return footerScene{
+			present:    true,
+			x:          x,
+			y:          y,
+			w:          w,
+			textY:      y + 16,
+			h:          16 + lh,
+			leftLay:    left,
+			rightLay:   right,
+			color:      pal.Secondary,
+			rightColor: pal.Secondary,
+			rule:       FooterLine,
+			ruleCol:    pal.Divider,
+		}
+	}
+
+	fs := pal.Style.Footer
+	left := vars.expand(fs.Left)
+	center := vars.expand(fs.Center)
+	right := vars.expand(fs.Right)
+	if left == "" && center == "" && right == "" {
+		left = watermarkLabel
+		right = vars.expand("{date}")
+	}
+	if fs.Upper {
+		left = strings.ToUpper(left)
+		center = strings.ToUpper(center)
+		right = strings.ToUpper(right)
+	}
+	fam := orS(fs.Family, pal.BodyFamily)
+	sz := orF(fs.Size, 13)
+	col := orC(fs.Color, pal.Secondary)
+	rCol := orC(fs.RightColor, col)
+	ff := ui.Font{Family: fam, Size: sz, Italic: fs.Italic, LineHeight: 1.4}
+
+	makeSpan := func(txt string) []ui.Span {
+		sp := ui.Span{
+			Text:          txt,
+			Font:          fam,
+			Size:          sz,
+			Italic:        fs.Italic,
+			LetterSpacing: fs.Track * sz,
+		}
+		if pal.Style.TextGlow.A > 0 {
+			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+		}
+		return []ui.Span{sp}
+	}
+
+	textOff := float32(0)
+	if fs.Rule == FooterLine || fs.Rule == FooterDashed {
+		textOff = 14
+	}
+	out := footerScene{
+		present:    true,
+		x:          x,
+		y:          y,
+		w:          w,
+		textY:      y + textOff,
+		color:      col,
+		rightColor: rCol,
+		rule:       fs.Rule,
+		ruleCol:    orC(fs.RuleColor, pal.Divider),
+		swatches:   fs.Swatches,
+	}
+	var maxH float32
+	if left != "" {
+		out.leftLay = ui.ShapeRichTextWith(makeSpan(left), ff, ui.TextShape{Width: w * 0.6})
+		_, lh := out.leftLay.Size()
+		maxH = maxFloat32(maxH, lh)
+	}
+	if center != "" {
+		align := ui.Center
+		cw := w
+		if fs.Rule == FooterFlank {
+			align = ui.Start
+			cw = w * 0.7
+		}
+		out.centerLay = ui.ShapeRichTextWith(makeSpan(center), ff, ui.TextShape{Width: cw, Align: align})
+		_, ch := out.centerLay.Size()
+		maxH = maxFloat32(maxH, ch)
+	}
+	if right != "" {
+		out.rightLay = ui.ShapeRichTextWith(makeSpan(right), ff, ui.TextShape{Width: w * 0.6})
+		_, rh := out.rightLay.Size()
+		maxH = maxFloat32(maxH, rh)
+	}
+	if maxH == 0 {
+		maxH = sz * 1.4
+	}
+	out.h = textOff + maxH
+	return out
+}
+
+type layoutCounters struct {
+	num      listNumbering
+	h2Count  int
+	quoteOrd int
+}
+
+// appendSceneBlocks lays out blocks starting at startY and returns the bottom Y
+// of the last rendered block (without trailing inter-block gap, so section cards hug content).
+func appendSceneBlocks(
+	sc *exportScene,
+	blocks []model.Block,
+	notePath string,
+	padLeft, startY, contentW float32,
+	pal PaperThemeSpec,
+	legacy bool,
+	st *layoutCounters,
+	suppressFirstHeadingGap bool,
+) float32 {
+	y := startY
+	lastGap := float32(0)
+	for i := range blocks {
+		b := &blocks[i]
+		ord := st.num.next(b)
 		indent := float32(b.Indent) * 12
 		if indent > contentW-120 {
 			indent = contentW - 120
@@ -188,73 +887,74 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 
 		switch {
 		case b.Kind == model.BlockDivider:
+			ds := pal.Style.Divider
+			divCol := orC(ds.Color, pal.Divider)
+			var lay *ui.TextLayout
+			bh := float32(20)
+			if !legacy && ds.Kind == DividerText && ds.Text != "" {
+				f := ui.Font{Family: pal.BodyFamily, Size: 14, LineHeight: 1.4}
+				sp := ui.Span{Text: ds.Text, Font: pal.BodyFamily, Size: 14, LetterSpacing: orF(ds.Track, 0.25) * 14}
+				if pal.Style.TextGlow.A > 0 {
+					sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+				}
+				lay = ui.ShapeRichTextWith([]ui.Span{sp}, f, ui.TextShape{Width: avail, Align: ui.Center})
+				_, th := lay.Size()
+				bh = maxFloat32(th+8, 22)
+			} else if !legacy && ds.Kind == DividerRepeat && ds.Text != "" {
+				unit := ds.Text
+				rep := strings.Repeat(unit, max(int(avail/6)+4, 8))
+				f := ui.Font{Family: fontMono, Size: 13, LineHeight: 1.3}
+				sp := ui.Span{Text: rep, Font: fontMono, Size: 13}
+				if pal.Style.TextGlow.A > 0 {
+					sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+				}
+				lay = ui.ShapeRichTextWith([]ui.Span{sp}, f, ui.TextShape{Width: avail * 3})
+				bh = 22
+			}
 			sc.blocks = append(sc.blocks, paintedBlock{
 				kind:      model.BlockDivider,
 				x:         bx,
 				y:         y,
 				w:         avail,
-				h:         20,
-				borderCol: pal.Divider,
+				h:         bh,
+				layout:    lay,
+				borderCol: divCol,
+				divKind:   ds.Kind,
+				divWidth:  orF(ds.Width, 1),
 			})
-			y += 28
+			lastGap = 12
+			y += bh + lastGap
 
 		case b.Kind == model.BlockImage:
 			if pb, ok := buildPaintedImage(b, notePath, bx, y, avail, pal); ok {
-				y += pb.h + 14
+				lastGap = 14
+				y += pb.h + lastGap
 				sc.blocks = append(sc.blocks, pb)
 			}
 
 		case b.Kind == model.BlockTable && b.Table != nil:
-			pb := buildPaintedTable(b.Table, bx, y, avail, pal)
-			y += pb.h + 14
+			pb := buildPaintedTable(b.Table, bx, y, avail, pal, legacy)
+			lastGap = 16
+			y += pb.h + lastGap
 			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
-			codeText := b.Code
-			if codeText == "" {
-				codeText = " "
-			}
-			font := ui.Font{Family: fontMono, Size: 14.5, LineHeight: 1.6}
-			padBoxX, padBoxY := float32(18), float32(14)
-			var labelLay *ui.TextLayout
-			labelH := float32(0)
-			if b.Language != "" {
-				langLabel := b.Language
-				if strings.EqualFold(langLabel, "yaml-frontmatter") || strings.EqualFold(langLabel, "frontmatter") {
-					langLabel = "yaml"
-				}
-				lf := ui.Font{Size: 13, Weight: 600, LineHeight: 1.3}
-				labelLay = ui.ShapeRichTextWith([]ui.Span{{Text: strings.ToUpper(langLabel), Size: 13, Weight: 600}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
-				_, lh := labelLay.Size()
-				labelH = lh + 6
-			}
-			lay := ui.ShapeRichTextWith([]ui.Span{{Text: codeText, Size: 14.5, Font: fontMono}}, font, ui.TextShape{Width: avail - 2*padBoxX})
-			_, th := lay.Size()
-			bh := th + 2*padBoxY + labelH
-			sc.blocks = append(sc.blocks, paintedBlock{
-				kind:      b.Kind,
-				x:         bx,
-				y:         y,
-				w:         avail,
-				h:         bh,
-				textX:     bx + padBoxX,
-				textY:     y + padBoxY + labelH,
-				layout:    lay,
-				textColor: pal.Text,
-				bgColor:   pal.CodeBG,
-				borderCol: pal.CodeBorder,
-				labelLay:  labelLay,
-			})
-			y += bh + 18
+			pb := buildPaintedCode(b, bx, y, avail, pal, legacy)
+			lastGap = 18
+			y += pb.h + lastGap
+			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind == model.BlockCallout:
 			bg, border, accent, cTitle := pal.CalloutColors(b.Callout)
 			padBoxX, padBoxY := float32(18), float32(12)
-			lf := ui.Font{Size: 13, Weight: 700, LineHeight: 1.3}
-			labelLay := ui.ShapeRichTextWith([]ui.Span{{Text: cTitle, Size: 13, Weight: 700}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
+			lf := ui.Font{Family: pal.BodyFamily, Size: 13, Weight: 700, LineHeight: 1.3}
+			labelLay := ui.ShapeRichTextWith([]ui.Span{{Text: cTitle, Font: pal.BodyFamily, Size: 13, Weight: 700}}, lf, ui.TextShape{Width: avail - 2*padBoxX})
 			_, lh := labelLay.Size()
 			bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), bodyFont, ui.TextShape{Width: avail - 2*padBoxX})
+			spans := toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
+				family: pal.BodyFamily, size: pal.BodySize, defaultFG: pal.Text,
+			})
+			lay := ui.ShapeRichTextWith(spans, bodyFont, ui.TextShape{Width: avail - 2*padBoxX})
 			_, th := lay.Size()
 			bh := th + lh + 6 + 2*padBoxY
 			sc.blocks = append(sc.blocks, paintedBlock{
@@ -272,130 +972,45 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				accentCol: accent,
 				labelLay:  labelLay,
 			})
-			y += bh + 14
+			lastGap = 14
+			y += bh + lastGap
 
 		case b.Kind == model.BlockQuote:
-			padBoxX, padBoxY := float32(20), float32(12)
-			if !legacy && pal.Theme == model.ExportThemePress {
-				padBoxX = 4
-			} else if pal.QuoteBG.A == 0 {
-				padBoxY = 2
-			}
-			font := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), font, ui.TextShape{Width: avail - 2*padBoxX})
-			_, th := lay.Size()
-			bh := th + 2*padBoxY
-			sc.blocks = append(sc.blocks, paintedBlock{
-				kind:      model.BlockQuote,
-				x:         bx,
-				y:         y,
-				w:         avail,
-				h:         bh,
-				textX:     bx + padBoxX,
-				textY:     y + padBoxY,
-				layout:    lay,
-				textColor: pal.QuoteFG,
-				bgColor:   pal.QuoteBG,
-				accentCol: pal.QuoteBar,
-			})
-			y += bh + 18
+			st.quoteOrd++
+			pb := buildPaintedQuote(b, bx, y, avail, pal, legacy, st.quoteOrd)
+			lastGap = 18
+			y += pb.h + lastGap
+			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind.IsList():
-			var mLay *ui.TextLayout
-			gutter := float32(28)
-			if b.Kind == model.BlockNumbered {
-				if ord <= 0 {
-					ord = 1
-				}
-				marker := fmt.Sprintf("%d.", ord)
-				mFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, Weight: 600, LineHeight: pal.Leading}
-				mLay = ui.ShapeRichTextWith([]ui.Span{{Text: marker, Size: pal.BodySize, Weight: 600}}, mFont, ui.TextShape{Width: 64})
-				mw, _ := mLay.Size()
-				if mw+12 > gutter {
-					gutter = mw + 12
-				}
-			}
-			bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), bodyFont, ui.TextShape{Width: avail - gutter})
-			_, th := lay.Size()
-			sc.blocks = append(sc.blocks, paintedBlock{
-				kind:      b.Kind,
-				x:         bx,
-				y:         y,
-				w:         avail,
-				h:         th,
-				textX:     bx + gutter,
-				textY:     y,
-				layout:    lay,
-				textColor: pal.Text,
-				markerLay: mLay,
-				markerCol: pal.Title,
-				accentCol: pal.Accent,
-				checked:   b.Checked,
-			})
-			y += th + 4
+			pb, itemGap := buildPaintedListItem(b, ord, bx, y, avail, pal, legacy)
+			lastGap = itemGap
+			y += pb.h + lastGap
+			sc.blocks = append(sc.blocks, pb)
 
 		case b.Kind.IsHeading():
 			lvl := b.Kind.HeadingLevel()
-			sz := pal.BodySize
-			switch lvl {
-			case 1:
-				sz = pal.HeadSizes[0]
-			case 2:
-				sz = pal.HeadSizes[1]
-			case 3:
-				sz = pal.HeadSizes[2]
-			case 4:
-				sz = pal.BodySize * 1.12
+			if lvl == 2 {
+				st.h2Count++
 			}
-			topGap := float32(8)
-			if lvl == 1 {
-				topGap = 18
-			} else if lvl == 2 {
-				topGap = 12
-			}
-			y += topGap
-			weight := 700
-			if lvl == 6 {
-				weight = 500
-			}
-			font := ui.Font{Family: pal.HeadingFamily, Size: sz, Weight: weight, LineHeight: 1.35}
-			spans := toUISpans(b.Spans, pal, sz, false)
-			for idx := range spans {
-				spans[idx].Weight = weight
-			}
-			lay := ui.ShapeRichTextWith(spans, font, ui.TextShape{Width: avail})
-			_, th := lay.Size()
-			botPad := float32(0)
-			if lvl == 2 && !legacy && pal.Theme == model.ExportThemePress {
-				botPad = 6
-			}
-			gapAfter := float32(8)
-			if lvl == 1 {
-				gapAfter = 10
-			}
-			sc.blocks = append(sc.blocks, paintedBlock{
-				kind:      b.Kind,
-				x:         bx,
-				y:         y,
-				w:         avail,
-				h:         th + botPad,
-				textX:     bx,
-				textY:     y,
-				layout:    lay,
-				textColor: pal.Title,
-				accentCol: pal.Accent,
-				borderCol: pal.Divider,
-			})
-			y += th + botPad + gapAfter
+			pb, topGap, afterGap := buildPaintedHeading(b, lvl, st.h2Count, bx, y, avail, pal, legacy, i == 0 && suppressFirstHeadingGap)
+			y = pb.y + pb.h + afterGap
+			lastGap = afterGap
+			_ = topGap
+			sc.blocks = append(sc.blocks, pb)
 
 		default: // BlockParagraph
 			if len(b.Spans) == 0 {
+				lastGap = 0
 				y += 14
 				continue
 			}
 			font := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
-			lay := ui.ShapeRichTextWith(toUISpans(b.Spans, pal, pal.BodySize, false), font, ui.TextShape{Width: avail})
+			spans := toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
+				family: pal.BodyFamily, size: pal.BodySize, defaultFG: pal.Text,
+			})
+			shape := ui.TextShape{Width: avail, Justify: !legacy && pal.Style.Justify}
+			lay := ui.ShapeRichTextWith(spans, font, shape)
 			_, th := lay.Size()
 			sc.blocks = append(sc.blocks, paintedBlock{
 				kind:      model.BlockParagraph,
@@ -408,27 +1023,676 @@ func buildExportScene(doc *model.Doc, notePath string, prefs model.ExportPrefere
 				layout:    lay,
 				textColor: pal.Text,
 			})
-			y += th + 10
+			lastGap = 10
+			y += th + lastGap
+		}
+	}
+	return y - lastGap
+}
+
+func buildPaintedHeading(
+	b *model.Block,
+	lvl, h2Idx int,
+	bx, curY, avail float32,
+	pal PaperThemeSpec,
+	legacy bool,
+	suppressTopGap bool,
+) (paintedBlock, float32, float32) {
+	hs := pal.Style.Heading
+	sz := pal.BodySize
+	switch lvl {
+	case 1:
+		sz = pal.HeadSizes[0]
+	case 2:
+		sz = pal.HeadSizes[1]
+	case 3:
+		sz = pal.HeadSizes[2]
+	case 4:
+		sz = pal.BodySize * 1.12
+	}
+	topGap := float32(8)
+	switch lvl {
+	case 1:
+		topGap = 18
+	case 2:
+		if !legacy {
+			topGap = orF(hs.TopGap, 14)
+		} else {
+			topGap = 12
+		}
+	}
+	if suppressTopGap {
+		topGap = 0
+	}
+	y := curY + topGap
+
+	weight := 700
+	if !legacy && hs.Weight > 0 {
+		weight = hs.Weight
+	}
+	if lvl == 6 && weight > 500 {
+		weight = 500
+	}
+	headCol := pal.Title
+	if !legacy && hs.Color.A > 0 {
+		headCol = hs.Color
+	}
+	track := float32(0)
+	if !legacy {
+		track = hs.Track
+	}
+
+	pb := paintedBlock{
+		kind:        b.Kind,
+		x:           bx,
+		y:           y,
+		w:           avail,
+		textX:       bx,
+		textY:       y,
+		textColor:   headCol,
+		accentCol:   orC(hs.Accent, pal.Accent),
+		borderCol:   pal.Divider,
+		headRuleCol: orC(hs.RuleColor, pal.Divider),
+	}
+
+	var spans []ui.Span
+	if !legacy && hs.Prefix == HeadPrefixHashes {
+		pCol := orC(hs.PrefixColor, pal.Secondary)
+		ps := ui.Span{
+			Text:          strings.Repeat("#", lvl) + " ",
+			Font:          orS(hs.PrefixFont, pal.HeadingFamily),
+			Size:          sz,
+			Weight:        weight,
+			Color:         pCol,
+			LetterSpacing: track * sz,
+		}
+		if pal.Style.TextGlow.A > 0 {
+			ps.Shadow = ui.NewTextShadow(0, 0, 6, pal.Style.TextGlow)
+		}
+		spans = append(spans, ps)
+	}
+	spans = append(spans, toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
+		family: pal.HeadingFamily, size: sz, weight: weight, track: track, defaultFG: headCol,
+	})...)
+
+	textAvail := avail
+	if lvl == 2 && !legacy {
+		pb.headPrefix = hs.Prefix
+		pb.headRule = hs.Underline
+		switch hs.Prefix {
+		case HeadPrefixDot:
+			dotCol := orC(hs.Accent, pal.Accent)
+			if h2Idx%2 == 0 && hs.Accent2.A > 0 {
+				dotCol = hs.Accent2
+			}
+			pb.accentCol = dotCol
+			pb.textX = bx + 22
+			textAvail = maxFloat32(avail-22, 60)
+		case HeadPrefixTag:
+			ordStr := fmt.Sprintf("%02d", max(h2Idx, 1))
+			pfam := orS(hs.PrefixFont, fontMono)
+			pf := ui.Font{Family: pfam, Size: 13, Weight: 700, LineHeight: 1.2}
+			pb.labelLay = ui.ShapeRichTextWith([]ui.Span{{Text: ordStr, Font: pfam, Size: 13, Weight: 700}}, pf, ui.TextShape{Width: 60})
+			lw, lh := pb.labelLay.Size()
+			tagW := lw + 12
+			pb.labelX = bx
+			pb.labelY = y + maxFloat32((sz*1.35-lh-6)*0.5, 0)
+			pb.labelCol = orC(hs.TagFG, ui.RGB(255, 255, 255))
+			pb.labelBG = orC(hs.Accent, pal.Accent)
+			pb.textX = bx + tagW + 12
+			textAvail = maxFloat32(avail-tagW-36, 60)
+		case HeadPrefixLabel:
+			ordStr := fmt.Sprintf("%02d —", max(h2Idx, 1))
+			pfam := orS(hs.PrefixFont, fontMono)
+			pf := ui.Font{Family: pfam, Size: 11, Weight: 500, LineHeight: 1.2}
+			pb.labelLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text: ordStr, Font: pfam, Size: 11, Weight: 500, LetterSpacing: 0.24 * 11,
+			}}, pf, ui.TextShape{Width: 120})
+			_, lh := pb.labelLay.Size()
+			pb.labelX = bx
+			pb.labelY = y
+			pb.labelCol = orC(hs.PrefixColor, pal.Accent)
+			pb.textY = y + lh + 8
+		case HeadPrefixNumber:
+			ordStr := fmt.Sprintf("%02d", max(h2Idx, 1))
+			pfam := orS(hs.PrefixFont, fontMono)
+			pf := ui.Font{Family: pfam, Size: 12, Weight: 500, LineHeight: 1.2}
+			pb.labelLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text: ordStr, Font: pfam, Size: 12, Weight: 500, LetterSpacing: 0.18 * 12,
+			}}, pf, ui.TextShape{Width: 60})
+			lw, _ := pb.labelLay.Size()
+			gutter := maxFloat32(lw+14, 30)
+			pb.labelX = bx
+			pb.labelY = y + maxFloat32(sz*1.35*0.32, 4)
+			pb.labelCol = orC(hs.PrefixColor, pal.Accent)
+			pb.textX = bx + gutter
+			textAvail = maxFloat32(avail-gutter, 60)
 		}
 	}
 
-	if resolveWatermark(prefs) {
-		sc.showFooter = true
-		sc.footerY = y + 28
-		ff := ui.Font{Family: pal.BodyFamily, Size: 14, LineHeight: 1.4}
-		sc.footerLeft = ui.ShapeRichTextWith([]ui.Span{{Text: watermarkLabel, Size: 14}}, ff, ui.TextShape{Width: contentW / 2})
-		dateStr := time.Now().UTC().Format("2006.01.02")
-		sc.footerRight = ui.ShapeRichTextWith([]ui.Span{{Text: dateStr, Size: 14}}, ff, ui.TextShape{Width: contentW / 2})
-		y = sc.footerY + 16 + 14*1.4
-	} else {
-		y += 12
+	font := ui.Font{Family: pal.HeadingFamily, Size: sz, Weight: weight, LineHeight: 1.35}
+	lay := ui.ShapeRichTextWith(spans, font, ui.TextShape{Width: textAvail})
+	_, th := lay.Size()
+	pb.layout = lay
+
+	botPad := float32(0)
+	if pb.headRule {
+		botPad = 7
+	}
+	pb.h = (pb.textY - y) + th + botPad
+
+	afterGap := float32(10)
+	if lvl == 1 {
+		afterGap = 12
+	}
+	return pb, topGap, afterGap
+}
+
+func buildPaintedCode(b *model.Block, bx, y, avail float32, pal PaperThemeSpec, legacy bool) paintedBlock {
+	codeText := b.Code
+	if codeText == "" {
+		codeText = " "
+	}
+	cs := pal.Style.Code
+	kind := CodeBox
+	if !legacy {
+		kind = cs.Kind
+	}
+	sz := float32(14.5)
+	lead := float32(1.6)
+	if !legacy {
+		sz = orF(cs.Size, 14)
+		lead = orF(cs.Leading, 1.65)
+	}
+	fg := pal.Text
+	if !legacy && cs.FG.A > 0 {
+		fg = cs.FG
+	}
+	lblCol := pal.Secondary
+	if !legacy && cs.Label.A > 0 {
+		lblCol = cs.Label
+	}
+	langLabel := strings.TrimSpace(b.Language)
+	if strings.EqualFold(langLabel, "yaml-frontmatter") || strings.EqualFold(langLabel, "frontmatter") {
+		langLabel = "yaml"
 	}
 
-	sc.height = y + padBottom
-	if sc.height < 160 {
-		sc.height = 160
+	makeCodeSpan := func(txt string, col ui.Color, w int) []ui.Span {
+		sp := ui.Span{Text: txt, Font: fontMono, Size: sz, Weight: w, Color: col}
+		if !legacy && pal.Style.TextGlow.A > 0 {
+			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+		}
+		return []ui.Span{sp}
 	}
-	return sc
+	font := ui.Font{Family: fontMono, Size: sz, LineHeight: lead}
+
+	switch kind {
+	case CodePlain:
+		lay := ui.ShapeRichTextWith(makeCodeSpan(codeText, fg, 400), font, ui.TextShape{Width: avail})
+		_, th := lay.Size()
+		return paintedBlock{
+			kind:      b.Kind,
+			codeKind:  CodePlain,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         th + 4,
+			textX:     bx,
+			textY:     y + 2,
+			layout:    lay,
+			textColor: fg,
+		}
+
+	case CodeFenced:
+		padX, padY := float32(14), float32(6)
+		openFence := "```" + langLabel
+		topLay := ui.ShapeRichTextWith(makeCodeSpan(openFence, lblCol, 400), font, ui.TextShape{Width: avail - padX})
+		botLay := ui.ShapeRichTextWith(makeCodeSpan("```", lblCol, 400), font, ui.TextShape{Width: avail - padX})
+		_, fh1 := topLay.Size()
+		_, fh2 := botLay.Size()
+		lay := ui.ShapeRichTextWith(makeCodeSpan(codeText, fg, 400), font, ui.TextShape{Width: maxFloat32(avail-padX, 60)})
+		_, th := lay.Size()
+		bh := padY*2 + fh1 + th + fh2 + 4
+		return paintedBlock{
+			kind:      b.Kind,
+			codeKind:  CodeFenced,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + padY + fh1 + 2,
+			layout:    lay,
+			textColor: fg,
+			borderCol: pal.CodeBorder,
+			labelLay:  topLay,
+			label2Lay: botLay,
+			labelX:    bx + padX,
+			labelY:    y + padY,
+			labelCol:  lblCol,
+		}
+
+	default: // CodeBox
+		padX := float32(18)
+		padY := float32(14)
+		if !legacy {
+			padX = orF(cs.PadX, 18)
+			padY = orF(cs.PadY, 14)
+		}
+		var labelLay *ui.TextLayout
+		labelH := float32(0)
+		if langLabel != "" && (legacy || !cs.NoLabel) {
+			lf := ui.Font{Family: fontMono, Size: 12, Weight: 600, LineHeight: 1.3}
+			labelLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text: strings.ToUpper(langLabel), Font: fontMono, Size: 12, Weight: 600, LetterSpacing: 0.9,
+			}}, lf, ui.TextShape{Width: maxFloat32(avail-2*padX, 60)})
+			_, lh := labelLay.Size()
+			labelH = lh + 6
+		}
+		lay := ui.ShapeRichTextWith(makeCodeSpan(codeText, fg, 400), font, ui.TextShape{Width: maxFloat32(avail-2*padX, 60)})
+		_, th := lay.Size()
+		bh := th + 2*padY + labelH
+		bw := float32(1)
+		if !legacy {
+			if cs.BorderW < 0 {
+				bw = 0
+			} else {
+				bw = orF(cs.BorderW, 1)
+			}
+		}
+		return paintedBlock{
+			kind:      b.Kind,
+			codeKind:  CodeBox,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + padY + labelH,
+			layout:    lay,
+			textColor: fg,
+			bgColor:   pal.CodeBG,
+			borderCol: pal.CodeBorder,
+			borderW:   bw,
+			dashed:    !legacy && cs.Dashed,
+			labelLay:  labelLay,
+			labelX:    bx + padX,
+			labelY:    y + padY,
+			labelCol:  lblCol,
+		}
+	}
+}
+
+func buildPaintedQuote(b *model.Block, bx, y, avail float32, pal PaperThemeSpec, legacy bool, quoteOrd int) paintedBlock {
+	qs := pal.Style.Quote
+	kind := QuoteBar
+	if !legacy {
+		kind = qs.Kind
+	}
+	fam := pal.BodyFamily
+	sz := pal.BodySize
+	lead := pal.Leading
+	weight := 400
+	italic := false
+	track := float32(0)
+	if !legacy {
+		fam = orS(qs.Family, pal.BodyFamily)
+		sz = orF(qs.Size, pal.BodySize)
+		lead = orF(qs.Leading, pal.Leading)
+		weight = orI(qs.Weight, 400)
+		italic = qs.Italic
+		track = qs.Track
+	}
+	accent := orC(qs.Accent, pal.QuoteBar)
+	fg := pal.QuoteFG
+
+	opts := spanStyleOpts{
+		family: fam, size: sz, weight: weight, italic: italic, track: track, defaultFG: fg,
+	}
+
+	switch kind {
+	case QuoteIndent:
+		ind := qs.Indent
+		padY := qs.PadY
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-ind, 80)})
+		_, th := lay.Size()
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuoteIndent,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         th + 2*padY,
+			textX:     bx + ind,
+			textY:     y + padY,
+			layout:    lay,
+			textColor: fg,
+			accentCol: accent,
+		}
+
+	case QuoteSticky:
+		sw := orF(qs.Width, 330)
+		if sw > avail {
+			sw = avail
+		}
+		padX := orF(qs.PadX, 20)
+		padY := orF(qs.PadY, 16)
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(sw-2*padX, 80)})
+		_, th := lay.Size()
+		sh := th + 2*padY
+		sx := bx + avail - sw
+		return paintedBlock{
+			kind:       model.BlockQuote,
+			quoteKind:  QuoteSticky,
+			quoteAngle: qs.Angle,
+			x:          sx,
+			y:          y + 4,
+			w:          sw,
+			h:          sh + 8,
+			textX:      sx + padX,
+			textY:      y + 4 + padY,
+			layout:     lay,
+			textColor:  fg,
+			bgColor:    pal.QuoteBG,
+			accentCol:  accent,
+		}
+
+	case QuoteOffset:
+		padX := orF(qs.PadX, 24)
+		padY := orF(qs.PadY, 18)
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-2*padX-6, 80)})
+		_, th := lay.Size()
+		bh := th + 2*padY
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuoteOffset,
+			x:         bx,
+			y:         y,
+			w:         avail - 6,
+			h:         bh + 6,
+			textX:     bx + padX,
+			textY:     y + padY,
+			layout:    lay,
+			textColor: fg,
+			bgColor:   pal.QuoteBG,
+			accentCol: accent,
+		}
+
+	case QuotePull:
+		padX := orF(qs.PadX, 20)
+		padY := orF(qs.PadY, 22)
+		var spans []ui.Span
+		markSp := ui.Span{Text: "「", Font: fam, Size: sz, Weight: weight, Color: accent}
+		endSp := ui.Span{Text: "」", Font: fam, Size: sz, Weight: weight, Color: accent}
+		spans = append(spans, markSp)
+		spans = append(spans, toUISpansWith(b.Spans, pal, legacy, opts)...)
+		spans = append(spans, endSp)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-2*padX, 80), Align: ui.Center})
+		_, th := lay.Size()
+		bh := th + 2*padY + 6
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuotePull,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + padY + 4,
+			layout:    lay,
+			textColor: fg,
+			accentCol: pal.QuoteBar,
+		}
+
+	case QuoteBigMark:
+		padX := orF(qs.PadX, 28)
+		padY := orF(qs.PadY, 16)
+		markSz := float32(84)
+		topExtra := float32(0)
+		if qs.Card {
+			markSz = 56
+			topExtra = 20
+		}
+		mf := ui.Font{Family: fontGeorgiaSong, Size: markSz, LineHeight: 0.9}
+		markLay := ui.ShapeRichTextWith([]ui.Span{{Text: "“", Font: fontGeorgiaSong, Size: markSz, Color: accent}}, mf, ui.TextShape{Width: 120})
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-2*padX, 80)})
+		_, th := lay.Size()
+		bh := th + 2*padY + topExtra
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuoteBigMark,
+			quoteCard: qs.Card,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + padY + topExtra,
+			layout:    lay,
+			textColor: fg,
+			bgColor:   pal.QuoteBG,
+			borderCol: pal.CodeBorder,
+			accentCol: accent,
+			label2Lay: markLay,
+		}
+
+	case QuoteFramed:
+		padX := orF(qs.PadX, 24)
+		padY := orF(qs.PadY, 20)
+		var labelLay *ui.TextLayout
+		if qs.Label != "" {
+			lbl := strings.ReplaceAll(qs.Label, "{n}", fmt.Sprintf("%02d", quoteOrd))
+			lf := ui.Font{Family: fontMono, Size: 10, Weight: 500, LineHeight: 1.2}
+			labelLay = ui.ShapeRichTextWith([]ui.Span{{
+				Text: lbl, Font: fontMono, Size: 10, Weight: 500, LetterSpacing: 2,
+			}}, lf, ui.TextShape{Width: avail - 32})
+		}
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-2*padX, 80)})
+		_, th := lay.Size()
+		bh := th + 2*padY
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuoteFramed,
+			x:         bx,
+			y:         y + 6,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + 6 + padY,
+			layout:    lay,
+			textColor: fg,
+			accentCol: accent,
+			labelLay:  labelLay,
+			labelCol:  accent,
+			labelBG:   pal.InnerCanvas,
+		}
+
+	case QuotePrefix:
+		var spans []ui.Span
+		ps := ui.Span{Text: "> ", Font: fam, Size: sz, Color: accent}
+		if pal.Style.TextGlow.A > 0 {
+			ps.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+		}
+		spans = append(spans, ps)
+		bodySpans := toUISpansWith(b.Spans, pal, legacy, opts)
+		for idx := range bodySpans {
+			if strings.Contains(bodySpans[idx].Text, "\n") {
+				bodySpans[idx].Text = strings.ReplaceAll(bodySpans[idx].Text, "\n", "\n> ")
+			}
+		}
+		spans = append(spans, bodySpans...)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: avail})
+		_, th := lay.Size()
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuotePrefix,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         th,
+			textX:     bx,
+			textY:     y,
+			layout:    lay,
+			textColor: fg,
+		}
+
+	default: // QuoteBar
+		padX := float32(20)
+		padY := float32(12)
+		if pal.QuoteBG.A == 0 {
+			padY = 4
+		}
+		if !legacy {
+			padX = orF(qs.PadX, padX)
+			padY = orF(qs.PadY, padY)
+		}
+		barW := float32(4)
+		if !legacy {
+			barW = orF(qs.BarW, 4)
+		}
+		spans := toUISpansWith(b.Spans, pal, legacy, opts)
+		f := ui.Font{Family: fam, Size: sz, Weight: weight, Italic: italic, LineHeight: lead}
+		lay := ui.ShapeRichTextWith(spans, f, ui.TextShape{Width: maxFloat32(avail-padX-8, 80)})
+		_, th := lay.Size()
+		bh := th + 2*padY
+		return paintedBlock{
+			kind:      model.BlockQuote,
+			quoteKind: QuoteBar,
+			quoteBarW: barW,
+			x:         bx,
+			y:         y,
+			w:         avail,
+			h:         bh,
+			textX:     bx + padX,
+			textY:     y + padY,
+			layout:    lay,
+			textColor: fg,
+			bgColor:   pal.QuoteBG,
+			accentCol: accent,
+			glowCol:   qs.Glow,
+		}
+	}
+}
+
+func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal PaperThemeSpec, legacy bool) (paintedBlock, float32) {
+	ls := pal.Style.List
+	gutter := float32(28)
+	if !legacy {
+		gutter = orF(ls.Gutter, 28)
+	}
+	var mLay *ui.TextLayout
+	mCol := pal.Title
+
+	switch b.Kind {
+	case model.BlockNumbered:
+		var marker string
+		nfam := pal.BodyFamily
+		if legacy {
+			if ord <= 0 {
+				ord = 1
+			}
+			marker = fmt.Sprintf("%d.", ord)
+		} else {
+			marker = formatListOrdinal(ord, ls.Number)
+			nfam = orS(ls.NumberFont, pal.BodyFamily)
+			mCol = orC(ls.NumberColor, pal.Title)
+		}
+		mFont := ui.Font{Family: nfam, Size: pal.BodySize, Weight: 600, LineHeight: pal.Leading}
+		sp := ui.Span{Text: marker, Font: nfam, Size: pal.BodySize, Weight: 600}
+		if !legacy && pal.Style.TextGlow.A > 0 {
+			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+		}
+		mLay = ui.ShapeRichTextWith([]ui.Span{sp}, mFont, ui.TextShape{Width: 72})
+		mw, _ := mLay.Size()
+		if mw+10 > gutter {
+			gutter = mw + 10
+		}
+
+	case model.BlockTodo:
+		if !legacy && ls.Todo == TodoText {
+			tok := "[ ]"
+			mCol = orC(ls.TodoBorder, pal.Accent)
+			if b.Checked {
+				tok = "[x]"
+				mCol = orC(ls.TodoCheck, pal.Accent)
+			}
+			mFont := ui.Font{Family: fontMono, Size: pal.BodySize, LineHeight: pal.Leading}
+			sp := ui.Span{Text: tok, Font: fontMono, Size: pal.BodySize}
+			if pal.Style.TextGlow.A > 0 {
+				sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
+			}
+			mLay = ui.ShapeRichTextWith([]ui.Span{sp}, mFont, ui.TextShape{Width: 60})
+			mw, _ := mLay.Size()
+			if mw+10 > gutter {
+				gutter = mw + 10
+			}
+		}
+
+	default: // BlockBullet
+		if !legacy && (ls.Bullet == BulletArrow || ls.Bullet == BulletMiddot) {
+			glyph := "→"
+			gfam := fontMono
+			if ls.Bullet == BulletMiddot {
+				glyph = "·"
+				gfam = pal.BodyFamily
+			}
+			mCol = orC(ls.BulletColor, pal.Accent)
+			mFont := ui.Font{Family: gfam, Size: pal.BodySize, Weight: 700, LineHeight: pal.Leading}
+			mLay = ui.ShapeRichTextWith([]ui.Span{{Text: glyph, Font: gfam, Size: pal.BodySize, Weight: 700}}, mFont, ui.TextShape{Width: 32})
+		}
+	}
+
+	itemFG := pal.Text
+	strike := false
+	if !legacy && b.Kind == model.BlockTodo && b.Checked {
+		if ls.DoneFG.A > 0 {
+			itemFG = ls.DoneFG
+		}
+		strike = ls.DoneStrike
+	}
+	bodyFont := ui.Font{Family: pal.BodyFamily, Size: pal.BodySize, LineHeight: pal.Leading}
+	spans := toUISpansWith(b.Spans, pal, legacy, spanStyleOpts{
+		family: pal.BodyFamily, size: pal.BodySize, defaultFG: itemFG, strikeAll: strike,
+	})
+	lay := ui.ShapeRichTextWith(spans, bodyFont, ui.TextShape{Width: maxFloat32(avail-gutter, 60), Justify: !legacy && pal.Style.Justify})
+	_, th := lay.Size()
+
+	gap := float32(4)
+	if !legacy {
+		gap = orF(ls.Gap, 4)
+	}
+	return paintedBlock{
+		kind:       b.Kind,
+		x:          bx,
+		y:          y,
+		w:          avail,
+		h:          th,
+		textX:      bx + gutter,
+		textY:      y,
+		layout:     lay,
+		textColor:  itemFG,
+		markerLay:  mLay,
+		markerCol:  mCol,
+		accentCol:  orC(ls.BulletColor, pal.Accent),
+		bulletKind: ls.Bullet,
+		bulletSize: ls.BulletSize,
+		todoKind:   ls.Todo,
+		todoBorder: orC(ls.TodoBorder, pal.Accent),
+		todoCheck:  orC(ls.TodoCheck, pal.Accent),
+		checked:    b.Checked,
+	}, gap
 }
 
 func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec) (paintedBlock, bool) {
@@ -487,8 +1751,8 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	if label == "" {
 		label = "Image"
 	}
-	font := ui.Font{Size: 14, LineHeight: 1.5}
-	lay := ui.ShapeRichTextWith([]ui.Span{{Text: "[Image] " + label, Size: 14}}, font, ui.TextShape{Width: avail - 24})
+	font := ui.Font{Family: pal.BodyFamily, Size: 14, LineHeight: 1.5}
+	lay := ui.ShapeRichTextWith([]ui.Span{{Text: "[Image] " + label, Font: pal.BodyFamily, Size: 14}}, font, ui.TextShape{Width: avail - 24})
 	_, th := lay.Size()
 	bh := th + 20
 	return paintedBlock{
@@ -506,10 +1770,12 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	}, true
 }
 
-func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperThemeSpec) paintedBlock {
+func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperThemeSpec, legacy bool) paintedBlock {
 	cols := 0
-	if len(t.Rows) > 0 {
-		cols = len(t.Rows[0])
+	for _, r := range t.Rows {
+		if len(r) > cols {
+			cols = len(r)
+		}
 	}
 	if len(t.Aligns) > cols {
 		cols = len(t.Aligns)
@@ -536,13 +1802,37 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 		}
 	}
 
-	const padCellX = float32(10)
-	const padCellY = float32(7)
-	pt := &paintedTable{colWidths: colWidths}
+	ts := pal.Style.Table
+	if legacy {
+		ts = TableStyle{}
+	}
+	padCellX := orF(ts.PadX, 10)
+	padCellY := orF(ts.PadY, 8)
+	bodySz := orF(ts.Size, 14)
+	bodyLead := orF(ts.Leading, 1.45)
+	ruleCol := orC(ts.RuleColor, pal.TableBorder)
+	strongCol := orC(ts.StrongColor, ruleCol)
+
+	var defaultHeaderBG ui.Color
+	if ts.Rules {
+		defaultHeaderBG = ts.HeaderBG // zero in rules mode unless explicitly set (e.g. Riso pink)
+	} else {
+		defaultHeaderBG = orC(ts.HeaderBG, pal.TableHeaderBG())
+	}
+
+	pt := &paintedTable{
+		colWidths: colWidths,
+		noHeader:  t.NoHeaderRow,
+		style:     ts,
+		padX:      padCellX,
+		padY:      padCellY,
+		ruleCol:   ruleCol,
+		strongCol: strongCol,
+	}
+
 	curY := by
-	headerBG := pal.TableHeaderBG()
 	for r, row := range t.Rows {
-		isHeader := r == 0
+		isHeader := r == 0 && !t.NoHeaderRow
 		rowH := float32(28)
 		pRow := paintedTableRow{y: curY}
 		curX := bx
@@ -552,30 +1842,65 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 			if c < len(row) {
 				cellSpans = row[c].Spans
 			}
+			plain := model.PlainTextOfSpans(cellSpans)
+			isNum := !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
+
+			fam := pal.BodyFamily
+			sz := bodySz
 			weight := 400
+			track := float32(0)
 			fg := pal.Text
-			bg := pal.InnerCanvas
-			if isHeader {
-				weight = 700
-				fg = pal.Title
-				bg = headerBG
+			var bg ui.Color
+			if !ts.Rules {
+				bg = pal.InnerCanvas
 			}
-			font := ui.Font{Family: pal.BodyFamily, Size: 14, Weight: weight, LineHeight: 1.45}
-			uSpans := toUISpans(cellSpans, pal, 14, false)
-			if isHeader {
-				for idx := range uSpans {
-					uSpans[idx].Weight = 700
+			if c == 0 && ts.FirstColor.A > 0 {
+				fg = ts.FirstColor
+			} else if c > 0 && ts.Secondary.A > 0 {
+				fg = ts.Secondary
+			}
+			if isNum {
+				fam = ts.NumFamily
+				if ts.NumColor.A > 0 {
+					fg = ts.NumColor
 				}
 			}
+			if isHeader {
+				fam = orS(ts.HeaderFont, pal.BodyFamily)
+				sz = orF(ts.HeaderSize, bodySz)
+				weight = orI(ts.HeaderWt, 700)
+				track = ts.HeaderTrack
+				fg = orC(ts.HeaderFG, pal.Title)
+				bg = defaultHeaderBG
+				if ts.HeaderUpper && len(cellSpans) > 0 {
+					cloned := make([]model.Span, len(cellSpans))
+					for k, s := range cellSpans {
+						s.Text = strings.ToUpper(s.Text)
+						cloned[k] = s
+					}
+					cellSpans = cloned
+				}
+			}
+
 			align := ui.Start
-			if c < len(t.Aligns) {
+			hasExplicitAlign := false
+			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
+				hasExplicitAlign = true
 				switch t.Aligns[c] {
 				case model.ColAlignCenter:
 					align = ui.Center
 				case model.ColAlignRight:
 					align = ui.End
 				}
+			} else if isNum {
+				align = ui.End
 			}
+			_ = hasExplicitAlign
+
+			font := ui.Font{Family: fam, Size: sz, Weight: weight, LineHeight: bodyLead}
+			uSpans := toUISpansWith(cellSpans, pal, legacy, spanStyleOpts{
+				family: fam, size: sz, weight: weight, track: track, defaultFG: fg,
+			})
 			lay := ui.ShapeRichTextWith(uSpans, font, ui.TextShape{Width: maxFloat32(cw-2*padCellX, 20), Align: align})
 			_, th := lay.Size()
 			if th+2*padCellY > rowH {
@@ -602,7 +1927,7 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 		y:         by,
 		w:         avail,
 		h:         curY - by,
-		borderCol: pal.TableBorder,
+		borderCol: ruleCol,
 		table:     pt,
 	}
 }
