@@ -21,8 +21,10 @@
     .ib { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; display: inline-flex; align-items: center; justify-content: center; flex: none; }
     .nav-row { width: 100%; height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px; text-align: left; white-space: nowrap; }
     .btn { height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-weight: 460; white-space: nowrap; flex: none; }
-    .seg { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 460; white-space: nowrap; }
-    .inp { height: 34px; padding: 0 10px; border-radius: 8px; outline: none; }
+    .seg { height: 26px; padding: 0 12px; border: 0; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-weight: 460; white-space: nowrap; }
+    .inp { height: 32px; padding: 0 10px; border-radius: 8px; outline: none; }
+    .store-masonry { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+    .store-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
     .keycap { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; line-height: 14px; font-weight: 500; }
   </style>
 </helmet>
@@ -166,23 +168,37 @@
     </aside>
 
     <main style="flex: 1; min-width: 0; padding: 36px 28px 56px; overflow: auto">
-      <div style="width: 100%; max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+      <div style="width: 100%; max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
 
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
           <div style="display: flex; align-items: center; gap: 10px">
             <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: {{textCol}}">{{crumbTitle}}</h1>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex: none">
+            <sc-if value="{{isStoreView}}" hint-placeholder-val="{{true}}">
+              <div role="group" aria-label="应用筛选" style="height: 32px; padding: 2px; gap: 2px; border-radius: 8px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; display: inline-flex; align-items: center">
+                <button type="button" class="seg" onClick="{{filterAll}}" style="background: {{fAllBg}}; box-shadow: {{fAllRing}}; color: {{fAllCol}}">全部</button>
+                <button type="button" class="seg" onClick="{{filterInst}}" style="background: {{fInBg}}; box-shadow: {{fInRing}}; color: {{fInCol}}">已安装</button>
+              </div>
+              <button type="button" class="btn" onClick="{{refreshStore}}" style="height: 32px; padding: 0 12px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 11a8.1 8.1 0 0 0-15.5-2m-.5-4v4h4M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
+                </svg>
+                <span>{{refreshLabel}}</span>
+              </button>
+            </sc-if>
             <sc-if value="{{isSyncView}}" hint-placeholder-val="{{false}}">
-              <span style="height: 24px; padding: 0 10px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">{{syncBadge}}</span>
+              <span style="height: 32px; padding: 0 12px; border-radius: 8px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-weight: 460; display: inline-flex; align-items: center">{{syncBadge}}</span>
             </sc-if>
             <sc-if value="{{isDiagnosticsView}}" hint-placeholder-val="{{false}}">
-              <span style="height: 24px; padding: 0 10px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">{{diagBadge}}</span>
+              <span style="height: 32px; padding: 0 12px; border-radius: 8px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-weight: 460; display: inline-flex; align-items: center">{{diagBadge}}</span>
             </sc-if>
+            <button type="button" class="ib" aria-label="返回应用商店" onClick="{{goStore}}" style="width: 32px; height: 32px; border-radius: 8px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6L18 18M18 6L6 18"></path>
+              </svg>
+            </button>
           </div>
-          <button type="button" class="ib" aria-label="返回应用商店" onClick="{{goStore}}" style="width: 28px; height: 28px; color: {{mutedCol}}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-              <path d="M6 6L18 18M18 6L6 18"></path>
-            </svg>
-          </button>
         </div>
 
         <sc-if value="{{isStoreView}}" hint-placeholder-val="{{true}}">
@@ -194,85 +210,87 @@
               </sc-if>
             </div>
             <div style="display: flex; align-items: center; gap: 8px">
-              <input aria-label="本地插件目录或压缩包路径" type="text" placeholder="输入本地插件目录或 manifest.json 路径" value="{{manualPath}}" onInput="{{onManualPathInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
-              <button type="button" class="btn" onClick="{{pickManualDir}}" style="height: 34px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">本地目录…</button>
-              <button type="button" class="btn" onClick="{{installManual}}" style="height: 34px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
+              <input aria-label="本地插件目录或压缩包路径" type="text" placeholder="输入 owner/repo、压缩包 URL 或本地目录路径" value="{{manualPath}}" onInput="{{onManualPathInput}}" class="inp mono" style="flex: 1; min-width: 0; background: {{shellBg}}; border: 1px solid {{hairline}}; color: {{textCol}}">
+              <button type="button" class="btn" onClick="{{pickManualDir}}" style="height: 32px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{textCol}}">本地目录…</button>
+              <button type="button" class="btn" onClick="{{installManual}}" style="height: 32px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
             </div>
           </section>
 
-          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
-            <sc-for list="{{storeApps}}" as="app" hint-placeholder-count="5">
-              <section aria-label="{{app.name}}" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px">
-                <div style="display: flex; flex-direction: column; gap: 12px">
-                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
-                    <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
-                      <div style="width: 40px; height: 40px; border-radius: 10px; background: {{shellBg}}; border: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: center; flex: none; color: {{textCol}}">
-                        <sc-if value="{{app.isSync}}" hint-placeholder-val="{{true}}">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <circle cx="12" cy="12" r="8" fill="{{iconFill}}"></circle>
-                            <path d="M7.5 10.5A5 5 0 0 1 16.2 8.5M16.5 13.5A5 5 0 0 1 7.8 15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
-                            <path d="M16.5 5.8V8.8H13.5M7.5 18.2V15.2H10.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                          </svg>
-                        </sc-if>
-                        <sc-if value="{{app.isImageHost}}" hint-placeholder-val="{{false}}">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <rect x="3.5" y="5" width="17" height="14" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
-                            <circle cx="8.5" cy="9.5" r="1.4" fill="{{accent}}"></circle>
-                            <path d="M6 16.5L10.5 12L14 15.2L16.5 13L19 16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                          </svg>
-                        </sc-if>
-                        <sc-if value="{{app.isPublisher}}" hint-placeholder-val="{{false}}">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <rect x="4" y="4.5" width="16" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
-                            <path d="M8.5 13.5L12 10L15.5 13.5M12 10V16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                          </svg>
-                        </sc-if>
-                        <sc-if value="{{app.isMigrator}}" hint-placeholder-val="{{false}}">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <rect x="3.75" y="5.5" width="7.5" height="13" rx="1.6" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
-                            <rect x="12.75" y="5.5" width="7.5" height="13" rx="1.6" stroke="currentColor" stroke-width="1.5"></rect>
-                            <path d="M9.5 12H14.5M12.5 9.8L14.7 12L12.5 14.2" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                          </svg>
-                        </sc-if>
-                        <sc-if value="{{app.isDiagnostics}}" hint-placeholder-val="{{false}}">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <rect x="3.75" y="4.5" width="16.5" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
-                            <path d="M6.5 13H9.5L11.2 9L13.5 15.5L15.2 12H17.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
-                          </svg>
-                        </sc-if>
+          <div class="store-masonry">
+            <sc-for list="{{masonryCols}}" as="col" hint-placeholder-count="2">
+              <div class="store-col">
+                <sc-for list="{{col.items}}" as="app" hint-placeholder-count="3">
+                  <section aria-label="{{app.name}}" style="background: {{cardBg}}; border: 1px solid {{hairline}}; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                      <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: {{shellBg}}; border: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: center; flex: none; color: {{textCol}}">
+                          <sc-if value="{{app.isSync}}" hint-placeholder-val="{{true}}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <circle cx="12" cy="12" r="8" fill="{{iconFill}}"></circle>
+                              <path d="M7.5 10.5A5 5 0 0 1 16.2 8.5M16.5 13.5A5 5 0 0 1 7.8 15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+                              <path d="M16.5 5.8V8.8H13.5M7.5 18.2V15.2H10.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                          </sc-if>
+                          <sc-if value="{{app.isImageHost}}" hint-placeholder-val="{{false}}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="3.5" y="5" width="17" height="14" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                              <circle cx="8.5" cy="9.5" r="1.4" fill="{{accent}}"></circle>
+                              <path d="M6 16.5L10.5 12L14 15.2L16.5 13L19 16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                          </sc-if>
+                          <sc-if value="{{app.isPublisher}}" hint-placeholder-val="{{false}}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="4" y="4.5" width="16" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                              <path d="M8.5 13.5L12 10L15.5 13.5M12 10V16.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                          </sc-if>
+                          <sc-if value="{{app.isMigrator}}" hint-placeholder-val="{{false}}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="3.75" y="5.5" width="7.5" height="13" rx="1.6" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                              <rect x="12.75" y="5.5" width="7.5" height="13" rx="1.6" stroke="currentColor" stroke-width="1.5"></rect>
+                              <path d="M9.5 12H14.5M12.5 9.8L14.7 12L12.5 14.2" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                          </sc-if>
+                          <sc-if value="{{app.isDiagnostics}}" hint-placeholder-val="{{false}}">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="3.75" y="4.5" width="16.5" height="15" rx="2" fill="{{iconFill}}" stroke="currentColor" stroke-width="1.5"></rect>
+                              <path d="M6.5 13H9.5L11.2 9L13.5 15.5L15.2 12H17.5" stroke="{{accent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                          </sc-if>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+                          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+                            <span style="font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">{{app.name}}</span>
+                            <span class="mono" style="font-size: 12px; color: {{mutedCol}}">{{app.version}}</span>
+                            <span style="height: 22px; padding: 0 8px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; font-weight: 460; display: inline-flex; align-items: center">{{app.badge}}</span>
+                          </div>
+                          <span style="font-size: 12px; color: {{mutedCol}}">{{app.author}}</span>
+                        </div>
                       </div>
 
-                      <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
-                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
-                          <span style="font-size: 15px; line-height: 22px; font-weight: 560; color: {{textCol}}">{{app.name}}</span>
-                          <span class="mono" style="font-size: 12px; color: {{mutedCol}}">{{app.version}}</span>
-                          <span style="height: 20px; padding: 0 7px; border-radius: 99px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}; font-size: 12px; display: inline-flex; align-items: center">官方认证</span>
-                        </div>
-                        <span style="font-size: 12px; color: {{mutedCol}}">{{app.author}}</span>
+                      <div style="display: flex; align-items: center; gap: 6px; flex: none">
+                        <sc-if value="{{app.installed}}" hint-placeholder-val="{{false}}">
+                          <div style="display: flex; align-items: center; gap: 6px">
+                            <button type="button" class="btn" onClick="{{app.open}}" style="height: 28px; padding: 0 12px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">打开</button>
+                            <button type="button" class="btn" onClick="{{app.uninstall}}" style="height: 28px; padding: 0 10px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载</button>
+                          </div>
+                        </sc-if>
+                        <sc-if value="{{app.notInstalled}}" hint-placeholder-val="{{true}}">
+                          <button type="button" class="btn" onClick="{{app.install}}" style="height: 28px; padding: 0 12px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
+                        </sc-if>
                       </div>
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 6px; flex: none">
-                      <sc-if value="{{app.installed}}" hint-placeholder-val="{{false}}">
-                        <div style="display: flex; align-items: center; gap: 6px">
-                          <button type="button" class="btn" onClick="{{app.open}}" style="height: 30px; padding: 0 11px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">打开</button>
-                          <button type="button" class="btn" onClick="{{app.uninstall}}" style="height: 30px; padding: 0 10px; background: {{cardBg}}; border: 1px solid {{btnBorder}}; color: {{mutedCol}}">卸载</button>
-                        </div>
-                      </sc-if>
-                      <sc-if value="{{app.notInstalled}}" hint-placeholder-val="{{true}}">
-                        <button type="button" class="btn" onClick="{{app.install}}" style="height: 30px; padding: 0 12px; background: {{selectedBg}}; border: 1px solid {{accent}}; color: {{textCol}}">安装</button>
-                      </sc-if>
+                    <p style="margin: 0; font-size: 13px; line-height: 20px; color: {{mutedCol}}">{{app.desc}}</p>
+
+                    <div style="padding-top: 12px; border-top: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+                      <span class="mono" style="font-size: 12px; color: {{textCol}}; white-space: nowrap">{{app.downloadsText}}</span>
+                      <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: {{shellBg}}; border: 1px solid {{hairline}}; font-size: 12px; color: {{mutedCol}}; display: inline-flex; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{app.perm}}</span>
                     </div>
-                  </div>
-
-                  <p style="margin: 0; font-size: 13px; line-height: 20px; color: {{mutedCol}}; min-height: 40px">{{app.desc}}</p>
-                </div>
-
-                <div style="padding-top: 12px; border-top: 1px solid {{hairline}}; display: flex; align-items: center; justify-content: space-between; gap: 10px">
-                  <span class="mono" style="font-size: 12px; color: {{textCol}}">{{app.downloadsText}}</span>
-                  <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: {{shellBg}}; border: 1px solid {{hairline}}; font-size: 12px; color: {{mutedCol}}; display: inline-flex; align-items: center">{{app.perm}}</span>
-                </div>
-              </section>
+                  </section>
+                </sc-for>
+              </div>
             </sc-for>
           </div>
         </sc-if>
@@ -1035,6 +1053,8 @@ class Component extends DCLogic {
       },
       manualPath: '',
       manualInstallDone: false,
+      storeFilter: 'all',
+      refreshed: false,
 
       proto: 'webdav',
       syncMirrorDir: '~/iCloud/BlockMirror',
@@ -1170,46 +1190,51 @@ class Component extends DCLogic {
         id: 'sync',
         pkg: 'block-sync',
         name: '同步',
-        version: 'v1.2.0',
-        author: 'Block 官方',
-        desc: '支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步，自动保留版本与冲突副本。',
-        perm: '读写笔记 · 网络同步'
+        version: 'v1.0.0',
+        author: 'Block Community',
+        badge: '官方认证',
+        desc: '支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步，自动保留版本快照与冲突副本，切换协议时零延迟显隐对应配置项。',
+        perm: '独立存储 · 读取笔记 +3'
       },
       {
         id: 'image_host',
         pkg: 'block-image-host',
         name: '图床上传',
-        version: 'v1.1.0',
-        author: 'Block 官方',
-        desc: '将本地粘贴与拖拽图片自动上传至 Cloudflare R2、S3 或 GitHub，并替换正文引用链接。',
-        perm: '读写附件 · 网络请求'
+        version: 'v1.0.0',
+        author: 'Block Community',
+        badge: '官方认证',
+        desc: '支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传，粘贴或保存后自动替换正文引用链接。',
+        perm: '独立存储 · 读取笔记 +3'
       },
       {
         id: 'publisher',
         pkg: 'block-publisher',
         name: '发布与导出',
-        version: 'v1.0.4',
-        author: 'Block 官方',
-        desc: '将笔记本一键导出为静态博客站点，或生成微信公众号排版与小红书图文切分包。',
-        perm: '读取笔记 · 导出文件'
+        version: 'v1.0.0',
+        author: 'Block Community',
+        badge: '官方认证',
+        desc: '将笔记导出为静态博客站点、微信公众号排版 HTML 与小红书图文分段稿。',
+        perm: '独立存储 · 读取笔记'
       },
       {
         id: 'migrator',
         pkg: 'block-migrator',
         name: '笔记迁移',
-        version: 'v1.0.2',
-        author: 'Block 官方',
-        desc: '无损导入 Obsidian 库、Notion 导出压缩包与语雀知识库目录，自动转换双链与附件。',
-        perm: '读取外部库 · 写入笔记'
+        version: 'v1.0.0',
+        author: 'Block Community',
+        badge: '官方认证',
+        desc: '从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗专有语法、重写双向链接并拷贝附件到工作区资源目录。',
+        perm: '独立存储 · 读取笔记 +1'
       },
       {
         id: 'diagnostics',
         pkg: 'block-diagnostics',
         name: '性能与诊断',
         version: 'v1.0.0',
-        author: 'Block 官方',
-        desc: '实时统计工作区篇数、总字数、附件体积与内存占用，自动巡检孤立附件与死链。',
-        perm: '只读工作区 · 本地诊断'
+        author: 'Block Community',
+        badge: '官方认证',
+        desc: '统计工作区体积、附件占用与进程内存，巡检孤立附件与失效链接。',
+        perm: '独立存储 · 读取笔记'
       }
     ];
 
@@ -1225,29 +1250,43 @@ class Component extends DCLogic {
       this.setState({ installed: nextInst, tab: nextTab });
     };
 
-    const storeApps = appsMeta.map((a) => {
-      const isInst = !!inst[a.id];
-      const count = dl[a.id] ?? 0;
-      return {
-        id: a.id,
-        name: a.name,
-        version: a.version,
-        author: a.author,
-        desc: a.desc,
-        perm: a.perm,
-        installed: isInst,
-        notInstalled: !isInst,
-        isSync: a.id === 'sync',
-        isImageHost: a.id === 'image_host',
-        isPublisher: a.id === 'publisher',
-        isMigrator: a.id === 'migrator',
-        isDiagnostics: a.id === 'diagnostics',
-        downloadsText: fmtNum(count) + ' 次下载',
-        install: () => installApp(a.id),
-        open: () => this.setState({ tab: a.id }),
-        uninstall: () => uninstallApp(a.id)
-      };
+    const storeApps = appsMeta
+      .filter((a) => st.storeFilter !== 'installed' || !!inst[a.id])
+      .map((a) => {
+        const isInst = !!inst[a.id];
+        const count = dl[a.id] ?? 0;
+        return {
+          id: a.id,
+          name: a.name,
+          version: a.version,
+          author: a.author,
+          badge: a.badge,
+          desc: a.desc,
+          perm: a.perm,
+          installed: isInst,
+          notInstalled: !isInst,
+          isSync: a.id === 'sync',
+          isImageHost: a.id === 'image_host',
+          isPublisher: a.id === 'publisher',
+          isMigrator: a.id === 'migrator',
+          isDiagnostics: a.id === 'diagnostics',
+          downloadsText: fmtNum(count) + ' 次下载',
+          install: () => installApp(a.id),
+          open: () => this.setState({ tab: a.id }),
+          uninstall: () => uninstallApp(a.id)
+        };
+      });
+
+    const colBuckets = [[], []];
+    const colWeights = [0, 0];
+    storeApps.forEach((item) => {
+      const target = colWeights[1] < colWeights[0] ? 1 : 0;
+      colBuckets[target].push(item);
+      colWeights[target] += 140 + Math.max(1, Math.ceil(item.desc.length / 24)) * 20;
     });
+    const masonryCols = colBuckets.filter((b) => b.length > 0).map((items) => ({ items }));
+
+    const fAll = seg(st.storeFilter !== 'installed'), fIn = seg(st.storeFilter === 'installed');
 
     const installedCount = ['sync', 'image_host', 'publisher', 'migrator', 'diagnostics'].reduce((sum, k) => sum + (inst[k] ? 1 : 0), 0);
 
@@ -1326,6 +1365,10 @@ class Component extends DCLogic {
       manualInstallDone: !!st.manualInstallDone,
       manualInstallStatus: st.manualPath ? '已加载本地插件' : '已安装本地示例插件',
       storeApps,
+      masonryCols,
+      fAllBg: fAll.bg, fAllRing: fAll.ring, fAllCol: fAll.col,
+      fInBg: fIn.bg, fInRing: fIn.ring, fInCol: fIn.col,
+      refreshLabel: st.refreshed ? '已同步目录' : '刷新',
 
       syncBadge: st.synced ? '刚刚已同步 3 篇' : '已连接 · 2 分钟前',
       syncNotesCount: st.synced ? '351 篇' : '348 篇',
@@ -1480,6 +1523,9 @@ class Component extends DCLogic {
       onManualPathInput: (e) => { if (e && e.target) this.setState({ manualPath: e.target.value, manualInstallDone: false }); },
       pickManualDir: () => this.setState({ manualPath: st.manualPath === '~/Downloads/block-custom-plugin' ? '~/Projects/block-mermaid-pack' : '~/Downloads/block-custom-plugin', manualInstallDone: false }),
       installManual: () => this.setState({ manualInstallDone: true }),
+      filterAll: () => this.setState({ storeFilter: 'all' }),
+      filterInst: () => this.setState({ storeFilter: 'installed' }),
+      refreshStore: () => this.setState({ refreshed: !st.refreshed }),
 
       pickWebdav: () => this.setState({ proto: 'webdav', tested: false }),
       pickGit: () => this.setState({ proto: 'git', tested: false }),

@@ -163,12 +163,10 @@ const (
 	EdgeFloatLeaveMs             = 120
 
 	// App Store masonry card & header toolbar metrics.
-	StoreCoverHeight       float32 = 96  // top visual banner height of a store feed card
-	StoreCoverEmblemBox    float32 = 48  // centered app emblem container inside the cover
-	StoreCoverEmblemGlyph  float32 = 24  // Duo icon size inside the cover emblem
-	StoreAuthorDotSize     float32 = 16  // compact author avatar circle in card footer
-	StoreTwoColMinWidth    float32 = 520 // minimum store body width for 2-column masonry
-	StoreThreeColMinWidth  float32 = 820 // minimum store body width for 3-column masonry
+	StoreIconBoxSize       float32 = 40  // leading app icon box inside a store card header
+	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
+	StoreStatusDotSize     float32 = 6   // active indicator dot on installed plugin nav rows
+	StoreMinColWidth       float32 = 340 // minimum column width for dynamic multi-column store masonry
 	StorePermissionSummary         = 2   // inline permission capsules before "+N" collapse
 	SegmentedControlHeight         = HeightControl
 	SegmentedInnerHeight           = HeightChrome
