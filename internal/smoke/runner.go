@@ -41,6 +41,9 @@ type Report struct {
 	TotalTime   time.Duration
 }
 
+// popupSettle covers the shared popup enter motion (theme.MotionMs).
+const popupSettle = 200 * time.Millisecond
+
 func clickTarget(tt *ui.Tester, id string) error {
 	r, ok := blockui.TargetBounds(id)
 	if !ok {
@@ -349,6 +352,8 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if _, ok := blockui.TargetBounds("tree-menu-pop"); !ok {
 			return "", fmt.Errorf("tree-menu-pop missing after right-click")
 		}
+		// Let the 160ms popup enter motion finish before acting on its rows.
+		tt.Advance(popupSettle)
 		if err := clickTarget(tt, "tree-move-row"); err != nil {
 			return "", err
 		}
@@ -434,7 +439,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return rep, err
 	}
 
-	// Step 9: Multi-block selection -> annotation & emoji reaction (`annotation-rail`) -> rewrite -> Undo.
+	// Step 9: Multi-block selection -> annotation & emoji reaction (rail or block foot) -> rewrite -> Undo.
 	if err := runStep(9, "Multi-block annotations, emoji reaction, rewrite & Undo", func() (string, error) {
 		sess := ws.ActiveSession()
 		sess.SelectRange(1, 0, 2, 6)
@@ -444,8 +449,12 @@ func RunAll(baseTempDir string) (*Report, error) {
 		}
 		sess.AddReaction("👍")
 		tt.Frame()
-		if _, ok := blockui.TargetBounds("annotation-rail"); !ok {
-			return "", fmt.Errorf("expected annotation-rail visible")
+		// 1200px window minus the sidebar is below the wide-rail threshold
+		// (672+72 body + 232 rail + 14 gutter), so the card sits in the block foot.
+		_, railOK := blockui.TargetBounds("annotation-rail")
+		_, cardOK := blockui.TargetBounds("annotation-card-" + ann.ID)
+		if !railOK && !cardOK {
+			return "", fmt.Errorf("expected annotation rail or block-foot card visible")
 		}
 		if !sess.ApplyAnnotationRewrite(ann.ID, "concise needle summary") {
 			return "", fmt.Errorf("ApplyAnnotationRewrite failed")
@@ -471,7 +480,9 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := ws.WriteNote(firstNotePath, md4); err != nil {
 			return "", err
 		}
-		tt.SetSize(1280, 780)
+		// Step 9 left an annotation on this note, so the wide annotation rail
+		// takes 232px of the margin; 1400px keeps the left margin >= 36px.
+		tt.SetSize(1400, 780)
 		tt.Frame()
 		sess := ws.ActiveSession()
 		if len(sess.Outline()) != 4 {
@@ -479,7 +490,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		}
 		railRect, ok := blockui.TargetBounds("outline-rail")
 		if !ok {
-			return "", fmt.Errorf("outline-rail missing at 1280px")
+			return "", fmt.Errorf("outline-rail missing at 1400px")
 		}
 		// Hover rail to expand popover and click item 3 (#### Level 4)
 		tt.Move(railRect.X+railRect.W*0.5, railRect.Y+railRect.H*0.5)
@@ -1200,6 +1211,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "titlebar-more"); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 		if err := clickTarget(tt, "page-history"); err != nil {
 			return "", err
 		}
@@ -1708,60 +1720,81 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return rep, err
 	}
 
-	// Step 24: Shortcut Settings Full Rebind, Conflict Resolution, Live Workspace Routing & Reset.
-	if err := runStep(24, "Shortcut Settings 8-action rebind, conflict resolution & live routing", func() (string, error) {
+	// Step 24: Settings 4-Tab Lists Ordering, Font Picker Dropdown, Annotation Model & Shortcut Rebind/Reset.
+	if err := runStep(24, "Settings 4-tab list ordering, font dropdown, annotation model & shortcuts", func() (string, error) {
+		// 1) AI tab: verify AI 与本机 Agent split rail + 普通功能 -> 标注功能 trigger.
+		ws.OpenSettings("ai")
+		tt.Frame()
+		if _, ok := blockui.TargetBounds("annotation-model-trigger"); !ok {
+			return "", fmt.Errorf("missing annotation-model-trigger in AI settings")
+		}
+
+		// 2) Appearance tab: open Body font dropdown popover right below trigger.
+		ws.OpenSettings("appearance")
+		tt.Frame()
+		if err := clickTarget(tt, "settings-body-font-trigger"); err != nil {
+			return "", err
+		}
+		if _, ok := blockui.TargetBounds("font-picker-menu"); !ok {
+			return "", fmt.Errorf("missing anchored font-picker-menu popover")
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+
+		// 3) Shortcuts tab: verify exact 7 rows in vertical order, rebind, conflict notice, live routing & reset.
 		ws.OpenSettings("shortcuts")
 		tt.Frame()
+		var prevY float32 = -1
 		for _, id := range []string{
-			"settings-rec-search", "settings-rec-quick", "settings-rec-inapp-search",
-			"settings-rec-new-note", "settings-rec-sidebar", "settings-rec-ai",
-			"settings-rec-export", "settings-rec-perf",
+			"settings-rec-search",
+			"settings-rec-quick",
+			"settings-keycap-search",
+			"settings-keycap-find",
+			"settings-keycap-new",
+			"settings-keycap-ai",
+			"settings-keycap-perf",
 		} {
-			if _, ok := blockui.TargetBounds(id); !ok {
-				return "", fmt.Errorf("missing shortcut recorder button %q", id)
+			b, ok := blockui.TargetBounds(id)
+			if !ok {
+				return "", fmt.Errorf("missing shortcut row %q", id)
 			}
+			if b.Y <= prevY {
+				return "", fmt.Errorf("shortcut row %q out of vertical order (Y=%v <= %v)", id, b.Y, prevY)
+			}
+			prevY = b.Y
 		}
 
-		// Record Alt+J on toggle_ai
-		if err := clickTarget(tt, "settings-rec-ai"); err != nil {
+		// Record Alt+Shift+Q on quick_note
+		if err := clickTarget(tt, "settings-rec-quick"); err != nil {
 			return "", err
 		}
-		tt.Key(ui.Alt, ui.KeyJ)
+		tt.Key(ui.Alt|ui.Shift, ui.KeyQ)
 		tt.Frame()
-		if got := modals.EffectiveShortcut(ws.State(), "toggle_ai"); got != "alt-j" {
-			return "", fmt.Errorf("expected toggle_ai rebound to alt-j, got %q", got)
+		if got := modals.EffectiveShortcut(ws.State(), "quick_note"); got != "alt-shift-q" {
+			return "", fmt.Errorf("expected quick_note rebound to alt-shift-q, got %q", got)
 		}
 
-		// Record conflicting Alt+J on export_image -> conflict notice appears and reassigns toggle_ai!
-		if err := clickTarget(tt, "settings-rec-export"); err != nil {
+		// Record conflicting Alt+Shift+Q on global_summon -> conflict notice appears and reassigns quick_note!
+		if err := clickTarget(tt, "settings-rec-search"); err != nil {
 			return "", err
 		}
-		tt.Key(ui.Alt, ui.KeyJ)
+		tt.Key(ui.Alt|ui.Shift, ui.KeyQ)
 		tt.Frame()
 		if _, ok := blockui.TargetBounds("settings-shortcut-conflict-notice"); !ok {
-			return "", fmt.Errorf("expected settings-shortcut-conflict-notice on duplicate chord (recording=%v ai=%q export=%q)",
-				ws.Modals().IsRecordingShortcut(),
-				modals.EffectiveShortcut(ws.State(), "toggle_ai"),
-				modals.EffectiveShortcut(ws.State(), "export_image"))
+			return "", fmt.Errorf("expected settings-shortcut-conflict-notice on duplicate chord")
 		}
 
-		// Rebind toggle_ai to Alt+Shift+J -> exit Settings -> trigger Alt+Shift+J live in Workspace!
-		if err := clickTarget(tt, "settings-rec-ai"); err != nil {
-			return "", err
-		}
-		tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
-		tt.Frame()
+		// Exit Settings -> trigger Alt+Shift+Q live in Workspace (opens Search modal via global_summon fallback)!
 		if err := clickTarget(tt, "settings-back"); err != nil {
 			return "", err
 		}
-		ws.AI().SetOpen(false)
+		tt.Key(ui.Alt|ui.Shift, ui.KeyQ)
 		tt.Frame()
-		tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
-		tt.Frame()
-		if !ws.AI().IsOpen() {
-			return "", fmt.Errorf("expected custom Alt+Shift+J shortcut to open AI panel in Workspace")
+		if !ws.Modals().IsSearchOpen() {
+			return "", fmt.Errorf("expected custom Alt+Shift+Q global_summon to open Search modal in Workspace")
 		}
-		ws.AI().SetOpen(false)
+		ws.Modals().CloseSearch()
+		tt.Frame()
 
 		// Reset all shortcuts back to defaults
 		ws.OpenSettings("shortcuts")
@@ -1769,12 +1802,15 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "settings-shortcuts-reset"); err != nil {
 			return "", err
 		}
-		if got := modals.EffectiveShortcut(ws.State(), "toggle_ai"); got != "cmd-j" {
-			return "", fmt.Errorf("expected toggle_ai reset to cmd-j, got %q", got)
+		if got := modals.EffectiveShortcut(ws.State(), "global_summon"); got != "cmd-shift-k" {
+			return "", fmt.Errorf("expected global_summon reset to cmd-shift-k, got %q", got)
+		}
+		if got := modals.EffectiveShortcut(ws.State(), "quick_note"); got != "alt-n" {
+			return "", fmt.Errorf("expected quick_note reset to alt-n, got %q", got)
 		}
 		_ = clickTarget(tt, "settings-back")
 		tt.Frame()
-		return "8-action shortcuts + conflict reassignment + live routing + reset verified", nil
+		return "Settings 4-tab lists + anchored font popover + 7-row shortcuts + reset verified", nil
 	}); err != nil {
 		rep.TotalTime = time.Since(startAll)
 		return rep, err

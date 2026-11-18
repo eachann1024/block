@@ -9,7 +9,7 @@ const (
 	WindowMinH           float32 = 480
 
 	SidebarMinW     float32 = 240
-	SidebarDefaultW float32 = 252
+	SidebarDefaultW float32 = 240
 	SidebarMaxW     float32 = 420
 
 	ChatMinW     float32 = 320

@@ -124,7 +124,11 @@ func applyThemeFromState(st model.AppState) {
 	} else {
 		theme.SetThemeMode(st.Theme, st.Theme == model.ThemeDark)
 	}
-	theme.SetTypography(st.EditorFont, st.CodeFont, st.LineHeight)
+	editorFont := st.EditorFont
+	if editorFont == "" && st.FontFamily == model.FontSerif {
+		editorFont = "system-serif"
+	}
+	theme.SetTypography(editorFont, st.CodeFont, st.LineHeight)
 	theme.SetFolderRules(st.FolderRules)
 	theme.SetIgnoredSearchFolders(st.IgnoredSearchFolders)
 }
@@ -403,6 +407,14 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.RenderAISettings = func(c *ui.Context) {
 		w.ai.RenderSettingsTab(c)
 	}
+	w.modals.SidebarWidth = &w.sidebarWidth
+	w.modals.OnSidebarWidthChanged = func(nw float32) {
+		clamped := ClampSidebarWidth(nw)
+		_, _ = files.UpdateState(func(st *model.AppState) {
+			st.SidebarWidth = &clamped
+		})
+	}
+	w.modals.OnForgetNotebook = w.ForgetNotebook
 	w.modals.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
 		return w.SearchWorkspace(query, allNotebooks)
 	}
@@ -889,6 +901,7 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	w.historyView.Close()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	w.sidebarUI.FocusDir = ""
 
 	w.mu.Lock()
 	if w.state.Folder != "" && strings.HasPrefix(clean, w.state.Folder+string(filepath.Separator)) {
@@ -1450,6 +1463,10 @@ func (w *Workspace) TrashWorkspaceItem(path string) error {
 func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	cleanFrom := filepath.Clean(from)
 	cleanTo := filepath.Clean(to)
+	// Annotations of every note under a moved folder follow it, open or not.
+	if err := files.MoveNoteAnnotations("", cleanFrom, cleanTo); err != nil {
+		files.LogWarnf("move annotations %s -> %s: %v", cleanFrom, cleanTo, err)
+	}
 	prefix := cleanFrom + string(filepath.Separator)
 	rebase := func(p string) (string, bool) {
 		cp := filepath.Clean(p)
@@ -1471,6 +1488,11 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	}
 	if next, ok := rebase(w.state.ActiveTab); ok {
 		w.state.ActiveTab = next
+	}
+	if w.sidebarUI.FocusDir != "" {
+		if next, ok := rebase(w.sidebarUI.FocusDir); ok {
+			w.sidebarUI.FocusDir = next
+		}
 	}
 	nextSessions := make(map[string]*editor.Session, len(w.sessions))
 	for k, sess := range w.sessions {
@@ -1538,6 +1560,9 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 		} else {
 			w.state.ActiveTab = ""
 		}
+	}
+	if w.sidebarUI.FocusDir != "" && matches(w.sidebarUI.FocusDir) {
+		w.sidebarUI.FocusDir = ""
 	}
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
@@ -1998,6 +2023,14 @@ func (w *Workspace) Render(c *ui.Context) {
 	edFont, _, _ := theme.Typography()
 	pal := theme.Ocean()
 	uiTheme := pal.ToUITheme(edFont)
+	uiTheme.ScrollbarStyle = ui.ScrollbarStyle{
+		TrackWidth: theme.ScrollGutter,
+		ThumbWidth: theme.ScrollThumbWidth,
+		MinLength:  32,
+		Thumb:      pal.ScrollThumb,
+		Hover:      pal.ScrollThumbHover,
+		Active:     pal.ScrollThumbHover,
+	}
 	c.SetTheme(&uiTheme)
 
 	// Full-window 12-theme A-Export stage covers the entire window when active.
@@ -2376,10 +2409,9 @@ func (w *Workspace) renderRecoveryBanner(c *ui.Context, recPath string) {
 				_, _ = w.ApplyPendingRecoveryDraft()
 			}
 			dismissBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
-				ID:       "recovery-dismiss",
-				Size:     26,
-				IconSize: 14,
-				Tooltip:  theme.Tr("忽略草稿", "Discard"),
+				ID:      "recovery-dismiss",
+				Variant: blockui.IconPlain,
+				Tooltip: theme.Tr("忽略草稿", "Discard"),
 			})
 			if dismissBtn.Clicked() {
 				w.DismissPendingRecoveryDraft()

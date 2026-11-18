@@ -91,6 +91,86 @@ func TestResolveShellLayout(t *testing.T) {
 	if settings.ChatDocked || settings.ChatOverlay {
 		t.Fatalf("expected AI panel suppressed in settings, got %+v", settings)
 	}
+
+	// 7. Collapsed sidebar stays hidden and chat never floats.
+	collapsed := ResolveShellLayout(ShellInput{
+		WindowWidth:     800,
+		SidebarVisible:  false,
+		SidebarDesiredW: 240,
+		ChatVisible:     true,
+		ChatDesiredW:    396,
+	})
+	if collapsed.SidebarYielded || collapsed.SidebarDrawer || collapsed.ChatOverlay || collapsed.ChatWidth != ChatMinW {
+		t.Fatalf("expected collapsed sidebar not yielded and chat=%v at 800px, got %+v", ChatMinW, collapsed)
+	}
+
+	// 8. Pinned file tree becomes drawer while chat stays docked.
+	pinned := ResolveShellLayout(ShellInput{
+		WindowWidth:     1000,
+		SidebarVisible:  true,
+		SidebarPinned:   true,
+		SidebarDesiredW: 240,
+		ChatVisible:     true,
+		ChatDesiredW:    396,
+	})
+	if !pinned.SidebarYielded || !pinned.SidebarDrawer || pinned.ChatOverlay || pinned.ChatWidth != 396 || pinned.MainWidth < NoteFloor {
+		t.Fatalf("expected drawer+docked chat=396 at 1000px, got %+v", pinned)
+	}
+
+	// 9. Closed chat hides a sidebar that cannot dock.
+	closedWide := ResolveShellLayout(ShellInput{
+		WindowWidth:     1100,
+		SidebarVisible:  true,
+		SidebarDesiredW: 240,
+		ChatVisible:     false,
+		ChatDesiredW:    396,
+	})
+	if closedWide.SidebarYielded {
+		t.Fatalf("expected sidebar docked at 1100px with closed chat, got %+v", closedWide)
+	}
+	closedNarrow := ResolveShellLayout(ShellInput{
+		WindowWidth:     800,
+		SidebarVisible:  true,
+		SidebarDesiredW: 420,
+		ChatVisible:     false,
+		ChatDesiredW:    396,
+	})
+	if !closedNarrow.SidebarYielded || closedNarrow.SidebarDrawer || closedNarrow.ChatOverlay {
+		t.Fatalf("expected sidebar yielded at 800px (420+480=900), got %+v", closedNarrow)
+	}
+
+	// 10. Settings nav hides until the floor fits, and opens as a drawer when pinned.
+	sNarrow := ResolveShellLayout(ShellInput{
+		WindowWidth:     900,
+		InSettings:      true,
+		SidebarVisible:  true,
+		SidebarDesiredW: 240,
+	})
+	if !sNarrow.SidebarYielded || sNarrow.SidebarDrawer || sNarrow.ChatOverlay {
+		t.Fatalf("expected settings nav yielded at 900px, got %+v", sNarrow)
+	}
+	sWide := ResolveShellLayout(ShellInput{
+		WindowWidth:     960,
+		InSettings:      true,
+		SidebarVisible:  true,
+		SidebarDesiredW: 240,
+	})
+	if sWide.SidebarYielded || sWide.SidebarDrawer {
+		t.Fatalf("expected settings nav docked at 960px, got %+v", sWide)
+	}
+	sPinned := ResolveShellLayout(ShellInput{
+		WindowWidth:     800,
+		InSettings:      true,
+		SidebarVisible:  true,
+		SidebarPinned:   true,
+		SidebarDesiredW: 240,
+	})
+	if !sPinned.SidebarYielded || !sPinned.SidebarDrawer || sPinned.ChatOverlay {
+		t.Fatalf("expected settings nav drawer when pinned at 800px, got %+v", sPinned)
+	}
+	if ClampSidebarWidth(0) != 240 {
+		t.Fatalf("expected default sidebar width 240, got %v", ClampSidebarWidth(0))
+	}
 }
 
 func TestNavHistoryAndTabs(t *testing.T) {
