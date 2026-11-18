@@ -1729,13 +1729,27 @@ func (w *Workspace) ReorderSibling(parentDir, srcPath, targetPath string, after 
 	w.RequestRedraw()
 }
 
-// ForgetNotebook removes root from recent Notebooks without touching files on disk.
+// ForgetNotebook removes root from recent Notebooks (switching to the next remaining
+// notebook or clearing the active workspace if root was active) without touching files on disk.
 func (w *Workspace) ForgetNotebook(root string) {
+	if strings.TrimSpace(root) == "" {
+		return
+	}
 	clean := filepath.Clean(root)
+
+	w.mu.RLock()
+	prevFolder := ""
+	if w.state.Folder != "" {
+		prevFolder = filepath.Clean(w.state.Folder)
+	}
+	w.mu.RUnlock()
+
+	if prevFolder == clean {
+		_ = w.flushDirtySessions()
+	}
+
+	var switched bool
 	next, err := files.UpdateState(func(st *model.AppState) {
-		if st.Folder == clean {
-			return
-		}
 		filtered := make([]string, 0, len(st.Notebooks))
 		for _, nb := range st.Notebooks {
 			if filepath.Clean(nb) != clean {
@@ -1743,11 +1757,66 @@ func (w *Workspace) ForgetNotebook(root string) {
 			}
 		}
 		st.Notebooks = filtered
+
+		filteredIgnored := make([]string, 0, len(st.IgnoredSearchFolders))
+		for _, nb := range st.IgnoredSearchFolders {
+			if filepath.Clean(nb) != clean {
+				filteredIgnored = append(filteredIgnored, nb)
+			}
+		}
+		st.IgnoredSearchFolders = filteredIgnored
+
+		if st.Folder != "" && filepath.Clean(st.Folder) == clean {
+			switched = true
+			st.OpenTabs = nil
+			st.ActiveTab = ""
+			nextFolder := ""
+			for _, nb := range filtered {
+				nbClean := filepath.Clean(nb)
+				if info, statErr := os.Stat(nbClean); statErr == nil && info.IsDir() {
+					nextFolder = nbClean
+					break
+				}
+			}
+			st.Folder = nextFolder
+		}
 	})
 	if err == nil {
 		w.mu.Lock()
 		w.state = next
+		if switched {
+			w.notice = ""
+			w.sessions = make(map[string]*editor.Session)
+			w.surfaces = make(map[string]*TabSurface)
+			w.virtualPreview = make(map[string]bool)
+			w.lastSnapAt = make(map[string]time.Time)
+			w.closed = NewClosedTabs()
+			w.nav = NewNavHistory()
+			w.historyToast = nil
+			if w.historyView != nil {
+				w.historyView.Close()
+			}
+			w.tabMenu.Close()
+			w.sidebarUI.SortFilterOpen = false
+			w.sidebarUI.ContextOpen = false
+			w.sidebarUI.MoveSubmenuOpen = false
+			w.sidebarUI.ConfirmForgetNotebook = ""
+			w.sidebarUI.FocusDir = ""
+			w.sidebarUI.ExpandedDirs = make(map[string]bool)
+			w.sidebarUI.CancelRename()
+			w.sidebarUI.ClearDrag()
+		}
 		w.mu.Unlock()
+		theme.SetIgnoredSearchFolders(next.IgnoredSearchFolders)
+	}
+	if switched {
+		w.RescanNotebook()
+		if w.win != nil {
+			w.startWatching(next.Folder)
+		}
+	}
+	if w.searchWin != nil {
+		w.searchWin.Invalidate()
 	}
 	w.RequestRedraw()
 }
@@ -1796,8 +1865,9 @@ func (w *Workspace) rescanNotebook() bool {
 	w.mu.RUnlock()
 	if folder == "" {
 		w.mu.Lock()
-		changed := len(w.entries) > 0
+		changed := len(w.entries) > 0 || w.notice != ""
 		w.entries = nil
+		w.notice = ""
 		w.mu.Unlock()
 		return changed
 	}
