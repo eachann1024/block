@@ -62,9 +62,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	pal := theme.Ocean()
 	root := ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
 	root.ObserveInput(s.onGutterInput)
-	if s.typingPointer != nil {
+	if !readOnly || s.typingPointer != nil {
 		x, y, over := root.PointerPosition()
-		if over && *s.typingPointer != (ui.Point{X: x, Y: y}) {
+		if s.typingPointer != nil && over && *s.typingPointer != (ui.Point{X: x, Y: y}) {
 			s.typingPointer = nil
 		}
 	}
@@ -431,6 +431,15 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	})
 }
 
+func (s *Session) rowLeftX(id model.BlockID) float32 {
+	if r, ok := s.blockRects[id]; ok && r.W > 0 {
+		return r.X
+	}
+	outerW := s.outerFlowWidth()
+	flowW := min(s.viewportWidth, outerW)
+	return s.editorRect.X + s.edgeInsetLeft + max((s.viewportWidth-flowW)*0.5, 0)
+}
+
 func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta frameBlockMeta) bool {
 	pal := theme.Ocean()
 	b := &s.doc.Blocks[idx]
@@ -464,8 +473,13 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	hoveredForHandles := isHovered
 	if isHovered && isFocused && !isAtomic && !s.minimal && !readOnly {
 		// The active editor keeps its gutter quiet while the pointer is over text.
-		x, _, over := row.PointerPosition()
-		hoveredForHandles = over && x < s.leftContentGutter()
+		// Never call row.PointerPosition() here: setting flagTrackPointer on row marks
+		// it interactive in mygo and intercepts clicks/drags meant for editor-canvas.
+		if pt, over := s.windowPointerStatus(); over {
+			hoveredForHandles = pt.X-s.rowLeftX(id) < s.leftContentGutter()
+		} else {
+			hoveredForHandles = false
+		}
 	}
 	isHighlighted := s.jump.block == id && s.jump.row < 0
 	deleteArmed := idx == 0 && s.firstLineDeleteArmed && s.canArmFirstLineDelete()
