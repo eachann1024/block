@@ -376,17 +376,16 @@ func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	return base
 }
 
-// DefaultUIFontStack returns the primary application UI font stack:
-// SF Pro (via system-ui on macOS) for Latin/numbers paired with HarmonyOS Sans SC for CJK,
-// with immediate system CJK fallbacks while CDN weights finish caching on first launch.
+// DefaultUIFontStack uses SF Pro through system-ui on macOS, with PingFang SC
+// for Simplified Chinese. Other platforms use their own sans-serif defaults.
 func DefaultUIFontStack() string {
 	switch runtime.GOOS {
 	case "darwin", "js":
-		return "system-ui, HarmonyOS Sans SC, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans SC"
+		return "system-ui, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans SC"
 	case "windows":
-		return "Segoe UI, HarmonyOS Sans SC, Microsoft YaHei, Noto Sans SC, sans-serif"
+		return "Segoe UI, Microsoft YaHei, Noto Sans SC, sans-serif"
 	default:
-		return "Inter, Cantarell, Ubuntu, DejaVu Sans, HarmonyOS Sans SC, Noto Sans CJK SC, Noto Sans SC, sans-serif"
+		return "Inter, Cantarell, Ubuntu, DejaVu Sans, Noto Sans CJK SC, Noto Sans SC, sans-serif"
 	}
 }
 
@@ -400,7 +399,7 @@ func ResolvedEditorFont() string {
 	case "system-serif":
 		return "LXGW WenKai, LXGW WenKai Screen, Kaiti SC, Songti SC, Source Han Serif SC, Noto Serif CJK SC, SimSun, serif"
 	default:
-		return f + ", HarmonyOS Sans SC, PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
+		return f + ", PingFang SC, Songti SC, Noto Sans SC, Microsoft YaHei"
 	}
 }
 
