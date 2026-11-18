@@ -16,6 +16,7 @@ type InputBindings struct {
 	OnDraftChanged func(controlID, next string)
 	IsSecretShown  func(controlID string) bool
 	ToggleSecret   func(controlID string)
+	PickDirectory  func(controlID, title string)
 }
 
 // RenderPage renders a complete validated declarative plugin UIPage (header + cards)
@@ -104,6 +105,15 @@ func renderPageCards(
 	ui.Column(c.Key("plugin-cards-" + pluginID)).FillWidth().MinWidth(0).Gap(theme.Space24).Children(func() {
 		for _, card := range page.Cards {
 			cd := card
+			visibleItems := make([]plugins.UIItem, 0, len(cd.Items))
+			for _, it := range cd.Items {
+				if plugins.IsItemVisible(it, values) {
+					visibleItems = append(visibleItems, it)
+				}
+			}
+			if len(visibleItems) == 0 {
+				continue
+			}
 			c.Key("plugin-card-" + pluginID + "-" + cd.ID)
 			bui.Card(c, func() {
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
@@ -114,7 +124,7 @@ func renderPageCards(
 						TextColor(pal.Text).
 						SingleLine().
 						Ellipsis("…")
-					for _, item := range cd.Items {
+					for _, item := range visibleItems {
 						renderItem(c, pluginID, item, values, busyAction, bindings, onChange, onAction)
 					}
 				})
@@ -189,7 +199,7 @@ func renderItem(
 			}
 		})
 
-	case plugins.KindInput, plugins.KindSecret:
+	case plugins.KindInput, plugins.KindFolder, plugins.KindSecret:
 		fallback, ok := values[item.ID].(string)
 		if !ok {
 			fallback, _ = item.Value.(string)
@@ -225,6 +235,9 @@ func renderItem(
 					PlaceholderColor(pal.Placeholder).
 					Grow(1).
 					MinWidth(0)
+				if item.Kind == plugins.KindFolder {
+					in.Font("monospace")
+				}
 				if item.Kind == plugins.KindSecret && !secretShown {
 					in.Password()
 				}
@@ -238,6 +251,12 @@ func renderItem(
 						onChange(item.ID, draft)
 					}
 				}
+				if item.Kind == plugins.KindFolder && bindings != nil && bindings.PickDirectory != nil {
+					pickBtn := bui.ActionButton(c, "plugin-folder-pick-"+pluginID+"-"+item.ID, theme.Tr("选择…", "Browse…"), nil, bui.ButtonSecondary, false)
+					if pickBtn.Clicked() {
+						bindings.PickDirectory(item.ID, item.Label)
+					}
+				}
 				if item.Kind == plugins.KindSecret {
 					toggleLbl := theme.Tr("显示", "Show")
 					if secretShown {
@@ -249,6 +268,35 @@ func renderItem(
 					}
 				}
 			})
+		})
+
+	case plugins.KindMetrics:
+		vpW, _ := c.Size()
+		cols := 4
+		if len(item.Metrics) < cols {
+			cols = len(item.Metrics)
+		}
+		if vpW > 0 && vpW < 760 && cols > 2 {
+			cols = 2
+		}
+		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space12).Children(func() {
+			for i := 0; i < len(item.Metrics); i += cols {
+				start := i
+				end := min(i+cols, len(item.Metrics))
+				ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Stretch).Children(func() {
+					for j := start; j < end; j++ {
+						m := item.Metrics[j]
+						ui.Column(c).Grow(1).Basis(0).MinWidth(0).
+							Padding(theme.Space12, theme.Space16).Gap(theme.Space4).
+							Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
+							ui.Text(c, m.Label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+							ui.Text(c, m.Value).Font("monospace").FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
+								FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						})
+					}
+				})
+			}
 		})
 
 	case plugins.KindActions:

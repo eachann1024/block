@@ -140,8 +140,27 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetNotebookRoot: func() string {
 			return w.State().Folder
 		},
+		GetActiveNote: func() string {
+			return w.State().ActiveTab
+		},
 		GetLocale: func() string {
 			return string(theme.Language())
+		},
+		PickDirectory: func(title string, onPicked func(path string)) {
+			if !mygo.App.IsReady() {
+				return
+			}
+			win := w.Window()
+			go func() {
+				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+					Parent:    win,
+					Title:     title,
+					Directory: true,
+				})
+				if err == nil && len(paths) > 0 && paths[0] != "" {
+					onPicked(paths[0])
+				}
+			}()
 		},
 		OnChanged: func() {
 			w.RescanNotebook()

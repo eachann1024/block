@@ -299,5 +299,23 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			c.secretRevealed[pluginID][controlID] = !c.secretRevealed[pluginID][controlID]
 			c.mu.Unlock()
 		},
+		PickDirectory: func(controlID, title string) {
+			if c.sup == nil || !c.sup.CanPickDirectory() {
+				return
+			}
+			c.sup.PickDirectory(title, func(chosen string) {
+				c.mu.Lock()
+				if c.drafts[pluginID] == nil {
+					c.drafts[pluginID] = make(map[string]string)
+				}
+				if c.lastSynced[pluginID] == nil {
+					c.lastSynced[pluginID] = make(map[string]string)
+				}
+				c.drafts[pluginID][controlID] = chosen
+				c.lastSynced[pluginID][controlID] = chosen
+				c.mu.Unlock()
+				c.sup.SetControlValue(pluginID, controlID, chosen)
+			})
+		},
 	}
 }
