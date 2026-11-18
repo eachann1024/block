@@ -204,20 +204,10 @@ func AgentBrandSVG(kind model.BackendKind) *ui.SVG {
 	return loadSVG(kind.AssetPath())
 }
 
-var (
-	iconSpring = ui.Animation{
-		Spring: ui.SpringOptions{
-			Duration: 320 * time.Millisecond,
-			Bounce:   0.18,
-		},
-	}
-	iconColorAnim = ui.Animation{
-		Duration:  170 * time.Millisecond,
-		Ease:      ui.CubicBezier(0.22, 1, 0.36, 1),
-		Oklab:     true,
-		NonMotion: true,
-	}
-)
+var iconMotion = ui.Animation{
+	Duration: 100 * time.Millisecond,
+	Ease:     ui.CubicBezier(0.2, 0.8, 0.25, 1),
+}
 
 func clamp01(v float32) float32 {
 	if v < 0 {
@@ -255,8 +245,7 @@ func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.E
 	return root
 }
 
-// DrawAnimated stacks .fill, .line, and .accent with Scheme B ("灵动弹簧 · Tactile Spring")
-// multi-part kinetic hover physics and Oklab color interpolation.
+// DrawAnimated gives semantic icon layers short hover motion with immediate color feedback.
 func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColors, active bool) ui.Element {
 	if size <= 0 {
 		return ui.Box(c).Size(0, 0).Shrink(0)
@@ -266,10 +255,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 	if active {
 		targetP = 1
 	}
-	p := root.AnimateTo("icoAct", targetP, iconSpring)
-	fillCol := root.AnimateColor("icoFill", colors.Fill, iconColorAnim)
-	lineCol := root.AnimateColor("icoLine", colors.Line, iconColorAnim)
-	accCol := root.AnimateColor("icoAcc", colors.Accent, iconColorAnim)
+	p := root.AnimateTo("icoAct", targetP, iconMotion)
+	fillCol, lineCol, accCol := colors.Fill, colors.Line, colors.Accent
 
 	moving := float32(math.Abs(float64(p))) > 0.002
 	k := size / 20.0
@@ -283,7 +270,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 			root.Scale(sc, sc)
 		case Plus:
 			sc := 1 + 0.15*p
-			root.Rotate(90 * p).Scale(sc, sc)
+			root.Rotate(90*p).Scale(sc, sc)
 		case ChevronDown, TbChevron:
 			sc := 1 + 0.13*p
 			root.Translate(0, 2.2*k*p).Scale(sc, sc)
@@ -317,7 +304,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 			if moving && p > 0.01 {
 				pal := theme.Ocean()
 				sheet := ui.Box(c).Absolute().
-					Left(size * 0.27).Top(size * 0.35).
+					Left(size*0.27).Top(size*0.35).
 					Size(size*0.46, size*0.26).
 					Radius(max(1, 1.2*k)).
 					Background(pal.Paper).
@@ -353,7 +340,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						fl.TransformOrigin(0.2, 0.5).Scale(0.88+0.12*clamp01(p), 1)
 					case Sparkles, AiPolish, Star:
 						sc := 1 + 0.07*p
-						fl.Rotate(15 * p).Scale(sc, sc)
+						fl.Rotate(15*p).Scale(sc, sc)
 					}
 				}
 			}
@@ -367,7 +354,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ln.Rotate(-3 * p)
 					case Sparkles, AiPolish, Star:
 						sc := 1 + 0.07*p
-						ln.Rotate(15 * p).Scale(sc, sc)
+						ln.Rotate(15*p).Scale(sc, sc)
 					case Sliders:
 						ln.Translate(-1.4*k*p, 0)
 					case ArrowRight:
@@ -403,13 +390,13 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ac.Translate(2.6*k*p, -2.6*k*p).Scale(sc, sc)
 					case Sparkles, AiPolish, Star:
 						sc := 1 + 0.20*p
-						ac.Rotate(-14 * p).Scale(sc, sc)
+						ac.Rotate(-14*p).Scale(sc, sc)
 					case Sliders:
 						sc := 1 + 0.09*p
 						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
 					case TbPlus:
 						sc := 1 + 0.12*p
-						ac.Rotate(90 * p).Scale(sc, sc)
+						ac.Rotate(90*p).Scale(sc, sc)
 					case NotePlus, AiPlus:
 						sc := 1 + 0.16*p
 						ac.Scale(sc, sc)
@@ -441,7 +428,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 }
 
 // Duo renders a Scheme A Duo icon using Ocean Paper's standard active/hovered or idle tints
-// with Scheme B tactile spring part animation.
+// with short movement on its semantic layers.
 func Duo(c *ui.Context, glyph Icon, size float32, active bool) ui.Element {
 	pal := theme.Ocean()
 	if active {
