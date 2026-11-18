@@ -18,7 +18,7 @@ type MenuActions struct {
 	OnQuickNote      func()
 	OnSearch         func()
 	OnExportImage    func()
-	OnCloseTab       func()
+	OnCloseTab       func(*mygo.Window)
 	OnReopenTab      func()
 	OnFind           func()
 	OnToggleSidebar  func()
@@ -80,7 +80,11 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 		{ID: "menu-export-image", Label: theme.Tr("导出图片…", "Export Image…"), Accelerator: accel("export_image", "cmd-shift-e"), Click: call(act.OnExportImage)},
 		mygo.Separator(),
 		{ID: "menu-reopen-tab", Label: theme.Tr("重新打开已关闭标签页", "Reopen Closed Tab"), Accelerator: accel("reopen_tab", "cmd-shift-t"), Click: call(act.OnReopenTab)},
-		{ID: "menu-close-tab", Label: theme.Tr("关闭标签页", "Close Tab"), Accelerator: accel("close_tab", "cmd-w"), Click: call(act.OnCloseTab)},
+		{ID: "menu-close-tab", Label: theme.Tr("关闭标签页", "Close Tab"), Accelerator: accel("close_tab", "cmd-w"), Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+			if act.OnCloseTab != nil {
+				act.OnCloseTab(win)
+			}
+		}},
 	}
 
 	editSubmenu := []*mygo.MenuItem{
