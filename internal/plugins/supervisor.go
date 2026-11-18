@@ -11,6 +11,22 @@ import (
 	"time"
 )
 
+// RetryKind identifies what operation a failed PluginViewState should retry.
+type RetryKind string
+
+const (
+	RetryKindNone      RetryKind = ""
+	RetryKindReload    RetryKind = "reload"
+	RetryKindAction    RetryKind = "action"
+	RetryKindNoteSaved RetryKind = "note_saved"
+	RetryKindUninstall RetryKind = "uninstall"
+)
+
+type viewKey struct {
+	pluginID     string
+	notebookRoot string
+}
+
 // PluginViewState holds the non-blocking UI snapshot for an installed plugin's Settings page.
 type PluginViewState struct {
 	Loading    bool
@@ -20,9 +36,19 @@ type PluginViewState struct {
 	Page       *UIPage
 	Values     map[string]any
 
-	lastNotebookRoot string
-	lastActiveNote   string
-	editSeq          uint64
+	RetryKind      RetryKind
+	FailedActionID string
+	FailedNotePath string
+	FailedNoteRoot string
+	failedSaves    map[string]string
+	queuedSaves    map[string]bool
+	PendingSaves   int
+
+	lastNotebookRoot   string
+	lastActiveNote     string
+	editSeq            uint64
+	errorFromBg        bool
+	initialLoadStarted bool
 }
 
 type SupervisorConfig struct {
@@ -38,18 +64,19 @@ type SupervisorConfig struct {
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
 // and non-blocking note-saved event dispatch without ever stalling the 60fps UI render thread.
 type Supervisor struct {
-	store *StoreManager
-	cfg   SupervisorConfig
+	rpcLocks sync.Map // plugin ID -> *sync.Mutex, serializes notebook-scoped RPCs
+	store    *StoreManager
+	cfg      SupervisorConfig
 
-	mu             sync.RWMutex
-	catalog        *StoreIndex
-	installed      []InstalledApp
-	runtimes       map[string]*Runtime
-	views          map[string]*PluginViewState
+	mu              sync.RWMutex
+	catalog         *StoreIndex
+	installed       []InstalledApp
+	runtimes        map[string]*Runtime
+	views           map[viewKey]*PluginViewState
 	storeRefreshing bool
-	installingID   string
-	storeErr       string
-	storeNotice    string
+	installingID    string
+	storeErr        string
+	storeNotice     string
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
@@ -62,7 +89,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		catalog:   sm.LoadCachedOrSeedCatalog(),
 		installed: installed,
 		runtimes:  make(map[string]*Runtime),
-		views:     make(map[string]*PluginViewState),
+		views:     make(map[viewKey]*PluginViewState),
 	}
 }
 
@@ -101,7 +128,7 @@ func (s *Supervisor) ActiveNoteRel() string {
 		return ""
 	}
 	rel, err := filepath.Rel(rootClean, noteClean)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
 	}
 	return filepath.ToSlash(rel)
@@ -220,6 +247,7 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 	s.notifyChanged()
 
 	go func() {
+		defer s.lockPluginRPC(entry.ID)()
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		inst, err := s.store.InstallEntry(ctx, entry)
@@ -236,7 +264,7 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 		s.installed = installedList
 		prevRt := s.runtimes[inst.Manifest.ID]
 		delete(s.runtimes, inst.Manifest.ID)
-		delete(s.views, inst.Manifest.ID)
+		s.deleteViewsForPluginLocked(inst.Manifest.ID)
 		s.mu.Unlock()
 		if prevRt != nil {
 			go prevRt.Shutdown(context.Background())
@@ -282,7 +310,7 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 		s.installed = installedList
 		prevRt := s.runtimes[inst.Manifest.ID]
 		delete(s.runtimes, inst.Manifest.ID)
-		delete(s.views, inst.Manifest.ID)
+		s.deleteViewsForPluginLocked(inst.Manifest.ID)
 		s.mu.Unlock()
 		if prevRt != nil {
 			go prevRt.Shutdown(context.Background())
@@ -296,23 +324,69 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 }
 
 func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+
+	s.mu.Lock()
+	if s.installingID != "" {
+		s.mu.Unlock()
+		return
+	}
+	s.installingID = "__uninstall__"
+	if vs := s.views[key]; vs != nil {
+		vs.BusyAction = "__uninstall__"
+		vs.Error = ""
+		vs.RetryKind = RetryKindNone
+		vs.FailedActionID = ""
+		vs.FailedNotePath = ""
+		vs.FailedNoteRoot = ""
+		vs.errorFromBg = false
+	}
+	s.mu.Unlock()
+	s.notifyChanged()
+
 	go func() {
+		defer s.lockPluginRPC(pluginID)()
 		s.mu.Lock()
 		rt := s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
-		delete(s.views, pluginID)
 		s.mu.Unlock()
-
 		if rt != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			_ = rt.Shutdown(ctx)
 			cancel()
 		}
-		_ = s.store.Uninstall(pluginID, false)
+		err := s.store.Uninstall(pluginID, false)
 		installedList, _ := s.store.ListInstalled()
 
 		s.mu.Lock()
-		s.installed = installedList
+		s.installingID = ""
+		if err == nil {
+			s.installed = installedList
+		}
+		if err != nil {
+			s.storeErr = err.Error()
+			vs := s.views[key]
+			if vs == nil {
+				vs = &PluginViewState{
+					Values:           map[string]any{},
+					lastNotebookRoot: nbRoot,
+				}
+				s.views[key] = vs
+			}
+			vs.BusyAction = ""
+			vs.Error = err.Error()
+			vs.RetryKind = RetryKindUninstall
+			vs.FailedActionID = ""
+			vs.FailedNotePath = ""
+			vs.FailedNoteRoot = ""
+			vs.errorFromBg = true
+			s.mu.Unlock()
+			s.notifyChanged()
+			return
+		}
+		s.storeErr = ""
+		s.deleteViewsForPluginLocked(pluginID)
 		s.mu.Unlock()
 
 		if onDone != nil {
@@ -322,16 +396,35 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 	}()
 }
 
+func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
+	for k := range s.views {
+		if k.pluginID == pluginID {
+			delete(s.views, k)
+		}
+	}
+}
+
 // EnsurePluginView returns the current non-blocking UI snapshot and lazily starts/renders the plugin if needed.
 func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 	nbRoot := s.NotebookRoot()
-	activeNote := s.ActiveNoteRel()
+	activeNote := s.activeNoteFor(nbRoot)
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
 
 	s.mu.Lock()
-	vs, ok := s.views[pluginID]
+	vs, ok := s.views[key]
 	if ok {
+		if vs.Page == nil && !vs.Loading && !vs.initialLoadStarted {
+			vs.Loading = true
+			vs.initialLoadStarted = true
+			vs.lastNotebookRoot = nbRoot
+			vs.lastActiveNote = activeNote
+			snap := cloneViewState(vs)
+			s.mu.Unlock()
+			go s.loadAndRenderPlugin(pluginID, nbRoot)
+			return snap
+		}
 		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" && vs.Page != nil &&
-			(vs.lastNotebookRoot != nbRoot || vs.lastActiveNote != activeNote)
+			vs.lastActiveNote != activeNote
 		var syncSeq uint64
 		if needWorkspaceSync {
 			vs.lastNotebookRoot = nbRoot
@@ -342,67 +435,81 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 		snap := cloneViewState(vs)
 		s.mu.Unlock()
 		if needWorkspaceSync {
-			go s.refreshPreviewForSeq(pluginID, syncSeq, 0)
+			go s.refreshPreviewForSeq(pluginID, nbRoot, syncSeq, 0)
 		}
 		return snap
 	}
 	vs = &PluginViewState{
-		Loading:          true,
-		Values:           map[string]any{},
-		lastNotebookRoot: nbRoot,
-		lastActiveNote:   activeNote,
+		Loading:            true,
+		Values:             map[string]any{},
+		lastNotebookRoot:   nbRoot,
+		lastActiveNote:     activeNote,
+		initialLoadStarted: true,
 	}
-	s.views[pluginID] = vs
+	s.views[key] = vs
 	snap := cloneViewState(vs)
 	s.mu.Unlock()
 
-	go s.loadAndRenderPlugin(pluginID)
+	go s.loadAndRenderPlugin(pluginID, nbRoot)
 	return snap
 }
 
 func (s *Supervisor) ReloadPluginViewAsync(pluginID string) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+
 	s.mu.Lock()
-	vs, ok := s.views[pluginID]
+	vs, ok := s.views[key]
 	if !ok {
-		vs = &PluginViewState{Values: map[string]any{}}
-		s.views[pluginID] = vs
+		vs = &PluginViewState{Values: map[string]any{}, lastNotebookRoot: nbRoot}
+		s.views[key] = vs
 	}
 	if vs.Loading {
 		s.mu.Unlock()
 		return
 	}
 	vs.Loading = true
+	vs.initialLoadStarted = true
 	vs.Error = ""
+	vs.RetryKind = RetryKindNone
+	vs.FailedActionID = ""
+	vs.FailedNotePath = ""
+	vs.FailedNoteRoot = ""
+	vs.errorFromBg = false
 	s.mu.Unlock()
 	s.notifyChanged()
 
-	go s.loadAndRenderPlugin(pluginID)
+	go s.loadAndRenderPlugin(pluginID, nbRoot)
 }
 
-func (s *Supervisor) loadAndRenderPlugin(pluginID string) {
+func (s *Supervisor) loadAndRenderPlugin(pluginID, nbRoot string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	rt, err := s.ensureRuntime(ctx, pluginID)
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	defer s.lockPluginRPC(pluginID)()
+	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
-		if vs := s.views[pluginID]; vs != nil {
+		if vs := s.views[key]; vs != nil {
 			vs.Loading = false
-			vs.Error = err.Error()
+			if !vs.errorFromBg {
+				vs.Error = err.Error()
+				vs.RetryKind = RetryKindReload
+			}
 		}
 		s.mu.Unlock()
 		s.notifyChanged()
 		return
 	}
 
-	nbRoot := s.NotebookRoot()
-	activeNote := s.ActiveNoteRel()
+	activeNote := s.activeNoteFor(nbRoot)
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
 	s.mu.RLock()
 	var currentVals map[string]any
-	if vs := s.views[pluginID]; vs != nil && len(vs.Values) > 0 {
+	if vs := s.views[key]; vs != nil && len(vs.Values) > 0 {
 		currentVals = make(map[string]any, len(vs.Values))
 		for k, v := range vs.Values {
 			currentVals[k] = v
@@ -412,14 +519,20 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID string) {
 
 	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, currentVals)
 	s.mu.Lock()
-	if vs := s.views[pluginID]; vs != nil {
+	if vs := s.views[key]; vs != nil {
 		vs.Loading = false
 		vs.lastNotebookRoot = nbRoot
 		vs.lastActiveNote = activeNote
 		if err != nil {
-			vs.Error = err.Error()
+			if !vs.errorFromBg {
+				vs.Error = err.Error()
+				vs.RetryKind = RetryKindReload
+			}
 		} else {
-			vs.Error = ""
+			if !vs.errorFromBg {
+				vs.Error = ""
+				vs.RetryKind = RetryKindNone
+			}
 			vs.Page = page
 			defaults := page.ExtractDefaultValues()
 			if len(vs.Values) == 0 {
@@ -437,16 +550,35 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID string) {
 	s.notifyChanged()
 }
 
-func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runtime, error) {
+func (s *Supervisor) lockPluginRPC(pluginID string) func() {
+	value, _ := s.rpcLocks.LoadOrStore(pluginID, new(sync.Mutex))
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	return lock.Unlock
+}
+
+func (s *Supervisor) activeNoteFor(root string) string {
+	if root == s.NotebookRoot() {
+		return s.ActiveNoteRel()
+	}
+	return ""
+}
+
+func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string) (*Runtime, error) {
 	s.mu.RLock()
 	existing := s.runtimes[pluginID]
 	s.mu.RUnlock()
 	if existing != nil && !existing.closed.Load() {
-		existing.SetNotebookRoot(s.NotebookRoot())
-		existing.SetActiveNote(s.ActiveNoteRel())
-		return existing, nil
+		if existing.notebookRoot() == nbRoot {
+			select {
+			case <-existing.exited:
+			default:
+				return existing, nil
+			}
+		}
+		// Plugins receive the notebook root at initialization.
+		_ = existing.Shutdown(ctx)
 	}
-
 	inst, ok := s.GetInstalled(pluginID)
 	if !ok {
 		return nil, osErrNotInstalled(pluginID)
@@ -458,8 +590,8 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runti
 	rt, err := StartRuntime(context.Background(), inst.Manifest, HostConfig{
 		PluginDir:    inst.InstallDir,
 		DataDir:      inst.DataDir,
-		NotebookRoot: s.NotebookRoot(),
-		ActiveNote:   s.ActiveNoteRel(),
+		NotebookRoot: nbRoot,
+		ActiveNote:   s.activeNoteFor(nbRoot),
 		Locale:       s.Locale(),
 		HostVersion:  hostVer,
 	})
@@ -467,7 +599,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runti
 		return nil, err
 	}
 	if err := rt.Initialize(ctx); err != nil {
-		_ = rt.Shutdown(context.Background())
+		_ = rt.Shutdown(ctx)
 		return nil, err
 	}
 
@@ -485,8 +617,11 @@ func (s *Supervisor) SetControlValue(pluginID, controlID string, val any) {
 }
 
 func (s *Supervisor) UpdateControlValue(pluginID, controlID string, val any, immediate bool) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+
 	s.mu.Lock()
-	vs := s.views[pluginID]
+	vs := s.views[key]
 	if vs == nil {
 		s.mu.Unlock()
 		return
@@ -503,15 +638,16 @@ func (s *Supervisor) UpdateControlValue(pluginID, controlID string, val any, imm
 	if immediate {
 		delay = 25 * time.Millisecond
 	}
-	go s.refreshPreviewForSeq(pluginID, seq, delay)
+	go s.refreshPreviewForSeq(pluginID, nbRoot, seq, delay)
 }
 
-func (s *Supervisor) refreshPreviewForSeq(pluginID string, seq uint64, delay time.Duration) {
+func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, delay time.Duration) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
 	s.mu.RLock()
-	vs := s.views[pluginID]
+	vs := s.views[key]
 	if vs == nil || vs.BusyAction != "" || vs.editSeq != seq {
 		s.mu.RUnlock()
 		return
@@ -524,22 +660,39 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID string, seq uint64, delay tim
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	rt, err := s.ensureRuntime(ctx, pluginID)
+	defer s.lockPluginRPC(pluginID)()
+	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
+		s.mu.Lock()
+		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
+			cur.Error = err.Error()
+			cur.RetryKind = RetryKindReload
+		}
+		s.mu.Unlock()
+		s.notifyChanged()
 		return
 	}
-	nbRoot := s.NotebookRoot()
-	activeNote := s.ActiveNoteRel()
+	activeNote := s.activeNoteFor(nbRoot)
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
 	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, valsCopy)
-	if err != nil || page == nil {
+	if err != nil {
+		s.mu.Lock()
+		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
+			cur.Error = err.Error()
+			cur.RetryKind = RetryKindReload
+		}
+		s.mu.Unlock()
+		s.notifyChanged()
+		return
+	}
+	if page == nil {
 		return
 	}
 
 	s.mu.Lock()
-	cur := s.views[pluginID]
+	cur := s.views[key]
 	if cur == nil || cur.BusyAction != "" || cur.editSeq != seq {
 		s.mu.Unlock()
 		return
@@ -547,6 +700,10 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID string, seq uint64, delay tim
 	cur.Page = page
 	cur.lastNotebookRoot = nbRoot
 	cur.lastActiveNote = activeNote
+	if !cur.errorFromBg && cur.RetryKind == RetryKindReload {
+		cur.Error = ""
+		cur.RetryKind = RetryKindNone
+	}
 	for k, v := range page.ExtractDefaultValues() {
 		if _, exists := cur.Values[k]; !exists {
 			cur.Values[k] = v
@@ -557,14 +714,22 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID string, seq uint64, delay tim
 }
 
 func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+
 	s.mu.Lock()
-	vs := s.views[pluginID]
+	vs := s.views[key]
 	if vs == nil || vs.BusyAction != "" {
 		s.mu.Unlock()
 		return
 	}
 	vs.BusyAction = actionID
 	vs.Error = ""
+	vs.RetryKind = RetryKindNone
+	vs.FailedActionID = ""
+	vs.FailedNotePath = ""
+	vs.FailedNoteRoot = ""
+	vs.errorFromBg = false
 	vs.editSeq++
 	valsCopy := make(map[string]any, len(vs.Values))
 	for k, v := range vs.Values {
@@ -577,10 +742,10 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
-		rt, err := s.ensureRuntime(ctx, pluginID)
+		defer s.lockPluginRPC(pluginID)()
+		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		var res *ActionResult
-		nbRoot := s.NotebookRoot()
-		activeNote := s.ActiveNoteRel()
+		activeNote := s.activeNoteFor(nbRoot)
 		if err == nil {
 			rt.SetNotebookRoot(nbRoot)
 			rt.SetActiveNote(activeNote)
@@ -589,14 +754,20 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 
 		var openTarget, revealTarget string
 		s.mu.Lock()
-		if cur := s.views[pluginID]; cur != nil {
+		if cur := s.views[key]; cur != nil {
 			cur.BusyAction = ""
 			cur.lastNotebookRoot = nbRoot
 			cur.lastActiveNote = activeNote
 			if err != nil {
 				cur.Error = err.Error()
+				cur.RetryKind = RetryKindAction
+				cur.FailedActionID = actionID
+				cur.errorFromBg = true
 			} else if res != nil {
 				cur.Error = ""
+				cur.RetryKind = RetryKindNone
+				cur.FailedActionID = ""
+				cur.errorFromBg = false
 				if res.Status != "" {
 					cur.Notice = res.Status
 				}
@@ -626,6 +797,66 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 			openLocalPathInOS(revealTarget, true)
 		}
 	}()
+}
+
+// RetryPluginAsync retries the last failed operation for pluginID in the current notebook,
+// distinguishing action/event/uninstall retries from full page reloads.
+func (s *Supervisor) RetryPluginAsync(pluginID string) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+
+	s.mu.Lock()
+	vs := s.views[key]
+	if vs == nil {
+		s.mu.Unlock()
+		s.ReloadPluginViewAsync(pluginID)
+		return
+	}
+	if vs.Loading || vs.BusyAction != "" {
+		s.mu.Unlock()
+		return
+	}
+	snapshot := cloneViewState(vs)
+	kind := snapshot.RetryKind
+	actionID := vs.FailedActionID
+	notePath := snapshot.FailedNotePath
+	noteRoot := snapshot.FailedNoteRoot
+	if kind == RetryKindNoteSaved {
+		if noteRoot == "" {
+			noteRoot = nbRoot
+		}
+		relSlash, ok := relativeNotePath(noteRoot, notePath)
+		if !ok {
+			s.mu.Unlock()
+			s.ReloadPluginViewAsync(pluginID)
+			return
+		}
+		vs.BusyAction = "__retry_note_saved__"
+		vs.Error = ""
+		vs.RetryKind = RetryKindNone
+		vs.FailedActionID = ""
+		vs.FailedNotePath = ""
+		vs.FailedNoteRoot = ""
+		vs.errorFromBg = false
+		s.mu.Unlock()
+		s.notifyChanged()
+		s.queueNoteSaved(pluginID, noteRoot, notePath, relSlash)
+		return
+	}
+	s.mu.Unlock()
+
+	switch kind {
+	case RetryKindAction:
+		if actionID != "" {
+			s.TriggerActionAsync(pluginID, actionID)
+			return
+		}
+		s.ReloadPluginViewAsync(pluginID)
+	case RetryKindUninstall:
+		s.UninstallAsync(pluginID, nil)
+	default:
+		s.ReloadPluginViewAsync(pluginID)
+	}
 }
 
 func openLocalPathInOS(rawPath string, reveal bool) {
@@ -661,61 +892,6 @@ func openLocalPathInOS(rawPath string, reveal bool) {
 	_ = cmd.Start()
 }
 
-// NotifyNoteSaved dispatches note.saved asynchronously to every installed plugin declaring events:note_saved.
-func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
-	nbRoot := s.NotebookRoot()
-	if nbRoot == "" || absNotePath == "" {
-		return
-	}
-	rootClean, err := filepath.Abs(nbRoot)
-	if err != nil {
-		return
-	}
-	noteClean, err := filepath.Abs(absNotePath)
-	if err != nil {
-		return
-	}
-	rel, err := filepath.Rel(rootClean, noteClean)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return
-	}
-
-	installed := s.Installed()
-	for _, app := range installed {
-		if !app.Enabled || !app.Manifest.HasPermission(PermEventNoteSaved) {
-			continue
-		}
-		pluginID := app.Manifest.ID
-		relSlash := filepath.ToSlash(rel)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			rt, err := s.ensureRuntime(ctx, pluginID)
-			if err != nil {
-				return
-			}
-			rt.SetNotebookRoot(nbRoot)
-			if err := rt.NotifyNoteSaved(ctx, relSlash); err != nil {
-				return
-			}
-			// Refresh cached view if already open so recent sync logs update live.
-			s.mu.RLock()
-			hasView := s.views[pluginID] != nil
-			s.mu.RUnlock()
-			if hasView {
-				if page, err := rt.Render(ctx, SurfaceSettingsPage); err == nil {
-					s.mu.Lock()
-					if cur := s.views[pluginID]; cur != nil {
-						cur.Page = page
-					}
-					s.mu.Unlock()
-					s.notifyChanged()
-				}
-			}
-		}()
-	}
-}
-
 func (s *Supervisor) ShutdownAll() {
 	s.mu.Lock()
 	rts := make([]*Runtime, 0, len(s.runtimes))
@@ -743,15 +919,34 @@ func (s *Supervisor) ShutdownAll() {
 
 func cloneViewState(in *PluginViewState) PluginViewState {
 	out := PluginViewState{
-		Loading:    in.Loading,
-		BusyAction: in.BusyAction,
-		Error:      in.Error,
-		Notice:     in.Notice,
-		Page:       in.Page,
-		Values:     make(map[string]any, len(in.Values)),
+		Loading:        in.Loading,
+		BusyAction:     in.BusyAction,
+		Error:          in.Error,
+		Notice:         in.Notice,
+		Page:           in.Page,
+		Values:         make(map[string]any, len(in.Values)),
+		RetryKind:      in.RetryKind,
+		FailedActionID: in.FailedActionID,
+		FailedNotePath: in.FailedNotePath,
+		FailedNoteRoot: in.FailedNoteRoot,
+		PendingSaves:   in.PendingSaves,
 	}
 	for k, v := range in.Values {
 		out.Values[k] = v
+	}
+	if out.Error == "" && out.BusyAction == "" {
+		var first string
+		for path := range in.failedSaves {
+			if first == "" || path < first {
+				first = path
+			}
+		}
+		if first != "" {
+			out.Error = in.failedSaves[first]
+			out.FailedNotePath = first
+			out.FailedNoteRoot = in.lastNotebookRoot
+			out.RetryKind = RetryKindNoteSaved
+		}
 	}
 	return out
 }

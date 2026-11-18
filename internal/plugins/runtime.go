@@ -52,6 +52,7 @@ type ActionResult struct {
 // Runtime hosts a single sandboxed out-of-process plugin speaking newline-delimited
 // bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
+	exited   chan struct{}
 	manifest Manifest
 	cfg      HostConfig
 
@@ -137,6 +138,7 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		return nil, err
 	}
 	rt := &Runtime{
+		exited:   make(chan struct{}),
 		manifest: m,
 		cfg:      cfg,
 		cmd:      cmd,
@@ -285,6 +287,9 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 	rt.callMu.Lock()
 	defer rt.callMu.Unlock()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	idNum := rt.nextID.Add(1)
 	idKey := fmt.Sprintf("%d", idNum)
 	idRaw := json.RawMessage(idKey)
@@ -327,6 +332,8 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 			}
 		}
 		return nil
+	case <-rt.exited:
+		return fmt.Errorf("%s: plugin exited", method)
 	case <-ctx.Done():
 		return fmt.Errorf("%s timed out: %w (stderr: %s)", method, ctx.Err(), strings.TrimSpace(rt.Stderr()))
 	}
@@ -345,6 +352,7 @@ func (rt *Runtime) writeLine(v any) error {
 }
 
 func (rt *Runtime) readLoop(r io.Reader) {
+	defer close(rt.exited)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
