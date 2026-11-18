@@ -40,7 +40,7 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 		pagerID = opts.IDPrefix + "-pager"
 	}
 	pager := ui.Row(c.Key(pagerID)).Height(dotPagerTrackH).PaddingX(dotPagerTrackPad).
-		AlignItems(ui.Center).Radius(theme.RadiusPill)
+		AlignItems(ui.Center).Radius(theme.RadiusPill).KeepFocus()
 	AnimateSurfaceColors(pager, dp.TrackBG, dp.TrackBorder, true)
 	Probe(pager, pagerID)
 
@@ -55,7 +55,7 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 				isActive := slot == opts.Active
 				dotID := fmt.Sprintf("%s-%d", opts.IDPrefix, slot)
 				btn := ui.ButtonBase(c.Key(dotID)).Size(dotPagerSlotSize, dotPagerSlotSize).Center().
-					Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
+					Radius(theme.RadiusPill).Cursor(ui.CursorPointer).KeepFocus().
 					Role(ui.RoleTab).AccessSelected(isActive).
 					Label(fmt.Sprintf("Slot %d", slot+1))
 				if opts.SlotTooltip != nil {
