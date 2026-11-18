@@ -104,6 +104,7 @@ func renderTooltipShortcutPill(c *ui.Context, pal theme.Palette, shortcut string
 				LineHeight: theme.LineMeta,
 				FontWeight: theme.WeightMono,
 				Color:      pal.TooltipPillFG,
+				IsShortcut: true,
 			})
 		})
 }
