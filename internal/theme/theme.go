@@ -127,6 +127,8 @@ type Palette struct {
 	AnnotationBG      ui.Color
 	AnnotationActive  ui.Color
 	AnnotationDone    ui.Color
+	AnnotSendFG       ui.Color
+	AnnotSendDot      ui.Color
 	FindMatch         ui.Color
 	FindActive        ui.Color
 	FindRing          ui.Color
@@ -202,6 +204,8 @@ var OceanLight = Palette{
 	AnnotationBG:      ui.Hex("#fef0d1"),
 	AnnotationActive:  ui.Hex("#fdda8c"),
 	AnnotationDone:    ui.Hex("#e5edfc"),
+	AnnotSendFG:       ui.Hex("#184f95"),
+	AnnotSendDot:      ui.Hex("#f5c84c"),
 	FindMatch:         ui.Hex("#fbe7a6"),
 	FindActive:        ui.Hex("#f4c84f"),
 	FindRing:          ui.Hex("#c9971c"),
@@ -277,6 +281,8 @@ var OceanDark = Palette{
 	AnnotationBG:      ui.Hex("#4a3c21"),
 	AnnotationActive:  ui.Hex("#81611e"),
 	AnnotationDone:    ui.Hex("#2d426b"),
+	AnnotSendFG:       ui.Hex("#e6eefc"),
+	AnnotSendDot:      ui.Hex("#f5c84c"),
 	FindMatch:         ui.Hex("#40361e"),
 	FindActive:        ui.Hex("#59451c"),
 	FindRing:          ui.Hex("#c9971c"),
