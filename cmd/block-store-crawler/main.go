@@ -71,14 +71,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load blocklist: %w", err)
 	}
-	verified, err := loadStringSet(*verifiedPath)
+	verified, err := loadVerifiedRegistry(*verifiedPath)
 	if err != nil {
 		return fmt.Errorf("load verified list: %w", err)
 	}
 	seedDirs := splitCSV(*localSeed)
 
 	entries := make([]plugins.StoreAppEntry, 0)
-	seenIDs := make(map[string]bool)
 
 	if !*skipGitHub {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -91,13 +90,7 @@ func run() error {
 			}
 			fmt.Fprintf(os.Stderr, "[WARN] GitHub crawl failed (%v); continuing with local seeds\n", ghErr)
 		} else {
-			for _, entry := range ghEntries {
-				if seenIDs[entry.ID] {
-					continue
-				}
-				seenIDs[entry.ID] = true
-				entries = append(entries, entry)
-			}
+			entries = append(entries, ghEntries...)
 		}
 	}
 
@@ -110,19 +103,31 @@ func run() error {
 		if matchesSet(blocklist, m.ID, m.Repo) {
 			continue
 		}
-		if seenIDs[m.ID] {
-			continue
+		isVerified, err := verified.check(m.ID, m.Repo, m.Repo)
+		if err != nil {
+			return fmt.Errorf("local seed %q: %w", dir, err)
 		}
-		seenIDs[m.ID] = true
-		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", defaultSeedDownloads(m.ID), 0, nowStr, m.Repo, verified))
+		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", defaultSeedDownloads(m.ID), 0, nowStr, m.Repo, isVerified))
 	}
 
+	// A shared ID without a unique owner cannot identify an install or update.
+	owners := make(map[string]string)
+	conflicts := make(map[string]bool)
+	for _, entry := range entries {
+		owner := normalizeKey(entry.Repo)
+		if previous, exists := owners[entry.ID]; exists && previous != owner {
+			conflicts[entry.ID] = true
+		}
+		owners[entry.ID] = owner
+	}
+	seenIDs := make(map[string]bool)
 	// Double-check blocklist filter across all entries and sort deterministically.
 	filtered := make([]plugins.StoreAppEntry, 0, len(entries))
 	for _, entry := range entries {
-		if matchesSet(blocklist, entry.ID, entry.Repo) {
+		if conflicts[entry.ID] || seenIDs[entry.ID] || matchesSet(blocklist, entry.ID, entry.Repo) {
 			continue
 		}
+		seenIDs[entry.ID] = true
 		filtered = append(filtered, entry)
 	}
 
@@ -169,7 +174,7 @@ func crawlGitHub(
 	apiBase string,
 	token string,
 	blocklist map[string]bool,
-	verified map[string]bool,
+	verified verifiedRegistry,
 ) ([]plugins.StoreAppEntry, error) {
 	base := strings.TrimRight(strings.TrimSpace(apiBase), "/")
 	if base == "" {
@@ -270,7 +275,7 @@ func verifyRemotePlugin(
 	downloads int,
 	updatedAt string,
 	blocklist map[string]bool,
-	verified map[string]bool,
+	verified verifiedRegistry,
 ) (*plugins.StoreAppEntry, error) {
 	data, err := downloadBytes(ctx, client, downloadURL, apiBase, token)
 	if err != nil {
@@ -299,7 +304,11 @@ func verifyRemotePlugin(
 	if matchesSet(blocklist, m.ID, m.Repo, repo.FullName) {
 		return nil, nil
 	}
-	entry := entryFromManifest(m, downloadURL, shaHex, downloads, repo.Stargazers, updatedAt, repo.FullName, verified)
+	isVerified, err := verified.check(m.ID, repo.FullName, m.Repo)
+	if err != nil {
+		return nil, err
+	}
+	entry := entryFromManifest(m, downloadURL, shaHex, downloads, repo.Stargazers, updatedAt, repo.FullName, isVerified)
 	return &entry, nil
 }
 
@@ -327,12 +336,12 @@ func entryFromManifest(
 	downloads int,
 	stars int,
 	updatedAt string,
-	fallbackRepo string,
-	verified map[string]bool,
+	actualRepo string,
+	isVerified bool,
 ) plugins.StoreAppEntry {
-	repoSlug := m.Repo
+	repoSlug := strings.TrimSpace(actualRepo)
 	if repoSlug == "" {
-		repoSlug = fallbackRepo
+		repoSlug = strings.TrimSpace(m.Repo)
 	}
 	perms := m.Permissions
 	if perms == nil {
@@ -350,7 +359,7 @@ func entryFromManifest(
 		SHA256:      shaHex,
 		Downloads:   downloads,
 		Stars:       stars,
-		Verified:    matchesSet(verified, m.ID, m.Repo, fallbackRepo),
+		Verified:    isVerified,
 		UpdatedAt:   updatedAt,
 		Permissions: perms,
 		Surfaces:    m.Surfaces,
@@ -423,6 +432,77 @@ func sameHost(a, b string) bool {
 		return false
 	}
 	return strings.EqualFold(ua.Host, ub.Host)
+}
+
+type verifiedRegistry struct {
+	idToRepo map[string]string
+	repoToID map[string]string
+}
+
+func loadVerifiedRegistry(path string) (verifiedRegistry, error) {
+	reg := verifiedRegistry{
+		idToRepo: make(map[string]string),
+		repoToID: make(map[string]string),
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return reg, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return reg, nil
+		}
+		return reg, err
+	}
+	var bindings map[string]string
+	if err := json.Unmarshal(raw, &bindings); err != nil {
+		return reg, err
+	}
+	for rawID, rawRepo := range bindings {
+		id := normalizeKey(rawID)
+		repo := normalizeKey(rawRepo)
+		if id == "" || !isValidRepoSlug(repo) {
+			return reg, fmt.Errorf("invalid verified binding %q -> %q", rawID, rawRepo)
+		}
+		if prevID, exists := reg.repoToID[repo]; exists && prevID != id {
+			return reg, fmt.Errorf("duplicate verified repo binding %q for %q and %q", repo, prevID, id)
+		}
+		reg.idToRepo[id] = repo
+		reg.repoToID[repo] = id
+	}
+	return reg, nil
+}
+
+// check enforces 1:1 binding between plugin ID, crawled repo, and manifest repo.
+func (r verifiedRegistry) check(id, actualRepo, manifestRepo string) (bool, error) {
+	normID := normalizeKey(id)
+	normActual := normalizeKey(actualRepo)
+	normManifest := normalizeKey(manifestRepo)
+
+	if normManifest != "" && normActual != "" && normManifest != normActual {
+		return false, fmt.Errorf("manifest repo %q does not match crawled repo %q", manifestRepo, actualRepo)
+	}
+	effectiveRepo := normActual
+	if effectiveRepo == "" {
+		effectiveRepo = normManifest
+	}
+	if boundRepo, ok := r.idToRepo[normID]; ok && effectiveRepo != boundRepo {
+		return false, fmt.Errorf("plugin ID %q is bound to verified repo %q, got %q", id, boundRepo, firstNonEmpty(actualRepo, manifestRepo))
+	}
+	if boundID, ok := r.repoToID[effectiveRepo]; ok && normID != boundID {
+		return false, fmt.Errorf("verified repo %q is bound to plugin ID %q, got %q", firstNonEmpty(actualRepo, manifestRepo), boundID, id)
+	}
+	return effectiveRepo != "" && r.idToRepo[normID] == effectiveRepo, nil
+}
+
+func normalizeKey(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func isValidRepoSlug(repo string) bool {
+	parts := strings.Split(repo, "/")
+	return len(parts) == 2 && parts[0] != "" && parts[1] != ""
 }
 
 func loadStringSet(path string) (map[string]bool, error) {

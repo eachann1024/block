@@ -2,6 +2,7 @@ package pluginui
 
 import (
 	"fmt"
+	"golang.org/x/mod/semver"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -101,7 +102,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			})
 		}
 
-		renderManualInstallCard(c, ctrl, installingID, onSelectTab)
+		renderManualInstallCard(c, ctrl, installingID)
 
 		if len(entries) == 0 {
 			c.Key("app-store-empty-card")
@@ -135,7 +136,7 @@ func storeColumnCount(bodyW float32) int {
 	return min(max(cols, 1), 4)
 }
 
-func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string, onSelectTab func(nextTab string)) {
+func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string) {
 	pal := theme.Ocean()
 	card := ui.Column(c.Key("app-store-manual-card")).FillWidth().MinWidth(0).
 		Padding(theme.Space16, theme.Space20, theme.Space16, theme.Space20).
@@ -193,9 +194,7 @@ func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID strin
 				source := spec
 				ctrl.sup.InstallFromSourceAsync(source, func(pluginID string) {
 					ctrl.clearManualSpec()
-					if onSelectTab != nil {
-						onSelectTab(modals.TabPluginPrefix + pluginID)
-					}
+					ctrl.clearPluginState(pluginID)
 				})
 			}
 		})
@@ -277,7 +276,7 @@ func renderStoreAppCard(
 
 				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 					hasUpdate := isInstalled && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
-						strings.TrimPrefix(strings.TrimSpace(entry.Version), "v") != strings.TrimPrefix(strings.TrimSpace(installedApp.Manifest.Version), "v")
+						semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+installedApp.Manifest.Version) > 0
 					renderStoreCardActions(c, ctrl, entry, isInstalled, hasUpdate, installingID, onSelectTab)
 				})
 			})
@@ -345,7 +344,7 @@ func renderStoreCardActions(
 	if isInstalled {
 		if hasUpdate {
 			isUpdating := installingID == entry.ID
-			upLbl := theme.Tr("更新", "Update")
+			upLbl := theme.Tr("更新至 ", "Update to ") + entry.Version
 			if isUpdating {
 				upLbl = theme.Tr("更新中…", "Updating…")
 			}
@@ -359,17 +358,16 @@ func renderStoreCardActions(
 			})
 			if upBtn.Clicked() {
 				appEntry := entry
-				ctrl.clearPluginState(entry.ID)
-				ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
-					if onSelectTab != nil {
-						onSelectTab(modals.TabPluginPrefix + pluginID)
-					}
-				})
+				ctrl.sup.InstallEntryAsync(appEntry, ctrl.clearPluginState)
 			}
+		}
+		openLabel := theme.Tr("打开", "Open")
+		if entry.ID == "block-sync" {
+			openLabel = theme.Tr("配置同步", "Configure Sync")
 		}
 		openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 			ID:       "app-store-open-" + entry.ID,
-			Label:    theme.Tr("打开", "Open"),
+			Label:    openLabel,
 			Style:    bui.ButtonAccentOutline,
 			Height:   theme.HeightCompact,
 			PaddingX: theme.Space12,
@@ -405,11 +403,7 @@ func renderStoreCardActions(
 	})
 	if instBtn.Clicked() {
 		appEntry := entry
-		ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
-			if onSelectTab != nil {
-				onSelectTab(modals.TabPluginPrefix + pluginID)
-			}
-		})
+		ctrl.sup.InstallEntryAsync(appEntry, nil)
 	}
 }
 
