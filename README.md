@@ -6,6 +6,7 @@
 - **官方网站（中文）**：[https://block.cooool.top/](https://block.cooool.top/)
 - **Official Website (English)**：[https://block.cooool.top/en/](https://block.cooool.top/en/)
 - **主流 Markdown 与块笔记横向对比**：[https://block.cooool.top/#compare](https://block.cooool.top/#compare) · [Comparison](https://block.cooool.top/en/#compare)
+- [插件开发指南（Plugin Development Guide）](docs/plugin-dev-for-ai.md)
 
 ## 核心特性
 

@@ -113,14 +113,25 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	} else {
 		delete(v.failedSaves, absNotePath)
 	}
-	hasPage := v.Page != nil
+	refreshPage := v.Page != nil && v.BusyAction == ""
+	editSeq := v.editSeq
+	var values map[string]any
+	if refreshPage {
+		values = make(map[string]any, len(v.Values))
+		for id, value := range v.Values {
+			values[id] = value
+		}
+	}
 	s.mu.Unlock()
 	s.notifyChanged()
-	if err == nil && hasPage {
-		if page, err := rt.Render(ctx, SurfaceSettingsPage); err == nil {
+	if err == nil && refreshPage {
+		if page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, values); err == nil {
 			s.mu.Lock()
-			if s.views[key] == v {
+			if s.views[key] == v && v.editSeq == editSeq {
 				v.Page = page
+				if page.Status != "" {
+					v.Notice = ""
+				}
 			}
 			s.mu.Unlock()
 			s.notifyChanged()

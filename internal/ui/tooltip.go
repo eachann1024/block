@@ -202,6 +202,28 @@ func Tooltip(c *ui.Context, anchor ui.Element, text string) ui.Element {
 	})
 }
 
+// WrappedTooltip uses the shared tooltip surface for text that may span several lines.
+func WrappedTooltip(c *ui.Context, anchor ui.Element, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	anchor.Description(text)
+	pal := theme.Ocean()
+	ui.TooltipBase(c, anchor, func(tip ui.Element) {
+		styleTooltipSurface(tip, anchor, pal, TooltipSpec{Placement: TooltipAbove})
+		width, _ := c.Size()
+		maxWidth := float32(460)
+		if width > 2*theme.Space12 {
+			maxWidth = min(maxWidth, width-2*theme.Space12)
+		}
+		tip.MaxWidth(maxWidth).Padding(5, 11)
+		tip.Children(func() {
+			ui.Text(c, text).MinWidth(0).FontSize(theme.FontSmall).
+				FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+		})
+	})
+}
+
 // TooltipShortcut attaches an Ocean Paper tooltip with primary action label and a rounded shortcut badge.
 func TooltipShortcut(c *ui.Context, anchor ui.Element, label, shortcut string) ui.Element {
 	if label == "" && shortcut == "" {

@@ -2,6 +2,7 @@ package pluginui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"block/internal/plugins"
@@ -246,7 +247,35 @@ func renderItem(
 			}
 		})
 
-	case plugins.KindInput, plugins.KindFolder, plugins.KindSecret:
+	case plugins.KindFolder:
+		path, ok := values[item.ID].(string)
+		if !ok {
+			path, _ = item.Value.(string)
+		}
+		ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).Gap(theme.Space16).
+			AlignItems(ui.Center).Children(func() {
+			ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+				TextColor(pal.Text).SingleLine().Shrink(0)
+			ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
+				label := theme.Tr("选择文件夹…", "Choose Folder…")
+				if path != "" {
+					folder := ui.Text(c.Key("plugin-folder-name-"+pluginID+"-"+item.ID), filepath.Base(path)).
+						FontSize(theme.FontBody).TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+					bui.WrappedTooltip(c, folder, path)
+					label = theme.Tr("更改…", "Change…")
+				}
+				disabled := busyAction != "" || bindings == nil || bindings.PickDirectory == nil
+				pick := bui.ActionButton(c, "plugin-folder-pick-"+pluginID+"-"+item.ID, label, nil, bui.ButtonSecondary, disabled)
+				if !disabled {
+					bui.WrappedTooltip(c, pick, path)
+					if pick.Clicked() {
+						bindings.PickDirectory(item.ID, item.Label)
+					}
+				}
+			})
+		})
+
+	case plugins.KindInput, plugins.KindSecret:
 		fallback, ok := values[item.ID].(string)
 		if !ok {
 			fallback, _ = item.Value.(string)
@@ -282,9 +311,6 @@ func renderItem(
 					PlaceholderColor(pal.Placeholder).
 					Grow(1).
 					MinWidth(0)
-				if item.Kind == plugins.KindFolder {
-					in.Font("monospace")
-				}
 				if item.Kind == plugins.KindSecret && !secretShown {
 					in.Password()
 				}
@@ -296,12 +322,6 @@ func renderItem(
 					}
 					if onChange != nil {
 						onChange(item.ID, draft, false)
-					}
-				}
-				if item.Kind == plugins.KindFolder && bindings != nil && bindings.PickDirectory != nil {
-					pickBtn := bui.ActionButton(c, "plugin-folder-pick-"+pluginID+"-"+item.ID, theme.Tr("选择…", "Browse…"), nil, bui.ButtonSecondary, false)
-					if pickBtn.Clicked() {
-						bindings.PickDirectory(item.ID, item.Label)
 					}
 				}
 				if item.Kind == plugins.KindSecret {
@@ -369,8 +389,9 @@ func renderItem(
 				ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 					ui.Text(c, rw.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 						TextColor(pal.Text).SingleLine().Shrink(0)
-					ui.Text(c, rw.Value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+					value := ui.Text(c, rw.Value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+					bui.WrappedTooltip(c, value, rw.Tooltip)
 				})
 			}
 		})
@@ -403,7 +424,7 @@ func renderPreviewItem(c *ui.Context, pluginID string, pv *plugins.UIPreview) {
 	pal := theme.Ocean()
 	pcol := pal.PluginPreview(pv.Palette)
 
-	frame := ui.Column(c.Key("plugin-preview-" + pluginID + "-" + pv.Title)).
+	frame := ui.Column(c.Key("plugin-preview-"+pluginID+"-"+pv.Title)).
 		FillWidth().MinWidth(0).
 		Padding(theme.Space16).Gap(theme.Space12).
 		Radius(theme.RadiusLG).Background(pcol.OuterBG).Border(1, pcol.OuterBorder)
