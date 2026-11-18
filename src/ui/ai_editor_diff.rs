@@ -271,34 +271,36 @@ mod parse {
 }
 
 struct DiffColors {
-    del_bg: Hsla, del_border: Hsla, del_text: Hsla, del_badge: Hsla,
-    add_bg: Hsla, add_border: Hsla, add_text: Hsla, add_badge: Hsla, code_bg: Hsla,
+    del_bg: Hsla, del_text: Hsla, del_badge: Hsla,
+    add_bg: Hsla, add_text: Hsla, add_badge: Hsla, code_bg: Hsla,
 }
 
 fn palette() -> DiffColors {
     if is_dark() {
         DiffColors {
-            del_bg: rgb(0x262223).into(), del_border: rgb(0x936569).into(), del_text: rgb(0xd5a5a7).into(), del_badge: rgb(0x302729).into(),
-            add_bg: rgb(0x202723).into(), add_border: rgb(0x648972).into(), add_text: rgb(0xa6cbb3).into(), add_badge: rgb(0x27322b).into(),
+            del_bg: rgb(0x262223).into(), del_text: rgb(0xd5a5a7).into(), del_badge: rgb(0x302729).into(),
+            add_bg: rgb(0x202723).into(), add_text: rgb(0xa6cbb3).into(), add_badge: rgb(0x27322b).into(),
             code_bg: rgb(0x202022).into(),
         }
     } else {
         DiffColors {
-            del_bg: rgb(0xfcf8f8).into(), del_border: rgb(0xb47777).into(), del_text: rgb(0x965353).into(), del_badge: rgb(0xf5eaea).into(),
-            add_bg: rgb(0xf5faf6).into(), add_border: rgb(0x709b80).into(), add_text: rgb(0x376d4d).into(), add_badge: rgb(0xeaf3ed).into(),
+            del_bg: rgb(0xfcf8f8).into(), del_text: rgb(0x965353).into(), del_badge: rgb(0xf5eaea).into(),
+            add_bg: rgb(0xf5faf6).into(), add_text: rgb(0x376d4d).into(), add_badge: rgb(0xeaf3ed).into(),
             code_bg: rgb(0xf6f5f2).into(),
         }
     }
 }
 
-fn table_row(row: &TableRow, change: i8, header: Option<bool>, bottom_border: bool) -> impl IntoElement {
+fn table_row(row: &TableRow, change: i8, header: Option<bool>, bottom_border: bool, paint_header_bg: bool, first: bool, last: bool) -> impl IntoElement {
     let (theme, pal, dark) = (crate::theme::Theme::ocean(), palette(), is_dark());
     let (is_header, count) = (header.unwrap_or_else(|| row.cells.iter().any(|c| c.header)), row.cells.len());
     let header_bg: Hsla = if dark { gpui::rgba(0xffffff08).into() } else { rgb(0xf5f3ed).into() };
     div().relative().when(change < 0, |el| el.children(smoke_overlay::probe("ai-plan-diff-del-row")))
         .flex().w_full().min_w_0().overflow_hidden()
+        .when(first, |el| el.rounded_t(px(7.)))
+        .when(last, |el| el.rounded_b(px(7.)))
         .when(bottom_border, |el| el.border_b_1().border_color(theme.hairline))
-        .when(change == 0 && is_header, |el| el.bg(header_bg))
+        .when(paint_header_bg && change == 0 && is_header, |el| el.bg(header_bg))
         .when(change < 0, |el| el.bg(pal.del_bg).text_color(theme.text_secondary))
         .when(change > 0, |el| el.bg(pal.add_bg))
         .children(row.cells.iter().enumerate().map(|(idx, cell)| {
@@ -318,7 +320,7 @@ fn block_view(block: &Block, change: i8) -> AnyElement {
     if let Some(table) = &block.meta.table {
         let len = table.rows.len();
         return div().w_full().min_w_0().rounded(px(8.)).border_1().border_color(theme.hairline).overflow_hidden()
-            .children(table.rows.iter().enumerate().map(|(idx, row)| table_row(row, change, None, idx + 1 < len))).into_any_element();
+            .children(table.rows.iter().enumerate().map(|(idx, row)| table_row(row, change, None, idx + 1 < len, true, idx == 0, idx + 1 == len))).into_any_element();
     }
     let is_heading = matches!(block.kind, Kind::H1 | Kind::H2 | Kind::H3);
     let (font_size, line_h) = match block.kind {
@@ -364,7 +366,7 @@ fn line_view(source: &str, header: bool, change: i8) -> AnyElement {
     let trimmed = source.trim_end_matches(['\r', '\n']).trim();
     if trimmed.is_empty() { return div().h(px(6.)).into_any_element(); }
     if let Some(row) = parse::parse_table_row(trimmed, header) {
-        return table_row(&row, 0, Some(header || row.cells.iter().any(|c| c.header)), false).into_any_element();
+        return table_row(&row, 0, Some(header || row.cells.iter().any(|c| c.header)), false, false, false, false).into_any_element();
     }
     let block = parse::parse_line_block(source);
     block_view(&block, change)
@@ -425,16 +427,16 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
     let mut list = div().w_full().min_w_0().rounded(px(10.)).border_1().border_color(theme.hairline).bg(theme.paper).overflow_hidden().flex().flex_col();
     for (pos, line) in visible.iter().enumerate() {
         let (trimmed, index, selection_index) = (line.text.trim(), line.index, line.selection_index);
+        let (is_first, is_last) = (pos == 0, pos + 1 == total_visible);
         let is_table = parse::is_table_row_line(trimmed);
         let next_is_table = visible.get(pos + 1).is_some_and(|next| parse::is_table_row_line(next.text.trim()));
         let is_header = lines.get(index + 1).is_some_and(|next| {
             let v = next.text.trim(); v.starts_with('|') && parse::is_table_scaffolding(v)
         }) || trimmed.to_ascii_lowercase().contains("<th");
         let row_bg = if !line.included { theme.paper } else if line.change < 0 { pal.del_bg } else if line.change > 0 { pal.add_bg } else if is_header { header_bg } else { theme.paper };
-        let left_bar = if !line.included && line.change != 0 { theme.btn_border } else if line.change < 0 { pal.del_border } else if line.change > 0 { pal.add_border } else { gpui::transparent_black() };
         let gutter_symbol = if line.change < 0 { "−" } else if line.change > 0 { "+" } else { "" };
         let gutter_color = if !line.included { theme.text_secondary } else if line.change < 0 { pal.del_text } else { pal.add_text };
-        let show_bottom_border = pos + 1 < total_visible && (is_table || next_is_table || visible.get(pos + 1).is_some_and(|next| next.change != line.change));
+        let show_bottom_border = !is_last && (is_table || next_is_table || visible.get(pos + 1).is_some_and(|next| next.change != line.change));
         let row = div().id(SharedString::from(format!("ai-plan-diff-row-{index}"))).relative()
             .when(line.change < 0, |row| row.children(smoke_overlay::probe("ai-plan-diff-del-row")))
             .when(line.change < 0 && !seen_removed, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-remove")))
@@ -442,7 +444,9 @@ fn contents(link: &ActivePlanLink) -> impl IntoElement {
             .when(is_table && line.change < 0 && !seen_table_removed, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-table-remove")))
             .when(is_table && line.change > 0 && !seen_table_added, |row| row.children(smoke_overlay::probe("ai-plan-diff-first-table-add")))
             .when(line.change != 0, |row| row.children(smoke_overlay::probe(format!("ai-plan-diff-{}-{index}", if line.change < 0 { "remove" } else { "add" }))))
-            .flex().items_center().w_full().min_w_0().overflow_hidden().bg(row_bg).border_l(px(1.)).border_color(left_bar)
+            .flex().items_center().w_full().min_w_0().overflow_hidden().bg(row_bg)
+            .when(is_first, |row| row.rounded_t(px(9.)))
+            .when(is_last, |row| row.rounded_b(px(9.)))
             .when(show_bottom_border, |row| row.border_b_1().border_color(theme.hairline))
             .when(line.change != 0, |row| row.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, _, cx| {
                 cx.stop_propagation(); plan_link::toggle_diff(selection_index, cx);
@@ -476,7 +480,7 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
     let (counts, accept, reject) = (diff_counts(&link), link.clone(), link.clone());
     div().relative().children(smoke_overlay::probe("ai-editor-plan-card"))
         .w_full().min_w_0().flex().flex_col().rounded(px(12.)).border_1().border_color(theme.hairline).bg(theme.paper).overflow_hidden()
-        .child(div().w_full().min_w_0().overflow_hidden().px(px(14.)).py(px(10.)).bg(theme.shell).border_b_1().border_color(theme.hairline)
+        .child(div().w_full().min_w_0().overflow_hidden().rounded_t(px(11.)).px(px(14.)).py(px(10.)).bg(theme.shell).border_b_1().border_color(theme.hairline)
             .flex().items_center().justify_between().gap(px(10.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
                 .child(div().flex_none().px(px(7.)).py(px(2.)).rounded(px(5.))
@@ -489,7 +493,7 @@ pub(crate) fn editor_plan_review_card(link: ActivePlanLink) -> impl IntoElement 
                     .child(div().px(px(6.)).py(px(1.)).rounded(px(4.)).bg(pal.add_badge).text_color(pal.add_text).child(format!("+{added}")))))))
         .child(div().w_full().min_w_0().overflow_hidden().p(px(14.)).child(contents(&link)))
         .child(div().relative().children(smoke_overlay::probe("ai-plan-inline-dock"))
-            .w_full().min_w_0().overflow_hidden().px(px(14.)).py(px(10.)).bg(theme.shell).border_t_1().border_color(theme.hairline)
+            .w_full().min_w_0().overflow_hidden().rounded_b(px(11.)).px(px(14.)).py(px(10.)).bg(theme.shell).border_t_1().border_color(theme.hairline)
             .flex().items_center().justify_between().gap(px(12.))
             .child(div().flex_1().min_w_0().overflow_hidden().flex().items_center().gap(px(8.))
                 .child(div().relative().children(smoke_overlay::probe("ai-plan-inline-step"))
