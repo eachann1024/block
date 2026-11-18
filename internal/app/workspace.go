@@ -593,6 +593,18 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 	folder := w.state.Folder
 	w.mu.Unlock()
 
+	if win != nil {
+		win.OnFileDrop(func(e *mygo.FileDropEvent) {
+			if e != nil && len(e.Paths) > 0 {
+				if sess := w.ActiveSession(); sess != nil {
+					if sess.ImportFiles(e.Paths, 0, false) > 0 {
+						w.RequestRedraw()
+					}
+				}
+			}
+		})
+	}
+
 	if folder != "" {
 		w.startWatching(folder)
 	}

@@ -642,7 +642,7 @@ func (q *QuickNoteController) AttachDesktop() {
 		win.OnResize(func() { q.scheduleSaveBounds() })
 		win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			if e != nil && len(e.Paths) > 0 {
-				q.ImportDroppedImages(e.Paths)
+				q.ImportDroppedFiles(e.Paths)
 			}
 		})
 		win.OnClose(func(e *mygo.CloseEvent) {
@@ -875,6 +875,30 @@ func (q *QuickNoteController) ActiveSlot() int {
 	return q.activeSlot
 }
 
+// ImportDroppedFiles imports local images, videos, and arbitrary attachment files into the active Quick Note slot.
+func (q *QuickNoteController) ImportDroppedFiles(paths []string) int {
+	q.mu.Lock()
+	slot := q.activeSlot
+	q.ensureSlotFileLocked(slot)
+	sess := q.sessions[slot]
+	win := q.win
+	q.mu.Unlock()
+
+	if sess == nil {
+		return 0
+	}
+	n := sess.ImportFiles(paths, 0, false)
+	if n > 0 {
+		q.mu.Lock()
+		q.syncSessionToDiskLocked(slot)
+		q.mu.Unlock()
+		if win != nil {
+			win.Invalidate()
+		}
+	}
+	return n
+}
+
 // ImportDroppedImages imports local image files into the active Quick Note slot.
 func (q *QuickNoteController) ImportDroppedImages(paths []string) int {
 	q.mu.Lock()
@@ -1081,13 +1105,10 @@ func (q *QuickNoteController) copyReferencedAssetsToNotebook(doc *model.Doc, not
 	if qDir == "" {
 		return
 	}
-	for _, b := range doc.Blocks {
-		if b.Kind != model.BlockImage {
-			continue
-		}
-		srcRel := strings.TrimSpace(b.ImageSrc)
+	copyRel := func(rawRef string) {
+		srcRel := strings.TrimSpace(rawRef)
 		if !strings.HasPrefix(srcRel, "./assets/") && !strings.HasPrefix(srcRel, "assets/") {
-			continue
+			return
 		}
 		relClean := filepath.Clean(strings.TrimPrefix(srcRel, "./"))
 		srcAbs := filepath.Join(qDir, relClean)
@@ -1096,6 +1117,27 @@ func (q *QuickNoteController) copyReferencedAssetsToNotebook(doc *model.Doc, not
 			_ = os.MkdirAll(filepath.Dir(dstAbs), 0o755)
 			if _, err := os.Stat(dstAbs); os.IsNotExist(err) {
 				_ = copyQuickFile(srcAbs, dstAbs)
+			}
+		}
+	}
+	for _, b := range doc.Blocks {
+		if b.Kind == model.BlockImage {
+			copyRel(b.ImageSrc)
+		}
+		for _, sp := range b.Spans {
+			if sp.Link != "" {
+				copyRel(sp.Link)
+			}
+		}
+		if b.Table != nil {
+			for _, row := range b.Table.Rows {
+				for _, cell := range row {
+					for _, sp := range cell.Spans {
+						if sp.Link != "" {
+							copyRel(sp.Link)
+						}
+					}
+				}
 			}
 		}
 	}
