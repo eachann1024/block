@@ -2002,8 +2002,19 @@ func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bo
 		return true
 	}
 
-	// First block empty paragraph: two-step delete confirmation!
+	// First block empty paragraph: two-step delete confirmation in full editor; direct delete in minimal mode.
 	if idx == 0 {
+		if s.minimal && !s.readOnly && s.isMarkdownNote() && len(s.doc.Blocks) > 1 && !s.hasNonEmptySelection() && isPlainEmptyParagraph(&s.doc.Blocks[0]) {
+			s.pushUndo()
+			s.spliceBlocks(0, 1, nil)
+			s.focusedBlock = 0
+			s.selAnchor = Position{Block: 0, Offset: 0}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.markDirty()
+			return true
+		}
 		if s.canArmFirstLineDelete() {
 			if s.firstLineDeleteArmed {
 				return s.ConfirmFirstLineDelete()

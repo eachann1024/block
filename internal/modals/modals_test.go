@@ -478,18 +478,23 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 		}
 	}
 
-	// Real UI wheel events WITHOUT Shift on both header (y=22) and editor body (y=260) switch slots!
+	// Plain vertical wheel on editor body (y=260) stays inside editor without switching slots;
+	// Shift+wheel on body or plain wheel on header (y=22) switches slots.
 	if q.Session().CanScrollVertically() {
 		t.Fatalf("expected short slot not to report vertical overflow")
 	}
 	tt.Wheel(220, 260, 0, 24)
+	if q.ActiveSlot() != 0 {
+		t.Fatalf("expected plain vertical wheel on editor body NOT to switch slot, got %d", q.ActiveSlot())
+	}
+	tt.Wheel(220, 22, 0, 24)
 	if q.ActiveSlot() != 1 {
-		t.Fatalf("expected vertical wheel on editor body without Shift to advance to slot 1, got %d", q.ActiveSlot())
+		t.Fatalf("expected wheel on header to advance to slot 1, got %d", q.ActiveSlot())
 	}
 	time.Sleep(170 * time.Millisecond)
 	tt.Wheel(220, 22, 0, -24)
 	if q.ActiveSlot() != 0 {
-		t.Fatalf("expected upward wheel on header without Shift to return to slot 0, got %d", q.ActiveSlot())
+		t.Fatalf("expected upward wheel on header to return to slot 0, got %d", q.ActiveSlot())
 	}
 	time.Sleep(170 * time.Millisecond)
 
@@ -508,15 +513,13 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 		t.Fatalf("expected negative DY after cooldown to move back to slot 0, got %d", got)
 	}
 
-	// Quick Note matches original Thinkly QuickNoteApp:
-	// - NO empty-line grey hint band ("开始输入… / 、 菜单") and NO 56px left side-handle gutter;
-	// - Full Block Editor capabilities (selection toolbar, slash menu, rich blocks) stay enabled.
+	// Quick Note retains focused empty-line hint band & compact "/" keycap while omitting 56px side-handle gutter.
 	q.SetText("")
 	internalui.ClearTargets()
 	tt.Frame()
-	for _, unwantedProbe := range []string{"empty-line-band", "empty-hint-menu-keys"} {
-		if _, ok := internalui.TargetBounds(unwantedProbe); ok {
-			t.Fatalf("unexpected probe %q rendered in Quick Note", unwantedProbe)
+	for _, expectedProbe := range []string{"empty-line-band", "empty-hint-menu-keys"} {
+		if _, ok := internalui.TargetBounds(expectedProbe); !ok {
+			t.Fatalf("expected probe %q rendered in Quick Note", expectedProbe)
 		}
 	}
 

@@ -319,6 +319,58 @@ func blockGutterSpacing(prev, cur *model.Block) float32 {
 	return max(above, below)
 }
 
+func minimalBlockMargins(b *model.Block) (top, bottom float32) {
+	if b == nil {
+		return 8, 8
+	}
+	switch b.Kind {
+	case model.BlockHeading1:
+		return 0, 6
+	case model.BlockHeading2:
+		return 18, 6
+	case model.BlockHeading3:
+		return 14, 5
+	case model.BlockHeading4:
+		return 12, 4
+	case model.BlockHeading5, model.BlockHeading6:
+		return 10, 3
+	case model.BlockQuote:
+		return 10, 10
+	case model.BlockDivider:
+		return 12, 12
+	default:
+		return 8, 8
+	}
+}
+
+func (s *Session) blockGap(prev, cur *model.Block) float32 {
+	if !s.minimal {
+		return blockGutterSpacing(prev, cur)
+	}
+	if prev == nil {
+		return 0
+	}
+	if prev.Kind.IsList() && cur.Kind.IsList() {
+		return 4
+	}
+	_, above := minimalBlockMargins(prev)
+	below, _ := minimalBlockMargins(cur)
+	if prev.Kind == model.BlockHeading1 && !cur.Kind.IsHeading() && cur.Kind != model.BlockDivider && cur.Kind != model.BlockTable {
+		below = 0
+	}
+	if prev.Kind == model.BlockTable {
+		nextMT := below
+		if cur.Kind == model.BlockTable {
+			nextMT = 14
+		}
+		return max(10+nextMT-24, 0)
+	}
+	if cur.Kind == model.BlockTable {
+		return max(above, 2) + 12
+	}
+	return max(above, below)
+}
+
 func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 	pal := theme.Ocean()
 	b := &s.doc.Blocks[idx]
@@ -331,7 +383,7 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 			break
 		}
 	}
-	topGap := blockGutterSpacing(prev, b)
+	topGap := s.blockGap(prev, b)
 	leftPad := float32(0)
 	rightPad := editorRightInset
 	if s.minimal {
@@ -667,10 +719,30 @@ func blockTextMetrics(kind model.BlockKind) (fontSize float32, weight int, lineH
 	}
 }
 
+func (s *Session) textMetrics(kind model.BlockKind) (fontSize float32, weight int, lineHeight float32) {
+	if s.minimal {
+		switch kind {
+		case model.BlockHeading1:
+			return 22, 600, 1.28
+		case model.BlockHeading2:
+			return 19, 600, 1.32
+		case model.BlockHeading3:
+			return 17, 600, 1.36
+		case model.BlockHeading4:
+			return 16, 600, 1.4
+		case model.BlockHeading5:
+			return 15, 600, 1.45
+		case model.BlockHeading6:
+			return 14, 500, 1.45
+		}
+	}
+	return blockTextMetrics(kind)
+}
+
 func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, isFocused, readOnly, deleteArmed bool) {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
-	fontSize, weight, lh := blockTextMetrics(b.Kind)
+	fontSize, weight, lh := s.textMetrics(b.Kind)
 
 	wrap := ui.Column(c.Key("text-wrap")).FillWidth()
 	qDepth := b.QuoteDepth
