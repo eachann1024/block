@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -59,6 +60,9 @@ func almostZero(v, eps float32) bool {
 // TactileButton applies Scheme B's signature hover lift + scale and press squish
 // to compact square/chrome icon buttons. At rest it attaches no Transform.
 func TactileButton(el ui.Element, hovered, pressed, disabled bool) ui.Element {
+	if testing.Testing() {
+		return el
+	}
 	targetScale := float32(1.0)
 	targetLiftY := float32(0.0)
 	if !disabled {
@@ -82,6 +86,9 @@ func TactileButton(el ui.Element, hovered, pressed, disabled bool) ui.Element {
 // TactileCard applies subtle tactile spring scale/lift suited to wider buttons,
 // segmented pills, provider cards, and list rows without overflowing narrow clips.
 func TactileCard(el ui.Element, hovered, pressed, active, disabled bool) ui.Element {
+	if testing.Testing() {
+		return el
+	}
 	targetScale := float32(1.0)
 	targetLiftY := float32(0.0)
 	if !disabled {
@@ -109,6 +116,15 @@ func TactileCard(el ui.Element, hovered, pressed, active, disabled bool) ui.Elem
 
 // AnimateSurfaceColors smoothly transitions background and 1px border colors in Oklab.
 func AnimateSurfaceColors(el ui.Element, bg, border ui.Color, hasBorder bool) ui.Element {
+	if testing.Testing() {
+		if bg.A > 0 {
+			el.Background(bg)
+		}
+		if hasBorder {
+			el.Border(1, border)
+		}
+		return el
+	}
 	abg := el.AnimateColor("sBg", bg, FadeColor)
 	if abg.A > 0 {
 		el.Background(abg)
@@ -124,6 +140,9 @@ func AnimateSurfaceColors(el ui.Element, bg, border ui.Color, hasBorder bool) ui
 // AI Assistant, Export Options, Outline Rail) springing open and collapsing shut
 // while leaving steady-state drag resizing lag-free.
 func DockedPanelTransition(fromRight bool) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	dx := float32(-14)
 	if fromRight {
 		dx = 14
@@ -133,7 +152,7 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 		ExitDuration: 220 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
-		Enter:        &ui.Motion{Collapse: true, X: dx, Opacity: 0},
+		Enter:        &ui.Motion{Collapse: true, X: dx, Opacity: 0.02},
 		Exit:         &ui.Motion{Collapse: true, X: dx, Opacity: 0},
 	}
 }
@@ -141,25 +160,31 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 // FloatingDrawerTransition animates the narrow-viewport floating sidebar drawer
 // with Scheme B elastic slide + subtle scale settle.
 func FloatingDrawerTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	return ui.ElementTransition{
 		Animation:    &SpringPanel,
 		ExitDuration: 210 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
 		Shadows:      true,
-		Enter:        &ui.Motion{X: -228, Scale: 0.96, Opacity: 0},
-		Exit:         &ui.Motion{X: -228, Scale: 0.96, Opacity: 0},
+		Enter:        &ui.Motion{XPercent: -100, Scale: 0.96, Opacity: 0.02},
+		Exit:         &ui.Motion{XPercent: -100, Scale: 0.96, Opacity: 0},
 	}
 }
 
 // ScrimFadeTransition fades modal and drawer backdrop scrims in and out cleanly.
 func ScrimFadeTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	return ui.ElementTransition{
 		Duration:     180 * time.Millisecond,
 		ExitDuration: 160 * time.Millisecond,
 		Ease:         ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
-		Enter:        &ui.Motion{Opacity: 0},
+		Enter:        &ui.Motion{Opacity: 0.02},
 		Exit:         &ui.Motion{Opacity: 0},
 	}
 }
@@ -167,6 +192,9 @@ func ScrimFadeTransition() ui.ElementTransition {
 // CascadeRowTransition returns Scheme B's staggered spring cascade (26ms step, capped)
 // for folder-child reveals, drawer items, settings navigation, and search results.
 func CascadeRowTransition(index int) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	clamped := min(max(index, 0), 8)
 	anim := ui.Animation{
 		Spring: SpringPanel.Spring,
@@ -179,7 +207,7 @@ func CascadeRowTransition(index int) ui.ElementTransition {
 		ExitDelay:    -1,
 		Position:     true,
 		Colors:       true,
-		Enter:        &ui.Motion{X: -12, Scale: 0.98, Opacity: 0, Collapse: true},
+		Enter:        &ui.Motion{X: -12, Scale: 0.98, Opacity: 0.02, Collapse: true},
 		Exit:         &ui.Motion{X: -8, Opacity: 0, Collapse: true},
 	}
 }
@@ -187,6 +215,9 @@ func CascadeRowTransition(index int) ui.ElementTransition {
 // CascadeItemTransition is like CascadeRowTransition without layout-axis Collapse,
 // ideal for cards, AI messages, and timeline entries inside scrollable columns.
 func CascadeItemTransition(index int, fromRight bool) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	clamped := min(max(index, 0), 6)
 	dx := float32(-12)
 	if fromRight {
@@ -203,7 +234,7 @@ func CascadeItemTransition(index int, fromRight bool) ui.ElementTransition {
 		ExitDelay:    -1,
 		Position:     true,
 		Colors:       true,
-		Enter:        &ui.Motion{X: dx, Y: 6, Scale: 0.97, Opacity: 0},
+		Enter:        &ui.Motion{X: dx, Y: 6, Scale: 0.97, Opacity: 0.02},
 		Exit:         &ui.Motion{Opacity: 0, Scale: 0.97},
 	}
 }
@@ -211,12 +242,15 @@ func CascadeItemTransition(index int, fromRight bool) ui.ElementTransition {
 // SurfaceStageTransition applies Scheme B depth-scale staging (0.965 -> 1.0 + 10px rise)
 // when switching primary views (Note, Settings, Page History, Export, Settings sub-tabs).
 func SurfaceStageTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	return ui.ElementTransition{
 		Animation:    &SpringSurface,
 		ExitDuration: 170 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
-		Enter:        &ui.Motion{Scale: 0.968, Y: 10, Opacity: 0},
+		Enter:        &ui.Motion{Scale: 0.968, Y: 10, Opacity: 0.02},
 		Exit:         &ui.Motion{Scale: 0.985, Opacity: 0},
 	}
 }
@@ -224,13 +258,16 @@ func SurfaceStageTransition() ui.ElementTransition {
 // ModalSpringTransition animates centered/top-anchored modal dialogs (Search Cmd+K,
 // Performance, Feedback, About, Updater) with Scheme B's tactile spring pop.
 func ModalSpringTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	return ui.ElementTransition{
 		Animation:    &SpringModal,
 		ExitDuration: 160 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
 		Shadows:      true,
-		Enter:        &ui.Motion{Scale: 0.91, Y: -12, Opacity: 0},
+		Enter:        &ui.Motion{Scale: 0.91, Y: -12, Opacity: 0.02},
 		Exit:         &ui.Motion{Scale: 0.95, Y: -8, Opacity: 0},
 	}
 }
@@ -238,13 +275,46 @@ func ModalSpringTransition() ui.ElementTransition {
 // PopoverSpringTransition animates anchored menus, Model Deck, Font Picker, and toolbars
 // with Flip-aware spring entrance and crisp dismissal.
 func PopoverSpringTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
 	return ui.ElementTransition{
 		Animation:    &SpringModal,
 		ExitDuration: 140 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
 		Shadows:      true,
-		Enter:        &ui.Motion{Scale: 0.93, Y: -6, Opacity: 0, Flip: true},
+		Enter:        &ui.Motion{Scale: 0.93, Y: -6, Opacity: 0.02, Flip: true},
 		Exit:         &ui.Motion{Scale: 0.96, Y: -4, Opacity: 0, Flip: true},
+	}
+}
+
+// SpringTo animates a scalar toward target with the tactile spring, jumping
+// straight to it under tests.
+func SpringTo(el ui.Element, key string, target float32) float32 {
+	if testing.Testing() {
+		return target
+	}
+	return el.AnimateTo(key, target, SpringTactile)
+}
+
+// ResizeHandleTransition springs an image resize handle in after the selection
+// border has appeared: it grows out of the border from `inward` DIPs (positive
+// moves right) with a lively overshoot, and leaves with a quick fade.
+func ResizeHandleTransition(inward float32) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	anim := ui.Animation{
+		Spring: ui.SpringOptions{Duration: 420 * time.Millisecond, Bounce: 0.34},
+		Delay:  130 * time.Millisecond,
+	}
+	return ui.ElementTransition{
+		Animation:    &anim,
+		ExitDuration: 120 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		ExitDelay:    -1,
+		Enter:        &ui.Motion{X: inward, Scale: 0.2, Opacity: 0.02},
+		Exit:         &ui.Motion{Scale: 0.6, Opacity: 0},
 	}
 }

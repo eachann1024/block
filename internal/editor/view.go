@@ -511,21 +511,31 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 						if isCollapsedDrag {
 							handleTop = max((s.scale(theme.HeightCompact)-btn24)*0.5, -topGap)
 						}
-						ic14 := s.scale(14)
+						icGutter := s.scale(theme.IconChrome)
+						icGrip := s.scale(theme.IconAction)
 						strip := ui.Row(c.Key("handle-strip")).Absolute().Left(0).Right(0).Top(handleTop).Height(btn24).
-							Justify(ui.End).AlignItems(ui.Center).Gap(s.scale(2)).PassThrough()
+							Justify(ui.End).AlignItems(ui.Center).Gap(s.scale(2)).PassThrough().
+							Transition(appUi.PopoverSpringTransition())
 						strip.Children(func() {
 							if showDeleteArm {
 								delBtn := ui.ButtonBase(c.Key("first-line-delete-badge")).Size(btn24, btn24).Center().
-									Radius(theme.RadiusSM).Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.4)).
+									Radius(theme.RadiusSM).
 									KeepFocus().Cursor(ui.CursorPointer).Label(theme.Tr("删除空行", "Delete empty line"))
+								delHovered := delBtn.Hovered()
+								delPressed := delBtn.Pressed()
+								delBG := pal.DangerSurface
+								if delPressed {
+									delBG = pal.Danger.Alpha(0.22)
+								}
+								appUi.AnimateSurfaceColors(delBtn, delBG, pal.Danger.Alpha(0.4), true)
+								appUi.TactileButton(delBtn, delHovered, delPressed, false)
 								appUi.TooltipTrigger(c, delBtn,
 									theme.Tr("再按 ⌫ 或点击", "Press ⌫ or click"),
 									theme.Tr("删除首行", "to delete first line"),
 									true,
 								)
 								delBtn.Children(func() {
-									icons.Draw(c, icons.KeyBackspace, ic14, pal.MonoIconColors(pal.Danger))
+									icons.DrawAnimated(c, icons.KeyBackspace, icGrip, pal.MonoIconColors(pal.Danger), delHovered || delPressed)
 								})
 								appUi.Probe(delBtn, "first-line-delete-badge")
 								if delBtn.Clicked() {
@@ -558,7 +568,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 										Label:       theme.Tr("插入块", "Insert block"),
 										TooltipSpec: &addTip,
 										Size:        btn24,
-										IconSize:    ic14,
+										IconSize:    icGutter,
 									})
 									addBtn.KeepFocus()
 									s.recordOverlayBtn(addID, addBtn)
@@ -619,22 +629,24 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								} else {
 									grip.Cursor(ui.CursorGrab)
 								}
+								gripBG := ui.Transparent
 								if gripActive || gripPressed || gripHovered {
-									grip.Background(gripHoverBG)
+									gripBG = gripHoverBG
 								}
+								appUi.AnimateSurfaceColors(grip, gripBG, ui.Transparent, false)
+								appUi.TactileButton(grip, gripHovered || gripActive, gripPressed, false)
 								gripIcon := pal.MonoIconColors(pal.TextSecondary)
 								if gripActive || gripPressed || gripHovered {
 									gripIcon = pal.DuoIconColors(pal.Text)
 								}
 								grip.Children(func() {
-									icons.Draw(c, icons.Drag, ic14, gripIcon)
+									icons.DrawAnimated(c, icons.Drag, icGrip, gripIcon, gripActive || gripPressed || gripHovered)
 								})
 								appUi.Probe(grip, gripID)
 								s.recordOverlayBtn(gripID, grip)
 								s.handleBlockGripGesture(c, grip, idx, id)
 							}
 							if showFold {
-								glyph := icons.ChevronDown
 								tip := theme.Tr("折叠章节", "Collapse section")
 								childCount := s.headingSectionChildCount(idx)
 								var detail string
@@ -642,7 +654,6 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 									detail = fmt.Sprintf(theme.Tr("收起 %d 项", "Hide %d"), childCount)
 								}
 								if isFolded {
-									glyph = icons.ChevronRight
 									tip = theme.Tr("展开章节", "Expand section")
 									if childCount > 0 {
 										detail = fmt.Sprintf(theme.Tr("展开 %d 项", "Show %d"), childCount)
@@ -655,14 +666,37 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 										SplitDetail: detail != "",
 									}},
 								}
-								foldBtn := appUi.IconButton(c, glyph, appUi.IconButtonOptions{
-									ID:          fmt.Sprintf("block-fold-%d", id),
-									Label:       theme.Tr("折叠章节", "Toggle fold"),
-									TooltipSpec: &foldSpec,
-									Size:        btn24,
-									IconSize:    ic14,
+								foldID := fmt.Sprintf("block-fold-%d", id)
+								foldBtn := ui.ButtonBase(c.Key(foldID)).Size(btn24, btn24).Center().
+									Radius(theme.RadiusMD).Cursor(ui.CursorPointer).KeepFocus().
+									Label(theme.Tr("折叠章节", "Toggle fold"))
+								appUi.RichTooltip(c, foldBtn, foldSpec)
+								foldHover := foldBtn.Hovered()
+								foldPress := foldBtn.Pressed()
+								foldBG := ui.Transparent
+								if foldPress {
+									foldBG = pal.Selected
+								} else if foldHover {
+									foldBG = pal.Hover
+								}
+								appUi.AnimateSurfaceColors(foldBtn, foldBG, ui.Transparent, false)
+								appUi.TactileButton(foldBtn, foldHover, foldPress, false)
+								targetDeg := float32(90)
+								if isFolded {
+									targetDeg = 0
+								}
+								turnDeg := foldBtn.AnimateTo("foldTurn", targetDeg, appUi.SpringTactile)
+								foldBtn.Children(func() {
+									rotWrap := ui.Box(c).Size(icGutter, icGutter).Shrink(0).Center()
+									if turnDeg != 0 {
+										rotWrap.Rotate(turnDeg)
+									}
+									rotWrap.Children(func() {
+										ic := pal.HoverIconColors(foldHover || foldPress)
+										icons.DrawAnimated(c, icons.ChevronRight, icGutter, ic, foldHover || foldPress)
+									})
 								})
-								foldBtn.KeepFocus()
+								appUi.Probe(foldBtn, foldID)
 								if foldBtn.Clicked() {
 									s.pressJustBegan = false
 									s.toggleFold(id)
@@ -871,15 +905,18 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				}
 				iconBtn := ui.ButtonBase(c.Key(fmt.Sprintf("callout-icon-%d", b.ID))).Size(cBtnSz, cBtnSz).Center().
 					Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(theme.Tr("点击切换标注类型", "Click to switch callout type"))
+				iconHovered := iconBtn.Hovered()
+				iconPressed := iconBtn.Pressed()
+				iconBG, iconBD := ui.Transparent, ui.Transparent
 				if open {
-					iconBtn.Background(pal.Paper).Border(1, st.Accent)
-				} else if iconBtn.Hovered() {
-					iconBtn.Background(pal.Paper).Border(1, st.Border)
-				} else {
-					iconBtn.Border(1, ui.Transparent)
+					iconBG, iconBD = pal.Paper, st.Accent
+				} else if iconHovered || iconPressed {
+					iconBG, iconBD = pal.Paper, st.Border
 				}
+				appUi.AnimateSurfaceColors(iconBtn, iconBG, iconBD, true)
+				appUi.TactileButton(iconBtn, iconHovered, iconPressed, false)
 				iconBtn.Children(func() {
-					icons.Draw(c, icons.Callout, s.scale(16), theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent})
+					icons.DrawAnimated(c, icons.Callout, s.scale(16), theme.IconColors{Line: st.Accent, Fill: st.IconFill, Accent: st.Accent}, open || iconHovered || iconPressed)
 				})
 				appUi.Probe(iconBtn, "callout-icon")
 				if iconBtn.Clicked() {
@@ -889,16 +926,19 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				pillID := fmt.Sprintf("callout-pill-%d", b.ID)
 				pillBtn := ui.ButtonBase(c.Key(pillID)).Height(cBtnSz).PaddingX(s.scale(4)).Gap(s.scale(4)).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(calloutLabel(curKind))
+				pillHovered := pillBtn.Hovered()
+				pillPressed := pillBtn.Pressed()
+				pillBG, pillBD := ui.Transparent, ui.Transparent
 				if open {
-					pillBtn.Background(pal.Paper).Border(1, st.Accent)
-				} else if pillBtn.Hovered() {
-					pillBtn.Background(pal.Paper).Border(1, st.Border)
-				} else {
-					pillBtn.Border(1, ui.Transparent)
+					pillBG, pillBD = pal.Paper, st.Accent
+				} else if pillHovered || pillPressed {
+					pillBG, pillBD = pal.Paper, st.Border
 				}
+				appUi.AnimateSurfaceColors(pillBtn, pillBG, pillBD, true)
+				appUi.TactileCard(pillBtn, pillHovered, pillPressed, open, false)
 				pillBtn.Children(func() {
 					ui.Text(c, calloutLabel(curKind)).FontSize(s.scale(14)).FontWeight(theme.WeightTitle).TextColor(st.Text).SingleLine()
-					icons.Draw(c, icons.TbChevron, s.scale(12), pal.MonoIconColors(st.Text))
+					icons.DrawAnimated(c, icons.TbChevron, s.scale(theme.IconInline), pal.MonoIconColors(st.Text), open || pillHovered || pillPressed)
 				})
 				appUi.Probe(pillBtn, pillID)
 				appUi.Probe(pillBtn, "callout-pill")
@@ -1512,15 +1552,27 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 					srcBtn := ui.ButtonBase(c.Key(fmt.Sprintf("cb-source-toggle-%d", id))).Height(theme.HeightMicro).PaddingX(theme.Space6).
 						Radius(theme.RadiusSM).AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Label(lbl)
-					if srcOpen || srcBtn.Hovered() {
-						srcBtn.Background(pal.Hover)
+					srcHovered := srcBtn.Hovered()
+					srcPressed := srcBtn.Pressed()
+					srcBG := ui.Transparent
+					if srcOpen || srcHovered || srcPressed {
+						srcBG = pal.Hover
 					}
+					appUi.AnimateSurfaceColors(srcBtn, srcBG, ui.Transparent, false)
+					appUi.TactileCard(srcBtn, srcHovered, srcPressed, srcOpen, false)
 					srcBtn.Children(func() {
-						g := icons.ChevronRight
+						srcDegTarget := float32(0)
 						if srcOpen {
-							g = icons.ChevronDown
+							srcDegTarget = 90
 						}
-						icons.Draw(c, g, theme.IconInline, pal.HoverIconColors(srcBtn.Hovered()))
+						srcDeg := srcBtn.AnimateTo("srcChev", srcDegTarget, appUi.SpringTactile)
+						rotWrap := ui.Box(c).Size(theme.IconAction, theme.IconAction).Shrink(0).Center()
+						if srcDeg != 0 {
+							rotWrap.Rotate(srcDeg)
+						}
+						rotWrap.Children(func() {
+							icons.DrawAnimated(c, icons.ChevronRight, theme.IconAction, pal.HoverIconColors(srcHovered || srcPressed), srcHovered || srcPressed)
+						})
 						ui.Text(c, theme.Tr("源码", "Source")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					})
 					appUi.Probe(srcBtn, fmt.Sprintf("cb-source-toggle-%d", id))
@@ -1556,13 +1608,19 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					pillHoverBG := codeCols.PillHoverBG
 					langID := fmt.Sprintf("code-lang-%d", id)
 					langBtn := ui.ButtonBase(c.Key(langID)).Height(theme.HeightMicro).PaddingX(theme.Space8).
-						Radius(theme.RadiusSM).Center().Background(pillBG).Border(1, pal.MenuSeparator).
+						Radius(theme.RadiusSM).Center().
 						Cursor(ui.CursorPointer).Label(languageDisplayLabel(b.Language))
+					langHovered := langBtn.Hovered()
+					langPressed := langBtn.Pressed()
+					langActive := s.codeLangMenuBlock == id
+					langBG := pillBG
 					langFG := pillFG
-					if langBtn.Hovered() || s.codeLangMenuBlock == id {
-						langBtn.Background(pillHoverBG)
+					if langHovered || langPressed || langActive {
+						langBG = pillHoverBG
 						langFG = pillHoverFG
 					}
+					appUi.AnimateSurfaceColors(langBtn, langBG, pal.MenuSeparator, true)
+					appUi.TactileCard(langBtn, langHovered, langPressed, langActive, false)
 					langBtn.Children(func() {
 						ui.Text(c, languageDisplayLabel(b.Language)).FontSize(theme.FontMeta).LineHeight(1.5).
 							FontWeight(theme.WeightRegular).TextColor(langFG).SingleLine()
@@ -2092,19 +2150,20 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						addCol.Center()
 					}
 					addColActive := addCol.Hovered() || addCol.Pressed()
+					addColBG := pal.CodeBlockBG
 					if addColActive {
-						addCol.Background(pal.Hover)
-					} else {
-						addCol.Background(pal.CodeBlockBG)
+						addColBG = pal.Hover
 					}
+					appUi.AnimateSurfaceColors(addCol, addColBG, ui.Transparent, false)
+					appUi.TactileCard(addCol, addCol.Hovered(), addCol.Pressed(), false, false)
 					addCol.Children(func() {
 						if stickyOK {
 							ui.Box(c.Key("table-add-col-icon")).Absolute().Left(0).Right(0).Top(iconTop).Height(iconSz).
 								Center().IgnoreInput(true).Children(func() {
-								icons.Draw(c, icons.Plus, iconSz, pal.HoverIconColors(addColActive))
+								icons.DrawAnimated(c, icons.Plus, iconSz, pal.HoverIconColors(addColActive), addColActive)
 							})
 						} else {
-							icons.Draw(c, icons.Plus, iconSz, pal.HoverIconColors(addColActive))
+							icons.DrawAnimated(c, icons.Plus, iconSz, pal.HoverIconColors(addColActive), addColActive)
 						}
 					})
 					appUi.Probe(addCol, "table-add-col")
@@ -2122,13 +2181,15 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				addRow := ui.ButtonBase(c.Key("table-add-row")).Fill().Center().
 					Radius(theme.RadiusXS).Cursor(ui.CursorPointer).
 					Label(theme.Tr("添加行", "Add row"))
-				if addRow.Hovered() || addRow.Pressed() {
-					addRow.Background(pal.Hover)
-				} else {
-					addRow.Background(pal.CodeBlockBG)
+				addRowActive := addRow.Hovered() || addRow.Pressed()
+				addRowBG := pal.CodeBlockBG
+				if addRowActive {
+					addRowBG = pal.Hover
 				}
+				appUi.AnimateSurfaceColors(addRow, addRowBG, ui.Transparent, false)
+				appUi.TactileCard(addRow, addRow.Hovered(), addRow.Pressed(), false, false)
 				addRow.Children(func() {
-					icons.Draw(c, icons.Plus, s.scale(14), pal.HoverIconColors(addRow.Hovered() || addRow.Pressed()))
+					icons.DrawAnimated(c, icons.Plus, s.scale(theme.IconAction), pal.HoverIconColors(addRowActive), addRowActive)
 				})
 				appUi.Probe(addRow, "table-add-row")
 				if addRow.Clicked() {
@@ -2591,24 +2652,22 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 							Width(hitW).Height(hitH).MaxHeightPercent(88).Center().Cursor(ui.CursorResizeColumn)
 						hovered := h.Hovered()
 						dx, _, held := h.Dragged()
-						hot := held || hovered
-						pillW := s.scale(theme.ImageResizePillWidth)
-						pillH := s.scale(theme.ImageResizePillHeight)
+						pillW := theme.ImageResizePillWidth
+						pillH := theme.ImageResizePillHeight
 						pillFill := pal.Accent
 						if held {
-							pillW = s.scale(theme.ImageResizePillHotWidth)
-							pillH = s.scale(theme.ImageResizePillHotH)
+							pillW, pillH = theme.ImageResizePillHotWidth, theme.ImageResizePillHotH
 							pillFill = pal.AccentPressed
 						} else if hovered {
-							pillW = s.scale(theme.ImageResizePillHotWidth)
-							pillH = s.scale(theme.ImageResizePillHotH)
+							pillW, pillH = theme.ImageResizePillHotWidth, theme.ImageResizePillHotH
 							pillFill = pal.AccentHover
 						}
 						h.Children(func() {
-							pill := ui.Box(c).Width(pillW).Height(pillH).MaxHeightPercent(100).
+							pill := ui.Box(c).MaxHeightPercent(100).
 								Radius(theme.RadiusPill).Background(pillFill).Border(haloW, pal.Paper)
+							pill.Width(s.scale(appUi.SpringTo(pill, "w", pillW)))
+							pill.Height(s.scale(appUi.SpringTo(pill, "h", pillH)))
 							appUi.Elevate(pill, theme.ElevationRaised)
-							_ = hot
 						})
 						appUi.Probe(h, side.probe)
 						if held {
@@ -2691,7 +2750,7 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 		bar := ui.Row(c.Key(fmt.Sprintf("image-toolbar-%d", id))).Absolute().Left(x).Top(y).
 			Height(38).PaddingX(theme.Space6).Gap(theme.Space4).AlignItems(ui.Center).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
-			Transition(appUi.PopupTransition())
+			Transition(appUi.PopoverSpringTransition())
 		appUi.Elevate(bar, theme.ElevationPopover)
 		appUi.Probe(bar, "image-toolbar")
 		s.recordOverlayPanel("image-toolbar", bar)

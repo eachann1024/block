@@ -75,23 +75,6 @@ func ClampChatWidth(w float32) float32 {
 	return w
 }
 
-// FitsSaved reports whether the saved sidebar and chat widths fit beside the page floor.
-func FitsSaved(in ShellInput) bool {
-	floor := NoteFloor
-	if in.InSettings {
-		floor = SettingsFloor
-	}
-	sidebar := float32(0)
-	if in.SidebarVisible {
-		sidebar = ClampSidebarWidth(in.SidebarDesiredW)
-	}
-	if in.ChatVisible && !in.InSettings && !in.ChatFullscreen {
-		threeCol := max(floor, ThreeColumnNoteFloor)
-		return sidebar+threeCol+ClampChatWidth(in.ChatDesiredW) <= in.WindowWidth+0.5
-	}
-	return sidebar+floor <= in.WindowWidth+0.5
-}
-
 // ChatLimit returns the widest chat width a drag may commit without pushing the note under its floor.
 func ChatLimit(windowW, sidebarW float32, sidebarCollapsed bool, chatMin, chatMax float32) float32 {
 	threeColFloor := max(NoteFloor, ThreeColumnNoteFloor)

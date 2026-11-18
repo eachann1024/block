@@ -522,7 +522,8 @@ func (s *Session) renderTrailingAddOverlay(c *ui.Context, readOnly bool) {
 	}
 	left := slot.btnRect.X - s.editorRect.X
 	top := slot.btnRect.Y - s.editorRect.Y
-	wrap := ui.Box(c.Key("trailing-add-wrap")).Absolute().Left(left).Top(top)
+	wrap := ui.Box(c.Key("trailing-add-wrap")).Absolute().Left(left).Top(top).
+		Transition(appUi.PopoverSpringTransition())
 	wrap.Children(func() {
 		tip := appUi.TooltipSpec{
 			Placement: appUi.TooltipAbove,
@@ -535,7 +536,7 @@ func (s *Session) renderTrailingAddOverlay(c *ui.Context, readOnly bool) {
 			Label:       theme.Tr("添加块", "Add block"),
 			TooltipSpec: &tip,
 			Size:        s.scale(24),
-			IconSize:    s.scale(14),
+			IconSize:    s.scale(theme.IconChrome),
 		})
 		addBtn.KeepFocus()
 		s.recordOverlayBtn("trailing-add", addBtn)

@@ -164,15 +164,17 @@ type SidebarProps struct {
 type flatTreeRow struct {
 	Entry    model.FileEntry
 	Depth    int
+	ChildIdx int
 	Expanded bool
 }
 
 func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bool, out *[]flatTreeRow) {
-	for _, e := range entries {
+	for idx, e := range entries {
 		exp := e.IsDir && expanded[e.Path]
 		*out = append(*out, flatTreeRow{
 			Entry:    e,
 			Depth:    depth,
+			ChildIdx: idx,
 			Expanded: exp,
 		})
 		if exp && len(e.Children) > 0 {
@@ -446,23 +448,40 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 					Label(nbTitle)
 				swHovered := sw.Hovered()
+				swPressed := sw.Pressed()
+				swBG := ui.Transparent
+				swBD := ui.Transparent
 				if p.State.SwitcherOpen {
-					sw.Background(pal.Selected).Border(1, pal.Accent)
+					swBG = pal.Selected
+					swBD = pal.Accent
+				} else if swPressed {
+					swBG = pal.Selected
 				} else if swHovered {
-					sw.Background(pal.Hover).Border(1, ui.Transparent)
-				} else {
-					sw.Border(1, ui.Transparent)
+					swBG = pal.Hover
 				}
+				blockui.AnimateSurfaceColors(sw, swBG, swBD, true)
+				blockui.TactileCard(sw, swHovered, swPressed, p.State.SwitcherOpen, false)
 				sw.Children(func() {
 					ic := pal.MonoIconColors(pal.Text)
 					if p.State.SwitcherOpen {
 						ic = pal.DuoIconColors(pal.Accent)
-					} else if swHovered {
+					} else if swHovered || swPressed {
 						ic = pal.DuoIconColors(pal.Text)
 					}
-					icons.Draw(c, icons.FolderOpen, theme.IconRow, ic)
+					icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-					icons.Draw(c, icons.ChevronUp, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					chevTarget := float32(0)
+					if p.State.SwitcherOpen {
+						chevTarget = 180
+					}
+					chevDeg := sw.AnimateTo("nbChev", chevTarget, blockui.SpringTactile)
+					chevWrap := ui.Box(c).Size(theme.IconInline, theme.IconInline).Shrink(0).Center()
+					if chevDeg != 0 {
+						chevWrap.Rotate(chevDeg)
+					}
+					chevWrap.Children(func() {
+						icons.Draw(c, icons.ChevronUp, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+					})
 				})
 				blockui.Probe(sw, "notebook-switcher")
 				if b := sw.Bounds(); b.W > 0 {
@@ -478,19 +497,24 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					c.Key("updater-badge-button")
 					upBtn := ui.ButtonBase(c).Size(30, 30).Shrink(0).Center().
 						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-						Background(pal.Paper).Border(1, pal.BtnBorder).
 						Label(theme.Tr("有可用更新", "Update available"))
 					upHover := upBtn.Hovered()
-					if upHover {
-						upBtn.Background(pal.Hover)
+					upPress := upBtn.Pressed()
+					upBG := pal.Paper
+					if upPress {
+						upBG = pal.Selected
+					} else if upHover {
+						upBG = pal.Hover
 					}
+					blockui.AnimateSurfaceColors(upBtn, upBG, pal.BtnBorder, true)
+					blockui.TactileButton(upBtn, upHover, upPress, false)
 					blockui.Tooltip(c, upBtn, theme.Tr("有可用更新", "Update available"))
 					upBtn.Children(func() {
 						ic := pal.MonoIconColors(pal.TextSecondary)
-						if upHover {
+						if upHover || upPress {
 							ic = pal.DuoIconColors(pal.Text)
 						}
-						icons.Draw(c, icons.Download, theme.IconChrome, ic)
+						icons.DrawAnimated(c, icons.Download, theme.IconChrome, ic, upHover || upPress)
 						ui.Box(c).Absolute().Top(3).Right(3).Size(5, 5).Radius(theme.RadiusPill).Background(pal.Accent)
 					})
 					blockui.Probe(upBtn, "updater-badge-button")
@@ -585,6 +609,9 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	btn := ui.ButtonBase(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
+	if r.Depth > 0 {
+		btn.Transition(blockui.CascadeRowTransition(r.ChildIdx))
+	}
 	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
 	if !entry.IsDir {
 		btn.ObserveInput(func(ev ui.InputEvent) {
@@ -654,30 +681,52 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	}
 
 	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	rowBG := ui.Transparent
+	rowBD := ui.Transparent
 	switch {
 	case isDropInto:
-		btn.Background(pal.Selected).Border(1, pal.Accent)
+		rowBG = pal.Selected
+		rowBD = pal.Accent
 	case isDropReorder:
-		btn.Background(pal.Hover).Border(1, ui.Transparent)
+		rowBG = pal.Hover
 	case highlighted:
-		btn.Background(pal.Selected).Border(1, pal.Accent)
-	case focused:
-		btn.Background(pal.Selected).Border(1, ui.Transparent)
+		rowBG = pal.Selected
+		rowBD = pal.Accent
+	case focused || pressed:
+		rowBG = pal.Selected
 	case menuTarget || hovered:
-		btn.Background(pal.Hover).Border(1, ui.Transparent)
-	default:
-		btn.Border(1, ui.Transparent)
+		rowBG = pal.Hover
+	}
+	blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
+	if pressed {
+		sc := btn.AnimateTo("trSc", 0.98, blockui.SpringTactile)
+		if sc != 1 {
+			btn.Scale(sc, sc)
+		}
+	} else {
+		sc := btn.AnimateTo("trSc", 1.0, blockui.SpringTactile)
+		if sc != 1 {
+			btn.Scale(sc, sc)
+		}
 	}
 
 	var moreClicked bool
 	var moreBounds ui.Rect
 	btn.Children(func() {
 		if entry.IsDir {
-			chev := icons.TbChevronRight
+			chevTarget := float32(0)
 			if r.Expanded {
-				chev = icons.TbChevron
+				chevTarget = 90
 			}
-			icons.Draw(c, chev, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			chevDeg := btn.AnimateTo("dirChev", chevTarget, blockui.SpringTactile)
+			chevBox := ui.Box(c).Size(theme.IconRow, theme.IconRow).Shrink(0).Center()
+			if chevDeg != 0 {
+				chevBox.Rotate(chevDeg)
+			}
+			chevBox.Children(func() {
+				icons.Draw(c, icons.TbChevronRight, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			})
 			folderGlyph := icons.Folder
 			if r.Expanded {
 				folderGlyph = icons.FolderOpen
@@ -688,7 +737,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, folderGlyph, theme.IconRow, ic)
+			icons.DrawAnimated(c, folderGlyph, theme.IconRow, ic, hovered || menuTarget)
 		} else {
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
@@ -696,7 +745,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic)
+			icons.DrawAnimated(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
 		}
 		weight := theme.WeightRegular
 		if highlighted {
@@ -711,15 +760,19 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
 				Label(theme.Tr("更多操作", "More actions"))
 			moreHover := moreBtn.Hovered()
-			if menuTarget || moreHover {
-				moreBtn.Background(pal.MenuHover)
+			morePress := moreBtn.Pressed()
+			moreBG := ui.Transparent
+			if menuTarget || moreHover || morePress {
+				moreBG = pal.MenuHover
 			}
+			blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
+			blockui.TactileButton(moreBtn, moreHover, morePress, false)
 			moreBtn.Children(func() {
 				ic := pal.MonoIconColors(pal.TextSecondary)
-				if menuTarget || moreHover {
+				if menuTarget || moreHover || morePress {
 					ic = pal.DuoIconColors(pal.Text)
 				}
-				icons.Draw(c, icons.More, theme.IconInline, ic)
+				icons.DrawAnimated(c, icons.More, theme.IconInline, ic, menuTarget || moreHover || morePress)
 			})
 			blockui.Probe(moreBtn, moreID)
 			moreBounds = moreBtn.Bounds()
@@ -935,21 +988,25 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							}
 							rowHover := row.Hovered()
 							kbActive := ix == p.State.MenuCursor
+							nbBG := ui.Transparent
 							switch {
 							case checked:
-								row.Background(pal.Selected)
+								nbBG = pal.Selected
 							case confirming || rowHover || kbActive || nbDrop:
-								row.Background(pal.MenuHover)
+								nbBG = pal.MenuHover
 							}
+							blockui.AnimateSurfaceColors(row, nbBG, ui.Transparent, false)
+							row.Transition(blockui.CascadeRowTransition(ix))
 							row.Children(func() {
 								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
 								sel.Children(func() {
 									ic := pal.MonoIconColors(pal.MenuIcon)
-									if checked || confirming || rowHover || kbActive {
+									actIco := checked || confirming || rowHover || kbActive
+									if actIco {
 										ic = pal.DuoIconColors(pal.MenuIcon)
 									}
-									icons.Draw(c, icons.Folder, theme.IconRow, ic)
+									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, rowHover || kbActive)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if checked {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
