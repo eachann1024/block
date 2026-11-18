@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"block/internal/editor"
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
@@ -935,8 +936,11 @@ func (q *QuickNoteController) pickImagesForSlot(slot int, blockID model.BlockID,
 	if !mygo.App.IsReady() {
 		return
 	}
+	q.mu.Lock()
+	win := q.win
+	q.mu.Unlock()
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+		paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
 			Title:    theme.Tr("导入图片", "Import Image"),
 			Multiple: true,
 			Filters: []mygo.FileFilter{
