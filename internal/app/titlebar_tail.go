@@ -112,7 +112,8 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 	}
 	c.Key("titlebar-action-pill")
 	ui.Row(c).Height(28).Padding(2).Gap(2).Shrink(0).AlignItems(ui.Center).
-		Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Menu).Children(func() {
+		Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Menu).
+		Transition(blockui.PopoverSpringTransition()).Children(func() {
 		renderSendAllSegment(c, p)
 		ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
 		more()
@@ -131,19 +132,25 @@ func renderSendAllSegment(c *ui.Context, p TitlebarProps) {
 	c.Key("annotations-send-all")
 	btn := ui.ButtonBase(c).Height(24).PaddingX(9).Gap(6).Shrink(0).Radius(theme.RadiusSM).Center().Label(label).Disabled(!enabled).DimDisabled(false)
 	fg := pal.TextSecondary
-	switch {
-	case active:
+	bg := ui.Transparent
+	if active {
 		fg = pal.AnnotSendFG
-		btn.Background(pal.Selected)
-	default:
+		bg = pal.Selected
+	} else {
 		btn.Opacity(0.55)
 	}
+	hovered := false
+	pressed := false
 	if enabled {
 		btn.Cursor(ui.CursorPointer)
-		if btn.Hovered() {
-			btn.Background(pal.Hover)
+		hovered = btn.Hovered()
+		pressed = btn.Pressed()
+		if hovered && !pressed {
+			bg = pal.Hover
 		}
 	}
+	blockui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	blockui.TactileCard(btn, hovered, pressed, false, !enabled)
 	btn.Children(func() {
 		if p.AnnotGenerating {
 			ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)

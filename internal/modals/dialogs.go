@@ -94,6 +94,16 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 				ui.Text(c, "Block").FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				ui.Text(c, fmt.Sprintf("%s %s", theme.Tr("版本", "Version"), blockAppVersion)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 				author := ui.ButtonBase(c.Key("about-profile")).Padding(3, 12).Radius(theme.RadiusPill).Cursor(ui.CursorPointer)
+				authorHover := author.Hovered()
+				authorPress := author.Pressed()
+				authorBG := ui.Transparent
+				if authorPress {
+					authorBG = pal.Selected
+				} else if authorHover {
+					authorBG = pal.Hover
+				}
+				internalui.AnimateSurfaceColors(author, authorBG, ui.Transparent, false)
+				internalui.TactileCard(author, authorHover, authorPress, false, false)
 				author.Children(func() { ui.Text(c, theme.Tr("作者 eachann", "Made by eachann")).FontSize(theme.FontBody).TextColor(pal.Accent) })
 				if author.Clicked() {
 					c.OpenURL("https://github.com/eachann1024")
@@ -231,12 +241,13 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 	}
 	internalui.Dialog(c, "feedback-modal", title, &open, internalui.ModalLayout{Width: width, Centered: true}, func() {
 		if m.feedbackDone {
-			doneBox := ui.Column(c.Key("feedback-done")).FillWidth().Padding(28).Gap(14).AlignItems(ui.Center)
+			doneBox := ui.Column(c.Key("feedback-done")).FillWidth().Padding(28).Gap(14).AlignItems(ui.Center).
+				Transition(internalui.SurfaceStageTransition())
 			internalui.Probe(doneBox, "feedback-done")
 			doneBox.Children(func() {
 				ui.Box(c).Size(52, 52).Radius(theme.RadiusPill).Background(pal.SuccessSurface).
 					Border(1, pal.Success).Center().Children(func() {
-					icons.Draw(c, icons.Check, 24, pal.MonoIconColors(pal.Success))
+					icons.DrawAnimated(c, icons.Check, 24, pal.MonoIconColors(pal.Success), true)
 				})
 				ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				note := theme.Tr("我们会认真看每一条反馈。", "We read every piece of feedback carefully.")
@@ -252,7 +263,8 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			return
 		}
 
-		ui.Column(c).FillWidth().Padding(24).Gap(18).Children(func() {
+		ui.Column(c.Key("feedback-form")).FillWidth().Padding(24).Gap(18).
+			Transition(internalui.SurfaceStageTransition()).Children(func() {
 			// Header.
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
@@ -474,7 +486,8 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 		if m.historyConfirmRestore {
 			ui.Row(c.Key("history-confirm-bar")).FillWidth().Padding(10, 20, 10, 20).
 				Background(pal.WarningSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.Warning).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).Children(func() {
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).
+				Transition(internalui.CascadeItemTransition(0, false)).Children(func() {
 				ui.Text(c, theme.Tr("确认用选中的历史快照覆盖当前笔记内容？", "Replace current note with this historical snapshot?")).
 					FontSize(theme.FontBody).TextColor(pal.Text)
 				ui.Row(c).Gap(8).Children(func() {
@@ -509,14 +522,20 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 							ts = s.ID
 						}
 						row := ui.ButtonBase(c.Key(rowID)).FillWidth().Padding(8, 10, 8, 10).Gap(2).
-							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(ts)
+							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(ts).
+							Transition(internalui.CascadeItemTransition(i, false))
+						hovered := row.Hovered()
+						pressed := row.Pressed()
 						if selected {
 							row.Background(pal.Selected).Border(1, pal.Accent)
-						} else if row.Hovered() {
+						} else if pressed {
+							row.Background(pal.Selected).Border(1, ui.Transparent)
+						} else if hovered {
 							row.Background(pal.Hover).Border(1, ui.Transparent)
 						} else {
 							row.Border(1, ui.Transparent)
 						}
+						internalui.TactileCard(row, hovered, pressed, selected, false)
 						row.Children(func() {
 							ui.Column(c).FillWidth().Gap(2).Children(func() {
 								ui.Text(c, ts).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
@@ -537,37 +556,40 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 			// Right preview/diff pane.
 			internalui.Scroll(c.Key("history-preview"), &m.historyScroll).Grow(1).FillHeight().
 				Padding(14, 18, 14, 18).Gap(4).Children(func() {
-				if m.historyErr != "" {
-					ui.Text(c, m.historyErr).FontSize(theme.FontBody).TextColor(pal.Danger)
-					return
-				}
-				if m.historySelectedID == "" {
-					ui.Text(c, theme.Tr("请选择左侧历史版本查看对比", "Select a snapshot on the left")).
-						FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-					return
-				}
-				if m.historyMode == "clean" {
-					ui.Text(c, m.historySnapContent).FontSize(theme.FontBody).TextColor(pal.Text)
-					return
-				}
-				for _, dl := range m.historyDiffLines {
-					bg := ui.Transparent
-					fg := pal.Text
-					prefix := "  "
-					switch dl.Kind {
-					case model.DiffDelete:
-						bg = pal.DiffDelBG
-						fg = pal.DiffDelFG
-						prefix = "- "
-					case model.DiffInsert:
-						bg = pal.DiffAddBG
-						fg = pal.DiffAddFG
-						prefix = "+ "
+				ui.Column(c.Key("history-stage-" + m.historySelectedID + "-" + m.historyMode)).
+					FillWidth().Gap(4).Transition(internalui.SurfaceStageTransition()).Children(func() {
+					if m.historyErr != "" {
+						ui.Text(c, m.historyErr).FontSize(theme.FontBody).TextColor(pal.Danger)
+						return
 					}
-					ui.Row(c).FillWidth().Padding(2, 6, 2, 6).Radius(theme.RadiusXS).Background(bg).Gap(8).Children(func() {
-						ui.Text(c, prefix+dl.Text).FontSize(theme.FontBody).TextColor(fg)
-					})
-				}
+					if m.historySelectedID == "" {
+						ui.Text(c, theme.Tr("请选择左侧历史版本查看对比", "Select a snapshot on the left")).
+							FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+						return
+					}
+					if m.historyMode == "clean" {
+						ui.Text(c, m.historySnapContent).FontSize(theme.FontBody).TextColor(pal.Text)
+						return
+					}
+					for _, dl := range m.historyDiffLines {
+						bg := ui.Transparent
+						fg := pal.Text
+						prefix := "  "
+						switch dl.Kind {
+						case model.DiffDelete:
+							bg = pal.DiffDelBG
+							fg = pal.DiffDelFG
+							prefix = "- "
+						case model.DiffInsert:
+							bg = pal.DiffAddBG
+							fg = pal.DiffAddFG
+							prefix = "+ "
+						}
+						ui.Row(c).FillWidth().Padding(2, 6, 2, 6).Radius(theme.RadiusXS).Background(bg).Gap(8).Children(func() {
+							ui.Text(c, prefix+dl.Text).FontSize(theme.FontBody).TextColor(fg)
+						})
+					}
+				})
 			})
 		})
 	})
@@ -938,7 +960,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 		ui.Column(c).FillWidth().Padding(24, 24, 20, 24).Gap(16).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					icons.Draw(c, icons.UpdateTangle, 20, pal.DuoIconColors(pal.Accent))
+					icons.DrawAnimated(c, icons.UpdateTangle, 20, pal.DuoIconColors(pal.Accent), m.updaterChecking || m.updaterUpdating)
 					ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				})
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
@@ -961,8 +983,9 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 			ui.Column(c).FillWidth().Gap(theme.Space8).Children(func() {
 				ui.Text(c, fmt.Sprintf("v%s %s", m.updaterLatest, theme.Tr("更新内容", "Release Notes"))).
 					FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				for _, item := range m.updaterNotes {
-					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
+				for i, item := range m.updaterNotes {
+					ui.Row(c.Key(fmt.Sprintf("updater-note-%d", i))).FillWidth().Gap(8).AlignItems(ui.Start).
+						Transition(internalui.CascadeItemTransition(i, false)).Children(func() {
 						ui.Text(c, "•").FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						ui.Text(c, item).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1)
 					})

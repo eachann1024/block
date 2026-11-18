@@ -2833,7 +2833,9 @@ func (w *Workspace) Render(c *ui.Context) {
 		root := ui.Column(c).Fill().Background(pal.Shell).TextColor(pal.Text).Clip()
 		blockui.Probe(root, "workspace-root")
 		root.Children(func() {
-			w.exportCtrl.Render(c)
+			ui.Column(c.Key("stage-export")).Fill().Transition(blockui.SurfaceStageTransition()).Children(func() {
+				w.exportCtrl.Render(c)
+			})
 			blockui.RenderSmokeHUD(c)
 		})
 		return
@@ -2846,39 +2848,41 @@ func (w *Workspace) Render(c *ui.Context) {
 		blockui.Probe(root, "workspace-root")
 		root.Children(func() {
 			notePath := w.historyView.NotePath
-			w.historyView.Render(
-				c,
-				func() { w.ClosePageHistory() },
-				func(id string) {
-					w.historyView.SelectVersion(id, func(snapID string) (string, error) {
-						return files.ReadHistorySnapshot(notePath, snapID)
-					}, files.DiffLines)
-					w.RequestRedraw()
-				},
-				func(delta int) {
-					w.historyView.Navigate(delta, func(snapID string) (string, error) {
-						return files.ReadHistorySnapshot(notePath, snapID)
-					}, files.DiffLines)
-					w.RequestRedraw()
-				},
-				func() { w.OpenPageHistory() },
-				func(_ string, restoredText string) {
-					preRestore, _ := w.ReadNote(notePath)
-					_, _ = files.RecordHistorySnapshot(notePath, preRestore, theme.Tr("恢复前快照", "Before restore"))
-					_ = w.WriteNote(notePath, restoredText)
-					w.historyView.Close()
-					w.mu.Lock()
-					w.historyToast = &HistoryToast{
-						Active:      true,
-						NotePath:    notePath,
-						Message:     theme.Tr("已恢复到所选历史版本", "Restored selected snapshot"),
-						UndoContent: preRestore,
-						CanUndo:     preRestore != restoredText,
-					}
-					w.mu.Unlock()
-					w.RequestRedraw()
-				},
-			)
+			ui.Column(c.Key("stage-history")).Fill().Transition(blockui.SurfaceStageTransition()).Children(func() {
+				w.historyView.Render(
+					c,
+					func() { w.ClosePageHistory() },
+					func(id string) {
+						w.historyView.SelectVersion(id, func(snapID string) (string, error) {
+							return files.ReadHistorySnapshot(notePath, snapID)
+						}, files.DiffLines)
+						w.RequestRedraw()
+					},
+					func(delta int) {
+						w.historyView.Navigate(delta, func(snapID string) (string, error) {
+							return files.ReadHistorySnapshot(notePath, snapID)
+						}, files.DiffLines)
+						w.RequestRedraw()
+					},
+					func() { w.OpenPageHistory() },
+					func(_ string, restoredText string) {
+						preRestore, _ := w.ReadNote(notePath)
+						_, _ = files.RecordHistorySnapshot(notePath, preRestore, theme.Tr("恢复前快照", "Before restore"))
+						_ = w.WriteNote(notePath, restoredText)
+						w.historyView.Close()
+						w.mu.Lock()
+						w.historyToast = &HistoryToast{
+							Active:      true,
+							NotePath:    notePath,
+							Message:     theme.Tr("已恢复到所选历史版本", "Restored selected snapshot"),
+							UndoContent: preRestore,
+							CanUndo:     preRestore != restoredText,
+						}
+						w.mu.Unlock()
+						w.RequestRedraw()
+					},
+				)
+			})
 			w.modals.RenderModals(c)
 			blockui.RenderSmokeHUD(c)
 		})
@@ -2896,11 +2900,10 @@ func (w *Workspace) Render(c *ui.Context) {
 	w.mu.Lock()
 	w.lastViewportW = vpW
 	in := w.shellInputLocked(vpW)
-	if w.sidebarPinned && FitsSaved(in) {
-		w.sidebarPinned = false
-		in.SidebarPinned = false
-	}
 	layout := ResolveShellLayout(in)
+	if layout.SidebarDocked && !layout.ChatFullscreen {
+		w.sidebarPinned = false
+	}
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	activeTab := w.state.ActiveTab
 	activeNB := w.state.Folder
@@ -2916,6 +2919,10 @@ func (w *Workspace) Render(c *ui.Context) {
 	aiImmersive := layout.ChatFullscreen && !inSettings
 	sidebarWide := layout.SidebarDocked || layout.SidebarDrawer
 	sidebarAutoHidden := layout.SidebarYielded && !layout.SidebarDrawer
+	dockedSidebarWidth := float32(0)
+	if layout.SidebarDocked {
+		dockedSidebarWidth = layout.SidebarWidth
+	}
 
 	activeSurf := w.SurfaceFor(activeTab)
 	var activeSess *editor.Session
@@ -2959,7 +2966,7 @@ func (w *Workspace) Render(c *ui.Context) {
 			RenderTitlebar(c, TitlebarProps{
 				SidebarWide:       sidebarWide,
 				SidebarAutoHidden: sidebarAutoHidden,
-				SidebarWidth:      w.sidebarWidth,
+				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
 				SettingsTabLabel:  w.modals.ActiveSettingsTab(),
 				AIImmersive:       aiImmersive,
@@ -3098,14 +3105,18 @@ func (w *Workspace) Render(c *ui.Context) {
 				if inSettings {
 					w.modals.RenderSettingsSidebar(c, false, nil)
 				} else {
-					w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+					ui.Row(c.Key("docked-sidebar-slot")).Shrink(0).FillHeight().
+						Transition(blockui.DockedPanelTransition(false)).Children(func() {
+						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+					})
 				}
 			}
 
 			// Center Content (Settings Canvas, Note Editor, Non-Markdown Surface, or Empty Mascot State).
 			if inSettings {
 				minMainW := min(layout.ContentFloor, vpW)
-				ui.Column(c).Grow(1).MinWidth(minMainW).FillHeight().Background(pal.SettingsBG).Children(func() {
+				ui.Column(c.Key("stage-settings")).Grow(1).MinWidth(minMainW).FillHeight().
+					Background(pal.SettingsBG).Transition(blockui.SurfaceStageTransition()).Children(func() {
 					w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
 						w.ToggleSidebar(vpW)
 					})
@@ -3115,7 +3126,8 @@ func (w *Workspace) Render(c *ui.Context) {
 				if !layout.ChatDocked {
 					minMainW = min(layout.ContentFloor, vpW)
 				}
-				mainCol := ui.Column(c).Grow(1).MinWidth(minMainW).FillHeight().Background(pal.Paper)
+				mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
+					Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
 				mainCol.Children(func() {
 					if toast != nil && toast.Active && toast.NotePath == activeTab {
 						toast.RenderBanner(
@@ -3167,28 +3179,42 @@ func (w *Workspace) Render(c *ui.Context) {
 
 			// Docked or Fullscreen AI Panel (stays docked even on narrow viewports per shell_layout.rs)
 			if layout.ChatDocked {
-				if !aiImmersive {
-					chatW := w.ai.PanelWidth()
-					maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
-					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
-						w.ai.SyncPanelWidth(chatW)
-						c.Invalidate()
-					}
+				if aiImmersive {
+					ui.Column(c.Key("stage-ai-immersive")).Grow(1).MinWidth(0).FillHeight().
+						Transition(blockui.SurfaceStageTransition()).Children(func() {
+						w.ai.SetRenderWidth(layout.ChatWidth)
+						w.ai.RenderPanel(c)
+					})
+				} else {
+					ui.Row(c.Key("docked-ai-slot")).Shrink(0).FillHeight().
+						Transition(blockui.DockedPanelTransition(true)).Children(func() {
+						chatW := w.ai.PanelWidth()
+						maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
+						if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
+							w.ai.SyncPanelWidth(chatW)
+							c.Invalidate()
+						}
+						w.ai.SetRenderWidth(layout.ChatWidth)
+						w.ai.RenderPanel(c)
+					})
 				}
-				w.ai.SetRenderWidth(layout.ChatWidth)
-				w.ai.RenderPanel(c)
 			}
 
 			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open (Note or Settings).
 			if layout.SidebarDrawer && !aiImmersive {
 				c.Key("sidebar-drawer-scrim")
 				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-					Background(pal.Scrim())
+					Background(pal.Scrim()).Transition(blockui.ScrimFadeTransition())
 				blockui.Probe(scrim, "sidebar-drawer-scrim")
 				if scrim.Clicked() {
 					w.ToggleSidebar(vpW)
 				}
-				drawer := blockui.Elevate(ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth), theme.ElevationDrawer)
+				c.Key("sidebar-drawer-panel")
+				drawer := blockui.Elevate(
+					ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth).
+						Transition(blockui.FloatingDrawerTransition()),
+					theme.ElevationDrawer,
+				)
 				drawer.Children(func() {
 					if inSettings {
 						w.modals.RenderSettingsSidebar(c, true, func() {

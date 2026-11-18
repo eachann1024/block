@@ -726,7 +726,8 @@ func (h *PageHistoryView) Render(
 					codeFont = "monospace"
 				}
 				previewCol.Children(func() {
-					inner := ui.Column(c).FillWidth().MaxWidth(672).Gap(8).MarginX(0)
+					c.Key("history-stage:" + h.Mode + ":" + h.SelectedID)
+					inner := ui.Column(c).FillWidth().MaxWidth(672).Gap(8).MarginX(0).Transition(blockui.SurfaceStageTransition())
 					inner.Children(func() {
 						if len(h.Entries) == 0 {
 							ui.Column(c).FillWidth().PaddingY(48).Center().Gap(10).Children(func() {
@@ -779,8 +780,10 @@ func (h *PageHistoryView) Render(
 			if narrowHist {
 				timelineW = 220
 			}
+			c.Key("history-timeline")
 			side := ui.Column(c).Width(timelineW).Shrink(0).FillHeight().Background(pal.Sidebar).
-				BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder)
+				BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder).
+				Transition(blockui.DockedPanelTransition(true))
 			blockui.Probe(side, "history-timeline")
 			side.Children(func() {
 				ui.Row(c).FillWidth().Height(38).PaddingX(14).AlignItems(ui.Center).Justify(ui.SpaceBetween).
@@ -800,15 +803,23 @@ func (h *PageHistoryView) Render(
 								lbl = fmt.Sprintf("%d B", entry.Size)
 							}
 							btn := ui.ButtonBase(c).FillWidth().Padding(8, 10, 8, 10).Radius(theme.RadiusMD).
-								Cursor(ui.CursorPointer).Label(lbl)
+								Cursor(ui.CursorPointer).Label(lbl).
+								Transition(blockui.CascadeItemTransition(ix, true))
+							rowHover := btn.Hovered()
+							rowPress := btn.Pressed()
+							rowBG := ui.Transparent
+							rowBD := ui.Transparent
 							switch {
 							case sel:
-								btn.Background(pal.Selected).Border(1, pal.Accent)
-							case btn.Hovered():
-								btn.Background(pal.Hover).Border(1, ui.Transparent)
-							default:
-								btn.Border(1, ui.Transparent)
+								rowBG = pal.Selected
+								rowBD = pal.Accent
+							case rowPress:
+								rowBG = pal.Selected
+							case rowHover:
+								rowBG = pal.Hover
 							}
+							blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
+							blockui.TactileCard(btn, rowHover, rowPress, sel, false)
 							btn.Children(func() {
 								col := ui.Column(c).FillWidth().Gap(3)
 								col.Children(func() {

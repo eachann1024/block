@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>C 共享形变</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; }
+a { color: #547dd0; }
+a:hover { color: #395fb0; }
+button { font: inherit; background: none; border: none; padding: 0; margin: 0; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid #547dd0; outline-offset: 2px; }
+</style>
+</helmet>
+<div style="{{rootStyle}}">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 40px; flex-shrink: 0">
+    <h1 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em">{{boardTitle}}</h1>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button type="button" onClick="{{toggleNarrow}}" style="{{narrowBtnStyle}}">{{narrowLabel}}</button>
+      <button type="button" onClick="{{toggleSearch}}" style="{{searchBtnStyle}}">⌘K 搜索</button>
+      <button type="button" onClick="{{toggleAuto}}" style="{{autoBtnStyle}}">{{autoLabel}}</button>
+    </div>
+  </div>
+
+  <div style="{{iconBarCardStyle}}">
+    <div style="position: relative; flex: 1; min-width: 0">
+      <div style="{{magneticPillStyle}}"></div>
+      <div style="position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0">
+        <sc-for list="{{iconItems}}" as="ic" hint-placeholder-count="6">
+          <button type="button" aria-label="{{ic.label}}" onMouseEnter="{{ic.enter}}" onClick="{{ic.click}}" style="{{ic.btnStyle}}">
+            <span style="{{ic.wellStyle}}">
+              <sc-if value="{{ic.isSidebar}}" hint-placeholder-val="{{true}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{ic.fillColor}}" style="{{ic.curtainStyle}}"/>
+                  <g fill="none" stroke="{{ic.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2"/>
+                    <path d="M9.25 4.75V19.25"/>
+                  </g>
+                  <path d="M13.5 9.75L16 12L13.5 14.25" fill="none" stroke="{{ic.accentColor}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10" style="{{ic.drawStyle}}"/>
+                </svg>
+              </sc-if>
+              <sc-if value="{{ic.isFolder}}" hint-placeholder-val="{{false}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <path d="M3.75 18.75V7.5A2.25 2.25 0 0 1 6 5.25H9L12 8.25H18A2.25 2.25 0 0 1 20.25 10.5V13.5" fill="none" stroke="{{ic.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M3.75 18.75L6 13.5H20.25L18 18.75Z" fill="{{ic.fillColor}}" style="{{ic.curtainStyle}}"/>
+                  <path d="M3.75 18.75L6 13.5H20.25L18 18.75H3.75Z" fill="none" stroke="{{ic.accentColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="{{ic.flapMorphStyle}}"/>
+                </svg>
+              </sc-if>
+              <sc-if value="{{ic.isReveal}}" hint-placeholder-val="{{false}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="{{ic.fillColor}}" style="{{ic.auraStyle}}"/>
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="{{ic.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M9 13h5M11.5 10.5L14 13l-2.5 2.5" fill="none" stroke="{{ic.accentColor}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="16" style="{{ic.drawLongStyle}}"/>
+                </svg>
+              </sc-if>
+              <sc-if value="{{ic.isLink}}" hint-placeholder-val="{{false}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <path d="M18 13.75v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.25v-11A1.5 1.5 0 0 1 5.5 5.75H10" fill="none" stroke="{{ic.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M11.5 12.5L20 4M14 4h6v6" fill="none" stroke="{{ic.accentColor}}" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="26" style="{{ic.linkMorphStyle}}"/>
+                </svg>
+              </sc-if>
+              <sc-if value="{{ic.isSparkles}}" hint-placeholder-val="{{false}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <circle cx="10.5" cy="10.5" r="7.5" fill="{{ic.fillColor}}" style="{{ic.auraStyle}}"/>
+                  <path d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z" fill="{{ic.fillColor}}" stroke="{{ic.lineColor}}" stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z" fill="{{ic.accentColor}}" style="{{ic.sparkMorphStyle}}"/>
+                </svg>
+              </sc-if>
+              <sc-if value="{{ic.isSliders}}" hint-placeholder-val="{{false}}">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24">
+                  <path d="M4 6.5H20M4 12H20M4 17.5H20" fill="none" stroke="{{ic.lineColor}}" stroke-width="1.4" stroke-linecap="round" opacity="0.35"/>
+                  <path d="M4 12H16.5" fill="none" stroke="{{ic.accentColor}}" stroke-width="2" stroke-linecap="round" style="{{ic.curtainStyle}}"/>
+                  <circle cx="9" cy="6.5" r="2.2" fill="{{ic.fillColor}}" stroke="{{ic.lineColor}}" stroke-width="1.5"/>
+                  <circle cx="15" cy="12" r="2.4" fill="{{ic.fillColor}}" stroke="{{ic.accentColor}}" stroke-width="1.6" style="{{ic.sliderKnobStyle}}"/>
+                  <circle cx="10" cy="17.5" r="2.2" fill="{{ic.fillColor}}" stroke="{{ic.lineColor}}" stroke-width="1.5"/>
+                </svg>
+              </sc-if>
+            </span>
+            <span style="font-size: 13px; font-weight: 500; white-space: nowrap">{{ic.label}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="{{zoomBoxStyle}}">
+      <sc-if value="{{zoom.isSidebar}}" hint-placeholder-val="{{true}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{zoom.fillColor}}" style="{{zoom.curtainStyle}}"/>
+          <g fill="none" stroke="{{zoom.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2"/>
+            <path d="M9.25 4.75V19.25"/>
+          </g>
+          <path d="M13.5 9.75L16 12L13.5 14.25" fill="none" stroke="{{zoom.accentColor}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10" style="{{zoom.drawStyle}}"/>
+        </svg>
+      </sc-if>
+      <sc-if value="{{zoom.isFolder}}" hint-placeholder-val="{{false}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <path d="M3.75 18.75V7.5A2.25 2.25 0 0 1 6 5.25H9L12 8.25H18A2.25 2.25 0 0 1 20.25 10.5V13.5" fill="none" stroke="{{zoom.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3.75 18.75L6 13.5H20.25L18 18.75Z" fill="{{zoom.fillColor}}" style="{{zoom.curtainStyle}}"/>
+          <path d="M3.75 18.75L6 13.5H20.25L18 18.75H3.75Z" fill="none" stroke="{{zoom.accentColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="{{zoom.flapMorphStyle}}"/>
+        </svg>
+      </sc-if>
+      <sc-if value="{{zoom.isReveal}}" hint-placeholder-val="{{false}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="{{zoom.fillColor}}" style="{{zoom.auraStyle}}"/>
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="{{zoom.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 13h5M11.5 10.5L14 13l-2.5 2.5" fill="none" stroke="{{zoom.accentColor}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="16" style="{{zoom.drawLongStyle}}"/>
+        </svg>
+      </sc-if>
+      <sc-if value="{{zoom.isLink}}" hint-placeholder-val="{{false}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <path d="M18 13.75v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.25v-11A1.5 1.5 0 0 1 5.5 5.75H10" fill="none" stroke="{{zoom.lineColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M11.5 12.5L20 4M14 4h6v6" fill="none" stroke="{{zoom.accentColor}}" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="26" style="{{zoom.linkMorphStyle}}"/>
+        </svg>
+      </sc-if>
+      <sc-if value="{{zoom.isSparkles}}" hint-placeholder-val="{{false}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="7.5" fill="{{zoom.fillColor}}" style="{{zoom.auraStyle}}"/>
+          <path d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z" fill="{{zoom.fillColor}}" stroke="{{zoom.lineColor}}" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z" fill="{{zoom.accentColor}}" style="{{zoom.sparkMorphStyle}}"/>
+        </svg>
+      </sc-if>
+      <sc-if value="{{zoom.isSliders}}" hint-placeholder-val="{{false}}">
+        <svg aria-hidden="true" width="44" height="44" viewBox="0 0 24 24">
+          <path d="M4 6.5H20M4 12H20M4 17.5H20" fill="none" stroke="{{zoom.lineColor}}" stroke-width="1.4" stroke-linecap="round" opacity="0.35"/>
+          <path d="M4 12H16.5" fill="none" stroke="{{zoom.accentColor}}" stroke-width="2" stroke-linecap="round" style="{{zoom.curtainStyle}}"/>
+          <circle cx="9" cy="6.5" r="2.2" fill="{{zoom.fillColor}}" stroke="{{zoom.lineColor}}" stroke-width="1.5"/>
+          <circle cx="15" cy="12" r="2.4" fill="{{zoom.fillColor}}" stroke="{{zoom.accentColor}}" stroke-width="1.6" style="{{zoom.sliderKnobStyle}}"/>
+          <circle cx="10" cy="17.5" r="2.2" fill="{{zoom.fillColor}}" stroke="{{zoom.lineColor}}" stroke-width="1.5"/>
+        </svg>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="{{winFrameStyle}}">
+    <div style="{{winShellStyle}}">
+      <div style="{{titlebarStyle}}">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 7px; padding-left: 4px">
+            <span style="width: 11px; height: 11px; border-radius: 999px; background: #ff5f57"></span>
+            <span style="width: 11px; height: 11px; border-radius: 999px; background: #febc2e"></span>
+            <span style="width: 11px; height: 11px; border-radius: 999px; background: #28c840"></span>
+          </div>
+          <button type="button" aria-label="切换侧边栏" onClick="{{toggleSidebar}}" onMouseEnter="{{enterSbToggle}}" onMouseLeave="{{leaveSbToggle}}" style="{{tbSidebarBtnStyle}}">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24">
+              <path d="M3.75 4.75H9.25V19.25H5.75A2 2 0 0 1 3.75 17.25V6.75A2 2 0 0 1 5.75 4.75Z" fill="{{tbSbFill}}"/>
+              <g fill="none" stroke="{{tbSbLine}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2"/>
+                <path d="M9.25 4.75V19.25"/>
+              </g>
+              <path d="{{tbSbChevron}}" fill="none" stroke="{{tbSbAccent}}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div style="{{topSegWrapStyle}}">
+          <div style="{{topSegIndicatorStyle}}"></div>
+          <sc-for list="{{surfaces}}" as="sf" hint-placeholder-count="3">
+            <button type="button" onClick="{{sf.pick}}" style="{{sf.tabStyle}}">{{sf.label}}</button>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 6px">
+          <button type="button" aria-label="切换 AI 助手" onClick="{{toggleAI}}" style="{{tbAiBtnStyle}}">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24">
+              <path d="M10 3.5L11.75 8.25L16.5 10L11.75 11.75L10 16.5L8.25 11.75L3.5 10L8.25 8.25Z" fill="{{tbAiFill}}" stroke="{{tbAiStroke}}" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M18 14L18.9 16.6L21.5 17.5L18.9 18.4L18 21L17.1 18.4L14.5 17.5L17.1 16.6Z" fill="{{tbAiAccent}}"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex: 1; min-height: 0; position: relative; overflow: hidden">
+        <div style="{{dockedSidebarWrapStyle}}">
+          <div style="{{sidebarInnerStyle}}">
+            <sc-if value="{{isSettingsSurface}}" hint-placeholder-val="{{false}}">
+              <div style="padding: 14px 14px 8px; font-size: 16px; font-weight: 600">设置</div>
+              <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0 10px">
+                <div style="{{settingsGlidePillStyle}}"></div>
+                <sc-for list="{{settingsNav}}" as="sn" hint-placeholder-count="4">
+                  <button type="button" onClick="{{sn.pick}}" style="{{sn.rowStyle}}">{{sn.label}}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{isWorkspaceSidebar}}" hint-placeholder-val="{{true}}">
+              <div style="padding: 12px 12px 8px; display: flex; align-items: center; justify-content: space-between">
+                <span style="font-size: 14px; font-weight: 600">Block 设计库</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 3px; padding: 0 8px">
+                <button type="button" onClick="{{toggleFolder}}" style="{{folderBtnStyle}}">
+                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="{{folderChevStyle}}">
+                    <path d="M10 7.5L14.5 12L10 16.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span style="font-size: 14px; font-weight: 500">产品设计</span>
+                </button>
+                <div style="{{folderPanelStyle}}">
+                  <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding-left: 16px">
+                    <div style="{{noteGlidePillStyle}}"></div>
+                    <sc-for list="{{notes}}" as="nt" hint-placeholder-count="3">
+                      <button type="button" onClick="{{nt.pick}}" style="{{nt.rowStyle}}">{{nt.title}}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="{{mainStageWrapStyle}}">
+          <div style="{{noteSurfaceStyle}}">
+            <div style="max-width: 520px; width: 100%; margin: 0 auto; padding: 28px 28px 24px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box">
+              <h2 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em">{{activeNoteTitle}}</h2>
+              <p style="{{bodyParaStyle}}">利用共享几何（Match）让选中胶囊在侧栏、顶栏与图标栏之间连续滑移，界面切换叠加方向位移与光学柔焦过渡。</p>
+              <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px">
+                <sc-for list="{{checkRows}}" as="ck" hint-placeholder-count="3">
+                  <button type="button" onClick="{{ck.toggle}}" style="{{ck.rowStyle}}">
+                    <span style="{{ck.boxStyle}}">
+                      <sc-if value="{{ck.done}}" hint-placeholder-val="{{true}}">
+                        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24">
+                          <path d="M5.5 12.5L10 17L18.5 7.5" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </sc-if>
+                    </span>
+                    <span style="{{ck.textStyle}}">{{ck.label}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="{{settingsSurfaceStyle}}">
+            <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box; width: 100%">
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <h2 style="margin: 0; font-size: 21px; font-weight: 600">{{activeSettingsTitle}}</h2>
+                <span style="{{enabledPillStyle}}">已开启</span>
+              </div>
+              <div style="{{splitCardStyle}}">
+                <div style="{{splitRailStyle}}">
+                  <div style="{{backendGlidePillStyle}}"></div>
+                  <sc-for list="{{backends}}" as="bk" hint-placeholder-count="3">
+                    <button type="button" onClick="{{bk.pick}}" style="{{bk.rowStyle}}">
+                      <span style="font-size: 14px; font-weight: 500">{{bk.label}}</span>
+                      <span style="{{bk.dotStyle}}"></span>
+                    </button>
+                  </sc-for>
+                </div>
+                <div style="flex: 1; min-width: 0; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px">
+                  <div style="font-size: 15px; font-weight: 600">{{activeBackendLabel}}</div>
+                  <div style="position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+                    <sc-for list="{{providers}}" as="pv" hint-placeholder-count="3">
+                      <button type="button" onClick="{{pv.pick}}" style="{{pv.cardStyle}}">{{pv.label}}</button>
+                    </sc-for>
+                  </div>
+                  <div style="{{urlFieldBoxStyle}}">https://api.deepseek.com/v1</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="{{historySurfaceStyle}}">
+            <div style="display: flex; height: 100%; width: 100%">
+              <div style="flex: 1; min-width: 0; padding: 24px 24px; display: flex; flex-direction: column; gap: 8px">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px">{{activeNoteTitle}}</div>
+                <div style="{{diffDelStyle}}">− 高亮底色在旧条目消失、新条目闪出，缺乏空间连续感</div>
+                <div style="{{diffAddStyle}}">+ 单一共享胶囊沿侧栏与顶栏连续滑行定位</div>
+                <div style="{{diffAddStyle}}">+ 侧栏收起后悬停左上按钮可预览半透明悬浮侧栏（Peek）</div>
+              </div>
+              <div style="{{historyRailStyle}}">
+                <sc-for list="{{snapshots}}" as="sp" hint-placeholder-count="3">
+                  <button type="button" onClick="{{sp.pick}}" style="{{sp.rowStyle}}">{{sp.time}}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="{{aiPanelWrapStyle}}">
+          <div style="{{aiPanelInnerStyle}}">
+            <div style="height: 42px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid {{hairline}}">
+              <span style="font-size: 14px; font-weight: 600">AI 助手</span>
+              <button type="button" aria-label="收起 AI 助手" onClick="{{toggleAI}}" style="width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24">
+                  <path d="M6.5 6.5L17.5 17.5M17.5 6.5L6.5 17.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style="flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+              <div style="{{aiBubbleStyle}}">AI 面板从右上角触发器连续展开并解除光学柔焦。</div>
+              <div style="{{aiComposerStyle}}">输入指令…</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="{{peekRailStyle}}">
+          <div style="padding: 12px 12px 6px; font-size: 13.5px; font-weight: 600">快速预览侧栏</div>
+          <div style="display: flex; flex-direction: column; gap: 3px; padding: 0 8px">
+            <sc-for list="{{notes}}" as="pnt" hint-placeholder-count="3">
+              <button type="button" onClick="{{pnt.pick}}" style="{{pnt.peekRowStyle}}">{{pnt.title}}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <button type="button" aria-label="关闭侧栏浮层" onClick="{{closeDrawer}}" style="{{drawerScrimStyle}}"></button>
+        <div style="{{drawerPanelStyle}}">
+          <div style="padding: 14px 12px 8px; font-size: 14px; font-weight: 600">Block 设计库</div>
+          <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0 8px">
+            <div style="{{drawerGlidePillStyle}}"></div>
+            <sc-for list="{{notes}}" as="dnt" hint-placeholder-count="3">
+              <button type="button" onClick="{{dnt.pick}}" style="{{dnt.rowStyle}}">{{dnt.title}}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <button type="button" aria-label="关闭搜索面板" onClick="{{closeSearch}}" style="{{searchScrimStyle}}"></button>
+        <div style="{{searchModalStyle}}">
+          <div style="height: 42px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid {{hairline}}">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="6.5" fill="none" stroke="#547dd0" stroke-width="1.6"/>
+              <path d="M16 16L20 20" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span style="font-size: 14px; font-weight: 500">搜索笔记与设置…</span>
+          </div>
+          <div style="padding: 8px; display: flex; flex-direction: column; gap: 3px">
+            <sc-for list="{{notes}}" as="snt" hint-placeholder-count="3">
+              <button type="button" onClick="{{snt.pickFromSearch}}" style="{{snt.peekRowStyle}}">{{snt.title}}</button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"外观"},"speed":{"editor":"range","default":1,"min":0.5,"max":2,"step":0.25,"section":"动效参数"},"$preview":{"width":960,"height":700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      hoveredIdx: 3,
+      sbHover: false,
+      sidebarOpen: true,
+      narrowMode: false,
+      drawerOpen: false,
+      aiOpen: false,
+      searchOpen: false,
+      folderOpen: true,
+      surfaceIdx: 0,
+      noteIdx: 0,
+      settingsIdx: 0,
+      backendIdx: 0,
+      providerIdx: 0,
+      snapIdx: 0,
+      checks: [true, true, true],
+      autoPlay: true,
+      step: 0
+    };
+    this._timer = null;
+  }
+
+  componentDidMount() {
+    this._startAuto();
+  }
+
+  componentWillUnmount() {
+    if (this._timer) clearInterval(this._timer);
+  }
+
+  _startAuto() {
+    if (this._timer) clearInterval(this._timer);
+    this._timer = setInterval(() => {
+      if (!this.state.autoPlay) return;
+      const next = (this.state.step + 1) % 12;
+      const patch = {
+        step: next,
+        hoveredIdx: next % 6,
+        noteIdx: next % 3
+      };
+      if (next === 2) { patch.surfaceIdx = 1; patch.settingsIdx = 1; }
+      if (next === 4) { patch.backendIdx = 2; patch.settingsIdx = 2; }
+      if (next === 6) { patch.surfaceIdx = 0; patch.sidebarOpen = false; patch.sbHover = true; }
+      if (next === 8) { patch.sbHover = false; patch.sidebarOpen = true; patch.aiOpen = true; }
+      if (next === 10) { patch.aiOpen = false; patch.surfaceIdx = 2; }
+      if (next === 11) { patch.surfaceIdx = 0; }
+      this.setState(patch);
+    }, 1500);
+  }
+
+  _pauseAuto() {
+    if (this.state.autoPlay) {
+      this.setState({ autoPlay: false });
+    }
+  }
+
+  renderVals() {
+    const dark = Boolean(this.props.dark ?? false);
+    const spd = Number(this.props.speed ?? 1) || 1;
+    const ms = (v) => `${Math.round(v / spd)}ms`;
+    const morph = 'cubic-bezier(0.2, 0.9, 0.24, 1)';
+
+    const pal = dark ? {
+      canvas: '#16181d',
+      shell: '#1e2026',
+      sidebar: '#1b1d22',
+      settings: '#191b20',
+      paper: '#22252c',
+      card: '#262a33',
+      text: '#eceef2',
+      muted: '#9aa1ae',
+      accent: '#6d93e6',
+      fill: '#2e4168',
+      hover: '#293246',
+      selected: '#2d3a54',
+      hairline: '#303540'
+    } : {
+      canvas: '#f4f5f7',
+      shell: '#f1f1f1',
+      sidebar: '#fafafa',
+      settings: '#f8f8f8',
+      paper: '#ffffff',
+      card: '#ffffff',
+      text: '#1f1e1d',
+      muted: '#52514e',
+      accent: '#547dd0',
+      fill: '#c9d8f3',
+      hover: '#eef3fc',
+      selected: '#e5edfc',
+      hairline: '#e4e6ea'
+    };
+
+    const iconDefs = [
+      { id: 'sidebar', label: '展开侧栏' },
+      { id: 'folder', label: '打开文件夹' },
+      { id: 'reveal', label: '定位目录' },
+      { id: 'link', label: '打开外链' },
+      { id: 'sparkles', label: 'AI 面板' },
+      { id: 'sliders', label: '打开设置' }
+    ];
+
+    const iconMorph = (id, active) => ({
+      isSidebar: id === 'sidebar',
+      isFolder: id === 'folder',
+      isReveal: id === 'reveal',
+      isLink: id === 'link',
+      isSparkles: id === 'sparkles',
+      isSliders: id === 'sliders',
+      lineColor: active ? pal.text : pal.muted,
+      accentColor: active ? pal.accent : pal.muted,
+      fillColor: pal.fill,
+      curtainStyle: `transform-origin: left center; transform-box: fill-box; opacity: ${active ? 1 : 0}; transform: scaleX(${active ? 1 : 0.15}); transition: transform ${ms(260)} ${morph}, opacity ${ms(200)} ${morph}`,
+      auraStyle: `transform-origin: center; transform-box: fill-box; opacity: ${active ? 0.85 : 0}; transform: scale(${active ? 1.15 : 0.4}); transition: transform ${ms(280)} ${morph}, opacity ${ms(220)} ${morph}`,
+      drawStyle: `stroke-dashoffset: ${active ? 0 : 6}; transform: translate3d(${active ? '1.8px' : '0px'}, 0, 0); transition: stroke-dashoffset ${ms(260)} ${morph}, transform ${ms(240)} ${morph}`,
+      drawLongStyle: `stroke-dashoffset: ${active ? 0 : 10}; transform: translate3d(${active ? '2.2px' : '-1px'}, 0, 0); transition: stroke-dashoffset ${ms(280)} ${morph}, transform ${ms(260)} ${morph}`,
+      flapMorphStyle: `transform-origin: bottom center; transform-box: fill-box; transform: skewX(${active ? '-10deg' : '0deg'}) scaleY(${active ? 0.88 : 1}); transition: transform ${ms(260)} ${morph}`,
+      linkMorphStyle: `stroke-dashoffset: ${active ? 0 : 9}; transform: translate3d(${active ? '2.2px' : '0px'}, ${active ? '-2.2px' : '0px'}, 0); transition: stroke-dashoffset ${ms(280)} ${morph}, transform ${ms(260)} ${morph}`,
+      sparkMorphStyle: `transform-origin: center; transform-box: fill-box; transform: scale(${active ? 1.26 : 0.85}) rotate(${active ? '45deg' : '0deg'}); transition: transform ${ms(300)} ${morph}`,
+      sliderKnobStyle: `transform: translate3d(${active ? '2.8px' : '-3px'}, 0, 0); transition: transform ${ms(260)} ${morph}`
+    });
+
+    const iconItems = iconDefs.map((d, idx) => {
+      const active = this.state.hoveredIdx === idx;
+      const m = iconMorph(d.id, active);
+      return {
+        ...d,
+        ...m,
+        enter: () => this.setState({ hoveredIdx: idx, autoPlay: false }),
+        click: () => {
+          this._pauseAuto();
+          if (d.id === 'sidebar') {
+            if (this.state.narrowMode) this.setState({ drawerOpen: !this.state.drawerOpen, hoveredIdx: idx });
+            else this.setState({ sidebarOpen: !this.state.sidebarOpen, hoveredIdx: idx });
+          } else if (d.id === 'folder') {
+            this.setState({ surfaceIdx: 0, sidebarOpen: true, folderOpen: !this.state.folderOpen, hoveredIdx: idx });
+          } else if (d.id === 'sparkles') {
+            this.setState({ surfaceIdx: 0, aiOpen: !this.state.aiOpen, hoveredIdx: idx });
+          } else if (d.id === 'sliders') {
+            this.setState({ surfaceIdx: this.state.surfaceIdx === 1 ? 0 : 1, hoveredIdx: idx });
+          } else {
+            this.setState({ hoveredIdx: idx });
+          }
+        },
+        btnStyle: `position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 68px; border-radius: 10px; color: ${active ? pal.text : pal.muted}; transition: color ${ms(180)} ${morph}`,
+        wellStyle: `width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center`
+      };
+    });
+
+    const zoomDef = iconDefs[this.state.hoveredIdx] || iconDefs[0];
+    const zoom = iconMorph(zoomDef.id, true);
+
+    const pillBtn = (on) => `height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; font-weight: 500; border: 1px solid ${on ? pal.accent : pal.hairline}; background: ${on ? pal.selected : pal.card}; color: ${on ? pal.text : pal.muted}; transition: background-color ${ms(200)} ${morph}, border-color ${ms(200)} ${morph}`;
+
+    const showDockedSb = !this.state.narrowMode && this.state.sidebarOpen && this.state.surfaceIdx !== 2;
+    const showPeek = !this.state.narrowMode && !this.state.sidebarOpen && this.state.sbHover && this.state.surfaceIdx !== 2;
+    const showAi = this.state.aiOpen && this.state.surfaceIdx !== 1 && !this.state.narrowMode;
+    const sbWide = showDockedSb || (this.state.narrowMode && this.state.drawerOpen);
+
+    const noteDefs = [
+      { id: 'motion', title: '动效规范.md', heading: '共享形变 · 空间连续叙事' },
+      { id: 'avoid', title: '侧栏避让.md', heading: '磁吸胶囊与悬浮预览侧栏' },
+      { id: 'icons', title: '图标体系.md', heading: '笔画绘制与帷幕填充形变' }
+    ];
+    const activeNoteObj = noteDefs[this.state.noteIdx] || noteDefs[0];
+
+    const notes = noteDefs.map((n, idx) => {
+      const sel = this.state.noteIdx === idx;
+      return {
+        ...n,
+        pick: () => {
+          this._pauseAuto();
+          this.setState({ noteIdx: idx, surfaceIdx: 0, drawerOpen: false, sbHover: false });
+        },
+        pickFromSearch: () => {
+          this._pauseAuto();
+          this.setState({ noteIdx: idx, surfaceIdx: 0, searchOpen: false });
+        },
+        rowStyle: `position: relative; z-index: 1; height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; text-align: left; font-size: 13.5px; font-weight: ${sel ? 550 : 400}; color: ${sel ? pal.text : pal.muted}; transition: color ${ms(180)} ${morph}`,
+        peekRowStyle: `height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; text-align: left; font-size: 13.5px; font-weight: ${sel ? 550 : 400}; background: ${sel ? pal.selected : 'transparent'}; color: ${sel ? pal.text : pal.muted}; border: 1px solid ${sel ? pal.accent : 'transparent'}; transition: background-color ${ms(180)} ${morph}`
+      };
+    });
+
+    const surfaceDefs = [
+      { id: 'note', label: '笔记' },
+      { id: 'settings', label: '设置' },
+      { id: 'history', label: '历史' }
+    ];
+    const surfaces = surfaceDefs.map((s, idx) => {
+      const on = this.state.surfaceIdx === idx;
+      return {
+        ...s,
+        pick: () => {
+          this._pauseAuto();
+          this.setState({ surfaceIdx: idx, aiOpen: idx === 1 ? false : this.state.aiOpen });
+        },
+        tabStyle: `position: relative; z-index: 1; width: 58px; height: 28px; border-radius: 7px; font-size: 13px; font-weight: ${on ? 600 : 450}; color: ${on ? pal.text : pal.muted}; display: flex; align-items: center; justify-content: center; transition: color ${ms(180)} ${morph}`
+      };
+    });
+
+    const sNavDefs = [
+      { id: 'ai', label: 'AI 助手' },
+      { id: 'appearance', label: '外观与字体' },
+      { id: 'folders', label: '文件夹' },
+      { id: 'shortcuts', label: '快捷键' }
+    ];
+    const settingsNav = sNavDefs.map((sn, idx) => {
+      const on = this.state.settingsIdx === idx;
+      return {
+        ...sn,
+        pick: () => { this._pauseAuto(); this.setState({ settingsIdx: idx }); },
+        rowStyle: `position: relative; z-index: 1; height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; font-size: 13.5px; font-weight: ${on ? 550 : 400}; color: ${on ? pal.text : pal.muted}; transition: color ${ms(180)} ${morph}`
+      };
+    });
+
+    const bkDefs = [
+      { id: 'builtin', label: '内置 AI' },
+      { id: 'codex', label: 'Codex' },
+      { id: 'claude', label: 'Claude' }
+    ];
+    const backends = bkDefs.map((b, idx) => {
+      const on = this.state.backendIdx === idx;
+      return {
+        ...b,
+        pick: () => { this._pauseAuto(); this.setState({ backendIdx: idx }); },
+        rowStyle: `position: relative; z-index: 1; height: 44px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: ${pal.text}; border-bottom: 1px solid ${pal.hairline}`,
+        dotStyle: `width: 8px; height: 8px; border-radius: 999px; background: ${on ? pal.accent : pal.hairline}; transition: background-color ${ms(200)} ${morph}`
+      };
+    });
+
+    const pvDefs = [
+      { id: 'deepseek', label: 'DeepSeek' },
+      { id: 'openai', label: 'OpenAI 协议' },
+      { id: 'claude', label: 'Claude 协议' }
+    ];
+    const providers = pvDefs.map((p, idx) => {
+      const on = this.state.providerIdx === idx;
+      return {
+        ...p,
+        pick: () => { this._pauseAuto(); this.setState({ providerIdx: idx }); },
+        cardStyle: `height: 38px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid ${on ? pal.accent : pal.hairline}; background: ${on ? pal.selected : pal.card}; color: ${pal.text}; transition: background-color ${ms(220)} ${morph}, border-color ${ms(220)} ${morph}`
+      };
+    });
+
+    const snapTimes = ['今天 13:10', '今天 11:42', '昨天 19:05'];
+    const snapshots = snapTimes.map((t, idx) => {
+      const on = this.state.snapIdx === idx;
+      return {
+        time: t,
+        pick: () => { this._pauseAuto(); this.setState({ snapIdx: idx }); },
+        rowStyle: `height: 34px; padding: 0 10px; border-radius: 8px; text-align: left; font-size: 13px; background: ${on ? pal.selected : 'transparent'}; color: ${on ? pal.text : pal.muted}; border: 1px solid ${on ? pal.accent : 'transparent'}; transition: background-color ${ms(200)} ${morph}`
+      };
+    });
+
+    const checkLabels = [
+      '图标栏与侧栏共用单一磁吸高亮衬底（Match）',
+      '主界面按索引方向横移并叠加 4px 光学柔焦过渡',
+      '侧栏收起时悬停左上按钮触发半透明悬浮预览（Peek）'
+    ];
+    const checkRows = checkLabels.map((lbl, idx) => {
+      const done = Boolean(this.state.checks[idx]);
+      return {
+        label: lbl,
+        done,
+        toggle: () => {
+          this._pauseAuto();
+          const next = [...this.state.checks];
+          next[idx] = !next[idx];
+          this.setState({ checks: next });
+        },
+        rowStyle: `display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; text-align: left`,
+        boxStyle: `width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; background: ${done ? pal.accent : 'transparent'}; border: 1.5px solid ${done ? pal.accent : pal.muted}; transition: background-color ${ms(200)} ${morph}, border-color ${ms(200)} ${morph}`,
+        textStyle: `font-size: 14.5px; color: ${done ? pal.muted : pal.text}; transition: color ${ms(200)} ${morph}`
+      };
+    });
+
+    const surfaceLayer = (idx, bg) => {
+      const active = this.state.surfaceIdx === idx;
+      const offset = (idx - this.state.surfaceIdx) * 28;
+      return `position: absolute; inset: 0; display: flex; background: ${bg}; opacity: ${active ? 1 : 0}; transform: translate3d(${offset}px, 0, 0); filter: blur(${active ? '0px' : '4px'}); pointer-events: ${active ? 'auto' : 'none'}; transition: opacity ${ms(240)} ${morph}, transform ${ms(280)} ${morph}, filter ${ms(260)} ${morph}`;
+    };
+
+    const activeSettingsObj = sNavDefs[this.state.settingsIdx] || sNavDefs[0];
+    const activeBackendObj = bkDefs[this.state.backendIdx] || bkDefs[0];
+
+    return {
+      boardTitle: 'C 共享形变',
+      hairline: pal.hairline,
+      rootStyle: `width: 960px; height: 700px; box-sizing: border-box; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; background: ${pal.canvas}; color: ${pal.text}; font-family: -apple-system, 'PingFang SC', 'SF Pro Text', system-ui, sans-serif`,
+      narrowBtnStyle: pillBtn(this.state.narrowMode),
+      narrowLabel: this.state.narrowMode ? '窄窗抽屉：开' : '窄窗抽屉',
+      searchBtnStyle: pillBtn(this.state.searchOpen),
+      autoBtnStyle: pillBtn(this.state.autoPlay),
+      autoLabel: this.state.autoPlay ? '自动演示中' : '自动演示',
+      toggleNarrow: () => {
+        this._pauseAuto();
+        const nm = !this.state.narrowMode;
+        this.setState({ narrowMode: nm, drawerOpen: nm });
+      },
+      toggleSearch: () => { this._pauseAuto(); this.setState({ searchOpen: !this.state.searchOpen }); },
+      closeSearch: () => { this._pauseAuto(); this.setState({ searchOpen: false }); },
+      toggleAuto: () => this.setState({ autoPlay: !this.state.autoPlay }),
+
+      iconBarCardStyle: `display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 14px; background: ${pal.paper}; border: 1px solid ${pal.hairline}`,
+      magneticPillStyle: `position: absolute; top: 0; bottom: 0; left: 4px; width: calc(16.6667% - 8px); border-radius: 10px; background: ${pal.hover}; border: 1px solid ${pal.accent}; transform: translate3d(calc(${this.state.hoveredIdx} * (100% + 8px)), 0, 0); transition: transform ${ms(260)} ${morph}`,
+      iconItems,
+      zoomBoxStyle: `width: 68px; height: 68px; border-radius: 12px; flex-shrink: 0; background: ${pal.hover}; border: 1px solid ${pal.accent}; display: flex; align-items: center; justify-content: center`,
+      zoom,
+
+      winFrameStyle: `flex: 1; min-height: 0; display: flex; justify-content: center; align-items: stretch`,
+      winShellStyle: `width: ${this.state.narrowMode ? '620px' : '904px'}; height: 100%; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; background: ${pal.paper}; border: 1px solid ${pal.hairline}; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.08); transition: width ${ms(280)} ${morph}`,
+      titlebarStyle: `height: 40px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; background: ${pal.shell}; border-bottom: 1px solid ${pal.hairline}; flex-shrink: 0`,
+      toggleSidebar: () => {
+        this._pauseAuto();
+        if (this.state.narrowMode) this.setState({ drawerOpen: !this.state.drawerOpen });
+        else this.setState({ sidebarOpen: !this.state.sidebarOpen, sbHover: false });
+      },
+      enterSbToggle: () => this.setState({ sbHover: true }),
+      leaveSbToggle: () => this.setState({ sbHover: false }),
+      tbSidebarBtnStyle: `width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: ${this.state.sbHover ? pal.hover : 'transparent'}; transition: background-color ${ms(180)} ${morph}`,
+      tbSbFill: (this.state.sbHover || sbWide) ? pal.fill : 'transparent',
+      tbSbLine: this.state.sbHover ? pal.text : pal.muted,
+      tbSbAccent: this.state.sbHover ? pal.accent : pal.muted,
+      tbSbChevron: sbWide ? 'M15.75 9.75L13.25 12L15.75 14.25' : 'M13.5 9.75L16 12L13.5 14.25',
+
+      topSegWrapStyle: `position: relative; display: flex; align-items: center; padding: 2px; border-radius: 9px; background: ${pal.paper}; border: 1px solid ${pal.hairline}`,
+      topSegIndicatorStyle: `position: absolute; top: 2px; left: 2px; width: 58px; height: 28px; border-radius: 7px; background: ${pal.selected}; border: 1px solid ${pal.accent}; box-sizing: border-box; transform: translate3d(${this.state.surfaceIdx * 58}px, 0, 0); transition: transform ${ms(250)} ${morph}`,
+      surfaces,
+
+      toggleAI: () => { this._pauseAuto(); this.setState({ surfaceIdx: this.state.surfaceIdx === 1 ? 0 : this.state.surfaceIdx, aiOpen: !this.state.aiOpen }); },
+      tbAiBtnStyle: `width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; background: ${showAi ? pal.selected : 'transparent'}; transition: background-color ${ms(180)} ${morph}`,
+      tbAiFill: showAi ? pal.fill : 'transparent',
+      tbAiStroke: showAi ? pal.accent : pal.muted,
+      tbAiAccent: showAi ? pal.accent : pal.muted,
+
+      dockedSidebarWrapStyle: `width: ${showDockedSb ? '208px' : '0px'}; overflow: hidden; flex-shrink: 0; background: ${pal.sidebar}; border-right: ${showDockedSb ? `1px solid ${pal.hairline}` : '0px solid transparent'}; opacity: ${showDockedSb ? 1 : 0}; filter: blur(${showDockedSb ? '0px' : '3px'}); transition: width ${ms(260)} ${morph}, opacity ${ms(220)} ${morph}, filter ${ms(220)} ${morph}`,
+      sidebarInnerStyle: `width: 208px; height: 100%; display: flex; flex-direction: column`,
+      isSettingsSurface: this.state.surfaceIdx === 1,
+      isWorkspaceSidebar: this.state.surfaceIdx !== 1,
+      settingsGlidePillStyle: `position: absolute; top: 0; left: 10px; right: 10px; height: 32px; border-radius: 8px; background: ${pal.selected}; border: 1px solid ${pal.accent}; box-sizing: border-box; transform: translate3d(0, ${this.state.settingsIdx * 36}px, 0); transition: transform ${ms(250)} ${morph}`,
+      settingsNav,
+      toggleFolder: () => { this._pauseAuto(); this.setState({ folderOpen: !this.state.folderOpen }); },
+      folderBtnStyle: `height: 30px; padding: 0 8px; border-radius: 7px; display: flex; align-items: center; gap: 6px; color: ${pal.text}`,
+      folderChevStyle: `transition: transform ${ms(220)} ${morph}; transform: rotate(${this.state.folderOpen ? '90deg' : '0deg'})`,
+      folderPanelStyle: `max-height: ${this.state.folderOpen ? '124px' : '0px'}; opacity: ${this.state.folderOpen ? 1 : 0}; overflow: hidden; transition: max-height ${ms(260)} ${morph}, opacity ${ms(200)} ${morph}`,
+      noteGlidePillStyle: `position: absolute; top: 0; left: 16px; right: 0; height: 32px; border-radius: 8px; background: ${pal.selected}; border: 1px solid ${pal.accent}; box-sizing: border-box; transform: translate3d(0, ${this.state.noteIdx * 36}px, 0); transition: transform ${ms(250)} ${morph}`,
+      drawerGlidePillStyle: `position: absolute; top: 0; left: 8px; right: 8px; height: 32px; border-radius: 8px; background: ${pal.selected}; border: 1px solid ${pal.accent}; box-sizing: border-box; transform: translate3d(0, ${this.state.noteIdx * 36}px, 0); transition: transform ${ms(250)} ${morph}`,
+      notes,
+
+      mainStageWrapStyle: `flex: 1; min-width: 0; position: relative; overflow: hidden; background: ${pal.paper}`,
+      noteSurfaceStyle: surfaceLayer(0, pal.paper),
+      settingsSurfaceStyle: surfaceLayer(1, pal.settings),
+      historySurfaceStyle: surfaceLayer(2, pal.paper),
+
+      activeNoteTitle: activeNoteObj.heading,
+      bodyParaStyle: `margin: 0; font-size: 15px; line-height: 1.65; color: ${pal.muted}`,
+      checkRows,
+
+      activeSettingsTitle: activeSettingsObj.label,
+      enabledPillStyle: `height: 28px; padding: 0 12px; border-radius: 999px; display: flex; align-items: center; font-size: 13px; font-weight: 500; background: ${pal.selected}; color: ${pal.accent}; border: 1px solid ${pal.accent}`,
+      splitCardStyle: `display: flex; border-radius: 12px; overflow: hidden; background: ${pal.card}; border: 1px solid ${pal.hairline}; min-height: 240px`,
+      splitRailStyle: `position: relative; width: 168px; flex-shrink: 0; background: ${pal.sidebar}; border-right: 1px solid ${pal.hairline}; display: flex; flex-direction: column`,
+      backendGlidePillStyle: `position: absolute; top: 0; left: 0; right: 0; height: 44px; background: ${pal.selected}; transform: translate3d(0, ${this.state.backendIdx * 45}px, 0); transition: transform ${ms(240)} ${morph}`,
+      backends,
+      activeBackendLabel: activeBackendObj.label,
+      providers,
+      urlFieldBoxStyle: `height: 36px; padding: 0 12px; border-radius: 8px; display: flex; align-items: center; font-size: 13px; font-family: ui-monospace, SFMono-Regular, monospace; background: ${pal.shell}; color: ${pal.muted}; border: 1px solid ${pal.hairline}`,
+
+      diffDelStyle: `padding: 6px 10px; border-radius: 6px; font-size: 13.5px; background: rgba(217, 83, 79, 0.12); color: ${dark ? '#f29b98' : '#a63632'}`,
+      diffAddStyle: `padding: 6px 10px; border-radius: 6px; font-size: 13.5px; background: rgba(68, 157, 102, 0.13); color: ${dark ? '#8fd9a8' : '#266c41'}`,
+      historyRailStyle: `width: 168px; flex-shrink: 0; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; background: ${pal.sidebar}; border-left: 1px solid ${pal.hairline}`,
+      snapshots,
+
+      aiPanelWrapStyle: `width: ${showAi ? '236px' : '0px'}; overflow: hidden; flex-shrink: 0; background: ${pal.paper}; border-left: ${showAi ? `1px solid ${pal.hairline}` : '0px solid transparent'}; opacity: ${showAi ? 1 : 0}; filter: blur(${showAi ? '0px' : '4px'}); transition: width ${ms(260)} ${morph}, opacity ${ms(220)} ${morph}, filter ${ms(220)} ${morph}`,
+      aiPanelInnerStyle: `width: 236px; height: 100%; display: flex; flex-direction: column; transform-origin: top right; transform: scale(${showAi ? 1 : 0.96}); transition: transform ${ms(260)} ${morph}`,
+      aiBubbleStyle: `padding: 10px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.55; background: ${pal.hover}; color: ${pal.text}`,
+      aiComposerStyle: `margin-top: auto; height: 36px; padding: 0 12px; border-radius: 9px; display: flex; align-items: center; font-size: 13px; background: ${pal.shell}; color: ${pal.muted}; border: 1px solid ${pal.hairline}`,
+
+      peekRailStyle: `position: absolute; top: 10px; left: 10px; width: 196px; padding-bottom: 10px; border-radius: 12px; background: ${pal.sidebar}; border: 1px solid ${pal.accent}; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16); opacity: ${showPeek ? 1 : 0}; transform: translate3d(${showPeek ? '0px' : '-14px'}, 0, 0) scale(${showPeek ? 1 : 0.97}); filter: blur(${showPeek ? '0px' : '3px'}); pointer-events: ${showPeek ? 'auto' : 'none'}; transition: opacity ${ms(220)} ${morph}, transform ${ms(240)} ${morph}, filter ${ms(220)} ${morph}`,
+
+      closeDrawer: () => { this._pauseAuto(); this.setState({ drawerOpen: false }); },
+      drawerScrimStyle: `position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); backdrop-filter: blur(2px); opacity: ${(this.state.narrowMode && this.state.drawerOpen) ? 1 : 0}; pointer-events: ${(this.state.narrowMode && this.state.drawerOpen) ? 'auto' : 'none'}; transition: opacity ${ms(220)} ${morph}`,
+      drawerPanelStyle: `position: absolute; top: 8px; bottom: 8px; left: 8px; width: 204px; border-radius: 12px; background: ${pal.sidebar}; border: 1px solid ${pal.hairline}; box-shadow: 12px 0 32px rgba(0, 0, 0, 0.18); transform: translate3d(${(this.state.narrowMode && this.state.drawerOpen) ? '0px' : '-224px'}, 0, 0); filter: blur(${(this.state.narrowMode && this.state.drawerOpen) ? '0px' : '4px'}); transition: transform ${ms(260)} ${morph}, filter ${ms(240)} ${morph}`,
+
+      searchScrimStyle: `position: absolute; inset: 0; background: rgba(0, 0, 0, 0.16); backdrop-filter: blur(3px); opacity: ${this.state.searchOpen ? 1 : 0}; pointer-events: ${this.state.searchOpen ? 'auto' : 'none'}; transition: opacity ${ms(200)} ${morph}`,
+      searchModalStyle: `position: absolute; top: 18px; left: 50%; width: 380px; margin-left: -190px; border-radius: 13px; overflow: hidden; background: ${pal.card}; border: 1px solid ${pal.accent}; box-shadow: 0 20px 44px rgba(0, 0, 0, 0.18); transform-origin: top center; opacity: ${this.state.searchOpen ? 1 : 0}; transform: scale(${this.state.searchOpen ? 1 : 0.88}) translate3d(0, ${this.state.searchOpen ? '0px' : '-14px'}, 0); filter: blur(${this.state.searchOpen ? '0px' : '5px'}); pointer-events: ${this.state.searchOpen ? 'auto' : 'none'}; transition: opacity ${ms(200)} ${morph}, transform ${ms(260)} ${morph}, filter ${ms(240)} ${morph}`
+    };
+  }
+}
+</script>
+</body>
+</html>

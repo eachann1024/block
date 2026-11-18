@@ -515,18 +515,31 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	pressed := row.Pressed() && !item.Disabled
 	active := hovered || pressed
 	fg, iconLine := pal.Text, pal.MenuIcon
+	bg := ui.Transparent
 	switch {
 	case item.Danger && active:
-		row.Background(pal.MenuDangerHoverBG)
+		bg = pal.MenuDangerHoverBG
 		fg, iconLine = pal.MenuDangerHoverFG, pal.MenuDangerHoverFG
 	case item.Danger:
 		fg, iconLine = pal.MenuDangerFG, pal.MenuDangerFG
 	case item.Checked:
-		row.Background(pal.Selected)
+		bg = pal.Selected
 	case pressed:
-		row.Background(pal.Selected)
+		bg = pal.Selected
 	case hovered:
-		row.Background(pal.MenuHover)
+		bg = pal.MenuHover
+	}
+	AnimateSurfaceColors(row, bg, ui.Transparent, false)
+	if pressed {
+		sc := row.AnimateTo("mrSc", 0.98, SpringTactile)
+		if !almostZero(sc-1, 0.001) {
+			row.Scale(sc, sc)
+		}
+	} else {
+		sc := row.AnimateTo("mrSc", 1.0, SpringTactile)
+		if !almostZero(sc-1, 0.001) {
+			row.Scale(sc, sc)
+		}
 	}
 	if item.Disabled {
 		row.Opacity(theme.DisabledOpacity)
@@ -544,7 +557,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			default:
 				ic = pal.MonoIconColors(iconLine)
 			}
-			icons.Draw(c, *item.Icon, theme.IconRow, ic)
+			icons.DrawAnimated(c, *item.Icon, theme.IconRow, ic, active)
 		}
 		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if item.Hint != "" {
@@ -570,7 +583,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			if item.Danger && active {
 				chevCol = pal.MenuDangerHoverFG
 			}
-			icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol))
+			icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol), active)
 		}
 		if item.Checked {
 			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))

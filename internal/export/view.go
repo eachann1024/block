@@ -921,19 +921,25 @@ func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitm
 				if bm != nil && pw > 0 && ph > 0 {
 					drawW := float32(pw) / exportRasterScale * scale
 					drawH := float32(ph) / exportRasterScale * scale
-					paperWrap := internalui.Elevate(ui.Box(ctx).Size(drawW, drawH).Shrink(0), theme.ElevationDialog)
+					paperWrap := internalui.Elevate(
+						ui.Box(ctx.Key("export-preview-card")).Size(drawW, drawH).Shrink(0).
+							Transition(internalui.SurfaceStageTransition()),
+						theme.ElevationDialog,
+					)
 					paperWrap.Children(func() {
 						ui.Image(ctx, bm).Size(drawW, drawH)
 					})
 				} else if previewErr != "" {
-					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
+					ui.Box(ctx.Key("export-preview-err")).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
 						Background(pal.Paper).Border(1, pal.Danger.Alpha(0.5)).
+						Transition(internalui.SurfaceStageTransition()).
 						Children(func() {
 							ui.Text(ctx, previewErr).FontSize(theme.FontBody).TextColor(pal.Danger)
 						})
 				} else {
-					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
+					ui.Box(ctx.Key("export-preview-loading")).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
 						Background(pal.Paper).Border(1, pal.SidebarBorder).
+						Transition(internalui.SurfaceStageTransition()).
 						Children(func() {
 							ui.Text(ctx, theme.Tr("正在生成预览…", "Rendering preview…")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						})
@@ -957,8 +963,9 @@ func (c *Controller) renderSidebar(
 	copied bool,
 	sideW float32,
 ) {
-	sidebar := ui.Column(ctx).Width(sideW).Shrink(0).FillHeight().
-		Background(pal.Paper).BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder)
+	sidebar := ui.Column(ctx.Key("export-sidebar")).Width(sideW).Shrink(0).FillHeight().
+		Background(pal.Paper).BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder).
+		Transition(internalui.DockedPanelTransition(true))
 	sidebar.Children(func() {
 		ctx.Key("export-options")
 		scrollBody := internalui.Scroll(ctx).FillWidth().Grow(1).MinHeight(0).Label("export-options")
@@ -1033,6 +1040,7 @@ func (c *Controller) renderSidebar(
 							ctx.Key("export-reveal")
 							rev := ui.ButtonBase(ctx).Shrink(0).Cursor(ui.CursorPointer).
 								Label("export-reveal")
+							internalui.TactileCard(rev, rev.Hovered(), rev.Pressed(), false, false)
 							rev.Children(func() {
 								ui.Text(ctx, revealLabel()).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 							})
@@ -1152,16 +1160,22 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		Role(ui.RoleRadio).Selected(selected).Label(id)
 
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	bg, bd := pal.Paper, pal.BtnBorder
 	fg := pal.TextSecondary
 	if selected {
-		btn.Background(pal.Selected).Border(1, pal.Accent)
+		bg, bd = pal.Selected, pal.Accent
 		fg = pal.Text
-	} else if btn.Hovered() {
-		btn.Background(pal.Hover).Border(1, pal.BtnBorder)
+	} else if pressed {
+		bg = pal.Selected
 		fg = pal.Text
-	} else {
-		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
+	} else if hovered {
+		bg = pal.Hover
+		fg = pal.Text
 	}
+	internalui.AnimateSurfaceColors(btn, bg, bd, true)
+	internalui.TactileCard(btn, hovered, pressed, selected, false)
 
 	chipBorder := pal.Export().ChipBorder
 
@@ -1175,7 +1189,7 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 			})
 		ui.Text(ctx, spec.Label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if selected {
-			icons.Draw(ctx, icons.Check, 15, pal.MonoIconColors(pal.Accent))
+			icons.DrawAnimated(ctx, icons.Check, 15, pal.MonoIconColors(pal.Accent), hovered || pressed)
 		}
 	})
 	internalui.Probe(btn, id)
