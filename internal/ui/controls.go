@@ -480,6 +480,7 @@ type MenuItemSpec struct {
 	ID            string
 	Label         string
 	Shortcut      string
+	Hint          string
 	Icon          *icons.Icon
 	Checked       bool
 	Danger        bool
@@ -546,7 +547,14 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			icons.Draw(c, *item.Icon, theme.IconRow, ic)
 		}
 		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if item.Shortcut != "" {
+		if item.Hint != "" {
+			hintCol := pal.MenuMuted
+			if item.Danger && active {
+				hintCol = pal.MenuDangerHoverFG
+			}
+			ui.Text(c, item.Hint).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+				TextColor(hintCol).SingleLine().Shrink(0)
+		} else if item.Shortcut != "" {
 			hintCol := pal.MenuMuted
 			if item.Danger && active {
 				hintCol = pal.MenuDangerHoverFG
