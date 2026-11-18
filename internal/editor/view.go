@@ -61,6 +61,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 
 	pal := theme.Ocean()
 	root := ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
+	if rb := root.Bounds(); rb.W > 0 && rb.H > 0 {
+		s.editorRect = rb
+	}
 	root.ObserveInput(s.onGutterInput)
 	if !readOnly || s.typingPointer != nil {
 		x, y, over := root.PointerPosition()
@@ -74,6 +77,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	animEdgeL, animEdgeR := s.animatedEdgeInsets(c, root)
 	s.viewportWidth = max(viewportWidth-animEdgeL-animEdgeR, 240)
 
+	root.Draw(func(_ *ui.Painter, r ui.Rect) {
+		s.editorRect = r
+	})
 	root.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.editorRect = r
 		appUi.RecordBounds("editor", r)
@@ -101,6 +107,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		// Main scrollable document body
 		scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
 			ObserveInput(s.onScrollObserveInput)
+		if sb := scroll.Bounds(); sb.W > 0 && sb.H > 0 {
+			s.scrollRect = sb
+		}
+		scroll.Draw(func(_ *ui.Painter, r ui.Rect) {
+			s.scrollRect = r
+		})
 		scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 			if s.scrollRect != r {
 				prevH := s.scrollRect.H
@@ -115,6 +127,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			outerMaxW := s.outerFlowWidth()
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
 				Padding(topPad, animEdgeR, bottomPad, animEdgeL)
+			if cb := col.Bounds(); cb.W > 0 && cb.H > 0 {
+				s.canvasLayoutOrigin = ui.Point{X: cb.X, Y: cb.Y}
+				s.hasCanvasOrigin = true
+			} else {
+				s.hasCanvasOrigin = false
+			}
 			if minCanvasH := max(s.minCanvasHeight, s.scrollRect.H); minCanvasH > 0 {
 				col.MinHeight(minCanvasH)
 			}
@@ -153,8 +171,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 							if cachedR, ok := s.canVirtualizeBlock(i, s.doc.Blocks[i].ID); ok {
 								id := s.doc.Blocks[i].ID
 								sp := ui.Box(c.Key(id)).FillWidth().Height(cachedR.H)
+								s.recordBlockLayoutBounds(id, sp)
 								sp.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-									s.blockRects[id] = r
+									s.recordBlockWinRect(id, r)
 								})
 								continue
 							}
@@ -405,7 +424,7 @@ func (s *Session) canVirtualizeBlock(idx int, id model.BlockID) (ui.Rect, bool) 
 	if s.calloutMenuBlock == id || s.codeLangMenuBlock == id || s.tableMenuBlock == id || s.imagePopBlock == id || s.imgResizeBlock == id || s.isTableExtendingBlock(id) {
 		return ui.Rect{}, false
 	}
-	r, ok := s.blockRects[id]
+	r, ok := s.blockRect(id)
 	if !ok || r.H <= 0 {
 		return ui.Rect{}, false
 	}
@@ -431,7 +450,7 @@ func (s *Session) renderBlockRow(c *ui.Context, idx int, readOnly bool) bool {
 }
 
 func (s *Session) rowLeftX(id model.BlockID) float32 {
-	if r, ok := s.blockRects[id]; ok && r.W > 0 {
+	if r, ok := s.blockRect(id); ok && r.W > 0 {
 		return r.X
 	}
 	outerW := s.outerFlowWidth()
@@ -459,6 +478,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 
 	isAtomic := b.Kind == model.BlockImage || b.Kind == model.BlockDivider
 	row := ui.Column(c.Key(id)).FillWidth().Padding(topGap, rightPad, 0, leftPad)
+	s.recordBlockLayoutBounds(id, row)
 	if !readOnly {
 		if isAtomic {
 			row.Cursor(ui.CursorDefault)
@@ -502,8 +522,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		})
 	}
 	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		if prev, ok := s.blockRects[id]; !ok || prev != r {
-			s.blockRects[id] = r
+		if s.recordBlockWinRect(id, r) {
 			if s.IsSelectionToolbarOpen() || s.inlineAI != nil || s.blockMenu != nil || s.calloutMenuBlock == id {
 				c.Invalidate()
 			}
@@ -632,9 +651,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 											s.markDirty()
 										} else {
 											s.FocusBlock(idx)
-											trigger := s.blockTextRects[id]
+											trigger := s.blockTextRectValue(id)
 											if trigger.W <= 0 {
-												if r, ok := s.blockRects[id]; ok && r.W > 0 {
+												if r, ok := s.blockRect(id); ok && r.W > 0 {
 													trigger = ui.Rect{
 														X: r.X + s.leftContentGutter(),
 														Y: r.Y + topGap,
@@ -1077,8 +1096,9 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		if !readOnly {
 			rt.Cursor(ui.CursorText)
 		}
+		s.recordBlockTextLayoutBounds(b.ID, rt)
 		rt.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-			s.recordBlockTextRect(b.ID, r)
+			s.recordBlockTextWinRect(b.ID, r)
 		})
 	})
 }
@@ -1163,7 +1183,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OpaqueRanges:      blockOpaqueBGRanges(b),
 			HasChipBG:         blockHasChipBG(b),
 			OnBounds: func(r ui.Rect) {
-				s.recordBlockTextRect(b.ID, r)
+				s.recordBlockTextWinRect(b.ID, r)
 			},
 			OnChange: func(newText string, _, caret int) {
 				s.caretHidden = false
@@ -1315,6 +1335,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			},
 		})
 
+		s.recordBlockTextLayoutBounds(b.ID, in)
 		_ = s.updateFocusedRichInputDrag(c, s.frameRoot, st, idx)
 
 		if s.focusPending {
@@ -1724,8 +1745,9 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 					return false
 				})
+				s.recordBlockTextLayoutBounds(id, ta)
 				ta.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-					s.recordBlockTextRect(id, r)
+					s.recordBlockTextWinRect(id, r)
 				})
 				taDragging := s.updateFocusedInputDrag(c, s.frameRoot, ta, idx)
 				var codeSelLo, codeSelHi int
@@ -1867,8 +1889,9 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 				if !readOnly {
 					rt.Cursor(ui.CursorText)
 				}
+				s.recordBlockTextLayoutBounds(id, rt)
 				rt.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-					s.recordBlockTextRect(id, r)
+					s.recordBlockTextWinRect(id, r)
 				})
 			}
 		}
@@ -2144,7 +2167,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						rowEl.Children(func() {
 							for cIdx, colW := range colWidths {
 								if cIdx < len(row) {
-									s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, colW, headerBG, needHScroll, readOnly)
+									s.renderTableCell(c, idx, id, tbl, rIdx, cIdx, colW, headerBG, needHScroll, readOnly, gridRow, grid)
 								} else {
 									tableGridCell(c, rIdx, cIdx, colW, needHScroll).Background(pal.Paper)
 								}
@@ -2242,7 +2265,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	})
 }
 
-func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, colW float32, headerBG ui.Color, needHScroll, readOnly bool) {
+func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.BlockID, tbl *model.TableData, rIdx, cIdx int, colW float32, headerBG ui.Color, needHScroll, readOnly bool, gridRowElem, gridElem ui.Element) {
 	pal := theme.Ocean()
 	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
 	cell := &tbl.Rows[rIdx][cIdx]
@@ -2259,8 +2282,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 
 	jumpTarget := s.jump.block == blockID && s.jump.row == rIdx && s.jump.col == cIdx
 	box := tableGridCell(c, rIdx, cIdx, colW, needHScroll).Padding(tPadY, tPadX)
+	s.recordTableCellLayoutBounds(blockID, rIdx, cIdx, box, gridRowElem, gridElem, needHScroll)
 	box.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		s.recordTableCellRect(blockID, rIdx, cIdx, r)
+		s.recordTableCellWinRect(blockID, rIdx, cIdx, r, needHScroll)
 		if jumpTarget {
 			p.Stroke(r, pal.Editor().JumpRing.Alpha(s.jumpAlpha), theme.RadiusXS, theme.JumpHighlightBorderW)
 			appUi.RecordBounds("search-target-cell", r)
@@ -2660,16 +2684,11 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					}
 				}
 			}
+			s.recordImageLayoutBounds(id, picBox)
 			picBox.DrawOver(func(p *ui.Painter, r ui.Rect) {
 				appUi.RecordBounds(fmt.Sprintf("image-%d", id), r)
-				if s.imageRects == nil {
-					s.imageRects = make(map[model.BlockID]ui.Rect)
-				}
-				if prev, ok := s.imageRects[id]; !ok || prev != r {
-					s.imageRects[id] = r
-					if isFocused {
-						c.Invalidate()
-					}
+				if s.recordImageWinRect(id, r) && isFocused {
+					c.Invalidate()
 				}
 				if borderHighlighted && r.W > borderW && r.H > borderW {
 					p.Stroke(ui.Rect{
@@ -2855,9 +2874,9 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 	pal := theme.Ocean()
 	id := b.ID
 	vp, winW, winH := s.overlayViewport(c)
-	trigger := s.imageRects[id]
+	trigger := s.imageRectValue(id)
 	if trigger.W <= 0 {
-		trigger = s.blockRects[id]
+		trigger = s.blockRectValue(id)
 	}
 	if trigger.W <= 0 {
 		trigger = ui.Rect{X: vp.X + 120, Y: vp.Y + 120, W: 400, H: 120}

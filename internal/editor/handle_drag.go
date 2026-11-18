@@ -197,7 +197,7 @@ func (s *Session) activateBlockDrag(fromIdx int) {
 		if len(s.folded) > 0 && i > fromIdx && s.isBlockHiddenByFold(i) {
 			continue
 		}
-		if r, ok := s.blockRects[s.doc.Blocks[i].ID]; ok && r.H > 0 {
+		if r, ok := s.blockRect(s.doc.Blocks[i].ID); ok && r.H > 0 {
 			totalH += r.H
 		}
 	}
@@ -211,7 +211,7 @@ func (s *Session) activateBlockDrag(fromIdx int) {
 			s.dragSavedHeight = totalH - compactH
 		}
 		for i := fromIdx + 1; i <= end; i++ {
-			delete(s.blockRects, s.doc.Blocks[i].ID)
+			s.deleteBlockRect(s.doc.Blocks[i].ID)
 		}
 	}
 }
@@ -532,7 +532,7 @@ func (s *Session) updateBlockDropTarget(fromIdx int, wx, wy float32) {
 		if len(s.folded) > 0 && s.isBlockHiddenByFold(i) {
 			continue
 		}
-		r, ok := s.blockRects[s.doc.Blocks[i].ID]
+		r, ok := s.blockRect(s.doc.Blocks[i].ID)
 		if !ok || r.H <= 0 {
 			continue
 		}
@@ -736,7 +736,7 @@ func (s *Session) handleBlockGripGesture(c *ui.Context, grip ui.Element, idx int
 		s.FocusBlock(idx)
 		trigger := grip.Bounds()
 		if trigger.W <= 0 {
-			trigger = s.blockRects[id]
+			trigger = s.blockRectValue(id)
 		}
 		s.openHandleMenu(idx, trigger)
 	}

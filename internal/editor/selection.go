@@ -805,6 +805,7 @@ func (s *Session) onScrollObserveInput(ev ui.InputEvent) {
 		s.lastPressMods = ev.Mods
 		s.lastPressClicks = max(ev.Clicks, 1)
 		s.lastPressLocal = ui.Point{X: ev.X, Y: ev.Y}
+		s.lastPressScrollY = s.bodyScroll.Y
 		s.pressJustBegan = true
 	}
 }
@@ -828,7 +829,7 @@ func (s *Session) blockHitBoundsY(idx int) (top, bottom float32, ok bool) {
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return 0, 0, false
 	}
-	r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
+	r, hasRect := s.blockRect(s.doc.Blocks[idx].ID)
 	if !hasRect || r.H <= 0 {
 		return 0, 0, false
 	}
@@ -840,7 +841,7 @@ func (s *Session) blockHitBoundsY(idx int) (top, bottom float32, ok bool) {
 	bottom = r.Y + r.H
 	if next := s.stepVisibleBlock(idx, 1); next > idx && next < len(s.doc.Blocks) {
 		nextGap := s.blockGap(&s.doc.Blocks[idx], &s.doc.Blocks[next])
-		if nextR, hasNext := s.blockRects[s.doc.Blocks[next].ID]; hasNext && nextR.H > 0 {
+		if nextR, hasNext := s.blockRect(s.doc.Blocks[next].ID); hasNext && nextR.H > 0 {
 			nextGap = min(nextGap, max(nextR.H-1, 0))
 		}
 		bottom = r.Y + r.H + nextGap*0.5
@@ -883,20 +884,25 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 
 		if s.mouseMode == mouseSelNone || s.mouseOriginBlock >= 0 || s.pressJustBegan {
 			startPt := curPt
+			docPt := ui.Point{
+				X: startPt.X - s.scrollRect.X,
+				Y: startPt.Y - s.scrollRect.Y + s.bodyScroll.Y,
+			}
 			if s.pressJustBegan && s.scrollRect.W > 0 {
 				startPt = ui.Point{
 					X: s.scrollRect.X + s.lastPressLocal.X,
-					Y: s.scrollRect.Y + s.lastPressLocal.Y,
+					Y: s.scrollRect.Y + s.lastPressLocal.Y - (s.bodyScroll.Y - s.lastPressScrollY),
+				}
+				docPt = ui.Point{
+					X: s.lastPressLocal.X,
+					Y: s.lastPressLocal.Y + s.lastPressScrollY,
 				}
 			}
 			s.pressJustBegan = false
 			s.mouseOriginBlock = -1
 			s.mouseStartPt = startPt
 			s.mouseCurPt = curPt
-			s.mouseStartDocPt = ui.Point{
-				X: startPt.X - s.scrollRect.X,
-				Y: startPt.Y - s.scrollRect.Y + s.bodyScroll.Y,
-			}
+			s.mouseStartDocPt = docPt
 			s.mouseDragged = math.Hypot(float64(curPt.X-startPt.X), float64(curPt.Y-startPt.Y)) > 3
 			s.firstLineDeleteArmed = false
 			s.closeTransientOverlays()
@@ -931,7 +937,9 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 		}
 
 		s.mouseCurPt = curPt
-		if math.Hypot(float64(curPt.X-s.mouseStartPt.X), float64(curPt.Y-s.mouseStartPt.Y)) > 3 {
+		startWinX := s.scrollRect.X + s.mouseStartDocPt.X
+		startWinY := s.scrollRect.Y + s.mouseStartDocPt.Y - s.bodyScroll.Y
+		if math.Hypot(float64(curPt.X-startWinX), float64(curPt.Y-startWinY)) > 3 {
 			s.mouseDragged = true
 		}
 
@@ -967,6 +975,9 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 		endPt := s.mouseCurPt
 		if !dragged && (s.mouseStartPt.X != 0 || s.mouseStartPt.Y != 0) {
 			endPt = s.mouseStartPt
+		}
+		if mode == mouseSelBox && dragged {
+			s.applyBoxSelection(endPt.X, endPt.Y)
 		}
 		s.mouseMode = mouseSelNone
 		s.mouseDragged = false
@@ -1017,20 +1028,6 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 func (s *Session) windowPointerPoint(root ui.Element) ui.Point {
 	wx, wy := s.windowPointer(root)
 	return ui.Point{X: wx, Y: wy}
-}
-
-func (s *Session) recordBlockTextRect(id model.BlockID, r ui.Rect) {
-	if s.blockTextRects == nil {
-		s.blockTextRects = make(map[model.BlockID]ui.Rect)
-	}
-	s.blockTextRects[id] = r
-}
-
-func (s *Session) recordTableCellRect(blockID model.BlockID, row, col int, r ui.Rect) {
-	if s.tableCellRects == nil {
-		s.tableCellRects = make(map[tableCellKey]ui.Rect)
-	}
-	s.tableCellRects[tableCellKey{BlockID: blockID, Row: row, Col: col}] = r
 }
 
 func (s *Session) scheduleRebuild(c *ui.Context) {
@@ -1237,7 +1234,7 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 			}
 		}
 
-		cellRect, hasCell := s.tableCellRects[tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}]
+		cellRect, hasCell := s.tableCellRect(blockID, rIdx, cIdx)
 		inSameCell := hasCell && wx >= cellRect.X && wx <= cellRect.X+cellRect.W && wy >= cellRect.Y && wy <= cellRect.Y+cellRect.H
 		if inSameCell && s.mouseTextAnchor.Block == blockIdx {
 			s.selAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
@@ -1357,7 +1354,7 @@ func (s *Session) updateFocusedRichTableCellDrag(c *ui.Context, root ui.Element,
 			}
 		}
 
-		cellRect, hasCell := s.tableCellRects[tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}]
+		cellRect, hasCell := s.tableCellRect(blockID, rIdx, cIdx)
 		inSameCell := hasCell && wx >= cellRect.X && wx <= cellRect.X+cellRect.W && wy >= cellRect.Y && wy <= cellRect.Y+cellRect.H
 		if inSameCell && s.mouseTextAnchor.Block == blockIdx {
 			s.selAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
@@ -1403,8 +1400,8 @@ func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
 	if idx < 0 {
 		return true
 	}
-	r := s.blockRects[s.doc.Blocks[idx].ID]
-	if r.W <= 0 {
+	r, ok := s.blockRect(s.doc.Blocks[idx].ID)
+	if !ok || r.W <= 0 {
 		return false
 	}
 	bleed := s.bandBleed()
@@ -1422,18 +1419,24 @@ func (s *Session) applyBoxSelection(curWX, curWY float32) {
 	maxY := max(startWinY, curWY)
 
 	firstHit, lastHit := -1, -1
+	var prevVis *model.Block
 	for i := range s.doc.Blocks {
 		if s.isBlockHiddenByFold(i) {
 			continue
 		}
-		r, ok := s.blockRects[s.doc.Blocks[i].ID]
+		cur := &s.doc.Blocks[i]
+		r, ok := s.blockRect(cur.ID)
 		if !ok || r.H <= 0 {
+			prevVis = cur
 			continue
 		}
 		topGap := float32(0)
-		if tr, hasT := s.blockTextRects[s.doc.Blocks[i].ID]; hasT && tr.Y > r.Y {
+		if tr, hasT := s.blockTextRect(cur.ID); hasT && tr.Y > r.Y {
 			topGap = min(tr.Y-r.Y, r.H*0.5)
+		} else if prevVis != nil {
+			topGap = min(s.blockGap(prevVis, cur), r.H*0.5)
 		}
+		prevVis = cur
 		bTop := r.Y + topGap*0.6
 		bBot := r.Y + r.H
 		if bBot >= minY && bTop <= maxY {
@@ -1550,7 +1553,7 @@ func (s *Session) nearestVisibleBlockAtY(wy float32) int {
 			continue
 		}
 		cur := &s.doc.Blocks[i]
-		r, ok := s.blockRects[cur.ID]
+		r, ok := s.blockRect(cur.ID)
 		if !ok || r.H <= 0 {
 			prevVis = cur
 			continue
@@ -1581,11 +1584,15 @@ func (s *Session) nearestVisibleBlockAtY(wy float32) int {
 		}
 	}
 	if bestIdx >= 0 {
-		if firstVis >= 0 && wy < s.blockRects[s.doc.Blocks[firstVis].ID].Y {
-			return firstVis
+		if firstVis >= 0 {
+			if firstR, ok := s.blockRect(s.doc.Blocks[firstVis].ID); ok && wy < firstR.Y {
+				return firstVis
+			}
 		}
-		if lastVis >= 0 && wy > s.blockRects[s.doc.Blocks[lastVis].ID].Y+s.blockRects[s.doc.Blocks[lastVis].ID].H {
-			return lastVis
+		if lastVis >= 0 {
+			if lastR, ok := s.blockRect(s.doc.Blocks[lastVis].ID); ok && wy > lastR.Y+lastR.H {
+				return lastVis
+			}
 		}
 		return bestIdx
 	}
@@ -1603,10 +1610,10 @@ func (s *Session) hitPositionAtPoint(wx, wy float32) Position {
 	if firstVis < 0 {
 		return Position{}
 	}
-	if r, ok := s.blockRects[s.doc.Blocks[firstVis].ID]; ok && r.H > 0 && wy < r.Y {
+	if r, ok := s.blockRect(s.doc.Blocks[firstVis].ID); ok && r.H > 0 && wy < r.Y {
 		return Position{Block: firstVis, Offset: 0}
 	}
-	if r, ok := s.blockRects[s.doc.Blocks[lastVis].ID]; ok && r.H > 0 && wy > r.Y+r.H {
+	if r, ok := s.blockRect(s.doc.Blocks[lastVis].ID); ok && r.H > 0 && wy > r.Y+r.H {
 		return Position{Block: lastVis, Offset: s.blockSelectionLen(lastVis)}
 	}
 
@@ -1615,13 +1622,13 @@ func (s *Session) hitPositionAtPoint(wx, wy float32) Position {
 		return Position{}
 	}
 	b := &s.doc.Blocks[idx]
-	rowRect := s.blockRects[b.ID]
+	rowRect := s.blockRectValue(b.ID)
 
 	switch b.Kind {
 	case model.BlockDivider, model.BlockImage:
 		rlen := s.blockSelectionLen(idx)
 		midY := rowRect.Y + rowRect.H*0.5
-		if ir, ok := s.imageRects[b.ID]; ok && ir.H > 0 {
+		if ir, ok := s.imageRect(b.ID); ok && ir.H > 0 {
 			midY = ir.Y + ir.H*0.5
 		}
 		if wy < midY {
@@ -1649,7 +1656,7 @@ func (s *Session) hitOffsetInRichBlock(idx int, b *model.Block, rowRect ui.Rect,
 		return 0
 	}
 	rlen := utf8.RuneCountInString(plain)
-	tr, ok := s.blockTextRects[b.ID]
+	tr, ok := s.blockTextRect(b.ID)
 	if !ok || tr.W <= 0 {
 		if wy < rowRect.Y+rowRect.H*0.5 {
 			return 0
@@ -1678,7 +1685,7 @@ func (s *Session) hitOffsetInCodeBlock(b *model.Block, rowRect ui.Rect, wx, wy f
 	if rlen == 0 {
 		return 0
 	}
-	tr, ok := s.blockTextRects[b.ID]
+	tr, ok := s.blockTextRect(b.ID)
 	if !ok || tr.W <= 0 {
 		if wy < rowRect.Y+rowRect.H*0.5 {
 			return 0
@@ -1702,12 +1709,23 @@ func (s *Session) hitOffsetInCodeBlock(b *model.Block, rowRect ui.Rect, wx, wy f
 }
 
 func (s *Session) hitTableCellCoords(blockID model.BlockID, wx, wy float32) (bestR, bestC int, ok bool) {
-	if len(s.tableCellRects) == 0 {
+	if len(s.tableCellDocRects) == 0 {
 		return 0, 0, false
 	}
+	var tbl *model.TableData
+	if bIdx := s.blockIndexByID(blockID); bIdx >= 0 && bIdx < len(s.doc.Blocks) {
+		tbl = s.doc.Blocks[bIdx].Table
+	}
 	bestDist := float32(1e9)
-	for k, r := range s.tableCellRects {
-		if k.BlockID != blockID || r.W <= 0 || r.H <= 0 {
+	for k := range s.tableCellDocRects {
+		if k.BlockID != blockID {
+			continue
+		}
+		if tbl != nil && (k.Row < 0 || k.Row >= len(tbl.Rows) || k.Col < 0 || k.Col >= len(tbl.Rows[k.Row])) {
+			continue
+		}
+		r, rOk := s.tableCellRect(k.BlockID, k.Row, k.Col)
+		if !rOk || r.W <= 0 || r.H <= 0 {
 			continue
 		}
 		if wx >= r.X && wx <= r.X+r.W && wy >= r.Y && wy <= r.Y+r.H {
@@ -1715,7 +1733,7 @@ func (s *Session) hitTableCellCoords(blockID model.BlockID, wx, wy float32) (bes
 		}
 		dx := max(r.X-wx, wx-(r.X+r.W), 0)
 		dy := max(r.Y-wy, wy-(r.Y+r.H), 0)
-		if d := dx*dx + dy*dy; d < bestDist {
+		if d := dx*dx + dy*dy; d < bestDist || (d == bestDist && (!ok || k.Row < bestR || (k.Row == bestR && k.Col < bestC))) {
 			bestDist = d
 			bestR, bestC = k.Row, k.Col
 			ok = true
@@ -1768,7 +1786,7 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 	if cellLen == 0 {
 		return base
 	}
-	cr := s.tableCellRects[tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}]
+	cr, _ := s.tableCellRect(b.ID, rIdx, cIdx)
 	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
 	weight := tableCellTextWeight(b.Table, rIdx)
 	cellBlock := model.Block{ID: b.ID, Kind: model.BlockParagraph, Spans: cell.Spans}
