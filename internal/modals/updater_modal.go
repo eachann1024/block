@@ -128,7 +128,6 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	}
 
 	title := updaterModalTitle(snap, showEn)
-	busy := snap.Status == updater.StatusChecking || snap.Status == updater.StatusDownloading || snap.Status == updater.StatusInstalling
 
 	internalui.Dialog(c, "updater-modal", title, &open, internalui.ModalLayout{
 		Width:     theme.UpdaterModalWidth,
@@ -143,9 +142,9 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space12).Grow(1).MinWidth(0).Children(func() {
 					ui.Box(c.Key("updater-app-icon")).
 						Width(theme.UpdaterHeaderIconBox).Height(theme.UpdaterHeaderIconBox).
-						Radius(theme.RadiusLG).Background(uPal.VersionPillBG).Border(1, uPal.VersionPillBorder).
+						Radius(theme.RadiusLG).Background(uPal.Mark.Tile).Clip().
 						Center().Shrink(0).Children(func() {
-						icons.DrawAnimated(c, icons.UpdateTangle, theme.IconRow, pal.DuoIconColors(pal.Accent), busy)
+						internalui.CatMark(c, theme.UpdaterHeaderMarkSize, uPal.Mark)
 					})
 
 					ui.Column(c).Gap(theme.Space4).Grow(1).MinWidth(0).Children(func() {
