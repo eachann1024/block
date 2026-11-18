@@ -26,9 +26,6 @@ func (s *Session) emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec 
 				Armed: true,
 			}
 		}
-		if s.minimal {
-			return nil
-		}
 		return &emptyHintSpec{
 			Text:     theme.Tr("开始输入…", "Start typing…"),
 			MenuKeys: true,
@@ -51,7 +48,7 @@ func (s *Session) emptyHintFor(b *model.Block, deleteArmed bool) *emptyHintSpec 
 }
 
 func (s *Session) paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontSize, lh float32) {
-	if s.minimal || hint == nil || hint.Armed {
+	if hint == nil || hint.Armed {
 		return
 	}
 	pal := theme.Ocean()
@@ -93,13 +90,17 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 		if availBody <= 0 {
 			availBody = theme.EditorStandardWidth
 		}
-		if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 260 {
+		if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 220 {
 			keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(6)
 			keys.Children(func() {
-				for _, capLbl := range []string{"/", "、"} {
-					appUi.Keycap(c, capLbl)
+				if s.minimal {
+					appUi.Keycap(c, "/")
+				} else {
+					for _, capLbl := range []string{"/", "、"} {
+						appUi.Keycap(c, capLbl)
+					}
+					ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(theme.FontSmall).TextColor(hintCol).SingleLine()
 				}
-				ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(theme.FontSmall).TextColor(hintCol).SingleLine()
 			})
 			appUi.Probe(keys, "empty-hint-menu-keys")
 		}
