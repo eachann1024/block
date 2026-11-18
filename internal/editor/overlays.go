@@ -1877,7 +1877,7 @@ func outlineBarWidth(level int) float32 {
 
 const (
 	annotationRailWidth    float32 = 208
-	annotationRailMaxWidth float32 = 360
+	annotationRailMaxWidth float32 = 480
 	annotationRailSlot     float32 = annotationRailWidth + 8
 )
 
