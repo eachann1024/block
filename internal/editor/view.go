@@ -220,21 +220,6 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			s.closeTransientOverlays()
 		}
 	}
-	if s.calloutMenuBlock != 0 && !readOnly {
-		total := len(allCalloutKinds) + 1
-		if c.Shortcut(0, ui.KeyDown) {
-			s.calloutMenuIndex = (s.calloutMenuIndex + 1) % total
-		} else if c.Shortcut(0, ui.KeyUp) {
-			s.calloutMenuIndex = (s.calloutMenuIndex - 1 + total) % total
-		} else if c.Shortcut(0, ui.KeyEnter) {
-			if s.calloutMenuIndex >= 0 && s.calloutMenuIndex < len(allCalloutKinds) {
-				k := allCalloutKinds[s.calloutMenuIndex]
-				s.setCalloutKind(s.calloutMenuBlock, &k)
-			} else {
-				s.setCalloutKind(s.calloutMenuBlock, nil)
-			}
-		}
-	}
 	if readOnly {
 		return
 	}
@@ -596,6 +581,11 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								gripActive := s.dragBlockID == id && !s.dragCanceled
 								gripHovered := grip.Hovered()
 								if !gripActive && !gripPressed && s.blockMenu == nil {
+									clickDetail := theme.Tr("打开块菜单", "to open menu")
+									if !(idx == 0 && isFrontmatterBlock(0, b)) &&
+										(b.PlainText() != "" || b.Code != "" || b.Kind == model.BlockTable || b.Kind == model.BlockImage || b.Kind == model.BlockDivider) {
+										clickDetail = theme.Tr("转换块", "to turn into")
+									}
 									appUi.RichTooltip(c, grip, appUi.TooltipSpec{
 										Rows: []appUi.TooltipRow{
 											{
@@ -606,7 +596,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 											{
 												Trigger:     theme.Tr("点击", "Click"),
 												TriggerTone: appUi.TooltipToneAccent,
-												Detail:      theme.Tr("打开块菜单", "to open menu"),
+												Detail:      clickDetail,
 											},
 										},
 									})
@@ -1047,6 +1037,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			LinkColor:         pal.Link,
 			HideCaret:         s.caretHidden,
 			SuppressSelection: multiSel,
+			SuppressNavKeys:   s.hasMenuPopupOpen(),
 			SyncSelection:     syncSel,
 			FocusPending:      s.focusPending,
 			Anchor:            s.selAnchor.Offset,
@@ -1123,24 +1114,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OnKey: func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool {
 				s.caretHidden = false
 				s.footPickerAnnotID = ""
-				selLo, selHi := min(anchor, caret), max(anchor, caret)
-
-				// Slash menu keyboard navigation
-				if s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx {
-					switch {
-					case key == ui.KeyUp && mods == 0:
-						return s.stepSlashMenu(false)
-					case key == ui.KeyDown && mods == 0:
-						return s.stepSlashMenu(true)
-					case key == ui.KeyEnter && mods == 0:
-						if s.activateSlashMenu() {
-							return true
-						}
-					case key == ui.KeyEscape && mods == 0:
-						s.blockMenu = nil
-						return true
-					}
+				if s.hasMenuPopupOpen() {
+					return false
 				}
+				selLo, selHi := min(anchor, caret), max(anchor, caret)
 
 				if s.rangeShortcut(mods, key) {
 					return true
@@ -2203,6 +2180,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				LinkColor:         pal.Link,
 				HideCaret:         s.caretHidden,
 				SuppressSelection: multiSel,
+				SuppressNavKeys:   s.hasMenuPopupOpen(),
 				SyncSelection:     syncSel,
 				FocusPending:      s.focusPending,
 				Anchor:            relA,
@@ -2247,6 +2225,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				},
 				OnKey: func(key ui.Key, mods ui.Modifiers, _ string, _, _ int) bool {
 					s.caretHidden = false
+					if s.hasMenuPopupOpen() {
+						return false
+					}
 					if key == ui.KeyTab {
 						if mods == ui.Shift {
 							s.stepTableCell(blockID, tbl, rIdx, cIdx, -1)
