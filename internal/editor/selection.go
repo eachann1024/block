@@ -64,6 +64,17 @@ func (s *Session) hasWholeAtomicSelection() bool {
 	return a.Offset == 0 && b.Offset >= s.blockSelectionLen(a.Block)
 }
 
+func (s *Session) hasFocusedAtomicBlock() bool {
+	if s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
+		return false
+	}
+	if s.imagePopKind == "alt" {
+		return false
+	}
+	k := s.doc.Blocks[s.focusedBlock].Kind
+	return k == model.BlockImage || k == model.BlockDivider
+}
+
 func (s *Session) needsDetachedSelectionFocus() bool {
 	if s.isMouseDragging() {
 		return false
@@ -71,7 +82,7 @@ func (s *Session) needsDetachedSelectionFocus() bool {
 	if s.toolbarPop == "link" || s.toolbarPop == "comment" || s.findOpen || s.inlineAI != nil || s.editingAnnotID != "" {
 		return false
 	}
-	return s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()
+	return s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() || s.hasFocusedAtomicBlock()
 }
 
 func (s *Session) blockSelectionLen(idx int) int {
@@ -473,8 +484,134 @@ func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst s
 	}
 }
 
+func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool {
+	idx := s.focusedBlock
+	if idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	copyAtomic := func() {
+		blk := &s.doc.Blocks[idx]
+		cp := blk.Clone()
+		cp.ID = model.NewBlockID()
+		cp.Dirty = true
+		cp.CleanSource = ""
+		single := []model.Block{cp}
+		normalizeCopiedBlocks(single)
+		if md := strings.TrimSuffix(s.serializeBlocks(single), "\n"); md != "" {
+			c.WriteClipboard(md)
+		}
+	}
+	switch ev.Kind {
+	case ui.InputCommand:
+		switch ev.Text {
+		case "copy":
+			copyAtomic()
+			return true
+		case "cut":
+			copyAtomic()
+			if !s.readOnly {
+				s.deleteBlock(idx)
+			}
+			return true
+		case "paste", "pasteAndMatchStyle":
+			if !s.readOnly {
+				if clip := c.ReadClipboard(); clip != "" {
+					s.PasteText(clip)
+				}
+			}
+			return true
+		case "selectAll":
+			s.SelectAllBlocks()
+			return true
+		case "delete":
+			if !s.readOnly {
+				s.deleteBlock(idx)
+			}
+			return true
+		case "undo":
+			if !s.readOnly {
+				s.Undo()
+			}
+			return true
+		case "redo":
+			if !s.readOnly {
+				s.Redo()
+			}
+			return true
+		}
+	case ui.InputText:
+		if s.readOnly || ev.Text == "" {
+			return false
+		}
+		s.pushUndo()
+		nb := model.Block{ID: s.doc.Blocks[idx].ID, Kind: model.BlockParagraph, Dirty: true}
+		nb.SetText(ev.Text)
+		s.doc.Blocks[idx] = nb
+		off := utf8.RuneCountInString(ev.Text)
+		s.selAnchor = Position{Block: idx, Offset: off}
+		s.selHead = s.selAnchor
+		s.focusPending = true
+		s.selSyncPending = true
+		s.multiSelFocusPending = false
+		s.markDirty()
+		return true
+	case ui.InputKeyDown:
+		switch {
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyA:
+			s.SelectAllBlocks()
+			return true
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyC:
+			copyAtomic()
+			return true
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyX:
+			copyAtomic()
+			if !s.readOnly {
+				s.deleteBlock(idx)
+			}
+			return true
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
+			if !s.readOnly {
+				if clip := c.ReadClipboard(); clip != "" {
+					s.PasteText(clip)
+				}
+			}
+			return true
+		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
+			s.deleteBlock(idx)
+			return true
+		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
+			s.pushUndo()
+			nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+			s.spliceBlocks(idx+1, idx+1, []model.Block{nb})
+			s.FocusBlock(idx + 1)
+			s.markDirty()
+			return true
+		case ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyLeft):
+			if prev := s.stepVisibleBlock(idx, -1); prev >= 0 && prev != idx {
+				s.FocusBlock(prev)
+				if s.doc.Blocks[prev].Kind != model.BlockDivider && s.doc.Blocks[prev].Kind != model.BlockImage {
+					endOff := len([]rune(s.doc.Blocks[prev].PlainText()))
+					s.selAnchor = Position{Block: prev, Offset: endOff}
+					s.selHead = s.selAnchor
+					s.selSyncPending = true
+				}
+			}
+			return true
+		case ev.Mods == 0 && (ev.Key == ui.KeyDown || ev.Key == ui.KeyRight):
+			if next := s.stepVisibleBlock(idx, 1); next >= 0 && next != idx {
+				s.FocusBlock(next)
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) bool {
 	if !s.hasNonEmptySelection() {
+		if s.hasFocusedAtomicBlock() {
+			return s.handleFocusedAtomicInput(c, ev)
+		}
 		return false
 	}
 	switch ev.Kind {
@@ -840,6 +977,11 @@ func (s *Session) recordTableCellRect(blockID model.BlockID, row, col int, r ui.
 	s.tableCellRects[tableCellKey{BlockID: blockID, Row: row, Col: col}] = r
 }
 
+func (s *Session) scheduleRebuild(c *ui.Context) {
+	c.AnimationFrame()
+	c.Invalidate()
+}
+
 func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode, dragged bool, pt ui.Point, readOnly bool) {
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
@@ -851,7 +993,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 				s.selAnchor = pos
 				s.selHead = pos
 				c.OpenURL(link)
-				c.Invalidate()
+				s.scheduleRebuild(c)
 				return
 			}
 		}
@@ -865,12 +1007,12 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
 		if !readOnly && firstR.H > 0 && pt.Y < firstR.Y {
 			s.FocusBlock(firstVis)
-			c.Invalidate()
+			s.scheduleRebuild(c)
 			return
 		}
 		if !readOnly && lastR.H > 0 && pt.Y > lastR.Y+lastR.H+8 {
 			s.focusOrInsertBottomParagraph()
-			c.Invalidate()
+			s.scheduleRebuild(c)
 			return
 		}
 		idx := s.nearestVisibleBlockAtY(pt.Y)
@@ -887,7 +1029,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.focusPending = !readOnly
 			s.selSyncPending = !readOnly
 			s.multiSelFocusPending = false
-			c.Invalidate()
+			s.scheduleRebuild(c)
 		}
 		return
 	}
@@ -897,7 +1039,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		s.multiSelFocusPending = true
 		s.focusPending = false
 		s.selSyncPending = false
-		c.Invalidate()
+		s.scheduleRebuild(c)
 		return
 	}
 
@@ -913,7 +1055,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.tableActiveRow = rIdx
 			s.tableActiveCol = cIdx
 			s.focusPending = true
-			c.Invalidate()
+			s.scheduleRebuild(c)
 			return
 		}
 		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
@@ -921,7 +1063,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 			s.tableActiveRow = row
 			s.tableActiveCol = col
 			s.focusPending = true
-			c.Invalidate()
+			s.scheduleRebuild(c)
 			return
 		}
 	}
@@ -930,7 +1072,7 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 		s.focusPending = true
 		s.selSyncPending = true
 	}
-	c.Invalidate()
+	s.scheduleRebuild(c)
 }
 
 // updateFocusedInputDrag bridges an active drag inside a focused TextAreaBase (or code block)
@@ -940,6 +1082,8 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 	if held {
 		wx, wy := s.windowPointer(root)
 		anchorOff, caretOff := in.TextAnchorCaret()
+		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
+		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
 
 		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != idx || s.pressJustBegan {
 			s.pressJustBegan = false
@@ -954,7 +1098,7 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 			} else {
 				s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
 			}
-		} else if s.lastPressMods&ui.Shift == 0 {
+		} else if !outsideBlock && s.lastPressMods&ui.Shift == 0 && s.lastPressClicks >= 2 {
 			s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
 		}
 
@@ -963,15 +1107,13 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 			s.mouseDragged = true
 		}
 
-		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
-		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
 		if outsideBlock || s.mouseTextAnchor.Block != idx {
 			prevHead := s.selHead
 			s.selAnchor = s.mouseTextAnchor
 			s.selHead = s.hitPositionAtPoint(wx, wy)
 			s.autoScrollOnDrag(c, wy)
 			if s.selHead != prevHead && s.selHead.Block < idx {
-				c.Invalidate()
+				s.scheduleRebuild(c)
 			}
 		} else {
 			s.selAnchor = Position{Block: idx, Offset: anchorOff}
@@ -988,7 +1130,7 @@ func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx
 		if s.needsDetachedSelectionFocus() {
 			s.multiSelFocusPending = true
 			s.focusPending = false
-			c.Invalidate()
+			s.scheduleRebuild(c)
 		}
 	}
 	return false
@@ -1029,7 +1171,7 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 			s.selHead = s.hitPositionAtPoint(wx, wy)
 			s.autoScrollOnDrag(c, wy)
 			if s.selHead != prevHead {
-				c.Invalidate()
+				s.scheduleRebuild(c)
 			}
 		}
 		return true
@@ -1043,7 +1185,7 @@ func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element,
 		if s.needsDetachedSelectionFocus() {
 			s.multiSelFocusPending = true
 			s.focusPending = false
-			c.Invalidate()
+			s.scheduleRebuild(c)
 		}
 	}
 	return false
@@ -1495,6 +1637,22 @@ func (s *Session) cachedShapeBlock(
 		layout:     layout,
 	}
 	return layout
+}
+
+func utf8RuneToUTF16(text string, runeOff int) int {
+	if runeOff <= 0 || text == "" {
+		return 0
+	}
+	units := 0
+	idx := 0
+	for _, r := range text {
+		if idx >= runeOff {
+			return units
+		}
+		units += utf16.RuneLen(r)
+		idx++
+	}
+	return units
 }
 
 func utf16OffsetToRuneOffset(text string, utf16Off int) int {
