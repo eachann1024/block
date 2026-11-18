@@ -3,6 +3,7 @@ package modals
 import (
 	"cmp"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -121,18 +122,19 @@ type Manager struct {
 	fontPickerOpen         string
 	fontTriggerRects       map[string]ui.Rect
 	fontQuery              string
-	fontCursor          int
-	fontFamilies        []ui.FontFamily
-	fontScroll          ui.ScrollState
-	assetsDraft         string
-	folderRuleDraft     string
-	regexRuleDraft      string
-	folderRuleError     string
-	regexRuleError      string
-	advancedRulesOpen   bool
-	settingsScroll      ui.ScrollState
-	settingsFocusHandle ui.Handle
-	fontSearchHandle    ui.Handle
+	fontCursor             int
+	fontScrollToCursor     bool
+	fontFamilies           []ui.FontFamily
+	fontScroll             ui.ScrollState
+	assetsDraft            string
+	folderRuleDraft        string
+	regexRuleDraft         string
+	folderRuleError        string
+	regexRuleError         string
+	advancedRulesOpen      bool
+	settingsScroll         ui.ScrollState
+	settingsFocusHandle    ui.Handle
+	fontSearchHandle       ui.Handle
 
 	// Performance modal state.
 	perfMu         sync.Mutex
@@ -336,27 +338,17 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 		TabStop(false).Bind(&m.settingsFocusHandle)
 	internalui.Probe(root, "settings-page")
 
-	// Capture keyboard for shortcut recording or Escape closing.
+	// Capture keyboard for shortcut recording.
 	root.ObserveInput(func(ev ui.InputEvent) {
-		if ev.Kind != ui.InputKeyDown {
-			return
-		}
-		if m.recordingShortcut != "" {
-			if ev.Key == ui.KeyEscape && ev.Mods == 0 {
-				m.recordingShortcut = ""
-				return
-			}
-			if spec, ok := inputEventToShortcutSpec(ev); ok {
-				m.applyRecordedShortcut(m.recordingShortcut, spec)
-			}
+		if ev.Kind != ui.InputKeyDown || m.recordingShortcut == "" {
 			return
 		}
 		if ev.Key == ui.KeyEscape && ev.Mods == 0 {
-			if m.fontPickerOpen != "" {
-				m.fontPickerOpen = ""
-				return
-			}
-			m.CloseSettings()
+			m.recordingShortcut = ""
+			return
+		}
+		if spec, ok := inputEventToShortcutSpec(ev); ok {
+			m.applyRecordedShortcut(m.recordingShortcut, spec)
 		}
 	})
 
@@ -391,11 +383,11 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 							}
 							btn.Children(func() {
 								if active {
-									icons.Draw(c, spec.icon, 16, pal.DuoIconColors(pal.Accent))
+									icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Accent))
 								} else if btn.Hovered() {
-									icons.Draw(c, spec.icon, 16, pal.DuoIconColors(pal.Text))
+									icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Text))
 								} else {
-									icons.Draw(c, spec.icon, 16, pal.MonoIconColors(pal.TextSecondary))
+									icons.Draw(c, spec.icon, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 								}
 								col := pal.TextSecondary
 								weight := 400
@@ -430,7 +422,6 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 					ID:      "settings-back",
 					Label:   theme.Tr("返回", "Back"),
 					Tooltip: theme.Tr("关闭设置", "Close Settings"),
-					Size:    32,
 				})
 				if backBtn.Clicked() {
 					m.CloseSettings()
@@ -452,6 +443,13 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 
 	if m.fontPickerOpen != "" {
 		m.renderFontPickerOverlay(c)
+	}
+	if m.recordingShortcut == "" && !m.justRecordedShortcut && c.Shortcut(0, ui.KeyEscape) {
+		if m.fontPickerOpen != "" {
+			m.fontPickerOpen = ""
+		} else {
+			m.CloseSettings()
+		}
 	}
 	m.justRecordedShortcut = false
 }
@@ -669,6 +667,9 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 		if m.fontTriggerRects == nil {
 			m.fontTriggerRects = make(map[string]ui.Rect)
 		}
+		if open && m.fontTriggerRects[role] != r {
+			m.requestRedraw()
+		}
 		m.fontTriggerRects[role] = r
 		internalui.RecordBounds(id, r)
 	})
@@ -697,9 +698,25 @@ func (m *Manager) openFontPicker(role string) {
 	m.fontPickerOpen = role
 	m.fontQuery = ""
 	m.fontCursor = 0
-	if len(m.fontFamilies) == 0 {
-		m.fontFamilies = ui.FontFamilies()
+	base := m.fontFamilies
+	if len(base) == 0 {
+		base = ui.FontFamilies()
 	}
+	if m.dataDir != "" {
+		if entries, err := os.ReadDir(filepath.Join(m.dataDir, "fonts")); err == nil {
+			for _, ent := range entries {
+				if ent.IsDir() {
+					continue
+				}
+				ext := strings.ToLower(filepath.Ext(ent.Name()))
+				if ext == ".ttf" || ext == ".otf" || ext == ".ttc" {
+					fam := strings.TrimSuffix(ent.Name(), filepath.Ext(ent.Name()))
+					base = append(base, ui.FontFamily{Name: fam, Monospaced: isMonospaceFontName(fam)})
+				}
+			}
+		}
+	}
+	m.fontFamilies = base
 }
 
 type fontCandidateItem struct {
@@ -942,21 +959,6 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 		}
 	}
 
-	anchor := ui.Rect{X: 520, Y: 280, W: 248, H: 36}
-	if m.fontTriggerRects != nil {
-		if r, ok := m.fontTriggerRects[role]; ok && r.W > 0 {
-			anchor = r
-		}
-	}
-
-	fonts := m.filteredFonts()
-	listH := float32(48)
-	if len(fonts) > 0 {
-		vis := min(len(fonts), 7)
-		listH = float32(vis) * 34
-	}
-	popW := float32(300)
-	popH := listH + 54
 	winW, winH := c.Size()
 	if winW <= 0 {
 		winW = 1100
@@ -964,19 +966,34 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 	if winH <= 0 {
 		winH = 760
 	}
-	spec := internalui.PlaceBelow(anchor).WithAlignX(internalui.AlignX{Kind: internalui.AlignRight}).WithGap(6).WithMargin(8)
+
+	anchor := m.fontTriggerRects[role]
+	if anchor.W <= 0 || anchor.H <= 0 {
+		return
+	}
+
+	popW := min(float32(300), max(winW-16, 1))
+	spec := internalui.PlaceBelow(anchor).WithAlignX(internalui.AlignX{Kind: internalui.AlignRight}).
+		WithGap(6).WithMargin(8).WithReserveHeight(304)
+	maxH := internalui.MaxHeightForSpec(spec, winW, winH, 304)
+	listCapH := max(maxH-54, 48)
+
+	fonts := m.filteredFonts()
+	listH := float32(48)
+	if len(fonts) > 0 {
+		listH = min(float32(min(len(fonts), 7))*34, listCapH)
+	}
+	popH := min(listH+54, maxH)
 	x, y := internalui.ResolveOrigin(spec, popW, popH, winW, winH)
 
 	ui.Overlay(c, func() {
-		backdrop := ui.Box(c.Key("font-picker-backdrop")).Absolute().Left(0).Top(0).Width(winW).Height(winH)
-		if backdrop.Clicked() {
-			m.fontPickerOpen = ""
-		}
+		backdrop := ui.Box(c.Key("font-picker-backdrop")).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 
 		panel := ui.Column(c.Key("font-picker-menu-"+role)).Absolute().Left(x).Top(y).
-			Width(popW).Padding(6).Gap(4).Radius(theme.RadiusSurface).
+			Width(popW).MaxHeight(maxH).Padding(6).Gap(4).Radius(theme.RadiusSurface).
 			Background(pal.Menu).Border(1, pal.MenuBorder).
-			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.22)).Clip()
+			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.22)).Clip().
+			Transition(internalui.PopupTransition())
 		internalui.Probe(panel, "font-picker-menu")
 
 		panel.Children(func() {
@@ -994,18 +1011,27 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					internalui.Probe(in, "font-picker-search")
 					if in.Changed() {
 						m.fontCursor = 0
+						m.fontScrollToCursor = true
 						fonts = m.filteredFonts()
+						curListH := float32(48)
+						if len(fonts) > 0 {
+							curListH = min(float32(min(len(fonts), 7))*34, listCapH)
+						}
+						nx, ny := internalui.ResolveOrigin(spec, popW, min(curListH+54, maxH), winW, winH)
+						panel.Left(nx).Top(ny)
 					}
 					in.OnTextKey(func(k ui.TextKey) bool {
 						switch k.Key {
 						case ui.KeyDown:
 							if len(fonts) > 0 && m.fontCursor < len(fonts)-1 {
 								m.fontCursor++
+								m.fontScrollToCursor = true
 							}
 							return true
 						case ui.KeyUp:
 							if m.fontCursor > 0 {
 								m.fontCursor--
+								m.fontScrollToCursor = true
 							}
 							return true
 						case ui.KeyEnter:
@@ -1023,7 +1049,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 
 			curListH := float32(48)
 			if len(fonts) > 0 {
-				curListH = float32(min(len(fonts), 7)) * 34
+				curListH = min(float32(min(len(fonts), 7))*34, listCapH)
 			}
 			ui.Scroll(c.Key("font-picker-list-" + role)).TrackScroll(&m.fontScroll).
 				FillWidth().Height(curListH).Gap(0).Children(func() {
@@ -1039,13 +1065,19 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(34).PaddingX(10).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
 						Cursor(ui.CursorPointer).Label(f.Name)
-					if highlighted || row.Hovered() {
+					if selected {
+						row.Background(pal.MenuChecked)
+					} else if highlighted || row.Hovered() {
 						row.Background(pal.MenuHover)
 					}
+					if highlighted && m.fontScrollToCursor {
+						row.ScrollIntoView()
+						m.fontScrollToCursor = false
+					}
 					row.Children(func() {
-						ui.Text(c, f.Name).FontSize(15).TextColor(pal.Text).SingleLine().Grow(1)
+						ui.Text(c, f.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
 						if selected {
-							icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Accent))
+							icons.Draw(c, icons.Check, 16, pal.MonoIconColors(pal.Text))
 						}
 					})
 					if row.Clicked() {
@@ -1054,6 +1086,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 				}
 			})
 		})
+
+		if panel.OverlayShortcut(0, ui.KeyEscape) || panel.PressedOutside() || backdrop.Clicked() {
+			m.fontPickerOpen = ""
+		}
 	})
 }
 

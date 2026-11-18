@@ -27,7 +27,7 @@ const (
 	SidebarMaxWidth     float32 = 420
 	AIPanelDefaultWidth float32 = 380
 	AIPanelMinWidth     float32 = 320
-	AIPanelMaxWidth     float32 = 620
+	AIPanelMaxWidth     float32 = 720
 	EditorStandardWidth float32 = 672
 	EditorMaxOuterWidth float32 = 720
 	RadiusControl       float32 = 8

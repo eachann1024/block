@@ -325,37 +325,6 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 	return *value != prev
 }
 
-// ModalCard renders a centered modal dialog over a translucent backdrop that closes on Escape or backdrop click.
-func ModalCard(c *ui.Context, id, title string, open *bool, width float32, maxHeight float32, body func()) {
-	if !*open {
-		return
-	}
-	pal := theme.Ocean()
-	ui.Overlay(c, func() {
-		backdrop := ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().
-			Background(ui.RGBA(0, 0, 0, 0.36)).Modal()
-		backdrop.Children(func() {
-			if id != "" {
-				c.Key(id)
-			}
-			card := ui.Column(c).Width(width).MaxWidthPercent(92).
-				Radius(theme.RadiusSurface).Background(pal.Paper).Border(1, pal.Hairline).
-				Shadow(0, 16, 48, 0, ui.RGBA(0, 0, 0, 0.24)).
-				Role(ui.RoleDialog).Label(title)
-			if maxHeight > 0 {
-				card.MaxHeight(maxHeight)
-			}
-			if id != "" {
-				Probe(card, id)
-			}
-			card.Children(body)
-			if card.PressedOutside() || backdrop.OverlayShortcut(0, ui.KeyEscape) {
-				*open = false
-			}
-		})
-	})
-}
-
 // MenuItemSpec describes a row in an Ocean Paper floating menu.
 type MenuItemSpec struct {
 	ID         string
@@ -459,9 +428,8 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 func PopupTransition() ui.ElementTransition {
 	return ui.ElementTransition{
 		Duration: time.Duration(theme.MotionMs) * time.Millisecond,
-		Ease:     ui.EaseOut,
-		Enter:    &ui.Motion{Y: -4, Opacity: 0.01},
-		Exit:     &ui.Motion{Y: -4},
+		Ease:     ui.CubicBezier(0.16, 1, 0.3, 1),
+		Colors:   true,
 	}
 }
 
@@ -489,40 +457,46 @@ func VerticalResizeHandle(c *ui.Context, id string, width *float32, minW, maxW f
 func ResizeHandle(c *ui.Context, id string, width *float32, minW, maxW float32, invert bool, reset float32) bool {
 	pal := theme.Ocean()
 	if id != "" {
-		c.Key(id)
+		c.Key(id + "-slot")
 	}
-	h := ui.Box(c).Width(theme.ResizeHitWidth).FillHeight().Shrink(0).Cursor(ui.CursorResizeColumn)
-	dx, _, held := h.Dragged()
+	slot := ui.Box(c).Width(0).FillHeight().Shrink(0)
 	changed := false
-	if held && dx != 0 {
-		delta := dx
-		if invert {
-			delta = -dx
+	slot.Children(func() {
+		if id != "" {
+			c.Key(id)
 		}
-		next := max(min(*width+delta, maxW), minW)
-		if next != *width {
-			*width = next
+		h := ui.Box(c).Absolute().Left(-theme.ResizeHitWidth / 2).Top(0).Bottom(0).Width(theme.ResizeHitWidth).Cursor(ui.CursorResizeColumn)
+		dx, _, held := h.Dragged()
+		if held && dx != 0 {
+			delta := dx
+			if invert {
+				delta = -dx
+			}
+			next := max(min(*width+delta, maxW), minW)
+			if next != *width {
+				*width = next
+				changed = true
+			}
+		}
+		if reset > 0 && h.DoubleClicked() && *width != reset {
+			*width = max(min(reset, maxW), minW)
 			changed = true
 		}
-	}
-	if reset > 0 && h.DoubleClicked() && *width != reset {
-		*width = max(min(reset, maxW), minW)
-		changed = true
-	}
-	hovered := h.Hovered()
-	h.Draw(func(p *ui.Painter, r ui.Rect) {
-		cx := r.X + r.W*0.5
-		switch {
-		case held:
-			p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.Accent, 0)
-		case hovered:
-			p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.MenuBorder, 0)
-		default:
-			p.Fill(ui.Rect{X: cx - 0.5, Y: r.Y, W: 1, H: r.H}, pal.SidebarBorder, 0)
+		hovered := h.Hovered()
+		h.Draw(func(p *ui.Painter, r ui.Rect) {
+			cx := r.X + r.W*0.5
+			switch {
+			case held:
+				p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.Accent, 0)
+			case hovered:
+				p.Fill(ui.Rect{X: cx - theme.ResizeLineWidth/2, Y: r.Y, W: theme.ResizeLineWidth, H: r.H}, pal.MenuBorder, 0)
+			default:
+				p.Fill(ui.Rect{X: cx - 0.5, Y: r.Y, W: 1, H: r.H}, pal.SidebarBorder, 0)
+			}
+		})
+		if id != "" {
+			Probe(h, id)
 		}
 	})
-	if id != "" {
-		Probe(h, id)
-	}
 	return changed
 }
