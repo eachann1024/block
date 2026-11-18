@@ -1491,24 +1491,11 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 		}
 		inHeader := ev.Y <= 44
 		shiftHeld := ev.Mods&ui.Shift != 0
-		if !shiftHeld && sess != nil && sess.HasScrollablePopupOpen() {
+		if !inHeader && !shiftHeld {
 			return false
 		}
-		if !inHeader && !shiftHeld && sess != nil && sess.CanScrollVertically() {
-			sy, maxY := sess.VerticalScrollBounds()
-			scrollingInterior := (ev.DY > 0 && sy < maxY-0.5) || (ev.DY < 0 && sy > 0.5)
-			if scrollingInterior {
-				q.mu.Lock()
-				q.lastBodyScroll = time.Now()
-				q.mu.Unlock()
-				return false
-			}
-			q.mu.Lock()
-			recentBody := !q.lastBodyScroll.IsZero() && time.Since(q.lastBodyScroll) < 240*time.Millisecond
-			q.mu.Unlock()
-			if recentBody {
-				return false
-			}
+		if sess != nil && sess.HasScrollablePopupOpen() {
+			return false
 		}
 		q.OnWheelScroll(axis)
 		return true
@@ -1533,7 +1520,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 						return &internalui.TooltipSpec{
 							Rows: []internalui.TooltipRow{{
 								Trigger:     fmt.Sprintf(theme.Tr("速记页 %d", "Note %d"), slot+1),
-								Detail:      theme.Tr("点击或滚轮切换", "Click or scroll"),
+								Detail:      theme.Tr("点击或 Shift+滚轮切换", "Click or Shift+scroll"),
 								SplitDetail: true,
 							}},
 						}

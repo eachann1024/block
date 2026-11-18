@@ -1416,7 +1416,7 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 
 func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Block, listNum int) {
 	pal := theme.Ocean()
-	fontSize, weight, lh := blockTextMetrics(b.Kind)
+	fontSize, weight, lh := s.textMetrics(b.Kind)
 	switch b.Kind {
 	case model.BlockDivider:
 		ui.Box(c.Key(fmt.Sprintf("aip-hr-%d", idx))).FillWidth().Height(1).MarginY(6).Background(pal.Hairline)

@@ -166,7 +166,7 @@ func (s *Session) isBelowLastVisibleBlock(wy float32) bool {
 // margins (including left/right margins above the first block or below the last block),
 // matching thinkly-fast's Editor::try_blank_margin_insert.
 func (s *Session) tryBlankMarginInsert(wx, wy float32) bool {
-	if s.minimal || s.readOnly || !s.isMarkdownNote() || s.doc == nil || len(s.doc.Blocks) == 0 {
+	if s.readOnly || !s.isMarkdownNote() || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return false
 	}
 	if s.inlineAI != nil || s.activePlan != nil {
