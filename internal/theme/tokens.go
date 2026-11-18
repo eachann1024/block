@@ -188,10 +188,12 @@ const (
 
 	// Updater modal & sidebar badge metrics.
 	UpdaterModalWidth      float32 = 600
-	UpdaterModalMaxHeight  float32 = 640
-	UpdaterNotesMaxHeight  float32 = 360
+	UpdaterModalMaxHeight  float32 = 650
+	UpdaterNotesMaxHeight  float32 = 350
+	UpdaterHeaderIconBox   float32 = 36
 	UpdaterProgressHeight  float32 = 6
 	UpdaterBadgeButtonSize float32 = 30
 	UpdaterBadgeDotSize    float32 = 6
-	UpdaterBulletDotWidth  float32 = 10
+	UpdaterBulletDotSize   float32 = 5
+	UpdaterBulletBoxWidth  float32 = 12
 )

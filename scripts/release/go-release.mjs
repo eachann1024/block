@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { ROOT } from "./select-release.mjs";
+import { readPackageVersion, ROOT } from "./select-release.mjs";
 
 export function run(cmd, args, extra = {}) {
   const result = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, ...extra });
@@ -16,7 +16,9 @@ export function releaseBinaryPath(goos, goarch) {
 
 export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goarch) }) {
   mkdirSync(dirname(outFile), { recursive: true });
-  const ldflags = goos === "windows" ? "-s -w -H=windowsgui" : "-s -w";
+  const version = readPackageVersion(ROOT);
+  const verFlag = `-X block/internal/updater.BuildVersion=${version}`;
+  const ldflags = goos === "windows" ? `-s -w -H=windowsgui ${verFlag}` : `-s -w ${verFlag}`;
   run("go", ["build", `-ldflags=${ldflags}`, "-o", outFile, "./cmd/block"], {
     env: {
       ...process.env,

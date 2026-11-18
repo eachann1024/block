@@ -145,42 +145,44 @@ func CandidateAssetURLs(canonicalURL string, mode SourceMode) []LabeledURL {
 	}
 }
 
-func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []byte, error) {
+func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []byte, int64, error) {
+	started := time.Now()
 	reqCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, cand.URL, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	req.Header.Set("User-Agent", "Block-Updater/"+CurrentVersion())
 	req.Header.Set("Cache-Control", "no-cache")
 
 	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, time.Since(started).Milliseconds(), err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, nil, time.Since(started).Milliseconds(), fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes))
+	elapsedMs := time.Since(started).Milliseconds()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, elapsedMs, err
 	}
 
 	if cand.Kind == "feed" {
 		entries, parseErr := ParseFeedBytes(raw)
 		if parseErr != nil {
-			return nil, nil, parseErr
+			return nil, nil, elapsedMs, parseErr
 		}
-		return entries, raw, nil
+		return entries, raw, elapsedMs, nil
 	}
 
 	entries, parseErr := parseGitHubAPIReleases(raw)
 	if parseErr != nil {
-		return nil, nil, parseErr
+		return nil, nil, elapsedMs, parseErr
 	}
 	feedBytes, _ := json.Marshal(FeedDocument{
 		SchemaVersion: 1,
@@ -188,7 +190,7 @@ func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 		Releases:      entries,
 	})
-	return entries, feedBytes, nil
+	return entries, feedBytes, elapsedMs, nil
 }
 
 // ParseFeedBytes validates and decodes updates/feed.json bytes.
@@ -274,24 +276,25 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 }
 
 // FetchReleases retrieves the release history using the configured mirror/GitHub strategy.
-// In SourceAuto mode, the primary mirror feed and native GitHub feed race concurrently so
-// users both inside and outside mainland China get sub-second responses.
-func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry, channel string, rawFeed []byte, err error) {
+func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry, channel string, latencyMs int64, rawFeed []byte, err error) {
 	cands := feedCandidates(mode)
+	logInfo("check.fetch_start", "mode", mode, "candidates", len(cands))
+
 	if mode == SourceAuto && len(cands) >= 2 {
 		type raceRes struct {
-			entries []ReleaseEntry
-			channel string
-			raw     []byte
-			err     error
+			cand      LabeledURL
+			entries   []ReleaseEntry
+			raw       []byte
+			elapsedMs int64
+			err       error
 		}
 		raceCtx, cancel := context.WithCancel(ctx)
 		ch := make(chan raceRes, 2)
 		for _, c := range cands[:2] {
 			cand := c
 			go func() {
-				e, raw, fErr := fetchOneCandidate(raceCtx, cand)
-				ch <- raceRes{entries: e, channel: cand.Channel, raw: raw, err: fErr}
+				e, raw, ms, fErr := fetchOneCandidate(raceCtx, cand)
+				ch <- raceRes{cand: cand, entries: e, raw: raw, elapsedMs: ms, err: fErr}
 			}()
 		}
 		var firstErr error
@@ -299,10 +302,14 @@ func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry
 			res := <-ch
 			if res.err == nil && len(res.entries) > 0 {
 				cancel()
-				return res.entries, res.channel, res.raw, nil
+				logInfo("check.race_win", "channel", res.cand.Channel, "kind", res.cand.Kind, "latency_ms", res.elapsedMs, "releases", len(res.entries), "latest", res.entries[0].Version)
+				return res.entries, res.cand.Channel, res.elapsedMs, res.raw, nil
 			}
-			if firstErr == nil && res.err != nil {
-				firstErr = res.err
+			if res.err != nil && !errors.Is(res.err, context.Canceled) {
+				logWarn("check.race_miss", "channel", res.cand.Channel, "url", res.cand.URL, "latency_ms", res.elapsedMs, "err", res.err)
+				if firstErr == nil {
+					firstErr = res.err
+				}
 			}
 		}
 		cancel()
@@ -313,18 +320,21 @@ func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry
 	var lastErr = err
 	for _, cand := range cands {
 		if ctx.Err() != nil {
-			return nil, "", nil, ctx.Err()
+			return nil, "", 0, nil, ctx.Err()
 		}
-		e, raw, fErr := fetchOneCandidate(ctx, cand)
+		e, raw, ms, fErr := fetchOneCandidate(ctx, cand)
 		if fErr == nil && len(e) > 0 {
-			return e, cand.Channel, raw, nil
+			logInfo("check.candidate_ok", "channel", cand.Channel, "kind", cand.Kind, "latency_ms", ms, "releases", len(e), "latest", e[0].Version)
+			return e, cand.Channel, ms, raw, nil
 		}
+		logWarn("check.candidate_failover", "channel", cand.Channel, "kind", cand.Kind, "url", cand.URL, "latency_ms", ms, "err", fErr)
 		lastErr = fErr
 	}
 	if lastErr == nil {
 		lastErr = errors.New("all update sources failed")
 	}
-	return nil, "", nil, lastErr
+	logError("check.all_failed", "mode", mode, "err", lastErr)
+	return nil, "", 0, nil, lastErr
 }
 
 // stalledBody aborts an HTTP stream if zero bytes arrive within stallTimeout.
@@ -391,7 +401,7 @@ func (s *stalledBody) Read(p []byte) (int, error) {
 		s.lastNs.Store(time.Now().UnixNano())
 	}
 	if err != nil && s.stalled.Load() {
-		return n, errors.New("download stream stalled")
+		return n, errors.New("download stream stalled (no data for 20s)")
 	}
 	return n, err
 }

@@ -14,6 +14,21 @@ type LocalizedNotes struct {
 	Other        []string `json:"other,omitempty"`
 }
 
+// TaggedBullet pairs a changelog item with the version tag that introduced it.
+type TaggedBullet struct {
+	Text    string `json:"text"`
+	Version string `json:"version"`
+}
+
+// TaggedLocalizedNotes preserves originating version tags per bullet for cross-version grouped display.
+type TaggedLocalizedNotes struct {
+	Highlights   string         `json:"highlights,omitempty"`
+	New          []TaggedBullet `json:"new,omitempty"`
+	Improvements []TaggedBullet `json:"improvements,omitempty"`
+	Fixes        []TaggedBullet `json:"fixes,omitempty"`
+	Other        []TaggedBullet `json:"other,omitempty"`
+}
+
 // IsEmpty reports whether all sections are empty.
 func (n LocalizedNotes) IsEmpty() bool {
 	return strings.TrimSpace(n.Highlights) == "" &&
@@ -23,9 +38,13 @@ func (n LocalizedNotes) IsEmpty() bool {
 		len(n.Other) == 0
 }
 
-// TotalItems returns the total bullet count across sections.
-func (n LocalizedNotes) TotalItems() int {
-	return len(n.New) + len(n.Improvements) + len(n.Fixes) + len(n.Other)
+// IsEmpty reports whether all tagged sections are empty.
+func (n TaggedLocalizedNotes) IsEmpty() bool {
+	return strings.TrimSpace(n.Highlights) == "" &&
+		len(n.New) == 0 &&
+		len(n.Improvements) == 0 &&
+		len(n.Fixes) == 0 &&
+		len(n.Other) == 0
 }
 
 // ReleaseAsset describes one downloadable installer attached to a release.
@@ -79,14 +98,16 @@ type FeedDocument struct {
 
 // AggregatedNotes holds cross-version merged and per-version bilingual changelogs.
 type AggregatedNotes struct {
-	FromVersion   string         `json:"from_version"`
-	ToVersion     string         `json:"to_version"`
-	VersionCount  int            `json:"version_count"`
-	HasNewer      bool           `json:"has_newer"`
-	PublishedAt   string         `json:"published_at,omitempty"`
-	MergedZh      LocalizedNotes `json:"merged_zh"`
-	MergedEn      LocalizedNotes `json:"merged_en"`
-	Versions      []ReleaseEntry `json:"versions"`
+	FromVersion  string               `json:"from_version"`
+	ToVersion    string               `json:"to_version"`
+	VersionCount int                  `json:"version_count"`
+	HasNewer     bool                 `json:"has_newer"`
+	PublishedAt  string               `json:"published_at,omitempty"`
+	MergedZh     LocalizedNotes       `json:"merged_zh"`
+	MergedEn     LocalizedNotes       `json:"merged_en"`
+	TaggedZh     TaggedLocalizedNotes `json:"tagged_zh"`
+	TaggedEn     TaggedLocalizedNotes `json:"tagged_en"`
+	Versions     []ReleaseEntry       `json:"versions"`
 }
 
 // ForLanguage returns the merged notes matching the active UI language.
@@ -101,6 +122,20 @@ func (a AggregatedNotes) ForLanguage(isEn bool) LocalizedNotes {
 		return a.MergedZh
 	}
 	return a.MergedEn
+}
+
+// TaggedForLanguage returns the version-tagged merged notes matching the requested language.
+func (a AggregatedNotes) TaggedForLanguage(isEn bool) TaggedLocalizedNotes {
+	if isEn {
+		if !a.TaggedEn.IsEmpty() {
+			return a.TaggedEn
+		}
+		return a.TaggedZh
+	}
+	if !a.TaggedZh.IsEmpty() {
+		return a.TaggedZh
+	}
+	return a.TaggedEn
 }
 
 // VersionForLanguage returns one version's notes matching the active UI language.
@@ -157,9 +192,6 @@ func ParseReleaseBody(raw string) (zh LocalizedNotes, en LocalizedNotes) {
 		right = strings.TrimSpace(norm[idx+4:])
 	} else {
 		parsed := parseSingleHalf(norm)
-		if looksChinese(norm) {
-			return parsed, parsed
-		}
 		return parsed, parsed
 	}
 
@@ -267,28 +299,44 @@ func appendUnique(dst []string, item string) []string {
 	return append(dst, item)
 }
 
-func mergeLocalized(dst *LocalizedNotes, src LocalizedNotes) {
+func appendUniqueTagged(dst []TaggedBullet, text, ver string) []TaggedBullet {
+	if text == "" {
+		return dst
+	}
+	for _, existing := range dst {
+		if existing.Text == text {
+			return dst
+		}
+	}
+	return append(dst, TaggedBullet{Text: text, Version: ver})
+}
+
+func mergeLocalized(dst *LocalizedNotes, tagged *TaggedLocalizedNotes, src LocalizedNotes, verTag string) {
 	if dst.Highlights == "" && src.Highlights != "" {
 		dst.Highlights = src.Highlights
 	}
+	if tagged.Highlights == "" && src.Highlights != "" {
+		tagged.Highlights = src.Highlights
+	}
 	for _, it := range src.New {
 		dst.New = appendUnique(dst.New, it)
+		tagged.New = appendUniqueTagged(tagged.New, it, verTag)
 	}
 	for _, it := range src.Improvements {
 		dst.Improvements = appendUnique(dst.Improvements, it)
+		tagged.Improvements = appendUniqueTagged(tagged.Improvements, it, verTag)
 	}
 	for _, it := range src.Fixes {
 		dst.Fixes = appendUnique(dst.Fixes, it)
+		tagged.Fixes = appendUniqueTagged(tagged.Fixes, it, verTag)
 	}
 	for _, it := range src.Other {
 		dst.Other = appendUnique(dst.Other, it)
+		tagged.Other = appendUniqueTagged(tagged.Other, it, verTag)
 	}
 }
 
 // AggregateReleases computes cross-version merged and per-version changelogs.
-// When remote versions > currentVersion exist, all versions in (currentVersion, latest] are aggregated.
-// Otherwise, if lastUpdatedFrom < currentVersion, (lastUpdatedFrom, currentVersion] is shown so the user
-// can review everything included in the most recent update; else currentVersion's own notes are returned.
 func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom string) AggregatedNotes {
 	normalized := make([]ReleaseEntry, 0, len(releases))
 	for _, r := range releases {
@@ -336,8 +384,9 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 			Versions:     newer,
 		}
 		for _, r := range newer {
-			mergeLocalized(&out.MergedZh, r.Zh)
-			mergeLocalized(&out.MergedEn, r.En)
+			vLabel := "v" + r.Version
+			mergeLocalized(&out.MergedZh, &out.TaggedZh, r.Zh, vLabel)
+			mergeLocalized(&out.MergedEn, &out.TaggedEn, r.En, vLabel)
 		}
 		return out
 	}
@@ -359,8 +408,9 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 				Versions:     recent,
 			}
 			for _, r := range recent {
-				mergeLocalized(&out.MergedZh, r.Zh)
-				mergeLocalized(&out.MergedEn, r.En)
+				vLabel := "v" + r.Version
+				mergeLocalized(&out.MergedZh, &out.TaggedZh, r.Zh, vLabel)
+				mergeLocalized(&out.MergedEn, &out.TaggedEn, r.En, vLabel)
 			}
 			return out
 		}
@@ -373,14 +423,16 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 			break
 		}
 	}
-	return AggregatedNotes{
+	out := AggregatedNotes{
 		FromVersion:  currentVersion,
 		ToVersion:    picked.Version,
 		VersionCount: 1,
 		HasNewer:     false,
 		PublishedAt:  picked.PublishedAt,
-		MergedZh:     picked.Zh,
-		MergedEn:     picked.En,
 		Versions:     []ReleaseEntry{picked},
 	}
+	vLabel := "v" + picked.Version
+	mergeLocalized(&out.MergedZh, &out.TaggedZh, picked.Zh, vLabel)
+	mergeLocalized(&out.MergedEn, &out.TaggedEn, picked.En, vLabel)
+	return out
 }
