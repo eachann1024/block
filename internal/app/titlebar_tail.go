@@ -82,30 +82,26 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 
 // renderPageMorePill is thinkly-fast titlebar_split_pill: the page more button,
 // joined with the annotation send segment when the note has annotations. The
-// pill always exists so the segment can unfold out of the more button and fold
-// back into it, while the pill's chrome and inset ease in and out with it.
+// segment unfolds leftward out of the more button and folds back into it while
+// staying in the layout, so the titlebar icons beside it glide instead of jump.
 func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
 	split := p.AnnotHasAny
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
 	c.Key("titlebar-action-pill")
 	pill := ui.Row(c).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusMD)
+	target := float32(0)
 	bg, border := ui.Transparent, ui.Transparent
-	targetInset := float32(0)
 	if split {
-		bg, border, targetInset = pal.Menu, pal.BtnBorder, pillInset
+		target, bg, border = 1, pal.Menu, pal.BtnBorder
 	}
-	inset := blockui.SpringTo(pill, "pillInset", targetInset)
+	reveal := blockui.RevealTo(pill, "pillReveal", target)
+	inset := pillInset * reveal
 	pill.Height(theme.HeightChrome + inset).Padding(inset)
 	blockui.AnimateSurfaceColors(pill, bg, border, true)
 	pill.Children(func() {
-		if split {
-			c.Key("titlebar-send-group")
-			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset).Padding(0, pillInset, 0, 0).
-				Transition(blockui.InlineRevealTransition()).Children(func() {
-				renderSendAllSegment(c, p)
-				ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
-			})
+		if split || reveal > 0.001 {
+			renderSendGroup(c, p, reveal)
 		}
 		btn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
 			ID:          "titlebar-more",
@@ -128,6 +124,26 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 
 // pillInset is the split pill's padding and its segments' gap.
 const pillInset = 2
+
+// renderSendGroup clips the send segment and divider to reveal × their width,
+// pinned to the more button's side, fading with the reveal.
+func renderSendGroup(c *ui.Context, p TitlebarProps, reveal float32) {
+	pal := theme.Ocean()
+	c.Key("titlebar-send-group")
+	clip := ui.Box(c).Shrink(0).ClipX().Opacity(reveal)
+	clip.Children(func() {
+		c.Key("titlebar-send-content")
+		content := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(pillInset).Padding(0, pillInset, 0, 0)
+		natural := content.Bounds().W
+		shown := natural * reveal
+		clip.Width(shown)
+		content.Translate(shown-natural, 0)
+		content.Children(func() {
+			renderSendAllSegment(c, p)
+			ui.Box(c).Size(1, 14).Shrink(0).Background(pal.BtnBorder)
+		})
+	})
+}
 
 // renderSendAllSegment is thinkly-fast send_all_button: `统一发送 n` / `生成中…`.
 func renderSendAllSegment(c *ui.Context, p TitlebarProps) {
