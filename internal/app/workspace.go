@@ -3145,14 +3145,15 @@ func (w *Workspace) Render(c *ui.Context) {
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
 
-	root.Children(func() {
-		// 0. Window-wide top brand landscape band (hidden when sidebar is collapsed or disabled).
-		if !aiImmersive && sidebarWide {
-			if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
-				blockui.BrandSceneBand(c, scID, !stSnap.BrandDeco.HideOrb)
-			}
+	// Window-wide top brand landscape band painted onto root's own backdrop so the
+	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
+	if !aiImmersive && sidebarWide {
+		if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
+			blockui.PaintBrandSceneBand(root, scID, !stSnap.BrandDeco.HideOrb)
 		}
+	}
 
+	root.Children(func() {
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if !aiImmersive {
 			RenderTitlebar(c, TitlebarProps{
