@@ -1,0 +1,1632 @@
+package editor
+
+import (
+	"math"
+	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
+
+	"block/internal/model"
+	"block/internal/theme"
+	"github.com/egoist/mygo/ui"
+)
+
+type mouseSelMode uint8
+
+const (
+	mouseSelNone mouseSelMode = iota
+	mouseSelText
+	mouseSelBox
+)
+
+type tableCellKey struct {
+	BlockID model.BlockID
+	Row     int
+	Col     int
+}
+
+type cachedBlockLayout struct {
+	text       string
+	fontFamily string
+	fontSize   float32
+	weight     int
+	lineHeight float32
+	width      float32
+	layout     *ui.TextLayout
+}
+
+func (s *Session) isMouseDragging() bool {
+	return s.mouseMode != mouseSelNone
+}
+
+func (s *Session) hasMultiBlockSelection() bool {
+	if !s.hasNonEmptySelection() {
+		return false
+	}
+	a, b := s.orderedSelection()
+	return a.Block != b.Block
+}
+
+func (s *Session) hasWholeAtomicSelection() bool {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return false
+	}
+	a, b := s.orderedSelection()
+	if a.Block != b.Block || a.Block < 0 || a.Block >= len(s.doc.Blocks) {
+		return false
+	}
+	k := s.doc.Blocks[a.Block].Kind
+	if k != model.BlockImage && k != model.BlockDivider {
+		return false
+	}
+	return a.Offset == 0 && b.Offset >= s.blockSelectionLen(a.Block)
+}
+
+func (s *Session) needsDetachedSelectionFocus() bool {
+	if s.isMouseDragging() {
+		return false
+	}
+	if s.toolbarPop == "link" || s.toolbarPop == "comment" || s.findOpen || s.inlineAI != nil || s.editingAnnotID != "" {
+		return false
+	}
+	return s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()
+}
+
+func (s *Session) blockSelectionLen(idx int) int {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Kind == model.BlockImage {
+		return max(utf8.RuneCountInString(b.ImageAlt), 1)
+	}
+	return utf8.RuneCountInString(b.PlainText())
+}
+
+// blockSelectionSpanRange returns the selected [lo, hi) rune range inside block idx,
+// whether the entire block is covered, and whether the block participates in the selection.
+func (s *Session) blockSelectionSpanRange(idx int) (lo, hi int, fullBlock, selected bool) {
+	if !s.hasNonEmptySelection() || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0, 0, false, false
+	}
+	a, b := s.orderedSelection()
+	if idx < a.Block || idx > b.Block {
+		return 0, 0, false, false
+	}
+	rlen := s.blockSelectionLen(idx)
+	if a.Block != b.Block && idx == b.Block && b.Offset == 0 {
+		if rlen == 0 {
+			return 0, 0, true, true
+		}
+		return 0, 0, false, false
+	}
+	if a.Block != b.Block && idx == a.Block && a.Offset >= rlen && rlen > 0 {
+		return 0, 0, false, false
+	}
+	if rlen == 0 {
+		return 0, 0, true, true
+	}
+	lo = 0
+	if idx == a.Block {
+		lo = clampInt(a.Offset, 0, rlen)
+	}
+	hi = rlen
+	if idx == b.Block {
+		hi = clampInt(b.Offset, lo, rlen)
+	}
+	if hi <= lo {
+		return 0, 0, false, false
+	}
+	return lo, hi, lo == 0 && hi == rlen, true
+}
+
+// SelectAllBlocks selects every visible block in the document.
+func (s *Session) SelectAllBlocks() {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	first, last := -1, -1
+	for i := range s.doc.Blocks {
+		if s.isBlockHiddenByFold(i) {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		last = i
+	}
+	if first < 0 {
+		return
+	}
+	endOff := s.blockSelectionLen(last)
+	s.SelectRange(first, 0, last, endOff)
+}
+
+// DeleteSelection deletes the active single-block or multi-block selection in one undo step.
+func (s *Session) DeleteSelection() bool {
+	return s.ReplaceSelectionWithText("")
+}
+
+// CutSelection copies the selected Markdown to clipboard and deletes the selection when editable.
+func (s *Session) CutSelection(c *ui.Context) bool {
+	if !s.hasNonEmptySelection() {
+		return false
+	}
+	if md := s.SelectedMarkdown(); md != "" {
+		c.WriteClipboard(md)
+	}
+	if s.readOnly {
+		return true
+	}
+	return s.DeleteSelection()
+}
+
+// ReplaceSelectionWithText replaces the current selection (single-block or multi-block)
+// with plain text in one undo step and places the caret right after the inserted text.
+func (s *Session) ReplaceSelectionWithText(insert string) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || !s.hasNonEmptySelection() {
+		return false
+	}
+	a, b := s.orderedSelection()
+	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
+		return false
+	}
+
+	s.pushUndo()
+	s.firstLineDeleteArmed = false
+	s.closeTransientOverlays()
+
+	// Single-block selection
+	if a.Block == b.Block {
+		idx := a.Block
+		blk := &s.doc.Blocks[idx]
+		rlen := s.blockSelectionLen(idx)
+		whole := a.Offset == 0 && b.Offset >= rlen
+
+		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole) {
+			if insert != "" || len(s.doc.Blocks) == 1 {
+				nb := model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
+				nb.SetText(insert)
+				s.doc.Blocks[idx] = nb
+				s.focusedBlock = idx
+				off := utf8.RuneCountInString(insert)
+				s.selAnchor = Position{Block: idx, Offset: off}
+				s.selHead = s.selAnchor
+			} else {
+				s.spliceBlocks(idx, idx+1, nil)
+				nextIdx := min(idx, len(s.doc.Blocks)-1)
+				s.focusedBlock = nextIdx
+				s.selAnchor = Position{Block: nextIdx, Offset: 0}
+				s.selHead = s.selAnchor
+			}
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+
+		if blk.Kind == model.BlockTable && blk.Table != nil {
+			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+				cell := &blk.Table.Rows[row][col]
+				cellLen := utf8.RuneCountInString(cell.PlainText())
+				var merged []model.Span
+				merged = append(merged, sliceSpans(cell.Spans, 0, relLo)...)
+				if insert != "" {
+					merged = append(merged, model.Span{Text: insert})
+				}
+				merged = append(merged, sliceSpans(cell.Spans, relHi, cellLen)...)
+				cell.Spans = normalizeSpans(merged)
+				blk.Dirty = true
+				blk.CleanSource = ""
+				s.focusedBlock = idx
+				s.tableActiveBlock = blk.ID
+				s.tableActiveRow = row
+				s.tableActiveCol = col
+				caret := a.Offset + utf8.RuneCountInString(insert)
+				s.selAnchor = Position{Block: idx, Offset: caret}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.markDirty()
+				return true
+			}
+			// Multi-cell selection inside table: clear touched text ranges inside each cell.
+			clearTableRange(blk.Table, a.Offset, b.Offset, insert)
+			blk.Dirty = true
+			blk.CleanSource = ""
+			s.focusedBlock = idx
+			s.selAnchor = Position{Block: idx, Offset: a.Offset}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.markDirty()
+			return true
+		}
+
+		s.replaceCurrentSelectionInBlock(idx, insert)
+		s.focusedBlock = idx
+		s.focusPending = true
+		s.multiSelFocusPending = false
+		return true
+	}
+
+	// Multi-block selection (a.Block < b.Block)
+	firstIdx, lastIdx := a.Block, b.Block
+	first := &s.doc.Blocks[firstIdx]
+	last := &s.doc.Blocks[lastIdx]
+	firstLen := s.blockSelectionLen(firstIdx)
+	lastLen := s.blockSelectionLen(lastIdx)
+
+	isRichBlock := func(blk *model.Block) bool {
+		switch blk.Kind {
+		case model.BlockCode, model.BlockRawHTML, model.BlockTable, model.BlockImage, model.BlockDivider:
+			return false
+		default:
+			return true
+		}
+	}
+
+	// Whole-block deletion across [firstIdx..lastIdx] with no replacement text
+	if a.Offset == 0 && b.Offset >= lastLen && insert == "" {
+		if firstIdx == 0 && lastIdx == len(s.doc.Blocks)-1 {
+			nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+			s.doc.Blocks = []model.Block{nb}
+			s.focusedBlock = 0
+			s.selAnchor = Position{Block: 0, Offset: 0}
+			s.selHead = s.selAnchor
+		} else {
+			s.spliceBlocks(firstIdx, lastIdx+1, nil)
+			targetIdx := min(firstIdx, len(s.doc.Blocks)-1)
+			off := 0
+			if firstIdx > 0 && targetIdx == firstIdx-1 {
+				off = s.blockSelectionLen(targetIdx)
+			}
+			s.focusedBlock = targetIdx
+			s.selAnchor = Position{Block: targetIdx, Offset: off}
+			s.selHead = s.selAnchor
+		}
+		s.focusPending = true
+		s.selSyncPending = true
+		s.multiSelFocusPending = false
+		s.markDirty()
+		return true
+	}
+
+	// Both endpoints are inline rich-text blocks: merge prefix + insert + suffix cleanly.
+	if isRichBlock(first) && isRichBlock(last) {
+		prefix := sliceSpans(first.Spans, 0, clampInt(a.Offset, 0, firstLen))
+		suffix := sliceSpans(last.Spans, clampInt(b.Offset, 0, lastLen), lastLen)
+		var merged []model.Span
+		merged = append(merged, prefix...)
+		if insert != "" {
+			merged = append(merged, model.Span{Text: insert})
+		}
+		merged = append(merged, suffix...)
+		updated := first.Clone()
+		if a.Offset == 0 && b.Offset < lastLen {
+			updated.Kind = last.Kind
+			updated.Indent = last.Indent
+			updated.Callout = last.Callout
+			updated.Checked = last.Checked
+		}
+		updated.Spans = normalizeSpans(merged)
+		updated.Dirty = true
+		updated.CleanSource = ""
+		s.spliceBlocks(firstIdx, lastIdx+1, []model.Block{updated})
+		caret := clampInt(a.Offset, 0, firstLen) + utf8.RuneCountInString(insert)
+		s.focusedBlock = firstIdx
+		s.selAnchor = Position{Block: firstIdx, Offset: caret}
+		s.selHead = s.selAnchor
+		s.focusPending = true
+		s.selSyncPending = true
+		s.multiSelFocusPending = false
+		s.markDirty()
+		return true
+	}
+
+	// Mixed block kinds (code / table / image / divider + rich text)
+	var replacement []model.Block
+	caretBlockOffset := 0
+	caretRuneOffset := 0
+	placedCaret := false
+
+	if a.Offset > 0 {
+		switch {
+		case first.Kind == model.BlockCode || first.Kind == model.BlockRawHTML:
+			runes := []rune(first.Code)
+			keep := clampInt(a.Offset, 0, len(runes))
+			cp := first.Clone()
+			cp.SetText(string(runes[:keep]) + insert)
+			replacement = append(replacement, cp)
+			caretBlockOffset = 0
+			caretRuneOffset = keep + utf8.RuneCountInString(insert)
+			placedCaret = true
+			insert = ""
+		case isRichBlock(first):
+			cp := first.Clone()
+			prefix := sliceSpans(first.Spans, 0, clampInt(a.Offset, 0, firstLen))
+			if insert != "" {
+				prefix = append(prefix, model.Span{Text: insert})
+			}
+			cp.Spans = normalizeSpans(prefix)
+			cp.Dirty = true
+			cp.CleanSource = ""
+			replacement = append(replacement, cp)
+			caretBlockOffset = 0
+			caretRuneOffset = clampInt(a.Offset, 0, firstLen) + utf8.RuneCountInString(insert)
+			placedCaret = true
+			insert = ""
+		case a.Offset >= firstLen:
+			replacement = append(replacement, first.Clone())
+		}
+	}
+
+	if insert != "" {
+		nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+		nb.SetText(insert)
+		caretBlockOffset = len(replacement)
+		caretRuneOffset = utf8.RuneCountInString(insert)
+		placedCaret = true
+		replacement = append(replacement, nb)
+	}
+
+	if b.Offset < lastLen {
+		switch {
+		case b.Offset == 0:
+			if !placedCaret {
+				caretBlockOffset = len(replacement)
+				caretRuneOffset = 0
+				placedCaret = true
+			}
+			replacement = append(replacement, last.Clone())
+		case last.Kind == model.BlockCode || last.Kind == model.BlockRawHTML:
+			runes := []rune(last.Code)
+			cut := clampInt(b.Offset, 0, len(runes))
+			cp := last.Clone()
+			cp.SetText(string(runes[cut:]))
+			if !placedCaret {
+				caretBlockOffset = len(replacement)
+				caretRuneOffset = 0
+				placedCaret = true
+			}
+			replacement = append(replacement, cp)
+		case isRichBlock(last):
+			suffix := sliceSpans(last.Spans, clampInt(b.Offset, 0, lastLen), lastLen)
+			if len(replacement) > 0 && isRichBlock(&replacement[len(replacement)-1]) {
+				prevIdx := len(replacement) - 1
+				prevLen := utf8.RuneCountInString(replacement[prevIdx].PlainText())
+				replacement[prevIdx].Spans = normalizeSpans(append(replacement[prevIdx].Spans, suffix...))
+				if !placedCaret {
+					caretBlockOffset = prevIdx
+					caretRuneOffset = prevLen
+					placedCaret = true
+				}
+			} else {
+				cp := last.Clone()
+				cp.Spans = normalizeSpans(suffix)
+				cp.Dirty = true
+				cp.CleanSource = ""
+				if !placedCaret {
+					caretBlockOffset = len(replacement)
+					caretRuneOffset = 0
+					placedCaret = true
+				}
+				replacement = append(replacement, cp)
+			}
+		}
+	}
+
+	if len(replacement) == 0 && len(s.doc.Blocks) == (lastIdx-firstIdx+1) {
+		replacement = append(replacement, model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true})
+	}
+
+	s.spliceBlocks(firstIdx, lastIdx+1, replacement)
+	targetIdx := clampInt(firstIdx+caretBlockOffset, 0, len(s.doc.Blocks)-1)
+	if !placedCaret && len(replacement) == 0 {
+		targetIdx = clampInt(firstIdx, 0, len(s.doc.Blocks)-1)
+		caretRuneOffset = 0
+	}
+	caretRuneOffset = clampInt(caretRuneOffset, 0, s.blockSelectionLen(targetIdx))
+	s.focusedBlock = targetIdx
+	s.selAnchor = Position{Block: targetIdx, Offset: caretRuneOffset}
+	s.selHead = s.selAnchor
+	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
+	s.markDirty()
+	return true
+}
+
+func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst string) {
+	if tbl == nil || startRune >= endRune {
+		return
+	}
+	pos := 0
+	inserted := false
+	for rIdx := range tbl.Rows {
+		for cIdx := range tbl.Rows[rIdx] {
+			cell := &tbl.Rows[rIdx][cIdx]
+			clen := utf8.RuneCountInString(cell.PlainText())
+			cStart, cEnd := pos, pos+clen
+			ovLo := max(startRune, cStart) - cStart
+			ovHi := min(endRune, cEnd) - cStart
+			if ovLo < ovHi {
+				var merged []model.Span
+				merged = append(merged, sliceSpans(cell.Spans, 0, ovLo)...)
+				if !inserted && insertFirst != "" {
+					merged = append(merged, model.Span{Text: insertFirst})
+					inserted = true
+				}
+				merged = append(merged, sliceSpans(cell.Spans, ovHi, clen)...)
+				cell.Spans = normalizeSpans(merged)
+			}
+			pos = cEnd
+			if cIdx+1 < len(tbl.Rows[rIdx]) {
+				pos++
+			}
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++
+		}
+	}
+}
+
+func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) bool {
+	if !s.hasNonEmptySelection() {
+		return false
+	}
+	switch ev.Kind {
+	case ui.InputCommand:
+		switch ev.Text {
+		case "copy":
+			if md := s.SelectedMarkdown(); md != "" {
+				c.WriteClipboard(md)
+			}
+			return true
+		case "cut":
+			return s.CutSelection(c)
+		case "paste", "pasteAndMatchStyle":
+			if s.readOnly {
+				return true
+			}
+			if clip := c.ReadClipboard(); clip != "" {
+				s.PasteText(clip)
+			}
+			return true
+		case "selectAll":
+			s.SelectAllBlocks()
+			return true
+		case "delete":
+			if s.readOnly {
+				return true
+			}
+			return s.DeleteSelection()
+		case "undo":
+			if !s.readOnly {
+				s.Undo()
+			}
+			return true
+		case "redo":
+			if !s.readOnly {
+				s.Redo()
+			}
+			return true
+		case "bold":
+			if !s.readOnly {
+				s.ToggleMarkOnSelection(model.MarkBold)
+			}
+			return true
+		case "italic":
+			if !s.readOnly {
+				s.ToggleMarkOnSelection(model.MarkItalic)
+			}
+			return true
+		case "underline":
+			if !s.readOnly {
+				s.ToggleMarkOnSelection(model.MarkUnderline)
+			}
+			return true
+		case "strikethrough":
+			if !s.readOnly {
+				s.ToggleMarkOnSelection(model.MarkStrike)
+			}
+			return true
+		}
+
+	case ui.InputText:
+		if s.readOnly || ev.Text == "" {
+			return false
+		}
+		return s.ReplaceSelectionWithText(ev.Text)
+
+	case ui.InputKeyDown:
+		switch {
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyA:
+			s.SelectAllBlocks()
+			return true
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyC:
+			if md := s.SelectedMarkdown(); md != "" {
+				c.WriteClipboard(md)
+			}
+			return true
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyX:
+			return s.CutSelection(c)
+		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
+			if !s.readOnly {
+				if clip := c.ReadClipboard(); clip != "" {
+					s.PasteText(clip)
+				}
+			}
+			return true
+		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
+			return s.DeleteSelection()
+		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
+			if !s.DeleteSelection() {
+				return false
+			}
+			idx := s.focusedBlock
+			if idx >= 0 && idx < len(s.doc.Blocks) {
+				s.handleEnterOnBlock(idx, s.doc.Blocks[idx].PlainText(), s.selHead.Offset)
+			}
+			return true
+		case ev.Mods == 0 && (ev.Key == ui.KeyLeft || ev.Key == ui.KeyUp):
+			a, _ := s.orderedSelection()
+			s.focusedBlock = a.Block
+			s.selAnchor = a
+			s.selHead = a
+			s.focusPending = !s.readOnly
+			s.selSyncPending = !s.readOnly
+			s.multiSelFocusPending = false
+			return true
+		case ev.Mods == 0 && (ev.Key == ui.KeyRight || ev.Key == ui.KeyDown):
+			_, b := s.orderedSelection()
+			s.focusedBlock = b.Block
+			s.selAnchor = b
+			s.selHead = b
+			s.focusPending = !s.readOnly
+			s.selSyncPending = !s.readOnly
+			s.multiSelFocusPending = false
+			return true
+		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown):
+			dir := 1
+			if ev.Key == ui.KeyUp {
+				dir = -1
+			}
+			nextBlk := s.stepVisibleBlock(s.selHead.Block, dir)
+			if nextBlk >= 0 {
+				off := s.selHead.Offset
+				if dir > 0 && nextBlk != s.selHead.Block {
+					off = min(off, s.blockSelectionLen(nextBlk))
+					if off == 0 && s.blockSelectionLen(nextBlk) > 0 {
+						off = s.blockSelectionLen(nextBlk)
+					}
+				} else {
+					off = min(off, s.blockSelectionLen(nextBlk))
+				}
+				s.selHead = Position{Block: nextBlk, Offset: off}
+				s.focusedBlock = nextBlk
+				if !s.needsDetachedSelectionFocus() {
+					s.focusPending = !s.readOnly
+					s.selSyncPending = !s.readOnly
+				}
+			}
+			return true
+		case ev.Mods == 0 && ev.Key == ui.KeyEscape:
+			_, b := s.orderedSelection()
+			s.selAnchor = b
+			s.selHead = b
+			s.focusedBlock = b.Block
+			s.focusPending = !s.readOnly
+			s.selSyncPending = !s.readOnly
+			s.multiSelFocusPending = false
+			s.closeTransientOverlays()
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) stepVisibleBlock(from, dir int) int {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return -1
+	}
+	for i := from + dir; i >= 0 && i < len(s.doc.Blocks); i += dir {
+		if !s.isBlockHiddenByFold(i) {
+			return i
+		}
+	}
+	return from
+}
+
+// --- Mouse Pointer Hit-Testing & Multi-Block Drag Selection ---
+
+func (s *Session) onScrollObserveInput(ev ui.InputEvent) {
+	if ev.Kind == ui.InputPointerDown && ev.Button == 0 {
+		s.lastPressMods = ev.Mods
+		s.lastPressClicks = max(ev.Clicks, 1)
+		s.lastPressLocal = ui.Point{X: ev.X, Y: ev.Y}
+		s.pressJustBegan = true
+	}
+}
+
+func (s *Session) windowPointer(root ui.Element) (wx, wy float32) {
+	rx, ry, _ := root.PointerPosition()
+	return s.editorRect.X + rx, s.editorRect.Y + ry
+}
+
+// preUpdateFocusedDrag updates cross-block selection ahead of building rows when an
+// already-focused block input is being dragged across other blocks, ensuring 0-frame lag
+// even when dragging upwards to earlier blocks.
+func (s *Session) preUpdateFocusedDrag(c *ui.Context, root ui.Element) {
+	if s.mouseMode != mouseSelText || s.mouseOriginBlock < 0 || s.doc == nil {
+		return
+	}
+	if s.mouseOriginBlock >= len(s.doc.Blocks) {
+		s.mouseMode = mouseSelNone
+		s.mouseOriginBlock = -1
+		return
+	}
+	wx, wy := s.windowPointer(root)
+	s.mouseCurPt = ui.Point{X: wx, Y: wy}
+	if math.Hypot(float64(wx-s.mouseStartPt.X), float64(wy-s.mouseStartPt.Y)) > 3 {
+		s.mouseDragged = true
+	}
+	originID := s.doc.Blocks[s.mouseOriginBlock].ID
+	r, ok := s.blockRects[originID]
+	if ok && r.H > 0 && (wy < r.Y || wy > r.Y+r.H) {
+		s.selAnchor = s.mouseTextAnchor
+		s.selHead = s.hitPositionAtPoint(wx, wy)
+		s.autoScrollOnDrag(c, wy)
+	}
+}
+
+// updateCanvasMouseSelection handles pointer press, drag, and release initiated on
+// unfocused blocks or margins/gutters of editor-canvas.
+func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Element, readOnly bool) {
+	_, _, canvasHeld := canvas.Dragged()
+	canvasClicked := canvas.Clicked()
+	if canvasHeld {
+		wx, wy := s.windowPointer(root)
+		curPt := ui.Point{X: wx, Y: wy}
+
+		if s.mouseMode == mouseSelNone || s.mouseOriginBlock >= 0 || s.pressJustBegan {
+			startPt := curPt
+			if s.pressJustBegan && s.scrollRect.W > 0 {
+				startPt = ui.Point{
+					X: s.scrollRect.X + s.lastPressLocal.X,
+					Y: s.scrollRect.Y + s.lastPressLocal.Y,
+				}
+			}
+			s.pressJustBegan = false
+			s.mouseOriginBlock = -1
+			s.mouseStartPt = startPt
+			s.mouseCurPt = curPt
+			s.mouseStartDocPt = ui.Point{
+				X: startPt.X - s.scrollRect.X,
+				Y: startPt.Y - s.scrollRect.Y + s.bodyScroll.Y,
+			}
+			s.mouseDragged = math.Hypot(float64(curPt.X-startPt.X), float64(curPt.Y-startPt.Y)) > 3
+			s.firstLineDeleteArmed = false
+			s.closeTransientOverlays()
+
+			if s.lastPressMods&ui.Shift != 0 {
+				s.mouseMode = mouseSelText
+				s.selAnchor = s.clampPos(s.selAnchor)
+				s.selHead = s.hitPositionAtPoint(curPt.X, curPt.Y)
+			} else if s.isMarginBoxSelectStart(startPt.X, startPt.Y) {
+				s.mouseMode = mouseSelBox
+			} else {
+				s.mouseMode = mouseSelText
+				pos := s.hitPositionAtPoint(startPt.X, startPt.Y)
+				switch {
+				case s.lastPressClicks >= 3:
+					a := Position{Block: pos.Block, Offset: 0}
+					b := Position{Block: pos.Block, Offset: s.blockSelectionLen(pos.Block)}
+					s.mouseUnitRange = [2]Position{a, b}
+					s.selAnchor, s.selHead = a, b
+				case s.lastPressClicks == 2:
+					w0, w1 := s.wordRangeAt(pos.Block, pos.Offset)
+					a := Position{Block: pos.Block, Offset: w0}
+					b := Position{Block: pos.Block, Offset: w1}
+					s.mouseUnitRange = [2]Position{a, b}
+					s.selAnchor, s.selHead = a, b
+				default:
+					s.mouseTextAnchor = pos
+					s.selAnchor = pos
+					s.selHead = pos
+				}
+			}
+		}
+
+		s.mouseCurPt = curPt
+		if math.Hypot(float64(curPt.X-s.mouseStartPt.X), float64(curPt.Y-s.mouseStartPt.Y)) > 3 {
+			s.mouseDragged = true
+		}
+
+		switch s.mouseMode {
+		case mouseSelText:
+			head := s.hitPositionAtPoint(curPt.X, curPt.Y)
+			switch {
+			case s.lastPressMods&ui.Shift != 0:
+				s.selHead = head
+			case s.lastPressClicks >= 3:
+				s.extendBlockUnitSelection(head.Block)
+			case s.lastPressClicks == 2:
+				s.extendWordUnitSelection(head)
+			default:
+				s.selAnchor = s.mouseTextAnchor
+				s.selHead = head
+			}
+			s.autoScrollOnDrag(c, curPt.Y)
+
+		case mouseSelBox:
+			if s.mouseDragged {
+				s.applyBoxSelection(curPt.X, curPt.Y)
+				s.autoScrollOnDrag(c, curPt.Y)
+			}
+		}
+		return
+	}
+
+	// Released after a canvas-owned gesture
+	if s.mouseMode != mouseSelNone && s.mouseOriginBlock < 0 {
+		mode := s.mouseMode
+		dragged := s.mouseDragged
+		endPt := s.mouseCurPt
+		s.mouseMode = mouseSelNone
+		s.mouseDragged = false
+		s.pressJustBegan = false
+		s.finishCanvasPointerSelection(c, mode, dragged, endPt, readOnly)
+		return
+	}
+
+	// Same-frame tap-to-click (PointerDown + PointerUp delivered before next frame build)
+	if canvasClicked {
+		pt := s.windowPointerPoint(root)
+		if s.pressJustBegan && s.scrollRect.W > 0 {
+			pt = ui.Point{
+				X: s.scrollRect.X + s.lastPressLocal.X,
+				Y: s.scrollRect.Y + s.lastPressLocal.Y,
+			}
+		}
+		s.pressJustBegan = false
+		s.firstLineDeleteArmed = false
+		s.closeTransientOverlays()
+		if s.lastPressMods&ui.Shift != 0 {
+			s.selAnchor = s.clampPos(s.selAnchor)
+			s.selHead = s.hitPositionAtPoint(pt.X, pt.Y)
+			s.finishCanvasPointerSelection(c, mouseSelText, false, pt, readOnly)
+			return
+		}
+		if s.isMarginBoxSelectStart(pt.X, pt.Y) {
+			s.finishCanvasPointerSelection(c, mouseSelBox, false, pt, readOnly)
+			return
+		}
+		pos := s.hitPositionAtPoint(pt.X, pt.Y)
+		switch {
+		case s.lastPressClicks >= 3:
+			s.selAnchor = Position{Block: pos.Block, Offset: 0}
+			s.selHead = Position{Block: pos.Block, Offset: s.blockSelectionLen(pos.Block)}
+		case s.lastPressClicks == 2:
+			w0, w1 := s.wordRangeAt(pos.Block, pos.Offset)
+			s.selAnchor = Position{Block: pos.Block, Offset: w0}
+			s.selHead = Position{Block: pos.Block, Offset: w1}
+		default:
+			s.selAnchor = pos
+			s.selHead = pos
+		}
+		s.finishCanvasPointerSelection(c, mouseSelText, false, pt, readOnly)
+	}
+}
+
+func (s *Session) windowPointerPoint(root ui.Element) ui.Point {
+	wx, wy := s.windowPointer(root)
+	return ui.Point{X: wx, Y: wy}
+}
+
+func (s *Session) recordBlockTextRect(id model.BlockID, r ui.Rect) {
+	if s.blockTextRects == nil {
+		s.blockTextRects = make(map[model.BlockID]ui.Rect)
+	}
+	s.blockTextRects[id] = r
+}
+
+func (s *Session) recordTableCellRect(blockID model.BlockID, row, col int, r ui.Rect) {
+	if s.tableCellRects == nil {
+		s.tableCellRects = make(map[tableCellKey]ui.Rect)
+	}
+	s.tableCellRects[tableCellKey{BlockID: blockID, Row: row, Col: col}] = r
+}
+
+func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode, dragged bool, pt ui.Point, readOnly bool) {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	if mode == mouseSelText && !dragged && (readOnly || s.lastPressMods&ui.Cmd != 0) {
+		pos := s.hitPositionAtPoint(pt.X, pt.Y)
+		if pos.Block >= 0 && pos.Block < len(s.doc.Blocks) {
+			if link := spanLinkAtOffset(&s.doc.Blocks[pos.Block], pos.Offset); link != "" {
+				s.selAnchor = pos
+				s.selHead = pos
+				c.OpenURL(link)
+				c.Invalidate()
+				return
+			}
+		}
+	}
+	if mode == mouseSelBox && !dragged {
+		firstVis, lastVis := s.firstAndLastVisibleBlocks()
+		if firstVis < 0 {
+			return
+		}
+		firstR := s.blockRects[s.doc.Blocks[firstVis].ID]
+		lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
+		if !readOnly && firstR.H > 0 && pt.Y < firstR.Y {
+			s.FocusBlock(firstVis)
+			c.Invalidate()
+			return
+		}
+		if !readOnly && lastR.H > 0 && pt.Y > lastR.Y+lastR.H+8 {
+			s.focusOrInsertBottomParagraph()
+			c.Invalidate()
+			return
+		}
+		idx := s.nearestVisibleBlockAtY(pt.Y)
+		if idx >= 0 {
+			r := s.blockRects[s.doc.Blocks[idx].ID]
+			contentLeft := r.X + editorHandleWidth + editorRowGap
+			off := 0
+			if pt.X > contentLeft+40 {
+				off = s.blockSelectionLen(idx)
+			}
+			s.focusedBlock = idx
+			s.selAnchor = Position{Block: idx, Offset: off}
+			s.selHead = s.selAnchor
+			s.focusPending = !readOnly
+			s.selSyncPending = !readOnly
+			s.multiSelFocusPending = false
+			c.Invalidate()
+		}
+		return
+	}
+
+	if s.needsDetachedSelectionFocus() {
+		s.focusedBlock = clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+		s.multiSelFocusPending = true
+		s.focusPending = false
+		s.selSyncPending = false
+		c.Invalidate()
+		return
+	}
+
+	a, b := s.orderedSelection()
+	idx := clampInt(s.selHead.Block, 0, len(s.doc.Blocks)-1)
+	s.focusedBlock = idx
+	s.multiSelFocusPending = false
+
+	blk := &s.doc.Blocks[idx]
+	if blk.Kind == model.BlockTable && blk.Table != nil && !readOnly {
+		if rIdx, cIdx, ok := s.hitTableCellCoords(blk.ID, pt.X, pt.Y); ok && a == b {
+			s.tableActiveBlock = blk.ID
+			s.tableActiveRow = rIdx
+			s.tableActiveCol = cIdx
+			s.focusPending = true
+			c.Invalidate()
+			return
+		}
+		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+			s.tableActiveBlock = blk.ID
+			s.tableActiveRow = row
+			s.tableActiveCol = col
+			s.focusPending = true
+			c.Invalidate()
+			return
+		}
+	}
+
+	if !readOnly {
+		s.focusPending = true
+		s.selSyncPending = true
+	}
+	c.Invalidate()
+}
+
+// updateFocusedInputDrag bridges an active drag inside a focused TextAreaBase (or code block)
+// into a live multi-block selection when the pointer leaves the block's vertical bounds.
+func (s *Session) updateFocusedInputDrag(c *ui.Context, root, in ui.Element, idx int) bool {
+	_, _, held := in.Dragged()
+	if held {
+		wx, wy := s.windowPointer(root)
+		anchorOff, caretOff := in.TextAnchorCaret()
+
+		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != idx || s.pressJustBegan {
+			s.pressJustBegan = false
+			s.mouseMode = mouseSelText
+			s.mouseOriginBlock = idx
+			s.mouseStartPt = ui.Point{X: wx, Y: wy}
+			s.mouseCurPt = s.mouseStartPt
+			s.mouseDragged = false
+			s.closeTransientOverlays()
+			if s.lastPressMods&ui.Shift != 0 && s.selAnchor.Block != idx {
+				s.mouseTextAnchor = s.clampPos(s.selAnchor)
+			} else {
+				s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
+			}
+		} else if s.lastPressMods&ui.Shift == 0 {
+			s.mouseTextAnchor = Position{Block: idx, Offset: anchorOff}
+		}
+
+		s.mouseCurPt = ui.Point{X: wx, Y: wy}
+		if math.Hypot(float64(wx-s.mouseStartPt.X), float64(wy-s.mouseStartPt.Y)) > 3 {
+			s.mouseDragged = true
+		}
+
+		r, hasRect := s.blockRects[s.doc.Blocks[idx].ID]
+		outsideBlock := hasRect && r.H > 0 && (wy < r.Y || wy > r.Y+r.H)
+		if outsideBlock || s.mouseTextAnchor.Block != idx {
+			prevHead := s.selHead
+			s.selAnchor = s.mouseTextAnchor
+			s.selHead = s.hitPositionAtPoint(wx, wy)
+			s.autoScrollOnDrag(c, wy)
+			if s.selHead != prevHead && s.selHead.Block < idx {
+				c.Invalidate()
+			}
+		} else {
+			s.selAnchor = Position{Block: idx, Offset: anchorOff}
+			s.selHead = Position{Block: idx, Offset: caretOff}
+		}
+		return true
+	}
+
+	if s.mouseMode == mouseSelText && s.mouseOriginBlock == idx {
+		s.mouseMode = mouseSelNone
+		s.mouseOriginBlock = -1
+		s.mouseDragged = false
+		s.pressJustBegan = false
+		if s.needsDetachedSelectionFocus() {
+			s.multiSelFocusPending = true
+			s.focusPending = false
+			c.Invalidate()
+		}
+	}
+	return false
+}
+
+// updateFocusedTableCellDrag promotes a drag starting inside a focused table cell input
+// into a multi-cell or multi-block selection when dragged outside that cell.
+func (s *Session) updateFocusedTableCellDrag(c *ui.Context, root, in ui.Element, blockIdx int, blockID model.BlockID, rIdx, cIdx int) bool {
+	_, _, held := in.Dragged()
+	if held {
+		wx, wy := s.windowPointer(root)
+		anchorOff, caretOff := in.TextAnchorCaret()
+		cellBase := tableCellStartOffset(s.doc.Blocks[blockIdx].Table, rIdx, cIdx)
+
+		if s.mouseMode == mouseSelNone || s.mouseOriginBlock != blockIdx || s.pressJustBegan {
+			s.pressJustBegan = false
+			s.mouseMode = mouseSelText
+			s.mouseOriginBlock = blockIdx
+			s.mouseStartPt = ui.Point{X: wx, Y: wy}
+			s.mouseCurPt = s.mouseStartPt
+			s.mouseDragged = false
+			s.closeTransientOverlays()
+			if s.lastPressMods&ui.Shift != 0 && s.selAnchor.Block != blockIdx {
+				s.mouseTextAnchor = s.clampPos(s.selAnchor)
+			} else {
+				s.mouseTextAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
+			}
+		}
+
+		cellRect, hasCell := s.tableCellRects[tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}]
+		inSameCell := hasCell && wx >= cellRect.X && wx <= cellRect.X+cellRect.W && wy >= cellRect.Y && wy <= cellRect.Y+cellRect.H
+		if inSameCell && s.mouseTextAnchor.Block == blockIdx {
+			s.selAnchor = Position{Block: blockIdx, Offset: cellBase + anchorOff}
+			s.selHead = Position{Block: blockIdx, Offset: cellBase + caretOff}
+		} else {
+			prevHead := s.selHead
+			s.selAnchor = s.mouseTextAnchor
+			s.selHead = s.hitPositionAtPoint(wx, wy)
+			s.autoScrollOnDrag(c, wy)
+			if s.selHead != prevHead {
+				c.Invalidate()
+			}
+		}
+		return true
+	}
+
+	if s.mouseMode == mouseSelText && s.mouseOriginBlock == blockIdx {
+		s.mouseMode = mouseSelNone
+		s.mouseOriginBlock = -1
+		s.mouseDragged = false
+		s.pressJustBegan = false
+		if s.needsDetachedSelectionFocus() {
+			s.multiSelFocusPending = true
+			s.focusPending = false
+			c.Invalidate()
+		}
+	}
+	return false
+}
+
+func (s *Session) isMarginBoxSelectStart(wx, wy float32) bool {
+	firstVis, lastVis := s.firstAndLastVisibleBlocks()
+	if firstVis < 0 {
+		return true
+	}
+	firstR := s.blockRects[s.doc.Blocks[firstVis].ID]
+	lastR := s.blockRects[s.doc.Blocks[lastVis].ID]
+	if firstR.H > 0 && wy < firstR.Y-4 {
+		return true
+	}
+	if lastR.H > 0 && wy > lastR.Y+lastR.H+8 {
+		return true
+	}
+	idx := s.nearestVisibleBlockAtY(wy)
+	if idx < 0 {
+		return true
+	}
+	r := s.blockRects[s.doc.Blocks[idx].ID]
+	if r.W <= 0 {
+		return false
+	}
+	contentLeft := r.X + editorHandleWidth + editorRowGap
+	contentRight := r.X + r.W - editorRightInset
+	return wx < contentLeft-4 || wx > contentRight+4
+}
+
+func (s *Session) applyBoxSelection(curWX, curWY float32) {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	startWinY := s.scrollRect.Y + s.mouseStartDocPt.Y - s.bodyScroll.Y
+	minY := min(startWinY, curWY)
+	maxY := max(startWinY, curWY)
+
+	firstHit, lastHit := -1, -1
+	for i := range s.doc.Blocks {
+		if s.isBlockHiddenByFold(i) {
+			continue
+		}
+		r, ok := s.blockRects[s.doc.Blocks[i].ID]
+		if !ok || r.H <= 0 {
+			continue
+		}
+		topGap := float32(0)
+		if tr, hasT := s.blockTextRects[s.doc.Blocks[i].ID]; hasT && tr.Y > r.Y {
+			topGap = min(tr.Y-r.Y, r.H*0.5)
+		}
+		bTop := r.Y + topGap*0.6
+		bBot := r.Y + r.H
+		if bBot >= minY && bTop <= maxY {
+			if firstHit < 0 {
+				firstHit = i
+			}
+			lastHit = i
+		}
+	}
+
+	if firstHit < 0 {
+		s.selAnchor = Position{Block: s.focusedBlock, Offset: 0}
+		s.selHead = s.selAnchor
+		return
+	}
+
+	if curWY >= startWinY {
+		s.selAnchor = Position{Block: firstHit, Offset: 0}
+		s.selHead = Position{Block: lastHit, Offset: s.blockSelectionLen(lastHit)}
+	} else {
+		s.selAnchor = Position{Block: lastHit, Offset: s.blockSelectionLen(lastHit)}
+		s.selHead = Position{Block: firstHit, Offset: 0}
+	}
+}
+
+func (s *Session) renderBoxSelectMarquee(c *ui.Context) {
+	if s.mouseMode != mouseSelBox || !s.mouseDragged {
+		return
+	}
+	pal := theme.Ocean()
+	startX := s.scrollRect.X + s.mouseStartDocPt.X
+	startY := s.scrollRect.Y + s.mouseStartDocPt.Y - s.bodyScroll.Y
+	curX := s.mouseCurPt.X
+	curY := s.mouseCurPt.Y
+
+	rx := min(startX, curX)
+	ry := min(startY, curY)
+	rw := float32(math.Abs(float64(curX - startX)))
+	rh := float32(math.Abs(float64(curY - startY)))
+
+	if s.scrollRect.W > 0 && s.scrollRect.H > 0 {
+		x0 := max(rx, s.scrollRect.X)
+		y0 := max(ry, s.scrollRect.Y)
+		x1 := min(rx+rw, s.scrollRect.X+s.scrollRect.W)
+		y1 := min(ry+rh, s.scrollRect.Y+s.scrollRect.H)
+		if x1 <= x0 || y1 <= y0 {
+			return
+		}
+		rx, ry, rw, rh = x0, y0, x1-x0, y1-y0
+	}
+	if rw < 2 && rh < 2 {
+		return
+	}
+
+	ui.Overlay(c, func() {
+		ui.Box(c.Key("editor-marquee")).Absolute().
+			Left(rx).Top(ry).Size(rw, rh).Radius(4).
+			Background(pal.Accent.Alpha(0.10)).
+			Border(1, pal.Accent.Alpha(0.45)).
+			IgnoreInput(true)
+	})
+}
+
+func (s *Session) autoScrollOnDrag(c *ui.Context, wy float32) {
+	if s.scrollRect.H <= 0 || s.bodyScroll.MaxY <= 0 {
+		return
+	}
+	const edge = float32(36)
+	var dy float32
+	topDist := wy - s.scrollRect.Y
+	botDist := (s.scrollRect.Y + s.scrollRect.H) - wy
+	switch {
+	case topDist < edge:
+		dy = -min(edge-topDist, edge*2) * 0.45
+	case botDist < edge:
+		dy = min(edge-botDist, edge*2) * 0.45
+	}
+	if dy != 0 {
+		nextY := clampFloat32(s.bodyScroll.Y+dy, 0, s.bodyScroll.MaxY)
+		if nextY != s.bodyScroll.Y {
+			s.bodyScroll.Y = nextY
+			c.AnimationFrame()
+		}
+	}
+}
+
+func (s *Session) firstAndLastVisibleBlocks() (first, last int) {
+	first, last = -1, -1
+	if s.doc == nil {
+		return
+	}
+	for i := range s.doc.Blocks {
+		if s.isBlockHiddenByFold(i) {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		last = i
+	}
+	return
+}
+
+func (s *Session) nearestVisibleBlockAtY(wy float32) int {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return -1
+	}
+	firstVis, lastVis := -1, -1
+	bestIdx := -1
+	bestDist := float32(1e9)
+	for i := range s.doc.Blocks {
+		if s.isBlockHiddenByFold(i) {
+			continue
+		}
+		r, ok := s.blockRects[s.doc.Blocks[i].ID]
+		if !ok || r.H <= 0 {
+			continue
+		}
+		if firstVis < 0 {
+			firstVis = i
+		}
+		lastVis = i
+		if wy >= r.Y && wy <= r.Y+r.H {
+			return i
+		}
+		var d float32
+		if wy < r.Y {
+			d = r.Y - wy
+		} else {
+			d = wy - (r.Y + r.H)
+		}
+		if d < bestDist {
+			bestDist = d
+			bestIdx = i
+		}
+	}
+	if bestIdx >= 0 {
+		if firstVis >= 0 && wy < s.blockRects[s.doc.Blocks[firstVis].ID].Y {
+			return firstVis
+		}
+		if lastVis >= 0 && wy > s.blockRects[s.doc.Blocks[lastVis].ID].Y+s.blockRects[s.doc.Blocks[lastVis].ID].H {
+			return lastVis
+		}
+		return bestIdx
+	}
+	if firstVis >= 0 {
+		return firstVis
+	}
+	return 0
+}
+
+func (s *Session) hitPositionAtPoint(wx, wy float32) Position {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return Position{}
+	}
+	firstVis, lastVis := s.firstAndLastVisibleBlocks()
+	if firstVis < 0 {
+		return Position{}
+	}
+	if r, ok := s.blockRects[s.doc.Blocks[firstVis].ID]; ok && r.H > 0 && wy < r.Y {
+		return Position{Block: firstVis, Offset: 0}
+	}
+	if r, ok := s.blockRects[s.doc.Blocks[lastVis].ID]; ok && r.H > 0 && wy > r.Y+r.H {
+		return Position{Block: lastVis, Offset: s.blockSelectionLen(lastVis)}
+	}
+
+	idx := s.nearestVisibleBlockAtY(wy)
+	if idx < 0 {
+		return Position{}
+	}
+	b := &s.doc.Blocks[idx]
+	rowRect := s.blockRects[b.ID]
+
+	switch b.Kind {
+	case model.BlockDivider, model.BlockImage:
+		rlen := s.blockSelectionLen(idx)
+		midY := rowRect.Y + rowRect.H*0.5
+		if ir, ok := s.imageRects[b.ID]; ok && ir.H > 0 {
+			midY = ir.Y + ir.H*0.5
+		}
+		if wy < midY {
+			return Position{Block: idx, Offset: 0}
+		}
+		return Position{Block: idx, Offset: rlen}
+
+	case model.BlockCode, model.BlockRawHTML:
+		off := s.hitOffsetInCodeBlock(b, rowRect, wx, wy)
+		return Position{Block: idx, Offset: off}
+
+	case model.BlockTable:
+		off := s.hitOffsetInTableBlock(idx, b, rowRect, wx, wy)
+		return Position{Block: idx, Offset: off}
+
+	default:
+		off := s.hitOffsetInRichBlock(idx, b, rowRect, wx, wy)
+		return Position{Block: idx, Offset: off}
+	}
+}
+
+func (s *Session) hitOffsetInRichBlock(idx int, b *model.Block, rowRect ui.Rect, wx, wy float32) int {
+	plain := b.PlainText()
+	if plain == "" {
+		return 0
+	}
+	rlen := utf8.RuneCountInString(plain)
+	tr, ok := s.blockTextRects[b.ID]
+	if !ok || tr.W <= 0 {
+		if wy < rowRect.Y+rowRect.H*0.5 {
+			return 0
+		}
+		return rlen
+	}
+	lx := wx - tr.X
+	ly := wy - tr.Y
+	if ly < -4 {
+		return 0
+	}
+	if ly > tr.H+4 {
+		return rlen
+	}
+	fontSize, weight, lh := blockTextMetrics(b.Kind)
+	layout := s.cachedShapeBlock(b.ID, plain, b.Spans, idx, resolvedEditorFont(), fontSize, weight, lh, tr.W, true)
+	if layout == nil {
+		return rlen
+	}
+	cp := layout.PositionAt(ui.Point{X: lx, Y: clampFloat32(ly, 0, max(tr.H-0.5, 0))})
+	return clampInt(utf16OffsetToRuneOffset(plain, cp.Index), 0, rlen)
+}
+
+func (s *Session) hitOffsetInCodeBlock(b *model.Block, rowRect ui.Rect, wx, wy float32) int {
+	rlen := utf8.RuneCountInString(b.Code)
+	if rlen == 0 {
+		return 0
+	}
+	tr, ok := s.blockTextRects[b.ID]
+	if !ok || tr.W <= 0 {
+		if wy < rowRect.Y+rowRect.H*0.5 {
+			return 0
+		}
+		return rlen
+	}
+	lx := wx - tr.X
+	ly := wy - tr.Y
+	if ly < -4 {
+		return 0
+	}
+	if ly > tr.H+4 {
+		return rlen
+	}
+	layout := s.cachedShapeBlock(b.ID, b.Code, nil, 0, resolvedCodeFont(), 14, theme.WeightRegular, 1.5, tr.W, false)
+	if layout == nil {
+		return rlen
+	}
+	cp := layout.PositionAt(ui.Point{X: lx, Y: clampFloat32(ly, 0, max(tr.H-0.5, 0))})
+	return clampInt(utf16OffsetToRuneOffset(b.Code, cp.Index), 0, rlen)
+}
+
+func (s *Session) hitTableCellCoords(blockID model.BlockID, wx, wy float32) (bestR, bestC int, ok bool) {
+	if len(s.tableCellRects) == 0 {
+		return 0, 0, false
+	}
+	bestDist := float32(1e9)
+	for k, r := range s.tableCellRects {
+		if k.BlockID != blockID || r.W <= 0 || r.H <= 0 {
+			continue
+		}
+		if wx >= r.X && wx <= r.X+r.W && wy >= r.Y && wy <= r.Y+r.H {
+			return k.Row, k.Col, true
+		}
+		dx := max(r.X-wx, wx-(r.X+r.W), 0)
+		dy := max(r.Y-wy, wy-(r.Y+r.H), 0)
+		if d := dx*dx + dy*dy; d < bestDist {
+			bestDist = d
+			bestR, bestC = k.Row, k.Col
+			ok = true
+		}
+	}
+	return bestR, bestC, ok
+}
+
+func tableCellStartOffset(tbl *model.TableData, targetRow, targetCol int) int {
+	if tbl == nil {
+		return 0
+	}
+	pos := 0
+	for rIdx, row := range tbl.Rows {
+		for cIdx, cell := range row {
+			if rIdx == targetRow && cIdx == targetCol {
+				return pos
+			}
+			pos += utf8.RuneCountInString(cell.PlainText())
+			if cIdx+1 < len(row) {
+				pos++
+			}
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++
+		}
+	}
+	return pos
+}
+
+func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect, wx, wy float32) int {
+	if b.Table == nil || len(b.Table.Rows) == 0 {
+		return 0
+	}
+	totalLen := s.blockSelectionLen(idx)
+	rIdx, cIdx, ok := s.hitTableCellCoords(b.ID, wx, wy)
+	if !ok {
+		if wy < rowRect.Y+rowRect.H*0.5 {
+			return 0
+		}
+		return totalLen
+	}
+	if rIdx >= len(b.Table.Rows) || cIdx >= len(b.Table.Rows[rIdx]) {
+		return totalLen
+	}
+	base := tableCellStartOffset(b.Table, rIdx, cIdx)
+	cell := &b.Table.Rows[rIdx][cIdx]
+	cellPlain := cell.PlainText()
+	cellLen := utf8.RuneCountInString(cellPlain)
+	if cellLen == 0 {
+		return base
+	}
+	cr := s.tableCellRects[tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}]
+	lx := wx - (cr.X + 10)
+	ly := wy - (cr.Y + 6)
+	weight := 400
+	if rIdx == 0 {
+		weight = 600
+	}
+	lh := tableCellLineHeight / tableCellFontSize
+	layout := ui.ShapeText(cellPlain, ui.Font{
+		Family:     resolvedEditorFont(),
+		Size:       tableCellFontSize,
+		Weight:     weight,
+		LineHeight: lh,
+	}, max(cr.W-20, 40))
+	cp := layout.PositionAt(ui.Point{X: lx, Y: max(ly, 0)})
+	return clampInt(base+utf16OffsetToRuneOffset(cellPlain, cp.Index), 0, totalLen)
+}
+
+func (s *Session) cachedShapeBlock(
+	id model.BlockID,
+	plain string,
+	spans []model.Span,
+	idx int,
+	fontFamily string,
+	fontSize float32,
+	weight int,
+	lineHeight float32,
+	width float32,
+	rich bool,
+) *ui.TextLayout {
+	if s.textLayoutCache == nil {
+		s.textLayoutCache = make(map[model.BlockID]cachedBlockLayout)
+	}
+	wRounded := float32(math.Round(float64(width)*2) / 2)
+	if entry, ok := s.textLayoutCache[id]; ok &&
+		entry.text == plain &&
+		entry.fontFamily == fontFamily &&
+		entry.fontSize == fontSize &&
+		entry.weight == weight &&
+		entry.lineHeight == lineHeight &&
+		entry.width == wRounded &&
+		entry.layout != nil {
+		return entry.layout
+	}
+	font := ui.Font{
+		Family:     fontFamily,
+		Size:       fontSize,
+		Weight:     weight,
+		LineHeight: lineHeight,
+	}
+	var layout *ui.TextLayout
+	if rich && len(spans) > 0 && s.doc != nil && idx >= 0 && idx < len(s.doc.Blocks) {
+		var uiSpans []ui.Span
+		codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(fontSize)
+		pos := 0
+		for _, sp := range spans {
+			n := utf8.RuneCountInString(sp.Text)
+			u, _ := s.buildDisplaySpan(idx, &s.doc.Blocks[idx], sp, pos, pos+n, fontSize, weight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+			uiSpans = append(uiSpans, u)
+			pos += n
+		}
+		layout = ui.ShapeRichText(uiSpans, font, max(wRounded, 1))
+	} else {
+		layout = ui.ShapeText(plain, font, max(wRounded, 1))
+	}
+	s.textLayoutCache[id] = cachedBlockLayout{
+		text:       plain,
+		fontFamily: fontFamily,
+		fontSize:   fontSize,
+		weight:     weight,
+		lineHeight: lineHeight,
+		width:      wRounded,
+		layout:     layout,
+	}
+	return layout
+}
+
+func utf16OffsetToRuneOffset(text string, utf16Off int) int {
+	if utf16Off <= 0 || text == "" {
+		return 0
+	}
+	units := 0
+	runes := 0
+	for _, r := range text {
+		if units >= utf16Off {
+			return runes
+		}
+		units += utf16.RuneLen(r)
+		runes++
+	}
+	return runes
+}
+
+func (s *Session) wordRangeAt(idx, off int) (int, int) {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0, 0
+	}
+	runes := []rune(s.doc.Blocks[idx].PlainText())
+	if len(runes) == 0 {
+		return 0, 0
+	}
+	at := clampInt(off, 0, len(runes)-1)
+	cat := wordRuneCategory(runes[at])
+	lo, hi := at, at+1
+	for lo > 0 && wordRuneCategory(runes[lo-1]) == cat {
+		lo--
+	}
+	for hi < len(runes) && wordRuneCategory(runes[hi]) == cat {
+		hi++
+	}
+	return lo, hi
+}
+
+func wordRuneCategory(r rune) uint8 {
+	switch {
+	case unicode.IsSpace(r):
+		return 0
+	case r >= 0x4e00 && r <= 0x9fff:
+		return 1
+	case unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_':
+		return 2
+	default:
+		return 3
+	}
+}
+
+func (s *Session) extendBlockUnitSelection(targetBlock int) {
+	u0, u1 := s.mouseUnitRange[0], s.mouseUnitRange[1]
+	targetBlock = clampInt(targetBlock, 0, len(s.doc.Blocks)-1)
+	if targetBlock < u0.Block {
+		s.selAnchor = u1
+		s.selHead = Position{Block: targetBlock, Offset: 0}
+	} else {
+		s.selAnchor = u0
+		s.selHead = Position{Block: targetBlock, Offset: s.blockSelectionLen(targetBlock)}
+	}
+}
+
+func (s *Session) extendWordUnitSelection(head Position) {
+	u0, u1 := s.mouseUnitRange[0], s.mouseUnitRange[1]
+	w0, w1 := s.wordRangeAt(head.Block, head.Offset)
+	if head.Block < u0.Block || (head.Block == u0.Block && head.Offset < u0.Offset) {
+		s.selAnchor = u1
+		s.selHead = Position{Block: head.Block, Offset: w0}
+	} else {
+		s.selAnchor = u0
+		end := Position{Block: head.Block, Offset: w1}
+		if end.Block == u1.Block && end.Offset < u1.Offset {
+			end = u1
+		}
+		s.selHead = end
+	}
+}
+
+func (s *Session) codeSyntaxSpansWithSelection(idx int, src, lang string) []ui.Span {
+	spans := codeSyntaxSpans(src, lang)
+	if len(spans) == 0 {
+		return nil
+	}
+	selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx)
+	if !selOk || selHi <= selLo {
+		return spans
+	}
+	pal := theme.Ocean()
+	var out []ui.Span
+	pos := 0
+	for _, sp := range spans {
+		runes := []rune(sp.Text)
+		s0, s1 := pos, pos+len(runes)
+		pos = s1
+		if s1 <= selLo || s0 >= selHi {
+			out = append(out, sp)
+			continue
+		}
+		if s0 < selLo {
+			pre := sp
+			pre.Text = string(runes[:selLo-s0])
+			out = append(out, pre)
+		}
+		midLo := max(selLo-s0, 0)
+		midHi := min(selHi-s0, len(runes))
+		if midHi > midLo {
+			mid := sp
+			mid.Text = string(runes[midLo:midHi])
+			mid.Background = pal.SelectionBG
+			mid.Color = pal.SelectionFG
+			out = append(out, mid)
+		}
+		if s1 > selHi {
+			suf := sp
+			suf.Text = string(runes[selHi-s0:])
+			out = append(out, suf)
+		}
+	}
+	return slices.Clip(out)
+}
+
+func (s *Session) pasteOverMultiSelection(norm string) bool {
+	if !s.hasMultiBlockSelection() && !s.hasWholeAtomicSelection() {
+		return false
+	}
+	if !s.isMarkdownNote() || (!strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm)) {
+		return s.ReplaceSelectionWithText(norm)
+	}
+	if s.ReplaceAIMarkdown(norm) {
+		s.multiSelFocusPending = false
+		return true
+	}
+	return s.ReplaceSelectionWithText(norm)
+}
