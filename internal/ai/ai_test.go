@@ -818,7 +818,7 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 		t.Fatalf("expected anthropic provider active after adding, got %+v", ctrl.ProviderConfig())
 	}
 
-	// 2. Open T3 Code style Add Local Agent modal -> select Codex -> Add & Enable -> verify row & Binary Path config.
+	// 2. Open T3 Code 2-step Add Local Agent modal -> Step 1 select Codex -> Step 2 configure & submit -> verify row.
 	addAgRect, ok := bui.TargetBounds("ai-add-agent-btn")
 	if !ok {
 		t.Fatal("missing ai-add-agent-btn")
@@ -827,14 +827,22 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	if _, ok := bui.TargetBounds("ai-add-agent-modal"); !ok {
 		t.Fatal("expected ai-add-agent-modal to open")
 	}
+	// Step 1 shows driver catalog; submit button should not exist before picking a driver.
+	if _, ok := bui.TargetBounds("ai-add-agent-submit"); ok {
+		t.Fatal("expected Step 1 driver catalog before Step 2 submit form")
+	}
 	codexDrv, ok := bui.TargetBounds("ai-agent-driver-Codex")
 	if !ok {
-		t.Fatal("missing ai-agent-driver-Codex in Add Agent modal")
+		t.Fatal("missing ai-agent-driver-Codex in Step 1 catalog")
 	}
 	ttSet.ClickAt(codexDrv.X+codexDrv.W*0.5, codexDrv.Y+codexDrv.H*0.5)
+	// Now in Step 2: verify Display Name & Binary Path fields + Add & Enable button.
+	if _, ok := bui.TargetBounds("ai-add-agent-binpath"); !ok {
+		t.Fatal("expected ai-add-agent-binpath in Step 2 setup form")
+	}
 	agSubmit, ok := bui.TargetBounds("ai-add-agent-submit")
 	if !ok {
-		t.Fatal("missing ai-add-agent-submit")
+		t.Fatal("missing ai-add-agent-submit in Step 2")
 	}
 	ttSet.ClickAt(agSubmit.X+agSubmit.W*0.5, agSubmit.Y+agSubmit.H*0.5)
 

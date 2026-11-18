@@ -3575,7 +3575,8 @@ func (c *Controller) openAddAgentModal() {
 		st, hasSt = ov, true
 	}
 	c.addAgentModalOpen = true
-	c.addAgentShowMore = pick == model.BackendAgy
+	c.addAgentStep = 1
+	c.addAgentShowMore = false
 	c.addAgentKind = pick
 	c.addAgentName = nm
 	c.addAgentBinPath = opt.BinaryPath
@@ -3590,7 +3591,6 @@ func (c *Controller) openAddAgentModal() {
 
 	if shouldProbe {
 		c.probeAllBackendsAsync()
-		c.runAddAgentProbeAsync()
 	}
 	c.requestRedraw()
 }
@@ -3631,6 +3631,7 @@ func (c *Controller) runAddAgentProbeAsync() {
 func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, backends model.AIBackendsConfig) {
 	c.mu.RLock()
 	open := c.addAgentModalOpen
+	step := c.addAgentStep
 	showMore := c.addAgentShowMore
 	selKind := c.addAgentKind
 	draftName := c.addAgentName
@@ -3644,10 +3645,15 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 	if !hasCurStatus {
 		if st, ok := c.backendStatuses[selKind]; ok {
 			curStatus, hasCurStatus = st, true
+		} else if ov, ok := c.statusOverrides[selKind]; ok {
+			curStatus, hasCurStatus = ov, true
 		}
 	}
-	statuses := make(map[model.BackendKind]BackendStatus, len(c.backendStatuses))
+	statuses := make(map[model.BackendKind]BackendStatus, len(c.backendStatuses)+len(c.statusOverrides))
 	for k, v := range c.backendStatuses {
+		statuses[k] = v
+	}
+	for k, v := range c.statusOverrides {
 		statuses[k] = v
 	}
 	c.mu.RUnlock()
@@ -3655,10 +3661,12 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 	if !open {
 		return
 	}
+	if step < 1 {
+		step = 1
+	}
 
 	modalOpen := open
 	title := theme.Tr("添加本机 Agent", "Add Local Agent")
-	selBG := settingsSelectedSurface(pal)
 	ais := pal.AISurface()
 
 	drivers := []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi}
@@ -3667,14 +3675,156 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 	}
 
 	bui.Dialog(cUI, "ai-add-agent-modal", title, &modalOpen, bui.ModalLayout{
-		Width:     460,
-		MaxHeight: 600,
+		Width:     440,
+		MaxHeight: 580,
 		Centered:  true,
 	}, func() {
 		ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Gap(14).Children(func() {
-			// Header
+			// Step 1: T3 Code style Agent Catalog picker -> clicking any row advances to Step 2 configuration.
+			if step == 1 {
+				ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
+					ui.Text(cUI, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
+					closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
+						ID:      "ai-add-agent-close",
+						Label:   theme.Tr("关闭", "Close"),
+						Variant: bui.IconPlain,
+					})
+					if closeBtn.Clicked() {
+						modalOpen = false
+					}
+				})
+
+				ui.Column(cUI.Key("ai-add-agent-step1")).FillWidth().MinWidth(0).Radius(theme.RadiusLG).
+					Background(pal.Card).Border(1, pal.Hairline).Clip().Children(func() {
+					for idx, drv := range drivers {
+						k := drv
+						suffix := backendProbeSuffix(k)
+						alreadyAdded := backends.Adapters[string(k)].Added
+						lbl := backendLabel(k)
+						rowID := "ai-agent-driver-" + suffix
+						hasNext := idx+1 < len(drivers)
+
+						st, hasSt := statuses[k]
+						badge := ""
+						badgeCol := pal.TextSecondary
+						if alreadyAdded {
+							badge = theme.Tr("已添加", "Added")
+							badgeCol = pal.Accent
+						} else if hasSt {
+							switch st.State {
+							case BackendStateReady, BackendStateInstalled:
+								ver := formatBackendVersionTag(st, true)
+								if ver != "" {
+									badge = ver
+								} else {
+									badge = theme.Tr("已就绪", "Ready")
+								}
+								badgeCol = pal.Accent
+							case BackendStateUnauth:
+								badge = theme.Tr("未登录", "Sign in")
+							case BackendStateMissing:
+								badge = theme.Tr("未安装", "Not installed")
+							}
+						} else if _, ok := resolveAutoCLIBinary(string(k)); ok {
+							badge = theme.Tr("已安装", "Installed")
+						}
+
+						btn := ui.ButtonBase(cUI.Key(rowID)).FillWidth().MinWidth(0).Height(48).PaddingX(14).Gap(10).
+							AlignItems(ui.Center).Justify(ui.SpaceBetween).Cursor(ui.CursorPointer).Label(lbl).
+							BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline)
+						hov := btn.Hovered()
+						prs := btn.Pressed()
+						bg := ui.Transparent
+						if prs {
+							bg = ais.SelectedBG
+						} else if hov {
+							bg = pal.Hover
+						}
+						bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+						bui.Probe(btn, rowID)
+						btn.Children(func() {
+							ui.Row(cUI).Gap(10).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+								ui.Box(cUI).Size(28, 28).Shrink(0).Center().Radius(theme.RadiusSM).
+									Background(ais.CapsuleBG).Border(1, pal.Hairline).Children(func() {
+									icons.Brand(cUI, k, 16, pal.Text)
+								})
+								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+									Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							})
+
+							ui.Row(cUI).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+								if badge != "" {
+									ui.Text(cUI, badge).Font("monospace").FontSize(theme.FontMeta).TextColor(badgeCol).SingleLine()
+								}
+								icons.Draw(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary))
+							})
+						})
+						if btn.Clicked() {
+							opt := backends.Adapters[string(k)]
+							nm := strings.TrimSpace(opt.Name)
+							if nm == "" {
+								nm = backendLabel(k)
+							}
+							th := opt.ThinkingLevel
+							if th == "" {
+								th = "high"
+							}
+							c.mu.Lock()
+							c.addAgentKind = k
+							c.addAgentStep = 2
+							c.addAgentName = nm
+							c.addAgentBinPath = opt.BinaryPath
+							c.addAgentThinking = th
+							c.addAgentStatus = statuses[k]
+							_, c.addAgentHasStatus = statuses[k]
+							c.addAgentCopiedCmd = ""
+							c.addAgentErr = ""
+							shouldProbe := !c.mockResponder
+							c.mu.Unlock()
+							if shouldProbe {
+								c.runAddAgentProbeAsync()
+							}
+						}
+					}
+				})
+
+				ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
+					if !showMore {
+						moreBtn := bui.ActionButton(cUI, "ai-agent-show-more", theme.Tr("显示更多", "Show more"), nil, bui.ButtonGhost, false)
+						if moreBtn.Clicked() {
+							c.mu.Lock()
+							c.addAgentShowMore = true
+							c.mu.Unlock()
+						}
+					} else {
+						ui.Box(cUI)
+					}
+					cancelBtn := bui.ActionButton(cUI, "ai-add-agent-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
+					if cancelBtn.Clicked() {
+						modalOpen = false
+					}
+				})
+				return
+			}
+
+			// Step 2: Dedicated Agent Setup & Verification (Environment Check + Display Name + Binary Path + Thinking)
 			ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
-				ui.Text(cUI, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine()
+				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+					backBtn := bui.IconButton(cUI, icons.ChevronLeft, bui.IconButtonOptions{
+						ID:      "ai-add-agent-back",
+						Label:   theme.Tr("返回选择", "Back"),
+						Tooltip: theme.Tr("返回上一步", "Back"),
+						Variant: bui.IconPlain,
+					})
+					if backBtn.Clicked() {
+						c.mu.Lock()
+						c.addAgentStep = 1
+						c.addAgentErr = ""
+						c.mu.Unlock()
+					}
+					icons.Brand(cUI, selKind, 18, pal.Text)
+					ui.Text(cUI, backendLabel(selKind)).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
 				closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 					ID:      "ai-add-agent-close",
 					Label:   theme.Tr("关闭", "Close"),
@@ -3685,91 +3835,6 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 				}
 			})
 
-			// Step 1: Select Agent Driver (T3 Code style provider tiles + "更多")
-			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(8).Children(func() {
-				for _, drv := range drivers {
-					k := drv
-					suffix := backendProbeSuffix(k)
-					isSel := selKind == k
-					alreadyAdded := backends.Adapters[string(k)].Added
-					lbl := backendLabel(k)
-					chipID := "ai-agent-driver-" + suffix
-
-					st, ok := statuses[k]
-					dotCol := pal.BtnBorder
-					if ok {
-						switch st.State {
-						case BackendStateReady, BackendStateInstalled:
-							dotCol = pal.Accent
-						case BackendStateUnauth, BackendStateUnsupported:
-							dotCol = pal.Danger
-						}
-					}
-
-					chip := ui.ButtonBase(cUI.Key(chipID)).Height(34).PaddingX(11).Gap(7).
-						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(lbl)
-					hov := chip.Hovered()
-					prs := chip.Pressed()
-					bg := ais.CapsuleBG
-					bd := ais.CapsuleBorder
-					if isSel {
-						bg = selBG
-						bd = pal.Accent
-					} else if prs {
-						bg = ais.SelectedBG
-					} else if hov {
-						bg = ais.HoverBG
-					}
-					bui.AnimateSurfaceColors(chip, bg, bd, true)
-					bui.TactileCard(chip, hov, prs, isSel, false)
-					bui.Probe(chip, chipID)
-					chip.Children(func() {
-						icons.Brand(cUI, k, 15, pal.Text)
-						ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-						if alreadyAdded {
-							icons.Draw(cUI, icons.Check, 12, pal.MonoIconColors(pal.Accent))
-						} else {
-							ui.Box(cUI).Size(6, 6).Radius(theme.RadiusPill).Background(dotCol)
-						}
-					})
-					if chip.Clicked() {
-						opt := backends.Adapters[string(k)]
-						nm := strings.TrimSpace(opt.Name)
-						if nm == "" {
-							nm = backendLabel(k)
-						}
-						th := opt.ThinkingLevel
-						if th == "" {
-							th = "high"
-						}
-						c.mu.Lock()
-						c.addAgentKind = k
-						c.addAgentName = nm
-						c.addAgentBinPath = opt.BinaryPath
-						c.addAgentThinking = th
-						c.addAgentStatus = statuses[k]
-						_, c.addAgentHasStatus = statuses[k]
-						c.addAgentCopiedCmd = ""
-						c.addAgentErr = ""
-						shouldProbe := !c.mockResponder
-						c.mu.Unlock()
-						if shouldProbe {
-							c.runAddAgentProbeAsync()
-						}
-					}
-				}
-
-				if !showMore {
-					moreBtn := bui.ActionButton(cUI, "ai-agent-show-more", theme.Tr("更多", "More"), nil, bui.ButtonSecondary, false)
-					if moreBtn.Clicked() {
-						c.mu.Lock()
-						c.addAgentShowMore = true
-						c.mu.Unlock()
-					}
-				}
-			})
-
-			// Step 2: Live CLI Environment Verification Card
 			autoBin, hasAutoBin := resolveAutoCLIBinary(string(selKind))
 			installCmd, loginCmd := AgentDriverGuide(selKind)
 			ui.Column(cUI).FillWidth().MinWidth(0).Padding(10, 12).Gap(8).Radius(theme.RadiusMD).
@@ -3834,7 +3899,6 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 				}
 			})
 
-			// Step 3: Instance Configuration (Display Name + Binary Path + Default Thinking Level)
 			ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
 				ui.Column(cUI).FillWidth().MinWidth(0).Gap(5).Children(func() {
 					ui.Text(cUI, theme.Tr("显示名称", "Display Name")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
@@ -3895,7 +3959,6 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 				})
 			}
 
-			// Footer actions
 			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(4, 0, 0, 0).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				reLbl := theme.Tr("重新检测", "Verify")
 				if probing {
@@ -3907,13 +3970,16 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 				}
 
 				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
-					cancelBtn := bui.ActionButton(cUI, "ai-add-agent-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
-					if cancelBtn.Clicked() {
-						modalOpen = false
+					backBtn := bui.ActionButton(cUI, "ai-add-agent-step1-btn", theme.Tr("上一步", "Back"), nil, bui.ButtonSecondary, false)
+					if backBtn.Clicked() {
+						c.mu.Lock()
+						c.addAgentStep = 1
+						c.addAgentErr = ""
+						c.mu.Unlock()
 					}
 					subLbl := theme.Tr("添加并启用", "Add & Enable")
 					if backends.Adapters[string(selKind)].Added {
-						subLbl = theme.Tr("更新配置", "Save")
+						subLbl = theme.Tr("保存配置", "Save")
 					}
 					submitBtn := bui.ActionButton(cUI, "ai-add-agent-submit", subLbl, nil, bui.ButtonPrimary, false)
 					if submitBtn.Clicked() {
