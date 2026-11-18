@@ -463,8 +463,9 @@ func (c *Controller) refreshPreviewLocked() {
 		c.renderedRev = c.previewRev
 		return
 	}
-	bm := ui.NewBitmap(img)
-	w, h := bm.Size()
+	bounds := img.Bounds()
+	bm := ui.NewBitmap(previewImage(img))
+	w, h := bounds.Dx(), bounds.Dy()
 	c.previewPNG = pngBytes
 	c.previewBitmap = bm
 	c.previewW = w

@@ -1311,7 +1311,7 @@ func detectImageMime(path string, data []byte) string {
 	return "image/png"
 }
 
-// ---- PNG & PDF Visual Rendering (2x Paper Styles via mygo/ui) ----
+// ---- PNG & PDF Visual Rendering (fixed ExportScale Paper Styles via mygo/ui) ----
 
 type paintedBlock struct {
 	kind       model.BlockKind
