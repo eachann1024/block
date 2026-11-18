@@ -470,32 +470,37 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 	if math.Abs(float64(pagerCenter-220)) > 6 {
 		t.Fatalf("expected centered quick-pager near x=220, got center=%.1f (rect=%+v)", pagerCenter, pagerRect)
 	}
-	for _, probeID := range []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "quick-save", "save-to-note", "quick-close"} {
+	probes := []string{"quick-slot-0", "quick-slot-1", "quick-slot-2", "quick-save", "save-to-note", "quick-note-editor"}
+	if !theme.IsMacOS() {
+		probes = append(probes, "quick-close")
+	}
+	for _, probeID := range probes {
 		if _, ok := internalui.TargetBounds(probeID); !ok {
 			t.Fatalf("expected probe %q recorded", probeID)
 		}
 	}
 
-	// OnShiftScroll: 16px threshold, negative -> next, 160ms cooldown, positive -> previous.
-	if got := q.OnShiftScroll(-8); got != 0 {
-		t.Fatalf("expected partial -8 delta not to switch yet, got slot %d", got)
+	// Scroll switching (no Shift required): OnWheelScroll positive DY -> next, negative -> previous.
+	if got := q.OnWheelScroll(8); got != 0 {
+		t.Fatalf("expected partial +8 delta not to switch yet, got slot %d", got)
 	}
-	if got := q.OnShiftScroll(-8); got != 1 || q.ActiveSlot() != 1 {
-		t.Fatalf("expected -16 accumulated delta to advance to slot 1, got %d", got)
+	if got := q.OnWheelScroll(8); got != 1 || q.ActiveSlot() != 1 {
+		t.Fatalf("expected +16 accumulated delta to advance to slot 1, got %d", got)
 	}
-	if got := q.OnShiftScroll(-24); got != 1 {
+	if got := q.OnWheelScroll(24); got != 1 {
 		t.Fatalf("expected 160ms cooldown to suppress immediate switch, got %d", got)
 	}
 	time.Sleep(170 * time.Millisecond)
-	if got := q.OnShiftScroll(20); got != 0 || q.ActiveSlot() != 0 {
-		t.Fatalf("expected positive delta after cooldown to move back to slot 0, got %d", got)
+	if got := q.OnWheelScroll(-20); got != 0 || q.ActiveSlot() != 0 {
+		t.Fatalf("expected negative DY after cooldown to move back to slot 0, got %d", got)
 	}
 
-	// QuickEditorZoom shortcuts: Cmd+= (1.1), Cmd+- (0.9), Cmd+0 (1.0).
+	// QuickEditorZoom 10% step shortcuts: Cmd+= (1.1 -> 1.2), Cmd+- (1.1), Cmd+0 (1.0).
+	tt.Key(ui.Cmd, ui.KeyEqual)
 	tt.Key(ui.Cmd, ui.KeyEqual)
 	tt.Key(ui.Cmd, ui.KeyMinus)
 	tt.Key(ui.Cmd, ui.Key0)
-	if len(zoomChanges) != 3 || zoomChanges[0] != 1.1 || zoomChanges[1] != 0.9 || zoomChanges[2] != 1.0 {
+	if len(zoomChanges) != 4 || zoomChanges[0] != 1.1 || zoomChanges[1] != 1.2 || zoomChanges[2] != 1.1 || zoomChanges[3] != 1.0 {
 		t.Fatalf("unexpected QuickEditorZoom sequence: %v", zoomChanges)
 	}
 

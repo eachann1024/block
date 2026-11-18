@@ -394,7 +394,7 @@ func (s *Session) dismissAnnotationRewrite(id string) {
 }
 
 func (s *Session) ensureAnnotationsLoaded() {
-	if s.notePath == "" {
+	if s.minimal || s.notePath == "" {
 		s.annotLoadedPath = ""
 		return
 	}
@@ -431,7 +431,7 @@ func (s *Session) ensureAnnotationsLoaded() {
 }
 
 func (s *Session) persistAnnotations() {
-	if s.notePath == "" || s.doc == nil || s.annotLoadFailed {
+	if s.minimal || s.notePath == "" || s.doc == nil || s.annotLoadFailed {
 		return
 	}
 	s.annotLoadedPath = s.notePath

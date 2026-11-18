@@ -86,7 +86,7 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 		if edFont := resolvedEditorFont(); edFont != "" {
 			txt.Font(edFont)
 		}
-		availBody := s.viewportWidth - editorHandleWidth - editorRowGap - editorRightInset
+		availBody := s.viewportWidth - s.leftContentGutter() - s.rightContentInset()
 		if availBody <= 0 {
 			availBody = theme.EditorStandardWidth
 		}
