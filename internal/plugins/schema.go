@@ -20,6 +20,7 @@ const (
 	KindActions   ItemKind = "actions"
 	KindKV        ItemKind = "kv"
 	KindMetrics   ItemKind = "metrics"
+	KindPreview   ItemKind = "preview"
 	KindLogList   ItemKind = "log_list"
 )
 
@@ -58,6 +59,24 @@ type UILogEntry struct {
 	Status string `json:"status,omitempty"`
 }
 
+type UIPreviewCard struct {
+	Badge string `json:"badge,omitempty"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+type UIPreview struct {
+	Variant  string          `json:"variant,omitempty"`  // "article" | "cards" | "diff" | "plan"
+	Palette  string          `json:"palette,omitempty"`  // "ocean" | "paper" | "ink" | "warm"
+	Badge    string          `json:"badge,omitempty"`
+	Title    string          `json:"title"`
+	Subtitle string          `json:"subtitle,omitempty"`
+	Before   string          `json:"before,omitempty"`
+	After    string          `json:"after,omitempty"`
+	Body     string          `json:"body,omitempty"`
+	Cards    []UIPreviewCard `json:"cards,omitempty"`
+}
+
 // UIVisibleWhen conditionally shows a UIItem based on another form control's current value.
 type UIVisibleWhen struct {
 	ControlID string   `json:"control_id"`
@@ -75,6 +94,7 @@ type UIItem struct {
 	Buttons     []UIButton     `json:"buttons,omitempty"`
 	Rows        []UIKVRow      `json:"rows,omitempty"`
 	Metrics     []UIMetric     `json:"metrics,omitempty"`
+	Preview     *UIPreview     `json:"preview,omitempty"`
 	EmptyText   string         `json:"empty_text,omitempty"`
 	Entries     []UILogEntry   `json:"entries,omitempty"`
 	VisibleWhen *UIVisibleWhen `json:"visible_when,omitempty"`
@@ -144,7 +164,7 @@ func (p *UIPage) Validate() error {
 	if err := checkText("page.title", p.Title, true); err != nil {
 		return err
 	}
-	if err := checkText("page.status", p.Status, false); err != nil {
+	if err := checkUserText("page.status", p.Status, false); err != nil {
 		return err
 	}
 	seenActionIDs := map[string]bool{}
@@ -236,15 +256,19 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 		if !ok {
 			return fmt.Errorf("%s.value must be a string", prefix)
 		}
-		if len(item.Options) < 2 {
-			return fmt.Errorf("%s.options must have at least 2 options", prefix)
+		minOpts := 2
+		if item.Kind == KindSelect {
+			minOpts = 1
+		}
+		if len(item.Options) < minOpts {
+			return fmt.Errorf("%s.options must have at least %d option(s)", prefix, minOpts)
 		}
 		matched := false
 		for oi, opt := range item.Options {
 			if strings.TrimSpace(opt.Value) == "" {
 				return fmt.Errorf("%s.options[%d].value is required", prefix, oi)
 			}
-			if err := checkText(fmt.Sprintf("%s.options[%d].label", prefix, oi), opt.Label, true); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.options[%d].label", prefix, oi), opt.Label, true); err != nil {
 				return err
 			}
 			if opt.Value == strVal {
@@ -288,7 +312,7 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			if err := checkText(fmt.Sprintf("%s.rows[%d].label", prefix, ri), row.Label, true); err != nil {
 				return err
 			}
-			if err := checkText(fmt.Sprintf("%s.rows[%d].value", prefix, ri), row.Value, true); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.rows[%d].value", prefix, ri), row.Value, true); err != nil {
 				return err
 			}
 		}
@@ -300,7 +324,52 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			if err := checkText(fmt.Sprintf("%s.metrics[%d].label", prefix, mi), m.Label, true); err != nil {
 				return err
 			}
-			if err := checkText(fmt.Sprintf("%s.metrics[%d].value", prefix, mi), m.Value, true); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.metrics[%d].value", prefix, mi), m.Value, true); err != nil {
+				return err
+			}
+		}
+	case KindPreview:
+		if item.Preview == nil {
+			return fmt.Errorf("%s.preview is required for kind \"preview\"", prefix)
+		}
+		pv := item.Preview
+		switch pv.Variant {
+		case "", "article", "cards", "diff", "plan":
+		default:
+			return fmt.Errorf("%s.preview.variant %q must be article, cards, diff, or plan", prefix, pv.Variant)
+		}
+		switch pv.Palette {
+		case "", "ocean", "paper", "ink", "warm":
+		default:
+			return fmt.Errorf("%s.preview.palette %q must be ocean, paper, ink, or warm", prefix, pv.Palette)
+		}
+		if err := checkUserText(prefix+".preview.title", pv.Title, true); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".preview.subtitle", pv.Subtitle, false); err != nil {
+			return err
+		}
+		if err := checkText(prefix+".preview.badge", pv.Badge, false); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".preview.before", pv.Before, false); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".preview.after", pv.After, false); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".preview.body", pv.Body, false); err != nil {
+			return err
+		}
+		for ci, c := range pv.Cards {
+			cp := fmt.Sprintf("%s.preview.cards[%d]", prefix, ci)
+			if err := checkText(cp+".badge", c.Badge, false); err != nil {
+				return err
+			}
+			if err := checkUserText(cp+".title", c.Title, true); err != nil {
+				return err
+			}
+			if err := checkUserText(cp+".body", c.Body, false); err != nil {
 				return err
 			}
 		}
@@ -309,13 +378,13 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			return err
 		}
 		for ei, e := range item.Entries {
-			if err := checkText(fmt.Sprintf("%s.entries[%d].title", prefix, ei), e.Title, true); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].title", prefix, ei), e.Title, true); err != nil {
 				return err
 			}
 			if err := checkText(fmt.Sprintf("%s.entries[%d].time", prefix, ei), e.Time, true); err != nil {
 				return err
 			}
-			if err := checkText(fmt.Sprintf("%s.entries[%d].status", prefix, ei), e.Status, false); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].status", prefix, ei), e.Status, false); err != nil {
 				return err
 			}
 		}
@@ -361,6 +430,14 @@ func checkText(field, val string, required bool) error {
 	}
 	if ContainsEmoji(val) {
 		return fmt.Errorf("%s must not contain emoji (Ocean Paper rule)", field)
+	}
+	return nil
+}
+
+// checkUserText validates dynamic values that may reflect user note titles, body excerpts, or folder names.
+func checkUserText(field, val string, required bool) error {
+	if required && strings.TrimSpace(val) == "" {
+		return fmt.Errorf("%s is required", field)
 	}
 	return nil
 }

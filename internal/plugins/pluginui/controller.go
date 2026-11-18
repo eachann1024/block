@@ -25,6 +25,7 @@ type Controller struct {
 	drafts         map[string]map[string]string
 	lastSynced     map[string]map[string]string
 	secretRevealed map[string]map[string]bool
+	selectStates   map[string]map[string]*bui.DropdownSelectState
 }
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
@@ -34,6 +35,7 @@ func NewController(sup *plugins.Supervisor) *Controller {
 		drafts:         make(map[string]map[string]string),
 		lastSynced:     make(map[string]map[string]string),
 		secretRevealed: make(map[string]map[string]bool),
+		selectStates:   make(map[string]map[string]*bui.DropdownSelectState),
 	}
 }
 
@@ -204,8 +206,8 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 				vs.Values,
 				vs.BusyAction,
 				c.inputBindingsFor(pluginID),
-				func(controlID string, nextValue any) {
-					c.sup.SetControlValue(pluginID, controlID, nextValue)
+				func(controlID string, nextValue any, immediate bool) {
+					c.sup.UpdateControlValue(pluginID, controlID, nextValue, immediate)
 				},
 				func(actionID string, _ map[string]any) {
 					c.sup.TriggerActionAsync(pluginID, actionID)
@@ -255,11 +257,25 @@ func (c *Controller) clearPluginState(pluginID string) {
 	delete(c.drafts, pluginID)
 	delete(c.lastSynced, pluginID)
 	delete(c.secretRevealed, pluginID)
+	delete(c.selectStates, pluginID)
 	c.mu.Unlock()
 }
 
 func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 	return &InputBindings{
+		SelectState: func(controlID string) *bui.DropdownSelectState {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.selectStates[pluginID] == nil {
+				c.selectStates[pluginID] = make(map[string]*bui.DropdownSelectState)
+			}
+			st := c.selectStates[pluginID][controlID]
+			if st == nil {
+				st = &bui.DropdownSelectState{Cursor: -1}
+				c.selectStates[pluginID][controlID] = st
+			}
+			return st
+		},
 		ResolveDraft: func(controlID, fallback string) string {
 			c.mu.Lock()
 			defer c.mu.Unlock()
@@ -321,7 +337,7 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 				c.drafts[pluginID][controlID] = chosen
 				c.lastSynced[pluginID][controlID] = chosen
 				c.mu.Unlock()
-				c.sup.SetControlValue(pluginID, controlID, chosen)
+				c.sup.UpdateControlValue(pluginID, controlID, chosen, true)
 			})
 		},
 	}

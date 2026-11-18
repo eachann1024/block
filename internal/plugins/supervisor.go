@@ -2,7 +2,10 @@ package plugins
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +19,10 @@ type PluginViewState struct {
 	Notice     string
 	Page       *UIPage
 	Values     map[string]any
+
+	lastNotebookRoot string
+	lastActiveNote   string
+	editSeq          uint64
 }
 
 type SupervisorConfig struct {
@@ -227,8 +234,13 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 			return
 		}
 		s.installed = installedList
+		prevRt := s.runtimes[inst.Manifest.ID]
+		delete(s.runtimes, inst.Manifest.ID)
 		delete(s.views, inst.Manifest.ID)
 		s.mu.Unlock()
+		if prevRt != nil {
+			go prevRt.Shutdown(context.Background())
+		}
 
 		if onInstalled != nil {
 			onInstalled(inst.Manifest.ID)
@@ -268,8 +280,13 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 			return
 		}
 		s.installed = installedList
+		prevRt := s.runtimes[inst.Manifest.ID]
+		delete(s.runtimes, inst.Manifest.ID)
 		delete(s.views, inst.Manifest.ID)
 		s.mu.Unlock()
+		if prevRt != nil {
+			go prevRt.Shutdown(context.Background())
+		}
 
 		if onInstalled != nil {
 			onInstalled(inst.Manifest.ID)
@@ -307,14 +324,34 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 
 // EnsurePluginView returns the current non-blocking UI snapshot and lazily starts/renders the plugin if needed.
 func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
+	nbRoot := s.NotebookRoot()
+	activeNote := s.ActiveNoteRel()
+
 	s.mu.Lock()
 	vs, ok := s.views[pluginID]
 	if ok {
+		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" && vs.Page != nil &&
+			(vs.lastNotebookRoot != nbRoot || vs.lastActiveNote != activeNote)
+		var syncSeq uint64
+		if needWorkspaceSync {
+			vs.lastNotebookRoot = nbRoot
+			vs.lastActiveNote = activeNote
+			vs.editSeq++
+			syncSeq = vs.editSeq
+		}
 		snap := cloneViewState(vs)
 		s.mu.Unlock()
+		if needWorkspaceSync {
+			go s.refreshPreviewForSeq(pluginID, syncSeq, 0)
+		}
 		return snap
 	}
-	vs = &PluginViewState{Loading: true, Values: map[string]any{}}
+	vs = &PluginViewState{
+		Loading:          true,
+		Values:           map[string]any{},
+		lastNotebookRoot: nbRoot,
+		lastActiveNote:   activeNote,
+	}
 	s.views[pluginID] = vs
 	snap := cloneViewState(vs)
 	s.mu.Unlock()
@@ -358,12 +395,27 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID string) {
 		return
 	}
 
-	rt.SetNotebookRoot(s.NotebookRoot())
-	rt.SetActiveNote(s.ActiveNoteRel())
-	page, err := rt.Render(ctx, SurfaceSettingsPage)
+	nbRoot := s.NotebookRoot()
+	activeNote := s.ActiveNoteRel()
+	rt.SetNotebookRoot(nbRoot)
+	rt.SetActiveNote(activeNote)
+
+	s.mu.RLock()
+	var currentVals map[string]any
+	if vs := s.views[pluginID]; vs != nil && len(vs.Values) > 0 {
+		currentVals = make(map[string]any, len(vs.Values))
+		for k, v := range vs.Values {
+			currentVals[k] = v
+		}
+	}
+	s.mu.RUnlock()
+
+	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, currentVals)
 	s.mu.Lock()
 	if vs := s.views[pluginID]; vs != nil {
 		vs.Loading = false
+		vs.lastNotebookRoot = nbRoot
+		vs.lastActiveNote = activeNote
 		if err != nil {
 			vs.Error = err.Error()
 		} else {
@@ -429,14 +481,79 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID string) (*Runti
 }
 
 func (s *Supervisor) SetControlValue(pluginID, controlID string, val any) {
+	s.UpdateControlValue(pluginID, controlID, val, true)
+}
+
+func (s *Supervisor) UpdateControlValue(pluginID, controlID string, val any, immediate bool) {
 	s.mu.Lock()
-	if vs := s.views[pluginID]; vs != nil {
-		if vs.Values == nil {
-			vs.Values = map[string]any{}
+	vs := s.views[pluginID]
+	if vs == nil {
+		s.mu.Unlock()
+		return
+	}
+	if vs.Values == nil {
+		vs.Values = map[string]any{}
+	}
+	vs.Values[controlID] = val
+	vs.editSeq++
+	seq := vs.editSeq
+	s.mu.Unlock()
+
+	delay := 220 * time.Millisecond
+	if immediate {
+		delay = 25 * time.Millisecond
+	}
+	go s.refreshPreviewForSeq(pluginID, seq, delay)
+}
+
+func (s *Supervisor) refreshPreviewForSeq(pluginID string, seq uint64, delay time.Duration) {
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	s.mu.RLock()
+	vs := s.views[pluginID]
+	if vs == nil || vs.BusyAction != "" || vs.editSeq != seq {
+		s.mu.RUnlock()
+		return
+	}
+	valsCopy := make(map[string]any, len(vs.Values))
+	for k, v := range vs.Values {
+		valsCopy[k] = v
+	}
+	s.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	rt, err := s.ensureRuntime(ctx, pluginID)
+	if err != nil {
+		return
+	}
+	nbRoot := s.NotebookRoot()
+	activeNote := s.ActiveNoteRel()
+	rt.SetNotebookRoot(nbRoot)
+	rt.SetActiveNote(activeNote)
+
+	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, valsCopy)
+	if err != nil || page == nil {
+		return
+	}
+
+	s.mu.Lock()
+	cur := s.views[pluginID]
+	if cur == nil || cur.BusyAction != "" || cur.editSeq != seq {
+		s.mu.Unlock()
+		return
+	}
+	cur.Page = page
+	cur.lastNotebookRoot = nbRoot
+	cur.lastActiveNote = activeNote
+	for k, v := range page.ExtractDefaultValues() {
+		if _, exists := cur.Values[k]; !exists {
+			cur.Values[k] = v
 		}
-		vs.Values[controlID] = val
 	}
 	s.mu.Unlock()
+	s.notifyChanged()
 }
 
 func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
@@ -448,6 +565,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 	}
 	vs.BusyAction = actionID
 	vs.Error = ""
+	vs.editSeq++
 	valsCopy := make(map[string]any, len(vs.Values))
 	for k, v := range vs.Values {
 		valsCopy[k] = v
@@ -461,15 +579,20 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 
 		rt, err := s.ensureRuntime(ctx, pluginID)
 		var res *ActionResult
+		nbRoot := s.NotebookRoot()
+		activeNote := s.ActiveNoteRel()
 		if err == nil {
-			rt.SetNotebookRoot(s.NotebookRoot())
-			rt.SetActiveNote(s.ActiveNoteRel())
+			rt.SetNotebookRoot(nbRoot)
+			rt.SetActiveNote(activeNote)
 			res, err = rt.Action(ctx, SurfaceSettingsPage, actionID, valsCopy)
 		}
 
+		var openTarget, revealTarget string
 		s.mu.Lock()
 		if cur := s.views[pluginID]; cur != nil {
 			cur.BusyAction = ""
+			cur.lastNotebookRoot = nbRoot
+			cur.lastActiveNote = activeNote
 			if err != nil {
 				cur.Error = err.Error()
 			} else if res != nil {
@@ -489,11 +612,53 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 				for k, v := range res.Values {
 					cur.Values[k] = v
 				}
+				openTarget = res.OpenPath
+				revealTarget = res.RevealPath
 			}
 		}
 		s.mu.Unlock()
 		s.notifyChanged()
+
+		if openTarget != "" {
+			openLocalPathInOS(openTarget, false)
+		}
+		if revealTarget != "" {
+			openLocalPathInOS(revealTarget, true)
+		}
 	}()
+}
+
+func openLocalPathInOS(rawPath string, reveal bool) {
+	cleaned := filepath.Clean(strings.TrimSpace(rawPath))
+	if cleaned == "" || !filepath.IsAbs(cleaned) {
+		return
+	}
+	info, err := os.Stat(cleaned)
+	if err != nil {
+		return
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		if reveal && !info.IsDir() {
+			cmd = exec.Command("open", "-R", cleaned)
+		} else {
+			cmd = exec.Command("open", cleaned)
+		}
+	case "windows":
+		if reveal && !info.IsDir() {
+			cmd = exec.Command("explorer", "/select,"+cleaned)
+		} else {
+			cmd = exec.Command("cmd", "/c", "start", "", cleaned)
+		}
+	default:
+		target := cleaned
+		if reveal && !info.IsDir() {
+			target = filepath.Dir(cleaned)
+		}
+		cmd = exec.Command("xdg-open", target)
+	}
+	_ = cmd.Start()
 }
 
 // NotifyNoteSaved dispatches note.saved asynchronously to every installed plugin declaring events:note_saved.

@@ -342,7 +342,10 @@ func renderStoreAppCard(
 			})
 
 			ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				renderStoreCardActions(c, ctrl, entry, isInstalled, installingID, onSelectTab)
+				instApp, hasInst := ctrl.sup.GetInstalled(entry.ID)
+				hasUpdate := hasInst && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
+					strings.TrimPrefix(strings.TrimSpace(entry.Version), "v") != strings.TrimPrefix(strings.TrimSpace(instApp.Manifest.Version), "v")
+				renderStoreCardActions(c, ctrl, entry, isInstalled, hasUpdate, installingID, onSelectTab)
 			})
 		})
 
@@ -384,10 +387,35 @@ func renderStoreCardActions(
 	ctrl *Controller,
 	entry plugins.StoreAppEntry,
 	isInstalled bool,
+	hasUpdate bool,
 	installingID string,
 	onSelectTab func(nextTab string),
 ) {
 	if isInstalled {
+		if hasUpdate {
+			isUpdating := installingID == entry.ID
+			upLbl := theme.Tr("更新", "Update")
+			if isUpdating {
+				upLbl = theme.Tr("更新中…", "Updating…")
+			}
+			upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+				ID:       "app-store-update-" + entry.ID,
+				Label:    upLbl,
+				Style:    bui.ButtonPrimary,
+				Disabled: installingID != "",
+				Height:   theme.HeightCompact,
+				PaddingX: theme.Space12,
+			})
+			if upBtn.Clicked() {
+				appEntry := entry
+				ctrl.clearPluginState(entry.ID)
+				ctrl.sup.InstallEntryAsync(appEntry, func(pluginID string) {
+					if onSelectTab != nil {
+						onSelectTab(modals.TabPluginPrefix + pluginID)
+					}
+				})
+			}
+		}
 		openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 			ID:       "app-store-open-" + entry.ID,
 			Label:    theme.Tr("打开", "Open"),
