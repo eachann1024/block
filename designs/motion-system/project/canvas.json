@@ -1,0 +1,54 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-18T05:18:00Z"
+  },
+  "title": "界面与图标动效方案",
+  "launch": {
+    "view": "canvas",
+    "page": "motion"
+  },
+  "pages": [
+    {
+      "id": "motion",
+      "name": "动效方案"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 700,
+      "page": "motion",
+      "title": "A 纸墨轻滑",
+      "is_interactive": true
+    },
+    "Spring.dc.html": {
+      "x": 1040,
+      "y": 0,
+      "w": 960,
+      "h": 700,
+      "page": "motion",
+      "title": "B 灵动弹簧",
+      "is_interactive": true
+    },
+    "Shared.dc.html": {
+      "x": 2080,
+      "y": 0,
+      "w": 960,
+      "h": 700,
+      "page": "motion",
+      "title": "C 共享形变",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Spring.dc.html",
+    "Shared.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

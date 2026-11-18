@@ -279,13 +279,28 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 		case FolderReveal:
 			sc := 1 + 0.05*p
 			root.Scale(sc, sc)
+		case Plus:
+			sc := 1 + 0.15*p
+			root.Rotate(90 * p).Scale(sc, sc)
+		case ChevronDown, TbChevron:
+			sc := 1 + 0.13*p
+			root.Translate(0, 2.2*k*p).Scale(sc, sc)
+		case ChevronRight, TbChevronRight:
+			sc := 1 + 0.13*p
+			root.Translate(2.2*k*p, 0).Scale(sc, sc)
+		case ChevronUp:
+			sc := 1 + 0.13*p
+			root.Translate(0, -2.2*k*p).Scale(sc, sc)
+		case ChevronLeft:
+			sc := 1 + 0.13*p
+			root.Translate(-2.2*k*p, 0).Scale(sc, sc)
 		case Refresh, TbReset, UpdateTangle:
 			root.Rotate(38 * p)
 		case Trash, Pencil, Eraser, Cut:
 			root.Rotate(-6 * p)
 		case Drag:
-			sc := 1 + 0.08*p
-			root.Scale(sc, sc)
+			sc := 1 + 0.12*p
+			root.Translate(0, -1.0*k*p).Scale(sc, sc)
 		}
 	}
 
@@ -353,16 +368,13 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ln.Rotate(15 * p).Scale(sc, sc)
 					case Sliders:
 						ln.Translate(-1.4*k*p, 0)
-					case Plus, TbPlus:
-						sc := 1 + 0.08*p
-						ln.Rotate(90 * p).Scale(sc, sc)
-					case ChevronRight, TbChevronRight, ArrowRight:
+					case ArrowRight:
 						ln.Translate(1.6*k*p, 0)
-					case ChevronLeft, ArrowLeft:
+					case ArrowLeft:
 						ln.Translate(-1.6*k*p, 0)
-					case ChevronDown, TbChevron, ArrowDown:
+					case ArrowDown:
 						ln.Translate(0, 1.4*k*p)
-					case ChevronUp, ArrowUp:
+					case ArrowUp:
 						ln.Translate(0, -1.4*k*p)
 					}
 				}
@@ -373,6 +385,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
 				if moving {
 					switch glyph {
+					case Plus, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
+						// Unified root transform already applied in sub-pixel lockstep with .line.
 					case SidebarExpand:
 						sc := 1 + 0.08*p
 						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
@@ -391,8 +405,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 					case Sliders:
 						sc := 1 + 0.09*p
 						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
-					case Plus, TbPlus:
-						sc := 1 + 0.10*p
+					case TbPlus:
+						sc := 1 + 0.12*p
 						ac.Rotate(90 * p).Scale(sc, sc)
 					case NotePlus, AiPlus:
 						sc := 1 + 0.16*p
@@ -406,14 +420,10 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ac.Translate(0, 2.0*k*p)
 					case ArrowUp, RowInsertAbove:
 						ac.Translate(0, -2.0*k*p)
-					case ArrowRight, ChevronRight, TbChevronRight, ColInsertRight:
+					case ArrowRight, ColInsertRight:
 						ac.Translate(1.8*k*p, 0)
-					case ArrowLeft, ChevronLeft, ColInsertLeft:
+					case ArrowLeft, ColInsertLeft:
 						ac.Translate(-1.8*k*p, 0)
-					case ChevronDown, TbChevron:
-						ac.Translate(0, 1.4*k*p)
-					case ChevronUp:
-						ac.Translate(0, -1.4*k*p)
 					case WindowMax, WindowRestore, Crop, SelectAll:
 						sc := 1 + 0.11*p
 						ac.Scale(sc, sc)

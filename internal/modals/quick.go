@@ -1568,7 +1568,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 
 		// Minimal full-featured Block Markdown editor per slot.
 		editorBox := ui.Box(c.Key(fmt.Sprintf("quick-editor-slot-%d", activeSlot))).
-			Grow(1).FillWidth().Clip()
+			Grow(1).FillWidth().Clip().Transition(internalui.SurfaceStageTransition())
 		internalui.Probe(editorBox, "quick-note-editor")
 		editorBox.Children(func() {
 			if sess != nil {
@@ -1582,7 +1582,7 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	if notice != "" {
 		noticeRow := ui.Row(c.Key("quick-notice")).Absolute().Right(theme.Space16).Bottom(theme.Space16).MaxWidth(360).Height(30).PaddingX(theme.Space12).
 			AlignItems(ui.Center).Radius(theme.RadiusPill).Background(pal.Menu).
-			Border(1, pal.MenuBorder).
+			Border(1, pal.MenuBorder).Transition(internalui.PopoverSpringTransition()).
 			Children(func() {
 				ui.Text(c, notice).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 			})

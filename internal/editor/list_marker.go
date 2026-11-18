@@ -305,20 +305,40 @@ func (s *Session) renderTodoCheckbox(c *ui.Context, idx int, checked, readOnly b
 	id := s.doc.Blocks[idx].ID
 	top := max((lineH-boxSz)*0.5, 0)
 	cb := ui.ButtonBase(c.Key(id)).Size(boxSz, boxSz).Margin(top, 0, 0, 4.8*z).
-		Center().Radius(theme.RadiusSM * z).Background(pal.TodoBG).Cursor(ui.CursorPointer).Disabled(readOnly).
+		Center().Radius(theme.RadiusSM * z).Cursor(ui.CursorPointer).Disabled(readOnly).
 		Label(theme.Tr("待办复选框", "Todo checkbox"))
-	if cb.Hovered() && !readOnly {
-		cb.Border(1, pal.TodoRingHover)
-	} else {
-		cb.Border(1, pal.TodoRing)
+	hovered := cb.Hovered() && !readOnly
+	pressed := cb.Pressed() && !readOnly
+	bg := pal.TodoBG
+	bd := pal.TodoRing
+	if checked || hovered {
+		bd = pal.TodoRingHover
 	}
+	if checked && hovered {
+		bg = pal.Selected
+	}
+	appUi.AnimateSurfaceColors(cb, bg, bd, true)
+	appUi.TactileButton(cb, hovered, pressed, readOnly)
+	targetChk := float32(0)
+	if checked {
+		targetChk = 1
+	}
+	chkP := cb.AnimateTo("todoChk", targetChk, appUi.SpringTactile)
 	cb.Children(func() {
 		if appUi.IsProbeEnabled() {
 			idLayer := ui.Box(c).Absolute().Left(0).Top(0).Size(boxSz, boxSz).PassThrough()
 			appUi.Probe(idLayer, fmt.Sprintf("todo-checkbox-%d", id))
 		}
-		if checked {
-			icons.Draw(c, icons.Check, theme.IconMicro*z, pal.MonoIconColors(pal.Accent))
+		if chkP > 0.01 {
+			chkScale := 0.55 + 0.45*chkP
+			chkAlpha := min(max(chkP, 0), 1)
+			mark := ui.Box(c).Center().Opacity(chkAlpha)
+			if float32(math.Abs(float64(chkScale-1))) > 0.001 {
+				mark.Scale(chkScale, chkScale)
+			}
+			mark.Children(func() {
+				icons.DrawAnimated(c, icons.Check, theme.IconMicro*z, pal.MonoIconColors(pal.Accent), hovered || pressed || checked)
+			})
 		}
 	})
 	appUi.Probe(cb, "todo-checkbox")
