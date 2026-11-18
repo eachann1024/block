@@ -1478,9 +1478,16 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 			}
 		}
 		shell.ObserveInput(func(ev ui.InputEvent) {
-			if ev.Kind == ui.InputPointerMove {
+			switch ev.Kind {
+			case ui.InputPointerMove:
 				menu.PointerActive = true
 				menu.ActiveIndex = -1
+			case ui.InputScroll:
+				// 滚轮同样视为鼠标接管：滚动后悬停行可立即高亮、点击选中。
+				if !menu.PointerActive {
+					menu.PointerActive = true
+					menu.ActiveIndex = -1
+				}
 			}
 		})
 		down := shell.OverlayShortcut(0, ui.KeyDown)
