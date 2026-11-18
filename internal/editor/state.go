@@ -210,6 +210,9 @@ type Session struct {
 	dragBlockID     model.BlockID
 	dragOverIdx     int
 	dragAfter       bool
+	dragNested      bool
+	dragIndent      int
+	dragDropIndent  int
 	dragActive      bool
 	dragCanceled    bool
 	dragStartPt     ui.Point

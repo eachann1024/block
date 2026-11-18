@@ -2,6 +2,7 @@ package editor
 
 import (
 	"math"
+	"strconv"
 
 	"block/internal/model"
 	"block/internal/theme"
@@ -35,6 +36,7 @@ func (s *Session) resetBlockDrag() {
 	s.dragBlockID = 0
 	s.dragOverIdx = -1
 	s.dragAfter = false
+	s.dragNested = false
 	s.dragActive = false
 	s.dragCanceled = false
 	s.dragStartPt = ui.Point{}
@@ -51,15 +53,42 @@ func (s *Session) flushPendingBlockDrop(c *ui.Context) {
 	s.dragDropPending = false
 	s.dragDropFrom = -1
 	s.dragDropTo = -1
-	if s.doc == nil || from < 0 || from >= len(s.doc.Blocks) || to < 0 || to >= len(s.doc.Blocks) || from == to {
+	if s.doc == nil || from < 0 || from >= len(s.doc.Blocks) {
 		return
 	}
-	s.moveBlock(from, to)
-	if s.focusedBlock >= 0 && s.focusedBlock < len(s.doc.Blocks) {
-		s.selAnchor = Position{Block: s.focusedBlock, Offset: 0}
-		s.selHead = s.selAnchor
-		s.selSyncPending = true
+	end := s.dragSubtreeEnd(from)
+	count := end - from + 1
+	if to < 0 || to > len(s.doc.Blocks)-count {
+		return
 	}
+	delta := s.dragDropIndent - s.doc.Blocks[from].Indent
+	if to == from && delta == 0 {
+		return
+	}
+	s.pushUndo()
+	blocks := s.doc.Blocks
+	moved := append([]model.Block(nil), blocks[from:end+1]...)
+	for i := range moved {
+		b := &moved[i]
+		b.Indent += delta
+		if delta != 0 {
+			b.CleanSource = ""
+			b.Dirty = true
+		}
+		if b.Language == "yaml-frontmatter" && (to+i != 0 || b.Indent > 0) {
+			b.Language = "yaml"
+			b.Dirty = true
+			b.CleanSource = ""
+		}
+	}
+	if to < from {
+		copy(blocks[to+count:end+1], blocks[to:from])
+	} else {
+		copy(blocks[from:to], blocks[end+1:to+count])
+	}
+	copy(blocks[to:], moved)
+	s.FocusBlock(to)
+	s.markDirty()
 	c.Invalidate()
 }
 
@@ -117,7 +146,7 @@ func (s *Session) updateBlockDropTarget(fromIdx int, wx, wy float32) {
 	bestIdx := -1
 	bestDist := float32(1e9)
 	for i := range s.doc.Blocks {
-		if s.isBlockHiddenByFold(i) {
+		if len(s.folded) > 0 && s.isBlockHiddenByFold(i) {
 			continue
 		}
 		r, ok := s.blockRects[s.doc.Blocks[i].ID]
@@ -141,48 +170,55 @@ func (s *Session) updateBlockDropTarget(fromIdx int, wx, wy float32) {
 		return
 	}
 	r := s.blockRects[s.doc.Blocks[bestIdx].ID]
-	after := false
-	switch {
-	case bestIdx < fromIdx:
-		after = false
-	case bestIdx > fromIdx:
-		after = true
-	default:
-		after = wy >= r.Y+r.H*0.5
-	}
-	slot := bestIdx
-	if after {
-		slot = bestIdx + 1
-	}
-	to := slot
-	if slot > fromIdx {
-		to = slot - 1
-	}
-	if to == fromIdx {
+	last := s.dragSubtreeEnd(fromIdx)
+	if bestIdx >= fromIdx && bestIdx <= last {
 		s.dragOverIdx = -1
-		s.dragAfter = false
 		return
 	}
+	target := &s.doc.Blocks[bestIdx]
+	edge := min(r.H*0.22, 12)
+	if s.dragOverIdx == bestIdx && s.dragNested {
+		edge -= 3
+	}
+	s.dragNested = target.Kind.IsList() && wy >= r.Y+edge && wy <= r.Y+r.H-edge
+	s.dragAfter = s.dragNested || bestIdx > last
+	s.dragIndent = target.Indent
+	if s.dragNested {
+		width := 2
+		if target.Kind == model.BlockNumbered {
+			width = len(strconv.Itoa(s.numberedListIndex(bestIdx))) + 2
+		}
+		s.dragIndent += width
+	}
 	s.dragOverIdx = bestIdx
-	s.dragAfter = after
+	if s.resolvedMoveTarget(fromIdx) == fromIdx && s.dragIndent == s.doc.Blocks[fromIdx].Indent {
+		s.dragOverIdx = -1
+	}
 }
 
-func (s *Session) resolvedMoveTarget(fromIdx int) int {
-	if s.doc == nil || s.dragOverIdx < 0 || s.dragOverIdx >= len(s.doc.Blocks) {
-		return -1
+func (s *Session) dragSubtreeEnd(start int) int {
+	end := start
+	for end+1 < len(s.doc.Blocks) && s.doc.Blocks[end+1].Indent > s.doc.Blocks[start].Indent {
+		end++
 	}
+	return end
+}
+
+func (s *Session) resolvedMoveTarget(from int) int {
 	slot := s.dragOverIdx
-	if s.dragAfter {
-		slot = s.dragOverIdx + 1
-	}
-	to := slot
-	if slot > fromIdx {
-		to = slot - 1
-	}
-	if to < 0 || to >= len(s.doc.Blocks) || to == fromIdx {
+	if slot < 0 {
 		return -1
 	}
-	return to
+	if s.dragAfter {
+		if !s.dragNested {
+			slot = s.dragSubtreeEnd(slot)
+		}
+		slot++
+	}
+	if slot > from {
+		slot -= s.dragSubtreeEnd(from) - from + 1
+	}
+	return slot
 }
 
 func (s *Session) handleBlockGripGesture(c *ui.Context, grip ui.Element, idx int, id model.BlockID) {
@@ -238,16 +274,18 @@ func (s *Session) handleBlockGripGesture(c *ui.Context, grip ui.Element, idx int
 			s.updateBlockDropTarget(idx, wx, wy)
 		}
 		target := s.resolvedMoveTarget(idx)
+		indent := s.dragIndent
 		s.resetBlockDrag()
 		if wasCanceled {
 			c.Invalidate()
 			return
 		}
 		if wasActive {
-			if target >= 0 && target != idx && s.isPointerInDropViewport(wx, wy) {
+			if target >= 0 && s.isPointerInDropViewport(wx, wy) {
 				s.dragDropPending = true
 				s.dragDropFrom = idx
 				s.dragDropTo = target
+				s.dragDropIndent = indent
 			}
 			c.Invalidate()
 			return
@@ -270,7 +308,7 @@ func (s *Session) paintBlockDropMarker(p *ui.Painter, r ui.Rect, b *model.Block,
 	if b == nil || r.W <= 0 || r.H <= 0 {
 		return
 	}
-	indentPx := float32(min(max(b.Indent, 0), 12)) * editorIndentStep
+	indentPx := float32(min(max(s.dragIndent, 0), 12)) * editorIndentStep
 	leftX := r.X + editorHandleWidth + editorRowGap + indentPx
 	rightX := r.X + r.W - editorRightInset
 	lineW := max(rightX-leftX, 0)
