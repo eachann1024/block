@@ -1302,7 +1302,7 @@ func lastNonEmptyLine(s string) string {
 
 // --- Paper Live Preview Rendering ---
 
-func (s *Session) paintInlineAIOutline(c *ui.Context, el ui.Element, blockID model.BlockID) {
+func (s *Session) paintInlineAIOutline(c *ui.Context, el ui.Element, blockID model.BlockID, topGap float32) {
 	ai := s.inlineAI
 	if ai == nil || ai.Status != aiStatusInput {
 		return
@@ -1318,8 +1318,17 @@ func (s *Session) paintInlineAIOutline(c *ui.Context, el ui.Element, blockID mod
 		return
 	}
 	pal := theme.Ocean()
+	leftGutter := s.leftContentGutter()
+	rightInset := s.rightContentInset()
+	bleed := s.bandBleed()
+	padY := s.scale(3)
 	el.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		ring := ui.Rect{X: r.X - 6, Y: r.Y - 3, W: r.W + 12, H: r.H + 6}
+		ring := ui.Rect{
+			X: r.X + leftGutter - bleed,
+			Y: r.Y + topGap - padY,
+			W: max(r.W-leftGutter-rightInset+2*bleed, 0),
+			H: max(r.H-topGap+2*padY, 0),
+		}
 		p.StrokeDashed(ring, pal.Accent.Alpha(0.85), 10, 1)
 		if ai.Parts[0].BlockID == blockID {
 			ai.PreviewRect = ring
@@ -1377,10 +1386,11 @@ func (s *Session) renderInlineAIPreviewRow(c *ui.Context, idx int, readOnly bool
 	}
 
 	outerMaxW := s.outerFlowWidth()
+	bleed := s.bandBleed()
 	row := ui.Row(c.Key(fmt.Sprintf("ai-preview-%d", ai.Parts[0].BlockID))).
-		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-8, 0), 6, max(s.leftContentGutter()-8, 0))
+		FillWidth().MaxWidth(outerMaxW).Padding(6, max(s.rightContentInset()-bleed, 0), 6, max(s.leftContentGutter()-bleed, 0))
 	row.Children(func() {
-		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(s.standardWidth()+s.scale(16)).
+		box := ui.Column(c.Key("inline-ai-preview-box")).FillWidth().MaxWidth(s.standardWidth()+2*bleed).
 			Padding(8, 10).Gap(0).Radius(theme.RadiusLG).Background(tintBG)
 		box.Draw(func(p *ui.Painter, r ui.Rect) {
 			p.StrokeDashed(r, pal.Accent, 10, 1)
@@ -1469,8 +1479,8 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 	case model.BlockDivider:
 		ui.Box(c.Key(fmt.Sprintf("aip-hr-%d", idx))).FillWidth().Height(1).MarginY(theme.Space6).Background(pal.Hairline)
 	case model.BlockCode, model.BlockRawHTML:
-		ui.Column(c.Key(fmt.Sprintf("aip-code-%d", idx))).FillWidth().Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
-			Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
+		ui.Column(c.Key(fmt.Sprintf("aip-code-%d", idx))).FillWidth().Padding(theme.Space10, theme.Space12).Radius(theme.RadiusSM).
+			Background(pal.CodeBlockBG).Children(func() {
 			ui.Text(c, b.Code).Font("monospace").FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text).FillWidth()
 		})
 	case model.BlockCallout:
@@ -1488,12 +1498,12 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 		if b.Table == nil {
 			return
 		}
-		ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Radius(theme.RadiusMD).Border(1, pal.Hairline).Clip().Children(func() {
+		ui.Column(c.Key(fmt.Sprintf("aip-tbl-%d", idx))).FillWidth().Radius(theme.RadiusSM).Border(1, pal.Hairline).Clip().Children(func() {
 			for rIdx, row := range b.Table.Rows {
 				rEl := ui.Row(c.Key(fmt.Sprintf("aip-tr-%d-%d", idx, rIdx))).FillWidth().
 					BorderWidth(0, 0, boolToBorder(rIdx+1 < len(b.Table.Rows)), 0).BorderColor(pal.Hairline)
 				if rIdx == 0 {
-					rEl.Background(pal.Shell)
+					rEl.Background(pal.CodeBlockBG)
 				} else {
 					rEl.Background(pal.Paper)
 				}
@@ -1658,7 +1668,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 
 			// Capsule input or Thinking row
 			capsule := ui.Row(c.Key("inline-ai-capsule")).FillWidth().Height(theme.HeightLarge).Padding(0, theme.Space6, 0, theme.Space10).
-				Gap(theme.Space8).AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.CodeBG).
+				Gap(theme.Space8).AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.CodeBlockBG).
 				Border(1, boolColor(!busy, pal.BtnBorder, pal.Hairline))
 
 			capsule.Children(func() {

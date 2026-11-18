@@ -559,12 +559,12 @@ func (c *Controller) markdownOptions(pal theme.Palette) *markdown.Options {
 		Strong:              pal.Text,
 		StrongWeight:        600,
 		Code:                pal.Text,
-		CodeBackground:      pal.CodeBG,
-		CodeBlockBackground: pal.CodeBG,
+		CodeBackground:      pal.CodeBlockBG,
+		CodeBlockBackground: pal.CodeBlockBG,
 		CodeBlockBorder:     pal.Hairline,
 		Rule:                pal.Hairline,
 		TableBorder:         pal.Hairline,
-		TableHeader:         pal.Hover,
+		TableHeader:         pal.CodeBlockBG,
 	}
 	c.mdOpts.OnLink = func(url string) {
 		if ui.SafeToOpen(url) {
