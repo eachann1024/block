@@ -106,7 +106,7 @@ block-sync/
        "host_version": "1.0.379"
      }
      ```
-     注：未打开笔记本文件夹时 `notebook_root` 可能为 `""`（此时 `host.notes.list` 返回 `[]`）。
+     注：未打开笔记本文件夹时 `notebook_root` 可能为 `""`（此时 `host.notes.list` 返回 `[]`）。声明了 `notes:read` / `notes:write` 的插件可结合 `notebook_root` 扫描或拷贝 `assets/` 等二进制附件（如本地图片图床上传、外部笔记库附件迁入、磁盘体积统计），`.md` 正文读写优先走 `host.notes.*`。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**

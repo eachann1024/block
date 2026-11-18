@@ -1,0 +1,41 @@
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "block-migrator",
+  "name": {
+    "zh": "笔记迁移",
+    "en": "Migrator"
+  },
+  "version": "1.0.0",
+  "author": "Block Community",
+  "repo": "blockmd-community/block-migrator",
+  "summary": {
+    "zh": "从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件",
+    "en": "Migrate notes from Obsidian, Notion, and Yuque exports with syntax cleanup and asset copy"
+  },
+  "entry": {
+    "command": ["python3", "-u", "main.py"]
+  },
+  "permissions": [
+    "storage",
+    "notes:read",
+    "notes:write"
+  ],
+  "surfaces": [
+    "settings_page"
+  ],
+  "icon": {
+    "view_box": "0 0 24 24",
+    "fill_paths": [
+      "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+    ],
+    "stroke_paths": [
+      "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+      "M8 13h8"
+    ],
+    "accent_paths": [
+      "M13 10l3 3-3 3",
+      "M8 16h3"
+    ]
+  }
+}
