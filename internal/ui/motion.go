@@ -20,7 +20,7 @@ var (
 		},
 	}
 
-	// SpringPanel drives docked sidebars, narrow floating drawers, AI panels, and split rails.
+	// SpringPanel drives narrow floating drawers, edge-float cards, cascades, and split rails.
 	SpringPanel = ui.Animation{
 		Spring: ui.SpringOptions{
 			Duration: 360 * time.Millisecond,
@@ -28,11 +28,21 @@ var (
 		},
 	}
 
-	// SpringSurface drives depth-scale staging across Note, Settings, Page History, and Export views.
+	// SpringSurface drives the calm depth staging across Note, Settings, Page History,
+	// and Export views; it settles without overshoot so whole surfaces never wobble.
 	SpringSurface = ui.Animation{
 		Spring: ui.SpringOptions{
+			Duration: 320 * time.Millisecond,
+			Bounce:   0,
+		},
+	}
+
+	// SpringDock opens and folds docked side panels without overshoot, so a
+	// collapsing width never grows past the panel nor shoves the main column back.
+	SpringDock = ui.Animation{
+		Spring: ui.SpringOptions{
 			Duration: 340 * time.Millisecond,
-			Bounce:   0.12,
+			Bounce:   0,
 		},
 	}
 
@@ -160,12 +170,12 @@ func DockedPanelTransition(fromRight bool) ui.ElementTransition {
 	if testing.Testing() {
 		return ui.ElementTransition{Duration: -1}
 	}
-	dx := float32(-14)
+	dx := float32(-8)
 	if fromRight {
-		dx = 14
+		dx = 8
 	}
 	return ui.ElementTransition{
-		Animation:    &SpringPanel,
+		Animation:    &SpringDock,
 		ExitDuration: 220 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
@@ -182,6 +192,23 @@ func DockedSplitTransition(fromRight bool) ui.ElementTransition {
 		transition.Exit.Opacity = 1
 	}
 	return transition
+}
+
+// PanelContentSwapTransition cross-fades what a persistent panel shows (the
+// file tree and the settings navigation inside the docked sidebar slot)
+// without moving or resizing the slot itself.
+func PanelContentSwapTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Duration:     180 * time.Millisecond,
+		Ease:         ui.CubicBezier(0.22, 1, 0.36, 1),
+		ExitDuration: 140 * time.Millisecond,
+		Colors:       true,
+		Enter:        &ui.Motion{Opacity: 0.02},
+		Exit:         &ui.Motion{Opacity: 0},
+	}
 }
 
 // FloatingDrawerTransition animates the narrow-viewport floating sidebar drawer
@@ -217,8 +244,8 @@ func EdgeFloatCardTransition(fromRight bool) ui.ElementTransition {
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
 		Shadows:      true,
-		Enter:        &ui.Motion{X: dx, Scale: 0.965, Opacity: 0.02},
-		Exit:         &ui.Motion{X: dx, Scale: 0.975, Opacity: 0},
+		Enter:        &ui.Motion{X: dx, Scale: 0.985, Opacity: 0.02},
+		Exit:         &ui.Motion{X: dx, Scale: 0.99, Opacity: 0},
 	}
 }
 
@@ -325,7 +352,7 @@ func CascadeItemTransition(index int, fromRight bool) ui.ElementTransition {
 	}
 }
 
-// SurfaceStageTransition applies Scheme B depth-scale staging (0.965 -> 1.0 + 10px rise)
+// SurfaceStageTransition applies Scheme B depth staging (0.99 -> 1.0 + 6px rise)
 // when switching primary views (Note, Settings, Page History, Export, Settings sub-tabs).
 func SurfaceStageTransition() ui.ElementTransition {
 	if testing.Testing() {
@@ -336,8 +363,8 @@ func SurfaceStageTransition() ui.ElementTransition {
 		ExitDuration: 170 * time.Millisecond,
 		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
 		Colors:       true,
-		Enter:        &ui.Motion{Scale: 0.968, Y: 10, Opacity: 0.02},
-		Exit:         &ui.Motion{Scale: 0.985, Opacity: 0},
+		Enter:        &ui.Motion{Scale: 0.99, Y: 6, Opacity: 0.02},
+		Exit:         &ui.Motion{Opacity: 0},
 	}
 }
 
