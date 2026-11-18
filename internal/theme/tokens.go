@@ -113,6 +113,7 @@ const (
 	ResizeLineWidth float32 = 2
 
 	ImageSelectBorderWidth  float32 = 1.5
+	JumpHighlightBorderW    float32 = 1.5
 	ImageResizeHitWidth     float32 = 18
 	ImageResizeHitHeight    float32 = 56
 	ImageResizePillWidth    float32 = 12 // 8px solid accent bar + 2px paper halo per side

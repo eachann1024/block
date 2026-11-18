@@ -21,7 +21,7 @@ type SearchWindowController struct {
 
 	GetState  func() model.AppState
 	SearchFn  func(query string, allNotebooks bool) ([]model.SearchHit, error)
-	OnOpenHit func(path string, line int)
+	OnOpenHit func(hit model.SearchHit)
 
 	mu          sync.Mutex
 	win         *mygo.Window
@@ -331,7 +331,7 @@ func (s *SearchWindowController) openHit(idx int) {
 
 	s.Hide()
 	if onOpen != nil {
-		onOpen(hit.Path, hit.Line)
+		onOpen(hit)
 		return
 	}
 	if host != nil {

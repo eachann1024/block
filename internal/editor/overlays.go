@@ -1964,8 +1964,8 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 
 	// Determine active heading and lit section range (matching src/editor/outline.rs).
 	anchorIdx := s.focusedBlock
-	if s.highlightedBlockID != 0 {
-		if hi := s.blockIndexByID(s.highlightedBlockID); hi >= 0 {
+	if s.jump.block != 0 {
+		if hi := s.blockIndexByID(s.jump.block); hi >= 0 {
 			anchorIdx = hi
 		}
 	}
@@ -2061,6 +2061,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 							}
 							if row.Clicked() {
 								s.JumpToBlock(item.BlockIndex)
+								c.Invalidate()
 							}
 						}
 					})
@@ -2087,6 +2088,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 						}
 						if barBtn.Clicked() {
 							s.JumpToBlock(item.BlockIndex)
+							c.Invalidate()
 						}
 					}
 				})

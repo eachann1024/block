@@ -2663,6 +2663,7 @@ func (s *Session) gotoCurrentFindMatch() {
 		return
 	}
 	m := s.findMatches[s.findCurrent]
+	s.jumpToFindMatch(m)
 	s.focusedBlock = m.BlockIdx
 	s.selAnchor = Position{Block: m.BlockIdx, Offset: m.StartRune}
 	s.selHead = Position{Block: m.BlockIdx, Offset: m.EndRune}
@@ -2703,26 +2704,6 @@ func (s *Session) Outline() []model.OutlineItem {
 	s.outlineLen = len(s.doc.Blocks)
 	s.outlineCache = items
 	return items
-}
-
-func (s *Session) JumpToBlock(idx int) {
-	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
-		return
-	}
-	id := s.doc.Blocks[idx].ID
-	// Unfold any parent heading so target block is visible.
-	s.ensureBlockUnfolded(idx)
-	s.highlightedBlockID = id
-	s.highlightUntil = time.Now().Add(1600 * time.Millisecond)
-	s.outlineHovered = false
-	s.outlinePinnedClosed = true
-	if rect, ok := s.blockRects[id]; ok && s.editorRect.H > 0 {
-		targetY := s.bodyScroll.Y + (rect.Y - s.editorRect.Y) - 36
-		if targetY < 0 {
-			targetY = 0
-		}
-		s.bodyScroll.Y = targetY
-	}
 }
 
 func (s *Session) ensureBlockUnfolded(idx int) {

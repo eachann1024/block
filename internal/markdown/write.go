@@ -11,6 +11,10 @@ import (
 // SerializeMarkdown serializes a model.Doc back to Markdown.
 // Untouched documents return CleanRaw verbatim; untouched blocks retain CleanSource.
 func SerializeMarkdown(doc *model.Doc) string {
+	return serializeMarkdown(doc, nil)
+}
+
+func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 	if doc == nil || len(doc.Blocks) == 0 {
 		return ""
 	}
@@ -32,6 +36,10 @@ func SerializeMarkdown(doc *model.Doc) string {
 	var listStack []int
 	blocks := doc.Blocks
 	nexts := nextNonBlankBlocks(blocks)
+	line, lineCursor := 1, 0
+	if sourceRanges != nil {
+		*sourceRanges = make([]sourceLineRange, len(blocks))
+	}
 
 	for i := 0; i < len(blocks); i++ {
 		b := &blocks[i]
@@ -67,18 +75,25 @@ func SerializeMarkdown(doc *model.Doc) string {
 			}
 		}
 
+		blockStart := out.Len()
 		if canUseCleanSource(b, i == 0, n, defs) {
 			out.WriteString(b.CleanSource)
-			continue
-		}
-
-		extraQ := extraQuotePrefixCount(b)
-		if extraQ > 0 {
+		} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 			var sub strings.Builder
 			serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
 			prefixQuoteLines(sub.String(), extraQ, &out)
 		} else {
 			serializeBlockWithCtx(b, i == 0, n, inListChild, &out)
+		}
+		if sourceRanges != nil {
+			serialized := out.String()
+			line += strings.Count(serialized[lineCursor:blockStart], "\n")
+			chunk := serialized[blockStart:]
+			if chunk != "" {
+				(*sourceRanges)[i] = sourceLineRange{line, line + countCleanLines(chunk) - 1}
+			}
+			line += strings.Count(chunk, "\n")
+			lineCursor = len(serialized)
 		}
 	}
 
