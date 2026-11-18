@@ -2,7 +2,7 @@ package ui
 
 import "github.com/egoist/mygo/ui"
 
-// DockPanel renders a docked side panel whose layout width springs open and
+// DockPanel renders a docked side panel whose layout width eases open and
 // shut, so the neighbouring columns glide with it instead of jumping. While it
 // moves, content keeps its full width and slides in with the panel's inner
 // edge; at rest the panel takes its content's natural width. Call it every

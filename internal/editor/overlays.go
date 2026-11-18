@@ -908,7 +908,6 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						rowBG = pal.MenuHover
 					}
 					appUi.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
-					appUi.TactileRow(row, rowPressed, false)
 					row.Children(func() {
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(sw.FG).Border(1, pal.Hairline)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
@@ -949,7 +948,6 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						rowBG = pal.MenuHover
 					}
 					appUi.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
-					appUi.TactileRow(row, rowPressed, false)
 					row.Children(func() {
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(swatchCol).Border(1, pal.BtnBorder)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
@@ -1261,7 +1259,6 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 							rowBG = pal.Hover
 						}
 						appUi.AnimateSurfaceColors(row, rowBG, rowBD, checked)
-						appUi.TactileRow(row, rowPressed, false)
 						row.Children(func() {
 							ui.Box(c).Size(10, 10).Shrink(0).Radius(theme.RadiusXS).Background(st.BG).Border(1, st.Accent)
 							ui.Text(c, calloutLabel(kind)).FontSize(theme.FontBody).FontWeight(boolToWeight(checked)).TextColor(pal.Text).Grow(1).SingleLine()
@@ -1846,7 +1843,6 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 								}
 							}
 							appUi.AnimateSurfaceColors(row, rowBG, rowBD, true)
-							appUi.TactileRow(row, rowPressed, false)
 							row.Children(func() {
 								barW := outlineBarWidth(item.Level)
 								barCol := pal.OutlineBarDim

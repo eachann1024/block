@@ -887,17 +887,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		rowBG = pal.Hover
 	}
 	blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
-	if pressed {
-		sc := btn.AnimateTo("trSc", 0.98, blockui.SpringTactile)
-		if sc != 1 {
-			btn.Scale(sc, sc)
-		}
-	} else {
-		sc := btn.AnimateTo("trSc", 1.0, blockui.SpringTactile)
-		if sc != 1 {
-			btn.Scale(sc, sc)
-		}
-	}
 
 	var moreClicked bool
 	var moreBounds ui.Rect
@@ -1269,7 +1258,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								nbBG = pal.MenuHover
 							}
 							blockui.AnimateSurfaceColors(row, nbBG, ui.Transparent, false)
-							row.Transition(blockui.CascadeRowTransition(ix))
 							row.Children(func() {
 								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
@@ -1279,7 +1267,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									if actIco {
 										ic = pal.DuoIconColors(pal.MenuIcon)
 									}
-									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, rowHover || kbActive)
+									icons.Draw(c, icons.Folder, theme.IconRow, ic)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if checked && !confirming && !(rowHover && p.OnForgetNotebook != nil) {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
