@@ -45,8 +45,9 @@ type VerifiedRecord struct {
 }
 
 type installStageRecord struct {
-	Path    string `json:"path"`
-	Version string `json:"version"`
+	Path        string `json:"path"`
+	FromVersion string `json:"from_version,omitempty"`
+	Version     string `json:"version"`
 }
 
 func updatesRoot(dataDir string) string {
@@ -149,8 +150,8 @@ func VerifyFileSHA256(path, expectedHex string) error {
 	return nil
 }
 
-// DownloadProgressCallback reports live download progress and active channel ("mirror" | "github").
-type DownloadProgressCallback func(downloaded, total int64, channel string, preparing bool)
+// DownloadProgressCallback reports live download progress, speed (MB/s), and active channel.
+type DownloadProgressCallback func(downloaded, total int64, speedMBps float64, channel string, preparing bool)
 
 // DownloadAndStage downloads the verified asset across candidate sources, verifies SHA-256,
 // unpacks & validates the macOS .app bundle when applicable, and persists ready.json.
@@ -165,56 +166,77 @@ func DownloadAndStage(
 ) (*VerifiedRecord, error) {
 	expectedSHA := asset.EffectiveSHA256()
 	if expectedSHA == "" {
+		logError("download.missing_sha256", "version", entry.Version, "asset", asset.Name)
 		return nil, errors.New("release asset is missing SHA-256 digest")
 	}
 	cands := CandidateAssetURLs(asset.DownloadURL, mode)
 	if len(cands) == 0 {
+		logError("download.untrusted_url", "version", entry.Version, "url", asset.DownloadURL)
 		return nil, errors.New("untrusted release download URL")
 	}
 
 	verDir := filepath.Join(updatesRoot(dataDir), entry.Version)
 	if err := os.MkdirAll(verDir, 0o700); err != nil {
+		logError("download.mkdir_failed", "dir", verDir, "err", err)
 		return nil, err
 	}
 	finalPath := filepath.Join(verDir, asset.Name)
 	partPath := finalPath + ".part"
 
+	logInfo("download.start", "version", entry.Version, "asset", asset.Name, "expected_bytes", asset.Size, "sha256", expectedSHA[:16], "mode", mode, "candidates", len(cands))
+
 	var usedChannel string
 	var lastErr error
-	for _, cand := range cands {
+	for idx, cand := range cands {
 		if ctx.Err() != nil {
+			_ = os.Remove(partPath)
+			logInfo("download.cancelled", "version", entry.Version, "err", ctx.Err())
 			return nil, ctx.Err()
 		}
 		_ = os.Remove(partPath)
+		started := time.Now()
 		err := downloadOneSource(ctx, cand, partPath, asset.Size, expectedSHA, onProgress)
+		elapsedMs := time.Since(started).Milliseconds()
 		if err == nil {
 			usedChannel = cand.Channel
 			lastErr = nil
+			logInfo("download.verified", "version", entry.Version, "channel", cand.Channel, "url", cand.URL, "elapsed_ms", elapsedMs, "dest", finalPath)
 			break
 		}
+		if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+			_ = os.Remove(partPath)
+			logInfo("download.cancelled", "version", entry.Version)
+			return nil, ctx.Err()
+		}
+		logWarn("download.source_failover", "attempt", idx+1, "channel", cand.Channel, "url", cand.URL, "elapsed_ms", elapsedMs, "err", err)
 		lastErr = err
 	}
 	if lastErr != nil {
 		_ = os.Remove(partPath)
+		logError("download.all_sources_failed", "version", entry.Version, "asset", asset.Name, "err", lastErr)
 		return nil, lastErr
 	}
 
 	if err := os.Rename(partPath, finalPath); err != nil {
 		_ = os.Remove(partPath)
+		logError("download.rename_failed", "from", partPath, "to", finalPath, "err", err)
 		return nil, err
 	}
 
 	unpackedApp := ""
 	if runtime.GOOS == "darwin" && inPlace && strings.HasSuffix(strings.ToLower(asset.Name), ".dmg") {
 		if onProgress != nil {
-			onProgress(asset.Size, asset.Size, usedChannel, true)
+			onProgress(asset.Size, asset.Size, 0, usedChannel, true)
 		}
+		prepStart := time.Now()
 		unpackedDir := filepath.Join(verDir, "unpacked")
 		appPath, err := prepareMacAppFromDMG(finalPath, unpackedDir, entry.Version)
 		if err != nil {
 			_ = os.RemoveAll(unpackedDir)
+			logError("stage.dmg_unpack_failed", "version", entry.Version, "dmg", finalPath, "err", err)
 			return nil, err
 		}
+		logInfo("stage.dmg_unpack_ok", "version", entry.Version, "app", appPath, "elapsed_ms", time.Since(prepStart).Milliseconds())
 		unpackedApp = appPath
 	}
 
@@ -235,6 +257,7 @@ func DownloadAndStage(
 	if inPlace {
 		if raw, err := json.MarshalIndent(rec, "", "  "); err == nil {
 			_ = os.WriteFile(readyRecordPath(dataDir), raw, 0o600)
+			logInfo("ready.persisted", "version", entry.Version, "record", readyRecordPath(dataDir))
 		}
 	}
 	return rec, nil
@@ -268,10 +291,11 @@ func downloadOneSource(
 	hasher := sha256.New()
 	buf := make([]byte, 64*1024)
 	var written int64
+	started := time.Now()
 	var lastTick time.Time
 
 	if onProgress != nil {
-		onProgress(0, total, cand.Channel, false)
+		onProgress(0, total, 0, cand.Channel, false)
 	}
 
 	for {
@@ -286,9 +310,15 @@ func downloadOneSource(
 			if total > 0 && written > total+1024*1024 {
 				return errors.New("downloaded size exceeded manifest size")
 			}
-			if onProgress != nil && time.Since(lastTick) >= 80*time.Millisecond {
-				lastTick = time.Now()
-				onProgress(written, total, cand.Channel, false)
+			now := time.Now()
+			if onProgress != nil && now.Sub(lastTick) >= 80*time.Millisecond {
+				lastTick = now
+				secs := now.Sub(started).Seconds()
+				speed := 0.0
+				if secs > 0.05 {
+					speed = (float64(written) / (1024.0 * 1024.0)) / secs
+				}
+				onProgress(written, total, speed, cand.Channel, false)
 			}
 		}
 		if rErr == io.EOF {
@@ -307,6 +337,7 @@ func downloadOneSource(
 	}
 	gotHex := hex.EncodeToString(hasher.Sum(nil))
 	if gotHex != strings.ToLower(expectedSHA) {
+		logError("download.checksum_mismatch", "channel", cand.Channel, "url", cand.URL, "expected", expectedSHA[:16], "got", gotHex[:16])
 		return fmt.Errorf("checksum mismatch from %s", cand.Channel)
 	}
 	return nil
@@ -390,8 +421,8 @@ func validateMacBundle(bundlePath, expectedVersion string) error {
 	if !slices.Contains(strings.Fields(string(lipoOut)), wantArch) {
 		return fmt.Errorf("update architecture mismatch (expected %s)", wantArch)
 	}
-	if err := exec.Command("/usr/bin/codesign", "--verify", "--verbose=2", bundlePath).Run(); err != nil {
-		return errors.New("update bundle signature verification failed")
+	if out, err := exec.Command("/usr/bin/codesign", "--verify", "--verbose=2", bundlePath).CombinedOutput(); err != nil {
+		return fmt.Errorf("update bundle signature verification failed: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -442,14 +473,19 @@ func removeSiblingMacStages(bundle string) {
 			}
 		}
 		_ = os.RemoveAll(stage)
+		logInfo("stage.cleaned_sibling", "stage", stage)
 	}
 }
 
 // AcknowledgeStartupAndClean signals any pending macOS install stage that the new version
-// launched cleanly, cleans sibling stage directories, and prunes outdated cached downloads.
+// launched cleanly, logs rollback anomalies if an older version booted after an attempted swap,
+// cleans sibling stage directories, and prunes outdated cached downloads.
 func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 	root := updatesRoot(dataDir)
 	_ = os.MkdirAll(root, 0o700)
+
+	exe, _ := os.Executable()
+	logInfo("startup.init", "running_version", runningVersion, "os", runtime.GOOS, "arch", runtime.GOARCH, "exe", exe)
 
 	if runtime.GOOS == "darwin" {
 		if bundle, err := installedMacBundle(); err == nil && !livesInUpdateStage(bundle) {
@@ -459,6 +495,10 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 					if st.Version == "" || CompareVersion(runningVersion, st.Version) >= 0 {
 						_ = os.WriteFile(filepath.Join(st.Path, "started"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600)
 						removeSiblingMacStages(bundle)
+						_ = os.Remove(stageRecordPath(dataDir))
+						logInfo("startup.install_acknowledged", "from_version", st.FromVersion, "installed_version", runningVersion, "stage", st.Path)
+					} else {
+						logError("startup.install_rollback_detected", "running_version", runningVersion, "attempted_version", st.Version, "stage", st.Path, "install_log", InstallLogFilePath(dataDir))
 						_ = os.Remove(stageRecordPath(dataDir))
 					}
 				}
@@ -490,6 +530,7 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 		}
 		if _, _, _, ok := ParseReleaseTag(name); ok {
 			_ = os.RemoveAll(filepath.Join(root, name))
+			logInfo("startup.pruned_old_cache", "version", name)
 		}
 	}
 }
@@ -502,6 +543,7 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 	}
 	var rec VerifiedRecord
 	if err := json.Unmarshal(raw, &rec); err != nil {
+		logWarn("restore.invalid_json", "err", err)
 		_ = os.Remove(readyRecordPath(dataDir))
 		return nil, false
 	}
@@ -510,6 +552,7 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 		return nil, false
 	}
 	if err := VerifyFileSHA256(rec.ArchivePath, rec.SHA256); err != nil {
+		logWarn("restore.checksum_invalid", "version", rec.Version, "archive", rec.ArchivePath, "err", err)
 		_ = os.Remove(readyRecordPath(dataDir))
 		return nil, false
 	}
@@ -518,15 +561,18 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 			unpackedDir := filepath.Join(filepath.Dir(rec.ArchivePath), "unpacked")
 			appPath, err := prepareMacAppFromDMG(rec.ArchivePath, unpackedDir, rec.Version)
 			if err != nil {
+				logWarn("restore.unpack_failed", "version", rec.Version, "err", err)
 				_ = os.Remove(readyRecordPath(dataDir))
 				return nil, false
 			}
 			rec.UnpackedAppPath = appPath
 		} else if err := validateMacBundle(rec.UnpackedAppPath, rec.Version); err != nil {
+			logWarn("restore.bundle_invalid", "version", rec.Version, "app", rec.UnpackedAppPath, "err", err)
 			_ = os.Remove(readyRecordPath(dataDir))
 			return nil, false
 		}
 	}
+	logInfo("restore.ready_ok", "version", rec.Version, "archive", rec.ArchivePath)
 	return &rec, true
 }
 
@@ -535,37 +581,71 @@ set -eu
 target="$1"
 stage="$2"
 parent_pid="$3"
+target_ver="$4"
+ts() { date "+%Y-%m-%dT%H:%M:%S%z"; }
+log() { printf "%s [install.sh] %s\n" "$(ts)" "$*"; }
+
+log "begin target=$target stage=$stage parent_pid=$parent_pid target_ver=$target_ver"
 count=0
 while kill -0 "$parent_pid" 2>/dev/null; do
   count=$((count + 1))
-  if [ "$count" -gt 240 ]; then exit 1; fi
+  if [ "$count" -gt 240 ]; then
+    log "ERROR timed out waiting for parent_pid=$parent_pid to exit"
+    exit 1
+  fi
   sleep 0.25
 done
+log "parent exited after $((count * 250))ms"
+
 remove_stage() {
   rm -rf "$stage"
 }
 rollback() {
+  log "WARN executing rollback for target=$target"
   if [ -d "$stage/previous.app" ]; then
-    if [ -e "$target" ]; then mv "$target" "$stage/failed.app"; fi
-    mv "$stage/previous.app" "$target"
+    if [ -e "$target" ]; then mv "$target" "$stage/failed.app" || true; fi
+    mv "$stage/previous.app" "$target" || true
   fi
   /usr/bin/open "$target" || true
   remove_stage
+  log "rollback complete"
 }
 trap rollback HUP INT TERM
-if ! mv "$target" "$stage/previous.app"; then /usr/bin/open "$target" || true; remove_stage; exit 1; fi
-if ! mv "$stage/next.app" "$target"; then rollback; exit 1; fi
-if ! /usr/bin/open "$target"; then rollback; exit 1; fi
+
+if ! mv "$target" "$stage/previous.app"; then
+  log "ERROR mv current bundle to previous.app failed"
+  /usr/bin/open "$target" || true
+  remove_stage
+  exit 1
+fi
+if ! mv "$stage/next.app" "$target"; then
+  log "ERROR mv next.app to target failed"
+  rollback
+  exit 1
+fi
+log "bundle swapped into place; launching updated app"
+if ! /usr/bin/open "$target"; then
+  log "ERROR open updated target failed"
+  rollback
+  exit 1
+fi
+
 count=0
 while [ ! -f "$stage/started" ]; do
   count=$((count + 1))
   if [ "$count" -gt 60 ]; then
-    if ! /usr/bin/pgrep -f "$target/Contents/MacOS/block" >/dev/null 2>&1; then rollback; exit 1; fi
+    if ! /usr/bin/pgrep -f "$target/Contents/MacOS/block" >/dev/null 2>&1; then
+      log "ERROR updated process not running after 60s; rolling back"
+      rollback
+      exit 1
+    fi
+    log "updated process verified alive via pgrep; cleaning stage"
     remove_stage
     exit 0
   fi
   sleep 1
 done
+log "handshake confirmed ($stage/started); update to v$target_ver succeeded"
 remove_stage
 `
 
@@ -574,14 +654,22 @@ set -eu
 target="$1"
 next_bin="$2"
 parent_pid="$3"
+ts() { date "+%Y-%m-%dT%H:%M:%S%z"; }
+log() { printf "%s [install-linux.sh] %s\n" "$(ts)" "$*"; }
+
+log "waiting for parent_pid=$parent_pid"
 count=0
 while kill -0 "$parent_pid" 2>/dev/null; do
   count=$((count + 1))
-  if [ "$count" -gt 240 ]; then exit 1; fi
+  if [ "$count" -gt 240 ]; then
+    log "ERROR timed out waiting for parent exit"
+    exit 1
+  fi
   sleep 0.25
 done
 mv "$next_bin" "$target"
 chmod 755 "$target"
+log "swapped AppImage at $target; relaunching"
 exec "$target"
 `
 
@@ -597,21 +685,30 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 	if rec == nil {
 		return errors.New("no staged update ready to install")
 	}
+	fromVer := CurrentVersion()
+	logInfo("install.begin", "from_version", fromVer, "to_version", rec.Version, "archive", rec.ArchivePath)
+
 	if err := VerifyFileSHA256(rec.ArchivePath, rec.SHA256); err != nil {
+		logError("install.checksum_failed", "version", rec.Version, "archive", rec.ArchivePath, "err", err)
 		_ = os.Remove(readyRecordPath(dataDir))
 		return err
 	}
+
+	installLogPath := InstallLogFilePath(dataDir)
+	_ = os.MkdirAll(filepath.Dir(installLogPath), 0o755)
 
 	switch runtime.GOOS {
 	case "darwin":
 		bundle, err := installedMacBundle()
 		if err != nil {
+			logError("install.not_app_bundle", "err", err)
 			if isEn {
 				return errors.New("Updates can only be installed from a packaged Block.app")
 			}
 			return errors.New("仅打包后的 Block.app 支持原位重启更新")
 		}
 		if strings.Contains(bundle, "/AppTranslocation/") || strings.HasPrefix(bundle, "/Volumes/") {
+			logError("install.readonly_location", "bundle", bundle)
 			if isEn {
 				return errors.New("Move Block.app to /Applications before installing updates")
 			}
@@ -620,6 +717,7 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 		parent := filepath.Dir(bundle)
 		probe, err := os.CreateTemp(parent, ".block-writecheck-*")
 		if err != nil {
+			logError("install.permission_denied", "parent", parent, "err", err)
 			if isEn {
 				return fmt.Errorf("No write permission in %s", parent)
 			}
@@ -634,42 +732,50 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			unpackedDir := filepath.Join(filepath.Dir(rec.ArchivePath), "unpacked")
 			appPath, prepErr := prepareMacAppFromDMG(rec.ArchivePath, unpackedDir, rec.Version)
 			if prepErr != nil {
+				logError("install.unpack_failed", "err", prepErr)
 				return prepErr
 			}
 			rec.UnpackedAppPath = appPath
 		}
 		if err := validateMacBundle(rec.UnpackedAppPath, rec.Version); err != nil {
+			logError("install.validate_failed", "app", rec.UnpackedAppPath, "err", err)
 			return err
 		}
 
 		stage := filepath.Join(parent, stageDirPrefix+randomHex(4))
 		if err := os.MkdirAll(stage, 0o700); err != nil {
+			logError("install.stage_mkdir_failed", "stage", stage, "err", err)
 			return err
 		}
 		nextApp := filepath.Join(stage, "next.app")
 		if out, err := exec.Command("/usr/bin/ditto", rec.UnpackedAppPath, nextApp).CombinedOutput(); err != nil {
 			_ = os.RemoveAll(stage)
+			logError("install.stage_ditto_failed", "err", strings.TrimSpace(string(out)))
 			return fmt.Errorf("stage update failed: %s", strings.TrimSpace(string(out)))
 		}
 		if err := validateMacBundle(nextApp, rec.Version); err != nil {
 			_ = os.RemoveAll(stage)
+			logError("install.stage_validate_failed", "err", err)
 			return err
 		}
-		stRaw, _ := json.Marshal(installStageRecord{Path: stage, Version: rec.Version})
+		stRaw, _ := json.Marshal(installStageRecord{Path: stage, FromVersion: fromVer, Version: rec.Version})
 		_ = os.WriteFile(stageRecordPath(dataDir), stRaw, 0o600)
 
 		scriptPath := filepath.Join(stage, "install.sh")
 		if err := os.WriteFile(scriptPath, []byte(macSwapInstallerScript), 0o700); err != nil {
 			_ = os.RemoveAll(stage)
+			logError("install.write_script_failed", "err", err)
 			return err
 		}
 
+		flushStart := time.Now()
 		if flushBeforeQuit != nil {
 			flushBeforeQuit()
 		}
+		logInfo("install.flush_ok", "elapsed_ms", time.Since(flushStart).Milliseconds())
 
-		logFile, _ := os.OpenFile(filepath.Join(updatesRoot(dataDir), "install.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		cmd := exec.Command("/bin/sh", scriptPath, bundle, stage, fmt.Sprintf("%d", os.Getpid()))
+		logFile, _ := os.OpenFile(installLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		cmd := exec.Command("/bin/sh", scriptPath, bundle, stage, fmt.Sprintf("%d", os.Getpid()), rec.Version)
 		configureDetachedProcess(cmd)
 		if logFile != nil {
 			cmd.Stdout = logFile
@@ -680,12 +786,15 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 				_ = logFile.Close()
 			}
 			_ = os.RemoveAll(stage)
+			logError("install.spawn_helper_failed", "err", err)
 			return err
 		}
+		helperPID := cmd.Process.Pid
 		_ = cmd.Process.Release()
 		if logFile != nil {
 			_ = logFile.Close()
 		}
+		logInfo("install.helper_spawned", "helper_pid", helperPID, "bundle", bundle, "stage", stage, "install_log", installLogPath)
 		_ = os.Remove(readyRecordPath(dataDir))
 		if quitApp != nil {
 			quitApp()
@@ -701,6 +810,7 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			return errors.New("请打开已下载的安装包完成更新")
 		}
 		if err := os.Chmod(rec.ArchivePath, 0o755); err != nil {
+			logError("install.chmod_failed", "err", err)
 			return err
 		}
 		stage, err := os.MkdirTemp("", "block-appimage-update-*")
@@ -714,12 +824,25 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 		if flushBeforeQuit != nil {
 			flushBeforeQuit()
 		}
+		logFile, _ := os.OpenFile(installLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		cmd := exec.Command("/bin/sh", scriptPath, target, rec.ArchivePath, fmt.Sprintf("%d", os.Getpid()))
 		configureDetachedProcess(cmd)
+		if logFile != nil {
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+		}
 		if err := cmd.Start(); err != nil {
+			if logFile != nil {
+				_ = logFile.Close()
+			}
+			logError("install.spawn_helper_failed", "err", err)
 			return err
 		}
 		_ = cmd.Process.Release()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		logInfo("install.helper_spawned", "target", target, "install_log", installLogPath)
 		_ = os.Remove(readyRecordPath(dataDir))
 		if quitApp != nil {
 			quitApp()
@@ -736,9 +859,11 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 		cmd := exec.Command(rec.ArchivePath, "--updated", "--force-run")
 		configureDetachedProcess(cmd)
 		if err := cmd.Start(); err != nil {
+			logError("install.spawn_helper_failed", "err", err)
 			return err
 		}
 		_ = cmd.Process.Release()
+		logInfo("install.helper_spawned", "installer", rec.ArchivePath)
 		_ = os.Remove(readyRecordPath(dataDir))
 		if quitApp != nil {
 			quitApp()
