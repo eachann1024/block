@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Orbit Ring</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-0.6px)}}
+.b-orbit{transform-origin:12px 12px;animation:spin 2.8s linear infinite}
+.b-bolt{animation:bob 2.8s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 520px; height: 360px; box-sizing: border-box; background: #1c1d20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; font-family: Inter, system-ui, sans-serif">
+<div style="width: 144px; height: 144px; border-radius: 32px; background: #22324f; border: 1px solid #34486d; display: flex; align-items: center; justify-content: center">
+<svg width="104" height="104" viewBox="0 0 24 24" aria-hidden="true">
+<circle cx="12" cy="12" r="9.5" fill="none" stroke="#34486d" stroke-width="0.8"></circle>
+<g class="b-orbit">
+<circle cx="12" cy="12" r="9.5" fill="none" stroke="#5b8dff" stroke-width="1" stroke-linecap="round" stroke-dasharray="14 60" opacity="0.9"></circle>
+<circle cx="21.5" cy="12" r="1.2" fill="#e8eefc"></circle>
+</g>
+<path class="b-bolt" d="M13 5.5 L7.5 13 H11.5 L10.8 18.5 L16.5 10.8 H12.6 Z" fill="#e8eefc"></path>
+</svg>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 12px; background: #26272b; border: 1px solid #333438">
+<div style="width: 36px; height: 36px; border-radius: 9px; background: #22324f; border: 1px solid #34486d; display: flex; align-items: center; justify-content: center">
+<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
+<circle cx="12" cy="12" r="9.5" fill="none" stroke="#34486d" stroke-width="1.2"></circle>
+<g class="b-orbit">
+<circle cx="12" cy="12" r="9.5" fill="none" stroke="#5b8dff" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="14 60"></circle>
+</g>
+<path d="M13 5.5 L7.5 13 H11.5 L10.8 18.5 L16.5 10.8 H12.6 Z" fill="#e8eefc"></path>
+</svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="color: #ececef; font-size: 15px; font-weight: 600">新版本已就绪</span>
+<span style="color: #9a9ba1; font-size: 12px; font-family: ui-monospace, monospace">v1.0.631 → v1.0.633 · 2026-11-18</span>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":520,"height":360}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

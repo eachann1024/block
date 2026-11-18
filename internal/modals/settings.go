@@ -206,7 +206,6 @@ type Manager struct {
 	// Updater modal state.
 	Updater             *updater.Service
 	updaterOpen         bool
-	updaterLangOverride string // "" follows theme.IsEn(); "zh" or "en" previews that language
 	updaterScroll       ui.ScrollState
 }
 

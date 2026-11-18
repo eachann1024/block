@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Cat Blink</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+@keyframes blink{0%,86%,100%{transform:scaleY(1)}90%{transform:scaleY(0.08)}94%{transform:scaleY(1)}}
+@keyframes zap{0%,60%,100%{opacity:1}64%{opacity:.25}68%{opacity:1}72%{opacity:.4}76%{opacity:1}}
+@keyframes look{0%,40%{transform:translateX(0)}50%,80%{transform:translateX(0.7px)}90%,100%{transform:translateX(0)}}
+.c-eye{transform-box:fill-box;transform-origin:center;animation:blink 3.6s ease-in-out infinite}
+.c-pupil{animation:look 3.6s ease-in-out infinite}
+.c-zap{animation:zap 3.6s linear infinite}
+</style>
+</helmet>
+<div style="width: 520px; height: 360px; box-sizing: border-box; background: #1c1d20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; font-family: Inter, system-ui, sans-serif">
+<div style="width: 144px; height: 144px; border-radius: 32px; background: #eef0f4; display: flex; align-items: center; justify-content: center; overflow: hidden">
+<svg width="112" height="112" viewBox="0 0 24 24" aria-hidden="true">
+<path d="M4 21 C4 15 5 11.5 6.5 9.5 L6.2 3.5 L10 7.4 C11.3 7 12.7 7 14 7.4 L17.8 3.5 L17.5 9.5 C19 11.5 20 15 20 21 Z" fill="#2b2f38"></path>
+<path class="c-zap" d="M8 4.6 L6.9 6.9 H8 L7.4 8.8 L9 6.2 H7.9 Z" fill="#ffffff"></path>
+<g class="c-eye">
+<ellipse cx="9.3" cy="13.2" rx="1.6" ry="1.15" fill="#2f6fe4"></ellipse>
+<ellipse cx="14.7" cy="13.2" rx="1.6" ry="1.15" fill="#2f6fe4"></ellipse>
+<g class="c-pupil">
+<ellipse cx="9.3" cy="13.2" rx="0.35" ry="0.95" fill="#0f1830"></ellipse>
+<ellipse cx="14.7" cy="13.2" rx="0.35" ry="0.95" fill="#0f1830"></ellipse>
+</g>
+</g>
+</svg>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 12px; background: #26272b; border: 1px solid #333438">
+<div style="width: 36px; height: 36px; border-radius: 9px; background: #eef0f4; display: flex; align-items: center; justify-content: center; overflow: hidden">
+<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true">
+<path d="M4 21 C4 15 5 11.5 6.5 9.5 L6.2 3.5 L10 7.4 C11.3 7 12.7 7 14 7.4 L17.8 3.5 L17.5 9.5 C19 11.5 20 15 20 21 Z" fill="#2b2f38"></path>
+<g class="c-eye">
+<ellipse cx="9.3" cy="13.2" rx="1.7" ry="1.25" fill="#2f6fe4"></ellipse>
+<ellipse cx="14.7" cy="13.2" rx="1.7" ry="1.25" fill="#2f6fe4"></ellipse>
+</g>
+</svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="color: #ececef; font-size: 15px; font-weight: 600">新版本已就绪</span>
+<span style="color: #9a9ba1; font-size: 12px; font-family: ui-monospace, monospace">v1.0.631 → v1.0.633 · 2026-11-18</span>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":520,"height":360}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
