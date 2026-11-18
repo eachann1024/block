@@ -875,6 +875,53 @@ func TestListDepthMarkersAndGuides(t *testing.T) {
 	if _, ok := appUi.TargetBounds("list-number-14"); !ok {
 		t.Fatalf("expected numbered marker")
 	}
+	if _, ok := appUi.TargetBounds("list-stem-10"); !ok {
+		t.Fatalf("expected downward guide stem on parent bullet 10")
+	}
+
+	// Wrapped multi-line parent bullet + loose blank line must connect seamlessly to child guides.
+	appUi.ResetSmoke()
+	longParent := "Parent bullet that wraps onto multiple lines when rendered inside standard editor width: " +
+		"~/Library/Application Support/Block/ ; $XDG_DATA_HOME/Block/ ; %APPDATA%\\Block\\ ; extra words to force wrapping."
+	wrappedDoc := &model.Doc{
+		Blocks: []model.Block{
+			{ID: 20, Kind: model.BlockBullet, Indent: 0, Spans: []model.Span{{Text: longParent}}},
+			{ID: 21, Kind: model.BlockBullet, Indent: 2, Spans: []model.Span{{Text: "First nested child"}}},
+			{ID: 22, Kind: model.BlockParagraph, Indent: 0},
+			{ID: 23, Kind: model.BlockBullet, Indent: 2, Spans: []model.Span{{Text: "Second nested child after blank line"}}},
+			{ID: 24, Kind: model.BlockParagraph, Indent: 0},
+			{ID: 25, Kind: model.BlockBullet, Indent: 0, Spans: []model.Span{{Text: longParent}}},
+		},
+	}
+	ws := NewSession("", wrappedDoc, nil, nil)
+	_ = ui.NewTester(makeSessionView(ws, false), 600, 600)
+
+	stem20, ok := appUi.TargetBounds("list-stem-20")
+	if !ok {
+		t.Fatalf("expected list-stem-20 on wrapped parent bullet")
+	}
+	guide21, ok := appUi.TargetBounds("list-guide-21-0")
+	if !ok {
+		t.Fatalf("expected list-guide-21-0 on first child")
+	}
+	if stem20.X != guide21.X {
+		t.Fatalf("expected parent stem X (%v) == child guide X (%v)", stem20.X, guide21.X)
+	}
+	if diff := stem20.Y + stem20.H - guide21.Y; diff < -0.5 || diff > 0.5 {
+		t.Fatalf("expected parent stem bottom (%v) to meet child guide top (%v) without gap", stem20.Y+stem20.H, guide21.Y)
+	}
+	if _, ok := appUi.TargetBounds("list-guide-22-0"); !ok {
+		t.Fatalf("expected loose-list blank line 22 to bridge parent guide")
+	}
+	if _, ok := appUi.TargetBounds("list-guide-23-0"); !ok {
+		t.Fatalf("expected child 23 after loose blank line to retain parent guide")
+	}
+	if _, ok := appUi.TargetBounds("list-guide-24-0"); ok {
+		t.Fatalf("expected trailing blank line 24 outside list subtree to have no guide")
+	}
+	if _, ok := appUi.TargetBounds("list-stem-25"); ok {
+		t.Fatalf("expected leaf multi-line bullet 25 without children to have no stem")
+	}
 }
 
 func TestEmptyLineHintBandKeycapsAndOverlaySuppressesHandles(t *testing.T) {

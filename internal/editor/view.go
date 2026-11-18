@@ -568,7 +568,18 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 		if isHighlighted {
 			s.revealJump(c, topGap+s.matchLineOffsetInBlock(idx, b, topGap))
 		}
-		drawListGuides(c, id, listCtx, s.leftContentGutter(), s.zoom())
+		var listFontSz, lineH float32
+		if b.Kind.IsList() {
+			var lh float32
+			listFontSz, _, lh = s.textMetrics(b.Kind)
+			lineH = listFontSz * lh
+		}
+		selfStemTop := float32(0)
+		showSelfStem := b.Kind.IsList() && listCtx.HasSelfGuide && !isCollapsedDrag
+		if showSelfStem {
+			selfStemTop = topGap + listStemTopOffset(b.Kind, len(listCtx.Ancestors), listFontSz, lineH, s.zoom())
+		}
+		drawListGuides(c, id, listCtx, s.leftContentGutter(), s.zoom(), selfStemTop, showSelfStem)
 		line := ui.Row(c.Key("row-inner")).FillWidth().AlignItems(ui.Start)
 		line.Children(func() {
 			if !s.minimal {
@@ -793,8 +804,6 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 			indentPx := float32(min(max(b.Indent, 0), 12)) * s.indentStep()
 			markerW := s.markerWidth()
 			if b.Kind.IsList() {
-				listFontSz, _, lh := s.textMetrics(b.Kind)
-				lineH := listFontSz * lh
 				marker := ui.Row(c.Key("marker")).Width(markerW+indentPx).Shrink(0).
 					Padding(0, 0, 0, indentPx).AlignItems(ui.Start)
 				if b.Kind != model.BlockTodo {
