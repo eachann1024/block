@@ -2,17 +2,33 @@
   "name": "Block",
   "slug": "block",
   "identifier": "dev.eachann.block",
-  "version": "1.0.379",
+  "version": "1.0.631",
   "copyright": "Copyright © 2026 Block Contributors",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
-  "resourcesExclude": ["icon.png", "AppIcon.icns", "icon.ico"],
+  "resourcesExclude": [
+    "icon.png",
+    "AppIcon.icns",
+    "icon.ico"
+  ],
   "main": "./cmd/block",
   "out": "dist",
-  "urlSchemes": ["block"],
+  "urlSchemes": [
+    "block"
+  ],
   "fileAssociations": [
     {
-      "ext": ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext", "mdx"],
+      "ext": [
+        "md",
+        "markdown",
+        "mdown",
+        "mkd",
+        "mkdn",
+        "mdwn",
+        "mdtxt",
+        "mdtext",
+        "mdx"
+      ],
       "name": "Markdown Document",
       "mimeType": "text/markdown",
       "role": "Editor"
@@ -29,6 +45,10 @@
   },
   "linux": {
     "webview": false,
-    "categories": ["Office", "TextEditor", "Utility"]
+    "categories": [
+      "Office",
+      "TextEditor",
+      "Utility"
+    ]
   }
 }
