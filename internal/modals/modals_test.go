@@ -478,23 +478,26 @@ func TestQuickNoteParityPagerScrollZoomAndCallbacks(t *testing.T) {
 		}
 	}
 
-	// Plain vertical wheel on editor body (y=260) stays inside editor without switching slots;
-	// Shift+wheel on body or plain wheel on header (y=22) switches slots.
+	// Wheel inside editor body (y=260) never switches slots; only wheel over the header (y<=44) switches slots.
 	if q.Session().CanScrollVertically() {
 		t.Fatalf("expected short slot not to report vertical overflow")
 	}
 	tt.Wheel(220, 260, 0, 24)
 	if q.ActiveSlot() != 0 {
-		t.Fatalf("expected plain vertical wheel on editor body NOT to switch slot, got %d", q.ActiveSlot())
+		t.Fatalf("expected vertical wheel on editor body NOT to switch slot, got %d", q.ActiveSlot())
 	}
-	tt.Wheel(220, 22, 0, 24)
+	tt.Wheel(220, 260, 24, 0)
+	if q.ActiveSlot() != 0 {
+		t.Fatalf("expected horizontal/Shift wheel on editor body NOT to switch slot, got %d", q.ActiveSlot())
+	}
+	tt.Wheel(40, 22, 0, 24)
 	if q.ActiveSlot() != 1 {
-		t.Fatalf("expected wheel on header to advance to slot 1, got %d", q.ActiveSlot())
+		t.Fatalf("expected wheel on header blank area to advance to slot 1, got %d", q.ActiveSlot())
 	}
 	time.Sleep(170 * time.Millisecond)
 	tt.Wheel(220, 22, 0, -24)
 	if q.ActiveSlot() != 0 {
-		t.Fatalf("expected upward wheel on header to return to slot 0, got %d", q.ActiveSlot())
+		t.Fatalf("expected upward wheel on header pager to return to slot 0, got %d", q.ActiveSlot())
 	}
 	time.Sleep(170 * time.Millisecond)
 
