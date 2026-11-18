@@ -371,6 +371,11 @@ func WriteRawFileAtomic(path, text string, bom bool) (int64, error) {
 }
 
 func writeBytesAtomic(path string, data []byte, preservePerms bool) error {
+	if lstat, err := os.Lstat(path); err == nil && lstat.Mode()&os.ModeSymlink != 0 {
+		if realPath, evalErr := filepath.EvalSymlinks(path); evalErr == nil && realPath != "" {
+			path = realPath
+		}
+	}
 	parent := filepath.Dir(path)
 	if parent == "" {
 		return errors.New(theme.Tr("缺少父级目录", "Missing parent"))

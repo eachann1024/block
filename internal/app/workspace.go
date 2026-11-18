@@ -783,16 +783,7 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 		win.OnEnterFullScreen(func() { w.scheduleSaveMainBounds() })
 		win.OnLeaveFullScreen(func() { w.scheduleSaveMainBounds() })
 		win.OnHide(func() { w.FlushWindowBounds() })
-		win.OnFileDrop(func(e *mygo.FileDropEvent) {
-			if e != nil && len(e.Paths) > 0 {
-				if sess := w.ActiveSession(); sess != nil {
-					if sess.ImportFiles(e.Paths, 0, false) > 0 {
-						w.flushOrScheduleDirtySessions()
-						w.RequestRedraw()
-					}
-				}
-			}
-		})
+		win.OnFileDrop(w.handleWindowFileDrop)
 	}
 
 	if folder != "" {
