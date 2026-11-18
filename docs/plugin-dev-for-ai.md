@@ -377,5 +377,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
 1. 将插件代码推送到公开 GitHub 仓库，确保仓库根目录（或 Release 压缩包顶层目录）包含通过第 6 节验收的 `manifest.json`（含 `"app": "blockmd"`）。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
-3. 创建标准 **GitHub Release**（Tag 与 `manifest.version` 保持一致，如 `v1.0.0`），可附带 `.tar.gz` / `.zip` 产物包或直接使用 GitHub 自动生成的源码归档。
+3. 发布标准 **GitHub Release**（压缩包内 `manifest.version` 必须与 Release Tag 一致）：
+   - **官方推荐自动版本号**：直接复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`，无需手动改版本号或打 Tag；工作流每天 `00:00 UTC`（或手动触发 `workflow_dispatch`）检测代码变更，按 `<major>.<minor>.<提交总数>` 动态写入产物包 `manifest.json` 并发布 Release，不向 `main` 回写提交。
+   - **手动发版**：也可推送 `vX.Y.Z` Tag 触发同工作流打包对应版本。
 4. 商店采集器定时扫描 `topic:blockmd-plugin`，自动校验 `manifest.json`、计算 `sha256` 并更新 `store-index.json`；用户也可在「应用商店」直接输入 `owner/repo` 或本地目录路径即时安装调试。
