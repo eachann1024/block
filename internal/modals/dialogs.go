@@ -1,10 +1,12 @@
 package modals
 
 import (
+	"block/assets"
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"block/internal/icons"
@@ -70,44 +72,39 @@ func (m *Manager) IsAboutOpen() bool {
 	return m.aboutOpen
 }
 
+var aboutLogo = sync.OnceValue(func() ui.ImageSource {
+	data, _ := assets.Read("app-icon/apple-touch-icon.png")
+	img, _ := ui.DecodeImage(data)
+	return img
+})
+
 func (m *Manager) renderAboutModal(c *ui.Context) {
 	pal := theme.Ocean()
 	open := true
 	title := theme.Tr("关于 Block", "About Block")
-
-	internalui.ModalCard(c, "about-modal", title, &open, 380, 420, func() {
-		ui.Column(c).FillWidth().Padding(24).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
-				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-					ID:    "about-close",
-					Label: theme.Tr("关闭", "Close"),
-				})
-				if cls.Clicked() {
+	internalui.ModalCard(c, "about-modal", title, &open, 368, 0, func() {
+		ui.Column(c).FillWidth().Padding(28, 24, 22, 24).Gap(18).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Absolute().Top(10).Right(10).Children(func() {
+				if internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{ID: "about-close", Label: theme.Tr("关闭", "Close")}).Clicked() {
 					m.CloseAbout()
 				}
 			})
-
-			// Minimal geometric emblem drawn with ui.Painter.
-			ui.Box(c.Key("about-emblem")).Size(68, 68).Radius(16).Background(pal.Selected).
-				Border(1, pal.Accent).Center().Children(func() {
-				icons.Draw(c, icons.NoteCheck, 36, pal.DuoIconColors(pal.Accent))
+			ui.Column(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
+				ui.Image(c.Key("about-emblem"), aboutLogo()).Size(84, 84).Margin(0, 0, 6, 0)
+				ui.Text(c, "Block").FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, fmt.Sprintf("%s %s", theme.Tr("版本", "Version"), blockAppVersion)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+				author := ui.ButtonBase(c.Key("about-profile")).Padding(3, 12).Radius(theme.RadiusPill).Cursor(ui.CursorPointer)
+				author.Children(func() { ui.Text(c, theme.Tr("作者 eachann", "Made by eachann")).FontSize(theme.FontBody).TextColor(pal.Accent) })
+				if author.Clicked() {
+					c.OpenURL("https://github.com/eachann1024")
+				}
 			})
-
-			ui.Text(c, "Block").FontSize(22).FontWeight(700).TextColor(pal.Text)
-			ui.Text(c, fmt.Sprintf("%s %s", theme.Tr("版本", "Version"), blockAppVersion)).
-				FontSize(14).TextColor(pal.TextSecondary)
-			ui.Text(c, theme.Tr("作者 eachann", "Made by eachann")).
-				FontSize(14).TextColor(pal.TextSecondary)
-
-			ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-
-			repoBtn := internalui.ActionButton(c, "about-repo", "eachann1024/block", &[]icons.Icon{icons.Code}[0], internalui.ButtonSecondary, false)
-			if repoBtn.Clicked() {
-				c.OpenURL("https://github.com/eachann1024/block")
-			}
-
-			doneBtn := internalui.ActionButton(c, "about-done", theme.Tr("关闭", "Close"), nil, internalui.ButtonPrimary, false)
-			if doneBtn.Clicked() {
+			ui.Column(c).FillWidth().Padding(16, 0, 4, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+				if internalui.ActionButton(c, "about-repo", "eachann1024/block", &[]icons.Icon{icons.Code}[0], internalui.ButtonSecondary, false).Height(42).FillWidth().Clicked() {
+					c.OpenURL("https://github.com/eachann1024/block")
+				}
+			})
+			if internalui.ActionButton(c, "about-done", theme.Tr("关闭", "Close"), nil, internalui.ButtonPrimary, false).Clicked() {
 				m.CloseAbout()
 			}
 		})
@@ -228,7 +225,11 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 	open := true
 	title := theme.Tr("给我们带句话", "Send us a note")
 
-	internalui.ModalCard(c, "feedback-modal", title, &open, 500, 540, func() {
+	width := float32(500)
+	if m.feedbackDone {
+		width = 400
+	}
+	internalui.Dialog(c, "feedback-modal", title, &open, internalui.ModalLayout{Width: width, Centered: true}, func() {
 		if m.feedbackDone {
 			doneBox := ui.Column(c.Key("feedback-done")).FillWidth().Padding(28).Gap(14).AlignItems(ui.Center)
 			internalui.Probe(doneBox, "feedback-done")
@@ -237,12 +238,12 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 					Border(1, pal.Success).Center().Children(func() {
 					icons.Draw(c, icons.Check, 24, pal.MonoIconColors(pal.Success))
 				})
-				ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).FontSize(18).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				note := theme.Tr("我们会认真看每一条反馈。", "We read every piece of feedback carefully.")
 				if m.feedbackSentContact != "" {
 					note = theme.Tr("我们会认真看，有进展会发到 "+m.feedbackSentContact+"。", "We will reply to "+m.feedbackSentContact+".")
 				}
-				ui.Text(c, note).FontSize(14).TextColor(pal.TextSecondary)
+				ui.Text(c, note).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 				doneBtn := internalui.ActionButton(c, "feedback-done-close", theme.Tr("好的", "Done"), nil, internalui.ButtonSecondary, false)
 				if doneBtn.Clicked() {
 					m.CloseFeedback()
@@ -251,10 +252,10 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			return
 		}
 
-		ui.Column(c).FillWidth().Padding(22).Gap(16).Children(func() {
+		ui.Column(c).FillWidth().Padding(24).Gap(18).Children(func() {
 			// Header.
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, title).FontSize(18).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:    "feedback-close",
 					Label: theme.Tr("关闭", "Close"),
@@ -280,7 +281,7 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			if theme.IsEn() {
 				activePH = cats[0].phEn
 			}
-			ui.Row(c).FillWidth().Gap(8).Children(func() {
+			ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
 				for _, cat := range cats {
 					selected := m.feedbackCategory == cat.code
 					if selected {
@@ -307,7 +308,7 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			// Message textarea.
 			msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
 				Placeholder(activePH).Label(theme.Tr("反馈内容", "Feedback message")).
-				FillWidth().Height(120)
+				FillWidth().Height(116)
 			internalui.AutoHideScrollbars(c, msgIn)
 			internalui.Probe(msgIn, "feedback-message")
 			if msgIn.Changed() {
@@ -317,10 +318,10 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 
 			// Optional contact email input.
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, theme.Tr("回复邮箱（选填）", "Reply email (optional)")).FontSize(14).FontWeight(500).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("回复邮箱（选填）", "Reply email (optional)")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 				contactIn := ui.TextInput(c.Key("feedback-contact"), &m.feedbackContact).
 					Placeholder(theme.Tr("留了邮箱，回复会发到这里", "We reply here if you leave one")).
-					Label(theme.Tr("回复邮箱", "Reply email")).FillWidth()
+					Label(theme.Tr("回复邮箱", "Reply email")).FillWidth().Height(38)
 				internalui.Probe(contactIn, "feedback-contact")
 				if contactIn.Changed() {
 					m.feedbackErr = ""
@@ -329,11 +330,11 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			})
 
 			// Footer status + Send button.
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 				if m.feedbackErr != "" {
-					ui.Text(c, m.feedbackErr).FontSize(14).TextColor(pal.Danger).Grow(1)
+					ui.Text(c, m.feedbackErr).FontSize(theme.FontBody).TextColor(pal.Danger).Grow(1).MinWidth(0)
 				} else if strings.TrimSpace(m.feedbackMessage) != "" || strings.TrimSpace(m.feedbackContact) != "" {
-					ui.Text(c, theme.Tr("草稿已自动保存", "Draft auto-saved")).FontSize(14).TextColor(pal.TextSecondary).Grow(1)
+					ui.Text(c, theme.Tr("草稿已自动保存", "Draft auto-saved")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				} else {
 					ui.Box(c).Grow(1)
 				}
@@ -437,7 +438,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 				if noteTitle == "" || noteTitle == "." {
 					noteTitle = title
 				}
-				ui.Text(c, noteTitle+" · "+title).FontSize(16).FontWeight(600).TextColor(pal.Text).SingleLine()
+				ui.Text(c, noteTitle+" · "+title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					modeIdx := 0
@@ -475,7 +476,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 				Background(pal.WarningSurface).BorderWidth(0, 0, 1, 0).BorderColor(pal.Warning).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).Children(func() {
 				ui.Text(c, theme.Tr("确认用选中的历史快照覆盖当前笔记内容？", "Replace current note with this historical snapshot?")).
-					FontSize(14).TextColor(pal.Text)
+					FontSize(theme.FontBody).TextColor(pal.Text)
 				ui.Row(c).Gap(8).Children(func() {
 					cancelBtn := internalui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, internalui.ButtonSecondary, false)
 					if cancelBtn.Clicked() {
@@ -496,7 +497,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 				Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
 				Children(func() {
 					if len(m.historySnapshots) == 0 {
-						ui.Text(c, theme.Tr("暂无历史快照", "No history snapshots")).FontSize(14).TextColor(pal.TextSecondary)
+						ui.Text(c, theme.Tr("暂无历史快照", "No history snapshots")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						return
 					}
 					for i, snap := range m.historySnapshots {
@@ -508,7 +509,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 							ts = s.ID
 						}
 						row := ui.ButtonBase(c.Key(rowID)).FillWidth().Padding(8, 10, 8, 10).Gap(2).
-							Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(ts)
+							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(ts)
 						if selected {
 							row.Background(pal.Selected).Border(1, pal.Accent)
 						} else if row.Hovered() {
@@ -518,12 +519,12 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						}
 						row.Children(func() {
 							ui.Column(c).FillWidth().Gap(2).Children(func() {
-								ui.Text(c, ts).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
+								ui.Text(c, ts).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 								sub := formatBytesIEC(uint64(max(s.Size, 0)))
 								if s.Summary != "" {
 									sub = s.Summary
 								}
-								ui.Text(c, sub).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+								ui.Text(c, sub).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 							})
 						})
 						internalui.Probe(row, rowID)
@@ -537,16 +538,16 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 			internalui.Scroll(c.Key("history-preview"), &m.historyScroll).Grow(1).FillHeight().
 				Padding(14, 18, 14, 18).Gap(4).Children(func() {
 				if m.historyErr != "" {
-					ui.Text(c, m.historyErr).FontSize(14).TextColor(pal.Danger)
+					ui.Text(c, m.historyErr).FontSize(theme.FontBody).TextColor(pal.Danger)
 					return
 				}
 				if m.historySelectedID == "" {
 					ui.Text(c, theme.Tr("请选择左侧历史版本查看对比", "Select a snapshot on the left")).
-						FontSize(14).TextColor(pal.TextSecondary)
+						FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 					return
 				}
 				if m.historyMode == "clean" {
-					ui.Text(c, m.historySnapContent).FontSize(14).TextColor(pal.Text)
+					ui.Text(c, m.historySnapContent).FontSize(theme.FontBody).TextColor(pal.Text)
 					return
 				}
 				for _, dl := range m.historyDiffLines {
@@ -563,8 +564,8 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						fg = pal.DiffAddFG
 						prefix = "+ "
 					}
-					ui.Row(c).FillWidth().Padding(2, 6, 2, 6).Radius(4).Background(bg).Gap(8).Children(func() {
-						ui.Text(c, prefix+dl.Text).FontSize(14).TextColor(fg)
+					ui.Row(c).FillWidth().Padding(2, 6, 2, 6).Radius(theme.RadiusXS).Background(bg).Gap(8).Children(func() {
+						ui.Text(c, prefix+dl.Text).FontSize(theme.FontBody).TextColor(fg)
 					})
 				}
 			})
@@ -799,7 +800,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 	internalui.ModalCard(c, "export-modal", title, &open, 520, 480, func() {
 		ui.Column(c).FillWidth().Padding(22).Gap(16).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, title).FontSize(18).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:    "export-close",
 					Label: theme.Tr("关闭", "Close"),
@@ -822,7 +823,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 				{model.ExportZIP, "ZIP"},
 			}
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
-				ui.Text(c, theme.Tr("导出格式", "Format")).FontSize(14).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("导出格式", "Format")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
 					for _, item := range formats {
 						style := internalui.ButtonSecondary
@@ -867,7 +868,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 
 			// Output path.
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, theme.Tr("输出路径", "Output Path")).FontSize(14).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("输出路径", "Output Path")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				in := ui.TextInput(c.Key("export-out-path"), &m.exportOutPath).
 					Placeholder("note.md").Label(theme.Tr("输出路径", "Output Path")).FillWidth()
 				internalui.Probe(in, "export-out-path")
@@ -879,9 +880,9 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 			// Footer status + action.
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).Children(func() {
 				if m.exportErr != "" {
-					ui.Text(c, m.exportErr).FontSize(14).TextColor(pal.Danger).Grow(1)
+					ui.Text(c, m.exportErr).FontSize(theme.FontBody).TextColor(pal.Danger).Grow(1)
 				} else if m.exportStatus != "" {
-					ui.Text(c, m.exportStatus).FontSize(14).TextColor(pal.Success).Grow(1)
+					ui.Text(c, m.exportStatus).FontSize(theme.FontBody).TextColor(pal.Success).Grow(1)
 				} else {
 					ui.Box(c).Grow(1)
 				}
@@ -933,12 +934,12 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 	open := true
 	title := theme.Tr("检查更新", "Check for Updates")
 
-	internalui.ModalCard(c, "updater-modal", title, &open, 540, 460, func() {
-		ui.Column(c).FillWidth().Padding(22).Gap(16).Children(func() {
+	internalui.ModalCard(c, "updater-modal", title, &open, 580, 0, func() {
+		ui.Column(c).FillWidth().Padding(24, 24, 20, 24).Gap(16).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 					icons.Draw(c, icons.UpdateTangle, 20, pal.DuoIconColors(pal.Accent))
-					ui.Text(c, title).FontSize(18).FontWeight(600).TextColor(pal.Text)
+					ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				})
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:    "updater-close",
@@ -949,21 +950,21 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 				}
 			})
 
-			ui.Row(c).FillWidth().Padding(12).Radius(theme.RadiusControl).
+			ui.Row(c).FillWidth().Padding(12).Radius(theme.RadiusMD).
 				Background(pal.Shell).Border(1, pal.Hairline).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(c, fmt.Sprintf("%s v%s", theme.Tr("当前版本", "Current"), blockAppVersion)).
-					FontSize(14).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, m.updaterStatus).FontSize(14).TextColor(pal.TextSecondary)
+					FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, m.updaterStatus).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})
 
-			ui.Column(c).FillWidth().Gap(8).Children(func() {
+			ui.Column(c).FillWidth().Gap(theme.Space8).Children(func() {
 				ui.Text(c, fmt.Sprintf("v%s %s", m.updaterLatest, theme.Tr("更新内容", "Release Notes"))).
-					FontSize(15).FontWeight(600).TextColor(pal.Text)
+					FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				for _, item := range m.updaterNotes {
 					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
-						ui.Text(c, "•").FontSize(14).TextColor(pal.TextSecondary)
-						ui.Text(c, item).FontSize(14).TextColor(pal.Text).Grow(1)
+						ui.Text(c, "•").FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+						ui.Text(c, item).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1)
 					})
 				}
 			})

@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
@@ -42,10 +40,10 @@ func Dialog(c *ui.Context, id, title string, open *bool, layout ModalLayout, bod
 		}
 		layer.Children(func() {
 			card := Scroll(c.Key(id)).Column().Width(width).MaxHeight(height).
-				Left(layout.Offset.X).Top(layout.Offset.Y).Radius(theme.RadiusSurface).
+				Left(layout.Offset.X).Top(layout.Offset.Y).Radius(theme.RadiusXL).
 				Background(pal.Menu).Border(1, pal.MenuBorder).
-				Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, .08)).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, .14)).
-				Role(ui.RoleDialog).Label(title)
+				Role(ui.RoleDialog).Label(title).Transition(ModalSpringTransition())
+			Elevate(card, theme.ElevationDialog)
 			Probe(card, id)
 			card.Children(body)
 			if card.PressedOutside() || layer.OverlayShortcut(0, ui.KeyEscape) {
@@ -58,12 +56,9 @@ func Dialog(c *ui.Context, id, title string, open *bool, layout ModalLayout, bod
 // ModalLayer builds the dimming scrim and focus scope as siblings inside an
 // overlay. The renderer can retire each visual independently on dismissal.
 func ModalLayer(c *ui.Context, id string) ui.Element {
-	motion := ui.ElementTransition{
-		Duration: 180 * time.Millisecond, ExitDuration: 160 * time.Millisecond,
-		Ease: ui.CubicBezier(.16, 1, .3, 1), Colors: true,
-	}
+	scrimMotion := ScrimFadeTransition()
 	ui.Box(c.Key(id + "-scrim")).Absolute().Left(0).Right(0).Top(0).Bottom(0).
-		Background(ui.RGBA(0x20, 0x24, 0x2c, 46.0/255)).Transition(motion)
+		Background(theme.Ocean().Scrim()).Transition(scrimMotion)
 	return ui.Column(c.Key(id + "-layer")).Absolute().Left(0).Right(0).Top(0).Bottom(0).
-		AlignItems(ui.Center).Modal().Transition(motion)
+		AlignItems(ui.Center).Modal()
 }

@@ -41,7 +41,7 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 			Start:    lo,
 			End:      hi,
 			Fill:     fill,
-			Radius:   4,
+			Radius:   theme.RadiusXS,
 			TintOver: true,
 		})
 	}
@@ -55,7 +55,7 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 				Start:    m.StartRune,
 				End:      m.EndRune,
 				Fill:     pal.FindMatch,
-				Radius:   2,
+				Radius:   theme.RadiusXS,
 				TintOver: true,
 			}
 			if i == s.findCurrent {

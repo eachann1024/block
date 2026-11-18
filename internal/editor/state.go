@@ -106,16 +106,25 @@ type Session struct {
 	firstLineDeleteArmed bool
 	caretLineHint        int
 
-	blockHandles    map[model.BlockID]ui.Handle
-	richInputs      map[model.BlockID]*appUi.RichInputState
-	tableInputs     map[tableCellKey]*appUi.RichInputState
-	blockRects      map[model.BlockID]ui.Rect
-	blockTextRects  map[model.BlockID]ui.Rect
-	tableCellRects  map[tableCellKey]ui.Rect
-	textLayoutCache map[model.BlockID]cachedBlockLayout
-	folded          map[model.BlockID]bool
-	foldTails       map[model.BlockID]model.BlockID
-	trailingPlus    bool
+	blockHandles     map[model.BlockID]ui.Handle
+	richInputs       map[model.BlockID]*appUi.RichInputState
+	tableInputs      map[tableCellKey]*appUi.RichInputState
+	blockRects       map[model.BlockID]ui.Rect
+	blockTextRects   map[model.BlockID]ui.Rect
+	tableCellRects   map[tableCellKey]ui.Rect
+	textLayoutCache  map[model.BlockID]cachedBlockLayout
+	codeSyntaxCache  map[model.BlockID]cachedCodeSyntax
+	codePreviewCache map[model.BlockID]cachedCodePreview
+	frameBlocks      []frameBlockMeta
+	docRev           uint64
+	outlineRev       uint64
+	outlineLen       int
+	outlineCache     []model.OutlineItem
+	lastVirtSig      float32
+	virtReady        bool
+	folded           map[model.BlockID]bool
+	foldTails        map[model.BlockID]model.BlockID
+	trailingPlus     bool
 
 	// Mouse multi-block / marquee selection
 	mouseMode        mouseSelMode
@@ -275,6 +284,9 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		blockTextRects:    make(map[model.BlockID]ui.Rect),
 		tableCellRects:    make(map[tableCellKey]ui.Rect),
 		textLayoutCache:   make(map[model.BlockID]cachedBlockLayout),
+		codeSyntaxCache:   make(map[model.BlockID]cachedCodeSyntax),
+		codePreviewCache:  make(map[model.BlockID]cachedCodePreview),
+		docRev:            1,
 		folded:            make(map[model.BlockID]bool),
 		foldTails:         make(map[model.BlockID]model.BlockID),
 		imageCache:        make(map[string]ui.ImageSource),
@@ -375,6 +387,10 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.blockTextRects)
 	clear(s.tableCellRects)
 	clear(s.textLayoutCache)
+	clear(s.codeSyntaxCache)
+	clear(s.codePreviewCache)
+	s.docRev++
+	s.virtReady = false
 	clear(s.overlayBtnRects)
 	clear(s.overlayPanelRects)
 	clear(s.annotRowHeights)
@@ -625,6 +641,8 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 		s.foldTails[k] = v
 	}
 	s.trailingPlus = false
+	s.docRev++
+	s.virtReady = false
 	s.dirty = s.Markdown() != s.savedMarkdown
 	s.focusPending = true
 	s.selSyncPending = true
@@ -648,6 +666,7 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 
 func (s *Session) markDirty() {
 	s.dirty = true
+	s.docRev++
 	if s.doc != nil {
 		s.doc.CleanRaw = ""
 	}

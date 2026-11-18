@@ -39,6 +39,7 @@ type Workspace struct {
 	state          model.AppState
 	sidebarWidth   float32
 	sidebarPinned  bool
+	lastViewportW  float32
 	zoomPct        int
 	entries        []model.FileEntry
 	notice         string
@@ -61,17 +62,24 @@ type Workspace struct {
 	recoveryPath    string
 	recoveryContent string
 
-	ai     *ai.Controller
-	modals *modals.Manager
-	quick  *modals.QuickNoteController
+	ai        *ai.Controller
+	modals    *modals.Manager
+	quick     *modals.QuickNoteController
+	searchWin *modals.SearchWindowController
 
 	// OnAppMenuOrHotkeysChanged is notified whenever Settings updates shortcuts or language
 	// so main.go can live-refresh the native application menu bar and OS global hotkeys.
 	OnAppMenuOrHotkeysChanged func(st model.AppState)
+	// OnRevealMainWindow restores, shows, and focuses the main workspace window.
+	OnRevealMainWindow func()
 
 	watchCancel         context.CancelFunc
 	persistWindowBounds bool
 	mainBoundsTimer     *time.Timer
+	autoSaveTimer       *time.Timer
+	sidebarWidthTimer   *time.Timer
+	pendingSidebarWidth float32
+	hasPendingSidebarW  bool
 	lastSnapAt          map[string]time.Time
 }
 
@@ -96,16 +104,16 @@ func NewWorkspace(dataDir string) *Workspace {
 		sidebarWidth:        SidebarDefaultW,
 		zoomPct:             zoomPctFromState(st.EditorZoom),
 		persistWindowBounds: true,
-		virtualPreview: make(map[string]bool),
-		codec:          codec,
-		sessions:       make(map[string]*editor.Session),
-		surfaces:       make(map[string]*TabSurface),
-		nav:            NewNavHistory(),
-		closed:         NewClosedTabs(),
-		tabMenu:        NewTabMenuState(),
-		sidebarUI:      NewSidebarUIState(),
-		historyView:    &PageHistoryView{Mode: "diff"},
-		lastSnapAt:     make(map[string]time.Time),
+		virtualPreview:      make(map[string]bool),
+		codec:               codec,
+		sessions:            make(map[string]*editor.Session),
+		surfaces:            make(map[string]*TabSurface),
+		nav:                 NewNavHistory(),
+		closed:              NewClosedTabs(),
+		tabMenu:             NewTabMenuState(),
+		sidebarUI:           NewSidebarUIState(),
+		historyView:         &PageHistoryView{Mode: "diff"},
+		lastSnapAt:          make(map[string]time.Time),
 	}
 	if st.SidebarWidth != nil && *st.SidebarWidth > 0 {
 		w.sidebarWidth = ClampSidebarWidth(*st.SidebarWidth)
@@ -119,9 +127,11 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.ai = ai.NewController(actualDir, w, codec)
 	w.modals = modals.NewManager(actualDir, w)
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
+	w.searchWin = modals.NewSearchWindowController(w)
 
 	w.wireModalCallbacks()
 	w.wireQuickNoteCallbacks()
+	w.wireSearchWindowCallbacks()
 	w.hydrateInitialWorkspace()
 	return w
 }
@@ -360,10 +370,15 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 		_ = w.OpenNote(path, 0)
 	}
 	w.quick.OnSummonSearch = func() {
-		if w.win != nil {
+		if w.OnRevealMainWindow != nil {
+			w.OnRevealMainWindow()
+		} else if w.win != nil {
 			w.win.Restore()
 			w.win.Show()
 			w.win.Focus()
+		}
+		if w.searchWin != nil {
+			w.searchWin.Hide()
 		}
 		w.modals.OpenSearch(false)
 		w.RequestRedraw()
@@ -415,6 +430,30 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	}
 }
 
+func (w *Workspace) wireSearchWindowCallbacks() {
+	if w.searchWin == nil {
+		return
+	}
+	w.searchWin.GetState = func() model.AppState {
+		w.mu.RLock()
+		defer w.mu.RUnlock()
+		return w.state
+	}
+	w.searchWin.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
+		return w.SearchWorkspace(query, allNotebooks)
+	}
+	w.searchWin.OnOpenHit = func(path string, line int) {
+		if w.OnRevealMainWindow != nil {
+			w.OnRevealMainWindow()
+		} else if w.win != nil {
+			w.win.Restore()
+			w.win.Show()
+			w.win.Focus()
+		}
+		_ = w.OpenFromSearch(path, line)
+	}
+}
+
 func (w *Workspace) wireModalCallbacks() {
 	w.modals.GetState = func() model.AppState {
 		w.mu.RLock()
@@ -452,6 +491,9 @@ func (w *Workspace) wireModalCallbacks() {
 		if w.OnAppMenuOrHotkeysChanged != nil {
 			w.OnAppMenuOrHotkeysChanged(next)
 		}
+		if w.searchWin != nil {
+			w.searchWin.Invalidate()
+		}
 		if w.quick != nil {
 			w.quick.RefreshStyle()
 		}
@@ -471,6 +513,9 @@ func (w *Workspace) wireModalCallbacks() {
 	w.modals.SearchFn = func(query string, allNotebooks bool) ([]model.SearchHit, error) {
 		return w.SearchWorkspace(query, allNotebooks)
 	}
+	w.modals.SetOpenFromSearchFn(func(path string, line int) {
+		_ = w.OpenFromSearch(path, line)
+	})
 	w.modals.ListHistoryFn = func(notePath string) ([]model.HistorySnapshot, error) {
 		return files.ListHistorySnapshots(notePath)
 	}
@@ -644,6 +689,9 @@ func (w *Workspace) Modals() *modals.Manager { return w.modals }
 
 // QuickNote returns the workspace's Quick Note floating window controller.
 func (w *Workspace) QuickNote() *modals.QuickNoteController { return w.quick }
+
+// SearchWindow returns the workspace's standalone floating search window controller.
+func (w *Workspace) SearchWindow() *modals.SearchWindowController { return w.searchWin }
 
 // Codec returns the workspace's MarkdownCodec.
 func (w *Workspace) Codec() *markdown.Codec { return w.codec }
@@ -920,6 +968,9 @@ func (w *Workspace) SearchWorkspace(query string, allNotebooks bool) ([]model.Se
 	w.mu.RLock()
 	var roots []string
 	if allNotebooks {
+		if w.state.Folder != "" {
+			roots = append(roots, w.state.Folder)
+		}
 		roots = append(roots, w.state.Notebooks...)
 	} else if w.state.Folder != "" {
 		roots = append(roots, w.state.Folder)
@@ -927,6 +978,45 @@ func (w *Workspace) SearchWorkspace(query string, allNotebooks bool) ([]model.Se
 	opts := w.scanOptionsLocked()
 	w.mu.RUnlock()
 	return files.SearchNotebooks(roots, query, opts)
+}
+
+func pathWithinRoot(absPath, root string) bool {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(absPath) == "" {
+		return false
+	}
+	cleanP := filepath.Clean(absPath)
+	cleanR := filepath.Clean(root)
+	return cleanP == cleanR || strings.HasPrefix(cleanP, cleanR+string(filepath.Separator))
+}
+
+// OpenFromSearch opens a search hit, switching to the owning notebook if it belongs to another loaded folder.
+func (w *Workspace) OpenFromSearch(absPath string, lineHint int) error {
+	if strings.TrimSpace(absPath) == "" {
+		return errors.New("empty note path")
+	}
+	clean := filepath.Clean(absPath)
+	w.modals.CloseSearch()
+	if w.isBusy() {
+		return nil
+	}
+	w.mu.RLock()
+	curFolder := w.state.Folder
+	notebooks := append([]string(nil), w.state.Notebooks...)
+	w.mu.RUnlock()
+
+	if pathWithinRoot(clean, curFolder) {
+		return w.OpenNote(clean, lineHint)
+	}
+	var bestNotebook string
+	for _, nb := range notebooks {
+		if pathWithinRoot(clean, nb) && len(filepath.Clean(nb)) > len(bestNotebook) {
+			bestNotebook = filepath.Clean(nb)
+		}
+	}
+	if bestNotebook != "" {
+		_ = w.SetNotebook(bestNotebook)
+	}
+	return w.OpenNote(clean, lineHint)
 }
 
 func (w *Workspace) ReadNote(absPath string) (string, error) {
@@ -1255,10 +1345,17 @@ func (w *Workspace) UndoLastPlan(plan *model.BatchPlan) error {
 }
 
 func (w *Workspace) OpenSettings(tab string) {
+	wasOpen := w.modals.IsSettingsOpen()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.exportCtrl.Close()
 	w.historyView.Close()
+	if !wasOpen {
+		w.mu.Lock()
+		w.state.SidebarCollapsed = false
+		w.sidebarPinned = false
+		w.mu.Unlock()
+	}
 	w.modals.OpenSettings(tab)
 	w.RequestRedraw()
 }
@@ -1508,27 +1605,52 @@ func (w *Workspace) ChooseNotebookDialog() {
 	}()
 }
 
+func fileTreeEqual(a, b []model.FileEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := &a[i], &b[i]
+		if x.Path != y.Path || x.Name != y.Name || x.RawName != y.RawName ||
+			x.IsDir != y.IsDir || x.IsMarkdown != y.IsMarkdown ||
+			!fileTreeEqual(x.Children, y.Children) {
+			return false
+		}
+	}
+	return true
+}
+
 // RescanNotebook rescans the active notebook directory using current ScanOptions.
 func (w *Workspace) RescanNotebook() {
+	_ = w.rescanNotebook()
+}
+
+func (w *Workspace) rescanNotebook() bool {
 	w.mu.RLock()
 	folder := w.state.Folder
 	opts := w.scanOptionsLocked()
 	w.mu.RUnlock()
 	if folder == "" {
 		w.mu.Lock()
+		changed := len(w.entries) > 0
 		w.entries = nil
 		w.mu.Unlock()
-		return
+		return changed
 	}
 	list, err := files.ScanNotebook(folder, opts)
 	w.mu.Lock()
+	var changed bool
 	if err != nil {
-		w.notice = err.Error()
+		errStr := err.Error()
+		changed = w.notice != errStr
+		w.notice = errStr
 	} else {
+		changed = w.notice != "" || !fileTreeEqual(w.entries, list)
 		w.notice = ""
 		w.entries = list
 	}
 	w.mu.Unlock()
+	return changed
 }
 
 func (w *Workspace) targetCreateDir(root string) string {
@@ -2119,6 +2241,20 @@ func (w *Workspace) SelectTabOneBased(num int) {
 	}
 }
 
+func (w *Workspace) isBusy() bool {
+	if w.ai != nil && w.ai.IsStreaming() {
+		return true
+	}
+	w.mu.RLock()
+	active := w.state.ActiveTab
+	sess := w.sessions[active]
+	w.mu.RUnlock()
+	if sess != nil && sess.IsBusy() {
+		return true
+	}
+	return false
+}
+
 // NavigateBack navigates backward in note history (`Cmd+[`).
 func (w *Workspace) NavigateBack() {
 	if w.modals != nil && w.modals.IsSettingsOpen() {
@@ -2161,10 +2297,29 @@ func (w *Workspace) NavigateForward() {
 
 // ToggleSidebar collapses or expands (or opens/closes drawer on narrow viewports) the left sidebar (`Alt+B`).
 func (w *Workspace) ToggleSidebar(viewportWidth float32) {
+	if w.IsPageHistoryOpen() || w.exportCtrl.IsOpen() {
+		return
+	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 
 	w.mu.Lock()
+	if viewportWidth <= 0 {
+		viewportWidth = w.lastViewportW
+	}
+	if viewportWidth <= 0 && w.win != nil {
+		cw, _ := w.win.ContentSize()
+		if cw > 0 {
+			z := float32(w.zoomPct) / 100.0
+			if z <= 0 {
+				z = 1.0
+			}
+			viewportWidth = float32(cw) / z
+		}
+	}
+	if viewportWidth <= 0 {
+		viewportWidth = 1100
+	}
 	layout := ResolveShellLayout(w.shellInputLocked(viewportWidth))
 	if layout.SidebarDrawer {
 		w.sidebarPinned = false
@@ -2256,18 +2411,109 @@ func (w *Workspace) setNotice(msg string) {
 	w.RequestRedraw()
 }
 
+const (
+	workspaceAutoSaveDebounce = 300 * time.Millisecond
+	sidebarWidthSaveDebounce  = 200 * time.Millisecond
+	fileWatchCoalesceWindow   = 120 * time.Millisecond
+)
+
+func (w *Workspace) hasDirtyNonVirtualSession() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	for p, sess := range w.sessions {
+		if sess.Dirty() && !w.virtualPreview[p] {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *Workspace) flushOrScheduleDirtySessions() {
+	if !w.hasDirtyNonVirtualSession() {
+		return
+	}
+	w.mu.Lock()
+	if w.win == nil || blockui.IsProbeEnabled() {
+		w.mu.Unlock()
+		w.FlushDirtySessions()
+		return
+	}
+	if w.autoSaveTimer != nil {
+		w.autoSaveTimer.Reset(workspaceAutoSaveDebounce)
+		w.mu.Unlock()
+		return
+	}
+	w.autoSaveTimer = time.AfterFunc(workspaceAutoSaveDebounce, func() {
+		mygo.RunOnMain(func() {
+			w.mu.Lock()
+			w.autoSaveTimer = nil
+			w.mu.Unlock()
+			w.FlushDirtySessions()
+		})
+	})
+	w.mu.Unlock()
+}
+
+func (w *Workspace) scheduleSaveSidebarWidth(clamped float32) {
+	w.mu.Lock()
+	if w.win == nil || blockui.IsProbeEnabled() {
+		w.hasPendingSidebarW = false
+		w.mu.Unlock()
+		_, _ = files.UpdateState(func(st *model.AppState) {
+			st.SidebarWidth = &clamped
+		})
+		return
+	}
+	w.pendingSidebarWidth = clamped
+	w.hasPendingSidebarW = true
+	if w.sidebarWidthTimer != nil {
+		w.sidebarWidthTimer.Reset(sidebarWidthSaveDebounce)
+		w.mu.Unlock()
+		return
+	}
+	w.sidebarWidthTimer = time.AfterFunc(sidebarWidthSaveDebounce, func() {
+		w.flushPendingSidebarWidth()
+	})
+	w.mu.Unlock()
+}
+
+func (w *Workspace) flushPendingSidebarWidth() {
+	w.mu.Lock()
+	if w.sidebarWidthTimer != nil {
+		w.sidebarWidthTimer.Stop()
+		w.sidebarWidthTimer = nil
+	}
+	if !w.hasPendingSidebarW {
+		w.mu.Unlock()
+		return
+	}
+	clamped := w.pendingSidebarWidth
+	w.hasPendingSidebarW = false
+	w.mu.Unlock()
+	_, _ = files.UpdateState(func(st *model.AppState) {
+		st.SidebarWidth = &clamped
+	})
+}
+
 // FlushDirtySessions writes all modified non-virtual editor sessions to disk atomically.
-func (w *Workspace) FlushDirtySessions() { _ = w.flushDirtySessions() }
+func (w *Workspace) FlushDirtySessions() {
+	w.flushPendingSidebarWidth()
+	_ = w.flushDirtySessions()
+}
 
 func (w *Workspace) flushDirtySessions() error {
-	w.mu.RLock()
+	w.mu.Lock()
+	if w.autoSaveTimer != nil {
+		w.autoSaveTimer.Stop()
+		w.autoSaveTimer = nil
+	}
 	paths := make([]string, 0, len(w.sessions))
 	for p, sess := range w.sessions {
 		if sess.Dirty() && !w.virtualPreview[p] {
 			paths = append(paths, p)
 		}
 	}
-	w.mu.RUnlock()
+	w.mu.Unlock()
 	var firstErr error
 	for _, p := range paths {
 		if err := w.flushSingleSession(p); err != nil && firstErr == nil {
@@ -2331,13 +2577,53 @@ func (w *Workspace) startWatching(folder string) {
 	}
 	go func() {
 		defer watcher.Close()
-		for {
-			_, err := watcher.Next(ctx)
-			if err != nil {
-				return
+		events := make(chan struct{}, 1)
+		go func() {
+			for {
+				if _, err := watcher.Next(ctx); err != nil {
+					close(events)
+					return
+				}
+				select {
+				case events <- struct{}{}:
+				default:
+				}
 			}
-			w.RescanNotebook()
-			w.RequestRedraw()
+		}()
+
+		var debounce *time.Timer
+		var debounceC <-chan time.Time
+		defer func() {
+			if debounce != nil {
+				debounce.Stop()
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-events:
+				if !ok {
+					return
+				}
+				if debounce == nil {
+					debounce = time.NewTimer(fileWatchCoalesceWindow)
+					debounceC = debounce.C
+				} else {
+					if !debounce.Stop() {
+						select {
+						case <-debounce.C:
+						default:
+						}
+					}
+					debounce.Reset(fileWatchCoalesceWindow)
+				}
+			case <-debounceC:
+				debounceC = nil
+				if w.rescanNotebook() {
+					w.RequestRedraw()
+				}
+			}
 		}
 	}()
 }
@@ -2376,8 +2662,36 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return matchRaw(modals.EffectiveShortcut(st, action))
 	}
 
+	if w.modals.IsSearchOpen() {
+		if matchRaw("cmd-w") {
+			w.modals.CloseSearch()
+			return
+		}
+		if c.Shortcut(ui.Cmd, ui.Key0) {
+			w.modals.ResetSearchScopeAll()
+			return
+		}
+		if matchAction("global_summon") {
+			if modals.MarkSearchTriggered() {
+				w.modals.OpenSearch(true)
+			}
+			return
+		}
+		if matchAction("search") {
+			w.modals.OpenSearch(false)
+			return
+		}
+		if matchAction("quick_note") {
+			w.quick.TriggerHotkey()
+			return
+		}
+		return
+	}
+
 	if matchAction("global_summon") {
-		w.modals.OpenSearch(true)
+		if modals.MarkSearchTriggered() {
+			w.modals.OpenSearch(true)
+		}
 		return
 	}
 	if matchAction("quick_note") {
@@ -2397,6 +2711,10 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		return
 	}
 	if w.modals.IsSettingsOpen() {
+		if matchAction("toggle_sidebar") || c.Shortcut(ui.Cmd, ui.KeyBackslash) {
+			w.ToggleSidebar(vpW)
+			return
+		}
 		return
 	}
 	if matchAction("performance") {
@@ -2461,8 +2779,9 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	}
 }
 
-func (w *Workspace) handleGlobalZoomShortcuts(c *ui.Context) bool {
-	if w.modals.IsRecordingShortcut() {
+func (w *Workspace) handleEditorZoomShortcuts(c *ui.Context) bool {
+	if w.modals.IsRecordingShortcut() || w.modals.IsSettingsOpen() ||
+		w.modals.HasActiveModal() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
 		return false
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
@@ -2473,7 +2792,7 @@ func (w *Workspace) handleGlobalZoomShortcuts(c *ui.Context) bool {
 		w.StepZoomPct(-MainZoomStepPct)
 		return true
 	}
-	if !w.modals.IsSearchOpen() && c.Shortcut(ui.Cmd, ui.Key0) {
+	if c.Shortcut(ui.Cmd, ui.Key0) {
 		w.ResetZoomPct()
 		return true
 	}
@@ -2484,14 +2803,14 @@ func (w *Workspace) handleGlobalZoomShortcuts(c *ui.Context) bool {
 func (w *Workspace) Render(c *ui.Context) {
 	blockui.ClearTargets()
 
-	w.handleGlobalZoomShortcuts(c)
+	w.handleEditorZoomShortcuts(c)
 
 	zoom := float32(w.ZoomPct()) / 100.0
 	if zoom <= 0 {
 		zoom = 1.0
 	}
-	if c.Zoom() != zoom {
-		c.SetZoom(zoom)
+	if c.Zoom() != 1.0 {
+		c.SetZoom(1.0)
 	}
 	theme.SetZoom(zoom)
 
@@ -2572,11 +2891,12 @@ func (w *Workspace) Render(c *ui.Context) {
 	}
 
 	w.handleAppShortcuts(c, vpW)
-	w.FlushDirtySessions()
+	w.flushOrScheduleDirtySessions()
 
 	w.mu.Lock()
+	w.lastViewportW = vpW
 	in := w.shellInputLocked(vpW)
-	if w.sidebarPinned && FitsSaved(in) && !in.InSettings {
+	if w.sidebarPinned && FitsSaved(in) {
 		w.sidebarPinned = false
 		in.SidebarPinned = false
 	}
@@ -2594,7 +2914,7 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	inSettings := w.modals.IsSettingsOpen()
 	aiImmersive := layout.ChatFullscreen && !inSettings
-	sidebarWide := !in.InSettings && (layout.SidebarDocked || layout.SidebarDrawer)
+	sidebarWide := layout.SidebarDocked || layout.SidebarDrawer
 	sidebarAutoHidden := layout.SidebarYielded && !layout.SidebarDrawer
 
 	activeSurf := w.SurfaceFor(activeTab)
@@ -2773,21 +3093,27 @@ func (w *Workspace) Render(c *ui.Context) {
 		// 2. Main Split Body.
 		body := ui.Row(c).Grow(1).MinHeight(0).FillWidth()
 		body.Children(func() {
-			if inSettings {
-				w.modals.RenderSettings(c)
-				return
-			}
-
-			// Docked Sidebar
+			// Docked Sidebar (File Tree in workspace mode, Category Nav in Settings mode).
 			if !aiImmersive && layout.SidebarDocked {
-				w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+				if inSettings {
+					w.modals.RenderSettingsSidebar(c, false, nil)
+				} else {
+					w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+				}
 			}
 
-			// Center Content (Note Editor, Non-Markdown Surface, or Empty Mascot State)
-			if !aiImmersive {
+			// Center Content (Settings Canvas, Note Editor, Non-Markdown Surface, or Empty Mascot State).
+			if inSettings {
+				minMainW := min(layout.ContentFloor, vpW)
+				ui.Column(c).Grow(1).MinWidth(minMainW).FillHeight().Background(pal.SettingsBG).Children(func() {
+					w.modals.RenderSettingsBody(c, layout.SidebarDrawer, func() {
+						w.ToggleSidebar(vpW)
+					})
+				})
+			} else if !aiImmersive {
 				minMainW := float32(0)
 				if !layout.ChatDocked {
-					minMainW = layout.ContentFloor
+					minMainW = min(layout.ContentFloor, vpW)
 				}
 				mainCol := ui.Column(c).Grow(1).MinWidth(minMainW).FillHeight().Background(pal.Paper)
 				mainCol.Children(func() {
@@ -2845,26 +3171,35 @@ func (w *Workspace) Render(c *ui.Context) {
 					chatW := w.ai.PanelWidth()
 					maxChat := ChatLimit(vpW, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
 					if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
-						w.ai.SetPanelWidth(chatW)
+						w.ai.SyncPanelWidth(chatW)
+						c.Invalidate()
 					}
 				}
 				w.ai.SetRenderWidth(layout.ChatWidth)
 				w.ai.RenderPanel(c)
 			}
 
-			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open
+			// Floating Sidebar Drawer + Scrim when narrow and explicitly toggled open (Note or Settings).
 			if layout.SidebarDrawer && !aiImmersive {
 				c.Key("sidebar-drawer-scrim")
 				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-					Background(ui.RGBA(0, 0, 0, 0.22))
+					Background(pal.Scrim())
 				blockui.Probe(scrim, "sidebar-drawer-scrim")
 				if scrim.Clicked() {
 					w.ToggleSidebar(vpW)
 				}
-				drawer := ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth).
-					Shadow(8, 0, 28, 0, ui.RGBA(0, 0, 0, 0.22))
+				drawer := blockui.Elevate(ui.Row(c).Absolute().Left(0).Top(0).Bottom(0).Width(w.sidebarWidth), theme.ElevationDrawer)
 				drawer.Children(func() {
-					w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
+					if inSettings {
+						w.modals.RenderSettingsSidebar(c, true, func() {
+							w.mu.Lock()
+							w.sidebarPinned = false
+							w.mu.Unlock()
+							w.RequestRedraw()
+						})
+					} else {
+						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
+					}
 				})
 			}
 		})
@@ -2891,10 +3226,7 @@ func (w *Workspace) renderSidebarColumn(
 		State: w.sidebarUI,
 		Width: &w.sidebarWidth,
 		OnWidthChanged: func(nw float32) {
-			clamped := ClampSidebarWidth(nw)
-			_, _ = files.UpdateState(func(st *model.AppState) {
-				st.SidebarWidth = &clamped
-			})
+			w.scheduleSaveSidebarWidth(ClampSidebarWidth(nw))
 		},
 		ActiveNotebook:  activeNB,
 		Notebooks:       notebooks,
@@ -2950,14 +3282,14 @@ func (w *Workspace) renderSidebarColumn(
 func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder bool) {
 	pal := theme.Ocean()
 	c.Key("workspace-empty")
-	box := ui.Column(c).Fill().Center().Gap(14).Padding(32).Background(pal.Paper)
+	box := ui.Column(c).Fill().Center().Gap(theme.Space16).Padding(theme.Space24).Background(pal.Paper)
 	blockui.Probe(box, "workspace-empty")
 	box.Children(func() {
 		switch {
 		case activeNB == "":
 			icons.Mascot(c, icons.MascotNoFolder, 220)
 			ui.Text(c, theme.Tr("打开一个文件夹开始记录", "Open a folder to start writing")).
-				FontSize(18).FontWeight(600).TextColor(pal.Text)
+				FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 			btn := blockui.ActionButton(c, "empty-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
 			if btn.Clicked() {
 				w.ChooseNotebookDialog()
@@ -2965,7 +3297,7 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 		case emptyFolder:
 			icons.Mascot(c, icons.MascotEmptyFolder, 220)
 			ui.Text(c, theme.Tr("这个笔记本还没有笔记", "This notebook has no notes yet")).
-				FontSize(18).FontWeight(600).TextColor(pal.Text)
+				FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 			ic := icons.NotePlus
 			btn := blockui.ActionButton(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), &ic, blockui.ButtonPrimary, false)
 			if btn.Clicked() {
@@ -2974,7 +3306,7 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 		default:
 			icons.Mascot(c, icons.MascotNoNote, 220)
 			ui.Text(c, theme.Tr("从左侧选择一篇笔记，或新建一篇", "Select a note on the left or create a new one")).
-				FontSize(16).FontWeight(500).TextColor(pal.TextSecondary)
+				FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
 			ic := icons.NotePlus
 			btn := blockui.ActionButton(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), &ic, blockui.ButtonPrimary, false)
 			if btn.Clicked() {
@@ -2982,18 +3314,4 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 			}
 		}
 	})
-}
-
-func (w *Workspace) isBusy() bool {
-	if w.ai != nil && w.ai.IsStreaming() {
-		return true
-	}
-	w.mu.RLock()
-	active := w.state.ActiveTab
-	sess := w.sessions[active]
-	w.mu.RUnlock()
-	if sess != nil && sess.IsBusy() {
-		return true
-	}
-	return false
 }

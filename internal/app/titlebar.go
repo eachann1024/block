@@ -386,7 +386,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 	}
 	c.Key(id)
 	cluster := ui.Row(c).Height(28).PaddingX(4).Gap(2).AlignItems(ui.Center).
-		Radius(theme.RadiusControl).Background(pal.Card).Border(1, pal.BtnBorder)
+		Radius(theme.RadiusMD).Background(pal.Card).Border(1, pal.BtnBorder)
 	blockui.Probe(cluster, id)
 	cluster.Children(func() {
 		outBtn := blockui.IconButton(c, icons.TbMinus, blockui.IconButtonOptions{
@@ -399,12 +399,12 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 			p.OnPreviewZoomStep(1.0 / 1.2)
 		}
 		c.Key(id + "-pct")
-		pctBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Cursor(ui.CursorPointer).Label(pct)
+		pctBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pct)
 		if pctBtn.Hovered() {
 			pctBtn.Background(pal.Hover)
 		}
 		pctBtn.Children(func() {
-			ui.Text(c, pct).FontSize(14).TextColor(pal.Text).SingleLine()
+			ui.Text(c, pct).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 		})
 		blockui.Probe(pctBtn, id+"-pct")
 		if pctBtn.Clicked() && p.OnPreviewActual != nil {
@@ -420,7 +420,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 			p.OnPreviewZoomStep(1.2)
 		}
 		c.Key(id + "-fit")
-		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(4).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
+		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
 			Label(theme.Tr("适应", "Fit"))
 		if p.PreviewZoomFit {
 			fitBtn.Background(pal.Selected).Border(1, pal.Accent)
@@ -428,7 +428,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 			fitBtn.Background(pal.Hover)
 		}
 		fitBtn.Children(func() {
-			ui.Text(c, theme.Tr("适应", "Fit")).FontSize(14).TextColor(pal.Text).SingleLine()
+			ui.Text(c, theme.Tr("适应", "Fit")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 		})
 		blockui.Probe(fitBtn, id+"-fit")
 		if fitBtn.Clicked() && p.OnPreviewFit != nil {

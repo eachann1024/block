@@ -121,7 +121,7 @@ func ChatLimit(windowW, sidebarW float32, sidebarCollapsed bool, chatMin, chatMa
 //  4. Settings blocks AI panel and enforces SettingsFloor (680).
 func ResolveShellLayout(in ShellInput) ShellLayout {
 	winW := in.WindowWidth
-	if winW < WindowMinW {
+	if winW <= 0 {
 		winW = WindowMinW
 	}
 	floor := NoteFloor

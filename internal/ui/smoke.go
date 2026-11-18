@@ -3,6 +3,7 @@ package ui
 import (
 	"sync"
 	"sync/atomic"
+	"testing"
 
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
@@ -25,14 +26,23 @@ func EnableSmokeMode() {
 
 func DisableSmokeMode() {
 	smokeActive.Store(false)
+	smokeMu.Lock()
+	clear(boundsMap)
+	smokeMu.Unlock()
 }
 
 func IsSmokeActive() bool {
 	return smokeActive.Load()
 }
 
+// IsProbeEnabled reports whether layout probe bounds recording is active
+// (enabled only during smoke/automation runs or Go unit tests).
+func IsProbeEnabled() bool {
+	return smokeActive.Load() || testing.Testing()
+}
+
 func RecordBounds(id string, r ui.Rect) {
-	if id == "" {
+	if !IsProbeEnabled() || id == "" {
 		return
 	}
 	smokeMu.Lock()
@@ -66,6 +76,9 @@ func AllTargets() map[string]ui.Rect {
 }
 
 func ClearTargets() {
+	if !IsProbeEnabled() {
+		return
+	}
 	smokeMu.Lock()
 	clear(boundsMap)
 	smokeMu.Unlock()
@@ -106,7 +119,7 @@ func SetSmokeFinished(passed bool, summary string) {
 // Probe attaches a layout-bounds recorder to `el` under `id` so both in-process
 // smoke tests and external automation runners can query exact live bounds.
 func Probe(el ui.Element, id string) ui.Element {
-	if !el.Valid() || id == "" {
+	if !IsProbeEnabled() || !el.Valid() || id == "" {
 		return el
 	}
 	el.DrawOver(func(_ *ui.Painter, r ui.Rect) {
@@ -151,13 +164,14 @@ func RenderSmokeHUD(c *ui.Context) {
 					}
 				}
 				ui.Row(c).Absolute().Bottom(20).Left(0).Right(0).Justify(ui.Center).IgnoreInput(true).Children(func() {
-					ui.Row(c).Height(36).PaddingX(14).Gap(8).AlignItems(ui.Center).
-						Radius(theme.RadiusControl).Background(pal.Paper).Border(1, dotColor).
-						Shadow(0, 4, 16, 0, ui.RGBA(0, 0, 0, 0.14)).IgnoreInput(true).
+					banner := ui.Row(c).Height(theme.HeightLarge).PaddingX(theme.Space16).Gap(theme.Space8).AlignItems(ui.Center).
+						Radius(theme.RadiusMD).Background(pal.Paper).Border(1, dotColor).
+						IgnoreInput(true).
 						Children(func() {
 							ui.Box(c).Size(8, 8).Shrink(0).Radius(theme.RadiusPill).Background(dotColor)
-							ui.Text(c, txt).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
+							ui.Text(c, txt).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 						})
+					Elevate(banner, theme.ElevationPopover)
 				})
 			}
 		})

@@ -30,15 +30,7 @@ const (
 	AIPanelMaxWidth     float32 = 720
 	EditorStandardWidth float32 = 672
 	EditorMaxOuterWidth float32 = 720
-	RadiusControl         float32 = 8
-	RadiusCard            float32 = 14
-	RadiusSurface         float32 = 14
-	RadiusPill            float32 = 999
-	EditorSelectionRadius float32 = 5
-	EditorSelectionPadX   float32 = 3
-	FontBodySize          float32 = 16
-	FontUISize          float32 = 14
-	FontSmallMinSize    float32 = 14
+	EditorSelectionPadX float32 = 3
 )
 
 func IsMacOS() bool {
@@ -69,9 +61,7 @@ type Palette struct {
 	Card           ui.Color
 	Menu           ui.Color
 	Text           ui.Color
-	UIText         ui.Color
 	TextSecondary  ui.Color
-	UITextMuted    ui.Color
 	Placeholder    ui.Color
 	Accent         ui.Color
 	AccentHover    ui.Color
@@ -100,18 +90,16 @@ type Palette struct {
 
 	// Extended component tokens mirrored from thinkly-fast (theme.rs, dropdown.rs,
 	// tooltip.rs, scrollbar.rs and the editor paint modules).
-	BtnHover          ui.Color
-	MenuBorder        ui.Color
-	MenuIcon          ui.Color
-	MenuMuted         ui.Color
-	MenuHover         ui.Color
-	MenuChecked       ui.Color
-	MenuSeparator     ui.Color
-	MenuDangerFG      ui.Color
-	MenuDangerHoverBG ui.Color
-	MenuDangerHoverFG ui.Color
+	MenuBorder          ui.Color
+	MenuIcon            ui.Color
+	MenuMuted           ui.Color
+	MenuHover           ui.Color
+	MenuSeparator       ui.Color
+	MenuDangerFG        ui.Color
+	MenuDangerHoverBG   ui.Color
+	MenuDangerHoverFG   ui.Color
+	SwitchKnob          ui.Color
 	TooltipBG           ui.Color
-	TooltipFG           ui.Color
 	TooltipBorder       ui.Color
 	TooltipDivider      ui.Color
 	TooltipMuted        ui.Color
@@ -121,31 +109,31 @@ type Palette struct {
 	TooltipPillBG       ui.Color
 	TooltipPillBorder   ui.Color
 	TooltipPillFG       ui.Color
-	ScrollThumb       ui.Color
-	ScrollThumbHover  ui.Color
-	Link              ui.Color
-	InlineCodeFG      ui.Color
-	InlineCodeBG      ui.Color
-	InlineCodeHoverBG ui.Color
-	InlineCodeEditBG  ui.Color
-	CodeBlockBG       ui.Color
-	HintBand          ui.Color
-	ListGuide         ui.Color
-	ListBullet        ui.Color
-	TodoBG            ui.Color
-	TodoRing          ui.Color
-	TodoRingHover     ui.Color
-	AnnotationBG      ui.Color
-	AnnotationActive  ui.Color
-	AnnotationDone    ui.Color
-	AnnotSendFG       ui.Color
-	AnnotSendDot      ui.Color
-	FindMatch         ui.Color
-	FindActive        ui.Color
-	FindRing          ui.Color
-	SearchHighlight   ui.Color
-	OutlineBarLit     ui.Color
-	OutlineBarDim     ui.Color
+	ScrollThumb         ui.Color
+	ScrollThumbHover    ui.Color
+	Link                ui.Color
+	InlineCodeFG        ui.Color
+	InlineCodeBG        ui.Color
+	InlineCodeHoverBG   ui.Color
+	InlineCodeEditBG    ui.Color
+	CodeBlockBG         ui.Color
+	HintBand            ui.Color
+	ListGuide           ui.Color
+	ListBullet          ui.Color
+	TodoBG              ui.Color
+	TodoRing            ui.Color
+	TodoRingHover       ui.Color
+	AnnotationBG        ui.Color
+	AnnotationActive    ui.Color
+	AnnotationDone      ui.Color
+	AnnotSendFG         ui.Color
+	AnnotSendDot        ui.Color
+	FindMatch           ui.Color
+	FindActive          ui.Color
+	FindRing            ui.Color
+	SearchHighlight     ui.Color
+	OutlineBarLit       ui.Color
+	OutlineBarDim       ui.Color
 }
 
 var OceanLight = Palette{
@@ -157,9 +145,7 @@ var OceanLight = Palette{
 	Card:           ui.Hex("#ffffff"),
 	Menu:           ui.Hex("#ffffff"),
 	Text:           ui.Hex("#1f1e1d"),
-	UIText:         ui.Hex("#20242c"),
 	TextSecondary:  ui.Hex("#52514e"),
-	UITextMuted:    ui.Hex("#526071"),
 	Placeholder:    ui.Hex("#93918c"),
 	Accent:         ui.Hex("#547dd0"),
 	AccentHover:    ui.Hex("#456ec2"),
@@ -186,18 +172,16 @@ var OceanLight = Palette{
 	DiffDelBG:      ui.Hex("#fdecea"),
 	DiffDelFG:      ui.Hex("#9e2a2b"),
 
-	BtnHover:          ui.Hex("#f7f7f7"),
-	MenuBorder:        ui.Hex("#e4e4e4"),
-	MenuIcon:          ui.Hex("#3d3c39"),
-	MenuMuted:         ui.Hex("#898781"),
-	MenuHover:         ui.RGBA(0x0b, 0x0b, 0x0b, 0x0d/255.0),
-	MenuChecked:       ui.Hex("#e5edfc"),
-	MenuSeparator:     ui.RGBA(0x0b, 0x0b, 0x0b, 0x1a/255.0),
-	MenuDangerFG:      ui.Hex("#8e2626"),
-	MenuDangerHoverBG: ui.Hex("#d03b3b"),
-	MenuDangerHoverFG: ui.Hex("#ffffff"),
+	MenuBorder:          ui.Hex("#e4e4e4"),
+	MenuIcon:            ui.Hex("#3d3c39"),
+	MenuMuted:           ui.Hex("#898781"),
+	MenuHover:           ui.RGBA(0x0b, 0x0b, 0x0b, 0x0d/255.0),
+	MenuSeparator:       ui.RGBA(0x0b, 0x0b, 0x0b, 0x1a/255.0),
+	MenuDangerFG:        ui.Hex("#8e2626"),
+	MenuDangerHoverBG:   ui.Hex("#d03b3b"),
+	MenuDangerHoverFG:   ui.Hex("#ffffff"),
+	SwitchKnob:          ui.Hex("#ffffff"),
 	TooltipBG:           ui.Hex("#ffffff"),
-	TooltipFG:           ui.Hex("#1f1e1d"),
 	TooltipBorder:       ui.Hex("#d8dee9"),
 	TooltipDivider:      ui.Hex("#edf0f5"),
 	TooltipMuted:        ui.Hex("#586272"),
@@ -207,31 +191,31 @@ var OceanLight = Palette{
 	TooltipPillBG:       ui.Hex("#f2f4f8"),
 	TooltipPillBorder:   ui.Hex("#dfe4ed"),
 	TooltipPillFG:       ui.Hex("#3e4c63"),
-	ScrollThumb:       ui.RGBA(0x0b, 0x0b, 0x0b, 0.20),
-	ScrollThumbHover:  ui.RGBA(0x0b, 0x0b, 0x0b, 0.35),
-	Link:              ui.Hex("#256abf"),
-	InlineCodeFG:      ui.Hex("#eb5757"),
-	InlineCodeBG:      ui.RGBA(135, 131, 120, 0.15),
-	InlineCodeHoverBG: ui.RGBA(135, 131, 120, 0.22),
-	InlineCodeEditBG:  ui.RGBA(135, 131, 120, 0.24),
-	CodeBlockBG:       ui.Hex("#f8f8f6"),
-	HintBand:          ui.Hex("#f8f8f6"),
-	ListGuide:         ui.Hex("#e6e4df"),
-	ListBullet:        ui.Hex("#6f6e69"),
-	TodoBG:            ui.Hex("#f3f1ec"),
-	TodoRing:          ui.Hex("#dedcd6"),
-	TodoRingHover:     ui.Hex("#c4c2bb"),
-	AnnotationBG:      ui.Hex("#fef0d1"),
-	AnnotationActive:  ui.Hex("#fdda8c"),
-	AnnotationDone:    ui.Hex("#e5edfc"),
-	AnnotSendFG:       ui.Hex("#184f95"),
-	AnnotSendDot:      ui.Hex("#f5c84c"),
-	FindMatch:         ui.Hex("#fbe7a6"),
-	FindActive:        ui.Hex("#f4c84f"),
-	FindRing:          ui.Hex("#c9971c"),
-	SearchHighlight:   ui.Hex("#fbe7a6"),
-	OutlineBarLit:     ui.Hex("#1f1e1d"),
-	OutlineBarDim:     ui.Hex("#cfd5de"),
+	ScrollThumb:         ui.RGBA(0x0b, 0x0b, 0x0b, 0.20),
+	ScrollThumbHover:    ui.RGBA(0x0b, 0x0b, 0x0b, 0.35),
+	Link:                ui.Hex("#256abf"),
+	InlineCodeFG:        ui.Hex("#eb5757"),
+	InlineCodeBG:        ui.RGBA(135, 131, 120, 0.15),
+	InlineCodeHoverBG:   ui.RGBA(135, 131, 120, 0.22),
+	InlineCodeEditBG:    ui.RGBA(135, 131, 120, 0.24),
+	CodeBlockBG:         ui.Hex("#f8f8f6"),
+	HintBand:            ui.Hex("#f8f8f6"),
+	ListGuide:           ui.Hex("#e6e4df"),
+	ListBullet:          ui.Hex("#6f6e69"),
+	TodoBG:              ui.Hex("#f3f1ec"),
+	TodoRing:            ui.Hex("#dedcd6"),
+	TodoRingHover:       ui.Hex("#c4c2bb"),
+	AnnotationBG:        ui.Hex("#fef0d1"),
+	AnnotationActive:    ui.Hex("#fdda8c"),
+	AnnotationDone:      ui.Hex("#e5edfc"),
+	AnnotSendFG:         ui.Hex("#184f95"),
+	AnnotSendDot:        ui.Hex("#f5c84c"),
+	FindMatch:           ui.Hex("#fbe7a6"),
+	FindActive:          ui.Hex("#f4c84f"),
+	FindRing:            ui.Hex("#c9971c"),
+	SearchHighlight:     ui.Hex("#fbe7a6"),
+	OutlineBarLit:       ui.Hex("#1f1e1d"),
+	OutlineBarDim:       ui.Hex("#cfd5de"),
 }
 
 var OceanDark = Palette{
@@ -243,9 +227,7 @@ var OceanDark = Palette{
 	Card:           ui.Hex("#222222"),
 	Menu:           ui.Hex("#222222"),
 	Text:           ui.Hex("#ececec"),
-	UIText:         ui.Hex("#ececec"),
 	TextSecondary:  ui.Hex("#b4b4b4"),
-	UITextMuted:    ui.Hex("#a0a7b4"),
 	Placeholder:    ui.Hex("#767676"),
 	Accent:         ui.Hex("#779de8"),
 	AccentHover:    ui.Hex("#88aae9"),
@@ -272,52 +254,50 @@ var OceanDark = Palette{
 	DiffDelBG:      ui.Hex("#3b1f21"),
 	DiffDelFG:      ui.Hex("#f59393"),
 
-	BtnHover:          ui.Hex("#2c2c2c"),
-	MenuBorder:        ui.Hex("#383838"),
-	MenuIcon:          ui.Hex("#b4b4b4"),
-	MenuMuted:         ui.Hex("#8e8d88"),
-	MenuHover:         ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
-	MenuChecked:       ui.Hex("#343434"),
-	MenuSeparator:     ui.RGBA(0xff, 0xff, 0xff, 0x1a/255.0),
-	MenuDangerFG:      ui.Hex("#f28b82"),
-	MenuDangerHoverBG: ui.Hex("#d03b3b"),
-	MenuDangerHoverFG: ui.Hex("#ffffff"),
-	TooltipBG:           ui.Hex("#25272d"),
-	TooltipFG:           ui.Hex("#f2f4f8"),
-	TooltipBorder:       ui.Hex("#3a3e48"),
-	TooltipDivider:      ui.Hex("#343842"),
-	TooltipMuted:        ui.Hex("#a8b0bf"),
+	MenuBorder:          ui.Hex("#383838"),
+	MenuIcon:            ui.Hex("#b4b4b4"),
+	MenuMuted:           ui.Hex("#8e8d88"),
+	MenuHover:           ui.RGBA(0xff, 0xff, 0xff, 0x12/255.0),
+	MenuSeparator:       ui.RGBA(0xff, 0xff, 0xff, 0x1a/255.0),
+	MenuDangerFG:        ui.Hex("#f28b82"),
+	MenuDangerHoverBG:   ui.Hex("#d03b3b"),
+	MenuDangerHoverFG:   ui.Hex("#ffffff"),
+	SwitchKnob:          ui.Hex("#ffffff"),
+	TooltipBG:           ui.Hex("#262626"),
+	TooltipBorder:       ui.Hex("#3a3a3a"),
+	TooltipDivider:      ui.Hex("#343434"),
+	TooltipMuted:        ui.Hex("#b4b4b4"),
 	TooltipAccent:       ui.Hex("#8bb0f9"),
 	TooltipDanger:       ui.Hex("#ff8f8f"),
 	TooltipDangerBorder: ui.Hex("#5a3238"),
-	TooltipPillBG:       ui.Hex("#30343e"),
-	TooltipPillBorder:   ui.Hex("#434957"),
-	TooltipPillFG:       ui.Hex("#dce3f0"),
-	ScrollThumb:       ui.RGBA(0xff, 0xff, 0xff, 0.20),
-	ScrollThumbHover:  ui.RGBA(0xff, 0xff, 0xff, 0.35),
-	Link:              ui.Hex("#256abf"),
-	InlineCodeFG:      ui.Hex("#ff7369"),
-	InlineCodeBG:      ui.RGBA(255, 255, 255, 0.094),
-	InlineCodeHoverBG: ui.RGBA(255, 255, 255, 0.14),
-	InlineCodeEditBG:  ui.RGBA(255, 255, 255, 0.15),
-	CodeBlockBG:       ui.Hex("#1d2026"),
-	HintBand:          ui.Hex("#1e1e1e"),
-	ListGuide:         ui.Hex("#333333"),
-	ListBullet:        ui.Hex("#a9a8a4"),
-	TodoBG:            ui.Hex("#242424"),
-	TodoRing:          ui.Hex("#3a3a3a"),
-	TodoRingHover:     ui.Hex("#5a5a5a"),
-	AnnotationBG:      ui.Hex("#4a3c21"),
-	AnnotationActive:  ui.Hex("#81611e"),
-	AnnotationDone:    ui.Hex("#2d426b"),
-	AnnotSendFG:       ui.Hex("#e6eefc"),
-	AnnotSendDot:      ui.Hex("#f5c84c"),
-	FindMatch:         ui.Hex("#40361e"),
-	FindActive:        ui.Hex("#59451c"),
-	FindRing:          ui.Hex("#c9971c"),
-	SearchHighlight:   ui.Hex("#5c4813"),
-	OutlineBarLit:     ui.Hex("#c6c6c6"),
-	OutlineBarDim:     ui.Hex("#464646"),
+	TooltipPillBG:       ui.Hex("#303030"),
+	TooltipPillBorder:   ui.Hex("#444444"),
+	TooltipPillFG:       ui.Hex("#e0e0e0"),
+	ScrollThumb:         ui.RGBA(0xff, 0xff, 0xff, 0.20),
+	ScrollThumbHover:    ui.RGBA(0xff, 0xff, 0xff, 0.35),
+	Link:                ui.Hex("#8bb0f9"),
+	InlineCodeFG:        ui.Hex("#ff7369"),
+	InlineCodeBG:        ui.RGBA(255, 255, 255, 0.094),
+	InlineCodeHoverBG:   ui.RGBA(255, 255, 255, 0.14),
+	InlineCodeEditBG:    ui.RGBA(255, 255, 255, 0.15),
+	CodeBlockBG:         ui.Hex("#242424"),
+	HintBand:            ui.Hex("#1e1e1e"),
+	ListGuide:           ui.Hex("#333333"),
+	ListBullet:          ui.Hex("#a9a8a4"),
+	TodoBG:              ui.Hex("#242424"),
+	TodoRing:            ui.Hex("#3a3a3a"),
+	TodoRingHover:       ui.Hex("#5a5a5a"),
+	AnnotationBG:        ui.Hex("#4a3c21"),
+	AnnotationActive:    ui.Hex("#81611e"),
+	AnnotationDone:      ui.Hex("#2d426b"),
+	AnnotSendFG:         ui.Hex("#e6eefc"),
+	AnnotSendDot:        ui.Hex("#f5c84c"),
+	FindMatch:           ui.Hex("#40361e"),
+	FindActive:          ui.Hex("#59451c"),
+	FindRing:            ui.Hex("#c9971c"),
+	SearchHighlight:     ui.Hex("#5c4813"),
+	OutlineBarLit:       ui.Hex("#c6c6c6"),
+	OutlineBarDim:       ui.Hex("#464646"),
 }
 
 type IconColors struct {
@@ -384,11 +364,11 @@ func (p Palette) ToUITheme(fontFamily string) ui.Theme {
 	base.Focus = p.Accent
 	base.FocusRingWidth = 2
 	base.FocusRingOffset = 1
-	base.Radius = RadiusControl
-	base.FontSize = FontUISize
+	base.Radius = RadiusMD
+	base.FontSize = FontBody
 	base.Font = fontFamily
 	base.Scrollbar = p.ScrollThumb
-	base.ScrollbarWidth = 6
+	base.ScrollbarWidth = ScrollThumbWidth
 	return base
 }
 

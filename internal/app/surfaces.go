@@ -50,6 +50,12 @@ type TabSurface struct {
 	ImgErr    string
 	SVGSrc    *ui.SVG
 	SVGText   string
+	SVGParsed bool
+
+	lineCountSrc      string
+	lineCount         int
+	gutterCachedLines int
+	gutterCachedText  string
 }
 
 // NewTabSurface constructs a TabSurface from a ClassifiedFile.
@@ -85,9 +91,10 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 }
 
 func (s *TabSurface) reparseSVG() {
-	if s.SVGText == s.Source.Text && s.SVGSrc != nil {
+	if s.SVGParsed && s.SVGText == s.Source.Text {
 		return
 	}
+	s.SVGParsed = true
 	s.SVGText = s.Source.Text
 	parsed, err := ui.ParseSVG([]byte(s.Source.Text))
 	if err == nil {
@@ -243,12 +250,12 @@ func (s *TabSurface) Render(
 		blockui.Probe(box, "blocked-file-view")
 		box.Children(func() {
 			icons.Mascot(c, icons.MascotReadError, 128)
-			ui.Text(c, filepath.Base(s.Path)).FontSize(16).FontWeight(600).TextColor(pal.Text)
+			ui.Text(c, filepath.Base(s.Path)).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 			reason := s.BlockedReason
 			if reason == "" {
 				reason = theme.Tr("此文件为二进制或超出编辑器大小限制，无法作为文本打开。", "This file is binary or exceeds the editor size limit.")
 			}
-			ui.Text(c, reason).FontSize(14).TextColor(pal.TextSecondary).MaxWidth(440)
+			ui.Text(c, reason).FontSize(theme.FontBody).TextColor(pal.TextSecondary).MaxWidth(440)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				icRev := icons.FolderReveal
 				revBtn := blockui.ActionButton(c, "blocked-reveal", theme.Tr("在访达中显示", "Reveal in File Manager"), &icRev, blockui.ButtonSecondary, false)
@@ -271,9 +278,9 @@ func (s *TabSurface) Render(
 			blockui.Probe(stage, "svg-preview-stage")
 			stage.Children(func() {
 				vpW, vpH := c.Size()
-				ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(28).Center().Gap(12).Children(func() {
-					card := ui.Column(c).Padding(24).Radius(theme.RadiusSurface).Background(pal.Paper).
-						Border(1, pal.Hairline).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.08)).Center().Gap(10)
+				ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
+					card := blockui.Elevate(ui.Column(c).Padding(theme.Space24).Radius(theme.RadiusXL).Background(pal.Paper).
+						Border(1, pal.Hairline).Center().Gap(theme.Space10), theme.ElevationDialog)
 					card.Children(func() {
 						if s.SVGSrc != nil {
 							iw, ih := ui.ImageSize(s.SVGSrc)
@@ -297,7 +304,7 @@ func (s *TabSurface) Render(
 						} else {
 							icons.Duo(c, icons.Code, 42, true)
 							ui.Text(c, theme.Tr("SVG 预览不可用，可切换到源码编辑", "SVG preview unavailable — switch to Source")).
-								FontSize(14).TextColor(pal.TextSecondary)
+								FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						}
 					})
 				})
@@ -313,9 +320,9 @@ func (s *TabSurface) Render(
 		blockui.Probe(stage, "image-preview-stage")
 		stage.Children(func() {
 			vpW, vpH := c.Size()
-			ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(28).Center().Gap(12).Children(func() {
-				card := ui.Column(c).Padding(16).Radius(theme.RadiusSurface).Background(pal.Paper).
-					Border(1, pal.Hairline).Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.08)).Center().Gap(10)
+			ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
+				card := blockui.Elevate(ui.Column(c).Padding(theme.Space16).Radius(theme.RadiusXL).Background(pal.Paper).
+					Border(1, pal.Hairline).Center().Gap(theme.Space10), theme.ElevationDialog)
 				card.Children(func() {
 					if s.ImgSrc != nil {
 						iw, ih := ui.ImageSize(s.ImgSrc)
@@ -334,12 +341,12 @@ func (s *TabSurface) Render(
 						}
 						ui.Image(c, s.ImgSrc).Size(max(drawW, 24), max(drawH, 24))
 						ui.Text(c, fmt.Sprintf("%s · %dx%d", filepath.Base(s.Path), int(iw), int(ih))).
-							FontSize(14).TextColor(pal.TextSecondary)
+							FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 					} else {
 						icons.Duo(c, icons.Image, 48, true)
-						ui.Text(c, filepath.Base(s.Path)).FontSize(15).FontWeight(500).TextColor(pal.Text)
+						ui.Text(c, filepath.Base(s.Path)).FontSize(theme.FontTitle).FontWeight(theme.WeightControl).TextColor(pal.Text)
 						if s.ImgErr != "" {
-							ui.Text(c, s.ImgErr).FontSize(14).TextColor(pal.TextSecondary)
+							ui.Text(c, s.ImgErr).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						}
 					}
 				})
@@ -361,30 +368,44 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text st
 		codeFont = "monospace"
 	}
 	outer.Children(func() {
-		lineCount := strings.Count(s.Source.Text, "\n") + 1
+		if s.lineCount == 0 || s.lineCountSrc != s.Source.Text {
+			s.lineCountSrc = s.Source.Text
+			s.lineCount = strings.Count(s.Source.Text, "\n") + 1
+		}
+		lineCount := s.lineCount
+		z := theme.Zoom()
+		if z <= 0 {
+			z = 1.0
+		}
+		codeSz := 14 * z
 		c.Key("source-scroll:" + s.Path)
 		scroll := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(20, 28, 36, 20)
 		scroll.Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(14).Children(func() {
-				gutter := ui.Column(c).Width(42).Shrink(0).AlignItems(ui.End).Padding(8, 6, 8, 0).
+			ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(14*z).Children(func() {
+				gutter := ui.Column(c).Width(42*z).Shrink(0).AlignItems(ui.End).Padding(8*z, 6*z, 8*z, 0).
 					BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline)
 				gutter.Children(func() {
 					maxLines := min(lineCount, 400)
-					var sb strings.Builder
-					for i := 1; i <= maxLines; i++ {
-						if i > 1 {
-							sb.WriteByte('\n')
+					if s.gutterCachedLines != maxLines {
+						var sb strings.Builder
+						sb.Grow(maxLines * 4)
+						for i := 1; i <= maxLines; i++ {
+							if i > 1 {
+								sb.WriteByte('\n')
+							}
+							fmt.Fprintf(&sb, "%d", i)
 						}
-						fmt.Fprintf(&sb, "%d", i)
+						s.gutterCachedLines = maxLines
+						s.gutterCachedText = sb.String()
 					}
-					ui.Text(c, sb.String()).Font(codeFont).FontSize(14).LineHeight(1.55).
+					ui.Text(c, s.gutterCachedText).Font(codeFont).FontSize(codeSz).LineHeight(1.55).
 						TextColor(pal.TextSecondary).AccessHidden(true)
 				})
 
 				prev := s.Source.Text
 				c.Key("source-editor:" + s.Path)
-				ta := blockui.AutoHideScrollbars(c, ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8).
-					Font(codeFont).FontSize(14).LineHeight(1.55).TextColor(pal.Text).
+				ta := blockui.AutoHideScrollbars(c, ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8*z).
+					Font(codeFont).FontSize(codeSz).LineHeight(1.55).TextColor(pal.Text).
 					CaretColor(pal.Accent).CaretWidth(2).
 					Background(ui.Transparent).BorderWidth(0))
 				blockui.Probe(ta, "source-editor")
@@ -616,15 +637,15 @@ func (h *PageHistoryView) Render(
 			blockui.Probe(center, "history-titlebar-drag")
 			center.Children(func() {
 				noteName := noteDisplayTitle(h.NotePath, false)
-				pill := ui.Row(c).Height(28).PaddingX(10).MaxWidth(360).Shrink(1).MinWidth(0).AlignItems(ui.Center).
-					Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent)
+				pill := ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space10).MaxWidth(360).Shrink(1).MinWidth(0).AlignItems(ui.Center).
+					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent)
 				pill.Children(func() {
 					ui.Text(c, fmt.Sprintf("%s · %s", noteName, theme.Tr("页面历史", "Page History"))).
-						FontSize(14).FontWeight(500).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+						FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				ts := h.selectedTimestamp()
 				if ts != "" && !narrowHist {
-					ui.Text(c, ts).FontSize(14).FontWeight(500).TextColor(pal.TextSecondary).Shrink(2).MinWidth(0).SingleLine().Ellipsis("…")
+					ui.Text(c, ts).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Shrink(2).MinWidth(0).SingleLine().Ellipsis("…")
 				}
 			})
 
@@ -683,10 +704,10 @@ func (h *PageHistoryView) Render(
 						bannerMarginX = 16
 					}
 					ui.Row(c).FillWidth().MinWidth(0).Margin(12, bannerMarginX, 0, bannerMarginX).Padding(10, 12, 10, 14).
-						Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.Hairline).
+						Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 						ui.Text(c, theme.Tr("页面已更新，请重新对比。", "Page has been updated externally; please re-diff.")).
-							FontSize(14).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
+							FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
 						reBtn := blockui.ActionButton(c, "history-error-action", theme.Tr("重新对比", "Re-diff"), nil, blockui.ButtonSecondary, false)
 						if reBtn.Clicked() && onRetry != nil {
 							onRetry()
@@ -711,13 +732,13 @@ func (h *PageHistoryView) Render(
 							ui.Column(c).FillWidth().PaddingY(48).Center().Gap(10).Children(func() {
 								icons.Duo(c, icons.History, 36, true)
 								ui.Text(c, theme.Tr("当前笔记还没有历史版本快照（保存修改后自动生成）", "No history snapshots recorded for this note yet.")).
-									FontSize(14).TextColor(pal.TextSecondary)
+									FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 							})
 							return
 						}
 						if h.ErrorMsg != "" {
-							ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusControl).Background(pal.DangerSurface).Gap(8).Children(func() {
-								ui.Text(c, h.ErrorMsg).FontSize(14).TextColor(pal.Danger)
+							ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusMD).Background(pal.DangerSurface).Gap(8).Children(func() {
+								ui.Text(c, h.ErrorMsg).FontSize(theme.FontBody).TextColor(pal.Danger)
 								retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), nil, blockui.ButtonSecondary, false)
 								if retryBtn.Clicked() && onRetry != nil {
 									onRetry()
@@ -744,9 +765,9 @@ func (h *PageHistoryView) Render(
 								bg = pal.DiffDelBG
 								fg = pal.DiffDelFG
 							}
-							row := ui.Row(c).FillWidth().MinWidth(0).Padding(3, 10, 3, 10).Radius(4).Background(bg)
+							row := ui.Row(c).FillWidth().MinWidth(0).Padding(3, 10, 3, 10).Radius(theme.RadiusXS).Background(bg)
 							row.Children(func() {
-								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(fg).Grow(1).MinWidth(0)
+								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(theme.FontBody).LineHeight(1.5).TextColor(fg).Grow(1).MinWidth(0)
 							})
 						}
 					})
@@ -765,7 +786,7 @@ func (h *PageHistoryView) Render(
 				ui.Row(c).FillWidth().Height(38).PaddingX(14).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					ui.Text(c, fmt.Sprintf("%s (%d)", theme.Tr("历史版本", "Snapshots"), len(h.Entries))).
-						FontSize(14).FontWeight(600).TextColor(pal.Text)
+						FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				})
 				blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(8).Children(func() {
 					ui.Column(c).FillWidth().Gap(4).Children(func() {
@@ -778,7 +799,7 @@ func (h *PageHistoryView) Render(
 							if strings.TrimSpace(lbl) == "" {
 								lbl = fmt.Sprintf("%d B", entry.Size)
 							}
-							btn := ui.ButtonBase(c).FillWidth().Padding(8, 10, 8, 10).Radius(theme.RadiusControl).
+							btn := ui.ButtonBase(c).FillWidth().Padding(8, 10, 8, 10).Radius(theme.RadiusMD).
 								Cursor(ui.CursorPointer).Label(lbl)
 							switch {
 							case sel:
@@ -792,8 +813,8 @@ func (h *PageHistoryView) Render(
 								col := ui.Column(c).FillWidth().Gap(3)
 								col.Children(func() {
 									ts := formatSnapshotTime(entry.Timestamp, "01-02 15:04:05")
-									ui.Text(c, ts).FontSize(14).FontWeight(500).TextColor(pal.Text).SingleLine()
-									ui.Text(c, lbl).FontSize(14).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+									ui.Text(c, ts).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+									ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 								})
 							})
 							blockui.Probe(btn, rowID)
@@ -812,13 +833,13 @@ func (h *PageHistoryView) Render(
 	blockui.ModalCard(c, "history-confirm-modal", title, &h.ConfirmOpen, 400, 0, func() {
 		ui.Column(c).FillWidth().Padding(20).Gap(14).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, title).FontSize(16).FontWeight(560).TextColor(pal.Text)
+				ui.Text(c, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				btn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{ID: "history-restore-close", Label: theme.Tr("关闭", "Close")})
 				if btn.Clicked() {
 					h.ConfirmOpen = false
 				}
 			})
-			ui.Text(c, theme.Tr("当前内容会保留在历史中。", "Current content will be retained in history.")).FontSize(14).TextColor(pal.TextSecondary)
+			ui.Text(c, theme.Tr("当前内容会保留在历史中。", "Current content will be retained in history.")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			ui.Row(c).FillWidth().Justify(ui.End).Gap(8).Children(func() {
 				cancelBtn := blockui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, blockui.ButtonSecondary, false)
 				if cancelBtn.Clicked() {
@@ -842,7 +863,7 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 	pal := theme.Ocean()
 	doc := markdown.ParseMarkdown(rawText)
 	if doc == nil || len(doc.Blocks) == 0 {
-		ui.Text(c, theme.Tr("（空笔记）", "(Empty note)")).FontSize(15).TextColor(pal.TextSecondary)
+		ui.Text(c, theme.Tr("（空笔记）", "(Empty note)")).FontSize(theme.FontTitle).TextColor(pal.TextSecondary)
 		return
 	}
 	for ix, b := range doc.Blocks {
@@ -851,12 +872,12 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 		case model.BlockDivider:
 			ui.Box(c).FillWidth().Height(1).MarginY(8).Background(pal.Hairline)
 		case model.BlockCode, model.BlockRawHTML:
-			ui.Box(c).FillWidth().Padding(10, 14).Radius(theme.RadiusControl).Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
-				ui.Text(c, b.Code).Font(codeFont).FontSize(14).LineHeight(1.5).TextColor(pal.Text)
+			ui.Box(c).FillWidth().Padding(10, 14).Radius(theme.RadiusMD).Background(pal.CodeBG).Border(1, pal.Hairline).Children(func() {
+				ui.Text(c, b.Code).Font(codeFont).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text)
 			})
 		case model.BlockTable:
 			if b.Table != nil && len(b.Table.Rows) > 0 {
-				ui.Column(c).FillWidth().Radius(6).Border(1, pal.Hairline).Clip().Children(func() {
+				ui.Column(c).FillWidth().Radius(theme.RadiusSM).Border(1, pal.Hairline).Clip().Children(func() {
 					for rIdx, r := range b.Table.Rows {
 						rowEl := ui.Row(c).FillWidth()
 						if rIdx+1 < len(b.Table.Rows) {
@@ -868,9 +889,9 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 						rowEl.Children(func() {
 							for _, cell := range r {
 								ui.Box(c).Grow(1).Padding(6, 10).Children(func() {
-									t := ui.Text(c, cell.PlainText()).FontSize(14).TextColor(pal.Text)
+									t := ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text)
 									if rIdx == 0 {
-										t.FontWeight(600)
+										t.FontWeight(theme.WeightTitle)
 									}
 								})
 							}
@@ -883,8 +904,8 @@ func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string)
 			if b.Kind == model.BlockCallout && b.Callout != "" {
 				txt = fmt.Sprintf("[%s] %s", b.Callout, txt)
 			}
-			ui.Box(c).FillWidth().Padding(6, 12, 6, 14).BorderWidth(0, 0, 0, 3).BorderColor(pal.Accent).Background(pal.Shell).Radius(4).Children(func() {
-				t := ui.Text(c, txt).FontSize(15).LineHeight(1.6).TextColor(pal.Text)
+			ui.Box(c).FillWidth().Padding(6, 12, 6, 14).BorderWidth(0, 0, 0, 3).BorderColor(pal.Accent).Background(pal.Shell).Radius(theme.RadiusXS).Children(func() {
+				t := ui.Text(c, txt).FontSize(theme.FontTitle).LineHeight(1.6).TextColor(pal.Text)
 				if edFont != "" {
 					t.Font(edFont)
 				}
@@ -935,11 +956,11 @@ func (t *HistoryToast) RenderBanner(c *ui.Context, onUndo func(), onDismiss func
 	pal := theme.Ocean()
 	c.Key("history-toast")
 	row := ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
-		Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent).
+		Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12)
 	blockui.Probe(row, "history-toast")
 	row.Children(func() {
-		ui.Text(c, t.Message).FontSize(14).FontWeight(500).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, t.Message).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(8).Children(func() {
 			if t.CanUndo {
 				undoBtn := blockui.ActionButton(c, "history-toast-undo", theme.Tr("撤销恢复", "Undo Restore"), nil, blockui.ButtonSecondary, false)
