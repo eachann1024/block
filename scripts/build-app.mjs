@@ -104,7 +104,7 @@ export async function buildApp({
       job.staging = timer.measure("workspace_temp", () => workspaceTemp());
       const stageBin = join(job.staging, "block");
       timer.measure("go_build", () =>
-        goBuild({ root, goos: "darwin", goarch: targetArch, outFile: stageBin, profile, useMygo }),
+        goBuild({ root, goos: "darwin", goarch: targetArch, outFile: stageBin, profile, useMygo, tempDir: job.staging }),
       );
       if (profile === "release") {
         timer.measure("system_libraries", () => assertSystemLibraries(stageBin));
