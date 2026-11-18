@@ -114,6 +114,35 @@ func blockLinkRanges(b *model.Block) []appUi.RichLinkRange {
 	return out
 }
 
+func blockCodeRanges(b *model.Block, baseSize float32) []appUi.RichCodeRange {
+	if b == nil || len(b.Spans) == 0 {
+		return nil
+	}
+	_, _, padX, padY, radius := inlineCodeStyle(baseSize)
+	dark := theme.IsDark()
+	var out []appUi.RichCodeRange
+	pos := 0
+	for _, sp := range b.Spans {
+		n := utf8.RuneCountInString(sp.Text)
+		_, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark)
+		if sp.Marks&model.MarkCode != 0 && !hasNamedBG && n > 0 {
+			if m := len(out); m > 0 && out[m-1].End == pos {
+				out[m-1].End = pos + n
+			} else {
+				out = append(out, appUi.RichCodeRange{
+					Start:  pos,
+					End:    pos + n,
+					PadX:   padX,
+					PadY:   padY,
+					Radius: radius,
+				})
+			}
+		}
+		pos += n
+	}
+	return out
+}
+
 func blockHasChipBG(b *model.Block) bool {
 	if b == nil {
 		return false

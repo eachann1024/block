@@ -30,19 +30,37 @@ type RichLinkRange struct {
 	URL        string
 }
 
+// RichCodeRange marks a [Start, End) inline code chip range whose background fill
+// transitions uniformly across rest, hover, active caret/edit, and selection states.
+type RichCodeRange struct {
+	Start, End int
+	PadX       float32
+	PadY       float32
+	Radius     float32
+}
+
 // RichDecorOptions configures shared decoration painting for both unfocused RichText and focused RichInput.
 type RichDecorOptions struct {
-	FontSize     float32
-	Spans        []ui.Span
-	Bands        []RichBand
-	Links        []RichLinkRange
-	OpaqueRanges [][2]int
-	LinkColor    ui.Color
-	CaretPos     int // < 0 means do not draw caret
-	CaretAff     ui.TextAffinity
-	CaretColor   ui.Color
-	CaretAlpha   float32
-	HasChipBG    bool // whether any span carries an opaque background chip
+	FontSize        float32
+	Spans           []ui.Span
+	Bands           []RichBand
+	Links           []RichLinkRange
+	CodeRanges      []RichCodeRange
+	CodeBG          ui.Color
+	CodeHoverBG     ui.Color
+	CodeEditBG      ui.Color
+	SelRange        [2]int
+	OpaqueRanges    [][2]int
+	LinkColor       ui.Color
+	CaretPos        int // < 0 means do not draw caret
+	CaretAff        ui.TextAffinity
+	CaretColor      ui.Color
+	CaretAlpha      float32
+	HasChipBG       bool // whether any span carries an opaque background chip
+	PointerWin      ui.Point
+	HasPointer      bool
+	LocalPointer    ui.Point
+	HasLocalPointer bool
 }
 
 // RichInputOptions configures a single-block rich text editor whose glyph shaping and inline
@@ -67,10 +85,16 @@ type RichInputOptions struct {
 	SuppressSelection bool
 	ReadOnly          bool
 	SyncSelection     bool
+	FocusPending      bool
 	Anchor            int
 	Caret             int
 	Bands             []RichBand
 	Links             []RichLinkRange
+	CodeRanges        []RichCodeRange
+	CodeBG            ui.Color
+	CodeHoverBG       ui.Color
+	CodeEditBG        ui.Color
+	SelRange          [2]int
 	OpaqueRanges      [][2]int
 	HasChipBG         bool
 
@@ -1192,19 +1216,117 @@ func resolveBandLineRects(lay *ui.TextLayout, text string, spans []ui.Span, bd R
 	return merged
 }
 
-// DrawRichDecorations paints highlight bands (behind text + subtle chip tint when needed),
+func resolveCodeChipRects(lay *ui.TextLayout, lines []ui.TextLine, text string, fontSize float32, cr RichCodeRange) []ui.Rect {
+	if lay == nil || cr.End <= cr.Start {
+		return nil
+	}
+	u0 := runeToUTF16Off(text, cr.Start)
+	u1 := runeToUTF16Off(text, cr.End)
+	raw := lay.SelectionRects(ui.TextInputRange{Start: u0, End: u1})
+	if len(raw) == 0 {
+		return nil
+	}
+	maxJoinGap := max(cr.PadX*2+4, 2)
+	merged := make([]ui.Rect, 0, len(raw))
+	for _, sr := range raw {
+		if n := len(merged); n > 0 {
+			prev := &merged[n-1]
+			if float32(math.Abs(float64(sr.Y-prev.Y))) < 0.5 && sr.X-(prev.X+prev.W) <= maxJoinGap && sr.X >= prev.X-0.5 {
+				right := max(prev.X+prev.W, sr.X+sr.W)
+				prev.X = min(prev.X, sr.X)
+				prev.W = right - prev.X
+				prev.H = max(prev.H, sr.H)
+				continue
+			}
+		}
+		merged = append(merged, sr)
+	}
+	chipH := fontSize*1.32 + 2*cr.PadY
+	for i, sr := range merged {
+		chipY := sr.Y + (sr.H-chipH)*0.5
+		for _, ln := range lines {
+			if sr.Y+sr.H*0.5 >= ln.Rect.Y && sr.Y+sr.H*0.5 <= ln.Rect.Y+ln.Rect.H {
+				chipY = ln.Baseline - fontSize*0.98 - cr.PadY
+				break
+			}
+		}
+		merged[i] = ui.Rect{
+			X: sr.X - cr.PadX,
+			Y: chipY,
+			W: sr.W + 2*cr.PadX,
+			H: chipH,
+		}
+	}
+	return merged
+}
+
+func clearCodeRangeSpanBG(spans []ui.Span, codeRanges []RichCodeRange) []ui.Span {
+	if len(spans) == 0 || len(codeRanges) == 0 {
+		return spans
+	}
+	out := make([]ui.Span, len(spans))
+	copy(out, spans)
+	pos := 0
+	for i := range out {
+		n := utf8.RuneCountInString(out[i].Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if out[i].Background.A == 0 || n == 0 {
+			continue
+		}
+		for _, cr := range codeRanges {
+			if s1 > cr.Start && s0 < cr.End {
+				out[i].Background = ui.Color{}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func shiftCodeRangesForCompose(codeRanges []RichCodeRange, caretRune, compLen int) []RichCodeRange {
+	if len(codeRanges) == 0 || compLen <= 0 {
+		return codeRanges
+	}
+	out := make([]RichCodeRange, len(codeRanges))
+	copy(out, codeRanges)
+	for i := range out {
+		if caretRune < out[i].Start {
+			out[i].Start += compLen
+			out[i].End += compLen
+		} else if caretRune <= out[i].End {
+			out[i].End += compLen
+		}
+	}
+	return out
+}
+
+// DrawRichDecorations paints inline code chips, highlight bands (behind text + subtle chip tint when needed),
 // hover/caret link underlines, and the smooth blinking caret using the exact frame width r.W.
+// Note: never call target.PointerPosition() here, because setting flagTrackPointer on an unfocused
+// RichText child would mark it interactive and intercept canvas click/drag selection.
 func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn func(width float32) *ui.TextLayout, opts RichDecorOptions) {
-	if len(opts.Bands) == 0 && len(opts.Links) == 0 && opts.CaretPos < 0 {
+	if len(opts.Bands) == 0 && len(opts.Links) == 0 && len(opts.CodeRanges) == 0 && opts.CaretPos < 0 {
 		return
 	}
-	px, py, inside := target.PointerPosition()
-	bounds := target.Bounds()
+	resolvePtr := func(r ui.Rect) (px, py float32, inside bool) {
+		if opts.HasLocalPointer {
+			return opts.LocalPointer.X, opts.LocalPointer.Y, true
+		}
+		if opts.HasPointer {
+			lx := opts.PointerWin.X - r.X
+			ly := opts.PointerWin.Y - r.Y
+			if lx >= 0 && lx <= r.W && ly >= 0 && ly <= r.H {
+				return lx, ly, true
+			}
+		}
+		return 0, 0, false
+	}
 	scale := min(opts.FontSize/16, 1)
 	chipTargetH := float32(math.Round(float64(opts.FontSize + 5*scale)))
 	bandH := float32(math.Round(float64(opts.FontSize * 1.32)))
 
-	if len(opts.Bands) > 0 {
+	if len(opts.CodeRanges) > 0 || len(opts.Bands) > 0 {
 		target.Draw(func(p *ui.Painter, r ui.Rect) {
 			if r.W <= 0 {
 				return
@@ -1212,6 +1334,52 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 			lay := layFn(r.W)
 			if lay == nil {
 				return
+			}
+			if len(opts.CodeRanges) > 0 {
+				px, py, inside := resolvePtr(r)
+				lines := lay.Lines()
+				hasSel := opts.SelRange[1] > opts.SelRange[0]
+				selLo, selHi := opts.SelRange[0], opts.SelRange[1]
+				for _, cr := range opts.CodeRanges {
+					if cr.End <= cr.Start {
+						continue
+					}
+					if hasSel && selLo <= cr.Start && selHi >= cr.End {
+						continue
+					}
+					rects := resolveCodeChipRects(lay, lines, text, opts.FontSize, cr)
+					if len(rects) == 0 {
+						continue
+					}
+					isEdit := (hasSel && selLo < cr.End && cr.Start < selHi) ||
+						(!hasSel && opts.CaretPos >= 0 && opts.CaretPos >= cr.Start && opts.CaretPos <= cr.End)
+					isHover := false
+					if !isEdit && inside {
+						for _, crRect := range rects {
+							if px >= crRect.X && px <= crRect.X+crRect.W && py >= crRect.Y && py <= crRect.Y+crRect.H {
+								isHover = true
+								break
+							}
+						}
+					}
+					fill := opts.CodeBG
+					if isEdit && opts.CodeEditBG.A > 0 {
+						fill = opts.CodeEditBG
+					} else if isHover && opts.CodeHoverBG.A > 0 {
+						fill = opts.CodeHoverBG
+					}
+					if fill.A == 0 {
+						continue
+					}
+					for _, crRect := range rects {
+						p.Fill(ui.Rect{
+							X: r.X + crRect.X,
+							Y: r.Y + crRect.Y,
+							W: crRect.W,
+							H: crRect.H,
+						}, fill, cr.Radius)
+					}
+				}
 			}
 			for _, bd := range opts.Bands {
 				if bd.End <= bd.Start {
@@ -1260,6 +1428,7 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 		if lay == nil {
 			return
 		}
+		px, py, inside := resolvePtr(r)
 		lines := lay.Lines()
 
 		if len(opts.OpaqueRanges) > 0 {
@@ -1300,9 +1469,9 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 			u1 := runeToUTF16Off(text, lr.End)
 			rects := lay.SelectionRects(ui.TextInputRange{Start: u0, End: u1})
 			show := opts.CaretPos >= 0 && opts.CaretPos >= lr.Start && opts.CaretPos <= lr.End
-			if !show && inside && bounds.W > 0 {
+			if !show && inside && r.W > 0 {
 				for _, sr := range rects {
-					if px >= bounds.X+sr.X && px <= bounds.X+sr.X+sr.W && py >= bounds.Y+sr.Y && py <= bounds.Y+sr.Y+sr.H {
+					if px >= sr.X && px <= sr.X+sr.W && py >= sr.Y && py <= sr.Y+sr.H {
 						show = true
 						break
 					}
@@ -1380,8 +1549,13 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	if len(dispSpans) == 0 && opts.Text != "" {
 		dispSpans = []ui.Span{{Text: opts.Text}}
 	}
+	if len(opts.CodeRanges) > 0 && len(dispSpans) > 0 {
+		dispSpans = clearCodeRangeSpanBG(dispSpans, opts.CodeRanges)
+	}
+	codeRanges := opts.CodeRanges
 	if st.compose != "" {
 		dispSpans = insertComposeIntoSpans(dispSpans, opts.Text, st.caret, st.compose)
+		codeRanges = shiftCodeRangesForCompose(codeRanges, st.caret, utf8.RuneCountInString(st.compose))
 	}
 
 	fam := opts.Font
@@ -1410,8 +1584,10 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	})
 
 	bands := opts.Bands
+	selRange := opts.SelRange
 	lo, hi := st.OrderedSelection()
 	if !opts.SuppressSelection && !st.Composing() && hi > lo {
+		selRange = [2]int{lo, hi}
 		bands = append(bands[:len(bands):len(bands)], RichBand{
 			Start:        lo,
 			End:          hi,
@@ -1425,7 +1601,8 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 
 	caretPos := -1
 	var caretAlpha float32
-	if !opts.ReadOnly && !opts.HideCaret && !opts.SuppressSelection && lo == hi && box.Focused() && c.WindowActive() {
+	isFocused := box.Focused() || opts.FocusPending
+	if !opts.ReadOnly && !opts.HideCaret && !opts.SuppressSelection && lo == hi && isFocused && c.WindowActive() {
 		now := c.Now()
 		visCaret := st.caret
 		if st.compose != "" {
@@ -1439,6 +1616,16 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 		c.After(time.Duration(wait) * time.Millisecond)
 		caretPos = visCaret
 		caretAlpha = alpha
+	}
+
+	var localPtr ui.Point
+	var hasLocalPtr bool
+	if len(codeRanges) > 0 || len(opts.Links) > 0 {
+		lx, ly, over := box.PointerPosition()
+		if over {
+			localPtr = ui.Point{X: lx, Y: ly}
+			hasLocalPtr = true
+		}
 	}
 
 	box.Children(func() {
@@ -1459,17 +1646,24 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			rt.TextAlign(opts.TextAlign)
 		}
 		DrawRichDecorations(c, rt, st.displayText, st.ensureLayout, RichDecorOptions{
-			FontSize:     opts.FontSize,
-			Spans:        dispSpans,
-			Bands:        bands,
-			Links:        opts.Links,
-			OpaqueRanges: opts.OpaqueRanges,
-			LinkColor:    opts.LinkColor,
-			CaretPos:     caretPos,
-			CaretAff:     st.affinity,
-			CaretColor:   opts.CaretColor,
-			CaretAlpha:   caretAlpha,
-			HasChipBG:    opts.HasChipBG,
+			FontSize:        opts.FontSize,
+			Spans:           dispSpans,
+			Bands:           bands,
+			Links:           opts.Links,
+			CodeRanges:      codeRanges,
+			CodeBG:          opts.CodeBG,
+			CodeHoverBG:     opts.CodeHoverBG,
+			CodeEditBG:      opts.CodeEditBG,
+			SelRange:        selRange,
+			OpaqueRanges:    opts.OpaqueRanges,
+			LinkColor:       opts.LinkColor,
+			CaretPos:        caretPos,
+			CaretAff:        st.affinity,
+			CaretColor:      opts.CaretColor,
+			CaretAlpha:      caretAlpha,
+			HasChipBG:       opts.HasChipBG,
+			LocalPointer:    localPtr,
+			HasLocalPointer: hasLocalPtr,
 		})
 	})
 
