@@ -280,6 +280,9 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd, ui.KeyX) && s.inlineAI == nil && !s.findOpen && (s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()) {
 		s.CutSelection(c)
 	}
+	if (c.Shortcut(ui.Cmd|ui.Shift, ui.KeyV) || c.Shortcut(ui.Cmd|ui.Shift|ui.Alt, ui.KeyV)) && s.inlineAI == nil && !s.findOpen {
+		s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+	}
 	if c.Shortcut(ui.Cmd, ui.KeyV) && s.inlineAI == nil && !s.findOpen {
 		s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
 	}
@@ -1178,6 +1181,9 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			},
 			OnPaste: func(svc ui.Services, pasted string) bool {
 				return s.PasteFromClipboard(svc, pasted, true)
+			},
+			OnPastePlain: func(svc ui.Services, pasted string) bool {
+				return s.PastePlainFromClipboard(svc, pasted, true)
 			},
 			OnOpenLink: func(url string) {
 				s.openBlockLink(c.Services(), url)
@@ -2363,6 +2369,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				},
 				OnPaste: func(svc ui.Services, pasted string) bool {
 					return s.PasteFromClipboard(svc, pasted, true)
+				},
+				OnPastePlain: func(svc ui.Services, pasted string) bool {
+					return s.PastePlainFromClipboard(svc, pasted, true)
 				},
 				OnOpenLink: func(url string) {
 					s.openBlockLink(c.Services(), url)

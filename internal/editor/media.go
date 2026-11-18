@@ -277,10 +277,28 @@ func (s *Session) insertImportedBlocks(inserted []model.Block, targetID model.Bl
 	return count
 }
 
-// PasteFromClipboard inspects clipboard file lists and image bitmaps first, then falls back
-// to Markdown / rich paste handling. Returns true when handled by Session (preventing default plain insert).
+// PasteFromClipboard inspects clipboard file lists, image bitmaps, URL-over-selection,
+// and semantic HTML / Markdown before falling back to plain text insertion.
+// Returns true when handled by Session (preventing default plain insert).
 func (s *Session) PasteFromClipboard(svc ui.Services, fallbackText string, inlineInput bool) bool {
+	return s.pasteFromClipboard(svc, fallbackText, inlineInput, false)
+}
+
+// PastePlainFromClipboard handles pasteAndMatchStyle (Cmd/Ctrl+Shift+V) as unformatted plain text.
+func (s *Session) PastePlainFromClipboard(svc ui.Services, fallbackText string, inlineInput bool) bool {
+	return s.pasteFromClipboard(svc, fallbackText, inlineInput, true)
+}
+
+func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlineInput bool, plainOnly bool) bool {
 	if s.readOnly {
+		return true
+	}
+
+	if plainOnly {
+		if fallbackText == "" {
+			return false
+		}
+		s.PastePlainText(fallbackText)
 		return true
 	}
 
@@ -319,13 +337,38 @@ func (s *Session) PasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		}
 	}
 
+	// 3. Smart URL paste over selected text (Notion / Feishu behavior).
+	if s.tryPasteURLOverSelection(fallbackText) {
+		return true
+	}
+
+	// 4. Smart dual-channel clipboard: explicit Markdown format or semantic HTML from web / Feishu / Notion / Word.
+	richData := svc.ReadClipboardData(transfer.Markdown, transfer.HTML)
+	if len(richData.Items()) > 0 {
+		if mdRaw, err := richData.Read(transfer.Markdown); err == nil && strings.TrimSpace(string(mdRaw)) != "" {
+			s.PasteText(string(mdRaw))
+			return true
+		}
+		if htmlRaw, err := richData.Read(transfer.HTML); err == nil && len(htmlRaw) > 0 && s.codec != nil {
+			if converted, ok := s.codec.ConvertHTMLPaste(string(htmlRaw), fallbackText); ok {
+				s.PasteText(converted)
+				return true
+			}
+		}
+	}
+
 	if fallbackText == "" {
 		return false
 	}
 
-	// 3. Text / Markdown paste.
+	// 5. Text / Markdown paste.
 	if inlineInput {
-		if strings.ContainsAny(fallbackText, "\n\t") || looksLikeMarkdownBlock(fallbackText) || looksLikeInlineMarkdown(fallbackText) {
+		normProbe := fallbackText
+		if s.codec != nil {
+			normProbe = s.codec.NormalizePaste(fallbackText)
+		}
+		if normProbe != fallbackText || strings.ContainsAny(fallbackText, "\r\n\t") ||
+			looksLikeMarkdownBlock(normProbe) || looksLikeInlineMarkdown(normProbe) {
 			s.PasteText(fallbackText)
 			return true
 		}

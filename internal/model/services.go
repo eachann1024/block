@@ -6,6 +6,7 @@ type MarkdownCodec interface {
 	Parse(src string) *Doc
 	Serialize(doc *Doc) string
 	NormalizePaste(raw string) string
+	ConvertHTMLPaste(htmlRaw, plainFallback string) (string, bool)
 }
 
 // WorkspaceHost exposes notebook, note, search, history, and diff-plan hooks

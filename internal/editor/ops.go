@@ -583,6 +583,34 @@ func (s *Session) PasteText(raw string) {
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}
+	idx := s.focusedBlock
+	if idx < 0 || idx >= len(s.doc.Blocks) {
+		idx = 0
+	}
+
+	// Code / RawHTML block pastes raw text literally at caret (dedenting common leading indent on multi-line code).
+	if !s.hasMultiBlockSelection() && !s.hasWholeAtomicSelection() {
+		curBlk := &s.doc.Blocks[idx]
+		if curBlk.Kind == model.BlockCode || curBlk.Kind == model.BlockRawHTML {
+			codeNorm := strings.TrimPrefix(raw, "\uFEFF")
+			codeNorm = strings.ReplaceAll(strings.ReplaceAll(codeNorm, "\r\n", "\n"), "\r", "\n")
+			if codeNorm == "" {
+				return
+			}
+			if curBlk.Kind == model.BlockCode && curBlk.Language != "math" && strings.Contains(codeNorm, "\n") && s.isCaretAtLineStartInBlock(idx) {
+				codeNorm = dedentCodeSnippet(codeNorm)
+			}
+			s.pushUndo()
+			s.firstLineDeleteArmed = false
+			s.replaceCurrentSelectionInBlock(idx, codeNorm)
+			return
+		}
+	}
+
+	if s.tryPasteURLOverSelection(raw) {
+		return
+	}
+
 	norm := raw
 	if s.codec != nil {
 		norm = s.codec.NormalizePaste(raw)
@@ -596,19 +624,10 @@ func (s *Session) PasteText(raw string) {
 	if s.pasteOverMultiSelection(norm) {
 		return
 	}
-	idx := s.focusedBlock
-	if idx < 0 || idx >= len(s.doc.Blocks) {
-		idx = 0
-	}
+
 	b := &s.doc.Blocks[idx]
 	s.pushUndo()
 	s.firstLineDeleteArmed = false
-
-	// Code block pastes raw text literally at caret.
-	if b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
-		s.replaceCurrentSelectionInBlock(idx, norm)
-		return
-	}
 
 	// Table block pastes TSV grid across rows/cols or inline spans into active cell.
 	if b.Kind == model.BlockTable && b.Table != nil {
@@ -651,68 +670,446 @@ func (s *Session) PasteText(raw string) {
 		}
 		return
 	}
-	for i := range parsed.Blocks {
-		if parsed.Blocks[i].ID == 0 {
-			parsed.Blocks[i].ID = model.NewBlockID()
-		}
-		parsed.Blocks[i].Dirty = true
-	}
 
-	if len(parsed.Blocks) == 1 && parsed.Blocks[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
-		s.replaceSelectionWithSpansInBlock(idx, parsed.Blocks[0].Spans)
+	// Collapse blank separator blocks so pasting never spawns empty paragraph blocks (Notion / Feishu rule).
+	filtered := make([]model.Block, 0, len(parsed.Blocks))
+	for _, pb := range parsed.Blocks {
+		if pb.Kind == model.BlockParagraph && pb.Indent == 0 && len(pb.Spans) == 0 {
+			continue
+		}
+		if pb.ID == 0 {
+			pb.ID = model.NewBlockID()
+		}
+		pb.Dirty = true
+		pb.CleanSource = ""
+		filtered = append(filtered, pb)
+	}
+	if len(filtered) == 0 {
 		return
 	}
 
-	// Splice parsed blocks into document.
+	if len(filtered) == 1 && filtered[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
+		return
+	}
+
+	s.splicePastedBlocksAtSelection(idx, filtered)
+}
+
+// PastePlainText inserts unformatted literal text (Cmd/Ctrl+Shift+V) without parsing Markdown, HTML, or URLs.
+func (s *Session) PastePlainText(raw string) {
+	if s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
+		return
+	}
+	clean := strings.TrimPrefix(raw, "\uFEFF")
+	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "\r\n", "\n"), "\r", "\n")
+	if clean == "" {
+		return
+	}
+	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() {
+		s.ReplaceSelectionWithText(clean)
+		return
+	}
+	idx := s.focusedBlock
+	if idx < 0 || idx >= len(s.doc.Blocks) {
+		idx = 0
+	}
+	b := &s.doc.Blocks[idx]
+	s.pushUndo()
+	s.firstLineDeleteArmed = false
+
+	if b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
+		s.replaceCurrentSelectionInBlock(idx, clean)
+		return
+	}
+	if b.Kind == model.BlockTable && b.Table != nil {
+		if !strings.ContainsAny(clean, "\t\n") {
+			s.spliceSpansIntoActiveTableCell(idx, []model.Span{{Text: clean}})
+			return
+		}
+		s.pasteIntoTableBlock(idx, clean)
+		return
+	}
+	if !strings.Contains(clean, "\n") && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		s.replaceSelectionWithSpansInBlock(idx, []model.Span{{Text: clean}})
+		return
+	}
+
+	var plainBlocks []model.Block
+	for _, line := range strings.Split(clean, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		plainBlocks = append(plainBlocks, model.Block{
+			ID:    model.NewBlockID(),
+			Kind:  model.BlockParagraph,
+			Spans: []model.Span{{Text: line}},
+			Dirty: true,
+		})
+	}
+	if len(plainBlocks) == 0 {
+		return
+	}
+	if len(plainBlocks) == 1 && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		s.replaceSelectionWithSpansInBlock(idx, plainBlocks[0].Spans)
+		return
+	}
+	s.splicePastedBlocksAtSelection(idx, plainBlocks)
+}
+
+func (s *Session) splicePastedBlocksAtSelection(idx int, pasted []model.Block) {
+	b := &s.doc.Blocks[idx]
+	if b.Kind == model.BlockDivider || b.Kind == model.BlockImage {
+		s.spliceBlocks(idx+1, idx+1, pasted)
+		s.focusedBlock = idx + len(pasted)
+		endLen := len([]rune(s.doc.Blocks[s.focusedBlock].PlainText()))
+		s.selAnchor = Position{Block: s.focusedBlock, Offset: endLen}
+		s.selHead = s.selAnchor
+		s.focusPending = true
+		s.selSyncPending = true
+		s.markDirty()
+		return
+	}
+
 	a, endPos := s.orderedSelection()
 	curText := []rune(b.PlainText())
-	if a.Block == idx && endPos.Block == idx && (len(curText) > 0 && (a.Offset > 0 || endPos.Offset < len(curText))) {
-		prefix := sliceSpans(b.Spans, 0, a.Offset)
-		suffix := sliceSpans(b.Spans, endPos.Offset, len(curText))
-		if len(prefix) == 0 && len(suffix) == 0 {
-			s.spliceBlocks(idx, idx+1, parsed.Blocks)
-			s.focusedBlock = idx + len(parsed.Blocks) - 1
-		} else {
-			var inserted []model.Block
-			if len(prefix) > 0 {
-				pb := b.Clone()
-				pb.Spans = prefix
-				pb.Dirty = true
-				pb.CleanSource = ""
-				inserted = append(inserted, pb)
-			}
-			inserted = append(inserted, parsed.Blocks...)
-			if len(suffix) > 0 {
-				sb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: suffix, Dirty: true}
-				inserted = append(inserted, sb)
-			}
-			s.spliceBlocks(idx, idx+1, inserted)
-			s.focusedBlock = idx + len(inserted) - 1
-		}
-	} else if b.PlainText() == "" && b.Kind == model.BlockParagraph {
-		s.spliceBlocks(idx, idx+1, parsed.Blocks)
-		s.focusedBlock = idx + len(parsed.Blocks) - 1
-	} else {
-		s.spliceBlocks(idx+1, idx+1, parsed.Blocks)
-		s.focusedBlock = idx + len(parsed.Blocks)
+	lo, hi := len(curText), len(curText)
+	if a.Block == idx && endPos.Block == idx {
+		lo = clampInt(a.Offset, 0, len(curText))
+		hi = clampInt(endPos.Offset, lo, len(curText))
 	}
-	endLen := len([]rune(s.doc.Blocks[s.focusedBlock].PlainText()))
-	s.selAnchor = Position{Block: s.focusedBlock, Offset: endLen}
+
+	inheritContainer := func(blocks []model.Block) []model.Block {
+		if b.Indent == 0 && b.QuoteDepth == 0 {
+			return blocks
+		}
+		out := make([]model.Block, len(blocks))
+		copy(out, blocks)
+		for i := range out {
+			out[i].Indent += b.Indent
+			out[i].QuoteDepth += b.QuoteDepth
+		}
+		return out
+	}
+
+	var inserted []model.Block
+	focusRel := 0
+	caretOff := 0
+
+	switch {
+	// 1. Empty block or entire block's text is selected.
+	case len(curText) == 0 || (lo == 0 && hi == len(curText)):
+		if b.Kind != model.BlockParagraph && pasted[0].Kind == model.BlockParagraph {
+			first := b.Clone()
+			first.Spans = normalizeSpans(pasted[0].Spans)
+			first.Dirty = true
+			first.CleanSource = ""
+			inserted = append(inserted, first)
+			if len(pasted) > 1 {
+				inserted = append(inserted, inheritContainer(pasted[1:])...)
+			}
+		} else {
+			inserted = inheritContainer(pasted)
+		}
+		focusRel = len(inserted) - 1
+		caretOff = len([]rune(inserted[focusRel].PlainText()))
+
+	// 2. Caret at column 0 of a non-Paragraph block (Heading / List / Quote / Callout): keep original block intact below.
+	case lo == 0 && hi == 0 && b.Kind != model.BlockParagraph:
+		inserted = append(inserted, inheritContainer(pasted)...)
+		focusRel = len(inserted) - 1
+		caretOff = len([]rune(inserted[focusRel].PlainText()))
+		orig := b.Clone()
+		orig.ID = model.NewBlockID()
+		orig.Dirty = true
+		orig.CleanSource = ""
+		inserted = append(inserted, orig)
+
+	// 3. Inline merge when first pasted block is a plain/rich Paragraph (Notion / Feishu rule).
+	case pasted[0].Kind == model.BlockParagraph:
+		prefix := sliceSpans(b.Spans, 0, lo)
+		suffix := sliceSpans(b.Spans, hi, len(curText))
+		first := b.Clone()
+		first.Spans = normalizeSpans(append(append([]model.Span(nil), prefix...), pasted[0].Spans...))
+		first.Dirty = true
+		first.CleanSource = ""
+		inserted = append(inserted, first)
+		if len(pasted) > 1 {
+			inserted = append(inserted, pasted[1:]...)
+		}
+		focusRel = len(inserted) - 1
+		caretOff = len([]rune(inserted[focusRel].PlainText()))
+		if len(suffix) > 0 {
+			last := &inserted[focusRel]
+			if blockAcceptsInlineSuffix(last.Kind) {
+				last.Spans = normalizeSpans(append(append([]model.Span(nil), last.Spans...), suffix...))
+			} else {
+				inserted = append(inserted, model.Block{
+					ID:     model.NewBlockID(),
+					Kind:   model.BlockParagraph,
+					Indent: b.Indent,
+					Spans:  normalizeSpans(suffix),
+					Dirty:  true,
+				})
+			}
+		}
+
+	// 4. First pasted block is structural (List / Heading / Code / Table / Quote / Divider): start on new block.
+	default:
+		prefix := sliceSpans(b.Spans, 0, lo)
+		suffix := sliceSpans(b.Spans, hi, len(curText))
+		if len(prefix) > 0 {
+			pb := b.Clone()
+			pb.Spans = normalizeSpans(prefix)
+			pb.Dirty = true
+			pb.CleanSource = ""
+			inserted = append(inserted, pb)
+		}
+		inserted = append(inserted, pasted...)
+		focusRel = len(inserted) - 1
+		caretOff = len([]rune(inserted[focusRel].PlainText()))
+		if len(suffix) > 0 {
+			tailKind := model.BlockParagraph
+			if len(prefix) == 0 {
+				tailKind = b.Kind
+			}
+			tail := b.Clone()
+			tail.ID = model.NewBlockID()
+			tail.Kind = tailKind
+			tail.Spans = normalizeSpans(suffix)
+			tail.Dirty = true
+			tail.CleanSource = ""
+			inserted = append(inserted, tail)
+		}
+	}
+
+	s.spliceBlocks(idx, idx+1, inserted)
+	s.focusedBlock = clampInt(idx+focusRel, 0, len(s.doc.Blocks)-1)
+	maxOff := len([]rune(s.doc.Blocks[s.focusedBlock].PlainText()))
+	caretOff = clampInt(caretOff, 0, maxOff)
+	s.selAnchor = Position{Block: s.focusedBlock, Offset: caretOff}
 	s.selHead = s.selAnchor
 	s.focusPending = true
 	s.selSyncPending = true
 	s.markDirty()
 }
 
+func blockAcceptsInlineSuffix(k model.BlockKind) bool {
+	return k == model.BlockParagraph || k.IsHeading() || k.IsList() || k == model.BlockQuote || k == model.BlockCallout
+}
+
+func (s *Session) isCaretAtLineStartInBlock(idx int) bool {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	a, _ := s.orderedSelection()
+	if a.Block != idx || a.Offset <= 0 {
+		return true
+	}
+	rs := []rune(s.doc.Blocks[idx].PlainText())
+	if a.Offset > len(rs) {
+		return false
+	}
+	return rs[a.Offset-1] == '\n'
+}
+
+func dedentCodeSnippet(code string) string {
+	lines := strings.Split(code, "\n")
+	minCols := -1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		cols := 0
+		for i := 0; i < len(line); i++ {
+			if line[i] == ' ' {
+				cols++
+			} else if line[i] == '\t' {
+				cols += 4
+			} else {
+				break
+			}
+		}
+		if minCols < 0 || cols < minCols {
+			minCols = cols
+		}
+	}
+	if minCols <= 0 {
+		return code
+	}
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			out[i] = ""
+			continue
+		}
+		rem := minCols
+		pos := 0
+		for pos < len(line) && rem > 0 {
+			if line[pos] == ' ' {
+				rem--
+				pos++
+			} else if line[pos] == '\t' {
+				if rem >= 4 {
+					rem -= 4
+					pos++
+				} else {
+					out[i] = strings.Repeat(" ", 4-rem) + line[pos+1:]
+					pos = -1
+					break
+				}
+			} else {
+				break
+			}
+		}
+		if pos >= 0 {
+			out[i] = line[pos:]
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func parseSingleClipboardURL(raw string) (string, bool) {
+	s := strings.TrimSpace(strings.TrimPrefix(raw, "\uFEFF"))
+	if s == "" || strings.ContainsAny(s, " \t\r\n<>\"`") {
+		return "", false
+	}
+	lower := strings.ToLower(s)
+	schemeLen := 0
+	switch {
+	case strings.HasPrefix(lower, "https://"):
+		schemeLen = 8
+	case strings.HasPrefix(lower, "http://"):
+		schemeLen = 7
+	case strings.HasPrefix(lower, "mailto:"):
+		addr := s[7:]
+		at := strings.IndexByte(addr, '@')
+		if at > 0 && at+1 < len(addr) && strings.ContainsRune(addr[at+1:], '.') && !strings.ContainsRune(addr, '/') {
+			return "mailto:" + addr, true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+	rest := s[schemeLen:]
+	host := rest
+	if cut := strings.IndexAny(rest, "/?#"); cut >= 0 {
+		host = rest[:cut]
+	}
+	if host == "" || strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
+		return "", false
+	}
+	hasAlphaNum := false
+	for i := 0; i < len(host); i++ {
+		c := host[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			hasAlphaNum = true
+			break
+		}
+	}
+	if !hasAlphaNum || (!strings.ContainsRune(host, '.') && !strings.ContainsRune(host, ':') && !strings.EqualFold(host, "localhost")) {
+		return "", false
+	}
+	return lower[:schemeLen] + s[schemeLen:], true
+}
+
+func (s *Session) tryPasteURLOverSelection(raw string) bool {
+	if s.doc == nil || !s.isMarkdownNote() || !s.hasNonEmptySelection() || s.hasWholeAtomicSelection() {
+		return false
+	}
+	urlStr, ok := parseSingleClipboardURL(raw)
+	if !ok {
+		return false
+	}
+	a, b := s.orderedSelection()
+	var selectedText strings.Builder
+	canLink := false
+	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
+		blk := &s.doc.Blocks[idx]
+		lo, hi := s.selectionSpanRange(idx, a, b)
+		if lo >= hi {
+			continue
+		}
+		if blk.Kind == model.BlockTable {
+			cellSpans, cLo, cHi, cellOK := singleCellSpansInSelection(blk, a, b, lo, hi)
+			if !cellOK {
+				return false
+			}
+			rs := []rune(model.PlainTextOfSpans(*cellSpans))
+			cLo = clampInt(cLo, 0, len(rs))
+			cHi = clampInt(cHi, cLo, len(rs))
+			if cHi > cLo {
+				selectedText.WriteString(string(rs[cLo:cHi]))
+				canLink = true
+			}
+			continue
+		}
+		if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML || blk.Kind == model.BlockDivider || blk.Kind == model.BlockImage {
+			return false
+		}
+		rs := []rune(blk.PlainText())
+		lo = clampInt(lo, 0, len(rs))
+		hi = clampInt(hi, lo, len(rs))
+		if hi > lo {
+			selectedText.WriteString(string(rs[lo:hi]))
+			canLink = true
+		}
+	}
+	if !canLink {
+		return false
+	}
+	selTrim := strings.TrimSpace(selectedText.String())
+	if selTrim == "" {
+		return false
+	}
+	// If the selected text itself is already a standalone URL, replace it rather than creating [oldURL](newURL).
+	if _, selIsURL := parseSingleClipboardURL(selTrim); selIsURL {
+		return false
+	}
+	s.ApplyLinkOnSelection(urlStr)
+	s.focusPending = true
+	s.selSyncPending = true
+	return true
+}
+
 func looksLikeMarkdownBlock(line string) bool {
 	t := strings.TrimSpace(line)
-	return strings.HasPrefix(t, "# ") || strings.HasPrefix(t, "## ") || strings.HasPrefix(t, "### ") ||
-		strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "> ") ||
-		strings.HasPrefix(t, "```") || t == "---" || strings.HasPrefix(t, "|")
+	if t == "" {
+		return false
+	}
+	// ATX headings # through ######.
+	if t[0] == '#' {
+		hashes := 0
+		for hashes < len(t) && t[hashes] == '#' {
+			hashes++
+		}
+		if hashes >= 1 && hashes <= 6 && (hashes == len(t) || t[hashes] == ' ' || t[hashes] == '\t') {
+			return true
+		}
+	}
+	if strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "+ ") ||
+		strings.HasPrefix(t, "> ") || t == ">" ||
+		strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") || strings.HasPrefix(t, "$$") ||
+		t == "---" || t == "***" || t == "___" || strings.HasPrefix(t, "|") ||
+		(strings.HasPrefix(t, "![") && strings.Contains(t, "](") && strings.HasSuffix(t, ")")) {
+		return true
+	}
+	// Ordered list marker `1. ` or `1) `.
+	digits := 0
+	for digits < len(t) && digits < 9 && t[digits] >= '0' && t[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 && digits+1 < len(t) && (t[digits] == '.' || t[digits] == ')') && (t[digits+1] == ' ' || t[digits+1] == '\t') {
+		return true
+	}
+	return false
 }
 
 func looksLikeInlineMarkdown(line string) bool {
-	return strings.ContainsAny(line, "*_`~[") || strings.Contains(line, "<span") || strings.Contains(line, "<u>")
+	lower := strings.ToLower(line)
+	return strings.ContainsAny(line, "*_`~[") ||
+		strings.Contains(line, "<span") || strings.Contains(line, "<u>") || strings.Contains(line, "<a ") ||
+		strings.Contains(lower, "http://") || strings.Contains(lower, "https://")
 }
 
 func (s *Session) parseInlineSpans(text string) []model.Span {
@@ -793,13 +1190,7 @@ func (s *Session) pasteIntoTableBlock(idx int, norm string) {
 	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
 	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
 	if !strings.Contains(norm, "\t") && !strings.Contains(norm, "\n") {
-		cell := &tbl.Rows[startR][startC]
-		cell.Spans = append(cell.Spans, s.parseInlineSpans(norm)...)
-		cell.Spans = normalizeSpans(cell.Spans)
-		b.Dirty = true
-		b.CleanSource = ""
-		s.focusPending = true
-		s.markDirty()
+		s.spliceSpansIntoActiveTableCell(idx, s.parseInlineSpans(norm))
 		return
 	}
 	rawRows := strings.Split(norm, "\n")
@@ -837,6 +1228,39 @@ func (s *Session) pasteIntoTableBlock(idx int, norm string) {
 	lastCols := strings.Split(rawRows[len(rawRows)-1], "\t")
 	s.tableActiveCol = startC + len(lastCols) - 1
 	s.focusPending = true
+	s.markDirty()
+}
+
+func (s *Session) spliceSpansIntoActiveTableCell(idx int, insertSpans []model.Span) {
+	b := &s.doc.Blocks[idx]
+	tbl := b.Table
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return
+	}
+	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
+	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
+	cell := &tbl.Rows[startR][startC]
+	cellLen := len([]rune(model.PlainTextOfSpans(cell.Spans)))
+	cLo, cHi := cellLen, cellLen
+	a, endPos := s.orderedSelection()
+	if a.Block == idx && endPos.Block == idx {
+		base := tableCellStartOffset(tbl, startR, startC)
+		cLo = clampInt(a.Offset-base, 0, cellLen)
+		cHi = clampInt(endPos.Offset-base, cLo, cellLen)
+	}
+	var merged []model.Span
+	merged = append(merged, sliceSpans(cell.Spans, 0, cLo)...)
+	merged = append(merged, insertSpans...)
+	merged = append(merged, sliceSpans(cell.Spans, cHi, cellLen)...)
+	cell.Spans = normalizeSpans(merged)
+	b.Dirty = true
+	b.CleanSource = ""
+	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
+	newBase := tableCellStartOffset(tbl, startR, startC)
+	s.selAnchor = Position{Block: idx, Offset: newBase + cLo + insLen}
+	s.selHead = s.selAnchor
+	s.focusPending = true
+	s.selSyncPending = true
 	s.markDirty()
 }
 
