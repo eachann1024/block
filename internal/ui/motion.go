@@ -141,6 +141,23 @@ func TactileCard(el ui.Element, hovered, pressed, active, disabled bool) ui.Elem
 	return el
 }
 
+// TactileRow applies press-only squish (0.98) for full-width rows inside menus,
+// popovers, and scroll views so active/hover borders never overflow narrow clips.
+func TactileRow(el ui.Element, pressed, disabled bool) ui.Element {
+	if testing.Testing() {
+		return el
+	}
+	target := float32(1.0)
+	if pressed && !disabled {
+		target = 0.98
+	}
+	sc := el.AnimateTo("rScale", target, SpringTactile)
+	if !almostZero(sc-1, 0.001) {
+		el.Scale(sc, sc)
+	}
+	return el
+}
+
 // AnimateSurfaceColors smoothly transitions background and 1px border colors in Oklab.
 func AnimateSurfaceColors(el ui.Element, bg, border ui.Color, hasBorder bool) ui.Element {
 	if testing.Testing() {
@@ -389,6 +406,23 @@ func PopoverSpringTransition() ui.ElementTransition {
 		Shadows:      true,
 		Enter:        &ui.Motion{Scale: 0.93, Y: -6, Opacity: 0.02, Flip: true},
 		Exit:         &ui.Motion{Scale: 0.96, Y: -4, Opacity: 0, Flip: true},
+	}
+}
+
+// OutlinePopoverTransition blooms the top-left outline card smoothly from its
+// leading rail origin without vertical jump or overshoot.
+func OutlinePopoverTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Animation:    &SpringSurface,
+		ExitDuration: 140 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		Colors:       true,
+		Shadows:      true,
+		Enter:        &ui.Motion{Scale: 0.92, X: -4, Opacity: 0.02},
+		Exit:         &ui.Motion{Scale: 0.95, X: -2, Opacity: 0},
 	}
 }
 
