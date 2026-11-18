@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"block/internal/files"
@@ -118,7 +119,8 @@ type TitlebarProps struct {
 	OnOpenHistory     func()
 	OnOpenExport      func()
 	OnCopyMarkdown    func()
-	OnRevealActive    func()
+	OnRevealPath      func(path string)
+	NoteStats         func() (characters, blocks int)
 	OnPreviewZoomStep func(factor float32)
 	OnPreviewActual   func()
 	OnPreviewFit      func()
@@ -464,12 +466,19 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 func renderRevealButton(c *ui.Context, p TitlebarProps) {
 	revBtn := blockui.IconButton(c, icons.FolderReveal, blockui.IconButtonOptions{
 		ID:          "tb-reveal",
-		Tooltip:     theme.Tr("在访达中显示", "Reveal in File Manager"),
+		Tooltip:     revealFileLabel(),
 		ChromeHover: true,
 	})
-	if revBtn.Clicked() && p.OnRevealActive != nil {
-		p.OnRevealActive()
+	if revBtn.Clicked() && p.OnRevealPath != nil {
+		p.OnRevealPath(p.ActiveTab)
 	}
+}
+
+func revealFileLabel() string {
+	if theme.IsMacOS() {
+		return theme.Tr("在访达中显示", "Reveal in Finder")
+	}
+	return theme.Tr("在文件管理器中显示", "Reveal in File Manager")
 }
 
 func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
@@ -484,6 +493,9 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			menuW := min(float32(216), max(vpW-16, 1))
 			items := buildPageMenuItems(p)
 			estH := estimateMenuHeight(items)
+			if p.NoteStats != nil {
+				estH += 2*theme.MenuItemHeight + 7 + 3*theme.MenuGap
+			}
 			anchor := p.MenuState.PageMenuAnchor
 			if anchor.W <= 0 {
 				anchor = ui.Rect{X: vpW - 40, Y: 6, W: theme.ChromeBoxSize, H: theme.ChromeBoxSize}
@@ -500,6 +512,12 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			card.Children(func() {
 				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+						if p.NoteStats != nil {
+							characters, blocks := p.NoteStats()
+							renderPageStat(c, "page-stat-characters", theme.Tr("字符数", "Characters"), characters)
+							renderPageStat(c, "page-stat-blocks", theme.Tr("内容块", "Blocks"), blocks)
+							blockui.MenuRow(c, blockui.MenuItemSpec{Separator: true}, false)
+						}
 						for i, it := range items {
 							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
 						}
@@ -545,6 +563,18 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 	})
 }
 
+func renderPageStat(c *ui.Context, id, label string, value int) {
+	pal := theme.Ocean()
+	row := ui.Row(c.Key(id)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).AlignItems(ui.Center)
+	blockui.Probe(row, id)
+	row.Children(func() {
+		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, strconv.Itoa(value)).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.Text).Shrink(0).SingleLine()
+	})
+}
+
 func estimateMenuHeight(items []blockui.MenuItemSpec) float32 {
 	h := theme.MenuPadding * 2
 	for i, it := range items {
@@ -579,7 +609,11 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 		item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
 		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay("alt-cmd-c"), &icCopy, p.OnCopyMarkdown),
 		{Separator: true},
-		item("page-reveal", theme.Tr("在访达中显示", "Reveal in Finder"), "", &icReveal, p.OnRevealActive),
+		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
+			if p.OnRevealPath != nil {
+				p.OnRevealPath(p.ActiveTab)
+			}
+		}),
 	}
 }
 
@@ -608,7 +642,20 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 	icOthers := icons.TabCloseOthers
 	icRight := icons.TabCloseRight
 	icAll := icons.TabCloseAll
+	icReveal := icons.FolderReveal
 	return []blockui.MenuItemSpec{
+		{
+			ID:    "tab-menu-reveal",
+			Label: revealFileLabel(),
+			Icon:  &icReveal,
+			OnClick: func() {
+				p.MenuState.Close()
+				if p.OnRevealPath != nil {
+					p.OnRevealPath(target)
+				}
+			},
+		},
+		{Separator: true},
 		{
 			ID:    "tab-menu-close",
 			Label: theme.Tr("关闭", "Close"),
@@ -659,5 +706,3 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 		},
 	}
 }
-
-
