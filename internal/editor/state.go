@@ -731,6 +731,14 @@ func (s *Session) hasAnyOverlayOpen() bool {
 	return s.hasBlockingOverlay() || s.hasNonEmptySelection()
 }
 
+func (s *Session) hasMenuPopupOpen() bool {
+	return s.blockMenu != nil ||
+		(s.toolbarPop != "" && s.toolbarPop != "link") ||
+		s.codeLangMenuBlock != 0 ||
+		s.calloutMenuBlock != 0 ||
+		(s.tableMenuBlock != 0 && s.tableMenuKind != "")
+}
+
 func (s *Session) hasBlockingOverlay() bool {
 	return s.blockMenu != nil ||
 		s.toolbarPop != "" ||

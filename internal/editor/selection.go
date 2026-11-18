@@ -578,6 +578,8 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
 			s.deleteBlock(idx)
 			return true
+		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
+			return false
 		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
 			s.pushUndo()
 			nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
@@ -694,6 +696,8 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
 			return s.DeleteSelection()
+		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
+			return false
 		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
 			if !s.DeleteSelection() {
 				return false
