@@ -491,10 +491,23 @@ func (c *Controller) selectBackendLocked(kind model.BackendKind) {
 	_ = c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }
 
-// SetActiveBackend switches the active backend (enabling it if recognized) and persists selection.
+func (c *Controller) isCLIAvailableLocked(kind model.BackendKind) bool {
+	if kind == model.BackendBuiltin {
+		return true
+	}
+	if ov, ok := c.statusOverrides[kind]; ok {
+		return ov.State != BackendStateMissing
+	}
+	if st, ok := c.backendStatuses[kind]; ok {
+		return st.State != BackendStateMissing
+	}
+	return isCLIInstalled(kind)
+}
+
+// SetActiveBackend switches the active backend (adding & enabling it if installed) and persists selection.
 func (c *Controller) SetActiveBackend(kind model.BackendKind) error {
 	c.mu.Lock()
-	if !c.isBackendRecognizedLocked(kind) {
+	if !c.isCLIAvailableLocked(kind) {
 		c.mu.Unlock()
 		return fmt.Errorf("%s CLI 未安装或不可用", kind.DisplayName())
 	}
@@ -503,11 +516,11 @@ func (c *Controller) SetActiveBackend(kind model.BackendKind) error {
 			c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 		}
 		opt := c.backendsCfg.Adapters[string(kind)]
-		if opt.Enabled == nil || !*opt.Enabled {
-			on := true
-			opt.Enabled = &on
-			c.backendsCfg.Adapters[string(kind)] = opt
-		}
+		on := true
+		opt.Added = true
+		opt.Enabled = &on
+		opt.FullPermissions = true
+		c.backendsCfg.Adapters[string(kind)] = opt
 	}
 	c.selectBackendLocked(kind)
 	c.backendsCfg.Selected = kind

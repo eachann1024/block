@@ -183,6 +183,7 @@ type Controller struct {
 	addProvTestErr   string
 
 	addAgentModalOpen bool
+	addAgentStep      int
 	addAgentShowMore  bool
 	addAgentKind      model.BackendKind
 	addAgentName      string
