@@ -1838,7 +1838,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 
 			composerKey := fmt.Sprintf("ai-composer-%d", epoch)
 			inputEl := ui.TextAreaBase(cUI.Key(composerKey), &draft).
-				FillWidth().Lines(1, 6).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+				FillWidth().Lines(1, 6).Padding(0, 0, theme.ComposerTailSpace, 0).FontSize(theme.FontBody).TextColor(pal.Text).
 				CaretColor(pal.Accent).CaretWidth(2).
 				Placeholder(ph).Bind(&c.composerHandle).
 				Label(theme.Tr("AI 输入框", "AI composer"))
