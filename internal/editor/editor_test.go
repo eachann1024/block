@@ -553,7 +553,7 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 	}
 
 	// Check font sizes >= 14 across theme constants used
-	if theme.FontSmallMinSize < 14 || theme.FontBodySize < 16 || theme.EditorStandardWidth != 672 {
+	if theme.FontBody < 14 || theme.FontEditor < 16 || theme.EditorStandardWidth != 672 {
 		t.Fatalf("unexpected theme constants")
 	}
 }

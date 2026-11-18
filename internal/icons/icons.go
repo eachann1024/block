@@ -1,7 +1,9 @@
 package icons
 
 import (
+	"math"
 	"sync"
+	"time"
 
 	"block/assets"
 	"block/internal/model"
@@ -200,6 +202,31 @@ func AgentBrandSVG(kind model.BackendKind) *ui.SVG {
 	return loadSVG(kind.AssetPath())
 }
 
+var (
+	iconSpring = ui.Animation{
+		Spring: ui.SpringOptions{
+			Duration: 320 * time.Millisecond,
+			Bounce:   0.18,
+		},
+	}
+	iconColorAnim = ui.Animation{
+		Duration:  170 * time.Millisecond,
+		Ease:      ui.CubicBezier(0.22, 1, 0.36, 1),
+		Oklab:     true,
+		NonMotion: true,
+	}
+)
+
+func clamp01(v float32) float32 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
 // Draw stacks the .fill, .line, and .accent SVG masks of a Scheme A Duo icon.
 func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.Element {
 	if size <= 0 {
@@ -226,13 +253,189 @@ func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.E
 	return root
 }
 
-// Duo renders a Scheme A Duo icon using Ocean Paper's standard active/hovered or idle tints.
+// DrawAnimated stacks .fill, .line, and .accent with Scheme B ("灵动弹簧 · Tactile Spring")
+// multi-part kinetic hover physics and Oklab color interpolation.
+func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColors, active bool) ui.Element {
+	if size <= 0 {
+		return ui.Box(c).Size(0, 0).Shrink(0)
+	}
+	root := ui.Box(c).Size(size, size).Shrink(0)
+	targetP := float32(0)
+	if active {
+		targetP = 1
+	}
+	p := root.AnimateTo("icoAct", targetP, iconSpring)
+	fillCol := root.AnimateColor("icoFill", colors.Fill, iconColorAnim)
+	lineCol := root.AnimateColor("icoLine", colors.Line, iconColorAnim)
+	accCol := root.AnimateColor("icoAcc", colors.Accent, iconColorAnim)
+
+	moving := float32(math.Abs(float64(p))) > 0.002
+	k := size / 20.0
+
+	if moving {
+		switch glyph {
+		case Folder, FolderOpen, FolderPlus:
+			root.Translate(0, -1.2*k*p)
+		case FolderReveal:
+			sc := 1 + 0.05*p
+			root.Scale(sc, sc)
+		case Refresh, TbReset, UpdateTangle:
+			root.Rotate(38 * p)
+		case Trash, Pencil, Eraser, Cut:
+			root.Rotate(-6 * p)
+		case Drag:
+			sc := 1 + 0.08*p
+			root.Scale(sc, sc)
+		}
+	}
+
+	root.Children(func() {
+		isFolder := glyph == Folder || glyph == FolderOpen || glyph == FolderPlus
+		if isFolder {
+			if lineCol.A > 0 {
+				if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
+					ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
+				}
+			}
+			if moving && p > 0.01 {
+				pal := theme.Ocean()
+				sheet := ui.Box(c).Absolute().
+					Left(size * 0.27).Top(size * 0.35).
+					Size(size*0.46, size*0.26).
+					Radius(max(1, 1.2*k)).
+					Background(pal.Paper).
+					Border(1, accCol).
+					Opacity(clamp01(p * 1.15))
+				sheet.Translate(0, (1-p)*2.4*k).Rotate(-3 * p)
+			}
+			if fillCol.A > 0 {
+				if fill := loadSVG("icons/" + string(glyph) + ".fill.svg"); fill != nil {
+					fl := ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
+					if moving {
+						fl.TransformOrigin(0.5, 0.85).Skew(-8.5*p, 0).Scale(1, max(0.2, 1-0.08*p))
+					}
+				}
+			}
+			if accCol.A > 0 {
+				if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
+					ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
+					if moving {
+						ac.TransformOrigin(0.5, 0.85).Skew(-8.5*p, 0).Scale(1, max(0.2, 1-0.08*p))
+					}
+				}
+			}
+			return
+		}
+
+		if fillCol.A > 0 {
+			if fill := loadSVG("icons/" + string(glyph) + ".fill.svg"); fill != nil {
+				fl := ui.Icon(c, fill).Absolute().Top(0).Left(0).Size(size, size).TextColor(fillCol)
+				if moving {
+					switch glyph {
+					case SidebarExpand, SidebarCollapse:
+						fl.TransformOrigin(0.2, 0.5).Scale(0.88+0.12*clamp01(p), 1)
+					case Sparkles, AiPolish, Star:
+						sc := 1 + 0.07*p
+						fl.Rotate(15 * p).Scale(sc, sc)
+					}
+				}
+			}
+		}
+		if lineCol.A > 0 {
+			if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
+				ln := ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
+				if moving {
+					switch glyph {
+					case LinkOpen:
+						ln.Rotate(-3 * p)
+					case Sparkles, AiPolish, Star:
+						sc := 1 + 0.07*p
+						ln.Rotate(15 * p).Scale(sc, sc)
+					case Sliders:
+						ln.Translate(-1.4*k*p, 0)
+					case Plus, TbPlus:
+						sc := 1 + 0.08*p
+						ln.Rotate(90 * p).Scale(sc, sc)
+					case ChevronRight, TbChevronRight, ArrowRight:
+						ln.Translate(1.6*k*p, 0)
+					case ChevronLeft, ArrowLeft:
+						ln.Translate(-1.6*k*p, 0)
+					case ChevronDown, TbChevron, ArrowDown:
+						ln.Translate(0, 1.4*k*p)
+					case ChevronUp, ArrowUp:
+						ln.Translate(0, -1.4*k*p)
+					}
+				}
+			}
+		}
+		if accCol.A > 0 {
+			if acc := loadSVG("icons/" + string(glyph) + ".accent.svg"); acc != nil {
+				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
+				if moving {
+					switch glyph {
+					case SidebarExpand:
+						sc := 1 + 0.08*p
+						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
+					case SidebarCollapse:
+						sc := 1 + 0.08*p
+						ac.Translate(-2.5*k*p, 0).Scale(sc, sc)
+					case FolderReveal:
+						sc := 1 + 0.08*p
+						ac.Translate(2.6*k*p, 0).Scale(sc, sc)
+					case LinkOpen:
+						sc := 1 + 0.08*p
+						ac.Translate(2.6*k*p, -2.6*k*p).Scale(sc, sc)
+					case Sparkles, AiPolish, Star:
+						sc := 1 + 0.20*p
+						ac.Rotate(-14 * p).Scale(sc, sc)
+					case Sliders:
+						sc := 1 + 0.09*p
+						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
+					case Plus, TbPlus:
+						sc := 1 + 0.10*p
+						ac.Rotate(90 * p).Scale(sc, sc)
+					case NotePlus, AiPlus:
+						sc := 1 + 0.16*p
+						ac.Scale(sc, sc)
+					case History:
+						ac.Rotate(-22 * p)
+					case FindSearch:
+						sc := 1 + 0.08*p
+						ac.Translate(1.2*k*p, 1.2*k*p).Scale(sc, sc)
+					case Download, ArrowDown, RowInsertBelow:
+						ac.Translate(0, 2.0*k*p)
+					case ArrowUp, RowInsertAbove:
+						ac.Translate(0, -2.0*k*p)
+					case ArrowRight, ChevronRight, TbChevronRight, ColInsertRight:
+						ac.Translate(1.8*k*p, 0)
+					case ArrowLeft, ChevronLeft, ColInsertLeft:
+						ac.Translate(-1.8*k*p, 0)
+					case ChevronDown, TbChevron:
+						ac.Translate(0, 1.4*k*p)
+					case ChevronUp:
+						ac.Translate(0, -1.4*k*p)
+					case WindowMax, WindowRestore, Crop, SelectAll:
+						sc := 1 + 0.11*p
+						ac.Scale(sc, sc)
+					default:
+						sc := 1 + 0.07*p
+						ac.Scale(sc, sc)
+					}
+				}
+			}
+		}
+	})
+	return root
+}
+
+// Duo renders a Scheme A Duo icon using Ocean Paper's standard active/hovered or idle tints
+// with Scheme B tactile spring part animation.
 func Duo(c *ui.Context, glyph Icon, size float32, active bool) ui.Element {
 	pal := theme.Ocean()
 	if active {
-		return Draw(c, glyph, size, pal.DuoIconColors(pal.Text))
+		return DrawAnimated(c, glyph, size, pal.DuoIconColors(pal.Text), true)
 	}
-	return Draw(c, glyph, size, pal.MonoIconColors(pal.TextSecondary))
+	return DrawAnimated(c, glyph, size, pal.MonoIconColors(pal.TextSecondary), false)
 }
 
 // Brand renders an AI backend brand mark at `size`.

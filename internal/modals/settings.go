@@ -137,6 +137,7 @@ type Manager struct {
 	fontSearchHandle       ui.Handle
 
 	// Performance modal state.
+	perfOffset     ui.Point
 	perfMu         sync.Mutex
 	perfOpen       bool
 	perfCancel     chan struct{}
@@ -148,8 +149,11 @@ type Manager struct {
 	perfLastScan   string
 	perfScanErr    string
 	perfTreeRects  []treemapTileRect
+	perfState      perfExtraState
 
 	// Search modal state.
+	searchPalette     searchPaletteState
+	onOpenSearchHit   func(path string, line int)
 	searchOpen        bool
 	searchQuery       string
 	searchLastQuery   string
@@ -326,15 +330,113 @@ func settingsTabTitle(tab string) string {
 	return theme.Tr("AI 助手", "AI Assistant")
 }
 
-// RenderSettings draws the full-window Settings page when open.
+// RenderSettings draws the full-window Settings page (standalone layout with responsive sidebar yielding).
 func (m *Manager) RenderSettings(c *ui.Context) {
+	if !m.settingsOpen {
+		return
+	}
+	pal := theme.Ocean()
+	vpW, _ := c.Size()
+	if vpW <= 0 {
+		vpW = 1000
+	}
+	sbW := theme.SidebarMinWidth
+	if m.SidebarWidth != nil && *m.SidebarWidth > 0 {
+		sbW = min(max(*m.SidebarWidth, theme.SidebarMinWidth), theme.SidebarMaxWidth)
+	}
+	st := m.currentState()
+	showDockedSidebar := !st.SidebarCollapsed && sbW+680 <= vpW+0.5
+
+	ui.Row(c.Key("settings-standalone-root")).Fill().Background(pal.SettingsBG).Children(func() {
+		if showDockedSidebar {
+			m.RenderSettingsSidebar(c, false, nil)
+		}
+		m.RenderSettingsBody(c, false, nil)
+	})
+}
+
+// RenderSettingsSidebar draws the left category navigation column (docked or inside the narrow floating drawer),
+// matching thinkly-fast/src/app_settings_sidebar.rs 1:1.
+func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissDrawer func()) {
+	if !m.settingsOpen {
+		return
+	}
+	pal := theme.Ocean()
+	tab := m.ActiveSettingsTab()
+	sbW := theme.SidebarMinWidth
+	if m.SidebarWidth != nil && *m.SidebarWidth > 0 {
+		sbW = min(max(*m.SidebarWidth, theme.SidebarMinWidth), theme.SidebarMaxWidth)
+	}
+
+	ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight().Children(func() {
+		ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0).
+			Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
+			Children(func() {
+				ui.Box(c).Padding(18, 16, 10, 16).Children(func() {
+					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+				})
+				ui.Column(c).PaddingX(10).Gap(2).Grow(1).Children(func() {
+					for _, spec := range settingsTabs {
+						active := tab == spec.id
+						navID := "settings-tab-" + spec.id
+						title := theme.Tr(spec.zh, spec.en)
+						btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(10).Gap(8).
+							AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+							Label(title)
+						if active {
+							btn.Background(pal.Selected).Border(1, pal.Accent)
+						} else {
+							if btn.Hovered() {
+								btn.Background(pal.Hover)
+							}
+							btn.Border(1, ui.Transparent)
+						}
+						btn.Children(func() {
+							if active {
+								icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Accent))
+							} else if btn.Hovered() {
+								icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Text))
+							} else {
+								icons.Draw(c, spec.icon, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+							}
+							col := pal.TextSecondary
+							weight := 400
+							if active {
+								col = pal.Text
+								weight = 460
+							} else if btn.Hovered() {
+								col = pal.Text
+							}
+							ui.Text(c, title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						})
+						internalui.Probe(btn, navID)
+						if btn.Clicked() {
+							if isDrawer && onDismissDrawer != nil {
+								onDismissDrawer()
+							}
+							m.selectSettingsTab(spec.id)
+						}
+					}
+				})
+			})
+		if !isDrawer && m.SidebarWidth != nil {
+			if internalui.VerticalResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, theme.SidebarMinWidth, theme.SidebarMaxWidth, false) && m.OnSidebarWidthChanged != nil {
+				m.OnSidebarWidthChanged(*m.SidebarWidth)
+			}
+		}
+	})
+}
+
+// RenderSettingsBody draws the scrollable Settings content page (right column or full-width when sidebar yields),
+// matching thinkly-fast/src/app_settings_view.rs 1:1.
+func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDrawer func()) {
 	if !m.settingsOpen {
 		return
 	}
 	pal := theme.Ocean()
 	tab := m.ActiveSettingsTab()
 
-	root := ui.Row(c.Key("settings-page")).Fill().Background(pal.SettingsBG).
+	root := ui.Column(c.Key("settings-page")).Grow(1).MinWidth(0).Fill().Background(pal.SettingsBG).
 		TabStop(false).Bind(&m.settingsFocusHandle)
 	internalui.Probe(root, "settings-page")
 
@@ -352,72 +454,20 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 		}
 	})
 
-	root.Children(func() {
-		// Left category navigation sidebar matching app_settings_sidebar.rs 1:1.
-		sbW := float32(240)
-		if m.SidebarWidth != nil && *m.SidebarWidth > 0 {
-			sbW = *m.SidebarWidth
+	padX := float32(28)
+	if b := root.Bounds(); b.W > 0 && b.W < 560 {
+		padX = 16
+	} else if b.W <= 0 {
+		if winW, _ := c.Size(); winW > 0 && winW < 560 {
+			padX = 16
 		}
-		ui.Row(c.Key("settings-sidebar-wrap")).Shrink(0).FillHeight().Children(func() {
-			ui.Column(c.Key("settings-sidebar")).Width(sbW).FillHeight().Shrink(0).
-				Background(pal.Sidebar).BorderWidth(0, 1, 0, 0).BorderColor(pal.SidebarBorder).
-				Children(func() {
-					ui.Box(c).Padding(18, 16, 10, 16).Children(func() {
-						ui.Text(c, theme.Tr("设置", "Settings")).FontSize(18).FontWeight(560).TextColor(pal.Text)
-					})
-					ui.Column(c).PaddingX(10).Gap(2).Grow(1).Children(func() {
-						for _, spec := range settingsTabs {
-							active := tab == spec.id
-							navID := "settings-tab-" + spec.id
-							title := theme.Tr(spec.zh, spec.en)
-							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(10).Gap(8).
-								AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
-								Label(title)
-							if active {
-								btn.Background(pal.Selected).Border(1, pal.Accent)
-							} else {
-								if btn.Hovered() {
-									btn.Background(pal.Hover)
-								}
-								btn.Border(1, ui.Transparent)
-							}
-							btn.Children(func() {
-								if active {
-									icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Accent))
-								} else if btn.Hovered() {
-									icons.Draw(c, spec.icon, theme.IconRow, pal.DuoIconColors(pal.Text))
-								} else {
-									icons.Draw(c, spec.icon, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
-								}
-								col := pal.TextSecondary
-								weight := 400
-								if active {
-									col = pal.Text
-									weight = 460
-								} else if btn.Hovered() {
-									col = pal.Text
-								}
-								ui.Text(c, title).FontSize(14).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-							})
-							internalui.Probe(btn, navID)
-							if btn.Clicked() {
-								m.selectSettingsTab(spec.id)
-							}
-						}
-					})
-				})
-			if m.SidebarWidth != nil {
-				if internalui.VerticalResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, 180, 380, false) && m.OnSidebarWidthChanged != nil {
-					m.OnSidebarWidthChanged(*m.SidebarWidth)
-				}
-			}
-		})
+	}
 
-		// Right scrollable settings body matching app_settings_view.rs 1:1 (pt=40 px=28 pb=64 gap=28).
-		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).FillHeight().
-			Background(pal.SettingsBG).Padding(40, 28, 64, 28).Gap(28).Children(func() {
-			ui.Row(c.Key("settings-header")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
-				ui.Text(c, settingsTabTitle(tab)).FontSize(24).FontWeight(560).TextColor(pal.Text)
+	root.Children(func() {
+		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).Fill().
+			Background(pal.SettingsBG).Padding(40, padX, 64, padX).Gap(28).Children(func() {
+			ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
+				ui.Text(c, settingsTabTitle(tab)).FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:      "settings-back",
 					Label:   theme.Tr("返回", "Back"),
@@ -445,9 +495,12 @@ func (m *Manager) RenderSettings(c *ui.Context) {
 		m.renderFontPickerOverlay(c)
 	}
 	if m.recordingShortcut == "" && !m.justRecordedShortcut && c.Shortcut(0, ui.KeyEscape) {
-		if m.fontPickerOpen != "" {
+		switch {
+		case m.fontPickerOpen != "":
 			m.fontPickerOpen = ""
-		} else {
+		case drawerOpen && onDismissDrawer != nil:
+			onDismissDrawer()
+		default:
 			m.CloseSettings()
 		}
 	}
@@ -467,10 +520,10 @@ func (m *Manager) renderSettingsAITab(c *ui.Context) {
 		m.RenderAISettings(c)
 		return
 	}
-	settingsCard(c, func() {
-		ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(16).FontWeight(600).TextColor(pal.Text)
+	internalui.Card(c, func() {
+		ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 		ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
-			FontSize(14).TextColor(pal.TextSecondary)
+			FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 	})
 }
 
@@ -478,9 +531,9 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.currentState()
 
-	ui.Column(c.Key("settings-appearance-body")).FillWidth().Gap(24).Children(func() {
+	ui.Column(c.Key("settings-appearance-body")).FillWidth().Gap(theme.Space24).Children(func() {
 		// Card 1: Theme & Language (app_settings_tabs.rs:64-66).
-		settingsCardGap(c, 16, func() {
+		internalui.Card(c, func() {
 			cardTitle(c, theme.Tr("主题与语言", "Theme & Language"))
 
 			curTheme := st.Theme
@@ -567,7 +620,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			cdDisplay = resolvedCodeFontName(m.fontFamilies)
 		}
 
-		settingsCardGap(c, 16, func() {
+		internalui.Card(c, func() {
 			cardTitle(c, theme.Tr("编辑器", "Editor"))
 
 			settingRow(c, theme.Tr("正文字体", "Body Font"), func() {
@@ -657,8 +710,8 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 	if open {
 		borderCol = pal.Accent
 	}
-	btn := ui.ButtonBase(c.Key(id)).Width(248).Height(36).Padding(0, 10, 0, 12).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
+	btn := ui.ButtonBase(c.Key(id)).Width(248).MaxWidthPercent(100).Shrink(1).MinWidth(120).Height(36).Padding(0, 10, 0, 12).
+		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
 		Background(pal.Shell).Border(1, borderCol).Cursor(ui.CursorPointer).Label(label)
 	if btn.Hovered() {
 		btn.Background(pal.Hover)
@@ -674,7 +727,7 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 		internalui.RecordBounds(id, r)
 	})
 	btn.Children(func() {
-		ui.Text(c, label).FontSize(15).TextColor(pal.Text).SingleLine().Grow(1)
+		ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		glyph := icons.ChevronDown
 		if open {
 			glyph = icons.ChevronUp
@@ -989,23 +1042,22 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 	ui.Overlay(c, func() {
 		backdrop := ui.Box(c.Key("font-picker-backdrop")).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 
-		panel := ui.Column(c.Key("font-picker-menu-"+role)).Absolute().Left(x).Top(y).
-			Width(popW).MaxHeight(maxH).Padding(6).Gap(4).Radius(theme.RadiusSurface).
-			Background(pal.Menu).Border(1, pal.MenuBorder).
-			Shadow(0, 10, 28, 0, ui.RGBA(0, 0, 0, 0.22)).Clip().
-			Transition(internalui.PopupTransition())
+		panel := internalui.Elevate(ui.Column(c.Key("font-picker-menu-"+role)).Absolute().Left(x).Top(y).
+			Width(popW).MaxHeight(maxH).Padding(theme.Space6).Gap(theme.Space4).Radius(theme.RadiusXL).
+			Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
+			Transition(internalui.PopupTransition()), theme.ElevationPopover)
 		internalui.Probe(panel, "font-picker-menu")
 
 		panel.Children(func() {
 			// Search bar matching font_picker.rs:100-105.
-			ui.Row(c.Key("font-picker-search-bar")).FillWidth().Padding(2, 8, 6, 8).Gap(8).
+			ui.Row(c.Key("font-picker-search-bar")).FillWidth().Padding(theme.Space2, theme.Space8, theme.Space6, theme.Space8).Gap(theme.Space8).
 				AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(pal.MenuSeparator).
 				Children(func() {
 					icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 					in := ui.TextInput(c.Key("font-picker-search"), &m.fontQuery).
 						Placeholder(theme.Tr("搜索字体", "Search fonts")).
 						Label(theme.Tr("搜索字体", "Search fonts")).
-						FontSize(14).Height(28).PaddingX(0).
+						FontSize(theme.FontBody).Height(theme.HeightCompact).PaddingX(0).
 						Background(ui.Transparent).Border(0, ui.Transparent).
 						Bind(&m.fontSearchHandle).AutoFocus().Grow(1).MinWidth(0)
 					internalui.Probe(in, "font-picker-search")
@@ -1055,7 +1107,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 				FillWidth().Height(curListH).Gap(0).Children(func() {
 				if len(fonts) == 0 {
 					ui.Row(c).FillWidth().Height(48).PaddingX(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, theme.Tr("没有匹配的字体", "No matching fonts")).FontSize(14).TextColor(pal.MenuMuted)
+						ui.Text(c, theme.Tr("没有匹配的字体", "No matching fonts")).FontSize(theme.FontBody).TextColor(pal.MenuMuted)
 					})
 					return
 				}
@@ -1063,10 +1115,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					selected := strings.EqualFold(f.Name, current)
 					highlighted := i == m.fontCursor
 					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(34).PaddingX(10).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusControl).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(f.Name)
 					if selected {
-						row.Background(pal.MenuChecked)
+						row.Background(pal.Selected)
 					} else if highlighted || row.Hovered() {
 						row.Background(pal.MenuHover)
 					}
@@ -1105,7 +1157,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 
 	ui.Column(c.Key("settings-folders-body")).FillWidth().Gap(24).Children(func() {
 		// Card 1: Full-row Hide Non-Markdown Files checkbox (app_settings_folders_view.rs:111-122).
-		settingsCardGap(c, 16, func() {
+		internalui.Card(c, func() {
 			label := theme.Tr("不显示 MD 格式以外的文件", "Hide Non-Markdown Files")
 			rowBG := pal.Shell
 			borderCol := pal.Hairline
@@ -1114,7 +1166,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 				borderCol = pal.Accent
 			}
 			chkRow := ui.ButtonBase(c.Key("folder-row-non-md")).FillWidth().MinHeight(46).
-				Padding(8, 14, 8, 14).Radius(theme.RadiusSurface).
+				Padding(8, 14, 8, 14).Radius(theme.RadiusXL).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).
 				Cursor(ui.CursorPointer).Label(label)
 			if chkRow.Hovered() {
@@ -1132,7 +1184,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 						icCol = pal.DuoIconColors(pal.Accent)
 					}
 					icons.Draw(c, icons.Note, theme.IconRow, icCol)
-					ui.Text(c, label).FontSize(14).FontWeight(theme.WeightControl).TextColor(pal.Text).AccessHidden(true)
+					ui.Text(c, label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).AccessHidden(true)
 				})
 				folderCheckBox(c, hideNonMD)
 			})
@@ -1146,11 +1198,11 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 		})
 
 		// Card 2: Workspace Folder Rules (app_settings_folders_view.rs:123-188).
-		settingsCardGap(c, 16, func() {
-			ui.Column(c).FillWidth().Gap(2).Children(func() {
+		internalui.Card(c, func() {
+			ui.Column(c).FillWidth().Gap(theme.Space2).Children(func() {
 				cardTitle(c, theme.Tr("工作区文件夹清单", "Workspace Folder Rules"))
 				ui.Text(c, theme.Tr("隐藏影响侧栏与搜索，不删除文件", "Hiding affects sidebar & search; files are not deleted")).
-					FontSize(14).TextColor(pal.TextSecondary)
+					FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})
 
 			rules := append([]model.FolderRule(nil), st.FolderRules...)
@@ -1162,8 +1214,8 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 						icons.Draw(c, icons.Folder, theme.IconRow, pal.DuoIconColors(pal.Text))
 						assetsIn := ui.TextInput(c.Key("settings-assets-input"), &m.assetsDraft).
 							Placeholder("assets").Label(theme.Tr("资源目录名", "Assets Folder")).
-							Font("monospace").FontSize(14).Height(34).PaddingX(10).
-							Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.BtnBorder).
+							Font("monospace").FontSize(theme.FontBody).Height(34).PaddingX(10).
+							Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.BtnBorder).
 							Grow(1).MinWidth(0)
 						internalui.Probe(assetsIn, "settings-assets-input")
 						if assetsIn.Changed() || assetsIn.Submitted() {
@@ -1191,7 +1243,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							})
 						}
 						ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-							ui.Text(c, theme.Tr("系统", "System")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+							ui.Text(c, theme.Tr("系统", "System")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 						})
 					},
 				)
@@ -1209,7 +1261,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 								icCol = pal.MonoIconColors(pal.TextSecondary)
 							}
 							icons.Draw(c, icons.Folder, theme.IconRow, icCol)
-							ui.Text(c, rule.Pattern).Font("monospace").FontSize(14).TextColor(pal.Text).SingleLine()
+							ui.Text(c, rule.Pattern).Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						},
 						func() {
 							visIdx := 0
@@ -1244,7 +1296,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					in := ui.TextInput(c.Key("settings-folder-rule-input"), &m.folderRuleDraft).
 						Placeholder(theme.Tr("输入文件夹名称，如 build 或 drafts", "Enter folder name, e.g. build")).
 						Label(theme.Tr("文件夹名称", "Folder Name")).
-						FontSize(14).Height(34).PaddingX(10).Radius(theme.RadiusControl).
+						FontSize(theme.FontBody).Height(theme.HeightControl).PaddingX(theme.Space10).Radius(theme.RadiusMD).
 						Background(pal.Shell).Border(1, pal.BtnBorder).Grow(1).MinWidth(0)
 					internalui.Probe(in, "settings-folder-rule-input")
 					submitted := in.Submitted()
@@ -1257,7 +1309,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 					}
 				})
 				if m.folderRuleError != "" {
-					ui.Text(c, m.folderRuleError).FontSize(14).TextColor(pal.Accent)
+					ui.Text(c, m.folderRuleError).FontSize(theme.FontBody).TextColor(pal.Accent)
 				}
 			})
 
@@ -1284,11 +1336,11 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 						} else {
 							icons.Draw(c, chevron, 14, pal.MonoIconColors(pal.TextSecondary))
 						}
-						ui.Text(c, theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)")).FontSize(14).TextColor(pal.TextSecondary)
+						ui.Text(c, theme.Tr("高级规则（正则表达式）", "Advanced Rules (Regex)")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						if regexCount > 0 {
-							ui.Box(c).Padding(1, 6, 1, 6).Radius(theme.RadiusControl).
+							ui.Box(c).Padding(1, 6, 1, 6).Radius(theme.RadiusMD).
 								Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
-								ui.Text(c, fmt.Sprintf("%d", regexCount)).FontSize(14).TextColor(pal.TextSecondary)
+								ui.Text(c, fmt.Sprintf("%d", regexCount)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 							})
 						}
 					})
@@ -1303,20 +1355,20 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 							var submitted bool
 							ui.Row(c.Key("regex-slash-affix")).Grow(1).MinWidth(0).Height(34).PaddingX(10).
-								AlignItems(ui.Center).Radius(theme.RadiusControl).
+								AlignItems(ui.Center).Radius(theme.RadiusMD).
 								Background(pal.Shell).Border(1, pal.BtnBorder).Children(func() {
-								ui.Text(c, "/").Font("monospace").FontSize(14).FontWeight(theme.WeightMonoMedium).TextColor(pal.TextSecondary)
+								ui.Text(c, "/").Font("monospace").FontSize(theme.FontBody).FontWeight(theme.WeightMono).TextColor(pal.TextSecondary)
 								in := ui.TextInput(c.Key("settings-regex-rule-input"), &m.regexRuleDraft).
 									Placeholder("temp|cache").
 									Label(theme.Tr("正则表达式", "Regex Pattern")).
-									Font("monospace").FontSize(14).Height(32).PaddingX(4).
+									Font("monospace").FontSize(theme.FontBody).Height(32).PaddingX(4).
 									Background(ui.Transparent).Border(0, ui.Transparent).Grow(1).MinWidth(0)
 								internalui.Probe(in, "settings-regex-rule-input")
 								submitted = in.Submitted()
 								if in.Changed() {
 									m.regexRuleError = ""
 								}
-								ui.Text(c, "/").Font("monospace").FontSize(14).FontWeight(theme.WeightMonoMedium).TextColor(pal.TextSecondary)
+								ui.Text(c, "/").Font("monospace").FontSize(theme.FontBody).FontWeight(theme.WeightMono).TextColor(pal.TextSecondary)
 							})
 							addBtn := internalui.ActionButton(c, "settings-regex-rule-add", theme.Tr("添加正则", "Add Regex"), nil, internalui.ButtonSecondary, false)
 							if addBtn.Clicked() || submitted {
@@ -1324,7 +1376,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							}
 						})
 						if m.regexRuleError != "" {
-							ui.Text(c, m.regexRuleError).FontSize(14).TextColor(pal.Accent)
+							ui.Text(c, m.regexRuleError).FontSize(theme.FontBody).TextColor(pal.Accent)
 						}
 						if regexCount > 0 {
 							ui.Column(c).FillWidth().Padding(4, 0, 0, 0).Gap(8).Children(func() {
@@ -1341,7 +1393,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 												icCol = pal.MonoIconColors(pal.TextSecondary)
 											}
 											icons.Draw(c, icons.Code, theme.IconRow, icCol)
-											ui.Text(c, "/"+rule.Pattern+"/").Font("monospace").FontSize(14).TextColor(pal.Text).SingleLine()
+											ui.Text(c, "/"+rule.Pattern+"/").Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 										},
 										func() {
 											visIdx := 0
@@ -1377,14 +1429,14 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 
 		// Card 3: Global Search Ignore List (app_settings_folders_view.rs:29-57, 189-191).
 		ignoreCard := ui.Column(c.Key("settings-ignore-search")).FillWidth().Padding(18, 20, 18, 20).Gap(16).
-			Radius(theme.RadiusSurface).Background(pal.Card).Border(1, pal.Hairline)
+			Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline)
 		internalui.Probe(ignoreCard, "settings-ignore-search")
 		ignoreCard.Children(func() {
 			cardTitle(c, theme.Tr("全局搜索忽略列表", "Global Search Ignore List"))
 			activeNB := m.activeNotebookPath(st)
 			notebooks := m.knownNotebooks(st)
 			if len(notebooks) == 0 {
-				ui.Text(c, theme.Tr("暂无已打开的笔记本目录", "No notebook folders yet")).FontSize(14).TextColor(pal.TextSecondary)
+				ui.Text(c, theme.Tr("暂无已打开的笔记本目录", "No notebook folders yet")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 				return
 			}
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
@@ -1404,8 +1456,8 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 								icCol = pal.MonoIconColors(pal.TextSecondary)
 							}
 							icons.Draw(c, icons.Folder, theme.IconRow, icCol)
-							ui.Text(c, folderName).Font("monospace").FontSize(14).TextColor(pal.Text).SingleLine().Shrink(0)
-							ui.Text(c, shortPath).Font("monospace").FontSize(14).TextColor(pal.TextSecondary).SingleLine().Grow(1)
+							ui.Text(c, folderName).Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Shrink(0)
+							ui.Text(c, shortPath).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						},
 						func() {
 							pillLabel := theme.Tr("不参与全局搜索", "Exclude from Global Search")
@@ -1418,7 +1470,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 								pillFG = pal.Text
 							}
 							pill := ui.ButtonBase(c.Key(id + "-btn")).Height(32).PaddingX(10).Gap(8).
-								AlignItems(ui.Center).Radius(theme.RadiusControl).
+								AlignItems(ui.Center).Radius(theme.RadiusMD).
 								Cursor(ui.CursorPointer).Label(pillLabel)
 							if pill.Hovered() {
 								pillBD = pal.Accent
@@ -1433,7 +1485,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							})
 							pill.Children(func() {
 								folderCheckBox(c, ignored)
-								ui.Text(c, pillLabel).FontSize(14).FontWeight(theme.WeightControl).TextColor(pillFG).SingleLine()
+								ui.Text(c, pillLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pillFG).SingleLine()
 							})
 							if pill.Clicked() {
 								m.toggleSearchIgnoreFolder(folderPath)
@@ -1441,7 +1493,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 
 							ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
 								if isCurrent {
-									ui.Text(c, theme.Tr("当前", "Current")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+									ui.Text(c, theme.Tr("当前", "Current")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 								} else {
 									rmBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 										ID:    fmt.Sprintf("folder-remove-notebook-%d", idx),
@@ -1466,7 +1518,7 @@ func folderCheckBox(c *ui.Context, checked bool) {
 	if checked {
 		bd = pal.Accent
 	}
-	ui.Box(c).Size(15, 15).Radius(theme.RadiusMicroSM).Center().Shrink(0).
+	ui.Box(c).Size(15, 15).Radius(theme.RadiusXS).Center().Shrink(0).
 		Background(pal.Card).Border(1, bd).Children(func() {
 		if checked {
 			icons.Draw(c, icons.Check, theme.IconMicro, pal.DuoIconColors(pal.Accent))
@@ -1481,7 +1533,7 @@ func folderTableRow(c *ui.Context, key string, isHidden bool, left func(), right
 		bg = pal.Shell
 	}
 	ui.Row(c.Key(key)).FillWidth().MinWidth(0).MinHeight(46).Padding(4, 12, 4, 12).
-		Radius(theme.RadiusSurface).Background(bg).Border(1, pal.Hairline).
+		Radius(theme.RadiusXL).Background(bg).Border(1, pal.Hairline).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(left)
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(0).Children(right)
@@ -1623,18 +1675,18 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		strings.TrimSpace(st.ShortcutQuick) != "" ||
 		len(st.CustomShortcuts) > 0
 
-	settingsCardGap(c, 12, func() {
+	internalui.CardSurface(ui.Column(c).FillWidth().MinWidth(0)).Gap(theme.Space12).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			cardTitle(c, theme.Tr("快捷键", "Shortcuts"))
 			if customized {
 				rstLabel := theme.Tr("恢复默认", "Reset")
 				rst := ui.ButtonBase(c.Key("settings-shortcuts-reset")).Padding(4, 8, 4, 8).
-					Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(rstLabel)
+					Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(rstLabel)
 				if rst.Hovered() {
 					rst.Background(pal.Hover)
 				}
 				rst.Children(func() {
-					ui.Text(c, rstLabel).FontSize(14).TextColor(pal.Accent).SingleLine()
+					ui.Text(c, rstLabel).FontSize(theme.FontBody).TextColor(pal.Accent).SingleLine()
 				})
 				internalui.Probe(rst, "settings-shortcuts-reset")
 				if rst.Clicked() {
@@ -1651,11 +1703,11 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 
 		if m.shortcutConflictNotice != "" {
 			noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
-				Padding(8, 12, 8, 12).Radius(theme.RadiusControl).
+				Padding(8, 12, 8, 12).Radius(theme.RadiusMD).
 				Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35))
 			internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
 			noticeRow.Children(func() {
-				ui.Text(c, m.shortcutConflictNotice).FontSize(14).TextColor(pal.Warning)
+				ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
 			})
 		}
 
@@ -1701,7 +1753,7 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	}
 	btn := ui.ButtonBase(c.Key(id)).Height(32).PaddingX(5).Gap(4).
 		AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(accLabel)
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(accLabel)
 	if !recording && btn.Hovered() {
 		borderCol = pal.Accent
 	}
@@ -1709,12 +1761,18 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	btn.Children(func() {
 		if recording {
 			ui.Box(c).PaddingX(6).Children(func() {
-				ui.Text(c, accLabel).FontSize(14).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+				ui.Text(c, accLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 			})
 			return
 		}
 		for _, part := range hotkeyParts(spec) {
-			keycapChip(c, part, false)
+			internalui.KeycapWithOptions(c, part, internalui.KeycapOptions{
+				Height:   theme.HeightMicro,
+				MinWidth: theme.HeightMicro,
+				PaddingX: theme.Space6,
+				Radius:   theme.RadiusSM,
+				Mono:     true,
+			})
 		}
 	})
 	internalui.Probe(btn, id)
@@ -1733,61 +1791,21 @@ func staticKeycapTray(c *ui.Context, id, spec string) {
 	if pal.Dark {
 		trayBG = pal.CodeBG
 	}
-	tray := ui.Row(c.Key(id)).Height(32).PaddingX(5).Gap(4).
+	tray := ui.Row(c.Key(id)).Height(theme.HeightControl).PaddingX(theme.Space4).Gap(theme.Space4).
 		AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusControl).Background(trayBG).Border(1, pal.Hairline)
+		Radius(theme.RadiusMD).Background(trayBG).Border(1, pal.Hairline)
 	internalui.Probe(tray, id)
 	tray.Children(func() {
 		for _, part := range hotkeyParts(spec) {
-			keycapChip(c, part, false)
+			internalui.KeycapWithOptions(c, part, internalui.KeycapOptions{
+				Height:   theme.HeightMicro,
+				MinWidth: theme.HeightMicro,
+				PaddingX: theme.Space6,
+				Radius:   theme.RadiusSM,
+				Mono:     true,
+			})
 		}
 	})
-}
-
-func keycapChip(c *ui.Context, part string, recording bool) {
-	pal := theme.Ocean()
-	bg := ui.Hex("#f4f4f2")
-	if pal.Dark {
-		bg = ui.Hex("#252a31")
-	}
-	bd := pal.BtnBorder
-	fg := pal.Text
-	if recording {
-		bd = pal.Accent
-		fg = pal.Accent
-	}
-	ui.Row(c).MinWidth(22).Height(22).PaddingX(6).Radius(theme.RadiusMicroMD).
-		Background(bg).Border(1, bd).AlignItems(ui.Center).Justify(ui.Center).
-		Children(func() {
-			if glyph, ok := keycapVectorIcon(part); ok {
-				icons.Draw(c, glyph, 15, pal.MonoIconColors(fg))
-				return
-			}
-			ui.Text(c, part).FontSize(12).FontWeight(theme.WeightMonoMedium).TextColor(fg).SingleLine().AccessHidden(true)
-		})
-}
-
-func keycapVectorIcon(part string) (icons.Icon, bool) {
-	switch part {
-	case "⌘":
-		return icons.KeyCommand, true
-	case "⌥":
-		return icons.KeyOption, true
-	case "⇧":
-		return icons.KeyShift, true
-	case "⌃":
-		return icons.KeyControl, true
-	case "⌫":
-		return icons.KeyBackspace, true
-	case "↩", "↵", "⏎":
-		return icons.KeyReturn, true
-	case "↑":
-		return icons.ArrowUp, true
-	case "↓":
-		return icons.ArrowDown, true
-	default:
-		return "", false
-	}
 }
 
 func hotkeyParts(spec string) []string {
@@ -2095,25 +2113,15 @@ func shortcutKeyName(k ui.Key) string {
 	}
 }
 
-func settingsCard(c *ui.Context, children func()) {
-	settingsCardGap(c, 16, children)
-}
-
-func settingsCardGap(c *ui.Context, gap float32, children func()) {
-	pal := theme.Ocean()
-	ui.Column(c).FillWidth().MinWidth(0).Padding(18, 20, 18, 20).Gap(gap).Radius(theme.RadiusSurface).
-		Background(pal.Card).Border(1, pal.Hairline).Children(children)
-}
-
 func cardTitle(c *ui.Context, title string) {
 	pal := theme.Ocean()
-	ui.Text(c, title).FontSize(theme.FontCardTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+	ui.Text(c, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 }
 
 func settingRow(c *ui.Context, label string, control func()) {
 	pal := theme.Ocean()
 	ui.Row(c).FillWidth().MinWidth(0).MinHeight(36).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(16).Children(func() {
-		ui.Text(c, label).FontSize(14).TextColor(pal.Text).SingleLine().Shrink(0)
+		ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Shrink(0)
 		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(control)
 	})
 }

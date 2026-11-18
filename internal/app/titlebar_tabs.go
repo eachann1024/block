@@ -118,7 +118,7 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	c.Key("tab:" + path)
 	pill := ui.Row(c).Height(tabPillH).MinWidth(0).MaxWidth(singleTabMaxW).Shrink(1).
-		Padding(0, 10, 0, 10).Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().DragWindow().
+		Padding(0, 10, 0, 10).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
 		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
 	pill.Children(func() {
 		ui.Row(c).Shrink(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip().Children(func() {
@@ -129,10 +129,12 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 			tabDirtyDot(c).Margin(0, 0, 0, 6)
 		}
 	})
-	pill.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-		blockui.RecordBounds("tab-0", r)
-		blockui.RecordBounds("tab:"+path, r)
-	})
+	if blockui.IsProbeEnabled() {
+		pill.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			blockui.RecordBounds("tab-0", r)
+			blockui.RecordBounds("tab:"+path, r)
+		})
+	}
 }
 
 func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW float32, shouldReveal bool, middleClosePath string) {
@@ -142,7 +144,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	label := tabTitle(path)
 	c.Key("tab:" + path)
 	pill := ui.ButtonBase(c).Width(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 10).
-		Radius(theme.RadiusControl).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
+		Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
 		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
 	if !p.Busy && p.OnReorderTab != nil {
 		pill.Drag(tabDragItem{Path: path})
@@ -205,9 +207,8 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 
 	closeHover, closeClicked := false, false
 	closeBtn := func() {
-		id := fmt.Sprintf("tab-close-%d", ix)
 		c.Key("tab-close:" + path)
-		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusMicroSM).
+		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusXS).
 			Cursor(ui.CursorPointer).Label(theme.Tr("关闭标签页", "Close Tab"))
 		closeHover = cb.Hovered()
 		ic := pal.MonoIconColors(pal.TextSecondary)
@@ -216,7 +217,10 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 			ic = pal.DuoIconColors(pal.Text)
 		}
 		cb.Children(func() { icons.Draw(c, icons.Close, theme.IconInline, ic) })
-		blockui.Probe(cb, id)
+		if blockui.IsProbeEnabled() {
+			id := fmt.Sprintf("tab-close-%d", ix)
+			blockui.Probe(cb, id)
+		}
 		closeClicked = cb.Clicked()
 	}
 
@@ -251,17 +255,21 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	if shouldReveal && active {
 		blockui.RevealActiveItem(pill)
 	}
-	pill.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-		blockui.RecordBounds(fmt.Sprintf("tab-%d", ix), r)
-		blockui.RecordBounds("tab:"+path, r)
-		if isDropTarget {
-			x := r.X
-			if dropAfter {
-				x = r.X + r.W - 2
+	if isDropTarget || blockui.IsProbeEnabled() {
+		pill.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			if blockui.IsProbeEnabled() {
+				blockui.RecordBounds(fmt.Sprintf("tab-%d", ix), r)
+				blockui.RecordBounds("tab:"+path, r)
 			}
-			pt.Fill(ui.Rect{X: x, Y: r.Y + 2, W: 2, H: max(r.H-4, 8)}, pal.Accent, 1)
-		}
-	})
+			if isDropTarget {
+				x := r.X
+				if dropAfter {
+					x = r.X + r.W - 2
+				}
+				pt.Fill(ui.Rect{X: x, Y: r.Y + 2, W: 2, H: max(r.H-4, 8)}, pal.Accent, 1)
+			}
+		})
+	}
 
 	btn, pressing := pill.PressedButton()
 	midTriggered := middleClosePath == path || (p.MenuState == nil && pressing && btn == 2)

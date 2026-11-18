@@ -61,7 +61,7 @@ func (s *Session) paintEmptyHintBand(wrap ui.Element, hint *emptyHintSpec, fontS
 			W: r.W + 16,
 			H: bandH,
 		}
-		p.Fill(band, pal.HintBand, 6)
+		p.Fill(band, pal.HintBand, theme.RadiusSM)
 		appUi.RecordBounds("empty-line-band", band)
 	})
 }
@@ -71,10 +71,7 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 		return
 	}
 	pal := theme.Ocean()
-	hintCol := ui.Hex("#9b9a95")
-	if theme.IsDark() {
-		hintCol = ui.Hex("#7a7975")
-	}
+	hintCol := pal.Placeholder
 	if hint.Armed {
 		hintCol = pal.Danger
 	}
@@ -86,12 +83,13 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 		if edFont := resolvedEditorFont(); edFont != "" {
 			txt.Font(edFont)
 		}
-		availBody := theme.EditorStandardWidth
+		stdW := s.standardWidth()
+		availBody := stdW
 		if s.viewportWidth > 0 {
 			availBody = max(s.viewportWidth-s.leftContentGutter()-s.rightContentInset(), 0)
 		}
-		if hint.MenuKeys && min(availBody, theme.EditorStandardWidth) >= 220 {
-			keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(6)
+		if hint.MenuKeys && min(availBody, stdW) >= s.scale(220) {
+			keys := ui.Row(c.Key("empty-hint-menu-keys")).AlignItems(ui.Center).Gap(theme.Space6)
 			keys.Children(func() {
 				if s.minimal {
 					appUi.Keycap(c, "/")
@@ -99,7 +97,7 @@ func (s *Session) renderEmptyHintRow(c *ui.Context, hint *emptyHintSpec, fontSiz
 					for _, capLbl := range []string{"/", "、"} {
 						appUi.Keycap(c, capLbl)
 					}
-					ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(theme.FontSmall).TextColor(hintCol).SingleLine()
+					ui.Text(c, theme.Tr("菜单", "Menu")).FontSize(s.scale(theme.FontSmall)).TextColor(hintCol).SingleLine()
 				}
 			})
 			appUi.Probe(keys, "empty-hint-menu-keys")

@@ -1429,7 +1429,7 @@ func (s *Session) renderBoxSelectMarquee(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		ui.Box(c.Key("editor-marquee")).Absolute().
-			Left(rx).Top(ry).Size(rw, rh).Radius(4).
+			Left(rx).Top(ry).Size(rw, rh).Radius(theme.RadiusXS).
 			Background(pal.Accent.Alpha(0.10)).
 			Border(1, pal.Accent.Alpha(0.45)).
 			IgnoreInput(true)
@@ -1622,7 +1622,7 @@ func (s *Session) hitOffsetInCodeBlock(b *model.Block, rowRect ui.Rect, wx, wy f
 	if ly > tr.H+4 {
 		return rlen
 	}
-	layout := s.cachedShapeBlock(b.ID, b.Code, nil, 0, resolvedCodeFont(), 14, theme.WeightRegular, 1.5, tr.W, false)
+	layout := s.cachedShapeBlock(b.ID, b.Code, nil, 0, resolvedCodeFont(), s.codeFontSize(), theme.WeightRegular, 1.5, tr.W, false)
 	if layout == nil {
 		return rlen
 	}
@@ -1698,15 +1698,16 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 		return base
 	}
 	cr := s.tableCellRects[tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}]
-	lx := wx - (cr.X + 10)
-	ly := wy - (cr.Y + 6)
+	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
+	lx := wx - (cr.X + tPadX)
+	ly := wy - (cr.Y + tPadY)
 	weight := 400
 	if rIdx == 0 {
 		weight = 600
 	}
-	lh := tableCellLineHeight / tableCellFontSize
+	lh := tLineH / tFontSz
 	cellBlock := model.Block{ID: b.ID, Kind: model.BlockParagraph, Spans: cell.Spans}
-	uiSpans := s.buildPureDisplaySpans(&cellBlock, tableCellFontSize, weight)
+	uiSpans := s.buildPureDisplaySpans(&cellBlock, tFontSz, weight)
 	align := ui.Start
 	if cIdx < len(b.Table.Aligns) {
 		switch b.Table.Aligns[cIdx] {
@@ -1718,10 +1719,10 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 	}
 	layout := ui.ShapeRichTextWith(uiSpans, ui.Font{
 		Family:     resolvedEditorFont(),
-		Size:       tableCellFontSize,
+		Size:       tFontSz,
 		Weight:     weight,
 		LineHeight: lh,
-	}, ui.TextShape{Width: max(cr.W-20, 40), Align: align})
+	}, ui.TextShape{Width: max(cr.W-2*tPadX, s.scale(40)), Align: align})
 	cp := layout.PositionAt(ui.Point{X: lx, Y: max(ly, 0)})
 	return clampInt(base+utf16OffsetToRuneOffset(cellPlain, cp.Index), 0, totalLen)
 }

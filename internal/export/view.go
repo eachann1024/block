@@ -751,9 +751,13 @@ func (c *Controller) Render(ctx *ui.Context) {
 	if vpW <= 0 {
 		vpW = 1200
 	}
-	room := vpW - optionsSidebarWidth - 1 - previewPadX*2
-	if room < 200 {
-		room = 200
+	sideW := float32(optionsSidebarWidth)
+	if vpW < 740 {
+		sideW = 272
+	}
+	room := vpW - sideW - 1 - previewPadX*2
+	if room < 180 {
+		room = 180
 	}
 	fitScale := computeFitScale(room, pw)
 	c.mu.Lock()
@@ -769,10 +773,10 @@ func (c *Controller) Render(ctx *ui.Context) {
 	internalui.Probe(root, "export-view")
 
 	root.Children(func() {
-		c.renderHeader(ctx, pal, title, format, style, pw, ph, zoom)
+		c.renderHeader(ctx, pal, title, format, style, pw, ph, zoom, vpW)
 		ui.Row(ctx).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			c.renderStage(ctx, pal, bm, pw, ph, scale, previewErr)
-			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied)
+			c.renderSidebar(ctx, pal, format, style, useSelection, hasSelection, showTitle, watermark, notice, savedPath, copied, sideW)
 		})
 	})
 }
@@ -792,13 +796,17 @@ func computeFitScale(room float32, pw int) float32 {
 	return s
 }
 
-func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title string, format model.ExportFormat, style model.ExportTheme, pw, ph int, zoom float32) {
+func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title string, format model.ExportFormat, style model.ExportTheme, pw, ph int, zoom float32, vpW float32) {
 	tb := ctx.TitleBar()
+	compact := vpW > 0 && vpW < 780
 	leftLead := float32(12)
 	leftMinW := float32(140)
 	if theme.IsMacOS() {
 		leftLead = max(78, tb.Left+12)
 		leftMinW = 200
+	}
+	if compact {
+		leftMinW = 0
 	}
 
 	bar := ui.Row(ctx).FillWidth().Height(theme.TitleBarHeight).Shrink(0).AlignItems(ui.Center).
@@ -821,13 +829,15 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 		})
 
 		// Center: icon + Title · 导出预览
-		ui.Row(ctx).Grow(1).MinWidth(0).FillHeight().Center().Gap(8).DragWindow().Children(func() {
+		ui.Row(ctx).Grow(1).MinWidth(0).FillHeight().PaddingX(8).Center().Gap(8).Clip().DragWindow().Children(func() {
 			icons.Draw(ctx, icons.Image, 18, pal.MonoIconColors(pal.TextSecondary))
-			ui.Text(ctx, title).FontSize(14).FontWeight(560).TextColor(pal.Text).SingleLine().Ellipsis("…")
-			ui.Text(ctx, theme.Tr("· 导出预览", "· Export Preview")).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+			ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if !compact {
+				ui.Text(ctx, theme.Tr("· 导出预览", "· Export Preview")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+			}
 		})
 
-		// Right: zoom cluster
+		// Right: zoom cluster + platform caption-button clearance
 		dimLabel := formatDimensionLabel(format, style, pw, ph)
 		zoomLabel := theme.Tr("适应", "Fit")
 		if zoom > 0 {
@@ -836,15 +846,23 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 		rightPr := float32(12)
 		if theme.IsMacOS() {
 			rightPr = 16
+		} else if tb.Right > 0 {
+			rightPr = tb.Right + 8
+		}
+		capPadL := float32(10)
+		if compact {
+			capPadL = 4
 		}
 		ui.Row(ctx).MinWidth(leftMinW).FillHeight().Shrink(0).AlignItems(ui.Center).
 			Justify(ui.End).Padding(0, rightPr, 0, 8).Children(func() {
 			capsule := ui.Row(ctx).Height(28).Shrink(0).AlignItems(ui.Center).Gap(6).
-				Padding(0, 4, 0, 10).Radius(theme.RadiusControl).
+				Padding(0, 4, 0, capPadL).Radius(theme.RadiusMD).
 				Background(pal.Paper).Border(1, pal.BtnBorder)
 			capsule.Children(func() {
-				ui.Text(ctx, dimLabel).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
-				ui.Box(ctx).Width(1).Height(14).Shrink(0).Background(pal.Hairline)
+				if !compact {
+					ui.Text(ctx, dimLabel).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Box(ctx).Width(1).Height(14).Shrink(0).Background(pal.Hairline)
+				}
 				ui.Row(ctx).Shrink(0).AlignItems(ui.Center).Gap(2).Children(func() {
 					outBtn := zoomHitButton(ctx, pal, "export-zoom-out", "−", false)
 					if outBtn.Clicked() {
@@ -865,33 +883,27 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 }
 
 func zoomHitButton(ctx *ui.Context, pal theme.Palette, id, label string, wide bool) ui.Element {
-	ctx.Key(id)
-	btn := ui.ButtonBase(ctx).Height(22).Shrink(0).Center().Radius(theme.RadiusControl).
-		Cursor(ui.CursorPointer).Label(id)
+	shrink := float32(0)
+	opts := internalui.ActionButtonOptions{
+		ID:                 id,
+		Label:              label,
+		AccessibilityLabel: id,
+		Style:              internalui.ButtonGhost,
+		Height:             theme.HeightMicro,
+		Shrink:             &shrink,
+		RegularWeight:      true,
+	}
 	if wide {
-		btn.MinWidth(40).PaddingX(6)
+		opts.MinWidth = 40
+		opts.PaddingX = theme.Space6
 	} else {
-		btn.Width(22)
+		opts.Width = theme.HeightMicro
 	}
-	if btn.Hovered() {
-		btn.Background(pal.Hover)
-	}
-	fg := pal.TextSecondary
-	if wide || btn.Hovered() {
-		fg = pal.Text
-	}
-	btn.Children(func() {
-		ui.Text(ctx, label).FontSize(14).TextColor(fg).SingleLine()
-	})
-	internalui.Probe(btn, id)
-	return btn
+	return internalui.ActionButtonWithOptions(ctx, opts)
 }
 
 func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitmap, pw, ph int, scale float32, previewErr string) {
-	stageBG := ui.Hex("#e8eaee")
-	if pal.Dark {
-		stageBG = ui.Hex("#121316")
-	}
+	stageBG := pal.Export().StageBG
 	stage := ui.Box(ctx).Grow(1).MinWidth(0).FillHeight().Background(stageBG)
 	stage.Children(func() {
 		ctx.Key("export-stage")
@@ -909,22 +921,21 @@ func (c *Controller) renderStage(ctx *ui.Context, pal theme.Palette, bm *ui.Bitm
 				if bm != nil && pw > 0 && ph > 0 {
 					drawW := float32(pw) / exportRasterScale * scale
 					drawH := float32(ph) / exportRasterScale * scale
-					paperWrap := ui.Box(ctx).Size(drawW, drawH).Shrink(0).
-						Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.16))
+					paperWrap := internalui.Elevate(ui.Box(ctx).Size(drawW, drawH).Shrink(0), theme.ElevationDialog)
 					paperWrap.Children(func() {
 						ui.Image(ctx, bm).Size(drawW, drawH)
 					})
 				} else if previewErr != "" {
-					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusSurface).
+					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
 						Background(pal.Paper).Border(1, pal.Danger.Alpha(0.5)).
 						Children(func() {
-							ui.Text(ctx, previewErr).FontSize(14).TextColor(pal.Danger)
+							ui.Text(ctx, previewErr).FontSize(theme.FontBody).TextColor(pal.Danger)
 						})
 				} else {
-					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusSurface).
+					ui.Box(ctx).MaxWidth(520).Padding(16, 20).Radius(theme.RadiusXL).
 						Background(pal.Paper).Border(1, pal.SidebarBorder).
 						Children(func() {
-							ui.Text(ctx, theme.Tr("正在生成预览…", "Rendering preview…")).FontSize(14).TextColor(pal.TextSecondary)
+							ui.Text(ctx, theme.Tr("正在生成预览…", "Rendering preview…")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						})
 				}
 			})
@@ -944,8 +955,9 @@ func (c *Controller) renderSidebar(
 	notice string,
 	savedPath string,
 	copied bool,
+	sideW float32,
 ) {
-	sidebar := ui.Column(ctx).Width(optionsSidebarWidth).Shrink(0).FillHeight().
+	sidebar := ui.Column(ctx).Width(sideW).Shrink(0).FillHeight().
 		Background(pal.Paper).BorderWidth(0, 0, 0, 1).BorderColor(pal.SidebarBorder)
 	sidebar.Children(func() {
 		ctx.Key("export-options")
@@ -991,7 +1003,7 @@ func (c *Controller) renderSidebar(
 
 				// 4. Page Elements (Show Title + Watermark)
 				renderOptionSection(ctx, pal, theme.Tr("版面元素", "Page Elements"), func() {
-					ui.Column(ctx).FillWidth().Padding(2, 12).Radius(theme.RadiusSurface).
+					ui.Column(ctx).FillWidth().Padding(2, 12).Radius(theme.RadiusXL).
 						Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
 						stVal := showTitle
 						if renderSwitchRow(ctx, pal, "export-title-toggle", theme.Tr("显示标题", "Show Title"), &stVal) {
@@ -1014,15 +1026,15 @@ func (c *Controller) renderSidebar(
 			Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 			if notice != "" {
 				ui.Row(ctx).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
-					Radius(theme.RadiusControl).Background(pal.Selected).Border(1, pal.Accent).
+					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent).
 					Children(func() {
-						ui.Text(ctx, notice).FontSize(14).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						ui.Text(ctx, notice).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						if savedPath != "" {
 							ctx.Key("export-reveal")
 							rev := ui.ButtonBase(ctx).Shrink(0).Cursor(ui.CursorPointer).
 								Label("export-reveal")
 							rev.Children(func() {
-								ui.Text(ctx, revealLabel()).FontSize(14).FontWeight(500).TextColor(pal.Accent).SingleLine()
+								ui.Text(ctx, revealLabel()).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 							})
 							internalui.Probe(rev, "export-reveal")
 							if rev.Clicked() {
@@ -1056,7 +1068,7 @@ func (c *Controller) renderSidebar(
 
 func renderOptionSection(ctx *ui.Context, pal theme.Palette, title string, content func()) {
 	ui.Column(ctx).FillWidth().Gap(8).Children(func() {
-		ui.Text(ctx, title).FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
+		ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 		content()
 	})
 }
@@ -1068,40 +1080,24 @@ type segChoice struct {
 }
 
 func renderExportSegmented(ctx *ui.Context, pal theme.Palette, id string, active int, items []segChoice) (int, bool) {
-	ctx.Key(id)
 	cur := active
-	seg := ui.SegmentedBase(ctx, &cur, len(items))
-	track := seg.Track.FillWidth().Height(38).Padding(3).Gap(2).Radius(theme.RadiusControl).
-		Background(pal.Shell).Border(1, pal.Hairline)
-	internalui.Probe(track, id)
-	track.Children(func() {
-		for i, it := range items {
-			selected := i == active
-			btn := seg.Segment(i).Grow(1).MinWidth(0).Height(30).Center().Radius(theme.RadiusControl).
-				Border(1, ui.Transparent).Disabled(!it.Enabled).Label(it.Label)
-			if selected {
-				btn.Background(pal.Selected).Border(1, pal.Accent)
-			} else if it.Enabled && btn.Hovered() {
-				btn.Background(pal.Hover)
-			}
-			if it.Enabled {
-				btn.Cursor(ui.CursorPointer)
-			} else {
-				btn.Opacity(0.4)
-			}
-			fg := pal.TextSecondary
-			if selected {
-				fg = pal.Text
-			}
-			btn.Children(func() {
-				ui.Text(ctx, it.Label).FontSize(14).FontWeight(500).TextColor(fg).SingleLine()
-			})
-			if it.ID != "" {
-				internalui.Probe(btn, it.ID)
-			}
+	opts := make([]internalui.SegmentOption, len(items))
+	for i, it := range items {
+		opts[i] = internalui.SegmentOption{
+			ID:       it.ID,
+			Label:    it.Label,
+			Disabled: !it.Enabled,
 		}
+	}
+	changed := internalui.SegmentedControlWithOptions(ctx, id, &cur, opts, internalui.SegmentedControlOptions{
+		FillWidth:     true,
+		TrackHeight:   38,
+		TrackPadding:  theme.Space2,
+		SegmentHeight: 30,
+		SegmentRadius: theme.RadiusMD,
+		ShellTrack:    true,
 	})
-	return cur, cur != active
+	return cur, changed
 }
 
 func (c *Controller) renderFormatBar(ctx *ui.Context, pal theme.Palette, current model.ExportFormat) {
@@ -1116,39 +1112,18 @@ func (c *Controller) renderFormatBar(ctx *ui.Context, pal theme.Palette, current
 		{model.ExportHTML, "HTML"},
 	}
 	activeIdx := 0
+	items := make([]segChoice, len(formats))
 	for i, f := range formats {
 		if f.fmt == current {
 			activeIdx = i
-			break
+		}
+		items[i] = segChoice{
+			ID:      "export-fmt-" + string(f.fmt),
+			Label:   f.label,
+			Enabled: true,
 		}
 	}
-	cur := activeIdx
-	ctx.Key("export-format")
-	seg := ui.SegmentedBase(ctx, &cur, len(formats))
-	track := seg.Track.FillWidth().Height(38).Padding(3).Gap(2).Radius(theme.RadiusControl).
-		Background(pal.Shell).Border(1, pal.Hairline)
-	internalui.Probe(track, "export-format")
-	track.Children(func() {
-		for i, f := range formats {
-			selected := i == activeIdx
-			btn := seg.Segment(i).Grow(1).MinWidth(0).Height(30).Center().Radius(theme.RadiusControl).
-				Border(1, ui.Transparent).Cursor(ui.CursorPointer).Label(f.label)
-			if selected {
-				btn.Background(pal.Selected).Border(1, pal.Accent)
-			} else if btn.Hovered() {
-				btn.Background(pal.Hover)
-			}
-			fg := pal.TextSecondary
-			if selected {
-				fg = pal.Text
-			}
-			btn.Children(func() {
-				ui.Text(ctx, f.label).FontSize(14).FontWeight(500).TextColor(fg).SingleLine()
-			})
-			internalui.Probe(btn, "export-fmt-"+string(f.fmt))
-		}
-	})
-	if cur != activeIdx && cur >= 0 && cur < len(formats) {
+	if cur, changed := renderExportSegmented(ctx, pal, "export-format", activeIdx, items); changed && cur >= 0 && cur < len(formats) {
 		c.SetFormat(formats[cur].fmt)
 	}
 }
@@ -1174,7 +1149,7 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 	id := "export-style-" + string(st)
 	ctx.Key(id)
 	btn := ui.ButtonBase(ctx).Grow(1).MinWidth(0).Height(52).PaddingX(10).Gap(10).
-		AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		Role(ui.RoleRadio).Selected(selected).Label(id)
 
 	fg := pal.TextSecondary
@@ -1188,20 +1163,17 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 		btn.Background(pal.Paper).Border(1, pal.BtnBorder)
 	}
 
-	chipBorder := ui.Hex("#d8d2c5")
-	if st.IsDark() {
-		chipBorder = ui.Hex("#3a3a3a")
-	}
+	chipBorder := pal.Export().ChipBorder
 
 	btn.Children(func() {
 		// Mini paper + accent + inner card swatch chip (28x22)
-		ui.Box(ctx).Size(28, 22).Shrink(0).Radius(4).Background(spec.Swatch[0]).
+		ui.Box(ctx).Size(28, 22).Shrink(0).Radius(theme.RadiusXS).Background(spec.Swatch[0]).
 			Border(1, chipBorder).Clip().AlignItems(ui.Center).Justify(ui.End).
 			Children(func() {
 				ui.Box(ctx).Size(18, 14).Background(spec.Swatch[2]).
 					BorderWidth(2, 0, 0, 0).BorderColor(spec.Swatch[1])
 			})
-		ui.Text(ctx, spec.Label).FontSize(14).FontWeight(500).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(ctx, spec.Label).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if selected {
 			icons.Draw(ctx, icons.Check, 15, pal.MonoIconColors(pal.Accent))
 		}
@@ -1213,46 +1185,35 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 func renderSwitchRow(ctx *ui.Context, pal theme.Palette, id, label string, value *bool) bool {
 	var changed bool
 	ui.Row(ctx).FillWidth().Height(40).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-		ui.Text(ctx, label).FontSize(14).TextColor(pal.Text).SingleLine()
+		ui.Text(ctx, label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 		changed = internalui.TogglePill(ctx, id, id, value, false)
 	})
 	return changed
 }
 
 func renderFooterButton(ctx *ui.Context, pal theme.Palette, id, label string, glyph icons.Icon, primary bool) ui.Element {
-	ctx.Key(id)
-	btn := ui.ButtonBase(ctx).Height(38).PaddingX(16).Gap(6).AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusControl).Cursor(ui.CursorPointer).Label(id)
+	style := internalui.ButtonSecondary
+	var grow float32
+	var shrink *float32
 	if primary {
-		btn.Grow(1)
+		style = internalui.ButtonPrimary
+		grow = 1
 	} else {
-		btn.Shrink(0)
+		z := float32(0)
+		shrink = &z
 	}
-	fg := pal.Text
-	if primary {
-		fg = pal.AccentText
-		bg := pal.Accent
-		if btn.Pressed() {
-			bg = pal.AccentPressed
-		} else if btn.Hovered() {
-			bg = pal.AccentHover
-		}
-		btn.Background(bg)
-	} else {
-		bg := pal.Shell
-		if btn.Pressed() {
-			bg = pal.Selected
-		} else if btn.Hovered() {
-			bg = pal.Hover
-		}
-		btn.Background(bg).Border(1, pal.BtnBorder)
-	}
-	btn.Children(func() {
-		icons.Draw(ctx, glyph, 16, pal.MonoIconColors(fg))
-		ui.Text(ctx, label).FontSize(14).FontWeight(500).TextColor(fg).SingleLine()
+	return internalui.ActionButtonWithOptions(ctx, internalui.ActionButtonOptions{
+		ID:                 id,
+		Label:              label,
+		AccessibilityLabel: id,
+		Leading:            &glyph,
+		Style:              style,
+		Height:             38,
+		PaddingX:           theme.Space16,
+		Grow:               grow,
+		Shrink:             shrink,
+		SecondaryShellBG:   true,
 	})
-	internalui.Probe(btn, id)
-	return btn
 }
 
 func isSupportedFormat(f model.ExportFormat) bool {

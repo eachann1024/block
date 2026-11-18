@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/theme"
 	internalui "block/internal/ui"
@@ -37,6 +38,19 @@ type fileIdentity struct {
 	ino uint64
 }
 
+type perfExtraState struct {
+	refreshing   bool
+	refreshGen   uint64
+	cachedValid  bool
+	cachedBounds ui.Rect
+	cachedCats   []PerfCategory
+	cachedTiles  []treemapTileRect
+}
+
+func (m *Manager) perfExtra() *perfExtraState {
+	return &m.perfState
+}
+
 var perfCategoryDefs = []struct {
 	id       string
 	zh, en   string
@@ -53,13 +67,14 @@ var perfCategoryDefs = []struct {
 }
 
 func (m *Manager) initDefaultPerfCategories() {
+	pal := theme.Ocean()
 	cats := make([]PerfCategory, len(perfCategoryDefs))
 	for i, d := range perfCategoryDefs {
 		cats[i] = PerfCategory{
 			ID:     d.id,
 			Label:  theme.Tr(d.zh, d.en),
 			Detail: theme.Tr(d.dZh, d.dEn),
-			Color:  ui.Hex(d.hex),
+			Color:  pal.PerfCategoryColor(d.id),
 		}
 	}
 	m.perfMu.Lock()
@@ -74,8 +89,9 @@ func (m *Manager) IsPerformanceOpen() bool {
 	return m.perfOpen
 }
 
-// OpenPerformance opens the Performance modal, samples CPU/RSS, and scans disk usage.
+// OpenPerformance opens the Performance modal and triggers asynchronous CPU/RSS and disk sampling.
 func (m *Manager) OpenPerformance() {
+	ex := m.perfExtra()
 	m.perfMu.Lock()
 	if m.perfOpen {
 		m.perfMu.Unlock()
@@ -87,12 +103,14 @@ func (m *Manager) OpenPerformance() {
 	cancel := make(chan struct{})
 	m.perfCancel = cancel
 	m.perfOpen = true
+	m.perfOffset = ui.Point{}
 	m.perfSamples = 0
 	m.perfScanErr = ""
+	ex.refreshGen++
+	ex.refreshing = false
 	m.perfMu.Unlock()
 
-	m.sampleProcessOnce()
-	m.RefreshPerformanceDisk("")
+	m.triggerPerformanceRefresh()
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -112,18 +130,70 @@ func (m *Manager) OpenPerformance() {
 
 // ClosePerformance closes the Performance modal and stops background sampling.
 func (m *Manager) ClosePerformance() {
+	ex := m.perfExtra()
 	m.perfMu.Lock()
 	if !m.perfOpen {
 		m.perfMu.Unlock()
 		return
 	}
 	m.perfOpen = false
+	ex.refreshGen++
+	ex.refreshing = false
 	if m.perfCancel != nil {
 		close(m.perfCancel)
 		m.perfCancel = nil
 	}
 	m.perfMu.Unlock()
 	m.requestRedraw()
+}
+
+func (m *Manager) triggerPerformanceRefresh() {
+	ex := m.perfExtra()
+	m.perfMu.Lock()
+	if !m.perfOpen || ex.refreshing {
+		m.perfMu.Unlock()
+		return
+	}
+	ex.refreshing = true
+	gen := ex.refreshGen
+	dataDir := m.dataDir
+	m.perfMu.Unlock()
+
+	nbRoots := m.notebookRoots()
+
+	go func() {
+		defer func() {
+			m.perfMu.Lock()
+			if ex.refreshGen == gen {
+				ex.refreshing = false
+			}
+			m.perfMu.Unlock()
+		}()
+
+		cpu, rss := readProcessStats()
+		m.perfMu.Lock()
+		if !m.perfOpen || ex.refreshGen != gen {
+			m.perfMu.Unlock()
+			return
+		}
+		m.perfCPU = cpu
+		m.perfRSS = rss
+		m.perfSamples++
+		m.perfMu.Unlock()
+		m.requestRedraw()
+
+		cats, lastScan, scanErr := scanPerformanceDisk("", nbRoots, dataDir)
+		m.perfMu.Lock()
+		if !m.perfOpen || ex.refreshGen != gen {
+			m.perfMu.Unlock()
+			return
+		}
+		m.perfCategories = cats
+		m.perfLastScan = lastScan
+		m.perfScanErr = scanErr
+		m.perfMu.Unlock()
+		m.requestRedraw()
+	}()
 }
 
 // PerformanceCategories returns a snapshot of the 7 disk categories with current labels and byte counts.
@@ -135,13 +205,14 @@ func (m *Manager) PerformanceCategories() []PerfCategory {
 	for _, c := range m.perfCategories {
 		byID[c.ID] = c.Bytes
 	}
+	pal := theme.Ocean()
 	for i, d := range perfCategoryDefs {
 		out[i] = PerfCategory{
 			ID:     d.id,
 			Label:  theme.Tr(d.zh, d.en),
 			Detail: theme.Tr(d.dZh, d.dEn),
 			Bytes:  byID[d.id],
-			Color:  ui.Hex(d.hex),
+			Color:  pal.PerfCategoryColor(d.id),
 		}
 	}
 	return out
@@ -150,6 +221,17 @@ func (m *Manager) PerformanceCategories() []PerfCategory {
 // RefreshPerformanceDisk scans the 7 disk categories synchronously.
 // When `overrideRoot` is non-empty, all files under `overrideRoot` are scanned and classified.
 func (m *Manager) RefreshPerformanceDisk(overrideRoot string) {
+	cats, lastScan, scanErr := scanPerformanceDisk(overrideRoot, m.notebookRoots(), m.dataDir)
+
+	m.perfMu.Lock()
+	m.perfCategories = cats
+	m.perfLastScan = lastScan
+	m.perfScanErr = scanErr
+	m.perfMu.Unlock()
+	m.requestRedraw()
+}
+
+func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) (cats []PerfCategory, lastScan, scanErr string) {
 	totals := make([]uint64, len(perfCategoryDefs))
 	seen := make(map[fileIdentity]struct{})
 	var errs []string
@@ -165,7 +247,7 @@ func (m *Manager) RefreshPerformanceDisk(overrideRoot string) {
 		}
 	} else {
 		// 1. Notebooks (notes vs assets)
-		for _, nb := range m.notebookRoots() {
+		for _, nb := range nbRoots {
 			scanTree(nb, seen, &errs, func(path string) int {
 				if isMarkdownPath(path) {
 					return 0 // notes
@@ -174,9 +256,9 @@ func (m *Manager) RefreshPerformanceDisk(overrideRoot string) {
 			}, totals)
 		}
 		// 2. Application data directory (history, recovery, ai_sessions, logs, config)
-		if strings.TrimSpace(m.dataDir) != "" {
-			scanTree(m.dataDir, seen, &errs, func(path string) int {
-				return classifyDataDirPath(m.dataDir, path)
+		if strings.TrimSpace(dataDir) != "" {
+			scanTree(dataDir, seen, &errs, func(path string) int {
+				return classifyDataDirPath(dataDir, path)
 			}, totals)
 		}
 		// 3. OS cache directory
@@ -190,27 +272,22 @@ func (m *Manager) RefreshPerformanceDisk(overrideRoot string) {
 		}
 	}
 
-	cats := make([]PerfCategory, len(perfCategoryDefs))
+	pal := theme.Ocean()
+	cats = make([]PerfCategory, len(perfCategoryDefs))
 	for i, d := range perfCategoryDefs {
 		cats[i] = PerfCategory{
 			ID:     d.id,
 			Label:  theme.Tr(d.zh, d.en),
 			Detail: theme.Tr(d.dZh, d.dEn),
 			Bytes:  totals[i],
-			Color:  ui.Hex(d.hex),
+			Color:  pal.PerfCategoryColor(d.id),
 		}
 	}
-
-	m.perfMu.Lock()
-	m.perfCategories = cats
-	m.perfLastScan = time.Now().Format("15:04:05")
+	lastScan = time.Now().Format("15:04:05")
 	if len(errs) > 0 {
-		m.perfScanErr = strings.Join(errs, "; ")
-	} else {
-		m.perfScanErr = ""
+		scanErr = strings.Join(errs, "; ")
 	}
-	m.perfMu.Unlock()
-	m.requestRedraw()
+	return cats, lastScan, scanErr
 }
 
 func (m *Manager) notebookRoots() []string {
@@ -245,24 +322,38 @@ func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, class
 			continue
 		}
 		for _, ent := range entries {
-			if ent.Type()&os.ModeSymlink != 0 {
+			typ := ent.Type()
+			if typ&os.ModeSymlink != 0 {
 				continue
 			}
 			full := filepath.Join(dir, ent.Name())
-			st, stErr := os.Lstat(full)
-			if stErr != nil {
-				*errs = append(*errs, stErr.Error())
-				continue
-			}
-			if st.Mode()&os.ModeSymlink != 0 {
-				continue
-			}
-			if st.IsDir() {
+			if typ.IsDir() {
 				stack = append(stack, full)
 				continue
 			}
-			if st.Mode().IsRegular() {
+			if typ.IsRegular() {
+				st, stErr := ent.Info()
+				if stErr != nil {
+					*errs = append(*errs, stErr.Error())
+					continue
+				}
 				addFileBytes(full, st, seen, classify, totals)
+				continue
+			}
+			if typ == 0 {
+				st, stErr := os.Lstat(full)
+				if stErr != nil {
+					*errs = append(*errs, stErr.Error())
+					continue
+				}
+				if st.Mode()&os.ModeSymlink != 0 {
+					continue
+				}
+				if st.IsDir() {
+					stack = append(stack, full)
+				} else if st.Mode().IsRegular() {
+					addFileBytes(full, st, seen, classify, totals)
+				}
 			}
 		}
 	}
@@ -355,8 +446,7 @@ func classifyDataDirPath(root, path string) int {
 }
 
 func isMarkdownPath(path string) bool {
-	lower := strings.ToLower(path)
-	return strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown")
+	return files.IsMarkdown(path)
 }
 
 func (m *Manager) sampleProcessOnce() {
@@ -413,39 +503,55 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 		lastScan = "—"
 	}
 
-	internalui.ModalCard(c, "perf-modal", title, &open, 720, 560, func() {
+	winW, winH := c.Size()
+	limitX := max((winW-720)/2, 0) + 120
+	limitY := max((winH-380)/2, 20)
+	clampOffset := func() {
+		m.perfOffset.X = max(-limitX, min(limitX, m.perfOffset.X))
+		m.perfOffset.Y = max(-limitY, min(limitY, m.perfOffset.Y))
+	}
+	clampOffset()
+	internalui.Dialog(c, "perf-modal", title, &open, internalui.ModalLayout{Width: 720, MaxHeight: 440, Centered: true, Offset: m.perfOffset}, func() {
 		// Header bar.
-		ui.Row(c.Key("perf-header")).FillWidth().Height(48).PaddingX(20).
+		header := ui.Row(c.Key("perf-header")).Cursor(ui.CursorGrab).FillWidth().Height(46).PaddingX(20).
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).
-			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
-			Children(func() {
-				ui.Text(c, title).FontSize(16).FontWeight(600).TextColor(pal.Text)
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ref := internalui.IconButton(c, icons.Refresh, internalui.IconButtonOptions{
-						ID:      "perf-refresh",
-						Label:   theme.Tr("刷新磁盘统计", "Refresh Disk Usage"),
-						Tooltip: theme.Tr("刷新", "Refresh"),
-					})
-					if ref.Clicked() {
-						m.RefreshPerformanceDisk("")
-						m.sampleProcessOnce()
-					}
-					cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-						ID:      "perf-close",
-						Label:   theme.Tr("关闭", "Close"),
-						Tooltip: theme.Tr("关闭", "Close"),
-					})
-					if cls.Clicked() {
-						m.ClosePerformance()
-					}
+			BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+		if dx, dy, held := header.Dragged(); held {
+			header.Cursor(ui.CursorGrabbing)
+			m.perfOffset.X += dx
+			m.perfOffset.Y += dy
+			clampOffset()
+			if dx != 0 || dy != 0 {
+				m.requestRedraw()
+			}
+		}
+		header.Children(func() {
+			ui.Text(c, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ref := internalui.IconButton(c, icons.Refresh, internalui.IconButtonOptions{
+					ID:      "perf-refresh",
+					Label:   theme.Tr("刷新磁盘统计", "Refresh Disk Usage"),
+					Tooltip: theme.Tr("刷新", "Refresh"),
 				})
+				if ref.Clicked() {
+					m.triggerPerformanceRefresh()
+				}
+				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+					ID:      "perf-close",
+					Label:   theme.Tr("关闭", "Close"),
+					Tooltip: theme.Tr("关闭", "Close"),
+				})
+				if cls.Clicked() {
+					m.ClosePerformance()
+				}
 			})
+		})
 
 		// Metrics bar (Storage, Memory RSS, CPU, Scan time).
-		ui.Row(c.Key("perf-metrics")).FillWidth().Height(42).PaddingX(20).
+		ui.Row(c.Key("perf-metrics")).FillWidth().MinHeight(38).Padding(6, 20).Wrap().Gap(12).
 			Background(pal.Sidebar).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Row(c).Gap(20).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(20).Wrap().AlignItems(ui.Center).Children(func() {
 				perfMetric(c, theme.Tr("磁盘占用", "Storage"), formatBytesIEC(totalBytes))
 				perfMetric(c, theme.Tr("物理内存", "Memory RSS"), formatBytesIEC(rss))
 				perfMetric(c, "CPU", fmt.Sprintf("%.1f%%", cpu))
@@ -457,7 +563,7 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 		ui.Column(c).FillWidth().Padding(16, 20, 18, 20).Gap(12).Children(func() {
 			if scanErr != "" {
 				ui.Text(c, theme.Tr("部分文件未能读取：", "Some files could not be read: ")+scanErr).
-					FontSize(14).TextColor(pal.Warning)
+					FontSize(theme.FontBody).TextColor(pal.Warning)
 			}
 
 			m.renderSquarifiedTreemap(c, cats, totalBytes, selectedID)
@@ -474,16 +580,16 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 				active = &cats[0]
 			}
 			if active != nil {
-				ui.Row(c.Key("perf-detail-bar")).FillWidth().Padding(10, 12, 10, 12).
-					Radius(theme.RadiusControl).Background(pal.Shell).Border(1, pal.Hairline).
+				ui.Row(c.Key("perf-detail-bar")).FillWidth().MinWidth(0).Padding(10, 12, 10, 12).Gap(12).
+					Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.Hairline).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(10, 10).Radius(theme.RadiusPill).Background(active.Color)
-						ui.Text(c, active.Label).FontSize(14).FontWeight(600).TextColor(pal.Text)
-						ui.Text(c, active.Detail).FontSize(14).TextColor(pal.TextSecondary)
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+						ui.Box(c).Size(10, 10).Shrink(0).Radius(theme.RadiusPill).Background(active.Color)
+						ui.Text(c, active.Label).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
+						ui.Text(c, active.Detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					})
 					ui.Text(c, fmt.Sprintf("%s (%s)", formatBytesIEC(active.Bytes), formatPercent(active.Bytes, totalBytes))).
-						FontSize(14).FontWeight(600).TextColor(pal.Text)
+						FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
 				})
 			}
 
@@ -494,7 +600,7 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 					isSelected := catCopy.ID == selectedID
 					tileID := "perf-tile-" + catCopy.ID
 					btn := ui.ButtonBase(c.Key(tileID)).Height(32).PaddingX(10).Gap(6).
-						AlignItems(ui.Center).Radius(theme.RadiusControl).Cursor(ui.CursorPointer).
+						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 						Label(catCopy.Label)
 					if isSelected {
 						btn.Background(pal.Selected).Border(1, pal.Accent)
@@ -505,8 +611,8 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 					}
 					btn.Children(func() {
 						ui.Box(c).Size(8, 8).Radius(theme.RadiusPill).Background(catCopy.Color)
-						ui.Text(c, catCopy.Label).FontSize(14).TextColor(pal.Text).SingleLine()
-						ui.Text(c, formatBytesIEC(catCopy.Bytes)).FontSize(14).TextColor(pal.TextSecondary).SingleLine()
+						ui.Text(c, catCopy.Label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+						ui.Text(c, formatBytesIEC(catCopy.Bytes)).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					})
 					internalui.Probe(btn, tileID)
 					if btn.Clicked() {
@@ -524,20 +630,51 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 
 func (m *Manager) selectPerfCategory(id string) {
 	m.perfMu.Lock()
-	m.perfSelected = id
+	changed := m.perfSelected != id
+	if changed {
+		m.perfSelected = id
+	}
 	m.perfMu.Unlock()
+	if changed {
+		m.requestRedraw()
+	}
+}
+
+func perfCategoriesEqual(a, b []PerfCategory) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Bytes != b[i].Bytes || a[i].Label != b[i].Label || a[i].Detail != b[i].Detail || a[i].Color != b[i].Color {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) renderSquarifiedTreemap(c *ui.Context, cats []PerfCategory, totalBytes uint64, selectedID string) {
 	pal := theme.Ocean()
-	canvas := ui.Box(c.Key("perf-treemap")).FillWidth().Height(210).Radius(theme.RadiusControl).
+	canvas := ui.Box(c.Key("perf-treemap")).FillWidth().Height(210).Radius(theme.RadiusMD).
 		Background(pal.Shell).Border(1, pal.Hairline)
 	internalui.Probe(canvas, "perf-treemap")
 
 	canvas.Draw(func(p *ui.Painter, r ui.Rect) {
-		tiles := layoutSquarifiedTreemap(cats, r)
+		ex := m.perfExtra()
 		m.perfMu.Lock()
-		m.perfTreeRects = tiles
+		var tiles []treemapTileRect
+		if ex.cachedValid && ex.cachedBounds == r && perfCategoriesEqual(ex.cachedCats, cats) {
+			tiles = ex.cachedTiles
+		} else {
+			m.perfMu.Unlock()
+			tiles = layoutSquarifiedTreemap(cats, r)
+			catsCopy := append([]PerfCategory(nil), cats...)
+			m.perfMu.Lock()
+			ex.cachedValid = true
+			ex.cachedBounds = r
+			ex.cachedCats = catsCopy
+			ex.cachedTiles = tiles
+			m.perfTreeRects = tiles
+		}
 		m.perfMu.Unlock()
 
 		for _, t := range tiles {
@@ -554,19 +691,19 @@ func (m *Manager) renderSquarifiedTreemap(c *ui.Context, cats []PerfCategory, to
 				border = pal.Accent
 				bw = 2
 			}
-			p.Fill(tr, bg, theme.RadiusControl)
-			p.Stroke(tr, border, theme.RadiusControl, bw)
+			p.Fill(tr, bg, theme.RadiusMD)
+			p.Stroke(tr, border, theme.RadiusMD, bw)
 
 			// Left accent stripe.
 			stripe := ui.Rect{X: tr.X + 4, Y: tr.Y + 6, W: 4, H: max(tr.H-12, 4)}
 			p.Fill(stripe, t.cat.Color, 2)
 
 			if tr.W >= 72 && tr.H >= 38 {
-				titleSpan := ui.Span{Text: t.cat.Label, Size: 14, Weight: 600, Color: pal.Text}
+				titleSpan := ui.Span{Text: t.cat.Label, Size: 14, Weight: theme.WeightTitle, Color: pal.Text}
 				p.RichText(tr.X+14, tr.Y+8, tr.W-20, titleSpan)
 				if tr.H >= 56 {
 					sub := fmt.Sprintf("%s · %s", formatBytesIEC(t.cat.Bytes), formatPercent(t.cat.Bytes, totalBytes))
-					subSpan := ui.Span{Text: sub, Size: 14, Weight: 400, Color: pal.TextSecondary}
+					subSpan := ui.Span{Text: sub, Size: 14, Weight: theme.WeightRegular, Color: pal.TextSecondary}
 					p.RichText(tr.X+14, tr.Y+30, tr.W-20, subSpan)
 				}
 			}
@@ -733,8 +870,8 @@ func insetRect(r ui.Rect, pad float32) ui.Rect {
 func perfMetric(c *ui.Context, label, value string) {
 	pal := theme.Ocean()
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).FontSize(14).TextColor(pal.TextSecondary)
-		ui.Text(c, value).FontSize(14).FontWeight(600).TextColor(pal.Text)
+		ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+		ui.Text(c, value).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 	})
 }
 

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>现状：不统一清单</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#3d63b0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1240px; box-sizing: border-box; padding: 48px 56px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; display: flex; flex-direction: column; gap: 24px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between">
+    <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560">现状：不统一清单</h1>
+    <div style="display: flex; gap: 24px; color: #526071">
+      <span><b style="color: #20242c; font-weight: 560">180</b> 处硬编码颜色</span>
+      <span><b style="color: #20242c; font-weight: 560">26</b> 种阴影</span>
+      <span><b style="color: #20242c; font-weight: 560">10</b> 种圆角</span>
+      <span><b style="color: #20242c; font-weight: 560">11</b> 种字号</span>
+      <span><b style="color: #20242c; font-weight: 560">6</b> 种字重</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">圆角：10 种字面量，最常用的 6 没有 token</h2>
+      <div style="display: flex; gap: 12px; align-items: flex-end">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 1px; background: #eef3fc"></div><span>1</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 2px; background: #eef3fc"></div><span>2</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 3.5px; background: #eef3fc"></div><span>3.5</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 4px; background: #eef3fc"></div><span>4 ×17</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 5px; background: #eef3fc"></div><span>5 ×4</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 2px solid #d64545; border-radius: 6px; background: #fdeeee"></div><span style="color: #d64545; font-weight: 560">6 ×40</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 8px; background: #eef3fc"></div><span>8 ×5</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 10px; background: #eef3fc"></div><span>10 ×7</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 12px; background: #eef3fc"></div><span>12</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div style="width: 52px; height: 52px; border: 1.5px solid #547dd0; border-radius: 13px; background: #eef3fc"></div><span>13</span></div>
+      </div>
+      <div style="color: #526071">集中在 editor/overlays.go、editor/view.go、ai/view.go、editor/inline_ai.go；RadiusCard = 14，而 DESIGN.md 卡片为 10。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">字号与字重：token 只定义 3 种字重，代码用了 6 种</h2>
+      <div style="display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap">
+        <span style="font-size: 11px; color: #d64545">11</span>
+        <span style="font-size: 11.5px; color: #d64545">11.5</span>
+        <span style="font-size: 12px">12</span>
+        <span style="font-size: 12.5px; color: #d64545">12.5</span>
+        <span style="font-size: 13px">13</span>
+        <span style="font-size: 14px">14 ×174 字面量</span>
+        <span style="font-size: 15px">15</span>
+        <span style="font-size: 16px; color: #d64545">16</span>
+        <span style="font-size: 18px; color: #d64545">18</span>
+        <span style="font-size: 22px; color: #d64545">22</span>
+        <span style="font-size: 24px">24</span>
+      </div>
+      <div style="display: flex; gap: 16px; font-size: 15px">
+        <span style="font-weight: 400">400</span>
+        <span style="font-weight: 460">460</span>
+        <span style="font-weight: 500; color: #d64545">500 ×28</span>
+        <span style="font-weight: 550; color: #d64545">550</span>
+        <span style="font-weight: 560">560</span>
+        <span style="font-weight: 600; color: #d64545">600 ×40</span>
+      </div>
+      <div style="color: #526071">FontBody 只被引用 56 次，另有 174 处写死 14；tooltip 写死 11.5 / 12.5，与 TooltipFontSize = 13 冲突；KeycapFontSize 11 而规范为 12。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">阴影：26 种组合，没有层级 token</h2>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; padding: 8px 4px 12px">
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08), 0 12px 32px rgba(0,0,0,.12)"></div>
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.08)"></div>
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.16)"></div>
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.22)"></div>
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.10), 0 1px 3px rgba(15,23,42,.06)"></div>
+        <div style="height: 56px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.12)"></div>
+      </div>
+      <div style="color: #526071">菜单阴影栈在 editor/overlays.go 手抄 5 次（未用 ui.MenuSurface）；tooltip 用偏蓝阴影 rgba(15,23,42)，其余为纯黑。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">控件高度与间距：没有固定档位</h2>
+      <div style="display: flex; gap: 8px; align-items: flex-end">
+        <div style="width: 44px; height: 22px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 24px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 26px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 28px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 30px; border: 1px solid #d64545; border-radius: 6px"></div>
+        <div style="width: 44px; height: 32px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 34px; border: 1px solid #d64545; border-radius: 6px"></div>
+        <div style="width: 44px; height: 36px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+        <div style="width: 44px; height: 38px; border: 1px solid #d64545; border-radius: 6px"></div>
+        <div style="width: 44px; height: 40px; border: 1px solid #dcdcdc; border-radius: 6px"></div>
+      </div>
+      <div style="color: #526071">高度 22–40 共 10 档；间距用了 2 / 3 / 4 / 6 / 7 / 8 / 9 / 10 / 12 / 14 / 16 / 18 / 20 / 24 / 28 共 15 档，其中 3、7、9 不在任何网格上。</div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">颜色：硬编码值与已有 token 重复或接近</h2>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px minmax(0, 1fr); gap: 8px 10px; align-items: center">
+        <span>inline_ai.go 芯片底</span><div style="height: 22px; border-radius: 4px; background: #eef3fc; border: 1px solid #e4e6ea"></div><div style="height: 22px; border-radius: 4px; background: #eef3fc; border: 1px solid #e4e6ea"></div><span style="color: #526071">= pal.Hover，原样抄写</span>
+        <span>overlays.go 评论圆点</span><div style="height: 22px; border-radius: 4px; background: #f5c84c"></div><div style="height: 22px; border-radius: 4px; background: #f5c84c"></div><span style="color: #526071">= pal.AnnotSendDot</span>
+        <span>empty_hint.go 提示字</span><div style="height: 22px; border-radius: 4px; background: #9b9a95"></div><div style="height: 22px; border-radius: 4px; background: #93918c"></div><span style="color: #526071">≈ pal.Placeholder</span>
+        <span>inline_ai.go 删除色</span><div style="height: 22px; border-radius: 4px; background: #b42318"></div><div style="height: 22px; border-radius: 4px; background: #9e2a2b"></div><span style="color: #526071">≈ pal.DiffDelFG</span>
+        <span>表格表头底（2 处各写一份）</span><div style="height: 22px; border-radius: 4px; background: #f5f3ed; border: 1px solid #e4e6ea"></div><div style="height: 22px; border-radius: 4px; background: #f3f1ec; border: 1px solid #e4e6ea"></div><span style="color: #526071">≈ pal.CodeBG</span>
+        <span>深色键帽 / 胶囊 / 代码块</span><div style="height: 22px; border-radius: 4px; background: #252a31"></div><div style="height: 22px; border-radius: 4px; background: #242424"></div><span style="color: #526071">偏蓝，违背中性石墨灰</span>
+        <span>深色 Link</span><div style="height: 22px; border-radius: 4px; background: #256abf"></div><div style="height: 22px; border-radius: 4px; background: #779de8"></div><span style="color: #526071">与浅色同值，在 #181818 上对比不足</span>
+      </div>
+    </section>
+
+    <section style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+      <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 560">重复组件与 token 别名</h2>
+      <div style="display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 8px 14px">
+        <span>export/view.go 自绘分段 / 开关 / 底部按钮</span><span style="color: #526071">已有 ui.SegmentedControl / TogglePill / ActionButton</span>
+        <span>settings.go keycapChip（#f4f4f2）</span><span style="color: #526071">已有 ui/keycap.go</span>
+        <span>settingsCard + ai.settingsCardSurface</span><span style="color: #526071">两份卡片表面，缺 ui.Card</span>
+        <span>editor/inline_ai.go</span><span style="color: #526071">0 处使用共享组件，15 处硬编码色</span>
+        <span>Hover / MenuHover / BtnHover</span><span style="color: #526071">三个悬停底，浅色值各不相同</span>
+        <span>Selected = MenuChecked；FontUISize = FontBody</span><span style="color: #526071">同值别名</span>
+        <span>Text / UIText / TooltipFG</span><span style="color: #526071">三套主文字</span>
+      </div>
+    </section>
+
+  </div>
+
+  <section style="background: #fef5e7; border: 1px solid #f1dcb6; border-radius: 10px; padding: 14px 20px; display: flex; gap: 32px">
+    <b style="font-weight: 560">规范与代码漂移</b>
+    <span>侧栏宽度 代码 240 / 规范 260</span>
+    <span>卡片圆角 代码 14 / 规范 10</span>
+    <span>Accent 悬停 代码 #456ec2 / 规范 #3d63b0</span>
+    <span>DESIGN.md 仍指向 Rust src/theme.rs</span>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -77,6 +77,22 @@ func main() {
 
 	var openMainWindow func() *mygo.Window
 
+	revealMainWindow := func() *mygo.Window {
+		w := openMainWindow()
+		if w != nil {
+			w.Restore()
+			w.Show()
+			w.Focus()
+		}
+		if mygo.App.IsReady() {
+			mygo.App.Focus()
+		}
+		return w
+	}
+	ws.OnRevealMainWindow = func() {
+		_ = revealMainWindow()
+	}
+
 	menuActions := app.MenuActions{
 		OnAbout: func() {
 			ws.Modals().OpenAbout()
@@ -100,14 +116,25 @@ func main() {
 			ws.QuickNote().Toggle()
 		},
 		OnSearch: func() {
+			ws.SearchWindow().Hide()
+			revealMainWindow()
 			ws.Modals().OpenSearch(false)
+			ws.RequestRedraw()
 		},
 		OnExportImage: func() {
 			ws.OpenExportStage()
 		},
 		OnCloseTab: func() {
+			if ws.SearchWindow().IsFocused() {
+				ws.SearchWindow().Hide()
+				return
+			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().Hide()
+				return
+			}
+			if ws.Modals().IsSearchOpen() {
+				ws.Modals().CloseSearch()
 				return
 			}
 			ws.CloseActiveTab()
@@ -126,24 +153,20 @@ func main() {
 			}
 		},
 		OnToggleSidebar: func() {
-			winW := float32(1100)
-			if win := ws.Window(); win != nil {
-				cw, _ := win.ContentSize()
-				if cw > 0 {
-					winW = float32(cw)
-				}
-			}
-			ws.ToggleSidebar(winW)
+			ws.ToggleSidebar(0)
 		},
 		OnToggleAIPanel: func() {
 			ws.ToggleAIPanel()
 		},
 		OnZoomReset: func() {
-			if ws.Modals().IsRecordingShortcut() || ws.Modals().IsSearchOpen() {
+			if ws.Modals().IsRecordingShortcut() {
 				return
 			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().ResetZoom()
+				return
+			}
+			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
 			ws.ResetZoomPct()
@@ -156,6 +179,9 @@ func main() {
 				ws.QuickNote().StepZoom(10)
 				return
 			}
+			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
+				return
+			}
 			ws.StepZoomPct(app.MainZoomStepPct)
 		},
 		OnZoomOut: func() {
@@ -164,6 +190,9 @@ func main() {
 			}
 			if ws.QuickNote().IsFocused() {
 				ws.QuickNote().StepZoom(-10)
+				return
+			}
+			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
 			ws.StepZoomPct(-app.MainZoomStepPct)
@@ -199,18 +228,33 @@ func main() {
 		mygo.GlobalShortcut.UnregisterAll()
 		if quickAccel := blockui.ToMyGoAccelerator(modals.EffectiveShortcut(cur, "quick_note")); quickAccel != "" {
 			_ = mygo.GlobalShortcut.Register(quickAccel, func() {
+				if ws.Modals().IsRecordingShortcut() {
+					return
+				}
 				ws.QuickNote().TriggerHotkey()
 			})
 		}
 		if summonAccel := blockui.ToMyGoAccelerator(modals.EffectiveShortcut(cur, "global_summon")); summonAccel != "" {
 			_ = mygo.GlobalShortcut.Register(summonAccel, func() {
-				if w := openMainWindow(); w != nil {
-					w.Restore()
-					w.Show()
-					w.Focus()
+				if ws.Modals().IsRecordingShortcut() || !modals.MarkSearchTriggered() {
+					return
 				}
-				ws.Modals().OpenSearch(true)
-				ws.RequestRedraw()
+				mainWin := ws.Window()
+				mainVisible := mainWin != nil && !mygo.App.IsHidden() && mainWin.IsVisible() && !mainWin.IsMinimized()
+				if !mainVisible {
+					ws.SearchWindow().Hide()
+					revealMainWindow()
+					ws.Modals().OpenSearch(true)
+					ws.RequestRedraw()
+					return
+				}
+				if mainWin.IsFocused() && mygo.App.IsActive() {
+					ws.SearchWindow().Hide()
+					ws.Modals().OpenSearch(true)
+					ws.RequestRedraw()
+					return
+				}
+				ws.SearchWindow().Toggle()
 			})
 		}
 	}
@@ -340,12 +384,14 @@ func main() {
 		theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
 		mygo.Theme.OnUpdated(func() {
 			theme.SetThemeMode(ws.State().Theme, mygo.Theme.IsDark())
+			ws.SearchWindow().Invalidate()
 			ws.QuickNote().RefreshStyle()
 			ws.RequestRedraw()
 		})
 
 		openMainWindow()
 		ws.QuickNote().AttachDesktop()
+		ws.SearchWindow().AttachDesktop()
 		syncMenuAndHotkeys(ws.State())
 	})
 

@@ -9,6 +9,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -143,12 +144,12 @@ type RichInputState struct {
 	composeSelected ui.TextInputRange
 	composing       bool
 
-	dragging   bool
-	dragUnit   int
-	dragStart  [2]int
-	pressPt    ui.Point
-	pressMods  ui.Modifiers
-	pressLink  string
+	dragging  bool
+	dragUnit  int
+	dragStart [2]int
+	pressPt   ui.Point
+	pressMods ui.Modifiers
+	pressLink string
 
 	layKey       richLayoutKey
 	layout       *ui.TextLayout
@@ -177,9 +178,8 @@ type RichInputState struct {
 var _ ui.TextInputClient = (*RichInputState)(nil)
 
 const (
-	richCaretHoldMs  = 480
-	richCaretFadeMs  = 120
-	richCaretFrameMs = 33
+	richCaretOnMs  = 530
+	richCaretOffMs = 530
 )
 
 // Sync updates the state's underlying text and rune selection immediately.
@@ -1118,22 +1118,15 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 }
 
 func caretBlinkAlpha(tMs float64) (alpha float32, waitMs int) {
-	period := float64(2 * (richCaretHoldMs + richCaretFadeMs))
+	period := float64(richCaretOnMs + richCaretOffMs)
 	m := tMs - period*float64(int64(tMs/period))
 	if m < 0 {
 		m += period
 	}
-	ease := func(x float64) float32 { return float32(x * x * (3 - 2*x)) }
-	switch {
-	case m < richCaretHoldMs:
-		return 1, int(richCaretHoldMs-m) + 1
-	case m < richCaretHoldMs+richCaretFadeMs:
-		return 1 - ease((m-richCaretHoldMs)/richCaretFadeMs), richCaretFrameMs
-	case m < 2*richCaretHoldMs+richCaretFadeMs:
-		return 0, int(2*richCaretHoldMs+richCaretFadeMs-m) + 1
-	default:
-		return ease((m - 2*richCaretHoldMs - richCaretFadeMs) / richCaretFadeMs), richCaretFrameMs
+	if m < richCaretOnMs {
+		return 1, int(richCaretOnMs-m) + 1
 	}
+	return 0, int(period-m) + 1
 }
 
 func spanBoundaryPad(spans []ui.Span, runeOff int, atStart bool, defaultPad float32) float32 {
@@ -1592,7 +1585,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			Start:        lo,
 			End:          hi,
 			Fill:         opts.SelectionBG,
-			Radius:       5,
+			Radius:       theme.RadiusXS,
 			PadX:         3,
 			FullLineBand: true,
 			TintOver:     true,

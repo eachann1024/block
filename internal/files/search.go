@@ -32,6 +32,10 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 	if q == "" {
 		return nil, nil
 	}
+	foldedQ := foldPreserveLen(q)
+	if foldedQ == "" {
+		return nil, nil
+	}
 
 	seenRoots := make(map[string]bool, len(roots))
 	seenFiles := make(map[string]bool)
@@ -57,7 +61,7 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 		}
 
 		notebookName := filepath.Base(cleanRoot)
-		walkSearchDir(cleanRoot, notebookName, q, opts, 0, seenFiles, &titleHits, &bodyHits)
+		walkSearchDir(cleanRoot, notebookName, foldedQ, opts, 0, seenFiles, &titleHits, &bodyHits)
 	}
 
 	sort.Slice(titleHits, func(i, j int) bool {
@@ -114,7 +118,7 @@ func titleHitRank(h rankedSearchHit, query string) titleRank {
 func walkSearchDir(
 	dir string,
 	notebook string,
-	query string,
+	foldedQuery string,
 	opts ScanOptions,
 	depth int,
 	seenFiles map[string]bool,
@@ -137,14 +141,16 @@ func walkSearchDir(
 			if isIgnoredDir(rawName, opts) || theme.IsSearchFolderIgnored(fullPath) {
 				continue
 			}
-			walkSearchDir(fullPath, notebook, query, opts, depth+1, seenFiles, titleHits, bodyHits)
+			walkSearchDir(fullPath, notebook, foldedQuery, opts, depth+1, seenFiles, titleHits, bodyHits)
 			continue
 		}
 
 		isRegular := mode.IsRegular()
+		var fileInfo os.FileInfo
 		if !isRegular && mode&os.ModeSymlink != 0 {
 			if st, statErr := os.Stat(fullPath); statErr == nil && st.Mode().IsRegular() {
 				isRegular = true
+				fileInfo = st
 			}
 		}
 		if !isRegular {
@@ -158,7 +164,7 @@ func walkSearchDir(
 		}
 		seenFiles[fullPath] = true
 
-		if ranked, ok := inspectSearchFile(fullPath, rawName, notebook, query); ok {
+		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, foldedQuery); ok {
 			if ranked.titleMatch {
 				*titleHits = append(*titleHits, ranked)
 			} else {
@@ -168,12 +174,18 @@ func walkSearchDir(
 	}
 }
 
-func inspectSearchFile(fullPath, rawName, notebook, query string) (rankedSearchHit, bool) {
+func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, foldedQuery string) (rankedSearchHit, bool) {
 	stem := entryDisplayName(rawName, false)
-	titleStart, _, titleMatched := findFoldMatch(stem, query)
+	titleStart, _, titleMatched := findFoldMatchFolded(stem, foldedQuery)
+
+	if info == nil && entry != nil {
+		if entryInfo, err := entry.Info(); err == nil {
+			info = entryInfo
+		}
+	}
 
 	var text string
-	if info, err := os.Stat(fullPath); err == nil && info.Size() <= maxSearchFileBytes {
+	if info != nil && info.Size() <= maxSearchFileBytes {
 		if data, readErr := os.ReadFile(fullPath); readErr == nil && utf8.Valid(data) {
 			text = string(data)
 		}
@@ -185,16 +197,29 @@ func inspectSearchFile(fullPath, rawName, notebook, query string) (rankedSearchH
 	bodyMatched := false
 
 	if text != "" {
-		lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-		for idx, line := range lines {
-			s, e, ok := findFoldMatch(line, query)
-			if ok {
+		rest := text
+		lineNum := 0
+		for {
+			lineNum++
+			var line string
+			nl := strings.IndexByte(rest, '\n')
+			if nl >= 0 {
+				line = rest[:nl]
+				rest = rest[nl+1:]
+			} else {
+				line = rest
+			}
+			line = strings.TrimSuffix(line, "\r")
+			if s, e, ok := findFoldMatchFolded(line, foldedQuery); ok {
 				bodyMatched = true
-				matchLine = idx + 1
+				matchLine = lineNum
 				lineSnippet = snippetAround(line, s, e)
-				if ms, me, found := findFoldMatch(lineSnippet, query); found {
+				if ms, me, found := findFoldMatchFolded(lineSnippet, foldedQuery); found {
 					mStart, mEnd = ms, me
 				}
+				break
+			}
+			if nl < 0 {
 				break
 			}
 		}
@@ -277,16 +302,19 @@ func FindFoldMatches(text, needle string) [][2]int {
 }
 
 func findFoldMatch(text, needle string) (int, int, bool) {
-	hay := foldPreserveLen(text)
-	q := foldPreserveLen(needle)
-	if q == "" {
+	return findFoldMatchFolded(text, foldPreserveLen(needle))
+}
+
+func findFoldMatchFolded(text, foldedNeedle string) (int, int, bool) {
+	if foldedNeedle == "" {
 		return 0, 0, false
 	}
-	idx := strings.Index(hay, q)
+	hay := foldPreserveLen(text)
+	idx := strings.Index(hay, foldedNeedle)
 	if idx < 0 {
 		return 0, 0, false
 	}
-	end := idx + len(q)
+	end := idx + len(foldedNeedle)
 	if !utf8.RuneStart(text[idx]) && idx > 0 {
 		return 0, 0, false
 	}
@@ -333,31 +361,50 @@ func snippetAround(text string, matchStart, matchEnd int) string {
 	return b.String()
 }
 
+func nextLineSlice(s string) (line, rest string, hasMore bool) {
+	if nl := strings.IndexByte(s, '\n'); nl >= 0 {
+		return strings.TrimSuffix(s[:nl], "\r"), s[nl+1:], true
+	}
+	return strings.TrimSuffix(s, "\r"), "", false
+}
+
 func firstContentLine(text string) string {
-	normalized := strings.ReplaceAll(text, "\r\n", "\n")
-	lines := strings.Split(normalized, "\n")
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) == "---" {
-				lines = lines[i+1:]
+	rest := text
+	if first, afterFirst, hasMore := nextLineSlice(text); hasMore && strings.TrimSpace(first) == "---" {
+		scan := afterFirst
+		for {
+			line, next, more := nextLineSlice(scan)
+			if strings.TrimSpace(line) == "---" {
+				if more {
+					rest = next
+				} else {
+					rest = ""
+				}
 				break
 			}
+			if !more {
+				break
+			}
+			scan = next
 		}
 	}
-	for _, line := range lines {
+	for {
+		line, next, more := nextLineSlice(rest)
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
+		if trimmed != "" {
+			trimmed = strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			if trimmed != "" {
+				runes := []rune(trimmed)
+				if len(runes) > 70 {
+					return string(runes[:70])
+				}
+				return trimmed
+			}
 		}
-		trimmed = strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-		if trimmed == "" {
-			continue
+		if !more {
+			break
 		}
-		runes := []rune(trimmed)
-		if len(runes) > 70 {
-			return string(runes[:70])
-		}
-		return trimmed
+		rest = next
 	}
 	return ""
 }
