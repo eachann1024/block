@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-18T14:49:57.834Z",
-  "latest_version": "1.0.631",
-  "latest_tag": "v1.0.631",
+  "updated_at": "2026-11-18T15:08:23.869Z",
+  "latest_version": "1.0.633",
+  "latest_tag": "v1.0.633",
   "releases": [
+    {
+      "version": "1.0.633",
+      "tag": "v1.0.633",
+      "published_at": "2026-11-18T15:08:22Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.633",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "修复静态更新索引解析安装包标签时偶发漏匹配的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Fixed release tag normalization when matching installer assets from the update feed."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-macos-arm64.dmg",
+          "size": 11086338,
+          "sha256": "8f7d1396efcc7ed1408110053de2ed092c33785fab76e818d74bee4fd3d66987"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-macos-x64.dmg",
+          "size": 12208089,
+          "sha256": "dcfc8c9ffcae447a44656585e758eb91fa03fc4419468ca2267d57c64f3f4016"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-windows-x64-setup.exe",
+          "size": 8951884,
+          "sha256": "0e8d69e47ba5270f6bcb1ef7b07582f6cfa201ff371306ea4787d577c6ba09ac"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-linux-x64.deb",
+          "size": 8142686,
+          "sha256": "0cedd6e942519f7860aa3ed3b9035cb36c75a5a55750f6e99b7c6b55c4f2f06f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.633/block-linux-x64.AppImage",
+          "size": 20675064,
+          "sha256": "f27de88ba8d10d02c8f5f21960da857f59d9e0816fd0afabafd6f814bc21d10c"
+        }
+      ]
+    },
     {
       "version": "1.0.631",
       "tag": "v1.0.631",
@@ -208,38 +264,7 @@
           "Removed the legacy dictation helper to keep the app lean."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.631/block-macos-arm64.dmg",
-          "size": 11104564,
-          "sha256": "93f41e796be7ddfa88c2e8cebb9057bb8e771ff9fd9a8a735624fefb8742a321"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.631/block-macos-x64.dmg",
-          "size": 12198958,
-          "sha256": "356ad49f717a2c9f6c039f4e9df598d52040c76b38681034b0d03afe87c2484a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.631/block-windows-x64-setup.exe",
-          "size": 8946112,
-          "sha256": "0000b8e6a242b1ec42660f24a5f010a8605c82f0eea3bdd5e80c275a1be4d64e"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.631/block-linux-x64.deb",
-          "size": 8136782,
-          "sha256": "42bb5d4c49d9f27567f325884a2c54a1c4e437fc91c5971e1f67b45b6a383d47"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.631/block-linux-x64.AppImage",
-          "size": 20662776,
-          "sha256": "744f8c933382f4ab89f7df9dcf44d1c10a58491b0e61168ee5b9ed454dbf9911"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.379",
