@@ -43,6 +43,35 @@ func ResolveExternalPath(rawPath, baseDir string) string {
 	return clean
 }
 
+// LocalFileURL encodes an absolute local filesystem path into a cross-platform file:// URL
+// (supporting Unix paths, Windows drive paths, UNC paths, and percent-encoding spaces/non-ASCII bytes).
+func LocalFileURL(absPath string) string {
+	p := filepath.ToSlash(absPath)
+	isUNC := strings.HasPrefix(absPath, `\\`) || strings.HasPrefix(p, "//")
+	if isUNC || (len(p) >= 3 && p[1] == ':' && p[2] == '\\') {
+		p = strings.ReplaceAll(p, "\\", "/")
+	}
+	if isUNC {
+		p = strings.TrimLeft(p, "/")
+	} else if len(p) > 0 && p[0] != '/' {
+		p = "/" + p
+	}
+	const hex = "0123456789ABCDEF"
+	b := make([]byte, 0, len(p)+16)
+	b = append(b, "file://"...)
+	for i := 0; i < len(p); i++ {
+		ch := p[i]
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= 'A' && ch <= 'Z', ch >= '0' && ch <= '9',
+			ch == '/', ch == '-', ch == '_', ch == '.', ch == '~', ch == ':':
+			b = append(b, ch)
+		default:
+			b = append(b, '%', hex[ch>>4], hex[ch&15])
+		}
+	}
+	return string(b)
+}
+
 func sameFileOnDisk(a, b string) bool {
 	if a == "" || b == "" {
 		return false
