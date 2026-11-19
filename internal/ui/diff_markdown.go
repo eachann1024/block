@@ -19,6 +19,9 @@ type DiffLineStyle struct {
 	// Code marks a line inside a fenced code block (see DiffFenceMask): shown verbatim
 	// in the code font, since alone it would parse as a heading or list.
 	Code bool
+	// Setext is DiffSetextLevels for the line: 1 or 2 shows paragraph text as that
+	// heading level, -1 hides the "===" or "---" underline below it.
+	Setext int
 }
 
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
@@ -70,10 +73,33 @@ func DiffFenceMask(lines []string, change []int) []bool {
 // diffFenceSides is DiffFenceMask for the old and the new text separately; a line
 // absent from a side is false there.
 func diffFenceSides(lines []string, change []int) (old, cur []bool) {
-	var masks [2][]bool
+	masks, _ := diffScan(lines, change)
+	return masks[0], masks[1]
+}
+
+// DiffSetextLevels reports, per line, the setext heading it belongs to: 1 or 2 for
+// its paragraph text, -1 for the underline, 0 otherwise. Rendered one by one, "Title"
+// would read as a paragraph and "---" as a rule. A changed line takes its own side,
+// an unchanged one the new text.
+func DiffSetextLevels(lines []string, change []int) []int {
+	_, heads := diffScan(lines, change)
+	out := make([]int, len(lines))
+	for i := range lines {
+		out[i] = heads[1][i]
+		if change[i] < 0 {
+			out[i] = heads[0][i]
+		}
+	}
+	return out
+}
+
+// diffScan reads the old and the new text of a diff block by block: masks are the
+// diffFenceSides code masks, heads the per-side DiffSetextLevels.
+func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 	for si, side := range [2]int{-1, 1} {
-		mask := make([]bool, len(lines))
+		mask, head := make([]bool, len(lines)), make([]int, len(lines))
 		fence, nested, fenceList, fenceQuote := "", false, false, false
+		var paraLines []int
 		// Indented code: four columns in after a blank line (or the start), unless the
 		// text above is a list, whose nested content is indented the same way.
 		// para: the line above is paragraph text, which a "===" underline turns into a heading.
@@ -90,14 +116,14 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 			}
 			if fence == "" {
 				if t == "" {
-					prevBlank, para = true, false
+					prevBlank, para, paraLines = true, false, nil
 					continue
 				}
 				ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 				wasBlank := prevBlank
 				prevBlank = false
 				if ind >= 4 && (inIndented || (wasBlank && !inList)) {
-					mask[i], inIndented, para = true, true, false
+					mask[i], inIndented, para, paraLines = true, true, false, nil
 					continue
 				}
 				inIndented = false
@@ -109,6 +135,16 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
 				prevBlank, para = !inList && ends, !ends
+				if setext && diffSetextText(lines, paraLines) {
+					for _, p := range paraLines {
+						head[p] = 2 - min(1, strings.Count(t, "="))
+					}
+					head[i] = -1
+				}
+				paraLines = append(paraLines, i)
+				if !para {
+					paraLines = nil
+				}
 			}
 			if fence != "" {
 				mask[i] = true
@@ -126,14 +162,27 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 				continue
 			}
 			if fence = diffFenceOpen(t); fence != "" {
-				mask[i], para = true, false
+				mask[i], para, paraLines = true, false, nil
 				nested, fenceQuote = diffContainerRE.MatchString(t), strings.HasPrefix(t, ">")
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 			}
 		}
-		masks[si] = mask
+		masks[si], heads[si] = mask, head
 	}
-	return masks[0], masks[1]
+	return masks, heads
+}
+
+// diffSetextText reports whether the paragraph lines above an underline form a plain
+// setext heading: not a list item, quote or table row, whose underline would be a rule
+// or a lazy line instead.
+func diffSetextText(lines []string, para []int) bool {
+	for _, p := range para {
+		t := strings.TrimSpace(lines[p])
+		if diffListItemRE.MatchString(t) || strings.HasPrefix(t, ">") || IsDiffTableRow(t) {
+			return false
+		}
+	}
+	return len(para) > 0
 }
 
 // SyncDiffTableSeps decides each changed table separator row, which the review views
@@ -432,7 +481,7 @@ func diffMarkdownOptions(st DiffLineStyle) *markdown.Options {
 // Blank lines collapse to a thin spacer so paragraphs keep their rhythm.
 func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	line = strings.TrimRight(line, "\r\n")
-	if strings.TrimSpace(line) == "" {
+	if strings.TrimSpace(line) == "" || (st.Setext < 0 && !st.Code) {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
 	if st.Code {
@@ -453,6 +502,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		// bracket, so write it as an entity.
 		if strings.HasPrefix(body, `\[`) {
 			body = "&#91;" + body[2:]
+		}
+		if st.Setext > 0 && !st.Code {
+			body = strings.Repeat("#", st.Setext) + " " + body
 		}
 		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
 	})
