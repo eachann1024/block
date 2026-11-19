@@ -187,6 +187,7 @@ type Manager struct {
 	historySelectedID     string
 	historySnapContent    string
 	historyDiffLines      []model.DiffLine
+	historyRowHeights     []float32
 	historyMode           string // "diff" | "clean"
 	historyConfirmRestore bool
 	historyErr            string
