@@ -3343,8 +3343,8 @@ func (s *Session) deleteAnnotationByID(id string) bool {
 			if s.editingAnnotID == id {
 				s.editingAnnotID = ""
 			}
-			if s.footPickerAnnotID == id {
-				s.footPickerAnnotID = ""
+			if s.reactionPickerAnnotID == id {
+				s.reactionPickerAnnotID = ""
 			}
 			s.persistAnnotations()
 			return true

@@ -478,15 +478,6 @@ func isAnnotationVisible(ann *model.Annotation) bool {
 	return true
 }
 
-func (s *Session) hasVisibleAnnotationRail() bool {
-	for _, ann := range s.annotations {
-		if isAnnotationVisible(ann) {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Session) annotationBlockRange(ann *model.Annotation, blockIdx int) (startRune, endRune int, ok bool) {
 	if ann == nil || s.doc == nil || blockIdx < 0 || blockIdx >= len(s.doc.Blocks) {
 		return 0, 0, false

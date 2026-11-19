@@ -169,7 +169,7 @@ type Session struct {
 	copyPending             bool
 	savedMarkdown           string
 	caretHidden             bool
-	footPickerAnnotID       string
+	reactionPickerAnnotID   string
 
 	// Find bar
 	findOpen         bool
@@ -293,6 +293,7 @@ type Session struct {
 	overlayBtnRects   map[string]ui.Rect
 	overlayPanelRects map[string]ui.Rect
 	annotRowHeights   map[string]float32
+	frameAnnotations  annotationFrame
 	readOnly          bool
 	minimal           bool
 	minCanvasHeight   float32
@@ -421,7 +422,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
-	s.footPickerAnnotID = ""
+	s.reactionPickerAnnotID = ""
 	s.caretHidden = false
 	s.toolbarMoreIndex = 0
 	s.closeVideoPlayers()
@@ -711,7 +712,7 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.toolbarMoreIndex = 0
-	s.footPickerAnnotID = ""
+	s.reactionPickerAnnotID = ""
 	s.cancelInlineAI()
 	s.inlineAI = nil
 	s.copyPending = false
@@ -809,7 +810,7 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.imagePopKind != "" ||
 		(s.tableMenuBlock != 0 && s.tableMenuKind != "") ||
 		s.editingAnnotID != "" ||
-		s.footPickerAnnotID != "" ||
+		s.reactionPickerAnnotID != "" ||
 		s.activePlan != nil ||
 		s.outlineHovered
 }
@@ -829,7 +830,7 @@ func (s *Session) closeTransientOverlays() {
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
-	s.footPickerAnnotID = ""
+	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
 	s.outlineHovered = false
 	s.outlineHoverEnterAt = time.Time{}
