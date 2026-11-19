@@ -95,7 +95,7 @@ func (p Palette) Table() TableColors {
 	}
 	return TableColors{
 		Border:          p.Hairline,
-		HeaderBG:        p.CodeBlockBG,
+		HeaderBG:        ui.Hex("#fafaf9"),
 		SelectedTint:    p.Hover,
 		OuterSelectRing: p.Accent.Alpha(0.20),
 		HandleBG:        p.Paper,
