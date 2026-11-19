@@ -1312,6 +1312,10 @@ var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // its edge bars.
 func plainInline(s string, refs map[string]bool, table bool) string {
 	s = strings.TrimSpace(s)
+	// A trailing "\" is a hard line break: "安装完成\" reads 安装完成.
+	if n := len(s) - len(strings.TrimRight(s, `\`)); n%2 == 1 {
+		s = s[:len(s)-1]
+	}
 	if strings.Contains(s, "#") {
 		if h := plainBlockPrefixRE.FindString(s); strings.Contains(h, "#") {
 			s = h + plainClosingHashRE.ReplaceAllString(s[len(h):], "")
