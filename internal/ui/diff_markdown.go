@@ -719,6 +719,9 @@ func diffEscaped(s string, i int) bool {
 	return n%2 == 1
 }
 
+// PlainLinks turns the inline links, images and autolinks in s into their text.
+func PlainLinks(s string) string { return diffPlainLinks(s, nil) }
+
 // diffPlainLinks turns links into their text: a link inside a diff row would take the
 // click (opening a browser) instead of the row's accept toggle. Links are found with
 // code spans blanked out, so code is never rewritten and brackets inside it don't
