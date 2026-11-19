@@ -1097,14 +1097,34 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) {
 	c.mu.RLock()
 	expanded := c.expandedProcess[turnKey]
+	if streaming {
+		// 执行中默认展开，用户手动收起后尊重其选择。
+		expanded = !c.collapsedLive[turnKey]
+	}
 	c.mu.RUnlock()
 
 	headline := fmt.Sprintf("%d 步执行完成", len(steps))
 	if theme.IsEn() {
 		headline = fmt.Sprintf("%d steps completed", len(steps))
 	}
+	liveKey := ""
 	if streaming {
 		headline = theme.Tr("正在执行工具与思考…", "Running tools & thinking…")
+		if n := len(steps); n > 0 {
+			// 标题实时跟随最新一步，每换一步就刷新一次。
+			cur := steps[n-1]
+			for i := n - 1; i >= 0; i-- {
+				if steps[i].ID != "streaming" && !steps[i].Done {
+					cur = steps[i]
+					break
+				}
+			}
+			headline = cur.Title
+			if d := strings.TrimSpace(cur.Detail); d != "" {
+				headline += " · " + firstTitleLine(d)
+			}
+			liveKey = fmt.Sprintf("-%d-%s", n, cur.ID)
+		}
 	} else if outcome == "failed" {
 		headline = theme.Tr("执行失败", "Execution failed")
 	} else if outcome == "stopped" {
@@ -1133,16 +1153,26 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 				chevActive := toggleBtn.Hovered() || toggleBtn.Pressed()
 				icons.DrawAnimated(cUI, chev, 14, pal.HoverIconColors(chevActive), chevActive)
 			}
-			ui.Text(cUI, headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+			title := ui.Text(cUI.Key("ai-process-headline-"+turnKey+liveKey), headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+			if streaming {
+				// 每步换 key 重新入场，形成快速闪动。
+				title.TextColor(pal.Text).Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
+			}
 		})
 		if toggleBtn.Clicked() {
 			c.mu.Lock()
-			c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+			if streaming {
+				c.collapsedLive[turnKey] = expanded
+				c.expandedProcess[turnKey] = !expanded
+			} else {
+				c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+			}
 			c.mu.Unlock()
 		}
 
 		if expanded {
-			stepsWrap := bui.Scroll(cUI.Key("ai-process-steps-" + turnKey)).FillWidth().MaxHeight(180)
+			// 不再内嵌滚动：步骤随内容自然撑开，由外层聊天区滚动。
+			stepsWrap := ui.Column(cUI.Key("ai-process-steps-" + turnKey)).FillWidth()
 			bui.Probe(stepsWrap, "ai-process-steps")
 			stepsWrap.Children(func() {
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
@@ -1179,7 +1209,11 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 								iconGlyph = icons.ToolRun
 							}
 							icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
-							ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+							stepTitle := ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+							if st.Detail == "" {
+								// 无详情时由标题占满剩余宽度，避免整行被居中。
+								stepTitle.Grow(1)
+							}
 							if st.Detail != "" {
 								ui.Text(cUI, st.Detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).SingleLine()
 							}
