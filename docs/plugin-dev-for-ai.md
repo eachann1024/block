@@ -611,7 +611,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - 对应渲染表面：`"settings_section:<id>"`。
 3. **`commands`**（需 `"ui:commands"`）：注册到命令面板并支持默认快捷键。
    - `id`（必填）、`title`（必填 `LocalizedText`）。
-   - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-shift-t"`。
+   - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-shift-t"`。宿主与编辑器已占用的组合（如 `cmd-f`、`cmd-b`、`cmd-s`、`cmd-1`…`cmd-9`）不会触发插件命令。
 4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）。
 5. **`editor_menu`**（需 `"ui:commands"`）：向编辑器右键菜单追加条目。
@@ -649,7 +649,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
        }
      }
      ```
-     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径）、`context.selection`（可选）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"status"`）。
+     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径）、`context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"status"`）。
    - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行"}`（字段均可选；`status` 非空时宿主会弹出对应 `tone` 的 Toast 提示，默认 `"info"`）。
 
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
@@ -688,5 +688,5 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 9. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
    - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 10. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容"}`（替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，编辑器不可用返回 `-32005`，插入失败返回 `-32004`）。
+    - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，编辑器不可用返回 `-32005`，插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
