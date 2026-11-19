@@ -925,7 +925,7 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	if strings.TrimSpace(line) == "" || (st.Setext < 0 && !st.Code) {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
-	if st.Math && !st.Code {
+	if st.Math {
 		t := strings.TrimSpace(line)
 		for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
 			if strings.HasPrefix(t, d[0]) {
@@ -1210,14 +1210,27 @@ func DiffTableAligns(lines []string, change []int) [][]ui.Align {
 // ("$$" … "$$" or "\[" … "\]") in the line's own text (an unchanged line: the new
 // one). Alone each would show as source; DiffMarkdownLine draws them as math.
 func DiffMathMask(lines []string, change []int) []bool {
+	side := diffMathSides(lines, change)
+	out := side[1]
+	for k := range lines {
+		if change[k] < 0 {
+			out[k] = side[0][k]
+		}
+	}
+	return out
+}
+
+// diffMathSides marks the display math block lines of the old (0) and new (1) text.
+// A block left open runs to the end, as in the note.
+func diffMathSides(lines []string, change []int) (side [2][]bool) {
 	old, cur := diffFenceSides(lines, change)
-	var side [2][]bool
 	for si, sd := range [2]int{-1, 1} {
 		code := [2][]bool{old, cur}[si]
 		mask := make([]bool, len(lines))
 		closer, open := "", -1
 		for i, l := range lines {
-			if change[i] == -sd || code[i] {
+			// Inside a block, an indented line is formula text, not code.
+			if change[i] == -sd || code[i] && open < 0 {
 				continue
 			}
 			t := strings.TrimSpace(l)
@@ -1234,21 +1247,9 @@ func DiffMathMask(lines []string, change []int) []bool {
 				}
 			}
 		}
-		// An unclosed block is not one: its lines stay text.
-		if open >= 0 {
-			for k := open; k < len(lines); k++ {
-				mask[k] = false
-			}
-		}
 		side[si] = mask
 	}
-	out := side[1]
-	for k := range lines {
-		if change[k] < 0 {
-			out[k] = side[0][k]
-		}
-	}
-	return out
+	return side
 }
 
 // DiffTableRow draws one table row as cells split by hairlines, padded to cols cells.
