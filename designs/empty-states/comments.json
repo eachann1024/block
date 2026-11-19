@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "threads": [
+    {
+      "id": "c_dcf8bd4d68",
+      "anchor": "#dc-root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(2) > dcfx1ryndmq:nth-of-type(1) > dct:nth-of-type(83) > dce50304d77742059672062:nth-of-type(1)",
+      "label": "A · AI 未配置 › shape \"先完成 AI 配置 前往设置\"",
+      "detail": "A-AI.dc.html: #82:1/1/2/1 shape \"先完成 AI 配置 前往设置\"",
+      "location": {
+        "file": "project/A-AI.dc.html",
+        "board": "A-AI.dc.html"
+      },
+      "status": "open",
+      "createdAt": "2026-11-19T07:26:29.372Z",
+      "updatedAt": "2026-11-19T07:26:29.372Z",
+      "messages": [
+        {
+          "id": "m_9f9c6583a4",
+          "author": {
+            "kind": "user",
+            "name": "eachann"
+          },
+          "text": "这里要垂直居中",
+          "at": "2026-11-19T07:26:29.372Z"
+        }
+      ]
+    }
+  ]
+}
