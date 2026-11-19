@@ -725,9 +725,41 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 		s = diffLiteralEscaper.Replace(s)
 	}
 	if header {
-		s = "**" + s + "**"
+		s = "**" + diffUnbold(s) + "**"
 	}
 	return markdown.View(c, s, diffMarkdownOptions(st))
+}
+
+// diffUnbold drops the "**" pairs outside code spans: a header cell is bold all
+// through, and markers nested in it would turn their text back to regular weight.
+func diffUnbold(s string) string {
+	spans := CodeSpans(s)
+	inCode := func(i int) bool {
+		for _, sp := range spans {
+			if sp[0] <= i && i < sp[1] {
+				return true
+			}
+		}
+		return false
+	}
+	var at []int
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '*' && s[i+1] == '*' && !inCode(i) && !diffEscaped(s, i) {
+			at = append(at, i)
+			i++
+		}
+	}
+	if len(at)%2 != 0 {
+		return s
+	}
+	var b strings.Builder
+	last := 0
+	for _, i := range at {
+		b.WriteString(s[last:i])
+		last = i + 2
+	}
+	b.WriteString(s[last:])
+	return b.String()
 }
 
 // IsDiffTableRow reports whether a trimmed Markdown line is a table row.
