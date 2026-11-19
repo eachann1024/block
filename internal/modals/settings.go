@@ -853,10 +853,12 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					if snap.HasActionableUpdate() {
 						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
+						upIc := icons.Download
 						if snap.Status == updater.StatusReady {
 							btnLabel = fmt.Sprintf(theme.Tr("重启更新 v%s", "Restart to v%s"), snap.LatestVersion)
+							upIc = icons.Refresh
 						}
-						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-open-updater", Label: btnLabel, Style: internalui.ButtonPrimary, Height: theme.HeightCompact, PaddingX: theme.Space10})
+						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-open-updater", Label: btnLabel, Leading: &upIc, Style: internalui.ButtonPrimary, Height: theme.HeightCompact, PaddingX: theme.Space10})
 						if btn.Clicked() {
 							m.OpenUpdater()
 						}
@@ -866,7 +868,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 						if checking {
 							btnLabel = theme.Tr("正在检查…", "Checking…")
 						}
-						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-check-updates", Label: btnLabel, Style: internalui.ButtonSecondary, Disabled: checking, Height: theme.HeightCompact, PaddingX: theme.Space10})
+						refIc := icons.Refresh
+						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-check-updates", Label: btnLabel, Leading: &refIc, Style: internalui.ButtonSecondary, Disabled: checking, Loading: checking, Height: theme.HeightCompact, PaddingX: theme.Space10})
 						if btn.Clicked() {
 							m.OpenUpdater()
 							if m.Updater != nil {

@@ -545,9 +545,11 @@ func (m *Manager) renderUpdaterFooter(
 
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
 				if snap.LogPath != "" && mygo.App.IsReady() {
+					revIc := icons.FolderReveal
 					logBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 						ID:       "updater-open-log",
 						Label:    updaterTr(showEn, "查看日志", "View Log"),
+						Leading:  &revIc,
 						Style:    internalui.ButtonGhost,
 						Height:   theme.HeightCompact,
 						PaddingX: theme.Space8,
@@ -557,9 +559,11 @@ func (m *Manager) renderUpdaterFooter(
 					}
 				}
 				if snap.ReleaseURL != "" {
+					linkIc := icons.LinkOpen
 					webBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 						ID:       "updater-open-web",
 						Label:    updaterTr(showEn, "下载页", "Releases"),
+						Leading:  &linkIc,
 						Style:    internalui.ButtonGhost,
 						Height:   theme.HeightCompact,
 						PaddingX: theme.Space8,
@@ -572,7 +576,8 @@ func (m *Manager) renderUpdaterFooter(
 				if closeBtn.Clicked() {
 					m.CloseUpdater()
 				}
-				retryBtn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "重试", "Retry"), nil, internalui.ButtonPrimary, false)
+				retryIc := icons.Refresh
+				retryBtn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "重试", "Retry"), &retryIc, internalui.ButtonPrimary, false)
 				if retryBtn.Clicked() && m.Updater != nil {
 					m.Updater.CheckAsync(true)
 				}
@@ -602,14 +607,16 @@ func (m *Manager) renderUpdaterFooter(
 func renderUpdaterIdlePrimaryButton(c *ui.Context, m *Manager, snap updater.Snapshot, showEn bool) {
 	if snap.Status == updater.StatusAvailable {
 		if snap.PackageManaged {
-			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "前往下载页", "Open Releases"), nil, internalui.ButtonPrimary, false)
+			linkIc := icons.LinkOpen
+			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "前往下载页", "Open Releases"), &linkIc, internalui.ButtonPrimary, false)
 			if btn.Clicked() && snap.ReleaseURL != "" {
 				c.OpenURL(snap.ReleaseURL)
 			}
 			return
 		}
 		if snap.DownloadPath != "" && !snap.InPlace {
-			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "查看安装包", "Show Installer"), nil, internalui.ButtonPrimary, false)
+			revIc := icons.FolderReveal
+			btn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "查看安装包", "Show Installer"), &revIc, internalui.ButtonPrimary, false)
 			if btn.Clicked() && mygo.App.IsReady() {
 				mygo.Shell.ShowItemInFolder(snap.DownloadPath)
 			}
@@ -628,7 +635,15 @@ func renderUpdaterIdlePrimaryButton(c *ui.Context, m *Manager, snap updater.Snap
 	if checking {
 		label = updaterTr(showEn, "正在检查…", "Checking…")
 	}
-	btn := internalui.ActionButton(c, "updater-submit", label, nil, internalui.ButtonPrimary, checking)
+	refIc := icons.Refresh
+	btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
+		ID:       "updater-submit",
+		Label:    label,
+		Leading:  &refIc,
+		Style:    internalui.ButtonPrimary,
+		Disabled: checking,
+		Loading:  checking,
+	})
 	if btn.Clicked() && m.Updater != nil {
 		m.Updater.CheckAsync(true)
 	}

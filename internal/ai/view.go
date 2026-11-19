@@ -1627,16 +1627,19 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			ui.Row(cUI).Gap(8).Children(func() {
 				switch plan.Status {
 				case "pending":
-					rejectBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-reject-%d", msgIdx), theme.Tr("拒绝", "Reject"), nil, bui.ButtonSecondary, false)
+					rejIc := icons.Close
+					rejectBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-reject-%d", msgIdx), theme.Tr("拒绝", "Reject"), &rejIc, bui.ButtonSecondary, false)
 					if rejectBtn.Clicked() {
 						_ = c.RejectPlan(convID, msgIdx)
 					}
-					acceptBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-accept-%d", msgIdx), theme.Tr("接受", "Accept"), nil, bui.ButtonPrimary, false)
+					accIc := icons.Check
+					acceptBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-accept-%d", msgIdx), theme.Tr("接受", "Accept"), &accIc, bui.ButtonPrimary, false)
 					if acceptBtn.Clicked() {
 						_ = c.AcceptPlan(convID, msgIdx)
 					}
 				case "applied":
-					undoBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-undo-%d", msgIdx), theme.Tr("撤销", "Undo"), nil, bui.ButtonSecondary, false)
+					undoIc := icons.TbReset
+					undoBtn := bui.ActionButton(cUI, fmt.Sprintf("plan-undo-%d", msgIdx), theme.Tr("撤销", "Undo"), &undoIc, bui.ButtonSecondary, false)
 					if undoBtn.Clicked() {
 						_ = c.UndoPlan(convID, msgIdx)
 					}
@@ -2012,7 +2015,8 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 			})
 			ui.Text(cUI, errText).FontSize(theme.FontBody).TextColor(pal.Text)
 			if needSettings && c.host != nil {
-				btn := bui.ActionButton(cUI, "ai-chat-settings", theme.Tr("打开 AI 设置", "Open AI settings"), nil, bui.ButtonSecondary, false)
+				slIc := icons.Sliders
+				btn := bui.ActionButton(cUI, "ai-chat-settings", theme.Tr("打开 AI 设置", "Open AI settings"), &slIc, bui.ButtonSecondary, false)
 				if btn.Clicked() {
 					c.host.OpenSettings("ai")
 				}
@@ -2043,7 +2047,8 @@ func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palett
 	row.Children(func() {
 		ui.Text(cUI, theme.Tr("上一条未完成的草稿可恢复。", "An unfinished draft can be restored.")).
 			FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1)
-		btn := bui.ActionButton(cUI, "ai-restore-draft", theme.Tr("恢复草稿", "Restore draft"), nil, bui.ButtonSecondary, !canRestore)
+		histIc := icons.History
+		btn := bui.ActionButton(cUI, "ai-restore-draft", theme.Tr("恢复草稿", "Restore draft"), &histIc, bui.ButtonSecondary, !canRestore)
 		if !canRestore {
 			bui.Tooltip(cUI, btn, theme.Tr("回复结束且输入框清空后可恢复。", "Restore when the response ends and the composer is empty."))
 		}

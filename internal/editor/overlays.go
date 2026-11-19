@@ -1012,7 +1012,8 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, vp ui.Rect, winW, winH fl
 			s.toolbarPop = ""
 		}
 
-		applyBtn := appUi.ActionButton(c, "link-apply", theme.Tr("应用", "Apply"), nil, appUi.ButtonPrimary, false)
+		chkIc := icons.Check
+		applyBtn := appUi.ActionButton(c, "link-apply", theme.Tr("应用", "Apply"), &chkIc, appUi.ButtonPrimary, false)
 		if applyBtn.Clicked() {
 			s.ApplyLinkOnSelection(s.linkDraft)
 			s.toolbarPop = ""
@@ -2142,8 +2143,9 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 		return
 	}
 	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+		chkIc := icons.Check
 		acc := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-accept-" + ann.ID, Label: theme.Tr("替换原文", "Replace"), Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
+			ID: "ann-accept-" + ann.ID, Label: theme.Tr("替换原文", "Replace"), Leading: &chkIc, Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
 		})
 		if acc.Clicked() {
 			s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
@@ -2482,11 +2484,13 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 				})
 				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-					rej := appUi.ActionButton(c, "plan-reject", theme.Tr("拒绝", "Reject"), nil, appUi.ButtonDanger, false)
+					rejIc := icons.Close
+					rej := appUi.ActionButton(c, "plan-reject", theme.Tr("拒绝", "Reject"), &rejIc, appUi.ButtonDanger, false)
 					if rej.Clicked() {
 						s.rejectActivePlan()
 					}
-					acc := appUi.ActionButton(c, "plan-accept", theme.Tr("接受选中修改", "Accept Selected"), nil, appUi.ButtonPrimary, false)
+					accIc := icons.Check
+					acc := appUi.ActionButton(c, "plan-accept", theme.Tr("接受选中修改", "Accept Selected"), &accIc, appUi.ButtonPrimary, false)
 					if acc.Clicked() {
 						s.acceptActivePlan()
 					}

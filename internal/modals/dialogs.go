@@ -357,7 +357,8 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 				} else {
 					ui.Box(c).Grow(1)
 				}
-				sendBtn := internalui.ActionButton(c, "feedback-send", theme.Tr("发送", "Send"), nil, internalui.ButtonPrimary, false)
+				sendIc := icons.Send
+				sendBtn := internalui.ActionButton(c, "feedback-send", theme.Tr("发送", "Send"), &sendIc, internalui.ButtonPrimary, false)
 				if sendBtn.Clicked() {
 					m.submitFeedback()
 				}
@@ -479,7 +480,8 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						}
 					}
 
-					restoreBtn := internalui.ActionButton(c, "history-restore", theme.Tr("恢复此版本", "Restore"), nil, internalui.ButtonPrimary, m.historySelectedID == "")
+					histIc := icons.History
+					restoreBtn := internalui.ActionButton(c, "history-restore", theme.Tr("恢复此版本", "Restore"), &histIc, internalui.ButtonPrimary, m.historySelectedID == "")
 					if restoreBtn.Clicked() {
 						m.historyConfirmRestore = true
 					}
@@ -506,7 +508,8 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 					if cancelBtn.Clicked() {
 						m.historyConfirmRestore = false
 					}
-					confirmBtn := internalui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Confirm"), nil, internalui.ButtonDanger, false)
+					confirmIc := icons.History
+					confirmBtn := internalui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Confirm"), &confirmIc, internalui.ButtonDanger, false)
 					if confirmBtn.Clicked() {
 						m.restoreSelectedHistory()
 					}
