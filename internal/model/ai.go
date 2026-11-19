@@ -235,19 +235,21 @@ type Conversation struct {
 }
 
 type SentDraft struct {
-	Text         string   `json:"text"`
-	Refs         []string `json:"refs"`
-	Skills       []string `json:"skills"`
-	Conversation uint64   `json:"conversation"`
-	MessageIndex int      `json:"message_index"`
+	Text         string       `json:"text"`
+	Refs         []string     `json:"refs"`
+	Skills       []string     `json:"skills"`
+	Attachments  []Attachment `json:"attachments,omitempty"`
+	Conversation uint64       `json:"conversation"`
+	MessageIndex int          `json:"message_index"`
 }
 
 type ActiveDraft struct {
-	Conversation *uint64    `json:"conversation"`
-	Text         string     `json:"text"`
-	Refs         []string   `json:"refs"`
-	Skills       []string   `json:"skills"`
-	Retry        *SentDraft `json:"retry,omitempty"`
+	Conversation *uint64      `json:"conversation"`
+	Text         string       `json:"text"`
+	Refs         []string     `json:"refs"`
+	Skills       []string     `json:"skills"`
+	Attachments  []Attachment `json:"attachments,omitempty"`
+	Retry        *SentDraft   `json:"retry,omitempty"`
 }
 
 type SkillSpec struct {
