@@ -163,9 +163,87 @@ func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
 	return scanInlineTokensWithCtx(s, defs, false)
 }
 
+type inlineScanState struct {
+	s                     string
+	unclosedBacktickMask  uint64
+	unclosedBacktickLarge map[int]bool
+	lastCloseBracket      int
+	lastCloseParen        int
+	lastGT                int
+	lastDQ                int
+	lastSQ                int
+	noCommentCloseFrom    int
+	unclosedBrackets      map[int]bool
+	unclosedParens        map[int]bool
+	tagFailWatermark      int
+}
+
+func newInlineScanState(s string) *inlineScanState {
+	return &inlineScanState{
+		s:                  s,
+		lastCloseBracket:   -2,
+		lastCloseParen:     -2,
+		lastGT:             -2,
+		lastDQ:             -2,
+		lastSQ:             -2,
+		noCommentCloseFrom: -1,
+		tagFailWatermark:   -1,
+	}
+}
+
+func (st *inlineScanState) findClosingBackticks(from, count int) int {
+	if count > 0 && count < 64 {
+		if (st.unclosedBacktickMask & (uint64(1) << count)) != 0 {
+			return -1
+		}
+	} else if st.unclosedBacktickLarge != nil && st.unclosedBacktickLarge[count] {
+		return -1
+	}
+	end := findClosingBackticks(st.s, from, count)
+	if end < 0 {
+		if count > 0 && count < 64 {
+			st.unclosedBacktickMask |= uint64(1) << count
+		} else {
+			if st.unclosedBacktickLarge == nil {
+				st.unclosedBacktickLarge = make(map[int]bool)
+			}
+			st.unclosedBacktickLarge[count] = true
+		}
+	}
+	return end
+}
+
+func (st *inlineScanState) getLastCloseBracket() int {
+	if st.lastCloseBracket == -2 {
+		st.lastCloseBracket = strings.LastIndexByte(st.s, ']')
+	}
+	return st.lastCloseBracket
+}
+
+func (st *inlineScanState) getLastCloseParen() int {
+	if st.lastCloseParen == -2 {
+		st.lastCloseParen = strings.LastIndexByte(st.s, ')')
+	}
+	return st.lastCloseParen
+}
+
+func (st *inlineScanState) getTagBounds() (int, int, int) {
+	if st.lastGT == -2 {
+		st.lastGT = strings.LastIndexByte(st.s, '>')
+	}
+	if st.lastDQ == -2 {
+		st.lastDQ = strings.LastIndexByte(st.s, '"')
+	}
+	if st.lastSQ == -2 {
+		st.lastSQ = strings.LastIndexByte(st.s, '\'')
+	}
+	return st.lastGT, st.lastDQ, st.lastSQ
+}
+
 func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*inlineTok {
 	var toks []*inlineTok
 	pairedUnknown := scanPairedUnknownTags(s)
+	st := newInlineScanState(s)
 	htmlLinkDepth := 0
 	n := len(s)
 	i := 0
@@ -199,7 +277,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			for i+run < n && s[i+run] == '`' {
 				run++
 			}
-			end := findClosingBackticks(s, i+run, run)
+			end := st.findClosingBackticks(i+run, run)
 			if end >= 0 {
 				inner := s[i+run : end]
 				inner = normalizeCodeSpanContent(inner)
@@ -233,8 +311,8 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			i += run
 
 		case '!':
-			if i+1 < n && s[i+1] == '[' {
-				if alt, dest, consumed, ok := tryParseLinkOrImage(s[i+1:], defs, true); ok {
+			if i+1 < n && s[i+1] == '[' && i+1 < st.getLastCloseBracket() {
+				if alt, dest, consumed, ok := tryParseLinkOrImageAt(st, i+1, defs, true); ok {
 					if alt == "" {
 						alt = fallbackImageAlt(dest)
 					}
@@ -252,8 +330,9 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			i++
 
 		case '[':
-			if i+2 < n && s[i+1] == '^' {
-				if closeFn := strings.IndexByte(s[i+2:], ']'); closeFn > 0 {
+			lastCB := st.getLastCloseBracket()
+			if i+2 < n && s[i+1] == '^' && i+2 <= lastCB {
+				if closeFn := strings.IndexByte(s[i+2:lastCB+1], ']'); closeFn > 0 {
 					fnLabel := s[i+2 : i+2+closeFn]
 					afterFn := i + 2 + closeFn + 1
 					if !strings.ContainsAny(fnLabel, " \t\r\n[]") && (afterFn >= n || s[afterFn] != '(') {
@@ -263,47 +342,59 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 					}
 				}
 			}
-			if label, dest, consumed, ok := tryParseLinkOrImage(s[i:], defs, false); ok {
-				toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
-				innerToks := scanInlineTokensWithCtx(label, defs, true)
-				resolveDelimiters(innerToks)
-				toks = append(toks, innerToks...)
-				toks = append(toks, &inlineTok{kind: tokLinkClose})
-				i += consumed
-				continue
+			if i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
+				if label, dest, consumed, ok := tryParseLinkOrImageAt(st, i, defs, false); ok {
+					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
+					innerToks := scanInlineTokensWithCtx(label, defs, true)
+					resolveDelimiters(innerToks)
+					toks = append(toks, innerToks...)
+					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					i += consumed
+					continue
+				}
 			}
 			toks = append(toks, &inlineTok{kind: tokText, text: "["})
 			i++
 
 		case '<':
 			if strings.HasPrefix(s[i:], "<!--") {
-				if end := strings.Index(s[i+4:], "-->"); end >= 0 {
-					i += 4 + end + 3
+				if st.noCommentCloseFrom < 0 || i+4 < st.noCommentCloseFrom {
+					if end := strings.Index(s[i+4:], "-->"); end >= 0 {
+						i += 4 + end + 3
+						continue
+					}
+					st.noCommentCloseFrom = i + 4
+				}
+			}
+			lastGT, lastDQ, lastSQ := st.getTagBounds()
+			if i < lastGT {
+				if addr, linkURL, consumed, ok := tryParseAutolink(s[i : lastGT+1]); ok {
+					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}})
+					toks = append(toks, &inlineTok{kind: tokText, text: addr})
+					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					i += consumed
 					continue
 				}
-			}
-			if addr, linkURL, consumed, ok := tryParseAutolink(s[i:]); ok {
-				toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}})
-				toks = append(toks, &inlineTok{kind: tokText, text: addr})
-				toks = append(toks, &inlineTok{kind: tokLinkClose})
-				i += consumed
-				continue
-			}
-			if rawTag, tok, consumed, ok := tryParseHTMLTag(s[i:], pairedUnknown); ok {
-				if tok != nil {
-					for _, t := range tok {
-						if t.kind == tokOpenStyle && t.tag == "a" && t.hasLnk {
-							htmlLinkDepth++
-						} else if t.kind == tokCloseStyle && t.tag == "a" && htmlLinkDepth > 0 {
-							htmlLinkDepth--
+				if i >= st.tagFailWatermark {
+					if rawTag, tok, consumed, failPos, sawQuoteOrGT, ok := tryParseHTMLTagAt(s, i, lastGT, lastDQ, lastSQ, pairedUnknown); ok {
+						if tok != nil {
+							for _, t := range tok {
+								if t.kind == tokOpenStyle && t.tag == "a" && t.hasLnk {
+									htmlLinkDepth++
+								} else if t.kind == tokCloseStyle && t.tag == "a" && htmlLinkDepth > 0 {
+									htmlLinkDepth--
+								}
+							}
+							toks = append(toks, tok...)
+						} else {
+							toks = append(toks, &inlineTok{kind: tokText, text: rawTag})
 						}
+						i += consumed
+						continue
+					} else if !sawQuoteOrGT && failPos > st.tagFailWatermark {
+						st.tagFailWatermark = failPos
 					}
-					toks = append(toks, tok...)
-				} else {
-					toks = append(toks, &inlineTok{kind: tokText, text: rawTag})
 				}
-				i += consumed
-				continue
 			}
 			toks = append(toks, &inlineTok{kind: tokText, text: "<"})
 			i++
@@ -508,12 +599,21 @@ func tryParseAutolink(s string) (display, linkURL string, consumed int, ok bool)
 }
 
 func tryParseLinkOrImage(s string, defs map[string]refDef, isImage bool) (label, dest string, consumed int, ok bool) {
-	if len(s) < 2 || s[0] != '[' {
+	return tryParseLinkOrImageAt(newInlineScanState(s), 0, defs, isImage)
+}
+
+func tryParseLinkOrImageAt(st *inlineScanState, start int, defs map[string]refDef, isImage bool) (label, dest string, consumed int, ok bool) {
+	s := st.s
+	lastCB := st.getLastCloseBracket()
+	if start >= lastCB || len(s)-start < 2 || s[start] != '[' {
 		return "", "", 0, false
 	}
-	depth := 1
-	i := 1
-	for i < len(s) && depth > 0 {
+	var openBuf [16]int
+	openStack := openBuf[:1]
+	openStack[0] = start
+	i := start + 1
+	limit := lastCB + 1
+	for i < limit {
 		switch s[i] {
 		case '\\':
 			i += 2
@@ -523,7 +623,7 @@ func tryParseLinkOrImage(s string, defs map[string]refDef, isImage bool) (label,
 			for i+run < len(s) && s[i+run] == '`' {
 				run++
 			}
-			if end := findClosingBackticks(s, i+run, run); end >= 0 {
+			if end := st.findClosingBackticks(i+run, run); end >= 0 {
 				i = end + run
 				continue
 			}
@@ -531,52 +631,64 @@ func tryParseLinkOrImage(s string, defs map[string]refDef, isImage bool) (label,
 			continue
 		case '[':
 			if !isImage {
-				depth++
+				openStack = append(openStack, i)
 			}
 		case ']':
-			depth--
-			if depth == 0 {
+			openStack = openStack[:len(openStack)-1]
+			if len(openStack) == 0 {
 				goto foundClose
 			}
 		}
 		i++
 	}
+	if !isImage && len(openStack) > 0 {
+		if st.unclosedBrackets == nil {
+			st.unclosedBrackets = make(map[int]bool, len(openStack))
+		}
+		for _, pos := range openStack {
+			st.unclosedBrackets[pos] = true
+		}
+	}
 	return "", "", 0, false
 
 foundClose:
-	label = s[1:i]
+	label = s[start+1 : i]
 	after := i + 1
 	if after < len(s) && s[after] == '(' {
-		if d, endParen, ok := parseLinkDestination(s[after:]); ok {
-			return label, d, after + endParen, true
+		if after < st.getLastCloseParen() && (st.unclosedParens == nil || !st.unclosedParens[after]) {
+			if d, endParen, ok := parseLinkDestinationAt(st, after); ok {
+				return label, d, (after - start) + endParen, true
+			}
 		}
 	}
 	if len(defs) > 0 {
-		if after < len(s) && s[after] == '[' {
-			if closeRef := findUnescapedByte(s[after+1:], ']'); closeRef >= 0 {
+		if after < len(s) && s[after] == '[' && after+1 <= lastCB {
+			if closeRef := findUnescapedByte(s[after+1:lastCB+1], ']'); closeRef >= 0 {
 				refLabel := s[after+1 : after+1+closeRef]
 				key := normRefLabel(refLabel)
 				if key == "" {
 					key = normRefLabel(label)
 				}
 				if def, exists := defs[key]; exists {
-					return label, def.dest, after + 1 + closeRef + 1, true
+					return label, def.dest, (after - start) + 1 + closeRef + 1, true
 				}
 			}
 		}
 		key := normRefLabel(label)
 		if def, exists := defs[key]; exists {
-			return label, def.dest, after, true
+			return label, def.dest, after - start, true
 		}
 	}
 	return "", "", 0, false
 }
 
-func parseLinkDestination(s string) (dest string, consumed int, ok bool) {
-	if len(s) < 2 || s[0] != '(' {
+func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consumed int, ok bool) {
+	s := st.s
+	lastCP := st.getLastCloseParen()
+	if start >= lastCP || len(s)-start < 2 || s[start] != '(' {
 		return "", 0, false
 	}
-	i := 1
+	i := start + 1
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 		i++
 	}
@@ -584,12 +696,12 @@ func parseLinkDestination(s string) (dest string, consumed int, ok bool) {
 		return "", 0, false
 	}
 	if s[i] == ')' {
-		return "", i + 1, true
+		return "", i + 1 - start, true
 	}
 	var rawDest string
 	if s[i] == '<' {
 		i++
-		start := i
+		urlStart := i
 		for i < len(s) && s[i] != '>' && s[i] != '\n' {
 			if s[i] == '\\' && i+1 < len(s) {
 				i += 2
@@ -600,11 +712,13 @@ func parseLinkDestination(s string) (dest string, consumed int, ok bool) {
 		if i >= len(s) || s[i] != '>' {
 			return "", 0, false
 		}
-		rawDest = unescapeLinkText(s[start:i])
+		rawDest = unescapeLinkText(s[urlStart:i])
 		i++
 	} else {
-		start := i
-		parens := 0
+		urlStart := i
+		var parenBuf [16]int
+		parenStack := parenBuf[:1]
+		parenStack[0] = start
 		for i < len(s) {
 			c := s[i]
 			if c == '\\' && i+1 < len(s) {
@@ -615,19 +729,25 @@ func parseLinkDestination(s string) (dest string, consumed int, ok bool) {
 				break
 			}
 			if c == '(' {
-				parens++
+				parenStack = append(parenStack, i)
 			} else if c == ')' {
-				if parens == 0 {
+				if len(parenStack) == 1 {
 					break
 				}
-				parens--
+				parenStack = parenStack[:len(parenStack)-1]
 			}
 			i++
 		}
-		if parens != 0 {
+		if len(parenStack) > 1 {
+			if st.unclosedParens == nil {
+				st.unclosedParens = make(map[int]bool, len(parenStack))
+			}
+			for _, p := range parenStack {
+				st.unclosedParens[p] = true
+			}
 			return "", 0, false
 		}
-		rawDest = unescapeLinkText(s[start:i])
+		rawDest = unescapeLinkText(s[urlStart:i])
 	}
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 		i++
@@ -656,7 +776,7 @@ func parseLinkDestination(s string) (dest string, consumed int, ok bool) {
 	if i >= len(s) || s[i] != ')' {
 		return "", 0, false
 	}
-	return html.UnescapeString(rawDest), i + 1, true
+	return html.UnescapeString(rawDest), i + 1 - start, true
 }
 
 func unescapeLinkText(s string) string {
@@ -776,15 +896,33 @@ func isKnownHTMLElement(name string) bool {
 }
 
 func scanPairedUnknownTags(s string) map[string][2]int {
-	if !strings.ContainsRune(s, '<') {
+	lastGT := strings.LastIndexByte(s, '>')
+	if lastGT < 0 {
 		return nil
 	}
-	counts := make(map[string][2]int)
-	i := 0
-	for i < len(s) {
-		if s[i] == '<' {
-			name, _, closed, empty, consumed, ok := parseTagRaw(s[i:])
-			if ok && !empty && !isKnownHTMLElement(name) {
+	firstLT := strings.IndexByte(s[:lastGT], '<')
+	if firstLT < 0 {
+		return nil
+	}
+	lastDQ := strings.LastIndexByte(s, '"')
+	lastSQ := strings.LastIndexByte(s, '\'')
+	var counts map[string][2]int
+	failWatermark := -1
+	i := firstLT
+	for i < lastGT {
+		if i < failWatermark {
+			next := strings.IndexByte(s[failWatermark:lastGT], '<')
+			if next < 0 {
+				break
+			}
+			i = failWatermark + next
+		}
+		name, _, closed, empty, consumed, failPos, sawQuoteOrGT, ok := parseTagRawBounds(s, i, lastGT, lastDQ, lastSQ, false)
+		if ok {
+			if !empty && !isKnownHTMLElement(name) {
+				if counts == nil {
+					counts = make(map[string][2]int)
+				}
 				entry := counts[name]
 				if closed {
 					entry[1]++
@@ -792,26 +930,53 @@ func scanPairedUnknownTags(s string) map[string][2]int {
 					entry[0]++
 				}
 				counts[name] = entry
-				i += consumed
-				continue
 			}
+			i += consumed
+			if i >= lastGT {
+				break
+			}
+			next := strings.IndexByte(s[i:lastGT], '<')
+			if next < 0 {
+				break
+			}
+			i += next
+			continue
 		}
-		i++
+		if !sawQuoteOrGT && failPos > failWatermark {
+			failWatermark = failPos
+		}
+		if i+1 >= lastGT {
+			break
+		}
+		next := strings.IndexByte(s[i+1:lastGT], '<')
+		if next < 0 {
+			break
+		}
+		i = i + 1 + next
 	}
 	return counts
 }
 
 func parseTagRaw(s string) (name string, attrs [][2]string, closed, empty bool, consumed int, ok bool) {
-	if len(s) < 3 || s[0] != '<' {
+	lastGT := strings.LastIndexByte(s, '>')
+	if lastGT < 0 {
 		return "", nil, false, false, 0, false
 	}
-	i := 1
+	name, attrs, closed, empty, consumed, _, _, ok = parseTagRawBounds(s, 0, lastGT, lastGT-1, lastGT-1, true)
+	return name, attrs, closed, empty, consumed, ok
+}
+
+func parseTagRawBounds(s string, start, lastGT, lastDQ, lastSQ int, needAttrs bool) (name string, attrs [][2]string, closed, empty bool, consumed, failPos int, sawQuoteOrGT, ok bool) {
+	if start >= lastGT || len(s)-start < 3 || s[start] != '<' {
+		return "", nil, false, false, 0, start, false, false
+	}
+	i := start + 1
 	if s[i] == '/' {
 		closed = true
 		i++
 	}
 	if i >= len(s) || !isASCIIAlpha(s[i]) {
-		return "", nil, false, false, 0, false
+		return "", nil, false, false, 0, i, false, false
 	}
 	startName := i
 	for i < len(s) && (isASCIIAlpha(s[i]) || (s[i] >= '0' && s[i] <= '9') || s[i] == '-') {
@@ -819,72 +984,104 @@ func parseTagRaw(s string) (name string, attrs [][2]string, closed, empty bool, 
 	}
 	name = strings.ToLower(s[startName:i])
 	if i >= len(s) || (s[i] != '>' && s[i] != '/' && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' && s[i] != '\r') {
-		return "", nil, false, false, 0, false
+		return "", nil, false, false, 0, i, i < len(s) && s[i] == '>', false
 	}
-	for i < len(s) {
-		for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
+	limit := lastGT + 1
+	for i < limit {
+		for i < limit && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r') {
 			i++
 		}
-		if i >= len(s) {
-			return "", nil, false, false, 0, false
+		if i >= limit {
+			return "", nil, false, false, 0, i, sawQuoteOrGT, false
 		}
 		if s[i] == '/' {
 			empty = true
 			i++
-			for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			for i < limit && (s[i] == ' ' || s[i] == '\t') {
 				i++
 			}
-			if i < len(s) && s[i] == '>' {
-				return name, attrs, closed, empty, i + 1, true
+			if i < limit && s[i] == '>' {
+				return name, attrs, closed, empty, i + 1 - start, i, true, true
 			}
-			return "", nil, false, false, 0, false
+			return "", nil, false, false, 0, i, sawQuoteOrGT, false
 		}
 		if s[i] == '>' {
-			return name, attrs, closed, empty, i + 1, true
+			return name, attrs, closed, empty, i + 1 - start, i, true, true
 		}
 		kStart := i
-		for i < len(s) && s[i] != '=' && s[i] != '>' && s[i] != '/' && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+		for i < limit && s[i] != '=' && s[i] != '>' && s[i] != '/' && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+			if s[i] == '"' || s[i] == '\'' {
+				sawQuoteOrGT = true
+			}
 			i++
 		}
 		if i == kStart {
-			return "", nil, false, false, 0, false
+			return "", nil, false, false, 0, i, sawQuoteOrGT, false
 		}
-		key := strings.ToLower(s[kStart:i])
-		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		var key string
+		if needAttrs {
+			key = strings.ToLower(s[kStart:i])
+		}
+		for i < limit && (s[i] == ' ' || s[i] == '\t') {
 			i++
 		}
 		var val string
-		if i < len(s) && s[i] == '=' {
+		if i < limit && s[i] == '=' {
 			i++
-			for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			for i < limit && (s[i] == ' ' || s[i] == '\t') {
 				i++
 			}
-			if i >= len(s) {
-				return "", nil, false, false, 0, false
+			if i >= limit {
+				return "", nil, false, false, 0, i, sawQuoteOrGT, false
 			}
 			if s[i] == '"' || s[i] == '\'' {
+				sawQuoteOrGT = true
 				q := s[i]
+				qLimit := lastDQ
+				if q == '\'' {
+					qLimit = lastSQ
+				}
+				if i >= qLimit {
+					return "", nil, false, false, 0, i, true, false
+				}
 				i++
 				vStart := i
-				for i < len(s) && s[i] != q {
-					i++
+				rel := strings.IndexByte(s[i:qLimit+1], q)
+				if rel < 0 {
+					return "", nil, false, false, 0, i, true, false
 				}
-				if i >= len(s) {
-					return "", nil, false, false, 0, false
+				i += rel
+				if needAttrs {
+					val = html.UnescapeString(s[vStart:i])
 				}
-				val = html.UnescapeString(s[vStart:i])
 				i++
 			} else {
 				vStart := i
-				for i < len(s) && s[i] != '>' && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+				for i < limit && s[i] != '>' && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+					if s[i] == '"' || s[i] == '\'' {
+						sawQuoteOrGT = true
+					}
 					i++
 				}
-				val = html.UnescapeString(s[vStart:i])
+				if needAttrs {
+					val = html.UnescapeString(s[vStart:i])
+				}
 			}
 		}
-		attrs = append(attrs, [2]string{key, val})
+		if needAttrs {
+			attrs = append(attrs, [2]string{key, val})
+		}
 	}
-	return "", nil, false, false, 0, false
+	return "", nil, false, false, 0, limit, sawQuoteOrGT, false
+}
+
+func tryParseHTMLTagAt(s string, start, lastGT, lastDQ, lastSQ int, pairedUnknown map[string][2]int) (raw string, out []*inlineTok, consumed, failPos int, sawQuoteOrGT, ok bool) {
+	name, attrs, closed, empty, consumed, failPos, sawQuoteOrGT, ok := parseTagRawBounds(s, start, lastGT, lastDQ, lastSQ, true)
+	if !ok {
+		return "", nil, 0, failPos, sawQuoteOrGT, false
+	}
+	raw, out, consumed, ok = finishParsedHTMLTag(s[start:], name, attrs, closed, empty, consumed, pairedUnknown)
+	return raw, out, consumed, start + consumed, true, ok
 }
 
 func tryParseHTMLTag(s string, pairedUnknown map[string][2]int) (raw string, out []*inlineTok, consumed int, ok bool) {
@@ -892,6 +1089,10 @@ func tryParseHTMLTag(s string, pairedUnknown map[string][2]int) (raw string, out
 	if !ok {
 		return "", nil, 0, false
 	}
+	return finishParsedHTMLTag(s, name, attrs, closed, empty, consumed, pairedUnknown)
+}
+
+func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, consumed int, pairedUnknown map[string][2]int) (raw string, out []*inlineTok, outConsumed int, ok bool) {
 	raw = s[:consumed]
 	if name == "br" {
 		if !closed {
@@ -1057,15 +1258,33 @@ func cleanColorValue(v string) string {
 	return v
 }
 
+func delimCharSlot(ch byte) int {
+	switch ch {
+	case '*':
+		return 0
+	case '_':
+		return 1
+	case '~':
+		return 2
+	default:
+		return 0
+	}
+}
+
 func resolveDelimiters(toks []*inlineTok) {
-	openersBottom := make(map[byte]int)
+	var openersBottom [3][3][2]int
 	for i := 0; i < len(toks); i++ {
 		cl := toks[i]
 		if cl.kind != tokDelim || !cl.canCl || cl.count == 0 {
 			continue
 		}
-		bottom := openersBottom[cl.ch]
-		foundAny := false
+		ci := delimCharSlot(cl.ch)
+		modIdx := cl.orig % 3
+		canOpIdx := 0
+		if cl.canOp {
+			canOpIdx = 1
+		}
+		bottom := openersBottom[ci][modIdx][canOpIdx]
 		for j := i - 1; j >= bottom; j-- {
 			op := toks[j]
 			if op.kind != tokDelim || !op.canOp || op.count == 0 || op.ch != cl.ch {
@@ -1084,7 +1303,6 @@ func resolveDelimiters(toks []*inlineTok) {
 			} else if op.count >= 2 && cl.count >= 2 {
 				use = 2
 			}
-			foundAny = true
 			op.count -= use
 			cl.count -= use
 			var mark model.Mark
@@ -1099,7 +1317,6 @@ func resolveDelimiters(toks []*inlineTok) {
 			// Outer matches wrap inner ones: prepend on closer, append on opener.
 			op.openMarks = append(op.openMarks, mark)
 			cl.closeMarks = append([]model.Mark{mark}, cl.closeMarks...)
-			// Deactivate unmatched inner delimiters between j and i of the same or other chars?
 			// Standard CommonMark deactivates inner delimiters between j and i.
 			for k := j + 1; k < i; k++ {
 				if toks[k].kind == tokDelim {
@@ -1110,8 +1327,12 @@ func resolveDelimiters(toks []*inlineTok) {
 				break
 			}
 		}
-		if !foundAny && !cl.canOp {
-			openersBottom[cl.ch] = i + 1
+		if cl.count > 0 {
+			nextBottom := i
+			if !cl.canOp {
+				nextBottom = i + 1
+			}
+			openersBottom[ci][modIdx][canOpIdx] = nextBottom
 		}
 	}
 }
@@ -1559,12 +1780,119 @@ func textContainsLinkSyntax(s string) bool {
 	return strings.ContainsRune(s, '[') && (strings.Contains(s, "](") || strings.Contains(s, "][") || strings.Contains(s, "[^"))
 }
 
+var escapeSimplifyTargets = [10]byte{'~', '*', '_', '[', ']', '`', '<', '&', ':', '\\'}
+
+func escapeSimplifySlot(ch byte) int {
+	switch ch {
+	case '~':
+		return 0
+	case '*':
+		return 1
+	case '_':
+		return 2
+	case '[':
+		return 3
+	case ']':
+		return 4
+	case '`':
+		return 5
+	case '<':
+		return 6
+	case '&':
+		return 7
+	case ':':
+		return 8
+	case '\\':
+		return 9
+	default:
+		return -1
+	}
+}
+
+func stripAllActiveEscapeFor(src string, ch byte) string {
+	var b strings.Builder
+	b.Grow(len(src))
+	pos := 0
+	for pos+1 < len(src) {
+		idx := strings.IndexByte(src[pos:], '\\')
+		if idx < 0 {
+			break
+		}
+		bs := pos + idx
+		if bs+1 >= len(src) {
+			break
+		}
+		backRun := 0
+		for k := bs - 1; k >= 0 && src[k] == '\\'; k-- {
+			backRun++
+		}
+		if backRun%2 == 1 || src[bs+1] != ch {
+			b.WriteString(src[pos : bs+1])
+			pos = bs + 1
+			continue
+		}
+		b.WriteString(src[pos:bs])
+		b.WriteByte(ch)
+		pos = bs + 2
+	}
+	b.WriteString(src[pos:])
+	return b.String()
+}
+
 func simplifyInlineEscapes(src string, expected []model.Span) string {
 	if !strings.ContainsRune(src, '\\') {
 		return src
 	}
+	var counts [10]int
+	anyFound := false
+	for i := 0; i+1 < len(src); {
+		idx := strings.IndexByte(src[i:], '\\')
+		if idx < 0 {
+			break
+		}
+		bs := i + idx
+		if bs+1 >= len(src) {
+			break
+		}
+		end := bs + 1
+		for end < len(src) && src[end] == '\\' {
+			end++
+		}
+		run := end - bs
+		if run >= 2 {
+			counts[9] += run / 2
+			anyFound = true
+			if run%2 == 1 && end < len(src) {
+				if slot := escapeSimplifySlot(src[end]); slot >= 0 && slot != 9 {
+					counts[slot]++
+				}
+				i = end + 1
+			} else {
+				i = end
+			}
+		} else {
+			if slot := escapeSimplifySlot(src[bs+1]); slot >= 0 {
+				counts[slot]++
+				anyFound = true
+			}
+			i = bs + 2
+		}
+	}
+	if !anyFound {
+		return src
+	}
 	exp := coalesceSpans(expected)
-	for _, ch := range []byte{'~', '*', '_', '[', ']', '`', '<', '&', ':', '\\'} {
+	for slot, ch := range escapeSimplifyTargets {
+		if counts[slot] == 0 {
+			continue
+		}
+		if ch != '\\' && counts[slot] >= 2 {
+			candAll := stripAllActiveEscapeFor(src, ch)
+			if spansEqual(ParseInline(candAll), exp) {
+				src = candAll
+				continue
+			}
+		}
 		pos := 0
 		for pos+1 < len(src) {
 			idx := strings.IndexByte(src[pos:], '\\')
