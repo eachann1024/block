@@ -231,4 +231,18 @@ const (
 	// Export theme picker tile metrics (designs/export-themes/project/Main.dc.html).
 	ExportThemeTileHeight  float32 = 90
 	ExportThemeThumbHeight float32 = 56
+
+	// AI chat attachment thumbnails & full-window attachment lightbox metrics.
+	AIAttachComposerThumb      float32 = 56
+	AIAttachComposerRemoveSize float32 = 18
+	AIAttachSingleMaxW         float32 = 224
+	AIAttachSingleMaxH         float32 = 176
+	AIAttachSingleMinSide      float32 = 64
+	AIAttachGridThumb          float32 = 84
+	AIAttachFileChipMaxW       float32 = 220
+	LightboxToolbarHeight      float32 = 40
+	LightboxFilmstripThumb     float32 = 40
+	LightboxStagePad           float32 = 28
+	LightboxMaxTextWidth       float32 = 680
+	LightboxMaxTextHeight      float32 = 560
 )

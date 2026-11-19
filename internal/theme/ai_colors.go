@@ -8,9 +8,12 @@ import "github.com/egoist/mygo/ui"
 type AISurfaceColors struct {
 	// RailBG is the recessed icon-rail surface inside floating model popovers.
 	RailBG ui.Color
-	// ComposerBG and ComposerBorder style the chat composer input shell.
-	ComposerBG     ui.Color
-	ComposerBorder ui.Color
+	// ComposerBG, ComposerBorder, and ComposerFocusBorder style the chat composer input shell.
+	ComposerBG          ui.Color
+	ComposerBorder      ui.Color
+	ComposerFocusBorder ui.Color
+	// MediaFrameBG sits behind attachment image thumbnails (and transparent PNGs).
+	MediaFrameBG ui.Color
 	// CapsuleBG and CapsuleBorder style interactive capsules/chips inside
 	// the composer or settings cards (resting elevated above ComposerBG/Card).
 	CapsuleBG     ui.Color
@@ -31,28 +34,32 @@ type AISurfaceColors struct {
 func (p Palette) AISurface() AISurfaceColors {
 	if p.Dark {
 		return AISurfaceColors{
-			RailBG:           ui.Hex("#1b1b1b"),
-			ComposerBG:       ui.Hex("#222222"),
-			ComposerBorder:   ui.Hex("#363636"),
-			CapsuleBG:        ui.Hex("#2a2a2a"),
-			CapsuleBorder:    ui.Hex("#3d3d3d"),
-			WellBG:           ui.Hex("#222222"),
-			UserBubbleBG:     ui.Hex("#282c34"),
-			HoverBG:          ui.Hex("#313131"),
-			SelectedBG:       ui.Hex("#363940"),
-			TintedSelectedBG: ui.Hex("#233148"),
+			RailBG:              ui.Hex("#1b1b1b"),
+			ComposerBG:          ui.Hex("#222222"),
+			ComposerBorder:      ui.Hex("#363636"),
+			ComposerFocusBorder: p.Accent.Alpha(0.75),
+			MediaFrameBG:        ui.Hex("#1e1e1e"),
+			CapsuleBG:           ui.Hex("#2a2a2a"),
+			CapsuleBorder:       ui.Hex("#3d3d3d"),
+			WellBG:              ui.Hex("#222222"),
+			UserBubbleBG:        ui.Hex("#282c34"),
+			HoverBG:             ui.Hex("#313131"),
+			SelectedBG:          ui.Hex("#363940"),
+			TintedSelectedBG:    ui.Hex("#233148"),
 		}
 	}
 	return AISurfaceColors{
-		RailBG:           ui.Hex("#f6f6f7"),
-		ComposerBG:       p.Paper,
-		ComposerBorder:   ui.Hex("#e8e8e6"),
-		CapsuleBG:        p.Paper,
-		CapsuleBorder:    p.BtnBorder,
-		WellBG:           ui.Hex("#f6f6f6"),
-		UserBubbleBG:     p.Hover,
-		HoverBG:          p.Hover,
-		SelectedBG:       p.Selected,
-		TintedSelectedBG: p.Selected,
+		RailBG:              ui.Hex("#f6f6f7"),
+		ComposerBG:          p.Paper,
+		ComposerBorder:      ui.Hex("#e8e8e6"),
+		ComposerFocusBorder: p.Accent.Alpha(0.68),
+		MediaFrameBG:        p.CodeBG,
+		CapsuleBG:           p.Paper,
+		CapsuleBorder:       p.BtnBorder,
+		WellBG:              ui.Hex("#f6f6f6"),
+		UserBubbleBG:        p.Hover,
+		HoverBG:             p.Hover,
+		SelectedBG:          p.Selected,
+		TintedSelectedBG:    p.Selected,
 	}
 }

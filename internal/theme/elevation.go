@@ -52,3 +52,30 @@ func (p Palette) Scrim() ui.Color {
 	}
 	return ui.RGBA(0x20, 0x24, 0x2c, 0.18)
 }
+
+// LightboxScrim is the deeper dimming layer behind full-window media previews.
+func (p Palette) LightboxScrim() ui.Color {
+	if p.Dark {
+		return ui.RGBA(0, 0, 0, 0.74)
+	}
+	return ui.RGBA(0x14, 0x17, 0x1e, 0.56)
+}
+
+// ImageOverlayBadgeBG returns a translucent neutral dark pill fill for badges
+// and close controls rendered over arbitrary user images.
+func (p Palette) ImageOverlayBadgeBG() ui.Color {
+	if p.Dark {
+		return ui.RGBA(0x12, 0x14, 0x18, 0.72)
+	}
+	return ui.RGBA(0x18, 0x1b, 0x22, 0.66)
+}
+
+// ImageOverlayBadgeHoverBG is the hovered fill for badges rendered over images.
+func (p Palette) ImageOverlayBadgeHoverBG() ui.Color {
+	return ui.RGBA(0x12, 0x14, 0x18, 0.88)
+}
+
+// ImageOverlayBadgeFG is the high-contrast foreground for icons on ImageOverlayBadgeBG.
+func (p Palette) ImageOverlayBadgeFG() ui.Color {
+	return ui.Hex("#f4f5f7")
+}
