@@ -1,8 +1,10 @@
 package modals
 
 import (
+	"context"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"block/internal/files"
@@ -192,6 +194,7 @@ func (s *SearchWindowController) Open() {
 	s.st.resultsScroll.Y = 0
 	s.st.hitMeta = nil
 	s.st.searchGen.Add(1)
+	s.st.cancelSearch()
 	s.st.clearAsync()
 	s.visible = true
 	s.shownAt = time.Now()
@@ -224,6 +227,9 @@ func (s *SearchWindowController) Hide() {
 	}
 	s.visible = false
 	s.st.scopeMenuOpen = false
+	s.st.searchGen.Add(1)
+	s.st.cancelSearch()
+	s.st.clearAsync()
 	win := s.win
 	s.mu.Unlock()
 
@@ -259,11 +265,20 @@ func (s *SearchWindowController) Invalidate() {
 }
 
 func (s *SearchWindowController) runSearch() {
+	s.runSearchWithDelay(0)
+}
+
+func (s *SearchWindowController) runSearchDebounced() {
+	s.runSearchWithDelay(searchInputDebounce)
+}
+
+func (s *SearchWindowController) runSearchWithDelay(delay time.Duration) {
 	s.lastQuery = s.query
 	folders := s.notebookFolders()
 	s.st.syncFolders(folders)
 
 	gen := s.st.searchGen.Add(1)
+	s.st.cancelSearch()
 	s.st.clearAsync()
 
 	if strings.TrimSpace(s.query) == "" {
@@ -275,7 +290,7 @@ func (s *SearchWindowController) runSearch() {
 		return
 	}
 
-	if internalui.IsProbeEnabled() || s.SearchFn != nil {
+	if testing.Testing() || internalui.IsProbeEnabled() || s.SearchFn != nil {
 		hits, meta, errMsg := executeSearchQuery(
 			&s.st,
 			s.query,
@@ -301,8 +316,9 @@ func (s *SearchWindowController) runSearch() {
 	scanOpts := s.scanOptions()
 	host := s.host
 
-	go func() {
-		hits, meta, errMsg := executeSearchWithSnapshot(
+	s.st.scheduleAsyncSearch(gen, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
+		return executeSearchWithSnapshot(
+			ctx,
 			scopeFolder,
 			foldersSnap,
 			roots,
@@ -312,10 +328,7 @@ func (s *SearchWindowController) runSearch() {
 			nil,
 			host,
 		)
-		if s.st.storeAsyncResult(gen, hits, meta, errMsg) {
-			s.Invalidate()
-		}
-	}()
+	}, s.Invalidate)
 }
 
 func (s *SearchWindowController) openHit(idx int) {
@@ -369,7 +382,8 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 		scopeTrigger = renderSearchHeaderView(
 			c, pal, &s.st, activeNotebook, &s.query, &s.lastQuery, &s.inputHandle,
 			searchHeaderCallbacks{
-				onRunSearch: s.runSearch,
+				onRunSearch:     s.runSearch,
+				onInputChanged:  s.runSearchDebounced,
 				onMoveSelection: func(delta int) {
 					stepHitSelection(&s.selected, len(s.hits), &s.st, delta)
 				},

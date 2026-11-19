@@ -1,12 +1,15 @@
 package modals
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"block/internal/files"
@@ -31,6 +34,7 @@ const (
 	searchScopeMenuH    float32 = 304
 	searchMaxHits               = 50
 	searchHotkeyWindow          = 250 * time.Millisecond
+	searchInputDebounce         = 80 * time.Millisecond
 )
 
 var (
@@ -74,13 +78,78 @@ type searchPaletteState struct {
 	revealSelected    bool
 	hitMeta           []searchHitMeta
 
-	searchGen    atomic.Uint64
-	asyncMu      sync.Mutex
-	asyncPending bool
-	asyncGen     uint64
-	asyncHits    []model.SearchHit
-	asyncMeta    []searchHitMeta
-	asyncErr     string
+	searchGen     atomic.Uint64
+	asyncMu       sync.Mutex
+	asyncPending  bool
+	asyncGen      uint64
+	asyncHits     []model.SearchHit
+	asyncMeta     []searchHitMeta
+	asyncErr      string
+	cancelFn      context.CancelFunc
+	debounceTimer *time.Timer
+}
+
+func (st *searchPaletteState) cancelSearch() {
+	st.asyncMu.Lock()
+	if st.debounceTimer != nil {
+		st.debounceTimer.Stop()
+		st.debounceTimer = nil
+	}
+	cancel := st.cancelFn
+	st.cancelFn = nil
+	st.asyncMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (st *searchPaletteState) scheduleAsyncSearch(
+	gen uint64,
+	delay time.Duration,
+	runFn func(context.Context) ([]model.SearchHit, []searchHitMeta, string),
+	onDone func(),
+) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	st.asyncMu.Lock()
+	if st.debounceTimer != nil {
+		st.debounceTimer.Stop()
+		st.debounceTimer = nil
+	}
+	prevCancel := st.cancelFn
+	st.cancelFn = cancel
+	st.asyncPending = false
+	st.asyncHits = nil
+	st.asyncMeta = nil
+	st.asyncErr = ""
+
+	execFn := func() {
+		defer cancel()
+		if ctx.Err() != nil || st.searchGen.Load() != gen {
+			return
+		}
+		hits, meta, errMsg := runFn(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if st.storeAsyncResult(gen, hits, meta, errMsg) && onDone != nil {
+			onDone()
+		}
+	}
+
+	if delay <= 0 {
+		st.asyncMu.Unlock()
+		if prevCancel != nil {
+			prevCancel()
+		}
+		go execFn()
+		return
+	}
+	st.debounceTimer = time.AfterFunc(delay, execFn)
+	st.asyncMu.Unlock()
+	if prevCancel != nil {
+		prevCancel()
+	}
 }
 
 func (st *searchPaletteState) clearAsync() {
@@ -197,6 +266,9 @@ func (m *Manager) CloseSearch() {
 	}
 	st := m.searchState()
 	st.scopeMenuOpen = false
+	st.searchGen.Add(1)
+	st.cancelSearch()
+	st.clearAsync()
 	m.searchOpen = false
 	m.requestRedraw()
 }
@@ -470,6 +542,7 @@ func executeSearchQuery(
 ) ([]model.SearchHit, []searchHitMeta, string) {
 	st.syncFolders(folders)
 	return executeSearchWithSnapshot(
+		context.Background(),
 		st.scopeFolder,
 		st.folders,
 		st.effectiveRoots(),
@@ -482,6 +555,7 @@ func executeSearchQuery(
 }
 
 func executeSearchWithSnapshot(
+	ctx context.Context,
 	scopeFolder string,
 	folders []string,
 	roots []string,
@@ -491,6 +565,12 @@ func executeSearchWithSnapshot(
 	searchFn func(query string, allNotebooks bool) ([]model.SearchHit, error),
 	host model.WorkspaceHost,
 ) ([]model.SearchHit, []searchHitMeta, string) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return nil, nil, ""
+	}
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, nil, ""
@@ -506,25 +586,31 @@ func executeSearchWithSnapshot(
 	case scopeFolder == "":
 		if searchFn != nil {
 			hits, err = searchFn(q, true)
+		} else if len(roots) > 0 {
+			hits, err = files.SearchNotebooksContext(ctx, roots, q, scanOpts)
 		} else if host != nil {
 			hits, err = host.SearchWorkspace(q, true)
-		} else {
-			hits, err = files.SearchNotebooks(roots, q, scanOpts)
 		}
 	case activeNB != "" && cleanPathEqual(scopeFolder, activeNB):
 		if searchFn != nil {
 			hits, err = searchFn(q, false)
+		} else if len(roots) > 0 {
+			hits, err = files.SearchNotebooksContext(ctx, roots, q, scanOpts)
 		} else if host != nil {
 			hits, err = host.SearchWorkspace(q, false)
-		} else {
-			hits, err = files.SearchNotebooks(roots, q, scanOpts)
 		}
 	default:
-		hits, err = files.SearchNotebooks([]string{scopeFolder}, q, scanOpts)
+		hits, err = files.SearchNotebooksContext(ctx, []string{scopeFolder}, q, scanOpts)
 	}
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return nil, nil, ""
+		}
 		return nil, nil, err.Error()
+	}
+	if ctx.Err() != nil {
+		return nil, nil, ""
 	}
 
 	// Partition into Title Matches then Content Matches while preserving order within each group.
@@ -575,6 +661,14 @@ func executeSearchWithSnapshot(
 }
 
 func (m *Manager) runSearch() {
+	m.runSearchWithDelay(0)
+}
+
+func (m *Manager) runSearchDebounced() {
+	m.runSearchWithDelay(searchInputDebounce)
+}
+
+func (m *Manager) runSearchWithDelay(delay time.Duration) {
 	st := m.searchState()
 	m.searchLastQuery = m.searchQuery
 	folders := m.notebookFolders()
@@ -582,6 +676,7 @@ func (m *Manager) runSearch() {
 	m.searchAllNB = st.scopeFolder == ""
 
 	gen := st.searchGen.Add(1)
+	st.cancelSearch()
 	st.clearAsync()
 
 	if strings.TrimSpace(m.searchQuery) == "" {
@@ -593,7 +688,7 @@ func (m *Manager) runSearch() {
 		return
 	}
 
-	if internalui.IsProbeEnabled() || m.SearchFn != nil {
+	if testing.Testing() || internalui.IsProbeEnabled() || m.SearchFn != nil {
 		hits, meta, errMsg := executeSearchQuery(
 			st,
 			m.searchQuery,
@@ -620,8 +715,9 @@ func (m *Manager) runSearch() {
 	scanOpts := m.searchScanOptions()
 	host := m.host
 
-	go func() {
-		hits, meta, errMsg := executeSearchWithSnapshot(
+	st.scheduleAsyncSearch(gen, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
+		return executeSearchWithSnapshot(
+			ctx,
 			scopeFolder,
 			foldersSnap,
 			roots,
@@ -631,10 +727,7 @@ func (m *Manager) runSearch() {
 			nil,
 			host,
 		)
-		if st.storeAsyncResult(gen, hits, meta, errMsg) {
-			m.requestRedraw()
-		}
-	}()
+	}, m.requestRedraw)
 }
 
 func stepHitSelection(selected *int, total int, st *searchPaletteState, delta int) {
@@ -715,6 +808,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 					c, pal, st, m.searchActiveNotebookPath(), &m.searchQuery, &m.searchLastQuery, &m.searchInputHandle,
 					searchHeaderCallbacks{
 						onRunSearch:     m.runSearch,
+						onInputChanged:  m.runSearchDebounced,
 						onMoveSelection: m.moveSearchSelection,
 						onAcceptScope: func() {
 							if m.acceptScopeCursor() {
@@ -804,6 +898,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 
 type searchHeaderCallbacks struct {
 	onRunSearch     func()
+	onInputChanged  func()
 	onMoveSelection func(delta int)
 	onAcceptScope   func()
 	onOpenSelected  func()
@@ -916,7 +1011,9 @@ func renderSearchHeaderView(
 			})
 			if in.Changed() || *query != *lastQuery {
 				*lastQuery = *query
-				if cb.onRunSearch != nil {
+				if cb.onInputChanged != nil {
+					cb.onInputChanged()
+				} else if cb.onRunSearch != nil {
 					cb.onRunSearch()
 				}
 			}
