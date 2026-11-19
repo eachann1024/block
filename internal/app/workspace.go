@@ -47,6 +47,7 @@ type Workspace struct {
 	entries        []model.FileEntry
 	notice         string
 	virtualPreview map[string]bool // createNote preview tabs not yet written to disk
+	ghostTitle     string          // title typed on the no-note ghost page
 
 	codec    *markdown.Codec
 	sessions map[string]*editor.Session
@@ -212,11 +213,22 @@ func NewWorkspace(dataDir string) *Workspace {
 			snap := w.modals.PerfSnapshot(refreshDisk)
 			cats := make([]plugins.PerfDiskCategory, len(snap.Categories))
 			for i, c := range snap.Categories {
+				entries := make([]plugins.PerfBreakdownEntry, len(c.Entries))
+				for ei, ent := range c.Entries {
+					entries[ei] = plugins.PerfBreakdownEntry{
+						Name:  ent.Name,
+						Path:  ent.Path,
+						Bytes: ent.Bytes,
+						Count: ent.Count,
+					}
+				}
 				cats[i] = plugins.PerfDiskCategory{
-					ID:     c.ID,
-					Label:  c.Label,
-					Detail: c.Detail,
-					Bytes:  c.Bytes,
+					ID:        c.ID,
+					Label:     c.Label,
+					Detail:    c.Detail,
+					Bytes:     c.Bytes,
+					FileCount: c.FileCount,
+					Entries:   entries,
 				}
 			}
 			return &plugins.PerfSnapshot{
@@ -1597,6 +1609,9 @@ func (w *Workspace) SetNotebook(folder string) error {
 	}
 	w.mu.RUnlock()
 	switched := prevFolder != clean
+	if switched {
+		w.ghostTitle = ""
+	}
 	if switched {
 		if err := w.flushDirtySessions(); err != nil {
 			return err
@@ -3917,39 +3932,131 @@ func (w *Workspace) revealInShell(path string) {
 
 func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder bool) {
 	pal := theme.Ocean()
+	st := w.state
 	c.Key("workspace-empty")
-	box := ui.Column(c).Fill().Center().Gap(theme.Space16).Padding(theme.Space24).Background(pal.Paper)
-	blockui.Probe(box, "workspace-empty")
-	box.Children(func() {
-		switch {
-		case activeNB == "":
-			icons.Mascot(c, icons.MascotNoFolder, 220)
-			ui.Text(c, theme.Tr("打开一个文件夹开始记录", "Open a folder to start writing")).
-				FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-			btn := blockui.ActionButton(c, "empty-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
-			if btn.Clicked() {
+	if activeNB != "" && !emptyFolder {
+		w.renderGhostPage(c, st)
+		return
+	}
+	box := blockui.EmptyStage(c, pal.Paper, theme.EmptyStateWidth, func() {
+		if activeNB == "" {
+			icons.Mascot(c, icons.MascotNoFolder, theme.EmptyMascotSize)
+			blockui.EmptyHeading(c, theme.Tr("打开一个文件夹开始记录", "Open a folder to start writing"))
+			blockui.EmptyLead(c, theme.Tr("笔记就是这个文件夹里的 Markdown 文件。", "Notes are the Markdown files in that folder."))
+			blockui.EmptyActions(c, func() {
+				if blockui.EmptyActionRow(c, "empty-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), func() {
+					blockui.EmptyActionIcon(c, icons.FolderOpen)
+				}, "").Clicked() {
+					w.ChooseNotebookDialog()
+				}
+				recent := make([]string, 0, 3)
+				for _, nb := range st.Notebooks {
+					if nb != "" && len(recent) < 3 {
+						recent = append(recent, nb)
+					}
+				}
+				if len(recent) > 0 {
+					blockui.EmptyActionSeparator(c)
+				}
+				for i, nb := range recent {
+					title := noteDisplayTitle(nb, true)
+					if blockui.EmptyActionRow(c, fmt.Sprintf("empty-recent-notebook-%d", i), title, func() {
+						blockui.MonogramBadge(c, title)
+					}, "").Clicked() {
+						_ = w.SetNotebook(nb)
+					}
+				}
+			})
+			return
+		}
+		icons.Mascot(c, icons.MascotEmptyFolder, theme.EmptyMascotSize)
+		blockui.EmptyHeading(c, theme.Tr("这个笔记本还没有笔记", "This notebook has no notes yet"))
+		blockui.EmptyActions(c, func() {
+			if blockui.EmptyActionRow(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), func() {
+				blockui.EmptyActionIcon(c, icons.NotePlus)
+			}, modals.EffectiveShortcut(st, "new_note")).Clicked() {
+				_, _ = w.CreateNewNote()
+			}
+			if blockui.EmptyActionRow(c, "empty-new-folder", theme.Tr("新建文件夹", "New Folder"), func() {
+				blockui.EmptyActionIcon(c, icons.FolderPlus)
+			}, "").Clicked() {
+				_, _ = w.CreateNewFolder()
+			}
+			if blockui.EmptyActionRow(c, "empty-switch-notebook", theme.Tr("切换到其他笔记本", "Switch Notebook"), func() {
+				blockui.EmptyActionIcon(c, icons.FolderOpen)
+			}, "").Clicked() {
 				w.ChooseNotebookDialog()
 			}
-		case emptyFolder:
-			icons.Mascot(c, icons.MascotEmptyFolder, 220)
-			ui.Text(c, theme.Tr("这个笔记本还没有笔记", "This notebook has no notes yet")).
-				FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-			ic := icons.NotePlus
-			btn := blockui.ActionButton(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), &ic, blockui.ButtonPrimary, false)
-			if btn.Clicked() {
-				_, _ = w.CreateNewNote()
-			}
-		default:
-			icons.Mascot(c, icons.MascotNoNote, 220)
-			ui.Text(c, theme.Tr("从左侧选择一篇笔记，或新建一篇", "Select a note on the left or create a new one")).
-				FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
-			ic := icons.NotePlus
-			btn := blockui.ActionButton(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), &ic, blockui.ButtonPrimary, false)
-			if btn.Clicked() {
-				_, _ = w.CreateNewNote()
-			}
-		}
+		})
 	})
+	blockui.Probe(box, "workspace-empty")
+}
+
+// renderGhostPage is the no-note state: a blank page whose title field creates
+// a note on Enter (named after what was typed, or the default name).
+func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState) {
+	pal := theme.Ocean()
+	box := blockui.EmptyStage(c, pal.Paper, theme.EditorStandardWidth, func() {
+		in := ui.TextInputBase(c.Key("empty-ghost-title"), &w.ghostTitle).
+			FillWidth().Padding(0).Label(theme.Tr("新笔记标题", "New note title")).
+			Placeholder(theme.Tr("未命名", "Untitled")).PlaceholderColor(pal.ListBullet).
+			FontSize(theme.FontDisplay).FixedLineHeight(theme.LineDisplay).FontWeight(theme.WeightTitle).
+			TextColor(pal.Text).CaretColor(pal.Accent).AutoFocus()
+		blockui.Probe(in, "empty-ghost-title")
+		if in.Submitted() && w.createTitledNote(w.ghostTitle) {
+			w.ghostTitle = ""
+		}
+		if in.Shortcut(0, ui.KeyEscape) {
+			w.ghostTitle = ""
+		}
+		ui.Text(c, theme.Tr("直接输入就会新建一篇笔记，也可以从左侧选一篇。", "Type a title and press Return to create a note, or pick one on the left.")).
+			FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).TextColor(pal.TextSecondary).Margin(theme.Space12, 0, 0, 0)
+		ui.Row(c).Gap(theme.Space20).AlignItems(ui.Center).Wrap().Margin(theme.Space24, 0, 0, 0).Children(func() {
+			blockui.EmptyHint(c, func() { blockui.Keycap(c, "/") }, theme.Tr("插入块", "Insert block"))
+			if sc := modals.EffectiveShortcut(st, "search"); sc != "" {
+				blockui.EmptyHint(c, func() { blockui.ShortcutKeycap(c, sc) }, theme.Tr("搜索", "Search"))
+			}
+			if sc := modals.EffectiveShortcut(st, "toggle_ai"); sc != "" {
+				blockui.EmptyHint(c, func() { blockui.ShortcutKeycap(c, sc) }, theme.Tr("AI 助手", "AI Assistant"))
+			}
+		})
+	})
+	blockui.Probe(box, "workspace-empty")
+}
+
+// createTitledNote creates a note in the target folder, names it title when
+// given, opens it with the caret in the body, and reports success. A title
+// that can't be used as a file name leaves nothing behind.
+func (w *Workspace) createTitledNote(title string) bool {
+	title = strings.TrimSpace(title)
+	if ext := filepath.Ext(title); strings.EqualFold(ext, ".md") {
+		title = strings.TrimSpace(strings.TrimSuffix(title, ext))
+	}
+	if title == "" {
+		_, err := w.CreateNewNote()
+		return err == nil
+	}
+	folder := w.ActiveNotebook()
+	if folder == "" {
+		return false
+	}
+	created, err := files.CreateNewNote(w.targetCreateDir(folder), theme.IsEn())
+	if err != nil {
+		w.setNotice(err.Error())
+		return false
+	}
+	path, err := w.RenameWorkspaceItem(created, title)
+	if err != nil {
+		_ = os.Remove(created)
+		w.RescanNotebook()
+		return false
+	}
+	if err := w.openNoteInternal(path, true, true, 0); err != nil {
+		w.setNotice(err.Error())
+	} else if sess := w.SessionFor(path); sess != nil {
+		sess.FocusBlock(0)
+	}
+	return true
 }
 
 func (w *Workspace) syncAIEditorSelectionHidden(activeTab string) {
