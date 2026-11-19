@@ -45,8 +45,8 @@ func (p Palette) AISurface() AISurfaceColors {
 	}
 	return AISurfaceColors{
 		RailBG:           ui.Hex("#f6f6f7"),
-		ComposerBG:       ui.Hex("#f7f7f6"),
-		ComposerBorder:   p.BtnBorder,
+		ComposerBG:       p.Paper,
+		ComposerBorder:   ui.Hex("#e8e8e6"),
 		CapsuleBG:        p.Paper,
 		CapsuleBorder:    p.BtnBorder,
 		WellBG:           ui.Hex("#f6f6f6"),
