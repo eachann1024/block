@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"block/internal/codepreview"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -1505,7 +1506,7 @@ func (s *Session) renderCodeLangMenuOverlay(c *ui.Context) {
 		return
 	}
 	b := &s.doc.Blocks[idx]
-	curCanon := canonicalLangTag(b.Language)
+	curCanon := codepreview.CanonicalLanguage(b.Language)
 
 	vp, winW, winH := s.overlayViewport(c)
 	trigger, ok := s.overlayBtnBounds(fmt.Sprintf("code-lang-%d", b.ID))

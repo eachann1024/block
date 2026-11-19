@@ -3,18 +3,24 @@ package markdown
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"errors"
 	"fmt"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"math"
+	"sort"
 	"strings"
 
 	"block/internal/model"
 )
 
 func exportPNG(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
-	rgba := renderDocRGBA(doc, notePath, prefs)
+	ctx := context.Background()
+	sc := buildExportScene(ctx, doc, notePath, prefs)
+	w, h := int(sc.width), max(int(math.Ceil(float64(sc.height))), 1)
+	rgba := paintExportRaster(ctx, sc, 0, h, exportPNGScale(w, h), buildSubstrateTiles(sc.pal, sc.legacy))
 	if rgba == nil || rgba.Bounds().Empty() {
 		return nil, errors.New("png render returned empty image")
 	}
@@ -26,14 +32,10 @@ func exportPNG(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 }
 
 func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
-	rgba := renderDocRGBA(doc, notePath, prefs)
-	if rgba == nil || rgba.Bounds().Empty() {
-		return nil, errors.New("pdf render returned empty image")
-	}
-	bounds := rgba.Bounds()
-	imgW := bounds.Dx()
-	imgH := bounds.Dy()
-	maxSliceH := int(maxPDFPageHeightPt * exportScale)
+	ctx := context.Background()
+	sc := buildExportScene(ctx, doc, notePath, prefs)
+	height := max(int(math.Ceil(float64(sc.height))), 1)
+	tiles := buildSubstrateTiles(sc.pal, sc.legacy)
 
 	type pdfPage struct {
 		w, h    int
@@ -42,44 +44,37 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		zStream []byte
 	}
 	var pages []pdfPage
-	for y := 0; y < imgH; y += maxSliceH {
-		sliceH := imgH - y
-		if sliceH > maxSliceH {
-			sliceH = maxSliceH
+	top := 0
+	for _, bottom := range pdfPageEnds(sc, height) {
+		pageHeight := bottom - top
+		rgba := paintExportRaster(ctx, sc, top, pageHeight, exportScale, tiles)
+		if rgba == nil || rgba.Bounds().Empty() {
+			return nil, errors.New("pdf render returned empty image")
 		}
-		rgb := make([]byte, imgW*sliceH*3)
-		pos := 0
-		for row := 0; row < sliceH; row++ {
-			rowOff := (y + row) * rgba.Stride
-			for col := 0; col < imgW; col++ {
-				px := rgba.Pix[rowOff+col*4 : rowOff+col*4+4]
-				// Composite premultiplied RGBA over white.
-				gap := uint8(255 - px[3])
-				rgb[pos] = addSaturate(px[0], gap)
-				rgb[pos+1] = addSaturate(px[1], gap)
-				rgb[pos+2] = addSaturate(px[2], gap)
-				pos += 3
-			}
-		}
+		imgW, imgH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
+		rgb := make([]byte, imgW*3)
 		var zBuf bytes.Buffer
 		zw := zlib.NewWriter(&zBuf)
-		if _, err := zw.Write(rgb); err != nil {
-			return nil, err
+		for row := 0; row < imgH; row++ {
+			rowOff := row * rgba.Stride
+			for col := 0; col < imgW; col++ {
+				px := rgba.Pix[rowOff+col*4 : rowOff+col*4+4]
+				gap := uint8(255 - px[3])
+				rgb[col*3] = addSaturate(px[0], gap)
+				rgb[col*3+1] = addSaturate(px[1], gap)
+				rgb[col*3+2] = addSaturate(px[2], gap)
+			}
+			if _, err := zw.Write(rgb); err != nil {
+				return nil, err
+			}
 		}
 		if err := zw.Close(); err != nil {
 			return nil, err
 		}
-		ptW := int(float32(imgW)/exportScale + 0.5)
-		ptH := int(float32(sliceH)/exportScale + 0.5)
-		if ptW < 1 {
-			ptW = 1
-		}
-		if ptH < 1 {
-			ptH = 1
-		}
 		pages = append(pages, pdfPage{
-			w: imgW, h: sliceH, ptW: ptW, ptH: ptH, zStream: zBuf.Bytes(),
+			w: imgW, h: imgH, ptW: int(sc.width), ptH: pageHeight, zStream: zBuf.Bytes(),
 		})
+		top = bottom
 	}
 
 	var out bytes.Buffer
@@ -135,6 +130,43 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 	}
 	out.WriteString(fmt.Sprintf("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", totalObjs, xrefOffset))
 	return out.Bytes(), nil
+}
+
+// Break in the gap before the next block. Oversized blocks can break at a
+// table row or text line boundary, with a fixed break for oversized figures.
+func pdfPageEnds(sc exportScene, height int) []int {
+	var breaks []int
+	for _, b := range sc.blocks {
+		breaks = append(breaks, int(math.Floor(float64(b.y))))
+		if b.h < maxPDFPageHeightPt {
+			continue
+		}
+		if b.table != nil {
+			for _, row := range b.table.rows[min(1, len(b.table.rows)):] {
+				breaks = append(breaks, int(math.Round(float64(row.y))))
+			}
+		}
+		if b.layout != nil && b.angle == 0 && b.quoteAngle == 0 {
+			lines := b.layout.Lines()
+			for _, line := range lines[min(1, len(lines)):] {
+				breaks = append(breaks, int(math.Round(float64(b.textY+line.Rect.Y))))
+			}
+		}
+	}
+	sort.Ints(breaks)
+	var ends []int
+	for top := 0; top < height; {
+		end := min(top+maxPDFPageHeightPt, height)
+		if end < height {
+			i := sort.SearchInts(breaks, end+1)
+			if i > 0 && breaks[i-1] >= top+maxPDFPageHeightPt/4 {
+				end = breaks[i-1]
+			}
+		}
+		ends = append(ends, end)
+		top = end
+	}
+	return ends
 }
 
 func addSaturate(a, b uint8) uint8 {

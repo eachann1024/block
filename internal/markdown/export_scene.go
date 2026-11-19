@@ -99,10 +99,12 @@ type paintedBlock struct {
 	headRule    bool
 	headRuleCol ui.Color
 
-	quoteKind  QuoteKind
-	quoteAngle float32
-	quoteBarW  float32
-	quoteCard  bool
+	quoteKind   QuoteKind
+	quoteAngle  float32
+	quoteBarW   float32
+	quoteCard   bool
+	quoteLevels int
+	quoteLeft   float32
 
 	codeKind CodeKind
 
@@ -338,7 +340,7 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 	title := resolveTitleText(doc, notePath, prefs)
 	now := time.Now().UTC()
 	vars := newTemplateVars(notePath, title, now)
-	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
+	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
 
 	sc := exportScene{
 		width:  pageW,
@@ -927,6 +929,8 @@ func appendSceneBlocks(
 		if !legacy && b.Kind.IsList() {
 			indent = float32(b.Indent) * orF(pal.Style.List.Gutter, 28)
 		}
+		quoteLevels := min(exportQuoteLevels(b), max(int((contentW-120)/16), 0))
+		indent += float32(quoteLevels) * 16
 		if indent > contentW-120 {
 			indent = contentW - 120
 		}
@@ -936,6 +940,7 @@ func appendSceneBlocks(
 		bx := padLeft + indent
 		avail := contentW - indent
 
+		blockStart := len(sc.blocks)
 		switch {
 		case b.Kind == model.BlockDivider:
 			ds := pal.Style.Divider
@@ -1054,6 +1059,10 @@ func appendSceneBlocks(
 			lastGap = 10
 			y += th + lastGap
 		}
+		if len(sc.blocks) > blockStart {
+			sc.blocks[blockStart].quoteLevels = quoteLevels
+			sc.blocks[blockStart].quoteLeft = padLeft
+		}
 	}
 	return y - lastGap
 }
@@ -1114,10 +1123,7 @@ func buildPaintedHeading(
 	isSub := !legacy && lvl >= 3
 	if isSub {
 		if sub.Size > 0 {
-			sz = sub.Size
-			if lvl >= 4 {
-				sz = maxFloat32(sub.Size*0.9, pal.BodySize)
-			}
+			sz = exportSubHeadingSize(sub.Size, lvl)
 		}
 		headFam = orS(sub.Family, headFam)
 		if sub.Weight > 0 {
@@ -1806,19 +1812,11 @@ func buildRawImage(b *model.Block, notePath string, bx, by, avail float32, pal P
 			if bm, err := ui.DecodeBitmap(raw); err == nil {
 				bw, bh := bm.Size()
 				if bw > 0 && bh > 0 {
-					c := b.ImageCrop
+					c := exportImageCrop(b.ImageCrop, float32(bw), float32(bh))
 					sx := c.Left * float32(bw)
 					sy := c.Top * float32(bh)
 					sw := (1 - c.Left - c.Right) * float32(bw)
 					sh := (1 - c.Top - c.Bottom) * float32(bh)
-					if sw <= 1 {
-						sw = float32(bw)
-						sx = 0
-					}
-					if sh <= 1 {
-						sh = float32(bh)
-						sy = 0
-					}
 					targetW := avail
 					if b.ImageWidth > 0 && b.ImageWidth <= 100 {
 						targetW = avail * b.ImageWidth / 100.0
@@ -1966,6 +1964,8 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 			}
 			if isNum {
 				fam = ts.NumFamily
+				sz = orF(ts.NumSize, sz)
+				weight = orI(ts.NumWeight, weight)
 				if ts.NumColor.A > 0 {
 					fg = ts.NumColor
 				}
@@ -1985,6 +1985,10 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 					}
 					cellSpans = cloned
 				}
+			}
+
+			if tint, ok := exportTableTint(t, r, c, pal); ok {
+				bg = tint
 			}
 
 			align := ui.Start

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"block/internal/codepreview"
 	"block/internal/model"
 	"block/internal/theme"
 
@@ -108,6 +109,67 @@ func exportBodyBlocks(blocks []model.Block, title string, showTitle bool) []mode
 		}
 	}
 	return blocks
+}
+
+// projectExportPreviews gives styled exports the same code preview content as
+// the editor. Each row stays editable in HTML and Word.
+func projectExportPreviews(blocks []model.Block) []model.Block {
+	projected := make([]model.Block, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Kind != model.BlockCode {
+			projected = append(projected, b)
+			continue
+		}
+		var rows [][]string
+		var aligns []model.ColAlign
+		lang := codepreview.CanonicalLanguage(b.Language)
+		switch lang {
+		case "csv":
+			rows = codepreview.ParseCSV(b.Code)
+		case "latex":
+			if formula, errMsg := codepreview.FormatMath(b.Code); errMsg == "" {
+				rows = [][]string{{formula}}
+				aligns = []model.ColAlign{model.ColAlignCenter}
+			}
+		case "mermaid":
+			nodes, labels, edges, _ := codepreview.ParseMermaid(b.Code)
+			for _, edge := range edges {
+				arrow := "→"
+				if edge.Label != "" {
+					arrow = "— " + edge.Label + " →"
+				}
+				rows = append(rows, []string{labels[edge.From], arrow, labels[edge.To]})
+			}
+			if len(edges) == 0 {
+				for _, node := range nodes {
+					rows = append(rows, []string{labels[node]})
+				}
+			}
+			aligns = []model.ColAlign{model.ColAlignCenter}
+			if len(edges) > 0 {
+				aligns = append(aligns, model.ColAlignCenter, model.ColAlignCenter)
+			}
+		}
+		if len(rows) == 0 {
+			projected = append(projected, b)
+			continue
+		}
+		table := &model.TableData{NoHeaderRow: lang != "csv", Aligns: aligns}
+		for _, row := range rows {
+			cells := make([]model.TableCell, 0, len(row))
+			for _, cell := range row {
+				cells = append(cells, model.TableCell{Spans: []model.Span{{Text: cell}}})
+			}
+			table.Rows = append(table.Rows, cells)
+		}
+		projected = append(projected, model.Block{
+			Kind: model.BlockTable, Table: table, Indent: b.Indent, QuoteDepth: b.QuoteDepth,
+		})
+		if b.ShowSource {
+			projected = append(projected, b)
+		}
+	}
+	return projected
 }
 
 // ExportDocument renders doc into the requested format bytes.
@@ -348,6 +410,19 @@ func resolveLocalImagePath(src, notePath string) (string, bool) {
 		return "", false
 	}
 	return p, true
+}
+
+// exportImageCrop normalizes saved crop fractions for the dimensions being exported.
+func exportImageCrop(c model.ImageCrop, width, height float32) model.ImageCrop {
+	c.Left, c.Right = max(c.Left, 0), max(c.Right, 0)
+	c.Top, c.Bottom = max(c.Top, 0), max(c.Bottom, 0)
+	if c.Left+c.Right >= 1 || (1-c.Left-c.Right)*width <= 1 {
+		c.Left, c.Right = 0, 0
+	}
+	if c.Top+c.Bottom >= 1 || (1-c.Top-c.Bottom)*height <= 1 {
+		c.Top, c.Bottom = 0, 0
+	}
+	return c
 }
 
 // ---- Markdown Export ----

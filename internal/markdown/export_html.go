@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	"os"
@@ -48,7 +49,7 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		out.WriteString(renderHTMLOrnaments(pal, vars, showTitle))
 	}
 
-	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
+	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
 	var st htmlRenderState
 
 	switch {
@@ -127,12 +128,22 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 }
 
 func renderHTMLBlockSlice(out *strings.Builder, blocks []model.Block, notePath string, pal PaperThemeSpec, legacy bool, st *htmlRenderState) {
+	depth := 0
 	for i := 0; i < len(blocks); i++ {
 		b := &blocks[i]
+		nextDepth := min(exportQuoteLevels(b), 8)
+		for depth > nextDepth {
+			out.WriteString("</div>\n")
+			depth--
+		}
+		for depth < nextDepth {
+			out.WriteString(fmt.Sprintf(`<div style="border-left:2px solid %s;padding-left:14px">`, uiColorCSS(pal.QuoteBar)))
+			depth++
+		}
 		if b.Kind.IsList() {
 			start := i
 			kind := b.Kind
-			for i+1 < len(blocks) && blocks[i+1].Kind == kind {
+			for i+1 < len(blocks) && blocks[i+1].Kind == kind && min(exportQuoteLevels(&blocks[i+1]), 8) == depth {
 				i++
 			}
 			renderHTMLList(out, blocks[start:i+1], &st.num, pal, legacy)
@@ -141,6 +152,7 @@ func renderHTMLBlockSlice(out *strings.Builder, blocks []model.Block, notePath s
 		st.num.next(b)
 		renderHTMLBlock(out, b, notePath, pal, legacy, st)
 	}
+	out.WriteString(strings.Repeat("</div>\n", depth))
 }
 
 func isASCII(s string) bool {
@@ -884,7 +896,7 @@ func renderHTMLList(out *strings.Builder, items []model.Block, num *listNumberin
 		if it.Kind == model.BlockNumbered && ls.NumberShape != NumberShapeNone {
 			align = "center"
 		}
-		out.WriteString(fmt.Sprintf(`<li style="%sdisplay:flex;gap:10px;align-items:%s;margin:%.0fpx 0">`, indentCSS, align, orF(ls.Gap, 4)))
+		out.WriteString(fmt.Sprintf(`<li style="%sdisplay:flex;gap:10px;align-items:%s;margin-block:%.0fpx">`, indentCSS, align, orF(ls.Gap, 4)))
 		out.WriteString(renderHTMLListMarker(it, ord, pal))
 		var bodyWrapOpen, bodyWrapClose string
 		if it.Kind == model.BlockTodo && it.Checked {
@@ -1019,6 +1031,9 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		} else if !legacy && ds.Kind == DividerWave {
 			out.WriteString(fmt.Sprintf(`<div role="separator" style="margin:22px 0;text-align:center"><svg width="220" height="12" viewBox="0 0 220 12" aria-hidden="true"><path d="M2 6q5.5-6 11 0t11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0 11 0" fill="none" stroke="%s" stroke-width="%.1f" stroke-linecap="round"/></svg></div>`+"\n",
 				uiColorCSS(orC(ds.Color, pal.Divider)), orF(ds.Width, 1.5)))
+		} else if !legacy && ds.EndColor.A > 0 {
+			out.WriteString(fmt.Sprintf(`<div role="separator" style="height:%.1fpx;margin:18px 0;background:linear-gradient(to left,%s %.0fpx,%s %.0fpx)"></div>`+"\n",
+				orF(ds.Width, 1), uiColorCSS(ds.EndColor), ds.EndWidth, uiColorCSS(orC(ds.Color, pal.Divider)), ds.EndWidth))
 		} else {
 			w := float32(1)
 			c := pal.Divider
@@ -1037,9 +1052,12 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		st.calloutOrd++
 		renderHTMLCallout(out, b, st.calloutOrd, pal, legacy)
 
-	case b.Kind == model.BlockCode:
+	case b.Kind == model.BlockCode || (b.Kind == model.BlockRawHTML && !legacy):
 		cls := ""
 		lang := strings.TrimSpace(b.Language)
+		if b.Kind == model.BlockRawHTML && lang == "" {
+			lang = "html"
+		}
 		if lang != "" && lang != "yaml-frontmatter" {
 			cls = fmt.Sprintf(` class="language-%s"`, escapeAttrValue(lang))
 		}
@@ -1095,12 +1113,10 @@ func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal
 	if lvl == 2 && hs.Underline {
 		uCSS = fmt.Sprintf(";padding-bottom:5px;border-bottom:1px solid %s", uiColorCSS(orC(hs.RuleColor, pal.Divider)))
 	}
+	hashPrefix := ""
 	if hs.Prefix == HeadPrefixHashes {
-		out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s"><span style="color:%s">%s </span>`,
-			lvl, orF(hs.TopGap, 16), uCSS, uiColorCSS(orC(hs.PrefixColor, pal.Secondary)), strings.Repeat("#", lvl)))
-		renderHTMLSpans(out, b.Spans, pal, legacy)
-		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
-		return
+		hashPrefix = fmt.Sprintf(`<span style="color:%s">%s </span>`,
+			uiColorCSS(orC(hs.PrefixColor, pal.Secondary)), strings.Repeat("#", lvl))
 	}
 	if lvl == 2 {
 		switch hs.Prefix {
@@ -1144,10 +1160,7 @@ func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal
 			st.WriteString("font-family:" + htmlFontStack(sub.Family) + ";")
 		}
 		if sub.Size > 0 {
-			sz := sub.Size
-			if lvl >= 4 {
-				sz = maxFloat32(sub.Size*0.9, pal.BodySize)
-			}
+			sz := exportSubHeadingSize(sub.Size, lvl)
 			st.WriteString(fmt.Sprintf("font-size:%.1fpx;", sz))
 		}
 		if sub.Weight > 0 {
@@ -1162,7 +1175,7 @@ func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal
 		if sub.Mark == SubMarkSquare {
 			st.WriteString("display:flex;align-items:center;gap:8px;")
 		}
-		out.WriteString(fmt.Sprintf(`<h%d style="%s">`, lvl, st.String()))
+		out.WriteString(fmt.Sprintf(`<h%d style="%s">%s`, lvl, st.String(), hashPrefix))
 		if sub.Mark == SubMarkSquare {
 			out.WriteString(fmt.Sprintf(`<span style="display:inline-block;width:14px;height:14px;background:%s;flex-shrink:0"></span>`, uiColorCSS(orC(sub.MarkColor, pal.Accent))))
 		}
@@ -1188,7 +1201,7 @@ func renderHTMLHeading(out *strings.Builder, b *model.Block, lvl, h2Idx int, pal
 		out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
 		return
 	}
-	out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s">`, lvl, orF(hs.TopGap, 16), uCSS))
+	out.WriteString(fmt.Sprintf(`<h%d style="margin-top:%.0fpx%s">%s`, lvl, orF(hs.TopGap, 16), uCSS, hashPrefix))
 	renderHTMLSpans(out, b.Spans, pal, legacy)
 	out.WriteString(fmt.Sprintf("</h%d>\n", lvl))
 }
@@ -1321,11 +1334,21 @@ func renderHTMLTable(out *strings.Builder, t *model.TableData, pal PaperThemeSpe
 				}
 				if isNum {
 					cellCSS.WriteString("font-family:" + htmlFontStack(ts.NumFamily) + ";")
+					if ts.NumSize > 0 {
+						fmt.Fprintf(&cellCSS, "font-size:%.1fpx;", ts.NumSize)
+					}
+					if ts.NumWeight > 0 {
+						fmt.Fprintf(&cellCSS, "font-weight:%d;", ts.NumWeight)
+					}
 					if ts.NumColor.A > 0 {
 						cellCSS.WriteString("color:" + uiColorCSS(ts.NumColor) + ";")
 					}
 				}
 			}
+			if bg, ok := exportTableTint(t, r, c, pal); ok {
+				cellCSS.WriteString("background-color:" + uiColorCSS(bg) + ";")
+			}
+
 			styleAttr := ""
 			if cellCSS.Len() > 0 {
 				styleAttr = fmt.Sprintf(` style="%s"`, cellCSS.String())
@@ -1480,39 +1503,35 @@ func renderHTMLCallout(out *strings.Builder, b *model.Block, ord int, pal PaperT
 
 func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord int, pal PaperThemeSpec, legacy bool) {
 	src := b.ImageSrc
+	var width, height float32
 	if localPath, ok := resolveLocalImagePath(src, notePath); ok {
 		if raw, err := os.ReadFile(localPath); err == nil {
 			mime := detectImageMime(localPath, raw)
 			src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
+			if cfg, _, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil {
+				width, height = float32(cfg.Width), float32(cfg.Height)
+			}
 		}
 	}
-	align := string(b.ImageAlign)
-	if align == "" {
-		align = "left"
-	}
-	var imgCSS strings.Builder
-	if b.ImageWidth > 0 {
-		imgCSS.WriteString(fmt.Sprintf("width:%s%%;", formatFloat(b.ImageWidth)))
-	}
-	if !b.ImageCrop.IsZero() {
-		imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
-			b.ImageCrop.Top*100, b.ImageCrop.Right*100, b.ImageCrop.Bottom*100, b.ImageCrop.Left*100))
-	}
-
 	is := pal.Style.Image
-	if legacy || (is.Frame == ImageFrameNone && !is.Caption && is.Shadow.A == 0) {
-		out.WriteString(fmt.Sprintf(`<figure style="margin:12px 0;text-align:%s"><img src="%s" alt="%s"`, align, escapeAttrValue(src), escapeAttrValue(b.ImageAlt)))
-		if imgCSS.Len() > 0 {
-			out.WriteString(fmt.Sprintf(` style="%s"`, imgCSS.String()))
-		}
-		out.WriteByte('>')
-		if capText := strings.TrimSpace(b.ImageAlt); capText != "" {
-			out.WriteString(fmt.Sprintf(`<figcaption style="margin-top:6px;font-size:13px;color:%s">%s</figcaption>`, uiColorCSS(pal.Secondary), escapeHTMLText(capText)))
-		}
-		out.WriteString("</figure>\n")
-		return
+	if legacy {
+		is = ImageStyle{Caption: true, CaptionSize: 13}
 	}
-
+	crop := b.ImageCrop
+	knownSize := width > 0 && height > 0
+	if knownSize {
+		crop = exportImageCrop(crop, width, height)
+	}
+	cropW, cropH := 1-crop.Left-crop.Right, 1-crop.Top-crop.Bottom
+	placeCrop := knownSize && !crop.IsZero()
+	var imgCSS strings.Builder
+	if placeCrop {
+		imgCSS.WriteString(fmt.Sprintf("position:absolute;max-width:none;width:%.6g%%;left:%.6g%%;top:%.6g%%;",
+			100/cropW, -100*crop.Left/cropW, -100*crop.Top/cropH))
+	} else if !crop.IsZero() {
+		imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
+			crop.Top*100, crop.Right*100, crop.Bottom*100, crop.Left*100))
+	}
 	outerR := orF(is.Radius, pal.Radius)
 	if outerR < 0.5 {
 		outerR = 0
@@ -1521,25 +1540,58 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 	if imgR == 0 && (is.Frame == ImageFrameNone || is.Frame == ImageFrameBorder) && is.Offset == 0 {
 		imgR = outerR
 	}
-	imgCSS.WriteString(fmt.Sprintf("display:block;border-radius:%.0fpx;", imgR))
+	imgCSS.WriteString("display:block;height:auto;")
+	if !placeCrop && (b.ImageWidth > 0 || knownSize) {
+		imgCSS.WriteString("width:100%;")
+	}
+	var pictureCSS strings.Builder
+	if placeCrop {
+		pictureCSS.WriteString(fmt.Sprintf("position:relative;overflow:hidden;aspect-ratio:%.6g;",
+			width*cropW/(height*cropH)))
+	}
+	pictureCSS.WriteString(fmt.Sprintf("border-radius:%.0fpx;", imgR))
+	if !placeCrop {
+		imgCSS.WriteString(fmt.Sprintf("border-radius:%.0fpx;", imgR))
+	}
 	if is.Frame == ImageFrameBorder && is.Offset == 0 && is.Border.A > 0 {
-		imgCSS.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(is.BorderW, 1), uiColorCSS(is.Border)))
+		pictureCSS.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(is.BorderW, 1), uiColorCSS(is.Border)))
 	}
 
 	var figCSS strings.Builder
-	figCSS.WriteString(fmt.Sprintf("margin:18px 0;position:relative;text-align:%s;", align))
-	switch is.Frame {
-	case ImageFramePolaroid:
-		pad := orF(is.Pad, 12)
-		figCSS.WriteString(fmt.Sprintf("display:inline-block;max-width:76%%;padding:%.0fpx %.0fpx 14px;background:%s;border-radius:2px;",
-			pad, pad, uiColorCSS(orC(is.BG, pal.InnerCanvas))))
-	case ImageFrameMat:
-		pad := orF(is.Pad, 10)
-		figCSS.WriteString(fmt.Sprintf("padding:%.0fpx;background:%s;border-radius:%.0fpx;",
-			pad, uiColorCSS(orC(is.BG, pal.InnerCanvas)), outerR))
+	figCSS.WriteString("margin:18px 0;position:relative;width:fit-content;max-width:100%;")
+	switch b.ImageAlign {
+	case model.ImageAlignCenter:
+		figCSS.WriteString("margin-inline:auto;")
+	case model.ImageAlignRight:
+		figCSS.WriteString("margin-left:auto;")
+	}
+	pad, fraction := float32(0), float32(1)
+	if is.Frame == ImageFramePolaroid || is.Frame == ImageFrameMat {
+		pad = orF(is.Pad, 10)
+		bottom := pad
+		if is.Frame == ImageFramePolaroid {
+			bottom, outerR = 14, 2
+			if is.Angle != 0 {
+				fraction = .72
+			}
+		}
+		figCSS.WriteString(fmt.Sprintf("padding:%.0fpx %.0fpx %.0fpx;background:%s;border-radius:%.0fpx;",
+			pad, pad, bottom, uiColorCSS(orC(is.BG, pal.InnerCanvas)), outerR))
 		if is.Border.A > 0 {
 			figCSS.WriteString(fmt.Sprintf("border:%.1fpx solid %s;", orF(is.BorderW, 1), uiColorCSS(is.Border)))
 		}
+	}
+	side := imageCaptionSide(is, b.ImageAlt, 260)
+	reserved := float32(0)
+	if side > 0 {
+		reserved = side + 18
+		figCSS.WriteString(fmt.Sprintf("display:grid;grid-template-columns:minmax(0,1fr) min(%.0fpx,36%%);gap:18px;align-items:end;", side))
+	}
+	if b.ImageWidth > 0 && b.ImageWidth <= 100 {
+		share := fraction * b.ImageWidth / 100
+		figCSS.WriteString(fmt.Sprintf("width:calc(%.6g%% + %.6gpx);", 100*share, (2*pad+reserved)*(1-share)))
+	} else if knownSize {
+		figCSS.WriteString(fmt.Sprintf("width:min(%.6gpx, calc(%.6g%% + %.6gpx));", width*cropW+2*pad+reserved, 100*fraction, (2*pad+reserved)*(1-fraction)))
 	}
 	if is.Shadow.A > 0 {
 		figCSS.WriteString(fmt.Sprintf("box-shadow:0 6px 16px %s;", uiColorCSS(is.Shadow)))
@@ -1558,10 +1610,13 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 		out.WriteString(fmt.Sprintf(`<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-right:2px solid %s;border-bottom:2px solid %s"></span>`, bc, bc))
 	}
 	if is.Offset > 0 && is.Border.A > 0 {
-		out.WriteString(fmt.Sprintf(`<div style="position:relative;display:inline-block;max-width:100%%"><span aria-hidden="true" style="position:absolute;left:%.0fpx;top:%.0fpx;right:-%.0fpx;bottom:-%.0fpx;border:%.1fpx solid %s"></span><img src="%s" alt="%s" style="position:relative;%s"></div>`,
-			is.Offset, is.Offset, is.Offset, is.Offset, orF(is.BorderW, 2), uiColorCSS(is.Border), escapeAttrValue(src), escapeAttrValue(b.ImageAlt), imgCSS.String()))
-	} else {
-		out.WriteString(fmt.Sprintf(`<img src="%s" alt="%s" style="%s">`, escapeAttrValue(src), escapeAttrValue(b.ImageAlt), imgCSS.String()))
+		out.WriteString(fmt.Sprintf(`<div style="position:relative;margin-bottom:%.0fpx"><span aria-hidden="true" style="position:absolute;left:%.0fpx;top:%.0fpx;right:-%.0fpx;bottom:-%.0fpx;border:%.1fpx solid %s"></span>`,
+			is.Offset, is.Offset, is.Offset, is.Offset, is.Offset, orF(is.BorderW, 2), uiColorCSS(is.Border)))
+	}
+	out.WriteString(fmt.Sprintf(`<div style="position:relative;%s"><img src="%s" alt="%s" style="%s"></div>`,
+		pictureCSS.String(), escapeAttrValue(src), escapeAttrValue(b.ImageAlt), imgCSS.String()))
+	if is.Offset > 0 && is.Border.A > 0 {
+		out.WriteString("</div>")
 	}
 	if capText := strings.TrimSpace(b.ImageAlt); capText != "" && is.Caption {
 		if is.CaptionPrefix != "" {
@@ -1579,7 +1634,7 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 		if is.CaptionCenter {
 			capCSS.WriteString("text-align:center;")
 		}
-		out.WriteString(fmt.Sprintf(`<figcaption style="%s">%s</figcaption>`, capCSS.String(), escapeHTMLText(capText)))
+		out.WriteString(fmt.Sprintf(`<figcaption style="%s">%s</figcaption>`, capCSS.String(), strings.ReplaceAll(escapeHTMLText(capText), "\n", "<br>")))
 	}
 	out.WriteString("</figure>\n")
 }

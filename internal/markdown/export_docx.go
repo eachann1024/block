@@ -48,7 +48,7 @@ func (a *docxAssets) addLink(href string) string {
 	return id
 }
 
-func (a *docxAssets) addImage(data []byte, ext string, widthPx, heightPx float32, alt string) string {
+func (a *docxAssets) addImage(data []byte, ext string, widthPx, heightPx float32, alt string, crop model.ImageCrop, style ImageStyle) string {
 	num := len(a.media) + 1
 	relTarget := fmt.Sprintf("media/image%d.%s", num, ext)
 	id := fmt.Sprintf("rId%d", a.nextRelID)
@@ -60,9 +60,23 @@ func (a *docxAssets) addImage(data []byte, ext string, widthPx, heightPx float32
 	a.media = append(a.media, docxMedia{path: "word/" + relTarget, data: data})
 	cx := int64(widthPx * 9525)
 	cy := int64(heightPx * 9525)
+	srcRect := ""
+	if !crop.IsZero() {
+		srcRect = fmt.Sprintf(`<a:srcRect l="%.0f" t="%.0f" r="%.0f" b="%.0f"/>`,
+			crop.Left*100000, crop.Top*100000, crop.Right*100000, crop.Bottom*100000)
+	}
+	rotation := ""
+	if style.Angle != 0 {
+		rotation = fmt.Sprintf(` rot="%.0f"`, style.Angle*60000)
+	}
+	outline := ""
+	if style.Border.A > 0 {
+		outline = fmt.Sprintf(`<a:ln w="%.0f"><a:solidFill><a:srgbClr val="%s"><a:alpha val="%.0f"/></a:srgbClr></a:solidFill></a:ln>`,
+			orF(style.BorderW, 1)*9525, docxHex(style.Border), float32(style.Border.A)*100000/255)
+	}
 	return fmt.Sprintf(
-		`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="%d" cy="%d"/><wp:docPr id="%d" name="Image %d" descr="%s"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="image%d.%s"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="%s"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`,
-		cx, cy, num, num, escapeAttrValue(alt), num, ext, id, cx, cy,
+		`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="%d" cy="%d"/><wp:docPr id="%d" name="Image %d" descr="%s"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="image%d.%s"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="%s"/>%s<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm%s><a:off x="0" y="0"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>%s</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`,
+		cx, cy, num, num, escapeAttrValue(alt), num, ext, id, srcRect, rotation, cx, cy, outline,
 	)
 }
 
@@ -146,7 +160,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		body.WriteString(renderDOCXTitle(pal, legacy, title, pageW, topM, rightM, leftM))
 	}
 
-	bodyBlocks := exportBodyBlocks(doc.Blocks, title, showTitle)
+	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
 	var num listNumbering
 	h2Count := 0
 	quoteOrd := 0
@@ -163,6 +177,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		if !legacy && b.Kind.IsList() {
 			indentPx = float32(b.Indent) * orF(pal.Style.List.Gutter, 28)
 		}
+		indentPx = min(indentPx+16*float32(exportQuoteLevels(b)), contentW-120)
 		avail := contentW - indentPx
 		if avail < 120 {
 			avail = 120
@@ -188,6 +203,13 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 					`<w:p><w:pPr><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:rPr>%s<w:color w:val="%s"/><w:sz w:val="20"/></w:rPr>%s</w:r></w:p>`,
 					docxFontXML(fontMono), docxHex(divCol), docxTextXML(rep),
 				))
+			} else if !legacy && ds.EndColor.A > 0 {
+				rule := func(color ui.Color) string {
+					return fmt.Sprintf(`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="%d" w:space="0" w:color="%s"/></w:pBdr><w:spacing w:before="120" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
+						docxBorderSz(orF(ds.Width, 1)), docxHex(color))
+				}
+				end := min(ds.EndWidth, avail)
+				body.WriteString(renderDOCXBoxCells([]docxBoxCell{{avail - end, rule(divCol)}, {end, rule(ds.EndColor)}}, avail, indentPx, pal.InnerCanvas, "", 0, 0))
 			} else {
 				sz := docxBorderSz(orF(ds.Width, 1))
 				body.WriteString(fmt.Sprintf(
@@ -198,75 +220,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 
 		case b.Kind == model.BlockImage:
 			imageOrd++
-			if lp, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
-				if raw, err := os.ReadFile(lp); err == nil {
-					if cfg, formatName, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && cfg.Width > 0 && cfg.Height > 0 {
-						ext := "png"
-						switch formatName {
-						case "jpeg":
-							ext = "jpg"
-						case "gif":
-							ext = "gif"
-						}
-						targetW := avail
-						if b.ImageWidth > 0 && b.ImageWidth <= 100 {
-							targetW = avail * b.ImageWidth / 100
-						} else if float32(cfg.Width) < targetW {
-							targetW = float32(cfg.Width)
-						}
-						targetH := targetW * float32(cfg.Height) / float32(cfg.Width)
-						run := assets.addImage(raw, ext, targetW, targetH, b.ImageAlt)
-						jc := "left"
-						if b.ImageAlign == model.ImageAlignCenter {
-							jc = "center"
-						} else if b.ImageAlign == model.ImageAlignRight {
-							jc = "right"
-						}
-						after := 160
-						is := pal.Style.Image
-						capText := strings.TrimSpace(b.ImageAlt)
-						hasCap := !legacy && is.Caption && capText != ""
-						if hasCap {
-							after = 60
-						}
-						body.WriteString(fmt.Sprintf(
-							`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="%d"/></w:pPr>%s</w:p>`,
-							jc, after, run,
-						))
-						if hasCap {
-							if is.CaptionPrefix != "" {
-								capText = strings.ReplaceAll(is.CaptionPrefix, "{n}", fmt.Sprintf("%02d", imageOrd)) + capText
-							}
-							capJC := jc
-							if is.CaptionCenter {
-								capJC = "center"
-							}
-							capHP := docxHalfPt(orF(is.CaptionSize, 12))
-							itTag := ""
-							if is.CaptionItalic {
-								itTag = "<w:i/><w:iCs/>"
-							}
-							body.WriteString(fmt.Sprintf(
-								`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="160"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r></w:p>`,
-								capJC, docxFontXML(orS(is.CaptionFamily, pal.BodyFamily)), itTag, docxHex(orC(is.CaptionColor, pal.Secondary)), capHP, capHP, docxTextXML(capText),
-							))
-						}
-						continue
-					}
-				}
-			}
-			alt := strings.TrimSpace(b.ImageAlt)
-			if alt == "" {
-				alt = strings.TrimSpace(b.ImageSrc)
-			}
-			label := "[Image]"
-			if alt != "" {
-				label = "[Image] " + alt
-			}
-			body.WriteString(fmt.Sprintf(
-				`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
-				docxHex(pal.Secondary), docxTextXML(label),
-			))
+			body.WriteString(renderDOCXFigure(b, notePath, imageOrd, avail, indentPx, pal, legacy, assets))
 
 		case b.Kind == model.BlockTable && b.Table != nil:
 			body.WriteString(renderDOCXTable(b.Table, avail, indentPx, pal, legacy, assets))
@@ -290,7 +244,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			if lvl == 2 {
 				h2Count++
 			}
-			body.WriteString(renderDOCXHeading(b, lvl, h2Count, pal, legacy, assets))
+			body.WriteString(renderDOCXHeading(b, lvl, h2Count, indentPx, pal, legacy, assets))
 
 		default:
 			runs := renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets)
@@ -314,7 +268,7 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		xmlDecl, docxNS, docxHex(pal.InnerCanvas), body.String(),
 	)
 
-	stylesXML := buildDOCXStyles(pal)
+	stylesXML := buildDOCXStyles(pal, legacy)
 	settingsXML := fmt.Sprintf(
 		`%s<w:settings %s><w:displayBackgroundShape/><w:autoHyphenation w:val="0"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
 		xmlDecl, docxNS,
@@ -370,6 +324,90 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 		return nil, err
 	}
 	return zipBuf.Bytes(), nil
+}
+
+func renderDOCXFigure(b *model.Block, notePath string, ord int, avail, indent float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	if path, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
+		if raw, err := os.ReadFile(path); err == nil {
+			if cfg, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && cfg.Width > 0 && cfg.Height > 0 {
+				ext := format
+				if ext == "jpeg" {
+					ext = "jpg"
+				}
+				return renderDOCXPicture(b, raw, ext, cfg, ord, avail, indent, pal, legacy, assets)
+			}
+		}
+	}
+	alt := strings.TrimSpace(orS(b.ImageAlt, b.ImageSrc))
+	label := "[Image]"
+	if alt != "" {
+		label += " " + alt
+	}
+	return fmt.Sprintf(`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
+		docxHex(pal.Secondary), docxTextXML(label))
+}
+
+func renderDOCXPicture(b *model.Block, raw []byte, ext string, cfg image.Config, ord int, avail, indent float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+	is := pal.Style.Image
+	if legacy {
+		is = ImageStyle{}
+	}
+	pad := float32(0)
+	if is.Frame == ImageFrameMat || is.Frame == ImageFramePolaroid {
+		pad = orF(is.Pad, 10)
+	}
+	side := imageCaptionSide(is, b.ImageAlt, avail)
+	reserved := float32(0)
+	if side > 0 {
+		reserved = side + 18
+	}
+	imageAvail := avail - 2*pad - reserved
+	if is.Frame == ImageFramePolaroid && is.Angle != 0 {
+		imageAvail *= .72
+	}
+	width, height := float32(cfg.Width), float32(cfg.Height)
+	crop := exportImageCrop(b.ImageCrop, width, height)
+	width *= 1 - crop.Left - crop.Right
+	height *= 1 - crop.Top - crop.Bottom
+	targetW := min(imageAvail, width)
+	if b.ImageWidth > 0 && b.ImageWidth <= 100 {
+		targetW = imageAvail * b.ImageWidth / 100
+	}
+	targetH := targetW * height / width
+
+	widthWithFrame := targetW + 2*pad + reserved
+	switch b.ImageAlign {
+	case model.ImageAlignCenter:
+		indent += (avail - widthWithFrame) / 2
+	case model.ImageAlignRight:
+		indent += avail - widthWithFrame
+	}
+	run := assets.addImage(raw, ext, targetW, targetH, b.ImageAlt, crop, is)
+	figure := `<w:p><w:pPr><w:keepNext/><w:spacing w:after="0"/></w:pPr>` + run + "</w:p>"
+	caption := ""
+	if alt := strings.TrimSpace(b.ImageAlt); alt != "" && is.Caption {
+		alt = strings.ReplaceAll(is.CaptionPrefix, "{n}", fmt.Sprintf("%02d", ord)) + alt
+		jc := "left"
+		if is.CaptionCenter {
+			jc = "center"
+		}
+		italic := ""
+		if is.CaptionItalic {
+			italic = "<w:i/><w:iCs/>"
+		}
+		hp := docxHalfPt(orF(is.CaptionSize, 12))
+		caption = fmt.Sprintf(`<w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="90" w:after="0"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r></w:p>`,
+			jc, docxFontXML(orS(is.CaptionFamily, pal.BodyFamily)), italic, docxHex(orC(is.CaptionColor, pal.Secondary)), hp, hp, docxTextXML(alt))
+	}
+	if side > 0 {
+		cells := []docxBoxCell{{targetW, figure}, {18, "<w:p/>"}, {side, caption}}
+		return renderDOCXBoxCells(cells, widthWithFrame, indent, pal.InnerCanvas, "", 0, 0)
+	}
+	if pad > 0 || caption != "" {
+		bg := is.BG.Over(pal.InnerCanvas)
+		return renderDOCXBoxCells([]docxBoxCell{{widthWithFrame, figure + caption}}, widthWithFrame, indent, bg, "", pad, pad)
+	}
+	return fmt.Sprintf(`<w:p><w:pPr><w:ind w:left="%d"/><w:spacing w:after="160"/></w:pPr>%s</w:p>`, docxTwips(indent), run)
 }
 
 func renderDOCXMeta(pal PaperThemeSpec, vars templateVars, contentW float32) string {
@@ -490,7 +528,7 @@ func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM,
 	)
 }
 
-func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
+func renderDOCXHeading(b *model.Block, lvl, h2Idx int, indentPx float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
 	px := pal.BodySize
 	switch lvl {
 	case 1:
@@ -507,11 +545,7 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 	sub := pal.Style.Sub
 	isSub := !legacy && lvl >= 3
 	if isSub && sub.Size > 0 {
-		sz := sub.Size
-		if lvl >= 4 {
-			sz = maxFloat32(sub.Size*0.9, pal.BodySize)
-		}
-		halfPts = docxHalfPt(sz)
+		halfPts = docxHalfPt(exportSubHeadingSize(sub.Size, lvl))
 	}
 	bold := lvl != 6 && (legacy || hs.Weight == 0 || hs.Weight >= 600)
 	if isSub && sub.Weight > 0 {
@@ -550,7 +584,22 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 		}
 	}
 
-	runs := renderDOCXRuns(b.Spans, pal, legacy, bold, false, halfPts, headCol, assets)
+	spans := b.Spans
+	if isSub && sub.Mark == SubMarkBand {
+		spans = append([]model.Span(nil), spans...)
+		band := docxHexOn(orC(sub.MarkColor, pal.Accent), pal.InnerCanvas)
+		for i := range spans {
+			if spans[i].BGColor == "" {
+				spans[i].BGColor = "#" + band
+			}
+		}
+	}
+	runPal := pal
+	runPal.BodyFamily = pal.HeadingFamily
+	if isSub {
+		runPal.BodyFamily = orS(sub.Family, runPal.BodyFamily)
+	}
+	runs := renderDOCXRuns(spans, runPal, legacy, bold, false, halfPts, headCol, assets)
 	bdr := ""
 	if lvl == 2 && !legacy && hs.Underline {
 		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr>`, docxHex(orC(hs.RuleColor, pal.Divider)))
@@ -558,8 +607,8 @@ func renderDOCXHeading(b *model.Block, lvl, h2Idx int, pal PaperThemeSpec, legac
 		bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="dashed" w:sz="6" w:space="3" w:color="%s"/></w:pBdr>`, docxHex(orC(sub.MarkColor, pal.Accent)))
 	}
 	return fmt.Sprintf(
-		`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/></w:pPr>%s%s</w:p>`,
-		lvl, bdr, pre.String(), runs,
+		`<w:p><w:pPr><w:pStyle w:val="Heading%d"/>%s<w:spacing w:before="200" w:after="120"/><w:ind w:left="%d"/></w:pPr>%s%s</w:p>`,
+		lvl, bdr, docxTwips(indentPx), pre.String(), runs,
 	)
 }
 
@@ -790,12 +839,29 @@ func renderDOCXListItem(b *model.Block, ord int, indentPx float32, line240, body
 		strike = ls.DoneStrike
 	}
 
-	gutter := float32(28)
+	gutter := orF(ls.Gutter, 28)
+	markerHP := bodyHalfPt
+	markerProps := ""
+	if !legacy && b.Kind == model.BlockNumbered {
+		markerProps = docxFontXML(orS(ls.NumberFont, pal.BodyFamily))
+		if ls.NumberSize > 0 {
+			markerHP = docxHalfPt(ls.NumberSize)
+		}
+		if ls.NumberShape != NumberShapeNone {
+			marker = " " + marker + " "
+			if ls.NumberStroke.A > 0 {
+				markerProps += fmt.Sprintf(`<w:bdr w:val="single" w:sz="6" w:space="0" w:color="%s"/>`, docxHexOn(ls.NumberStroke, pal.InnerCanvas))
+			}
+			if ls.NumberFill.A > 0 {
+				markerProps += fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHexOn(ls.NumberFill, pal.InnerCanvas))
+			}
+		}
+	}
 	runs := renderDOCXRuns(b.Spans, pal, legacy, false, strike, bodyHalfPt, itemFG, assets)
 	return fmt.Sprintf(
-		`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
+		`<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs><w:ind w:left="%d" w:hanging="%d"/><w:spacing w:before="0" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/>%s</w:rPr>%s</w:r><w:r><w:tab/></w:r>%s</w:p>`,
 		docxTwips(indentPx+gutter), docxTwips(indentPx+gutter), docxTwips(gutter), line240,
-		docxHex(mCol), bodyHalfPt, docxTextXML(marker), runs,
+		docxHex(mCol), markerHP, markerProps, docxTextXML(marker), runs,
 	)
 }
 
@@ -839,7 +905,7 @@ func renderDOCXFooter(pal PaperThemeSpec, legacy bool, vars templateVars, conten
 	)
 }
 
-func buildDOCXStyles(pal PaperThemeSpec) string {
+func buildDOCXStyles(pal PaperThemeSpec, legacy bool) string {
 	bodyHalfPt := docxHalfPt(pal.BodySize)
 	line240 := int(pal.Leading*240 + 0.5)
 	var out strings.Builder
@@ -864,9 +930,13 @@ func buildDOCXStyles(pal PaperThemeSpec) string {
 		if lvl == 6 {
 			bTag = `<w:b w:val="0"/><w:bCs w:val="0"/>`
 		}
+		family := pal.HeadingFamily
+		if !legacy && lvl >= 3 {
+			family = orS(pal.Style.Sub.Family, family)
+		}
 		out.WriteString(fmt.Sprintf(
 			`<w:style w:type="paragraph" w:styleId="Heading%d"><w:name w:val="heading %d"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="%d"/></w:pPr><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr></w:style>`,
-			lvl, lvl, lvl-1, docxFontXML(pal.HeadingFamily), bTag, docxHex(pal.Title), hp, hp,
+			lvl, lvl, lvl-1, docxFontXML(family), bTag, docxHex(pal.Title), hp, hp,
 		))
 	}
 	out.WriteString("</w:styles>")
@@ -928,6 +998,8 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 		var rpr strings.Builder
 		if sp.Marks&model.MarkCode != 0 || (!legacy && sp.Link != "" && inl.LinkMono) {
 			rpr.WriteString(docxFontXML(fontMono))
+		} else {
+			rpr.WriteString(docxFontXML(pal.BodyFamily))
 		}
 		isHi := !legacy && isDefaultHighlightSpan(sp) && inl.Highlight != nil
 		if baseBold || sp.Marks&model.MarkBold != 0 || (isHi && inl.Highlight.Weight >= 600) {
@@ -1038,23 +1110,27 @@ func renderDOCXCallout(b *model.Block, avail, indentPx float32, line240, bodyHal
 		lBold = "<w:b/><w:bCs/>"
 	}
 
-	var inner strings.Builder
-	if cs.LabelPos == CalloutLabelInline || cs.LabelPos == CalloutLabelColumn {
-		lblRun := fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
-			lFam, lBold, docxHex(tone.Label), lHP, lHP, lShd, docxTextXML(label+"  "))
-		inner.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s%s</w:p>`,
-			line240, lblRun, renderDOCXRuns(b.Spans, pal, legacy, tone.Bold, false, bodyHalfPt, tone.FG, assets),
-		))
-	} else {
-		inner.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r></w:p>`,
-			lFam, lBold, docxHex(tone.Label), lHP, lHP, lShd, docxTextXML(label),
-		))
-		inner.WriteString(fmt.Sprintf(
-			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
-			line240, renderDOCXRuns(b.Spans, pal, legacy, tone.Bold, false, bodyHalfPt, tone.FG, assets),
-		))
+	labelText := label
+	if cs.LabelPos == CalloutLabelInline {
+		labelText += "  "
+	}
+	labelRun := fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/>%s</w:rPr>%s</w:r>`,
+		lFam, lBold, docxHex(tone.Label), lHP, lHP, lShd, docxTextXML(labelText))
+	bodyRuns := renderDOCXRuns(b.Spans, pal, legacy, tone.Bold, false, bodyHalfPt, tone.FG, assets)
+	if cs.LabelPos == CalloutLabelInline {
+		bodyRuns = labelRun + bodyRuns
+	}
+	bodyPara := fmt.Sprintf(`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`, line240, bodyRuns)
+	labelPara := `<w:p><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr>` + labelRun + "</w:p>"
+	var cells []docxBoxCell
+	switch cs.LabelPos {
+	case CalloutLabelColumn:
+		labelWidth := min(orF(cs.LabelW, 92)+14, avail/2)
+		cells = []docxBoxCell{{labelWidth, labelPara}, {avail - labelWidth, bodyPara}}
+	case CalloutLabelInline:
+		cells = []docxBoxCell{{avail, bodyPara}}
+	default:
+		cells = []docxBoxCell{{avail, labelPara + bodyPara}}
 	}
 
 	var bdrs strings.Builder
@@ -1080,20 +1156,37 @@ func renderDOCXCallout(b *model.Block, avail, indentPx float32, line240, bodyHal
 			bdrs.WriteString(fmt.Sprintf(`<w:bottom w:val="single" w:sz="4" w:space="0" w:color="%s"/>`, docxHexOn(cs.Rule, pal.InnerCanvas)))
 		}
 	}
-	return renderDOCXBox(inner.String(), avail, indentPx, bg, bdrs.String())
+	return renderDOCXBoxCells(cells, avail, indentPx, bg, bdrs.String(), 14, 10)
+}
+
+type docxBoxCell struct {
+	width   float32
+	content string
 }
 
 func renderDOCXBox(content string, widthPx, indentPx float32, bg ui.Color, borders string) string {
-	wTwips := docxTwips(widthPx)
-	iTwips := docxTwips(indentPx)
-	bdrTag := ""
+	return renderDOCXBoxCells([]docxBoxCell{{widthPx, content}}, widthPx, indentPx, bg, borders, 14, 10)
+}
+
+func renderDOCXBoxCells(cells []docxBoxCell, widthPx, indentPx float32, bg ui.Color, borders string, padX, padY float32) string {
+	var out strings.Builder
+	fmt.Fprintf(&out, `<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/>`,
+		docxTwips(widthPx), docxTwips(indentPx))
 	if borders != "" {
-		bdrTag = "<w:tblBorders>" + borders + "</w:tblBorders>"
+		out.WriteString("<w:tblBorders>" + borders + "</w:tblBorders>")
 	}
-	return fmt.Sprintf(
-		`<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblInd w:w="%d" w:type="dxa"/>%s<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="150" w:type="dxa"/><w:bottom w:w="150" w:type="dxa"/><w:left w:w="210" w:type="dxa"/><w:right w:w="210" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr>%s</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="120" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
-		wTwips, iTwips, bdrTag, wTwips, wTwips, docxHex(bg), content,
-	)
+	x, y := int(padX*15+0.5), int(padY*15+0.5)
+	fmt.Fprintf(&out, `<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="%d" w:type="dxa"/><w:bottom w:w="%d" w:type="dxa"/><w:left w:w="%d" w:type="dxa"/><w:right w:w="%d" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`, y, y, x, x)
+	for _, cell := range cells {
+		fmt.Fprintf(&out, `<w:gridCol w:w="%d"/>`, docxTwips(cell.width))
+	}
+	out.WriteString("</w:tblGrid><w:tr>")
+	for _, cell := range cells {
+		fmt.Fprintf(&out, `<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="%s"/></w:tcPr>%s</w:tc>`,
+			docxTwips(cell.width), docxHex(bg), cell.content)
+	}
+	out.WriteString(`</w:tr></w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="120" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`)
+	return out.String()
 }
 
 func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
@@ -1222,13 +1315,30 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 				}
 			}
 
+			if bg, ok := exportTableTint(t, r, c, pal); ok {
+				shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(bg))
+			}
+
 			jc := "left"
 			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
 				jc = string(t.Aligns[c])
 			} else if isNum {
 				jc = "right"
 			}
-			runs := renderDOCXRuns(cellSpans, pal, legacy, isHeader && orI(ts.HeaderWt, 700) >= 600, false, 22, baseFG, assets)
+			cellHP := docxHalfPt(orF(ts.Size, 14.67))
+			cellBold := false
+			cellPal := pal
+			if isNum {
+				cellHP = docxHalfPt(orF(ts.NumSize, orF(ts.Size, 14.67)))
+				cellBold = ts.NumWeight >= 600
+				cellPal.BodyFamily = ts.NumFamily
+			}
+			if isHeader {
+				cellHP = docxHalfPt(orF(ts.HeaderSize, orF(ts.Size, 14.67)))
+				cellBold = orI(ts.HeaderWt, 700) >= 600
+				cellPal.BodyFamily = orS(ts.HeaderFont, pal.BodyFamily)
+			}
+			runs := renderDOCXRuns(cellSpans, cellPal, legacy, cellBold, false, cellHP, baseFG, assets)
 			out.WriteString(fmt.Sprintf(
 				`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s%s<w:vAlign w:val="top"/></w:tcPr><w:p><w:pPr><w:jc w:val="%s"/><w:spacing w:before="0" w:after="0" w:line="320" w:lineRule="auto"/></w:pPr>%s</w:p></w:tc>`,
 				colWidths[c], cellBdr, shd, jc, runs,
