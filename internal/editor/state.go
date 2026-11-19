@@ -124,6 +124,8 @@ type Session struct {
 	tableColCache    map[model.BlockID]cachedTableCols
 	tableGridGeoms   map[model.BlockID]tableGridGeom
 	tableHScrolls    map[model.BlockID]*ui.ScrollState
+	blockIdxCache    map[model.BlockID]int
+	blockIdxRev      uint64
 	frameBlocks      []frameBlockMeta
 	docRev           uint64
 	outlineRev       uint64
@@ -450,6 +452,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.tableColCache)
 	clear(s.tableGridGeoms)
 	clear(s.tableHScrolls)
+	clear(s.blockIdxCache)
+	s.blockIdxRev = 0
 	s.docRev++
 	s.virtReady = false
 	clear(s.overlayBtnRects)
@@ -887,12 +891,30 @@ func (s *Session) blockIndexByID(id model.BlockID) int {
 	if s.doc == nil || id == 0 {
 		return -1
 	}
-	for i := range s.doc.Blocks {
-		if s.doc.Blocks[i].ID == id {
-			return i
+	blocks := s.doc.Blocks
+	if s.blockIdxCache != nil && s.blockIdxRev == s.docRev && len(s.blockIdxCache) == len(blocks) {
+		if idx, ok := s.blockIdxCache[id]; ok && idx >= 0 && idx < len(blocks) && blocks[idx].ID == id {
+			return idx
+		}
+		if _, ok := s.blockIdxCache[id]; !ok {
+			return -1
 		}
 	}
-	return -1
+	if s.blockIdxCache == nil {
+		s.blockIdxCache = make(map[model.BlockID]int, len(blocks))
+	} else {
+		clear(s.blockIdxCache)
+	}
+	found := -1
+	for i := range blocks {
+		bid := blocks[i].ID
+		s.blockIdxCache[bid] = i
+		if bid == id {
+			found = i
+		}
+	}
+	s.blockIdxRev = s.docRev
+	return found
 }
 
 func (s *Session) numberedListIndex(idx int) int {
