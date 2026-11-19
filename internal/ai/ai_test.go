@@ -780,10 +780,10 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	ctrl.SetBackendStatusOverride(model.BackendCodex, &BackendStatus{State: BackendStateReady, Version: "0.42.0"})
 	ctrl.SetBackendStatusOverride(model.BackendClaude, &BackendStatus{State: BackendStateUnauth, Version: "2.1.320"})
 
-	// Native tools require explicit opt-in for each CLI.
+	// New and previously saved agents without a preference use full local tools.
 	for _, k := range model.AllBackends {
-		if ctrl.BackendsConfig().Adapters[string(k)].NativeTools {
-			t.Fatalf("native tools enabled by default for %s", k)
+		if supportsCLI(k) && !ctrl.BackendsConfig().Adapters[string(k)].AllowsNativeTools() {
+			t.Fatalf("native tools disabled by default for %s", k)
 		}
 	}
 
@@ -876,12 +876,12 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	}
 	ttSet.ClickAt(toolsCenter.X, toolsCenter.Y)
 	persisted := ctrl.readBackendsFile()
-	if !persisted.Adapters[string(model.BackendCodex)].NativeTools || persisted.Adapters[string(model.BackendClaude)].NativeTools {
-		t.Fatal("native tool opt-in was not saved for Codex only")
+	if persisted.Adapters[string(model.BackendCodex)].AllowsNativeTools() || !persisted.Adapters[string(model.BackendClaude)].AllowsNativeTools() {
+		t.Fatal("native tool opt-out was not saved for Codex only")
 	}
 	ttSet.ClickAt(toolsCenter.X, toolsCenter.Y)
-	if ctrl.readBackendsFile().Adapters[string(model.BackendCodex)].NativeTools {
-		t.Fatal("native tool opt-out was not saved")
+	if !ctrl.readBackendsFile().Adapters[string(model.BackendCodex)].AllowsNativeTools() {
+		t.Fatal("native tool re-enable was not saved")
 	}
 
 	// 3. Verify Annotation Model popover still works.
@@ -1353,6 +1353,10 @@ case "$*" in
     exit 0
     ;;
 esac
+case "$*" in
+  *"--dangerously-skip-permissions"*) ;;
+  *) exit 1 ;;
+esac
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"claude-sess-e2e"}'
 printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Inspecting workspace note"},{"type":"tool_use","id":"tu_1","name":"readPage","input":{"pageId":"daily"}}]}}'
 printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Claude CLI E2E reply OK"}]}}'
@@ -1376,6 +1380,7 @@ while IFS= read -r line; do
       printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-6.2-sol","model":"gpt-6.2-sol","displayName":"GPT-6.2-Sol","hidden":false},{"id":"hidden-internal","model":"hidden-internal","displayName":"Hidden","hidden":true},{"id":"gpt-6.1-terra","model":"gpt-6.1-terra","displayName":"GPT-6.1 Terra","hidden":false}],"nextCursor":null}}'
       ;;
     *'"method":"thread/start"'*)
+      case "$line" in *'"approvalPolicy":"never"'*'"sandbox":"danger-full-access"'*) ;; *) exit 1 ;; esac
       printf '%s\n' '{"id":2,"result":{"thread":{"id":"codex-thread-e2e"}}}'
       ;;
     *'"method":"turn/start"'*)

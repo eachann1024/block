@@ -87,8 +87,12 @@ type AIBackendAdapterOptions struct {
 	Enabled       *bool  `json:"enabled,omitempty"`
 	Model         string `json:"model,omitempty"`
 	ThinkingLevel string `json:"thinkingLevel,omitempty"` // "low", "medium", "high"
-	NativeTools   bool   `json:"nativeTools,omitempty"`   // Explicit opt-in; legacy fullPermissions was set automatically.
+	NativeTools   *bool  `json:"nativeTools,omitempty"`   // nil uses the default of full local tools.
 	Locked        bool   `json:"locked,omitempty"`
+}
+
+func (opt AIBackendAdapterOptions) AllowsNativeTools() bool {
+	return opt.NativeTools == nil || *opt.NativeTools
 }
 
 // AIBackendsConfig matches ~/Library/Application Support/Block/ai-backends.json.
