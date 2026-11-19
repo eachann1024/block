@@ -785,7 +785,8 @@ func IsDiffTableSep(trimmed string) bool {
 	if !IsDiffTableRow(trimmed) {
 		return false
 	}
-	inner := strings.Trim(trimmed, "|")
+	// One bar comes off each end: in "| --- ||" the last cell is empty, not a separator.
+	inner := strings.TrimSuffix(strings.TrimPrefix(trimmed, "|"), "|")
 	if strings.TrimSpace(inner) == "" {
 		return false
 	}
