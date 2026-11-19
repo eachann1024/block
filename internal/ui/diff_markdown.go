@@ -1375,12 +1375,15 @@ func BareURLs(s string) [][2]int {
 
 // diffEscapeURLs escapes the emphasis markers inside bare links, so
 // "https://example.com/_draft_/index" keeps its underscores.
+// One escaped already ("<https://x/api_v2>" made text) stays as it is.
 func diffEscapeURLs(s string) string {
 	spans := BareURLs(s)
 	for k := len(spans) - 1; k >= 0; k-- {
-		sp := spans[k]
-		u := strings.NewReplacer("_", `\_`, "*", `\*`, "~", `\~`).Replace(s[sp[0]:sp[1]])
-		s = s[:sp[0]] + u + s[sp[1]:]
+		for j := spans[k][1] - 1; j >= spans[k][0]; j-- {
+			if strings.IndexByte("_*~", s[j]) >= 0 && !diffEscaped(s, j) {
+				s = s[:j] + `\` + s[j:]
+			}
+		}
 	}
 	return s
 }
