@@ -4332,6 +4332,9 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 						}
 					case BackendStateUnauth:
 						statusLine = theme.Tr("已检测到 CLI，请先在终端完成登录", "CLI installed; sign in via terminal")
+						if loginCmd == "" && curStatus.Message != "" {
+							statusLine = curStatus.Message
+						}
 						actionCmd = loginCmd
 					case BackendStateUnsupported:
 						statusLine = curStatus.Message
