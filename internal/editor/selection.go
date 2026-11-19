@@ -745,22 +745,10 @@ func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bo
 			s.FocusBlock(idx + 1)
 			s.markDirty()
 			return true
-		case ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyLeft):
-			if prev := s.stepVisibleBlock(idx, -1); prev >= 0 && prev != idx {
-				s.FocusBlock(prev)
-				if s.doc.Blocks[prev].Kind != model.BlockDivider && s.doc.Blocks[prev].Kind != model.BlockImage {
-					endOff := len([]rune(s.doc.Blocks[prev].PlainText()))
-					s.selAnchor = Position{Block: prev, Offset: endOff}
-					s.selHead = s.selAnchor
-					s.selSyncPending = true
-				}
+		default:
+			if s.navigateFromAtomic(idx, ev.Key, ev.Mods) {
+				return true
 			}
-			return true
-		case ev.Mods == 0 && (ev.Key == ui.KeyDown || ev.Key == ui.KeyRight):
-			if next := s.stepVisibleBlock(idx, 1); next >= 0 && next != idx {
-				s.FocusBlock(next)
-			}
-			return true
 		}
 	}
 	return false
@@ -900,30 +888,8 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 			s.selSyncPending = !s.readOnly
 			s.multiSelFocusPending = false
 			return true
-		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown):
-			dir := 1
-			if ev.Key == ui.KeyUp {
-				dir = -1
-			}
-			nextBlk := s.stepVisibleBlock(s.selHead.Block, dir)
-			if nextBlk >= 0 {
-				off := s.selHead.Offset
-				if dir > 0 && nextBlk != s.selHead.Block {
-					off = min(off, s.blockSelectionLen(nextBlk))
-					if off == 0 && s.blockSelectionLen(nextBlk) > 0 {
-						off = s.blockSelectionLen(nextBlk)
-					}
-				} else {
-					off = min(off, s.blockSelectionLen(nextBlk))
-				}
-				s.selHead = Position{Block: nextBlk, Offset: off}
-				s.focusedBlock = nextBlk
-				if !s.needsDetachedSelectionFocus() {
-					s.focusPending = !s.readOnly
-					s.selSyncPending = !s.readOnly
-				}
-			}
-			return true
+		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight):
+			return s.extendSelectionByArrow(ev.Key)
 		case ev.Mods == 0 && ev.Key == ui.KeyEscape:
 			_, b := s.orderedSelection()
 			s.selAnchor = b
@@ -976,6 +942,7 @@ func (s *Session) onScrollObserveInput(ev ui.InputEvent) {
 		s.lastPressLocal = ui.Point{X: ev.X, Y: ev.Y}
 		s.lastPressScrollY = s.bodyScroll.Y
 		s.pressJustBegan = true
+		s.navCarry = false
 	}
 }
 
