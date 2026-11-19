@@ -185,7 +185,8 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 		submitted := in.Submitted()
 
 		if ctrl.sup != nil && ctrl.sup.CanPickDirectory() {
-			pickBtn := bui.ActionButton(c, "app-store-manual-browse", theme.Tr("本地目录", "Browse"), nil, bui.ButtonGhost, installingID != "")
+			folderIc := icons.Folder
+			pickBtn := bui.ActionButton(c, "app-store-manual-browse", theme.Tr("本地目录", "Browse"), &folderIc, bui.ButtonGhost, installingID != "")
 			if pickBtn.Clicked() {
 				ctrl.sup.PickDirectory(theme.Tr("选择本地插件目录", "Choose Local Plugin Directory"), func(chosen string) {
 					ctrl.setManualSpec(chosen)
@@ -198,9 +199,11 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 		if manualBusy {
 			btnLbl = theme.Tr("安装中…", "Installing…")
 		}
+		installIc := icons.Download
 		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 			ID:       "app-store-manual-install",
 			Label:    btnLbl,
+			Leading:  &installIc,
 			Style:    bui.ButtonAccentOutline,
 			Disabled: disabled,
 			Loading:  manualBusy,
@@ -299,9 +302,14 @@ func renderStoreAppRow(
 						lbl = theme.Tr("更新中…", "Updating…")
 					}
 				}
+				actIc := icons.Download
+				if hasUpdate {
+					actIc = icons.Refresh
+				}
 				btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 					ID:       "app-store-install-" + entry.ID,
 					Label:    lbl,
+					Leading:  &actIc,
 					Style:    bui.ButtonAccentOutline,
 					Disabled: installingID != "" && !busy,
 					Loading:  busy,
