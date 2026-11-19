@@ -1,6 +1,8 @@
 package files
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +16,7 @@ import (
 
 const (
 	maxSearchFileBytes = 4 * 1024 * 1024
+	maxSearchHits      = 500
 	snippetBeforeRunes = 24
 	snippetAfterRunes  = 56
 )
@@ -28,6 +31,17 @@ type rankedSearchHit struct {
 // case-insensitive search across note titles and bodies while respecting
 // ScanOptions and theme.IsSearchFolderIgnored.
 func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.SearchHit, error) {
+	return SearchNotebooksContext(context.Background(), roots, query, opts)
+}
+
+// SearchNotebooksContext is like SearchNotebooks but stops walking early when ctx is cancelled.
+func SearchNotebooksContext(ctx context.Context, roots []string, query string, opts ScanOptions) ([]model.SearchHit, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil, nil
@@ -36,6 +50,7 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 	if foldedQ == "" {
 		return nil, nil
 	}
+	queryIsASCII := isASCIIString(foldedQ)
 
 	seenRoots := make(map[string]bool, len(roots))
 	seenFiles := make(map[string]bool)
@@ -43,6 +58,12 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 	var bodyHits []rankedSearchHit
 
 	for _, root := range roots {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if len(titleHits) >= maxSearchHits && len(bodyHits) >= maxSearchHits {
+			break
+		}
 		root = strings.TrimSpace(root)
 		if root == "" {
 			continue
@@ -61,7 +82,9 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 		}
 
 		notebookName := filepath.Base(cleanRoot)
-		walkSearchDir(cleanRoot, notebookName, q, foldedQ, opts, 0, seenFiles, &titleHits, &bodyHits)
+		if err := walkSearchDir(ctx, cleanRoot, notebookName, q, foldedQ, queryIsASCII, opts, 0, seenFiles, &titleHits, &bodyHits); err != nil {
+			return nil, err
+		}
 	}
 
 	sort.Slice(titleHits, func(i, j int) bool {
@@ -90,11 +113,17 @@ func SearchNotebooks(roots []string, query string, opts ScanOptions) ([]model.Se
 		return a.hit.Path < b.hit.Path
 	})
 
-	out := make([]model.SearchHit, 0, len(titleHits)+len(bodyHits))
+	out := make([]model.SearchHit, 0, min(len(titleHits)+len(bodyHits), maxSearchHits))
 	for _, h := range titleHits {
+		if len(out) >= maxSearchHits {
+			break
+		}
 		out = append(out, h.hit)
 	}
 	for _, h := range bodyHits {
+		if len(out) >= maxSearchHits {
+			break
+		}
 		out = append(out, h.hit)
 	}
 	return out, nil
@@ -116,24 +145,38 @@ func titleHitRank(h rankedSearchHit, query string) titleRank {
 }
 
 func walkSearchDir(
+	ctx context.Context,
 	dir string,
 	notebook string,
 	rawQuery string,
 	foldedQuery string,
+	queryIsASCII bool,
 	opts ScanOptions,
 	depth int,
 	seenFiles map[string]bool,
 	titleHits *[]rankedSearchHit,
 	bodyHits *[]rankedSearchHit,
-) {
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(*titleHits) >= maxSearchHits && len(*bodyHits) >= maxSearchHits {
+		return nil
+	}
 	if depth > maxScanDepth || theme.IsSearchFolderIgnored(dir) {
-		return
+		return nil
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return
+		return nil
 	}
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if len(*titleHits) >= maxSearchHits && len(*bodyHits) >= maxSearchHits {
+			return nil
+		}
 		rawName := entry.Name()
 		fullPath := filepath.Join(dir, rawName)
 		mode := entry.Type()
@@ -142,7 +185,9 @@ func walkSearchDir(
 			if isIgnoredDir(rawName, opts) || theme.IsSearchFolderIgnored(fullPath) {
 				continue
 			}
-			walkSearchDir(fullPath, notebook, rawQuery, foldedQuery, opts, depth+1, seenFiles, titleHits, bodyHits)
+			if err := walkSearchDir(ctx, fullPath, notebook, rawQuery, foldedQuery, queryIsASCII, opts, depth+1, seenFiles, titleHits, bodyHits); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -165,29 +210,42 @@ func walkSearchDir(
 		}
 		seenFiles[fullPath] = true
 
-		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery); ok {
+		skipBody := len(*bodyHits) >= maxSearchHits
+		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery, queryIsASCII, skipBody); ok {
 			if ranked.titleMatch {
-				*titleHits = append(*titleHits, ranked)
-			} else {
+				if len(*titleHits) < maxSearchHits {
+					*titleHits = append(*titleHits, ranked)
+				}
+			} else if len(*bodyHits) < maxSearchHits {
 				*bodyHits = append(*bodyHits, ranked)
 			}
 		}
 	}
+	return nil
 }
 
-func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery string) (rankedSearchHit, bool) {
+func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery string, queryIsASCII, skipBody bool) (rankedSearchHit, bool) {
 	stem := entryDisplayName(rawName, false)
-	titleStart, _, titleMatched := findFoldMatchFolded(stem, foldedQuery)
+	var titleStart int
+	var titleMatched bool
+	if queryIsASCII {
+		titleStart, _, titleMatched = findFoldMatchASCIIString(stem, foldedQuery)
+	} else {
+		titleStart, _, titleMatched = findFoldMatchFolded(stem, foldedQuery)
+	}
+	if !titleMatched && skipBody {
+		return rankedSearchHit{}, false
+	}
 
 	if info == nil && entry != nil {
 		if entryInfo, err := entry.Info(); err == nil {
 			info = entryInfo
 		}
 	}
-	var text string
+	var data []byte
 	if info != nil && info.Size() <= maxSearchFileBytes {
-		if data, readErr := os.ReadFile(fullPath); readErr == nil && utf8.Valid(data) {
-			text = string(data)
+		if raw, readErr := os.ReadFile(fullPath); readErr == nil && utf8.Valid(raw) {
+			data = raw
 		}
 	}
 
@@ -196,25 +254,33 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 	var mStart, mEnd int
 	bodyMatched := false
 
-	if text != "" {
-		rest := text
+	if len(data) > 0 && !skipBody {
+		rest := data
 		lineNum := 0
 		for {
 			lineNum++
-			var line string
-			nl := strings.IndexByte(rest, '\n')
+			var lineBytes []byte
+			nl := bytes.IndexByte(rest, '\n')
 			if nl >= 0 {
-				line = rest[:nl]
+				lineBytes = rest[:nl]
 				rest = rest[nl+1:]
 			} else {
-				line = rest
+				lineBytes = rest
 			}
-			line = strings.TrimSuffix(line, "\r")
-			if s, e, ok := findFoldMatchFolded(line, foldedQuery); ok {
+			if len(lineBytes) > 0 && lineBytes[len(lineBytes)-1] == '\r' {
+				lineBytes = lineBytes[:len(lineBytes)-1]
+			}
+			s, e, ok := findFoldMatchBytes(lineBytes, foldedQuery, queryIsASCII)
+			if ok {
+				lineStr := string(lineBytes)
 				bodyMatched = true
 				matchLine, matchColumn = lineNum, s
-				lineSnippet = snippetAround(line, s, e)
-				if ms, me, found := findFoldMatchFolded(lineSnippet, foldedQuery); found {
+				lineSnippet = snippetAround(lineStr, s, e)
+				if queryIsASCII {
+					if ms, me, found := findFoldMatchASCIIString(lineSnippet, foldedQuery); found {
+						mStart, mEnd = ms, me
+					}
+				} else if ms, me, found := findFoldMatchFolded(lineSnippet, foldedQuery); found {
 					mStart, mEnd = ms, me
 				}
 				break
@@ -230,7 +296,7 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 	}
 
 	if !bodyMatched {
-		lineSnippet = firstContentLine(text)
+		lineSnippet = firstContentLineBytes(data)
 	}
 
 	return rankedSearchHit{
@@ -248,6 +314,169 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, n
 		titleMatch: titleMatched,
 		titleStart: titleStart,
 	}, true
+}
+
+func isASCIIString(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+func hasNonASCIIBytes(b []byte) bool {
+	for _, c := range b {
+		if c >= utf8.RuneSelf {
+			return true
+		}
+	}
+	return false
+}
+
+func findFoldMatchBytes(line []byte, foldedNeedle string, needleIsASCII bool) (int, int, bool) {
+	if len(foldedNeedle) == 0 || len(line) < len(foldedNeedle) {
+		return 0, 0, false
+	}
+	if needleIsASCII {
+		idx := indexFoldASCIIBytes(line, foldedNeedle)
+		if idx < 0 {
+			return 0, 0, false
+		}
+		return idx, idx + len(foldedNeedle), true
+	}
+	if !hasNonASCIIBytes(line) {
+		return 0, 0, false
+	}
+	return findFoldMatchFolded(string(line), foldedNeedle)
+}
+
+func indexFoldASCIIBytes(hay []byte, foldedNeedle string) int {
+	nLen := len(foldedNeedle)
+	if nLen == 0 {
+		return 0
+	}
+	if len(hay) < nLen {
+		return -1
+	}
+	first := foldedNeedle[0]
+	limit := len(hay) - nLen
+	for i := 0; i <= limit; i++ {
+		c := hay[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != first {
+			continue
+		}
+		matched := true
+		for j := 1; j < nLen; j++ {
+			hc := hay[i+j]
+			if hc >= 'A' && hc <= 'Z' {
+				hc += 'a' - 'A'
+			}
+			if hc != foldedNeedle[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return i
+		}
+	}
+	return -1
+}
+
+func findFoldMatchASCIIString(text, foldedNeedle string) (int, int, bool) {
+	nLen := len(foldedNeedle)
+	if nLen == 0 || len(text) < nLen {
+		return 0, 0, false
+	}
+	first := foldedNeedle[0]
+	limit := len(text) - nLen
+	for i := 0; i <= limit; i++ {
+		c := text[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != first {
+			continue
+		}
+		matched := true
+		for j := 1; j < nLen; j++ {
+			hc := text[i+j]
+			if hc >= 'A' && hc <= 'Z' {
+				hc += 'a' - 'A'
+			}
+			if hc != foldedNeedle[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return i, i + nLen, true
+		}
+	}
+	return 0, 0, false
+}
+
+func nextLineByteSlice(b []byte) (line, rest []byte, hasMore bool) {
+	if nl := bytes.IndexByte(b, '\n'); nl >= 0 {
+		line = b[:nl]
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
+		return line, b[nl+1:], true
+	}
+	if len(b) > 0 && b[len(b)-1] == '\r' {
+		b = b[:len(b)-1]
+	}
+	return b, nil, false
+}
+
+func firstContentLineBytes(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	rest := data
+	if first, afterFirst, hasMore := nextLineByteSlice(data); hasMore && len(bytes.TrimSpace(first)) == 3 && bytes.Equal(bytes.TrimSpace(first), []byte("---")) {
+		scan := afterFirst
+		for {
+			line, next, more := nextLineByteSlice(scan)
+			if bytes.Equal(bytes.TrimSpace(line), []byte("---")) {
+				if more {
+					rest = next
+				} else {
+					rest = nil
+				}
+				break
+			}
+			if !more {
+				break
+			}
+			scan = next
+		}
+	}
+	for len(rest) > 0 {
+		line, next, more := nextLineByteSlice(rest)
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) > 0 {
+			trimmed = bytes.TrimSpace(bytes.TrimLeft(trimmed, "#"))
+			if len(trimmed) > 0 {
+				s := string(trimmed)
+				if utf8.RuneCountInString(s) > 70 {
+					runes := []rune(s)
+					return string(runes[:70])
+				}
+				return s
+			}
+		}
+		if !more {
+			break
+		}
+		rest = next
+	}
+	return ""
 }
 
 // foldPreserveLen lowercases text while keeping byte lengths valid when possible.
@@ -396,52 +625,4 @@ func snippetAround(text string, matchStart, matchEnd int) string {
 		b.WriteString("…")
 	}
 	return b.String()
-}
-
-func nextLineSlice(s string) (line, rest string, hasMore bool) {
-	if nl := strings.IndexByte(s, '\n'); nl >= 0 {
-		return strings.TrimSuffix(s[:nl], "\r"), s[nl+1:], true
-	}
-	return strings.TrimSuffix(s, "\r"), "", false
-}
-
-func firstContentLine(text string) string {
-	rest := text
-	if first, afterFirst, hasMore := nextLineSlice(text); hasMore && strings.TrimSpace(first) == "---" {
-		scan := afterFirst
-		for {
-			line, next, more := nextLineSlice(scan)
-			if strings.TrimSpace(line) == "---" {
-				if more {
-					rest = next
-				} else {
-					rest = ""
-				}
-				break
-			}
-			if !more {
-				break
-			}
-			scan = next
-		}
-	}
-	for {
-		line, next, more := nextLineSlice(rest)
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			trimmed = strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-			if trimmed != "" {
-				runes := []rune(trimmed)
-				if len(runes) > 70 {
-					return string(runes[:70])
-				}
-				return trimmed
-			}
-		}
-		if !more {
-			break
-		}
-		rest = next
-	}
-	return ""
 }
