@@ -1383,13 +1383,14 @@ func BareURLs(s string) [][2]int {
 }
 
 // diffEscapeURLs escapes the emphasis markers inside bare links, so
-// "https://example.com/_draft_/index" keeps its underscores.
+// "https://example.com/_draft_/index" keeps its underscores, and their "&", so
+// "?q=go&amp;page=2" shows its entity as written, as the note's link does.
 // One escaped already ("<https://x/api_v2>" made text) stays as it is.
 func diffEscapeURLs(s string) string {
 	spans := BareURLs(s)
 	for k := len(spans) - 1; k >= 0; k-- {
 		for j := spans[k][1] - 1; j >= spans[k][0]; j-- {
-			if strings.IndexByte("_*~", s[j]) >= 0 && !diffEscaped(s, j) {
+			if strings.IndexByte("_*~&", s[j]) >= 0 && !diffEscaped(s, j) {
 				s = s[:j] + `\` + s[j:]
 			}
 		}
