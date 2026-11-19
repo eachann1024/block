@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -1208,24 +1209,27 @@ var plainStrongRE = regexp.MustCompile(`(^|[^\w*])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
 	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	// Bold markers are stripped outside code spans only, so `**/node_modules/**` (or
-	// with double backticks) keeps its stars; the span's backticks go.
-	plain := func(x string) string {
-		// Adjacent matches share the space between them, so repeat until settled.
-		for prev := ""; prev != x; {
-			prev, x = x, plainStrongRE.ReplaceAllString(x, "$1$2$3")
-		}
-		return strings.ReplaceAll(x, "`", "")
-	}
+	// Code spans stand in as placeholders while bold markers are stripped, so
+	// `**/node_modules/**` keeps its stars and **run `x`** still loses its own.
+	var codes []string
 	var b strings.Builder
 	last := 0
 	for _, sp := range bui.CodeSpans(t) {
-		b.WriteString(plain(t[last:sp[0]]))
-		b.WriteString(strings.Trim(t[sp[0]:sp[1]], "`"))
+		b.WriteString(t[last:sp[0]])
+		b.WriteString("\uE000" + strconv.Itoa(len(codes)) + "\uE001")
+		codes = append(codes, strings.Trim(t[sp[0]:sp[1]], "`"))
 		last = sp[1]
 	}
-	b.WriteString(plain(t[last:]))
+	b.WriteString(t[last:])
 	t = b.String()
+	// Adjacent matches share the space between them, so repeat until settled.
+	for prev := ""; prev != t; {
+		prev, t = t, plainStrongRE.ReplaceAllString(t, "$1$2$3")
+	}
+	t = strings.ReplaceAll(t, "`", "")
+	for k, code := range codes {
+		t = strings.Replace(t, "\uE000"+strconv.Itoa(k)+"\uE001", code, 1)
+	}
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
 }
