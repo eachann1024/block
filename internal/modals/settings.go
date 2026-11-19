@@ -757,9 +757,10 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			m.fontFamilies = ui.FontFamilies()
 			m.fontFamiliesEpoch = curEpoch
 		}
+		isDefaultBody := strings.TrimSpace(edFont) == ""
 		edDisplay := strings.TrimSpace(edFont)
-		if edDisplay == "" {
-			edDisplay = defaultBodyFontLabel()
+		if isDefaultBody {
+			edDisplay = defaultBodyFontPrimary(m.fontFamilies)
 		}
 		cdDisplay := strings.TrimSpace(cdFont)
 		if cdDisplay == "" {
@@ -770,10 +771,10 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			cardTitle(c, theme.Tr("编辑器", "Editor"))
 
 			settingRow(c, theme.Tr("正文字体", "Body Font"), func() {
-				m.fontPickerTrigger(c, "settings-body-font-trigger", "body", edDisplay)
+				m.fontPickerTrigger(c, "settings-body-font-trigger", "body", edDisplay, isDefaultBody)
 			})
 			settingRow(c, theme.Tr("代码字体", "Code Font"), func() {
-				m.fontPickerTrigger(c, "settings-code-font-trigger", "code", cdDisplay)
+				m.fontPickerTrigger(c, "settings-code-font-trigger", "code", cdDisplay, false)
 			})
 
 			lhIdx := 1
@@ -901,15 +902,33 @@ func resolvedCodeFontName(families []ui.FontFamily) string {
 	}, defaultCodeFontName())
 }
 
-func defaultBodyFontLabel() string {
+func defaultBodyFontPrimary(families []ui.FontFamily) string {
 	switch runtime.GOOS {
 	case "darwin", "js":
-		return "SF Pro + HarmonyOS Sans SC"
+		return "SF Pro"
 	case "windows":
-		return "Segoe UI + HarmonyOS Sans SC"
+		return "Segoe UI"
 	default:
-		return theme.Tr("系统默认 + HarmonyOS Sans SC", "System UI + HarmonyOS Sans SC")
+		return pickInstalledFont(families, []string{
+			"Inter", "Cantarell", "Ubuntu", "DejaVu Sans", "Noto Sans CJK SC", "Noto Sans SC",
+		}, "System UI")
 	}
+}
+
+func defaultFontSuffix() (text string, gap float32) {
+	if theme.IsEn() {
+		return "(Default)", 4
+	}
+	return "（默认）", 0
+}
+
+func defaultBodyFontLabel(families []ui.FontFamily) string {
+	primary := defaultBodyFontPrimary(families)
+	suffix, gap := defaultFontSuffix()
+	if gap > 0 {
+		return primary + " " + suffix
+	}
+	return primary + suffix
 }
 
 func defaultBodyFontName() string {
@@ -927,16 +946,25 @@ func defaultCodeFontName() string {
 	}
 }
 
-func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
+func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDefault bool) {
 	pal := theme.Ocean()
 	open := m.fontPickerOpen == role
 	borderCol := pal.BtnBorder
 	if open {
 		borderCol = pal.Accent
 	}
+	accLabel := label
+	if isDefault {
+		suffix, gap := defaultFontSuffix()
+		if gap > 0 {
+			accLabel = label + " " + suffix
+		} else {
+			accLabel = label + suffix
+		}
+	}
 	btn := ui.ButtonBase(c.Key(id)).Width(248).MaxWidthPercent(100).Shrink(1).MinWidth(120).Height(36).Padding(0, 10, 0, 12).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
-		Cursor(ui.CursorPointer).Label(label)
+		Cursor(ui.CursorPointer).Label(accLabel)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
 	bg := pal.Shell
@@ -958,7 +986,15 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string) {
 		internalui.RecordBounds(id, r)
 	})
 	btn.Children(func() {
-		ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if isDefault {
+			suffix, gap := defaultFontSuffix()
+			ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
+				ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Text(c, suffix).FontSize(theme.FontTitle).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
+			})
+		} else {
+			ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		}
 		glyph := icons.ChevronDown
 		if open {
 			glyph = icons.ChevronUp
@@ -1375,11 +1411,12 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					return
 				}
 				if hasDefaultRow {
-					defLabel := defaultBodyFontLabel()
+					defPrimary := defaultBodyFontPrimary(m.fontFamilies)
+					defLabel := defaultBodyFontLabel(m.fontFamilies)
 					defSelected := current == ""
 					defHighlighted := m.fontCursor == 0
 					defRow := ui.ButtonBase(c.Key("font-row-default")).FillWidth().Height(34).PaddingX(10).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(defLabel)
 					internalui.RevealOnHighlight(defRow, defHighlighted)
 					defHov := m.fontCursor < 0 && defRow.Hovered()
@@ -1394,7 +1431,11 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
 					internalui.TactileCard(defRow, defHov || defHighlighted, defPressed, defSelected, false)
 					defRow.Children(func() {
-						ui.Text(c, defLabel).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
+						suffix, gap := defaultFontSuffix()
+						ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
+							ui.Text(c, defPrimary).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+							ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
+						})
 						if defSelected {
 							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), defSelected || defHov || defPressed)
 						}

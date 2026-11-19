@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>C 输入 + 底栏</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#456ec2}
+input::placeholder{color:#93918c}
+</style>
+</helmet>
+<div style="width: 720px; height: 420px; box-sizing: border-box; padding: 40px 56px; background: #ffffff; font-family: -apple-system, 'PingFang SC', system-ui, sans-serif; color: #1f1e1d; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 18px; font-weight: 560; line-height: 26px">前端</div>
+<div style="border: 1px dashed #8fa9df; border-radius: 10px; padding: 8px 10px; background: #f6f9fe; display: flex; flex-direction: column; gap: 4px">
+<div style="background: #fde8e8; color: #c94a4a; text-decoration: line-through; border-radius: 6px; padding: 2px 6px; font-size: 16px; line-height: 26px">非必要时不添加小字描述和说明、标题上的装饰文案等在内容主体和四周角落。</div>
+<div style="font-size: 16px; line-height: 26px; padding: 0 6px">非必要时，不要在内容主体及四周角落添加小字描述、说明或标题上的装饰文案等。</div>
+</div>
+<div style="width: 380px; box-sizing: border-box; margin-top: 2px; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; box-shadow: 0 6px 20px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.06); overflow: hidden; display: flex; flex-direction: column">
+<label style="height: 38px; box-sizing: border-box; padding: 0 8px 0 12px; display: flex; align-items: center; gap: 8px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z"></path></svg>
+<input aria-label="继续修改" placeholder="继续修改，回车确认" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 13px; color: #1f1e1d; font-family: inherit">
+<button aria-label="发送" style="width: 22px; height: 22px; border: 0; border-radius: 6px; background: #eef3fc; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg></button>
+</label>
+<div style="height: 36px; box-sizing: border-box; padding: 0 6px; display: flex; align-items: center; gap: 2px; background: #fafaf8; border-top: 1px solid #eeeff2">
+<button style="height: 24px; padding: 0 8px; border-radius: 6px; background: #547dd0; border: 0; font-size: 12px; font-weight: 460; color: #ffffff; display: flex; align-items: center; gap: 5px; font-family: inherit">替换<span style="font-family: ui-monospace, monospace; font-size: 11px; opacity: 0.8">↵</span></button>
+<button style="height: 24px; padding: 0 8px; border-radius: 6px; background: transparent; border: 0; font-size: 12px; color: #1f1e1d; font-family: inherit">插入下方</button>
+<button style="height: 24px; padding: 0 8px; border-radius: 6px; background: transparent; border: 0; font-size: 12px; color: #1f1e1d; font-family: inherit">重写</button>
+<div style="flex: 1"></div>
+<button style="height: 24px; padding: 0 8px; border-radius: 6px; background: transparent; border: 0; font-size: 12px; color: #52514e; font-family: inherit">放弃</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

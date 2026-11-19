@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>B 一行指令条</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#456ec2}
+input::placeholder{color:#93918c}
+</style>
+</helmet>
+<div style="width: 720px; height: 420px; box-sizing: border-box; padding: 40px 56px; background: #ffffff; font-family: -apple-system, 'PingFang SC', system-ui, sans-serif; color: #1f1e1d; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 18px; font-weight: 560; line-height: 26px">前端</div>
+<div style="border: 1px dashed #8fa9df; border-radius: 10px; padding: 8px 10px; background: #f6f9fe; display: flex; flex-direction: column; gap: 4px">
+<div style="background: #fde8e8; color: #c94a4a; text-decoration: line-through; border-radius: 6px; padding: 2px 6px; font-size: 16px; line-height: 26px">非必要时不添加小字描述和说明、标题上的装饰文案等在内容主体和四周角落。</div>
+<div style="font-size: 16px; line-height: 26px; padding: 0 6px">非必要时，不要在内容主体及四周角落添加小字描述、说明或标题上的装饰文案等。</div>
+</div>
+<div style="width: 420px; margin-top: 2px; display: flex; flex-direction: column; gap: 6px">
+<label style="height: 36px; box-sizing: border-box; padding: 0 4px 0 12px; display: flex; align-items: center; gap: 8px; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; box-shadow: 0 6px 20px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.06)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z"></path></svg>
+<input aria-label="继续修改" placeholder="继续修改…" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 13px; color: #1f1e1d; font-family: inherit">
+<button style="height: 26px; padding: 0 6px 0 10px; border-radius: 6px; background: #547dd0; border: 0; font-size: 13px; font-weight: 460; color: #ffffff; display: flex; align-items: center; gap: 6px; font-family: inherit">替换<span style="font-family: ui-monospace, monospace; font-size: 11px; line-height: 16px; padding: 0 4px; border-radius: 4px; background: rgba(255,255,255,0.22)">↵</span></button>
+</label>
+<div style="display: flex; align-items: center; gap: 14px; padding: 0 12px; font-size: 12px; color: #6b6a66">
+<button style="border: 0; background: transparent; padding: 0; font-size: 12px; color: #52514e; font-family: inherit; display: flex; align-items: center; gap: 4px">插入下方<span style="font-family: ui-monospace, monospace; font-size: 11px; color: #93918c">⌘↵</span></button>
+<button style="border: 0; background: transparent; padding: 0; font-size: 12px; color: #52514e; font-family: inherit; display: flex; align-items: center; gap: 4px">重写<span style="font-family: ui-monospace, monospace; font-size: 11px; color: #93918c">⌘R</span></button>
+<button style="border: 0; background: transparent; padding: 0; font-size: 12px; color: #52514e; font-family: inherit; display: flex; align-items: center; gap: 4px">放弃<span style="font-family: ui-monospace, monospace; font-size: 11px; color: #93918c">Esc</span></button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

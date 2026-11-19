@@ -183,11 +183,52 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 	return out, nil
 }
 
+func isDefaultNewFolderName(rawName string) bool {
+	for _, base := range []string{"新建文件夹", "New Folder"} {
+		if rawName == base {
+			return true
+		}
+		if len(rawName) > len(base)+1 && strings.HasPrefix(rawName, base+" ") {
+			rest := rawName[len(base)+1:]
+			allDigits := true
+			for i := 0; i < len(rest); i++ {
+				if !isASCIIDigit(rest[i]) {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[string][]string, mode model.TreeSortMode) {
 	sort.Slice(entries, func(i, j int) bool {
 		a, b := &entries[i], &entries[j]
 		if a.IsDir != b.IsDir {
 			return a.IsDir
+		}
+		if a.IsDir {
+			aNew := isDefaultNewFolderName(a.RawName)
+			bNew := isDefaultNewFolderName(b.RawName)
+			if aNew != bNew {
+				return !aNew
+			}
+			if aNew && bNew {
+				if a.ModUnix != b.ModUnix {
+					return a.ModUnix < b.ModUnix
+				}
+				if c := naturalCmp(a.RawName, b.RawName); c != 0 {
+					return c < 0
+				}
+				if a.RawName != b.RawName {
+					return a.RawName < b.RawName
+				}
+				return a.Path < b.Path
+			}
 		}
 		if mode == model.TreeSortModified && a.ModUnix != b.ModUnix {
 			return a.ModUnix > b.ModUnix
@@ -234,6 +275,9 @@ func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[stri
 		return math.MaxInt
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].IsDir != entries[j].IsDir {
+			return entries[i].IsDir
+		}
 		return rankOf(entries[i].Path) < rankOf(entries[j].Path)
 	})
 }
