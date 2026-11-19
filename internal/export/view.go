@@ -695,7 +695,7 @@ func (c *Controller) renderSidebar(
 			Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 			if notice != "" {
 				ui.Row(ctx).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).
-					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent).
+					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, ui.Transparent).
 					Children(func() {
 						ui.Text(ctx, notice).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						if savedPath != "" {
@@ -828,7 +828,7 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 	bg, bd := pal.Paper, pal.BtnBorder
 	fg := pal.TextSecondary
 	if selected {
-		bg, bd = pal.Selected, pal.Accent
+		bg, bd = pal.Selected, pal.SelectedBorder
 		fg = pal.Text
 	} else if pressed {
 		bg = pal.Selected
@@ -851,7 +851,7 @@ func (c *Controller) renderSwatchCard(ctx *ui.Context, pal theme.Palette, st mod
 		ui.Row(ctx).FillWidth().PaddingX(theme.Space4).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space4).Children(func() {
 			ui.Text(ctx, spec.Label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if selected {
-				icons.DrawAnimated(ctx, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), hovered || pressed)
+				icons.DrawAnimated(ctx, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Text), hovered || pressed)
 			}
 		})
 	})
