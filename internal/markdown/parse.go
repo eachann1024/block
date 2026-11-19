@@ -48,8 +48,9 @@ func ParseMarkdown(src string) *model.Doc {
 
 	decoded := decodeRawBlockGuard(src)
 	cleaned := strings.TrimPrefix(decoded, "\uFEFF")
-	defs, usedLabels := collectRefDefs(cleaned)
-	blocks := parseBlocksWithDefs(cleaned, defs, usedLabels)
+	lines := splitLinesInclusive(cleaned)
+	defs, usedLabels := collectRefDefsFromLines(cleaned, lines)
+	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1)
 	blocks = swallowSeparators(blocks)
 	hadLegacyEmptyBlock := stripLegacyEmptyBlockComments(blocks)
 	normalizeImportedStarts(blocks)
@@ -82,7 +83,7 @@ func splitLinesInclusive(s string) []string {
 	if s == "" {
 		return nil
 	}
-	var lines []string
+	lines := make([]string, 0, strings.Count(s, "\n")+1)
 	start := 0
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\n' {
@@ -400,10 +401,16 @@ func parseAlertTag(line string) (model.CalloutKind, bool) {
 
 // collectRefDefs extracts `[label]: url "title"` definitions that are referenced in source.
 func collectRefDefs(src string) (map[string]refDef, map[string]bool) {
+	return collectRefDefsFromLines(src, nil)
+}
+
+func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map[string]bool) {
 	if !strings.Contains(src, "]:") {
 		return nil, nil
 	}
-	lines := splitLinesInclusive(src)
+	if lines == nil {
+		lines = splitLinesInclusive(src)
+	}
 	defs := make(map[string]refDef)
 	inFence := false
 	var fc byte
@@ -422,9 +429,12 @@ func collectRefDefs(src string) (map[string]refDef, map[string]bool) {
 			fl = w
 			continue
 		}
-		if label, def, _, ok := parseRefDefLines(lines[i:]); ok {
-			if _, exists := defs[label]; !exists {
-				defs[label] = def
+		trimmed := strings.TrimLeft(line, " ")
+		if len(line)-len(trimmed) <= 3 && len(trimmed) > 0 && trimmed[0] == '[' && !strings.HasPrefix(trimmed, "[^") {
+			if label, def, _, ok := parseRefDefLines(lines[i:]); ok {
+				if _, exists := defs[label]; !exists {
+					defs[label] = def
+				}
 			}
 		}
 	}
@@ -2297,7 +2307,10 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 }
 
 func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine int) []model.Block {
-	lines := splitLinesInclusive(src)
+	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine)
+}
+
+func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine int) []model.Block {
 	var result []model.Block
 	i := 0
 	appendBlock := func(b model.Block, count int) {
@@ -2577,8 +2590,7 @@ func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[st
 			i++
 			continue
 		}
-		_, _, _, isUnusedRefDef := parseRefDefLines(lines[i:])
-		if !isUnusedRefDef && indentCols <= 3 && i+1 < len(lines) {
+		if indentCols <= 3 && i+1 < len(lines) {
 			nextLine := trimLineEnding(lines[i+1])
 			nextBody := strings.TrimLeft(nextLine, " ")
 			if len(nextLine)-len(nextBody) <= 3 {
@@ -2591,15 +2603,21 @@ func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[st
 						setextKind = model.BlockHeading2
 					}
 					if setextKind != 0 {
-						orig := lines[i] + lines[i+1]
-						appendBlock(model.Block{
-							ID:          model.NewBlockID(),
-							Kind:        setextKind,
-							Spans:       parseInlineWithDefs(bodyTrimmed, defs),
-							CleanSource: orig,
-						}, 2)
-						i += 2
-						continue
+						isUnusedRefDef := false
+						if len(bodyTrimmed) > 0 && bodyTrimmed[0] == '[' && !strings.HasPrefix(bodyTrimmed, "[^") {
+							_, _, _, isUnusedRefDef = parseRefDefLines(lines[i:])
+						}
+						if !isUnusedRefDef {
+							orig := lines[i] + lines[i+1]
+							appendBlock(model.Block{
+								ID:          model.NewBlockID(),
+								Kind:        setextKind,
+								Spans:       parseInlineWithDefs(bodyTrimmed, defs),
+								CleanSource: orig,
+							}, 2)
+							i += 2
+							continue
+						}
 					}
 				}
 			}
