@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -794,7 +795,18 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	}
 	convID := c.currentID
 	if prevConvID != convID {
-		c.messagesScroll = ui.ScrollState{}
+		if convID != 0 {
+			c.messagesScroll = ui.ScrollState{Y: math.MaxFloat32}
+			c.scrollToBottom = true
+		} else {
+			c.messagesScroll = ui.ScrollState{}
+			c.scrollToBottom = false
+		}
+	}
+	needScrollBottom := c.scrollToBottom && convID != 0
+	if needScrollBottom {
+		c.messagesScroll.X = 0
+		c.messagesScroll.Y = math.MaxFloat32
 	}
 	expandedSnap := make(map[string]bool, len(turns))
 	for i := range turns {
@@ -808,6 +820,17 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1)
 	bui.Probe(scroll, "ai-chat-scroll")
 	scrollH := scroll.Bounds().H
+	if needScrollBottom {
+		if scrollH > 0 {
+			c.mu.Lock()
+			if c.currentID == convID {
+				c.scrollToBottom = false
+			}
+			c.mu.Unlock()
+		} else {
+			c.requestRedraw()
+		}
+	}
 	scrollY := c.messagesScroll.Y
 	overscan := max(scrollH*1.5, 600)
 	visTop := scrollY - overscan
