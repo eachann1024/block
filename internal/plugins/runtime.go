@@ -64,6 +64,7 @@ type HostConfig struct {
 	ActiveNote      string
 	Locale          string
 	HostVersion     string
+	GetNotebooks    func() []string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 }
 
@@ -185,6 +186,60 @@ func (rt *Runtime) Stderr() string {
 	return rt.stderr.String()
 }
 
+func (rt *Runtime) knownNotebooks() []string {
+	rt.cfgMu.RLock()
+	active := strings.TrimSpace(rt.cfg.NotebookRoot)
+	getter := rt.cfg.GetNotebooks
+	rt.cfgMu.RUnlock()
+
+	seen := make(map[string]bool)
+	out := make([]string, 0, 4)
+	add := func(raw string) {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			return
+		}
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		} else {
+			p = filepath.Clean(p)
+		}
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	if getter != nil {
+		for _, nb := range getter() {
+			add(nb)
+		}
+	}
+	add(active)
+	return out
+}
+
+func (rt *Runtime) resolveNotebookRoot(requested string) (string, error) {
+	req := strings.TrimSpace(requested)
+	if req == "" {
+		nbRoot := rt.notebookRoot()
+		if strings.TrimSpace(nbRoot) == "" {
+			return "", errors.New("no active notebook folder")
+		}
+		return filepath.Abs(nbRoot)
+	}
+	reqAbs, err := filepath.Abs(req)
+	if err != nil {
+		return "", err
+	}
+	for _, allowed := range rt.knownNotebooks() {
+		if allowed == reqAbs {
+			return reqAbs, nil
+		}
+	}
+	return "", fmt.Errorf("notebook root %q is not registered in host", requested)
+}
+
 func (rt *Runtime) Initialize(ctx context.Context) error {
 	locale := rt.cfg.Locale
 	if locale == "" {
@@ -199,9 +254,13 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"data_dir":        rt.cfg.DataDir,
 		"downloads_dir":   rt.cfg.DownloadsDir,
 		"notebook_root":   rt.cfg.NotebookRoot,
+		"notebooks":       rt.knownNotebooks(),
 		"locale":          locale,
 		"host_version":    ver,
-		"ui_capabilities": []string{"kv_tooltip", "treemap", "host_perf"},
+		"ui_capabilities": []string{
+			"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
+			"card_collapse", "metric_tone", "log_columns", "file_picker",
+		},
 	}
 	var res struct {
 		Ready bool `json:"ready"`
@@ -220,23 +279,33 @@ func (rt *Runtime) Render(ctx context.Context, surface Surface) (*UIPage, error)
 }
 
 func (rt *Runtime) RenderWithValues(ctx context.Context, surface Surface, values map[string]any) (*UIPage, error) {
+	page, _, err := rt.RenderWithValuesResult(ctx, surface, values)
+	return page, err
+}
+
+func (rt *Runtime) RenderWithValuesResult(ctx context.Context, surface Surface, values map[string]any) (*UIPage, map[string]any, error) {
 	if !rt.manifest.HasSurface(surface) {
-		return nil, fmt.Errorf("surface %q not declared in manifest", surface)
+		return nil, nil, fmt.Errorf("surface %q not declared in manifest", surface)
 	}
 	var rawRes struct {
-		Page json.RawMessage `json:"page"`
+		Page   json.RawMessage `json:"page"`
+		Values map[string]any  `json:"values,omitempty"`
 	}
 	params := map[string]any{"surface": string(surface)}
 	if len(values) > 0 {
 		params["values"] = values
 	}
 	if err := rt.call(ctx, "plugin.render", params, &rawRes); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(rawRes.Page) == 0 {
-		return nil, errors.New("plugin.render response missing \"page\" object")
+		return nil, nil, errors.New("plugin.render response missing \"page\" object")
 	}
-	return DecodePageStrict(rawRes.Page)
+	page, err := DecodePageStrict(rawRes.Page)
+	if err != nil {
+		return nil, nil, err
+	}
+	return page, rawRes.Values, nil
 }
 
 func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string, values map[string]any) (*ActionResult, error) {
@@ -277,14 +346,19 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 	return out, nil
 }
 
-func (rt *Runtime) NotifyNoteSaved(ctx context.Context, relPath string) error {
+func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath string) error {
 	if !rt.manifest.HasPermission(PermEventNoteSaved) {
 		return nil
 	}
+	nbRoot := strings.TrimSpace(notebookRoot)
+	if nbRoot == "" {
+		nbRoot = rt.notebookRoot()
+	}
 	params := map[string]any{
-		"event":     "note.saved",
-		"path":      filepath.ToSlash(relPath),
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"event":         "note.saved",
+		"notebook_root": nbRoot,
+		"path":          filepath.ToSlash(relPath),
+		"timestamp":     time.Now().UTC().Format(time.RFC3339),
 	}
 	var res struct {
 		Handled bool `json:"handled"`
@@ -475,11 +549,47 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 		}
 		return map[string]any{"path": rt.activeNote()}, nil
 
+	case "host.notebooks.list":
+		if !rt.manifest.HasPermission(PermNotesRead) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
+		}
+		activeRoot := strings.TrimSpace(rt.notebookRoot())
+		if activeRoot != "" {
+			if abs, err := filepath.Abs(activeRoot); err == nil {
+				activeRoot = abs
+			}
+		}
+		type notebookEntry struct {
+			Path   string `json:"path"`
+			Name   string `json:"name"`
+			Active bool   `json:"active"`
+		}
+		nbs := rt.knownNotebooks()
+		entries := make([]notebookEntry, 0, len(nbs))
+		for _, nb := range nbs {
+			name := filepath.Base(nb)
+			if name == "" || name == "." || name == string(filepath.Separator) {
+				name = nb
+			}
+			entries = append(entries, notebookEntry{
+				Path:   nb,
+				Name:   name,
+				Active: activeRoot != "" && nb == activeRoot,
+			})
+		}
+		return map[string]any{"notebooks": entries}, nil
+
 	case "host.notes.list":
 		if !rt.manifest.HasPermission(PermNotesRead) {
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
 		}
-		notes, err := rt.listNotebookNotes()
+		var p struct {
+			NotebookRoot string `json:"notebook_root"`
+		}
+		if len(params) > 0 {
+			_ = json.Unmarshal(params, &p)
+		}
+		notes, err := rt.listNotebookNotes(p.NotebookRoot)
 		if err != nil {
 			return nil, &rpcError{Code: -32003, Message: err.Error()}
 		}
@@ -490,12 +600,13 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
 		}
 		var p struct {
-			Path string `json:"path"`
+			NotebookRoot string `json:"notebook_root"`
+			Path         string `json:"path"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		abs, cleanRel, err := rt.jailNotePath(p.Path)
+		abs, cleanRel, err := rt.jailNotePathFor(p.NotebookRoot, p.Path)
 		if err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
@@ -510,13 +621,14 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:write"}
 		}
 		var p struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
+			NotebookRoot string `json:"notebook_root"`
+			Path         string `json:"path"`
+			Content      string `json:"content"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		abs, _, err := rt.jailNotePath(p.Path)
+		abs, _, err := rt.jailNotePathFor(p.NotebookRoot, p.Path)
 		if err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
@@ -595,10 +707,19 @@ type NoteMeta struct {
 	ModTime string `json:"mod_time"`
 }
 
-func (rt *Runtime) listNotebookNotes() ([]NoteMeta, error) {
-	nbRoot := rt.notebookRoot()
-	if nbRoot == "" {
-		return []NoteMeta{}, nil
+func (rt *Runtime) listNotebookNotes(requestedRoot string) ([]NoteMeta, error) {
+	var nbRoot string
+	if strings.TrimSpace(requestedRoot) == "" {
+		nbRoot = rt.notebookRoot()
+		if nbRoot == "" {
+			return []NoteMeta{}, nil
+		}
+	} else {
+		var err error
+		nbRoot, err = rt.resolveNotebookRoot(requestedRoot)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var list []NoteMeta
 	err := filepath.Walk(nbRoot, func(path string, info os.FileInfo, err error) error {
@@ -629,14 +750,14 @@ func (rt *Runtime) listNotebookNotes() ([]NoteMeta, error) {
 }
 
 func (rt *Runtime) jailNotePath(rel string) (string, string, error) {
+	return rt.jailNotePathFor("", rel)
+}
+
+func (rt *Runtime) jailNotePathFor(requestedRoot, rel string) (string, string, error) {
 	if strings.TrimSpace(rel) == "" {
 		return "", "", errors.New("note path is empty")
 	}
-	nbRoot := rt.notebookRoot()
-	if strings.TrimSpace(nbRoot) == "" {
-		return "", "", errors.New("no active notebook folder")
-	}
-	rootAbs, err := filepath.Abs(nbRoot)
+	rootAbs, err := rt.resolveNotebookRoot(requestedRoot)
 	if err != nil {
 		return "", "", err
 	}

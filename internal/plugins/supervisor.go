@@ -46,6 +46,7 @@ type PluginViewState struct {
 
 	lastNotebookRoot   string
 	lastActiveNote     string
+	lastNotebooksKey   string
 	editSeq            uint64
 	errorFromBg        bool
 	initialLoadStarted bool
@@ -55,10 +56,12 @@ type SupervisorConfig struct {
 	AppDataDir      string
 	HostVersion     string
 	GetNotebookRoot func() string
+	GetNotebooks    func() []string
 	GetActiveNote   func() string
 	GetLocale       func() string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory   func(title, defaultPath string, onPicked func(path string))
+	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
 	OnChanged       func()
 	OnRedraw        func()
 }
@@ -119,6 +122,38 @@ func (s *Supervisor) NotebookRoot() string {
 	return ""
 }
 
+func (s *Supervisor) Notebooks() []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, 4)
+	add := func(raw string) {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			return
+		}
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		} else {
+			p = filepath.Clean(p)
+		}
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	if s.cfg.GetNotebooks != nil {
+		for _, nb := range s.cfg.GetNotebooks() {
+			add(nb)
+		}
+	}
+	add(s.NotebookRoot())
+	return out
+}
+
+func (s *Supervisor) notebooksFingerprint() string {
+	return strings.Join(s.Notebooks(), "\x00")
+}
+
 func (s *Supervisor) ActiveNoteRel() string {
 	if s.cfg.GetActiveNote == nil {
 		return ""
@@ -144,8 +179,38 @@ func (s *Supervisor) CanPickDirectory() bool {
 	return s.cfg.PickDirectory != nil
 }
 
+func (s *Supervisor) CanPickFile() bool {
+	return s.cfg.PickFile != nil
+}
+
 func (s *Supervisor) PickDirectory(title string, onPicked func(path string)) {
 	s.pickDirectory(title, "", onPicked)
+}
+
+func (s *Supervisor) PickFileForControl(pluginID, controlID, title string, extensions []string) {
+	if !s.CanPickFile() {
+		return
+	}
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	s.mu.RLock()
+	view := s.views[key]
+	if view == nil {
+		s.mu.RUnlock()
+		return
+	}
+	current, _ := view.Values[controlID].(string)
+	s.mu.RUnlock()
+	if !filepath.IsAbs(current) {
+		current = nbRoot
+	}
+	s.cfg.PickFile(title, current, extensions, func(p string) {
+		if p == "" || s.NotebookRoot() != nbRoot {
+			return
+		}
+		s.updateControlValue(pluginID, nbRoot, controlID, p, true)
+		s.notifyChanged()
+	})
 }
 
 func (s *Supervisor) PickDirectoryForControl(pluginID, controlID, title string) {
@@ -257,10 +322,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, interval time.Duration)
 		s.mu.RUnlock()
 		return
 	}
-	valsCopy := make(map[string]any, len(vs.Values))
-	for k, v := range vs.Values {
-		valsCopy[k] = v
-	}
+	valsCopy := cloneAnyMap(vs.Values)
 	s.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -583,6 +645,7 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 	}
 	nbRoot := s.NotebookRoot()
 	activeNote := s.activeNoteFor(nbRoot)
+	nbKey := s.notebooksFingerprint()
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
 
 	s.mu.Lock()
@@ -593,17 +656,19 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 			vs.initialLoadStarted = true
 			vs.lastNotebookRoot = nbRoot
 			vs.lastActiveNote = activeNote
+			vs.lastNotebooksKey = nbKey
 			snap := cloneViewState(vs)
 			s.mu.Unlock()
 			go s.loadAndRenderPlugin(pluginID, nbRoot)
 			return snap
 		}
 		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" && vs.Page != nil &&
-			vs.lastActiveNote != activeNote
+			(vs.lastActiveNote != activeNote || vs.lastNotebooksKey != nbKey)
 		var syncSeq uint64
 		if needWorkspaceSync {
 			vs.lastNotebookRoot = nbRoot
 			vs.lastActiveNote = activeNote
+			vs.lastNotebooksKey = nbKey
 			vs.editSeq++
 			syncSeq = vs.editSeq
 		}
@@ -619,6 +684,7 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 		Values:             map[string]any{},
 		lastNotebookRoot:   nbRoot,
 		lastActiveNote:     activeNote,
+		lastNotebooksKey:   nbKey,
 		initialLoadStarted: true,
 	}
 	s.views[key] = vs
@@ -692,7 +758,7 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID, nbRoot string) {
 	}
 	s.mu.RUnlock()
 
-	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, currentVals)
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, currentVals)
 	s.mu.Lock()
 	if vs := s.views[key]; vs != nil {
 		vs.Loading = false
@@ -718,6 +784,9 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID, nbRoot string) {
 						vs.Values[k] = v
 					}
 				}
+			}
+			for k, v := range returnedVals {
+				vs.Values[k] = v
 			}
 		}
 	}
@@ -779,6 +848,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		ActiveNote:      s.activeNoteFor(nbRoot),
 		Locale:          s.Locale(),
 		HostVersion:     hostVer,
+		GetNotebooks:    s.Notebooks,
 		GetPerfSnapshot: s.cfg.GetPerfSnapshot,
 	})
 	if err != nil {
@@ -842,10 +912,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, d
 		s.mu.RUnlock()
 		return
 	}
-	valsCopy := make(map[string]any, len(vs.Values))
-	for k, v := range vs.Values {
-		valsCopy[k] = v
-	}
+	valsCopy := cloneAnyMap(vs.Values)
 	s.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -866,7 +933,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, d
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
-	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, valsCopy)
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, valsCopy)
 	if err != nil {
 		s.mu.Lock()
 		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
@@ -899,6 +966,9 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, d
 			cur.Values[k] = v
 		}
 	}
+	for k, v := range returnedVals {
+		cur.Values[k] = v
+	}
 	s.mu.Unlock()
 	s.notifyChanged()
 }
@@ -921,10 +991,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 	vs.FailedNoteRoot = ""
 	vs.errorFromBg = false
 	vs.editSeq++
-	valsCopy := make(map[string]any, len(vs.Values))
-	for k, v := range vs.Values {
-		valsCopy[k] = v
-	}
+	valsCopy := cloneAnyMap(vs.Values)
 	s.mu.Unlock()
 	s.notifyChanged()
 
@@ -1110,6 +1177,20 @@ func (s *Supervisor) ShutdownAll() {
 	wg.Wait()
 }
 
+func cloneAnyMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		if slice, ok := v.([]string); ok {
+			cp := make([]string, len(slice))
+			copy(cp, slice)
+			out[k] = cp
+		} else {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func cloneViewState(in *PluginViewState) PluginViewState {
 	out := PluginViewState{
 		Loading:        in.Loading,
@@ -1117,15 +1198,12 @@ func cloneViewState(in *PluginViewState) PluginViewState {
 		Error:          in.Error,
 		Notice:         in.Notice,
 		Page:           in.Page,
-		Values:         make(map[string]any, len(in.Values)),
+		Values:         cloneAnyMap(in.Values),
 		RetryKind:      in.RetryKind,
 		FailedActionID: in.FailedActionID,
 		FailedNotePath: in.FailedNotePath,
 		FailedNoteRoot: in.FailedNoteRoot,
 		PendingSaves:   in.PendingSaves,
-	}
-	for k, v := range in.Values {
-		out.Values[k] = v
 	}
 	if out.Error == "" && out.BusyAction == "" {
 		var first string

@@ -16,6 +16,8 @@ const (
 	KindFolder    ItemKind = "folder"
 	KindSecret    ItemKind = "secret"
 	KindSelect    ItemKind = "select"
+	KindChecklist ItemKind = "checklist"
+	KindGroup     ItemKind = "group"
 	KindSwitch    ItemKind = "switch"
 	KindActions   ItemKind = "actions"
 	KindKV        ItemKind = "kv"
@@ -34,8 +36,11 @@ const (
 )
 
 type UIOption struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
+	Value   string `json:"value"`
+	Label   string `json:"label"`
+	Detail  string `json:"detail,omitempty"`
+	Badge   string `json:"badge,omitempty"`
+	Tooltip string `json:"tooltip,omitempty"`
 }
 
 type UIButton struct {
@@ -53,6 +58,7 @@ type UIKVRow struct {
 type UIMetric struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+	Tone  string `json:"tone,omitempty"`
 }
 
 type UITreemapSummary struct {
@@ -80,9 +86,13 @@ type UITreemapTile struct {
 }
 
 type UILogEntry struct {
-	Title  string `json:"title"`
-	Time   string `json:"time"`
-	Status string `json:"status,omitempty"`
+	Title   string  `json:"title"`
+	SubText string  `json:"sub_text,omitempty"`
+	Time    string  `json:"time,omitempty"`
+	Status  string  `json:"status,omitempty"`
+	Tone    string  `json:"tone,omitempty"`
+	Ratio   float64 `json:"ratio,omitempty"`
+	Tooltip string  `json:"tooltip,omitempty"`
 }
 
 type UIPreviewCard struct {
@@ -111,28 +121,35 @@ type UIVisibleWhen struct {
 }
 
 type UIItem struct {
-	Kind        ItemKind        `json:"kind"`
-	ID          string          `json:"id,omitempty"`
-	Label       string          `json:"label,omitempty"`
-	Value       any             `json:"value,omitempty"`
-	Placeholder string          `json:"placeholder,omitempty"`
-	Options     []UIOption      `json:"options,omitempty"`
-	Buttons     []UIButton      `json:"buttons,omitempty"`
-	Rows        []UIKVRow       `json:"rows,omitempty"`
-	Metrics     []UIMetric        `json:"metrics,omitempty"`
-	Summary     *UITreemapSummary `json:"summary,omitempty"`
-	Tiles       []UITreemapTile   `json:"tiles,omitempty"`
-	TotalBytes  uint64            `json:"total_bytes,omitempty"`
-	Preview     *UIPreview      `json:"preview,omitempty"`
-	EmptyText   string          `json:"empty_text,omitempty"`
-	Entries     []UILogEntry    `json:"entries,omitempty"`
-	VisibleWhen *UIVisibleWhen  `json:"visible_when,omitempty"`
+	Kind             ItemKind          `json:"kind"`
+	ID               string            `json:"id,omitempty"`
+	Label            string            `json:"label,omitempty"`
+	Layout           string            `json:"layout,omitempty"` // "" | "full" | "stacked"
+	Value            any               `json:"value,omitempty"`
+	Placeholder      string            `json:"placeholder,omitempty"`
+	AcceptExtensions []string          `json:"accept_extensions,omitempty"`
+	Options          []UIOption        `json:"options,omitempty"`
+	Fields           []UIItem          `json:"fields,omitempty"`
+	Buttons          []UIButton        `json:"buttons,omitempty"`
+	Rows             []UIKVRow         `json:"rows,omitempty"`
+	Metrics          []UIMetric        `json:"metrics,omitempty"`
+	Summary          *UITreemapSummary `json:"summary,omitempty"`
+	Tiles            []UITreemapTile   `json:"tiles,omitempty"`
+	TotalBytes       uint64            `json:"total_bytes,omitempty"`
+	Preview          *UIPreview        `json:"preview,omitempty"`
+	EmptyText        string            `json:"empty_text,omitempty"`
+	Entries          []UILogEntry      `json:"entries,omitempty"`
+	VisibleWhen      *UIVisibleWhen    `json:"visible_when,omitempty"`
 }
 
 type UICard struct {
-	ID    string   `json:"id"`
-	Title string   `json:"title"`
-	Items []UIItem `json:"items"`
+	ID               string   `json:"id"`
+	Title            string   `json:"title"`
+	Meta             string   `json:"meta,omitempty"`
+	Badge            string   `json:"badge,omitempty"`
+	Collapsible      bool     `json:"collapsible,omitempty"`
+	DefaultCollapsed bool     `json:"default_collapsed,omitempty"`
+	Items            []UIItem `json:"items"`
 }
 
 type UIPage struct {
@@ -223,6 +240,9 @@ func (p *UIPage) Validate() error {
 		if err := checkText(prefix+".title", card.Title, false); err != nil {
 			return err
 		}
+		if err := checkUserText(prefix+".meta", card.Meta, false); err != nil {
+			return err
+		}
 		if len(card.Items) == 0 {
 			return fmt.Errorf("%s.items must contain at least one item", prefix)
 		}
@@ -236,17 +256,57 @@ func (p *UIPage) Validate() error {
 	return nil
 }
 
+// StringSliceValue normalizes a checklist control value ([]string or []any from JSON) into a clean []string copy.
+func StringSliceValue(v any) ([]string, bool) {
+	switch raw := v.(type) {
+	case []string:
+		out := make([]string, len(raw))
+		copy(out, raw)
+		return out, true
+	case []any:
+		out := make([]string, 0, len(raw))
+		for _, elem := range raw {
+			s, ok := elem.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, true
+	case nil:
+		return []string{}, true
+	default:
+		return nil, false
+	}
+}
+
+func extractItemDefaultValues(item UIItem, out map[string]any) {
+	switch item.Kind {
+	case KindSegmented, KindInput, KindFolder, KindSecret, KindSelect, KindSwitch:
+		if item.ID != "" {
+			out[item.ID] = item.Value
+		}
+	case KindChecklist:
+		if item.ID != "" {
+			if list, ok := StringSliceValue(item.Value); ok {
+				out[item.ID] = list
+			} else {
+				out[item.ID] = []string{}
+			}
+		}
+	case KindGroup:
+		for _, child := range item.Fields {
+			extractItemDefaultValues(child, out)
+		}
+	}
+}
+
 // ExtractDefaultValues collects current form control values keyed by control ID.
 func (p *UIPage) ExtractDefaultValues() map[string]any {
 	out := map[string]any{}
 	for _, card := range p.Cards {
 		for _, item := range card.Items {
-			switch item.Kind {
-			case KindSegmented, KindInput, KindFolder, KindSecret, KindSelect, KindSwitch:
-				if item.ID != "" {
-					out[item.ID] = item.Value
-				}
-			}
+			extractItemDefaultValues(item, out)
 		}
 	}
 	return out
@@ -279,10 +339,19 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			return fmt.Errorf("%s.visible_when requires equals or in", prefix)
 		}
 	}
+	switch item.Layout {
+	case "", "full", "stacked":
+	default:
+		return fmt.Errorf("%s.layout %q must be empty, full, or stacked", prefix, item.Layout)
+	}
 
 	switch item.Kind {
 	case KindSegmented, KindSelect:
-		if err := registerControl(prefix, item.ID, item.Label, seenControls); err != nil {
+		if item.Kind == KindSegmented && item.Layout == "full" {
+			if err := registerControlOptionalLabel(prefix, item.ID, item.Label, seenControls); err != nil {
+				return err
+			}
+		} else if err := registerControl(prefix, item.ID, item.Label, seenControls); err != nil {
 			return err
 		}
 		strVal, ok := item.Value.(string)
@@ -310,6 +379,51 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 		}
 		if !matched {
 			return fmt.Errorf("%s.value %q does not match any option", prefix, strVal)
+		}
+	case KindChecklist:
+		if err := registerControlOptionalLabel(prefix, item.ID, item.Label, seenControls); err != nil {
+			return err
+		}
+		if _, ok := StringSliceValue(item.Value); !ok {
+			return fmt.Errorf("%s.value must be an array of strings", prefix)
+		}
+		if err := checkText(prefix+".empty_text", item.EmptyText, false); err != nil {
+			return err
+		}
+		seenOptValues := map[string]bool{}
+		for oi, opt := range item.Options {
+			op := fmt.Sprintf("%s.options[%d]", prefix, oi)
+			if strings.TrimSpace(opt.Value) == "" {
+				return fmt.Errorf("%s.value is required", op)
+			}
+			if seenOptValues[opt.Value] {
+				return fmt.Errorf("%s.value %q is duplicated", op, opt.Value)
+			}
+			seenOptValues[opt.Value] = true
+			if err := checkUserText(op+".label", opt.Label, true); err != nil {
+				return err
+			}
+			if err := checkUserText(op+".detail", opt.Detail, false); err != nil {
+				return err
+			}
+			if err := checkText(op+".badge", opt.Badge, false); err != nil {
+				return err
+			}
+		}
+	case KindGroup:
+		if len(item.Fields) < 2 {
+			return fmt.Errorf("%s.fields must contain at least 2 items", prefix)
+		}
+		for fi, field := range item.Fields {
+			fp := fmt.Sprintf("%s.fields[%d]", prefix, fi)
+			switch field.Kind {
+			case KindInput, KindSecret, KindSegmented, KindSelect, KindFolder, KindSwitch:
+			default:
+				return fmt.Errorf("%s.kind %q is not allowed inside group", fp, field.Kind)
+			}
+			if err := validateItem(fp, field, seenControls, seenActions); err != nil {
+				return err
+			}
 		}
 	case KindInput, KindFolder, KindSecret:
 		if err := registerControl(prefix, item.ID, item.Label, seenControls); err != nil {
@@ -463,10 +577,16 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			if err := checkUserText(fmt.Sprintf("%s.entries[%d].title", prefix, ei), e.Title, true); err != nil {
 				return err
 			}
-			if err := checkText(fmt.Sprintf("%s.entries[%d].time", prefix, ei), e.Time, true); err != nil {
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].sub_text", prefix, ei), e.SubText, false); err != nil {
+				return err
+			}
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].time", prefix, ei), e.Time, false); err != nil {
 				return err
 			}
 			if err := checkUserText(fmt.Sprintf("%s.entries[%d].status", prefix, ei), e.Status, false); err != nil {
+				return err
+			}
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].tooltip", prefix, ei), e.Tooltip, false); err != nil {
 				return err
 			}
 		}
@@ -485,6 +605,17 @@ func registerControl(prefix, id, label string, seen map[string]bool) error {
 	}
 	seen[id] = true
 	return checkText(prefix+".label", label, true)
+}
+
+func registerControlOptionalLabel(prefix, id, label string, seen map[string]bool) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s.id is required", prefix)
+	}
+	if seen[id] {
+		return fmt.Errorf("%s.id %q is duplicated on the page", prefix, id)
+	}
+	seen[id] = true
+	return checkText(prefix+".label", label, false)
 }
 
 func validateButton(prefix string, b UIButton, seen map[string]bool) error {
