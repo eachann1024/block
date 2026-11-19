@@ -1437,6 +1437,11 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 	if s == "" {
 		return ui.Box(c)
 	}
+	// An unclosed "$$" opening a cell ("$$$" for a price) is text in the note's
+	// row; alone it would open display math.
+	if strings.HasPrefix(s, "$$") && !strings.Contains(s[2:], "$$") {
+		s = `\` + s
+	}
 	// Bare "**" or "__" is text, not an empty emphasis.
 	if strings.Trim(s, "*_") == "" {
 		s = diffLiteralEscaper.Replace(s)
