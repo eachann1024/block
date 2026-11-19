@@ -42,9 +42,6 @@ jobs:
     name: Go check & cross-platform build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      GOMODCACHE: ${{ runner.temp }}/go-mod
-      GOCACHE: ${{ runner.temp }}/go-build
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
