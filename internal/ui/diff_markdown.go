@@ -57,7 +57,7 @@ type DiffLineStyle struct {
 // marks an item marker that is paragraph text instead ("2." may not interrupt a
 // paragraph). A changed line takes its own side, an unchanged one the new text.
 func DiffListNumbers(lines []string, change []int) []int {
-	masks, _ := diffScan(lines, change)
+	masks, _, fences := diffScanFences(lines, change)
 	var nums [2][]int
 	for si, side := range [2]int{-1, 1} {
 		num := make([]int, len(lines))
@@ -103,8 +103,8 @@ func DiffListNumbers(lines []string, change []int) []int {
 			blank := prevBlank
 			prevBlank = false
 			om := diffCellListRE.FindStringSubmatch(t)
-			// Indented code (masked) is no item.
-			item := !masks[si][i] && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
+			// Indented code (masked) is no item, but "1. ```bash" opening a fence is.
+			item := (!masks[si][i] || fences[si][i] == 1) && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
 			text := func(t string) bool {
 				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
 					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
@@ -1182,6 +1182,20 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	if st.Fence {
 		// The language is the info string's first word: "```sh title=x" shows sh.
 		info := strings.Fields(strings.TrimLeft(diffFenceLineRE.ReplaceAllString(strings.TrimSpace(line), "$3"), "`~"))
+		// A fence opening a list item ("1. ```bash") keeps the item's marker.
+		if lead := diffFenceLineRE.ReplaceAllString(strings.TrimSpace(line), "$1"); strings.ContainsAny(lead, "-*+.)") {
+			if m := diffCellListRE.FindStringSubmatchIndex(lead[len(diffQuoteRE.FindString(lead)):]); m != nil && st.ListNum > 0 {
+				q := diffQuoteRE.FindString(lead)
+				lead = q + strconv.Itoa(st.ListNum) + lead[len(q)+m[3]:]
+			}
+			label := ""
+			if len(info) > 0 {
+				label = "`" + info[0] + "`"
+			}
+			return ui.Box(c).Grow(1).MinWidth(0).Children(func() {
+				markdown.View(c, lead+label, diffMarkdownOptions(st))
+			})
+		}
 		if len(info) == 0 {
 			return ui.Box(c).FillWidth().Height(theme.Space4)
 		}
