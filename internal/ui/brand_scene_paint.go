@@ -17,7 +17,20 @@ type brandSceneClock struct {
 	init      bool
 }
 
-const brandSceneStepMs = 33
+const (
+	brandSceneAmbientStepMs = 500
+	brandSceneMeteorStepMs  = 50
+)
+
+func sceneNextStepMs(sc *compiledScene, tSec float64) time.Duration {
+	if sc != nil && sc.shootStar {
+		ph := modPos(tSec, 13.0)
+		if ph >= 0.82 && ph < 0.95 {
+			return brandSceneMeteorStepMs * time.Millisecond
+		}
+	}
+	return brandSceneAmbientStepMs * time.Millisecond
+}
 
 // PaintBrandSceneBand paints the 88px full-window-width landscape band onto el's own backdrop
 // (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card),
@@ -42,6 +55,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool
 		}
 		reduced := p.Preferences().ReduceMotion
 		tSec := float64(0)
+		stepDur := time.Duration(brandSceneAmbientStepMs) * time.Millisecond
 		if !reduced {
 			now := p.Now()
 			if !clk.init {
@@ -53,15 +67,15 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool
 			} else {
 				dt := now.Sub(clk.lastWall).Milliseconds()
 				if dt > 0 {
-					if dt > 100 {
-						dt = 100
+					if dt > 600 {
+						dt = 600
 					}
 					clk.elapsedMs += dt
 					clk.lastWall = now
 				}
 			}
-			qMs := (clk.elapsedMs / brandSceneStepMs) * brandSceneStepMs
-			tSec = float64(qMs) * 0.001
+			tSec = float64(clk.elapsedMs) * 0.001
+			stepDur = sceneNextStepMs(sc, tSec)
 		}
 		p.Clip(bandRect, 0, func() {
 			paintScene(p, sc, bandRect.X, bandRect.Y, bandRect.W, BrandBandHeight, tSec, showOrb, true)
@@ -78,7 +92,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool
 		})
 
 		if !reduced && !pauseAnim {
-			p.After(brandSceneStepMs * time.Millisecond)
+			p.After(stepDur)
 		}
 	})
 }
@@ -99,10 +113,10 @@ func BrandSceneThumbnail(c *ui.Context, id BrandSceneID, showOrb bool) ui.Elemen
 		if r.W <= 0 || r.H <= 0 {
 			return
 		}
-		reduced := p.Preferences().ReduceMotion
+		const previewRestSec = 11.1
 		tSec := float64(0)
-		if !reduced {
-			tSec = float64(p.Now().UnixMilli()) * 0.001
+		if !p.Preferences().ReduceMotion {
+			tSec = previewRestSec
 		}
 		// Match SVG viewBox="0 0 260 88" preserveAspectRatio="xMidYMid slice".
 		scale := max(r.W/BrandTileWidth, r.H/BrandBandHeight)
@@ -111,9 +125,6 @@ func BrandSceneThumbnail(c *ui.Context, id BrandSceneID, showOrb bool) ui.Elemen
 		p.Transform(ui.Translation(ox-r.X, oy-r.Y).Then(ui.Scaling(scale, scale)), r.X, r.Y, func() {
 			paintScene(p, sc, r.X, r.Y, BrandTileWidth, BrandBandHeight, tSec, showOrb, false)
 		})
-		if !reduced {
-			p.After(42 * time.Millisecond)
-		}
 	})
 	return box
 }
