@@ -942,16 +942,16 @@ func renderSearchHeaderView(
 			bd := pal.BtnBorder
 			line := pal.TextSecondary
 			if st.scopeMenuOpen {
-				line = pal.Accent
+				line = pal.Text
 				bg = pal.Selected
-				bd = pal.Accent
+				bd = pal.SelectedBorder
 			} else if pressed {
-				line = pal.Accent
+				line = pal.Text
 				bg = pal.Selected
-				bd = pal.Accent
+				bd = pal.SelectedBorder
 			} else if hovered {
 				bg = pal.Hover
-				bd = pal.Accent
+				bd = pal.SelectedBorder
 			}
 			internalui.AnimateSurfaceColors(scopeTrigger, bg, bd, true)
 			internalui.TactileCard(scopeTrigger, hovered, pressed, st.scopeMenuOpen, false)
@@ -960,7 +960,7 @@ func renderSearchHeaderView(
 				icons.DrawAnimated(c, icons.Folder, theme.IconRow, theme.IconColors{
 					Line:   line,
 					Fill:   pal.IconFill,
-					Accent: pal.Accent,
+					Accent: line,
 				}, iconActive)
 				ui.Box(c).MaxWidth(136).Children(func() {
 					ui.Text(c, scopeLabel).FontSize(theme.FontBody).LineHeight(20.0 / 14.0).
@@ -1217,7 +1217,7 @@ func renderSearchHitRowView(
 	pressed := row.Pressed()
 	switch {
 	case selected:
-		row.Background(pal.Selected).Border(1, pal.Accent)
+		row.Background(pal.Selected).Border(1, pal.SelectedBorder)
 	case pressed:
 		row.Background(pal.Selected).Border(1, ui.Transparent)
 	case hovered:
@@ -1246,7 +1246,7 @@ func renderSearchHitRowView(
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				ic := pal.MonoIconColors(pal.TextSecondary)
 				if selected {
-					ic = pal.DuoIconColors(pal.Accent)
+					ic = pal.DuoIconColors(pal.Text)
 				} else if hovered || pressed {
 					ic = pal.DuoIconColors(pal.Text)
 				}
