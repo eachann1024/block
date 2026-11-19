@@ -517,8 +517,9 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	isHovered := !s.IsScrollingForHover(c.Now()) && row.Hovered()
 	isFocused := s.focusedBlock == idx
 	hasBlockFocus := isFocused && isAtomic && (row.FocusWithin() || s.detachedFocus.Focused(c))
+	hasTextFocus := isFocused && !isAtomic && (row.FocusWithin() || s.focusPending)
 	hoveredForHandles := isHovered
-	if isHovered && isFocused && !isAtomic && !s.minimal && !readOnly {
+	if isHovered && hasTextFocus && !s.minimal && !readOnly {
 		// The active editor keeps its gutter quiet while the pointer is over text.
 		// Never call row.PointerPosition() here: setting flagTrackPointer on row marks
 		// it interactive in mygo and intercepts clicks/drags meant for editor-canvas.
@@ -577,7 +578,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	tableWholeActive := b.Kind == model.BlockTable && s.isTableWholeSelected(id)
 	showIdleHandles := !overlayBlocking && !isDraggingAny && s.typingPointer == nil
 	showHandles := !s.minimal && !readOnly && ((showIdleHandles && (hoveredForHandles || hasBlockFocus)) || (!overlayBlocking && s.dragBlockID == id) || tableWholeActive)
-	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (hoveredForHandles || (!isFocused && s.hoveredBlock == idx))
+	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (hoveredForHandles || (!hasTextFocus && s.hoveredBlock == idx))
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
 	listCtx := meta.List
@@ -1162,13 +1163,14 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 	pal := theme.Ocean()
 	draft := b.PlainText()
 	st := s.richInputState(b.ID)
-	var hint *emptyHintSpec
-	// IME preedit is visible before it becomes part of the block text.
-	if !st.Composing() {
-		hint = s.emptyHintFor(b, deleteArmed)
-	}
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
+	hasInputFocus := wrap.FocusWithin() || s.focusPending
+	var hint *emptyHintSpec
+	// IME preedit is visible before it becomes part of the block text.
+	if hasInputFocus && !st.Composing() {
+		hint = s.emptyHintFor(b, deleteArmed)
+	}
 	s.paintEmptyHintBand(wrap, hint, fontSize, lh)
 
 	wrap.Children(func() {
