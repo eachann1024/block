@@ -1429,12 +1429,15 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 							Hint:          hint,
 							Icon:          &ic,
 							Danger:        item.Danger,
+							Disabled:      item.Disabled,
 							SuppressHover: !menu.PointerActive,
 							OnClick: func() {
-								s.executeBlockCmd(menu.BlockIdx, menu.Mode, cmd)
+								if !item.Disabled {
+									s.executeBlockCmd(menu.BlockIdx, menu.Mode, cmd)
+								}
 							},
 						}, !menu.PointerActive && i == menu.ActiveIndex)
-						if menu.PointerActive && row.Hovered() {
+						if menu.PointerActive && row.Hovered() && !item.Disabled {
 							menu.ActiveIndex = i
 						}
 					}

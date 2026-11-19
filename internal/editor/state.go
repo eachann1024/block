@@ -60,6 +60,8 @@ type blockMenuItem struct {
 	Hint      string
 	Danger    bool
 	Separator bool
+	// Disabled greys the item out and skips it in keyboard navigation (e.g. the block's own type).
+	Disabled bool
 }
 
 type blockMenuState struct {
