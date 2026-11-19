@@ -135,6 +135,19 @@ type Palette struct {
 	SearchHighlight     ui.Color
 	OutlineBarLit       ui.Color
 	OutlineBarDim       ui.Color
+
+	// Source editor (non-Markdown files): current-line band and syntax colors.
+	CodeLine       ui.Color
+	GutterText     ui.Color
+	SyntaxKeyword  ui.Color
+	SyntaxString   ui.Color
+	SyntaxComment  ui.Color
+	SyntaxNumber   ui.Color
+	SyntaxFunction ui.Color
+	SyntaxType     ui.Color
+	SyntaxKey      ui.Color
+	SyntaxTag      ui.Color
+	SyntaxLiteral  ui.Color
 }
 
 var OceanLight = Palette{
@@ -218,6 +231,18 @@ var OceanLight = Palette{
 	SearchHighlight:     ui.Hex("#fbe7a6"),
 	OutlineBarLit:       ui.Hex("#1f1e1d"),
 	OutlineBarDim:       ui.Hex("#cfd5de"),
+
+	CodeLine:       ui.Hex("#f8f8f6"),
+	GutterText:     ui.Hex("#93918c"),
+	SyntaxKeyword:  ui.Hex("#395fb0"),
+	SyntaxString:   ui.Hex("#1e6b3f"),
+	SyntaxComment:  ui.Hex("#8a8884"),
+	SyntaxNumber:   ui.Hex("#a5641a"),
+	SyntaxFunction: ui.Hex("#7a4a12"),
+	SyntaxType:     ui.Hex("#2b6f86"),
+	SyntaxKey:      ui.Hex("#395fb0"),
+	SyntaxTag:      ui.Hex("#9e2a2b"),
+	SyntaxLiteral:  ui.Hex("#8a3fb0"),
 }
 
 var OceanDark = Palette{
@@ -301,6 +326,18 @@ var OceanDark = Palette{
 	SearchHighlight:     ui.Hex("#5c4813"),
 	OutlineBarLit:       ui.Hex("#c6c6c6"),
 	OutlineBarDim:       ui.Hex("#464646"),
+
+	CodeLine:       ui.Hex("#222222"),
+	GutterText:     ui.Hex("#767676"),
+	SyntaxKeyword:  ui.Hex("#9dbcf5"),
+	SyntaxString:   ui.Hex("#7be0a6"),
+	SyntaxComment:  ui.Hex("#8a8a8a"),
+	SyntaxNumber:   ui.Hex("#e5a54b"),
+	SyntaxFunction: ui.Hex("#f0d48a"),
+	SyntaxType:     ui.Hex("#7fd3e6"),
+	SyntaxKey:      ui.Hex("#9dbcf5"),
+	SyntaxTag:      ui.Hex("#f59393"),
+	SyntaxLiteral:  ui.Hex("#d1a6f5"),
 }
 
 type IconColors struct {
