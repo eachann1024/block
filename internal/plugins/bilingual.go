@@ -12,6 +12,14 @@ import (
 
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
+func stripHTMLComments(s string) string {
+	s = htmlCommentRe.ReplaceAllString(s, "")
+	if idx := strings.Index(s, "<!--"); idx >= 0 {
+		s = s[:idx]
+	}
+	return strings.TrimSpace(s)
+}
+
 // IsOfficialRepo reports whether repo belongs to the official blockmd-plugins organization.
 func IsOfficialRepo(repo string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repo)), "blockmd-plugins/")
@@ -88,8 +96,9 @@ func ValidateBilingualDocs(pluginDir string) error {
 	if err != nil {
 		return fmt.Errorf("README.md (Chinese): %w", err)
 	}
-	if !ContainsHan(zhText) {
-		return fmt.Errorf("README.md must contain Chinese copy (Scheme B: README.md is Chinese, README.en.md is English)")
+	zhVisible := stripHTMLComments(zhText)
+	if !ContainsHan(zhVisible) {
+		return fmt.Errorf("README.md must contain visible Chinese copy (Scheme B: README.md is Chinese, README.en.md is English)")
 	}
 
 	enText, err := readStrictDoc(pluginDir, "README.en.md")
@@ -99,7 +108,7 @@ func ValidateBilingualDocs(pluginDir string) error {
 	if bad, ok := FindChineseRune(enText); ok {
 		return fmt.Errorf("README.en.md must be English-only, found Chinese character %q", bad)
 	}
-	enVisible := strings.TrimSpace(htmlCommentRe.ReplaceAllString(enText, ""))
+	enVisible := stripHTMLComments(enText)
 	if !containsASCIILetter(enVisible) {
 		return fmt.Errorf("README.en.md must contain visible English text")
 	}
