@@ -1521,7 +1521,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		if modelName != "" && modelName != "default" {
 			args = append(args, "--model", modelName)
 		}
-		authVars = []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"}
+		authVars = []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"}
 
 	case model.BackendAgy:
 		args = []string{"acp", "--sandbox", "--include-default-customizations=false"}
