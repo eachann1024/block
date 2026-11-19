@@ -437,20 +437,18 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					blockui.Probe(treeScroll, "file-tree-root")
 					treeScroll.Children(func() {
 						if p.ActiveNotebook == "" {
-							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(12).AlignItems(ui.Center).Children(func() {
-								icons.Mascot(c, icons.MascotNoFolder, 112)
-								ui.Text(c, theme.Tr("尚未打开笔记本", "No notebook open")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
-								chooseBtn := blockui.ActionButton(c, "sidebar-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), nil, blockui.ButtonPrimary, false)
-								if chooseBtn.Clicked() && p.OnChooseNotebook != nil {
+							ui.Column(c).FillWidth().Padding(theme.Space8, 0, 0, 0).Children(func() {
+								if blockui.GhostRow(c, "sidebar-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), icons.FolderOpen).Clicked() && p.OnChooseNotebook != nil {
 									p.OnChooseNotebook()
 								}
 							})
 							return
 						}
 						if len(rows) == 0 {
-							ui.Column(c).FillWidth().Padding(28, 12, 16, 12).Gap(10).AlignItems(ui.Center).Children(func() {
-								icons.Mascot(c, icons.MascotEmptyFolder, 104)
-								ui.Text(c, theme.Tr("文件夹为空，右键新建笔记", "Folder is empty. Right-click to create a note")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+							ui.Column(c).FillWidth().Padding(theme.Space8, 0, 0, 0).Children(func() {
+								if blockui.GhostRow(c, "sidebar-empty-new-note", theme.Tr("新建笔记", "New Note"), icons.NotePlus).Clicked() && p.OnNewNote != nil {
+									p.OnNewNote()
+								}
 							})
 							return
 						}
