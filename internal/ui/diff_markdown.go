@@ -344,8 +344,15 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 	return false
 }
 
-// diffLinkDest matches a link destination: <with spaces> or bare (one level of parens).
-const diffLinkDest = `(?:<[^<>\n]*>|(?:[^()\s]|\([^()\s]*\))*)`
+// diffLinkDest matches a link destination: <with spaces> or bare, with balanced
+// parentheses nested up to eight deep.
+var diffLinkDest = func() string {
+	paren := `\([^()\s]*\)`
+	for range 7 {
+		paren = `\((?:[^()\s]|` + paren + `)*\)`
+	}
+	return `(?:<[^<>\n]*>|(?:[^()\s]|` + paren + `)*)`
+}()
 
 // diffLinkTitle matches an optional link title: "t", 't' or (t).
 const diffLinkTitle = `(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`
