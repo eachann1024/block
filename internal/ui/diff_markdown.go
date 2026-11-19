@@ -905,8 +905,8 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 }
 
 // DiffTableRoles reports, per line, whether it is a table's header row or its
-// separator in its own text (the old one for change < 0, the new one for > 0, either
-// for 0). A separator must follow a row of as many cells at the same indent, and
+// separator in its own text (the old one for change < 0, the new one for > 0 and 0:
+// a table wrapped in a fence shows its "| --- |" as code). A separator must follow a row of as many cells at the same indent, and
 // only the first one does: a later "| --- |" is a data row and stays visible.
 func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	header, sep = make([]bool, len(lines)), make([]bool, len(lines))
@@ -914,7 +914,7 @@ func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 		if h >= 0 {
 			// An unchanged header is the new text's: with the separator gone it is text.
 			header[run[h]] = header[run[h]] || si == 1 || change[run[h]] < 0
-			sep[run[h+1]] = true
+			sep[run[h+1]] = sep[run[h+1]] || si == 1 || change[run[h+1]] < 0
 		}
 	})
 	return header, sep
