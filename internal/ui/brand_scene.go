@@ -112,25 +112,10 @@ func DarkSceneByHour(h int) BrandSceneID {
 	}
 }
 
-// EffectiveBrandScenes returns the active light and dark scene IDs for deco at time now
-// (used both to highlight the active tiles in Settings and to resolve the window band).
-func EffectiveBrandScenes(deco model.BrandDeco, now time.Time) (light, dark BrandSceneID) {
+// EffectiveBrandScenes returns the active light and dark scene IDs for time now.
+func EffectiveBrandScenes(_ model.BrandDeco, now time.Time) (light, dark BrandSceneID) {
 	h := now.Hour()
-	light = LightSceneByHour(h)
-	dark = DarkSceneByHour(h)
-	if deco.Mode == model.BrandDecoFixed {
-		if IsValidBrandScene(deco.PinLight, false) {
-			light = BrandSceneID(deco.PinLight)
-		} else {
-			light = SceneMeadow
-		}
-		if IsValidBrandScene(deco.PinDark, true) {
-			dark = BrandSceneID(deco.PinDark)
-		} else {
-			dark = SceneNight
-		}
-	}
-	return light, dark
+	return LightSceneByHour(h), DarkSceneByHour(h)
 }
 
 // ResolveBrandScene returns the active BrandSceneID to paint (or "" when disabled).
@@ -355,16 +340,16 @@ func ensureCompiledScenes() {
 				orbHaloOp: 1,
 				layers: []sceneLayer{
 					{driftSec: 90, hasHill: true, hillB: 44, hillA: 6, hillFill: sceneHex("#e7ece3")},
-					{driftSec: 38, mists: []sceneMistBar{
+					{driftSec: 56, mists: []sceneMistBar{
 						{x: 20, y: 40, w: 90, opacity: 0.70},
 						{x: 150, y: 47, w: 70, opacity: 0.60},
 					}},
-					{driftSec: 26, hasHill: true, hillB: 56, hillA: 5, hillInv: true, hillFill: sceneHex("#dce6d6")},
+					{driftSec: 48, hasHill: true, hillB: 56, hillA: 5, hillInv: true, hillFill: sceneHex("#dce6d6")},
 					{driftSec: 140, mists: []sceneMistBar{
 						{x: 60, y: 58, w: 110, opacity: 0.55},
 					}},
 					{
-						driftSec: 18, hasHill: true, hillB: 64, hillA: 3, hillFill: sceneHex("#d2e0cb"),
+						driftSec: 32, hasHill: true, hillB: 64, hillA: 3, hillFill: sceneHex("#d2e0cb"),
 						blades: []sceneBladeGroup{
 							makeBladeGroup(64, 3, false, []float32{20, 64, 112, 170, 214}, "#b2cca8", 3, 0),
 						},
@@ -381,10 +366,10 @@ func ensureCompiledScenes() {
 				orbHalo:   sceneHex("#fff0c4"),
 				orbHaloOp: 1,
 				layers: []sceneLayer{
-					{driftSec: 38, hasHill: true, hillB: 41, hillA: 6, hillFill: sceneHex("#e2eadf")},
-					{driftSec: 26, hasHill: true, hillB: 50, hillA: 6, hillInv: true, hillFill: sceneHex("#d6e4d0")},
+					{driftSec: 90, hasHill: true, hillB: 41, hillA: 6, hillFill: sceneHex("#e2eadf")},
+					{driftSec: 48, hasHill: true, hillB: 50, hillA: 6, hillInv: true, hillFill: sceneHex("#d6e4d0")},
 					{
-						driftSec: 18, hasHill: true, hillB: 60, hillA: 4, hillFill: sceneHex("#cadcc2"),
+						driftSec: 32, hasHill: true, hillB: 60, hillA: 4, hillFill: sceneHex("#cadcc2"),
 						blades: []sceneBladeGroup{
 							makeBladeGroup(60, 4, false, []float32{14, 22, 57, 63, 101, 139, 146, 183, 224, 231}, "#a9c69f", 7, 0),
 							makeBladeGroup(60, 4, false, []float32{36, 82, 118, 165, 203, 247}, "#9bbd90", 8, 2.2),
