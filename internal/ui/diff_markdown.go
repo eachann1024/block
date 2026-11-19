@@ -27,6 +27,9 @@ type DiffLineStyle struct {
 	// ListNum is DiffListNumbers for the line: the number an ordered item shows
 	// ("1." "1." "1." count 1, 2, 3 as in the note); 0 keeps its own.
 	ListNum int
+	// Refs is DiffRefLabels of the diff: "[部署手册][deploy]" shows its text when
+	// "deploy" is defined there.
+	Refs map[string]bool
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -105,6 +108,27 @@ func DiffListNumbers(lines []string, change []int) []int {
 		}
 	}
 	return out
+}
+
+// diffRefDefRE matches a link reference definition line, capturing its label.
+var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:\s*\S`)
+
+// DiffRefLabels collects the link reference labels defined outside code in a diff's
+// lines (either version), normalized as the note matches them.
+func DiffRefLabels(lines []string, change []int) map[string]bool {
+	code := DiffFenceMask(lines, change)
+	refs := map[string]bool{}
+	for i, l := range lines {
+		if m := diffRefDefRE.FindStringSubmatch(l); m != nil && !code[i] {
+			refs[diffRefLabel(m[1])] = true
+		}
+	}
+	return refs
+}
+
+// diffRefLabel normalizes a reference label: case-folded, inner whitespace collapsed.
+func diffRefLabel(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
@@ -645,6 +669,7 @@ var (
 	// ("![构建状态 [CI]](…)").
 	diffImageRE    = regexp.MustCompile(`!\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])*)\]\(\s*(` + diffLinkDest + `)` + diffLinkTitle + `\s*\)`)
 	diffLinkRE     = regexp.MustCompile(`\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])+)\]\(\s*` + diffLinkDest + diffLinkTitle + `\s*\)`)
+	diffRefLinkRE  = regexp.MustCompile(`!?\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])+)\](?:\[((?:\\.|[^\[\]\\])*)\])?`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
@@ -698,8 +723,11 @@ func diffEscaped(s string, i int) bool {
 // click (opening a browser) instead of the row's accept toggle. Links are found with
 // code spans blanked out, so code is never rewritten and brackets inside it don't
 // hide a link.
-func diffPlainLinks(s string) string {
-	for _, re := range []*regexp.Regexp{diffImageRE, diffLinkRE, diffAutolinkRE} {
+func diffPlainLinks(s string, refs map[string]bool) string {
+	for _, re := range []*regexp.Regexp{diffImageRE, diffLinkRE, diffAutolinkRE, diffRefLinkRE} {
+		if re == diffRefLinkRE && len(refs) == 0 {
+			continue
+		}
 		masked := []byte(s)
 		for _, sp := range CodeSpans(s) {
 			for k := sp[0]; k < sp[1]; k++ {
@@ -714,6 +742,21 @@ func diffPlainLinks(s string) string {
 				continue
 			}
 			text := s[m[2]:m[3]]
+			if re == diffRefLinkRE {
+				// "[text][label]", "[label][]" or "[label]" links only when the label is
+				// defined; "[label]: …" is the definition itself.
+				label := text
+				if m[4] >= 0 && m[5] > m[4] {
+					label = s[m[4]:m[5]]
+				}
+				if !refs[diffRefLabel(label)] || m[1] < len(s) && (s[m[1]] == ':' || s[m[1]] == '(') {
+					continue
+				}
+				b.WriteString(s[last:m[0]])
+				b.WriteString(diffInlineStart(text))
+				last = m[1]
+				continue
+			}
 			b.WriteString(s[last:m[0]])
 			if text == "" && len(m) > 4 && m[4] >= 0 {
 				// An image without alt text shows its path, as code so "_" stays literal.
@@ -796,7 +839,7 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		if m := diffCellListRE.FindStringSubmatchIndex(body); m != nil && st.ListNum > 0 {
 			body = strconv.Itoa(st.ListNum) + body[m[3]:]
 		}
-		body = diffPlainLinks(body)
+		body = diffPlainLinks(body, st.Refs)
 		if !math {
 			body = diffLiteralStart(body)
 		}
@@ -856,7 +899,7 @@ func diffInlineStart(s string) string {
 func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool) ui.Element {
 	// A cell holds inline content only; links turn into their text first, so their
 	// start is guarded too.
-	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffPlainLinks(cell))))
+	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffPlainLinks(cell, st.Refs))))
 	if s == "" {
 		return ui.Box(c)
 	}
