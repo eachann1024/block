@@ -203,8 +203,27 @@ type ChatMessage struct {
 	DurationMs  int64           `json:"durationMs,omitempty"`
 	Refs        []string        `json:"refs,omitempty"`
 	Skills      []string        `json:"skills,omitempty"`
+	Attachments []Attachment    `json:"attachments,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	NeedSetting bool            `json:"needSetting,omitempty"`
+}
+
+// Attachment is a file or image the user pasted into the AI composer. Path is
+// Block's own copy under the data directory, so the original may move.
+type Attachment struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Mime string `json:"mime,omitempty"`
+	Size int64  `json:"size,omitempty"`
+}
+
+// IsImage reports whether the attachment is a raster image a vision model can read.
+func (a Attachment) IsImage() bool {
+	switch a.Mime {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return true
+	}
+	return false
 }
 
 type Conversation struct {
