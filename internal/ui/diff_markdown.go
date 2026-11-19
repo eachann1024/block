@@ -658,7 +658,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 // only the first one does: a later "| --- |" is a data row and stays visible.
 func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	header, sep = make([]bool, len(lines)), make([]bool, len(lines))
-	diffTableRuns(lines, change, func(run []int, h int) {
+	diffTableRuns(lines, change, func(_ int, run []int, h int) {
 		if h >= 0 {
 			header[run[h]], sep[run[h+1]] = true, true
 		}
@@ -667,9 +667,9 @@ func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 }
 
 // diffTableRuns calls fn for each block of table rows (contiguous, outside code, at
-// one indent) of the old and then the new text, with the index in run of its header
-// row, or -1 when no separator makes it a table.
-func diffTableRuns(lines []string, change []int, fn func(run []int, h int)) {
+// one indent) of the old (side 0) and then the new (side 1) text, with the index in
+// run of its header row, or -1 when no separator makes it a table.
+func diffTableRuns(lines []string, change []int, fn func(side int, run []int, h int)) {
 	old, cur := diffFenceSides(lines, change)
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	indent := func(k int) int { return len(lines[k]) - len(strings.TrimLeft(lines[k], " \t")) }
@@ -685,7 +685,7 @@ func diffTableRuns(lines []string, change []int, fn func(run []int, h int)) {
 				}
 			}
 			if len(run) > 0 {
-				fn(run, h)
+				fn(si, run, h)
 			}
 			run = nil
 		}
@@ -1105,16 +1105,26 @@ func ParseDiffTableCells(trimmed string) []string {
 // Other lines get 0, and so do rows above the header and runs that no separator of
 // as many cells makes a table, which are plain text with bars.
 func DiffTableCols(lines []string, change []int) []int {
-	cols := make([]int, len(lines))
-	diffTableRuns(lines, change, func(run []int, h int) {
+	var side [2][]int
+	side[0], side[1] = make([]int, len(lines)), make([]int, len(lines))
+	diffTableRuns(lines, change, func(si int, run []int, h int) {
 		if h < 0 {
 			return
 		}
 		n := len(ParseDiffTableCells(strings.TrimSpace(lines[run[h]])))
 		for _, k := range run[h:] {
-			cols[k] = max(cols[k], n)
+			side[si][k] = n
 		}
 	})
+	// A row takes its own text's header (a deleted row is in the old text only); an
+	// unchanged one the new header, so a table cut from two columns to one shows one
+	// cell in a kept "| x | y |" row.
+	cols := side[1]
+	for k := range lines {
+		if cols[k] == 0 {
+			cols[k] = side[0][k]
+		}
+	}
 	return cols
 }
 
