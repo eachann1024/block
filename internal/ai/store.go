@@ -137,6 +137,7 @@ type Controller struct {
 	composerSelectEnd bool
 	messagesList      ui.ListState
 	messagesScroll    ui.ScrollState
+	scrollToBottom    bool
 	pickerList        ui.ListState
 	mdOpts            markdown.Options
 	mdThemeKey        mdPaletteKey
@@ -1510,6 +1511,7 @@ func (c *Controller) NewConversation() {
 	c.clearActivePlanLocked()
 	delete(c.tabDrafts, 0)
 	c.currentID = 0
+	c.scrollToBottom = false
 	c.draftText = ""
 	c.draftRefs = nil
 	c.draftSkills = nil
@@ -1535,6 +1537,9 @@ func (c *Controller) SelectConversation(id uint64) {
 	}
 	if c.currentID == id {
 		c.historyOpen = false
+		if id != 0 {
+			c.scrollToBottom = true
+		}
 		linkedPlan := c.linkLatestPendingPlanLocked()
 		c.mu.Unlock()
 		c.previewPlanInEditor(linkedPlan)
@@ -1545,6 +1550,7 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.stopStreamingLocked()
 	c.clearActivePlanLocked()
 	c.currentID = id
+	c.scrollToBottom = id != 0
 	c.historyOpen = false
 	c.turnError = ""
 	c.turnErrorSettings = false
