@@ -155,9 +155,15 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 					continue
 				}
 				inIndented = false
+				// In a blockquote the block is read behind its markers: "> 标题" over "> ---"
+				// is a heading in the quote.
+				inner := t
+				if q := diffQuoteDepth(t); q > 0 {
+					inner = strings.TrimSpace(diffStripQuotes(t, q))
+				}
 				// Under paragraph text (not a list item) "-" or "==" is a setext underline,
 				// not an empty list item, which may not interrupt a paragraph.
-				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(t)
+				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(inner)
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
 				if item {
 					listCol = ind + len(diffContainerRE.FindString(t))
@@ -165,9 +171,9 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				inList = item || !setext && inList && ind > 0
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) || diffMathStart(t))
+				ends := setext || ind < 4 && (diffRuleRE.MatchString(inner) || diffHeadingRE.MatchString(inner) || diffMathStart(inner))
 				prevBlank, para = !inList && ends, !ends
-				if setext && diffSetextText(lines, paraLines) {
+				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t)) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
 					}
@@ -233,13 +239,18 @@ func diffMathStart(t string) bool {
 }
 
 // diffSetextText reports whether the paragraph lines above an underline form a plain
-// setext heading: not a list item, quote or table, whose underline would be a rule
-// or a lazy line instead. Bar lines are paragraph text until a separator row makes
-// them a table: "| A |" over "---" is a heading, since the underline is read first.
-func diffSetextText(lines []string, para []int) bool {
+// setext heading: not a list item or table, and in the underline's blockquote depth
+// q, since a quoted paragraph over a bare "---" is a rule (no lazy underline). Bar
+// lines are paragraph text until a separator row makes them a table: "| A |" over
+// "---" is a heading, since the underline is read first.
+func diffSetextText(lines []string, para []int, q int) bool {
 	for j, p := range para {
 		t := strings.TrimSpace(lines[p])
-		if diffListItemRE.MatchString(t) || strings.HasPrefix(t, ">") || j > 0 && IsDiffTableSep(t) {
+		if diffQuoteDepth(t) != q {
+			return false
+		}
+		t = strings.TrimSpace(diffStripQuotes(t, q))
+		if diffListItemRE.MatchString(t) || j > 0 && IsDiffTableSep(t) {
 			return false
 		}
 	}
@@ -709,7 +720,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 					body = h[:k] + `\` + h[k:]
 				}
 			}
-			body = strings.Repeat("#", st.Setext) + " " + body
+			// In a blockquote the heading marker goes behind the quote markers.
+			q := diffQuoteRE.FindString(body)
+			body = q + strings.Repeat("#", st.Setext) + " " + body[len(q):]
 		}
 		markdown.View(c, body, diffMarkdownOptions(st))
 	})
