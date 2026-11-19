@@ -33,6 +33,7 @@ const (
 	FontEditor  float32 = 15 // editor body copy
 	FontHeading float32 = 18 // panel headings, empty-state titles
 	FontPage    float32 = 24 // settings page titles
+	FontDisplay float32 = 32 // ghost-page title of the no-note empty state
 
 	LineMeta    float32 = 16
 	LineSmall   float32 = 18
@@ -41,6 +42,7 @@ const (
 	LineEditor  float32 = 24
 	LineHeading float32 = 26
 	LinePage    float32 = 32
+	LineDisplay float32 = 40
 )
 
 // Font weights: 3 UI weights; 500 only for monospace (code, keycaps).
@@ -101,6 +103,15 @@ const (
 	CardPadX         = Space20
 	CardGap          = Space16
 
+	// Empty states: content column, action list, illustration sizes, and the
+	// free-space split that centres content then lifts it (35:65 = 15% up).
+	EmptyStateWidth        float32 = 560
+	EmptyActionWidth       float32 = 380
+	EmptyMascotSize        float32 = 64
+	EmptyMascotCompactSize float32 = 48
+	EmptyLiftTop           float32 = 35
+	EmptyLiftBottom        float32 = 65
+
 	KeycapHeight   float32 = 18
 	KeycapPadX     float32 = 5
 	KeycapFontSize         = FontMeta
@@ -111,10 +122,10 @@ const (
 	TooltipOffset           = Space6
 
 	// In-note Find bar geometry & top clearance when scrolling matches into view.
-	FindBarTopOffset          = Space12
+	FindBarTopOffset           = Space12
 	FindBarBorderWidth float32 = 1
-	FindBarHeight             = HeightControl + Space4*2 + FindBarBorderWidth*2
-	FindBarJumpGap            = Space24 + Space8
+	FindBarHeight              = HeightControl + Space4*2 + FindBarBorderWidth*2
+	FindBarJumpGap             = Space24 + Space8
 
 	ScrollGutter     float32 = 14
 	ScrollThumbWidth float32 = 6
@@ -157,9 +168,9 @@ const (
 	ComposerTailSpace = 2 * LineBody // blank lines kept below the caret in growing text areas
 
 	// Edge hot-zone & floating Sidebar / AI card metrics (Scheme A).
-	EdgeHotZoneWidth     float32 = 8  // outer window-edge pointer sensor width
-	EdgeStripIdleWidth   float32 = 3  // resting colored edge indicator bar width
-	EdgeStripHotWidth    float32 = 4  // hovered / active colored edge indicator bar width
+	EdgeHotZoneWidth     float32 = 8 // outer window-edge pointer sensor width
+	EdgeStripIdleWidth   float32 = 3 // resting colored edge indicator bar width
+	EdgeStripHotWidth    float32 = 4 // hovered / active colored edge indicator bar width
 	EdgeFloatInset               = Space10
 	EdgeFloatGutterGap           = Space6
 	EdgeFloatSafeClear   float32 = 10 // minimum clearance between edge strip and 54px handle gutter
