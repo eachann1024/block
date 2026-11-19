@@ -209,6 +209,19 @@ func (rt *Runtime) SetActiveNote(relPath string) {
 	rt.cfgMu.Unlock()
 }
 
+func normalizeLocale(locale string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en") {
+		return "en"
+	}
+	return "zh"
+}
+
+func (rt *Runtime) locale() string {
+	rt.cfgMu.RLock()
+	defer rt.cfgMu.RUnlock()
+	return normalizeLocale(rt.cfg.Locale)
+}
+
 func (rt *Runtime) notebookRoot() string {
 	rt.cfgMu.RLock()
 	defer rt.cfgMu.RUnlock()

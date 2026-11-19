@@ -28,6 +28,12 @@ const (
 type viewKey struct {
 	pluginID     string
 	notebookRoot string
+	surface      Surface
+}
+
+type surfaceKey struct {
+	pluginID string
+	surface  Surface
 }
 
 // PluginViewState holds the non-blocking UI snapshot for an installed plugin's Settings page.
@@ -56,6 +62,7 @@ type PluginViewState struct {
 	lastNotebookRoot   string
 	lastActiveNote     string
 	lastNotebooksKey   string
+	lastLocale         string
 	editSeq            uint64
 	formVersion        uint64
 	errorFromBg        bool
@@ -103,10 +110,10 @@ type Supervisor struct {
 	installed        []InstalledApp
 	runtimes         map[string]*Runtime
 	views            map[viewKey]*PluginViewState
-	lastViewRoot     map[string]string
-	formVersions     map[string]uint64
-	liveTimers       map[string]*time.Timer
-	liveViewedAt     map[string]time.Time
+	lastViewRoot     map[surfaceKey]string
+	formVersions     map[surfaceKey]uint64
+	liveTimers       map[surfaceKey]*time.Timer
+	liveViewedAt     map[surfaceKey]time.Time
 	feedbackTimers   map[viewKey]*time.Timer
 	storeRefreshing  bool
 	storeRefreshedAt time.Time
@@ -129,10 +136,10 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		installed:      installed,
 		runtimes:       make(map[string]*Runtime),
 		views:          make(map[viewKey]*PluginViewState),
-		lastViewRoot:   make(map[string]string),
-		formVersions:   make(map[string]uint64),
-		liveTimers:     make(map[string]*time.Timer),
-		liveViewedAt:   make(map[string]time.Time),
+		lastViewRoot:   make(map[surfaceKey]string),
+		formVersions:   make(map[surfaceKey]uint64),
+		liveTimers:     make(map[surfaceKey]*time.Timer),
+		liveViewedAt:   make(map[surfaceKey]time.Time),
 		feedbackTimers: make(map[viewKey]*time.Timer),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
@@ -241,11 +248,15 @@ func (s *Supervisor) PickDirectory(title string, onPicked func(path string)) {
 }
 
 func (s *Supervisor) PickFileForControl(pluginID, controlID, title string, extensions []string) {
+	s.PickSurfaceFileForControl(pluginID, SurfaceSettingsPage, controlID, title, extensions)
+}
+
+func (s *Supervisor) PickSurfaceFileForControl(pluginID string, surface Surface, controlID, title string, extensions []string) {
 	if !s.CanPickFile() {
 		return
 	}
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	s.mu.RLock()
 	view := s.views[key]
 	if view == nil {
@@ -261,17 +272,21 @@ func (s *Supervisor) PickFileForControl(pluginID, controlID, title string, exten
 		if p == "" || s.NotebookRoot() != nbRoot {
 			return
 		}
-		s.updateControlValue(pluginID, nbRoot, controlID, p, true)
+		s.updateSurfaceControlValue(pluginID, nbRoot, surface, controlID, p, true)
 		s.notifyChanged()
 	})
 }
 
 func (s *Supervisor) PickDirectoryForControl(pluginID, controlID, title string) {
+	s.PickSurfaceDirectoryForControl(pluginID, SurfaceSettingsPage, controlID, title)
+}
+
+func (s *Supervisor) PickSurfaceDirectoryForControl(pluginID string, surface Surface, controlID, title string) {
 	if !s.CanPickDirectory() {
 		return
 	}
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	s.mu.RLock()
 	view := s.views[key]
 	if view == nil {
@@ -287,7 +302,7 @@ func (s *Supervisor) PickDirectoryForControl(pluginID, controlID, title string) 
 		if s.NotebookRoot() != nbRoot {
 			return
 		}
-		s.updateControlValue(pluginID, nbRoot, controlID, p, true)
+		s.updateSurfaceControlValue(pluginID, nbRoot, surface, controlID, p, true)
 	})
 }
 
@@ -325,40 +340,61 @@ func (s *Supervisor) NotifyRedraw() {
 	s.notifyRedraw()
 }
 
-// ScheduleLiveRefresh marks pluginID as actively displayed and schedules a one-shot
+// ScheduleLiveRefresh marks pluginID's settings page as actively displayed and schedules a one-shot
 // background render tick after intervalMs. When the user navigates away, the timer
 // expires without rescheduling.
 func (s *Supervisor) ScheduleLiveRefresh(pluginID string, intervalMs int) {
+	s.ScheduleSurfaceLiveRefresh(pluginID, SurfaceSettingsPage, intervalMs)
+}
+
+// ScheduleSurfaceLiveRefresh marks one plugin surface as actively displayed and schedules
+// a one-shot background render tick after intervalMs.
+func (s *Supervisor) ScheduleSurfaceLiveRefresh(pluginID string, surface Surface, intervalMs int) {
 	if intervalMs < 500 || intervalMs > 60000 {
 		return
 	}
 	interval := time.Duration(intervalMs) * time.Millisecond
 	now := time.Now()
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 
 	s.mu.Lock()
-	s.liveViewedAt[pluginID] = now
-	if _, scheduled := s.liveTimers[pluginID]; scheduled {
+	s.liveViewedAt[sKey] = now
+	if _, scheduled := s.liveTimers[sKey]; scheduled {
 		s.mu.Unlock()
 		return
 	}
-	s.liveTimers[pluginID] = time.AfterFunc(interval, func() {
-		s.runLiveRefreshTick(pluginID, interval)
+	s.liveTimers[sKey] = time.AfterFunc(interval, func() {
+		s.runLiveRefreshTick(pluginID, surface, interval)
 	})
 	s.mu.Unlock()
 }
 
-func (s *Supervisor) stopLiveTimerLocked(pluginID string) {
-	if t, ok := s.liveTimers[pluginID]; ok {
+func (s *Supervisor) stopLiveTimerLocked(sKey surfaceKey) {
+	if t, ok := s.liveTimers[sKey]; ok {
 		t.Stop()
-		delete(s.liveTimers, pluginID)
+		delete(s.liveTimers, sKey)
 	}
-	delete(s.liveViewedAt, pluginID)
+	delete(s.liveViewedAt, sKey)
 }
 
-func (s *Supervisor) runLiveRefreshTick(pluginID string, interval time.Duration) {
+func (s *Supervisor) stopLiveTimersForPluginLocked(pluginID string) {
+	for k := range s.liveTimers {
+		if k.pluginID == pluginID {
+			s.stopLiveTimerLocked(k)
+		}
+	}
+	for k := range s.liveViewedAt {
+		if k.pluginID == pluginID {
+			delete(s.liveViewedAt, k)
+		}
+	}
+}
+
+func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interval time.Duration) {
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	s.mu.Lock()
-	delete(s.liveTimers, pluginID)
-	lastViewed := s.liveViewedAt[pluginID]
+	delete(s.liveTimers, sKey)
+	lastViewed := s.liveViewedAt[sKey]
 	s.mu.Unlock()
 
 	maxIdle := max(interval*2, 2500*time.Millisecond)
@@ -370,7 +406,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, interval time.Duration)
 	}
 
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	s.mu.RLock()
 	vs := s.views[key]
 	if vs == nil || vs.Loading || vs.BusyAction != "" || vs.Page == nil {
@@ -391,7 +427,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, interval time.Duration)
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(s.activeNoteFor(nbRoot))
 
-	page, err := rt.Render(ctx, SurfaceSettingsPage)
+	page, err := rt.Render(ctx, surface)
 	if err != nil || page == nil {
 		return
 	}
@@ -461,7 +497,7 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	if !enabled {
 		rt = s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
-		s.stopLiveTimerLocked(pluginID)
+		s.stopLiveTimersForPluginLocked(pluginID)
 		s.deleteViewsForPluginLocked(pluginID)
 	}
 	s.mu.Unlock()
@@ -614,7 +650,7 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 
 func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
 
 	s.mu.Lock()
 	if s.installingID != "" {
@@ -697,9 +733,17 @@ func (s *Supervisor) stopFeedbackTimerLocked(key viewKey) {
 }
 
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
-	s.stopLiveTimerLocked(pluginID)
-	delete(s.lastViewRoot, pluginID)
-	delete(s.formVersions, pluginID)
+	s.stopLiveTimersForPluginLocked(pluginID)
+	for k := range s.lastViewRoot {
+		if k.pluginID == pluginID {
+			delete(s.lastViewRoot, k)
+		}
+	}
+	for k := range s.formVersions {
+		if k.pluginID == pluginID {
+			delete(s.formVersions, k)
+		}
+	}
 	for k := range s.feedbackTimers {
 		if k.pluginID == pluginID {
 			s.stopFeedbackTimerLocked(k)
@@ -763,23 +807,30 @@ func viewMatchesCachedSnap(vs *PluginViewState) bool {
 
 // EnsurePluginView returns the current non-blocking UI snapshot and lazily starts/renders the plugin if needed.
 func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
+	return s.EnsureSurfaceView(pluginID, SurfaceSettingsPage)
+}
+
+func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginViewState {
 	if inst, ok := s.GetInstalled(pluginID); !ok || !inst.Enabled {
 		return PluginViewState{Values: map[string]any{}}
 	}
 	nbRoot := s.NotebookRoot()
+	curLocale := normalizeLocale(s.Locale())
 	rawActive := s.rawActiveNote()
 	rawNBs := s.rawNotebooks()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	now := time.Now()
 	epoch := s.viewEpoch.Load()
 
 	s.mu.Lock()
-	previousRoot, seen := s.lastViewRoot[pluginID]
+	previousRoot, seen := s.lastViewRoot[sKey]
 	rootChanged := seen && previousRoot != nbRoot
-	s.lastViewRoot[pluginID] = nbRoot
+	s.lastViewRoot[sKey] = nbRoot
 	if vs, ok := s.views[key]; ok &&
 		!rootChanged &&
-		vs.formVersion == s.formVersions[pluginID] &&
+		vs.lastLocale == curLocale &&
+		vs.formVersion == s.formVersions[sKey] &&
 		epoch == vs.cachedEpoch &&
 		now.Sub(vs.cachedSnapAt) < ensureViewReuseWindow &&
 		vs.cachedRawActive == rawActive &&
@@ -803,26 +854,28 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 			vs.lastNotebookRoot = nbRoot
 			vs.lastActiveNote = activeNote
 			vs.lastNotebooksKey = nbKey
+			vs.lastLocale = curLocale
 			snap := s.snapshotViewLocked(key, vs)
 			s.recordCachedViewLocked(vs, snap, epoch, rawActive, rawNBs)
 			s.mu.Unlock()
-			go s.loadAndRenderPlugin(pluginID, nbRoot)
+			go s.loadAndRenderSurface(pluginID, nbRoot, surface)
 			return snap
 		}
 		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" && vs.Page != nil &&
-			(rootChanged || vs.formVersion != s.formVersions[pluginID] ||
+			(rootChanged || vs.lastLocale != curLocale || vs.formVersion != s.formVersions[sKey] ||
 				vs.lastActiveNote != activeNote || vs.lastNotebooksKey != nbKey)
 		if needWorkspaceSync {
 			vs.lastNotebookRoot = nbRoot
 			vs.lastActiveNote = activeNote
 			vs.lastNotebooksKey = nbKey
+			vs.lastLocale = curLocale
 			vs.Loading = true
 		}
 		snap := s.snapshotViewLocked(key, vs)
 		s.recordCachedViewLocked(vs, snap, epoch, rawActive, rawNBs)
 		s.mu.Unlock()
 		if needWorkspaceSync {
-			go s.loadAndRenderPlugin(pluginID, nbRoot)
+			go s.loadAndRenderSurface(pluginID, nbRoot, surface)
 		}
 		return snap
 	}
@@ -832,6 +885,7 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 		lastNotebookRoot:   nbRoot,
 		lastActiveNote:     activeNote,
 		lastNotebooksKey:   nbKey,
+		lastLocale:         curLocale,
 		initialLoadStarted: true,
 	}
 	s.views[key] = vs
@@ -839,7 +893,7 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 	s.recordCachedViewLocked(vs, snap, epoch, rawActive, rawNBs)
 	s.mu.Unlock()
 
-	go s.loadAndRenderPlugin(pluginID, nbRoot)
+	go s.loadAndRenderSurface(pluginID, nbRoot, surface)
 	return snap
 }
 
@@ -855,8 +909,12 @@ func (s *Supervisor) recordCachedViewLocked(vs *PluginViewState, snap PluginView
 }
 
 func (s *Supervisor) ReloadPluginViewAsync(pluginID string) {
+	s.ReloadSurfaceViewAsync(pluginID, SurfaceSettingsPage)
+}
+
+func (s *Supervisor) reloadSurfaceViewAsync(pluginID string, surface Surface) {
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 
 	s.mu.Lock()
 	vs, ok := s.views[key]
@@ -879,21 +937,22 @@ func (s *Supervisor) ReloadPluginViewAsync(pluginID string) {
 	s.mu.Unlock()
 	s.notifyChanged()
 
-	go s.loadAndRenderPlugin(pluginID, nbRoot)
+	go s.loadAndRenderSurface(pluginID, nbRoot, surface)
 }
 
-func (s *Supervisor) loadAndRenderPlugin(pluginID, nbRoot string) {
+func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surface) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	defer s.lockPluginRPC(pluginID)()
 	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
 		if vs := s.views[key]; vs != nil {
 			vs.Loading = false
-			vs.formVersion = s.formVersions[pluginID]
+			vs.formVersion = s.formVersions[sKey]
 			if !vs.errorFromBg {
 				vs.Error = err.Error()
 				vs.RetryKind = RetryKindReload
@@ -908,13 +967,14 @@ func (s *Supervisor) loadAndRenderPlugin(pluginID, nbRoot string) {
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
-	page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, nil)
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, nil)
 	s.mu.Lock()
 	if vs := s.views[key]; vs != nil {
 		vs.Loading = false
-		vs.formVersion = s.formVersions[pluginID]
+		vs.formVersion = s.formVersions[sKey]
 		vs.lastNotebookRoot = nbRoot
 		vs.lastActiveNote = activeNote
+		vs.lastLocale = rt.locale()
 		if err != nil {
 			if !vs.errorFromBg {
 				vs.Error = err.Error()
@@ -992,18 +1052,19 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		}
 		return nil, errPluginDisabled(pluginID)
 	}
+	wantLocale := normalizeLocale(s.Locale())
 	s.mu.RLock()
 	existing := s.runtimes[pluginID]
 	s.mu.RUnlock()
 	if existing != nil && !existing.closed.Load() {
-		if existing.notebookRoot() == nbRoot {
+		if existing.notebookRoot() == nbRoot && existing.locale() == wantLocale {
 			select {
 			case <-existing.exited:
 			default:
 				return existing, nil
 			}
 		}
-		// Plugins receive the notebook root at initialization.
+		// Plugins receive the notebook root and locale at initialization.
 		_ = existing.Shutdown(ctx)
 	}
 	hostVer := s.cfg.HostVersion
@@ -1054,11 +1115,11 @@ func (s *Supervisor) SetControlValue(pluginID, controlID string, val any) {
 }
 
 func (s *Supervisor) UpdateControlValue(pluginID, controlID string, val any, immediate bool) {
-	s.updateControlValue(pluginID, s.NotebookRoot(), controlID, val, immediate)
+	s.UpdateSurfaceControlValue(pluginID, SurfaceSettingsPage, controlID, val, immediate)
 }
 
-func (s *Supervisor) updateControlValue(pluginID, nbRoot, controlID string, val any, immediate bool) {
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface Surface, controlID string, val any, immediate bool) {
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 
 	s.mu.Lock()
 	vs := s.views[key]
@@ -1095,14 +1156,15 @@ func (s *Supervisor) updateControlValue(pluginID, nbRoot, controlID string, val 
 	if immediate {
 		delay = 25 * time.Millisecond
 	}
-	go s.refreshPreviewForSeq(pluginID, nbRoot, seq, delay)
+	go s.refreshPreviewForSeq(pluginID, nbRoot, surface, seq, delay)
 }
 
-func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, delay time.Duration) {
+func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surface, seq uint64, delay time.Duration) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	s.mu.RLock()
 	vs := s.views[key]
 	if vs == nil || vs.BusyAction != "" || vs.editSeq != seq {
@@ -1169,7 +1231,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, d
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
-	page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, valsCopy)
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, valsCopy)
 	if err != nil {
 		s.mu.Lock()
 		if cur := s.views[key]; cur != nil && cur.BusyAction == "" && cur.editSeq == seq && !cur.errorFromBg {
@@ -1209,8 +1271,8 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, seq uint64, d
 		delete(cur.editedControls, k)
 	}
 	if len(returnedVals) > 0 {
-		s.formVersions[pluginID]++
-		cur.formVersion = s.formVersions[pluginID]
+		s.formVersions[sKey]++
+		cur.formVersion = s.formVersions[sKey]
 	}
 	s.mu.Unlock()
 	s.notifyChanged()
@@ -1265,8 +1327,13 @@ func resolveActionTone(res *ActionResult, err error) string {
 }
 
 func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
+	s.TriggerSurfaceActionAsync(pluginID, SurfaceSettingsPage, actionID)
+}
+
+func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface, actionID string) {
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	sKey := surfaceKey{pluginID: pluginID, surface: surface}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 
 	s.mu.Lock()
 	vs := s.views[key]
@@ -1309,16 +1376,16 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 			rt.SetNotebookRoot(nbRoot)
 			rt.SetActiveNote(activeNote)
 			s.mu.RLock()
-			stale := vs.formVersion != s.formVersions[pluginID]
+			stale := vs.formVersion != s.formVersions[sKey]
 			s.mu.RUnlock()
 			if stale {
 				var fresh *UIPage
 				var returned map[string]any
-				fresh, returned, err = rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, nil)
+				fresh, returned, err = rt.RenderWithValuesResult(ctx, surface, nil)
 				if err == nil {
 					s.mu.Lock()
 					mergePageValues(vs, fresh, returned)
-					vs.formVersion = s.formVersions[pluginID]
+					vs.formVersion = s.formVersions[sKey]
 					s.mu.Unlock()
 				}
 			}
@@ -1326,7 +1393,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 				s.mu.RLock()
 				values := cloneAnyMap(vs.Values)
 				s.mu.RUnlock()
-				res, err = rt.Action(ctx, SurfaceSettingsPage, actionID, values)
+				res, err = rt.Action(ctx, surface, actionID, values)
 			}
 		}
 		if !testing.Testing() {
@@ -1357,8 +1424,8 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 				cur.errorFromBg = true
 			} else if res != nil {
 				if res.Page != nil || len(res.Values) > 0 {
-					s.formVersions[pluginID]++
-					cur.formVersion = s.formVersions[pluginID]
+					s.formVersions[sKey]++
+					cur.formVersion = s.formVersions[sKey]
 				}
 				cur.Error = ""
 				cur.RetryKind = RetryKindNone
@@ -1456,14 +1523,19 @@ func (s *Supervisor) CancelAction(pluginID string) {
 // RetryPluginAsync retries the last failed operation for pluginID in the current notebook,
 // distinguishing action/event/uninstall retries from full page reloads.
 func (s *Supervisor) RetryPluginAsync(pluginID string) {
+	s.RetrySurfaceAsync(pluginID, SurfaceSettingsPage)
+}
+
+// RetrySurfaceAsync retries the last failed operation for one plugin surface in the current notebook.
+func (s *Supervisor) RetrySurfaceAsync(pluginID string, surface Surface) {
 	nbRoot := s.NotebookRoot()
-	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 
 	s.mu.Lock()
 	vs := s.views[key]
 	if vs == nil {
 		s.mu.Unlock()
-		s.ReloadPluginViewAsync(pluginID)
+		s.ReloadSurfaceViewAsync(pluginID, surface)
 		return
 	}
 	if vs.Loading || vs.BusyAction != "" {
@@ -1482,10 +1554,10 @@ func (s *Supervisor) RetryPluginAsync(pluginID string) {
 		relSlash, ok := relativeNotePath(noteRoot, notePath)
 		if !ok {
 			s.mu.Unlock()
-			s.ReloadPluginViewAsync(pluginID)
+			s.ReloadSurfaceViewAsync(pluginID, surface)
 			return
 		}
-		target := s.views[viewKey{pluginID, noteRoot}]
+		target := s.views[viewKey{pluginID, noteRoot, SurfaceSettingsPage}]
 		if target == nil || target.BusyAction != "" {
 			s.mu.Unlock()
 			return
@@ -1501,14 +1573,14 @@ func (s *Supervisor) RetryPluginAsync(pluginID string) {
 	switch kind {
 	case RetryKindAction:
 		if actionID != "" {
-			s.TriggerActionAsync(pluginID, actionID)
+			s.TriggerSurfaceActionAsync(pluginID, surface, actionID)
 			return
 		}
-		s.ReloadPluginViewAsync(pluginID)
+		s.ReloadSurfaceViewAsync(pluginID, surface)
 	case RetryKindUninstall:
 		s.UninstallAsync(pluginID, nil)
 	default:
-		s.ReloadPluginViewAsync(pluginID)
+		s.ReloadSurfaceViewAsync(pluginID, surface)
 	}
 }
 
@@ -1583,9 +1655,10 @@ func openLocalPathInOS(downloadsDir, rawPath string, reveal bool) {
 func (s *Supervisor) ShutdownAll() {
 	s.mu.Lock()
 	s.stopping = true
-	for id := range s.liveTimers {
-		s.stopLiveTimerLocked(id)
+	for k := range s.liveTimers {
+		s.stopLiveTimerLocked(k)
 	}
+	clear(s.liveViewedAt)
 	for k := range s.feedbackTimers {
 		s.stopFeedbackTimerLocked(k)
 	}
@@ -1644,31 +1717,33 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		FailedNotePath:         in.FailedNotePath,
 		FailedNoteRoot:         in.FailedNoteRoot,
 	}
-	var failedPath, failedRoot, failure string
-	for key, v := range s.views {
-		if key.pluginID != current.pluginID {
-			continue
-		}
-		out.PendingSaves += len(v.queuedSaves)
-		for path, message := range v.failedSaves {
-			if v.queuedSaves[path] != nil {
+	if current.surface == SurfaceSettingsPage {
+		var failedPath, failedRoot, failure string
+		for key, v := range s.views {
+			if key.pluginID != current.pluginID || key.surface != SurfaceSettingsPage {
 				continue
 			}
-			preferCurrent := key == current && failedRoot != current.notebookRoot
-			samePriority := (key == current) == (failedRoot == current.notebookRoot)
-			if failedPath == "" || preferCurrent || (samePriority && path < failedPath) {
-				failedPath, failedRoot, failure = path, key.notebookRoot, message
+			out.PendingSaves += len(v.queuedSaves)
+			for path, message := range v.failedSaves {
+				if v.queuedSaves[path] != nil {
+					continue
+				}
+				preferCurrent := key == current && failedRoot != current.notebookRoot
+				samePriority := (key == current) == (failedRoot == current.notebookRoot)
+				if failedPath == "" || preferCurrent || (samePriority && path < failedPath) {
+					failedPath, failedRoot, failure = path, key.notebookRoot, message
+				}
 			}
 		}
-	}
-	if out.Error == "" && out.BusyAction == "" && failedPath != "" {
-		if failedRoot != current.notebookRoot {
-			failure = filepath.Base(failedRoot) + " / " + failure
+		if out.Error == "" && out.BusyAction == "" && failedPath != "" {
+			if failedRoot != current.notebookRoot {
+				failure = filepath.Base(failedRoot) + " / " + failure
+			}
+			out.Error = failure
+			out.FailedNotePath = failedPath
+			out.FailedNoteRoot = failedRoot
+			out.RetryKind = RetryKindNoteSaved
 		}
-		out.Error = failure
-		out.FailedNotePath = failedPath
-		out.FailedNoteRoot = failedRoot
-		out.RetryKind = RetryKindNoteSaved
 	}
 	return out
 }
