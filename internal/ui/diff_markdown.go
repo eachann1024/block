@@ -1099,6 +1099,17 @@ func DiffAlertTitles(lines []string, change []int) []string {
 			if m == nil {
 				continue
 			}
+			// Only a quote's first line marks it: in "> 引用原文\n> [!NOTE]" it is text.
+			inQuote := false
+			for k := i - 1; k >= 0; k-- {
+				if change[k] != -side {
+					inQuote = !masks[si][k] && strings.HasPrefix(strings.TrimSpace(lines[k]), ">")
+					break
+				}
+			}
+			if inQuote {
+				continue
+			}
 			for k := i + 1; k < len(lines); k++ {
 				if change[k] != -side {
 					if strings.TrimSpace(lines[k]) != "" {
