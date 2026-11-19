@@ -23,7 +23,7 @@ type AISurfaceColors struct {
 	// rails, capsules, and wells without inverting dark-mode brightness.
 	HoverBG    ui.Color
 	SelectedBG ui.Color
-	// TintedSelectedBG pairs with a 1px Accent border on active capsules and provider cards.
+	// TintedSelectedBG pairs with a 1px SelectedBorder ring on active capsules and provider cards.
 	TintedSelectedBG ui.Color
 }
 

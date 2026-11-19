@@ -25,6 +25,6 @@ func (p Palette) EdgeFloat() EdgeFloatColors {
 		StripIdle:  ui.RGBA(0x54, 0x7d, 0xd0, 0.28),
 		StripHot:   p.Accent,
 		StripGlow:  ui.RGBA(0x54, 0x7d, 0xd0, 0.12),
-		CardBorder: ui.Hex("#d8dee9"),
+		CardBorder: ui.Hex("#dedede"),
 	}
 }
