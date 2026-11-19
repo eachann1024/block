@@ -76,9 +76,13 @@ func DiffListNumbers(lines []string, change []int) []int {
 				continue
 			}
 			t := strings.TrimSpace(l)
-			// A quote inside an item's content ("   > 需要管理员权限") leaves its list open.
+			// A quote inside an item's content ("   > 需要管理员权限") leaves its list open;
+			// left of a nested item's content it closes that sublist only.
 			lead := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
-			if quote == 0 && diffQuoteDepth(t) > 0 && len(stack) > 0 && lead >= stack[len(stack)-1].content {
+			if quote == 0 && diffQuoteDepth(t) > 0 && len(stack) > 0 && lead >= stack[0].content {
+				for stack[len(stack)-1].content > lead {
+					stack = stack[:len(stack)-1]
+				}
 				prevBlank, para = false, false
 				continue
 			}
