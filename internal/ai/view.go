@@ -1235,7 +1235,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 				bd := ui.Transparent
 				if on {
 					bg = pal.Selected
-					bd = pal.Accent
+					bd = pal.SelectedBorder
 				} else if pressed {
 					bg = pal.Selected
 				} else if hovered {
@@ -1408,7 +1408,7 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 			bd := ui.Transparent
 			if selected {
 				bg = pal.Selected
-				bd = pal.Accent
+				bd = pal.SelectedBorder
 			} else if pressed {
 				bg = pal.Selected
 			} else if hovered {
@@ -2536,7 +2536,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 										}
 										ui.Text(cUI, m.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 										if active {
-											icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), active)
+											icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), active)
 										}
 									})
 									if row.Clicked() {
@@ -2617,7 +2617,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 											}
 											ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
 											if isAct {
-												icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
+												icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
 											}
 										})
 										if btn.Clicked() {
@@ -2770,7 +2770,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		bd := ais.CapsuleBorder
 		if cfg.Enabled {
 			bg = selBG
-			bd = pal.Accent
+			bd = pal.SelectedBorder
 		} else if pressed {
 			bg = ais.SelectedBG
 		} else if hovered {
@@ -2782,7 +2782,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		swBtn.Children(func() {
 			icCol := pal.TextSecondary
 			if cfg.Enabled {
-				icCol = pal.Accent
+				icCol = pal.Text
 			}
 			icons.DrawAnimated(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol), cfg.Enabled || hovered || pressed)
 			ui.Text(cUI, enLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
@@ -3443,7 +3443,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					bd := ais.CapsuleBorder
 					if isSel {
 						bg = selBG
-						bd = pal.Accent
+						bd = pal.SelectedBorder
 					} else if prs {
 						bg = ais.SelectedBG
 					} else if hov {
@@ -4105,13 +4105,13 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 				bd := ais.CapsuleBorder
 				if annotOpen {
 					bg = settingsSelectedSurface(pal)
-					bd = pal.Accent
+					bd = pal.SelectedBorder
 				} else if pressed {
 					bg = ais.SelectedBG
-					bd = pal.Accent
+					bd = pal.SelectedBorder
 				} else if hovered {
 					bg = ais.HoverBG
-					bd = pal.Accent
+					bd = pal.ShellChrome().FieldBorderHover
 				}
 				bui.AnimateSurfaceColors(trig, bg, bd, true)
 				bui.TactileCard(trig, hovered, pressed, false, false)
@@ -4362,7 +4362,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							}
 							ui.Text(cUI, opt.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							if isAct {
-								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
+								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
 							}
 						})
 						if row.Clicked() {
@@ -4457,7 +4457,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 								}
 								ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
 								if isAct {
-									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Accent), isAct)
+									icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
 								}
 							})
 							if btn.Clicked() {
