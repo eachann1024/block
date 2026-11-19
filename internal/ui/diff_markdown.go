@@ -218,6 +218,10 @@ func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs 
 			}
 			depth := diffQuoteDepth(t)
 			m := diffRefDefRE.FindStringSubmatch(body(l))
+			// "[^1]: 来源" is a footnote, which the note shows.
+			if m != nil && strings.HasPrefix(m[1], "^") {
+				m = nil
+			}
 			if m == nil || para && paraDepth == depth {
 				b := strings.TrimSpace(body(l))
 				para, paraDepth = !diffHeadingRE.MatchString(b) && !diffRuleRE.MatchString(b), depth
