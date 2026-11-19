@@ -32,6 +32,7 @@ const storeReadmeIdleTimeout = 10 * time.Second
 type storeReadmePreview struct {
 	entry          plugins.StoreAppEntry
 	installed      plugins.InstalledApp
+	locale         string
 	cancel         context.CancelFunc
 	ctx            context.Context
 	pending        <-chan readmeResult
@@ -43,10 +44,18 @@ type storeReadmePreview struct {
 	idleTimer      *time.Timer
 }
 
+func readmeLocaleKey(locale string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en") {
+		return "en"
+	}
+	return "zh"
+}
+
 // openStoreReadme switches the App Store tab to the in-place detail page for entry.
 func (ctrl *Controller) openStoreReadme(entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
+	loc := readmeLocaleKey(ctrl.sup.Locale())
 	ctrl.mu.Lock()
-	same := ctrl.storeReadme != nil && ctrl.storeReadme.entry.ID == entry.ID
+	same := ctrl.storeReadme != nil && ctrl.storeReadme.entry.ID == entry.ID && ctrl.storeReadme.locale == loc
 	ctrl.mu.Unlock()
 	if same {
 		return
@@ -104,11 +113,13 @@ func (ctrl *Controller) closeStoreReadmeIfNotRenderedRecently(maxAge time.Durati
 
 func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
 	ctrl.closeStoreReadme()
+	locale := ctrl.sup.Locale()
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan readmeResult, 1)
 	preview := &storeReadmePreview{
 		entry:          entry,
 		installed:      installed,
+		locale:         readmeLocaleKey(locale),
 		ctx:            ctx,
 		cancel:         cancel,
 		pending:        result,
@@ -125,7 +136,7 @@ func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed p
 	go func() {
 		requestCtx, stop := context.WithTimeout(ctx, 10*time.Second)
 		defer stop()
-		doc, err := store.ReadPluginReadme(requestCtx, entry, installed)
+		doc, err := store.ReadPluginReadme(requestCtx, entry, installed, locale)
 		reply := readmeResult{doc: doc, err: err}
 		if err == nil && ctx.Err() == nil {
 			reply.blocks = parseReadmeBlocks(doc.Text)
@@ -239,6 +250,15 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 	}
 	installedApp, isInstalled := ctrl.sup.GetInstalled(entry.ID)
+	if preview.locale != readmeLocaleKey(locale) {
+		ctrl.loadStoreReadme(entry, installedApp)
+		ctrl.mu.Lock()
+		preview = ctrl.storeReadme
+		ctrl.mu.Unlock()
+		if preview == nil {
+			return
+		}
+	}
 	_, installingID, storeErr, _ := ctrl.sup.StoreStatus()
 
 	page := ui.Column(c.Key("app-store-detail-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.Space24)
@@ -316,14 +336,23 @@ func renderStoreDetailActions(
 		if busy {
 			lbl = theme.Tr("安装中…", "Installing…")
 		}
-		btn := bui.ActionButton(c, "app-store-detail-install", lbl, nil, bui.ButtonPrimary, installingID != "")
-		if btn.Clicked() {
+		dlIc := icons.Download
+		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-detail-install",
+			Label:    lbl,
+			Leading:  &dlIc,
+			Style:    bui.ButtonPrimary,
+			Disabled: installingID != "" && !busy,
+			Loading:  busy,
+		})
+		if btn.Clicked() && !busy {
 			ctrl.sup.InstallEntryAsync(entry, nil)
 		}
 		return
 	}
 
-	uninst := bui.ActionButton(c, "app-store-detail-uninstall", theme.Tr("卸载", "Uninstall"), nil, bui.ButtonGhost, installingID != "")
+	trashIc := icons.Trash
+	uninst := bui.ActionButton(c, "app-store-detail-uninstall", theme.Tr("卸载", "Uninstall"), &trashIc, bui.ButtonGhost, installingID != "")
 	if uninst.Clicked() {
 		ctrl.uninstallPlugin(entry.ID, nil)
 	}
@@ -339,8 +368,16 @@ func renderStoreDetailActions(
 		if busy {
 			lbl = theme.Tr("更新中…", "Updating…")
 		}
-		upBtn := bui.ActionButton(c, "app-store-detail-update", lbl, nil, bui.ButtonAccentOutline, installingID != "")
-		if upBtn.Clicked() {
+		upIc := icons.Refresh
+		upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-detail-update",
+			Label:    lbl,
+			Leading:  &upIc,
+			Style:    bui.ButtonAccentOutline,
+			Disabled: installingID != "" && !busy,
+			Loading:  busy,
+		})
+		if upBtn.Clicked() && !busy {
 			ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
 		}
 	}
@@ -353,7 +390,8 @@ func renderStoreDetailActions(
 	if hasUpdate {
 		openStyle = bui.ButtonSecondary
 	}
-	openBtn := bui.ActionButton(c, "app-store-detail-open", openLabel, nil, openStyle, false)
+	openIc := icons.Sliders
+	openBtn := bui.ActionButton(c, "app-store-detail-open", openLabel, &openIc, openStyle, false)
 	if openBtn.Clicked() && onSelectTab != nil {
 		ctrl.closeStoreReadme()
 		onSelectTab(modals.TabPluginPrefix + entry.ID)
@@ -393,7 +431,8 @@ func renderStoreDetailReadme(c *ui.Context, ctrl *Controller, preview *storeRead
 		ui.Row(c).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, message).Role(ui.RoleStatus).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 			if failed {
-				retry := bui.ActionButton(c, "app-store-readme-retry", theme.Tr("重试", "Retry"), nil, bui.ButtonSecondary, false)
+				refIc := icons.Refresh
+				retry := bui.ActionButton(c, "app-store-readme-retry", theme.Tr("重试", "Retry"), &refIc, bui.ButtonSecondary, false)
 				if retry.Clicked() {
 					ctrl.loadStoreReadme(preview.entry, preview.installed)
 				}

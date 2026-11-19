@@ -97,7 +97,7 @@ func RenderPage(
 				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
 					for _, btn := range page.HeaderActions {
 						b := btn
-						el := bui.ActionButton(c, "plugin-act-"+pluginID+"-"+b.ID, b.Label, nil, mapButtonStyle(b.Variant), false)
+						el := bui.ActionButton(c, "plugin-act-"+pluginID+"-"+b.ID, b.Label, resolveActionButtonIcon(b.ID), mapButtonStyle(b.Variant), false)
 						if el.Clicked() && onAction != nil {
 							onAction(b.ID, cloneValues(values))
 						}
@@ -625,7 +625,8 @@ func renderItem(
 						bindings.PickDirectory(item.ID, item.Label)
 					}
 					if hasFilePicker {
-						pickFile := bui.ActionButton(c, "plugin-file-pick-"+pluginID+"-"+item.ID, fileLabel, nil, bui.ButtonSecondary, fileDisabled)
+						fileIc := icons.Note
+						pickFile := bui.ActionButton(c, "plugin-file-pick-"+pluginID+"-"+item.ID, fileLabel, &fileIc, bui.ButtonSecondary, fileDisabled)
 						if !fileDisabled && pickFile.Clicked() {
 							bindings.PickFile(item.ID, item.Label, item.AcceptExtensions)
 						}
@@ -650,7 +651,8 @@ func renderItem(
 					}
 				}
 				if hasFilePicker {
-					pickFile := bui.ActionButton(c, "plugin-file-pick-"+pluginID+"-"+item.ID, fileLabel, nil, bui.ButtonSecondary, fileDisabled)
+					fileIc := icons.Note
+					pickFile := bui.ActionButton(c, "plugin-file-pick-"+pluginID+"-"+item.ID, fileLabel, &fileIc, bui.ButtonSecondary, fileDisabled)
 					if !fileDisabled && pickFile.Clicked() {
 						bindings.PickFile(item.ID, item.Label, item.AcceptExtensions)
 					}
@@ -710,10 +712,12 @@ func renderItem(
 			}
 			if item.Kind == plugins.KindSecret {
 				toggleLbl := theme.Tr("显示", "Show")
+				toggleIc := icons.Eye
 				if secretShown {
 					toggleLbl = theme.Tr("隐藏", "Hide")
+					toggleIc = icons.EyeOff
 				}
-				tBtn := bui.ActionButton(c, "plugin-secret-toggle-"+pluginID+"-"+item.ID, toggleLbl, nil, bui.ButtonSecondary, false)
+				tBtn := bui.ActionButton(c, "plugin-secret-toggle-"+pluginID+"-"+item.ID, toggleLbl, &toggleIc, bui.ButtonSecondary, false)
 				if tBtn.Clicked() && bindings != nil && bindings.ToggleSecret != nil {
 					bindings.ToggleSecret(item.ID)
 				}
@@ -1354,6 +1358,29 @@ func resolveBusyActionHint(actionID string) string {
 	}
 }
 
+func resolveActionButtonIcon(actionID string) *icons.Icon {
+	var ic icons.Icon
+	switch strings.ToLower(strings.TrimSpace(actionID)) {
+	case "test_conn", "test_connection", "ping":
+		ic = icons.Plug
+	case "save_config", "save", "apply":
+		ic = icons.Check
+	case "sync_now", "confirm_sync", "rescan", "refresh", "reload":
+		ic = icons.Refresh
+	case "upload_now", "upload":
+		ic = icons.Upload
+	case "run_import", "run_import_card", "import", "download", "export":
+		ic = icons.Download
+	case "cancel_confirm", "cancel":
+		ic = icons.Close
+	case "clear", "reset", "delete", "remove":
+		ic = icons.Trash
+	default:
+		return nil
+	}
+	return &ic
+}
+
 func renderPluginActionButton(
 	c *ui.Context,
 	idPrefix string,
@@ -1371,6 +1398,8 @@ func renderPluginActionButton(
 		style = bui.ButtonSuccess
 		chk := icons.Check
 		leading = &chk
+	} else {
+		leading = resolveActionButtonIcon(btn.ID)
 	}
 	label := resolveActionButtonLabel(btn.ID, btn.Label, isBusy, isSuccess)
 	return bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{

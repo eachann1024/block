@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"block/internal/icons"
 	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
@@ -227,7 +228,8 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 			}
 		}
 		if inst.Enabled && c.sup.CanCancelAction(pluginID) {
-			cancel := bui.ActionButton(ctx, "plugin-cancel-task-"+pluginID, theme.Tr("取消任务", "Cancel task"), nil, bui.ButtonGhost, false)
+			stopIc := icons.Stop
+			cancel := bui.ActionButton(ctx, "plugin-cancel-task-"+pluginID, theme.Tr("取消任务", "Cancel task"), &stopIc, bui.ButtonGhost, false)
 			if cancel.Clicked() {
 				c.sup.CancelAction(pluginID)
 			}
@@ -238,9 +240,11 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 		if uninstBusy {
 			uninstLbl = theme.Tr("卸载中…", "Uninstalling…")
 		}
+		trashIc := icons.Trash
 		uninstBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
 			ID:       "plugin-hdr-uninstall-" + pluginID,
 			Label:    uninstLbl,
+			Leading:  &trashIc,
 			Style:    bui.ButtonDanger,
 			Disabled: vs.Loading || (vs.BusyAction != "" && !uninstBusy),
 			Loading:  uninstBusy,
@@ -282,7 +286,8 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 			bui.SettingsRowFrame(ui.Row(ctx)).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(ctx, theme.Tr("该插件尚未安装", "This plugin is not installed")).
 					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-				btn := bui.ActionButton(ctx, "plugin-go-store-"+pluginID, theme.Tr("前往应用商店", "Go to App Store"), nil, bui.ButtonSecondary, false)
+				pkgIc := icons.Package
+				btn := bui.ActionButton(ctx, "plugin-go-store-"+pluginID, theme.Tr("前往应用商店", "Go to App Store"), &pkgIc, bui.ButtonSecondary, false)
 				if btn.Clicked() && onSelectTab != nil {
 					onSelectTab(modals.TabAppStore)
 				}
@@ -297,7 +302,8 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 			bui.SettingsRowFrame(ui.Row(ctx)).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(ctx, theme.Tr("已停用", "Disabled")).
 					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-				btn := bui.ActionButton(ctx, "plugin-enable-"+pluginID, theme.Tr("启用", "Enable"), nil, bui.ButtonSecondary, false)
+				chkIc := icons.Check
+				btn := bui.ActionButton(ctx, "plugin-enable-"+pluginID, theme.Tr("启用", "Enable"), &chkIc, bui.ButtonSecondary, false)
 				if btn.Clicked() {
 					c.sup.SetPluginEnabled(pluginID, true)
 				}
@@ -328,9 +334,11 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 					if busy {
 						label = theme.Tr("重试中…", "Retrying…")
 					}
+					refIc := icons.Refresh
 					retryBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
 						ID:       "plugin-retry-" + pluginID,
 						Label:    label,
+						Leading:  &refIc,
 						Style:    bui.ButtonSecondary,
 						Disabled: busy,
 						Loading:  busy,
@@ -347,7 +355,8 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 						}
 					}
 					if vs.RetryKind != plugins.RetryKindNone && vs.RetryKind != plugins.RetryKindReload {
-						reloadBtn := bui.ActionButton(ctx, "plugin-reload-"+pluginID, theme.Tr("重新加载", "Reload"), nil, bui.ButtonSecondary, busy)
+						reloadIc := icons.Refresh
+						reloadBtn := bui.ActionButton(ctx, "plugin-reload-"+pluginID, theme.Tr("重新加载", "Reload"), &reloadIc, bui.ButtonSecondary, busy)
 						if reloadBtn.Clicked() && !busy {
 							c.sup.ReloadPluginViewAsync(pluginID)
 						}
