@@ -1274,6 +1274,9 @@ var plainTagRE = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>`)
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
+// plainInlineMathRE matches an inline formula: "\(…\)", "\[…\]" or "$$…$$".
+var plainInlineMathRE = regexp.MustCompile(`\\\(.+?\\\)|\\\[.+?\\\]|\$\$.+?\$\$`)
+
 // plainEntityRE matches an HTML entity reference, which ends with ";".
 var plainEntityRE = regexp.MustCompile(`&(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});`)
 
@@ -1324,6 +1327,12 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	}
 	b.WriteString(t[last:])
 	t = b.String()
+	// A formula ("\(a*b*c\)") shows its source, stars and all, like code.
+	t = plainInlineMathRE.ReplaceAllStringFunc(t, func(m string) string {
+		k := "\uE000" + strconv.Itoa(len(codes)) + "\uE001"
+		codes = append(codes, strings.TrimSpace(m[2:len(m)-2]))
+		return k
+	})
 	// Adjacent matches share the space between them, so repeat until settled.
 	for prev := ""; prev != t; {
 		prev = t
