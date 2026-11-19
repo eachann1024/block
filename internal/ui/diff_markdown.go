@@ -1025,7 +1025,7 @@ var (
 	diffImageRE    = regexp.MustCompile(`!\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]\(\s*(` + diffLinkDest + `)` + diffLinkTitle + `\s*\)`)
 	diffLinkRE     = regexp.MustCompile(`\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])+)\]\(\s*` + diffLinkDest + diffLinkTitle + `\s*\)`)
 	diffRefLinkRE  = regexp.MustCompile(`!?\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])+)\](?:\[((?:\\.|[^\[\]\\])*)\])?`)
-	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
+	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[a-zA-Z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)>`)
 )
 
 // CodeSpans returns the [start, end) byte ranges of the code spans in s, each
