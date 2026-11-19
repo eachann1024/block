@@ -812,8 +812,8 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 				CanvasKey:       "perf-treemap",
 				CanvasProbeID:   "perf-treemap",
 				DetailKey:       "perf-detail-bar",
-				LegendKey:       "perf-legend",
 				TileProbePrefix: "perf-tile-",
+				Height:          256,
 				OnSelect: func(_ string) {
 					m.requestRedraw()
 				},
