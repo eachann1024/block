@@ -1190,13 +1190,20 @@ func latestStreamLine(s string) string {
 	refs := bui.DiffRefLabels(lines, same)
 	// "操作说明\n2. 先备份" keeps its "2." as text, as the note shows it.
 	nums := bui.DiffListNumbers(lines, same)
+	// A setext underline ("===") only makes the line above a heading.
+	setext := bui.DiffSetextLevels(lines, same)
+	fences, quotes := plainFenceLines(lines, code)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		// A fence line is no text of its own: after "```" closes, the code shows.
-		if raw == "" || seps[i] || code[i] && plainFenceRE.MatchString(raw) {
+		if raw == "" || seps[i] || fences[i] || setext[i] < 0 {
 			continue
 		}
 		t := raw
+		// Code in a quoted fence shows without the quote's markers.
+		for q := quotes[i]; q > 0 && strings.HasPrefix(t, ">"); q-- {
+			t = strings.TrimPrefix(strings.TrimPrefix(t, ">"), " ")
+		}
 		if !code[i] {
 			if nums[i] == -1 {
 				if m := plainParaMarkerRE.FindStringSubmatchIndex(raw); m != nil {
@@ -1221,8 +1228,33 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
-// plainFenceRE matches a code fence line ("```sh", "~~~").
-var plainFenceRE = regexp.MustCompile("^(?:```|~~~)")
+// plainFenceRE matches a code fence line ("```sh", "> ~~~") behind quote markers.
+var plainFenceRE = regexp.MustCompile("^(?:>\\s*)*(`{3,}|~{3,})(.*)$")
+
+// plainFenceLines marks the opening and closing fence lines of the code blocks in
+// code (see DiffFenceMask); "~~~ 输出" inside a "~~~" block is a line of code, since
+// a closing fence takes no text. quote gives each code line its block's quote depth.
+func plainFenceLines(lines []string, code []bool) (fence []bool, quote []int) {
+	fence, quote = make([]bool, len(lines)), make([]int, len(lines))
+	open, depth := "", 0
+	for i, l := range lines {
+		if !code[i] {
+			open, depth = "", 0
+			continue
+		}
+		t := strings.TrimSpace(l)
+		m := plainFenceRE.FindStringSubmatch(t)
+		switch {
+		case open == "" && m != nil:
+			open, fence[i] = m[1], true
+			depth = strings.Count(t[:strings.Index(t, m[1])], ">")
+		case open != "" && m != nil && m[1][0] == open[0] && len(m[1]) >= len(open) && strings.TrimSpace(m[2]) == "":
+			open, fence[i] = "", true
+		}
+		quote[i] = depth
+	}
+	return fence, quote
+}
 
 // plainClosingHashRE matches an ATX heading's optional closing "#"s ("## 安装 ##").
 var plainClosingHashRE = regexp.MustCompile(`(?:^|\s+)#+\s*$`)
@@ -1250,8 +1282,8 @@ var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // refs are the reference labels defined around s (nil: none).
 func plainInline(s string, refs map[string]bool) string {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "#") {
-		if h := plainBlockPrefixRE.FindString(s); strings.HasPrefix(h, "#") {
+	if strings.Contains(s, "#") {
+		if h := plainBlockPrefixRE.FindString(s); strings.Contains(h, "#") {
 			s = h + plainClosingHashRE.ReplaceAllString(s[len(h):], "")
 		}
 	}
@@ -1290,10 +1322,11 @@ func plainInline(s string, refs map[string]bool) string {
 		}
 		return m[1:]
 	})
+	// Table bars are trimmed before entities and code return, so `| grep error` and
+	// "&#124; grep error" keep their pipe.
+	t = strings.ReplaceAll(strings.Trim(t, "| "), "", "|")
 	// Entities show their character ("A &amp; B" reads A & B); "\&amp;" was text.
 	t = strings.ReplaceAll(html.UnescapeString(t), "", "&")
-	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
-	t = strings.ReplaceAll(strings.Trim(t, "| "), "", "|")
 	for k, code := range codes {
 		t = strings.Replace(t, "\uE000"+strconv.Itoa(k)+"\uE001", code, 1)
 	}
