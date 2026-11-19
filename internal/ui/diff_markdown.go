@@ -7,6 +7,7 @@ import (
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	mdparser "github.com/egoist/mygo/ui/markdown/parser"
 )
 
 // DiffLineStyle is the look of one rendered line in an AI diff review.
@@ -21,25 +22,32 @@ type DiffLineStyle struct {
 }
 
 // DiffFenceMask reports, per line, whether it opens, closes or sits inside a fenced
-// code block, so diff rows rendered one by one keep the fence's context.
-func DiffFenceMask(lines []string) []bool {
+// code block, so diff rows rendered one by one keep the fence's context. A diff mixes
+// the old and new text, so each side is scanned on its own: change < 0 lines belong to
+// the old text, > 0 to the new one, 0 to both; a line is code if its side says so.
+func DiffFenceMask(lines []string, change []int) []bool {
 	mask := make([]bool, len(lines))
-	fence := ""
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if fence != "" {
-			mask[i] = true
-			if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
-				fence = ""
+	for _, side := range [2]int{-1, 1} {
+		fence := ""
+		for i, l := range lines {
+			if change[i] == -side {
+				continue
 			}
-			continue
-		}
-		for _, f := range [2]string{"```", "~~~"} {
-			if strings.HasPrefix(t, f) {
-				n := len(t) - len(strings.TrimLeft(t, f[:1]))
-				fence = strings.Repeat(f[:1], n)
+			t := strings.TrimSpace(l)
+			if fence != "" {
 				mask[i] = true
-				break
+				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
+					fence = ""
+				}
+				continue
+			}
+			for _, f := range [2]string{"```", "~~~"} {
+				if strings.HasPrefix(t, f) {
+					n := len(t) - len(strings.TrimLeft(t, f[:1]))
+					fence = strings.Repeat(f[:1], n)
+					mask[i] = true
+					break
+				}
 			}
 		}
 	}
@@ -47,15 +55,22 @@ func DiffFenceMask(lines []string) []bool {
 }
 
 var (
-	diffImageRE = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
-	diffLinkRE  = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
+	diffLinkRE     = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
 // diffPlainLinks turns links into their text: a link inside a diff row would take the
-// click (opening a browser) instead of the row's accept toggle.
+// click (opening a browser) instead of the row's accept toggle. Code spans are left
+// as written.
 func diffPlainLinks(s string) string {
-	s = diffImageRE.ReplaceAllString(s, "$1")
-	return diffLinkRE.ReplaceAllString(s, "$1")
+	parts := strings.Split(s, "`")
+	for i := 0; i < len(parts); i += 2 {
+		p := diffImageRE.ReplaceAllString(parts[i], "$1")
+		p = diffLinkRE.ReplaceAllString(p, "$1")
+		parts[i] = diffAutolinkRE.ReplaceAllString(p, "$1")
+	}
+	return strings.Join(parts, "`")
 }
 
 type diffMDKey struct{ text, code ui.Color }
@@ -71,7 +86,10 @@ func diffMarkdownOptions(st DiffLineStyle) *markdown.Options {
 		return markdown.HeadingStyle{Size: size, Weight: theme.WeightTitle, Color: st.Text}
 	}
 	// ShareSelection: no per-line selectable, so clicks still reach the row toggles.
-	o := &markdown.Options{ShareSelection: true, Theme: &markdown.Theme{
+	// No bare autolinks (they would take the click) and no tables (rows are split
+	// into cells by DiffTableRow).
+	ext := mdparser.ExtTaskLists | mdparser.ExtStrikethrough | mdparser.ExtMath | mdparser.ExtAlerts
+	o := &markdown.Options{ShareSelection: true, Extensions: ext, Theme: &markdown.Theme{
 		FontSize:       theme.FontBody,
 		LineHeight:     1.5,
 		Text:           st.Text,
@@ -145,30 +163,82 @@ func IsDiffTableSep(trimmed string) bool {
 	return true
 }
 
-// ParseDiffTableCells splits a trimmed table row into its trimmed cells; an escaped
-// "\\|" stays inside its cell as a literal bar.
+// ParseDiffTableCells splits a trimmed table row into its trimmed cells. A backslash
+// escapes the next character, so "\\|" is a literal bar inside its cell while "\\\\|"
+// is a backslash followed by a cell boundary.
 func ParseDiffTableCells(trimmed string) []string {
 	s := strings.TrimSpace(trimmed)
 	if !strings.HasPrefix(s, "|") {
 		return nil
 	}
-	s = strings.TrimPrefix(s, "|")
-	if strings.HasSuffix(s, "|") && !strings.HasSuffix(s, "\\|") {
-		s = strings.TrimSuffix(s, "|")
-	}
+	s = s[1:]
 	var cells []string
 	var cur strings.Builder
+	endedOnBar := false
 	for i := 0; i < len(s); i++ {
+		endedOnBar = false
 		switch {
 		case s[i] == '\\' && i+1 < len(s) && s[i+1] == '|':
 			cur.WriteByte('|')
 			i++
+		case s[i] == '\\' && i+1 < len(s):
+			cur.WriteString(s[i : i+2])
+			i++
 		case s[i] == '|':
 			cells = append(cells, strings.TrimSpace(cur.String()))
 			cur.Reset()
+			endedOnBar = true
 		default:
 			cur.WriteByte(s[i])
 		}
 	}
-	return append(cells, strings.TrimSpace(cur.String()))
+	if !endedOnBar || strings.TrimSpace(cur.String()) != "" {
+		cells = append(cells, strings.TrimSpace(cur.String()))
+	}
+	return cells
+}
+
+// DiffTableCols gives each table row the column count of its whole table (the widest
+// row of the contiguous run of table lines outside code), so a short row still lines
+// up with its header. Non-table lines get 0.
+func DiffTableCols(lines []string, code []bool) []int {
+	cols := make([]int, len(lines))
+	for i := 0; i < len(lines); {
+		if code[i] || !IsDiffTableRow(strings.TrimSpace(lines[i])) {
+			i++
+			continue
+		}
+		start, widest := i, 0
+		for ; i < len(lines) && !code[i] && IsDiffTableRow(strings.TrimSpace(lines[i])); i++ {
+			widest = max(widest, len(ParseDiffTableCells(strings.TrimSpace(lines[i]))))
+		}
+		for j := start; j < i; j++ {
+			cols[j] = widest
+		}
+	}
+	return cols
+}
+
+// DiffTableRow draws one table row as cells split by hairlines, padded to cols cells.
+func DiffTableRow(c *ui.Context, trimmed string, cols int, st DiffLineStyle, header bool, divider ui.Color) ui.Element {
+	cells := ParseDiffTableCells(trimmed)
+	for len(cells) < cols {
+		cells = append(cells, "")
+	}
+	return ui.Row(c).Grow(1).MinWidth(0).Children(func() {
+		for ci, cell := range cells {
+			ui.Box(c).Grow(1).Shrink(1).Basis(0).MinWidth(0).Padding(theme.Space4, theme.Space8).
+				BorderWidth(0, boolBorder(ci+1 < len(cells)), 0, 0).BorderColor(divider).
+				Children(func() {
+					DiffMarkdownCell(c, cell, st, header)
+				})
+		}
+	})
+}
+
+func boolBorder(b bool) float32 {
+	if b {
+		return 1
+	}
+	return 0
 }
