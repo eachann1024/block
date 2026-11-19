@@ -11,6 +11,7 @@ import (
 
 	"block/internal/model"
 	"block/internal/theme"
+	bui "block/internal/ui"
 )
 
 type planSelKey struct {
@@ -416,29 +417,18 @@ func (c *Controller) selectedPlanTextLocked(convID uint64, msgIdx int, page, bef
 	for i, l := range lines {
 		keep[i] = l.Change == 0 || (l.Change < 0 && !l.Included) || (l.Change > 0 && l.Included)
 	}
-	// Keep markdown pipe table separator only when at least one data row survives.
-	for i := 0; i < len(lines); {
-		trim := strings.TrimSpace(lines[i].Text)
-		if strings.HasPrefix(trim, "|") {
-			start := i
-			for i < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i].Text), "|") && lines[i].Change == lines[start].Change {
-				i++
-			}
-			anyRow := false
-			for j := start; j < i; j++ {
-				if !isPipeSeparatorLine(strings.TrimSpace(lines[j].Text)) && keep[j] {
-					anyRow = true
-					break
-				}
-			}
-			for j := start; j < i; j++ {
-				if isPipeSeparatorLine(strings.TrimSpace(lines[j].Text)) {
-					keep[j] = anyRow
-				}
-			}
-			continue
+	// Hidden table separators follow the visible rows of their table.
+	texts := make([]string, len(lines))
+	changes := make([]int, len(lines))
+	applied := make([]bool, len(lines))
+	for i, l := range lines {
+		texts[i], changes[i], applied[i] = l.Text, l.Change, l.Included
+	}
+	bui.SyncDiffTableSeps(texts, changes, applied)
+	for i, l := range lines {
+		if l.Change != 0 && bui.IsDiffTableSep(strings.TrimSpace(l.Text)) {
+			keep[i] = (l.Change < 0) != applied[i]
 		}
-		i++
 	}
 	var sb strings.Builder
 	for i, l := range lines {
@@ -675,20 +665,6 @@ func splitInclusiveLines(s string) []string {
 		parts = parts[:len(parts)-1]
 	}
 	return parts
-}
-
-func isPipeSeparatorLine(trimmed string) bool {
-	if !strings.HasPrefix(trimmed, "|") {
-		return false
-	}
-	for _, r := range trimmed {
-		switch r {
-		case '|', ' ', '-', ':':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func groupDiffLines(raw []rawDiffLine) []int {
