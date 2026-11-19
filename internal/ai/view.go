@@ -1154,9 +1154,14 @@ func processDisplayOrder(steps []model.ProcessStep, streaming bool) []int {
 func latestStreamLine(s string) string {
 	lines := strings.Split(s, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		t := plainInline(lines[i])
-		if t == "" || bui.IsDiffTableSep(t) {
+		raw := strings.TrimSpace(lines[i])
+		if raw == "" || bui.IsDiffTableSep(raw) {
 			continue
+		}
+		t := plainInline(raw)
+		if t == "" {
+			// 只有 ** 等半截标记时保留原文，避免实时行退回“正在生成回答”。
+			t = raw
 		}
 		r := []rune(t)
 		if len(r) > 80 {
@@ -1243,7 +1248,11 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
 					for _, i := range processDisplayOrder(steps, streaming) {
 						st := steps[i]
+						// 按步骤 ID 记展开状态：流式中新步骤插在实时行之前，按下标会串位。
 						stepKey := fmt.Sprintf("%s#%d", turnKey, i)
+						if st.ID != "" {
+							stepKey = turnKey + "#id:" + st.ID
+						}
 						c.mu.RLock()
 						detailOpen := c.expandedStepDetails[stepKey]
 						c.mu.RUnlock()
