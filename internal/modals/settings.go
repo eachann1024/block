@@ -147,13 +147,12 @@ type Manager struct {
 	perfOpen       bool
 	perfCancel     chan struct{}
 	perfCategories []PerfCategory
-	perfSelected   string
 	perfCPU        float64
 	perfRSS        uint64
 	perfSamples    int
 	perfLastScan   string
 	perfScanErr    string
-	perfTreeRects  []treemapTileRect
+	perfTreemap    internalui.TreemapState
 	perfState      perfExtraState
 
 	// Search modal state.
