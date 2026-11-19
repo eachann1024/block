@@ -130,13 +130,15 @@ func renderPageCards(
 			c.Key("plugin-card-" + pluginID + "-" + cd.ID)
 			bui.Card(c, func() {
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space16).Children(func() {
-					ui.Text(c, cd.Title).
-						FontSize(theme.FontTitle).
-						FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).
-						TextColor(pal.Text).
-						SingleLine().
-						Ellipsis("…")
+					if strings.TrimSpace(cd.Title) != "" {
+						ui.Text(c, cd.Title).
+							FontSize(theme.FontTitle).
+							FixedLineHeight(theme.LineTitle).
+							FontWeight(theme.WeightTitle).
+							TextColor(pal.Text).
+							SingleLine().
+							Ellipsis("…")
+					}
 					for _, item := range visibleItems {
 						renderItem(c, pluginID, item, values, busyAction, bindings, onChange, onAction)
 					}
@@ -415,13 +417,26 @@ func renderItem(
 		if totalBytes == 0 {
 			totalBytes = sumBytes
 		}
+		var summary *bui.TreemapSummary
+		if item.Summary != nil {
+			sMetrics := make([]bui.TreemapSummaryMetric, len(item.Summary.Metrics))
+			for i, m := range item.Summary.Metrics {
+				sMetrics[i] = bui.TreemapSummaryMetric{Label: m.Label, Value: m.Value}
+			}
+			summary = &bui.TreemapSummary{
+				TotalLabel: item.Summary.TotalLabel,
+				TotalValue: item.Summary.TotalValue,
+				SubText:    item.Summary.SubText,
+				Metrics:    sMetrics,
+			}
+		}
 		keyPrefix := "plugin-treemap-" + pluginID + "-" + tmID
 		bui.RenderStorageTreemap(c, tmState, tmItems, totalBytes, bui.TreemapOptions{
 			CanvasKey:       keyPrefix,
 			CanvasProbeID:   keyPrefix,
 			DetailKey:       keyPrefix + "-detail",
-			LegendKey:       keyPrefix + "-legend",
 			TileProbePrefix: keyPrefix + "-tile-",
+			Summary:         summary,
 			OnSelect: func(_ string) {
 				if bindings != nil && bindings.OnTreemapSelect != nil {
 					bindings.OnTreemapSelect()
