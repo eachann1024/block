@@ -389,7 +389,7 @@ func TestSingleTabTitleStyleHasNoBackground(t *testing.T) {
 		t.Fatalf("expected single tab background to match titlebar shell %+v, got %+v", wantShell, gotSingle)
 	}
 
-	// Once a second tab opens, the active tab renders with its selected pill surface (#e5edfc).
+	// Once a second tab opens, the active tab renders on the paper surface (#ffffff).
 	tabs = []string{"/notes/claude.md", "/notes/other.md"}
 	tt.Frame()
 
@@ -399,9 +399,9 @@ func TestSingleTabTitleStyleHasNoBackground(t *testing.T) {
 	}
 	imgMulti := tt.Image()
 	gotMulti := imgMulti.RGBAAt(int(rMulti.X+4), int(rMulti.Y+rMulti.H/2))
-	wantSelected := color.RGBA{R: 0xe5, G: 0xed, B: 0xfc, A: 0xff}
-	if gotMulti != wantSelected {
-		t.Fatalf("expected multi-tab active pill background %+v, got %+v", wantSelected, gotMulti)
+	wantPaper := color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+	if gotMulti != wantPaper {
+		t.Fatalf("expected multi-tab active pill background %+v, got %+v", wantPaper, gotMulti)
 	}
 }
 
