@@ -247,7 +247,7 @@ var OceanLight = Palette{
 
 var OceanDark = Palette{
 	Dark:           true,
-	Shell:          ui.Hex("#343434"),
+	Shell:          ui.Hex("#262626"),
 	Sidebar:        ui.Hex("#222222"),
 	SettingsBG:     ui.Hex("#181818"),
 	Paper:          ui.Hex("#181818"),
@@ -264,8 +264,8 @@ var OceanDark = Palette{
 	Hover:          ui.Hex("#2c2c2c"),
 	Selected:       ui.Hex("#3a3a3a"),
 	SelectedBorder: ui.RGBA(0xff, 0xff, 0xff, 0.12),
-	Hairline:       ui.Hex("#2e2e2e"),
-	SidebarBorder:  ui.Hex("#333333"),
+	Hairline:       ui.Hex("#292929"),
+	SidebarBorder:  ui.Hex("#292929"),
 	BtnBorder:      ui.Hex("#444444"),
 	CodeBG:         ui.Hex("#242424"),
 	QuoteBar:       ui.Hex("#484848"),
