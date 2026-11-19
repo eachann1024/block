@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"block/internal/model"
 )
@@ -27,7 +28,8 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		defs, _ = collectRefDefs(strings.TrimPrefix(decodeRawBlockGuard(doc.CleanRaw), "\uFEFF"))
 	}
 
-	if isDocUntouched(doc, defs) {
+	cleanValid := make([]int8, len(doc.Blocks))
+	if isDocUntouchedWithCache(doc, defs, cleanValid) {
 		return doc.CleanRaw
 	}
 	if len(doc.Blocks) == 1 && isBlankBlock(&doc.Blocks[0]) {
@@ -87,7 +89,7 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		}
 
 		blockStart := out.Len()
-		if canUseCleanSource(b, i == 0, n, defs) {
+		if canUseCleanSourceCached(b, i == 0, n, defs, cleanValid, i) {
 			out.WriteString(b.CleanSource)
 		} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 			var sub strings.Builder
@@ -119,8 +121,17 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 }
 
 func isDocUntouched(doc *model.Doc, defs map[string]refDef) bool {
+	return isDocUntouchedWithCache(doc, defs, nil)
+}
+
+func isDocUntouchedWithCache(doc *model.Doc, defs map[string]refDef, cleanValid []int8) bool {
 	if doc.CleanRaw == "" || len(doc.Blocks) == 0 {
 		return false
+	}
+	for i := range doc.Blocks {
+		if doc.Blocks[i].Dirty || doc.Blocks[i].CleanSource == "" {
+			return false
+		}
 	}
 	decoded := strings.TrimPrefix(decodeRawBlockGuard(doc.CleanRaw), "\uFEFF")
 	cursor := 0
@@ -131,7 +142,7 @@ func isDocUntouched(doc *model.Doc, defs map[string]refDef) bool {
 		if !isBlankBlock(b) {
 			n = num.next(b)
 		}
-		if !canUseCleanSource(b, i == 0, n, defs) {
+		if !canUseCleanSourceCached(b, i == 0, n, defs, cleanValid, i) {
 			return false
 		}
 		idx := strings.Index(decoded[cursor:], b.CleanSource)
@@ -174,6 +185,26 @@ func isIgnorableCleanGap(gap string, defs map[string]refDef, allowSeparator bool
 		return false
 	}
 	return true
+}
+
+func canUseCleanSourceCached(b *model.Block, isFirst bool, listNum int, defs map[string]refDef, cache []int8, idx int) bool {
+	if cache != nil && idx >= 0 && idx < len(cache) {
+		switch cache[idx] {
+		case 1:
+			return true
+		case -1:
+			return false
+		}
+	}
+	ok := canUseCleanSource(b, isFirst, listNum, defs)
+	if cache != nil && idx >= 0 && idx < len(cache) {
+		if ok {
+			cache[idx] = 1
+		} else {
+			cache[idx] = -1
+		}
+	}
+	return ok
 }
 
 func canUseCleanSource(b *model.Block, isFirst bool, listNum int, defs map[string]refDef) bool {
@@ -232,6 +263,46 @@ func prefixQuoteLines(raw string, depth int, out *strings.Builder) {
 	}
 }
 
+type cleanBlockCacheEntry struct {
+	single bool
+	block  model.Block
+}
+
+var (
+	cleanBlockCacheMu sync.RWMutex
+	cleanBlockCache   = make(map[string]cleanBlockCacheEntry)
+)
+
+const (
+	cleanBlockCacheMaxEntries = 4096
+	cleanBlockCacheMaxLen     = 16384
+)
+
+func isSimplePlainCleanParagraph(b *model.Block, clean string) bool {
+	if b.Kind != model.BlockParagraph || b.Indent != 0 || b.QuoteDepth != 0 {
+		return false
+	}
+	nl := strings.IndexByte(clean, '\n')
+	if nl >= 0 && nl != len(clean)-1 {
+		return false
+	}
+	line := trimLineEnding(clean)
+	if isBlankBlock(b) {
+		return strings.TrimSpace(line) == ""
+	}
+	if len(b.Spans) != 1 {
+		return false
+	}
+	sp := b.Spans[0]
+	if sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != "" || sp.Text != line || line == "" {
+		return false
+	}
+	if line[0] == ' ' || line[len(line)-1] == ' ' {
+		return false
+	}
+	return !strings.ContainsAny(line, "#>-*_~`[]<&\\!$|:.)\t+=")
+}
+
 func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 	clean := b.CleanSource
 	expectedIndent := b.Indent
@@ -242,13 +313,40 @@ func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 		}
 		clean = sb.String()
 		expectedIndent = 0
+	} else if isSimplePlainCleanParagraph(b, clean) {
+		return true
 	}
-	parsed := parseBlocksWithDefs(clean, defs, nil)
-	if len(parsed) != 1 {
-		// Multi-block clean source is only valid if it was a single list item or raw block.
-		return false
+
+	var p *model.Block
+	if (len(defs) == 0 || !strings.ContainsRune(clean, '[')) && len(clean) <= cleanBlockCacheMaxLen {
+		cleanBlockCacheMu.RLock()
+		entry, hit := cleanBlockCache[clean]
+		cleanBlockCacheMu.RUnlock()
+		if !hit {
+			parsed := parseBlocksWithDefs(clean, nil, nil)
+			if len(parsed) == 1 {
+				entry = cleanBlockCacheEntry{single: true, block: parsed[0]}
+			}
+			cleanBlockCacheMu.Lock()
+			if len(cleanBlockCache) >= cleanBlockCacheMaxEntries {
+				clear(cleanBlockCache)
+			}
+			cleanBlockCache[clean] = entry
+			cleanBlockCacheMu.Unlock()
+		}
+		if !entry.single {
+			return false
+		}
+		p = &entry.block
+	} else {
+		parsed := parseBlocksWithDefs(clean, defs, nil)
+		if len(parsed) != 1 {
+			// Multi-block clean source is only valid if it was a single list item or raw block.
+			return false
+		}
+		p = &parsed[0]
 	}
-	p := &parsed[0]
+
 	if p.Kind != b.Kind || p.Checked != b.Checked || p.Callout != b.Callout {
 		return false
 	}
