@@ -447,8 +447,13 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 	return masks[0], masks[1]
 }
 
+// DiffParaText is the DiffSetextLevels value of a line indented four columns under
+// paragraph text: it continues the paragraph, so "    # 打印当前目录" keeps its "#".
+const DiffParaText = 3
+
 // DiffSetextLevels reports, per line, the setext heading it belongs to: 1 or 2 for
-// its paragraph text, -1 for the underline, 0 otherwise. Rendered one by one, "Title"
+// its paragraph text, -1 for the underline, DiffParaText for indented paragraph text,
+// 0 otherwise. Rendered one by one, "Title"
 // would read as a paragraph and "---" as a rule. A changed line takes its own side,
 // an unchanged one the new text.
 func DiffSetextLevels(lines []string, change []int) []int {
@@ -542,6 +547,10 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				if ind >= need && (inIndented || wasBlank) {
 					mask[i], inIndented, para, paraLines = true, true, false, nil
+					continue
+				}
+				if ind >= need && para {
+					head[i], paraLines = DiffParaText, append(paraLines, i)
 					continue
 				}
 				inIndented = false
@@ -1226,7 +1235,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		if !math {
 			body = diffLiteralStart(body)
 		}
-		if st.Setext > 0 && !st.Code {
+		if st.Setext == DiffParaText {
+			body = diffInlineStart(body)
+		} else if st.Setext > 0 && !st.Code {
 			// As an ATX heading a trailing "#" run would read as a closing sequence,
 			// unless it is escaped already ("Title \#").
 			if h := strings.TrimRight(body, " \t"); strings.HasSuffix(h, "#") {
