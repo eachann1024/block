@@ -118,16 +118,16 @@ type Session struct {
 	blockDocRects      map[model.BlockID]ui.Rect
 	blockTextDocRects  map[model.BlockID]ui.Rect
 	tableCellDocRects  map[tableCellKey]tableCellGeom
-	textLayoutCache  map[model.BlockID]cachedBlockLayout
-	tableCellLayouts map[tableCellKey]cachedCellLayout
-	codeSyntaxCache  map[model.BlockID]cachedCodeSyntax
-	codePreviewCache map[model.BlockID]cachedCodePreview
-	tableColCache    map[model.BlockID]cachedTableCols
-	tableGridGeoms   map[model.BlockID]tableGridGeom
-	tableHScrolls    map[model.BlockID]*ui.ScrollState
-	blockIdxCache    map[model.BlockID]int
-	blockIdxRev      uint64
-	frameBlocks      []frameBlockMeta
+	textLayoutCache   map[model.BlockID]cachedBlockLayout
+	tableCellLayouts  map[tableCellKey]cachedCellLayout
+	codeSyntaxCache   map[model.BlockID]cachedCodeSyntax
+	codePreviewCache  map[model.BlockID]cachedCodePreview
+	tableColCache     map[model.BlockID]cachedTableCols
+	tableGridGeoms    map[model.BlockID]tableGridGeom
+	tableHScrolls     map[model.BlockID]*ui.ScrollState
+	blockIdxCache     map[model.BlockID]int
+	blockIdxRev       uint64
+	frameBlocks       []frameBlockMeta
 	docRev           uint64
 	outlineRev       uint64
 	outlineLen       int
@@ -173,10 +173,11 @@ type Session struct {
 	inlineAIResponder       func(ctx, orig, draft, instruction string) string
 	inlineAIStreamResponder func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)
 	inlineAI                *inlineAISession
-	copyPending             bool
 	savedMarkdown           string
 	caretHidden             bool
 	reactionPickerAnnotID   string
+	detachedCompose         string
+	codeUndoCmd             string
 
 	// Find bar
 	findOpen         bool
@@ -319,7 +320,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		doc:               d,
 		codec:             codec,
 		host:              host,
-		focusedBlock:      -1,
+		focusedBlock:      defaultFocusedBlock(d),
 		hoveredBlock:      -1,
 		dragOverIdx:       -1,
 		dragTargetIdx:     -1,
@@ -399,7 +400,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.redoStack = nil
 	s.lastUndoAt = time.Time{}
 	s.lastUndoKey = ""
-	s.focusedBlock = -1
+	s.focusedBlock = defaultFocusedBlock(s.doc)
 	s.hoveredBlock = -1
 	s.selAnchor = Position{}
 	s.selHead = Position{}
@@ -415,7 +416,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.toolbarPop = ""
 	s.cancelInlineAI()
 	s.inlineAI = nil
-	s.copyPending = false
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 	s.codeLangMenuBlock = 0
 	s.calloutMenuBlock = 0
 	s.calloutMenuIndex = 0
@@ -596,17 +598,45 @@ func (s *Session) FocusBlock(idx int) {
 	}
 	s.firstLineDeleteArmed = false
 	s.caretHidden = false
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 }
 
-// ClearFocus releases active block focus so the note renders cleanly until clicked.
+func isEmptyDoc(doc *model.Doc) bool {
+	if doc == nil || len(doc.Blocks) == 0 {
+		return true
+	}
+	for i := range doc.Blocks {
+		if !isPlainEmptyParagraph(&doc.Blocks[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func defaultFocusedBlock(doc *model.Doc) int {
+	if isEmptyDoc(doc) {
+		return 0
+	}
+	return -1
+}
+
+func (s *Session) isEmptyDocument() bool {
+	return isEmptyDoc(s.doc)
+}
+
+// ClearFocus releases active block focus so non-empty notes render cleanly until clicked,
+// while empty notes keep the first empty-line hint visible by default.
 func (s *Session) ClearFocus() {
-	s.focusedBlock = -1
+	s.focusedBlock = defaultFocusedBlock(s.doc)
 	s.focusPending = false
 	s.focusPreventScroll = false
 	s.multiSelFocusPending = false
 	s.selSyncPending = false
 	s.firstLineDeleteArmed = false
 	s.tableActiveBlock = 0
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 }
 
 func (s *Session) FirstLineDeleteArmed() bool {
@@ -829,7 +859,8 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.reactionPickerAnnotID = ""
 	s.cancelInlineAI()
 	s.inlineAI = nil
-	s.copyPending = false
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 	s.calloutMenuBlock = 0
 	s.imgResizeBlock = 0
 	s.resetTableExtend()
@@ -857,7 +888,7 @@ func (s *Session) orderedSelection() (Position, Position) {
 
 func (s *Session) hasNonEmptySelection() bool {
 	a, b := s.orderedSelection()
-	if a.Block < 0 || b.Block < 0 || s.doc == nil || len(s.doc.Blocks) == 0 {
+	if s.doc == nil || a.Block < 0 || b.Block >= len(s.doc.Blocks) {
 		return false
 	}
 	if a.Block != b.Block {
@@ -900,6 +931,8 @@ func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
 	}
 	s.firstLineDeleteArmed = false
 	s.caretHidden = false
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 }
 
 func (s *Session) hasAnyOverlayOpen() bool {
@@ -1061,6 +1094,8 @@ func (s *Session) notifyFocusBlock(idx int) {
 	s.focusPending = true
 	s.firstLineDeleteArmed = false
 	s.caretHidden = false
+	s.detachedCompose = ""
+	s.codeUndoCmd = ""
 }
 
 func trimSpaces(s string) string {

@@ -348,11 +348,19 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 	// 4. Smart dual-channel clipboard: explicit Markdown format or semantic HTML from web / Feishu / Notion / Word.
 	richData := svc.ReadClipboardData(transfer.Markdown, transfer.HTML)
 	if len(richData.Items()) > 0 {
-		if mdRaw, err := richData.Read(transfer.Markdown); err == nil && strings.TrimSpace(string(mdRaw)) != "" {
-			s.PasteText(string(mdRaw))
+		mdRaw, mdErr := richData.Read(transfer.Markdown)
+		htmlRaw, htmlErr := richData.Read(transfer.HTML)
+		mdStr := string(mdRaw)
+		inTable := s.isTablePasteTarget()
+		if mdErr == nil && (strings.TrimSpace(mdStr) != "" || (len(mdRaw) > 0 && (inTable || !strings.Contains(mdStr, "\n")))) {
+			if inTable && htmlErr == nil && len(htmlRaw) > 0 && htmlTableRowCountMatches(string(htmlRaw), mdStr) {
+				s.pasteTableWithTrailingEmptyRow(mdStr)
+				return true
+			}
+			s.PasteText(mdStr)
 			return true
 		}
-		if htmlRaw, err := richData.Read(transfer.HTML); err == nil && len(htmlRaw) > 0 && s.codec != nil {
+		if htmlErr == nil && len(htmlRaw) > 0 && s.codec != nil {
 			if converted, ok := s.codec.ConvertHTMLPaste(string(htmlRaw), fallbackText); ok {
 				s.PasteText(converted)
 				return true
@@ -383,12 +391,19 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 
 func localFileURL(absPath string) string {
 	p := filepath.ToSlash(absPath)
-	if len(p) > 0 && p[0] != '/' {
+	isUNC := strings.HasPrefix(absPath, `\\`) || strings.HasPrefix(p, "//")
+	if isUNC || (len(p) >= 3 && p[1] == ':' && p[2] == '\\') {
+		p = strings.ReplaceAll(p, "\\", "/")
+	}
+	prefix := "file://"
+	if isUNC {
+		p = strings.TrimLeft(p, "/")
+	} else if len(p) > 0 && p[0] != '/' {
 		p = "/" + p
 	}
 	const hex = "0123456789ABCDEF"
 	b := make([]byte, 0, len(p)+16)
-	b = append(b, "file://"...)
+	b = append(b, prefix...)
 	for i := 0; i < len(p); i++ {
 		ch := p[i]
 		switch {

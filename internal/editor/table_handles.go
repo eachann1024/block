@@ -168,6 +168,9 @@ func tableUniformTint(tbl *model.TableData, kind string, targetRow, targetCol in
 }
 
 func (s *Session) tableSetColAlign(blockID model.BlockID, col int, align model.ColAlign) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -208,6 +211,9 @@ func (s *Session) tableSetColAlign(blockID model.BlockID, col int, align model.C
 }
 
 func (s *Session) tableSetRowAlign(blockID model.BlockID, row int, align model.ColAlign) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -233,6 +239,9 @@ func (s *Session) tableSetRowAlign(blockID model.BlockID, row int, align model.C
 }
 
 func (s *Session) tableSetAllAlign(blockID model.BlockID, align model.ColAlign) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -288,6 +297,9 @@ func compareTableCellText(a, b string) int {
 }
 
 func (s *Session) tableSortByCol(blockID model.BlockID, col int, asc bool) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -325,6 +337,9 @@ func (s *Session) tableSortByCol(blockID model.BlockID, col int, asc bool) {
 }
 
 func (s *Session) tableSetColTint(blockID model.BlockID, col int, tint model.TableTint) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -348,6 +363,9 @@ func (s *Session) tableSetColTint(blockID model.BlockID, col int, tint model.Tab
 }
 
 func (s *Session) tableSetRowTint(blockID model.BlockID, row int, tint model.TableTint) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -369,6 +387,9 @@ func (s *Session) tableSetRowTint(blockID model.BlockID, row int, tint model.Tab
 }
 
 func (s *Session) tableToggleHeaderRow(blockID model.BlockID) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -385,6 +406,9 @@ func (s *Session) tableToggleHeaderRow(blockID model.BlockID) {
 }
 
 func (s *Session) tableToggleHeaderCol(blockID model.BlockID) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -401,6 +425,9 @@ func (s *Session) tableToggleHeaderCol(blockID model.BlockID) {
 }
 
 func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -432,6 +459,9 @@ func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
 }
 
 func (s *Session) tableClearCol(blockID model.BlockID, col int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -462,10 +492,14 @@ func (s *Session) tableClearCol(blockID model.BlockID, col int) {
 	}
 	b.Dirty = true
 	b.CleanSource = ""
+	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
 func (s *Session) tableClearRow(blockID model.BlockID, row int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -490,10 +524,14 @@ func (s *Session) tableClearRow(blockID model.BlockID, row int) {
 	}
 	b.Dirty = true
 	b.CleanSource = ""
+	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
 func (s *Session) tableClearAll(blockID model.BlockID) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -526,10 +564,14 @@ func (s *Session) tableClearAll(blockID model.BlockID) {
 	}
 	b.Dirty = true
 	b.CleanSource = ""
+	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
 func (s *Session) tableResetColWidths(blockID model.BlockID) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -546,6 +588,9 @@ func (s *Session) tableResetColWidths(blockID model.BlockID) {
 }
 
 func (s *Session) tableMoveCol(blockID model.BlockID, from, to int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -606,6 +651,9 @@ func (s *Session) tableMoveCol(blockID model.BlockID, from, to int) {
 }
 
 func (s *Session) tableMoveRow(blockID model.BlockID, from, to int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -635,8 +683,11 @@ func (s *Session) tableMoveRow(blockID model.BlockID, from, to int) {
 	s.markDirty()
 }
 
-func (s *Session) tableCopyMarkdown(c *ui.Context, idx int) {
-	if idx < 0 || idx >= len(s.doc.Blocks) {
+func (s *Session) tableCopyMarkdown(svc ui.Services, idx int) {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return
+	}
+	if s.doc.Blocks[idx].Kind != model.BlockTable || s.doc.Blocks[idx].Table == nil {
 		return
 	}
 	cp := s.doc.Blocks[idx].Clone()
@@ -655,8 +706,171 @@ func (s *Session) tableCopyMarkdown(c *ui.Context, idx int) {
 	}
 	single := []model.Block{cp}
 	if md := strings.TrimSuffix(s.serializeBlocks(single), "\n"); md != "" {
-		c.WriteClipboard(md)
+		s.writeRichClipboard(svc, md, &model.Doc{Blocks: single, TrailingLine: "\n"}, true)
 	}
+}
+
+func tableMaxCols(tbl *model.TableData) int {
+	if tbl == nil {
+		return 0
+	}
+	maxCols := 0
+	for _, row := range tbl.Rows {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+	return maxCols
+}
+
+func (s *Session) tableCopyMenuSelection(svc ui.Services, idx int, kind string, targetRow, targetCol int) bool {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	tbl := s.doc.Blocks[idx].Table
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return false
+	}
+	switch kind {
+	case "table":
+		single := []model.Block{s.doc.Blocks[idx].Clone()}
+		md := strings.TrimSuffix(s.serializeBlocks(single), "\n")
+		if md == "" {
+			return false
+		}
+		s.writeRichClipboard(svc, md, &model.Doc{Blocks: single, TrailingLine: "\n"}, true)
+		return true
+	case "row":
+		if targetRow < 0 || targetRow >= len(tbl.Rows) || len(tbl.Rows[targetRow]) == 0 {
+			return false
+		}
+		parts := make([]string, len(tbl.Rows[targetRow]))
+		rowCopy := make([]model.TableCell, len(tbl.Rows[targetRow]))
+		for cIdx, cell := range tbl.Rows[targetRow] {
+			parts[cIdx] = sanitizeTableCellTSV(serializeInlineBlockMarkdown(cell.Spans, s.codec))
+			rowCopy[cIdx] = model.TableCell{
+				Spans: append([]model.Span(nil), cell.Spans...),
+				Align: cell.Align,
+				Tint:  cell.Tint,
+			}
+		}
+		s.writeTableCellsClipboard(svc, strings.Join(parts, "\t"), [][]model.TableCell{rowCopy})
+		return true
+	case "col":
+		maxCols := tableMaxCols(tbl)
+		if maxCols == 0 || targetCol < 0 || targetCol >= maxCols {
+			return false
+		}
+		parts := make([]string, 0, len(tbl.Rows))
+		rows := make([][]model.TableCell, 0, len(tbl.Rows))
+		for _, row := range tbl.Rows {
+			if targetCol < len(row) {
+				cell := row[targetCol]
+				parts = append(parts, sanitizeTableCellTSV(serializeInlineBlockMarkdown(cell.Spans, s.codec)))
+				rows = append(rows, []model.TableCell{{
+					Spans: append([]model.Span(nil), cell.Spans...),
+					Align: cell.Align,
+					Tint:  cell.Tint,
+				}})
+			} else {
+				parts = append(parts, "")
+				rows = append(rows, []model.TableCell{{}})
+			}
+		}
+		s.writeTableCellsClipboard(svc, strings.Join(parts, "\n"), rows)
+		return true
+	}
+	return false
+}
+
+func (s *Session) tableCutMenuSelection(svc ui.Services, idx int, kind string, targetRow, targetCol int) bool {
+	if !s.tableCopyMenuSelection(svc, idx, kind, targetRow, targetCol) {
+		return false
+	}
+	if s.readOnly {
+		return true
+	}
+	b := &s.doc.Blocks[idx]
+	tbl := b.Table
+	id := b.ID
+	switch kind {
+	case "table":
+		s.deleteBlock(idx)
+		return true
+	case "row":
+		if targetRow < 0 || targetRow >= len(tbl.Rows) {
+			return false
+		}
+		if len(tbl.Rows) > 1 {
+			s.tableDeleteRow(id, targetRow)
+		} else {
+			s.tableClearRow(id, targetRow)
+		}
+		return true
+	case "col":
+		maxCols := tableMaxCols(tbl)
+		if maxCols == 0 || targetCol < 0 || targetCol >= maxCols {
+			return false
+		}
+		if maxCols > 1 {
+			s.tableDeleteCol(id, targetCol)
+			return true
+		}
+		anyNonEmpty := false
+		for r := range tbl.Rows {
+			if targetCol < len(tbl.Rows[r]) && tbl.Rows[r][targetCol].PlainText() != "" {
+				anyNonEmpty = true
+				break
+			}
+		}
+		if anyNonEmpty {
+			s.pushUndo()
+			for r := range tbl.Rows {
+				if targetCol < len(tbl.Rows[r]) {
+					tbl.Rows[r][targetCol].Spans = nil
+				}
+			}
+			b.Dirty = true
+			b.CleanSource = ""
+			s.syncTableActiveBounds(idx)
+			s.markDirty()
+		}
+		return true
+	}
+	return false
+}
+
+func (s *Session) tablePasteMenuSelection(svc ui.Services, idx int, kind string, targetRow, targetCol int) bool {
+	if s.readOnly || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[idx]
+	tbl := b.Table
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return false
+	}
+	rows := len(tbl.Rows)
+	cols := max(tableMaxCols(tbl), 1)
+	s.focusedBlock = idx
+	s.tableActiveBlock = b.ID
+	switch kind {
+	case "row":
+		s.tableActiveRow = clampInt(targetRow, 0, rows-1)
+		s.tableActiveCol = 0
+	case "col":
+		s.tableActiveRow = 0
+		s.tableActiveCol = clampInt(targetCol, 0, cols-1)
+	case "table":
+		s.tableActiveRow = 0
+		s.tableActiveCol = 0
+	default:
+		s.tableActiveRow = clampInt(s.tableActiveRow, 0, rows-1)
+		s.tableActiveCol = clampInt(s.tableActiveCol, 0, cols-1)
+	}
+	off := tableCellStartOffset(tbl, s.tableActiveRow, s.tableActiveCol)
+	s.selAnchor = Position{Block: idx, Offset: off}
+	s.selHead = s.selAnchor
+	return s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 }
 
 // --- Cell Fill & Selection Ring Painting ---
@@ -1413,7 +1627,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 			}},
 			{Separator: true},
 			{ID: "tbl-copy-md", Label: theme.Tr("复制为 Markdown 表格", "Copy as Markdown"), Icon: &icCopy, OnClick: func() {
-				s.tableCopyMarkdown(c, idx)
+				s.tableCopyMarkdown(c.Services(), idx)
 				closeMenu()
 			}},
 			{ID: "tbl-fit-cols", Label: theme.Tr("均分自动列宽", "Auto-fit column widths"), Icon: &icCols, Disabled: len(tbl.Widths) == 0, OnClick: func() {
@@ -1496,7 +1710,32 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		shell.Focusable().AutoFocus()
 		cur := ui.Local(shell, localMenuCursorKey{}, func() int { return -1 })
 		appUi.NavigateMenu(c, shell, entries, cur)
-		if deleteAction != nil && (shell.OverlayShortcut(0, ui.KeyBackspace) || shell.OverlayShortcut(0, ui.KeyDelete)) {
+		if shell.OverlayShortcut(ui.Cmd, ui.KeyC) {
+			if s.tableCopyMenuSelection(c.Services(), idx, kind, targetRow, targetCol) {
+				closeMenu()
+				c.Invalidate()
+				return
+			}
+		}
+		if shell.OverlayShortcut(ui.Cmd, ui.KeyX) {
+			if s.tableCutMenuSelection(c.Services(), idx, kind, targetRow, targetCol) {
+				closeMenu()
+				c.Invalidate()
+				return
+			}
+		}
+		if shell.OverlayShortcut(ui.Cmd, ui.KeyV) {
+			if s.readOnly {
+				closeMenu()
+				c.Invalidate()
+				return
+			}
+			closeMenu()
+			s.tablePasteMenuSelection(c.Services(), idx, kind, targetRow, targetCol)
+			c.Invalidate()
+			return
+		}
+		if !s.readOnly && deleteAction != nil && (shell.OverlayShortcut(0, ui.KeyBackspace) || shell.OverlayShortcut(0, ui.KeyDelete)) {
 			deleteAction()
 			c.Invalidate()
 			return
@@ -1561,7 +1800,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 										icons.Draw(c, opt.icon, theme.IconInline, pal.MonoIconColors(fg))
 									})
 									appUi.Probe(ab, opt.id)
-									if ab.Clicked() {
+									if !s.readOnly && ab.Clicked() {
 										switch kind {
 										case "row":
 											s.tableSetRowAlign(id, targetRow, opt.align)
@@ -1591,6 +1830,9 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 						if showTintBar && i == lastSepIdx {
 							appUi.MenuRow(c, appUi.MenuItemSpec{Separator: true}, false)
 							s.renderTableMenuTintRow(c, id, tbl, kind, targetRow, targetCol, pal, tblCols)
+						}
+						if s.readOnly && it.ID != "tbl-copy-md" && !it.Separator {
+							it.Disabled = true
 						}
 						appUi.MenuRow(c, it, i == *cur)
 					}
@@ -1653,7 +1895,7 @@ func (s *Session) renderTableMenuTintRow(
 				btn.Background(sw.fill).Border(bw, bd)
 				appUi.TactileButton(btn, btn.Hovered(), btn.Pressed(), on)
 				appUi.Probe(btn, sw.id)
-				if btn.Clicked() {
+				if !s.readOnly && btn.Clicked() {
 					if kind == "row" {
 						s.tableSetRowTint(id, targetRow, sw.tint)
 					} else {
