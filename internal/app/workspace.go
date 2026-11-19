@@ -203,6 +203,9 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetNotebookRoot: func() string {
 			return w.State().Folder
 		},
+		GetNotebooks: func() []string {
+			return w.Notebooks()
+		},
 		GetActiveNote: func() string {
 			return w.State().ActiveTab
 		},
@@ -252,6 +255,26 @@ func NewWorkspace(dataDir string) *Workspace {
 					Directory:         true,
 					CreateDirectories: true,
 				})
+				if err == nil && len(paths) > 0 && paths[0] != "" {
+					onPicked(paths[0])
+				}
+			}()
+		},
+		PickFile: func(title, defaultPath string, extensions []string, onPicked func(path string)) {
+			if !mygo.App.IsReady() {
+				return
+			}
+			win := w.Window()
+			exts := append([]string(nil), extensions...)
+			go func() {
+				opts := mygo.OpenDialogOptions{
+					Title:       title,
+					DefaultPath: defaultPath,
+				}
+				if len(exts) > 0 {
+					opts.Filters = []mygo.FileFilter{{Name: title, Extensions: exts}}
+				}
+				paths, err := files.OpenDialog(win, opts)
 				if err == nil && len(paths) > 0 && paths[0] != "" {
 					onPicked(paths[0])
 				}
