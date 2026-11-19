@@ -1208,16 +1208,24 @@ var plainStrongRE = regexp.MustCompile(`(^|[^\w*])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
 	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	// Bold markers are stripped outside code spans only (even segments between
-	// backticks), so `**/node_modules/**` keeps its stars.
-	parts := strings.Split(t, "`")
-	for i := 0; i < len(parts); i += 2 {
+	// Bold markers are stripped outside code spans only, so `**/node_modules/**` (or
+	// with double backticks) keeps its stars; the span's backticks go.
+	plain := func(x string) string {
 		// Adjacent matches share the space between them, so repeat until settled.
-		for prev := ""; prev != parts[i]; {
-			prev, parts[i] = parts[i], plainStrongRE.ReplaceAllString(parts[i], "$1$2$3")
+		for prev := ""; prev != x; {
+			prev, x = x, plainStrongRE.ReplaceAllString(x, "$1$2$3")
 		}
+		return strings.ReplaceAll(x, "`", "")
 	}
-	t = strings.Join(parts, "")
+	var b strings.Builder
+	last := 0
+	for _, sp := range bui.CodeSpans(t) {
+		b.WriteString(plain(t[last:sp[0]]))
+		b.WriteString(strings.Trim(t[sp[0]:sp[1]], "`"))
+		last = sp[1]
+	}
+	b.WriteString(plain(t[last:]))
+	t = b.String()
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
 }
