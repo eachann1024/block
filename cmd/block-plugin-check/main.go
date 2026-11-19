@@ -321,7 +321,7 @@ func stripBoundedPathPrefix(s, pref string) string {
 		start := i + idx
 		end := start + len(pref)
 		beforeOK := start == 0 || isPathPrefixBoundaryBefore(s[start-1])
-		afterOK := end == len(s) || isPathPrefixBoundaryAfter(s[end])
+		afterOK := isPathPrefixBoundaryAfter(s, pref, end)
 		if beforeOK && afterOK {
 			b.WriteString(s[i:start])
 			i = end
@@ -337,8 +337,32 @@ func isPathPrefixBoundaryBefore(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '(' || c == '[' || c == ':' || c == '=' || c == '`' || c == '<'
 }
 
-func isPathPrefixBoundaryAfter(c byte) bool {
-	return c == '/' || (os.PathSeparator == '\\' && c == '\\') || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == ':' || c == '`' || c == '>'
+func isPathPrefixBoundaryAfter(s, pref string, end int) bool {
+	if end == len(s) {
+		return true
+	}
+	c := s[end]
+	if c == '/' || (os.PathSeparator == '\\' && c == '\\') {
+		tokenEnd := end
+		for tokenEnd < len(s) && !isPathTokenTerminator(s[tokenEnd]) {
+			tokenEnd++
+		}
+		cleanPref := strings.TrimRight(filepath.Clean(pref), string(filepath.Separator))
+		joined := filepath.Clean(pref + s[end:tokenEnd])
+		return joined == cleanPref || strings.HasPrefix(joined, cleanPref+string(filepath.Separator))
+	}
+	if c == ':' || c == ',' || c == ';' {
+		return end+1 == len(s) || isASCIIWhitespace(s[end+1])
+	}
+	return isASCIIWhitespace(c) || c == '"' || c == '\'' || c == ')' || c == ']' || c == '`' || c == '>'
+}
+
+func isASCIIWhitespace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+func isPathTokenTerminator(c byte) bool {
+	return isASCIIWhitespace(c) || c == '"' || c == '\'' || c == ')' || c == ']' || c == '`' || c == '>' || c == ',' || c == ';'
 }
 
 func checkEnglishPage(page *plugins.UIPage, sandboxDir string) error {
