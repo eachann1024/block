@@ -1187,6 +1187,8 @@ func latestStreamLine(s string) string {
 	_, seps := bui.DiffTableRoles(lines, same)
 	// "[配置文件][config]" shows its text when the reply defines "config".
 	refs := bui.DiffRefLabels(lines, same)
+	// "操作说明\n2. 先备份" keeps its "2." as text, as the note shows it.
+	nums := bui.DiffListNumbers(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		if raw == "" || seps[i] {
@@ -1194,6 +1196,11 @@ func latestStreamLine(s string) string {
 		}
 		t := raw
 		if !code[i] {
+			if nums[i] == -1 {
+				if m := plainParaMarkerRE.FindStringSubmatchIndex(raw); m != nil {
+					raw = raw[:m[3]] + `\` + raw[m[3]:]
+				}
+			}
 			t = plainInline(raw, refs[i])
 		}
 		if t == "" {
@@ -1212,15 +1219,19 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
-// plainEmphasisREs match **bold**, __bold__, *italic*, _italic_ and ~~struck~~ text
-// set off from words, so Python's 2**3, snake_case and a lone "**" stay as written.
+// plainParaMarkerRE finds an ordered marker ("2." behind any ">") read as paragraph text.
+var plainParaMarkerRE = regexp.MustCompile(`^(?:>\s*)*\d{1,9}()[.)]`)
+
+// plainEmphasisREs match **bold**, __bold__, *italic*, _italic_ and ~~struck~~ text.
+// Stars may sit inside a word ("设置API**密钥**后"); underscores may not, so
+// snake_case stays, and Python's 2**3 or a lone "**" has no closer and stays too.
 // Doubled markers go first, so "**x**" is never read as "*" around "*x*", and bold
 // may hold italic ("**再看 *配置***").
 var plainEmphasisREs = []*regexp.Regexp{
-	regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^\w*])`),
+	regexp.MustCompile(`(^|[^*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:.*?\S)??)__($|[^\p{L}\p{N}_])`),
 	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
-	regexp.MustCompile(`(^|[^\w*\\])\*(\S(?:[^*]*\S)?)\*($|[^\w*])`),
+	regexp.MustCompile(`(^|[^*\\])\*(\S(?:[^*]*\S)?)\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
 }
 
