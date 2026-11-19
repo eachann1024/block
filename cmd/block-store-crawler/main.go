@@ -100,12 +100,17 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("load local seed %q: %w", dir, err)
 		}
-		if matchesSet(blocklist, m.ID, m.Repo) {
+		if m.ID == plugins.DiagnosticsPluginID || matchesSet(blocklist, m.ID, m.Repo) {
 			continue
 		}
 		isVerified, err := verified.check(m.ID, m.Repo, m.Repo)
 		if err != nil {
 			return fmt.Errorf("local seed %q: %w", dir, err)
+		}
+		if isVerified || plugins.IsOfficialRepo(m.Repo) {
+			if err := plugins.ValidateBilingualDocs(dir); err != nil {
+				return fmt.Errorf("local seed %q bilingual docs: %w", dir, err)
+			}
 		}
 		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", defaultSeedDownloads(m.ID), 0, nowStr, m.Repo, isVerified))
 	}
@@ -301,12 +306,17 @@ func verifyRemotePlugin(
 	if err != nil {
 		return nil, err
 	}
-	if matchesSet(blocklist, m.ID, m.Repo, repo.FullName) {
+	if m.ID == plugins.DiagnosticsPluginID || matchesSet(blocklist, m.ID, m.Repo, repo.FullName) {
 		return nil, nil
 	}
 	isVerified, err := verified.check(m.ID, repo.FullName, m.Repo)
 	if err != nil {
 		return nil, err
+	}
+	if isVerified || plugins.IsOfficialRepo(repo.FullName) {
+		if err := plugins.ValidateBilingualDocs(pluginRoot); err != nil {
+			return nil, fmt.Errorf("official plugin bilingual docs check failed: %w", err)
+		}
 	}
 	entry := entryFromManifest(m, downloadURL, shaHex, downloads, repo.Stargazers, updatedAt, repo.FullName, isVerified)
 	return &entry, nil
@@ -316,12 +326,6 @@ func defaultSeedDownloads(id string) int {
 	switch id {
 	case "block-sync":
 		return 1280
-	case "block-image-host":
-		return 940
-	case "block-migrator":
-		return 615
-	case "block-diagnostics":
-		return 320
 	default:
 		return 0
 	}
