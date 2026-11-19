@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
+
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 // IsOfficialRepo reports whether repo belongs to the official blockmd-plugins organization.
 func IsOfficialRepo(repo string) bool {
@@ -96,8 +99,9 @@ func ValidateBilingualDocs(pluginDir string) error {
 	if bad, ok := FindChineseRune(enText); ok {
 		return fmt.Errorf("README.en.md must be English-only, found Chinese character %q", bad)
 	}
-	if !containsASCIILetter(enText) {
-		return fmt.Errorf("README.en.md must contain English text")
+	enVisible := strings.TrimSpace(htmlCommentRe.ReplaceAllString(enText, ""))
+	if !containsASCIILetter(enVisible) {
+		return fmt.Errorf("README.en.md must contain visible English text")
 	}
 	if strings.TrimSpace(zhText) == strings.TrimSpace(enText) {
 		return fmt.Errorf("README.en.md must not be identical to README.md")
@@ -159,7 +163,11 @@ func ContainsHan(s string) bool {
 // FindChineseRune finds the first Han ideograph or CJK/full-width punctuation rune in s.
 func FindChineseRune(s string) (rune, bool) {
 	for _, r := range s {
-		if unicode.Is(unicode.Han, r) || (r >= 0x3000 && r <= 0x303F) || (r >= 0xFF01 && r <= 0xFF5E) {
+		if unicode.Is(unicode.Han, r) ||
+			(r >= 0x3000 && r <= 0x303F) ||
+			(r >= 0xFE10 && r <= 0xFE1F) ||
+			(r >= 0xFE30 && r <= 0xFE4F) ||
+			(r >= 0xFF01 && r <= 0xFF5E) {
 			return r, true
 		}
 	}

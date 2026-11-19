@@ -163,6 +163,9 @@ func LoadManifest(pluginDir string) (*Manifest, error) {
 }
 
 func DecodeManifestStrict(raw []byte) (*Manifest, error) {
+	if err := checkNoDuplicateJSONKeys(raw); err != nil {
+		return nil, fmt.Errorf("decode manifest.json: %w", err)
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var m Manifest
@@ -176,6 +179,60 @@ func DecodeManifestStrict(raw []byte) (*Manifest, error) {
 		return nil, err
 	}
 	return &m, nil
+}
+
+func checkNoDuplicateJSONKeys(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := scanJSONValueNoDupKeys(dec); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("manifest.json must contain exactly one JSON object")
+	}
+	return nil
+}
+
+func scanJSONValueNoDupKeys(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]bool)
+		for dec.More() {
+			ktok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := ktok.(string)
+			if !ok {
+				return errors.New("expected string key")
+			}
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON key %q", key)
+			}
+			seen[key] = true
+			if err := scanJSONValueNoDupKeys(dec); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	case '[':
+		for dec.More() {
+			if err := scanJSONValueNoDupKeys(dec); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token()
+		return err
+	}
+	return nil
 }
 
 func (m *Manifest) HasPermission(p Permission) bool {
