@@ -49,16 +49,67 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		return PluginReadme{}, ErrReadmeUnavailable
 	}
 
+	var remoteErr error
 	if en {
 		doc, err := s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/contents/README.en.md")
 		if err == nil {
 			return doc, nil
 		}
 		if !errors.Is(err, ErrReadmeUnavailable) {
-			return PluginReadme{}, err
+			remoteErr = err
 		}
 	}
-	return s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/readme")
+	if remoteErr == nil {
+		doc, err := s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/readme")
+		if err == nil || errors.Is(err, ErrReadmeUnavailable) {
+			return doc, err
+		}
+		remoteErr = err
+	}
+	if doc, cdnErr := s.fetchCDNReadme(ctx, repo, en); cdnErr == nil {
+		return doc, nil
+	}
+	return PluginReadme{}, remoteErr
+}
+
+func (s *StoreManager) fetchCDNReadme(ctx context.Context, repo string, en bool) (PluginReadme, error) {
+	files := []string{"README.md"}
+	if en {
+		files = []string{"README.en.md", "README.md"}
+	}
+	base := &url.URL{Scheme: "https", Host: "cdn.jsdelivr.net", Path: "/gh/" + repo + "@HEAD/"}
+	var lastErr error
+	for _, name := range files {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String()+name, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resp, err := s.HTTP.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			doc, readErr := readReadmeText(resp.Body)
+			resp.Body.Close()
+			if readErr == nil {
+				return PluginReadme{Text: doc, RemoteBase: base}, nil
+			}
+			lastErr = readErr
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			lastErr = ErrReadmeUnavailable
+			continue
+		}
+		lastErr = fmt.Errorf("fetch plugin README via CDN: HTTP %d", resp.StatusCode)
+	}
+	if lastErr == nil {
+		return PluginReadme{}, ErrReadmeUnavailable
+	}
+	return PluginReadme{}, lastErr
 }
 
 func (s *StoreManager) fetchGitHubReadme(ctx context.Context, repo, endpoint string) (PluginReadme, error) {
