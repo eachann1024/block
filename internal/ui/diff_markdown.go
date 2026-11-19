@@ -547,6 +547,11 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
 		body = diffLiteralStart(body)
 		if st.Setext > 0 && !st.Code {
+			// As an ATX heading a trailing "#" run would read as a closing sequence.
+			if h := strings.TrimRight(body, " \t"); strings.HasSuffix(h, "#") {
+				k := len(strings.TrimRight(h, "#"))
+				body = h[:k] + `\` + h[k:]
+			}
 			body = strings.Repeat("#", st.Setext) + " " + body
 		}
 		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
