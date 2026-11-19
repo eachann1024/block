@@ -1254,7 +1254,7 @@ func (s *Session) renderCalloutMenuOverlay(c *ui.Context) {
 						rowPressed := row.Pressed()
 						rowBG, rowBD := ui.Transparent, ui.Transparent
 						if checked {
-							rowBG, rowBD = pal.Selected, pal.Accent
+							rowBG, rowBD = pal.Selected, pal.SelectedBorder
 						} else if rowPressed {
 							rowBG = pal.Selected
 						} else if highlighted || rowHovered {
@@ -1822,7 +1822,7 @@ func (s *Session) renderOutlineRail(c *ui.Context) {
 							textCol := pal.TextSecondary
 							fontW := theme.WeightRegular
 							if isActive {
-								rowBG, rowBD = pal.Selected, pal.Accent
+								rowBG, rowBD = pal.Selected, pal.SelectedBorder
 								textCol = pal.Text
 								fontW = theme.WeightControl
 							} else {
@@ -2041,7 +2041,7 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 	hot := cardHovered || s.hoveredAnnotID == ann.ID
 	borderCol := pal.Hairline
 	if hot || editing {
-		borderCol = pal.Accent
+		borderCol = pal.SelectedBorder
 	}
 	appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
 	appUi.Probe(card, "annotation-card-"+ann.ID)
@@ -2418,7 +2418,7 @@ func (s *Session) renderAnnotationReactionPicker(c *ui.Context) {
 				btnPressed := btn.Pressed()
 				btnBG, btnBD := ui.Transparent, ui.Transparent
 				if selected {
-					btnBG, btnBD = pal.Selected, pal.Accent
+					btnBG, btnBD = pal.Selected, pal.SelectedBorder
 				} else if btnPressed {
 					btnBG = pal.Selected
 				} else if btnHovered {
@@ -2460,7 +2460,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 	ui.Overlay(c, func() {
 		card := appUi.Elevate(ui.Column(c.Key("plan-diff-card")).Absolute().Bottom(bottomY).Left(leftX).
 			Width(cardW).MaxHeight(maxH).Padding(0).Gap(0).
-			Radius(theme.RadiusXL).Clip().Background(pal.Paper).Border(1, pal.Accent).
+			Radius(theme.RadiusXL).Clip().Background(pal.Paper).Border(1, pal.Hairline).
 			Transition(appUi.PopoverSpringTransition()), theme.ElevationDialog)
 		appUi.Probe(card, "plan-diff-card")
 		s.recordOverlayPanel("plan-diff-card", card)
