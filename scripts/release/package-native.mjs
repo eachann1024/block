@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { installerFor } from "./allowed-assets.mjs";
 import { goRelease, releaseBinaryPath, run } from "./go-release.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
@@ -48,6 +50,15 @@ function stagePayload(root, binary) {
   ].join("\n"));
 }
 
+let supportsDebThreads = null;
+function debThreadArgs() {
+  if (supportsDebThreads === null) {
+    const help = spawnSync("dpkg-deb", ["--help"], { encoding: "utf8" });
+    supportsDebThreads = `${help.stdout ?? ""}${help.stderr ?? ""}`.includes("--threads-max");
+  }
+  return supportsDebThreads ? ["--threads-max=0"] : [];
+}
+
 function buildDeb(binary, version, names) {
   const root = mkdtempSync(join(tmpdir(), "block-deb-"));
   try {
@@ -66,7 +77,7 @@ function buildDeb(binary, version, names) {
       "",
     ].join("\n"));
     const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "deb" }));
-    run("dpkg-deb", ["--root-owner-group", "--build", root, outfile]);
+    run("dpkg-deb", ["--root-owner-group", ...debThreadArgs(), "--build", root, outfile]);
     console.log(`  ${outfile}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -87,6 +98,10 @@ export async function packageNative() {
   buildDeb(binary, version, names);
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   await packageNative();
 }

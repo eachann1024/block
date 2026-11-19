@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +10,14 @@ import { installerFor } from "./allowed-assets.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
+
+function cloneDir(src, dest) {
+  if (process.platform === "darwin") {
+    const res = spawnSync("cp", ["-cR", src, dest], { stdio: "ignore" });
+    if (res.status === 0) return;
+  }
+  cpSync(src, dest, { recursive: true });
+}
 
 function resolveTargetArches() {
   const list = process.env.BLOCK_ARCHES;
@@ -75,15 +83,15 @@ export async function packageRelease(arches = resolveTargetArches()) {
       profile: "release",
       platform: "darwin",
       arch: normalizeArch(rawArch),
+      publishRoot: false,
     });
-    const appBundle = built.artifact;
+    const appBundle = built.archArtifact;
     assert.ok(existsSync(appBundle), `App bundle missing at ${appBundle}`);
-    verifySignature(appBundle);
 
     const stageDir = mkdtempSync(join(tmpdir(), "block-dmg-"));
     const stagedApp = join(stageDir, `${appName}.app`);
     try {
-      cpSync(appBundle, stagedApp, { recursive: true });
+      cloneDir(appBundle, stagedApp);
       verifySignature(stagedApp);
       symlinkSync("/Applications", join(stageDir, "Applications"));
     } catch (err) {

@@ -1,3 +1,6 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 // 唯一名单：GitHub Release 只放这 5 个安装包。不要 Windows ARM、Linux arm64、rpm、校验和、压缩包或 blockmap。
 // The only GitHub Release assets are these 5 installers.
 export const INSTALLERS = [
@@ -41,6 +44,10 @@ export function installerFor({ platform, arch, kind }) {
   return found[0];
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   process.stdout.write(`${installerFor({ platform: process.argv[2], arch: process.argv[3], kind: process.argv[4] })}\n`);
 }
