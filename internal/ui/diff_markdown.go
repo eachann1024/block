@@ -1134,7 +1134,7 @@ func diffPlainLinks(s string, refs map[string]bool) string {
 				text = diffAutolinkEscaper.Replace(text)
 			} else {
 				// Link text is inline: "[# Release](…)" must not become a heading.
-				text = diffInlineStart(text)
+				text = diffUnlinkURLs(diffInlineStart(text))
 			}
 			b.WriteString(text)
 			last = m[1]
@@ -1380,6 +1380,29 @@ func BareURLs(s string) [][2]int {
 		out = append(out, [2]int{m[0], end})
 	}
 	return out
+}
+
+// diffURLStartRE matches what makes text a bare link: "https://", "ftp://", "www.".
+var diffURLStartRE = regexp.MustCompile(`(?i)(?:https?|ftp)://|www\.`)
+
+// diffUnlinkURLs keeps a link's text that reads as an address ("[https://x](/docs)")
+// from being taken for a bare link, whose markers and entities stay as written: in
+// the note it is link text, so "&amp;" shows "&". An escape it shows without
+// ("https:\//", "www\.") breaks the match; code spans keep their text.
+func diffUnlinkURLs(s string) string {
+	spans := CodeSpans(s)
+	ms := diffURLStartRE.FindAllStringIndex(s, -1)
+	for k := len(ms) - 1; k >= 0; k-- {
+		if slices.ContainsFunc(spans, func(sp [2]int) bool { return sp[0] <= ms[k][0] && ms[k][0] < sp[1] }) {
+			continue
+		}
+		at := ms[k][1] - 1
+		if s[at] == '/' {
+			at--
+		}
+		s = s[:at] + `\` + s[at:]
+	}
+	return s
 }
 
 // diffEscapeURLs escapes the emphasis markers inside bare links, so
