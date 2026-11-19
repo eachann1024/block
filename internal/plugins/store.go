@@ -108,11 +108,21 @@ func DefaultSeedIndex() *StoreIndex {
 	defer builtinMu.RUnlock()
 	if len(builtinSeeds) == 0 && embeddedFallbackIndex != nil {
 		cp := *embeddedFallbackIndex
-		cp.Apps = append([]StoreAppEntry(nil), embeddedFallbackIndex.Apps...)
+		filtered := make([]StoreAppEntry, 0, len(embeddedFallbackIndex.Apps))
+		for _, a := range embeddedFallbackIndex.Apps {
+			if a.ID == "" || a.ID == DiagnosticsPluginID {
+				continue
+			}
+			filtered = append(filtered, a)
+		}
+		cp.Apps = filtered
 		return &cp
 	}
 	apps := make([]StoreAppEntry, 0, len(builtinSeeds))
 	for _, s := range builtinSeeds {
+		if s.Entry.ID == "" || s.Entry.ID == DiagnosticsPluginID {
+			continue
+		}
 		apps = append(apps, s.Entry)
 	}
 	sort.Slice(apps, func(i, j int) bool {
@@ -130,9 +140,11 @@ func DefaultSeedIndex() *StoreIndex {
 	}
 }
 
-// DefaultStoreIndexURLs fetches catalog digests from the official repository.
+// DefaultStoreIndexURLs fetches catalog digests from the official repository,
+// falling back to jsDelivr CDN when raw.githubusercontent.com is unreachable.
 var DefaultStoreIndexURLs = []string{
 	"https://raw.githubusercontent.com/blockmd-plugins/store-index/main/store-index.json",
+	"https://cdn.jsdelivr.net/gh/blockmd-plugins/store-index@main/store-index.json",
 }
 
 // StoreManager manages isolated plugin installations under <BlockAppData>/apps/<id>/,
