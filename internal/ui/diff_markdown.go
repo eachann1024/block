@@ -30,6 +30,9 @@ type DiffLineStyle struct {
 	// Refs is DiffRefLabels of the diff: "[部署手册][deploy]" shows its text when
 	// "deploy" is defined there.
 	Refs map[string]bool
+	// Aligns is DiffTableAligns for a table row: each column's alignment from its
+	// table's separator ("---:" is right-aligned).
+	Aligns []ui.Align
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -1150,6 +1153,41 @@ func DiffTableCols(lines []string, change []int) []int {
 	return cols
 }
 
+// DiffTableAligns gives each table row its columns' alignment, read from its
+// table's separator in the row's own text (an unchanged row: the new one), so a
+// "---" turned "---:" shows the column right-aligned. Other lines get nil.
+func DiffTableAligns(lines []string, change []int) [][]ui.Align {
+	var side [2][][]ui.Align
+	side[0], side[1] = make([][]ui.Align, len(lines)), make([][]ui.Align, len(lines))
+	diffTableRuns(lines, change, func(si int, run []int, h int) {
+		if h < 0 {
+			return
+		}
+		var al []ui.Align
+		for _, cell := range ParseDiffTableCells(strings.TrimSpace(lines[run[h+1]])) {
+			cell = strings.TrimSpace(cell)
+			a := ui.Start
+			switch l, r := strings.HasPrefix(cell, ":"), strings.HasSuffix(cell, ":"); {
+			case l && r:
+				a = ui.Center
+			case r:
+				a = ui.End
+			}
+			al = append(al, a)
+		}
+		for _, k := range run[h:] {
+			side[si][k] = al
+		}
+	})
+	out := side[1]
+	for k := range lines {
+		if change[k] < 0 || out[k] == nil {
+			out[k] = side[0][k]
+		}
+	}
+	return out
+}
+
 // DiffTableRow draws one table row as cells split by hairlines, padded to cols cells.
 func DiffTableRow(c *ui.Context, trimmed string, cols int, st DiffLineStyle, header bool, divider ui.Color) ui.Element {
 	cells := ParseDiffTableCells(trimmed)
@@ -1164,11 +1202,19 @@ func DiffTableRow(c *ui.Context, trimmed string, cols int, st DiffLineStyle, hea
 		for ci, cell := range cells {
 			ui.Box(c).Grow(1).Shrink(1).Basis(0).MinWidth(0).Padding(theme.Space4, theme.Space8).
 				BorderWidth(0, boolBorder(ci+1 < len(cells)), 0, 0).BorderColor(divider).
+				TextAlign(diffCellAlign(st.Aligns, ci)).
 				Children(func() {
 					DiffMarkdownCell(c, cell, st, header)
 				})
 		}
 	})
+}
+
+func diffCellAlign(al []ui.Align, ci int) ui.Align {
+	if ci < len(al) {
+		return al[ci]
+	}
+	return ui.Start
 }
 
 func boolBorder(b bool) float32 {
