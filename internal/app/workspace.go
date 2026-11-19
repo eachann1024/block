@@ -3268,7 +3268,8 @@ func (w *Workspace) Render(c *ui.Context) {
 	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
 	if !aiImmersive && sidebarWide {
 		if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
-			blockui.PaintBrandSceneBand(root, scID, !stSnap.BrandDeco.HideOrb)
+			pauseBrandAnim := activeSess != nil && activeSess.IsScrollingForHover(c.Now())
+			blockui.PaintBrandSceneBand(root, scID, !stSnap.BrandDeco.HideOrb, pauseBrandAnim)
 		}
 	}
 

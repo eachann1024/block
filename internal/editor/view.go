@@ -16,13 +16,14 @@ import (
 )
 
 const (
-	editorHandleWidth float32 = 54
-	editorRowGap      float32 = 14
-	editorRightInset  float32 = editorHandleWidth + editorRowGap
-	editorMarkerWidth float32 = 29.68
-	editorIndentStep  float32 = editorMarkerWidth / 2
-	editorTopPad      float32 = 64
-	editorBottomPad   float32 = 160
+	editorHandleWidth        float32 = 54
+	editorRowGap             float32 = 14
+	editorRightInset         float32 = editorHandleWidth + editorRowGap
+	editorMarkerWidth        float32 = 29.68
+	editorIndentStep         float32 = editorMarkerWidth / 2
+	editorTopPad             float32 = 64
+	editorBottomPad          float32 = 160
+	virtualizeBlockThreshold         = 180
 )
 
 // Render draws the block editor, its inline blocks, and all floating overlays/rails.
@@ -162,10 +163,11 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 				flow := ui.Column(c.Key("editor-flow")).FillWidth().MaxWidth(outerMaxW)
 				flow.Children(func() {
 					virtSig := viewportWidth*1000 + s.zoom()
-					canVirt := !appUi.IsProbeEnabled() && s.virtReady && s.lastVirtSig == virtSig && len(s.doc.Blocks) > 60 && s.scrollRect.H > 0
+					canVirt := !appUi.IsProbeEnabled() && s.virtReady && s.lastVirtSig == virtSig && len(s.doc.Blocks) > virtualizeBlockThreshold && s.scrollRect.H > 0
 					s.lastVirtSig = virtSig
 					s.virtReady = true
 
+					scrolling := s.IsScrollingForHover(c.Now())
 					frameMeta := s.prepareFrameBlocks()
 					nextHover := -1
 					for i := range s.doc.Blocks {
@@ -194,10 +196,15 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 							nextHover = i
 						}
 					}
-					nextHover = s.updateTrailingAddHover(c, root, nextHover, readOnly)
-					if nextHover != s.hoveredBlock {
-						s.hoveredBlock = nextHover
-						c.Invalidate()
+					if scrolling {
+						s.hoveredBlock = -1
+						s.trailingPlus = false
+					} else {
+						nextHover = s.updateTrailingAddHover(c, root, nextHover, readOnly)
+						if nextHover != s.hoveredBlock {
+							s.hoveredBlock = nextHover
+							c.Invalidate()
+						}
 					}
 				})
 				s.flushPendingBlockDrop(c)
@@ -507,7 +514,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 			row.Cursor(ui.CursorText)
 		}
 	}
-	isHovered := row.Hovered()
+	isHovered := !s.IsScrollingForHover(c.Now()) && row.Hovered()
 	isFocused := s.focusedBlock == idx
 	hasBlockFocus := isFocused && isAtomic && (row.FocusWithin() || s.detachedFocus.Focused(c))
 	hoveredForHandles := isHovered
@@ -864,7 +871,7 @@ func (s *Session) renderBlockBody(c *ui.Context, idx int, b *model.Block, isFocu
 	case model.BlockCode, model.BlockRawHTML:
 		s.renderCodeBlock(c, idx, b, isFocused, isHovered, readOnly)
 	default:
-		s.renderRichTextBlock(c, idx, b, isFocused, readOnly, deleteArmed)
+		s.renderRichTextBlock(c, idx, b, isFocused, isHovered, readOnly, deleteArmed)
 	}
 	if !s.minimal {
 		s.renderBlockAnnotationsFoot(c, b)
@@ -944,7 +951,7 @@ func (s *Session) textMetrics(kind model.BlockKind) (fontSize float32, weight in
 	return fontSize * s.zoom(), weight, lh
 }
 
-func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, isFocused, readOnly, deleteArmed bool) {
+func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, isFocused, isHovered, readOnly, deleteArmed bool) {
 	pal := theme.Ocean()
 	dark := theme.IsDark()
 	fontSize, weight, lh := s.textMetrics(b.Kind)
@@ -1080,11 +1087,17 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				})
 			}
 		} else {
-			rt = ui.RichText(c.Key("rt")).PreserveSpaces().FontSize(fontSize).FontWeight(weight).
-				LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
-			rt.Children(func() {
-				s.renderDisplaySpansChildren(c, idx, b, fontSize, weight)
-			})
+			interactiveLinks := isHovered && !s.IsScrollingForHover(c.Now()) && blockHasLink(b)
+			if interactiveLinks {
+				rt = ui.RichText(c.Key("rt")).PreserveSpaces().FontSize(fontSize).FontWeight(weight).
+					LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
+				rt.Children(func() {
+					s.renderDisplaySpansChildren(c, idx, b, fontSize, weight)
+				})
+			} else {
+				rt = ui.RichText(c.Key("rt"), s.buildRenderDisplaySpans(b, fontSize, weight)...).PreserveSpaces().FontSize(fontSize).FontWeight(weight).
+					LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
+			}
 			bands := s.blockHighlightBands(idx, b, pal, true)
 			codeRanges := blockCodeRanges(b, fontSize)
 			if len(bands) > 0 || len(codeRanges) > 0 {
@@ -1429,6 +1442,34 @@ func buildPureSpan(sp model.Span, baseSize float32, baseWeight int, codeFG, code
 		hasNamedBG = true
 	}
 	return u, hasNamedBG
+}
+
+func blockHasLink(b *model.Block) bool {
+	if b == nil {
+		return false
+	}
+	for _, sp := range b.Spans {
+		if sp.Link != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) buildRenderDisplaySpans(b *model.Block, baseSize float32, baseWeight int) []ui.Span {
+	if b == nil || len(b.Spans) == 0 {
+		return nil
+	}
+	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
+	out := make([]ui.Span, 0, len(b.Spans))
+	for _, sp := range b.Spans {
+		u, hasNamedBG := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+		if sp.Marks&model.MarkCode != 0 && !hasNamedBG {
+			u.Background = ui.Color{}
+		}
+		out = append(out, u)
+	}
+	return out
 }
 
 func (s *Session) buildPureDisplaySpans(b *model.Block, baseSize float32, baseWeight int) []ui.Span {
