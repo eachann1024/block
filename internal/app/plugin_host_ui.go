@@ -1,0 +1,401 @@
+package app
+
+import (
+	"errors"
+	"strings"
+	"sync"
+	"time"
+
+	"block/internal/icons"
+	"block/internal/plugins"
+	"block/internal/theme"
+	blockui "block/internal/ui"
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+)
+
+const pluginToastDuration = 3 * time.Second
+
+type pluginToast struct {
+	ID       uint64
+	PluginID string
+	Message  string
+	Tone     string
+}
+
+type pluginDialogRef struct {
+	PluginID string
+	DialogID string
+}
+
+type pluginPanelRef struct {
+	PluginID string
+	PanelID  string
+}
+
+type pluginHostUI struct {
+	w *Workspace
+
+	mu              sync.Mutex
+	nextToastID     uint64
+	toasts          []pluginToast
+	toastTimer      *time.Timer
+	activeDialog    *pluginDialogRef
+	activePanel     *pluginPanelRef
+	lastPanel       *pluginPanelRef
+	panelWidthVal   float32
+	editorHasFocus  bool
+	editorFocusNote string
+}
+
+var _ plugins.UIHost = (*pluginHostUI)(nil)
+
+func newPluginHostUI(w *Workspace) *pluginHostUI {
+	return &pluginHostUI{
+		w:             w,
+		panelWidthVal: ChatDefaultW,
+	}
+}
+
+func (h *pluginHostUI) onMain(fn func()) {
+	if mygo.App.IsReady() {
+		mygo.RunOnMain(fn)
+	} else {
+		fn()
+	}
+}
+
+func normalizeToastTone(t string) string {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "success":
+		return "success"
+	case "error", "danger":
+		return "error"
+	case "warning", "warn":
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
+func (h *pluginHostUI) Toast(pluginID, message, tone string) {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return
+	}
+	normTone := normalizeToastTone(tone)
+	h.onMain(func() {
+		h.mu.Lock()
+		h.nextToastID++
+		id := h.nextToastID
+		h.toasts = append(h.toasts, pluginToast{
+			ID:       id,
+			PluginID: pluginID,
+			Message:  msg,
+			Tone:     normTone,
+		})
+		if len(h.toasts) == 1 {
+			h.scheduleToastTimerLocked(id)
+		}
+		h.mu.Unlock()
+		h.w.RequestRedraw()
+	})
+}
+
+func (h *pluginHostUI) scheduleToastTimerLocked(id uint64) {
+	if h.toastTimer != nil {
+		h.toastTimer.Stop()
+	}
+	h.toastTimer = time.AfterFunc(pluginToastDuration, func() {
+		h.onMain(func() {
+			h.dismissToast(id)
+		})
+	})
+}
+
+func (h *pluginHostUI) dismissToast(id uint64) {
+	h.mu.Lock()
+	if len(h.toasts) == 0 || h.toasts[0].ID != id {
+		h.mu.Unlock()
+		return
+	}
+	h.toasts = h.toasts[1:]
+	if h.toastTimer != nil {
+		h.toastTimer.Stop()
+		h.toastTimer = nil
+	}
+	if len(h.toasts) > 0 {
+		h.scheduleToastTimerLocked(h.toasts[0].ID)
+	}
+	h.mu.Unlock()
+	h.w.RequestRedraw()
+}
+
+func (h *pluginHostUI) currentToast() (pluginToast, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.toasts) == 0 {
+		return pluginToast{}, false
+	}
+	return h.toasts[0], true
+}
+
+func (h *pluginHostUI) renderToast(c *ui.Context) {
+	toast, ok := h.currentToast()
+	if !ok {
+		return
+	}
+	pal := theme.Ocean()
+	bg := pal.Menu
+	border := pal.MenuBorder
+	dotCol := pal.Accent
+	textCol := pal.Text
+	switch toast.Tone {
+	case "success":
+		bg = pal.SuccessSurface
+		border = pal.Success
+		dotCol = pal.Success
+		textCol = pal.Success
+	case "error":
+		bg = pal.DangerSurface
+		border = pal.Danger
+		dotCol = pal.Danger
+		textCol = pal.Danger
+	case "warning":
+		bg = pal.WarningSurface
+		border = pal.Warning
+		dotCol = pal.Warning
+		textCol = pal.Warning
+	}
+
+	layer := ui.Row(c.Key("plugin-toast-layer")).Absolute().
+		Bottom(theme.Space16).Left(theme.Space16).Right(theme.Space16).
+		Justify(ui.Center).PassThrough()
+	layer.Children(func() {
+		pill := ui.Row(c.Key("plugin-toast")).MaxWidth(480).
+			Padding(theme.Space6, theme.Space8, theme.Space6, theme.Space12).
+			Gap(theme.Space8).AlignItems(ui.Center).
+			Radius(theme.RadiusMD).Background(bg).Border(1, border).
+			Transition(blockui.PopoverSpringTransition())
+		blockui.Elevate(pill, theme.ElevationPopover)
+		blockui.Probe(pill, "plugin-toast")
+		pill.Children(func() {
+			ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).
+				Background(dotCol).Shrink(0)
+			ui.Text(c, toast.Message).
+				FontSize(theme.FontSmall).
+				FixedLineHeight(theme.LineSmall).
+				FontWeight(theme.WeightControl).
+				TextColor(textCol).
+				MinWidth(0).
+				Shrink(1).
+				SingleLine().
+				Ellipsis("…")
+			cls := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+				ID:       "plugin-toast-close",
+				Variant:  blockui.IconPlain,
+				Size:     theme.HeightMicro,
+				IconSize: theme.IconInline,
+				Label:    theme.Tr("关闭提示", "Dismiss"),
+				Tooltip:  theme.Tr("关闭", "Dismiss"),
+			})
+			if cls.Clicked() {
+				h.dismissToast(toast.ID)
+			}
+		})
+	})
+}
+
+func (h *pluginHostUI) OpenDialog(pluginID, dialogID string) {
+	h.onMain(func() {
+		sup := h.w.Plugins()
+		if sup == nil {
+			return
+		}
+		if _, ok := sup.Dialog(pluginID, dialogID); !ok {
+			return
+		}
+		h.mu.Lock()
+		h.activeDialog = &pluginDialogRef{PluginID: pluginID, DialogID: dialogID}
+		h.mu.Unlock()
+		h.w.RequestRedraw()
+	})
+}
+
+func (h *pluginHostUI) CloseDialog(pluginID, dialogID string) {
+	h.onMain(func() {
+		h.closeDialogLocal(pluginID, dialogID)
+	})
+}
+
+func (h *pluginHostUI) closeDialogLocal(pluginID, dialogID string) {
+	h.mu.Lock()
+	if h.activeDialog == nil {
+		h.mu.Unlock()
+		return
+	}
+	if (pluginID == "" || h.activeDialog.PluginID == pluginID) &&
+		(dialogID == "" || h.activeDialog.DialogID == dialogID) {
+		h.activeDialog = nil
+	}
+	h.mu.Unlock()
+	h.w.RequestRedraw()
+}
+
+func (h *pluginHostUI) hasDialog() bool {
+	h.mu.Lock()
+	ref := h.activeDialog
+	h.mu.Unlock()
+	if ref == nil {
+		return false
+	}
+	sup := h.w.Plugins()
+	if sup == nil {
+		return false
+	}
+	_, ok := sup.Dialog(ref.PluginID, ref.DialogID)
+	return ok
+}
+
+func (h *pluginHostUI) renderDialog(c *ui.Context) {
+	h.mu.Lock()
+	ref := h.activeDialog
+	h.mu.Unlock()
+	if ref == nil {
+		return
+	}
+	sup := h.w.Plugins()
+	if sup == nil {
+		h.closeDialogLocal("", "")
+		return
+	}
+	dlg, ok := sup.Dialog(ref.PluginID, ref.DialogID)
+	if !ok {
+		h.closeDialogLocal(ref.PluginID, ref.DialogID)
+		return
+	}
+
+	pal := theme.Ocean()
+	open := true
+	id := "plugin-dialog-" + dlg.PluginID + "-" + dlg.ID
+	blockui.Dialog(c, id, dlg.Title, &open, blockui.ModalLayout{
+		Width:    float32(dlg.Width),
+		Centered: true,
+	}, func() {
+		ui.Column(c.Key(id + "-body")).FillWidth().Padding(theme.Space20).Gap(theme.Space16).
+			Transition(blockui.SurfaceStageTransition()).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+				ui.Text(c, dlg.Title).
+					FontSize(theme.FontHeading).
+					FixedLineHeight(theme.LineHeading).
+					FontWeight(theme.WeightTitle).
+					TextColor(pal.Text).
+					MinWidth(0).
+					Shrink(1).
+					SingleLine().
+					Ellipsis("…")
+				cls := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+					ID:      id + "-close",
+					Label:   theme.Tr("关闭", "Close"),
+					Tooltip: theme.Tr("关闭", "Close"),
+				})
+				if cls.Clicked() {
+					open = false
+				}
+			})
+			if h.w.pluginsUI != nil {
+				h.w.pluginsUI.RenderSurface(c, dlg.PluginID, plugins.DialogSurface(dlg.ID))
+			}
+		})
+	})
+	if !open {
+		h.closeDialogLocal(dlg.PluginID, dlg.ID)
+	}
+}
+
+func (h *pluginHostUI) setEditorFocus(notePath string, focused bool) {
+	h.mu.Lock()
+	h.editorFocusNote = notePath
+	h.editorHasFocus = focused
+	h.mu.Unlock()
+}
+
+func (h *pluginHostUI) EditorSelection() (plugins.EditorSelection, error) {
+	var (
+		out plugins.EditorSelection
+		err error
+	)
+	h.onMain(func() {
+		if h.w.modals != nil && h.w.modals.IsSettingsOpen() {
+			err = errors.New("no active note editor")
+			return
+		}
+		if (h.w.exportCtrl != nil && h.w.exportCtrl.IsOpen()) || h.w.IsPageHistoryOpen() {
+			err = errors.New("no active note editor")
+			return
+		}
+		activeTab := h.w.ActiveNotePath()
+		if activeTab == "" || h.w.SurfaceFor(activeTab) != nil {
+			err = errors.New("no active note editor")
+			return
+		}
+		sess := h.w.SessionFor(activeTab)
+		if sess == nil || !sess.IsMarkdownNote() {
+			err = errors.New("no active note editor")
+			return
+		}
+		noteRel := ""
+		if sup := h.w.Plugins(); sup != nil {
+			noteRel = sup.ActiveNoteRel()
+		}
+		h.mu.Lock()
+		hasFocus := h.editorHasFocus && h.editorFocusNote == activeTab
+		h.mu.Unlock()
+		out = plugins.EditorSelection{
+			Note:     noteRel,
+			Text:     sess.SelectedMarkdown(),
+			HasFocus: hasFocus,
+		}
+	})
+	return out, err
+}
+
+func (h *pluginHostUI) EditorInsert(text string) error {
+	var err error
+	h.onMain(func() {
+		if h.w.modals != nil && h.w.modals.IsSettingsOpen() {
+			err = errors.New("no active note editor")
+			return
+		}
+		if (h.w.exportCtrl != nil && h.w.exportCtrl.IsOpen()) || h.w.IsPageHistoryOpen() {
+			err = errors.New("no active note editor")
+			return
+		}
+		activeTab := h.w.ActiveNotePath()
+		if activeTab == "" {
+			err = errors.New("no active note editor")
+			return
+		}
+		if h.w.SurfaceFor(activeTab) != nil {
+			err = errors.New("active note is read-only")
+			return
+		}
+		sess := h.w.SessionFor(activeTab)
+		if sess == nil || !sess.IsMarkdownNote() {
+			err = errors.New("no active note editor")
+			return
+		}
+		_, _, _, _, nonEmpty := sess.SelectionKey()
+		if nonEmpty {
+			if !sess.ReplaceSelectionWithText(text) {
+				err = errors.New("editor is read-only")
+				return
+			}
+		} else if text != "" {
+			sess.PastePlainText(text)
+		}
+		h.w.flushOrScheduleDirtySessions()
+		h.w.RequestRedraw()
+	})
+	return err
+}
