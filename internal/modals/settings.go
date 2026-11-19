@@ -848,9 +848,6 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			}
 
 			verTitle := fmt.Sprintf("v%s", curVer)
-			if snap.HasActionableUpdate() && snap.LatestVersion != "" {
-				verTitle = fmt.Sprintf("v%s → v%s", curVer, snap.LatestVersion)
-			}
 			internalui.SettingsRow(c, theme.Tr("当前版本", "Version"), func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
 					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
