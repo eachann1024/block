@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 	"unicode/utf8"
 
@@ -148,6 +149,8 @@ type QuickNoteController struct {
 	OnQuickBoundsChanged func(b model.SavedWindowBounds)
 
 	mu              sync.Mutex
+	diskMu          sync.Mutex
+	writeSeq        [quickSlotCount]atomic.Uint64
 	win             *mygo.Window
 	visible         bool
 	activeSlot      int
@@ -361,12 +364,19 @@ func (q *QuickNoteController) saveMetaLocked() {
 }
 
 func (q *QuickNoteController) saveSlotLocked(slot int) {
+	if slot < 0 || slot >= quickSlotCount {
+		return
+	}
+	q.writeSeq[slot].Add(1)
 	p := q.slotFilePath(slot)
 	if p == "" {
 		return
 	}
+	content := q.slots[slot]
+	q.diskMu.Lock()
+	defer q.diskMu.Unlock()
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
-	_ = os.WriteFile(p, []byte(q.slots[slot]), 0o644)
+	_ = os.WriteFile(p, []byte(content), 0o644)
 }
 
 func isFiniteFloat32(vals ...float32) bool {
@@ -1634,7 +1644,7 @@ func (q *QuickNoteController) scheduleSyncActiveSlot() {
 		q.mu.Unlock()
 		return
 	}
-	if q.win == nil || internalui.IsProbeEnabled() {
+	if testing.Testing() || q.win == nil || internalui.IsProbeEnabled() {
 		q.syncSessionToDiskLocked(slot)
 		q.mu.Unlock()
 		return
@@ -1646,10 +1656,45 @@ func (q *QuickNoteController) scheduleSyncActiveSlot() {
 	}
 	q.syncTimer = time.AfterFunc(quickSyncDebounce, func() {
 		mygo.RunOnMain(func() {
-			q.syncActiveSlotIfDirty()
+			q.syncActiveSlotAsync()
 		})
 	})
 	q.mu.Unlock()
+}
+
+func (q *QuickNoteController) syncActiveSlotAsync() {
+	q.mu.Lock()
+	if q.syncTimer != nil {
+		q.syncTimer.Stop()
+		q.syncTimer = nil
+	}
+	slot := q.activeSlot
+	sess := q.sessions[slot]
+	if sess == nil || !sess.Dirty() {
+		q.mu.Unlock()
+		return
+	}
+	content := q.serializeSessionLocked(slot)
+	q.slots[slot] = content
+	sess.MarkSaved()
+	path := q.slotFilePath(slot)
+	seq := q.writeSeq[slot].Add(1)
+	q.mu.Unlock()
+
+	if path == "" {
+		return
+	}
+	go q.writeSlotFileAsync(slot, path, content, seq)
+}
+
+func (q *QuickNoteController) writeSlotFileAsync(slot int, path, content string, seq uint64) {
+	q.diskMu.Lock()
+	defer q.diskMu.Unlock()
+	if q.writeSeq[slot].Load() != seq {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, []byte(content), 0o644)
 }
 
 func (q *QuickNoteController) syncActiveSlotIfDirty() {
