@@ -2,8 +2,11 @@ package app
 
 import (
 	"strconv"
+	"strings"
 
 	"block/internal/icons"
+	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -33,14 +36,90 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 		if surface != SurfaceNote {
 			renderNonNoteTitlebarTools(c, p, surface)
 		}
-		renderFeedbackButton(c, p)
-		if p.AIEnabled {
+		renderPluginTitlebarButtons(c, p)
+		if !slotHidden(p, plugins.TitlebarSlotFeedback) {
+			renderFeedbackButton(c, p)
+		}
+		if p.AIEnabled && !slotHidden(p, plugins.TitlebarSlotAI) {
 			renderAIButton(c, p)
 		}
 		if surface == SurfaceNote {
 			renderPageMorePill(c, p)
 		}
 	})
+}
+
+func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps) {
+	if len(p.PluginButtons) == 0 {
+		return
+	}
+	pal := theme.Ocean()
+	for _, rawBtn := range p.PluginButtons {
+		b := rawBtn
+		slotID := b.SlotID
+		if slotID == "" {
+			slotID = plugins.PluginTitlebarSlotID(b.PluginID, b.ID)
+		}
+		if slotHidden(p, slotID) {
+			continue
+		}
+		id := "titlebar-plugin-" + b.PluginID + "-" + b.ID
+		c.Key(id)
+		btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
+			Radius(theme.RadiusMD).Cursor(ui.CursorPointer)
+		label := b.Tooltip
+		if label == "" {
+			label = b.ID
+		}
+		btn.Label(label)
+		if b.Tooltip != "" {
+			blockui.RichTooltip(c, btn, blockui.TooltipSpec{
+				Placement: blockui.TooltipBelow,
+				Rows:      []blockui.TooltipRow{{Trigger: b.Tooltip}},
+			})
+		}
+		hovered := btn.Hovered()
+		pressed := btn.Pressed()
+		bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, b.Active
+		if b.Active {
+			bgCol = pal.Selected
+			bdCol = pal.SelectedBorder
+		} else if pressed || hovered {
+			bgCol = pal.ShellChrome().Hover
+		}
+		blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
+		blockui.TactileButton(btn, hovered, pressed, false)
+
+		badge := strings.TrimSpace(b.Badge)
+		isDotBadge := badge == "." || badge == "•" || badge == "dot"
+		btn.Children(func() {
+			ic := pal.MonoIconColors(pal.TextSecondary)
+			if b.Active || hovered || pressed {
+				ic = pal.DuoIconColors(pal.Text)
+			}
+			pluginui.DrawDuoSpec(c, b.Icon, theme.IconChrome, ic)
+			if badge != "" && !isDotBadge {
+				ui.Box(c).Absolute().Top(0).Right(0).Height(13).MinWidth(13).PaddingX(theme.Space2).
+					Center().Radius(theme.RadiusPill).Background(pal.Accent).IgnoreInput(true).
+					Children(func() {
+						ui.Text(c, badge).FontSize(theme.FontMicro).LineHeight(1).
+							FontWeight(theme.WeightTitle).TextColor(pal.AccentText).SingleLine()
+					})
+			}
+		})
+		if isDotBadge {
+			dot := pal.Accent
+			btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+				blockui.RecordBounds(id, r)
+				pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
+			})
+		} else {
+			blockui.Probe(btn, id)
+		}
+		if btn.Clicked() && p.OnPluginButton != nil {
+			p.OnPluginButton(b)
+		}
+	}
 }
 
 func renderFeedbackButton(c *ui.Context, p TitlebarProps) {
@@ -90,7 +169,7 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 // staying in the layout, so the titlebar icons beside it glide instead of jump.
 func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
-	split := p.AnnotHasAny
+	split := p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
 	c.Key("titlebar-action-pill")
 	pill := ui.Row(c).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusMD)

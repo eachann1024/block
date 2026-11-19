@@ -7,6 +7,7 @@ import (
 
 	"block/internal/files"
 	"block/internal/icons"
+	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -128,6 +129,19 @@ type TitlebarProps struct {
 	OnSelectSVGSource  func(showSource bool)
 	OnToggleSourceWrap func()
 	OnOpenInBrowser    func()
+
+	HiddenSlots      map[string]bool
+	PluginButtons    []plugins.ResolvedTitlebarButton
+	OnPluginButton   func(plugins.ResolvedTitlebarButton)
+	PluginPageMenu   []plugins.ResolvedMenuItem
+	OnPluginMenuItem func(plugins.ResolvedMenuItem)
+}
+
+func slotHidden(p TitlebarProps, slotID string) bool {
+	if slotID == plugins.TitlebarSlotMore || p.HiddenSlots == nil {
+		return false
+	}
+	return p.HiddenSlots[slotID]
 }
 
 func noteDisplayTitle(p string, isDir bool) string {
@@ -414,6 +428,9 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 }
 
 func renderSourceWrapButton(c *ui.Context, p TitlebarProps) {
+	if slotHidden(p, plugins.TitlebarSlotWrap) {
+		return
+	}
 	btn := blockui.IconButton(c, icons.Wrap, blockui.IconButtonOptions{
 		ID:          "tb-source-wrap",
 		Tooltip:     theme.Tr("自动换行", "Word Wrap"),
@@ -426,6 +443,9 @@ func renderSourceWrapButton(c *ui.Context, p TitlebarProps) {
 }
 
 func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
+	if slotHidden(p, plugins.TitlebarSlotZoom) {
+		return
+	}
 	pal := theme.Ocean()
 	pct := p.PreviewZoomPct
 	if pct == "" {
@@ -485,6 +505,9 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 }
 
 func renderRevealButton(c *ui.Context, p TitlebarProps) {
+	if slotHidden(p, plugins.TitlebarSlotReveal) {
+		return
+	}
 	revBtn := blockui.IconButton(c, icons.FolderReveal, blockui.IconButtonOptions{
 		ID:          "tb-reveal",
 		Tooltip:     revealFileLabel(),
@@ -625,17 +648,37 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 			}
 		}}
 	}
-	return []blockui.MenuItemSpec{
+	items := []blockui.MenuItemSpec{
 		item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
 		item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
 		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
-		{Separator: true},
+	}
+	if len(p.PluginPageMenu) > 0 {
+		items = append(items, blockui.MenuItemSpec{Separator: true})
+		for _, pm := range p.PluginPageMenu {
+			pmItem := pm
+			items = append(items, item(
+				"page-plugin-"+pmItem.PluginID+"-"+pmItem.ID,
+				pmItem.Title,
+				"",
+				nil,
+				func() {
+					if p.OnPluginMenuItem != nil {
+						p.OnPluginMenuItem(pmItem)
+					}
+				},
+			))
+		}
+	}
+	items = append(items,
+		blockui.MenuItemSpec{Separator: true},
 		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 			if p.OnRevealPath != nil {
 				p.OnRevealPath(p.ActiveTab)
 			}
 		}),
-	}
+	)
+	return items
 }
 
 func nonEmptyOr(val, fallback string) string {
