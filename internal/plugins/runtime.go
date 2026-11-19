@@ -76,6 +76,82 @@ type ActionResult struct {
 	RevealPath string         `json:"reveal_path,omitempty"`
 }
 
+const maxStderrBytes = 64 * 1024
+
+type ringBuffer struct {
+	mu   sync.Mutex
+	buf  []byte
+	cap  int
+	head int
+	full bool
+}
+
+func newRingBuffer(capacity int) *ringBuffer {
+	return &ringBuffer{
+		buf: make([]byte, 0, min(capacity, 4096)),
+		cap: capacity,
+	}
+}
+
+func (r *ringBuffer) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := len(p)
+	if r.cap <= 0 {
+		return n, nil
+	}
+	if n >= r.cap {
+		if cap(r.buf) < r.cap {
+			r.buf = make([]byte, r.cap)
+		} else {
+			r.buf = r.buf[:r.cap]
+		}
+		copy(r.buf, p[n-r.cap:])
+		r.head = 0
+		r.full = true
+		return n, nil
+	}
+	if !r.full {
+		if len(r.buf)+n <= r.cap {
+			r.buf = append(r.buf, p...)
+			if len(r.buf) == r.cap {
+				r.full = true
+				r.head = 0
+			}
+			return n, nil
+		}
+		oldLen := len(r.buf)
+		fullBuf := make([]byte, r.cap)
+		copy(fullBuf, r.buf)
+		r.buf = fullBuf
+		r.full = true
+		r.head = oldLen
+	}
+	first := min(n, r.cap-r.head)
+	copy(r.buf[r.head:], p[:first])
+	if first < n {
+		copy(r.buf[0:], p[first:])
+	}
+	r.head = (r.head + n) % r.cap
+	return n, nil
+}
+
+func (r *ringBuffer) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.full {
+		return string(r.buf)
+	}
+	out := make([]byte, r.cap)
+	tail := r.cap - r.head
+	copy(out, r.buf[r.head:])
+	copy(out[tail:], r.buf[:r.head])
+	return string(out)
+}
+
 // Runtime hosts a single sandboxed out-of-process plugin speaking newline-delimited
 // bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
@@ -85,7 +161,7 @@ type Runtime struct {
 
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
-	stderr bytes.Buffer
+	stderr *ringBuffer
 
 	writeMu   sync.Mutex
 	callMu    sync.Mutex
@@ -170,9 +246,10 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		cfg:      cfg,
 		cmd:      cmd,
 		stdin:    stdin,
+		stderr:   newRingBuffer(maxStderrBytes),
 		pending:  make(map[string]chan rpcEnvelope),
 	}
-	cmd.Stderr = &rt.stderr
+	cmd.Stderr = rt.stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start plugin process %v: %w", m.Entry.Command, err)
@@ -183,6 +260,9 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 }
 
 func (rt *Runtime) Stderr() string {
+	if rt.stderr == nil {
+		return ""
+	}
 	return rt.stderr.String()
 }
 
