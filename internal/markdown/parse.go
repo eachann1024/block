@@ -652,24 +652,101 @@ type imageMeta struct {
 	crop  model.ImageCrop
 }
 
+type tableCellTint struct {
+	row, col int
+	tint     model.TableTint
+}
+
+type tableCellAlign struct {
+	row, col int
+	align    model.ColAlign
+}
+
 type tableMeta struct {
 	noHeaderRow bool
+	headerCol   bool
 	widths      []float32
 	colTints    []model.TableTint
 	rowTints    []model.TableTint
+	cellTints   []tableCellTint
+	rowAligns   []model.ColAlign
+	cellAligns  []tableCellAlign
+}
+
+func parseTableTintName(raw string) model.TableTint {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "slate":
+		return model.TableTintSlate
+	case "ocean":
+		return model.TableTintOcean
+	case "emerald":
+		return model.TableTintEmerald
+	case "amber":
+		return model.TableTintAmber
+	case "rose":
+		return model.TableTintRose
+	default:
+		return model.TableTintNone
+	}
 }
 
 func parseTableTints(raw string) []model.TableTint {
 	parts := strings.Split(raw, ",")
 	out := make([]model.TableTint, len(parts))
 	for i, p := range parts {
-		switch strings.ToLower(strings.TrimSpace(p)) {
-		case "slate":
-			out[i] = model.TableTintSlate
-		case "ocean":
-			out[i] = model.TableTintOcean
-		case "emerald":
-			out[i] = model.TableTintEmerald
+		out[i] = parseTableTintName(p)
+	}
+	return out
+}
+
+func parseTableCellTints(raw string) []tableCellTint {
+	var out []tableCellTint
+	for _, item := range strings.Split(raw, ",") {
+		coord, val, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		rStr, cStr, ok := strings.Cut(coord, ":")
+		if !ok {
+			continue
+		}
+		r, errR := strconv.Atoi(strings.TrimSpace(rStr))
+		c, errC := strconv.Atoi(strings.TrimSpace(cStr))
+		if errR != nil || errC != nil || r < 0 || c < 0 {
+			continue
+		}
+		out = append(out, tableCellTint{row: r, col: c, tint: parseTableTintName(val)})
+	}
+	return out
+}
+
+func parseTableAligns(raw string) []model.ColAlign {
+	parts := strings.Split(raw, ",")
+	out := make([]model.ColAlign, len(parts))
+	for i, p := range parts {
+		out[i] = parseColAlign(p)
+	}
+	return out
+}
+
+func parseTableCellAligns(raw string) []tableCellAlign {
+	var out []tableCellAlign
+	for _, item := range strings.Split(raw, ",") {
+		coord, val, ok := strings.Cut(strings.TrimSpace(item), "=")
+		if !ok {
+			continue
+		}
+		rStr, cStr, ok := strings.Cut(coord, ":")
+		if !ok {
+			continue
+		}
+		r, errR := strconv.Atoi(strings.TrimSpace(rStr))
+		c, errC := strconv.Atoi(strings.TrimSpace(cStr))
+		if errR != nil || errC != nil || r < 0 || c < 0 {
+			continue
+		}
+		if a := parseColAlign(val); a != model.ColAlignNone {
+			out = append(out, tableCellAlign{row: r, col: c, align: a})
 		}
 	}
 	return out
@@ -697,6 +774,10 @@ func parseTableMetaComment(line string) (tableMeta, bool) {
 			if v == "0" || strings.EqualFold(v, "false") {
 				meta.noHeaderRow = true
 			}
+		case "headercol":
+			if v == "1" || strings.EqualFold(v, "true") {
+				meta.headerCol = true
+			}
 		case "widths":
 			parts := strings.Split(v, ",")
 			ws := make([]float32, len(parts))
@@ -711,6 +792,12 @@ func parseTableMetaComment(line string) (tableMeta, bool) {
 			meta.colTints = parseTableTints(v)
 		case "rowtints":
 			meta.rowTints = parseTableTints(v)
+		case "celltints":
+			meta.cellTints = parseTableCellTints(v)
+		case "rowaligns":
+			meta.rowAligns = parseTableAligns(v)
+		case "cellaligns":
+			meta.cellAligns = parseTableCellAligns(v)
 		}
 	}
 	return meta, true
@@ -723,14 +810,56 @@ func applyTableMeta(td *model.TableData, meta tableMeta) {
 	if meta.noHeaderRow {
 		td.NoHeaderRow = true
 	}
+	if meta.headerCol {
+		td.HeaderCol = true
+	}
 	if len(meta.widths) > 0 {
 		td.Widths = meta.widths
 	}
-	if len(meta.colTints) > 0 {
-		td.ColTints = meta.colTints
+	// Apply legacy/compact tints in order: column -> row -> per-cell override.
+	for c, ct := range meta.colTints {
+		if ct == model.TableTintNone {
+			continue
+		}
+		for r := range td.Rows {
+			if c < len(td.Rows[r]) {
+				td.Rows[r][c].Tint = ct
+			}
+		}
 	}
-	if len(meta.rowTints) > 0 {
-		td.RowTints = meta.rowTints
+	for r, rt := range meta.rowTints {
+		if rt == model.TableTintNone || r >= len(td.Rows) {
+			continue
+		}
+		for c := range td.Rows[r] {
+			td.Rows[r][c].Tint = rt
+		}
+	}
+	for _, ct := range meta.cellTints {
+		if ct.row < len(td.Rows) && ct.col < len(td.Rows[ct.row]) {
+			td.Rows[ct.row][ct.col].Tint = ct.tint
+		}
+	}
+	// Apply alignment overrides in order: row -> per-cell override, then strip redundant ones.
+	for r, ra := range meta.rowAligns {
+		if ra == model.ColAlignNone || r >= len(td.Rows) {
+			continue
+		}
+		for c := range td.Rows[r] {
+			td.Rows[r][c].Align = ra
+		}
+	}
+	for _, ca := range meta.cellAligns {
+		if ca.row < len(td.Rows) && ca.col < len(td.Rows[ca.row]) {
+			td.Rows[ca.row][ca.col].Align = ca.align
+		}
+	}
+	for r := range td.Rows {
+		for c := range td.Rows[r] {
+			if td.Rows[r][c].Align != model.ColAlignNone && td.Rows[r][c].Align == td.ColBaseAlign(c) {
+				td.Rows[r][c].Align = model.ColAlignNone
+			}
+		}
 	}
 }
 
@@ -1306,6 +1435,9 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 	var aligns []model.ColAlign
 	var rows [][]model.TableCell
 	var curRow []model.TableCell
+	isThinklyV1 := false
+	noHeaderRow := false
+	headerCol := false
 	inRow := false
 	i := 0
 	for i < len(src) {
@@ -1330,6 +1462,17 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			continue
 		}
 		switch name {
+		case "table":
+			if attrVal(attrs, "data-thinkly-table") != "" {
+				isThinklyV1 = true
+			}
+			if attrVal(attrs, "data-header-rows") == "0" {
+				noHeaderRow = true
+			}
+			if attrVal(attrs, "data-header-cols") == "1" {
+				headerCol = true
+			}
+			i += consumed
 		case "col":
 			if wStr := cssProp(attrs, "width"); wStr != "" {
 				wStr = strings.TrimSuffix(strings.TrimSpace(strings.ToLower(wStr)), "px")
@@ -1366,18 +1509,29 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			}
 			inner := src[bodyStart:bodyEnd]
 			spans := ParseInline(strings.TrimSpace(inner))
+			cellAlign := model.ColAlignNone
+			if ta := cssProp(attrs, "text-align"); ta != "" {
+				cellAlign = parseColAlign(ta)
+			} else if a := attrVal(attrs, "align"); a != "" {
+				cellAlign = parseColAlign(a)
+			}
+			colIdx := len(curRow)
 			if len(rows) == 0 {
-				colIdx := len(curRow)
 				for len(aligns) <= colIdx {
 					aligns = append(aligns, model.ColAlignNone)
 				}
-				if ta := cssProp(attrs, "text-align"); ta != "" {
-					aligns[colIdx] = parseColAlign(ta)
-				} else if a := attrVal(attrs, "align"); a != "" {
-					aligns[colIdx] = parseColAlign(a)
+				aligns[colIdx] = cellAlign
+				cellAlign = model.ColAlignNone
+			} else if colIdx < len(aligns) {
+				base := aligns[colIdx]
+				if base == model.ColAlignNone {
+					base = model.ColAlignLeft
+				}
+				if cellAlign == base {
+					cellAlign = model.ColAlignNone
 				}
 			}
-			curRow = append(curRow, model.TableCell{Spans: spans})
+			curRow = append(curRow, model.TableCell{Spans: spans, Align: cellAlign})
 			i = nextIdx
 		default:
 			i += consumed
@@ -1407,10 +1561,12 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 		aligns = append(aligns, model.ColAlignNone)
 	}
 	return model.TableData{
-		Aligns:  aligns,
-		Widths:  widths,
-		Rows:    rows,
-		WasHTML: true,
+		Aligns:      aligns,
+		Widths:      widths,
+		NoHeaderRow: noHeaderRow,
+		HeaderCol:   headerCol,
+		Rows:        rows,
+		WasHTML:     !isThinklyV1,
 	}, true
 }
 
