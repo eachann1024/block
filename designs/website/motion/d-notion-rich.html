@@ -862,54 +862,162 @@
   .cta-gh:active { transform: scale(.97); }
 
   .hero-app {
-    position: relative; z-index: 2; margin: clamp(36px, 5vh, 56px) auto 0; width: min(1120px, 100%); height: clamp(340px, 46vh, 470px);
-    border-radius: 14px 14px 0 0; overflow: hidden; text-align: left;
-    background: #ffffff; border: 1px solid #dce3ee; border-bottom: 0;
-    box-shadow: 0 -2px 0 rgba(255, 255, 255, 0.6), 0 30px 80px rgba(24, 34, 56, 0.14), 0 6px 18px rgba(24, 34, 56, 0.05);
-    -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%); mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+    --ground: #f1f1f1; --card: #ffffff; --card-line: #e4e6ea; --text: #20242c; --text2: #526071; --text3: #6b7686; --ph: #7a8594;
+    --accent: #547dd0; --hover: rgba(32, 36, 44, 0.07); --sel-bg: #e5edfc; --icon-fill: #c9d8f3; --badge-fg: #2f4f8f;
+    --field-line: #e1e4e9; --kbd-bg: #f3f4f6; --disabled: #b6bcc6; --divider: #eceef1; --body: #1f1e1d; --body2: #3a3936; --link: #256abf;
+    --hx-ease: cubic-bezier(.22, 1, .36, 1); --side-w: 240px; --chat-w: 340px;
+    position: relative; z-index: 2; margin: clamp(36px, 5vh, 56px) auto 0; width: min(1120px, 100%); height: clamp(420px, 58vh, 560px);
+    border-radius: 12px 12px 0 0; overflow: hidden; text-align: left; display: flex; flex-direction: column;
+    background: var(--ground); color: var(--text); font-size: 14px; line-height: 20px;
+    box-shadow: 0 0 0 1px rgba(32, 36, 44, 0.09), 0 30px 80px rgba(24, 34, 56, 0.14), 0 6px 18px rgba(24, 34, 56, 0.05);
+    -webkit-mask-image: linear-gradient(180deg, #000 90%, transparent 100%); mask-image: linear-gradient(180deg, #000 90%, transparent 100%);
     opacity: 0; transform: translateY(28px);
     transition: opacity 1s var(--ease) .45s, transform 1.1s var(--ease) .45s;
   }
   html.intro-done .hero-app, html:not(.js-intro) .hero-app { opacity: 1; transform: none; }
-  .ha-bar { height: 40px; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: var(--shell); border-bottom: 1px solid var(--shell-line); }
-  .ha-tabs { display: flex; gap: 4px; margin-left: 150px; min-width: 0; overflow: hidden; }
-  .ha-tab { height: 26px; padding: 0 12px; border-radius: 7px; font-size: 13px; color: #6a7385; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
-  .ha-tab.on { background: #ffffff; color: var(--ink); box-shadow: 0 1px 3px rgba(24, 34, 56, 0.08); }
-  .ha-body { display: grid; grid-template-columns: 236px 1fr 288px; height: calc(100% - 40px); }
-  .ha-side { background: var(--sidebar); border-right: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; color: #3c4352; }
-  .ha-search { height: 30px; border-radius: 8px; background: #ffffff; border: 1px solid var(--line); display: flex; align-items: center; gap: 7px; padding: 0 9px; color: #9aa1ad; margin-bottom: 8px; }
-  .ha-row { height: 30px; border-radius: 7px; display: flex; align-items: center; gap: 8px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
-  .ha-row svg { width: 15px; height: 15px; flex: none; color: #8b93a3; }
-  .ha-row.in { padding-left: 26px; }
-  .ha-row.on { background: var(--selected); color: #1c3b78; font-weight: 500; box-shadow: inset 0 0 0 1px rgba(84, 125, 208, 0.35); }
-  .ha-row.on svg { color: var(--ocean); }
-  .ha-label { padding: 12px 8px 4px; font-size: 12.5px; color: #9aa1ad; font-weight: 600; }
-  .ha-doc { padding: 30px clamp(20px, 4vw, 54px); overflow: hidden; }
-  .ha-doc h3 { font-size: 26px; line-height: 1.3; color: var(--heading); margin-bottom: 12px; }
-  .ha-doc p { font-size: 15px; line-height: 1.8; color: #3a3936; margin-bottom: 10px; }
-  .ha-todo { display: flex; align-items: center; gap: 10px; font-size: 15px; line-height: 1.9; color: var(--ink); }
-  .ha-todo b { width: 16px; height: 16px; flex: none; border-radius: 4px; border: 1px solid #c8c6bf; background: var(--code-bg); display: grid; place-items: center; }
-  .ha-todo.done b { background: var(--ocean-btn); border-color: var(--ocean-btn); }
-  .ha-todo.done b::after { content: ""; width: 8px; height: 4.5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
-  .ha-todo.done span { color: #8c8a84; text-decoration: line-through; }
-  .ha-type { min-height: 27px; }
-  .ha-type .caret { height: 1.1em; }
-  .ha-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13.5px; }
-  .ha-table th, .ha-table td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
-  .ha-table th { background: var(--shell); font-weight: 600; }
-  .ha-ai { border-left: 1px solid var(--line); background: #ffffff; display: flex; flex-direction: column; }
-  .ha-ai-top { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 600; color: var(--ink); }
-  .ha-ai-top span { display: inline-flex; align-items: center; gap: 7px; }
-  .ha-ai-feed { padding: 12px; display: flex; flex-direction: column; gap: 9px; font-size: 13px; line-height: 1.6; }
-  .ha-msg { align-self: flex-end; max-width: 92%; padding: 7px 10px; border-radius: 9px; background: var(--hover); border: 1px solid #d5e2f9; }
-  .ha-plan { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .ha-plan-hd { padding: 7px 10px; background: var(--shell); font-weight: 600; font-size: 12.5px; }
-  .ha-plan-ln { padding: 3px 10px; background: var(--diff-add-bg); color: var(--diff-add-fg); font-size: 12.5px; }
-  .ha-plan-ft { display: flex; justify-content: flex-end; gap: 6px; padding: 7px 10px; background: var(--shell); }
-  .ha-plan-ft span { height: 24px; padding: 0 10px; border-radius: 6px; font-size: 12px; display: inline-flex; align-items: center; border: 1px solid var(--btn-border); background: #fff; color: var(--dim); }
-  .ha-plan-ft span.pri { background: var(--ocean-btn); border-color: var(--ocean-btn); color: #fff; }
-  @media (max-width: 1080px) { .ha-body { grid-template-columns: 210px 1fr; } .ha-ai { display: none; } .ha-tabs { margin-left: 60px; } }
-  @media (max-width: 680px) { .ha-body { grid-template-columns: 1fr; } .ha-side { display: none; } .ha-tabs { margin-left: 0; } .ha-tab { padding: 0 9px; font-size: 12px; } .hero-app { height: 360px; } .ha-doc h3 { font-size: 22px; } }
+  .hx-scene { position: absolute; top: 0; left: 0; right: 0; height: 88px; overflow: hidden; pointer-events: none; z-index: 0; }
+  .hx-scene > div { display: none; }
+  .hx-scene > div.on { display: block; }
+  .hx-scene .dk { -webkit-mask-image: linear-gradient(to bottom, #000 52%, transparent); mask-image: linear-gradient(to bottom, #000 52%, transparent); }
+  @keyframes hx-drift { from { transform: translateX(0); } to { transform: translateX(-260px); } }
+  .hx-scene .dr1 { animation: hx-drift 38s linear infinite; }
+  .hx-scene .dr2 { animation: hx-drift 26s linear infinite; }
+  .hx-scene .dr3 { animation: hx-drift 18s linear infinite; }
+  .hx-scene .drs { animation: hx-drift 90s linear infinite; }
+  .hx-scene .drs2 { animation: hx-drift 140s linear infinite; }
+  @keyframes hx-sway { 0%, 100% { transform: skewX(-7deg); } 50% { transform: skewX(7deg); } }
+  .hx-scene .sw { transform-box: fill-box; transform-origin: 50% 100%; animation: hx-sway 4.6s ease-in-out infinite; }
+  @keyframes hx-st { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+  .hx-scene .st { animation: hx-st 3.6s ease-in-out infinite; }
+  @keyframes hx-glow { 0%, 100% { opacity: .5; } 50% { opacity: .9; } }
+  .hx-scene .glow { animation: hx-glow 7s ease-in-out infinite; }
+  @keyframes hx-flow { to { stroke-dashoffset: -120; } }
+  .hx-scene .wl { stroke-dasharray: 22 98; animation: hx-flow 6s linear infinite; }
+  @keyframes hx-bird { from { transform: translate(-30px, 0); } to { transform: translate(1230px, -14px); } }
+  .hx-scene .bird { animation: hx-bird 120s linear infinite; }
+
+  .hx-ib { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex: none; color: var(--text2); transition: background .12s, color .12s; }
+  .hx-ib.hot, .hx-ib:hover { background: var(--hover); color: var(--text); }
+  .hx-ib.dis { color: var(--disabled); background: transparent; }
+  .hx-ib.on { background: var(--sel-bg); color: var(--text); }
+  .hx-badge { width: 18px; height: 18px; flex: none; border-radius: 5px; background: var(--icon-fill); color: var(--badge-fg); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; }
+  .hx-bar { position: relative; z-index: 1; height: 40px; flex: none; display: flex; align-items: center; }
+  .hx-left { height: 40px; box-sizing: border-box; padding: 0 8px 0 16px; display: flex; align-items: center; flex: none; width: var(--left-w, 240px); transition: width .32s var(--hx-ease); }
+  .hx-lights { display: flex; gap: 8px; flex: none; }
+  .hx-lights i { width: 12px; height: 12px; border-radius: 6px; box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .18); }
+  .hx-lights i:nth-child(1) { background: #ff5f57; } .hx-lights i:nth-child(2) { background: #febc2e; } .hx-lights i:nth-child(3) { background: #28c840; }
+  .hx-nav { margin-left: auto; display: flex; transition: opacity .2s; }
+  .hero-app.no-side .hx-nav { opacity: 0; pointer-events: none; width: 0; overflow: hidden; }
+  .hx-nav .hx-ib { width: 26px; }
+  .hx-mid { flex: 1; min-width: 0; height: 40px; position: relative; display: flex; align-items: center; padding-left: var(--crumb-pad, 8px); }
+  .hx-crumb, .hx-tabs { display: flex; align-items: center; min-width: 0; transition: opacity .18s ease, transform .22s var(--hx-ease); }
+  .hx-crumb { gap: 2px; }
+  .hx-crumb-nb { height: 28px; padding: 0 6px; border-radius: 6px; display: flex; align-items: center; gap: 7px; color: var(--text2); font-size: 14px; white-space: nowrap; }
+  .hx-crumb-sep { color: var(--disabled); font-size: 15px; padding: 0 2px; }
+  .hx-crumb-tt { padding: 0 6px; color: var(--text); font-size: 14px; font-weight: 460; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hx-tabs { position: absolute; left: var(--crumb-pad, 8px); right: 0; top: 6px; height: 28px; gap: 4px; opacity: 0; transform: translateY(3px); pointer-events: none; }
+  .hero-app.multi .hx-crumb { opacity: 0; transform: translateY(-3px); }
+  .hero-app.multi .hx-tabs { opacity: 1; transform: none; }
+  .hx-tab { height: 28px; flex: 0 1 168px; min-width: 76px; max-width: 220px; box-sizing: border-box; padding: 0 4px 0 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: 13px; white-space: nowrap; overflow: hidden; transition: flex-basis .2s var(--hx-ease), min-width .2s var(--hx-ease), padding .2s var(--hx-ease), opacity .16s, background .15s, box-shadow .15s, color .15s; }
+  .hx-tab > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .hx-tab.hot { background: var(--hover); color: var(--text); }
+  .hx-tab.on { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
+  .hx-tab.gone { flex-basis: 0; min-width: 0; padding: 0; opacity: 0; }
+  .hx-tab-x { width: 20px; height: 20px; border-radius: 5px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--text3); opacity: 0; transition: opacity .12s, background .12s; }
+  .hx-tab.on .hx-tab-x, .hx-tab.hot .hx-tab-x { opacity: 1; }
+  .hx-tab-x.hot { background: var(--hover); color: var(--text); }
+  .hx-tail { padding-right: 12px; display: flex; align-items: center; gap: 2px; flex: none; }
+
+  .hx-body { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; }
+  .hx-side { width: var(--side-w); flex: none; overflow: hidden; transition: width .32s var(--hx-ease), opacity .24s; }
+  .hero-app.no-side .hx-side { width: 0; opacity: 0; }
+  .hx-side-in { width: 240px; height: 100%; display: flex; flex-direction: column; }
+  .hx-tools { padding: 4px 8px 6px 12px; display: flex; align-items: center; gap: 2px; }
+  .hx-search { flex: 1; min-width: 0; height: 30px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px var(--field-line), 0 1px 2px rgba(32, 36, 44, .04); padding: 0 6px 0 9px; margin-right: 4px; display: flex; align-items: center; gap: 7px; color: var(--ph); font-size: 13.5px; }
+  .hx-search > span { flex: 1; }
+  .hx-kbd { height: 18px; padding: 0 5px; border-radius: 4px; background: var(--kbd-bg); box-shadow: inset 0 0 0 1px var(--field-line); font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--text2); }
+  .hx-tree { padding: 4px 8px 0 12px; display: flex; flex-direction: column; gap: 2px; }
+  .hx-row { height: 32px; border-radius: 6px; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; white-space: nowrap; overflow: hidden; transition: background .12s, box-shadow .12s; }
+  .hx-row.dir { padding-left: 8px; gap: 6px; }
+  .hx-row.dir > span { margin-left: 2px; }
+  .hx-row.hot { background: var(--hover); }
+  .hx-row.on { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--accent); }
+  .hx-row.on svg:last-of-type { fill: var(--icon-fill); stroke: var(--accent) !important; }
+  .hx-chev { transition: transform .18s var(--hx-ease); }
+  .hx-chev.open { transform: rotate(90deg); }
+  .hx-switch { height: 48px; flex: none; margin-top: auto; box-sizing: border-box; padding: 0 8px 8px 12px; display: flex; align-items: center; gap: 4px; }
+  .hx-switch-nb { flex: 1; min-width: 0; height: 32px; border-radius: 6px; padding: 0 8px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 460; }
+  .hx-switch-nb > span:nth-child(2) { flex: 1; }
+
+  .hx-card { position: relative; flex: 1; min-width: 0; margin: 0 8px 8px 0; border-radius: 10px; background: var(--card); box-shadow: 0 0 0 1px var(--card-line), 0 1px 3px rgba(32, 36, 44, .05); overflow: hidden; transition: margin .32s var(--hx-ease); }
+  .hero-app.no-side .hx-card { margin-left: 8px; }
+  .hx-doc { position: absolute; inset: 0; padding: 48px 32px 0 56px; transition: opacity .22s ease; }
+  .hx-doc.off { opacity: 0; pointer-events: none; }
+  .hx-art { max-width: 640px; margin: 0 auto; color: var(--body); font-size: 16px; line-height: 28px; }
+  .hx-art h1 { margin: 0 0 12px; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em; color: var(--body); }
+  .hx-art h2 { margin: 18px 0 6px; font-size: 22px; line-height: 30px; font-weight: 600; color: var(--body); }
+  .hx-art h3 { margin: 14px 0 4px; font-size: 18px; line-height: 26px; font-weight: 600; color: var(--body); }
+  .hx-art p { margin: 0 0 6px; color: var(--body2); }
+  .hx-art a { color: var(--link); text-decoration: none; }
+  .hx-art mark { background: #fbe7a6; color: inherit; border-radius: 3px; padding: 1px 2px; }
+  .hx-li { position: relative; padding-left: 26px; color: var(--body); }
+  .hx-li::before { content: ""; position: absolute; left: 9px; top: 11px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .hx-blk { position: relative; }
+  .hx-grip { position: absolute; left: -26px; top: 5px; width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #b5b3ad; opacity: 0; transition: opacity .15s; }
+  .hx-blk.focus .hx-grip { opacity: 1; }
+  .hx-todo { display: flex; align-items: flex-start; gap: 10px; color: var(--body); }
+  .hx-todo b { width: 16px; height: 16px; flex: none; margin-top: 6px; border-radius: 4px; border: 1px solid #c8c6bf; background: #f8f8f6; display: flex; align-items: center; justify-content: center; }
+  .hx-todo b svg { width: 12px; height: 12px; display: none; }
+  .hx-todo.done b { background: var(--accent); border-color: var(--accent); }
+  .hx-todo.done b svg { display: block; }
+  .hx-todo.done span { color: #8c8a84; text-decoration: line-through; text-decoration-color: rgba(140, 138, 132, .65); }
+  .hx-todo .caret { height: 1.1em; }
+  .hx-tbl { position: relative; margin: 8px 0 6px; padding: 0 22px 22px 0; }
+  .hx-tbl table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 22px; }
+  .hx-tbl th, .hx-tbl td { border: 1px solid #e3e1dc; padding: 7px 12px; text-align: left; vertical-align: top; color: var(--body2); }
+  .hx-tbl th { font-weight: 600; color: var(--body); background: #f8f8f6; white-space: nowrap; }
+  .hx-tbl td:first-child { white-space: nowrap; }
+  .hx-tbl tr.new td { animation: hx-pop 1.4s ease; }
+  .hx-tbl tr.hide { display: none; }
+  @keyframes hx-pop { 0% { background: #e9f7ef; } 100% { background: transparent; } }
+  .hx-add-r, .hx-add-b { position: absolute; border-radius: 4px; background: #f3f3f1; color: #8c8a84; display: flex; align-items: center; justify-content: center; }
+  .hx-add-r { right: 0; top: 0; bottom: 22px; width: 16px; }
+  .hx-add-b { left: 0; right: 22px; bottom: 0; height: 16px; }
+  .hx-outline { position: absolute; left: 18px; top: 36px; display: flex; flex-direction: column; gap: 6px; padding: 4px 8px 4px 0; opacity: 0; transition: opacity .25s; }
+  .hero-app.outline .hx-outline { opacity: 1; }
+  .hx-outline i { display: block; height: 2px; border-radius: 1px; background: #cfd5de; transition: background .2s; }
+  .hx-outline i.lit { background: #1f1e1d; }
+
+  .hx-chat { flex: none; width: var(--chat-w); margin: 0 8px 8px 0; border-radius: 10px; background: var(--card); box-shadow: 0 0 0 1px var(--card-line), 0 1px 3px rgba(32, 36, 44, .05); overflow: hidden; transition: width .34s var(--hx-ease), margin .34s var(--hx-ease), opacity .22s, box-shadow .22s; }
+  .hero-app:not(.chat) .hx-chat { width: 0; margin-right: 0; opacity: 0; box-shadow: none; }
+  .hero-app.chat-float .hx-chat { position: absolute; right: 8px; top: 0; bottom: 8px; z-index: 3; box-shadow: 0 0 0 1px var(--card-line), 0 18px 40px rgba(32, 36, 44, .16); }
+  .hero-app.chat-float:not(.chat) .hx-chat { width: var(--chat-w); transform: translateX(16px); }
+  .hx-chat-in { width: var(--chat-w); height: 100%; display: flex; flex-direction: column; }
+  .hx-chat-hd { height: 44px; flex: none; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; border-bottom: 1px solid var(--divider); }
+  .hx-chat-hd > span { flex: 1; }
+  .hx-feed { flex: 1; min-height: 0; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 21px; overflow: hidden; }
+  .hx-feed > * { display: none; }
+  .hx-feed > .on { display: block; animation: rise .24s ease; }
+  .hx-me { align-self: flex-end; max-width: 90%; padding: 7px 11px; border-radius: 10px; background: var(--kbd-bg); color: var(--text); }
+  .hx-ref { display: inline-block; padding: 0 5px; margin-right: 3px; border-radius: 4px; background: #fff; box-shadow: inset 0 0 0 1px #cddbf5; color: var(--badge-fg); font-size: 12.5px; }
+  .hx-say { color: var(--text); }
+  .hx-plan { border-radius: 10px; box-shadow: 0 0 0 1px var(--card-line); overflow: hidden; }
+  .hx-plan-hd { padding: 8px 11px; display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--divider); }
+  .hx-plan-ln { padding: 4px 11px; font-size: 13px; }
+  .hx-plan-ln.add { background: #e9f7ef; color: #1e6b3f; }
+  .hx-plan-ft { padding: 7px 11px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; border-top: 1px solid var(--divider); }
+  .hx-plan-ft em { margin-right: auto; font-style: normal; font-size: 12.5px; color: #1e6b3f; opacity: 0; transition: opacity .2s; }
+  .hx-plan.done .hx-plan-ft em { opacity: 1; }
+  .hx-plan.done .hx-btn { display: none; }
+  .hx-btn { height: 26px; padding: 0 11px; border-radius: 6px; font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; color: var(--text2); box-shadow: inset 0 0 0 1px var(--field-line); transition: background .15s, transform .12s; }
+  .hx-btn.pri { background: var(--accent); color: #fff; box-shadow: none; }
+  .hx-btn.pri.hot { background: #4570c4; transform: scale(.96); }
+  .hx-comp { margin: 0 12px 12px; padding: 8px 8px 8px 11px; border-radius: 10px; box-shadow: 0 0 0 1px var(--field-line); display: flex; align-items: flex-end; gap: 8px; flex: none; }
+  .hx-comp > span:first-child { flex: 1; min-height: 20px; font-size: 13.5px; color: var(--ph); }
+  .hx-comp > span:first-child.typed { color: var(--text); }
+  .hx-send { width: 24px; height: 24px; border-radius: 6px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; opacity: .45; transition: opacity .15s; }
+  .hx-comp > span:first-child.typed + .hx-send { opacity: 1; }
+  @media (max-width: 680px) { .hero-app { height: 440px; } .hx-doc { padding: 32px 18px 0 22px; } .hx-art h1 { font-size: 24px; line-height: 32px; } .hx-tail .hx-ib:first-child { display: none; } }
 
   /* ==================== 丰富版：全部功能网格 ==================== */
   .feat-grid { max-width: 1120px; margin: 44px auto 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -1050,50 +1158,67 @@
       <span class="cta-support">同时支持 Windows · Linux</span>
     </div>
     <div class="hero-app" id="hero-app" aria-label="Block 应用界面示意">
-      <div class="ha-bar">
-        <span class="traffic"><i></i><i></i><i></i></span>
-        <div class="ha-tabs">
-          <span class="ha-tab on">读书计划</span>
-          <span class="ha-tab">周末出行</span>
-          <span class="ha-tab">项目周报</span>
+      <div class="hx-scene" aria-hidden="true"><div data-sc="dawn"><div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 1200px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #fbe9dc 0%, rgba(241,241,241,0) 100%)"></div><svg width="1200" height="88" viewBox="0 0 1200 88" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="41" r="6.8" fill="#ffe6cc" opacity="1"></circle><circle cx="190" cy="41" r="3.8" fill="#ffc993"></circle></g><g class="drs"><path d="M0 44 C43 38 87 38 130 44 C173 50 217 50 260 44 C303 38 347 38 390 44 C433 50 477 50 520 44 C563 38 607 38 650 44 C693 50 737 50 780 44 C823 38 867 38 910 44 C953 50 997 50 1040 44 C1083 38 1127 38 1170 44 C1213 50 1257 50 1300 44 C1343 38 1387 38 1430 44 C1473 50 1517 50 1560 44 V88 H0 Z" fill="#e7ece3"></path></g><g class="dr1"><g fill="#ffffff" opacity="0.7"><rect x="20" y="40" width="90" height="5" rx="2.5"></rect><rect x="280" y="40" width="90" height="5" rx="2.5"></rect><rect x="540" y="40" width="90" height="5" rx="2.5"></rect><rect x="800" y="40" width="90" height="5" rx="2.5"></rect><rect x="1060" y="40" width="90" height="5" rx="2.5"></rect><rect x="1320" y="40" width="90" height="5" rx="2.5"></rect></g><g fill="#ffffff" opacity="0.6"><rect x="150" y="47" width="70" height="5" rx="2.5"></rect><rect x="410" y="47" width="70" height="5" rx="2.5"></rect><rect x="670" y="47" width="70" height="5" rx="2.5"></rect><rect x="930" y="47" width="70" height="5" rx="2.5"></rect><rect x="1190" y="47" width="70" height="5" rx="2.5"></rect><rect x="1450" y="47" width="70" height="5" rx="2.5"></rect></g></g><g class="dr2"><path d="M0 56 C43 61 87 61 130 56 C173 51 217 51 260 56 C303 61 347 61 390 56 C433 51 477 51 520 56 C563 61 607 61 650 56 C693 51 737 51 780 56 C823 61 867 61 910 56 C953 51 997 51 1040 56 C1083 61 1127 61 1170 56 C1213 51 1257 51 1300 56 C1343 61 1387 61 1430 56 C1473 51 1517 51 1560 56 V88 H0 Z" fill="#dce6d6"></path></g><g class="drs2"><g fill="#ffffff" opacity="0.55"><rect x="60" y="58" width="110" height="5" rx="2.5"></rect><rect x="320" y="58" width="110" height="5" rx="2.5"></rect><rect x="580" y="58" width="110" height="5" rx="2.5"></rect><rect x="840" y="58" width="110" height="5" rx="2.5"></rect><rect x="1100" y="58" width="110" height="5" rx="2.5"></rect><rect x="1360" y="58" width="110" height="5" rx="2.5"></rect></g></g><g class="dr3"><path d="M0 64 C43 61 87 61 130 64 C173 67 217 67 260 64 C303 61 347 61 390 64 C433 67 477 67 520 64 C563 61 607 61 650 64 C693 67 737 67 780 64 C823 61 867 61 910 64 C953 67 997 67 1040 64 C1083 61 1127 61 1170 64 C1213 67 1257 67 1300 64 C1343 61 1387 61 1430 64 C1473 67 1517 67 1560 64 V88 H0 Z" fill="#d2e0cb"></path><g class="sw"><g fill="none" stroke="#b2cca8" stroke-width="1.1" stroke-linecap="round"><path d="M20.0 64.2 q0.1 -2.7 0.1 -4.8"></path><path d="M280.0 64.2 q0.1 -2.9 0.3 -5.3"></path><path d="M540.0 64.2 q-0.6 -3.4 -1.4 -6.2"></path><path d="M800.0 64.2 q0.4 -2.2 1.1 -4.0"></path><path d="M1060.0 64.2 q-0.3 -2.7 -0.9 -4.9"></path><path d="M1320.0 64.2 q-0.0 -4.1 -0.1 -7.5"></path><path d="M64.0 63.0 q-0.0 -3.8 -0.1 -6.9"></path><path d="M324.0 63.0 q-0.4 -3.4 -1.1 -6.2"></path><path d="M584.0 63.0 q0.5 -3.4 1.2 -6.2"></path><path d="M844.0 63.0 q0.3 -3.2 0.8 -5.8"></path><path d="M1104.0 63.0 q-0.6 -3.5 -1.4 -6.3"></path><path d="M1364.0 63.0 q0.1 -3.7 0.3 -6.7"></path><path d="M112.0 64.3 q-0.6 -2.8 -1.5 -5.1"></path><path d="M372.0 64.3 q-0.0 -3.9 -0.1 -7.0"></path><path d="M632.0 64.3 q0.5 -3.6 1.2 -6.5"></path><path d="M892.0 64.3 q0.5 -3.6 1.3 -6.5"></path><path d="M1152.0 64.3 q0.4 -3.0 1.0 -5.4"></path><path d="M1412.0 64.3 q0.6 -3.1 1.4 -5.6"></path><path d="M170.0 67.1 q-0.5 -3.9 -1.3 -7.1"></path><path d="M430.0 67.1 q-0.4 -2.5 -0.9 -4.5"></path><path d="M690.0 67.1 q-0.1 -4.1 -0.2 -7.4"></path><path d="M950.0 67.1 q-0.3 -3.4 -0.6 -6.2"></path><path d="M1210.0 67.1 q-0.1 -3.2 -0.4 -5.8"></path><path d="M1470.0 67.1 q0.1 -2.9 0.3 -5.2"></path><path d="M214.0 67.2 q0.5 -3.3 1.3 -6.0"></path><path d="M474.0 67.2 q0.5 -3.5 1.4 -6.4"></path><path d="M734.0 67.2 q0.6 -3.8 1.6 -7.0"></path><path d="M994.0 67.2 q-0.4 -3.5 -1.1 -6.3"></path><path d="M1254.0 67.2 q0.6 -3.9 1.5 -7.0"></path><path d="M1514.0 67.2 q0.1 -3.9 0.2 -7.2"></path></g></g></g></svg></div></div><div data-sc="meadow"><div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 1200px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><svg width="1200" height="88" viewBox="0 0 1200 88" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="40" r="6.6" fill="#fff0c4" opacity="1"></circle><circle cx="190" cy="40" r="3.6" fill="#ffdf96"></circle></g><g class="dr1"><path d="M0 41 C43 35 87 35 130 41 C173 47 217 47 260 41 C303 35 347 35 390 41 C433 47 477 47 520 41 C563 35 607 35 650 41 C693 47 737 47 780 41 C823 35 867 35 910 41 C953 47 997 47 1040 41 C1083 35 1127 35 1170 41 C1213 47 1257 47 1300 41 C1343 35 1387 35 1430 41 C1473 47 1517 47 1560 41 V88 H0 Z" fill="#e2eadf"></path></g><g class="dr2"><path d="M0 50 C43 56 87 56 130 50 C173 44 217 44 260 50 C303 56 347 56 390 50 C433 44 477 44 520 50 C563 56 607 56 650 50 C693 44 737 44 780 50 C823 56 867 56 910 50 C953 44 997 44 1040 50 C1083 56 1127 56 1170 50 C1213 44 1257 44 1300 50 C1343 56 1387 56 1430 50 C1473 44 1517 44 1560 50 V88 H0 Z" fill="#d6e4d0"></path></g><g class="dr3"><path d="M0 60 C43 56 87 56 130 60 C173 64 217 64 260 60 C303 56 347 56 390 60 C433 64 477 64 520 60 C563 56 607 56 650 60 C693 64 737 64 780 60 C823 56 867 56 910 60 C953 64 997 64 1040 60 C1083 56 1127 56 1170 60 C1213 64 1257 64 1300 60 C1343 56 1387 56 1430 60 C1473 64 1517 64 1560 60 V88 H0 Z" fill="#cadcc2"></path><g class="sw"><g fill="none" stroke="#a9c69f" stroke-width="1.1" stroke-linecap="round"><path d="M14.0 60.2 q-0.4 -2.8 -1.1 -5.1"></path><path d="M274.0 60.2 q-0.5 -3.5 -1.4 -6.3"></path><path d="M534.0 60.2 q-0.2 -3.2 -0.4 -5.9"></path><path d="M794.0 60.2 q0.0 -2.3 0.0 -4.2"></path><path d="M1054.0 60.2 q-0.1 -2.3 -0.2 -4.1"></path><path d="M1314.0 60.2 q-0.5 -2.3 -1.3 -4.2"></path><path d="M22.0 59.7 q0.4 -3.0 1.0 -5.5"></path><path d="M282.0 59.7 q-0.4 -2.4 -0.9 -4.4"></path><path d="M542.0 59.7 q0.6 -3.4 1.4 -6.2"></path><path d="M802.0 59.7 q-0.1 -3.3 -0.3 -6.0"></path><path d="M1062.0 59.7 q-0.6 -4.1 -1.5 -7.4"></path><path d="M1322.0 59.7 q-0.3 -3.9 -0.7 -7.0"></path><path d="M57.0 58.3 q-0.5 -2.5 -1.2 -4.5"></path><path d="M317.0 58.3 q0.4 -2.8 1.0 -5.1"></path><path d="M577.0 58.3 q0.1 -2.5 0.3 -4.6"></path><path d="M837.0 58.3 q-0.2 -3.4 -0.4 -6.2"></path><path d="M1097.0 58.3 q-0.6 -3.3 -1.4 -5.9"></path><path d="M1357.0 58.3 q-0.4 -2.3 -0.9 -4.2"></path><path d="M63.0 58.2 q-0.1 -3.5 -0.2 -6.4"></path><path d="M323.0 58.2 q0.1 -2.8 0.3 -5.1"></path><path d="M583.0 58.2 q-0.3 -3.1 -0.6 -5.6"></path><path d="M843.0 58.2 q0.3 -3.7 0.6 -6.8"></path><path d="M1103.0 58.2 q0.1 -2.7 0.2 -4.9"></path><path d="M1363.0 58.2 q0.5 -3.2 1.2 -5.8"></path><path d="M101.0 59.3 q-0.3 -3.6 -0.7 -6.6"></path><path d="M361.0 59.3 q-0.5 -4.1 -1.2 -7.4"></path><path d="M621.0 59.3 q0.3 -3.0 0.8 -5.5"></path><path d="M881.0 59.3 q-0.0 -2.5 -0.0 -4.5"></path><path d="M1141.0 59.3 q0.2 -2.3 0.5 -4.1"></path><path d="M1401.0 59.3 q0.1 -3.7 0.2 -6.7"></path><path d="M139.0 61.8 q-0.2 -3.9 -0.6 -7.1"></path><path d="M399.0 61.8 q0.1 -3.5 0.3 -6.4"></path><path d="M659.0 61.8 q-0.1 -3.3 -0.1 -6.0"></path><path d="M919.0 61.8 q0.6 -3.8 1.4 -6.9"></path><path d="M1179.0 61.8 q0.2 -3.1 0.5 -5.7"></path><path d="M1439.0 61.8 q0.3 -2.3 0.6 -4.2"></path><path d="M146.0 62.3 q0.6 -3.4 1.6 -6.3"></path><path d="M406.0 62.3 q-0.3 -3.8 -0.7 -6.9"></path><path d="M666.0 62.3 q0.2 -2.9 0.5 -5.4"></path><path d="M926.0 62.3 q-0.0 -2.2 -0.1 -4.1"></path><path d="M1186.0 62.3 q-0.5 -2.5 -1.2 -4.6"></path><path d="M1446.0 62.3 q0.3 -2.3 0.9 -4.2"></path><path d="M183.0 64.1 q-0.3 -2.4 -0.8 -4.5"></path><path d="M443.0 64.1 q0.5 -3.0 1.2 -5.4"></path><path d="M703.0 64.1 q-0.1 -2.4 -0.2 -4.3"></path><path d="M963.0 64.1 q0.5 -3.3 1.2 -5.9"></path><path d="M1223.0 64.1 q0.5 -3.8 1.2 -6.9"></path><path d="M1483.0 64.1 q-0.1 -2.7 -0.3 -5.0"></path><path d="M224.0 63.5 q0.5 -2.9 1.2 -5.3"></path><path d="M484.0 63.5 q-0.4 -4.0 -1.1 -7.4"></path><path d="M744.0 63.5 q-0.3 -2.5 -0.9 -4.6"></path><path d="M1004.0 63.5 q-0.0 -2.6 -0.0 -4.8"></path><path d="M1264.0 63.5 q-0.3 -3.3 -0.8 -6.1"></path><path d="M1524.0 63.5 q-0.1 -2.2 -0.3 -4.0"></path><path d="M231.0 63.1 q0.1 -2.9 0.2 -5.3"></path><path d="M491.0 63.1 q0.2 -4.0 0.6 -7.3"></path><path d="M751.0 63.1 q0.2 -3.2 0.4 -5.8"></path><path d="M1011.0 63.1 q-0.6 -3.5 -1.4 -6.4"></path><path d="M1271.0 63.1 q0.4 -3.9 0.9 -7.1"></path><path d="M1531.0 63.1 q0.4 -3.9 1.0 -7.1"></path></g></g><g class="sw" style="animation-delay: -2.2s"><g fill="none" stroke="#9bbd90" stroke-width="1.1" stroke-linecap="round"><path d="M36.0 58.9 q0.6 -2.6 1.5 -4.8"></path><path d="M296.0 58.9 q0.3 -2.4 0.7 -4.4"></path><path d="M556.0 58.9 q-0.3 -2.4 -0.8 -4.3"></path><path d="M816.0 58.9 q-0.4 -4.1 -0.9 -7.5"></path><path d="M1076.0 58.9 q-0.1 -3.4 -0.1 -6.2"></path><path d="M1336.0 58.9 q-0.0 -3.1 -0.0 -5.6"></path><path d="M82.0 58.4 q0.4 -2.6 1.1 -4.7"></path><path d="M342.0 58.4 q-0.3 -2.4 -0.9 -4.3"></path><path d="M602.0 58.4 q-0.3 -2.2 -0.7 -4.1"></path><path d="M862.0 58.4 q0.5 -3.0 1.3 -5.4"></path><path d="M1122.0 58.4 q-0.5 -2.9 -1.2 -5.3"></path><path d="M1382.0 58.4 q0.6 -2.7 1.6 -4.9"></path><path d="M118.0 60.3 q0.2 -2.3 0.4 -4.2"></path><path d="M378.0 60.3 q0.2 -2.9 0.5 -5.3"></path><path d="M638.0 60.3 q0.2 -2.9 0.6 -5.2"></path><path d="M898.0 60.3 q0.2 -3.2 0.5 -5.7"></path><path d="M1158.0 60.3 q0.1 -3.9 0.3 -7.2"></path><path d="M1418.0 60.3 q-0.6 -2.5 -1.4 -4.5"></path><path d="M165.0 63.4 q-0.0 -4.0 -0.0 -7.3"></path><path d="M425.0 63.4 q0.6 -2.6 1.4 -4.7"></path><path d="M685.0 63.4 q0.3 -3.3 0.7 -6.0"></path><path d="M945.0 63.4 q-0.3 -3.9 -0.7 -7.1"></path><path d="M1205.0 63.4 q0.5 -2.9 1.2 -5.2"></path><path d="M1465.0 63.4 q0.3 -2.5 0.8 -4.5"></path><path d="M203.0 64.1 q0.2 -2.4 0.6 -4.3"></path><path d="M463.0 64.1 q0.6 -3.6 1.4 -6.5"></path><path d="M723.0 64.1 q0.0 -3.8 0.0 -7.0"></path><path d="M983.0 64.1 q-0.4 -2.6 -1.1 -4.7"></path><path d="M1243.0 64.1 q0.0 -3.2 0.0 -5.9"></path><path d="M1503.0 64.1 q0.5 -2.3 1.3 -4.2"></path><path d="M247.0 62.1 q0.3 -3.2 0.6 -5.8"></path><path d="M507.0 62.1 q-0.3 -2.6 -0.8 -4.8"></path><path d="M767.0 62.1 q-0.2 -2.2 -0.5 -4.0"></path><path d="M1027.0 62.1 q-0.1 -2.7 -0.2 -4.9"></path><path d="M1287.0 62.1 q0.4 -2.9 1.1 -5.3"></path><path d="M1547.0 62.1 q-0.4 -3.9 -1.0 -7.1"></path></g></g></g></svg></div></div><div data-sc="breeze"><div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 1200px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><svg width="1200" height="88" viewBox="0 0 1200 88" style="position: absolute; left: 0; top: 0; display: block"><g class="drs"><path d="M0 50 C43 45 87 45 130 50 C173 55 217 55 260 50 C303 45 347 45 390 50 C433 55 477 55 520 50 C563 45 607 45 650 50 C693 55 737 55 780 50 C823 45 867 45 910 50 C953 55 997 55 1040 50 C1083 45 1127 45 1170 50 C1213 55 1257 55 1300 50 C1343 45 1387 45 1430 50 C1473 55 1517 55 1560 50 V88 H0 Z" fill="#e3ebdf"></path></g><g class="dr2"><g fill="none" stroke="#b7d1ae" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M6 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M266 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M526 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M786 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M1046 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path><path class="wl" d="M1306 36 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -0s; animation-duration: 5.5s"></path></g><g fill="none" stroke="#c3d6ec" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M96 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M356 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M616 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M876 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M1136 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path><path class="wl" d="M1396 44 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -1.8s; animation-duration: 6.5s"></path></g><g fill="none" stroke="#c3d6ec" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M170 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M430 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M690 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M950 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M1210 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path><path class="wl" d="M1470 30 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -3.1s; animation-duration: 6s"></path></g><g fill="none" stroke="#b7d1ae" stroke-width="1.2" stroke-linecap="round"><path class="wl" d="M150 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M410 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M670 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M930 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M1190 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path><path class="wl" d="M1450 52 c14 -4 28 4 42 0 s22 -5 34 -1.5" style="animation-delay: -2.4s; animation-duration: 7s"></path></g></g><g class="dr1"><path d="M0 60 C43 63 87 63 130 60 C173 57 217 57 260 60 C303 63 347 63 390 60 C433 57 477 57 520 60 C563 63 607 63 650 60 C693 57 737 57 780 60 C823 63 867 63 910 60 C953 57 997 57 1040 60 C1083 63 1127 63 1170 60 C1213 57 1257 57 1300 60 C1343 63 1387 63 1430 60 C1473 57 1517 57 1560 60 V88 H0 Z" fill="#d7e5d1"></path><g class="sw"><g fill="none" stroke="#a9c69f" stroke-width="1.1" stroke-linecap="round"><path d="M18.0 62.1 q-0.2 -3.1 -0.4 -5.6"></path><path d="M278.0 62.1 q0.5 -2.5 1.2 -4.5"></path><path d="M538.0 62.1 q0.0 -2.2 0.0 -4.0"></path><path d="M798.0 62.1 q-0.5 -3.9 -1.3 -7.1"></path><path d="M1058.0 62.1 q0.1 -3.3 0.4 -5.9"></path><path d="M1318.0 62.1 q-0.2 -2.3 -0.4 -4.1"></path><path d="M26.0 62.5 q-0.1 -3.6 -0.2 -6.5"></path><path d="M286.0 62.5 q-0.4 -3.6 -1.1 -6.5"></path><path d="M546.0 62.5 q-0.5 -2.7 -1.2 -4.8"></path><path d="M806.0 62.5 q0.5 -3.2 1.4 -5.8"></path><path d="M1066.0 62.5 q0.4 -3.3 0.9 -6.1"></path><path d="M1326.0 62.5 q0.3 -2.9 0.8 -5.3"></path><path d="M74.0 63.4 q-0.3 -2.4 -0.7 -4.4"></path><path d="M334.0 63.4 q0.3 -3.5 0.7 -6.4"></path><path d="M594.0 63.4 q-0.5 -3.0 -1.3 -5.5"></path><path d="M854.0 63.4 q-0.4 -2.7 -0.9 -4.9"></path><path d="M1114.0 63.4 q0.4 -2.7 1.0 -5.0"></path><path d="M1374.0 63.4 q0.5 -2.6 1.2 -4.7"></path><path d="M128.0 61.3 q-0.6 -3.9 -1.4 -7.1"></path><path d="M388.0 61.3 q-0.0 -2.9 -0.0 -5.3"></path><path d="M648.0 61.3 q-0.1 -2.2 -0.2 -4.1"></path><path d="M908.0 61.3 q-0.5 -3.9 -1.2 -7.2"></path><path d="M1168.0 61.3 q-0.5 -3.3 -1.2 -6.1"></path><path d="M1428.0 61.3 q0.5 -3.3 1.3 -6.0"></path><path d="M136.0 60.9 q-0.6 -2.6 -1.6 -4.7"></path><path d="M396.0 60.9 q0.1 -2.4 0.1 -4.3"></path><path d="M656.0 60.9 q-0.5 -2.2 -1.3 -4.1"></path><path d="M916.0 60.9 q0.5 -3.2 1.3 -5.7"></path><path d="M1176.0 60.9 q-0.1 -3.0 -0.3 -5.5"></path><path d="M1436.0 60.9 q-0.5 -3.4 -1.3 -6.2"></path><path d="M196.0 59.0 q-0.4 -3.3 -1.0 -6.0"></path><path d="M456.0 59.0 q0.6 -3.4 1.5 -6.1"></path><path d="M716.0 59.0 q0.1 -2.3 0.2 -4.2"></path><path d="M976.0 59.0 q-0.4 -3.4 -1.1 -6.1"></path><path d="M1236.0 59.0 q0.6 -2.7 1.6 -4.9"></path><path d="M1496.0 59.0 q-0.5 -4.1 -1.2 -7.5"></path><path d="M238.0 60.1 q0.6 -3.6 1.4 -6.5"></path><path d="M498.0 60.1 q0.1 -2.7 0.4 -4.8"></path><path d="M758.0 60.1 q-0.2 -2.3 -0.4 -4.2"></path><path d="M1018.0 60.1 q0.1 -3.5 0.3 -6.4"></path><path d="M1278.0 60.1 q-0.5 -3.7 -1.3 -6.7"></path><path d="M1538.0 60.1 q0.5 -2.9 1.2 -5.2"></path></g></g></g></svg></div></div><div data-sc="dusk"><div class="dk" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 1200px; height: 88px; overflow: hidden; pointer-events: none; z-index: 0"><div style="position: absolute; inset: 0; background: linear-gradient(180deg, #f6dfd2 0%, #efe3ee 45%, rgba(241,241,241,0) 100%)"></div><svg width="1200" height="88" viewBox="0 0 1200 88" style="position: absolute; left: 0; top: 0; display: block"><g class="orb"><circle class="glow" cx="190" cy="44" r="7.2" fill="#f8d3bb" opacity="1"></circle><circle cx="190" cy="44" r="4.2" fill="#f2a679"></circle></g><g class="bird" fill="none" stroke="#b49c8e" stroke-width="0.9" stroke-linecap="round"><g transform="translate(0 30) scale(0.9)"><path d="M0 0 q2.2 -2.2 4.4 0 q2.2 -2.2 4.4 0"></path></g><g transform="translate(12 25) scale(0.7)"><path d="M0 0 q2.2 -2.2 4.4 0 q2.2 -2.2 4.4 0"></path></g></g><g class="drs"><path d="M0 46 C43 40 87 40 130 46 C173 52 217 52 260 46 C303 40 347 40 390 46 C433 52 477 52 520 46 C563 40 607 40 650 46 C693 52 737 52 780 46 C823 40 867 40 910 46 C953 52 997 52 1040 46 C1083 40 1127 40 1170 46 C1213 52 1257 52 1300 46 C1343 40 1387 40 1430 46 C1473 52 1517 52 1560 46 V88 H0 Z" fill="#e8e0d8"></path></g><g class="dr1"><path d="M0 55 C43 60 87 60 130 55 C173 50 217 50 260 55 C303 60 347 60 390 55 C433 50 477 50 520 55 C563 60 607 60 650 55 C693 50 737 50 780 55 C823 60 867 60 910 55 C953 50 997 50 1040 55 C1083 60 1127 60 1170 55 C1213 50 1257 50 1300 55 C1343 60 1387 60 1430 55 C1473 50 1517 50 1560 55 V88 H0 Z" fill="#ddd6cb"></path></g><g class="dr2"><path d="M0 63 C43 60 87 60 130 63 C173 66 217 66 260 63 C303 60 347 60 390 63 C433 66 477 66 520 63 C563 60 607 60 650 63 C693 66 737 66 780 63 C823 60 867 60 910 63 C953 66 997 66 1040 63 C1083 60 1127 60 1170 63 C1213 66 1257 66 1300 63 C1343 60 1387 60 1430 63 C1473 66 1517 66 1560 63 V88 H0 Z" fill="#d3cfc0"></path><g class="sw"><g fill="none" stroke="#bdb6a2" stroke-width="1.1" stroke-linecap="round"><path d="M30.0 62.7 q-0.5 -2.7 -1.3 -4.8"></path><path d="M290.0 62.7 q-0.4 -3.0 -1.1 -5.4"></path><path d="M550.0 62.7 q-0.1 -2.3 -0.3 -4.2"></path><path d="M810.0 62.7 q0.4 -4.0 1.0 -7.2"></path><path d="M1070.0 62.7 q-0.4 -3.7 -0.9 -6.7"></path><path d="M1330.0 62.7 q-0.3 -3.2 -0.7 -5.9"></path><path d="M92.0 62.4 q-0.5 -2.5 -1.3 -4.6"></path><path d="M352.0 62.4 q0.5 -2.6 1.4 -4.8"></path><path d="M612.0 62.4 q0.4 -3.8 1.0 -6.9"></path><path d="M872.0 62.4 q-0.4 -3.7 -1.0 -6.8"></path><path d="M1132.0 62.4 q0.2 -2.8 0.4 -5.1"></path><path d="M1392.0 62.4 q0.5 -3.6 1.1 -6.6"></path><path d="M150.0 65.2 q-0.5 -3.9 -1.3 -7.1"></path><path d="M410.0 65.2 q0.2 -3.4 0.5 -6.1"></path><path d="M670.0 65.2 q-0.4 -3.2 -1.0 -5.8"></path><path d="M930.0 65.2 q-0.5 -3.1 -1.3 -5.7"></path><path d="M1190.0 65.2 q0.5 -4.0 1.2 -7.3"></path><path d="M1450.0 65.2 q-0.3 -3.3 -0.6 -5.9"></path><path d="M206.0 66.4 q0.1 -3.9 0.2 -7.2"></path><path d="M466.0 66.4 q0.4 -3.9 1.1 -7.1"></path><path d="M726.0 66.4 q-0.1 -3.2 -0.3 -5.8"></path><path d="M986.0 66.4 q-0.1 -3.4 -0.2 -6.1"></path><path d="M1246.0 66.4 q-0.2 -2.5 -0.6 -4.6"></path><path d="M1506.0 66.4 q-0.6 -3.8 -1.5 -6.8"></path></g></g></g></svg></div></div></div>
+      <div class="hx-bar">
+        <div class="hx-left">
+          <span class="hx-lights"><i></i><i></i><i></i></span>
+          <span class="hx-ib" style="margin-left:12px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path><path d="M15.5 10l-2 2 2 2" style="stroke: var(--accent)"></path></svg></span>
+          <span class="hx-nav"><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M11 6l-6 6 6 6"></path></svg></span><span class="hx-ib dis"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span></span>
         </div>
+        <div class="hx-mid">
+          <div class="hx-crumb"><span class="hx-crumb-nb"><span class="hx-badge">生</span><span>生活</span></span><span class="hx-crumb-sep">/</span><span class="hx-crumb-tt" id="hx-crumb-tt">潮汕之旅</span></div>
+          <div class="hx-tabs" id="hx-tabs"><span class="hx-ib" id="hx-newtab"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg></span></div>
+        </div>
+        <div class="hx-tail"><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4z"></path><path d="M8.5 9h7M8.5 12h4"></path></svg></span><span class="hx-ib" id="hx-ai-btn"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path><path d="M18 3v4M16 5h4" style="stroke: var(--accent)"></path></svg></span><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="18" cy="12" r="1.5"></circle></svg></span></div>
       </div>
-      <div class="ha-body">
-        <aside class="ha-side">
-          <div class="ha-search"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>搜索笔记</div>
-          <div class="ha-label">我的笔记本</div>
-          <div class="ha-row"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/></svg>读书笔记</div>
-          <div class="ha-row in on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2h5.5L12 4.5V14H4z"/></svg>读书计划</div>
-          <div class="ha-row in"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2h5.5L12 4.5V14H4z"/></svg>《置身事内》摘录</div>
-          <div class="ha-row"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/></svg>生活</div>
-          <div class="ha-row in"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2h5.5L12 4.5V14H4z"/></svg>周末出行</div>
-          <div class="ha-row"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/></svg>工作</div>
-          <div class="ha-row in"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2h5.5L12 4.5V14H4z"/></svg>项目周报</div>
-        </aside>
-        <div class="ha-doc">
-          <h3>读书计划</h3>
-          <p>今年想把书读得慢一点，每读完一本，就用自己的话写一页笔记。</p>
-          <div class="ha-todo done"><b></b><span>《置身事内》读完第三章</span></div>
-          <div class="ha-todo"><b></b><span>整理地方财政那一节的摘录</span></div>
-          <div class="ha-todo"><b></b><span class="ha-type"><span id="ha-type"></span><i class="caret"></i></span></div>
-          <table class="ha-table">
-            <tr><th>书名</th><th>进度</th><th>想法</th></tr>
-            <tr><td>置身事内</td><td>60%</td><td>从县城的账本看经济</td></tr>
-            <tr><td>额尔古纳河右岸</td><td>20%</td><td>适合睡前慢慢读</td></tr>
-          </table>
-        </div>
-        <aside class="ha-ai">
-          <div class="ha-ai-top"><span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#547dd0" stroke-width="1.6" stroke-linejoin="round"><path d="M7 2l1.3 3.7L12 7l-3.7 1.3L7 12l-1.3-3.7L2 7l3.7-1.3z"/></svg>AI 助手</span><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#9aa1ad" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></div>
-          <div class="ha-ai-feed">
-            <div class="ha-msg">帮我把这周的读书进度整理成清单</div>
-            <div class="ha-plan">
-              <div class="ha-plan-hd">读书计划.md</div>
-              <div class="ha-plan-ln">+ 周一到周三：读完第四章</div>
-              <div class="ha-plan-ln">+ 周末：写一页读后感</div>
-              <div class="ha-plan-ft"><span>拒绝</span><span class="pri">接受</span></div>
+      <div class="hx-body">
+        <aside class="hx-side"><div class="hx-side-in">
+          <div class="hx-tools"><div class="hx-search"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg><span>搜索</span><span class="hx-kbd">⌘K</span></div><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16"></path><path d="M7 12h10"></path><path d="M10 17h4"></path></svg></span><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path><path d="M12 10.5v5M9.5 13h5" style="stroke: var(--accent)"></path></svg></span><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V13"></path><path d="M18.4 3.6a2 2 0 0 1 2.9 2.9L12.5 15.3 9 16l.7-3.5z" style="stroke: var(--accent)"></path></svg></span></div>
+          <nav class="hx-tree"><div class="hx-row dir"><svg class="hx-chev open" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--text3)"><path d="M9 6l6 6-6 6"></path></svg><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path></svg><span>生活</span></div><div class="hx-row "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg><span>Untitled</span></div><div class="hx-row on" data-k="a"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg><span>潮汕之旅</span></div><div class="hx-row " data-k="b"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg><span>读书计划</span></div><div class="hx-row "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg><span>周末菜单</span></div><div class="hx-row dir"><svg class="hx-chev" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--text3)"><path d="M9 6l6 6-6 6"></path></svg><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path></svg><span>工作</span></div><div class="hx-row dir"><svg class="hx-chev" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--text3)"><path d="M9 6l6 6-6 6"></path></svg><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linejoin="round" style="stroke: var(--text2)"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"></path></svg><span>旅行清单</span></div></nav>
+          <div class="hx-switch"><div class="hx-switch-nb"><span class="hx-badge">生</span><span>生活</span><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--text3)"><path d="M8 10l4-4 4 4"></path><path d="M8 14l4 4 4-4"></path></svg></div><span class="hx-ib "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></span></div>
+        </div></aside>
+        <main class="hx-card">
+          <div class="hx-outline" id="hx-outline"><i style="width:20px"></i><i style="width:14px"></i><i style="width:10px"></i><i style="width:10px"></i></div>
+          <div class="hx-doc" data-doc="a"><div class="hx-art">
+            <h1>潮汕之旅</h1>
+            <p>三天两夜，从汕头吃到潮州。出发前看一眼<a href="#" tabindex="-1">潮州古城攻略</a>，记得<mark>周五前订好民宿</mark>。</p>
+            <h2>行程</h2>
+            <div class="hx-tbl">
+              <table>
+                <tr><th>日期</th><th>地点</th><th>安排</th></tr>
+                <tr><td>第一天</td><td>汕头</td><td>小公园骑楼，晚上吃牛肉火锅</td></tr>
+                <tr><td>第二天</td><td>潮州</td><td>广济桥、牌坊街，看一场英歌舞</td></tr>
+                <tr class="hide" id="hx-newrow"><td>第三天</td><td>南澳岛</td><td>环岛骑行，青澳湾看日落</td></tr>
+              </table>
+              <span class="hx-add-r"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg></span><span class="hx-add-b"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg></span>
+            </div>
+            <h3>必吃清单</h3>
+            <div class="hx-li">牛肉火锅，<a href="#" tabindex="-1">八合里</a>要早点排队</div>
+            <div class="hx-li">粿条汤和<mark>蚝烙</mark></div>
+            <div class="hx-li">鸭母捻当甜品</div>
+          </div></div>
+          <div class="hx-doc off" data-doc="b"><div class="hx-art">
+            <h1>读书计划</h1>
+            <p>今年想把书读得慢一点，每读完一本，就用自己的话写一页笔记。</p>
+            <h3>本周</h3>
+            <div class="hx-todo done"><b><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></b><span>《置身事内》读完第三章</span></div>
+            <div class="hx-todo"><b><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></b><span>整理地方财政那一节的摘录</span></div>
+            <div class="hx-blk focus"><span class="hx-grip"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9.25" cy="6.25" r="1.6"/><circle cx="14.75" cy="6.25" r="1.6"/><circle cx="9.25" cy="12" r="1.6"/><circle cx="14.75" cy="12" r="1.6"/><circle cx="9.25" cy="17.75" r="1.6"/><circle cx="14.75" cy="17.75" r="1.6"/></svg></span><div class="hx-todo"><b><svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg></b><span><span id="ha-type"></span><i class="caret"></i></span></div></div>
+          </div></div>
+        </main>
+        <aside class="hx-chat" aria-hidden="true"><div class="hx-chat-in">
+          <div class="hx-chat-hd"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"></path><path d="M18 3v4M16 5h4" style="stroke: var(--accent)"></path></svg><span>AI</span><span class="hx-ib"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg></span></div>
+          <div class="hx-feed" id="hx-feed">
+            <div class="hx-me"><span class="hx-ref">@潮汕之旅</span>行程加一天，去南澳岛</div>
+            <div class="hx-say">好的，我在行程表里加了第三天。</div>
+            <div class="hx-plan" id="hx-plan">
+              <div class="hx-plan-hd"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" stroke-width="1.6" stroke-linejoin="round" style="fill: var(--icon-fill); stroke: var(--accent)"><path d="M6.5 3H14l4.5 4.5v11A2.5 2.5 0 0 1 16 21H6.5A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3z"></path><path d="M8 12.5h7M8 16h4.5" stroke-linecap="round"></path></svg><span>潮汕之旅</span></div>
+              <div class="hx-plan-ln add">+ 第三天 · 南澳岛 · 环岛骑行，青澳湾看日落</div>
+              <div class="hx-plan-ft"><em>已接受</em><span class="hx-btn">拒绝</span><span class="hx-btn pri" id="hx-accept">接受</span></div>
             </div>
           </div>
-        </aside>
+          <div class="hx-comp"><span id="hx-comp">问点什么，@ 引用笔记</span><span class="hx-send"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span></div>
+        </div></aside>
       </div>
     </div>
   </div>
@@ -3115,19 +3240,134 @@ function initPerf() {
   var typeEl = document.getElementById('ha-type');
   var app = document.getElementById('hero-app');
   if (!typeEl || !app) return;
-  var lines = ['周末写一页读后感，发给读书群', '把喜欢的段落摘进「摘录」笔记', '下个月开始读《额尔古纳河右岸》'];
-  if (RM) { typeEl.textContent = lines[0]; return; }
+  var $ = function (s) { return app.querySelector(s); };
+  var hr = new Date().getHours();
+  var scName = hr >= 5 && hr < 10 ? 'dawn' : hr >= 10 && hr < 15 ? 'meadow' : hr >= 15 && hr < 18 ? 'breeze' : 'dusk';
+  var scEl = $('.hx-scene [data-sc="' + scName + '"]');
+  if (scEl) scEl.classList.add('on');
+
+  // Shell layout — mirrors internal/app/shell_layout.go
+  var S = { side: true, chat: false };
+  var layout = function () {
+    var W = app.clientWidth;
+    var chatW = Math.round(Math.min(380, Math.max(320, W * 0.3)));
+    var side = S.side && 240 + 480 <= W;
+    var dock = false;
+    if (S.chat) {
+      if (side && W - 240 - chatW - 16 >= 560) dock = true;
+      else if (W - chatW - 16 >= 480) { side = false; dock = true; }
+    }
+    var mainW = W - (side ? 240 : 8) - (S.chat && dock ? chatW + 8 : 0) - 8;
+    app.style.setProperty('--chat-w', (dock ? chatW : Math.min(chatW, W - 24)) + 'px');
+    app.style.setProperty('--left-w', side ? '240px' : '');
+    app.style.setProperty('--crumb-pad', side ? '8px' : '4px');
+    app.classList.toggle('no-side', !side);
+    app.classList.toggle('chat', S.chat);
+    app.classList.toggle('chat-float', S.chat && !dock);
+    app.classList.toggle('outline', W >= 960 && mainW >= 620);
+    $('.hx-left').style.width = side ? '' : 'auto';
+  };
+  layout();
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(app); else window.addEventListener('resize', layout);
+
+  // Tabs — single tab shows the breadcrumb, two or more morph into pills
+  var tabsEl = document.getElementById('hx-tabs');
+  var newTab = document.getElementById('hx-newtab');
+  var titles = { a: '潮汕之旅', b: '读书计划' };
+  var tabs = ['a'];
+  var active = 'a';
+  var tabEl = function (k) { return tabsEl.querySelector('[data-k="' + k + '"]'); };
+  var renderActive = function () {
+    tabsEl.querySelectorAll('.hx-tab').forEach(function (t) { t.classList.toggle('on', t.dataset.k === active); });
+    app.querySelectorAll('.hx-tree .hx-row[data-k]').forEach(function (r) { r.classList.toggle('on', r.dataset.k === active); });
+    app.querySelectorAll('.hx-doc').forEach(function (d) { d.classList.toggle('off', d.dataset.doc !== active); });
+    document.getElementById('hx-crumb-tt').textContent = titles[active];
+    app.classList.toggle('multi', tabs.length > 1);
+    var lit = active === 'a' ? [0, 1] : [0];
+    app.querySelectorAll('#hx-outline i').forEach(function (b, i) { b.classList.toggle('lit', lit.indexOf(i) >= 0); });
+  };
+  var mkTab = function (k, gone) {
+    var t = document.createElement('span');
+    t.className = 'hx-tab' + (gone ? ' gone' : '');
+    t.dataset.k = k;
+    t.innerHTML = '<span>' + titles[k] + '</span><span class="hx-tab-x"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg></span>';
+    tabsEl.insertBefore(t, newTab);
+    return t;
+  };
+  mkTab('a');
+  renderActive();
+
+  if (RM) { typeEl.textContent = '周末写一页读后感，发给读书群'; return; }
   var visible = true;
   new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }).observe(app);
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var wait = async function (ms) { await sleep(ms); while (!visible || document.hidden) await sleep(400); };
+  var hot = async function (el, ms) { el.classList.add('hot'); await wait(ms || 420); el.classList.remove('hot'); };
+  var lines = ['周末写一页读后感，发给读书群', '把喜欢的段落摘进「摘录」笔记', '下个月开始读《额尔古纳河右岸》'];
+  var feed = app.querySelectorAll('#hx-feed > *');
+  var comp = document.getElementById('hx-comp');
+  var plan = document.getElementById('hx-plan');
+  var accept = document.getElementById('hx-accept');
+  var aiBtn = document.getElementById('hx-ai-btn');
+  var newRow = document.getElementById('hx-newrow');
+  var compPh = comp.textContent;
+
   (async function run() {
-    await sleep(3200);
+    await wait(3400);
     for (var k = 0; ; k = (k + 1) % lines.length) {
+      // open 读书计划 from the tree → breadcrumb morphs into tabs
+      await hot($('.hx-tree .hx-row[data-k="b"]'), 520);
+      tabs.push('b');
+      var tb = mkTab('b', true);
+      active = 'b';
+      renderActive();
+      requestAnimationFrame(function () { requestAnimationFrame(function () { tb.classList.remove('gone'); }); });
+      newRow.classList.add('hide'); newRow.classList.remove('new');
+      await wait(700);
       var s = lines[k];
-      for (var i = 1; i <= s.length; i++) { while (!visible) await sleep(400); typeEl.textContent = s.slice(0, i); await sleep(90 + Math.random() * 60); }
-      await sleep(2600);
-      for (var j = s.length; j >= 0; j--) { typeEl.textContent = s.slice(0, j); await sleep(28); }
-      await sleep(500);
+      for (var i = 1; i <= s.length; i++) { await wait(80 + Math.random() * 60); typeEl.textContent = s.slice(0, i); }
+      await wait(1500);
+
+      // back to 潮汕之旅, ask AI to edit it
+      await hot(tabEl('a'), 360);
+      active = 'a'; renderActive();
+      await wait(900);
+      await hot(aiBtn, 360);
+      S.chat = true; aiBtn.classList.add('on'); layout();
+      await wait(700);
+      var q = '行程加一天，去南澳岛';
+      comp.classList.add('typed');
+      for (var c = 1; c <= q.length; c++) { comp.textContent = q.slice(0, c); await wait(70 + Math.random() * 40); }
+      await wait(380);
+      comp.textContent = compPh; comp.classList.remove('typed');
+      feed[0].classList.add('on');
+      await wait(900);
+      feed[1].classList.add('on');
+      await wait(450);
+      plan.classList.add('on');
+      await wait(1500);
+      await hot(accept, 300);
+      plan.classList.add('done');
+      newRow.classList.remove('hide'); newRow.classList.add('new');
+      await wait(2600);
+
+      // close the chat, then close the 读书计划 tab → back to breadcrumb
+      await hot(aiBtn, 300);
+      S.chat = false; aiBtn.classList.remove('on'); layout();
+      feed.forEach(function (f) { f.classList.remove('on'); });
+      plan.classList.remove('done');
+      await wait(1400);
+      var tb2 = tabEl('b');
+      tb2.classList.add('hot');
+      await wait(300);
+      await hot(tb2.querySelector('.hx-tab-x'), 260);
+      tb2.classList.add('gone');
+      tabs = ['a'];
+      renderActive();
+      await sleep(260);
+      tb2.remove();
+      typeEl.textContent = '';
+      await wait(2600);
     }
   })();
 })();
