@@ -8,6 +8,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"block/internal/codepreview"
 	"block/internal/model"
 	"block/internal/theme"
 	appUi "block/internal/ui"
@@ -61,7 +62,7 @@ func (s *Session) isPreviewOnlyCodeBlock(idx int) bool {
 	if b.Kind != model.BlockCode {
 		return false
 	}
-	return isPreviewLang(canonicalLangTag(b.Language)) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
+	return codepreview.IsPreviewLanguage(codepreview.CanonicalLanguage(b.Language)) && !b.ShowSource && strings.TrimSpace(b.Code) != ""
 }
 
 func (s *Session) hasWholeAtomicSelection() bool {

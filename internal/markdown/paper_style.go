@@ -303,6 +303,7 @@ type ImageStyle struct {
 	CaptionTrack  float32
 	CaptionColor  ui.Color // 0 = Secondary
 	CaptionCenter bool
+	CaptionSide   float32 // reserved caption width; 0 places it below the picture
 }
 
 type QuoteKind uint8
@@ -394,6 +395,8 @@ type TableStyle struct {
 	Leading     float32 // 0 = 1.45
 	NumFamily   string  // numeric cells are right-aligned in this family when set
 	NumColor    ui.Color
+	NumSize     float32
+	NumWeight   int
 	FirstColor  ui.Color // first column text colour
 	Secondary   ui.Color // colour for columns after the first
 }
@@ -474,11 +477,13 @@ const (
 )
 
 type DividerStyle struct {
-	Kind  DividerKind
-	Width float32 // line width; 0 = 1
-	Text  string
-	Track float32
-	Color ui.Color // 0 = Divider
+	Kind     DividerKind
+	Width    float32 // line width; 0 = 1
+	Text     string
+	Track    float32
+	Color    ui.Color // 0 = Divider
+	EndColor ui.Color
+	EndWidth float32
 }
 
 type FooterRule uint8

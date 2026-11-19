@@ -119,11 +119,13 @@ func fillDotPremul(img *image.RGBA, cx, cy, r float32, col color.NRGBA) {
 	}
 }
 
-const maxExportHeight = 16000
-
-func renderDocRGBA(doc *model.Doc, notePath string, prefs model.ExportPreferences) *image.RGBA {
-	sc := buildExportScene(context.Background(), doc, notePath, prefs)
-	return paintExportRaster(context.Background(), sc, min(int(sc.height+0.5), maxExportHeight), exportScale)
+// Keep the complete PNG on very long notes by reducing pixel density once the
+// normal 4x render exceeds the raster budget. PDF renders one page at a time.
+func exportPNGScale(w, h int) float32 {
+	const maxPixels = 32 * 1024 * 1024
+	const maxSide = 32768
+	return min(float32(exportScale), float32(maxSide)/float32(max(w, h)),
+		float32(math.Sqrt(float64(maxPixels)/(float64(w)*float64(h)))))
 }
 
 // RenderExportPreview paints the same layout at screen density and reports the 4x output size.
@@ -138,50 +140,74 @@ func RenderExportPreview(ctx context.Context, doc *model.Doc, notePath string, p
 	const maxSide = 8192
 	const maxPixels = 8 * 1024 * 1024
 	w := int(sc.width)
-	h := min(int(sc.height+0.5), maxExportHeight)
+	h := max(int(math.Ceil(float64(sc.height))), 1)
 	scale := min(float32(2), float32(maxSide)/float32(max(w, h)),
-		float32(math.Sqrt(float64(maxPixels)/float64(w*h))))
-	rgba := paintExportRaster(ctx, sc, h, scale)
+		float32(math.Sqrt(float64(maxPixels)/(float64(w)*float64(h)))))
+	rgba := paintExportRaster(ctx, sc, 0, h, scale, buildSubstrateTiles(sc.pal, sc.legacy))
 	if err := ctx.Err(); err != nil {
 		return nil, 0, 0, err
 	}
 	if rgba == nil || rgba.Bounds().Empty() {
 		return nil, 0, 0, errors.New("preview render returned empty image")
 	}
-	return rgba, w * exportScale, h * exportScale, nil
+	outputScale := float32(exportScale)
+	if prefs.Format == model.ExportPNG {
+		outputScale = exportPNGScale(w, h)
+	}
+	return rgba, max(int(float32(w)*outputScale+0.5), 1), max(int(float32(h)*outputScale+0.5), 1), nil
 }
 
-func paintExportRaster(ctx context.Context, sc exportScene, h int, scale float32) *image.RGBA {
-	tiles := buildSubstrateTiles(sc.pal, sc.legacy)
-
+func paintExportRaster(ctx context.Context, sc exportScene, top, h int, scale float32, tiles []substrateTile) *image.RGBA {
+	width, height := int(sc.width), h
+	transform := ui.Translation(0, -float32(top))
+	if scale < 1 {
+		// The headless renderer lays out its first frame at 1x. Keep even
+		// that frame within budget when the document is very tall.
+		width = max(int(float32(width)*scale+0.5), 1)
+		height = max(int(float32(height)*scale+0.5), 1)
+		transform = transform.Then(ui.Scaling(scale, scale))
+		scale = 1
+	}
 	return ui.Render(func(c *ui.Context) {
-		ui.Box(c).Size(sc.width, float32(h)).Draw(func(p *ui.Painter, r ui.Rect) {
+		ui.Box(c).Size(float32(width), float32(height)).Draw(func(p *ui.Painter, _ ui.Rect) {
 			if ctx.Err() != nil {
 				return
 			}
-			paintSubstrate(p, r, sc.pal, sc.legacy, tiles)
-			paintCardsAndSections(p, sc)
-			paintOrnaments(p, sc, r)
-			if sc.meta.present {
-				paintMeta(p, sc.meta, sc.pal)
-			}
-			if sc.title.present {
-				paintExportHeader(p, sc)
-			}
-			for _, b := range sc.blocks {
-				if ctx.Err() != nil {
-					break
+			page := ui.Rect{W: sc.width, H: sc.height}
+			from, to := float32(top), float32(top+h)
+			p.Transform(transform, 0, 0, func() {
+				paintSubstrate(p, page, from, to, sc.pal, sc.legacy, tiles)
+				paintCardsAndSections(p, sc)
+				paintOrnaments(p, sc, page, from, to)
+				if sc.meta.present {
+					paintMeta(p, sc.meta, sc.pal)
 				}
-				paintSceneBlock(p, b, sc.pal, sc.legacy)
-			}
-			if sc.footer.present {
-				paintFooter(p, sc.footer)
-			}
+				if sc.title.present {
+					paintExportHeader(p, sc)
+				}
+				for _, b := range sc.blocks {
+					if ctx.Err() != nil {
+						break
+					}
+					// Leave room for shadows, strokes and rotated cards.
+					if b.y+b.h+64 < from || b.y-64 > to {
+						continue
+					}
+					for level := 0; level < b.quoteLevels; level++ {
+						x := b.quoteLeft + float32(level)*16
+						p.Line(x+1, b.y, x+1, b.y+b.h, 2, sc.pal.QuoteBar)
+					}
+					paintSceneBlock(p, b, sc.pal, sc.legacy)
+				}
+				if sc.footer.present {
+					paintFooter(p, sc.footer)
+				}
+			})
 		})
-	}, int(sc.width), h, scale)
+	}, width, height, scale)
 }
 
-func paintSubstrate(p *ui.Painter, r ui.Rect, pal PaperThemeSpec, legacy bool, tiles []substrateTile) {
+func paintSubstrate(p *ui.Painter, r ui.Rect, from, to float32, pal PaperThemeSpec, legacy bool, tiles []substrateTile) {
 	p.Fill(r, pal.Canvas, 0)
 	if legacy {
 		return
@@ -221,14 +247,14 @@ func paintSubstrate(p *ui.Painter, r ui.Rect, pal PaperThemeSpec, legacy bool, t
 			for x := gap; x < r.W; x += gap {
 				p.Line(x, 0, x, r.H, lw, layer.Color)
 			}
-			for y := gap; y < r.H; y += gap {
+			for y := max(gap, float32(math.Floor(float64(from/gap)))*gap); y < min(r.H, to); y += gap {
 				p.Line(0, y, r.W, y, lw, layer.Color)
 			}
 
 		case SubstrateScanlines:
 			gap := maxFloat32(layer.Gap, 3)
 			lh := orF(layer.Size, 1)
-			for y := float32(0); y < r.H; y += gap {
+			for y := float32(math.Floor(float64(from/gap))) * gap; y < min(r.H, to); y += gap {
 				p.Fill(ui.Rect{X: 0, Y: y, W: r.W, H: lh}, layer.Color, 0)
 			}
 
@@ -248,7 +274,7 @@ func paintSubstrate(p *ui.Painter, r ui.Rect, pal PaperThemeSpec, legacy bool, t
 				tileIdx++
 				p.Clip(r, 0, func() {
 					src := ui.Rect{W: tl.srcW, H: tl.srcH}
-					for y := float32(0); y < r.H; y += tl.dipH {
+					for y := float32(math.Floor(float64(from/tl.dipH))) * tl.dipH; y < min(r.H, to); y += tl.dipH {
 						for x := float32(0); x < r.W; x += tl.dipW {
 							p.ImageRegion(tl.bm, src, ui.Rect{X: x, Y: y, W: tl.dipW, H: tl.dipH}, ui.ImageOptions{})
 						}
@@ -303,7 +329,7 @@ func paintCardsAndSections(p *ui.Painter, sc exportScene) {
 	}
 }
 
-func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect) {
+func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to float32) {
 	pal := sc.pal
 	for _, os := range sc.ornaments {
 		o := os.spec
@@ -326,7 +352,8 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect) {
 			sw, sh := orF(o.W, 20), orF(o.H, 16)
 			startY := (pitch - sh) * 0.5
 			rx := pageRect.W - o.X - sw
-			for y := startY; y+sh <= pageRect.H-4; y += pitch {
+			first := startY + max(float32(math.Floor(float64((from-startY)/pitch))), 0)*pitch
+			for y := first; y < to && y+sh <= pageRect.H-4; y += pitch {
 				p.Fill(ui.Rect{X: o.X, Y: y, W: sw, H: sh}, o.Color, 2.5)
 				p.Fill(ui.Rect{X: rx, Y: y, W: sw, H: sh}, o.Color, 2.5)
 			}
@@ -639,6 +666,13 @@ func paintSceneBlock(p *ui.Painter, b paintedBlock, pal PaperThemeSpec, legacy b
 		} else if !legacy && b.divKind == DividerWave {
 			ww := minFloat32(220, b.w*0.5)
 			paintWaveLine(p, b.x+(b.w-ww)*0.5, b.y+b.h*0.5, ww, 3, 22, orF(b.divWidth, 1.5), b.borderCol)
+		} else if !legacy && pal.Style.Divider.EndColor.A > 0 {
+			ds := pal.Style.Divider
+			lw := orF(b.divWidth, 1)
+			end := min(ds.EndWidth, b.w)
+			y := b.y + (b.h-lw)/2
+			p.Fill(ui.Rect{X: b.x, Y: y, W: b.w - end, H: lw}, b.borderCol, 0)
+			p.Fill(ui.Rect{X: b.x + b.w - end, Y: y, W: end, H: lw}, ds.EndColor, 0)
 		} else {
 			midY := b.y + b.h*0.5
 			lw := orF(b.divWidth, 1)

@@ -120,7 +120,9 @@ func applyBlockStyles(s *PaperThemeSpec) {
 		ls.TodoFill, ls.TodoCheck, ls.TodoBorder, ls.TodoRadius, ls.DoneFG, ls.DoneStrike = true, ink, ink, 0.01, rgbHex(0x8a8a8a), true
 		in.StrikeColor, in.UnderColor, in.UnderThick = orange, ink, 3
 		in.CodeBG, in.CodeFG, in.CodeRadius = ink, paper, -1
-		st.Image = ImageStyle{Radius: 0.01, Caption: true, CaptionPrefix: "FIG.{n}  ", CaptionFamily: fontMono, CaptionSize: 11, CaptionTrack: 0.16, CaptionColor: ink}
+		st.Image = ImageStyle{Radius: 0.01, Caption: true, CaptionPrefix: "FIG.{n}\n", CaptionFamily: fontMono, CaptionSize: 11, CaptionTrack: 0.16, CaptionColor: ink, CaptionSide: 120}
+		st.Divider.EndColor, st.Divider.EndWidth = orange, 48
+		st.Table.NumFamily, st.Table.NumSize, st.Table.NumWeight = fontMono, 28, 700
 
 	case model.ExportThemeMist:
 		accent := rgbHex(0x3b5b8c)
@@ -250,6 +252,7 @@ func applyBlockStyles(s *PaperThemeSpec) {
 	case model.ExportThemeTerminal:
 		green, bright, dim := rgbHex(0x7ee787), rgbHex(0xb5f5bb), rgbHex(0x3f8a47)
 		yellow, bg := rgbHex(0xe3d26f), rgbHex(0x071008)
+		st.Sub = SubHeadStyle{Size: 15, Color: green, Weight: 700}
 		st.Callout = CalloutStyle{Custom: true,
 			Labels:      [5]string{"> [!NOTE]", "> [!TIP]", "> [!IMPORTANT]", "> [!WARNING]", "> [!CAUTION]"},
 			LabelFamily: fontMono, LabelSize: 14, LabelWeight: 400,
