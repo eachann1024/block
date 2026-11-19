@@ -1265,7 +1265,7 @@ func latestStreamLine(s string) string {
 // plainURLUnescaper drops the escapes PlainLinks puts on a link's text:
 // "<https://x/?q=go&lang=zh>" keeps its "&".
 var plainURLUnescaper = strings.NewReplacer(`\\`, `\`, "\\`", "`", `\*`, "*", `\_`, "_", `\~`, "~",
-	`\[`, "[", `\]`, "]", `\$`, "$", `\&`, "&")
+	`\[`, "[", `\]`, "]", `\$`, "$", `\&`, "&", "&#91;", "[", "&#93;", "]")
 
 // plainTableCut keeps a table row's first n cells, as many as its header has: the
 // note drops the rest.
@@ -1374,12 +1374,6 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	}
 	b.WriteString(t[last:])
 	t = b.String()
-	// A formula ("\(a*b*c\)") shows its source, stars and all, like code.
-	t = plainInlineMathRE.ReplaceAllStringFunc(t, func(m string) string {
-		k := "\uE000" + strconv.Itoa(len(codes)) + "\uE001"
-		codes = append(codes, strings.TrimSpace(m[2:len(m)-2]))
-		return k
-	})
 	// A bare link keeps its "_" and "*": "https://example.com/_draft_/index" stays.
 	if spans := bui.BareURLs(t); len(spans) > 0 {
 		var u strings.Builder
@@ -1394,6 +1388,12 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 		u.WriteString(t[last:])
 		t = u.String()
 	}
+	// A formula ("\(a*b*c\)") shows its source, stars and all, like code.
+	t = plainInlineMathRE.ReplaceAllStringFunc(t, func(m string) string {
+		k := "\uE000" + strconv.Itoa(len(codes)) + "\uE001"
+		codes = append(codes, strings.TrimSpace(m[2:len(m)-2]))
+		return k
+	})
 	// Adjacent matches share the space between them, so repeat until settled.
 	for prev := ""; prev != t; {
 		prev = t
