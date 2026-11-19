@@ -70,6 +70,7 @@ type Palette struct {
 	IconFill       ui.Color
 	Hover          ui.Color
 	Selected       ui.Color
+	SelectedBorder ui.Color // neutral ring on selected rows/chips
 	Hairline       ui.Color
 	SidebarBorder  ui.Color
 	BtnBorder      ui.Color
@@ -151,9 +152,10 @@ var OceanLight = Palette{
 	AccentHover:    ui.Hex("#456ec2"),
 	AccentPressed:  ui.Hex("#395fb0"),
 	AccentText:     ui.Hex("#ffffff"),
-	IconFill:       ui.Hex("#c9d8f3"),
-	Hover:          ui.Hex("#eef3fc"),
-	Selected:       ui.Hex("#e5edfc"),
+	IconFill:       ui.Hex("#dcdcd9"),
+	Hover:          ui.Hex("#f0f0ef"),
+	Selected:       ui.Hex("#e5e5e3"),
+	SelectedBorder: ui.RGBA(0, 0, 0, 0.10),
 	Hairline:       ui.Hex("#e4e6ea"),
 	SidebarBorder:  ui.Hex("#e6e6e6"),
 	BtnBorder:      ui.Hex("#dcdcdc"),
@@ -182,7 +184,7 @@ var OceanLight = Palette{
 	MenuDangerHoverFG:   ui.Hex("#ffffff"),
 	SwitchKnob:          ui.Hex("#ffffff"),
 	TooltipBG:           ui.Hex("#ffffff"),
-	TooltipBorder:       ui.Hex("#d8dee9"),
+	TooltipBorder:       ui.Hex("#dedede"),
 	TooltipDivider:      ui.Hex("#edf0f5"),
 	TooltipMuted:        ui.Hex("#586272"),
 	TooltipAccent:       ui.Hex("#2f57a6"),
@@ -233,9 +235,10 @@ var OceanDark = Palette{
 	AccentHover:    ui.Hex("#88aae9"),
 	AccentPressed:  ui.Hex("#638ad8"),
 	AccentText:     ui.Hex("#111622"),
-	IconFill:       ui.Hex("#31456a"),
+	IconFill:       ui.Hex("#474747"),
 	Hover:          ui.Hex("#2c2c2c"),
-	Selected:       ui.Hex("#343434"),
+	Selected:       ui.Hex("#3a3a3a"),
+	SelectedBorder: ui.RGBA(0xff, 0xff, 0xff, 0.12),
 	Hairline:       ui.Hex("#2e2e2e"),
 	SidebarBorder:  ui.Hex("#333333"),
 	BtnBorder:      ui.Hex("#444444"),
@@ -310,7 +313,7 @@ func (p Palette) DuoIconColors(line ui.Color) IconColors {
 	return IconColors{
 		Line:   line,
 		Fill:   p.IconFill,
-		Accent: p.Accent,
+		Accent: line,
 	}
 }
 
