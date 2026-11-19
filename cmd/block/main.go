@@ -268,8 +268,15 @@ func main() {
 		}
 	}
 
+	syncMenu := func(cur model.AppState) {
+		actions := menuActions
+		if !ws.AI().Enabled() {
+			actions.OnToggleAIPanel = nil
+		}
+		mygo.App.SetMenu(app.BuildMenuBar(buildShortcutsMap(cur), actions))
+	}
 	syncMenuAndHotkeys := func(cur model.AppState) {
-		mygo.App.SetMenu(app.BuildMenuBar(buildShortcutsMap(cur), menuActions))
+		syncMenu(cur)
 		if !mygo.App.IsReady() || isIsolatedRun {
 			return
 		}
@@ -308,7 +315,7 @@ func main() {
 	}
 
 	ws.OnAppMenuOrHotkeysChanged = syncMenuAndHotkeys
-	mygo.App.SetMenu(app.BuildMenuBar(buildShortcutsMap(st), menuActions))
+	syncMenu(st)
 
 	openMainWindow = func() *mygo.Window {
 		if existing := ws.Window(); existing != nil {

@@ -144,6 +144,7 @@ type Controller struct {
 	mockResponder        bool
 	mockApprovalFailOnce bool
 	onDismissFloating    func()
+	onEnabledChanged     func(bool)
 
 	activeExternal *runningExternalTurn
 	activePlan     *ActivePlanPreview
@@ -583,6 +584,10 @@ func (c *Controller) CloseTransientPopups() {
 // SetOpen sets the AI panel open state.
 func (c *Controller) SetOpen(open bool) {
 	c.mu.Lock()
+	if open && !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	dismissFn := c.onDismissFloating
 	if c.open == open {
 		if !open {
@@ -612,6 +617,10 @@ func (c *Controller) SetOpen(open bool) {
 // ToggleOpen toggles the AI panel open state.
 func (c *Controller) ToggleOpen() {
 	c.mu.Lock()
+	if !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	next := !c.open
 	c.open = next
 	if !next {
@@ -634,7 +643,7 @@ func (c *Controller) IsFullscreen() bool {
 // SetFullscreen sets the AI panel fullscreen state.
 func (c *Controller) SetFullscreen(fs bool) {
 	c.mu.Lock()
-	if c.fullscreen == fs {
+	if c.fullscreen == fs || (fs && !c.providerCfg.Enabled) {
 		c.mu.Unlock()
 		return
 	}
@@ -646,6 +655,10 @@ func (c *Controller) SetFullscreen(fs bool) {
 // ToggleFullscreen toggles fullscreen mode for the AI panel.
 func (c *Controller) ToggleFullscreen() {
 	c.mu.Lock()
+	if !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	if !c.open {
 		c.open = true
 		c.fullscreen = true
@@ -707,6 +720,20 @@ func (c *Controller) SetRenderWidth(w float32) {
 	c.mu.Unlock()
 }
 
+// Enabled reports the master AI switch, independent of backend readiness.
+func (c *Controller) Enabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.providerCfg.Enabled
+}
+
+// SetOnEnabledChanged registers the workspace handler for changes to the master switch.
+func (c *Controller) SetOnEnabledChanged(fn func(bool)) {
+	c.mu.Lock()
+	c.onEnabledChanged = fn
+	c.mu.Unlock()
+}
+
 // ProviderConfig returns a copy of the built-in AI provider config.
 func (c *Controller) ProviderConfig() model.AIProviderConfig {
 	c.mu.RLock()
@@ -739,7 +766,17 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		return err
 	}
 	c.mu.Lock()
+	enabledChanged := c.providerCfg.Enabled != norm.Enabled
 	c.providerCfg = norm
+	if enabledChanged && !norm.Enabled {
+		c.open = false
+		c.fullscreen = false
+		c.historyOpen = false
+		c.deckOpen = false
+		c.pickerDismissed = true
+		c.stopStreamingLocked()
+	}
+	onEnabledChanged := c.onEnabledChanged
 	if c.settingsExpandedProv == "" {
 		c.settingsExpandedProv = norm.Provider
 	}
@@ -749,8 +786,11 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.turnErrorSettings = false
 	}
 	c.invalidateModelCacheLocked(model.BackendBuiltin)
-	shouldRefresh := (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
+	shouldRefresh := norm.Enabled && (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
 	c.mu.Unlock()
+	if enabledChanged && onEnabledChanged != nil {
+		onEnabledChanged(norm.Enabled)
+	}
 	if shouldRefresh {
 		c.refreshModelsAsync(model.BackendBuiltin)
 	}
@@ -1460,7 +1500,7 @@ func pathBaseSlash(p string) string {
 // SendPrompt submits text (or the current draft when text is empty) as a user prompt.
 func (c *Controller) SendPrompt(text string) {
 	c.mu.Lock()
-	if c.streaming {
+	if c.streaming || !c.providerCfg.Enabled {
 		c.mu.Unlock()
 		return
 	}

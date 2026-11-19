@@ -2738,17 +2738,9 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 		}
 		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM)
 	}
-	all := allSlashItems()
-	if s.minimal {
-		filtered := make([]blockMenuItem, 0, len(all))
-		for _, it := range all {
-			if it.Kind == cmdImage {
-				continue
-			}
-			filtered = append(filtered, it)
-		}
-		all = filtered
-	}
+	all := slices.DeleteFunc(allSlashItems(), func(it blockMenuItem) bool {
+		return (s.minimal && it.Kind == cmdImage) || (s.aiDisabled && it.Kind == cmdAI)
+	})
 	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
 	if q == "" {
 		return all
@@ -3386,7 +3378,7 @@ func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending [
 
 func (s *Session) GeneratePendingAnnotations() int {
 	s.ensureAnnotationsLoaded()
-	if s.annotationAIResponder == nil || len(s.annotations) == 0 {
+	if s.aiDisabled || s.annotationAIResponder == nil || len(s.annotations) == 0 {
 		return 0
 	}
 	var pending []*model.Annotation
@@ -3424,6 +3416,9 @@ func (s *Session) GeneratePendingAnnotations() int {
 }
 
 func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
+	if s.aiDisabled {
+		return false
+	}
 	var ann *model.Annotation
 	for _, item := range s.annotations {
 		if item.ID == id {

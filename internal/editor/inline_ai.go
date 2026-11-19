@@ -527,6 +527,20 @@ func (ai *inlineAISession) isEmptyCtx() bool {
 	return strings.TrimSpace(ai.Original) == ""
 }
 
+// SetAIEnabled updates editor AI actions and cancels an open inline rewrite when disabled.
+func (s *Session) SetAIEnabled(enabled bool) {
+	if s.aiDisabled == !enabled {
+		return
+	}
+	s.aiDisabled = !enabled
+	if s.blockMenu != nil && s.blockMenu.Mode == menuSlash {
+		s.blockMenu = nil
+	}
+	if !enabled {
+		s.aiClose()
+	}
+}
+
 func (s *Session) IsInlineAIOpen() bool {
 	return s.inlineAI != nil
 }
@@ -560,7 +574,7 @@ func (s *Session) precedingContext(beforeIdx int) string {
 }
 
 func (s *Session) OpenInlineAIOnSelection() {
-	if s.readOnly || !s.isMarkdownNote() || !s.canReplaceSelection() || !s.hasNonEmptySelection() {
+	if s.aiDisabled || s.readOnly || !s.isMarkdownNote() || !s.canReplaceSelection() || !s.hasNonEmptySelection() {
 		return
 	}
 	a, b := s.orderedSelection()
@@ -591,7 +605,7 @@ func (s *Session) OpenInlineAIOnSelection() {
 }
 
 func (s *Session) OpenInlineAIOnBlock(idx int) {
-	if s.readOnly || !s.isMarkdownNote() || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+	if s.aiDisabled || s.readOnly || !s.isMarkdownNote() || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return
 	}
 	b := &s.doc.Blocks[idx]

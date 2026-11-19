@@ -162,6 +162,7 @@ type Session struct {
 	// Inline AI
 	dataDir                 string
 	promptStore             *inlinePromptStore
+	aiDisabled              bool
 	inlineAIResponder       func(ctx, orig, draft, instruction string) string
 	inlineAIStreamResponder func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)
 	inlineAI                *inlineAISession
