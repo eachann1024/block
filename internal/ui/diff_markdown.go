@@ -1398,6 +1398,9 @@ var diffCellBlockRE = regexp.MustCompile("^(?:#{1,6}(?:\\s|$)|>|[-+*](?:\\s|$)|[
 // diffCellListRE matches an ordered-list marker; its "." or ")" gets the backslash.
 var diffCellListRE = regexp.MustCompile(`^(\d{1,9})([.)])(\s|$)`)
 
+// InlineStart is diffInlineStart for callers outside the package.
+func InlineStart(s string) string { return diffInlineStart(s) }
+
 // diffInlineStart escapes a leading marker that would make inline text parse as a
 // block: a heading, quote, list item, thematic break or code fence ("```x```" is
 // inline code and stays).
