@@ -19,8 +19,9 @@ import (
 const maxNotebooks = 12
 
 var (
-	stateMu      sync.Mutex
-	stateTempSeq atomic.Uint64
+	stateMu             sync.Mutex
+	stateTempSeq        atomic.Uint64
+	cleanStateTempsOnce sync.Once
 )
 
 func stateFilePath() string {
@@ -279,7 +280,9 @@ func writeStateAtomicLocked(path string, st *model.AppState) error {
 		_ = os.Remove(tmpPath)
 	}
 
-	cleanStaleStateTemps(parent)
+	cleanStateTempsOnce.Do(func() {
+		cleanStaleStateTemps(parent)
+	})
 	return commitErr
 }
 

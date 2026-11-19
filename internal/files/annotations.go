@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,9 +14,19 @@ import (
 	"time"
 )
 
+type annotStoreCacheEntry struct {
+	path    string
+	modTime time.Time
+	size    int64
+	store   AnnotationStore
+	valid   bool
+}
+
 var (
-	annotMu      sync.Mutex
-	annotTempSeq atomic.Uint64
+	annotMu             sync.Mutex
+	annotTempSeq        atomic.Uint64
+	annotCache          annotStoreCacheEntry
+	cleanAnnotTempsOnce sync.Once
 )
 
 // FlexibleUint64 unmarshals either a JSON integer or a numeric/arbitrary string
@@ -90,20 +101,54 @@ func annotationsFilePath(dataDir string) string {
 	return filepath.Join(dir, "annotations.json")
 }
 
+func cloneAnnotationStore(src AnnotationStore) AnnotationStore {
+	dst := AnnotationStore{
+		Notes: make(map[string][]StoredAnnotation, len(src.Notes)),
+	}
+	maps.Copy(dst.Notes, src.Notes)
+	return dst
+}
+
 func loadAnnotationStoreLocked(path string) (AnnotationStore, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if annotCache.valid && annotCache.path == path {
+				annotCache = annotStoreCacheEntry{}
+			}
+			return AnnotationStore{Notes: make(map[string][]StoredAnnotation)}, nil
+		}
+		return AnnotationStore{Notes: make(map[string][]StoredAnnotation)}, err
+	}
+	if annotCache.valid && annotCache.path == path && annotCache.size == info.Size() && annotCache.modTime.Equal(info.ModTime()) {
+		return cloneAnnotationStore(annotCache.store), nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			if annotCache.valid && annotCache.path == path {
+				annotCache = annotStoreCacheEntry{}
+			}
 			return AnnotationStore{Notes: make(map[string][]StoredAnnotation)}, nil
 		}
 		return AnnotationStore{Notes: make(map[string][]StoredAnnotation)}, err
 	}
 	var store AnnotationStore
 	if err := json.Unmarshal(data, &store); err != nil {
+		if annotCache.valid && annotCache.path == path {
+			annotCache = annotStoreCacheEntry{}
+		}
 		return AnnotationStore{Notes: make(map[string][]StoredAnnotation)}, err
 	}
 	if store.Notes == nil {
 		store.Notes = make(map[string][]StoredAnnotation)
+	}
+	annotCache = annotStoreCacheEntry{
+		path:    path,
+		modTime: info.ModTime(),
+		size:    info.Size(),
+		store:   cloneAnnotationStore(store),
+		valid:   true,
 	}
 	return store, nil
 }
@@ -290,9 +335,24 @@ func writeAnnotationStoreAtomicLocked(path string, store *AnnotationStore) error
 	}()
 	if commitErr != nil {
 		_ = os.Remove(tmpPath)
+		if annotCache.valid && annotCache.path == path {
+			annotCache = annotStoreCacheEntry{}
+		}
+	} else if info, statErr := os.Stat(path); statErr == nil {
+		annotCache = annotStoreCacheEntry{
+			path:    path,
+			modTime: info.ModTime(),
+			size:    info.Size(),
+			store:   cloneAnnotationStore(*store),
+			valid:   true,
+		}
+	} else if annotCache.valid && annotCache.path == path {
+		annotCache = annotStoreCacheEntry{}
 	}
 
-	cleanStaleAnnotTemps(parent)
+	cleanAnnotTempsOnce.Do(func() {
+		cleanStaleAnnotTemps(parent)
+	})
 	return commitErr
 }
 
