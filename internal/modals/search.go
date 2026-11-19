@@ -301,9 +301,42 @@ func (st *searchPaletteState) syncFolders(folders []string) bool {
 
 func (st *searchPaletteState) scopeLabel() string {
 	if st.scopeFolder == "" {
-		return theme.Tr("全部文件夹", "All Folders")
+		return theme.Tr("全部", "All")
 	}
 	return searchFolderName(st.scopeFolder)
+}
+
+func (st *searchPaletteState) currentNotebookScope(active string) string {
+	if active != "" && containsCleanPath(st.folders, active) {
+		return findCleanPath(st.folders, active)
+	}
+	return ""
+}
+
+type searchPlaceholderSpec struct {
+	prefix string
+	keycap string
+	suffix string
+}
+
+func (st *searchPaletteState) searchPlaceholderParts(active string) searchPlaceholderSpec {
+	if st.scopeFolder != "" {
+		return searchPlaceholderSpec{
+			prefix: theme.Tr("搜索标题与正文，按", "Search titles & content,"),
+			keycap: "Tab",
+			suffix: theme.Tr("搜全部", "for all"),
+		}
+	}
+	if st.currentNotebookScope(active) != "" {
+		return searchPlaceholderSpec{
+			prefix: theme.Tr("搜索全部，按", "Search all,"),
+			keycap: "Tab",
+			suffix: theme.Tr("切回当前", "for current"),
+		}
+	}
+	return searchPlaceholderSpec{
+		prefix: theme.Tr("搜索标题与正文", "Search titles and content"),
+	}
 }
 
 func (st *searchPaletteState) effectiveRoots() []string {
@@ -373,23 +406,18 @@ func (st *searchPaletteState) acceptScopeCursor() bool {
 	return st.selectScopeIndex(idx)
 }
 
-func (st *searchPaletteState) cycleScope(delta int) bool {
+func (st *searchPaletteState) toggleScope(active string) bool {
 	st.scopeMenuOpen = false
-	options := make([]string, 0, 1+len(st.folders))
-	options = append(options, "")
-	options = append(options, st.folders...)
-	if len(options) == 0 || delta == 0 {
-		return false
-	}
-	cur := 0
-	for i, opt := range options {
-		if cleanPathEqual(opt, st.scopeFolder) {
-			cur = i
-			break
+	current := st.currentNotebookScope(active)
+	var next string
+	if st.scopeFolder == "" {
+		if current == "" {
+			return false
 		}
+		next = current
+	} else {
+		next = ""
 	}
-	nextIdx := ((cur+delta)%len(options) + len(options)) % len(options)
-	next := options[nextIdx]
 	changed := !cleanPathEqual(st.scopeFolder, next)
 	st.scopeFolder = next
 	return changed
@@ -416,9 +444,9 @@ func (m *Manager) acceptScopeCursor() bool {
 	return changed
 }
 
-func (m *Manager) cycleScope(delta int) bool {
+func (m *Manager) toggleScope() bool {
 	st := m.searchState()
-	changed := st.cycleScope(delta)
+	changed := st.toggleScope(m.searchActiveNotebookPath())
 	m.searchAllNB = st.scopeFolder == ""
 	return changed
 }
@@ -683,7 +711,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 
 			card.Children(func() {
 				scopeTrigger = renderSearchHeaderView(
-					c, pal, st, &m.searchQuery, &m.searchLastQuery, &m.searchInputHandle,
+					c, pal, st, m.searchActiveNotebookPath(), &m.searchQuery, &m.searchLastQuery, &m.searchInputHandle,
 					searchHeaderCallbacks{
 						onRunSearch:     m.runSearch,
 						onMoveSelection: m.moveSearchSelection,
@@ -695,8 +723,8 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 						onOpenSelected: func() {
 							m.openSearchHit(m.searchSelected)
 						},
-						onCycleScope: func(delta int) {
-							if m.cycleScope(delta) {
+						onToggleScope: func() {
+							if m.toggleScope() {
 								m.runSearch()
 							}
 						},
@@ -750,12 +778,12 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 			}
 		}
 		if backdrop.OverlayShortcut(0, ui.KeyTab) {
-			if m.cycleScope(1) {
+			if m.toggleScope() {
 				m.runSearch()
 			}
 		}
 		if backdrop.OverlayShortcut(ui.Shift, ui.KeyTab) {
-			if m.cycleScope(-1) {
+			if m.toggleScope() {
 				m.runSearch()
 			}
 		}
@@ -778,7 +806,7 @@ type searchHeaderCallbacks struct {
 	onMoveSelection func(delta int)
 	onAcceptScope   func()
 	onOpenSelected  func()
-	onCycleScope    func(delta int)
+	onToggleScope   func()
 	onResetScopeAll func()
 	onClose         func()
 }
@@ -787,6 +815,7 @@ func renderSearchHeaderView(
 	c *ui.Context,
 	pal theme.Palette,
 	st *searchPaletteState,
+	activeNotebook string,
 	query *string,
 	lastQuery *string,
 	inputHandle *ui.Handle,
@@ -797,15 +826,40 @@ func renderSearchHeaderView(
 		Padding(0, 16, 0, 16).Gap(10).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).
 		Children(func() {
-			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			searchIcon := icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			internalui.Probe(searchIcon, "search-header-icon")
 
-			in := ui.TextInputBase(c.Key("search-input"), query).
-				Placeholder(theme.Tr("搜索标题与正文", "Search titles and content")).
-				PlaceholderColor(pal.Placeholder).
-				Label(theme.Tr("搜索", "Search")).
-				FontSize(theme.FontEditor).TextColor(pal.Text).CaretColor(pal.Accent).
-				Bind(inputHandle).AutoFocus().Grow(1).MinWidth(0)
-			internalui.Probe(in, "search-input")
+			ph := st.searchPlaceholderParts(activeNotebook)
+			var in ui.Element
+			ui.Box(c.Key("search-input-wrap")).Grow(1).MinWidth(0).Height(30).Clip().Children(func() {
+				in = ui.TextInputBase(c.Key("search-input"), query).
+					FillWidth().Height(30).Padding(0).
+					Label(theme.Tr("搜索", "Search")).
+					FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
+					TextColor(pal.Text).CaretColor(pal.Accent).
+					Bind(inputHandle).AutoFocus()
+				internalui.Probe(in, "search-input")
+
+				if *query == "" && !in.Composing() {
+					phRow := ui.Row(c.Key("search-placeholder")).
+						Absolute().Top(0).Bottom(0).Left(2).Right(0).
+						AlignItems(ui.Center).Gap(theme.Space4).IgnoreInput(true)
+					phRow.Children(func() {
+						ui.Text(c, ph.prefix).
+							FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
+							TextColor(pal.Placeholder).SingleLine().Shrink(0)
+						if ph.keycap != "" {
+							internalui.Keycap(c, ph.keycap)
+						}
+						if ph.suffix != "" {
+							ui.Text(c, ph.suffix).
+								FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
+								TextColor(pal.Placeholder).SingleLine().Shrink(0)
+						}
+					})
+					internalui.Probe(phRow, "search-placeholder")
+				}
+			})
 
 			in.OnTextKey(func(k ui.TextKey) bool {
 				switch k.Key {
@@ -830,12 +884,8 @@ func renderSearchHeaderView(
 					return true
 				case ui.KeyTab:
 					if k.Mods == 0 || k.Mods == ui.Shift {
-						delta := 1
-						if k.Mods == ui.Shift {
-							delta = -1
-						}
-						if cb.onCycleScope != nil {
-							cb.onCycleScope(delta)
+						if cb.onToggleScope != nil {
+							cb.onToggleScope()
 						}
 						return true
 					}
@@ -962,7 +1012,7 @@ func renderScopeMenuPopoverView(
 				ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 					internalui.MenuRow(c, internalui.MenuItemSpec{
 						ID:            "search-scope-0",
-						Label:         theme.Tr("全部文件夹", "All Folders"),
+						Label:         theme.Tr("全部", "All"),
 						Icon:          &folderIcon,
 						Checked:       st.scopeFolder == "",
 						SuppressHover: suppressHover,
@@ -1042,7 +1092,7 @@ func renderSearchBodyView(
 	if !asked {
 		hint := theme.Tr("输入关键词搜索标题与正文", "Type keywords to search titles and content")
 		if st.scopeFolder == "" {
-			hint = theme.Tr("输入关键词搜索全部文件夹的标题与正文", "Type keywords to search titles and content across all folders")
+			hint = theme.Tr("输入关键词搜索全部笔记的标题与正文", "Type keywords to search titles and content across all notes")
 		}
 		renderSearchEmpty(c, pal, hint, fillHeight)
 		return
@@ -1229,7 +1279,6 @@ func renderSearchFooter(c *ui.Context, pal theme.Palette, dragWindow bool) {
 	row.Children(func() {
 		renderFooterHint(c, pal, []string{"↑", "↓"}, theme.Tr("选择", "Select"))
 		renderFooterHint(c, pal, []string{"↵"}, theme.Tr("打开", "Open"))
-		renderFooterHint(c, pal, []string{"Tab"}, theme.Tr("切换文件夹", "Switch Folder"))
 		renderFooterHint(c, pal, []string{"esc"}, theme.Tr("关闭", "Close"))
 	})
 }
