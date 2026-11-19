@@ -369,7 +369,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						sc := 1 - 0.08*p
 						fl.Scale(sc, sc)
 					case Plug:
-						fl.Translate(-0.8*k*p, 0.8*k*p)
+						fl.Translate(1.2*k*p, -1.2*k*p)
 					}
 				}
 			}
@@ -384,14 +384,12 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 					case Sparkles, AiPolish, Star:
 						sc := 1 + 0.07*p
 						ln.Rotate(15*p).Scale(sc, sc)
-					case Sliders:
-						ln.Translate(-1.4*k*p, 0)
 					case Download:
 						ln.Translate(0, 2.0*k*p)
 					case Upload:
 						ln.Translate(0, -2.0*k*p)
 					case Plug:
-						ln.Translate(-0.8*k*p, 0.8*k*p)
+						ln.Translate(1.2*k*p, -1.2*k*p)
 					case ArrowRight:
 						ln.Translate(1.6*k*p, 0)
 					case ArrowLeft:
@@ -423,8 +421,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						sc := 1 + 0.08*p
 						ac.Translate(0.9*k*p, -0.9*k*p).Scale(sc, sc)
 					case Plug:
-						sc := 1 + 0.10*p
-						ac.Translate(1.4*k*p, -1.4*k*p).Scale(sc, sc)
+						sc := 1 + 0.12*p
+						ac.Scale(sc, sc)
 					case Package:
 						sc := 1 + 0.10*p
 						ac.Scale(sc, sc)
@@ -449,8 +447,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						sc := 1 + 0.20*p
 						ac.Rotate(-14*p).Scale(sc, sc)
 					case Sliders:
-						sc := 1 + 0.09*p
-						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
+						sc := 1 + 0.08*p
+						ac.Scale(sc, sc)
 					case TbPlus:
 						sc := 1 + 0.12*p
 						ac.Rotate(90*p).Scale(sc, sc)
