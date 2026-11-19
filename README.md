@@ -1,5 +1,6 @@
 # Block
-使用 Pure Go（`CGO_ENABLED=0`）与 MyGo 构建的跨平台原生块级 Markdown 笔记应用，支持 macOS、Windows 与 Linux。它直接读写本地文件夹中的 `.md` 文件，不绑定私有格式，兼顾即时排版的阅读感与纯文本的可迁移性。
+
+使用 Pure Go（`CGO_ENABLED=0`22）与 MyGo 构建的跨平台原生块级 Markdown 笔记应用，支持 macOS、Windows 与 Linux。它直接读写本地文件夹中的 `.md` 文件，不绑定私有格式，兼顾即时排版的阅读感与纯文本的可迁移性。
 
 > **Block** is a native cross-platform block-based Markdown notebook built in Pure Go (`CGO_ENABLED=0`) on top of MyGo, targeting macOS, Windows, and Linux. It works directly over plain local `.md` folders with zero lock-in.
 
