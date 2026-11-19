@@ -1445,7 +1445,11 @@ func (w *Workspace) Plugins() *plugins.Supervisor {
 
 func (w *Workspace) notifyPluginNoteSaved(absPath string) {
 	if sup := w.Plugins(); sup != nil {
-		sup.NotifyNoteSaved(absPath)
+		source := ""
+		if w.pluginUI != nil {
+			source = w.pluginUI.takeInsertSource(absPath)
+		}
+		sup.NotifyNoteSavedFrom(source, absPath)
 	}
 }
 
@@ -3780,7 +3784,7 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 			continue
 		}
 		mods, key, ok := blockui.ParseShortcut(cmd.Shortcut)
-		if !ok {
+		if !ok || isHostReservedShortcut(mods, key) {
 			continue
 		}
 		if textFocused {

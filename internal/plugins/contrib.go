@@ -383,8 +383,11 @@ type UIHost interface {
 	OpenPanel(pluginID, panelID string)
 	ClosePanel(pluginID, panelID string)
 	EditorSelection() (EditorSelection, error)
-	// EditorInsert replaces the current selection (or inserts at the caret) with text.
-	EditorInsert(text string) error
+	// EditorInsert replaces the current selection (or inserts at the caret) with
+	// text. When expectedNote is non-empty the insert fails unless that note
+	// (notebook-relative path) is still the active one. pluginID identifies the
+	// writer so its own note.saved echo can be suppressed.
+	EditorInsert(pluginID, expectedNote, text string) error
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +401,8 @@ type contribRegistry struct {
 	active    map[string]bool          // plugin slot id -> active
 	status    map[string]statusOverlay // "<plugin>/<item>" -> text
 	refreshed map[string]time.Time     // surface refresh requests "<plugin>|<surface>"
+	// commandNote maps a plugin to the note its in-flight command targets.
+	commandNote map[string]string
 }
 
 type statusOverlay struct {
@@ -416,6 +421,8 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		active:    map[string]bool{},
 		status:    map[string]statusOverlay{},
 		refreshed: map[string]time.Time{},
+
+		commandNote: map[string]string{},
 	}
 	if appDataDir != "" {
 		r.path = filepath.Join(appDataDir, "plugins", "contrib-state.json")
@@ -450,6 +457,63 @@ func (r *contribRegistry) saveLocked() {
 	if os.WriteFile(tmp, b, 0o644) == nil {
 		_ = os.Rename(tmp, r.path)
 	}
+}
+
+// forgetPlugin drops every overlay and hidden flag a plugin left behind, so a
+// later reinstall with the same ID starts clean.
+func (r *contribRegistry) forgetPlugin(pluginID string) {
+	slotPrefix := "plugin:" + pluginID + "/"
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for id := range r.hidden {
+		if strings.HasPrefix(id, slotPrefix) {
+			delete(r.hidden, id)
+			changed = true
+		}
+	}
+	for id := range r.badges {
+		if strings.HasPrefix(id, slotPrefix) {
+			delete(r.badges, id)
+		}
+	}
+	for id := range r.active {
+		if strings.HasPrefix(id, slotPrefix) {
+			delete(r.active, id)
+		}
+	}
+	for id := range r.status {
+		if strings.HasPrefix(id, pluginID+"/") {
+			delete(r.status, id)
+		}
+	}
+	for id := range r.refreshed {
+		if strings.HasPrefix(id, pluginID+"|") {
+			delete(r.refreshed, id)
+		}
+	}
+	delete(r.commandNote, pluginID)
+	if changed {
+		r.saveLocked()
+	}
+}
+
+// setCommandNote records the note a running command was invoked on, so
+// host.editor.insert during that command cannot land in another note.
+func (r *contribRegistry) setCommandNote(pluginID, note string) {
+	r.mu.Lock()
+	if note == "" {
+		delete(r.commandNote, pluginID)
+	} else {
+		r.commandNote[pluginID] = note
+	}
+	r.mu.Unlock()
+}
+
+func (r *contribRegistry) runningCommandNote(pluginID string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.commandNote[pluginID]
 }
 
 // ---------------------------------------------------------------------------
@@ -738,7 +802,12 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			s.toast(pluginID, err.Error(), "error")
 			return
 		}
+		if !rt.manifest.HasPermission(PermEditorRead) {
+			cc.Selection = ""
+		}
+		s.contrib.setCommandNote(pluginID, cc.Note)
 		res, err := rt.Command(ctx, commandID, cc)
+		s.contrib.setCommandNote(pluginID, "")
 		if err != nil {
 			s.toast(pluginID, err.Error(), "error")
 			return
@@ -968,7 +1037,7 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 			return nil, e, true
 		}
 		surf := Surface(p.Surface)
-		if surf != SurfaceSettingsPage && !m.hasContribSurface(surf) {
+		if !m.HasSurface(surf) {
 			return nil, rpcErr(-32602, "unknown surface: "+p.Surface), true
 		}
 		go s.ReloadSurfaceViewAsync(m.ID, surf)
@@ -993,6 +1062,7 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 		}
 		var p struct {
 			Text string `json:"text"`
+			Note string `json:"note"`
 		}
 		if e := decode(&p); e != nil {
 			return nil, e, true
@@ -1003,7 +1073,11 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 		if len(p.Text) > maxPluginNoteWrite {
 			return nil, rpcErr(-32602, "text too large"), true
 		}
-		if err := ui.EditorInsert(p.Text); err != nil {
+		expected := strings.TrimSpace(p.Note)
+		if expected == "" {
+			expected = s.contrib.runningCommandNote(m.ID)
+		}
+		if err := ui.EditorInsert(m.ID, expected, p.Text); err != nil {
 			return nil, rpcErr(-32004, err.Error()), true
 		}
 		return map[string]any{"ok": true}, nil, true
