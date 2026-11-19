@@ -165,6 +165,7 @@ const (
 	Send            Icon = "send"
 	Plug            Icon = "plug"
 	Package         Icon = "package"
+	Zap             Icon = "zap"
 )
 
 type MascotState string
@@ -290,6 +291,9 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 			root.Translate(0, -1.4*k*p)
 		case Send:
 			root.Translate(2.0*k*p, -1.8*k*p).Rotate(-5*p)
+		case Zap:
+			sc := 1 + 0.14*p
+			root.Translate(0.5*k*p, -1.1*k*p).Rotate(-8*p).Scale(sc, sc)
 		case ChevronDown, TbChevron:
 			sc := 1 + 0.13*p
 			root.Translate(0, 2.2*k*p).Scale(sc, sc)
@@ -407,7 +411,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
 				if moving {
 					switch glyph {
-					case Plus, Close, Check, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
+					case Plus, Close, Check, Zap, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
 						// Unified root transform already applied in sub-pixel lockstep with .line.
 					case Download, Upload:
 						ac.Scale(1+0.08*p, 1)
