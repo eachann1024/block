@@ -434,7 +434,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					hovered := btn.Hovered()
 					pressed := btn.Pressed()
 					if active {
-						btn.Background(pal.Selected).Border(1, pal.Accent)
+						btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
 					} else if pressed || hovered {
 						btn.Background(chrome.Hover).Border(1, ui.Transparent)
 					} else {
@@ -444,7 +444,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 						btn.Children(func() {
 							ic := pal.MonoIconColors(pal.TextSecondary)
 							if active {
-								ic = pal.DuoIconColors(pal.Accent)
+								ic = pal.DuoIconColors(pal.Text)
 							} else if hovered || pressed {
 								ic = pal.DuoIconColors(pal.Text)
 							}
@@ -485,7 +485,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 								hovered := btn.Hovered()
 								pressed := btn.Pressed()
 								if active {
-									btn.Background(pal.Selected).Border(1, pal.Accent)
+									btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
 								} else if pressed || hovered {
 									btn.Background(chrome.Hover).Border(1, ui.Transparent)
 								} else {
@@ -495,7 +495,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 								btn.Children(func() {
 									ic := pal.MonoIconColors(pal.TextSecondary)
 									if active {
-										ic = pal.DuoIconColors(pal.Accent)
+										ic = pal.DuoIconColors(pal.Text)
 									} else if hovered || pressed {
 										ic = pal.DuoIconColors(pal.Text)
 									}
@@ -1676,7 +1676,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							pillFG := pal.TextSecondary
 							if ignored {
 								pillBG = pal.Selected
-								pillBD = pal.Accent
+								pillBD = pal.SelectedBorder
 								pillFG = pal.Text
 							}
 							pill := ui.ButtonBase(c.Key(id + "-btn")).Height(32).PaddingX(10).Gap(8).
@@ -1685,7 +1685,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 							pillHover := pill.Hovered()
 							pillPress := pill.Pressed()
 							if pillHover || pillPress {
-								pillBD = pal.Accent
+								pillBD = pal.ShellChrome().FieldBorderHover
 								pillFG = pal.Text
 							}
 							internalui.AnimateSurfaceColors(pill, pillBG, pillBD, true)
@@ -1984,7 +1984,7 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
 	if !recording && (hovered || pressed) {
-		borderCol = pal.Accent
+		borderCol = pal.ShellChrome().FieldBorderHover
 	}
 	internalui.AnimateSurfaceColors(btn, trayBG, borderCol, true)
 	internalui.TactileCard(btn, hovered, pressed, recording, false)
