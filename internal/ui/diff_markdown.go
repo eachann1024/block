@@ -634,10 +634,12 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 			body = diffLiteralStart(body)
 		}
 		if st.Setext > 0 && !st.Code {
-			// As an ATX heading a trailing "#" run would read as a closing sequence.
+			// As an ATX heading a trailing "#" run would read as a closing sequence,
+			// unless it is escaped already ("Title \#").
 			if h := strings.TrimRight(body, " \t"); strings.HasSuffix(h, "#") {
-				k := len(strings.TrimRight(h, "#"))
-				body = h[:k] + `\` + h[k:]
+				if k := len(strings.TrimRight(h, "#")); !diffEscaped(h, k) {
+					body = h[:k] + `\` + h[k:]
+				}
 			}
 			body = strings.Repeat("#", st.Setext) + " " + body
 		}
