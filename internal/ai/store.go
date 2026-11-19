@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"block/assets"
@@ -19,12 +20,14 @@ import (
 )
 
 const (
-	defaultPanelWidth    float32 = theme.AIPanelDefaultWidth
-	minPanelWidth        float32 = theme.AIPanelMinWidth
-	maxPanelWidth        float32 = theme.AIPanelMaxWidth
-	maxBuiltinSteps              = 8
-	streamRedrawInterval         = 16 * time.Millisecond
-	draftPersistDelay            = 300 * time.Millisecond
+	defaultPanelWidth     float32 = theme.AIPanelDefaultWidth
+	minPanelWidth         float32 = theme.AIPanelMinWidth
+	maxPanelWidth         float32 = theme.AIPanelMaxWidth
+	maxBuiltinSteps               = 8
+	streamRedrawInterval          = 16 * time.Millisecond
+	draftPersistDelay             = 300 * time.Millisecond
+	chatPersistDelay              = 400 * time.Millisecond
+	pickerRefreshCooldown         = 30 * time.Second
 )
 
 type tabDraft struct {
@@ -130,19 +133,24 @@ type Controller struct {
 	composerComposing bool
 	composerSelectEnd bool
 	messagesList      ui.ListState
+	messagesScroll    ui.ScrollState
 	pickerList        ui.ListState
 	mdOpts            markdown.Options
+	mdThemeKey        mdPaletteKey
+	streamCache       *chatStreamCache
 
-	pickIndex       int
-	pickerDismissed bool
-	pickerFolder    string
-	pickerFolders   []string
-	pickerPages     []string
-	pickerSkills    []model.SkillSpec
-	pickerLoading   bool
-	pickerInjected  bool
-	pickerRoot      string
-	pickerRefreshed time.Time
+	pickIndex        int
+	pickerDismissed  bool
+	pickerFolder     string
+	pickerFolders    []string
+	pickerPages      []string
+	pickerSkills     []model.SkillSpec
+	pickerLoading    bool
+	pickerInjected   bool
+	pickerRoot       string
+	pickerRefreshed  time.Time
+	pickerRootMtime  time.Time
+	pickerSkillCache map[string]cachedSkillEntry
 
 	historyOpen      bool
 	historyScroll    ui.ScrollState
@@ -166,10 +174,16 @@ type Controller struct {
 	streaming         bool
 	streamSerial      uint64
 	streamCancel      func()
-	streamRedrawLast  time.Time
-	streamRedrawTimer *time.Timer
-	draftPersistTimer *time.Timer
-	partialText       string
+	streamRedrawLast      time.Time
+	streamRedrawTimer     *time.Timer
+	draftPersistTimer     *time.Timer
+	chatPersistMu         sync.Mutex
+	chatPersistTimer      *time.Timer
+	chatPersistPending    []model.Conversation
+	chatPersistDirty      bool
+	chatPersistSeq        uint64
+	chatPersistWrittenSeq uint64
+	partialText           string
 	partialThink      string
 	partialSteps      []model.ProcessStep
 	turnError         string
@@ -445,14 +459,87 @@ func (c *Controller) readFailedDraftsFile() []model.SentDraft {
 	return list
 }
 
-func (c *Controller) persistChatsLocked() {
+func (c *Controller) snapshotChatsLocked() []model.Conversation {
 	keep := make([]model.Conversation, 0, len(c.convs))
 	for _, conv := range c.convs {
 		if len(conv.Messages) > 0 {
-			keep = append(keep, conv)
+			keep = append(keep, cloneConversation(conv))
 		}
 	}
-	_ = c.writeJSONFile("ai-chats.json", keep)
+	return keep
+}
+
+func (c *Controller) persistChatsLocked() {
+	snap := c.snapshotChatsLocked()
+	c.chatPersistSeq++
+	seq := c.chatPersistSeq
+	if testing.Testing() {
+		c.chatPersistDirty = false
+		c.chatPersistPending = nil
+		if c.chatPersistTimer != nil {
+			c.chatPersistTimer.Stop()
+			c.chatPersistTimer = nil
+		}
+		c.writeChatsSnapshot(snap, seq)
+		return
+	}
+	c.chatPersistPending = snap
+	c.chatPersistDirty = true
+	if c.chatPersistTimer == nil {
+		c.chatPersistTimer = time.AfterFunc(chatPersistDelay, c.flushPendingChatsAsync)
+	}
+}
+
+func (c *Controller) flushPendingChatsAsync() {
+	c.mu.Lock()
+	c.chatPersistTimer = nil
+	if !c.chatPersistDirty {
+		c.mu.Unlock()
+		return
+	}
+	snap := c.chatPersistPending
+	seq := c.chatPersistSeq
+	c.chatPersistPending = nil
+	c.chatPersistDirty = false
+	c.mu.Unlock()
+
+	c.writeChatsSnapshot(snap, seq)
+}
+
+func (c *Controller) writeChatsSnapshot(snap []model.Conversation, seq uint64) {
+	c.chatPersistMu.Lock()
+	defer c.chatPersistMu.Unlock()
+	if seq < c.chatPersistWrittenSeq {
+		return
+	}
+	_ = c.writeJSONFile("ai-chats.json", snap)
+	c.chatPersistWrittenSeq = seq
+}
+
+// Flush synchronously persists any pending conversation or active draft writes to disk.
+func (c *Controller) Flush() {
+	c.mu.Lock()
+	if c.chatPersistTimer != nil {
+		c.chatPersistTimer.Stop()
+		c.chatPersistTimer = nil
+	}
+	needChats := c.chatPersistDirty
+	var snap []model.Conversation
+	var seq uint64
+	if needChats {
+		snap = c.chatPersistPending
+		seq = c.chatPersistSeq
+		c.chatPersistPending = nil
+		c.chatPersistDirty = false
+	}
+	if c.draftPersistTimer != nil {
+		c.cancelDraftPersistLocked()
+		c.writeActiveDraftLocked()
+	}
+	c.mu.Unlock()
+	if needChats {
+		c.writeChatsSnapshot(snap, seq)
+	}
 }
 
 func (c *Controller) cancelDraftPersistLocked() {
@@ -1976,6 +2063,12 @@ func (c *Controller) findSkillLocked(name string) (model.SkillSpec, bool) {
 	return model.SkillSpec{}, false
 }
 
+type cachedSkillEntry struct {
+	fileMtime time.Time
+	dirMtime  time.Time
+	spec      model.SkillSpec
+}
+
 func (c *Controller) refreshPickerIfNeeded() {
 	c.mu.Lock()
 	if c.pickerInjected || c.pickerLoading || c.host == nil {
@@ -1987,20 +2080,31 @@ func (c *Controller) refreshPickerIfNeeded() {
 		c.mu.Unlock()
 		return
 	}
-	if c.pickerRoot == root && time.Since(c.pickerRefreshed) < 5*time.Second {
+	if c.pickerRoot == root && !c.pickerRefreshed.IsZero() && time.Since(c.pickerRefreshed) < pickerRefreshCooldown {
 		c.mu.Unlock()
 		return
 	}
+	prevSkillCache := make(map[string]cachedSkillEntry, len(c.pickerSkillCache))
+	for k, v := range c.pickerSkillCache {
+		prevSkillCache[k] = v
+	}
+	prevRootMtime := c.pickerRootMtime
+	prevHasData := len(c.pickerPages) > 0 || len(c.pickerFolders) > 0
+	prevFolders := append([]string(nil), c.pickerFolders...)
+	prevPages := append([]string(nil), c.pickerPages...)
 	c.pickerLoading = true
 	c.pickerRoot = root
 	host := c.host
 	c.mu.Unlock()
 
 	go func() {
+		rootInfo, rootStatErr := os.Stat(root)
 		entries, err := host.ListNotebookFiles(root)
 		foldersSet := make(map[string]struct{})
 		var pages []string
 		var skills []model.SkillSpec
+		nextSkillCache := make(map[string]cachedSkillEntry)
+		skillsChanged := false
 
 		var walk func(list []model.FileEntry)
 		walk = func(list []model.FileEntry) {
@@ -2017,8 +2121,26 @@ func (c *Controller) refreshPickerIfNeeded() {
 					page := strings.TrimSuffix(slash, ".md")
 					pages = append(pages, page)
 					if strings.HasSuffix(page, "/SKILL") || page == "SKILL" {
-						if txt, err := host.ReadNote(ent.Path); err == nil {
-							skills = append(skills, parseSkillMarkdown(page, txt))
+						fileInfo, ferr := os.Stat(ent.Path)
+						dirInfo, derr := os.Stat(filepath.Dir(ent.Path))
+						if cached, ok := prevSkillCache[ent.Path]; ok && ferr == nil && derr == nil &&
+							cached.fileMtime.Equal(fileInfo.ModTime()) && cached.dirMtime.Equal(dirInfo.ModTime()) {
+							skills = append(skills, cached.spec)
+							nextSkillCache[ent.Path] = cached
+							continue
+						}
+						if txt, rErr := host.ReadNote(ent.Path); rErr == nil {
+							spec := parseSkillMarkdown(page, txt)
+							skills = append(skills, spec)
+							entry := cachedSkillEntry{spec: spec}
+							if ferr == nil {
+								entry.fileMtime = fileInfo.ModTime()
+							}
+							if derr == nil {
+								entry.dirMtime = dirInfo.ModTime()
+							}
+							nextSkillCache[ent.Path] = entry
+							skillsChanged = true
 						}
 					}
 				}
@@ -2027,6 +2149,9 @@ func (c *Controller) refreshPickerIfNeeded() {
 		if err == nil {
 			walk(entries)
 		}
+		if len(nextSkillCache) != len(prevSkillCache) {
+			skillsChanged = true
+		}
 		folders := make([]string, 0, len(foldersSet))
 		for f := range foldersSet {
 			folders = append(folders, f)
@@ -2034,19 +2159,33 @@ func (c *Controller) refreshPickerIfNeeded() {
 		sort.Strings(folders)
 		sort.Strings(pages)
 
+		listsChanged := !prevHasData || !slicesEqual(prevFolders, folders) || !slicesEqual(prevPages, pages)
+		rootMtimeUnchanged := rootStatErr == nil && !prevRootMtime.IsZero() && rootInfo.ModTime().Equal(prevRootMtime)
+		changed := listsChanged || skillsChanged || !rootMtimeUnchanged
+
 		c.mu.Lock()
 		if !c.pickerInjected && c.pickerRoot == root {
-			c.pickerFolders = folders
-			c.pickerPages = pages
-			c.loadBuiltinSkillsLocked()
-			for _, sk := range skills {
-				c.upsertSkillLocked(sk)
+			if listsChanged {
+				c.pickerFolders = folders
+				c.pickerPages = pages
+			}
+			if skillsChanged || !prevHasData {
+				c.loadBuiltinSkillsLocked()
+				for _, sk := range skills {
+					c.upsertSkillLocked(sk)
+				}
+			}
+			c.pickerSkillCache = nextSkillCache
+			if rootStatErr == nil {
+				c.pickerRootMtime = rootInfo.ModTime()
 			}
 			c.pickerRefreshed = time.Now()
 		}
 		c.pickerLoading = false
 		c.mu.Unlock()
-		c.requestRedraw()
+		if changed {
+			c.requestRedraw()
+		}
 	}()
 }
 
