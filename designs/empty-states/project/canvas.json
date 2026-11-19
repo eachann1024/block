@@ -1,0 +1,35 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-19T10:00:00Z"
+  },
+  "title": "缺省图重设计",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1200, "h": 760, "title": "A · 未选笔记", "radius": 12 },
+    "A-EmptyFolder.dc.html": { "x": 1280, "y": 0, "w": 1200, "h": 760, "title": "A · 空笔记本", "radius": 12 },
+    "A-NoFolder.dc.html": { "x": 2560, "y": 0, "w": 1200, "h": 760, "title": "A · 未打开文件夹", "radius": 12 },
+    "A-ReadError.dc.html": { "x": 3840, "y": 0, "w": 1200, "h": 760, "title": "A · 文件无法打开", "radius": 12 },
+    "A-AI.dc.html": { "x": 5120, "y": 0, "w": 1200, "h": 760, "title": "A · AI 未配置", "radius": 12 },
+    "B-Centered.dc.html": { "x": 0, "y": 1180, "w": 1200, "h": 760, "title": "B · 居中紧凑 · 未选笔记", "radius": 12 },
+    "C-GhostPage.dc.html": { "x": 1280, "y": 1180, "w": 1200, "h": 760, "title": "C · 空白纸面 · 未选笔记", "radius": 12 }
+  },
+  "order": [
+    "Main.dc.html",
+    "A-EmptyFolder.dc.html",
+    "A-NoFolder.dc.html",
+    "A-ReadError.dc.html",
+    "A-AI.dc.html",
+    "B-Centered.dc.html",
+    "C-GhostPage.dc.html"
+  ],
+  "notes": {
+    "rowA": { "x": 0, "y": -300, "text": "A · 页面式：小线稿 + 动作清单", "kind": "title1", "maxW": 6320 },
+    "rowBC": { "x": 0, "y": 880, "text": "B / C · 另外两个方向", "kind": "title1", "maxW": 2480 }
+  },
+  "designSystems": []
+}
