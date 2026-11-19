@@ -1046,6 +1046,10 @@ func DiffTableRow(c *ui.Context, trimmed string, cols int, st DiffLineStyle, hea
 	for len(cells) < cols {
 		cells = append(cells, "")
 	}
+	// Cells past the header's count are dropped, as in the note.
+	if cols > 0 && len(cells) > cols {
+		cells = cells[:cols]
+	}
 	return ui.Row(c).Grow(1).MinWidth(0).Children(func() {
 		for ci, cell := range cells {
 			ui.Box(c).Grow(1).Shrink(1).Basis(0).MinWidth(0).Padding(theme.Space4, theme.Space8).
