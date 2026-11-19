@@ -102,9 +102,8 @@ func (s *Session) SelectedDoc() *model.Doc {
 	}
 
 	// Single trailing newline boundary between adjacent blocks.
-	first := &s.doc.Blocks[a.Block]
-	firstLen := len([]rune(first.PlainText()))
-	if a.Block+1 == b.Block && a.Offset == firstLen && firstLen > 0 && b.Offset == 0 {
+	firstLen := s.blockSelectionLen(a.Block)
+	if a.Block+1 == b.Block && a.Offset == firstLen && b.Offset == 0 {
 		return &model.Doc{
 			Blocks:       []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}},
 			TrailingLine: "\n",
@@ -201,9 +200,8 @@ func (s *Session) SelectedMarkdown() string {
 		return serializeInlineBlockMarkdown(spans, s.codec)
 	}
 
-	first := &s.doc.Blocks[a.Block]
-	firstLen := len([]rune(first.PlainText()))
-	if a.Block+1 == b.Block && a.Offset == firstLen && firstLen > 0 && b.Offset == 0 {
+	firstLen := s.blockSelectionLen(a.Block)
+	if a.Block+1 == b.Block && a.Offset == firstLen && b.Offset == 0 {
 		return "\n"
 	}
 
@@ -220,6 +218,12 @@ func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec)
 	}
 	// Split on explicit '\n' so inline lines don't collapse.
 	rawText := model.PlainTextOfSpans(spans)
+	if rawText == "" {
+		return ""
+	}
+	if strings.TrimSpace(rawText) == "" {
+		return rawText
+	}
 	if !strings.Contains(rawText, "\n") {
 		blk := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}
 		if codec != nil {
@@ -240,6 +244,13 @@ func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec)
 	return strings.Join(parts, "\n")
 }
 
+func sanitizeTableCellTSV(s string) string {
+	if !strings.ContainsAny(s, "\t\r\n") {
+		return s
+	}
+	return strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ", "\t", " ").Replace(s)
+}
+
 func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune int, codec model.MarkdownCodec) string {
 	if tbl == nil || startRune >= endRune {
 		return ""
@@ -252,13 +263,15 @@ func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune in
 		for cIdx, cell := range r {
 			clen := len([]rune(cell.PlainText()))
 			cStart, cEnd := pos, pos+clen
-			ovLo := max(startRune, cStart) - cStart
-			ovHi := min(endRune, cEnd) - cStart
-			if ovLo < ovHi {
-				rowTouched = true
-				sub := sliceSpans(cell.Spans, ovLo, ovHi)
-				cellParts = append(cellParts, serializeInlineBlockMarkdown(sub, codec))
-			} else if startRune <= cEnd && endRune >= cStart && (startRune < cStart || endRune > cEnd) {
+			if clen > 0 {
+				ovLo := max(startRune, cStart) - cStart
+				ovHi := min(endRune, cEnd) - cStart
+				if ovLo < ovHi {
+					rowTouched = true
+					sub := sliceSpans(cell.Spans, ovLo, ovHi)
+					cellParts = append(cellParts, sanitizeTableCellTSV(serializeInlineBlockMarkdown(sub, codec)))
+				}
+			} else if startRune <= cStart && cStart <= endRune {
 				rowTouched = true
 				cellParts = append(cellParts, "")
 			}
@@ -293,14 +306,22 @@ func sliceTableSelection(blk *model.Block, startRune, endRune int) (model.Block,
 		for cIdx, cell := range r {
 			clen := len([]rune(cell.PlainText()))
 			cStart, cEnd := pos, pos+clen
-			ovLo := max(startRune, cStart) - cStart
-			ovHi := min(endRune, cEnd) - cStart
-			if ovLo < ovHi {
+			if clen > 0 {
+				ovLo := max(startRune, cStart) - cStart
+				ovHi := min(endRune, cEnd) - cStart
+				if ovLo < ovHi {
+					rMin = min(rMin, rIdx)
+					rMax = max(rMax, rIdx)
+					cMin = min(cMin, cIdx)
+					cMax = max(cMax, cIdx)
+					hits = append(hits, overlap{r: rIdx, c: cIdx, lo: ovLo, hi: ovHi})
+				}
+			} else if startRune <= cStart && cStart <= endRune {
 				rMin = min(rMin, rIdx)
 				rMax = max(rMax, rIdx)
 				cMin = min(cMin, cIdx)
 				cMax = max(cMax, cIdx)
-				hits = append(hits, overlap{r: rIdx, c: cIdx, lo: ovLo, hi: ovHi})
+				hits = append(hits, overlap{r: rIdx, c: cIdx, lo: 0, hi: 0})
 			}
 			pos = cEnd
 			if cIdx+1 < len(r) {
@@ -320,7 +341,8 @@ func sliceTableSelection(blk *model.Block, startRune, endRune int) (model.Block,
 	}
 	for _, h := range hits {
 		cell := tbl.Rows[h.r][h.c]
-		rows[h.r-rMin][h.c-cMin] = model.TableCell{Spans: sliceSpans(cell.Spans, h.lo, h.hi)}
+		cell.Spans = sliceSpans(cell.Spans, h.lo, h.hi)
+		rows[h.r-rMin][h.c-cMin] = cell
 	}
 	var aligns []model.ColAlign
 	for c := cMin; c <= cMax; c++ {
@@ -333,7 +355,7 @@ func sliceTableSelection(blk *model.Block, startRune, endRune int) (model.Block,
 	return model.Block{
 		ID:    model.NewBlockID(),
 		Kind:  model.BlockTable,
-		Table: &model.TableData{Aligns: aligns, Rows: rows},
+		Table: &model.TableData{Aligns: aligns, Rows: rows, NoHeaderRow: tbl.NoHeaderRow || rMin > 0, HeaderCol: tbl.HeaderCol && cMin == 0},
 		Dirty: true,
 	}, true
 }
@@ -581,8 +603,90 @@ func serializeBlockFallback(b *model.Block) string {
 	}
 }
 
-func (s *Session) PasteText(raw string) {
+func normalizeTablePasteRaw(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	cleaned := strings.TrimPrefix(raw, "\uFEFF")
+	return strings.NewReplacer(
+		"\r\n", "\n",
+		"\r", "\n",
+		"\u200B", "",
+		"\u200C", "",
+		"\u200D", "",
+		"\uFEFF", "",
+		"\u00A0", " ",
+	).Replace(cleaned)
+}
+
+func (s *Session) isTablePasteTarget() bool {
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return false
+	}
+	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+		return true
+	}
+	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() {
+		return false
+	}
+	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
+	return s.doc.Blocks[idx].Kind == model.BlockTable && s.doc.Blocks[idx].Table != nil
+}
+
+func htmlTableRowCountMatches(htmlRaw, mdStr string) bool {
+	norm := normalizeTablePasteRaw(mdStr)
+	if !strings.HasSuffix(norm, "\n") {
+		return false
+	}
+	lower := strings.ToLower(htmlRaw)
+	if !strings.Contains(lower, "<table") {
+		return false
+	}
+	trCount := strings.Count(lower, "<tr")
+	expectedRows := strings.Count(norm, "\n") + 1
+	return trCount > 1 && trCount == expectedRows
+}
+
+func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
+		return
+	}
+	norm := normalizeTablePasteRaw(raw)
+	if norm == "" {
+		return
+	}
+	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+		a, b := s.orderedSelection()
+		idx := a.Block
+		if idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].Table == nil {
+			return
+		}
+		s.pushUndo()
+		blk := &s.doc.Blocks[idx]
+		clearTableRange(blk.Table, a.Offset, b.Offset, "")
+		s.focusedBlock = idx
+		s.tableActiveBlock = blk.ID
+		s.tableActiveRow = 0
+		s.tableActiveCol = 0
+		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+			s.tableActiveRow = row
+			s.tableActiveCol = col
+		}
+		s.selAnchor = Position{Block: idx, Offset: a.Offset}
+		s.selHead = s.selAnchor
+		s.pasteIntoTableBlockOpts(idx, norm, false, true)
+		return
+	}
+	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
+	if s.doc.Blocks[idx].Kind == model.BlockTable && s.doc.Blocks[idx].Table != nil {
+		s.pushUndo()
+		s.firstLineDeleteArmed = false
+		s.pasteIntoTableBlockOpts(idx, norm, false, true)
+	}
+}
+
+func (s *Session) PasteText(raw string) {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}
 	idx := s.focusedBlock
@@ -613,12 +717,14 @@ func (s *Session) PasteText(raw string) {
 		return
 	}
 
-	norm := raw
-	if s.codec != nil {
+	cleanRaw := normalizeTablePasteRaw(raw)
+	norm := cleanRaw
+	if s.isTablePasteTarget() {
+		norm = cleanRaw
+	} else if cleanRaw != "" && strings.Trim(cleanRaw, " \t") == "" && !strings.Contains(cleanRaw, "\n") {
+		norm = cleanRaw
+	} else if s.codec != nil {
 		norm = s.codec.NormalizePaste(raw)
-	} else {
-		norm = strings.ReplaceAll(raw, "\r\n", "\n")
-		norm = strings.ReplaceAll(norm, "\r", "\n")
 	}
 	if norm == "" {
 		return
@@ -700,7 +806,7 @@ func (s *Session) PasteText(raw string) {
 
 // PastePlainText inserts unformatted literal text (Cmd/Ctrl+Shift+V) without parsing Markdown, HTML, or URLs.
 func (s *Session) PastePlainText(raw string) {
-	if s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
 		return
 	}
 	clean := strings.TrimPrefix(raw, "\uFEFF")
@@ -708,7 +814,7 @@ func (s *Session) PastePlainText(raw string) {
 	if clean == "" {
 		return
 	}
-	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() {
+	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() || s.hasMultiCellTableSelection() {
 		s.ReplaceSelectionWithText(clean)
 		return
 	}
@@ -729,7 +835,7 @@ func (s *Session) PastePlainText(raw string) {
 			s.spliceSpansIntoActiveTableCell(idx, []model.Span{{Text: clean}})
 			return
 		}
-		s.pasteIntoTableBlock(idx, clean)
+		s.pasteIntoTableBlockOpts(idx, clean, true, false)
 		return
 	}
 	if !strings.Contains(clean, "\n") && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
@@ -739,22 +845,12 @@ func (s *Session) PastePlainText(raw string) {
 
 	var plainBlocks []model.Block
 	for _, line := range strings.Split(clean, "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
 		plainBlocks = append(plainBlocks, model.Block{
 			ID:    model.NewBlockID(),
 			Kind:  model.BlockParagraph,
 			Spans: []model.Span{{Text: line}},
 			Dirty: true,
 		})
-	}
-	if len(plainBlocks) == 0 {
-		return
-	}
-	if len(plainBlocks) == 1 && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
-		s.replaceSelectionWithSpansInBlock(idx, plainBlocks[0].Spans)
-		return
 	}
 	s.splicePastedBlocksAtSelection(idx, plainBlocks)
 }
@@ -1118,8 +1214,37 @@ func (s *Session) parseInlineSpans(text string) []model.Span {
 	if text == "" {
 		return nil
 	}
-	if s.codec != nil {
-		if doc := s.codec.Parse(text); doc != nil && len(doc.Blocks) == 1 && doc.Blocks[0].Kind == model.BlockParagraph {
+	if strings.TrimSpace(text) == "" {
+		return []model.Span{{Text: text}}
+	}
+	if s.codec == nil {
+		return []model.Span{{Text: text}}
+	}
+	if strings.Contains(text, "\n") {
+		lines := strings.Split(text, "\n")
+		var out []model.Span
+		for i, ln := range lines {
+			if i > 0 {
+				out = append(out, model.Span{Text: "\n"})
+			}
+			out = append(out, s.parseInlineSpans(ln)...)
+		}
+		return normalizeSpans(out)
+	}
+	// Wrap with "x ... x" so leading/trailing spaces and block prefixes parse strictly as inline Paragraph spans.
+	wrapped := "x " + text + " x"
+	if doc := s.codec.Parse(wrapped); doc != nil && len(doc.Blocks) == 1 && doc.Blocks[0].Kind == model.BlockParagraph {
+		spans := doc.Blocks[0].Spans
+		total := len([]rune(model.PlainTextOfSpans(spans)))
+		if total >= 4 {
+			inner := sliceSpans(spans, 2, total-2)
+			if len(inner) > 0 {
+				return inner
+			}
+		}
+	}
+	if doc := s.codec.Parse(text); doc != nil && len(doc.Blocks) == 1 && doc.Blocks[0].Kind == model.BlockParagraph {
+		if len(doc.Blocks[0].Spans) > 0 {
 			return doc.Blocks[0].Spans
 		}
 	}
@@ -1183,7 +1308,33 @@ func (s *Session) buildTableFromTSV(tsv string) *model.TableData {
 	return &model.TableData{Aligns: aligns, Rows: rows}
 }
 
+func (s *Session) syncTableActiveBounds(idx int) {
+	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Table == nil || len(b.Table.Rows) == 0 {
+		return
+	}
+	rows := len(b.Table.Rows)
+	cols := max(tableMaxCols(b.Table), 1)
+	if s.tableActiveBlock == b.ID {
+		s.tableActiveRow = clampInt(s.tableActiveRow, 0, rows-1)
+		s.tableActiveCol = clampInt(s.tableActiveCol, 0, cols-1)
+	}
+	if s.focusedBlock == idx && s.selAnchor.Block == idx && s.selHead.Block == idx {
+		maxOff := s.blockSelectionLen(idx)
+		s.selAnchor.Offset = clampInt(s.selAnchor.Offset, 0, maxOff)
+		s.selHead.Offset = clampInt(s.selHead.Offset, 0, maxOff)
+		s.selSyncPending = true
+	}
+}
+
 func (s *Session) pasteIntoTableBlock(idx int, norm string) {
+	s.pasteIntoTableBlockOpts(idx, norm, false, false)
+}
+
+func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keepTrailingEmptyRow bool) {
 	b := &s.doc.Blocks[idx]
 	tbl := b.Table
 	if tbl == nil || len(tbl.Rows) == 0 {
@@ -1192,11 +1343,59 @@ func (s *Session) pasteIntoTableBlock(idx int, norm string) {
 	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
 	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
 	if !strings.Contains(norm, "\t") && !strings.Contains(norm, "\n") {
-		s.spliceSpansIntoActiveTableCell(idx, s.parseInlineSpans(norm))
+		if plain {
+			s.spliceSpansIntoActiveTableCell(idx, []model.Span{{Text: norm}})
+		} else {
+			s.spliceSpansIntoActiveTableCell(idx, s.parseInlineSpans(norm))
+		}
 		return
 	}
+	if !plain && s.codec != nil && strings.HasPrefix(strings.TrimLeft(norm, " \t"), "|") {
+		if parsed := s.codec.Parse(norm); parsed != nil && len(parsed.Blocks) == 1 &&
+			parsed.Blocks[0].Kind == model.BlockTable && parsed.Blocks[0].Table != nil && len(parsed.Blocks[0].Table.Rows) > 0 {
+			srcTbl := parsed.Blocks[0].Table
+			neededCols := len(tbl.Rows[0])
+			for _, r := range srcTbl.Rows {
+				if startC+len(r) > neededCols {
+					neededCols = startC + len(r)
+				}
+			}
+			for len(tbl.Aligns) < neededCols {
+				tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
+			}
+			neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
+			for len(tbl.Rows) < neededRows {
+				tbl.Rows = append(tbl.Rows, make([]model.TableCell, neededCols))
+			}
+			for r := range tbl.Rows {
+				for len(tbl.Rows[r]) < neededCols {
+					tbl.Rows[r] = append(tbl.Rows[r], model.TableCell{})
+				}
+			}
+			for dr, srcRow := range srcTbl.Rows {
+				for dc, srcCell := range srcRow {
+					tbl.Rows[startR+dr][startC+dc].Spans = append([]model.Span(nil), srcCell.Spans...)
+				}
+			}
+			b.Dirty = true
+			b.CleanSource = ""
+			s.focusedBlock = idx
+			s.tableActiveBlock = b.ID
+			s.tableActiveRow = startR + len(srcTbl.Rows) - 1
+			s.tableActiveCol = startC + max(len(srcTbl.Rows[len(srcTbl.Rows)-1])-1, 0)
+			endOff := tableCellStartOffset(tbl, s.tableActiveRow, s.tableActiveCol) +
+				len([]rune(tbl.Rows[s.tableActiveRow][s.tableActiveCol].PlainText()))
+			s.selAnchor = Position{Block: idx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return
+		}
+	}
 	rawRows := strings.Split(norm, "\n")
-	if len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
+	if !keepTrailingEmptyRow && len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
 		rawRows = rawRows[:len(rawRows)-1]
 	}
 	neededCols := len(tbl.Rows[0])
@@ -1221,15 +1420,31 @@ func (s *Session) pasteIntoTableBlock(idx int, norm string) {
 	for dr, rLine := range rawRows {
 		cols := strings.Split(rLine, "\t")
 		for dc, cellText := range cols {
-			tbl.Rows[startR+dr][startC+dc] = model.TableCell{Spans: s.parseInlineSpans(cellText)}
+			if plain {
+				if cellText == "" {
+					tbl.Rows[startR+dr][startC+dc].Spans = nil
+				} else {
+					tbl.Rows[startR+dr][startC+dc].Spans = []model.Span{{Text: cellText}}
+				}
+			} else {
+				tbl.Rows[startR+dr][startC+dc].Spans = s.parseInlineSpans(cellText)
+			}
 		}
 	}
 	b.Dirty = true
 	b.CleanSource = ""
+	s.focusedBlock = idx
+	s.tableActiveBlock = b.ID
 	s.tableActiveRow = startR + len(rawRows) - 1
 	lastCols := strings.Split(rawRows[len(rawRows)-1], "\t")
 	s.tableActiveCol = startC + len(lastCols) - 1
+	endOff := tableCellStartOffset(tbl, s.tableActiveRow, s.tableActiveCol) +
+		len([]rune(tbl.Rows[s.tableActiveRow][s.tableActiveCol].PlainText()))
+	s.selAnchor = Position{Block: idx, Offset: endOff}
+	s.selHead = s.selAnchor
 	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
 	s.markDirty()
 }
 
@@ -3725,6 +3940,9 @@ func (s *Session) rejectActivePlan() {
 // --- Table Structural Edits ---
 
 func (s *Session) tableAddRow(blockID model.BlockID, at int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -3755,6 +3973,9 @@ func (s *Session) tableAddRow(blockID model.BlockID, at int) {
 }
 
 func (s *Session) tableDeleteRow(blockID model.BlockID, row int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -3767,10 +3988,14 @@ func (s *Session) tableDeleteRow(blockID model.BlockID, row int) {
 	b.Table.Rows = append(b.Table.Rows[:row], b.Table.Rows[row+1:]...)
 	b.Dirty = true
 	b.CleanSource = ""
+	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
 func (s *Session) tableAddCol(blockID model.BlockID, at int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -3836,6 +4061,9 @@ func (s *Session) tableAddCol(blockID model.BlockID, at int) {
 }
 
 func (s *Session) tableDeleteCol(blockID model.BlockID, col int) {
+	if s.readOnly {
+		return
+	}
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
 		return
@@ -3859,6 +4087,7 @@ func (s *Session) tableDeleteCol(blockID model.BlockID, col int) {
 	}
 	b.Dirty = true
 	b.CleanSource = ""
+	s.syncTableActiveBounds(idx)
 	s.markDirty()
 }
 
