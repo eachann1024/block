@@ -1219,10 +1219,6 @@ func latestStreamLine(s string) string {
 		if !code[i] && strings.Trim(raw, "> \t") == "" {
 			continue
 		}
-		// A quote line with nothing behind its ">" only separates paragraphs.
-		if !code[i] && strings.Trim(raw, "> \t") == "" {
-			continue
-		}
 		// A rule ("---") or an alert marker ("> [!NOTE]") is no text.
 		if !code[i] && (plainRuleRE.MatchString(raw) || alerts[i] != "") {
 			continue
@@ -1248,6 +1244,9 @@ func latestStreamLine(s string) string {
 					raw = raw[:m[3]] + `\` + raw[m[3]:]
 				}
 			}
+			if cols[i] > 0 {
+				raw = plainTableCut(raw, cols[i])
+			}
 			t = plainInline(raw, refs[i], cols[i] > 0)
 		}
 		if t == "" {
@@ -1257,6 +1256,23 @@ func latestStreamLine(s string) string {
 		return plainClip(t)
 	}
 	return ""
+}
+
+// plainTableCut keeps a table row's first n cells, as many as its header has: the
+// note drops the rest.
+func plainTableCut(row string, n int) string {
+	bars := 0
+	for i := 0; i < len(row); i++ {
+		switch {
+		case row[i] == '\\':
+			i++
+		case row[i] == '|' && i > 0:
+			if bars++; bars == n {
+				return row[:i+1]
+			}
+		}
+	}
+	return row
 }
 
 // plainClip keeps the last 80 characters of a live line.
