@@ -1339,7 +1339,8 @@ var plainParaMarkerRE = regexp.MustCompile(`^(?:>\s*)*\d{1,9}()[.)]`)
 var plainEmphasisREs = []*regexp.Regexp{
 	regexp.MustCompile(`(^|[^*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:.*?\S)??)__($|[^\p{L}\p{N}_])`),
-	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
+	// A single "~" may sit inside: "~~20~25 元~~" is struck through.
+	regexp.MustCompile(`(^|[^~\\])~~([^\s~](?:(?:[^~]|~[^~])*?[^\s~])?)~~($|[^~])`),
 	// A single "~" between letters or digits is a range ("20~25"), not strikethrough.
 	regexp.MustCompile(`(^|[^~\\\p{L}\p{N}])~(\S(?:[^~]*\S)?)~($|[^~\p{L}\p{N}])`),
 	// An escaped marker ("*匹配 \* 号*") is text inside, never the closer.
