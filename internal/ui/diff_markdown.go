@@ -1473,7 +1473,16 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 		s = diffLiteralEscaper.Replace(s)
 	}
 	if header {
-		s = "**" + diffUnbold(s) + "**"
+		s = diffUnbold(s)
+		// A star run at an edge that can't open or close ("字段 *" for a required
+		// field) is text; unescaped it would merge with the bold markers around it.
+		if t := strings.TrimRight(s, "*"); t != s && strings.HasSuffix(t, " ") {
+			s = t + strings.Repeat(`\*`, len(s)-len(t))
+		}
+		if t := strings.TrimLeft(s, "*"); t != s && strings.HasPrefix(t, " ") {
+			s = strings.Repeat(`\*`, len(s)-len(t)) + t
+		}
+		s = "**" + s + "**"
 	}
 	return markdown.View(c, s, diffMarkdownOptions(st))
 }
