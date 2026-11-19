@@ -191,10 +191,9 @@ func diffSetextText(lines []string, para []int) bool {
 // partial accept never leaves an orphan "| --- |" nor turns a table into a paragraph
 // by accident. applied[i] says whether changed line i is taken; unchanged lines are
 // ignored. A line the selection drops (a deleted blank, or a rejected inserted one)
-// that would merge two tables is kept as well. When both the old and the new
-// separator fit under the header, the new one is used only if a visible changed row
-// of that very table is taken (an alignment-only change is invisible, so a partial
-// accept keeps the old alignment).
+// that would merge two tables is kept as well. When the table has visible changed
+// rows, its new separator is used only if one of them is taken; a table shown
+// unchanged (an alignment change, or a table turned into text) follows the AI's text.
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
 	oldM, newM := diffFenceSides(lines, change)
@@ -262,7 +261,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		// A run is one block of rows in the result: kept rows plus the hidden separators
 		// among them (and the deleted rows around them). Dropped lines are see-through;
 		// any other kept line ends it.
-		var rows, cands, dels, drops []int
+		var rows, cands, dels, ins, drops []int
 	run:
 		for ; i < len(lines); i++ {
 			switch {
@@ -273,7 +272,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 				case oldTable[i] > 0:
 					dels = append(dels, i)
 				case newTable[i] > 0:
-					// A rejected inserted row is no gap between tables.
+					ins = append(ins, i)
 				default:
 					drops = append(drops, i)
 				}
@@ -323,23 +322,39 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		if fixed {
 			continue
 		}
-		taken := false
-		tables := map[int]bool{}
+		// taken: a visible change of this very table is accepted, so its new form wins;
+		// touched: it has one at all. A table the review shows unchanged follows the
+		// AI's text, so a separator removed to turn it into text stays removed.
+		taken, touched := false, false
+		oldIDs, newIDs := map[int]bool{}, map[int]bool{}
 		for _, r := range rows {
 			taken = taken || change[r] > 0
+			touched = touched || change[r] != 0
 			if change[r] <= 0 {
-				tables[oldTable[r]] = true
+				oldIDs[oldTable[r]] = true
+			}
+			if change[r] >= 0 {
+				newIDs[newTable[r]] = true
 			}
 		}
 		for _, d := range dels {
-			taken = taken || tables[oldTable[d]]
+			taken = taken || oldIDs[oldTable[d]]
+			touched = touched || oldIDs[oldTable[d]]
 		}
+		for _, n := range ins {
+			touched = touched || newIDs[newTable[n]]
+		}
+		newSide := taken || !touched
 		pick := -1
 		for _, k := range cands {
 			if k < rows[0] {
 				continue
 			}
-			if pick < 0 || ((change[k] > 0) == taken && (change[pick] > 0) != taken) {
+			if (change[k] > 0) == newSide {
+				pick = k
+				break
+			}
+			if pick < 0 && touched {
 				pick = k
 			}
 		}
