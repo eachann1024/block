@@ -154,6 +154,12 @@ func DiffListNumbers(lines []string, change []int) []int {
 // diffRefDestRE matches a definition's destination with an optional title.
 var diffRefDestRE = regexp.MustCompile(`^\s*(?:<[^<>]*>|[^\s<]\S*)` + diffLinkTitle + `\s*$`)
 
+// diffRefTitledRE matches a destination that carries its title already.
+var diffRefTitledRE = regexp.MustCompile(`^\s*(?:<[^<>]*>|[^\s<]\S*)` + diffLinkTitle[:len(diffLinkTitle)-1] + `\s*$`)
+
+// diffRefTitleRE matches a definition title alone on its line.
+var diffRefTitleRE = regexp.MustCompile(`^\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\))\s*$`)
+
 // diffRefDefRE matches the start of a link reference definition, capturing its
 // label and what follows the colon (the destination may sit on the next line).
 var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:(.*)$`)
@@ -249,6 +255,17 @@ func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs 
 			refs[diffRefLabel(m[1])], def[i], para = true, true, false
 			if next >= 0 {
 				def[next], skip = true, next
+			}
+			// A title may sit on the line below: "[手册]: /guide" over `  "安装手册"`.
+			if !diffRefTitledRE.MatchString(dest) {
+				for k := max(i, next) + 1; k < len(lines); k++ {
+					if change[k] != -side {
+						if diffQuoteDepth(strings.TrimSpace(lines[k])) == depth && diffRefTitleRE.MatchString(body(lines[k])) {
+							def[k], skip = true, k
+						}
+						break
+					}
+				}
 			}
 		}
 		labels[si], defs[si] = refs, def
