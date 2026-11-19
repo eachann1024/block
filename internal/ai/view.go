@@ -1201,6 +1201,8 @@ func latestStreamLine(s string) string {
 	alerts := bui.DiffAlertTitles(lines, same)
 	// A formula shows its source without the "$$" lines around it.
 	math := bui.DiffMathMask(lines, same)
+	// "安装完成\" over more text breaks the line there; at a paragraph's end the "\" is text.
+	breaks := bui.DiffHardBreaks(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		// A fence line is no text of its own: after "```" closes, the code shows.
@@ -1230,6 +1232,9 @@ func latestStreamLine(s string) string {
 			t = strings.TrimPrefix(strings.TrimPrefix(t, ">"), " ")
 		}
 		if !code[i] {
+			if breaks[i] {
+				raw = raw[:len(raw)-1]
+			}
 			if nums[i] == -1 {
 				if m := plainParaMarkerRE.FindStringSubmatchIndex(raw); m != nil {
 					raw = raw[:m[3]] + `\` + raw[m[3]:]
@@ -1313,10 +1318,6 @@ var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // its edge bars.
 func plainInline(s string, refs map[string]bool, table bool) string {
 	s = strings.TrimSpace(s)
-	// A trailing "\" is a hard line break: "安装完成\" reads 安装完成.
-	if n := len(s) - len(strings.TrimRight(s, `\`)); n%2 == 1 {
-		s = s[:len(s)-1]
-	}
 	if strings.Contains(s, "#") {
 		if h := plainBlockPrefixRE.FindString(s); strings.Contains(h, "#") {
 			s = h + plainClosingHashRE.ReplaceAllString(s[len(h):], "")
