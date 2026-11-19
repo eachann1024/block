@@ -1,14 +1,8 @@
 package editor
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"block/internal/model"
 	"github.com/egoist/mygo/ui"
@@ -355,87 +349,4 @@ func IsSupportedImagePath(path string) bool {
 	default:
 		return false
 	}
-}
-
-func uniqueAssetFilename(assetsDir, ext string) string {
-	ext = strings.TrimPrefix(strings.ToLower(ext), ".")
-	if ext == "" {
-		ext = "png"
-	}
-	for {
-		ms := time.Now().UnixMilli()
-		var rnd [4]byte
-		_, _ = rand.Read(rnd[:])
-		name := fmt.Sprintf("img_%d_%s.%s", ms, hex.EncodeToString(rnd[:]), ext)
-		if _, err := os.Stat(filepath.Join(assetsDir, name)); os.IsNotExist(err) {
-			return name
-		}
-	}
-}
-
-func copyAssetFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	_, cpErr := io.Copy(out, in)
-	clErr := out.Close()
-	if cpErr != nil {
-		_ = os.Remove(dst)
-		return cpErr
-	}
-	if clErr != nil {
-		_ = os.Remove(dst)
-		return clErr
-	}
-	return nil
-}
-
-// ImportImageFiles copies local image files into `<noteDir>/assets/` and inserts image blocks
-// into the document (replacing targetID when replace is true, or inserting after targetID).
-func (s *Session) ImportImageFiles(paths []string, targetID model.BlockID, replace bool) int {
-	if s.doc == nil || s.readOnly || len(paths) == 0 {
-		return 0
-	}
-	assetsDir, ok := s.resolveAssetsDir()
-	if !ok {
-		return 0
-	}
-
-	var inserted []model.Block
-	for _, rawPath := range paths {
-		p := strings.TrimSpace(rawPath)
-		if p == "" || !IsSupportedImagePath(p) {
-			continue
-		}
-		st, err := os.Stat(p)
-		if err != nil || st.IsDir() {
-			continue
-		}
-		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
-		stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
-		stem = strings.NewReplacer("[", "", "]", "").Replace(stem)
-		name := uniqueTypedAssetFilename(assetsDir, "img", ext)
-		if err := copyAssetFile(p, filepath.Join(assetsDir, name)); err != nil {
-			continue
-		}
-		inserted = append(inserted, model.Block{
-			ID:         model.NewBlockID(),
-			Kind:       model.BlockImage,
-			ImageSrc:   "./assets/" + name,
-			ImageAlt:   stem,
-			ImageAlign: model.ImageAlignLeft,
-			ImageWidth: 100,
-			Dirty:      true,
-		})
-	}
-	if len(inserted) == 0 {
-		return 0
-	}
-	return s.insertImportedBlocks(inserted, targetID, replace)
 }

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"block/internal/files"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -91,7 +92,7 @@ func (s *TabSurface) ensureCodeState() *codeed.State {
 
 // renderSourceEditor shows non-Markdown text as a full-bleed code editor (Zed/VS Code
 // style): gutter flush left, current-line band, syntax colors, no paper margins.
-func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text string, bom bool) error) {
+func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	pal := theme.Ocean()
 	st := s.ensureCodeState()
 
@@ -125,14 +126,26 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text st
 		if s.IsSVG {
 			s.reparseSVG()
 		}
-		if onSave != nil {
-			if err := onSave(s.Path, s.Source.Text, s.Source.BOM); err != nil {
-				s.StatusMsg = err.Error()
-			} else {
-				s.SavedText = s.Source.Text
-				st.Buffer.MarkSaved()
-				s.StatusMsg = ""
-			}
-		}
+		_ = s.saveSource()
 	}
+}
+
+func (s *TabSurface) saveSource() error {
+	if !s.IsDirty() {
+		return nil
+	}
+	err := files.CheckTextVersion(s.Path, files.TextFingerprint(s.SavedText, s.Source.BOM))
+	if err == nil {
+		_, err = files.WriteRawFileAtomic(s.Path, s.Source.Text, s.Source.BOM)
+	}
+	if err != nil {
+		s.StatusMsg = err.Error()
+		return err
+	}
+	s.SavedText = s.Source.Text
+	if s.code != nil {
+		s.code.Buffer.MarkSaved()
+	}
+	s.StatusMsg = ""
+	return nil
 }

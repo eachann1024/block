@@ -11,10 +11,10 @@ import (
 
 // buildPaintedImage lays out an image (or its placeholder) inside the theme's
 // figure frame, with the alt text as a caption when the theme asks for one.
-func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec, legacy bool, ord int) (paintedBlock, bool) {
+func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec, legacy bool, ord int, pixels *int) (paintedBlock, bool) {
 	is := pal.Style.Image
 	if legacy || (is.Frame == ImageFrameNone && !is.Caption && is.Shadow.A == 0) {
-		return buildRawImage(b, notePath, bx, by, avail, pal)
+		return buildRawImage(b, notePath, bx, by, avail, pal, pixels)
 	}
 
 	pad := float32(0)
@@ -36,7 +36,7 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	if is.Angle != 0 && is.Frame == ImageFramePolaroid {
 		innerAvail = maxFloat32(innerAvail*0.72, 80)
 	}
-	pb, ok := buildRawImage(b, notePath, bx+pad, by+topOff+pad, innerAvail, pal)
+	pb, ok := buildRawImage(b, notePath, bx+pad, by+topOff+pad, innerAvail, pal, pixels)
 	if !ok {
 		return pb, false
 	}

@@ -36,18 +36,35 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 	sc := buildExportScene(ctx, doc, notePath, prefs)
 	height := max(int(math.Ceil(float64(sc.height))), 1)
 	tiles := buildSubstrateTiles(sc.pal, sc.legacy)
+	pageEnds := pdfPageEnds(sc, height)
 
-	type pdfPage struct {
-		w, h    int
-		ptW     int
-		ptH     int
-		zStream []byte
+	var out bytes.Buffer
+	out.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+	offsets := make([]int, 0, 2+len(pageEnds)*3)
+	beginObj := func(num int) {
+		offsets = append(offsets, out.Len())
+		fmt.Fprintf(&out, "%d 0 obj\n", num)
 	}
-	var pages []pdfPage
+	writeObj := func(num int, body string) {
+		beginObj(num)
+		out.WriteString(body)
+		out.WriteString("\nendobj\n")
+	}
+	var kids strings.Builder
+	for i := range pageEnds {
+		if i > 0 {
+			kids.WriteByte(' ')
+		}
+		fmt.Fprintf(&kids, "%d 0 R", 3+i*3)
+	}
+	writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>")
+	writeObj(2, fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", kids.String(), len(pageEnds)))
+
 	var rgb []byte
+	var zBuf bytes.Buffer
 	var zw *zlib.Writer
 	top := 0
-	for _, bottom := range pdfPageEnds(sc, height) {
+	for i, bottom := range pageEnds {
 		pageHeight := bottom - top
 		rgba := paintExportRaster(ctx, sc, top, pageHeight, exportScale, tiles)
 		if rgba == nil || rgba.Bounds().Empty() {
@@ -60,10 +77,10 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		} else {
 			rgb = rgb[:needRGB]
 		}
-		var zBuf bytes.Buffer
 		if zw == nil {
 			zw = zlib.NewWriter(&zBuf)
 		} else {
+			zBuf.Reset()
 			zw.Reset(&zBuf)
 		}
 		for row := 0; row < imgH; row++ {
@@ -82,59 +99,32 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		if err := zw.Close(); err != nil {
 			return nil, err
 		}
-		pages = append(pages, pdfPage{
-			w: imgW, h: imgH, ptW: int(sc.width), ptH: pageHeight, zStream: zBuf.Bytes(),
-		})
-		top = bottom
-	}
-
-	var out bytes.Buffer
-	out.WriteString("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-	var offsets []int
-	writeObj := func(num int, body []byte) {
-		offsets = append(offsets, out.Len())
-		out.WriteString(fmt.Sprintf("%d 0 obj\n", num))
-		out.Write(body)
-		out.WriteString("\nendobj\n")
-	}
-
-	var kids strings.Builder
-	for i := range pages {
-		if i > 0 {
-			kids.WriteByte(' ')
-		}
-		kids.WriteString(fmt.Sprintf("%d 0 R", 3+i*3))
-	}
-	writeObj(1, []byte("<< /Type /Catalog /Pages 2 0 R >>"))
-	writeObj(2, []byte(fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", kids.String(), len(pages))))
-
-	for i, pg := range pages {
 		pageObj := 3 + i*3
 		imgObj := 4 + i*3
 		contentObj := 5 + i*3
 
 		pageDict := fmt.Sprintf(
 			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources << /XObject << /Im0 %d 0 R >> >> /Contents %d 0 R >>",
-			pg.ptW, pg.ptH, imgObj, contentObj,
+			int(sc.width), pageHeight, imgObj, contentObj,
 		)
-		writeObj(pageObj, []byte(pageDict))
+		writeObj(pageObj, pageDict)
 
-		var imgBuf bytes.Buffer
-		imgBuf.WriteString(fmt.Sprintf(
+		beginObj(imgObj)
+		fmt.Fprintf(&out,
 			"<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length %d >>\nstream\n",
-			pg.w, pg.h, len(pg.zStream),
-		))
-		imgBuf.Write(pg.zStream)
-		imgBuf.WriteString("\nendstream")
-		writeObj(imgObj, imgBuf.Bytes())
+			imgW, imgH, zBuf.Len(),
+		)
+		out.Write(zBuf.Bytes())
+		out.WriteString("\nendstream\nendobj\n")
 
-		cmd := fmt.Sprintf("q %d 0 0 %d 0 0 cm /Im0 Do Q", pg.ptW, pg.ptH)
+		cmd := fmt.Sprintf("q %d 0 0 %d 0 0 cm /Im0 Do Q", int(sc.width), pageHeight)
 		contentDict := fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(cmd), cmd)
-		writeObj(contentObj, []byte(contentDict))
+		writeObj(contentObj, contentDict)
+		top = bottom
 	}
 
 	xrefOffset := out.Len()
-	totalObjs := 2 + len(pages)*3 + 1
+	totalObjs := len(offsets) + 1
 	out.WriteString(fmt.Sprintf("xref\n0 %d\n0000000000 65535 f \n", totalObjs))
 	for _, off := range offsets {
 		out.WriteString(fmt.Sprintf("%010d 00000 n \n", off))

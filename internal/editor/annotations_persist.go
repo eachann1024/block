@@ -515,8 +515,8 @@ func (s *Session) splitSpansForHighlights(blockIdx int, blockID model.BlockID, s
 		return spans
 	}
 	hasAnn := len(s.annotations) > 0
-	hasFind := s.findOpen && len(s.findMatches) > 0
-	if !hasAnn && !hasFind {
+	matches, _ := s.findMatchesForBlock(blockIdx)
+	if !hasAnn && len(matches) == 0 {
 		return spans
 	}
 
@@ -538,16 +538,12 @@ func (s *Session) splitSpansForHighlights(blockIdx int, blockID model.BlockID, s
 			addedCut = true
 		}
 	}
-	if hasFind {
-		for _, m := range s.findMatches {
-			if m.BlockIdx == blockIdx {
-				lo := clampInt(m.StartRune, 0, total)
-				hi := clampInt(m.EndRune, lo, total)
-				if hi > lo {
-					cuts = append(cuts, lo, hi)
-					addedCut = true
-				}
-			}
+	for _, m := range matches {
+		lo := clampInt(m.StartRune, 0, total)
+		hi := clampInt(m.EndRune, lo, total)
+		if hi > lo {
+			cuts = append(cuts, lo, hi)
+			addedCut = true
 		}
 	}
 	if !addedCut {
@@ -636,24 +632,16 @@ func (s *Session) findHighlightColor(blockIdx, start, end int, pal theme.Palette
 	if !s.findOpen {
 		return ui.Transparent, false
 	}
-	found := false
-	active := false
-	for i, m := range s.findMatches {
+	if i := s.findCurrent; i >= 0 && i < len(s.findMatches) {
+		m := s.findMatches[i]
 		if m.BlockIdx == blockIdx && end > m.StartRune && start < m.EndRune {
-			found = true
-			if i == s.findCurrent {
-				active = true
-				break
-			}
+			return pal.FindActive, true
 		}
 	}
-	if !found {
-		return ui.Transparent, false
+	if s.rangeHasFindMatch(blockIdx, start, end) {
+		return pal.FindMatch, true
 	}
-	if active {
-		return pal.FindActive, true
-	}
-	return pal.FindMatch, true
+	return ui.Transparent, false
 }
 
 func init() {

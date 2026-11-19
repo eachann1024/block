@@ -53,6 +53,7 @@ type SidebarUIState struct {
 	MoveRowBounds   ui.Rect
 
 	treeScroll ui.ScrollState
+	treeRows   []flatTreeRow
 }
 
 // NewSidebarUIState initializes transient sidebar UI state.
@@ -207,7 +208,7 @@ type SidebarProps struct {
 }
 
 type flatTreeRow struct {
-	Entry       model.FileEntry
+	Entry       *model.FileEntry
 	Depth       int
 	ChildIdx    int
 	Expanded    bool
@@ -215,7 +216,8 @@ type flatTreeRow struct {
 }
 
 func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bool, out *[]flatTreeRow) {
-	for idx, e := range entries {
+	for idx := range entries {
+		e := &entries[idx]
 		exp := e.IsDir && expanded[e.Path]
 		*out = append(*out, flatTreeRow{
 			Entry:    e,
@@ -383,7 +385,8 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			renderSidebarHeaderBar(c, p)
 
 			// 1. Top drop strip: dropping here moves an entry before the first root sibling.
-			var rows []flatTreeRow
+			rows := p.State.treeRows[:0]
+			p.State.treeRows = nil
 			flattenEntries(p.Entries, 0, p.State.ExpandedDirs, &rows)
 			assignRevealOrder(rows, p.State.RevealRoot)
 
@@ -517,6 +520,13 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					})
 				}
 			})
+
+			// Reuse storage on the next frame without retaining the file tree.
+			// Release large buffers after the tree shrinks.
+			if cap(rows)/2 <= max(len(rows), 128) {
+				clear(rows)
+				p.State.treeRows = rows[:0]
+			}
 
 			// 3. Footer: Notebook Switcher + Updater Badge + Settings Button.
 			footer := ui.Row(c).FillWidth().Height(48).Shrink(0).Padding(0, 8, 8, 12).Gap(4).AlignItems(ui.Center)
@@ -752,7 +762,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 
 func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.Element) bool {
 	pal := theme.Ocean()
-	entry := r.Entry
+	entry := *r.Entry
 	indent := theme.TreeRowPadLeft + float32(r.Depth)*theme.TreeIndentStep
 	rowKey := "tree-row:" + entry.Path
 

@@ -5,15 +5,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	_ "image/gif"
-	_ "image/jpeg"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"block/internal/codepreview"
+	"block/internal/media"
 	"block/internal/model"
 	"block/internal/theme"
 
@@ -377,41 +376,6 @@ func clampU8(v int) uint8 {
 	return uint8(v)
 }
 
-func resolveLocalImagePath(src, notePath string) (string, bool) {
-	s := strings.TrimSpace(src)
-	if s == "" {
-		return "", false
-	}
-	lower := strings.ToLower(s)
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "data:") {
-		return "", false
-	}
-	if strings.HasPrefix(lower, "file://") {
-		if u, err := url.Parse(s); err == nil && u.Path != "" {
-			s = u.Path
-		} else {
-			s = strings.TrimPrefix(s[7:], "localhost")
-		}
-	} else if strings.Contains(s, "://") {
-		return "", false
-	}
-	if decoded, err := url.PathUnescape(s); err == nil {
-		s = decoded
-	}
-	p := filepath.FromSlash(s)
-	if !filepath.IsAbs(p) {
-		if notePath == "" {
-			return "", false
-		}
-		p = filepath.Join(filepath.Dir(notePath), p)
-	}
-	info, err := os.Stat(p)
-	if err != nil || info.IsDir() {
-		return "", false
-	}
-	return p, true
-}
-
 // exportImageCrop normalizes saved crop fractions for the dimensions being exported.
 func exportImageCrop(c model.ImageCrop, width, height float32) model.ImageCrop {
 	c.Left, c.Right = max(c.Left, 0), max(c.Right, 0)
@@ -455,8 +419,14 @@ func exportMarkdown(doc *model.Doc, notePath string, prefs model.ExportPreferenc
 
 func exportZIP(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
 	cloned := doc.Clone()
-	usedNames := make(map[string]int)
+	usedNames := make(map[string]bool)
 	pathToZip := make(map[string]string)
+	budget := maxExportImageBytes
+	attempts := 0
+	dir := ""
+	if notePath != "" {
+		dir = filepath.Dir(notePath)
+	}
 
 	type zipAsset struct {
 		zipPath string
@@ -469,57 +439,51 @@ func exportZIP(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		if b.Kind != model.BlockImage {
 			continue
 		}
-		localPath, ok := resolveLocalImagePath(b.ImageSrc, notePath)
-		if !ok {
-			continue
+		rel, err := media.RelativePath(dir, b.ImageSrc)
+		zipPath, seen := pathToZip[rel]
+		if err == nil && !seen && budget > 0 && attempts < maxExportImageRefs {
+			attempts++
+			pathToZip[rel] = ""
+			if entry, ok := loadExportImage(notePath, b.ImageSrc, budget); ok {
+				base := filepath.Base(rel)
+				ext := "." + entry.format
+				if entry.format == "jpeg" {
+					ext = ".jpg"
+				}
+				stem := safeArchiveName(strings.TrimSuffix(base, filepath.Ext(base)), "image")
+				name := stem + ext
+				for n := 1; usedNames[strings.ToLower(name)]; n++ {
+					name = fmt.Sprintf("%s-%d%s", stem, n, ext)
+				}
+				usedNames[strings.ToLower(name)] = true
+				zipPath = "assets/" + name
+				pathToZip[rel] = zipPath
+				budget -= len(entry.raw)
+				assets = append(assets, zipAsset{zipPath: zipPath, data: entry.raw})
+			}
 		}
-		zipPath, seen := pathToZip[localPath]
-		if !seen {
-			raw, err := os.ReadFile(localPath)
-			if err != nil {
-				continue
-			}
-			base := filepath.Base(localPath)
-			if base == "" || base == "." || base == string(filepath.Separator) {
-				base = "image.png"
-			}
-			count := usedNames[base]
-			usedNames[base] = count + 1
-			name := base
-			if count > 0 {
-				ext := filepath.Ext(base)
-				stem := strings.TrimSuffix(base, ext)
-				name = fmt.Sprintf("%s-%d%s", stem, count, ext)
-			}
-			zipPath = "assets/" + name
-			pathToZip[localPath] = zipPath
-			assets = append(assets, zipAsset{zipPath: zipPath, data: raw})
-		}
-		if b.ImageSrc != zipPath {
+		b.Dirty = true
+		b.CleanSource = ""
+		if zipPath != "" {
 			b.ImageSrc = zipPath
-			b.Dirty = true
-			b.CleanSource = ""
+		} else {
+			b.Kind = model.BlockParagraph
+			b.Spans = []model.Span{{Text: b.ImageAlt}}
 		}
 	}
 
 	mdContent := exportMarkdown(cloned, notePath, prefs)
-	mdName := "note.md"
-	if base := strings.TrimSpace(filepath.Base(notePath)); base != "" && base != "." && base != string(filepath.Separator) {
-		if !strings.HasSuffix(strings.ToLower(base), ".md") {
-			base += ".md"
+	mdName := ""
+	if notePath != "" {
+		base := filepath.Base(notePath)
+		if strings.EqualFold(filepath.Ext(base), ".md") {
+			base = strings.TrimSuffix(base, filepath.Ext(base))
 		}
-		mdName = base
-	} else if t := strings.TrimSpace(doc.Title()); t != "" {
-		safe := strings.Map(func(r rune) rune {
-			if strings.ContainsRune(`/\:*?"<>|`, r) || r < 0x20 {
-				return '-'
-			}
-			return r
-		}, t)
-		if safe != "" {
-			mdName = safe + ".md"
-		}
+		mdName = safeArchiveName(base, "note")
+	} else {
+		mdName = safeArchiveName(doc.Title(), "note")
 	}
+	mdName += ".md"
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -544,4 +508,33 @@ func exportZIP(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func safeArchiveName(raw, fallback string) string {
+	name := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`/\:%*?"<>|#&[]()`, r) || unicode.IsControl(r) {
+			return '-'
+		}
+		return r
+	}, raw)
+	// Truncate at a rune boundary and reserve space for a suffix and extension.
+	for i := range name {
+		if i > 180 {
+			name = name[:i]
+			break
+		}
+	}
+	name = strings.Trim(name, " .")
+	if name == "" {
+		return fallback
+	}
+	base, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch base {
+	case "CON", "PRN", "AUX", "NUL":
+		return "_" + name
+	}
+	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '0' && base[3] <= '9' {
+		return "_" + name
+	}
+	return name
 }

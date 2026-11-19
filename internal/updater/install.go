@@ -3,7 +3,6 @@ package updater
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,11 +20,12 @@ import (
 )
 
 const (
-	macBundleID        = "dev.eachann.block"
-	macLegacyID        = "com.block.notes"
-	macLegacyThinklyID = "dev.eachann.thinkly-fast"
-	stageDirPrefix     = ".block-update-"
-	lsregisterBinary   = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+	maxUpdateBytes     int64 = 2 << 30
+	macBundleID              = "dev.eachann.block"
+	macLegacyID              = "com.block.notes"
+	macLegacyThinklyID       = "dev.eachann.thinkly-fast"
+	stageDirPrefix           = ".block-update-"
+	lsregisterBinary         = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 )
 
 var (
@@ -43,18 +43,17 @@ func markMacNeverIndex(dir string) {
 
 // VerifiedRecord persists a verified, staged update in <dataDir>/app-updates/ready.json.
 type VerifiedRecord struct {
-	Version         string `json:"version"`
-	Tag             string `json:"tag"`
-	AssetName       string `json:"asset_name"`
-	DownloadURL     string `json:"download_url"`
-	SHA256          string `json:"sha256"`
-	Size            int64  `json:"size"`
-	ArchivePath     string `json:"archive_path"`
-	UnpackedAppPath string `json:"unpacked_app_path,omitempty"`
-	PublishedAt     string `json:"published_at,omitempty"`
-	ReleaseURL      string `json:"release_url,omitempty"`
-	Channel         string `json:"channel,omitempty"`
-	InPlace         bool   `json:"in_place"`
+	Version     string `json:"version"`
+	Tag         string `json:"tag"`
+	AssetName   string `json:"asset_name"`
+	DownloadURL string `json:"download_url"`
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
+	ArchivePath string `json:"archive_path"`
+	PublishedAt string `json:"published_at,omitempty"`
+	ReleaseURL  string `json:"release_url,omitempty"`
+	Channel     string `json:"channel,omitempty"`
+	InPlace     bool   `json:"in_place"`
 }
 
 type installStageRecord struct {
@@ -177,7 +176,7 @@ func VerifyFileSHA256(path, expectedHex string) error {
 type DownloadProgressCallback func(downloaded, total int64, speedMBps float64, channel string, preparing bool)
 
 // DownloadAndStage downloads the verified asset across candidate sources, verifies SHA-256,
-// unpacks & validates the macOS .app bundle when applicable, and persists ready.json.
+// and persists ready.json for in-place updates.
 func DownloadAndStage(
 	ctx context.Context,
 	dataDir string,
@@ -188,9 +187,10 @@ func DownloadAndStage(
 	onProgress DownloadProgressCallback,
 ) (*VerifiedRecord, error) {
 	expectedSHA := asset.EffectiveSHA256()
-	if expectedSHA == "" {
-		logError("download.missing_sha256", "version", entry.Version, "asset", asset.Name)
-		return nil, errors.New("release asset is missing SHA-256 digest")
+	version, _, _, validVersion := ParseReleaseTag(entry.Tag)
+	if !validVersion || version != entry.Version || !IsTrustedReleaseAsset(asset, entry.Tag) || asset.Size > maxUpdateBytes {
+		logError("download.untrusted_metadata", "version", entry.Version, "asset", asset.Name)
+		return nil, errors.New("release asset metadata is invalid")
 	}
 	cands := CandidateAssetURLs(asset.DownloadURL, mode)
 	if len(cands) == 0 {
@@ -206,7 +206,12 @@ func DownloadAndStage(
 	markMacNeverIndex(updatesRoot(dataDir))
 	markMacNeverIndex(verDir)
 	finalPath := filepath.Join(verDir, asset.Name)
-	partPath := finalPath + ".part"
+	tempDir, err := os.MkdirTemp(verDir, ".download-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+	partPath := filepath.Join(tempDir, asset.Name)
 
 	logInfo("download.start", "version", entry.Version, "asset", asset.Name, "expected_bytes", asset.Size, "sha256", expectedSHA[:16], "mode", mode, "candidates", len(cands))
 
@@ -248,36 +253,18 @@ func DownloadAndStage(
 		return nil, err
 	}
 
-	unpackedApp := ""
-	if runtime.GOOS == "darwin" && inPlace && strings.HasSuffix(strings.ToLower(asset.Name), ".dmg") {
-		if onProgress != nil {
-			onProgress(asset.Size, asset.Size, 0, usedChannel, true)
-		}
-		prepStart := time.Now()
-		unpackedDir := filepath.Join(verDir, "unpacked")
-		appPath, err := prepareMacAppFromDMG(finalPath, unpackedDir, entry.Version)
-		if err != nil {
-			_ = os.RemoveAll(unpackedDir)
-			logError("stage.dmg_unpack_failed", "version", entry.Version, "dmg", finalPath, "err", err)
-			return nil, err
-		}
-		logInfo("stage.dmg_unpack_ok", "version", entry.Version, "app", appPath, "elapsed_ms", time.Since(prepStart).Milliseconds())
-		unpackedApp = appPath
-	}
-
 	rec := &VerifiedRecord{
-		Version:         entry.Version,
-		Tag:             entry.Tag,
-		AssetName:       asset.Name,
-		DownloadURL:     asset.DownloadURL,
-		SHA256:          expectedSHA,
-		Size:            asset.Size,
-		ArchivePath:     finalPath,
-		UnpackedAppPath: unpackedApp,
-		PublishedAt:     entry.PublishedAt,
-		ReleaseURL:      entry.HTMLURL,
-		Channel:         usedChannel,
-		InPlace:         inPlace,
+		Version:     entry.Version,
+		Tag:         entry.Tag,
+		AssetName:   asset.Name,
+		DownloadURL: asset.DownloadURL,
+		SHA256:      expectedSHA,
+		Size:        asset.Size,
+		ArchivePath: finalPath,
+		PublishedAt: entry.PublishedAt,
+		ReleaseURL:  entry.HTMLURL,
+		Channel:     usedChannel,
+		InPlace:     inPlace,
 	}
 	if inPlace {
 		if raw, err := json.MarshalIndent(rec, "", "  "); err == nil {
@@ -302,12 +289,15 @@ func downloadOneSource(
 	}
 	defer body.Close()
 
+	if expectedSize > maxUpdateBytes || contentLen > maxUpdateBytes {
+		return errors.New("update package is too large")
+	}
 	total := expectedSize
 	if total <= 0 && contentLen > 0 {
 		total = contentLen
 	}
 
-	f, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(destPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -332,7 +322,7 @@ func downloadOneSource(
 			}
 			hasher.Write(chunk)
 			written += int64(n)
-			if total > 0 && written > total+1024*1024 {
+			if written > maxUpdateBytes || (total > 0 && written > total) {
 				return errors.New("downloaded size exceeded manifest size")
 			}
 			now := time.Now()
@@ -369,7 +359,6 @@ func downloadOneSource(
 }
 
 func prepareMacAppFromDMG(dmgPath, unpackedDir, expectedVersion string) (string, error) {
-	_ = os.RemoveAll(unpackedDir)
 	if err := os.MkdirAll(unpackedDir, 0o700); err != nil {
 		return "", err
 	}
@@ -378,9 +367,9 @@ func prepareMacAppFromDMG(dmgPath, unpackedDir, expectedVersion string) (string,
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(mountDir)
+	defer os.Remove(mountDir)
 
-	attach := exec.Command("/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-mountpoint", mountDir, dmgPath)
+	attach := exec.Command("/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", mountDir, dmgPath)
 	if out, err := attach.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("mount DMG failed: %s", strings.TrimSpace(string(out)))
 	}
@@ -433,7 +422,7 @@ func validateMacBundle(bundlePath, expectedVersion string) error {
 	}
 	if expectedVersion != "" {
 		ver, err := extractKey("CFBundleShortVersionString")
-		if err == nil && ver != "" && CompareVersion(ver, expectedVersion) != 0 {
+		if err != nil || ver == "" || CompareVersion(ver, expectedVersion) != 0 {
 			return fmt.Errorf("bundle version mismatch (%s != %s)", ver, expectedVersion)
 		}
 	}
@@ -477,32 +466,6 @@ func livesInUpdateStage(bundle string) bool {
 		}
 	}
 	return false
-}
-
-func removeSiblingMacStages(bundle string) {
-	if runtime.GOOS != "darwin" || !strings.HasSuffix(bundle, ".app") || livesInUpdateStage(bundle) {
-		return
-	}
-	parent := filepath.Dir(bundle)
-	entries, err := os.ReadDir(parent)
-	if err != nil {
-		return
-	}
-	for _, ent := range entries {
-		if !ent.IsDir() || !stageDirPattern.MatchString(ent.Name()) {
-			continue
-		}
-		stage := filepath.Join(parent, ent.Name())
-		if sub, err := os.ReadDir(stage); err == nil {
-			for _, s := range sub {
-				if strings.HasSuffix(s.Name(), ".app") {
-					_ = exec.Command(lsregisterBinary, "-u", filepath.Join(stage, s.Name())).Run()
-				}
-			}
-		}
-		_ = os.RemoveAll(stage)
-		logInfo("stage.cleaned_sibling", "stage", stage)
-	}
 }
 
 func shouldPruneMacRegistrations(dataDir, runningVersion, lastUpdatedFrom, resolvedExe, canonicalBundle string, acknowledgedUpdate bool) bool {
@@ -660,19 +623,18 @@ func acknowledgeStartupAndClean(dataDir, runningVersion, lastUpdatedFrom string)
 			acknowledgedUpdate := false
 			if raw, rErr := os.ReadFile(stageRecordPath(dataDir)); rErr == nil {
 				var st installStageRecord
-				if json.Unmarshal(raw, &st) == nil && st.Path != "" && stageDirPattern.MatchString(filepath.Base(st.Path)) {
-					if st.Version == "" || CompareVersion(runningVersion, st.Version) >= 0 {
-						_ = os.WriteFile(filepath.Join(st.Path, "started"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600)
-						_ = os.Remove(stageRecordPath(dataDir))
-						acknowledgedUpdate = true
-						logInfo("startup.install_acknowledged", "from_version", st.FromVersion, "installed_version", runningVersion, "stage", st.Path)
-					} else {
-						logError("startup.install_rollback_detected", "running_version", runningVersion, "attempted_version", st.Version, "stage", st.Path, "install_log", InstallLogFilePath(dataDir))
-						_ = os.Remove(stageRecordPath(dataDir))
+				if json.Unmarshal(raw, &st) == nil && filepath.Dir(st.Path) == filepath.Dir(bundle) &&
+					stageDirPattern.MatchString(filepath.Base(st.Path)) {
+					stageInfo, stageErr := os.Lstat(st.Path)
+					if stageErr == nil && stageInfo.IsDir() && CompareVersion(runningVersion, st.Version) == 0 {
+						if err := os.WriteFile(filepath.Join(st.Path, "started"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err == nil {
+							_ = os.Remove(stageRecordPath(dataDir))
+							acknowledgedUpdate = true
+							logInfo("startup.install_acknowledged", "from_version", st.FromVersion, "installed_version", runningVersion, "stage", st.Path)
+						}
 					}
 				}
 			}
-			removeSiblingMacStages(bundle)
 			canonicalBundle := filepath.Clean(bundle)
 			if realBundle, bErr := filepath.EvalSymlinks(canonicalBundle); bErr == nil {
 				canonicalBundle = realBundle
@@ -733,33 +695,61 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 		_ = os.Remove(readyRecordPath(dataDir))
 		return nil, false
 	}
-	if CompareVersion(rec.Version, runningVersion) <= 0 {
-		_ = os.Remove(readyRecordPath(dataDir))
+	if err := validateReadyFromOfficialSource(dataDir, runningVersion, &rec); err != nil {
+		logWarn("restore.untrusted_update", "err", err)
 		return nil, false
-	}
-	if err := VerifyFileSHA256(rec.ArchivePath, rec.SHA256); err != nil {
-		logWarn("restore.checksum_invalid", "version", rec.Version, "archive", rec.ArchivePath, "err", err)
-		_ = os.Remove(readyRecordPath(dataDir))
-		return nil, false
-	}
-	if runtime.GOOS == "darwin" && rec.InPlace {
-		if rec.UnpackedAppPath == "" {
-			unpackedDir := filepath.Join(filepath.Dir(rec.ArchivePath), "unpacked")
-			appPath, err := prepareMacAppFromDMG(rec.ArchivePath, unpackedDir, rec.Version)
-			if err != nil {
-				logWarn("restore.unpack_failed", "version", rec.Version, "err", err)
-				_ = os.Remove(readyRecordPath(dataDir))
-				return nil, false
-			}
-			rec.UnpackedAppPath = appPath
-		} else if err := validateMacBundle(rec.UnpackedAppPath, rec.Version); err != nil {
-			logWarn("restore.bundle_invalid", "version", rec.Version, "app", rec.UnpackedAppPath, "err", err)
-			_ = os.Remove(readyRecordPath(dataDir))
-			return nil, false
-		}
 	}
 	logInfo("restore.ready_ok", "version", rec.Version, "archive", rec.ArchivePath)
 	return &rec, true
+}
+
+// A ready record is a hint about a local download. GitHub remains authoritative.
+func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *VerifiedRecord) error {
+	version, _, _, valid := ParseReleaseTag(rec.Version)
+	if !valid || version != rec.Version || CompareVersion(rec.Version, runningVersion) <= 0 {
+		return errors.New("staged update version is invalid")
+	}
+	asset := ReleaseAsset{Name: rec.AssetName, DownloadURL: rec.DownloadURL, SHA256: rec.SHA256}
+	if !rec.InPlace || !IsTrustedReleaseAsset(asset, rec.Tag) {
+		return errors.New("staged update metadata is invalid")
+	}
+	expected := filepath.Join(updatesRoot(dataDir), rec.Version, rec.AssetName)
+	if filepath.Clean(rec.ArchivePath) != expected {
+		return errors.New("staged update path does not match the platform asset")
+	}
+	root, err := filepath.EvalSymlinks(updatesRoot(dataDir))
+	if err != nil {
+		return err
+	}
+	resolved, err := filepath.EvalSymlinks(expected)
+	if err != nil || resolved != filepath.Join(root, rec.Version, rec.AssetName) {
+		return errors.New("staged update must stay in its cache directory")
+	}
+	info, err := os.Stat(expected)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxUpdateBytes {
+		return errors.New("staged update file type or size is invalid")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
+	defer cancel()
+	releases, _, _, _, err := FetchReleases(ctx, SourceGitHub)
+	if err != nil {
+		return fmt.Errorf("cannot verify the staged update with GitHub: %w", err)
+	}
+	for _, release := range releases {
+		if release.Version != rec.Version || release.Tag != rec.Tag {
+			continue
+		}
+		official, inPlace, _ := PickPlatformAsset(release.Assets, runtime.GOOS, runtime.GOARCH)
+		if inPlace && official != nil && official.Name == rec.AssetName && official.DownloadURL == rec.DownloadURL &&
+			(official.Size <= 0 || official.Size == info.Size()) &&
+			strings.EqualFold(official.EffectiveSHA256(), rec.SHA256) {
+			return VerifyFileSHA256(expected, official.EffectiveSHA256())
+		}
+	}
+	return errors.New("staged update does not match the official platform release")
 }
 
 const macSwapInstallerScript = `#!/bin/sh
@@ -789,15 +779,26 @@ remove_stage() {
 rollback() {
   log "WARN executing rollback for target=$target"
   if [ -d "$stage/previous.bundle" ]; then
-    if [ -e "$target" ]; then mv "$target" "$stage/failed.bundle" || true; fi
-    mv "$stage/previous.bundle" "$target" || true
+    if [ -e "$target" ] && ! mv "$target" "$stage/failed.bundle"; then
+      log "ERROR rollback could not move the new bundle; backup kept at $stage/previous.bundle"
+      exit 1
+    fi
+    if ! mv "$stage/previous.bundle" "$target"; then
+      log "ERROR rollback could not restore the old bundle; backup kept at $stage/previous.bundle"
+      exit 1
+    fi
   fi
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
   /usr/bin/open "$target" || true
   remove_stage
   log "rollback complete"
 }
-trap rollback HUP INT TERM
+abort() {
+  trap - HUP INT TERM
+  rollback
+  exit 1
+}
+trap abort HUP INT TERM
 
 if ! mv "$target" "$stage/previous.bundle"; then
   log "ERROR mv current bundle to previous.bundle failed"
@@ -827,9 +828,8 @@ while [ ! -f "$stage/started" ]; do
       rollback
       exit 1
     fi
-    log "updated process verified alive via pgrep; cleaning stage"
-    remove_stage
-    exit 0
+    log "WARN updated process did not acknowledge startup; backup kept at $stage/previous.bundle"
+    exit 1
   fi
   sleep 1
 done
@@ -861,24 +861,17 @@ log "swapped AppImage at $target; relaunching"
 exec "$target"
 `
 
-func randomHex(nBytes int) string {
-	b := make([]byte, nBytes)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
 // InstallReady verifies the staged package, flushes workspace data via flushBeforeQuit,
 // spawns the platform atomic replacement helper, and invokes quitApp.
-func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQuit func(), quitApp func()) error {
-	if rec == nil {
+func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQuit func() error, quitApp func(func() error) error) error {
+	if rec == nil || quitApp == nil {
 		return errors.New("no staged update ready to install")
 	}
 	fromVer := CurrentVersion()
 	logInfo("install.begin", "from_version", fromVer, "to_version", rec.Version, "archive", rec.ArchivePath)
 
-	if err := VerifyFileSHA256(rec.ArchivePath, rec.SHA256); err != nil {
-		logError("install.checksum_failed", "version", rec.Version, "archive", rec.ArchivePath, "err", err)
-		_ = os.Remove(readyRecordPath(dataDir))
+	if err := validateReadyFromOfficialSource(dataDir, fromVer, rec); err != nil {
+		logError("install.verification_failed", "version", rec.Version, "archive", rec.ArchivePath, "err", err)
 		return err
 	}
 
@@ -915,29 +908,24 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 		_ = probe.Close()
 		_ = os.Remove(probeName)
 
-		removeSiblingMacStages(bundle)
-		if rec.UnpackedAppPath == "" {
-			unpackedDir := filepath.Join(filepath.Dir(rec.ArchivePath), "unpacked")
-			appPath, prepErr := prepareMacAppFromDMG(rec.ArchivePath, unpackedDir, rec.Version)
-			if prepErr != nil {
-				logError("install.unpack_failed", "err", prepErr)
-				return prepErr
-			}
-			rec.UnpackedAppPath = appPath
+		unpackedDir, err := os.MkdirTemp(filepath.Dir(rec.ArchivePath), "unpacked-")
+		if err != nil {
+			return err
 		}
-		if err := validateMacBundle(rec.UnpackedAppPath, rec.Version); err != nil {
-			logError("install.validate_failed", "app", rec.UnpackedAppPath, "err", err)
+		defer os.RemoveAll(unpackedDir)
+		appPath, err := prepareMacAppFromDMG(rec.ArchivePath, unpackedDir, rec.Version)
+		if err != nil {
 			return err
 		}
 
-		stage := filepath.Join(parent, stageDirPrefix+randomHex(4))
-		if err := os.MkdirAll(stage, 0o700); err != nil {
+		stage, err := os.MkdirTemp(parent, stageDirPrefix)
+		if err != nil {
 			logError("install.stage_mkdir_failed", "stage", stage, "err", err)
 			return err
 		}
 		markMacNeverIndex(stage)
 		nextApp := filepath.Join(stage, "next.bundle")
-		if out, err := exec.Command("/usr/bin/ditto", rec.UnpackedAppPath, nextApp).CombinedOutput(); err != nil {
+		if out, err := exec.Command("/usr/bin/ditto", appPath, nextApp).CombinedOutput(); err != nil {
 			_ = os.RemoveAll(stage)
 			logError("install.stage_ditto_failed", "err", strings.TrimSpace(string(out)))
 			return fmt.Errorf("stage update failed: %s", strings.TrimSpace(string(out)))
@@ -947,9 +935,6 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			logError("install.stage_validate_failed", "err", err)
 			return err
 		}
-		stRaw, _ := json.Marshal(installStageRecord{Path: stage, FromVersion: fromVer, Version: rec.Version})
-		_ = os.WriteFile(stageRecordPath(dataDir), stRaw, 0o600)
-
 		scriptPath := filepath.Join(stage, "install.sh")
 		if err := os.WriteFile(scriptPath, []byte(macSwapInstallerScript), 0o700); err != nil {
 			_ = os.RemoveAll(stage)
@@ -959,7 +944,15 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 
 		flushStart := time.Now()
 		if flushBeforeQuit != nil {
-			flushBeforeQuit()
+			if err := flushBeforeQuit(); err != nil {
+				_ = os.RemoveAll(stage)
+				return fmt.Errorf("cannot save changes before updating: %w", err)
+			}
+		}
+		stRaw, _ := json.Marshal(installStageRecord{Path: stage, FromVersion: fromVer, Version: rec.Version})
+		if err := os.WriteFile(stageRecordPath(dataDir), stRaw, 0o600); err != nil {
+			_ = os.RemoveAll(stage)
+			return err
 		}
 		logInfo("install.flush_ok", "elapsed_ms", time.Since(flushStart).Milliseconds())
 
@@ -970,25 +963,15 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			cmd.Stdout = logFile
 			cmd.Stderr = logFile
 		}
-		if err := cmd.Start(); err != nil {
-			if logFile != nil {
-				_ = logFile.Close()
-			}
-			_ = os.RemoveAll(stage)
-			logError("install.spawn_helper_failed", "err", err)
-			return err
-		}
-		helperPID := cmd.Process.Pid
-		_ = cmd.Process.Release()
 		if logFile != nil {
-			_ = logFile.Close()
+			defer logFile.Close()
 		}
-		logInfo("install.helper_spawned", "helper_pid", helperPID, "bundle", bundle, "stage", stage, "install_log", installLogPath)
-		_ = os.Remove(readyRecordPath(dataDir))
-		if quitApp != nil {
-			quitApp()
+		err = startInstallerOnQuit(dataDir, cmd, quitApp)
+		if err != nil {
+			_ = os.RemoveAll(stage)
+			_ = os.Remove(stageRecordPath(dataDir))
 		}
-		return nil
+		return err
 
 	case "linux":
 		target := strings.TrimSpace(os.Getenv("APPIMAGE"))
@@ -1011,7 +994,10 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			return err
 		}
 		if flushBeforeQuit != nil {
-			flushBeforeQuit()
+			if err := flushBeforeQuit(); err != nil {
+				_ = os.RemoveAll(stage)
+				return fmt.Errorf("cannot save changes before updating: %w", err)
+			}
 		}
 		logFile, _ := os.OpenFile(installLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		cmd := exec.Command("/bin/sh", scriptPath, target, rec.ArchivePath, fmt.Sprintf("%d", os.Getpid()))
@@ -1020,45 +1006,41 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 			cmd.Stdout = logFile
 			cmd.Stderr = logFile
 		}
-		if err := cmd.Start(); err != nil {
-			if logFile != nil {
-				_ = logFile.Close()
-			}
-			logError("install.spawn_helper_failed", "err", err)
-			return err
-		}
-		_ = cmd.Process.Release()
 		if logFile != nil {
-			_ = logFile.Close()
+			defer logFile.Close()
 		}
-		logInfo("install.helper_spawned", "target", target, "install_log", installLogPath)
-		_ = os.Remove(readyRecordPath(dataDir))
-		if quitApp != nil {
-			quitApp()
+		err = startInstallerOnQuit(dataDir, cmd, quitApp)
+		if err != nil {
+			_ = os.RemoveAll(stage)
 		}
-		return nil
+		return err
 
 	case "windows":
 		if !strings.HasSuffix(strings.ToLower(rec.ArchivePath), ".exe") {
 			return errors.New("invalid Windows installer")
 		}
 		if flushBeforeQuit != nil {
-			flushBeforeQuit()
+			if err := flushBeforeQuit(); err != nil {
+				return fmt.Errorf("cannot save changes before updating: %w", err)
+			}
 		}
 		cmd := exec.Command(rec.ArchivePath, "--updated", "--force-run")
 		configureDetachedProcess(cmd)
+		return startInstallerOnQuit(dataDir, cmd, quitApp)
+	}
+
+	return errors.New("unsupported platform for automatic install")
+}
+
+func startInstallerOnQuit(dataDir string, cmd *exec.Cmd, quitApp func(func() error) error) error {
+	return quitApp(func() error {
 		if err := cmd.Start(); err != nil {
 			logError("install.spawn_helper_failed", "err", err)
 			return err
 		}
+		logInfo("install.helper_spawned", "helper_pid", cmd.Process.Pid)
 		_ = cmd.Process.Release()
-		logInfo("install.helper_spawned", "installer", rec.ArchivePath)
 		_ = os.Remove(readyRecordPath(dataDir))
-		if quitApp != nil {
-			quitApp()
-		}
 		return nil
-	}
-
-	return errors.New("unsupported platform for automatic install")
+	})
 }
