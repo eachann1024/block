@@ -120,10 +120,11 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 		// fenceIndent: the content column of the list item a fence sits in (0: none).
 		fenceIndent := 0
 		var paraLines []int
-		// Indented code: four columns in after a blank line (or the start), unless the
-		// text above is a list, whose nested content is indented the same way.
+		// Indented code: four columns in after a blank line (or the start); in a list,
+		// four past the item's content column (listCol), since its nested content is
+		// indented too.
 		// para: the line above is paragraph text, which a "===" underline turns into a heading.
-		inIndented, prevBlank, inList, para := false, true, false, false
+		inIndented, prevBlank, inList, para, listCol := false, true, false, false, 0
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
@@ -145,7 +146,11 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 				wasBlank := prevBlank
 				prevBlank = false
-				if ind >= 4 && (inIndented || (wasBlank && !inList)) {
+				need := 4
+				if inList {
+					need += listCol
+				}
+				if ind >= need && (inIndented || wasBlank) {
 					mask[i], inIndented, para, paraLines = true, true, false, nil
 					continue
 				}
@@ -153,7 +158,11 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				// Under paragraph text (not a list item) "-" or "==" is a setext underline,
 				// not an empty list item, which may not interrupt a paragraph.
 				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(t)
-				inList = !setext && ((diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0))
+				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
+				if item {
+					listCol = ind + len(diffContainerRE.FindString(t))
+				}
+				inList = item || !setext && inList && ind > 0
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
