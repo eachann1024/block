@@ -1,6 +1,8 @@
 package app
 
 import (
+	"runtime"
+
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo"
@@ -32,9 +34,13 @@ type MenuActions struct {
 	OnNavigateFwd    func()
 }
 
-// BuildMenuBar builds and returns the native application menu bar matching
-// thinkly-fast/src/menu_bar.rs 1:1 (Block, File, Edit, View, Window).
+// BuildMenuBar builds and returns the native application menu bar for the current OS.
 func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
+	return BuildMenuBarForOS(runtime.GOOS, shortcuts, act)
+}
+
+// BuildMenuBarForOS builds a platform-idiomatic native menu bar for darwin vs Windows/Linux.
+func BuildMenuBarForOS(goos string, shortcuts map[string]string, act MenuActions) *mygo.Menu {
 	accel := func(actionKey, fallback string) string {
 		if shortcuts != nil {
 			if raw, ok := shortcuts[actionKey]; ok && raw != "" {
@@ -53,21 +59,7 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 		}
 	}
 
-	appSubmenu := []*mygo.MenuItem{
-		{ID: "menu-about", Label: theme.Tr("关于 Block", "About Block"), Click: call(act.OnAbout)},
-		{ID: "menu-check-updates", Label: theme.Tr("检查更新…", "Check for Updates…"), Click: call(act.OnCheckUpdates)},
-		{ID: "menu-perf", Label: theme.Tr("性能与占用", "Performance & Usage"), Accelerator: accel("performance", "cmd-shift-m"), Click: call(act.OnPerformance)},
-		mygo.Separator(),
-		{ID: "menu-settings", Label: theme.Tr("偏好设置…", "Settings…"), Accelerator: accel("settings", "cmd-,"), Click: call(act.OnSettings)},
-		mygo.Separator(),
-		{Role: mygo.RoleServices, Label: theme.Tr("服务", "Services")},
-		mygo.Separator(),
-		{Role: mygo.RoleHide, Label: theme.Tr("隐藏 Block", "Hide Block")},
-		{Role: mygo.RoleHideOthers, Label: theme.Tr("隐藏其他", "Hide Others")},
-		{Role: mygo.RoleUnhide, Label: theme.Tr("全部显示", "Show All")},
-		mygo.Separator(),
-		{Role: mygo.RoleQuit, Label: theme.Tr("退出 Block", "Quit Block")},
-	}
+	isMac := goos == "darwin"
 
 	fileSubmenu := []*mygo.MenuItem{
 		{ID: "menu-new-note", Label: theme.Tr("新建笔记", "New Note"), Accelerator: accel("new_note", "cmd-n"), Click: call(act.OnNewNote)},
@@ -86,6 +78,14 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 			}
 		}},
 	}
+	if !isMac {
+		fileSubmenu = append(fileSubmenu,
+			mygo.Separator(),
+			&mygo.MenuItem{ID: "menu-settings", Label: theme.Tr("偏好设置…", "Settings…"), Accelerator: accel("settings", "cmd-,"), Click: call(act.OnSettings)},
+			mygo.Separator(),
+			&mygo.MenuItem{Role: mygo.RoleQuit, Label: theme.Tr("退出 Block", "Exit")},
+		)
+	}
 
 	editSubmenu := []*mygo.MenuItem{
 		{Role: mygo.RoleUndo, Label: theme.Tr("撤销", "Undo")},
@@ -94,10 +94,18 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 		{Role: mygo.RoleCut, Label: theme.Tr("剪切", "Cut")},
 		{Role: mygo.RoleCopy, Label: theme.Tr("拷贝", "Copy")},
 		{Role: mygo.RolePaste, Label: theme.Tr("粘贴", "Paste")},
-		{Role: mygo.RoleSelectAll, Label: theme.Tr("全选", "Select All")},
-		mygo.Separator(),
-		{ID: "menu-find", Label: theme.Tr("查找…", "Find…"), Accelerator: accel("find", "cmd-f"), Click: call(act.OnFind)},
 	}
+	if isMac {
+		editSubmenu = append(editSubmenu,
+			&mygo.MenuItem{Role: mygo.RolePasteAndMatchStyle, Label: theme.Tr("粘贴并匹配样式", "Paste and Match Style")},
+		)
+	}
+	editSubmenu = append(editSubmenu,
+		&mygo.MenuItem{Role: mygo.RoleDelete, Label: theme.Tr("删除", "Delete")},
+		&mygo.MenuItem{Role: mygo.RoleSelectAll, Label: theme.Tr("全选", "Select All")},
+		mygo.Separator(),
+		&mygo.MenuItem{ID: "menu-find", Label: theme.Tr("查找…", "Find…"), Accelerator: accel("find", "cmd-f"), Click: call(act.OnFind)},
+	)
 
 	viewSubmenu := []*mygo.MenuItem{
 		{ID: "menu-toggle-sidebar", Label: theme.Tr("显示或隐藏侧栏", "Toggle Sidebar"), Accelerator: accel("toggle_sidebar", "alt-b"), Click: call(act.OnToggleSidebar)},
@@ -116,20 +124,56 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 
 	windowSubmenu := []*mygo.MenuItem{
 		{Role: mygo.RoleMinimize, Label: theme.Tr("最小化", "Minimize")},
-		{Role: mygo.RoleZoom, Label: theme.Tr("缩放", "Zoom")},
+	}
+	if isMac {
+		windowSubmenu = append(windowSubmenu, &mygo.MenuItem{Role: mygo.RoleZoom, Label: theme.Tr("缩放", "Zoom")})
+	}
+	windowSubmenu = append(windowSubmenu,
 		mygo.Separator(),
-		{ID: "menu-next-tab", Label: theme.Tr("下一个标签页", "Next Tab"), Accelerator: "Ctrl+Tab", Click: call(act.OnNextTab)},
-		{ID: "menu-prev-tab", Label: theme.Tr("上一个标签页", "Previous Tab"), Accelerator: "Ctrl+Shift+Tab", Click: call(act.OnPrevTab)},
+		&mygo.MenuItem{ID: "menu-next-tab", Label: theme.Tr("下一个标签页", "Next Tab"), Accelerator: "Ctrl+Tab", Click: call(act.OnNextTab)},
+		&mygo.MenuItem{ID: "menu-prev-tab", Label: theme.Tr("上一个标签页", "Previous Tab"), Accelerator: "Ctrl+Shift+Tab", Click: call(act.OnPrevTab)},
 		mygo.Separator(),
-		{ID: "menu-nav-back", Label: theme.Tr("后退", "Back"), Accelerator: "CmdOrCtrl+[", Click: call(act.OnNavigateBack)},
-		{ID: "menu-nav-fwd", Label: theme.Tr("前进", "Forward"), Accelerator: "CmdOrCtrl+]", Click: call(act.OnNavigateFwd)},
+		&mygo.MenuItem{ID: "menu-nav-back", Label: theme.Tr("后退", "Back"), Accelerator: "CmdOrCtrl+[", Click: call(act.OnNavigateBack)},
+		&mygo.MenuItem{ID: "menu-nav-fwd", Label: theme.Tr("前进", "Forward"), Accelerator: "CmdOrCtrl+]", Click: call(act.OnNavigateFwd)},
+	)
+
+	if isMac {
+		appSubmenu := []*mygo.MenuItem{
+			{ID: "menu-about", Label: theme.Tr("关于 Block", "About Block"), Click: call(act.OnAbout)},
+			{ID: "menu-check-updates", Label: theme.Tr("检查更新…", "Check for Updates…"), Click: call(act.OnCheckUpdates)},
+			{ID: "menu-perf", Label: theme.Tr("性能与占用", "Performance & Usage"), Accelerator: accel("performance", "cmd-shift-m"), Click: call(act.OnPerformance)},
+			mygo.Separator(),
+			{ID: "menu-settings", Label: theme.Tr("偏好设置…", "Settings…"), Accelerator: accel("settings", "cmd-,"), Click: call(act.OnSettings)},
+			mygo.Separator(),
+			{Role: mygo.RoleServices, Label: theme.Tr("服务", "Services")},
+			mygo.Separator(),
+			{Role: mygo.RoleHide, Label: theme.Tr("隐藏 Block", "Hide Block")},
+			{Role: mygo.RoleHideOthers, Label: theme.Tr("隐藏其他", "Hide Others")},
+			{Role: mygo.RoleUnhide, Label: theme.Tr("全部显示", "Show All")},
+			mygo.Separator(),
+			{Role: mygo.RoleQuit, Label: theme.Tr("退出 Block", "Quit Block")},
+		}
+		return mygo.NewMenu([]*mygo.MenuItem{
+			{Label: "Block", Submenu: appSubmenu},
+			{Label: theme.Tr("文件", "File"), Submenu: fileSubmenu},
+			{Label: theme.Tr("编辑", "Edit"), Submenu: editSubmenu},
+			{Label: theme.Tr("显示", "View"), Submenu: viewSubmenu},
+			{Label: theme.Tr("窗口", "Window"), Submenu: windowSubmenu},
+		})
+	}
+
+	helpSubmenu := []*mygo.MenuItem{
+		{ID: "menu-perf", Label: theme.Tr("性能与占用", "Performance & Usage"), Accelerator: accel("performance", "cmd-shift-m"), Click: call(act.OnPerformance)},
+		{ID: "menu-check-updates", Label: theme.Tr("检查更新…", "Check for Updates…"), Click: call(act.OnCheckUpdates)},
+		mygo.Separator(),
+		{ID: "menu-about", Label: theme.Tr("关于 Block", "About Block"), Click: call(act.OnAbout)},
 	}
 
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "Block", Submenu: appSubmenu},
 		{Label: theme.Tr("文件", "File"), Submenu: fileSubmenu},
 		{Label: theme.Tr("编辑", "Edit"), Submenu: editSubmenu},
 		{Label: theme.Tr("显示", "View"), Submenu: viewSubmenu},
 		{Label: theme.Tr("窗口", "Window"), Submenu: windowSubmenu},
+		{Label: theme.Tr("帮助", "Help"), Submenu: helpSubmenu},
 	})
 }
