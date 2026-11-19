@@ -404,29 +404,28 @@ func (c *Controller) deleteConversation(id uint64) {
 }
 
 func (c *Controller) renderBlockedCover(cUI *ui.Context, pal theme.Palette, fullscreen bool, enabled bool) {
-	maxW := float32(128)
-	if fullscreen {
-		maxW = 160
-	}
 	title := theme.Tr("先完成 AI 配置", "Configure AI Assistant")
 	cta := theme.Tr("前往设置", "Open AI Settings")
 	mascot := icons.MascotAIGreeting
 	if !enabled {
 		title = theme.Tr("先启用 AI 助手", "Enable AI Assistant")
-		cta = theme.Tr("前往设置", "Open AI Settings")
 		mascot = icons.MascotAIDisabled
 	}
-
-	ui.Column(cUI.Key("ai-empty-cover")).Fill().Padding(24).Gap(18).Center().Children(func() {
-		icons.Mascot(cUI, mascot, maxW)
-		ui.Text(cUI, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).TextAlign(ui.Center)
-		lead := icons.ArrowRight
-		btn := bui.ActionButton(cUI, "ai-cover-settings", cta, &lead, bui.ButtonPrimary, false)
-		if btn.Clicked() {
-			if c.host != nil {
+	width := theme.EmptyActionWidth
+	if fullscreen {
+		width = theme.EmptyStateWidth
+	}
+	cUI.Key("ai-empty-cover")
+	bui.EmptyStage(cUI, ui.Transparent, width, func() {
+		icons.Mascot(cUI, mascot, theme.EmptyMascotCompactSize)
+		bui.EmptyHeading(cUI, title).Margin(theme.Space16, 0, 0, 0)
+		ui.Box(cUI).Margin(theme.Space16, 0, 0, 0).Children(func() {
+			lead := icons.ArrowRight
+			btn := bui.ActionButton(cUI, "ai-cover-settings", cta, &lead, bui.ButtonPrimary, false)
+			if btn.Clicked() && c.host != nil {
 				c.host.OpenSettings("ai")
 			}
-		}
+		})
 	})
 }
 
