@@ -1321,6 +1321,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 		if syncSel {
 			s.selSyncPending = false
 		}
+		carryX, carry := s.takeCarryColumn(syncSel)
 		multiSel := s.hasMultiBlockSelection()
 		var multiSelRange [2]int
 		if multiSel {
@@ -1399,25 +1400,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OnOpenLink: func(url string) {
 				s.openBlockLink(c.Services(), url)
 			},
-			OnVerticalEdge: func(dir int) bool {
-				if dir < 0 {
-					if prev := s.stepVisibleBlock(idx, -1); prev >= 0 && prev != idx {
-						s.FocusBlock(prev)
-						if s.doc.Blocks[prev].Kind != model.BlockDivider && s.doc.Blocks[prev].Kind != model.BlockImage {
-							endOff := len([]rune(s.doc.Blocks[prev].PlainText()))
-							s.selAnchor = Position{Block: prev, Offset: endOff}
-							s.selHead = s.selAnchor
-							s.selSyncPending = true
-						}
-						return true
-					}
-					return false
-				}
-				if next := s.stepVisibleBlock(idx, 1); next >= 0 && next != idx {
-					s.FocusBlock(next)
-					return true
-				}
-				return false
+			CarryColumnX: carryX,
+			CarryColumn:  carry,
+			OnEdge: func(e appUi.RichEdge) bool {
+				return s.navigatePastBlock(idx, e)
 			},
 			OnKey: func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool {
 				s.caretHidden = false
@@ -2025,6 +2011,9 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					}
 				})
 				ta.OnTextKey(func(k ui.TextKey) bool {
+					if s.navigateFromCodeKey(idx, k.Key, k.Mods, k.Text()) {
+						return true
+					}
 					if k.Mods == ui.Cmd && k.Key == ui.KeyA {
 						if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(k.Text()))) {
 							s.SelectAllBlocks()
@@ -2560,6 +2549,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				relB = clampInt(s.selHead.Offset-cellBase, 0, cellLen)
 				s.selSyncPending = false
 			}
+			carryX, carry := s.takeCarryColumn(syncSel)
 			multiSel := s.hasMultiBlockSelection() || s.hasMultiCellTableSelection()
 			var cellBands []appUi.RichBand
 			var cellSelRange [2]int
@@ -2610,6 +2600,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				SelRange:          cellSelRange,
 				OpaqueRanges:      blockOpaqueBGRanges(&cellBlock),
 				HasChipBG:         blockHasChipBG(&cellBlock),
+				CarryColumnX:      carryX,
+				CarryColumn:       carry,
+				OnEdge: func(e appUi.RichEdge) bool {
+					return s.navigateFromTableCell(blockIdx, rIdx, cIdx, e)
+				},
 				OnChange: func(newText string, anchor, caret int) {
 					s.caretHidden = false
 					oldDraft := cell.PlainText()

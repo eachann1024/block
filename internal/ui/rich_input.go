@@ -132,8 +132,13 @@ type RichInputOptions struct {
 	OnPastePlain func(svc ui.Services, pastedText string) bool
 	// OnKey sees non-character keys before RichInput handles them; returning true consumes the key.
 	OnKey func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
-	// OnVerticalEdge runs when Up/Down at the first/last visual line cannot move further inside this block.
-	OnVerticalEdge func(dir int) bool
+	// OnEdge runs when an arrow key would move the caret past the start or end of this input
+	// (Up/Down on the first/last visual line, Left/Right at offset 0/len); returning true consumes it.
+	OnEdge func(RichEdge) bool
+	// CarryColumnX is a window X the next Up/Down keeps as its column, so arrow navigation that
+	// enters this input from another block stays in the same visual column. Read only with SyncSelection.
+	CarryColumnX float32
+	CarryColumn  bool
 	// OnOpenLink opens a clicked link (e.g. Cmd+Click).
 	OnOpenLink func(url string)
 }
@@ -150,6 +155,19 @@ type richLayoutKey struct {
 	fontEpoch uint64
 }
 
+// RichEdge describes an arrow-key caret move that runs past the start or end of a RichInput,
+// so the host can continue it into the neighbouring block or table cell.
+type RichEdge struct {
+	// Dir is -1 for Up/Left and +1 for Down/Right.
+	Dir int
+	// Vertical reports Up/Down rather than Left/Right.
+	Vertical bool
+	// Extend reports Shift held: the host grows the selection instead of moving the caret.
+	Extend bool
+	// ColumnX is the window X of the caret column to keep on vertical moves.
+	ColumnX float32
+}
+
 // RichInputState holds persistent editing, IME composition, selection, and cached layout state
 // for a single block or table cell.
 type RichInputState struct {
@@ -159,6 +177,8 @@ type RichInputState struct {
 	affinity        ui.TextAffinity
 	desiredX        float32
 	hasDesired      bool
+	carryWinX       float32
+	hasCarry        bool
 	compose         string
 	composeCaret    int
 	composeSelected ui.TextInputRange
@@ -185,15 +205,15 @@ type RichInputState struct {
 	links           []RichLinkRange
 	codeRanges      []RichCodeRange
 	codeEdge        RichCodeEdge
-	onChange       func(newText string, anchor, caret int)
-	onSelect       func(anchor, caret int)
-	onCopy         func(ui.Services) bool
-	onCut          func(ui.Services) bool
-	onPaste        func(svc ui.Services, pastedText string) bool
-	onPastePlain   func(svc ui.Services, pastedText string) bool
-	onKey          func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
-	onVerticalEdge func(dir int) bool
-	onOpenLink     func(url string)
+	onChange        func(newText string, anchor, caret int)
+	onSelect        func(anchor, caret int)
+	onCopy          func(ui.Services) bool
+	onCut           func(ui.Services) bool
+	onPaste         func(svc ui.Services, pastedText string) bool
+	onPastePlain    func(svc ui.Services, pastedText string) bool
+	onKey           func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
+	onEdge          func(RichEdge) bool
+	onOpenLink      func(url string)
 
 	blinkPos   int
 	blinkEpoch time.Time
@@ -214,7 +234,7 @@ func (s *RichInputState) Sync(text string, anchor, caret int) {
 	s.caret = clampRune(caret, n)
 	s.affinity = ui.TextDownstream
 	s.codeEdge = RichCodeEdgeNone
-	s.hasDesired = false
+	s.resetColumn()
 }
 
 // CodeEdge reports the current inline-code boundary state for the caret.
@@ -688,7 +708,7 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	s.anchor = newCaret
 	s.caret = newCaret
 	s.affinity = ui.TextDownstream
-	s.hasDesired = false
+	s.resetColumn()
 	s.blinkEpoch = time.Time{}
 	if s.onChange != nil {
 		s.onChange(s.text, s.anchor, s.caret)
@@ -809,26 +829,33 @@ func (s *RichInputState) lineRuneEdges(pos int) (int, int) {
 	return 0, n
 }
 
+// resetColumn forgets the sticky Up/Down column after a non-vertical caret move.
+func (s *RichInputState) resetColumn() {
+	s.hasDesired = false
+	s.hasCarry = false
+}
+
+// emitEdge hands a caret move past this input's edge to the host.
+func (s *RichInputState) emitEdge(dir int, vertical, extend bool, columnX float32) bool {
+	if s.onEdge == nil {
+		return false
+	}
+	return s.onEdge(RichEdge{Dir: dir, Vertical: vertical, Extend: extend, ColumnX: s.lastRect.X + columnX})
+}
+
 func (s *RichInputState) moveVertical(dir int, extend bool) bool {
 	lay := s.currentLayout()
 	lines := lay.Lines()
-	if len(lines) <= 1 {
-		if !extend && s.onVerticalEdge != nil && s.onVerticalEdge(dir) {
-			return true
-		}
-		if dir < 0 {
-			s.moveCaretTo(0, ui.TextDownstream, extend)
-		} else {
-			s.moveCaretTo(utf8.RuneCountInString(s.text), ui.TextDownstream, extend)
-		}
-		return true
-	}
 	u := runeToUTF16Off(s.text, s.caret)
 	cr := lay.CaretAt(ui.TextCaretPosition{Index: u, Affinity: s.affinity})
 	if !s.hasDesired {
 		s.desiredX = cr.X
+		if s.hasCarry {
+			s.desiredX = s.carryWinX - s.lastRect.X
+		}
 		s.hasDesired = true
 	}
+	s.hasCarry = false
 	lineIdx := 0
 	for i, ln := range lines {
 		if cr.Y+cr.H*0.5 >= ln.Rect.Y && cr.Y+cr.H*0.5 <= ln.Rect.Y+ln.Rect.H {
@@ -837,15 +864,16 @@ func (s *RichInputState) moveVertical(dir int, extend bool) bool {
 		}
 	}
 	targetLine := lineIdx + dir
-	if targetLine < 0 || targetLine >= len(lines) {
-		if !extend && s.onVerticalEdge != nil && s.onVerticalEdge(dir) {
+	if len(lines) <= 1 || targetLine < 0 || targetLine >= len(lines) {
+		boundary := 0
+		if dir > 0 {
+			boundary = utf8.RuneCountInString(s.text)
+		}
+		// Shift+Up/Down first extends to the block edge, the next press crosses into the neighbour.
+		if (!extend || s.caret == boundary) && s.emitEdge(dir, true, extend, s.desiredX) {
 			return true
 		}
-		if dir < 0 {
-			s.moveCaretTo(0, ui.TextDownstream, extend)
-		} else {
-			s.moveCaretTo(utf8.RuneCountInString(s.text), ui.TextDownstream, extend)
-		}
+		s.moveCaretTo(boundary, ui.TextDownstream, extend)
 		s.hasDesired = true
 		return true
 	}
@@ -964,7 +992,7 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 		s.caret = n
 		s.affinity = ui.TextDownstream
 		s.codeEdge = RichCodeEdgeNone
-		s.hasDesired = false
+		s.resetColumn()
 		if s.onSelect != nil {
 			s.onSelect(s.anchor, s.caret)
 		}
@@ -1042,7 +1070,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 		case ui.KeyA:
 			ls, _ := s.lineRuneEdges(s.caret)
 			s.moveCaretTo(ls, ui.TextDownstream, shift)
-			s.hasDesired = false
+			s.resetColumn()
 			return true
 		case ui.KeyE:
 			_, le := s.lineRuneEdges(s.caret)
@@ -1052,7 +1080,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 					s.setCodeEdge(RichCodeEdgeAfter)
 				}
 			}
-			s.hasDesired = false
+			s.resetColumn()
 			return true
 		case ui.KeyK:
 			if !s.readOnly {
@@ -1072,7 +1100,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 			s.caret = utf8.RuneCountInString(s.text)
 			s.affinity = ui.TextDownstream
 			s.codeEdge = RichCodeEdgeNone
-			s.hasDesired = false
+			s.resetColumn()
 			if s.onSelect != nil {
 				s.onSelect(s.anchor, s.caret)
 			}
@@ -1135,23 +1163,23 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 				if !left {
 					if _, ok := s.codeRangeStartingAt(s.caret); ok && s.codeEdge == RichCodeEdgeNone {
 						s.setCodeEdge(RichCodeEdgeInsideStart)
-						s.hasDesired = false
+						s.resetColumn()
 						return true
 					}
 					if _, ok := s.codeRangeEndingAt(s.caret); ok && s.codeEdge == RichCodeEdgeNone {
 						s.setCodeEdge(RichCodeEdgeAfter)
-						s.hasDesired = false
+						s.resetColumn()
 						return true
 					}
 				} else {
 					if _, ok := s.codeRangeEndingAt(s.caret); ok && s.codeEdge == RichCodeEdgeAfter {
 						s.setCodeEdge(RichCodeEdgeNone)
-						s.hasDesired = false
+						s.resetColumn()
 						return true
 					}
 					if _, ok := s.codeRangeStartingAt(s.caret); ok && s.codeEdge == RichCodeEdgeInsideStart {
 						s.setCodeEdge(RichCodeEdgeNone)
-						s.hasDesired = false
+						s.resetColumn()
 						return true
 					}
 				}
@@ -1169,8 +1197,8 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 					s.moveCaretTo(s.caret-1, ui.TextDownstream, shift)
 				} else if !left && s.caret < n {
 					s.moveCaretTo(s.caret+1, ui.TextDownstream, shift)
-				} else if !shift && s.onVerticalEdge != nil {
-					return s.onVerticalEdge(dir)
+				} else if s.emitEdge(dir, false, shift, 0) {
+					return true
 				}
 			} else {
 				s.moveCaretTo(utf16ToRuneOff(s.text, next.Index), next.Affinity, shift)
@@ -1183,7 +1211,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 				}
 			}
 		}
-		s.hasDesired = false
+		s.resetColumn()
 		return true
 
 	case ui.KeyUp, ui.KeyDown:
@@ -1198,7 +1226,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 					}
 				}
 			}
-			s.hasDesired = false
+			s.resetColumn()
 			return true
 		}
 		if m != 0 {
@@ -1217,7 +1245,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 			ls, _ := s.lineRuneEdges(s.caret)
 			s.moveCaretTo(ls, ui.TextDownstream, shift)
 		}
-		s.hasDesired = false
+		s.resetColumn()
 		return true
 
 	case ui.KeyEnd:
@@ -1237,7 +1265,7 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 				}
 			}
 		}
-		s.hasDesired = false
+		s.resetColumn()
 		return true
 	}
 
@@ -1344,7 +1372,7 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		cp := lay.PositionAt(s.pressPt)
 		pos := utf16ToRuneOff(s.text, cp.Index)
 		s.dragging = true
-		s.hasDesired = false
+		s.resetColumn()
 		s.dragUnit = min(max(ev.Clicks, 1), 3)
 		rs := []rune(s.text)
 		switch s.dragUnit {
@@ -1900,7 +1928,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.onPaste = opts.OnPaste
 	st.onPastePlain = opts.OnPastePlain
 	st.onKey = opts.OnKey
-	st.onVerticalEdge = opts.OnVerticalEdge
+	st.onEdge = opts.OnEdge
 	st.onOpenLink = opts.OnOpenLink
 
 	n := utf8.RuneCountInString(opts.Text)
@@ -1914,6 +1942,10 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 		st.caret = clampRune(opts.Caret, n)
 		st.affinity = ui.TextDownstream
 		st.codeEdge = RichCodeEdgeNone
+		st.resetColumn()
+		if opts.CarryColumn {
+			st.carryWinX, st.hasCarry = opts.CarryColumnX, true
+		}
 	} else {
 		st.anchor = clampRune(st.anchor, n)
 		st.caret = clampRune(st.caret, n)
