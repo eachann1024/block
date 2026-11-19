@@ -326,7 +326,8 @@ func (s *StoreManager) EffectiveDownloads(entry StoreAppEntry) int {
 	return base + delta
 }
 
-// LoadCachedOrSeedCatalog returns the cached store-index.json merged with built-in official catalog entries.
+// LoadCachedOrSeedCatalog returns the freshest available catalog between the
+// on-disk cache and the embedded seed index without resurrecting delisted apps.
 func (s *StoreManager) LoadCachedOrSeedCatalog() *StoreIndex {
 	seed := DefaultSeedIndex()
 	raw, err := os.ReadFile(s.cacheIndexPath())
@@ -337,15 +338,40 @@ func (s *StoreManager) LoadCachedOrSeedCatalog() *StoreIndex {
 	if err != nil {
 		return seed
 	}
-	return mergeStoreIndexes(parsed, seed)
+	if seed != nil && indexNewerThan(seed.UpdatedAt, parsed.UpdatedAt) {
+		return filterStoreIndex(seed)
+	}
+	if hasRegisteredBuiltinSeeds() {
+		return mergeStoreIndexes(parsed, seed)
+	}
+	return filterStoreIndex(parsed)
+}
+
+func hasRegisteredBuiltinSeeds() bool {
+	builtinMu.RLock()
+	defer builtinMu.RUnlock()
+	return len(builtinSeeds) > 0
+}
+
+func indexNewerThan(a, b string) bool {
+	ta, errA := time.Parse(time.RFC3339, strings.TrimSpace(a))
+	if errA != nil {
+		return false
+	}
+	tb, errB := time.Parse(time.RFC3339, strings.TrimSpace(b))
+	if errB != nil {
+		return true
+	}
+	return ta.After(tb)
 }
 
 // RefreshCatalog fetches the latest remote store-index.json from configured sources, caches it locally,
-// and merges built-in seed entries as fallback.
+// and returns the filtered remote catalog (giving each source an independent timeout budget).
 func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) {
 	if err := s.EnsureDirs(); err != nil {
 		return s.LoadCachedOrSeedCatalog(), err
 	}
+	const perSourceTimeout = 6 * time.Second
 	var lastErr error
 	for _, u := range s.IndexURLs {
 		indexURL, err := parseArchiveURL(u)
@@ -353,8 +379,10 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 			lastErr = err
 			continue
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, indexURL.String(), nil)
+		srcCtx, srcCancel := withStageTimeout(ctx, perSourceTimeout)
+		req, err := http.NewRequestWithContext(srcCtx, http.MethodGet, indexURL.String(), nil)
 		if err != nil {
+			srcCancel()
 			lastErr = err
 			continue
 		}
@@ -369,12 +397,14 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 		}
 		resp, err := client.Do(req)
 		if err != nil {
+			srcCancel()
 			lastErr = err
 			continue
 		}
 		const maxIndexBytes = 8 * 1024 * 1024
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxIndexBytes+1))
 		resp.Body.Close()
+		srcCancel()
 		if resp.StatusCode != http.StatusOK || readErr != nil || len(body) > maxIndexBytes {
 			lastErr = fmt.Errorf("fetch %s: status %d", u, resp.StatusCode)
 			continue
@@ -385,9 +415,16 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 			continue
 		}
 		_ = os.WriteFile(s.cacheIndexPath(), body, 0o644)
-		return mergeStoreIndexes(idx, DefaultSeedIndex()), nil
+		if hasRegisteredBuiltinSeeds() {
+			return mergeStoreIndexes(idx, DefaultSeedIndex()), nil
+		}
+		return filterStoreIndex(idx), nil
 	}
 	return s.LoadCachedOrSeedCatalog(), lastErr
+}
+
+func filterStoreIndex(idx *StoreIndex) *StoreIndex {
+	return mergeStoreIndexes(idx, nil)
 }
 
 func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
