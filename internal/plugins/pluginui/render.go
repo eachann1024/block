@@ -393,12 +393,23 @@ func renderItem(
 				colorKey = t.ID
 			}
 			sumBytes += t.Bytes
+			entries := make([]bui.TreemapEntry, len(t.Entries))
+			for ei, ent := range t.Entries {
+				entries[ei] = bui.TreemapEntry{
+					Name:  ent.Name,
+					Path:  ent.Path,
+					Bytes: ent.Bytes,
+					Count: ent.Count,
+				}
+			}
 			tmItems[i] = bui.TreemapItem{
-				ID:     t.ID,
-				Label:  t.Label,
-				Detail: t.Detail,
-				Bytes:  t.Bytes,
-				Color:  pal.PerfCategoryColor(colorKey),
+				ID:        t.ID,
+				Label:     t.Label,
+				Detail:    t.Detail,
+				Bytes:     t.Bytes,
+				FileCount: t.FileCount,
+				Color:     pal.PerfCategoryColor(colorKey),
+				Entries:   entries,
 			}
 		}
 		if totalBytes == 0 {
@@ -490,7 +501,7 @@ func renderPreviewItem(c *ui.Context, pluginID string, pv *plugins.UIPreview) {
 					FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				if strings.TrimSpace(pv.Badge) != "" {
 					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
-						Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Shrink(0).Children(func() {
+						Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Shrink(0).Children(func() {
 						ui.Text(c, pv.Badge).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 							FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 					})

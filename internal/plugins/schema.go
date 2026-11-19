@@ -55,12 +55,21 @@ type UIMetric struct {
 	Value string `json:"value"`
 }
 
+type UITreemapEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path,omitempty"`
+	Bytes uint64 `json:"bytes"`
+	Count int    `json:"count,omitempty"`
+}
+
 type UITreemapTile struct {
-	ID     string `json:"id"`
-	Label  string `json:"label"`
-	Detail string `json:"detail,omitempty"`
-	Bytes  uint64 `json:"bytes"`
-	Color  string `json:"color,omitempty"`
+	ID        string           `json:"id"`
+	Label     string           `json:"label"`
+	Detail    string           `json:"detail,omitempty"`
+	Bytes     uint64           `json:"bytes"`
+	FileCount int              `json:"file_count,omitempty"`
+	Color     string           `json:"color,omitempty"`
+	Entries   []UITreemapEntry `json:"entries,omitempty"`
 }
 
 type UILogEntry struct {
@@ -363,6 +372,15 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			}
 			if err := checkText(tp+".detail", tile.Detail, false); err != nil {
 				return err
+			}
+			for ei, ent := range tile.Entries {
+				ep := fmt.Sprintf("%s.entries[%d]", tp, ei)
+				if err := checkUserText(ep+".name", ent.Name, true); err != nil {
+					return err
+				}
+				if err := checkUserText(ep+".path", ent.Path, false); err != nil {
+					return err
+				}
 			}
 		}
 	case KindPreview:

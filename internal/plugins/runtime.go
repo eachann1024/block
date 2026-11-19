@@ -31,11 +31,20 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+type PerfBreakdownEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path,omitempty"`
+	Bytes uint64 `json:"bytes"`
+	Count int    `json:"count,omitempty"`
+}
+
 type PerfDiskCategory struct {
-	ID     string `json:"id"`
-	Label  string `json:"label"`
-	Detail string `json:"detail"`
-	Bytes  uint64 `json:"bytes"`
+	ID        string               `json:"id"`
+	Label     string               `json:"label"`
+	Detail    string               `json:"detail"`
+	Bytes     uint64               `json:"bytes"`
+	FileCount int                  `json:"file_count,omitempty"`
+	Entries   []PerfBreakdownEntry `json:"entries,omitempty"`
 }
 
 type PerfSnapshot struct {
