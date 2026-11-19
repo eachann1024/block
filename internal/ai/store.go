@@ -1191,7 +1191,7 @@ func (c *Controller) SetProviderEntryEnabled(id string, on bool) error {
 	return nil
 }
 
-// RemoveProviderEntry deletes a custom provider entry from ai.json.
+// RemoveProviderEntry deletes a provider entry from ai.json.
 func (c *Controller) RemoveProviderEntry(id string) error {
 	cfg := c.ProviderConfig()
 	entries := orderedProviderEntries(cfg)
@@ -1203,6 +1203,13 @@ func (c *Controller) RemoveProviderEntry(id string) error {
 	// The active fields still describe the removed provider until a replacement
 	// is selected. Do not let orderedProviderEntries reconstruct it from them.
 	remaining := slices.DeleteFunc(entries, func(entry ProviderEntry) bool { return entry.ID == id })
+	anyEnabled := false
+	for _, r := range remaining {
+		if r.Enabled {
+			anyEnabled = true
+			break
+		}
+	}
 	if cfg.Provider == id && len(remaining) > 0 {
 		pick := remaining[0]
 		for _, r := range remaining {
@@ -1219,6 +1226,9 @@ func (c *Controller) RemoveProviderEntry(id string) error {
 	}
 	if err := c.SaveProviderConfig(cfg); err != nil {
 		return err
+	}
+	if !anyEnabled {
+		_ = c.SetBackendEnabled(model.BackendBuiltin, false)
 	}
 	c.mu.Lock()
 	if c.settingsExpandedProv == id {
