@@ -1,6 +1,7 @@
 package icons
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -449,31 +450,44 @@ func Brand(c *ui.Context, kind model.BackendKind, size float32, tint ui.Color) u
 	return ui.Icon(c, s).Size(size, size).Shrink(0).TextColor(tint)
 }
 
-// Mascot renders the 4-layer Scheme C Paper & Blueprint vector illustration (280x220 aspect).
-func Mascot(c *ui.Context, state MascotState, maxWidth float32) ui.Element {
-	const fullW float32 = 280
-	const fullH float32 = 220
-	w := fullW
-	if maxWidth > 0 && maxWidth < fullW {
-		w = max(maxWidth, 1)
-	}
-	h := fullH * w / fullW
+type mascotRole uint8
+
+const (
+	mascotFill  mascotRole = iota // soft tinted surface (pal.Selected)
+	mascotSoft                    // secondary strokes (pal.IconFill)
+	mascotPaper                   // occluding paper (pal.Paper)
+	mascotLine                    // primary accent strokes (pal.Accent)
+)
+
+// mascotLayers lists each illustration's layers back to front; layer i is
+// assets/mascot/<state>.<i+1>.svg drawn in black and tinted by its role.
+var mascotLayers = map[MascotState][]mascotRole{
+	MascotNoNote:      {mascotFill, mascotSoft, mascotPaper, mascotSoft, mascotLine},
+	MascotEmptyFolder: {mascotPaper, mascotSoft, mascotFill, mascotSoft, mascotPaper, mascotLine, mascotSoft},
+	MascotNoFolder:    {mascotFill, mascotSoft, mascotLine, mascotPaper},
+	MascotReadError:   {mascotFill, mascotSoft, mascotLine, mascotPaper, mascotLine},
+	MascotAIGreeting:  {mascotFill, mascotLine, mascotPaper, mascotLine},
+	MascotAIDisabled:  {mascotFill, mascotLine, mascotSoft, mascotPaper, mascotLine},
+}
+
+// Mascot renders a small square line illustration for an empty state at size px.
+func Mascot(c *ui.Context, state MascotState, size float32) ui.Element {
+	size = max(size, 1)
 	pal := theme.Ocean()
-	slug := string(state)
-	root := ui.Box(c).Size(w, h).Shrink(0)
+	root := ui.Box(c).Size(size, size).Shrink(0)
 	root.Children(func() {
-		layers := []struct {
-			ext   string
-			color ui.Color
-		}{
-			{".grid.svg", pal.Hairline},
-			{".fill.svg", pal.IconFill},
-			{".line.svg", pal.Text},
-			{".accent.svg", pal.Accent},
-		}
-		for _, l := range layers {
-			if s := loadSVG("mascot/" + slug + l.ext); s != nil {
-				ui.Icon(c, s).Absolute().Top(0).Left(0).Size(w, h).TextColor(l.color)
+		for i, role := range mascotLayers[state] {
+			col := pal.Accent
+			switch role {
+			case mascotFill:
+				col = pal.Selected
+			case mascotSoft:
+				col = pal.IconFill
+			case mascotPaper:
+				col = pal.Paper
+			}
+			if s := loadSVG(fmt.Sprintf("mascot/%s.%d.svg", state, i+1)); s != nil {
+				ui.Icon(c, s).Absolute().Top(0).Left(0).Size(size, size).TextColor(col)
 			}
 		}
 	})
