@@ -3401,22 +3401,6 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 							}
 
 							ui.Row(cUI).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
-								if p.Custom && len(provEntries) > 1 {
-									delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
-										ID:      "ai-provider-delete-" + p.ID,
-										Label:   theme.Tr("删除供应商", "Delete Provider"),
-										Tooltip: theme.Tr("删除供应商", "Delete Provider"),
-										Variant: bui.IconPlain,
-										Danger:  true,
-									})
-									if !rowHov && !delBtn.Hovered() {
-										delBtn.Opacity(0)
-									}
-									if delBtn.Clicked() {
-										_ = c.RemoveProviderEntry(p.ID)
-									}
-								}
-
 								chev := icons.ChevronDown
 								chevLbl := theme.Tr("展开", "Expand")
 								if isExpanded {
@@ -3448,7 +3432,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 						})
 
 						if isExpanded {
-							c.renderProviderDetailRows(cUI, pal, p, testing && (testingProv == "" || testingProv == p.ID), testOK && (testingProv == "" || testingProv == p.ID), testErr, secW)
+							c.renderProviderDetailRows(cUI, pal, p, len(provEntries) > 1, testing && (testingProv == "" || testingProv == p.ID), testOK && (testingProv == "" || testingProv == p.ID), testErr, secW)
 						}
 					})
 				}
@@ -3654,7 +3638,7 @@ func backendProbeSuffix(k model.BackendKind) string {
 	}
 }
 
-func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette, p ProviderEntry, testing, testOK bool, testErr string, secW float32) {
+func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette, p ProviderEntry, canDelete, testing, testOK bool, testErr string, secW float32) {
 	c.mu.RLock()
 	showKey := c.settingsProvShowKey[p.ID] || c.settingsShowKey
 	c.mu.RUnlock()
@@ -3739,12 +3723,15 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 					})
 				}
 				toggleLbl := theme.Tr("显示", "Show")
+				toggleIc := icons.Eye
 				if showKey {
 					toggleLbl = theme.Tr("隐藏", "Hide")
+					toggleIc = icons.EyeOff
 				}
 				tBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
 					ID:       "ai-toggle-key",
 					Label:    toggleLbl,
+					Leading:  &toggleIc,
 					Style:    bui.ButtonGhost,
 					Height:   theme.HeightCompact,
 					PaddingX: theme.Space8,
@@ -3771,25 +3758,46 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 			})
 		}
 
-		// Test Connection
-		ui.Row(cUI).FillWidth().MinWidth(0).Padding(theme.Space2, 0, 0, 0).Justify(ui.End).Children(func() {
+		// Delete Provider & Test Connection
+		ui.Row(cUI).FillWidth().MinWidth(0).Padding(theme.Space2, 0, 0, 0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			trashIc := icons.Trash
+			delBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+				ID:       "ai-provider-delete-" + p.ID,
+				Label:    theme.Tr("删除", "Delete"),
+				Leading:  &trashIc,
+				Style:    bui.ButtonDanger,
+				Disabled: !canDelete,
+				Height:   theme.HeightCompact,
+				PaddingX: theme.Space10,
+			})
+			if !canDelete {
+				bui.Tooltip(cUI, delBtn, theme.Tr("至少保留一个 API 供应商", "Keep at least one API provider"))
+			} else if delBtn.Clicked() {
+				_ = c.RemoveProviderEntry(p.ID)
+			}
+
 			testLabel := theme.Tr("连接测试", "Test Connection")
-			var testLeading *icons.Icon
+			testIc := icons.Zap
+			testStyle := bui.ButtonSecondary
+			testAlwaysDuo := true
 			if testing {
 				testLabel = theme.Tr("测试中…", "Testing…")
 			} else if testOK {
 				testLabel = theme.Tr("连接正常", "Connected")
-				ic := icons.Check
-				testLeading = &ic
+				testIc = icons.Check
+				testStyle = bui.ButtonSuccess
+				testAlwaysDuo = false
 			}
 			testBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
-				ID:       "ai-test",
-				Label:    testLabel,
-				Leading:  testLeading,
-				Style:    bui.ButtonSecondary,
-				Disabled: testing,
-				Height:   theme.HeightCompact,
-				PaddingX: theme.Space10,
+				ID:        "ai-test",
+				Label:     testLabel,
+				Leading:   &testIc,
+				AlwaysDuo: testAlwaysDuo,
+				Style:     testStyle,
+				Disabled:  testing,
+				Loading:   testing,
+				Height:    theme.HeightCompact,
+				PaddingX:  theme.Space10,
 			})
 			if testBtn.Clicked() && !testing {
 				c.runProviderConnectionTestAsync(p.ID)
@@ -3828,9 +3836,11 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(theme.Space4, 0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(cUI, guideText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(120).SingleLine().Ellipsis("…")
 				if guideCmd != "" {
+					cpIc := icons.Copy
 					cpBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
 						ID:       "ai-agent-copy-cmd-" + suffix,
 						Label:    guideCmd,
+						Leading:  &cpIc,
 						Style:    bui.ButtonSecondary,
 						Height:   theme.HeightCompact,
 						PaddingX: theme.Space10,
@@ -3854,9 +3864,11 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 						o.BinaryPath = bp
 					})
 				}
+				refIc := icons.Refresh
 				reprobeBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
 					ID:       "ai-agent-reprobe-" + suffix,
 					Label:    theme.Tr("检测", "Verify"),
+					Leading:  &refIc,
 					Style:    bui.ButtonSecondary,
 					Height:   theme.HeightCompact,
 					PaddingX: theme.Space10,
@@ -4114,22 +4126,25 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 			// Footer actions
 			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(4, 0, 0, 0).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				tLbl := theme.Tr("连接测试", "Test")
-				tIcon := icons.Plug
+				tIcon := icons.Zap
 				tStyle := bui.ButtonSecondary
+				tAlwaysDuo := true
 				if testing {
 					tLbl = theme.Tr("测试中…", "Testing…")
 				} else if testOK {
 					tLbl = theme.Tr("连接正常", "Connected")
 					tIcon = icons.Check
 					tStyle = bui.ButtonSuccess
+					tAlwaysDuo = false
 				}
 				tBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
-					ID:       "ai-add-provider-test",
-					Label:    tLbl,
-					Leading:  &tIcon,
-					Style:    tStyle,
-					Disabled: testing,
-					Loading:  testing,
+					ID:        "ai-add-provider-test",
+					Label:     tLbl,
+					Leading:   &tIcon,
+					AlwaysDuo: tAlwaysDuo,
+					Style:     tStyle,
+					Disabled:  testing,
+					Loading:   testing,
 				})
 				if tBtn.Clicked() && !testing {
 					c.runAddDraftConnectionTestAsync()
