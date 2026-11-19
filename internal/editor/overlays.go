@@ -2501,7 +2501,23 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 			appUi.Scroll(c.Key("plan-diff-scroll"), &s.planDiffScroll).FillWidth().Grow(1).
 				MaxHeight(maxH-64).Padding(theme.Space10, theme.Space12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(theme.Space8).Children(func() {
-					codeFont := resolvedCodeFont()
+					renderLineContent := func(raw, trimmed string, isTable, isHeader bool, fg ui.Color) {
+						style := appUi.DiffLineStyle{Text: fg, CodeBG: pal.CodeBlockBG}
+						if !isTable {
+							appUi.DiffMarkdownLine(c, raw, style)
+							return
+						}
+						cells := appUi.ParseDiffTableCells(trimmed)
+						ui.Row(c).Grow(1).MinWidth(0).Children(func() {
+							for ci, cellTxt := range cells {
+								ui.Box(c).Grow(1).Shrink(1).MinWidth(0).Padding(theme.Space4, theme.Space8).
+									BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
+									Children(func() {
+										appUi.DiffMarkdownCell(c, cellTxt, style, isHeader)
+									})
+							}
+						})
+					}
 					for opIdx := range plan.Ops {
 						op := &plan.Ops[opIdx]
 						diff := s.ensurePlanOpLineSelection(op)
@@ -2513,18 +2529,29 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 							})
 							selIdx := 0
 							for lineIdx, dl := range diff {
-								isLast := lineIdx == len(diff)-1
 								trimmed := strings.TrimSpace(dl.Text)
-								isTable := strings.HasPrefix(trimmed, "|") && strings.Count(trimmed, "|") >= 2
-								nextIsTable := false
-								if !isLast {
-									nt := strings.TrimSpace(diff[lineIdx+1].Text)
-									nextIsTable = strings.HasPrefix(nt, "|") && strings.Count(nt, "|") >= 2
+								if appUi.IsDiffTableSep(trimmed) {
+									if dl.Kind != model.DiffEqual {
+										selIdx++
+									}
+									continue
 								}
-								needSep := !isLast && (isTable || nextIsTable || diff[lineIdx+1].Kind != dl.Kind)
+								nextVisIdx := -1
+								for j := lineIdx + 1; j < len(diff); j++ {
+									if !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+										nextVisIdx = j
+										break
+									}
+								}
+								isLast := nextVisIdx == -1
+								isTable := appUi.IsDiffTableRow(trimmed)
+								isHeader := isTable && lineIdx+1 < len(diff) && appUi.IsDiffTableSep(strings.TrimSpace(diff[lineIdx+1].Text))
+								nextIsTable := !isLast && appUi.IsDiffTableRow(strings.TrimSpace(diff[nextVisIdx].Text))
+								needSep := !isLast && (isTable || nextIsTable || diff[nextVisIdx].Kind != dl.Kind)
 								switch dl.Kind {
 								case model.DiffEqual:
-									row := ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().Padding(theme.Space4, theme.Space10).
+									row := ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().
+										Padding(theme.Space4, theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).
 										Background(pal.Paper)
 									if isLast {
 										const zero float32 = 0
@@ -2534,7 +2561,8 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										row.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 									}
 									row.Children(func() {
-										ui.Text(c, "  "+dl.Text).Font(codeFont).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+										ui.Box(c).Width(12).Shrink(0)
+										renderLineContent(dl.Text, trimmed, isTable, isHeader, pal.TextSecondary)
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -2545,11 +2573,11 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 									}
 									bg := pal.DiffAddBG
 									fg := pal.DiffAddFG
-									prefix := "+ "
+									gutter := "+"
 									if dl.Kind == model.DiffDelete {
 										bg = pal.DiffDelBG
 										fg = pal.DiffDelFG
-										prefix = "− "
+										gutter = "−"
 									}
 									row := ui.Row(c.Key(fmt.Sprintf("dl-%d-%d", opIdx, lineIdx))).FillWidth().
 										Padding(theme.Space4, theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Background(bg)
@@ -2567,7 +2595,8 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										if cb.Changed() && curSelIdx < len(op.LineSelected) {
 											op.LineSelected[curSelIdx] = checked
 										}
-										ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(theme.FontBody).TextColor(fg).Grow(1)
+										ui.Text(c, gutter).Width(12).Shrink(0).FontSize(theme.FontBody).TextColor(fg).SingleLine()
+										renderLineContent(dl.Text, trimmed, isTable, isHeader, fg)
 									})
 								}
 							}
