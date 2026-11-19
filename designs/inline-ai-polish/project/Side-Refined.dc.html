@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>侧栏 精修</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#456ec2}
+textarea::placeholder{color:#93918c}
+</style>
+</helmet>
+<div style="width: 400px; height: 720px; box-sizing: border-box; background: #ffffff; font-family: -apple-system, 'PingFang SC', system-ui, sans-serif; color: #1f1e1d; display: flex; flex-direction: column">
+<div style="height: 44px; box-sizing: border-box; padding: 0 10px 0 16px; display: flex; align-items: center; gap: 2px">
+<div style="flex: 1; font-size: 13px; font-weight: 460; color: #52514e">新会话</div>
+<button aria-label="新建" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6a66" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="13" rx="2"></rect><path d="M12 8v5M9.5 10.5h5"></path></svg></button>
+<button aria-label="全屏" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6a66" stroke-width="1.6" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M4 9h16"></path></svg></button>
+<button aria-label="历史" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6a66" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></button>
+<button aria-label="关闭" style="width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b6a66" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 460; color: #52514e">我们来做些什么？</div>
+<div style="padding: 0 12px 12px">
+<div style="padding: 10px 10px 6px 12px; border-radius: 12px; background: #f8f8f6; border: 1px solid #eeeff2; display: flex; flex-direction: column; gap: 4px">
+<textarea aria-label="向 AI 提问" placeholder="向 AI 提问，/ 技能，@ 文件" style="height: 52px; border: 0; outline: none; resize: none; background: transparent; font-size: 13px; line-height: 20px; font-family: inherit; color: #1f1e1d; padding: 0"></textarea>
+<div style="display: flex; align-items: center; gap: 4px">
+<button style="height: 24px; margin-left: -6px; padding: 0 6px; border-radius: 6px; border: 0; background: transparent; display: flex; align-items: center; gap: 5px; font-size: 12px; font-family: inherit; color: #52514e"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52514e" stroke-width="2" aria-hidden="true"><path d="M4 20L12 4l8 16M8 13h8"></path></svg><span>Gemini 4 Neon</span><span style="color: #93918c">· High</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#93918c" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<div style="flex: 1"></div>
+<button aria-label="发送" style="width: 24px; height: 24px; border: 0; border-radius: 999px; background: #e4e6ea; padding: 0; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":720}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

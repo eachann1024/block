@@ -1,7 +1,7 @@
 /dist
 /build
 /.mygo
-/AGENTS.md
+!/AGENTS.md
 /release-plan.json
 scripts/release/block.exe
 !.github/

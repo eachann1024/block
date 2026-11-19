@@ -118,10 +118,14 @@ func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill boo
 		triggerCol = pal.TooltipDanger
 	}
 	if row.Trigger != "" {
+		triggerWeight := theme.WeightRegular
+		if row.Detail != "" || row.TriggerTone != TooltipToneDefault {
+			triggerWeight = theme.WeightControl
+		}
 		ShortcutLabel(c, row.Trigger, ShortcutLabelStyle{
 			FontSize:   theme.FontSmall,
 			LineHeight: theme.LineSmall,
-			FontWeight: theme.WeightTitle,
+			FontWeight: triggerWeight,
 			Color:      triggerCol,
 		})
 	}

@@ -430,39 +430,20 @@ func (c *Controller) renderBlockedCover(cUI *ui.Context, pal theme.Palette, full
 	})
 }
 
-func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
-	maxW := float32(128)
+func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, fullscreen bool, minH float32) {
+	fontSize := theme.FontEditor
+	lineHeight := theme.LineEditor
 	if fullscreen {
-		maxW = 160
+		fontSize = theme.FontHeading
+		lineHeight = theme.LineHeading
 	}
-	prompts := []struct {
-		id     string
-		label  string
-		prompt string
-	}{
-		{"ai-empty-polish", theme.Tr("润色并精简当前笔记", "Polish and condense note"), "请帮我润色并精简当前笔记的结构与表述"},
-		{"ai-empty-table", theme.Tr("整理内容为对齐表格", "Format content as table"), "请将当前笔记中的结构化条目整理为对齐的 Markdown 表格"},
-		{"ai-empty-summary", theme.Tr("提炼核心要点与待办", "Extract key points and todos"), "请提炼当前笔记的核心要点，并整理出可执行的待办事项"},
-		{"ai-empty-proofread", theme.Tr("检查错别字与语病", "Check typos and phrasing"), "请检查当前笔记中的错别字、标点与语病并给出修改建议"},
+	col := ui.Column(cUI.Key("ai-empty-state")).FillWidth().Padding(theme.Space24, theme.Space16).Center()
+	if minH > 0 {
+		col.MinHeight(minH)
 	}
-
-	ui.Column(cUI.Key("ai-empty-state")).FillWidth().Padding(theme.Space24, theme.Space16).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
-		icons.Mascot(cUI, icons.MascotAIGreeting, maxW)
-		ui.Text(cUI, theme.Tr("有什么可以帮你处理？", "How can I help with this note?")).
-			FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).FontWeight(theme.WeightTitle).TextColor(pal.Text).TextAlign(ui.Center)
-		ui.Column(cUI).FillWidth().MaxWidth(540).Gap(8).AlignItems(ui.Center).Children(func() {
-			for _, p := range prompts {
-				btn := bui.ActionButton(cUI, p.id, p.label, nil, bui.ButtonSecondary, false)
-				if btn.Clicked() {
-					c.mu.Lock()
-					c.draftText = p.prompt
-					c.composerSelectEnd = true
-					c.composerHandle.Focus()
-					c.persistActiveDraftLocked()
-					c.mu.Unlock()
-				}
-			}
-		})
+	col.Children(func() {
+		ui.Text(cUI, theme.Tr("我们来做些什么？", "What shall we work on?")).
+			FontSize(fontSize).FixedLineHeight(lineHeight).FontWeight(theme.WeightTitle).TextColor(pal.Text).TextAlign(ui.Center)
 	})
 }
 
@@ -489,7 +470,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		}
 		outer.Children(func() {
 			if !hasConv || (len(conv.Messages) == 0 && !streaming) {
-				c.renderEmptySuggestions(cUI, pal, fullscreen)
+				c.renderEmptySuggestions(cUI, pal, fullscreen, max(scroll.Bounds().H-32, 0))
 				return
 			}
 
