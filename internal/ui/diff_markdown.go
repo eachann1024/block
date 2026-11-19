@@ -107,13 +107,14 @@ func DiffListNumbers(lines []string, change []int) []int {
 			om := diffCellListRE.FindStringSubmatch(t)
 			// Indented code (masked) is no item, but "1. ```bash" opening a fence is; an
 			// indented paragraph line ("    1. 启动服务" under "操作示例：") is text.
-			item := (!masks[si][i] || fences[si][i] == 1) && heads[si][i] != DiffParaText &&
+			item := (!masks[si][i] || fences[si][i] == 1) && heads[si][i] != DiffParaText && heads[si][i] >= 0 &&
 				(om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
 			text := func(t string) bool {
 				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
 					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
 			}
-			plain := !masks[si][i] && text(t)
+			// A setext underline ("===") ends its heading: "2. 启动服务" below is an item.
+			plain := !masks[si][i] && text(t) && heads[si][i] >= 0
 			// The lists the line is not inside: an item left of a list's content is a
 			// sibling of that list's items (or of an outer one).
 			var sib *list
@@ -1063,6 +1064,7 @@ func CodeSpans(s string) [][2]int {
 
 // diffLiteralEscaper backslash-escapes the inline Markdown markers in plain text.
 var diffLiteralEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "$", `\$`, "&", `\&`)
+
 
 // diffEscaped reports whether the byte at i follows an odd run of backslashes.
 func diffEscaped(s string, i int) bool {
