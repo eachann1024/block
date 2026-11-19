@@ -124,14 +124,17 @@ var DefaultStoreIndexURLs = []string{
 // isolated per-plugin storage under <BlockAppData>/apps-data/<id>/, and store index cache
 // under <BlockAppData>/apps-cache/store-index.json without touching Block's core state.json.
 type StoreManager struct {
-	AppsRoot  string
-	DataRoot  string
-	CacheRoot string
-	IndexURLs []string
-	HTTP      *http.Client
-	dlMu      sync.Mutex
-	stateMu   sync.Mutex
-	installMu sync.Mutex
+	AppsRoot    string
+	DataRoot    string
+	CacheRoot   string
+	IndexURLs   []string
+	HTTP        *http.Client
+	dlMu        sync.Mutex
+	dlLoaded    bool
+	dlCachePath string
+	dlCounts    map[string]int
+	stateMu     sync.Mutex
+	installMu   sync.Mutex
 }
 
 func NewStoreManager(blockAppDataDir string) *StoreManager {
@@ -221,12 +224,17 @@ func (s *StoreManager) SetEnabled(pluginID string, enabled bool) error {
 
 func (s *StoreManager) loadDownloadDeltasLocked() map[string]int {
 	out := map[string]int{}
-	raw, err := os.ReadFile(s.downloadCountsPath())
-	if err != nil {
-		return out
+	p := s.downloadCountsPath()
+	if s.dlLoaded && s.dlCounts != nil && s.dlCachePath == p {
+		return s.dlCounts
 	}
-	_ = json.Unmarshal(raw, &out)
-	return out
+	if raw, err := os.ReadFile(p); err == nil {
+		_ = json.Unmarshal(raw, &out)
+	}
+	s.dlCounts = out
+	s.dlCachePath = p
+	s.dlLoaded = true
+	return s.dlCounts
 }
 
 // IncrementDownloads records a completed download/install for pluginID in apps-cache/download-counts.json.
@@ -249,13 +257,13 @@ func (s *StoreManager) IncrementDownloads(pluginID string) int {
 // EffectiveDownloads returns the catalog download baseline plus local recorded downloads for entry.ID.
 func (s *StoreManager) EffectiveDownloads(entry StoreAppEntry) int {
 	s.dlMu.Lock()
-	deltas := s.loadDownloadDeltasLocked()
+	delta := s.loadDownloadDeltasLocked()[entry.ID]
 	s.dlMu.Unlock()
 	base := entry.Downloads
 	if base < 0 {
 		base = 0
 	}
-	return base + deltas[entry.ID]
+	return base + delta
 }
 
 // LoadCachedOrSeedCatalog returns the cached store-index.json merged with built-in official catalog entries.
