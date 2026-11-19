@@ -2350,7 +2350,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	hasConv := c.currentID != 0
 	backend := c.selectedBackendLocked()
 	provider := resolveProviderExecutionConfig(c.providerCfg)
-	nativeTools := supportsNativeTools(backend) && c.backendsCfg.Adapters[string(backend)].NativeTools
+	nativeTools := supportsCLI(backend) && c.backendsCfg.Adapters[string(backend)].AllowsNativeTools()
 	host := c.host
 	selectEnd := c.composerSelectEnd
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
@@ -3863,17 +3863,17 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 				renderThinkingControls()
 			})
 		}
-		if supportsNativeTools(k) {
+		if supportsCLI(k) {
 			ui.Row(cUI).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 				label := theme.Tr("允许本机工具", "Allow local tools")
 				ui.Column(cUI).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Text(cUI, label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
-					ui.Text(cUI, theme.Tr("允许 Agent 在后续消息中运行命令及读写本机文件。", "Lets the agent run commands and read or write local files in future turns.")).
+					ui.Text(cUI, theme.Tr("允许 Agent 运行命令、读写本机文件，无需逐项审批。", "Lets the agent run commands and read or write local files without per-action approval.")).
 						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 				})
-				enabled := opt.NativeTools
+				enabled := opt.AllowsNativeTools()
 				if bui.TogglePill(cUI, "ai-agent-native-tools-"+suffix, label, &enabled, opt.Locked) {
-					_ = c.UpdateAgentEntry(k, func(o *model.AIBackendAdapterOptions) { o.NativeTools = enabled })
+					_ = c.UpdateAgentEntry(k, func(o *model.AIBackendAdapterOptions) { o.NativeTools = &enabled })
 				}
 			})
 		}

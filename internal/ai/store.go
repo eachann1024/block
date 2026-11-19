@@ -1338,10 +1338,7 @@ func (c *Controller) AddAgentEntry(kind model.BackendKind, displayName, binaryPa
 	opt.Added = true
 	opt.Enabled = &on
 	opt.Name = strings.TrimSpace(displayName)
-	if path := strings.TrimSpace(binaryPath); path != opt.BinaryPath {
-		opt.BinaryPath = path
-		opt.NativeTools = false
-	}
+	opt.BinaryPath = strings.TrimSpace(binaryPath)
 	opt.ThinkingLevel = thinking
 	c.backendsCfg.Adapters[string(kind)] = opt
 	setCustomCLIBinaryPath(kind, opt.BinaryPath)
@@ -1382,9 +1379,6 @@ func (c *Controller) UpdateAgentEntry(kind model.BackendKind, mutate func(opt *m
 	mutate(&opt)
 	opt.BinaryPath = strings.TrimSpace(opt.BinaryPath)
 	opt.Name = strings.TrimSpace(opt.Name)
-	if opt.BinaryPath != previous.BinaryPath {
-		opt.NativeTools = false
-	}
 	c.backendsCfg.Adapters[string(kind)] = opt
 	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
 		c.backendsCfg.Adapters[string(kind)] = previous
@@ -1414,7 +1408,7 @@ func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
 	off := false
 	opt.Added = false
 	opt.Enabled = &off
-	opt.NativeTools = false
+	opt.NativeTools = nil
 	c.backendsCfg.Adapters[string(kind)] = opt
 	if c.settingsExpandedAg == kind {
 		c.settingsExpandedAg = ""
@@ -1733,8 +1727,8 @@ func (c *Controller) SendPrompt(text string) {
 		return
 	}
 	backend := c.selectedBackendLocked()
-	if !c.mockResponder && backend != model.BackendBuiltin && !supportsRestrictedCLI(backend) {
-		c.turnError = theme.Tr("该 CLI 暂不支持受限运行，请选择其他后端。", "This CLI does not support restricted execution. Select another backend.")
+	if !c.mockResponder && backend != model.BackendBuiltin && !supportsCLI(backend) {
+		c.turnError = theme.Tr("暂不支持此本机 Agent，请选择其他后端。", "This local agent is not supported. Select another backend.")
 		c.mu.Unlock()
 		c.requestRedraw()
 		return
@@ -1888,7 +1882,7 @@ func (c *Controller) SendPrompt(text string) {
 		turn = &assistantTurn{
 			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
 			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
-			nativeTools: supportsNativeTools(backend) && opt.NativeTools,
+			nativeTools: supportsCLI(backend) && opt.AllowsNativeTools(),
 			userIndex:   c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
 		}
 		if backend != model.BackendBuiltin {
@@ -2360,6 +2354,10 @@ func cloneBackendsConfig(cfg model.AIBackendsConfig) model.AIBackendsConfig {
 			if v.Enabled != nil {
 				b := *v.Enabled
 				v.Enabled = &b
+			}
+			if v.NativeTools != nil {
+				b := *v.NativeTools
+				v.NativeTools = &b
 			}
 			cp.Adapters[k] = v
 		}
