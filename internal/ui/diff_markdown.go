@@ -313,6 +313,8 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 		// indented too.
 		// para: the line above is paragraph text, which a "===" underline turns into a heading.
 		inIndented, prevBlank, inList, para, listCol := false, true, false, false, 0
+		// mathClose: the delimiter that ends the open display math block ("": none).
+		mathClose := ""
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
@@ -326,12 +328,25 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				fence != "" && fenceIndent > 0 && t != "" && lead < fenceIndent {
 				fence = ""
 			}
+			// A display math block is a block of its own to its closer: "x^2$$" over
+			// "---" is no heading.
+			if fence == "" && mathClose != "" {
+				if strings.HasSuffix(t, mathClose) {
+					mathClose = ""
+				}
+				prevBlank, para, paraLines = false, false, nil
+				continue
+			}
 			if fence == "" {
 				if t == "" {
 					prevBlank, para, paraLines = true, false, nil
 					continue
 				}
 				ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
+				if c := diffMathOpen(t); ind < 4 && !inIndented && c != "" {
+					mathClose, prevBlank, para, paraLines = c, false, false, nil
+					continue
+				}
 				wasBlank := prevBlank
 				prevBlank = false
 				need := 4
@@ -410,6 +425,17 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 		masks[si], heads[si] = mask, head
 	}
 	return masks, heads
+}
+
+// diffMathOpen gives the closer of a display math block a trimmed line opens and
+// leaves open ("$$" or "\\[" with no closer after it), or "".
+func diffMathOpen(t string) string {
+	for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+		if strings.HasPrefix(t, d[0]) && !strings.Contains(t[len(d[0]):], d[1]) {
+			return d[1]
+		}
+	}
+	return ""
 }
 
 // diffMathStart reports whether a trimmed line opens display math ("$$" or "\["),
@@ -1243,10 +1269,8 @@ func diffMathSides(lines []string, change []int) (side [2][]bool) {
 				}
 				continue
 			}
-			for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
-				if strings.HasPrefix(t, d[0]) && !strings.Contains(t[len(d[0]):], d[1]) {
-					closer, open, mask[i] = d[1], i, true
-				}
+			if c := diffMathOpen(t); c != "" {
+				closer, open, mask[i] = c, i, true
 			}
 		}
 		side[si] = mask
