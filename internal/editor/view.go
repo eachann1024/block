@@ -2484,7 +2484,15 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					if newText == oldDraft {
 						return
 					}
-					s.pushUndo()
+					rDelta := len([]rune(newText)) - len([]rune(oldDraft))
+					if rDelta < 0 {
+						rDelta = -rDelta
+					}
+					if rDelta <= 4 && !strings.Contains(newText, "\n") && !strings.Contains(oldDraft, "\n") {
+						s.pushCoalescedTextUndo(fmt.Sprintf("cell:%d:%d:%d", blockID, rIdx, cIdx))
+					} else {
+						s.pushUndo()
+					}
 					cell.Spans = spliceSpansByTextEditWithEdge(cell.Spans, oldDraft, newText, caret, st.CodeEdge())
 					s.doc.Blocks[blockIdx].Dirty = true
 					s.doc.Blocks[blockIdx].CleanSource = ""
