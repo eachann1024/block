@@ -57,7 +57,7 @@ type DiffLineStyle struct {
 // marks an item marker that is paragraph text instead ("2." may not interrupt a
 // paragraph). A changed line takes its own side, an unchanged one the new text.
 func DiffListNumbers(lines []string, change []int) []int {
-	masks, _, fences := diffScanFences(lines, change)
+	masks, heads, fences := diffScanFences(lines, change)
 	var nums [2][]int
 	for si, side := range [2]int{-1, 1} {
 		num := make([]int, len(lines))
@@ -103,8 +103,10 @@ func DiffListNumbers(lines []string, change []int) []int {
 			blank := prevBlank
 			prevBlank = false
 			om := diffCellListRE.FindStringSubmatch(t)
-			// Indented code (masked) is no item, but "1. ```bash" opening a fence is.
-			item := (!masks[si][i] || fences[si][i] == 1) && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
+			// Indented code (masked) is no item, but "1. ```bash" opening a fence is; an
+			// indented paragraph line ("    1. 启动服务" under "操作示例：") is text.
+			item := (!masks[si][i] || fences[si][i] == 1) && heads[si][i] != DiffParaText &&
+				(om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
 			text := func(t string) bool {
 				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
 					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
