@@ -26,7 +26,7 @@ type tableGridGeom struct {
 
 func tableCellTextWeight(tbl *model.TableData, row int) int {
 	if row == 0 && !tbl.NoHeaderRow {
-		return theme.WeightTitle
+		return theme.WeightControl
 	}
 	return theme.WeightRegular
 }
@@ -231,7 +231,7 @@ func renderPlainTableRows[T any](c *ui.Context, grid ui.Element, rows [][]T, fon
 		for r, row := range rows {
 			bg, weight := pal.Paper, theme.WeightRegular
 			if r == 0 {
-				bg, weight = pal.Table().HeaderBG, theme.WeightTitle
+				bg, weight = pal.Table().HeaderBG, theme.WeightControl
 			}
 			appUi.TableGridRow(c.Key(tableRowUIKey{row: r})).Children(func() {
 				for col := 0; col < cols; col++ {
