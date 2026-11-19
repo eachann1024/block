@@ -1358,17 +1358,24 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			}
 		})
 		if topBtn.Clicked() {
+			var linkedPlan *model.BatchPlan
+			var openAbs string
+			var host model.WorkspaceHost
 			c.mu.Lock()
 			if pending {
-				c.linkPlanLocked(convID, msgIdx)
+				linkedPlan = c.linkPlanLocked(convID, msgIdx)
 			} else if plan.Status == "applied" && len(plan.Ops) > 0 && c.host != nil {
-				abs := plan.Ops[0].Page + ".md"
+				openAbs = plan.Ops[0].Page + ".md"
 				if plan.Root != "" {
-					abs = filepath.Join(plan.Root, filepath.FromSlash(plan.Ops[0].Page)+".md")
+					openAbs = filepath.Join(plan.Root, filepath.FromSlash(plan.Ops[0].Page)+".md")
 				}
-				_ = c.host.OpenNote(abs, 0)
+				host = c.host
 			}
 			c.mu.Unlock()
+			c.previewPlanInEditor(linkedPlan)
+			if openAbs != "" && host != nil {
+				_ = host.OpenNote(openAbs, 0)
+			}
 		}
 
 		// Show inline diff preview when this plan is actively linked.
@@ -1679,7 +1686,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 
 			custom := customVal
 			in := ui.TextInput(cUI.Key(fmt.Sprintf("ai-q-custom-%s-%d", qKey, qi)), &custom).
-				FillWidth().FontSize(theme.FontBody).Placeholder(theme.Tr("其他补充…", "Something else…"))
+				FillWidth().FontSize(theme.FontBody).Placeholder(theme.Tr("其他补充…", "Something else…")).PlaceholderColor(pal.Placeholder)
 			bui.Probe(in, "ai-question-custom")
 			if in.Changed() {
 				c.mu.Lock()
@@ -2292,7 +2299,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 			inputEl := ui.TextAreaBase(cUI.Key(composerKey), &draft).
 				FillWidth().Lines(1, 6).Padding(0, 0, theme.ComposerTailSpace, 0).FontSize(theme.FontSmall).TextColor(pal.Text).
 				CaretColor(pal.Accent).CaretWidth(2).
-				Placeholder(ph).Bind(&c.composerHandle).
+				Placeholder(ph).PlaceholderColor(pal.Placeholder).Bind(&c.composerHandle).
 				Label(theme.Tr("AI 输入框", "AI composer"))
 			bui.AutoHideScrollbars(cUI, inputEl)
 			bui.Probe(inputEl, "ai-composer")
@@ -2819,9 +2826,9 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 								icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 								q := search
 								sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
-									Grow(1).Height(24).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+									Grow(1).Height(24).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
 									CaretColor(pal.Accent).CaretWidth(2).
-									Placeholder(theme.Tr("搜索模型…", "Search models…")).
+									Placeholder(theme.Tr("搜索模型…", "Search models…")).PlaceholderColor(pal.Placeholder).
 									Bind(&c.deckSearchHandle).AutoFocus()
 								bui.Probe(sInput, "ai-deck-search")
 								if sInput.Changed() {
@@ -3071,7 +3078,7 @@ func formatBackendVersionTag(st BackendStatus, hasStatus bool) string {
 	}
 }
 
-// RenderSettingsTab renders the Settings > AI Assistant tab (Scheme A: single-column accordion rows + Add Provider modal).
+// RenderSettingsTab renders the Settings > AI Assistant tab.
 func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	c.mu.Lock()
 	c.services = cUI.Services()
@@ -3090,8 +3097,6 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	}
 
 	pal := theme.Ocean()
-	cardBG := pal.Card
-	selBG := settingsSelectedSurface(pal)
 
 	c.mu.RLock()
 	cfg := cloneProviderConfig(c.providerCfg)
@@ -3124,7 +3129,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		}
 	}
 
-	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().MinWidth(0).Gap(22)
+	root := ui.Column(cUI.Key("ai-settings-section")).FillWidth().MinWidth(0).Gap(theme.SettingsSectionGap)
 	bui.Probe(root, "ai-settings-section")
 
 	secW := root.Bounds().W
@@ -3142,147 +3147,84 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		}
 	}
 
-	renderMasterPill := func() {
-		enLbl := theme.Tr("已关闭", "Disabled")
-		if cfg.Enabled {
-			enLbl = theme.Tr("已开启", "Enabled")
-		}
-		ais := pal.AISurface()
-		swBtn := ui.ButtonBase(cUI.Key("ai-enabled-switch")).Height(30).PaddingX(12).Gap(6).Shrink(0).
-			AlignItems(ui.Center).Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
-			Label(theme.Tr("启用 AI 助手", "Enable AI Assistant"))
-		hovered := swBtn.Hovered()
-		pressed := swBtn.Pressed()
-		bg := ais.CapsuleBG
-		bd := ais.CapsuleBorder
-		if cfg.Enabled {
-			bg = selBG
-			bd = pal.SelectedBorder
-		} else if pressed {
-			bg = ais.SelectedBG
-		} else if hovered {
-			bg = ais.HoverBG
-		}
-		bui.AnimateSurfaceColors(swBtn, bg, bd, true)
-		bui.TactileCard(swBtn, hovered, pressed, false, false)
-		bui.Probe(swBtn, "ai-enabled-switch")
-		swBtn.Children(func() {
-			icCol := pal.TextSecondary
-			if cfg.Enabled {
-				icCol = pal.Text
-			}
-			icons.DrawAnimated(cUI, icons.Sparkles, 14, pal.MonoIconColors(icCol), cfg.Enabled || hovered || pressed)
-			ui.Text(cUI, enLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-		})
-		if swBtn.Clicked() {
-			cfg.Enabled = !cfg.Enabled
-			_ = c.SaveProviderConfig(cfg)
-		}
-	}
-
 	root.Children(func() {
-		if !cfg.Enabled {
-			ui.Row(cUI).FillWidth().MinWidth(0).Padding(16, 18).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).
-				Radius(theme.RadiusLG).Background(cardBG).Border(1, pal.Hairline).Children(func() {
-				ui.Text(cUI, theme.Tr("API 供应商", "API Providers")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				renderMasterPill()
+		// 0. Master AI Assistant toggle row.
+		bui.SettingsSection(cUI, func() {
+			en := cfg.Enabled
+			row := bui.SettingsRow(cUI, theme.Tr("启用 AI 助手", "Enable AI Assistant"), func() {
+				if bui.TogglePill(cUI, "ai-enabled-switch", theme.Tr("启用 AI 助手", "Enable AI Assistant"), &en, false) {
+					cfg.Enabled = en
+					_ = c.SaveProviderConfig(cfg)
+				}
 			})
+			row.BorderWidth(1, 0, 1, 0).BorderColor(pal.Hairline)
+		})
+
+		if !cfg.Enabled {
 			return
 		}
 
-		// 1. API Providers: single-column accordion rows + "+ 添加供应商" modal trigger.
-		ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
-			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("API 供应商", "API Providers")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(80).SingleLine().Ellipsis("…")
-
-				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-					addLbl := theme.Tr("添加供应商", "Add Provider")
-					addBtn := ui.ButtonBase(cUI.Key("ai-add-provider-btn")).Height(30).PaddingX(11).Gap(5).Shrink(0).
-						AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(addLbl)
-					addHov := addBtn.Hovered()
-					addPrs := addBtn.Pressed()
-					addBG := selBG
-					if addPrs {
-						addBG = pal.AISurface().SelectedBG
-					} else if addHov {
-						addBG = pal.Hover
-					}
-					bui.AnimateSurfaceColors(addBtn, addBG, pal.Accent, true)
-					bui.TactileCard(addBtn, addHov, addPrs, false, false)
-					bui.Probe(addBtn, "ai-add-provider-btn")
-					addBtn.Children(func() {
-						icons.Draw(cUI, icons.Plus, 14, pal.MonoIconColors(pal.Accent))
-						ui.Text(cUI, addLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-					})
-					if addBtn.Clicked() {
-						c.openAddProviderModal()
-					}
-
-					renderMasterPill()
-				})
+		// 1. API Providers: flat hairline-separated rows + "+ 添加" text action.
+		bui.SettingsSection(cUI, func() {
+			bui.SettingsSectionTitle(cUI, theme.Tr("API 供应商", "API Providers"), func() {
+				plusIcon := icons.Plus
+				addBtn := bui.SettingsTextAction(cUI, "ai-add-provider-btn", theme.Tr("添加", "Add"), &plusIcon)
+				addBtn.Label(theme.Tr("添加供应商", "Add Provider"))
+				if addBtn.Clicked() {
+					c.openAddProviderModal()
+				}
 			})
 
-			ui.Column(cUI.Key("ai-providers-card")).FillWidth().MinWidth(0).Radius(theme.RadiusLG).
-				Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
-				for idx, entry := range provEntries {
+			ui.Column(cUI.Key("ai-providers-card")).FillWidth().MinWidth(0).Children(func() {
+				for _, entry := range provEntries {
 					p := entry
 					isExpanded := expandedProv == p.ID
 					rowID := "ai-provider-row-" + p.ID
 					toggleID := "ai-provider-toggle-" + p.ID
-					hasNext := idx+1 < len(provEntries)
 
 					ui.Column(cUI.Key("prov-item-"+p.ID)).FillWidth().MinWidth(0).
-						BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
-						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(48).PaddingX(14).Gap(8).
-							AlignItems(ui.Center).Justify(ui.SpaceBetween)
+						BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.SettingsListRowHeight).
+							Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween)
 						rowHov := row.Hovered()
-						rowBG := ui.Transparent
-						if rowHov && !isExpanded {
-							rowBG = pal.Hover
+
+						toggleExpand := func() {
+							c.mu.Lock()
+							nextExp := p.ID
+							if isExpanded {
+								nextExp = ""
+							}
+							c.settingsExpandedProv = nextExp
+							c.settingsTestErr = ""
+							c.settingsTestOK = false
+							c.mu.Unlock()
+							if nextExp != "" && p.Enabled {
+								_ = c.ActivateProviderEntry(p.ID)
+							}
 						}
-						bui.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
 
 						row.Children(func() {
-							selBtn := ui.ButtonBase(cUI.Key(rowID)).Grow(1).MinWidth(0).Height(48).Gap(10).
-								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(p.Name)
+							selBtn := ui.ButtonBase(cUI.Key(rowID)).Grow(1).MinWidth(0).Height(theme.SettingsListRowHeight).
+								Gap(theme.Space10).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(p.Name)
 							bui.Probe(selBtn, rowID)
 							selBtn.Children(func() {
-								ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
-									Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
-									icons.DrawAnimated(cUI, p.Icon, 16, pal.MonoIconColors(p.BrandColor), isExpanded || rowHov)
+								ui.Box(cUI).Size(20, 20).Shrink(0).Center().Children(func() {
+									icons.DrawAnimated(cUI, p.Icon, theme.IconRow, pal.MonoIconColors(p.BrandColor), isExpanded || rowHov)
 								})
-								ui.Text(cUI, p.Name).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
+								ui.Text(cUI, p.Name).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+									FontWeight(theme.WeightRegular).TextColor(pal.Text).
 									Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								if p.Host != "" && secW >= 380 {
-									ui.Box(cUI).Height(20).PaddingX(7).Center().Shrink(1).MinWidth(0).Radius(theme.RadiusXS).
-										Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
-										ui.Text(cUI, p.Host).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
-											Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-									})
+									ui.Text(cUI, p.Host).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								}
-								ui.Box(cUI).Grow(1).MinWidth(4)
-								chev := icons.ChevronDown
-								if isExpanded {
-									chev = icons.ChevronUp
-								}
-								icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+								ui.Box(cUI).Grow(1).MinWidth(theme.Space4)
 							})
 							if selBtn.Clicked() {
-								c.mu.Lock()
-								nextExp := p.ID
-								if isExpanded {
-									nextExp = ""
-								}
-								c.settingsExpandedProv = nextExp
-								c.settingsTestErr = ""
-								c.settingsTestOK = false
-								c.mu.Unlock()
-								if nextExp != "" && p.Enabled {
-									_ = c.ActivateProviderEntry(p.ID)
-								}
+								toggleExpand()
 							}
 
-							ui.Row(cUI).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+							ui.Row(cUI).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 								if p.Custom && len(provEntries) > 1 {
 									delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
 										ID:      "ai-provider-delete-" + p.ID,
@@ -3291,10 +3233,32 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 										Variant: bui.IconPlain,
 										Danger:  true,
 									})
+									if !rowHov && !delBtn.Hovered() {
+										delBtn.Opacity(0)
+									}
 									if delBtn.Clicked() {
 										_ = c.RemoveProviderEntry(p.ID)
 									}
 								}
+
+								chev := icons.ChevronDown
+								chevLbl := theme.Tr("展开", "Expand")
+								if isExpanded {
+									chev = icons.ChevronUp
+									chevLbl = theme.Tr("收起", "Collapse")
+								}
+								chevBtn := ui.ButtonBase(cUI.Key(rowID+"-chev")).Size(theme.HeightChrome, theme.HeightChrome).
+									Center().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(chevLbl + " " + p.Name)
+								if chevBtn.Hovered() {
+									chevBtn.Background(pal.Hover)
+								}
+								chevBtn.Children(func() {
+									icons.Draw(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+								})
+								if chevBtn.Clicked() {
+									toggleExpand()
+								}
+
 								on := p.Enabled
 								if bui.TogglePill(cUI, toggleID, p.Name, &on, false) {
 									if err := c.SetProviderEntryEnabled(p.ID, on); err != nil {
@@ -3315,41 +3279,31 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 			})
 		})
 
-		// 2. Local CLI Agents: T3 Code style on-demand onboarding ("+ 添加 Agent") + single-column accordion rows.
-		ui.Column(cUI).FillWidth().MinWidth(0).Gap(10).Children(func() {
-			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("本机 Agent", "Local Agents")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(80).SingleLine().Ellipsis("…")
-
-				addAgLbl := theme.Tr("添加 Agent", "Add Agent")
-				addAgBtn := ui.ButtonBase(cUI.Key("ai-add-agent-btn")).Height(30).PaddingX(11).Gap(5).Shrink(0).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(addAgLbl)
-				agHov := addAgBtn.Hovered()
-				agPrs := addAgBtn.Pressed()
-				agBG := selBG
-				if agPrs {
-					agBG = pal.AISurface().SelectedBG
-				} else if agHov {
-					agBG = pal.Hover
-				}
-				bui.AnimateSurfaceColors(addAgBtn, agBG, pal.Accent, true)
-				bui.TactileCard(addAgBtn, agHov, agPrs, false, false)
-				bui.Probe(addAgBtn, "ai-add-agent-btn")
-				addAgBtn.Children(func() {
-					icons.Draw(cUI, icons.Plus, 14, pal.MonoIconColors(pal.Accent))
-					ui.Text(cUI, addAgLbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-				})
+		// 2. Local CLI Agents: flat hairline-separated rows + "+ 添加" text action.
+		bui.SettingsSection(cUI, func() {
+			bui.SettingsSectionTitle(cUI, theme.Tr("本机 Agent", "Local Agents"), func() {
+				plusIcon := icons.Plus
+				addAgBtn := bui.SettingsTextAction(cUI, "ai-add-agent-btn", theme.Tr("添加", "Add"), &plusIcon)
+				addAgBtn.Label(theme.Tr("添加 Agent", "Add Agent"))
 				if addAgBtn.Clicked() {
 					c.openAddAgentModal()
 				}
 			})
 
-			ui.Column(cUI.Key("ai-agents-card")).FillWidth().MinWidth(0).Radius(theme.RadiusLG).
-				Background(cardBG).Border(1, pal.Hairline).Clip().Children(func() {
+			ui.Column(cUI.Key("ai-agents-card")).FillWidth().MinWidth(0).Children(func() {
 				if len(cliAgents) == 0 {
-					ui.Row(cUI.Key("ai-agents-empty")).FillWidth().MinWidth(0).MinHeight(50).PaddingX(16).Gap(12).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-						ui.Text(cUI, theme.Tr("尚未添加本机 Agent", "No local agents added")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						empBtn := bui.ActionButton(cUI, "ai-empty-add-agent", theme.Tr("立即添加", "Add Now"), nil, bui.ButtonSecondary, false)
+					bui.SettingsRowFrame(ui.Row(cUI.Key("ai-agents-empty"))).MinHeight(theme.SettingsListRowHeight).
+						Justify(ui.SpaceBetween).Children(func() {
+						ui.Text(cUI, theme.Tr("尚未添加本机 Agent", "No local agents added")).
+							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).
+							Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						empBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+							ID:       "ai-empty-add-agent",
+							Label:    theme.Tr("立即添加", "Add Now"),
+							Style:    bui.ButtonSecondary,
+							Height:   theme.HeightCompact,
+							PaddingX: theme.Space10,
+						})
 						if empBtn.Clicked() {
 							c.openAddAgentModal()
 						}
@@ -3357,7 +3311,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					return
 				}
 
-				for idx, kind := range cliAgents {
+				for _, kind := range cliAgents {
 					k := kind
 					opt := backends.Adapters[string(k)]
 					enabled := isBackendEnabled(backends, k)
@@ -3369,7 +3323,6 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					if lbl == "" {
 						lbl = backendLabel(k)
 					}
-					hasNext := idx+1 < len(cliAgents)
 
 					c.mu.RLock()
 					thinking := c.backendThinkingLocked(k)
@@ -3381,50 +3334,44 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					}
 
 					ui.Column(cUI.Key("ag-item-"+suffix)).FillWidth().MinWidth(0).
-						BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
-						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(48).PaddingX(14).Gap(8).
-							AlignItems(ui.Center).Justify(ui.SpaceBetween)
+						BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.SettingsListRowHeight).
+							Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween)
 						rowHov := row.Hovered()
-						rowBG := ui.Transparent
-						if rowHov && !isExpanded {
-							rowBG = pal.Hover
+
+						toggleExpand := func() {
+							c.mu.Lock()
+							if isExpanded {
+								c.settingsExpandedAg = ""
+							} else {
+								c.settingsExpandedAg = k
+							}
+							c.settingsFocused = k
+							c.mu.Unlock()
 						}
-						bui.AnimateSurfaceColors(row, rowBG, ui.Transparent, false)
 
 						row.Children(func() {
-							selBtn := ui.ButtonBase(cUI.Key(cardID)).Grow(1).MinWidth(0).Height(48).Gap(10).
-								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
+							selBtn := ui.ButtonBase(cUI.Key(cardID)).Grow(1).MinWidth(0).Height(theme.SettingsListRowHeight).
+								Gap(theme.Space10).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(lbl)
 							bui.Probe(selBtn, cardID)
 							selBtn.Children(func() {
-								ui.Box(cUI).Size(26, 26).Shrink(0).Center().Radius(theme.RadiusSM).
-									Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
-									icons.Brand(cUI, k, 16, pal.Text)
+								ui.Box(cUI).Size(20, 20).Shrink(0).Center().Children(func() {
+									icons.Brand(cUI, k, theme.IconRow, pal.Text)
 								})
-								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
+								ui.Text(cUI, lbl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+									FontWeight(theme.WeightRegular).TextColor(pal.Text).
 									Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								if verTag != "" {
-									ui.Text(cUI, verTag).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
-										Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+									ui.Text(cUI, verTag).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								}
-								ui.Box(cUI).Grow(1).MinWidth(4)
-								chev := icons.ChevronDown
-								if isExpanded {
-									chev = icons.ChevronUp
-								}
-								icons.Draw(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary))
+								ui.Box(cUI).Grow(1).MinWidth(theme.Space4)
 							})
 							if selBtn.Clicked() {
-								c.mu.Lock()
-								if isExpanded {
-									c.settingsExpandedAg = ""
-								} else {
-									c.settingsExpandedAg = k
-								}
-								c.settingsFocused = k
-								c.mu.Unlock()
+								toggleExpand()
 							}
 
-							ui.Row(cUI).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+							ui.Row(cUI).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 								delAg := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
 									ID:      "ai-agent-delete-" + suffix,
 									Label:   theme.Tr("移除 Agent", "Remove Agent"),
@@ -3432,12 +3379,33 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									Variant: bui.IconPlain,
 									Danger:  true,
 								})
+								if !rowHov && !delAg.Hovered() {
+									delAg.Opacity(0)
+								}
 								if delAg.Clicked() {
 									if err := c.RemoveAgentEntry(k); err != nil {
 										c.mu.Lock()
 										c.settingsTestErr = err.Error()
 										c.mu.Unlock()
 									}
+								}
+
+								chev := icons.ChevronDown
+								chevLbl := theme.Tr("展开", "Expand")
+								if isExpanded {
+									chev = icons.ChevronUp
+									chevLbl = theme.Tr("收起", "Collapse")
+								}
+								chevBtn := ui.ButtonBase(cUI.Key(cardID+"-chev")).Size(theme.HeightChrome, theme.HeightChrome).
+									Center().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(chevLbl + " " + lbl)
+								if chevBtn.Hovered() {
+									chevBtn.Background(pal.Hover)
+								}
+								chevBtn.Children(func() {
+									icons.Draw(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+								})
+								if chevBtn.Clicked() {
+									toggleExpand()
 								}
 
 								on := enabled
@@ -3476,7 +3444,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 		})
 
 		// 3. General Features (`普通功能` -> `标注功能`).
-		annotAnchor := c.renderGeneralFeaturesSection(cUI, pal, cardBG, annotCfg, annotOpen)
+		annotAnchor := c.renderGeneralFeaturesSection(cUI, pal, annotCfg, annotOpen)
 
 		if cfg.Enabled && annotOpen {
 			c.renderAnnotationModelPopover(cUI, pal, recognized, backends, annotAnchor)
@@ -3516,52 +3484,41 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 	c.mu.RUnlock()
 
 	stackFields := secW > 0 && secW < 420
-	lblW := float32(76)
+	lblW := theme.SettingsFormLabelWidth
+	indentLeft := theme.Space24 + theme.Space6
+	if stackFields {
+		indentLeft = theme.Space16
+	}
 
-	ui.Column(cUI.Key("prov-detail-"+p.ID)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
-		Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-		// Protocol + Test Connection
+	ui.Column(cUI.Key("prov-detail-"+p.ID)).FillWidth().MinWidth(0).
+		Padding(theme.Space2, 0, theme.Space16, indentLeft).Gap(theme.Space10).Children(func() {
+		// Protocol
 		protoIdx := 0
 		if p.Protocol == model.ProtocolAnthropic {
 			protoIdx = 1
 		}
 		renderProtoControls := func() {
-			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Wrap().Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				if bui.SegmentedControl(cUI, "ai-prov-proto-"+p.ID, &protoIdx, []bui.SegmentOption{
-					{ID: "ai-prov-openai-" + p.ID, Label: theme.Tr("OpenAI 协议", "OpenAI")},
-					{ID: "ai-prov-claude-" + p.ID, Label: theme.Tr("Claude 协议", "Claude")},
-				}) {
-					nextProto := model.ProtocolOpenAI
-					if protoIdx == 1 {
-						nextProto = model.ProtocolAnthropic
-					}
-					_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
-						prof.Protocol = nextProto
-					})
+			if bui.SettingsSegmented(cUI, "ai-prov-proto-"+p.ID, &protoIdx, []bui.SegmentOption{
+				{ID: "ai-prov-openai-" + p.ID, Label: theme.Tr("OpenAI 协议", "OpenAI")},
+				{ID: "ai-prov-claude-" + p.ID, Label: theme.Tr("Claude 协议", "Claude")},
+			}) {
+				nextProto := model.ProtocolOpenAI
+				if protoIdx == 1 {
+					nextProto = model.ProtocolAnthropic
 				}
-
-				testLabel := theme.Tr("连接测试", "Test Connection")
-				testIcon := icons.Sparkles
-				if testing {
-					testLabel = theme.Tr("测试中…", "Testing…")
-				} else if testOK {
-					testLabel = theme.Tr("连接正常", "Connected")
-					testIcon = icons.Check
-				}
-				testBtn := bui.ActionButton(cUI, "ai-test", testLabel, &testIcon, bui.ButtonSecondary, testing)
-				if testBtn.Clicked() && !testing {
-					c.runProviderConnectionTestAsync(p.ID)
-				}
-			})
+				_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
+					prof.Protocol = nextProto
+				})
+			}
 		}
 		if stackFields {
-			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
 				renderProtoControls()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(32).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("协议类型", "Protocol")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderProtoControls()
 			})
 		}
@@ -3570,7 +3527,7 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 		renderBaseURLInput := func() {
 			u := p.BaseURL
 			in := ui.TextInput(cUI.Key("ai-settings-baseurl-"+p.ID), &u).Grow(1).MinWidth(0).FillWidth().
-				FontSize(theme.FontBody).Placeholder("https://api.example.com/v1")
+				FontSize(theme.FontBody).Placeholder("https://api.example.com/v1").PlaceholderColor(pal.Placeholder)
 			bui.Probe(in, "ai-settings-baseurl")
 			if in.Changed() {
 				_ = c.UpdateProviderEntry(p.ID, func(prof *model.ProviderProfile) {
@@ -3579,23 +3536,23 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 			}
 		}
 		if stackFields {
-			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
 				renderBaseURLInput()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("接口地址", "Base URL")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderBaseURLInput()
 			})
 		}
 
 		// API Key
 		renderAPIKeyControls := func() {
-			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
 				k := p.APIKey
 				in := ui.TextInput(cUI.Key("ai-settings-apikey-"+p.ID), &k).Grow(1).MinWidth(0).
-					FontSize(theme.FontBody).Placeholder("sk-…")
+					FontSize(theme.FontBody).Placeholder("sk-…").PlaceholderColor(pal.Placeholder)
 				if !showKey {
 					in.Password()
 				}
@@ -3609,7 +3566,13 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 				if showKey {
 					toggleLbl = theme.Tr("隐藏", "Hide")
 				}
-				tBtn := bui.ActionButton(cUI, "ai-toggle-key", toggleLbl, nil, bui.ButtonSecondary, false)
+				tBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+					ID:       "ai-toggle-key",
+					Label:    toggleLbl,
+					Style:    bui.ButtonGhost,
+					Height:   theme.HeightCompact,
+					PaddingX: theme.Space8,
+				})
 				if tBtn.Clicked() {
 					c.mu.Lock()
 					if c.settingsProvShowKey == nil {
@@ -3621,22 +3584,44 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 			})
 		}
 		if stackFields {
-			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
 				renderAPIKeyControls()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("API 密钥", "API Key")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderAPIKeyControls()
 			})
 		}
 
-		if testErr != "" {
-			ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusMD).
-				Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
-				ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
+		// Test Connection
+		ui.Row(cUI).FillWidth().MinWidth(0).Padding(theme.Space2, 0, 0, 0).Justify(ui.End).Children(func() {
+			testLabel := theme.Tr("连接测试", "Test Connection")
+			var testLeading *icons.Icon
+			if testing {
+				testLabel = theme.Tr("测试中…", "Testing…")
+			} else if testOK {
+				testLabel = theme.Tr("连接正常", "Connected")
+				ic := icons.Check
+				testLeading = &ic
+			}
+			testBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+				ID:       "ai-test",
+				Label:    testLabel,
+				Leading:  testLeading,
+				Style:    bui.ButtonSecondary,
+				Disabled: testing,
+				Height:   theme.HeightCompact,
+				PaddingX: theme.Space10,
 			})
+			if testBtn.Clicked() && !testing {
+				c.runProviderConnectionTestAsync(p.ID)
+			}
+		})
+
+		if testErr != "" {
+			ui.Text(cUI, testErr).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Danger)
 		}
 	})
 }
@@ -3644,15 +3629,19 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palette, k model.BackendKind, opt model.AIBackendAdapterOptions, thinking string, st BackendStatus, hasSt bool, secW float32) {
 	suffix := backendProbeSuffix(k)
 	stackFields := secW > 0 && secW < 420
-	lblW := float32(96)
+	lblW := theme.SettingsFormLabelWidth
+	indentLeft := theme.Space24 + theme.Space6
+	if stackFields {
+		indentLeft = theme.Space16
+	}
 	autoBin, _ := resolveAutoCLIBinary(string(k))
 	if autoBin == "" {
 		autoBin = "/usr/local/bin/" + string(k)
 	}
 	installCmd, loginCmd := AgentDriverGuide(k)
 
-	ui.Column(cUI.Key("ag-detail-"+suffix)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
-		Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+	ui.Column(cUI.Key("ag-detail-"+suffix)).FillWidth().MinWidth(0).
+		Padding(theme.Space2, 0, theme.Space16, indentLeft).Gap(theme.Space10).Children(func() {
 		if hasSt && (st.State == BackendStateMissing || st.State == BackendStateUnauth) {
 			guideCmd := installCmd
 			guideText := theme.Tr("未检测到 CLI，可执行安装或在下方指定路径", "CLI not found in PATH; install or set path below")
@@ -3660,11 +3649,16 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 				guideCmd = loginCmd
 				guideText = theme.Tr("CLI 尚未登录，请在终端执行登录", "Not signed in; run sign-in command in terminal")
 			}
-			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(8, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				Radius(theme.RadiusMD).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
-				ui.Text(cUI, guideText).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(120).SingleLine().Ellipsis("…")
+			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(theme.Space4, 0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(cUI, guideText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(120).SingleLine().Ellipsis("…")
 				if guideCmd != "" {
-					cpBtn := bui.ActionButton(cUI, "ai-agent-copy-cmd-"+suffix, guideCmd, nil, bui.ButtonSecondary, false)
+					cpBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+						ID:       "ai-agent-copy-cmd-" + suffix,
+						Label:    guideCmd,
+						Style:    bui.ButtonSecondary,
+						Height:   theme.HeightCompact,
+						PaddingX: theme.Space10,
+					})
 					if cpBtn.Clicked() {
 						cUI.WriteClipboard(guideCmd)
 					}
@@ -3674,30 +3668,36 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 
 		// Binary Path + Re-probe
 		renderBinControls := func() {
-			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(cUI).Grow(1).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
 				bp := opt.BinaryPath
 				in := ui.TextInput(cUI.Key("ai-agent-binpath-"+suffix), &bp).Grow(1).MinWidth(0).
-					FontSize(theme.FontBody).Placeholder(autoBin)
+					FontSize(theme.FontBody).Placeholder(autoBin).PlaceholderColor(pal.Placeholder)
 				bui.Probe(in, "ai-agent-binpath-"+suffix)
 				if in.Changed() {
 					_ = c.UpdateAgentEntry(k, func(o *model.AIBackendAdapterOptions) {
 						o.BinaryPath = bp
 					})
 				}
-				reprobeBtn := bui.ActionButton(cUI, "ai-agent-reprobe-"+suffix, theme.Tr("检测", "Verify"), nil, bui.ButtonSecondary, false)
+				reprobeBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+					ID:       "ai-agent-reprobe-" + suffix,
+					Label:    theme.Tr("检测", "Verify"),
+					Style:    bui.ButtonSecondary,
+					Height:   theme.HeightCompact,
+					PaddingX: theme.Space10,
+				})
 				if reprobeBtn.Clicked() {
 					c.reprobeSingleBackendAsync(k)
 				}
 			})
 		}
 		if stackFields {
-			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("可执行路径", "Binary Path")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+				ui.Text(cUI, theme.Tr("可执行路径", "Binary Path")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
 				renderBinControls()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(cUI, theme.Tr("可执行路径", "Binary Path")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("可执行路径", "Binary Path")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderBinControls()
 			})
 		}
@@ -3710,31 +3710,26 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 				lvIdx = i
 			}
 		}
+		renderThinkingControls := func() {
+			if bui.SettingsSegmented(cUI, "ai-agent-thinking-"+suffix, &lvIdx, []bui.SegmentOption{
+				{ID: "ai-agent-think-low-" + suffix, Label: "Low"},
+				{ID: "ai-agent-think-medium-" + suffix, Label: "Medium"},
+				{ID: "ai-agent-think-high-" + suffix, Label: "High"},
+			}) {
+				c.mu.Lock()
+				_ = c.setBackendThinkingLocked(k, levels[lvIdx])
+				c.mu.Unlock()
+			}
+		}
 		if stackFields {
-			ui.Column(cUI).FillWidth().MinWidth(0).Gap(6).Children(func() {
-				ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-				if bui.SegmentedControl(cUI, "ai-agent-thinking-"+suffix, &lvIdx, []bui.SegmentOption{
-					{ID: "ai-agent-think-low-" + suffix, Label: "Low"},
-					{ID: "ai-agent-think-medium-" + suffix, Label: "Medium"},
-					{ID: "ai-agent-think-high-" + suffix, Label: "High"},
-				}) {
-					c.mu.Lock()
-					_ = c.setBackendThinkingLocked(k, levels[lvIdx])
-					c.mu.Unlock()
-				}
+			ui.Column(cUI).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+				ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
+				renderThinkingControls()
 			})
 		} else {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(34).Gap(12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Width(lblW).Shrink(0).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-				if bui.SegmentedControl(cUI, "ai-agent-thinking-"+suffix, &lvIdx, []bui.SegmentOption{
-					{ID: "ai-agent-think-low-" + suffix, Label: "Low"},
-					{ID: "ai-agent-think-medium-" + suffix, Label: "Medium"},
-					{ID: "ai-agent-think-high-" + suffix, Label: "High"},
-				}) {
-					c.mu.Lock()
-					_ = c.setBackendThinkingLocked(k, levels[lvIdx])
-					c.mu.Unlock()
-				}
+			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+				renderThinkingControls()
 			})
 		}
 	})
@@ -3862,7 +3857,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					ui.Text(cUI, theme.Tr("名称", "Name")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					nm := draftName
 					nmIn := ui.TextInput(cUI.Key("ai-add-provider-name"), &nm).FillWidth().MinWidth(0).
-						FontSize(theme.FontBody).Placeholder(theme.Tr("例如 DeepSeek / 自定义中转", "e.g. DeepSeek / Custom Endpoint"))
+						FontSize(theme.FontBody).Placeholder(theme.Tr("例如 DeepSeek / 自定义中转", "e.g. DeepSeek / Custom Endpoint")).PlaceholderColor(pal.Placeholder)
 					bui.Probe(nmIn, "ai-add-provider-name")
 					if nmIn.Changed() {
 						c.mu.Lock()
@@ -3875,7 +3870,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					ui.Text(cUI, theme.Tr("接口地址", "Base URL")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					u := draftURL
 					uIn := ui.TextInput(cUI.Key("ai-add-provider-baseurl"), &u).FillWidth().MinWidth(0).
-						FontSize(theme.FontBody).Placeholder("https://api.example.com/v1")
+						FontSize(theme.FontBody).Placeholder("https://api.example.com/v1").PlaceholderColor(pal.Placeholder)
 					bui.Probe(uIn, "ai-add-provider-baseurl")
 					if uIn.Changed() {
 						c.mu.Lock()
@@ -3891,7 +3886,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					ui.Row(cUI).FillWidth().MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
 						k := draftKey
 						kIn := ui.TextInput(cUI.Key("ai-add-provider-apikey"), &k).Grow(1).MinWidth(0).
-							FontSize(theme.FontBody).Placeholder("sk-…")
+							FontSize(theme.FontBody).Placeholder("sk-…").PlaceholderColor(pal.Placeholder)
 						if !showKey {
 							kIn.Password()
 						}
@@ -4323,7 +4318,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 					ui.Text(cUI, theme.Tr("显示名称", "Display Name")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 					nm := draftName
 					nmIn := ui.TextInput(cUI.Key("ai-add-agent-name"), &nm).FillWidth().MinWidth(0).
-						FontSize(theme.FontBody).Placeholder(backendLabel(selKind))
+						FontSize(theme.FontBody).Placeholder(backendLabel(selKind)).PlaceholderColor(pal.Placeholder)
 					bui.Probe(nmIn, "ai-add-agent-name")
 					if nmIn.Changed() {
 						c.mu.Lock()
@@ -4340,7 +4335,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 					}
 					bp := draftBin
 					bpIn := ui.TextInput(cUI.Key("ai-add-agent-binpath"), &bp).FillWidth().MinWidth(0).
-						FontSize(theme.FontBody).Placeholder(ph)
+						FontSize(theme.FontBody).Placeholder(ph).PlaceholderColor(pal.Placeholder)
 					bui.Probe(bpIn, "ai-add-agent-binpath")
 					if bpIn.Changed() {
 						c.mu.Lock()
@@ -4442,7 +4437,7 @@ func thinkingDisplayLabel(lv string) string {
 	}
 }
 
-func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Palette, cardBG ui.Color, annotCfg model.AnnotationConfig, annotOpen bool) ui.Element {
+func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Palette, annotCfg model.AnnotationConfig, annotOpen bool) ui.Element {
 	kind := annotCfg.Backend
 	if kind == "" {
 		kind = model.BackendBuiltin
@@ -4471,77 +4466,72 @@ func (c *Controller) renderGeneralFeaturesSection(cUI *ui.Context, pal theme.Pal
 	}
 
 	var trigAnchor ui.Element
-	ui.Column(cUI).FillWidth().Gap(12).Children(func() {
-		ui.Text(cUI, theme.Tr("普通功能", "General Features")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+	bui.SettingsSection(cUI, func() {
+		bui.SettingsSectionTitle(cUI, theme.Tr("普通功能", "General Features"), nil)
 
-		ui.Column(cUI).FillWidth().MinWidth(0).Padding(18, 20).Radius(theme.RadiusXL).
-			Background(cardBG).Border(1, pal.Hairline).Children(func() {
-			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(36).Gap(16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("标注功能", "Annotations")).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(0).SingleLine()
-
-				trig := ui.ButtonBase(cUI.Key("annotation-model-trigger")).Height(34).PaddingX(12).Gap(8).
-					MaxWidth(360).Shrink(1).MinWidth(0).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-					Label(lbl)
-				bui.Tooltip(cUI, trig, annotTipText)
-				trigAnchor = trig
-				ais := pal.AISurface()
-				hovered := trig.Hovered()
-				pressed := trig.Pressed()
-				bg := ais.CapsuleBG
-				bd := ais.CapsuleBorder
-				if annotOpen {
-					bg = settingsSelectedSurface(pal)
-					bd = pal.SelectedBorder
-				} else if pressed {
-					bg = ais.SelectedBG
-					bd = pal.SelectedBorder
-				} else if hovered {
-					bg = ais.HoverBG
-					bd = pal.ShellChrome().FieldBorderHover
-				}
-				bui.AnimateSurfaceColors(trig, bg, bd, true)
-				bui.TactileCard(trig, hovered, pressed, false, false)
-				trig.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-					c.mu.Lock()
-					c.annotMenuTriggerBox = r
-					c.mu.Unlock()
-					bui.RecordBounds("annotation-model-trigger", r)
-				})
-				trig.Children(func() {
-					icons.Brand(cUI, kind, 15, pal.Text)
-					ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-					ui.Text(cUI, "·").FontSize(theme.FontBody).TextColor(pal.TextSecondary).Shrink(0)
-					ui.Text(cUI, thinkLbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-					chev := icons.ChevronDown
-					if annotOpen {
-						chev = icons.ChevronUp
-					}
-					icons.DrawAnimated(cUI, chev, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || annotOpen)
-				})
-				if trig.Clicked() {
-					c.mu.Lock()
-					c.annotMenuOpen = !c.annotMenuOpen
-					nextOpen := c.annotMenuOpen
-					if nextOpen {
-						c.annotMenuSearch = ""
-						if c.annotCfg.Backend != "" {
-							c.annotMenuBackend = c.annotCfg.Backend
-						} else {
-							c.annotMenuBackend = model.BackendBuiltin
-						}
-					}
-					targetKind := c.annotMenuBackend
-					c.mu.Unlock()
-					if nextOpen {
-						c.refreshAnnotationModelsAsync(targetKind)
-					}
-				}
+		bui.SettingsRow(cUI, theme.Tr("标注功能", "Annotations"), func() {
+			trig := ui.ButtonBase(cUI.Key("annotation-model-trigger")).Height(theme.HeightControl).PaddingX(theme.Space12).Gap(theme.Space8).
+				MaxWidth(360).Shrink(1).MinWidth(0).
+				AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+				Label(lbl)
+			bui.Tooltip(cUI, trig, annotTipText)
+			trigAnchor = trig
+			ais := pal.AISurface()
+			hovered := trig.Hovered()
+			pressed := trig.Pressed()
+			bg := ais.CapsuleBG
+			bd := ais.CapsuleBorder
+			if annotOpen {
+				bg = settingsSelectedSurface(pal)
+				bd = pal.SelectedBorder
+			} else if pressed {
+				bg = ais.SelectedBG
+				bd = pal.SelectedBorder
+			} else if hovered {
+				bg = ais.HoverBG
+				bd = pal.ShellChrome().FieldBorderHover
+			}
+			bui.AnimateSurfaceColors(trig, bg, bd, true)
+			bui.TactileCard(trig, hovered, pressed, false, false)
+			trig.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+				c.mu.Lock()
+				c.annotMenuTriggerBox = r
+				c.mu.Unlock()
+				bui.RecordBounds("annotation-model-trigger", r)
 			})
+			trig.Children(func() {
+				icons.Brand(cUI, kind, theme.IconAction, pal.Text)
+				ui.Text(cUI, lbl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Text(cUI, "·").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).Shrink(0)
+				ui.Text(cUI, thinkLbl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+				chev := icons.ChevronDown
+				if annotOpen {
+					chev = icons.ChevronUp
+				}
+				icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || annotOpen)
+			})
+			if trig.Clicked() {
+				c.mu.Lock()
+				c.annotMenuOpen = !c.annotMenuOpen
+				nextOpen := c.annotMenuOpen
+				if nextOpen {
+					c.annotMenuSearch = ""
+					if c.annotCfg.Backend != "" {
+						c.annotMenuBackend = c.annotCfg.Backend
+					} else {
+						c.annotMenuBackend = model.BackendBuiltin
+					}
+				}
+				targetKind := c.annotMenuBackend
+				c.mu.Unlock()
+				if nextOpen {
+					c.refreshAnnotationModelsAsync(targetKind)
+				}
+			}
 		})
 
 		if annotErr != "" {
-			ui.Text(cUI, annotErr).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+			ui.Text(cUI, annotErr).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 		}
 	})
 	return trigAnchor
@@ -4660,9 +4650,9 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 					in := ui.TextInputBase(cUI.Key("annotation-model-search"), &c.annotMenuSearch).
-						Grow(1).MinWidth(0).Height(28).Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).
+						Grow(1).MinWidth(0).Height(28).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
 						CaretColor(pal.Accent).CaretWidth(2).
-						Placeholder(theme.Tr("搜索模型…", "Search models…")).Bind(&c.annotSearchHandle).AutoFocus()
+						Placeholder(theme.Tr("搜索模型…", "Search models…")).PlaceholderColor(pal.Placeholder).Bind(&c.annotSearchHandle).AutoFocus()
 					bui.Probe(in, "annotation-model-search")
 					if in.Changed() {
 						*annotCursor = 0

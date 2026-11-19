@@ -1523,8 +1523,9 @@ func (c *Controller) SelectConversation(id uint64) {
 	}
 	if c.currentID == id {
 		c.historyOpen = false
-		c.linkLatestPendingPlanLocked()
+		linkedPlan := c.linkLatestPendingPlanLocked()
 		c.mu.Unlock()
+		c.previewPlanInEditor(linkedPlan)
 		c.requestRedraw()
 		return
 	}
@@ -1550,8 +1551,9 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.composerEpoch++
 	c.composerHandle.Focus()
 	c.persistActiveDraftLocked()
-	c.linkLatestPendingPlanLocked()
+	linkedPlan := c.linkLatestPendingPlanLocked()
 	c.mu.Unlock()
+	c.previewPlanInEditor(linkedPlan)
 	c.requestRedraw()
 }
 
