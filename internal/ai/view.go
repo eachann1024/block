@@ -1200,7 +1200,10 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 								if txt == "" {
 									txt = st.Title
 								}
-								ui.Text(cUI, "✓ "+txt).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+								if st.Done {
+									txt = "✓ " + txt
+								}
+								ui.Text(cUI, txt).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 							})
 						}
 					}
