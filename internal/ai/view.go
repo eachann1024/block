@@ -1310,6 +1310,9 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 
 						if detailOpen {
 							detID := fmt.Sprintf("ai-process-tool-detail-%d", i)
+							if detail == "" {
+								detail = strings.TrimSpace(st.Detail)
+							}
 							detBox := ui.Column(cUI.Key(detID+"-"+turnKey)).FillWidth().Padding(4, 12).
 								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
 							bui.Probe(detBox, detID)
