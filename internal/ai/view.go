@@ -1188,6 +1188,10 @@ func latestStreamLine(s string) string {
 	_, seps := bui.DiffTableRoles(lines, same)
 	// "[配置文件][config]" shows its text when the reply defines "config".
 	refs := bui.DiffRefLabels(lines, same)
+	// A definition ("[doc]: /guide") shows nothing in the note.
+	defs := bui.DiffRefDefs(lines, same)
+	// Only a table row's edge bars are its own: "| 是 Shell 的管道符" keeps its "|".
+	cols := bui.DiffTableCols(lines, same)
 	// "操作说明\n2. 先备份" keeps its "2." as text, as the note shows it.
 	nums := bui.DiffListNumbers(lines, same)
 	// A setext underline ("===") only makes the line above a heading.
@@ -1196,7 +1200,7 @@ func latestStreamLine(s string) string {
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		// A fence line is no text of its own: after "```" closes, the code shows.
-		if raw == "" || seps[i] || fences[i] || setext[i] < 0 {
+		if raw == "" || seps[i] || fences[i] || setext[i] < 0 || defs[i] && !code[i] {
 			continue
 		}
 		t := raw
@@ -1210,7 +1214,7 @@ func latestStreamLine(s string) string {
 					raw = raw[:m[3]] + `\` + raw[m[3]:]
 				}
 			}
-			t = plainInline(raw, refs[i])
+			t = plainInline(raw, refs[i], cols[i] > 0)
 		}
 		if t == "" {
 			// 只有 ** 等半截标记时保留原文，避免实时行退回“正在生成回答”。
@@ -1228,8 +1232,9 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
-// plainFenceRE matches a code fence line ("```sh", "> ~~~") behind quote markers.
-var plainFenceRE = regexp.MustCompile("^(?:>\\s*)*(`{3,}|~{3,})(.*)$")
+// plainFenceRE matches a code fence line ("```sh", "> ~~~", "- ```sh") behind quote
+// and list markers; group 1 is the markers.
+var plainFenceRE = regexp.MustCompile("^((?:>\\s*)*(?:(?:[-*+]|\\d{1,9}[.)])\\s+)?)(`{3,}|~{3,})(.*)$")
 
 // plainFenceLines marks the opening and closing fence lines of the code blocks in
 // code (see DiffFenceMask); "~~~ 输出" inside a "~~~" block is a line of code, since
@@ -1246,9 +1251,11 @@ func plainFenceLines(lines []string, code []bool) (fence []bool, quote []int) {
 		m := plainFenceRE.FindStringSubmatch(t)
 		switch {
 		case open == "" && m != nil:
-			open, fence[i] = m[1], true
-			depth = strings.Count(t[:strings.Index(t, m[1])], ">")
-		case open != "" && m != nil && m[1][0] == open[0] && len(m[1]) >= len(open) && strings.TrimSpace(m[2]) == "":
+			open, fence[i] = m[2], true
+			depth = strings.Count(m[1], ">")
+		// It closes at its own quote depth: in "> ~~~", "> > ~~~" is code.
+		case open != "" && m != nil && m[2][0] == open[0] && len(m[2]) >= len(open) && strings.TrimSpace(m[3]) == "" &&
+			strings.Count(m[1], ">") == depth && !strings.ContainsAny(m[1], "-*+.)"):
 			open, fence[i] = "", true
 		}
 		quote[i] = depth
@@ -1279,8 +1286,9 @@ var plainEmphasisREs = []*regexp.Regexp{
 var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 
 // plainInline strips the Markdown markers that read as noise in a one-line label.
-// refs are the reference labels defined around s (nil: none).
-func plainInline(s string, refs map[string]bool) string {
+// refs are the reference labels defined around s (nil: none); a table row loses
+// its edge bars.
+func plainInline(s string, refs map[string]bool, table bool) string {
 	s = strings.TrimSpace(s)
 	if strings.Contains(s, "#") {
 		if h := plainBlockPrefixRE.FindString(s); strings.Contains(h, "#") {
@@ -1324,7 +1332,10 @@ func plainInline(s string, refs map[string]bool) string {
 	})
 	// Table bars are trimmed before entities and code return, so `| grep error` and
 	// "&#124; grep error" keep their pipe.
-	t = strings.ReplaceAll(strings.Trim(t, "| "), "", "|")
+	if table {
+		t = strings.Trim(t, "| ")
+	}
+	t = strings.ReplaceAll(t, "", "|")
 	// Entities show their character ("A &amp; B" reads A & B); "\&amp;" was text.
 	t = strings.ReplaceAll(html.UnescapeString(t), "", "&")
 	for k, code := range codes {
@@ -1443,7 +1454,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							// The streaming row's detail is already plain (latestStreamLine);
 							// stripping it again would eat stars that sat in code.
 							detail := strings.TrimSpace(st.Detail)
-							if p := plainInline(st.Detail, nil); st.ID != "streaming" && p != "" {
+							if p := plainInline(st.Detail, nil, false); st.ID != "streaming" && p != "" {
 								detail = p
 							}
 							if live := st.ID == "streaming" && !st.Done; live && detail != "" {
