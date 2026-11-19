@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-19T15:00:22Z",
+  "updated_at": "2026-11-19T16:57:51Z",
   "apps": [
     {
       "app": "blockmd",
@@ -11,19 +11,19 @@
         "zh": "同步",
         "en": "Sync"
       },
-      "version": "1.3.14",
+      "version": "1.3.15",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-sync",
       "summary": {
         "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.14/block-sync-v1.3.14.tar.gz",
-      "sha256": "99fae4dac89a7f5d8cbefbe45be3cf47e5f924170c6d7170d64c1b4a49da06c2",
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.15/block-sync-v1.3.15.tar.gz",
+      "sha256": "0cb873c8a008d63a0a7e888ea349108f9b63bded32435faf205109f65ed84981",
       "downloads": 1281,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-19T14:58:53Z",
+      "updated_at": "2026-11-19T16:55:55Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -57,19 +57,19 @@
         "zh": "图床上传",
         "en": "Image Host"
       },
-      "version": "1.2.11",
+      "version": "1.2.12",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-image-host",
       "summary": {
         "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
         "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-image-host/releases/download/v1.2.11/block-image-host-v1.2.11.tar.gz",
-      "sha256": "791a75a504618de5e2f7e3550e624995af611358ee29a3f5205c8212e84b611c",
+      "download_url": "https://github.com/blockmd-plugins/block-image-host/releases/download/v1.2.12/block-image-host-v1.2.12.tar.gz",
+      "sha256": "90fe5e06df96c7a2fbde436e8b4cfa26263cec96bc87aa9a7819215e4e69221e",
       "downloads": 941,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-19T14:58:58Z",
+      "updated_at": "2026-11-19T16:55:57Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -104,19 +104,19 @@
         "zh": "笔记迁移",
         "en": "Migrator"
       },
-      "version": "1.2.12",
+      "version": "1.2.13",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-migrator",
       "summary": {
         "zh": "从 Obsidian、Notion 与语雀导出目录或 ZIP 包迁移笔记，自动清洗语法并拷贝附件",
         "en": "Migrate notes from Obsidian, Notion, and Yuque folders or ZIP archives with syntax cleanup and asset copy"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-migrator/releases/download/v1.2.12/block-migrator-v1.2.12.tar.gz",
-      "sha256": "451692e27a64edfd18912b9c764726d132ab040c7b1b68f2f8b926e7bfeb0f4b",
+      "download_url": "https://github.com/blockmd-plugins/block-migrator/releases/download/v1.2.13/block-migrator-v1.2.13.tar.gz",
+      "sha256": "ac07e8b6ef763fcf347ba0f2fcbf63c5f033bcf715eaa8e0026756ab72fb9650",
       "downloads": 616,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-19T14:59:01Z",
+      "updated_at": "2026-11-19T16:56:03Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -143,24 +143,68 @@
     },
     {
       "app": "blockmd",
-      "id": "block-dot-matrix",
+      "id": "block-diagnostics",
+      "name": {
+        "zh": "性能与占用",
+        "en": "Performance & Usage"
+      },
+      "version": "1.2.13",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-diagnostics",
+      "summary": {
+        "zh": "实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用",
+        "en": "Monitor live Block CPU and RSS memory with a 7-category storage treemap"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.2.13/block-diagnostics-v1.2.13.tar.gz",
+      "sha256": "37f299daf225b8342df83fa93d745f6d262e9549e2a5f05fa385679d6a9dbcbe",
+      "downloads": 321,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-19T14:59:03Z",
+      "permissions": [
+        "storage",
+        "notes:read"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"
+        ],
+        "stroke_paths": [
+          "M4.6 16.5A9 9 0 1 1 19.4 16.5",
+          "M12 4.5V6.5",
+          "M4.5 12H6.5",
+          "M17.5 12H19.5"
+        ],
+        "accent_paths": [
+          "M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"
+        ]
+      },
+      "beta": true
+    },
+    {
+      "app": "blockmd",
+      "id": "block-canvas-dots",
       "name": {
         "zh": "画布点阵",
         "en": "Canvas Dots"
       },
-      "version": "1.1.0",
-      "author": "maotiaosan",
-      "repo": "maotiaosan/block-dot-matrix",
+      "version": "1.2.0",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-canvas-dots",
       "summary": {
-        "zh": "复刻 Thinkly 编辑器无/方格/点阵画布背景，提供高对比度点阵阅读与防串行辅助",
-        "en": "Thinkly-style Off, Grid, and Dots editor canvas patterns with low-vision contrast options"
+        "zh": "为笔记铺上与行高对齐的点阵或方格，帮助弱视读者稳定追踪每一行",
+        "en": "Line-aligned dot or grid canvas for notes, helping low-vision readers track each line"
       },
-      "download_url": "https://github.com/maotiaosan/block-dot-matrix/releases/download/v1.1.0/block-dot-matrix-v1.1.0.tar.gz",
-      "sha256": "ac32fbff36d4e279155051780a21deedb3f98b52840be3638ad42ace9d74ae4a",
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.0/block-canvas-dots-v1.2.0.tar.gz",
+      "sha256": "789a95ebe50dfc0da50c1015a4ad1731cf5c88108651075240037c9b8bd902e1",
       "downloads": 3,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-19T13:12:43Z",
+      "updated_at": "2026-11-19T15:35:43Z",
       "permissions": [
         "storage",
         "notes:read"
