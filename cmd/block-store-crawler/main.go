@@ -108,6 +108,10 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("local seed %q: %w", dir, err)
 		}
+		if !*skipGitHub && (isVerified || plugins.IsOfficialRepo(m.Repo)) {
+			// Do not let a local seed mask a missing or broken remote official release.
+			continue
+		}
 		if isVerified || plugins.IsOfficialRepo(m.Repo) {
 			if err := plugins.ValidateManifestEnglish(m); err != nil {
 				return fmt.Errorf("local seed %q manifest English: %w", dir, err)
@@ -411,14 +415,13 @@ func fetchJSON(ctx context.Context, client *http.Client, rawURL, token string, d
 }
 
 func downloadBytes(ctx context.Context, client *http.Client, rawURL, apiBase, token string) ([]byte, error) {
+	_ = apiBase
+	_ = token
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", crawlerUserAgent)
-	if token != "" && sameHost(rawURL, apiBase) {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
