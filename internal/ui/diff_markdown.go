@@ -47,6 +47,14 @@ func diffQuoteDepth(t string) int {
 	return strings.Count(diffQuoteRE.FindString(t), ">")
 }
 
+// diffStripQuotes removes n blockquote markers from the start of a trimmed line.
+func diffStripQuotes(t string, n int) string {
+	for ; n > 0 && strings.HasPrefix(t, ">"); n-- {
+		t = strings.TrimLeft(t[1:], " \t")
+	}
+	return t
+}
+
 // diffFenceOpen returns the fence run ("```", "~~~~"…) a trimmed line opens, or "".
 // A backtick fence's info string may not hold a backtick, so "```x```" is inline code.
 func diffFenceOpen(t string) string {
@@ -156,7 +164,10 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				// Inside a plain fence "> ~~~" is code; only a fence opened behind a list or
 				// quote marker may close behind a quote marker. List items close by indent,
 				// so "- ~~~" inside a fence never closes it.
-				if nested {
+				// A quote fence closes at its own depth only: in "> ~~~", ">> ~~~" is code.
+				if nested && fenceQuote > 0 {
+					t = diffStripQuotes(t, fenceQuote)
+				} else if nested {
 					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
 				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
