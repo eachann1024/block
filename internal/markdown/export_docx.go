@@ -8,7 +8,6 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
-	"os"
 	"strings"
 	"time"
 
@@ -329,12 +328,10 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 
 func renderDOCXFigure(b *model.Block, notePath string, ord int, avail, indent float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
 	if path, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
-		if raw, err := os.ReadFile(path); err == nil {
-			if cfg, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && cfg.Width > 0 && cfg.Height > 0 {
-				raw, ext := docxImageData(raw, format)
-				if ext != "" {
-					return renderDOCXPicture(b, raw, ext, cfg, ord, avail, indent, pal, legacy, assets)
-				}
+		if raw, cfg, format, ok := loadCachedLocalImageConfig(path); ok {
+			outRaw, ext := cachedDOCXImageData(path, raw, format)
+			if ext != "" {
+				return renderDOCXPicture(b, outRaw, ext, cfg, ord, avail, indent, pal, legacy, assets)
 			}
 		}
 	}
@@ -345,6 +342,32 @@ func renderDOCXFigure(b *model.Block, notePath string, ord int, avail, indent fl
 	}
 	return fmt.Sprintf(`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
 		docxHex(pal.Secondary), docxTextXML(label))
+}
+
+func cachedDOCXImageData(path string, raw []byte, format string) ([]byte, string) {
+	switch format {
+	case "jpeg":
+		return raw, "jpg"
+	case "png", "gif":
+		return raw, format
+	}
+	entry, ok := loadCachedLocalImageEntry(path)
+	if !ok {
+		return docxImageData(raw, format)
+	}
+	localImageCacheMu.Lock()
+	done, cachedRaw, cachedExt := entry.docxDone, entry.docxRaw, entry.docxExt
+	localImageCacheMu.Unlock()
+	if done {
+		return cachedRaw, cachedExt
+	}
+	outRaw, outExt := docxImageData(raw, format)
+	localImageCacheMu.Lock()
+	entry.docxDone = true
+	entry.docxRaw = outRaw
+	entry.docxExt = outExt
+	localImageCacheMu.Unlock()
+	return outRaw, outExt
 }
 
 // Word can open PNG, JPEG and GIF across the supported readers. Transcode
