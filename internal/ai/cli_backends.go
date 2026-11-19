@@ -46,6 +46,7 @@ type BackendStatus struct {
 type ModelOption struct {
 	Value string
 	Label string
+	Group string
 }
 
 func (c *Controller) SetBackendStatusOverride(kind model.BackendKind, status *BackendStatus) {
@@ -636,6 +637,39 @@ func (c *Controller) modelLabelLocked(kind model.BackendKind, value string) stri
 			return ch.Label
 		}
 	}
+	if kind == model.BackendBuiltin {
+		if _, pureModel := splitProviderModelRef(value); pureModel != "" {
+			return pureModel
+		}
+	}
+	return value
+}
+
+func (c *Controller) modelFullLabelLocked(kind model.BackendKind, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	for _, ch := range c.backendModels[kind] {
+		if ch.Value == value {
+			lbl := strings.TrimSpace(ch.Label)
+			if lbl == "" {
+				lbl = value
+			}
+			if grp := strings.TrimSpace(ch.Group); grp != "" {
+				return grp + " · " + lbl
+			}
+			return lbl
+		}
+	}
+	if kind == model.BackendBuiltin {
+		if provID, pureModel := splitProviderModelRef(value); provID != "" && pureModel != "" {
+			if pr, ok := c.providerCfg.Providers[provID]; ok {
+				return providerDisplayName(provID, pr) + " · " + pureModel
+			}
+			return provID + " · " + pureModel
+		}
+	}
 	return value
 }
 
@@ -788,7 +822,8 @@ func listModelsForBackend(ctx context.Context, kind model.BackendKind, cfg model
 				}
 				out = append(out, ModelOption{
 					Value: val,
-					Label: e.Name + " · " + id,
+					Label: id,
+					Group: e.Name,
 				})
 			}
 		}
