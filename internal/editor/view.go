@@ -1411,6 +1411,9 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				if s.hasMenuPopupOpen() {
 					return false
 				}
+				if s.navigateDocEdge(key, mods) {
+					return true
+				}
 				selLo, selHi := min(anchor, caret), max(anchor, caret)
 
 				if s.rangeShortcut(mods, key) {
@@ -2658,6 +2661,9 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					s.caretHidden = false
 					if s.hasMenuPopupOpen() {
 						return false
+					}
+					if s.navigateDocEdge(key, mods) {
+						return true
 					}
 					if mods == ui.Cmd && key == ui.KeyA {
 						cLo, cHi := min(cAnchor, cCaret), max(cAnchor, cCaret)
