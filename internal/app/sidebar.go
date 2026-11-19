@@ -51,6 +51,8 @@ type SidebarUIState struct {
 	ContextY        float32
 	MoveSubmenuOpen bool
 	MoveRowBounds   ui.Rect
+
+	treeScroll ui.ScrollState
 }
 
 // NewSidebarUIState initializes transient sidebar UI state.
@@ -433,8 +435,9 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				rowMenuBefore := sidebarContextSnapshot(p.State)
 				treeFocus.Children(func() {
 					c.Key("file-tree-root")
-					treeScroll := blockui.Scroll(c).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
+					treeScroll := blockui.Scroll(c, &p.State.treeScroll).Fill().Padding(0, theme.TreeOuterPadX, 8, theme.TreeOuterPadX)
 					blockui.Probe(treeScroll, "file-tree-root")
+					scrollBounds := treeScroll.Bounds()
 					treeScroll.Children(func() {
 						if p.ActiveNotebook == "" {
 							ui.Column(c).FillWidth().Padding(theme.Space8, 0, 0, 0).Children(func() {
@@ -454,11 +457,34 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						}
 
 						anyDragOver := false
-						ui.Column(c).FillWidth().Gap(theme.TreeRowPitch - theme.HeightControl).Children(func() {
-							for _, row := range rows {
-								if renderTreeRow(c, p, row, treeFocus) {
+						rowGap := theme.TreeRowPitch - theme.HeightControl
+						canVirtTree := len(rows) > 100 && !blockui.IsProbeEnabled() && p.State.DropTargetPath == "" && p.State.RenamingPath == ""
+						firstIdx, lastIdx := 0, len(rows)
+						if canVirtTree {
+							vpH := scrollBounds.H
+							if vpH <= 0 {
+								vpH = 900
+							}
+							scrollY := max(p.State.treeScroll.Y, 0)
+							firstIdx = max(int((scrollY-320)/theme.TreeRowPitch), 0)
+							lastIdx = min(int((scrollY+vpH+320)/theme.TreeRowPitch)+1, len(rows))
+							if firstIdx >= lastIdx {
+								firstIdx = max(lastIdx-1, 0)
+							}
+						}
+						ui.Column(c).FillWidth().Gap(rowGap).Children(func() {
+							if firstIdx > 0 {
+								topH := float32(firstIdx)*theme.TreeRowPitch - rowGap
+								ui.Box(c.Key("tree-virt-top")).FillWidth().Height(max(topH, 0))
+							}
+							for i := firstIdx; i < lastIdx; i++ {
+								if renderTreeRow(c, p, rows[i], treeFocus) {
 									anyDragOver = true
 								}
+							}
+							if rem := len(rows) - lastIdx; rem > 0 {
+								botH := float32(rem)*theme.TreeRowPitch - rowGap
+								ui.Box(c.Key("tree-virt-bot")).FillWidth().Height(max(botH, 0))
 							}
 						})
 						if !anyDragOver && p.State.DropTargetPath != "" {
