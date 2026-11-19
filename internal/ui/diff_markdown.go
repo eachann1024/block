@@ -815,9 +815,11 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 // only the first one does: a later "| --- |" is a data row and stays visible.
 func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	header, sep = make([]bool, len(lines)), make([]bool, len(lines))
-	diffTableRuns(lines, change, func(_ int, run []int, h int) {
+	diffTableRuns(lines, change, func(si int, run []int, h int) {
 		if h >= 0 {
-			header[run[h]], sep[run[h+1]] = true, true
+			// An unchanged header is the new text's: with the separator gone it is text.
+			header[run[h]] = header[run[h]] || si == 1 || change[run[h]] < 0
+			sep[run[h+1]] = true
 		}
 	})
 	return header, sep
@@ -1366,7 +1368,9 @@ func DiffTableCols(lines []string, change []int) []int {
 	// cell in a kept "| x | y |" row.
 	cols := side[1]
 	for k := range lines {
-		if cols[k] == 0 {
+		// An unchanged row is read in the new text only: with the separator deleted,
+		// "| 名称 |" is a paragraph with bars there.
+		if cols[k] == 0 && change[k] < 0 {
 			cols[k] = side[0][k]
 		}
 	}
