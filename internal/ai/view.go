@@ -1185,6 +1185,8 @@ func latestStreamLine(s string) string {
 	code := bui.DiffFenceMask(lines, same)
 	// Only a table's own separator is skipped; a later "| --- |" is a data row.
 	_, seps := bui.DiffTableRoles(lines, same)
+	// "[配置文件][config]" shows its text when the reply defines "config".
+	refs := bui.DiffRefLabels(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		if raw == "" || seps[i] {
@@ -1192,7 +1194,7 @@ func latestStreamLine(s string) string {
 		}
 		t := raw
 		if !code[i] {
-			t = plainInline(raw)
+			t = plainInline(raw, refs[i])
 		}
 		if t == "" {
 			// 只有 ** 等半截标记时保留原文，避免实时行退回“正在生成回答”。
@@ -1212,10 +1214,11 @@ var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}
 
 // plainEmphasisREs match **bold**, __bold__, *italic*, _italic_ and ~~struck~~ text
 // set off from words, so Python's 2**3, snake_case and a lone "**" stay as written.
-// Doubled markers go first, so "**x**" is never read as "*" around "*x*".
+// Doubled markers go first, so "**x**" is never read as "*" around "*x*", and bold
+// may hold italic ("**再看 *配置***").
 var plainEmphasisREs = []*regexp.Regexp{
-	regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`),
-	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:[^_]*\S)?)__($|[^\p{L}\p{N}_])`),
+	regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^\w*])`),
+	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:.*?\S)??)__($|[^\p{L}\p{N}_])`),
 	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
 	regexp.MustCompile(`(^|[^\w*\\])\*(\S(?:[^*]*\S)?)\*($|[^\w*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
@@ -1225,9 +1228,10 @@ var plainEmphasisREs = []*regexp.Regexp{
 var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 
 // plainInline strips the Markdown markers that read as noise in a one-line label.
-func plainInline(s string) string {
+// refs are the reference labels defined around s (nil: none).
+func plainInline(s string, refs map[string]bool) string {
 	// Links show their text: "[文档](/guide)" reads 文档.
-	t := bui.PlainLinks(plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), ""))
+	t := bui.PlainLinks(refs, plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), ""))
 	// Code spans stand in as placeholders while emphasis markers are stripped, so
 	// `**/node_modules/**` keeps its stars and **run `x`** still loses its own.
 	var codes []string
@@ -1376,7 +1380,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							// The streaming row's detail is already plain (latestStreamLine);
 							// stripping it again would eat stars that sat in code.
 							detail := strings.TrimSpace(st.Detail)
-							if p := plainInline(st.Detail); st.ID != "streaming" && p != "" {
+							if p := plainInline(st.Detail, nil); st.ID != "streaming" && p != "" {
 								detail = p
 							}
 							if live := st.ID == "streaming" && !st.Done; live && detail != "" {
