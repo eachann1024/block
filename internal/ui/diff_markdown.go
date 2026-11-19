@@ -36,6 +36,9 @@ type DiffLineStyle struct {
 	// Math marks a line of a multi-line display math block (see DiffMathMask): its
 	// text shows as math, a delimiter alone as a spacer.
 	Math bool
+	// RefDef marks a link reference definition's line (see DiffRefDefs), which the
+	// note does not show.
+	RefDef bool
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -989,7 +992,7 @@ func diffMarkdownOptions(st DiffLineStyle) *markdown.Options {
 // Blank lines collapse to a thin spacer so paragraphs keep their rhythm.
 func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	line = strings.TrimRight(line, "\r\n")
-	if strings.TrimSpace(line) == "" || (st.Setext < 0 && !st.Code) {
+	if strings.TrimSpace(line) == "" || (st.Setext < 0 || st.RefDef) && !st.Code {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
 	if st.Math {
