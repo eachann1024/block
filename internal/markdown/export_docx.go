@@ -1310,12 +1310,13 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 				cellSpans = row[c].Spans
 			}
 			plain := model.PlainTextOfSpans(cellSpans)
-			isNum := !legacy && !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
+			isHeaderCell := isHeader || (c == 0 && t.HeaderCol)
+			isNum := !legacy && !isHeaderCell && ts.NumFamily != "" && isNumericCellText(plain)
 
 			shd := ""
 			cellBdr := ""
 			baseFG := pal.Text
-			if !isHeader {
+			if !isHeaderCell {
 				if c == 0 && ts.FirstColor.A > 0 {
 					baseFG = ts.FirstColor
 				} else if c > 0 && ts.Secondary.A > 0 {
@@ -1329,7 +1330,7 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 					shd = fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, docxHex(defaultHeaderBG))
 				}
 				baseFG = orC(ts.HeaderFG, pal.Title)
-				if ts.Rules && ts.HeadSep > 0 {
+				if isHeader && ts.Rules && ts.HeadSep > 0 {
 					cellBdr = fmt.Sprintf(`<w:tcBorders><w:bottom w:val="%s" w:sz="%d" w:space="0" w:color="%s"/></w:tcBorders>`,
 						docxBorderVal(ts.HeadSepLine), docxBorderSz(ts.HeadSep), scHex)
 				}
@@ -1340,8 +1341,8 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 			}
 
 			jc := "left"
-			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
-				jc = string(t.Aligns[c])
+			if a := t.CellAlign(r, c); a != model.ColAlignNone {
+				jc = string(a)
 			} else if isNum {
 				jc = "right"
 			}
@@ -1353,7 +1354,7 @@ func renderDOCXTable(t *model.TableData, widthPx, indentPx float32, pal PaperThe
 				cellBold = ts.NumWeight >= 600
 				cellPal.BodyFamily = ts.NumFamily
 			}
-			if isHeader {
+			if isHeaderCell {
 				cellHP = docxHalfPt(orF(ts.HeaderSize, orF(ts.Size, 14.67)))
 				cellBold = orI(ts.HeaderWt, 700) >= 600
 				cellPal.BodyFamily = orS(ts.HeaderFont, pal.BodyFamily)

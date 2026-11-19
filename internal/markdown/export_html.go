@@ -1318,15 +1318,20 @@ func renderHTMLTable(out *strings.Builder, t *model.TableData, pal PaperThemeSpe
 			tag = "th"
 		}
 		for c, cell := range row {
+			isHeaderCell := isHeader || (c == 0 && t.HeaderCol)
+			cellTag := tag
+			if isHeaderCell {
+				cellTag = "th"
+			}
 			var cellCSS strings.Builder
 			plain := cell.PlainText()
-			isNum := !legacy && !isHeader && ts.NumFamily != "" && isNumericCellText(plain)
-			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
-				cellCSS.WriteString(fmt.Sprintf("text-align:%s;", t.Aligns[c]))
+			isNum := !legacy && !isHeaderCell && ts.NumFamily != "" && isNumericCellText(plain)
+			if a := t.CellAlign(r, c); a != model.ColAlignNone {
+				cellCSS.WriteString(fmt.Sprintf("text-align:%s;", a))
 			} else if isNum {
 				cellCSS.WriteString("text-align:right;")
 			}
-			if !legacy && !isHeader {
+			if !legacy && !isHeaderCell {
 				if c == 0 && ts.FirstColor.A > 0 {
 					cellCSS.WriteString("color:" + uiColorCSS(ts.FirstColor) + ";")
 				} else if c > 0 && ts.Secondary.A > 0 {
@@ -1353,9 +1358,9 @@ func renderHTMLTable(out *strings.Builder, t *model.TableData, pal PaperThemeSpe
 			if cellCSS.Len() > 0 {
 				styleAttr = fmt.Sprintf(` style="%s"`, cellCSS.String())
 			}
-			out.WriteString("<" + tag + styleAttr + ">")
+			out.WriteString("<" + cellTag + styleAttr + ">")
 			renderHTMLSpans(out, cell.Spans, pal, legacy)
-			out.WriteString("</" + tag + ">")
+			out.WriteString("</" + cellTag + ">")
 		}
 		if isHeader {
 			out.WriteString("</tr></thead>\n")

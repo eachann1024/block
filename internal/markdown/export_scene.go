@@ -1970,14 +1970,15 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 					fg = ts.NumColor
 				}
 			}
-			if isHeader {
+			isHeaderCell := isHeader || (c == 0 && t.HeaderCol)
+			if isHeaderCell {
 				fam = orS(ts.HeaderFont, pal.BodyFamily)
 				sz = orF(ts.HeaderSize, bodySz)
 				weight = orI(ts.HeaderWt, 700)
 				track = ts.HeaderTrack
 				fg = orC(ts.HeaderFG, pal.Title)
 				bg = defaultHeaderBG
-				if ts.HeaderUpper && len(cellSpans) > 0 {
+				if isHeader && ts.HeaderUpper && len(cellSpans) > 0 {
 					cloned := make([]model.Span, len(cellSpans))
 					for k, s := range cellSpans {
 						s.Text = strings.ToUpper(s.Text)
@@ -1992,19 +1993,16 @@ func buildPaintedTable(t *model.TableData, bx, by, avail float32, pal PaperTheme
 			}
 
 			align := ui.Start
-			hasExplicitAlign := false
-			if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
-				hasExplicitAlign = true
-				switch t.Aligns[c] {
+			if a := t.CellAlign(r, c); a != model.ColAlignNone {
+				switch a {
 				case model.ColAlignCenter:
 					align = ui.Center
 				case model.ColAlignRight:
 					align = ui.End
 				}
-			} else if isNum {
+			} else if isNum && !isHeaderCell {
 				align = ui.End
 			}
-			_ = hasExplicitAlign
 
 			font := ui.Font{Family: fam, Size: sz, Weight: weight, LineHeight: bodyLead}
 			uSpans := toUISpansWith(cellSpans, pal, legacy, spanStyleOpts{

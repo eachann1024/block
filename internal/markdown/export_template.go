@@ -266,13 +266,8 @@ func exportTableTint(t *model.TableData, row, col int, pal PaperThemeSpec) (ui.C
 	if pal.Dark {
 		colors = theme.OceanDark.Table()
 	}
-	if row < len(t.RowTints) {
-		if c, ok := colors.CellTint(string(t.RowTints[row])); ok {
-			return c, true
-		}
-	}
-	if col < len(t.ColTints) {
-		return colors.CellTint(string(t.ColTints[col]))
+	if tint := t.CellTint(row, col); tint != model.TableTintNone {
+		return colors.CellTint(string(tint))
 	}
 	return ui.Color{}, false
 }
