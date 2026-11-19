@@ -2061,18 +2061,7 @@ func (c *Controller) renderSelectionChip(cUI *ui.Context, pal theme.Palette, sel
 	if sel == nil {
 		return
 	}
-	var label string
-	if sel.StartLine == sel.EndLine {
-		label = theme.Tr(
-			fmt.Sprintf("第 %d 段", sel.StartLine),
-			fmt.Sprintf("Block %d", sel.StartLine),
-		)
-	} else {
-		label = theme.Tr(
-			fmt.Sprintf("第 %d–%d 段", sel.StartLine, sel.EndLine),
-			fmt.Sprintf("Blocks %d–%d", sel.StartLine, sel.EndLine),
-		)
-	}
+	label := selectionExcerpt(sel, 16)
 	chip := bui.ChipSurface(ui.Row(cUI.Key("ai-selection-chip")), false)
 	bui.Probe(chip, "ai-selection-chip")
 	if sel.PlainPreview != "" {
