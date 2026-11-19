@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>现状 · 卡片套盒</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button,select{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:1000px;height:720px;box-sizing:border-box;display:flex;flex-direction:column;background:#181818;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 14px;background:#262626;border-bottom:1px solid #292929;box-sizing:border-box">
+    <div style="width:246px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:460">Block</span>
+    </div>
+    <div style="flex:1;display:flex;gap:6px;color:#b4b4b4">
+      <span>设置</span><span>/</span><span style="color:#ececec">外观与字体</span>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="设置分类" style="width:260px;flex:none;background:#222222;border-right:1px solid #292929;box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;gap:2px">
+      <a href="#" style="height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>返回
+      </a>
+      <div style="height:8px"></div>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">AI 助手</a>
+      <a href="#" aria-current="page" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#ececec;text-decoration:none;border-radius:8px;background:#3a3a3a;font-weight:460">外观与字体</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">文件夹</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">快捷键</a>
+      <div style="height:1px;background:#292929;margin:8px 8px"></div>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">应用商店</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">性能与占用</a>
+    </nav>
+
+    <main style="flex:1;overflow:auto;padding:28px 28px 48px;box-sizing:border-box">
+      <div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560">外观与字体</h1>
+          <button type="button" aria-label="关闭设置" style="width:28px;height:28px;padding:0;border:1px solid #444444;border-radius:8px;background:#222222;box-sizing:border-box;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+          </button>
+        </div>
+
+        <section style="display:flex;flex-direction:column;gap:16px;padding:18px 20px;border-radius:14px;background:#222222;border:1px solid #292929">
+          <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:#ececec">主题与语言</h2>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <span>外观主题</span>
+            <div role="radiogroup" aria-label="外观主题" style="display:flex;gap:2px;padding:2px;border-radius:8px;background:#262626;border:1px solid #292929">
+              <button type="button" role="radio" aria-checked="true" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:#3a3a3a;color:#ececec;box-shadow:inset 0 0 0 1px #779de8;font-size:15px;line-height:22px;cursor:pointer">跟随系统</button>
+              <button type="button" role="radio" aria-checked="false" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;font-size:15px;line-height:22px;cursor:pointer">浅色</button>
+              <button type="button" role="radio" aria-checked="false" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;font-size:15px;line-height:22px;cursor:pointer">深色</button>
+            </div>
+          </div>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <label for="lang">界面语言</label>
+            <button id="lang" type="button" style="height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:8px;background:#262626;color:#ececec;cursor:pointer;border:1px solid #444444;font-size:15px">
+              简体中文
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="#b4b4b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </button>
+          </div>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <label for="deco">侧栏装饰动画</label>
+            <button id="deco" type="button" role="switch" aria-checked="true" style="width:32px;height:18px;padding:2px;border:0;border-radius:9px;background:#779de8;display:flex;justify-content:flex-end;cursor:pointer;box-sizing:border-box">
+              <span style="width:14px;height:14px;border-radius:7px;background:#ffffff"></span>
+            </button>
+          </div>
+        </section>
+
+        <section style="display:flex;flex-direction:column;gap:16px;padding:18px 20px;border-radius:14px;background:#222222;border:1px solid #292929">
+          <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:#ececec">编辑器</h2>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <label for="bodyfont">正文字体</label>
+            <button id="bodyfont" type="button" style="height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:8px;background:#262626;color:#ececec;cursor:pointer;border:1px solid #444444;font-size:15px">
+              系统无衬线
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="#b4b4b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </button>
+          </div>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <label for="codefont">代码字体</label>
+            <button id="codefont" type="button" style="height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:8px;background:#262626;color:#ececec;cursor:pointer;border:1px solid #444444;font-size:15px">
+              JetBrains Mono
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="#b4b4b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </button>
+          </div>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <span>行高</span>
+            <div role="radiogroup" aria-label="行高" style="display:flex;gap:2px;padding:2px;border-radius:8px;background:#262626;border:1px solid #292929">
+              <button type="button" role="radio" aria-checked="false" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;font-size:15px;line-height:22px;cursor:pointer">紧凑</button>
+              <button type="button" role="radio" aria-checked="true" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:#3a3a3a;color:#ececec;box-shadow:inset 0 0 0 1px #779de8;font-size:15px;line-height:22px;cursor:pointer">标准</button>
+              <button type="button" role="radio" aria-checked="false" style="height:30px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;font-size:15px;line-height:22px;cursor:pointer">宽松</button>
+            </div>
+          </div>
+        </section>
+
+        <section style="display:flex;flex-direction:column;gap:16px;padding:18px 20px;border-radius:14px;background:#222222;border:1px solid #292929">
+          <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560;color:#ececec">应用更新</h2>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <span>当前版本 <span style="color:#b4b4b4">[版本号]</span></span>
+            <button type="button" style="height:28px;padding:0 10px;border:1px solid #444444;border-radius:8px;background:transparent;color:#ececec;font-size:15px;line-height:22px;cursor:pointer">检查更新</button>
+          </div>
+          <div style="min-height:36px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <label for="auto">自动检查更新</label>
+            <button id="auto" type="button" role="switch" aria-checked="false" style="width:32px;height:18px;padding:2px;border:0;border-radius:9px;background:#444444;display:flex;justify-content:flex-start;cursor:pointer;box-sizing:border-box">
+              <span style="width:14px;height:14px;border-radius:7px;background:#b4b4b4"></span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

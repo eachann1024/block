@@ -1,0 +1,115 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-19T12:00:00Z"
+  },
+  "title": "设置界面轻量化",
+  "launch": {
+    "view": "canvas",
+    "page": "v2"
+  },
+  "pages": [
+    {
+      "id": "light",
+      "name": "设置界面轻量化"
+    },
+    {
+      "id": "v2",
+      "name": "V2 · 全部设置页"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 1080,
+      "y": 0,
+      "w": 1000,
+      "h": 720,
+      "title": "轻量版 · 深色（推荐）",
+      "page": "light",
+      "radius": 12
+    },
+    "Current.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1000,
+      "h": 720,
+      "title": "现状 · 卡片套盒",
+      "page": "light",
+      "radius": 12
+    },
+    "Light.dc.html": {
+      "x": 2160,
+      "y": 0,
+      "w": 1000,
+      "h": 720,
+      "title": "轻量版 · 浅色",
+      "page": "light",
+      "radius": 12
+    },
+    "V2-AI.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1000,
+      "h": 1100,
+      "title": "V2 · AI 助手",
+      "page": "v2",
+      "radius": 12
+    },
+    "V2-Appearance.dc.html": {
+      "x": 1080,
+      "y": 0,
+      "w": 1000,
+      "h": 760,
+      "title": "V2 · 外观与字体",
+      "page": "v2",
+      "radius": 12
+    },
+    "V2-Folders.dc.html": {
+      "x": 2160,
+      "y": 0,
+      "w": 1000,
+      "h": 760,
+      "title": "V2 · 文件夹",
+      "page": "v2",
+      "radius": 12
+    },
+    "V2-Shortcuts.dc.html": {
+      "x": 3240,
+      "y": 0,
+      "w": 1000,
+      "h": 760,
+      "title": "V2 · 快捷键",
+      "page": "v2",
+      "radius": 12
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Current.dc.html",
+    "Light.dc.html",
+    "V2-AI.dc.html",
+    "V2-Appearance.dc.html",
+    "V2-Folders.dc.html",
+    "V2-Shortcuts.dc.html"
+  ],
+  "notes": {
+    "row-title": {
+      "x": 0,
+      "y": -260,
+      "text": "外观与字体 · 现状 → 轻量版",
+      "kind": "title1",
+      "page": "light",
+      "maxW": 3160
+    },
+    "v2-title": {
+      "x": 0,
+      "y": -260,
+      "text": "V2 · 全部设置页更轻",
+      "kind": "title1",
+      "page": "v2",
+      "maxW": 4240
+    }
+  },
+  "designSystems": []
+}
