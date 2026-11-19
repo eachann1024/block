@@ -1492,9 +1492,14 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 
 		if preview != nil && pending {
 			lines := c.PlanDiffLines(convID, msgIdx, preview.Page, preview.BeforeText, preview.AfterText)
+			texts := make([]string, len(lines))
+			for i, dl := range lines {
+				texts[i] = dl.Text
+			}
+			fenced := bui.DiffFenceMask(texts)
 			var visible []PlanDiffLine
 			for _, dl := range lines {
-				if bui.IsDiffTableSep(strings.TrimSpace(dl.Text)) {
+				if !fenced[dl.Index] && bui.IsDiffTableSep(strings.TrimSpace(dl.Text)) {
 					continue
 				}
 				visible = append(visible, dl)
@@ -1516,8 +1521,9 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 						trimmed := strings.TrimSpace(dl.Text)
 						isFirst := pos == 0
 						isLast := pos+1 == totalVis
-						isTable := bui.IsDiffTableRow(trimmed)
-						nextIsTable := pos+1 < totalVis && bui.IsDiffTableRow(strings.TrimSpace(visible[pos+1].Text))
+						code := fenced[dl.Index]
+						isTable := !code && bui.IsDiffTableRow(trimmed)
+						nextIsTable := pos+1 < totalVis && !fenced[visible[pos+1].Index] && bui.IsDiffTableRow(strings.TrimSpace(visible[pos+1].Text))
 						isHeader := (dl.Index+1 < len(lines) && bui.IsDiffTableSep(strings.TrimSpace(lines[dl.Index+1].Text))) ||
 							strings.Contains(strings.ToLower(trimmed), "<th")
 
@@ -1578,7 +1584,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 										}
 									})
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code})
 								}
 							})
 							if rowBtn.Clicked() {
@@ -1602,7 +1608,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 										}
 									})
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code})
 								}
 							})
 						}
