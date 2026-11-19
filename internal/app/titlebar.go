@@ -106,7 +106,6 @@ type TitlebarProps struct {
 
 	OnToggleSidebar    func()
 	OnCloseSettings    func()
-	OnClickNotebook    func()
 	OnBack             func()
 	OnForward          func()
 	OnSelectTab        func(path string)
