@@ -832,7 +832,7 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 			Label(theme.Tr("参考笔记", "Sources"))
 		bui.Probe(toggle, "ai-sources-toggle")
 		toggle.Children(func() {
-			ui.Text(cUI, theme.Tr("参考笔记", "Sources")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+			ui.Text(cUI, theme.Tr("参考笔记", "Sources")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 			ui.Box(cUI).Padding(2, 6).Radius(theme.RadiusXS).Background(ais.CapsuleBG).Children(func() {
 				ui.Textf(cUI, "%d", len(sources)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})
@@ -959,7 +959,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 		topBtn.Children(func() {
 			ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				icons.DrawAnimated(cUI, icons.Sparkles, 16, pal.MonoIconColors(pal.Accent), topBtn.Hovered() || topBtn.Pressed() || pending)
-				ui.Text(cUI, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).SingleLine()
+				ui.Text(cUI, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
 				if isCreate && pending {
 					ui.Box(cUI).Padding(2, 7).Radius(theme.RadiusXS).Background(pal.Selected).Children(func() {
 						ui.Text(cUI, theme.Tr("新建预览", "Create preview")).FontSize(theme.FontSmall).TextColor(pal.Accent)
@@ -1204,7 +1204,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 
 	card.Children(func() {
 		ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
-			ui.Text(cUI, q.Prompt).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1)
+			ui.Text(cUI, q.Prompt).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1)
 			closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 				ID:       "ai-question-dismiss",
 				Label:    theme.Tr("收起问题", "Dismiss question"),
@@ -1390,7 +1390,7 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 	bui.Probe(card, "ai-approval-card")
 
 	card.Children(func() {
-		ui.Text(cUI, cardModel.ToolName).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+		ui.Text(cUI, cardModel.ToolName).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 		if cardModel.Command != "" {
 			ui.Text(cUI, cardModel.Command).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 		}
@@ -1499,7 +1499,7 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 		ui.Column(cUI).Grow(1).Padding(10, 12).Gap(6).Radius(theme.RadiusMD).
 			Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
 			ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(cUI, theme.Tr("本轮失败原因", "Request failed")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Danger)
+				ui.Text(cUI, theme.Tr("本轮失败原因", "Request failed")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Danger)
 				closeErr := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 					ID:       "ai-chat-error-close",
 					Label:    theme.Tr("关闭错误提示", "Dismiss error"),
@@ -2864,7 +2864,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
 									icons.DrawAnimated(cUI, p.Icon, 16, pal.MonoIconColors(p.BrandColor), isExpanded || rowHov)
 								})
-								ui.Text(cUI, p.Name).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+								ui.Text(cUI, p.Name).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
 									Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								if p.Host != "" && secW >= 380 {
 									ui.Box(cUI).Height(20).PaddingX(7).Center().Shrink(1).MinWidth(0).Radius(theme.RadiusXS).
@@ -3013,7 +3013,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									Background(pal.AISurface().CapsuleBG).Border(1, pal.Hairline).Children(func() {
 									icons.Brand(cUI, k, 16, pal.Text)
 								})
-								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
 									Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 								if verTag != "" {
 									ui.Text(cUI, verTag).Font("monospace").FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
@@ -3780,7 +3780,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 									Background(ais.CapsuleBG).Border(1, pal.Hairline).Children(func() {
 									icons.Brand(cUI, k, 16, pal.Text)
 								})
-								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).
+								ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).
 									Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 							})
 
