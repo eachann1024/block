@@ -42,6 +42,11 @@ var diffSetextRE = regexp.MustCompile(`^(?:=+|-+)$`)
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
 
+// diffQuoteDepth counts the blockquote markers a trimmed line opens with.
+func diffQuoteDepth(t string) int {
+	return strings.Count(diffQuoteRE.FindString(t), ">")
+}
+
 // diffFenceOpen returns the fence run ("```", "~~~~"…) a trimmed line opens, or "".
 // A backtick fence's info string may not hold a backtick, so "```x```" is inline code.
 func diffFenceOpen(t string) string {
@@ -98,7 +103,7 @@ func DiffSetextLevels(lines []string, change []int) []int {
 func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 	for si, side := range [2]int{-1, 1} {
 		mask, head := make([]bool, len(lines)), make([]int, len(lines))
-		fence, nested, fenceList, fenceQuote := "", false, false, false
+		fence, nested, fenceList, fenceQuote := "", false, false, 0
 		var paraLines []int
 		// Indented code: four columns in after a blank line (or the start), unless the
 		// text above is a list, whose nested content is indented the same way.
@@ -110,8 +115,8 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 			}
 			t := strings.TrimSpace(l)
 			// A fence opened in a blockquote ends with the quote: at a blank or a line
-			// without ">", which is read as ordinary text again.
-			if fence != "" && fenceQuote && !strings.HasPrefix(t, ">") {
+			// with fewer ">" markers, which is read as ordinary text again.
+			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote {
 				fence = ""
 			}
 			if fence == "" {
@@ -163,7 +168,7 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 			}
 			if fence = diffFenceOpen(t); fence != "" {
 				mask[i], para, paraLines = true, false, nil
-				nested, fenceQuote = diffContainerRE.MatchString(t), strings.HasPrefix(t, ">")
+				nested, fenceQuote = diffContainerRE.MatchString(t), diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 			}
 		}
