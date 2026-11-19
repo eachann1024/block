@@ -683,14 +683,19 @@ func (m *Manager) selectSettingsTab(tab string) {
 
 func (m *Manager) renderSettingsAITab(c *ui.Context) {
 	pal := theme.Ocean()
-	if m.RenderAISettings != nil {
-		m.RenderAISettings(c)
-		return
-	}
-	internalui.SettingsSection(c, func() {
-		ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-		ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
-			FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+	ui.Column(c.Key("settings-ai-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
+		if m.RenderAISettings != nil {
+			m.RenderAISettings(c)
+		} else {
+			internalui.SettingsSection(c, func() {
+				ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
+					FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+			})
+		}
+		if m.PluginHost != nil {
+			m.PluginHost.RenderSettingsSections(c, "ai")
+		}
 	})
 }
 
@@ -909,6 +914,10 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 		})
+
+		if m.PluginHost != nil {
+			m.PluginHost.RenderSettingsSections(c, "appearance")
+		}
 	})
 	_ = pal
 }
@@ -1719,6 +1728,10 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 				})
 			})
 		})
+
+		if m.PluginHost != nil {
+			m.PluginHost.RenderSettingsSections(c, "folders")
+		}
 	})
 }
 
@@ -2033,6 +2046,10 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 				})
 			}
 		})
+
+		if m.PluginHost != nil {
+			m.PluginHost.RenderSettingsSections(c, "shortcuts")
+		}
 	})
 }
 
