@@ -7,7 +7,7 @@
   "title": "性能与占用面板布局方案",
   "launch": {
     "view": "canvas",
-    "page": "pastel-merged"
+    "page": "other-plugins"
   },
   "pages": [
     {
@@ -17,6 +17,10 @@
     {
       "id": "pastel-merged",
       "name": "低饱和彩色合体方案"
+    },
+    {
+      "id": "other-plugins",
+      "name": "其余 3 个官方插件改造稿"
     }
   ],
   "boards": {
@@ -73,6 +77,33 @@
       "title": "合体 D3 · 极简七色 Bento + 悬停悬浮细分化卡",
       "page": "pastel-merged",
       "is_interactive": true
+    },
+    "P1-ImageHost.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 920,
+      "h": 780,
+      "title": "图床上传 · 精简 2 卡（待传队列置顶 + 统一通道配置）",
+      "page": "other-plugins",
+      "is_interactive": true
+    },
+    "P2-Migrator.dc.html": {
+      "x": 1000,
+      "y": 0,
+      "w": 920,
+      "h": 780,
+      "title": "笔记迁移 · 精简 2 卡（支持 ZIP + 真实映射预览）",
+      "page": "other-plugins",
+      "is_interactive": true
+    },
+    "P3-Sync.dc.html": {
+      "x": 2000,
+      "y": 0,
+      "w": 920,
+      "h": 780,
+      "title": "同步 · 精简配置 + 冲突策略 + 变更预演与同步记录",
+      "page": "other-plugins",
+      "is_interactive": true
     }
   },
   "order": [
@@ -81,7 +112,10 @@
     "C-CompactGridDrawer.dc.html",
     "D1-PastelMist.dc.html",
     "D2-PastelVivid.dc.html",
-    "D3-PastelPopover.dc.html"
+    "D3-PastelPopover.dc.html",
+    "P1-ImageHost.dc.html",
+    "P2-Migrator.dc.html",
+    "P3-Sync.dc.html"
   ],
   "notes": {
     "row-title": {
@@ -99,6 +133,14 @@
       "kind": "title1",
       "maxW": 2920,
       "page": "pastel-merged"
+    },
+    "other-plugins-title": {
+      "x": 0,
+      "y": -260,
+      "text": "其余 3 个官方插件改造方案（图床上传 · 笔记迁移 · 同步 · 去冗去假 · Ocean Paper 统一风格）",
+      "kind": "title1",
+      "maxW": 2920,
+      "page": "other-plugins"
     }
   },
   "designSystems": [

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>同步 · 精简配置 + 冲突策略与记录改造稿</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8f8f8; }
+    * { box-sizing: border-box; }
+    button, input { font-family: inherit; }
+  </style>
+</helmet>
+<div style="width: 920px; height: 780px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: #20242c;">同步</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button type="button" aria-label="启用扩展" style="width: 40px; height: 22px; border-radius: 999px; border: none; background: #547dd0; padding: 2px; display: flex; justify-content: flex-end; align-items: center; cursor: pointer;">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+      </button>
+      <button type="button" onClick="{{ toggleDryRun }}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 14px; font-weight: 460; cursor: pointer;">{{ dryRunBtnLabel }}</button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #486ec0; background: #547dd0; color: #ffffff; font-size: 14px; font-weight: 460; cursor: pointer;">立即同步</button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #f0c9c9; background: #fdf5f5; color: #b93c3c; font-size: 14px; font-weight: 460; cursor: pointer;">卸载</button>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; font-weight: 460; color: #20242c;">同步方式</span>
+      <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+        <button type="button" onClick="{{ pickMirror }}" style="{{ mirrorStyle }}">目录镜像</button>
+        <button type="button" onClick="{{ pickWebDAV }}" style="{{ webdavStyle }}">WebDAV</button>
+        <button type="button" onClick="{{ pickGit }}" style="{{ gitStyle }}">Git 仓库</button>
+      </div>
+    </div>
+
+    <sc-if value="{{ isMirror }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <span style="font-size: 14px; color: #20242c;">同步文件夹</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #526071;">~/Library/Mobile Documents/iCloud/Block-Mirror</span>
+          <button type="button" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 13px; cursor: pointer;">更改…</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWebDAV }}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px;">
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          服务器地址
+          <input type="text" value="https://dav.jianguoyun.com/dav/" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          远端目录
+          <input type="text" value="/BlockNotes" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          用户名
+          <input type="text" value="each1024@qq.com" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          应用密码
+          <input type="password" value="webdav-secret" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isGit }}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px;">
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          仓库地址
+          <input type="text" value="git@github.com:eachann1024/notes-backup.git" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+          分支与认证
+          <input type="text" value="main · SSH 密钥" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+        </label>
+      </div>
+    </sc-if>
+
+    <div style="height: 1px; background: #eceef2;"></div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; color: #20242c;">双端冲突处理</span>
+      <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+        <button type="button" onClick="{{ confNewer }}" style="{{ confNewerStyle }}">保留较新</button>
+        <button type="button" onClick="{{ confCopy }}" style="{{ confCopyStyle }}">生成冲突副本</button>
+        <button type="button" onClick="{{ confLocal }}" style="{{ confLocalStyle }}">优先本地</button>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; color: #20242c;">保存笔记后自动同步</span>
+      <button type="button" aria-label="保存笔记后自动同步" onClick="{{ toggleAuto }}" style="{{ autoSwStyle }}">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+      </button>
+    </div>
+
+    <sc-if value="{{ showSaveRow }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px;">
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 13px; font-weight: 460; cursor: pointer;">测试连接</button>
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #486ec0; background: #547dd0; color: #ffffff; font-size: 13px; font-weight: 460; cursor: pointer;">保存设置</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="flex: 1; min-height: 0; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="{{ statusDotStyle }}"></span>
+        <span style="font-size: 15px; font-weight: 560; color: #20242c;">{{ statusHeading }}</span>
+      </div>
+      <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">{{ statusRightMeta }}</span>
+    </div>
+
+    <sc-if value="{{ showDryRun }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 12px 14px; border-radius: 10px; background: #fcf5ec; border: 1px solid #ebd7ba; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px; font-weight: 560; color: #42301b;">即将同步 3 项变更（上传 2 · 下载 1 · 无删除）</span>
+          <span style="font-size: 12px; color: #72593b;">确认无误后点击「立即同步」</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; color: #42301b;">
+            <span>↑ Note/Agent 的经验.md</span>
+            <span>本地更新 · 16:48</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; color: #42301b;">
+            <span>↑ assets/perf-bento.png</span>
+            <span>新增附件 · 620 KiB</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; color: #42301b;">
+            <span>↓ 创业团队/更深入调研.md</span>
+            <span>远端更新 · 16:41</span>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+      <span style="font-size: 12px; font-weight: 560; color: #526071;">最近同步记录</span>
+      <sc-for list="{{ logs }}" as="log" hint-placeholder-count="4">
+        <div style="height: 34px; padding: 0 12px; border-radius: 8px; background: #fafafa; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+            <span style="{{ log.dotStyle }}"></span>
+            <span style="font-size: 13px; color: #20242c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ log.title }}</span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071; white-space: nowrap; flex-shrink: 0;">{{ log.time }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"previewDryRun":{"editor":"boolean","default":true,"label":"展示变更预演块"},"$preview":{"width":920,"height":780}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const protocol = st.protocol || 'local_mirror';
+    const conflict = st.conflict || 'copy';
+    const autoSync = st.autoSync !== undefined ? st.autoSync : true;
+    const showDryRun = st.showDryRun !== undefined ? st.showDryRun : (this.props.previewDryRun !== false);
+
+    const segBtn = (active) =>
+      'height: 26px; padding: 0 11px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; background: ' +
+      (active ? '#ffffff' : 'transparent') + '; color: ' + (active ? '#20242c' : '#526071') +
+      '; font-weight: ' + (active ? '560' : '400') + '; box-shadow: ' + (active ? '0 1px 2px rgba(32,36,44,0.08)' : 'none') + ';';
+
+    return {
+      dryRunBtnLabel: showDryRun ? '收起预演' : '预演变更',
+      toggleDryRun: () => this.setState({ showDryRun: !showDryRun }),
+      pickMirror: () => this.setState({ protocol: 'local_mirror' }),
+      pickWebDAV: () => this.setState({ protocol: 'webdav' }),
+      pickGit: () => this.setState({ protocol: 'git' }),
+      mirrorStyle: segBtn(protocol === 'local_mirror'),
+      webdavStyle: segBtn(protocol === 'webdav'),
+      gitStyle: segBtn(protocol === 'git'),
+      isMirror: protocol === 'local_mirror',
+      isWebDAV: protocol === 'webdav',
+      isGit: protocol === 'git',
+      showSaveRow: protocol === 'webdav' || protocol === 'git',
+      confNewer: () => this.setState({ conflict: 'newer' }),
+      confCopy: () => this.setState({ conflict: 'copy' }),
+      confLocal: () => this.setState({ conflict: 'local' }),
+      confNewerStyle: segBtn(conflict === 'newer'),
+      confCopyStyle: segBtn(conflict === 'copy'),
+      confLocalStyle: segBtn(conflict === 'local'),
+      toggleAuto: () => this.setState({ autoSync: !autoSync }),
+      autoSwStyle:
+        'width: 40px; height: 22px; border-radius: 999px; border: none; padding: 2px; display: flex; align-items: center; cursor: pointer; background: ' +
+        (autoSync ? '#547dd0' : '#d0d5dd') + '; justify-content: ' + (autoSync ? 'flex-end' : 'flex-start') + ';',
+      showDryRun,
+      statusDotStyle: 'width: 8px; height: 8px; border-radius: 999px; background: ' + (showDryRun ? '#c68e47' : '#5da685') + ';',
+      statusHeading: showDryRun ? '待同步预演' : '已同步',
+      statusRightMeta: '上次成功 · 16:40:12',
+      logs: [
+        { title: '目录镜像同步完成 · 上传 2 篇、无冲突', time: '今天 16:40', dotStyle: 'width: 7px; height: 7px; border-radius: 999px; background: #5da685; flex-shrink: 0;' },
+        { title: '保存自动同步 · Note/AI 账号汇总.md', time: '今天 15:18', dotStyle: 'width: 7px; height: 7px; border-radius: 999px; background: #5da685; flex-shrink: 0;' },
+        { title: 'WebDAV 连接超时（已自动重试并恢复）', time: '昨天 22:04', dotStyle: 'width: 7px; height: 7px; border-radius: 999px; background: #c8706c; flex-shrink: 0;' },
+        { title: '目录镜像同步完成 · 上传 5 篇、下载 1 篇', time: '昨天 19:30', dotStyle: 'width: 7px; height: 7px; border-radius: 999px; background: #5da685; flex-shrink: 0;' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
