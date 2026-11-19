@@ -34,4 +34,5 @@ type PluginSettingsHost interface {
 	TabIsBeta(tab string) bool
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
+	RenderSettingsSections(c *ui.Context, tab string)
 }
