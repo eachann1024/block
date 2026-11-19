@@ -12,6 +12,7 @@ import (
 	"block/internal/codepreview"
 	"block/internal/model"
 	"block/internal/theme"
+	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -1817,6 +1818,10 @@ func (s *Session) SetSelectionBlockKind(kind model.BlockKind, toggleIfSame bool)
 // --- Text Sync & Input Rules (Chinese & English Markdown) ---
 
 func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
+	s.applyBlockTextEditWithEdge(idx, newText, caretHint, appUi.RichCodeEdgeNone)
+}
+
+func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint int, codeEdge appUi.RichCodeEdge) {
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return
 	}
@@ -1837,7 +1842,7 @@ func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 	}
 
 	// Preserve inline spans when editing text via rune diff.
-	b.Spans = spliceSpansByTextEdit(b.Spans, oldText, newText)
+	b.Spans = spliceSpansByTextEditWithEdge(b.Spans, oldText, newText, caretHint, codeEdge)
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -1891,6 +1896,10 @@ func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 }
 
 func spliceSpansByTextEdit(spans []model.Span, oldText, newText string) []model.Span {
+	return spliceSpansByTextEditWithEdge(spans, oldText, newText, -1, appUi.RichCodeEdgeNone)
+}
+
+func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, caretHint int, codeEdge appUi.RichCodeEdge) []model.Span {
 	if newText == "" {
 		return nil
 	}
@@ -1899,8 +1908,14 @@ func spliceSpansByTextEdit(spans []model.Span, oldText, newText string) []model.
 	}
 	oldR := []rune(oldText)
 	newR := []rune(newText)
+	maxPref := min(len(oldR), len(newR))
+	if caretHint >= 0 && len(newR) > len(oldR) {
+		if insStart := caretHint - (len(newR) - len(oldR)); insStart >= 0 && insStart < maxPref {
+			maxPref = insStart
+		}
+	}
 	pref := 0
-	for pref < len(oldR) && pref < len(newR) && oldR[pref] == newR[pref] {
+	for pref < maxPref && oldR[pref] == newR[pref] {
 		pref++
 	}
 	suf := 0
@@ -1914,11 +1929,17 @@ func spliceSpansByTextEdit(spans []model.Span, oldText, newText string) []model.
 	if inserted != "" {
 		// Inherit style of the span at insertion boundary if any.
 		template := model.Span{Text: inserted}
-		if pref > 0 {
+		if codeEdge == appUi.RichCodeEdgeInsideStart && len(right) > 0 && right[0].Marks&model.MarkCode != 0 {
+			template = right[0]
+			template.Text = inserted
+		} else if pref > 0 {
 			if prevSlice := sliceSpans(spans, pref-1, pref); len(prevSlice) > 0 {
 				template = prevSlice[0]
 				template.Text = inserted
 			}
+		}
+		if codeEdge == appUi.RichCodeEdgeAfter {
+			template.Marks &^= model.MarkCode
 		}
 		// Typing at the end of a link keeps the surrounding style and exits the link.
 		if template.Link != "" && pref+suf == len(oldR) && (len(right) == 0 || right[0].Link != template.Link) {

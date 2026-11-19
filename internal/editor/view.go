@@ -926,7 +926,7 @@ func blockTextMetrics(kind model.BlockKind) (fontSize float32, weight int, lineH
 		return 14, 500, 1.45
 	default:
 		_, _, lhMode := theme.Typography()
-		return theme.FontEditor, theme.WeightRegular, lhMode.Factor() // 16px body
+		return theme.FontEditor, theme.WeightRegular, lhMode.Factor() // 15px body
 	}
 }
 
@@ -1231,7 +1231,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OnChange: func(newText string, _, caret int) {
 				s.caretHidden = false
 				s.reactionPickerAnnotID = ""
-				s.applyBlockTextEdit(idx, newText, caret)
+				s.applyBlockTextEditWithEdge(idx, newText, caret, st.CodeEdge())
 				if s.doc != nil && s.focusedBlock == idx && idx < len(s.doc.Blocks) {
 					after := s.doc.Blocks[idx].PlainText()
 					if after != newText {
@@ -2483,7 +2483,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						return
 					}
 					s.pushUndo()
-					cell.Spans = spliceSpansByTextEdit(cell.Spans, oldDraft, newText)
+					cell.Spans = spliceSpansByTextEditWithEdge(cell.Spans, oldDraft, newText, caret, st.CodeEdge())
 					s.doc.Blocks[blockIdx].Dirty = true
 					s.doc.Blocks[blockIdx].CleanSource = ""
 					newBase := tableCellStartOffset(tbl, rIdx, cIdx)
