@@ -46,12 +46,6 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.readOnly = readOnly
 	s.ensureAnnotationsLoaded()
 	s.pollInlineAI()
-	if s.copyPending {
-		s.copyPending = false
-		if md := s.SelectedMarkdown(); md != "" {
-			c.WriteClipboard(md)
-		}
-	}
 
 	winW, winH := c.Size()
 	if viewportWidth <= 0 {
@@ -159,6 +153,44 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			if !readOnly {
 				col.Cursor(ui.CursorText)
 			}
+			svcCanvas := c.Services()
+			col.ContextMenu(func(m *ui.Menu) {
+				canCopy := s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()
+				canSelectAll := s.doc != nil && len(s.doc.Blocks) > 0
+				if !readOnly {
+					if m.Item(theme.Tr("剪切", "Cut")).Disabled(!canCopy).Chosen() {
+						s.CutSelection(svcCanvas)
+					}
+					if m.Item(theme.Tr("拷贝", "Copy")).Disabled(!canCopy).Chosen() {
+						s.CopySelection(svcCanvas)
+					}
+					if m.Item(theme.Tr("粘贴", "Paste")).Chosen() {
+						s.PasteFromClipboard(svcCanvas, svcCanvas.ReadClipboard(), false)
+					}
+					if m.Item(theme.Tr("粘贴并匹配样式", "Paste and Match Style")).Chosen() {
+						s.PastePlainFromClipboard(svcCanvas, svcCanvas.ReadClipboard(), false)
+					}
+					if m.Item(theme.Tr("删除", "Delete")).Disabled(!canCopy).Chosen() {
+						if s.hasNonEmptySelection() {
+							s.DeleteSelection()
+						} else if s.hasFocusedAtomicBlock() {
+							s.deleteBlock(s.focusedBlock)
+						}
+					}
+					m.Separator()
+					if m.Item(theme.Tr("全选", "Select All")).Disabled(!canSelectAll).Chosen() {
+						s.SelectAllBlocks()
+					}
+					return
+				}
+				if m.Item(theme.Tr("拷贝", "Copy")).Disabled(!canCopy).Chosen() {
+					s.CopySelection(svcCanvas)
+				}
+				m.Separator()
+				if m.Item(theme.Tr("全选", "Select All")).Disabled(!canSelectAll).Chosen() {
+					s.SelectAllBlocks()
+				}
+			})
 			s.updateCanvasMouseSelection(c, root, col, readOnly)
 
 			col.Children(func() {
@@ -276,15 +308,31 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		})
 
 		if s.needsDetachedSelectionFocus() {
+			svc := c.Services()
+			caret := s.detachedCaretRect()
 			multiFocus := ui.Box(c.Key("multi-sel-focus:"+s.notePath)).Absolute().Left(0).Top(0).Size(0, 0).
-				Bind(&s.detachedFocus).Focusable().TextCaret(ui.Rect{W: 1, H: 16}).
+				Bind(&s.detachedFocus).Focusable().TextCaret(caret).
 				HandleInput(func(ev ui.InputEvent) bool {
-					return s.handleMultiSelectionInput(c, ev)
+					return s.handleMultiSelectionInput(svc, ev)
 				})
 			if s.multiSelFocusPending {
 				multiFocus.Focus(ui.FocusOptions{PreventScroll: true})
 				s.multiSelFocusPending = false
 			}
+			multiFocused := multiFocus.Focused()
+			if !multiFocused && !s.multiSelFocusPending {
+				s.detachedCompose = ""
+			}
+			if !readOnly && s.detachedCompose != "" && multiFocused && c.WindowActive() {
+				ui.Box(c.Key("multi-sel-compose")).Absolute().Left(caret.X).Top(caret.Y).
+					Padding(theme.Space2, theme.Space6).Radius(theme.RadiusXS).
+					Background(pal.Paper).Border(1, pal.Accent).IgnoreInput(true).
+					Children(func() {
+						ui.Text(c, s.detachedCompose).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+					})
+			}
+		} else {
+			s.detachedCompose = ""
 		}
 
 		// The outline floats above the document inside the editor, below window popups.
@@ -318,10 +366,13 @@ func (s *Session) focusOrInsertBottomParagraph() {
 }
 
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
-	if c.Shortcut(ui.Cmd, ui.KeyC) && s.inlineAI == nil && !s.findOpen && s.hasNonEmptySelection() {
-		if md := s.SelectedMarkdown(); md != "" {
-			c.WriteClipboard(md)
-		}
+	svc := c.Services()
+	// Only register window-level clipboard/selectAll shortcuts when no editor input
+	// holds focus; otherwise c.Shortcut claims the key in mygo before RichInput /
+	// multi-sel-focus HandleInput can handle single-block Cmd+X or staged table Cmd+A.
+	canGlobalClip := s.inlineAI == nil && !s.findOpen && !s.HasFocus(c) && !c.FocusTakesText()
+	if canGlobalClip && (s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()) && c.Shortcut(ui.Cmd, ui.KeyC) {
+		s.CopySelection(svc)
 	}
 	if s.previewMedia != nil {
 		return
@@ -381,16 +432,16 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
 		s.ToggleMarkOnSelection(model.MarkStrike)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyX) && s.inlineAI == nil && !s.findOpen && (s.hasMultiBlockSelection() || s.hasWholeAtomicSelection()) {
-		s.CutSelection(c)
+	if canGlobalClip && (s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()) && c.Shortcut(ui.Cmd, ui.KeyX) {
+		s.CutSelection(svc)
 	}
-	if (c.Shortcut(ui.Cmd|ui.Shift, ui.KeyV) || c.Shortcut(ui.Cmd|ui.Shift|ui.Alt, ui.KeyV)) && s.inlineAI == nil && !s.findOpen {
-		s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+	if canGlobalClip && (c.Shortcut(ui.Cmd|ui.Shift, ui.KeyV) || c.Shortcut(ui.Cmd|ui.Shift|ui.Alt, ui.KeyV)) {
+		s.PastePlainFromClipboard(svc, svc.ReadClipboard(), false)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyV) && s.inlineAI == nil && !s.findOpen {
-		s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+	if canGlobalClip && c.Shortcut(ui.Cmd, ui.KeyV) {
+		s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyA) && !s.hasBlockingOverlay() {
+	if !s.hasBlockingOverlay() && canGlobalClip && c.Shortcut(ui.Cmd, ui.KeyA) {
 		s.SelectCurrentBlockOrAll()
 	}
 	s.handleGlobalBlockShortcuts(c)
@@ -1247,10 +1298,10 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 	st := s.richInputState(b.ID)
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()
-	hasInputFocus := wrap.FocusWithin() || s.focusPending
+	showEmptyHint := wrap.FocusWithin() || s.focusPending || (idx == 0 && s.isEmptyDocument())
 	var hint *emptyHintSpec
 	// IME preedit is visible before it becomes part of the block text.
-	if hasInputFocus && !st.Composing() {
+	if showEmptyHint && !st.Composing() {
 		hint = s.emptyHintFor(b, deleteArmed)
 	}
 	s.paintEmptyHintBand(wrap, hint, fontSize, lh)
@@ -1331,18 +1382,12 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					s.selHead = Position{Block: idx, Offset: caret}
 				}
 			},
-			OnCopy: func() bool {
-				if s.hasNonEmptySelection() {
-					if md := s.SelectedMarkdown(); md != "" {
-						c.WriteClipboard(md)
-						return true
-					}
-				}
-				return false
+			OnCopy: func(svc ui.Services) bool {
+				return s.CopySelection(svc)
 			},
-			OnCut: func() bool {
+			OnCut: func(svc ui.Services) bool {
 				if s.hasNonEmptySelection() {
-					return s.CutSelection(c)
+					return s.CutSelection(svc)
 				}
 				return false
 			},
@@ -1396,15 +1441,6 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					if s.hasMultipleVisibleBlocks() && (rlen == 0 || (selLo == 0 && selHi >= rlen)) {
 						s.SelectAllBlocks()
 						return true
-					}
-				case mods == ui.Cmd && key == ui.KeyC:
-					if s.hasNonEmptySelection() {
-						s.copyPending = true
-						return true
-					}
-				case mods == ui.Cmd && key == ui.KeyX:
-					if s.hasMultiBlockSelection() {
-						return s.CutSelection(c)
 					}
 				case mods == ui.Cmd && key == ui.KeyZ:
 					s.Undo()
@@ -1847,7 +1883,7 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						IconSize: theme.IconInline,
 					})
 					if copyBtn.Clicked() {
-						c.WriteClipboard(b.Code)
+						c.Services().WriteClipboard(b.Code)
 						s.codeCopiedBlock = id
 					}
 
@@ -1976,10 +2012,18 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					return a.Block == idx && bSel.Block == idx && a.Offset == 0 && bSel.Offset >= textLen
 				}
 				ta.ObserveInput(func(ev ui.InputEvent) {
-					if ev.Kind == ui.InputCommand && ev.Text == "selectAll" {
+					if ev.Kind != ui.InputCommand {
+						return
+					}
+					switch ev.Text {
+					case "selectAll":
 						if s.hasMultipleVisibleBlocks() && isFullCodeBlockSelected(len([]rune(s.doc.Blocks[idx].Code))) {
 							s.SelectAllBlocks()
 						}
+					case "undo", "redo":
+						// Intercept native Edit -> Undo/Redo so macOS menu commands route
+						// through Session's document undo stack instead of TextAreaBase's local stack.
+						s.codeUndoCmd = ev.Text
 					}
 				})
 				ta.OnTextKey(func(k ui.TextKey) bool {
@@ -2016,7 +2060,15 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 					ta.SetTextSelection(s.selAnchor.Offset, s.selHead.Offset)
 					s.selSyncPending = false
 				}
-				if ta.Changed() {
+				if cmd := s.codeUndoCmd; cmd != "" {
+					s.codeUndoCmd = ""
+					if cmd == "undo" {
+						s.Undo()
+					} else {
+						s.Redo()
+					}
+					s.scheduleRebuild(c)
+				} else if ta.Changed() {
 					_, selEnd := ta.TextSelection()
 					s.applyBlockTextEdit(idx, draft, selEnd)
 					_ = oldCode
@@ -2510,7 +2562,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				relB = clampInt(s.selHead.Offset-cellBase, 0, cellLen)
 				s.selSyncPending = false
 			}
-			multiSel := s.hasMultiBlockSelection()
+			multiSel := s.hasMultiBlockSelection() || s.hasMultiCellTableSelection()
 			var cellBands []appUi.RichBand
 			var cellSelRange [2]int
 			if multiSel && hasBlockSel && selHi > cellBase && selLo < cellBase+cellLen {
@@ -2590,6 +2642,15 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						s.selAnchor = Position{Block: blockIdx, Offset: curBase + anchor}
 						s.selHead = Position{Block: blockIdx, Offset: curBase + caret}
 					}
+				},
+				OnCopy: func(svc ui.Services) bool {
+					return s.CopySelection(svc)
+				},
+				OnCut: func(svc ui.Services) bool {
+					if s.hasNonEmptySelection() {
+						return s.CutSelection(svc)
+					}
+					return false
 				},
 				OnPaste: func(svc ui.Services, pasted string) bool {
 					return s.PasteFromClipboard(svc, pasted, true)
