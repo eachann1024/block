@@ -401,16 +401,16 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		}
 		pick := -1
 		for _, k := range cands {
-			// No separator on the winning side means that side reads as text.
-			if ok, _ := fits(k); ok && (change[k] > 0) == newSide {
+			// A changed header keeps its own version's separator (and alignment); under
+			// an unchanged one the winning side's is used. None there reads as text.
+			ok, h := fits(k)
+			side := newSide
+			if change[h] != 0 {
+				side = change[h] > 0
+			}
+			if ok && (change[k] > 0) == side {
 				pick = k
 				break
-			}
-		}
-		// Unless the kept header is the other side's own: then its separator matches it.
-		for _, k := range cands {
-			if ok, h := fits(k); pick < 0 && ok && change[h] != 0 && (change[h] > 0) == (change[k] > 0) {
-				pick = k
 			}
 		}
 		if pick >= 0 {
