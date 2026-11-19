@@ -3513,14 +3513,6 @@ func (w *Workspace) Render(c *ui.Context) {
 				OnCloseSettings: func() {
 					w.modals.CloseSettings()
 				},
-				OnClickNotebook: func() {
-					if sidebarWide {
-						w.sidebarUI.ClosePopups()
-						w.sidebarUI.SwitcherOpen = true
-					} else {
-						w.ToggleSidebar(vpW)
-					}
-				},
 				OnBack:    w.NavigateBack,
 				OnForward: w.NavigateForward,
 				OnSelectTab: func(path string) {

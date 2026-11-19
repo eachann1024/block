@@ -111,32 +111,19 @@ func tabTitle(path string) string {
 // renderSingleTab renders the notebook badge + breadcrumb + active page title on the drag area.
 func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	pal := theme.Ocean()
-	chrome := pal.ShellChrome()
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 
 	if p.NotebookPath != "" {
 		nbTitle := noteDisplayTitle(p.NotebookPath, true)
 		c.Key("titlebar-nb-crumb")
-		crumb := ui.ButtonBase(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
-			Radius(theme.RadiusSM).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(nbTitle)
-		crumbHov := crumb.Hovered()
-		crumbPress := crumb.Pressed()
-		crumbBG := ui.Transparent
-		crumbFG := pal.TextSecondary
-		if crumbHov || crumbPress {
-			crumbBG = chrome.Hover
-			crumbFG = pal.Text
-		}
-		blockui.AnimateSurfaceColors(crumb, crumbBG, ui.Transparent, false)
+		crumb := ui.Row(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
+			AlignItems(ui.Center).DragWindow()
 		crumb.Children(func() {
 			blockui.MonogramBadge(c, nbTitle)
 			ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
-				TextColor(crumbFG).SingleLine().Shrink(0)
+				TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 		})
 		blockui.Probe(crumb, "titlebar-nb-crumb")
-		if crumb.Clicked() && p.OnClickNotebook != nil {
-			p.OnClickNotebook()
-		}
 		ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 	}
 
