@@ -1117,7 +1117,7 @@ func diffPlainLinks(s string, refs map[string]bool) string {
 					continue
 				}
 				b.WriteString(s[last:m[0]])
-				b.WriteString(diffInlineStart(text))
+				b.WriteString(diffUnlinkURLs(diffInlineStart(text)))
 				last = m[1]
 				continue
 			}
