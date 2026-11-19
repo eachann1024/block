@@ -75,9 +75,6 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 	}
 	ghCancel()
 
-	if errors.Is(remoteErr, ErrReadmeUnavailable) {
-		return PluginReadme{}, ErrReadmeUnavailable
-	}
 	cdnCtx, cdnCancel := withStageTimeout(ctx, readmeStageTimeout)
 	defer cdnCancel()
 	if doc, cdnErr := s.fetchCDNReadme(cdnCtx, repo, en); cdnErr == nil {

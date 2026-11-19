@@ -186,16 +186,21 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 			return nil, errReadmeMedia
 		}
 		base := m.doc.RemoteBase
-		parts := strings.SplitN(base.Path, "/", 5)
+		parts := strings.SplitN(base.EscapedPath(), "/", 5)
 		if len(parts) < 5 {
 			return nil, errReadmeMedia
 		}
 		repoRoot := strings.Join(parts[:4], "/") + "/"
-		if strings.HasPrefix(ref.Path, "/") {
-			ref.Path = repoRoot + strings.TrimLeft(ref.Path, "/")
+		escapedRef := ref.EscapedPath()
+		if strings.HasPrefix(escapedRef, "/") {
+			joined := repoRoot + strings.TrimLeft(escapedRef, "/")
+			if parsedRoot, err := url.Parse(joined); err == nil {
+				ref.Path = parsedRoot.Path
+				ref.RawPath = parsedRoot.RawPath
+			}
 		}
 		ref = base.ResolveReference(ref)
-		if !strings.HasPrefix(ref.Path, repoRoot) {
+		if !strings.HasPrefix(ref.EscapedPath(), repoRoot) {
 			return nil, errReadmeMedia
 		}
 	}
@@ -203,11 +208,12 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 		return nil, errReadmeMedia
 	}
 	if strings.EqualFold(ref.Hostname(), "github.com") {
-		parts := strings.SplitN(ref.Path, "/", 6)
+		parts := strings.SplitN(ref.EscapedPath(), "/", 6)
 		if len(parts) == 6 && parts[3] == "blob" {
-			ref.Host = "raw.githubusercontent.com"
-			ref.Path = "/" + path.Join(parts[1], parts[2], parts[4], parts[5])
-			ref.RawPath, ref.RawQuery = "", ""
+			rawJoined := "/" + parts[1] + "/" + parts[2] + "/" + parts[4] + "/" + parts[5]
+			if parsedRaw, err := url.Parse("https://raw.githubusercontent.com" + rawJoined); err == nil {
+				ref = parsedRaw
+			}
 		}
 	}
 	primaryCtx, primaryCancel := context.WithTimeout(m.ctx, 8*time.Second)
