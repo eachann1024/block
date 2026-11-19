@@ -339,11 +339,14 @@ func diffFenceOpen(t string) string {
 // DiffFenceMask reports, per line, whether it opens, closes or sits inside a fenced
 // code block, so diff rows rendered one by one keep the fence's context. A diff mixes
 // the old and new text, so each side is scanned on its own: change < 0 lines belong to
-// the old text, > 0 to the new one, 0 to both; a line is code if its side says so.
+// the old text, > 0 to the new one, 0 to both; a line is code if its side says so,
+// an unchanged one if the new text does ("# 部署" freed from its fence is a heading).
 func DiffFenceMask(lines []string, change []int) []bool {
 	old, cur := diffFenceSides(lines, change)
 	for i := range old {
-		old[i] = old[i] || cur[i]
+		if change[i] >= 0 {
+			old[i] = cur[i]
+		}
 	}
 	return old
 }
