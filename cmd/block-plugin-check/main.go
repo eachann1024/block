@@ -50,7 +50,7 @@ func main() {
 		if err != nil {
 			fail("%v", err)
 		}
-		for _, surf := range m.Surfaces {
+		for _, surf := range allPluginSurfaces(m) {
 			if zhSnap[surf] == enSnap[surf] {
 				fail("surface %s rendered identical output for zh and en locales", surf)
 			}
@@ -59,6 +59,22 @@ func main() {
 	}
 
 	fmt.Printf("[PASS] Plugin %q passed all Block App Store checks.\n", m.ID)
+}
+
+func allPluginSurfaces(m *plugins.Manifest) []plugins.Surface {
+	surfaces := append([]plugins.Surface(nil), m.Surfaces...)
+	if m.Contributes != nil {
+		for _, sec := range m.Contributes.SettingsSections {
+			surfaces = append(surfaces, plugins.SettingsSectionSurface(sec.ID))
+		}
+		for _, p := range m.Contributes.Panels {
+			surfaces = append(surfaces, plugins.PanelSurface(p.ID))
+		}
+		for _, d := range m.Contributes.Dialogs {
+			surfaces = append(surfaces, plugins.DialogSurface(d.ID))
+		}
+	}
+	return surfaces
 }
 
 func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChinese bool) (map[plugins.Surface]string, error) {
@@ -114,8 +130,9 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 	}
 	fmt.Printf("[OK] [%s] lifecycle: plugin.initialize ready=true\n", locale)
 
-	snapshots := make(map[plugins.Surface]string, len(m.Surfaces))
-	for _, surf := range m.Surfaces {
+	surfaces := allPluginSurfaces(m)
+	snapshots := make(map[plugins.Surface]string, len(surfaces))
+	for _, surf := range surfaces {
 		page, err := rt.Render(ctx, surf)
 		if err != nil {
 			return nil, fmt.Errorf("[%s] plugin.render(%s): %w", locale, surf, err)
