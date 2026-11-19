@@ -539,8 +539,9 @@ var diffLinkDest = func() string {
 	return `(?:<[^<>\n]*>|(?:` + unit + `|` + paren + `)*)`
 }()
 
-// diffLinkTitle matches an optional link title: "t", 't' or (t).
-const diffLinkTitle = `(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`
+// diffLinkTitle matches an optional link title: "t", 't' or (t), where a backslash
+// escapes the closing mark ("版本 \"Beta\"").
+const diffLinkTitle = `(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?`
 
 var (
 	// Spaces may pad the destination: "[Docs]( /docs )" is a link too. In the text an
