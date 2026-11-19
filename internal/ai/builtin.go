@@ -1371,13 +1371,15 @@ func (c *Controller) handleBuiltinToolCalls(convID uint64, serial uint64, step i
 			return false, true
 		}
 		c.pushMessageLocked(msg)
+		var linkedPlan *model.BatchPlan
 		if plan != nil {
 			conv := c.findConvLocked(convID)
 			if conv != nil && len(conv.Messages) > 0 {
-				c.linkPlanLocked(convID, len(conv.Messages)-1)
+				linkedPlan = c.linkPlanLocked(convID, len(conv.Messages)-1)
 			}
 		}
 		c.mu.Unlock()
+		c.previewPlanInEditor(linkedPlan)
 	}
 	return waitingQuestion, false
 }
@@ -1806,16 +1808,18 @@ func (c *Controller) startMockTurn(convID uint64, prompt string) {
 				Plan:    plan,
 				Sources: sources,
 			})
+			var linkedPlan *model.BatchPlan
 			if plan != nil {
 				conv := c.findConvLocked(convID)
 				if conv != nil && len(conv.Messages) > 0 {
-					c.linkPlanLocked(convID, len(conv.Messages)-1)
+					linkedPlan = c.linkPlanLocked(convID, len(conv.Messages)-1)
 				}
 			}
 			c.recordTurnOutcomeLocked("completed")
 			c.streaming = false
 			c.sentDraft = nil
 			c.mu.Unlock()
+			c.previewPlanInEditor(linkedPlan)
 			c.requestRedraw()
 			return
 
@@ -1848,16 +1852,18 @@ func (c *Controller) startMockTurn(convID uint64, prompt string) {
 				Plan:    plan,
 				Sources: sources,
 			})
+			var linkedPlan *model.BatchPlan
 			if plan != nil {
 				conv := c.findConvLocked(convID)
 				if conv != nil && len(conv.Messages) > 0 {
-					c.linkPlanLocked(convID, len(conv.Messages)-1)
+					linkedPlan = c.linkPlanLocked(convID, len(conv.Messages)-1)
 				}
 			}
 			c.recordTurnOutcomeLocked("completed")
 			c.streaming = false
 			c.sentDraft = nil
 			c.mu.Unlock()
+			c.previewPlanInEditor(linkedPlan)
 			c.requestRedraw()
 			return
 		}
