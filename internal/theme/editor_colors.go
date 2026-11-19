@@ -52,9 +52,13 @@ type TableColors struct {
 	TintSlate       ui.Color
 	TintOcean       ui.Color
 	TintEmerald     ui.Color
+	TintAmber       ui.Color
+	TintRose        ui.Color
 	SwatchSlate     ui.Color
 	SwatchOcean     ui.Color
 	SwatchEmerald   ui.Color
+	SwatchAmber     ui.Color
+	SwatchRose      ui.Color
 }
 
 // CellTint resolves a subtle row/column background fill for a semantic tint name.
@@ -66,6 +70,10 @@ func (tc TableColors) CellTint(name string) (ui.Color, bool) {
 		return tc.TintOcean, true
 	case "emerald":
 		return tc.TintEmerald, true
+	case "amber":
+		return tc.TintAmber, true
+	case "rose":
+		return tc.TintRose, true
 	default:
 		return ui.Transparent, false
 	}
@@ -88,9 +96,13 @@ func (p Palette) Table() TableColors {
 			TintSlate:       ui.Hex("#2a2d32"),
 			TintOcean:       ui.Hex("#1f2d46"),
 			TintEmerald:     ui.Hex("#1c3329"),
+			TintAmber:       ui.Hex("#352b1b"),
+			TintRose:        ui.Hex("#392224"),
 			SwatchSlate:     ui.Hex("#3a3f47"),
 			SwatchOcean:     ui.Hex("#314972"),
 			SwatchEmerald:   ui.Hex("#275340"),
+			SwatchAmber:     ui.Hex("#5c4824"),
+			SwatchRose:      ui.Hex("#663438"),
 		}
 	}
 	return TableColors{
@@ -107,9 +119,13 @@ func (p Palette) Table() TableColors {
 		TintSlate:       ui.Hex("#f1f3f6"),
 		TintOcean:       ui.Hex("#e8f0fe"),
 		TintEmerald:     ui.Hex("#e7f5ee"),
+		TintAmber:       ui.Hex("#fef6e4"),
+		TintRose:        ui.Hex("#fdeeed"),
 		SwatchSlate:     ui.Hex("#dfe4ec"),
 		SwatchOcean:     ui.Hex("#c9d8f3"),
 		SwatchEmerald:   ui.Hex("#bce6d1"),
+		SwatchAmber:     ui.Hex("#f6dc9c"),
+		SwatchRose:      ui.Hex("#f6c9c5"),
 	}
 }
 
