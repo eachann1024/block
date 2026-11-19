@@ -3,8 +3,26 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'assets/**'
+      - 'updates/**'
+      - 'scripts/lint_design.py'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'assets/**'
+      - 'updates/**'
+      - 'scripts/lint_design.py'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,21 +37,40 @@ env:
 
 jobs:
   check:
-    name: Go check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-latest, macos-15]
+    name: Go check & cross-platform build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOMODCACHE: ${{ runner.temp }}/go-mod
+      GOCACHE: ${{ runner.temp }}/go-build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
-      - name: go vet
-        run: go vet ./...
-      - name: go build
-        run: go build ./...
+          cache: false
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-mod
+          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-build
+          key: go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
+          restore-keys: |
+            go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
+      - name: Design token lint
+        run: python3 scripts/lint_design.py
+      - name: Cross-platform go vet & build
+        run: |
+          for target in linux/amd64 windows/amd64 darwin/arm64 darwin/amd64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            echo "==> Checking ${os}/${arch}"
+            GOOS="$os" GOARCH="$arch" go vet ./...
+            GOOS="$os" GOARCH="$arch" go build ./...
+          done
       - name: go test
         run: go test ./...
