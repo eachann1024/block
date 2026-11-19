@@ -754,7 +754,8 @@ func (h *PageHistoryView) Render(
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
 						ui.Text(c, theme.Tr("页面已更新，请重新对比。", "Page has been updated externally; please re-diff.")).
 							FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
-						reBtn := blockui.ActionButton(c, "history-error-action", theme.Tr("重新对比", "Re-diff"), nil, blockui.ButtonSecondary, false)
+						refIc := icons.Refresh
+						reBtn := blockui.ActionButton(c, "history-error-action", theme.Tr("重新对比", "Re-diff"), &refIc, blockui.ButtonSecondary, false)
 						if reBtn.Clicked() && onRetry != nil {
 							onRetry()
 						}
@@ -788,7 +789,8 @@ func (h *PageHistoryView) Render(
 						if h.ErrorMsg != "" {
 							ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusMD).Background(pal.DangerSurface).Gap(8).Children(func() {
 								ui.Text(c, h.ErrorMsg).FontSize(theme.FontBody).TextColor(pal.Danger)
-								retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), nil, blockui.ButtonSecondary, false)
+								retryIc := icons.Refresh
+								retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), &retryIc, blockui.ButtonSecondary, false)
 								if retryBtn.Clicked() && onRetry != nil {
 									onRetry()
 								}
@@ -929,7 +931,8 @@ func (h *PageHistoryView) Render(
 				if cancelBtn.Clicked() {
 					h.ConfirmOpen = false
 				}
-				okBtn := blockui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Restore"), nil, blockui.ButtonPrimary, false)
+				histIc := icons.History
+				okBtn := blockui.ActionButton(c, "history-confirm-restore", theme.Tr("确认恢复", "Restore"), &histIc, blockui.ButtonPrimary, false)
 				if okBtn.Clicked() {
 					snapID := h.SelectedID
 					txt := h.SelectedText
@@ -1050,7 +1053,8 @@ func (t *HistoryToast) RenderBanner(c *ui.Context, onUndo func(), onDismiss func
 		ui.Text(c, t.Message).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(8).Children(func() {
 			if t.CanUndo {
-				undoBtn := blockui.ActionButton(c, "history-toast-undo", theme.Tr("撤销恢复", "Undo Restore"), nil, blockui.ButtonSecondary, false)
+				undoIc := icons.TbReset
+				undoBtn := blockui.ActionButton(c, "history-toast-undo", theme.Tr("撤销恢复", "Undo Restore"), &undoIc, blockui.ButtonSecondary, false)
 				if undoBtn.Clicked() && onUndo != nil {
 					onUndo()
 				}
