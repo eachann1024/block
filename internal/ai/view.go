@@ -1208,7 +1208,10 @@ var plainStrongRE = regexp.MustCompile(`(^|[^\w*])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
 	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	t = plainStrongRE.ReplaceAllString(t, "$1$2$3")
+	// Adjacent matches share the space between them, so repeat until settled.
+	for prev := ""; prev != t; {
+		prev, t = t, plainStrongRE.ReplaceAllString(t, "$1$2$3")
+	}
 	t = strings.ReplaceAll(t, "`", "")
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
