@@ -41,7 +41,7 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 	case ElevationDrawer:
 		return []Shadow{{8, 0, 28, 0, black(0.18)}}
 	default:
-		return []Shadow{{0, 1, 2, 0, black(0.06)}, {0, 4, 12, 0, black(0.08)}, {0, 12, 32, 0, black(0.12)}}
+		return []Shadow{{0, 1, 2, 0, black(0.05)}, {0, 6, 20, 0, black(0.09)}}
 	}
 }
 
