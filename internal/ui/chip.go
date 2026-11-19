@@ -108,12 +108,12 @@ func OfficialBadge(c *ui.Context, compact bool) {
 		padX = theme.Space6
 	}
 	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
-		Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
+		Background(pal.Selected).Border(1, pal.TooltipAccent).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, theme.Tr("官方", "Official")).
 			FontSize(theme.FontMicro).
 			FixedLineHeight(theme.LineMeta).
 			FontWeight(theme.WeightControl).
-			TextColor(pal.Accent).
+			TextColor(pal.TooltipAccent).
 			SingleLine()
 	})
 }
