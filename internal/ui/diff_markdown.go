@@ -33,8 +33,9 @@ type DiffLineStyle struct {
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
-// own text (0: not one), since each line alone would show its written number. A
-// changed line takes its own side, an unchanged one the new text.
+// own text (0: not one), since each line alone would show its written number; -1
+// marks an item marker that is paragraph text instead ("2." may not interrupt a
+// paragraph). A changed line takes its own side, an unchanged one the new text.
 func DiffListNumbers(lines []string, change []int) []int {
 	masks, _ := diffScan(lines, change)
 	var nums [2][]int
@@ -47,14 +48,25 @@ func DiffListNumbers(lines []string, change []int) []int {
 			kind               string
 		}
 		var stack []list
-		prevBlank := false
+		// para: the line above is paragraph text, which only a bullet or "1." may
+		// interrupt. quote: the blockquote depth the open lists sit in.
+		prevBlank, para, quote := false, false, 0
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
 			}
 			t := strings.TrimSpace(l)
+			// A list in a blockquote is read behind its markers; another depth is
+			// another container, whose lists start over.
+			if q := diffQuoteDepth(t); q != quote {
+				stack, para, quote = nil, false, q
+			}
+			if quote > 0 {
+				l = diffStripQuotes(t, quote)
+				t = strings.TrimSpace(l)
+			}
 			if t == "" {
-				prevBlank = true
+				prevBlank, para = true, false
 				continue
 			}
 			ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
@@ -63,39 +75,44 @@ func DiffListNumbers(lines []string, change []int) []int {
 			om := diffCellListRE.FindStringSubmatch(t)
 			// Indented code (masked) is no item.
 			item := !masks[si][i] && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
-			if !item {
-				// Plain text right under a line is a lazy continuation; after a blank, or
-				// any other block, a line left of a list's content ends that list.
-				plain := !masks[si][i] && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
-					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
-				if blank || !plain {
-					for len(stack) > 0 && stack[len(stack)-1].content > ind {
-						stack = stack[:len(stack)-1]
-					}
+			plain := !masks[si][i] && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
+				!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
+			// The lists the line is not inside: an item left of a list's content is a
+			// sibling of that list's items (or of an outer one).
+			var sib *list
+			saved := slices.Clone(stack)
+			if item || blank || !plain {
+				for len(stack) > 0 && stack[len(stack)-1].content > ind {
+					top := stack[len(stack)-1]
+					sib, stack = &top, stack[:len(stack)-1]
 				}
+			}
+			kind, n := "", 0
+			if item {
+				kind = t[:1]
+				if om != nil {
+					kind = om[2]
+					n, _ = strconv.Atoi(om[1])
+				}
+			}
+			cont := item && sib != nil && sib.kind == kind
+			if item && !cont && para && om != nil && n != 1 {
+				// Paragraph text: "2. 这是正文" under "先说明" continues it.
+				item, num[i] = false, -1
+			}
+			if !item {
+				if plain && !blank {
+					// A lazy continuation line leaves every list open.
+					stack = saved
+				}
+				para = plain
 				continue
 			}
-			for len(stack) > 0 && stack[len(stack)-1].ind > ind {
-				stack = stack[:len(stack)-1]
+			para = true
+			if cont && om != nil {
+				n = sib.next
 			}
-			kind, n := t[:1], 0
-			if om != nil {
-				kind = om[2]
-				n, _ = strconv.Atoi(om[1])
-			}
-			content := ind + len(diffContainerRE.FindString(t))
-			if k := len(stack) - 1; k >= 0 && stack[k].ind == ind && stack[k].kind == kind {
-				if om != nil {
-					n = stack[k].next
-				}
-				stack[k].content = content
-			} else {
-				if k >= 0 && stack[k].ind == ind {
-					stack = stack[:k]
-				}
-				stack = append(stack, list{ind: ind, content: content, kind: kind})
-			}
-			stack[len(stack)-1].next = n + 1
+			stack = append(stack, list{ind: ind, content: ind + len(diffContainerRE.FindString(t)), kind: kind, next: n + 1})
 			num[i] = n
 		}
 		nums[si] = num
@@ -839,8 +856,15 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		// A line of its own starting with "\[" is display math, as in the note.
 		math := strings.HasPrefix(body, `\[`)
 		// An ordered item shows the number it has in its list, not the one written.
-		if m := diffCellListRE.FindStringSubmatchIndex(body); m != nil && st.ListNum > 0 {
-			body = strconv.Itoa(st.ListNum) + body[m[3]:]
+		// A marker that is paragraph text there (-1) gets its delimiter escaped.
+		q := diffQuoteRE.FindString(body)
+		if m := diffCellListRE.FindStringSubmatchIndex(body[len(q):]); m != nil && st.ListNum != 0 {
+			rest := body[len(q):]
+			if st.ListNum > 0 {
+				body = q + strconv.Itoa(st.ListNum) + rest[m[3]:]
+			} else {
+				body = q + rest[:m[3]] + `\` + rest[m[3]:]
+			}
 		}
 		body = diffPlainLinks(body, st.Refs)
 		if !math {
