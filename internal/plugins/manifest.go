@@ -66,6 +66,9 @@ func PermissionLabel(p Permission, locale string) string {
 		}
 		return "保存触发"
 	default:
+		if l, ok := contribPermissionLabel(p, en); ok {
+			return l
+		}
 		return string(p)
 	}
 }
@@ -137,6 +140,7 @@ type Manifest struct {
 	Permissions   []Permission  `json:"permissions"`
 	Surfaces      []Surface     `json:"surfaces"`
 	Icon          DuoIconSpec   `json:"icon"`
+	Contributes   *Contributes  `json:"contributes,omitempty"`
 }
 
 var (
@@ -189,7 +193,7 @@ func (m *Manifest) HasSurface(s Surface) bool {
 			return true
 		}
 	}
-	return false
+	return m.hasContribSurface(s)
 }
 
 func (m *Manifest) Validate() error {
@@ -261,7 +265,7 @@ func (m *Manifest) Validate() error {
 	if len(m.Icon.StrokePaths) == 0 {
 		return errors.New("manifest.icon.stroke_paths must contain at least one SVG path")
 	}
-	return nil
+	return m.validateContributes()
 }
 
 // ContainsEmoji enforces Ocean Paper's no-emoji rule across manifest & declarative UI copy.

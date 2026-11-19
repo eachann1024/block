@@ -72,6 +72,8 @@ type HostConfig struct {
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	OnNoteWritten   func(pluginID, notebookRoot, absPath string)
+	// ContribHost handles host.titlebar/status/ui/editor methods; ok=false falls through.
+	ContribHost func(m Manifest, method string, params json.RawMessage) (any, *rpcError, bool)
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
@@ -951,6 +953,11 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 		return snap, nil
 
 	default:
+		if rt.cfg.ContribHost != nil {
+			if res, rerr, ok := rt.cfg.ContribHost(rt.manifest, method, params); ok {
+				return res, rerr
+			}
+		}
 		return nil, &rpcError{Code: -32601, Message: "unknown host method: " + method}
 	}
 }
