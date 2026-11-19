@@ -379,3 +379,118 @@ func buildVisibleStoreEntries(
 	}
 	return filtered
 }
+
+const replaceConfirmModalWidth float32 = 480
+
+func renderReplacementConfirmModal(c *ui.Context, ctrl *Controller) {
+	pending := ctrl.sup.PendingReplacement()
+	if pending == nil {
+		return
+	}
+	pal := theme.Ocean()
+	locale := ctrl.sup.Locale()
+	title := theme.Tr("确认替换插件", "Confirm Plugin Replacement")
+	open := true
+
+	bui.ModalCard(c, "plugin-replace-confirm-modal", title, &open, replaceConfirmModalWidth, 0, func() {
+		ui.Column(c).FillWidth().Padding(theme.Space20).Gap(theme.Space16).Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+				ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
+					FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+					ID:      "plugin-replace-confirm-close",
+					Label:   theme.Tr("关闭", "Close"),
+					Variant: bui.IconPlain,
+				})
+				if closeBtn.Clicked() {
+					open = false
+				}
+			})
+
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
+					Radius(theme.RadiusLG).Background(pal.Shell).Children(func() {
+					DrawDuoSpec(c, pending.CandidateManifest.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
+				})
+				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+					ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, pending.CandidateManifest.Name.Resolve(locale)).
+							FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
+							TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						if pending.CandidateManifest.Beta {
+							bui.BetaBadge(c, true)
+						}
+					})
+					verText := "v" + pending.CandidateManifest.Version
+					if pending.InstalledManifest.Version != "" && pending.InstalledManifest.Version != pending.CandidateManifest.Version {
+						verText = "v" + pending.InstalledManifest.Version + " → v" + pending.CandidateManifest.Version
+					}
+					ui.Text(c, pending.PluginID+" · "+verText).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+				})
+			})
+
+			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space12).Gap(theme.Space8).
+				Radius(theme.RadiusMD).Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35)).Children(func() {
+				if pending.OldSourceUnrecorded {
+					ui.Text(c, theme.Tr(
+						"旧版本没有安装来源记录",
+						"The installed version has no recorded source",
+					)).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+				}
+				if pending.SourceChanged {
+					ui.Text(c, theme.Tr("安装来源已变更", "Install source changed")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
+				}
+				ui.Text(c, formatInstallSource(pending.CandidateSource)).MinWidth(0).
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				if len(pending.AddedPermissions) > 0 {
+					ui.Text(c, theme.Tr("新增权限", "New permissions")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
+					for _, perm := range pending.AddedPermissions {
+						ui.Text(c, plugins.PermissionLabel(perm, locale)).
+							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text).SingleLine().Ellipsis("…")
+					}
+				}
+			})
+
+			ui.Text(c, theme.Tr("替换会保留插件数据和启用状态。", "Replacing keeps plugin data and its enabled state.")).
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+
+			ui.Row(c).FillWidth().Justify(ui.End).Gap(theme.Space8).Children(func() {
+				cancelBtn := bui.ActionButton(c, "plugin-replace-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
+				if cancelBtn.Clicked() {
+					open = false
+				}
+				confirmBtn := bui.ActionButton(c, "plugin-replace-confirm", theme.Tr("确认替换", "Confirm Replace"), nil, bui.ButtonPrimary, false)
+				if confirmBtn.Clicked() {
+					ctrl.sup.ConfirmReplacementAsync(pending.Token, pending.CandidateDigest)
+				}
+			})
+		})
+	})
+
+	if !open {
+		ctrl.sup.CancelReplacement(pending.Token)
+	}
+}
+
+func formatInstallSource(source string) string {
+	switch {
+	case strings.HasPrefix(source, "catalog-github:"):
+		return theme.Tr("应用商店 (GitHub: ", "App Store (GitHub: ") + strings.TrimPrefix(source, "catalog-github:") + ")"
+	case strings.HasPrefix(source, "catalog-url:"):
+		return theme.Tr("应用商店 (", "App Store (") + strings.TrimPrefix(source, "catalog-url:") + ")"
+	case strings.HasPrefix(source, "github:"):
+		return "GitHub: " + strings.TrimPrefix(source, "github:")
+	case strings.HasPrefix(source, "url:"):
+		return strings.TrimPrefix(source, "url:")
+	case strings.HasPrefix(source, "directory:"):
+		return theme.Tr("本地目录：", "Local directory: ") + strings.TrimPrefix(source, "directory:")
+	case strings.HasPrefix(source, "builtin:"):
+		return theme.Tr("内置应用：", "Built-in: ") + strings.TrimPrefix(source, "builtin:")
+	default:
+		return source
+	}
+}
