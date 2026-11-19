@@ -414,6 +414,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 		return
 	}
 	seq := vs.editSeq
+	draftVals := pendingDraftValuesLocked(vs)
 	s.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -427,7 +428,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(s.activeNoteFor(nbRoot))
 
-	page, err := rt.Render(ctx, surface)
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, draftVals)
 	if err != nil || page == nil {
 		return
 	}
@@ -435,10 +436,27 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	s.mu.Lock()
 	if cur := s.views[key]; cur == vs && !cur.Loading && cur.BusyAction == "" && cur.editSeq == seq {
 		cur.Page = page
-		mergePageValues(cur, page, nil)
+		cur.lastLocale = rt.locale()
+		mergePageValues(cur, page, returnedVals)
 	}
 	s.mu.Unlock()
 	s.notifyRedraw()
+}
+
+func pendingDraftValuesLocked(vs *PluginViewState) map[string]any {
+	if vs == nil || len(vs.editedControls) == 0 || len(vs.Values) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(vs.editedControls))
+	for k := range vs.editedControls {
+		if v, ok := vs.Values[k]; ok {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (s *Supervisor) Catalog() *StoreIndex {
@@ -862,15 +880,21 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 			go s.loadAndRenderSurface(pluginID, nbRoot, surface)
 			return snap
 		}
-		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" && vs.Page != nil &&
-			(rootChanged || vs.lastLocale != curLocale || vs.formVersion != s.formVersions[sKey] ||
-				vs.lastActiveNote != activeNote || vs.lastNotebooksKey != nbKey)
+		needWorkspaceSync := !vs.Loading && vs.BusyAction == "" &&
+			((vs.Page != nil && (rootChanged || vs.lastLocale != curLocale || vs.formVersion != s.formVersions[sKey] ||
+				vs.lastActiveNote != activeNote || vs.lastNotebooksKey != nbKey)) ||
+				(vs.Page == nil && vs.lastLocale != curLocale))
 		if needWorkspaceSync {
 			vs.lastNotebookRoot = nbRoot
 			vs.lastActiveNote = activeNote
 			vs.lastNotebooksKey = nbKey
 			vs.lastLocale = curLocale
 			vs.Loading = true
+			if vs.Page == nil {
+				vs.Error = ""
+				vs.RetryKind = RetryKindNone
+				vs.errorFromBg = false
+			}
 		}
 		snap := s.snapshotViewLocked(key, vs)
 		s.recordCachedViewLocked(vs, snap, epoch, rawActive, rawNBs)
@@ -968,7 +992,11 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	rt.SetNotebookRoot(nbRoot)
 	rt.SetActiveNote(activeNote)
 
-	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, nil)
+	s.mu.RLock()
+	draftVals := pendingDraftValuesLocked(s.views[key])
+	s.mu.RUnlock()
+
+	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, draftVals)
 	s.mu.Lock()
 	if vs := s.views[key]; vs != nil {
 		vs.Loading = false
@@ -1370,6 +1398,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	vs.FailedNoteRoot = ""
 	vs.errorFromBg = false
 	vs.editSeq++
+	actionSeq := vs.editSeq
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	vs.actionCancel = cancel
 	s.mu.Unlock()
@@ -1425,6 +1454,9 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			cur.BusyAction = ""
 			cur.lastNotebookRoot = nbRoot
 			cur.lastActiveNote = activeNote
+			if rt != nil {
+				cur.lastLocale = rt.locale()
+			}
 			if errors.Is(ctx.Err(), context.Canceled) {
 				cur.Notice = ""
 			} else if err != nil {
@@ -1469,17 +1501,24 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 						}
 					})
 				}
+				editedDuringAction := cur.editSeq != actionSeq
 				if res.Page != nil {
 					cur.Page = res.Page
 					if cur.Page.Status == "" && statusMsg != "" {
 						cur.Page.Status = statusMsg
 					}
 					for k, v := range res.Page.ExtractDefaultValues() {
+						if editedDuringAction && cur.editedControls[k] {
+							continue
+						}
 						cur.Values[k] = v
 						delete(cur.editedControls, k)
 					}
 				}
 				for k, v := range res.Values {
+					if editedDuringAction && cur.editedControls[k] {
+						continue
+					}
 					cur.Values[k] = v
 					delete(cur.editedControls, k)
 				}
