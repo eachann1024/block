@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"image"
 	_ "image/gif"
 	_ "image/jpeg"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1512,10 +1510,10 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 	src := b.ImageSrc
 	var width, height float32
 	if localPath, ok := resolveLocalImagePath(src, notePath); ok {
-		if raw, err := os.ReadFile(localPath); err == nil {
-			mime := detectImageMime(localPath, raw)
-			src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
-			if cfg, _, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil {
+		if entry, ok := loadCachedLocalImageEntry(localPath); ok {
+			mime := detectImageMime(localPath, entry.raw)
+			src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(entry.raw)
+			if _, cfg, _, cfgOK := loadCachedLocalImageConfig(localPath); cfgOK {
 				width, height = float32(cfg.Width), float32(cfg.Height)
 			}
 		}

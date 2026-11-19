@@ -8,6 +8,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"math"
+	"sync"
 
 	"block/internal/model"
 
@@ -24,11 +25,24 @@ type substrateTile struct {
 	srcH float32
 }
 
+var (
+	substrateTileCacheMu sync.RWMutex
+	substrateTileCache   = make(map[model.ExportTheme][]substrateTile)
+)
+
 // buildSubstrateTiles pre-renders small repeating RGBA tiles only for fine
 // pixel-level textures (dots, grain), keeping peak RAM < 2 MB even at 4x scale.
 func buildSubstrateTiles(pal PaperThemeSpec, legacy bool) []substrateTile {
 	if legacy {
 		return nil
+	}
+	if pal.Theme != "" {
+		substrateTileCacheMu.RLock()
+		cached, ok := substrateTileCache[pal.Theme]
+		substrateTileCacheMu.RUnlock()
+		if ok {
+			return cached
+		}
 	}
 	var out []substrateTile
 	for idx, layer := range pal.Style.Substrate {
@@ -76,6 +90,14 @@ func buildSubstrateTiles(pal PaperThemeSpec, legacy bool) []substrateTile {
 				bm: ui.NewBitmap(img), dipW: dip, dipH: dip, srcW: float32(pw), srcH: float32(pw),
 			})
 		}
+	}
+	if pal.Theme != "" {
+		substrateTileCacheMu.Lock()
+		if len(substrateTileCache) >= 32 {
+			clear(substrateTileCache)
+		}
+		substrateTileCache[pal.Theme] = out
+		substrateTileCacheMu.Unlock()
 	}
 	return out
 }
@@ -177,13 +199,19 @@ func paintExportRaster(ctx context.Context, sc exportScene, top, h int, scale fl
 			from, to := float32(top), float32(top+h)
 			p.Transform(transform, 0, 0, func() {
 				paintSubstrate(p, page, from, to, sc.pal, sc.legacy, tiles)
-				paintCardsAndSections(p, sc)
+				paintCardsAndSections(p, sc, from, to)
 				paintOrnaments(p, sc, page, from, to)
-				if sc.meta.present {
+				if sc.meta.present && sc.meta.y+sc.meta.h+32 >= from && sc.meta.y-32 <= to {
 					paintMeta(p, sc.meta, sc.pal)
 				}
 				if sc.title.present {
-					paintExportHeader(p, sc)
+					titleTop := sc.title.y - 64
+					if sc.title.mark == TitleMarkBand {
+						titleTop = 0
+					}
+					if sc.title.y+sc.title.h+64 >= from && titleTop <= to {
+						paintExportHeader(p, sc)
+					}
 				}
 				for _, b := range sc.blocks {
 					if ctx.Err() != nil {
@@ -199,7 +227,7 @@ func paintExportRaster(ctx context.Context, sc exportScene, top, h int, scale fl
 					}
 					paintSceneBlock(p, b, sc.pal, sc.legacy)
 				}
-				if sc.footer.present {
+				if sc.footer.present && sc.footer.y+sc.footer.h+32 >= from && sc.footer.y-32 <= to {
 					paintFooter(p, sc.footer)
 				}
 			})
@@ -208,7 +236,8 @@ func paintExportRaster(ctx context.Context, sc exportScene, top, h int, scale fl
 }
 
 func paintSubstrate(p *ui.Painter, r ui.Rect, from, to float32, pal PaperThemeSpec, legacy bool, tiles []substrateTile) {
-	p.Fill(r, pal.Canvas, 0)
+	pageSlice := ui.Rect{X: r.X, Y: from, W: r.W, H: maxFloat32(to-from, 0)}
+	p.Fill(pageSlice, pal.Canvas, 0)
 	if legacy {
 		return
 	}
@@ -244,8 +273,12 @@ func paintSubstrate(p *ui.Painter, r ui.Rect, from, to float32, pal PaperThemeSp
 		case SubstrateGrid:
 			gap := maxFloat32(layer.Gap, 8)
 			lw := orF(layer.Size, 1)
-			for x := gap; x < r.W; x += gap {
-				p.Line(x, 0, x, r.H, lw, layer.Color)
+			y0 := max(float32(0), from)
+			y1 := min(r.H, to)
+			if y1 > y0 {
+				for x := gap; x < r.W; x += gap {
+					p.Line(x, y0, x, y1, lw, layer.Color)
+				}
 			}
 			for y := max(gap, float32(math.Floor(float64(from/gap)))*gap); y < min(r.H, to); y += gap {
 				p.Line(0, y, r.W, y, lw, layer.Color)
@@ -272,7 +305,7 @@ func paintSubstrate(p *ui.Painter, r ui.Rect, from, to float32, pal PaperThemeSp
 			if tileIdx < len(tiles) {
 				tl := tiles[tileIdx]
 				tileIdx++
-				p.Clip(r, 0, func() {
+				p.Clip(pageSlice, 0, func() {
 					src := ui.Rect{W: tl.srcW, H: tl.srcH}
 					for y := float32(math.Floor(float64(from/tl.dipH))) * tl.dipH; y < min(r.H, to); y += tl.dipH {
 						for x := float32(0); x < r.W; x += tl.dipW {
@@ -285,17 +318,34 @@ func paintSubstrate(p *ui.Painter, r ui.Rect, from, to float32, pal PaperThemeSp
 	}
 }
 
-func paintCardsAndSections(p *ui.Painter, sc exportScene) {
+func clipRectToPageBand(r ui.Rect, from, to, pad float32) (ui.Rect, bool) {
+	if r.Y+r.H+pad < from || r.Y-pad > to {
+		return ui.Rect{}, false
+	}
+	visTop := maxFloat32(r.Y, from-pad)
+	visBot := minFloat32(r.Y+r.H, to+pad)
+	if visBot <= visTop {
+		return ui.Rect{}, false
+	}
+	return ui.Rect{X: r.X, Y: visTop, W: r.W, H: visBot - visTop}, true
+}
+
+func paintCardsAndSections(p *ui.Painter, sc exportScene, from, to float32) {
 	pal := sc.pal
 	if len(sc.sections) > 0 && pal.Style.Sections != nil {
 		sec := pal.Style.Sections
+		pad := maxFloat32(24*2+8+sec.Radius+16, 64)
 		for _, sr := range sc.sections {
-			if sec.Shadow.A > 0 {
-				p.Shadow(sr, sec.Radius, 0, 8, 24, 0, sec.Shadow)
+			clipped, ok := clipRectToPageBand(sr, from, to, pad)
+			if !ok {
+				continue
 			}
-			p.Fill(sr, sec.Fill, sec.Radius)
+			if sec.Shadow.A > 0 {
+				p.Shadow(clipped, sec.Radius, 0, 8, 24, 0, sec.Shadow)
+			}
+			p.Fill(clipped, sec.Fill, sec.Radius)
 			if sec.Border.A > 0 {
-				p.Stroke(sr, sec.Border, sec.Radius, 1)
+				p.Stroke(clipped, sec.Border, sec.Radius, 1)
 			}
 		}
 		return
@@ -305,22 +355,29 @@ func paintCardsAndSections(p *ui.Painter, sc exportScene) {
 	}
 	card := pal.Card
 	cr := sc.cardRect
+	sy := orF(card.ShadowY, 6)
+	blur := orF(card.Blur, 16)
+	bw := orF(card.BorderW, 1)
+	pad := maxFloat32(blur*2+float32(math.Abs(float64(sy)))+card.Radius+bw+16, 64)
+	clipped, ok := clipRectToPageBand(cr, from, to, pad)
+	if !ok {
+		return
+	}
 	if card.Kind == CardFill {
 		if card.Shadow.A > 0 {
-			p.Shadow(cr, card.Radius, 0, orF(card.ShadowY, 6), orF(card.Blur, 16), 0, card.Shadow)
+			p.Shadow(clipped, card.Radius, 0, sy, blur, 0, card.Shadow)
 		}
 		fill := orC(card.Fill, pal.InnerCanvas)
-		p.Fill(cr, fill, card.Radius)
+		p.Fill(clipped, fill, card.Radius)
 	}
 	if card.HasBorder {
-		bw := orF(card.BorderW, 1)
-		p.Stroke(cr, card.Border, card.Radius, bw)
+		p.Stroke(clipped, card.Border, card.Radius, bw)
 	}
-	if card.TopEdge.A > 0 {
+	if card.TopEdge.A > 0 && cr.Y >= from-8 && cr.Y <= to+8 {
 		in := maxFloat32(card.Radius*0.6, 2)
 		p.Line(cr.X+in, cr.Y+0.5, cr.X+cr.W-in, cr.Y+0.5, 1, card.TopEdge)
 	}
-	if sc.cardLabelLay != nil {
+	if sc.cardLabelLay != nil && cr.Y >= from-32 && cr.Y <= to+32 {
 		lw, lh := sc.cardLabelLay.Size()
 		lx := cr.X + 18
 		ly := cr.Y - lh*0.5
@@ -345,7 +402,11 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 				y0 = pal.PadTop
 				y1 = maxFloat32(pageRect.H-pal.PadBottom, y0+20)
 			}
-			p.Line(x, y0, x, y1, w, o.Color)
+			y0 = maxFloat32(y0, from)
+			y1 = minFloat32(y1, to)
+			if y1 > y0 {
+				p.Line(x, y0, x, y1, w, o.Color)
+			}
 
 		case OrnamentSprockets:
 			pitch := maxFloat32(o.Y, 32)
@@ -360,28 +421,35 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 
 		case OrnamentSideText:
 			if os.textLay != nil {
-				ox := pageRect.W - o.X
-				oy := o.Y
-				p.Transform(ui.Rotation(90), ox, oy, func() {
-					p.TextLayout(os.textLay, ox, oy, o.Color)
-				})
+				lw, _ := os.textLay.Size()
+				if o.Y+lw+16 >= from && o.Y-16 <= to {
+					ox := pageRect.W - o.X
+					oy := o.Y
+					p.Transform(ui.Rotation(90), ox, oy, func() {
+						p.TextLayout(os.textLay, ox, oy, o.Color)
+					})
+				}
 			}
 
 		case OrnamentTape:
 			tw, th := orF(o.W, 120), orF(o.H, 30)
-			cx := pageRect.W*0.5 + o.X
-			cy := o.Y + th*0.5
-			paintWashiStrip(p, cx, cy, tw, th, o.Angle, o.Color)
+			if o.Y+th+32 >= from && o.Y-32 <= to {
+				cx := pageRect.W*0.5 + o.X
+				cy := o.Y + th*0.5
+				paintWashiStrip(p, cx, cy, tw, th, o.Angle, o.Color)
+			}
 
 		case OrnamentStamp:
 			if os.textLay != nil {
 				lw, lh := os.textLay.Size()
-				sx := pageRect.W - o.X - lw
-				sy := o.Y
-				cx, cy := sx+lw*0.5, sy+lh*0.5
-				p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
-					p.TextLayout(os.textLay, sx, sy, o.Color)
-				})
+				if o.Y+maxFloat32(lw, lh)+32 >= from && o.Y-32 <= to {
+					sx := pageRect.W - o.X - lw
+					sy := o.Y
+					cx, cy := sx+lw*0.5, sy+lh*0.5
+					p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
+						p.TextLayout(os.textLay, sx, sy, o.Color)
+					})
+				}
 			}
 
 		case OrnamentSeal:
@@ -390,31 +458,33 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 			if pal.Card != nil {
 				inset = pal.Card.Inset
 			}
-			sx := pageRect.W - inset - o.X - d
 			sy := inset + o.X + o.Y
-			cx, cy := sx+d*0.5, sy+d*0.5
-			p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
-				outer := (&ui.Path{}).Circle(cx, cy, d*0.5)
-				inner := (&ui.Path{}).Circle(cx, cy, d*0.5-5)
-				p.StrokePath(outer, 1.5, o.Color)
-				p.StrokePath(inner, 0.6, o.Color)
-				if os.textLay != nil {
-					_, h1 := os.textLay.Size()
-					h2 := float32(0)
-					if os.text2Lay != nil {
-						_, h2 = os.text2Lay.Size()
+			if sy+d+32 >= from && sy-32 <= to {
+				sx := pageRect.W - inset - o.X - d
+				cx, cy := sx+d*0.5, sy+d*0.5
+				p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
+					outer := (&ui.Path{}).Circle(cx, cy, d*0.5)
+					inner := (&ui.Path{}).Circle(cx, cy, d*0.5-5)
+					p.StrokePath(outer, 1.5, o.Color)
+					p.StrokePath(inner, 0.6, o.Color)
+					if os.textLay != nil {
+						_, h1 := os.textLay.Size()
+						h2 := float32(0)
+						if os.text2Lay != nil {
+							_, h2 = os.text2Lay.Size()
+						}
+						totalH := h1
+						if h2 > 0 {
+							totalH += 4 + h2
+						}
+						ty := cy - totalH*0.5
+						p.TextLayout(os.textLay, sx, ty, o.Color)
+						if os.text2Lay != nil {
+							p.TextLayout(os.text2Lay, sx, ty+h1+4, o.Color)
+						}
 					}
-					totalH := h1
-					if h2 > 0 {
-						totalH += 4 + h2
-					}
-					ty := cy - totalH*0.5
-					p.TextLayout(os.textLay, sx, ty, o.Color)
-					if os.text2Lay != nil {
-						p.TextLayout(os.text2Lay, sx, ty+h1+4, o.Color)
-					}
-				}
-			})
+				})
+			}
 		}
 	}
 }
