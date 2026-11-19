@@ -498,16 +498,20 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		if diffLinkDefRE.MatchString(body) {
 			body = strings.Replace(body, "]:", "]\\:", 1)
 		}
-		// An escaped "\[" opening the line would start display math; the note shows a
-		// bracket, so write it as an entity.
-		if strings.HasPrefix(body, `\[`) {
-			body = "&#91;" + body[2:]
-		}
 		if st.Setext > 0 && !st.Code {
 			body = strings.Repeat("#", st.Setext) + " " + body
 		}
-		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
+		markdown.View(c, diffPlainLinks(diffNoDisplayMath(body)), diffMarkdownOptions(st))
 	})
+}
+
+// diffNoDisplayMath writes an escaped "\[" opening s as an entity: the parser would
+// start display math there, while the note shows a bracket.
+func diffNoDisplayMath(s string) string {
+	if strings.HasPrefix(s, `\[`) {
+		return "&#91;" + s[2:]
+	}
+	return s
 }
 
 // diffLinkDefRE matches a link reference definition such as "[api]: https://…".
@@ -534,7 +538,7 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 	if strings.TrimSpace(strings.Trim(cell, "*")) == "" {
 		return ui.Box(c)
 	}
-	return markdown.View(c, diffPlainLinks(cell), diffMarkdownOptions(st))
+	return markdown.View(c, diffPlainLinks(diffNoDisplayMath(cell)), diffMarkdownOptions(st))
 }
 
 // IsDiffTableRow reports whether a trimmed Markdown line is a table row.
