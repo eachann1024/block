@@ -1020,11 +1020,11 @@ const diffLinkTitle = `(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)
 
 var (
 	// Spaces may pad the destination: "[Docs]( /docs )" is a link too. In the text an
-	// escaped bracket ("\]") is literal, and one level of brackets may nest
-	// ("![构建状态 [CI]](…)").
-	diffImageRE    = regexp.MustCompile(`!\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])*)\]\(\s*(` + diffLinkDest + `)` + diffLinkTitle + `\s*\)`)
-	diffLinkRE     = regexp.MustCompile(`\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])+)\]\(\s*` + diffLinkDest + diffLinkTitle + `\s*\)`)
-	diffRefLinkRE  = regexp.MustCompile(`!?\[((?:\\.|[^\[\]\\]|\[[^\[\]]*\])+)\](?:\[((?:\\.|[^\[\]\\])*)\])?`)
+	// escaped bracket ("\]") is literal, and two levels of brackets may nest
+	// ("![构建状态 [CI]](…)", "[app/[[...slug]]/page.tsx](…)").
+	diffImageRE    = regexp.MustCompile(`!\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]\(\s*(` + diffLinkDest + `)` + diffLinkTitle + `\s*\)`)
+	diffLinkRE     = regexp.MustCompile(`\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])+)\]\(\s*` + diffLinkDest + diffLinkTitle + `\s*\)`)
+	diffRefLinkRE  = regexp.MustCompile(`!?\[((?:\\.|[^\[\]\\]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])+)\](?:\[((?:\\.|[^\[\]\\])*)\])?`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
