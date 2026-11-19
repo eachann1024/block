@@ -97,3 +97,23 @@ func BetaBadge(c *ui.Context, compact bool) {
 			SingleLine()
 	})
 }
+
+// OfficialBadge renders an Ocean Paper "Official" badge for verified first-party plugins.
+func OfficialBadge(c *ui.Context, compact bool) {
+	pal := theme.Ocean()
+	h := theme.HeightMicro
+	padX := theme.Space8
+	if compact {
+		h = theme.KeycapHeight
+		padX = theme.Space6
+	}
+	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
+		Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, theme.Tr("官方", "Official")).
+			FontSize(theme.FontMicro).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightControl).
+			TextColor(pal.Accent).
+			SingleLine()
+	})
+}
