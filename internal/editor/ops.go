@@ -3961,22 +3961,41 @@ func applySelectedDiff(op *model.PlanOp) string {
 	return strings.Join(out, "\n") + "\n"
 }
 
-// syncHiddenTableSeparators makes a changed table separator row, which the review card
-// hides, follow the other changed rows of its table: kept when any of them is taken,
-// dropped when none is, so a rejected table never leaves an orphan "| --- |" behind.
+// diffChanges maps diff kinds to the side markers DiffFenceMask expects.
+func diffChanges(diff []model.DiffLine) ([]string, []int) {
+	texts := make([]string, len(diff))
+	changes := make([]int, len(diff))
+	for i, d := range diff {
+		texts[i] = d.Text
+		switch d.Kind {
+		case model.DiffDelete:
+			changes[i] = -1
+		case model.DiffInsert:
+			changes[i] = 1
+		}
+	}
+	return texts, changes
+}
+
+// syncHiddenTableSeparators makes the changed separator rows of a table, which the
+// review card hides, follow the other changed rows of the same table block (equal rows
+// included, fenced code excluded): kept when any of them is taken, dropped when none
+// is, so a rejected table never leaves an orphan or a stray alignment change behind.
 func syncHiddenTableSeparators(diff []model.DiffLine, selected []bool) {
+	fenced := appUi.DiffFenceMask(diffChanges(diff))
+	isRow := func(i int) bool { return !fenced[i] && appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) }
 	for i := 0; i < len(diff); {
-		if !appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) || diff[i].Kind == model.DiffEqual {
+		if !isRow(i) {
 			i++
 			continue
 		}
-		start, kind := i, diff[i].Kind
-		for i < len(diff) && diff[i].Kind == kind && appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) {
+		start := i
+		for i < len(diff) && isRow(i) {
 			i++
 		}
 		any, hasRows := false, false
 		for j := start; j < i; j++ {
-			if !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+			if diff[j].Kind != model.DiffEqual && !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
 				hasRows = true
 				any = any || selected[j]
 			}
@@ -3985,7 +4004,7 @@ func syncHiddenTableSeparators(diff []model.DiffLine, selected []bool) {
 			continue
 		}
 		for j := start; j < i; j++ {
-			if appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+			if diff[j].Kind != model.DiffEqual && appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
 				selected[j] = any
 			}
 		}
