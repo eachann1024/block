@@ -1722,6 +1722,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			refDefs := bui.DiffRefDefs(texts, changes)
 			alerts := bui.DiffAlertTitles(texts, changes)
 			fenceLines, fenceQuotes := bui.DiffFenceLines(texts, changes)
+			hardBreaks := bui.DiffHardBreaks(texts, changes)
 			tableCols := bui.DiffTableCols(texts, changes)
 			headers, seps := bui.DiffTableRoles(texts, changes)
 			var visible []PlanDiffLine
@@ -1802,7 +1803,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index]}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index], Quote: fenceQuotes[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index], Quote: fenceQuotes[dl.Index], Break: hardBreaks[dl.Index]})
 								}
 							})
 							if rowBtn.Clicked() {
@@ -1817,7 +1818,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG, Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index]}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index], Quote: fenceQuotes[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index], Quote: fenceQuotes[dl.Index], Break: hardBreaks[dl.Index]})
 								}
 							})
 						}

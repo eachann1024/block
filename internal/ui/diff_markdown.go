@@ -48,6 +48,8 @@ type DiffLineStyle struct {
 	// Quote is the quote depth of a code line's block (see DiffFenceLines): in
 	// "> ```sh" the code shows without its ">" markers.
 	Quote int
+	// Break is DiffHardBreaks for the line: its trailing "\" breaks the line.
+	Break bool
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -349,6 +351,35 @@ func DiffFenceMask(lines []string, change []int) []bool {
 		}
 	}
 	return old
+}
+
+// DiffHardBreaks marks the lines whose trailing "\" is a hard line break: outside
+// code, with a line of text after it in the line's own text (an unchanged line: the
+// new one). At the end of a paragraph ("备份目录 C:\backup\") the "\" is text.
+func DiffHardBreaks(lines []string, change []int) []bool {
+	masks, _ := diffScan(lines, change)
+	math := diffMathSides(lines, change)
+	out := make([]bool, len(lines))
+	for si, side := range [2]int{-1, 1} {
+		for i, l := range lines {
+			if change[i] == -side || side < 0 && change[i] == 0 || masks[si][i] || math[si][i] {
+				continue
+			}
+			l = strings.TrimRight(l, "\r\n")
+			if !strings.HasSuffix(l, `\`) || diffEscaped(l, len(l)-1) {
+				continue
+			}
+			for k := i + 1; k < len(lines); k++ {
+				if change[k] != -side {
+					t := strings.TrimSpace(lines[k])
+					out[i] = t != "" && !masks[si][k] && diffQuoteDepth(t) == diffQuoteDepth(strings.TrimSpace(l)) &&
+						strings.TrimSpace(diffStripQuotes(t, diffQuoteDepth(t))) != ""
+					break
+				}
+			}
+		}
+	}
+	return out
 }
 
 // diffFenceLineRE matches a code fence line ("```sh", "> ~~~", "- ```sh") behind
@@ -1110,8 +1141,8 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		return ui.Text(c, strings.ReplaceAll(line, "\t", "    ")).Font("monospace").FontSize(theme.FontBody).
 			TextColor(st.Text).Grow(1).MinWidth(0)
 	}
-	// A trailing "\" is a hard line break, not text: "安装完成\" shows 安装完成.
-	if strings.HasSuffix(line, `\`) && !diffEscaped(line, len(line)-1) {
+	// A hard line break's "\" is no text: "安装完成\" shows 安装完成.
+	if st.Break {
 		line = line[:len(line)-1]
 	}
 	// Leading spaces become padding: four of them alone would parse as a code block,
