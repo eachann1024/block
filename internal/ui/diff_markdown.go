@@ -1428,7 +1428,12 @@ func diffInlineStart(s string) string {
 func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool) ui.Element {
 	// A cell holds inline content only; links turn into their text first, so their
 	// start is guarded too.
-	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffEscapeURLs(diffPlainLinks(cell, st.Refs)))))
+	// A cell starting with a closed "\[…\]" is math, as in the note.
+	s := diffInlineStart(diffEscapeURLs(diffPlainLinks(cell, st.Refs)))
+	if t := strings.TrimSpace(cell); !strings.HasPrefix(t, `\[`) || !strings.Contains(t[2:], `\]`) {
+		s = diffLiteralStart(s)
+	}
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return ui.Box(c)
 	}
