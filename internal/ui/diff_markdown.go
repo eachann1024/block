@@ -480,6 +480,9 @@ func diffPlainLinks(s string) string {
 			if re == diffAutolinkRE {
 				// An autolink shows its address verbatim, so "__tests__" is not bold.
 				text = diffLiteralEscaper.Replace(text)
+			} else {
+				// Link text is inline: "[# Release](…)" must not become a heading.
+				text = diffInlineStart(text)
 			}
 			b.WriteString(text)
 			last = m[1]
