@@ -31,6 +31,16 @@ func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
 	nbRoot := s.NotebookRoot()
 	relSlash, ok := relativeNotePath(nbRoot, absNotePath)
 	if !ok {
+		for _, candidate := range s.Notebooks() {
+			if rel, matched := relativeNotePath(candidate, absNotePath); matched {
+				nbRoot = candidate
+				relSlash = rel
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
 		return
 	}
 
@@ -91,7 +101,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	defer cancel()
 	rt, err := s.ensureRuntime(ctx, key.pluginID, key.notebookRoot)
 	if err == nil {
-		err = rt.NotifyNoteSaved(ctx, relSlash)
+		err = rt.NotifyNoteSaved(ctx, key.notebookRoot, relSlash)
 	}
 	s.mu.Lock()
 	v := s.views[key]
