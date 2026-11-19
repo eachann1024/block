@@ -1064,11 +1064,12 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
 	if st.Fence {
-		info := strings.TrimSpace(strings.TrimLeft(diffFenceLineRE.ReplaceAllString(strings.TrimSpace(line), "$3"), "`~"))
-		if info == "" {
+		// The language is the info string's first word: "```sh title=x" shows sh.
+		info := strings.Fields(strings.TrimLeft(diffFenceLineRE.ReplaceAllString(strings.TrimSpace(line), "$3"), "`~"))
+		if len(info) == 0 {
 			return ui.Box(c).FillWidth().Height(theme.Space4)
 		}
-		return ui.Text(c, info).Font("monospace").FontSize(theme.FontBody).TextColor(st.Text).Grow(1).MinWidth(0)
+		return ui.Text(c, info[0]).Font("monospace").FontSize(theme.FontBody).TextColor(st.Text).Grow(1).MinWidth(0)
 	}
 	if st.Alert != "" && !st.Code {
 		line = "> **" + st.Alert + "**"
