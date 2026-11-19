@@ -1504,8 +1504,10 @@ func (s *Session) applyBoxSelection(curWX, curWY float32) {
 	}
 
 	if firstHit < 0 {
-		s.selAnchor = Position{Block: s.focusedBlock, Offset: 0}
-		s.selHead = s.selAnchor
+		if s.focusedBlock >= 0 {
+			s.selAnchor = Position{Block: s.focusedBlock, Offset: 0}
+			s.selHead = s.selAnchor
+		}
 		return
 	}
 

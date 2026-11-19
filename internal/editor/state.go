@@ -309,7 +309,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		doc:               d,
 		codec:             codec,
 		host:              host,
-		focusedBlock:      0,
+		focusedBlock:      -1,
 		hoveredBlock:      -1,
 		dragOverIdx:       -1,
 		dragTargetIdx:     -1,
@@ -386,7 +386,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.dirty = false
 	s.undoStack = nil
 	s.redoStack = nil
-	s.focusedBlock = 0
+	s.focusedBlock = -1
 	s.hoveredBlock = -1
 	s.selAnchor = Position{}
 	s.selHead = Position{}
@@ -519,6 +519,17 @@ func (s *Session) FocusBlock(idx int) {
 	}
 	s.firstLineDeleteArmed = false
 	s.caretHidden = false
+}
+
+// ClearFocus releases active block focus so the note renders cleanly until clicked.
+func (s *Session) ClearFocus() {
+	s.focusedBlock = -1
+	s.focusPending = false
+	s.focusPreventScroll = false
+	s.multiSelFocusPending = false
+	s.selSyncPending = false
+	s.firstLineDeleteArmed = false
+	s.tableActiveBlock = 0
 }
 
 func (s *Session) FirstLineDeleteArmed() bool {
