@@ -19,7 +19,7 @@ const (
 	tabCloseSlot   = 18
 	singleTabMaxW  = 240
 	tabPillH       = 28
-	tabStripGap    = 4
+	tabStripGap    = 6
 	tabDragSpacerW = 16
 )
 
@@ -165,7 +165,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	label := tabTitle(path)
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).MaxWidth(tabW).MinWidth(min(float32(tabMinW), tabW)).Shrink(0).Height(tabPillH).Padding(0, 5, 0, 10).Gap(2).
+	pill := ui.ButtonBase(c).MaxWidth(tabW).MinWidth(min(float32(tabMinW), tabW)).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 12).Gap(8).
 		Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).FocusRing(false).
 		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
 	if !p.Busy && p.OnReorderTab != nil {
@@ -237,13 +237,19 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 		closePress := cb.Pressed()
 		ic := pal.MonoIconColors(pal.TextSecondary)
 		cbBG := ui.Transparent
+		if active {
+			cbBG = chrome.Hover
+		}
 		if closeHover || closePress {
-			cbBG = pal.SelectionBG
-			ic = pal.DuoIconColors(pal.Text)
+			cbBG = chrome.Hover
+			if active {
+				cbBG = pal.Selected
+			}
+			ic = pal.MonoIconColors(pal.Text)
 		}
 		blockui.AnimateSurfaceColors(cb, cbBG, ui.Transparent, false)
 		blockui.TactileButton(cb, closeHover, closePress, false)
-		cb.Children(func() { icons.DrawAnimated(c, icons.Close, theme.IconInline, ic, closeHover || closePress) })
+		cb.Children(func() { icons.DrawAnimated(c, icons.Close, theme.IconMicro, ic, closeHover || closePress) })
 		if blockui.IsProbeEnabled() {
 			id := fmt.Sprintf("tab-close-%d", ix)
 			blockui.Probe(cb, id)
