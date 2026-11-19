@@ -1565,9 +1565,10 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			fenced := bui.DiffFenceMask(texts, changes)
 			setext := bui.DiffSetextLevels(texts, changes)
 			tableCols := bui.DiffTableCols(texts, fenced)
+			headers, seps := bui.DiffTableRoles(texts, changes)
 			var visible []PlanDiffLine
 			for _, dl := range lines {
-				if !fenced[dl.Index] && bui.IsDiffTableSep(strings.TrimSpace(dl.Text)) {
+				if seps[dl.Index] {
 					continue
 				}
 				visible = append(visible, dl)
@@ -1592,7 +1593,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 						code := fenced[dl.Index]
 						isTable := !code && tableCols[dl.Index] > 0
 						nextIsTable := pos+1 < totalVis && tableCols[visible[pos+1].Index] > 0
-						isHeader := (dl.Index+1 < len(lines) && bui.IsDiffTableSep(strings.TrimSpace(lines[dl.Index+1].Text))) ||
+						isHeader := headers[dl.Index] ||
 							strings.Contains(strings.ToLower(trimmed), "<th")
 
 						rowBg := pal.Paper
