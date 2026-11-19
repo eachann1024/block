@@ -1205,11 +1205,11 @@ func TestEditorRenderingParity(t *testing.T) {
 		w    int
 		lh   float32
 	}{
-		{model.BlockHeading1, 32, 600, 1.2},
-		{model.BlockHeading2, 22, 600, 1.3},
-		{model.BlockHeading3, 18, 600, 1.35},
-		{model.BlockHeading4, 16, 600, 1.4},
-		{model.BlockHeading5, 14, 600, 1.45},
+		{model.BlockHeading1, 28, theme.WeightTitle, 1.25},
+		{model.BlockHeading2, 20, theme.WeightTitle, 1.3},
+		{model.BlockHeading3, 17, theme.WeightTitle, 1.35},
+		{model.BlockHeading4, 15, theme.WeightTitle, 1.4},
+		{model.BlockHeading5, 14, theme.WeightTitle, 1.45},
 		{model.BlockHeading6, 14, 500, 1.45},
 	} {
 		sz, w, lh := blockTextMetrics(tc.kind)
