@@ -159,6 +159,12 @@ const (
 	ToolWrite       Icon = "tool-write"
 	ToolRun         Icon = "tool-run"
 	ToolRead        Icon = "tool-read"
+	Upload          Icon = "upload"
+	Eye             Icon = "eye"
+	EyeOff          Icon = "eye-off"
+	Send            Icon = "send"
+	Plug            Icon = "plug"
+	Package         Icon = "package"
 )
 
 type MascotState string
@@ -272,6 +278,18 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 		case Plus:
 			sc := 1 + 0.15*p
 			root.Rotate(90*p).Scale(sc, sc)
+		case Close:
+			sc := 1 + 0.06*p
+			root.Rotate(90*p).Scale(sc, sc)
+		case Check:
+			sc := 1 + 0.12*p
+			root.Translate(0, -0.7*k*p).Scale(sc, sc)
+		case Note, NoteCheck:
+			root.Translate(0, -1.3*k*p).Rotate(-2.5*p)
+		case Package:
+			root.Translate(0, -1.4*k*p)
+		case Send:
+			root.Translate(2.0*k*p, -1.8*k*p).Rotate(-5*p)
 		case ChevronDown, TbChevron:
 			sc := 1 + 0.13*p
 			root.Translate(0, 2.2*k*p).Scale(sc, sc)
@@ -285,8 +303,10 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 			sc := 1 + 0.13*p
 			root.Translate(-2.2*k*p, 0).Scale(sc, sc)
 		case Refresh, TbReset, UpdateTangle:
-			root.Rotate(38 * p)
-		case Trash, Pencil, Eraser, Cut:
+			root.Rotate(42 * p)
+		case Trash:
+			root.Translate(0, -0.7*k*p).Rotate(-7*p)
+		case Pencil, Eraser, Cut:
 			root.Rotate(-6 * p)
 		case Drag:
 			sc := 1 + 0.12*p
@@ -342,6 +362,14 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 					case Sparkles, AiPolish, Star:
 						sc := 1 + 0.07*p
 						fl.Rotate(15*p).Scale(sc, sc)
+					case Eye:
+						sc := 1 + 0.05*p
+						fl.Scale(sc, sc)
+					case Stop:
+						sc := 1 - 0.08*p
+						fl.Scale(sc, sc)
+					case Plug:
+						fl.Translate(-0.8*k*p, 0.8*k*p)
 					}
 				}
 			}
@@ -358,6 +386,12 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ln.Rotate(15*p).Scale(sc, sc)
 					case Sliders:
 						ln.Translate(-1.4*k*p, 0)
+					case Download:
+						ln.Translate(0, 2.0*k*p)
+					case Upload:
+						ln.Translate(0, -2.0*k*p)
+					case Plug:
+						ln.Translate(-0.8*k*p, 0.8*k*p)
 					case ArrowRight:
 						ln.Translate(1.6*k*p, 0)
 					case ArrowLeft:
@@ -375,8 +409,30 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
 				if moving {
 					switch glyph {
-					case Plus, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
+					case Plus, Close, Check, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
 						// Unified root transform already applied in sub-pixel lockstep with .line.
+					case Download, Upload:
+						ac.Scale(1+0.08*p, 1)
+					case Eye:
+						sc := 1 + 0.20*p
+						ac.Scale(sc, sc)
+					case EyeOff:
+						sc := 1 + 0.07*p
+						ac.Translate(1.0*k*p, 1.0*k*p).Scale(sc, sc)
+					case Send:
+						sc := 1 + 0.08*p
+						ac.Translate(0.9*k*p, -0.9*k*p).Scale(sc, sc)
+					case Plug:
+						sc := 1 + 0.10*p
+						ac.Translate(1.4*k*p, -1.4*k*p).Scale(sc, sc)
+					case Package:
+						sc := 1 + 0.10*p
+						ac.Scale(sc, sc)
+					case Stop:
+						sc := 1 + 0.12*p
+						ac.Scale(sc, sc)
+					case Note, NoteCheck:
+						ac.Translate(1.2*k*p, 0)
 					case SidebarExpand:
 						sc := 1 + 0.08*p
 						ac.Translate(2.5*k*p, 0).Scale(sc, sc)
@@ -406,7 +462,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 					case FindSearch:
 						sc := 1 + 0.08*p
 						ac.Translate(1.2*k*p, 1.2*k*p).Scale(sc, sc)
-					case Download, ArrowDown, RowInsertBelow:
+					case ArrowDown, RowInsertBelow:
 						ac.Translate(0, 2.0*k*p)
 					case ArrowUp, RowInsertAbove:
 						ac.Translate(0, -2.0*k*p)
