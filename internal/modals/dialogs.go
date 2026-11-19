@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"block/internal/icons"
 	"block/internal/model"
@@ -382,6 +383,8 @@ func (m *Manager) OpenHistory(notePath, currentContent string) {
 	m.historySelectedID = ""
 	m.historySnapContent = ""
 	m.historyDiffLines = nil
+	m.historyRowHeights = nil
+	m.historyScroll = ui.ScrollState{}
 
 	if m.ListHistoryFn != nil {
 		snaps, err := m.ListHistoryFn(notePath)
@@ -410,6 +413,8 @@ func (m *Manager) CloseHistory() {
 func (m *Manager) selectHistorySnapshot(snapID string) {
 	m.historySelectedID = snapID
 	m.historyConfirmRestore = false
+	m.historyRowHeights = nil
+	m.historyScroll = ui.ScrollState{}
 	if m.ReadHistoryFn != nil {
 		content, err := m.ReadHistoryFn(m.historyNotePath, snapID)
 		if err != nil {
@@ -576,24 +581,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						ui.Text(c, m.historySnapContent).FontSize(theme.FontBody).TextColor(pal.Text)
 						return
 					}
-					for _, dl := range m.historyDiffLines {
-						bg := ui.Transparent
-						fg := pal.Text
-						prefix := "  "
-						switch dl.Kind {
-						case model.DiffDelete:
-							bg = pal.DiffDelBG
-							fg = pal.DiffDelFG
-							prefix = "- "
-						case model.DiffInsert:
-							bg = pal.DiffAddBG
-							fg = pal.DiffAddFG
-							prefix = "+ "
-						}
-						ui.Row(c).FillWidth().Padding(2, 6, 2, 6).Radius(theme.RadiusXS).Background(bg).Gap(8).Children(func() {
-							ui.Text(c, prefix+dl.Text).FontSize(theme.FontBody).TextColor(fg)
-						})
-					}
+					m.renderHistoryDiffLines(c, pal)
 				})
 			})
 		})
@@ -601,6 +589,121 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 
 	if !open {
 		m.CloseHistory()
+	}
+}
+
+const (
+	historyDiffVirtThreshold         = 150
+	historyDiffViewHeight    float32 = 440
+	historyDiffOverscanPx    float32 = 300
+)
+
+func estimateHistoryDiffRowHeight(text string) float32 {
+	runes := utf8.RuneCountInString(text) + 2
+	lines := max(1, (runes+55)/56)
+	return float32(lines)*theme.LineBody + theme.Space4
+}
+
+func (m *Manager) ensureHistoryDiffRowHeights() []float32 {
+	n := len(m.historyDiffLines)
+	if len(m.historyRowHeights) == n {
+		return m.historyRowHeights
+	}
+	heights := make([]float32, n)
+	for i, dl := range m.historyDiffLines {
+		heights[i] = estimateHistoryDiffRowHeight(dl.Text)
+	}
+	m.historyRowHeights = heights
+	return heights
+}
+
+func (m *Manager) renderHistoryDiffRow(c *ui.Context, pal theme.Palette, idx int, dl model.DiffLine, trackHeight bool) {
+	bg := ui.Transparent
+	fg := pal.Text
+	prefix := "  "
+	switch dl.Kind {
+	case model.DiffDelete:
+		bg = pal.DiffDelBG
+		fg = pal.DiffDelFG
+		prefix = "- "
+	case model.DiffInsert:
+		bg = pal.DiffAddBG
+		fg = pal.DiffAddFG
+		prefix = "+ "
+	}
+	row := ui.Row(c.Key(fmt.Sprintf("history-diff-row-%d", idx))).FillWidth().Padding(2, 6, 2, 6).Radius(theme.RadiusXS).Background(bg).Gap(8)
+	row.Children(func() {
+		ui.Text(c, prefix+dl.Text).FontSize(theme.FontBody).TextColor(fg)
+	})
+	if trackHeight {
+		row.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			if r.H > 0 && idx >= 0 && idx < len(m.historyRowHeights) {
+				m.historyRowHeights[idx] = r.H
+			}
+		})
+	}
+}
+
+func (m *Manager) renderHistoryDiffLines(c *ui.Context, pal theme.Palette) {
+	total := len(m.historyDiffLines)
+	if total <= historyDiffVirtThreshold {
+		for i, dl := range m.historyDiffLines {
+			m.renderHistoryDiffRow(c, pal, i, dl, false)
+		}
+		return
+	}
+
+	heights := m.ensureHistoryDiffRowHeights()
+	gap := theme.Space4
+	scrollY := max(m.historyScroll.Y, 0)
+	winTop := max(scrollY-historyDiffOverscanPx, 0)
+	winBot := scrollY + historyDiffViewHeight + historyDiffOverscanPx
+
+	start := 0
+	var y float32
+	for start < total {
+		rowEnd := y + heights[start]
+		if rowEnd >= winTop {
+			break
+		}
+		y = rowEnd + gap
+		start++
+	}
+	if start >= total {
+		start = total - 1
+	}
+
+	end := start
+	curY := y
+	for end < total {
+		curY += heights[end]
+		end++
+		if curY > winBot {
+			break
+		}
+		curY += gap
+	}
+
+	if start > 0 {
+		var topH float32
+		for i := 0; i < start; i++ {
+			topH += heights[i]
+		}
+		topH += float32(start-1) * gap
+		ui.Box(c.Key("history-diff-spacer-top")).FillWidth().Height(topH).Shrink(0)
+	}
+
+	for i := start; i < end; i++ {
+		m.renderHistoryDiffRow(c, pal, i, m.historyDiffLines[i], true)
+	}
+
+	if end < total {
+		var botH float32
+		for i := end; i < total; i++ {
+			botH += heights[i]
+		}
+		botH += float32(total-end-1) * gap
+		ui.Box(c.Key("history-diff-spacer-bot")).FillWidth().Height(botH).Shrink(0)
 	}
 }
 
@@ -630,8 +733,8 @@ func computeMyersDiffLines(oldText, newText string) []model.DiffLine {
 	trace := make([][]int, 0, maxD+1)
 
 	for d := 0; d <= maxD; d++ {
-		snap := make([]int, len(v))
-		copy(snap, v)
+		snap := make([]int, 2*d+1)
+		copy(snap, v[offset-d:offset+d+1])
 		trace = append(trace, snap)
 		for k := -d; k <= d; k += 2 {
 			var x int
@@ -647,26 +750,40 @@ func computeMyersDiffLines(oldText, newText string) []model.DiffLine {
 			}
 			v[offset+k] = x
 			if x >= n && y >= m {
-				return backtrackMyers(a, b, trace, offset)
+				return backtrackMyers(a, b, trace)
 			}
 		}
 	}
 	return nil
 }
 
-func backtrackMyers(a, b []string, trace [][]int, offset int) []model.DiffLine {
+func backtrackMyers(a, b []string, trace [][]int) []model.DiffLine {
 	x, y := len(a), len(b)
 	var rev []model.DiffLine
 	for d := len(trace) - 1; d >= 0; d-- {
+		if d == 0 {
+			for x > 0 && y > 0 {
+				rev = append(rev, model.DiffLine{
+					Kind:    model.DiffEqual,
+					OldLine: x,
+					NewLine: y,
+					Text:    a[x-1],
+				})
+				x--
+				y--
+			}
+			break
+		}
 		v := trace[d]
+		snapOffset := d
 		k := x - y
 		var prevK int
-		if k == -d || (k != d && v[offset+k-1] < v[offset+k+1]) {
+		if k == -d || (k != d && v[snapOffset+k-1] < v[snapOffset+k+1]) {
 			prevK = k + 1
 		} else {
 			prevK = k - 1
 		}
-		prevX := v[offset+prevK]
+		prevX := v[snapOffset+prevK]
 		prevY := prevX - prevK
 		for x > prevX && y > prevY {
 			rev = append(rev, model.DiffLine{
@@ -678,20 +795,18 @@ func backtrackMyers(a, b []string, trace [][]int, offset int) []model.DiffLine {
 			x--
 			y--
 		}
-		if d > 0 {
-			if x == prevX {
-				rev = append(rev, model.DiffLine{
-					Kind:    model.DiffInsert,
-					NewLine: y,
-					Text:    b[y-1],
-				})
-			} else {
-				rev = append(rev, model.DiffLine{
-					Kind:    model.DiffDelete,
-					OldLine: x,
-					Text:    a[x-1],
-				})
-			}
+		if x == prevX {
+			rev = append(rev, model.DiffLine{
+				Kind:    model.DiffInsert,
+				NewLine: y,
+				Text:    b[y-1],
+			})
+		} else {
+			rev = append(rev, model.DiffLine{
+				Kind:    model.DiffDelete,
+				OldLine: x,
+				Text:    a[x-1],
+			})
 		}
 		x, y = prevX, prevY
 	}
