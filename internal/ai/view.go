@@ -1268,8 +1268,9 @@ var plainRuleRE = regexp.MustCompile(`^(?:>\s*)*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?
 // plainMathLineRE matches a one-line display formula ("$$x^2$$", `\[x^2\]`).
 var plainMathLineRE = regexp.MustCompile(`^(?:\$\$.+\$\$|\\\[.+\\\])$`)
 
-// plainTagRE matches an inline HTML tag ("<kbd>", "</kbd>", "<br/>").
-var plainTagRE = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>`)
+// plainTagRE matches an inline HTML tag the note styles ("<kbd>", "</kbd>", "<br/>");
+// any other ("<TOKEN>", "<div>") shows as written, as in the note.
+var plainTagRE = regexp.MustCompile(`(?i)</?(?:br|b|strong|i|em|u|ins|s|del|strike|code|kbd|samp|mark|sub|sup|small)(?:\s[^<>]*)?/?>`)
 
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
