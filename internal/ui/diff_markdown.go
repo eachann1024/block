@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
@@ -1251,7 +1253,7 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 				body = q + rest[:m[3]] + `\` + rest[m[3]:]
 			}
 		}
-		body = diffPlainLinks(body, st.Refs)
+		body = diffEscapeURLs(diffPlainLinks(body, st.Refs))
 		if !math {
 			body = diffLiteralStart(body)
 		}
@@ -1330,6 +1332,59 @@ func diffLiteralStart(s string) string {
 	return s
 }
 
+// diffBareURLRE matches the start of a bare link the note turns into a link:
+// "https://", "http://", "ftp://" or "www.".
+var diffBareURLRE = regexp.MustCompile(`(?i)(?:https?|ftp)://[^\s<]|www\.[^\s<]`)
+
+// BareURLs gives the spans of the bare links in s outside code spans, as the note
+// reads them: to a space, "<" or punctuation beyond ASCII, less trailing
+// punctuation and unbalanced ")". Inside one "_" or "*" is no emphasis.
+func BareURLs(s string) [][2]int {
+	masked := []byte(s)
+	for _, sp := range CodeSpans(s) {
+		for k := sp[0]; k < sp[1]; k++ {
+			masked[k] = ' '
+		}
+	}
+	var out [][2]int
+	for _, m := range diffBareURLRE.FindAllIndex(masked, -1) {
+		if len(out) > 0 && m[0] < out[len(out)-1][1] {
+			continue
+		}
+		end := m[0]
+		for end < len(s) {
+			r, n := utf8.DecodeRuneInString(s[end:])
+			if unicode.IsSpace(r) || r == '<' || r >= utf8.RuneSelf && unicode.IsPunct(r) || masked[end] == ' ' {
+				break
+			}
+			end += n
+		}
+		for end > m[0] {
+			c := s[end-1]
+			if strings.IndexByte("?!.,:*_~'\"", c) >= 0 ||
+				c == ')' && strings.Count(s[m[0]:end], ")") > strings.Count(s[m[0]:end], "(") {
+				end--
+				continue
+			}
+			break
+		}
+		out = append(out, [2]int{m[0], end})
+	}
+	return out
+}
+
+// diffEscapeURLs escapes the emphasis markers inside bare links, so
+// "https://example.com/_draft_/index" keeps its underscores.
+func diffEscapeURLs(s string) string {
+	spans := BareURLs(s)
+	for k := len(spans) - 1; k >= 0; k-- {
+		sp := spans[k]
+		u := strings.NewReplacer("_", `\_`, "*", `\*`, "~", `\~`).Replace(s[sp[0]:sp[1]])
+		s = s[:sp[0]] + u + s[sp[1]:]
+	}
+	return s
+}
+
 // diffLinkDefRE matches a link reference definition such as "[api]: https://…".
 var diffLinkDefRE = regexp.MustCompile(`^\[[^\]]+\]:`)
 
@@ -1357,7 +1412,7 @@ func diffInlineStart(s string) string {
 func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool) ui.Element {
 	// A cell holds inline content only; links turn into their text first, so their
 	// start is guarded too.
-	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffPlainLinks(cell, st.Refs))))
+	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffEscapeURLs(diffPlainLinks(cell, st.Refs)))))
 	if s == "" {
 		return ui.Box(c)
 	}
