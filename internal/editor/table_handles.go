@@ -71,6 +71,102 @@ func (s *Session) toggleTableRowMenu(idx int, id model.BlockID, row int) {
 
 // --- Table Column / Row / Whole-Table Operations ---
 
+func uniformColTint(tbl *model.TableData, col int) (model.TableTint, bool) {
+	if tbl == nil || len(tbl.Rows) == 0 || col < 0 || col >= len(tbl.Rows[0]) {
+		return model.TableTintNone, false
+	}
+	first := tbl.Rows[0][col].Tint
+	for r := 1; r < len(tbl.Rows); r++ {
+		if col < len(tbl.Rows[r]) && tbl.Rows[r][col].Tint != first {
+			return model.TableTintNone, false
+		}
+	}
+	return first, true
+}
+
+func uniformRowTint(tbl *model.TableData, row int) (model.TableTint, bool) {
+	if tbl == nil || row < 0 || row >= len(tbl.Rows) || len(tbl.Rows[row]) == 0 {
+		return model.TableTintNone, false
+	}
+	first := tbl.Rows[row][0].Tint
+	for c := 1; c < len(tbl.Rows[row]); c++ {
+		if tbl.Rows[row][c].Tint != first {
+			return model.TableTintNone, false
+		}
+	}
+	return first, true
+}
+
+func uniformRowAlignOverride(tbl *model.TableData, row int) (model.ColAlign, bool) {
+	if tbl == nil || row < 0 || row >= len(tbl.Rows) || len(tbl.Rows[row]) == 0 {
+		return model.ColAlignNone, false
+	}
+	first := tbl.CellEffectiveAlign(row, 0)
+	anyOverride := tbl.Rows[row][0].Align != model.ColAlignNone
+	for c := 1; c < len(tbl.Rows[row]); c++ {
+		if tbl.CellEffectiveAlign(row, c) != first {
+			return model.ColAlignNone, false
+		}
+		if tbl.Rows[row][c].Align != model.ColAlignNone {
+			anyOverride = true
+		}
+	}
+	if !anyOverride {
+		return model.ColAlignNone, false
+	}
+	return first, true
+}
+
+func tableUniformAlign(tbl *model.TableData, kind string, targetRow, targetCol int) (model.ColAlign, bool) {
+	if tbl == nil || len(tbl.Rows) == 0 || len(tbl.Rows[0]) == 0 {
+		return model.ColAlignNone, false
+	}
+	switch kind {
+	case "col":
+		first := tbl.CellEffectiveAlign(0, targetCol)
+		for r := 1; r < len(tbl.Rows); r++ {
+			if tbl.CellEffectiveAlign(r, targetCol) != first {
+				return model.ColAlignNone, false
+			}
+		}
+		return first, true
+	case "row":
+		if targetRow < 0 || targetRow >= len(tbl.Rows) {
+			return model.ColAlignNone, false
+		}
+		first := tbl.CellEffectiveAlign(targetRow, 0)
+		for c := 1; c < len(tbl.Rows[targetRow]); c++ {
+			if tbl.CellEffectiveAlign(targetRow, c) != first {
+				return model.ColAlignNone, false
+			}
+		}
+		return first, true
+	case "table":
+		first := tbl.CellEffectiveAlign(0, 0)
+		for r := range tbl.Rows {
+			for c := range tbl.Rows[r] {
+				if tbl.CellEffectiveAlign(r, c) != first {
+					return model.ColAlignNone, false
+				}
+			}
+		}
+		return first, true
+	default:
+		return model.ColAlignNone, false
+	}
+}
+
+func tableUniformTint(tbl *model.TableData, kind string, targetRow, targetCol int) (model.TableTint, bool) {
+	switch kind {
+	case "row":
+		return uniformRowTint(tbl, targetRow)
+	case "col":
+		return uniformColTint(tbl, targetCol)
+	default:
+		return model.TableTintNone, false
+	}
+}
+
 func (s *Session) tableSetColAlign(blockID model.BlockID, col int, align model.ColAlign) {
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
@@ -85,7 +181,14 @@ func (s *Session) tableSetColAlign(blockID model.BlockID, col int, align model.C
 	if col < len(b.Table.Aligns) {
 		cur = b.Table.Aligns[col]
 	}
-	if cur == align || (cur == model.ColAlignNone && align == model.ColAlignLeft) {
+	hasOverride := false
+	for r := range b.Table.Rows {
+		if col < len(b.Table.Rows[r]) && b.Table.Rows[r][col].Align != model.ColAlignNone {
+			hasOverride = true
+			break
+		}
+	}
+	if !hasOverride && (cur == align || (cur == model.ColAlignNone && align == model.ColAlignLeft)) {
 		return
 	}
 	s.pushUndo()
@@ -93,6 +196,69 @@ func (s *Session) tableSetColAlign(blockID model.BlockID, col int, align model.C
 		b.Table.Aligns = append(b.Table.Aligns, model.ColAlignNone)
 	}
 	b.Table.Aligns[col] = align
+	// Last-write-wins: clear any cell-level alignment overrides in this column.
+	for r := range b.Table.Rows {
+		if col < len(b.Table.Rows[r]) {
+			b.Table.Rows[r][col].Align = model.ColAlignNone
+		}
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+	s.markDirty()
+}
+
+func (s *Session) tableSetRowAlign(blockID model.BlockID, row int, align model.ColAlign) {
+	idx := s.blockIndexByID(blockID)
+	if idx < 0 {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Table == nil || row < 0 || row >= len(b.Table.Rows) || len(b.Table.Rows[row]) == 0 {
+		return
+	}
+	if cur, ok := tableUniformAlign(b.Table, "row", row, 0); ok && cur == align {
+		return
+	}
+	s.pushUndo()
+	for c := range b.Table.Rows[row] {
+		if align == b.Table.ColBaseAlign(c) {
+			b.Table.Rows[row][c].Align = model.ColAlignNone
+		} else {
+			b.Table.Rows[row][c].Align = align
+		}
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+	s.markDirty()
+}
+
+func (s *Session) tableSetAllAlign(blockID model.BlockID, align model.ColAlign) {
+	idx := s.blockIndexByID(blockID)
+	if idx < 0 {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Table == nil || len(b.Table.Rows) == 0 || len(b.Table.Rows[0]) == 0 {
+		return
+	}
+	if cur, ok := tableUniformAlign(b.Table, "table", 0, 0); ok && cur == align {
+		return
+	}
+	s.pushUndo()
+	cols := len(b.Table.Rows[0])
+	b.Table.Aligns = make([]model.ColAlign, cols)
+	for c := 0; c < cols; c++ {
+		if align == model.ColAlignLeft {
+			b.Table.Aligns[c] = model.ColAlignNone
+		} else {
+			b.Table.Aligns[c] = align
+		}
+	}
+	for r := range b.Table.Rows {
+		for c := range b.Table.Rows[r] {
+			b.Table.Rows[r][c].Align = model.ColAlignNone
+		}
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -138,27 +304,14 @@ func (s *Session) tableSortByCol(blockID model.BlockID, col int, asc bool) {
 		return
 	}
 	s.pushUndo()
-	type sortableRow struct {
-		cells []model.TableCell
-		tint  model.TableTint
-	}
-	n := len(b.Table.Rows) - startRow
-	items := make([]sortableRow, n)
-	for i := 0; i < n; i++ {
-		rIdx := startRow + i
-		var rt model.TableTint
-		if rIdx < len(b.Table.RowTints) {
-			rt = b.Table.RowTints[rIdx]
-		}
-		items[i] = sortableRow{cells: b.Table.Rows[rIdx], tint: rt}
-	}
-	sort.SliceStable(items, func(i, j int) bool {
+	body := b.Table.Rows[startRow:]
+	sort.SliceStable(body, func(i, j int) bool {
 		var va, vb string
-		if col < len(items[i].cells) {
-			va = items[i].cells[col].PlainText()
+		if col < len(body[i]) {
+			va = body[i][col].PlainText()
 		}
-		if col < len(items[j].cells) {
-			vb = items[j].cells[col].PlainText()
+		if col < len(body[j]) {
+			vb = body[j][col].PlainText()
 		}
 		cmp := compareTableCellText(va, vb)
 		if asc {
@@ -166,31 +319,9 @@ func (s *Session) tableSortByCol(blockID model.BlockID, col int, asc bool) {
 		}
 		return cmp > 0
 	})
-	hasAnyTint := len(b.Table.RowTints) > 0
-	if hasAnyTint {
-		for len(b.Table.RowTints) < len(b.Table.Rows) {
-			b.Table.RowTints = append(b.Table.RowTints, model.TableTintNone)
-		}
-	}
-	for i, it := range items {
-		rIdx := startRow + i
-		b.Table.Rows[rIdx] = it.cells
-		if hasAnyTint {
-			b.Table.RowTints[rIdx] = it.tint
-		}
-	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
-}
-
-func trimTrailingEmptyTints(ts []model.TableTint) []model.TableTint {
-	for _, t := range ts {
-		if t != "" {
-			return ts
-		}
-	}
-	return nil
 }
 
 func (s *Session) tableSetColTint(blockID model.BlockID, col int, tint model.TableTint) {
@@ -202,20 +333,15 @@ func (s *Session) tableSetColTint(blockID model.BlockID, col int, tint model.Tab
 	if b.Table == nil || len(b.Table.Rows) == 0 || col < 0 || col >= len(b.Table.Rows[0]) {
 		return
 	}
-	cols := len(b.Table.Rows[0])
-	var cur model.TableTint
-	if col < len(b.Table.ColTints) {
-		cur = b.Table.ColTints[col]
-	}
-	if cur == tint {
+	if cur, ok := uniformColTint(b.Table, col); ok && cur == tint {
 		return
 	}
 	s.pushUndo()
-	for len(b.Table.ColTints) < cols {
-		b.Table.ColTints = append(b.Table.ColTints, model.TableTintNone)
+	for r := range b.Table.Rows {
+		if col < len(b.Table.Rows[r]) {
+			b.Table.Rows[r][col].Tint = tint
+		}
 	}
-	b.Table.ColTints[col] = tint
-	b.Table.ColTints = trimTrailingEmptyTints(b.Table.ColTints)
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -230,20 +356,13 @@ func (s *Session) tableSetRowTint(blockID model.BlockID, row int, tint model.Tab
 	if b.Table == nil || row < 0 || row >= len(b.Table.Rows) {
 		return
 	}
-	rows := len(b.Table.Rows)
-	var cur model.TableTint
-	if row < len(b.Table.RowTints) {
-		cur = b.Table.RowTints[row]
-	}
-	if cur == tint {
+	if cur, ok := uniformRowTint(b.Table, row); ok && cur == tint {
 		return
 	}
 	s.pushUndo()
-	for len(b.Table.RowTints) < rows {
-		b.Table.RowTints = append(b.Table.RowTints, model.TableTintNone)
+	for c := range b.Table.Rows[row] {
+		b.Table.Rows[row][c].Tint = tint
 	}
-	b.Table.RowTints[row] = tint
-	b.Table.RowTints = trimTrailingEmptyTints(b.Table.RowTints)
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -265,6 +384,22 @@ func (s *Session) tableToggleHeaderRow(blockID model.BlockID) {
 	s.markDirty()
 }
 
+func (s *Session) tableToggleHeaderCol(blockID model.BlockID) {
+	idx := s.blockIndexByID(blockID)
+	if idx < 0 {
+		return
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Table == nil {
+		return
+	}
+	s.pushUndo()
+	b.Table.HeaderCol = !b.Table.HeaderCol
+	b.Dirty = true
+	b.CleanSource = ""
+	s.markDirty()
+}
+
 func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
 	idx := s.blockIndexByID(blockID)
 	if idx < 0 {
@@ -278,7 +413,11 @@ func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
 	src := b.Table.Rows[row]
 	dup := make([]model.TableCell, len(src))
 	for c, cell := range src {
-		dup[c] = model.TableCell{Spans: append([]model.Span(nil), cell.Spans...)}
+		dup[c] = model.TableCell{
+			Spans: append([]model.Span(nil), cell.Spans...),
+			Align: cell.Align,
+			Tint:  cell.Tint,
+		}
 	}
 	at := row + 1
 	oldLen := len(b.Table.Rows)
@@ -287,16 +426,6 @@ func (s *Session) tableDuplicateRow(blockID model.BlockID, row int) {
 	rows = append(rows, dup)
 	rows = append(rows, b.Table.Rows[at:]...)
 	b.Table.Rows = rows
-	if len(b.Table.RowTints) > 0 {
-		for len(b.Table.RowTints) < oldLen {
-			b.Table.RowTints = append(b.Table.RowTints, model.TableTintNone)
-		}
-		rt := make([]model.TableTint, 0, oldLen+1)
-		rt = append(rt, b.Table.RowTints[:at]...)
-		rt = append(rt, b.Table.RowTints[row])
-		rt = append(rt, b.Table.RowTints[at:]...)
-		b.Table.RowTints = rt
-	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -467,18 +596,6 @@ func (s *Session) tableMoveCol(blockID model.BlockID, from, to int) {
 		nx = append(nx, wo[to:]...)
 		b.Table.Widths = nx
 	}
-	if len(b.Table.ColTints) > 0 {
-		for len(b.Table.ColTints) < cols {
-			b.Table.ColTints = append(b.Table.ColTints, model.TableTintNone)
-		}
-		mv := b.Table.ColTints[from]
-		wo := append(append([]model.TableTint(nil), b.Table.ColTints[:from]...), b.Table.ColTints[from+1:]...)
-		nx := make([]model.TableTint, 0, cols)
-		nx = append(nx, wo[:to]...)
-		nx = append(nx, mv)
-		nx = append(nx, wo[to:]...)
-		b.Table.ColTints = trimTrailingEmptyTints(nx)
-	}
 	s.tableActiveCol = to
 	if s.tableMenuBlock == blockID && s.tableMenuKind == "col" {
 		s.tableMenuIndex = to
@@ -509,18 +626,6 @@ func (s *Session) tableMoveRow(blockID model.BlockID, from, to int) {
 	next = append(next, moved)
 	next = append(next, without[to:]...)
 	b.Table.Rows = next
-	if len(b.Table.RowTints) > 0 {
-		for len(b.Table.RowTints) < rows {
-			b.Table.RowTints = append(b.Table.RowTints, model.TableTintNone)
-		}
-		mv := b.Table.RowTints[from]
-		wo := append(append([]model.TableTint(nil), b.Table.RowTints[:from]...), b.Table.RowTints[from+1:]...)
-		nx := make([]model.TableTint, 0, rows)
-		nx = append(nx, wo[:to]...)
-		nx = append(nx, mv)
-		nx = append(nx, wo[to:]...)
-		b.Table.RowTints = trimTrailingEmptyTints(nx)
-	}
 	s.tableActiveRow = to
 	if s.tableMenuBlock == blockID && s.tableMenuKind == "row" {
 		s.tableMenuIndex = to
@@ -539,9 +644,15 @@ func (s *Session) tableCopyMarkdown(c *ui.Context, idx int) {
 	cp.Dirty = true
 	cp.CleanSource = ""
 	cp.Table.Widths = nil
-	cp.Table.ColTints = nil
-	cp.Table.RowTints = nil
 	cp.Table.NoHeaderRow = false
+	cp.Table.HeaderCol = false
+	cp.Table.WasHTML = false
+	for r := range cp.Table.Rows {
+		for col := range cp.Table.Rows[r] {
+			cp.Table.Rows[r][col].Align = model.ColAlignNone
+			cp.Table.Rows[r][col].Tint = model.TableTintNone
+		}
+	}
 	single := []model.Block{cp}
 	if md := strings.TrimSuffix(s.serializeBlocks(single), "\n"); md != "" {
 		c.WriteClipboard(md)
@@ -559,16 +670,11 @@ func (s *Session) resolveTableCellFill(
 	isCellFocused, cellSelected bool,
 ) ui.Color {
 	bg := pal.Paper
-	if rIdx == 0 && !tbl.NoHeaderRow {
+	if tbl.IsHeaderCell(rIdx, cIdx) {
 		bg = tblCols.HeaderBG
 	}
-	if cIdx < len(tbl.ColTints) && tbl.ColTints[cIdx] != "" {
-		if tc, ok := tblCols.CellTint(string(tbl.ColTints[cIdx])); ok {
-			bg = tc
-		}
-	}
-	if rIdx < len(tbl.RowTints) && tbl.RowTints[rIdx] != "" {
-		if tc, ok := tblCols.CellTint(string(tbl.RowTints[rIdx])); ok {
+	if tint := tbl.CellTint(rIdx, cIdx); tint != model.TableTintNone {
+		if tc, ok := tblCols.CellTint(string(tint)); ok {
 			bg = tc
 		}
 	}
@@ -1197,37 +1303,48 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 				closeMenu()
 			}
 		}
-		entries = []appUi.MenuItemSpec{
-			{ID: "tbl-col-sort-asc", Label: theme.Tr("按 A → Z 升序排列", "Sort A → Z"), Icon: &icUp, Disabled: rows <= 1, OnClick: func() {
+		if targetCol == 0 {
+			entries = append(entries, appUi.MenuItemSpec{
+				ID:      "tbl-col-header-toggle",
+				Label:   theme.Tr("设为标题列", "Header column"),
+				Icon:    &icHeading,
+				Checked: tbl.HeaderCol,
+				OnClick: func() {
+					s.tableToggleHeaderCol(id)
+				},
+			}, appUi.MenuItemSpec{Separator: true})
+		}
+		entries = append(entries,
+			appUi.MenuItemSpec{ID: "tbl-col-sort-asc", Label: theme.Tr("按 A → Z 升序排列", "Sort A → Z"), Icon: &icUp, Disabled: rows <= 1, OnClick: func() {
 				s.tableSortByCol(id, targetCol, true)
 				closeMenu()
 			}},
-			{ID: "tbl-col-sort-desc", Label: theme.Tr("按 Z → A 降序排列", "Sort Z → A"), Icon: &icDown, Disabled: rows <= 1, OnClick: func() {
+			appUi.MenuItemSpec{ID: "tbl-col-sort-desc", Label: theme.Tr("按 Z → A 降序排列", "Sort Z → A"), Icon: &icDown, Disabled: rows <= 1, OnClick: func() {
 				s.tableSortByCol(id, targetCol, false)
 				closeMenu()
 			}},
-			{Separator: true},
-			{ID: "tbl-col-left", Label: theme.Tr("左侧插入列", "Insert column left"), Icon: &icColLeft, OnClick: func() {
+			appUi.MenuItemSpec{Separator: true},
+			appUi.MenuItemSpec{ID: "tbl-col-left", Label: theme.Tr("左侧插入列", "Insert column left"), Icon: &icColLeft, OnClick: func() {
 				s.tableAddCol(id, targetCol)
 				closeMenu()
 			}},
-			{ID: "tbl-col-right", Label: theme.Tr("右侧插入列", "Insert column right"), Icon: &icColRight, OnClick: func() {
+			appUi.MenuItemSpec{ID: "tbl-col-right", Label: theme.Tr("右侧插入列", "Insert column right"), Icon: &icColRight, OnClick: func() {
 				s.tableAddCol(id, targetCol+1)
 				closeMenu()
 			}},
-			{ID: "tbl-col-move-left", Label: theme.Tr("向左移动一列", "Move column left"), Icon: &icLeft, Disabled: targetCol <= 0, OnClick: func() {
+			appUi.MenuItemSpec{ID: "tbl-col-move-left", Label: theme.Tr("向左移动一列", "Move column left"), Icon: &icLeft, Disabled: targetCol <= 0, OnClick: func() {
 				s.tableMoveCol(id, targetCol, targetCol-1)
 			}},
-			{ID: "tbl-col-move-right", Label: theme.Tr("向右移动一列", "Move column right"), Icon: &icRight, Disabled: targetCol >= cols-1, OnClick: func() {
+			appUi.MenuItemSpec{ID: "tbl-col-move-right", Label: theme.Tr("向右移动一列", "Move column right"), Icon: &icRight, Disabled: targetCol >= cols-1, OnClick: func() {
 				s.tableMoveCol(id, targetCol, targetCol+1)
 			}},
-			{ID: "tbl-col-clear", Label: theme.Tr("清空本列内容", "Clear column contents"), Icon: &icEraser, OnClick: func() {
+			appUi.MenuItemSpec{ID: "tbl-col-clear", Label: theme.Tr("清空本列内容", "Clear column contents"), Icon: &icEraser, OnClick: func() {
 				s.tableClearCol(id, targetCol)
 				closeMenu()
 			}},
-			{Separator: true},
-			{ID: "tbl-col-del", Label: theme.Tr("删除当前列", "Delete column"), Shortcut: "⌫", Icon: &icColDel, Danger: true, Disabled: cols <= 1, OnClick: deleteAction},
-		}
+			appUi.MenuItemSpec{Separator: true},
+			appUi.MenuItemSpec{ID: "tbl-col-del", Label: theme.Tr("删除当前列", "Delete column"), Shortcut: "⌫", Icon: &icColDel, Danger: true, Disabled: cols <= 1, OnClick: deleteAction},
+		)
 
 	case "row":
 		if targetRow == 0 && !tbl.NoHeaderRow {
@@ -1235,6 +1352,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		} else {
 			headerTitle = fmt.Sprintf(theme.Tr("第 %d 行", "Row %d"), targetRow+1)
 		}
+		showAlignBar = true
 		showTintBar = true
 		deleteAction = func() {
 			if rows > 1 {
@@ -1281,14 +1399,19 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 		)
 
 	case "table":
+		showAlignBar = true
 		deleteAction = func() {
 			closeMenu()
 			s.deleteBlock(idx)
 		}
 		entries = []appUi.MenuItemSpec{
-			{ID: "tbl-header-toggle", Label: theme.Tr("标题行背景", "Header row"), Icon: &icHeading, Checked: !tbl.NoHeaderRow, OnClick: func() {
+			{ID: "tbl-header-toggle", Label: theme.Tr("标题行", "Header row"), Icon: &icHeading, Checked: !tbl.NoHeaderRow, OnClick: func() {
 				s.tableToggleHeaderRow(id)
 			}},
+			{ID: "tbl-header-col-toggle", Label: theme.Tr("标题列", "Header column"), Icon: &icHeading, Checked: tbl.HeaderCol, OnClick: func() {
+				s.tableToggleHeaderCol(id)
+			}},
+			{Separator: true},
 			{ID: "tbl-copy-md", Label: theme.Tr("复制为 Markdown 表格", "Copy as Markdown"), Icon: &icCopy, OnClick: func() {
 				s.tableCopyMarkdown(c, idx)
 				closeMenu()
@@ -1399,14 +1522,15 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 					}
 
 					if showAlignBar {
-						curAlign := model.ColAlignLeft
-						if targetCol < len(tbl.Aligns) && tbl.Aligns[targetCol] != model.ColAlignNone {
-							curAlign = tbl.Aligns[targetCol]
+						curAlign, uniform := tableUniformAlign(tbl, kind, targetRow, targetCol)
+						alignLabel := theme.Tr("对齐方式", "Alignment")
+						if kind == "table" {
+							alignLabel = theme.Tr("整表对齐", "Alignment")
 						}
 						alignRow := ui.Row(c.Key("table-menu-align-row")).FillWidth().Height(theme.HeightControl).
 							Padding(0, theme.Space8, 0, theme.Space10).AlignItems(ui.Center).Justify(ui.SpaceBetween)
 						alignRow.Children(func() {
-							ui.Text(c, theme.Tr("列对齐", "Alignment")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+							ui.Text(c, alignLabel).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 							seg := ui.Row(c.Key("table-menu-align-seg")).Padding(theme.Space2).Gap(theme.Space2).
 								Radius(theme.RadiusSM).Background(pal.Shell).Border(1, tblCols.Border)
 							seg.Children(func() {
@@ -1420,7 +1544,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 									{"tbl-align-center", model.ColAlignCenter, icons.AlignCenter, theme.Tr("居中对齐", "Align center")},
 									{"tbl-align-right", model.ColAlignRight, icons.AlignRight, theme.Tr("右对齐", "Align right")},
 								} {
-									active := curAlign == opt.align
+									active := uniform && curAlign == opt.align
 									ab := ui.ButtonBase(c.Key(opt.id)).Size(theme.TableAlignSegBoxW, theme.TableAlignSegBoxH).
 										Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(opt.label)
 									hov := ab.Hovered()
@@ -1438,7 +1562,14 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 									})
 									appUi.Probe(ab, opt.id)
 									if ab.Clicked() {
-										s.tableSetColAlign(id, targetCol, opt.align)
+										switch kind {
+										case "row":
+											s.tableSetRowAlign(id, targetRow, opt.align)
+										case "table":
+											s.tableSetAllAlign(id, opt.align)
+										default:
+											s.tableSetColAlign(id, targetCol, opt.align)
+										}
 									}
 								}
 							})
@@ -1487,18 +1618,13 @@ func (s *Session) renderTableMenuTintRow(
 	pal theme.Palette,
 	tblCols theme.TableColors,
 ) {
-	var curTint model.TableTint
-	if kind == "row" && targetRow < len(tbl.RowTints) {
-		curTint = tbl.RowTints[targetRow]
-	} else if kind == "col" && targetCol < len(tbl.ColTints) {
-		curTint = tbl.ColTints[targetCol]
-	}
+	curTint, uniform := tableUniformTint(tbl, kind, targetRow, targetCol)
 
 	tintRow := ui.Row(c.Key("table-menu-tint-row")).FillWidth().Height(theme.HeightControl).
 		PaddingX(theme.Space10).AlignItems(ui.Center).Justify(ui.SpaceBetween)
 	tintRow.Children(func() {
 		ui.Text(c, theme.Tr("底色标记", "Background")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-		swRow := ui.Row(c.Key("table-menu-swatches")).AlignItems(ui.Center).Gap(theme.Space6)
+		swRow := ui.Row(c.Key("table-menu-swatches")).AlignItems(ui.Center).Gap(theme.Space4)
 		swRow.Children(func() {
 			for _, sw := range []struct {
 				id    string
@@ -1510,8 +1636,10 @@ func (s *Session) renderTableMenuTintRow(
 				{"tbl-tint-slate", model.TableTintSlate, tblCols.SwatchSlate, theme.Tr("中性石墨底色", "Slate")},
 				{"tbl-tint-ocean", model.TableTintOcean, tblCols.SwatchOcean, theme.Tr("Ocean 海蓝底色", "Ocean")},
 				{"tbl-tint-emerald", model.TableTintEmerald, tblCols.SwatchEmerald, theme.Tr("翠绿标记底色", "Emerald")},
+				{"tbl-tint-amber", model.TableTintAmber, tblCols.SwatchAmber, theme.Tr("琥珀提醒底色", "Amber")},
+				{"tbl-tint-rose", model.TableTintRose, tblCols.SwatchRose, theme.Tr("珊瑚警示底色", "Rose")},
 			} {
-				on := curTint == sw.tint
+				on := uniform && curTint == sw.tint
 				btn := ui.ButtonBase(c.Key(sw.id)).Size(theme.TableSwatchSize, theme.TableSwatchSize).
 					Radius(theme.RadiusPill).Cursor(ui.CursorPointer).Label(sw.label)
 				bd := tblCols.HandleBorder
