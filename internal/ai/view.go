@@ -1226,7 +1226,8 @@ func plainInline(s string) string {
 	for prev := ""; prev != t; {
 		prev, t = t, plainStrongRE.ReplaceAllString(t, "$1$2$3")
 	}
-	t = strings.ReplaceAll(t, "`", "")
+	// Stray backticks go; an escaped one ("\`") is a literal backtick.
+	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
 	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
 	t = strings.Trim(t, "| ")
 	for k, code := range codes {
