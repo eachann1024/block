@@ -128,6 +128,7 @@ type Manager struct {
 	fontQuery              string
 	fontCursor             int
 	fontScrollToCursor     bool
+	fontCache              fontPickerCache
 	fontFamilies           []ui.FontFamily
 	fontFamiliesEpoch      uint64
 	fontScroll             ui.ScrollState
@@ -1024,6 +1025,24 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 	}
 }
 
+const (
+	fontPickerRowH         float32 = 34
+	fontPickerVirtThreshold        = 24
+	fontPickerVirtOverscan         = 4
+)
+
+type fontPickerCache struct {
+	catalogRole        string
+	catalogSrc         []ui.FontFamily
+	catalog            []fontCandidateItem
+	catalogGen         uint64
+	filteredValid      bool
+	filteredRole       string
+	filteredQuery      string
+	filteredCatalogGen uint64
+	filtered           []ui.FontFamily
+}
+
 func (m *Manager) openFontPicker(role string) {
 	m.fontPickerOpen = role
 	m.fontQuery = ""
@@ -1036,13 +1055,27 @@ func (m *Manager) openFontPicker(role string) {
 	}
 	if m.dataDir != "" {
 		if entries, err := os.ReadDir(filepath.Join(m.dataDir, "fonts")); err == nil {
+			seen := make(map[string]bool, len(base))
+			for _, f := range base {
+				if key := strings.ToLower(strings.TrimSpace(f.Name)); key != "" {
+					seen[key] = true
+				}
+			}
 			for _, ent := range entries {
 				if ent.IsDir() {
 					continue
 				}
 				ext := strings.ToLower(filepath.Ext(ent.Name()))
 				if ext == ".ttf" || ext == ".otf" || ext == ".ttc" {
-					fam := strings.TrimSuffix(ent.Name(), filepath.Ext(ent.Name()))
+					fam := strings.TrimSpace(strings.TrimSuffix(ent.Name(), filepath.Ext(ent.Name())))
+					if fam == "" {
+						continue
+					}
+					key := strings.ToLower(fam)
+					if seen[key] {
+						continue
+					}
+					seen[key] = true
 					base = append(base, ui.FontFamily{Name: fam, Monospaced: isMonospaceFontName(fam)})
 				}
 			}
@@ -1208,46 +1241,72 @@ func buildSortedFontCatalog(families []ui.FontFamily, role string) []fontCandida
 	return catalog
 }
 
+func (m *Manager) sortedFontCatalog(role string) []fontCandidateItem {
+	if m.fontCache.catalogRole == role && slices.Equal(m.fontCache.catalogSrc, m.fontFamilies) {
+		return m.fontCache.catalog
+	}
+	catalog := buildSortedFontCatalog(m.fontFamilies, role)
+	m.fontCache.catalogRole = role
+	m.fontCache.catalogSrc = slices.Clone(m.fontFamilies)
+	m.fontCache.catalog = catalog
+	m.fontCache.catalogGen++
+	m.fontCache.filteredValid = false
+	return catalog
+}
+
 func (m *Manager) filteredFonts() []ui.FontFamily {
 	role := m.fontPickerOpen
 	if role == "" {
 		role = "body"
 	}
-	catalog := buildSortedFontCatalog(m.fontFamilies, role)
+	catalog := m.sortedFontCatalog(role)
+	if m.fontCache.filteredValid &&
+		m.fontCache.filteredRole == role &&
+		m.fontCache.filteredQuery == m.fontQuery &&
+		m.fontCache.filteredCatalogGen == m.fontCache.catalogGen {
+		return m.fontCache.filtered
+	}
+
 	q := strings.ToLower(strings.TrimSpace(m.fontQuery))
+	var out []ui.FontFamily
 	if q == "" {
-		out := make([]ui.FontFamily, len(catalog))
+		out = make([]ui.FontFamily, len(catalog))
 		for i, c := range catalog {
 			out[i] = ui.FontFamily{Name: c.name, Monospaced: c.mono}
 		}
-		return out
+	} else {
+		qTokens := strings.Fields(q)
+		type scored struct {
+			tier int
+			pos  int
+			item fontCandidateItem
+		}
+		var ranked []scored
+		for _, item := range catalog {
+			if tier, pos, ok := scoreFontCandidate(item, q, qTokens); ok {
+				ranked = append(ranked, scored{tier: tier, pos: pos, item: item})
+			}
+		}
+		slices.SortFunc(ranked, func(a, b scored) int {
+			if c := cmp.Compare(a.tier, b.tier); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(a.pos, b.pos); c != 0 {
+				return c
+			}
+			return cmp.Compare(a.item.searchKey, b.item.searchKey)
+		})
+		out = make([]ui.FontFamily, len(ranked))
+		for i, r := range ranked {
+			out[i] = ui.FontFamily{Name: r.item.name, Monospaced: r.item.mono}
+		}
 	}
 
-	qTokens := strings.Fields(q)
-	type scored struct {
-		tier int
-		pos  int
-		item fontCandidateItem
-	}
-	var ranked []scored
-	for _, item := range catalog {
-		if tier, pos, ok := scoreFontCandidate(item, q, qTokens); ok {
-			ranked = append(ranked, scored{tier: tier, pos: pos, item: item})
-		}
-	}
-	slices.SortFunc(ranked, func(a, b scored) int {
-		if c := cmp.Compare(a.tier, b.tier); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.pos, b.pos); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.item.searchKey, b.item.searchKey)
-	})
-	out := make([]ui.FontFamily, len(ranked))
-	for i, r := range ranked {
-		out[i] = ui.FontFamily{Name: r.item.name, Monospaced: r.item.mono}
-	}
+	m.fontCache.filteredValid = true
+	m.fontCache.filteredRole = role
+	m.fontCache.filteredQuery = m.fontQuery
+	m.fontCache.filteredCatalogGen = m.fontCache.catalogGen
+	m.fontCache.filtered = out
 	return out
 }
 
@@ -1345,6 +1404,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					internalui.Probe(in, "font-picker-search")
 					if in.Changed() {
 						m.fontCursor = 0
+						m.fontScroll.Y = 0
 						fonts = m.filteredFonts()
 						curRows := len(fonts)
 						if role == "body" && strings.TrimSpace(m.fontQuery) == "" {
@@ -1352,7 +1412,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						}
 						curListH := float32(48)
 						if curRows > 0 {
-							curListH = min(float32(min(curRows, 7))*34, listCapH)
+							curListH = min(float32(min(curRows, 7))*fontPickerRowH, listCapH)
 						}
 						nx, ny := internalui.ResolveOrigin(spec, popW, min(curListH+54, maxH), winW, winH)
 						panel.Left(nx).Top(ny)
@@ -1367,6 +1427,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						case ui.KeyDown:
 							if total > 0 {
 								m.fontCursor = (m.fontCursor + 1 + total) % total
+								m.fontScrollToCursor = true
 							}
 							return true
 						case ui.KeyUp:
@@ -1376,6 +1437,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 								} else {
 									m.fontCursor--
 								}
+								m.fontScrollToCursor = true
 							}
 							return true
 						case ui.KeyEnter:
@@ -1406,11 +1468,21 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 			}
 			curListH := float32(48)
 			if curRows > 0 {
-				curListH = min(float32(min(curRows, 7))*34, listCapH)
+				curListH = min(float32(min(curRows, 7))*fontPickerRowH, listCapH)
 			}
 			rowOffset := 0
 			if hasDefaultRow {
 				rowOffset = 1
+			}
+			if m.fontScrollToCursor && m.fontCursor >= 0 && m.fontCursor < curRows {
+				itemTop := float32(m.fontCursor) * fontPickerRowH
+				itemBot := itemTop + fontPickerRowH
+				if itemTop < m.fontScroll.Y {
+					m.fontScroll.Y = itemTop
+				} else if itemBot > m.fontScroll.Y+curListH {
+					m.fontScroll.Y = itemBot - curListH
+				}
+				m.fontScrollToCursor = false
 			}
 			internalui.Scroll(c.Key("font-picker-list-"+role), &m.fontScroll).
 				FillWidth().Height(curListH).Gap(0).Children(func() {
@@ -1420,44 +1492,59 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					})
 					return
 				}
-				if hasDefaultRow {
-					defPrimary := defaultBodyFontPrimary(m.fontFamilies)
-					defLabel := defaultBodyFontLabel(m.fontFamilies)
-					defSelected := current == ""
-					defHighlighted := m.fontCursor == 0
-					defRow := ui.ButtonBase(c.Key("font-row-default")).FillWidth().Height(34).PaddingX(10).
-						AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
-						Cursor(ui.CursorPointer).Label(defLabel)
-					internalui.RevealOnHighlight(defRow, defHighlighted)
-					defHov := m.fontCursor < 0 && defRow.Hovered()
-					defPressed := defRow.Pressed()
-					defBG := ui.Transparent
-					switch {
-					case defSelected, defPressed:
-						defBG = pal.Selected
-					case defHighlighted || defHov:
-						defBG = pal.MenuHover
-					}
-					internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
-					internalui.TactileCard(defRow, defHov || defHighlighted, defPressed, defSelected, false)
-					defRow.Children(func() {
-						suffix, gap := defaultFontSuffix()
-						ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
-							ui.Text(c, defPrimary).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-							ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
-						})
-						if defSelected {
-							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), defSelected || defHov || defPressed)
-						}
-					})
-					if defRow.Clicked() {
-						m.selectFont(role, "")
-					}
+
+				startRow, endRow := 0, curRows
+				if curRows > fontPickerVirtThreshold {
+					scrollY := max(m.fontScroll.Y, 0)
+					startRow = max(int(scrollY/fontPickerRowH)-fontPickerVirtOverscan, 0)
+					endRow = min(int((scrollY+curListH)/fontPickerRowH)+1+fontPickerVirtOverscan, curRows)
 				}
-				for i, f := range fonts {
+				if startRow > 0 {
+					ui.Box(c.Key("font-row-spacer-top")).FillWidth().Height(float32(startRow) * fontPickerRowH).Shrink(0)
+				}
+
+				for rowIdx := startRow; rowIdx < endRow; rowIdx++ {
+					if hasDefaultRow && rowIdx == 0 {
+						defPrimary := defaultBodyFontPrimary(m.fontFamilies)
+						defLabel := defaultBodyFontLabel(m.fontFamilies)
+						defSelected := current == ""
+						defHighlighted := m.fontCursor == 0
+						defRow := ui.ButtonBase(c.Key("font-row-default")).FillWidth().Height(fontPickerRowH).PaddingX(10).
+							AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
+							Cursor(ui.CursorPointer).Label(defLabel)
+						internalui.RevealOnHighlight(defRow, defHighlighted)
+						defHov := m.fontCursor < 0 && defRow.Hovered()
+						defPressed := defRow.Pressed()
+						defBG := ui.Transparent
+						switch {
+						case defSelected, defPressed:
+							defBG = pal.Selected
+						case defHighlighted || defHov:
+							defBG = pal.MenuHover
+						}
+						internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
+						internalui.TactileCard(defRow, defHov || defHighlighted, defPressed, defSelected, false)
+						defRow.Children(func() {
+							suffix, gap := defaultFontSuffix()
+							ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
+								ui.Text(c, defPrimary).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+								ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
+							})
+							if defSelected {
+								icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), defSelected || defHov || defPressed)
+							}
+						})
+						if defRow.Clicked() {
+							m.selectFont(role, "")
+						}
+						continue
+					}
+
+					i := rowIdx - rowOffset
+					f := fonts[i]
 					selected := strings.EqualFold(f.Name, current)
-					highlighted := i+rowOffset == m.fontCursor
-					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(34).PaddingX(10).
+					highlighted := rowIdx == m.fontCursor
+					row := ui.ButtonBase(c.Key("font-row-" + f.Name)).FillWidth().Height(fontPickerRowH).PaddingX(10).
 						AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
 						Cursor(ui.CursorPointer).Label(f.Name)
 					internalui.RevealOnHighlight(row, highlighted)
@@ -1483,6 +1570,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					if row.Clicked() {
 						m.selectFont(role, f.Name)
 					}
+				}
+
+				if endRow < curRows {
+					ui.Box(c.Key("font-row-spacer-bot")).FillWidth().Height(float32(curRows-endRow) * fontPickerRowH).Shrink(0)
 				}
 			})
 		})
