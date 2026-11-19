@@ -46,10 +46,10 @@ func (s *Session) insertParagraphAt(idx int) (int, bool) {
 	s.tableActiveBlock = 0
 	s.closeTransientOverlays()
 	s.trailingPlus = false
+	s.markDirty()
 	if s.findOpen {
 		s.recomputeFind(false)
 	}
-	s.markDirty()
 
 	// Appending at the end of a folded section reveals the new block as a visible tail
 	// without opening the folded heading or focusing hidden blocks inside it.
@@ -288,10 +288,10 @@ func (s *Session) enterOnFoldedHeading(headingIdx int) bool {
 		newIdx = min(end, len(s.doc.Blocks)-1)
 	}
 	s.FocusBlock(newIdx)
+	s.markDirty()
 	if s.findOpen {
 		s.recomputeFind(false)
 	}
-	s.markDirty()
 	return true
 }
 

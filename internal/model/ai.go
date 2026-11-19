@@ -73,7 +73,7 @@ type AIProviderConfig struct {
 	Provider      string                     `json:"provider"`
 	Protocol      Protocol                   `json:"protocol"`
 	BaseURL       string                     `json:"base_url"`
-	APIKey        string                     `json:"api_key"`
+	APIKey        string                     `json:"api_key,omitempty"`
 	Model         string                     `json:"model"`
 	ProviderOrder []string                   `json:"provider_order,omitempty"`
 	Providers     map[string]ProviderProfile `json:"providers,omitempty"`

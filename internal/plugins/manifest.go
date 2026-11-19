@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -129,6 +129,7 @@ type Manifest struct {
 	ID            string        `json:"id"`
 	Name          LocalizedText `json:"name"`
 	Version       string        `json:"version"`
+	Beta          bool          `json:"beta,omitempty"`
 	Author        string        `json:"author"`
 	Repo          string        `json:"repo,omitempty"`
 	Summary       LocalizedText `json:"summary"`
@@ -145,8 +146,12 @@ var (
 )
 
 func LoadManifest(pluginDir string) (*Manifest, error) {
-	p := filepath.Join(pluginDir, "manifest.json")
-	raw, err := os.ReadFile(p)
+	root, err := os.OpenRoot(pluginDir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	raw, err := readPluginFile(root, "manifest.json", 256*1024)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest.json: %w", err)
 	}
@@ -159,6 +164,9 @@ func DecodeManifestStrict(raw []byte) (*Manifest, error) {
 	var m Manifest
 	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("decode manifest.json: %w", err)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return nil, errors.New("manifest.json must contain exactly one JSON object")
 	}
 	if err := m.Validate(); err != nil {
 		return nil, err

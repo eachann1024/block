@@ -259,16 +259,22 @@ func (q *QuickNoteController) serializeSessionLocked(slot int) string {
 	return q.codec.Serialize(doc)
 }
 
-func (q *QuickNoteController) syncSessionToDiskLocked(slot int) {
+func (q *QuickNoteController) syncSessionToDiskLocked(slot int) error {
 	if slot < 0 || slot >= quickSlotCount {
-		return
+		return nil
 	}
 	sess := q.sessions[slot]
 	if sess != nil && sess.Dirty() {
 		q.slots[slot] = q.serializeSessionLocked(slot)
+	}
+	if err := q.saveSlotLocked(slot); err != nil {
+		q.notice, q.savedFlash = err.Error(), false
+		return err
+	}
+	if sess != nil && sess.Dirty() {
 		sess.MarkSaved()
 	}
-	q.saveSlotLocked(slot)
+	return nil
 }
 
 func defaultQuickSlotName(slot int) string {
@@ -363,20 +369,19 @@ func (q *QuickNoteController) saveMetaLocked() {
 	}
 }
 
-func (q *QuickNoteController) saveSlotLocked(slot int) {
+func (q *QuickNoteController) saveSlotLocked(slot int) error {
 	if slot < 0 || slot >= quickSlotCount {
-		return
+		return nil
 	}
 	q.writeSeq[slot].Add(1)
 	p := q.slotFilePath(slot)
 	if p == "" {
-		return
+		return errors.New("missing Quick Note data directory")
 	}
-	content := q.slots[slot]
 	q.diskMu.Lock()
 	defer q.diskMu.Unlock()
-	_ = os.MkdirAll(filepath.Dir(p), 0o755)
-	_ = os.WriteFile(p, []byte(content), 0o644)
+	_, err := files.WriteNoteAtomic(p, q.slots[slot])
+	return err
 }
 
 func isFiniteFloat32(vals ...float32) bool {
@@ -799,7 +804,7 @@ func (q *QuickNoteController) Hide() {
 }
 
 // Flush saves active slot content, metadata, and window bounds before application exit.
-func (q *QuickNoteController) Flush() {
+func (q *QuickNoteController) Flush() error {
 	q.mu.Lock()
 	if q.boundsTimer != nil {
 		q.boundsTimer.Stop()
@@ -809,12 +814,12 @@ func (q *QuickNoteController) Flush() {
 		q.syncTimer.Stop()
 		q.syncTimer = nil
 	}
+	var saveErr error
 	for i := 0; i < quickSlotCount; i++ {
-		if q.sessions[i] != nil && q.sessions[i].Dirty() {
-			q.syncSessionToDiskLocked(i)
+		if i == q.activeSlot || (q.sessions[i] != nil && q.sessions[i].Dirty()) {
+			saveErr = errors.Join(saveErr, q.syncSessionToDiskLocked(i))
 		}
 	}
-	q.saveSlotLocked(q.activeSlot)
 	q.saveMetaLocked()
 	win := q.win
 	vis := q.visible
@@ -823,6 +828,7 @@ func (q *QuickNoteController) Flush() {
 	if win != nil && vis {
 		q.persistBoundsNow(win)
 	}
+	return saveErr
 }
 
 // Toggle toggles the Quick Note panel: if already visible AND focused (or in headless mode),
@@ -1087,7 +1093,11 @@ func (q *QuickNoteController) switchSlot(slot int) {
 func (q *QuickNoteController) SaveToNotebook() (string, error) {
 	q.mu.Lock()
 	slot := q.activeSlot
-	q.syncSessionToDiskLocked(slot)
+	if err := q.syncSessionToDiskLocked(slot); err != nil {
+		q.mu.Unlock()
+		q.setNotice(err.Error(), false)
+		return "", err
+	}
 	name := q.names[slot]
 	raw := q.slots[slot]
 	doc := (*model.Doc)(nil)
@@ -1151,19 +1161,23 @@ func (q *QuickNoteController) copyReferencedAssetsToNotebook(doc *model.Doc, not
 	if qDir == "" {
 		return
 	}
+	source, err := os.OpenRoot(qDir)
+	if err != nil {
+		return
+	}
+	defer source.Close()
+	dest, err := os.OpenRoot(notebookFolder)
+	if err != nil {
+		return
+	}
+	defer dest.Close()
 	copyRel := func(rawRef string) {
-		srcRel := strings.TrimSpace(rawRef)
-		if !strings.HasPrefix(srcRel, "./assets/") && !strings.HasPrefix(srcRel, "assets/") {
+		rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(rawRef)))
+		if !filepath.IsLocal(rel) || !strings.HasPrefix(rel, "assets"+string(filepath.Separator)) {
 			return
 		}
-		relClean := filepath.Clean(strings.TrimPrefix(srcRel, "./"))
-		srcAbs := filepath.Join(qDir, relClean)
-		dstAbs := filepath.Join(notebookFolder, relClean)
-		if st, err := os.Stat(srcAbs); err == nil && !st.IsDir() {
-			_ = os.MkdirAll(filepath.Dir(dstAbs), 0o755)
-			if _, err := os.Stat(dstAbs); os.IsNotExist(err) {
-				_ = copyQuickFile(srcAbs, dstAbs)
-			}
+		if err := copyQuickFile(source, dest, rel); err != nil && !errors.Is(err, os.ErrExist) {
+			files.LogWarnf("copy Quick Note attachment %q: %v", rel, err)
 		}
 	}
 	for _, b := range doc.Blocks {
@@ -1189,23 +1203,37 @@ func (q *QuickNoteController) copyReferencedAssetsToNotebook(doc *model.Doc, not
 	}
 }
 
-func copyQuickFile(src, dst string) error {
-	in, err := os.Open(src)
+func copyQuickFile(source, dest *os.Root, name string) error {
+	const maxAttachmentBytes = 64 << 20
+	info, err := source.Stat(name)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxAttachmentBytes {
+		return errors.New("invalid Quick Note attachment")
+	}
+	in, err := source.Open(name)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err := dest.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return err
+	}
+	out, err := dest.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	_, cpErr := io.Copy(out, in)
-	clErr := out.Close()
-	if cpErr != nil {
-		_ = os.Remove(dst)
-		return cpErr
+	n, copyErr := io.Copy(out, io.LimitReader(in, maxAttachmentBytes+1))
+	closeErr := out.Close()
+	if n > maxAttachmentBytes {
+		copyErr = errors.New("Quick Note attachment is too large")
 	}
-	return clErr
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		_ = dest.Remove(name)
+		return err
+	}
+	return nil
 }
 
 func (q *QuickNoteController) targetNotebookFolder() string {
@@ -1676,7 +1704,7 @@ func (q *QuickNoteController) syncActiveSlotAsync() {
 	}
 	content := q.serializeSessionLocked(slot)
 	q.slots[slot] = content
-	sess.MarkSaved()
+	revision := sess.DocRev()
 	path := q.slotFilePath(slot)
 	seq := q.writeSeq[slot].Add(1)
 	q.mu.Unlock()
@@ -1684,17 +1712,31 @@ func (q *QuickNoteController) syncActiveSlotAsync() {
 	if path == "" {
 		return
 	}
-	go q.writeSlotFileAsync(slot, path, content, seq)
+	go func() {
+		err := q.writeSlotFileAsync(slot, path, content, seq)
+		mygo.RunOnMain(func() {
+			q.mu.Lock()
+			defer q.mu.Unlock()
+			if q.writeSeq[slot].Load() != seq || q.sessions[slot] != sess {
+				return
+			}
+			if err != nil {
+				q.notice, q.savedFlash = err.Error(), false
+			} else {
+				sess.MarkSavedIfUnchanged(revision, content)
+			}
+		})
+	}()
 }
 
-func (q *QuickNoteController) writeSlotFileAsync(slot int, path, content string, seq uint64) {
+func (q *QuickNoteController) writeSlotFileAsync(slot int, path, content string, seq uint64) error {
 	q.diskMu.Lock()
 	defer q.diskMu.Unlock()
 	if q.writeSeq[slot].Load() != seq {
-		return
+		return nil
 	}
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, []byte(content), 0o644)
+	_, err := files.WriteNoteAtomic(path, content)
+	return err
 }
 
 func (q *QuickNoteController) syncActiveSlotIfDirty() {

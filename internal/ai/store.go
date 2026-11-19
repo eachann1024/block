@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,8 +112,9 @@ type Controller struct {
 	panelWidth  float32
 	renderWidth float32
 
-	providerCfg model.AIProviderConfig
-	backendsCfg model.AIBackendsConfig
+	providerCfg   model.AIProviderConfig
+	providerError error
+	backendsCfg   model.AIBackendsConfig
 
 	convs     []model.Conversation
 	currentID uint64
@@ -171,9 +173,9 @@ type Controller struct {
 	statusOverrides map[model.BackendKind]BackendStatus
 	panelProbedOnce bool
 
-	streaming         bool
-	streamSerial      uint64
-	streamCancel      func()
+	streaming             bool
+	streamSerial          uint64
+	turn                  *assistantTurn
 	streamRedrawLast      time.Time
 	streamRedrawTimer     *time.Timer
 	draftPersistTimer     *time.Timer
@@ -183,19 +185,19 @@ type Controller struct {
 	chatPersistDirty      bool
 	chatPersistSeq        uint64
 	chatPersistWrittenSeq uint64
-	partialText           string
-	partialThink      string
-	partialSteps      []model.ProcessStep
-	turnError         string
-	turnErrorSettings bool
+	partialText           strings.Builder
+	partialThink          strings.Builder
+	partialSteps          []model.ProcessStep
+	turnError             string
+	turnErrorSettings     bool
 
 	mockResponder        bool
 	mockApprovalFailOnce bool
 	onDismissFloating    func()
 	onEnabledChanged     func(bool)
 
-	activeExternal *runningExternalTurn
 	activePlan     *ActivePlanPreview
+	planInFlight   string
 	planSelections map[planSelKey]*diffSelection
 
 	expandedProcess     map[string]bool
@@ -297,7 +299,9 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 }
 
 func (c *Controller) loadAllFromDisk() {
-	c.providerCfg = normalizeProviderConfig(c.readProviderFile())
+	cfg, err := loadProviderConfig(c.dataDir)
+	c.providerCfg = normalizeProviderConfig(cfg)
+	c.providerError = err
 	c.backendsCfg = c.readBackendsFile()
 	c.convs = c.readChatsFile()
 	c.deferredDrafts = c.readFailedDraftsFile()
@@ -389,18 +393,7 @@ func (c *Controller) writeJSONFile(name string, v any) error {
 	return nil
 }
 
-func (c *Controller) readProviderFile() model.AIProviderConfig {
-	cfg := model.AIProviderConfig{
-		Enabled:  true,
-		Provider: "deepseek",
-		Protocol: model.ProtocolOpenAI,
-		BaseURL:  "https://api.deepseek.com/v1",
-	}
-	_ = c.readJSONFile("ai.json", &cfg)
-	return cfg
-}
-
-func enforceAllBackendsFullPermissions(cfg *model.AIBackendsConfig) {
+func normalizeBackendPermissions(cfg *model.AIBackendsConfig) {
 	if cfg.Adapters == nil {
 		cfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
@@ -409,12 +402,12 @@ func enforceAllBackendsFullPermissions(cfg *model.AIBackendsConfig) {
 			continue
 		}
 		opt := cfg.Adapters[string(k)]
-		opt.FullPermissions = true
+		opt.FullPermissions = false
 		setCustomCLIBinaryPath(k, opt.BinaryPath)
 		cfg.Adapters[string(k)] = opt
 	}
 	for k, opt := range cfg.Adapters {
-		opt.FullPermissions = true
+		opt.FullPermissions = false
 		cfg.Adapters[k] = opt
 	}
 }
@@ -435,7 +428,7 @@ func (c *Controller) readBackendsFile() model.AIBackendsConfig {
 			}
 		}
 	}
-	enforceAllBackendsFullPermissions(&cfg)
+	normalizeBackendPermissions(&cfg)
 	return cfg
 }
 
@@ -941,7 +934,7 @@ func (c *Controller) ProviderConfig() model.AIProviderConfig {
 
 // SaveProviderConfig normalizes, saves, and applies the built-in AI provider config.
 func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
-	norm := normalizeProviderConfig(cfg)
+	norm := normalizeProviderConfig(cloneProviderConfig(cfg))
 	if norm.Providers == nil {
 		norm.Providers = make(map[string]model.ProviderProfile)
 	}
@@ -960,10 +953,12 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 			norm.ProviderOrder = append(norm.ProviderOrder, norm.Provider)
 		}
 	}
-	if err := c.writeJSONFile("ai.json", norm); err != nil {
+	c.mu.Lock()
+	if err := c.saveProviderConfigLocked(norm); err != nil {
+		c.mu.Unlock()
+		c.requestRedraw()
 		return err
 	}
-	c.mu.Lock()
 	enabledChanged := c.providerCfg.Enabled != norm.Enabled
 	c.providerCfg = norm
 	if enabledChanged && !norm.Enabled {
@@ -994,6 +989,18 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.refreshModelsAsync(model.BackendBuiltin)
 	}
 	c.requestRedraw()
+	return nil
+}
+
+func (c *Controller) saveProviderConfigLocked(cfg model.AIProviderConfig) error {
+	// A controller that could not load its credentials must not save its
+	// incomplete in-memory configuration over a recoverable credential record.
+	if c.providerError != errProviderCredentialsRead {
+		c.providerError = saveProviderConfig(c.dataDir, cfg)
+	}
+	if c.providerError != nil {
+		return errors.New(providerCredentialsMessage(c.providerError))
+	}
 	return nil
 }
 
@@ -1240,7 +1247,7 @@ func (c *Controller) BackendsConfig() model.AIBackendsConfig {
 // SaveBackendsConfig persists and applies the backend adapter configuration.
 func (c *Controller) SaveBackendsConfig(cfg model.AIBackendsConfig) error {
 	cp := cloneBackendsConfig(cfg)
-	enforceAllBackendsFullPermissions(&cp)
+	normalizeBackendPermissions(&cp)
 	c.mu.Lock()
 	prev := c.backendsCfg
 	c.backendsCfg = cp
@@ -1301,7 +1308,7 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 	}
 	val := on
 	opt.Enabled = &val
-	opt.FullPermissions = true
+	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	c.ensureValidSelectionLocked()
 	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
@@ -1335,7 +1342,7 @@ func (c *Controller) AddAgentEntry(kind model.BackendKind, displayName, binaryPa
 	opt.Name = strings.TrimSpace(displayName)
 	opt.BinaryPath = strings.TrimSpace(binaryPath)
 	opt.ThinkingLevel = thinking
-	opt.FullPermissions = true
+	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	setCustomCLIBinaryPath(kind, opt.BinaryPath)
 	c.settingsExpandedAg = kind
@@ -1374,7 +1381,7 @@ func (c *Controller) UpdateAgentEntry(kind model.BackendKind, mutate func(opt *m
 	mutate(&opt)
 	opt.BinaryPath = strings.TrimSpace(opt.BinaryPath)
 	opt.Name = strings.TrimSpace(opt.Name)
-	opt.FullPermissions = true
+	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	setCustomCLIBinaryPath(kind, opt.BinaryPath)
 	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
@@ -1400,7 +1407,7 @@ func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
 	off := false
 	opt.Added = false
 	opt.Enabled = &off
-	opt.FullPermissions = true
+	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	if c.settingsExpandedAg == kind {
 		c.settingsExpandedAg = ""
@@ -1445,7 +1452,7 @@ func (c *Controller) PromoteBackend(kind model.BackendKind) error {
 	}
 	on := true
 	opt.Enabled = &on
-	opt.FullPermissions = true
+	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 
 	recognized := c.recognizedBackendsLocked()
@@ -1701,7 +1708,7 @@ func pathBaseSlash(p string) string {
 // SendPrompt submits text (or the current draft when text is empty) as a user prompt.
 func (c *Controller) SendPrompt(text string) {
 	c.mu.Lock()
-	if c.streaming || !c.providerCfg.Enabled {
+	if c.streaming || c.hasPendingQuestionLocked() || !c.providerCfg.Enabled {
 		c.mu.Unlock()
 		return
 	}
@@ -1715,6 +1722,12 @@ func (c *Controller) SendPrompt(text string) {
 		return
 	}
 	backend := c.selectedBackendLocked()
+	if !c.mockResponder && backend != model.BackendBuiltin && !supportsRestrictedCLI(backend) {
+		c.turnError = theme.Tr("该 CLI 暂不支持受限运行，请选择其他后端。", "This CLI does not support restricted execution. Select another backend.")
+		c.mu.Unlock()
+		c.requestRedraw()
+		return
+	}
 	if backend == model.BackendBuiltin && !c.mockResponder {
 		if msg, needSettings := validateProviderConfig(c.providerCfg); msg != "" {
 			c.turnError = msg
@@ -1736,25 +1749,50 @@ func (c *Controller) SendPrompt(text string) {
 		cp := *c.draftSelection
 		sel = &cp
 	}
-	c.draftRefs = nil
-	c.draftSkills = nil
-	c.draftSelection = nil
+	scope := captureNotebook(c.host)
+	var ctxBuf strings.Builder
+	var shownBuf strings.Builder
+	notebook, _ := scope.open(c.host)
+	if notebook != nil {
+		defer notebook.Close()
+	}
+	for _, ref := range refs {
+		page := referencePageID(scope.root, ref)
+		filename, err := noteFilename(page)
+		if notebook == nil || err != nil || ctxBuf.Len() >= 96*1024 {
+			c.turnError = theme.Tr("请移除无法读取、超出上限或属于其他笔记本的附件。", "Remove unavailable, oversized, or out-of-notebook attachments.")
+			c.mu.Unlock()
+			c.requestRedraw()
+			return
+		}
+		md, err := readNotebookNote(context.Background(), notebook, filename)
+		if err != nil {
+			c.turnError = theme.Tr("附件无法读取，请移除后重试。", "An attachment could not be read. Remove it and try again.")
+			c.mu.Unlock()
+			c.requestRedraw()
+			return
+		}
+		shownBuf.WriteString("@" + page + " ")
+		ctxBuf.WriteString(fmt.Sprintf("\n\n# 引用文件：%s（pageId: %s）\n\n%s", page, page, truncateRunes(md, 12000)))
+	}
 	if sel != nil {
+		page, err := notePageID(scope.root, sel.NotePath)
+		if err == nil && notebook != nil {
+			name, _ := noteFilename(page)
+			_, err = inspectNote(notebook, name)
+		}
+		if err != nil || notebook == nil {
+			c.turnError = theme.Tr("选区不在当前授权笔记本内，请移除后重试。", "The selection is outside the authorized notebook. Remove it and try again.")
+			c.mu.Unlock()
+			c.requestRedraw()
+			return
+		}
 		id := sel.identity()
 		c.dismissedSel = &id
 	}
-
-	var ctxBuf strings.Builder
-	var shownBuf strings.Builder
-	for _, r := range refs {
-		shownBuf.WriteString("@")
-		shownBuf.WriteString(r)
-		shownBuf.WriteByte(' ')
-		md := c.readPageContentLocked(c.activeRootLocked(), r)
-		if md != "" {
-			ctxBuf.WriteString(fmt.Sprintf("\n\n# 引用文件：%s（pageId: %s）\n\n%s", r, r, truncateRunes(md, 12000)))
-		}
-	}
+	c.draftRefs = nil
+	c.draftSkills = nil
+	c.draftSelection = nil
 	if sel != nil {
 		marker := "「" + selectionExcerpt(sel, 16) + "」 "
 		shownBuf.WriteString(marker)
@@ -1775,8 +1813,8 @@ func (c *Controller) SendPrompt(text string) {
 		shownBuf.WriteString("/")
 		shownBuf.WriteString(sk)
 		shownBuf.WriteByte(' ')
-		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" {
-			ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户调用的 Skill：%s\n\n%s", sk, spec.Content))
+		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" && ctxBuf.Len() < 192*1024 {
+			ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户调用的 Skill：%s\n\n%s", sk, truncateRunes(spec.Content, 12000)))
 		}
 	}
 
@@ -1797,6 +1835,9 @@ func (c *Controller) SendPrompt(text string) {
 		cp := *c.retryDraft
 		c.sentDraft = &cp
 		c.retryDraft = nil
+		if conv := c.findConvLocked(c.currentID); conv != nil && cp.MessageIndex >= 0 && cp.MessageIndex < len(conv.Messages) {
+			conv.Messages[cp.MessageIndex].Context = ctxBuf.String()
+		}
 	} else {
 		c.pushMessageLocked(model.ChatMessage{
 			Role:    "user",
@@ -1827,6 +1868,19 @@ func (c *Controller) SendPrompt(text string) {
 
 	isMock := c.mockResponder
 	convID := c.currentID
+	var turn *assistantTurn
+	if !isMock {
+		ctx, cancel := context.WithCancel(context.Background())
+		c.streamSerial++
+		conv := c.findConvLocked(convID)
+		turn = &assistantTurn{
+			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
+			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
+			userIndex: c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
+		}
+		c.turn = turn
+		c.streaming = true
+	}
 	c.mu.Unlock()
 
 	c.requestRedraw()
@@ -1835,9 +1889,9 @@ func (c *Controller) SendPrompt(text string) {
 		return
 	}
 	if backend == model.BackendBuiltin {
-		c.startBuiltinTurn(convID, 0)
+		c.startBuiltinTurn(turn, 0)
 	} else {
-		c.startExternalTurn(convID, backend)
+		c.startExternalTurn(turn, backend)
 	}
 }
 
@@ -1862,20 +1916,13 @@ func (c *Controller) stopStreamingLocked() {
 		c.recordTurnOutcomeLocked("stopped")
 	}
 	c.sentDraft = nil
-	if c.activeExternal != nil {
-		c.activeExternal.cancel()
-		c.activeExternal = nil
-	}
-	if c.streamCancel != nil {
-		c.streamCancel()
-		c.streamCancel = nil
-	}
+	c.finishTurnLocked()
 	c.streaming = false
 	c.streamSerial++
 	c.clearStreamRedrawLocked()
-	partial := c.partialText
-	c.partialText = ""
-	c.partialThink = ""
+	partial := c.partialText.String()
+	c.partialText.Reset()
+	c.partialThink.Reset()
 	c.partialSteps = nil
 	if strings.TrimSpace(partial) != "" {
 		c.pushMessageLocked(model.ChatMessage{
@@ -1924,14 +1971,32 @@ func (c *Controller) recordTurnOutcomeLocked(outcome string) {
 	c.persistChatsLocked()
 }
 
+func (c *Controller) currentTurnLocked(turn *assistantTurn) bool {
+	return turn != nil && c.turn == turn && c.streamSerial == turn.serial &&
+		c.currentID == turn.convID && turn.ctx.Err() == nil && c.providerCfg.Enabled
+}
+
+func (c *Controller) finishTurnLocked() {
+	if c.turn != nil {
+		c.turn.cancel()
+		c.turn = nil
+	}
+}
+
 func (c *Controller) hasPendingQuestionLocked() bool {
+	if c.currentTurnLocked(c.turn) && c.turn.questionIndex >= 0 {
+		return true
+	}
+	if !c.mockResponder {
+		return false
+	}
 	conv := c.findConvLocked(c.currentID)
 	if conv == nil {
 		return false
 	}
 	for i := len(conv.Messages) - 1; i >= 0; i-- {
 		m := conv.Messages[i]
-		if m.Role == "user" {
+		if m.Role == "user" || m.Role == "turn_outcome" {
 			break
 		}
 		if m.Question != nil && !m.Question.Submitted {
@@ -1989,37 +2054,30 @@ func (c *Controller) activePageLocked(root string) string {
 	if c.host == nil {
 		return ""
 	}
-	p := strings.TrimSpace(c.host.ActiveNotePath())
-	if p == "" {
+	canonical, err := AuthorizedNotebookRoot(c.host, root)
+	if err != nil {
 		return ""
 	}
-	if root != "" {
-		if rel, err := filepath.Rel(root, p); err == nil && !strings.HasPrefix(rel, "..") {
-			return strings.TrimSuffix(filepath.ToSlash(rel), ".md")
-		}
-	}
-	return strings.TrimSuffix(filepath.Base(p), ".md")
+	page, _ := notePageID(canonical, c.host.ActiveNotePath())
+	return page
 }
 
 func (c *Controller) readPageContentLocked(root, page string) string {
-	if page == "" {
+	canonical, err := AuthorizedNotebookRoot(c.host, root)
+	if err != nil {
 		return ""
 	}
-	abs := page
-	if !filepath.IsAbs(abs) && root != "" {
-		abs = filepath.Join(root, filepath.FromSlash(page)+".md")
+	dir, err := openNotebook(canonical)
+	if err != nil {
+		return ""
 	}
-	if c.host != nil {
-		if txt, err := c.host.ReadNote(abs); err == nil {
-			return txt
-		}
+	defer dir.Close()
+	name, err := noteFilename(page)
+	if err != nil {
+		return ""
 	}
-	if abs != "" {
-		if b, err := os.ReadFile(abs); err == nil {
-			return string(b)
-		}
-	}
-	return ""
+	body, _ := readNotebookNote(context.Background(), dir, name)
+	return body
 }
 
 func (c *Controller) loadBuiltinSkillsLocked() {
@@ -2030,7 +2088,7 @@ func (c *Controller) loadBuiltinSkillsLocked() {
 	}{
 		{"createNoote", "createNoote.md", "在本轮确定的笔记本和目录新建页面"},
 		{"updateNote", "updateNote.md", "改写、追加、补充或重命名当前页"},
-		{"searchNotes", "searchNotes.md", "跨笔记本和目录搜索并读取页面"},
+		{"searchNotes", "searchNotes.md", "在本轮授权的笔记本内搜索并读取页面"},
 		{"chat", "chat.md", "仅解释或建议，不改笔记"},
 		{"markdown", "markdown.md", "创建或修改笔记时的 Markdown 指引"},
 	}

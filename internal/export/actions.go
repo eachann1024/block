@@ -44,14 +44,17 @@ func (c *Controller) requestLocked() exportRequest {
 }
 
 func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) ([]byte, error) {
-	c.mu.Lock()
-	if c.exportDataRev == req.exportDataRev && c.cachedExports != nil {
-		if entry, ok := c.cachedExports[format]; ok && entry.rev == req.exportDataRev {
-			c.mu.Unlock()
+	// Media permissions and file identity can change while the export panel is open.
+	cacheable := format == model.ExportMarkdown || !hasExportMedia(req.doc)
+	if cacheable {
+		c.mu.Lock()
+		entry, ok := c.cachedExports[format]
+		current := c.exportDataRev == req.exportDataRev && entry.rev == req.exportDataRev
+		c.mu.Unlock()
+		if ok && current {
 			return entry.data, nil
 		}
 	}
-	c.mu.Unlock()
 
 	prefs := req.prefs
 	prefs.Format = format
@@ -65,7 +68,7 @@ func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) (
 	}
 
 	c.mu.Lock()
-	if c.open && c.exportDataRev == req.exportDataRev {
+	if cacheable && c.open && c.exportDataRev == req.exportDataRev {
 		if c.cachedExports == nil {
 			c.cachedExports = make(map[model.ExportFormat]cachedExportPayload)
 		}
@@ -73,6 +76,17 @@ func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) (
 	}
 	c.mu.Unlock()
 	return raw, nil
+}
+
+func hasExportMedia(doc *model.Doc) bool {
+	if doc != nil {
+		for i := range doc.Blocks {
+			if doc.Blocks[i].Kind == model.BlockImage {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func writeExportFileAtomic(outPath string, data []byte) error {

@@ -73,8 +73,8 @@ type Config struct {
 	LastUpdatedFrom     string
 	IsEn                func() bool
 	OnSourceModeChanged func(SourceMode)
-	FlushBeforeUpdate   func(fromVersion string)
-	QuitApp             func()
+	FlushBeforeUpdate   func(fromVersion string) error
+	QuitApp             func(startInstaller func() error) error
 	OnChange            func()
 }
 
@@ -432,7 +432,9 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 		s.inPlace = inPlace
 		s.pkgManaged = pkgManaged
 
-		if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, latest.Version) == 0 {
+		if s.readyRecord != nil && asset != nil && inPlace && s.readyRecord.Version == latest.Version &&
+			s.readyRecord.Tag == latest.Tag && s.readyRecord.AssetName == asset.Name &&
+			s.readyRecord.DownloadURL == asset.DownloadURL && s.readyRecord.SHA256 == asset.EffectiveSHA256() {
 			s.status = StatusReady
 		} else {
 			s.readyRecord = nil
@@ -587,10 +589,11 @@ func (s *Service) InstallNow() {
 			isEn = s.cfg.IsEn()
 		}
 		cur := CurrentVersion()
-		err := InstallReady(dataDir, &rec, isEn, func() {
+		err := InstallReady(dataDir, &rec, isEn, func() error {
 			if s.cfg.FlushBeforeUpdate != nil {
-				s.cfg.FlushBeforeUpdate(cur)
+				return s.cfg.FlushBeforeUpdate(cur)
 			}
+			return nil
 		}, s.cfg.QuitApp)
 
 		if err != nil {

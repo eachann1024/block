@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"block/internal/codepreview"
+	"block/internal/media"
 	"block/internal/model"
 	"block/internal/theme"
 	appUi "block/internal/ui"
@@ -686,7 +688,7 @@ func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
 }
 
 func (s *Session) PasteText(raw string) {
-	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
+	if len(raw) > media.MaxPasteBytes || s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}
 	idx := s.focusedBlock
@@ -806,7 +808,7 @@ func (s *Session) PasteText(raw string) {
 
 // PastePlainText inserts unformatted literal text (Cmd/Ctrl+Shift+V) without parsing Markdown, HTML, or URLs.
 func (s *Session) PastePlainText(raw string) {
-	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
+	if len(raw) > media.MaxPasteBytes || s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
 		return
 	}
 	clean := strings.TrimPrefix(raw, "\uFEFF")
@@ -1069,7 +1071,7 @@ func dedentCodeSnippet(code string) string {
 
 func parseSingleClipboardURL(raw string) (string, bool) {
 	s := strings.TrimSpace(strings.TrimPrefix(raw, "\uFEFF"))
-	if s == "" || strings.ContainsAny(s, " \t\r\n<>\"`") {
+	if media.WebLink(s) == "" {
 		return "", false
 	}
 	lower := strings.ToLower(s)
@@ -1278,6 +1280,8 @@ func (s *Session) replaceSelectionWithSpansInBlock(idx int, insertSpans []model.
 	s.markDirty()
 }
 
+const maxPastedTableCells = 100_000
+
 func (s *Session) buildTableFromTSV(tsv string) *model.TableData {
 	rawRows := strings.Split(tsv, "\n")
 	maxCols := 0
@@ -1292,7 +1296,7 @@ func (s *Session) buildTableFromTSV(tsv string) *model.TableData {
 		}
 		grid = append(grid, cols)
 	}
-	if len(grid) == 0 || maxCols < 2 {
+	if len(grid) == 0 || maxCols < 2 || max(len(grid), 2) > maxPastedTableCells/maxCols {
 		return nil
 	}
 	rows := make([][]model.TableCell, max(len(grid), 2))
@@ -1354,16 +1358,19 @@ func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keep
 		if parsed := s.codec.Parse(norm); parsed != nil && len(parsed.Blocks) == 1 &&
 			parsed.Blocks[0].Kind == model.BlockTable && parsed.Blocks[0].Table != nil && len(parsed.Blocks[0].Table.Rows) > 0 {
 			srcTbl := parsed.Blocks[0].Table
-			neededCols := len(tbl.Rows[0])
+			neededCols := max(len(tbl.Rows[0]), 1)
 			for _, r := range srcTbl.Rows {
 				if startC+len(r) > neededCols {
 					neededCols = startC + len(r)
 				}
 			}
+			neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
+			if neededRows > maxPastedTableCells/neededCols {
+				return
+			}
 			for len(tbl.Aligns) < neededCols {
 				tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
 			}
-			neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
 			for len(tbl.Rows) < neededRows {
 				tbl.Rows = append(tbl.Rows, make([]model.TableCell, neededCols))
 			}
@@ -1398,17 +1405,17 @@ func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keep
 	if !keepTrailingEmptyRow && len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
 		rawRows = rawRows[:len(rawRows)-1]
 	}
-	neededCols := len(tbl.Rows[0])
+	neededCols := max(len(tbl.Rows[0]), 1)
 	for _, rLine := range rawRows {
-		cols := strings.Split(rLine, "\t")
-		if startC+len(cols) > neededCols {
-			neededCols = startC + len(cols)
-		}
+		neededCols = max(neededCols, startC+1+strings.Count(rLine, "\t"))
+	}
+	neededRows := max(len(tbl.Rows), startR+len(rawRows))
+	if neededRows > maxPastedTableCells/neededCols {
+		return
 	}
 	for len(tbl.Aligns) < neededCols {
 		tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
 	}
-	neededRows := max(len(tbl.Rows), startR+len(rawRows))
 	for len(tbl.Rows) < neededRows {
 		tbl.Rows = append(tbl.Rows, make([]model.TableCell, neededCols))
 	}
@@ -1828,6 +1835,12 @@ func (s *Session) selectionLinkURL() string {
 }
 
 func (s *Session) ApplyLinkOnSelection(url string) {
+	url = strings.TrimSpace(url)
+	if url != "" && media.WebLink(url) == "" {
+		if _, err := media.RelativePath(s.mediaDir(), url); err != nil {
+			return
+		}
+	}
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
@@ -3335,31 +3348,8 @@ func (s *Session) FindPrev() {
 }
 
 func (s *Session) recomputeFind(jump bool) {
-	s.findMatches = nil
-	q := s.findQuery
-	if q == "" || s.doc == nil {
-		s.findCurrent = 0
-		return
-	}
-	needle := []rune(strings.ToLower(q))
-	if len(needle) == 0 {
-		s.findCurrent = 0
-		return
-	}
-	for bIdx := range s.doc.Blocks {
-		hay := []rune(strings.ToLower(s.doc.Blocks[bIdx].PlainText()))
-		for i := 0; i+len(needle) <= len(hay); {
-			if slices.Equal(hay[i:i+len(needle)], needle) {
-				s.findMatches = append(s.findMatches, findMatch{
-					BlockIdx:  bIdx,
-					StartRune: i,
-					EndRune:   i + len(needle),
-				})
-				i += len(needle)
-			} else {
-				i++
-			}
-		}
+	if s.findMatchesRev != s.docRev || s.findMatchesQuery != s.findQuery {
+		s.refreshFindMatches()
 	}
 	if len(s.findMatches) == 0 {
 		s.findCurrent = 0
@@ -3367,18 +3357,66 @@ func (s *Session) recomputeFind(jump bool) {
 	}
 	if jump {
 		cur := s.selHead
-		best := 0
-		for i, m := range s.findMatches {
-			if m.BlockIdx > cur.Block || (m.BlockIdx == cur.Block && m.StartRune >= cur.Offset) {
-				best = i
-				break
-			}
+		best := sort.Search(len(s.findMatches), func(i int) bool {
+			m := s.findMatches[i]
+			return m.BlockIdx > cur.Block || (m.BlockIdx == cur.Block && m.StartRune >= cur.Offset)
+		})
+		if best == len(s.findMatches) {
+			best = 0
 		}
 		s.findCurrent = best
 		s.gotoCurrentFindMatch()
 	} else if s.findCurrent >= len(s.findMatches) {
 		s.findCurrent = 0
 	}
+}
+
+func (s *Session) refreshFindMatches() {
+	s.findMatchesRev = s.docRev
+	s.findMatchesQuery = s.findQuery
+	s.findMatches = nil
+	if s.findQuery == "" || s.doc == nil {
+		return
+	}
+
+	needle := strings.ToLower(s.findQuery)
+	needleRunes := utf8.RuneCountInString(needle)
+	for idx := range s.doc.Blocks {
+		hay := strings.ToLower(s.doc.Blocks[idx].PlainText())
+		runeOffset := 0
+		for {
+			match := strings.Index(hay, needle)
+			if match < 0 {
+				break
+			}
+			// Lowercasing maps one rune to one rune, even when its byte width changes.
+			start := runeOffset + utf8.RuneCountInString(hay[:match])
+			runeOffset = start + needleRunes
+			s.findMatches = append(s.findMatches, findMatch{BlockIdx: idx, StartRune: start, EndRune: runeOffset})
+			hay = hay[match+len(needle):]
+		}
+	}
+}
+
+// Matches are ordered by block and end offset. The first possible overlap
+// either ends after offset in blockIdx or belongs to a later block.
+func (s *Session) firstFindMatchEndingAfter(blockIdx, offset int) int {
+	return sort.Search(len(s.findMatches), func(i int) bool {
+		m := s.findMatches[i]
+		return m.BlockIdx > blockIdx || (m.BlockIdx == blockIdx && m.EndRune > offset)
+	})
+}
+
+func (s *Session) findMatchesForBlock(blockIdx int) ([]findMatch, int) {
+	if !s.findOpen {
+		return nil, 0
+	}
+	first := s.firstFindMatchEndingAfter(blockIdx, 0)
+	if first == len(s.findMatches) || s.findMatches[first].BlockIdx != blockIdx {
+		return nil, 0
+	}
+	last := s.firstFindMatchEndingAfter(blockIdx+1, 0)
+	return s.findMatches[first:last], first
 }
 
 func (s *Session) gotoCurrentFindMatch() {
@@ -3890,38 +3928,44 @@ func applySelectedDiff(op *model.PlanOp) string {
 }
 
 func (s *Session) acceptActivePlan() {
-	if s.activePlan == nil {
+	if s.activePlan == nil || s.readOnly {
 		return
 	}
-	plan := s.activePlan
+	plan := *s.activePlan
+	plan.Ops = append([]model.PlanOp(nil), plan.Ops...)
 	for i := range plan.Ops {
 		op := &plan.Ops[i]
 		s.ensurePlanOpLineSelection(op)
-		op.New = applySelectedDiff(op)
-	}
-	if s.host != nil {
-		_ = s.host.ApplyBatchPlan(plan)
-	}
-	// If any op matches the current note (or there is a single replace op in standalone test), update doc.
-	for i := range plan.Ops {
-		op := &plan.Ops[i]
-		if op.Kind != model.PlanOpCreateNote && (s.notePath == "" || op.Page == s.notePath || strings.HasSuffix(s.notePath, op.Page)) {
-			s.pushUndo()
-			var nextDoc *model.Doc
-			if s.codec != nil {
-				nextDoc = s.codec.Parse(op.New)
-			} else {
-				nextDoc = fallbackParsePaste(op.New)
-			}
-			s.doc = normalizeDoc(nextDoc)
-			s.focusedBlock = 0
-			s.selAnchor = Position{}
-			s.selHead = Position{}
-			s.markDirty()
-			break
+		if slices.Contains(op.LineSelected, false) {
+			op.New = applySelectedDiff(op)
 		}
 	}
-	plan.Status = "applied"
+	if s.host != nil {
+		var err error
+		if reviewHost, ok := s.host.(interface{ AcceptEditorBatchPlan(*model.BatchPlan) error }); ok {
+			err = reviewHost.AcceptEditorBatchPlan(&plan)
+		} else {
+			err = s.host.ApplyBatchPlan(&plan)
+		}
+		if err == nil {
+			s.activePlan = nil
+		}
+		return
+	}
+	// A standalone editor can only apply a full-document change to its own note.
+	if len(plan.Ops) != 1 {
+		return
+	}
+	op := plan.Ops[0]
+	if op.Kind != model.PlanOpReplace || (s.notePath != "" && op.Page != s.notePath) || s.Markdown() != op.Old {
+		return
+	}
+	s.pushUndo()
+	s.doc = normalizeDoc(s.parseMarkdownDoc(op.New))
+	s.focusedBlock = 0
+	s.selAnchor = Position{}
+	s.selHead = Position{}
+	s.markDirty()
 	s.activePlan = nil
 }
 

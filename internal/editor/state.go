@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -118,26 +119,26 @@ type Session struct {
 	blockDocRects      map[model.BlockID]ui.Rect
 	blockTextDocRects  map[model.BlockID]ui.Rect
 	tableCellDocRects  map[tableCellKey]tableCellGeom
-	textLayoutCache   map[model.BlockID]cachedBlockLayout
-	tableCellLayouts  map[tableCellKey]cachedCellLayout
-	codeSyntaxCache   map[model.BlockID]cachedCodeSyntax
-	codePreviewCache  map[model.BlockID]cachedCodePreview
-	tableColCache     map[model.BlockID]cachedTableCols
-	tableGridGeoms    map[model.BlockID]tableGridGeom
-	tableHScrolls     map[model.BlockID]*ui.ScrollState
-	blockIdxCache     map[model.BlockID]int
-	blockIdxRev       uint64
-	frameBlocks       []frameBlockMeta
-	docRev           uint64
-	outlineRev       uint64
-	outlineLen       int
-	outlineCache     []model.OutlineItem
-	lastVirtSig      float32
-	virtReady        bool
-	folded           map[model.BlockID]bool
-	foldTails        map[model.BlockID]model.BlockID
-	trailingPlus     bool
-	typingPointer    *ui.Point
+	textLayoutCache    map[model.BlockID]cachedBlockLayout
+	tableCellLayouts   map[tableCellKey]cachedCellLayout
+	codeSyntaxCache    map[model.BlockID]cachedCodeSyntax
+	codePreviewCache   map[model.BlockID]cachedCodePreview
+	tableColCache      map[model.BlockID]cachedTableCols
+	tableGridGeoms     map[model.BlockID]tableGridGeom
+	tableHScrolls      map[model.BlockID]*ui.ScrollState
+	blockIdxCache      map[model.BlockID]int
+	blockIdxRev        uint64
+	frameBlocks        []frameBlockMeta
+	docRev             uint64
+	outlineRev         uint64
+	outlineLen         int
+	outlineCache       []model.OutlineItem
+	lastVirtSig        float32
+	virtReady          bool
+	folded             map[model.BlockID]bool
+	foldTails          map[model.BlockID]model.BlockID
+	trailingPlus       bool
+	typingPointer      *ui.Point
 
 	// Mouse multi-block / marquee selection
 	mouseMode        mouseSelMode
@@ -174,6 +175,7 @@ type Session struct {
 	inlineAIStreamResponder func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)
 	inlineAI                *inlineAISession
 	savedMarkdown           string
+	diskFingerprint         atomic.Int64
 	caretHidden             bool
 	reactionPickerAnnotID   string
 	detachedCompose         string
@@ -183,6 +185,8 @@ type Session struct {
 	findOpen         bool
 	findQuery        string
 	findMatches      []findMatch
+	findMatchesRev   uint64
+	findMatchesQuery string
 	findCurrent      int
 	findInputHandle  ui.Handle
 	findFocusPending bool
@@ -245,8 +249,10 @@ type Session struct {
 	imageCache        map[string]ui.ImageSource
 	imageOrder        []string
 	imageLoading      map[string]bool
+	imageEpoch        uint64
 	imageFailed       map[string]bool
 	videoPlayers      map[string]*ui.VideoPlayer
+	videoBytes        map[string]int64
 	previewMedia      func(src string, video, load bool) PreviewAsset
 	videoFailed       map[string]bool
 	imageDocRects     map[model.BlockID]ui.Rect
@@ -385,6 +391,7 @@ func (s *Session) SetNotePath(p string) {
 	}
 	old := s.notePath
 	s.notePath = p
+	s.resetMedia()
 	s.onNotePathChanged(old, p)
 }
 
@@ -441,7 +448,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.reactionPickerAnnotID = ""
 	s.caretHidden = false
 	s.toolbarMoreIndex = 0
-	s.closeVideoPlayers()
+	s.resetMedia()
 	s.trailingPlus = false
 	clear(s.folded)
 	clear(s.foldTails)
@@ -480,13 +487,7 @@ func (s *Session) Close() {
 		return
 	}
 	s.cancelInlineAI()
-	s.closeVideoPlayers()
-	s.imageMu.Lock()
-	clear(s.imageCache)
-	clear(s.imageLoading)
-	clear(s.imageFailed)
-	s.imageOrder = nil
-	s.imageMu.Unlock()
+	s.resetMedia()
 	clear(s.textLayoutCache)
 	clear(s.tableCellLayouts)
 	clear(s.codeSyntaxCache)
@@ -519,6 +520,14 @@ func (s *Session) TrimInactiveCaches() {
 
 func (s *Session) Dirty() bool {
 	return s.dirty
+}
+
+func (s *Session) DiskFingerprint() int64 {
+	return s.diskFingerprint.Load()
+}
+
+func (s *Session) SetDiskFingerprint(version int64) {
+	s.diskFingerprint.Store(version)
 }
 
 func (s *Session) DocRev() uint64 {

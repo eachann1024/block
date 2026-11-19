@@ -1,12 +1,9 @@
 package pluginui
 
 import (
-	"fmt"
-	"strconv"
 	"strings"
 
 	"block/internal/icons"
-	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
@@ -22,6 +19,7 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 		if bui.SegmentedControlWithOptions(c, "app-store-filter", &filterIdx, []bui.SegmentOption{
 			{ID: "app-store-filter-all", Label: theme.Tr("全部", "All")},
 			{ID: "app-store-filter-installed", Label: theme.Tr("已安装", "Installed")},
+			{ID: "app-store-filter-available", Label: theme.Tr("未安装", "Not Installed")},
 		}, bui.SegmentedControlOptions{
 			TrackHeight:   theme.SegmentedControlHeight,
 			TrackPadding:  theme.Space2,
@@ -32,13 +30,28 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 			ctrl.setStoreFilter(filterIdx)
 		}
 
-		refreshLbl := theme.Tr("刷新", "Refresh")
-		if refreshing {
-			refreshLbl = theme.Tr("刷新中…", "Refreshing…")
+		manualOpen := ctrl.manualOpenValue()
+		manualBtn := bui.IconButton(c, icons.Plus, bui.IconButtonOptions{
+			ID:      "app-store-manual-toggle",
+			Label:   theme.Tr("手动安装", "Manual Install"),
+			Tooltip: theme.Tr("手动安装", "Manual Install"),
+			Active:  manualOpen,
+		})
+		if manualBtn.Clicked() {
+			ctrl.toggleManualOpen()
 		}
-		refIcon := icons.Refresh
-		refBtn := bui.ActionButton(c, "app-store-refresh", refreshLbl, &refIcon, bui.ButtonSecondary, refreshing)
-		if refBtn.Clicked() {
+
+		refTip := theme.Tr("刷新", "Refresh")
+		if refreshing {
+			refTip = theme.Tr("刷新中…", "Refreshing…")
+		}
+		refBtn := bui.IconButton(c, icons.Refresh, bui.IconButtonOptions{
+			ID:      "app-store-refresh",
+			Label:   refTip,
+			Tooltip: refTip,
+			Loading: refreshing,
+		})
+		if refBtn.Clicked() && !refreshing {
 			ctrl.sup.RefreshCatalogAsync()
 		}
 	})
@@ -73,7 +86,8 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		if storeErr != "" {
 			ui.Row(c.Key("app-store-error")).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.DangerSurface).Border(1, pal.Danger).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				Background(pal.DangerSurface).Border(1, pal.Danger).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				Transition(bui.CascadeRowTransition(0)).Children(func() {
 				ui.Text(c, storeErr).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Danger).Grow(1).MinWidth(0)
 				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
 					ID:      "app-store-error-dismiss",
@@ -88,7 +102,8 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		} else if storeNotice != "" {
 			ui.Row(c.Key("app-store-notice")).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				Transition(bui.CascadeRowTransition(0)).Children(func() {
 				ui.Text(c, storeNotice).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
 				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
 					ID:      "app-store-notice-dismiss",
@@ -101,7 +116,9 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			})
 		}
 
-		renderManualInstallCard(c, ctrl, installingID)
+		if ctrl.manualOpenValue() {
+			renderManualInstallRow(c, ctrl, installingID)
+		}
 
 		if len(entries) == 0 {
 			c.Key("app-store-empty-card")
@@ -109,6 +126,8 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 				msg := theme.Tr("暂无可用应用", "No apps available")
 				if filter == 1 {
 					msg = theme.Tr("暂无已安装应用", "No installed apps")
+				} else if filter == 2 && !refreshing {
+					msg = theme.Tr("已安装全部应用", "All apps are installed")
 				} else if refreshing {
 					msg = theme.Tr("正在加载应用目录…", "Loading catalog…")
 				}
@@ -118,10 +137,10 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		}
 
 		ui.Grid(c.Key("app-store-list")).FillWidth().MinWidth(0).
-			Columns(storeColumnCount(bodyW)).Gap(theme.Space16).Children(func() {
+			Columns(storeColumnCount(bodyW)).Gap(theme.Space4).Children(func() {
 			for _, entry := range entries {
 				app, isInstalled := installedMap[entry.ID]
-				renderStoreAppCard(c, ctrl, entry, locale, app, isInstalled, installingID, onSelectTab)
+				renderStoreAppRow(c, ctrl, entry, locale, app, isInstalled, isInstalled && filter == 0, installingID, onSelectTab)
 			}
 		})
 	})
@@ -131,339 +150,184 @@ func storeColumnCount(bodyW float32) int {
 	if bodyW <= 0 {
 		return 2
 	}
-	cols := int((bodyW + theme.Space16) / (theme.StoreMinColWidth + theme.Space16))
-	return min(max(cols, 1), 4)
+	cols := int((bodyW + theme.Space4) / (theme.StoreMinColWidth + theme.Space4))
+	return min(max(cols, 1), 2)
 }
 
-func renderManualInstallCard(c *ui.Context, ctrl *Controller, installingID string) {
+func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string) {
 	pal := theme.Ocean()
-	card := ui.Column(c.Key("app-store-manual-card")).FillWidth().MinWidth(0).
-		Padding(theme.Space16, theme.Space20, theme.Space16, theme.Space20).
-		Gap(theme.Space12).
-		Radius(theme.RadiusXL).
-		Background(pal.Card).
-		Border(1, pal.Hairline)
-
-	card.Children(func() {
-		ui.Text(c, theme.Tr("手动安装", "Manual Install")).
-			FontSize(theme.FontTitle).
-			FixedLineHeight(theme.LineTitle).
-			FontWeight(theme.WeightTitle).
+	spec := ctrl.manualSpecValue()
+	ui.Row(c.Key("app-store-manual-row")).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).
+		Transition(bui.CascadeRowTransition(0)).Children(func() {
+		in := ui.TextInput(c.Key("app-store-manual-input"), &spec).
+			Placeholder(theme.Tr("输入 owner/repo、压缩包 URL 或本地目录路径", "Enter owner/repo, archive URL, or local directory path")).
+			Label(theme.Tr("手动安装插件源", "Plugin Source")).
+			FontSize(theme.FontBody).
+			FixedLineHeight(theme.LineBody).
+			Height(theme.HeightControl).
+			Padding(0, theme.Space12).
+			Radius(theme.RadiusMD).
 			TextColor(pal.Text).
-			SingleLine()
+			PlaceholderColor(pal.Placeholder).
+			Grow(1).
+			MinWidth(0)
+		if in.Focused() {
+			in.Background(pal.Card).Border(1, pal.Accent)
+		} else if in.Hovered() {
+			in.Background(pal.Shell).Border(1, pal.BtnBorder.Mix(pal.Text, 0.20))
+		} else {
+			in.Background(pal.Shell).Border(1, pal.BtnBorder)
+		}
+		bui.Probe(in, "app-store-manual-input")
+		if in.Changed() {
+			ctrl.setManualSpec(spec)
+		}
+		submitted := in.Submitted()
 
-		spec := ctrl.manualSpecValue()
-		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInput(c.Key("app-store-manual-input"), &spec).
-				Placeholder(theme.Tr("输入 owner/repo、压缩包 URL 或本地目录路径", "Enter owner/repo, archive URL, or local directory path")).
-				Label(theme.Tr("手动安装插件源", "Plugin Source")).
-				Font("monospace").
-				FontSize(theme.FontBody).
-				Height(theme.HeightControl).
-				PaddingX(theme.Space10).
-				Radius(theme.RadiusMD).
-				Background(pal.Shell).
-				Border(1, pal.Hairline).
-				TextColor(pal.Text).
-				PlaceholderColor(pal.Placeholder).
-				Grow(1).
-				MinWidth(0)
-			bui.Probe(in, "app-store-manual-input")
-			if in.Changed() {
-				ctrl.setManualSpec(spec)
-			}
-			submitted := in.Submitted()
-
-			manualBusy := installingID == "__manual__"
-			if ctrl.sup != nil && ctrl.sup.CanPickDirectory() {
-				pickBtn := bui.ActionButton(c, "app-store-manual-browse", theme.Tr("本地目录…", "Browse…"), nil, bui.ButtonSecondary, installingID != "")
-				if pickBtn.Clicked() {
-					ctrl.sup.PickDirectory(theme.Tr("选择本地插件目录", "Choose Local Plugin Directory"), func(chosen string) {
-						ctrl.setManualSpec(chosen)
-					})
-				}
-			}
-			disabled := installingID != "" || strings.TrimSpace(spec) == ""
-			btnLbl := theme.Tr("安装", "Install")
-			if manualBusy {
-				btnLbl = theme.Tr("安装中…", "Installing…")
-			}
-			btn := bui.ActionButton(c, "app-store-manual-install", btnLbl, nil, bui.ButtonAccentOutline, disabled)
-			if (btn.Clicked() || submitted) && !disabled {
-				source := spec
-				ctrl.sup.InstallFromSourceAsync(source, func(pluginID string) {
-					ctrl.clearManualSpec()
-					ctrl.clearPluginState(pluginID)
+		if ctrl.sup != nil && ctrl.sup.CanPickDirectory() {
+			pickBtn := bui.ActionButton(c, "app-store-manual-browse", theme.Tr("本地目录", "Browse"), nil, bui.ButtonGhost, installingID != "")
+			if pickBtn.Clicked() {
+				ctrl.sup.PickDirectory(theme.Tr("选择本地插件目录", "Choose Local Plugin Directory"), func(chosen string) {
+					ctrl.setManualSpec(chosen)
 				})
 			}
+		}
+		manualBusy := installingID == "__manual__"
+		disabled := (installingID != "" && !manualBusy) || strings.TrimSpace(spec) == ""
+		btnLbl := theme.Tr("安装", "Install")
+		if manualBusy {
+			btnLbl = theme.Tr("安装中…", "Installing…")
+		}
+		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-manual-install",
+			Label:    btnLbl,
+			Style:    bui.ButtonAccentOutline,
+			Disabled: disabled,
+			Loading:  manualBusy,
 		})
+		if (btn.Clicked() || submitted) && !disabled && !manualBusy {
+			source := spec
+			ctrl.sup.InstallFromSourceAsync(source, func(pluginID string) {
+				ctrl.clearManualSpec()
+				ctrl.clearPluginState(pluginID)
+			})
+		}
 	})
 }
 
-func renderStoreAppCard(
+// renderStoreAppRow draws one quiet store entry: icon, name and a one-line
+// summary. Actions stay hidden until the row is hovered (or busy installing);
+// an installed app's row opens its settings page, where enable/uninstall live.
+func renderStoreAppRow(
 	c *ui.Context,
 	ctrl *Controller,
 	entry plugins.StoreAppEntry,
 	locale string,
 	installedApp plugins.InstalledApp,
 	isInstalled bool,
+	showInstalledMark bool,
 	installingID string,
 	onSelectTab func(nextTab string),
 ) {
 	pal := theme.Ocean()
-	downloads := entry.Downloads
-	if downloads < 0 {
-		downloads = 0
-	}
-	if store := ctrl.sup.Store(); store != nil {
-		downloads = store.EffectiveDownloads(entry)
-	}
-	dlStr := formatDownloadCount(downloads)
-
-	card := ui.Column(c.Key("app-store-card-"+entry.ID)).
-		FillWidth().
-		MinWidth(0).
-		Padding(theme.CardPadY, theme.CardPadX, theme.CardPadY, theme.CardPadX).
-		Gap(theme.Space12).
-		Radius(theme.RadiusXL)
-	hovered := card.Hovered()
-	bdCol := pal.Hairline
-	if hovered {
-		bdCol = pal.BtnBorder
-	}
-	bui.AnimateSurfaceColors(card, pal.Card, bdCol, true)
-	if hovered {
-		bui.Elevate(card, theme.ElevationRaised)
-	}
-
 	name := entry.Name.Resolve(locale)
-	card.Cursor(ui.CursorPointer)
-	openReadme := card.Clicked()
+	rowH := 2*theme.Space12 + theme.LineTitle + theme.Space2 + theme.LineBody
 
-	card.Children(func() {
-		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
-			ui.Row(c).FillWidth().MinWidth(0).Height(theme.StoreIconBoxSize).
-				Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
-					Radius(theme.RadiusLG).Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
-					DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
-				})
+	row := ui.Row(c.Key("app-store-card-"+entry.ID)).
+		FillWidth().MinWidth(0).Height(rowH).
+		Padding(theme.Space12, theme.Space12, theme.Space12, theme.Space12).
+		Gap(theme.Space12).AlignItems(ui.Center).
+		Radius(theme.RadiusLG).Cursor(ui.CursorPointer)
+	row.Role(ui.RoleButton).Focusable()
+	bui.Probe(row, "app-store-card-"+entry.ID)
+	hovered := row.Hovered()
+	pressed := row.Pressed()
+	if pressed {
+		row.Background(pal.Selected)
+	} else if hovered {
+		row.Background(pal.Hover)
+	}
+	bui.TactileCard(row, hovered, pressed, false, false)
+	activate := row.Clicked()
 
-				title := ui.Text(c.Key("app-store-readme-"+entry.ID), name).
-					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
-					TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				title.Role(ui.RoleButton).Focusable().Cursor(ui.CursorPointer)
-				bui.Tooltip(c, title, theme.Tr("查看详情", "View Details"))
-				if hovered {
-					title.TextColor(pal.Accent)
-				}
-				openReadme = title.Clicked() || openReadme
+	busy := installingID == entry.ID
+	hasUpdate := isInstalled && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
+		semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+installedApp.Manifest.Version) > 0
 
-				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
-					hasUpdate := isInstalled && entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
-						semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+installedApp.Manifest.Version) > 0
-					renderStoreCardActions(c, ctrl, entry, isInstalled, hasUpdate, installingID, onSelectTab)
-				})
-			})
-
-			ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightMicro).
-				Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-				renderVerifiedBadge(c, entry.Verified)
-				if ver := strings.TrimSpace(entry.Version); ver != "" {
-					ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).
-						Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).
-						MaxWidthPercent(35).MinWidth(0).SingleLine().Ellipsis("…")
-				}
-				if author := strings.TrimSpace(entry.Author); author != "" {
-					ui.Text(c, author).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				}
-				if isInstalled && !installedApp.Enabled {
-					ui.Text(c, theme.Tr("已停用", "Disabled")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).Shrink(0).SingleLine()
-				}
-			})
+	row.Children(func() {
+		ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
+			Radius(theme.RadiusLG).Background(pal.Shell).Children(func() {
+			DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
 		})
 
-		bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
-			theme.FontSmall, theme.LineBody, pal.TextSecondary, pal.Card)
-
-		ui.Row(c).FillWidth().MinWidth(0).Height(theme.Space12+theme.HeightMicro+1).
-			Padding(theme.Space12, 0, 0, 0).
-			BorderWidth(1, 0, 0, 0).
-			BorderColor(pal.Hairline).
-			Gap(theme.Space10).
-			AlignItems(ui.Center).
-			Justify(ui.SpaceBetween).
-			Children(func() {
-				ui.Text(c, theme.Tr(dlStr+" 次下载", dlStr+" downloads")).
-					Font("monospace").
-					FontSize(theme.FontMeta).
-					FixedLineHeight(theme.LineMeta).
-					FontWeight(theme.WeightMono).
-					TextColor(pal.Text).
-					SingleLine().
-					Shrink(0)
-
-				if len(entry.Permissions) > 0 {
-					renderPermissionSummaryPill(c, entry.Permissions, locale)
+		ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, name).
+					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
+					TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+				if storeAppIsBeta(entry, installedApp, isInstalled) {
+					bui.BetaBadge(c, true)
+				}
+				if showInstalledMark {
+					// A quiet check after the name is the only resting cue that an app is installed.
+					mark := ui.Box(c.Key("app-store-installed-" + entry.ID)).Shrink(0).Center().Children(func() {
+						icons.Draw(c, icons.Check, theme.IconInline, pal.DuoIconColors(pal.TextSecondary))
+					})
+					bui.Tooltip(c, mark, theme.Tr("已安装", "Installed"))
 				}
 			})
+			if summary := strings.TrimSpace(entry.Summary.Resolve(locale)); summary != "" {
+				ui.Text(c, summary).
+					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+			}
+		})
+
+		if !hovered && !busy {
+			return
+		}
+		ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+			switch {
+			case !isInstalled || hasUpdate:
+				lbl := theme.Tr("安装", "Install")
+				if hasUpdate {
+					lbl = theme.Tr("更新", "Update")
+				}
+				if busy {
+					lbl = theme.Tr("安装中…", "Installing…")
+					if hasUpdate {
+						lbl = theme.Tr("更新中…", "Updating…")
+					}
+				}
+				btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+					ID:       "app-store-install-" + entry.ID,
+					Label:    lbl,
+					Style:    bui.ButtonAccentOutline,
+					Disabled: installingID != "" && !busy,
+					Loading:  busy,
+					Height:   theme.HeightCompact,
+					PaddingX: theme.Space12,
+				})
+				if btn.Clicked() && !busy {
+					ctrl.openStoreReadme(entry, installedApp)
+				}
+			}
+			if isInstalled {
+				icons.Draw(c, icons.ChevronRight, theme.IconAction, pal.DuoIconColors(pal.TextSecondary))
+			}
+		})
 	})
 
-	if openReadme {
+	if activate {
 		ctrl.openStoreReadme(entry, installedApp)
 	}
 }
 
-func renderStoreCardActions(
-	c *ui.Context,
-	ctrl *Controller,
-	entry plugins.StoreAppEntry,
-	isInstalled bool,
-	hasUpdate bool,
-	installingID string,
-	onSelectTab func(nextTab string),
-) {
+func storeAppIsBeta(entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
 	if isInstalled {
-		if hasUpdate {
-			isUpdating := installingID == entry.ID
-			upLbl := theme.Tr("更新至 ", "Update to ") + entry.Version
-			if isUpdating {
-				upLbl = theme.Tr("更新中…", "Updating…")
-			}
-			upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-				ID:       "app-store-update-" + entry.ID,
-				Label:    upLbl,
-				Style:    bui.ButtonPrimary,
-				Disabled: installingID != "",
-				Height:   theme.HeightCompact,
-				PaddingX: theme.Space12,
-			})
-			if upBtn.Clicked() {
-				appEntry := entry
-				ctrl.sup.InstallEntryAsync(appEntry, ctrl.clearPluginState)
-			}
-		}
-		openLabel := theme.Tr("打开", "Open")
-		if entry.ID == "block-sync" {
-			openLabel = theme.Tr("配置同步", "Configure Sync")
-		}
-		openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID:       "app-store-open-" + entry.ID,
-			Label:    openLabel,
-			Style:    bui.ButtonAccentOutline,
-			Height:   theme.HeightCompact,
-			PaddingX: theme.Space12,
-		})
-		if openBtn.Clicked() && onSelectTab != nil {
-			onSelectTab(modals.TabPluginPrefix + entry.ID)
-		}
-		uninstBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID:       "app-store-uninstall-" + entry.ID,
-			Label:    theme.Tr("卸载", "Uninstall"),
-			Style:    bui.ButtonSecondary,
-			Height:   theme.HeightCompact,
-			PaddingX: theme.Space10,
-		})
-		if uninstBtn.Clicked() {
-			ctrl.uninstallPlugin(entry.ID, nil)
-		}
-		return
+		return installed.Manifest.Beta
 	}
-
-	isThisInstalling := installingID == entry.ID
-	lbl := theme.Tr("安装", "Install")
-	if isThisInstalling {
-		lbl = theme.Tr("安装中…", "Installing…")
-	}
-	instBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-		ID:       "app-store-install-" + entry.ID,
-		Label:    lbl,
-		Style:    bui.ButtonAccentOutline,
-		Disabled: installingID != "",
-		Height:   theme.HeightCompact,
-		PaddingX: theme.Space12,
-	})
-	if instBtn.Clicked() {
-		appEntry := entry
-		ctrl.sup.InstallEntryAsync(appEntry, nil)
-	}
-}
-
-func renderPermissionSummaryPill(c *ui.Context, perms []plugins.Permission, locale string) {
-	pal := theme.Ocean()
-	allLabels := make([]string, 0, len(perms))
-	for _, p := range perms {
-		allLabels = append(allLabels, plugins.PermissionLabel(p, locale))
-	}
-	limit := theme.StorePermissionSummary
-	display := strings.Join(allLabels, " · ")
-	hasExtra := false
-	if len(allLabels) > limit {
-		display = fmt.Sprintf("%s +%d", strings.Join(allLabels[:limit], " · "), len(allLabels)-limit)
-		hasExtra = true
-	}
-
-	pill := ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).MinWidth(0).Shrink(1).
-		Radius(theme.RadiusSM).Background(pal.Shell).Border(1, pal.Hairline).AlignItems(ui.Center)
-	if hasExtra {
-		bui.Tooltip(c, pill, theme.Tr("所需权限：", "Permissions: ")+strings.Join(allLabels, " · "))
-	}
-	pill.Children(func() {
-		ui.Text(c, display).
-			FontSize(theme.FontMeta).
-			FixedLineHeight(theme.LineMeta).
-			TextColor(pal.TextSecondary).
-			SingleLine().
-			Ellipsis("…")
-	})
-}
-
-func formatDownloadCount(n int) string {
-	if n < 0 {
-		n = 0
-	}
-	s := strconv.Itoa(n)
-	if len(s) <= 3 {
-		return s
-	}
-	var out []byte
-	rem := len(s) % 3
-	if rem > 0 {
-		out = append(out, s[:rem]...)
-	}
-	for i := rem; i < len(s); i += 3 {
-		if len(out) > 0 {
-			out = append(out, ',')
-		}
-		out = append(out, s[i:i+3]...)
-	}
-	return string(out)
-}
-
-func renderVerifiedBadge(c *ui.Context, verified bool) {
-	pal := theme.Ocean()
-	label := theme.Tr("社区收录", "Community")
-	bg := pal.Shell
-	bd := pal.Hairline
-	fg := pal.TextSecondary
-	if verified {
-		label = theme.Tr("官方认证", "Official")
-		bg = pal.Selected
-		bd = pal.SelectedBorder
-		fg = pal.Text
-	}
-	ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
-		Background(bg).Border(1, bd).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).
-			FontSize(theme.FontMeta).
-			FixedLineHeight(theme.LineMeta).
-			FontWeight(theme.WeightControl).
-			TextColor(fg).
-			SingleLine()
-	})
+	return entry.Beta
 }
 
 func buildVisibleStoreEntries(
@@ -494,6 +358,7 @@ func buildVisibleStoreEntries(
 			ID:          id,
 			Name:        inst.Manifest.Name,
 			Version:     inst.Manifest.Version,
+			Beta:        inst.Manifest.Beta,
 			Author:      inst.Manifest.Author,
 			Repo:        inst.Manifest.Repo,
 			Summary:     inst.Manifest.Summary,
@@ -502,12 +367,13 @@ func buildVisibleStoreEntries(
 			Icon:        inst.Manifest.Icon,
 		})
 	}
-	if filter != 1 {
+	if filter != 1 && filter != 2 {
 		return all
 	}
-	filtered := make([]plugins.StoreAppEntry, 0, len(installed))
+	wantInstalled := filter == 1
+	filtered := make([]plugins.StoreAppEntry, 0, len(all))
 	for _, entry := range all {
-		if _, ok := installedMap[entry.ID]; ok {
+		if _, ok := installedMap[entry.ID]; ok == wantInstalled {
 			filtered = append(filtered, entry)
 		}
 	}

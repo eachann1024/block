@@ -46,24 +46,20 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 		})
 	}
 
-	if s.findOpen {
-		for i, m := range s.findMatches {
-			if m.BlockIdx != idx {
-				continue
-			}
-			band := appUi.RichBand{
-				Start:    m.StartRune,
-				End:      m.EndRune,
-				Fill:     pal.FindMatch,
-				Radius:   theme.RadiusXS,
-				TintOver: true,
-			}
-			if i == s.findCurrent {
-				band.Fill = pal.FindActive
-				band.Ring = pal.FindRing
-			}
-			out = append(out, band)
+	matches, first := s.findMatchesForBlock(idx)
+	for i, m := range matches {
+		band := appUi.RichBand{
+			Start:    m.StartRune,
+			End:      m.EndRune,
+			Fill:     pal.FindMatch,
+			Radius:   theme.RadiusXS,
+			TintOver: true,
 		}
+		if first+i == s.findCurrent {
+			band.Fill = pal.FindActive
+			band.Ring = pal.FindRing
+		}
+		out = append(out, band)
 	}
 
 	if includeSelection {
