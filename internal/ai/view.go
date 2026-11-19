@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -1197,10 +1198,12 @@ func latestStreamLine(s string) string {
 	return ""
 }
 
+// plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
+var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
+
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
-	t := strings.TrimSpace(s)
-	t = strings.TrimLeft(t, "#>-*+ ")
+	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
 	t = strings.NewReplacer("**", "", "__", "", "`", "").Replace(t)
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
