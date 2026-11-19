@@ -44,6 +44,8 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 		zStream []byte
 	}
 	var pages []pdfPage
+	var rgb []byte
+	var zw *zlib.Writer
 	top := 0
 	for _, bottom := range pdfPageEnds(sc, height) {
 		pageHeight := bottom - top
@@ -52,9 +54,18 @@ func exportPDF(doc *model.Doc, notePath string, prefs model.ExportPreferences) (
 			return nil, errors.New("pdf render returned empty image")
 		}
 		imgW, imgH := rgba.Bounds().Dx(), rgba.Bounds().Dy()
-		rgb := make([]byte, imgW*3)
+		needRGB := imgW * 3
+		if cap(rgb) < needRGB {
+			rgb = make([]byte, needRGB)
+		} else {
+			rgb = rgb[:needRGB]
+		}
 		var zBuf bytes.Buffer
-		zw := zlib.NewWriter(&zBuf)
+		if zw == nil {
+			zw = zlib.NewWriter(&zBuf)
+		} else {
+			zw.Reset(&zBuf)
+		}
 		for row := 0; row < imgH; row++ {
 			rowOff := row * rgba.Stride
 			for col := 0; col < imgW; col++ {
