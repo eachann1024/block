@@ -1,6 +1,6 @@
 # Block 设计语言与配色规范（Ocean Paper）
 
-> 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 Block（`block-go` 桌面端 MyGo 实现与 `designs/thinkly-fast-styles` 画板）的强制视觉与交互基线，与 `internal/theme/theme.go` 完全对齐。
+> 内容优先、紧凑克制、严格对齐、精准轮廓、全局一致。本文是 Block 桌面端 MyGo 实现的强制视觉与交互基线，与 `internal/theme/theme.go` 完全对齐。
 
 ---
 
