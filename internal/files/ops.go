@@ -228,25 +228,48 @@ func rebaseFileOrder(from, to string) {
 		return
 	}
 
-	sameParent := filepath.Dir(filepath.Clean(from)) == filepath.Dir(filepath.Clean(to))
+	cleanFrom := filepath.Clean(from)
+	cleanTo := filepath.Clean(to)
+	sameParent := filepath.Dir(cleanFrom) == filepath.Dir(cleanTo)
 	moved := make(map[string][]string, len(st.FileOrder))
 	changed := false
 
 	for parent, children := range st.FileOrder {
+		cleanParent := filepath.Clean(parent)
 		newParent := parent
-		if rebased, ok := rebasePath(parent, from, to); ok {
+		if rebased, ok := rebasePath(cleanParent, cleanFrom, cleanTo); ok {
 			newParent = rebased
 			changed = true
 		}
 		nextChildren := make([]string, 0, len(children))
 		for _, child := range children {
-			if !sameParent && filepath.Clean(child) == filepath.Clean(from) {
+			if child == "" {
+				continue
+			}
+			relChild := !filepath.IsAbs(child)
+			fullChild := child
+			if relChild {
+				fullChild = filepath.Join(cleanParent, child)
+			} else {
+				fullChild = filepath.Clean(child)
+			}
+			if !sameParent && fullChild == cleanFrom {
 				changed = true
 				continue
 			}
-			if rebased, ok := rebasePath(child, from, to); ok {
-				nextChildren = append(nextChildren, rebased)
-				changed = true
+			if rebased, ok := rebasePath(fullChild, cleanFrom, cleanTo); ok {
+				nextItem := rebased
+				if relChild {
+					if rel, relErr := filepath.Rel(filepath.Clean(newParent), rebased); relErr == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+						nextItem = rel
+					} else {
+						nextItem = filepath.Base(rebased)
+					}
+				}
+				if nextItem != child {
+					changed = true
+				}
+				nextChildren = append(nextChildren, nextItem)
 			} else {
 				nextChildren = append(nextChildren, child)
 			}
@@ -255,16 +278,23 @@ func rebaseFileOrder(from, to string) {
 	}
 
 	if !sameParent {
-		dstParent := filepath.Dir(filepath.Clean(to))
-		if children, ok := moved[dstParent]; ok {
+		dstParent := filepath.Dir(cleanTo)
+		for key, children := range moved {
+			if filepath.Clean(key) != dstParent {
+				continue
+			}
 			filtered := make([]string, 0, len(children)+1)
 			for _, child := range children {
-				if filepath.Clean(child) != filepath.Clean(to) {
+				fullChild := child
+				if !filepath.IsAbs(fullChild) {
+					fullChild = filepath.Join(dstParent, child)
+				}
+				if filepath.Clean(fullChild) != cleanTo {
 					filtered = append(filtered, child)
 				}
 			}
-			filtered = append(filtered, filepath.Clean(to))
-			moved[dstParent] = filtered
+			filtered = append(filtered, filepath.Base(cleanTo))
+			moved[key] = filtered
 			changed = true
 		}
 	}

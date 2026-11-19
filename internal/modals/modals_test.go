@@ -768,6 +768,53 @@ func TestFontPickerSortOrderAndFoldersListOrder(t *testing.T) {
 	}
 }
 
+func TestDefaultBodyFontShowsFirstFontWithMutedDefaultSuffix(t *testing.T) {
+	internalui.ResetSmoke()
+	internalui.EnableSmokeMode()
+	defer internalui.DisableSmokeMode()
+
+	m, _, state := setupManager(t)
+	theme.SetLanguage(model.LangZh)
+	theme.SetTypography("", "Menlo", model.LineHeightNormal)
+	state.EditorFont = ""
+	m.fontFamilies = []ui.FontFamily{
+		{Name: "Avenir Next"},
+		{Name: "HarmonyOS Sans SC"},
+		{Name: "Menlo", Monospaced: true},
+	}
+	m.OpenSettings("appearance")
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			m.RenderSettings(c)
+		})
+	}, 1000, 820)
+
+	primary := defaultBodyFontPrimary(m.fontFamilies)
+	if strings.Contains(primary, "+") || strings.Contains(primary, "HarmonyOS") {
+		t.Fatalf("expected only primary font name without fallback chain, got %q", primary)
+	}
+	if !tt.HasText(primary) || !tt.HasText("（默认）") {
+		t.Fatalf("expected default body font trigger to render %q and muted '（默认）'", primary)
+	}
+	if tt.HasText("HarmonyOS Sans SC") {
+		t.Fatal("did not expect fallback font 'HarmonyOS Sans SC' in closed trigger label")
+	}
+
+	b, ok := internalui.TargetBounds("settings-body-font-trigger")
+	if !ok {
+		t.Fatal("missing settings-body-font-trigger bounds")
+	}
+	tt.ClickAt(b.X+b.W/2, b.Y+b.H/2)
+	tt.Frame()
+	if m.fontPickerOpen != "body" {
+		t.Fatal("expected body font picker popover to open")
+	}
+	if full := defaultBodyFontLabel(m.fontFamilies); full != primary+"（默认）" {
+		t.Fatalf("unexpected default body font label in zh: %q", full)
+	}
+}
+
 func TestSearchTabTogglesCurrentAndAllWithShortcutPlaceholder(t *testing.T) {
 	internalui.ResetSmoke()
 	internalui.EnableSmokeMode()
