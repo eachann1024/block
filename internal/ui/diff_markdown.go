@@ -125,43 +125,65 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 // partial accept never leaves an orphan "| --- |" nor turns a table into a paragraph.
 // applied[i] says whether changed line i is taken; unchanged lines are ignored. When
 // both the old and the new separator fit under the header, the new one is used only
-// if a visible changed row of that table is taken (an alignment-only change is
+// if a visible changed row of that very table is taken (an alignment-only change is
 // invisible, so a partial accept keeps the old alignment).
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
-	oldM, newM := diffFenceSides(lines, change)
+	oldM, _ := diffFenceSides(lines, change)
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	cand := func(k int) bool { return change[k] != 0 && !shown[k] && IsDiffTableSep(trim(k)) }
 	kept := func(k int) bool { return change[k] == 0 || (change[k] < 0) != applied[k] }
-	row := func(k int) bool {
-		code := shown[k]
-		if change[k] < 0 {
-			code = oldM[k]
-		} else if change[k] > 0 {
-			code = newM[k]
-		}
-		return !code && IsDiffTableRow(trim(k))
-	}
 	take := func(k int, in bool) { applied[k] = (change[k] > 0) == in }
+
+	// Rows are read in the written text itself, so code that becomes a table (or a
+	// table that becomes code) counts the way the result parses.
+	var res []int
+	var resText []string
+	for k := range lines {
+		if kept(k) && !cand(k) {
+			res, resText = append(res, k), append(resText, lines[k])
+		}
+	}
+	resCode, _ := diffFenceSides(resText, make([]int, len(resText)))
+	row := make([]bool, len(lines))
+	for j, k := range res {
+		row[k] = !resCode[j] && IsDiffTableRow(trim(k))
+	}
+	// oldTable[k]: which table of the old text line k sits in (0: none), to tell
+	// whether a deleted row belonged to the table it is judged with.
+	oldTable := make([]int, len(lines))
+	for k, id, prev := 0, 0, false; k < len(lines); k++ {
+		if change[k] > 0 {
+			continue
+		}
+		in := !oldM[k] && IsDiffTableRow(trim(k))
+		if in && !prev {
+			id++
+		}
+		if in {
+			oldTable[k] = id
+		}
+		prev = in
+	}
+
 	for i := 0; i < len(lines); {
-		if !cand(i) && !(kept(i) && row(i)) {
+		if !cand(i) && !row[i] {
 			i++
 			continue
 		}
 		// A run is one table of the result: kept rows plus the hidden separators among
 		// them. Dropped lines are see-through; any other kept line ends the table.
-		var rows, cands []int
-		taken := false
+		var rows, cands, dels []int
 	run:
 		for ; i < len(lines); i++ {
-			if change[i] != 0 && !cand(i) && row(i) && applied[i] {
-				taken = true
-			}
 			switch {
 			case cand(i):
 				cands = append(cands, i)
 			case !kept(i):
-			case row(i):
+				if oldTable[i] > 0 {
+					dels = append(dels, i)
+				}
+			case row[i]:
 				rows = append(rows, i)
 			default:
 				break run
@@ -172,6 +194,17 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 		}
 		if len(rows) == 0 || (len(rows) > 1 && IsDiffTableSep(trim(rows[1]))) {
 			continue
+		}
+		taken := false
+		tables := map[int]bool{}
+		for _, r := range rows {
+			taken = taken || change[r] > 0
+			if change[r] <= 0 {
+				tables[oldTable[r]] = true
+			}
+		}
+		for _, d := range dels {
+			taken = taken || tables[oldTable[d]]
 		}
 		pick := -1
 		for _, k := range cands {
