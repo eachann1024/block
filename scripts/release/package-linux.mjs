@@ -3,8 +3,8 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
-import { goRelease } from "./go-release.mjs";
-import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
+import { goRelease, releaseBinaryPath } from "./go-release.mjs";
+import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 const ARCH = process.env.BLOCK_ARCH || (process.arch === "arm64" ? "arm64" : "x64");
 if (ARCH !== "x64" && ARCH !== "amd64") {
@@ -133,8 +133,12 @@ function writeAppDir(binary, appDir) {
 export async function packageLinux() {
   assert.equal(process.platform, "linux", "Linux is required to build the AppImage");
   assert.equal(process.arch, "x64", `Linux packages are built for x64 only, got ${process.arch}`);
-  const version = applyReleasePlanVersion();
-  const binary = goRelease({ goos: "linux", goarch: "amd64" });
+  const reuse = process.env.BLOCK_REUSE_BINARY === "1";
+  const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
+  let binary = releaseBinaryPath("linux", "amd64");
+  if (!reuse || !existsSync(binary)) {
+    binary = goRelease({ goos: "linux", goarch: "amd64", outFile: binary });
+  }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   const appDir = resolve(ROOT, "dist/Block.AppDir");
   writeAppDir(binary, appDir);

@@ -1,22 +1,45 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { appName, normalizeArch, run, verifySignature } from "../app-bundle.mjs";
+import { fileURLToPath } from "node:url";
+import { appName, normalizeArch, verifySignature } from "../app-bundle.mjs";
 import { buildApp } from "../build-app.mjs";
 import { installerFor } from "./allowed-assets.mjs";
 import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
-const TARGET_ARCH = process.env.BLOCK_ARCH || process.arch;
-const DMG_NAME = installerFor({ platform: "macos", arch: TARGET_ARCH, kind: "dmg" });
 
-function createDmgWithRetry(stageDir, outDmg) {
+function resolveTargetArches() {
+  const list = process.env.BLOCK_ARCHES;
+  if (list && list.trim()) {
+    const arches = list
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (arches.length > 0) return arches;
+  }
+  return [process.env.BLOCK_ARCH || process.arch];
+}
+
+function runAsync(cmd, args) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(cmd, args, { stdio: "inherit", cwd: ROOT });
+    child.on("error", rejectPromise);
+    child.on("close", (code) => {
+      if (code === 0) resolvePromise();
+      else rejectPromise(new Error(`${cmd} ${args.join(" ")} exited ${code}`));
+    });
+  });
+}
+
+async function createDmgWithRetry(stageDir, outDmg) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       rmSync(outDmg, { force: true });
-      run("hdiutil", [
+      await runAsync("hdiutil", [
         "create",
         "-volname",
         "Block",
@@ -30,45 +53,69 @@ function createDmgWithRetry(stageDir, outDmg) {
       return;
     } catch (err) {
       lastError = err;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
     }
   }
   throw lastError;
 }
 
-export async function packageRelease() {
+export async function packageRelease(arches = resolveTargetArches()) {
   const version = applyReleasePlanVersion();
-
-  const built = await buildApp({
-    install: false,
-    profile: "release",
-    platform: "darwin",
-    arch: normalizeArch(TARGET_ARCH),
-  });
-  const appBundle = built.artifact;
-  assert.ok(existsSync(appBundle), `App bundle missing at ${appBundle}`);
-  verifySignature(appBundle);
-
-  rmSync(RELEASE_DIR, { recursive: true, force: true });
   mkdirSync(RELEASE_DIR, { recursive: true });
 
-  const stageDir = mkdtempSync(join(tmpdir(), "block-dmg-"));
-  try {
+  // Build each arch sequentially (buildApp shares dist/ staging), while overlapping
+  // hdiutil DMG compression in the background with the next arch's Go compilation.
+  const dmgTasks = [];
+  for (const rawArch of arches) {
+    const dmgName = installerFor({ platform: "macos", arch: rawArch, kind: "dmg" });
+    const built = await buildApp({
+      install: false,
+      profile: "release",
+      platform: "darwin",
+      arch: normalizeArch(rawArch),
+    });
+    const appBundle = built.artifact;
+    assert.ok(existsSync(appBundle), `App bundle missing at ${appBundle}`);
+    verifySignature(appBundle);
+
+    const stageDir = mkdtempSync(join(tmpdir(), "block-dmg-"));
     const stagedApp = join(stageDir, `${appName}.app`);
-    cpSync(appBundle, stagedApp, { recursive: true });
-    verifySignature(stagedApp);
-    symlinkSync("/Applications", join(stageDir, "Applications"));
+    try {
+      cpSync(appBundle, stagedApp, { recursive: true });
+      verifySignature(stagedApp);
+      symlinkSync("/Applications", join(stageDir, "Applications"));
+    } catch (err) {
+      rmSync(stageDir, { recursive: true, force: true });
+      throw err;
+    }
 
-    const dmgPath = join(RELEASE_DIR, DMG_NAME);
-    createDmgWithRetry(stageDir, dmgPath);
-    assert.ok(existsSync(dmgPath), `Failed to create ${DMG_NAME}`);
+    const dmgPath = join(RELEASE_DIR, dmgName);
+    dmgTasks.push(
+      (async () => {
+        try {
+          await createDmgWithRetry(stageDir, dmgPath);
+          assert.ok(existsSync(dmgPath), `Failed to create ${dmgName}`);
+          return dmgPath;
+        } finally {
+          rmSync(stageDir, { recursive: true, force: true });
+        }
+      })(),
+    );
+  }
 
-    console.log(`Packaged Block v${version}:`);
+  const dmgPaths = await Promise.all(dmgTasks);
+  console.log(`Packaged Block v${version}:`);
+  for (const dmgPath of dmgPaths) {
     console.log(`  ${dmgPath}`);
-  } finally {
-    rmSync(stageDir, { recursive: true, force: true });
   }
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   await packageRelease();
 }
