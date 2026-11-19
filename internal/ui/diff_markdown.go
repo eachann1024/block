@@ -425,9 +425,9 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		}
 		newSide := taken || !touched
 		// fits: k can sit under its header, the last row above it. A header of k's own
-		// side must come from the same table, so a rejected new table never lends its
-		// separator to a row that was text in both versions; and the cell counts must
-		// match, or the result reads as text.
+		// side must be the very row k sat under in its text, so a separator never turns
+		// a row that was text in that version into a header (both headers dropped leave
+		// text); and the cell counts must match, or the result reads as text.
 		fits := func(k int) (bool, int) {
 			h := rows[0]
 			for _, r := range rows {
@@ -435,13 +435,13 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 					h = r
 				}
 			}
-			ids := oldTable
-			if change[k] > 0 {
-				ids = newTable
-			}
 			own := change[h] == 0 || (change[h] > 0) == (change[k] > 0)
+			above := k - 1
+			for above >= 0 && change[above] == -change[k] {
+				above--
+			}
 			cols := len(ParseDiffTableCells(trim(h))) == len(ParseDiffTableCells(trim(k)))
-			return k > rows[0] && cols && !(own && ids[h] != ids[k]), h
+			return k > rows[0] && cols && !(own && h != above), h
 		}
 		pick := -1
 		for _, k := range cands {
