@@ -34,10 +34,13 @@ func main() {
 	isOfficial := plugins.IsOfficialRepo(m.Repo)
 	requireBilingual := *bilingualFlag || isOfficial
 	if requireBilingual {
+		if err := plugins.ValidateManifestEnglish(m); err != nil {
+			fail("manifest English validation failed: %v", err)
+		}
 		if err := plugins.ValidateBilingualDocs(pluginDir); err != nil {
 			fail("bilingual docs validation failed: %v", err)
 		}
-		fmt.Println("[OK] docs: README.md (zh) and README.en.md (en) validated")
+		fmt.Println("[OK] docs: manifest English fields, README.md (zh), and README.en.md (en) validated")
 	}
 
 	zhSnap, err := runLocaleChecks(m, pluginDir, "zh", false)
@@ -389,6 +392,15 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 			return err
 		}
 		if err := checkEnglishText(pp+".subtitle", item.Preview.Subtitle); err != nil {
+			return err
+		}
+		if err := checkEnglishText(pp+".before", item.Preview.Before); err != nil {
+			return err
+		}
+		if err := checkEnglishText(pp+".after", item.Preview.After); err != nil {
+			return err
+		}
+		if err := checkEnglishText(pp+".body", item.Preview.Body); err != nil {
 			return err
 		}
 		for i, card := range item.Preview.Cards {
