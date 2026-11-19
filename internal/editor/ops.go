@@ -2947,7 +2947,35 @@ func allSlashItems() []blockMenuItem {
 	}
 }
 
-func allHandleMenuItems(idx, count int, hasFrontmatter bool) []blockMenuItem {
+// turnCmdForKind is the handle-menu conversion that produces kind, if any.
+func turnCmdForKind(kind model.BlockKind) (blockCmdKind, bool) {
+	switch kind {
+	case model.BlockParagraph:
+		return cmdTurnParagraph, true
+	case model.BlockHeading1:
+		return cmdTurnH1, true
+	case model.BlockHeading2:
+		return cmdTurnH2, true
+	case model.BlockHeading3:
+		return cmdTurnH3, true
+	case model.BlockBullet:
+		return cmdTurnBullet, true
+	case model.BlockNumbered:
+		return cmdTurnNumbered, true
+	case model.BlockTodo:
+		return cmdTurnTodo, true
+	case model.BlockQuote:
+		return cmdTurnQuote, true
+	case model.BlockCallout:
+		return cmdCallout, true
+	case model.BlockCode:
+		return cmdCode, true
+	}
+	return 0, false
+}
+
+// allHandleMenuItems lists the handle menu of block idx; the conversion to its current kind is disabled.
+func allHandleMenuItems(idx, count int, hasFrontmatter bool, kind model.BlockKind, hasKind bool) []blockMenuItem {
 	if hasFrontmatter && idx == 0 {
 		return []blockMenuItem{
 			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true},
@@ -2966,6 +2994,14 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool) []blockMenuItem {
 		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Hint: "⌘⌥8"},
 		{Separator: true},
 		{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: "⌘D"},
+	}
+	if cur, ok := turnCmdForKind(kind); ok && hasKind {
+		for i := range items {
+			if items[i].Kind == cur && !items[i].Separator {
+				items[i].Disabled = true
+				break
+			}
+		}
 	}
 	minMoveIdx := 0
 	if hasFrontmatter {
@@ -2989,11 +3025,16 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 	if s.blockMenu.Mode == menuHandle {
 		n := 0
 		hasFM := false
+		var kind model.BlockKind
+		hasKind := false
 		if s.doc != nil {
 			n = len(s.doc.Blocks)
 			hasFM = n > 0 && isFrontmatterBlock(0, &s.doc.Blocks[0])
+			if bi := s.blockMenu.BlockIdx; bi >= 0 && bi < n {
+				kind, hasKind = s.doc.Blocks[bi].Kind, true
+			}
 		}
-		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM)
+		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM, kind, hasKind)
 	}
 	all := slices.DeleteFunc(allSlashItems(), func(it blockMenuItem) bool {
 		return (s.minimal && it.Kind == cmdImage) || (s.aiDisabled && it.Kind == cmdAI)
@@ -3119,7 +3160,7 @@ func (s *Session) stepSlashMenu(down bool) bool {
 	}
 	for tries := 0; tries < n; tries++ {
 		cur = (cur + step + n) % n
-		if !entries[cur].Separator {
+		if !entries[cur].Separator && !entries[cur].Disabled {
 			s.blockMenu.ActiveIndex = cur
 			s.blockMenu.PointerActive = false
 			return true
@@ -3137,7 +3178,7 @@ func (s *Session) activateSlashMenu() bool {
 		return false
 	}
 	idx := s.blockMenu.ActiveIndex
-	if entries[idx].Separator {
+	if entries[idx].Separator || entries[idx].Disabled {
 		return false
 	}
 	s.executeBlockCmd(s.blockMenu.BlockIdx, s.blockMenu.Mode, entries[idx].Kind)
