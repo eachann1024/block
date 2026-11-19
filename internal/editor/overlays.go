@@ -2501,9 +2501,9 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 			appUi.Scroll(c.Key("plan-diff-scroll"), &s.planDiffScroll).FillWidth().Grow(1).
 				MaxHeight(maxH-64).Padding(theme.Space10, theme.Space12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(theme.Space8).Children(func() {
-					renderLineContent := func(raw, trimmed string, isTable, isHeader bool, fg ui.Color) {
-						style := appUi.DiffLineStyle{Text: fg, CodeBG: pal.CodeBlockBG}
-						if !isTable {
+					renderLineContent := func(raw, trimmed string, isTable, isHeader, code bool, fg ui.Color) {
+						style := appUi.DiffLineStyle{Text: fg, CodeBG: pal.CodeBlockBG, Code: code}
+						if code || !isTable {
 							appUi.DiffMarkdownLine(c, raw, style)
 							return
 						}
@@ -2521,6 +2521,11 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 					for opIdx := range plan.Ops {
 						op := &plan.Ops[opIdx]
 						diff := s.ensurePlanOpLineSelection(op)
+						texts := make([]string, len(diff))
+						for i, dl := range diff {
+							texts[i] = dl.Text
+						}
+						fenced := appUi.DiffFenceMask(texts)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
 							Radius(theme.RadiusLG).Border(1, pal.Hairline).Clip().Children(func() {
 							ui.Row(c.Key("op-title")).FillWidth().Padding(theme.Space6, theme.Space10).Radius(theme.RadiusMD, theme.RadiusMD, 0, 0).
@@ -2530,7 +2535,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 							selIdx := 0
 							for lineIdx, dl := range diff {
 								trimmed := strings.TrimSpace(dl.Text)
-								if appUi.IsDiffTableSep(trimmed) {
+								if !fenced[lineIdx] && appUi.IsDiffTableSep(trimmed) {
 									if dl.Kind != model.DiffEqual {
 										selIdx++
 									}
@@ -2538,13 +2543,13 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 								}
 								nextVisIdx := -1
 								for j := lineIdx + 1; j < len(diff); j++ {
-									if !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+									if fenced[j] || !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
 										nextVisIdx = j
 										break
 									}
 								}
 								isLast := nextVisIdx == -1
-								isTable := appUi.IsDiffTableRow(trimmed)
+								isTable := !fenced[lineIdx] && appUi.IsDiffTableRow(trimmed)
 								isHeader := isTable && lineIdx+1 < len(diff) && appUi.IsDiffTableSep(strings.TrimSpace(diff[lineIdx+1].Text))
 								nextIsTable := !isLast && appUi.IsDiffTableRow(strings.TrimSpace(diff[nextVisIdx].Text))
 								needSep := !isLast && (isTable || nextIsTable || diff[nextVisIdx].Kind != dl.Kind)
@@ -2561,8 +2566,10 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										row.BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
 									}
 									row.Children(func() {
+										// 与变更行的复选框同宽留白，表格列边界才能对齐。
+										ui.Box(c).Width(theme.IconRow).Shrink(0)
 										ui.Box(c).Width(12).Shrink(0)
-										renderLineContent(dl.Text, trimmed, isTable, isHeader, pal.TextSecondary)
+										renderLineContent(dl.Text, trimmed, isTable, isHeader, fenced[lineIdx], pal.TextSecondary)
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -2590,13 +2597,15 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 									}
 									row.Children(func() {
 										cbID := fmt.Sprintf("plan-diff-line-%d-%d", opIdx, curSelIdx)
-										cb := ui.Checkbox(c.Key(cbID), &checked, "").Label(cbID)
-										appUi.Probe(cb, cbID)
-										if cb.Changed() && curSelIdx < len(op.LineSelected) {
-											op.LineSelected[curSelIdx] = checked
-										}
+										ui.Box(c).Width(theme.IconRow).Shrink(0).Children(func() {
+											cb := ui.Checkbox(c.Key(cbID), &checked, "").Label(cbID)
+											appUi.Probe(cb, cbID)
+											if cb.Changed() && curSelIdx < len(op.LineSelected) {
+												op.LineSelected[curSelIdx] = checked
+											}
+										})
 										ui.Text(c, gutter).Width(12).Shrink(0).FontSize(theme.FontBody).TextColor(fg).SingleLine()
-										renderLineContent(dl.Text, trimmed, isTable, isHeader, fg)
+										renderLineContent(dl.Text, trimmed, isTable, isHeader, fenced[lineIdx], fg)
 									})
 								}
 							}
