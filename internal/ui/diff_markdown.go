@@ -39,6 +39,9 @@ type DiffLineStyle struct {
 	// RefDef marks a link reference definition's line (see DiffRefDefs), which the
 	// note does not show.
 	RefDef bool
+	// Alert is DiffAlertTitles for the line: the title ("Note") its "> [!NOTE]"
+	// marker shows as.
+	Alert string
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -995,6 +998,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	if strings.TrimSpace(line) == "" || (st.Setext < 0 || st.RefDef) && !st.Code {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
+	if st.Alert != "" && !st.Code {
+		line = "> **" + st.Alert + "**"
+	}
 	if st.Math {
 		t := strings.TrimSpace(line)
 		for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
@@ -1051,6 +1057,38 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		}
 		markdown.View(c, body, diffMarkdownOptions(st))
 	})
+}
+
+// diffAlertRE matches a top-level quote line that marks a GitHub alert ("> [!NOTE]").
+var diffAlertRE = regexp.MustCompile(`(?i)^ {0,3}>[ \t]*\[!(note|tip|important|warning|caution)\][ \t]*$`)
+
+// DiffAlertTitles gives an alert marker line its title ("Note"), in the line's own
+// text (an unchanged line: the new one); other lines get "". Like the note, a
+// marker makes an alert only with a line of text after it.
+func DiffAlertTitles(lines []string, change []int) []string {
+	masks, _ := diffScan(lines, change)
+	out := make([]string, len(lines))
+	for si, side := range [2]int{-1, 1} {
+		for i, l := range lines {
+			// The old text reads its deleted lines, the new one the rest.
+			if change[i] == -side || side < 0 && change[i] == 0 || masks[si][i] {
+				continue
+			}
+			m := diffAlertRE.FindStringSubmatch(l)
+			if m == nil {
+				continue
+			}
+			for k := i + 1; k < len(lines); k++ {
+				if change[k] != -side {
+					if strings.TrimSpace(lines[k]) != "" {
+						out[i] = strings.ToUpper(m[1][:1]) + strings.ToLower(m[1][1:])
+					}
+					break
+				}
+			}
+		}
+	}
+	return out
 }
 
 // diffLiteralStart keeps a line or cell start the parser would swallow: a link
