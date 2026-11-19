@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="126" viewBox="0 0 1200 126" role="img" aria-label="Block 核心优势与笔记软件对比" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <clipPath id="frCL"><rect x="0" y="0" width="1200" height="126" rx="18"/></clipPath>
+  </defs>
+  <style>
+
+  .sans{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",sans-serif}
+  .mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+  <g clip-path="url(#frCL)">
+    <rect width="1200" height="126" fill="#f7f9fc"/>
+    <text class="sans" x="36" y="54" font-size="21" font-weight="700" fill="#161922">100% 本地</text>
+    <text class="sans" x="36" y="84" font-size="15" fill="#525866">通用 .md 文件存自己电脑</text>
+    <line x1="254" y1="30" x2="254" y2="96" stroke="#e4e6ea" stroke-width="1.2"/>
+    <text class="sans" x="272" y="54" font-size="21" font-weight="700" fill="#161922">免注册登录</text>
+    <text class="sans" x="272" y="84" font-size="15" fill="#525866">打开即写，断网照常用</text>
+    <line x1="490" y1="30" x2="490" y2="96" stroke="#e4e6ea" stroke-width="1.2"/>
+    <text class="sans" x="508" y="54" font-size="21" font-weight="700" fill="#161922">接本机 AI</text>
+    <text class="sans" x="508" y="84" font-size="15" fill="#525866">不另付会员与额度费</text>
+    <line x1="726" y1="30" x2="726" y2="96" stroke="#e4e6ea" stroke-width="1.2"/>
+    <text class="sans" x="744" y="54" font-size="21" font-weight="700" fill="#161922">永久免费</text>
+    <text class="sans" x="744" y="84" font-size="15" fill="#525866">Apache 2.0 源码公开</text>
+    <rect x="998" y="40" width="168" height="46" rx="23" fill="#e5edfc"/>
+    <text class="sans" x="1073" y="69" text-anchor="middle" font-size="15.5" font-weight="600" fill="#2f57a6">一张表看差别</text>
+    <g transform="translate(1140 63) scale(0.92)" fill="none" stroke="#2f57a6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-4.5 4.5 L4.5 -4.5 M-1.5 -4.5 H4.5 V1.5"/></g>
+  </g>
+  <rect x="0.75" y="0.75" width="1198.5" height="124.5" rx="17.25" fill="none" stroke="#e4e6ea" stroke-width="1.5"/>
+</svg>
