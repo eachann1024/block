@@ -3385,6 +3385,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	toast := w.historyToast
 	stSnap := w.state
 	w.mu.Unlock()
+	sourceSoftWrap = stSnap.SourceSoftWrap
 
 	inSettings := w.modals.IsSettingsOpen()
 	aiImmersive := layout.ChatFullscreen && !inSettings
@@ -3482,6 +3483,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				PreviewZoomPct:  zoomPctStr,
 				PreviewZoomFit:  zoomFit,
 				SVGShowSource:   svgShowSource,
+				SourceWrap:      SourceSoftWrap(),
 				CanBack:         w.nav.CanBack(),
 				CanForward:      w.nav.CanForward(),
 				Busy:            w.isBusy(),
@@ -3578,6 +3580,14 @@ func (w *Workspace) Render(c *ui.Context) {
 						activeSurf.ZoomFit()
 						w.RequestRedraw()
 					}
+				},
+				OnToggleSourceWrap: func() {
+					ToggleSourceSoftWrap()
+					next := SourceSoftWrap()
+					if w.modals.OnStateChanged != nil {
+						w.modals.OnStateChanged(func(s *model.AppState) { s.SourceSoftWrap = next })
+					}
+					w.RequestRedraw()
 				},
 				OnSelectSVGSource: func(showSource bool) {
 					if activeSurf != nil {
