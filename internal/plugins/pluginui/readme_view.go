@@ -250,7 +250,9 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 	}
 	installedApp, isInstalled := ctrl.sup.GetInstalled(entry.ID)
-	if preview.locale != readmeLocaleKey(locale) {
+	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
+		preview.installed.Manifest.Version != installedApp.Manifest.Version
+	if preview.locale != readmeLocaleKey(locale) || installedChanged {
 		ctrl.loadStoreReadme(entry, installedApp)
 		ctrl.mu.Lock()
 		preview = ctrl.storeReadme
@@ -287,6 +289,9 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, entry.Name.Resolve(locale)).
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+					if entry.Verified {
+						bui.OfficialBadge(c, true)
+					}
 					if storeAppIsBeta(entry, installedApp, isInstalled) {
 						bui.BetaBadge(c, true)
 					}

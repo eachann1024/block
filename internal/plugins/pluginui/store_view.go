@@ -268,6 +268,9 @@ func renderStoreAppRow(
 				ui.Text(c, name).
 					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
 					TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+				if entry.Verified {
+					bui.OfficialBadge(c, true)
+				}
 				if storeAppIsBeta(entry, installedApp, isInstalled) {
 					bui.BetaBadge(c, true)
 				}
