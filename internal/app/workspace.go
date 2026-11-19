@@ -89,6 +89,17 @@ type Workspace struct {
 	pendingSidebarWidth float32
 	hasPendingSidebarW  bool
 	lastSnapAt          map[string]time.Time
+
+	aiSelKey    aiSelectionSyncKey
+	hasAISelKey bool
+	aiSelNote   string
+}
+
+type aiSelectionSyncKey struct {
+	notePath string
+	docRev   uint64
+	anchor   editor.Position
+	head     editor.Position
 }
 
 // NewWorkspace constructs and hydrates a Workspace backed by dataDir (or platform default when empty).
@@ -3365,7 +3376,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	if !aiImmersive && sidebarWide {
 		if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
 			pauseBrandAnim := activeSess != nil && activeSess.IsScrollingForHover(c.Now())
-			blockui.PaintBrandSceneBand(root, scID, !stSnap.BrandDeco.HideOrb, pauseBrandAnim)
+			blockui.PaintBrandSceneBand(root, scID, true, pauseBrandAnim)
 		}
 	}
 
@@ -3379,7 +3390,6 @@ func (w *Workspace) Render(c *ui.Context) {
 				SidebarWidth:      dockedSidebarWidth,
 				InSettings:        inSettings,
 				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
-				HideMark:          stSnap.BrandDeco.HideMark,
 				AIImmersive:       aiImmersive,
 				AIEnabled:         aiEnabled,
 				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
@@ -3546,6 +3556,10 @@ func (w *Workspace) Render(c *ui.Context) {
 			if layout.SidebarDocked {
 				cardLeft = 0
 			}
+			aiEligible := aiEnabled && !inSettings && !aiImmersive && w.ai.IsOpen() && activeSurf == nil && activeSess != nil && activeSess.IsMarkdownNote()
+			if !aiEligible {
+				w.syncAIEditorSelectionHidden(activeTab)
+			}
 			if inSettings {
 				minMainW := max(min(layout.ContentFloor, vpW)-cardLeft-8, 0)
 				ui.Box(c.Key("stage-settings-slot")).Grow(1).MinWidth(minMainW).FillHeight().
@@ -3632,6 +3646,9 @@ func (w *Workspace) Render(c *ui.Context) {
 								activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 								activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 								activeSess.Render(c, effMainW, false)
+								if aiEligible {
+									w.syncAIEditorSelection(c, activeSess)
+								}
 							default:
 								w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
 							}
@@ -3909,5 +3926,61 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 				_, _ = w.CreateNewNote()
 			}
 		}
+	})
+}
+
+func (w *Workspace) syncAIEditorSelectionHidden(activeTab string) {
+	if activeTab != w.aiSelNote {
+		w.ai.ClearEditorSelection()
+		w.aiSelNote = activeTab
+	} else {
+		w.ai.HideEditorSelection()
+	}
+	w.hasAISelKey = false
+}
+
+func (w *Workspace) syncAIEditorSelection(c *ui.Context, sess *editor.Session) {
+	notePath, docRev, anchor, head, nonEmpty := sess.SelectionKey()
+	if !nonEmpty {
+		w.hasAISelKey = false
+		if notePath != w.aiSelNote || sess.HasFocus(c) {
+			w.ai.ClearEditorSelection()
+			w.aiSelNote = notePath
+		}
+		return
+	}
+	key := aiSelectionSyncKey{
+		notePath: notePath,
+		docRev:   docRev,
+		anchor:   anchor,
+		head:     head,
+	}
+	if w.hasAISelKey && w.aiSelKey == key {
+		return
+	}
+	noteChanged := notePath != w.aiSelNote
+	w.aiSelKey = key
+	w.hasAISelKey = true
+	w.aiSelNote = notePath
+
+	md, preview, startLine, endLine, ok := sess.ExportSelectionSnapshot()
+	if !ok {
+		if noteChanged || sess.HasFocus(c) {
+			w.ai.ClearEditorSelection()
+		} else {
+			w.ai.HideEditorSelection()
+		}
+		return
+	}
+	w.ai.SetEditorSelection(&ai.EditorSelection{
+		NotePath:     notePath,
+		Markdown:     md,
+		PlainPreview: preview,
+		StartLine:    startLine,
+		EndLine:      endLine,
+		AnchorBlock:  anchor.Block,
+		AnchorOffset: anchor.Offset,
+		HeadBlock:    head.Block,
+		HeadOffset:   head.Offset,
 	})
 }

@@ -34,6 +34,37 @@ type tabDraft struct {
 	Retry  *model.SentDraft
 }
 
+// EditorSelection holds a snapshot of the last non-empty editor selection attached to the composer.
+type EditorSelection struct {
+	NotePath     string
+	Markdown     string
+	PlainPreview string
+	StartLine    int // 1-based inclusive start block index
+	EndLine      int // 1-based inclusive end block index
+	AnchorBlock  int
+	AnchorOffset int
+	HeadBlock    int
+	HeadOffset   int
+}
+
+type selectionIdentity struct {
+	notePath     string
+	anchorBlock  int
+	anchorOffset int
+	headBlock    int
+	headOffset   int
+}
+
+func (s EditorSelection) identity() selectionIdentity {
+	return selectionIdentity{
+		notePath:     s.NotePath,
+		anchorBlock:  s.AnchorBlock,
+		anchorOffset: s.AnchorOffset,
+		headBlock:    s.HeadBlock,
+		headOffset:   s.HeadOffset,
+	}
+}
+
 type pickKind uint8
 
 const (
@@ -86,6 +117,9 @@ type Controller struct {
 	draftText      string
 	draftRefs      []string
 	draftSkills    []string
+	draftSelection *EditorSelection
+	dismissedSel   *selectionIdentity
+	sentSelection  *EditorSelection
 	retryDraft     *model.SentDraft
 	sentDraft      *model.SentDraft
 	deferredDrafts []model.SentDraft
@@ -604,6 +638,7 @@ func (c *Controller) SetOpen(open bool) {
 	if !open {
 		c.historyOpen = false
 		c.deckOpen = false
+		c.draftSelection = nil
 	} else {
 		c.composerHandle.Focus()
 	}
@@ -626,6 +661,7 @@ func (c *Controller) ToggleOpen() {
 	if !next {
 		c.historyOpen = false
 		c.deckOpen = false
+		c.draftSelection = nil
 	} else {
 		c.composerHandle.Focus()
 	}
@@ -648,6 +684,9 @@ func (c *Controller) SetFullscreen(fs bool) {
 		return
 	}
 	c.fullscreen = fs
+	if fs {
+		c.draftSelection = nil
+	}
 	c.mu.Unlock()
 	c.requestRedraw()
 }
@@ -664,6 +703,9 @@ func (c *Controller) ToggleFullscreen() {
 		c.fullscreen = true
 	} else {
 		c.fullscreen = !c.fullscreen
+	}
+	if c.fullscreen {
+		c.draftSelection = nil
 	}
 	c.mu.Unlock()
 	c.requestRedraw()
@@ -720,6 +762,75 @@ func (c *Controller) SetRenderWidth(w float32) {
 	c.mu.Unlock()
 }
 
+// SetEditorSelection updates the composer's attached editor selection snapshot
+// unless the same selection (note, anchor, and head) was dismissed with ×.
+func (c *Controller) SetEditorSelection(sel *EditorSelection) {
+	if sel == nil || strings.TrimSpace(sel.Markdown) == "" || sel.StartLine <= 0 || sel.EndLine < sel.StartLine {
+		c.ClearEditorSelection()
+		return
+	}
+	cp := *sel
+	cp.Markdown = truncateRunes(cp.Markdown, 12000)
+	id := cp.identity()
+
+	c.mu.Lock()
+	if c.dismissedSel != nil && *c.dismissedSel == id {
+		changed := c.draftSelection != nil
+		c.draftSelection = nil
+		c.mu.Unlock()
+		if changed {
+			c.requestRedraw()
+		}
+		return
+	}
+	c.dismissedSel = nil
+	if c.draftSelection != nil && *c.draftSelection == cp {
+		c.mu.Unlock()
+		return
+	}
+	c.draftSelection = &cp
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
+// ClearEditorSelection clears the attached selection snapshot and any sticky dismissal.
+func (c *Controller) ClearEditorSelection() {
+	c.mu.Lock()
+	changed := c.draftSelection != nil
+	c.draftSelection = nil
+	c.dismissedSel = nil
+	c.mu.Unlock()
+	if changed {
+		c.requestRedraw()
+	}
+}
+
+// HideEditorSelection clears the attached selection snapshot while preserving sticky dismissal
+// (used when the AI sidebar is temporarily hidden, fullscreen, in settings, or disabled).
+func (c *Controller) HideEditorSelection() {
+	c.mu.Lock()
+	changed := c.draftSelection != nil
+	c.draftSelection = nil
+	c.mu.Unlock()
+	if changed {
+		c.requestRedraw()
+	}
+}
+
+// DismissEditorSelection removes the current selection chip and marks its identity sticky-dismissed.
+func (c *Controller) DismissEditorSelection() {
+	c.mu.Lock()
+	if c.draftSelection == nil {
+		c.mu.Unlock()
+		return
+	}
+	id := c.draftSelection.identity()
+	c.dismissedSel = &id
+	c.draftSelection = nil
+	c.mu.Unlock()
+	c.requestRedraw()
+}
+
 // Enabled reports the master AI switch, independent of backend readiness.
 func (c *Controller) Enabled() bool {
 	c.mu.RLock()
@@ -774,6 +885,7 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.historyOpen = false
 		c.deckOpen = false
 		c.pickerDismissed = true
+		c.draftSelection = nil
 		c.stopStreamingLocked()
 	}
 	onEnabledChanged := c.onEnabledChanged
@@ -1530,8 +1642,18 @@ func (c *Controller) SendPrompt(text string) {
 
 	refs := append([]string(nil), c.draftRefs...)
 	skills := append([]string(nil), c.draftSkills...)
+	var sel *EditorSelection
+	if c.draftSelection != nil && !c.fullscreen {
+		cp := *c.draftSelection
+		sel = &cp
+	}
 	c.draftRefs = nil
 	c.draftSkills = nil
+	c.draftSelection = nil
+	if sel != nil {
+		id := sel.identity()
+		c.dismissedSel = &id
+	}
 
 	var ctxBuf strings.Builder
 	var shownBuf strings.Builder
@@ -1543,6 +1665,33 @@ func (c *Controller) SendPrompt(text string) {
 		if md != "" {
 			ctxBuf.WriteString(fmt.Sprintf("\n\n# 引用文件：%s（pageId: %s）\n\n%s", r, r, truncateRunes(md, 12000)))
 		}
+	}
+	if sel != nil {
+		var marker string
+		if sel.StartLine == sel.EndLine {
+			marker = theme.Tr(
+				fmt.Sprintf("「选中第 %d 段」 ", sel.StartLine),
+				fmt.Sprintf("[Block %d] ", sel.StartLine),
+			)
+		} else {
+			marker = theme.Tr(
+				fmt.Sprintf("「选中第 %d–%d 段」 ", sel.StartLine, sel.EndLine),
+				fmt.Sprintf("[Blocks %d–%d] ", sel.StartLine, sel.EndLine),
+			)
+		}
+		shownBuf.WriteString(marker)
+
+		noteName := filepath.Base(sel.NotePath)
+		if noteName == "" || noteName == "." || noteName == string(filepath.Separator) {
+			noteName = theme.Tr("当前笔记", "current note")
+		}
+		var lineLabel string
+		if sel.StartLine == sel.EndLine {
+			lineLabel = fmt.Sprintf("第 %d 段", sel.StartLine)
+		} else {
+			lineLabel = fmt.Sprintf("第 %d–%d 段", sel.StartLine, sel.EndLine)
+		}
+		ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户选中的内容（来自 %s，%s）\n\n%s", noteName, lineLabel, truncateRunes(sel.Markdown, 12000)))
 	}
 	for _, sk := range skills {
 		shownBuf.WriteString("/")
@@ -1562,7 +1711,9 @@ func (c *Controller) SendPrompt(text string) {
 		c.retryDraft.Conversation == c.currentID &&
 		c.retryDraft.Text == original &&
 		slicesEqual(c.retryDraft.Refs, refs) &&
-		slicesEqual(c.retryDraft.Skills, skills)
+		slicesEqual(c.retryDraft.Skills, skills) &&
+		sel == nil
+	c.sentSelection = sel
 
 	if retryMatch {
 		cp := *c.retryDraft
@@ -1718,6 +1869,7 @@ func (c *Controller) restoreFailedDraftLocked() {
 	}
 	draft := *c.sentDraft
 	c.sentDraft = nil
+	defer func() { c.sentSelection = nil }()
 	conv := c.findConvLocked(draft.Conversation)
 	if c.currentID == draft.Conversation && c.draftText == "" && len(c.draftRefs) == 0 && len(c.draftSkills) == 0 {
 		if conv != nil && draft.MessageIndex >= 0 && len(conv.Messages) == draft.MessageIndex+1 {
@@ -1730,6 +1882,10 @@ func (c *Controller) restoreFailedDraftLocked() {
 		c.draftText = draft.Text
 		c.draftRefs = append([]string(nil), draft.Refs...)
 		c.draftSkills = append([]string(nil), draft.Skills...)
+		if c.sentSelection != nil && c.draftSelection == nil {
+			c.draftSelection = c.sentSelection
+			c.dismissedSel = nil
+		}
 		c.composerEpoch++
 		c.persistActiveDraftLocked()
 		return
