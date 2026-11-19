@@ -20,7 +20,7 @@
 
 | 语义角色 | Token 名称 | 浅色（Ocean Light） | 深色（Ocean Dark） | 用途说明 |
 | --- | --- | --- | --- | --- |
-| 安静壳层 | `shell` | `#f1f1f1` | `#343434` | 顶部标题栏、分段槽底、次级输入底 |
+| 安静壳层 | `shell` | `#f1f1f1` | `#262626` | 顶部标题栏、分段槽底、次级输入底 |
 | 侧栏表面 | `sidebar` | `#fafafa` | `#222222` | 左侧文件树、独立设置分类侧栏 |
 | 设置画布 | `settings-bg` | `#f8f8f8` | `#181818` | 设置主内容区画布背景 |
 | 阅读纸面 / 卡片 | `paper` | `#ffffff` | `#181818`（浮层/卡片 `#222222`） | 正文纸面、设置分组卡片、白底按钮 |
@@ -32,7 +32,7 @@
 | 轻悬停底 | `hover` | `#f0f0ef` | `#2c2c2c` | 列表行、按钮、菜单项悬停反馈 |
 | 选中表面 | `selected` | `#e5e5e3` | `#3a3a3a` | 选中列表行、分段项、选中卡片底色 |
 | 选中轮廓 | `selected-border` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.12)` | 需要与悬停区分的选中项 `1px` 中性内轮廓 |
-| 细分割线 / 卡片边 | `hairline` / `border` | `#e4e6ea`（壳层分隔 `#e6e6e6`） | `#2e2e2e`（壳层分隔 `#333333`） | 设置卡片外框、区域分隔线 |
+| 细分割线 / 卡片边 | `hairline` / `border` | `#e4e6ea`（壳层分隔 `#e6e6e6`） | `#292929`（壳层分隔 `#292929`） | 设置卡片外框、区域分隔线 |
 | 按钮与控件边框 | `btn-border` | `#dcdcdc` | `#444444` | 次级按钮、输入框、键帽边框 |
 | 代码块背景 | `code-bg` | `#f3f1ec` | `#242424` | 行内代码与代码块底色 |
 | 引用竖条 | `quote-bar` | `#dbd9d4` | `#484848` | 引用块左侧竖条 |
@@ -55,7 +55,7 @@
 - **顶栏高度**：`40px`，左列宽 `260px`（与侧栏对齐，含窗口红黄绿控制点与侧栏收起按钮）。
 - **左侧栏宽度**：`260px`，列表项高度 `32px`、圆角引用 `theme.RadiusControl`（`8px`）、内边距 `0 8px`。
 - **设置内容区**：背景为 `settings-bg`（`#f8f8f8` / `#181818`），居中容器 `max-width: 720px`，内边距 `40px 28px 64px`。
-- **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#2e2e2e`），圆角引用 `theme.RadiusSurface`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
+- **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#292929`），圆角引用 `theme.RadiusSurface`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
 - **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; padding: 3px; gap: 2px`，外槽与内部按钮 `.seg`（高 `32px–34px`）圆角统一引用 `theme.RadiusControl`（`8px`），选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
 - **三联直选卡片（AI 服务商方案 C）**：仅保留 **DeepSeek**、**OpenAI 协议**、**Claude 协议** 三项，横排等宽，默认态 `background: shell; border: 1px solid border`，选中态 `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`。
 
