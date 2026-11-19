@@ -524,12 +524,17 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				wasBlank := prevBlank
 				prevBlank = false
 				// After a blank, or at a fence, a line left of a nested item's content
-				// belongs to an outer item: a fence under "1. 检查环境" past its sublist.
+				// belongs to an outer item (a fence under "1. 检查环境" past its sublist),
+				// and one left of every item's ends the list.
 				if len(cols) > 0 && (wasBlank || diffFenceOpen(t) != "") && !diffListItemRE.MatchString(t) {
-					for len(cols) > 1 && ind < cols[len(cols)-1] {
+					for len(cols) > 0 && ind < cols[len(cols)-1] {
 						cols = cols[:len(cols)-1]
 					}
-					listCol = cols[len(cols)-1]
+					if len(cols) == 0 {
+						inList, listCol = false, 0
+					} else {
+						listCol = cols[len(cols)-1]
+					}
 				}
 				need := 4
 				if inList {
