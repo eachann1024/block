@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { installerFor } from "./allowed-assets.mjs";
 import { goRelease, releaseBinaryPath } from "./go-release.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
@@ -156,6 +157,10 @@ export async function packageLinux() {
   console.log(`  ${outfile}`);
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   await packageLinux();
 }

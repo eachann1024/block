@@ -40,7 +40,9 @@ if (isMain) {
   if (!goos || !goarch) {
     throw new Error("Usage: node scripts/release/go-release.mjs <goos> <goarch>");
   }
-  applyReleasePlanVersion();
+  if (process.env.BLOCK_SKIP_VERSION_SYNC !== "1") {
+    applyReleasePlanVersion();
+  }
   const out = goRelease({ goos, goarch });
   console.log(out);
 }

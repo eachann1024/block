@@ -60,6 +60,7 @@ export async function buildApp({
   platform = normalizePlatform(process.platform),
   arch = normalizeArch(process.arch),
   useMygo = process.env.BLOCK_USE_MYGO === "1",
+  publishRoot = true,
 } = {}) {
   const targetPlatform = normalizePlatform(platform);
   const targetArch = normalizeArch(arch);
@@ -135,13 +136,22 @@ export async function buildApp({
         markNeverIndex(join(root, "dist"));
         markNeverIndex(join(root, "dist", `darwin-${targetArch}`));
         publishDir(bundle, distArchApp);
-        publishDir(bundle, distRootApp);
+        if (publishRoot) {
+          publishDir(bundle, distRootApp);
+        }
         if (pathExists(installPath)) {
           unregisterMacBundle(distArchApp);
-          unregisterMacBundle(distRootApp);
+          if (publishRoot) {
+            unregisterMacBundle(distRootApp);
+          }
         }
       });
-      return { artifact: distRootApp, archArtifact: distArchApp, binary: distBin, installedPath: null };
+      return {
+        artifact: publishRoot ? distRootApp : distArchApp,
+        archArtifact: distArchApp,
+        binary: distBin,
+        installedPath: null,
+      };
     }
 
     if (targetPlatform === "windows") {
