@@ -115,94 +115,70 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 }
 
 // SyncDiffTableSeps decides each changed table separator row, which the review views
-// hide, from the rows the user can see, so a partial accept never leaves an orphan
-// "| --- |" nor writes a change nobody saw. applied[i] says whether changed line i is
-// taken; unchanged lines are ignored. Each side (old text, new text) is read with its
-// own fences. A separator under a changed header follows that header. Under an
-// unchanged header it follows the separator it replaces when that one is visible
-// (it was code); otherwise the other changed rows of its table, and stays as it was
-// when the table has none (an alignment-only change is invisible, so a partial
-// accept keeps the old one).
+// hide, by checking the text the selection would write: in every table that results,
+// exactly one separator sits right under the header row and none anywhere else, so a
+// partial accept never leaves an orphan "| --- |" nor turns a table into a paragraph.
+// applied[i] says whether changed line i is taken; unchanged lines are ignored. When
+// both the old and the new separator fit under the header, the new one is used only
+// if a visible changed row of that table is taken (an alignment-only change is
+// invisible, so a partial accept keeps the old alignment).
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
-	hidden := func(k int) bool { return !shown[k] && IsDiffTableSep(strings.TrimSpace(lines[k])) }
 	oldM, newM := diffFenceSides(lines, change)
-	// tableAny[k]: whether a visible changed row of k's table is taken. A table is a run
-	// of lines that are table rows on their own side; both sides share it, so the two
-	// separators of a pair always see the same answer.
-	tableAny := make([]bool, len(lines))
-	ownRow := func(k int) bool {
+	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
+	cand := func(k int) bool { return change[k] != 0 && !shown[k] && IsDiffTableSep(trim(k)) }
+	kept := func(k int) bool { return change[k] == 0 || (change[k] < 0) != applied[k] }
+	row := func(k int) bool {
 		code := shown[k]
 		if change[k] < 0 {
 			code = oldM[k]
 		} else if change[k] > 0 {
 			code = newM[k]
 		}
-		return !code && IsDiffTableRow(strings.TrimSpace(lines[k]))
+		return !code && IsDiffTableRow(trim(k))
 	}
+	take := func(k int, in bool) { applied[k] = (change[k] > 0) == in }
 	for i := 0; i < len(lines); {
-		if !ownRow(i) {
+		if !cand(i) && !(kept(i) && row(i)) {
 			i++
 			continue
 		}
-		start, any := i, false
-		for ; i < len(lines) && ownRow(i); i++ {
-			any = any || (change[i] != 0 && !hidden(i) && applied[i])
+		// A run is one table of the result: kept rows plus the hidden separators among
+		// them. Dropped lines are see-through; any other kept line ends the table.
+		var rows, cands []int
+		taken := false
+	run:
+		for ; i < len(lines); i++ {
+			if change[i] != 0 && !cand(i) && row(i) && applied[i] {
+				taken = true
+			}
+			switch {
+			case cand(i):
+				cands = append(cands, i)
+			case !kept(i):
+			case row(i):
+				rows = append(rows, i)
+			default:
+				break run
+			}
 		}
-		for k := start; k < i; k++ {
-			tableAny[k] = any
+		for _, k := range cands {
+			take(k, false)
 		}
-	}
-	for si, side := range [2]int{-1, 1} {
-		mask := [2][]bool{oldM, newM}[si]
-		on := func(i int) bool { return change[i] != -side }
-		isRow := func(i int) bool { return !mask[i] && IsDiffTableRow(strings.TrimSpace(lines[i])) }
-		for i := 0; i < len(lines); {
-			if !on(i) || !isRow(i) {
-				i++
+		if len(rows) == 0 || (len(rows) > 1 && IsDiffTableSep(trim(rows[1]))) {
+			continue
+		}
+		pick := -1
+		for _, k := range cands {
+			if k < rows[0] || (len(rows) > 1 && k > rows[1]) {
 				continue
 			}
-			start, end := i, i
-			for ; i < len(lines) && (!on(i) || isRow(i)); i++ {
-				if on(i) {
-					end = i + 1
-				}
+			if pick < 0 || ((change[k] > 0) == taken && (change[pick] > 0) != taken) {
+				pick = k
 			}
-			i = end
-			for j := start; j < end; j++ {
-				if change[j] != side || !IsDiffTableSep(strings.TrimSpace(lines[j])) {
-					continue
-				}
-				h := j - 1
-				for h >= start && (!on(h) || IsDiffTableSep(strings.TrimSpace(lines[h]))) {
-					h--
-				}
-				if h >= start && change[h] == side {
-					applied[j] = applied[h]
-					continue
-				}
-				applied[j] = tableAny[j]
-				// The separator it replaces sits in the same run of changes. Two hidden
-				// separators decide together (above); a visible one (the old line was code)
-				// is the user's choice to follow.
-				lo, hi := j, j
-				for lo > 0 && change[lo-1] != 0 {
-					lo--
-				}
-				for hi+1 < len(lines) && change[hi+1] != 0 {
-					hi++
-				}
-				for k := lo; k <= hi; k++ {
-					if change[k] == -side && IsDiffTableSep(strings.TrimSpace(lines[k])) {
-						if !hidden(k) {
-							applied[j] = applied[k]
-						} else if v, ok := diffSepPairForced(change, applied, j, k); ok {
-							applied[j] = v
-						}
-						break
-					}
-				}
-			}
+		}
+		if pick >= 0 {
+			take(pick, true)
 		}
 	}
 }
@@ -218,23 +194,6 @@ var (
 	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\(` + diffLinkDest + diffLinkTitle + `\)`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
-
-// diffSepPairForced handles two hidden separators j and k that replace each other.
-// When a line between them stays in the result, only the earlier one can be the
-// table's separator (the later would sit under that line, not under the header), so
-// the pair is forced: keep the earlier, drop the later. ok is false when nothing in
-// between stays, leaving the choice to the table's rows.
-func diffSepPairForced(change []int, applied []bool, j, k int) (v, ok bool) {
-	lo, hi := min(j, k), max(j, k)
-	for m := lo + 1; m < hi; m++ {
-		if (change[m] < 0 && !applied[m]) || (change[m] > 0 && applied[m]) {
-			// Keeping the earlier one means: an inserted earlier separator is applied,
-			// a deleted earlier separator is not (it stays), and the later follows suit.
-			return change[lo] > 0, true
-		}
-	}
-	return false, false
-}
 
 // diffCodeSpans returns the [start, end) byte ranges of the code spans in s, each
 // delimited by equal backtick runs.
