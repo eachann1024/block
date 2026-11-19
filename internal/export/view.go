@@ -67,6 +67,9 @@ type Controller struct {
 	previewCancel  context.CancelFunc
 	previewRunning bool
 
+	exportDataRev uint64
+	cachedExports map[model.ExportFormat]cachedExportPayload
+
 	notice        string
 	savedPath     string
 	copied        bool
@@ -231,6 +234,8 @@ func (c *Controller) openPreview(title, notePath string, wholeDoc, selectionDoc 
 		c.selectionDoc = nil
 	}
 	c.useSelection = preferSelection && c.selectionDoc != nil
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.notice = ""
 	c.savedPath = ""
 	c.copied = false
@@ -248,6 +253,8 @@ func (c *Controller) Close() {
 	c.open = false
 	c.wholeDoc, c.selectionDoc = nil, nil
 	c.previewBitmap = nil
+	c.exportDataRev++
+	c.cachedExports = nil
 	if c.previewCancel != nil {
 		c.previewCancel()
 	}
@@ -271,7 +278,19 @@ func (c *Controller) SetFormat(f model.ExportFormat) {
 		return
 	}
 	wmChanged := c.watermark && formatSupportsWatermark(f) != formatSupportsWatermark(c.format)
-	densityChanged := f == model.ExportPNG || c.format == model.ExportPNG
+	densityChanged := false
+	if f == model.ExportPNG || c.format == model.ExportPNG {
+		if c.previewBitmap == nil || c.previewW <= 0 || c.previewH <= 0 {
+			densityChanged = true
+		} else if f == model.ExportPNG {
+			const maxSide = 32768
+			const maxPixels = int64(32 * 1024 * 1024)
+			densityChanged = c.previewW > maxSide || c.previewH > maxSide || int64(c.previewW)*int64(c.previewH) > maxPixels
+		} else {
+			fullW := int(exportPageWidth * exportRasterScale)
+			densityChanged = c.previewW < fullW-1
+		}
+	}
 	c.format = f
 	c.copied = false
 	c.notice = ""
@@ -303,6 +322,8 @@ func (c *Controller) SetStyle(s model.ExportTheme) {
 	} else {
 		c.lightStyle = s
 	}
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
@@ -327,6 +348,8 @@ func (c *Controller) setDarkGroup(dark bool) {
 		next = DefaultThemeFor(dark)
 	}
 	c.style = next
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
@@ -353,6 +376,8 @@ func (c *Controller) SetUseSelection(sel bool) {
 		return
 	}
 	c.useSelection = sel
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
@@ -370,6 +395,8 @@ func (c *Controller) ShowTitle() bool {
 func (c *Controller) ToggleShowTitle() {
 	c.mu.Lock()
 	c.showTitle = !c.showTitle
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
@@ -388,6 +415,8 @@ func (c *Controller) Watermark() bool {
 func (c *Controller) ToggleWatermark() {
 	c.mu.Lock()
 	c.watermark = !c.watermark
+	c.exportDataRev++
+	clear(c.cachedExports)
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
