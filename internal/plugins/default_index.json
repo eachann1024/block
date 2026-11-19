@@ -142,22 +142,22 @@
       "app": "blockmd",
       "id": "block-diagnostics",
       "name": {
-        "zh": "性能与诊断",
-        "en": "Diagnostics"
+        "zh": "性能与占用",
+        "en": "Performance & Usage"
       },
-      "version": "1.1.0",
+      "version": "1.2.9",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-diagnostics",
       "summary": {
-        "zh": "统计工作区体积、笔记与附件占用，巡检孤立附件与失效链接并导出报告",
-        "en": "Inspect workspace size, note and asset usage, orphan assets, broken links, and export reports"
+        "zh": "实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用",
+        "en": "Monitor live Block CPU and RSS memory with a 7-category storage treemap"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.1.0/block-diagnostics-v1.1.0.tar.gz",
-      "sha256": "6d9c5520ccd05a85df6da4e12b2e68a3c2860d96e8ee6a70cd1dc0667ebb4d8a",
+      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.2.9/block-diagnostics-v1.2.9.tar.gz",
+      "sha256": "7c79ba5e8a27ddf06cfded30a1ad1dbd6dd0b02825854f3876ff61dca5140854",
       "downloads": 321,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-18T13:54:14Z",
+      "updated_at": "2026-11-19T07:21:00Z",
       "permissions": [
         "storage",
         "notes:read"
