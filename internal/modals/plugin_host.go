@@ -21,6 +21,7 @@ type PluginNavEntry struct {
 	TabID     string
 	Title     string
 	CountText string
+	Beta      bool
 	StatusDot bool
 	HasError  bool
 	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
@@ -30,6 +31,7 @@ type PluginNavEntry struct {
 type PluginSettingsHost interface {
 	NavEntries() []PluginNavEntry
 	TabTitle(tab string) string
+	TabIsBeta(tab string) bool
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
 }

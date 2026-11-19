@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+type noteSaveRequest struct {
+	again bool
+}
+
 func relativeNotePath(nbRoot, absNotePath string) (string, bool) {
 	if nbRoot == "" || absNotePath == "" {
 		return "", false
@@ -28,7 +32,10 @@ func relativeNotePath(nbRoot, absNotePath string) (string, bool) {
 
 // NotifyNoteSaved dispatches note.saved asynchronously to every installed plugin declaring events:note_saved.
 func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
-	nbRoot := s.NotebookRoot()
+	s.notifyNoteWritten("", s.NotebookRoot(), absNotePath)
+}
+
+func (s *Supervisor) notifyNoteWritten(sourcePluginID, nbRoot, absNotePath string) {
 	relSlash, ok := relativeNotePath(nbRoot, absNotePath)
 	if !ok {
 		for _, candidate := range s.Notebooks() {
@@ -46,7 +53,7 @@ func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
 
 	installed := s.Installed()
 	for _, app := range installed {
-		if !app.Enabled || !app.Manifest.HasPermission(PermEventNoteSaved) {
+		if !app.Enabled || app.Manifest.ID == sourcePluginID || !app.Manifest.HasPermission(PermEventNoteSaved) {
 			continue
 		}
 		pluginID := app.Manifest.ID
@@ -58,11 +65,15 @@ func (s *Supervisor) HasPluginError(id string) bool {
 	if inst, ok := s.GetInstalled(id); !ok || !inst.Enabled {
 		return false
 	}
-	key := viewKey{id, s.NotebookRoot()}
+	root := s.NotebookRoot()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v := s.views[key]
-	return v != nil && (v.Error != "" || len(v.failedSaves) > 0)
+	for key, v := range s.views {
+		if key.pluginID == id && (len(v.failedSaves) > 0 || (key.notebookRoot == root && v.Error != "")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Supervisor) queueNoteSaved(pluginID, root, path, rel string) {
@@ -74,30 +85,32 @@ func (s *Supervisor) queueNoteSaved(pluginID, root, path, rel string) {
 		s.views[key] = v
 	}
 	if v.queuedSaves == nil {
-		v.queuedSaves = make(map[string]bool)
+		v.queuedSaves = make(map[string]*noteSaveRequest)
 	}
-	if _, active := v.queuedSaves[path]; active {
-		v.queuedSaves[path] = true
+	if active := v.queuedSaves[path]; active != nil {
+		active.again = true
 		s.mu.Unlock()
 		return
 	}
-	v.queuedSaves[path] = false
-	v.PendingSaves = len(v.queuedSaves)
+	request := &noteSaveRequest{}
+	v.queuedSaves[path] = request
 	s.mu.Unlock()
 	s.notifyChanged()
-	go s.dispatchNoteSaved(key, path, rel, v)
+	go s.dispatchNoteSaved(key, path, rel, request)
 }
 
-func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string, original *PluginViewState) {
+func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string, request *noteSaveRequest) {
 	defer s.lockPluginRPC(key.pluginID)()
 	s.mu.Lock()
-	if s.views[key] != original {
+	original := s.views[key]
+	if original == nil || original.queuedSaves[absNotePath] != request {
 		s.mu.Unlock()
 		return
 	}
-	original.queuedSaves[absNotePath] = false
+	request.again = false
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	original.saveCancel = cancel
 	s.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	rt, err := s.ensureRuntime(ctx, key.pluginID, key.notebookRoot)
 	if err == nil {
@@ -109,12 +122,16 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 		s.mu.Unlock()
 		return
 	}
-	if v.queuedSaves[absNotePath] {
-		go s.dispatchNoteSaved(key, absNotePath, relSlash, v)
+	v.saveCancel = nil
+	if v.queuedSaves[absNotePath] != request {
+		s.mu.Unlock()
+		return
+	}
+	if request.again {
+		go s.dispatchNoteSaved(key, absNotePath, relSlash, request)
 	} else {
 		delete(v.queuedSaves, absNotePath)
 	}
-	v.PendingSaves = len(v.queuedSaves)
 	if v.BusyAction == "__retry_note_saved__" {
 		v.BusyAction = ""
 	}
@@ -128,20 +145,15 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	}
 	refreshPage := v.Page != nil && v.BusyAction == ""
 	editSeq := v.editSeq
-	var values map[string]any
-	if refreshPage {
-		values = make(map[string]any, len(v.Values))
-		for id, value := range v.Values {
-			values[id] = value
-		}
-	}
 	s.mu.Unlock()
 	s.notifyChanged()
 	if err == nil && refreshPage {
-		if page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, values); err == nil {
+		if page, err := rt.Render(ctx, SurfaceSettingsPage); err == nil {
 			s.mu.Lock()
 			if s.views[key] == v && v.editSeq == editSeq {
 				v.Page = page
+				mergePageValues(v, page, nil)
+				v.formVersion = s.formVersions[key.pluginID]
 				if page.Status != "" {
 					v.Notice = ""
 				}

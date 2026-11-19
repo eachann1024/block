@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -50,18 +51,6 @@ type ActivePlanPreview struct {
 	AfterText  string
 	IsCreate   bool
 }
-
-type planReceipt struct {
-	Page    string
-	AbsPath string
-	Before  string
-	After   string
-	Created bool
-}
-
-var (
-	planReceiptsMu = make(map[string][]planReceipt)
-)
 
 func unclosedConstructs(src string) []string {
 	var issues []string
@@ -131,194 +120,134 @@ func checkMarkdownPreflight(before, after string) bool {
 }
 
 func validateRelativePagePath(page string) error {
-	if strings.TrimSpace(page) == "" || filepath.IsAbs(page) || strings.HasPrefix(page, "/") || strings.HasPrefix(page, "\\") {
-		return errors.New("Invalid page path")
+	if strings.TrimSpace(page) == "" || !filepath.IsLocal(filepath.FromSlash(page)) || strings.ContainsAny(page, "\\:\x00") {
+		return errors.New("无效的笔记路径")
 	}
-	for _, part := range strings.Split(filepath.ToSlash(page), "/") {
-		if part == "" || part == "." || part == ".." {
-			return errors.New("Invalid page path")
+	for _, part := range strings.Split(page, "/") {
+		if part == "" || strings.HasPrefix(part, ".") {
+			return errors.New("无效的笔记路径")
 		}
 	}
 	return nil
 }
 
-func (c *Controller) buildBatchPlanLocked(args map[string]any, root string) (string, *model.BatchPlan, []model.SourceNote) {
-	var rawOps []any
-	switch v := args["operations"].(type) {
-	case []any:
-		rawOps = v
-	case []map[string]any:
-		for _, item := range v {
-			rawOps = append(rawOps, item)
-		}
-	}
-	if len(rawOps) == 0 {
-		return marshalJSON(map[string]any{"error": "operations 为空"}), nil, nil
-	}
+const maxPlanPages = 12
 
-	currentPage := c.activePageLocked(root)
+func (c *Controller) buildMockPlan(args map[string]any, root string) (string, *model.BatchPlan, []model.SourceNote) {
+	scope := captureNotebook(c.host)
+	if scope.root == "" || root == "" {
+		return marshalJSON(map[string]any{"error": "没有可用的授权笔记本"}), nil, nil
+	}
+	dir, err := openNotebook(scope.root)
+	if err != nil {
+		return marshalJSON(map[string]any{"error": "没有可用的授权笔记本"}), nil, nil
+	}
+	defer dir.Close()
+	return buildBatchPlan(context.Background(), scope, dir, args)
+}
+
+func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, args map[string]any) (string, *model.BatchPlan, []model.SourceNote) {
+	fail := func(message string) (string, *model.BatchPlan, []model.SourceNote) {
+		return marshalJSON(map[string]any{"error": message}), nil, nil
+	}
+	rawOps, _ := args["operations"].([]any)
+	if len(rawOps) == 0 || len(rawOps) > 32 {
+		return fail("每份计划须有 1–32 个操作")
+	}
 	var ops []model.PlanOp
+	byPage := make(map[string]int)
 	expected := make(map[string]string)
-	existsMap := make(map[string]bool)
-
-	for _, item := range rawOps {
-		om, ok := item.(map[string]any)
+	for _, raw := range rawOps {
+		if ctx.Err() != nil {
+			return fail("本轮已结束")
+		}
+		item, ok := raw.(map[string]any)
 		if !ok {
-			continue
+			return fail("无效的计划操作")
 		}
-		opType, _ := om["type"].(string)
-		page, _ := om["pageId"].(string)
+		kind, _ := item["type"].(string)
+		page, _ := item["pageId"].(string)
 		if page == "" {
-			page = currentPage
+			page = scope.page
 		}
-
-		switch opType {
-		case "create":
-			title, _ := om["title"].(string)
-			if strings.TrimSpace(title) == "" {
-				title = theme.Tr("未命名", "Untitled")
+		if kind == "create" {
+			page, _ = item["title"].(string)
+			if strings.TrimSpace(page) == "" {
+				page = theme.Tr("未命名", "Untitled")
 			}
-			md, _ := om["markdown"].(string)
-			ops = append(ops, model.PlanOp{
-				Kind: model.PlanOpCreateNote,
-				Page: title,
-				Old:  "",
-				New:  md,
-			})
-		case "edit":
-			md, _ := om["markdown"].(string)
-			ops = append(ops, model.PlanOp{
-				Kind: model.PlanOpReplace,
-				Page: page,
-				Old:  "",
-				New:  md,
-			})
+		}
+		name, err := noteFilename(page)
+		if err != nil {
+			return fail(err.Error())
+		}
+		page = displayPageID(name)
+		idx, found := byPage[name]
+		if !found {
+			if len(ops) >= maxPlanPages {
+				return fail("每份计划最多修改 12 篇笔记")
+			}
+			before, exists, err := snapshotNotebookNote(ctx, root, name)
+			if err != nil || exists == (kind == "create") {
+				return fail("笔记无法用于该操作，请核对原文及目标是否存在")
+			}
+			opKind := model.PlanOpReplace
+			if !exists {
+				opKind = model.PlanOpCreateNote
+			}
+			idx = len(ops)
+			byPage[name] = idx
+			expected[page] = before
+			ops = append(ops, model.PlanOp{Kind: opKind, Page: page, Old: before, New: before})
+		} else if kind == "create" {
+			return fail("同一笔记只能创建一次")
+		}
+		op := &ops[idx]
+		switch kind {
+		case "create", "edit":
+			md, ok := item["markdown"].(string)
+			if !ok {
+				return fail("缺少 Markdown 内容")
+			}
+			op.New = md
 		case "search_replace":
-			oldStr, _ := om["oldString"].(string)
-			newStr, _ := om["newString"].(string)
-			replaceAll, _ := om["replaceAll"].(bool)
-			cur := c.readOrSimPage(root, page, ops, expected, existsMap)
-			if oldStr == "" || !strings.Contains(cur, oldStr) {
-				return marshalJSON(map[string]any{
-					"error": map[string]any{
-						"code":    "operation_precondition_failed",
-						"message": "操作无法按顺序应用，请核对原文并修正。",
-					},
-				}), nil, nil
+			oldText, _ := item["oldString"].(string)
+			newText, ok := item["newString"].(string)
+			if !ok || oldText == "" || !strings.Contains(op.New, oldText) {
+				return fail("操作无法按顺序应用，请核对原文")
 			}
-			next := ""
-			if replaceAll {
-				next = strings.ReplaceAll(cur, oldStr, newStr)
-			} else {
-				next = strings.Replace(cur, oldStr, newStr, 1)
+			count := 1
+			if all, _ := item["replaceAll"].(bool); all {
+				count = strings.Count(op.New, oldText)
 			}
-			ops = append(ops, model.PlanOp{
-				Kind: model.PlanOpReplace,
-				Page: page,
-				Old:  cur,
-				New:  next,
-			})
+			// Check the size before Replace can allocate the expanded document.
+			if int64(len(op.New))+int64(count)*int64(len(newText)-len(oldText)) > maxToolNoteBytes {
+				return fail("计划内容超过 AI 写入上限")
+			}
+			op.New = strings.Replace(op.New, oldText, newText, count)
 		default:
-			return marshalJSON(map[string]any{"error": "暂不支持的操作：" + opType}), nil, nil
+			return fail("暂不支持该计划操作")
+		}
+		if len(op.New) > maxToolNoteBytes {
+			return fail("计划内容超过 AI 写入上限")
 		}
 	}
-
-	if len(ops) == 0 {
-		return marshalJSON(map[string]any{"error": "operations 为空"}), nil, nil
-	}
-
-	sim := make(map[string]string)
-	for i := range ops {
-		op := &ops[i]
-		if err := validateRelativePagePath(op.Page); err != nil {
-			return marshalJSON(map[string]any{"error": err.Error()}), nil, nil
-		}
-		if _, seen := expected[op.Page]; !seen {
-			md, exists := c.readPageWithExistsLocked(root, op.Page)
-			expected[op.Page] = md
-			existsMap[op.Page] = exists
-		}
-		if op.Kind == model.PlanOpCreateNote {
-			if existsMap[op.Page] {
-				return marshalJSON(map[string]any{"error": "目标笔记已存在：" + op.Page}), nil, nil
-			}
-			sim[op.Page] = op.New
-		} else {
-			cur := expected[op.Page]
-			if prev, ok := sim[op.Page]; ok {
-				cur = prev
-			}
-			if op.Old == "" {
-				op.Old = cur
-			}
-			sim[op.Page] = op.New
+	for _, op := range ops {
+		if !checkMarkdownPreflight(op.Old, op.New) {
+			return fail("最终内容包含新增的未闭合代码围栏或 HTML 表格")
 		}
 	}
-
-	for page, after := range sim {
-		if !checkMarkdownPreflight(expected[page], after) {
-			return marshalJSON(map[string]any{
-				"error": map[string]any{
-					"code":    "unsupported_markdown",
-					"message": "最终内容包含未闭合的代码围栏或 HTML 表格，请修正后最多重试一次。",
-				},
-			}), nil, nil
-		}
-	}
-
-	title, _ := args["title"].(string)
 	summary, _ := args["summary"].(string)
 	if summary == "" {
-		summary = title
+		summary, _ = args["title"].(string)
 	}
 	plan := &model.BatchPlan{
-		ID:       fmt.Sprintf("plan-%d", time.Now().UnixNano()),
-		Summary:  summary,
-		Root:     root,
-		Ops:      ops,
-		Expected: expected,
-		Status:   "pending",
+		ID: fmt.Sprintf("plan-%d", time.Now().UnixNano()), Summary: truncateRunes(summary, 300),
+		Root: scope.root, Ops: ops, Expected: expected, Status: "pending",
 	}
 	return marshalJSON(map[string]any{
 		"status":  "awaiting_approval",
-		"message": "方案已生成，尚未修改笔记。等待用户在卡片中确认，不要重复提交。",
+		"message": "方案等待用户确认后写入，请勿重复提交。",
 	}), plan, nil
-}
-
-func (c *Controller) readOrSimPage(root, page string, ops []model.PlanOp, expected map[string]string, existsMap map[string]bool) string {
-	for i := len(ops) - 1; i >= 0; i-- {
-		if ops[i].Page == page {
-			return ops[i].New
-		}
-	}
-	if v, ok := expected[page]; ok {
-		return v
-	}
-	md, exists := c.readPageWithExistsLocked(root, page)
-	expected[page] = md
-	existsMap[page] = exists
-	return md
-}
-
-func (c *Controller) readPageWithExistsLocked(root, page string) (string, bool) {
-	if page == "" {
-		return "", false
-	}
-	abs := page
-	if !filepath.IsAbs(abs) && root != "" {
-		abs = filepath.Join(root, filepath.FromSlash(page)+".md")
-	}
-	if c.host != nil {
-		if txt, err := c.host.ReadNote(abs); err == nil {
-			return txt, true
-		}
-	}
-	if abs != "" {
-		if b, err := os.ReadFile(abs); err == nil {
-			return string(b), true
-		}
-	}
-	return "", false
 }
 
 func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) *model.BatchPlan {
@@ -330,18 +259,17 @@ func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) *model.BatchPlan 
 	if plan == nil || plan.Status != "pending" || len(plan.Ops) == 0 {
 		return nil
 	}
-	op := plan.Ops[0]
-	before := plan.Expected[op.Page]
-	after := op.New
-	for _, o := range plan.Ops {
-		if o.Page == op.Page {
-			after = o.New
-		}
+	ops, err := collapsePlanOps(plan)
+	if err != nil || len(ops) == 0 {
+		return nil
 	}
-	abs := op.Page + ".md"
-	if plan.Root != "" {
-		abs = filepath.Join(plan.Root, filepath.FromSlash(op.Page)+".md")
+	op := ops[0]
+	before, after := op.Old, op.New
+	name, err := noteFilename(op.Page)
+	if err != nil || plan.Root == "" {
+		return nil
 	}
+	abs := filepath.Join(plan.Root, name)
 	isCreate := op.Kind == model.PlanOpCreateNote
 
 	c.activePlan = &ActivePlanPreview{
@@ -355,7 +283,9 @@ func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) *model.BatchPlan 
 		IsCreate:   isCreate,
 	}
 	c.computePlanDiffLocked(convID, msgIdx, op.Page, before, after)
-	return plan
+	preview := *plan
+	preview.Ops = ops
+	return &preview
 }
 
 func (c *Controller) linkLatestPendingPlanLocked() *model.BatchPlan {
@@ -372,14 +302,34 @@ func (c *Controller) linkLatestPendingPlanLocked() *model.BatchPlan {
 	return nil
 }
 
+func (c *Controller) previewTurnPlan(turn *assistantTurn, plan *model.BatchPlan) {
+	if turn.ctx.Err() == nil {
+		c.previewPlan(turn.ctx, plan)
+	}
+}
+
 func (c *Controller) previewPlanInEditor(plan *model.BatchPlan) {
-	if plan == nil {
+	c.previewPlan(context.Background(), plan)
+}
+
+func (c *Controller) previewPlan(ctx context.Context, plan *model.BatchPlan) {
+	if plan == nil || ctx.Err() != nil {
 		return
 	}
 	c.mu.RLock()
 	host := c.host
 	c.mu.RUnlock()
-	if host != nil {
+	for _, op := range plan.Ops {
+		// The editor's per-line preview has a quadratic diff. Large plans stay reviewable in chat.
+		if int64(strings.Count(op.Old, "\n")+2)*int64(strings.Count(op.New, "\n")+2) > 4_000_000 {
+			return
+		}
+	}
+	if previewHost, ok := host.(interface {
+		PreviewBatchPlanContext(context.Context, *model.BatchPlan) error
+	}); ok {
+		_ = previewHost.PreviewBatchPlanContext(ctx, plan)
+	} else if host != nil {
 		_ = host.PreviewPlanInEditor(plan)
 	}
 }
@@ -504,89 +454,142 @@ func (c *Controller) selectedPlanTextLocked(convID uint64, msgIdx int, page, bef
 }
 
 // AcceptPlan applies the pending plan to disk/host and records receipts for Undo.
+func collapsePlanOps(plan *model.BatchPlan) ([]model.PlanOp, error) {
+	var merged []model.PlanOp
+	index := make(map[string]int)
+	for _, op := range plan.Ops {
+		name, err := noteFilename(op.Page)
+		if err != nil {
+			return nil, err
+		}
+		if i, ok := index[name]; ok {
+			if merged[i].New != op.Old || op.Kind != model.PlanOpReplace {
+				return nil, errors.New("计划的中间版本无法验证")
+			}
+			merged[i].New = op.New
+			continue
+		}
+		if before, ok := plan.Expected[op.Page]; !ok || before != op.Old {
+			return nil, errors.New("计划缺少可验证的原文")
+		}
+		index[name] = len(merged)
+		merged = append(merged, op)
+	}
+	return merged, nil
+}
+
 func (c *Controller) AcceptPlan(convID uint64, msgIdx int) error {
+	return c.applyReviewedPlan(convID, msgIdx, nil, false)
+}
+
+// AcceptEditorPlan applies only the diff selection from the linked editor preview.
+func (c *Controller) AcceptEditorPlan(review *model.BatchPlan) error {
+	c.mu.RLock()
+	active := c.activePlan
+	c.mu.RUnlock()
+	if review == nil || active == nil || active.Plan.ID != review.ID {
+		return errors.New("计划预览已失效")
+	}
+	return c.applyReviewedPlan(active.ConvID, active.MsgIndex, review, false)
+}
+
+func (c *Controller) UndoPlan(convID uint64, msgIdx int) error {
+	return c.applyReviewedPlan(convID, msgIdx, nil, true)
+}
+
+func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.BatchPlan, undo bool) error {
 	c.mu.Lock()
 	conv := c.findConvLocked(convID)
-	if conv == nil || msgIdx < 0 || msgIdx >= len(conv.Messages) {
+	if conv == nil || c.currentID != convID || msgIdx < 0 || msgIdx >= len(conv.Messages) || !c.providerCfg.Enabled {
 		c.mu.Unlock()
-		return errors.New("plan not found")
+		return errors.New("计划已失效")
 	}
 	plan := conv.Messages[msgIdx].Plan
-	if plan == nil || plan.Status != "pending" {
+	wantStatus := "pending"
+	if undo {
+		wantStatus = "applied"
+	}
+	if plan == nil || plan.Status != wantStatus || c.planInFlight != "" ||
+		(review != nil && (c.activePlan == nil || c.activePlan.ConvID != convID || c.activePlan.MsgIndex != msgIdx || review.ID != plan.ID)) {
 		c.mu.Unlock()
-		return errors.New("plan is not pending")
+		return errors.New("计划无法在当前状态下执行")
 	}
-
-	pageWork := make(map[string]struct {
-		before   string
-		after    string
-		isCreate bool
-	})
-	var order []string
-	for _, op := range plan.Ops {
-		w, ok := pageWork[op.Page]
-		if !ok {
-			order = append(order, op.Page)
-			w.before = plan.Expected[op.Page]
-			w.isCreate = op.Kind == model.PlanOpCreateNote
-		}
-		w.after = op.New
-		pageWork[op.Page] = w
+	selected, err := collapsePlanOps(plan)
+	if err == nil && review != nil && len(review.Ops) != len(selected) {
+		err = errors.New("计划预览已失效")
 	}
-
-	var receipts []planReceipt
-	var firstCreatedPath string
-	for _, page := range order {
-		w := pageWork[page]
-		selected := c.selectedPlanTextLocked(convID, msgIdx, page, w.before, w.after)
-		if !checkMarkdownPreflight(w.before, selected) {
-			c.turnError = theme.Tr("所选修改包含新增的不支持 Markdown 结构，请调整后重试。", "Selected changes introduce unsupported Markdown.")
-			c.mu.Unlock()
-			c.requestRedraw()
-			return errors.New(c.turnError)
+	if err == nil && !undo {
+		for i := range selected {
+			op := &selected[i]
+			if review == nil {
+				op.New = c.selectedPlanTextLocked(convID, msgIdx, op.Page, op.Old, op.New)
+			} else {
+				preview := review.Ops[i]
+				if preview.Page != op.Page || preview.Old != op.Old || preview.Kind != op.Kind {
+					err = errors.New("计划预览已失效")
+					break
+				}
+				op.New = preview.New
+			}
 		}
-		abs := page + ".md"
-		if plan.Root != "" {
-			abs = filepath.Join(plan.Root, filepath.FromSlash(page)+".md")
-		}
-		if err := c.writeNoteFileLocked(abs, selected); err != nil {
-			c.turnError = err.Error()
-			c.mu.Unlock()
-			c.requestRedraw()
-			return err
-		}
-		if w.isCreate && firstCreatedPath == "" {
-			firstCreatedPath = abs
-		}
-		receipts = append(receipts, planReceipt{
-			Page:    page,
-			AbsPath: abs,
-			Before:  w.before,
-			After:   selected,
-			Created: w.isCreate,
-		})
 	}
+	writePlan := *plan
+	writePlan.Ops = selected
+	host := c.host
+	c.planInFlight = plan.ID
+	c.mu.Unlock()
 
-	if c.host != nil {
-		if err := c.host.ApplyBatchPlan(plan); err != nil {
-			c.turnError = err.Error()
-			c.mu.Unlock()
-			c.requestRedraw()
-			return err
-		}
-		if firstCreatedPath != "" {
-			_ = c.host.OpenNote(firstCreatedPath, 0)
+	if err == nil {
+		switch {
+		case host == nil:
+			err = errors.New("没有可用的工作区")
+		case undo:
+			err = host.UndoLastPlan(&writePlan)
+		default:
+			err = host.ApplyBatchPlan(&writePlan)
 		}
 	}
 
-	planReceiptsMu[plan.ID] = receipts
-	plan.Status = "applied"
-	c.clearActivePlanLocked()
-	delete(c.planSelections, planSelKey{convID: convID, msgIdx: msgIdx})
-	c.persistChatsLocked()
+	c.mu.Lock()
+	c.planInFlight = ""
+	if err != nil {
+		c.turnError = err.Error()
+	} else {
+		if undo {
+			plan.Status = "undone"
+		} else {
+			plan.Ops = selected
+			plan.Status = "applied"
+		}
+		if c.activePlan != nil && c.activePlan.Plan.ID == plan.ID {
+			c.clearActivePlanLocked()
+		}
+		c.turnError = ""
+		c.persistChatsLocked()
+	}
 	c.mu.Unlock()
 	c.requestRedraw()
-	return nil
+	return err
+}
+
+// DismissEditorPlan updates the controller when the review was rejected from the editor.
+func (c *Controller) DismissEditorPlan(planID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conv := c.findConvLocked(c.currentID)
+	if conv == nil || planID == "" || c.planInFlight == planID {
+		return
+	}
+	for _, message := range conv.Messages {
+		if plan := message.Plan; plan != nil && plan.ID == planID && plan.Status == "pending" {
+			plan.Status = "rejected"
+			if c.activePlan != nil && c.activePlan.Plan.ID == planID {
+				c.clearActivePlanLocked()
+			}
+			c.persistChatsLocked()
+			return
+		}
+	}
 }
 
 // RejectPlan cancels a pending plan without touching any files on disk.
@@ -598,7 +601,7 @@ func (c *Controller) RejectPlan(convID uint64, msgIdx int) error {
 		return errors.New("plan not found")
 	}
 	plan := conv.Messages[msgIdx].Plan
-	if plan == nil || plan.Status != "pending" {
+	if plan == nil || plan.Status != "pending" || c.planInFlight == plan.ID {
 		c.mu.Unlock()
 		return nil
 	}
@@ -606,69 +609,14 @@ func (c *Controller) RejectPlan(convID uint64, msgIdx int) error {
 	if c.activePlan != nil && c.activePlan.ConvID == convID && c.activePlan.MsgIndex == msgIdx {
 		c.clearActivePlanLocked()
 	}
-	if c.host != nil {
-		_ = c.host.RejectBatchPlan(plan.ID)
-	}
+	host := c.host
 	c.persistChatsLocked()
 	c.mu.Unlock()
+	if host != nil {
+		_ = host.RejectBatchPlan(plan.ID)
+	}
 	c.requestRedraw()
 	return nil
-}
-
-// UndoPlan reverts an applied plan back to its pre-plan snapshot.
-func (c *Controller) UndoPlan(convID uint64, msgIdx int) error {
-	c.mu.Lock()
-	conv := c.findConvLocked(convID)
-	if conv == nil || msgIdx < 0 || msgIdx >= len(conv.Messages) {
-		c.mu.Unlock()
-		return errors.New("plan not found")
-	}
-	plan := conv.Messages[msgIdx].Plan
-	if plan == nil || plan.Status != "applied" {
-		c.mu.Unlock()
-		return errors.New("plan is not applied")
-	}
-	receipts := planReceiptsMu[plan.ID]
-	for _, r := range receipts {
-		cur, exists := c.readPageWithExistsLocked(plan.Root, r.Page)
-		if !exists || cur != r.After {
-			plan.Status = "undo_conflict"
-			c.persistChatsLocked()
-			c.mu.Unlock()
-			c.requestRedraw()
-			return errors.New(theme.Tr("笔记已被修改，存在撤回冲突", "Note changed since apply; undo conflict"))
-		}
-	}
-	for i := len(receipts) - 1; i >= 0; i-- {
-		r := receipts[i]
-		if r.Created {
-			_ = os.Remove(r.AbsPath)
-		} else if err := c.writeNoteFileLocked(r.AbsPath, r.Before); err != nil {
-			c.turnError = err.Error()
-			c.mu.Unlock()
-			c.requestRedraw()
-			return err
-		}
-	}
-	if c.host != nil {
-		_ = c.host.UndoLastPlan(plan)
-	}
-	plan.Status = "undone"
-	delete(planReceiptsMu, plan.ID)
-	c.persistChatsLocked()
-	c.mu.Unlock()
-	c.requestRedraw()
-	return nil
-}
-
-func (c *Controller) writeNoteFileLocked(absPath, content string) error {
-	if c.host != nil {
-		return c.host.WriteNote(absPath, content)
-	}
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(absPath, []byte(content), 0o644)
 }
 
 func computeLCSLines(before, after string) []rawDiffLine {
@@ -841,7 +789,9 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 		return
 	}
 	qcard := conv.Messages[msgIdx].Question
-	if qcard == nil || qcard.Submitted {
+	turn := c.turn
+	if qcard == nil || qcard.Submitted || c.currentID != convID ||
+		(!c.mockResponder && (!c.currentTurnLocked(turn) || turn.questionIndex != msgIdx)) {
 		c.mu.Unlock()
 		return
 	}
@@ -905,12 +855,18 @@ func (c *Controller) SubmitQuestion(convID uint64, msgIdx int, skipped bool) {
 			Content: theme.Tr("已收到你的选择。", "Preferences recorded."),
 		})
 	}
+	step := 0
+	if !isMock && isBuiltin && toolCallID != "" {
+		step = turn.nextStep
+		turn.questionIndex = -1
+		c.streaming = true
+	}
 	c.persistChatsLocked()
 	c.mu.Unlock()
 	c.requestRedraw()
 
-	if !isMock && isBuiltin && toolCallID != "" {
-		c.startBuiltinTurn(convID, 1)
+	if step > 0 {
+		c.startBuiltinTurn(turn, step)
 	}
 }
 
@@ -923,7 +879,8 @@ func (c *Controller) RespondApproval(convID uint64, msgIdx int, decision model.A
 		return false
 	}
 	card := conv.Messages[msgIdx].Approval
-	if card == nil {
+	if card == nil || card.Decision != model.ApprovalPending || !c.mockResponder || c.currentID != convID ||
+		(decision != model.ApprovalAllow && decision != model.ApprovalDeny && decision != model.ApprovalSkip) {
 		c.mu.Unlock()
 		return false
 	}
@@ -939,31 +896,6 @@ func (c *Controller) RespondApproval(convID uint64, msgIdx int, decision model.A
 		c.requestRedraw()
 		return false
 	}
-	ext := c.activeExternal
-	reqID := card.RequestID
-	c.mu.Unlock()
-
-	if ext != nil {
-		ext.mu.Lock()
-		fn := ext.respond
-		ext.mu.Unlock()
-		if fn != nil {
-			if err := fn(reqID, decision); err != nil {
-				c.mu.Lock()
-				card.Failed = true
-				card.ErrorText = err.Error()
-				aKey := fmt.Sprintf("a-%d-%d", convID, msgIdx)
-				if st := c.approvalUI[aKey]; st != nil {
-					st.submitted = false
-				}
-				c.mu.Unlock()
-				c.requestRedraw()
-				return false
-			}
-		}
-	}
-
-	c.mu.Lock()
 	card.Decision = decision
 	card.Failed = false
 	card.ErrorText = ""

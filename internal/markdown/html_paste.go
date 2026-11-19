@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"block/internal/media"
 	"block/internal/model"
 )
 
@@ -17,7 +18,7 @@ import (
 //   - htmlRaw originates from a syntax-highlighted code editor / terminal dump without semantic HTML, or
 //   - htmlRaw carries no semantic structure or inline formatting beyond plain text.
 func ConvertClipboardHTML(htmlRaw, plainFallback string) (string, bool) {
-	if strings.TrimSpace(htmlRaw) == "" {
+	if len(htmlRaw) > media.MaxPasteBytes || len(plainFallback) > media.MaxPasteBytes || strings.TrimSpace(htmlRaw) == "" {
 		return "", false
 	}
 	if looksLikeAuthoredMarkdown(plainFallback) {
@@ -33,6 +34,9 @@ func ConvertClipboardHTML(htmlRaw, plainFallback string) (string, bool) {
 
 	conv := &htmlPasteConverter{}
 	conv.parse(fragment)
+	if conv.overBudget {
+		return "", false
+	}
 	out := strings.TrimSpace(NormalizePasteText(conv.result()))
 	if out == "" {
 		return "", false
@@ -156,8 +160,9 @@ func stripIgnoredHTMLRegions(s string) string {
 				i += 4 + end + 3
 				continue
 			}
+			break
 		}
-		name, _, closed, empty, consumed, ok := parseTagRaw(s[i:])
+		name, _, closed, empty, consumed, ok := parseClipboardTag(s, i)
 		if ok && !closed && !empty {
 			switch name {
 			case "head", "style", "script", "noscript", "title", "svg", "template":
@@ -168,16 +173,30 @@ func stripIgnoredHTMLRegions(s string) string {
 						continue
 					}
 				}
+				return out.String()
 			}
 		}
 		if ok && (name == "meta" || name == "link") {
 			i += consumed
 			continue
 		}
-		out.WriteByte(s[i])
-		i++
+		if ok {
+			out.WriteString(s[i : i+consumed])
+			i += consumed
+		} else {
+			out.WriteByte(s[i])
+			i++
+		}
 	}
 	return out.String()
+}
+
+// Limit the bytes a malformed tag can scan before it is treated as text.
+func parseClipboardTag(src string, start int) (string, [][2]string, bool, bool, int, bool) {
+	end := min(len(src), start+16*1024)
+	last := end - 1
+	name, attrs, closed, empty, consumed, _, _, ok := parseTagRawBounds(src[:end], start, last, last, last, true)
+	return name, attrs, closed, empty, consumed, ok
 }
 
 func indexCloseTagFold(s, lowerName string) int {
@@ -240,7 +259,7 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 			break
 		}
 		i += lt
-		name, attrs, closed, _, consumed, ok := parseTagRaw(fragment[i:])
+		name, attrs, closed, _, consumed, ok := parseClipboardTag(fragment, i)
 		if !ok {
 			i++
 			continue
@@ -257,7 +276,7 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 					return true
 				}
 			case "a":
-				if href := strings.TrimSpace(attrVal(attrs, "href")); href != "" && !strings.HasPrefix(strings.ToLower(href), "javascript:") {
+				if media.WebLink(attrVal(attrs, "href")) != "" {
 					return true
 				}
 			case "img":
@@ -284,9 +303,8 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 }
 
 func isPasteableRemoteOrLocalImage(src string) bool {
-	s := strings.TrimSpace(src)
-	lower := strings.ToLower(s)
-	return strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://")
+	link := strings.ToLower(media.WebLink(src))
+	return strings.HasPrefix(link, "https://") || strings.HasPrefix(link, "http://")
 }
 
 type htmlInlineState struct {
@@ -321,17 +339,19 @@ type htmlTableCtx struct {
 }
 
 type htmlPasteConverter struct {
-	blocks     []string
-	curSpans   []model.Span
-	inlineStk  []htmlInlineState
-	listStk    []htmlListCtx
-	liStk      []htmlLIState
-	quoteDepth int
-	headingLvl int
-	inPre      bool
-	preLang    string
-	preBuf     strings.Builder
-	table      *htmlTableCtx
+	blocks      []string
+	curSpans    []model.Span
+	inlineStk   []htmlInlineState
+	listStk     []htmlListCtx
+	liStk       []htmlLIState
+	quoteDepth  int
+	headingLvl  int
+	inPre       bool
+	preLang     string
+	preBuf      strings.Builder
+	table       *htmlTableCtx
+	outputBytes int
+	overBudget  bool
 }
 
 func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg string) {
@@ -481,7 +501,7 @@ func (c *htmlPasteConverter) emitBlockLine(blockMD string) {
 		}
 		blockMD = strings.Join(lines, "\n")
 	}
-	c.blocks = append(c.blocks, blockMD)
+	c.appendOutput(blockMD)
 }
 
 func (c *htmlPasteConverter) flushCurrentBlock() {
@@ -661,8 +681,7 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 	case "mark":
 		st.highlight = boolPtr(true)
 	case "a":
-		href := strings.TrimSpace(attrVal(attrs, "href"))
-		if href != "" && !strings.HasPrefix(strings.ToLower(href), "javascript:") {
+		if href := media.WebLink(attrVal(attrs, "href")); href != "" {
 			st.link = strPtr(href)
 		}
 	}
@@ -717,6 +736,11 @@ func (c *htmlPasteConverter) flushTable() {
 	if maxCols == 0 {
 		return
 	}
+	// A ragged table must fit before expanding its missing cells.
+	if len(tbl.rows) > maxParsedTableCells/maxCols {
+		c.overBudget = true
+		return
+	}
 	var outRows []string
 	for rIdx, row := range tbl.rows {
 		cells := make([]string, maxCols)
@@ -734,12 +758,27 @@ func (c *htmlPasteConverter) flushTable() {
 			outRows = append(outRows, "| "+strings.Join(seps, " | ")+" |")
 		}
 	}
-	c.blocks = append(c.blocks, strings.Join(outRows, "\n"))
+	c.appendOutput(strings.Join(outRows, "\n"))
+}
+
+func (c *htmlPasteConverter) appendOutput(markdown string) {
+	c.outputBytes += len(markdown) + 2
+	if c.outputBytes > media.MaxPasteBytes {
+		c.overBudget = true
+		return
+	}
+	c.blocks = append(c.blocks, markdown)
 }
 
 func (c *htmlPasteConverter) parse(src string) {
+	const maxDepth = 64
 	pos := 0
 	for pos < len(src) {
+		if c.overBudget || len(c.inlineStk) > maxDepth || len(c.listStk) > maxDepth ||
+			len(c.liStk) > maxDepth || c.quoteDepth > maxDepth {
+			c.overBudget = true
+			return
+		}
 		lt := strings.IndexByte(src[pos:], '<')
 		if lt < 0 {
 			c.pushText(src[pos:])
@@ -749,7 +788,7 @@ func (c *htmlPasteConverter) parse(src string) {
 			c.pushText(src[pos : pos+lt])
 		}
 		pos += lt
-		name, attrs, closed, empty, consumed, ok := parseTagRaw(src[pos:])
+		name, attrs, closed, empty, consumed, ok := parseClipboardTag(src, pos)
 		if !ok {
 			c.pushText(src[pos : pos+1])
 			pos++

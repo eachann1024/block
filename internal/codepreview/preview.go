@@ -69,8 +69,16 @@ var mathPreviewReplacer = strings.NewReplacer(
 
 func ParseCSV(src string) [][]string {
 	var rows [][]string
-	for _, line := range strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.ContainsRune(line, '"') {
+			cells := strings.Split(line, ",")
+			for i := range cells {
+				cells[i] = strings.TrimSpace(cells[i])
+			}
+			rows = append(rows, cells)
 			continue
 		}
 		var cells []string
@@ -105,7 +113,6 @@ type MermaidEdge struct {
 
 func ParseMermaid(src string) (nodes []string, labels map[string]string, edges []MermaidEdge, errMsg string) {
 	labels = make(map[string]string)
-	seen := make(map[string]bool)
 	addNode := func(raw string) string {
 		raw = strings.TrimSpace(raw)
 		id := raw
@@ -120,18 +127,17 @@ func ParseMermaid(src string) (nodes []string, labels map[string]string, edges [
 		if id == "" {
 			return ""
 		}
-		if !seen[id] {
-			seen[id] = true
+		_, exists := labels[id]
+		if !exists {
 			nodes = append(nodes, id)
 		}
-		if _, ok := labels[id]; !ok || lbl != id {
+		if !exists || lbl != id {
 			labels[id] = lbl
 		}
 		return id
 	}
 
-	lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
-	for _, raw := range lines {
+	for raw := range strings.SplitSeq(src, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "%%") ||
 			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "flowchart ") ||

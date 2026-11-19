@@ -121,19 +121,21 @@ type Manager struct {
 	settingsOpen           bool
 	settingsTab            string
 	recordingShortcut      string
-	justRecordedShortcut   bool
+	justRecordedPasses     int
 	shortcutConflictNotice string
 	fontPickerOpen         string
 	fontTriggerRects       map[string]ui.Rect
 	fontQuery              string
 	fontCursor             int
 	fontScrollToCursor     bool
-	fontCache              fontPickerCache
 	fontFamilies           []ui.FontFamily
 	fontFamiliesEpoch      uint64
+	fontCache              fontPickerCache
 	fontScroll             ui.ScrollState
 	assetsDraft            string
 	folderRuleDraft        string
+	folderRuleAdding       bool
+	searchIgnorePicker     internalui.DropdownSelectState
 	regexRuleDraft         string
 	folderRuleError        string
 	regexRuleError         string
@@ -275,7 +277,7 @@ func (m *Manager) ActiveSettingsTabTitle() string {
 // IsRecordingShortcut reports whether the shortcut recorder is actively capturing keys
 // (including the remainder of the frame in which a key was just captured).
 func (m *Manager) IsRecordingShortcut() bool {
-	return m.settingsOpen && (m.recordingShortcut != "" || m.justRecordedShortcut)
+	return m.settingsOpen && (m.recordingShortcut != "" || m.justRecordedPasses > 0)
 }
 
 // OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts", "app-store", or "plugin:<id>").
@@ -295,9 +297,12 @@ func (m *Manager) OpenSettings(tab string) {
 		m.assetsDraft = "assets"
 	}
 	m.recordingShortcut = ""
+	m.justRecordedPasses = 0
 	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.folderRuleError = ""
+	m.folderRuleAdding = false
+	m.searchIgnorePicker = internalui.DropdownSelectState{}
 	m.regexRuleError = ""
 	m.settingsOpen = true
 	m.requestRedraw()
@@ -310,6 +315,7 @@ func (m *Manager) CloseSettings() {
 	}
 	m.settingsOpen = false
 	m.recordingShortcut = ""
+	m.justRecordedPasses = 0
 	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.requestRedraw()
@@ -442,101 +448,106 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					} else {
 						btn.Border(1, ui.Transparent)
 					}
-						internalui.TactileCard(btn, hovered, pressed, active, false)
-						btn.Children(func() {
-							ic := pal.MonoIconColors(pal.TextSecondary)
-							if active {
-								ic = pal.DuoIconColors(pal.Text)
-							} else if hovered || pressed {
-								ic = pal.DuoIconColors(pal.Text)
-							}
-							icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, active || hovered || pressed)
-							col := pal.TextSecondary
-							weight := 400
-							if active {
-								col = pal.Text
-								weight = 460
-							} else if hovered || pressed {
-								col = pal.Text
-							}
-							ui.Text(c, title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						})
-						internalui.Probe(btn, navID)
-						if btn.Clicked() {
-							if isDrawer && onDismissDrawer != nil {
-								onDismissDrawer()
-							}
-							m.selectSettingsTab(spec.id)
+					internalui.TactileCard(btn, hovered, pressed, active, false)
+					btn.Children(func() {
+						ic := pal.MonoIconColors(pal.TextSecondary)
+						if active {
+							ic = pal.DuoIconColors(pal.Text)
+						} else if hovered || pressed {
+							ic = pal.DuoIconColors(pal.Text)
 						}
+						icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, active || hovered || pressed)
+						col := pal.TextSecondary
+						weight := 400
+						if active {
+							col = pal.Text
+							weight = 460
+						} else if hovered || pressed {
+							col = pal.Text
+						}
+						ui.Text(c, title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					})
+					internalui.Probe(btn, navID)
+					if btn.Clicked() {
+						if isDrawer && onDismissDrawer != nil {
+							onDismissDrawer()
+						}
+						m.selectSettingsTab(spec.id)
 					}
+				}
 
-					if m.PluginHost != nil {
-						pluginNavs := m.PluginHost.NavEntries()
-						if len(pluginNavs) > 0 {
-							ui.Box(c.Key("settings-plugin-divider")).FillWidth().Padding(theme.Space8, theme.Space6).Children(func() {
-								ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-							})
-							baseIdx := len(settingsTabs)
-							for j, entry := range pluginNavs {
-								ent := entry
-								active := tab == ent.TabID
-								navID := "settings-tab-" + ent.TabID
-								btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space8).
-									AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-									Label(ent.Title).Transition(internalui.CascadeRowTransition(baseIdx + j))
-								hovered := btn.Hovered()
-								pressed := btn.Pressed()
+				if m.PluginHost != nil {
+					pluginNavs := m.PluginHost.NavEntries()
+					if len(pluginNavs) > 0 {
+						ui.Box(c.Key("settings-plugin-divider")).FillWidth().Padding(theme.Space8, theme.Space6).Children(func() {
+							ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+						})
+						baseIdx := len(settingsTabs)
+						for j, entry := range pluginNavs {
+							ent := entry
+							active := tab == ent.TabID
+							navID := "settings-tab-" + ent.TabID
+							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space8).
+								AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+								Label(ent.Title).Transition(internalui.CascadeRowTransition(baseIdx + j))
+							hovered := btn.Hovered()
+							pressed := btn.Pressed()
+							if active {
+								btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+							} else if pressed || hovered {
+								btn.Background(chrome.Hover).Border(1, ui.Transparent)
+							} else {
+								btn.Border(1, ui.Transparent)
+							}
+							internalui.TactileCard(btn, hovered, pressed, active, false)
+							btn.Children(func() {
+								ic := pal.MonoIconColors(pal.TextSecondary)
 								if active {
-									btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
-								} else if pressed || hovered {
-									btn.Background(chrome.Hover).Border(1, ui.Transparent)
-								} else {
-									btn.Border(1, ui.Transparent)
+									ic = pal.DuoIconColors(pal.Text)
+								} else if hovered || pressed {
+									ic = pal.DuoIconColors(pal.Text)
 								}
-								internalui.TactileCard(btn, hovered, pressed, active, false)
-								btn.Children(func() {
-									ic := pal.MonoIconColors(pal.TextSecondary)
-									if active {
-										ic = pal.DuoIconColors(pal.Text)
-									} else if hovered || pressed {
-										ic = pal.DuoIconColors(pal.Text)
-									}
-									if ent.DrawIcon != nil {
-										ent.DrawIcon(c, theme.IconRow, ic)
-									}
-									col := pal.TextSecondary
-									weight := theme.WeightRegular
-									if active {
-										col = pal.Text
-										weight = theme.WeightControl
-									} else if hovered || pressed {
-										col = pal.Text
-									}
-									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-									if ent.CountText != "" {
-										ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-											FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-									} else if ent.StatusDot {
-										dotColor := pal.Accent
-										if ent.HasError {
-											dotColor = pal.Danger
-										}
-										ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).Shrink(0).
-											Radius(theme.RadiusPill).Background(dotColor)
+								if ent.DrawIcon != nil {
+									ent.DrawIcon(c, theme.IconRow, ic)
+								}
+								col := pal.TextSecondary
+								weight := theme.WeightRegular
+								if active {
+									col = pal.Text
+									weight = theme.WeightControl
+								} else if hovered || pressed {
+									col = pal.Text
+								}
+								ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+									if ent.Beta {
+										internalui.BetaBadge(c, true)
 									}
 								})
-								internalui.Probe(btn, navID)
-								if btn.Clicked() {
-									if isDrawer && onDismissDrawer != nil {
-										onDismissDrawer()
+								if ent.CountText != "" {
+									ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+								} else if ent.StatusDot {
+									dotColor := pal.Accent
+									if ent.HasError {
+										dotColor = pal.Danger
 									}
-									m.selectSettingsTab(ent.TabID)
+									ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).Shrink(0).
+										Radius(theme.RadiusPill).Background(dotColor)
 								}
+							})
+							internalui.Probe(btn, navID)
+							if btn.Clicked() {
+								if isDrawer && onDismissDrawer != nil {
+									onDismissDrawer()
+								}
+								m.selectSettingsTab(ent.TabID)
 							}
 						}
 					}
-				})
+				}
 			})
+		})
 		if !isDrawer && m.SidebarWidth != nil {
 			if internalui.SeamlessResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, theme.SidebarMinWidth, theme.SidebarMaxWidth, theme.SidebarDefaultWidth) && m.OnSidebarWidthChanged != nil {
 				m.OnSidebarWidthChanged(*m.SidebarWidth)
@@ -569,6 +580,7 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 		}
 		if ev.Key == ui.KeyEscape && ev.Mods == 0 {
 			m.recordingShortcut = ""
+			m.justRecordedPasses = 4
 			return
 		}
 		if spec, ok := inputEventToShortcutSpec(ev); ok {
@@ -587,48 +599,55 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 
 	root.Children(func() {
 		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).Fill().
-			Background(cardBG).Padding(28, padX, 48, padX).Gap(28).Children(func() {
-			ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-				ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontPage).FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
-				if hasExtras || showCloseBtn {
-					ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-						if hasExtras {
-							m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
-						}
-						if showCloseBtn {
-							backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-								ID:         "settings-back",
-								Label:      theme.Tr("返回", "Back"),
-								Tooltip:    theme.Tr("关闭设置", "Close Settings"),
-								Variant:    internalui.IconBordered,
-								IconSize:   theme.IconAction,
-								CardBorder: true,
-							})
-							if backBtn.Clicked() {
-								m.CloseSettings()
-							}
+			Background(cardBG).Padding(40, padX, 56, padX).AlignItems(ui.Center).Children(func() {
+			ui.Column(c.Key("settings-content")).FillWidth().MinWidth(0).MaxWidth(theme.SettingsContentMaxWidth).
+				Gap(theme.Space24).Children(func() {
+				ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+					ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						if IsPluginSystemTab(tab) && m.PluginHost != nil && m.PluginHost.TabIsBeta(tab) {
+							internalui.BetaBadge(c, false)
 						}
 					})
-				}
-			})
-
-			ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
-				Transition(internalui.SurfaceStageTransition()).Children(func() {
-				switch tab {
-				case "ai":
-					m.renderSettingsAITab(c)
-				case "appearance":
-					m.renderSettingsAppearanceTab(c)
-				case "folders":
-					m.renderSettingsFoldersTab(c)
-				case "shortcuts":
-					m.renderSettingsShortcutsTab(c)
-				default:
-					if IsPluginSystemTab(tab) && m.PluginHost != nil {
-						m.PluginHost.RenderTabBody(c, tab, m.selectSettingsTab)
+					hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
+					if hasExtras || showCloseBtn {
+						ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+							if hasExtras {
+								m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
+							}
+							if showCloseBtn {
+								backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+									ID:       "settings-back",
+									Label:    theme.Tr("返回", "Back"),
+									Tooltip:  theme.Tr("关闭设置", "Close Settings"),
+									Variant:  internalui.IconChrome,
+									IconSize: theme.IconInline,
+								})
+								if backBtn.Clicked() {
+									m.CloseSettings()
+								}
+							}
+						})
 					}
-				}
+				})
+
+				ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
+					Transition(internalui.SurfaceStageTransition()).Children(func() {
+					switch tab {
+					case "ai":
+						m.renderSettingsAITab(c)
+					case "appearance":
+						m.renderSettingsAppearanceTab(c)
+					case "folders":
+						m.renderSettingsFoldersTab(c)
+					case "shortcuts":
+						m.renderSettingsShortcutsTab(c)
+					default:
+						if IsPluginSystemTab(tab) && m.PluginHost != nil {
+							m.PluginHost.RenderTabBody(c, tab, m.selectSettingsTab)
+						}
+					}
+				})
 			})
 		})
 	})
@@ -636,23 +655,29 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 	if m.fontPickerOpen != "" {
 		m.renderFontPickerOverlay(c)
 	}
-	if m.recordingShortcut == "" && !m.justRecordedShortcut && c.Shortcut(0, ui.KeyEscape) {
+	if m.recordingShortcut == "" && m.justRecordedPasses == 0 && c.Shortcut(0, ui.KeyEscape) {
 		switch {
 		case m.fontPickerOpen != "":
 			m.fontPickerOpen = ""
+		case m.searchIgnorePicker.Open:
+			m.searchIgnorePicker.Open = false
 		case drawerOpen && onDismissDrawer != nil:
 			onDismissDrawer()
 		default:
 			m.CloseSettings()
 		}
 	}
-	m.justRecordedShortcut = false
+	if m.justRecordedPasses > 0 {
+		m.justRecordedPasses--
+	}
 }
 
 func (m *Manager) selectSettingsTab(tab string) {
 	m.recordingShortcut = ""
+	m.justRecordedPasses = 0
 	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
+	m.searchIgnorePicker.Open = false
 	m.settingsTab = tab
 }
 
@@ -662,7 +687,7 @@ func (m *Manager) renderSettingsAITab(c *ui.Context) {
 		m.RenderAISettings(c)
 		return
 	}
-	internalui.Card(c, func() {
+	internalui.SettingsSection(c, func() {
 		ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 		ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
 			FontSize(theme.FontBody).TextColor(pal.TextSecondary)
@@ -673,10 +698,10 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.currentState()
 
-	ui.Column(c.Key("settings-appearance-body")).FillWidth().Gap(theme.Space24).Children(func() {
+	ui.Column(c.Key("settings-appearance-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
 		// Card 1: Theme & Language (app_settings_tabs.rs:64-66).
-		internalui.Card(c, func() {
-			cardTitle(c, theme.Tr("主题与语言", "Theme & Language"))
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("主题与语言", "Theme & Language"), nil)
 
 			curTheme := st.Theme
 			if curTheme == "" {
@@ -689,8 +714,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			case model.ThemeDark:
 				themeIdx = 2
 			}
-			settingRow(c, theme.Tr("外观主题", "Theme"), func() {
-				if internalui.SegmentedControl(c, "settings-theme-seg", &themeIdx, []internalui.SegmentOption{
+			internalui.SettingsRow(c, theme.Tr("外观主题", "Theme"), func() {
+				if internalui.SettingsSegmented(c, "settings-theme-seg", &themeIdx, []internalui.SegmentOption{
 					{ID: "settings-theme-system", Label: theme.Tr("跟随系统", "System")},
 					{ID: "settings-theme-light", Label: theme.Tr("浅色", "Light")},
 					{ID: "settings-theme-dark", Label: theme.Tr("深色", "Dark")},
@@ -722,8 +747,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			if theme.Language() == model.LangEn {
 				langIdx = 1
 			}
-			settingRow(c, theme.Tr("界面语言", "Language"), func() {
-				if internalui.SegmentedControl(c, "settings-lang-seg", &langIdx, []internalui.SegmentOption{
+			internalui.SettingsRow(c, theme.Tr("界面语言", "Language"), func() {
+				if internalui.SettingsSegmented(c, "settings-lang-seg", &langIdx, []internalui.SegmentOption{
 					{ID: "settings-lang-zh", Label: "简体中文"},
 					{ID: "settings-lang-en", Label: "English"},
 				}) {
@@ -739,7 +764,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			})
 
 			decoEnabled := st.BrandDeco.Mode != model.BrandDecoOff
-			settingRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
+			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
 				if internalui.TogglePill(c, "settings-brand-deco-toggle", theme.Tr("侧栏装饰动画", "Sidebar Decoration"), &decoEnabled, false) {
 					mode := model.BrandDecoOff
 					if decoEnabled {
@@ -778,13 +803,13 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			cdDisplay = resolvedCodeFontName(m.fontFamilies)
 		}
 
-		internalui.Card(c, func() {
-			cardTitle(c, theme.Tr("编辑器", "Editor"))
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("编辑器", "Editor"), nil)
 
-			settingRow(c, theme.Tr("正文字体", "Body Font"), func() {
+			internalui.SettingsRow(c, theme.Tr("正文字体", "Body Font"), func() {
 				m.fontPickerTrigger(c, "settings-body-font-trigger", "body", edDisplay, isDefaultBody)
 			})
-			settingRow(c, theme.Tr("代码字体", "Code Font"), func() {
+			internalui.SettingsRow(c, theme.Tr("代码字体", "Code Font"), func() {
 				m.fontPickerTrigger(c, "settings-code-font-trigger", "code", cdDisplay, false)
 			})
 
@@ -795,8 +820,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			case model.LineHeightLoose:
 				lhIdx = 2
 			}
-			settingRow(c, theme.Tr("行高", "Line Height"), func() {
-				if internalui.SegmentedControl(c, "settings-lh-seg", &lhIdx, []internalui.SegmentOption{
+			internalui.SettingsRow(c, theme.Tr("行高", "Line Height"), func() {
+				if internalui.SettingsSegmented(c, "settings-lh-seg", &lhIdx, []internalui.SegmentOption{
 					{ID: "settings-lh-tight", Label: theme.Tr("紧凑", "Compact")},
 					{ID: "settings-lh-normal", Label: theme.Tr("标准", "Standard")},
 					{ID: "settings-lh-loose", Label: theme.Tr("宽松", "Relaxed")},
@@ -812,8 +837,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 		})
 
 		// Card 3: Application Updates & Channel Source.
-		internalui.Card(c, func() {
-			cardTitle(c, theme.Tr("应用更新", "App Updates"))
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("应用更新", "App Updates"), nil)
 
 			curVer := updater.CurrentVersion()
 			var snap updater.Snapshot
@@ -826,15 +851,15 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			if snap.HasActionableUpdate() && snap.LatestVersion != "" {
 				verTitle = fmt.Sprintf("v%s → v%s", curVer, snap.LatestVersion)
 			}
-			settingRow(c, theme.Tr("当前版本", "Version"), func() {
+			internalui.SettingsRow(c, theme.Tr("当前版本", "Version"), func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
-					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					if snap.HasActionableUpdate() {
 						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
 						if snap.Status == updater.StatusReady {
 							btnLabel = fmt.Sprintf(theme.Tr("重启更新 v%s", "Restart to v%s"), snap.LatestVersion)
 						}
-						btn := internalui.ActionButton(c, "settings-open-updater", btnLabel, nil, internalui.ButtonPrimary, false)
+						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-open-updater", Label: btnLabel, Style: internalui.ButtonPrimary, Height: theme.HeightCompact, PaddingX: theme.Space10})
 						if btn.Clicked() {
 							m.OpenUpdater()
 						}
@@ -844,7 +869,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 						if checking {
 							btnLabel = theme.Tr("正在检查…", "Checking…")
 						}
-						btn := internalui.ActionButton(c, "settings-check-updates", btnLabel, nil, internalui.ButtonSecondary, checking)
+						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-check-updates", Label: btnLabel, Style: internalui.ButtonSecondary, Disabled: checking, Height: theme.HeightCompact, PaddingX: theme.Space10})
 						if btn.Clicked() {
 							m.OpenUpdater()
 							if m.Updater != nil {
@@ -866,8 +891,8 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			case updater.SourceGitHub:
 				srcIdx = 2
 			}
-			settingRow(c, theme.Tr("更新源", "Update Source"), func() {
-				if internalui.SegmentedControl(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
+			internalui.SettingsRow(c, theme.Tr("更新源", "Update Source"), func() {
+				if internalui.SettingsSegmented(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
 					{ID: "settings-upd-src-auto", Label: theme.Tr("自动", "Auto")},
 					{ID: "settings-upd-src-mirror", Label: theme.Tr("国内加速", "Mirror")},
 					{ID: "settings-upd-src-github", Label: "GitHub"},
@@ -960,10 +985,7 @@ func defaultCodeFontName() string {
 func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDefault bool) {
 	pal := theme.Ocean()
 	open := m.fontPickerOpen == role
-	borderCol := pal.BtnBorder
-	if open {
-		borderCol = pal.Placeholder
-	}
+	borderCol := ui.Transparent
 	accLabel := label
 	if isDefault {
 		suffix, gap := defaultFontSuffix()
@@ -973,16 +995,16 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 			accLabel = label + suffix
 		}
 	}
-	btn := ui.ButtonBase(c.Key(id)).Width(248).MaxWidthPercent(100).Shrink(1).MinWidth(120).Height(36).Padding(0, 10, 0, 12).
+	btn := ui.ButtonBase(c.Key(id)).MaxWidth(248).Shrink(1).MinWidth(0).Height(theme.HeightCompact).Padding(0, theme.Space8, 0, theme.Space10).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Radius(theme.RadiusMD).
 		Cursor(ui.CursorPointer).Label(accLabel)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	bg := pal.Shell
-	if pressed {
-		bg = pal.Shell.Mix(pal.Text, 0.09)
+	bg := ui.Transparent
+	if pressed || open {
+		bg = pal.Selected
 	} else if hovered {
-		bg = pal.Shell.Mix(pal.Text, 0.05)
+		bg = pal.Hover
 	}
 	internalui.AnimateSurfaceColors(btn, bg, borderCol, true)
 	internalui.TactileCard(btn, hovered, pressed, open, false)
@@ -1000,11 +1022,11 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 		if isDefault {
 			suffix, gap := defaultFontSuffix()
 			ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
-				ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-				ui.Text(c, suffix).FontSize(theme.FontTitle).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
+				ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
 			})
 		} else {
-			ui.Text(c, label).FontSize(theme.FontTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		}
 		glyph := icons.ChevronDown
 		if open {
@@ -1014,7 +1036,7 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 		if open || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}
-		icons.DrawAnimated(c, glyph, 14, ic, open || hovered || pressed)
+		icons.DrawAnimated(c, glyph, theme.IconMicro, ic, open || hovered || pressed)
 	})
 	if btn.Clicked() {
 		if open {
@@ -1397,8 +1419,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 					in := ui.TextInput(c.Key("font-picker-search"), &m.fontQuery).
 						Placeholder(theme.Tr("搜索字体", "Search fonts")).
+						PlaceholderColor(pal.Placeholder).
 						Label(theme.Tr("搜索字体", "Search fonts")).
-						FontSize(theme.FontBody).Height(theme.HeightCompact).PaddingX(0).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+						Height(theme.HeightCompact).Padding(0).
 						Background(ui.Transparent).Border(0, ui.Transparent).
 						Bind(&m.fontSearchHandle).AutoFocus().Grow(1).MinWidth(0)
 					internalui.Probe(in, "font-picker-search")
@@ -1595,13 +1619,12 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 		assetsName = "assets"
 	}
 
-	ui.Column(c.Key("settings-folders-body")).FillWidth().Gap(theme.Space24).Children(func() {
-		// Card 1: Workspace Folder & File Visibility Rules.
-		internalui.Card(c, func() {
-			cardTitle(c, theme.Tr("工作区文件夹清单", "Workspace Folder Rules"))
+	ui.Column(c.Key("settings-folders-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
+		// Sidebar visibility: flat rows separated by hairlines, no nested cards.
+		ui.Column(c.Key("settings-folders-sidebar")).FillWidth().Children(func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("侧栏", "Sidebar"), nil)
 
-			showRow := ui.Row(c.Key("folder-row-non-md")).FillWidth().MinHeight(theme.HeightLarge).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space16)
+			showRow := internalui.SettingsRowFrame(ui.Row(c.Key("folder-row-non-md"))).Justify(ui.SpaceBetween)
 			showRow.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 				internalui.RecordBounds("folder-hide-non-md", r)
 				internalui.RecordBounds("settings-hide-non-md", r)
@@ -1609,11 +1632,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 			showRow.Children(func() {
 				ui.Text(c, theme.Tr("显示非 Markdown 文件", "Show Non-Markdown Files")).
 					FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
-				pillLbl := theme.Tr("已关闭", "Off")
-				if showNonMD {
-					pillLbl = theme.Tr("已开启", "On")
-				}
-				if internalui.TogglePill(c, "settings-show-non-md-pill", pillLbl, &showNonMD, false) {
+				if internalui.TogglePill(c, "settings-show-non-md-pill", theme.Tr("显示非 Markdown 文件", "Show Non-Markdown Files"), &showNonMD, false) {
 					nextHide := !showNonMD
 					m.mutateState(func(s *model.AppState) {
 						v := nextHide
@@ -1623,223 +1642,198 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 			})
 
 			rules := append([]model.FolderRule(nil), st.FolderRules...)
-
-			// Assets row + exact folder rules stack (gap=8).
-			ui.Column(c).FillWidth().Gap(8).Children(func() {
-				folderTableRow(c, "settings-assets-row", hideAssets,
-					func() {
-						icons.Draw(c, icons.Folder, theme.IconRow, pal.DuoIconColors(pal.Text))
-						assetsIn := ui.TextInput(c.Key("settings-assets-input"), &m.assetsDraft).
-							Placeholder("assets").Label(theme.Tr("资源目录名", "Assets Folder")).
-							Font("monospace").FontSize(theme.FontBody).Height(34).PaddingX(10).
-							Radius(theme.RadiusMD).Background(pal.Shell).Border(1, pal.BtnBorder).
-							Grow(1).MinWidth(0)
-						internalui.Probe(assetsIn, "settings-assets-input")
-						if assetsIn.Changed() || assetsIn.Submitted() {
-							sanitized := strings.TrimSpace(m.assetsDraft)
-							if sanitized != "" && !strings.ContainsAny(sanitized, `/\`) {
-								m.mutateState(func(s *model.AppState) {
-									s.AssetsFolder = sanitized
-								})
-							}
-						}
-					},
-					func() {
-						visIdx := 0
-						if !hideAssets {
-							visIdx = 1
-						}
-						if internalui.SegmentedControl(c, "settings-hide-assets", &visIdx, []internalui.SegmentOption{
-							{ID: "settings-assets-hidden", Label: theme.Tr("隐藏", "Hidden")},
-							{ID: "settings-assets-visible", Label: theme.Tr("显示", "Show")},
-						}) {
-							nextHide := visIdx == 0
+			internalui.SettingsRowFrame(ui.Row(c.Key("folder-row-hidden"))).PaddingY(theme.Space8).
+				AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Height(theme.HeightCompact).AlignItems(ui.Center).Shrink(0).Children(func() {
+					ui.Text(c, theme.Tr("隐藏的文件夹", "Hidden Folders")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				})
+				ui.Row(c).Grow(1).MinWidth(0).Wrap().Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+					if hideAssets {
+						if folderChip(c, "settings-hide-assets", assetsName, false) {
 							m.mutateState(func(s *model.AppState) {
-								v := nextHide
+								v := false
 								s.HideAssetsFolder = &v
 							})
 						}
-						ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-							ui.Text(c, theme.Tr("系统", "System")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-						})
-					},
-				)
-
-				for i, r := range rules {
-					if r.Regex || strings.EqualFold(r.Pattern, assetsName) {
-						continue
 					}
-					idx := i
-					rule := r
-					folderTableRow(c, "folder-exact-row-"+rule.Pattern, rule.Hidden,
-						func() {
-							icCol := pal.DuoIconColors(pal.Text)
-							if rule.Hidden {
-								icCol = pal.MonoIconColors(pal.TextSecondary)
-							}
-							icons.Draw(c, icons.Folder, theme.IconRow, icCol)
-							ui.Text(c, rule.Pattern).Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						},
-						func() {
-							visIdx := 0
-							if !rule.Hidden {
-								visIdx = 1
-							}
-							if internalui.SegmentedControl(c, "folder-rule-vis-"+rule.Pattern, &visIdx, []internalui.SegmentOption{
-								{Label: theme.Tr("隐藏", "Hidden")},
-								{Label: theme.Tr("显示", "Show")},
-							}) {
-								rules[idx].Hidden = visIdx == 0
-								m.saveFolderRules(rules)
-							}
-							ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-								del := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-									ID:    "folder-rule-del-" + rule.Pattern,
-									Label: theme.Tr("删除规则", "Remove Rule"),
-								})
-								if del.Clicked() {
-									next := append(rules[:idx], rules[idx+1:]...)
-									m.saveFolderRules(next)
-								}
-							})
-						},
-					)
-				}
+					for i, r := range rules {
+						if r.Regex || strings.EqualFold(r.Pattern, assetsName) {
+							continue
+						}
+						idx := i
+						if folderChip(c, "folder-rule-del-"+r.Pattern, r.Pattern, !r.Hidden) {
+							next := append(rules[:idx:idx], rules[idx+1:]...)
+							m.saveFolderRules(next)
+						}
+					}
+					m.renderFolderRuleAdd(c, assetsName)
+				})
 			})
+			if m.folderRuleError != "" {
+				ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
+					ui.Text(c, m.folderRuleError).FontSize(theme.FontMeta).TextColor(pal.Accent)
+				})
+			}
+		})
 
-			// Add exact folder rule input + button.
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					in := ui.TextInput(c.Key("settings-folder-rule-input"), &m.folderRuleDraft).
-						Placeholder(theme.Tr("输入文件夹名称，如 build 或 drafts", "Enter folder name, e.g. build")).
-						Label(theme.Tr("文件夹名称", "Folder Name")).
-						FontSize(theme.FontBody).Height(theme.HeightControl).PaddingX(theme.Space10).Radius(theme.RadiusMD).
-						Background(pal.Shell).Border(1, pal.BtnBorder).Grow(1).MinWidth(0)
-					internalui.Probe(in, "settings-folder-rule-input")
-					submitted := in.Submitted()
-					if in.Changed() {
-						m.folderRuleError = ""
+		// Global search: every notebook is searchable by default; only exclusions are listed.
+		ignoreCol := ui.Column(c.Key("settings-ignore-search")).FillWidth()
+		internalui.Probe(ignoreCol, "settings-ignore-search")
+		ignoreCol.Children(func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("全局搜索", "Global Search"), nil)
+			internalui.SettingsRowFrame(ui.Row(c.Key("folder-row-search-excluded"))).PaddingY(theme.Space8).
+				AlignItems(ui.Start).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Height(theme.HeightCompact).AlignItems(ui.Center).Shrink(0).Children(func() {
+					ui.Text(c, theme.Tr("不参与搜索的文件夹", "Excluded Folders")).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
+				})
+				ui.Row(c).Grow(1).MinWidth(0).Wrap().Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+					for i, folderPath := range st.IgnoredSearchFolders {
+						if folderChip(c, fmt.Sprintf("folder-search-ignore-%d", i), filepath.Base(folderPath), false) {
+							m.toggleSearchIgnoreFolder(folderPath)
+						}
 					}
-					addBtn := internalui.ActionButton(c, "settings-folder-rule-add", theme.Tr("添加文件夹", "Add Folder"), nil, internalui.ButtonSecondary, false)
-					if addBtn.Clicked() || submitted {
-						m.addFolderRule(false)
+					var options []internalui.SelectOption
+					for i, nb := range m.knownNotebooks(st) {
+						if slices.Contains(st.IgnoredSearchFolders, nb) {
+							continue
+						}
+						options = append(options, internalui.SelectOption{
+							ID:    fmt.Sprintf("settings-ignore-search-opt-%d", i),
+							Value: nb,
+							Label: filepath.Base(nb),
+							Hint:  tailEllipsis(folderLocationLabel(nb), 32),
+						})
+					}
+					if len(options) == 0 {
+						m.searchIgnorePicker.Open = false
+						return
+					}
+					m.searchIgnorePicker.MenuWidth = 360
+					if folderAddButton(c, "settings-ignore-search-add", theme.Tr("添加不参与搜索的文件夹", "Exclude Folder"), &m.searchIgnorePicker.TriggerRect) {
+						m.searchIgnorePicker.Open = !m.searchIgnorePicker.Open
+						m.searchIgnorePicker.Cursor = -1
+					}
+					if picked := internalui.SelectMenu(c, "settings-ignore-search-picker", options, &m.searchIgnorePicker, ""); picked >= 0 {
+						m.toggleSearchIgnoreFolder(options[picked].Value)
 					}
 				})
-				if m.folderRuleError != "" {
-					ui.Text(c, m.folderRuleError).FontSize(theme.FontBody).TextColor(pal.Accent)
-				}
-			})
-		})
-
-		// Card 3: Global Search Ignore List (app_settings_folders_view.rs:29-57, 189-191).
-		ignoreCard := ui.Column(c.Key("settings-ignore-search")).FillWidth().Padding(18, 20, 18, 20).Gap(16).
-			Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline)
-		internalui.Probe(ignoreCard, "settings-ignore-search")
-		ignoreCard.Children(func() {
-			cardTitle(c, theme.Tr("全局搜索忽略列表", "Global Search Ignore List"))
-			notebooks := m.knownNotebooks(st)
-			if len(notebooks) == 0 {
-				ui.Text(c, theme.Tr("暂无已打开的笔记本目录", "No notebook folders yet")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-				return
-			}
-			ui.Column(c).FillWidth().Gap(8).Children(func() {
-				for i, nb := range notebooks {
-					idx := i
-					folderPath := nb
-					ignored := slices.Contains(st.IgnoredSearchFolders, folderPath)
-					id := fmt.Sprintf("settings-ignore-search-%d", idx)
-					folderName := filepath.Base(folderPath)
-					shortPath := theme.DisplayFolderPath(folderPath)
-
-					folderTableRow(c, id, ignored,
-						func() {
-							icCol := pal.DuoIconColors(pal.Text)
-							if ignored {
-								icCol = pal.MonoIconColors(pal.TextSecondary)
-							}
-							icons.Draw(c, icons.Folder, theme.IconRow, icCol)
-							ui.Text(c, folderName).Font("monospace").FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Shrink(0)
-							ui.Text(c, shortPath).Font("monospace").FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						},
-						func() {
-							pillLabel := theme.Tr("不参与全局搜索", "Exclude from Global Search")
-							pillBG := pal.Shell
-							pillBD := pal.Hairline
-							pillFG := pal.TextSecondary
-							if ignored {
-								pillBG = pal.Selected
-								pillBD = pal.SelectedBorder
-								pillFG = pal.Text
-							}
-							pill := ui.ButtonBase(c.Key(id + "-btn")).Height(32).PaddingX(10).Gap(8).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).
-								Cursor(ui.CursorPointer).Label(pillLabel)
-							pillHover := pill.Hovered()
-							pillPress := pill.Pressed()
-							if pillHover || pillPress {
-								pillBD = pal.ShellChrome().FieldBorderHover
-								pillFG = pal.Text
-							}
-							internalui.AnimateSurfaceColors(pill, pillBG, pillBD, true)
-							internalui.TactileCard(pill, pillHover, pillPress, ignored, false)
-							pill.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-								internalui.RecordBounds(id+"-btn", r)
-								if idx == 0 {
-									internalui.RecordBounds("folder-search-ignore-0", r)
-								}
-							})
-							pill.Children(func() {
-								folderCheckBox(c, ignored, pillHover || pillPress)
-								ui.Text(c, pillLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pillFG).SingleLine()
-							})
-							if pill.Clicked() {
-								m.toggleSearchIgnoreFolder(folderPath)
-							}
-
-							ui.Row(c).MinWidth(28).Justify(ui.End).Children(func() {
-								rmBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-									ID:    fmt.Sprintf("folder-remove-notebook-%d", idx),
-									Label: theme.Tr("移除笔记本", "Remove Notebook"),
-								})
-								if rmBtn.Clicked() {
-									m.forgetNotebook(folderPath)
-								}
-							})
-						},
-					)
-				}
 			})
 		})
 	})
 }
 
-func folderCheckBox(c *ui.Context, checked, active bool) {
+// renderFolderRuleAdd shows a ghost "+ 添加" chip that expands into an inline name field.
+func (m *Manager) renderFolderRuleAdd(c *ui.Context, assetsName string) {
 	pal := theme.Ocean()
-	bd := pal.BtnBorder
-	if checked {
-		bd = pal.Accent
+	if !m.folderRuleAdding {
+		if folderAddButton(c, "settings-folder-rule-add", theme.Tr("添加隐藏文件夹", "Add Hidden Folder"), nil) {
+			m.folderRuleAdding = true
+			m.folderRuleDraft = ""
+			m.folderRuleError = ""
+		}
+		return
 	}
-	box := ui.Box(c).Size(15, 15).Radius(theme.RadiusXS).Center().Shrink(0)
-	internalui.AnimateSurfaceColors(box, pal.Card, bd, true)
-	box.Children(func() {
-		if checked {
-			icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.DuoIconColors(pal.Accent), active)
+	in := ui.TextInput(c.Key("settings-folder-rule-input"), &m.folderRuleDraft).
+		Placeholder(theme.Tr("文件夹名，如 build", "Folder, e.g. build")).
+		PlaceholderColor(pal.Placeholder).
+		Label(theme.Tr("文件夹名称", "Folder Name")).
+		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+		Height(theme.HeightCompact).Width(180).Padding(0, theme.Space10).Radius(theme.RadiusMD).
+		Background(pal.Shell).Border(1, pal.Accent).AutoFocus()
+	internalui.Probe(in, "settings-folder-rule-input")
+	if in.Changed() {
+		m.folderRuleError = ""
+	}
+	if in.Submitted() {
+		name := strings.TrimSpace(m.folderRuleDraft)
+		switch {
+		case name == "":
+			m.folderRuleAdding = false
+		case strings.EqualFold(name, assetsName):
+			m.mutateState(func(s *model.AppState) {
+				v := true
+				s.HideAssetsFolder = &v
+			})
+			m.folderRuleDraft = ""
+			m.folderRuleAdding = false
+		default:
+			m.addFolderRule(false)
+			if m.folderRuleError == "" {
+				m.folderRuleAdding = false
+			}
+		}
+	} else if !in.Focused() && strings.TrimSpace(m.folderRuleDraft) == "" {
+		m.folderRuleAdding = false
+		m.folderRuleError = ""
+	}
+}
+
+// folderAddButton renders the outlined "+ 添加" chip; rect, when set, receives its bounds for anchoring a menu.
+func folderAddButton(c *ui.Context, id, label string, rect *ui.Rect) bool {
+	pal := theme.Ocean()
+	btn := ui.ButtonBase(c.Key(id)).Height(theme.HeightCompact).PaddingX(theme.Space10).
+		Gap(theme.Space4).AlignItems(ui.Center).Radius(theme.RadiusMD).
+		Cursor(ui.CursorPointer).Label(label)
+	hov := btn.Hovered() || btn.Pressed()
+	if hov {
+		btn.Background(pal.Hover)
+	}
+	// One DrawOver per element: record the probe and the menu anchor together.
+	btn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+		internalui.RecordBounds(id, r)
+		if rect != nil {
+			*rect = r
 		}
 	})
+	btn.Children(func() {
+		icons.Draw(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+		ui.Text(c, theme.Tr("添加", "Add")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+	})
+	return btn.Clicked()
 }
 
-func folderTableRow(c *ui.Context, key string, isHidden bool, left func(), right func()) {
+// folderChip renders a compact folder tag with a trailing remove button; it returns true when removed.
+func folderChip(c *ui.Context, id, name string, shown bool) bool {
 	pal := theme.Ocean()
-	bg := pal.Card
-	if isHidden {
-		bg = pal.Shell
-	}
-	ui.Row(c.Key(key)).FillWidth().MinWidth(0).MinHeight(46).Padding(4, 12, 4, 12).
-		Radius(theme.RadiusXL).Background(bg).Border(1, pal.Hairline).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(left)
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(0).Children(right)
+	removed := false
+	ui.Row(c.Key(id+"-chip")).Height(theme.HeightCompact).Padding(0, theme.Space4, 0, theme.Space10).Gap(theme.Space4).
+		AlignItems(ui.Center).Radius(theme.RadiusMD).Border(1, pal.Hairline).Children(func() {
+		ui.Text(c, name).FontSize(theme.FontSmall).TextColor(pal.Text).SingleLine()
+		if shown {
+			ui.Text(c, theme.Tr("· 显示", "· shown")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+		}
+		del := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+			ID:    id,
+			Label: theme.Tr("移除", "Remove") + " " + name,
+		})
+		if del.Clicked() {
+			removed = true
+		}
 	})
+	return removed
+}
+
+// tailEllipsis keeps the last max runes of s, prefixed with "…", so the folder end stays visible.
+func tailEllipsis(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return "…" + string(r[len(r)-max+1:])
+}
+
+// folderLocationLabel shows a notebook's parent folder, with iCloud Drive collapsed to a readable name.
+func folderLocationLabel(absPath string) string {
+	parent := theme.DisplayFolderPath(filepath.Dir(absPath))
+	const icloud = "~/Library/Mobile Documents/com~apple~CloudDocs"
+	if strings.HasPrefix(parent, icloud) {
+		label := theme.Tr("iCloud 云盘", "iCloud Drive")
+		if rest := strings.Trim(strings.TrimPrefix(parent, icloud), "/"); rest != "" {
+			label += " / " + strings.ReplaceAll(rest, "/", " / ")
+		}
+		return label
+	}
+	return parent
 }
 
 func (m *Manager) activeNotebookPath(st model.AppState) string {
@@ -1988,28 +1982,13 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		strings.TrimSpace(st.ShortcutQuick) != "" ||
 		len(st.CustomShortcuts) > 0
 
-	internalui.CardSurface(ui.Column(c).FillWidth().MinWidth(0)).Gap(theme.Space12).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			cardTitle(c, theme.Tr("快捷键", "Shortcuts"))
-			if customized {
-				rstLabel := theme.Tr("恢复默认", "Reset")
-				rst := ui.ButtonBase(c.Key("settings-shortcuts-reset")).Padding(4, 8, 4, 8).
-					Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(rstLabel)
-				rstHover := rst.Hovered()
-				rstPress := rst.Pressed()
-				rstBG := ui.Transparent
-				if rstPress {
-					rstBG = pal.Selected
-				} else if rstHover {
-					rstBG = pal.Hover
+	ui.Column(c.Key("settings-shortcuts-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("全局", "Global"), func() {
+				if !customized {
+					return
 				}
-				internalui.AnimateSurfaceColors(rst, rstBG, ui.Transparent, false)
-				internalui.TactileCard(rst, rstHover, rstPress, false, false)
-				rst.Children(func() {
-					ui.Text(c, rstLabel).FontSize(theme.FontBody).TextColor(pal.Accent).SingleLine()
-				})
-				internalui.Probe(rst, "settings-shortcuts-reset")
-				if rst.Clicked() {
+				if internalui.SettingsTextAction(c, "settings-shortcuts-reset", theme.Tr("恢复默认", "Reset"), nil).Clicked() {
 					m.recordingShortcut = ""
 					m.shortcutConflictNotice = ""
 					m.mutateState(func(s *model.AppState) {
@@ -2018,39 +1997,42 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 						s.CustomShortcuts = nil
 					})
 				}
+			})
+			if m.shortcutConflictNotice != "" {
+				noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
+					Padding(theme.Space8, theme.Space12, theme.Space8, theme.Space12).Margin(0, 0, theme.Space8, 0).Radius(theme.RadiusMD).
+					Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35))
+				internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
+				noticeRow.Children(func() {
+					ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
+				})
+			}
+
+			internalui.SettingsRow(c, theme.Tr("全局唤出", "Global Summon"), func() {
+				m.shortcutRecorderTray(c, "settings-rec-search", "global_summon", searchSpec)
+			})
+			internalui.SettingsRow(c, theme.Tr("速记小窗", "Quick Note"), func() {
+				m.shortcutRecorderTray(c, "settings-rec-quick", "quick_note", quickSpec)
+			})
+		})
+
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("应用内", "In App"), nil)
+			internalui.SettingsRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
+				staticKeycapTray(c, "settings-keycap-search", EffectiveShortcut(st, "search"))
+			})
+			internalui.SettingsRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
+				staticKeycapTray(c, "settings-keycap-find", "cmd-f")
+			})
+			internalui.SettingsRow(c, theme.Tr("新建笔记", "New Note"), func() {
+				staticKeycapTray(c, "settings-keycap-new", EffectiveShortcut(st, "new_note"))
+			})
+			if m.AIEnabled == nil || m.AIEnabled() {
+				internalui.SettingsRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
+					staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
+				})
 			}
 		})
-
-		if m.shortcutConflictNotice != "" {
-			noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
-				Padding(8, 12, 8, 12).Radius(theme.RadiusMD).
-				Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35))
-			internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
-			noticeRow.Children(func() {
-				ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
-			})
-		}
-
-		settingRow(c, theme.Tr("全局唤出", "Global Summon"), func() {
-			m.shortcutRecorderTray(c, "settings-rec-search", "global_summon", searchSpec)
-		})
-		settingRow(c, theme.Tr("速记小窗", "Quick Note"), func() {
-			m.shortcutRecorderTray(c, "settings-rec-quick", "quick_note", quickSpec)
-		})
-		settingRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
-			staticKeycapTray(c, "settings-keycap-search", EffectiveShortcut(st, "search"))
-		})
-		settingRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
-			staticKeycapTray(c, "settings-keycap-find", "cmd-f")
-		})
-		settingRow(c, theme.Tr("新建笔记", "New Note"), func() {
-			staticKeycapTray(c, "settings-keycap-new", EffectiveShortcut(st, "new_note"))
-		})
-		if m.AIEnabled != nil && m.AIEnabled() {
-			settingRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
-				staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
-			})
-		}
 	})
 }
 
@@ -2061,22 +2043,19 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	if recording {
 		accLabel = theme.Tr("按下快捷键…", "Press shortcut…")
 	}
-	trayBG := pal.Shell
-	if pal.Dark {
-		trayBG = pal.CodeBG
-	}
-	borderCol := pal.BtnBorder
+	trayBG := ui.Transparent
+	borderCol := ui.Transparent
 	if recording {
 		trayBG = pal.Selected
 		borderCol = pal.Accent
 	}
-	btn := ui.ButtonBase(c.Key(id)).Height(32).PaddingX(5).Gap(4).
+	btn := ui.ButtonBase(c.Key(id)).Height(theme.HeightCompact).PaddingX(theme.Space6).Gap(theme.Space4).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(accLabel)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
 	if !recording && (hovered || pressed) {
-		borderCol = pal.ShellChrome().FieldBorderHover
+		trayBG = pal.Hover
 	}
 	internalui.AnimateSurfaceColors(btn, trayBG, borderCol, true)
 	internalui.TactileCard(btn, hovered, pressed, recording, false)
@@ -2108,14 +2087,8 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 }
 
 func staticKeycapTray(c *ui.Context, id, spec string) {
-	pal := theme.Ocean()
-	trayBG := pal.Shell
-	if pal.Dark {
-		trayBG = pal.CodeBG
-	}
-	tray := ui.Row(c.Key(id)).Height(theme.HeightControl).PaddingX(theme.Space4).Gap(theme.Space4).
-		AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusMD).Background(trayBG).Border(1, pal.Hairline)
+	tray := ui.Row(c.Key(id)).Height(theme.HeightCompact).Gap(theme.Space4).
+		AlignItems(ui.Center).Justify(ui.Center)
 	internalui.Probe(tray, id)
 	tray.Children(func() {
 		for _, part := range hotkeyParts(spec) {
@@ -2250,7 +2223,7 @@ func setActionShortcut(s *model.AppState, action, spec string) {
 
 func (m *Manager) applyRecordedShortcut(action, spec string) {
 	m.recordingShortcut = ""
-	m.justRecordedShortcut = true
+	m.justRecordedPasses = 4
 	normNew := normalizeShortcutSpec(spec)
 	var conflictMsg string
 
@@ -2433,17 +2406,4 @@ func shortcutKeyName(k ui.Key) string {
 		}
 		return ""
 	}
-}
-
-func cardTitle(c *ui.Context, title string) {
-	pal := theme.Ocean()
-	ui.Text(c, title).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-}
-
-func settingRow(c *ui.Context, label string, control func()) {
-	pal := theme.Ocean()
-	ui.Row(c).FillWidth().MinWidth(0).MinHeight(36).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(16).Children(func() {
-		ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Shrink(0)
-		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(control)
-	})
 }

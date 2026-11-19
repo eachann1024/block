@@ -446,7 +446,11 @@ func firstUnstarredIndex(items []promptEntry) int {
 // --- Session Configuration APIs ---
 
 func (s *Session) SetDataDir(dir string) {
-	s.dataDir = strings.TrimSpace(dir)
+	dir = strings.TrimSpace(dir)
+	if s.notePath == "" && s.dataDir != dir {
+		s.resetMedia()
+	}
+	s.dataDir = dir
 	s.promptStore = &inlinePromptStore{dir: s.dataDir}
 	s.annotLoadedPath = ""
 	s.ensureAnnotationsLoaded()
@@ -481,6 +485,7 @@ type aiTargetPart struct {
 	BlockID   model.BlockID
 	StartRune int
 	EndRune   int
+	Source    string
 }
 
 type aiAsyncResult struct {
@@ -495,6 +500,7 @@ type inlineAISession struct {
 	Parts         []aiTargetPart
 	Original      string
 	ContextBefore string
+	NotePath      string
 
 	InputText        string
 	InputHandle      ui.Handle
@@ -584,7 +590,7 @@ func (s *Session) OpenInlineAIOnSelection() {
 			break
 		}
 		lo, hi := s.selectionSpanRange(idx, a, b)
-		if lo < hi || a.Block == b.Block {
+		if lo < hi || idx > a.Block || a.Block == b.Block {
 			parts = append(parts, aiTargetPart{
 				BlockID:   s.doc.Blocks[idx].ID,
 				StartRune: lo,
@@ -613,17 +619,14 @@ func (s *Session) OpenInlineAIOnBlock(idx int) {
 		return
 	}
 	text := b.PlainText()
-	if strings.HasPrefix(text, "/") || strings.HasPrefix(text, "、") {
-		s.pushUndo()
-		b.SetText("")
-		s.markDirty()
-		text = ""
-	}
-	rlen := len([]rune(text))
+	rlen := utf8.RuneCountInString(text)
 	posA := Position{Block: idx, Offset: 0}
 	posB := Position{Block: idx, Offset: rlen}
 	orig := ""
-	if rlen > 0 {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "", "/", "、", "/ai", "、ai":
+		// The slash command stays intact until a suggestion is accepted.
+	default:
 		orig = strings.TrimSpace(s.serializeBlocks([]model.Block{b.Clone()}))
 	}
 	s.startInlineAI(posA, posB, []aiTargetPart{{BlockID: b.ID, StartRune: 0, EndRune: rlen}}, orig, s.precedingContext(idx), s.blockRectValue(b.ID))
@@ -636,12 +639,17 @@ func (s *Session) startInlineAI(anchor, head Position, parts []aiTargetPart, ori
 	s.calloutMenuBlock = 0
 	s.selAnchor = head
 	s.selHead = head
+	for i := range parts {
+		idx := s.blockIndexByID(parts[i].BlockID)
+		parts[i].Source = s.serializeBlocks([]model.Block{s.doc.Blocks[idx].Clone()})
+	}
 	s.inlineAI = &inlineAISession{
 		TargetAnchor:  anchor,
 		TargetHead:    head,
 		Parts:         parts,
 		Original:      original,
 		ContextBefore: ctxBefore,
+		NotePath:      s.notePath,
 		FocusPending:  true,
 		Status:        aiStatusInput,
 		Cancel:        &atomic.Bool{},
@@ -833,7 +841,11 @@ func (s *Session) aiClose() {
 
 func (s *Session) aiRun(instruction, restoreInput string, refineExisting bool) {
 	ai := s.inlineAI
-	if ai == nil {
+	if ai == nil || !s.checkInlineAITarget() {
+		return
+	}
+	if len(ai.Original)+len(ai.Draft)+len(instruction) > 256*1024 {
+		ai.Error = theme.Tr("选区或提示过长，请缩小范围。", "Shorten the selection or instruction.")
 		return
 	}
 	s.cancelInlineAI()
@@ -964,20 +976,28 @@ func (s *Session) aiRun(instruction, restoreInput string, refineExisting bool) {
 
 func (s *Session) validateInlineAITarget() bool {
 	ai := s.inlineAI
-	if ai == nil || s.doc == nil || len(ai.Parts) == 0 {
+	if ai == nil || s.aiDisabled || s.readOnly || s.notePath != ai.NotePath || s.doc == nil || len(ai.Parts) == 0 {
 		return false
 	}
-	for _, p := range ai.Parts {
-		idx := s.blockIndexByID(p.BlockID)
-		if idx < 0 {
-			return false
-		}
-		rlen := len([]rune(s.doc.Blocks[idx].PlainText()))
-		if p.StartRune < 0 || p.EndRune < p.StartRune || p.EndRune > rlen {
+	first := s.blockIndexByID(ai.Parts[0].BlockID)
+	if first < 0 || first+len(ai.Parts) > len(s.doc.Blocks) {
+		return false
+	}
+	for i, part := range ai.Parts {
+		block := &s.doc.Blocks[first+i]
+		if block.ID != part.BlockID || part.Source != s.serializeBlocks([]model.Block{block.Clone()}) {
 			return false
 		}
 	}
 	return true
+}
+
+func (s *Session) checkInlineAITarget() bool {
+	if s.validateInlineAITarget() {
+		return true
+	}
+	s.inlineAI.Error = theme.Tr("原文或选区已变化，请重新选择后再试。", "The text or selection target changed. Select it again.")
+	return false
 }
 
 func (s *Session) aiAccept() {
@@ -985,8 +1005,7 @@ func (s *Session) aiAccept() {
 	if ai == nil || ai.Status != aiStatusReview {
 		return
 	}
-	if !s.validateInlineAITarget() {
-		ai.Error = theme.Tr("目标块已变化，原文未修改。请重新选择后再试", "Target block changed; text unchanged.")
+	if !s.checkInlineAITarget() {
 		return
 	}
 	firstIdx := s.blockIndexByID(ai.Parts[0].BlockID)
@@ -1004,7 +1023,7 @@ func (s *Session) aiAccept() {
 
 func (s *Session) aiInsertBelow() {
 	ai := s.inlineAI
-	if ai == nil || ai.Status != aiStatusReview || s.doc == nil || len(ai.Parts) == 0 {
+	if ai == nil || ai.Status != aiStatusReview || !s.checkInlineAITarget() {
 		return
 	}
 	lastIdx := s.blockIndexByID(ai.Parts[len(ai.Parts)-1].BlockID)
@@ -1730,6 +1749,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 					sendBtn := ui.ButtonBase(c.Key("ai-send")).Size(theme.HeightMicro, theme.HeightMicro).Center().Radius(theme.RadiusSM).
 						Background(sendBG).Disabled(!canSend).Cursor(ui.CursorPointer).
 						Label(theme.Tr("发送（回车）", "Send (Enter)"))
+					appUi.WrappedTooltip(c, sendBtn, theme.Tr("使用在线 AI 时，指令、选区或草稿，以及光标前的少量上下文会发给已配置的服务。", "With online AI, the configured provider receives your instruction, selection or draft, and a small amount of preceding text."))
 					sendBtn.Children(func() {
 						icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
 					})

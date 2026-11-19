@@ -66,6 +66,7 @@ type Workspace struct {
 
 	recoveryPath    string
 	recoveryContent string
+	recoveryVersion *int64
 
 	ai        *ai.Controller
 	modals    *modals.Manager
@@ -91,6 +92,7 @@ type Workspace struct {
 	hasPendingSidebarW  bool
 	lastSnapAt          map[string]time.Time
 	bgSaveMu            sync.Mutex
+	saveGeneration      uint64
 	selfWriteUntil      time.Time
 
 	aiSelKey    aiSelectionSyncKey
@@ -140,9 +142,10 @@ func NewWorkspace(dataDir string) *Workspace {
 	if st.SidebarWidth != nil && *st.SidebarWidth > 0 {
 		w.sidebarWidth = ClampSidebarWidth(*st.SidebarWidth)
 	}
-	if recPath, recContent, ok := files.LatestRecoveryDraft(); ok {
+	if recPath, recContent, version, ok := files.LatestVersionedRecoveryDraft(); ok {
 		w.recoveryPath = recPath
 		w.recoveryContent = recContent
+		w.recoveryVersion = version
 	}
 
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
@@ -167,33 +170,36 @@ func NewWorkspace(dataDir string) *Workspace {
 				w.mu.Unlock()
 			}
 		},
-		FlushBeforeUpdate: func(fromVersion string) {
-			if next, err := files.UpdateState(func(s *model.AppState) {
-				if s.LastUpdatedFrom == "" || updater.CompareVersion(fromVersion, s.LastUpdatedFrom) > 0 {
-					s.LastUpdatedFrom = fromVersion
+		FlushBeforeUpdate: func(fromVersion string) error {
+			saveErr := errors.New("editor is unavailable")
+			save := func() {
+				w.flushPendingSidebarWidth()
+				saveErr = w.flushDirtySessions()
+				if saveErr != nil {
+					return
 				}
-			}); err == nil {
-				w.mu.Lock()
-				w.state = next
-				w.mu.Unlock()
+				if next, err := files.UpdateState(func(s *model.AppState) {
+					if s.LastUpdatedFrom == "" || updater.CompareVersion(fromVersion, s.LastUpdatedFrom) > 0 {
+						s.LastUpdatedFrom = fromVersion
+					}
+				}); err == nil {
+					w.mu.Lock()
+					w.state = next
+					w.mu.Unlock()
+				}
+				w.FlushWindowBounds()
+				if w.quick != nil {
+					saveErr = w.quick.Flush()
+				}
 			}
-			w.FlushWindowBounds()
-			w.FlushDirtySessions()
-			if w.quick != nil {
-				w.quick.Flush()
-			}
-			if w.pluginsUI != nil && w.pluginsUI.Supervisor() != nil {
-				w.pluginsUI.Supervisor().ShutdownAll()
-			}
-		},
-		QuitApp: func() {
 			if mygo.App.IsReady() {
-				mygo.RunOnMain(func() {
-					modals.SetAppQuitting(true)
-					mygo.App.Quit()
-				})
+				mygo.RunOnMain(save)
+			} else {
+				save()
 			}
+			return saveErr
 		},
+		QuitApp: quitForUpdate,
 		OnChange: func() {
 			w.RequestRedraw()
 		},
@@ -282,13 +288,8 @@ func NewWorkspace(dataDir string) *Workspace {
 				}
 			}()
 		},
-		OnChanged: func() {
-			w.RescanNotebook()
-			w.RequestRedraw()
-		},
-		OnRedraw: func() {
-			w.RequestRedraw()
-		},
+		ApplyNoteWrite: w.applyPluginNoteWrite,
+		OnChanged:      w.RequestRedraw,
 	}))
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
@@ -298,6 +299,33 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.wireSearchWindowCallbacks()
 	w.hydrateInitialWorkspace()
 	return w
+}
+
+// Start the installer only once MyGo has completed the cancellable quit checks.
+func quitForUpdate(startInstaller func() error) error {
+	if !mygo.App.IsReady() {
+		return errors.New("application is unavailable")
+	}
+	result := make(chan error, 1)
+	queued := false
+	mygo.RunOnMain(func() {
+		var offQuit, offCancel func()
+		finish := func(err error) {
+			offQuit()
+			offCancel()
+			result <- err
+		}
+		offQuit = mygo.App.OnQuit(func() { finish(startInstaller()) })
+		offCancel = mygo.App.OnQuitCanceled(func() {
+			finish(errors.New(theme.Tr("应用未退出，已取消安装更新", "The application did not quit. Update installation was canceled.")))
+		})
+		queued = true
+		mygo.App.Quit()
+	})
+	if !queued {
+		return errors.New("application is unavailable")
+	}
+	return <-result
 }
 
 func applyThemeFromState(st model.AppState) {
@@ -947,18 +975,34 @@ func (w *Workspace) PendingRecoveryDraft() (notePath string, content string, ok 
 
 // ApplyPendingRecoveryDraft restores the startup crash-recovery draft into its note and clears the draft file.
 func (w *Workspace) ApplyPendingRecoveryDraft() (string, error) {
-	w.mu.Lock()
-	p, c := w.recoveryPath, w.recoveryContent
-	w.recoveryPath = ""
-	w.recoveryContent = ""
-	w.mu.Unlock()
+	path, err := w.applyRecoveryDraft()
+	if path != "" && err == nil {
+		_ = w.OpenNote(path, 0)
+	}
+	return path, err
+}
+
+func (w *Workspace) applyRecoveryDraft() (string, error) {
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	w.mu.RLock()
+	p, content, version := w.recoveryPath, w.recoveryContent, w.recoveryVersion
+	w.mu.RUnlock()
 	if p == "" {
 		return "", nil
 	}
-	if err := w.WriteNote(p, c); err != nil {
+	if version == nil {
+		return p, errors.New(theme.Tr("此恢复草稿缺少原始版本，请保留草稿并手动合并", "The recovery draft needs to be merged manually"))
+	}
+	if err := files.CheckTextVersion(p, *version); err != nil {
 		return p, err
 	}
-	_ = w.OpenNote(p, 0)
+	if err := w.writeNoteLocked(p, content); err != nil {
+		return p, err
+	}
+	w.mu.Lock()
+	w.recoveryPath, w.recoveryContent, w.recoveryVersion = "", "", nil
+	w.mu.Unlock()
 	return p, nil
 }
 
@@ -968,6 +1012,7 @@ func (w *Workspace) DismissPendingRecoveryDraft() {
 	p := w.recoveryPath
 	w.recoveryPath = ""
 	w.recoveryContent = ""
+	w.recoveryVersion = nil
 	w.mu.Unlock()
 	if p != "" {
 		files.ClearRecovery(p)
@@ -1064,6 +1109,7 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 	if cf.Kind == model.OpenKindMarkdown {
 		doc := w.codec.Parse(cf.Text)
 		sess := w.newEditorSession(clean, doc)
+		sess.SetDiskFingerprint(files.TextFingerprint(cf.Text, false))
 		w.mu.Lock()
 		delete(w.surfaces, clean)
 		w.sessions[clean] = sess
@@ -1129,12 +1175,18 @@ func (w *Workspace) OpenPageHistory() bool {
 	if sess == nil {
 		return false
 	}
-	w.FlushDirtySessions()
-	if !sess.Dirty() {
-		if diskText, _, err := files.ReadNote(active); err == nil && diskText != sess.Markdown() {
-			sess.SetDoc(w.codec.Parse(diskText))
-			sess.MarkSaved()
-		}
+	if err := w.FlushDirtySessions(); err != nil {
+		return false
+	}
+	curText, fingerprint, err := files.ReadNote(active)
+	if err != nil {
+		w.setNotice(err.Error())
+		return false
+	}
+	if fingerprint != sess.DiskFingerprint() {
+		sess.SetDiskFingerprint(fingerprint)
+		sess.SetDoc(w.codec.Parse(curText))
+		sess.MarkSaved()
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
@@ -1142,7 +1194,6 @@ func (w *Workspace) OpenPageHistory() bool {
 	w.modals.CloseSettings()
 	w.exportCtrl.Close()
 
-	curText := sess.Markdown()
 	snaps, err := files.ListHistorySnapshots(active)
 	if err == nil && len(snaps) == 0 {
 		// Ensure at least one baseline snapshot exists when opening history on an existing note.
@@ -1287,6 +1338,12 @@ func (w *Workspace) ReadNote(absPath string) (string, error) {
 }
 
 func (w *Workspace) WriteNote(absPath string, content string) error {
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	return w.writeNoteLocked(absPath, content)
+}
+
+func (w *Workspace) writeNoteLocked(absPath, content string) error {
 	clean := filepath.Clean(absPath)
 	if err := os.MkdirAll(filepath.Dir(clean), 0o755); err != nil {
 		return err
@@ -1309,7 +1366,8 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 		return nil
 	}
 
-	if _, err := files.WriteNoteAtomic(clean, content); err != nil {
+	fingerprint, err := files.WriteNoteAtomic(clean, content)
+	if err != nil {
 		return err
 	}
 	files.ClearRecovery(clean)
@@ -1325,6 +1383,7 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 	} else {
 		w.sessions[clean] = w.newEditorSession(clean, doc)
 	}
+	w.sessions[clean].SetDiskFingerprint(fingerprint)
 	w.mu.Unlock()
 
 	w.RescanNotebook()
@@ -1341,14 +1400,51 @@ func (w *Workspace) Plugins() *plugins.Supervisor {
 	return w.pluginsUI.Supervisor()
 }
 
-func (w *Workspace) ClosePluginReadmeWindow(win *mygo.Window) bool {
-	return w.pluginsUI != nil && w.pluginsUI.CloseReadmeWindow(win)
-}
-
 func (w *Workspace) notifyPluginNoteSaved(absPath string) {
 	if sup := w.Plugins(); sup != nil {
 		sup.NotifyNoteSaved(absPath)
 	}
+}
+
+func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (bool, error)) (bool, error) {
+	apply := func() (bool, error) {
+		w.bgSaveMu.Lock()
+		defer w.bgSaveMu.Unlock()
+		w.mu.RLock()
+		sess := w.sessions[absPath]
+		isVirtual := w.virtualPreview[absPath]
+		w.mu.RUnlock()
+		if sess != nil && (isVirtual || sess.Dirty()) {
+			return false, plugins.ErrNoteConflict
+		}
+		changed, err := write()
+		if err != nil || !changed {
+			return changed, err
+		}
+		if sess != nil {
+			doc := w.codec.Parse(content)
+			w.mu.Lock()
+			delete(w.surfaces, absPath)
+			sess.SetDiskFingerprint(files.TextFingerprint(content, false))
+			sess.SetDoc(doc)
+			sess.MarkSaved()
+			w.mu.Unlock()
+		}
+		return true, nil
+	}
+	var changed bool
+	err := errors.New("editor is unavailable for plugin writes")
+	if mygo.App.IsReady() {
+		mygo.RunOnMain(func() { changed, err = apply() })
+	} else {
+		changed, err = apply()
+	}
+	if changed {
+		_, _ = files.RecordHistorySnapshot(absPath, content, theme.Tr("插件保存", "Plugin save"))
+		w.RescanNotebook()
+		w.RequestRedraw()
+	}
+	return changed, err
 }
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {
@@ -1475,103 +1571,163 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	return nil
 }
 
-func (w *Workspace) resolvePlanTargetPath(plan *model.BatchPlan, page string) string {
-	if filepath.IsAbs(page) {
-		return filepath.Clean(page)
+func (w *Workspace) aiPlanEditorPaths(target string) []string {
+	w.mu.RLock()
+	openPaths := make([]string, 0, len(w.sessions))
+	for path := range w.sessions {
+		openPaths = append(openPaths, path)
 	}
-	root := plan.Root
-	if strings.TrimSpace(root) == "" {
-		root = w.ActiveNotebook()
+	w.mu.RUnlock()
+	// A tab may use a different alias for the same saved note, or for its parent before creation.
+	parent, _ := filepath.EvalSymlinks(filepath.Dir(target))
+	canonical, _ := filepath.EvalSymlinks(target)
+	var paths []string
+	for _, path := range openPaths {
+		dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+		resolved, _ := filepath.EvalSymlinks(path)
+		if path == target || (err == nil && dir == parent && filepath.Base(path) == filepath.Base(target)) ||
+			(canonical != "" && canonical == resolved) {
+			paths = append(paths, path)
+		}
 	}
-	target := filepath.Join(root, page)
-	if !files.IsMarkdown(target) {
-		target += ".md"
+	if len(paths) == 0 {
+		return []string{target}
 	}
-	return filepath.Clean(target)
+	slices.Sort(paths)
+	return paths
 }
 
 func (w *Workspace) PreviewPlanInEditor(plan *model.BatchPlan) error {
-	if !w.ai.Enabled() {
-		return errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
-	}
-	if plan == nil || len(plan.Ops) == 0 {
-		return nil
-	}
-	firstTarget := w.resolvePlanTargetPath(plan, plan.Ops[0].Page)
-	if _, err := os.Stat(firstTarget); errors.Is(err, os.ErrNotExist) {
-		previewDoc := w.codec.Parse(plan.Ops[0].New)
-		sess := w.newEditorSession(firstTarget, previewDoc)
-		sess.SetActivePlan(plan)
+	return w.PreviewBatchPlanContext(context.Background(), plan)
+}
 
-		w.mu.Lock()
-		w.virtualPreview[firstTarget] = true
-		delete(w.surfaces, firstTarget)
-		w.sessions[firstTarget] = sess
-		w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, firstTarget)
-		w.mu.Unlock()
+func (w *Workspace) PreviewBatchPlanContext(ctx context.Context, plan *model.BatchPlan) error {
+	target, original, exists, err := ai.ReadPlanPreview(ctx, w, plan)
+	if err != nil {
+		return err
+	}
+	preview := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !w.ai.Enabled() {
+			return errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+		}
+		paths := w.aiPlanEditorPaths(target)
+		for _, path := range paths {
+			if sess := w.SessionFor(path); sess != nil && sess.Dirty() {
+				return errors.New(theme.Tr("目标笔记有未保存的编辑。", "The target has unsaved edits."))
+			}
+		}
+		target := paths[0]
+		sess := w.SessionFor(target)
+		if !exists {
+			sess = w.newEditorSession(target, w.codec.Parse(plan.Ops[0].New))
+			sess.SetActivePlan(plan)
+			w.mu.Lock()
+			w.virtualPreview[target] = true
+			delete(w.surfaces, target)
+			w.sessions[target] = sess
+			w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, target)
+			w.mu.Unlock()
+		} else {
+			if sess == nil {
+				sess = w.newEditorSession(target, w.codec.Parse(original))
+				sess.SetDiskFingerprint(files.TextFingerprint(original, false))
+				w.mu.Lock()
+				delete(w.surfaces, target)
+				w.sessions[target] = sess
+				w.mu.Unlock()
+			}
+			if err := w.OpenNote(target, 0); err != nil {
+				return err
+			}
+			sess.SetActivePlan(plan)
+		}
 		w.RequestRedraw()
 		return nil
 	}
-	if err := w.OpenNote(firstTarget, 0); err != nil {
-		return err
+	if !mygo.App.IsReady() {
+		return preview()
 	}
-	if sess := w.SessionFor(firstTarget); sess != nil {
-		sess.SetActivePlan(plan)
-	}
-	w.RequestRedraw()
-	return nil
+	err = errors.New("editor is unavailable for AI preview")
+	mygo.RunOnMain(func() { err = preview() })
+	return err
+}
+
+func (w *Workspace) AcceptEditorBatchPlan(plan *model.BatchPlan) error {
+	return w.ai.AcceptEditorPlan(plan)
 }
 
 func (w *Workspace) ApplyBatchPlan(plan *model.BatchPlan) error {
-	if plan == nil {
-		return nil
+	return w.executeAIPlan(plan, false)
+}
+
+func (w *Workspace) executeAIPlan(plan *model.BatchPlan, undo bool) error {
+	if plan == nil || !w.ai.Enabled() {
+		return errors.New(theme.Tr("AI 修改计划已失效", "The AI plan is unavailable"))
 	}
-	if plan.Expected == nil {
-		plan.Expected = make(map[string]string)
-	}
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+
+	var targets [][]string
 	for _, op := range plan.Ops {
-		target := w.resolvePlanTargetPath(plan, op.Page)
-		prevContent, _, prevErr := files.ReadNote(target)
-		if op.Kind == model.PlanOpCreateNote || prevErr != nil {
-			if _, recorded := plan.Expected[target]; !recorded {
-				plan.Expected[target] = "\x00__CREATED__"
-			}
-		} else {
-			if _, recorded := plan.Expected[target]; !recorded {
-				plan.Expected[target] = prevContent
-			}
-		}
-
-		nextContent := op.New
-		if prevErr == nil && op.Kind == model.PlanOpCreateNote {
-			nextContent = prevContent
-		} else if prevErr == nil && op.Old != "" && strings.Contains(prevContent, op.Old) {
-			nextContent = strings.Replace(prevContent, op.Old, op.New, 1)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		target, _, err := ai.LocatePlanNote(w, plan.Root, op.Page)
+		if err != nil {
 			return err
 		}
-		if _, err := files.WriteNoteAtomic(target, nextContent); err != nil {
-			return err
+		paths := w.aiPlanEditorPaths(target)
+		for _, path := range paths {
+			if sess := w.SessionFor(path); sess != nil && sess.Dirty() {
+				err := errors.New(theme.Tr("目标笔记有未保存的编辑，请先处理后重试。", "The target has unsaved edits. Save them before retrying."))
+				w.setNotice(err.Error())
+				return err
+			}
 		}
-		_, _ = files.RecordHistorySnapshot(target, nextContent, "AI BatchPlan")
+		targets = append(targets, paths)
+	}
+	if err := ai.ApplyPlanFiles(w, plan, undo); err != nil {
+		w.setNotice(err.Error())
+		return err
+	}
+	w.markSelfWriteWindow(2 * time.Second)
+	w.mu.Lock()
+	w.saveGeneration++
+	w.mu.Unlock()
 
-		doc := w.codec.Parse(nextContent)
-		w.mu.Lock()
-		delete(w.virtualPreview, target)
-		delete(w.surfaces, target)
-		if sess, ok := w.sessions[target]; ok {
-			sess.SetActivePlan(nil)
-			sess.SetDoc(doc)
-			sess.MarkSaved()
-		} else {
-			w.sessions[target] = w.newEditorSession(target, doc)
+	var firstCreated string
+	for i, op := range plan.Ops {
+		paths := targets[i]
+		if undo && op.Kind == model.PlanOpCreateNote {
+			for _, target := range paths {
+				w.removeClosedOrDeletedPath(target)
+			}
+			continue
 		}
-		w.state.OpenTabs, w.state.ActiveTab = w.tabOps.OpenOrFocus(w.state.OpenTabs, w.state.ActiveTab, target)
-		tabs := append([]string(nil), w.state.OpenTabs...)
-		active := w.state.ActiveTab
-		w.mu.Unlock()
-		w.persistTabs(tabs, active)
+		content := op.New
+		if undo {
+			content = op.Old
+		}
+		_, _ = files.RecordHistorySnapshot(paths[0], content, "AI BatchPlan")
+		for _, target := range paths {
+			doc := w.codec.Parse(content)
+			w.mu.Lock()
+			delete(w.virtualPreview, target)
+			delete(w.surfaces, target)
+			if sess := w.sessions[target]; sess != nil {
+				sess.SetActivePlan(nil)
+				sess.SetDiskFingerprint(files.TextFingerprint(content, false))
+				sess.SetDoc(doc)
+				sess.MarkSaved()
+			}
+			w.mu.Unlock()
+		}
+		if !undo && firstCreated == "" && op.Kind == model.PlanOpCreateNote {
+			firstCreated = paths[0]
+		}
+	}
+	if firstCreated != "" {
+		_ = w.OpenNote(firstCreated, 0)
 	}
 	w.RescanNotebook()
 	w.RequestRedraw()
@@ -1579,6 +1735,7 @@ func (w *Workspace) ApplyBatchPlan(plan *model.BatchPlan) error {
 }
 
 func (w *Workspace) RejectBatchPlan(planID string) error {
+	w.ai.DismissEditorPlan(planID)
 	w.mu.Lock()
 	var virtualDrops []string
 	for path, sess := range w.sessions {
@@ -1600,65 +1757,14 @@ func (w *Workspace) RejectBatchPlan(planID string) error {
 }
 
 func (w *Workspace) UndoLastPlan(plan *model.BatchPlan) error {
-	if plan == nil {
-		return nil
+	return w.executeAIPlan(plan, true)
+}
+
+func (w *Workspace) OpenPluginStoreSource(source string) {
+	if w.pluginsUI != nil {
+		w.pluginsUI.OpenStoreSource(source)
 	}
-	handled := make(map[string]bool)
-	for _, op := range plan.Ops {
-		target := w.resolvePlanTargetPath(plan, op.Page)
-		handled[target] = true
-		if op.Kind == model.PlanOpCreateNote || plan.Expected[target] == "\x00__CREATED__" {
-			if _, err := os.Lstat(target); err == nil {
-				_ = files.TrashItem(target)
-			}
-			w.removeClosedOrDeletedPath(target)
-			continue
-		}
-		snap, hasSnap := plan.Expected[target]
-		if !hasSnap {
-			snap, hasSnap = plan.Expected[op.Page]
-		}
-		if hasSnap {
-			if _, err := files.WriteNoteAtomic(target, snap); err != nil {
-				return err
-			}
-			doc := w.codec.Parse(snap)
-			w.mu.Lock()
-			if sess, ok := w.sessions[target]; ok {
-				sess.SetActivePlan(nil)
-				sess.SetDoc(doc)
-				sess.MarkSaved()
-			}
-			w.mu.Unlock()
-		}
-	}
-	for key, snapshot := range plan.Expected {
-		target := w.resolvePlanTargetPath(plan, key)
-		if handled[target] {
-			continue
-		}
-		if snapshot == "\x00__CREATED__" {
-			if _, err := os.Lstat(target); err == nil {
-				_ = files.TrashItem(target)
-			}
-			w.removeClosedOrDeletedPath(target)
-			continue
-		}
-		if _, err := files.WriteNoteAtomic(target, snapshot); err != nil {
-			return err
-		}
-		doc := w.codec.Parse(snapshot)
-		w.mu.Lock()
-		if sess, ok := w.sessions[target]; ok {
-			sess.SetActivePlan(nil)
-			sess.SetDoc(doc)
-			sess.MarkSaved()
-		}
-		w.mu.Unlock()
-	}
-	w.RescanNotebook()
-	w.RequestRedraw()
-	return nil
+	w.OpenSettings(modals.TabAppStore)
 }
 
 func (w *Workspace) OpenSettings(tab string) {
@@ -2241,7 +2347,12 @@ func (w *Workspace) finishSidebarRename(oldPath, newName string) error {
 
 // RenameWorkspaceItem renames oldPath to newName on disk and rebases open tabs, sessions, surfaces, and history.
 func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error) {
-	w.FlushDirtySessions()
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	if err := w.flushDirtySessionsLocked(); err != nil {
+		w.setNotice(err.Error())
+		return "", err
+	}
 	newPath, err := files.RenameItem(oldPath, newName)
 	if err != nil {
 		w.setNotice(err.Error())
@@ -2259,7 +2370,12 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 
 // MoveWorkspaceItem moves srcPath into dstDir and rebases open tabs, sessions, surfaces, and history.
 func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
-	w.FlushDirtySessions()
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	if err := w.flushDirtySessionsLocked(); err != nil {
+		w.setNotice(err.Error())
+		return "", err
+	}
 	newPath, err := files.MoveItem(srcPath, dstDir)
 	if err != nil {
 		w.setNotice(err.Error())
@@ -2278,6 +2394,12 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 
 // TrashWorkspaceItem moves path to Trash and closes any affected tabs.
 func (w *Workspace) TrashWorkspaceItem(path string) error {
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	if err := w.flushDirtySessionsLocked(); err != nil {
+		w.setNotice(err.Error())
+		return err
+	}
 	if err := files.TrashItem(path); err != nil {
 		w.setNotice(err.Error())
 		return err
@@ -2505,6 +2627,7 @@ func (w *Workspace) CloseTab(path string) {
 	delete(w.lastSnapAt, clean)
 	w.mu.Unlock()
 	if err := w.flushSingleSession(clean); err != nil {
+		w.setNotice(err.Error())
 		return
 	}
 
@@ -2641,6 +2764,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 	}
 	clean := filepath.Clean(keepPath)
 	w.mu.Lock()
+	prevActive := w.state.ActiveTab
 	origTabs := append([]string(nil), w.state.OpenTabs...)
 	nextTabs, nextActive, closedPaths := w.tabOps.CloseOthers(w.state.OpenTabs, clean)
 	if len(closedPaths) == 0 {
@@ -2675,6 +2799,11 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 
 	if nextActive != "" {
 		_ = w.ensureTabLoaded(nextActive)
+		if nextActive != prevActive {
+			if sess := w.SessionFor(nextActive); sess != nil {
+				sess.ClearFocus()
+			}
+		}
 	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
@@ -2693,6 +2822,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 	}
 	clean := filepath.Clean(pivotPath)
 	w.mu.Lock()
+	prevActive := w.state.ActiveTab
 	pivotIdx := -1
 	for i, t := range w.state.OpenTabs {
 		if t == clean {
@@ -2700,7 +2830,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 			break
 		}
 	}
-	nextTabs, nextActive, closedPaths := w.tabOps.CloseToRight(w.state.OpenTabs, w.state.ActiveTab, clean)
+	nextTabs, nextActive, closedPaths := w.tabOps.CloseToRight(w.state.OpenTabs, prevActive, clean)
 	if len(closedPaths) == 0 {
 		w.mu.Unlock()
 		return
@@ -2737,6 +2867,11 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 
 	if nextActive != "" {
 		_ = w.ensureTabLoaded(nextActive)
+		if nextActive != prevActive {
+			if sess := w.SessionFor(nextActive); sess != nil {
+				sess.ClearFocus()
+			}
+		}
 	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
@@ -3056,6 +3191,8 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 		mygo.RunOnMain(func() {
 			w.mu.Lock()
 			w.autoSaveTimer = nil
+			w.saveGeneration++
+			generation := w.saveGeneration
 			var batch []pendingSessionSave
 			for p, sess := range w.sessions {
 				if sess != nil && sess.Dirty() && !w.virtualPreview[p] {
@@ -3072,32 +3209,39 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 			if len(batch) == 0 {
 				return
 			}
-			go w.runAsyncSessionSaves(batch)
+			go w.runAsyncSessionSaves(generation, batch)
 		})
 	})
 	w.mu.Unlock()
 }
 
-func (w *Workspace) runAsyncSessionSaves(batch []pendingSessionSave) {
+func (w *Workspace) runAsyncSessionSaves(generation uint64, batch []pendingSessionSave) {
 	w.bgSaveMu.Lock()
-	defer w.bgSaveMu.Unlock()
+	w.mu.RLock()
+	current := w.saveGeneration
+	w.mu.RUnlock()
+	if generation != current {
+		w.bgSaveMu.Unlock()
+		return
+	}
 
 	type completedSave struct {
 		item pendingSessionSave
 	}
 	var done []completedSave
+	var saveError error
 	for _, item := range batch {
-		_, existedBefore := os.Stat(item.path)
-		if existedBefore == nil {
-			w.markSelfWriteWindow(800 * time.Millisecond)
-		}
-		if _, err := files.WriteNoteAtomic(item.path, item.md); err != nil {
-			files.LogWarnf("auto-save failed for %s: %v", item.path, err)
-			_ = files.SaveRecovery(item.path, item.md)
+		w.mu.RLock()
+		live := w.sessions[item.path] == item.sess && !w.virtualPreview[item.path]
+		w.mu.RUnlock()
+		if !live {
 			continue
 		}
-		if existedBefore == nil {
-			w.markSelfWriteWindow(800 * time.Millisecond)
+		if err := w.saveSessionMarkdown(item.path, item.sess, item.md); err != nil {
+			if saveError == nil {
+				saveError = err
+			}
+			continue
 		}
 		files.ClearRecovery(item.path)
 		now := time.Now()
@@ -3112,12 +3256,22 @@ func (w *Workspace) runAsyncSessionSaves(batch []pendingSessionSave) {
 		}
 		done = append(done, completedSave{item: item})
 	}
-	if len(done) == 0 {
+	w.bgSaveMu.Unlock()
+	if len(done) == 0 && saveError == nil {
 		return
 	}
 	mygo.RunOnMain(func() {
+		if saveError != nil {
+			w.setNotice(saveError.Error())
+		}
 		anyMarked := false
 		for _, d := range done {
+			w.mu.RLock()
+			live := w.sessions[d.item.path] == d.item.sess
+			w.mu.RUnlock()
+			if !live {
+				continue
+			}
 			if d.item.sess.MarkSavedIfUnchanged(d.item.rev, d.item.md) {
 				anyMarked = true
 			}
@@ -3171,15 +3325,24 @@ func (w *Workspace) flushPendingSidebarWidth() {
 }
 
 // FlushDirtySessions writes all modified non-virtual editor sessions to disk atomically.
-func (w *Workspace) FlushDirtySessions() {
+func (w *Workspace) FlushDirtySessions() error {
 	w.flushPendingSidebarWidth()
-	_ = w.flushDirtySessions()
+	err := w.flushDirtySessions()
+	if err != nil {
+		w.setNotice(err.Error())
+	}
+	return err
 }
 
 func (w *Workspace) flushDirtySessions() error {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
+	return w.flushDirtySessionsLocked()
+}
+
+func (w *Workspace) flushDirtySessionsLocked() error {
 	w.mu.Lock()
+	w.saveGeneration++
 	if w.autoSaveTimer != nil {
 		w.autoSaveTimer.Stop()
 		w.autoSaveTimer = nil
@@ -3190,10 +3353,15 @@ func (w *Workspace) flushDirtySessions() error {
 			paths = append(paths, p)
 		}
 	}
+	for path, surface := range w.surfaces {
+		if surface.IsDirty() {
+			paths = append(paths, path)
+		}
+	}
 	w.mu.Unlock()
 	var firstErr error
 	for _, p := range paths {
-		if err := w.flushSingleSession(p); err != nil && firstErr == nil {
+		if err := w.flushSingleSessionLocked(p); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -3201,26 +3369,27 @@ func (w *Workspace) flushDirtySessions() error {
 }
 
 func (w *Workspace) flushSingleSession(path string) error {
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	return w.flushSingleSessionLocked(path)
+}
+
+func (w *Workspace) flushSingleSessionLocked(path string) error {
 	w.mu.RLock()
+	source := w.surfaces[path]
 	sess := w.sessions[path]
 	isVirtual := w.virtualPreview[path]
 	lastSnap := w.lastSnapAt[path]
 	w.mu.RUnlock()
+	if source != nil && source.IsDirty() {
+		return source.saveSource()
+	}
 	if sess == nil || !sess.Dirty() || isVirtual {
 		return nil
 	}
-	_, existedBefore := os.Stat(path)
-	if existedBefore == nil {
-		w.markSelfWriteWindow(800 * time.Millisecond)
-	}
 	md := sess.Markdown()
-	if _, err := files.WriteNoteAtomic(path, md); err != nil {
-		files.LogWarnf("auto-save failed for %s: %v", path, err)
-		_ = files.SaveRecovery(path, md)
+	if err := w.saveSessionMarkdown(path, sess, md); err != nil {
 		return err
-	}
-	if existedBefore == nil {
-		w.markSelfWriteWindow(800 * time.Millisecond)
 	}
 	sess.MarkSaved()
 	files.ClearRecovery(path)
@@ -3233,6 +3402,25 @@ func (w *Workspace) flushSingleSession(path string) error {
 	}
 	w.notifyPluginNoteSaved(path)
 	return nil
+}
+
+func (w *Workspace) saveSessionMarkdown(path string, sess *editor.Session, text string) error {
+	err := files.CheckTextVersion(path, sess.DiskFingerprint())
+	if err == nil {
+		w.markSelfWriteWindow(800 * time.Millisecond)
+		var fingerprint int64
+		fingerprint, err = files.WriteNoteAtomic(path, text)
+		if err == nil {
+			sess.SetDiskFingerprint(fingerprint)
+			w.markSelfWriteWindow(800 * time.Millisecond)
+			return nil
+		}
+	}
+	files.LogWarnf("auto-save failed for %s: %v", path, err)
+	if recoveryErr := files.SaveRecoveryForVersion(path, text, sess.DiskFingerprint()); recoveryErr != nil {
+		return errors.Join(err, recoveryErr)
+	}
+	return err
 }
 
 func (w *Workspace) startWatching(folder string) {
@@ -3409,6 +3597,13 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		}
 		return
 	}
+	if w.modals.IsPerformanceOpen() && matchAction("performance") {
+		w.modals.ClosePerformance()
+		return
+	}
+	if w.modals.HasActiveModal() {
+		return
+	}
 	if matchAction("performance") {
 		if w.modals.IsPerformanceOpen() {
 			w.modals.ClosePerformance()
@@ -3445,6 +3640,14 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.OpenExportStage()
 		return
 	}
+	if matchRaw(copyMarkdownShortcutSpec()) {
+		w.copyActiveMarkdown(c.Services())
+		return
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyS) {
+		w.FlushDirtySessions()
+		return
+	}
 	if c.Shortcut(ui.Ctrl, ui.KeyTab) || c.Shortcut(ui.Ctrl, ui.KeyPageDown) ||
 		c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeyRight) {
 		w.StepTab(1)
@@ -3469,6 +3672,28 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 			return
 		}
 	}
+}
+
+func copyMarkdownShortcutSpec() string {
+	if theme.IsMacOS() {
+		return "alt-cmd-c"
+	}
+	return "cmd-shift-c"
+}
+
+func (w *Workspace) copyActiveMarkdown(svc ui.Services) {
+	sess := w.ActiveSession()
+	if sess == nil {
+		return
+	}
+	txt := sess.SelectedMarkdown()
+	if txt == "" {
+		txt = sess.Markdown()
+	}
+	if txt == "" {
+		return
+	}
+	svc.WriteClipboard(txt)
 }
 
 func (w *Workspace) handleEditorZoomShortcuts(c *ui.Context) bool {
@@ -3557,17 +3782,40 @@ func (w *Workspace) Render(c *ui.Context) {
 					},
 					func() { w.OpenPageHistory() },
 					func(_ string, restoredText string) {
-						preRestore, _ := w.ReadNote(notePath)
-						_, _ = files.RecordHistorySnapshot(notePath, preRestore, theme.Tr("恢复前快照", "Before restore"))
-						_ = w.WriteNote(notePath, restoredText)
+						w.bgSaveMu.Lock()
+						defer w.bgSaveMu.Unlock()
+						w.mu.RLock()
+						currentSession := w.sessions[notePath]
+						w.mu.RUnlock()
+						if currentSession != nil && currentSession.Dirty() {
+							w.historyView.ErrorMsg = theme.Tr("笔记已有新编辑，无法恢复", "The note has newer edits")
+							w.RequestRedraw()
+							return
+						}
+						preRestore, _, err := files.ReadNote(notePath)
+						if err == nil && preRestore != w.historyView.CurrentText {
+							err = errors.New(theme.Tr("文件已变化，请重新对比", "The file changed. Compare it again before restoring"))
+						}
+						if err == nil {
+							_, err = files.RecordHistorySnapshot(notePath, preRestore, theme.Tr("恢复前快照", "Before restore"))
+						}
+						if err == nil {
+							err = w.writeNoteLocked(notePath, restoredText)
+						}
+						if err != nil {
+							w.historyView.ErrorMsg = err.Error()
+							w.RequestRedraw()
+							return
+						}
 						w.historyView.Close()
 						w.mu.Lock()
 						w.historyToast = &HistoryToast{
-							Active:      true,
-							NotePath:    notePath,
-							Message:     theme.Tr("已恢复到所选历史版本", "Restored selected snapshot"),
-							UndoContent: preRestore,
-							CanUndo:     preRestore != restoredText,
+							Active:              true,
+							NotePath:            notePath,
+							Message:             theme.Tr("已恢复到所选历史版本", "Restored selected snapshot"),
+							UndoContent:         preRestore,
+							RestoredFingerprint: files.TextFingerprint(restoredText, false),
+							CanUndo:             preRestore != restoredText,
 						}
 						w.mu.Unlock()
 						w.RequestRedraw()
@@ -3676,6 +3924,11 @@ func (w *Workspace) Render(c *ui.Context) {
 	canEdgeLeft, canEdgeRight, edgeSafeL, edgeSafeR := w.edgeFloat.PrepareFrame(
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
+	// Handle narrow sidebar drawer Escape before activeSess.Render registers its window Escape shortcut.
+	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
+		w.ToggleSidebar(vpW)
+		layout.SidebarDrawer = false
+	}
 
 	// Window-wide top brand landscape band painted onto root's own backdrop so the
 	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
@@ -3774,13 +4027,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					w.OpenExportStage()
 				},
 				OnCopyMarkdown: func() {
-					if activeSess != nil && mygo.App.IsReady() {
-						txt := activeSess.SelectedMarkdown()
-						if txt == "" {
-							txt = activeSess.Markdown()
-						}
-						mygo.Clipboard.WriteText(txt)
-					}
+					w.copyActiveMarkdown(c.Services())
 				},
 				OnRevealPath: w.revealInShell,
 				NoteStats:    noteStats,
@@ -3821,7 +4068,7 @@ func (w *Workspace) Render(c *ui.Context) {
 						if mygo.App.IsReady() {
 							_ = mygo.Shell.OpenPath(activeTab)
 						} else {
-							c.OpenURL("file://" + activeTab)
+							c.OpenURL(LocalFileURL(activeTab))
 						}
 					}
 				},
@@ -3908,12 +4155,23 @@ func (w *Workspace) Render(c *ui.Context) {
 								toast.RenderBanner(
 									c,
 									func() {
-										undoTxt := toast.UndoContent
-										target := toast.NotePath
+										w.bgSaveMu.Lock()
+										defer w.bgSaveMu.Unlock()
+										if sess := w.SessionFor(toast.NotePath); sess != nil && sess.Dirty() {
+											w.setNotice(theme.Tr("笔记已有新编辑，无法撤回恢复", "The note has newer edits"))
+											return
+										}
+										if err := files.CheckTextVersion(toast.NotePath, toast.RestoredFingerprint); err != nil {
+											w.setNotice(err.Error())
+											return
+										}
+										if err := w.writeNoteLocked(toast.NotePath, toast.UndoContent); err != nil {
+											w.setNotice(err.Error())
+											return
+										}
 										w.mu.Lock()
 										w.historyToast = nil
 										w.mu.Unlock()
-										_ = w.WriteNote(target, undoTxt)
 									},
 									func() {
 										w.mu.Lock()
@@ -3928,10 +4186,6 @@ func (w *Workspace) Render(c *ui.Context) {
 							case activeSurf != nil:
 								activeSurf.Render(
 									c,
-									func(p, text string, bom bool) error {
-										_, err := files.WriteRawFileAtomic(p, text, bom)
-										return err
-									},
 									func(p string) {
 										if mygo.App.IsReady() {
 											mygo.Shell.ShowItemInFolder(p)
@@ -3951,7 +4205,10 @@ func (w *Workspace) Render(c *ui.Context) {
 									w.syncAIEditorSelection(c, activeSess)
 								}
 							default:
-								w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0)
+								allowGhostFocus := !inSettings && !w.modals.HasActiveModal() &&
+									w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
+									!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
+								w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 							}
 						})
 
@@ -3977,9 +4234,6 @@ func (w *Workspace) Render(c *ui.Context) {
 
 			// Floating Sidebar Card when narrow and explicitly toggled open via button / Alt+B (unified with Scheme A card).
 			if layout.SidebarDrawer && !aiImmersive {
-				if !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
-					w.ToggleSidebar(vpW)
-				}
 				c.Key("sidebar-drawer-scrim")
 				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 					Background(ui.Transparent)
@@ -4193,12 +4447,12 @@ func (w *Workspace) revealInShell(path string) {
 	}
 }
 
-func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder bool) {
+func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, emptyFolder, allowGhostFocus bool) {
 	pal := theme.Ocean()
 	st := w.state
 	c.Key("workspace-empty")
 	if activeNB != "" && !emptyFolder {
-		w.renderGhostPage(c, st)
+		w.renderGhostPage(c, st, allowGhostFocus)
 		return
 	}
 	box := blockui.EmptyStage(c, pal.Paper, theme.EmptyStateWidth, func() {
@@ -4257,14 +4511,17 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 
 // renderGhostPage is the no-note state: a blank page whose title field creates
 // a note on Enter (named after what was typed, or the default name).
-func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState) {
+func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoFocus bool) {
 	pal := theme.Ocean()
 	box := blockui.EmptyPageStage(c, pal.Paper, theme.EditorStandardWidth, func() {
 		in := ui.TextInputBase(c.Key("empty-ghost-title"), &w.ghostTitle).
 			FillWidth().Padding(0).Label(theme.Tr("新笔记标题", "New note title")).
 			Placeholder(theme.Tr("未命名", "Untitled")).PlaceholderColor(pal.ListBullet).
 			FontSize(theme.FontDisplay).FixedLineHeight(theme.LineDisplay).FontWeight(theme.WeightTitle).
-			TextColor(pal.Text).CaretColor(pal.Accent).AutoFocus()
+			TextColor(pal.Text).CaretColor(pal.Accent)
+		if allowAutoFocus {
+			in.AutoFocus()
+		}
 		blockui.Probe(in, "empty-ghost-title")
 		if in.Submitted() && w.createTitledNote(w.ghostTitle) {
 			w.ghostTitle = ""

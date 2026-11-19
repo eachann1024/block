@@ -103,7 +103,7 @@ func saveHistoryIndexLocked(idx *historyIndex) error {
 
 func allocHistoryPageIDLocked() (string, error) {
 	root := historyRootDir()
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", err
 	}
 	for range 64 {
@@ -115,14 +115,14 @@ func allocHistoryPageIDLocked() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if err := os.Mkdir(dir, 0o755); err != nil {
+		if err := os.Mkdir(dir, 0o700); err != nil {
 			if errors.Is(err, os.ErrExist) {
 				continue
 			}
 			return "", err
 		}
 		marker := filepath.Join(dir, "page.id")
-		f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
 			_ = os.RemoveAll(dir)
 			if errors.Is(err, os.ErrExist) {
@@ -246,7 +246,7 @@ func writeSnapshotFileLocked(pageID, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	data := []byte(content)
@@ -256,7 +256,7 @@ func writeSnapshotFileLocked(pageID, content string) (string, error) {
 			continue
 		}
 		path := filepath.Join(dir, id+".md")
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
 			if errors.Is(err, os.ErrExist) {
 				continue

@@ -55,8 +55,8 @@ type TabSurface struct {
 	ImgErr     string
 	OnRedraw   func()
 	SVGSrc     *ui.SVG
-	SVGText   string
-	SVGParsed bool
+	SVGText    string
+	SVGParsed  bool
 
 	// FitScale is the scale Fit mode drew the preview at in the last frame,
 	// shown as the titlebar zoom percentage.
@@ -320,7 +320,6 @@ func (s *TabSurface) SourceStatusLabel() string {
 // Render draws the non-Markdown file surface inside the main workspace column.
 func (s *TabSurface) Render(
 	c *ui.Context,
-	onSave func(path, text string, bom bool) error,
 	onReveal func(path string),
 	onOpenExternal func(path string),
 ) {
@@ -388,7 +387,7 @@ func (s *TabSurface) Render(
 			})
 			return
 		}
-		s.renderSourceEditor(c, onSave)
+		s.renderSourceEditor(c)
 
 	case s.Kind == model.OpenKindPreview:
 		s.ensureImageLoaded()
@@ -434,7 +433,7 @@ func (s *TabSurface) Render(
 		})
 
 	default: // OpenKindSource (HTML, JSON, code, plain text)
-		s.renderSourceEditor(c, onSave)
+		s.renderSourceEditor(c)
 	}
 }
 
@@ -474,11 +473,12 @@ type PageHistoryView struct {
 
 // HistoryToast represents the undoable banner shown at the top of the note after restoring a snapshot.
 type HistoryToast struct {
-	Active      bool
-	NotePath    string
-	Message     string
-	UndoContent string
-	CanUndo     bool
+	Active              bool
+	NotePath            string
+	Message             string
+	UndoContent         string
+	RestoredFingerprint int64
+	CanUndo             bool
 }
 
 // OpenForNote opens the full-window Page History stage for `notePath`.

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"block/internal/files"
+	"block/internal/theme"
 	"github.com/egoist/mygo"
 )
 
@@ -120,6 +121,31 @@ func (w *Workspace) OpenExternalTarget(rawPath, baseDir string) error {
 		return w.SetNotebook(clean)
 	}
 	return w.OpenExternalFile(clean)
+}
+
+// OpenDeepLinkedFile opens files only inside notebooks already chosen in Block.
+func (w *Workspace) OpenDeepLinkedFile(rawPath string) error {
+	path := ResolveExternalPath(rawPath, "")
+	if path == "" {
+		return errors.New("empty note path")
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	for _, root := range w.Notebooks() {
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(realRoot, resolved)
+		if err == nil && rel != "." && filepath.IsLocal(rel) {
+			return w.OpenExternalFile(resolved)
+		}
+	}
+	err = errors.New(theme.Tr("外部链接只能打开已添加笔记本中的文件", "External links can only open files in added notebooks"))
+	w.setNotice(err.Error())
+	return err
 }
 
 // OpenExternalFile opens an external file in a new tab when at least one file is
