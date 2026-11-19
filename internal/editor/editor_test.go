@@ -458,7 +458,7 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 			{ID: 6, Kind: model.BlockImage, ImageSrc: "missing.png", ImageAlt: "Cover", ImageAlign: model.ImageAlignCenter, ImageWidth: 80},
 		},
 	}
-	s := NewSession("/tmp/demo.md", doc, nil, nil)
+	s := NewSession("/tmp/demo.md", doc, markdown.NewCodec(), nil)
 	s.FocusBlock(5) // Focus image block, so block 0 ("Unfocused line") has no handle!
 	tt := ui.NewTester(makeSessionView(s, false), 1100, 1100)
 
@@ -528,6 +528,8 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 	s.closeTransientOverlays()
 
 	// BatchPlan Diff review card
+	const original = "Line A\nLine B\n"
+	s.SetDoc(markdown.ParseMarkdown(original))
 	plan := &model.BatchPlan{
 		ID:      "p1",
 		Summary: "Update note",
@@ -535,7 +537,7 @@ func TestCodePreviewTableImageHandlesAndBatchPlanDiff(t *testing.T) {
 			{
 				Kind: model.PlanOpReplace,
 				Page: "/tmp/demo.md",
-				Old:  "Line A\nLine B\n",
+				Old:  original,
 				New:  "Line A\nLine B2\nLine C\n",
 			},
 		},

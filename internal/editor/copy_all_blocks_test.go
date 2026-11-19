@@ -605,7 +605,7 @@ func TestMultiFormatClipboardHTMLMarkdownAndLocalImagePNG(t *testing.T) {
 	}
 	imgClip := tt.ClipboardData()
 	gotPNG, err := imgClip.Read(transfer.PNG)
-	if err != nil || !bytes.HasPrefix(gotPNG, pngHeader) {
+	if _, decodeErr := png.Decode(bytes.NewReader(gotPNG)); err != nil || decodeErr != nil {
 		t.Fatalf("image copy expected valid PNG bytes, got len=%d err=%v", len(gotPNG), err)
 	}
 	gotImgHTML, err := imgClip.Read(transfer.HTML)

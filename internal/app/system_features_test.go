@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"block/internal/files"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -120,5 +122,74 @@ func TestWorkspaceCopyMarkdownShortcutAndSaveFlush(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "# Hello") || !strings.Contains(string(raw), "**World**") {
 		t.Fatalf("expected Cmd+S to flush note content, disk has %q", string(raw))
+	}
+}
+
+func TestWorkspaceRetainsDraftOnExternalSaveConflict(t *testing.T) {
+	dataDir, notebook := t.TempDir(), t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() { files.SetDataDirOverride("") })
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(notebook); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"note.md", "script.txt"} {
+		path := filepath.Join(notebook, name)
+		if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := ws.OpenNote(path, 0); err != nil {
+			t.Fatal(err)
+		}
+		if sess := ws.ActiveSession(); sess != nil {
+			sess.FocusBlock(0)
+			sess.PasteText("local draft")
+		} else {
+			ws.ActiveSurface().Source.Text = "local draft"
+		}
+		if err := os.WriteFile(path, []byte("external edit"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ws.CloseTab(path)
+		if ws.ActiveNotePath() != path {
+			t.Fatalf("%s closed with an unsaved draft", name)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || string(raw) != "external edit" {
+			t.Fatalf("%s external edit was lost: %q, %v", name, raw, err)
+		}
+		if name == "note.md" {
+			_, draft, _, ok := files.LatestVersionedRecoveryDraft()
+			if !ok || !strings.Contains(draft, "local draft") {
+				t.Fatalf("recoverable local draft missing: %q", draft)
+			}
+		}
+	}
+}
+
+func TestDeepLinkRespectsChosenNotebook(t *testing.T) {
+	dataDir, notebook, other := t.TempDir(), t.TempDir(), t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() { files.SetDataDirOverride("") })
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(notebook); err != nil {
+		t.Fatal(err)
+	}
+	chosen := filepath.Join(notebook, "chosen.md")
+	outside := filepath.Join(other, "other.md")
+	for _, path := range []string{chosen, outside} {
+		if err := os.WriteFile(path, []byte("# Local fixture\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ws.OpenDeepLinkedFile(chosen); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.OpenDeepLinkedFile(outside); err == nil {
+		t.Fatal("deep link opened a file outside chosen notebooks")
+	}
+	if got := ws.ActiveNotePath(); !sameFileOnDisk(got, chosen) {
+		t.Fatalf("active note unexpectedly changed to %q", got)
 	}
 }
