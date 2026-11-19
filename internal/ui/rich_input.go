@@ -665,6 +665,16 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	if a > z {
 		a, z = z, a
 	}
+	var postDeleteEdge RichCodeEdge
+	if ins == "" && a < z {
+		// Deleting plain text right after a code chip keeps the caret outside the chip's
+		// right edge so the user can keep typing plain text instead of falling back inside.
+		if _, ok := s.codeRangeEndingAt(a); ok {
+			postDeleteEdge = RichCodeEdgeAfter
+		} else if cr, ok := s.codeRangeStartingAt(a); ok && s.codeEdge == RichCodeEdgeInsideStart && z < cr.End {
+			postDeleteEdge = RichCodeEdgeInsideStart
+		}
+	}
 	// Preserve code-boundary bias only for pure insertions at the active boundary so OnChange
 	// can apply the right MarkCode inheritance; deletions/replacements clear it immediately.
 	if a != z || ins == "" {
@@ -683,7 +693,31 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	if s.onChange != nil {
 		s.onChange(s.text, s.anchor, s.caret)
 	}
-	s.codeEdge = RichCodeEdgeNone
+	if ins == "" && a < z && len(s.codeRanges) > 0 {
+		delLen := z - a
+		updated := make([]RichCodeRange, 0, len(s.codeRanges))
+		for _, cr := range s.codeRanges {
+			switch {
+			case cr.End <= a:
+				updated = append(updated, cr)
+			case cr.Start >= z:
+				cr.Start -= delLen
+				cr.End -= delLen
+				updated = append(updated, cr)
+			default:
+				ns := min(cr.Start, a)
+				ne := max(cr.End-delLen, a)
+				if ne > ns {
+					cr.Start = ns
+					cr.End = ne
+					updated = append(updated, cr)
+				}
+			}
+		}
+		s.codeRanges = updated
+	}
+	s.codeEdge = postDeleteEdge
+	s.normalizeCodeEdge()
 	s.displayText = s.virtualString()
 }
 
@@ -1271,16 +1305,35 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		switch s.dragUnit {
 		case 1:
 			s.moveCaretTo(pos, cp.Affinity, ev.Mods&ui.Shift != 0)
+			if ev.Mods&ui.Shift == 0 && len(s.codeRanges) > 0 {
+				if cr, ok := s.codeRangeEndingAt(pos); ok {
+					if rects := resolveCodeChipRects(lay, lay.Lines(), s.displayText, s.font.Size, cr); len(rects) > 0 {
+						last := rects[len(rects)-1]
+						if s.pressPt.X >= last.X+last.W-cr.PadX*0.35 || s.pressPt.Y > last.Y+last.H {
+							s.setCodeEdge(RichCodeEdgeAfter)
+						}
+					}
+				} else if cr, ok := s.codeRangeStartingAt(pos); ok {
+					if rects := resolveCodeChipRects(lay, lay.Lines(), s.displayText, s.font.Size, cr); len(rects) > 0 {
+						first := rects[0]
+						if s.pressPt.X >= first.X+cr.PadX*0.35 && s.pressPt.Y >= first.Y && s.pressPt.Y <= first.Y+first.H {
+							s.setCodeEdge(RichCodeEdgeInsideStart)
+						}
+					}
+				}
+			}
 		case 2:
 			w0, w1 := richWordRangeAt(rs, pos)
 			s.anchor, s.caret = w0, w1
 			s.affinity = ui.TextDownstream
+			s.codeEdge = RichCodeEdgeNone
 			if s.onSelect != nil {
 				s.onSelect(s.anchor, s.caret)
 			}
 		default:
 			s.anchor, s.caret = 0, len(rs)
 			s.affinity = ui.TextDownstream
+			s.codeEdge = RichCodeEdgeNone
 			if s.onSelect != nil {
 				s.onSelect(s.anchor, s.caret)
 			}
@@ -1313,6 +1366,9 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		default:
 			s.caret = pos
 			s.affinity = cp.Affinity
+		}
+		if s.anchor != s.caret {
+			s.codeEdge = RichCodeEdgeNone
 		}
 		dx, dy := ev.X-s.pressPt.X, ev.Y-s.pressPt.Y
 		if dx*dx+dy*dy >= 9 {
@@ -1498,18 +1554,30 @@ func clearCodeRangeSpanBG(spans []ui.Span, codeRanges []RichCodeRange) []ui.Span
 	return out
 }
 
-func shiftCodeRangesForCompose(codeRanges []RichCodeRange, caretRune, compLen int) []RichCodeRange {
+func shiftCodeRangesForCompose(codeRanges []RichCodeRange, caretRune, compLen int, codeEdge RichCodeEdge) []RichCodeRange {
 	if len(codeRanges) == 0 || compLen <= 0 {
 		return codeRanges
 	}
 	out := make([]RichCodeRange, len(codeRanges))
 	copy(out, codeRanges)
 	for i := range out {
-		if caretRune < out[i].Start {
+		switch {
+		case caretRune < out[i].Start:
 			out[i].Start += compLen
 			out[i].End += compLen
-		} else if caretRune <= out[i].End {
+		case caretRune == out[i].Start:
+			if codeEdge == RichCodeEdgeInsideStart {
+				out[i].End += compLen
+			} else {
+				out[i].Start += compLen
+				out[i].End += compLen
+			}
+		case caretRune < out[i].End:
 			out[i].End += compLen
+		case caretRune == out[i].End:
+			if codeEdge != RichCodeEdgeAfter {
+				out[i].End += compLen
+			}
 		}
 	}
 	return out
@@ -1565,8 +1633,18 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 					if len(rects) == 0 {
 						continue
 					}
-					isEdit := (hasSel && selLo < cr.End && cr.Start < selHi) ||
-						(!hasSel && opts.CaretPos >= 0 && opts.CaretPos >= cr.Start && opts.CaretPos <= cr.End)
+					caretInCode := false
+					if !hasSel && opts.CaretPos >= 0 {
+						switch {
+						case opts.CaretPos > cr.Start && opts.CaretPos < cr.End:
+							caretInCode = true
+						case opts.CaretPos == cr.Start:
+							caretInCode = opts.CaretCodeEdge == RichCodeEdgeInsideStart
+						case opts.CaretPos == cr.End:
+							caretInCode = opts.CaretCodeEdge != RichCodeEdgeAfter
+						}
+					}
+					isEdit := (hasSel && selLo < cr.End && cr.Start < selHi) || caretInCode
 					isHover := false
 					if !isEdit && inside {
 						for _, crRect := range rects {
@@ -1708,18 +1786,53 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 			u := runeToUTF16Off(text, opts.CaretPos)
 			cr := lay.CaretAt(ui.TextCaretPosition{Index: u, Affinity: opts.CaretAff})
 			h := float32(math.Round(float64(opts.FontSize * 1.125)))
-			caretY := cr.Y + (cr.H-h)*0.5
-			for _, ln := range lines {
-				if cr.Y+cr.H*0.5 >= ln.Rect.Y && cr.Y+cr.H*0.5 <= ln.Rect.Y+ln.Rect.H {
-					y := ln.Baseline - 0.95*opts.FontSize
-					hiY := max(ln.Rect.Y+ln.Rect.H-h, ln.Rect.Y)
-					caretY = min(max(y, ln.Rect.Y), hiY)
-					break
+			caretYForMid := func(midY, fallbackY, fallbackH float32) float32 {
+				y := fallbackY + (fallbackH-h)*0.5
+				for _, ln := range lines {
+					if midY >= ln.Rect.Y && midY <= ln.Rect.Y+ln.Rect.H {
+						ty := ln.Baseline - 0.95*opts.FontSize
+						hiY := max(ln.Rect.Y+ln.Rect.H-h, ln.Rect.Y)
+						return min(max(ty, ln.Rect.Y), hiY)
+					}
 				}
+				return y
 			}
+			caretY := caretYForMid(cr.Y+cr.H*0.5, cr.Y, cr.H)
 			caretX := cr.X - 1
 			if opts.CaretPos > 0 && cr.X > 1 {
 				caretX = cr.X - 0.5
+			}
+			for _, codeRange := range opts.CodeRanges {
+				if codeRange.End <= codeRange.Start {
+					continue
+				}
+				if opts.CaretPos == codeRange.End {
+					if rects := resolveCodeChipRects(lay, lines, text, opts.FontSize, codeRange); len(rects) > 0 {
+						last := rects[len(rects)-1]
+						if opts.CaretCodeEdge == RichCodeEdgeAfter {
+							caretX = last.X + last.W + 0.5
+						} else {
+							caretX = last.X + last.W - codeRange.PadX - 0.5
+						}
+						caretY = caretYForMid(last.Y+last.H*0.5, last.Y, last.H)
+					}
+					break
+				}
+				if opts.CaretPos == codeRange.Start {
+					if rects := resolveCodeChipRects(lay, lines, text, opts.FontSize, codeRange); len(rects) > 0 {
+						first := rects[0]
+						if opts.CaretCodeEdge == RichCodeEdgeInsideStart {
+							caretX = first.X + codeRange.PadX - 1
+						} else {
+							caretX = first.X - 2.5
+							if first.X < 1.5 {
+								caretX = first.X - 1
+							}
+						}
+						caretY = caretYForMid(first.Y+first.H*0.5, first.Y, first.H)
+					}
+					break
+				}
 			}
 			col := opts.CaretColor.Alpha(opts.CaretAlpha)
 			p.Fill(ui.Rect{X: r.X + caretX, Y: r.Y + caretY, W: 2, H: h}, col, 1)
@@ -1734,6 +1847,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.readOnly = opts.ReadOnly
 	st.suppressNavKeys = opts.SuppressNavKeys
 	st.links = opts.Links
+	st.codeRanges = opts.CodeRanges
 	st.onChange = opts.OnChange
 	st.onSelect = opts.OnSelect
 	st.onCopy = opts.OnCopy
@@ -1754,10 +1868,12 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 		st.anchor = clampRune(opts.Anchor, n)
 		st.caret = clampRune(opts.Caret, n)
 		st.affinity = ui.TextDownstream
+		st.codeEdge = RichCodeEdgeNone
 	} else {
 		st.anchor = clampRune(st.anchor, n)
 		st.caret = clampRune(st.caret, n)
 	}
+	st.normalizeCodeEdge()
 
 	dispSpans := opts.Spans
 	if len(dispSpans) == 0 && opts.Text != "" {
@@ -1768,8 +1884,8 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	}
 	codeRanges := opts.CodeRanges
 	if st.compose != "" {
-		dispSpans = insertComposeIntoSpans(dispSpans, opts.Text, st.caret, st.compose)
-		codeRanges = shiftCodeRangesForCompose(codeRanges, st.caret, utf8.RuneCountInString(st.compose))
+		dispSpans = insertComposeIntoSpans(dispSpans, opts.Text, st.caret, st.compose, opts.CodeRanges, st.codeEdge)
+		codeRanges = shiftCodeRangesForCompose(codeRanges, st.caret, utf8.RuneCountInString(st.compose), st.codeEdge)
 	}
 
 	fam := opts.Font
@@ -1876,6 +1992,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			LinkColor:       opts.LinkColor,
 			CaretPos:        caretPos,
 			CaretAff:        st.affinity,
+			CaretCodeEdge:   st.codeEdge,
 			CaretColor:      opts.CaretColor,
 			CaretAlpha:      caretAlpha,
 			HasChipBG:       opts.HasChipBG,
