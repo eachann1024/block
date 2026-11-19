@@ -455,11 +455,18 @@ func (c *Controller) uninstallPlugin(pluginID string, onDone func()) {
 }
 
 func (c *Controller) pluginStateKey(pluginID string) string {
+	return c.surfaceStateKey(pluginID, plugins.SurfaceSettingsPage)
+}
+
+func (c *Controller) surfaceStateKey(pluginID string, surface plugins.Surface) string {
 	nbRoot := ""
 	if c.sup != nil {
 		nbRoot = c.sup.NotebookRoot()
 	}
-	return nbRoot + "\x00" + pluginID
+	if surface == "" || surface == plugins.SurfaceSettingsPage {
+		return nbRoot + "\x00" + pluginID
+	}
+	return nbRoot + "\x00" + string(surface) + "\x00" + pluginID
 }
 
 func (c *Controller) clearPluginState(pluginID string) {
@@ -499,23 +506,35 @@ func (c *Controller) clearPluginState(pluginID string) {
 }
 
 func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
+	return c.inputBindingsForSurface(pluginID, plugins.SurfaceSettingsPage)
+}
+
+func (c *Controller) inputBindingsForSurface(pluginID string, surface plugins.Surface) *InputBindings {
 	var pickDirectory func(controlID, title string)
 	if c.sup.CanPickDirectory() {
-		pickDirectory = func(controlID, title string) {
-			c.sup.PickDirectoryForControl(pluginID, controlID, title)
+		if surface == "" || surface == plugins.SurfaceSettingsPage {
+			pickDirectory = func(controlID, title string) {
+				c.sup.PickDirectoryForControl(pluginID, controlID, title)
+			}
+		} else {
+			pickDirectory = func(controlID, title string) {
+				c.sup.PickDirectory(title, func(p string) {
+					c.sup.UpdateSurfaceControlValue(pluginID, surface, controlID, p, true)
+				})
+			}
 		}
 	}
 	var pickFile func(controlID, title string, extensions []string)
-	if c.sup.CanPickFile() {
+	if c.sup.CanPickFile() && (surface == "" || surface == plugins.SurfaceSettingsPage) {
 		pickFile = func(controlID, title string, extensions []string) {
 			c.sup.PickFileForControl(pluginID, controlID, title, extensions)
 		}
 	}
+	stateKey := c.surfaceStateKey(pluginID, surface)
 	return &InputBindings{
 		PickDirectory: pickDirectory,
 		PickFile:      pickFile,
 		IsCardExpanded: func(cardID string, defaultCollapsed bool) bool {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			if c.cardExpanded[stateKey] == nil {
@@ -529,7 +548,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			return initial
 		},
 		ToggleCardExpanded: func(cardID string, defaultCollapsed bool) {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			if c.cardExpanded[stateKey] == nil {
 				c.cardExpanded[stateKey] = make(map[string]bool)
@@ -543,7 +561,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			c.sup.NotifyRedraw()
 		},
 		TreemapState: func(controlID string) *bui.TreemapState {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			if c.treemapStates[stateKey] == nil {
@@ -560,7 +577,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			c.sup.NotifyRedraw()
 		},
 		SelectState: func(controlID string) *bui.DropdownSelectState {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			if c.selectStates[stateKey] == nil {
@@ -574,7 +590,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			return st
 		},
 		ResolveDraft: func(controlID, fallback string) string {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			pDrafts := c.drafts[stateKey]
@@ -596,7 +611,6 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			return pDrafts[controlID]
 		},
 		OnDraftChanged: func(controlID, next string) {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			if c.drafts[stateKey] == nil {
 				c.drafts[stateKey] = make(map[string]string)
@@ -609,13 +623,11 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			c.mu.Unlock()
 		},
 		IsSecretShown: func(controlID string) bool {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			return c.secretRevealed[stateKey][controlID]
 		},
 		ToggleSecret: func(controlID string) {
-			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
 			if c.secretRevealed[stateKey] == nil {
 				c.secretRevealed[stateKey] = make(map[string]bool)
