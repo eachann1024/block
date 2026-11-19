@@ -29,14 +29,15 @@ func Chip(c *ui.Context, opts ChipOptions) ui.Element {
 	if opts.ID != "" {
 		c.Key(opts.ID)
 	}
-	btn := ui.ButtonBase(c).Height(theme.HeightCompact).AlignItems(ui.Center).
-		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(opts.Label)
-	if opts.Style == ChipPrimary {
-		btn.PaddingX(theme.Space12).Gap(theme.Space6).Background(pal.Selected).Border(1, pal.Accent)
-	} else {
-		btn.PaddingX(theme.Space8).Gap(theme.Space4)
-	}
-	if btn.Hovered() {
+	btn := ui.ButtonBase(c).Height(theme.HeightMicro).AlignItems(ui.Center).
+		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(opts.Label).
+		PaddingX(theme.Space8).Gap(theme.Space4)
+	switch {
+	case opts.Style == ChipPrimary && btn.Hovered():
+		btn.Background(pal.AccentHover)
+	case opts.Style == ChipPrimary:
+		btn.Background(pal.Accent)
+	case btn.Hovered():
 		btn.Background(pal.Hover)
 	}
 	if opts.Tooltip != "" {
@@ -44,16 +45,17 @@ func Chip(c *ui.Context, opts ChipOptions) ui.Element {
 	}
 	btn.Children(func() {
 		fg := pal.Text
+		hint := pal.Accent
 		w := theme.WeightRegular
 		switch opts.Style {
 		case ChipPrimary:
-			w = theme.WeightControl
+			fg, hint, w = pal.AccentText, pal.AccentText, theme.WeightControl
 		case ChipMuted:
 			fg = pal.TextSecondary
 		}
-		ui.Text(c, opts.Label).FontSize(theme.FontBody).FontWeight(w).TextColor(fg).SingleLine()
+		ui.Text(c, opts.Label).FontSize(theme.FontMeta).FontWeight(w).TextColor(fg).SingleLine()
 		if opts.Hint != "" {
-			ui.Text(c, opts.Hint).Font("monospace").FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(pal.Accent).SingleLine()
+			ui.Text(c, opts.Hint).Font("monospace").FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(hint).SingleLine()
 		}
 	})
 	if opts.ID != "" {
