@@ -804,8 +804,12 @@ func TestSearchTabTogglesCurrentAndAllWithShortcutPlaceholder(t *testing.T) {
 	if !tt.HasText("Tab") || !tt.HasText("搜全部") {
 		t.Fatalf("expected inline Tab keycap placeholder rendered, texts=%v", tt.Texts())
 	}
-	if tt.HasText("全部文件夹") || tt.HasText("当前 / 全部") || tt.HasText("切换文件夹") {
-		t.Fatalf("did not expect legacy folder or footer Tab hint text, texts=%v", tt.Texts())
+	if tt.HasText("全部文件夹") || tt.HasText("当前 / 全部") || tt.HasText("切换文件夹") ||
+		tt.HasText("输入关键词搜索标题与正文") || tt.HasText("输入关键词搜索全部笔记的标题与正文") {
+		t.Fatalf("did not expect legacy folder, footer Tab hint, or empty-query prompt text, texts=%v", tt.Texts())
+	}
+	if emptyRect, ok := internalui.TargetBounds("search-empty"); !ok || emptyRect.H < searchEmptyHeight-1 {
+		t.Fatalf("expected generous reserved empty body height >= %.0f, got ok=%v rect=%+v", searchEmptyHeight, ok, emptyRect)
 	}
 
 	// Verify header icon, input, placeholder, and scope button share the same vertical center.
