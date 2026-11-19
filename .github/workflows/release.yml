@@ -214,13 +214,13 @@ jobs:
               deb_dir="$RUNNER_TEMP/apt-debs"
               mkdir -p "$deb_dir/partial"
               sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
-              # Cryptographically verify every cached .deb SHA-256 against the GPG-verified Ubuntu Packages index; drop any unmatched file so apt downloads fresh.
+              # Cryptographically bind every cached .deb filename (Package_Version_Arch.deb) and SHA-256 to the GPG-verified Ubuntu Packages index; drop any unmatched file so apt downloads fresh.
               sudo python3 - "$deb_dir" <<'PY'
           import glob, hashlib, os, subprocess, sys
           deb_dir = sys.argv[1]
           debs = glob.glob(os.path.join(deb_dir, '*.deb'))
           if debs:
-              valid = set()
+              valid = {}
               targets = subprocess.check_output(
                   ['apt-get', 'indextargets', '--format', '$(FILENAME)', 'ShortDesc: Packages'],
                   text=True,
@@ -233,15 +233,32 @@ jobs:
                       ['/usr/lib/apt/apt-helper', 'cat-file', path],
                       stdout=subprocess.PIPE, text=True, errors='ignore',
                   )
-                  file_hashes = [line[8:].strip().lower() for line in proc.stdout if line.startswith('SHA256: ')]
+                  stanza = {}
+                  file_map = {}
+                  def flush():
+                      pkg, ver, arch, sha = stanza.get('Package'), stanza.get('Version'), stanza.get('Architecture'), stanza.get('SHA256')
+                      if pkg and ver and arch and sha:
+                          file_map[f"{pkg}_{ver.replace(':', '%3a')}_{arch}.deb"] = sha.lower()
+                      stanza.clear()
+                  for line in proc.stdout:
+                      s = line.strip()
+                      if not s:
+                          flush()
+                          continue
+                      for key in ('Package', 'Version', 'Architecture', 'SHA256'):
+                          if line.startswith(key + ': '):
+                              stanza[key] = line[len(key) + 2:].strip()
+                              break
+                  flush()
                   if proc.wait() == 0:
-                      valid.update(file_hashes)
+                      valid.update(file_map)
               for deb in debs:
+                  expected = valid.get(os.path.basename(deb))
                   h = hashlib.sha256()
                   with open(deb, 'rb') as f:
                       for chunk in iter(lambda: f.read(65536), b''):
                           h.update(chunk)
-                  if h.hexdigest() not in valid:
+                  if not expected or h.hexdigest() != expected:
                       os.remove(deb)
           PY
               sudo apt-get install -y -qq --no-install-recommends \
@@ -253,11 +270,14 @@ jobs:
           ) &
           pid_apt=$!
           (
-            if [ ! -x "$RUNNER_TEMP/appimagetool" ]; then
+            APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+            if ! echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c - >/dev/null 2>&1; then
+              rm -f "$RUNNER_TEMP/appimagetool"
               curl -fsSL --retry 3 -o "$RUNNER_TEMP/appimagetool" \
                 "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
-              chmod +x "$RUNNER_TEMP/appimagetool"
+              echo "$APPIMAGETOOL_SHA256  $RUNNER_TEMP/appimagetool" | sha256sum -c -
             fi
+            chmod +x "$RUNNER_TEMP/appimagetool"
           ) &
           pid_app=$!
           wait "$pid_node"
