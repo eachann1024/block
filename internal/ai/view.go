@@ -4117,10 +4117,12 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 							c.mu.Unlock()
 						}
 						lbl := theme.Tr("显示", "Show")
+						visIc := icons.Eye
 						if showKey {
 							lbl = theme.Tr("隐藏", "Hide")
+							visIc = icons.EyeOff
 						}
-						visBtn := bui.ActionButton(cUI, "ai-add-toggle-key", lbl, nil, bui.ButtonSecondary, false)
+						visBtn := bui.ActionButton(cUI, "ai-add-toggle-key", lbl, &visIc, bui.ButtonSecondary, false)
 						if visBtn.Clicked() {
 							c.mu.Lock()
 							c.addProvShowKey = !showKey
@@ -4140,14 +4142,23 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 			// Footer actions
 			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(4, 0, 0, 0).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				tLbl := theme.Tr("连接测试", "Test")
-				tIcon := icons.Sparkles
+				tIcon := icons.Plug
+				tStyle := bui.ButtonSecondary
 				if testing {
 					tLbl = theme.Tr("测试中…", "Testing…")
 				} else if testOK {
 					tLbl = theme.Tr("连接正常", "Connected")
 					tIcon = icons.Check
+					tStyle = bui.ButtonSuccess
 				}
-				tBtn := bui.ActionButton(cUI, "ai-add-provider-test", tLbl, &tIcon, bui.ButtonSecondary, testing)
+				tBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+					ID:       "ai-add-provider-test",
+					Label:    tLbl,
+					Leading:  &tIcon,
+					Style:    tStyle,
+					Disabled: testing,
+					Loading:  testing,
+				})
 				if tBtn.Clicked() && !testing {
 					c.runAddDraftConnectionTestAsync()
 				}
@@ -4157,7 +4168,8 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					if cancelBtn.Clicked() {
 						modalOpen = false
 					}
-					submitBtn := bui.ActionButton(cUI, "ai-add-provider-submit", theme.Tr("添加并启用", "Add & Enable"), nil, bui.ButtonPrimary, false)
+					subIc := icons.Check
+					submitBtn := bui.ActionButton(cUI, "ai-add-provider-submit", theme.Tr("添加并启用", "Add & Enable"), &subIc, bui.ButtonPrimary, false)
 					if submitBtn.Clicked() {
 						if strings.TrimSpace(draftURL) == "" {
 							c.mu.Lock()
@@ -4520,10 +4532,12 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 						ui.Text(cUI, actionCmd).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).
 							Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						cpLbl := theme.Tr("复制", "Copy")
+						cpIc := icons.Copy
 						if copiedCmd == actionCmd {
 							cpLbl = theme.Tr("已复制", "Copied")
+							cpIc = icons.Check
 						}
-						cpBtn := bui.ActionButton(cUI, "ai-add-agent-copy-cmd", cpLbl, nil, bui.ButtonSecondary, false)
+						cpBtn := bui.ActionButton(cUI, "ai-add-agent-copy-cmd", cpLbl, &cpIc, bui.ButtonSecondary, false)
 						if cpBtn.Clicked() {
 							cUI.WriteClipboard(actionCmd)
 							c.mu.Lock()
@@ -4599,13 +4613,22 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 				if probing {
 					reLbl = theme.Tr("检测中…", "Checking…")
 				}
-				reBtn := bui.ActionButton(cUI, "ai-add-agent-probe", reLbl, nil, bui.ButtonSecondary, probing)
+				reIc := icons.Refresh
+				reBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
+					ID:       "ai-add-agent-probe",
+					Label:    reLbl,
+					Leading:  &reIc,
+					Style:    bui.ButtonSecondary,
+					Disabled: probing,
+					Loading:  probing,
+				})
 				if reBtn.Clicked() && !probing {
 					c.runAddAgentProbeAsync()
 				}
 
 				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
-					backBtn := bui.ActionButton(cUI, "ai-add-agent-step1-btn", theme.Tr("上一步", "Back"), nil, bui.ButtonSecondary, false)
+					backIc := icons.ArrowLeft
+					backBtn := bui.ActionButton(cUI, "ai-add-agent-step1-btn", theme.Tr("上一步", "Back"), &backIc, bui.ButtonSecondary, false)
 					if backBtn.Clicked() {
 						c.mu.Lock()
 						c.addAgentStep = 1
@@ -4616,7 +4639,8 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 					if backends.Adapters[string(selKind)].Added {
 						subLbl = theme.Tr("保存配置", "Save")
 					}
-					submitBtn := bui.ActionButton(cUI, "ai-add-agent-submit", subLbl, nil, bui.ButtonPrimary, false)
+					subIc := icons.Check
+					submitBtn := bui.ActionButton(cUI, "ai-add-agent-submit", subLbl, &subIc, bui.ButtonPrimary, false)
 					if submitBtn.Clicked() {
 						if trimmed := strings.TrimSpace(draftBin); trimmed != "" {
 							cand := expandHomePath(trimmed)
