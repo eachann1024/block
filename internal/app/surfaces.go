@@ -14,6 +14,7 @@ import (
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
+	codeed "github.com/egoist/mygo/ui/editor"
 )
 
 // TitlebarSurfaceKind mirrors thinkly-fast's TitlebarSurface enum.
@@ -52,10 +53,8 @@ type TabSurface struct {
 	SVGText   string
 	SVGParsed bool
 
-	lineCountSrc      string
-	lineCount         int
-	gutterCachedLines int
-	gutterCachedText  string
+	code        *codeed.State
+	codeVersion uint64
 }
 
 // NewTabSurface constructs a TabSurface from a ClassifiedFile.
@@ -355,75 +354,6 @@ func (s *TabSurface) Render(
 	default: // OpenKindSource (HTML, JSON, code, plain text)
 		s.renderSourceEditor(c, onSave)
 	}
-}
-
-func (s *TabSurface) renderSourceEditor(c *ui.Context, onSave func(path, text string, bom bool) error) {
-	pal := theme.Ocean()
-	c.Key("source-surface:" + s.Path)
-	outer := ui.Column(c).Fill().Background(pal.Paper)
-	blockui.Probe(outer, "source-surface")
-	_, codeFont, _ := theme.Typography()
-	if strings.TrimSpace(codeFont) == "" {
-		codeFont = "monospace"
-	}
-	outer.Children(func() {
-		if s.lineCount == 0 || s.lineCountSrc != s.Source.Text {
-			s.lineCountSrc = s.Source.Text
-			s.lineCount = strings.Count(s.Source.Text, "\n") + 1
-		}
-		lineCount := s.lineCount
-		z := theme.Zoom()
-		if z <= 0 {
-			z = 1.0
-		}
-		codeSz := 14 * z
-		c.Key("source-scroll:" + s.Path)
-		scroll := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(20, 28, 36, 20)
-		scroll.Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(14*z).Children(func() {
-				gutter := ui.Column(c).Width(42*z).Shrink(0).AlignItems(ui.End).Padding(8*z, 6*z, 8*z, 0).
-					BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline)
-				gutter.Children(func() {
-					maxLines := min(lineCount, 400)
-					if s.gutterCachedLines != maxLines {
-						var sb strings.Builder
-						sb.Grow(maxLines * 4)
-						for i := 1; i <= maxLines; i++ {
-							if i > 1 {
-								sb.WriteByte('\n')
-							}
-							fmt.Fprintf(&sb, "%d", i)
-						}
-						s.gutterCachedLines = maxLines
-						s.gutterCachedText = sb.String()
-					}
-					ui.Text(c, s.gutterCachedText).Font(codeFont).FontSize(codeSz).LineHeight(1.55).
-						TextColor(pal.TextSecondary).AccessHidden(true)
-				})
-
-				prev := s.Source.Text
-				c.Key("source-editor:" + s.Path)
-				ta := blockui.AutoHideScrollbars(c, ui.TextAreaBase(c, &s.Source.Text).Grow(1).MinWidth(0).MinHeight(360).Padding(8*z).
-					Font(codeFont).FontSize(codeSz).LineHeight(1.55).TextColor(pal.Text).
-					CaretColor(pal.Accent).CaretWidth(2).
-					Background(ui.Transparent).BorderWidth(0))
-				blockui.Probe(ta, "source-editor")
-				if s.Source.Text != prev {
-					if s.IsSVG {
-						s.reparseSVG()
-					}
-					if onSave != nil {
-						if err := onSave(s.Path, s.Source.Text, s.Source.BOM); err != nil {
-							s.StatusMsg = err.Error()
-						} else {
-							s.SavedText = s.Source.Text
-							s.StatusMsg = ""
-						}
-					}
-				}
-			})
-		})
-	})
 }
 
 func formatSnapshotTime(ts int64, format string) string {
