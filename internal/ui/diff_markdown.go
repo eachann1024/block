@@ -205,9 +205,11 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				mask[i], para, paraLines = true, false, nil
 				nested, fenceQuote = diffContainerRE.MatchString(t), diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
+				// The item's content column, not the fence's own indent: "    ```" under
+				// "- 运行" still closes at "  ```".
 				fenceIndent = 0
 				if fenceQuote == 0 && fenceList {
-					fenceIndent = lead + len(diffContainerRE.FindString(t))
+					fenceIndent = listCol
 				}
 			}
 		}
