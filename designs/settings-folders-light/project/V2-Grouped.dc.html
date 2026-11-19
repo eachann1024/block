@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案 B · 单层分组卡片</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button,input{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,input:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:1000px;height:720px;box-sizing:border-box;display:flex;flex-direction:column;background:#181818;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 14px;background:#262626;border-bottom:1px solid #292929;box-sizing:border-box">
+    <div style="width:246px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:500">Block</span>
+    </div>
+    <div style="flex:1;display:flex;gap:6px">
+      <span style="color:#b4b4b4">设置</span><span style="color:#b4b4b4">/</span><span style="font-weight:500">文件夹</span>
+    </div>
+    <button type="button" aria-label="关闭设置" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+    </button>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="设置分类" style="width:260px;flex:none;background:#222222;border-right:1px solid #292929;box-sizing:border-box;padding:12px 10px;display:flex;flex-direction:column;gap:2px">
+      <a href="#" style="height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>返回
+      </a>
+      <div style="height:8px"></div>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">AI 助手</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">外观与字体</a>
+      <a href="#" aria-current="page" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#ececec;text-decoration:none;border-radius:8px;background:#3a3a3a;font-weight:500">文件夹</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">快捷键</a>
+      <div style="height:1px;background:#292929;margin:8px 8px"></div>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">应用商店</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">性能与占用</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">图床上传</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">笔记迁移</a>
+      <a href="#" style="height:32px;display:flex;align-items:center;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">同步</a>
+    </nav>
+
+    <main style="flex:1;overflow:auto;padding:40px 28px 64px;box-sizing:border-box">
+      <div style="max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:28px">
+        <h1 style="margin:0;font-size:24px;line-height:32px;font-weight:560">文件夹</h1>
+
+        <section style="display:flex;flex-direction:column;gap:8px">
+          <h2 style="margin:0 0 0 4px;font-size:15px;line-height:22px;font-weight:560">侧栏</h2>
+          <div style="background:#222222;border:1px solid #292929;border-radius:14px;padding:0 16px">
+            <div style="height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #292929">
+              <label for="nonmd2" style="cursor:pointer">显示非 Markdown 文件</label>
+              <button id="nonmd2" type="button" role="switch" aria-checked="true" style="width:36px;height:20px;padding:2px;border:0;border-radius:10px;background:#779de8;display:flex;justify-content:flex-end;cursor:pointer;box-sizing:border-box">
+                <span style="width:16px;height:16px;border-radius:8px;background:#ffffff"></span>
+              </button>
+            </div>
+            <div style="height:48px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #292929">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#b4b4b4"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+              <span style="flex:1">assets</span>
+              <button type="button" aria-label="assets 显示方式：隐藏" style="height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 10px;border:0;border-radius:8px;background:#2c2c2c;color:#ececec;cursor:pointer">
+                隐藏
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 10l5 5 5-5" stroke="#b4b4b4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+            </div>
+            <div style="height:44px;display:flex;align-items:center">
+              <button type="button" style="height:28px;display:inline-flex;align-items:center;gap:8px;padding:0;border:0;background:transparent;color:#779de8;cursor:pointer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>添加文件夹规则
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;padding:0 16px 0 4px">
+            <h2 style="margin:0;font-size:15px;line-height:22px;font-weight:560">全局搜索</h2>
+            <span style="color:#b4b4b4">排除</span>
+          </div>
+          <div style="background:#222222;border:1px solid #292929;border-radius:14px;padding:0 16px">
+            <sc-for each="{{folders}}" as="f">
+              <div style="height:52px;display:flex;align-items:center;gap:12px;border-bottom:{{f.divider}}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#b4b4b4"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+                  <span>{{f.name}}</span>
+                  <span style="color:#8a8a8a;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">iCloud 云盘 · {{f.name}}</span>
+                </div>
+                <input type="checkbox" aria-label="{{f.label}}" checked="{{f.checked}}" style="width:16px;height:16px;margin:0;accent-color:#779de8;cursor:pointer;flex:none">
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rows = [
+      { name: '创业团队', ex: false },
+      { name: '生活', ex: false },
+      { name: 'Note', ex: false },
+      { name: 'agents', ex: true },
+      { name: '提示词', ex: false }
+    ];
+    return {
+      folders: rows.map((r, i) => ({
+        name: r.name,
+        checked: r.ex,
+        label: '从全局搜索排除 ' + r.name,
+        divider: i === rows.length - 1 ? '0' : '1px solid #292929'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

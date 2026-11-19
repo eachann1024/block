@@ -1,0 +1,16 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-19T10:00:00Z"},
+  "title": "文件夹设置轻量化",
+  "launch": {"view": "canvas", "page": "light"},
+  "pages": [{"id": "light", "name": "文件夹设置轻量化"}],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1000, "h": 720, "title": "方案 A · 去卡片平铺行（推荐）", "page": "light", "radius": 12},
+    "V2-Grouped.dc.html": {"x": 1080, "y": 0, "w": 1000, "h": 720, "title": "方案 B · 单层分组卡片", "page": "light", "radius": 12}
+  },
+  "order": ["Main.dc.html", "V2-Grouped.dc.html"],
+  "notes": {
+    "row-title": {"x": 0, "y": -260, "text": "文件夹设置 · 更轻的两种做法", "kind": "title1", "page": "light", "maxW": 2080}
+  },
+  "designSystems": []
+}
