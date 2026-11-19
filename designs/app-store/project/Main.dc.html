@@ -1590,7 +1590,6 @@ class Component extends DCLogic {
 
     const pbSt = seg(st.pubTarget === 'site'), pbWc = seg(st.pubTarget === 'wechat'), pbXh = seg(st.pubTarget === 'xiaohongshu');
     const psNt = seg(st.pubScope === 'note'), psDr = seg(st.pubScope === 'dir'), psAl = seg(st.pubScope === 'all');
-    const psPr = seg(st.pubStyle === 'paper'), psMg = seg(st.pubStyle === 'magazine'), psTc = seg(st.pubStyle === 'tech');
     const pRss = pill(!!st.pubRssOn), pFn = pill(!!st.pubFootnoteOn);
     const xsH2 = seg(st.pubXhsSplit === 'h2'), xsHr = seg(st.pubXhsSplit === 'hr'), xsLn = seg(st.pubXhsSplit === 'len');
     const xm3 = seg(st.pubXhsMaxChars === '300'), xm5 = seg(st.pubXhsMaxChars === '500'), xm8 = seg(st.pubXhsMaxChars === '800');
@@ -1674,7 +1673,7 @@ class Component extends DCLogic {
     const diagArchResolved = st.diagArchPreset === 'custom' ? (st.diagArchDir || '~/Downloads/Block-Orphan-Assets') : (diagArchPresetMap[st.diagArchPreset] || '~/Downloads/Block-Orphan-Assets');
     const diagIssueCount = (st.diagOrphan ? (st.diagArchived ? 0 : 1) : 0) + (st.diagDeadlink ? 1 : 0) + (st.diagEmpty ? 1 : 0);
 
-    const psPr = seg(st.pubStyle === 'paper'), psMg = seg(st.pubStyle === 'ink' || st.pubStyle === 'magazine'), psTc = seg(st.pubStyle === 'magazine');
+    const psPr = seg(st.pubStyle === 'paper'), psMg = seg(st.pubStyle === 'ink'), psTc = seg(st.pubStyle === 'magazine');
     const pubStyleInk = seg(st.pubStyle === 'ink');
     const pubStyleSerif = seg(st.pubStyle === 'magazine');
 

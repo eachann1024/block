@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 C · 已安装标识</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #547dd0; text-decoration: none; }
+    a:hover { color: #456ec2; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; font-size: 14px; line-height: 20px; color: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .seg { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); font-weight: 460; }
+    .seg:hover { color: var(--text1); }
+    .seg.on { background: var(--selected); color: var(--text1); box-shadow: inset 0 0 0 1px var(--selborder); }
+    .ghost { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text2); display: inline-flex; align-items: center; justify-content: center; }
+    .ghost:hover { background: var(--hover); color: var(--text1); }
+    .row { width: 100%; height: 68px; padding: 12px; border: 0; border-radius: 10px; background: transparent; display: flex; align-items: center; gap: 12px; text-align: left; }
+    .row:hover { background: var(--hover); }
+    .row .act { display: none; }
+    .row:hover .act { display: inline-flex; }
+    .ico { width: 40px; height: 40px; flex: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .ico.solid { background: var(--shell); color: var(--text1); }
+    .ico.hollow { background: transparent; box-shadow: inset 0 0 0 1px var(--btnborder); color: var(--text2); }
+    .grouplabel { margin: 8px 12px 4px; font-size: 13px; line-height: 18px; font-weight: 460; color: var(--text2); }
+    .install { height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--text1); font-weight: 460; }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 900px; display: flex; --bg: {{c.bg}}; --side: {{c.side}}; --shell: {{c.shell}}; --text1: {{c.text1}}; --text2: {{c.text2}}; --hover: {{c.hover}}; --selected: {{c.selected}}; --selborder: {{c.selborder}}; --border: {{c.border}}; --btnborder: {{c.btnborder}}; --accent: {{c.accent}}; --duo: {{c.duo}}; background: var(--bg); color: var(--text1); font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased">
+
+  <aside style="width: 260px; flex: none; padding: 16px 12px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; color: var(--text2); font-weight: 460">
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">返回</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">AI 助手</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">外观与字体</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">文件夹</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">快捷键</span>
+    <div style="height: 1px; margin: 10px; background: var(--border)"></div>
+    <span style="height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; background: var(--selected); color: var(--text1)">应用商店</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">图床上传</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">笔记迁移</span>
+    <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">同步</span>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; padding: 40px 28px 64px">
+    <div style="max-width: 1120px; margin: 0 auto">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap">
+        <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; flex: 1">应用商店</h1>
+        <div role="group" aria-label="应用筛选" style="display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--side); border: 1px solid var(--btnborder)">
+          <button class="{{tabAll}}" type="button" onClick="{{showAll}}">全部</button>
+          <button class="{{tabIn}}" type="button" onClick="{{showIn}}">已安装</button>
+          <button class="{{tabOut}}" type="button" onClick="{{showOut}}">未安装</button>
+        </div>
+        <button class="ghost" type="button" aria-label="手动安装">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>
+        </button>
+        <button class="ghost" type="button" aria-label="刷新">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5V5h-2.5"></path></svg>
+        </button>
+      </div>
+
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="1">
+        <div style="margin-bottom: 16px">
+          <sc-if value="{{g.label}}" hint-placeholder-val="{{ false }}">
+            <div class="grouplabel">{{g.label}}</div>
+          </sc-if>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 4px">
+            <sc-for list="{{g.items}}" as="a" hint-placeholder-count="4">
+              <button class="row" type="button">
+                <span class="{{a.icoCls}}" aria-hidden="true">
+                  <sc-if value="{{a.isSync}}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 7.5A5.5 5.5 0 0 0 4.4 5.4M3.5 10.5a5.5 5.5 0 0 0 10.1 2.1"></path><path d="M4 2.8v2.8h2.8M14 15.2v-2.8h-2.8" stroke="{{a.dot}}"></path></svg></sc-if>
+                  <sc-if value="{{a.isImage}}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="3.25" width="12.5" height="11.5" rx="2.5" fill="{{a.fill}}"></rect><path d="M3 12.5l3.5-3.5 3 3 2-2 3.5 3.5"></path><circle cx="11.5" cy="6.75" r="1.1" stroke="{{a.dot}}"></circle></svg></sc-if>
+                  <sc-if value="{{a.isMigrate}}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.75H5a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7.25z" fill="{{a.fill}}"></path><path d="M6.5 10h5M9.75 8.25L11.5 10l-1.75 1.75" stroke="{{a.dot}}"></path></svg></sc-if>
+                  <sc-if value="{{a.isPerf}}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.25" fill="{{a.fill}}"></circle><path d="M4.5 9.5h2l1.25-2.5 2.25 4.5 1.25-2h2.25" stroke="{{a.dot}}"></path></svg></sc-if>
+                </span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="display: flex; align-items: center; gap: 6px; min-width: 0">
+                    <span style="font-size: 15px; line-height: 22px; font-weight: 560; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.name}}</span>
+                    <sc-if value="{{a.showCheck}}" hint-placeholder-val="{{ false }}">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--text2)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="已安装" style="flex: none"><path d="M3 7.3l2.6 2.6L11 4.4"></path></svg>
+                    </sc-if>
+                  </span>
+                  <span style="color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.desc}}</span>
+                </span>
+                <span class="act" style="align-items: center; gap: 6px; flex: none">
+                  <sc-if value="{{a.notInstalled}}" hint-placeholder-val="{{ false }}">
+                    <span class="install">安装</span>
+                  </sc-if>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"></path></svg>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"marker":{"editor":"enum","options":["check","hollow","group"],"default":"check"},"$preview":{"width":1360,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'all' };
+  }
+  renderVals() {
+    const dark = (this.props.theme ?? 'dark') === 'dark';
+    const marker = this.props.marker ?? 'check';
+    const c = dark
+      ? { bg: '#181818', side: '#222222', shell: '#262626', text1: '#ececec', text2: '#b4b4b4', hover: '#242424', selected: '#3a3a3a', selborder: 'rgba(255,255,255,.12)', border: '#292929', btnborder: '#444444', accent: '#779de8', duo: '#31456a' }
+      : { bg: '#f8f8f8', side: '#fafafa', shell: '#f1f1f1', text1: '#20242c', text2: '#526071', hover: '#f0f0ef', selected: '#e5e5e3', selborder: 'rgba(0,0,0,.10)', border: '#e4e6ea', btnborder: '#dcdcdc', accent: '#547dd0', duo: '#c9d8f3' };
+    const base = [
+      { id: 'sync', name: '同步', desc: '支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步', installed: true },
+      { id: 'image', name: '图床上传', desc: '支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传', installed: true },
+      { id: 'migrate', name: '笔记迁移', desc: '从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件', installed: true },
+      { id: 'perf', name: '性能与占用', desc: '实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用', installed: false }
+    ];
+    const tab = this.state.tab;
+    const hollowOff = marker === 'hollow';
+    const items = base
+      .filter((a) => tab === 'all' || (tab === 'in' ? a.installed : !a.installed))
+      .map((a) => {
+        const hollow = hollowOff && !a.installed;
+        return {
+          ...a,
+          isSync: a.id === 'sync', isImage: a.id === 'image', isMigrate: a.id === 'migrate', isPerf: a.id === 'perf',
+          notInstalled: !a.installed,
+          showCheck: marker === 'check' && a.installed && tab !== 'in',
+          icoCls: hollow ? 'ico hollow' : 'ico solid',
+          fill: hollow ? 'none' : c.duo,
+          dot: hollow ? 'currentColor' : c.accent
+        };
+      });
+    let groups = [{ label: '', items }];
+    if (marker === 'group' && tab === 'all') {
+      groups = [
+        { label: '已安装', items: items.filter((a) => a.installed) },
+        { label: '未安装', items: items.filter((a) => !a.installed) }
+      ];
+    }
+    const cls = (k) => (tab === k ? 'seg on' : 'seg');
+    return {
+      c, groups,
+      tabAll: cls('all'), tabIn: cls('in'), tabOut: cls('out'),
+      showAll: () => this.setState({ tab: 'all' }),
+      showIn: () => this.setState({ tab: 'in' }),
+      showOut: () => this.setState({ tab: 'out' })
+    };
+  }
+}
+</script>
+</body>
+</html>

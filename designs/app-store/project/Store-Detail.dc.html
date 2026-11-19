@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 D · 原地详情页</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #547dd0; text-decoration: none; }
+    a:hover { color: #456ec2; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; font-size: 14px; line-height: 20px; color: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .seg { height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); font-weight: 460; }
+    .seg.on { background: var(--selected); color: var(--text1); box-shadow: inset 0 0 0 1px var(--selborder); }
+    .row { width: 100%; height: 68px; padding: 12px; border: 0; border-radius: 10px; background: transparent; display: flex; align-items: center; gap: 12px; text-align: left; }
+    .row:hover { background: var(--hover); }
+    .ico { flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--shell); color: var(--text1); }
+    .back { height: 32px; padding: 0 10px 0 6px; margin-left: -6px; border: 0; border-radius: 8px; background: transparent; color: var(--text2); font-weight: 460; display: inline-flex; align-items: center; gap: 6px; }
+    .back:hover { background: var(--hover); color: var(--text1); }
+    .primary { height: 32px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--onaccent); font-weight: 460; }
+    .outline { height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--text1); font-weight: 460; }
+    .quiet { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text2); font-weight: 460; }
+    .quiet:hover { background: var(--hover); color: var(--text1); }
+    .metak { color: var(--text2); }
+    .ph { height: 12px; border-radius: 6px; background: var(--shell); }
+  </style>
+</helmet>
+
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; --bg: {{c.bg}}; --side: {{c.side}}; --shell: {{c.shell}}; --text1: {{c.text1}}; --text2: {{c.text2}}; --hover: {{c.hover}}; --selected: {{c.selected}}; --selborder: {{c.selborder}}; --border: {{c.border}}; --btnborder: {{c.btnborder}}; --accent: {{c.accent}}; --onaccent: {{c.onaccent}}; --duo: {{c.duo}}; background: var(--bg); color: var(--text1); font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased">
+
+  <header style="height: 40px; flex: none; display: flex; align-items: center; background: var(--side); border-bottom: 1px solid var(--border)">
+    <div style="width: 260px; flex: none; padding-left: 16px; display: flex; gap: 8px" aria-hidden="true">
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #ff5f57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #febc2e"></span>
+      <span style="width: 12px; height: 12px; border-radius: 6px; background: #28c840"></span>
+    </div>
+    <nav aria-label="位置" style="padding-left: 28px; display: flex; align-items: center; gap: 6px; color: var(--text2); font-weight: 460">
+      <span>设置</span><span>/</span>
+      <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}"><span style="color: var(--text1)">应用商店</span></sc-if>
+      <sc-if value="{{isDetail}}" hint-placeholder-val="{{ false }}"><span>应用商店</span><span>/</span><span style="color: var(--text1)">{{cur.name}}</span></sc-if>
+    </nav>
+  </header>
+
+  <div style="flex: 1; display: flex; min-height: 0">
+    <aside style="width: 260px; flex: none; padding: 16px 12px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; color: var(--text2); font-weight: 460">
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">AI 助手</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">外观与字体</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">文件夹</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">快捷键</span>
+      <div style="height: 1px; margin: 10px; background: var(--border)"></div>
+      <span style="height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; background: var(--selected); color: var(--text1)">应用商店</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">图床上传</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">笔记迁移</span>
+      <span style="height: 32px; padding: 0 10px; display: flex; align-items: center">同步</span>
+    </aside>
+
+    <main style="flex: 1; min-width: 0; padding: 32px 28px 64px">
+
+      <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+        <div style="max-width: 1120px; margin: 0 auto">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap">
+            <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; flex: 1">应用商店</h1>
+            <div role="group" aria-label="应用筛选" style="display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--side); border: 1px solid var(--btnborder)">
+              <button class="seg on" type="button">全部</button>
+              <button class="seg" type="button">已安装</button>
+              <button class="seg" type="button">未安装</button>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 4px">
+            <sc-for list="{{apps}}" as="a" hint-placeholder-count="4">
+              <button class="row" type="button" onClick="{{a.pick}}">
+                <span class="ico" style="width: 40px; height: 40px; border-radius: 10px" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5" fill="var(--duo)"></circle><path d="{{a.glyph}}" stroke="var(--accent)"></path></svg>
+                </span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="display: flex; align-items: center; gap: 6px">
+                    <span style="font-size: 15px; line-height: 22px; font-weight: 560">{{a.name}}</span>
+                    <sc-if value="{{a.installed}}" hint-placeholder-val="{{ false }}">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--text2)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="已安装"><path d="M3 7.3l2.6 2.6L11 4.4"></path></svg>
+                    </sc-if>
+                  </span>
+                  <span style="color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{a.summary}}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isDetail}}" hint-placeholder-val="{{ false }}">
+        <div style="max-width: 1040px; margin: 0 auto">
+          <button class="back" type="button" onClick="{{back}}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5"></path></svg>应用商店
+          </button>
+
+          <div style="display: flex; align-items: center; gap: 16px; margin: 20px 0 28px; flex-wrap: wrap">
+            <span class="ico" style="width: 56px; height: 56px; border-radius: 14px" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5" fill="var(--duo)"></circle><path d="{{cur.glyph}}" stroke="var(--accent)"></path></svg>
+            </span>
+            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 4px">
+              <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560">{{cur.name}}</h1>
+              <p style="margin: 0; color: var(--text2)">{{cur.summary}}</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px; flex: none">
+              <sc-if value="{{cur.installed}}" hint-placeholder-val="{{ true }}">
+                <button class="quiet" type="button">卸载</button>
+                <button class="outline" type="button">{{cur.open}}</button>
+              </sc-if>
+              <sc-if value="{{cur.notInstalled}}" hint-placeholder-val="{{ false }}">
+                <button class="primary" type="button">安装</button>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 48px; align-items: flex-start; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 28px">
+            <article aria-label="README" style="flex: 1 1 520px; min-width: 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px">
+              <p style="margin: 0 0 4px; color: var(--text2)">[插件仓库 README 正文在这里原地渲染，与编辑器只读预览同一套排版]</p>
+              <div class="ph" style="width: 92%"></div>
+              <div class="ph" style="width: 86%"></div>
+              <div class="ph" style="width: 64%"></div>
+              <div style="height: 180px; border-radius: 10px; background: var(--shell); margin: 8px 0"></div>
+              <div class="ph" style="width: 88%"></div>
+              <div class="ph" style="width: 72%"></div>
+            </article>
+
+            <aside aria-label="应用信息" style="flex: 0 1 240px; min-width: 200px; display: flex; flex-direction: column; gap: 16px">
+              <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 16px">
+                <dt class="metak">版本</dt><dd style="margin: 0; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 13px">{{cur.version}}</dd>
+                <dt class="metak">作者</dt><dd style="margin: 0">{{cur.author}}</dd>
+                <dt class="metak">下载</dt><dd style="margin: 0; font-variant-numeric: tabular-nums">{{cur.downloads}}</dd>
+                <dt class="metak">仓库</dt><dd style="margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"><a href="https://github.com/{{cur.repo}}">{{cur.repo}}</a></dd>
+              </dl>
+              <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border)">
+                <span class="metak">需要的权限</span>
+                <sc-for list="{{cur.perms}}" as="p" hint-placeholder-count="3">
+                  <span>{{p}}</span>
+                </sc-for>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"start":{"editor":"enum","options":["detail","list"],"default":"detail"},"$preview":{"width":1360,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: (props.start ?? 'detail'), pick: 'block-sync' };
+  }
+  renderVals() {
+    const dark = (this.props.theme ?? 'dark') === 'dark';
+    const c = dark
+      ? { bg: '#181818', side: '#222222', shell: '#262626', text1: '#ececec', text2: '#b4b4b4', hover: '#242424', selected: '#3a3a3a', selborder: 'rgba(255,255,255,.12)', border: '#292929', btnborder: '#444444', accent: '#779de8', onaccent: '#10151f', duo: '#31456a' }
+      : { bg: '#f8f8f8', side: '#fafafa', shell: '#f1f1f1', text1: '#20242c', text2: '#526071', hover: '#f0f0ef', selected: '#e5e5e3', selborder: 'rgba(0,0,0,.10)', border: '#e4e6ea', btnborder: '#dcdcdc', accent: '#547dd0', onaccent: '#ffffff', duo: '#c9d8f3' };
+    const base = [
+      { id: 'block-sync', name: '同步', summary: '支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步', version: 'v1.0.0', downloads: '1,281', repo: 'blockmd-plugins/block-sync', installed: true, open: '配置同步', perms: ['独立存储', '读取笔记', '写入笔记', '网络请求', '保存触发'], glyph: 'M8 10.5a4.5 4.5 0 0 1 7.8-1.6M16 13.5a4.5 4.5 0 0 1-7.8 1.6' },
+      { id: 'block-image-host', name: '图床上传', summary: '支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传', version: 'v1.0.0', downloads: '941', repo: 'blockmd-plugins/block-image-host', installed: true, open: '打开', perms: ['独立存储', '读取笔记', '写入笔记', '网络请求'], glyph: 'M8 15l3-3 2 2 3-3' },
+      { id: 'block-migrator', name: '笔记迁移', summary: '从 Obsidian、Notion 与语雀导出目录迁移笔记，自动清洗语法并拷贝附件', version: 'v1.0.0', downloads: '616', repo: 'blockmd-plugins/block-migrator', installed: true, open: '打开', perms: ['独立存储', '读取笔记', '写入笔记'], glyph: 'M9 12h6M13 10l2 2-2 2' },
+      { id: 'block-diagnostics', name: '性能与占用', summary: '实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用', version: 'v1.2.11', downloads: '321', repo: 'blockmd-plugins/block-diagnostics', installed: false, open: '打开', perms: ['独立存储', '读取笔记'], glyph: 'M7.5 12.5h2l1.2-2.5 2.3 4.5 1.2-2h2.3' }
+    ];
+    const apps = base.map((a) => ({ ...a, author: 'Block Community', notInstalled: !a.installed, pick: () => this.setState({ view: 'detail', pick: a.id }) }));
+    const cur = apps.find((a) => a.id === this.state.pick) || apps[0];
+    return {
+      c, apps, cur,
+      isList: this.state.view === 'list',
+      isDetail: this.state.view === 'detail',
+      back: () => this.setState({ view: 'list' })
+    };
+  }
+}
+</script>
+</body>
+</html>
