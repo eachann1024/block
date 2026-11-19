@@ -1346,6 +1346,46 @@ var plainEmphasisREs = []*regexp.Regexp{
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
 }
 
+// plainEmphasis drops the markers of re's matches in t; a "*" run that can't open
+// or close there stays, as in the note: "file*.csv 和 data*.json" keeps both.
+func plainEmphasis(re *regexp.Regexp, t string) string {
+	// A code or link placeholder stands for text in backticks.
+	near := func(r rune) rune {
+		if r == '\uE000' || r == '\uE001' {
+			return '`'
+		}
+		return r
+	}
+	var b strings.Builder
+	last := 0
+	for _, m := range re.FindAllStringSubmatchIndex(t, -1) {
+		o, c, n := m[3], m[5], m[4]-m[3]
+		if t[o] == '*' {
+			before, after := '\n', '\n'
+			if o > 0 {
+				before, _ = utf8.DecodeLastRuneInString(t[:o])
+			}
+			if c+n < len(t) {
+				after, _ = utf8.DecodeRuneInString(t[c+n:])
+			}
+			first, _ := utf8.DecodeRuneInString(t[o+n:])
+			end, _ := utf8.DecodeLastRuneInString(t[:c])
+			open, _ := bui.StarFlanks(near(before), near(first))
+			_, closes := bui.StarFlanks(near(end), near(after))
+			if !open || !closes {
+				continue
+			}
+		}
+		b.WriteString(t[last:m[0]])
+		b.WriteString(t[m[2]:m[3]])
+		b.WriteString(t[m[4]:m[5]])
+		b.WriteString(t[m[6]:m[7]])
+		last = m[1]
+	}
+	b.WriteString(t[last:])
+	return b.String()
+}
+
 // plainEscapeRE matches a backslash escape of ASCII punctuation ("\*" shows "*").
 var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 
@@ -1398,7 +1438,7 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	for prev := ""; prev != t; {
 		prev = t
 		for _, re := range plainEmphasisREs {
-			t = re.ReplaceAllString(t, "$1$2$3")
+			t = plainEmphasis(re, t)
 		}
 	}
 	// Inline HTML shows its text ("请按 <kbd>Ctrl</kbd>" reads 请按 Ctrl); it goes
