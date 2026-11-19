@@ -213,11 +213,8 @@ jobs:
             if [ "${#missing[@]}" -gt 0 ]; then
               deb_dir="$RUNNER_TEMP/apt-debs"
               mkdir -p "$deb_dir/partial"
-              apt_opts=()
-              if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-                apt_opts=(-o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-")
-              fi
-              sudo apt-get update -qq "${apt_opts[@]}" -o APT::Get::List-Cleanup="0" || { apt_opts=(); sudo apt-get update -qq; }
+              apt_opts=(-o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-")
+              sudo apt-get update -qq "${apt_opts[@]}" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq "${apt_opts[@]}" -o APT::Get::List-Cleanup="0"
               # Cryptographically bind every cached .deb filename (Package_Version_Arch.deb) and SHA-256 to the GPG-verified Ubuntu Packages index; drop any unmatched file so apt downloads fresh.
               sudo python3 - "$deb_dir" "${apt_opts[@]}" <<'PY'
           import glob, hashlib, os, subprocess, sys
