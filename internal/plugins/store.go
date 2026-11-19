@@ -371,8 +371,11 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 	if err := s.EnsureDirs(); err != nil {
 		return s.LoadCachedOrSeedCatalog(), err
 	}
+	baseline := s.LoadCachedOrSeedCatalog()
 	const perSourceTimeout = 6 * time.Second
 	var lastErr error
+	var bestRemote *StoreIndex
+	var bestBody []byte
 	for _, u := range s.IndexURLs {
 		indexURL, err := parseArchiveURL(u)
 		if err != nil {
@@ -414,13 +417,13 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 			lastErr = parseErr
 			continue
 		}
-		if prevRaw, err := os.ReadFile(s.cacheIndexPath()); err == nil {
-			if prevIdx, prevErr := ParseStoreIndex(prevRaw); prevErr == nil && indexNewerThan(prevIdx.UpdatedAt, idx.UpdatedAt) {
-				if hasRegisteredBuiltinSeeds() {
-					return mergeStoreIndexes(prevIdx, DefaultSeedIndex()), nil
-				}
-				return filterStoreIndex(prevIdx), nil
-			}
+		if bestRemote == nil || indexNewerThan(idx.UpdatedAt, bestRemote.UpdatedAt) {
+			bestRemote = idx
+			bestBody = body
+		}
+		// Keep trying fallback mirrors if this source is older than our local baseline.
+		if baseline != nil && indexNewerThan(baseline.UpdatedAt, idx.UpdatedAt) {
+			continue
 		}
 		_ = os.WriteFile(s.cacheIndexPath(), body, 0o644)
 		if hasRegisteredBuiltinSeeds() {
@@ -428,7 +431,17 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 		}
 		return filterStoreIndex(idx), nil
 	}
-	return s.LoadCachedOrSeedCatalog(), lastErr
+	if bestRemote != nil {
+		if baseline != nil && indexNewerThan(baseline.UpdatedAt, bestRemote.UpdatedAt) {
+			return baseline, nil
+		}
+		_ = os.WriteFile(s.cacheIndexPath(), bestBody, 0o644)
+		if hasRegisteredBuiltinSeeds() {
+			return mergeStoreIndexes(bestRemote, DefaultSeedIndex()), nil
+		}
+		return filterStoreIndex(bestRemote), nil
+	}
+	return baseline, lastErr
 }
 
 func filterStoreIndex(idx *StoreIndex) *StoreIndex {
@@ -1058,12 +1071,22 @@ func (s *StoreManager) Uninstall(pluginID string, purgeData bool) error {
 }
 
 func ParseStoreIndex(raw []byte) (*StoreIndex, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, errors.New("store index must be a JSON object")
+	}
 	var idx StoreIndex
-	if err := json.Unmarshal(raw, &idx); err != nil {
+	if err := json.Unmarshal(trimmed, &idx); err != nil {
 		return nil, err
 	}
-	if idx.App != "" && idx.App != TargetApp {
+	if idx.App != TargetApp {
 		return nil, fmt.Errorf("store index app mismatch: got %q, want %q", idx.App, TargetApp)
+	}
+	if idx.SchemaVersion != CurrentSchemaVersion {
+		return nil, fmt.Errorf("store index schema_version mismatch: got %d, want %d", idx.SchemaVersion, CurrentSchemaVersion)
+	}
+	if idx.Apps == nil {
+		return nil, errors.New("store index missing apps array")
 	}
 	return &idx, nil
 }
