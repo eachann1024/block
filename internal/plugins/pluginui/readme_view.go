@@ -241,15 +241,23 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 	pal := theme.Ocean()
 	locale := ctrl.sup.Locale()
 	entry := preview.entry
-	if catalog := ctrl.sup.Catalog(); catalog != nil {
+	inCatalog := false
+	catalog := ctrl.sup.Catalog()
+	if catalog != nil {
 		for _, app := range catalog.Apps {
 			if app.ID == entry.ID {
 				entry = app
+				inCatalog = true
 				break
 			}
 		}
 	}
 	installedApp, isInstalled := ctrl.sup.GetInstalled(entry.ID)
+	if catalog != nil && !inCatalog && !isInstalled {
+		ctrl.closeStoreReadme()
+		c.Invalidate()
+		return
+	}
 	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
 		preview.installed.Manifest.Version != installedApp.Manifest.Version
 	if preview.locale != readmeLocaleKey(locale) || installedChanged {
@@ -289,7 +297,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, entry.Name.Resolve(locale)).
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-					if storeAppIsOfficial(entry, installedApp, isInstalled) {
+					if storeAppIsOfficial(ctrl, entry, installedApp, isInstalled) {
 						bui.OfficialBadge(c, true)
 					}
 					if storeAppIsBeta(entry, installedApp, isInstalled) {

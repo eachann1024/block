@@ -268,7 +268,7 @@ func renderStoreAppRow(
 				ui.Text(c, name).
 					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).
 					TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-				if storeAppIsOfficial(entry, installedApp, isInstalled) {
+				if storeAppIsOfficial(ctrl, entry, installedApp, isInstalled) {
 					bui.OfficialBadge(c, true)
 				}
 				if storeAppIsBeta(entry, installedApp, isInstalled) {
@@ -341,16 +341,17 @@ func storeAppIsBeta(entry plugins.StoreAppEntry, installed plugins.InstalledApp,
 	return entry.Beta
 }
 
-func storeAppIsOfficial(entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
+func storeAppIsOfficial(ctrl *Controller, entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
 	if !entry.Verified {
 		return false
 	}
 	if !isInstalled {
 		return true
 	}
-	wantRepo := strings.TrimSpace(entry.Repo)
-	gotRepo := strings.TrimSpace(installed.Manifest.Repo)
-	return wantRepo != "" && strings.EqualFold(gotRepo, wantRepo)
+	if ctrl == nil || ctrl.sup == nil || ctrl.sup.Store() == nil {
+		return false
+	}
+	return ctrl.sup.Store().MatchesOfficialSource(installed, entry)
 }
 
 func buildVisibleStoreEntries(

@@ -414,6 +414,14 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 			lastErr = parseErr
 			continue
 		}
+		if prevRaw, err := os.ReadFile(s.cacheIndexPath()); err == nil {
+			if prevIdx, prevErr := ParseStoreIndex(prevRaw); prevErr == nil && indexNewerThan(prevIdx.UpdatedAt, idx.UpdatedAt) {
+				if hasRegisteredBuiltinSeeds() {
+					return mergeStoreIndexes(prevIdx, DefaultSeedIndex()), nil
+				}
+				return filterStoreIndex(prevIdx), nil
+			}
+		}
 		_ = os.WriteFile(s.cacheIndexPath(), body, 0o644)
 		if hasRegisteredBuiltinSeeds() {
 			return mergeStoreIndexes(idx, DefaultSeedIndex()), nil
@@ -429,10 +437,17 @@ func filterStoreIndex(idx *StoreIndex) *StoreIndex {
 
 func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 	if primary == nil {
-		return fallback
+		if fallback == nil {
+			return nil
+		}
+		return mergeStoreIndexes(fallback, nil)
+	}
+	capLen := len(primary.Apps)
+	if fallback != nil {
+		capLen += len(fallback.Apps)
 	}
 	seen := make(map[string]bool, len(primary.Apps))
-	merged := make([]StoreAppEntry, 0, len(primary.Apps)+len(fallback.Apps))
+	merged := make([]StoreAppEntry, 0, capLen)
 	for _, a := range primary.Apps {
 		if a.ID == "" || a.ID == DiagnosticsPluginID || seen[a.ID] {
 			continue
@@ -980,6 +995,43 @@ func (s *StoreManager) commitInstallDirLocked(m *Manifest, tmpDir, dstDir, backu
 	}, nil
 }
 
+func installSourceRecord(source string) string {
+	sum := sha256.Sum256([]byte(source))
+	return "v1:" + hex.EncodeToString(sum[:])
+}
+
+// MatchesOfficialSource reports whether an installed plugin was genuinely installed
+// from the catalog's verified repository (not a spoofed local directory copy).
+func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
+	if !entry.Verified || installed.InstallDir == "" {
+		return false
+	}
+	wantRepo := strings.ToLower(strings.TrimSpace(entry.Repo))
+	gotRepo := strings.ToLower(strings.TrimSpace(installed.Manifest.Repo))
+	if wantRepo == "" || gotRepo != wantRepo {
+		return false
+	}
+	root, err := os.OpenRoot(installed.InstallDir)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+	raw, err := readPluginFile(root, installSourceFile, 128)
+	if err != nil {
+		return false
+	}
+	recorded := strings.TrimSpace(string(raw))
+	allowed := []string{
+		installSourceRecord("catalog-github:" + wantRepo),
+		installSourceRecord("github:" + wantRepo),
+		installSourceRecord("builtin:" + entry.ID),
+	}
+	if u, err := parseArchiveURL(strings.TrimSpace(entry.DownloadURL)); err == nil {
+		allowed = append(allowed, installSourceRecord("catalog-url:"+u.String()))
+	}
+	return slices.Contains(allowed, recorded)
+}
+
 func (s *StoreManager) Uninstall(pluginID string, purgeData bool) error {
 	s.installMu.Lock()
 	defer s.installMu.Unlock()
@@ -1178,14 +1230,14 @@ func writePackageFile(root *os.Root, name string, src io.Reader, size int64, mod
 
 // FindManifestRoot locates the manifest at the archive root or in one top-level folder.
 func FindManifestRoot(extractDir string) (string, error) {
+	var manifestRoot string
 	if info, err := os.Lstat(filepath.Join(extractDir, "manifest.json")); err == nil && info.Mode().IsRegular() {
-		return extractDir, nil
+		manifestRoot = extractDir
 	}
 	entries, err := os.ReadDir(extractDir)
 	if err != nil {
 		return "", err
 	}
-	var manifestRoot string
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
