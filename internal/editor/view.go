@@ -77,7 +77,13 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	defer func() { s.frameRoot = ui.Element{} }()
 
 	animEdgeL, animEdgeR := s.animatedEdgeInsets(c, root)
-	s.viewportWidth = max(viewportWidth-animEdgeL-animEdgeR, 240)
+	canvasWidth := max(viewportWidth-animEdgeL-animEdgeR, 0)
+	s.viewportWidth = max(canvasWidth, 240)
+	editorBounds := s.editorRect
+	if editorBounds.W > 0 {
+		canvasWidth = min(canvasWidth, max(editorBounds.W-animEdgeL-animEdgeR, 0))
+	}
+	s.frameAnnotations = s.placeAnnotations(c, editorBounds.X+animEdgeL, canvasWidth)
 
 	root.Draw(func(_ *ui.Painter, r ui.Rect) {
 		s.editorRect = r
@@ -85,6 +91,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	root.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		s.editorRect = r
 		appUi.RecordBounds("editor", r)
+		if len(s.annotations) > 0 && !nearDocRect(r, editorBounds) {
+			c.Invalidate()
+		}
 	})
 
 	s.preUpdateBlockDrag(c)
@@ -227,6 +236,11 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderTableMenuOverlay(c)
 		s.renderInlineAIPanel(c)
 		s.renderAnnotationRail(c)
+		s.renderAnnotationReactionPicker(c)
+		if s.frameAnnotations.hovered != s.hoveredAnnotID {
+			s.hoveredAnnotID = s.frameAnnotations.hovered
+			c.Invalidate()
+		}
 		s.renderPlanDiffCard(c)
 		if s.hasMenuPopupOpen() {
 			appUi.ReserveMenuNavKeys(c)
@@ -530,7 +544,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	}
 	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if s.recordBlockWinRect(id, r) {
-			if s.IsSelectionToolbarOpen() || s.inlineAI != nil || s.blockMenu != nil || s.calloutMenuBlock == id {
+			if s.IsSelectionToolbarOpen() || s.inlineAI != nil || s.blockMenu != nil || s.calloutMenuBlock == id || len(s.frameAnnotations.right) > 0 {
 				c.Invalidate()
 			}
 		}
@@ -853,7 +867,7 @@ func (s *Session) renderBlockBody(c *ui.Context, idx int, b *model.Block, isFocu
 		s.renderRichTextBlock(c, idx, b, isFocused, readOnly, deleteArmed)
 	}
 	if !s.minimal {
-		s.renderBlockAnnotationsFoot(c, idx, b)
+		s.renderBlockAnnotationsFoot(c, b)
 	}
 }
 
@@ -1203,7 +1217,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			},
 			OnChange: func(newText string, _, caret int) {
 				s.caretHidden = false
-				s.footPickerAnnotID = ""
+				s.reactionPickerAnnotID = ""
 				s.applyBlockTextEdit(idx, newText, caret)
 				if s.doc != nil && s.focusedBlock == idx && idx < len(s.doc.Blocks) {
 					after := s.doc.Blocks[idx].PlainText()
@@ -1266,7 +1280,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			},
 			OnKey: func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool {
 				s.caretHidden = false
-				s.footPickerAnnotID = ""
+				s.reactionPickerAnnotID = ""
 				if s.hasMenuPopupOpen() {
 					return false
 				}
