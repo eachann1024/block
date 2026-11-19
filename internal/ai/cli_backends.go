@@ -1267,6 +1267,7 @@ func startMCPBridge(ctrl *Controller, convID uint64) (*mcpBridgeServer, error) {
 			if ctrl.streaming && ctrl.currentID == convID {
 				ctrl.partialSteps = append(ctrl.partialSteps, processStepForTool(name, string(rawArgs)))
 			}
+			var linkedPlan *model.BatchPlan
 			if plan != nil && ctrl.currentID == convID {
 				ctrl.pushMessageLocked(model.ChatMessage{
 					Role:    "tool",
@@ -1276,10 +1277,11 @@ func startMCPBridge(ctrl *Controller, convID uint64) (*mcpBridgeServer, error) {
 				})
 				conv := ctrl.findConvLocked(convID)
 				if conv != nil && len(conv.Messages) > 0 {
-					ctrl.linkPlanLocked(convID, len(conv.Messages)-1)
+					linkedPlan = ctrl.linkPlanLocked(convID, len(conv.Messages)-1)
 				}
 			}
 			ctrl.mu.Unlock()
+			ctrl.previewPlanInEditor(linkedPlan)
 			ctrl.requestRedraw()
 			writeRPCResult(w, rpc.ID, map[string]any{
 				"content": []map[string]any{{"type": "text", "text": resJSON}},
