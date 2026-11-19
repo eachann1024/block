@@ -627,7 +627,12 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	indent := len(strings.ReplaceAll(line[:len(line)-len(body)], "\t", "    "))
 	return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
 		// Links turn into their text first, so "[\[ A \]](…)" or "[v2 #](…)" is guarded too.
-		body = diffLiteralStart(diffPlainLinks(body))
+		// A line of its own starting with "\[" is display math, as in the note.
+		math := strings.HasPrefix(body, `\[`)
+		body = diffPlainLinks(body)
+		if !math {
+			body = diffLiteralStart(body)
+		}
 		if st.Setext > 0 && !st.Code {
 			// As an ATX heading a trailing "#" run would read as a closing sequence.
 			if h := strings.TrimRight(body, " \t"); strings.HasSuffix(h, "#") {
