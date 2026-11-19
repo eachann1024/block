@@ -236,7 +236,7 @@ func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs 
 			}
 			if m == nil || para && paraDepth == depth {
 				b := strings.TrimSpace(body(l))
-				para, paraDepth = !diffHeadingRE.MatchString(b) && !diffRuleRE.MatchString(b), depth
+				para, paraDepth = b != "" && !diffHeadingRE.MatchString(b) && !diffRuleRE.MatchString(b), depth
 				continue
 			}
 			dest, next := m[2], -1
@@ -479,6 +479,12 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				inner := t
 				if q := diffQuoteDepth(t); q > 0 {
 					inner = strings.TrimSpace(diffStripQuotes(t, q))
+				}
+				// A quote line with nothing behind its ">" ends the paragraph above it:
+				// "> 原因" over ">" over "> ---" is a rule, not a heading.
+				if inner == "" {
+					prevBlank, para, paraLines = true, false, nil
+					continue
 				}
 				// Under paragraph text (not a list item) "-" or "==" is a setext underline,
 				// not an empty list item, which may not interrupt a paragraph.
