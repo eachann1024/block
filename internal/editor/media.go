@@ -183,8 +183,10 @@ func (s *Session) invalidateImageCache(src string) {
 	if src == "" {
 		return
 	}
+	s.imageMu.Lock()
 	delete(s.imageCache, src)
 	delete(s.imageFailed, src)
+	s.imageMu.Unlock()
 }
 
 func (s *Session) insertImportedBlocks(inserted []model.Block, targetID model.BlockID, replace bool) int {

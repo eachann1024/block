@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 
 	"block/internal/codepreview"
 	"block/internal/icons"
@@ -2786,31 +2787,91 @@ func boolToBorder(v bool) float32 {
 
 // --- Image Block & Image Toolbar ---
 
+const maxSessionCachedImages = 48
+
+func (s *Session) storeCachedImageLocked(src string, decoded ui.ImageSource) {
+	if s.imageCache == nil {
+		s.imageCache = make(map[string]ui.ImageSource)
+	}
+	if _, exists := s.imageCache[src]; !exists {
+		if len(s.imageOrder) >= maxSessionCachedImages {
+			evict := s.imageOrder[0]
+			s.imageOrder = s.imageOrder[1:]
+			delete(s.imageCache, evict)
+		}
+		s.imageOrder = append(s.imageOrder, src)
+	}
+	s.imageCache[src] = decoded
+}
+
 func (s *Session) resolveImageSource(src string) (ui.ImageSource, bool) {
 	if src == "" {
 		return nil, false
 	}
+	s.imageMu.Lock()
 	if cached, ok := s.imageCache[src]; ok {
+		s.imageMu.Unlock()
 		return cached, true
 	}
 	if s.imageFailed[src] {
+		s.imageMu.Unlock()
 		return nil, false
 	}
 	resolved := src
 	if !filepath.IsAbs(src) && s.notePath != "" {
 		resolved = filepath.Join(filepath.Dir(s.notePath), src)
 	}
+	asyncLoad := s.host != nil && !testing.Testing() && !appUi.IsProbeEnabled()
+	if asyncLoad {
+		if s.imageLoading == nil {
+			s.imageLoading = make(map[string]bool)
+		}
+		if s.imageLoading[src] {
+			s.imageMu.Unlock()
+			return nil, false
+		}
+		s.imageLoading[src] = true
+		s.imageMu.Unlock()
+		go func(key, path string) {
+			raw, err := os.ReadFile(path)
+			var decoded ui.ImageSource
+			if err == nil {
+				decoded, err = ui.DecodeImage(raw)
+			}
+			s.imageMu.Lock()
+			delete(s.imageLoading, key)
+			if err != nil || decoded == nil {
+				if s.imageFailed == nil {
+					s.imageFailed = make(map[string]bool)
+				}
+				s.imageFailed[key] = true
+			} else {
+				s.storeCachedImageLocked(key, decoded)
+			}
+			s.imageMu.Unlock()
+			s.requestRedraw()
+		}(src, resolved)
+		return nil, false
+	}
+	s.imageMu.Unlock()
+
 	raw, err := os.ReadFile(resolved)
 	if err != nil {
+		s.imageMu.Lock()
 		s.imageFailed[src] = true
+		s.imageMu.Unlock()
 		return nil, false
 	}
 	decoded, err := ui.DecodeImage(raw)
 	if err != nil {
+		s.imageMu.Lock()
 		s.imageFailed[src] = true
+		s.imageMu.Unlock()
 		return nil, false
 	}
-	s.imageCache[src] = decoded
+	s.imageMu.Lock()
+	s.storeCachedImageLocked(src, decoded)
+	s.imageMu.Unlock()
 	return decoded, true
 }
 
