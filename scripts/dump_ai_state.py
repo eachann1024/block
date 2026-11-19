@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-dump_ai_state.py - 1-Second Runtime & AI Plan Inspector for Block (thinkly-fast)
+dump_ai_state.py - 1-Second Runtime & AI Plan Inspector for Block
 
 Reads ~/Library/Application Support/Block/ (or $XDG_DATA_HOME/Block on Linux):
 - state.json: active notebook folder, loaded notebooks, open_tabs, active_tab

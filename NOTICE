@@ -4,22 +4,11 @@ Copyright 2026 eachann1024
 https://github.com/eachann1024/block
 https://block.cooool.top
 
-This product includes software developed by third parties:
+When using or modifying this project, retain this NOTICE file and credit Block / eachann1024.
 
-1. gpui-pre-wgpu (web/vendor/gpui-pre-wgpu)
-   Copyright 2022 - 2025 Zed Industries, Inc.
-   Licensed under the Apache License, Version 2.0 (see web/vendor/gpui-pre-wgpu/LICENSE-APACHE).
+This product includes or builds on third-party open-source software, including:
 
-At runtime, Block fetches open-source fonts from Fontsource CDN (jsDelivr / npmmirror) and caches them locally:
+1. MyGo (https://github.com/egoist/mygo)
+2. Purego (https://github.com/ebitengine/purego)
 
-2. IBM Plex Sans (@fontsource/ibm-plex-sans, web runtime)
-   Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
-   Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
-
-3. JetBrains Mono (@fontsource/jetbrains-mono, desktop & web runtime)
-   Copyright (c) 2020 JetBrains s.r.o. with Reserved Font Name "JetBrains Mono".
-   Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
-
-4. STIX Two Math (@fontsource/stix-two-math, desktop & web runtime)
-   Copyright (c) 2001 - 2020 STI Pub Companies (AIP, AMS, APS, Elsevier, IEEE, IOP).
-   Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
+Additional third-party attributions and licenses (Beautiful UI interaction patterns, Lobe Icons, and Pi agent mark) are listed in THIRD_PARTY_NOTICES.md.

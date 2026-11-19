@@ -2,7 +2,7 @@
 
 ## Beautiful UI
 
-The AI interface adapts interaction and animation patterns from [Beautiful UI](https://www.beautifului.dev/), [source](https://github.com/slev12397/beautiful-ui), revision `44a274e598395ab61e7c96c26fda2758780253b7`. The implementation is native Rust/GPUI.
+The AI interface adapts interaction and animation patterns from [Beautiful UI](https://www.beautifului.dev/), [source](https://github.com/slev12397/beautiful-ui), revision `44a274e598395ab61e7c96c26fda2758780253b7`. The implementation is native Go (MyGo).
 
 MIT License
 
