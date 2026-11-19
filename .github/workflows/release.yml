@@ -213,16 +213,20 @@ jobs:
             if [ "${#missing[@]}" -gt 0 ]; then
               deb_dir="$RUNNER_TEMP/apt-debs"
               mkdir -p "$deb_dir/partial"
-              sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
+              apt_opts=()
+              if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+                apt_opts=(-o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-")
+              fi
+              sudo apt-get update -qq "${apt_opts[@]}" -o APT::Get::List-Cleanup="0" || { apt_opts=(); sudo apt-get update -qq; }
               # Cryptographically bind every cached .deb filename (Package_Version_Arch.deb) and SHA-256 to the GPG-verified Ubuntu Packages index; drop any unmatched file so apt downloads fresh.
-              sudo python3 - "$deb_dir" <<'PY'
+              sudo python3 - "$deb_dir" "${apt_opts[@]}" <<'PY'
           import glob, hashlib, os, subprocess, sys
-          deb_dir = sys.argv[1]
+          deb_dir, apt_opts = sys.argv[1], sys.argv[2:]
           debs = glob.glob(os.path.join(deb_dir, '*.deb'))
           if debs:
               valid = {}
               targets = subprocess.check_output(
-                  ['apt-get', 'indextargets', '--format', '$(FILENAME)', 'ShortDesc: Packages'],
+                  ['apt-get', 'indextargets', *apt_opts, '--format', '$(FILENAME)', 'ShortDesc: Packages'],
                   text=True,
               ).splitlines()
               for path in targets:
@@ -262,6 +266,7 @@ jobs:
                       os.remove(deb)
           PY
               sudo apt-get install -y -qq --no-install-recommends \
+                "${apt_opts[@]}" \
                 -o Dir::Cache::archives="$deb_dir" \
                 -o APT::Keep-Downloaded-Packages="true" \
                 "${missing[@]}"
