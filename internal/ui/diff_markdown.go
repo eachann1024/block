@@ -1369,6 +1369,10 @@ func BareURLs(s string) [][2]int {
 			if strings.IndexByte("?!.,:*_~'\"", c) >= 0 ||
 				c == ')' && strings.Count(s[m[0]:end], ")") > strings.Count(s[m[0]:end], "(") {
 				end--
+				// An escaped mark goes with its backslash: "init\_\_" ends at "init".
+				if end > m[0] && diffEscaped(s, end) {
+					end--
+				}
 				continue
 			}
 			break
