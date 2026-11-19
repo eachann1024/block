@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-19T18:00:21Z",
+  "updated_at": "2026-11-19T18:20:07Z",
   "apps": [
     {
       "app": "blockmd",
@@ -57,19 +57,19 @@
         "zh": "图床上传",
         "en": "Image Host"
       },
-      "version": "1.2.15",
-      "author": "Block Community",
-      "repo": "blockmd-plugins/block-image-host",
+      "version": "1.2.17",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-image-host",
       "summary": {
         "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
         "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-image-host/releases/download/v1.2.15/block-image-host-v1.2.15.tar.gz",
-      "sha256": "0abf93107cb59b2263913bf3e94be4885e9aee04b2d5a73b7a01e1af529db2e7",
+      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.17/block-image-host-v1.2.17.tar.gz",
+      "sha256": "b835822c3f1e235259fc0cbfbdcda8289af03fb706851980cbfd432baaa8293b",
       "downloads": 941,
       "stars": 0,
-      "verified": true,
-      "updated_at": "2026-11-19T17:59:05Z",
+      "verified": false,
+      "updated_at": "2026-11-19T18:10:52Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -104,19 +104,19 @@
         "zh": "笔记迁移",
         "en": "Migrator"
       },
-      "version": "1.2.17",
-      "author": "Block Community",
-      "repo": "blockmd-plugins/block-migrator",
+      "version": "1.2.19",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-migrator",
       "summary": {
         "zh": "从 Obsidian、Notion 与语雀导出目录或 ZIP 包迁移笔记，自动清洗语法并拷贝附件",
         "en": "Migrate notes from Obsidian, Notion, and Yuque folders or ZIP archives with syntax cleanup and asset copy"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-migrator/releases/download/v1.2.17/block-migrator-v1.2.17.tar.gz",
-      "sha256": "1ac2586061c6eede162c9d87729bf1b611ff37a51903c92b889a358a5af4204a",
+      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.19/block-migrator-v1.2.19.tar.gz",
+      "sha256": "0a5da4eccb69ac4692bfaa2671ba2ed7b148b78b0064bead78e97c043acbe327",
       "downloads": 616,
       "stars": 0,
-      "verified": true,
-      "updated_at": "2026-11-19T17:59:08Z",
+      "verified": false,
+      "updated_at": "2026-11-19T18:10:55Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -143,68 +143,24 @@
     },
     {
       "app": "blockmd",
-      "id": "block-diagnostics",
-      "name": {
-        "zh": "性能与占用",
-        "en": "Performance & Usage"
-      },
-      "version": "1.2.13",
-      "author": "Block Community",
-      "repo": "blockmd-plugins/block-diagnostics",
-      "summary": {
-        "zh": "实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用",
-        "en": "Monitor live Block CPU and RSS memory with a 7-category storage treemap"
-      },
-      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.2.13/block-diagnostics-v1.2.13.tar.gz",
-      "sha256": "37f299daf225b8342df83fa93d745f6d262e9549e2a5f05fa385679d6a9dbcbe",
-      "downloads": 321,
-      "stars": 0,
-      "verified": true,
-      "updated_at": "2026-11-19T14:59:03Z",
-      "permissions": [
-        "storage",
-        "notes:read"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"
-        ],
-        "stroke_paths": [
-          "M4.6 16.5A9 9 0 1 1 19.4 16.5",
-          "M12 4.5V6.5",
-          "M4.5 12H6.5",
-          "M17.5 12H19.5"
-        ],
-        "accent_paths": [
-          "M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"
-        ]
-      },
-      "beta": true
-    },
-    {
-      "app": "blockmd",
       "id": "block-canvas-dots",
       "name": {
         "zh": "画布点阵",
         "en": "Canvas Dots"
       },
-      "version": "1.2.0",
+      "version": "1.2.5",
       "author": "eachann1024",
       "repo": "eachann1024/block-canvas-dots",
       "summary": {
         "zh": "为笔记铺上与行高对齐的点阵或方格，帮助弱视读者稳定追踪每一行",
         "en": "Line-aligned dot or grid canvas for notes, helping low-vision readers track each line"
       },
-      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.0/block-canvas-dots-v1.2.0.tar.gz",
-      "sha256": "789a95ebe50dfc0da50c1015a4ad1731cf5c88108651075240037c9b8bd902e1",
-      "downloads": 4,
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.5/block-canvas-dots-v1.2.5.tar.gz",
+      "sha256": "4e7fd1f97bd819c5f6b6611d531ce7ce9355aaadcf5cd13f7f83f42538b57b2f",
+      "downloads": 5,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-19T15:35:43Z",
+      "updated_at": "2026-11-19T18:11:33Z",
       "permissions": [
         "storage",
         "notes:read"
@@ -232,6 +188,53 @@
           "M12 12m-1.2 0a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0"
         ]
       }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-titlebar",
+      "name": {
+        "zh": "顶栏图标",
+        "en": "Titlebar Icons"
+      },
+      "version": "1.0.5",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-titlebar",
+      "summary": {
+        "zh": "自定义顶栏右上角显示的图标，隐藏不需要的按钮",
+        "en": "Choose which icons appear in the top-right titlebar"
+      },
+      "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.5/block-titlebar-v1.0.5.tar.gz",
+      "sha256": "6cabfc6945fa7d684c0d0e7835a837c0e5fc8425a709474c3b284033e8fd6e0f",
+      "downloads": 0,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-19T18:19:19Z",
+      "permissions": [
+        "storage",
+        "ui:titlebar",
+        "ui:settings"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4H4V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M4 10h16",
+          "M7.5 14h6",
+          "M7.5 17h4"
+        ],
+        "accent_paths": [
+          "M11 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M14 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M17 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"
+        ]
+      },
+      "beta": true
     }
   ]
 }
