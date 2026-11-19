@@ -2515,7 +2515,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 						texts, changes := diffChanges(diff)
 						fenced := appUi.DiffFenceMask(texts, changes)
 						setext := appUi.DiffSetextLevels(texts, changes)
-						tableCols := appUi.DiffTableCols(texts, fenced)
+						tableCols := appUi.DiffTableCols(texts, changes)
 						headers, seps := appUi.DiffTableRoles(texts, changes)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
 							Radius(theme.RadiusLG).Border(1, pal.Hairline).Clip().Children(func() {
