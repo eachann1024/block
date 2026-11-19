@@ -249,9 +249,9 @@ var (
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
-// diffCodeSpans returns the [start, end) byte ranges of the code spans in s, each
+// CodeSpans returns the [start, end) byte ranges of the code spans in s, each
 // delimited by equal backtick runs.
-func diffCodeSpans(s string) [][2]int {
+func CodeSpans(s string) [][2]int {
 	var spans [][2]int
 	for i := 0; i < len(s); {
 		if s[i] != '`' {
@@ -301,7 +301,7 @@ func diffEscaped(s string, i int) bool {
 func diffPlainLinks(s string) string {
 	for _, re := range []*regexp.Regexp{diffImageRE, diffLinkRE, diffAutolinkRE} {
 		masked := []byte(s)
-		for _, sp := range diffCodeSpans(s) {
+		for _, sp := range CodeSpans(s) {
 			for k := sp[0]; k < sp[1]; k++ {
 				masked[k] = 'x'
 			}
