@@ -1065,6 +1065,8 @@ func CodeSpans(s string) [][2]int {
 // diffLiteralEscaper backslash-escapes the inline Markdown markers in plain text.
 var diffLiteralEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "$", `\$`, "&", `\&`)
 
+// diffAutolinkEscaper is diffLiteralEscaper with brackets as entities.
+var diffAutolinkEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", "&#91;", "]", "&#93;", "$", `\$`, "&", `\&`)
 
 // diffEscaped reports whether the byte at i follows an odd run of backslashes.
 func diffEscaped(s string, i int) bool {
@@ -1127,8 +1129,9 @@ func diffPlainLinks(s string, refs map[string]bool) string {
 				}
 			}
 			if re == diffAutolinkRE {
-				// An autolink shows its address verbatim, so "__tests__" is not bold.
-				text = diffLiteralEscaper.Replace(text)
+				// An autolink shows its address verbatim, so "__tests__" is not bold;
+				// brackets go as entities, since "\[status\]" would read as math.
+				text = diffAutolinkEscaper.Replace(text)
 			} else {
 				// Link text is inline: "[# Release](…)" must not become a heading.
 				text = diffInlineStart(text)
