@@ -55,7 +55,6 @@ func (c *Controller) OpenStoreSource(source string) {
 	if c.sup == nil {
 		return
 	}
-	c.sup.CancelReplacement("")
 	if source == "" {
 		c.closeStoreReadme()
 		return
@@ -265,14 +264,12 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		c.sup.MaybeRefreshCatalogAsync(5 * time.Minute)
 		if c.storeDetailOpen() {
 			renderStoreDetail(ctx, c, onSelectTab)
-		} else {
-			renderStoreBody(ctx, c, onSelectTab)
+			return
 		}
-		renderReplacementConfirmModal(ctx, c)
+		renderStoreBody(ctx, c, onSelectTab)
 		return
 	}
 	c.closeStoreReadme()
-	c.sup.CancelReplacement("")
 	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
 	if !ok || pluginID == "" {
 		return

@@ -105,25 +105,18 @@ type Supervisor struct {
 	liveTimers       map[string]*time.Timer
 	liveViewedAt     map[string]time.Time
 	feedbackTimers   map[viewKey]*time.Timer
-	storeRefreshing    bool
-	storeRefreshedAt   time.Time
-	installingID       string
-	replacingID        string
-	stopping           bool
-	storeErr           string
-	storeNotice        string
-	pendingReplacement *pendingReplacementState
-}
-
-type pendingReplacementState struct {
-	confirmation ReplacementConfirmation
-	onInstalled  func(pluginID string)
+	storeRefreshing  bool
+	storeRefreshedAt time.Time
+	installingID     string
+	replacingID      string
+	stopping         bool
+	storeErr         string
+	storeNotice      string
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	sm := NewStoreManager(cfg.AppDataDir)
 	_ = sm.EnsureDirs()
-	sm.CleanupOrphanedStaged()
 	installed, _ := sm.ListInstalled()
 	s := &Supervisor{
 		store:          sm,
@@ -550,23 +543,9 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 	}()
 }
 
-// PendingReplacement returns a copy of the staged plugin replacement awaiting user confirmation, or nil.
-func (s *Supervisor) PendingReplacement() *ReplacementConfirmation {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.pendingReplacement == nil {
-		return nil
-	}
-	cp := s.pendingReplacement.confirmation
-	if len(cp.AddedPermissions) > 0 {
-		cp.AddedPermissions = append([]Permission(nil), cp.AddedPermissions...)
-	}
-	return &cp
-}
-
 func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(pluginID string)) {
-	s.startInstallAsync(entry.ID, false, func(ctx context.Context) (*InstallPreparation, error) {
-		return s.store.PrepareInstallEntry(ctx, entry)
+	s.startInstallAsync(entry.ID, func(ctx context.Context) (*InstalledApp, error) {
+		return s.store.InstallEntryExplicit(ctx, entry)
 	}, onInstalled)
 }
 
@@ -575,15 +554,14 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 	if spec == "" {
 		return
 	}
-	s.startInstallAsync("__manual__", true, func(ctx context.Context) (*InstallPreparation, error) {
-		return s.store.PrepareInstallFromSource(ctx, spec)
+	s.startInstallAsync("__manual__", func(ctx context.Context) (*InstalledApp, error) {
+		return s.store.InstallFromSourceExplicit(ctx, spec)
 	}, onInstalled)
 }
 
 func (s *Supervisor) startInstallAsync(
 	installingKey string,
-	isManual bool,
-	prepare func(context.Context) (*InstallPreparation, error),
+	install func(context.Context) (*InstalledApp, error),
 	onInstalled func(pluginID string),
 ) {
 	s.mu.Lock()
@@ -591,86 +569,18 @@ func (s *Supervisor) startInstallAsync(
 		s.mu.Unlock()
 		return
 	}
-	prevPending := s.pendingReplacement
-	s.pendingReplacement = nil
 	s.installingID = installingKey
 	s.storeErr = ""
 	s.storeNotice = ""
 	s.mu.Unlock()
-	if prevPending != nil {
-		s.store.DiscardReplacement(prevPending.confirmation.Token)
-	}
 	s.notifyChanged()
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		prep, err := prepare(ctx)
-		if err == nil && prep != nil && prep.Confirmation != nil {
-			conf := *prep.Confirmation
-			conf.InstallingID = installingKey
-			conf.IsManual = isManual
-			s.mu.Lock()
-			s.installingID = ""
-			s.replacingID = ""
-			if s.stopping {
-				s.mu.Unlock()
-				s.store.DiscardReplacement(conf.Token)
-				return
-			}
-			s.pendingReplacement = &pendingReplacementState{
-				confirmation: conf,
-				onInstalled:  onInstalled,
-			}
-			s.mu.Unlock()
-			s.notifyChanged()
-			return
-		}
-		var inst *InstalledApp
-		if prep != nil {
-			inst = prep.Installed
-		}
+		inst, err := install(ctx)
 		s.finishInstallAsync(inst, err, onInstalled)
 	}()
-}
-
-// ConfirmReplacementAsync commits the pending staged replacement bound to token and expectedDigest.
-func (s *Supervisor) ConfirmReplacementAsync(token, expectedDigest string) {
-	s.mu.Lock()
-	if s.stopping || s.installingID != "" || s.pendingReplacement == nil {
-		s.mu.Unlock()
-		return
-	}
-	pending := s.pendingReplacement
-	if pending.confirmation.Token != token || pending.confirmation.CandidateDigest != expectedDigest {
-		s.mu.Unlock()
-		return
-	}
-	s.pendingReplacement = nil
-	s.installingID = pending.confirmation.InstallingID
-	s.storeErr = ""
-	s.storeNotice = ""
-	s.mu.Unlock()
-	s.notifyChanged()
-
-	go func() {
-		inst, err := s.store.ConfirmReplacement(pending.confirmation.Token, pending.confirmation.CandidateDigest)
-		s.finishInstallAsync(inst, err, pending.onInstalled)
-	}()
-}
-
-// CancelReplacement discards the pending staged replacement (if token is empty or matches).
-func (s *Supervisor) CancelReplacement(token string) {
-	s.mu.Lock()
-	if s.pendingReplacement == nil || (token != "" && s.pendingReplacement.confirmation.Token != token) {
-		s.mu.Unlock()
-		return
-	}
-	tok := s.pendingReplacement.confirmation.Token
-	s.pendingReplacement = nil
-	s.mu.Unlock()
-	s.store.DiscardReplacement(tok)
-	s.notifyChanged()
 }
 
 func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string)) {
@@ -707,11 +617,6 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.mu.Unlock()
 		return
 	}
-	var discardToken string
-	if s.pendingReplacement != nil && s.pendingReplacement.confirmation.PluginID == pluginID {
-		discardToken = s.pendingReplacement.confirmation.Token
-		s.pendingReplacement = nil
-	}
 	s.installingID = "__uninstall__"
 	s.replacingID = pluginID
 	if vs := s.views[key]; vs != nil {
@@ -724,9 +629,6 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		vs.errorFromBg = false
 	}
 	s.mu.Unlock()
-	if discardToken != "" {
-		s.store.DiscardReplacement(discardToken)
-	}
 	s.notifyChanged()
 
 	go func() {
@@ -1676,7 +1578,6 @@ func openLocalPathInOS(downloadsDir, rawPath string, reveal bool) {
 func (s *Supervisor) ShutdownAll() {
 	s.mu.Lock()
 	s.stopping = true
-	s.pendingReplacement = nil
 	for id := range s.liveTimers {
 		s.stopLiveTimerLocked(id)
 	}
@@ -1689,7 +1590,6 @@ func (s *Supervisor) ShutdownAll() {
 		delete(s.runtimes, id)
 	}
 	s.mu.Unlock()
-	s.store.DiscardAllStaged()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
