@@ -50,7 +50,7 @@ func DropdownSelect(
 	open := state.Open
 	borderCol := pal.BtnBorder
 	if open {
-		borderCol = pal.Accent
+		borderCol = pal.Placeholder
 	}
 
 	if id != "" {
@@ -73,9 +73,9 @@ func DropdownSelect(
 	pressed := btn.Pressed()
 	bg := pal.Shell
 	if pressed {
-		bg = pal.Selected
+		bg = pal.Shell.Mix(pal.Text, 0.09)
 	} else if hovered {
-		bg = pal.Hover
+		bg = pal.Shell.Mix(pal.Text, 0.05)
 	}
 	AnimateSurfaceColors(btn, bg, borderCol, true)
 	TactileCard(btn, hovered, pressed, open, false)
