@@ -120,73 +120,6 @@
   .nav.scrolled .nav-gh { background: rgba(255, 255, 255, 0.94); box-shadow: 0 8px 22px rgba(24, 34, 56, 0.12); }
   .nav.scrolled .nav-gh:hover { background: #1f2633; }
 
-  /* 方案 C 右侧书签刻度条（浅色明亮版：弹簧滑轨光尺 + 磁吸悬停波峰 + 丝滑章节定位） */
-  .side-rail {
-    position: fixed; right: clamp(14px, 2vw, 28px); top: 50%; z-index: 48;
-    transform: translate3d(0, -50%, 0);
-    display: flex; flex-direction: column; align-items: flex-end;
-    padding: 8px 6px 8px 14px; border-radius: 14px;
-    transition: opacity .7s cubic-bezier(.22, 1, .36, 1), background .28s ease, border-color .28s ease, box-shadow .28s ease;
-    border: 1px solid transparent;
-  }
-  html.js-intro:not(.intro-done) .side-rail { opacity: 0; }
-  .side-rail.at-hero:not(:hover) { opacity: 0.72; }
-  .side-rail.at-hero:not(:hover) .rail-lbl { opacity: 0; transform: translate3d(6px, 0, 0); pointer-events: none; }
-  .side-rail-beam {
-    position: absolute; right: 6px; top: 25.75px; width: 24px; height: 2.5px; border-radius: 999px;
-    background: linear-gradient(90deg, #547dd0, #2f57a6);
-    box-shadow: 0 0 10px rgba(84, 125, 208, 0.42);
-    pointer-events: none; opacity: 0; transform-origin: right center;
-    will-change: transform, opacity;
-    transition: opacity .28s ease;
-  }
-  .side-rail.in-sec .side-rail-beam { opacity: 1; }
-  .rail-item {
-    position: relative; height: 38px; padding: 0 0 0 8px;
-    display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px;
-    cursor: pointer; user-select: none;
-    opacity: 1; transform: none;
-    transition: opacity .55s cubic-bezier(.22, 1, .36, 1) calc(var(--i, 0) * 45ms),
-                transform .55s cubic-bezier(.22, 1, .36, 1) calc(var(--i, 0) * 45ms);
-  }
-  html.js-intro:not(.intro-done) .rail-item { opacity: 0; transform: translate3d(12px, 0, 0); }
-  .rail-item:not(:last-child)::after {
-    content: ""; position: absolute; right: 0; bottom: -0.5px; width: 5px; height: 1px;
-    border-radius: 999px; background: rgba(110, 125, 152, 0.28); pointer-events: none;
-  }
-  .rail-lbl {
-    font-size: 13px; line-height: 1; font-weight: 450; color: #5f6b80; white-space: nowrap;
-    text-shadow: 0 1px 8px rgba(255, 255, 255, 0.95);
-    opacity: 0.78; transform: translate3d(0, 0, 0);
-    transition: color .22s ease, opacity .24s ease, transform .32s cubic-bezier(.22, 1, .36, 1);
-  }
-  .rail-item.on .rail-lbl { color: #182235; font-weight: 600; opacity: 1; transform: translate3d(-4px, 0, 0); }
-  .rail-item:hover .rail-lbl { color: #161922; opacity: 1; transform: translate3d(-5px, 0, 0); }
-  .rail-tick {
-    width: var(--tw, 10px); height: 2px; border-radius: 999px; flex: none;
-    background: #c5cfdf;
-    transition: width .28s cubic-bezier(.22, 1.25, .36, 1), background-color .22s ease, opacity .22s ease, transform .22s var(--ease), box-shadow .22s ease;
-  }
-  .rail-item.on .rail-tick { width: var(--tw, 24px); opacity: 0.25; }
-  .rail-item:hover .rail-tick { background: #547dd0; opacity: 1; }
-  .rail-item:active .rail-tick { transform: scaleY(1.9); }
-  /* 首屏引导：光点逐格跳过刻度，落到哪格哪格点亮 */
-  .rail-item.hint .rail-tick { width: 24px; background: #547dd0; opacity: 1; box-shadow: 0 0 10px rgba(84, 125, 208, 0.42); }
-  .side-rail.at-hero:not(:hover) .rail-item.hint .rail-lbl { opacity: 1; color: #2f57a6; font-weight: 600; transform: translate3d(-4px, 0, 0); }
-  .rail-dot {
-    position: absolute; right: 6px; top: 23px; width: 8px; height: 8px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #9db9ee, #3d67bd);
-    box-shadow: 0 0 0 3px rgba(84, 125, 208, 0.16), 0 0 12px rgba(84, 125, 208, 0.55);
-    pointer-events: none; opacity: 0; will-change: transform, opacity;
-  }
-  .side-rail:hover .rail-dot, .side-rail.in-sec .rail-dot { opacity: 0 !important; }
-  @media (max-width: 1360px) {
-    .rail-item:not(.on) .rail-lbl { opacity: 0; transform: translate3d(6px, 0, 0); pointer-events: none; }
-    .side-rail:hover { background: rgba(255, 255, 255, 0.92); border-color: #dde3ef; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(24, 34, 56, 0.10); }
-    .side-rail:hover .rail-lbl { opacity: 1; transform: translate3d(-2px, 0, 0); }
-  }
-  @media (max-width: 900px) { .side-rail { display: none; } }
-
   /* Hero（宣纸晨光水墨聚字） */
   .hero { position: relative; height: 100vh; min-height: 640px; overflow: hidden; display: grid; place-items: center; text-align: center; contain: layout paint; background: var(--canvas); }
   #hero-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
@@ -782,8 +715,6 @@
   @keyframes ripple { 0% { box-shadow: 0 0 0 0 rgba(84, 125, 208, 0.5); } 100% { box-shadow: 0 0 0 11px rgba(84, 125, 208, 0); } }
 
   @media (prefers-reduced-motion: reduce) {
-    .rail-dot { display: none; }
-    .rail-item.hint .rail-tick { width: var(--tw, 10px); background: #c5cfdf; box-shadow: none; }
     .swatch-btn:hover, .cta-seg-item:hover, .ai-chip:hover, .ai-act:hover, .plan-btn:hover, .hist-act-btn:hover, .tb-ai:hover, .win-ic-btn:hover,
     .qn-save-ico:hover, .ai-side-close:hover, .ai-side-full:hover, .hist-ver:hover, .hist-file:hover, .nav-gh:hover, .foot-gh:hover { transform: none; }
     .keys b, .keys.on b, .swatch-btn.on, .seg-item.on, .cta-seg-item.is-active, .hist-ver.on, .dot-pager i.on, .hist-file.fresh.show { animation: none !important; }
@@ -851,15 +782,6 @@
   html.intro-done .blk-word::after { animation: blkGrip .6s var(--ease) .7s forwards; }
   @keyframes blkSel { to { opacity: 1; transform: none; } }
   @keyframes blkGrip { to { opacity: 1; transform: none; } }
-  .cta-gh {
-    display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 20px; border-radius: 10px;
-    background: rgba(255, 255, 255, 0.9); border: 1px solid #d5deec; color: #1f2633; font-size: 15px; font-weight: 600; white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(24, 34, 56, 0.05);
-    transition: background .2s var(--ease), border-color .2s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease);
-  }
-  .cta-gh svg { width: 17px; height: 17px; flex: none; }
-  .cta-gh:hover { background: #ffffff; border-color: #b9c8e3; transform: translateY(-1.5px); box-shadow: 0 10px 22px rgba(24, 34, 56, 0.1); }
-  .cta-gh:active { transform: scale(.97); }
 
   .hero-app {
     --ground: #f1f1f1; --card: #ffffff; --card-line: #e4e6ea; --text: #20242c; --text2: #526071; --text3: #6b7686; --ph: #7a8594;
@@ -919,7 +841,7 @@
   .hero-app.multi .hx-crumb { opacity: 0; transform: translateY(-3px); }
   .hero-app.multi .hx-tabs { opacity: 1; transform: none; }
   .hx-tab { height: 28px; flex: 0 1 168px; min-width: 76px; max-width: 220px; box-sizing: border-box; padding: 0 4px 0 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: 13px; white-space: nowrap; overflow: hidden; transition: flex-basis .2s var(--hx-ease), min-width .2s var(--hx-ease), padding .2s var(--hx-ease), opacity .16s, background .15s, box-shadow .15s, color .15s; }
-  .hx-tab > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .hx-tab > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .hx-tab.hot { background: var(--hover); color: var(--text); }
   .hx-tab.on { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
   .hx-tab.gone { flex-basis: 0; min-width: 0; padding: 0; opacity: 0; }
@@ -934,7 +856,7 @@
   .hx-side-in { width: 240px; height: 100%; display: flex; flex-direction: column; }
   .hx-tools { padding: 4px 8px 6px 12px; display: flex; align-items: center; gap: 2px; }
   .hx-search { flex: 1; min-width: 0; height: 30px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px var(--field-line), 0 1px 2px rgba(32, 36, 44, .04); padding: 0 6px 0 9px; margin-right: 4px; display: flex; align-items: center; gap: 7px; color: var(--ph); font-size: 13.5px; }
-  .hx-search > span { flex: 1; }
+  .hx-search > span:first-of-type { flex: 1; }
   .hx-kbd { height: 18px; padding: 0 5px; border-radius: 4px; background: var(--kbd-bg); box-shadow: inset 0 0 0 1px var(--field-line); font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--text2); }
   .hx-tree { padding: 4px 8px 0 12px; display: flex; flex-direction: column; gap: 2px; }
   .hx-row { height: 32px; border-radius: 6px; padding: 0 8px 0 28px; display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 460; white-space: nowrap; overflow: hidden; transition: background .12s, box-shadow .12s; }
@@ -994,7 +916,7 @@
   .hero-app.chat-float:not(.chat) .hx-chat { width: var(--chat-w); transform: translateX(16px); }
   .hx-chat-in { width: var(--chat-w); height: 100%; display: flex; flex-direction: column; }
   .hx-chat-hd { height: 44px; flex: none; padding: 0 8px 0 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; border-bottom: 1px solid var(--divider); }
-  .hx-chat-hd > span { flex: 1; }
+  .hx-chat-hd > span:first-of-type { flex: 1; }
   .hx-feed { flex: 1; min-height: 0; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 21px; overflow: hidden; }
   .hx-feed > * { display: none; }
   .hx-feed > .on { display: block; animation: rise .24s ease; }
@@ -1076,7 +998,7 @@
   @media (prefers-reduced-motion: reduce) {
     .hero-app { opacity: 1; transform: none; }
     .blk-word::before, .blk-word::after { opacity: 1; transform: none; animation: none !important; }
-    .feat:hover, .agent:hover, .plug:hover, .nm-link:hover, .cta-gh:hover { transform: none; }
+    .feat:hover, .agent:hover, .plug:hover, .nm-link:hover { transform: none; }
   }
 </style>
 </head>
@@ -1124,20 +1046,6 @@
   </a>
   </div>
 </header>
-
-<nav class="side-rail at-hero" id="side-rail" aria-label="章节导航">
-  <div class="side-rail-beam" id="rail-beam" aria-hidden="true"></div>
-  <div class="rail-dot" id="rail-dot" aria-hidden="true"></div>
-  <a class="rail-item" href="#perf" data-sec="perf" style="--i:0"><span class="rail-lbl">秒开</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#features" data-sec="features" style="--i:1"><span class="rail-lbl">全部功能</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#editor" data-sec="editor" style="--i:2"><span class="rail-lbl">优雅的编写体验</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#memo" data-sec="memo" style="--i:3"><span class="rail-lbl">随手记</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#ai" data-sec="ai" style="--i:4"><span class="rail-lbl">AI 完整体验</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#agents" data-sec="agents" style="--i:5"><span class="rail-lbl">接入本机 AI</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#image" data-sec="image" style="--i:6"><span class="rail-lbl">生成图片</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#compare" data-sec="compare" style="--i:7"><span class="rail-lbl">对比</span><span class="rail-tick"></span></a>
-  <a class="rail-item" href="#extensions" data-sec="extensions" style="--i:8"><span class="rail-lbl">应用商店</span><span class="rail-tick"></span></a>
-</nav>
 
 <header class="hero hero-rich" id="top">
   <canvas id="hero-gl" aria-hidden="true"></canvas>
@@ -1869,7 +1777,7 @@ const root = document.documentElement;
 
 async function finishHeroIntro() {
   root.classList.add('intro-done');
-  const introElements = document.querySelectorAll('#title, .hero-sub, .hero-cta, .side-rail, .rail-item');
+  const introElements = document.querySelectorAll('#title, .hero-sub, .hero-cta');
   const transitions = Array.from(introElements).flatMap(el => el.getAnimations());
   await Promise.allSettled(transitions.map(transition => transition.finished));
   root.classList.add('hero-intro-complete');
@@ -2230,7 +2138,10 @@ function initPerf() {
   group.add(mesh);
 
   const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-  let visible = false, rafId = 0, startAt = 0, lastCnt = -1;
+  const Z_MIN = 46, Z_MAX = 1850;
+  const Z_SPAN_SQ = Z_MAX * Z_MAX - Z_MIN * Z_MIN;
+  let active = false, rafId = 0, lastFrameAt = 0, elapsedSec = 0, driftSec = 0, lastCnt = -1;
+  let lastUP = RM ? 1 : 0, lastDrift = 0;
   const CYCLE = 9.2;
 
   function measure() {
@@ -2241,6 +2152,8 @@ function initPerf() {
   }
 
   function drawAt(uP, drift) {
+    lastUP = uP;
+    lastDrift = drift;
     const e = ease(uP);
     mat.uniforms.uP.value = uP;
 
@@ -2253,45 +2166,82 @@ function initPerf() {
     const activePages = Math.max(1, lo);
     mesh.count = pageEndIdx[Math.min(PAGES - 1, activePages - 1)];
 
-    const z = 46 * Math.pow(1850 / 46, e);
+    const z = Z_MIN * Math.pow(Z_MAX / Z_MIN, e);
     cam.position.set(Math.sin(drift) * 14 * e, -e * 38 + Math.cos(drift * 0.8) * 8 * e, z);
     cam.lookAt(0, -e * 38, 0);
     group.rotation.x = -0.42 * e;
     group.rotation.z = 0.06 * e;
     renderer.render(scene, cam);
 
-    const n = uP >= 0.992 ? 100000 : Math.max(60, Math.round((activePages / PAGES) * 100000));
+    const areaFrac = Math.min(1, Math.max(0, (z * z - Z_MIN * Z_MIN) / Z_SPAN_SQ));
+    const n = uP >= 0.995 ? 100000 : Math.max(1, Math.round(1 + areaFrac * 99999));
     if (n !== lastCnt) { lastCnt = n; cnt.textContent = n.toLocaleString('en-US'); }
+  }
+
+  function getVisibleRatio() {
+    const rect = sec.getBoundingClientRect();
+    const vh = window.innerHeight || 800;
+    const overlap = Math.max(0, Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
+    const denom = Math.max(1, Math.min(rect.height, vh));
+    return overlap / denom;
   }
 
   function tick(now) {
     rafId = 0;
-    if (!visible || document.hidden) return;
-    if (!startAt) startAt = now;
-    const elapsed = ((now - startAt) / 1000) % CYCLE;
+    if (!active || document.hidden) { lastFrameAt = 0; return; }
+    if (!lastFrameAt) lastFrameAt = now;
+    const dt = Math.min(0.05, Math.max(0, (now - lastFrameAt) / 1000));
+    lastFrameAt = now;
+    elapsedSec = (elapsedSec + dt) % CYCLE;
+    driftSec += dt * 0.7;
     let uP;
-    if (elapsed < 3.6) uP = elapsed / 3.6;
-    else if (elapsed < 7.8) uP = 1;
-    else uP = 1 - (elapsed - 7.8) / 1.4;
-    drawAt(Math.min(1, Math.max(0, uP)), (now - startAt) * 0.0007);
+    if (elapsedSec < 3.6) uP = elapsedSec / 3.6;
+    else if (elapsedSec < 7.8) uP = 1;
+    else uP = 1 - (elapsedSec - 7.8) / 1.4;
+    drawAt(Math.min(1, Math.max(0, uP)), driftSec);
     rafId = requestAnimationFrame(tick);
   }
 
   function sync() {
     if (RM) { drawAt(1, 0); return; }
-    if (visible && !document.hidden) {
-      if (!rafId) rafId = requestAnimationFrame(tick);
-    } else if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
+    if (active && !document.hidden) {
+      if (!rafId) {
+        lastFrameAt = 0;
+        rafId = requestAnimationFrame(tick);
+      }
+    } else {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      lastFrameAt = 0;
+    }
+  }
+
+  function evalVisibility() {
+    if (RM) return;
+    const ratio = getVisibleRatio();
+    if (!active && ratio >= 0.55) {
+      active = true;
+      sync();
+    } else if (active && ratio < 0.2) {
+      active = false;
+      sync();
+    }
+    if (!active && ratio <= 0.02 && (elapsedSec !== 0 || lastUP !== 0)) {
+      elapsedSec = 0;
+      driftSec = 0;
+      drawAt(0, 0);
     }
   }
 
   measure();
-  drawAt(RM ? 1 : 0.02, 0);
-  addEventListener('resize', () => { measure(); if (!rafId) drawAt(RM ? 1 : 0.5, 0); }, { passive: true });
+  drawAt(RM ? 1 : 0, 0);
+  addEventListener('resize', () => { measure(); drawAt(RM ? 1 : lastUP, lastDrift); evalVisibility(); }, { passive: true });
+  addEventListener('scroll', evalVisibility, { passive: true });
   document.addEventListener('visibilitychange', sync);
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; sync(); }, { threshold: 0.15 }).observe(sec);
+  new IntersectionObserver(evalVisibility, { threshold: [0, 0.02, 0.2, 0.55, 0.8] }).observe(sec);
+  evalVisibility();
 }
 </script>
 
@@ -2866,15 +2816,10 @@ function initPerf() {
     });
   })();
 
-  /* ---------- 7. 方案 C 右侧书签刻度条：物理弹簧光尺 + 滚动章节追踪 + 磁吸波峰 + 丝滑跳转 ---------- */
+  /* ---------- 7. 顶栏滚动状态与丝滑锚点跳转 ---------- */
   (function () {
-    const nav = $('top-nav'), rail = $('side-rail'), beam = $('rail-beam');
-    if (!rail) return;
-    const items = [...rail.querySelectorAll('.rail-item')];
-    const secs = items.map(a => $(a.dataset.sec)).filter(Boolean);
-    if (!secs.length) return;
-
-    let targetIdx = 0, currPos = 0, vel = 0, activeIdx = -1, springRaf = 0, navAnimToken = 0;
+    const nav = $('top-nav');
+    let navAnimToken = 0;
 
     function easeScrollWindow(toY, dur = 680) {
       const tok = ++navAnimToken;
@@ -2897,7 +2842,7 @@ function initPerf() {
     addEventListener('wheel', () => { navAnimToken++; }, { passive: true });
     addEventListener('touchstart', () => { navAnimToken++; }, { passive: true });
 
-    document.querySelectorAll('[data-jump], .rail-item').forEach(link => {
+    document.querySelectorAll('[data-jump]').forEach(link => {
       link.addEventListener('click', ev => {
         const href = link.getAttribute('href');
         if (!href || !href.startsWith('#')) return;
@@ -2909,145 +2854,16 @@ function initPerf() {
       });
     });
 
-    function stepSpring() {
-      springRaf = 0;
-      if (RM) {
-        currPos = targetIdx;
-        vel = 0;
-      } else {
-        const force = (targetIdx - currPos) * 0.18;
-        vel = (vel + force) * 0.72;
-        currPos += vel;
-        if (Math.abs(targetIdx - currPos) > 0.002 || Math.abs(vel) > 0.002) {
-          springRaf = requestAnimationFrame(stepSpring);
-        } else {
-          currPos = targetIdx;
-          vel = 0;
-        }
-      }
-      if (beam) {
-        const stretch = 1 + Math.min(0.28, Math.abs(vel) * 0.65);
-        beam.style.transform = `translate3d(0, ${currPos * 38}px, 0) scaleX(${stretch.toFixed(3)})`;
-      }
-    }
-
     function updateFromScroll() {
       const vh = window.innerHeight || 800;
       const sy = window.scrollY;
       if (sy > 40) document.documentElement.classList.add('intro-done');
       if (nav) nav.classList.toggle('scrolled', sy > vh * 0.55);
-
-      const firstRect = secs[0].getBoundingClientRect();
-      const inSec = firstRect.top < vh * 0.62;
-      rail.classList.toggle('at-hero', !inSec);
-      rail.classList.toggle('in-sec', inSec);
-
-      if (!inSec) {
-        if (activeIdx !== -1) {
-          activeIdx = -1;
-          items.forEach(el => el.classList.remove('on'));
-        }
-        targetIdx = 0;
-      } else {
-        const probeY = sy + vh * 0.42;
-        const tops = secs.map(s => s.getBoundingClientRect().top + sy);
-        let idx = 0;
-        for (let i = 0; i < tops.length; i++) {
-          if (probeY >= tops[i]) idx = i;
-        }
-        targetIdx = idx;
-        if (idx !== activeIdx) {
-          activeIdx = idx;
-          items.forEach((el, i) => el.classList.toggle('on', i === activeIdx));
-        }
-      }
-      if (!springRaf) springRaf = requestAnimationFrame(stepSpring);
-    }
-
-    if (!RM) {
-      rail.addEventListener('pointermove', ev => {
-        const py = ev.clientY;
-        items.forEach((el, i) => {
-          const r = el.getBoundingClientRect();
-          const cy = r.top + r.height / 2;
-          const dist = Math.abs(py - cy);
-          const base = i === activeIdx ? 24 : 10;
-          const boost = (i === activeIdx ? 6 : 16) * Math.exp(-(dist * dist) / 900);
-          el.style.setProperty('--tw', `${(base + boost).toFixed(1)}px`);
-        });
-      });
-      rail.addEventListener('pointerleave', () => {
-        items.forEach(el => el.style.removeProperty('--tw'));
-      });
     }
 
     addEventListener('scroll', updateFromScroll, { passive: true });
     addEventListener('resize', updateFromScroll, { passive: true });
     updateFromScroll();
-  })();
-
-  /* ---------- 7b. 首屏刻度跳跃引导：光点逐格弹跳，落到哪格哪格点亮，仅在首屏且未悬停时播放 ---------- */
-  (function () {
-    const rail = $('side-rail'), dot = $('rail-dot');
-    if (!rail || !dot || RM) return;
-    const root = document.documentElement;
-    const items = [...rail.querySelectorAll('.rail-item')];
-    const STEP = 38, HOP = 560, DWELL = 120, LEAD = 520, TAIL = 1000, FADE = 320, REST = 1700, ARC = 13;
-    const N = items.length - 1, SPAN = HOP + DWELL;
-    const END_HOPS = LEAD + N * SPAN, CYCLE = END_HOPS + TAIL + FADE + REST;
-    let hovering = false, raf = 0, t0 = 0, lit = -1;
-    const easeIO = k => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-    const easeOut = k => 1 - Math.pow(1 - k, 3);
-    const easeOutBack = k => { const c = 1.9; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
-    const setLit = i => { if (i === lit) return; lit = i; items.forEach((el, j) => el.classList.toggle('hint', j === i)); };
-    const canPlay = () => rail.classList.contains('at-hero') && !hovering && !document.hidden &&
-      root.classList.contains('hero-intro-complete') && rail.getClientRects().length > 0;
-    const place = (y, x, sx, sy, o) => {
-      dot.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
-      dot.style.opacity = o.toFixed(3);
-    };
-    function stop() {
-      if (raf) { cancelAnimationFrame(raf); raf = 0; }
-      setLit(-1); dot.style.opacity = '0';
-    }
-    function frame(now) {
-      raf = 0;
-      if (!canPlay()) { stop(); return; }
-      const e = (now - t0) % CYCLE;
-      if (e < LEAD) {
-        const k = e / LEAD, sc = Math.max(.01, easeOutBack(k));
-        place(0, 0, sc, sc, Math.min(1, k * 2.5)); setLit(k > .55 ? 0 : -1);
-      } else if (e < END_HOPS) {
-        const u = e - LEAD, i = Math.floor(u / SPAN), r = u - i * SPAN;
-        if (r < HOP) {
-          const k = r / HOP, arc = Math.sin(Math.PI * k);
-          place((i + easeIO(k)) * STEP, -ARC * arc, 1 - .18 * arc, 1 + .38 * arc, 1); setLit(i);
-        } else {
-          const f = 1 - easeOut((r - HOP) / DWELL);
-          place((i + 1) * STEP, 0, 1 + .5 * f, 1 - .34 * f, 1); setLit(i + 1);
-        }
-      } else if (e < END_HOPS + TAIL) {
-        place(N * STEP, 0, 1, 1, 1); setLit(N);
-      } else if (e < END_HOPS + TAIL + FADE) {
-        const k = (e - END_HOPS - TAIL) / FADE;
-        place(N * STEP, 0, 1 - .4 * k, 1 - .4 * k, 1 - k); setLit(k > .35 ? -1 : N);
-      } else {
-        place(0, 0, .01, .01, 0); setLit(-1);
-      }
-      raf = requestAnimationFrame(frame);
-    }
-    function sync() {
-      if (canPlay()) { if (!raf) { t0 = performance.now(); raf = requestAnimationFrame(frame); } }
-      else stop();
-    }
-    rail.addEventListener('pointerenter', () => { hovering = true; sync(); });
-    rail.addEventListener('pointerleave', () => { hovering = false; sync(); });
-    document.addEventListener('visibilitychange', sync);
-    const mo = new MutationObserver(sync);
-    mo.observe(root, { attributes: true, attributeFilter: ['class'] });
-    mo.observe(rail, { attributes: true, attributeFilter: ['class'] });
-    addEventListener('resize', sync, { passive: true });
-    sync();
   })();
 
   /* ---------- 8. 智能系统架构识别 + GitHub / 加速节点自动测速分流（同步 block.cooool.top） ---------- */
@@ -3152,14 +2968,10 @@ function initPerf() {
 
     function renderCluster(root) {
       const othersText = OS_ORDER.filter(o => o !== state.os).map(o => OS_NAMES[o]).join(' · ');
-      const ghBtn = root.closest('.hero')
-        ? '<a class="cta-gh" href="https://github.com/eachann1024/block" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>在 GitHub 查看源码</span></a>'
-        : '';
       root.innerHTML =
         '<div class="cta-pair">' +
           `<a class="cta-main" data-dl-primary href="${defaultHref(state.os)}">${DL_SVG}<span>${CTA_LABELS[state.os]}</span></a>` +
           `<div class="cta-seg">${buildSegHtml()}</div>` +
-          ghBtn +
         '</div>' +
         `<span class="cta-support">同时支持 ${othersText}</span>`;
 
