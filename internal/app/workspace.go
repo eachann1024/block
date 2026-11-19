@@ -72,6 +72,8 @@ type Workspace struct {
 	modals    *modals.Manager
 	updater   *updater.Service
 	pluginsUI *pluginui.Controller
+	pluginUI  *pluginHostUI
+	palette   CommandPalette
 	quick     *modals.QuickNoteController
 	searchWin *modals.SearchWindowController
 
@@ -95,9 +97,10 @@ type Workspace struct {
 	saveGeneration      uint64
 	selfWriteUntil      time.Time
 
-	aiSelKey    aiSelectionSyncKey
-	hasAISelKey bool
-	aiSelNote   string
+	aiSelKey         aiSelectionSyncKey
+	hasAISelKey      bool
+	aiSelNote        string
+	lastNotifiedNote string
 }
 
 type aiSelectionSyncKey struct {
@@ -205,6 +208,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 	})
 	w.modals.Updater = w.updater
+	w.pluginUI = newPluginHostUI(w)
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
 		AppDataDir:  actualDir,
 		HostVersion: updater.CurrentVersion(),
@@ -290,6 +294,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 		ApplyNoteWrite: w.applyPluginNoteWrite,
 		OnChanged:      w.RequestRedraw,
+		UI:             w.pluginUI,
 	}))
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
@@ -298,6 +303,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.wireQuickNoteCallbacks()
 	w.wireSearchWindowCallbacks()
 	w.hydrateInitialWorkspace()
+	w.lastNotifiedNote = w.State().ActiveTab
 	return w
 }
 
@@ -353,6 +359,31 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
 	sess.OnPickImages = func(blockID model.BlockID, replace bool) {
 		w.pickImagesForSession(sess, blockID, replace)
+	}
+	sess.ExtraContextItems = func() []editor.ContextMenuExtra {
+		sup := w.Plugins()
+		if sup == nil {
+			return nil
+		}
+		items := sup.EditorMenuItems()
+		if len(items) == 0 {
+			return nil
+		}
+		out := make([]editor.ContextMenuExtra, 0, len(items))
+		for _, it := range items {
+			item := it
+			out = append(out, editor.ContextMenuExtra{
+				Label: item.Title,
+				OnChoose: func() {
+					sup.RunCommandAsync(item.PluginID, item.Command, plugins.CommandContext{
+						Note:      sup.ActiveNoteRel(),
+						Selection: sess.SelectedMarkdown(),
+						Source:    "editor_menu",
+					})
+				},
+			})
+		}
+		return out
 	}
 	return sess
 }
@@ -728,6 +759,18 @@ func (w *Workspace) wireModalCallbacks() {
 		}
 		if prevState.Folder != next.Folder || !scanOptionsEqual(prevScan, nextScan) {
 			w.RescanNotebook()
+		}
+		if sup := w.Plugins(); sup != nil {
+			if prevState.Theme != next.Theme {
+				mode := string(next.Theme)
+				if mode == "" {
+					mode = string(model.ThemeSystem)
+				}
+				sup.EmitWorkspaceEvent("theme.changed", map[string]any{"theme": mode})
+			}
+			if prevState.Language != next.Language {
+				sup.EmitWorkspaceEvent("locale.changed", map[string]any{"locale": string(theme.Language())})
+			}
 		}
 		if prevState.Language != next.Language ||
 			prevState.ShortcutSearch != next.ShortcutSearch ||
@@ -1751,7 +1794,9 @@ func (w *Workspace) RejectBatchPlan(planID string) error {
 		delete(w.sessions, drop)
 		w.state.OpenTabs, w.state.ActiveTab, _ = w.tabOps.CloseTab(w.state.OpenTabs, w.state.ActiveTab, drop)
 	}
+	active := w.state.ActiveTab
 	w.mu.Unlock()
+	w.emitNoteOpenedIfChanged(active)
 	w.RequestRedraw()
 	return nil
 }
@@ -1877,6 +1922,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 		w.sidebarUI.FocusDir = ""
 		w.sidebarUI.CancelRename()
 		w.sidebarUI.ClearDrag()
+		w.lastNotifiedNote = next.ActiveTab
 	}
 	w.mu.Unlock()
 
@@ -2084,6 +2130,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 			w.sidebarUI.ExpandedDirs = make(map[string]bool)
 			w.sidebarUI.CancelRename()
 			w.sidebarUI.ClearDrag()
+			w.lastNotifiedNote = next.ActiveTab
 		}
 		w.mu.Unlock()
 		theme.SetIgnoredSearchFolders(next.IgnoredSearchFolders)
@@ -3075,6 +3122,9 @@ func (w *Workspace) ToggleAIPanel() bool {
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
 	w.ai.ToggleOpen()
+	if w.ai.IsOpen() && w.pluginUI != nil {
+		w.pluginUI.closePanelLocal("", "")
+	}
 	w.RequestRedraw()
 	return true
 }
@@ -3130,6 +3180,25 @@ func (w *Workspace) persistTabs(tabs []string, active string) {
 		st.OpenTabs = append([]string(nil), tabs...)
 		st.ActiveTab = active
 	})
+	w.emitNoteOpenedIfChanged(active)
+}
+
+func (w *Workspace) emitNoteOpenedIfChanged(active string) {
+	w.mu.Lock()
+	if active == w.lastNotifiedNote {
+		w.mu.Unlock()
+		return
+	}
+	w.lastNotifiedNote = active
+	w.mu.Unlock()
+	if active == "" {
+		return
+	}
+	if sup := w.Plugins(); sup != nil {
+		if rel := sup.ActiveNoteRel(); rel != "" {
+			sup.EmitWorkspaceEvent("note.opened", map[string]any{"path": rel})
+		}
+	}
 }
 
 func (w *Workspace) setNotice(msg string) {
@@ -3512,15 +3581,21 @@ func (w *Workspace) startWatching(folder string) {
 func (w *Workspace) shellInputLocked(winW float32) ShellInput {
 	inSettings := w.modals.IsSettingsOpen()
 	renameVisible := w.sidebarUI.RenamingNewItem && !inSettings
+	aiOpen := w.ai.IsOpen()
+	pluginPanelOpen := !aiOpen && w.pluginUI != nil && w.pluginUI.hasOpenPanel()
+	chatDesiredW := w.ai.PanelWidth()
+	if pluginPanelOpen {
+		chatDesiredW = w.pluginUI.panelWidth()
+	}
 	return ShellInput{
 		WindowWidth:     winW,
 		InSettings:      inSettings,
 		SidebarVisible:  !w.state.SidebarCollapsed || renameVisible,
 		SidebarPinned:   w.sidebarPinned || renameVisible,
 		SidebarDesiredW: w.sidebarWidth,
-		ChatVisible:     w.ai.IsOpen(),
-		ChatFullscreen:  w.ai.IsFullscreen(),
-		ChatDesiredW:    w.ai.PanelWidth(),
+		ChatVisible:     aiOpen || pluginPanelOpen,
+		ChatFullscreen:  aiOpen && w.ai.IsFullscreen(),
+		ChatDesiredW:    chatDesiredW,
 	}
 }
 
@@ -3601,7 +3676,20 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.modals.ClosePerformance()
 		return
 	}
-	if w.modals.HasActiveModal() {
+	if w.palette.IsOpen() {
+		if matchRaw(blockui.DefaultCommandPaletteShortcut) {
+			w.palette.Close()
+		}
+		return
+	}
+	if w.modals.HasActiveModal() || w.hasActivePluginModal() {
+		return
+	}
+	if matchRaw(blockui.DefaultCommandPaletteShortcut) {
+		w.tabMenu.Close()
+		w.sidebarUI.ClosePopups()
+		w.edgeFloat.DismissAll(w)
+		w.palette.Open()
 		return
 	}
 	if matchAction("performance") {
@@ -3672,6 +3760,63 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 			return
 		}
 	}
+	w.handlePluginCommandShortcuts(c)
+}
+
+func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
+	sup := w.Plugins()
+	if sup == nil {
+		return
+	}
+	if w.sidebarUI.RenamingPath != "" || w.sidebarUI.RenamingNewItem || w.sidebarUI.HasActiveOverlay() {
+		return
+	}
+	if sess := w.ActiveSession(); sess != nil && (sess.IsFindOpen() || sess.IsInlineAIOpen() || sess.IsSlashMenuOpen()) {
+		return
+	}
+	textFocused := c.FocusTakesText()
+	for _, cmd := range sup.Commands() {
+		if cmd.Shortcut == "" {
+			continue
+		}
+		mods, key, ok := blockui.ParseShortcut(cmd.Shortcut)
+		if !ok {
+			continue
+		}
+		if textFocused {
+			if mods&(ui.Cmd|ui.Ctrl|ui.Alt) == 0 || isTextInputReservedShortcut(mods, key) {
+				continue
+			}
+		}
+		if c.Shortcut(mods, key) {
+			sup.RunCommandAsync(cmd.PluginID, cmd.ID, plugins.CommandContext{
+				Note:      sup.ActiveNoteRel(),
+				Selection: w.activeSelectionText(),
+				Source:    "shortcut",
+			})
+			return
+		}
+	}
+}
+
+func isTextInputReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
+	if mods == ui.Cmd {
+		switch key {
+		case ui.KeyA, ui.KeyC, ui.KeyV, ui.KeyX, ui.KeyZ,
+			ui.KeyBackspace, ui.KeyDelete, ui.KeyLeft, ui.KeyRight, ui.KeyUp, ui.KeyDown:
+			return true
+		}
+	}
+	if mods == (ui.Cmd|ui.Shift) && key == ui.KeyZ {
+		return true
+	}
+	if mods&(ui.Alt|ui.Ctrl) != 0 {
+		switch key {
+		case ui.KeyBackspace, ui.KeyDelete, ui.KeyLeft, ui.KeyRight, ui.KeyUp, ui.KeyDown:
+			return true
+		}
+	}
+	return false
 }
 
 func copyMarkdownShortcutSpec() string {
@@ -3698,7 +3843,7 @@ func (w *Workspace) copyActiveMarkdown(svc ui.Services) {
 
 func (w *Workspace) handleEditorZoomShortcuts(c *ui.Context) bool {
 	if w.modals.IsRecordingShortcut() || w.modals.IsSettingsOpen() ||
-		w.modals.HasActiveModal() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
+		w.modals.HasActiveModal() || w.hasActivePluginModal() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
 		return false
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEqual) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyEqual) {
@@ -3823,6 +3968,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				)
 			})
 			w.modals.RenderModals(c)
+			w.renderPluginOverlays(c)
 			blockui.RenderSmokeHUD(c)
 		})
 		return
@@ -3925,7 +4071,7 @@ func (w *Workspace) Render(c *ui.Context) {
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
 	// Handle narrow sidebar drawer Escape before activeSess.Render registers its window Escape shortcut.
-	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
+	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
 		w.ToggleSidebar(vpW)
 		layout.SidebarDrawer = false
 	}
@@ -4073,6 +4219,11 @@ func (w *Workspace) Render(c *ui.Context) {
 						}
 					}
 				},
+				HiddenSlots:      w.pluginHiddenTitlebarSlots(),
+				PluginButtons:    w.pluginTitlebarButtons(),
+				OnPluginButton:   w.onPluginTitlebarButton,
+				PluginPageMenu:   w.pluginPageMenuItems(),
+				OnPluginMenuItem: w.onPluginPageMenuItem,
 			})
 		}
 
@@ -4183,37 +4334,58 @@ func (w *Workspace) Render(c *ui.Context) {
 								)
 							}
 
-							switch {
-							case activeSurf != nil:
-								activeSurf.Render(
-									c,
-									func(p string) {
-										if mygo.App.IsReady() {
-											mygo.Shell.ShowItemInFolder(p)
-										}
-									},
-									func(p string) {
-										if mygo.App.IsReady() {
-											_ = mygo.Shell.OpenPath(p)
-										}
-									},
-								)
-							case activeSess != nil:
-								activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
-								activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
-								activeSess.Render(c, effMainW, false)
-								if aiEligible {
-									w.syncAIEditorSelection(c, activeSess)
+							noteArea := ui.Column(c.Key("workspace-note-area")).Grow(1).MinHeight(0).FillWidth()
+							noteArea.Children(func() {
+								switch {
+								case activeSurf != nil:
+									if w.pluginUI != nil {
+										w.pluginUI.setEditorFocus(activeTab, false)
+									}
+									activeSurf.Render(
+										c,
+										func(p string) {
+											if mygo.App.IsReady() {
+												mygo.Shell.ShowItemInFolder(p)
+											}
+										},
+										func(p string) {
+											if mygo.App.IsReady() {
+												_ = mygo.Shell.OpenPath(p)
+											}
+										},
+									)
+								case activeSess != nil:
+									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
+									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
+									activeSess.Render(c, effMainW, false)
+									if w.pluginUI != nil {
+										w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
+									}
+									if aiEligible {
+										w.syncAIEditorSelection(c, activeSess)
+									}
+								default:
+									if w.pluginUI != nil {
+										w.pluginUI.setEditorFocus("", false)
+									}
+									allowGhostFocus := !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() &&
+										w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
+										!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
+									w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 								}
-							default:
-								allowGhostFocus := !inSettings && !w.modals.HasActiveModal() &&
-									w.sidebarUI.RenamingPath == "" && !layout.SidebarDrawer &&
-									!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
-								w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
-							}
+								if w.pluginUI != nil {
+									w.pluginUI.renderToast(c)
+								}
+							})
+							renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText)
 						})
 
-						blockui.DockPanel(c, "docked-ai-slot", layout.ChatDocked, layout.ChatWidth, true, func() {
+						aiOpen := w.ai.IsOpen()
+						if aiOpen && w.pluginUI != nil {
+							w.pluginUI.closePanelLocal("", "")
+						}
+						pluginPanelOpen := !aiOpen && w.pluginUI != nil && w.pluginUI.hasOpenPanel()
+						blockui.DockPanel(c, "docked-ai-slot", layout.ChatDocked && aiOpen, layout.ChatWidth, true, func() {
 							chatW := w.ai.PanelWidth()
 							maxChat := ChatLimit(vpW-cardHorizMargin, w.sidebarWidth, w.state.SidebarCollapsed, ChatMinW, ChatMaxW)
 							if blockui.VerticalResizeHandle(c, "ai-panel-resize", &chatW, ChatMinW, maxChat, true) {
@@ -4223,6 +4395,9 @@ func (w *Workspace) Render(c *ui.Context) {
 							w.ai.SetRenderWidth(layout.ChatWidth)
 							w.ai.RenderPanel(c)
 						})
+						if w.pluginUI != nil {
+							w.pluginUI.renderDockedPanel(c, layout.ChatDocked && pluginPanelOpen, layout.ChatWidth, vpW, cardHorizMargin)
+						}
 					})
 				})
 			}
@@ -4282,10 +4457,140 @@ func (w *Workspace) Render(c *ui.Context) {
 
 		// 3. Modal Overlays (Search, About, Feedback, Performance, Updater).
 		w.modals.RenderModals(c)
+		w.renderPluginOverlays(c)
 
 		// 4. Visual Smoke HUD (click ripple + step banner when smoke mode is enabled).
 		blockui.RenderSmokeHUD(c)
 	})
+}
+
+func (w *Workspace) hasActivePluginModal() bool {
+	if w.palette.IsOpen() {
+		return true
+	}
+	return w.pluginUI != nil && w.pluginUI.hasDialog()
+}
+
+func (w *Workspace) activeSelectionText() string {
+	if w.ActiveSurface() != nil {
+		return ""
+	}
+	if sess := w.ActiveSession(); sess != nil && sess.IsMarkdownNote() {
+		return sess.SelectedMarkdown()
+	}
+	return ""
+}
+
+func (w *Workspace) pluginHiddenTitlebarSlots() map[string]bool {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	var hidden map[string]bool
+	for _, id := range []string{
+		plugins.TitlebarSlotFeedback,
+		plugins.TitlebarSlotAI,
+		plugins.TitlebarSlotSendAll,
+		plugins.TitlebarSlotWrap,
+		plugins.TitlebarSlotZoom,
+		plugins.TitlebarSlotReveal,
+	} {
+		if sup.TitlebarHidden(id) {
+			if hidden == nil {
+				hidden = make(map[string]bool)
+			}
+			hidden[id] = true
+		}
+	}
+	return hidden
+}
+
+func (w *Workspace) pluginTitlebarButtons() []plugins.ResolvedTitlebarButton {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	buttons := sup.TitlebarButtons()
+	if w.pluginUI != nil {
+		for i := range buttons {
+			if buttons[i].Panel != "" && w.pluginUI.isPanelActive(buttons[i].PluginID, buttons[i].Panel) {
+				buttons[i].Active = true
+			}
+		}
+	}
+	return buttons
+}
+
+func (w *Workspace) onPluginTitlebarButton(b plugins.ResolvedTitlebarButton) {
+	if b.Panel != "" {
+		if w.pluginUI != nil {
+			w.pluginUI.TogglePanel(b.PluginID, b.Panel)
+		}
+		return
+	}
+	if b.Command != "" {
+		if sup := w.Plugins(); sup != nil {
+			sup.RunCommandAsync(b.PluginID, b.Command, plugins.CommandContext{
+				Note:      sup.ActiveNoteRel(),
+				Selection: w.activeSelectionText(),
+				Source:    "titlebar",
+			})
+		}
+	}
+}
+
+func (w *Workspace) pluginPageMenuItems() []plugins.ResolvedMenuItem {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	return sup.PageMenuItems()
+}
+
+func (w *Workspace) onPluginPageMenuItem(it plugins.ResolvedMenuItem) {
+	sup := w.Plugins()
+	if sup == nil || it.Command == "" {
+		return
+	}
+	sup.RunCommandAsync(it.PluginID, it.Command, plugins.CommandContext{
+		Note:      sup.ActiveNoteRel(),
+		Selection: w.activeSelectionText(),
+		Source:    "page_menu",
+	})
+}
+
+func (w *Workspace) renderPluginOverlays(c *ui.Context) {
+	if w.pluginUI != nil {
+		w.pluginUI.renderDialog(c)
+	}
+	if w.palette.IsOpen() {
+		var items []PaletteItem
+		if sup := w.Plugins(); sup != nil {
+			for _, cmd := range sup.Commands() {
+				items = append(items, PaletteItem{
+					ID:       cmd.PluginID + "/" + cmd.ID,
+					Title:    cmd.Title,
+					Subtitle: cmd.PluginName,
+					Shortcut: cmd.Shortcut,
+				})
+			}
+		}
+		w.palette.Render(c, items, func(chosen PaletteItem) {
+			sup := w.Plugins()
+			if sup == nil {
+				return
+			}
+			pluginID, cmdID, ok := strings.Cut(chosen.ID, "/")
+			if !ok {
+				return
+			}
+			sup.RunCommandAsync(pluginID, cmdID, plugins.CommandContext{
+				Note:      sup.ActiveNoteRel(),
+				Selection: w.activeSelectionText(),
+				Source:    "palette",
+			})
+		})
+	}
 }
 
 func (w *Workspace) renderSidebarColumn(
