@@ -1303,8 +1303,9 @@ func plainMathText(t string) string {
 // plainRuleRE matches a thematic break ("---", "* * *"), behind quote markers too.
 var plainRuleRE = regexp.MustCompile(`^(?:>\s*)*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$`)
 
-// plainMathLineRE matches a one-line display formula ("$$x^2$$", `\[x^2\]`).
-var plainMathLineRE = regexp.MustCompile(`^(?:\$\$.+\$\$|\\\[.+\\\])$`)
+// plainMathLineRE matches a one-line display formula ("$$x^2$$", `\[x^2\]`); with
+// a closer inside ("$$a$$ + $$b$$") the line holds inline formulas instead.
+var plainMathLineRE = regexp.MustCompile(`^(?:\$\$(?:[^$]|\$[^$])+\$\$|\\\[(?:[^\\]|\\[^\]])+\\\])$`)
 
 // plainBreakRE matches a line break tag ("<br>", "<BR/>").
 var plainBreakRE = regexp.MustCompile(`(?i)^<br\b`)
