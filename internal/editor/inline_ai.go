@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	inlineAIPanelWidth  float32 = 396
-	inlineAIChipH       float32 = 26
+	inlineAIPanelWidth  float32 = 380
+	inlineAIChipH       float32 = theme.HeightMicro
 	inlineAIChipGap     float32 = 5
 	inlineAIMaxChipRows int     = 3
 	inlineAIChipAreaH   float32 = inlineAIChipH*float32(inlineAIMaxChipRows) + inlineAIChipGap*float32(inlineAIMaxChipRows-1)
@@ -1622,9 +1622,9 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 	estH := float32(140)
 	switch ai.Status {
 	case aiStatusThinking:
-		estH = 54
+		estH = theme.HeightLarge
 	case aiStatusReview:
-		estH = 90
+		estH = theme.HeightLarge + 1 + theme.HeightLarge
 	case aiStatusInput:
 		scope := PromptScopeEdit
 		if emptyCtx {
@@ -1632,16 +1632,16 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 		}
 		entries := s.ensurePromptStore().list(scope)
 		if len(entries) == 0 {
-			estH = 54
+			estH = theme.HeightLarge
 		} else {
 			rows := chipRowIndices(entries)
 			numRows := min(rows[len(rows)-1]+1, inlineAIMaxChipRows)
 			chipsH := float32(numRows)*inlineAIChipH + float32(max(numRows-1, 0))*inlineAIChipGap
-			estH = 16 + 36 + 6 + chipsH
+			estH = theme.HeightLarge + 1 + theme.Space8*2 + chipsH
 		}
 	}
 	if ai.Error != "" {
-		estH += 24
+		estH += theme.LineSmall + theme.Space8
 	}
 	sizeKey := fmt.Sprintf("inline-ai-%d", ai.Status)
 	_, estH = s.measuredOrEstSize(sizeKey, panelW, estH)
@@ -1652,7 +1652,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 
 	ui.Overlay(c, func() {
 		shell := ui.Column(c.Key("inline-ai")).Absolute().Left(x).Top(y).Width(panelW).
-			Padding(theme.Space8).Gap(theme.Space6).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
+			Gap(0).Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.Hairline).
 			Transition(appUi.PopupTransition())
 		appUi.Elevate(shell, theme.ElevationPopover)
 		appUi.Probe(shell, "inline-ai")
@@ -1660,39 +1660,38 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 
 		shell.Children(func() {
 			if ai.Error != "" {
-				ui.Text(c, ai.Error).FontSize(theme.FontSmall).TextColor(pal.Danger).Padding(0, theme.Space4).FillWidth()
+				ui.Text(c, ai.Error).FontSize(theme.FontSmall).TextColor(pal.Danger).Padding(theme.Space8, theme.Space12, 0, theme.Space12).FillWidth()
 			}
 
 			// Capsule input or Thinking row
-			capsule := ui.Row(c.Key("inline-ai-capsule")).FillWidth().Height(theme.HeightLarge).Padding(0, theme.Space6, 0, theme.Space10).
-				Gap(theme.Space8).AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.CodeBlockBG).
-				Border(1, boolColor(!busy, pal.BtnBorder, pal.Hairline))
+			capsule := ui.Row(c.Key("inline-ai-capsule")).FillWidth().Height(theme.HeightLarge).Padding(0, theme.Space8, 0, theme.Space12).
+				Gap(theme.Space8).AlignItems(ui.Center)
 
 			capsule.Children(func() {
 				if busy {
-					ui.Box(c).Size(8, 8).Radius(theme.RadiusXS).Background(pal.Accent)
+					ui.Box(c).Size(6, 6).Radius(theme.RadiusPill).Background(pal.Accent)
 					lbl := theme.Tr("正在生成…", "Generating…")
-					ui.Text(c, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
-					stopBtn := ui.ButtonBase(c.Key("ai-stop")).Height(theme.HeightChrome).PaddingX(theme.Space8).Center().Radius(theme.RadiusSM).
+					ui.Text(c, lbl).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+					stopBtn := ui.ButtonBase(c.Key("ai-stop")).Height(theme.HeightMicro).PaddingX(theme.Space8).Center().Radius(theme.RadiusSM).
 						Cursor(ui.CursorPointer).Label(theme.Tr("停止", "Stop"))
 					if stopBtn.Hovered() {
 						stopBtn.Background(pal.Hover)
 					}
 					stopBtn.Children(func() {
-						ui.Text(c, theme.Tr("停止", "Stop")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+						ui.Text(c, theme.Tr("停止", "Stop")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					})
 					appUi.Probe(stopBtn, "ai-stop")
 					if stopBtn.Clicked() {
 						s.aiStop()
 					}
 				} else {
-					icons.Draw(c, icons.Sparkles, 16, pal.DuoIconColors(pal.Accent))
+					icons.Draw(c, icons.Sparkles, theme.IconInline, pal.DuoIconColors(pal.Accent))
 					ph := inlineAIInputPlaceholder(emptyCtx)
 					if ai.Status == aiStatusReview {
 						ph = inlineAIReviewPlaceholder()
 					}
 					in := ui.TextInputBase(c.Key("inline-ai-input"), &ai.InputText).Grow(1).Height(24).Padding(0).
-						FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).CaretWidth(2).
+						FontSize(theme.FontSmall).TextColor(pal.Text).CaretColor(pal.Accent).CaretWidth(2).
 						Placeholder(ph).PlaceholderColor(pal.Placeholder).
 						Label("inline-ai-input").Bind(&ai.InputHandle)
 					appUi.Probe(in, "inline-ai-input")
@@ -1722,17 +1721,17 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 					}
 
 					canSend := ai.Status == aiStatusReview || strings.TrimSpace(ai.InputText) != ""
-					sendBG := pal.BtnBorder
-					sendFG := pal.Text
+					sendBG := ui.Transparent
+					sendFG := pal.Placeholder
 					if canSend {
-						sendBG = pal.Text
-						sendFG = pal.Paper
+						sendBG = pal.Hover
+						sendFG = pal.Accent
 					}
-					sendBtn := ui.ButtonBase(c.Key("ai-send")).Size(24, 24).Center().Radius(theme.RadiusSM).
+					sendBtn := ui.ButtonBase(c.Key("ai-send")).Size(theme.HeightMicro, theme.HeightMicro).Center().Radius(theme.RadiusSM).
 						Background(sendBG).Disabled(!canSend).Cursor(ui.CursorPointer).
 						Label(theme.Tr("发送（回车）", "Send (Enter)"))
 					sendBtn.Children(func() {
-						icons.Draw(c, icons.ArrowUp, 15, pal.MonoIconColors(sendFG))
+						icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
 					})
 					appUi.Probe(sendBtn, "ai-send")
 					if sendBtn.Clicked() && canSend {
@@ -1749,57 +1748,60 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 				}
 				entries := s.ensurePromptStore().list(scope)
 				if len(entries) > 0 {
-					grid := ui.Row(c.Key("ai-chip-grid")).FillWidth().MaxHeight(inlineAIChipAreaH).Clip().
-						Wrap().AlignItems(ui.Center).Gap(inlineAIChipGap)
-					grid.Children(func() {
-						for ix, entry := range entries {
-							it := entry
-							short := it.ShortLabel()
-							full := it.FullLabel()
-							chip := appUi.ChipSurface(ui.Row(c.Key(fmt.Sprintf("ai-chip-%d", ix))), it.Starred)
-							chip.Children(func() {
-								runID := fmt.Sprintf("ai-saved-prompt-%d", ix)
-								runBtn := ui.ButtonBase(c.Key(runID)).Height(theme.HeightMicro).PaddingX(theme.Space2).
-									AlignItems(ui.Center).Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(full)
-								if full != "" {
-									appUi.Tooltip(c, runBtn, full)
-								}
-								runBtn.Children(func() {
-									fg := pal.Text
-									if runBtn.Hovered() {
-										fg = pal.Accent
+					footer := inlineAIFooter(ui.Column(c.Key("ai-chip-footer")), pal).Padding(theme.Space8)
+					footer.Children(func() {
+						grid := ui.Row(c.Key("ai-chip-grid")).FillWidth().MaxHeight(inlineAIChipAreaH).Clip().
+							Wrap().AlignItems(ui.Center).Gap(inlineAIChipGap)
+						grid.Children(func() {
+							for ix, entry := range entries {
+								it := entry
+								short := it.ShortLabel()
+								full := it.FullLabel()
+								chip := appUi.ChipSurface(ui.Row(c.Key(fmt.Sprintf("ai-chip-%d", ix))), it.Starred)
+								chip.Children(func() {
+									runID := fmt.Sprintf("ai-saved-prompt-%d", ix)
+									runBtn := ui.ButtonBase(c.Key(runID)).Height(theme.HeightMicro).PaddingX(theme.Space2).
+										AlignItems(ui.Center).Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(full)
+									if full != "" {
+										appUi.Tooltip(c, runBtn, full)
 									}
-									ui.Text(c, short).FontSize(theme.FontSmall).TextColor(fg).SingleLine()
-								})
-								appUi.Probe(runBtn, runID)
-								if runBtn.Clicked() {
-									s.aiRunPromptTarget(it.promptTarget)
-								}
+									runBtn.Children(func() {
+										fg := pal.Text
+										if runBtn.Hovered() {
+											fg = pal.Accent
+										}
+										ui.Text(c, short).FontSize(theme.FontSmall).TextColor(fg).SingleLine()
+									})
+									appUi.Probe(runBtn, runID)
+									if runBtn.Clicked() {
+										s.aiRunPromptTarget(it.promptTarget)
+									}
 
-								starID := fmt.Sprintf("ai-saved-star-%d", ix)
-								starTip := theme.Tr("收藏该提示词（防被新输入顶掉）", "Star prompt to keep permanently")
-								if it.Starred {
-									starTip = theme.Tr("取消收藏该提示词", "Unstar prompt")
-								}
-								starBtn := ui.ButtonBase(c.Key(starID)).Size(20, 20).Center().Radius(theme.RadiusXS).
-									Cursor(ui.CursorPointer).Label(starTip)
-								appUi.Tooltip(c, starBtn, starTip)
-								if starBtn.Hovered() {
-									starBtn.Background(pal.Hover)
-								}
-								starBtn.Children(func() {
-									ic := theme.IconColors{Line: pal.TextSecondary, Fill: ui.Transparent, Accent: ui.Transparent}
+									starID := fmt.Sprintf("ai-saved-star-%d", ix)
+									starTip := theme.Tr("收藏该提示词（防被新输入顶掉）", "Star prompt to keep permanently")
 									if it.Starred {
-										ic = theme.IconColors{Line: pal.Accent, Fill: pal.Accent, Accent: ui.Transparent}
+										starTip = theme.Tr("取消收藏该提示词", "Unstar prompt")
 									}
-									icons.Draw(c, icons.Star, 13, ic)
+									starBtn := ui.ButtonBase(c.Key(starID)).Size(20, 20).Center().Radius(theme.RadiusXS).
+										Cursor(ui.CursorPointer).Label(starTip)
+									appUi.Tooltip(c, starBtn, starTip)
+									if starBtn.Hovered() {
+										starBtn.Background(pal.Hover)
+									}
+									starBtn.Children(func() {
+										ic := theme.IconColors{Line: pal.TextSecondary, Fill: ui.Transparent, Accent: ui.Transparent}
+										if it.Starred {
+											ic = theme.IconColors{Line: pal.Accent, Fill: pal.Accent, Accent: ui.Transparent}
+										}
+										icons.Draw(c, icons.Star, 13, ic)
+									})
+									appUi.Probe(starBtn, starID)
+									if starBtn.Clicked() {
+										s.aiTogglePromptStar(scope, it.promptTarget)
+									}
 								})
-								appUi.Probe(starBtn, starID)
-								if starBtn.Clicked() {
-									s.aiTogglePromptStar(scope, it.promptTarget)
-								}
-							})
-						}
+							}
+						})
 					})
 				}
 
@@ -1808,7 +1810,8 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 				if emptyCtx {
 					acceptLabel = theme.Tr("完成", "Done")
 				}
-				actions := ui.Row(c.Key("ai-review-actions")).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space4)
+				actions := inlineAIFooter(ui.Row(c.Key("ai-review-actions")), pal).MinHeight(theme.HeightLarge).Padding(theme.Space6).
+					AlignItems(ui.Center).Gap(theme.Space2).Wrap()
 				actions.Children(func() {
 					accBtn := appUi.Chip(c, appUi.ChipOptions{ID: "ai-accept", Label: acceptLabel, Hint: "↵", Style: appUi.ChipPrimary})
 					if accBtn.Clicked() {
@@ -1933,4 +1936,12 @@ func tableCellAtRuneRange(tbl *model.TableData, startRune, endRune int) (row, co
 		}
 	}
 	return 0, 0, 0, 0, false
+}
+
+// inlineAIFooter is the muted strip under the inline AI input: a hairline on
+// top and the bottom corners clipped to the panel's inner radius.
+func inlineAIFooter(el ui.Element, pal theme.Palette) ui.Element {
+	return el.FillWidth().Background(pal.CodeBlockBG).
+		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
+		Radius(0, 0, theme.RadiusXLInner, theme.RadiusXLInner)
 }

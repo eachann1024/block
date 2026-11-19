@@ -2572,13 +2572,6 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 	})
 }
 
-func boolColor(cond bool, a, b ui.Color) ui.Color {
-	if cond {
-		return a
-	}
-	return b
-}
-
 func clampFloat32(v, lo, hi float32) float32 {
 	if v < lo {
 		return lo
