@@ -25,10 +25,43 @@
       "is_interactive": true,
       "page": "app-store",
       "title": "方案 A · 侧栏上下分区直挂（上方原生 4 项 + 分割线下挂商店与已装应用）"
+    },
+    "Store-Light.dc.html": {
+      "x": 1440,
+      "y": 0,
+      "w": 1360,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "app-store",
+      "title": "方案 B · 轻量列表（无徽标、无卡内按钮，操作收进详情）"
+    },
+    "Store-Installed.dc.html": {
+      "x": 2880,
+      "y": 0,
+      "w": 1360,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "app-store",
+      "title": "方案 C · 已安装标识（三段筛选 + 名称后浅色对勾）"
+    },
+    "Store-Detail.dc.html": {
+      "x": 4320,
+      "y": 0,
+      "w": 1360,
+      "h": 900,
+      "expand": "fill",
+      "is_interactive": true,
+      "page": "app-store",
+      "title": "方案 D · 原地详情页（替代 README 弹窗）"
     }
   },
   "order": [
-    "Main.dc.html"
+    "Main.dc.html",
+    "Store-Light.dc.html",
+    "Store-Installed.dc.html",
+    "Store-Detail.dc.html"
   ],
   "notes": {},
   "designSystems": [
