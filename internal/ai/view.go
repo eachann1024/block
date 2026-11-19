@@ -1578,6 +1578,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			}
 			fenced := bui.DiffFenceMask(texts, changes)
 			setext := bui.DiffSetextLevels(texts, changes)
+			listNums := bui.DiffListNumbers(texts, changes)
 			tableCols := bui.DiffTableCols(texts, changes)
 			headers, seps := bui.DiffTableRoles(texts, changes)
 			var visible []PlanDiffLine
@@ -1658,7 +1659,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index]})
 								}
 							})
 							if rowBtn.Clicked() {
@@ -1673,7 +1674,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index]})
 								}
 							})
 						}

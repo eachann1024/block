@@ -2501,9 +2501,9 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 			appUi.Scroll(c.Key("plan-diff-scroll"), &s.planDiffScroll).FillWidth().Grow(1).
 				MaxHeight(maxH-64).Padding(theme.Space10, theme.Space12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(theme.Space8).Children(func() {
-					renderLineContent := func(raw, trimmed string, cols int, isTable, isHeader, code bool, setext int, fg ui.Color) {
-						style := appUi.DiffLineStyle{Text: fg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext}
-						if code || !isTable {
+					renderLineContent := func(raw, trimmed string, cols int, isTable, isHeader bool, style appUi.DiffLineStyle) {
+						style.CodeBG = pal.CodeBlockBG
+						if style.Code || !isTable {
 							appUi.DiffMarkdownLine(c, raw, style)
 							return
 						}
@@ -2515,6 +2515,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 						texts, changes := diffChanges(diff)
 						fenced := appUi.DiffFenceMask(texts, changes)
 						setext := appUi.DiffSetextLevels(texts, changes)
+						listNums := appUi.DiffListNumbers(texts, changes)
 						tableCols := appUi.DiffTableCols(texts, changes)
 						headers, seps := appUi.DiffTableRoles(texts, changes)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
@@ -2560,7 +2561,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										// 与变更行的复选框同宽留白，表格列边界才能对齐。
 										ui.Box(c).Width(theme.IconRow).Shrink(0)
 										ui.Box(c).Width(12).Shrink(0)
-										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, fenced[lineIdx], setext[lineIdx], pal.TextSecondary)
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: pal.TextSecondary, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx]})
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -2596,7 +2597,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 											}
 										})
 										ui.Text(c, gutter).Width(12).Shrink(0).FontSize(theme.FontBody).TextColor(fg).SingleLine()
-										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, fenced[lineIdx], setext[lineIdx], fg)
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: fg, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx]})
 									})
 								}
 							}

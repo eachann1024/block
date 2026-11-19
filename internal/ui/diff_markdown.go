@@ -3,6 +3,7 @@ package ui
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"block/internal/theme"
@@ -23,6 +24,87 @@ type DiffLineStyle struct {
 	// Setext is DiffSetextLevels for the line: 1 or 2 shows paragraph text as that
 	// heading level, -1 hides the "===" or "---" underline below it.
 	Setext int
+	// ListNum is DiffListNumbers for the line: the number an ordered item shows
+	// ("1." "1." "1." count 1, 2, 3 as in the note); 0 keeps its own.
+	ListNum int
+}
+
+// DiffListNumbers reports, per line, the number an ordered list item shows in its
+// own text (0: not one), since each line alone would show its written number. A
+// changed line takes its own side, an unchanged one the new text.
+func DiffListNumbers(lines []string, change []int) []int {
+	masks, _ := diffScan(lines, change)
+	var nums [2][]int
+	for si, side := range [2]int{-1, 1} {
+		num := make([]int, len(lines))
+		// One open list per nesting level: its marker column, content column, kind
+		// ("." ")" for ordered, the bullet otherwise) and next number.
+		type list struct {
+			ind, content, next int
+			kind               string
+		}
+		var stack []list
+		prevBlank := false
+		for i, l := range lines {
+			if change[i] == -side {
+				continue
+			}
+			t := strings.TrimSpace(l)
+			if t == "" {
+				prevBlank = true
+				continue
+			}
+			ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
+			blank := prevBlank
+			prevBlank = false
+			om := diffCellListRE.FindStringSubmatch(t)
+			// Indented code (masked) is no item.
+			item := !masks[si][i] && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
+			if !item {
+				// Plain text right under a line is a lazy continuation; after a blank, or
+				// any other block, a line left of a list's content ends that list.
+				plain := !masks[si][i] && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
+					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
+				if blank || !plain {
+					for len(stack) > 0 && stack[len(stack)-1].content > ind {
+						stack = stack[:len(stack)-1]
+					}
+				}
+				continue
+			}
+			for len(stack) > 0 && stack[len(stack)-1].ind > ind {
+				stack = stack[:len(stack)-1]
+			}
+			kind, n := t[:1], 0
+			if om != nil {
+				kind = om[2]
+				n, _ = strconv.Atoi(om[1])
+			}
+			content := ind + len(diffContainerRE.FindString(t))
+			if k := len(stack) - 1; k >= 0 && stack[k].ind == ind && stack[k].kind == kind {
+				if om != nil {
+					n = stack[k].next
+				}
+				stack[k].content = content
+			} else {
+				if k >= 0 && stack[k].ind == ind {
+					stack = stack[:k]
+				}
+				stack = append(stack, list{ind: ind, content: content, kind: kind})
+			}
+			stack[len(stack)-1].next = n + 1
+			num[i] = n
+		}
+		nums[si] = num
+	}
+	out := make([]int, len(lines))
+	for i := range lines {
+		out[i] = nums[1][i]
+		if change[i] < 0 {
+			out[i] = nums[0][i]
+		}
+	}
+	return out
 }
 
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
@@ -631,8 +713,8 @@ func diffPlainLinks(s string) string {
 				// "\<…>" or "\[…](…)" is literal text, not a link.
 				continue
 			}
-			b.WriteString(s[last:m[0]])
 			text := s[m[2]:m[3]]
+			b.WriteString(s[last:m[0]])
 			if text == "" && len(m) > 4 && m[4] >= 0 {
 				// An image without alt text shows its path, as code so "_" stays literal.
 				if p := strings.Trim(s[m[4]:m[5]], "<>"); p != "" && !strings.Contains(p, "`") {
@@ -710,6 +792,10 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		// Links turn into their text first, so "[\[ A \]](…)" or "[v2 #](…)" is guarded too.
 		// A line of its own starting with "\[" is display math, as in the note.
 		math := strings.HasPrefix(body, `\[`)
+		// An ordered item shows the number it has in its list, not the one written.
+		if m := diffCellListRE.FindStringSubmatchIndex(body); m != nil && st.ListNum > 0 {
+			body = strconv.Itoa(st.ListNum) + body[m[3]:]
+		}
 		body = diffPlainLinks(body)
 		if !math {
 			body = diffLiteralStart(body)
