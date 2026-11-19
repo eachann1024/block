@@ -156,30 +156,67 @@ var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:(.*)$`)
 // outside code (the old one for change < 0, the new one otherwise), normalized as
 // the note matches them, so a deleted line never borrows a label added by the AI.
 func DiffRefLabels(lines []string, change []int) []map[string]bool {
+	labels, _ := diffRefScan(lines, change)
+	out := make([]map[string]bool, len(lines))
+	for i := range lines {
+		out[i] = labels[1]
+		if change[i] < 0 {
+			out[i] = labels[0]
+		}
+	}
+	return out
+}
+
+// DiffRefDefs marks the lines of link reference definitions in the line's own text
+// (an unchanged line: the new one), destination lines included: the note shows
+// nothing for them.
+func DiffRefDefs(lines []string, change []int) []bool {
+	_, defs := diffRefScan(lines, change)
+	out := defs[1]
+	for i := range lines {
+		if change[i] < 0 {
+			out[i] = defs[0][i]
+		}
+	}
+	return out
+}
+
+// diffRefScan finds the link reference definitions of the old (0) and new (1) text:
+// the labels each defines and the lines they take.
+func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs [2][]bool) {
 	masks, _ := diffScan(lines, change)
 	// A "[x]: y" inside a formula block defines nothing.
 	math := diffMathSides(lines, change)
-	out := make([]map[string]bool, len(lines))
+	// A definition in a blockquote counts too ("> [a]: …").
+	body := func(l string) string {
+		l = strings.TrimRight(l, "\r\n")
+		if t := strings.TrimSpace(l); diffQuoteDepth(t) > 0 {
+			return diffStripQuotes(t, diffQuoteDepth(t))
+		}
+		return l
+	}
 	for si, side := range [2]int{-1, 1} {
-		refs := map[string]bool{}
+		refs, def := map[string]bool{}, make([]bool, len(lines))
+		// A definition cannot interrupt a paragraph: "见 [文档][doc]" over "[doc]: /guide"
+		// is one paragraph of text.
+		para, paraDepth, skip := false, 0, -1
 		for i, l := range lines {
-			if change[i] == -side || masks[si][i] || math[si][i] {
+			if change[i] == -side || i <= skip {
 				continue
 			}
-			// A definition in a blockquote counts too ("> [a]: …").
-			body := func(l string) string {
-				l = strings.TrimRight(l, "\r\n")
-				if t := strings.TrimSpace(l); diffQuoteDepth(t) > 0 {
-					return diffStripQuotes(t, diffQuoteDepth(t))
-				}
-				return l
+			t := strings.TrimSpace(l)
+			if masks[si][i] || math[si][i] || t == "" {
+				para = false
+				continue
 			}
-			depth := diffQuoteDepth(strings.TrimSpace(l))
+			depth := diffQuoteDepth(t)
 			m := diffRefDefRE.FindStringSubmatch(body(l))
-			if m == nil {
+			if m == nil || para && paraDepth == depth {
+				b := strings.TrimSpace(body(l))
+				para, paraDepth = !diffHeadingRE.MatchString(b) && !diffRuleRE.MatchString(b), depth
 				continue
 			}
-			dest := m[2]
+			dest, next := m[2], -1
 			if strings.TrimSpace(dest) == "" {
 				// "[docs]:" alone takes its destination from the next line of its text.
 				for k := i + 1; k < len(lines); k++ {
@@ -187,24 +224,25 @@ func DiffRefLabels(lines []string, change []int) []map[string]bool {
 					// takes nothing from the quote.
 					if change[k] != -side {
 						if diffQuoteDepth(strings.TrimSpace(lines[k])) == depth {
-							dest = body(lines[k])
+							dest, next = body(lines[k]), k
 						}
 						break
 					}
 				}
 			}
 			// What follows must be a destination (and maybe a title): "## 配置" is not.
-			if diffRefDestRE.MatchString(dest) {
-				refs[diffRefLabel(m[1])] = true
+			if !diffRefDestRE.MatchString(dest) {
+				para, paraDepth = true, depth
+				continue
+			}
+			refs[diffRefLabel(m[1])], def[i], para = true, true, false
+			if next >= 0 {
+				def[next], skip = true, next
 			}
 		}
-		for i := range lines {
-			if (change[i] < 0) == (side < 0) {
-				out[i] = refs
-			}
-		}
+		labels[si], defs[si] = refs, def
 	}
-	return out
+	return labels, defs
 }
 
 // diffRefLabel normalizes a reference label: case-folded, inner whitespace collapsed.
