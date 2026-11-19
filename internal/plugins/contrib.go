@@ -299,6 +299,11 @@ func (m *Manifest) validateContributes() error {
 		if err := id("status_items", st.ID); err != nil {
 			return err
 		}
+		if strings.TrimSpace(st.Text.Zh) != "" || strings.TrimSpace(st.Text.En) != "" {
+			if err := validateContribText("contributes.status_items.text", st.Text); err != nil {
+				return err
+			}
+		}
 		if st.Command != "" && !c.hasCommand(st.Command) {
 			return fmt.Errorf("contributes.status_items %q references unknown command %q", st.ID, st.Command)
 		}

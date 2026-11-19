@@ -310,6 +310,11 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 	if err := checkEnglishText(prefix+".placeholder", item.Placeholder); err != nil {
 		return err
 	}
+	if sVal, ok := item.Value.(string); ok {
+		if err := checkEnglishText(prefix+".value", sVal); err != nil {
+			return err
+		}
+	}
 	if err := checkEnglishText(prefix+".empty_text", item.EmptyText); err != nil {
 		return err
 	}
