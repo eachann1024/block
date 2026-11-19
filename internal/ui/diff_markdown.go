@@ -412,13 +412,14 @@ func diffGapRank(line string, change int) int {
 }
 
 // diffLinkDest matches a link destination: <with spaces> or bare, with balanced
-// parentheses nested up to eight deep.
+// parentheses nested up to eight deep; "\(" or "\)" is an ordinary character.
 var diffLinkDest = func() string {
-	paren := `\([^()\s]*\)`
+	unit := `(?:\\\S|[^()\s\\])`
+	paren := `\(` + unit + `*\)`
 	for range 7 {
-		paren = `\((?:[^()\s]|` + paren + `)*\)`
+		paren = `\((?:` + unit + `|` + paren + `)*\)`
 	}
-	return `(?:<[^<>\n]*>|(?:[^()\s]|` + paren + `)*)`
+	return `(?:<[^<>\n]*>|(?:` + unit + `|` + paren + `)*)`
 }()
 
 // diffLinkTitle matches an optional link title: "t", 't' or (t).
