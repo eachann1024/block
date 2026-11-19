@@ -26,8 +26,10 @@ func refocusWindow(win *mygo.Window) {
 	})
 }
 
-// OpenDialog opens a native file or directory picker without blocking the UI main thread
-// or failing ViewBridge code-signature checks after hot in-place bundle updates on macOS.
+// OpenDialog opens a native file or directory picker without blocking the UI main thread.
+// On macOS, it uses the in-process AppKit NSOpenPanel sheet (fast, non-blocking) whenever
+// the running bundle is intact, and falls back to out-of-process osascript only if a hot
+// in-place bundle update replaced the app on disk while this process stayed running.
 // Concurrent calls while a picker is already open return (nil, nil) immediately.
 func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error) {
 	if !mygo.App.IsReady() {
@@ -38,7 +40,14 @@ func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error)
 	}
 	defer fileDialogBusy.Store(false)
 
-	if runtime.GOOS == "darwin" {
+	if win == nil {
+		win = mygo.FocusedWindow()
+	}
+	if opts.Directory {
+		opts.DefaultPath = resolveExistingDir(opts.DefaultPath)
+	}
+
+	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
 		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
 			paths, osaErr := openDialogDarwinOsascript(opts)
 			refocusWindow(win)
@@ -46,7 +55,7 @@ func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error)
 		}
 	}
 
-	opts.Parent = nil
+	opts.Parent = win
 	paths, err := mygo.Dialog.Open(opts)
 	refocusWindow(win)
 	return paths, err
@@ -63,7 +72,11 @@ func SaveDialog(win *mygo.Window, opts mygo.SaveDialogOptions) (string, error) {
 	}
 	defer fileDialogBusy.Store(false)
 
-	if runtime.GOOS == "darwin" {
+	if win == nil {
+		win = mygo.FocusedWindow()
+	}
+
+	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
 		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
 			chosen, osaErr := saveDialogDarwinOsascript(opts)
 			refocusWindow(win)
@@ -71,7 +84,7 @@ func SaveDialog(win *mygo.Window, opts mygo.SaveDialogOptions) (string, error) {
 		}
 	}
 
-	opts.Parent = nil
+	opts.Parent = win
 	chosen, err := mygo.Dialog.Save(opts)
 	refocusWindow(win)
 	return chosen, err
