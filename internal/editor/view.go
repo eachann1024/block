@@ -914,15 +914,15 @@ func resolvedCodeFont() string {
 func blockTextMetrics(kind model.BlockKind) (fontSize float32, weight int, lineHeight float32) {
 	switch kind {
 	case model.BlockHeading1:
-		return 32, 600, 1.2
+		return 28, theme.WeightTitle, 1.25
 	case model.BlockHeading2:
-		return 22, 600, 1.3
+		return 20, theme.WeightTitle, 1.3
 	case model.BlockHeading3:
-		return 18, 600, 1.35
+		return 17, theme.WeightTitle, 1.35
 	case model.BlockHeading4:
-		return 16, 600, 1.4
+		return 15, theme.WeightTitle, 1.4
 	case model.BlockHeading5:
-		return 14, 600, 1.45
+		return 14, theme.WeightTitle, 1.45
 	case model.BlockHeading6:
 		return 14, 500, 1.45
 	default:
@@ -935,15 +935,15 @@ func (s *Session) textMetrics(kind model.BlockKind) (fontSize float32, weight in
 	if s.minimal {
 		switch kind {
 		case model.BlockHeading1:
-			return 22, 600, 1.28
+			return 22, theme.WeightTitle, 1.28
 		case model.BlockHeading2:
-			return 19, 600, 1.32
+			return 19, theme.WeightTitle, 1.32
 		case model.BlockHeading3:
-			return 17, 600, 1.36
+			return 17, theme.WeightTitle, 1.36
 		case model.BlockHeading4:
-			return 16, 600, 1.4
+			return 16, theme.WeightTitle, 1.4
 		case model.BlockHeading5:
-			return 15, 600, 1.45
+			return 15, theme.WeightTitle, 1.45
 		case model.BlockHeading6:
 			return 14, 500, 1.45
 		}
