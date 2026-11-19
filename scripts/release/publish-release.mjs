@@ -84,9 +84,13 @@ export async function publishRelease() {
     assert.ok(existsSync(p), `Missing release asset: ${p}`);
     return p;
   });
+  const fallbackHashes = Object.fromEntries(
+    assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
+  );
 
   const existing = getReleases().find((r) => r.tag_name === tag);
   const title = `Block ${version}`;
+  let publishedRelease;
 
   if (!existing) {
     gh([
@@ -104,15 +108,19 @@ export async function publishRelease() {
       releaseNotes,
       "--latest",
     ]);
+    publishedRelease = fetchGithubReleaseByTag(tag);
   } else {
-    gh(["release", "edit", tag, "--repo", REPO, "--title", title, "--notes", releaseNotes, "--draft=false", "--latest"]);
-    gh(["release", "upload", tag, ...assetPaths, "--repo", REPO, "--clobber"]);
+    publishedRelease = fetchGithubReleaseByTag(tag);
+    assert.ok(!publishedRelease.draft, `Release ${tag} is an existing draft and requires reconciliation`);
+    for (const name of assets) {
+      const matches = (publishedRelease.assets ?? []).filter((asset) => asset.name === name);
+      assert.ok(
+        matches.length === 1 && matches[0].digest?.toLowerCase() === `sha256:${fallbackHashes[name]}`,
+        `Release ${tag} already exists with a different or unverifiable ${name}. Publish corrections under a new version.`,
+      );
+    }
   }
 
-  const fallbackHashes = Object.fromEntries(
-    assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
-  );
-  const publishedRelease = fetchGithubReleaseByTag(tag);
   const { json: feedJson } = syncFeedFromGithub({
     tagRelease: publishedRelease,
     fallbackHashes,
