@@ -33,8 +33,8 @@ var diffRuleRE = regexp.MustCompile(`^(?:\*[ \t]*){3,}$|^(?:-[ \t]*){3,}$|^(?:_[
 // diffHeadingRE matches an ATX heading such as "## Title".
 var diffHeadingRE = regexp.MustCompile(`^#{1,6}(?:\s|$)`)
 
-// diffSetextRE matches a "===" setext heading underline.
-var diffSetextRE = regexp.MustCompile(`^=+$`)
+// diffSetextRE matches a setext heading underline ("===" or "--" of any length).
+var diffSetextRE = regexp.MustCompile(`^(?:=+|-+)$`)
 
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
