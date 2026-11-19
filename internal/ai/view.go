@@ -1305,7 +1305,8 @@ var plainEmphasisREs = []*regexp.Regexp{
 	regexp.MustCompile(`(^|[^*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:.*?\S)??)__($|[^\p{L}\p{N}_])`),
 	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
-	regexp.MustCompile(`(^|[^~\\])~(\S(?:[^~]*\S)?)~($|[^~])`),
+	// A single "~" between letters or digits is a range ("20~25"), not strikethrough.
+	regexp.MustCompile(`(^|[^~\\\p{L}\p{N}])~(\S(?:[^~]*\S)?)~($|[^~\p{L}\p{N}])`),
 	regexp.MustCompile(`(^|[^*\\])\*(\S(?:[^*]*\S)?)\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
 }
