@@ -85,6 +85,8 @@ type SupervisorConfig struct {
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	OnChanged       func()
 	OnRedraw        func()
+	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
+	UI UIHost
 }
 
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
@@ -93,6 +95,7 @@ type Supervisor struct {
 	rpcLocks sync.Map // plugin ID -> *sync.Mutex, serializes notebook-scoped RPCs
 	store    *StoreManager
 	cfg      SupervisorConfig
+	contrib  *contribRegistry
 
 	mu               sync.RWMutex
 	viewEpoch        atomic.Uint64
@@ -121,6 +124,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	s := &Supervisor{
 		store:          sm,
 		cfg:            cfg,
+		contrib:        newContribRegistry(cfg.AppDataDir),
 		catalog:        sm.LoadCachedOrSeedCatalog(),
 		installed:      installed,
 		runtimes:       make(map[string]*Runtime),
@@ -1017,6 +1021,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		GetPerfSnapshot: s.cfg.GetPerfSnapshot,
 		ApplyNoteWrite:  s.cfg.ApplyNoteWrite,
 		OnNoteWritten:   s.notifyNoteWritten,
+		ContribHost:     s.dispatchContribHostMethod,
 	}
 	s.mu.Lock()
 	current := false
