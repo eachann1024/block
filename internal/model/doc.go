@@ -101,6 +101,8 @@ const (
 	TableTintSlate   TableTint = "slate"
 	TableTintOcean   TableTint = "ocean"
 	TableTintEmerald TableTint = "emerald"
+	TableTintAmber   TableTint = "amber"
+	TableTintRose    TableTint = "rose"
 )
 
 type ImageCrop struct {
@@ -147,7 +149,9 @@ func PlainTextOfSpans(spans []Span) string {
 }
 
 type TableCell struct {
-	Spans []Span `json:"spans"`
+	Spans []Span    `json:"spans"`
+	Align ColAlign  `json:"align,omitempty"`
+	Tint  TableTint `json:"tint,omitempty"`
 }
 
 func (c TableCell) PlainText() string {
@@ -157,11 +161,53 @@ func (c TableCell) PlainText() string {
 type TableData struct {
 	Aligns      []ColAlign    `json:"aligns,omitempty"`
 	Widths      []float32     `json:"widths,omitempty"`
-	ColTints    []TableTint   `json:"colTints,omitempty"`
-	RowTints    []TableTint   `json:"rowTints,omitempty"`
 	NoHeaderRow bool          `json:"noHeaderRow,omitempty"`
+	HeaderCol   bool          `json:"headerCol,omitempty"`
 	Rows        [][]TableCell `json:"rows"` // Row 0 is the header row unless NoHeaderRow is true
 	WasHTML     bool          `json:"wasHtml,omitempty"`
+}
+
+func (t *TableData) IsHeaderCell(row, col int) bool {
+	if t == nil {
+		return false
+	}
+	return (row == 0 && !t.NoHeaderRow) || (col == 0 && t.HeaderCol)
+}
+
+func (t *TableData) ColBaseAlign(col int) ColAlign {
+	if t != nil && col >= 0 && col < len(t.Aligns) && t.Aligns[col] != ColAlignNone {
+		return t.Aligns[col]
+	}
+	return ColAlignLeft
+}
+
+func (t *TableData) CellAlign(row, col int) ColAlign {
+	if t == nil {
+		return ColAlignNone
+	}
+	if row >= 0 && row < len(t.Rows) && col >= 0 && col < len(t.Rows[row]) {
+		if a := t.Rows[row][col].Align; a != ColAlignNone {
+			return a
+		}
+	}
+	if col >= 0 && col < len(t.Aligns) {
+		return t.Aligns[col]
+	}
+	return ColAlignNone
+}
+
+func (t *TableData) CellEffectiveAlign(row, col int) ColAlign {
+	if a := t.CellAlign(row, col); a != ColAlignNone {
+		return a
+	}
+	return ColAlignLeft
+}
+
+func (t *TableData) CellTint(row, col int) TableTint {
+	if t != nil && row >= 0 && row < len(t.Rows) && col >= 0 && col < len(t.Rows[row]) {
+		return t.Rows[row][col].Tint
+	}
+	return TableTintNone
 }
 
 func (t *TableData) Clone() *TableData {
@@ -171,16 +217,19 @@ func (t *TableData) Clone() *TableData {
 	out := &TableData{
 		WasHTML:     t.WasHTML,
 		NoHeaderRow: t.NoHeaderRow,
+		HeaderCol:   t.HeaderCol,
 		Aligns:      append([]ColAlign(nil), t.Aligns...),
 		Widths:      append([]float32(nil), t.Widths...),
-		ColTints:    append([]TableTint(nil), t.ColTints...),
-		RowTints:    append([]TableTint(nil), t.RowTints...),
 		Rows:        make([][]TableCell, len(t.Rows)),
 	}
 	for r, row := range t.Rows {
 		out.Rows[r] = make([]TableCell, len(row))
 		for c, cell := range row {
-			out.Rows[r][c] = TableCell{Spans: append([]Span(nil), cell.Spans...)}
+			out.Rows[r][c] = TableCell{
+				Spans: append([]Span(nil), cell.Spans...),
+				Align: cell.Align,
+				Tint:  cell.Tint,
+			}
 		}
 	}
 	return out
