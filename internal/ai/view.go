@@ -1201,13 +1201,14 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
-// plainStrongRE matches **bold** emphasis (not a lone "**" such as Python's power).
-var plainStrongRE = regexp.MustCompile(`\*\*(\S(?:[^*]*\S)?)\*\*`)
+// plainStrongRE matches **bold** emphasis set off from words, so Python's 2**3 and
+// a lone "**" stay as written.
+var plainStrongRE = regexp.MustCompile(`(^|[^\w*])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`)
 
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
 	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	t = plainStrongRE.ReplaceAllString(t, "$1")
+	t = plainStrongRE.ReplaceAllString(t, "$1$2$3")
 	t = strings.ReplaceAll(t, "`", "")
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
