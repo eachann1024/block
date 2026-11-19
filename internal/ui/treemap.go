@@ -4,19 +4,30 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
 
+// TreemapEntry represents a single file or grouped breakdown item inside a TreemapItem.
+type TreemapEntry struct {
+	Name  string
+	Path  string
+	Bytes uint64
+	Count int
+}
+
 // TreemapItem describes one storage or breakdown category rendered inside RenderStorageTreemap.
 type TreemapItem struct {
-	ID     string
-	Label  string
-	Detail string
-	Bytes  uint64
-	Color  ui.Color
+	ID        string
+	Label     string
+	Detail    string
+	Bytes     uint64
+	FileCount int
+	Color     ui.Color
+	Entries   []TreemapEntry
 }
 
 // TreemapTileRect pairs a TreemapItem with its computed squarified rectangle.
@@ -70,8 +81,8 @@ type TreemapOptions struct {
 	OnSelect        func(id string)
 }
 
-// RenderStorageTreemap draws the interactive Squarified Treemap canvas, selected detail strip,
-// and clickable category legend pills shared by the Performance modal and plugin pages.
+// RenderStorageTreemap draws the interactive Squarified Treemap canvas, live hover/selection
+// breakdown panel, and clickable category legend pills shared by the Performance modal and plugin pages.
 func RenderStorageTreemap(
 	c *ui.Context,
 	state *TreemapState,
@@ -159,22 +170,25 @@ func RenderStorageTreemap(
 				if isActive {
 					bg = pal.Selected
 					border = pal.Accent
-					bw = 2
+					bw = 1.5
 				}
 				p.Fill(tr, bg, theme.RadiusMD)
 				p.Stroke(tr, border, theme.RadiusMD, bw)
 
-				// Left accent stripe.
-				stripe := ui.Rect{X: tr.X + theme.Space4, Y: tr.Y + theme.Space6, W: theme.Space4, H: max(tr.H-theme.Space12, theme.Space4)}
-				p.Fill(stripe, t.Item.Color, theme.Space2)
-
-				if tr.W >= 72 && tr.H >= 38 {
+				if tr.W >= 68 && tr.H >= 38 {
+					padX := theme.Space12
+					textW := max(tr.W-padX*2, 1)
 					titleSpan := ui.Span{Text: t.Item.Label, Size: theme.FontBody, Weight: theme.WeightTitle, Color: pal.Text}
-					p.RichText(tr.X+14, tr.Y+theme.Space8, tr.W-theme.Space20, titleSpan)
-					if tr.H >= 56 {
+					p.RichText(tr.X+padX, tr.Y+theme.Space10, textW, titleSpan)
+					if tr.H >= 58 {
 						sub := fmt.Sprintf("%s · %s", FormatBytesIEC(t.Item.Bytes), FormatPercent(t.Item.Bytes, totalBytes))
-						subSpan := ui.Span{Text: sub, Size: theme.FontBody, Weight: theme.WeightRegular, Color: pal.TextSecondary}
-						p.RichText(tr.X+14, tr.Y+30, tr.W-theme.Space20, subSpan)
+						subSpan := ui.Span{Text: sub, Size: theme.FontSmall, Weight: theme.WeightRegular, Color: pal.TextSecondary}
+						p.RichText(tr.X+padX, tr.Y+32, textW, subSpan)
+					}
+					if tr.H >= 96 && t.Item.FileCount > 0 {
+						countText := fmt.Sprintf(theme.Tr("%d 项", "%d items"), t.Item.FileCount)
+						countSpan := ui.Span{Text: countText, Size: theme.FontMeta, Weight: theme.WeightRegular, Color: pal.TextSecondary}
+						p.RichText(tr.X+padX, tr.Y+tr.H-theme.Space24, textW, countSpan)
 					}
 				}
 			}
@@ -196,28 +210,103 @@ func RenderStorageTreemap(
 			return false
 		})
 
-		// Selected category detail strip.
-		detailBar := ui.Row(c.Key(detailKey)).FillWidth().MinWidth(0).
-			Padding(theme.Space10, theme.Space12, theme.Space10, theme.Space12).Gap(theme.Space12).
-			Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.SpaceBetween)
-		AnimateSurfaceColors(detailBar, pal.Shell, pal.Hairline, true)
-		detailBar.Children(func() {
-			ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
-				dot := ui.Box(c).Size(theme.Space10, theme.Space10).Shrink(0).Radius(theme.RadiusPill)
-				dot.Background(dot.AnimateColor("treemapDot-"+canvasKey, active.Color, FadeColor))
-				ui.Text(c, active.Label).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).
-					TextColor(pal.Text).Shrink(0).SingleLine()
-				if active.Detail != "" {
-					ui.Text(c, active.Detail).FontSize(theme.FontBody).
-						TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				}
+		// Selected / hovered category breakdown card.
+		detailBox := ui.Column(c.Key(detailKey)).FillWidth().MinWidth(0).
+			Padding(theme.Space12, theme.Space16).Gap(theme.Space10).
+			Radius(theme.RadiusMD)
+		AnimateSurfaceColors(detailBox, pal.Shell, pal.Hairline, true)
+		detailBox.Children(func() {
+			// Header row: Category label, description, file count, and total size.
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+					ui.Text(c, active.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
+					meta := active.Detail
+					if active.FileCount > 0 {
+						countLbl := fmt.Sprintf(theme.Tr("共 %d 个文件", "%d files"), active.FileCount)
+						if meta != "" {
+							meta = meta + " · " + countLbl
+						} else {
+							meta = countLbl
+						}
+					}
+					if meta != "" {
+						ui.Text(c, meta).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					}
+				})
+				ui.Text(c, fmt.Sprintf("%s (%s)", FormatBytesIEC(active.Bytes), FormatPercent(active.Bytes, totalBytes))).
+					Font("monospace").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
 			})
-			ui.Text(c, fmt.Sprintf("%s (%s)", FormatBytesIEC(active.Bytes), FormatPercent(active.Bytes, totalBytes))).
-				Font("monospace").FontSize(theme.FontBody).FontWeight(theme.WeightTitle).
-				TextColor(pal.Text).Shrink(0).SingleLine()
+
+			// Granular file / group breakdown list.
+			if len(active.Entries) == 0 {
+				ui.Text(c, theme.Tr("暂无文件占用", "No files in this category")).
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+			} else {
+				ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+				var shownBytes uint64
+				var shownCount int
+				ui.Column(c.Key(detailKey + "-entries")).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+					for i, ent := range active.Entries {
+						e := ent
+						shownBytes += e.Bytes
+						cCount := e.Count
+						if cCount <= 0 {
+							cCount = 1
+						}
+						shownCount += cCount
+						displayName := strings.TrimSpace(e.Name)
+						if displayName == "" {
+							displayName = e.Path
+						}
+						tip := strings.TrimSpace(e.Path)
+						if tip == "" {
+							tip = displayName
+						}
+						ui.Row(c.Key(fmt.Sprintf("%s-ent-%d", detailKey, i))).FillWidth().MinWidth(0).
+							Gap(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+							ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+								nameEl := ui.Text(c, displayName).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+									TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+								WrappedTooltip(c, nameEl, tip)
+								if e.Count > 1 {
+									ui.Text(c, fmt.Sprintf(theme.Tr("· %d 项", "· %d files"), e.Count)).
+										FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+								}
+							})
+							ui.Text(c, fmt.Sprintf("%s · %s", FormatBytesIEC(e.Bytes), FormatPercent(e.Bytes, active.Bytes))).
+								Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+								TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+						})
+					}
+
+					remFiles := active.FileCount - shownCount
+					var remBytes uint64
+					if active.Bytes > shownBytes {
+						remBytes = active.Bytes - shownBytes
+					}
+					if remFiles > 0 || remBytes > 0 {
+						remLabel := theme.Tr("其余文件", "Other files")
+						if remFiles > 0 {
+							remLabel = fmt.Sprintf(theme.Tr("其余 %d 个文件", "%d other files"), remFiles)
+						}
+						ui.Row(c.Key(detailKey + "-ent-rest")).FillWidth().MinWidth(0).
+							Gap(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+							ui.Text(c, remLabel).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+								TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine()
+							ui.Text(c, fmt.Sprintf("%s · %s", FormatBytesIEC(remBytes), FormatPercent(remBytes, active.Bytes))).
+								Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+								TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+						})
+					}
+				})
+			}
 		})
 
-		// Clickable category legend strip.
+		// Clickable category pills strip (hover or click switches breakdown).
 		ui.Row(c.Key(legendKey)).FillWidth().Wrap().Gap(theme.Space8).Children(func() {
 			for _, item := range items {
 				it := item
@@ -241,13 +330,12 @@ func RenderStorageTreemap(
 				AnimateSurfaceColors(btn, bg, bd, true)
 				TactileCard(btn, hovered, pressed, isSelected, false)
 				btn.Children(func() {
-					ui.Box(c).Size(theme.Space8, theme.Space8).Radius(theme.RadiusPill).Background(it.Color)
 					ui.Text(c, it.Label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine()
 					ui.Text(c, FormatBytesIEC(it.Bytes)).Font("monospace").FontSize(theme.FontBody).
 						TextColor(pal.TextSecondary).SingleLine()
 				})
 				Probe(btn, tileID)
-				if btn.Clicked() {
+				if btn.Clicked() || hovered {
 					selectID(it.ID)
 				}
 			}
@@ -260,7 +348,7 @@ func treemapItemsEqual(a, b []TreemapItem) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].ID != b[i].ID || a[i].Bytes != b[i].Bytes || a[i].Label != b[i].Label || a[i].Detail != b[i].Detail || a[i].Color != b[i].Color {
+		if a[i].ID != b[i].ID || a[i].Bytes != b[i].Bytes || a[i].FileCount != b[i].FileCount || a[i].Label != b[i].Label || a[i].Detail != b[i].Detail || a[i].Color != b[i].Color {
 			return false
 		}
 	}
