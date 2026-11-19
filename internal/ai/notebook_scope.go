@@ -37,6 +37,8 @@ type assistantTurn struct {
 	serial        uint64
 	cfg           model.AIProviderConfig
 	thinking      string
+	nativeTools   bool
+	cliPath       string
 	userIndex     int
 	historyEnd    int
 	questionIndex int

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -201,8 +202,8 @@ type Controller struct {
 	planSelections map[planSelKey]*diffSelection
 
 	expandedProcess     map[string]bool
-	expandedStepDetails map[string]bool
 	collapsedLive       map[string]bool
+	expandedStepDetails map[string]bool
 	expandedSources     map[string]bool
 	expandedNotes       map[string]bool
 	questionUI          map[string]*questionUIState
@@ -279,8 +280,8 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		statusOverrides:     make(map[model.BackendKind]BackendStatus),
 		planSelections:      make(map[planSelKey]*diffSelection),
 		expandedProcess:     make(map[string]bool),
-		expandedStepDetails: make(map[string]bool),
 		collapsedLive:       make(map[string]bool),
+		expandedStepDetails: make(map[string]bool),
 		expandedSources:     make(map[string]bool),
 		expandedNotes:       make(map[string]bool),
 		questionUI:          make(map[string]*questionUIState),
@@ -395,7 +396,7 @@ func (c *Controller) writeJSONFile(name string, v any) error {
 	return nil
 }
 
-func normalizeBackendPermissions(cfg *model.AIBackendsConfig) {
+func configureBackendBinaries(cfg *model.AIBackendsConfig) {
 	if cfg.Adapters == nil {
 		cfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
@@ -403,14 +404,7 @@ func normalizeBackendPermissions(cfg *model.AIBackendsConfig) {
 		if k == model.BackendBuiltin {
 			continue
 		}
-		opt := cfg.Adapters[string(k)]
-		opt.FullPermissions = false
-		setCustomCLIBinaryPath(k, opt.BinaryPath)
-		cfg.Adapters[string(k)] = opt
-	}
-	for k, opt := range cfg.Adapters {
-		opt.FullPermissions = false
-		cfg.Adapters[k] = opt
+		setCustomCLIBinaryPath(k, cfg.Adapters[string(k)].BinaryPath)
 	}
 }
 
@@ -430,7 +424,7 @@ func (c *Controller) readBackendsFile() model.AIBackendsConfig {
 			}
 		}
 	}
-	normalizeBackendPermissions(&cfg)
+	configureBackendBinaries(&cfg)
 	return cfg
 }
 
@@ -1203,7 +1197,9 @@ func (c *Controller) RemoveProviderEntry(id string) error {
 	}
 	delete(cfg.Providers, id)
 	cfg.ProviderOrder = removeString(append([]string(nil), cfg.ProviderOrder...), id)
-	remaining := orderedProviderEntries(cfg)
+	// The active fields still describe the removed provider until a replacement
+	// is selected. Do not let orderedProviderEntries reconstruct it from them.
+	remaining := slices.DeleteFunc(entries, func(entry ProviderEntry) bool { return entry.ID == id })
 	if cfg.Provider == id && len(remaining) > 0 {
 		pick := remaining[0]
 		for _, r := range remaining {
@@ -1249,7 +1245,6 @@ func (c *Controller) BackendsConfig() model.AIBackendsConfig {
 // SaveBackendsConfig persists and applies the backend adapter configuration.
 func (c *Controller) SaveBackendsConfig(cfg model.AIBackendsConfig) error {
 	cp := cloneBackendsConfig(cfg)
-	normalizeBackendPermissions(&cp)
 	c.mu.Lock()
 	prev := c.backendsCfg
 	c.backendsCfg = cp
@@ -1260,6 +1255,7 @@ func (c *Controller) SaveBackendsConfig(cfg model.AIBackendsConfig) error {
 		c.mu.Unlock()
 		return err
 	}
+	configureBackendBinaries(&c.backendsCfg)
 	c.mu.Unlock()
 	c.requestRedraw()
 	return nil
@@ -1310,7 +1306,6 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 	}
 	val := on
 	opt.Enabled = &val
-	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	c.ensureValidSelectionLocked()
 	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
@@ -1342,9 +1337,11 @@ func (c *Controller) AddAgentEntry(kind model.BackendKind, displayName, binaryPa
 	opt.Added = true
 	opt.Enabled = &on
 	opt.Name = strings.TrimSpace(displayName)
-	opt.BinaryPath = strings.TrimSpace(binaryPath)
+	if path := strings.TrimSpace(binaryPath); path != opt.BinaryPath {
+		opt.BinaryPath = path
+		opt.NativeTools = false
+	}
 	opt.ThinkingLevel = thinking
-	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	setCustomCLIBinaryPath(kind, opt.BinaryPath)
 	c.settingsExpandedAg = kind
@@ -1379,17 +1376,24 @@ func (c *Controller) UpdateAgentEntry(kind model.BackendKind, mutate func(opt *m
 	if c.backendsCfg.Adapters == nil {
 		c.backendsCfg.Adapters = make(map[string]model.AIBackendAdapterOptions)
 	}
-	opt := c.backendsCfg.Adapters[string(kind)]
+	previous := c.backendsCfg.Adapters[string(kind)]
+	opt := previous
 	mutate(&opt)
 	opt.BinaryPath = strings.TrimSpace(opt.BinaryPath)
 	opt.Name = strings.TrimSpace(opt.Name)
-	opt.FullPermissions = false
+	if opt.BinaryPath != previous.BinaryPath {
+		opt.NativeTools = false
+	}
 	c.backendsCfg.Adapters[string(kind)] = opt
+	if err := c.writeJSONFile("ai-backends.json", c.backendsCfg); err != nil {
+		c.backendsCfg.Adapters[string(kind)] = previous
+		c.mu.Unlock()
+		return err
+	}
 	setCustomCLIBinaryPath(kind, opt.BinaryPath)
-	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
 	c.mu.Unlock()
 	c.requestRedraw()
-	return err
+	return nil
 }
 
 // RemoveAgentEntry removes a local CLI agent from the added list.
@@ -1409,7 +1413,7 @@ func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
 	off := false
 	opt.Added = false
 	opt.Enabled = &off
-	opt.FullPermissions = false
+	opt.NativeTools = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 	if c.settingsExpandedAg == kind {
 		c.settingsExpandedAg = ""
@@ -1454,7 +1458,6 @@ func (c *Controller) PromoteBackend(kind model.BackendKind) error {
 	}
 	on := true
 	opt.Enabled = &on
-	opt.FullPermissions = false
 	c.backendsCfg.Adapters[string(kind)] = opt
 
 	recognized := c.recognizedBackendsLocked()
@@ -1875,10 +1878,17 @@ func (c *Controller) SendPrompt(text string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		c.streamSerial++
 		conv := c.findConvLocked(convID)
+		opt := c.backendsCfg.Adapters[string(backend)]
 		turn = &assistantTurn{
 			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
 			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
-			userIndex: c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
+			nativeTools: supportsNativeTools(backend) && opt.NativeTools,
+			userIndex:   c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
+		}
+		if backend != model.BackendBuiltin {
+			if cliPath, ok := resolveConfiguredCLIBinary(string(backend), opt.BinaryPath); ok {
+				turn.cliPath = cliPath
+			}
 		}
 		c.turn = turn
 		c.streaming = true
