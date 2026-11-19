@@ -8,7 +8,10 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const edgeScrollSuppressWindow = 350 * time.Millisecond
+const (
+	edgeScrollSuppressWindow  = 350 * time.Millisecond
+	hoverScrollSuppressWindow = 140 * time.Millisecond
+)
 
 // SetEdgeFloatInsets sets target left/right safe insets so floating edge panels
 // nudge the editor column smoothly while keeping the 54px block-handle gutter clear.
@@ -44,6 +47,15 @@ func (s *Session) IsScrollingRecently(now time.Time) bool {
 	return !s.edgeScrollQuietAt.IsZero() && now.Before(s.edgeScrollQuietAt)
 }
 
+// IsScrollingForHover reports whether the document is actively scrolling or just scrolled,
+// suppressing transient block/table hover chrome, link span mounting, and backdrop path churn.
+func (s *Session) IsScrollingForHover(now time.Time) bool {
+	if s.edgeScrollInit && math.Abs(float64(s.bodyScroll.Y-s.edgeLastScrollY)) > 0.5 {
+		return true
+	}
+	return !s.hoverScrollQuietAt.IsZero() && now.Before(s.hoverScrollQuietAt)
+}
+
 func (s *Session) animatedEdgeInsets(c *ui.Context, root ui.Element) (float32, float32) {
 	now := c.Now()
 	if !s.edgeScrollInit {
@@ -52,6 +64,14 @@ func (s *Session) animatedEdgeInsets(c *ui.Context, root ui.Element) (float32, f
 	} else if math.Abs(float64(s.bodyScroll.Y-s.edgeLastScrollY)) > 0.5 {
 		s.edgeLastScrollY = s.bodyScroll.Y
 		s.edgeScrollQuietAt = now.Add(edgeScrollSuppressWindow)
+		s.hoverScrollQuietAt = now.Add(hoverScrollSuppressWindow)
+	}
+	if !s.hoverScrollQuietAt.IsZero() {
+		if rem := s.hoverScrollQuietAt.Sub(now); rem > 0 {
+			c.After(rem + 5*time.Millisecond)
+		} else {
+			s.hoverScrollQuietAt = time.Time{}
+		}
 	}
 	left := appUi.SpringPanelTo(root, "edgeInsetL", s.edgeInsetLeft)
 	right := appUi.SpringPanelTo(root, "edgeInsetR", s.edgeInsetRight)
