@@ -47,10 +47,15 @@ func diffQuoteDepth(t string) int {
 	return strings.Count(diffQuoteRE.FindString(t), ">")
 }
 
-// diffStripQuotes removes n blockquote markers from the start of a trimmed line.
+// diffStripQuotes removes n blockquote markers, each with one optional space after
+// it, from the start of a trimmed line; the indent of what follows is kept.
 func diffStripQuotes(t string, n int) string {
-	for ; n > 0 && strings.HasPrefix(t, ">"); n-- {
-		t = strings.TrimLeft(t[1:], " \t")
+	for ; n > 0; n-- {
+		u := strings.TrimLeft(t, " \t")
+		if !strings.HasPrefix(u, ">") {
+			break
+		}
+		t = strings.TrimPrefix(u[1:], " ")
 	}
 	return t
 }
@@ -170,14 +175,17 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				// quote marker may close behind a quote marker. List items close by indent,
 				// so "- ~~~" inside a fence never closes it.
 				// A quote fence closes at its own depth only: in "> ~~~", ">> ~~~" is code.
+				quoteLead := 0
 				if nested && fenceQuote > 0 {
-					t = diffStripQuotes(t, fenceQuote)
+					r := diffStripQuotes(t, fenceQuote)
+					t = strings.TrimLeft(r, " \t")
+					quoteLead = len(strings.ReplaceAll(r[:len(r)-len(t)], "\t", "    "))
 				} else if nested {
 					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
 				// A closer indented four columns past its block is code.
 				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" &&
-					(fenceQuote > 0 || lead-fenceIndent < 4) {
+					(fenceQuote > 0 && quoteLead < 4 || fenceQuote == 0 && lead-fenceIndent < 4) {
 					// Code may follow at once, unless the fence sat in a list item, whose
 					// content is indented the same way.
 					fence, prevBlank, inIndented = "", !fenceList, false
