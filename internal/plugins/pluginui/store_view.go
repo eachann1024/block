@@ -88,7 +88,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		} else if storeNotice != "" {
 			ui.Row(c.Key("app-store-notice")).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Gap(theme.Space8).Radius(theme.RadiusMD).
-				Background(pal.Selected).Border(1, pal.Accent).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(c, storeNotice).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
 				dismissBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
 					ID:      "app-store-notice-dismiss",
@@ -452,7 +452,7 @@ func renderVerifiedBadge(c *ui.Context, verified bool) {
 	if verified {
 		label = theme.Tr("官方认证", "Official")
 		bg = pal.Selected
-		bd = pal.Accent
+		bd = pal.SelectedBorder
 		fg = pal.Text
 	}
 	ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
