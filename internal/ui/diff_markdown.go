@@ -24,6 +24,9 @@ type DiffLineStyle struct {
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
 var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 
+// diffQuoteRE matches the blockquote markers in front of a fence closer.
+var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
+
 // diffFenceOpen returns the fence run ("```", "~~~~"…) a trimmed line opens, or "".
 // A backtick fence's info string may not hold a backtick, so "```x```" is inline code.
 func diffFenceOpen(t string) string {
@@ -55,10 +58,11 @@ func DiffFenceMask(lines []string, change []int) []bool {
 			t := strings.TrimSpace(l)
 			if fence != "" {
 				mask[i] = true
-				// Inside a plain fence "- ~~~" is code; only a fence opened behind a list or
-				// quote marker may close behind one.
+				// Inside a plain fence "> ~~~" is code; only a fence opened behind a list or
+				// quote marker may close behind a quote marker. List items close by indent,
+				// so "- ~~~" inside a fence never closes it.
 				if nested {
-					t = diffContainerRE.ReplaceAllString(t, "")
+					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
 				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
 					fence = ""
@@ -120,7 +124,7 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 
 var (
 	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`)
-	diffLinkRE     = regexp.MustCompile(`\[([^\]]+)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`)
+	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
@@ -243,8 +247,8 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 }
 
 // diffCellBlockRE matches a leading marker that would make a cell parse as a block
-// (heading, quote, bullet, thematic break); a backslash in front keeps it literal.
-var diffCellBlockRE = regexp.MustCompile(`^(?:#{1,6}(?:\s|$)|>|[-+*](?:\s|$)|[-*_](?:\s*[-*_]){2,}\s*$)`)
+// (heading, quote, fence, bullet, thematic break); a backslash in front keeps it literal.
+var diffCellBlockRE = regexp.MustCompile("^(?:#{1,6}(?:\\s|$)|>|~{3,}|`{3,}|[-+*](?:\\s|$)|[-*_](?:\\s*[-*_]){2,}\\s*$)")
 
 // diffCellListRE matches an ordered-list marker; its "." or ")" gets the backslash.
 var diffCellListRE = regexp.MustCompile(`^(\d{1,9})([.)])(\s|$)`)
