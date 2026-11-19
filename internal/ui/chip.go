@@ -77,3 +77,23 @@ func ChipSurface(el ui.Element, active bool) ui.Element {
 		Padding(0, theme.Space4, 0, theme.Space8).Gap(theme.Space2).
 		AlignItems(ui.Center).Radius(theme.RadiusSM).Background(bg).Border(1, brd)
 }
+
+// BetaBadge renders an Ocean Paper "Beta" status pill for preview plugins/features.
+func BetaBadge(c *ui.Context, compact bool) {
+	pal := theme.Ocean()
+	h := theme.HeightMicro
+	padX := theme.Space8
+	if compact {
+		h = theme.KeycapHeight
+		padX = theme.Space6
+	}
+	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
+		Background(pal.WarningSurface).Border(1, pal.Warning).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "Beta").
+			FontSize(theme.FontMicro).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightControl).
+			TextColor(pal.Warning).
+			SingleLine()
+	})
+}
