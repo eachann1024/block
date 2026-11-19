@@ -1476,9 +1476,8 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		return err
 	}
 	defer os.RemoveAll(dir)
-	timeoutError := errors.New(theme.Tr("本机 Agent 响应超时，请重试。", "The local agent timed out. Try again."))
-	processCtx, cancel := context.WithTimeoutCause(turn.ctx, 3*time.Minute, timeoutError)
-	defer cancel()
+	processCtx, noteActivity, stopIdleTimer := withCLIIdleTimeout(turn.ctx, cliIdleTimeout)
+	defer stopIdleTimer()
 
 	var bridge *mcpBridgeServer
 	if kind == model.BackendClaude || kind == model.BackendCodex || kind == model.BackendAgy {
@@ -1577,6 +1576,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	scanner.Split(cliActivitySplit(noteActivity))
 	switch kind {
 	case model.BackendCodex:
 		err = c.streamRestrictedCodex(turn, scanner, stdin, dir, prompt, modelName)
