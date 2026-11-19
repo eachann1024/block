@@ -1398,6 +1398,8 @@ func detectImageMime(path string, data []byte) string {
 		return "image/gif"
 	case ".webp":
 		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
 	case ".svg":
 		return "image/svg+xml"
 	}
