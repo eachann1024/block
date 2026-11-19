@@ -1329,9 +1329,11 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							} else {
 								icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
 							}
-							detail := plainInline(st.Detail)
-							if detail == "" {
-								detail = strings.TrimSpace(st.Detail)
+							// The streaming row's detail is already plain (latestStreamLine);
+							// stripping it again would eat stars that sat in code.
+							detail := strings.TrimSpace(st.Detail)
+							if p := plainInline(st.Detail); st.ID != "streaming" && p != "" {
+								detail = p
 							}
 							if live := st.ID == "streaming" && !st.Done; live && detail != "" {
 								// 实时行空间有限：只显示正在生成的内容，不再重复“正在生成回答”。
