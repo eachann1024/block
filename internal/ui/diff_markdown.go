@@ -184,7 +184,7 @@ func DiffRefDefs(lines []string, change []int) []bool {
 // diffRefScan finds the link reference definitions of the old (0) and new (1) text:
 // the labels each defines and the lines they take.
 func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs [2][]bool) {
-	masks, _ := diffScan(lines, change)
+	masks, heads := diffScan(lines, change)
 	// A "[x]: y" inside a formula block defines nothing.
 	math := diffMathSides(lines, change)
 	// A definition in a blockquote counts too ("> [a]: …").
@@ -205,7 +205,8 @@ func diffRefScan(lines []string, change []int) (labels [2]map[string]bool, defs 
 				continue
 			}
 			t := strings.TrimSpace(l)
-			if masks[si][i] || math[si][i] || t == "" {
+			// A setext underline ends its heading: a definition may follow it.
+			if masks[si][i] || math[si][i] || t == "" || heads[si][i] < 0 {
 				para = false
 				continue
 			}
