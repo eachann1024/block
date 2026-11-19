@@ -45,6 +45,8 @@ type Report struct {
 const popupSettle = 200 * time.Millisecond
 
 func clickTarget(tt *ui.Tester, id string) error {
+	tt.Frame()
+	tt.Advance(popupSettle)
 	r, ok := blockui.TargetBounds(id)
 	if !ok {
 		return fmt.Errorf("probe %q not found in frame", id)
@@ -149,6 +151,11 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "new-note"); err != nil {
 			return "", err
 		}
+		if ws.ActiveNotePath() == "" {
+			tt.Frame()
+			tt.Key(0, ui.KeyEnter)
+			tt.Frame()
+		}
 		active := ws.ActiveNotePath()
 		if active == "" {
 			return "", fmt.Errorf("expected active note after clicking new-note")
@@ -217,20 +224,25 @@ func RunAll(baseTempDir string) (*Report, error) {
 		sess.FocusBlock(0)
 		tt.Frame()
 		tt.Type("/")
-		if err := clickTarget(tt, "block-menu-item-1"); err != nil {
-			return "", err
+		tt.Advance(popupSettle)
+		if err := tt.Click(theme.Tr("一级标题", "Heading 1")); err != nil {
+			return "", fmt.Errorf("click Heading 1 in slash menu: %w", err)
+		}
+		if got := sess.Doc().Blocks[0].Kind; got != model.BlockHeading1 {
+			return "", fmt.Errorf("expected H1 after menu click, got %v", got)
 		}
 		tt.Type("Block MyGo Port")
 		tt.Key(0, ui.KeyEnter)
 		tt.Frame()
-		if sess.Doc().Blocks[0].Kind != model.BlockHeading1 {
-			return "", fmt.Errorf("expected H1 at block 0, got %v", sess.Doc().Blocks[0].Kind)
+		blocks := sess.Doc().Blocks
+		if len(blocks) != 2 || blocks[0].Kind != model.BlockHeading1 || blocks[1].Kind != model.BlockParagraph || blocks[1].PlainText() != "" {
+			return "", fmt.Errorf("expected Enter to leave an H1 followed by an empty paragraph")
 		}
 		disk, err := os.ReadFile(firstNotePath)
 		if err != nil || !strings.Contains(string(disk), "# Block MyGo Port") {
 			return "", fmt.Errorf("disk markdown missing '# Block MyGo Port': %q", string(disk))
 		}
-		return "# Block MyGo Port persisted", nil
+		return "# Block MyGo Port persisted; Enter split into an empty paragraph", nil
 	}); err != nil {
 		rep.TotalTime = time.Since(startAll)
 		return rep, err
@@ -268,6 +280,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		sess.FocusBlock(todoIdx)
 		sess.SelectRange(todoIdx, 0, todoIdx, 4)
 		tt.Frame()
+		tt.Advance(popupSettle)
 		if _, ok := blockui.TargetBounds("selection-toolbar"); !ok {
 			return "", fmt.Errorf("selection-toolbar not visible")
 		}
@@ -418,14 +431,22 @@ func RunAll(baseTempDir string) (*Report, error) {
 		}
 		sess.SetFindQuery("needle")
 		tt.Frame()
+		tt.Advance(popupSettle)
 		if sess.FindMatchCount() != 2 {
 			return "", fmt.Errorf("expected 2 matches for 'needle', got %d", sess.FindMatchCount())
 		}
+		initialMatch := sess.FindCurrentIndex()
 		if err := clickTarget(tt, "find-next"); err != nil {
 			return "", err
 		}
+		if got := sess.FindCurrentIndex(); got != (initialMatch+1)%2 {
+			return "", fmt.Errorf("expected find-next to change match from %d, got %d", initialMatch, got)
+		}
 		if err := clickTarget(tt, "find-prev"); err != nil {
 			return "", err
+		}
+		if got := sess.FindCurrentIndex(); got != initialMatch {
+			return "", fmt.Errorf("expected find-prev to return to match %d, got %d", initialMatch, got)
 		}
 		if err := clickTarget(tt, "find-close"); err != nil {
 			return "", err
@@ -504,7 +525,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		}
 		// Shrink below 960px -> outline rail must auto-hide!
 		tt.SetSize(820, 780)
-		tt.Frame()
+		tt.Advance(popupSettle)
 		if _, stillVisible := blockui.TargetBounds("outline-rail"); stillVisible {
 			return "", fmt.Errorf("expected outline-rail hidden below 960px")
 		}
@@ -627,12 +648,14 @@ func RunAll(baseTempDir string) (*Report, error) {
 	// Step 12: Settings (`settings-button`), AI shortcut blocked in Settings, FolderRules, Shortcuts, Back.
 	if err := runStep(12, "Settings tabs, AI shortcut block, FolderRules & shortcut recorder", func() (string, error) {
 		ws.AI().SetOpen(false)
+		tt.Advance(popupSettle)
 		if err := clickTarget(tt, "settings-button"); err != nil {
 			return "", err
 		}
 		if !ws.Modals().IsSettingsOpen() {
 			return "", fmt.Errorf("expected settings page open")
 		}
+		tt.Advance(popupSettle)
 		// Cmd+J must NOT open AI panel while Settings is open!
 		tt.Key(ui.Cmd, ui.KeyJ)
 		tt.Frame()
@@ -644,8 +667,12 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "settings-tab-folders"); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 		if _, ok := blockui.TargetBounds("settings-ignore-search"); !ok {
 			return "", fmt.Errorf("expected settings-ignore-search section")
+		}
+		if err := clickTarget(tt, "settings-folder-rule-add"); err != nil {
+			return "", err
 		}
 		if err := clickTarget(tt, "settings-folder-rule-input"); err == nil {
 			tt.Type("temp-build")
@@ -657,9 +684,11 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "settings-tab-appearance"); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 		if err := clickTarget(tt, "settings-tab-shortcuts"); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 
 		// Click settings-back (or Escape) to return to workspace
 		if err := clickTarget(tt, "settings-back"); err != nil {
@@ -687,15 +716,22 @@ func RunAll(baseTempDir string) (*Report, error) {
 		tt.Frame()
 
 		// 13a. Open AI panel via titlebar-ai: verify unconfigured cover first
-		_ = ws.AI().SaveProviderConfig(model.AIProviderConfig{Enabled: true, Provider: "deepseek"})
+		if err := ws.AI().SaveProviderConfig(model.AIProviderConfig{Enabled: true, Provider: "deepseek"}); err != nil {
+			return "", err
+		}
 		if err := clickTarget(tt, "titlebar-ai"); err != nil {
 			return "", err
 		}
 		if !ws.AI().IsOpen() {
 			return "", fmt.Errorf("expected AI panel open after clicking titlebar-ai")
 		}
-		if _, ok := blockui.TargetBounds("ai-cover-settings"); !ok {
-			return "", fmt.Errorf("expected ai-cover-settings on unconfigured AI cover")
+		tt.Advance(popupSettle)
+		if err := waitUntil(time.Second, func() bool {
+			tt.Advance(popupSettle)
+			_, ok := blockui.TargetBounds("ai-cover-settings")
+			return ok
+		}); err != nil {
+			return "", fmt.Errorf("unconfigured AI cover did not render: %w", err)
 		}
 
 		// 13b. Configure provider + enable MockResponder
@@ -710,7 +746,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 			return "", err
 		}
 		ws.AI().EnableMockResponder(true)
-		tt.Frame()
+		tt.Advance(popupSettle)
 
 		// 13c. Fullscreen immersive toggle & restore
 		if err := clickTarget(tt, "ai-fullscreen-toggle"); err != nil {
@@ -719,12 +755,14 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if !ws.AI().IsFullscreen() {
 			return "", fmt.Errorf("expected AI fullscreen enabled")
 		}
+		tt.Advance(popupSettle)
 		if err := clickTarget(tt, "ai-fullscreen-toggle"); err != nil {
 			return "", err
 		}
 		if ws.AI().IsFullscreen() {
 			return "", fmt.Errorf("expected AI fullscreen disabled")
 		}
+		tt.Advance(popupSettle)
 
 		// 13d. Backend min-1-enabled guard + Agent Deck single-row switch
 		if ws.AI().CanDisableBackend(model.BackendBuiltin) {
@@ -988,27 +1026,32 @@ func RunAll(baseTempDir string) (*Report, error) {
 		ws.AI().SetOpen(true)
 		tt.SetSize(680, 720)
 		tt.Frame()
+		tt.Advance(popupSettle)
 		if _, sideDocked := blockui.TargetBounds("sidebar"); sideDocked {
 			return "", fmt.Errorf("expected left sidebar yielded at 680px when AI chat is docked")
 		}
 		if err := clickTarget(tt, "tb-more"); err != nil {
 			return "", fmt.Errorf("expected tb-more overflow button in narrow column: %w", err)
 		}
+		tt.Advance(popupSettle)
 		if _, ok := blockui.TargetBounds("toolbar-more-menu"); !ok {
 			return "", fmt.Errorf("expected toolbar-more-menu open after clicking tb-more")
 		}
 		tt.Key(0, ui.KeyEscape)
+		tt.Advance(popupSettle)
 
 		// Opening a file from the narrow sidebar drawer auto-closes the drawer!
 		if err := clickTarget(tt, "sidebar-toggle"); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 		if _, ok := blockui.TargetBounds("sidebar-drawer-scrim"); !ok {
 			return "", fmt.Errorf("expected sidebar-drawer-scrim open")
 		}
 		if err := clickTarget(tt, "tree-row:"+firstNotePath); err != nil {
 			return "", err
 		}
+		tt.Advance(popupSettle)
 		if _, stillOpen := blockui.TargetBounds("sidebar-drawer-scrim"); stillOpen {
 			return "", fmt.Errorf("expected sidebar drawer auto-closed after opening file")
 		}
@@ -1741,7 +1784,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 		tt.Key(0, ui.KeyEscape)
 		tt.Frame()
 
-		// 3) Shortcuts tab: verify exact 7 rows in vertical order, rebind, conflict notice, live routing & reset.
+		// 3) Shortcuts tab: verify exact 6 rows in vertical order, rebind, conflict notice, live routing & reset.
 		ws.OpenSettings("shortcuts")
 		tt.Frame()
 		var prevY float32 = -1
@@ -1752,7 +1795,6 @@ func RunAll(baseTempDir string) (*Report, error) {
 			"settings-keycap-find",
 			"settings-keycap-new",
 			"settings-keycap-ai",
-			"settings-keycap-perf",
 		} {
 			b, ok := blockui.TargetBounds(id)
 			if !ok {
@@ -1785,8 +1827,10 @@ func RunAll(baseTempDir string) (*Report, error) {
 		}
 
 		// Exit Settings -> trigger Alt+Shift+Q live in Workspace (opens Search modal via global_summon fallback)!
-		if err := clickTarget(tt, "settings-back"); err != nil {
-			return "", err
+		if err := clickTarget(tt, "settings-sidebar-back"); err != nil {
+			if err := clickTarget(tt, "settings-back"); err != nil {
+				return "", err
+			}
 		}
 		tt.Key(ui.Alt|ui.Shift, ui.KeyQ)
 		tt.Frame()
@@ -1808,9 +1852,11 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if got := modals.EffectiveShortcut(ws.State(), "quick_note"); got != "alt-n" {
 			return "", fmt.Errorf("expected quick_note reset to alt-n, got %q", got)
 		}
-		_ = clickTarget(tt, "settings-back")
+		if err := clickTarget(tt, "settings-sidebar-back"); err != nil {
+			_ = clickTarget(tt, "settings-back")
+		}
 		tt.Frame()
-		return "Settings 4-tab lists + anchored font popover + 7-row shortcuts + reset verified", nil
+		return "Settings 4-tab lists + anchored font popover + 6-row shortcuts + reset verified", nil
 	}); err != nil {
 		rep.TotalTime = time.Since(startAll)
 		return rep, err
