@@ -19,7 +19,7 @@ import (
 
 // The SDK profile's plugin IDs are version-specific. Check the installed
 // runtime before relying on the patch to disable its local capabilities.
-const restrictedDshVersion = "0.2.2-rc.5"
+const supportedDshVersion = "0.2.2-rc.5"
 
 func dshVersion(ctx context.Context) (string, error) {
 	out, err := cliCommand(ctx, "dsh", "--version").Output()
@@ -27,7 +27,7 @@ func dshVersion(ctx context.Context) (string, error) {
 }
 
 func dshVersionError(version string) error {
-	return fmt.Errorf(theme.Tr("受限 dsh 需要版本 %s，当前为 %s。", "Restricted dsh requires version %s. Found %s."), restrictedDshVersion, version)
+	return fmt.Errorf(theme.Tr("Block 支持 dsh %s，当前为 %s。", "Block supports dsh %s. Found %s."), supportedDshVersion, version)
 }
 
 func dshCredentialError() error {
@@ -43,7 +43,7 @@ func dshCLIArgs(ctx context.Context, executable, settingsDir string, nativeTools
 		return nil, err
 	}
 	version := strings.TrimSpace(string(output))
-	if version != restrictedDshVersion {
+	if version != supportedDshVersion {
 		return nil, dshVersionError(version)
 	}
 	if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,9 +164,9 @@ func AgentDriverGuide(kind model.BackendKind) (installCmd, loginCmd string) {
 	case model.BackendClaude:
 		return "npm install -g @anthropic-ai/claude-code", "claude auth login"
 	case model.BackendDsh:
-		return "npm install -g @deepseek-ai/dsh@" + restrictedDshVersion, ""
+		return "npm install -g @deepseek-ai/dsh@" + supportedDshVersion, ""
 	case model.BackendPi:
-		return "npm install -g @mariozechner/pi-coding-agent", "pi --login"
+		return "npm install -g --ignore-scripts @earendil-works/pi-coding-agent", "pi"
 	case model.BackendAgy:
 		return "brew install antigravity", "agy login"
 	default:
@@ -295,7 +296,7 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 		if err != nil {
 			return BackendStatus{State: BackendStateError, Message: err.Error()}
 		}
-		if ver != restrictedDshVersion {
+		if ver != supportedDshVersion {
 			return BackendStatus{State: BackendStateUnsupported, Version: ver, Message: dshVersionError(ver).Error()}
 		}
 		if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {
@@ -904,6 +905,41 @@ func listPiModels(ctx context.Context) ([]ModelOption, error) {
 	return opts, nil
 }
 
+type piApproveCapability struct {
+	file      os.FileInfo
+	supported bool
+}
+
+var piApproveCapabilities sync.Map // executable path -> piApproveCapability
+
+func piSupportsApprove(ctx context.Context, path, dir string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if entry, ok := piApproveCapabilities.Load(path); ok {
+		cached := entry.(piApproveCapability)
+		if os.SameFile(info, cached.file) && info.ModTime().Equal(cached.file.ModTime()) && info.Size() == cached.file.Size() {
+			return cached.supported
+		}
+	}
+	helpCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	cmd := cliCommandAt(helpCtx, path, "--help")
+	cmd.Dir = dir
+	cmd.Env = restrictedCLIEnv(cmd.Env, nil)
+	cmd.WaitDelay = 500 * time.Millisecond
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	supported := slices.ContainsFunc(strings.Fields(string(output)), func(word string) bool {
+		return strings.TrimRight(word, ",") == "--approve"
+	})
+	piApproveCapabilities.Store(path, piApproveCapability{file: info, supported: supported})
+	return supported
+}
+
 func listAgyModels(ctx context.Context) ([]ModelOption, error) {
 	agyCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -1369,16 +1405,7 @@ func writeRPCError(w http.ResponseWriter, id any, code int, msg string) {
 	})
 }
 
-func supportsRestrictedCLI(kind model.BackendKind) bool {
-	switch kind {
-	case model.BackendClaude, model.BackendCodex, model.BackendDsh, model.BackendPi, model.BackendAgy:
-		return true
-	default:
-		return false
-	}
-}
-
-func supportsNativeTools(kind model.BackendKind) bool {
+func supportsCLI(kind model.BackendKind) bool {
 	switch kind {
 	case model.BackendClaude, model.BackendCodex, model.BackendDsh, model.BackendPi, model.BackendAgy:
 		return true
@@ -1475,8 +1502,8 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 }
 
 func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.BackendKind, prompt, modelName string) error {
-	if !supportsRestrictedCLI(kind) {
-		return errors.New(theme.Tr("该 CLI 暂不支持受限运行", "This CLI does not support restricted execution"))
+	if !supportsCLI(kind) {
+		return errors.New(theme.Tr("暂不支持此本机 Agent", "This local agent is not supported"))
 	}
 	if err := turn.ctx.Err(); err != nil {
 		return err
@@ -1524,13 +1551,12 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		if err := os.WriteFile(configPath, mcpCfg, 0o600); err != nil {
 			return err
 		}
-		args = []string{"-p", "--verbose", "--output-format", "stream-json",
-			"--strict-mcp-config", "--mcp-config", configPath, "--allowedTools",
-			"mcp__block__loadSkill,mcp__block__listNotebooks,mcp__block__listPages,mcp__block__searchNotes,mcp__block__readPage,mcp__block__executeBatchPlan"}
+		args = []string{"-p", "--verbose", "--output-format", "stream-json", "--mcp-config", configPath}
 		if turn.nativeTools {
-			args = append(args, "--permission-mode", "bypassPermissions")
+			args = append(args, "--dangerously-skip-permissions")
 		} else {
-			args = append(args, "--tools", "", "--setting-sources", "", "--permission-mode", "dontAsk")
+			args = append(args, "--strict-mcp-config", "--tools", "", "--setting-sources", "", "--permission-mode", "dontAsk",
+				"--allowedTools", "mcp__block__loadSkill,mcp__block__listNotebooks,mcp__block__listPages,mcp__block__searchNotes,mcp__block__readPage,mcp__block__executeBatchPlan")
 		}
 		if turn.thinking != "" {
 			args = append(args, "--effort", turn.thinking)
@@ -1543,11 +1569,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	case model.BackendCodex:
 		// This per-turn bridge enforces notebook access and keeps edits in Block's review flow.
 		config := fmt.Sprintf("mcp_servers={block={url=%q,bearer_token_env_var=%q,default_tools_approval_mode=\"approve\"}}", bridge.addr, "BLOCK_MCP_TOKEN")
-		args = []string{"-c", config}
-		if !turn.nativeTools {
-			args = append(args, "-c", "features.shell_tool=false")
-		}
-		args = append(args, "app-server")
+		args = []string{"-c", config, "-c", fmt.Sprintf("features.shell_tool=%t", turn.nativeTools), "app-server"}
 		authVars = []string{"OPENAI_API_KEY", "CODEX_HOME"}
 
 	case model.BackendDsh:
@@ -1559,8 +1581,11 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 
 	case model.BackendPi:
 		args = []string{"--mode", "json", "--thinking", turn.thinking}
-		if !turn.nativeTools {
+		switch {
+		case !turn.nativeTools:
 			args = append(args, "--no-tools", "--no-extensions", "--no-skills", "--no-prompt-templates")
+		case piSupportsApprove(processCtx, turn.cliPath, dir):
+			args = append(args, "--approve")
 		}
 		if modelName != "" && modelName != "default" {
 			args = append(args, "--model", modelName)
@@ -1568,7 +1593,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		authVars = []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"}
 
 	case model.BackendAgy:
-		args = []string{"acp"}
+		args = []string{"acp", "--process-per-session"}
 		if turn.nativeTools {
 			args = append(args, "--dangerously-skip-permissions")
 		} else {
