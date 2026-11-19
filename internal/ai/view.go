@@ -1247,6 +1247,10 @@ func latestStreamLine(s string) string {
 			if cols[i] > 0 {
 				raw = plainTableCut(raw, cols[i])
 			}
+			// An indented line under paragraph text is text: "    1. 启动服务" keeps "1.".
+			if setext[i] == bui.DiffParaText {
+				raw = bui.InlineStart(raw)
+			}
 			t = plainInline(raw, refs[i], cols[i] > 0)
 		}
 		if t == "" {
