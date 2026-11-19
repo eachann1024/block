@@ -450,7 +450,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 		fitBtn := ui.ButtonBase(c).Height(22).PaddingX(6).Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).Cursor(ui.CursorPointer).
 			Label(theme.Tr("适应", "Fit"))
 		if p.PreviewZoomFit {
-			fitBtn.Background(pal.Selected).Border(1, pal.Accent)
+			fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
 		} else if fitBtn.Hovered() {
 			fitBtn.Background(pal.Hover)
 		}
