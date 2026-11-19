@@ -158,24 +158,32 @@ func DiffRefLabels(lines []string, change []int) []map[string]bool {
 			if change[i] == -side || masks[si][i] {
 				continue
 			}
-			m := diffRefDefRE.FindStringSubmatch(l)
+			// A definition in a blockquote counts too ("> [a]: …").
+			body := func(l string) string {
+				l = strings.TrimRight(l, "\r\n")
+				if t := strings.TrimSpace(l); diffQuoteDepth(t) > 0 {
+					return diffStripQuotes(t, diffQuoteDepth(t))
+				}
+				return l
+			}
+			m := diffRefDefRE.FindStringSubmatch(body(l))
 			if m == nil {
 				continue
 			}
-			if strings.TrimSpace(m[2]) == "" {
+			dest := m[2]
+			if strings.TrimSpace(dest) == "" {
 				// "[docs]:" alone takes its destination from the next line of its text.
-				next := ""
 				for k := i + 1; k < len(lines); k++ {
 					if change[k] != -side {
-						next = strings.TrimSpace(lines[k])
+						dest = body(lines[k])
 						break
 					}
 				}
-				if next == "" {
-					continue
-				}
 			}
-			refs[diffRefLabel(m[1])] = true
+			// What follows must be a destination (and maybe a title): "## 配置" is not.
+			if diffRefDestRE.MatchString(dest) {
+				refs[diffRefLabel(m[1])] = true
+			}
 		}
 		for i := range lines {
 			if (change[i] < 0) == (side < 0) {
