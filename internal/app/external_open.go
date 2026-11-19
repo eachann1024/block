@@ -231,6 +231,28 @@ func (w *Workspace) handleWindowFileDrop(e *mygo.FileDropEvent) {
 	if e == nil || len(e.Paths) == 0 {
 		return
 	}
+	if w.modals.HasActiveModal() || w.hasActivePluginModal() || w.palette.IsOpen() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() || (w.ai != nil && w.ai.IsLightboxOpen()) {
+		return
+	}
+	if w.isAIPanelVisible(0) && w.ai.ContainsPoint(float32(e.X), float32(e.Y)) {
+		var aiFiles []string
+		for _, raw := range e.Paths {
+			clean := ResolveExternalPath(raw, "")
+			if clean == "" {
+				continue
+			}
+			info, err := os.Stat(clean)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			aiFiles = append(aiFiles, clean)
+		}
+		if len(aiFiles) > 0 {
+			w.ai.AddAttachmentFiles(aiFiles)
+			w.RequestRedraw()
+		}
+		return
+	}
 	sess := w.ActiveSession()
 	dropInTitlebar := e.Y >= 0 && float32(e.Y) <= TitlebarHeight
 

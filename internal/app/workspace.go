@@ -158,6 +158,8 @@ func NewWorkspace(dataDir string) *Workspace {
 		w.edgeFloat.DismissRightWithCooldown(w)
 		w.RequestRedraw()
 	})
+	w.ai.SetOnRevealPath(w.revealInShell)
+	w.ai.SetOnPickAttachments(w.pickAIAttachments)
 	w.modals = modals.NewManager(actualDir, w)
 	w.updater = updater.NewService(updater.Config{
 		DataDir:           actualDir,
@@ -415,6 +417,29 @@ func (w *Workspace) pickImagesForSession(sess *editor.Session, blockID model.Blo
 				}
 				w.RequestRedraw()
 			}
+		})
+	}()
+}
+
+func (w *Workspace) pickAIAttachments() {
+	if !mygo.App.IsReady() || w.ai == nil {
+		return
+	}
+	win := w.Window()
+	go func() {
+		paths, err := files.OpenDialog(win, mygo.OpenDialogOptions{
+			Title:    theme.Tr("添加附件", "Add Attachments"),
+			Multiple: true,
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		mygo.RunOnMain(func() {
+			w.ai.AddAttachmentFiles(paths)
+			if win != nil {
+				win.Focus()
+			}
+			w.RequestRedraw()
 		})
 	}()
 }
@@ -1820,6 +1845,9 @@ func (w *Workspace) OpenSettings(tab string) {
 	wasOpen := w.modals.IsSettingsOpen()
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
+	if w.ai != nil {
+		w.ai.CloseTransientPopups()
+	}
 	w.edgeFloat.DismissAll(w)
 	w.exportCtrl.Close()
 	w.historyView.Close()
@@ -3603,7 +3631,37 @@ func (w *Workspace) shellInputLocked(winW float32) ShellInput {
 	}
 }
 
+func (w *Workspace) isAIPanelVisible(vpW float32) bool {
+	if w.ai == nil || !w.ai.Enabled() || !w.ai.IsOpen() || w.modals.IsSettingsOpen() {
+		return false
+	}
+	if w.ai.IsFullscreen() {
+		return true
+	}
+	if vpW <= 0 {
+		if win := w.Window(); win != nil {
+			if ww, _ := win.Size(); ww > 0 {
+				vpW = float32(ww)
+			}
+		}
+	}
+	if vpW <= 0 {
+		vpW = 1280
+	}
+	w.mu.RLock()
+	in := w.shellInputLocked(vpW)
+	w.mu.RUnlock()
+	layout := ResolveShellLayout(in)
+	return layout.ChatDocked || w.edgeFloat.RightOpen()
+}
+
 func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
+	if w.ai != nil && w.ai.IsLightboxOpen() {
+		if w.isAIPanelVisible(vpW) {
+			return
+		}
+		w.ai.CloseTransientPopups()
+	}
 	if w.modals.IsRecordingShortcut() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() {
 		return
 	}
