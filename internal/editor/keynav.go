@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"runtime"
 	"unicode/utf8"
 
 	"block/internal/model"
@@ -360,6 +361,9 @@ func (s *Session) navigateFromTableCell(idx, row, col int, e appUi.RichEdge) boo
 // navigateFromCodeKey lets arrow keys leave an editable code block at its edges;
 // inside the block the native text area keeps handling them.
 func (s *Session) navigateFromCodeKey(idx int, key ui.Key, mods ui.Modifiers, text string) bool {
+	if s.navigateDocEdge(key, mods) {
+		return true
+	}
 	dir, vertical, extend, ok := arrowNav(key, mods)
 	if !ok || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return false
@@ -410,6 +414,9 @@ func containsNewline(text string, off, dir int) bool {
 
 // navigateFromAtomic moves off a focused divider, image or preview-only code block.
 func (s *Session) navigateFromAtomic(idx int, key ui.Key, mods ui.Modifiers) bool {
+	if s.navigateDocEdge(key, mods) {
+		return true
+	}
 	dir, vertical, extend, ok := arrowNav(key, mods)
 	if !ok {
 		return false
@@ -442,5 +449,47 @@ func (s *Session) extendSelectionByArrow(key ui.Key) bool {
 	if next, ok := s.horizontalStep(head, dir); ok {
 		s.placeCaret(next, true)
 	}
+	return true
+}
+
+// docEdgeKey decodes Cmd+Up/Down on macOS (Ctrl+Home/End elsewhere), optionally with Shift:
+// jump to the start or end of the whole document.
+func docEdgeKey(key ui.Key, mods ui.Modifiers) (dir int, extend, ok bool) {
+	extend = mods&ui.Shift != 0
+	m := mods &^ ui.Shift
+	switch {
+	case runtime.GOOS == "darwin" && m == ui.Super && key == ui.KeyUp,
+		runtime.GOOS != "darwin" && m == ui.Ctrl && key == ui.KeyHome:
+		return -1, extend, true
+	case runtime.GOOS == "darwin" && m == ui.Super && key == ui.KeyDown,
+		runtime.GOOS != "darwin" && m == ui.Ctrl && key == ui.KeyEnd:
+		return 1, extend, true
+	}
+	return 0, false, false
+}
+
+// navigateDocEdge moves the caret (or the selection head with Shift) to the start or end
+// of the document, whatever block or table cell it is in.
+func (s *Session) navigateDocEdge(key ui.Key, mods ui.Modifiers) bool {
+	dir, extend, ok := docEdgeKey(key, mods)
+	if !ok || s.doc == nil || len(s.doc.Blocks) == 0 {
+		return false
+	}
+	var pos Position
+	if dir < 0 {
+		first := s.stepVisibleBlock(-1, 1)
+		if first < 0 {
+			return false
+		}
+		pos = Position{Block: first}
+	} else {
+		last := s.stepVisibleBlock(len(s.doc.Blocks), -1)
+		if last < 0 || last >= len(s.doc.Blocks) {
+			return false
+		}
+		pos = Position{Block: last, Offset: s.blockSelectionLen(last)}
+	}
+	s.navCarry = false
+	s.placeCaret(pos, extend)
 	return true
 }

@@ -888,6 +888,8 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 			s.selSyncPending = !s.readOnly
 			s.multiSelFocusPending = false
 			return true
+		case s.navigateDocEdge(ev.Key, ev.Mods):
+			return true
 		case ev.Mods == ui.Shift && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight):
 			return s.extendSelectionByArrow(ev.Key)
 		case ev.Mods == 0 && ev.Key == ui.KeyEscape:
