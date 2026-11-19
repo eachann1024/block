@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RELEASE_ASSETS } from "./allowed-assets.mjs";
 import {
   compareVersions,
@@ -198,12 +199,21 @@ export function formatFeedJson(feed) {
   return `${JSON.stringify(feed, null, 2)}\n`;
 }
 
-export function fetchGithubReleases(repo = REPO) {
-  const raw = gh(["api", "--paginate", `repos/${repo}/releases?per_page=100`, "--jq", ".[]"]);
-  return raw
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+export function fetchGithubReleases(repo = REPO, { maxValid = MAX_FEED_RELEASES } = {}) {
+  const out = [];
+  const seenVersions = new Set();
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = JSON.parse(gh(["api", `repos/${repo}/releases?per_page=100&page=${page}`]));
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    out.push(...batch);
+    for (const r of batch) {
+      if (!r || r.draft || r.prerelease) continue;
+      const v = versionFromTag(r.tag_name);
+      if (v && /^\d+\.\d+\.\d+$/.test(v)) seenVersions.add(v);
+    }
+    if (seenVersions.size >= maxValid || batch.length < 100) break;
+  }
+  return out;
 }
 
 export function fetchGithubReleaseByTag(tag, repo = REPO) {
@@ -234,7 +244,11 @@ export function syncFeedFromGithub({
   return { feed, json };
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   const args = process.argv.slice(2);
   if (!args.includes("--sync-from-github")) {
     console.error("Usage: node scripts/release/update-feed.mjs --sync-from-github [--out <path>]");

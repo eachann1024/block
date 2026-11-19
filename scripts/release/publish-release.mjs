@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { assertReleaseAsset, RELEASE_ASSETS } from "./allowed-assets.mjs";
 import {
-  getReleases,
   gh,
   REPO,
   ROOT,
@@ -15,9 +16,24 @@ import { fetchGithubReleaseByTag, syncFeedFromGithub } from "./update-feed.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
-function readRemoteFile(ref, path) {
+function readFileAtRef(ref, path) {
+  try {
+    return execFileSync("git", ["show", `${ref}:${path}`], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {}
   const data = JSON.parse(gh(["api", `repos/${REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`]));
   return Buffer.from(String(data.content).replaceAll("\n", ""), "base64").toString("utf8");
+}
+
+function tryFetchReleaseByTag(tag) {
+  try {
+    return fetchGithubReleaseByTag(tag);
+  } catch {
+    return null;
+  }
 }
 
 function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}) {
@@ -26,8 +42,8 @@ function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
     const files = {};
     if (autoBump) {
-      files["package.json"] = setPackageJsonVersion(readRemoteFile(head, "package.json"), version);
-      files["mygo.json"] = setMyGoJsonVersion(readRemoteFile(head, "mygo.json"), version);
+      files["package.json"] = setPackageJsonVersion(readFileAtRef(head, "package.json"), version);
+      files["mygo.json"] = setMyGoJsonVersion(readFileAtRef(head, "mygo.json"), version);
     }
     if (typeof feedJson === "string") {
       files["updates/feed.json"] = feedJson;
@@ -88,7 +104,7 @@ export async function publishRelease() {
     assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
   );
 
-  const existing = getReleases().find((r) => r.tag_name === tag);
+  const existing = tryFetchReleaseByTag(tag);
   const title = `Block ${version}`;
   let publishedRelease;
 
@@ -110,7 +126,7 @@ export async function publishRelease() {
     ]);
     publishedRelease = fetchGithubReleaseByTag(tag);
   } else {
-    publishedRelease = fetchGithubReleaseByTag(tag);
+    publishedRelease = existing;
     assert.ok(!publishedRelease.draft, `Release ${tag} is an existing draft and requires reconciliation`);
     for (const name of assets) {
       const matches = (publishedRelease.assets ?? []).filter((asset) => asset.name === name);
@@ -133,6 +149,10 @@ export async function publishRelease() {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   await publishRelease();
 }

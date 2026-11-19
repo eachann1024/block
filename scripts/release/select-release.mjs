@@ -70,6 +70,11 @@ export function setMyGoJsonVersion(text, version) {
 }
 
 export function applyReleasePlanVersion() {
+  const envVer = process.env.BLOCK_RELEASE_VERSION?.trim();
+  if (envVer && /^\d+\.\d+\.\d+$/.test(envVer)) {
+    syncVersionFiles(ROOT, envVer);
+    return envVer;
+  }
   const planPath = resolve(ROOT, "release-plan.json");
   let version = readPackageVersion(ROOT);
   if (existsSync(planPath)) {
@@ -105,10 +110,7 @@ function shanghaiDay(isoString) {
 
 export function getReleases() {
   try {
-    return gh(["api", "--paginate", `repos/${REPO}/releases?per_page=100`, "--jq", ".[]"])
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+    return JSON.parse(gh(["api", `repos/${REPO}/releases?per_page=100`]));
   } catch {
     return [];
   }
@@ -319,6 +321,10 @@ async function main() {
   summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${notesLabel}）`);
 }
 
-if (import.meta.main) {
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
   await main();
 }

@@ -19,22 +19,26 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-curl -fsSL -o "$work/block-linux-x64.deb" \
-  "https://github.com/eachann1024/block/releases/download/${tag}/block-linux-x64.deb"
-sha="$(sha256sum "$work/block-linux-x64.deb" | awk '{print $1}')"
+local_deb="$root/dist/release/block-linux-x64.deb"
+if [[ -f "$local_deb" ]]; then
+  sha="$(sha256sum "$local_deb" | awk '{print $1}')"
+else
+  curl -fsSL -o "$work/block-linux-x64.deb" \
+    "https://github.com/eachann1024/block/releases/download/${tag}/block-linux-x64.deb"
+  sha="$(sha256sum "$work/block-linux-x64.deb" | awk '{print $1}')"
+fi
 
 pkgbuild="$root/packaging/aur/PKGBUILD"
+srcinfo="$root/packaging/aur/.SRCINFO"
 sed -i -E "s/^pkgver=.*/pkgver=${pkgver}/" "$pkgbuild"
 sed -i -E "s/^sha256sums=.*/sha256sums=('${sha}')/" "$pkgbuild"
+sed -i -E "s/^([[:space:]]*pkgver = ).*/\1${pkgver}/" "$srcinfo"
+sed -i -E "s|^([[:space:]]*source = block-linux-x64\.deb::https://github\.com/eachann1024/block/releases/download/)v[^/]+(/block-linux-x64\.deb)|\1v${pkgver}\2|" "$srcinfo"
+sed -i -E "s/^([[:space:]]*sha256sums = ).*/\1${sha}/" "$srcinfo"
 
-docker run --rm \
-  -v "$root/packaging/aur:/work:ro" \
-  archlinux:latest \
-  bash -lc 'useradd -m builder && cp /work/PKGBUILD /home/builder/PKGBUILD && chown builder:builder /home/builder/PKGBUILD && su builder -c "cd /home/builder && makepkg --printsrcinfo"' \
-  > "$root/packaging/aur/.SRCINFO"
-
-grep -q "pkgver = ${pkgver}" "$root/packaging/aur/.SRCINFO"
-grep -q "sha256sums = ${sha}" "$root/packaging/aur/.SRCINFO"
+grep -q "pkgver = ${pkgver}" "$srcinfo"
+grep -q "releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
+grep -q "sha256sums = ${sha}" "$srcinfo"
 
 mkdir -p "$work/ssh"
 printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$work/ssh/aur"
