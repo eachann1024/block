@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>浅色 · JSON 长行不折行</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#395fb0}a:hover{color:#184f95}
+button{font-family:inherit;font-size:13px;line-height:20px}
+button:focus-visible,a:focus-visible{outline:2px solid #547dd0;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:1280px;height:800px;box-sizing:border-box;display:flex;flex-direction:column;background:#ffffff;color:#1f1e1d;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #e4e6ea;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 10px 0 14px;background:#f1f1f1;border-bottom:1px solid #e4e6ea;box-sizing:border-box;gap:12px">
+    <div style="width:226px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:500">Block</span>
+    </div>
+    <nav aria-label="路径" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden">
+      <span style="color:#52514e">store</span><span style="color:#93918c">/</span>
+      <span style="font-weight:500">store-index.json</span>
+    </nav>
+    <div style="display:flex;align-items:center;gap:2px;flex:none">
+      <span style="height:24px;display:inline-flex;align-items:center;padding:0 8px;border-radius:6px;background:#e5e5e3;color:#52514e;font-size:12px;line-height:16px">JSON</span>
+      <span style="height:24px;display:inline-flex;align-items:center;padding:0 8px;color:#52514e;font-size:12px;line-height:16px">UTF-8 · LF</span>
+      <span style="height:24px;display:inline-flex;align-items:center;padding:0 8px;color:#52514e;font-size:12px;line-height:16px">行 {{cur}}，列 22</span>
+      <button type="button" aria-label="自动换行" aria-pressed="false" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#52514e;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h12.5a3.5 3.5 0 010 7H12m0 0l2.5-2.5M12 19l2.5 2.5M4 18h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+      <button type="button" aria-label="在访达中显示" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#52514e;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="文件" style="width:240px;flex:none;background:#fafafa;border-right:1px solid #e6e6e6;box-sizing:border-box;padding:10px 8px;display:flex;flex-direction:column;gap:1px;font-size:13px">
+      <sc-for list="{{tree}}" as="f" hint-placeholder-count="10">
+        <a href="#" aria-current="{{f.current}}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 {{f.indent}};border-radius:6px;text-decoration:none;color:{{f.color}};background:{{f.bg}};font-weight:{{f.weight}}">
+          <sc-if value="{{f.isDir}}" hint-placeholder-val="{{false}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#52514e"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+          </sc-if>
+          <sc-if value="{{f.isCode}}" hint-placeholder-val="{{false}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#52514e"><path d="M9 8l-4 4 4 4M15 8l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </sc-if>
+          <sc-if value="{{f.isNote}}" hint-placeholder-val="{{true}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#52514e"><path d="M7 3.5h7l4 4v13H7a1.5 1.5 0 01-1.5-1.5V5A1.5 1.5 0 017 3.5zM9 12h6M9 16h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></path></svg>
+          </sc-if>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{f.name}}</span>
+        </a>
+      </sc-for>
+    </nav>
+
+    <main aria-label="store-index.json" style="flex:1;min-width:0;position:relative;overflow:hidden;background:#ffffff;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:13px;line-height:20px">
+      <div style="padding:8px 0 40px;display:flex;flex-direction:column">
+        <sc-for list="{{lines}}" as="ln" hint-placeholder-count="30">
+          <div style="height:20px;display:flex;background:{{ln.bg}}">
+            <span aria-hidden="true" style="width:56px;flex:none;box-sizing:border-box;padding-right:16px;text-align:right;color:{{ln.numColor}};font-variant-numeric:tabular-nums">{{ln.n}}</span>
+            <span style="flex:1;min-width:0;white-space:pre;overflow:hidden;padding-left:4px"><sc-for list="{{ln.tokens}}" as="tk" hint-placeholder-count="3"><span style="color:{{tk.c}}">{{tk.t}}</span></sc-for></span>
+          </div>
+        </sc-for>
+      </div>
+      <div aria-hidden="true" style="position:absolute;left:{{caretLeft}};top:{{caretTop}};width:2px;height:20px;background:#547dd0;border-radius:1px"></div>
+      <div aria-hidden="true" style="position:absolute;right:3px;top:12px;width:6px;height:220px;border-radius:3px;background:#dcdcd9"></div>
+      <div aria-hidden="true" style="position:absolute;left:64px;bottom:3px;width:520px;height:6px;border-radius:3px;background:#dcdcd9"></div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"currentLine":{"editor":"int","default":9},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  tokenize(line) {
+    const C = { key: '#395fb0', str: '#1e6b3f', num: '#a5641a', lit: '#8a3fb0', punc: '#52514e', base: '#1f1e1d' };
+    const re = /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?)|([{}\[\],])/g;
+    const out = [];
+    let last = 0, m;
+    while ((m = re.exec(line))) {
+      if (m.index > last) out.push({ t: line.slice(last, m.index), c: C.base });
+      if (m[1]) {
+        out.push({ t: m[1], c: m[2] ? C.key : C.str });
+        if (m[2]) out.push({ t: m[2], c: C.punc });
+      } else if (m[3]) out.push({ t: m[0], c: C.lit });
+      else if (m[4]) out.push({ t: m[0], c: C.num });
+      else out.push({ t: m[0], c: C.punc });
+      last = re.lastIndex;
+    }
+    if (last < line.length) out.push({ t: line.slice(last), c: C.base });
+    if (!out.length) out.push({ t: ' ', c: C.base });
+    return out;
+  }
+  renderVals() {
+    const cur = this.props.currentLine ?? 9;
+    const src = [
+      '{',
+      '  "version": 3,',
+      '  "updatedAt": "2026-11-18T09:42:00Z",',
+      '  "plugins": [',
+      '    {',
+      '      "id": "block-diagnostics",',
+      '      "name": "Block Diagnostics",',
+      '      "version": "1.2.11",',
+      '      "description": "收集当前笔记本的运行状态、插件日志与渲染耗时，导出为一个 ZIP 包，方便在反馈问题时一次性附上所有信息，而不需要手动去数据目录里翻找各个日志文件",',
+      '      "categories": ["tools", "debug"],',
+      '      "verified": true,',
+      '      "downloads": 1284,',
+      '      "minAppVersion": "0.9.0",',
+      '      "entry": "dist/index.js"',
+      '    },',
+      '    {',
+      '      "id": "image-host",',
+      '      "name": "图床上传",',
+      '      "version": "0.4.2",',
+      '      "description": "粘贴或拖入图片时自动上传到所选图床，并把 Markdown 中的本地路径替换为远程链接；支持 S3 兼容存储、GitHub 仓库与自定义 Webhook",',
+      '      "categories": ["media"],',
+      '      "verified": false,',
+      '      "downloads": 312,',
+      '      "minAppVersion": "0.9.4",',
+      '      "entry": "dist/main.js"',
+      '    },',
+      '    {',
+      '      "id": "note-migrator",',
+      '      "name": "笔记迁移",',
+      '      "version": "0.2.0",',
+      '      "categories": ["import"],',
+      '      "verified": false,',
+      '      "downloads": 97',
+      '    }',
+      '  ]',
+      '}'
+    ];
+    const lines = src.map((raw, i) => {
+      const n = i + 1;
+      const on = n === cur;
+      return {
+        n,
+        tokens: this.tokenize(raw),
+        bg: on ? '#f8f8f6' : 'transparent',
+        numColor: on ? '#1f1e1d' : '#93918c'
+      };
+    });
+    const tree = [
+      { name: 'internal', dir: true, depth: 0 },
+      { name: 'store', dir: true, depth: 0 },
+      { name: 'icons', dir: true, depth: 1 },
+      { name: 'store-index.json', depth: 1, current: true },
+      { name: 'crawler.yaml', depth: 1 },
+      { name: 'designs', dir: true, depth: 0 },
+      { name: 'go.mod', depth: 0 },
+      { name: 'package.json', depth: 0 },
+      { name: 'DESIGN.md', note: true, depth: 0 },
+      { name: '路线图.md', note: true, depth: 0 }
+    ].map(f => ({
+      name: f.name,
+      isDir: !!f.dir,
+      isNote: !!f.note,
+      isCode: !f.dir && !f.note,
+      indent: (8 + f.depth * 14) + 'px',
+      current: f.current ? 'page' : 'false',
+      bg: f.current ? '#e5e5e3' : 'transparent',
+      color: f.current ? '#1f1e1d' : '#52514e',
+      weight: f.current ? '500' : '400'
+    }));
+    return {
+      cur,
+      lines,
+      tree,
+      caretTop: (8 + (cur - 1) * 20) + 'px',
+      caretLeft: (56 + 4 + 22 * 7.8) + 'px'
+    };
+  }
+}
+</script>
+</body>
+</html>

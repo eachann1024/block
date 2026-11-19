@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小窗口 · 图片按预览区适应</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:12px;line-height:16px}
+button:focus-visible,a:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:760px;height:500px;box-sizing:border-box;display:flex;flex-direction:column;background:#262626;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 8px 0 14px;background:#262626;border-bottom:1px solid #292929;box-sizing:border-box;gap:10px">
+    <div style="width:226px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:500">Block</span>
+    </div>
+    <span style="flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">cover.png</span>
+    <div role="group" aria-label="缩放" style="display:flex;align-items:center;gap:2px;flex:none">
+      <button type="button" aria-label="缩小" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+      </button>
+      <button type="button" aria-label="适应窗口，当前 {{pct}}" aria-pressed="true" style="height:24px;min-width:56px;padding:0 8px;border:0;border-radius:6px;background:#2c2c2c;color:#ececec;font-variant-numeric:tabular-nums;cursor:pointer">适应 · {{pct}}</button>
+      <button type="button" aria-label="放大" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M12 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+      </button>
+      <button type="button" aria-label="实际大小 100%" style="height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#b4b4b4;cursor:pointer">1:1</button>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="文件" style="width:240px;flex:none;background:#222222;border-right:1px solid #292929;box-sizing:border-box;padding:10px 8px;display:flex;flex-direction:column;gap:1px;font-size:13px">
+      <a href="#" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;text-decoration:none;color:#b4b4b4">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>assets
+      </a>
+      <a href="#" aria-current="page" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 22px;border-radius:6px;text-decoration:none;color:#ececec;background:#3a3a3a;font-weight:500">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:#b4b4b4"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M4 16l4.5-4.5 4 4 2.5-2.5L20 18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>cover.png
+      </a>
+      <a href="#" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 22px;border-radius:6px;text-decoration:none;color:#b4b4b4">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M4 16l4.5-4.5 4 4 2.5-2.5L20 18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>icon.svg
+      </a>
+      <a href="#" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;text-decoration:none;color:#b4b4b4">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7a1.5 1.5 0 01-1.5-1.5V5A1.5 1.5 0 017 3.5zM9 12h6M9 16h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></path></svg>DESIGN.md
+      </a>
+    </nav>
+
+    <main aria-label="cover.png 预览" style="flex:1;min-width:0;background:#262626;box-sizing:border-box;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+      <div role="img" aria-label="cover.png 图片占位，{{dims}}" style="width:{{drawW}};height:{{drawH}};flex:none;border-radius:8px;border:1px solid #383838;box-sizing:border-box;background:#2c2c2c;display:flex;align-items:center;justify-content:center;color:#767676">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="1.2"></rect><path d="M4 16l4.5-4.5 4 4 2.5-2.5L20 18" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path><circle cx="15.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.2"></circle></svg>
+      </div>
+      <span style="font-size:12px;line-height:16px;color:#b4b4b4;font-variant-numeric:tabular-nums">{{dims}}</span>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"imageW":{"editor":"int","default":2400},"imageH":{"editor":"int","default":1600},"$preview":{"width":760,"height":500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const iw = this.props.imageW ?? 2400;
+    const ih = this.props.imageH ?? 1600;
+    // 预览区真实尺寸：画板宽 − 侧栏 240 − 左右内边距 48；高 − 顶栏 40 − 上下内边距 48 − 说明行 26
+    const availW = 760 - 240 - 48;
+    const availH = 500 - 40 - 48 - 26;
+    const scale = Math.min(1, availW / iw, availH / ih);
+    const w = Math.round(iw * scale);
+    const h = Math.round(ih * scale);
+    return {
+      drawW: w + 'px',
+      drawH: h + 'px',
+      pct: Math.round(scale * 100) + '%',
+      dims: iw + ' × ' + ih
+    };
+  }
+}
+</script>
+</body>
+</html>

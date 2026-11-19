@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小窗口 · 代码横向滚动</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:12px;line-height:16px}
+button:focus-visible,a:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:760px;height:500px;box-sizing:border-box;display:flex;flex-direction:column;background:#181818;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 8px 0 14px;background:#262626;border-bottom:1px solid #292929;box-sizing:border-box;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <button type="button" aria-label="展开侧栏" style="width:28px;height:28px;margin-left:6px;padding:0;border:0;border-radius:8px;background:transparent;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"></rect><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.6"></path></svg>
+      </button>
+    </div>
+    <span style="flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">surfaces.go</span>
+    <div style="display:flex;align-items:center;gap:2px;flex:none">
+      <span style="height:24px;display:inline-flex;align-items:center;padding:0 8px;border-radius:6px;background:#2c2c2c;color:#b4b4b4;font-size:12px;line-height:16px">Go</span>
+      <span style="height:24px;display:inline-flex;align-items:center;padding:0 8px;color:#b4b4b4;font-size:12px;line-height:16px;font-variant-numeric:tabular-nums">{{cur}}:9</span>
+      <button type="button" aria-label="自动换行" aria-pressed="false" style="width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#b4b4b4;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h12.5a3.5 3.5 0 010 7H12m0 0l2.5-2.5M12 19l2.5 2.5M4 18h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <main aria-label="surfaces.go" style="flex:1;min-height:0;position:relative;overflow:hidden;background:#181818;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:13px;line-height:20px">
+    <div style="padding:8px 0 24px;display:flex;flex-direction:column">
+      <sc-for list="{{lines}}" as="ln" hint-placeholder-count="20">
+        <div style="height:20px;display:flex;background:{{ln.bg}}">
+          <span aria-hidden="true" style="width:{{gutterW}};flex:none;box-sizing:border-box;padding-right:12px;text-align:right;color:{{ln.numColor}};font-variant-numeric:tabular-nums">{{ln.n}}</span>
+          <span style="flex:1;min-width:0;white-space:pre;overflow:hidden;padding-left:4px"><sc-for list="{{ln.tokens}}" as="tk" hint-placeholder-count="3"><span style="color:{{tk.c}}">{{tk.t}}</span></sc-for></span>
+        </div>
+      </sc-for>
+    </div>
+    <div aria-hidden="true" style="position:absolute;left:{{caretLeft}};top:{{caretTop}};width:2px;height:20px;background:#779de8;border-radius:1px"></div>
+    <div aria-hidden="true" style="position:absolute;right:3px;top:12px;width:6px;height:90px;border-radius:3px;background:#3a3a3a"></div>
+    <div aria-hidden="true" style="position:absolute;left:{{gutterW}};bottom:3px;width:300px;height:6px;border-radius:3px;background:#3a3a3a"></div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"currentLine":{"editor":"int","default":318},"$preview":{"width":760,"height":500}}'>
+class Component extends DCLogic {
+  tokenize(line) {
+    const C = { kw: '#9dbcf5', str: '#7be0a6', com: '#8a8a8a', num: '#e5a54b', fn: '#f0d48a', base: '#ececec' };
+    const re = /(\/\/.*$)|("(?:[^"\\]|\\.)*"|`[^`]*`)|\b(func|return|if|else|for|range|var|const|type|struct|package|import|switch|case|default|nil|true|false|defer|go)\b|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)(?=\()/g;
+    const out = [];
+    let last = 0, m;
+    while ((m = re.exec(line))) {
+      if (m.index > last) out.push({ t: line.slice(last, m.index), c: C.base });
+      const c = m[1] ? C.com : m[2] ? C.str : m[3] ? C.kw : m[4] ? C.num : C.fn;
+      out.push({ t: m[0], c });
+      last = re.lastIndex;
+    }
+    if (last < line.length) out.push({ t: line.slice(last), c: C.base });
+    if (!out.length) out.push({ t: ' ', c: C.base });
+    return out;
+  }
+  renderVals() {
+    const cur = this.props.currentLine ?? 318;
+    const start = 310;
+    const src = [
+      '\tcase s.Kind == model.OpenKindPreview:',
+      '\t\ts.ensureImageLoaded()',
+      '\t\tc.Key("image-preview-stage")',
+      '\t\tstage := blockui.Scroll(c).Fill().Background(pal.Shell)',
+      '\t\tblockui.Probe(stage, "image-preview-stage")',
+      '\t\tstage.Children(func() {',
+      '\t\t\t// 用预览区自己的尺寸，而不是整个窗口',
+      '\t\t\tvpW, vpH := stage.LastBounds().W, stage.LastBounds().H',
+      '\t\t\tavailW := max(vpW-2*theme.Space24, 1)',
+      '\t\t\tavailH := max(vpH-2*theme.Space24-captionH, 1)',
+      '\t\t\tscale := min(float32(1.0), min(availW/iw, availH/ih)) // 适应模式只缩小，不放大',
+      '\t\t\tdrawW, drawH = iw*scale, ih*scale',
+      '\t\t\tui.Image(c, s.ImgSrc).Size(drawW, drawH)',
+      '\t\t\tui.Text(c, fmt.Sprintf("%s · %dx%d", filepath.Base(s.Path), int(iw), int(ih))).FontSize(theme.FontCaption).TextColor(pal.TextSecondary)',
+      '\t\t})',
+      '',
+      '\tdefault: // OpenKindSource (HTML, JSON, code, plain text)',
+      '\t\ts.renderSourceEditor(c, onSave)',
+      '\t}',
+      '}',
+      ''
+    ];
+    const lines = src.map((raw, i) => {
+      const n = start + i;
+      const on = n === cur;
+      return {
+        n,
+        tokens: this.tokenize(raw.replace(/\t/g, '    ')),
+        bg: on ? '#222222' : 'transparent',
+        numColor: on ? '#ececec' : '#767676'
+      };
+    });
+    const gutter = 48;
+    return {
+      cur,
+      lines,
+      gutterW: gutter + 'px',
+      caretTop: (8 + (cur - start) * 20) + 'px',
+      caretLeft: (gutter + 4 + 8 * 7.8) + 'px'
+    };
+  }
+}
+</script>
+</body>
+</html>
