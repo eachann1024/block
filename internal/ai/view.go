@@ -1268,6 +1268,9 @@ var plainRuleRE = regexp.MustCompile(`^(?:>\s*)*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?
 // plainMathLineRE matches a one-line display formula ("$$x^2$$", `\[x^2\]`).
 var plainMathLineRE = regexp.MustCompile(`^(?:\$\$.+\$\$|\\\[.+\\\])$`)
 
+// plainBreakRE matches a line break tag ("<br>", "<BR/>").
+var plainBreakRE = regexp.MustCompile(`(?i)^<br\b`)
+
 // plainTagRE matches an inline HTML tag the note styles ("<kbd>", "</kbd>", "<br/>");
 // any other ("<TOKEN>", "<div>") shows as written, as in the note.
 var plainTagRE = regexp.MustCompile(`(?i)</?(?:br|b|strong|i|em|u|ins|s|del|strike|code|kbd|samp|mark|sub|sup|small)(?:\s[^<>]*)?/?>`)
@@ -1344,7 +1347,13 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	}
 	// Inline HTML shows its text ("请按 <kbd>Ctrl</kbd>" reads 请按 Ctrl); it goes
 	// before entities decode, so "&lt;b&gt;" stays as text.
-	t = plainTagRE.ReplaceAllString(t, "")
+	t = plainTagRE.ReplaceAllStringFunc(t, func(m string) string {
+		// "安装完成<br>验证服务" keeps a break between its parts.
+		if plainBreakRE.MatchString(m) {
+			return " "
+		}
+		return ""
+	})
 	// Stray backticks go; an escaped one ("\`") is a literal backtick.
 	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
 	// Escaped markers ("\**提示**") were never bold; they show without the backslash.
