@@ -180,7 +180,7 @@ var OceanLight = Palette{
 	DangerSurface:  ui.Hex("#fdeeee"),
 	Warning:        ui.Hex("#c9822b"),
 	WarningSurface: ui.Hex("#fef5e7"),
-	Success:        ui.Hex("#2e8b57"),
+	Success:        ui.Hex("#1f7344"),
 	SuccessSurface: ui.Hex("#eaf6ef"),
 	DiffAddBG:      ui.Hex("#e9f7ef"),
 	DiffAddFG:      ui.Hex("#1e6b3f"),
