@@ -26,7 +26,13 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	if is.Tape.A > 0 {
 		topOff = 12
 	}
-	innerAvail := maxFloat32(avail-2*pad, 80)
+	side := imageCaptionSide(is, b.ImageAlt, avail)
+	const captionGap = 18
+	reserved := float32(0)
+	if side > 0 {
+		reserved = side + captionGap
+	}
+	innerAvail := maxFloat32(avail-reserved-2*pad, 48)
 	if is.Angle != 0 && is.Frame == ImageFramePolaroid {
 		innerAvail = maxFloat32(innerAvail*0.72, 80)
 	}
@@ -40,18 +46,24 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	if pb.img != nil {
 		picX, picW = pb.img.dst.X, pb.img.dst.W
 	}
-	if is.Angle != 0 && is.Frame == ImageFramePolaroid {
-		// Centre the smaller tilted print in the measure.
-		shift := bx + (avail-picW-2*pad)/2 - (picX - pad)
-		picX += shift
-		pb.x += shift
-		pb.textX += shift
-		if pb.img != nil {
-			pb.img.dst.X += shift
+	// Place the print in the original measure after narrowing its available width.
+	if is.Angle != 0 && is.Frame == ImageFramePolaroid && pb.img != nil {
+		var shift float32
+		switch b.ImageAlign {
+		case model.ImageAlignCenter:
+			shift = (avail - 2*pad - innerAvail) / 2
+		case model.ImageAlignRight:
+			shift = avail - 2*pad - innerAvail
 		}
+		picX += shift
+		pb.img.dst.X += shift
 	}
 
 	// Caption.
+	capWidth := picW
+	if side > 0 {
+		capWidth = side
+	}
 	var capLay *ui.TextLayout
 	capH := float32(0)
 	alt := strings.TrimSpace(b.ImageAlt)
@@ -70,7 +82,7 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 		if pal.Style.TextGlow.A > 0 {
 			sp.Shadow = ui.NewTextShadow(0, 0, 5, pal.Style.TextGlow)
 		}
-		capLay = ui.ShapeRichTextWith([]ui.Span{sp}, ui.Font{Family: fam, Size: sz, LineHeight: 1.45}, ui.TextShape{Width: picW, Align: align})
+		capLay = ui.ShapeRichTextWith([]ui.Span{sp}, ui.Font{Family: fam, Size: sz, LineHeight: 1.45}, ui.TextShape{Width: capWidth, Align: align})
 		_, capH = capLay.Size()
 	}
 
@@ -89,7 +101,12 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	if is.Offset > 0 {
 		total += is.Offset
 	}
-	if capLay != nil && is.Frame != ImageFramePolaroid {
+	capX := picX
+	if capLay != nil && side > 0 {
+		capX = frame.X + frame.W + captionGap
+		total = max(total, capH)
+		capY = by + total - capH
+	} else if capLay != nil && is.Frame != ImageFramePolaroid {
 		capY = by + total + 8
 		total += 8 + capH
 	}
@@ -115,7 +132,7 @@ func buildPaintedImage(b *model.Block, notePath string, bx, by, avail float32, p
 	pb.imgOffset = is.Offset
 	pb.imgCorners = is.Corners
 	pb.labelLay = capLay
-	pb.labelX = picX
+	pb.labelX = capX
 	pb.labelY = capY
 	pb.labelCol = orC(is.CaptionColor, pal.Secondary)
 	if is.Frame == ImageFrameMat || is.Frame == ImageFramePolaroid {

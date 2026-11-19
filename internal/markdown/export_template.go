@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -249,4 +250,42 @@ func splitFontPair(fam string) (primary, eastAsia string) {
 
 func isDefaultHighlightSpan(sp model.Span) bool {
 	return strings.EqualFold(strings.TrimSpace(sp.BGColor), "yellow")
+}
+
+// exportQuoteLevels leaves the first level to the paper's quote style.
+func exportQuoteLevels(b *model.Block) int {
+	depth := b.QuoteDepth
+	if b.Kind == model.BlockQuote {
+		depth--
+	}
+	return max(depth, 0)
+}
+
+func exportTableTint(t *model.TableData, row, col int, pal PaperThemeSpec) (ui.Color, bool) {
+	colors := theme.OceanLight.Table()
+	if pal.Dark {
+		colors = theme.OceanDark.Table()
+	}
+	if row < len(t.RowTints) {
+		if c, ok := colors.CellTint(string(t.RowTints[row])); ok {
+			return c, true
+		}
+	}
+	if col < len(t.ColTints) {
+		return colors.CellTint(string(t.ColTints[col]))
+	}
+	return ui.Color{}, false
+}
+
+// imageCaptionSide keeps a narrow figure readable on small paper widths.
+func imageCaptionSide(style ImageStyle, alt string, width float32) float32 {
+	if !style.Caption || strings.TrimSpace(alt) == "" || width < 260 {
+		return 0
+	}
+	return style.CaptionSide
+}
+
+// exportSubHeadingSize continues the scale below the third-level heading.
+func exportSubHeadingSize(size float32, level int) float32 {
+	return max(size-float32(level-3)*1.4, 11)
 }
