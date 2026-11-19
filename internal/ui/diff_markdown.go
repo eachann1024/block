@@ -165,7 +165,7 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				inList = item || !setext && inList && ind > 0
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
+				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) || diffMathStart(t))
 				prevBlank, para = !inList && ends, !ends
 				if setext && diffSetextText(lines, paraLines) {
 					for _, p := range paraLines {
@@ -214,6 +214,20 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 		masks[si], heads[si] = mask, head
 	}
 	return masks, heads
+}
+
+// diffMathStart reports whether a trimmed line opens display math ("$$" or "\["),
+// which is a block of its own: a "---" under "$$x^2$$" is a rule, not an underline.
+// A closing delimiter with text after it makes the line inline math in a paragraph.
+func diffMathStart(t string) bool {
+	for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+		if strings.HasPrefix(t, d[0]) {
+			body := t[len(d[0]):]
+			j := strings.Index(body, d[1])
+			return j < 0 || strings.TrimSpace(body[j+len(d[1]):]) == ""
+		}
+	}
+	return false
 }
 
 // diffSetextText reports whether the paragraph lines above an underline form a plain
