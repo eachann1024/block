@@ -15,6 +15,7 @@ import (
 	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
+	mdparser "github.com/egoist/mygo/ui/markdown/parser"
 )
 
 // RenderPanel renders the complete AI assistant side/fullscreen panel.
@@ -446,21 +447,351 @@ func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, 
 	})
 }
 
+type mdPaletteKey struct {
+	paper, text, textSecondary, accent, codeBlockBG, hairline ui.Color
+}
+
+type cachedMsgEntry struct {
+	role       string
+	content    string
+	toolCallID string
+	procLen    int
+	srcLen     int
+	planStatus string
+	qSubmitted bool
+	appDec     model.ApprovalDecision
+	appFailed  bool
+	appErr     string
+	msg        model.ChatMessage
+}
+
+type cachedTurnCard struct {
+	msgIdx   int
+	plan     *model.BatchPlan
+	question *model.QuestionCard
+	approval *model.ApprovalCard
+}
+
+type cachedReply struct {
+	replyIdx int
+	content  string
+}
+
+type cachedTurn struct {
+	key            string
+	startIdx       int
+	endIdx         int
+	hasUser        bool
+	userText       string
+	steps          []model.ProcessStep
+	notes          []string
+	sources        []model.SourceNote
+	hasPendingPlan bool
+	hasInteractive bool
+	outcome        string
+	cards          []cachedTurnCard
+	replies        []cachedReply
+	estHeight      float32
+}
+
+type cachedParsedMarkdown struct {
+	blockCount int
+	lineCount  int
+}
+
+type chatStreamCache struct {
+	convID         uint64
+	lastWidth      float32
+	lastFullscreen bool
+	msgs           []cachedMsgEntry
+	turns          []cachedTurn
+	turnHeights    map[string]float32
+	mdMeta         map[string]cachedParsedMarkdown
+}
+
+func newChatStreamCache() *chatStreamCache {
+	return &chatStreamCache{
+		turnHeights: make(map[string]float32),
+		mdMeta:      make(map[string]cachedParsedMarkdown),
+	}
+}
+
+func cloneSingleMessage(m model.ChatMessage) model.ChatMessage {
+	cp := m
+	if m.Process != nil {
+		cp.Process = append([]model.ProcessStep(nil), m.Process...)
+	}
+	if m.Sources != nil {
+		cp.Sources = append([]model.SourceNote(nil), m.Sources...)
+	}
+	if m.Refs != nil {
+		cp.Refs = append([]string(nil), m.Refs...)
+	}
+	if m.Skills != nil {
+		cp.Skills = append([]string(nil), m.Skills...)
+	}
+	if m.Plan != nil {
+		p := *m.Plan
+		p.Ops = append([]model.PlanOp(nil), m.Plan.Ops...)
+		if m.Plan.Expected != nil {
+			p.Expected = make(map[string]string, len(m.Plan.Expected))
+			for k, v := range m.Plan.Expected {
+				p.Expected[k] = v
+			}
+		}
+		cp.Plan = &p
+	}
+	if m.Question != nil {
+		q := *m.Question
+		q.Questions = append([]model.QuestionItem(nil), m.Question.Questions...)
+		cp.Question = &q
+	}
+	if m.Approval != nil {
+		a := *m.Approval
+		cp.Approval = &a
+	}
+	return cp
+}
+
+func msgFingerprintMatches(cached cachedMsgEntry, m model.ChatMessage) bool {
+	if cached.role != m.Role || cached.content != m.Content || cached.toolCallID != m.ToolCallID ||
+		cached.procLen != len(m.Process) || cached.srcLen != len(m.Sources) {
+		return false
+	}
+	planSt := ""
+	if m.Plan != nil {
+		planSt = m.Plan.Status
+	}
+	if cached.planStatus != planSt {
+		return false
+	}
+	qSub := m.Question != nil && m.Question.Submitted
+	if cached.qSubmitted != qSub {
+		return false
+	}
+	var appDec model.ApprovalDecision
+	var appFailed bool
+	var appErr string
+	if m.Approval != nil {
+		appDec = m.Approval.Decision
+		appFailed = m.Approval.Failed
+		appErr = m.Approval.ErrorText
+	}
+	return cached.appDec == appDec && cached.appFailed == appFailed && cached.appErr == appErr
+}
+
+func makeCachedMsgEntry(m model.ChatMessage) cachedMsgEntry {
+	planSt := ""
+	if m.Plan != nil {
+		planSt = m.Plan.Status
+	}
+	qSub := m.Question != nil && m.Question.Submitted
+	var appDec model.ApprovalDecision
+	var appFailed bool
+	var appErr string
+	if m.Approval != nil {
+		appDec = m.Approval.Decision
+		appFailed = m.Approval.Failed
+		appErr = m.Approval.ErrorText
+	}
+	return cachedMsgEntry{
+		role:       m.Role,
+		content:    m.Content,
+		toolCallID: m.ToolCallID,
+		procLen:    len(m.Process),
+		srcLen:     len(m.Sources),
+		planStatus: planSt,
+		qSubmitted: qSub,
+		appDec:     appDec,
+		appFailed:  appFailed,
+		appErr:     appErr,
+		msg:        cloneSingleMessage(m),
+	}
+}
+
+func (sc *chatStreamCache) parseMarkdownMeta(src string) cachedParsedMarkdown {
+	if meta, ok := sc.mdMeta[src]; ok {
+		return meta
+	}
+	if len(sc.mdMeta) >= 256 {
+		clear(sc.mdMeta)
+	}
+	doc := mdparser.Parse(src)
+	blocks := 0
+	lines := 0
+	for range doc.Children(0) {
+		blocks++
+	}
+	n := doc.Len()
+	for i := 1; i < n; i++ {
+		lines += max(doc.LineCount(i), 1)
+	}
+	meta := cachedParsedMarkdown{blockCount: blocks, lineCount: max(lines, 1)}
+	sc.mdMeta[src] = meta
+	return meta
+}
+
+func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
+	if found == nil {
+		sc.convID = 0
+		sc.msgs = sc.msgs[:0]
+		sc.turns = sc.turns[:0]
+		clear(sc.turnHeights)
+		return
+	}
+	if sc.convID != found.ID {
+		sc.convID = found.ID
+		sc.msgs = sc.msgs[:0]
+		sc.turns = sc.turns[:0]
+		clear(sc.turnHeights)
+	}
+	dirty := len(sc.msgs) != len(found.Messages)
+	if len(found.Messages) < len(sc.msgs) {
+		sc.msgs = sc.msgs[:len(found.Messages)]
+	}
+	for i, m := range found.Messages {
+		if i < len(sc.msgs) && msgFingerprintMatches(sc.msgs[i], m) {
+			continue
+		}
+		dirty = true
+		entry := makeCachedMsgEntry(m)
+		if i < len(sc.msgs) {
+			sc.msgs[i] = entry
+		} else {
+			sc.msgs = append(sc.msgs, entry)
+		}
+	}
+	if !dirty && len(sc.turns) > 0 {
+		return
+	}
+
+	sc.turns = sc.turns[:0]
+	replyIdx := 0
+	for start := 0; start < len(sc.msgs); {
+		end := start + 1
+		for end < len(sc.msgs) && sc.msgs[end].msg.Role != "user" {
+			end++
+		}
+		turnKey := fmt.Sprintf("%d-%d", found.ID, start)
+		ct := cachedTurn{
+			key:      turnKey,
+			startIdx: start,
+			endIdx:   end,
+		}
+		if sc.msgs[start].msg.Role == "user" {
+			ct.hasUser = true
+			ct.userText = sc.msgs[start].msg.Content
+		}
+
+		var turnSlice []model.ChatMessage
+		for idx := start; idx < end; idx++ {
+			m := sc.msgs[idx].msg
+			turnSlice = append(turnSlice, m)
+			if m.Role == "turn_outcome" {
+				ct.outcome = m.Content
+			}
+			if m.Plan != nil || m.Question != nil || m.Approval != nil {
+				ct.cards = append(ct.cards, cachedTurnCard{
+					msgIdx:   idx,
+					plan:     m.Plan,
+					question: m.Question,
+					approval: m.Approval,
+				})
+				if m.Plan != nil && m.Plan.Status == "pending" {
+					ct.hasPendingPlan = true
+					ct.hasInteractive = true
+				}
+				if m.Question != nil && !m.Question.Submitted {
+					ct.hasInteractive = true
+				}
+				if m.Approval != nil && (m.Approval.Decision == model.ApprovalPending || m.Approval.Failed) {
+					ct.hasInteractive = true
+				}
+			}
+		}
+
+		ct.steps, ct.notes = collectTurnProcess(turnSlice, false, "", nil)
+		ct.sources = collectTurnSources(turnSlice)
+
+		estH := float32(0)
+		if ct.hasUser {
+			estH += 44
+		}
+		if len(ct.steps) > 0 {
+			estH += 48
+		}
+		if len(ct.cards) > 0 {
+			estH += float32(len(ct.cards)) * 96
+		}
+		if !ct.hasPendingPlan {
+			for idx := start; idx < end; idx++ {
+				m := sc.msgs[idx].msg
+				if m.Role == "assistant" && strings.TrimSpace(m.Content) != "" {
+					meta := sc.parseMarkdownMeta(m.Content)
+					ct.replies = append(ct.replies, cachedReply{
+						replyIdx: replyIdx,
+						content:  m.Content,
+					})
+					estH += float32(meta.lineCount)*22 + float32(meta.blockCount)*12 + 30
+					replyIdx++
+				}
+			}
+		}
+		if len(ct.sources) > 0 {
+			estH += 40
+		}
+		ct.estHeight = max(estH, 40)
+		sc.turns = append(sc.turns, ct)
+		start = end
+	}
+}
+
 func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
-	c.mu.RLock()
-	var conv model.Conversation
-	hasConv := false
-	if found := c.findConvLocked(c.currentID); found != nil {
-		conv = cloneConversation(*found)
-		hasConv = true
+	c.mu.Lock()
+	if c.streamCache == nil {
+		c.streamCache = newChatStreamCache()
+	}
+	prevConvID := c.streamCache.convID
+	found := c.findConvLocked(c.currentID)
+	hasConv := found != nil
+	c.streamCache.syncLocked(found)
+	turns := c.streamCache.turns
+	turnHeights := c.streamCache.turnHeights
+	panelW := c.panelWidth
+	if !fullscreen && c.renderWidth > 0 {
+		panelW = c.renderWidth
+	}
+	if c.streamCache.lastWidth != panelW || c.streamCache.lastFullscreen != fullscreen {
+		c.streamCache.lastWidth = panelW
+		c.streamCache.lastFullscreen = fullscreen
+		clear(turnHeights)
 	}
 	streaming := c.streaming
 	partial := c.partialText
-	partialSteps := append([]model.ProcessStep(nil), c.partialSteps...)
-	c.mu.RUnlock()
+	var partialSteps []model.ProcessStep
+	if streaming && len(c.partialSteps) > 0 {
+		partialSteps = append([]model.ProcessStep(nil), c.partialSteps...)
+	}
+	convID := c.currentID
+	if prevConvID != convID {
+		c.messagesScroll = ui.ScrollState{}
+	}
+	expandedSnap := make(map[string]bool, len(turns))
+	for i := range turns {
+		k := turns[i].key
+		if c.expandedProcess[k] || c.expandedSources[k] {
+			expandedSnap[k] = true
+		}
+	}
+	c.mu.Unlock()
 
-	scroll := bui.Scroll(cUI.Key("ai-chat-scroll")).FillWidth().Grow(1)
+	scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1)
 	bui.Probe(scroll, "ai-chat-scroll")
+	scrollH := scroll.Bounds().H
+	scrollY := c.messagesScroll.Y
+	overscan := max(scrollH*1.5, 600)
+	visTop := scrollY - overscan
+	visBot := scrollY + scrollH + overscan
 
 	scroll.Children(func() {
 		outer := ui.Column(cUI).FillWidth().Padding(16).Gap(16).Selectable()
@@ -468,72 +799,123 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 			outer.MaxWidth(720).Margin(0, ui.Auto)
 		}
 		outer.Children(func() {
-			if !hasConv || (len(conv.Messages) == 0 && !streaming) {
-				c.renderEmptySuggestions(cUI, pal, fullscreen, max(scroll.Bounds().H-32, 0))
+			if !hasConv || (len(turns) == 0 && !streaming) {
+				c.renderEmptySuggestions(cUI, pal, fullscreen, max(scrollH-32, 0))
 				return
 			}
 
-			replyIdx := 0
-			msgs := conv.Messages
-			for start := 0; start < len(msgs); {
-				end := start + 1
-				for end < len(msgs) && msgs[end].Role != "user" {
-					end++
-				}
-				turn := msgs[start:end]
-				turnStreaming := streaming && end == len(msgs)
+			const virtualizeThreshold = 20
+			curY := float32(16)
+			for ti := range turns {
+				t := &turns[ti]
+				turnStreaming := streaming && ti == len(turns)-1
 
-				if turn[0].Role == "user" {
-					c.renderUserMessage(cUI, pal, conv.ID, start, turn[0].Content)
-				}
-
-				turnKey := fmt.Sprintf("%d-%d", conv.ID, start)
-				steps, notes := collectTurnProcess(turn, turnStreaming, partial, partialSteps)
-				if len(steps) > 0 {
-					c.renderProcessCard(cUI, pal, turnKey, turn, steps, notes, turnStreaming)
-				}
-
-				for offset, m := range turn {
-					if m.Plan != nil {
-						c.renderPlanCard(cUI, pal, conv.ID, start+offset, m.Plan)
+				h := turnHeights[t.key]
+				canVirtualize := len(turns) > virtualizeThreshold &&
+					scrollH > 0 &&
+					ti < len(turns)-2 &&
+					!turnStreaming &&
+					!t.hasInteractive &&
+					!expandedSnap[t.key] &&
+					(h > 0 || (scrollY > overscan && ti < len(turns)-12))
+				if canVirtualize {
+					phH := h
+					if phH <= 0 {
+						phH = t.estHeight
 					}
-					if m.Question != nil {
-						c.renderQuestionCard(cUI, pal, conv.ID, start+offset, m.Question)
-					}
-					if m.Approval != nil {
-						c.renderApprovalCard(cUI, pal, conv.ID, start+offset, m.Approval)
+					yBottom := curY + phH
+					if yBottom < visTop || curY > visBot {
+						ui.Box(cUI.Key("ai-turn-ph-" + t.key)).FillWidth().Height(phH)
+						curY = yBottom + 16
+						continue
 					}
 				}
 
-				hasPendingPlan := false
-				for _, m := range turn {
-					if m.Plan != nil && m.Plan.Status == "pending" {
-						hasPendingPlan = true
-						break
+				turnWrap := ui.Column(cUI.Key("ai-turn-" + t.key)).FillWidth().Gap(16)
+				turnWrap.Children(func() {
+					if t.hasUser {
+						c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText)
 					}
-				}
-				if !hasPendingPlan {
-					for _, m := range turn {
-						if m.Role == "assistant" && strings.TrimSpace(m.Content) != "" {
-							c.renderAssistantReply(cUI, pal, conv.ID, replyIdx, m.Content, !turnStreaming, false)
-							replyIdx++
+
+					steps := t.steps
+					notes := t.notes
+					if turnStreaming {
+						steps, notes = appendStreamingProcess(steps, notes, partial, partialSteps)
+					}
+					if len(steps) > 0 {
+						c.renderProcessCard(cUI, pal, t.key, t.outcome, steps, notes, turnStreaming)
+					}
+
+					for _, card := range t.cards {
+						if card.plan != nil {
+							c.renderPlanCard(cUI, pal, convID, card.msgIdx, card.plan)
+						}
+						if card.question != nil {
+							c.renderQuestionCard(cUI, pal, convID, card.msgIdx, card.question)
+						}
+						if card.approval != nil {
+							c.renderApprovalCard(cUI, pal, convID, card.msgIdx, card.approval)
 						}
 					}
-					if turnStreaming && strings.TrimSpace(partial) != "" {
-						c.renderAssistantReply(cUI, pal, conv.ID, replyIdx, partial, false, true)
-						replyIdx++
+
+					if !t.hasPendingPlan {
+						nextReplyIdx := 0
+						for _, rep := range t.replies {
+							c.renderAssistantReply(cUI, pal, convID, rep.replyIdx, rep.content, !turnStreaming, false)
+							nextReplyIdx = rep.replyIdx + 1
+						}
+						if turnStreaming && strings.TrimSpace(partial) != "" {
+							c.renderAssistantReply(cUI, pal, convID, nextReplyIdx, partial, false, true)
+						}
 					}
-				}
 
-				sources := collectTurnSources(turn)
-				if len(sources) > 0 {
-					c.renderSourcesCard(cUI, pal, turnKey, sources)
+					if len(t.sources) > 0 {
+						c.renderSourcesCard(cUI, pal, t.key, t.sources)
+					}
+				})
+				if b := turnWrap.Bounds(); b.H > 0 {
+					turnHeights[t.key] = b.H
+					curY += b.H + 16
+				} else if h > 0 {
+					curY += h + 16
+				} else {
+					curY += t.estHeight + 16
 				}
-
-				start = end
 			}
 		})
 	})
+}
+
+func appendStreamingProcess(baseSteps []model.ProcessStep, baseNotes []string, partial string, partialSteps []model.ProcessStep) ([]model.ProcessStep, []string) {
+	steps := make([]model.ProcessStep, len(baseSteps), len(baseSteps)+len(partialSteps)+1)
+	copy(steps, baseSteps)
+	notes := make([]string, len(baseNotes), len(baseNotes)+len(partialSteps))
+	copy(notes, baseNotes)
+	seen := make(map[string]bool, len(notes))
+	for _, n := range notes {
+		seen[n] = true
+	}
+	for _, st := range partialSteps {
+		steps = append(steps, st)
+		if ref := strings.TrimSpace(st.FileRef); ref != "" && !seen[ref] {
+			seen[ref] = true
+			notes = append(notes, ref)
+		}
+	}
+	lbl := theme.Tr("思考中", "Thinking")
+	det := theme.Tr("等待模型响应…", "Waiting for model response…")
+	if strings.TrimSpace(partial) != "" {
+		lbl = theme.Tr("正在生成回答", "Generating answer")
+		det = firstTitleLine(partial)
+	}
+	steps = append(steps, model.ProcessStep{
+		ID:     "streaming",
+		Kind:   model.ToolKindThink,
+		Title:  lbl,
+		Detail: det,
+		Done:   false,
+	})
+	return steps, notes
 }
 
 func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string) {
@@ -587,31 +969,44 @@ func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, co
 }
 
 func (c *Controller) markdownOptions(pal theme.Palette) *markdown.Options {
-	c.mdOpts.ShareSelection = true
-	c.mdOpts.Theme = &markdown.Theme{
-		FontSize:            theme.FontBody,
-		LineHeight:          1.55,
-		Text:                pal.Text,
-		Muted:               pal.TextSecondary,
-		Link:                pal.Accent,
-		Strong:              pal.Text,
-		StrongWeight:        600,
-		Code:                pal.Text,
-		CodeBackground:      pal.CodeBlockBG,
-		CodeBlockBackground: pal.CodeBlockBG,
-		CodeBlockBorder:     pal.Hairline,
-		Rule:                pal.Hairline,
-		TableBorder:         pal.Hairline,
-		TableHeader:         pal.CodeBlockBG,
+	key := mdPaletteKey{
+		paper:         pal.Paper,
+		text:          pal.Text,
+		textSecondary: pal.TextSecondary,
+		accent:        pal.Accent,
+		codeBlockBG:   pal.CodeBlockBG,
+		hairline:      pal.Hairline,
 	}
-	c.mdOpts.OnLink = func(url string) {
-		if ui.SafeToOpen(url) {
-			cUI := c.services
-			cUI.OpenURL(url)
-			return
+	if c.mdOpts.Theme == nil || c.mdThemeKey != key {
+		c.mdThemeKey = key
+		c.mdOpts.ShareSelection = true
+		c.mdOpts.Theme = &markdown.Theme{
+			FontSize:            theme.FontBody,
+			LineHeight:          1.55,
+			Text:                pal.Text,
+			Muted:               pal.TextSecondary,
+			Link:                pal.Accent,
+			Strong:              pal.Text,
+			StrongWeight:        600,
+			Code:                pal.Text,
+			CodeBackground:      pal.CodeBlockBG,
+			CodeBlockBackground: pal.CodeBlockBG,
+			CodeBlockBorder:     pal.Hairline,
+			Rule:                pal.Hairline,
+			TableBorder:         pal.Hairline,
+			TableHeader:         pal.CodeBlockBG,
 		}
-		if c.host != nil && url != "" && !strings.HasPrefix(url, "#") {
-			_ = c.host.OpenNote(url, 0)
+	}
+	if c.mdOpts.OnLink == nil {
+		c.mdOpts.OnLink = func(url string) {
+			if ui.SafeToOpen(url) {
+				cUI := c.services
+				cUI.OpenURL(url)
+				return
+			}
+			if c.host != nil && url != "" && !strings.HasPrefix(url, "#") {
+				_ = c.host.OpenNote(url, 0)
+			}
 		}
 	}
 	return &c.mdOpts
@@ -679,18 +1074,10 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 	return out
 }
 
-func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, turn []model.ChatMessage, steps []model.ProcessStep, notes []string, streaming bool) {
+func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) {
 	c.mu.RLock()
 	expanded := c.expandedProcess[turnKey]
 	c.mu.RUnlock()
-
-	outcome := ""
-	for i := len(turn) - 1; i >= 0; i-- {
-		if turn[i].Role == "turn_outcome" {
-			outcome = turn[i].Content
-			break
-		}
-	}
 
 	headline := fmt.Sprintf("%d 步执行完成", len(steps))
 	if theme.IsEn() {
