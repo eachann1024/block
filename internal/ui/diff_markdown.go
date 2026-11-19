@@ -368,7 +368,8 @@ var (
 func CodeSpans(s string) [][2]int {
 	var spans [][2]int
 	for i := 0; i < len(s); {
-		if s[i] != '`' {
+		// A backslash-escaped backtick is literal and opens nothing.
+		if s[i] != '`' || diffEscaped(s, i) {
 			i++
 			continue
 		}
