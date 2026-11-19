@@ -446,7 +446,7 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		}
 		// An escaped "\[" opening the line would start display math; the note shows a
 		// bracket, so write it as an entity.
-		if strings.HasPrefix(body, `\[`) && !strings.Contains(body, `\]`) {
+		if strings.HasPrefix(body, `\[`) {
 			body = "&#91;" + body[2:]
 		}
 		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
