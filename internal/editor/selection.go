@@ -1924,6 +1924,72 @@ func (s *Session) cachedShapeBlock(
 	return layout
 }
 
+type cachedCellLayout struct {
+	text       string
+	spans      []ui.Span
+	fontFamily string
+	fontSize   float32
+	weight     int
+	lineHeight float32
+	align      ui.Align
+	width      float32
+	fontEpoch  uint64
+	layout     *ui.TextLayout
+}
+
+func (s *Session) cachedShapeTableCell(
+	key tableCellKey,
+	plain string,
+	spans []ui.Span,
+	fontFamily string,
+	fontSize float32,
+	weight int,
+	lineHeight float32,
+	align ui.Align,
+	width float32,
+) *ui.TextLayout {
+	if s.tableCellLayouts == nil {
+		s.tableCellLayouts = make(map[tableCellKey]cachedCellLayout)
+	}
+	width = max(width, 1)
+	epoch := theme.FontEpoch()
+	if entry, ok := s.tableCellLayouts[key]; ok &&
+		entry.text == plain &&
+		entry.fontFamily == fontFamily &&
+		entry.fontSize == fontSize &&
+		entry.weight == weight &&
+		entry.lineHeight == lineHeight &&
+		entry.align == align &&
+		entry.width == width &&
+		entry.fontEpoch == epoch &&
+		slices.Equal(entry.spans, spans) &&
+		entry.layout != nil {
+		return entry.layout
+	}
+	lay := ui.ShapeRichTextWith(spans, ui.Font{
+		Family:     fontFamily,
+		Size:       fontSize,
+		Weight:     weight,
+		LineHeight: lineHeight,
+	}, ui.TextShape{Width: width, Align: align})
+	if len(s.tableCellLayouts) > 4096 {
+		clear(s.tableCellLayouts)
+	}
+	s.tableCellLayouts[key] = cachedCellLayout{
+		text:       plain,
+		spans:      slices.Clone(spans),
+		fontFamily: fontFamily,
+		fontSize:   fontSize,
+		weight:     weight,
+		lineHeight: lineHeight,
+		align:      align,
+		width:      width,
+		fontEpoch:  epoch,
+		layout:     lay,
+	}
+	return lay
+}
+
 func utf8RuneToUTF16(text string, runeOff int) int {
 	if runeOff <= 0 || text == "" {
 		return 0
