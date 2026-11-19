@@ -1,15 +1,15 @@
 # Block 应用商店插件开发指南（AI 自包含规范 v1 · `blockmd`）
 
-本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过全链路自动验收的插件。
+本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。
 
 ---
 
 ## 1. 架构与硬边界
 
-- **无侵入进程外沙箱**：
+- **独立进程**。只安装信任的插件。子进程使用 Block 的系统权限，清单权限仅控制宿主 RPC。外部安装链接会先打开商店，由用户确认安装。
   - 安装路径：`<BlockAppData>/apps/<plugin-id>/`
   - 私有存储：`<BlockAppData>/apps-data/<plugin-id>/state.json`
-  - 插件严禁读写宿主 `state.json` 或 AI 配置文件，卸载应用即可干净移除。
+  - 插件通过宿主 RPC 读写笔记和插件配置。卸载移除插件程序，并保留私有配置供重新安装。
 - **跨语言双向 JSON-RPC 2.0**：宿主以独立子进程启动 `manifest.json` 中的 `entry.command`（推荐 `["python3", "-u", "main.py"]`、`["node", "main.mjs"]` 或编译后可执行文件），通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试输出。
 - **方案 A 原生设置挂载**：已安装插件自动挂载在「设置」左侧导航栏分割线下方（位于「应用商店」之下）。插件不写 HTML/CSS，仅返回声明式 `UIPage` JSON，宿主使用 Ocean Paper 原生控件统一渲染，并在页面顶栏自动提供「卸载」入口。
 - **两项强制校验规则（违规直接拒绝加载）**：
@@ -40,6 +40,7 @@ block-sync/
     "en": "Sync"
   },
   "version": "1.0.0",
+  "beta": true,
   "author": "Block Community",
   "repo": "blockmd-plugins/block-sync",
   "summary": {
@@ -74,6 +75,7 @@ block-sync/
 - `id`：必填，匹配正则 `^[a-z0-9][a-z0-9-]{1,47}$`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：标准 SemVer（如 `"1.0.0"`）。
+- `beta`：可选布尔值（默认 `false`，正式版省略即可）。由插件自身按需声明；仅当插件在 `manifest.json` 中显式写 `"beta": true` 时，Block 才会在应用商店、设置侧栏与插件页标题旁显示 `Beta` 标识，商店采集器也会自动同步到 `store-index.json`。插件转正时删掉该字段即可，宿主不做任何硬编码。
 - `author`：必填非空字符串，禁止含 Emoji。
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。
 - `summary`：`zh`（<=80 字符）与 `en`（<=140 字符）均必填，禁止含 Emoji。
@@ -81,7 +83,7 @@ block-sync/
 - `permissions`：按需声明，仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set`）
   - `"notes:read"`：列出并读取当前笔记本内 `.md` 文件（`host.notes.list` / `host.notes.read`）
-  - `"notes:write"`：在当前笔记本内写入 `.md` 文件（`host.notes.write`）
+  - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`）
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
 - `surfaces`：必填固定为 `["settings_page"]`。
@@ -103,21 +105,26 @@ block-sync/
        "data_dir": "/abs/path/to/apps-data/block-sync",
        "downloads_dir": "/Users/name/Downloads",
        "notebook_root": "/abs/path/to/notebook",
+       "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
-       "host_version": "1.0.379",
-       "ui_capabilities": ["kv_tooltip"]
+       "host_version": "1.0.696",
+       "ui_capabilities": [
+         "kv_tooltip", "treemap", "host_perf", "checklist", "form_layout",
+         "multi_notebook", "card_collapse", "metric_tone", "log_columns", "file_picker",
+         "action_feedback", "note_revision"
+       ]
      }
      ```
-     注：未打开笔记本文件夹时 `notebook_root` 可能为 `""`（此时 `host.notes.list` 返回 `[]`）。宿主同时提供 `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）**。
-     `ui_capabilities` 可能省略。插件可用它判断宿主支持的可选 UI 字段，例如 `kv_tooltip`。
+     注：未打开笔记本文件夹时 `notebook_root` 可能为 `""`（此时 `host.notes.list` 返回 `[]`）；`notebooks` 为宿主已注册的全部笔记本根目录数组。宿主同时提供 `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）**。
+     `ui_capabilities` 可能省略。插件可用它判断宿主支持的可选 UI 字段与多笔记本能力（如 `checklist`、`multi_notebook`、`card_collapse`、`kv_tooltip`）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
-   - 请求 `params`：`{"surface": "settings_page", "values": { ... }}`（首次打开时 `values` 可能省略；用户在界面上切换任意 `segmented`、`select`、`switch`、`folder` 或编辑输入框时，宿主会携带当前未保存的最新 `values` 实时调用 `plugin.render` 以驱动实时预览刷新）。插件在渲染时应将 `params.get("values")` 覆盖合并到已存配置之上生成动态预览与选项（仅在 `plugin.action` 时再落盘修改）。
-   - 返回 `result`：`{"page": <UIPage 对象>}`
+   - 请求 `params`：`{"surface": "settings_page", "values": { ... }}`。首次打开、切换笔记本与后台刷新时可以省略 `values`。用户编辑时，`values` 可能只有改动过的字段。将这些字段合并到持久配置后生成预览。需要保存的普通表单由 `plugin.action` 提交。
+   - 返回 `result` 包含 `page`。可选的 `values` 仅列出本次已持久化或主动重置的字段，宿主用它更新表单。
 
 3. **`plugin.action`**
-   - 用户点击页面按钮时触发（校验器会自动遍历页面中所有按钮 `id` 逐个触发验收）：
+   - 用户点击页面按钮时触发。校验器会调用初次渲染时显示的按钮。
    - 请求 `params`：
      ```json
      {
@@ -133,6 +140,8 @@ block-sync/
    - 返回 `result`（字段均可选；`open_path` 会由宿主用系统默认浏览器/应用打开本地文件，`reveal_path` 会在访达/资源管理器中定位显示该本地文件或目录，切勿在插件内自行调用 `open`/`xdg-open` 子进程；`status` 严禁含 Emoji）：
      ```json
      {
+       "ok": true,
+       "tone": "success",
        "values": { "protocol": "local_mirror" },
        "page": { "...": "更新后的完整 UIPage 对象" },
        "status": "已同步 2 篇笔记",
@@ -142,8 +151,8 @@ block-sync/
      ```
 
 4. **`plugin.event`**（需声明 `"events:note_saved"` 权限）
-   - 请求 `params`：`{"event": "note.saved", "path": "welcome.md", "timestamp": "2026-11-18T10:00:00Z"}`
-   - 返回 `result`：`{"handled": true}`
+   - 请求 `params`：`{"event": "note.saved", "notebook_root": "/abs/path/to/notebook", "path": "welcome.md", "timestamp": "2026-11-18T10:00:00Z"}`
+   - 成功时返回 `{"handled": true}`。失败时返回 JSON-RPC 错误，宿主可保留该笔记的重试入口。笔记发生实际变更时，宿主会通知订阅该事件的其他插件。
 
 5. **`plugin.shutdown`**
    - 请求 `params`：`{}`
@@ -162,12 +171,18 @@ block-sync/
    - `params: {"key": "config", "value": {...}}` -> `{"ok": true}`
 3. **`host.notes.active`**（需 `"notes:read"`）
    - `params: {}` -> `{"path": "welcome.md"}`（返回用户当前正在编辑的笔记相对路径；未打开笔记时返回 `""`）。
-4. **`host.notes.list`**（需 `"notes:read"`）
-   - `params: {}` -> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
-5. **`host.notes.read`**（需 `"notes:read"`）
-   - `params: {"path": "welcome.md"}` -> `{"path": "welcome.md", "content": "# 欢迎..."}`
-6. **`host.notes.write`**（需 `"notes:write"`）
-   - `params: {"path": "notes/synced.md", "content": "# 内容"}` -> `{"ok": true}`（仅限相对路径，任何 `..` 或绝对路径越界均被宿主拦截）。
+4. **`host.notebooks.list`**（需 `"notes:read"`）
+   - `params: {}` -> `{"notebooks": [{"path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（返回用户在 Block 中打开/注册的全部笔记本，建议配合 `checklist` 控件让用户按笔记本勾选同步范围）。
+5. **`host.notes.list`**（需 `"notes:read"`）
+   - `params: {"notebook_root": "/abs/path/to/notebook"}`（`notebook_root` 可省略，默认当前活动笔记本）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
+6. **`host.notes.read`**（需 `"notes:read"`）
+   - `params: {"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可省略）→ `{"path": "welcome.md", "content": "# 欢迎...", "revision": "<SHA-256>"}`
+7. **`host.notes.write`**（需 `"notes:write"`）
+   - `params: {"notebook_root": "/abs/path/to/notebook", "path": "notes/synced.md", "content": "# 内容", "expected_revision": "<SHA-256>"}` → `{"ok": true, "changed": true}`。
+   - `notebook_root` 可省略。文件须位于已注册的笔记本内。对于先读后改的操作，把读取时的 `revision` 作为 `expected_revision` 原样提供。传空字符串表示只创建新文件。旧插件可省略该字段。
+   - 遇到版本冲突或编辑器中有未保存改动，返回 `-32006`。先重新读取，再应用局部修改。宿主使用原子写入并刷新干净的编辑器标签页。
+8. **`host.perf.snapshot`**（需 `"notes:read"`）
+   - `params: {"refresh_disk": false}` -> 返回宿主 CPU、内存与分类磁盘占用快照（供性能监控类插件使用）。
 
 ---
 
@@ -194,16 +209,18 @@ block-sync/
 ```
 - `title`：必填非空字符串。
 - `status`：可选只读次级状态短文本（仅用于展示真实执行结果或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"`、`"xxx · 已就绪"` 等占位文案）。
+- `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询）。
 - `header_actions`：可选顶栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。
-- `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（必填）、`items`（必填非空数组）。
+- `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选标题旁小徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片）、`items`（必填非空数组）。
 
-### 11 种 `UIItem` 控件（按 `kind` 区分）
+### 14 种 `UIItem` 控件（按 `kind` 区分）
 
 交互设计准则
 
-- 选择本地文件夹时直接使用 `folder`，点击即打开系统选择器。远端路径和分支等可编辑文本使用 `input`，并提供合适的默认值。`select` 用于真实的多项选择，例如笔记列表。
-- 布尔开关（`switch`）、分段（`segmented`）、下拉选单（`select`）与本地文件夹（`folder`）这类离散控件在用户切换后应立即在 `plugin.render` 中持久化生效，不要强制用户再额外点击「保存」；仅在包含远端地址、密钥等多项文本输入时提供「测试连接 / 保存」按钮。
-- 页面只展示完成当前任务所需的设置和状态。路径优先显示名称，完整路径放进宿主提供的悬停提示。预览仅在需要核对结果或确认变更时展示。
+- 选择本地文件夹时直接使用 `folder`，点击即打开系统选择器；若需要选择文件可附加 `accept_extensions`（如 `[".zip"]`）。远端路径和分支等可编辑文本使用 `input`，并提供合适的默认值。`select` 用于单项下拉选择，`checklist` 用于多选列表（如勾选多个笔记本）。
+- 布尔开关（`switch`）、分段（`segmented`）、下拉选单（`select`）、多选列表（`checklist`）与本地文件夹（`folder`）这类离散控件在用户切换后应立即在 `plugin.render` 中持久化生效，不要强制用户再额外点击「保存」；仅在包含远端地址、密钥等多项文本输入时提供「测试连接 / 保存」按钮。
+- 涉及多笔记本同步或批量处理的插件，应通过 `host.notebooks.list` 列出全部笔记本并交由 `checklist` 勾选，只对勾选的笔记本执行操作。
+- 任意 `UIItem` 可通过可选字段 `layout` 控制排布（`""` 默认横向标签、`"stacked"` 上下堆叠、`"full"` 通栏分段）。
 
 任意 `UIItem` 均支持可选字段 **`visible_when`**，用于按其他表单控件当前值**零延迟动态显隐对应配置项**：
 ```json
@@ -302,16 +319,36 @@ block-sync/
       }
     }
     ```
-11. **`log_list`（运行记录列表）**：不含 `id`/`label`，`empty_text` 必填非空，`entries` 可为空数组（每项 `title` 与 `time` 必填非空，`status` 可选）：
+11. **`log_list`（运行记录 / 队列列表）**：`empty_text` 必填非空，`label` 可选，`entries` 可为空数组（每项 `title` 必填，`sub_text`、`time`、`status`、`tone`、`ratio`、`tooltip` 均可选）：
     ```json
     {
       "kind": "log_list",
       "empty_text": "暂无同步记录",
       "entries": [
-        { "title": "welcome.md", "time": "12:30:00", "status": "已同步" }
+        { "title": "welcome.md", "time": "12:30", "status": "成功", "tone": "success" }
       ]
     }
     ```
+12. **`checklist`（多选勾选列表，推荐用于多笔记本勾选）**：`id` 必填，`label` 可选，`value` 为已选 `string[]`，`options` 每项含 `value`、`label` 及可选 `detail` / `badge` / `tooltip`，宿主自动提供「全选 / 取消全选」：
+    ```json
+    {
+      "kind": "checklist",
+      "id": "selected_notebooks",
+      "value": ["/Users/name/Notes/Work"],
+      "empty_text": "暂无已打开的笔记本",
+      "options": [
+        {
+          "value": "/Users/name/Notes/Work",
+          "label": "Work",
+          "badge": "当前",
+          "detail": "~/Notes/Work",
+          "tooltip": "/Users/name/Notes/Work"
+        }
+      ]
+    }
+    ```
+13. **`group`（并排表单分组）**：`fields` 至少包含 2 个表单项（支持 `input`、`secret`、`segmented`、`select`、`folder`、`switch`），宿主将其自动并排展示。
+14. **`treemap`（磁盘/空间占比面积图）**：包含 `tiles` 非空数组，以及可选 `summary`、`total_bytes`（供空间诊断类插件使用）。
 
 ---
 
@@ -368,13 +405,13 @@ class HostBridge:
 
 ## 6. 本地全链路验收命令
 
-在插件开发完成后执行以下命令，自动在隔离沙箱内完成 `manifest.json` 校验、商店安装模拟、`plugin.initialize`、`settings_page` 严格校验、所有按钮 `plugin.action` 触发、`note.saved` 事件投递与进程退出验收：
+以下命令使用临时笔记本和插件数据目录，检查清单、安装、初始化、设置页、初次渲染可见的按钮、保存事件投递和进程退出。
 
 ```bash
-CGO_ENABLED=0 go -C /Users/eachann/Work/block-go run ./cmd/block-plugin-check /绝对路径/到你的插件目录
+CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
 ```
 
-终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 即验收通过。
+终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示协议检查通过。上传、同步和迁移仍需使用配置好的临时笔记本验证结果。
 
 ---
 
