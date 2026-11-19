@@ -213,6 +213,7 @@ type ActionButtonOptions struct {
 	Label              string
 	AccessibilityLabel string
 	Leading            *icons.Icon
+	AlwaysDuo          bool
 	Style              ActionButtonStyle
 	Disabled           bool
 	Loading            bool
@@ -367,8 +368,12 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			}
 		} else if opts.Leading != nil {
 			ic := pal.MonoIconColors(fg)
-			if (opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline) && (hovered || pressed) {
-				ic = pal.DuoIconColors(fg)
+			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline {
+				if hovered || pressed {
+					ic = pal.DuoIconColors(fg)
+				} else if opts.AlwaysDuo {
+					ic = pal.DuoIconColors(pal.TextSecondary)
+				}
 			}
 			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
 		}
