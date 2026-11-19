@@ -479,8 +479,9 @@ var diffLinkDest = func() string {
 const diffLinkTitle = `(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`
 
 var (
-	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\((` + diffLinkDest + `)` + diffLinkTitle + `\)`)
-	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\(` + diffLinkDest + diffLinkTitle + `\)`)
+	// Spaces may pad the destination: "[Docs]( /docs )" is a link too.
+	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\(\s*(` + diffLinkDest + `)` + diffLinkTitle + `\s*\)`)
+	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\(\s*` + diffLinkDest + diffLinkTitle + `\s*\)`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
