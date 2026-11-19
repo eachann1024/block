@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V2 · 快捷键</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,a:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:1000px;height:760px;box-sizing:border-box;display:flex;flex-direction:column;background:#222222;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 14px;box-sizing:border-box">
+    <div style="width:226px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:460">Block</span>
+    </div>
+    <div style="flex:1;display:flex;gap:6px;color:#b4b4b4">
+      <span>设置</span><span>/</span><span style="color:#ececec">快捷键</span>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="设置分类" style="width:240px;flex:none;box-sizing:border-box;padding:4px 10px 12px;display:flex;flex-direction:column;gap:2px">
+      <a href="#" style="height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>返回
+      </a>
+      <div style="height:6px"></div>
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+        <sc-if value="{{n.sep}}" hint-placeholder-val="{{ false }}">
+          <div style="height:1px;background:#2c2c2c;margin:8px 8px"></div>
+        </sc-if>
+        <a href="#" aria-current="{{n.current}}" style="height:32px;display:flex;align-items:center;gap:10px;padding:0 8px;color:{{n.color}};background:{{n.bg}};font-weight:{{n.weight}};text-decoration:none;border-radius:8px">
+          <span aria-hidden="true" style="width:16px;height:16px;border-radius:4px;border:1.5px solid currentColor;box-sizing:border-box;opacity:.7;flex:none"></span>
+          <span style="flex:1">{{n.label}}</span>
+          <sc-if value="{{n.beta}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11px;line-height:16px;color:#b4b4b4">Beta</span>
+          </sc-if>
+        </a>
+      </sc-for>
+    </nav>
+
+    <main style="flex:1;min-width:0;margin:0 8px 8px 0;background:#181818;border:1px solid #292929;border-radius:10px;overflow:hidden">
+      <div style="max-width:600px;margin:0 auto;padding:40px 32px 56px;display:flex;flex-direction:column;gap:32px">
+
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <h1 style="margin:0;font-size:20px;line-height:28px;font-weight:560">快捷键</h1>
+          <button type="button" style="height:28px;padding:0 8px;margin-right:-8px;border:0;border-radius:8px;background:transparent;color:#779de8;font-size:13px;line-height:18px;cursor:pointer">恢复默认</button>
+        </div>
+
+        <section style="display:flex;flex-direction:column">
+          <h2 style="margin:0 0 6px;font-size:14px;line-height:28px;font-weight:560">全局</h2>
+          <sc-for list="{{globalKeys}}" as="k" hint-placeholder-count="2">
+            <div style="height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #292929">
+              <span>{{k.label}}</span>
+              <button type="button" aria-label="{{k.recLabel}}" style="height:28px;display:inline-flex;align-items:center;gap:4px;padding:0 6px;margin-right:-6px;border:0;border-radius:8px;background:{{k.bg}};cursor:pointer">
+                <sc-for list="{{k.keys}}" as="c" hint-placeholder-count="2">
+                  <kbd style="min-width:20px;height:20px;box-sizing:border-box;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #3a3a3a;border-radius:5px;font-family:'JetBrains Mono',Menlo,monospace;font-size:12px;line-height:14px;font-weight:500;color:#ececec">{{c}}</kbd>
+                </sc-for>
+              </button>
+            </div>
+          </sc-for>
+        </section>
+
+        <section style="display:flex;flex-direction:column">
+          <h2 style="margin:0 0 6px;font-size:14px;line-height:28px;font-weight:560">应用内</h2>
+          <sc-for list="{{appKeys}}" as="k" hint-placeholder-count="4">
+            <div style="height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #292929">
+              <span>{{k.label}}</span>
+              <span style="display:inline-flex;gap:4px">
+                <sc-for list="{{k.keys}}" as="c" hint-placeholder-count="2">
+                  <kbd style="min-width:20px;height:20px;box-sizing:border-box;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #2c2c2c;border-radius:5px;font-family:'JetBrains Mono',Menlo,monospace;font-size:12px;line-height:14px;font-weight:500;color:#b4b4b4">{{c}}</kbd>
+                </sc-for>
+              </span>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const navItems = [
+      ['AI 助手'], ['外观与字体'], ['文件夹'], ['快捷键', true],
+      ['应用商店', false, false, true], ['图床上传', false, true], ['笔记迁移', false, true], ['同步', false, true]
+    ];
+    return {
+      nav: navItems.map(([label, cur, beta, sep]) => ({
+        label, beta: !!beta, sep: !!sep,
+        current: cur ? 'page' : 'false',
+        color: cur ? '#ececec' : '#b4b4b4',
+        bg: cur ? '#333333' : 'transparent',
+        weight: cur ? '460' : '400'
+      })),
+      globalKeys: [
+        { label: '全局唤出', keys: ['⌥', 'Space'], bg: 'transparent', recLabel: '重新录制 全局唤出' },
+        { label: '速记小窗', keys: ['⌥', '⇧', 'N'], bg: '#222222', recLabel: '重新录制 速记小窗' }
+      ],
+      appKeys: [
+        { label: '搜索笔记', keys: ['⌘', 'K'] },
+        { label: '当前笔记查找', keys: ['⌘', 'F'] },
+        { label: '新建笔记', keys: ['⌘', 'N'] },
+        { label: 'AI 助手面板', keys: ['⌘', 'J'] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

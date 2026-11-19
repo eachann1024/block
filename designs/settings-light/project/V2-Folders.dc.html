@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V2 · 文件夹</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#779de8}a:hover{color:#9dbcf5}
+button{font-family:inherit;font-size:14px;line-height:20px}
+button:focus-visible,a:focus-visible{outline:2px solid #779de8;outline-offset:1px}
+</style>
+</helmet>
+
+<div style="width:1000px;height:760px;box-sizing:border-box;display:flex;flex-direction:column;background:#222222;color:#ececec;font-family:Inter,-apple-system,'PingFang SC',system-ui,sans-serif;font-size:14px;line-height:20px;border-radius:12px;overflow:hidden;border:1px solid #292929;-webkit-font-smoothing:antialiased">
+
+  <header style="height:40px;flex:none;display:flex;align-items:center;padding:0 14px;box-sizing:border-box">
+    <div style="width:226px;display:flex;align-items:center;gap:8px;flex:none">
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+      <span aria-hidden="true" style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      <span style="margin-left:10px;font-weight:460">Block</span>
+    </div>
+    <div style="flex:1;display:flex;gap:6px;color:#b4b4b4">
+      <span>设置</span><span>/</span><span style="color:#ececec">文件夹</span>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="设置分类" style="width:240px;flex:none;box-sizing:border-box;padding:4px 10px 12px;display:flex;flex-direction:column;gap:2px">
+      <a href="#" style="height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;color:#b4b4b4;text-decoration:none;border-radius:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>返回
+      </a>
+      <div style="height:6px"></div>
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+        <sc-if value="{{n.sep}}" hint-placeholder-val="{{ false }}">
+          <div style="height:1px;background:#2c2c2c;margin:8px 8px"></div>
+        </sc-if>
+        <a href="#" aria-current="{{n.current}}" style="height:32px;display:flex;align-items:center;gap:10px;padding:0 8px;color:{{n.color}};background:{{n.bg}};font-weight:{{n.weight}};text-decoration:none;border-radius:8px">
+          <span aria-hidden="true" style="width:16px;height:16px;border-radius:4px;border:1.5px solid currentColor;box-sizing:border-box;opacity:.7;flex:none"></span>
+          <span style="flex:1">{{n.label}}</span>
+          <sc-if value="{{n.beta}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:11px;line-height:16px;color:#b4b4b4">Beta</span>
+          </sc-if>
+        </a>
+      </sc-for>
+    </nav>
+
+    <main style="flex:1;min-width:0;margin:0 8px 8px 0;background:#181818;border:1px solid #292929;border-radius:10px;overflow:hidden">
+      <div style="max-width:600px;margin:0 auto;padding:40px 32px 56px;display:flex;flex-direction:column;gap:32px">
+
+        <h1 style="margin:0;font-size:20px;line-height:28px;font-weight:560">文件夹</h1>
+
+        <section style="display:flex;flex-direction:column">
+          <h2 style="margin:0 0 6px;font-size:14px;line-height:28px;font-weight:560">侧栏</h2>
+          <div style="min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #292929">
+            <label for="nonmd">显示非 Markdown 文件</label>
+            <button id="nonmd" type="button" role="switch" aria-checked="true" style="width:30px;height:18px;padding:2px;border:0;border-radius:9px;background:#779de8;display:flex;justify-content:flex-end;cursor:pointer;box-sizing:border-box">
+              <span style="width:14px;height:14px;border-radius:7px;background:#ffffff"></span>
+            </button>
+          </div>
+          <div style="min-height:44px;padding:8px 0;box-sizing:border-box;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-top:1px solid #292929">
+            <span style="line-height:28px;flex:none">隐藏的文件夹</span>
+            <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px">
+              <span style="height:28px;display:inline-flex;align-items:center;gap:2px;padding:0 2px 0 10px;border-radius:8px;border:1px solid #2c2c2c;box-sizing:border-box;font-size:13px;line-height:18px">
+                assets
+                <button type="button" aria-label="取消隐藏 assets" style="width:22px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:#8a8a8a;display:inline-flex;align-items:center;justify-content:center;cursor:pointer">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>
+                </button>
+              </span>
+              <button type="button" style="height:28px;display:inline-flex;align-items:center;gap:4px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:#779de8;font-size:13px;line-height:18px;cursor:pointer">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>添加
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section style="display:flex;flex-direction:column">
+          <div style="height:28px;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h2 style="margin:0;font-size:14px;line-height:20px;font-weight:560">全局搜索</h2>
+            <span style="font-size:13px;line-height:18px;color:#8a8a8a">参与搜索</span>
+          </div>
+          <sc-for list="{{folders}}" as="f" hint-placeholder-count="5">
+            <div style="height:44px;display:flex;align-items:center;gap:10px;border-top:1px solid #292929">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex:none;color:#8a8a8a"><path d="M3.5 7.5a2 2 0 012-2h4l2 2h7a2 2 0 012 2v7.5a2 2 0 01-2 2h-13a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+              <span style="flex:none;color:{{f.nameColor}}">{{f.name}}</span>
+              <span style="flex:1;min-width:0;color:#8a8a8a;font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">iCloud 云盘</span>
+              <button type="button" role="switch" aria-checked="{{f.on}}" aria-label="{{f.switchLabel}}" style="width:30px;height:18px;padding:2px;border:0;border-radius:9px;background:{{f.track}};display:flex;justify-content:{{f.side}};cursor:pointer;box-sizing:border-box;flex:none">
+                <span style="width:14px;height:14px;border-radius:7px;background:{{f.knob}}"></span>
+              </button>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const navItems = [
+      ['AI 助手'], ['外观与字体'], ['文件夹', true], ['快捷键'],
+      ['应用商店', false, false, true], ['图床上传', false, true], ['笔记迁移', false, true], ['同步', false, true]
+    ];
+    const rows = [['创业团队', true], ['生活', true], ['Note', true], ['agents', false], ['提示词', true]];
+    return {
+      nav: navItems.map(([label, cur, beta, sep]) => ({
+        label, beta: !!beta, sep: !!sep,
+        current: cur ? 'page' : 'false',
+        color: cur ? '#ececec' : '#b4b4b4',
+        bg: cur ? '#333333' : 'transparent',
+        weight: cur ? '460' : '400'
+      })),
+      folders: rows.map(([name, on]) => ({
+        name,
+        on: on ? 'true' : 'false',
+        nameColor: on ? '#ececec' : '#8a8a8a',
+        track: on ? '#779de8' : '#3a3a3a',
+        knob: on ? '#ffffff' : '#b4b4b4',
+        side: on ? 'flex-end' : 'flex-start',
+        switchLabel: name + ' 参与全局搜索'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>
