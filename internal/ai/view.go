@@ -1289,6 +1289,9 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 								icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
 							}
 							detail := plainInline(st.Detail)
+							if detail == "" {
+								detail = strings.TrimSpace(st.Detail)
+							}
 							if live := st.ID == "streaming" && !st.Done; live && detail != "" {
 								// 实时行空间有限：只显示正在生成的内容，不再重复“正在生成回答”。
 								ui.Text(cUI, detail).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -1310,9 +1313,6 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 
 						if detailOpen {
 							detID := fmt.Sprintf("ai-process-tool-detail-%d", i)
-							if detail == "" {
-								detail = strings.TrimSpace(st.Detail)
-							}
 							detBox := ui.Column(cUI.Key(detID+"-"+turnKey)).FillWidth().Padding(4, 12).
 								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
 							bui.Probe(detBox, detID)
@@ -1496,6 +1496,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 		if preview != nil && pending {
 			lines := c.PlanDiffLines(convID, msgIdx, preview.Page, preview.BeforeText, preview.AfterText)
 			texts := make([]string, len(lines))
+			changes := make([]int, len(lines))
 			for i, dl := range lines {
 				texts[i], changes[i] = dl.Text, dl.Change
 			}
@@ -1521,7 +1522,6 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 					Border(1, pal.Hairline).Background(pal.Paper).Clip()
 				listBox.Children(func() {
 					totalVis := len(visible)
-			changes := make([]int, len(lines))
 					for pos, dl := range visible {
 						trimmed := strings.TrimSpace(dl.Text)
 						isFirst := pos == 0
