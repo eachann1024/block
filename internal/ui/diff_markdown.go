@@ -372,8 +372,12 @@ func DiffHardBreaks(lines []string, change []int) []bool {
 			for k := i + 1; k < len(lines); k++ {
 				if change[k] != -side {
 					t := strings.TrimSpace(lines[k])
-					out[i] = t != "" && !masks[si][k] && diffQuoteDepth(t) == diffQuoteDepth(strings.TrimSpace(l)) &&
-						strings.TrimSpace(diffStripQuotes(t, diffQuoteDepth(t))) != ""
+					in := strings.TrimSpace(diffStripQuotes(t, diffQuoteDepth(t)))
+					// A rule, heading, fence or list item below starts a block of its own:
+					// over "***" the "\" of "C:\backup\" is text.
+					out[i] = in != "" && !masks[si][k] && diffQuoteDepth(t) == diffQuoteDepth(strings.TrimSpace(l)) &&
+						!diffRuleRE.MatchString(in) && !diffHeadingRE.MatchString(in) && !diffSetextRE.MatchString(in) &&
+						!diffListItemRE.MatchString(in) && diffFenceOpen(in) == ""
 					break
 				}
 			}
