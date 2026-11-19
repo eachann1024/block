@@ -3932,10 +3932,11 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	// Window-wide top brand landscape band painted onto root's own backdrop so the
 	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
-	if !aiImmersive && sidebarWide {
+	// Only show the horizon orb while the docked sidebar leaves the 40..88px band unobstructed.
+	if !aiImmersive {
 		if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
 			pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
-			blockui.PaintBrandSceneBand(root, scID, true, pauseBrandAnim)
+			blockui.PaintBrandSceneBand(root, scID, sidebarWide, pauseBrandAnim)
 		}
 	}
 
