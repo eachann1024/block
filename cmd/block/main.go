@@ -76,6 +76,7 @@ func main() {
 	if notebookFlag != "" {
 		_ = ws.SetNotebook(notebookFlag)
 	}
+	var launchStoreLink string
 	if launchArgs := flag.Args(); len(launchArgs) > 0 {
 		launchWD, _ := os.Getwd()
 		for _, a := range launchArgs {
@@ -85,9 +86,14 @@ func main() {
 			}
 			lower := strings.ToLower(trimmed)
 			if strings.HasPrefix(lower, "block://") || strings.HasPrefix(lower, "blockmd://") {
-				if u, err := url.Parse(trimmed); err == nil && u.Host == "open" {
-					if p := u.Query().Get("path"); p != "" {
-						_ = ws.OpenExternalFile(p)
+				if u, err := url.Parse(trimmed); err == nil {
+					switch u.Host {
+					case "open":
+						if p := u.Query().Get("path"); p != "" {
+							_ = ws.OpenDeepLinkedFile(p)
+						}
+					case "store", "install":
+						launchStoreLink = trimmed
 					}
 				}
 				continue
@@ -112,6 +118,9 @@ func main() {
 
 	revealMainWindow := func() *mygo.Window {
 		w := openMainWindow()
+		if hiddenFlag {
+			return w
+		}
 		if w != nil {
 			w.Restore()
 			w.Show()
@@ -170,9 +179,6 @@ func main() {
 			ws.OpenExportStage()
 		},
 		OnCloseTab: func(win *mygo.Window) {
-			if ws.ClosePluginReadmeWindow(win) {
-				return
-			}
 			if ws.SearchWindow().IsFocused() {
 				ws.SearchWindow().Hide()
 				return
@@ -245,8 +251,8 @@ func main() {
 			}
 			ws.StepZoomPct(-app.MainZoomStepPct)
 		},
-		OnNextTab:   func() { ws.StepTab(1) },
-		OnPrevTab:   func() { ws.StepTab(-1) },
+		OnNextTab: func() { ws.StepTab(1) },
+		OnPrevTab: func() { ws.StepTab(-1) },
 		OnNavigateBack: func() {
 			ws.NavigateBack()
 		},
@@ -358,7 +364,10 @@ func main() {
 		}
 		win.OnClose(func(e *mygo.CloseEvent) {
 			ws.FlushWindowBounds()
-			ws.FlushDirtySessions()
+			if err := ws.FlushDirtySessions(); err != nil {
+				e.PreventDefault()
+				return
+			}
 			if runtime.GOOS == "darwin" && !isIsolatedRun && !isQuitting {
 				e.PreventDefault()
 				win.Hide()
@@ -369,7 +378,7 @@ func main() {
 
 	handleDeepLink := func(rawURL string) {
 		u, err := url.Parse(rawURL)
-		if err != nil {
+		if err != nil || u.User != nil || (u.Scheme != "block" && u.Scheme != "blockmd") {
 			return
 		}
 		switch u.Host {
@@ -380,11 +389,14 @@ func main() {
 				if mygo.App.IsReady() {
 					revealMainWindow()
 				}
-				_ = ws.OpenExternalFile(p)
+				_ = ws.OpenDeepLinkedFile(p)
 			}
 		case "store", "install":
+			if !mygo.App.IsReady() {
+				launchStoreLink = rawURL
+				return
+			}
 			revealMainWindow()
-			ws.OpenSettings(modals.TabAppStore)
 			target := strings.TrimSpace(u.Query().Get("repo"))
 			if target == "" {
 				target = strings.TrimSpace(u.Query().Get("url"))
@@ -392,11 +404,7 @@ func main() {
 			if target == "" {
 				target = strings.TrimSpace(u.Query().Get("id"))
 			}
-			if target != "" && ws.Plugins() != nil {
-				ws.Plugins().InstallFromSourceAsync(target, func(pluginID string) {
-					ws.OpenSettings(modals.TabPluginPrefix + pluginID)
-				})
-			}
+			ws.OpenPluginStoreSource(target)
 		}
 	}
 
@@ -443,12 +451,18 @@ func main() {
 		}
 	})
 
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		if err := ws.FlushDirtySessions(); err != nil {
+			e.PreventDefault()
+			return
+		}
+		if err := ws.QuickNote().Flush(); err != nil {
+			e.PreventDefault()
+			return
+		}
 		isQuitting = true
 		modals.SetAppQuitting(true)
 		ws.FlushWindowBounds()
-		ws.FlushDirtySessions()
-		ws.QuickNote().Flush()
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
@@ -469,6 +483,10 @@ func main() {
 		})
 
 		openMainWindow()
+		if launchStoreLink != "" {
+			handleDeepLink(launchStoreLink)
+			launchStoreLink = ""
+		}
 		ws.QuickNote().AttachDesktop()
 		ws.SearchWindow().AttachDesktop()
 		syncMenuAndHotkeys(ws.State())

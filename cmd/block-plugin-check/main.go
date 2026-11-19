@@ -24,8 +24,8 @@ func main() {
 	if err != nil {
 		fail("manifest validation failed: %v", err)
 	}
-	fmt.Printf("[OK] manifest: app=%s id=%s (%s v%s) surfaces=%v permissions=%v\n",
-		m.App, m.ID, m.Name.Zh, m.Version, m.Surfaces, m.Permissions)
+	fmt.Printf("[OK] manifest: app=%s id=%s (%s v%s beta=%v) surfaces=%v permissions=%v\n",
+		m.App, m.ID, m.Name.Zh, m.Version, m.Beta, m.Surfaces, m.Permissions)
 
 	sandboxDir, err := os.MkdirTemp("", "block-plugin-check-*")
 	if err != nil {
@@ -146,7 +146,7 @@ func main() {
 		if err := rt.NotifyNoteSaved(ctx, notebookDir, "welcome.md"); err != nil {
 			fail("plugin.event(note.saved): %v", err)
 		}
-		fmt.Println("[OK] event: note.saved handled=true")
+		fmt.Println("[OK] event: note.saved request delivered")
 	}
 
 	if err := rt.Shutdown(ctx); err != nil {
