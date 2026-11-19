@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -239,7 +240,10 @@ type Session struct {
 	imagePopKind      string // "", "more", "alt", "size", "crop"
 	imageAltDraft     string
 	imageAltHandle    ui.Handle
+	imageMu           sync.Mutex
 	imageCache        map[string]ui.ImageSource
+	imageOrder        []string
+	imageLoading      map[string]bool
 	imageFailed       map[string]bool
 	videoPlayers      map[string]*ui.VideoPlayer
 	previewMedia      func(src string, video, load bool) PreviewAsset
@@ -340,6 +344,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		folded:            make(map[model.BlockID]bool),
 		foldTails:         make(map[model.BlockID]model.BlockID),
 		imageCache:        make(map[string]ui.ImageSource),
+		imageLoading:      make(map[string]bool),
 		imageFailed:       make(map[string]bool),
 		videoPlayers:      make(map[string]*ui.VideoPlayer),
 		videoFailed:       make(map[string]bool),
@@ -467,8 +472,55 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	}
 }
 
+// Close releases native media handles and heavy caches held by a closed tab Session.
+func (s *Session) Close() {
+	if s == nil {
+		return
+	}
+	s.cancelInlineAI()
+	s.closeVideoPlayers()
+	s.imageMu.Lock()
+	clear(s.imageCache)
+	clear(s.imageLoading)
+	clear(s.imageFailed)
+	s.imageOrder = nil
+	s.imageMu.Unlock()
+	clear(s.textLayoutCache)
+	clear(s.tableCellLayouts)
+	clear(s.codeSyntaxCache)
+	clear(s.codePreviewCache)
+	clear(s.tableColCache)
+	clear(s.blockIdxCache)
+	s.undoStack = nil
+	s.redoStack = nil
+}
+
+// TrimInactiveCaches drops decoded bitmaps and transient layout caches on background tabs
+// while preserving document content, selection, and undo history.
+func (s *Session) TrimInactiveCaches() {
+	if s == nil {
+		return
+	}
+	for _, p := range s.videoPlayers {
+		if p != nil && p.Playing() {
+			p.Pause()
+		}
+	}
+	s.imageMu.Lock()
+	clear(s.imageCache)
+	s.imageOrder = nil
+	s.imageMu.Unlock()
+	clear(s.textLayoutCache)
+	clear(s.tableCellLayouts)
+	clear(s.codeSyntaxCache)
+}
+
 func (s *Session) Dirty() bool {
 	return s.dirty
+}
+
+func (s *Session) DocRev() uint64 {
+	return s.docRev
 }
 
 func (s *Session) MarkSaved() {
@@ -476,6 +528,18 @@ func (s *Session) MarkSaved() {
 	s.lastUndoKey = ""
 	s.lastUndoAt = time.Time{}
 	s.savedMarkdown = s.Markdown()
+}
+
+// MarkSavedIfUnchanged marks the session clean only if docRev still matches the snapshot that was written to disk.
+func (s *Session) MarkSavedIfUnchanged(rev uint64, savedMD string) bool {
+	if s.docRev != rev {
+		return false
+	}
+	s.dirty = false
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
+	s.savedMarkdown = savedMD
+	return true
 }
 
 func (s *Session) ClearTransientOverlays() {
