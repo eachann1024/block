@@ -1156,7 +1156,8 @@ func DiffAlertTitles(lines []string, change []int) []string {
 			if change[i] == -side || side < 0 && change[i] == 0 || masks[si][i] {
 				continue
 			}
-			m := diffAlertRE.FindStringSubmatch(l)
+			// A plan's diff lines keep their "\n".
+			m := diffAlertRE.FindStringSubmatch(strings.TrimRight(l, "\r\n"))
 			if m == nil {
 				continue
 			}
