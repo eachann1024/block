@@ -2327,6 +2327,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	hasConv := c.currentID != 0
 	backend := c.selectedBackendLocked()
 	provider := resolveProviderExecutionConfig(c.providerCfg)
+	nativeTools := supportsNativeTools(backend) && c.backendsCfg.Adapters[string(backend)].NativeTools
 	host := c.host
 	selectEnd := c.composerSelectEnd
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
@@ -2523,8 +2524,13 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 						},
 					}
 					if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex || backend == model.BackendAgy) {
-						label := fmt.Sprintf(theme.Tr("本轮工具可读取「%s」内已保存的 Markdown", "This turn’s tools may read saved Markdown in %s"), notebook)
+						label := fmt.Sprintf(theme.Tr("Block 笔记工具可读取「%s」内已保存的 Markdown", "Block’s note tools may read saved Markdown in %s"), notebook)
 						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{Detail: label})
+					}
+					if nativeTools {
+						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{
+							Detail: theme.Tr("本机工具已启用，可运行命令和访问本机文件。", "Local tools are enabled and can run commands and access local files."),
+						})
 					}
 					sendBtn := bui.IconButton(cUI, icons.ArrowUp, bui.IconButtonOptions{
 						ID:          "ai-chat-send",
@@ -3832,6 +3838,20 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 				ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderThinkingControls()
+			})
+		}
+		if supportsNativeTools(k) {
+			ui.Row(cUI).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				label := theme.Tr("允许本机工具", "Allow local tools")
+				ui.Column(cUI).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+					ui.Text(cUI, label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+					ui.Text(cUI, theme.Tr("允许 Agent 在后续消息中运行命令及读写本机文件。", "Lets the agent run commands and read or write local files in future turns.")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				})
+				enabled := opt.NativeTools
+				if bui.TogglePill(cUI, "ai-agent-native-tools-"+suffix, label, &enabled, opt.Locked) {
+					_ = c.UpdateAgentEntry(k, func(o *model.AIBackendAdapterOptions) { o.NativeTools = enabled })
+				}
 			})
 		}
 	})
