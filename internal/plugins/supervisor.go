@@ -69,6 +69,7 @@ type PluginViewState struct {
 	initialLoadStarted bool
 	actionCancel       context.CancelFunc
 	editedControls     map[string]bool
+	editedSeq          map[string]uint64
 
 	cachedSnapValid bool
 	cachedSnapAt    time.Time
@@ -407,6 +408,11 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 
 	nbRoot := s.NotebookRoot()
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	defer s.lockPluginRPC(pluginID)()
+
 	s.mu.RLock()
 	vs := s.views[key]
 	if vs == nil || vs.Loading || vs.BusyAction != "" || vs.Page == nil {
@@ -416,10 +422,6 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	seq := vs.editSeq
 	draftVals := pendingDraftValuesLocked(vs)
 	s.mu.RUnlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	defer s.lockPluginRPC(pluginID)()
 
 	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
@@ -432,12 +434,15 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	if err != nil || page == nil {
 		return
 	}
+	if draftVals == nil {
+		returnedVals = nil
+	}
 
 	s.mu.Lock()
 	if cur := s.views[key]; cur == vs && !cur.Loading && cur.BusyAction == "" && cur.editSeq == seq {
 		cur.Page = page
 		cur.lastLocale = rt.locale()
-		mergePageValues(cur, page, returnedVals)
+		mergePageValuesUpToSeq(cur, page, returnedVals, seq)
 	}
 	s.mu.Unlock()
 	s.notifyRedraw()
@@ -584,7 +589,8 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 	s.storeErr = ""
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		totalTimeout := time.Duration(max(len(s.store.IndexURLs), 2))*6*time.Second + 2*time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
 		defer cancel()
 		idx, err := s.store.RefreshCatalog(ctx)
 		s.mu.Lock()
@@ -972,12 +978,16 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	defer s.lockPluginRPC(pluginID)()
+	startedLocale := normalizeLocale(s.Locale())
 	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
 		if vs := s.views[key]; vs != nil {
 			vs.Loading = false
 			vs.formVersion = s.formVersions[sKey]
+			if vs.Page == nil {
+				vs.lastLocale = startedLocale
+			}
 			if !vs.errorFromBg {
 				vs.Error = err.Error()
 				vs.RetryKind = RetryKindReload
@@ -993,7 +1003,12 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	rt.SetActiveNote(activeNote)
 
 	s.mu.RLock()
-	draftVals := pendingDraftValuesLocked(s.views[key])
+	var renderSeq uint64
+	var draftVals map[string]any
+	if cur := s.views[key]; cur != nil {
+		renderSeq = cur.editSeq
+		draftVals = pendingDraftValuesLocked(cur)
+	}
 	s.mu.RUnlock()
 
 	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, draftVals)
@@ -1015,7 +1030,7 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 				vs.RetryKind = RetryKindNone
 			}
 			vs.Page = page
-			mergePageValues(vs, page, returnedVals)
+			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq)
 		}
 	}
 	s.mu.Unlock()
@@ -1023,6 +1038,10 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 }
 
 func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]any) {
+	mergePageValuesUpToSeq(view, page, returned, 0)
+}
+
+func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[string]any, maxSeq uint64) {
 	if view.Values == nil {
 		view.Values = make(map[string]any)
 	}
@@ -1038,6 +1057,7 @@ func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]an
 		}
 		delete(view.Values, k)
 		delete(view.editedControls, k)
+		delete(view.editedSeq, k)
 	}
 	for k, v := range defaults {
 		if !view.editedControls[k] {
@@ -1045,8 +1065,12 @@ func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]an
 		}
 	}
 	for k, v := range returned {
+		if maxSeq > 0 && view.editedControls[k] && view.editedSeq[k] > maxSeq {
+			continue
+		}
 		view.Values[k] = v
 		delete(view.editedControls, k)
+		delete(view.editedSeq, k)
 	}
 }
 
@@ -1176,6 +1200,9 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 	if vs.editedControls == nil {
 		vs.editedControls = make(map[string]bool)
 	}
+	if vs.editedSeq == nil {
+		vs.editedSeq = make(map[string]uint64)
+	}
 	vs.editedControls[controlID] = true
 	hadFeedback := vs.Notice != "" || vs.LastActionID != "" || vs.LastActionMessage != "" || vs.LastActionButtonActive
 	vs.Notice = ""
@@ -1185,6 +1212,7 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 	vs.LastActionButtonActive = false
 	s.stopFeedbackTimerLocked(key)
 	vs.editSeq++
+	vs.editedSeq[controlID] = vs.editSeq
 	vs.cachedSnapValid = false
 	s.viewEpoch.Add(1)
 	seq := vs.editSeq
@@ -1299,6 +1327,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 	cur.Page = page
 	cur.lastNotebookRoot = nbRoot
 	cur.lastActiveNote = activeNote
+	cur.lastLocale = rt.locale()
 	if !cur.errorFromBg && cur.RetryKind == RetryKindReload {
 		cur.Error = ""
 		cur.RetryKind = RetryKindNone
@@ -1311,6 +1340,7 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 	for k, v := range returnedVals {
 		cur.Values[k] = v
 		delete(cur.editedControls, k)
+		delete(cur.editedSeq, k)
 	}
 	if len(returnedVals) > 0 {
 		s.formVersions[sKey]++
@@ -1420,14 +1450,16 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			rt.SetActiveNote(activeNote)
 			s.mu.RLock()
 			stale := vs.formVersion != s.formVersions[sKey]
+			staleSeq := vs.editSeq
+			staleDrafts := pendingDraftValuesLocked(vs)
 			s.mu.RUnlock()
 			if stale {
 				var fresh *UIPage
 				var returned map[string]any
-				fresh, returned, err = rt.RenderWithValuesResult(ctx, surface, nil)
+				fresh, returned, err = rt.RenderWithValuesResult(ctx, surface, staleDrafts)
 				if err == nil {
 					s.mu.Lock()
-					mergePageValues(vs, fresh, returned)
+					mergePageValuesUpToSeq(vs, fresh, returned, staleSeq)
 					vs.formVersion = s.formVersions[sKey]
 					s.mu.Unlock()
 				}
@@ -1435,6 +1467,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			if err == nil {
 				s.mu.RLock()
 				values := cloneAnyMap(vs.Values)
+				actionSeq = vs.editSeq
 				s.mu.RUnlock()
 				res, err = rt.Action(ctx, surface, actionID, values)
 			}
@@ -1454,7 +1487,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			cur.BusyAction = ""
 			cur.lastNotebookRoot = nbRoot
 			cur.lastActiveNote = activeNote
-			if rt != nil {
+			if rt != nil && res != nil && res.Page != nil {
 				cur.lastLocale = rt.locale()
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
@@ -1469,10 +1502,8 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.FailedActionID = actionID
 				cur.errorFromBg = true
 			} else if res != nil {
-				if res.Page != nil || len(res.Values) > 0 {
-					s.formVersions[sKey]++
-					cur.formVersion = s.formVersions[sKey]
-				}
+				s.formVersions[sKey]++
+				cur.formVersion = s.formVersions[sKey]
 				cur.Error = ""
 				cur.RetryKind = RetryKindNone
 				cur.FailedActionID = ""
@@ -1501,26 +1532,27 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 						}
 					})
 				}
-				editedDuringAction := cur.editSeq != actionSeq
 				if res.Page != nil {
 					cur.Page = res.Page
 					if cur.Page.Status == "" && statusMsg != "" {
 						cur.Page.Status = statusMsg
 					}
 					for k, v := range res.Page.ExtractDefaultValues() {
-						if editedDuringAction && cur.editedControls[k] {
+						if cur.editedControls[k] && cur.editedSeq[k] > actionSeq {
 							continue
 						}
 						cur.Values[k] = v
 						delete(cur.editedControls, k)
+						delete(cur.editedSeq, k)
 					}
 				}
 				for k, v := range res.Values {
-					if editedDuringAction && cur.editedControls[k] {
+					if cur.editedControls[k] && cur.editedSeq[k] > actionSeq {
 						continue
 					}
 					cur.Values[k] = v
 					delete(cur.editedControls, k)
+					delete(cur.editedSeq, k)
 				}
 				openTarget = res.OpenPath
 				revealTarget = res.RevealPath
