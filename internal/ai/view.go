@@ -1370,6 +1370,19 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 		codes = append(codes, strings.TrimSpace(m[2:len(m)-2]))
 		return k
 	})
+	// A bare link keeps its "_" and "*": "https://example.com/_draft_/index" stays.
+	if spans := bui.BareURLs(t); len(spans) > 0 {
+		var u strings.Builder
+		last := 0
+		for _, sp := range spans {
+			u.WriteString(t[last:sp[0]])
+			u.WriteString("\uE000" + strconv.Itoa(len(codes)) + "\uE001")
+			codes = append(codes, t[sp[0]:sp[1]])
+			last = sp[1]
+		}
+		u.WriteString(t[last:])
+		t = u.String()
+	}
 	// Adjacent matches share the space between them, so repeat until settled.
 	for prev := ""; prev != t; {
 		prev = t
