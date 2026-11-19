@@ -53,11 +53,15 @@ var markdownExtensions = map[string]bool{
 
 // IsMarkdown reports whether name has a supported Markdown file extension.
 func IsMarkdown(name string) bool {
-	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
-	if ext == "" {
-		return false
+	return markdownExtension(name) != ""
+}
+
+func markdownExtension(name string) string {
+	ext := filepath.Ext(name)
+	if markdownExtensions[strings.ToLower(strings.TrimPrefix(ext, "."))] {
+		return ext
 	}
-	return markdownExtensions[ext]
+	return ""
 }
 
 func isCommonIgnoredName(name string) bool {
@@ -70,14 +74,8 @@ func isCommonIgnoredName(name string) bool {
 	return strings.EqualFold(name, "thumbs.db") || strings.EqualFold(name, "desktop.ini")
 }
 
-func isIgnoredFile(name string, opts ScanOptions) bool {
-	if strings.HasPrefix(name, ".") || isCommonIgnoredName(name) {
-		return true
-	}
-	if opts.HideNonMarkdown && !IsMarkdown(name) {
-		return true
-	}
-	return false
+func isIgnoredFile(name string) bool {
+	return strings.HasPrefix(name, ".") || isCommonIgnoredName(name)
 }
 
 func isIgnoredDir(name string, opts ScanOptions) bool {
@@ -85,14 +83,6 @@ func isIgnoredDir(name string, opts ScanOptions) bool {
 		return true
 	}
 	return isCommonIgnoredName(name)
-}
-
-func entryDisplayName(rawName string, isDir bool) string {
-	if isDir || !IsMarkdown(rawName) {
-		return rawName
-	}
-	ext := filepath.Ext(rawName)
-	return strings.TrimSuffix(rawName, ext)
 }
 
 // ScanNotebook walks root recursively and returns sorted FileEntry trees.
@@ -117,13 +107,13 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 	out := make([]model.FileEntry, 0, len(dirEntries))
 	for _, de := range dirEntries {
 		rawName := de.Name()
-		fullPath := filepath.Join(dir, rawName)
 		mode := de.Type()
 
 		if mode.IsDir() {
 			if isIgnoredDir(rawName, opts) {
 				continue
 			}
+			fullPath := filepath.Join(dir, rawName)
 			children, childErr := readScanLevel(fullPath, opts, depth+1)
 			if childErr != nil {
 				LogWarnf("scan directory %s failed: %v", fullPath, childErr)
@@ -145,6 +135,14 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 			continue
 		}
 
+		if isIgnoredFile(rawName) {
+			continue
+		}
+		mdExt := markdownExtension(rawName)
+		if opts.HideNonMarkdown && mdExt == "" {
+			continue
+		}
+		fullPath := filepath.Join(dir, rawName)
 		// Regular files, or symlinks that resolve to regular files (never dir symlinks).
 		var info fs.FileInfo
 		if mode.IsRegular() {
@@ -159,22 +157,17 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 			continue
 		}
 
-		if isIgnoredFile(rawName, opts) {
-			continue
-		}
-
 		var modUnix, size int64
 		if info != nil {
 			modUnix = info.ModTime().Unix()
 			size = info.Size()
 		}
-		isMD := IsMarkdown(rawName)
 		out = append(out, model.FileEntry{
 			Path:       fullPath,
-			Name:       entryDisplayName(rawName, false),
+			Name:       strings.TrimSuffix(rawName, mdExt),
 			RawName:    rawName,
 			IsDir:      false,
-			IsMarkdown: isMD,
+			IsMarkdown: mdExt != "",
 			ModUnix:    modUnix,
 			Size:       size,
 		})

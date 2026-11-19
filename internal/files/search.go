@@ -61,7 +61,7 @@ func SearchNotebooksContext(ctx context.Context, roots []string, query string, o
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if len(titleHits) >= maxSearchHits && len(bodyHits) >= maxSearchHits {
+		if len(titleHits) >= maxSearchHits {
 			break
 		}
 		root = strings.TrimSpace(root)
@@ -160,9 +160,6 @@ func walkSearchDir(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(*titleHits) >= maxSearchHits && len(*bodyHits) >= maxSearchHits {
-		return nil
-	}
 	if depth > maxScanDepth || theme.IsSearchFolderIgnored(dir) {
 		return nil
 	}
@@ -174,35 +171,40 @@ func walkSearchDir(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if len(*titleHits) >= maxSearchHits && len(*bodyHits) >= maxSearchHits {
+		// Title matches alone fill the entire result list.
+		if len(*titleHits) >= maxSearchHits {
 			return nil
 		}
 		rawName := entry.Name()
-		fullPath := filepath.Join(dir, rawName)
 		mode := entry.Type()
 
 		if mode.IsDir() {
-			if isIgnoredDir(rawName, opts) || theme.IsSearchFolderIgnored(fullPath) {
+			if isIgnoredDir(rawName, opts) {
 				continue
 			}
+			fullPath := filepath.Join(dir, rawName)
 			if err := walkSearchDir(ctx, fullPath, notebook, rawQuery, foldedQuery, queryIsASCII, opts, depth+1, seenFiles, titleHits, bodyHits); err != nil {
 				return err
 			}
 			continue
 		}
 
-		isRegular := mode.IsRegular()
-		var fileInfo os.FileInfo
-		if !isRegular && mode&os.ModeSymlink != 0 {
-			if st, statErr := os.Stat(fullPath); statErr == nil && st.Mode().IsRegular() {
-				isRegular = true
-				fileInfo = st
-			}
-		}
-		if !isRegular {
+		if isIgnoredFile(rawName) {
 			continue
 		}
-		if strings.HasPrefix(rawName, ".") || isCommonIgnoredName(rawName) || !IsMarkdown(rawName) {
+		mdExt := markdownExtension(rawName)
+		if mdExt == "" {
+			continue
+		}
+		fullPath := filepath.Join(dir, rawName)
+		var fileInfo os.FileInfo
+		if mode&os.ModeSymlink != 0 {
+			st, statErr := os.Stat(fullPath)
+			if statErr != nil || !st.Mode().IsRegular() {
+				continue
+			}
+			fileInfo = st
+		} else if !mode.IsRegular() {
 			continue
 		}
 		if seenFiles[fullPath] {
@@ -211,11 +213,10 @@ func walkSearchDir(
 		seenFiles[fullPath] = true
 
 		skipBody := len(*bodyHits) >= maxSearchHits
-		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery, queryIsASCII, skipBody); ok {
+		stem := strings.TrimSuffix(rawName, mdExt)
+		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, stem, notebook, rawQuery, foldedQuery, queryIsASCII, skipBody); ok {
 			if ranked.titleMatch {
-				if len(*titleHits) < maxSearchHits {
-					*titleHits = append(*titleHits, ranked)
-				}
+				*titleHits = append(*titleHits, ranked)
 			} else if len(*bodyHits) < maxSearchHits {
 				*bodyHits = append(*bodyHits, ranked)
 			}
@@ -224,8 +225,7 @@ func walkSearchDir(
 	return nil
 }
 
-func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, rawName, notebook, rawQuery, foldedQuery string, queryIsASCII, skipBody bool) (rankedSearchHit, bool) {
-	stem := entryDisplayName(rawName, false)
+func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, notebook, rawQuery, foldedQuery string, queryIsASCII, skipBody bool) (rankedSearchHit, bool) {
 	var titleStart int
 	var titleMatched bool
 	if queryIsASCII {

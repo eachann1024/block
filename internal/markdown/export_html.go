@@ -1,15 +1,12 @@
 package markdown
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
-	_ "image/gif"
-	_ "image/jpeg"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"block/internal/media"
 	"block/internal/model"
 
 	"github.com/egoist/mygo/ui"
@@ -23,6 +20,7 @@ type htmlRenderState struct {
 	quoteOrd   int
 	calloutOrd int
 	imageOrd   int
+	imageBytes int
 }
 
 func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) string {
@@ -39,7 +37,7 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	out.WriteString(fmt.Sprintf("<meta name=\"viewport\" content=\"width=%d\">", width))
 	out.WriteString("<title>")
 	out.WriteString(escapeHTMLText(title))
-	out.WriteString("</title><style>")
+	out.WriteString(`</title><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>`)
 	out.WriteString(css)
 	out.WriteString("</style></head><body><div class=\"page\">")
 
@@ -48,7 +46,7 @@ func exportHTML(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	}
 
 	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
-	var st htmlRenderState
+	st := htmlRenderState{imageBytes: maxExportImageBytes}
 
 	switch {
 	case !legacy && pal.Style.Sections != nil:
@@ -765,12 +763,12 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 	for _, sp := range spans {
 		var openTags, closeTags []string
 		fgColor, hasFG := resolveSpanColor(sp.FGColor, false, pal)
-		if sp.Link != "" {
+		if href := media.WebLink(sp.Link); href != "" {
 			linkStyle := uiColorCSS(linkFG)
 			if hasFG {
 				linkStyle = uiColorCSS(fgColor)
 			}
-			openTags = append(openTags, fmt.Sprintf(`<a href="%s" style="color:%s">`, escapeAttrValue(sp.Link), linkStyle))
+			openTags = append(openTags, fmt.Sprintf(`<a href="%s" style="color:%s">`, escapeAttrValue(href), linkStyle))
 			closeTags = append(closeTags, "</a>")
 		}
 		var css strings.Builder
@@ -1050,7 +1048,7 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 		st.calloutOrd++
 		renderHTMLCallout(out, b, st.calloutOrd, pal, legacy)
 
-	case b.Kind == model.BlockCode || (b.Kind == model.BlockRawHTML && !legacy):
+	case b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML:
 		cls := ""
 		lang := strings.TrimSpace(b.Language)
 		if b.Kind == model.BlockRawHTML && lang == "" {
@@ -1078,11 +1076,7 @@ func renderHTMLBlock(out *strings.Builder, b *model.Block, notePath string, pal 
 
 	case b.Kind == model.BlockImage:
 		st.imageOrd++
-		renderHTMLFigure(out, b, notePath, st.imageOrd, pal, legacy)
-
-	case b.Kind == model.BlockRawHTML:
-		out.WriteString(b.Code)
-		out.WriteByte('\n')
+		renderHTMLFigure(out, b, notePath, st.imageOrd, pal, legacy, &st.imageBytes)
 
 	default:
 		if len(b.Spans) == 0 {
@@ -1391,30 +1385,6 @@ func escapeHTMLText(s string) string {
 	return b.String()
 }
 
-func detectImageMime(path string, data []byte) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".webp":
-		return "image/webp"
-	case ".bmp":
-		return "image/bmp"
-	case ".svg":
-		return "image/svg+xml"
-	}
-	if len(data) >= 8 && bytes.HasPrefix(data, []byte{0x89, 'P', 'N', 'G'}) {
-		return "image/png"
-	}
-	if len(data) >= 3 && data[0] == 0xff && data[1] == 0xd8 && data[2] == 0xff {
-		return "image/jpeg"
-	}
-	return "image/png"
-}
-
 func renderHTMLCallout(out *strings.Builder, b *model.Block, ord int, pal PaperThemeSpec, legacy bool) {
 	cs := pal.Style.Callout
 	if legacy || !cs.Custom {
@@ -1506,36 +1476,29 @@ func renderHTMLCallout(out *strings.Builder, b *model.Block, ord int, pal PaperT
 	}
 }
 
-func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord int, pal PaperThemeSpec, legacy bool) {
-	src := b.ImageSrc
-	var width, height float32
-	if localPath, ok := resolveLocalImagePath(src, notePath); ok {
-		if entry, ok := loadCachedLocalImageEntry(localPath); ok {
-			mime := detectImageMime(localPath, entry.raw)
-			src = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(entry.raw)
-			if _, cfg, _, cfgOK := loadCachedLocalImageConfig(localPath); cfgOK {
-				width, height = float32(cfg.Width), float32(cfg.Height)
-			}
-		}
+func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord int, pal PaperThemeSpec, legacy bool, budget *int) {
+	if ord > maxExportImageRefs {
+		*budget = 0
 	}
+	entry, ok := loadExportImage(notePath, b.ImageSrc, *budget)
+	if !ok {
+		out.WriteString("<p>" + escapeHTMLText(b.ImageAlt) + "</p>\n")
+		return
+	}
+	*budget -= len(entry.raw)
+	src := "data:" + media.ImageMIME(entry.format) + ";base64," + base64.StdEncoding.EncodeToString(entry.raw)
+	width, height := float32(entry.cfg.Width), float32(entry.cfg.Height)
 	is := pal.Style.Image
 	if legacy {
 		is = ImageStyle{Caption: true, CaptionSize: 13}
 	}
-	crop := b.ImageCrop
-	knownSize := width > 0 && height > 0
-	if knownSize {
-		crop = exportImageCrop(crop, width, height)
-	}
+	crop := exportImageCrop(b.ImageCrop, width, height)
 	cropW, cropH := 1-crop.Left-crop.Right, 1-crop.Top-crop.Bottom
-	placeCrop := knownSize && !crop.IsZero()
+	placeCrop := !crop.IsZero()
 	var imgCSS strings.Builder
 	if placeCrop {
 		imgCSS.WriteString(fmt.Sprintf("position:absolute;max-width:none;width:%.6g%%;left:%.6g%%;top:%.6g%%;",
 			100/cropW, -100*crop.Left/cropW, -100*crop.Top/cropH))
-	} else if !crop.IsZero() {
-		imgCSS.WriteString(fmt.Sprintf("clip-path:inset(%.2f%% %.2f%% %.2f%% %.2f%%);",
-			crop.Top*100, crop.Right*100, crop.Bottom*100, crop.Left*100))
 	}
 	outerR := orF(is.Radius, pal.Radius)
 	if outerR < 0.5 {
@@ -1546,7 +1509,7 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 		imgR = outerR
 	}
 	imgCSS.WriteString("display:block;height:auto;")
-	if !placeCrop && (b.ImageWidth > 0 || knownSize) {
+	if !placeCrop {
 		imgCSS.WriteString("width:100%;")
 	}
 	var pictureCSS strings.Builder
@@ -1595,7 +1558,7 @@ func renderHTMLFigure(out *strings.Builder, b *model.Block, notePath string, ord
 	if b.ImageWidth > 0 && b.ImageWidth <= 100 {
 		share := fraction * b.ImageWidth / 100
 		figCSS.WriteString(fmt.Sprintf("width:calc(%.6g%% + %.6gpx);", 100*share, (2*pad+reserved)*(1-share)))
-	} else if knownSize {
+	} else {
 		figCSS.WriteString(fmt.Sprintf("width:min(%.6gpx, calc(%.6g%% + %.6gpx));", width*cropW+2*pad+reserved, 100*fraction, (2*pad+reserved)*(1-fraction)))
 	}
 	if is.Shadow.A > 0 {

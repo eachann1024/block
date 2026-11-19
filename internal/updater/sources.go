@@ -94,41 +94,11 @@ type ghAPIRawRelease struct {
 	Assets      []ReleaseAsset `json:"assets"`
 }
 
-func feedCandidates(mode SourceMode) []LabeledURL {
-	ts := time.Now().Unix()
-	mirrorFeed1 := LabeledURL{
-		URL:     fmt.Sprintf("https://gh-proxy.com/https://raw.githubusercontent.com/%s/main/updates/feed.json?t=%d", PublicRepo, ts),
-		Channel: "mirror",
-		Kind:    "feed",
-	}
-	mirrorFeed2 := LabeledURL{
-		URL:     fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s@main/updates/feed.json", PublicRepo),
-		Channel: "mirror",
-		Kind:    "feed",
-	}
-	nativeFeed := LabeledURL{
-		URL:     fmt.Sprintf("https://raw.githubusercontent.com/%s/main/updates/feed.json?t=%d", PublicRepo, ts),
-		Channel: "github",
-		Kind:    "feed",
-	}
-	mirrorAPI := LabeledURL{
-		URL:     fmt.Sprintf("https://gh-proxy.com/https://api.github.com/repos/%s/releases?per_page=30", PublicRepo),
-		Channel: "mirror",
-		Kind:    "github-api",
-	}
-	nativeAPI := LabeledURL{
-		URL:     fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=30", PublicRepo),
-		Channel: "github",
-		Kind:    "github-api",
-	}
-
-	switch mode {
-	case SourceMirror:
-		return []LabeledURL{mirrorFeed1, mirrorFeed2, mirrorAPI, nativeFeed, nativeAPI}
-	case SourceGitHub:
-		return []LabeledURL{nativeFeed, nativeAPI}
-	default:
-		return []LabeledURL{mirrorFeed1, nativeFeed, mirrorFeed2, mirrorAPI, nativeAPI}
+// Mirrors transport installer bytes. The expected digest comes directly from the official repository.
+func feedCandidates() []LabeledURL {
+	return []LabeledURL{
+		{URL: fmt.Sprintf("https://raw.githubusercontent.com/%s/main/updates/feed.json?t=%d", PublicRepo, time.Now().Unix()), Channel: "github", Kind: "feed"},
+		{URL: fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=30", PublicRepo), Channel: "github", Kind: "github-api"},
 	}
 }
 
@@ -163,7 +133,14 @@ func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []
 	req.Header.Set("User-Agent", "Block-Updater/"+CurrentVersion())
 	req.Header.Set("Cache-Control", "no-cache")
 
-	resp, err := sharedHTTPClient.Do(req)
+	client := *sharedHTTPClient
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 10 || next.URL.Scheme != "https" || next.URL.Host != req.URL.Host {
+			return errors.New("untrusted release metadata redirect")
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, time.Since(started).Milliseconds(), err
 	}
@@ -172,10 +149,13 @@ func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, time.Since(started).Milliseconds(), fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 	elapsedMs := time.Since(started).Milliseconds()
 	if err != nil {
 		return nil, nil, elapsedMs, err
+	}
+	if len(raw) > maxFeedBytes {
+		return nil, nil, elapsedMs, errors.New("update metadata exceeds the size limit")
 	}
 
 	if cand.Kind == "feed" {
@@ -287,49 +267,11 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 	return out, nil
 }
 
-// FetchReleases retrieves the release history using the configured mirror/GitHub strategy.
+// FetchReleases retrieves authoritative release metadata directly from GitHub.
 func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry, channel string, latencyMs int64, rawFeed []byte, err error) {
-	cands := feedCandidates(mode)
+	cands := feedCandidates()
 	logInfo("check.fetch_start", "mode", mode, "candidates", len(cands))
-
-	if mode == SourceAuto && len(cands) >= 2 {
-		type raceRes struct {
-			cand      LabeledURL
-			entries   []ReleaseEntry
-			raw       []byte
-			elapsedMs int64
-			err       error
-		}
-		raceCtx, cancel := context.WithCancel(ctx)
-		ch := make(chan raceRes, 2)
-		for _, c := range cands[:2] {
-			cand := c
-			go func() {
-				e, raw, ms, fErr := fetchOneCandidate(raceCtx, cand)
-				ch <- raceRes{cand: cand, entries: e, raw: raw, elapsedMs: ms, err: fErr}
-			}()
-		}
-		var firstErr error
-		for i := 0; i < 2; i++ {
-			res := <-ch
-			if res.err == nil && len(res.entries) > 0 {
-				cancel()
-				logInfo("check.race_win", "channel", res.cand.Channel, "kind", res.cand.Kind, "latency_ms", res.elapsedMs, "releases", len(res.entries), "latest", res.entries[0].Version)
-				return res.entries, res.cand.Channel, res.elapsedMs, res.raw, nil
-			}
-			if res.err != nil && !errors.Is(res.err, context.Canceled) {
-				logWarn("check.race_miss", "channel", res.cand.Channel, "url", res.cand.URL, "latency_ms", res.elapsedMs, "err", res.err)
-				if firstErr == nil {
-					firstErr = res.err
-				}
-			}
-		}
-		cancel()
-		err = firstErr
-		cands = cands[2:]
-	}
-
-	var lastErr = err
+	var lastErr error
 	for _, cand := range cands {
 		if ctx.Err() != nil {
 			return nil, "", 0, nil, ctx.Err()

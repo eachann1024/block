@@ -50,7 +50,7 @@ func ParseMarkdown(src string) *model.Doc {
 	cleaned := strings.TrimPrefix(decoded, "\uFEFF")
 	lines := splitLinesInclusive(cleaned)
 	defs, usedLabels := collectRefDefsFromLines(cleaned, lines)
-	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1)
+	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1, 0)
 	blocks = swallowSeparators(blocks)
 	hadLegacyEmptyBlock := stripLegacyEmptyBlockComments(blocks)
 	normalizeImportedStarts(blocks)
@@ -443,35 +443,27 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 	}
 	used := make(map[string]bool)
 	lowerSrc := strings.ToLower(src)
-	for label := range defs {
-		// Check for [..][label], [label][], or [label] usage (outside definition line itself).
-		if strings.Contains(lowerSrc, "["+label+"]") {
-			// Verify at least one occurrence is not the `[label]:` definition itself.
-			if hasRefUsage(lowerSrc, label) {
-				used[label] = true
+	open := -1
+	for i := 0; i < len(lowerSrc); i++ {
+		switch lowerSrc[i] {
+		case '[':
+			open = i + 1
+		case ']':
+			if open >= 0 && (i+1 == len(lowerSrc) || lowerSrc[i+1] != ':') {
+				raw := lowerSrc[open:i]
+				if label := normRefLabel(raw); label != "" {
+					if _, ok := defs[label]; ok {
+						used[label] = true
+					}
+				}
 			}
+			open = -1
 		}
 	}
 	if len(used) == 0 {
 		return nil, nil
 	}
 	return defs, used
-}
-
-func hasRefUsage(lowerSrc, label string) bool {
-	pat := "[" + label + "]"
-	idx := 0
-	for {
-		pos := strings.Index(lowerSrc[idx:], pat)
-		if pos < 0 {
-			return false
-		}
-		abs := idx + pos + len(pat)
-		if abs >= len(lowerSrc) || lowerSrc[abs] != ':' {
-			return true
-		}
-		idx = abs
-	}
 }
 
 func parseRefDefLines(lines []string) (label string, def refDef, count int, ok bool) {
@@ -1300,13 +1292,15 @@ func walkPipeCells(line string, visit func(col, start, end int)) {
 	visit(col, start+prev, start+len(s))
 }
 
+const maxParsedTableCells = 100_000
+
 func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, bool) {
 	if len(lines) < 2 {
 		return model.Block{}, 0, false
 	}
 	headerRaw := splitPipeCells(trimLineEnding(lines[0]))
 	delimRaw := splitPipeCells(trimLineEnding(lines[1]))
-	if len(headerRaw) == 0 || len(delimRaw) == 0 || len(headerRaw) != len(delimRaw) {
+	if len(headerRaw) == 0 || len(headerRaw) > maxParsedTableCells || len(headerRaw) != len(delimRaw) {
 		return model.Block{}, 0, false
 	}
 	aligns := make([]model.ColAlign, len(delimRaw))
@@ -1366,7 +1360,15 @@ func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, b
 		if strings.HasPrefix(strings.TrimLeft(raw, " "), ">") {
 			break
 		}
-		rows = append(rows, makeRow(splitPipeCells(raw)))
+		cells := splitPipeCells(raw)
+		if len(rows)+1 > maxParsedTableCells/max(len(cells), cols) {
+			source := strings.Join(lines[:end+1], "")
+			return model.Block{
+				ID: model.NewBlockID(), Kind: model.BlockCode,
+				Code: trimLineEnding(source), CleanSource: source,
+			}, end + 1, true
+		}
+		rows = append(rows, makeRow(cells))
 		end++
 	}
 
@@ -1559,7 +1561,7 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			cols = len(r)
 		}
 	}
-	if cols == 0 {
+	if cols == 0 || len(rows) > maxParsedTableCells/cols {
 		return model.TableData{}, false
 	}
 	for r := range rows {
@@ -1984,7 +1986,7 @@ func blockquoteNeedsStructuredParse(inner []string) bool {
 	return false
 }
 
-func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
+func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine, depth int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2020,7 +2022,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine int
 			innerBuf.WriteString(l)
 			innerBuf.WriteByte('\n')
 		}
-		children := swallowSeparators(parseBlocksWithDefsAt(innerBuf.String(), defs, nil, startLine))
+		children := swallowSeparators(parseBlocksWithDefsAt(innerBuf.String(), defs, nil, startLine, depth+1))
 		var out []model.Block
 		for _, ch := range children {
 			if isBlankBlock(&ch) && len(children) > 1 {
@@ -2099,7 +2101,7 @@ func startsBlockInList(line string, nextRaw string, tail []string) bool {
 	return strings.ContainsRune(trimmed, '|') && nextRaw != "" && isPipeDelimiterLine(trimLineEnding(nextRaw))
 }
 
-func parseListItem(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
+func parseListItem(lines []string, defs map[string]refDef, startLine, depth int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2261,7 +2263,7 @@ func parseListItem(lines []string, defs map[string]refDef, startLine int) ([]mod
 			childSource.WriteString(stripColumns(lines[i], stripCols))
 		}
 	}
-	children := parseBlocksWithDefsAt(childSource.String(), defs, nil, startLine+firstChild)
+	children := parseBlocksWithDefsAt(childSource.String(), defs, nil, startLine+firstChild, depth+1)
 
 	parent.CleanSource = strings.Join(lines[:paraEnd], "")
 	result := []model.Block{parent}
@@ -2303,14 +2305,22 @@ func countCleanLines(s string) int {
 }
 
 func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[string]bool) []model.Block {
-	return parseBlocksWithDefsAt(src, defs, usedLabels, 1)
+	return parseBlocksWithDefsAt(src, defs, usedLabels, 1, 0)
 }
 
-func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine int) []model.Block {
-	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine)
+func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int) []model.Block {
+	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine, depth)
 }
 
-func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine int) []model.Block {
+func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int) []model.Block {
+	const maxBlockDepth = 48
+	if depth >= maxBlockDepth && len(lines) > 0 {
+		raw := strings.Join(lines, "")
+		return []model.Block{{
+			ID: model.NewBlockID(), Kind: model.BlockCode, Code: trimLineEnding(raw),
+			CleanSource: raw, SourceLine: startLine, SourceEndLine: startLine + len(lines) - 1,
+		}}
+	}
 	var result []model.Block
 	i := 0
 	appendBlock := func(b model.Block, count int) {
@@ -2389,12 +2399,12 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			i += count
 			continue
 		}
-		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs, startLine+i); ok {
+		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs, startLine+i, depth); ok {
 			result = append(result, qBlocks...)
 			i += count
 			continue
 		}
-		if items, count, ok := parseListItem(lines[i:], defs, startLine+i); ok {
+		if items, count, ok := parseListItem(lines[i:], defs, startLine+i, depth); ok {
 			result = append(result, items...)
 			i += count
 			continue
@@ -2849,7 +2859,15 @@ func stripLegacyEmptyBlockComments(blocks []model.Block) bool {
 }
 
 func isPlainTextBlock(b *model.Block) bool {
-	return b.Kind == model.BlockParagraph && b.Indent == 0 && model.PlainTextOfSpans(b.Spans) != ""
+	if b.Kind != model.BlockParagraph || b.Indent != 0 {
+		return false
+	}
+	for _, span := range b.Spans {
+		if span.Text != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func nextNonBlankBlocks(blocks []model.Block) []*model.Block {
@@ -2858,8 +2876,7 @@ func nextNonBlankBlocks(blocks []model.Block) []*model.Block {
 	for i := len(blocks) - 1; i >= 0; i-- {
 		out[i] = seen
 		if !isBlankBlock(&blocks[i]) {
-			b := blocks[i]
-			seen = &b
+			seen = &blocks[i]
 		}
 	}
 	return out
@@ -2918,23 +2935,26 @@ func swallowableSeparator(this *model.Block, next *model.Block) bool {
 }
 
 func swallowSeparators(blocks []model.Block) []model.Block {
-	if len(blocks) < 2 {
-		return blocks
-	}
-	nexts := nextNonBlankBlocks(blocks)
-	drop := make([]bool, len(blocks))
-	for i := 0; i+1 < len(blocks); i++ {
-		if isBlankBlock(&blocks[i+1]) && swallowableSeparator(&blocks[i], nexts[i]) {
-			drop[i+1] = true
+	kept := blocks[:0]
+	start := 0
+	for i := 1; i+1 < len(blocks); i++ {
+		if !isBlankBlock(&blocks[i]) || isBlankBlock(&blocks[i-1]) {
+			continue
 		}
-	}
-	out := make([]model.Block, 0, len(blocks))
-	for i := range blocks {
-		if !drop[i] {
-			out = append(out, blocks[i])
+		// Only the first blank in a run can be a separator.
+		next := i + 1
+		for next < len(blocks) && isBlankBlock(&blocks[next]) {
+			next++
 		}
+		if next < len(blocks) && swallowableSeparator(&blocks[i-1], &blocks[next]) {
+			kept = append(kept, blocks[start:i]...)
+			start = i + 1
+		}
+		i = next - 1
 	}
-	return out
+	kept = append(kept, blocks[start:]...)
+	clear(blocks[len(kept):])
+	return kept
 }
 
 type listNumbering struct {

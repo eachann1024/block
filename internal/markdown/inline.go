@@ -30,23 +30,15 @@ func parseInlineWithDefs(raw string, defs map[string]refDef) []model.Span {
 	if raw == "" {
 		return nil
 	}
-	if len(defs) == 0 && !hasASCIIPunct(raw) {
+	// Ordinary punctuation is literal. Only scan runs that can contain an
+	// inline construct or a bare HTTP(S) link.
+	if !strings.ContainsAny(raw, "\\`*_~![<&") && !strings.Contains(raw, "://") {
 		return []model.Span{{Text: raw}}
 	}
 	toks := scanInlineTokensWithCtx(raw, defs, false)
 	resolveDelimiters(toks)
 	spans := emitSpans(toks)
 	return coalesceSpans(spans)
-}
-
-func hasASCIIPunct(s string) bool {
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if (b >= '!' && b <= '/') || (b >= ':' && b <= '@') || (b >= '[' && b <= '`') || (b >= '{' && b <= '~') {
-			return true
-		}
-	}
-	return false
 }
 
 type tokKind uint8
@@ -1475,6 +1467,7 @@ func coalesceSpans(spans []model.Span) []model.Span {
 		return nil
 	}
 	out := make([]model.Span, 0, len(spans))
+	var joined strings.Builder
 	for _, s := range spans {
 		if s.Text == "" {
 			continue
@@ -1482,14 +1475,25 @@ func coalesceSpans(spans []model.Span) []model.Span {
 		if len(out) > 0 {
 			last := &out[len(out)-1]
 			if last.Marks == s.Marks && last.Link == s.Link && last.FGColor == s.FGColor && last.BGColor == s.BGColor {
-				last.Text += s.Text
+				if joined.Len() == 0 {
+					joined.Grow(len(last.Text) + len(s.Text))
+					joined.WriteString(last.Text)
+				}
+				joined.WriteString(s.Text)
 				continue
+			}
+			if joined.Len() > 0 {
+				last.Text = joined.String()
+				joined.Reset()
 			}
 		}
 		out = append(out, s)
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	if joined.Len() > 0 {
+		out[len(out)-1].Text = joined.String()
 	}
 	return out
 }
@@ -2134,7 +2138,7 @@ func normalizePastedLine(line string) string {
 		}
 	}
 
-	// Normalize fullwidth blockquote marker: ＞ or >　
+	// Normalize fullwidth blockquote marker: ＞ or >
 	if strings.HasPrefix(rest, "＞") {
 		after := strings.TrimLeft(rest[len("＞"):], " \t\u3000")
 		if after == "" {
@@ -2391,4 +2395,3 @@ func collapseExcessBlankLines(lines []string) []string {
 	}
 	return out
 }
-

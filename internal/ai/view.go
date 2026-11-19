@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -491,6 +492,7 @@ type cachedTurn struct {
 	outcome        string
 	cards          []cachedTurnCard
 	replies        []cachedReply
+	nextReplyIdx   int
 	estHeight      float32
 }
 
@@ -645,15 +647,24 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 		sc.turns = sc.turns[:0]
 		clear(sc.turnHeights)
 	}
-	dirty := len(sc.msgs) != len(found.Messages)
-	if len(found.Messages) < len(sc.msgs) {
-		sc.msgs = sc.msgs[:len(found.Messages)]
+	messages := found.Messages
+	sharedLen := min(len(sc.msgs), len(messages))
+	dirtyFrom := 0
+	for dirtyFrom < sharedLen && msgFingerprintMatches(sc.msgs[dirtyFrom], messages[dirtyFrom]) {
+		dirtyFrom++
 	}
-	for i, m := range found.Messages {
+	if dirtyFrom == len(sc.msgs) && dirtyFrom == len(messages) {
+		return
+	}
+	if len(messages) < len(sc.msgs) {
+		clear(sc.msgs[len(messages):])
+		sc.msgs = sc.msgs[:len(messages)]
+	}
+	for i := dirtyFrom; i < len(messages); i++ {
+		m := messages[i]
 		if i < len(sc.msgs) && msgFingerprintMatches(sc.msgs[i], m) {
 			continue
 		}
-		dirty = true
 		entry := makeCachedMsgEntry(m)
 		if i < len(sc.msgs) {
 			sc.msgs[i] = entry
@@ -661,13 +672,21 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 			sc.msgs = append(sc.msgs, entry)
 		}
 	}
-	if !dirty && len(sc.turns) > 0 {
-		return
-	}
-
-	sc.turns = sc.turns[:0]
+	// Include the preceding turn at a boundary: a changed or new message
+	// may now belong to that turn instead of starting a new one.
+	rebuildFrom := sort.Search(len(sc.turns), func(i int) bool {
+		return sc.turns[i].endIdx >= dirtyFrom
+	})
+	start := 0
 	replyIdx := 0
-	for start := 0; start < len(sc.msgs); {
+	if rebuildFrom > 0 {
+		prev := &sc.turns[rebuildFrom-1]
+		start = prev.endIdx
+		replyIdx = prev.nextReplyIdx
+	}
+	clear(sc.turns[rebuildFrom:])
+	sc.turns = sc.turns[:rebuildFrom]
+	for start < len(sc.msgs) {
 		end := start + 1
 		for end < len(sc.msgs) && sc.msgs[end].msg.Role != "user" {
 			end++
@@ -740,6 +759,7 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 		if len(ct.sources) > 0 {
 			estH += 40
 		}
+		ct.nextReplyIdx = replyIdx
 		ct.estHeight = max(estH, 40)
 		sc.turns = append(sc.turns, ct)
 		start = end
@@ -767,7 +787,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		clear(turnHeights)
 	}
 	streaming := c.streaming
-	partial := c.partialText
+	partial := c.partialText.String()
 	var partialSteps []model.ProcessStep
 	if streaming && len(c.partialSteps) > 0 {
 		partialSteps = append([]model.ProcessStep(nil), c.partialSteps...)
@@ -1309,7 +1329,9 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 	pending := plan.Status == "pending"
 	title := plan.Summary
 	if len(plan.Ops) > 0 {
-		title = plan.Ops[0].Page + ".md"
+		if name, err := noteFilename(plan.Ops[0].Page); err == nil {
+			title = filepath.ToSlash(name)
+		}
 	}
 	isCreate := len(plan.Ops) > 0 && plan.Ops[0].Kind == model.PlanOpCreateNote
 
@@ -1359,22 +1381,19 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 		})
 		if topBtn.Clicked() {
 			var linkedPlan *model.BatchPlan
-			var openAbs string
 			var host model.WorkspaceHost
 			c.mu.Lock()
 			if pending {
 				linkedPlan = c.linkPlanLocked(convID, msgIdx)
 			} else if plan.Status == "applied" && len(plan.Ops) > 0 && c.host != nil {
-				openAbs = plan.Ops[0].Page + ".md"
-				if plan.Root != "" {
-					openAbs = filepath.Join(plan.Root, filepath.FromSlash(plan.Ops[0].Page)+".md")
-				}
 				host = c.host
 			}
 			c.mu.Unlock()
 			c.previewPlanInEditor(linkedPlan)
-			if openAbs != "" && host != nil {
-				_ = host.OpenNote(openAbs, 0)
+			if host != nil {
+				if path, exists, err := LocatePlanNote(host, plan.Root, plan.Ops[0].Page); err == nil && exists {
+					_ = host.OpenNote(path, 0)
+				}
 			}
 		}
 
@@ -2015,7 +2034,7 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 		}
 		refSet := make(map[string]bool, len(c.draftRefs))
 		for _, r := range c.draftRefs {
-			refSet[r] = true
+			refSet[referencePageID(c.pickerRoot, r)] = true
 		}
 		if currentPage != "" && !refSet[currentPage] {
 			if (q == "" && pathDirSlash(currentPage) == folder) || (q != "" && strings.Contains(strings.ToLower(currentPage), q)) {
@@ -2091,8 +2110,20 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 		c.persistActiveDraftLocked()
 		return c.draftText, true
 	case pickPage:
-		if !containsString(c.draftRefs, it.value) {
-			c.draftRefs = append(c.draftRefs, it.value)
+		root, err := AuthorizedNotebookRoot(c.host, c.activeRootLocked())
+		filename, nameErr := noteFilename(it.value)
+		if err != nil || nameErr != nil {
+			return c.draftText, false
+		}
+		if c.pickerRoot != "" {
+			cached, err := canonicalNotebook(c.pickerRoot)
+			if err != nil || cached != root {
+				return c.draftText, false
+			}
+		}
+		ref := filepath.Join(root, filename)
+		if !containsString(c.draftRefs, ref) {
+			c.draftRefs = append(c.draftRefs, ref)
 		}
 	case pickSkill:
 		if !containsString(c.draftSkills, it.value) {
@@ -2257,9 +2288,18 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	epoch := c.composerEpoch
 	busy := c.streaming || c.hasPendingQuestionLocked()
 	hasConv := c.currentID != 0
+	backend := c.selectedBackendLocked()
+	provider := resolveProviderExecutionConfig(c.providerCfg)
+	host := c.host
 	selectEnd := c.composerSelectEnd
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
 	c.mu.RUnlock()
+	var notebook string
+	if host != nil {
+		if root := host.ActiveNotebook(); root != "" {
+			notebook = filepath.Base(root)
+		}
+	}
 
 	ph := theme.Tr("向 AI 提问，/ 技能，@ 文件", "Ask AI, / skills, @ files")
 	if hasConv {
@@ -2375,7 +2415,10 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 					c.mu.Unlock()
 					c.SendPrompt(curText)
-					k.SetText("")
+					c.mu.RLock()
+					remainingDraft := c.draftText
+					c.mu.RUnlock()
+					k.SetText(remainingDraft)
 					return true
 				}
 				c.mu.Unlock()
@@ -2415,9 +2458,22 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 				} else {
 					canSend := strings.TrimSpace(draft) != ""
+					dest := backend.DisplayName()
+					scope := theme.Tr("发送聊天文字与附件", "Sends chat text and attachments")
+					switch backend {
+					case model.BackendBuiltin:
+						dest = endpointHostLabel(provider.BaseURL)
+						if dest == "" {
+							dest = backend.DisplayName()
+						}
+						scope = theme.Tr("发送聊天文字、附件、当前页名称与本轮笔记工具结果", "Sends chat text, attachments, the current page name, and this turn’s notebook tool results")
+					case model.BackendClaude, model.BackendCodex:
+						scope = theme.Tr("发送聊天文字、附件与本轮笔记工具结果", "Sends chat text, attachments, and this turn’s notebook tool results")
+					}
 					sendTip := bui.TooltipSpec{
 						Placement: bui.TooltipAbove,
 						Rows: []bui.TooltipRow{
+							{Detail: scope + " · " + dest},
 							{
 								Trigger:     "Enter",
 								TriggerTone: bui.TooltipToneAccent,
@@ -2429,9 +2485,13 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 							},
 						},
 					}
+					if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex) {
+						label := fmt.Sprintf(theme.Tr("本轮工具可读取「%s」内已保存的 Markdown", "This turn’s tools may read saved Markdown in %s"), notebook)
+						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{Detail: label})
+					}
 					sendBtn := bui.IconButton(cUI, icons.ArrowUp, bui.IconButtonOptions{
 						ID:          "ai-chat-send",
-						Label:       theme.Tr("发送", "Send"),
+						Label:       theme.Tr("发送", "Send") + " · " + scope + " · " + dest,
 						TooltipSpec: &sendTip,
 						Size:        theme.HeightMicro,
 						IconSize:    theme.IconMicro,
@@ -2481,7 +2541,9 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 	ais := pal.AISurface()
 	label := name
 	ic := icons.Note
-	if !isRef {
+	if isRef {
+		label = filepath.Base(name)
+	} else {
 		label = "/" + name
 		ic = icons.Sparkles
 	}
@@ -3109,6 +3171,9 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	testingProv := c.settingsTestingProv
 	testOK := c.settingsTestOK
 	testErr := c.settingsTestErr
+	if c.providerError != nil {
+		testErr = providerCredentialsMessage(c.providerError)
+	}
 	annotCfg := c.annotCfg
 	annotOpen := c.annotMenuOpen
 	provModalOpen := c.addProvModalOpen

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -146,9 +147,12 @@ func RenameItem(oldPath, newName string) (string, error) {
 		return target, nil
 	}
 
-	sameCaseInsensitive := strings.EqualFold(oldPath, target)
-	if _, err := os.Lstat(target); err == nil && !sameCaseInsensitive {
-		return "", fmt.Errorf("%w: %s", os.ErrExist, theme.Tr("已存在同名项目", "An item with this name already exists"))
+	if existing, err := os.Lstat(target); err == nil {
+		if !strings.EqualFold(oldPath, target) || !os.SameFile(info, existing) {
+			return "", fmt.Errorf("%w: %s", os.ErrExist, theme.Tr("已存在同名项目", "An item with this name already exists"))
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
 	}
 
 	if err := os.Rename(oldPath, target); err != nil {
@@ -188,6 +192,8 @@ func MoveItem(srcPath, dstDir string) (string, error) {
 	}
 	if _, err := os.Lstat(target); err == nil {
 		return "", fmt.Errorf("%w: %s", os.ErrExist, theme.Tr("目标位置已存在同名项目", "Destination already has an item with this name"))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
 	}
 
 	isDir := info.IsDir()
@@ -309,8 +315,7 @@ func rebaseFileOrder(from, to string) {
 }
 
 // TrashItem moves path to the system Trash via mygo.Shell.TrashItem when the
-// desktop app loop is running, falling back to safe removal in headless/test
-// environments.
+// desktop app loop is running, or moves it to the per-user fallback Trash.
 func TrashItem(path string) error {
 	if _, err := os.Lstat(path); err != nil {
 		return err
@@ -328,26 +333,65 @@ func TrashItem(path string) error {
 }
 
 func trashFallback(path string) error {
-	if hasDataDirOverride() {
-		trashDir := filepath.Join(AppDataDir(), "Trash")
-		if err := os.MkdirAll(trashDir, 0o755); err == nil {
-			base := filepath.Base(path)
-			target := filepath.Join(trashDir, base)
-			if _, statErr := os.Lstat(target); statErr == nil {
-				target = filepath.Join(trashDir, fmt.Sprintf("%s-%x-%x", base, time.Now().UnixNano(), opsSeq.Add(1)))
-			}
-			if renameErr := os.Rename(path, target); renameErr == nil {
-				return nil
-			}
-		}
+	trashDir := filepath.Join(AppDataDir(), "Trash")
+	if err := os.MkdirAll(trashDir, 0o700); err != nil {
+		return err
 	}
-	return os.RemoveAll(path)
+	recoveryDir, err := os.MkdirTemp(trashDir, "item-")
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(path, filepath.Join(recoveryDir, filepath.Base(path))); err != nil {
+		_ = os.Remove(recoveryDir)
+		return err
+	}
+	return nil
 }
 
 func fingerprintBytes(data []byte) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write(data)
 	return int64(h.Sum64())
+}
+
+// TextFingerprint identifies the exact UTF-8 bytes of a file, including its BOM.
+func TextFingerprint(text string, bom bool) int64 {
+	if bom {
+		text = "\ufeff" + text
+	}
+	return fingerprintBytes([]byte(text))
+}
+
+// CheckTextVersion detects an external modification before replacing a file.
+func CheckTextVersion(path string, expected int64) error {
+	before, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !before.Mode().IsRegular() || before.Size() > TextLimit {
+		return errors.New(theme.Tr("文件类型或大小已变化，无法覆盖", "File type or size has changed"))
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > TextLimit || !os.SameFile(before, info) {
+		return errors.New(theme.Tr("文件类型或大小已变化，无法覆盖", "File type or size has changed"))
+	}
+	hash := fnv.New64a()
+	n, err := io.Copy(hash, io.LimitReader(f, TextLimit+1))
+	if err != nil {
+		return err
+	}
+	if n > TextLimit || int64(hash.Sum64()) != expected {
+		return errors.New(theme.Tr("磁盘上的文件已修改，未覆盖", "The file changed on disk and was not overwritten"))
+	}
+	return nil
 }
 
 // ReadNote reads a UTF-8 note file up to 5 MiB and returns its content and
@@ -407,16 +451,36 @@ func writeBytesAtomic(path string, data []byte, preservePerms bool) error {
 		}
 	}
 	parent := filepath.Dir(path)
-	if parent == "" {
-		return errors.New(theme.Tr("缺少父级目录", "Missing parent"))
-	}
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
+	dir, err := os.OpenRoot(parent)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return writeBytesAtomicIn(dir, filepath.Base(path), data, preservePerms)
+}
 
-	perm := os.FileMode(0o644)
+// WriteNoteAt atomically writes a note within an open notebook root.
+func WriteNoteAt(root *os.Root, name, content string) error {
+	parent := filepath.Dir(name)
+	if err := root.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	dir, err := root.OpenRoot(parent)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return writeBytesAtomicIn(dir, filepath.Base(name), []byte(content), true)
+}
+
+func writeBytesAtomicIn(dir *os.Root, name string, data []byte, preservePerms bool) error {
+	perm := os.FileMode(0o600)
 	if preservePerms {
-		if info, err := os.Stat(path); err == nil {
+		perm = 0o644
+		if info, err := dir.Stat(name); err == nil {
 			perm = info.Mode().Perm()
 		}
 	}
@@ -428,8 +492,8 @@ func writeBytesAtomic(path string, data []byte, preservePerms bool) error {
 	pid := os.Getpid()
 	for range 100 {
 		seq := opsSeq.Add(1)
-		candidate := filepath.Join(parent, fmt.Sprintf(".block-%d-%d.tmp", pid, seq))
-		f, openErr := os.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		candidate := fmt.Sprintf(".block-%d-%d.tmp", pid, seq)
+		f, openErr := dir.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 		if openErr == nil {
 			tmpPath = candidate
 			tmpFile = f
@@ -455,26 +519,26 @@ func writeBytesAtomic(path string, data []byte, preservePerms bool) error {
 		if err := tmpFile.Close(); err != nil {
 			return err
 		}
-		if err := os.Rename(tmpPath, path); err != nil {
+		if err := dir.Rename(tmpPath, name); err != nil {
 			return err
 		}
-		if dir, err := os.Open(parent); err == nil {
-			_ = dir.Sync()
-			_ = dir.Close()
+		if file, err := dir.Open("."); err == nil {
+			_ = file.Sync()
+			_ = file.Close()
 		}
 		return nil
 	}()
 	if commitErr != nil {
-		_ = os.Remove(tmpPath)
+		_ = dir.Remove(tmpPath)
 		return commitErr
 	}
 	return nil
 }
 
 type recoveryDraft struct {
-	Path   string `json:"path"`
-	Source string `json:"source"`
-	Base   int64  `json:"base"`
+	Path        string `json:"path"`
+	Source      string `json:"source"`
+	DiskVersion *int64 `json:"disk_version,omitempty"`
 }
 
 func recoveryDraftPath(notePath string) (string, string) {
@@ -490,12 +554,20 @@ func recoveryDraftPath(notePath string) (string, string) {
 
 // SaveRecovery persists an atomic crash-recovery draft for notePath.
 func SaveRecovery(notePath, content string) error {
-	target, abs := recoveryDraftPath(notePath)
-	draft := recoveryDraft{
-		Path:   abs,
-		Source: content,
-		Base:   fingerprintBytes([]byte(content)),
+	_, version, err := ReadNote(notePath)
+	if err == nil {
+		return SaveRecoveryForVersion(notePath, content, version)
 	}
+	return saveRecovery(notePath, content, nil)
+}
+
+func SaveRecoveryForVersion(notePath, content string, version int64) error {
+	return saveRecovery(notePath, content, &version)
+}
+
+func saveRecovery(notePath, content string, version *int64) error {
+	target, abs := recoveryDraftPath(notePath)
+	draft := recoveryDraft{Path: abs, Source: content, DiskVersion: version}
 	data, err := marshalJSON(draft, false)
 	if err != nil {
 		return err
@@ -514,10 +586,15 @@ func ClearRecovery(notePath string) {
 // LatestRecoveryDraft scans AppDataDir()/Recovery and returns the newest
 // valid crash-recovery draft by modification time.
 func LatestRecoveryDraft() (notePath string, content string, ok bool) {
+	path, source, _, ok := LatestVersionedRecoveryDraft()
+	return path, source, ok
+}
+
+func LatestVersionedRecoveryDraft() (notePath string, content string, version *int64, ok bool) {
 	recoveryDir := filepath.Join(AppDataDir(), "Recovery")
 	entries, err := os.ReadDir(recoveryDir)
 	if err != nil {
-		return "", "", false
+		return "", "", nil, false
 	}
 
 	type candidate struct {
@@ -531,7 +608,7 @@ func LatestRecoveryDraft() (notePath string, content string, ok bool) {
 			continue
 		}
 		info, infoErr := entry.Info()
-		if infoErr != nil {
+		if infoErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
 		candidates = append(candidates, candidate{
@@ -548,19 +625,19 @@ func LatestRecoveryDraft() (notePath string, content string, ok bool) {
 	})
 
 	for _, c := range candidates {
-		data, readErr := os.ReadFile(c.path)
-		if readErr != nil {
+		data, tooLarge, readErr := readBounded(c.path, 8*TextLimit)
+		if readErr != nil || tooLarge {
 			continue
 		}
-		var draft struct {
-			Path   string `json:"path"`
-			Source string `json:"source"`
-		}
-		if json.Unmarshal(data, &draft) == nil && draft.Path != "" {
-			return draft.Path, draft.Source, true
+		var draft recoveryDraft
+		if json.Unmarshal(data, &draft) == nil && filepath.IsAbs(draft.Path) {
+			expected, _ := recoveryDraftPath(draft.Path)
+			if c.path == expected {
+				return draft.Path, draft.Source, draft.DiskVersion, true
+			}
 		}
 	}
-	return "", "", false
+	return "", "", nil, false
 }
 
 func normalizeAbsPath(p string) (string, error) {

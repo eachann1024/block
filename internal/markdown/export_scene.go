@@ -1,16 +1,9 @@
 package markdown
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"block/internal/model"
@@ -352,7 +345,7 @@ func buildExportScene(ctx context.Context, doc *model.Doc, notePath string, pref
 		legacy: legacy,
 	}
 
-	var st layoutCounters
+	st := layoutCounters{imagePixels: maxExportImagePixels}
 
 	switch {
 	case !legacy && pal.Style.Sections != nil:
@@ -901,11 +894,12 @@ func buildFooterScene(pal PaperThemeSpec, legacy bool, vars templateVars, x, y, 
 }
 
 type layoutCounters struct {
-	num        listNumbering
-	h2Count    int
-	quoteOrd   int
-	calloutOrd int
-	imageOrd   int
+	num         listNumbering
+	h2Count     int
+	quoteOrd    int
+	calloutOrd  int
+	imageOrd    int
+	imagePixels int
 }
 
 // appendSceneBlocks lays out blocks starting at startY and returns the bottom Y
@@ -987,7 +981,10 @@ func appendSceneBlocks(
 
 		case b.Kind == model.BlockImage:
 			st.imageOrd++
-			if pb, ok := buildPaintedImage(b, notePath, bx, y, avail, pal, legacy, st.imageOrd); ok {
+			if st.imageOrd > maxExportImageRefs {
+				st.imagePixels = 0
+			}
+			if pb, ok := buildPaintedImage(b, notePath, bx, y, avail, pal, legacy, st.imageOrd, &st.imagePixels); ok {
 				lastGap = 14
 				y += pb.h + lastGap
 				sc.blocks = append(sc.blocks, pb)
@@ -1810,161 +1807,41 @@ func buildPaintedListItem(b *model.Block, ord int, bx, y, avail float32, pal Pap
 	}, gap
 }
 
-type cachedLocalImageEntry struct {
-	modTimeUnixNano int64
-	size            int64
-	raw             []byte
-
-	bitmap     *ui.Bitmap
-	bitmapDone bool
-	bitmapOK   bool
-
-	cfg     image.Config
-	format  string
-	cfgDone bool
-	cfgOK   bool
-
-	docxRaw  []byte
-	docxExt  string
-	docxDone bool
-}
-
-var (
-	localImageCacheMu    sync.Mutex
-	localImageCache      = make(map[string]*cachedLocalImageEntry)
-	localImageCacheBytes int64
-)
-
-const (
-	localImageCacheMaxEntries = 64
-	localImageCacheMaxBytes   = 64 * 1024 * 1024
-)
-
-func loadCachedLocalImageEntry(localPath string) (*cachedLocalImageEntry, bool) {
-	info, err := os.Stat(localPath)
-	if err != nil || info.IsDir() {
-		return nil, false
-	}
-	clean := filepath.Clean(localPath)
-	mtime := info.ModTime().UnixNano()
-	sz := info.Size()
-
-	localImageCacheMu.Lock()
-	if entry, ok := localImageCache[clean]; ok && entry.modTimeUnixNano == mtime && entry.size == sz {
-		localImageCacheMu.Unlock()
-		return entry, true
-	}
-	localImageCacheMu.Unlock()
-
-	raw, err := os.ReadFile(clean)
-	if err != nil {
-		return nil, false
-	}
-	entry := &cachedLocalImageEntry{
-		modTimeUnixNano: mtime,
-		size:            sz,
-		raw:             raw,
-	}
-
-	localImageCacheMu.Lock()
-	if old, ok := localImageCache[clean]; ok {
-		localImageCacheBytes -= int64(len(old.raw))
-	}
-	if len(localImageCache) >= localImageCacheMaxEntries || localImageCacheBytes+int64(len(raw)) > localImageCacheMaxBytes {
-		clear(localImageCache)
-		localImageCacheBytes = 0
-	}
-	localImageCache[clean] = entry
-	localImageCacheBytes += int64(len(raw))
-	localImageCacheMu.Unlock()
-	return entry, true
-}
-
-func loadCachedLocalBitmap(localPath string) (*ui.Bitmap, bool) {
-	entry, ok := loadCachedLocalImageEntry(localPath)
-	if !ok {
-		return nil, false
-	}
-	localImageCacheMu.Lock()
-	done, bmOK, bm := entry.bitmapDone, entry.bitmapOK, entry.bitmap
-	raw := entry.raw
-	localImageCacheMu.Unlock()
-	if done {
-		return bm, bmOK
-	}
-	decoded, err := ui.DecodeBitmap(raw)
-	localImageCacheMu.Lock()
-	entry.bitmapDone = true
-	if err == nil && decoded != nil {
-		entry.bitmap = decoded
-		entry.bitmapOK = true
-	}
-	bm, bmOK = entry.bitmap, entry.bitmapOK
-	localImageCacheMu.Unlock()
-	return bm, bmOK
-}
-
-func loadCachedLocalImageConfig(localPath string) ([]byte, image.Config, string, bool) {
-	entry, ok := loadCachedLocalImageEntry(localPath)
-	if !ok {
-		return nil, image.Config{}, "", false
-	}
-	localImageCacheMu.Lock()
-	done, cfgOK, cfg, format, raw := entry.cfgDone, entry.cfgOK, entry.cfg, entry.format, entry.raw
-	localImageCacheMu.Unlock()
-	if done {
-		return raw, cfg, format, cfgOK
-	}
-	decodedCfg, decodedFmt, err := image.DecodeConfig(bytes.NewReader(raw))
-	localImageCacheMu.Lock()
-	entry.cfgDone = true
-	if err == nil && decodedCfg.Width > 0 && decodedCfg.Height > 0 {
-		entry.cfg = decodedCfg
-		entry.format = decodedFmt
-		entry.cfgOK = true
-	}
-	cfg, format, cfgOK = entry.cfg, entry.format, entry.cfgOK
-	localImageCacheMu.Unlock()
-	return raw, cfg, format, cfgOK
-}
-
-func buildRawImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec) (paintedBlock, bool) {
-	if localPath, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
-		if bm, ok := loadCachedLocalBitmap(localPath); ok {
-			bw, bh := bm.Size()
-			if bw > 0 && bh > 0 {
-				c := exportImageCrop(b.ImageCrop, float32(bw), float32(bh))
-				sx := c.Left * float32(bw)
-				sy := c.Top * float32(bh)
-				sw := (1 - c.Left - c.Right) * float32(bw)
-				sh := (1 - c.Top - c.Bottom) * float32(bh)
-				targetW := avail
-				if b.ImageWidth > 0 && b.ImageWidth <= 100 {
-					targetW = avail * b.ImageWidth / 100.0
-				} else if sw < targetW {
-					targetW = sw
-				}
-				targetH := targetW * (sh / sw)
-				dx := bx
-				switch b.ImageAlign {
-				case model.ImageAlignCenter:
-					dx = bx + (avail-targetW)/2
-				case model.ImageAlignRight:
-					dx = bx + avail - targetW
-				}
-				return paintedBlock{
-					kind: model.BlockImage,
-					x:    bx,
-					y:    by,
-					w:    avail,
-					h:    targetH,
-					img: &paintedImage{
-						bitmap: bm,
-						src:    ui.Rect{X: sx, Y: sy, W: sw, H: sh},
-						dst:    ui.Rect{X: dx, Y: by, W: targetW, H: targetH},
-					},
-				}, true
+func buildRawImage(b *model.Block, notePath string, bx, by, avail float32, pal PaperThemeSpec, pixels *int) (paintedBlock, bool) {
+	if bm := takeExportBitmap(notePath, b.ImageSrc, pixels); bm != nil {
+		bw, bh := bm.Size()
+		if bw > 0 && bh > 0 {
+			c := exportImageCrop(b.ImageCrop, float32(bw), float32(bh))
+			sx := c.Left * float32(bw)
+			sy := c.Top * float32(bh)
+			sw := (1 - c.Left - c.Right) * float32(bw)
+			sh := (1 - c.Top - c.Bottom) * float32(bh)
+			targetW := avail
+			if b.ImageWidth > 0 && b.ImageWidth <= 100 {
+				targetW = avail * b.ImageWidth / 100.0
+			} else if sw < targetW {
+				targetW = sw
 			}
+			targetH := targetW * (sh / sw)
+			dx := bx
+			switch b.ImageAlign {
+			case model.ImageAlignCenter:
+				dx = bx + (avail-targetW)/2
+			case model.ImageAlignRight:
+				dx = bx + avail - targetW
+			}
+			return paintedBlock{
+				kind: model.BlockImage,
+				x:    bx,
+				y:    by,
+				w:    avail,
+				h:    targetH,
+				img: &paintedImage{
+					bitmap: bm,
+					src:    ui.Rect{X: sx, Y: sy, W: sw, H: sh},
+					dst:    ui.Rect{X: dx, Y: by, W: targetW, H: targetH},
+				},
+			}, true
 		}
 	}
 	label := b.ImageAlt

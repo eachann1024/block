@@ -2,30 +2,17 @@ package editor
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"html"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
 	"image/png"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
+	"block/internal/media"
 	"block/internal/model"
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
-	_ "golang.org/x/image/webp"
 )
-
-const (
-	maxClipboardImageBytes  = 20 << 20   // 20 MiB file size cap
-	maxClipboardImageSide   = 8192       // max width or height in pixels
-	maxClipboardImagePixels = 32_000_000 // ~32 MP cap to prevent decompression bombs / UI stalls
-)
-
-var pngHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // writeSelectionToClipboard serializes the current non-empty selection into multi-format
 // clipboard data (plain text Markdown, text/markdown, semantic HTML, and PNG for single local images).
@@ -135,47 +122,29 @@ func (s *Session) writeTableCellsClipboard(svc ui.Services, plain string, rows [
 	svc.WriteClipboardData(transfer.New(transfer.NewItem(reps...)))
 }
 
+func (s *Session) readClipboardImage(src string, limit int64) ([]byte, error) {
+	f, _, err := media.OpenLocal(s.mediaDir(), src, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return media.ReadFile(f, limit)
+}
+
 func (s *Session) readLocalImageAsPNG(src string) []byte {
-	trimmed := strings.TrimSpace(src)
-	if trimmed == "" || IsSupportedVideoPath(trimmed) {
-		return nil
-	}
-	lower := strings.ToLower(trimmed)
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "data:") {
-		return nil
-	}
-	full := s.resolveMediaPath(trimmed)
-	if full == "" {
-		return nil
-	}
-	info, err := os.Stat(full)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxClipboardImageBytes {
-		return nil
-	}
-	f, err := os.Open(full)
+	raw, err := s.readClipboardImage(src, media.MaxImageBytes)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, maxClipboardImageBytes+1))
-	if err != nil || len(raw) == 0 || len(raw) > maxClipboardImageBytes {
-		return nil
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 ||
-		cfg.Width > maxClipboardImageSide || cfg.Height > maxClipboardImageSide ||
-		int64(cfg.Width)*int64(cfg.Height) > maxClipboardImagePixels {
+	img, _, format, err := media.DecodeRaster(raw)
+	if err != nil {
 		return nil
 	}
 	if format == "png" {
 		return raw
 	}
-	img, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return nil
-	}
 	var out bytes.Buffer
-	if err := png.Encode(&out, img); err != nil {
+	if err := png.Encode(&out, img); err != nil || out.Len() > media.MaxImageBytes {
 		return nil
 	}
 	return out.Bytes()
@@ -186,6 +155,7 @@ func (s *Session) clipboardHTMLForDoc(doc *model.Doc) string {
 		return ""
 	}
 	var sb strings.Builder
+	imageBudget := media.MaxImageBytes
 	// Group consecutive list items into <ul> / <ol> containers for clean pasting into Word/Feishu/Notion.
 	for i := 0; i < len(doc.Blocks); {
 		b := &doc.Blocks[i]
@@ -215,13 +185,13 @@ func (s *Session) clipboardHTMLForDoc(doc *model.Doc) string {
 			sb.WriteString("</" + tag + ">")
 			continue
 		}
-		s.writeClipboardBlockHTML(&sb, b)
+		s.writeClipboardBlockHTML(&sb, b, &imageBudget)
 		i++
 	}
 	return sb.String()
 }
 
-func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block) {
+func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, imageBudget *int) {
 	if b == nil {
 		return
 	}
@@ -251,22 +221,16 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block) {
 		sb.WriteString("<hr>")
 
 	case b.Kind == model.BlockImage:
-		src := strings.TrimSpace(b.ImageSrc)
-		if src != "" {
-			lower := strings.ToLower(src)
-			if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "data:") {
-				if resolved := s.resolveMediaPath(src); resolved != "" {
-					if abs, err := filepath.Abs(resolved); err == nil {
-						src = localFileURL(abs)
-					}
-				}
+		alt := html.EscapeString(b.ImageAlt)
+		raw, err := s.readClipboardImage(b.ImageSrc, int64(*imageBudget))
+		if err == nil {
+			if _, _, format, err := media.DecodeRaster(raw); err == nil {
+				*imageBudget -= len(raw)
+				fmt.Fprintf(sb, `<p><img src="data:%s;base64,%s" alt="%s"></p>`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), alt)
+				return
 			}
 		}
-		if IsPreviewVideo(b.ImageSrc) || IsSupportedVideoPath(b.ImageSrc) {
-			fmt.Fprintf(sb, `<p><video controls src="%s">%s</video></p>`, html.EscapeString(src), html.EscapeString(b.ImageAlt))
-			return
-		}
-		fmt.Fprintf(sb, `<p><img src="%s" alt="%s"></p>`, html.EscapeString(src), html.EscapeString(b.ImageAlt))
+		fmt.Fprintf(sb, "<p>%s</p>", alt)
 
 	case b.Kind == model.BlockTable && b.Table != nil && len(b.Table.Rows) > 0:
 		tbl := b.Table
@@ -342,8 +306,8 @@ func writeClipboardSpansHTML(sb *strings.Builder, spans []model.Span) {
 		if sp.BGColor != "" {
 			text = "<mark>" + text + "</mark>"
 		}
-		if sp.Link != "" {
-			text = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(sp.Link), text)
+		if href := media.WebLink(sp.Link); href != "" {
+			text = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(href), text)
 		}
 		sb.WriteString(text)
 	}

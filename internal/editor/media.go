@@ -1,13 +1,19 @@
 package editor
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"block/internal/files"
 	"block/internal/icons"
+	"block/internal/media"
 	"block/internal/model"
 	"block/internal/theme"
 	appUi "block/internal/ui"
@@ -15,6 +21,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/video"
 )
+
+const maxImportedFiles = 64
 
 // IsSupportedVideoPath reports whether path has a video file extension Block can embed and play.
 func IsSupportedVideoPath(path string) bool {
@@ -26,143 +34,227 @@ func IsSupportedVideoPath(path string) bool {
 	}
 }
 
-func uniqueTypedAssetFilename(assetsDir, prefix, ext string) string {
-	ext = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ext)), ".")
-	for {
-		base := uniqueAssetFilename(assetsDir, ext)
-		if prefix != "" && prefix != "img" {
-			base = prefix + strings.TrimPrefix(base, "img")
-		}
-		if ext == "" {
-			base = strings.TrimSuffix(base, ".png")
-		}
-		if _, err := os.Stat(filepath.Join(assetsDir, base)); os.IsNotExist(err) {
-			return base
-		}
-	}
-}
-
-func (s *Session) resolveAssetsDir() (string, bool) {
-	baseDir := ""
+func (s *Session) mediaDir() string {
 	if s.notePath != "" {
-		baseDir = filepath.Dir(s.notePath)
-	} else if s.dataDir != "" {
-		baseDir = filepath.Join(s.dataDir, "quick")
+		return filepath.Dir(s.notePath)
 	}
-	if baseDir == "" {
-		return "", false
+	if s.dataDir != "" {
+		return filepath.Join(s.dataDir, "quick")
 	}
-	assetsDir := filepath.Join(baseDir, "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
-		return "", false
-	}
-	return assetsDir, true
+	return ""
 }
 
-// ImportFiles copies local image, video, and arbitrary attachment files into `<noteDir>/assets/`
-// and inserts corresponding image, video, or linked attachment blocks into the document.
+func (s *Session) openAssetRoot() (*os.Root, error) {
+	dir := s.mediaDir()
+	if dir == "" {
+		return nil, media.ErrInvalid
+	}
+	if s.notePath == "" {
+		data, err := os.OpenRoot(s.dataDir)
+		if err != nil {
+			return nil, err
+		}
+		defer data.Close()
+		quick, err := openAssetSubdir(data, "quick")
+		if err != nil {
+			return nil, err
+		}
+		defer quick.Close()
+		return openAssetSubdir(quick, "assets")
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return openAssetSubdir(root, "assets")
+}
+
+func openAssetSubdir(root *os.Root, name string) (*os.Root, error) {
+	if err := root.Mkdir(name, 0o755); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	info, err := root.Lstat(name)
+	if err != nil || !info.IsDir() {
+		return nil, media.ErrInvalid
+	}
+	sub, err := root.OpenRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := sub.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		sub.Close()
+		return nil, media.ErrInvalid
+	}
+	return sub, nil
+}
+
+func writeImportedAsset(root *os.Root, source io.Reader, prefix, ext string, limit int64) (string, int64, error) {
+	if ext != "" {
+		for _, ch := range ext {
+			if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') || len(ext) > 16 {
+				ext = ""
+				break
+			}
+		}
+		if ext != "" {
+			ext = "." + ext
+		}
+	}
+	name := fmt.Sprintf("%s_%s%s", prefix, rand.Text(), ext)
+	fd, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", 0, err
+	}
+	n, copyErr := io.Copy(fd, io.LimitReader(source, limit+1))
+	closeErr := fd.Close()
+	if copyErr != nil || closeErr != nil || n > limit {
+		_ = root.Remove(name)
+		return "", 0, media.ErrInvalid
+	}
+	return "./assets/" + name, n, nil
+}
+
+// ImportFiles imports files explicitly selected by the host, such as a drop
+// from the file manager. Clipboard paths use importFiles with a workspace scope.
 func (s *Session) ImportFiles(paths []string, targetID model.BlockID, replace bool) int {
+	return s.importFiles(paths, targetID, replace, false, false)
+}
+
+// ImportImageFiles imports images chosen in the file picker.
+func (s *Session) ImportImageFiles(paths []string, targetID model.BlockID, replace bool) int {
+	return s.importFiles(paths, targetID, replace, true, false)
+}
+
+func (s *Session) importFiles(paths []string, targetID model.BlockID, replace, imagesOnly, clipboard bool) int {
 	if s.doc == nil || s.readOnly || len(paths) == 0 {
 		return 0
 	}
-	assetsDir, ok := s.resolveAssetsDir()
-	if !ok {
-		return 0
-	}
-
+	var root *os.Root
+	defer func() {
+		if root != nil {
+			root.Close()
+		}
+	}()
+	budget := int64(media.MaxImportBytes)
 	var inserted []model.Block
-	for _, rawPath := range paths {
-		p := strings.TrimSpace(rawPath)
-		if p == "" {
+	for _, path := range paths[:min(len(paths), maxImportedFiles)] {
+		if !filepath.IsAbs(path) || (imagesOnly && !IsSupportedImagePath(path)) {
 			continue
 		}
-		st, err := os.Stat(p)
-		if err != nil || st.IsDir() {
-			continue
-		}
-		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
-		baseName := filepath.Base(p)
-		cleanName := strings.NewReplacer("[", "", "]", "").Replace(baseName)
-		stem := strings.TrimSuffix(cleanName, filepath.Ext(cleanName))
-		if stem == "" {
-			stem = cleanName
+		dir, ref := filepath.Dir(path), url.PathEscape(filepath.Base(path))
+		if clipboard {
+			// A clipboard list can be supplied as URI text by another app.
+			// Treat its paths like document references, with no external file grant.
+			dir, ref = s.mediaDir(), (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
 		}
 
+		base := strings.NewReplacer("[", "", "]", "").Replace(filepath.Base(path))
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+		prefix, limit := "file", budget
 		switch {
-		case IsSupportedImagePath(p):
-			name := uniqueTypedAssetFilename(assetsDir, "img", ext)
-			if err := copyAssetFile(p, filepath.Join(assetsDir, name)); err != nil {
+		case IsSupportedImagePath(path):
+			prefix, limit = "img", min(budget, media.MaxImageBytes)
+		case IsSupportedVideoPath(path):
+			prefix, limit = "vid", min(budget, media.MaxVideoBytes)
+		}
+		f, _, err := media.OpenLocal(dir, ref, limit)
+		if err != nil {
+			continue
+		}
+		var source io.Reader = f
+		if prefix != "file" {
+			raw, err := media.ReadFile(f, limit)
+			f.Close()
+			if err != nil {
 				continue
 			}
-			inserted = append(inserted, model.Block{
-				ID:         model.NewBlockID(),
-				Kind:       model.BlockImage,
-				ImageSrc:   "./assets/" + name,
-				ImageAlt:   stem,
-				ImageAlign: model.ImageAlignLeft,
-				ImageWidth: 100,
-				Dirty:      true,
-			})
-
-		case IsSupportedVideoPath(p):
-			name := uniqueTypedAssetFilename(assetsDir, "vid", ext)
-			if err := copyAssetFile(p, filepath.Join(assetsDir, name)); err != nil {
+			ext, err = validatedAssetExtension(raw, prefix, ext)
+			if err != nil {
 				continue
 			}
-			inserted = append(inserted, model.Block{
-				ID:         model.NewBlockID(),
-				Kind:       model.BlockImage,
-				ImageSrc:   "./assets/" + name,
-				ImageAlt:   cleanName,
-				ImageAlign: model.ImageAlignLeft,
-				ImageWidth: 100,
-				Dirty:      true,
-			})
-
-		default:
-			name := uniqueTypedAssetFilename(assetsDir, "file", ext)
-			if err := copyAssetFile(p, filepath.Join(assetsDir, name)); err != nil {
-				continue
+			source = bytes.NewReader(raw)
+		}
+		if root == nil {
+			root, err = s.openAssetRoot()
+			if err != nil {
+				if prefix == "file" {
+					f.Close()
+				}
+				break
 			}
-			inserted = append(inserted, model.Block{
-				ID:    model.NewBlockID(),
-				Kind:  model.BlockParagraph,
-				Dirty: true,
-				Spans: []model.Span{
-					{Text: cleanName, Link: "./assets/" + name},
-				},
-			})
+		}
+		src, written, err := writeImportedAsset(root, source, prefix, ext, limit)
+		if prefix == "file" {
+			f.Close()
+		}
+		if err != nil {
+			continue
+		}
+		budget -= written
+		b := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+		if prefix == "file" {
+			b.Spans = []model.Span{{Text: base, Link: src}}
+		} else {
+			if prefix == "img" {
+				base = strings.TrimSuffix(base, filepath.Ext(base))
+			}
+			b.Kind, b.ImageSrc, b.ImageAlt = model.BlockImage, src, base
+			b.ImageAlign, b.ImageWidth = model.ImageAlignLeft, 100
+		}
+		inserted = append(inserted, b)
+		if budget == 0 {
+			break
 		}
 	}
-
 	if len(inserted) == 0 {
 		return 0
 	}
 	return s.insertImportedBlocks(inserted, targetID, replace)
 }
 
-// ImportClipboardImageBytes writes raw image bytes from the clipboard into `<noteDir>/assets/`
-// and inserts an image block into the document.
-func (s *Session) ImportClipboardImageBytes(raw []byte, ext string, targetID model.BlockID, replace bool) bool {
-	if s.doc == nil || s.readOnly || len(raw) == 0 {
+func validatedAssetExtension(raw []byte, prefix, ext string) (string, error) {
+	if prefix == "vid" {
+		if !media.IsVideo(raw) {
+			return "", media.ErrInvalid
+		}
+		return ext, nil
+	}
+	if ext == "svg" {
+		_, err := parseLocalSVG(raw)
+		return ext, err
+	}
+	_, _, format, err := media.DecodeRaster(raw)
+	if format == "jpeg" {
+		format = "jpg"
+	}
+	return format, err
+}
+
+// ImportClipboardImageBytes validates the bitmap and names the file using its
+// detected format. The transfer representation's extension is only a hint.
+func (s *Session) ImportClipboardImageBytes(raw []byte, _ string, targetID model.BlockID, replace bool) bool {
+	if s.doc == nil || s.readOnly {
 		return false
 	}
-	assetsDir, ok := s.resolveAssetsDir()
-	if !ok {
+	ext, err := validatedAssetExtension(raw, "img", "")
+	if err != nil {
 		return false
 	}
-	if ext == "" {
-		ext = "png"
+	root, err := s.openAssetRoot()
+	if err != nil {
+		return false
 	}
-	name := uniqueTypedAssetFilename(assetsDir, "img", ext)
-	dst := filepath.Join(assetsDir, name)
-	if err := os.WriteFile(dst, raw, 0o644); err != nil {
+	defer root.Close()
+	src, _, err := writeImportedAsset(root, bytes.NewReader(raw), "img", ext, media.MaxImageBytes)
+	if err != nil {
 		return false
 	}
 	blk := model.Block{
 		ID:         model.NewBlockID(),
 		Kind:       model.BlockImage,
-		ImageSrc:   "./assets/" + name,
+		ImageSrc:   src,
 		ImageAlt:   "image",
 		ImageAlign: model.ImageAlignLeft,
 		ImageWidth: 100,
@@ -185,6 +277,7 @@ func (s *Session) invalidateImageCache(src string) {
 	}
 	s.imageMu.Lock()
 	delete(s.imageCache, src)
+	s.imageOrder = slices.DeleteFunc(s.imageOrder, func(key string) bool { return key == src })
 	delete(s.imageFailed, src)
 	s.imageMu.Unlock()
 }
@@ -297,6 +390,10 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		return true
 	}
 
+	if len(fallbackText) > media.MaxPasteBytes {
+		return true
+	}
+
 	if plainOnly {
 		if fallbackText == "" {
 			return false
@@ -308,13 +405,9 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 	// 1. Local file list (images, videos, PDFs, archives, documents copied from Finder / file manager).
 	// Checked BEFORE plain text because macOS Finder also places the bare filename into text/plain
 	// and the file's icon into image/png!
-	fileData := svc.ReadClipboardData(transfer.FileList, transfer.URIList)
-	if len(fileData.Items()) > 0 {
-		if paths, err := fileData.Files(); err == nil && len(paths) > 0 {
-			if s.ImportFiles(paths, 0, false) > 0 {
-				return true
-			}
-		}
+	paths := clipboardFilePaths(svc.ReadClipboardData(transfer.FileList))
+	if s.importFiles(paths, 0, false, false, true) > 0 {
+		return true
 	}
 
 	// 2. Direct clipboard bitmap (screenshots, copied web/chat images) when no plain text is on clipboard.
@@ -350,6 +443,12 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 	if len(richData.Items()) > 0 {
 		mdRaw, mdErr := richData.Read(transfer.Markdown)
 		htmlRaw, htmlErr := richData.Read(transfer.HTML)
+		if len(mdRaw) > media.MaxPasteBytes {
+			mdRaw = nil
+		}
+		if len(htmlRaw) > media.MaxPasteBytes {
+			htmlRaw = nil
+		}
 		mdStr := string(mdRaw)
 		inTable := s.isTablePasteTarget()
 		if mdErr == nil && (strings.TrimSpace(mdStr) != "" || (len(mdRaw) > 0 && (inTable || !strings.Contains(mdStr, "\n")))) {
@@ -389,6 +488,29 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 	return true
 }
 
+func clipboardFilePaths(data transfer.Data) []string {
+	const maxListBytes = 64 << 10
+	var list bytes.Buffer
+	items := data.Items()
+	for _, item := range items[:min(len(items), maxImportedFiles)] {
+		raw, err := item.Read(transfer.FileList)
+		if err != nil {
+			continue
+		}
+		if len(raw) > maxListBytes-list.Len()-2 {
+			return nil
+		}
+		list.Write(raw)
+		list.WriteString("\r\n")
+	}
+	if list.Len() == 0 {
+		return nil
+	}
+	bounded := transfer.New(transfer.NewItem(transfer.Bytes(transfer.FileList, list.Bytes())))
+	paths, _ := bounded.Files()
+	return paths
+}
+
 func localFileURL(absPath string) string {
 	p := filepath.ToSlash(absPath)
 	isUNC := strings.HasPrefix(absPath, `\\`) || strings.HasPrefix(p, "//")
@@ -417,46 +539,41 @@ func localFileURL(absPath string) string {
 	return string(b)
 }
 
-func (s *Session) resolveMediaPath(src string) string {
-	trimmed := strings.TrimSpace(src)
-	if trimmed == "" {
-		return ""
-	}
-	if filepath.IsAbs(trimmed) {
-		return trimmed
-	}
-	if s.notePath != "" {
-		return filepath.Join(filepath.Dir(s.notePath), filepath.FromSlash(trimmed))
-	}
-	if s.dataDir != "" {
-		return filepath.Join(s.dataDir, "quick", filepath.FromSlash(trimmed))
-	}
-	return trimmed
-}
-
 func (s *Session) openBlockLink(svc ui.Services, rawLink string) {
 	if s.previewMedia != nil {
 		return
 	}
-	link := strings.TrimSpace(rawLink)
-	if link == "" {
+	if href := media.WebLink(rawLink); href != "" {
+		svc.OpenURL(href)
 		return
 	}
-	lower := strings.ToLower(link)
-	if strings.Contains(lower, "://") || strings.HasPrefix(lower, "mailto:") {
-		svc.OpenURL(link)
+	path, ok := media.LocalTarget(s.mediaDir(), rawLink)
+	if !ok {
 		return
 	}
-	resolved := s.resolveMediaPath(link)
-	if abs, err := filepath.Abs(resolved); err == nil {
-		if files.IsMarkdown(abs) && s.host != nil {
-			if info, statErr := os.Stat(abs); statErr == nil && !info.IsDir() {
-				_ = s.host.OpenNote(abs, 0)
-				return
-			}
-		}
-		svc.OpenURL(localFileURL(abs))
+	if files.IsMarkdown(path) && s.host != nil {
+		_ = s.host.OpenNote(path, 0)
+		return
 	}
+	// Open known document and media types. The shell can run some file types.
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".pdf", ".txt", ".csv", ".tsv", ".rtf", ".docx", ".xlsx", ".pptx",
+		".odt", ".ods", ".odp", ".zip", ".png", ".jpg", ".jpeg", ".gif",
+		".webp", ".bmp", ".mp3", ".wav", ".m4a", ".flac", ".mp4", ".mov",
+		".m4v", ".webm", ".mkv", ".avi", ".ogv":
+		svc.OpenURL(localFileURL(path))
+	}
+}
+
+func (s *Session) resetMedia() {
+	s.closeVideoPlayers()
+	s.imageMu.Lock()
+	s.imageEpoch++
+	clear(s.imageCache)
+	clear(s.imageLoading)
+	clear(s.imageFailed)
+	s.imageOrder = nil
+	s.imageMu.Unlock()
 }
 
 func (s *Session) closeVideoPlayers() {
@@ -467,6 +584,7 @@ func (s *Session) closeVideoPlayers() {
 		delete(s.videoPlayers, k)
 	}
 	clear(s.videoFailed)
+	clear(s.videoBytes)
 }
 
 func (s *Session) resolveVideoPlayer(src string) (*ui.VideoPlayer, bool) {
@@ -483,6 +601,7 @@ func (s *Session) resolveVideoPlayer(src string) (*ui.VideoPlayer, bool) {
 		if p.Err() != nil {
 			p.Close()
 			delete(s.videoPlayers, src)
+			delete(s.videoBytes, src)
 			s.videoFailed[src] = true
 			return nil, false
 		}
@@ -500,13 +619,29 @@ func (s *Session) resolveVideoPlayer(src string) (*ui.VideoPlayer, bool) {
 		}
 		player, err = video.OpenData(asset.Video)
 	} else {
-		resolved := s.resolveMediaPath(src)
-		st, statErr := os.Stat(resolved)
-		if statErr != nil || st.IsDir() || st.Size() == 0 {
+		remaining := int64(media.MaxImportBytes)
+		for _, size := range s.videoBytes {
+			remaining -= size
+		}
+		limit := min(remaining, media.MaxVideoBytes)
+		f, _, openErr := media.OpenLocal(s.mediaDir(), src, limit)
+		if openErr != nil {
 			s.videoFailed[src] = true
 			return nil, false
 		}
-		player, err = video.Open(resolved)
+		raw, readErr := media.ReadFile(f, limit)
+		f.Close()
+		if readErr != nil || !media.IsVideo(raw) {
+			s.videoFailed[src] = true
+			return nil, false
+		}
+		player, err = video.OpenData(raw)
+		if err == nil {
+			if s.videoBytes == nil {
+				s.videoBytes = make(map[string]int64)
+			}
+			s.videoBytes[src] = int64(len(raw))
+		}
 	}
 	if err != nil {
 		s.videoFailed[src] = true

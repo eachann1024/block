@@ -334,26 +334,29 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 		})
 
-		// 3. Right tail: Settings close button, or contextual file tools + Feedback + AI Panel + Page More pill.
+		// 3. Right tail: Settings close button (only when the docked sidebar's
+		// "返回" is hidden), or contextual file tools + Feedback + AI Panel + Page More pill.
 		if p.InSettings {
-			pad := float32(titlebarActionTrailing)
-			if !theme.IsMacOS() {
-				pad = 0
-				if tb.Right > 0 {
-					pad = tb.Right + 8
+			if !p.SidebarWide {
+				pad := float32(titlebarActionTrailing)
+				if !theme.IsMacOS() {
+					pad = 0
+					if tb.Right > 0 {
+						pad = tb.Right + 8
+					}
 				}
-			}
-			ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Padding(0, pad, 0, 0).Children(func() {
-				closeBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
-					ID:          "settings-back",
-					Label:       theme.Tr("关闭设置", "Close Settings"),
-					Tooltip:     theme.Tr("关闭设置", "Close Settings"),
-					ChromeHover: true,
+				ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Padding(0, pad, 0, 0).Children(func() {
+					closeBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
+						ID:          "settings-back",
+						Label:       theme.Tr("关闭设置", "Close Settings"),
+						Tooltip:     theme.Tr("关闭设置", "Close Settings"),
+						ChromeHover: true,
+					})
+					if closeBtn.Clicked() && p.OnCloseSettings != nil {
+						p.OnCloseSettings()
+					}
 				})
-				if closeBtn.Clicked() && p.OnCloseSettings != nil {
-					p.OnCloseSettings()
-				}
-			})
+			}
 		} else if !p.AIImmersive {
 			renderTitlebarTail(c, p, tb.Right)
 		}
@@ -625,7 +628,7 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 	return []blockui.MenuItemSpec{
 		item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
 		item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
-		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay("alt-cmd-c"), &icCopy, p.OnCopyMarkdown),
+		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
 		{Separator: true},
 		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 			if p.OnRevealPath != nil {

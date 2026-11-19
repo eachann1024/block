@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"block/internal/files"
 )
 
 type rpcEnvelope struct {
@@ -66,9 +70,15 @@ type HostConfig struct {
 	HostVersion     string
 	GetNotebooks    func() []string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
+	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
+	OnNoteWritten   func(pluginID, notebookRoot, absPath string)
 }
 
+var ErrNoteConflict = errors.New("note changed; read it again before writing")
+
 type ActionResult struct {
+	OK         *bool          `json:"ok,omitempty"`
+	Tone       string         `json:"tone,omitempty"`
 	Values     map[string]any `json:"values,omitempty"`
 	Page       *UIPage        `json:"page,omitempty"`
 	Status     string         `json:"status,omitempty"`
@@ -76,7 +86,12 @@ type ActionResult struct {
 	RevealPath string         `json:"reveal_path,omitempty"`
 }
 
-const maxStderrBytes = 64 * 1024
+const (
+	maxStderrBytes    = 64 * 1024
+	maxPluginStorage  = 8 * 1024 * 1024
+	maxPluginNote     = 16 * 1024 * 1024
+	maxPluginHostRPCs = 8
+)
 
 type ringBuffer struct {
 	mu   sync.Mutex
@@ -152,26 +167,32 @@ func (r *ringBuffer) String() string {
 	return string(out)
 }
 
-// Runtime hosts a single sandboxed out-of-process plugin speaking newline-delimited
+// Runtime hosts a single out-of-process plugin speaking newline-delimited
 // bidirectional JSON-RPC 2.0 over stdin/stdout.
 type Runtime struct {
 	exited   chan struct{}
+	reaped   chan struct{}
 	manifest Manifest
 	cfg      HostConfig
+	dataRoot *os.Root
 
 	cmd    *exec.Cmd
-	stdin  io.WriteCloser
+	stdin  *os.File
+	stdout io.ReadCloser
 	stderr *ringBuffer
 
-	writeMu   sync.Mutex
-	callMu    sync.Mutex
+	writeGate chan struct{}
+	callGate  chan struct{}
+	hostCalls chan struct{}
 	pendingMu sync.Mutex
 	pending   map[string]chan rpcEnvelope
 	nextID    atomic.Int64
 
 	storageMu sync.Mutex
+	noteMu    sync.Mutex
 	cfgMu     sync.RWMutex
 	closed    atomic.Bool
+	abortOnce sync.Once
 }
 
 func (rt *Runtime) SetNotebookRoot(root string) {
@@ -199,17 +220,23 @@ func (rt *Runtime) activeNote() string {
 }
 
 func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, error) {
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create plugin data dir: %w", err)
+	if err := m.Validate(); err != nil {
+		return nil, err
 	}
-	cmdName := m.Entry.Command[0]
-	var cmdArgs []string
-	if len(m.Entry.Command) > 1 {
-		cmdArgs = m.Entry.Command[1:]
+	cmdName, err := pluginCommand(cfg.PluginDir, m.Entry.Command[0])
+	if err != nil {
+		return nil, err
 	}
-	if strings.HasPrefix(cmdName, "./") || strings.HasPrefix(cmdName, ".\\") {
-		cmdName = filepath.Join(cfg.PluginDir, cmdName)
+	dataRoot, err := openPluginDataRoot(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("open plugin data directory: %w", err)
 	}
+	started := false
+	defer func() {
+		if !started {
+			dataRoot.Close()
+		}
+	}()
 	downloadsDir := strings.TrimSpace(cfg.DownloadsDir)
 	if downloadsDir == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -218,7 +245,9 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	}
 	cfg.DownloadsDir = downloadsDir
 
-	cmd := exec.CommandContext(ctx, cmdName, cmdArgs...)
+	cmd := exec.CommandContext(ctx, cmdName, m.Entry.Command[1:]...)
+	configurePluginProcess(cmd)
+	cmd.WaitDelay = time.Second
 	cmd.Dir = cfg.PluginDir
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
@@ -238,25 +267,110 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		_ = stdin.Close()
 		return nil, err
 	}
 	rt := &Runtime{
-		exited:   make(chan struct{}),
-		manifest: m,
-		cfg:      cfg,
-		cmd:      cmd,
-		stdin:    stdin,
-		stderr:   newRingBuffer(maxStderrBytes),
-		pending:  make(map[string]chan rpcEnvelope),
+		exited:    make(chan struct{}),
+		reaped:    make(chan struct{}),
+		manifest:  m,
+		cfg:       cfg,
+		dataRoot:  dataRoot,
+		cmd:       cmd,
+		stdin:     stdin.(*os.File),
+		stdout:    stdout,
+		stderr:    newRingBuffer(maxStderrBytes),
+		pending:   make(map[string]chan rpcEnvelope),
+		writeGate: make(chan struct{}, 1),
+		callGate:  make(chan struct{}, 1),
+		hostCalls: make(chan struct{}, maxPluginHostRPCs),
 	}
 	cmd.Stderr = rt.stderr
 
 	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
 		return nil, fmt.Errorf("start plugin process %v: %w", m.Entry.Command, err)
 	}
+	started = true
 
-	go rt.readLoop(stdout)
+	go func() {
+		rt.readLoop(stdout)
+		_ = cmd.Wait()
+		_ = dataRoot.Close()
+		close(rt.reaped)
+	}()
 	return rt, nil
+}
+
+func pluginCommand(pluginDir, command string) (string, error) {
+	commandPath := filepath.FromSlash(strings.ReplaceAll(command, "\\", "/"))
+	if strings.Contains(commandPath, ":") || !filepath.IsLocal(commandPath) || filepath.Clean(commandPath) == "." {
+		return "", errors.New("plugin command must be a PATH executable or a file within the plugin")
+	}
+	if commandPath == filepath.Base(commandPath) {
+		return exec.LookPath(commandPath)
+	}
+	name := filepath.Clean(commandPath)
+	root, err := os.OpenRoot(pluginDir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	if err := checkPluginParents(root, name); err != nil {
+		return "", err
+	}
+	info, err := root.Lstat(name)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("bundled plugin command must be a regular file")
+	}
+	return filepath.Abs(filepath.Join(pluginDir, name))
+}
+
+func openPluginDataRoot(dataDir string) (*os.Root, error) {
+	if strings.TrimSpace(dataDir) == "" {
+		return nil, errors.New("plugin data directory is required")
+	}
+	dir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		return nil, errors.New("plugin data directory cannot be a filesystem root")
+	}
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	name := filepath.Base(dir)
+	if err := root.Mkdir(name, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, err
+	}
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("plugin data path must be a directory")
+	}
+	dataRoot, err := root.OpenRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	actual, err := dataRoot.Stat(".")
+	if err != nil || !os.SameFile(info, actual) {
+		dataRoot.Close()
+		return nil, errors.New("plugin data directory changed while opening")
+	}
+	return dataRoot, nil
 }
 
 func (rt *Runtime) Stderr() string {
@@ -329,17 +443,26 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	if ver == "" {
 		ver = "1.0.301"
 	}
+	var notebookRoot string
+	notebooks := []string{}
+	if rt.manifest.HasPermission(PermNotesRead) || rt.manifest.HasPermission(PermNotesWrite) ||
+		rt.manifest.HasPermission(PermEventNoteSaved) {
+		notebookRoot = rt.notebookRoot()
+	}
+	if rt.manifest.HasPermission(PermNotesRead) {
+		notebooks = rt.knownNotebooks()
+	}
 	params := map[string]any{
-		"plugin_id":       rt.manifest.ID,
-		"data_dir":        rt.cfg.DataDir,
-		"downloads_dir":   rt.cfg.DownloadsDir,
-		"notebook_root":   rt.cfg.NotebookRoot,
-		"notebooks":       rt.knownNotebooks(),
-		"locale":          locale,
-		"host_version":    ver,
+		"plugin_id":     rt.manifest.ID,
+		"data_dir":      rt.cfg.DataDir,
+		"downloads_dir": rt.cfg.DownloadsDir,
+		"notebook_root": notebookRoot,
+		"notebooks":     notebooks,
+		"locale":        locale,
+		"host_version":  ver,
 		"ui_capabilities": []string{
 			"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
-			"card_collapse", "metric_tone", "log_columns", "file_picker",
+			"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
 		},
 	}
 	var res struct {
@@ -393,6 +516,8 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		values = map[string]any{}
 	}
 	var rawRes struct {
+		OK         *bool           `json:"ok,omitempty"`
+		Tone       string          `json:"tone,omitempty"`
 		Values     map[string]any  `json:"values,omitempty"`
 		Page       json.RawMessage `json:"page,omitempty"`
 		Status     string          `json:"status,omitempty"`
@@ -408,6 +533,8 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		return nil, err
 	}
 	out := &ActionResult{
+		OK:         rawRes.OK,
+		Tone:       strings.TrimSpace(rawRes.Tone),
 		Values:     rawRes.Values,
 		Status:     rawRes.Status,
 		OpenPath:   strings.TrimSpace(rawRes.OpenPath),
@@ -447,30 +574,56 @@ func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath st
 }
 
 func (rt *Runtime) Shutdown(ctx context.Context) error {
-	if rt.closed.Swap(true) {
-		return nil
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if !rt.closed.Swap(true) {
+		_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
+		_ = rt.stdin.Close()
 	}
-	var res map[string]any
-	_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, &res)
-	_ = rt.stdin.Close()
-	done := make(chan error, 1)
-	go func() { done <- rt.cmd.Wait() }()
 	select {
-	case <-done:
+	case <-rt.reaped:
 		return nil
 	case <-ctx.Done():
-		_ = rt.cmd.Process.Kill()
-		return nil
+		rt.abort()
+		select {
+		case <-rt.reaped:
+			return nil
+		case <-time.After(time.Second):
+			return errors.New("plugin process did not exit")
+		}
 	}
 }
 
-func (rt *Runtime) call(ctx context.Context, method string, params any, out any) error {
-	rt.callMu.Lock()
-	defer rt.callMu.Unlock()
+func (rt *Runtime) abort() {
+	rt.closed.Store(true)
+	rt.abortOnce.Do(func() {
+		select {
+		case <-rt.reaped:
+		default:
+			_ = stopPluginProcess(rt.cmd)
+		}
+		_ = rt.stdin.Close()
+		_ = rt.stdout.Close()
+	})
+}
 
+func (rt *Runtime) call(ctx context.Context, method string, params any, out any) error {
+	select {
+	case rt.callGate <- struct{}{}:
+		defer func() { <-rt.callGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-rt.exited:
+		return errors.New("plugin exited")
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if rt.closed.Load() && method != "plugin.shutdown" {
+		return errors.New("plugin is stopping")
+	}
+	stopAbort := context.AfterFunc(ctx, rt.abort)
+	defer stopAbort()
 	idNum := rt.nextID.Add(1)
 	idKey := fmt.Sprintf("%d", idNum)
 	idRaw := json.RawMessage(idKey)
@@ -495,15 +648,13 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 		Method:  method,
 		Params:  paramsRaw,
 	}
-	if err := rt.writeLine(req); err != nil {
+	if err := rt.writeLine(ctx, req); err != nil {
+		rt.abort()
 		return fmt.Errorf("send %s: %w (stderr: %s)", method, err, strings.TrimSpace(rt.Stderr()))
 	}
 
 	select {
-	case resp, ok := <-ch:
-		if !ok {
-			return fmt.Errorf("%s: plugin exited unexpectedly (stderr: %s)", method, strings.TrimSpace(rt.Stderr()))
-		}
+	case resp := <-ch:
 		if resp.Error != nil {
 			return fmt.Errorf("%s rpc error (%d): %s", method, resp.Error.Code, resp.Error.Message)
 		}
@@ -516,15 +667,26 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 	case <-rt.exited:
 		return fmt.Errorf("%s: plugin exited", method)
 	case <-ctx.Done():
+		rt.abort()
 		return fmt.Errorf("%s timed out: %w (stderr: %s)", method, ctx.Err(), strings.TrimSpace(rt.Stderr()))
 	}
 }
 
-func (rt *Runtime) writeLine(v any) error {
-	rt.writeMu.Lock()
-	defer rt.writeMu.Unlock()
+func (rt *Runtime) writeLine(ctx context.Context, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
+		return err
+	}
+	select {
+	case rt.writeGate <- struct{}{}:
+		defer func() { <-rt.writeGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-rt.exited:
+		return errors.New("plugin exited")
+	}
+	deadline, _ := ctx.Deadline()
+	if err := rt.stdin.SetWriteDeadline(deadline); err != nil && !errors.Is(err, os.ErrNoDeadline) {
 		return err
 	}
 	b = append(b, '\n')
@@ -546,8 +708,16 @@ func (rt *Runtime) readLoop(r io.Reader) {
 			continue
 		}
 		if env.Method != "" {
-			// Incoming capability request from plugin -> handle on a goroutine so readLoop never blocks.
-			go rt.handleHostCall(env)
+			select {
+			case rt.hostCalls <- struct{}{}:
+				go func() {
+					defer func() { <-rt.hostCalls }()
+					rt.handleHostCall(env)
+				}()
+			default:
+				rt.abort()
+				return
+			}
 			continue
 		}
 		idKey := normalizeID(env.ID)
@@ -555,15 +725,15 @@ func (rt *Runtime) readLoop(r io.Reader) {
 		ch, ok := rt.pending[idKey]
 		rt.pendingMu.Unlock()
 		if ok {
-			ch <- env
+			select {
+			case ch <- env:
+			default:
+			}
 		}
 	}
-	rt.pendingMu.Lock()
-	for k, ch := range rt.pending {
-		close(ch)
-		delete(rt.pending, k)
+	if sc.Err() != nil {
+		rt.abort()
 	}
-	rt.pendingMu.Unlock()
 }
 
 func normalizeID(raw json.RawMessage) string {
@@ -571,6 +741,9 @@ func normalizeID(raw json.RawMessage) string {
 }
 
 func (rt *Runtime) handleHostCall(req rpcEnvelope) {
+	if rt.closed.Load() {
+		return
+	}
 	res, rpcErr := rt.dispatchHostMethod(req.Method, req.Params)
 	resp := rpcEnvelope{
 		JSONRPC: "2.0",
@@ -582,7 +755,13 @@ func (rt *Runtime) handleHostCall(req rpcEnvelope) {
 		raw, _ := json.Marshal(res)
 		resp.Result = raw
 	}
-	_ = rt.writeLine(resp)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stopAbort := context.AfterFunc(ctx, rt.abort)
+	defer stopAbort()
+	if err := rt.writeLine(ctx, resp); err != nil {
+		rt.abort()
+	}
 }
 
 func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (any, *rpcError) {
@@ -686,39 +865,71 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		abs, cleanRel, err := rt.jailNotePathFor(p.NotebookRoot, p.Path)
+		rootPath, cleanRel, err := rt.notebookNotePath(p.NotebookRoot, p.Path)
 		if err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		b, err := os.ReadFile(abs)
+		root, err := os.OpenRoot(rootPath)
 		if err != nil {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
-		return map[string]any{"path": cleanRel, "content": string(b)}, nil
+		defer root.Close()
+		b, err := readPluginFile(root, cleanRel, maxPluginNote)
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		return map[string]any{"path": filepath.ToSlash(cleanRel), "content": string(b), "revision": noteRevision(b)}, nil
 
 	case "host.notes.write":
 		if !rt.manifest.HasPermission(PermNotesWrite) {
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:write"}
 		}
 		var p struct {
-			NotebookRoot string `json:"notebook_root"`
-			Path         string `json:"path"`
-			Content      string `json:"content"`
+			NotebookRoot     string  `json:"notebook_root"`
+			Path             string  `json:"path"`
+			Content          string  `json:"content"`
+			ExpectedRevision *string `json:"expected_revision"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		abs, _, err := rt.jailNotePathFor(p.NotebookRoot, p.Path)
+		rootPath, cleanRel, err := rt.notebookNotePath(p.NotebookRoot, p.Path)
 		if err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
-		if err := os.WriteFile(abs, []byte(p.Content), 0o644); err != nil {
+		defer root.Close()
+		if err := checkPluginParents(root, cleanRel); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
-		return map[string]any{"ok": true}, nil
+		abs := filepath.Join(rootPath, cleanRel)
+		write := func() (bool, error) {
+			if rt.closed.Load() {
+				return false, errors.New("plugin is stopping")
+			}
+			return writePluginNote(root, cleanRel, p.Content, p.ExpectedRevision)
+		}
+		var changed bool
+		if rt.cfg.ApplyNoteWrite != nil {
+			changed, err = rt.cfg.ApplyNoteWrite(abs, p.Content, write)
+		} else {
+			rt.noteMu.Lock()
+			changed, err = write()
+			rt.noteMu.Unlock()
+		}
+		if errors.Is(err, ErrNoteConflict) {
+			return nil, &rpcError{Code: -32006, Message: err.Error()}
+		}
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		if changed && rt.cfg.OnNoteWritten != nil {
+			rt.cfg.OnNoteWritten(rt.manifest.ID, rootPath, abs)
+		}
+		return map[string]any{"ok": true, "changed": changed}, nil
 
 	case "host.perf.snapshot":
 		if !rt.manifest.HasPermission(PermNotesRead) {
@@ -744,14 +955,14 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 	}
 }
 
-func (rt *Runtime) storageFilePath() string {
-	return filepath.Join(rt.cfg.DataDir, "state.json")
-}
-
 func (rt *Runtime) loadStorageMap() (map[string]any, error) {
 	rt.storageMu.Lock()
 	defer rt.storageMu.Unlock()
-	b, err := os.ReadFile(rt.storageFilePath())
+	return rt.readStorageMap()
+}
+
+func (rt *Runtime) readStorageMap() (map[string]any, error) {
+	b, err := readPluginFile(rt.dataRoot, "state.json", maxPluginStorage)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]any{}, nil
 	}
@@ -762,23 +973,28 @@ func (rt *Runtime) loadStorageMap() (map[string]any, error) {
 	if err := json.Unmarshal(b, &out); err != nil {
 		return nil, err
 	}
+	if out == nil {
+		return map[string]any{}, nil
+	}
 	return out, nil
 }
 
 func (rt *Runtime) setStorageKey(key string, val any) error {
 	rt.storageMu.Lock()
 	defer rt.storageMu.Unlock()
-	p := rt.storageFilePath()
-	cur := map[string]any{}
-	if b, err := os.ReadFile(p); err == nil {
-		_ = json.Unmarshal(b, &cur)
+	cur, err := rt.readStorageMap()
+	if err != nil {
+		return err
 	}
 	cur[key] = val
 	raw, err := json.MarshalIndent(cur, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, raw, 0o644)
+	if len(raw) > maxPluginStorage {
+		return errors.New("plugin storage exceeds size limit")
+	}
+	return files.WriteNoteAt(rt.dataRoot, "state.json", string(raw))
 }
 
 type NoteMeta struct {
@@ -801,26 +1017,31 @@ func (rt *Runtime) listNotebookNotes(requestedRoot string) ([]NoteMeta, error) {
 			return nil, err
 		}
 	}
-	var list []NoteMeta
-	err := filepath.Walk(nbRoot, func(path string, info os.FileInfo, err error) error {
+	root, err := os.OpenRoot(nbRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	list := []NoteMeta{}
+	err = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") && path != nbRoot {
+		if strings.HasPrefix(entry.Name(), ".") && path != "." {
+			if entry.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
+		if !entry.Type().IsRegular() || !files.IsMarkdown(entry.Name()) {
 			return nil
 		}
-		rel, err := filepath.Rel(nbRoot, path)
+		info, err := entry.Info()
 		if err != nil {
 			return nil
 		}
 		list = append(list, NoteMeta{
-			Path:    filepath.ToSlash(rel),
+			Path:    path,
 			Size:    info.Size(),
 			ModTime: info.ModTime().UTC().Format(time.RFC3339),
 		})
@@ -829,11 +1050,94 @@ func (rt *Runtime) listNotebookNotes(requestedRoot string) ([]NoteMeta, error) {
 	return list, err
 }
 
-func (rt *Runtime) jailNotePath(rel string) (string, string, error) {
-	return rt.jailNotePathFor("", rel)
+func noteRevision(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-func (rt *Runtime) jailNotePathFor(requestedRoot, rel string) (string, string, error) {
+func writePluginNote(root *os.Root, rel, content string, expected *string) (bool, error) {
+	prior, err := readPluginFile(root, rel, maxPluginNote)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	exists := err == nil
+	if exists && bytes.Equal(prior, []byte(content)) {
+		return false, nil
+	}
+	if expected != nil && ((!exists && *expected != "") || (exists && *expected != noteRevision(prior))) {
+		return false, ErrNoteConflict
+	}
+	if err := files.WriteNoteAt(root, rel, content); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func checkPluginParents(root *os.Root, name string) error {
+	dir := filepath.Dir(name)
+	if dir == "." {
+		return nil
+	}
+	parent := ""
+	for part := range strings.SplitSeq(dir, string(filepath.Separator)) {
+		parent = filepath.Join(parent, part)
+		info, err := root.Lstat(parent)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return errors.New("plugin file parent must be a directory")
+		}
+	}
+	return nil
+}
+
+func openPluginFile(root *os.Root, name string) (*os.File, os.FileInfo, error) {
+	if err := checkPluginParents(root, name); err != nil {
+		return nil, nil, err
+	}
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, errors.New("plugin file must be a regular file")
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	actual, err := file.Stat()
+	if err != nil || !os.SameFile(info, actual) {
+		file.Close()
+		return nil, nil, errors.New("plugin file changed while opening")
+	}
+	return file, actual, nil
+}
+
+func readPluginFile(root *os.Root, name string, limit int64) ([]byte, error) {
+	file, info, err := openPluginFile(root, name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if info.Size() > limit {
+		return nil, errors.New("plugin file exceeds size limit")
+	}
+	return readLimited(file, limit)
+}
+
+func readLimited(reader io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("plugin data exceeds size limit")
+	}
+	return data, nil
+}
+
+func (rt *Runtime) notebookNotePath(requestedRoot, rel string) (string, string, error) {
 	if strings.TrimSpace(rel) == "" {
 		return "", "", errors.New("note path is empty")
 	}
@@ -842,12 +1146,13 @@ func (rt *Runtime) jailNotePathFor(requestedRoot, rel string) (string, string, e
 		return "", "", err
 	}
 	cleaned := filepath.Clean(filepath.FromSlash(rel))
-	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "..") {
+	if !filepath.IsLocal(cleaned) || strings.Contains(cleaned, ":") || !files.IsMarkdown(cleaned) {
 		return "", "", fmt.Errorf("path %q escapes notebook root", rel)
 	}
-	targetAbs := filepath.Join(rootAbs, cleaned)
-	if targetAbs != rootAbs && !strings.HasPrefix(targetAbs, rootAbs+string(os.PathSeparator)) {
-		return "", "", fmt.Errorf("path %q escapes notebook root", rel)
+	for part := range strings.SplitSeq(cleaned, string(filepath.Separator)) {
+		if strings.HasPrefix(part, ".") {
+			return "", "", errors.New("plugin notes must be visible Markdown files")
+		}
 	}
-	return targetAbs, filepath.ToSlash(cleaned), nil
+	return rootAbs, cleaned, nil
 }
