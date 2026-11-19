@@ -1831,7 +1831,15 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		return
 	}
 	s.firstLineDeleteArmed = false
-	s.pushUndo()
+	rDelta := len([]rune(newText)) - len([]rune(oldText))
+	if rDelta < 0 {
+		rDelta = -rDelta
+	}
+	if rDelta <= 4 && !strings.Contains(newText, "\n") && !strings.Contains(oldText, "\n") {
+		s.pushCoalescedTextUndo(fmt.Sprintf("blk:%d:%d", b.ID, b.Kind))
+	} else {
+		s.pushUndo()
+	}
 
 	if b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
 		b.SetText(newText)
