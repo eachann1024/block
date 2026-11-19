@@ -442,7 +442,11 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	if cur := s.views[key]; cur == vs && !cur.Loading && cur.BusyAction == "" && cur.editSeq == seq {
 		cur.Page = page
 		cur.lastLocale = rt.locale()
-		mergePageValuesUpToSeq(cur, page, returnedVals, seq)
+		if !cur.errorFromBg {
+			cur.Error = ""
+			cur.RetryKind = RetryKindNone
+		}
+		mergePageValuesUpToSeq(cur, page, returnedVals, seq, true)
 	}
 	s.mu.Unlock()
 	s.notifyRedraw()
@@ -978,15 +982,14 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	defer s.lockPluginRPC(pluginID)()
-	startedLocale := normalizeLocale(s.Locale())
-	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
+	rt, attemptedLocale, err := s.ensureRuntimeWithLocale(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
 		if vs := s.views[key]; vs != nil {
 			vs.Loading = false
 			vs.formVersion = s.formVersions[sKey]
-			if vs.Page == nil {
-				vs.lastLocale = startedLocale
+			if vs.Page == nil && attemptedLocale != "" {
+				vs.lastLocale = attemptedLocale
 			}
 			if !vs.errorFromBg {
 				vs.Error = err.Error()
@@ -1030,7 +1033,7 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 				vs.RetryKind = RetryKindNone
 			}
 			vs.Page = page
-			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq)
+			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq, true)
 		}
 	}
 	s.mu.Unlock()
@@ -1038,21 +1041,24 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 }
 
 func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]any) {
-	mergePageValuesUpToSeq(view, page, returned, 0)
+	mergePageValuesUpToSeq(view, page, returned, 0, false)
 }
 
-func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[string]any, maxSeq uint64) {
+func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[string]any, maxSeq uint64, checkSeq bool) {
 	if view.Values == nil {
 		view.Values = make(map[string]any)
 	}
 	defaults := page.ExtractDefaultValues()
 	// Keep only keys the current page declares or the plugin just returned,
-	// so values from earlier renders cannot accumulate without bound.
+	// while preserving newer user drafts created after maxSeq.
 	for k := range view.Values {
 		if _, declared := defaults[k]; declared {
 			continue
 		}
 		if _, ok := returned[k]; ok {
+			continue
+		}
+		if checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq {
 			continue
 		}
 		delete(view.Values, k)
@@ -1065,7 +1071,7 @@ func mergePageValuesUpToSeq(view *PluginViewState, page *UIPage, returned map[st
 		}
 	}
 	for k, v := range returned {
-		if maxSeq > 0 && view.editedControls[k] && view.editedSeq[k] > maxSeq {
+		if checkSeq && view.editedControls[k] && view.editedSeq[k] > maxSeq {
 			continue
 		}
 		view.Values[k] = v
@@ -1098,15 +1104,20 @@ func (s *Supervisor) activeNoteFor(root string) string {
 }
 
 func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string) (*Runtime, error) {
+	rt, _, err := s.ensureRuntimeWithLocale(ctx, pluginID, nbRoot)
+	return rt, err
+}
+
+func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRoot string) (*Runtime, string, error) {
 	s.mu.RLock()
 	unavailable := s.stopping || s.replacingID == pluginID
 	s.mu.RUnlock()
 	if unavailable {
-		return nil, errors.New("plugin is stopping or being replaced")
+		return nil, "", errors.New("plugin is stopping or being replaced")
 	}
 	inst, ok := s.GetInstalled(pluginID)
 	if !ok {
-		return nil, osErrNotInstalled(pluginID)
+		return nil, "", osErrNotInstalled(pluginID)
 	}
 	if !inst.Enabled {
 		s.mu.Lock()
@@ -1116,7 +1127,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		if prev != nil {
 			_ = prev.Shutdown(ctx)
 		}
-		return nil, errPluginDisabled(pluginID)
+		return nil, "", errPluginDisabled(pluginID)
 	}
 	wantLocale := normalizeLocale(s.Locale())
 	s.mu.RLock()
@@ -1127,7 +1138,7 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 			select {
 			case <-existing.exited:
 			default:
-				return existing, nil
+				return existing, existing.locale(), nil
 			}
 		}
 		// Plugins receive the notebook root and locale at initialization.
@@ -1137,12 +1148,14 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 	if hostVer == "" {
 		hostVer = "1.0.379"
 	}
+	rawLocale := s.Locale()
+	attemptedLocale := normalizeLocale(rawLocale)
 	cfg := HostConfig{
 		PluginDir:       inst.InstallDir,
 		DataDir:         inst.DataDir,
 		NotebookRoot:    nbRoot,
 		ActiveNote:      s.activeNoteFor(nbRoot),
-		Locale:          s.Locale(),
+		Locale:          rawLocale,
 		HostVersion:     hostVer,
 		GetNotebooks:    s.Notebooks,
 		GetPerfSnapshot: s.cfg.GetPerfSnapshot,
@@ -1160,20 +1173,20 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 	}
 	if s.stopping || s.replacingID == pluginID || !current || ctx.Err() != nil {
 		s.mu.Unlock()
-		return nil, errors.New("plugin changed while starting")
+		return nil, attemptedLocale, errors.New("plugin changed while starting")
 	}
 	rt, err := StartRuntime(context.Background(), inst.Manifest, cfg)
 	if err != nil {
 		s.mu.Unlock()
-		return nil, err
+		return nil, attemptedLocale, err
 	}
 	s.runtimes[pluginID] = rt
 	s.mu.Unlock()
 	if err := rt.Initialize(ctx); err != nil {
 		rt.abort()
-		return nil, err
+		return nil, attemptedLocale, err
 	}
-	return rt, nil
+	return rt, attemptedLocale, nil
 }
 
 func (s *Supervisor) SetControlValue(pluginID, controlID string, val any) {
@@ -1459,7 +1472,11 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				fresh, returned, err = rt.RenderWithValuesResult(ctx, surface, staleDrafts)
 				if err == nil {
 					s.mu.Lock()
-					mergePageValuesUpToSeq(vs, fresh, returned, staleSeq)
+					if fresh != nil {
+						vs.Page = fresh
+						vs.lastLocale = rt.locale()
+					}
+					mergePageValuesUpToSeq(vs, fresh, returned, staleSeq, true)
 					vs.formVersion = s.formVersions[sKey]
 					s.mu.Unlock()
 				}
