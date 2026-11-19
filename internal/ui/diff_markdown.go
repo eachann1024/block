@@ -188,12 +188,13 @@ func diffSetextText(lines []string, para []int) bool {
 // SyncDiffTableSeps decides each changed table separator row, which the review views
 // hide, by checking the text the selection would write: in every table that results,
 // exactly one separator sits right under the header row and none anywhere else, so a
-// partial accept never leaves an orphan "| --- |" nor turns a table into a paragraph.
-// applied[i] says whether changed line i is taken; unchanged lines are ignored. A
-// deleted line whose removal would merge two tables is kept as well. When
-// both the old and the new separator fit under the header, the new one is used only
-// if a visible changed row of that very table is taken (an alignment-only change is
-// invisible, so a partial accept keeps the old alignment).
+// partial accept never leaves an orphan "| --- |" nor turns a table into a paragraph
+// by accident. applied[i] says whether changed line i is taken; unchanged lines are
+// ignored. A line the selection drops (a deleted blank, or a rejected inserted one)
+// that would merge two tables is kept as well. When both the old and the new
+// separator fit under the header, the new one is used only if a visible changed row
+// of that very table is taken (an alignment-only change is invisible, so a partial
+// accept keeps the old alignment).
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
 	oldM, newM := diffFenceSides(lines, change)
@@ -231,7 +232,7 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 }
 
 // diffSepPass is one pass of SyncDiffTableSeps over the written text. It reports
-// whether it had to keep a deleted line that would merge two tables (dropping the
+// whether it had to keep a dropped line that would merge two tables (losing the
 // blank between them leaves a second separator as a data row); the next pass then
 // sees them apart.
 func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(int) bool,
@@ -268,9 +269,12 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			case cand(i):
 				cands = append(cands, i)
 			case !kept(i):
-				if oldTable[i] > 0 {
+				switch {
+				case oldTable[i] > 0:
 					dels = append(dels, i)
-				} else if change[i] < 0 {
+				case newTable[i] > 0:
+					// A rejected inserted row is no gap between tables.
+				default:
 					drops = append(drops, i)
 				}
 			case row[i]:
@@ -288,10 +292,17 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		if len(rows) == 0 {
 			continue
 		}
+		// A separator already kept below the first row fixes the table.
+		fixed := false
+		for _, r := range rows[1:] {
+			fixed = fixed || IsDiffTableSep(trim(r))
+		}
 		// Two rows that meet here but were one table in neither text were split by a
-		// line the selection drops (the blank between two tables): keep it.
+		// line the selection drops (the blank between two tables): keep it. Rows with
+		// no separator among them are paragraph text, which may merge.
+		sep := fixed || len(cands) > 0 || IsDiffTableSep(trim(rows[0]))
 		again := false
-		for j := 1; j < len(rows); j++ {
+		for j := 1; j < len(rows) && sep; j++ {
 			a, b := rows[j-1], rows[j]
 			sameOld := change[a] <= 0 && change[b] <= 0 && oldTable[a] != 0 && oldTable[a] == oldTable[b]
 			sameNew := change[a] >= 0 && change[b] >= 0 && newTable[a] != 0 && newTable[a] == newTable[b]
@@ -300,7 +311,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			}
 			for _, d := range drops {
 				if a < d && d < b {
-					applied[d], again = false, true
+					applied[d], again = change[d] > 0, true
 				}
 			}
 		}
@@ -308,12 +319,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			return true
 		}
 		// A block holds one table: the row right above its separator is the header (rows
-		// above that are paragraph text) and every row after it is data. A separator
-		// already kept fixes the table.
-		fixed := false
-		for _, r := range rows[1:] {
-			fixed = fixed || IsDiffTableSep(trim(r))
-		}
+		// above that are paragraph text) and every row after it is data.
 		if fixed {
 			continue
 		}
