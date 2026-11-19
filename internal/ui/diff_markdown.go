@@ -308,10 +308,15 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			if sameOld || sameNew {
 				continue
 			}
+			// One line is enough: a blank first, else what the old text had there.
+			best := -1
 			for _, d := range drops {
-				if a < d && d < b {
-					applied[d], again = change[d] > 0, true
+				if a < d && d < b && (best < 0 || diffGapRank(lines[d], change[d]) < diffGapRank(lines[best], change[best])) {
+					best = d
 				}
+			}
+			if best >= 0 {
+				applied[best], again = change[best] > 0, true
 			}
 		}
 		if again {
@@ -363,6 +368,18 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		}
 	}
 	return false
+}
+
+// diffGapRank orders the dropped lines that could keep two tables apart: a blank,
+// then a deleted line (the old text had it), then a rejected inserted one.
+func diffGapRank(line string, change int) int {
+	switch {
+	case strings.TrimSpace(line) == "":
+		return 0
+	case change < 0:
+		return 1
+	}
+	return 2
 }
 
 // diffLinkDest matches a link destination: <with spaces> or bare, with balanced
