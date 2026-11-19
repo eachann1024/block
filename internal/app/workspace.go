@@ -1642,6 +1642,29 @@ func (w *Workspace) ReorderNotebooks(fromIdx, toIdx int) {
 	w.RequestRedraw()
 }
 
+func entriesInDir(root string, entries []model.FileEntry, targetDir string) ([]model.FileEntry, bool) {
+	cleanTarget := filepath.Clean(targetDir)
+	if root != "" && filepath.Clean(root) == cleanTarget {
+		return entries, true
+	}
+	var walk func(items []model.FileEntry) ([]model.FileEntry, bool)
+	walk = func(items []model.FileEntry) ([]model.FileEntry, bool) {
+		for _, it := range items {
+			if !it.IsDir {
+				continue
+			}
+			if filepath.Clean(it.Path) == cleanTarget {
+				return it.Children, true
+			}
+			if got, ok := walk(it.Children); ok {
+				return got, true
+			}
+		}
+		return nil, false
+	}
+	return walk(entries)
+}
+
 // ReorderSibling reorders srcPath relative to targetPath inside parentDir and persists `state.FileOrder[parentDir]`.
 func (w *Workspace) ReorderSibling(parentDir, srcPath, targetPath string, after bool) {
 	cleanParent := filepath.Clean(parentDir)
@@ -1653,26 +1676,8 @@ func (w *Workspace) ReorderSibling(parentDir, srcPath, targetPath string, after 
 
 	w.mu.RLock()
 	sibs := findSameKindSiblings(w.entries, srcPath)
-	var allInDir []model.FileEntry
-	if filepath.Clean(w.state.Folder) == cleanParent {
-		allInDir = w.entries
-	} else {
-		var walkDir func(items []model.FileEntry) []model.FileEntry
-		walkDir = func(items []model.FileEntry) []model.FileEntry {
-			for _, it := range items {
-				if it.IsDir {
-					if filepath.Clean(it.Path) == cleanParent {
-						return it.Children
-					}
-					if got := walkDir(it.Children); got != nil {
-						return got
-					}
-				}
-			}
-			return nil
-		}
-		allInDir = walkDir(w.entries)
-	}
+	allInDir, _ := entriesInDir(w.state.Folder, w.entries, cleanParent)
+	allInDir = append([]model.FileEntry(nil), allInDir...)
 	w.mu.RUnlock()
 
 	if len(sibs) < 2 {
@@ -1950,7 +1955,8 @@ func (w *Workspace) CreateNewNote() (string, error) {
 	return created, nil
 }
 
-// CreateNewFolder creates a new subfolder in the target notebook folder and starts inline rename.
+// CreateNewFolder creates a new subfolder in the target notebook folder,
+// places it at the bottom of sibling folders, and starts inline rename.
 func (w *Workspace) CreateNewFolder() (string, error) {
 	folder := w.ActiveNotebook()
 	if folder == "" {
@@ -1963,8 +1969,98 @@ func (w *Workspace) CreateNewFolder() (string, error) {
 		return "", err
 	}
 	w.RescanNotebook()
+	if w.placeCreatedFolderAtBottom(targetDir, created) {
+		w.RescanNotebook()
+	}
 	w.beginCreatedItemRename(folder, created, true)
 	return created, nil
+}
+
+func (w *Workspace) placeCreatedFolderAtBottom(targetDir, created string) bool {
+	cleanTarget := filepath.Clean(targetDir)
+	cleanCreated := filepath.Clean(created)
+	createdBase := filepath.Base(cleanCreated)
+	if createdBase == "" || createdBase == "." {
+		return false
+	}
+
+	w.mu.RLock()
+	sortMode := w.state.TreeSort
+	root := w.state.Folder
+	inDir, found := entriesInDir(root, w.entries, cleanTarget)
+	inDirSnap := append([]model.FileEntry(nil), inDir...)
+	w.mu.RUnlock()
+
+	if sortMode != model.TreeSortManual {
+		nextState, err := files.UpdateState(func(st *model.AppState) {
+			if len(st.FileOrder) == 0 {
+				return
+			}
+			for key, children := range st.FileOrder {
+				if filepath.Clean(key) != cleanTarget {
+					continue
+				}
+				filtered := make([]string, 0, len(children)+1)
+				for _, child := range children {
+					full := child
+					if !filepath.IsAbs(full) {
+						full = filepath.Join(cleanTarget, child)
+					}
+					if filepath.Clean(full) != cleanCreated {
+						filtered = append(filtered, child)
+					}
+				}
+				st.FileOrder[key] = append(filtered, createdBase)
+			}
+		})
+		if err == nil {
+			w.mu.Lock()
+			w.state = nextState
+			w.mu.Unlock()
+		}
+		return false
+	}
+
+	if !found {
+		return false
+	}
+
+	var dirs, regularFiles []string
+	lastDirIdx := -1
+	createdIdx := -1
+	for i, it := range inDirSnap {
+		b := filepath.Base(it.Path)
+		if it.IsDir {
+			lastDirIdx = i
+			if filepath.Clean(it.Path) == cleanCreated {
+				createdIdx = i
+				continue
+			}
+			dirs = append(dirs, b)
+		} else {
+			regularFiles = append(regularFiles, b)
+		}
+	}
+	dirs = append(dirs, createdBase)
+	combined := append(dirs, regularFiles...)
+
+	nextState, err := files.UpdateState(func(st *model.AppState) {
+		if st.FileOrder == nil {
+			st.FileOrder = make(map[string][]string)
+		}
+		for key := range st.FileOrder {
+			if key != cleanTarget && filepath.Clean(key) == cleanTarget {
+				delete(st.FileOrder, key)
+			}
+		}
+		st.FileOrder[cleanTarget] = combined
+	})
+	if err == nil {
+		w.mu.Lock()
+		w.state = nextState
+		w.mu.Unlock()
+	}
+	return createdIdx != lastDirIdx
 }
 
 func (w *Workspace) finishSidebarRename(oldPath, newName string) error {

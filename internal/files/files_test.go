@@ -157,7 +157,8 @@ func TestScanNotebookSortingFilteringAndFileOrder(t *testing.T) {
 		t.Fatalf("sorted/filtered names = %v, want %v", names, want)
 	}
 
-	// Custom FileOrder puts note10.md before FolderA.
+	// Custom FileOrder reorders folders and files within their own groups while
+	// folders always retain higher priority than files.
 	entriesOrdered, err := ScanNotebook(root, ScanOptions{
 		HideNonMarkdown: true,
 		HideAssets:      true,
@@ -172,8 +173,66 @@ func TestScanNotebookSortingFilteringAndFileOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScanNotebook ordered: %v", err)
 	}
-	if entriesOrdered[0].RawName != "note10.md" || entriesOrdered[1].RawName != "FolderB" {
-		t.Fatalf("custom FileOrder not applied: got %s, %s", entriesOrdered[0].RawName, entriesOrdered[1].RawName)
+	var orderedNames []string
+	for _, e := range entriesOrdered {
+		orderedNames = append(orderedNames, e.RawName)
+	}
+	wantOrdered := []string{"FolderB", "FolderA", "note10.md", "note1.md", "note2.md", "笔记2.md", "笔记10.md"}
+	if strings.Join(orderedNames, ",") != strings.Join(wantOrdered, ",") {
+		t.Fatalf("custom FileOrder with folder priority: got %v, want %v", orderedNames, wantOrdered)
+	}
+
+	// Newly created folders always sort at the bottom of folders and above all files across all sort modes.
+	for _, dir := range []string{"Zebra", "阅读"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nf1, err := CreateNewFolder(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nf2, err := CreateNewFolder(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	en1, err := CreateNewFolder(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	_ = os.Chtimes(filepath.Join(root, "FolderA"), now.Add(-30*time.Second), now.Add(-30*time.Second))
+	_ = os.Chtimes(filepath.Join(root, "Zebra"), now.Add(-20*time.Second), now.Add(-20*time.Second))
+	_ = os.Chtimes(nf1, now.Add(-3*time.Second), now.Add(-3*time.Second))
+	_ = os.Chtimes(nf2, now.Add(-2*time.Second), now.Add(-2*time.Second))
+	_ = os.Chtimes(en1, now.Add(-1*time.Second), now.Add(-1*time.Second))
+	_ = os.Chtimes(filepath.Join(root, "note1.md"), now, now)
+
+	for _, mode := range []model.TreeSortMode{model.TreeSortManual, model.TreeSortName, model.TreeSortModified} {
+		gotEntries, err := ScanNotebook(root, ScanOptions{
+			HideNonMarkdown: true,
+			HideAssets:      true,
+			AssetsFolder:    "assets",
+			SortMode:        mode,
+			FileOrder: map[string][]string{
+				root: {"note10.md", "FolderB"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("ScanNotebook mode=%q: %v", mode, err)
+		}
+		// All 7 folders must come before all 5 files, and the 3 default new folders must be the last 3 folders.
+		for i, e := range gotEntries {
+			wantDir := i < 7
+			if e.IsDir != wantDir {
+				t.Fatalf("mode=%q idx=%d (%s) IsDir=%v, want %v", mode, i, e.RawName, e.IsDir, wantDir)
+			}
+		}
+		tailDirs := []string{gotEntries[4].RawName, gotEntries[5].RawName, gotEntries[6].RawName}
+		wantTail := []string{"新建文件夹", "新建文件夹 2", "New Folder"}
+		if strings.Join(tailDirs, ",") != strings.Join(wantTail, ",") {
+			t.Fatalf("mode=%q bottom folders = %v, want %v", mode, tailDirs, wantTail)
+		}
 	}
 }
 

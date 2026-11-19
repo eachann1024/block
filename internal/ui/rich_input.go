@@ -31,6 +31,19 @@ type RichLinkRange struct {
 	URL        string
 }
 
+// RichCodeEdge disambiguates caret placement and typing style at inline-code boundaries.
+type RichCodeEdge uint8
+
+const (
+	RichCodeEdgeNone RichCodeEdge = iota
+	// RichCodeEdgeAfter places the caret just outside the right edge of an inline code chip
+	// whose End == caret; typing exits MarkCode.
+	RichCodeEdgeAfter
+	// RichCodeEdgeInsideStart places the caret inside the left edge of an inline code chip
+	// whose Start == caret; typing enters MarkCode.
+	RichCodeEdgeInsideStart
+)
+
 // RichCodeRange marks a [Start, End) inline code chip range whose background fill
 // transitions uniformly across rest, hover, active caret/edit, and selection states.
 type RichCodeRange struct {
@@ -55,6 +68,7 @@ type RichDecorOptions struct {
 	LinkColor       ui.Color
 	CaretPos        int // < 0 means do not draw caret
 	CaretAff        ui.TextAffinity
+	CaretCodeEdge   RichCodeEdge
 	CaretColor      ui.Color
 	CaretAlpha      float32
 	HasChipBG       bool // whether any span carries an opaque background chip
@@ -169,6 +183,8 @@ type RichInputState struct {
 	readOnly        bool
 	suppressNavKeys bool
 	links           []RichLinkRange
+	codeRanges      []RichCodeRange
+	codeEdge        RichCodeEdge
 	onChange       func(newText string, anchor, caret int)
 	onSelect       func(anchor, caret int)
 	onCopy         func() bool
@@ -197,7 +213,54 @@ func (s *RichInputState) Sync(text string, anchor, caret int) {
 	s.anchor = clampRune(anchor, n)
 	s.caret = clampRune(caret, n)
 	s.affinity = ui.TextDownstream
+	s.codeEdge = RichCodeEdgeNone
 	s.hasDesired = false
+}
+
+// CodeEdge reports the current inline-code boundary state for the caret.
+func (s *RichInputState) CodeEdge() RichCodeEdge {
+	return s.codeEdge
+}
+
+func (s *RichInputState) codeRangeEndingAt(pos int) (RichCodeRange, bool) {
+	for _, cr := range s.codeRanges {
+		if cr.End > cr.Start && cr.End == pos {
+			return cr, true
+		}
+	}
+	return RichCodeRange{}, false
+}
+
+func (s *RichInputState) codeRangeStartingAt(pos int) (RichCodeRange, bool) {
+	for _, cr := range s.codeRanges {
+		if cr.End > cr.Start && cr.Start == pos {
+			return cr, true
+		}
+	}
+	return RichCodeRange{}, false
+}
+
+func (s *RichInputState) normalizeCodeEdge() {
+	if s.anchor != s.caret {
+		s.codeEdge = RichCodeEdgeNone
+		return
+	}
+	switch s.codeEdge {
+	case RichCodeEdgeAfter:
+		if _, ok := s.codeRangeEndingAt(s.caret); !ok {
+			s.codeEdge = RichCodeEdgeNone
+		}
+	case RichCodeEdgeInsideStart:
+		if _, ok := s.codeRangeStartingAt(s.caret); !ok {
+			s.codeEdge = RichCodeEdgeNone
+		}
+	}
+}
+
+func (s *RichInputState) setCodeEdge(edge RichCodeEdge) {
+	s.codeEdge = edge
+	s.normalizeCodeEdge()
+	s.blinkEpoch = time.Time{}
 }
 
 // SelectionRunes returns the current (anchor, caret) rune offsets.
@@ -287,7 +350,7 @@ func spansLayoutSig(spans []ui.Span) string {
 	return b.String()
 }
 
-func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose string) []ui.Span {
+func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose string, codeRanges []RichCodeRange, codeEdge RichCodeEdge) []ui.Span {
 	if compose == "" {
 		return base
 	}
@@ -297,6 +360,23 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 		}
 		base = []ui.Span{{Text: plain}}
 	}
+	hasCodeStartAt := func(pos int) bool {
+		for _, cr := range codeRanges {
+			if cr.End > cr.Start && cr.Start == pos {
+				return true
+			}
+		}
+		return false
+	}
+	hasCodeEndAt := func(pos int) bool {
+		for _, cr := range codeRanges {
+			if cr.End > cr.Start && cr.End == pos {
+				return true
+			}
+		}
+		return false
+	}
+
 	out := make([]ui.Span, 0, len(base)+2)
 	pos := 0
 	inserted := false
@@ -305,6 +385,26 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 		s0, s1 := pos, pos+len(rs)
 		pos = s1
 		if !inserted && caretRune >= s0 && caretRune <= s1 {
+			// If caret is inside the start of the upcoming code range, skip the preceding
+			// span's end boundary so composition inherits the code span's styling.
+			if caretRune == s1 && codeEdge == RichCodeEdgeInsideStart && hasCodeStartAt(caretRune) {
+				out = append(out, sp)
+				continue
+			}
+			// Caret outside the right edge of a code range: place plain composition after it.
+			if caretRune == s1 && codeEdge == RichCodeEdgeAfter && hasCodeEndAt(caretRune) {
+				out = append(out, sp)
+				out = append(out, ui.Span{Text: compose, Underline: true})
+				inserted = true
+				continue
+			}
+			// Caret outside the left edge of a leading code range: place plain composition before it.
+			if caretRune == s0 && codeEdge == RichCodeEdgeNone && hasCodeStartAt(caretRune) {
+				out = append(out, ui.Span{Text: compose, Underline: true})
+				out = append(out, sp)
+				inserted = true
+				continue
+			}
 			local := caretRune - s0
 			if local > 0 {
 				left := sp
@@ -565,6 +665,13 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	if a > z {
 		a, z = z, a
 	}
+	// Preserve code-boundary bias only for pure insertions at the active boundary so OnChange
+	// can apply the right MarkCode inheritance; deletions/replacements clear it immediately.
+	if a != z || ins == "" {
+		s.codeEdge = RichCodeEdgeNone
+	} else {
+		s.normalizeCodeEdge()
+	}
 	next := string(rs[:a]) + ins + string(rs[z:])
 	newCaret := a + utf8.RuneCountInString(ins)
 	s.text = next
@@ -576,6 +683,7 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	if s.onChange != nil {
 		s.onChange(s.text, s.anchor, s.caret)
 	}
+	s.codeEdge = RichCodeEdgeNone
 	s.displayText = s.virtualString()
 }
 
@@ -587,6 +695,7 @@ func (s *RichInputState) moveCaretTo(pos int, aff ui.TextAffinity, extend bool) 
 	if !extend {
 		s.anchor = pos
 	}
+	s.codeEdge = RichCodeEdgeNone
 	s.blinkEpoch = time.Time{}
 	if s.onSelect != nil {
 		s.onSelect(s.anchor, s.caret)
@@ -870,6 +979,11 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 		case ui.KeyE:
 			_, le := s.lineRuneEdges(s.caret)
 			s.moveCaretTo(le, ui.TextUpstream, shift)
+			if !shift {
+				if _, ok := s.codeRangeEndingAt(le); ok {
+					s.setCodeEdge(RichCodeEdgeAfter)
+				}
+			}
 			s.hasDesired = false
 			return true
 		case ui.KeyK:
@@ -920,6 +1034,11 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 				s.moveCaretTo(ls, ui.TextDownstream, shift)
 			} else {
 				s.moveCaretTo(le, ui.TextUpstream, shift)
+				if !shift {
+					if _, ok := s.codeRangeEndingAt(le); ok {
+						s.setCodeEdge(RichCodeEdgeAfter)
+					}
+				}
 			}
 		case word && left:
 			s.moveCaretTo(prevWordOff(rs, s.caret), ui.TextDownstream, shift)
@@ -932,6 +1051,33 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 		case lo != hi && !shift:
 			s.moveCaretTo(hi, ui.TextDownstream, false)
 		default:
+			s.normalizeCodeEdge()
+			if !shift {
+				if !left {
+					if _, ok := s.codeRangeStartingAt(s.caret); ok && s.codeEdge == RichCodeEdgeNone {
+						s.setCodeEdge(RichCodeEdgeInsideStart)
+						s.hasDesired = false
+						return true
+					}
+					if _, ok := s.codeRangeEndingAt(s.caret); ok && s.codeEdge == RichCodeEdgeNone {
+						s.setCodeEdge(RichCodeEdgeAfter)
+						s.hasDesired = false
+						return true
+					}
+				} else {
+					if _, ok := s.codeRangeEndingAt(s.caret); ok && s.codeEdge == RichCodeEdgeAfter {
+						s.setCodeEdge(RichCodeEdgeNone)
+						s.hasDesired = false
+						return true
+					}
+					if _, ok := s.codeRangeStartingAt(s.caret); ok && s.codeEdge == RichCodeEdgeInsideStart {
+						s.setCodeEdge(RichCodeEdgeNone)
+						s.hasDesired = false
+						return true
+					}
+				}
+			}
+			prevCaret := s.caret
 			lay := s.currentLayout()
 			curPos := ui.TextCaretPosition{Index: runeToUTF16Off(s.text, s.caret), Affinity: s.affinity}
 			dir := 1
@@ -950,6 +1096,13 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 			} else {
 				s.moveCaretTo(utf16ToRuneOff(s.text, next.Index), next.Affinity, shift)
 			}
+			if !shift && left && s.caret < prevCaret {
+				if cr, ok := s.codeRangeStartingAt(s.caret); ok && prevCaret > cr.Start && prevCaret <= cr.End {
+					s.setCodeEdge(RichCodeEdgeInsideStart)
+				} else if cr, ok := s.codeRangeEndingAt(s.caret); ok && prevCaret > cr.End {
+					s.setCodeEdge(RichCodeEdgeAfter)
+				}
+			}
 		}
 		s.hasDesired = false
 		return true
@@ -960,6 +1113,11 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 				s.moveCaretTo(0, ui.TextDownstream, shift)
 			} else {
 				s.moveCaretTo(n, ui.TextDownstream, shift)
+				if !shift {
+					if _, ok := s.codeRangeEndingAt(n); ok {
+						s.setCodeEdge(RichCodeEdgeAfter)
+					}
+				}
 			}
 			s.hasDesired = false
 			return true
@@ -986,9 +1144,19 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 	case ui.KeyEnd:
 		if m == ui.Ctrl {
 			s.moveCaretTo(n, ui.TextDownstream, shift)
+			if !shift {
+				if _, ok := s.codeRangeEndingAt(n); ok {
+					s.setCodeEdge(RichCodeEdgeAfter)
+				}
+			}
 		} else {
 			_, le := s.lineRuneEdges(s.caret)
 			s.moveCaretTo(le, ui.TextUpstream, shift)
+			if !shift {
+				if _, ok := s.codeRangeEndingAt(le); ok {
+					s.setCodeEdge(RichCodeEdgeAfter)
+				}
+			}
 		}
 		s.hasDesired = false
 		return true

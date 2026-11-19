@@ -551,3 +551,70 @@ func TestBrandSceneStaysBehindCardAndTransparentSearch(t *testing.T) {
 		t.Fatalf("expected transparent search-button without FieldBG %+v, got %+v", unwantedFieldBG, gotSearchRight)
 	}
 }
+
+func TestCreateNewFolderStaysAtFolderBottomAndAboveFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	files.SetDataDirOverride(dataDir)
+	t.Cleanup(func() { files.SetDataDirOverride("") })
+
+	nb := filepath.Join(t.TempDir(), "nb")
+	for _, dir := range []string{"Beta", "Zebra", "阅读"} {
+		if err := os.MkdirAll(filepath.Join(nb, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p1 := filepath.Join(nb, "note1.md")
+	p2 := filepath.Join(nb, "note2.md")
+	for _, p := range []string{p1, p2} {
+		if err := os.WriteFile(p, []byte("# "+filepath.Base(p)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ws := NewWorkspace(dataDir)
+	if err := ws.SetNotebook(nb); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reorder notes first so FileOrder[nb] exists before creating any folder.
+	ws.ReorderSibling(nb, p2, p1, false)
+
+	created1, err := ws.CreateNewFolder()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertOrder := func(step string, want []string) {
+		t.Helper()
+		entries := ws.Entries()
+		if len(entries) != len(want) {
+			t.Fatalf("%s: entries len=%d, want %d (%v)", step, len(entries), len(want), entries)
+		}
+		for i, w := range want {
+			if entries[i].RawName != w {
+				t.Fatalf("%s: entries[%d]=%q, want %q", step, i, entries[i].RawName, w)
+			}
+		}
+	}
+
+	assertOrder("after CreateNewFolder #1", []string{
+		"Beta", "Zebra", "阅读", filepath.Base(created1), "note2.md", "note1.md",
+	})
+
+	// Renaming the newly created folder in manual mode keeps it at the bottom of folders (above files).
+	if _, err := ws.RenameWorkspaceItem(created1, "Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	assertOrder("after rename to Alpha in manual mode", []string{
+		"Beta", "Zebra", "阅读", "Alpha", "note2.md", "note1.md",
+	})
+
+	// Creating a second new folder appends it after Alpha and still above all files.
+	created2, err := ws.CreateNewFolder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOrder("after CreateNewFolder #2", []string{
+		"Beta", "Zebra", "阅读", "Alpha", filepath.Base(created2), "note2.md", "note1.md",
+	})
+}
