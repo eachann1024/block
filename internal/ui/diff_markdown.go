@@ -96,11 +96,13 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 					continue
 				}
 				inIndented = false
-				inList = (diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0)
+				// Under paragraph text (not a list item) "-" or "==" is a setext underline,
+				// not an empty list item, which may not interrupt a paragraph.
+				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(t)
+				inList = !setext && ((diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0))
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) ||
-					(para && diffSetextRE.MatchString(t)))
+				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
 				prevBlank, para = !inList && ends, !ends
 			}
 			if fence != "" {
