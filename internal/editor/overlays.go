@@ -2539,9 +2539,9 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 									}
 								}
 								isLast := nextVisIdx == -1
-								isTable := !fenced[lineIdx] && appUi.IsDiffTableRow(trimmed)
+								isTable := tableCols[lineIdx] > 0
 								isHeader := isTable && lineIdx+1 < len(diff) && appUi.IsDiffTableSep(strings.TrimSpace(diff[lineIdx+1].Text))
-								nextIsTable := !isLast && appUi.IsDiffTableRow(strings.TrimSpace(diff[nextVisIdx].Text))
+								nextIsTable := !isLast && tableCols[nextVisIdx] > 0
 								needSep := !isLast && (isTable || nextIsTable || diff[nextVisIdx].Kind != dl.Kind)
 								switch dl.Kind {
 								case model.DiffEqual:

@@ -667,7 +667,8 @@ func ParseDiffTableCells(trimmed string) []string {
 
 // DiffTableCols gives each table row the column count of its whole table (the widest
 // row of the contiguous run of table lines outside code), so a short row still lines
-// up with its header. Non-table lines get 0.
+// up with its header. Non-table lines get 0, and so do runs with no separator row,
+// which are plain text with bars.
 func DiffTableCols(lines []string, code []bool) []int {
 	cols := make([]int, len(lines))
 	for i := 0; i < len(lines); {
@@ -675,9 +676,13 @@ func DiffTableCols(lines []string, code []bool) []int {
 			i++
 			continue
 		}
-		start, widest := i, 0
+		start, widest, sep := i, 0, false
 		for ; i < len(lines) && !code[i] && IsDiffTableRow(strings.TrimSpace(lines[i])); i++ {
 			widest = max(widest, len(ParseDiffTableCells(strings.TrimSpace(lines[i]))))
+			sep = sep || i > start && IsDiffTableSep(strings.TrimSpace(lines[i]))
+		}
+		if !sep {
+			continue
 		}
 		for j := start; j < i; j++ {
 			cols[j] = widest

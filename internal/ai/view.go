@@ -1585,8 +1585,8 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 						isFirst := pos == 0
 						isLast := pos+1 == totalVis
 						code := fenced[dl.Index]
-						isTable := !code && bui.IsDiffTableRow(trimmed)
-						nextIsTable := pos+1 < totalVis && !fenced[visible[pos+1].Index] && bui.IsDiffTableRow(strings.TrimSpace(visible[pos+1].Text))
+						isTable := !code && tableCols[dl.Index] > 0
+						nextIsTable := pos+1 < totalVis && tableCols[visible[pos+1].Index] > 0
 						isHeader := (dl.Index+1 < len(lines) && bui.IsDiffTableSep(strings.TrimSpace(lines[dl.Index+1].Text))) ||
 							strings.Contains(strings.ToLower(trimmed), "<th")
 
