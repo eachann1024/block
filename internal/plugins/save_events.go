@@ -35,6 +35,12 @@ func (s *Supervisor) NotifyNoteSaved(absNotePath string) {
 	s.notifyNoteWritten("", s.NotebookRoot(), absNotePath)
 }
 
+// NotifyNoteSavedFrom is NotifyNoteSaved for a save caused by a plugin's own
+// editor write; that plugin does not receive the echo.
+func (s *Supervisor) NotifyNoteSavedFrom(sourcePluginID, absNotePath string) {
+	s.notifyNoteWritten(sourcePluginID, s.NotebookRoot(), absNotePath)
+}
+
 func (s *Supervisor) notifyNoteWritten(sourcePluginID, nbRoot, absNotePath string) {
 	relSlash, ok := relativeNotePath(nbRoot, absNotePath)
 	if !ok {

@@ -717,6 +717,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.storeErr = ""
 		s.deleteViewsForPluginLocked(pluginID)
 		s.mu.Unlock()
+		s.contrib.forgetPlugin(pluginID)
 
 		if onDone != nil {
 			onDone()
@@ -1666,6 +1667,11 @@ func openLocalPathInOS(downloadsDir, rawPath string, reveal bool) {
 }
 
 func (s *Supervisor) ShutdownAll() {
+	// Release host calls parked on the UI thread first: ShutdownAll usually
+	// runs on that thread, and a plugin waiting on it would stall shutdown.
+	if c, ok := s.cfg.UI.(interface{ HostClosing() }); ok {
+		c.HostClosing()
+	}
 	s.mu.Lock()
 	s.stopping = true
 	for k := range s.liveTimers {

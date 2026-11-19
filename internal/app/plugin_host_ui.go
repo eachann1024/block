@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +15,14 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const pluginToastDuration = 3 * time.Second
+const (
+	pluginToastDuration = 3 * time.Second
+	// pluginToastQueueMax bounds queued toasts so a chatty plugin cannot
+	// build an endless backlog.
+	pluginToastQueueMax = 4
+)
+
+var errHostClosing = errors.New("host is shutting down")
 
 type pluginToast struct {
 	ID       uint64
@@ -46,6 +54,12 @@ type pluginHostUI struct {
 	panelWidthVal   float32
 	editorHasFocus  bool
 	editorFocusNote string
+	// insertSource maps a note path to the plugin whose editor write is not
+	// saved yet, so that plugin does not receive its own note.saved echo.
+	insertSource map[string]string
+
+	closing     chan struct{}
+	closingOnce sync.Once
 }
 
 var _ plugins.UIHost = (*pluginHostUI)(nil)
@@ -54,7 +68,49 @@ func newPluginHostUI(w *Workspace) *pluginHostUI {
 	return &pluginHostUI{
 		w:             w,
 		panelWidthVal: ChatDefaultW,
+		insertSource:  map[string]string{},
+		closing:       make(chan struct{}),
 	}
+}
+
+// HostClosing unblocks plugin calls waiting on the UI thread; the supervisor
+// calls it before shutting runtimes down.
+func (h *pluginHostUI) HostClosing() {
+	h.closingOnce.Do(func() { close(h.closing) })
+}
+
+// onMainWait runs fn on the UI thread and waits for it, unless the host starts
+// closing first. Plugin RPC goroutines use it for calls that return a result.
+func (h *pluginHostUI) onMainWait(fn func()) error {
+	if !mygo.App.IsReady() {
+		fn()
+		return nil
+	}
+	select {
+	case <-h.closing:
+		return errHostClosing
+	default:
+	}
+	done := make(chan struct{})
+	go func() {
+		mygo.RunOnMain(fn)
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-h.closing:
+		return errHostClosing
+	}
+}
+
+func (h *pluginHostUI) takeInsertSource(absPath string) string {
+	key := filepath.Clean(absPath)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	src := h.insertSource[key]
+	delete(h.insertSource, key)
+	return src
 }
 
 func (h *pluginHostUI) onMain(fn func()) {
@@ -86,6 +142,16 @@ func (h *pluginHostUI) Toast(pluginID, message, tone string) {
 	normTone := normalizeToastTone(tone)
 	h.onMain(func() {
 		h.mu.Lock()
+		for _, t := range h.toasts {
+			if t.PluginID == pluginID && t.Message == msg {
+				h.mu.Unlock()
+				return
+			}
+		}
+		if len(h.toasts) >= pluginToastQueueMax {
+			// Keep the visible toast; replace the oldest waiting one.
+			h.toasts = append(h.toasts[:1], h.toasts[2:]...)
+		}
 		h.nextToastID++
 		id := h.nextToastID
 		h.toasts = append(h.toasts, pluginToast{
@@ -321,11 +387,17 @@ func (h *pluginHostUI) setEditorFocus(notePath string, focused bool) {
 }
 
 func (h *pluginHostUI) EditorSelection() (plugins.EditorSelection, error) {
-	var (
-		out plugins.EditorSelection
+	type result struct {
+		sel plugins.EditorSelection
 		err error
-	)
-	h.onMain(func() {
+	}
+	ch := make(chan result, 1)
+	if cerr := h.onMainWait(func() {
+		var (
+			out plugins.EditorSelection
+			err error
+		)
+		defer func() { ch <- result{out, err} }()
 		if h.w.modals != nil && h.w.modals.IsSettingsOpen() {
 			err = errors.New("no active note editor")
 			return
@@ -356,13 +428,18 @@ func (h *pluginHostUI) EditorSelection() (plugins.EditorSelection, error) {
 			Text:     sess.SelectedMarkdown(),
 			HasFocus: hasFocus,
 		}
-	})
-	return out, err
+	}); cerr != nil {
+		return plugins.EditorSelection{}, cerr
+	}
+	r := <-ch
+	return r.sel, r.err
 }
 
-func (h *pluginHostUI) EditorInsert(text string) error {
-	var err error
-	h.onMain(func() {
+func (h *pluginHostUI) EditorInsert(pluginID, expectedNote, text string) error {
+	ch := make(chan error, 1)
+	if cerr := h.onMainWait(func() {
+		var err error
+		defer func() { ch <- err }()
 		if h.w.modals != nil && h.w.modals.IsSettingsOpen() {
 			err = errors.New("no active note editor")
 			return
@@ -385,6 +462,16 @@ func (h *pluginHostUI) EditorInsert(text string) error {
 			err = errors.New("no active note editor")
 			return
 		}
+		if expectedNote != "" {
+			activeRel := ""
+			if sup := h.w.Plugins(); sup != nil {
+				activeRel = sup.ActiveNoteRel()
+			}
+			if activeRel != expectedNote {
+				err = errors.New("active note changed")
+				return
+			}
+		}
 		_, _, _, _, nonEmpty := sess.SelectionKey()
 		if nonEmpty {
 			if !sess.ReplaceSelectionWithText(text) {
@@ -394,8 +481,41 @@ func (h *pluginHostUI) EditorInsert(text string) error {
 		} else if text != "" {
 			sess.PastePlainText(text)
 		}
+		h.mu.Lock()
+		h.insertSource[filepath.Clean(activeTab)] = pluginID
+		h.mu.Unlock()
 		h.w.flushOrScheduleDirtySessions()
 		h.w.RequestRedraw()
-	})
-	return err
+	}); cerr != nil {
+		return cerr
+	}
+	return <-ch
+}
+
+// isHostReservedShortcut reports chords the editor or app handles after plugin
+// shortcuts run (find, formatting, clipboard, zoom, tab navigation). Plugins
+// cannot bind them, so a plugin never shadows a built-in action.
+func isHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
+	switch mods {
+	case ui.Cmd:
+		switch key {
+		case ui.KeyA, ui.KeyB, ui.KeyC, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyI,
+			ui.KeyS, ui.KeyU, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
+			ui.KeyEqual, ui.KeyMinus, ui.Key0, ui.KeyBackslash,
+			ui.KeyBracketLeft, ui.KeyBracketRight:
+			return true
+		}
+		return key >= ui.Key1 && key <= ui.Key9
+	case ui.Cmd | ui.Shift:
+		switch key {
+		case ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
+			ui.KeyBracketLeft, ui.KeyBracketRight:
+			return true
+		}
+	case ui.Cmd | ui.Shift | ui.Alt:
+		return key == ui.KeyV
+	case ui.Cmd | ui.Alt:
+		return key == ui.KeyLeft || key == ui.KeyRight
+	}
+	return false
 }
