@@ -239,15 +239,15 @@ func validFeedbackEmail(s string) bool {
 func (m *Manager) renderFeedbackModal(c *ui.Context) {
 	pal := theme.Ocean()
 	open := true
-	title := theme.Tr("给我们带句话", "Send us a note")
+	title := theme.Tr("意见反馈", "Feedback")
 
-	width := float32(500)
+	width := float32(480)
 	if m.feedbackDone {
 		width = 400
 	}
 	internalui.Dialog(c, "feedback-modal", title, &open, internalui.ModalLayout{Width: width, Centered: true}, func() {
 		if m.feedbackDone {
-			doneBox := ui.Column(c.Key("feedback-done")).FillWidth().Padding(28).Gap(14).AlignItems(ui.Center).
+			doneBox := ui.Column(c.Key("feedback-done")).FillWidth().Padding(theme.Space24).Gap(theme.Space12).AlignItems(ui.Center).
 				Transition(internalui.SurfaceStageTransition())
 			internalui.Probe(doneBox, "feedback-done")
 			doneBox.Children(func() {
@@ -255,12 +255,12 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 					Border(1, pal.Success).Center().Children(func() {
 					icons.DrawAnimated(c, icons.Check, 24, pal.MonoIconColors(pal.Success), true)
 				})
-				ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
-				note := theme.Tr("我们会认真看每一条反馈。", "We read every piece of feedback carefully.")
+				ui.Text(c, theme.Tr("收到了，谢谢你", "Got it, thank you")).
+					FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				if m.feedbackSentContact != "" {
-					note = theme.Tr("我们会认真看，有进展会发到 "+m.feedbackSentContact+"。", "We will reply to "+m.feedbackSentContact+".")
+					ui.Text(c, theme.Tr("有进展会回复到 "+m.feedbackSentContact, "We will reply to "+m.feedbackSentContact)).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 				}
-				ui.Text(c, note).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 				doneBtn := internalui.ActionButton(c, "feedback-done-close", theme.Tr("好的", "Done"), nil, internalui.ButtonSecondary, false)
 				if doneBtn.Clicked() {
 					m.CloseFeedback()
@@ -269,11 +269,14 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 			return
 		}
 
-		ui.Column(c.Key("feedback-form")).FillWidth().Padding(24).Gap(18).
+		ui.Column(c.Key("feedback-form")).FillWidth().MinWidth(0).
 			Transition(internalui.SurfaceStageTransition()).Children(func() {
-			// Header.
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+			// Header bar.
+			ui.Row(c.Key("feedback-header")).FillWidth().Height(48).PaddingX(theme.Space20).
+				AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
+				ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
+					FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:    "feedback-close",
 					Label: theme.Tr("关闭", "Close"),
@@ -283,79 +286,113 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 				}
 			})
 
-			// Category chips: bug / idea / other.
-			cats := []struct {
-				code string
-				zh   string
-				en   string
-				phZh string
-				phEn string
-			}{
-				{"bug", "问题反馈", "Bug", "哪里出了问题？怎么操作会出现？", "What went wrong, and how can we reproduce it?"},
-				{"idea", "功能建议", "Feature idea", "希望加什么功能，或者哪里可以更好用？", "What would you like added or improved?"},
-				{"other", "其他", "Other", "有什么想法或疑问，随便聊聊。", "Anything on your mind — questions or notes."},
-			}
-			activePH := cats[0].phZh
-			if theme.IsEn() {
-				activePH = cats[0].phEn
-			}
-			ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
-				for _, cat := range cats {
-					selected := m.feedbackCategory == cat.code
-					if selected {
-						activePH = theme.Tr(cat.phZh, cat.phEn)
+			// Body.
+			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space16, theme.Space20).Gap(theme.Space16).Children(func() {
+				// Category segmented control: bug / idea / other.
+				cats := []struct {
+					code string
+					zh   string
+					en   string
+					phZh string
+					phEn string
+				}{
+					{"bug", "问题反馈", "Bug", "描述遇到的问题或复现步骤…", "Describe the issue or steps to reproduce…"},
+					{"idea", "功能建议", "Feature idea", "描述希望新增或改进的功能…", "Describe the feature or improvement…"},
+					{"other", "其他", "Other", "写下你的想法或问题…", "Write your feedback…"},
+				}
+				catIdx := 0
+				segOpts := make([]internalui.SegmentOption, len(cats))
+				for i, cat := range cats {
+					if m.feedbackCategory == cat.code {
+						catIdx = i
 					}
-					chipID := "feedback-cat-" + cat.code
-					label := theme.Tr(cat.zh, cat.en)
-					style := internalui.ButtonSecondary
-					if selected {
-						style = internalui.ButtonPrimary
-					}
-					btn := internalui.ActionButton(c, chipID, label, nil, style, false)
-					if selected {
-						btn.Border(1, ui.Transparent)
-					}
-					if btn.Clicked() && m.feedbackCategory != cat.code {
-						m.feedbackCategory = cat.code
-						m.feedbackErr = ""
-						m.persistFeedbackDraft()
+					segOpts[i] = internalui.SegmentOption{
+						ID:    "feedback-cat-" + cat.code,
+						Label: theme.Tr(cat.zh, cat.en),
 					}
 				}
-			})
-
-			// Message textarea.
-			msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
-				Placeholder(activePH).PlaceholderColor(pal.Placeholder).Label(theme.Tr("反馈内容", "Feedback message")).
-				FillWidth().Height(116)
-			internalui.AutoHideScrollbars(c, msgIn)
-			internalui.Probe(msgIn, "feedback-message")
-			if msgIn.Changed() {
-				m.feedbackErr = ""
-				m.persistFeedbackDraft()
-			}
-
-			// Optional contact email input.
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, theme.Tr("回复邮箱（选填）", "Reply email (optional)")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
-				contactIn := ui.TextInput(c.Key("feedback-contact"), &m.feedbackContact).
-					Placeholder(theme.Tr("留了邮箱，回复会发到这里", "We reply here if you leave one")).
-					PlaceholderColor(pal.Placeholder).
-					Label(theme.Tr("回复邮箱", "Reply email")).FillWidth().Height(38)
-				internalui.Probe(contactIn, "feedback-contact")
-				if contactIn.Changed() {
+				activePH := theme.Tr(cats[catIdx].phZh, cats[catIdx].phEn)
+				if internalui.SegmentedControlWithOptions(c, "feedback-cat-seg", &catIdx, segOpts, internalui.SegmentedControlOptions{
+					FillWidth:     true,
+					Quiet:         true,
+					TrackHeight:   theme.HeightLarge,
+					TrackPadding:  theme.Space4,
+					SegmentHeight: theme.HeightCompact,
+					SegmentRadius: theme.RadiusSM,
+				}) {
+					m.feedbackCategory = cats[catIdx].code
 					m.feedbackErr = ""
 					m.persistFeedbackDraft()
 				}
+
+				// Message textarea.
+				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+					ui.Text(c, theme.Tr("内容", "Message")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						FontWeight(theme.WeightRegular).TextColor(pal.TextSecondary).SingleLine()
+					msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
+						Placeholder(activePH).PlaceholderColor(pal.Placeholder).
+						Label(theme.Tr("反馈内容", "Feedback message")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						Padding(theme.Space8, theme.Space10).Radius(theme.RadiusMD).TextColor(pal.Text).
+						FillWidth().MinWidth(0).Height(116)
+					if msgIn.Focused() {
+						msgIn.Background(pal.Card).Border(1, pal.Accent)
+					} else if msgIn.Hovered() {
+						msgIn.Background(pal.Shell).Border(1, pal.BtnBorder)
+					} else {
+						msgIn.Background(pal.Shell).Border(1, pal.Hairline)
+					}
+					internalui.AutoHideScrollbars(c, msgIn)
+					internalui.Probe(msgIn, "feedback-message")
+					if msgIn.Changed() {
+						m.feedbackErr = ""
+						m.persistFeedbackDraft()
+					}
+				})
+
+				// Optional contact email input.
+				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+					ui.Text(c, theme.Tr("回复邮箱（选填）", "Reply email (optional)")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						FontWeight(theme.WeightRegular).TextColor(pal.TextSecondary).SingleLine()
+					contactIn := ui.TextInput(c.Key("feedback-contact"), &m.feedbackContact).
+						Placeholder("name@example.com").PlaceholderColor(pal.Placeholder).
+						Label(theme.Tr("回复邮箱", "Reply email")).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						Height(theme.HeightControl).Padding(0, theme.Space10).Radius(theme.RadiusMD).TextColor(pal.Text).
+						FillWidth().MinWidth(0)
+					if contactIn.Focused() {
+						contactIn.Background(pal.Card).Border(1, pal.Accent)
+					} else if contactIn.Hovered() {
+						contactIn.Background(pal.Shell).Border(1, pal.BtnBorder)
+					} else {
+						contactIn.Background(pal.Shell).Border(1, pal.Hairline)
+					}
+					internalui.Probe(contactIn, "feedback-contact")
+					if contactIn.Changed() {
+						m.feedbackErr = ""
+						m.persistFeedbackDraft()
+					}
+				})
+
+				if m.feedbackErr != "" {
+					ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space8, theme.Space12).Radius(theme.RadiusMD).
+						Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
+						ui.Text(c, m.feedbackErr).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							TextColor(pal.Danger).Grow(1).MinWidth(0)
+					})
+				}
 			})
 
-			// Footer status + Send button.
-			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).Children(func() {
-				if m.feedbackErr != "" {
-					ui.Text(c, m.feedbackErr).FontSize(theme.FontBody).TextColor(pal.Danger).Grow(1).MinWidth(0)
-				} else if strings.TrimSpace(m.feedbackMessage) != "" || strings.TrimSpace(m.feedbackContact) != "" {
-					ui.Text(c, theme.Tr("草稿已自动保存", "Draft auto-saved")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				} else {
-					ui.Box(c).Grow(1)
+			// Footer bar.
+			ui.Row(c.Key("feedback-footer")).FillWidth().MinWidth(0).
+				Padding(theme.Space12, theme.Space20).
+				BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
+				AlignItems(ui.Center).Justify(ui.End).Gap(theme.Space8).Children(func() {
+				cancelBtn := internalui.ActionButton(c, "feedback-cancel", theme.Tr("取消", "Cancel"), nil, internalui.ButtonSecondary, false)
+				if cancelBtn.Clicked() {
+					m.CloseFeedback()
 				}
 				sendIc := icons.Send
 				sendBtn := internalui.ActionButton(c, "feedback-send", theme.Tr("发送", "Send"), &sendIc, internalui.ButtonPrimary, false)
