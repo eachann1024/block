@@ -264,10 +264,20 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 		estH = min(float32(len(convs))*32+float32(max(len(convs)-1, 0))*2+theme.MenuPadding*2+2, maxH)
 	}
 	x, y := bui.ResolveOrigin(spec, menuW, estH, winW, winH)
+	rowH := float32(32)
+	scrimBox := ui.Rect{X: panelBox.X, Y: panelBox.Y + theme.TitleBarHeight, W: panelBox.W, H: max(panelBox.H-theme.TitleBarHeight, 0)}
+	if fullscreen {
+		// Full-screen mode docks history as a full-height right drawer instead of a small popover.
+		menuW = min(theme.AIHistoryDrawerWidth, max(panelBox.W-2*theme.Space8, 1))
+		x = panelBox.X + panelBox.W - menuW - theme.Space8
+		y = panelBox.Y + theme.TitleBarHeight
+		maxH = max(panelBox.H-theme.TitleBarHeight-theme.Space8, 48)
+		rowH = theme.AIHistoryDrawerRowHeight
+	}
 
 	ui.Overlay(cUI, func() {
 		scrim := ui.Box(cUI.Key("ai-history-scrim")).Absolute().
-			Left(panelBox.X).Top(panelBox.Y + theme.TitleBarHeight).Width(panelBox.W).Height(max(panelBox.H-theme.TitleBarHeight, 0)).
+			Left(scrimBox.X).Top(scrimBox.Y).Width(scrimBox.W).Height(scrimBox.H).
 			Background(pal.Scrim()).
 			Transition(ui.ElementTransition{
 				Duration: time.Duration(theme.MotionMs) * time.Millisecond,
@@ -281,8 +291,12 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 			c.mu.Unlock()
 		}
 
-		panel := bui.Elevate(ui.Column(cUI.Key("ai-history-popover")).Absolute().Left(x).Top(y).
-			Width(menuW).MaxHeight(maxH).Padding(theme.MenuPadding).Gap(theme.Space2).
+		panel := ui.Column(cUI.Key("ai-history-popover")).Absolute().Left(x).Top(y).
+			Width(menuW).MaxHeight(maxH)
+		if fullscreen {
+			panel.Height(maxH)
+		}
+		panel = bui.Elevate(panel.Padding(theme.MenuPadding).Gap(theme.Space2).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
 			Clip().
 			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
@@ -329,7 +343,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 						active := convID == curID
 						highlighted := idx == *histCursor
 						rowID := fmt.Sprintf("conv-%d", convID)
-						row := ui.Row(cUI.Key(rowID)).FillWidth().Height(32).PaddingX(8).Gap(8).
+						row := ui.Row(cUI.Key(rowID)).FillWidth().Height(rowH).PaddingX(8).Gap(8).
 							AlignItems(ui.Center).Radius(theme.RadiusMD).
 							Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
 						bui.RevealOnHighlight(row, highlighted)

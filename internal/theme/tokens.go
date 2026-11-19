@@ -186,6 +186,10 @@ const (
 	EdgeFloatDwellMs             = 140
 	EdgeFloatLeaveMs             = 120
 
+	// Full-screen AI chat history drawer metrics.
+	AIHistoryDrawerWidth     float32 = 300
+	AIHistoryDrawerRowHeight float32 = 36
+
 	// Top-left outline rail hover-intent & leave grace timing.
 	OutlineHoverDelayMs = 220
 	OutlineHoverLeaveMs = 90
