@@ -1479,16 +1479,24 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 	remaining := 16_000
 	for i := userIndex - 1; i >= 0 && remaining > 0 && len(entries) < 16; i-- {
 		m := messages[i]
-		if (m.Role != "user" && m.Role != "assistant") || strings.TrimSpace(m.Content) == "" {
+		if m.Role != "user" && m.Role != "assistant" {
 			continue
 		}
-		text := truncateRunes(m.Content, remaining)
+		raw := m.Content
+		if m.Role == "user" {
+			raw = userMessageModelText(m, false)
+		}
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		text := truncateRunes(raw, remaining)
 		remaining -= utf8.RuneCountInString(text)
 		entries = append(entries, m.Role+": "+text)
 	}
 	m := messages[userIndex]
+	curText := userMessageModelText(m, true)
 	if len(entries) == 0 {
-		return m.Content + m.Context
+		return curText + m.Context
 	}
 	var prompt strings.Builder
 	prompt.WriteString("Previous chat messages:\n")
@@ -1497,7 +1505,7 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 		prompt.WriteString("\n")
 	}
 	prompt.WriteString("\nCurrent user message:\n")
-	prompt.WriteString(m.Content)
+	prompt.WriteString(curText)
 	prompt.WriteString(m.Context)
 	return prompt.String()
 }

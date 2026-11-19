@@ -17,6 +17,7 @@ import (
 	"block/assets"
 	"block/internal/model"
 	"block/internal/theme"
+	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 )
@@ -198,6 +199,15 @@ type Controller struct {
 	mockResponder        bool
 	mockApprovalFailOnce bool
 	onDismissFloating    func()
+	onPickAttachments    func()
+	onRevealPath         func(path string)
+
+	mediaCache     *attachmentMediaCache
+	lightboxOpen   bool              // synchronized under c.mu for cross-thread queries
+	lightbox       bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
+	lightboxSource attachmentLightboxSource
+	clipSeq        uint64
+	pendingClip    *pendingAttachmentClip
 	onEnabledChanged     func(bool)
 
 	activePlan     *ActivePlanPreview
@@ -676,13 +686,53 @@ func (c *Controller) SetOnDismissFloating(fn func()) {
 	c.mu.Unlock()
 }
 
+// SetOnPickAttachments registers a callback that opens a native file picker
+// and adds chosen files into the AI composer draft.
+func (c *Controller) SetOnPickAttachments(fn func()) {
+	c.mu.Lock()
+	c.onPickAttachments = fn
+	c.mu.Unlock()
+}
+
+// SetOnRevealPath registers a callback that reveals a cached attachment in Finder / File Manager.
+func (c *Controller) SetOnRevealPath(fn func(path string)) {
+	c.mu.Lock()
+	c.onRevealPath = fn
+	c.mu.Unlock()
+}
+
+// ContainsPoint reports whether a window-space point falls inside the rendered AI panel.
+func (c *Controller) ContainsPoint(x, y float32) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.open || !c.providerCfg.Enabled {
+		return false
+	}
+	if c.fullscreen {
+		return true
+	}
+	b := c.panelBox
+	if b.W <= 0 || b.H <= 0 {
+		return false
+	}
+	return x >= b.X && x <= b.X+b.W && y >= b.Y && y <= b.Y+b.H
+}
+
 // HasActiveOverlay reports whether the AI panel has an open popup (history, model deck,
-// or @/slash picker) that should keep a floating edge card alive while interacting.
+// attachment lightbox, or @/slash picker) that should keep a floating edge card alive while interacting.
 func (c *Controller) HasActiveOverlay() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
-	return c.historyOpen || c.deckOpen || pickerOpen
+	return c.historyOpen || c.deckOpen || c.lightboxOpen || pickerOpen
+}
+
+// IsLightboxOpen reports whether the full-window AI attachment lightbox is currently open
+// and its owning AI panel is active and enabled.
+func (c *Controller) IsLightboxOpen() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lightboxOpen && c.open && c.providerCfg.Enabled
 }
 
 // CloseTransientPopups closes transient AI header/composer popups.
@@ -690,6 +740,7 @@ func (c *Controller) CloseTransientPopups() {
 	c.mu.Lock()
 	c.historyOpen = false
 	c.deckOpen = false
+	c.lightboxOpen = false
 	c.pickerDismissed = true
 	c.mu.Unlock()
 }
@@ -706,6 +757,9 @@ func (c *Controller) SetOpen(open bool) {
 		if !open {
 			c.historyOpen = false
 			c.deckOpen = false
+			c.lightboxOpen = false
+			c.clipSeq++
+			c.pendingClip = nil
 		}
 		c.mu.Unlock()
 		if !open && dismissFn != nil {
@@ -717,6 +771,9 @@ func (c *Controller) SetOpen(open bool) {
 	if !open {
 		c.historyOpen = false
 		c.deckOpen = false
+		c.lightboxOpen = false
+		c.clipSeq++
+		c.pendingClip = nil
 		c.draftSelection = nil
 	} else {
 		c.composerHandle.Focus()
@@ -740,6 +797,9 @@ func (c *Controller) ToggleOpen() {
 	if !next {
 		c.historyOpen = false
 		c.deckOpen = false
+		c.lightboxOpen = false
+		c.clipSeq++
+		c.pendingClip = nil
 		c.draftSelection = nil
 	} else {
 		c.composerHandle.Focus()
@@ -965,6 +1025,9 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.fullscreen = false
 		c.historyOpen = false
 		c.deckOpen = false
+		c.lightboxOpen = false
+		c.clipSeq++
+		c.pendingClip = nil
 		c.pickerDismissed = true
 		c.draftSelection = nil
 		c.stopStreamingLocked()
@@ -1526,6 +1589,7 @@ func (c *Controller) NewConversation() {
 	c.turnError = ""
 	c.turnErrorSettings = false
 	c.historyOpen = false
+	c.lightboxOpen = false
 	c.pickIndex = 0
 	c.pickerDismissed = false
 	c.composerEpoch++
@@ -1559,6 +1623,7 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.currentID = id
 	c.scrollToBottom = id != 0
 	c.historyOpen = false
+	c.lightboxOpen = false
 	c.turnError = ""
 	c.turnErrorSettings = false
 	c.pickIndex = 0
@@ -1737,12 +1802,13 @@ func (c *Controller) SendPrompt(text string) {
 	}
 	original := c.draftText
 	question := strings.TrimSpace(original)
-	if question == "" && len(c.draftAttachments) > 0 {
-		question = theme.Tr("请查看附件。", "Please look at the attachments.")
-	}
-	if question == "" || question == "@" || question == "/" {
+	hasAttachments := len(c.draftAttachments) > 0
+	if !hasAttachments && (question == "" || question == "@" || question == "/") {
 		c.mu.Unlock()
 		return
+	}
+	if hasAttachments && (question == "@" || question == "/") {
+		question = ""
 	}
 	backend := c.selectedBackendLocked()
 	if !c.mockResponder && backend != model.BackendBuiltin && !supportsCLI(backend) {
@@ -1828,8 +1894,8 @@ func (c *Controller) SendPrompt(text string) {
 	c.draftSkills = nil
 	c.draftAttachments = nil
 	c.draftSelection = nil
-	for _, a := range atts {
-		shownBuf.WriteString("[" + a.Name + "] ")
+	if c.lightboxOpen && c.lightboxSource.isDraft {
+		c.lightboxOpen = false
 	}
 	ctxBuf.WriteString(attachmentText)
 	if sel != nil {
@@ -1859,7 +1925,11 @@ func (c *Controller) SendPrompt(text string) {
 
 	content := question
 	if shownBuf.Len() > 0 {
-		content = shownBuf.String() + question
+		if question == "" {
+			content = strings.TrimSpace(shownBuf.String())
+		} else {
+			content = shownBuf.String() + question
+		}
 	}
 
 	retryMatch := c.retryDraft != nil &&
@@ -1878,12 +1948,13 @@ func (c *Controller) SendPrompt(text string) {
 		conv.Messages[cp.MessageIndex].Context = ctxBuf.String()
 	} else {
 		c.pushMessageLocked(model.ChatMessage{
-			Role:        "user",
-			Content:     content,
-			Context:     ctxBuf.String(),
-			Refs:        refs,
-			Skills:      skills,
-			Attachments: atts,
+			Role:                "user",
+			Content:             content,
+			Context:             ctxBuf.String(),
+			Refs:                refs,
+			Skills:              skills,
+			Attachments:         atts,
+			AttachmentsSeparate: true,
 		})
 		conv := c.findConvLocked(c.currentID)
 		if conv != nil && len(conv.Messages) > 0 {
@@ -1988,10 +2059,7 @@ func (c *Controller) pushMessageLocked(msg model.ChatMessage) {
 		for c.hasConvLocked(id) {
 			id++
 		}
-		title := firstTitleLine(msg.Content)
-		if title == "" {
-			title = theme.Tr("新会话", "New Chat")
-		}
+		title := conversationTitleFromMessage(msg)
 		conv := model.Conversation{
 			ID:      id,
 			Title:   title,

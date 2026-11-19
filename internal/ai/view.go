@@ -41,6 +41,7 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 	}
 
 	c.refreshPickerIfNeeded()
+	c.flushPendingClipboard(cUI.Services())
 
 	pal := theme.Ocean()
 	c.mu.RLock()
@@ -73,7 +74,7 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 
 	c.mu.RLock()
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
-	anyOverlayOpen := c.historyOpen || c.deckOpen
+	anyOverlayOpen := c.historyOpen || c.deckOpen || c.lightboxOpen
 	c.mu.RUnlock()
 	if !anyOverlayOpen && pickerOpen && panel.Shortcut(0, ui.KeyEscape) {
 		c.mu.Lock()
@@ -95,13 +96,15 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 		c.renderPicker(cUI, pal, fullscreen)
 		c.renderComposerArea(cUI, pal, fullscreen, panelW)
 	})
+
+	c.renderAttachmentLightbox(cUI)
 }
 
 func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fullscreen bool, blocked bool, panelW float32) {
 	c.mu.RLock()
 	title := theme.Tr("新会话", "New Chat")
-	if conv := c.findConvLocked(c.currentID); conv != nil && strings.TrimSpace(conv.Title) != "" {
-		title = conv.Title
+	if conv := c.findConvLocked(c.currentID); conv != nil {
+		title = displayConversationTitle(*conv)
 	}
 	histOpen := c.historyOpen
 	c.mu.RUnlock()
@@ -360,10 +363,11 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 						bui.TactileCard(row, hovered, false, false, false)
 						bui.Probe(row, rowID)
 						row.Children(func() {
+							convTitle := displayConversationTitle(conv)
 							selBtn := ui.ButtonBase(cUI.Key("sel-" + rowID)).Grow(1).MinWidth(0).FillHeight().
-								AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).Label(conv.Title)
+								AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).Label(convTitle)
 							selBtn.Children(func() {
-								ui.Text(cUI, conv.Title).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Ellipsis("…")
+								ui.Text(cUI, convTitle).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Ellipsis("…")
 							})
 							if selBtn.Clicked() {
 								c.SelectConversation(convID)
@@ -374,7 +378,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 							delID := fmt.Sprintf("conv-del-%d", convID)
 							delBtn := bui.IconButton(cUI, icons.Trash, bui.IconButtonOptions{
 								ID:       delID,
-								Label:    theme.Tr("删除会话 ", "Delete ") + conv.Title,
+								Label:    theme.Tr("删除会话 ", "Delete ") + convTitle,
 								Size:     22,
 								IconSize: 14,
 								Danger:   true,
@@ -483,6 +487,7 @@ type cachedMsgEntry struct {
 	toolCallID string
 	procLen    int
 	srcLen     int
+	attLen     int
 	planStatus string
 	qSubmitted bool
 	appDec     model.ApprovalDecision
@@ -504,12 +509,14 @@ type cachedReply struct {
 }
 
 type cachedTurn struct {
-	key            string
-	startIdx       int
-	endIdx         int
-	hasUser        bool
-	userText       string
-	steps          []model.ProcessStep
+	key                     string
+	startIdx                int
+	endIdx                  int
+	hasUser                 bool
+	userText                string
+	userAttachments         []model.Attachment
+	userAttachmentsSeparate bool
+	steps                   []model.ProcessStep
 	notes          []string
 	sources        []model.SourceNote
 	hasPendingPlan bool
@@ -557,6 +564,9 @@ func cloneSingleMessage(m model.ChatMessage) model.ChatMessage {
 	if m.Skills != nil {
 		cp.Skills = append([]string(nil), m.Skills...)
 	}
+	if m.Attachments != nil {
+		cp.Attachments = slices.Clone(m.Attachments)
+	}
 	if m.Plan != nil {
 		p := *m.Plan
 		p.Ops = append([]model.PlanOp(nil), m.Plan.Ops...)
@@ -582,7 +592,7 @@ func cloneSingleMessage(m model.ChatMessage) model.ChatMessage {
 
 func msgFingerprintMatches(cached cachedMsgEntry, m model.ChatMessage) bool {
 	if cached.role != m.Role || cached.content != m.Content || cached.toolCallID != m.ToolCallID ||
-		cached.procLen != len(m.Process) || cached.srcLen != len(m.Sources) {
+		cached.procLen != len(m.Process) || cached.srcLen != len(m.Sources) || cached.attLen != len(m.Attachments) {
 		return false
 	}
 	planSt := ""
@@ -627,6 +637,7 @@ func makeCachedMsgEntry(m model.ChatMessage) cachedMsgEntry {
 		toolCallID: m.ToolCallID,
 		procLen:    len(m.Process),
 		srcLen:     len(m.Sources),
+		attLen:     len(m.Attachments),
 		planStatus: planSt,
 		qSubmitted: qSub,
 		appDec:     appDec,
@@ -725,6 +736,8 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 		if sc.msgs[start].msg.Role == "user" {
 			ct.hasUser = true
 			ct.userText = sc.msgs[start].msg.Content
+			ct.userAttachments = sc.msgs[start].msg.Attachments
+			ct.userAttachmentsSeparate = sc.msgs[start].msg.AttachmentsSeparate
 		}
 
 		var turnSlice []model.ChatMessage
@@ -759,7 +772,7 @@ func (sc *chatStreamCache) syncLocked(found *model.Conversation) {
 
 		estH := float32(0)
 		if ct.hasUser {
-			estH += 44
+			estH += 44 + estimateAttachmentsHeight(ct.userAttachments)
 		}
 		if len(ct.steps) > 0 {
 			estH += 48
@@ -901,7 +914,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 				turnWrap := ui.Column(cUI.Key("ai-turn-" + t.key)).FillWidth().Gap(16)
 				turnWrap.Children(func() {
 					if t.hasUser {
-						c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText)
+						c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText, t.userAttachments, t.userAttachmentsSeparate)
 					}
 
 					steps := t.steps
@@ -985,14 +998,23 @@ func appendStreamingProcess(baseSteps []model.ProcessStep, baseNotes []string, p
 	return steps, notes
 }
 
-func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string) {
+func (c *Controller) renderUserMessage(cUI *ui.Context, pal theme.Palette, convID uint64, idx int, text string, atts []model.Attachment, separate bool) {
 	ais := pal.AISurface()
+	cleanText := displayUserMessageText(text, atts, separate)
+	hasText := strings.TrimSpace(cleanText) != ""
 	ui.Row(cUI.Key(fmt.Sprintf("user-row-%d-%d", convID, idx))).FillWidth().Justify(ui.End).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(idx, true))).Children(func() {
-		bubble := ui.Box(cUI).MaxWidth(320).Padding(8, 12).Radius(theme.RadiusXL).Background(ais.UserBubbleBG)
-		bui.Probe(bubble, "ai-user-message")
-		bubble.Children(func() {
-			ui.Text(cUI, text).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text)
+		ui.Column(cUI).AlignItems(ui.End).Gap(theme.Space6).Children(func() {
+			if len(atts) > 0 {
+				c.renderUserMessageAttachments(cUI, pal, convID, idx, atts, !hasText)
+			}
+			if hasText || len(atts) == 0 {
+				bubble := ui.Box(cUI).MaxWidth(320).Padding(theme.Space8, theme.Space12).Radius(theme.RadiusXL).Background(ais.UserBubbleBG)
+				bui.Probe(bubble, "ai-user-message")
+				bubble.Children(func() {
+					ui.Text(cUI, cleanText).FontSize(theme.FontBody).LineHeight(1.5).TextColor(pal.Text)
+				})
+			}
 		})
 	})
 }
@@ -1028,6 +1050,9 @@ func (c *Controller) renderAssistantReply(cUI *ui.Context, pal theme.Palette, co
 					copyBtn.Opacity(0.05)
 				}
 				if copyBtn.Clicked() {
+					c.mu.Lock()
+					c.cancelPendingClipboardLocked()
+					c.mu.Unlock()
 					cUI.WriteClipboard(text)
 				}
 			})
@@ -2379,6 +2404,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	host := c.host
 	selectEnd := c.composerSelectEnd
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
+	onPickAttachments := c.onPickAttachments
 	c.mu.RUnlock()
 	var notebook string
 	if host != nil {
@@ -2404,11 +2430,41 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	ais := pal.AISurface()
 	var deckAnchor ui.Element
 	outer.Children(func() {
-		shell := ui.Column(cUI).FillWidth().Padding(theme.Space10, theme.Space10, theme.Space6, theme.Space12).Gap(theme.Space4).Radius(theme.RadiusLG).
-			Background(ais.ComposerBG).Border(1, ais.ComposerBorder)
+		shell := ui.Column(cUI.Key("ai-composer-shell")).FillWidth().Padding(theme.Space10, theme.Space10, theme.Space6, theme.Space12).Gap(theme.Space4).Radius(theme.RadiusLG).
+			Background(ais.ComposerBG)
+		dragOver := shell.FileDragOver()
+		shellBorder := ais.ComposerBorder
+		if dragOver {
+			shellBorder = pal.Accent
+		} else if shell.FocusWithin() {
+			shellBorder = ais.ComposerFocusBorder
+		} else if shell.Hovered() {
+			shellBorder = pal.BtnBorder
+		}
+		shell.Border(1, shellBorder)
+		var chipOrActionPressed bool
 		shell.Children(func() {
-			if sel != nil || len(refs) > 0 || len(skills) > 0 || len(atts) > 0 {
-				ui.Row(cUI).FillWidth().Gap(theme.Space6).Wrap().Children(func() {
+			if dragOver {
+				ui.Row(cUI.Key("ai-composer-drop-hint")).FillWidth().Height(theme.HeightMicro).
+					PaddingX(theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).
+					Radius(theme.RadiusSM).Background(ais.TintedSelectedBG).Border(1, pal.Accent).Children(func() {
+					icons.Draw(cUI, icons.Image, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+					ui.Text(cUI, theme.Tr("松开以添加图片或文件", "Drop images or files to attach")).
+						FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+				})
+			}
+			if len(atts) > 0 {
+				attWrap := ui.Column(cUI.Key("ai-composer-atts")).FillWidth()
+				attWrap.Children(func() {
+					c.renderComposerAttachments(cUI, pal, atts)
+				})
+				if attWrap.PressedInside() {
+					chipOrActionPressed = true
+				}
+			}
+			if sel != nil || len(refs) > 0 || len(skills) > 0 {
+				tagRow := ui.Row(cUI).FillWidth().Gap(theme.Space6).Wrap()
+				tagRow.Children(func() {
 					if sel != nil {
 						c.renderSelectionChip(cUI, pal, sel)
 					}
@@ -2418,10 +2474,10 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					for i, s := range skills {
 						c.renderDraftChip(cUI, pal, fmt.Sprintf("chip-skill-%d", i), false, s)
 					}
-					for i, a := range atts {
-						c.renderAttachmentChip(cUI, pal, fmt.Sprintf("chip-att-%d", i), a)
-					}
 				})
+				if tagRow.PressedInside() {
+					chipOrActionPressed = true
+				}
 			}
 
 			composerKey := fmt.Sprintf("ai-composer-%d", epoch)
@@ -2544,64 +2600,95 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 			actionsRow.Children(func() {
 				deckAnchor = c.renderDeckTrigger(cUI, pal)
 
-				if busy {
-					stopBtn := bui.ActionButton(cUI, "ai-chat-stop", theme.Tr("停止", "Stop"), nil, bui.ButtonSecondary, false)
-					if stopBtn.Clicked() {
-						c.StopStreaming()
-					}
-				} else {
-					canSend := strings.TrimSpace(draft) != "" || len(atts) > 0
-					dest := backend.DisplayName()
-					scope := theme.Tr("发送聊天文字与附件", "Sends chat text and attachments")
-					switch backend {
-					case model.BackendBuiltin:
-						dest = endpointHostLabel(provider.BaseURL)
-						if dest == "" {
-							dest = backend.DisplayName()
+				ui.Row(cUI).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+					if onPickAttachments != nil {
+						attachFull := len(atts) >= maxComposerAttachments
+						attachTip := theme.Tr("添加图片或文件", "Attach image or file")
+						if attachFull {
+							attachTip = theme.Tr("最多添加 10 个附件", "Up to 10 attachments")
 						}
-						scope = theme.Tr("发送聊天文字、附件、当前页名称与本轮笔记工具结果", "Sends chat text, attachments, the current page name, and this turn’s notebook tool results")
-					case model.BackendClaude, model.BackendCodex, model.BackendAgy:
-						scope = theme.Tr("发送聊天文字、附件与本轮笔记工具结果", "Sends chat text, attachments, and this turn’s notebook tool results")
-					}
-					sendTip := bui.TooltipSpec{
-						Placement: bui.TooltipAbove,
-						Rows: []bui.TooltipRow{
-							{Detail: scope + " · " + dest},
-							{
-								Trigger:     "Enter",
-								TriggerTone: bui.TooltipToneAccent,
-								Detail:      theme.Tr("发送消息", "to send"),
-							},
-							{
-								Trigger: "⇧ + Enter",
-								Detail:  theme.Tr("换行输入", "for new line"),
-							},
-						},
-					}
-					if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex || backend == model.BackendAgy) {
-						label := fmt.Sprintf(theme.Tr("Block 笔记工具可读取「%s」内已保存的 Markdown", "Block’s note tools may read saved Markdown in %s"), notebook)
-						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{Detail: label})
-					}
-					if nativeTools {
-						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{
-							Detail: theme.Tr("本机工具已启用，可运行命令和访问本机文件。", "Local tools are enabled and can run commands and access local files."),
+						attachBtn := bui.IconButton(cUI, icons.Image, bui.IconButtonOptions{
+							ID:           "ai-attach-file",
+							Label:        attachTip,
+							Tooltip:      attachTip,
+							TooltipAbove: true,
+							Size:         theme.HeightMicro,
+							IconSize:     theme.IconInline,
+							Disabled:     busy || attachFull,
 						})
+						if attachBtn.Clicked() {
+							onPickAttachments()
+						}
 					}
-					sendBtn := bui.IconButton(cUI, icons.ArrowUp, bui.IconButtonOptions{
-						ID:          "ai-chat-send",
-						Label:       theme.Tr("发送", "Send") + " · " + scope + " · " + dest,
-						TooltipSpec: &sendTip,
-						Size:        theme.HeightMicro,
-						IconSize:    theme.IconMicro,
-						Active:      canSend,
-						Disabled:    !canSend,
-					})
-					if sendBtn.Clicked() && canSend {
-						c.SendPrompt(draft)
+
+					if busy {
+						stopBtn := bui.ActionButton(cUI, "ai-chat-stop", theme.Tr("停止", "Stop"), nil, bui.ButtonSecondary, false)
+						if stopBtn.Clicked() {
+							c.StopStreaming()
+						}
+					} else {
+						canSend := strings.TrimSpace(draft) != "" || len(atts) > 0
+						dest := backend.DisplayName()
+						scope := theme.Tr("发送聊天文字与附件", "Sends chat text and attachments")
+						switch backend {
+						case model.BackendBuiltin:
+							dest = endpointHostLabel(provider.BaseURL)
+							if dest == "" {
+								dest = backend.DisplayName()
+							}
+							scope = theme.Tr("发送聊天文字、附件、当前页名称与本轮笔记工具结果", "Sends chat text, attachments, the current page name, and this turn’s notebook tool results")
+						case model.BackendClaude, model.BackendCodex, model.BackendAgy:
+							scope = theme.Tr("发送聊天文字、附件与本轮笔记工具结果", "Sends chat text, attachments, and this turn’s notebook tool results")
+						}
+						sendTip := bui.TooltipSpec{
+							Placement: bui.TooltipAbove,
+							Rows: []bui.TooltipRow{
+								{Detail: scope + " · " + dest},
+								{
+									Trigger:     "Enter",
+									TriggerTone: bui.TooltipToneAccent,
+									Detail:      theme.Tr("发送消息", "to send"),
+								},
+								{
+									Trigger: "⇧ + Enter",
+									Detail:  theme.Tr("换行输入", "for new line"),
+								},
+							},
+						}
+						if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex || backend == model.BackendAgy) {
+							label := fmt.Sprintf(theme.Tr("Block 笔记工具可读取「%s」内已保存的 Markdown", "Block’s note tools may read saved Markdown in %s"), notebook)
+							sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{Detail: label})
+						}
+						if nativeTools {
+							sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{
+								Detail: theme.Tr("本机工具已启用，可运行命令和访问本机文件。", "Local tools are enabled and can run commands and access local files."),
+							})
+						}
+						sendBtn := bui.IconButton(cUI, icons.ArrowUp, bui.IconButtonOptions{
+							ID:          "ai-chat-send",
+							Label:       theme.Tr("发送", "Send") + " · " + scope + " · " + dest,
+							TooltipSpec: &sendTip,
+							Size:        theme.HeightMicro,
+							IconSize:    theme.IconMicro,
+							Active:      canSend,
+							Disabled:    !canSend,
+						})
+						if sendBtn.Clicked() && canSend {
+							c.SendPrompt(draft)
+						}
 					}
-				}
+				})
 			})
+			if actionsRow.PressedInside() {
+				chipOrActionPressed = true
+			}
 		})
+		if shell.Clicked() && !chipOrActionPressed {
+			c.composerHandle.Focus()
+		}
+		if dropped := shell.DroppedFiles(); len(dropped) > 0 {
+			c.AddAttachmentFiles(dropped)
+		}
 	})
 
 	if deckAnchor.Valid() {
@@ -2635,31 +2722,6 @@ func (c *Controller) renderSelectionChip(cUI *ui.Context, pal theme.Palette, sel
 	})
 }
 
-func (c *Controller) renderAttachmentChip(cUI *ui.Context, pal theme.Palette, id string, att model.Attachment) {
-	ais := pal.AISurface()
-	ic := icons.Note
-	if att.IsImage() {
-		ic = icons.Image
-	}
-	chip := ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
-		Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
-	bui.Probe(chip, "ai-attachment-chip")
-	chip.Children(func() {
-		icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent), chip.Hovered())
-		ui.Text(cUI, att.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().MaxWidth(180)
-		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
-			ID:       id + "-x",
-			Label:    theme.Tr("移除 ", "Remove ") + att.Name,
-			Size:     20,
-			IconSize: 12,
-		})
-		if xBtn.Clicked() {
-			c.removeDraftAttachment(att)
-			c.composerHandle.Focus()
-		}
-	})
-}
-
 func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id string, isRef bool, name string) {
 	ais := pal.AISurface()
 	label := name
@@ -2670,16 +2732,24 @@ func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id stri
 		label = "/" + name
 		ic = icons.Sparkles
 	}
-	chip := ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
-		Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
+	chip := ui.Row(cUI.Key(id)).Height(theme.HeightCompact).Padding(0, theme.Space4, 0, theme.Space8).Gap(theme.Space4).AlignItems(ui.Center).Radius(theme.RadiusMD)
+	hovered := chip.Hovered()
+	border := ais.CapsuleBorder
+	bg := ais.CapsuleBG
+	if hovered {
+		border = pal.BtnBorder
+		bg = ais.HoverBG
+	}
+	bui.AnimateSurfaceColors(chip, bg, border, true)
 	chip.Children(func() {
-		icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent), chip.Hovered())
-		ui.Text(cUI, label).FontSize(theme.FontBody).TextColor(pal.Text)
+		icons.DrawAnimated(cUI, ic, theme.IconAction, pal.MonoIconColors(pal.Accent), hovered)
+		ui.Text(cUI, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().MaxWidth(180).Ellipsis("…")
 		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:       id + "-x",
 			Label:    theme.Tr("移除 ", "Remove ") + label,
-			Size:     20,
-			IconSize: 12,
+			Size:     theme.HeightMicro - theme.Space2,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusXS,
 		})
 		if xBtn.Clicked() {
 			c.mu.Lock()

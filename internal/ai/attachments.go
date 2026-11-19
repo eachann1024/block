@@ -51,7 +51,8 @@ func (c *Controller) handleComposerPaste(svc ui.Services) bool {
 			if detectMime(raw, "") != string(f.format) {
 				continue
 			}
-			if !c.addAttachmentBytes(raw, "image."+f.ext) {
+			name := c.uniqueDraftAttachmentName("image", "."+f.ext)
+			if !c.addAttachmentBytes(raw, name) {
 				c.showAttachmentPasteError()
 			}
 			return true
@@ -74,6 +75,45 @@ func clipboardPaths(data transfer.Data) []string {
 	}
 	paths, _ := data.Files()
 	return paths
+}
+
+func (c *Controller) uniqueDraftAttachmentName(base, ext string) string {
+	c.mu.RLock()
+	existing := make(map[string]bool, len(c.draftAttachments))
+	for _, a := range c.draftAttachments {
+		existing[a.Name] = true
+	}
+	c.mu.RUnlock()
+	cand := base + ext
+	if !existing[cand] {
+		return cand
+	}
+	for n := 2; n <= maxComposerAttachments+2; n++ {
+		cand = fmt.Sprintf("%s-%d%s", base, n, ext)
+		if !existing[cand] {
+			return cand
+		}
+	}
+	return base + ext
+}
+
+// AddAttachmentFiles imports local files into the active composer draft and
+// reports how many files were accepted.
+func (c *Controller) AddAttachmentFiles(paths []string) int {
+	if len(paths) == 0 {
+		return 0
+	}
+	added := c.addAttachmentFiles(paths)
+	if added < len(paths) {
+		c.showAttachmentPasteError()
+	}
+	if added > 0 {
+		c.mu.Lock()
+		c.composerHandle.Focus()
+		c.mu.Unlock()
+		c.requestRedraw()
+	}
+	return added
 }
 
 func (c *Controller) addAttachmentFiles(paths []string) int {
@@ -121,7 +161,9 @@ func (c *Controller) addAttachmentBytes(raw []byte, name string) bool {
 	dst := filepath.Join(dir, id+ext)
 	att := model.Attachment{Name: name, Path: dst, Mime: detectMime(raw, ext), Size: int64(len(raw))}
 	c.mu.Lock()
-	if slices.Contains(c.draftAttachments, att) {
+	if slices.ContainsFunc(c.draftAttachments, func(existing model.Attachment) bool {
+		return existing.Path == att.Path
+	}) {
 		c.mu.Unlock()
 		return true
 	}
@@ -194,6 +236,7 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 	var b strings.Builder
 	var images []map[string]any
 	imageBudget := int64(maxInlineImageBytes)
+	imageIdx := 0
 	for _, a := range atts {
 		name, err := filepath.Rel(dir, a.Path)
 		if err != nil || !filepath.IsLocal(name) || filepath.Base(name) != name {
@@ -212,8 +255,12 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 			}
 			imageBudget -= a.Size
+			imageIdx++
 			url := "data:" + a.Mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
-			images = append(images, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+			images = append(images,
+				map[string]any{"type": "text", "text": fmt.Sprintf("[Attached image %d: %s]", imageIdx, a.Name)},
+				map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}},
+			)
 			continue
 		}
 		if attachmentIsText(a) {
