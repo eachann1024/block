@@ -139,6 +139,9 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	cand := func(k int) bool { return change[k] != 0 && !shown[k] && IsDiffTableSep(trim(k)) }
 	kept := func(k int) bool { return change[k] == 0 || (change[k] < 0) != applied[k] }
 	take := func(k int, in bool) { applied[k] = (change[k] > 0) == in }
+	// A table nested in a list item is indented; a row at another indent belongs to a
+	// different table even with no line between them.
+	indent := func(k int) int { return len(lines[k]) - len(strings.TrimLeft(lines[k], " \t")) }
 
 	// Rows are read in the written text itself, so code that becomes a table (or a
 	// table that becomes code) counts the way the result parses.
@@ -157,18 +160,18 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	// oldTable[k]: which table of the old text line k sits in (0: none), to tell
 	// whether a deleted row belonged to the table it is judged with.
 	oldTable := make([]int, len(lines))
-	for k, id, prev := 0, 0, false; k < len(lines); k++ {
+	for k, id, prev := 0, 0, -1; k < len(lines); k++ {
 		if change[k] > 0 {
 			continue
 		}
-		in := !oldM[k] && IsDiffTableRow(trim(k))
-		if in && !prev {
-			id++
+		if !oldM[k] && IsDiffTableRow(trim(k)) {
+			if prev < 0 || indent(prev) != indent(k) {
+				id++
+			}
+			oldTable[k], prev = id, k
+		} else {
+			prev = -1
 		}
-		if in {
-			oldTable[k] = id
-		}
-		prev = in
 	}
 
 	for i := 0; i < len(lines); {
@@ -189,6 +192,9 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 					dels = append(dels, i)
 				}
 			case row[i]:
+				if len(rows) > 0 && indent(rows[len(rows)-1]) != indent(i) {
+					break run
+				}
 				rows = append(rows, i)
 			default:
 				break run
