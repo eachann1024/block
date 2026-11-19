@@ -1394,6 +1394,16 @@ var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // its edge bars.
 func plainInline(s string, refs map[string]bool, table bool) string {
 	s = strings.TrimSpace(s)
+	// Each cell reads on its own, as in the note: "| */src | dist/* |" keeps both
+	// stars. A cell's leading "-" or "1." is text, not a list marker.
+	if table {
+		if cells := bui.ParseDiffTableCells(s); cells != nil {
+			for k, c := range cells {
+				cells[k] = plainInline(bui.InlineStart(c), refs, false)
+			}
+			return strings.Join(cells, " | ")
+		}
+	}
 	if strings.Contains(s, "#") {
 		if h := plainBlockPrefixRE.FindString(s); strings.Contains(h, "#") {
 			s = h + plainClosingHashRE.ReplaceAllString(s[len(h):], "")
