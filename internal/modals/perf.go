@@ -3,13 +3,9 @@ package modals
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +15,8 @@ import (
 	internalui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
+
+var platformProcessStatsFn func() (cpu float64, rss uint64, ok bool)
 
 // PerfBreakdownEntry describes a single largest file or grouped item within a PerfCategory.
 type PerfBreakdownEntry struct {
@@ -188,13 +186,17 @@ func (m *Manager) triggerPerformanceRefresh() {
 			m.perfMu.Unlock()
 			return
 		}
+		cancel := m.perfCancel
 		m.perfCPU = cpu
 		m.perfRSS = rss
 		m.perfSamples++
 		m.perfMu.Unlock()
 		m.requestRedraw()
 
-		cats, lastScan, scanErr := scanPerformanceDisk("", nbRoots, dataDir)
+		cats, lastScan, scanErr := scanPerformanceDisk("", nbRoots, dataDir, cancel)
+		if isPerfScanCancelled(cancel) {
+			return
+		}
 		m.perfMu.Lock()
 		if !m.perfOpen || ex.refreshGen != gen {
 			m.perfMu.Unlock()
@@ -238,7 +240,7 @@ func (m *Manager) PerformanceCategories() []PerfCategory {
 // RefreshPerformanceDisk scans the 7 disk categories synchronously.
 // When `overrideRoot` is non-empty, all files under `overrideRoot` are scanned and classified.
 func (m *Manager) RefreshPerformanceDisk(overrideRoot string) {
-	cats, lastScan, scanErr := scanPerformanceDisk(overrideRoot, m.notebookRoots(), m.dataDir)
+	cats, lastScan, scanErr := scanPerformanceDisk(overrideRoot, m.notebookRoots(), m.dataDir, nil)
 
 	m.perfMu.Lock()
 	m.perfCategories = cats
@@ -262,7 +264,7 @@ func (m *Manager) PerfSnapshot(refreshDisk bool) PerfSnapshotData {
 	m.perfMu.Unlock()
 
 	if needDisk {
-		cats, lastScan, scanErr := scanPerformanceDisk("", m.notebookRoots(), dataDir)
+		cats, lastScan, scanErr := scanPerformanceDisk("", m.notebookRoots(), dataDir, nil)
 		m.perfMu.Lock()
 		m.perfCategories = cats
 		m.perfLastScan = lastScan
@@ -296,18 +298,57 @@ const perfMaxBreakdownEntries = 6
 type perfCategoryAccum struct {
 	bytes     uint64
 	fileCount int
-	buckets   map[string]*PerfBreakdownEntry
+	top       []PerfBreakdownEntry
+	groups    map[string]*PerfBreakdownEntry
 }
 
 func newPerfAccum() []perfCategoryAccum {
 	acc := make([]perfCategoryAccum, len(perfCategoryDefs))
 	for i := range acc {
-		acc[i].buckets = make(map[string]*PerfBreakdownEntry)
+		acc[i].top = make([]PerfBreakdownEntry, 0, perfMaxBreakdownEntries)
 	}
 	return acc
 }
 
-func (a *perfCategoryAccum) add(key, name, fullPath string, fileBytes uint64) {
+func perfEntryBetter(a, b PerfBreakdownEntry) bool {
+	if a.Bytes != b.Bytes {
+		return a.Bytes > b.Bytes
+	}
+	if a.Count != b.Count {
+		return a.Count > b.Count
+	}
+	return a.Name < b.Name
+}
+
+func insertTopPerfEntry(top *[]PerfBreakdownEntry, ent PerfBreakdownEntry, limit int) {
+	if limit <= 0 {
+		return
+	}
+	s := *top
+	n := len(s)
+	if n >= limit && !perfEntryBetter(ent, s[n-1]) {
+		return
+	}
+	pos := n
+	for i := 0; i < n; i++ {
+		if perfEntryBetter(ent, s[i]) {
+			pos = i
+			break
+		}
+	}
+	if n < limit {
+		s = append(s, PerfBreakdownEntry{})
+		copy(s[pos+1:], s[pos:n])
+		s[pos] = ent
+		*top = s
+		return
+	}
+	copy(s[pos+1:], s[pos:n-1])
+	s[pos] = ent
+	*top = s
+}
+
+func (a *perfCategoryAccum) add(key, name, fullPath string, fileBytes uint64, grouped bool) {
 	a.bytes += fileBytes
 	a.fileCount++
 	if key == "" {
@@ -316,40 +357,43 @@ func (a *perfCategoryAccum) add(key, name, fullPath string, fileBytes uint64) {
 	if name == "" {
 		name = filepath.Base(fullPath)
 	}
-	if cur, ok := a.buckets[key]; ok {
-		cur.Bytes += fileBytes
-		cur.Count++
+	if grouped {
+		if a.groups == nil {
+			a.groups = make(map[string]*PerfBreakdownEntry)
+		}
+		if cur, ok := a.groups[key]; ok {
+			cur.Bytes += fileBytes
+			cur.Count++
+			return
+		}
+		a.groups[key] = &PerfBreakdownEntry{
+			Name:  name,
+			Path:  fullPath,
+			Bytes: fileBytes,
+			Count: 1,
+		}
 		return
 	}
-	a.buckets[key] = &PerfBreakdownEntry{
+	insertTopPerfEntry(&a.top, PerfBreakdownEntry{
 		Name:  name,
 		Path:  fullPath,
 		Bytes: fileBytes,
 		Count: 1,
-	}
+	}, perfMaxBreakdownEntries)
 }
 
 func (a *perfCategoryAccum) topEntries(limit int) []PerfBreakdownEntry {
-	if len(a.buckets) == 0 || limit <= 0 {
+	if limit <= 0 || (len(a.top) == 0 && len(a.groups) == 0) {
 		return nil
 	}
-	all := make([]PerfBreakdownEntry, 0, len(a.buckets))
-	for _, ent := range a.buckets {
-		all = append(all, *ent)
+	merged := make([]PerfBreakdownEntry, 0, limit)
+	for _, ent := range a.top {
+		insertTopPerfEntry(&merged, ent, limit)
 	}
-	sort.Slice(all, func(i, j int) bool {
-		if all[i].Bytes != all[j].Bytes {
-			return all[i].Bytes > all[j].Bytes
-		}
-		if all[i].Count != all[j].Count {
-			return all[i].Count > all[j].Count
-		}
-		return all[i].Name < all[j].Name
-	})
-	if len(all) > limit {
-		all = all[:limit]
+	for _, ent := range a.groups {
+		insertTopPerfEntry(&merged, *ent, limit)
 	}
-	return all
+	return merged
 }
 
 func loadHistoryPageLabels(dataDir string) map[string]string {
@@ -391,7 +435,7 @@ func shortDisplayPath(fullPath string) string {
 	return filepath.Base(fullPath)
 }
 
-func describeBreakdownEntry(idx int, root, fullPath, prefix string, historyLabels map[string]string) (key, name, tipPath string) {
+func describeBreakdownEntry(idx int, root, fullPath, prefix string, historyLabels map[string]string) (key, name, tipPath string, grouped bool) {
 	rel, err := filepath.Rel(root, fullPath)
 	if err != nil {
 		rel = filepath.Base(fullPath)
@@ -404,16 +448,16 @@ func describeBreakdownEntry(idx int, root, fullPath, prefix string, historyLabel
 		if len(parts) >= 2 && strings.EqualFold(parts[0], "history") {
 			pageID := parts[1]
 			if orig, ok := historyLabels[pageID]; ok {
-				return "history:" + pageID, shortDisplayPath(orig), orig
+				return "history:" + pageID, shortDisplayPath(orig), orig, true
 			}
 			if len(parts) >= 3 {
-				return "history:" + pageID, parts[0] + "/" + pageID, filepath.Join(root, parts[0], pageID)
+				return "history:" + pageID, parts[0] + "/" + pageID, filepath.Join(root, parts[0], pageID), true
 			}
 		}
 	case 6: // config: group plugin installs/data per plugin while keeping fonts/json files granular
 		if len(parts) >= 3 && (strings.EqualFold(parts[0], "apps") || strings.EqualFold(parts[0], "apps-data")) {
 			group := parts[0] + "/" + parts[1]
-			return "config:" + group, group, filepath.Join(root, parts[0], parts[1])
+			return "config:" + group, group, filepath.Join(root, parts[0], parts[1]), true
 		}
 	}
 
@@ -421,10 +465,41 @@ func describeBreakdownEntry(idx int, root, fullPath, prefix string, historyLabel
 	if prefix != "" {
 		display = prefix + "/" + relSlash
 	}
-	return fullPath, display, fullPath
+	return fullPath, display, fullPath, false
 }
 
-func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) (cats []PerfCategory, lastScan, scanErr string) {
+func isPerfScanCancelled(cancel <-chan struct{}) bool {
+	if cancel == nil {
+		return false
+	}
+	select {
+	case <-cancel:
+		return true
+	default:
+		return false
+	}
+}
+
+var perfIgnoredNotebookDirs = map[string]bool{
+	".git":         true,
+	".hg":          true,
+	".svn":         true,
+	"node_modules": true,
+	"dist":         true,
+	"build":        true,
+	"target":       true,
+	"__pycache__":  true,
+	".next":        true,
+	".nuxt":        true,
+	".venv":        true,
+	"venv":         true,
+}
+
+func shouldSkipPerfNotebookDir(name string) bool {
+	return perfIgnoredNotebookDirs[name]
+}
+
+func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string, cancel <-chan struct{}) (cats []PerfCategory, lastScan, scanErr string) {
 	acc := newPerfAccum()
 	seen := make(map[fileIdentity]struct{})
 	var errs []string
@@ -435,9 +510,9 @@ func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) 
 		if err != nil {
 			errs = append(errs, err.Error())
 		} else {
-			scanTree(absRoot, seen, &errs, func(path string) int {
+			scanTree(absRoot, cancel, nil, seen, &errs, func(path string) int {
 				return classifyOverridePath(absRoot, path)
-			}, func(idx int, path string) (string, string, string) {
+			}, func(idx int, path string) (string, string, string, bool) {
 				return describeBreakdownEntry(idx, absRoot, path, "", historyLabels)
 			}, acc)
 		}
@@ -445,36 +520,41 @@ func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) 
 		multiNB := len(nbRoots) > 1
 		// 1. Notebooks (notes vs assets)
 		for _, nb := range nbRoots {
+			if isPerfScanCancelled(cancel) {
+				break
+			}
 			nbPrefix := ""
 			if multiNB {
 				nbPrefix = filepath.Base(filepath.Clean(nb))
 			}
-			scanTree(nb, seen, &errs, func(path string) int {
+			scanTree(nb, cancel, shouldSkipPerfNotebookDir, seen, &errs, func(path string) int {
 				if isMarkdownPath(path) {
 					return 0 // notes
 				}
 				return 1 // assets
-			}, func(idx int, path string) (string, string, string) {
+			}, func(idx int, path string) (string, string, string, bool) {
 				return describeBreakdownEntry(idx, nb, path, nbPrefix, historyLabels)
 			}, acc)
 		}
 		// 2. Application data directory (history, recovery, ai_sessions, logs, config)
-		if strings.TrimSpace(dataDir) != "" {
-			scanTree(dataDir, seen, &errs, func(path string) int {
+		if !isPerfScanCancelled(cancel) && strings.TrimSpace(dataDir) != "" {
+			scanTree(dataDir, cancel, nil, seen, &errs, func(path string) int {
 				return classifyDataDirPath(dataDir, path)
-			}, func(idx int, path string) (string, string, string) {
+			}, func(idx int, path string) (string, string, string, bool) {
 				return describeBreakdownEntry(idx, dataDir, path, "", historyLabels)
 			}, acc)
 		}
 		// 3. OS cache directory
-		if cacheDir, err := os.UserCacheDir(); err == nil && cacheDir != "" {
-			blockCache := filepath.Join(cacheDir, "Block")
-			if _, stErr := os.Lstat(blockCache); stErr == nil {
-				scanTree(blockCache, seen, &errs, func(_ string) int {
-					return 3 // recovery
-				}, func(idx int, path string) (string, string, string) {
-					return describeBreakdownEntry(idx, blockCache, path, "Cache", historyLabels)
-				}, acc)
+		if !isPerfScanCancelled(cancel) {
+			if cacheDir, err := os.UserCacheDir(); err == nil && cacheDir != "" {
+				blockCache := filepath.Join(cacheDir, "Block")
+				if _, stErr := os.Lstat(blockCache); stErr == nil {
+					scanTree(blockCache, cancel, nil, seen, &errs, func(_ string) int {
+						return 3 // recovery
+					}, func(idx int, path string) (string, string, string, bool) {
+						return describeBreakdownEntry(idx, blockCache, path, "Cache", historyLabels)
+					}, acc)
+				}
 			}
 		}
 	}
@@ -506,12 +586,17 @@ func (m *Manager) notebookRoots() []string {
 
 func scanTree(
 	root string,
+	cancel <-chan struct{},
+	skipDir func(name string) bool,
 	seen map[fileIdentity]struct{},
 	errs *[]string,
 	classify func(path string) int,
-	describe func(idx int, path string) (key, name, tipPath string),
+	describe func(idx int, path string) (key, name, tipPath string, grouped bool),
 	acc []perfCategoryAccum,
 ) {
+	if isPerfScanCancelled(cancel) {
+		return
+	}
 	info, err := os.Lstat(root)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -529,6 +614,9 @@ func scanTree(
 
 	stack := []string{root}
 	for len(stack) > 0 {
+		if isPerfScanCancelled(cancel) {
+			return
+		}
 		dir := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
@@ -538,12 +626,19 @@ func scanTree(
 			continue
 		}
 		for _, ent := range entries {
+			if isPerfScanCancelled(cancel) {
+				return
+			}
 			typ := ent.Type()
 			if typ&os.ModeSymlink != 0 {
 				continue
 			}
-			full := filepath.Join(dir, ent.Name())
+			name := ent.Name()
+			full := filepath.Join(dir, name)
 			if typ.IsDir() {
+				if skipDir != nil && skipDir(name) {
+					continue
+				}
 				stack = append(stack, full)
 				continue
 			}
@@ -566,6 +661,9 @@ func scanTree(
 					continue
 				}
 				if st.IsDir() {
+					if skipDir != nil && skipDir(name) {
+						continue
+					}
 					stack = append(stack, full)
 				} else if st.Mode().IsRegular() {
 					addFileBytes(full, st, seen, classify, describe, acc)
@@ -580,7 +678,7 @@ func addFileBytes(
 	info os.FileInfo,
 	seen map[fileIdentity]struct{},
 	classify func(string) int,
-	describe func(idx int, path string) (key, name, tipPath string),
+	describe func(idx int, path string) (key, name, tipPath string, grouped bool),
 	acc []perfCategoryAccum,
 ) {
 	id, hasID, fileBytes := statPhysicalFile(info)
@@ -593,8 +691,8 @@ func addFileBytes(
 
 	idx := classify(path)
 	if idx >= 0 && idx < len(acc) {
-		key, name, tipPath := describe(idx, path)
-		acc[idx].add(key, name, tipPath, fileBytes)
+		key, name, tipPath, grouped := describe(idx, path)
+		acc[idx].add(key, name, tipPath, fileBytes, grouped)
 	}
 }
 
@@ -683,18 +781,10 @@ func (m *Manager) sampleProcessOnce() {
 }
 
 func readProcessStats() (cpu float64, rss uint64) {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-		out, err := exec.Command("ps", "-p", strconv.Itoa(os.Getpid()), "-o", "%cpu=,rss=").Output()
-		if err == nil {
-			fields := strings.Fields(string(out))
-			if len(fields) >= 2 {
-				if v, pErr := strconv.ParseFloat(fields[0], 64); pErr == nil && !math.IsNaN(v) {
-					cpu = v
-				}
-				if kb, pErr := strconv.ParseUint(fields[1], 10, 64); pErr == nil {
-					rss = kb * 1024
-				}
-			}
+	if platformProcessStatsFn != nil {
+		if pCPU, pRSS, ok := platformProcessStatsFn(); ok {
+			cpu = pCPU
+			rss = pRSS
 		}
 	}
 	if rss == 0 {
