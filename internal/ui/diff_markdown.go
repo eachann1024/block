@@ -112,6 +112,8 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 	for si, side := range [2]int{-1, 1} {
 		mask, head := make([]bool, len(lines)), make([]int, len(lines))
 		fence, nested, fenceList, fenceQuote := "", false, false, 0
+		// fenceIndent: the content column of the list item a fence sits in (0: none).
+		fenceIndent := 0
 		var paraLines []int
 		// Indented code: four columns in after a blank line (or the start), unless the
 		// text above is a list, whose nested content is indented the same way.
@@ -122,9 +124,12 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				continue
 			}
 			t := strings.TrimSpace(l)
+			lead := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 			// A fence opened in a blockquote ends with the quote: at a blank or a line
-			// with fewer ">" markers, which is read as ordinary text again.
-			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote {
+			// with fewer ">" markers, which is read as ordinary text again. One in a list
+			// item ends with the item, at a line left of its content.
+			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote ||
+				fence != "" && fenceIndent > 0 && t != "" && lead < fenceIndent {
 				fence = ""
 			}
 			if fence == "" {
@@ -170,7 +175,9 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				} else if nested {
 					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
-				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
+				// A closer indented four columns past its block is code.
+				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" &&
+					(fenceQuote > 0 || lead-fenceIndent < 4) {
 					// Code may follow at once, unless the fence sat in a list item, whose
 					// content is indented the same way.
 					fence, prevBlank, inIndented = "", !fenceList, false
@@ -181,6 +188,10 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				mask[i], para, paraLines = true, false, nil
 				nested, fenceQuote = diffContainerRE.MatchString(t), diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
+				fenceIndent = 0
+				if fenceQuote == 0 && fenceList {
+					fenceIndent = lead + len(diffContainerRE.FindString(t))
+				}
 			}
 		}
 		masks[si], heads[si] = mask, head
