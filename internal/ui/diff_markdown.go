@@ -421,6 +421,19 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 				break
 			}
 		}
+		// Both versions have a separator, but the chosen one would land under a row of
+		// the other version (kept old rows sit above the new separator): one that sits
+		// under its own header keeps the table, with the other alignment.
+		var sides [2]bool
+		for _, k := range cands {
+			sides[(change[k]+1)/2] = true
+		}
+		for _, k := range cands {
+			if ok, h := fits(k); pick < 0 && sides[0] && sides[1] && ok &&
+				(change[h] == 0 || (change[h] > 0) == (change[k] > 0)) {
+				pick = k
+			}
+		}
 		if pick >= 0 {
 			take(pick, true)
 		}
