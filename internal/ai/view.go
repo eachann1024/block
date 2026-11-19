@@ -1143,36 +1143,15 @@ func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
 
 func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnKey string, outcome string, steps []model.ProcessStep, notes []string, streaming bool) {
 	c.mu.RLock()
-	expanded := c.expandedProcess[turnKey]
-	if streaming {
-		// 执行中默认展开，用户手动收起后尊重其选择。
-		expanded = !c.collapsedLive[turnKey]
-	}
+	// 执行中始终展开步骤列表，结束后按用户的展开状态。
+	expanded := streaming || c.expandedProcess[turnKey]
 	c.mu.RUnlock()
 
 	headline := fmt.Sprintf("%d 步执行完成", len(steps))
 	if theme.IsEn() {
 		headline = fmt.Sprintf("%d steps completed", len(steps))
 	}
-	liveKey := ""
-	if streaming {
-		headline = theme.Tr("正在执行工具与思考…", "Running tools & thinking…")
-		if n := len(steps); n > 0 {
-			// 标题实时跟随最新一步，每换一步就刷新一次。
-			cur := steps[n-1]
-			for i := n - 1; i >= 0; i-- {
-				if steps[i].ID != "streaming" && !steps[i].Done {
-					cur = steps[i]
-					break
-				}
-			}
-			headline = cur.Title
-			if d := strings.TrimSpace(cur.Detail); d != "" {
-				headline += " · " + firstTitleLine(d)
-			}
-			liveKey = fmt.Sprintf("-%d-%s", n, cur.ID)
-		}
-	} else if outcome == "failed" {
+	if outcome == "failed" {
 		headline = theme.Tr("执行失败", "Execution failed")
 	} else if outcome == "stopped" {
 		headline = theme.Tr("已停止", "Stopped")
@@ -1185,36 +1164,25 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 	bui.Probe(card, "ai-process-card")
 
 	card.Children(func() {
-		toggleBtn := ui.ButtonBase(cUI.Key("ai-process-toggle-" + turnKey)).FillWidth().MinHeight(28).
-			PaddingX(4).Gap(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(headline)
-		bui.Probe(toggleBtn, "ai-process-toggle")
-
-		toggleBtn.Children(func() {
-			if streaming {
-				ui.Spinner(cUI).Label(theme.Tr("执行中", "Running"))
-			} else {
+		if !streaming {
+			// 执行中只保留步骤列表：顶部标题与最后一步重复，直接省掉。
+			toggleBtn := ui.ButtonBase(cUI.Key("ai-process-toggle-" + turnKey)).FillWidth().MinHeight(28).
+				PaddingX(4).Gap(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(headline)
+			bui.Probe(toggleBtn, "ai-process-toggle")
+			toggleBtn.Children(func() {
 				chev := icons.ChevronRight
 				if expanded {
 					chev = icons.ChevronDown
 				}
 				chevActive := toggleBtn.Hovered() || toggleBtn.Pressed()
 				icons.DrawAnimated(cUI, chev, 14, pal.HoverIconColors(chevActive), chevActive)
-			}
-			title := ui.Text(cUI.Key("ai-process-headline-"+turnKey+liveKey), headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
-			if streaming {
-				// 每步换 key 重新入场，形成快速闪动。
-				title.TextColor(pal.Text).Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
-			}
-		})
-		if toggleBtn.Clicked() {
-			c.mu.Lock()
-			if streaming {
-				c.collapsedLive[turnKey] = expanded
-				c.expandedProcess[turnKey] = !expanded
-			} else {
+				ui.Text(cUI.Key("ai-process-headline-"+turnKey), headline).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+			})
+			if toggleBtn.Clicked() {
+				c.mu.Lock()
 				c.expandedProcess[turnKey] = !c.expandedProcess[turnKey]
+				c.mu.Unlock()
 			}
-			c.mu.Unlock()
 		}
 
 		if expanded {
@@ -1255,7 +1223,11 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							case model.ToolKindRun:
 								iconGlyph = icons.ToolRun
 							}
-							icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
+							if st.ID == "streaming" && !st.Done {
+								bui.SparkleLoader(cUI, 14, pal.TextSecondary, pal.Accent)
+							} else {
+								icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
+							}
 							stepTitle := ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 							if st.Detail == "" {
 								// 无详情时由标题占满剩余宽度，避免整行被居中。

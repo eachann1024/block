@@ -205,7 +205,6 @@ type Controller struct {
 	planSelections map[planSelKey]*diffSelection
 
 	expandedProcess     map[string]bool
-	collapsedLive       map[string]bool
 	expandedStepDetails map[string]bool
 	expandedSources     map[string]bool
 	expandedNotes       map[string]bool
@@ -283,7 +282,6 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		statusOverrides:     make(map[model.BackendKind]BackendStatus),
 		planSelections:      make(map[planSelKey]*diffSelection),
 		expandedProcess:     make(map[string]bool),
-		collapsedLive:       make(map[string]bool),
 		expandedStepDetails: make(map[string]bool),
 		expandedSources:     make(map[string]bool),
 		expandedNotes:       make(map[string]bool),
