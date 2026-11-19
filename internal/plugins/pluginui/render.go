@@ -406,6 +406,7 @@ func renderItem(
 			}
 			tmItems[i] = bui.TreemapItem{
 				ID:        t.ID,
+				ColorKey:  colorKey,
 				Label:     t.Label,
 				Detail:    t.Detail,
 				Bytes:     t.Bytes,

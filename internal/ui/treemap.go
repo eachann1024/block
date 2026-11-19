@@ -21,6 +21,7 @@ type TreemapEntry struct {
 // TreemapItem describes one storage or breakdown category rendered inside RenderStorageTreemap.
 type TreemapItem struct {
 	ID        string
+	ColorKey  string
 	Label     string
 	Detail    string
 	Bytes     uint64
@@ -85,10 +86,17 @@ type TreemapOptions struct {
 	OnSelect        func(id string)
 }
 
-// RenderStorageTreemap draws the single-card Bento storage distribution:
-// optional integrated summary header + 2D proportional Bento blocks (largest on left,
-// secondary & compact tiers on right, zero left color bars, zero bottom pill tags)
-// + live hover/selection granular breakdown list with soft horizontal share bars.
+func resolveTileColorKey(it TreemapItem) string {
+	if strings.TrimSpace(it.ColorKey) != "" {
+		return it.ColorKey
+	}
+	return it.ID
+}
+
+// RenderStorageTreemap draws the D1-PastelMist single-card Bento storage distribution:
+// optional integrated summary header + 2D proportional low-saturation pastel Bento blocks
+// (each category has its own soft pastel surface, border, and harmonized text, zero left bars,
+// zero bottom pill tags) + synchronized同色系 inline granular breakdown list.
 func RenderStorageTreemap(
 	c *ui.Context,
 	state *TreemapState,
@@ -136,6 +144,8 @@ func RenderStorageTreemap(
 		selectedID = active.ID
 	}
 
+	activeTC := pal.PerfTileColors(resolveTileColorKey(*active))
+
 	selectID := func(id string) {
 		if state.SetSelectedID(id) && opts.OnSelect != nil {
 			opts.OnSelect(id)
@@ -147,10 +157,10 @@ func RenderStorageTreemap(
 			renderTreemapSummaryHeader(c, opts.Summary)
 		}
 
-		// 2D Bento storage blocks container (Scheme B hero layout, zero left color bars).
+		// 2D Bento pastel storage blocks (D1-PastelMist geometry: 1.42fr : 1fr, 292px tall).
 		bentoH := opts.Height
 		if bentoH <= 0 {
-			bentoH = 276
+			bentoH = 292
 		}
 		bento := ui.Row(c.Key(canvasKey)).FillWidth().MinWidth(0).Height(bentoH).Gap(theme.Space10).AlignItems(ui.Stretch)
 		if opts.CanvasProbeID != "" {
@@ -162,12 +172,12 @@ func RenderStorageTreemap(
 				return
 			}
 
-			// Left column (~57%): #1 largest category hero tile.
-			ui.Column(c).Grow(135).Basis(0).MinWidth(0).FillHeight().Children(func() {
+			// Left column (1.42fr): #1 largest category hero tile.
+			ui.Column(c).Grow(142).Basis(0).MinWidth(0).FillHeight().Children(func() {
 				renderBentoTile(c, ranked[0], totalBytes, selectedID, tilePrefix, bentoTierHero, selectID)
 			})
 
-			// Right column (~43%): stacked tiers (#2 top, #3-#4 middle, #5-#7 bottom).
+			// Right column (1fr): stacked tiers (#2 top 108px, #3-#4 flex middle, #5-#7 bottom 68px).
 			rest := ranked[1:]
 			ui.Column(c).Grow(100).Basis(0).MinWidth(0).FillHeight().Gap(theme.Space10).Children(func() {
 				if len(rest) == 1 {
@@ -175,8 +185,7 @@ func RenderStorageTreemap(
 					return
 				}
 
-				// Tier 2: #2 category spans full width of right column.
-				ui.Row(c).FillWidth().MinWidth(0).Height(106).Shrink(0).Children(func() {
+				ui.Row(c).FillWidth().MinWidth(0).Height(108).Shrink(0).Children(func() {
 					renderBentoTile(c, rest[0], totalBytes, selectedID, tilePrefix, bentoTierSecondary, selectID)
 				})
 
@@ -184,7 +193,6 @@ func RenderStorageTreemap(
 				mid := rest[1:midEnd]
 				bot := rest[midEnd:]
 
-				// Tier 3: #3 & #4 side by side.
 				if len(mid) > 0 {
 					ui.Row(c).FillWidth().MinWidth(0).Grow(1).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
 						for _, it := range mid {
@@ -196,12 +204,15 @@ func RenderStorageTreemap(
 					})
 				}
 
-				// Tier 4: remaining compact categories (#5, #6, #7).
 				if len(bot) > 0 {
-					ui.Row(c).FillWidth().MinWidth(0).Height(64).Shrink(0).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
-						for _, it := range bot {
+					ui.Row(c).FillWidth().MinWidth(0).Height(68).Shrink(0).Gap(theme.Space10).AlignItems(ui.Stretch).Children(func() {
+						for bi, it := range bot {
 							item := it
-							ui.Column(c).Grow(1).Basis(0).MinWidth(0).FillHeight().Children(func() {
+							growW := float32(100)
+							if bi == 0 && len(bot) == 3 {
+								growW = 125
+							}
+							ui.Column(c).Grow(growW).Basis(0).MinWidth(0).FillHeight().Children(func() {
 								renderBentoTile(c, item, totalBytes, selectedID, tilePrefix, bentoTierCompact, selectID)
 							})
 						}
@@ -210,12 +221,14 @@ func RenderStorageTreemap(
 			})
 		})
 
-		// Inline granular breakdown section (Scheme C soft horizontal bars, no bottom pill row).
+		// Synchronized pastel-tinted inline breakdown section (no bottom pill tags).
 		ui.Column(c.Key(detailKey)).FillWidth().MinWidth(0).
 			Padding(theme.Space16, 0, 0, 0).Gap(theme.Space10).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+					dot := ui.Box(c).Size(theme.Space8, theme.Space8).Shrink(0).Radius(theme.RadiusPill)
+					dot.Background(dot.AnimateColor("treemapDot-"+canvasKey, activeTC.Dot, FadeColor))
 					ui.Text(c, active.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 						FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
 					meta := active.Detail
@@ -228,12 +241,12 @@ func RenderStorageTreemap(
 						}
 					}
 					if meta != "" {
-						ui.Text(c, meta).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						ui.Text(c, meta).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 							TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					}
 				})
 				ui.Text(c, fmt.Sprintf("%s (%s)", FormatBytesIEC(active.Bytes), FormatPercent(active.Bytes, totalBytes))).
-					Font("monospace").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
 			})
 
@@ -272,8 +285,8 @@ func RenderStorageTreemap(
 					ratio := float32(0)
 					if maxEntryBytes > 0 && e.Bytes > 0 {
 						ratio = float32(e.Bytes) / float32(maxEntryBytes)
-						if ratio < 0.03 {
-							ratio = 0.03
+						if ratio < 0.04 {
+							ratio = 0.04
 						}
 						if ratio > 1 {
 							ratio = 1
@@ -286,10 +299,11 @@ func RenderStorageTreemap(
 						AlignItems(ui.Center).Justify(ui.SpaceBetween)
 					if ratio > 0 {
 						rCopy := ratio
+						barColor := activeTC.BarBG
 						row.Draw(func(p *ui.Painter, bounds ui.Rect) {
 							w := bounds.W * rCopy
 							if w >= 2 {
-								p.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, W: w, H: bounds.H}, pal.Hover, theme.RadiusSM)
+								p.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, W: w, H: bounds.H}, barColor, theme.RadiusSM)
 							}
 						})
 					}
@@ -355,7 +369,7 @@ func renderTreemapSummaryHeader(c *ui.Context, sum *TreemapSummary) {
 		})
 
 		if len(sum.Metrics) > 0 {
-			ui.Row(c).Gap(theme.Space16).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Row(c).Gap(theme.Space20).AlignItems(ui.Center).Wrap().Children(func() {
 				for i, m := range sum.Metrics {
 					if i > 0 {
 						ui.Box(c).Size(1, theme.HeightCompact).Background(pal.Hairline)
@@ -391,6 +405,7 @@ func renderBentoTile(
 	onSelect func(id string),
 ) {
 	pal := theme.Ocean()
+	tc := pal.PerfTileColors(resolveTileColorKey(item))
 	isSelected := item.ID == selectedID
 	tileID := tilePrefix + item.ID
 
@@ -413,31 +428,17 @@ func renderBentoTile(
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
 
-	baseBG := pal.Paper
-	switch tier {
-	case bentoTierHero:
-		baseBG = pal.Hover
-	case bentoTierSecondary:
-		baseBG = pal.SettingsBG
-	case bentoTierMedium:
-		baseBG = pal.Sidebar
-	case bentoTierCompact:
-		baseBG = pal.Paper
-	}
-
-	bg := baseBG
-	bd := pal.Hairline
-	if isSelected {
-		bg = pal.Selected
-		bd = pal.Accent
-	} else if pressed {
-		bg = pal.Selected
-	} else if hovered {
-		bg = pal.Hover
-		bd = pal.SelectedBorder
+	bg := tc.BG
+	bd := tc.Border
+	if isSelected || pressed || hovered {
+		bg = tc.HotBG
+		bd = tc.HotBorder
 	}
 
 	AnimateSurfaceColors(btn, bg, bd, true)
+	if isSelected {
+		btn.Border(1.5, bd)
+	}
 	TactileCard(btn, hovered, pressed, isSelected, false)
 	Probe(btn, tileID)
 
@@ -447,60 +448,60 @@ func renderBentoTile(
 			case bentoTierHero:
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
 					ui.Text(c, item.Label).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontPage).FixedLineHeight(theme.LinePage).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatPercent(item.Bytes, totalBytes)).Font("monospace").
 						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						TextColor(pal.TextSecondary).SingleLine()
+						TextColor(tc.SubText).SingleLine()
 				})
 				if item.FileCount > 0 {
 					ui.Text(c, fmt.Sprintf(theme.Tr("%d 个文件", "%d files"), item.FileCount)).
 						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).SingleLine()
+						TextColor(tc.SubText).SingleLine()
 				}
 
 			case bentoTierSecondary:
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
 					ui.Text(c, item.Label).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				})
 				ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
 					ui.Text(c, FormatPercent(item.Bytes, totalBytes)).Font("monospace").
 						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).SingleLine()
+						TextColor(tc.SubText).SingleLine()
 					if item.FileCount > 0 {
 						ui.Text(c, fmt.Sprintf(theme.Tr("%d 项", "%d items"), item.FileCount)).
 							FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).SingleLine()
+							TextColor(tc.SubText).SingleLine()
 					}
 				})
 
 			case bentoTierMedium:
 				ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+					FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					sub := FormatPercent(item.Bytes, totalBytes)
 					if item.FileCount > 0 {
 						sub = fmt.Sprintf(theme.Tr("%s · %d 项", "%s · %d"), sub, item.FileCount)
 					}
 					ui.Text(c, sub).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+						TextColor(tc.SubText).SingleLine().Ellipsis("…")
 				})
 
 			case bentoTierCompact:
 				ui.Text(c, item.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+					FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-					TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+					TextColor(tc.SubText).SingleLine().Ellipsis("…")
 			}
 		})
 	})
