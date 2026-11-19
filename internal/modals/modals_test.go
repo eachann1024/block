@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -131,19 +132,23 @@ func TestSettingsNavigationControlsAndShortcutRecording(t *testing.T) {
 	if err := tt.Click("Folders"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("Off"); err != nil {
-		t.Fatal(err)
+	if r, ok := internalui.TargetBounds("settings-show-non-md-pill"); ok {
+		tt.ClickAt(r.X+r.W*0.5, r.Y+r.H*0.5)
+	} else {
+		t.Fatal("missing settings-show-non-md-pill probe")
 	}
 	if state.HideNonMarkdownFiles == nil || *state.HideNonMarkdownFiles {
 		t.Fatalf("expected HideNonMarkdownFiles to toggle false when Show Non-Markdown Files is turned On")
+	}
+	if err := tt.Click("Add Hidden Folder"); err != nil {
+		t.Fatal(err)
 	}
 	if err := tt.Click("Folder Name"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Type("drafts")
-	if err := tt.Click("Add Folder"); err != nil {
-		t.Fatal(err)
-	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
 	if len(state.FolderRules) != 1 || state.FolderRules[0].Pattern != "drafts" {
 		t.Fatalf("expected drafts folder rule, got %+v", state.FolderRules)
 	}
@@ -754,17 +759,26 @@ func TestFontPickerSortOrderAndFoldersListOrder(t *testing.T) {
 	if _, ok := internalui.TargetBounds("folder-hide-non-md"); !ok {
 		t.Fatal("missing folder-hide-non-md probe")
 	}
+	clickProbe := func(id string) {
+		t.Helper()
+		r, ok := internalui.TargetBounds(id)
+		if !ok {
+			t.Fatalf("missing %s probe", id)
+		}
+		tt.ClickAt(r.X+r.W*0.5, r.Y+r.H*0.5)
+		tt.Frame()
+	}
+	// Every notebook is searchable by default; excluding one goes through the add menu.
+	clickProbe("settings-ignore-search-add")
+	clickProbe("settings-ignore-search-opt-0")
+	if !slices.Contains(state.IgnoredSearchFolders, nbActive) {
+		t.Fatalf("expected active notebook excluded from search, got %v", state.IgnoredSearchFolders)
+	}
 	if _, ok := internalui.TargetBounds("folder-search-ignore-0"); !ok {
-		t.Fatal("missing folder-search-ignore-0 probe")
+		t.Fatal("missing folder-search-ignore-0 chip after excluding a notebook")
 	}
-	if _, ok := internalui.TargetBounds("folder-remove-notebook-0"); !ok {
-		t.Fatal("missing folder-remove-notebook-0 remove button for current notebook")
-	}
-	if _, ok := internalui.TargetBounds("folder-remove-notebook-1"); !ok {
-		t.Fatal("missing folder-remove-notebook-1 remove button for non-current notebook")
-	}
-	if !tt.HasText("系统") || !tt.HasText("不参与全局搜索") {
-		t.Fatal("missing expected Folders tab labels (系统 / 不参与全局搜索)")
+	if !tt.HasText("隐藏的文件夹") || !tt.HasText("不参与搜索的文件夹") {
+		t.Fatal("missing expected Folders tab labels (隐藏的文件夹 / 不参与搜索的文件夹)")
 	}
 }
 

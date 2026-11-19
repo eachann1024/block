@@ -21,18 +21,18 @@ import (
 )
 
 type fakeHost struct {
-	mu           sync.Mutex
-	root         string
-	notebooks    []string
-	activeNote   string
-	files        map[string]string
-	openedNotes  []string
-	openedTab    string
-	previewed    []*model.BatchPlan
-	applied      []*model.BatchPlan
-	rejected     []string
-	undone       []*model.BatchPlan
-	redrawCount  int
+	mu          sync.Mutex
+	root        string
+	notebooks   []string
+	activeNote  string
+	files       map[string]string
+	openedNotes []string
+	openedTab   string
+	previewed   []*model.BatchPlan
+	applied     []*model.BatchPlan
+	rejected    []string
+	undone      []*model.BatchPlan
+	redrawCount int
 }
 
 func newFakeHost(root string) *fakeHost {
@@ -140,6 +140,9 @@ func (h *fakeHost) PreviewPlanInEditor(plan *model.BatchPlan) error {
 }
 
 func (h *fakeHost) ApplyBatchPlan(plan *model.BatchPlan) error {
+	if err := ApplyPlanFiles(h, plan, false); err != nil {
+		return err
+	}
 	h.mu.Lock()
 	h.applied = append(h.applied, plan)
 	h.mu.Unlock()
@@ -154,6 +157,9 @@ func (h *fakeHost) RejectBatchPlan(planID string) error {
 }
 
 func (h *fakeHost) UndoLastPlan(plan *model.BatchPlan) error {
+	if err := ApplyPlanFiles(h, plan, true); err != nil {
+		return err
+	}
 	h.mu.Lock()
 	h.undone = append(h.undone, plan)
 	h.mu.Unlock()
@@ -376,8 +382,15 @@ func TestBuiltinSSEToolLoopAndAnthropic(t *testing.T) {
 }
 
 func TestMCPBridgeProtocol(t *testing.T) {
-	ctrl, _, _ := setupReadyController(t)
-	bridge, err := startMCPBridge(ctrl, 1)
+	ctrl, host, _ := setupReadyController(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	turn := &assistantTurn{ctx: ctx, cancel: cancel, notebookScope: captureNotebook(host)}
+	ctrl.mu.Lock()
+	ctrl.turn = turn
+	ctrl.streaming = true
+	ctrl.mu.Unlock()
+	bridge, err := startMCPBridge(ctrl, turn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +677,8 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 	tt.Compose("", 0)
 	tt.Type("picker-smoke/note-1199")
 	tt.Key(0, ui.KeyTab)
-	if !containsString(ctrl.draftRefs, "picker-smoke/note-1199") {
+	root, _ := canonicalNotebook(ctrl.host.ActiveNotebook())
+	if !containsString(ctrl.draftRefs, filepath.Join(root, "picker-smoke", "note-1199.md")) {
 		t.Fatalf("expected picker-smoke/note-1199 attached via Tab, refs=%v", ctrl.draftRefs)
 	}
 
@@ -762,10 +776,10 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	ctrl.SetBackendStatusOverride(model.BackendCodex, &BackendStatus{State: BackendStateReady, Version: "0.42.0"})
 	ctrl.SetBackendStatusOverride(model.BackendClaude, &BackendStatus{State: BackendStateUnauth, Version: "2.1.320"})
 
-	// Verify FullPermissions is enforced on by default for all CLI backends and cannot be disabled.
+	// Verify unrestricted CLI execution is disabled for all adapters.
 	for _, k := range []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi} {
-		if !ctrl.BackendsConfig().Adapters[string(k)].FullPermissions {
-			t.Fatalf("expected FullPermissions default true for %s", k)
+		if ctrl.BackendsConfig().Adapters[string(k)].FullPermissions {
+			t.Fatalf("expected FullPermissions default false for %s", k)
 		}
 	}
 
@@ -1347,8 +1361,11 @@ while IFS= read -r line; do
     *'"method":"model/list"'*)
       printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-6.2-sol","model":"gpt-6.2-sol","displayName":"GPT-6.2-Sol","hidden":false},{"id":"hidden-internal","model":"hidden-internal","displayName":"Hidden","hidden":true},{"id":"gpt-6.1-terra","model":"gpt-6.1-terra","displayName":"GPT-6.1 Terra","hidden":false}],"nextCursor":null}}'
       ;;
+    *'"method":"thread/start"'*)
+      printf '%s\n' '{"id":2,"result":{"thread":{"id":"codex-thread-e2e"}}}'
+      ;;
     *'"method":"turn/start"'*)
-      printf '%s\n' '{"method":"thread/started","params":{"thread":{"id":"codex-thread-e2e"}}}'
+      printf '%s\n' '{"id":3,"result":{"turn":{"id":"t1"}}}'
       printf '%s\n' '{"method":"item/started","params":{"item":{"id":"it_1","type":"mcpToolCall","tool":"readPage","arguments":{"pageId":"daily"}}}}'
       printf '%s\n' '{"method":"item/completed","params":{"item":{"id":"it_1","type":"mcpToolCall","tool":"readPage","arguments":{"pageId":"daily"},"status":"completed"}}}'
       printf '%s\n' '{"method":"item/agentMessage/delta","params":{"delta":"Codex CLI "}}'
