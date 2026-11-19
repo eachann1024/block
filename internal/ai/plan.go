@@ -413,11 +413,8 @@ func (c *Controller) selectedPlanTextLocked(convID uint64, msgIdx int, page, bef
 		return after
 	}
 	lines := c.computePlanDiffLocked(convID, msgIdx, page, before, after)
-	keep := make([]bool, len(lines))
-	for i, l := range lines {
-		keep[i] = l.Change == 0 || (l.Change < 0 && !l.Included) || (l.Change > 0 && l.Included)
-	}
-	// Hidden table separators follow the visible rows of their table.
+	// Hidden table separators (and deleted lines that would merge two tables) are
+	// settled from the written text before it is assembled.
 	texts := make([]string, len(lines))
 	changes := make([]int, len(lines))
 	applied := make([]bool, len(lines))
@@ -425,10 +422,9 @@ func (c *Controller) selectedPlanTextLocked(convID uint64, msgIdx int, page, bef
 		texts[i], changes[i], applied[i] = l.Text, l.Change, l.Included
 	}
 	bui.SyncDiffTableSeps(texts, changes, applied)
+	keep := make([]bool, len(lines))
 	for i, l := range lines {
-		if l.Change != 0 && bui.IsDiffTableSep(strings.TrimSpace(l.Text)) {
-			keep[i] = (l.Change < 0) != applied[i]
-		}
+		keep[i] = l.Change == 0 || (l.Change < 0) != applied[i]
 	}
 	var sb strings.Builder
 	for i, l := range lines {
