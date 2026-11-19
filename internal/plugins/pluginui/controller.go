@@ -511,23 +511,18 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 
 func (c *Controller) inputBindingsForSurface(pluginID string, surface plugins.Surface) *InputBindings {
 	var pickDirectory func(controlID, title string)
+	if surface == "" {
+		surface = plugins.SurfaceSettingsPage
+	}
 	if c.sup.CanPickDirectory() {
-		if surface == "" || surface == plugins.SurfaceSettingsPage {
-			pickDirectory = func(controlID, title string) {
-				c.sup.PickDirectoryForControl(pluginID, controlID, title)
-			}
-		} else {
-			pickDirectory = func(controlID, title string) {
-				c.sup.PickDirectory(title, func(p string) {
-					c.sup.UpdateSurfaceControlValue(pluginID, surface, controlID, p, true)
-				})
-			}
+		pickDirectory = func(controlID, title string) {
+			c.sup.PickSurfaceDirectoryForControl(pluginID, surface, controlID, title)
 		}
 	}
 	var pickFile func(controlID, title string, extensions []string)
-	if c.sup.CanPickFile() && (surface == "" || surface == plugins.SurfaceSettingsPage) {
+	if c.sup.CanPickFile() {
 		pickFile = func(controlID, title string, extensions []string) {
-			c.sup.PickFileForControl(pluginID, controlID, title, extensions)
+			c.sup.PickSurfaceFileForControl(pluginID, surface, controlID, title, extensions)
 		}
 	}
 	stateKey := c.surfaceStateKey(pluginID, surface)
