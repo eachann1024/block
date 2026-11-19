@@ -3936,36 +3936,60 @@ func (s *Session) ensurePlanOpLineSelection(op *model.PlanOp) []model.DiffLine {
 
 func applySelectedDiff(op *model.PlanOp) string {
 	diff := computeDiffLines(op.Old, op.New)
-	var out []string
+	selected := make([]bool, len(diff))
 	selIdx := 0
-	for _, d := range diff {
-		switch d.Kind {
-		case model.DiffEqual:
+	for i, d := range diff {
+		if d.Kind == model.DiffEqual {
+			continue
+		}
+		selected[i] = selIdx >= len(op.LineSelected) || op.LineSelected[selIdx]
+		selIdx++
+	}
+	syncHiddenTableSeparators(diff, selected)
+	var out []string
+	for i, d := range diff {
+		switch {
+		case d.Kind == model.DiffEqual,
+			d.Kind == model.DiffDelete && !selected[i],
+			d.Kind == model.DiffInsert && selected[i]:
 			out = append(out, d.Text)
-		case model.DiffDelete:
-			selected := true
-			if selIdx < len(op.LineSelected) {
-				selected = op.LineSelected[selIdx]
-			}
-			selIdx++
-			if !selected {
-				out = append(out, d.Text)
-			}
-		case model.DiffInsert:
-			selected := true
-			if selIdx < len(op.LineSelected) {
-				selected = op.LineSelected[selIdx]
-			}
-			selIdx++
-			if selected {
-				out = append(out, d.Text)
-			}
 		}
 	}
 	if len(out) == 0 {
 		return ""
 	}
 	return strings.Join(out, "\n") + "\n"
+}
+
+// syncHiddenTableSeparators makes a changed table separator row, which the review card
+// hides, follow the other changed rows of its table: kept when any of them is taken,
+// dropped when none is, so a rejected table never leaves an orphan "| --- |" behind.
+func syncHiddenTableSeparators(diff []model.DiffLine, selected []bool) {
+	for i := 0; i < len(diff); {
+		if !appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) || diff[i].Kind == model.DiffEqual {
+			i++
+			continue
+		}
+		start, kind := i, diff[i].Kind
+		for i < len(diff) && diff[i].Kind == kind && appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) {
+			i++
+		}
+		any, hasRows := false, false
+		for j := start; j < i; j++ {
+			if !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+				hasRows = true
+				any = any || selected[j]
+			}
+		}
+		if !hasRows {
+			continue
+		}
+		for j := start; j < i; j++ {
+			if appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+				selected[j] = any
+			}
+		}
+	}
 }
 
 func (s *Session) acceptActivePlan() {
