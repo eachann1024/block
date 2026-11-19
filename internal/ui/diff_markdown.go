@@ -33,6 +33,9 @@ type DiffLineStyle struct {
 	// Aligns is DiffTableAligns for a table row: each column's alignment from its
 	// table's separator ("---:" is right-aligned).
 	Aligns []ui.Align
+	// Math marks a line of a multi-line display math block (see DiffMathMask): its
+	// text shows as math, a delimiter alone as a spacer.
+	Math bool
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -922,6 +925,21 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	if strings.TrimSpace(line) == "" || (st.Setext < 0 && !st.Code) {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
+	if st.Math && !st.Code {
+		t := strings.TrimSpace(line)
+		for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+			if strings.HasPrefix(t, d[0]) {
+				t = t[len(d[0]):]
+			}
+			t = strings.TrimSuffix(t, d[1])
+		}
+		if t = strings.TrimSpace(t); t == "" {
+			return ui.Box(c).FillWidth().Height(theme.Space4)
+		}
+		return ui.Box(c).Grow(1).MinWidth(0).Children(func() {
+			markdown.View(c, "$$"+t+"$$", diffMarkdownOptions(st))
+		})
+	}
 	if st.Code {
 		return ui.Text(c, strings.ReplaceAll(line, "\t", "    ")).Font("monospace").FontSize(theme.FontBody).
 			TextColor(st.Text).Grow(1).MinWidth(0)
@@ -1182,6 +1200,51 @@ func DiffTableAligns(lines []string, change []int) [][]ui.Align {
 	out := side[1]
 	for k := range lines {
 		if change[k] < 0 || out[k] == nil {
+			out[k] = side[0][k]
+		}
+	}
+	return out
+}
+
+// DiffMathMask marks, per line, the lines of a display math block that spans lines
+// ("$$" … "$$" or "\[" … "\]") in the line's own text (an unchanged line: the new
+// one). Alone each would show as source; DiffMarkdownLine draws them as math.
+func DiffMathMask(lines []string, change []int) []bool {
+	old, cur := diffFenceSides(lines, change)
+	var side [2][]bool
+	for si, sd := range [2]int{-1, 1} {
+		code := [2][]bool{old, cur}[si]
+		mask := make([]bool, len(lines))
+		closer, open := "", -1
+		for i, l := range lines {
+			if change[i] == -sd || code[i] {
+				continue
+			}
+			t := strings.TrimSpace(l)
+			if open >= 0 {
+				mask[i] = true
+				if strings.HasSuffix(t, closer) {
+					open = -1
+				}
+				continue
+			}
+			for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+				if strings.HasPrefix(t, d[0]) && !strings.Contains(t[len(d[0]):], d[1]) {
+					closer, open, mask[i] = d[1], i, true
+				}
+			}
+		}
+		// An unclosed block is not one: its lines stay text.
+		if open >= 0 {
+			for k := open; k < len(lines); k++ {
+				mask[k] = false
+			}
+		}
+		side[si] = mask
+	}
+	out := side[1]
+	for k := range lines {
+		if change[k] < 0 {
 			out[k] = side[0][k]
 		}
 	}
