@@ -2,6 +2,7 @@ package ui
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"block/internal/theme"
@@ -812,11 +813,19 @@ func diffUnbold(s string) string {
 		}
 		i++
 	}
+	// A "**" left over ("2**3") is escaped: inside the bold wrapper it would close it.
 	var b strings.Builder
 	last := 0
-	for _, i := range at {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] != '*' || s[i+1] != '*' || inCode(i) || diffEscaped(s, i) {
+			continue
+		}
 		b.WriteString(s[last:i])
+		if !slices.Contains(at, i) {
+			b.WriteString(`\*\*`)
+		}
 		last = i + 2
+		i++
 	}
 	b.WriteString(s[last:])
 	return b.String()
