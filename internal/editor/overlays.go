@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"slices"
@@ -1698,14 +1699,7 @@ func (s *Session) outlineLeftMargin() float32 {
 	if editorW <= 0 {
 		editorW = s.editorRect.W
 	}
-	stdW := s.outerFlowWidth()
-	railSlot := float32(0)
-	if s.hasVisibleAnnotationRail() && s.canFitWideAnnotationRail() {
-		railSlot = annotationRailSlot
-	}
-	innerW := max(editorW-theme.ScrollGutter, 0)
-	colW := min(innerW, stdW+railSlot)
-	return max((innerW-colW)*0.5, 0)
+	return max((editorW-theme.ScrollGutter-s.outerFlowWidth())*0.5, 0)
 }
 
 func (s *Session) renderOutlineRail(c *ui.Context) {
@@ -1919,28 +1913,82 @@ func outlineBarWidth(level int) float32 {
 	}
 }
 
-// --- 6. Annotation Rail (Wide) & Block-Foot Strip (Narrow) ---
+// --- 6. Right-side annotations & block-foot fallback ---
 
 const (
-	annotationRailWidth float32 = 208
-	annotationRailSlot  float32 = annotationRailWidth + 8
+	annotationRailWidth    float32 = 208
+	annotationCardMinWidth float32 = 180
 )
 
-func (s *Session) canFitWideAnnotationRail() bool {
-	stdW := s.outerFlowWidth()
-	minW := stdW + annotationRailSlot + theme.ScrollGutter
-	editorW := s.viewportWidth
-	if editorW <= 0 {
-		editorW = s.editorRect.W
+type anchoredAnnotation struct {
+	ann     *model.Annotation
+	blockID model.BlockID
+}
+
+type annotationFrame struct {
+	railLeft, railWidth float32
+	right               []anchoredAnnotation
+	below               map[model.BlockID][]*model.Annotation
+	hovered             string
+	pickerAnn           *model.Annotation
+	pickerAnchor        ui.Element
+}
+
+func (s *Session) placeAnnotations(c *ui.Context, canvasLeft, canvasWidth float32) annotationFrame {
+	var frame annotationFrame
+	if s.minimal || len(s.annotations) == 0 {
+		return frame
 	}
-	return editorW > 0 && editorW >= minW
+	// Match the centered document flow. Leave room for the widest block's
+	// bleed, the gap next to it, and the scrollbar at the right edge.
+	flowWidth := min(canvasWidth, s.outerFlowWidth())
+	bodyRight := canvasLeft + (canvasWidth+flowWidth)*0.5 - s.rightContentInset()
+	frame.railLeft = bodyRight + s.bandBleed() + theme.Space8
+	frame.railWidth = max(canvasLeft+canvasWidth-theme.ScrollGutter-frame.railLeft, 0)
+
+	countW, _ := c.MeasureText(0, ui.Span{Text: "1", Size: theme.FontBody, Weight: theme.WeightControl})
+	for _, ann := range s.annotations {
+		if !isAnnotationVisible(ann) {
+			continue
+		}
+		need := annotationCardMinWidth
+		if isReactionOnlyAnnotation(ann) {
+			need = 0
+		}
+		for _, emoji := range ann.Reactions {
+			iconW, _ := c.MeasureText(0, ui.Span{Text: emoji, Size: theme.FontBody})
+			need = max(need, iconW+countW+2*theme.Space8+theme.Space4+2) // Include the pill's border.
+		}
+		right := frame.railWidth >= need
+		start := s.blockIndexByID(ann.StartBlockID)
+		end := s.blockIndexByID(ann.EndBlockID)
+		block := max(start, end)
+		if right && start >= 0 {
+			block = start
+		}
+		block = s.visibleAnnotationAnchorIndex(block)
+		if block < 0 {
+			continue
+		}
+		blockID := s.doc.Blocks[block].ID
+		if right {
+			frame.right = append(frame.right, anchoredAnnotation{ann: ann, blockID: blockID})
+			continue
+		}
+		if frame.below == nil {
+			frame.below = make(map[model.BlockID][]*model.Annotation)
+		}
+		frame.below[blockID] = append(frame.below[blockID], ann)
+	}
+	return frame
 }
 
 func isReactionOnlyAnnotation(ann *model.Annotation) bool {
 	return ann != nil && ann.Note == "" && ann.RewriteResult == "" && ann.RewritePrompt == "" && ann.AIError == "" && len(ann.Reactions) > 0
 }
 
-func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annotation, emoji string, active bool, hoveredOut *string) {
+func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annotation, emoji string) {
+	active := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID || s.reactionPickerAnnotID == ann.ID
 	rc := theme.Ocean().ReactionPill(active)
 	pill := ui.ButtonBase(c.Key(id)).Height(theme.IconButtonBox).PaddingX(theme.Space8).Gap(theme.Space4).Radius(theme.RadiusPill).
 		AlignItems(ui.Center).Justify(ui.Center).
@@ -1950,7 +1998,7 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 	pillBG := rc.BG
 	if pillHovered {
 		pillBG = rc.HoverBG
-		*hoveredOut = ann.ID
+		s.frameAnnotations.hovered = ann.ID
 	}
 	appUi.AnimateSurfaceColors(pill, pillBG, rc.Border, true)
 	appUi.TactileCard(pill, pillHovered, pillPressed, active, false)
@@ -1960,30 +2008,35 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 	})
 	appUi.Probe(pill, id)
 	if pill.Clicked() {
-		s.footPickerAnnotID = ""
+		s.reactionPickerAnnotID = ""
 		s.toggleReactionByID(ann.ID, emoji)
 	}
-	if !s.readOnly && !s.canFitWideAnnotationRail() && pill.RightClicked() {
-		if s.footPickerAnnotID == ann.ID {
-			s.footPickerAnnotID = ""
+	rightClicked := !s.readOnly && pill.RightClicked()
+	if rightClicked {
+		if s.reactionPickerAnnotID == ann.ID {
+			s.reactionPickerAnnotID = ""
 		} else {
-			s.footPickerAnnotID = ann.ID
+			s.reactionPickerAnnotID = ann.ID
 		}
+	}
+	if !s.readOnly && s.reactionPickerAnnotID == ann.ID && (!s.frameAnnotations.pickerAnchor.Valid() || rightClicked) {
+		s.frameAnnotations.pickerAnn = ann
+		s.frameAnnotations.pickerAnchor = pill
 	}
 }
 
-func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32, hoveredOut *string) {
+func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32) {
 	pal := theme.Ocean()
 	editing := s.editingAnnotID == ann.ID && !s.readOnly
 	isResult := !s.aiDisabled && !editing && ann.RewriteResult != ""
 
-	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
+	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).MaxWidthPercent(100).
 		Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space12).
 		Gap(theme.Space4).Radius(theme.RadiusLG).Clip().
 		Transition(appUi.GutterHandleTransition())
 	cardHovered := card.Hovered()
 	if cardHovered {
-		*hoveredOut = ann.ID
+		s.frameAnnotations.hovered = ann.ID
 	}
 	hot := cardHovered || s.hoveredAnnotID == ann.ID
 	borderCol := pal.Hairline
@@ -2201,71 +2254,62 @@ func (s *Session) estimateAnnotationRowMetrics(ann *model.Annotation, isEditing 
 }
 
 func (s *Session) renderAnnotationRail(c *ui.Context) {
-	if s.minimal || !s.hasVisibleAnnotationRail() || !s.canFitWideAnnotationRail() {
+	frame := &s.frameAnnotations
+	if len(frame.right) == 0 {
 		return
 	}
-	editorW := s.viewportWidth
-	if editorW <= 0 {
-		editorW = s.editorRect.W
-	}
-	outerW := s.outerFlowWidth()
-	flowW := min(editorW, outerW)
-	flowLeft := s.editorRect.X + (editorW-flowW)*0.5
-	bodyRightX := flowLeft + flowW - s.rightContentInset()
-	editorRight := s.editorRect.X + editorW
-	rightMargin := max(theme.ScrollGutter, theme.Space16)
-	// The rail starts beside the body and fills the whole free right margin.
-	railLeft := min(bodyRightX+theme.Space16, editorRight-rightMargin-annotationRailWidth)
-	railW := max(editorRight-rightMargin-railLeft, annotationRailWidth)
 	railTop := s.editorRect.Y
-	railHeight := max(s.editorRect.H, s.viewportHeight-railTop)
+	railHeight := s.editorRect.H
+	if railHeight <= 0 {
+		railHeight = s.viewportHeight - railTop
+	}
 
 	type railEntry struct {
 		ann     *model.Annotation
 		targetY float32
 		height  float32
 		gap     float32
-		order   int
 	}
-	var rows []railEntry
-	for i, ann := range s.annotations {
-		if !isAnnotationVisible(ann) {
+	rows := make([]railEntry, 0, len(frame.right))
+	for _, anchored := range frame.right {
+		ann := anchored.ann
+		idx := s.blockIndexByID(anchored.blockID)
+		if idx < 0 {
 			continue
 		}
-		targetY := float32(24)
-		if r, ok := s.blockRect(ann.StartBlockID); ok && r.H > 0 {
-			targetY = max(r.Y-railTop, 24)
+		targetY := s.canvasTopPad() - s.bodyScroll.Y
+		if r, ok := s.blockRect(anchored.blockID); ok {
+			targetY = r.Y - railTop
+			if idx < len(s.frameBlocks) {
+				targetY += s.blockGap(s.frameBlocks[idx].PrevVisible, &s.doc.Blocks[idx])
+			}
 		}
 		h, g := s.estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)
-		if mh, ok := s.annotRowHeights[ann.ID]; ok && mh > 0 {
+		if mh := s.annotRowHeights[ann.ID]; mh > 0 {
 			h = mh
 		}
-		rows = append(rows, railEntry{ann: ann, targetY: targetY, height: h, gap: g, order: i})
+		rows = append(rows, railEntry{ann: ann, targetY: targetY, height: h, gap: g})
 	}
-	if len(rows) == 0 {
-		return
-	}
-	for i := 1; i < len(rows); i++ {
-		for j := i; j > 0 && rows[j].targetY < rows[j-1].targetY; j-- {
-			rows[j], rows[j-1] = rows[j-1], rows[j]
-		}
-	}
+	slices.SortStableFunc(rows, func(a, b railEntry) int {
+		return cmp.Compare(a.targetY, b.targetY)
+	})
 
-	nextHovered := ""
 	ui.Overlay(c, func() {
-		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(railLeft).Top(railTop).
-			Width(railW).Height(railHeight).PassThrough()
+		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(frame.railLeft).Top(railTop).
+			Width(frame.railWidth).Height(railHeight).PassThrough().Clip()
 		appUi.Probe(rail, "annotation-rail")
 		rail.Children(func() {
-			bottom := float32(12)
+			bottom := float32(-math.MaxFloat32)
 			for _, row := range rows {
 				ann := row.ann
 				top := max(row.targetY, bottom+row.gap)
 				bottom = top + row.height
-				isHighlighted := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID
+				if bottom <= 0 || top >= railHeight {
+					continue
+				}
 
 				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
-					Width(railW).AlignItems(ui.Start).Gap(theme.Space4)
+					Width(frame.railWidth).AlignItems(ui.Start).Gap(theme.Space4)
 				slot.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					if r.H > 0 {
 						if s.annotRowHeights == nil {
@@ -2278,21 +2322,13 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 					}
 				})
 				slot.Children(func() {
-					if isReactionOnlyAnnotation(ann) {
-						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-							for rIdx, em := range ann.Reactions {
-								s.renderReactionPill(c, fmt.Sprintf("reaction-pill-%s-%d", ann.ID, rIdx), ann, em, isHighlighted, &nextHovered)
-							}
-						})
-						return
+					if !isReactionOnlyAnnotation(ann) {
+						s.renderAnnotationItem(c, ann, frame.railWidth)
 					}
-
-					s.renderAnnotationItem(c, ann, railW, &nextHovered)
-
 					if len(ann.Reactions) > 0 {
 						ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
 							for rIdx, em := range ann.Reactions {
-								s.renderReactionPill(c, fmt.Sprintf("reaction-pill-%s-%d", ann.ID, rIdx), ann, em, isHighlighted, &nextHovered)
+								s.renderReactionPill(c, fmt.Sprintf("reaction-pill-%s-%d", ann.ID, rIdx), ann, em)
 							}
 						})
 					}
@@ -2300,19 +2336,12 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 			}
 		})
 	})
-	if nextHovered != s.hoveredAnnotID {
-		s.hoveredAnnotID = nextHovered
-		c.Invalidate()
-	}
 }
 
-func (s *Session) visibleFootAnchorIndex(ann *model.Annotation) int {
-	if s.doc == nil || len(s.doc.Blocks) == 0 || ann == nil {
+func (s *Session) visibleAnnotationAnchorIndex(anchor int) int {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return -1
 	}
-	startIdx := s.blockIndexByID(ann.StartBlockID)
-	endIdx := s.blockIndexByID(ann.EndBlockID)
-	anchor := max(startIdx, endIdx)
 	if anchor < 0 {
 		for k := len(s.doc.Blocks) - 1; k >= 0; k-- {
 			if !s.isBlockHiddenByFold(k) {
@@ -2331,119 +2360,87 @@ func (s *Session) visibleFootAnchorIndex(ann *model.Annotation) int {
 	return anchor
 }
 
-func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, idx int, b *model.Block) {
-	if len(s.annotations) == 0 || s.canFitWideAnnotationRail() {
-		return
-	}
-	var anchored []*model.Annotation
-	for _, ann := range s.annotations {
-		if !isAnnotationVisible(ann) {
-			continue
-		}
-		if s.visibleFootAnchorIndex(ann) == idx {
-			anchored = append(anchored, ann)
-		}
-	}
+func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, b *model.Block) {
+	anchored := s.frameAnnotations.below[b.ID]
 	if len(anchored) == 0 {
 		return
 	}
-	pal := theme.Ocean()
-	ownedHover := false
-	for _, ann := range anchored {
-		if ann.ID == s.hoveredAnnotID {
-			ownedHover = true
-			break
-		}
-	}
-	nextHovered := ""
-	if !ownedHover {
-		nextHovered = s.hoveredAnnotID
-	}
-
 	botPad := theme.Space2
 	if b.Kind == model.BlockTable {
 		botPad = theme.Space10
 	}
-	maxChipW := annotationRailWidth
-	if s.viewportWidth > 0 {
-		maxChipW = min(annotationRailWidth, max(s.viewportWidth-32, 160))
-	}
+	maxChipW := min(annotationRailWidth, max(s.viewportWidth-32, 160))
 
 	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().MinWidth(0).
 		Padding(theme.Space6, 0, botPad, 0).Gap(theme.Space6).AlignItems(ui.Start)
 	strip.Children(func() {
-		// Reaction pills row
-		var hasReactions bool
-		var pickerTarget *model.Annotation
-		for _, ann := range anchored {
-			if len(ann.Reactions) > 0 {
-				hasReactions = true
-			}
-			if s.footPickerAnnotID != "" && ann.ID == s.footPickerAnnotID {
-				pickerTarget = ann
-			}
-		}
-		if hasReactions {
+		if slices.ContainsFunc(anchored, func(ann *model.Annotation) bool { return len(ann.Reactions) > 0 }) {
 			ui.Row(c).FillWidth().Wrap().AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
 				for _, ann := range anchored {
-					if len(ann.Reactions) == 0 {
-						continue
-					}
-					active := s.activeAnnotID == ann.ID || s.hoveredAnnotID == ann.ID || s.footPickerAnnotID == ann.ID
-					s.renderReactionPill(c, fmt.Sprintf("annotation-marker-%s", ann.ID), ann, ann.Reactions[0], active, &nextHovered)
-				}
-			})
-		}
-		if pickerTarget != nil && !s.readOnly {
-			targetAnn := pickerTarget
-			picker := appUi.MenuSurface(ui.Row(c.Key("foot-reaction-picker-"+targetAnn.ID))).
-				Padding(theme.Space4, theme.Space6).Gap(theme.Space4).AlignItems(ui.Center)
-			appUi.Probe(picker, "foot-reaction-picker")
-			picker.Children(func() {
-				for eIdx, em := range reactionEmojis {
-					emoji := em
-					btnID := fmt.Sprintf("foot-pick-emoji-%s-%d", targetAnn.ID, eIdx)
-					selected := slices.Contains(targetAnn.Reactions, emoji)
-					btn := ui.ButtonBase(c.Key(btnID)).Size(theme.HeightCompact, theme.HeightCompact).Center().Radius(theme.RadiusMD).
-						Cursor(ui.CursorPointer).Label(emoji)
-					btnHovered := btn.Hovered()
-					btnPressed := btn.Pressed()
-					btnBG, btnBD := ui.Transparent, ui.Transparent
-					if selected {
-						btnBG, btnBD = pal.Selected, pal.Accent
-					} else if btnPressed {
-						btnBG = pal.Selected
-					} else if btnHovered {
-						btnBG = pal.Hover
-					}
-					appUi.AnimateSurfaceColors(btn, btnBG, btnBD, selected)
-					appUi.TactileButton(btn, btnHovered, btnPressed, false)
-					btn.Children(func() {
-						ui.Text(c, emoji).FontSize(theme.FontTitle)
-					})
-					appUi.Probe(btn, btnID)
-					if btn.Clicked() {
-						s.footPickerAnnotID = ""
-						s.toggleReactionByID(targetAnn.ID, emoji)
+					if len(ann.Reactions) > 0 {
+						s.renderReactionPill(c, fmt.Sprintf("annotation-marker-%s", ann.ID), ann, ann.Reactions[0])
 					}
 				}
 			})
-			if picker.PressedOutside() {
-				s.footPickerAnnotID = ""
-			}
 		}
-
 		for _, ann := range anchored {
-			if isReactionOnlyAnnotation(ann) {
-				continue
+			if !isReactionOnlyAnnotation(ann) {
+				s.renderAnnotationItem(c, ann, maxChipW)
 			}
-			s.renderAnnotationItem(c, ann, maxChipW, &nextHovered)
 		}
 	})
-	if nextHovered != s.hoveredAnnotID {
-		s.hoveredAnnotID = nextHovered
-		c.Invalidate()
+}
+
+func (s *Session) renderAnnotationReactionPicker(c *ui.Context) {
+	if s.reactionPickerAnnotID == "" {
+		return
 	}
+	targetAnn := s.frameAnnotations.pickerAnn
+	anchor := s.frameAnnotations.pickerAnchor
+	if targetAnn == nil || targetAnn.ID != s.reactionPickerAnnotID || !anchor.Valid() {
+		s.reactionPickerAnnotID = ""
+		return
+	}
+
+	pal := theme.Ocean()
+	ui.Overlay(c, func() {
+		picker := appUi.MenuSurface(ui.Row(c.Key("foot-reaction-picker-"+targetAnn.ID))).
+			Padding(theme.Space4, theme.Space6).Gap(theme.Space4).AlignItems(ui.Center).
+			AttachTo(anchor, ui.AnchorBottomLeft, ui.AnchorTopLeft).Margin(theme.Space4, 0)
+		appUi.Probe(picker, "foot-reaction-picker")
+		picker.Children(func() {
+			for eIdx, emoji := range reactionEmojis {
+				btnID := fmt.Sprintf("foot-pick-emoji-%s-%d", targetAnn.ID, eIdx)
+				selected := slices.Contains(targetAnn.Reactions, emoji)
+				btn := ui.ButtonBase(c.Key(btnID)).Size(theme.HeightCompact, theme.HeightCompact).Center().Radius(theme.RadiusMD).
+					Cursor(ui.CursorPointer).Label(emoji)
+				btnHovered := btn.Hovered()
+				btnPressed := btn.Pressed()
+				btnBG, btnBD := ui.Transparent, ui.Transparent
+				if selected {
+					btnBG, btnBD = pal.Selected, pal.Accent
+				} else if btnPressed {
+					btnBG = pal.Selected
+				} else if btnHovered {
+					btnBG = pal.Hover
+				}
+				appUi.AnimateSurfaceColors(btn, btnBG, btnBD, selected)
+				appUi.TactileButton(btn, btnHovered, btnPressed, false)
+				btn.Children(func() {
+					ui.Text(c, emoji).FontSize(theme.FontTitle)
+				})
+				appUi.Probe(btn, btnID)
+				if btn.Clicked() {
+					s.reactionPickerAnnotID = ""
+					s.toggleReactionByID(targetAnn.ID, emoji)
+				}
+			}
+		})
+		if picker.PressedOutside() || picker.OverlayShortcut(0, ui.KeyEscape) {
+			s.reactionPickerAnnotID = ""
+			c.Invalidate()
+		}
+	})
 }
 
 // --- 7. AI BatchPlan Diff Review Card ---
