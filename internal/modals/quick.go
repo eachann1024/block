@@ -1,6 +1,7 @@
 package modals
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -158,7 +159,8 @@ type QuickNoteController struct {
 	wheelAccum      float32
 	lastWheelEvent  time.Time
 	lastWheelSwitch time.Time
-	inlineAIRespond func(ctx, orig, draft, instruction string) string
+	aiDisabled      bool
+	inlineAIRespond func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)
 	zoom            float32
 	notice          string
 	savedFlash      bool
@@ -200,9 +202,8 @@ func (q *QuickNoteController) initSessionsLocked() {
 		sess := editor.NewSession(q.slotFilePath(i), doc, q.codec, q.sessHost)
 		sess.SetMinimal(true)
 		sess.SetDataDir(q.dataDir)
-		if q.inlineAIRespond != nil {
-			sess.SetInlineAIResponder(q.inlineAIRespond)
-		}
+		sess.SetAIEnabled(!q.aiDisabled)
+		sess.SetInlineAIStreamResponder(q.inlineAIRespond)
 		sess.OnPickImages = func(blockID model.BlockID, replace bool) {
 			q.pickImagesForSlot(slotIdx, blockID, replace)
 		}
@@ -210,17 +211,31 @@ func (q *QuickNoteController) initSessionsLocked() {
 	}
 }
 
-// SetInlineAIResponder configures the Inline AI responder for all Quick Note editor slots.
-func (q *QuickNoteController) SetInlineAIResponder(fn func(ctx, orig, draft, instruction string) string) {
+// SetInlineAIStreamResponder configures the Inline AI responder for all Quick Note editor slots.
+func (q *QuickNoteController) SetInlineAIStreamResponder(fn func(ctx context.Context, ctxBefore, orig, draft, instruction string, onDelta func(string)) (string, error)) {
 	q.mu.Lock()
 	q.inlineAIRespond = fn
 	sessions := q.sessions
 	q.mu.Unlock()
 	for _, sess := range sessions {
 		if sess != nil {
-			sess.SetInlineAIResponder(fn)
+			sess.SetInlineAIStreamResponder(fn)
 		}
 	}
+}
+
+// SetAIEnabled updates the AI controls in every Quick Note slot.
+func (q *QuickNoteController) SetAIEnabled(enabled bool) {
+	q.mu.Lock()
+	q.aiDisabled = !enabled
+	sessions := q.sessions
+	q.mu.Unlock()
+	for _, sess := range sessions {
+		if sess != nil {
+			sess.SetAIEnabled(enabled)
+		}
+	}
+	q.Invalidate()
 }
 
 func (q *QuickNoteController) serializeSessionLocked(slot int) string {

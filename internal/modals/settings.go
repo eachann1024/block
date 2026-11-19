@@ -103,6 +103,7 @@ type Manager struct {
 	GetState              func() model.AppState
 	OnStateChanged        func(func(*model.AppState))
 	RenderAISettings      func(c *ui.Context)
+	AIEnabled             func() bool
 	PluginHost            PluginSettingsHost
 	SidebarWidth          *float32
 	OnSidebarWidthChanged func(float32)
@@ -1903,9 +1904,11 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		settingRow(c, theme.Tr("新建笔记", "New Note"), func() {
 			staticKeycapTray(c, "settings-keycap-new", EffectiveShortcut(st, "new_note"))
 		})
-		settingRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
-			staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
-		})
+		if m.AIEnabled != nil && m.AIEnabled() {
+			settingRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
+				staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
+			})
+		}
 	})
 }
 

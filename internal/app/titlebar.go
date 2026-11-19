@@ -63,6 +63,7 @@ type TitlebarProps struct {
 	SettingsTabLabel  string
 	HideMark          bool
 	AIImmersive       bool
+	AIEnabled         bool
 	AIOpen            bool
 	FeedbackOpen      bool
 	HasFeedbackDraft  bool
