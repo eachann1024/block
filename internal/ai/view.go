@@ -973,7 +973,7 @@ func appendStreamingProcess(baseSteps []model.ProcessStep, baseNotes []string, p
 	det := theme.Tr("等待模型响应…", "Waiting for model response…")
 	if strings.TrimSpace(partial) != "" {
 		lbl = theme.Tr("正在生成回答", "Generating answer")
-		det = firstTitleLine(partial)
+		det = latestStreamLine(partial)
 	}
 	steps = append(steps, model.ProcessStep{
 		ID:     "streaming",
@@ -1113,7 +1113,7 @@ func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string
 		det := theme.Tr("等待模型响应…", "Waiting for model response…")
 		if strings.TrimSpace(partial) != "" {
 			lbl = theme.Tr("正在生成回答", "Generating answer")
-			det = firstTitleLine(partial)
+			det = latestStreamLine(partial)
 		}
 		steps = append(steps, model.ProcessStep{
 			ID:     "streaming",
@@ -1124,6 +1124,56 @@ func collectTurnProcess(turn []model.ChatMessage, streaming bool, partial string
 		})
 	}
 	return steps, notes
+}
+
+// processDisplayOrder lists step indexes to draw; while streaming the live step leads,
+// so it stays on the first row instead of being pushed down by finished steps.
+func processDisplayOrder(steps []model.ProcessStep, streaming bool) []int {
+	order := make([]int, 0, len(steps))
+	live := -1
+	if streaming {
+		for i := len(steps) - 1; i >= 0; i-- {
+			if steps[i].ID == "streaming" && !steps[i].Done {
+				live = i
+				break
+			}
+		}
+	}
+	if live >= 0 {
+		order = append(order, live)
+	}
+	for i := range steps {
+		if i != live {
+			order = append(order, i)
+		}
+	}
+	return order
+}
+
+// latestStreamLine is the newest non-empty line of a reply being written, as plain text.
+func latestStreamLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		t := plainInline(lines[i])
+		if t == "" || bui.IsDiffTableSep(t) {
+			continue
+		}
+		r := []rune(t)
+		if len(r) > 80 {
+			return "…" + string(r[len(r)-80:])
+		}
+		return t
+	}
+	return ""
+}
+
+// plainInline strips the Markdown markers that read as noise in a one-line label.
+func plainInline(s string) string {
+	t := strings.TrimSpace(s)
+	t = strings.TrimLeft(t, "#>-*+ ")
+	t = strings.NewReplacer("**", "", "__", "", "`", "").Replace(t)
+	t = strings.Trim(t, "| ")
+	return strings.TrimSpace(t)
 }
 
 func collectTurnSources(turn []model.ChatMessage) []model.SourceNote {
@@ -1191,7 +1241,8 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 			bui.Probe(stepsWrap, "ai-process-steps")
 			stepsWrap.Children(func() {
 				ui.Column(cUI).FillWidth().Gap(4).Children(func() {
-					for i, st := range steps {
+					for _, i := range processDisplayOrder(steps, streaming) {
+						st := steps[i]
 						stepKey := fmt.Sprintf("%s#%d", turnKey, i)
 						c.mu.RLock()
 						detailOpen := c.expandedStepDetails[stepKey]
@@ -1228,13 +1279,18 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							} else {
 								icons.DrawAnimated(cUI, iconGlyph, 14, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || detailOpen)
 							}
-							stepTitle := ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-							if st.Detail == "" {
-								// 无详情时由标题占满剩余宽度，避免整行被居中。
-								stepTitle.Grow(1)
-							}
-							if st.Detail != "" {
-								ui.Text(cUI, st.Detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).SingleLine()
+							detail := plainInline(st.Detail)
+							if live := st.ID == "streaming" && !st.Done; live && detail != "" {
+								// 实时行空间有限：只显示正在生成的内容，不再重复“正在生成回答”。
+								ui.Text(cUI, detail).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							} else {
+								stepTitle := ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Shrink(0)
+								if detail == "" {
+									// 无详情时由标题占满剩余宽度，避免整行被居中。
+									stepTitle.Grow(1)
+								} else {
+									ui.Text(cUI, detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+								}
 							}
 						})
 						if row.Clicked() {
