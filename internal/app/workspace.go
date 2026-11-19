@@ -3996,7 +3996,7 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 // a note on Enter (named after what was typed, or the default name).
 func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState) {
 	pal := theme.Ocean()
-	box := blockui.EmptyStage(c, pal.Paper, theme.EditorStandardWidth, func() {
+	box := blockui.EmptyPageStage(c, pal.Paper, theme.EditorStandardWidth, func() {
 		in := ui.TextInputBase(c.Key("empty-ghost-title"), &w.ghostTitle).
 			FillWidth().Padding(0).Label(theme.Tr("新笔记标题", "New note title")).
 			Placeholder(theme.Tr("未命名", "Untitled")).PlaceholderColor(pal.ListBullet).
