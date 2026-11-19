@@ -357,14 +357,28 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		newSide := taken || !touched
 		pick := -1
 		for _, k := range cands {
-			if k < rows[0] {
+			// No separator on the winning side means that side reads as text.
+			if k < rows[0] || (change[k] > 0) != newSide {
 				continue
 			}
-			// No separator on the winning side means that side reads as text.
-			if (change[k] > 0) == newSide {
-				pick = k
-				break
+			// Its header is the last row above it; one of its own side must come from the
+			// same table, so a rejected new table never lends its separator to a row
+			// that was text in both versions.
+			h := rows[0]
+			for _, r := range rows {
+				if r < k {
+					h = r
+				}
 			}
+			ids := oldTable
+			if change[k] > 0 {
+				ids = newTable
+			}
+			if (change[h] == 0 || (change[h] > 0) == (change[k] > 0)) && ids[h] != ids[k] {
+				continue
+			}
+			pick = k
+			break
 		}
 		if pick >= 0 {
 			take(pick, true)
