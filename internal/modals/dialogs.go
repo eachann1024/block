@@ -325,7 +325,7 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 
 			// Message textarea.
 			msgIn := ui.TextArea(c.Key("feedback-message"), &m.feedbackMessage).
-				Placeholder(activePH).Label(theme.Tr("反馈内容", "Feedback message")).
+				Placeholder(activePH).PlaceholderColor(pal.Placeholder).Label(theme.Tr("反馈内容", "Feedback message")).
 				FillWidth().Height(116)
 			internalui.AutoHideScrollbars(c, msgIn)
 			internalui.Probe(msgIn, "feedback-message")
@@ -339,6 +339,7 @@ func (m *Manager) renderFeedbackModal(c *ui.Context) {
 				ui.Text(c, theme.Tr("回复邮箱（选填）", "Reply email (optional)")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 				contactIn := ui.TextInput(c.Key("feedback-contact"), &m.feedbackContact).
 					Placeholder(theme.Tr("留了邮箱，回复会发到这里", "We reply here if you leave one")).
+					PlaceholderColor(pal.Placeholder).
 					Label(theme.Tr("回复邮箱", "Reply email")).FillWidth().Height(38)
 				internalui.Probe(contactIn, "feedback-contact")
 				if contactIn.Changed() {
@@ -995,7 +996,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 			case "dark":
 				themeIdx = 2
 			}
-			settingRow(c, theme.Tr("导出主题", "Theme"), func() {
+			dialogRow(c, theme.Tr("导出主题", "Theme"), func() {
 				if internalui.SegmentedControl(c, "export-theme-seg", &themeIdx, []internalui.SegmentOption{
 					{Label: theme.Tr("跟随当前", "Current")},
 					{Label: theme.Tr("浅色", "Light")},
@@ -1004,7 +1005,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 					m.exportTheme = []string{"current", "light", "dark"}[themeIdx]
 				}
 			})
-			settingRow(c, theme.Tr("包含前置元数据", "Include Frontmatter"), func() {
+			dialogRow(c, theme.Tr("包含前置元数据", "Include Frontmatter"), func() {
 				internalui.TogglePill(c, "export-include-meta", theme.Tr("包含元数据", "Include Frontmatter"), &m.exportIncludeMeta, false)
 			})
 
@@ -1012,7 +1013,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
 				ui.Text(c, theme.Tr("输出路径", "Output Path")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				in := ui.TextInput(c.Key("export-out-path"), &m.exportOutPath).
-					Placeholder("note.md").Label(theme.Tr("输出路径", "Output Path")).FillWidth()
+					Placeholder("note.md").PlaceholderColor(pal.Placeholder).Label(theme.Tr("输出路径", "Output Path")).FillWidth()
 				internalui.Probe(in, "export-out-path")
 				if in.Submitted() {
 					m.runExport()
@@ -1041,3 +1042,12 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 	}
 }
 
+
+// dialogRow renders a compact "label …… control" row for dialog forms.
+func dialogRow(c *ui.Context, label string, control func()) {
+	pal := theme.Ocean()
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space16).Children(func() {
+		ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Shrink(0)
+		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(control)
+	})
+}
