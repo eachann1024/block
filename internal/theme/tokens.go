@@ -99,6 +99,14 @@ const (
 
 	TitleBarTitleMaxWidth float32 = 240
 
+	// Settings pages: centred content column, flat sections with hairline rows.
+	SettingsContentMaxWidth float32 = 600
+	SettingsRowHeight       float32 = 44
+	SettingsListRowHeight   float32 = 48
+	SettingsSectionTitleH   float32 = 28
+	SettingsSectionGap      float32 = 32
+	SettingsFormLabelWidth  float32 = 72
+
 	CardPadY float32 = 18
 	CardPadX         = Space20
 	CardGap          = Space16
@@ -187,7 +195,11 @@ const (
 	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
 	StoreStatusDotSize     float32 = 6   // active indicator dot on installed plugin nav rows
 	StoreMinColWidth       float32 = 340 // minimum column width for the multi-column store grid
-	StorePermissionSummary         = 2   // inline permission capsules before "+N" collapse
+	StoreDetailIconBox     float32 = 56  // app icon box in the in-place store detail header
+	StoreDetailIconGlyph   float32 = 28  // Duo icon size inside StoreDetailIconBox
+	StoreDetailSideWidth   float32 = 240 // info column (version, author, permissions) beside the README
+	StoreDetailStackWidth  float32 = 760 // below this body width the info column stacks under the README
+	StoreDetailReadmeMinH  float32 = 360 // minimum height of the embedded README viewport
 	SegmentedControlHeight         = HeightControl
 	SegmentedInnerHeight           = HeightChrome
 )
