@@ -52,9 +52,8 @@ jobs:
           ref: ${{ env.SOURCE_SHA }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Setup Node 22
+        run: bash scripts/ci/setup-node.sh 22
       # 只在 main 的定时或手动发布里短时加入 tailnet。身份只存在 Environment release-notes。
       # 目标只有 100.115.90.80:3425。不要 API key，不要公网地址，不要 3430。
       - name: Detect tailnet identity
@@ -126,13 +125,14 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: false
+      - name: Setup Node & Go
+        run: |
+          bash scripts/ci/setup-node.sh 22 &
+          pid_node=$!
+          bash scripts/ci/setup-go.sh &
+          pid_go=$!
+          wait "$pid_node"
+          wait "$pid_go"
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -145,13 +145,11 @@ jobs:
           key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
           restore-keys: |
             go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-plan-${{ env.SOURCE_SHA }}
-          path: .
+            go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - name: Build release .app and DMG
         env:
           BLOCK_ARCHES: arm64,x64
+          BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: node scripts/release/package-release.mjs
       - name: Resolve allowlisted macOS installers
         id: installer
@@ -171,73 +169,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  release-windows:
-    name: Windows x64 NSIS
-    needs: [prepare]
-    if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    env:
-      GOMODCACHE: ${{ runner.temp }}\go-mod
-      GOCACHE: ${{ runner.temp }}\go-build
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SOURCE_SHA }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: false
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\go-mod
-          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\go-build
-          key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
-          restore-keys: |
-            go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-plan-${{ env.SOURCE_SHA }}
-          path: .
-      - name: Cache NSIS 3.13
-        uses: actions/cache@v4
-        with:
-          path: C:\Program Files (x86)\NSIS
-          key: nsis-3.13.0-windows-x64
-      - name: Install NSIS 3.13
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
-            choco install nsis --version=3.13.0 -y --no-progress
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
-      - name: Build NSIS installer
-        env:
-          BLOCK_ARCH: x64
-        run: node scripts/release/package-windows.mjs
-      - name: Resolve allowlisted Windows installer
-        id: installer
-        shell: bash
-        run: echo "name=$(node scripts/release/allowed-assets.mjs windows x64 exe)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: block-installer-windows-x64
-          path: dist/release/${{ steps.installer.outputs.name }}
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 14
-
-  release-linux:
-    name: Linux x64 deb and AppImage
+  release-linux-windows:
+    name: Linux & Windows x64 installers
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -250,13 +183,6 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: false
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -269,66 +195,86 @@ jobs:
           key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
           restore-keys: |
             go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-plan-${{ env.SOURCE_SHA }}
-          path: .
+            go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - name: Cache appimagetool
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/appimagetool
           key: appimagetool-1.9.1-x86_64
-      - name: Install packaging tools
+      - name: Setup Node, Go, and packaging tools
         run: |
-          if ! command -v patchelf >/dev/null 2>&1; then
-            sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
-            sudo apt-get install -y -qq --no-install-recommends patchelf
-          fi
-          if [ ! -x "$RUNNER_TEMP/appimagetool" ]; then
-            curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
-              "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
-            chmod +x "$RUNNER_TEMP/appimagetool"
-          fi
+          bash scripts/ci/setup-node.sh 22 &
+          pid_node=$!
+          bash scripts/ci/setup-go.sh &
+          pid_go=$!
+          (
+            missing=()
+            command -v patchelf >/dev/null 2>&1 || missing+=(patchelf)
+            command -v makensis >/dev/null 2>&1 || missing+=(nsis)
+            if [ "${#missing[@]}" -gt 0 ]; then
+              sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
+              sudo apt-get install -y -qq --no-install-recommends "${missing[@]}"
+            fi
+          ) &
+          pid_apt=$!
+          (
+            if [ ! -x "$RUNNER_TEMP/appimagetool" ]; then
+              curl -fsSL --retry 3 -o "$RUNNER_TEMP/appimagetool" \
+                "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+              chmod +x "$RUNNER_TEMP/appimagetool"
+            fi
+          ) &
+          pid_app=$!
+          wait "$pid_node"
+          wait "$pid_go"
+          wait "$pid_apt"
+          wait "$pid_app"
           echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
           echo "APPIMAGE_ARCH=x86_64" >> "$GITHUB_ENV"
-      - name: Build AppImage and deb
+      - name: Build Linux and Windows installers
         env:
           BLOCK_ARCH: x64
+          BLOCK_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           node scripts/release/go-release.mjs linux amd64
           BLOCK_REUSE_BINARY=1 node scripts/release/package-linux.mjs &
           pid_app=$!
           BLOCK_REUSE_BINARY=1 node scripts/release/package-native.mjs &
           pid_deb=$!
+          BLOCK_SKIP_VERSION_SYNC=1 node scripts/release/go-release.mjs windows amd64
+          BLOCK_REUSE_BINARY=1 node scripts/release/package-windows.mjs &
+          pid_win=$!
           wait "$pid_app"
           wait "$pid_deb"
-      - name: Resolve allowlisted Linux installers
+          wait "$pid_win"
+      - name: Resolve allowlisted Linux and Windows installers
         id: installer
         shell: bash
         run: |
           {
             echo "app=$(node scripts/release/allowed-assets.mjs linux x64 AppImage)"
             echo "deb=$(node scripts/release/allowed-assets.mjs linux x64 deb)"
+            echo "win=$(node scripts/release/allowed-assets.mjs windows x64 exe)"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: block-installer-linux-x64
+          name: block-installer-linux-windows-x64
           path: |
             dist/release/${{ steps.installer.outputs.app }}
             dist/release/${{ steps.installer.outputs.deb }}
+            dist/release/${{ steps.installer.outputs.win }}
           compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
   publish:
     name: Publish GitHub Release
-    needs: [prepare, release-macos, release-windows, release-linux]
+    needs: [prepare, release-macos, release-linux-windows]
     if: >-
       needs.prepare.outputs.should_build == 'yes' &&
       github.ref == 'refs/heads/main' &&
       needs.release-macos.result == 'success' &&
-      needs.release-windows.result == 'success' &&
-      needs.release-linux.result == 'success'
+      needs.release-linux-windows.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -338,9 +284,8 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Setup Node 22
+        run: bash scripts/ci/setup-node.sh 22
       - uses: actions/download-artifact@v4
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
@@ -351,6 +296,7 @@ jobs:
           merge-multiple: true
           path: dist/release
       - uses: actions/upload-artifact@v4
+        if: needs.prepare.outputs.publish != 'yes'
         with:
           name: block-release-${{ env.SOURCE_SHA }}
           path: dist/release/
