@@ -50,6 +50,7 @@ type IconButtonOptions struct {
 	ChromeHover bool
 	CardBorder  bool
 	Disabled    bool
+	Loading     bool
 	Danger      bool
 }
 
@@ -81,12 +82,13 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	if opts.ID != "" {
 		c.Key(opts.ID)
 	}
+	isDisabled := opts.Disabled || opts.Loading
 	cursor := ui.CursorPointer
-	if opts.Disabled {
+	if isDisabled {
 		cursor = ui.CursorDefault
 	}
 	btn := ui.ButtonBase(c).Size(boxSize, boxSize).Shrink(0).Center().
-		Radius(radius).Cursor(cursor).Disabled(opts.Disabled).DimDisabled(false)
+		Radius(radius).Cursor(cursor).Disabled(isDisabled).DimDisabled(false)
 	if opts.Variant == IconBordered {
 		if opts.CardBorder {
 			btn.Background(pal.Card).Border(1, pal.BtnBorder)
@@ -94,12 +96,15 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			btn.Background(pal.Paper).Border(1, pal.BtnBorder)
 		}
 	}
-	if opts.Label != "" {
-		btn.Label(opts.Label)
-	} else if opts.Tooltip != "" {
-		btn.Label(opts.Tooltip)
-	} else if opts.ID != "" {
-		btn.Label(opts.ID)
+	a11yLabel := opts.Label
+	if a11yLabel == "" {
+		a11yLabel = opts.Tooltip
+	}
+	if a11yLabel == "" {
+		a11yLabel = opts.ID
+	}
+	if a11yLabel != "" {
+		btn.Label(a11yLabel)
 	}
 	if opts.TooltipSpec != nil {
 		RichTooltip(c, btn, *opts.TooltipSpec)
@@ -117,8 +122,8 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			}},
 		})
 	}
-	hovered := btn.Hovered() && !opts.Disabled
-	pressed := btn.Pressed() && !opts.Disabled
+	hovered := btn.Hovered() && !isDisabled
+	pressed := btn.Pressed() && !isDisabled
 
 	bgCol := ui.Transparent
 	bdCol := ui.Transparent
@@ -155,12 +160,19 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		}
 	}
 	AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
-	TactileButton(btn, hovered, pressed, opts.Disabled)
-	if opts.Disabled {
+	TactileButton(btn, hovered, pressed, isDisabled)
+	if opts.Disabled && !opts.Loading {
 		btn.Opacity(theme.DisabledOpacity)
 	}
 
 	btn.Children(func() {
+		if opts.Loading {
+			sp := ui.Spinner(c).FontSize(glyphSize).TextColor(pal.Accent)
+			if a11yLabel != "" {
+				sp.Label(a11yLabel)
+			}
+			return
+		}
 		var ic theme.IconColors
 		switch {
 		case opts.Danger && (hovered || pressed || opts.Active):
@@ -192,6 +204,7 @@ const (
 	ButtonAccentOutline
 	ButtonGhost
 	ButtonDanger
+	ButtonSuccess
 )
 
 // ActionButtonOptions configures optional sizing and layout overrides for ActionButtonWithOptions.
@@ -202,6 +215,7 @@ type ActionButtonOptions struct {
 	Leading            *icons.Icon
 	Style              ActionButtonStyle
 	Disabled           bool
+	Loading            bool
 	Height             float32
 	Width              float32
 	MinWidth           float32
@@ -229,8 +243,9 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	if opts.ID != "" {
 		c.Key(opts.ID)
 	}
+	isDisabled := opts.Disabled || opts.Loading
 	cursor := ui.CursorPointer
-	if opts.Disabled {
+	if isDisabled {
 		cursor = ui.CursorDefault
 	}
 	h := opts.Height
@@ -246,7 +261,7 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		a11yLabel = opts.Label
 	}
 	btn := ui.ButtonBase(c).Height(h).Gap(theme.Space6).AlignItems(ui.Center).Justify(ui.Center).
-		Radius(theme.RadiusMD).Cursor(cursor).Disabled(opts.Disabled).DimDisabled(false).Label(a11yLabel)
+		Radius(theme.RadiusMD).Cursor(cursor).Disabled(isDisabled).DimDisabled(false).Label(a11yLabel)
 	if opts.Width > 0 {
 		btn.Width(opts.Width)
 	} else if padX > 0 {
@@ -261,8 +276,8 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	if opts.Shrink != nil {
 		btn.Shrink(*opts.Shrink)
 	}
-	hovered := btn.Hovered() && !opts.Disabled
-	pressed := btn.Pressed() && !opts.Disabled
+	hovered := btn.Hovered() && !isDisabled
+	pressed := btn.Pressed() && !isDisabled
 
 	var fg, bg, bd ui.Color
 	hasBorder := false
@@ -295,6 +310,16 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		}
 		bd = pal.Danger.Alpha(0.35)
 		hasBorder = true
+	case ButtonSuccess:
+		fg = pal.Success
+		bg = pal.SuccessSurface
+		if pressed {
+			bg = pal.SuccessSurface.Mix(pal.Success, 0.14)
+		} else if hovered {
+			bg = pal.SuccessSurface.Mix(pal.Success, 0.08)
+		}
+		bd = pal.Success.Alpha(0.38)
+		hasBorder = true
 	case ButtonGhost:
 		fg = pal.TextSecondary
 		if pressed {
@@ -319,9 +344,11 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		hasBorder = true
 	}
 	AnimateSurfaceColors(btn, bg, bd, hasBorder)
-	TactileCard(btn, hovered, pressed, false, opts.Disabled)
-	if opts.Disabled {
+	TactileButton(btn, hovered, pressed, isDisabled)
+	if opts.Disabled && !opts.Loading {
 		btn.Opacity(theme.DisabledOpacity)
+	} else if opts.Loading {
+		btn.Opacity(0.92)
 	}
 
 	weight := theme.WeightControl
@@ -329,7 +356,16 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		weight = theme.WeightRegular
 	}
 	btn.Children(func() {
-		if opts.Leading != nil {
+		if opts.Loading {
+			spCol := fg
+			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost {
+				spCol = pal.Accent
+			}
+			sp := ui.Spinner(c).FontSize(theme.IconInline).TextColor(spCol)
+			if a11yLabel != "" {
+				sp.Label(a11yLabel)
+			}
+		} else if opts.Leading != nil {
 			ic := pal.MonoIconColors(fg)
 			if (opts.Style == ButtonSecondary || opts.Style == ButtonGhost) && (hovered || pressed) {
 				ic = pal.DuoIconColors(fg)
@@ -359,6 +395,8 @@ type SegmentedControlOptions struct {
 	SegmentRadius float32
 	ShellTrack    bool
 	CardTrack     bool
+	// Quiet: transparent track with a hairline ring and FontSmall labels (settings pages).
+	Quiet bool
 }
 
 // SegmentedControl renders an Ocean Paper segmented radio track.
@@ -397,6 +435,11 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 		trackBG, trackBorder = pal.Card, pal.BtnBorder
 	} else if opts.ShellTrack {
 		trackBG, trackBorder = pal.Shell, pal.Hairline
+	}
+	labelSize, labelLine := theme.FontBody, theme.LineBody
+	if opts.Quiet {
+		trackBG, trackBorder = ui.Transparent, pal.Hairline
+		labelSize, labelLine = theme.FontSmall, theme.LineSmall
 	}
 	seg := ui.SegmentedBase(c, active, len(options))
 	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).AlignItems(ui.Center).Radius(theme.RadiusMD).
@@ -445,7 +488,7 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 				if isAct || hovered || pressed {
 					col = pal.Text
 				}
-				ui.Text(c, opt.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
+				ui.Text(c, opt.Label).FontSize(labelSize).FixedLineHeight(labelLine).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 			})
 		}
 	})
