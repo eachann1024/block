@@ -55,6 +55,13 @@ type UIMetric struct {
 	Value string `json:"value"`
 }
 
+type UITreemapSummary struct {
+	TotalLabel string     `json:"total_label,omitempty"`
+	TotalValue string     `json:"total_value"`
+	SubText    string     `json:"sub_text,omitempty"`
+	Metrics    []UIMetric `json:"metrics,omitempty"`
+}
+
 type UITreemapEntry struct {
 	Name  string `json:"name"`
 	Path  string `json:"path,omitempty"`
@@ -112,9 +119,10 @@ type UIItem struct {
 	Options     []UIOption      `json:"options,omitempty"`
 	Buttons     []UIButton      `json:"buttons,omitempty"`
 	Rows        []UIKVRow       `json:"rows,omitempty"`
-	Metrics     []UIMetric      `json:"metrics,omitempty"`
-	Tiles       []UITreemapTile `json:"tiles,omitempty"`
-	TotalBytes  uint64          `json:"total_bytes,omitempty"`
+	Metrics     []UIMetric        `json:"metrics,omitempty"`
+	Summary     *UITreemapSummary `json:"summary,omitempty"`
+	Tiles       []UITreemapTile   `json:"tiles,omitempty"`
+	TotalBytes  uint64            `json:"total_bytes,omitempty"`
 	Preview     *UIPreview      `json:"preview,omitempty"`
 	EmptyText   string          `json:"empty_text,omitempty"`
 	Entries     []UILogEntry    `json:"entries,omitempty"`
@@ -212,7 +220,7 @@ func (p *UIPage) Validate() error {
 			return fmt.Errorf("%s.id %q is duplicated", prefix, card.ID)
 		}
 		seenCardIDs[card.ID] = true
-		if err := checkText(prefix+".title", card.Title, true); err != nil {
+		if err := checkText(prefix+".title", card.Title, false); err != nil {
 			return err
 		}
 		if len(card.Items) == 0 {
@@ -354,6 +362,25 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			}
 		}
 	case KindTreemap:
+		if item.Summary != nil {
+			if err := checkText(prefix+".summary.total_label", item.Summary.TotalLabel, false); err != nil {
+				return err
+			}
+			if err := checkUserText(prefix+".summary.total_value", item.Summary.TotalValue, true); err != nil {
+				return err
+			}
+			if err := checkUserText(prefix+".summary.sub_text", item.Summary.SubText, false); err != nil {
+				return err
+			}
+			for mi, m := range item.Summary.Metrics {
+				if err := checkText(fmt.Sprintf("%s.summary.metrics[%d].label", prefix, mi), m.Label, true); err != nil {
+					return err
+				}
+				if err := checkUserText(fmt.Sprintf("%s.summary.metrics[%d].value", prefix, mi), m.Value, true); err != nil {
+					return err
+				}
+			}
+		}
 		if len(item.Tiles) == 0 {
 			return fmt.Errorf("%s.tiles must contain at least 1 tile", prefix)
 		}
