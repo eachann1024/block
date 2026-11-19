@@ -1215,6 +1215,10 @@ func latestStreamLine(s string) string {
 			}
 			continue
 		}
+		// A quote line with nothing behind its ">" only separates paragraphs.
+		if !code[i] && strings.Trim(raw, "> \t") == "" {
+			continue
+		}
 		// A rule ("---") or an alert marker ("> [!NOTE]") is no text.
 		if !code[i] && (plainRuleRE.MatchString(raw) || alerts[i] != "") {
 			continue
