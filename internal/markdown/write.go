@@ -277,9 +277,8 @@ func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 }
 
 func tablesEqual(a, b *model.TableData) bool {
-	if a.WasHTML != b.WasHTML || a.NoHeaderRow != b.NoHeaderRow ||
-		len(a.Rows) != len(b.Rows) || len(a.Aligns) != len(b.Aligns) || len(a.Widths) != len(b.Widths) ||
-		len(a.ColTints) != len(b.ColTints) || len(a.RowTints) != len(b.RowTints) {
+	if a.WasHTML != b.WasHTML || a.NoHeaderRow != b.NoHeaderRow || a.HeaderCol != b.HeaderCol ||
+		len(a.Rows) != len(b.Rows) || len(a.Aligns) != len(b.Aligns) || len(a.Widths) != len(b.Widths) {
 		return false
 	}
 	for i := range a.Aligns {
@@ -292,21 +291,14 @@ func tablesEqual(a, b *model.TableData) bool {
 			return false
 		}
 	}
-	for i := range a.ColTints {
-		if a.ColTints[i] != b.ColTints[i] {
-			return false
-		}
-	}
-	for i := range a.RowTints {
-		if a.RowTints[i] != b.RowTints[i] {
-			return false
-		}
-	}
 	for r := range a.Rows {
 		if len(a.Rows[r]) != len(b.Rows[r]) {
 			return false
 		}
 		for c := range a.Rows[r] {
+			if a.Rows[r][c].Align != b.Rows[r][c].Align || a.Rows[r][c].Tint != b.Rows[r][c].Tint {
+				return false
+			}
 			if !spansEqual(a.Rows[r][c].Spans, b.Rows[r][c].Spans) {
 				return false
 			}
@@ -596,10 +588,157 @@ func formatFloat(v float32) string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 32)
 }
 
+func encodeTableTintMeta(t *model.TableData) (colTints, rowTints []model.TableTint, cellTints []string) {
+	rows := len(t.Rows)
+	if rows == 0 {
+		return nil, nil, nil
+	}
+	cols := len(t.Rows[0])
+	if cols == 0 {
+		return nil, nil, nil
+	}
+	anyTint := false
+	for r := 0; r < rows && !anyTint; r++ {
+		for c := 0; c < len(t.Rows[r]); c++ {
+			if t.Rows[r][c].Tint != model.TableTintNone {
+				anyTint = true
+				break
+			}
+		}
+	}
+	if !anyTint {
+		return nil, nil, nil
+	}
+
+	colTints = make([]model.TableTint, cols)
+	for c := 0; c < cols; c++ {
+		counts := make(map[model.TableTint]int)
+		bestTint := model.TableTintNone
+		bestN := 0
+		for r := 0; r < rows; r++ {
+			if c < len(t.Rows[r]) && t.Rows[r][c].Tint != model.TableTintNone {
+				v := t.Rows[r][c].Tint
+				counts[v]++
+				if counts[v] > bestN {
+					bestN = counts[v]
+					bestTint = v
+				}
+			}
+		}
+		// Only hoist to column tint when it covers strictly more than half of rows (and at least 2, or all 1 row).
+		if bestTint != model.TableTintNone && bestN*2 > rows && (rows == 1 || bestN >= 2) {
+			colTints[c] = bestTint
+		}
+	}
+
+	rowTints = make([]model.TableTint, rows)
+	for r := 0; r < rows; r++ {
+		baseDiffs := 0
+		counts := make(map[model.TableTint]int)
+		bestTint := model.TableTintNone
+		bestN := 0
+		for c := 0; c < len(t.Rows[r]); c++ {
+			actual := t.Rows[r][c].Tint
+			if actual != colTints[c] {
+				baseDiffs++
+			}
+			if actual != model.TableTintNone {
+				counts[actual]++
+				if counts[actual] > bestN {
+					bestN = counts[actual]
+					bestTint = actual
+				}
+			}
+		}
+		if baseDiffs == 0 || bestTint == model.TableTintNone {
+			continue
+		}
+		rowDiffs := len(t.Rows[r]) - bestN
+		if rowDiffs < baseDiffs && (len(t.Rows[r]) == 1 || bestN >= 2) {
+			rowTints[r] = bestTint
+		}
+	}
+
+	for r := 0; r < rows; r++ {
+		for c := 0; c < len(t.Rows[r]); c++ {
+			pred := colTints[c]
+			if rowTints[r] != model.TableTintNone {
+				pred = rowTints[r]
+			}
+			actual := t.Rows[r][c].Tint
+			if actual != pred {
+				val := string(actual)
+				if val == "" {
+					val = "none"
+				}
+				cellTints = append(cellTints, fmt.Sprintf("%d:%d=%s", r, c, val))
+			}
+		}
+	}
+
+	// Trim trailing empty slots; drop entirely if all empty.
+	for len(colTints) > 0 && colTints[len(colTints)-1] == model.TableTintNone {
+		colTints = colTints[:len(colTints)-1]
+	}
+	for len(rowTints) > 0 && rowTints[len(rowTints)-1] == model.TableTintNone {
+		rowTints = rowTints[:len(rowTints)-1]
+	}
+	return colTints, rowTints, cellTints
+}
+
+func encodeTableAlignMeta(t *model.TableData) (rowAligns []model.ColAlign, cellAligns []string) {
+	rows := len(t.Rows)
+	if rows == 0 {
+		return nil, nil
+	}
+	rowAligns = make([]model.ColAlign, rows)
+	for r := 0; r < rows; r++ {
+		baseDiffs := 0
+		counts := make(map[model.ColAlign]int)
+		bestAlign := model.ColAlignNone
+		bestN := 0
+		for c := 0; c < len(t.Rows[r]); c++ {
+			eff := t.CellEffectiveAlign(r, c)
+			if eff != t.ColBaseAlign(c) {
+				baseDiffs++
+			}
+			counts[eff]++
+			if counts[eff] > bestN {
+				bestN = counts[eff]
+				bestAlign = eff
+			}
+		}
+		if baseDiffs == 0 {
+			continue
+		}
+		rowDiffs := len(t.Rows[r]) - bestN
+		if bestAlign != model.ColAlignNone && rowDiffs < baseDiffs && (len(t.Rows[r]) == 1 || bestN >= 2) {
+			rowAligns[r] = bestAlign
+		}
+		for c := 0; c < len(t.Rows[r]); c++ {
+			pred := t.ColBaseAlign(c)
+			if rowAligns[r] != model.ColAlignNone {
+				pred = rowAligns[r]
+			}
+			eff := t.CellEffectiveAlign(r, c)
+			if eff != pred {
+				cellAligns = append(cellAligns, fmt.Sprintf("%d:%d=%s", r, c, string(eff)))
+			}
+		}
+	}
+	for len(rowAligns) > 0 && rowAligns[len(rowAligns)-1] == model.ColAlignNone {
+		rowAligns = rowAligns[:len(rowAligns)-1]
+	}
+	return rowAligns, cellAligns
+}
+
 func serializeTableMetaComment(t *model.TableData, out *strings.Builder) {
 	var parts []string
 	if t.NoHeaderRow {
 		parts = append(parts, "header=0")
+	}
+	if t.HeaderCol {
+		parts = append(parts, "headercol=1")
 	}
 	hasW := false
 	for _, w := range t.Widths {
@@ -617,33 +756,34 @@ func serializeTableMetaComment(t *model.TableData, out *strings.Builder) {
 		}
 		parts = append(parts, "widths="+strings.Join(ws, ","))
 	}
-	hasCT := false
-	for _, ct := range t.ColTints {
-		if ct != "" {
-			hasCT = true
-			break
-		}
-	}
-	if hasCT {
-		cs := make([]string, len(t.ColTints))
-		for i, ct := range t.ColTints {
+	colTints, rowTints, cellTints := encodeTableTintMeta(t)
+	if len(colTints) > 0 {
+		cs := make([]string, len(colTints))
+		for i, ct := range colTints {
 			cs[i] = string(ct)
 		}
 		parts = append(parts, "coltints="+strings.Join(cs, ","))
 	}
-	hasRT := false
-	for _, rt := range t.RowTints {
-		if rt != "" {
-			hasRT = true
-			break
-		}
-	}
-	if hasRT {
-		rs := make([]string, len(t.RowTints))
-		for i, rt := range t.RowTints {
+	if len(rowTints) > 0 {
+		rs := make([]string, len(rowTints))
+		for i, rt := range rowTints {
 			rs[i] = string(rt)
 		}
 		parts = append(parts, "rowtints="+strings.Join(rs, ","))
+	}
+	if len(cellTints) > 0 {
+		parts = append(parts, "celltints="+strings.Join(cellTints, ","))
+	}
+	rowAligns, cellAligns := encodeTableAlignMeta(t)
+	if len(rowAligns) > 0 {
+		as := make([]string, len(rowAligns))
+		for i, ra := range rowAligns {
+			as[i] = string(ra)
+		}
+		parts = append(parts, "rowaligns="+strings.Join(as, ","))
+	}
+	if len(cellAligns) > 0 {
+		parts = append(parts, "cellaligns="+strings.Join(cellAligns, ","))
 	}
 	if len(parts) > 0 {
 		out.WriteString("<!-- thinkly:table ")
@@ -668,16 +808,16 @@ func serializeTable(t *model.TableData, out *strings.Builder) {
 		}
 		for r, row := range t.Rows {
 			out.WriteString("<tr>")
-			tag := "td"
-			if r == 0 && !t.NoHeaderRow {
-				tag = "th"
-			}
 			for c, cell := range row {
+				tag := "td"
+				if t.IsHeaderCell(r, c) {
+					tag = "th"
+				}
 				out.WriteByte('<')
 				out.WriteString(tag)
-				if c < len(t.Aligns) && t.Aligns[c] != model.ColAlignNone {
+				if a := t.CellAlign(r, c); a != model.ColAlignNone {
 					out.WriteString(` style="text-align:`)
-					out.WriteString(string(t.Aligns[c]))
+					out.WriteString(string(a))
 					out.WriteByte('"')
 				}
 				out.WriteByte('>')
