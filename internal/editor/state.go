@@ -321,6 +321,13 @@ type Session struct {
 	minimal           bool
 	minCanvasHeight   float32
 	OnPickImages      func(blockID model.BlockID, replace bool)
+	ExtraContextItems func() []ContextMenuExtra
+}
+
+// ContextMenuExtra describes an extra item appended to the editor canvas context menu.
+type ContextMenuExtra struct {
+	Label    string
+	OnChoose func()
 }
 
 // NewSession constructs a Session for a note path and document.

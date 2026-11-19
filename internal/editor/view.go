@@ -180,14 +180,31 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 					if m.Item(theme.Tr("全选", "Select All")).Disabled(!canSelectAll).Chosen() {
 						s.SelectAllBlocks()
 					}
-					return
+				} else {
+					if m.Item(theme.Tr("拷贝", "Copy")).Disabled(!canCopy).Chosen() {
+						s.CopySelection(svcCanvas)
+					}
+					m.Separator()
+					if m.Item(theme.Tr("全选", "Select All")).Disabled(!canSelectAll).Chosen() {
+						s.SelectAllBlocks()
+					}
 				}
-				if m.Item(theme.Tr("拷贝", "Copy")).Disabled(!canCopy).Chosen() {
-					s.CopySelection(svcCanvas)
-				}
-				m.Separator()
-				if m.Item(theme.Tr("全选", "Select All")).Disabled(!canSelectAll).Chosen() {
-					s.SelectAllBlocks()
+				if s.ExtraContextItems != nil {
+					if extra := s.ExtraContextItems(); len(extra) > 0 {
+						sepAdded := false
+						for _, ex := range extra {
+							if ex.Label == "" {
+								continue
+							}
+							if !sepAdded {
+								m.Separator()
+								sepAdded = true
+							}
+							if m.Item(ex.Label).Chosen() && ex.OnChoose != nil {
+								ex.OnChoose()
+							}
+						}
+					}
 				}
 			})
 			s.updateCanvasMouseSelection(c, root, col, readOnly)
