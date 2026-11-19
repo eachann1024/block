@@ -1482,6 +1482,10 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 		if t := strings.TrimLeft(s, "*"); t != s && strings.HasPrefix(t, " ") {
 			s = strings.Repeat(`\*`, len(s)-len(t)) + t
 		}
+		// A trailing lone backslash ("C:\") would escape the closing star.
+		if n := len(s) - len(strings.TrimRight(s, `\`)); n%2 == 1 {
+			s += `\`
+		}
 		s = "**" + s + "**"
 	}
 	return markdown.View(c, s, diffMarkdownOptions(st))
