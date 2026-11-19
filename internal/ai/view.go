@@ -1262,8 +1262,10 @@ func latestStreamLine(s string) string {
 	return ""
 }
 
-// plainURLUnescaper drops the escapes PlainLinks puts on a link's markers.
-var plainURLUnescaper = strings.NewReplacer(`\_`, "_", `\*`, "*", `\~`, "~")
+// plainURLUnescaper drops the escapes PlainLinks puts on a link's text:
+// "<https://x/?q=go&lang=zh>" keeps its "&".
+var plainURLUnescaper = strings.NewReplacer(`\\`, `\`, "\\`", "`", `\*`, "*", `\_`, "_", `\~`, "~",
+	`\[`, "[", `\]`, "]", `\$`, "$", `\&`, "&")
 
 // plainTableCut keeps a table row's first n cells, as many as its header has: the
 // note drops the rest.
