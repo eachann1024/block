@@ -997,7 +997,20 @@ func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]an
 	if view.Values == nil {
 		view.Values = make(map[string]any)
 	}
-	for k, v := range page.ExtractDefaultValues() {
+	defaults := page.ExtractDefaultValues()
+	// Keep only keys the current page declares or the plugin just returned,
+	// so values from earlier renders cannot accumulate without bound.
+	for k := range view.Values {
+		if _, declared := defaults[k]; declared {
+			continue
+		}
+		if _, ok := returned[k]; ok {
+			continue
+		}
+		delete(view.Values, k)
+		delete(view.editedControls, k)
+	}
+	for k, v := range defaults {
 		if !view.editedControls[k] {
 			view.Values[k] = v
 		}
