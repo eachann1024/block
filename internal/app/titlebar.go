@@ -78,6 +78,7 @@ type TitlebarProps struct {
 	PreviewZoomPct string
 	PreviewZoomFit bool
 	SVGShowSource  bool
+	SourceWrap     bool
 
 	CanBack    bool
 	CanForward bool
@@ -103,30 +104,31 @@ type TitlebarProps struct {
 	ShortcutNewNote string
 	OnOpenSearch    func()
 
-	OnToggleSidebar   func()
-	OnCloseSettings   func()
-	OnClickNotebook   func()
-	OnBack            func()
-	OnForward         func()
-	OnSelectTab       func(path string)
-	OnCloseTab        func(path string)
-	OnCloseOthers     func(keepPath string)
-	OnCloseRight      func(pivotPath string)
-	OnCloseAll        func()
-	OnReorderTab      func(srcPath, targetPath string, after bool)
-	OnNewNote         func()
-	OnToggleFeedback  func()
-	OnToggleAI        func()
-	OnOpenHistory     func()
-	OnOpenExport      func()
-	OnCopyMarkdown    func()
-	OnRevealPath      func(path string)
-	NoteStats         func() (characters, blocks int)
-	OnPreviewZoomStep func(factor float32)
-	OnPreviewActual   func()
-	OnPreviewFit      func()
-	OnSelectSVGSource func(showSource bool)
-	OnOpenInBrowser   func()
+	OnToggleSidebar    func()
+	OnCloseSettings    func()
+	OnClickNotebook    func()
+	OnBack             func()
+	OnForward          func()
+	OnSelectTab        func(path string)
+	OnCloseTab         func(path string)
+	OnCloseOthers      func(keepPath string)
+	OnCloseRight       func(pivotPath string)
+	OnCloseAll         func()
+	OnReorderTab       func(srcPath, targetPath string, after bool)
+	OnNewNote          func()
+	OnToggleFeedback   func()
+	OnToggleAI         func()
+	OnOpenHistory      func()
+	OnOpenExport       func()
+	OnCopyMarkdown     func()
+	OnRevealPath       func(path string)
+	NoteStats          func() (characters, blocks int)
+	OnPreviewZoomStep  func(factor float32)
+	OnPreviewActual    func()
+	OnPreviewFit       func()
+	OnSelectSVGSource  func(showSource bool)
+	OnToggleSourceWrap func()
+	OnOpenInBrowser    func()
 }
 
 func noteDisplayTitle(p string, isDir bool) string {
@@ -385,6 +387,8 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		}
 		if !p.SVGShowSource {
 			renderZoomCluster(c, "tb-svg-zoom", p)
+		} else {
+			renderSourceWrapButton(c, p)
 		}
 		renderRevealButton(c, p)
 	case SurfaceHTML:
@@ -396,12 +400,26 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		if openBtn.Clicked() && p.OnOpenInBrowser != nil {
 			p.OnOpenInBrowser()
 		}
+		renderSourceWrapButton(c, p)
 		renderRevealButton(c, p)
 	case SurfaceCode:
 		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
+		renderSourceWrapButton(c, p)
 		renderRevealButton(c, p)
+	}
+}
+
+func renderSourceWrapButton(c *ui.Context, p TitlebarProps) {
+	btn := blockui.IconButton(c, icons.Wrap, blockui.IconButtonOptions{
+		ID:          "tb-source-wrap",
+		Tooltip:     theme.Tr("自动换行", "Word Wrap"),
+		ChromeHover: true,
+		Active:      p.SourceWrap,
+	})
+	if btn.Clicked() && p.OnToggleSourceWrap != nil {
+		p.OnToggleSourceWrap()
 	}
 }
 
