@@ -1106,6 +1106,10 @@ func builtinToolDefinitions() []any {
 
 func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 	c.mu.Lock()
+	if !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	cfg := resolveProviderExecutionConfig(c.providerCfg)
 	thinking := c.backendThinkingLocked(model.BackendBuiltin)
 	root := c.activeRootLocked()
@@ -1606,6 +1610,10 @@ func marshalJSON(v any) string {
 
 func (c *Controller) startMockTurn(convID uint64, prompt string) {
 	c.mu.Lock()
+	if !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	c.streamSerial++
 	serial := c.streamSerial
 	c.streaming = true

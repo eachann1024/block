@@ -1304,7 +1304,7 @@ type runningExternalTurn struct {
 func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 	c.mu.Lock()
 	conv := c.findConvLocked(convID)
-	if conv == nil {
+	if conv == nil || !c.providerCfg.Enabled {
 		c.mu.Unlock()
 		return
 	}
@@ -1346,6 +1346,11 @@ func (c *Controller) startExternalTurn(convID uint64, kind model.BackendKind) {
 	}
 
 	c.mu.Lock()
+	if c.streamSerial != serial || c.currentID != convID || !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		turn.cancel()
+		return
+	}
 	c.activeExternal = turn
 	c.streamCancel = turn.cancel
 	c.mu.Unlock()

@@ -101,14 +101,18 @@ func BuildMenuBar(shortcuts map[string]string, act MenuActions) *mygo.Menu {
 
 	viewSubmenu := []*mygo.MenuItem{
 		{ID: "menu-toggle-sidebar", Label: theme.Tr("显示或隐藏侧栏", "Toggle Sidebar"), Accelerator: accel("toggle_sidebar", "alt-b"), Click: call(act.OnToggleSidebar)},
-		{ID: "menu-toggle-ai", Label: theme.Tr("AI 面板", "AI Panel"), Accelerator: accel("toggle_ai", "cmd-j"), Click: call(act.OnToggleAIPanel)},
-		mygo.Separator(),
-		{ID: "menu-zoom-reset", Label: theme.Tr("实际大小 (100%)", "Actual Size (100%)"), Accelerator: "CmdOrCtrl+0", Click: call(act.OnZoomReset)},
-		{ID: "menu-zoom-in", Label: theme.Tr("放大", "Zoom In"), Accelerator: "CmdOrCtrl+=", Click: call(act.OnZoomIn)},
-		{ID: "menu-zoom-out", Label: theme.Tr("缩小", "Zoom Out"), Accelerator: "CmdOrCtrl+-", Click: call(act.OnZoomOut)},
-		mygo.Separator(),
-		{Role: mygo.RoleToggleFullScreen, Label: theme.Tr("进入或退出全屏幕", "Toggle Full Screen")},
 	}
+	if act.OnToggleAIPanel != nil {
+		viewSubmenu = append(viewSubmenu, &mygo.MenuItem{ID: "menu-toggle-ai", Label: theme.Tr("AI 面板", "AI Panel"), Accelerator: accel("toggle_ai", "cmd-j"), Click: call(act.OnToggleAIPanel)})
+	}
+	viewSubmenu = append(viewSubmenu,
+		mygo.Separator(),
+		&mygo.MenuItem{ID: "menu-zoom-reset", Label: theme.Tr("实际大小 (100%)", "Actual Size (100%)"), Accelerator: "CmdOrCtrl+0", Click: call(act.OnZoomReset)},
+		&mygo.MenuItem{ID: "menu-zoom-in", Label: theme.Tr("放大", "Zoom In"), Accelerator: "CmdOrCtrl+=", Click: call(act.OnZoomIn)},
+		&mygo.MenuItem{ID: "menu-zoom-out", Label: theme.Tr("缩小", "Zoom Out"), Accelerator: "CmdOrCtrl+-", Click: call(act.OnZoomOut)},
+		mygo.Separator(),
+		&mygo.MenuItem{Role: mygo.RoleToggleFullScreen, Label: theme.Tr("进入或退出全屏幕", "Toggle Full Screen")},
+	)
 
 	windowSubmenu := []*mygo.MenuItem{
 		{Role: mygo.RoleMinimize, Label: theme.Tr("最小化", "Minimize")},

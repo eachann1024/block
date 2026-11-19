@@ -133,6 +133,7 @@ func NewWorkspace(dataDir string) *Workspace {
 
 	w.exportCtrl = export.NewController(actualDir, w.RequestRedraw)
 	w.ai = ai.NewController(actualDir, w, codec)
+	w.ai.SetOnEnabledChanged(w.onAIEnabledChanged)
 	w.ai.SetOnDismissFloating(func() {
 		w.edgeFloat.DismissRightWithCooldown(w)
 		w.RequestRedraw()
@@ -248,7 +249,7 @@ func applyThemeFromState(st model.AppState) {
 func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.Session {
 	sess := editor.NewSession(cleanPath, doc, w.codec, w)
 	sess.SetDataDir(w.dataDir)
-	sess.SetInlineAIResponder(w.inlineAIRespond)
+	sess.SetAIEnabled(w.ai.Enabled())
 	sess.SetInlineAIStreamResponder(w.inlineAIStreamRespond)
 	sess.SetAnnotationAIResponder(w.annotationAIRespond)
 	sess.OnPickImages = func(blockID model.BlockID, replace bool) {
@@ -305,6 +306,9 @@ func stripOuterMarkdownFence(raw string) string {
 }
 
 func (w *Workspace) inlineAIStreamRespond(ctx context.Context, ctxText, orig, draft, instruction string, onDelta func(string)) (string, error) {
+	if !w.ai.Enabled() {
+		return "", errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+	}
 	inst := strings.TrimSpace(instruction)
 	src := strings.TrimSpace(orig)
 	if src == "" {
@@ -331,16 +335,6 @@ func (w *Workspace) inlineAIStreamRespond(ctx context.Context, ctxText, orig, dr
 		onDelta(out)
 	}
 	return out, nil
-}
-
-func (w *Workspace) inlineAIRespond(ctxText, orig, draft, instruction string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	out, err := w.inlineAIStreamRespond(ctx, ctxText, orig, draft, instruction, nil)
-	if err == nil && strings.TrimSpace(out) != "" {
-		return out
-	}
-	return w.inlineAIOfflineFallback(ctxText, orig, draft, instruction)
 }
 
 func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction string) string {
@@ -405,7 +399,7 @@ func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction st
 
 func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Annotation) map[string]string {
 	out := make(map[string]string, len(pending))
-	if len(pending) == 0 {
+	if len(pending) == 0 || !w.ai.Enabled() {
 		return out
 	}
 
@@ -490,7 +484,22 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 	if w.quick == nil {
 		return
 	}
-	w.quick.SetInlineAIResponder(w.inlineAIRespond)
+	w.quick.SetAIEnabled(w.ai.Enabled())
+	w.quick.SetInlineAIStreamResponder(func(ctx context.Context, ctxText, orig, draft, instruction string, _ func(string)) (string, error) {
+		requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		out, err := w.inlineAIStreamRespond(requestCtx, ctxText, orig, draft, instruction, nil)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if !w.ai.Enabled() {
+			return "", errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+		}
+		if err == nil && strings.TrimSpace(out) != "" {
+			return out, nil
+		}
+		return w.inlineAIOfflineFallback(ctxText, orig, draft, instruction), nil
+	})
 	w.quick.OnSavedNote = func(path string) {
 		w.RescanNotebook()
 		_ = w.OpenNote(path, 0)
@@ -625,6 +634,7 @@ func (w *Workspace) wireModalCallbacks() {
 		}
 		w.RequestRedraw()
 	}
+	w.modals.AIEnabled = w.ai.Enabled
 	w.modals.RenderAISettings = func(c *ui.Context) {
 		w.ai.RenderSettingsTab(c)
 	}
@@ -1324,6 +1334,9 @@ func (w *Workspace) resolvePlanTargetPath(plan *model.BatchPlan, page string) st
 }
 
 func (w *Workspace) PreviewPlanInEditor(plan *model.BatchPlan) error {
+	if !w.ai.Enabled() {
+		return errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+	}
 	if plan == nil || len(plan.Ops) == 0 {
 		return nil
 	}
@@ -2601,9 +2614,26 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	w.RequestRedraw()
 }
 
+func (w *Workspace) onAIEnabledChanged(enabled bool) {
+	w.mu.RLock()
+	for _, sess := range w.sessions {
+		sess.SetAIEnabled(enabled)
+	}
+	w.mu.RUnlock()
+	w.quick.SetAIEnabled(enabled)
+	if !enabled {
+		w.edgeFloat.DismissRightWithCooldown(w)
+		_ = w.RejectBatchPlan("") // Close editor previews while preserving the plan in chat.
+	}
+	if w.OnAppMenuOrHotkeysChanged != nil {
+		w.OnAppMenuOrHotkeysChanged(w.State())
+	}
+	w.RequestRedraw()
+}
+
 // ToggleAIPanel opens or closes the AI Assistant panel (`Cmd+J`), unless blocked by Settings.
 func (w *Workspace) ToggleAIPanel() bool {
-	if w.modals.IsSettingsOpen() {
+	if !w.ai.Enabled() || w.modals.IsSettingsOpen() {
 		return false
 	}
 	w.tabMenu.Close()
@@ -2990,7 +3020,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		}
 		return
 	}
-	if matchAction("toggle_ai") {
+	if w.ai.Enabled() && matchAction("toggle_ai") {
 		w.ToggleAIPanel()
 		return
 	}
@@ -3200,7 +3230,8 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	var annDrafts int
 	var annGenerating, annHasAny bool
-	if activeSess != nil {
+	aiEnabled := w.ai.Enabled()
+	if aiEnabled && activeSess != nil {
 		for _, a := range activeSess.Annotations() {
 			body := strings.TrimSpace(a.Note) != ""
 			if body && a.RewriteResult == "" && !a.RewriteBusy {
@@ -3253,6 +3284,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				SettingsTabLabel:  w.modals.ActiveSettingsTabTitle(),
 				HideMark:          stSnap.BrandDeco.HideMark,
 				AIImmersive:       aiImmersive,
+				AIEnabled:         aiEnabled,
 				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
 				FeedbackOpen:      w.modals.IsFeedbackOpen(),
 				HasFeedbackDraft:  hasFBDraft,

@@ -34,7 +34,9 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 			renderNonNoteTitlebarTools(c, p, surface)
 		}
 		renderFeedbackButton(c, p)
-		renderAIButton(c, p)
+		if p.AIEnabled {
+			renderAIButton(c, p)
+		}
 		if surface == SurfaceNote {
 			renderPageMorePill(c, p)
 		}
