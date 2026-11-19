@@ -1197,10 +1197,22 @@ func latestStreamLine(s string) string {
 	// A setext underline ("===") only makes the line above a heading.
 	setext := bui.DiffSetextLevels(lines, same)
 	fences, quotes := plainFenceLines(lines, code)
+	// A formula shows its source without the "$$" lines around it.
+	math := bui.DiffMathMask(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
 		// A fence line is no text of its own: after "```" closes, the code shows.
 		if raw == "" || seps[i] || fences[i] || setext[i] < 0 || defs[i] && !code[i] {
+			continue
+		}
+		if math[i] && !code[i] {
+			if f := plainMathText(raw); f != "" {
+				return plainClip(f)
+			}
+			continue
+		}
+		// A rule ("---") or an alert marker ("> [!NOTE]") is no text.
+		if !code[i] && (plainRuleRE.MatchString(raw) || plainAlertRE.MatchString(raw)) {
 			continue
 		}
 		t := raw
@@ -1220,14 +1232,35 @@ func latestStreamLine(s string) string {
 			// 只有 ** 等半截标记时保留原文，避免实时行退回“正在生成回答”。
 			t = raw
 		}
-		r := []rune(t)
-		if len(r) > 80 {
-			return "…" + string(r[len(r)-80:])
-		}
-		return t
+		return plainClip(t)
 	}
 	return ""
 }
+
+// plainClip keeps the last 80 characters of a live line.
+func plainClip(t string) string {
+	if r := []rune(t); len(r) > 80 {
+		return "…" + string(r[len(r)-80:])
+	}
+	return t
+}
+
+// plainMathText is a display math line without its "$$" or "\[" "\]" delimiters.
+func plainMathText(t string) string {
+	for _, d := range [2][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+		t = strings.TrimSuffix(strings.TrimPrefix(t, d[0]), d[1])
+	}
+	return strings.TrimSpace(t)
+}
+
+// plainRuleRE matches a thematic break ("---", "* * *"), behind quote markers too.
+var plainRuleRE = regexp.MustCompile(`^(?:>\s*)*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$`)
+
+// plainAlertRE matches a GitHub alert marker line ("> [!NOTE]").
+var plainAlertRE = regexp.MustCompile(`(?i)^>\s*\[!(?:note|tip|important|warning|caution)\]$`)
+
+// plainTagRE matches an inline HTML tag ("<kbd>", "</kbd>", "<br/>").
+var plainTagRE = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>`)
 
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
@@ -1317,6 +1350,9 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 			t = re.ReplaceAllString(t, "$1$2$3")
 		}
 	}
+	// Inline HTML shows its text ("请按 <kbd>Ctrl</kbd>" reads 请按 Ctrl); it goes
+	// before entities decode, so "&lt;b&gt;" stays as text.
+	t = plainTagRE.ReplaceAllString(t, "")
 	// Stray backticks go; an escaped one ("\`") is a literal backtick.
 	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
 	// Escaped markers ("\**提示**") were never bold; they show without the backslash.
@@ -1339,6 +1375,10 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	// Entities show their character ("A &amp; B" reads A & B); "\&amp;" was text.
 	t = strings.ReplaceAll(html.UnescapeString(t), "", "&")
 	for k, code := range codes {
+		// In a table row "\|" is a bar even in code: `foo\|bar` reads foo|bar.
+		if table {
+			code = strings.ReplaceAll(code, `\|`, "|")
+		}
 		t = strings.Replace(t, "\uE000"+strconv.Itoa(k)+"\uE001", code, 1)
 	}
 	return strings.TrimSpace(t)
