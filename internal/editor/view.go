@@ -2204,8 +2204,8 @@ func codeSyntaxSpans(src, lang string) []ui.Span {
 // --- Table Block ---
 
 const (
-	tableCellFontSize   float32 = 15.04
-	tableCellLineHeight float32 = 21.808
+	tableCellFontSize   float32 = 14
+	tableCellLineHeight float32 = 21
 	tableMinRowHeight   float32 = 34.8
 	tableMinColWidth    float32 = 80
 	tableMaxColWidth    float32 = 381.5
