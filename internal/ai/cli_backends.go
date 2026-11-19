@@ -156,7 +156,7 @@ func AgentDriverGuide(kind model.BackendKind) (installCmd, loginCmd string) {
 	case model.BackendClaude:
 		return "npm install -g @anthropic-ai/claude-code", "claude auth login"
 	case model.BackendDsh:
-		return "curl -fsSL https://dsh.deepseek.com/install.sh | sh", "dsh login"
+		return "npm install -g @deepseek-ai/dsh@" + restrictedDshVersion, ""
 	case model.BackendPi:
 		return "npm install -g @mariozechner/pi-coding-agent", "pi --login"
 	case model.BackendAgy:
@@ -280,11 +280,17 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 		return BackendStatus{State: BackendStateReady, Version: ver}
 
 	case model.BackendDsh:
-		out, err := cliCommand(ctx, "dsh", "--version").Output()
+		ver, err := dshVersion(ctx)
 		if err != nil {
 			return BackendStatus{State: BackendStateError, Message: err.Error()}
 		}
-		return BackendStatus{State: BackendStateReady, Version: strings.TrimSpace(string(out))}
+		if ver != restrictedDshVersion {
+			return BackendStatus{State: BackendStateUnsupported, Version: ver, Message: dshVersionError(ver).Error()}
+		}
+		if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {
+			return BackendStatus{State: BackendStateUnauth, Version: ver, Message: dshCredentialError().Error()}
+		}
+		return BackendStatus{State: BackendStateReady, Version: ver}
 
 	case model.BackendPi:
 		out, err := cliCommand(ctx, "pi", "--version").Output()
@@ -1364,7 +1370,7 @@ func writeRPCError(w http.ResponseWriter, id any, code int, msg string) {
 
 func supportsRestrictedCLI(kind model.BackendKind) bool {
 	switch kind {
-	case model.BackendClaude, model.BackendCodex, model.BackendPi, model.BackendAgy:
+	case model.BackendClaude, model.BackendCodex, model.BackendDsh, model.BackendPi, model.BackendAgy:
 		return true
 	default:
 		return false
@@ -1515,6 +1521,13 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		args = []string{"-c", config, "-c", "features.shell_tool=false", "app-server"}
 		authVars = []string{"OPENAI_API_KEY", "CODEX_HOME"}
 
+	case model.BackendDsh:
+		args, err = restrictedDshArgs(processCtx, dir)
+		if err != nil {
+			return err
+		}
+		authVars = []string{"DEEPSEEK_API_KEY"}
+
 	case model.BackendPi:
 		args = []string{"--mode", "json", "--thinking", turn.thinking,
 			"--no-tools", "--no-extensions", "--no-skills", "--no-prompt-templates"}
@@ -1535,8 +1548,11 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	if kind == model.BackendCodex {
 		cmd.Env = append(cmd.Env, "BLOCK_MCP_TOKEN="+bridge.token)
 	}
+	if kind == model.BackendDsh {
+		cmd.Env = append(cmd.Env, "DSH_HOME="+filepath.Join(dir, "dsh-home"))
+	}
 
-	usesRPCStdin := kind == model.BackendCodex || kind == model.BackendAgy
+	usesRPCStdin := kind == model.BackendCodex || kind == model.BackendDsh || kind == model.BackendAgy
 	var stdin io.WriteCloser
 	if !usesRPCStdin {
 		cmd.Stdin = strings.NewReader(prompt)
@@ -1564,6 +1580,8 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	switch kind {
 	case model.BackendCodex:
 		err = c.streamRestrictedCodex(turn, scanner, stdin, dir, prompt, modelName)
+	case model.BackendDsh:
+		err = c.streamRestrictedDsh(turn, scanner, stdin, dir, prompt, modelName)
 	case model.BackendAgy:
 		err = c.streamRestrictedAgy(turn, scanner, stdin, dir, prompt, modelName, bridge)
 	default:
