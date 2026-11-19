@@ -2516,6 +2516,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 						fenced := appUi.DiffFenceMask(texts, changes)
 						setext := appUi.DiffSetextLevels(texts, changes)
 						tableCols := appUi.DiffTableCols(texts, fenced)
+						headers, seps := appUi.DiffTableRoles(texts, changes)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
 							Radius(theme.RadiusLG).Border(1, pal.Hairline).Clip().Children(func() {
 							ui.Row(c.Key("op-title")).FillWidth().Padding(theme.Space6, theme.Space10).Radius(theme.RadiusMD, theme.RadiusMD, 0, 0).
@@ -2525,7 +2526,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 							selIdx := 0
 							for lineIdx, dl := range diff {
 								trimmed := strings.TrimSpace(dl.Text)
-								if !fenced[lineIdx] && appUi.IsDiffTableSep(trimmed) {
+								if seps[lineIdx] {
 									if dl.Kind != model.DiffEqual {
 										selIdx++
 									}
@@ -2533,14 +2534,14 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 								}
 								nextVisIdx := -1
 								for j := lineIdx + 1; j < len(diff); j++ {
-									if fenced[j] || !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
+									if !seps[j] {
 										nextVisIdx = j
 										break
 									}
 								}
 								isLast := nextVisIdx == -1
 								isTable := tableCols[lineIdx] > 0
-								isHeader := isTable && lineIdx+1 < len(diff) && appUi.IsDiffTableSep(strings.TrimSpace(diff[lineIdx+1].Text))
+								isHeader := isTable && headers[lineIdx]
 								nextIsTable := !isLast && tableCols[nextVisIdx] > 0
 								needSep := !isLast && (isTable || nextIsTable || diff[nextVisIdx].Kind != dl.Kind)
 								switch dl.Kind {
