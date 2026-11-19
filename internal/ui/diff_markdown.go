@@ -542,21 +542,21 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	body := strings.TrimLeft(line, " \t")
 	indent := len(strings.ReplaceAll(line[:len(line)-len(body)], "\t", "    "))
 	return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
-		// A link reference definition renders as nothing; escape its colon to show it
-		// (a leading "\\[" would open display math).
-		if diffLinkDefRE.MatchString(body) {
-			body = strings.Replace(body, "]:", "]\\:", 1)
-		}
+		body = diffLiteralStart(body)
 		if st.Setext > 0 && !st.Code {
 			body = strings.Repeat("#", st.Setext) + " " + body
 		}
-		markdown.View(c, diffPlainLinks(diffNoDisplayMath(body)), diffMarkdownOptions(st))
+		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
 	})
 }
 
-// diffNoDisplayMath writes an escaped "\[" opening s as an entity: the parser would
-// start display math there, while the note shows a bracket.
-func diffNoDisplayMath(s string) string {
+// diffLiteralStart keeps a line or cell start the parser would swallow: a link
+// reference definition renders as nothing (its colon gets escaped), and an escaped
+// "\[" would open display math (it becomes an entity, shown as a bracket).
+func diffLiteralStart(s string) string {
+	if diffLinkDefRE.MatchString(s) {
+		s = strings.Replace(s, "]:", `]\:`, 1)
+	}
 	if strings.HasPrefix(s, `\[`) {
 		return "&#91;" + s[2:]
 	}
@@ -587,7 +587,7 @@ func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool)
 	if strings.TrimSpace(strings.Trim(cell, "*")) == "" {
 		return ui.Box(c)
 	}
-	return markdown.View(c, diffPlainLinks(diffNoDisplayMath(cell)), diffMarkdownOptions(st))
+	return markdown.View(c, diffPlainLinks(diffLiteralStart(cell)), diffMarkdownOptions(st))
 }
 
 // IsDiffTableRow reports whether a trimmed Markdown line is a table row.
