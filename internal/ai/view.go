@@ -1393,44 +1393,6 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 	})
 }
 
-func isDiffTableRowLine(trimmed string) bool {
-	return strings.HasPrefix(trimmed, "|") && strings.Count(trimmed, "|") >= 2
-}
-
-func isDiffTableScaffolding(trimmed string) bool {
-	if !strings.HasPrefix(trimmed, "|") {
-		return false
-	}
-	inner := strings.Trim(trimmed, "|")
-	if strings.TrimSpace(inner) == "" {
-		return false
-	}
-	for _, cell := range strings.Split(inner, "|") {
-		t := strings.TrimSpace(cell)
-		t = strings.TrimPrefix(t, ":")
-		t = strings.TrimSuffix(t, ":")
-		if t == "" || strings.Trim(t, "-") != "" {
-			return false
-		}
-	}
-	return true
-}
-
-func parseDiffTableCells(trimmed string) []string {
-	s := strings.TrimSpace(trimmed)
-	if !strings.HasPrefix(s, "|") {
-		return nil
-	}
-	s = strings.TrimPrefix(s, "|")
-	s = strings.TrimSuffix(s, "|")
-	parts := strings.Split(s, "|")
-	out := make([]string, len(parts))
-	for i, p := range parts {
-		out[i] = strings.TrimSpace(p)
-	}
-	return out
-}
-
 func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID uint64, msgIdx int, plan *model.BatchPlan) {
 	cardID := fmt.Sprintf("plan-op-%d-0", msgIdx)
 	card := ui.Column(cUI.Key(cardID)).FillWidth().Radius(theme.RadiusLG).Clip().
@@ -1523,7 +1485,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			lines := c.PlanDiffLines(convID, msgIdx, preview.Page, preview.BeforeText, preview.AfterText)
 			var visible []PlanDiffLine
 			for _, dl := range lines {
-				if isDiffTableScaffolding(strings.TrimSpace(dl.Text)) {
+				if bui.IsDiffTableSep(strings.TrimSpace(dl.Text)) {
 					continue
 				}
 				visible = append(visible, dl)
@@ -1545,9 +1507,9 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 						trimmed := strings.TrimSpace(dl.Text)
 						isFirst := pos == 0
 						isLast := pos+1 == totalVis
-						isTable := isDiffTableRowLine(trimmed)
-						nextIsTable := pos+1 < totalVis && isDiffTableRowLine(strings.TrimSpace(visible[pos+1].Text))
-						isHeader := (dl.Index+1 < len(lines) && isDiffTableScaffolding(strings.TrimSpace(lines[dl.Index+1].Text))) ||
+						isTable := bui.IsDiffTableRow(trimmed)
+						nextIsTable := pos+1 < totalVis && bui.IsDiffTableRow(strings.TrimSpace(visible[pos+1].Text))
+						isHeader := (dl.Index+1 < len(lines) && bui.IsDiffTableSep(strings.TrimSpace(lines[dl.Index+1].Text))) ||
 							strings.Contains(strings.ToLower(trimmed), "<th")
 
 						rowBg := pal.Paper
@@ -1596,22 +1558,18 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 							rowBtn.Children(func() {
 								ui.Text(cUI, gutterSym).Width(12).FontSize(theme.FontBody).TextColor(gutterFg).SingleLine()
 								if isTable {
-									cells := parseDiffTableCells(trimmed)
+									cells := bui.ParseDiffTableCells(trimmed)
 									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
 										for ci, cellTxt := range cells {
 											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
 												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
 												Children(func() {
-													w := theme.WeightRegular
-													if isHeader {
-														w = theme.WeightControl
-													}
-													ui.Text(cUI, cellTxt).FontSize(theme.FontBody).FontWeight(w).TextColor(rowFg)
+													bui.DiffMarkdownCell(cUI, cellTxt, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG}, isHeader)
 												})
 										}
 									})
 								} else {
-									ui.Text(cUI, strings.TrimRight(dl.Text, "\r\n")).FontSize(theme.FontBody).TextColor(rowFg).Grow(1)
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG})
 								}
 							})
 							if rowBtn.Clicked() {
@@ -1624,22 +1582,18 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 							ctxRow.Children(func() {
 								ui.Box(cUI).Width(12).Shrink(0)
 								if isTable {
-									cells := parseDiffTableCells(trimmed)
+									cells := bui.ParseDiffTableCells(trimmed)
 									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
 										for ci, cellTxt := range cells {
 											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
 												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
 												Children(func() {
-													w := theme.WeightRegular
-													if isHeader {
-														w = theme.WeightControl
-													}
-													ui.Text(cUI, cellTxt).FontSize(theme.FontBody).FontWeight(w).TextColor(pal.Text)
+													bui.DiffMarkdownCell(cUI, cellTxt, bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG}, isHeader)
 												})
 										}
 									})
 								} else {
-									ui.Text(cUI, strings.TrimRight(dl.Text, "\r\n")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1)
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG})
 								}
 							})
 						}
