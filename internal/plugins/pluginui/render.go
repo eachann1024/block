@@ -191,6 +191,20 @@ func renderPageCards(
 	onChange func(controlID string, nextValue any, immediate bool),
 	onAction func(actionID string, currentValues map[string]any),
 ) {
+	renderPageCardsWithScope(c, pluginID, theme.SettingsSectionGap, page, values, fb, bindings, onChange, onAction)
+}
+
+func renderPageCardsWithScope(
+	c *ui.Context,
+	pluginID string,
+	cardGap float32,
+	page *plugins.UIPage,
+	values map[string]any,
+	fb ActionFeedback,
+	bindings *InputBindings,
+	onChange func(controlID string, nextValue any, immediate bool),
+	onAction func(actionID string, currentValues map[string]any),
+) {
 	if page == nil {
 		return
 	}
@@ -198,8 +212,11 @@ func renderPageCards(
 	if values == nil {
 		values = page.ExtractDefaultValues()
 	}
+	if cardGap <= 0 {
+		cardGap = theme.SettingsSectionGap
+	}
 
-	ui.Column(c.Key("plugin-cards-" + pluginID)).FillWidth().MinWidth(0).Gap(theme.SettingsSectionGap).Children(func() {
+	ui.Column(c.Key("plugin-cards-" + pluginID)).FillWidth().MinWidth(0).Gap(cardGap).Children(func() {
 		for _, card := range page.Cards {
 			cd := card
 			visibleItems := make([]plugins.UIItem, 0, len(cd.Items))
