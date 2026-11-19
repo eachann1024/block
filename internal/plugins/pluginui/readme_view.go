@@ -253,10 +253,17 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 	}
 	installedApp, isInstalled := ctrl.sup.GetInstalled(entry.ID)
-	if catalog != nil && !inCatalog && !isInstalled {
-		ctrl.closeStoreReadme()
-		c.Invalidate()
-		return
+	if catalog != nil && !inCatalog {
+		if !isInstalled {
+			ctrl.closeStoreReadme()
+			c.Invalidate()
+			return
+		}
+		// Plugin was delisted while installed: strip stale catalog update metadata.
+		entry.DownloadURL = ""
+		entry.SHA256 = ""
+		entry.Verified = false
+		entry.Version = installedApp.Manifest.Version
 	}
 	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
 		preview.installed.Manifest.Version != installedApp.Manifest.Version
