@@ -1210,17 +1210,25 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
-// plainStrongRE matches **bold** emphasis set off from words, so Python's 2**3 and
-// a lone "**" stay as written.
-var plainStrongRE = regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`)
+// plainEmphasisREs match **bold**, __bold__, *italic*, _italic_ and ~~struck~~ text
+// set off from words, so Python's 2**3, snake_case and a lone "**" stay as written.
+// Doubled markers go first, so "**x**" is never read as "*" around "*x*".
+var plainEmphasisREs = []*regexp.Regexp{
+	regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`),
+	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:[^_]*\S)?)__($|[^\p{L}\p{N}_])`),
+	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
+	regexp.MustCompile(`(^|[^\w*\\])\*(\S(?:[^*]*\S)?)\*($|[^\w*])`),
+	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
+}
 
 // plainEscapeRE matches a backslash escape of ASCII punctuation ("\*" shows "*").
 var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
-	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	// Code spans stand in as placeholders while bold markers are stripped, so
+	// Links show their text: "[文档](/guide)" reads 文档.
+	t := bui.PlainLinks(plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), ""))
+	// Code spans stand in as placeholders while emphasis markers are stripped, so
 	// `**/node_modules/**` keeps its stars and **run `x`** still loses its own.
 	var codes []string
 	var b strings.Builder
@@ -1235,7 +1243,10 @@ func plainInline(s string) string {
 	t = b.String()
 	// Adjacent matches share the space between them, so repeat until settled.
 	for prev := ""; prev != t; {
-		prev, t = t, plainStrongRE.ReplaceAllString(t, "$1$2$3")
+		prev = t
+		for _, re := range plainEmphasisREs {
+			t = re.ReplaceAllString(t, "$1$2$3")
+		}
 	}
 	// Stray backticks go; an escaped one ("\`") is a literal backtick.
 	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
