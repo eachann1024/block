@@ -9,15 +9,28 @@ import (
 
 func noHitTest(_, _ float32, _ ui.Rect) bool { return false }
 
+type brandSceneClockKey struct{}
+
+type brandSceneClock struct {
+	lastWall  time.Time
+	elapsedMs int64
+	init      bool
+}
+
+const brandSceneStepMs = 33
+
 // PaintBrandSceneBand paints the 88px full-window-width landscape band onto el's own backdrop
 // (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card),
 // smoothly fading into the window ground from 52% height down to 88px.
-func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb bool) {
+func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool) {
 	ensureCompiledScenes()
 	sc := compiledByID[id]
 	if sc == nil || !el.Valid() {
 		return
 	}
+	clk := ui.Local(el, brandSceneClockKey{}, func() brandSceneClock {
+		return brandSceneClock{}
+	})
 	el.Draw(func(p *ui.Painter, r ui.Rect) {
 		bandH := min(float32(BrandBandHeight), r.H)
 		if r.W <= 0 || bandH <= 0 {
@@ -30,30 +43,42 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb bool) {
 		reduced := p.Preferences().ReduceMotion
 		tSec := float64(0)
 		if !reduced {
-			tSec = float64(p.Now().UnixMilli()) * 0.001
+			now := p.Now()
+			if !clk.init {
+				clk.init = true
+				clk.lastWall = now
+				clk.elapsedMs = now.UnixMilli()
+			} else if pauseAnim {
+				clk.lastWall = now
+			} else {
+				dt := now.Sub(clk.lastWall).Milliseconds()
+				if dt > 0 {
+					if dt > 100 {
+						dt = 100
+					}
+					clk.elapsedMs += dt
+					clk.lastWall = now
+				}
+			}
+			qMs := (clk.elapsedMs / brandSceneStepMs) * brandSceneStepMs
+			tSec = float64(qMs) * 0.001
 		}
 		p.Clip(bandRect, 0, func() {
 			paintScene(p, sc, bandRect.X, bandRect.Y, bandRect.W, BrandBandHeight, tSec, showOrb, true)
 
 			// Equivalent to CSS mask-image: linear-gradient(to bottom, #000 52%, transparent)
 			// composited directly over the solid Ground background.
-			var fade ui.Path
-			fade.MoveTo(bandRect.X, bandRect.Y).
-				LineTo(bandRect.X+bandRect.W, bandRect.Y).
-				LineTo(bandRect.X+bandRect.W, bandRect.Y+BrandBandHeight).
-				LineTo(bandRect.X, bandRect.Y+BrandBandHeight).
-				Close()
-			p.FillPathGradient(&fade, ui.LinearGradient{
+			p.FillGradient(ui.Rect{X: bandRect.X, Y: bandRect.Y, W: bandRect.W, H: BrandBandHeight}, ui.LinearGradient{
 				Angle: 180,
 				Start: 0.52,
 				End:   1.0,
 				From:  sc.ground.Alpha(0),
 				To:    sc.ground,
-			})
+			}, 0)
 		})
 
-		if !reduced {
-			p.After(33 * time.Millisecond)
+		if !reduced && !pauseAnim {
+			p.After(brandSceneStepMs * time.Millisecond)
 		}
 	})
 }
@@ -113,12 +138,10 @@ func paintScene(p *ui.Painter, sc *compiledScene, ox, oy, w, h float32, tSec flo
 
 	// 1. Sky backdrop gradient.
 	if len(sc.skyStops) > 0 {
-		var sky ui.Path
-		sky.MoveTo(ox, oy).LineTo(ox+w, oy).LineTo(ox+w, oy+h).LineTo(ox, oy+h).Close()
-		p.FillPathGradient(&sky, ui.LinearGradient{
+		p.FillGradient(ui.Rect{X: ox, Y: oy, W: w, H: h}, ui.LinearGradient{
 			Angle: 180,
 			Stops: sc.skyStops,
-		})
+		}, 0)
 	}
 
 	// 2. Daybreak warm elliptical horizon glow at (190, 58) rx=160 ry=46.

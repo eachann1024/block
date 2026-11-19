@@ -189,11 +189,12 @@ type Session struct {
 	outlineForceNarrow  bool
 
 	// Edge-float safe insets & scroll suppression
-	edgeInsetLeft     float32
-	edgeInsetRight    float32
-	edgeLastScrollY   float32
-	edgeScrollInit    bool
-	edgeScrollQuietAt time.Time
+	edgeInsetLeft      float32
+	edgeInsetRight     float32
+	edgeLastScrollY    float32
+	edgeScrollInit     bool
+	edgeScrollQuietAt  time.Time
+	hoverScrollQuietAt time.Time
 
 	// Annotations
 	annotations           []*model.Annotation
