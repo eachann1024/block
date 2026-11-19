@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -205,42 +206,88 @@ func isDefaultNewFolderName(rawName string) bool {
 	return false
 }
 
+type sortableFileEntry struct {
+	entry        model.FileEntry
+	isDefaultNew bool
+}
+
 func sortEntries(parentDir string, entries []model.FileEntry, fileOrder map[string][]string, mode model.TreeSortMode) {
-	sort.Slice(entries, func(i, j int) bool {
-		a, b := &entries[i], &entries[j]
+	if len(entries) <= 1 {
+		return
+	}
+	items := make([]sortableFileEntry, len(entries))
+	for i, e := range entries {
+		items[i] = sortableFileEntry{
+			entry:        e,
+			isDefaultNew: e.IsDir && isDefaultNewFolderName(e.RawName),
+		}
+	}
+	slices.SortFunc(items, func(ai, bi sortableFileEntry) int {
+		a, b := &ai.entry, &bi.entry
 		if a.IsDir != b.IsDir {
-			return a.IsDir
+			if a.IsDir {
+				return -1
+			}
+			return 1
 		}
 		if a.IsDir {
-			aNew := isDefaultNewFolderName(a.RawName)
-			bNew := isDefaultNewFolderName(b.RawName)
-			if aNew != bNew {
-				return !aNew
+			if ai.isDefaultNew != bi.isDefaultNew {
+				if !ai.isDefaultNew {
+					return -1
+				}
+				return 1
 			}
-			if aNew && bNew {
+			if ai.isDefaultNew && bi.isDefaultNew {
 				if a.ModUnix != b.ModUnix {
-					return a.ModUnix < b.ModUnix
+					if a.ModUnix < b.ModUnix {
+						return -1
+					}
+					return 1
 				}
 				if c := naturalCmp(a.RawName, b.RawName); c != 0 {
-					return c < 0
+					return c
 				}
 				if a.RawName != b.RawName {
-					return a.RawName < b.RawName
+					if a.RawName < b.RawName {
+						return -1
+					}
+					return 1
 				}
-				return a.Path < b.Path
+				if a.Path < b.Path {
+					return -1
+				}
+				if a.Path > b.Path {
+					return 1
+				}
+				return 0
 			}
 		}
 		if mode == model.TreeSortModified && a.ModUnix != b.ModUnix {
-			return a.ModUnix > b.ModUnix
+			if a.ModUnix > b.ModUnix {
+				return -1
+			}
+			return 1
 		}
 		if c := naturalCmp(a.RawName, b.RawName); c != 0 {
-			return c < 0
+			return c
 		}
 		if a.RawName != b.RawName {
-			return a.RawName < b.RawName
+			if a.RawName < b.RawName {
+				return -1
+			}
+			return 1
 		}
-		return a.Path < b.Path
+		if a.Path < b.Path {
+			return -1
+		}
+		if a.Path > b.Path {
+			return 1
+		}
+		return 0
 	})
+	for i := range items {
+		entries[i] = items[i].entry
+	}
 
 	if mode != model.TreeSortManual || len(fileOrder) == 0 || len(entries) <= 1 {
 		return
