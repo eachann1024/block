@@ -73,10 +73,11 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 	var masks [2][]bool
 	for si, side := range [2]int{-1, 1} {
 		mask := make([]bool, len(lines))
-		fence, nested := "", false
+		fence, nested, fenceList := "", false, false
 		// Indented code: four columns in after a blank line (or the start), unless the
 		// text above is a list, whose nested content is indented the same way.
-		inIndented, prevBlank, inList := false, true, false
+		// para: the line above is paragraph text, which a "===" underline turns into a heading.
+		inIndented, prevBlank, inList, para := false, true, false, false
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
@@ -84,22 +85,23 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 			t := strings.TrimSpace(l)
 			if fence == "" {
 				if t == "" {
-					prevBlank = true
+					prevBlank, para = true, false
 					continue
 				}
 				ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 				wasBlank := prevBlank
 				prevBlank = false
 				if ind >= 4 && (inIndented || (wasBlank && !inList)) {
-					mask[i], inIndented = true, true
+					mask[i], inIndented, para = true, true, false
 					continue
 				}
 				inIndented = false
 				inList = (diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0)
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				prevBlank = !inList && ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) ||
-					(!wasBlank && diffSetextRE.MatchString(t)))
+				ends := ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) ||
+					(para && diffSetextRE.MatchString(t)))
+				prevBlank, para = !inList && ends, !ends
 			}
 			if fence != "" {
 				mask[i] = true
@@ -110,13 +112,16 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
 				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
-					fence, prevBlank, inIndented = "", !nested, false
+					// Code may follow at once, unless the fence sat in a list item, whose
+					// content is indented the same way.
+					fence, prevBlank, inIndented = "", !fenceList, false
 				}
 				continue
 			}
 			if fence = diffFenceOpen(t); fence != "" {
-				mask[i] = true
+				mask[i], para = true, false
 				nested = diffContainerRE.MatchString(t)
+				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 			}
 		}
 		masks[si] = mask
