@@ -94,29 +94,36 @@ type Supervisor struct {
 	store    *StoreManager
 	cfg      SupervisorConfig
 
-	mu              sync.RWMutex
-	viewEpoch       atomic.Uint64
-	catalog         *StoreIndex
-	installed       []InstalledApp
-	runtimes        map[string]*Runtime
-	views           map[viewKey]*PluginViewState
-	lastViewRoot    map[string]string
-	formVersions    map[string]uint64
-	liveTimers      map[string]*time.Timer
-	liveViewedAt    map[string]time.Time
+	mu               sync.RWMutex
+	viewEpoch        atomic.Uint64
+	catalog          *StoreIndex
+	installed        []InstalledApp
+	runtimes         map[string]*Runtime
+	views            map[viewKey]*PluginViewState
+	lastViewRoot     map[string]string
+	formVersions     map[string]uint64
+	liveTimers       map[string]*time.Timer
+	liveViewedAt     map[string]time.Time
 	feedbackTimers   map[viewKey]*time.Timer
-	storeRefreshing  bool
-	storeRefreshedAt time.Time
-	installingID     string
-	replacingID     string
-	stopping        bool
-	storeErr        string
-	storeNotice     string
+	storeRefreshing    bool
+	storeRefreshedAt   time.Time
+	installingID       string
+	replacingID        string
+	stopping           bool
+	storeErr           string
+	storeNotice        string
+	pendingReplacement *pendingReplacementState
+}
+
+type pendingReplacementState struct {
+	confirmation ReplacementConfirmation
+	onInstalled  func(pluginID string)
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	sm := NewStoreManager(cfg.AppDataDir)
 	_ = sm.EnsureDirs()
+	sm.CleanupOrphanedStaged()
 	installed, _ := sm.ListInstalled()
 	s := &Supervisor{
 		store:          sm,
@@ -543,45 +550,24 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 	}()
 }
 
-func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(pluginID string)) {
-	s.mu.Lock()
-	if s.installingID != "" {
-		s.mu.Unlock()
-		return
+// PendingReplacement returns a copy of the staged plugin replacement awaiting user confirmation, or nil.
+func (s *Supervisor) PendingReplacement() *ReplacementConfirmation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.pendingReplacement == nil {
+		return nil
 	}
-	s.installingID = entry.ID
-	s.storeErr = ""
-	s.storeNotice = ""
-	s.mu.Unlock()
-	s.notifyChanged()
+	cp := s.pendingReplacement.confirmation
+	if len(cp.AddedPermissions) > 0 {
+		cp.AddedPermissions = append([]Permission(nil), cp.AddedPermissions...)
+	}
+	return &cp
+}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		defer cancel()
-		inst, err := s.store.InstallEntry(ctx, entry)
-		installedList, _ := s.store.ListInstalled()
-
-		s.mu.Lock()
-		s.installingID = ""
-		s.replacingID = ""
-		if err != nil {
-			s.storeErr = err.Error()
-			s.mu.Unlock()
-			s.notifyChanged()
-			return
-		}
-		for i := range installedList {
-			installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
-		}
-		s.installed = installedList
-		delete(s.runtimes, inst.Manifest.ID)
-		s.deleteViewsForPluginLocked(inst.Manifest.ID)
-		s.mu.Unlock()
-		if onInstalled != nil {
-			onInstalled(inst.Manifest.ID)
-		}
-		s.notifyChanged()
-	}()
+func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(pluginID string)) {
+	s.startInstallAsync(entry.ID, false, func(ctx context.Context) (*InstallPreparation, error) {
+		return s.store.PrepareInstallEntry(ctx, entry)
+	}, onInstalled)
 }
 
 func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(pluginID string)) {
@@ -589,44 +575,127 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 	if spec == "" {
 		return
 	}
+	s.startInstallAsync("__manual__", true, func(ctx context.Context) (*InstallPreparation, error) {
+		return s.store.PrepareInstallFromSource(ctx, spec)
+	}, onInstalled)
+}
+
+func (s *Supervisor) startInstallAsync(
+	installingKey string,
+	isManual bool,
+	prepare func(context.Context) (*InstallPreparation, error),
+	onInstalled func(pluginID string),
+) {
 	s.mu.Lock()
-	if s.installingID != "" {
+	if s.stopping || s.installingID != "" {
 		s.mu.Unlock()
 		return
 	}
-	s.installingID = "__manual__"
+	prevPending := s.pendingReplacement
+	s.pendingReplacement = nil
+	s.installingID = installingKey
+	s.storeErr = ""
+	s.storeNotice = ""
+	s.mu.Unlock()
+	if prevPending != nil {
+		s.store.DiscardReplacement(prevPending.confirmation.Token)
+	}
+	s.notifyChanged()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		prep, err := prepare(ctx)
+		if err == nil && prep != nil && prep.Confirmation != nil {
+			conf := *prep.Confirmation
+			conf.InstallingID = installingKey
+			conf.IsManual = isManual
+			s.mu.Lock()
+			s.installingID = ""
+			s.replacingID = ""
+			if s.stopping {
+				s.mu.Unlock()
+				s.store.DiscardReplacement(conf.Token)
+				return
+			}
+			s.pendingReplacement = &pendingReplacementState{
+				confirmation: conf,
+				onInstalled:  onInstalled,
+			}
+			s.mu.Unlock()
+			s.notifyChanged()
+			return
+		}
+		var inst *InstalledApp
+		if prep != nil {
+			inst = prep.Installed
+		}
+		s.finishInstallAsync(inst, err, onInstalled)
+	}()
+}
+
+// ConfirmReplacementAsync commits the pending staged replacement bound to token and expectedDigest.
+func (s *Supervisor) ConfirmReplacementAsync(token, expectedDigest string) {
+	s.mu.Lock()
+	if s.stopping || s.installingID != "" || s.pendingReplacement == nil {
+		s.mu.Unlock()
+		return
+	}
+	pending := s.pendingReplacement
+	if pending.confirmation.Token != token || pending.confirmation.CandidateDigest != expectedDigest {
+		s.mu.Unlock()
+		return
+	}
+	s.pendingReplacement = nil
+	s.installingID = pending.confirmation.InstallingID
 	s.storeErr = ""
 	s.storeNotice = ""
 	s.mu.Unlock()
 	s.notifyChanged()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		defer cancel()
-		inst, err := s.store.InstallFromSource(ctx, spec)
-		installedList, _ := s.store.ListInstalled()
-
-		s.mu.Lock()
-		s.installingID = ""
-		s.replacingID = ""
-		if err != nil {
-			s.storeErr = err.Error()
-			s.mu.Unlock()
-			s.notifyChanged()
-			return
-		}
-		for i := range installedList {
-			installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
-		}
-		s.installed = installedList
-		delete(s.runtimes, inst.Manifest.ID)
-		s.deleteViewsForPluginLocked(inst.Manifest.ID)
-		s.mu.Unlock()
-		if onInstalled != nil {
-			onInstalled(inst.Manifest.ID)
-		}
-		s.notifyChanged()
+		inst, err := s.store.ConfirmReplacement(pending.confirmation.Token, pending.confirmation.CandidateDigest)
+		s.finishInstallAsync(inst, err, pending.onInstalled)
 	}()
+}
+
+// CancelReplacement discards the pending staged replacement (if token is empty or matches).
+func (s *Supervisor) CancelReplacement(token string) {
+	s.mu.Lock()
+	if s.pendingReplacement == nil || (token != "" && s.pendingReplacement.confirmation.Token != token) {
+		s.mu.Unlock()
+		return
+	}
+	tok := s.pendingReplacement.confirmation.Token
+	s.pendingReplacement = nil
+	s.mu.Unlock()
+	s.store.DiscardReplacement(tok)
+	s.notifyChanged()
+}
+
+func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string)) {
+	installedList, _ := s.store.ListInstalled()
+
+	s.mu.Lock()
+	s.installingID = ""
+	s.replacingID = ""
+	if err != nil {
+		s.storeErr = err.Error()
+		s.mu.Unlock()
+		s.notifyChanged()
+		return
+	}
+	for i := range installedList {
+		installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
+	}
+	s.installed = installedList
+	delete(s.runtimes, inst.Manifest.ID)
+	s.deleteViewsForPluginLocked(inst.Manifest.ID)
+	s.mu.Unlock()
+	if onInstalled != nil {
+		onInstalled(inst.Manifest.ID)
+	}
+	s.notifyChanged()
 }
 
 func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
@@ -637,6 +706,11 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 	if s.installingID != "" {
 		s.mu.Unlock()
 		return
+	}
+	var discardToken string
+	if s.pendingReplacement != nil && s.pendingReplacement.confirmation.PluginID == pluginID {
+		discardToken = s.pendingReplacement.confirmation.Token
+		s.pendingReplacement = nil
 	}
 	s.installingID = "__uninstall__"
 	s.replacingID = pluginID
@@ -650,6 +724,9 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		vs.errorFromBg = false
 	}
 	s.mu.Unlock()
+	if discardToken != "" {
+		s.store.DiscardReplacement(discardToken)
+	}
 	s.notifyChanged()
 
 	go func() {
@@ -1599,6 +1676,7 @@ func openLocalPathInOS(downloadsDir, rawPath string, reveal bool) {
 func (s *Supervisor) ShutdownAll() {
 	s.mu.Lock()
 	s.stopping = true
+	s.pendingReplacement = nil
 	for id := range s.liveTimers {
 		s.stopLiveTimerLocked(id)
 	}
@@ -1611,6 +1689,7 @@ func (s *Supervisor) ShutdownAll() {
 		delete(s.runtimes, id)
 	}
 	s.mu.Unlock()
+	s.store.DiscardAllStaged()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -1670,14 +1749,17 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 			if v.queuedSaves[path] != nil {
 				continue
 			}
-			if failedPath == "" ||
-				(key == current && failedRoot != current.notebookRoot) ||
-				((key == current) == (failedRoot == current.notebookRoot) && path < failedPath) {
+			preferCurrent := key == current && failedRoot != current.notebookRoot
+			samePriority := (key == current) == (failedRoot == current.notebookRoot)
+			if failedPath == "" || preferCurrent || (samePriority && path < failedPath) {
 				failedPath, failedRoot, failure = path, key.notebookRoot, message
 			}
 		}
 	}
 	if out.Error == "" && out.BusyAction == "" && failedPath != "" {
+		if failedRoot != current.notebookRoot {
+			failure = filepath.Base(failedRoot) + " / " + failure
+		}
 		out.Error = failure
 		out.FailedNotePath = failedPath
 		out.FailedNoteRoot = failedRoot
