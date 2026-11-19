@@ -355,12 +355,10 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			if k < rows[0] {
 				continue
 			}
+			// No separator on the winning side means that side reads as text.
 			if (change[k] > 0) == newSide {
 				pick = k
 				break
-			}
-			if pick < 0 && touched {
-				pick = k
 			}
 		}
 		if pick >= 0 {
