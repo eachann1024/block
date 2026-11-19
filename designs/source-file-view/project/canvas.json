@@ -1,0 +1,19 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-19T12:00:00Z"},
+  "title": "源文件视图",
+  "launch": {"view": "canvas", "page": "source"},
+  "pages": [{"id": "source", "name": "源文件视图"}],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1280, "h": 800, "title": "深色 · 代码文件满宽打开", "page": "source", "radius": 12},
+    "Light.dc.html": {"x": 1360, "y": 0, "w": 1280, "h": 800, "title": "浅色 · JSON 长行不折行", "page": "source", "radius": 12},
+    "Image-Small.dc.html": {"x": 0, "y": 1200, "w": 760, "h": 500, "title": "小窗口 · 图片按预览区适应", "page": "source", "radius": 12},
+    "Code-Small.dc.html": {"x": 840, "y": 1200, "w": 760, "h": 500, "title": "小窗口 · 代码横向滚动", "page": "source", "radius": 12}
+  },
+  "order": ["Main.dc.html", "Light.dc.html", "Image-Small.dc.html", "Code-Small.dc.html"],
+  "notes": {
+    "row1": {"x": 0, "y": -260, "text": "非 Markdown 文件 · 编辑器式打开", "kind": "title1", "page": "source", "maxW": 2640},
+    "row2": {"x": 0, "y": 940, "text": "小窗口 · 不再过度放大", "kind": "title1", "page": "source", "maxW": 1600}
+  },
+  "designSystems": []
+}
