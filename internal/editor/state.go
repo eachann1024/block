@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 
 	"block/internal/files"
@@ -92,8 +93,10 @@ type Session struct {
 	host     model.WorkspaceHost
 	dirty    bool
 
-	undoStack []undoSnapshot
-	redoStack []undoSnapshot
+	undoStack   []undoSnapshot
+	redoStack   []undoSnapshot
+	lastUndoAt  time.Time
+	lastUndoKey string
 
 	focusedBlock         int
 	hoveredBlock         int
@@ -387,6 +390,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.dirty = false
 	s.undoStack = nil
 	s.redoStack = nil
+	s.lastUndoAt = time.Time{}
+	s.lastUndoKey = ""
 	s.focusedBlock = -1
 	s.hoveredBlock = -1
 	s.selAnchor = Position{}
@@ -464,6 +469,8 @@ func (s *Session) Dirty() bool {
 
 func (s *Session) MarkSaved() {
 	s.dirty = false
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
 	s.savedMarkdown = s.Markdown()
 }
 
@@ -657,16 +664,39 @@ func (s *Session) pushUndoSnapshot(snap undoSnapshot) {
 		s.undoStack = s.undoStack[len(s.undoStack)-200:]
 	}
 	s.redoStack = nil
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
 }
 
 func (s *Session) pushUndo() {
 	s.pushUndoSnapshot(s.captureUndoSnapshot())
 }
 
+const textUndoCoalesceWindow = 600 * time.Millisecond
+
+func (s *Session) pushCoalescedTextUndo(key string) {
+	now := time.Now()
+	if !testing.Testing() &&
+		key != "" &&
+		key == s.lastUndoKey &&
+		len(s.undoStack) > 0 &&
+		len(s.redoStack) == 0 &&
+		!s.lastUndoAt.IsZero() &&
+		now.Sub(s.lastUndoAt) <= textUndoCoalesceWindow {
+		s.lastUndoAt = now
+		return
+	}
+	s.pushUndo()
+	s.lastUndoKey = key
+	s.lastUndoAt = now
+}
+
 func (s *Session) Undo() bool {
 	if len(s.undoStack) == 0 {
 		return false
 	}
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
 	cur := undoSnapshot{
 		Doc:         s.doc.Clone(),
 		FocusIdx:    s.focusedBlock,
@@ -686,6 +716,8 @@ func (s *Session) Redo() bool {
 	if len(s.redoStack) == 0 {
 		return false
 	}
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
 	cur := undoSnapshot{
 		Doc:         s.doc.Clone(),
 		FocusIdx:    s.focusedBlock,
