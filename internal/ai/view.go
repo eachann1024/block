@@ -2354,6 +2354,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	draft := c.draftText
 	refs := append([]string(nil), c.draftRefs...)
 	skills := append([]string(nil), c.draftSkills...)
+	atts := append([]model.Attachment(nil), c.draftAttachments...)
 	var sel *EditorSelection
 	if c.open && !c.fullscreen && c.providerCfg.Enabled && c.draftSelection != nil {
 		cp := *c.draftSelection
@@ -2396,7 +2397,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 		shell := ui.Column(cUI).FillWidth().Padding(theme.Space10, theme.Space10, theme.Space6, theme.Space12).Gap(theme.Space4).Radius(theme.RadiusLG).
 			Background(ais.ComposerBG).Border(1, ais.ComposerBorder)
 		shell.Children(func() {
-			if sel != nil || len(refs) > 0 || len(skills) > 0 {
+			if sel != nil || len(refs) > 0 || len(skills) > 0 || len(atts) > 0 {
 				ui.Row(cUI).FillWidth().Gap(theme.Space6).Wrap().Children(func() {
 					if sel != nil {
 						c.renderSelectionChip(cUI, pal, sel)
@@ -2406,6 +2407,9 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 					for i, s := range skills {
 						c.renderDraftChip(cUI, pal, fmt.Sprintf("chip-skill-%d", i), false, s)
+					}
+					for i, a := range atts {
+						c.renderAttachmentChip(cUI, pal, fmt.Sprintf("chip-att-%d", i), a)
 					}
 				})
 			}
@@ -2418,6 +2422,10 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 				Label(theme.Tr("AI 输入框", "AI composer"))
 			bui.AutoHideScrollbars(cUI, inputEl)
 			bui.Probe(inputEl, "ai-composer")
+			svc := cUI.Services()
+			inputEl.OnPaste(func(text string) bool {
+				return c.handleComposerPaste(svc, text)
+			})
 
 			composingNow := inputEl.Composing()
 			inputEl.OnTextKey(func(k ui.TextKey) bool {
@@ -2484,7 +2492,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 						}
 						return true
 					}
-					if c.streaming || strings.TrimSpace(curText) == "" {
+					if c.streaming || (strings.TrimSpace(curText) == "" && len(c.draftAttachments) == 0) {
 						c.mu.Unlock()
 						return true
 					}
@@ -2532,7 +2540,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 						c.StopStreaming()
 					}
 				} else {
-					canSend := strings.TrimSpace(draft) != ""
+					canSend := strings.TrimSpace(draft) != "" || len(atts) > 0
 					dest := backend.DisplayName()
 					scope := theme.Tr("发送聊天文字与附件", "Sends chat text and attachments")
 					switch backend {
@@ -2613,6 +2621,30 @@ func (c *Controller) renderSelectionChip(cUI *ui.Context, pal theme.Palette, sel
 		})
 		if xBtn.Clicked() {
 			c.DismissEditorSelection()
+		}
+	})
+}
+
+func (c *Controller) renderAttachmentChip(cUI *ui.Context, pal theme.Palette, id string, att model.Attachment) {
+	ais := pal.AISurface()
+	ic := icons.Note
+	if att.IsImage() {
+		ic = icons.Image
+	}
+	chip := ui.Row(cUI.Key(id)).Padding(3, 8).Gap(6).AlignItems(ui.Center).Radius(theme.RadiusSM).
+		Background(ais.CapsuleBG).Border(1, ais.CapsuleBorder)
+	bui.Probe(chip, "ai-attachment-chip")
+	chip.Children(func() {
+		icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.Accent), chip.Hovered())
+		ui.Text(cUI, att.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().MaxWidth(180)
+		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
+			ID:       id + "-x",
+			Label:    theme.Tr("移除 ", "Remove ") + att.Name,
+			Size:     20,
+			IconSize: 12,
+		})
+		if xBtn.Clicked() {
+			c.removeDraftAttachment(att.Path)
 		}
 	})
 }

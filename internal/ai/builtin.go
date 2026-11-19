@@ -1034,7 +1034,11 @@ func convertMessagesToAnthropic(msgs []map[string]any) (string, []map[string]any
 			}
 		default:
 			flushTools()
-			out = append(out, map[string]any{"role": "user", "content": m["content"]})
+			content := m["content"]
+			if parts, ok := content.([]map[string]any); ok {
+				content = openAIPartsToAnthropic(parts)
+			}
+			out = append(out, map[string]any{"role": "user", "content": content})
 		}
 	}
 	flushTools()
@@ -1324,6 +1328,11 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int
 				content := m.Content
 				if i == turn.userIndex {
 					content += m.Context
+					if imgs := attachmentImageParts(m.Attachments); len(imgs) > 0 {
+						parts := append([]map[string]any{{"type": "text", "text": content}}, imgs...)
+						msgs = append(msgs, map[string]any{"role": m.Role, "content": parts})
+						continue
+					}
 				}
 				msgs = append(msgs, map[string]any{"role": m.Role, "content": content})
 			}

@@ -120,16 +120,17 @@ type Controller struct {
 	convs     []model.Conversation
 	currentID uint64
 
-	draftText      string
-	draftRefs      []string
-	draftSkills    []string
-	draftSelection *EditorSelection
-	dismissedSel   *selectionIdentity
-	sentSelection  *EditorSelection
-	retryDraft     *model.SentDraft
-	sentDraft      *model.SentDraft
-	deferredDrafts []model.SentDraft
-	tabDrafts      map[uint64]tabDraft
+	draftText        string
+	draftRefs        []string
+	draftSkills      []string
+	draftAttachments []model.Attachment
+	draftSelection   *EditorSelection
+	dismissedSel     *selectionIdentity
+	sentSelection    *EditorSelection
+	retryDraft       *model.SentDraft
+	sentDraft        *model.SentDraft
+	deferredDrafts   []model.SentDraft
+	tabDrafts        map[uint64]tabDraft
 
 	composerEpoch     int
 	composerHandle    ui.Handle
@@ -1509,6 +1510,7 @@ func (c *Controller) NewConversation() {
 	c.draftText = ""
 	c.draftRefs = nil
 	c.draftSkills = nil
+	c.draftAttachments = nil
 	c.retryDraft = nil
 	c.turnError = ""
 	c.turnErrorSettings = false
@@ -1722,6 +1724,9 @@ func (c *Controller) SendPrompt(text string) {
 	}
 	original := c.draftText
 	question := strings.TrimSpace(original)
+	if question == "" && len(c.draftAttachments) > 0 {
+		question = theme.Tr("请查看附件。", "Please look at the attachments.")
+	}
 	if question == "" || question == "@" || question == "/" {
 		c.mu.Unlock()
 		return
@@ -1749,6 +1754,7 @@ func (c *Controller) SendPrompt(text string) {
 
 	refs := append([]string(nil), c.draftRefs...)
 	skills := append([]string(nil), c.draftSkills...)
+	atts := append([]model.Attachment(nil), c.draftAttachments...)
 	var sel *EditorSelection
 	if c.draftSelection != nil && !c.fullscreen {
 		cp := *c.draftSelection
@@ -1797,7 +1803,12 @@ func (c *Controller) SendPrompt(text string) {
 	}
 	c.draftRefs = nil
 	c.draftSkills = nil
+	c.draftAttachments = nil
 	c.draftSelection = nil
+	for _, a := range atts {
+		shownBuf.WriteString("[" + a.Name + "] ")
+	}
+	ctxBuf.WriteString(attachmentContext(atts))
 	if sel != nil {
 		marker := "「" + selectionExcerpt(sel, 16) + "」 "
 		shownBuf.WriteString(marker)
@@ -1833,7 +1844,7 @@ func (c *Controller) SendPrompt(text string) {
 		c.retryDraft.Text == original &&
 		slicesEqual(c.retryDraft.Refs, refs) &&
 		slicesEqual(c.retryDraft.Skills, skills) &&
-		sel == nil
+		sel == nil && len(atts) == 0
 	c.sentSelection = sel
 
 	if retryMatch {
@@ -1845,11 +1856,12 @@ func (c *Controller) SendPrompt(text string) {
 		}
 	} else {
 		c.pushMessageLocked(model.ChatMessage{
-			Role:    "user",
-			Content: content,
-			Context: ctxBuf.String(),
-			Refs:    refs,
-			Skills:  skills,
+			Role:        "user",
+			Content:     content,
+			Context:     ctxBuf.String(),
+			Refs:        refs,
+			Skills:      skills,
+			Attachments: atts,
 		})
 		conv := c.findConvLocked(c.currentID)
 		if conv != nil && len(conv.Messages) > 0 {
