@@ -79,6 +79,16 @@ func feedCachePath(dataDir string) string {
 	return filepath.Join(updatesRoot(dataDir), "feed-cache.json")
 }
 
+func lsregisterPruneMarkerPath(dataDir string) string {
+	return filepath.Join(updatesRoot(dataDir), "lsregister-pruned.json")
+}
+
+type lsregisterPruneMarker struct {
+	Executable string `json:"executable"`
+	Bundle     string `json:"bundle"`
+	Version    string `json:"version"`
+}
+
 // PickPlatformAsset chooses the allowlisted installer for the running OS/arch and reports
 // whether it supports automatic in-place restart replacement vs opening an external installer.
 func PickPlatformAsset(assets []ReleaseAsset, goos, goarch string) (picked *ReleaseAsset, inPlace bool, pkgManaged bool) {
@@ -495,6 +505,43 @@ func removeSiblingMacStages(bundle string) {
 	}
 }
 
+func shouldPruneMacRegistrations(dataDir, runningVersion, lastUpdatedFrom, resolvedExe, canonicalBundle string, acknowledgedUpdate bool) bool {
+	if acknowledgedUpdate {
+		return true
+	}
+	if dataDir == "" {
+		return false
+	}
+	raw, err := os.ReadFile(lsregisterPruneMarkerPath(dataDir))
+	if err != nil {
+		return true
+	}
+	var marker lsregisterPruneMarker
+	if json.Unmarshal(raw, &marker) != nil {
+		return true
+	}
+	if marker.Executable != resolvedExe || marker.Bundle != canonicalBundle {
+		return true
+	}
+	if runningVersion != "" && marker.Version != runningVersion {
+		return true
+	}
+	if lastUpdatedFrom != "" && runningVersion != "" && CompareVersion(runningVersion, lastUpdatedFrom) > 0 && marker.Version == "" {
+		return true
+	}
+	return false
+}
+
+func writeLSRegisterPruneMarker(dataDir string, marker lsregisterPruneMarker) {
+	if dataDir == "" {
+		return
+	}
+	_ = os.MkdirAll(updatesRoot(dataDir), 0o700)
+	if data, err := json.Marshal(marker); err == nil {
+		_ = os.WriteFile(lsregisterPruneMarkerPath(dataDir), data, 0o600)
+	}
+}
+
 func pruneDuplicateMacRegistrations(canonicalBundle string) {
 	if runtime.GOOS != "darwin" || canonicalBundle == "" {
 		return
@@ -593,21 +640,31 @@ func refreshMacDocumentIconCacheOnce(updatesDir, bundle string) {
 // launched cleanly, logs rollback anomalies if an older version booted after an attempted swap,
 // cleans sibling stage directories, and prunes outdated cached downloads.
 func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
+	acknowledgeStartupAndClean(dataDir, runningVersion, "")
+}
+
+func acknowledgeStartupAndClean(dataDir, runningVersion, lastUpdatedFrom string) {
 	root := updatesRoot(dataDir)
 	_ = os.MkdirAll(root, 0o700)
 	markMacNeverIndex(root)
 
 	exe, _ := os.Executable()
+	resolvedExe := filepath.Clean(exe)
+	if realExe, err := filepath.EvalSymlinks(resolvedExe); err == nil {
+		resolvedExe = realExe
+	}
 	logInfo("startup.init", "running_version", runningVersion, "os", runtime.GOOS, "arch", runtime.GOARCH, "exe", exe)
 
 	if runtime.GOOS == "darwin" {
 		if bundle, err := installedMacBundle(); err == nil && !livesInUpdateStage(bundle) {
+			acknowledgedUpdate := false
 			if raw, rErr := os.ReadFile(stageRecordPath(dataDir)); rErr == nil {
 				var st installStageRecord
 				if json.Unmarshal(raw, &st) == nil && st.Path != "" && stageDirPattern.MatchString(filepath.Base(st.Path)) {
 					if st.Version == "" || CompareVersion(runningVersion, st.Version) >= 0 {
 						_ = os.WriteFile(filepath.Join(st.Path, "started"), []byte(fmt.Sprintf("%d", os.Getpid())), 0o600)
 						_ = os.Remove(stageRecordPath(dataDir))
+						acknowledgedUpdate = true
 						logInfo("startup.install_acknowledged", "from_version", st.FromVersion, "installed_version", runningVersion, "stage", st.Path)
 					} else {
 						logError("startup.install_rollback_detected", "running_version", runningVersion, "attempted_version", st.Version, "stage", st.Path, "install_log", InstallLogFilePath(dataDir))
@@ -616,7 +673,18 @@ func AcknowledgeStartupAndClean(dataDir, runningVersion string) {
 				}
 			}
 			removeSiblingMacStages(bundle)
-			pruneDuplicateMacRegistrations(bundle)
+			canonicalBundle := filepath.Clean(bundle)
+			if realBundle, bErr := filepath.EvalSymlinks(canonicalBundle); bErr == nil {
+				canonicalBundle = realBundle
+			}
+			if shouldPruneMacRegistrations(dataDir, runningVersion, lastUpdatedFrom, resolvedExe, canonicalBundle, acknowledgedUpdate) {
+				pruneDuplicateMacRegistrations(bundle)
+				writeLSRegisterPruneMarker(dataDir, lsregisterPruneMarker{
+					Executable: resolvedExe,
+					Bundle:     canonicalBundle,
+					Version:    runningVersion,
+				})
+			}
 			refreshMacDocumentIconCacheOnce(root, bundle)
 		}
 	}

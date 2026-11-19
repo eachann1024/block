@@ -276,7 +276,10 @@ func (s *Service) StartAutomatic() {
 	go func() {
 		cur := CurrentVersion()
 		if dataDir != "" {
-			AcknowledgeStartupAndClean(dataDir, cur)
+			s.mu.Lock()
+			lastUpdatedFrom := s.lastUpdatedFrom
+			s.mu.Unlock()
+			acknowledgeStartupAndClean(dataDir, cur, lastUpdatedFrom)
 			if rec, ok := RestoreReady(dataDir, cur); ok {
 				s.mu.Lock()
 				s.readyRecord = rec
