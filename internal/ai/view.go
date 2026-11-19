@@ -116,7 +116,7 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 
 	header := ui.Row(cUI.Key("ai-header")).FillWidth().Height(theme.TitleBarHeight).Shrink(0).
 		Padding(0, rightPad, 0, leftPad).Gap(theme.Space4).
-		AlignItems(ui.Center).Background(pal.Paper).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline)
+		AlignItems(ui.Center).Background(pal.Paper)
 	if fullscreen {
 		header.DragWindow()
 	}
@@ -124,10 +124,10 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 	var histAnchor ui.Element
 	header.Children(func() {
 		ui.Text(cUI, title).
-			FontSize(theme.FontBody).
-			LineHeight(theme.LineBody / theme.FontBody).
-			FontWeight(theme.WeightTitle).
-			TextColor(pal.Text).
+			FontSize(theme.FontSmall).
+			LineHeight(theme.LineSmall / theme.FontSmall).
+			FontWeight(theme.WeightControl).
+			TextColor(pal.TextSecondary).
 			MaxWidth(theme.TitleBarTitleMaxWidth).
 			Shrink(1).
 			MinWidth(0).
@@ -431,8 +431,8 @@ func (c *Controller) renderBlockedCover(cUI *ui.Context, pal theme.Palette, full
 }
 
 func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, fullscreen bool, minH float32) {
-	fontSize := theme.FontEditor
-	lineHeight := theme.LineEditor
+	fontSize := theme.FontTitle
+	lineHeight := theme.LineTitle
 	if fullscreen {
 		fontSize = theme.FontHeading
 		lineHeight = theme.LineHeading
@@ -443,7 +443,7 @@ func (c *Controller) renderEmptySuggestions(cUI *ui.Context, pal theme.Palette, 
 	}
 	col.Children(func() {
 		ui.Text(cUI, theme.Tr("我们来做些什么？", "What shall we work on?")).
-			FontSize(fontSize).FixedLineHeight(lineHeight).FontWeight(theme.WeightTitle).TextColor(pal.Text).TextAlign(ui.Center)
+			FontSize(fontSize).FixedLineHeight(lineHeight).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).TextAlign(ui.Center)
 	})
 }
 
@@ -747,7 +747,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 						c.mu.RUnlock()
 
 						chipID := fmt.Sprintf("ai-process-tool-chip-%d", i)
-						row := ui.ButtonBase(cUI.Key(chipID+"-"+turnKey)).FillWidth().MinHeight(28).PaddingX(6).Gap(8).
+						row := ui.ButtonBase(cUI.Key(chipID + "-" + turnKey)).FillWidth().MinHeight(28).PaddingX(6).Gap(8).
 							AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(st.Title).
 							Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
 						hovered := row.Hovered()
@@ -1856,6 +1856,11 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	draft := c.draftText
 	refs := append([]string(nil), c.draftRefs...)
 	skills := append([]string(nil), c.draftSkills...)
+	var sel *EditorSelection
+	if c.open && !c.fullscreen && c.providerCfg.Enabled && c.draftSelection != nil {
+		cp := *c.draftSelection
+		sel = &cp
+	}
 	epoch := c.composerEpoch
 	busy := c.streaming || c.hasPendingQuestionLocked()
 	hasConv := c.currentID != 0
@@ -1863,7 +1868,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	_, pickerOpen := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
 	c.mu.RUnlock()
 
-	ph := theme.Tr("向 AI 提问，/ 调用技能，@ 引用文件…", "Ask AI, / for skills, @ to reference files…")
+	ph := theme.Tr("向 AI 提问，/ 技能，@ 文件", "Ask AI, / skills, @ files")
 	if hasConv {
 		ph = theme.Tr("继续追问…", "Ask a follow-up…")
 	}
@@ -1872,8 +1877,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	if pickerOpen {
 		padTop = 0
 	}
-	outer := ui.Column(cUI.Key("ai-composer-outer")).FillWidth().Padding(padTop, 16, 16, 16).
-		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+	outer := ui.Column(cUI.Key("ai-composer-outer")).FillWidth().Padding(padTop, theme.Space12, theme.Space12, theme.Space12)
 	if fullscreen {
 		outer.MaxWidth(720).Margin(0, ui.Auto)
 	}
@@ -1881,11 +1885,14 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	ais := pal.AISurface()
 	var deckAnchor ui.Element
 	outer.Children(func() {
-		shell := ui.Column(cUI).FillWidth().Padding(8, 10).Gap(6).Radius(theme.RadiusMD).
+		shell := ui.Column(cUI).FillWidth().Padding(theme.Space10, theme.Space10, theme.Space6, theme.Space12).Gap(theme.Space4).Radius(theme.RadiusLG).
 			Background(ais.ComposerBG).Border(1, ais.ComposerBorder)
 		shell.Children(func() {
-			if len(refs) > 0 || len(skills) > 0 {
-				ui.Row(cUI).FillWidth().Gap(6).Wrap().Children(func() {
+			if sel != nil || len(refs) > 0 || len(skills) > 0 {
+				ui.Row(cUI).FillWidth().Gap(theme.Space6).Wrap().Children(func() {
+					if sel != nil {
+						c.renderSelectionChip(cUI, pal, sel)
+					}
 					for i, r := range refs {
 						c.renderDraftChip(cUI, pal, fmt.Sprintf("chip-ref-%d", i), true, r)
 					}
@@ -1897,7 +1904,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 
 			composerKey := fmt.Sprintf("ai-composer-%d", epoch)
 			inputEl := ui.TextAreaBase(cUI.Key(composerKey), &draft).
-				FillWidth().Lines(1, 6).Padding(0, 0, theme.ComposerTailSpace, 0).FontSize(theme.FontBody).TextColor(pal.Text).
+				FillWidth().Lines(1, 6).Padding(0, 0, theme.ComposerTailSpace, 0).FontSize(theme.FontSmall).TextColor(pal.Text).
 				CaretColor(pal.Accent).CaretWidth(2).
 				Placeholder(ph).Bind(&c.composerHandle).
 				Label(theme.Tr("AI 输入框", "AI composer"))
@@ -2033,8 +2040,8 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 						ID:          "ai-chat-send",
 						Label:       theme.Tr("发送", "Send"),
 						TooltipSpec: &sendTip,
-						Size:        28,
-						IconSize:    16,
+						Size:        theme.HeightMicro,
+						IconSize:    theme.IconMicro,
 						Active:      canSend,
 						Disabled:    !canSend,
 					})
@@ -2049,6 +2056,43 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 	if deckAnchor.Valid() {
 		c.renderDeckPopover(cUI, pal, deckAnchor, fullscreen, panelW)
 	}
+}
+
+func (c *Controller) renderSelectionChip(cUI *ui.Context, pal theme.Palette, sel *EditorSelection) {
+	if sel == nil {
+		return
+	}
+	var label string
+	if sel.StartLine == sel.EndLine {
+		label = theme.Tr(
+			fmt.Sprintf("第 %d 段", sel.StartLine),
+			fmt.Sprintf("Block %d", sel.StartLine),
+		)
+	} else {
+		label = theme.Tr(
+			fmt.Sprintf("第 %d–%d 段", sel.StartLine, sel.EndLine),
+			fmt.Sprintf("Blocks %d–%d", sel.StartLine, sel.EndLine),
+		)
+	}
+	chip := bui.ChipSurface(ui.Row(cUI.Key("ai-selection-chip")), false)
+	bui.Probe(chip, "ai-selection-chip")
+	if sel.PlainPreview != "" {
+		bui.Tooltip(cUI, chip, sel.PlainPreview)
+	}
+	chip.Children(func() {
+		icons.Draw(cUI, icons.Quote, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+		ui.Text(cUI, label).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+		xBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
+			ID:       "ai-selection-chip-x",
+			Label:    theme.Tr("移除选中内容", "Remove selection"),
+			Size:     theme.HeightMicro - theme.Space6,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusXS,
+		})
+		if xBtn.Clicked() {
+			c.DismissEditorSelection()
+		}
+	})
 }
 
 func (c *Controller) renderDraftChip(cUI *ui.Context, pal theme.Palette, id string, isRef bool, name string) {
@@ -2118,25 +2162,21 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	}
 
 	ais := pal.AISurface()
-	btn := ui.ButtonBase(cUI.Key("ai-deck-trigger")).Height(28).PaddingX(8).Gap(5).
+	btn := ui.ButtonBase(cUI.Key("ai-deck-trigger")).Height(theme.HeightMicro).PaddingX(theme.Space6).Gap(theme.Space4).Margin(0, 0, 0, -theme.Space6).
 		MaxWidth(maxTrigW).Shrink(1).MinWidth(0).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(label)
 	bui.Tooltip(cUI, btn, tipText)
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	bg := ais.CapsuleBG
-	bd := ais.CapsuleBorder
+	bg := ui.Transparent
 	if open {
 		bg = ais.TintedSelectedBG
-		bd = pal.Accent
 	} else if pressed {
 		bg = ais.SelectedBG
-		bd = pal.Accent
 	} else if hovered {
 		bg = ais.HoverBG
-		bd = pal.Accent
 	}
-	bui.AnimateSurfaceColors(btn, bg, bd, true)
+	bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
 	bui.TactileCard(btn, hovered, pressed, false, false)
 	if b := btn.Bounds(); b.W > 0 {
 		c.mu.Lock()
@@ -2146,14 +2186,14 @@ func (c *Controller) renderDeckTrigger(cUI *ui.Context, pal theme.Palette) ui.El
 	bui.Probe(btn, "ai-deck-trigger")
 
 	btn.Children(func() {
-		icons.Brand(cUI, kind, 14, pal.Text)
-		ui.Text(cUI, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-		ui.Text(cUI, thinkLbl).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+		icons.Brand(cUI, kind, theme.IconMicro, pal.TextSecondary)
+		ui.Text(cUI, label).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(cUI, "· "+thinkLbl).FontSize(theme.FontMeta).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 		chev := icons.ChevronDown
 		if open {
 			chev = icons.ChevronUp
 		}
-		icons.DrawAnimated(cUI, chev, 11, pal.MonoIconColors(pal.TextSecondary), hovered || pressed || open)
+		icons.DrawAnimated(cUI, chev, 10, pal.MonoIconColors(pal.Placeholder), hovered || pressed || open)
 	})
 	if btn.Clicked() {
 		c.mu.Lock()
@@ -2478,7 +2518,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 										if idx == 0 {
 											topPad = 2
 										}
-										ui.Box(cUI.Key("ai-model-grp-" + grp)).FillWidth().Padding(topPad, rowPX, 2, rowPX).Children(func() {
+										ui.Box(cUI.Key("ai-model-grp-"+grp)).FillWidth().Padding(topPad, rowPX, 2, rowPX).Children(func() {
 											ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 										})
 									}
@@ -2816,7 +2856,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 					toggleID := "ai-provider-toggle-" + p.ID
 					hasNext := idx+1 < len(provEntries)
 
-					ui.Column(cUI.Key("prov-item-" + p.ID)).FillWidth().MinWidth(0).
+					ui.Column(cUI.Key("prov-item-"+p.ID)).FillWidth().MinWidth(0).
 						BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
 						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(48).PaddingX(14).Gap(8).
 							AlignItems(ui.Center).Justify(ui.SpaceBetween)
@@ -2965,7 +3005,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 						verTag = theme.Tr("未检测到 CLI", "CLI not found")
 					}
 
-					ui.Column(cUI.Key("ag-item-" + suffix)).FillWidth().MinWidth(0).
+					ui.Column(cUI.Key("ag-item-"+suffix)).FillWidth().MinWidth(0).
 						BorderWidth(0, 0, boolToBorder(hasNext), 0).BorderColor(pal.Hairline).Children(func() {
 						row := ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(48).PaddingX(14).Gap(8).
 							AlignItems(ui.Center).Justify(ui.SpaceBetween)
@@ -3103,7 +3143,7 @@ func (c *Controller) renderProviderDetailRows(cUI *ui.Context, pal theme.Palette
 	stackFields := secW > 0 && secW < 420
 	lblW := float32(76)
 
-	ui.Column(cUI.Key("prov-detail-" + p.ID)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
+	ui.Column(cUI.Key("prov-detail-"+p.ID)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
 		Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 		// Protocol + Test Connection
 		protoIdx := 0
@@ -3236,7 +3276,7 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 	}
 	installCmd, loginCmd := AgentDriverGuide(k)
 
-	ui.Column(cUI.Key("ag-detail-" + suffix)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
+	ui.Column(cUI.Key("ag-detail-"+suffix)).FillWidth().MinWidth(0).Padding(12, 14, 14, 14).Gap(10).
 		Background(pal.AISurface().RailBG).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 		if hasSt && (st.State == BackendStateMissing || st.State == BackendStateUnauth) {
 			guideCmd := installCmd
@@ -4305,7 +4345,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							if pos == 0 {
 								topPad = 2
 							}
-							ui.Box(cUI.Key("annotation-model-grp-" + grp)).FillWidth().Padding(topPad, 10, 2, 10).Children(func() {
+							ui.Box(cUI.Key("annotation-model-grp-"+grp)).FillWidth().Padding(topPad, 10, 2, 10).Children(func() {
 								ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 							})
 						}
