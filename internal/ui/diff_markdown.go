@@ -622,15 +622,20 @@ func diffInlineStart(s string) string {
 
 // DiffMarkdownCell renders one table cell's inline Markdown (code spans, emphasis).
 func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool) ui.Element {
-	// A cell holds inline content only.
-	cell = diffInlineStart(cell)
-	if header {
-		cell = "**" + strings.TrimSpace(cell) + "**"
-	}
-	if strings.TrimSpace(strings.Trim(cell, "*")) == "" {
+	// A cell holds inline content only; links turn into their text first, so their
+	// start is guarded too.
+	s := strings.TrimSpace(diffLiteralStart(diffInlineStart(diffPlainLinks(cell))))
+	if s == "" {
 		return ui.Box(c)
 	}
-	return markdown.View(c, diffPlainLinks(diffLiteralStart(cell)), diffMarkdownOptions(st))
+	// Bare "**" or "__" is text, not an empty emphasis.
+	if strings.Trim(s, "*_") == "" {
+		s = diffLiteralEscaper.Replace(s)
+	}
+	if header {
+		s = "**" + s + "**"
+	}
+	return markdown.View(c, s, diffMarkdownOptions(st))
 }
 
 // IsDiffTableRow reports whether a trimmed Markdown line is a table row.
