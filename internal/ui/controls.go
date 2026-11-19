@@ -367,7 +367,7 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			}
 		} else if opts.Leading != nil {
 			ic := pal.MonoIconColors(fg)
-			if (opts.Style == ButtonSecondary || opts.Style == ButtonGhost) && (hovered || pressed) {
+			if (opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline) && (hovered || pressed) {
 				ic = pal.DuoIconColors(fg)
 			}
 			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
