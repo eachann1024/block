@@ -42,7 +42,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 		Hover:            ui.RGBA(0x20, 0x24, 0x2c, 0.07),
 		FieldBG:          ui.Hex("#ffffff"),
 		FieldBorder:      ui.Hex("#e1e4e9"),
-		FieldBorderHover: ui.Hex("#c9d1de"),
+		FieldBorderHover: ui.Hex("#d0d0d0"),
 		KbdBG:            ui.Hex("#f3f4f6"),
 		BadgeFG:          ui.Hex("#2f4f8f"),
 	}
