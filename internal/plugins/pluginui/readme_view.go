@@ -192,6 +192,11 @@ func (ctrl *Controller) closeStoreReadme() {
 	ctrl.detachStoreReadmeLocked(preview)
 	ctrl.mu.Unlock()
 	releaseStoreReadmePreview(preview)
+	if ctrl.sup != nil {
+		if pending := ctrl.sup.PendingReplacement(); pending != nil && !pending.IsManual {
+			ctrl.sup.CancelReplacement(pending.Token)
+		}
+	}
 }
 
 func (ctrl *Controller) pollStoreReadme(c *ui.Context, preview *storeReadmePreview) {
@@ -251,7 +256,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 	}
 
 	page.Children(func() {
-		if c.Shortcut(0, ui.KeyEscape) {
+		if ctrl.sup.PendingReplacement() == nil && c.Shortcut(0, ui.KeyEscape) {
 			ctrl.closeStoreReadme()
 			c.Invalidate()
 			return
