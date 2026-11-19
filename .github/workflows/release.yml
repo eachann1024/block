@@ -214,7 +214,36 @@ jobs:
               deb_dir="$RUNNER_TEMP/apt-debs"
               mkdir -p "$deb_dir/partial"
               sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
-              # Always install via apt-get against the signed Ubuntu index so cached .deb hashes are verified before installation.
+              # Cryptographically verify every cached .deb SHA-256 against the GPG-verified Ubuntu Packages index; drop any unmatched file so apt downloads fresh.
+              sudo python3 - "$deb_dir" <<'PY'
+          import glob, hashlib, os, subprocess, sys
+          deb_dir = sys.argv[1]
+          debs = glob.glob(os.path.join(deb_dir, '*.deb'))
+          if debs:
+              valid = set()
+              targets = subprocess.check_output(
+                  ['apt-get', 'indextargets', '--format', '$(FILENAME)', 'ShortDesc: Packages'],
+                  text=True,
+              ).splitlines()
+              for path in targets:
+                  path = path.strip()
+                  if not path or not os.path.isfile(path):
+                      continue
+                  proc = subprocess.Popen(
+                      ['/usr/lib/apt/apt-helper', 'cat-file', path],
+                      stdout=subprocess.PIPE, text=True, errors='ignore',
+                  )
+                  file_hashes = [line[8:].strip().lower() for line in proc.stdout if line.startswith('SHA256: ')]
+                  if proc.wait() == 0:
+                      valid.update(file_hashes)
+              for deb in debs:
+                  h = hashlib.sha256()
+                  with open(deb, 'rb') as f:
+                      for chunk in iter(lambda: f.read(65536), b''):
+                          h.update(chunk)
+                  if h.hexdigest() not in valid:
+                      os.remove(deb)
+          PY
               sudo apt-get install -y -qq --no-install-recommends \
                 -o Dir::Cache::archives="$deb_dir" \
                 -o APT::Keep-Downloaded-Packages="true" \
