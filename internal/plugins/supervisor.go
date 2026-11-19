@@ -988,7 +988,7 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 		if vs := s.views[key]; vs != nil {
 			vs.Loading = false
 			vs.formVersion = s.formVersions[sKey]
-			if vs.Page == nil && attemptedLocale != "" {
+			if attemptedLocale != "" {
 				vs.lastLocale = attemptedLocale
 			}
 			if !vs.errorFromBg {
