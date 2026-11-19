@@ -3945,7 +3945,8 @@ func applySelectedDiff(op *model.PlanOp) string {
 		selected[i] = selIdx >= len(op.LineSelected) || op.LineSelected[selIdx]
 		selIdx++
 	}
-	syncHiddenTableSeparators(diff, selected)
+	texts, changes := diffChanges(diff)
+	appUi.SyncDiffTableSeps(texts, changes, selected)
 	var out []string
 	for i, d := range diff {
 		switch {
@@ -3975,40 +3976,6 @@ func diffChanges(diff []model.DiffLine) ([]string, []int) {
 		}
 	}
 	return texts, changes
-}
-
-// syncHiddenTableSeparators makes the changed separator rows of a table, which the
-// review card hides, follow the other changed rows of the same table block (equal rows
-// included, fenced code excluded): kept when any of them is taken, dropped when none
-// is, so a rejected table never leaves an orphan or a stray alignment change behind.
-func syncHiddenTableSeparators(diff []model.DiffLine, selected []bool) {
-	fenced := appUi.DiffFenceMask(diffChanges(diff))
-	isRow := func(i int) bool { return !fenced[i] && appUi.IsDiffTableRow(strings.TrimSpace(diff[i].Text)) }
-	for i := 0; i < len(diff); {
-		if !isRow(i) {
-			i++
-			continue
-		}
-		start := i
-		for i < len(diff) && isRow(i) {
-			i++
-		}
-		any, hasRows := false, false
-		for j := start; j < i; j++ {
-			if diff[j].Kind != model.DiffEqual && !appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
-				hasRows = true
-				any = any || selected[j]
-			}
-		}
-		if !hasRows {
-			continue
-		}
-		for j := start; j < i; j++ {
-			if diff[j].Kind != model.DiffEqual && appUi.IsDiffTableSep(strings.TrimSpace(diff[j].Text)) {
-				selected[j] = any
-			}
-		}
-	}
 }
 
 func (s *Session) acceptActivePlan() {
