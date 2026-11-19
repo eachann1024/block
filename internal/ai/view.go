@@ -1494,9 +1494,10 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			lines := c.PlanDiffLines(convID, msgIdx, preview.Page, preview.BeforeText, preview.AfterText)
 			texts := make([]string, len(lines))
 			for i, dl := range lines {
-				texts[i] = dl.Text
+				texts[i], changes[i] = dl.Text, dl.Change
 			}
-			fenced := bui.DiffFenceMask(texts)
+			fenced := bui.DiffFenceMask(texts, changes)
+			tableCols := bui.DiffTableCols(texts, fenced)
 			var visible []PlanDiffLine
 			for _, dl := range lines {
 				if !fenced[dl.Index] && bui.IsDiffTableSep(strings.TrimSpace(dl.Text)) {
@@ -1517,6 +1518,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 					Border(1, pal.Hairline).Background(pal.Paper).Clip()
 				listBox.Children(func() {
 					totalVis := len(visible)
+			changes := make([]int, len(lines))
 					for pos, dl := range visible {
 						trimmed := strings.TrimSpace(dl.Text)
 						isFirst := pos == 0
@@ -1573,16 +1575,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 							rowBtn.Children(func() {
 								ui.Text(cUI, gutterSym).Width(12).FontSize(theme.FontBody).TextColor(gutterFg).SingleLine()
 								if isTable {
-									cells := bui.ParseDiffTableCells(trimmed)
-									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
-										for ci, cellTxt := range cells {
-											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
-												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
-												Children(func() {
-													bui.DiffMarkdownCell(cUI, cellTxt, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG}, isHeader)
-												})
-										}
-									})
+									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG}, isHeader, pal.Hairline)
 								} else {
 									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code})
 								}
@@ -1597,16 +1590,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 							ctxRow.Children(func() {
 								ui.Box(cUI).Width(12).Shrink(0)
 								if isTable {
-									cells := bui.ParseDiffTableCells(trimmed)
-									ui.Row(cUI).Grow(1).MinWidth(0).Children(func() {
-										for ci, cellTxt := range cells {
-											ui.Box(cUI).Grow(1).Shrink(1).Padding(4, 8).
-												BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
-												Children(func() {
-													bui.DiffMarkdownCell(cUI, cellTxt, bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG}, isHeader)
-												})
-										}
-									})
+									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG}, isHeader, pal.Hairline)
 								} else {
 									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code})
 								}
