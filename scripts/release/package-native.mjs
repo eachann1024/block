@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { installerFor } from "./allowed-assets.mjs";
 import { goRelease, releaseBinaryPath, run } from "./go-release.mjs";
-import { applyReleasePlanVersion, ROOT } from "./select-release.mjs";
+import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 const DEB_DEPENDS = [
@@ -75,7 +75,8 @@ function buildDeb(binary, version, names) {
 
 export async function packageNative() {
   assert.equal(process.platform, "linux", "Linux is required to build the deb package");
-  const version = applyReleasePlanVersion();
+  const reuse = process.env.BLOCK_REUSE_BINARY === "1";
+  const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
   const names = archNames();
   let binary = releaseBinaryPath("linux", names.deb);
   if (!existsSync(binary)) {

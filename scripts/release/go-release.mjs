@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { readPackageVersion, ROOT } from "./select-release.mjs";
+import { fileURLToPath } from "node:url";
+import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 export function run(cmd, args, extra = {}) {
   const result = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, ...extra });
@@ -28,4 +29,18 @@ export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goar
     },
   });
   return outFile;
+}
+
+const isMain =
+  import.meta.main ??
+  (Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+
+if (isMain) {
+  const [goos, goarch] = process.argv.slice(2);
+  if (!goos || !goarch) {
+    throw new Error("Usage: node scripts/release/go-release.mjs <goos> <goarch>");
+  }
+  applyReleasePlanVersion();
+  const out = goRelease({ goos, goarch });
+  console.log(out);
 }

@@ -113,48 +113,61 @@ jobs:
           retention-days: 5
 
   release-macos:
-    name: macOS ${{ matrix.arch }} DMG
+    name: macOS arm64 & x64 DMG
     needs: [prepare]
     if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-          - arch: x64
+    env:
+      GOMODCACHE: ${{ runner.temp }}/go-mod
+      GOCACHE: ${{ runner.temp }}/go-build
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_SHA }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3.14'
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+          cache: false
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-mod
+          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-build
+          key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
+          restore-keys: |
+            go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - uses: actions/download-artifact@v4
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
           path: .
       - name: Build release .app and DMG
         env:
-          BLOCK_ARCH: ${{ matrix.arch }}
-        run: bun scripts/release/package-release.mjs
-      - name: Resolve allowlisted macOS installer
+          BLOCK_ARCHES: arm64,x64
+        run: node scripts/release/package-release.mjs
+      - name: Resolve allowlisted macOS installers
         id: installer
         shell: bash
-        run: echo "name=$(node scripts/release/allowed-assets.mjs macos ${{ matrix.arch }} dmg)" >> "$GITHUB_OUTPUT"
+        run: |
+          {
+            echo "arm64=$(node scripts/release/allowed-assets.mjs macos arm64 dmg)"
+            echo "x64=$(node scripts/release/allowed-assets.mjs macos x64 dmg)"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: block-installer-macos-${{ matrix.arch }}
-          path: dist/release/${{ steps.installer.outputs.name }}
+          name: block-installer-macos
+          path: |
+            dist/release/${{ steps.installer.outputs.arm64 }}
+            dist/release/${{ steps.installer.outputs.x64 }}
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -164,11 +177,13 @@ jobs:
     if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      GOMODCACHE: ${{ runner.temp }}\go-mod
+      GOCACHE: ${{ runner.temp }}\go-build
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_SHA }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -176,14 +191,34 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+          cache: false
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\go-mod
+          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\go-build
+          key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
+          restore-keys: |
+            go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - uses: actions/download-artifact@v4
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
           path: .
+      - name: Cache NSIS 3.13
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files (x86)\NSIS
+          key: nsis-3.13.0-windows-x64
       - name: Install NSIS 3.13
         shell: pwsh
         run: |
-          choco install nsis --version=3.13.0 -y --no-progress
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis --version=3.13.0 -y --no-progress
+          }
           Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
       - name: Build NSIS installer
         env:
@@ -197,6 +232,7 @@ jobs:
         with:
           name: block-installer-windows-x64
           path: dist/release/${{ steps.installer.outputs.name }}
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -206,11 +242,13 @@ jobs:
     if: needs.prepare.outputs.should_build == 'yes' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      GOMODCACHE: ${{ runner.temp }}/go-mod
+      GOCACHE: ${{ runner.temp }}/go-build
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_SHA }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -218,25 +256,52 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+          cache: false
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-mod
+          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-build
+          key: go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
+          restore-keys: |
+            go-build-release-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - uses: actions/download-artifact@v4
         with:
           name: release-plan-${{ env.SOURCE_SHA }}
           path: .
+      - name: Cache appimagetool
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/appimagetool
+          key: appimagetool-1.9.1-x86_64
       - name: Install packaging tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends patchelf ca-certificates curl
-          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
-            "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
-          chmod +x "$RUNNER_TEMP/appimagetool"
+          if ! command -v patchelf >/dev/null 2>&1; then
+            sudo apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" || sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends patchelf
+          fi
+          if [ ! -x "$RUNNER_TEMP/appimagetool" ]; then
+            curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+              "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+            chmod +x "$RUNNER_TEMP/appimagetool"
+          fi
           echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
           echo "APPIMAGE_ARCH=x86_64" >> "$GITHUB_ENV"
       - name: Build AppImage and deb
         env:
           BLOCK_ARCH: x64
         run: |
-          node scripts/release/package-linux.mjs
-          node scripts/release/package-native.mjs
+          node scripts/release/go-release.mjs linux amd64
+          BLOCK_REUSE_BINARY=1 node scripts/release/package-linux.mjs &
+          pid_app=$!
+          BLOCK_REUSE_BINARY=1 node scripts/release/package-native.mjs &
+          pid_deb=$!
+          wait "$pid_app"
+          wait "$pid_deb"
       - name: Resolve allowlisted Linux installers
         id: installer
         shell: bash
@@ -251,6 +316,7 @@ jobs:
           path: |
             dist/release/${{ steps.installer.outputs.app }}
             dist/release/${{ steps.installer.outputs.deb }}
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -288,6 +354,7 @@ jobs:
         with:
           name: block-release-${{ env.SOURCE_SHA }}
           path: dist/release/
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
       - name: Publish GitHub Release
