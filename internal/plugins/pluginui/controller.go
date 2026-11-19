@@ -30,6 +30,7 @@ type Controller struct {
 	secretRevealed map[string]map[string]bool
 	selectStates   map[string]map[string]*bui.DropdownSelectState
 	treemapStates  map[string]map[string]*bui.TreemapState
+	cardExpanded   map[string]map[string]bool
 }
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
@@ -41,6 +42,7 @@ func NewController(sup *plugins.Supervisor) *Controller {
 		secretRevealed: make(map[string]map[string]bool),
 		selectStates:   make(map[string]map[string]*bui.DropdownSelectState),
 		treemapStates:  make(map[string]map[string]*bui.TreemapState),
+		cardExpanded:   make(map[string]map[string]bool),
 	}
 }
 
@@ -367,6 +369,11 @@ func (c *Controller) clearPluginState(pluginID string) {
 			delete(c.treemapStates, k)
 		}
 	}
+	for k := range c.cardExpanded {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.cardExpanded, k)
+		}
+	}
 	c.mu.Unlock()
 }
 
@@ -377,8 +384,40 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 			c.sup.PickDirectoryForControl(pluginID, controlID, title)
 		}
 	}
+	var pickFile func(controlID, title string, extensions []string)
+	if c.sup.CanPickFile() {
+		pickFile = func(controlID, title string, extensions []string) {
+			c.sup.PickFileForControl(pluginID, controlID, title, extensions)
+		}
+	}
 	return &InputBindings{
 		PickDirectory: pickDirectory,
+		PickFile:      pickFile,
+		IsCardExpanded: func(cardID string, defaultCollapsed bool) bool {
+			stateKey := c.pluginStateKey(pluginID)
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if m := c.cardExpanded[stateKey]; m != nil {
+				if expanded, ok := m[cardID]; ok {
+					return expanded
+				}
+			}
+			return !defaultCollapsed
+		},
+		ToggleCardExpanded: func(cardID string, defaultCollapsed bool) {
+			stateKey := c.pluginStateKey(pluginID)
+			c.mu.Lock()
+			if c.cardExpanded[stateKey] == nil {
+				c.cardExpanded[stateKey] = make(map[string]bool)
+			}
+			cur := !defaultCollapsed
+			if prev, ok := c.cardExpanded[stateKey][cardID]; ok {
+				cur = prev
+			}
+			c.cardExpanded[stateKey][cardID] = !cur
+			c.mu.Unlock()
+			c.sup.NotifyRedraw()
+		},
 		TreemapState: func(controlID string) *bui.TreemapState {
 			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
