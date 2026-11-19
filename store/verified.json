@@ -1,6 +1,3 @@
 {
-  "block-sync": "blockmd-plugins/block-sync",
-  "block-image-host": "blockmd-plugins/block-image-host",
-  "block-migrator": "blockmd-plugins/block-migrator",
-  "block-diagnostics": "blockmd-plugins/block-diagnostics"
+  "block-sync": "blockmd-plugins/block-sync"
 }
