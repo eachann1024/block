@@ -512,7 +512,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				swBD := ui.Transparent
 				if p.State.SwitcherOpen {
 					swBG = pal.Selected
-					swBD = pal.Accent
+					swBD = pal.SelectedBorder
 				} else if swPressed || swHovered {
 					swBG = chrome.Hover
 				}
@@ -524,7 +524,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					} else {
 						ic := pal.MonoIconColors(pal.Text)
 						if p.State.SwitcherOpen {
-							ic = pal.DuoIconColors(pal.Accent)
+							ic = pal.DuoIconColors(pal.Text)
 						}
 						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					}
@@ -648,9 +648,9 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 		switch {
 		case p.SearchOpen:
 			sBG = pal.Selected
-			sBD = pal.Accent
+			sBD = pal.SelectedBorder
 			sFG = pal.Text
-			sIcon = pal.DuoIconColors(pal.Accent)
+			sIcon = pal.DuoIconColors(pal.Text)
 		case sHov || sPress:
 			sBG = hoverBG
 			sFG = pal.Text
@@ -873,7 +873,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		rowBG = pal.Hover
 	case highlighted:
 		rowBG = pal.Selected
-		rowBD = pal.Accent
 	case focused || pressed:
 		rowBG = pal.Selected
 	case menuTarget || hovered:
@@ -903,7 +902,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			}
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
-				ic = pal.DuoIconColors(pal.Accent)
+				ic = pal.DuoIconColors(pal.Text)
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
@@ -911,7 +910,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		} else {
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
-				ic = pal.DuoIconColors(pal.Accent)
+				ic = pal.DuoIconColors(pal.Text)
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
