@@ -165,8 +165,8 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	label := tabTitle(path)
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).MaxWidth(tabW).MinWidth(min(float32(tabMinW), tabW)).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 12).Gap(8).
-		Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).FocusRing(false).
+	pill := ui.ButtonBase(c).MaxWidth(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 12).Gap(8).
+		Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.Start).Clip().Cursor(ui.CursorPointer).FocusRing(false).
 		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
 	if !p.Busy && p.OnReorderTab != nil {
 		pill.Drag(tabDragItem{Path: path})
