@@ -7,6 +7,7 @@ import (
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
+	"image/png"
 	"os"
 	"strings"
 	"time"
@@ -330,11 +331,10 @@ func renderDOCXFigure(b *model.Block, notePath string, ord int, avail, indent fl
 	if path, ok := resolveLocalImagePath(b.ImageSrc, notePath); ok {
 		if raw, err := os.ReadFile(path); err == nil {
 			if cfg, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && cfg.Width > 0 && cfg.Height > 0 {
-				ext := format
-				if ext == "jpeg" {
-					ext = "jpg"
+				raw, ext := docxImageData(raw, format)
+				if ext != "" {
+					return renderDOCXPicture(b, raw, ext, cfg, ord, avail, indent, pal, legacy, assets)
 				}
-				return renderDOCXPicture(b, raw, ext, cfg, ord, avail, indent, pal, legacy, assets)
 			}
 		}
 	}
@@ -345,6 +345,26 @@ func renderDOCXFigure(b *model.Block, notePath string, ord int, avail, indent fl
 	}
 	return fmt.Sprintf(`<w:p><w:pPr><w:spacing w:before="0" w:after="120"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/></w:rPr>%s</w:r></w:p>`,
 		docxHex(pal.Secondary), docxTextXML(label))
+}
+
+// Word can open PNG, JPEG and GIF across the supported readers. Transcode
+// other editor-supported bitmap formats before embedding them.
+func docxImageData(raw []byte, format string) ([]byte, string) {
+	switch format {
+	case "jpeg":
+		return raw, "jpg"
+	case "png", "gif":
+		return raw, format
+	}
+	bitmap, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, ""
+	}
+	var result bytes.Buffer
+	if err := png.Encode(&result, bitmap); err != nil {
+		return nil, ""
+	}
+	return result.Bytes(), "png"
 }
 
 func renderDOCXPicture(b *model.Block, raw []byte, ext string, cfg image.Config, ord int, avail, indent float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {
