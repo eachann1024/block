@@ -157,11 +157,13 @@ var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:(.*)$`)
 // the note matches them, so a deleted line never borrows a label added by the AI.
 func DiffRefLabels(lines []string, change []int) []map[string]bool {
 	masks, _ := diffScan(lines, change)
+	// A "[x]: y" inside a formula block defines nothing.
+	math := diffMathSides(lines, change)
 	out := make([]map[string]bool, len(lines))
 	for si, side := range [2]int{-1, 1} {
 		refs := map[string]bool{}
 		for i, l := range lines {
-			if change[i] == -side || masks[si][i] {
+			if change[i] == -side || masks[si][i] || math[si][i] {
 				continue
 			}
 			// A definition in a blockquote counts too ("> [a]: …").
