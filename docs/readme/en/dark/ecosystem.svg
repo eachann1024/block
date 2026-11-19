@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="212" viewBox="0 0 1200 212" role="img" aria-label="Block App Store Extensions: Sync, Image Host, Migrator, Performance" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <clipPath id="frEED"><rect x="0" y="0" width="1200" height="212" rx="18"/></clipPath>
+  </defs>
+  <style>
+
+  .sans{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",sans-serif}
+  .mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  .e-d1{animation:e-dot 6s ease-in-out 0s infinite}
+  .e-d2{animation:e-dot 6s ease-in-out 1.5s infinite}
+  .e-d3{animation:e-dot 6s ease-in-out 3.0s infinite}
+  .e-d4{animation:e-dot 6s ease-in-out 4.5s infinite}
+  @keyframes e-dot{0%,100%{opacity:.28}25%,40%{opacity:1}}
+
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+  <g clip-path="url(#frEED)">
+    <rect width="1200" height="212" fill="#15171c"/>
+    <text class="sans" x="32" y="52" font-size="22" font-weight="700" fill="#f0f2f5">Ready out of the box, extend on demand</text>
+    <text class="sans" x="1146" y="50" text-anchor="end" font-size="15.5" font-weight="600" fill="#9cbaf2">Plugin Guide</text>
+    <g transform="translate(1160 44) scale(0.9)" fill="none" stroke="#9cbaf2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-4.5 4.5 L4.5 -4.5 M-1.5 -4.5 H4.5 V1.5"/></g>
+    <rect x="32" y="76" width="272" height="108" rx="12" fill="#1e2128" stroke="#2d323d" stroke-width="1.2"/>
+    <rect x="50" y="94" width="30" height="30" rx="8" fill="#31456a"/><path d="M59 106 h12 l-3-3 M71 113 h-12 l3 3" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="90" y="115" font-size="18.5" font-weight="700" fill="#f0f2f5">Sync</text>
+    <circle class="e-d1" cx="284" cy="108" r="4" fill="#779de8"/>
+    <text class="sans" x="50" y="158" font-size="15" fill="#a9b1bf">Mirror · WebDAV · Git</text>
+    <rect x="320" y="76" width="272" height="108" rx="12" fill="#1e2128" stroke="#2d323d" stroke-width="1.2"/>
+    <rect x="338" y="94" width="30" height="30" rx="8" fill="#31456a"/><path d="M353 115 v-11 M349 107 l4-4 4 4" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="378" y="115" font-size="18.5" font-weight="700" fill="#f0f2f5">Image Host</text>
+    <circle class="e-d2" cx="572" cy="108" r="4" fill="#779de8"/>
+    <text class="sans" x="338" y="158" font-size="15" fill="#a9b1bf">R2 · S3 · GitHub</text>
+    <rect x="608" y="76" width="272" height="108" rx="12" fill="#1e2128" stroke="#2d323d" stroke-width="1.2"/>
+    <rect x="626" y="94" width="30" height="30" rx="8" fill="#31456a"/><path d="M637 109 h10 l-3.5-3.5 M647 109 l-3.5 3.5" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="666" y="115" font-size="18.5" font-weight="700" fill="#f0f2f5">Migrator</text>
+    <circle class="e-d3" cx="860" cy="108" r="4" fill="#779de8"/>
+    <text class="sans" x="626" y="158" font-size="15" fill="#a9b1bf">Obsidian · Notion · Yuque</text>
+    <rect x="896" y="76" width="272" height="108" rx="12" fill="#1e2128" stroke="#2d323d" stroke-width="1.2"/>
+    <rect x="914" y="94" width="30" height="30" rx="8" fill="#31456a"/><path d="M922 115 l4-6 4 3 5-8" fill="none" stroke="#779de8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="954" y="115" font-size="18.5" font-weight="700" fill="#f0f2f5">Performance</text>
+    <circle class="e-d4" cx="1148" cy="108" r="4" fill="#779de8"/>
+    <text class="sans" x="914" y="158" font-size="15" fill="#a9b1bf">CPU · Memory · Storage</text>
+  </g>
+  <rect x="0.75" y="0.75" width="1198.5" height="210.5" rx="17.25" fill="none" stroke="#2d323d" stroke-width="1.5"/>
+</svg>
