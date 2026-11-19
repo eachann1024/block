@@ -1846,7 +1846,7 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 	}
 	cr, _ := s.tableCellRect(b.ID, rIdx, cIdx)
 	tFontSz, tLineH, _, _, _, tPadY, tPadX := s.tableMetrics()
-	weight := tableCellTextWeight(b.Table, rIdx)
+	weight := tableCellTextWeight(b.Table, rIdx, cIdx)
 	cellBlock := model.Block{ID: b.ID, Kind: model.BlockParagraph, Spans: cell.Spans}
 	uiSpans := s.buildPureDisplaySpans(&cellBlock, tFontSz, weight)
 	layout := ui.ShapeRichTextWith(uiSpans, ui.Font{
@@ -1854,7 +1854,7 @@ func (s *Session) hitOffsetInTableBlock(idx int, b *model.Block, rowRect ui.Rect
 		Size:       tFontSz,
 		Weight:     weight,
 		LineHeight: tableCellLineHeight / tableCellFontSize,
-	}, ui.TextShape{Width: max(cr.W-2*tPadX, 1), Align: tableCellTextAlign(b.Table, cIdx)})
+	}, ui.TextShape{Width: max(cr.W-2*tPadX, 1), Align: tableCellTextAlign(b.Table, rIdx, cIdx)})
 	_, textH := layout.Size()
 	textY := cr.Y + max((cr.H-max(tLineH, textH))*0.5, tPadY)
 	cp := layout.PositionAt(ui.Point{X: wx - cr.X - tPadX, Y: wy - textY})

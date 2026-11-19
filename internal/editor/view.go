@@ -2403,14 +2403,14 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 		bg = pal.EditorSelectionBG().Alpha(s.jumpAlpha).Over(bg)
 	}
 	box.Background(bg)
-	weight := tableCellTextWeight(tbl, rIdx)
+	weight := tableCellTextWeight(tbl, rIdx, cIdx)
 	textCol := pal.Text
-	if rIdx == 0 && !tbl.NoHeaderRow {
+	if tbl.IsHeaderCell(rIdx, cIdx) {
 		textCol = pal.TextSecondary
 	}
 	lhFactor := tableCellLineHeight / tableCellFontSize
 	edFont := resolvedEditorFont()
-	cellAlign := tableCellTextAlign(tbl, cIdx)
+	cellAlign := tableCellTextAlign(tbl, rIdx, cIdx)
 
 	box.Children(func() {
 		if jumpTarget {

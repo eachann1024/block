@@ -24,21 +24,19 @@ type tableGridGeom struct {
 	h    float32
 }
 
-func tableCellTextWeight(tbl *model.TableData, row int) int {
-	if row == 0 && !tbl.NoHeaderRow {
+func tableCellTextWeight(tbl *model.TableData, row, col int) int {
+	if tbl.IsHeaderCell(row, col) {
 		return theme.WeightControl
 	}
 	return theme.WeightRegular
 }
 
-func tableCellTextAlign(tbl *model.TableData, col int) ui.Align {
-	if col < len(tbl.Aligns) {
-		switch tbl.Aligns[col] {
-		case model.ColAlignCenter:
-			return ui.Center
-		case model.ColAlignRight:
-			return ui.End
-		}
+func tableCellTextAlign(tbl *model.TableData, row, col int) ui.Align {
+	switch tbl.CellAlign(row, col) {
+	case model.ColAlignCenter:
+		return ui.Center
+	case model.ColAlignRight:
+		return ui.End
 	}
 	return ui.Start
 }
@@ -66,17 +64,17 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 			wantW[c] = tMinColW
 		}
 		for rIdx, row := range tbl.Rows {
-			weight := tableCellTextWeight(tbl, rIdx)
-			fnt := ui.Font{
-				Family:     edFont,
-				Size:       tFontSz,
-				Weight:     weight,
-				LineHeight: lhFactor,
-			}
 			for cIdx := 0; cIdx < cols && cIdx < len(row); cIdx++ {
 				cell := &row[cIdx]
 				if cell.PlainText() == "" {
 					continue
+				}
+				weight := tableCellTextWeight(tbl, rIdx, cIdx)
+				fnt := ui.Font{
+					Family:     edFont,
+					Size:       tFontSz,
+					Weight:     weight,
+					LineHeight: lhFactor,
 				}
 				cellBlk := model.Block{ID: id, Kind: model.BlockParagraph, Spans: cell.Spans}
 				spans := s.buildPureDisplaySpans(&cellBlk, tFontSz, weight)
