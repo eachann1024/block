@@ -544,7 +544,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						row.Children(func() {
 							ui.Column(c).FillWidth().Gap(2).Children(func() {
 								ui.Text(c, ts).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
-								sub := formatBytesIEC(uint64(max(s.Size, 0)))
+								sub := internalui.FormatBytesIEC(uint64(max(s.Size, 0)))
 								if s.Summary != "" {
 									sub = s.Summary
 								}
