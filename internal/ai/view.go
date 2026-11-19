@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"html"
 	"math"
 	"os"
 	"path/filepath"
@@ -1191,7 +1192,8 @@ func latestStreamLine(s string) string {
 	nums := bui.DiffListNumbers(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
-		if raw == "" || seps[i] {
+		// A fence line is no text of its own: after "```" closes, the code shows.
+		if raw == "" || seps[i] || code[i] && plainFenceRE.MatchString(raw) {
 			continue
 		}
 		t := raw
@@ -1219,6 +1221,12 @@ func latestStreamLine(s string) string {
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
 
+// plainFenceRE matches a code fence line ("```sh", "~~~").
+var plainFenceRE = regexp.MustCompile("^(?:```|~~~)")
+
+// plainClosingHashRE matches an ATX heading's optional closing "#"s ("## 安装 ##").
+var plainClosingHashRE = regexp.MustCompile(`(?:^|\s+)#+\s*$`)
+
 // plainParaMarkerRE finds an ordered marker ("2." behind any ">") read as paragraph text.
 var plainParaMarkerRE = regexp.MustCompile(`^(?:>\s*)*\d{1,9}()[.)]`)
 
@@ -1241,8 +1249,14 @@ var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 // refs are the reference labels defined around s (nil: none).
 func plainInline(s string, refs map[string]bool) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "#") {
+		if h := plainBlockPrefixRE.FindString(s); strings.HasPrefix(h, "#") {
+			s = h + plainClosingHashRE.ReplaceAllString(s[len(h):], "")
+		}
+	}
 	// Links show their text: "[文档](/guide)" reads 文档.
-	t := bui.PlainLinks(refs, plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), ""))
+	t := bui.PlainLinks(refs, plainBlockPrefixRE.ReplaceAllString(s, ""))
 	// Code spans stand in as placeholders while emphasis markers are stripped, so
 	// `**/node_modules/**` keeps its stars and **run `x`** still loses its own.
 	var codes []string
@@ -1268,11 +1282,16 @@ func plainInline(s string, refs map[string]bool) string {
 	// Escaped markers ("\**提示**") were never bold; they show without the backslash.
 	// An escaped bar ("\| grep error") is text, so it waits out the trim below.
 	t = plainEscapeRE.ReplaceAllStringFunc(t, func(m string) string {
-		if m == `\|` {
+		switch m {
+		case `\|`:
 			return ""
+		case `\&`:
+			return ""
 		}
 		return m[1:]
 	})
+	// Entities show their character ("A &amp; B" reads A & B); "\&amp;" was text.
+	t = strings.ReplaceAll(html.UnescapeString(t), "", "&")
 	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
 	t = strings.ReplaceAll(strings.Trim(t, "| "), "", "|")
 	for k, code := range codes {
