@@ -166,6 +166,7 @@ func DiffRefLabels(lines []string, change []int) []map[string]bool {
 				}
 				return l
 			}
+			depth := diffQuoteDepth(strings.TrimSpace(l))
 			m := diffRefDefRE.FindStringSubmatch(body(l))
 			if m == nil {
 				continue
@@ -174,8 +175,12 @@ func DiffRefLabels(lines []string, change []int) []map[string]bool {
 			if strings.TrimSpace(dest) == "" {
 				// "[docs]:" alone takes its destination from the next line of its text.
 				for k := i + 1; k < len(lines); k++ {
+					// It stays in the definition's container: "[doc]:" over "> /guide"
+					// takes nothing from the quote.
 					if change[k] != -side {
-						dest = body(lines[k])
+						if diffQuoteDepth(strings.TrimSpace(lines[k])) == depth {
+							dest = body(lines[k])
+						}
 						break
 					}
 				}
