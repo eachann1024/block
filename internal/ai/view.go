@@ -1272,8 +1272,9 @@ var plainMathLineRE = regexp.MustCompile(`^(?:\$\$.+\$\$|\\\[.+\\\])$`)
 // any other ("<TOKEN>", "<div>") shows as written, as in the note.
 var plainTagRE = regexp.MustCompile(`(?i)</?(?:br|b|strong|i|em|u|ins|s|del|strike|code|kbd|samp|mark|sub|sup|small)(?:\s[^<>]*)?/?>`)
 
-// plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
-var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
+// plainBlockPrefixRE matches leading quote and list markers (not "-5") and a heading
+// marker after them; what follows a heading is its text: "## 1. 安装" keeps "1.".
+var plainBlockPrefixRE = regexp.MustCompile(`^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)*(?:#{1,6}\s+)?`)
 
 // plainInlineMathRE matches an inline formula: "\(…\)", "\[…\]" or "$$…$$".
 var plainInlineMathRE = regexp.MustCompile(`\\\(.+?\\\)|\\\[.+?\\\]|\$\$.+?\$\$`)
