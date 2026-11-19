@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"block/internal/codepreview"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -1480,7 +1481,7 @@ type cachedCodePreview struct {
 	mathErr   string
 	mmdNodes  []string
 	mmdLabels map[string]string
-	mmdEdges  []mermaidEdge
+	mmdEdges  []codepreview.MermaidEdge
 	mmdErr    string
 }
 
@@ -1613,8 +1614,8 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 	pal := theme.Ocean()
 	dark := theme.IsDark()
 	id := b.ID
-	canon := canonicalLangTag(b.Language)
-	previewable := isPreviewLang(canon)
+	canon := codepreview.CanonicalLanguage(b.Language)
+	previewable := codepreview.IsPreviewLanguage(canon)
 	previewOnly := s.isPreviewOnlyCodeBlock(idx)
 
 	card := ui.Column(c.Key("code-card")).FillWidth().Radius(theme.RadiusSM).
@@ -1996,11 +1997,11 @@ func (s *Session) cachedCodePreviewFor(id model.BlockID, canon, src string) cach
 	entry := cachedCodePreview{code: src, canon: canon}
 	switch canon {
 	case "csv":
-		entry.csvRows = parseCSVRows(src)
+		entry.csvRows = codepreview.ParseCSV(src)
 	case "latex":
-		entry.mathText, entry.mathErr = formatMathPreview(src)
+		entry.mathText, entry.mathErr = codepreview.FormatMath(src)
 	case "mermaid":
-		entry.mmdNodes, entry.mmdLabels, entry.mmdEdges, entry.mmdErr = parseMermaidGraph(src)
+		entry.mmdNodes, entry.mmdLabels, entry.mmdEdges, entry.mmdErr = codepreview.ParseMermaid(src)
 	}
 	s.codePreviewCache[id] = entry
 	return entry

@@ -271,12 +271,13 @@ func (c *Controller) SetFormat(f model.ExportFormat) {
 		return
 	}
 	wmChanged := c.watermark && formatSupportsWatermark(f) != formatSupportsWatermark(c.format)
+	densityChanged := f == model.ExportPNG || c.format == model.ExportPNG
 	c.format = f
 	c.copied = false
 	c.notice = ""
 	c.savedPath = ""
 	c.savePreferencesLocked()
-	if wmChanged {
+	if wmChanged || densityChanged {
 		c.queuePreviewLocked()
 	}
 	c.mu.Unlock()
@@ -951,7 +952,7 @@ func formatDimensionLabel(f model.ExportFormat, st model.ExportTheme, pw, ph int
 	switch f {
 	case model.ExportPNG:
 		if pw > 0 && ph > 0 {
-			return fmt.Sprintf("%s × %s px · %g×", fmtInt(pw), fmtInt(ph), exportRasterScale)
+			return fmt.Sprintf("%s × %s px · %.2g×", fmtInt(pw), fmtInt(ph), float32(pw)/exportPageWidth)
 		}
 		return fmt.Sprintf(theme.Tr("%g px 纸宽 · %g×", "%g px page · %g×"), exportPageWidth, exportRasterScale)
 	case model.ExportPDF:
