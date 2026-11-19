@@ -960,7 +960,7 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 	open := m.fontPickerOpen == role
 	borderCol := pal.BtnBorder
 	if open {
-		borderCol = pal.Accent
+		borderCol = pal.Placeholder
 	}
 	accLabel := label
 	if isDefault {
@@ -978,9 +978,9 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 	pressed := btn.Pressed()
 	bg := pal.Shell
 	if pressed {
-		bg = pal.Selected
+		bg = pal.Shell.Mix(pal.Text, 0.09)
 	} else if hovered {
-		bg = pal.Hover
+		bg = pal.Shell.Mix(pal.Text, 0.05)
 	}
 	internalui.AnimateSurfaceColors(btn, bg, borderCol, true)
 	internalui.TactileCard(btn, hovered, pressed, open, false)
