@@ -26,11 +26,14 @@ type PluginReadme struct {
 }
 
 // ReadPluginReadme prefers the installed copy, which also works offline.
-func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry, installed InstalledApp) (PluginReadme, error) {
+// Scheme B (Chinese-first): zh uses README.md (or README.zh.md), en prefers
+// README.en.md and falls back to README.md when unavailable.
+func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry, installed InstalledApp, locale string) (PluginReadme, error) {
+	en := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en")
 	var localErr error
-	if path := installed.readmePath(); path != "" {
+	if p := installed.readmePath(en); p != "" {
 		var doc string
-		doc, localErr = readLocalReadme(path)
+		doc, localErr = readLocalReadme(p)
 		if localErr == nil {
 			return PluginReadme{Text: doc, LocalRoot: installed.InstallDir}, nil
 		}
@@ -46,7 +49,20 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		return PluginReadme{}, ErrReadmeUnavailable
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+repo+"/readme", nil)
+	if en {
+		doc, err := s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/contents/README.en.md")
+		if err == nil {
+			return doc, nil
+		}
+		if !errors.Is(err, ErrReadmeUnavailable) {
+			return PluginReadme{}, err
+		}
+	}
+	return s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/readme")
+}
+
+func (s *StoreManager) fetchGitHubReadme(ctx context.Context, repo, endpoint string) (PluginReadme, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return PluginReadme{}, err
 	}
@@ -95,7 +111,7 @@ func readmeRepo(repo string) string {
 	return repo
 }
 
-func (app InstalledApp) readmePath() string {
+func (app InstalledApp) readmePath(en bool) string {
 	if app.InstallDir == "" {
 		return ""
 	}
@@ -103,7 +119,11 @@ func (app InstalledApp) readmePath() string {
 	if err != nil {
 		return ""
 	}
-	for _, name := range []string{"readme.md", "readme.markdown", "readme.txt", "readme"} {
+	candidates := []string{"readme.zh.md", "readme.md", "readme.markdown", "readme.txt", "readme"}
+	if en {
+		candidates = []string{"readme.en.md", "readme.en.markdown", "readme.en.txt", "readme.md", "readme.markdown", "readme.txt", "readme"}
+	}
+	for _, name := range candidates {
 		for _, file := range files {
 			if strings.EqualFold(file.Name(), name) && file.Type().IsRegular() {
 				return filepath.Join(app.InstallDir, file.Name())
