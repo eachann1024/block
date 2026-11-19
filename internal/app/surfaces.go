@@ -637,7 +637,7 @@ func (h *PageHistoryView) Render(
 			center.Children(func() {
 				noteName := noteDisplayTitle(h.NotePath, false)
 				pill := ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space10).MaxWidth(360).Shrink(1).MinWidth(0).AlignItems(ui.Center).
-					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent)
+					Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Hairline)
 				pill.Children(func() {
 					ui.Text(c, fmt.Sprintf("%s · %s", noteName, theme.Tr("页面历史", "Page History"))).
 						FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -812,7 +812,7 @@ func (h *PageHistoryView) Render(
 							switch {
 							case sel:
 								rowBG = pal.Selected
-								rowBD = pal.Accent
+								rowBD = pal.SelectedBorder
 							case rowPress:
 								rowBG = pal.Selected
 							case rowHover:
@@ -967,7 +967,7 @@ func (t *HistoryToast) RenderBanner(c *ui.Context, onUndo func(), onDismiss func
 	pal := theme.Ocean()
 	c.Key("history-toast")
 	row := ui.Row(c).FillWidth().Margin(12, 28, 0, 28).Padding(10, 12, 10, 14).
-		Radius(theme.RadiusMD).Background(pal.Selected).Border(1, pal.Accent).
+		Radius(theme.RadiusMD).Background(pal.Selected).Border(1, ui.Transparent).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12)
 	blockui.Probe(row, "history-toast")
 	row.Children(func() {
