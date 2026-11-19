@@ -33,10 +33,11 @@ const (
 )
 
 type tabDraft struct {
-	Text   string
-	Refs   []string
-	Skills []string
-	Retry  *model.SentDraft
+	Text        string
+	Refs        []string
+	Skills      []string
+	Attachments []model.Attachment
+	Retry       *model.SentDraft
 }
 
 // EditorSelection holds a snapshot of the last non-empty editor selection attached to the composer.
@@ -318,6 +319,7 @@ func (c *Controller) loadAllFromDisk() {
 	c.draftText = active.Text
 	c.draftRefs = append([]string(nil), active.Refs...)
 	c.draftSkills = append([]string(nil), active.Skills...)
+	c.draftAttachments = slices.Clone(active.Attachments)
 	if active.Retry != nil && active.Retry.Conversation == c.currentID && c.currentID != 0 {
 		cp := *active.Retry
 		c.retryDraft = &cp
@@ -572,6 +574,7 @@ func (c *Controller) writeActiveDraftLocked() {
 		Text:         c.draftText,
 		Refs:         append([]string(nil), c.draftRefs...),
 		Skills:       append([]string(nil), c.draftSkills...),
+		Attachments:  c.draftAttachments,
 		Retry:        c.retryDraft,
 	}
 	_ = c.writeJSONFile("ai-active-draft.json", draft)
@@ -1556,6 +1559,7 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.draftText = td.Text
 	c.draftRefs = append([]string(nil), td.Refs...)
 	c.draftSkills = append([]string(nil), td.Skills...)
+	c.draftAttachments = slices.Clone(td.Attachments)
 	if td.Retry != nil {
 		cp := *td.Retry
 		c.retryDraft = &cp
@@ -1578,10 +1582,11 @@ func (c *Controller) saveTabDraftLocked() {
 		retryCopy = &cp
 	}
 	c.tabDrafts[c.currentID] = tabDraft{
-		Text:   c.draftText,
-		Refs:   append([]string(nil), c.draftRefs...),
-		Skills: append([]string(nil), c.draftSkills...),
-		Retry:  retryCopy,
+		Text:        c.draftText,
+		Refs:        append([]string(nil), c.draftRefs...),
+		Skills:      append([]string(nil), c.draftSkills...),
+		Attachments: slices.Clone(c.draftAttachments),
+		Retry:       retryCopy,
 	}
 }
 
@@ -1840,20 +1845,19 @@ func (c *Controller) SendPrompt(text string) {
 	}
 
 	retryMatch := c.retryDraft != nil &&
-		c.retryDraft.Conversation == c.currentID &&
+		c.canRetryDraftLocked(c.retryDraft) &&
 		c.retryDraft.Text == original &&
 		slicesEqual(c.retryDraft.Refs, refs) &&
 		slicesEqual(c.retryDraft.Skills, skills) &&
-		sel == nil && len(atts) == 0
+		slices.Equal(c.retryDraft.Attachments, atts) &&
+		sel == nil
 	c.sentSelection = sel
 
 	if retryMatch {
 		cp := *c.retryDraft
 		c.sentDraft = &cp
-		c.retryDraft = nil
-		if conv := c.findConvLocked(c.currentID); conv != nil && cp.MessageIndex >= 0 && cp.MessageIndex < len(conv.Messages) {
-			conv.Messages[cp.MessageIndex].Context = ctxBuf.String()
-		}
+		conv := c.findConvLocked(c.currentID)
+		conv.Messages[cp.MessageIndex].Context = ctxBuf.String()
 	} else {
 		c.pushMessageLocked(model.ChatMessage{
 			Role:        "user",
@@ -1869,12 +1873,14 @@ func (c *Controller) SendPrompt(text string) {
 				Text:         original,
 				Refs:         refs,
 				Skills:       skills,
+				Attachments:  atts,
 				Conversation: conv.ID,
 				MessageIndex: len(conv.Messages) - 1,
 			}
 		}
 	}
 
+	c.retryDraft = nil
 	c.turnError = ""
 	c.turnErrorSettings = false
 	c.draftText = ""
@@ -2030,6 +2036,26 @@ func (c *Controller) hasPendingQuestionLocked() bool {
 	return false
 }
 
+func (c *Controller) composerDraftEmptyLocked() bool {
+	return c.draftText == "" && len(c.draftRefs) == 0 && len(c.draftSkills) == 0 && len(c.draftAttachments) == 0
+}
+
+func (c *Controller) canRetryDraftLocked(draft *model.SentDraft) bool {
+	if draft.Conversation != c.currentID {
+		return false
+	}
+	conv := c.findConvLocked(draft.Conversation)
+	if conv == nil || draft.MessageIndex < 0 || draft.MessageIndex >= len(conv.Messages) {
+		return false
+	}
+	for i := len(conv.Messages) - 1; i >= draft.MessageIndex; i-- {
+		if msg := conv.Messages[i]; msg.Role == "user" {
+			return i == draft.MessageIndex && slices.Equal(msg.Attachments, draft.Attachments)
+		}
+	}
+	return false
+}
+
 func (c *Controller) restoreFailedDraftLocked() {
 	if c.sentDraft == nil {
 		return
@@ -2038,7 +2064,7 @@ func (c *Controller) restoreFailedDraftLocked() {
 	c.sentDraft = nil
 	defer func() { c.sentSelection = nil }()
 	conv := c.findConvLocked(draft.Conversation)
-	if c.currentID == draft.Conversation && c.draftText == "" && len(c.draftRefs) == 0 && len(c.draftSkills) == 0 {
+	if c.currentID == draft.Conversation && c.composerDraftEmptyLocked() {
 		if conv != nil && draft.MessageIndex >= 0 && len(conv.Messages) == draft.MessageIndex+1 {
 			conv.Messages = conv.Messages[:len(conv.Messages)-1]
 			c.persistChatsLocked()
@@ -2049,11 +2075,13 @@ func (c *Controller) restoreFailedDraftLocked() {
 		c.draftText = draft.Text
 		c.draftRefs = append([]string(nil), draft.Refs...)
 		c.draftSkills = append([]string(nil), draft.Skills...)
+		c.draftAttachments = slices.Clone(draft.Attachments)
 		if c.sentSelection != nil && c.draftSelection == nil {
 			c.draftSelection = c.sentSelection
 			c.dismissedSel = nil
 		}
 		c.composerEpoch++
+		c.saveTabDraftLocked()
 		c.persistActiveDraftLocked()
 		return
 	}
@@ -2395,6 +2423,7 @@ func cloneConversation(conv model.Conversation) model.Conversation {
 			if m.Skills != nil {
 				cp.Messages[i].Skills = append([]string(nil), m.Skills...)
 			}
+			cp.Messages[i].Attachments = slices.Clone(m.Attachments)
 			if m.Plan != nil {
 				p := *m.Plan
 				p.Ops = append([]model.PlanOp(nil), m.Plan.Ops...)

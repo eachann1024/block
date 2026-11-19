@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -404,9 +405,18 @@ func (c *Controller) deleteConversation(id uint64) {
 		c.draftText = ""
 		c.draftRefs = nil
 		c.draftSkills = nil
+		c.draftAttachments = nil
+		c.retryDraft = nil
 		c.composerEpoch++
 	}
 	delete(c.tabDrafts, id)
+	before := len(c.deferredDrafts)
+	c.deferredDrafts = slices.DeleteFunc(c.deferredDrafts, func(d model.SentDraft) bool {
+		return d.Conversation == id
+	})
+	if len(c.deferredDrafts) != before {
+		c.persistFailedDraftsLocked()
+	}
 	filtered := c.convs[:0]
 	for _, conv := range c.convs {
 		if conv.ID != id {
@@ -2013,6 +2023,7 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 
 func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
 	c.mu.RLock()
+	canRestore := !c.streaming && c.composerDraftEmptyLocked()
 	hasDeferred := false
 	for _, d := range c.deferredDrafts {
 		if c.currentID == 0 || d.Conversation == c.currentID {
@@ -2032,7 +2043,10 @@ func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palett
 	row.Children(func() {
 		ui.Text(cUI, theme.Tr("上一条未完成的草稿可恢复。", "An unfinished draft can be restored.")).
 			FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1)
-		btn := bui.ActionButton(cUI, "ai-restore-draft", theme.Tr("恢复草稿", "Restore draft"), nil, bui.ButtonSecondary, false)
+		btn := bui.ActionButton(cUI, "ai-restore-draft", theme.Tr("恢复草稿", "Restore draft"), nil, bui.ButtonSecondary, !canRestore)
+		if !canRestore {
+			bui.Tooltip(cUI, btn, theme.Tr("回复结束且输入框清空后可恢复。", "Restore when the response ends and the composer is empty."))
+		}
 		if btn.Clicked() {
 			c.restoreDeferredDraft()
 		}
@@ -2041,6 +2055,10 @@ func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palett
 
 func (c *Controller) restoreDeferredDraft() {
 	c.mu.Lock()
+	if c.streaming || !c.composerDraftEmptyLocked() {
+		c.mu.Unlock()
+		return
+	}
 	idx := -1
 	for i, d := range c.deferredDrafts {
 		if c.currentID == 0 || d.Conversation == c.currentID {
@@ -2060,8 +2078,11 @@ func (c *Controller) restoreDeferredDraft() {
 	c.draftText = d.Text
 	c.draftRefs = append([]string(nil), d.Refs...)
 	c.draftSkills = append([]string(nil), d.Skills...)
+	c.draftAttachments = append([]model.Attachment(nil), d.Attachments...)
+	c.retryDraft = &d
 	c.composerEpoch++
 	c.composerSelectEnd = true
+	c.saveTabDraftLocked()
 	c.persistFailedDraftsLocked()
 	c.persistActiveDraftLocked()
 	c.mu.Unlock()
@@ -2423,8 +2444,8 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 			bui.AutoHideScrollbars(cUI, inputEl)
 			bui.Probe(inputEl, "ai-composer")
 			svc := cUI.Services()
-			inputEl.OnPaste(func(text string) bool {
-				return c.handleComposerPaste(svc, text)
+			inputEl.OnPaste(func(string) bool {
+				return c.handleComposerPaste(svc)
 			})
 
 			composingNow := inputEl.Composing()
@@ -2644,7 +2665,8 @@ func (c *Controller) renderAttachmentChip(cUI *ui.Context, pal theme.Palette, id
 			IconSize: 12,
 		})
 		if xBtn.Clicked() {
-			c.removeDraftAttachment(att.Path)
+			c.removeDraftAttachment(att)
+			c.composerHandle.Focus()
 		}
 	})
 }

@@ -503,11 +503,12 @@ func (c *Controller) selectBackendLocked(kind model.BackendKind) {
 		c.draftRefs = refs
 		c.draftSkills = skills
 		c.composerEpoch++
-	} else {
-		c.turnError = ""
-		c.turnErrorSettings = false
-		c.retryDraft = nil
 	}
+	c.turnError = ""
+	c.turnErrorSettings = false
+	c.retryDraft = nil
+	c.saveTabDraftLocked()
+	c.persistActiveDraftLocked()
 	c.backendsCfg.Selected = kind
 	_ = c.writeJSONFile("ai-backends.json", c.backendsCfg)
 }

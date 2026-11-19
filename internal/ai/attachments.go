@@ -5,15 +5,18 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"block/internal/model"
+	"block/internal/theme"
 
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
@@ -32,26 +35,38 @@ func (c *Controller) attachmentsDir() string {
 
 // handleComposerPaste turns a pasted file list or bitmap into draft attachments.
 // It reports false for ordinary text so the input pastes it as usual.
-func (c *Controller) handleComposerPaste(svc ui.Services, text string) bool {
+func (c *Controller) handleComposerPaste(svc ui.Services) bool {
 	if paths := clipboardPaths(svc.ReadClipboardData(transfer.FileList)); len(paths) > 0 {
-		if c.addAttachmentFiles(paths) > 0 {
-			return true
+		if c.addAttachmentFiles(paths) < len(paths) {
+			c.showAttachmentPasteError()
 		}
+		return true
 	}
-	// Finder also puts a filename into text/plain; only a text-free clipboard is a bitmap paste.
-	if strings.TrimSpace(text) != "" {
-		return false
-	}
+	// Browsers can put an image and its URL on the clipboard together.
 	data := svc.ReadClipboardData(transfer.PNG, "image/jpeg", "image/webp", "image/gif")
 	for _, f := range []struct {
 		format transfer.Format
 		ext    string
 	}{{transfer.PNG, "png"}, {"image/jpeg", "jpg"}, {"image/webp", "webp"}, {"image/gif", "gif"}} {
 		if raw, err := data.Read(f.format); err == nil && len(raw) > 0 {
-			return c.addAttachmentBytes(raw, "image."+f.ext)
+			if detectMime(raw, "") != string(f.format) {
+				continue
+			}
+			if !c.addAttachmentBytes(raw, "image."+f.ext) {
+				c.showAttachmentPasteError()
+			}
+			return true
 		}
 	}
 	return false
+}
+
+func (c *Controller) showAttachmentPasteError() {
+	c.mu.Lock()
+	c.turnError = theme.Tr("部分附件无法添加。最多 10 个文件，每个文件最多 20 MB。", "Some attachments could not be added. Add up to 10 files, up to 20 MB each.")
+	c.turnErrorSettings = false
+	c.mu.Unlock()
+	c.requestRedraw()
 }
 
 func clipboardPaths(data transfer.Data) []string {
@@ -65,19 +80,34 @@ func clipboardPaths(data transfer.Data) []string {
 func (c *Controller) addAttachmentFiles(paths []string) int {
 	added := 0
 	for _, p := range paths {
-		info, err := os.Stat(p)
-		if err != nil || info.IsDir() || info.Size() == 0 || info.Size() > maxAttachmentBytes {
-			continue
+		c.mu.RLock()
+		full := len(c.draftAttachments) >= maxComposerAttachments
+		c.mu.RUnlock()
+		if full {
+			break
 		}
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		if c.addAttachmentBytes(raw, filepath.Base(p)) {
+		raw, err := readAttachmentSource(p)
+		if err == nil && c.addAttachmentBytes(raw, filepath.Base(p)) {
 			added++
 		}
 	}
 	return added
+}
+
+func readAttachmentSource(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxAttachmentBytes {
+		return nil, errors.New("invalid attachment file type or size")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxAttachmentBytes+1))
 }
 
 // addAttachmentBytes stores a content-addressed copy and appends it to the draft.
@@ -89,43 +119,51 @@ func (c *Controller) addAttachmentBytes(raw []byte, name string) bool {
 	id := hex.EncodeToString(sum[:12])
 	ext := strings.ToLower(filepath.Ext(name))
 	dir := c.attachmentsDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return false
-	}
 	dst := filepath.Join(dir, id+ext)
-	if _, err := os.Stat(dst); err != nil {
-		if err := os.WriteFile(dst, raw, 0o600); err != nil {
-			return false
-		}
-	}
 	att := model.Attachment{Name: name, Path: dst, Mime: detectMime(raw, ext), Size: int64(len(raw))}
-
 	c.mu.Lock()
-	if len(c.draftAttachments) >= maxComposerAttachments {
+	if slices.Contains(c.draftAttachments, att) {
+		c.mu.Unlock()
+		return true
+	}
+	if len(c.draftAttachments) >= maxComposerAttachments || cacheAttachment(dir, dst, raw) != nil {
 		c.mu.Unlock()
 		return false
 	}
-	for _, a := range c.draftAttachments {
-		if a.Path == dst {
-			c.mu.Unlock()
-			return true
-		}
-	}
 	c.draftAttachments = append(c.draftAttachments, att)
+	c.saveTabDraftLocked()
+	c.persistActiveDraftLocked()
 	c.mu.Unlock()
 	c.requestRedraw()
 	return true
 }
 
-func (c *Controller) removeDraftAttachment(path string) {
-	c.mu.Lock()
-	out := c.draftAttachments[:0]
-	for _, a := range c.draftAttachments {
-		if a.Path != path {
-			out = append(out, a)
-		}
+func cacheAttachment(dir, dst string, raw []byte) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
 	}
-	c.draftAttachments = out
+	if info, err := os.Lstat(dst); err == nil && info.Mode().IsRegular() && info.Size() == int64(len(raw)) {
+		return nil
+	}
+	tmp, err := os.CreateTemp(dir, ".attachment-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	_, writeErr := tmp.Write(raw)
+	if err := errors.Join(writeErr, tmp.Close()); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), dst)
+}
+
+func (c *Controller) removeDraftAttachment(att model.Attachment) {
+	c.mu.Lock()
+	if i := slices.Index(c.draftAttachments, att); i >= 0 {
+		c.draftAttachments = slices.Delete(c.draftAttachments, i, i+1)
+		c.saveTabDraftLocked()
+		c.persistActiveDraftLocked()
+	}
 	c.mu.Unlock()
 }
 
