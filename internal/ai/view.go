@@ -1212,7 +1212,10 @@ var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}
 
 // plainStrongRE matches **bold** emphasis set off from words, so Python's 2**3 and
 // a lone "**" stay as written.
-var plainStrongRE = regexp.MustCompile(`(^|[^\w*])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`)
+var plainStrongRE = regexp.MustCompile(`(^|[^\w*\\])\*\*(\S(?:[^*]*\S)?)\*\*($|[^\w*])`)
+
+// plainEscapeRE matches a backslash escape of ASCII punctuation ("\*" shows "*").
+var plainEscapeRE = regexp.MustCompile("\\\\([!-/:-@\\[-`{-~])")
 
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
@@ -1236,6 +1239,8 @@ func plainInline(s string) string {
 	}
 	// Stray backticks go; an escaped one ("\`") is a literal backtick.
 	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
+	// Escaped markers ("\**提示**") were never bold; they show without the backslash.
+	t = plainEscapeRE.ReplaceAllString(t, "$1")
 	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
 	t = strings.Trim(t, "| ")
 	for k, code := range codes {
