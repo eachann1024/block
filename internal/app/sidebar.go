@@ -528,7 +528,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						}
 						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					}
-					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					chevTarget := float32(0)
 					if p.State.SwitcherOpen {
 						chevTarget = 180
@@ -916,11 +916,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			}
 			icons.DrawAnimated(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
 		}
-		weight := theme.WeightRegular
-		if highlighted {
-			weight = theme.WeightControl
-		}
-		ui.Text(c, entry.Name).FontSize(theme.FontBody).FontWeight(weight).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, entry.Name).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 
 		if hovered || menuTarget {
 			moreID := "row-more:" + entry.Path
