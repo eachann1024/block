@@ -1300,6 +1300,7 @@ var plainEmphasisREs = []*regexp.Regexp{
 	regexp.MustCompile(`(^|[^*\\])\*\*(\S(?:.*?\S)??)\*\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])__(\S(?:.*?\S)??)__($|[^\p{L}\p{N}_])`),
 	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
+	regexp.MustCompile(`(^|[^~\\])~(\S(?:[^~]*\S)?)~($|[^~])`),
 	regexp.MustCompile(`(^|[^*\\])\*(\S(?:[^*]*\S)?)\*($|[^*])`),
 	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
 }
