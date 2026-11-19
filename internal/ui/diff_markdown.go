@@ -285,6 +285,15 @@ func diffCodeSpans(s string) [][2]int {
 // diffLiteralEscaper backslash-escapes the inline Markdown markers in plain text.
 var diffLiteralEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "$", `\$`, "&", `\&`)
 
+// diffEscaped reports whether the byte at i follows an odd run of backslashes.
+func diffEscaped(s string, i int) bool {
+	n := 0
+	for i-n > 0 && s[i-n-1] == '\\' {
+		n++
+	}
+	return n%2 == 1
+}
+
 // diffPlainLinks turns links into their text: a link inside a diff row would take the
 // click (opening a browser) instead of the row's accept toggle. Links are found with
 // code spans blanked out, so code is never rewritten and brackets inside it don't
@@ -300,6 +309,10 @@ func diffPlainLinks(s string) string {
 		var b strings.Builder
 		last := 0
 		for _, m := range re.FindAllSubmatchIndex(masked, -1) {
+			if diffEscaped(s, m[0]) {
+				// "\<…>" or "\[…](…)" is literal text, not a link.
+				continue
+			}
 			b.WriteString(s[last:m[0]])
 			text := s[m[2]:m[3]]
 			if text == "" && len(m) > 4 && m[4] >= 0 {
