@@ -212,6 +212,21 @@ func keyDisplayName(k ui.Key) string {
 	}
 }
 
+// DefaultCommandPaletteShortcut is the default shortcut chord for the command palette.
+const DefaultCommandPaletteShortcut = "cmd-shift-p"
+
+// MatchShortcut reports whether the current frame's key press matches spec (e.g. "cmd-shift-t").
+func MatchShortcut(c *ui.Context, spec string) bool {
+	if c == nil {
+		return false
+	}
+	mods, key, ok := ParseShortcut(spec)
+	if !ok {
+		return false
+	}
+	return c.Shortcut(mods, key)
+}
+
 // TreeKeyAction identifies keyboard actions scoped to a focused file tree.
 type TreeKeyAction uint8
 
