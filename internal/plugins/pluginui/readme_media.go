@@ -212,19 +212,41 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(m.ctx, 20*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref.String(), nil)
+	data, err := fetchReadmeMediaURL(ctx, ref.String(), limit)
+	if err == nil {
+		return data, nil
+	}
+	if fallback := rawGitHubToJsDelivr(ref); fallback != "" {
+		return fetchReadmeMediaURL(ctx, fallback, limit)
+	}
+	return nil, err
+}
+
+func fetchReadmeMediaURL(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, errReadmeMedia
 	}
 	resp, err := readmeMediaClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, errReadmeMedia
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || resp.ContentLength > limit {
 		return nil, errReadmeMedia
 	}
 	return readMediaBytes(resp.Body, limit)
+}
+
+func rawGitHubToJsDelivr(u *url.URL) string {
+	if u == nil || !strings.EqualFold(u.Hostname(), "raw.githubusercontent.com") {
+		return ""
+	}
+	parts := strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 4)
+	if len(parts) < 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		return ""
+	}
+	return "https://cdn.jsdelivr.net/gh/" + parts[0] + "/" + parts[1] + "@" + parts[2] + "/" + parts[3]
 }
 
 func readLocalMedia(dir, name string, limit int64) ([]byte, error) {
