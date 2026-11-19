@@ -20,6 +20,10 @@ if command -v go >/dev/null 2>&1; then
     echo "Using preinstalled Go ${cur} (requires >= ${ver})"
     if [ -n "${GITHUB_ENV:-}" ]; then
       echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
+      if [ -n "${RUNNER_TEMP:-}" ]; then
+        echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
+        echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
+      fi
     fi
     exit 0
   fi
@@ -69,6 +73,10 @@ if [ -n "${GITHUB_PATH:-}" ]; then
 fi
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "GOTOOLCHAIN=local" >> "$GITHUB_ENV"
+  if [ -n "${RUNNER_TEMP:-}" ]; then
+    echo "GOMODCACHE=${RUNNER_TEMP}/go-mod" >> "$GITHUB_ENV"
+    echo "GOCACHE=${RUNNER_TEMP}/go-build" >> "$GITHUB_ENV"
+  fi
 fi
 export PATH="$dest/go/bin:$PATH"
 export GOTOOLCHAIN=local
