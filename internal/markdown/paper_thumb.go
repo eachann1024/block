@@ -1,14 +1,70 @@
 package markdown
 
 import (
+	"math"
+	"sync"
+
 	"block/internal/model"
 
 	"github.com/egoist/mygo/ui"
 )
 
+type themeThumbCacheKey struct {
+	theme model.ExportTheme
+	w     int
+	h     int
+	rad   int
+}
+
+type themeThumbCacheEntry struct {
+	bm *ui.Bitmap
+}
+
+var (
+	themeThumbCacheMu sync.RWMutex
+	themeThumbCache   = make(map[themeThumbCacheKey]themeThumbCacheEntry)
+)
+
 // PaintThemeThumb renders the signature miniature preview of a paper export
 // theme inside r (matching designs/export-themes/project/Main.dc.html).
 func PaintThemeThumb(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float32) {
+	if r.W <= 0 || r.H <= 0 {
+		return
+	}
+	const thumbScale = float32(2)
+	key := themeThumbCacheKey{
+		theme: t,
+		w:     int(math.Round(float64(r.W * thumbScale))),
+		h:     int(math.Round(float64(r.H * thumbScale))),
+		rad:   int(math.Round(float64(radius * thumbScale))),
+	}
+	themeThumbCacheMu.RLock()
+	entry, ok := themeThumbCache[key]
+	themeThumbCacheMu.RUnlock()
+	if !ok {
+		wPx := max(int(math.Ceil(float64(r.W))), 1)
+		hPx := max(int(math.Ceil(float64(r.H))), 1)
+		rgba := ui.Render(func(c *ui.Context) {
+			ui.Box(c).Size(float32(wPx), float32(hPx)).Draw(func(tp *ui.Painter, _ ui.Rect) {
+				paintThemeThumbUncached(tp, ui.Rect{W: r.W, H: r.H}, t, radius)
+			})
+		}, wPx, hPx, thumbScale)
+		if rgba == nil || rgba.Bounds().Empty() {
+			paintThemeThumbUncached(p, r, t, radius)
+			return
+		}
+		entry = themeThumbCacheEntry{bm: ui.NewBitmap(rgba)}
+		themeThumbCacheMu.Lock()
+		if len(themeThumbCache) >= 64 {
+			clear(themeThumbCache)
+		}
+		themeThumbCache[key] = entry
+		themeThumbCacheMu.Unlock()
+	}
+	p.ImageRegion(entry.bm, ui.Rect{W: r.W * thumbScale, H: r.H * thumbScale}, r, ui.ImageOptions{})
+}
+
+func paintThemeThumbUncached(p *ui.Painter, r ui.Rect, t model.ExportTheme, radius float32) {
 	spec := PaperTheme(t)
 	p.Clip(r, radius, func() {
 		p.Fill(r, spec.Canvas, 0)
