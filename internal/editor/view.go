@@ -2629,18 +2629,15 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				}
 				if len(cellBands) > 0 || len(codeRanges) > 0 {
 					spansCopy := pureSpans
+					cellKey := tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}
+					cellPlain := txt
 					var ptrWin ui.Point
 					var hasPtr bool
 					if len(codeRanges) > 0 {
 						ptrWin, hasPtr = s.windowPointerStatus()
 					}
 					appUi.DrawRichDecorations(c, t, txt, func(w float32) *ui.TextLayout {
-						return ui.ShapeRichTextWith(spansCopy, ui.Font{
-							Family:     edFont,
-							Size:       tFontSz,
-							Weight:     weight,
-							LineHeight: lhFactor,
-						}, ui.TextShape{Width: max(w, 1), Align: cellAlign})
+						return s.cachedShapeTableCell(cellKey, cellPlain, spansCopy, edFont, tFontSz, weight, lhFactor, cellAlign, w)
 					}, appUi.RichDecorOptions{
 						FontSize:     tFontSz,
 						Spans:        spansCopy,

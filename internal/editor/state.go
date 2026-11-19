@@ -115,6 +115,7 @@ type Session struct {
 	blockTextDocRects  map[model.BlockID]ui.Rect
 	tableCellDocRects  map[tableCellKey]tableCellGeom
 	textLayoutCache  map[model.BlockID]cachedBlockLayout
+	tableCellLayouts map[tableCellKey]cachedCellLayout
 	codeSyntaxCache  map[model.BlockID]cachedCodeSyntax
 	codePreviewCache map[model.BlockID]cachedCodePreview
 	tableColCache    map[model.BlockID]cachedTableCols
@@ -438,6 +439,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.imageDocRects)
 	s.hasCanvasOrigin = false
 	clear(s.textLayoutCache)
+	clear(s.tableCellLayouts)
 	clear(s.codeSyntaxCache)
 	clear(s.codePreviewCache)
 	clear(s.tableColCache)
