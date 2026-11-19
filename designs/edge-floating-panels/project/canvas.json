@@ -7,12 +7,16 @@
   "title": "窄窗边缘唤出浮动侧栏与 AI（不遮挡块把手）",
   "launch": {
     "view": "canvas",
-    "page": "edge-float"
+    "page": "relink"
   },
   "pages": [
     {
       "id": "edge-float",
       "name": "窄窗边缘浮动方案"
+    },
+    {
+      "id": "relink",
+      "name": "重新设计 · 联动 / 悬浮"
     }
   ],
   "boards": {
@@ -45,12 +49,56 @@
       "is_interactive": true,
       "page": "edge-float",
       "title": "方案 C · 双侧微导轨胶囊 + 临时内推分栏"
+    },
+    "L-Side.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 640,
+      "title": "联动 · 侧栏开（AI 被顶走）",
+      "page": "relink",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "L-AI.dc.html": {
+      "x": 1040,
+      "y": 0,
+      "w": 960,
+      "h": 640,
+      "title": "联动 · AI 开（侧栏被顶走）",
+      "page": "relink",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "F-Hover.dc.html": {
+      "x": 0,
+      "y": 1040,
+      "w": 960,
+      "h": 640,
+      "title": "悬浮 · 悬停预览",
+      "page": "relink",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "F-Pinned.dc.html": {
+      "x": 1040,
+      "y": 1040,
+      "w": 960,
+      "h": 640,
+      "title": "悬浮 · 点击固定",
+      "page": "relink",
+      "is_interactive": true,
+      "radius": 12
     }
   },
   "order": [
     "Main.dc.html",
     "VariantB-ShoulderZone.dc.html",
-    "VariantC-EdgeRailPush.dc.html"
+    "VariantC-EdgeRailPush.dc.html",
+    "L-Side.dc.html",
+    "L-AI.dc.html",
+    "F-Hover.dc.html",
+    "F-Pinned.dc.html"
   ],
   "notes": {
     "row-title": {
@@ -60,6 +108,22 @@
       "kind": "title1",
       "page": "edge-float",
       "maxW": 3760
+    },
+    "relink-1": {
+      "x": 0,
+      "y": -260,
+      "text": "第一版 · 联动",
+      "kind": "title1",
+      "page": "relink",
+      "maxW": 2000
+    },
+    "relink-2": {
+      "x": 0,
+      "y": 780,
+      "text": "第二版 · 悬浮",
+      "kind": "title1",
+      "page": "relink",
+      "maxW": 2000
     }
   },
   "designSystems": []

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>联动 · AI 开</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#547dd0}a:hover{color:#456ec2}
+.tb-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;padding:0;border-radius:7px;background:transparent;color:#6b6a66;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.tb-btn:hover{background:rgba(0,0,0,0.05);color:#1f1e1d}
+.tb-btn.on{background:#e5edfc;color:#3f6cc4;box-shadow:inset 0 0 0 1px #c3d4f3}
+.tab{display:flex;align-items:center;height:28px;padding:0 10px;border:0;border-radius:7px;background:transparent;font:inherit;font-size:13px;color:#6b6a66;cursor:pointer}
+.tab:hover{background:rgba(0,0,0,0.04);color:#1f1e1d}
+.tab.on{background:#ffffff;color:#1f1e1d;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04)}
+.side-item{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:7px;font-size:13px;color:#1f1e1d}
+.side-item:hover{background:rgba(0,0,0,0.04)}
+.ico-btn{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:0;padding:0;border-radius:6px;background:transparent;color:#6b6a66;cursor:pointer}
+.ico-btn:hover{background:rgba(0,0,0,0.05);color:#1f1e1d}
+.doc h2{margin:22px 0 10px;font-size:18px;font-weight:600;color:#1f1e1d}
+.doc ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
+.doc li{font-size:14px;line-height:22px;color:#1f1e1d}
+.doc li::marker{color:#547dd0}
+.doc code{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:13px;color:#d1453b;background:#f6f5f2;padding:1px 5px;border-radius:4px}
+.pane{transition:width .22s cubic-bezier(.2,.8,.2,1)}
+</style>
+</helmet>
+<div style="width: 960px; height: 640px; box-sizing: border-box; background: #f1f1f1; display: flex; flex-direction: column; font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px 0 16px; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; width: 52px" aria-hidden="true">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<button class="tb-btn {{sideCls}}" aria-label="文件管理器" aria-pressed="{{sideOpen}}" onClick="{{toggleSide}}" style="margin-left: 8px">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="2.5"></rect><path d="M6 2.5v11"></path></svg>
+</button>
+<nav aria-label="打开的笔记" style="display: flex; align-items: center; gap: 2px; margin-left: 10px; flex: 1; min-width: 0">
+<button class="tab">潮汕之旅</button>
+<button class="tab on" aria-current="page">AGENTS</button>
+<button class="tab">README</button>
+<button class="tb-btn" aria-label="新建标签"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M7 2.5v9M2.5 7h9"></path></svg></button>
+</nav>
+<div style="display: flex; align-items: center; gap: 2px">
+<button class="tb-btn" aria-label="批注"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path><path d="M5.5 6h5M5.5 8h3"></path></svg></button>
+<button class="tb-btn {{aiCls}}" aria-label="AI 面板" aria-pressed="{{aiOpen}}" onClick="{{toggleAi}}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M7 2.5l1.2 3.3 3.3 1.2-3.3 1.2L7 11.5 5.8 8.2 2.5 7l3.3-1.2z"></path><path d="M12 10.5l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z"></path></svg></button>
+<button class="tb-btn" aria-label="更多"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2"></circle><circle cx="8" cy="8" r="1.2"></circle><circle cx="12.5" cy="8" r="1.2"></circle></svg></button>
+</div>
+</header>
+
+<div style="flex: 1; display: flex; min-height: 0; padding: 0 8px 8px 8px">
+<aside class="pane" aria-label="文件管理器" style="width: {{sideW}}px; flex-shrink: 0; overflow: hidden">
+<div style="width: 232px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 2px 10px 0 2px">
+<div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 10px; color: #6b6a66; font-size: 13px">
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="4"></circle><path d="M9 9l3 3"></path></svg>
+<span style="flex: 1">搜索</span>
+<button class="ico-btn" aria-label="新建文件夹"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 3.5h4l1.2 1.5h5.8v6.5h-11z"></path><path d="M9.5 7v3M8 8.5h3"></path></svg></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px; margin-top: 8px">
+<div class="side-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#6b6a66" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h5l3 3v8H3z"></path><path d="M8 1.5v3h3"></path></svg>Untitled</div>
+<div class="side-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#6b6a66" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h5l3 3v8H3z"></path><path d="M8 1.5v3h3"></path></svg>潮汕之旅</div>
+<div class="side-item" style="background: #e5edfc"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#547dd0" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M3 1.5h5l3 3v8H3z"></path><path d="M8 1.5v3h3"></path></svg>AGENTS</div>
+</div>
+<div style="margin-top: auto; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 4px 0 10px; font-size: 13px; color: #1f1e1d">
+<span style="width: 18px; height: 18px; border-radius: 5px; background: #c9d8f3; color: #2f4f8f; font-size: 11px; display: flex; align-items: center; justify-content: center">生</span>
+<span style="flex: 1">生活</span>
+<button class="ico-btn" aria-label="工作区设置"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2 4h10M2 10h10"></path><circle cx="5" cy="4" r="1.4" fill="#f1f1f1"></circle><circle cx="9" cy="10" r="1.4" fill="#f1f1f1"></circle></svg></button>
+</div>
+</div>
+</aside>
+
+<div style="flex: 1; min-width: 0; display: flex; background: #ffffff; border-radius: 10px; box-shadow: 0 0 0 1px rgba(0,0,0,0.05); overflow: hidden">
+<main class="doc" style="flex: 1; min-width: 0; padding: 18px 48px; overflow: hidden">
+<h2>执行</h2>
+<ul>
+<li>全局使用简体中文，默认用 ELI5 的方式和我说话，如果我要求则深入讲解。</li>
+<li>只在 main 上开发，不主动新建分支和 worktree。</li>
+<li>默认不走 TDD、不写单元测试。</li>
+<li>实施完成后不擅自生成文件，例如：<code>md</code></li>
+</ul>
+<h2>前端</h2>
+<ul>
+<li>非必要时，不要在内容主体及四周角落添加小字描述、说明或标题上的装饰文案等。</li>
+<li>新增依赖或技术栈时先装最新版。</li>
+</ul>
+<h2>工具</h2>
+<ul>
+<li>网页操作只用 EGO 浏览器，先读 <code>use-browser</code>。</li>
+<li>操作桌面 App 先读 <code>use-compute</code>。</li>
+</ul>
+</main>
+<section class="pane" aria-label="AI 面板" style="width: {{aiW}}px; flex-shrink: 0; overflow: hidden">
+<div style="width: 300px; height: 100%; box-sizing: border-box; border-left: 1px solid #ecebe8; display: flex; flex-direction: column; padding: 10px 12px 12px">
+<div style="display: flex; align-items: center; height: 32px; padding-left: 4px">
+<span style="flex: 1; font-size: 13px; font-weight: 600; color: #1f1e1d">新会话</span>
+<button class="ico-btn" aria-label="新建会话"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true"><path d="M2 2.5h10v7H6l-3 2.5v-2.5H2z"></path><path d="M7 4.5v3M5.5 6h3"></path></svg></button>
+<button class="ico-btn" aria-label="历史"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 7a4.5 4.5 0 1 0 1.3-3.2"></path><path d="M2.5 2v2.3h2.3M7 4.5V7l1.8 1.2"></path></svg></button>
+<button class="ico-btn" aria-label="关闭 AI 面板" onClick="{{toggleAi}}"><svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"></path></svg></button>
+</div>
+<div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: #3a3936">我们来做些什么？</div>
+<label style="display: flex; flex-direction: column; gap: 10px; border-radius: 10px; box-shadow: 0 0 0 1px #e4e3df; padding: 10px 12px">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">输入消息</span>
+<textarea rows="2" placeholder="问点什么…" style="border: 0; outline: none; resize: none; font: inherit; font-size: 13px; color: #1f1e1d; background: transparent; padding: 0"></textarea>
+<span style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #6b6a66">
+<span>Gemini 4 Neon · Medium</span>
+<span style="width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px #c3d4f3; color: #3f6cc4; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8.5v-7M2 4.5l3-3 3 3"></path></svg></span>
+</span>
+</label>
+</div>
+</section>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"start":{"editor":"enum","options":["side","ai","none"],"default":"ai","label":"初始状态"},"$preview":{"width":960,"height":640}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+const s = (props && props.start) || 'ai';
+this.state = { side: s === 'side', ai: s === 'ai', aiBumped: s === 'side', sideBumped: s === 'ai' };
+}
+toggleSide() {
+const s = this.state;
+if (s.side) {
+this.setState({ side: false, ai: s.ai || s.aiBumped, aiBumped: false });
+} else {
+this.setState({ side: true, ai: false, aiBumped: s.ai || s.aiBumped, sideBumped: false });
+}
+}
+toggleAi() {
+const s = this.state;
+if (s.ai) {
+this.setState({ ai: false, side: s.side || s.sideBumped, sideBumped: false });
+} else {
+this.setState({ ai: true, side: false, sideBumped: s.side || s.sideBumped, aiBumped: false });
+}
+}
+renderVals() {
+const s = this.state;
+return {
+sideW: s.side ? 232 : 0,
+aiW: s.ai ? 300 : 0,
+sideCls: s.side ? 'on' : '',
+aiCls: s.ai ? 'on' : '',
+sideOpen: s.side ? 'true' : 'false',
+aiOpen: s.ai ? 'true' : 'false',
+toggleSide: () => this.toggleSide(),
+toggleAi: () => this.toggleAi()
+};
+}
+}
+</script>
+</body>
+</html>
