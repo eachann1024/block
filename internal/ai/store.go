@@ -1760,6 +1760,16 @@ func (c *Controller) SendPrompt(text string) {
 	refs := append([]string(nil), c.draftRefs...)
 	skills := append([]string(nil), c.draftSkills...)
 	atts := append([]model.Attachment(nil), c.draftAttachments...)
+	opt := c.backendsCfg.Adapters[string(backend)]
+	nativeTools := supportsCLI(backend) && opt.AllowsNativeTools()
+	attachmentText, images, err := c.prepareAttachments(atts, backend == model.BackendBuiltin, nativeTools)
+	if err != nil {
+		c.turnError = err.Error()
+		c.turnErrorSettings = false
+		c.mu.Unlock()
+		c.requestRedraw()
+		return
+	}
 	var sel *EditorSelection
 	if c.draftSelection != nil && !c.fullscreen {
 		cp := *c.draftSelection
@@ -1813,7 +1823,7 @@ func (c *Controller) SendPrompt(text string) {
 	for _, a := range atts {
 		shownBuf.WriteString("[" + a.Name + "] ")
 	}
-	ctxBuf.WriteString(attachmentContext(atts))
+	ctxBuf.WriteString(attachmentText)
 	if sel != nil {
 		marker := "「" + selectionExcerpt(sel, 16) + "」 "
 		shownBuf.WriteString(marker)
@@ -1896,12 +1906,11 @@ func (c *Controller) SendPrompt(text string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		c.streamSerial++
 		conv := c.findConvLocked(convID)
-		opt := c.backendsCfg.Adapters[string(backend)]
 		turn = &assistantTurn{
 			ctx: ctx, cancel: cancel, notebookScope: scope, convID: convID, serial: c.streamSerial,
 			cfg: resolveProviderExecutionConfig(c.providerCfg), thinking: c.backendThinkingLocked(backend),
-			nativeTools: supportsCLI(backend) && opt.AllowsNativeTools(),
-			userIndex:   c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
+			nativeTools: nativeTools, attachmentImages: images,
+			userIndex: c.sentDraft.MessageIndex, historyEnd: len(conv.Messages), questionIndex: -1,
 		}
 		if backend != model.BackendBuiltin {
 			if cliPath, ok := resolveConfiguredCLIBinary(string(backend), opt.BinaryPath); ok {
