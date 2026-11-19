@@ -11,39 +11,39 @@ import (
 )
 
 var (
-	appIconOnce sync.Once
-	appIconImg  ui.ImageSource
+	catMarkOnce sync.Once
+	catMarkImg  [2]ui.ImageSource // [light, dark]
 )
 
-func loadAppIconImage() ui.ImageSource {
-	appIconOnce.Do(func() {
-		if data, err := assets.Read("app-icon/apple-touch-icon.png"); err == nil && len(data) > 0 {
-			if img, decErr := ui.DecodeImage(data); decErr == nil {
-				appIconImg = img
+func loadCatMark(dark bool) ui.ImageSource {
+	catMarkOnce.Do(func() {
+		for i, name := range []string{"app-icon/cat-mark.png", "app-icon/cat-mark-dark.png"} {
+			if data, err := assets.Read(name); err == nil && len(data) > 0 {
+				if img, decErr := ui.DecodeImage(data); decErr == nil {
+					catMarkImg[i] = img
+				}
 			}
 		}
 	})
-	return appIconImg
+	if dark {
+		return catMarkImg[1]
+	}
+	return catMarkImg[0]
 }
 
-// AppMark renders the 18x18 rounded Block application icon paired with the "Block" wordmark.
+// AppMark renders the background-free cat glyph beside a regular-weight "Block" wordmark.
+// The glyph is lifted 1px so its optical center meets the wordmark's cap-height center.
 func AppMark(c *ui.Context) ui.Element {
 	pal := theme.Ocean()
 	c.Key("app-brand-mark")
-	row := ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(7).AlignItems(ui.Center).Shrink(0)
+	row := ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(6).AlignItems(ui.Center).Shrink(0)
 	Probe(row, "app-brand-mark")
 	row.Children(func() {
-		iconWrap := ui.Box(c).Size(18, 18).Shrink(0).Radius(theme.RadiusBadge).Clip().
-			Border(1, pal.Hairline.Alpha(0.55))
-		iconWrap.Children(func() {
-			if img := loadAppIconImage(); img != nil {
-				ui.Image(c, img).Size(18, 18)
-			} else {
-				ui.Box(c).Fill().Background(pal.IconFill)
-			}
-		})
+		if img := loadCatMark(pal.Dark); img != nil {
+			ui.Image(c, img).Size(16, 16).Shrink(0).Translate(0, -1)
+		}
 		ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-			FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Shrink(0)
+			FontWeight(theme.WeightRegular).TextColor(pal.Text).SingleLine().Shrink(0)
 	})
 	return row
 }
