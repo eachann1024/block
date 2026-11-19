@@ -12,10 +12,14 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
-const maxReadmeBytes = 512 << 10
+const (
+	maxReadmeBytes     = 512 << 10
+	readmeStageTimeout = 5 * time.Second
+)
 
 var ErrReadmeUnavailable = errors.New("plugin README unavailable")
 
@@ -31,12 +35,12 @@ type PluginReadme struct {
 func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry, installed InstalledApp, locale string) (PluginReadme, error) {
 	en := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en")
 	var localErr error
-	if p := installed.readmePath(en); p != "" {
-		var doc string
-		doc, localErr = readLocalReadme(p)
-		if localErr == nil {
+	for _, p := range installed.readmePaths(en) {
+		doc, err := readLocalReadme(p)
+		if err == nil {
 			return PluginReadme{Text: doc, LocalRoot: installed.InstallDir}, nil
 		}
+		localErr = err
 	}
 	repo := readmeRepo(entry.Repo)
 	if repo == "" {
@@ -49,10 +53,12 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		return PluginReadme{}, ErrReadmeUnavailable
 	}
 
+	ghCtx, ghCancel := withStageTimeout(ctx, readmeStageTimeout)
 	var remoteErr error
 	if en {
-		doc, err := s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/contents/README.en.md")
+		doc, err := s.fetchGitHubReadme(ghCtx, repo, "https://api.github.com/repos/"+repo+"/contents/README.en.md")
 		if err == nil {
+			ghCancel()
 			return doc, nil
 		}
 		if !errors.Is(err, ErrReadmeUnavailable) {
@@ -60,16 +66,37 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		}
 	}
 	if remoteErr == nil {
-		doc, err := s.fetchGitHubReadme(ctx, repo, "https://api.github.com/repos/"+repo+"/readme")
-		if err == nil || errors.Is(err, ErrReadmeUnavailable) {
-			return doc, err
+		doc, err := s.fetchGitHubReadme(ghCtx, repo, "https://api.github.com/repos/"+repo+"/readme")
+		if err == nil {
+			ghCancel()
+			return doc, nil
 		}
 		remoteErr = err
 	}
-	if doc, cdnErr := s.fetchCDNReadme(ctx, repo, en); cdnErr == nil {
+	ghCancel()
+
+	if errors.Is(remoteErr, ErrReadmeUnavailable) {
+		return PluginReadme{}, ErrReadmeUnavailable
+	}
+	cdnCtx, cdnCancel := withStageTimeout(ctx, readmeStageTimeout)
+	defer cdnCancel()
+	if doc, cdnErr := s.fetchCDNReadme(cdnCtx, repo, en); cdnErr == nil {
 		return doc, nil
 	}
 	return PluginReadme{}, remoteErr
+}
+
+func withStageTimeout(parent context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		return context.WithTimeout(context.Background(), limit)
+	}
+	if dl, ok := parent.Deadline(); ok {
+		rem := time.Until(dl)
+		if rem > 0 && rem < limit {
+			limit = rem
+		}
+	}
+	return context.WithTimeout(parent, limit)
 }
 
 func (s *StoreManager) fetchCDNReadme(ctx context.Context, repo string, en bool) (PluginReadme, error) {
@@ -162,26 +189,27 @@ func readmeRepo(repo string) string {
 	return repo
 }
 
-func (app InstalledApp) readmePath(en bool) string {
+func (app InstalledApp) readmePaths(en bool) []string {
 	if app.InstallDir == "" {
-		return ""
+		return nil
 	}
 	files, err := os.ReadDir(app.InstallDir)
 	if err != nil {
-		return ""
+		return nil
 	}
 	candidates := []string{"readme.zh.md", "readme.md", "readme.markdown", "readme.txt", "readme"}
 	if en {
 		candidates = []string{"readme.en.md", "readme.en.markdown", "readme.en.txt", "readme.md", "readme.markdown", "readme.txt", "readme"}
 	}
+	var out []string
 	for _, name := range candidates {
 		for _, file := range files {
 			if strings.EqualFold(file.Name(), name) && file.Type().IsRegular() {
-				return filepath.Join(app.InstallDir, file.Name())
+				out = append(out, filepath.Join(app.InstallDir, file.Name()))
 			}
 		}
 	}
-	return ""
+	return out
 }
 
 func readLocalReadme(path string) (string, error) {
