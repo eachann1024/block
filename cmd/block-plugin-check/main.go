@@ -273,18 +273,79 @@ func stripSandboxPrefix(val, sandboxDir string) string {
 	if sandboxDir == "" || val == "" {
 		return val
 	}
-	out := strings.ReplaceAll(val, sandboxDir, "")
-	if resolved, err := filepath.EvalSymlinks(sandboxDir); err == nil && resolved != "" && resolved != sandboxDir {
-		out = strings.ReplaceAll(out, resolved, "")
+	seen := make(map[string]bool, 4)
+	var prefixes []string
+	addPrefix := func(p string) {
+		p = strings.TrimRight(p, string(filepath.Separator))
+		if p == "" || p == "." || seen[p] {
+			return
+		}
+		seen[p] = true
+		prefixes = append(prefixes, p)
+	}
+	addPrefix(sandboxDir)
+	addPrefix(filepath.Clean(sandboxDir))
+	if abs, err := filepath.Abs(sandboxDir); err == nil {
+		addPrefix(abs)
+	}
+	if resolved, err := filepath.EvalSymlinks(filepath.Clean(sandboxDir)); err == nil {
+		addPrefix(resolved)
+	}
+	// Replace longest prefixes first and require a path/token boundary so
+	// sibling names like "<sandbox>-backup" are never stripped.
+	for i := 0; i < len(prefixes); i++ {
+		for j := i + 1; j < len(prefixes); j++ {
+			if len(prefixes[j]) > len(prefixes[i]) {
+				prefixes[i], prefixes[j] = prefixes[j], prefixes[i]
+			}
+		}
+	}
+	out := val
+	for _, pref := range prefixes {
+		out = stripBoundedPathPrefix(out, pref)
 	}
 	return out
+}
+
+func stripBoundedPathPrefix(s, pref string) string {
+	if pref == "" || !strings.Contains(s, pref) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		idx := strings.Index(s[i:], pref)
+		if idx < 0 {
+			b.WriteString(s[i:])
+			break
+		}
+		start := i + idx
+		end := start + len(pref)
+		beforeOK := start == 0 || isPathPrefixBoundaryBefore(s[start-1])
+		afterOK := end == len(s) || isPathPrefixBoundaryAfter(s[end])
+		if beforeOK && afterOK {
+			b.WriteString(s[i:start])
+			i = end
+			continue
+		}
+		b.WriteString(s[i : start+1])
+		i = start + 1
+	}
+	return b.String()
+}
+
+func isPathPrefixBoundaryBefore(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '(' || c == '[' || c == ':' || c == '=' || c == '`' || c == '<'
+}
+
+func isPathPrefixBoundaryAfter(c byte) bool {
+	return c == '/' || c == '\\' || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == ':' || c == '`' || c == '>'
 }
 
 func checkEnglishPage(page *plugins.UIPage, sandboxDir string) error {
 	if page == nil {
 		return nil
 	}
-	if err := checkEnglishText("page.title", page.Title); err != nil {
+	if err := checkEnglishText("page.title", stripSandboxPrefix(page.Title, sandboxDir)); err != nil {
 		return err
 	}
 	if err := checkEnglishText("page.status", stripSandboxPrefix(page.Status, sandboxDir)); err != nil {
