@@ -31,14 +31,31 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+type PerfDiskCategory struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+	Bytes  uint64 `json:"bytes"`
+}
+
+type PerfSnapshot struct {
+	CPUPercent float64            `json:"cpu_percent"`
+	RSSBytes   uint64             `json:"rss_bytes"`
+	TotalBytes uint64             `json:"total_bytes"`
+	LastScan   string             `json:"last_scan"`
+	ScanError  string             `json:"scan_error,omitempty"`
+	Categories []PerfDiskCategory `json:"categories"`
+}
+
 type HostConfig struct {
-	PluginDir    string
-	DataDir      string
-	DownloadsDir string
-	NotebookRoot string
-	ActiveNote   string
-	Locale       string
-	HostVersion  string
+	PluginDir       string
+	DataDir         string
+	DownloadsDir    string
+	NotebookRoot    string
+	ActiveNote      string
+	Locale          string
+	HostVersion     string
+	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 }
 
 type ActionResult struct {
@@ -175,7 +192,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"notebook_root":   rt.cfg.NotebookRoot,
 		"locale":          locale,
 		"host_version":    ver,
-		"ui_capabilities": []string{"kv_tooltip"},
+		"ui_capabilities": []string{"kv_tooltip", "treemap", "host_perf"},
 	}
 	var res struct {
 		Ready bool `json:"ready"`
@@ -501,6 +518,25 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
 		return map[string]any{"ok": true}, nil
+
+	case "host.perf.snapshot":
+		if !rt.manifest.HasPermission(PermNotesRead) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
+		}
+		if rt.cfg.GetPerfSnapshot == nil {
+			return nil, &rpcError{Code: -32005, Message: "host performance metrics unavailable"}
+		}
+		var p struct {
+			RefreshDisk bool `json:"refresh_disk"`
+		}
+		if len(params) > 0 {
+			_ = json.Unmarshal(params, &p)
+		}
+		snap, err := rt.cfg.GetPerfSnapshot(p.RefreshDisk)
+		if err != nil {
+			return nil, &rpcError{Code: -32005, Message: err.Error()}
+		}
+		return snap, nil
 
 	default:
 		return nil, &rpcError{Code: -32601, Message: "unknown host method: " + method}

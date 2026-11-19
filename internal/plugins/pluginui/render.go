@@ -14,12 +14,14 @@ import (
 // InputBindings connects declarative controls to persistent string drafts,
 // dropdown popover states, directory pickers, and secret visibility toggles.
 type InputBindings struct {
-	SelectState    func(controlID string) *bui.DropdownSelectState
-	ResolveDraft   func(controlID, fallback string) string
-	OnDraftChanged func(controlID, next string)
-	IsSecretShown  func(controlID string) bool
-	ToggleSecret   func(controlID string)
-	PickDirectory  func(controlID, title string)
+	SelectState     func(controlID string) *bui.DropdownSelectState
+	TreemapState    func(controlID string) *bui.TreemapState
+	OnTreemapSelect func()
+	ResolveDraft    func(controlID, fallback string) string
+	OnDraftChanged  func(controlID, next string)
+	IsSecretShown   func(controlID string) bool
+	ToggleSecret    func(controlID string)
+	PickDirectory   func(controlID, title string)
 }
 
 // RenderPage renders a complete validated declarative plugin UIPage (header + cards)
@@ -365,6 +367,55 @@ func renderItem(
 					}
 				})
 			}
+		})
+
+	case plugins.KindTreemap:
+		if len(item.Tiles) == 0 {
+			return
+		}
+		tmID := item.ID
+		if tmID == "" {
+			tmID = "treemap"
+		}
+		var tmState *bui.TreemapState
+		if bindings != nil && bindings.TreemapState != nil {
+			tmState = bindings.TreemapState(tmID)
+		}
+		if tmState == nil {
+			tmState = &bui.TreemapState{}
+		}
+		totalBytes := item.TotalBytes
+		var sumBytes uint64
+		tmItems := make([]bui.TreemapItem, len(item.Tiles))
+		for i, t := range item.Tiles {
+			colorKey := t.Color
+			if colorKey == "" {
+				colorKey = t.ID
+			}
+			sumBytes += t.Bytes
+			tmItems[i] = bui.TreemapItem{
+				ID:     t.ID,
+				Label:  t.Label,
+				Detail: t.Detail,
+				Bytes:  t.Bytes,
+				Color:  pal.PerfCategoryColor(colorKey),
+			}
+		}
+		if totalBytes == 0 {
+			totalBytes = sumBytes
+		}
+		keyPrefix := "plugin-treemap-" + pluginID + "-" + tmID
+		bui.RenderStorageTreemap(c, tmState, tmItems, totalBytes, bui.TreemapOptions{
+			CanvasKey:       keyPrefix,
+			CanvasProbeID:   keyPrefix,
+			DetailKey:       keyPrefix + "-detail",
+			LegendKey:       keyPrefix + "-legend",
+			TileProbePrefix: keyPrefix + "-tile-",
+			OnSelect: func(_ string) {
+				if bindings != nil && bindings.OnTreemapSelect != nil {
+					bindings.OnTreemapSelect()
+				}
+			},
 		})
 
 	case plugins.KindPreview:
