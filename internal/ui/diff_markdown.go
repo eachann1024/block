@@ -292,6 +292,16 @@ var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 // diffListItemRE matches a list item marker at the start of a trimmed line.
 var diffListItemRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])(?:\s|$)`)
 
+// diffItemInterrupts reports whether a list item marker on a trimmed line may
+// interrupt a paragraph: a bullet or "1." with text after it, not "2." or a bare "-".
+func diffItemInterrupts(t string) bool {
+	m := diffItemStartRE.FindStringSubmatch(t)
+	return m != nil && (m[1] == "" || m[1] == "1")
+}
+
+// diffItemStartRE matches a list item with text; group 1 is an ordered item's number.
+var diffItemStartRE = regexp.MustCompile(`^(?:[-*+]|(\d{1,9})[.)])[ \t]+\S`)
+
 // diffRuleRE matches a thematic break such as "* * *" or "---".
 var diffRuleRE = regexp.MustCompile(`^(?:\*[ \t]*){3,}$|^(?:-[ \t]*){3,}$|^(?:_[ \t]*){3,}$`)
 
@@ -369,6 +379,15 @@ func DiffHardBreaks(lines []string, change []int) []bool {
 			if !strings.HasSuffix(l, `\`) || diffEscaped(l, len(l)-1) {
 				continue
 			}
+			// A heading's "\" is text: "## 备份目录 C:\backup\" keeps it.
+			lt := strings.TrimSpace(l)
+			own := strings.TrimSpace(diffStripQuotes(lt, diffQuoteDepth(lt)))
+			if diffHeadingRE.MatchString(own) {
+				continue
+			}
+			// Inside a list a new item ends the paragraph; outside one only an item that
+			// may interrupt a paragraph does, so "先备份\" over "2. 验证服务" breaks.
+			inItem := diffListItemRE.MatchString(own) || len(l) > len(strings.TrimLeft(l, " \t"))
 			for k := i + 1; k < len(lines); k++ {
 				if change[k] != -side {
 					t := strings.TrimSpace(lines[k])
@@ -377,7 +396,7 @@ func DiffHardBreaks(lines []string, change []int) []bool {
 					// over "***" the "\" of "C:\backup\" is text.
 					out[i] = in != "" && !masks[si][k] && diffQuoteDepth(t) == diffQuoteDepth(strings.TrimSpace(l)) &&
 						!diffRuleRE.MatchString(in) && !diffHeadingRE.MatchString(in) && !diffSetextRE.MatchString(in) &&
-						!diffListItemRE.MatchString(in) && diffFenceOpen(in) == ""
+						!(inItem && diffListItemRE.MatchString(in) || diffItemInterrupts(in)) && diffFenceOpen(in) == ""
 					break
 				}
 			}
