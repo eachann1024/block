@@ -15,7 +15,7 @@ version_ge() {
 }
 
 if command -v go >/dev/null 2>&1; then
-  cur="$(go env GOVERSION 2>/dev/null | sed 's/^go//' || true)"
+  cur="$(GOTOOLCHAIN=local go env GOVERSION 2>/dev/null | sed 's/^go//' || true)"
   if [ -n "$cur" ] && version_ge "$cur" "$ver"; then
     echo "Using preinstalled Go ${cur} (requires >= ${ver})"
     if [ -n "${GITHUB_ENV:-}" ]; then
