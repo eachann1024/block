@@ -1240,9 +1240,15 @@ func plainInline(s string) string {
 	// Stray backticks go; an escaped one ("\`") is a literal backtick.
 	t = strings.NewReplacer("\\`", "`", "`", "").Replace(t)
 	// Escaped markers ("\**提示**") were never bold; they show without the backslash.
-	t = plainEscapeRE.ReplaceAllString(t, "$1")
+	// An escaped bar ("\| grep error") is text, so it waits out the trim below.
+	t = plainEscapeRE.ReplaceAllStringFunc(t, func(m string) string {
+		if m == `\|` {
+			return ""
+		}
+		return m[1:]
+	})
 	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
-	t = strings.Trim(t, "| ")
+	t = strings.ReplaceAll(strings.Trim(t, "| "), "", "|")
 	for k, code := range codes {
 		t = strings.Replace(t, "\uE000"+strconv.Itoa(k)+"\uE001", code, 1)
 	}
