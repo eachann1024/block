@@ -143,7 +143,7 @@ func main() {
 	}
 
 	if m.HasPermission(plugins.PermEventNoteSaved) {
-		if err := rt.NotifyNoteSaved(ctx, "welcome.md"); err != nil {
+		if err := rt.NotifyNoteSaved(ctx, notebookDir, "welcome.md"); err != nil {
 			fail("plugin.event(note.saved): %v", err)
 		}
 		fmt.Println("[OK] event: note.saved handled=true")
