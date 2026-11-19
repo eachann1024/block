@@ -1104,6 +1104,10 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		return ui.Text(c, strings.ReplaceAll(line, "\t", "    ")).Font("monospace").FontSize(theme.FontBody).
 			TextColor(st.Text).Grow(1).MinWidth(0)
 	}
+	// A trailing "\" is a hard line break, not text: "安装完成\" shows 安装完成.
+	if strings.HasSuffix(line, `\`) && !diffEscaped(line, len(line)-1) {
+		line = line[:len(line)-1]
+	}
 	// Leading spaces become padding: four of them alone would parse as a code block,
 	// and a nested list item keeps its depth.
 	body := strings.TrimLeft(line, " \t")
