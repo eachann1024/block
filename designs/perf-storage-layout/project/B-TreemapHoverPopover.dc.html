@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>方案 B · 二维主次面积图 + 悬停悬浮明细</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8f8f8; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+  </style>
+</helmet>
+<div style="width: 920px; height: 680px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: #20242c;">性能与占用</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button type="button" aria-label="启用扩展" style="width: 40px; height: 22px; border-radius: 999px; border: none; background: #547dd0; padding: 2px; display: flex; justify-content: flex-end; align-items: center; cursor: pointer;">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+      </button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 14px; font-weight: 460; cursor: pointer;">刷新</button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #f0c9c9; background: #fdf5f5; color: #b93c3c; font-size: 14px; font-weight: 460; cursor: pointer;">卸载</button>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 14px 20px;">
+    <div style="display: flex; align-items: baseline; gap: 28px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 13px; color: #526071;">磁盘占用</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 16px; font-weight: 560; color: #20242c;">102.7 MiB</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 13px; color: #526071;">物理内存</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 16px; font-weight: 560; color: #20242c;">285.7 MiB</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 13px; color: #526071;">CPU</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 16px; font-weight: 560; color: #20242c;">18.6%</span>
+      </div>
+    </div>
+    <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #526071;">15:44:21</span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; position: relative;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+      <span style="font-size: 15px; line-height: 22px; font-weight: 560; color: #20242c;">磁盘空间分布</span>
+      <span style="font-size: 12px; line-height: 16px; color: #526071;">悬停任意区域查看细分文件</span>
+    </div>
+
+    <div onMouseLeave="{{ clearHover }}" style="flex: 1; min-height: 0; position: relative; display: grid; grid-template-columns: 1.45fr 1fr; gap: 10px;">
+      <button type="button" onMouseEnter="{{ tAssets.hover }}" onFocus="{{ tAssets.hover }}" onClick="{{ tAssets.hover }}" style="{{ tAssets.style }}">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start;">
+          <span style="font-size: 16px; line-height: 22px; font-weight: 560; color: #20242c;">资源图片</span>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 28px; line-height: 34px; font-weight: 560; color: #20242c;">71.2 MiB</span>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #526071;">69.3%</span>
+        </div>
+        <span style="font-size: 12px; color: #526071;">1,859 个文件</span>
+      </button>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+        <button type="button" onMouseEnter="{{ tConfig.hover }}" onFocus="{{ tConfig.hover }}" onClick="{{ tConfig.hover }}" style="{{ tConfig.style }}">
+          <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+            <span style="font-size: 15px; line-height: 20px; font-weight: 560; color: #20242c;">配置状态</span>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 20px; line-height: 26px; font-weight: 560; color: #20242c;">23.7 MiB</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">23.1%</span>
+            <span style="font-size: 12px; color: #526071;">23 项</span>
+          </div>
+        </button>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; min-height: 0;">
+          <button type="button" onMouseEnter="{{ tNotes.hover }}" onFocus="{{ tNotes.hover }}" onClick="{{ tNotes.hover }}" style="{{ tNotes.style }}">
+            <span style="font-size: 14px; font-weight: 560; color: #20242c;">笔记</span>
+            <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-start;">
+              <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 14px; font-weight: 560; color: #20242c;">3.4 MiB</span>
+              <span style="font-size: 12px; color: #526071;">3.3% · 430 项</span>
+            </div>
+          </button>
+
+          <button type="button" onMouseEnter="{{ tHistory.hover }}" onFocus="{{ tHistory.hover }}" onClick="{{ tHistory.hover }}" style="{{ tHistory.style }}">
+            <span style="font-size: 14px; font-weight: 560; color: #20242c;">历史快照</span>
+            <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-start;">
+              <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 14px; font-weight: 560; color: #20242c;">2.5 MiB</span>
+              <span style="font-size: 12px; color: #526071;">2.5% · 522 项</span>
+            </div>
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 10px; height: 84px; flex-shrink: 0;">
+          <button type="button" onMouseEnter="{{ tRecovery.hover }}" onFocus="{{ tRecovery.hover }}" onClick="{{ tRecovery.hover }}" style="{{ tRecovery.style }}">
+            <span style="font-size: 13px; font-weight: 560; color: #20242c;">恢复缓存</span>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">1.2 MiB</span>
+          </button>
+          <button type="button" onMouseEnter="{{ tLogs.hover }}" onFocus="{{ tLogs.hover }}" onClick="{{ tLogs.hover }}" style="{{ tLogs.style }}">
+            <span style="font-size: 13px; font-weight: 560; color: #20242c;">日志</span>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">436 KiB</span>
+          </button>
+          <button type="button" onMouseEnter="{{ tAI.hover }}" onFocus="{{ tAI.hover }}" onClick="{{ tAI.hover }}" style="{{ tAI.style }}">
+            <span style="font-size: 13px; font-weight: 560; color: #20242c;">AI 会话</span>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">212 KiB</span>
+          </button>
+        </div>
+      </div>
+
+      <sc-if value="{{ showPopover }}" hint-placeholder-val="{{ true }}">
+        <div style="{{ popoverStyle }}">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #eceef2;">
+            <div style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
+              <span style="font-size: 14px; font-weight: 560; color: #20242c;">{{ active.label }}</span>
+              <span style="font-size: 12px; color: #526071;">{{ active.meta }}</span>
+            </div>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; font-weight: 560; color: #20242c; white-space: nowrap;">{{ active.totalLine }}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <sc-for list="{{ activeEntries }}" as="ent" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0;">
+                <span style="font-size: 12px; line-height: 18px; color: #20242c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">{{ ent.name }}</span>
+                <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; line-height: 18px; color: #526071; white-space: nowrap; flex-shrink: 0;">{{ ent.sizePct }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ hasRest }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 6px; border-top: 1px dashed #eceef2;">
+                <span style="font-size: 12px; color: #526071;">{{ active.restLabel }}</span>
+                <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">{{ active.restSizePct }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"previewHover":{"editor":"enum","default":"config","options":["none","assets","config","notes","history","recovery","logs","ai_sessions"],"label":"预览悬停态"},"$preview":{"width":920,"height":680}}'>
+const DATA = {
+  assets: {
+    label: '资源图片', meta: '共 1,859 个文件', totalLine: '71.2 MiB (69.3%)', side: 'right',
+    entries: [
+      { name: 'agents/skills/design/scripts/editor/assets/index-CYLuwRoc.js', sizePct: '6.4 MiB · 8.9%' },
+      { name: 'agents/skills/design/scripts/editor/artifact-type/babel.min.js', sizePct: '3.0 MiB · 4.2%' },
+      { name: 'agents/skills/design/scripts/editor/artifact-type/fast-edit-worker.js', sizePct: '2.3 MiB · 3.2%' },
+      { name: '提示词/assets/asset_8eb04242-3cd1-45ce-b576-63de26bbc801.png', sizePct: '2.2 MiB · 3.1%' },
+      { name: '提示词/assets/img_1794210976334_58cc633f.png', sizePct: '1.8 MiB · 2.6%' }
+    ],
+    restLabel: '其余 1,854 个文件', restSizePct: '55.5 MiB · 78.0%'
+  },
+  config: {
+    label: '配置状态', meta: '共 23 个文件', totalLine: '23.7 MiB (23.1%)', side: 'left',
+    entries: [
+      { name: 'fonts/HarmonyOS_Sans_SC_Regular.ttf', sizePct: '7.9 MiB · 33.2%' },
+      { name: 'fonts/HarmonyOS_Sans_SC_Medium.ttf', sizePct: '7.8 MiB · 33.1%' },
+      { name: 'fonts/HarmonyOS_Sans_SC_Bold.ttf', sizePct: '7.8 MiB · 32.8%' },
+      { name: 'apps/block-sync · 3 项', sizePct: '96.0 KiB · 0.4%' },
+      { name: 'app-updates/feed-cache.json', sizePct: '40.0 KiB · 0.2%' }
+    ],
+    restLabel: '其余 14 个文件', restSizePct: '76.0 KiB · 0.3%'
+  },
+  notes: {
+    label: '笔记', meta: '共 430 个文件', totalLine: '3.4 MiB (3.3%)', side: 'left',
+    entries: [
+      { name: 'agents/skills/vercel-react-best-practices/AGENTS.md', sizePct: '108.0 KiB · 3.1%' },
+      { name: 'agents/skills/impeccable/reference/new-work.md', sizePct: '64.0 KiB · 1.8%' },
+      { name: 'agents/skills/impeccable/reference/critique.md', sizePct: '48.0 KiB · 1.4%' },
+      { name: 'Note/好文归档/2000 PR 工作流.md', sizePct: '48.0 KiB · 1.4%' },
+      { name: 'Note/AI 账号汇总.md', sizePct: '48.0 KiB · 1.4%' }
+    ],
+    restLabel: '其余 425 个文件', restSizePct: '3.1 MiB · 90.9%'
+  },
+  history: {
+    label: '历史快照', meta: '共 522 个文件', totalLine: '2.5 MiB (2.5%)', side: 'left',
+    entries: [
+      { name: '创业团队/更深入调研.md · 60 项', sizePct: '540.0 KiB · 21.1%' },
+      { name: 'Note/Agent 的经验.md · 42 项', sizePct: '380.0 KiB · 14.8%' },
+      { name: 'Note/好文归档/2000 PR 工作流.md · 31 项', sizePct: '296.0 KiB · 11.6%' },
+      { name: 'quick/slot-1.md · 18 项', sizePct: '184.0 KiB · 7.2%' },
+      { name: 'Note/AI 账号汇总.md · 14 项', sizePct: '128.0 KiB · 5.0%' }
+    ],
+    restLabel: '其余 357 个快照文件', restSizePct: '1.0 MiB · 40.3%'
+  },
+  recovery: {
+    label: '恢复缓存', meta: '共 13 个文件', totalLine: '1.2 MiB (1.2%)', side: 'left',
+    entries: [
+      { name: 'Cache/font-atlas.bin', sizePct: '920.0 KiB · 74.9%' },
+      { name: 'Recovery/autosave-latest.json', sizePct: '240.0 KiB · 19.5%' },
+      { name: 'quick/slot-1.md', sizePct: '44.0 KiB · 3.6%' }
+    ],
+    restLabel: '', restSizePct: ''
+  },
+  logs: {
+    label: '日志', meta: '共 2 个文件', totalLine: '436.0 KiB (0.4%)', side: 'left',
+    entries: [
+      { name: 'logs/block.log', sizePct: '388.0 KiB · 89.0%' },
+      { name: 'logs/block.prev.log', sizePct: '48.0 KiB · 11.0%' }
+    ],
+    restLabel: '', restSizePct: ''
+  },
+  ai_sessions: {
+    label: 'AI 会话', meta: '共 4 个文件', totalLine: '212.0 KiB (0.2%)', side: 'left',
+    entries: [
+      { name: 'ai-chats.json', sizePct: '200.0 KiB · 94.3%' },
+      { name: 'ai-annotations.json', sizePct: '4.0 KiB · 1.9%' },
+      { name: 'ai-backends.json', sizePct: '4.0 KiB · 1.9%' }
+    ],
+    restLabel: '', restSizePct: ''
+  }
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    const hasState = this.state && Object.prototype.hasOwnProperty.call(this.state, 'hoveredId');
+    const hoveredId = hasState ? this.state.hoveredId : (this.props.previewHover === 'none' ? '' : (this.props.previewHover || 'config'));
+
+    const tile = (id, baseBg, extra) => {
+      const isHot = hoveredId === id;
+      const bg = isHot ? '#e8f0fe' : baseBg;
+      const bd = isHot ? '1.5px solid #547dd0' : '1px solid #e4e6ea';
+      return {
+        hover: () => this.setState({ hoveredId: id }),
+        style:
+          'border-radius: 10px; border: ' + bd + '; background: ' + bg +
+          '; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; text-align: left; cursor: pointer; transition: background 140ms ease, border-color 140ms ease; ' +
+          extra
+      };
+    };
+
+    const active = DATA[hoveredId] || DATA.config;
+    const showPopover = Boolean(hoveredId && DATA[hoveredId]);
+    const posCss = active.side === 'right'
+      ? 'right: 16px; top: 18px;'
+      : 'left: 16px; bottom: 18px;';
+
+    return {
+      clearHover: () => this.setState({ hoveredId: '' }),
+      tAssets: tile('assets', '#f3f7fe', 'height: 100%; width: 100%; padding: 22px;'),
+      tConfig: tile('config', '#f7f9fc', 'height: 164px; width: 100%; flex-shrink: 0;'),
+      tNotes: tile('notes', '#fafafa', 'height: 100%; width: 100%;'),
+      tHistory: tile('history', '#fafafa', 'height: 100%; width: 100%;'),
+      tRecovery: tile('recovery', '#fcfcfc', 'height: 100%; width: 100%; padding: 12px;'),
+      tLogs: tile('logs', '#fcfcfc', 'height: 100%; width: 100%; padding: 12px;'),
+      tAI: tile('ai_sessions', '#fcfcfc', 'height: 100%; width: 100%; padding: 12px;'),
+      showPopover,
+      active,
+      activeEntries: active.entries,
+      hasRest: Boolean(active.restLabel),
+      popoverStyle:
+        'position: absolute; ' + posCss +
+        ' width: 410px; max-width: calc(100% - 32px); background: rgba(255,255,255,0.98); border: 1px solid #d5dff0; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 14px 34px rgba(32, 36, 44, 0.14); pointer-events: none; z-index: 10;'
+    };
+  }
+}
+</script>
+</body>
+</html>
