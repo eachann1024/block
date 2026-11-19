@@ -338,7 +338,7 @@ func isPathPrefixBoundaryBefore(c byte) bool {
 }
 
 func isPathPrefixBoundaryAfter(c byte) bool {
-	return c == '/' || c == '\\' || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == ':' || c == '`' || c == '>'
+	return c == '/' || (os.PathSeparator == '\\' && c == '\\') || c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == ':' || c == '`' || c == '>'
 }
 
 func checkEnglishPage(page *plugins.UIPage, sandboxDir string) error {
