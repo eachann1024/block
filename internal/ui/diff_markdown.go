@@ -158,7 +158,7 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
 				prevBlank, para = !inList && ends, !ends
-				if setext && diffSetextText(lines, paraLines, t[0] == '=') {
+				if setext && diffSetextText(lines, paraLines) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
 					}
@@ -208,13 +208,13 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 }
 
 // diffSetextText reports whether the paragraph lines above an underline form a plain
-// setext heading: not a list item, quote or table row, whose underline would be a rule
-// or a lazy line instead. Under a table row only "===" makes a heading; "---" would
-// read as its separator.
-func diffSetextText(lines []string, para []int, eq bool) bool {
-	for _, p := range para {
+// setext heading: not a list item, quote or table, whose underline would be a rule
+// or a lazy line instead. Bar lines are paragraph text until a separator row makes
+// them a table: "| A |" over "---" is a heading, since the underline is read first.
+func diffSetextText(lines []string, para []int) bool {
+	for j, p := range para {
 		t := strings.TrimSpace(lines[p])
-		if diffListItemRE.MatchString(t) || strings.HasPrefix(t, ">") || IsDiffTableRow(t) && !eq {
+		if diffListItemRE.MatchString(t) || strings.HasPrefix(t, ">") || j > 0 && IsDiffTableSep(t) {
 			return false
 		}
 	}
