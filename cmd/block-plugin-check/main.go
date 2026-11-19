@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"block/internal/plugins"
@@ -141,7 +142,7 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 			return nil, fmt.Errorf("[%s] plugin.render(%s): %w", locale, surf, err)
 		}
 		if enforceNoChinese {
-			if err := checkEnglishPage(page); err != nil {
+			if err := checkEnglishPage(page, sandboxDir); err != nil {
 				return nil, fmt.Errorf("[%s] plugin.render(%s): %w", locale, surf, err)
 			}
 		}
@@ -154,7 +155,7 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 			return nil, fmt.Errorf("[%s] plugin.render(%s, values): %w", locale, surf, err)
 		}
 		if enforceNoChinese {
-			if err := checkEnglishPage(livePage); err != nil {
+			if err := checkEnglishPage(livePage, sandboxDir); err != nil {
 				return nil, fmt.Errorf("[%s] plugin.render(%s, defaults): %w", locale, surf, err)
 			}
 		}
@@ -175,7 +176,7 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 						return nil, fmt.Errorf("[%s] plugin.render(%s) failed when %s=%q: %w", locale, surf, item.ID, opt.Value, err)
 					}
 					if enforceNoChinese {
-						if err := checkEnglishPage(p); err != nil {
+						if err := checkEnglishPage(p, sandboxDir); err != nil {
 							return nil, fmt.Errorf("[%s] plugin.render(%s) when %s=%q: %w", locale, surf, item.ID, opt.Value, err)
 						}
 					}
@@ -190,7 +191,7 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 					return nil, fmt.Errorf("[%s] plugin.render(%s) failed when %s=%v: %w", locale, surf, item.ID, !bVal, err)
 				}
 				if enforceNoChinese {
-					if err := checkEnglishPage(p); err != nil {
+					if err := checkEnglishPage(p, sandboxDir); err != nil {
 						return nil, fmt.Errorf("[%s] plugin.render(%s) when %s=%v: %w", locale, surf, item.ID, !bVal, err)
 					}
 				}
@@ -207,11 +208,11 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 				return nil, fmt.Errorf("[%s] plugin.action(%s, %s): %w", locale, surf, actID, err)
 			}
 			if enforceNoChinese {
-				if err := checkEnglishText(fmt.Sprintf("action(%s).status", actID), res.Status); err != nil {
+				if err := checkEnglishText(fmt.Sprintf("action(%s).status", actID), stripSandboxPrefix(res.Status, sandboxDir)); err != nil {
 					return nil, fmt.Errorf("[%s] %w", locale, err)
 				}
 				if res.Page != nil {
-					if err := checkEnglishPage(res.Page); err != nil {
+					if err := checkEnglishPage(res.Page, sandboxDir); err != nil {
 						return nil, fmt.Errorf("[%s] plugin.action(%s, %s).page: %w", locale, surf, actID, err)
 					}
 				}
@@ -268,14 +269,25 @@ func cloneValues(values map[string]any) map[string]any {
 	return trial
 }
 
-func checkEnglishPage(page *plugins.UIPage) error {
+func stripSandboxPrefix(val, sandboxDir string) string {
+	if sandboxDir == "" || val == "" {
+		return val
+	}
+	out := strings.ReplaceAll(val, sandboxDir, "")
+	if resolved, err := filepath.EvalSymlinks(sandboxDir); err == nil && resolved != "" && resolved != sandboxDir {
+		out = strings.ReplaceAll(out, resolved, "")
+	}
+	return out
+}
+
+func checkEnglishPage(page *plugins.UIPage, sandboxDir string) error {
 	if page == nil {
 		return nil
 	}
 	if err := checkEnglishText("page.title", page.Title); err != nil {
 		return err
 	}
-	if err := checkEnglishText("page.status", page.Status); err != nil {
+	if err := checkEnglishText("page.status", stripSandboxPrefix(page.Status, sandboxDir)); err != nil {
 		return err
 	}
 	for i, b := range page.HeaderActions {
@@ -288,14 +300,14 @@ func checkEnglishPage(page *plugins.UIPage) error {
 		if err := checkEnglishText(cp+".title", card.Title); err != nil {
 			return err
 		}
-		if err := checkEnglishText(cp+".meta", card.Meta); err != nil {
+		if err := checkEnglishText(cp+".meta", stripSandboxPrefix(card.Meta, sandboxDir)); err != nil {
 			return err
 		}
 		if err := checkEnglishText(cp+".badge", card.Badge); err != nil {
 			return err
 		}
 		for ii, item := range card.Items {
-			if err := checkEnglishItem(fmt.Sprintf("%s.items[%d]", cp, ii), item); err != nil {
+			if err := checkEnglishItem(fmt.Sprintf("%s.items[%d]", cp, ii), item, sandboxDir); err != nil {
 				return err
 			}
 		}
@@ -303,7 +315,7 @@ func checkEnglishPage(page *plugins.UIPage) error {
 	return nil
 }
 
-func checkEnglishItem(prefix string, item plugins.UIItem) error {
+func checkEnglishItem(prefix string, item plugins.UIItem, sandboxDir string) error {
 	if err := checkEnglishText(prefix+".label", item.Label); err != nil {
 		return err
 	}
@@ -311,7 +323,7 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 		return err
 	}
 	if sVal, ok := item.Value.(string); ok {
-		if err := checkEnglishText(prefix+".value", sVal); err != nil {
+		if err := checkEnglishText(prefix+".value", stripSandboxPrefix(sVal, sandboxDir)); err != nil {
 			return err
 		}
 	}
@@ -320,16 +332,16 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 	}
 	for i, opt := range item.Options {
 		op := fmt.Sprintf("%s.options[%d]", prefix, i)
-		if err := checkEnglishText(op+".label", opt.Label); err != nil {
+		if err := checkEnglishText(op+".label", stripSandboxPrefix(opt.Label, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(op+".detail", opt.Detail); err != nil {
+		if err := checkEnglishText(op+".detail", stripSandboxPrefix(opt.Detail, sandboxDir)); err != nil {
 			return err
 		}
 		if err := checkEnglishText(op+".badge", opt.Badge); err != nil {
 			return err
 		}
-		if err := checkEnglishText(op+".tooltip", opt.Tooltip); err != nil {
+		if err := checkEnglishText(op+".tooltip", stripSandboxPrefix(opt.Tooltip, sandboxDir)); err != nil {
 			return err
 		}
 	}
@@ -343,10 +355,10 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 		if err := checkEnglishText(rp+".label", row.Label); err != nil {
 			return err
 		}
-		if err := checkEnglishText(rp+".value", row.Value); err != nil {
+		if err := checkEnglishText(rp+".value", stripSandboxPrefix(row.Value, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(rp+".tooltip", row.Tooltip); err != nil {
+		if err := checkEnglishText(rp+".tooltip", stripSandboxPrefix(row.Tooltip, sandboxDir)); err != nil {
 			return err
 		}
 	}
@@ -355,7 +367,7 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 		if err := checkEnglishText(mp+".label", m.Label); err != nil {
 			return err
 		}
-		if err := checkEnglishText(mp+".value", m.Value); err != nil {
+		if err := checkEnglishText(mp+".value", stripSandboxPrefix(m.Value, sandboxDir)); err != nil {
 			return err
 		}
 	}
@@ -393,19 +405,19 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 		if err := checkEnglishText(pp+".badge", item.Preview.Badge); err != nil {
 			return err
 		}
-		if err := checkEnglishText(pp+".title", item.Preview.Title); err != nil {
+		if err := checkEnglishText(pp+".title", stripSandboxPrefix(item.Preview.Title, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(pp+".subtitle", item.Preview.Subtitle); err != nil {
+		if err := checkEnglishText(pp+".subtitle", stripSandboxPrefix(item.Preview.Subtitle, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(pp+".before", item.Preview.Before); err != nil {
+		if err := checkEnglishText(pp+".before", stripSandboxPrefix(item.Preview.Before, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(pp+".after", item.Preview.After); err != nil {
+		if err := checkEnglishText(pp+".after", stripSandboxPrefix(item.Preview.After, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(pp+".body", item.Preview.Body); err != nil {
+		if err := checkEnglishText(pp+".body", stripSandboxPrefix(item.Preview.Body, sandboxDir)); err != nil {
 			return err
 		}
 		for i, card := range item.Preview.Cards {
@@ -413,31 +425,31 @@ func checkEnglishItem(prefix string, item plugins.UIItem) error {
 			if err := checkEnglishText(cp+".badge", card.Badge); err != nil {
 				return err
 			}
-			if err := checkEnglishText(cp+".title", card.Title); err != nil {
+			if err := checkEnglishText(cp+".title", stripSandboxPrefix(card.Title, sandboxDir)); err != nil {
 				return err
 			}
-			if err := checkEnglishText(cp+".body", card.Body); err != nil {
+			if err := checkEnglishText(cp+".body", stripSandboxPrefix(card.Body, sandboxDir)); err != nil {
 				return err
 			}
 		}
 	}
 	for i, entry := range item.Entries {
 		ep := fmt.Sprintf("%s.entries[%d]", prefix, i)
-		if err := checkEnglishText(ep+".title", entry.Title); err != nil {
+		if err := checkEnglishText(ep+".title", stripSandboxPrefix(entry.Title, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(ep+".sub_text", entry.SubText); err != nil {
+		if err := checkEnglishText(ep+".sub_text", stripSandboxPrefix(entry.SubText, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(ep+".status", entry.Status); err != nil {
+		if err := checkEnglishText(ep+".status", stripSandboxPrefix(entry.Status, sandboxDir)); err != nil {
 			return err
 		}
-		if err := checkEnglishText(ep+".tooltip", entry.Tooltip); err != nil {
+		if err := checkEnglishText(ep+".tooltip", stripSandboxPrefix(entry.Tooltip, sandboxDir)); err != nil {
 			return err
 		}
 	}
 	for i, field := range item.Fields {
-		if err := checkEnglishItem(fmt.Sprintf("%s.fields[%d]", prefix, i), field); err != nil {
+		if err := checkEnglishItem(fmt.Sprintf("%s.fields[%d]", prefix, i), field, sandboxDir); err != nil {
 			return err
 		}
 	}
