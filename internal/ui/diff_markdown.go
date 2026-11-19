@@ -272,7 +272,7 @@ func diffCodeSpans(s string) [][2]int {
 }
 
 // diffLiteralEscaper backslash-escapes the inline Markdown markers in plain text.
-var diffLiteralEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "$", `\$`)
+var diffLiteralEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "~", `\~`, "[", `\[`, "]", `\]`, "$", `\$`, "&", `\&`)
 
 // diffPlainLinks turns links into their text: a link inside a diff row would take the
 // click (opening a browser) instead of the row's accept toggle. Links are found with
