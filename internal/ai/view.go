@@ -20,6 +20,10 @@ import (
 // RenderPanel renders the complete AI assistant side/fullscreen panel.
 func (c *Controller) RenderPanel(cUI *ui.Context) {
 	c.mu.Lock()
+	if !c.providerCfg.Enabled {
+		c.mu.Unlock()
+		return
+	}
 	c.services = cUI.Services()
 	shouldProbe := !c.panelProbedOnce && !c.mockResponder
 	if shouldProbe {
@@ -2656,7 +2660,7 @@ func formatBackendVersionTag(st BackendStatus, hasStatus bool) string {
 func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	c.mu.Lock()
 	c.services = cUI.Services()
-	shouldProbe := !c.settingsProbedOnce && !c.mockResponder
+	shouldProbe := c.providerCfg.Enabled && !c.settingsProbedOnce && !c.mockResponder
 	if shouldProbe {
 		c.settingsProbedOnce = true
 	}

@@ -247,7 +247,7 @@ type toolbarItemSpec struct {
 
 func (s *Session) enabledToolbarItems(caps toolbarCaps) []toolbarItemSpec {
 	var items []toolbarItemSpec
-	if !s.readOnly && s.isMarkdownNote() && s.canReplaceSelection() && s.hasNonEmptySelection() {
+	if !s.aiDisabled && !s.readOnly && s.isMarkdownNote() && s.canReplaceSelection() && s.hasNonEmptySelection() {
 		items = append(items, toolbarItemSpec{
 			Kind: tbAIRewrite, ID: "tb-ai", Group: 0, Width: theme.HeightCompact,
 			Icon: icons.Sparkles, Label: theme.Tr("AI 改写", "AI Rewrite"),
@@ -1975,7 +1975,7 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32, hoveredOut *string) {
 	pal := theme.Ocean()
 	editing := s.editingAnnotID == ann.ID && !s.readOnly
-	isResult := !editing && ann.RewriteResult != ""
+	isResult := !s.aiDisabled && !editing && ann.RewriteResult != ""
 
 	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).
 		Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space12).
@@ -2040,7 +2040,7 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 	pal := theme.Ocean()
 	noteTxt := ann.Note
-	if noteTxt == "" {
+	if noteTxt == "" && !s.aiDisabled {
 		noteTxt = ann.RewritePrompt
 	}
 	if noteTxt != "" {
@@ -2059,7 +2059,7 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 			}
 		}
 	}
-	if ann.RewritePrompt == "" || s.readOnly {
+	if s.aiDisabled || ann.RewritePrompt == "" || s.readOnly {
 		return
 	}
 	sparkles := icons.Sparkles
@@ -2177,7 +2177,7 @@ func (s *Session) commitAnnotationEdit(id string) {
 	s.editingAnnotID = ""
 }
 
-func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
+func (s *Session) estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height, stepGap float32) {
 	if isReactionOnlyAnnotation(ann) {
 		return 24, 4
 	}
@@ -2185,12 +2185,12 @@ func estimateAnnotationRowMetrics(ann *model.Annotation, isEditing bool) (height
 	switch {
 	case isEditing:
 		height = 64
-	case ann.RewriteResult != "":
+	case !s.aiDisabled && ann.RewriteResult != "":
 		height = 122
 	default:
 		lines := max((len([]rune(ann.Note))+11)/12, 1)
 		height = 64 + float32(lines-1)*theme.LineBody
-		if ann.RewritePrompt != "" {
+		if !s.aiDisabled && ann.RewritePrompt != "" {
 			height += 36
 		}
 	}
@@ -2236,7 +2236,7 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 		if r, ok := s.blockRect(ann.StartBlockID); ok && r.H > 0 {
 			targetY = max(r.Y-railTop, 24)
 		}
-		h, g := estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)
+		h, g := s.estimateAnnotationRowMetrics(ann, s.editingAnnotID == ann.ID)
 		if mh, ok := s.annotRowHeights[ann.ID]; ok && mh > 0 {
 			h = mh
 		}
