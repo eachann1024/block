@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>图床上传 · 精简 2 卡改造稿</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8f8f8; }
+    * { box-sizing: border-box; }
+    button, input, select { font-family: inherit; }
+  </style>
+</helmet>
+<div style="width: 920px; height: 780px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: #20242c;">图床上传</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button type="button" aria-label="启用扩展" style="width: 40px; height: 22px; border-radius: 999px; border: none; background: #547dd0; padding: 2px; display: flex; justify-content: flex-end; align-items: center; cursor: pointer;">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+      </button>
+      <button type="button" onClick="{{ triggerUpload }}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #486ec0; background: #547dd0; color: #ffffff; font-size: 14px; font-weight: 460; cursor: pointer;">{{ uploadBtnLabel }}</button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #f0c9c9; background: #fdf5f5; color: #b93c3c; font-size: 14px; font-weight: 460; cursor: pointer;">卸载</button>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 12px; color: #526071;">待上传本地图片</span>
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 24px; line-height: 30px; font-weight: 560; color: #20242c;">{{ pendingCountText }}</span>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #526071;">{{ pendingSizeText }}</span>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+          <button type="button" onClick="{{ scopeAll }}" style="{{ scopeAllStyle }}">整个笔记本</button>
+          <button type="button" onClick="{{ scopeActive }}" style="{{ scopeActiveStyle }}">当前笔记</button>
+        </div>
+        <div style="width: 1px; height: 26px; background: #eceef2;"></div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+          <span style="font-size: 12px; color: #526071;">累计已上传</span>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 15px; font-weight: 560; color: #20242c;">{{ uploadedTotalText }}</span>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid #eceef2;">
+        <sc-for list="{{ pendingItems }}" as="img" hint-placeholder-count="4">
+          <div style="position: relative; height: 32px; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; gap: 12px; background: #fafafa;">
+            <div style="{{ img.barStyle }}"></div>
+            <div style="position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              <span style="font-size: 13px; color: #20242c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ img.asset }}</span>
+              <span style="font-size: 12px; color: #526071; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ img.note }}</span>
+            </div>
+            <span style="position: relative; z-index: 1; font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071; white-space: nowrap; flex-shrink: 0;">{{ img.size }}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ hasMorePending }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 10px 0 10px;">
+            <span style="font-size: 12px; color: #526071;">{{ restPendingLabel }}</span>
+            <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071;">{{ restPendingSize }}</span>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ noPending }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 12px 14px; border-radius: 8px; background: #eef6f2; border: 1px solid #cfe2d7; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 13px; color: #1f332a; font-weight: 460;">当前范围内所有图片均已外链化</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #436154;">0 待处理</span>
+      </div>
+    </sc-if>
+
+    <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid #eceef2;">
+      <span style="font-size: 12px; font-weight: 560; color: #526071;">最近上传</span>
+      <sc-for list="{{ logs }}" as="log" hint-placeholder-count="2">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 24px;">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+            <span style="width: 6px; height: 6px; border-radius: 999px; background: #5da685; flex-shrink: 0;"></span>
+            <span style="font-size: 13px; color: #20242c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ log.title }}</span>
+          </div>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071; white-space: nowrap; flex-shrink: 0;">{{ log.meta }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 15px; font-weight: 560; color: #20242c;">通道与上传规则</span>
+        <span style="font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #eef3fb; color: #202d45; border: 1px solid #cddcf2;">{{ providerBadge }}</span>
+      </div>
+      <button type="button" onClick="{{ toggleConfig }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid #dcdcdc; background: #ffffff; color: #526071; font-size: 13px; cursor: pointer;">{{ configToggleText }}</button>
+    </div>
+
+    <sc-if value="{{ configExpanded }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 8px; border-top: 1px solid #eceef2;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <span style="font-size: 14px; color: #20242c;">图床通道</span>
+          <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+            <button type="button" onClick="{{ pickR2 }}" style="{{ r2Style }}">Cloudflare R2</button>
+            <button type="button" onClick="{{ pickS3 }}" style="{{ s3Style }}">S3 兼容</button>
+            <button type="button" onClick="{{ pickGH }}" style="{{ ghStyle }}">GitHub 仓库</button>
+          </div>
+        </div>
+
+        <sc-if value="{{ isS3Like }}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px;">
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              Endpoint 地址
+              <input type="text" value="https://a8f3...r2.cloudflarestorage.com" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              Bucket 存储桶
+              <input type="text" value="block-images" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              Access Key ID
+              <input type="text" value="AKIA••••••••92K1" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              Secret Access Key
+              <input type="password" value="secret-token-value" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              公开访问域名
+              <input type="text" value="https://img.block.md" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              远端目录前缀
+              <input type="text" value="notes" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isGitHub }}" hint-placeholder-val="{{ false }}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px;">
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              仓库 (owner/repo)
+              <input type="text" value="eachann1024/block-images" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              目标分支与目录前缀
+              <input type="text" value="main / notes" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              Personal Access Token
+              <input type="password" value="ghp_xxxxxxxxxxxx" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526071;">
+              外链加速
+              <input type="text" value="jsDelivr CDN" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #dcdcdc; background: #fafafa; color: #20242c; font-size: 13px;" />
+            </label>
+          </div>
+        </sc-if>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 6px; border-top: 1px solid #f1f3f6;">
+          <span style="font-size: 14px; color: #20242c;">远端命名规则</span>
+          <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+            <button type="button" onClick="{{ nameYm }}" style="{{ nameYmStyle }}">年月哈希</button>
+            <button type="button" onClick="{{ nameDir }}" style="{{ nameDirStyle }}">按笔记目录</button>
+            <button type="button" onClick="{{ nameOrig }}" style="{{ nameOrigStyle }}">原文件名</button>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <span style="font-size: 14px; color: #20242c;">保存笔记时自动上传本地图片（保留本地原图）</span>
+          <button type="button" aria-label="保存笔记时自动上传" onClick="{{ toggleAuto }}" style="{{ autoSwStyle }}">
+            <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px;">
+          <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 13px; font-weight: 460; cursor: pointer;">测试连接</button>
+          <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #486ec0; background: #547dd0; color: #ffffff; font-size: 13px; font-weight: 460; cursor: pointer;">保存配置</button>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultExpanded":{"editor":"boolean","default":true,"label":"默认展开通道配置"},"$preview":{"width":920,"height":780}}'>
+const ALL_PENDING = [
+  { asset: 'assets/workflow-arch.png', note: '提示词/AI 工作流.md', size: '840 KiB', ratio: 100 },
+  { asset: 'assets/perf-bento.png', note: '周报/2026-11.md', size: '620 KiB', ratio: 74 },
+  { asset: 'assets/diagram-01.png', note: 'Note/Agent 的经验.md', size: '480 KiB', ratio: 57 },
+  { asset: 'assets/cover-ocean.png', note: 'Note/好看的风格.md', size: '310 KiB', ratio: 37 }
+];
+
+const ACTIVE_PENDING = [
+  { asset: 'assets/workflow-arch.png', note: '提示词/AI 工作流.md', size: '840 KiB', ratio: 100 },
+  { asset: 'assets/step-preview.png', note: '提示词/AI 工作流.md', size: '240 KiB', ratio: 29 }
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const scope = st.scope || 'all';
+    const provider = st.provider || 'r2';
+    const naming = st.naming || 'ym';
+    const autoUpload = st.autoUpload !== undefined ? st.autoUpload : true;
+    const uploaded = st.uploaded || false;
+    const configExpanded = st.configExpanded !== undefined ? st.configExpanded : (this.props.defaultExpanded !== false);
+
+    const rawList = uploaded ? [] : (scope === 'all' ? ALL_PENDING : ACTIVE_PENDING);
+    const pendingCount = uploaded ? 0 : (scope === 'all' ? 6 : 2);
+    const pendingSize = uploaded ? '0 B' : (scope === 'all' ? '2.4 MiB' : '1.1 MiB');
+
+    const segBtn = (active) =>
+      'height: 26px; padding: 0 11px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; background: ' +
+      (active ? '#ffffff' : 'transparent') + '; color: ' + (active ? '#20242c' : '#526071') +
+      '; font-weight: ' + (active ? '560' : '400') + '; box-shadow: ' + (active ? '0 1px 2px rgba(32,36,44,0.08)' : 'none') + ';';
+
+    const providerLabels = { r2: 'Cloudflare R2', s3: 'S3 兼容存储', github: 'GitHub 仓库' };
+
+    return {
+      uploadBtnLabel: pendingCount > 0 ? ('上传 ' + pendingCount + ' 张图片') : '重新扫描',
+      triggerUpload: () => this.setState({ uploaded: !uploaded }),
+      pendingCountText: pendingCount + ' 张',
+      pendingSizeText: pendingSize + ' · ' + (scope === 'all' ? '整个笔记本' : '当前笔记'),
+      uploadedTotalText: (uploaded ? 54 : 48) + ' 张',
+      scopeAll: () => this.setState({ scope: 'all', uploaded: false }),
+      scopeActive: () => this.setState({ scope: 'active', uploaded: false }),
+      scopeAllStyle: segBtn(scope === 'all'),
+      scopeActiveStyle: segBtn(scope === 'active'),
+      hasPending: rawList.length > 0,
+      noPending: rawList.length === 0,
+      pendingItems: rawList.map((x) => ({
+        asset: x.asset,
+        note: x.note,
+        size: x.size,
+        barStyle: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + x.ratio + '%; background: #e2f1e9; border-radius: 6px;'
+      })),
+      hasMorePending: !uploaded && scope === 'all',
+      restPendingLabel: '其余 2 张待上传图片',
+      restPendingSize: '180 KiB',
+      logs: [
+        { title: '已上传 3 张图片并替换为 R2 外链（周报/2026-11.md）', meta: '成功 · 14:22' },
+        { title: '已上传 1 张图片（Note/AI 账号汇总.md）', meta: '成功 · 昨天 21:08' }
+      ],
+      providerBadge: providerLabels[provider] + ' · 已连通',
+      configExpanded,
+      configToggleText: configExpanded ? '收起配置' : '展开配置',
+      toggleConfig: () => this.setState({ configExpanded: !configExpanded }),
+      pickR2: () => this.setState({ provider: 'r2' }),
+      pickS3: () => this.setState({ provider: 's3' }),
+      pickGH: () => this.setState({ provider: 'github' }),
+      r2Style: segBtn(provider === 'r2'),
+      s3Style: segBtn(provider === 's3'),
+      ghStyle: segBtn(provider === 'github'),
+      isS3Like: provider === 'r2' || provider === 's3',
+      isGitHub: provider === 'github',
+      nameYm: () => this.setState({ naming: 'ym' }),
+      nameDir: () => this.setState({ naming: 'dir' }),
+      nameOrig: () => this.setState({ naming: 'orig' }),
+      nameYmStyle: segBtn(naming === 'ym'),
+      nameDirStyle: segBtn(naming === 'dir'),
+      nameOrigStyle: segBtn(naming === 'orig'),
+      toggleAuto: () => this.setState({ autoUpload: !autoUpload }),
+      autoSwStyle:
+        'width: 40px; height: 22px; border-radius: 999px; border: none; padding: 2px; display: flex; align-items: center; cursor: pointer; background: ' +
+        (autoUpload ? '#547dd0' : '#d0d5dd') + '; justify-content: ' + (autoUpload ? 'flex-end' : 'flex-start') + ';'
+    };
+  }
+}
+</script>
+</body>
+</html>

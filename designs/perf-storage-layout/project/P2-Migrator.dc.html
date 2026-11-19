@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>笔记迁移 · 精简 2 卡改造稿</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8f8f8; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+  </style>
+</helmet>
+<div style="width: 920px; height: 780px; background: #f8f8f8; color: #20242c; font-family: Inter, -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 560; color: #20242c;">笔记迁移</h1>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button type="button" aria-label="启用扩展" style="width: 40px; height: 22px; border-radius: 999px; border: none; background: #547dd0; padding: 2px; display: flex; justify-content: flex-end; align-items: center; cursor: pointer;">
+        <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+      </button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #486ec0; background: #547dd0; color: #ffffff; font-size: 14px; font-weight: 460; cursor: pointer;">{{ importBtnLabel }}</button>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #f0c9c9; background: #fdf5f5; color: #b93c3c; font-size: 14px; font-weight: 460; cursor: pointer;">卸载</button>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; font-weight: 460; color: #20242c;">来源平台</span>
+      <div style="display: flex; background: #f1f3f6; padding: 2px; border-radius: 8px; gap: 2px;">
+        <button type="button" onClick="{{ pickObs }}" style="{{ obsStyle }}">Obsidian</button>
+        <button type="button" onClick="{{ pickNotion }}" style="{{ notionStyle }}">Notion</button>
+        <button type="button" onClick="{{ pickYuque }}" style="{{ yuqueStyle }}">语雀</button>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; color: #20242c;">来源文件夹或导出包</span>
+      <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #526071; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ srcDisplay }}</span>
+        <button type="button" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 13px; cursor: pointer; flex-shrink: 0;">选择文件夹 / ZIP…</button>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <span style="font-size: 14px; color: #20242c;">迁入子目录</span>
+      <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 13px; color: #202d45; background: #eef3fb; border: 1px solid #cddcf2; padding: 3px 9px; border-radius: 6px; white-space: nowrap;">{{ targetSubdir }}</span>
+        <button type="button" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #dcdcdc; background: #ffffff; color: #20242c; font-size: 13px; cursor: pointer; flex-shrink: 0;">更改…</button>
+      </div>
+    </div>
+
+    <div style="height: 1px; background: #eceef2;"></div>
+
+    <sc-for list="{{ rules }}" as="r" hint-placeholder-count="2">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <span style="font-size: 14px; color: #20242c;">{{ r.label }}</span>
+        <button type="button" aria-label="{{ r.label }}" onClick="{{ r.toggle }}" style="{{ r.swStyle }}">
+          <span style="width: 18px; height: 18px; border-radius: 999px; background: #ffffff; display: block;"></span>
+        </button>
+      </div>
+    </sc-for>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 4px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 8px; background: #fafafa; border: 1px solid #eceef2;">
+        <span style="font-size: 13px; color: #526071;">附件归集</span>
+        <div style="display: flex; background: #eef0f4; padding: 2px; border-radius: 6px; gap: 2px;">
+          <button type="button" onClick="{{ assetUnified }}" style="{{ assetUnifiedStyle }}">统一 assets</button>
+          <button type="button" onClick="{{ assetLocal }}" style="{{ assetLocalStyle }}">保持相对</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 8px; background: #fafafa; border: 1px solid #eceef2;">
+        <span style="font-size: 13px; color: #526071;">同名冲突</span>
+        <div style="display: flex; background: #eef0f4; padding: 2px; border-radius: 6px; gap: 2px;">
+          <button type="button" onClick="{{ confSkip }}" style="{{ confSkipStyle }}">跳过</button>
+          <button type="button" onClick="{{ confRename }}" style="{{ confRenameStyle }}">重命名</button>
+          <button type="button" onClick="{{ confOver }}" style="{{ confOverStyle }}">覆盖</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; background: #ffffff; border: 1px solid #e4e6ea; border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+      <span style="font-size: 15px; font-weight: 560; color: #20242c;">待迁入扫描结果</span>
+      <span style="font-size: 12px; color: #526071;">选定来源后自动统计真实文件</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+      <div style="padding: 12px 14px; border-radius: 10px; background: #f2f1fb; border: 1px solid #d8d5f0; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 12px; color: #54507a;">待迁入笔记</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 20px; font-weight: 560; color: #2b2847;">{{ statNotes }}</span>
+      </div>
+      <div style="padding: 12px 14px; border-radius: 10px; background: #eef6f2; border: 1px solid #cfe2d7; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 12px; color: #436154;">关联附件</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 20px; font-weight: 560; color: #1f332a;">{{ statAssets }}</span>
+      </div>
+      <div style="padding: 12px 14px; border-radius: 10px; background: #f7f0fa; border: 1px solid #e0cce9; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 12px; color: #684b76;">{{ statThirdLabel }}</span>
+        <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 20px; font-weight: 560; color: #3a2444;">{{ statThirdVal }}</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 4px;">
+      <span style="font-size: 12px; font-weight: 560; color: #526071;">路径映射预览</span>
+      <sc-for list="{{ mappings }}" as="m" hint-placeholder-count="4">
+        <div style="height: 30px; padding: 0 10px; border-radius: 6px; background: #fafafa; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #526071; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">{{ m.src }}</span>
+          <span style="font-size: 12px; color: #547dd0; flex-shrink: 0;">→</span>
+          <span style="font-family: 'JetBrains Mono', Menlo, ui-monospace, monospace; font-size: 12px; color: #20242c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: right;">{{ m.dst }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultPlatform":{"editor":"enum","default":"notion","options":["obsidian","notion","yuque"],"label":"默认来源平台"},"$preview":{"width":920,"height":780}}'>
+const PLATFORMS = {
+  obsidian: {
+    srcDisplay: '~/Documents/MyVault',
+    targetSubdir: '导入/Obsidian',
+    btn: '开始迁入 (86 篇)',
+    notes: '86 篇',
+    assets: '34 个 · 12.1 MiB',
+    thirdLabel: '待清洗双链 / Callout',
+    thirdVal: '142 处',
+    rules: [
+      { id: 'r1', label: '转换 [[双链]] 与 ![[嵌入]] 为标准相对链接' },
+      { id: 'r2', label: '转换 Callout 提示框与 ==高亮== 语法' }
+    ],
+    mappings: [
+      { src: 'Daily/2026-11-18.md', dst: '导入/Obsidian/Daily/2026-11-18.md' },
+      { src: 'Projects/Block 架构.md', dst: '导入/Obsidian/Projects/Block 架构.md' },
+      { src: 'Attachments/arch-v2.png', dst: 'assets/arch-v2.png' },
+      { src: 'Reading/设计系统笔记.md', dst: '导入/Obsidian/Reading/设计系统笔记.md' }
+    ]
+  },
+  notion: {
+    srcDisplay: '~/Downloads/Notion-Export-202611.zip',
+    targetSubdir: '导入/Notion',
+    btn: '开始迁入 (128 篇)',
+    notes: '128 篇',
+    assets: '46 个 · 18.4 MiB',
+    thirdLabel: 'CSV 数据库转表格',
+    thirdVal: '9 张表',
+    rules: [
+      { id: 'r1', label: '自动移除文件与目录末尾 32 位随机 ID' },
+      { id: 'r2', label: '将同名 CSV 数据库自动转为 Markdown 表格' }
+    ],
+    mappings: [
+      { src: '工作区 a1b2c3d4.../周报 0123abcd....md', dst: '导入/Notion/工作区/周报.md' },
+      { src: '产品路线 9f8e7d.../需求池 44aa12....csv', dst: '导入/Notion/产品路线/需求池.md (表格)' },
+      { src: '团队文档 77bc.../设计评审 22ef....md', dst: '导入/Notion/团队文档/设计评审.md' },
+      { src: 'media/hero_banner.png', dst: 'assets/hero_banner.png' }
+    ]
+  },
+  yuque: {
+    srcDisplay: '~/Downloads/语雀知识库导出.zip',
+    targetSubdir: '导入/语雀',
+    btn: '开始迁入 (54 篇)',
+    notes: '54 篇',
+    assets: '19 个 · 6.8 MiB',
+    thirdLabel: '待清理 HTML 锚点',
+    thirdVal: '88 处',
+    rules: [
+      { id: 'r1', label: '清理语雀 <a name> 锚点与多余 <br/> 标签' }
+    ],
+    mappings: [
+      { src: '研发规范/接口设计指南.md', dst: '导入/语雀/研发规范/接口设计指南.md' },
+      { src: '研发规范/发版清单.md', dst: '导入/语雀/研发规范/发版清单.md' },
+      { src: 'images/flow.png', dst: 'assets/flow.png' },
+      { src: '产品思考/笔记工具对比.md', dst: '导入/语雀/产品思考/笔记工具对比.md' }
+    ]
+  }
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const platform = st.platform || this.props.defaultPlatform || 'notion';
+    const assetPolicy = st.assetPolicy || 'unified';
+    const conflict = st.conflict || 'rename';
+    const disabledRules = st.disabledRules || {};
+    const info = PLATFORMS[platform] || PLATFORMS.notion;
+
+    const segBtn = (active) =>
+      'height: 26px; padding: 0 11px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; background: ' +
+      (active ? '#ffffff' : 'transparent') + '; color: ' + (active ? '#20242c' : '#526071') +
+      '; font-weight: ' + (active ? '560' : '400') + '; box-shadow: ' + (active ? '0 1px 2px rgba(32,36,44,0.08)' : 'none') + ';';
+
+    const miniSeg = (active) =>
+      'height: 24px; padding: 0 9px; border-radius: 5px; border: none; font-size: 12px; cursor: pointer; background: ' +
+      (active ? '#ffffff' : 'transparent') + '; color: ' + (active ? '#20242c' : '#526071') +
+      '; font-weight: ' + (active ? '560' : '400') + ';';
+
+    const rules = info.rules.map((r) => {
+      const key = platform + '_' + r.id;
+      const on = !disabledRules[key];
+      return {
+        label: r.label,
+        toggle: () => this.setState({ disabledRules: Object.assign({}, disabledRules, { [key]: on }) }),
+        swStyle:
+          'width: 40px; height: 22px; border-radius: 999px; border: none; padding: 2px; display: flex; align-items: center; cursor: pointer; flex-shrink: 0; background: ' +
+          (on ? '#547dd0' : '#d0d5dd') + '; justify-content: ' + (on ? 'flex-end' : 'flex-start') + ';'
+      };
+    });
+
+    return {
+      importBtnLabel: info.btn,
+      pickObs: () => this.setState({ platform: 'obsidian' }),
+      pickNotion: () => this.setState({ platform: 'notion' }),
+      pickYuque: () => this.setState({ platform: 'yuque' }),
+      obsStyle: segBtn(platform === 'obsidian'),
+      notionStyle: segBtn(platform === 'notion'),
+      yuqueStyle: segBtn(platform === 'yuque'),
+      srcDisplay: info.srcDisplay,
+      targetSubdir: info.targetSubdir,
+      rules,
+      assetUnified: () => this.setState({ assetPolicy: 'unified' }),
+      assetLocal: () => this.setState({ assetPolicy: 'local' }),
+      assetUnifiedStyle: miniSeg(assetPolicy === 'unified'),
+      assetLocalStyle: miniSeg(assetPolicy === 'local'),
+      confSkip: () => this.setState({ conflict: 'skip' }),
+      confRename: () => this.setState({ conflict: 'rename' }),
+      confOver: () => this.setState({ conflict: 'overwrite' }),
+      confSkipStyle: miniSeg(conflict === 'skip'),
+      confRenameStyle: miniSeg(conflict === 'rename'),
+      confOverStyle: miniSeg(conflict === 'overwrite'),
+      statNotes: info.notes,
+      statAssets: info.assets,
+      statThirdLabel: info.thirdLabel,
+      statThirdVal: info.thirdVal,
+      mappings: info.mappings
+    };
+  }
+}
+</script>
+</body>
+</html>
