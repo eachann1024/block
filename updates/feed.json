@@ -1,10 +1,142 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-19T06:04:10.411Z",
-  "latest_version": "1.0.696",
-  "latest_tag": "v1.0.696",
+  "updated_at": "2026-11-19T17:22:48.227Z",
+  "latest_version": "1.0.854",
+  "latest_tag": "v1.0.854",
   "releases": [
+    {
+      "version": "1.0.854",
+      "tag": "v1.0.854",
+      "published_at": "2026-11-19T17:22:47Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.854",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化运行性能与资源占用表现。",
+          "改进表格编辑、列宽调整与单元格选择体验。",
+          "新增了一项提升日常记录与编辑效率的实用功能。",
+          "优化复制粘贴与文档格式转换的准确性。",
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。"
+        ],
+        "improvements": [
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "优化全局搜索、页内查找与大纲定位体验。",
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "优化了界面细节与日常编辑操作的顺滑度。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "改进表格编辑、列宽调整与单元格选择体验。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。",
+          "优化笔记导出排版、纸张主题与图片渲染效果。",
+          "优化段落批注与表情回应的展示和交互细节。",
+          "优化运行性能与资源占用表现。",
+          "优化复制粘贴与文档格式转换的准确性。",
+          "支持应用内检查更新、跨版本日志展示与平滑升级。"
+        ],
+        "fixes": [
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "改进表格编辑、列宽调整与单元格选择体验。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "打磨设置面板、快捷键与菜单界面细节。"
+        ],
+        "other": [
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "完善了安装包构建与跨平台发布体验。",
+          "优化运行性能与资源占用表现。",
+          "优化复制粘贴与文档格式转换的准确性。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "打磨设置面板、快捷键与菜单界面细节。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Attach live editor selection snapshot to AI composer.",
+          "Replace rounded app icon with background-free cat mark.",
+          "Add host.perf.snapshot capability, treemap item, and live refresh.",
+          "Adopt 2D Bento storage map and inline hover breakdown without bottom pills.",
+          "Add amber and rose table tint tokens.",
+          "Replace 4-layer mascot SVGs with layered numbered SVGs.",
+          "Apply D1 low-saturation pastel palette to Bento storage tiles and breakdown bars.",
+          "Add settings layout and store detail dimension tokens.",
+          "Add SelectMenu dropdown helper."
+        ],
+        "improvements": [
+          "Optimize editor scroll smoothness by preserving layout cache, culling, and hover stability.",
+          "Simplify AI model selector labels and move AI settings into deck rail.",
+          "Keep default search body blank with generous reserved height.",
+          "Adjust editor body font size and surface tokens.",
+          "Refine Chip sizing and primary fill contrast.",
+          "Replace blue hover/selected tokens with neutral grays and add SelectedBorder.",
+          "Soften light table header background.",
+          "Soften dropdown trigger hover, press, and open border.",
+          "Replace blue notice border and swatch selection with neutral grays.",
+          "Cache note annotations by mtime and clean temp files once per process.",
+          "Shrink Myers diff trace allocations and prune empty history index keys.",
+          "Deduplicate clean-block checks and fast-path plain paragraphs on write.",
+          "Skip redundant macOS lsregister dumps when bundle marker matches."
+        ],
+        "fixes": [
+          "Track inline code edge for caret placement and IME composition.",
+          "Use EmptyPageStage for ghost page column width.",
+          "Hug short tab titles and left-align content.",
+          "Defer block focus and placeholder hints until input is focused.",
+          "Release controller mutex before previewing batch plans and polish AI view inputs.",
+          "Finish Codex and Agy chat turns.",
+          "Disable the block's own type in the handle menu."
+        ],
+        "other": [
+          "Update light tabs artboard and assets.",
+          "Add tab layout variants to edge-floating-panels.",
+          "Add empty-state design drafts and assets.",
+          "Add storage layout design drafts.",
+          "Sync official plugin Beta badges and image-host copy.",
+          "Add light, detail, and installed store artboards.",
+          "Add light folders settings artboards."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.854/block-macos-arm64.dmg",
+          "size": 13240856,
+          "sha256": "917916b5b95e17d7b54c29c392d6bb7e82f2b7143c44bbe990678521e7915c6a"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.854/block-macos-x64.dmg",
+          "size": 14529714,
+          "sha256": "8b825a11e8a9d61a783b786eef6bf09ee5813bdcd7200f8abfebc489420da575"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.854/block-windows-x64-setup.exe",
+          "size": 10158836,
+          "sha256": "8e223925755f46113ab05786f63a73a78275e3fa32b04790c20a4f17765bedc8"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.854/block-linux-x64.deb",
+          "size": 9106882,
+          "sha256": "c65ea5975175f86f2033ce7e21ff5e72e378a013410e62c8da3407b5aca9f0ed"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.854/block-linux-x64.AppImage",
+          "size": 21768696,
+          "sha256": "e813329d7bd686bc7f398e13f8f713f429251b9d6a92605f294a714707fc8b7b"
+        }
+      ]
+    },
     {
       "version": "1.0.696",
       "tag": "v1.0.696",
@@ -66,38 +198,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-macos-arm64.dmg",
-          "size": 12478151,
-          "sha256": "25414b7c85e5e8e1bb4d5f2e2bbfda66324c9f0d513f7c74b0c9da6aecafd6f1"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-macos-x64.dmg",
-          "size": 13633211,
-          "sha256": "7db1484261997a40d71056453291d7297ecbec07bcdc5840f042ebdf8e81c6ab"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-windows-x64-setup.exe",
-          "size": 9378987,
-          "sha256": "91cee69258174cbd8a6ca6db0815707583a8a7b04a92df1e91743d305ce58628"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-linux-x64.deb",
-          "size": 8482622,
-          "sha256": "f7c73c373547038107fa7e6f385c2e293b089947573bf9a27f96053bb374350e"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-linux-x64.AppImage",
-          "size": 21060088,
-          "sha256": "bd9734c53a526ea41249b8f3b72e8debb6c7538342deb740d9a449ca042e4504"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.645",
