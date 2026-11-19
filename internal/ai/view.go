@@ -1180,12 +1180,17 @@ func processDisplayOrder(steps []model.ProcessStep, streaming bool) []int {
 // latestStreamLine is the newest non-empty line of a reply being written, as plain text.
 func latestStreamLine(s string) string {
 	lines := strings.Split(s, "\n")
+	// Code is shown as written: print("**hi**") keeps its stars.
+	code := bui.DiffFenceMask(lines, make([]int, len(lines)))
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
-		if raw == "" || bui.IsDiffTableSep(raw) {
+		if raw == "" || !code[i] && bui.IsDiffTableSep(raw) {
 			continue
 		}
-		t := plainInline(raw)
+		t := raw
+		if !code[i] {
+			t = plainInline(raw)
+		}
 		if t == "" {
 			// 只有 ** 等半截标记时保留原文，避免实时行退回“正在生成回答”。
 			t = raw
