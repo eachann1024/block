@@ -1493,6 +1493,7 @@
   .plug-title-wrap { min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .plug h3 { font-size: 18px; font-weight: 600; color: var(--heading); }
   .plug-badge { height: 21px; padding: 0 7px; border-radius: 999px; background: #eef6f0; color: #1e6b3f; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; }
+  .plug-badge--beta { background: #fef5e7; color: #c9822b; border: 1px solid rgba(201, 130, 43, 0.35); font-size: 11px; letter-spacing: .01em; }
   .plug p { font-size: 14.5px; line-height: 1.65; color: #59606e; }
   .plug-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .plug-chips span { height: 26px; padding: 0 10px; border-radius: 999px; background: #f5f6f8; border: 1px solid #e4e6ea; font-size: 13px; color: #3c4658; display: inline-flex; align-items: center; }
@@ -2628,7 +2629,7 @@
     <article class="plug rv" style="--d:0ms">
       <div class="plug-head">
         <div class="plug-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pf" d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/><path class="ps" d="M7.5 10.5A5 5 0 0 1 16.2 8.5M16.5 13.5A5 5 0 0 1 7.8 15.5"/><path class="pa" d="M16.5 5.8V8.8H13.5M7.5 18.2V15.2H10.5"/></svg></div>
-        <div class="plug-title-wrap"><h3>同步</h3><span class="plug-badge">官方认证</span></div>
+        <div class="plug-title-wrap"><h3>同步</h3><span class="plug-badge">官方认证</span><span class="plug-badge plug-badge--beta">Beta</span></div>
       </div>
       <p>把笔记本增量同步到另一台电脑、网盘或 Git 仓库。文件依然是普通 Markdown，换设备直接打开。</p>
       <div class="plug-chips"><span>目录镜像</span><span>WebDAV</span><span>Git 仓库</span></div>
@@ -2636,15 +2637,15 @@
     <article class="plug rv" style="--d:60ms">
       <div class="plug-head">
         <div class="plug-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pf" d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"/><path class="ps" d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6ZM4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"/><path class="pa" d="M16.5 14V7.5M14 10l2.5-2.5L19 10M9 9.25a1.25 1.25 0 1 0 0 .01"/></svg></div>
-        <div class="plug-title-wrap"><h3>图床上传</h3><span class="plug-badge">官方认证</span></div>
+        <div class="plug-title-wrap"><h3>图床上传</h3><span class="plug-badge">官方认证</span><span class="plug-badge plug-badge--beta">Beta</span></div>
       </div>
-      <p>写完自动把本地图片上传到云端图床并替换链接，发博客或分享文档不用再逐张传图。</p>
+      <p>按勾选的笔记本自动上传本地图片到云端图床并替换外链，兼容 Markdown 与调宽图片标签，发博客更省心。</p>
       <div class="plug-chips"><span>Cloudflare R2</span><span>S3 兼容</span><span>GitHub</span></div>
     </article>
     <article class="plug rv" style="--d:120ms">
       <div class="plug-head">
         <div class="plug-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pf" d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"/><path class="ps" d="M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6ZM8 13h8"/><path class="pa" d="M13 10l3 3-3 3M8 16h3"/></svg></div>
-        <div class="plug-title-wrap"><h3>笔记迁移</h3><span class="plug-badge">官方认证</span></div>
+        <div class="plug-title-wrap"><h3>笔记迁移</h3><span class="plug-badge">官方认证</span><span class="plug-badge plug-badge--beta">Beta</span></div>
       </div>
       <p>支持直接选目录或 ZIP 压缩包，把其他笔记软件导出的旧笔记一键迁入，自动清洗语法并拷贝附件。</p>
       <div class="plug-chips"><span>Obsidian</span><span>Notion</span><span>语雀</span></div>
@@ -2652,7 +2653,7 @@
     <article class="plug rv" style="--d:180ms">
       <div class="plug-head">
         <div class="plug-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pf" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path class="ps" d="M4.6 16.5A9 9 0 1 1 19.4 16.5M12 4.5V6.5M4.5 12H6.5M17.5 12H19.5"/><path class="pa" d="M6.5 13.5H9L10.8 9L13.2 16L15 12.5H17.5"/></svg></div>
-        <div class="plug-title-wrap"><h3>性能与占用</h3><span class="plug-badge">官方认证</span></div>
+        <div class="plug-title-wrap"><h3>性能与占用</h3><span class="plug-badge">官方认证</span><span class="plug-badge plug-badge--beta">Beta</span></div>
       </div>
       <p>实时查看 Block 的 CPU 与物理内存占用，并用分层面积图一目了然掌握 7 类磁盘空间明细。</p>
       <div class="plug-chips"><span>CPU 与内存</span><span>7 类存储面积图</span></div>
