@@ -360,7 +360,7 @@ func (c *Controller) renderHistoryPopover(cUI *ui.Context, pal theme.Palette, an
 						bui.Probe(row, rowID)
 						row.Children(func() {
 							selBtn := ui.ButtonBase(cUI.Key("sel-" + rowID)).Grow(1).MinWidth(0).FillHeight().
-								AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(conv.Title)
+								AlignItems(ui.Center).Justify(ui.Start).Cursor(ui.CursorPointer).Label(conv.Title)
 							selBtn.Children(func() {
 								ui.Text(cUI, conv.Title).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Ellipsis("…")
 							})
