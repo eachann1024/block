@@ -736,10 +736,20 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					})
 				}
 			})
-		})
 
-		// Card 1b: Brand Decoration (window landscape scenes, orb & brand mark visibility).
-		m.renderBrandDecoCard(c, st)
+			decoEnabled := st.BrandDeco.Mode != model.BrandDecoOff
+			settingRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
+				if internalui.TogglePill(c, "settings-brand-deco-toggle", theme.Tr("侧栏装饰动画", "Sidebar Decoration"), &decoEnabled, false) {
+					mode := model.BrandDecoOff
+					if decoEnabled {
+						mode = model.BrandDecoByTime
+					}
+					m.mutateState(func(s *model.AppState) {
+						s.BrandDeco.Mode = mode
+					})
+				}
+			})
+		})
 
 		// Card 2: Editor Typography & Fonts (app_settings_tabs.rs:67-70).
 		edFont, cdFont, lh := theme.Typography()
