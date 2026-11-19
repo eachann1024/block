@@ -1204,7 +1204,7 @@ var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}
 // plainInline strips the Markdown markers that read as noise in a one-line label.
 func plainInline(s string) string {
 	t := plainBlockPrefixRE.ReplaceAllString(strings.TrimSpace(s), "")
-	t = strings.NewReplacer("**", "", "__", "", "`", "").Replace(t)
+	t = strings.NewReplacer("**", "", "`", "").Replace(t)
 	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
 }
