@@ -474,7 +474,8 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 		}
 		tables[si] = ids
 	}
-	for diffSepPass(lines, change, applied, cand, kept, take, indent, tables, seps) {
+	members := diffTableMembers(lines, change)
+	for diffSepPass(lines, change, applied, cand, kept, take, indent, tables, members, seps) {
 	}
 }
 
@@ -483,7 +484,7 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 // blank between them leaves a second separator as a data row); the next pass then
 // sees them apart.
 func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(int) bool,
-	take func(int, bool), indent func(int) int, tables [2][]int, seps []bool) bool {
+	take func(int, bool), indent func(int) int, tables [2][]int, members [2][]bool, seps []bool) bool {
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	oldTable, newTable := tables[0], tables[1]
 	// Rows are read in the written text itself, so code that becomes a table (or a
@@ -576,13 +577,14 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 		if fixed {
 			continue
 		}
-		// taken: a visible change of this very table is accepted, so its new form wins;
+		// taken: a visible change of this very table (a row from its header down in
+		// that text, not paragraph text above it) is accepted, so its new form wins;
 		// touched: it has one at all. A table the review shows unchanged follows the
 		// AI's text, so a separator removed to turn it into text stays removed.
 		taken, touched := false, false
 		oldIDs, newIDs := map[int]bool{}, map[int]bool{}
 		for _, r := range rows {
-			taken = taken || change[r] > 0
+			taken = taken || change[r] > 0 && members[1][r]
 			touched = touched || change[r] != 0
 			if change[r] <= 0 {
 				oldIDs[oldTable[r]] = true
@@ -592,7 +594,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 			}
 		}
 		for _, d := range dels {
-			taken = taken || oldIDs[oldTable[d]]
+			taken = taken || oldIDs[oldTable[d]] && members[0][d]
 			touched = touched || oldIDs[oldTable[d]]
 		}
 		for _, n := range ins {
@@ -664,6 +666,21 @@ func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 		}
 	})
 	return header, sep
+}
+
+// diffTableMembers reports, per side (0 old, 1 new), whether a line is part of a
+// table in that text: its header, separator or a data row; rows above a header are
+// paragraph text.
+func diffTableMembers(lines []string, change []int) (members [2][]bool) {
+	members = [2][]bool{make([]bool, len(lines)), make([]bool, len(lines))}
+	diffTableRuns(lines, change, func(si int, run []int, h int) {
+		if h >= 0 {
+			for _, k := range run[h:] {
+				members[si][k] = true
+			}
+		}
+	})
+	return members
 }
 
 // diffTableRuns calls fn for each block of table rows (contiguous, outside code, at
