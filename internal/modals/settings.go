@@ -1786,7 +1786,7 @@ func folderAddButton(c *ui.Context, id, label string, rect *ui.Rect) bool {
 		}
 	})
 	btn.Children(func() {
-		icons.Draw(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.Accent))
+		icons.DrawAnimated(c, icons.Plus, theme.IconMicro, pal.MonoIconColors(pal.Accent), hov)
 		ui.Text(c, theme.Tr("添加", "Add")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 	})
 	return btn.Clicked()
