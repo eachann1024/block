@@ -20,6 +20,7 @@ const (
 	KindActions   ItemKind = "actions"
 	KindKV        ItemKind = "kv"
 	KindMetrics   ItemKind = "metrics"
+	KindTreemap   ItemKind = "treemap"
 	KindPreview   ItemKind = "preview"
 	KindLogList   ItemKind = "log_list"
 )
@@ -54,6 +55,14 @@ type UIMetric struct {
 	Value string `json:"value"`
 }
 
+type UITreemapTile struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
+	Bytes  uint64 `json:"bytes"`
+	Color  string `json:"color,omitempty"`
+}
+
 type UILogEntry struct {
 	Title  string `json:"title"`
 	Time   string `json:"time"`
@@ -86,19 +95,21 @@ type UIVisibleWhen struct {
 }
 
 type UIItem struct {
-	Kind        ItemKind       `json:"kind"`
-	ID          string         `json:"id,omitempty"`
-	Label       string         `json:"label,omitempty"`
-	Value       any            `json:"value,omitempty"`
-	Placeholder string         `json:"placeholder,omitempty"`
-	Options     []UIOption     `json:"options,omitempty"`
-	Buttons     []UIButton     `json:"buttons,omitempty"`
-	Rows        []UIKVRow      `json:"rows,omitempty"`
-	Metrics     []UIMetric     `json:"metrics,omitempty"`
-	Preview     *UIPreview     `json:"preview,omitempty"`
-	EmptyText   string         `json:"empty_text,omitempty"`
-	Entries     []UILogEntry   `json:"entries,omitempty"`
-	VisibleWhen *UIVisibleWhen `json:"visible_when,omitempty"`
+	Kind        ItemKind        `json:"kind"`
+	ID          string          `json:"id,omitempty"`
+	Label       string          `json:"label,omitempty"`
+	Value       any             `json:"value,omitempty"`
+	Placeholder string          `json:"placeholder,omitempty"`
+	Options     []UIOption      `json:"options,omitempty"`
+	Buttons     []UIButton      `json:"buttons,omitempty"`
+	Rows        []UIKVRow       `json:"rows,omitempty"`
+	Metrics     []UIMetric      `json:"metrics,omitempty"`
+	Tiles       []UITreemapTile `json:"tiles,omitempty"`
+	TotalBytes  uint64          `json:"total_bytes,omitempty"`
+	Preview     *UIPreview      `json:"preview,omitempty"`
+	EmptyText   string          `json:"empty_text,omitempty"`
+	Entries     []UILogEntry    `json:"entries,omitempty"`
+	VisibleWhen *UIVisibleWhen  `json:"visible_when,omitempty"`
 }
 
 type UICard struct {
@@ -108,10 +119,11 @@ type UICard struct {
 }
 
 type UIPage struct {
-	Title         string     `json:"title"`
-	Status        string     `json:"status,omitempty"`
-	HeaderActions []UIButton `json:"header_actions,omitempty"`
-	Cards         []UICard   `json:"cards"`
+	Title             string     `json:"title"`
+	Status            string     `json:"status,omitempty"`
+	RefreshIntervalMs int        `json:"refresh_interval_ms,omitempty"`
+	HeaderActions     []UIButton `json:"header_actions,omitempty"`
+	Cards             []UICard   `json:"cards"`
 }
 
 func DecodePageStrict(raw json.RawMessage) (*UIPage, error) {
@@ -167,6 +179,9 @@ func (p *UIPage) Validate() error {
 	}
 	if err := checkUserText("page.status", p.Status, false); err != nil {
 		return err
+	}
+	if p.RefreshIntervalMs != 0 && (p.RefreshIntervalMs < 500 || p.RefreshIntervalMs > 60000) {
+		return fmt.Errorf("page.refresh_interval_ms must be 0 or between 500 and 60000, got %d", p.RefreshIntervalMs)
 	}
 	seenActionIDs := map[string]bool{}
 	for i, b := range p.HeaderActions {
@@ -326,6 +341,27 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 				return err
 			}
 			if err := checkUserText(fmt.Sprintf("%s.metrics[%d].value", prefix, mi), m.Value, true); err != nil {
+				return err
+			}
+		}
+	case KindTreemap:
+		if len(item.Tiles) == 0 {
+			return fmt.Errorf("%s.tiles must contain at least 1 tile", prefix)
+		}
+		seenTileIDs := map[string]bool{}
+		for ti, tile := range item.Tiles {
+			tp := fmt.Sprintf("%s.tiles[%d]", prefix, ti)
+			if strings.TrimSpace(tile.ID) == "" {
+				return fmt.Errorf("%s.id is required", tp)
+			}
+			if seenTileIDs[tile.ID] {
+				return fmt.Errorf("%s.id %q is duplicated", tp, tile.ID)
+			}
+			seenTileIDs[tile.ID] = true
+			if err := checkText(tp+".label", tile.Label, true); err != nil {
+				return err
+			}
+			if err := checkText(tp+".detail", tile.Detail, false); err != nil {
 				return err
 			}
 		}

@@ -57,8 +57,10 @@ type SupervisorConfig struct {
 	GetNotebookRoot func() string
 	GetActiveNote   func() string
 	GetLocale       func() string
+	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory   func(title, defaultPath string, onPicked func(path string))
 	OnChanged       func()
+	OnRedraw        func()
 }
 
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
@@ -73,6 +75,8 @@ type Supervisor struct {
 	installed       []InstalledApp
 	runtimes        map[string]*Runtime
 	views           map[viewKey]*PluginViewState
+	liveTimers      map[string]*time.Timer
+	liveViewedAt    map[string]time.Time
 	storeRefreshing bool
 	installingID    string
 	storeErr        string
@@ -84,12 +88,14 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	_ = sm.EnsureDirs()
 	installed, _ := sm.ListInstalled()
 	return &Supervisor{
-		store:     sm,
-		cfg:       cfg,
-		catalog:   sm.LoadCachedOrSeedCatalog(),
-		installed: installed,
-		runtimes:  make(map[string]*Runtime),
-		views:     make(map[viewKey]*PluginViewState),
+		store:        sm,
+		cfg:          cfg,
+		catalog:      sm.LoadCachedOrSeedCatalog(),
+		installed:    installed,
+		runtimes:     make(map[string]*Runtime),
+		views:        make(map[viewKey]*PluginViewState),
+		liveTimers:   make(map[string]*time.Timer),
+		liveViewedAt: make(map[string]time.Time),
 	}
 }
 
@@ -186,6 +192,101 @@ func (s *Supervisor) notifyChanged() {
 	}
 }
 
+func (s *Supervisor) notifyRedraw() {
+	if s.cfg.OnRedraw != nil {
+		s.cfg.OnRedraw()
+		return
+	}
+	s.notifyChanged()
+}
+
+// NotifyRedraw requests a lightweight UI redraw without rescanning the notebook.
+func (s *Supervisor) NotifyRedraw() {
+	s.notifyRedraw()
+}
+
+// ScheduleLiveRefresh marks pluginID as actively displayed and schedules a one-shot
+// background render tick after intervalMs. When the user navigates away, the timer
+// expires without rescheduling.
+func (s *Supervisor) ScheduleLiveRefresh(pluginID string, intervalMs int) {
+	if intervalMs < 500 || intervalMs > 60000 {
+		return
+	}
+	interval := time.Duration(intervalMs) * time.Millisecond
+	now := time.Now()
+
+	s.mu.Lock()
+	s.liveViewedAt[pluginID] = now
+	if _, scheduled := s.liveTimers[pluginID]; scheduled {
+		s.mu.Unlock()
+		return
+	}
+	s.liveTimers[pluginID] = time.AfterFunc(interval, func() {
+		s.runLiveRefreshTick(pluginID, interval)
+	})
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) stopLiveTimerLocked(pluginID string) {
+	if t, ok := s.liveTimers[pluginID]; ok {
+		t.Stop()
+		delete(s.liveTimers, pluginID)
+	}
+	delete(s.liveViewedAt, pluginID)
+}
+
+func (s *Supervisor) runLiveRefreshTick(pluginID string, interval time.Duration) {
+	s.mu.Lock()
+	delete(s.liveTimers, pluginID)
+	lastViewed := s.liveViewedAt[pluginID]
+	s.mu.Unlock()
+
+	maxIdle := max(interval*2, 2500*time.Millisecond)
+	if lastViewed.IsZero() || time.Since(lastViewed) > maxIdle {
+		return
+	}
+	if !s.IsPluginEnabled(pluginID) {
+		return
+	}
+
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot}
+	s.mu.RLock()
+	vs := s.views[key]
+	if vs == nil || vs.Loading || vs.BusyAction != "" || vs.Page == nil {
+		s.mu.RUnlock()
+		return
+	}
+	valsCopy := make(map[string]any, len(vs.Values))
+	for k, v := range vs.Values {
+		valsCopy[k] = v
+	}
+	s.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	defer s.lockPluginRPC(pluginID)()
+
+	rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
+	if err != nil {
+		return
+	}
+	rt.SetNotebookRoot(nbRoot)
+	rt.SetActiveNote(s.activeNoteFor(nbRoot))
+
+	page, err := rt.RenderWithValues(ctx, SurfaceSettingsPage, valsCopy)
+	if err != nil || page == nil {
+		return
+	}
+
+	s.mu.Lock()
+	if cur := s.views[key]; cur != nil && !cur.Loading && cur.BusyAction == "" {
+		cur.Page = page
+	}
+	s.mu.Unlock()
+	s.notifyRedraw()
+}
+
 func (s *Supervisor) Catalog() *StoreIndex {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -241,6 +342,7 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	if !enabled {
 		rt = s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
+		s.stopLiveTimerLocked(pluginID)
 		s.deleteViewsForPluginLocked(pluginID)
 	}
 	s.mu.Unlock()
@@ -466,6 +568,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 }
 
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
+	s.stopLiveTimerLocked(pluginID)
 	for k := range s.views {
 		if k.pluginID == pluginID {
 			delete(s.views, k)
@@ -670,12 +773,13 @@ func (s *Supervisor) ensureRuntime(ctx context.Context, pluginID, nbRoot string)
 		hostVer = "1.0.379"
 	}
 	rt, err := StartRuntime(context.Background(), inst.Manifest, HostConfig{
-		PluginDir:    inst.InstallDir,
-		DataDir:      inst.DataDir,
-		NotebookRoot: nbRoot,
-		ActiveNote:   s.activeNoteFor(nbRoot),
-		Locale:       s.Locale(),
-		HostVersion:  hostVer,
+		PluginDir:       inst.InstallDir,
+		DataDir:         inst.DataDir,
+		NotebookRoot:    nbRoot,
+		ActiveNote:      s.activeNoteFor(nbRoot),
+		Locale:          s.Locale(),
+		HostVersion:     hostVer,
+		GetPerfSnapshot: s.cfg.GetPerfSnapshot,
 	})
 	if err != nil {
 		return nil, err
@@ -980,6 +1084,9 @@ func openLocalPathInOS(rawPath string, reveal bool) {
 
 func (s *Supervisor) ShutdownAll() {
 	s.mu.Lock()
+	for id := range s.liveTimers {
+		s.stopLiveTimerLocked(id)
+	}
 	rts := make([]*Runtime, 0, len(s.runtimes))
 	for id, rt := range s.runtimes {
 		rts = append(rts, rt)
