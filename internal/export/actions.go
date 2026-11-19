@@ -17,26 +17,97 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+type cachedExportPayload struct {
+	rev  uint64
+	data []byte
+}
+
 type exportRequest struct {
-	doc        *model.Doc
-	notePath   string
-	format     model.ExportFormat
-	prefs      model.ExportPreferences
-	previewRev uint64
+	doc           *model.Doc
+	notePath      string
+	format        model.ExportFormat
+	prefs         model.ExportPreferences
+	previewRev    uint64
+	exportDataRev uint64
 }
 
 // requestLocked captures the current options and the immutable document snapshot.
 func (c *Controller) requestLocked() exportRequest {
 	return exportRequest{
-		doc:        c.activeDocLocked(),
-		notePath:   c.notePath,
-		format:     c.format,
-		prefs:      c.renderPrefsLocked(),
-		previewRev: c.previewRev,
+		doc:           c.activeDocLocked(),
+		notePath:      c.notePath,
+		format:        c.format,
+		prefs:         c.renderPrefsLocked(),
+		previewRev:    c.previewRev,
+		exportDataRev: c.exportDataRev,
 	}
 }
 
-func (req exportRequest) copy(services ui.Services) error {
+func (c *Controller) exportBytes(req exportRequest, format model.ExportFormat) ([]byte, error) {
+	c.mu.Lock()
+	if c.exportDataRev == req.exportDataRev && c.cachedExports != nil {
+		if entry, ok := c.cachedExports[format]; ok && entry.rev == req.exportDataRev {
+			c.mu.Unlock()
+			return entry.data, nil
+		}
+	}
+	c.mu.Unlock()
+
+	prefs := req.prefs
+	prefs.Format = format
+	if prefs.Watermark != nil {
+		wm := *prefs.Watermark && formatSupportsWatermark(format)
+		prefs.Watermark = &wm
+	}
+	raw, err := markdown.ExportDocument(req.doc, req.notePath, format, prefs)
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	if c.open && c.exportDataRev == req.exportDataRev {
+		if c.cachedExports == nil {
+			c.cachedExports = make(map[model.ExportFormat]cachedExportPayload)
+		}
+		c.cachedExports[format] = cachedExportPayload{rev: req.exportDataRev, data: raw}
+	}
+	c.mu.Unlock()
+	return raw, nil
+}
+
+func writeExportFileAtomic(outPath string, data []byte) error {
+	dir := filepath.Dir(outPath)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	tmp, err := os.CreateTemp(dir, ".block-export-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, outPath); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
+}
+
+func (c *Controller) copyWithCache(req exportRequest, services ui.Services) error {
 	if req.doc == nil {
 		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
 	}
@@ -46,7 +117,7 @@ func (req exportRequest) copy(services ui.Services) error {
 	default:
 		format = model.ExportPNG
 	}
-	raw, err := markdown.ExportDocument(req.doc, req.notePath, format, req.prefs)
+	raw, err := c.exportBytes(req, format)
 	if err != nil {
 		return err
 	}
@@ -75,7 +146,7 @@ func (c *Controller) CopyToClipboard() error {
 }
 
 func (c *Controller) copyRequest(req exportRequest, services ui.Services) error {
-	err := req.copy(services)
+	err := c.copyWithCache(req, services)
 	c.mu.Lock()
 	if c.isCurrentRequestLocked(req) {
 		if err != nil {
@@ -105,7 +176,10 @@ func (c *Controller) saveRequest(req exportRequest, outPath string) error {
 	if req.doc == nil {
 		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
 	}
-	err := markdown.ExportToFile(req.doc, req.notePath, outPath, req.format, req.prefs)
+	data, err := c.exportBytes(req, req.format)
+	if err == nil {
+		err = writeExportFileAtomic(outPath, data)
+	}
 	if absOut, absErr := filepath.Abs(outPath); absErr == nil {
 		outPath = absOut
 	}
