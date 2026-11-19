@@ -129,6 +129,7 @@ func appleScriptUTIsForFilters(filters []mygo.FileFilter) []string {
 		"txt":      "public.plain-text",
 		"html":     "public.html",
 		"json":     "public.json",
+		"zip":      "public.zip-archive",
 	}
 	hasImage := false
 	for _, f := range filters {
