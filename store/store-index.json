@@ -142,18 +142,18 @@
         "zh": "性能与占用",
         "en": "Performance & Usage"
       },
-      "version": "1.2.10",
+      "version": "1.2.11",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-diagnostics",
       "summary": {
         "zh": "实时监控 Block 的 CPU 与物理内存，并以面积图展示 7 类磁盘空间占用",
         "en": "Monitor live Block CPU and RSS memory with a 7-category storage treemap"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.2.10/block-diagnostics-v1.2.10.tar.gz",
-      "sha256": "556046d8424e8c9bb83bcb93a71a6c36144807aaf684d3e51584eaec5d08ee09",
+      "download_url": "https://github.com/blockmd-plugins/block-diagnostics/releases/download/v1.2.11/block-diagnostics-v1.2.11.tar.gz",
+      "sha256": "472f83d5ee0c02ead076fe885022b49558ca0b50afe30a9e43a65a53d759a4f1",
       "downloads": 321,
       "verified": true,
-      "updated_at": "2026-11-19T07:41:33Z",
+      "updated_at": "2026-11-19T08:02:26Z",
       "permissions": [
         "storage",
         "notes:read"
