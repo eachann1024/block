@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"testing"
 	"time"
 
 	"block/internal/files"
@@ -46,10 +48,13 @@ type TabSurface struct {
 	Zoom          float32
 	ZoomFitMode   bool
 
-	ImgSrc    ui.ImageSource
-	ImgLoaded bool
-	ImgErr    string
-	SVGSrc    *ui.SVG
+	imgMu      sync.Mutex
+	ImgSrc     ui.ImageSource
+	ImgLoaded  bool
+	ImgLoading bool
+	ImgErr     string
+	OnRedraw   func()
+	SVGSrc     *ui.SVG
 	SVGText   string
 	SVGParsed bool
 
@@ -108,21 +113,60 @@ func (s *TabSurface) reparseSVG() {
 }
 
 func (s *TabSurface) ensureImageLoaded() {
-	if s.ImgLoaded {
+	s.imgMu.Lock()
+	if s.ImgLoaded || s.ImgLoading {
+		s.imgMu.Unlock()
+		return
+	}
+	onRedraw := s.OnRedraw
+	path := s.Path
+	if onRedraw != nil && !testing.Testing() && !blockui.IsProbeEnabled() {
+		s.ImgLoading = true
+		s.imgMu.Unlock()
+		go func() {
+			raw, err := os.ReadFile(path)
+			var src ui.ImageSource
+			var errStr string
+			if err != nil {
+				errStr = err.Error()
+			} else {
+				decoded, decErr := ui.DecodeImage(raw)
+				if decErr != nil {
+					errStr = decErr.Error()
+				} else {
+					src = decoded
+				}
+			}
+			s.imgMu.Lock()
+			s.ImgLoading = false
+			s.ImgLoaded = true
+			s.ImgSrc = src
+			s.ImgErr = errStr
+			s.imgMu.Unlock()
+			onRedraw()
+		}()
 		return
 	}
 	s.ImgLoaded = true
-	raw, err := os.ReadFile(s.Path)
+	s.imgMu.Unlock()
+
+	raw, err := os.ReadFile(path)
 	if err != nil {
+		s.imgMu.Lock()
 		s.ImgErr = err.Error()
+		s.imgMu.Unlock()
 		return
 	}
 	src, err := ui.DecodeImage(raw)
 	if err != nil {
+		s.imgMu.Lock()
 		s.ImgErr = err.Error()
+		s.imgMu.Unlock()
 		return
 	}
+	s.imgMu.Lock()
 	s.ImgSrc = src
+	s.imgMu.Unlock()
 }
 
 // TitlebarSurface maps this tab surface to its contextual titlebar tool set.
@@ -357,8 +401,12 @@ func (s *TabSurface) Render(
 				card := blockui.Elevate(ui.Column(c).Padding(theme.Space16).Radius(theme.RadiusXL).Background(pal.Paper).
 					Border(1, pal.Hairline).Center().Gap(theme.Space10), theme.ElevationDialog)
 				card.Children(func() {
-					if s.ImgSrc != nil {
-						iw, ih := ui.ImageSize(s.ImgSrc)
+					s.imgMu.Lock()
+					imgSrc := s.ImgSrc
+					imgErr := s.ImgErr
+					s.imgMu.Unlock()
+					if imgSrc != nil {
+						iw, ih := ui.ImageSize(imgSrc)
 						if iw <= 0 {
 							iw = 320
 						}
@@ -371,14 +419,14 @@ func (s *TabSurface) Render(
 							s.FitScale = scale
 							drawW, drawH = iw*scale, ih*scale
 						}
-						ui.Image(c, s.ImgSrc).Size(max(drawW, 4), max(drawH, 4))
+						ui.Image(c, imgSrc).Size(max(drawW, 4), max(drawH, 4))
 						ui.Text(c, fmt.Sprintf("%s · %dx%d", filepath.Base(s.Path), int(iw), int(ih))).
 							FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 					} else {
 						icons.Duo(c, icons.Image, 48, true)
 						ui.Text(c, filepath.Base(s.Path)).FontSize(theme.FontTitle).FontWeight(theme.WeightControl).TextColor(pal.Text)
-						if s.ImgErr != "" {
-							ui.Text(c, s.ImgErr).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
+						if imgErr != "" {
+							ui.Text(c, imgErr).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						}
 					}
 				})
@@ -414,6 +462,14 @@ type PageHistoryView struct {
 	Mode             string // "diff" or "clean"
 	ConfirmOpen      bool
 	ErrorMsg         string
+
+	lastStatCheck   time.Time
+	lastStatMod     time.Time
+	lastStatSize    int64
+	hasStat         bool
+	cleanCachedText string
+	cleanCachedDoc  *model.Doc
+	previewScroll   ui.ScrollState
 }
 
 // HistoryToast represents the undoable banner shown at the top of the note after restoring a snapshot.
@@ -436,8 +492,16 @@ func (h *PageHistoryView) OpenForNote(
 	h.NotePath = notePath
 	h.CurrentText = currentText
 	h.IsReadOnly = false
-	if info, err := os.Stat(notePath); err == nil && info.Mode().Perm()&0o200 == 0 {
-		h.IsReadOnly = true
+	h.hasStat = false
+	h.lastStatCheck = time.Time{}
+	if info, err := os.Stat(notePath); err == nil {
+		if info.Mode().Perm()&0o200 == 0 {
+			h.IsReadOnly = true
+		}
+		h.lastStatMod = info.ModTime()
+		h.lastStatSize = info.Size()
+		h.hasStat = true
+		h.lastStatCheck = time.Now()
 	}
 	h.ExternalConflict = false
 	h.Entries = append([]model.HistorySnapshot(nil), entries...)
@@ -449,6 +513,9 @@ func (h *PageHistoryView) OpenForNote(
 	h.SelectedID = ""
 	h.SelectedText = ""
 	h.DiffLines = nil
+	h.cleanCachedText = ""
+	h.cleanCachedDoc = nil
+	h.previewScroll = ui.ScrollState{}
 	if len(h.Entries) > 0 {
 		h.SelectVersion(h.Entries[0].ID, loadSnap, diffFn)
 	}
@@ -458,6 +525,22 @@ func (h *PageHistoryView) OpenForNote(
 func (h *PageHistoryView) CheckExternalConflict() bool {
 	if !h.Open || h.NotePath == "" {
 		return false
+	}
+	if h.ExternalConflict {
+		return true
+	}
+	now := time.Now()
+	if !testing.Testing() && !blockui.IsProbeEnabled() && !h.lastStatCheck.IsZero() && now.Sub(h.lastStatCheck) < 1500*time.Millisecond {
+		return h.ExternalConflict
+	}
+	h.lastStatCheck = now
+	if info, err := os.Stat(h.NotePath); err == nil {
+		if h.hasStat && info.ModTime().Equal(h.lastStatMod) && info.Size() == h.lastStatSize {
+			return h.ExternalConflict
+		}
+		h.lastStatMod = info.ModTime()
+		h.lastStatSize = info.Size()
+		h.hasStat = true
 	}
 	diskTxt, _, err := files.ReadNote(h.NotePath)
 	if err == nil && diskTxt != h.CurrentText {
@@ -682,8 +765,9 @@ func (h *PageHistoryView) Render(
 				if narrowHist {
 					previewPadX = 20
 				}
-				previewCol := blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
+				previewCol := blockui.Scroll(c, &h.previewScroll).Grow(1).MinHeight(0).FillWidth().Padding(28, previewPadX, 40, previewPadX).Background(pal.Paper)
 				blockui.Probe(previewCol, "history-preview")
+				previewBounds := previewCol.Bounds()
 				_, codeFont, _ := theme.Typography()
 				edFont := theme.ResolvedEditorFont()
 				if strings.TrimSpace(codeFont) == "" {
@@ -712,10 +796,32 @@ func (h *PageHistoryView) Render(
 							return
 						}
 						if h.Mode == "clean" {
-							renderHistoryCleanMarkdown(c, h.SelectedText, edFont, codeFont)
+							if h.cleanCachedDoc == nil || h.cleanCachedText != h.SelectedText {
+								h.cleanCachedText = h.SelectedText
+								h.cleanCachedDoc = markdown.ParseMarkdown(h.SelectedText)
+							}
+							renderHistoryCleanDoc(c, h.cleanCachedDoc, edFont, codeFont)
 							return
 						}
-						for ix, dl := range h.DiffLines {
+						const estDiffRowPitch float32 = 34
+						firstIdx, lastIdx := 0, len(h.DiffLines)
+						if len(h.DiffLines) > 160 && !blockui.IsProbeEnabled() {
+							vpH := previewBounds.H
+							if vpH <= 0 {
+								vpH = 900
+							}
+							scrollY := max(h.previewScroll.Y, 0)
+							firstIdx = max(int((scrollY-400)/estDiffRowPitch), 0)
+							lastIdx = min(int((scrollY+vpH+400)/estDiffRowPitch)+1, len(h.DiffLines))
+							if firstIdx >= lastIdx {
+								firstIdx = max(lastIdx-1, 0)
+							}
+						}
+						if firstIdx > 0 {
+							ui.Box(c.Key("hist-diff-top")).FillWidth().Height(max(float32(firstIdx)*estDiffRowPitch-8, 0))
+						}
+						for ix := firstIdx; ix < lastIdx; ix++ {
+							dl := h.DiffLines[ix]
 							c.Key(fmt.Sprintf("hist-diff-%d", ix))
 							prefix := "  "
 							bg := ui.Transparent
@@ -734,6 +840,9 @@ func (h *PageHistoryView) Render(
 							row.Children(func() {
 								ui.Text(c, prefix+dl.Text).Font(codeFont).FontSize(theme.FontBody).LineHeight(1.5).TextColor(fg).Grow(1).MinWidth(0)
 							})
+						}
+						if rem := len(h.DiffLines) - lastIdx; rem > 0 {
+							ui.Box(c.Key("hist-diff-bot")).FillWidth().Height(max(float32(rem)*estDiffRowPitch-8, 0))
 						}
 					})
 				})
@@ -835,8 +944,11 @@ func (h *PageHistoryView) Render(
 }
 
 func renderHistoryCleanMarkdown(c *ui.Context, rawText, edFont, codeFont string) {
+	renderHistoryCleanDoc(c, markdown.ParseMarkdown(rawText), edFont, codeFont)
+}
+
+func renderHistoryCleanDoc(c *ui.Context, doc *model.Doc, edFont, codeFont string) {
 	pal := theme.Ocean()
-	doc := markdown.ParseMarkdown(rawText)
 	if doc == nil || len(doc.Blocks) == 0 {
 		ui.Text(c, theme.Tr("（空笔记）", "(Empty note)")).FontSize(theme.FontTitle).TextColor(pal.TextSecondary)
 		return
