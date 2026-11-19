@@ -1,10 +1,104 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-18T15:35:17.351Z",
-  "latest_version": "1.0.645",
-  "latest_tag": "v1.0.645",
+  "updated_at": "2026-11-19T06:04:10.411Z",
+  "latest_version": "1.0.696",
+  "latest_tag": "v1.0.696",
   "releases": [
+    {
+      "version": "1.0.696",
+      "tag": "v1.0.696",
+      "published_at": "2026-11-19T06:04:09Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.696",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "优化笔记导出排版、纸张主题与图片渲染效果。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "改进表格编辑、列宽调整与单元格选择体验。",
+          "新增了一项提升日常记录与编辑效率的实用功能。",
+          "优化智能体连接、模型选择与对话辅助体验。"
+        ],
+        "improvements": [
+          "优化了界面细节与日常编辑操作的顺滑度。",
+          "优化笔记导出排版、纸张主题与图片渲染效果。",
+          "优化全局搜索、页内查找与大纲定位体验。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化段落批注与表情回应的展示和交互细节。"
+        ],
+        "fixes": [
+          "优化复制粘贴与文档格式转换的准确性。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化笔记导出排版、纸张主题与图片渲染效果。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Replace header icon with looping cat blink mark.",
+          "Add paper style.go, paper themes.go.",
+          "Add note statistics and tab file reveal.",
+          "Simplify AI settings to single-column accordion, add provider modal, and enforce full permissions.",
+          "Replace fake status pill with muted status text and enable toggle.",
+          "Keep only 3 API provider presets and add T3 Code-style local agent onboarding."
+        ],
+        "improvements": [
+          "Polish quick capture and dot pager controls.",
+          "Implement differentiated 12-theme paper export rendering and theme picker thumbnails.",
+          "Keep the outline rail below window popups.",
+          "Render app version in muted secondary text.",
+          "Use native fonts for the default interface and editor.",
+          "Hide AI actions when the assistant is disabled.",
+          "Rebuild website hero mock to match real app shell with tabs, rendered blocks and adaptive layout.",
+          "Prefer available right margin for annotation badges."
+        ],
+        "fixes": [
+          "Deduplicate LaunchServices app registrations and add Markdown document icon.",
+          "Paint brand scene behind panels and make sidebar search transparent.",
+          "Unify two-step Cmd+A block selection across Quick Note and all block types.",
+          "Fix paper export fidelity and preserve long documents."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-macos-arm64.dmg",
+          "size": 12478151,
+          "sha256": "25414b7c85e5e8e1bb4d5f2e2bbfda66324c9f0d513f7c74b0c9da6aecafd6f1"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-macos-x64.dmg",
+          "size": 13633211,
+          "sha256": "7db1484261997a40d71056453291d7297ecbec07bcdc5840f042ebdf8e81c6ab"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-windows-x64-setup.exe",
+          "size": 9378987,
+          "sha256": "91cee69258174cbd8a6ca6db0815707583a8a7b04a92df1e91743d305ce58628"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-linux-x64.deb",
+          "size": 8482622,
+          "sha256": "f7c73c373547038107fa7e6f385c2e293b089947573bf9a27f96053bb374350e"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.696/block-linux-x64.AppImage",
+          "size": 21060088,
+          "sha256": "bd9734c53a526ea41249b8f3b72e8debb6c7538342deb740d9a449ca042e4504"
+        }
+      ]
+    },
     {
       "version": "1.0.645",
       "tag": "v1.0.645",
@@ -40,38 +134,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.645/block-macos-arm64.dmg",
-          "size": 11146105,
-          "sha256": "d786a97fdbf317042173b3534d2f46adc6d9ccbaa857cadf02071ce6a36d522d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.645/block-macos-x64.dmg",
-          "size": 12253594,
-          "sha256": "31734190677e256387cc1ba710424fb8bbfed2cf342bff3c19eb03b4e385ec81"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.645/block-windows-x64-setup.exe",
-          "size": 9010723,
-          "sha256": "28ea867b57093a5ce5486485500e683fc849eadcdc88f6d546f98a9ccde7dd71"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.645/block-linux-x64.deb",
-          "size": 8191212,
-          "sha256": "f449f722a474d292f97347539318eea8db63027a51f39d1289e67001cef5fa8f"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.645/block-linux-x64.AppImage",
-          "size": 20732408,
-          "sha256": "b4e1beb982d8db3de94ba70468bdea06aea1a081e497c3236b0fb2382a610017"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.633",
