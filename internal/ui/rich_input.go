@@ -123,9 +123,9 @@ type RichInputOptions struct {
 	// OnSelect runs when selection/caret moves without editing text.
 	OnSelect func(anchor, caret int)
 	// OnCopy optionally overrides copy command / Cmd+C (e.g. to copy rich Markdown).
-	OnCopy func() bool
+	OnCopy func(svc ui.Services) bool
 	// OnCut optionally overrides cut command / Cmd+X (e.g. to cut rich Markdown).
-	OnCut func() bool
+	OnCut func(svc ui.Services) bool
 	// OnPaste intercepts paste commands and Cmd/Ctrl+V before plain text insertion.
 	OnPaste func(svc ui.Services, pastedText string) bool
 	// OnPastePlain intercepts pasteAndMatchStyle and Shift+Cmd/Ctrl+V for unformatted literal paste.
@@ -187,8 +187,8 @@ type RichInputState struct {
 	codeEdge        RichCodeEdge
 	onChange       func(newText string, anchor, caret int)
 	onSelect       func(anchor, caret int)
-	onCopy         func() bool
-	onCut          func() bool
+	onCopy         func(ui.Services) bool
+	onCut          func(ui.Services) bool
 	onPaste        func(svc ui.Services, pastedText string) bool
 	onPastePlain   func(svc ui.Services, pastedText string) bool
 	onKey          func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
@@ -881,35 +881,56 @@ func richLinkRects(lay *ui.TextLayout, text string, link RichLinkRange) []ui.Rec
 	})
 }
 
+func (s *RichInputState) clearComposition() {
+	s.compose = ""
+	s.composing = false
+	s.composeCaret = 0
+	s.composeSelected = ui.TextInputRange{}
+}
+
+func (s *RichInputState) settleCompositionBeforeCommand() {
+	if !s.Composing() {
+		return
+	}
+	if s.readOnly {
+		s.clearComposition()
+		return
+	}
+	s.UnmarkText()
+}
+
 func (s *RichInputState) handleCommand(cmd string) bool {
 	switch cmd {
 	case "copy":
-		if s.onCopy != nil && s.onCopy() {
+		if s.onCopy != nil && s.onCopy(s.services) {
 			return true
 		}
 		lo, hi := s.OrderedSelection()
 		if hi > lo {
 			rs := []rune(s.text)
 			s.services.WriteClipboard(string(rs[lo:hi]))
-			return true
 		}
+		return true
 	case "cut":
-		if s.onCut != nil && s.onCut() {
+		if s.readOnly {
+			return true
+		}
+		s.settleCompositionBeforeCommand()
+		if s.onCut != nil && s.onCut(s.services) {
 			return true
 		}
 		lo, hi := s.OrderedSelection()
 		if hi > lo {
 			rs := []rune(s.text)
 			s.services.WriteClipboard(string(rs[lo:hi]))
-			if !s.readOnly {
-				s.replaceRunes(lo, hi, "")
-			}
-			return true
+			s.replaceRunes(lo, hi, "")
 		}
+		return true
 	case "paste":
 		if s.readOnly {
 			return true
 		}
+		s.settleCompositionBeforeCommand()
 		clip := s.services.ReadClipboard()
 		if s.onPaste != nil && s.onPaste(s.services, clip) {
 			return true
@@ -923,6 +944,7 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 		if s.readOnly {
 			return true
 		}
+		s.settleCompositionBeforeCommand()
 		clip := s.services.ReadClipboard()
 		if s.onPastePlain != nil && s.onPastePlain(s.services, clip) {
 			return true
@@ -933,6 +955,7 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 		}
 		return true
 	case "selectAll":
+		s.settleCompositionBeforeCommand()
 		if s.onKey != nil && s.onKey(ui.KeyA, ui.Cmd, s.text, s.anchor, s.caret) {
 			return true
 		}
@@ -940,6 +963,8 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 		s.anchor = 0
 		s.caret = n
 		s.affinity = ui.TextDownstream
+		s.codeEdge = RichCodeEdgeNone
+		s.hasDesired = false
 		if s.onSelect != nil {
 			s.onSelect(s.anchor, s.caret)
 		}
@@ -948,16 +973,25 @@ func (s *RichInputState) handleCommand(cmd string) bool {
 		if s.readOnly {
 			return true
 		}
+		s.settleCompositionBeforeCommand()
 		lo, hi := s.OrderedSelection()
 		if hi > lo {
 			s.replaceRunes(lo, hi, "")
 		}
 		return true
 	case "undo":
+		if s.readOnly {
+			return true
+		}
+		s.clearComposition()
 		if s.onKey != nil {
 			return s.onKey(ui.KeyZ, ui.Cmd, s.text, s.anchor, s.caret)
 		}
 	case "redo":
+		if s.readOnly {
+			return true
+		}
+		s.clearComposition()
 		if s.onKey != nil {
 			return s.onKey(ui.KeyZ, ui.Cmd|ui.Shift, s.text, s.anchor, s.caret)
 		}
@@ -1031,12 +1065,14 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 		}
 	}
 
-	if m == ui.Cmd {
+	if !shift && m == ui.Cmd {
 		switch key {
 		case ui.KeyA:
 			s.anchor = 0
 			s.caret = utf8.RuneCountInString(s.text)
 			s.affinity = ui.TextDownstream
+			s.codeEdge = RichCodeEdgeNone
+			s.hasDesired = false
 			if s.onSelect != nil {
 				s.onSelect(s.anchor, s.caret)
 			}
@@ -1049,8 +1085,17 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 			return s.handleCommand("paste")
 		}
 	}
-	if (m == (ui.Cmd|ui.Shift) || m == (ui.Cmd|ui.Shift|ui.Alt)) && key == ui.KeyV {
+	if (mods == (ui.Cmd|ui.Shift) || mods == (ui.Cmd|ui.Shift|ui.Alt)) && key == ui.KeyV {
 		return s.handleCommand("pasteAndMatchStyle")
+	}
+	// Classic Windows/Linux CUA clipboard shortcuts.
+	switch {
+	case mods == ui.Ctrl && key == ui.KeyInsert:
+		return s.handleCommand("copy")
+	case mods == ui.Shift && key == ui.KeyInsert:
+		return s.handleCommand("paste")
+	case mods == ui.Shift && key == ui.KeyDelete:
+		return s.handleCommand("cut")
 	}
 
 	word := (mac && m == ui.Alt) || (!mac && m == ui.Ctrl)
@@ -1910,7 +1955,18 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	}
 	box.HandleInput(st.handleInput)
 	box.ContextMenu(func(m *ui.Menu) {
-		m.EditItems()
+		if !opts.ReadOnly {
+			m.EditItems()
+			return
+		}
+		lo, hi := st.OrderedSelection()
+		if m.Item(theme.Tr("拷贝", "Copy")).Disabled(hi <= lo).Chosen() {
+			st.handleCommand("copy")
+		}
+		m.Separator()
+		if m.Item(theme.Tr("全选", "Select All")).Disabled(st.text == "").Chosen() {
+			st.handleCommand("selectAll")
+		}
 	})
 
 	bands := opts.Bands
