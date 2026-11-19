@@ -9,6 +9,7 @@ type ShellChromeColors struct {
 	Ground           ui.Color
 	Card             ui.Color
 	CardBorder       ui.Color
+	TabBorder        ui.Color // hairline ring of the active titlebar tab
 	Hover            ui.Color
 	FieldBG          ui.Color
 	FieldBorder      ui.Color
@@ -24,6 +25,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 			Ground:           ui.Hex("#222222"),
 			Card:             ui.Hex("#181818"),
 			CardBorder:       ui.Hex("#2e2e2e"),
+			TabBorder:        ui.RGBA(0xff, 0xff, 0xff, 0.08),
 			Hover:            ui.RGBA(0xff, 0xff, 0xff, 0.07),
 			FieldBG:          ui.Hex("#2a2a2a"),
 			FieldBorder:      ui.Hex("#3a3a3a"),
@@ -36,6 +38,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 		Ground:           ui.Hex("#f1f1f1"),
 		Card:             ui.Hex("#ffffff"),
 		CardBorder:       ui.Hex("#e4e6ea"),
+		TabBorder:        ui.RGBA(0, 0, 0, 0.06),
 		Hover:            ui.RGBA(0x20, 0x24, 0x2c, 0.07),
 		FieldBG:          ui.Hex("#ffffff"),
 		FieldBorder:      ui.Hex("#e1e4e9"),

@@ -15,8 +15,8 @@ const (
 	tabAnimMs      = 100
 	tabBasisW      = 220
 	tabMinW        = 76
-	tabMaxW        = 220
-	tabFadeW       = 20
+	tabMaxW        = 180
+	tabCloseSlot   = 18
 	singleTabMaxW  = 240
 	tabPillH       = 28
 	tabStripGap    = 4
@@ -35,8 +35,8 @@ func tabTransition() ui.ElementTransition {
 	}
 }
 
-// multiTabWidth shares the strip among n tabs as flex-basis 220 / shrink /
-// min 76 does, from the tab cell's laid-out width (padding, new-tab button
+// multiTabWidth is the widest a tab may grow when n tabs share the strip
+// (each pill hugs its title up to this cap, min 76), from the tab cell's laid-out width (padding, new-tab button
 // and drag spacer taken out). Past 76 the strip scrolls.
 func multiTabWidth(centerW float32, n int) float32 {
 	if centerW <= 0 || n <= 0 {
@@ -47,14 +47,9 @@ func multiTabWidth(centerW float32, n int) float32 {
 	return max(min(w, tabMaxW), tabMinW)
 }
 
-// tabFade is the right-edge ramp from transparent col to col that clips a long title.
-func tabFade(c *ui.Context, col ui.Color) ui.Element {
-	return ui.Box(c).Width(tabFadeW).FillHeight().Shrink(0).Gradient(col.Alpha(0), col, 90)
-}
-
 func tabLabel(c *ui.Context, label string, fg ui.Color) {
-	ui.Text(c, label).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
-		FontWeight(theme.WeightControl).TextColor(fg).SingleLine().Shrink(0)
+	ui.Text(c, label).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
+		FontWeight(theme.WeightRegular).TextColor(fg).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 }
 
 func tabDirtyDot(c *ui.Context) ui.Element {
@@ -150,8 +145,8 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 		Padding(0, 8, 0, 6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
 		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
 	pill.Children(func() {
-		ui.Text(c, tabTitle(path)).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
-			FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Text(c, tabTitle(path)).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
+			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if dirty {
 			tabDirtyDot(c).Margin(0, 0, 0, 6)
 		}
@@ -170,8 +165,8 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	label := tabTitle(path)
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).Width(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 10).
-		Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).
+	pill := ui.ButtonBase(c).MaxWidth(tabW).MinWidth(min(float32(tabMinW), tabW)).Shrink(0).Height(tabPillH).Padding(0, 5, 0, 10).Gap(2).
+		Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().Cursor(ui.CursorPointer).FocusRing(false).
 		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
 	if !p.Busy && p.OnReorderTab != nil {
 		pill.Drag(tabDragItem{Path: path})
@@ -224,7 +219,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	fg := pal.TextSecondary
 	switch {
 	case active:
-		pill.Background(pal.Selected).Border(1, pal.Accent)
+		blockui.Elevate(pill.Background(pal.Paper).Border(1, chrome.TabBorder), theme.ElevationCard)
 		fg = pal.Text
 	case hovered || isDropTarget:
 		pill.Background(chrome.Hover).Border(1, ui.Transparent)
@@ -257,25 +252,15 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	}
 
 	pill.Children(func() {
-		if active {
-			body := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Clip()
-			body.Children(func() {
-				tabLabel(c, label, fg)
-				tabFade(c, pal.Selected).Absolute().Top(0).Bottom(0).Right(0)
-			})
-			if dirty {
-				tabDirtyDot(c).Margin(0, 4, 0, 0)
-			}
-			closeBtn()
-			return
-		}
-		ui.Text(c, label).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
-			FontWeight(theme.WeightControl).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		tabLabel(c, label, fg)
+		// The close slot is always reserved so a pill never changes width on hover.
 		switch {
-		case hovered:
+		case hovered || (active && !dirty):
 			closeBtn()
 		case dirty:
-			tabDirtyDot(c).Margin(0, 2, 0, 4)
+			ui.Box(c).Size(tabCloseSlot, tabCloseSlot).Shrink(0).Center().Children(func() { tabDirtyDot(c) })
+		default:
+			ui.Box(c).Size(tabCloseSlot, tabCloseSlot).Shrink(0)
 		}
 	})
 	if shouldReveal && active {
