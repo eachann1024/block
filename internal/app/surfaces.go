@@ -53,6 +53,10 @@ type TabSurface struct {
 	SVGText   string
 	SVGParsed bool
 
+	// FitScale is the scale Fit mode drew the preview at in the last frame,
+	// shown as the titlebar zoom percentage.
+	FitScale float32
+
 	code        *codeed.State
 	codeVersion uint64
 }
@@ -168,7 +172,38 @@ func (s *TabSurface) ZoomPctString() string {
 	if s == nil || s.Zoom <= 0 {
 		return "100%"
 	}
-	return fmt.Sprintf("%d%%", int(s.Zoom*100+0.5))
+	z := s.Zoom
+	if s.ZoomFitMode && s.FitScale > 0 {
+		z = s.FitScale
+	}
+	return fmt.Sprintf("%d%%", int(z*100+0.5))
+}
+
+// previewCaptionH is the height of the "name · W×H" caption under an image
+// preview plus the gap above it.
+const previewCaptionH float32 = 20 + theme.Space10
+
+// previewStageSize returns the preview stage's own size from the previous frame:
+// the pane between the sidebar and any side panels, not the whole window. Before
+// the first layout it falls back to the window size.
+func previewStageSize(c *ui.Context, stage ui.Element) (float32, float32) {
+	if b := stage.LayoutBounds(); b.W > 0 && b.H > 0 {
+		return b.W, b.H
+	}
+	return c.Size()
+}
+
+// fitPreviewScale returns the scale that fits an iw×ih preview inside a stage of
+// stageW×stageH (padded by Space24, inside a card padded by cardPad with a 1px
+// border, above a caption of captionH). Fit only shrinks, never enlarges.
+func fitPreviewScale(iw, ih, stageW, stageH, cardPad, captionH float32) float32 {
+	if iw <= 0 || ih <= 0 {
+		return 1
+	}
+	chrome := 2*theme.Space24 + 2*(cardPad+1)
+	availW := max(stageW-chrome, 1)
+	availH := max(stageH-chrome-captionH, 1)
+	return min(float32(1), min(availW/iw, availH/ih))
 }
 
 // ZoomStep multiplies preview zoom and exits Fit mode.
@@ -176,7 +211,11 @@ func (s *TabSurface) ZoomStep(factor float32) {
 	if s == nil {
 		return
 	}
-	z := s.Zoom * factor
+	base := s.Zoom
+	if s.ZoomFitMode && s.FitScale > 0 {
+		base = s.FitScale
+	}
+	z := base * factor
 	if z < 0.1 {
 		z = 0.1
 	}
@@ -275,8 +314,8 @@ func (s *TabSurface) Render(
 			stage := blockui.Scroll(c).Fill().Background(pal.Shell)
 			blockui.Probe(stage, "svg-preview-stage")
 			stage.Children(func() {
-				vpW, vpH := c.Size()
-				ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
+				vpW, vpH := previewStageSize(c, stage)
+				ui.Column(c).FillWidth().MinHeight(vpH).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
 					card := blockui.Elevate(ui.Column(c).Padding(theme.Space24).Radius(theme.RadiusXL).Background(pal.Paper).
 						Border(1, pal.Hairline).Center().Gap(theme.Space10), theme.ElevationDialog)
 					card.Children(func() {
@@ -290,15 +329,11 @@ func (s *TabSurface) Render(
 							}
 							drawW, drawH := iw*s.Zoom, ih*s.Zoom
 							if s.ZoomFitMode {
-								maxW := max(vpW-180, 220)
-								maxH := max(vpH-200, 180)
-								scale := min(float32(2.0), min(maxW/iw, maxH/ih))
-								if scale <= 0 {
-									scale = 1
-								}
+								scale := fitPreviewScale(iw, ih, vpW, vpH, theme.Space24, 0)
+								s.FitScale = scale
 								drawW, drawH = iw*scale, ih*scale
 							}
-							ui.Image(c, s.SVGSrc).Size(max(drawW, 32), max(drawH, 32))
+							ui.Image(c, s.SVGSrc).Size(max(drawW, 4), max(drawH, 4))
 						} else {
 							icons.Duo(c, icons.Code, 42, true)
 							ui.Text(c, theme.Tr("SVG 预览不可用，可切换到源码编辑", "SVG preview unavailable — switch to Source")).
@@ -317,8 +352,8 @@ func (s *TabSurface) Render(
 		stage := blockui.Scroll(c).Fill().Background(pal.Shell)
 		blockui.Probe(stage, "image-preview-stage")
 		stage.Children(func() {
-			vpW, vpH := c.Size()
-			ui.Column(c).FillWidth().MinHeight(max(vpH-80, 240)).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
+			vpW, vpH := previewStageSize(c, stage)
+			ui.Column(c).FillWidth().MinHeight(vpH).Padding(theme.Space24).Center().Gap(theme.Space12).Children(func() {
 				card := blockui.Elevate(ui.Column(c).Padding(theme.Space16).Radius(theme.RadiusXL).Background(pal.Paper).
 					Border(1, pal.Hairline).Center().Gap(theme.Space10), theme.ElevationDialog)
 				card.Children(func() {
@@ -332,12 +367,11 @@ func (s *TabSurface) Render(
 						}
 						drawW, drawH := iw*s.Zoom, ih*s.Zoom
 						if s.ZoomFitMode {
-							maxW := max(vpW-160, 240)
-							maxH := max(vpH-180, 180)
-							scale := min(float32(1.0), min(maxW/iw, maxH/ih))
+							scale := fitPreviewScale(iw, ih, vpW, vpH, theme.Space16, previewCaptionH)
+							s.FitScale = scale
 							drawW, drawH = iw*scale, ih*scale
 						}
-						ui.Image(c, s.ImgSrc).Size(max(drawW, 24), max(drawH, 24))
+						ui.Image(c, s.ImgSrc).Size(max(drawW, 4), max(drawH, 4))
 						ui.Text(c, fmt.Sprintf("%s · %dx%d", filepath.Base(s.Path), int(iw), int(ih))).
 							FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 					} else {
