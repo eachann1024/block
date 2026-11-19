@@ -246,29 +246,28 @@ func (s *TabSurface) Render(
 	switch {
 	case s.Kind == model.OpenKindBlocked:
 		c.Key("blocked-file-view")
-		box := ui.Column(c).Fill().Padding(32).Center().Gap(14).Background(pal.Paper)
-		blockui.Probe(box, "blocked-file-view")
-		box.Children(func() {
-			icons.Mascot(c, icons.MascotReadError, 128)
-			ui.Text(c, filepath.Base(s.Path)).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+		box := blockui.EmptyStage(c, pal.Paper, theme.EmptyStateWidth, func() {
+			icons.Mascot(c, icons.MascotReadError, theme.EmptyMascotSize)
+			blockui.EmptyHeading(c, filepath.Base(s.Path))
 			reason := s.BlockedReason
 			if reason == "" {
 				reason = theme.Tr("此文件为二进制或超出编辑器大小限制，无法作为文本打开。", "This file is binary or exceeds the editor size limit.")
 			}
-			ui.Text(c, reason).FontSize(theme.FontBody).TextColor(pal.TextSecondary).MaxWidth(440)
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			blockui.EmptyLead(c, reason).MaxWidth(theme.EmptyActionWidth)
+			ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Wrap().Margin(theme.Space20, 0, 0, 0).Children(func() {
 				icRev := icons.FolderReveal
 				revBtn := blockui.ActionButton(c, "blocked-reveal", theme.Tr("在访达中显示", "Reveal in File Manager"), &icRev, blockui.ButtonSecondary, false)
 				if revBtn.Clicked() && onReveal != nil {
 					onReveal(s.Path)
 				}
 				icExt := icons.LinkOpen
-				openBtn := blockui.ActionButton(c, "blocked-open-external", theme.Tr("用默认应用打开", "Open in Default App"), &icExt, blockui.ButtonPrimary, false)
+				openBtn := blockui.ActionButton(c, "blocked-open-external", theme.Tr("用默认应用打开", "Open in Default App"), &icExt, blockui.ButtonSecondary, false)
 				if openBtn.Clicked() && onOpenExternal != nil {
 					onOpenExternal(s.Path)
 				}
 			})
 		})
+		blockui.Probe(box, "blocked-file-view")
 
 	case s.IsSVG:
 		if !s.SVGShowSource || !s.HasSource {
