@@ -201,10 +201,11 @@ type ChatMessage struct {
 	Question    *QuestionCard   `json:"question,omitempty"`
 	Approval    *ApprovalCard   `json:"approval,omitempty"`
 	DurationMs  int64           `json:"durationMs,omitempty"`
-	Refs        []string        `json:"refs,omitempty"`
-	Skills      []string        `json:"skills,omitempty"`
-	Attachments []Attachment    `json:"attachments,omitempty"`
-	Error       string          `json:"error,omitempty"`
+	Refs                []string        `json:"refs,omitempty"`
+	Skills              []string        `json:"skills,omitempty"`
+	Attachments         []Attachment    `json:"attachments,omitempty"`
+	AttachmentsSeparate bool            `json:"attachmentsSeparate,omitempty"`
+	Error               string          `json:"error,omitempty"`
 	NeedSetting bool            `json:"needSetting,omitempty"`
 }
 

@@ -1325,7 +1325,7 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int
 					})
 				}
 			default:
-				content := m.Content
+				content := userMessageModelText(m, i == turn.userIndex)
 				if i == turn.userIndex {
 					content += m.Context
 					if imgs := turn.attachmentImages; len(imgs) > 0 {
