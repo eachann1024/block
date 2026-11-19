@@ -1408,6 +1408,32 @@ var diffCellBlockRE = regexp.MustCompile("^(?:#{1,6}(?:\\s|$)|>|[-+*](?:\\s|$)|[
 // diffCellListRE matches an ordered-list marker; its "." or ")" gets the backslash.
 var diffCellListRE = regexp.MustCompile(`^(\d{1,9})([.)])(\s|$)`)
 
+// StarFlanks reports whether a run of "*" between the runes before and after it
+// can open or close emphasis, as in the note: CommonMark's flanking rules, which
+// mygo loosens next to CJK text ("**结论。**后文" is bold). A line edge is a space.
+func StarFlanks(before, after rune) (open, close bool) {
+	space := func(r rune) bool { return unicode.IsSpace(r) }
+	punct := func(r rune) bool {
+		if r < utf8.RuneSelf {
+			return r > ' ' && r < 0x7f && !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		}
+		return unicode.IsPunct(r) || unicode.IsSymbol(r)
+	}
+	cjk := func(r rune) bool {
+		if r < 0x2E80 {
+			return r >= 0x2018 && r <= 0x201F
+		}
+		return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
+			r >= 0x3000 && r <= 0x303F || r >= 0xFF00 && r <= 0xFFEF
+	}
+	as, bs := space(after), space(before)
+	if cjk(before) || cjk(after) {
+		return !as, !bs
+	}
+	ap, bp := punct(after), punct(before)
+	return !as && (!ap || bs || bp), !bs && (!bp || as || ap)
+}
+
 // InlineStart is diffInlineStart for callers outside the package.
 func InlineStart(s string) string { return diffInlineStart(s) }
 
