@@ -395,32 +395,26 @@ var diffFenceLineRE = regexp.MustCompile("^((?:>\\s*)*(?:(?:[-*+]|\\d{1,9}[.)])\
 // inside a "~~~" block is a line of code, since a closing fence takes no text. quote
 // gives each code line its block's quote depth.
 func DiffFenceLines(lines []string, change []int) (fence []bool, quote []int) {
-	masks, _ := diffScan(lines, change)
+	masks, _, kinds := diffScanFences(lines, change)
 	fence, quote = make([]bool, len(lines)), make([]int, len(lines))
 	for si, side := range [2]int{-1, 1} {
-		open, depth := "", 0
+		depth := 0
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
 			}
-			// The new text has the last word on a line both sides share.
-			own := change[i] != 0 || side > 0
+			k := kinds[si][i]
 			if !masks[si][i] {
-				open, depth = "", 0
-				continue
+				depth = 0
+			} else if k == 1 {
+				depth = diffQuoteDepth(strings.TrimSpace(l))
 			}
-			m := diffFenceLineRE.FindStringSubmatch(strings.TrimSpace(l))
-			f := false
-			switch {
-			case open == "" && m != nil:
-				open, f, depth = m[2], true, strings.Count(m[1], ">")
-			// It closes at its own quote depth: in "> ~~~", "> > ~~~" is code.
-			case open != "" && m != nil && m[2][0] == open[0] && len(m[2]) >= len(open) && strings.TrimSpace(m[3]) == "" &&
-				strings.Count(m[1], ">") == depth && !strings.ContainsAny(m[1], "-*+.)"):
-				open, f = "", true
+			// The new text has the last word on a line both sides share.
+			if change[i] != 0 || side > 0 {
+				fence[i], quote[i] = k != 0, depth
 			}
-			if own {
-				fence[i], quote[i] = f, depth
+			if k == 2 {
+				depth = 0
 			}
 		}
 	}
@@ -453,8 +447,16 @@ func DiffSetextLevels(lines []string, change []int) []int {
 // diffScan reads the old and the new text of a diff block by block: masks are the
 // diffFenceSides code masks, heads the per-side DiffSetextLevels.
 func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
+	masks, heads, _ = diffScanFences(lines, change)
+	return masks, heads
+}
+
+// diffScanFences is diffScan that also gives, per side, each fence line: 1 for an
+// opener, 2 for a closer, as the scan reads them (indent and quote depth included).
+func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]int, fences [2][]int8) {
 	for si, side := range [2]int{-1, 1} {
 		mask, head := make([]bool, len(lines)), make([]int, len(lines))
+		fl := make([]int8, len(lines))
 		fence, nested, fenceList, fenceQuote := "", false, false, 0
 		// fenceIndent: the content column of the list item a fence sits in (0: none).
 		fenceIndent := 0
@@ -564,11 +566,22 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 					// Code may follow at once, unless the fence sat in a list item, whose
 					// content is indented the same way.
 					fence, prevBlank, inIndented = "", !fenceList, false
+					fl[i] = 2
 				}
 				continue
 			}
-			if fence = diffFenceOpen(t); fence != "" {
+			// Indented four columns (past a list item's content) "```" is paragraph text
+			// or code, never a fence.
+			lim := 4
+			if inList {
+				lim += listCol
+			}
+			if fence = diffFenceOpen(t); fence != "" && lead >= lim {
+				fence = ""
+			}
+			if fence != "" {
 				mask[i], para, paraLines = true, false, nil
+				fl[i] = 1
 				nested, fenceQuote = diffContainerRE.MatchString(t), diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 				// The item's content column, not the fence's own indent: "    ```" under
@@ -579,9 +592,9 @@ func diffScan(lines []string, change []int) (masks [2][]bool, heads [2][]int) {
 				}
 			}
 		}
-		masks[si], heads[si] = mask, head
+		masks[si], heads[si], fences[si] = mask, head, fl
 	}
-	return masks, heads
+	return masks, heads, fences
 }
 
 // diffMathOpen gives the closer of a display math block a trimmed line opens and
