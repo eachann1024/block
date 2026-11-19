@@ -733,6 +733,7 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 		}
 		treemapItems[i] = internalui.TreemapItem{
 			ID:        cat.ID,
+			ColorKey:  cat.ID,
 			Label:     cat.Label,
 			Detail:    cat.Detail,
 			Bytes:     cat.Bytes,
