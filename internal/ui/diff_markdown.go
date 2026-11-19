@@ -33,6 +33,9 @@ var diffRuleRE = regexp.MustCompile(`^(?:\*[ \t]*){3,}$|^(?:-[ \t]*){3,}$|^(?:_[
 // diffHeadingRE matches an ATX heading such as "## Title".
 var diffHeadingRE = regexp.MustCompile(`^#{1,6}(?:\s|$)`)
 
+// diffSetextRE matches a "===" setext heading underline.
+var diffSetextRE = regexp.MustCompile(`^=+$`)
+
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
 
@@ -93,8 +96,10 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 				}
 				inIndented = false
 				inList = (diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0)
-				// A rule or heading ends its block on one line, so code may follow at once.
-				prevBlank = !inList && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
+				// A rule, heading or setext underline ends its block on that line, so code
+				// may follow at once. Indented four or more, such a line is paragraph text.
+				prevBlank = !inList && ind < 4 && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t) ||
+					(!wasBlank && diffSetextRE.MatchString(t)))
 			}
 			if fence != "" {
 				mask[i] = true
