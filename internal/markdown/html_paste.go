@@ -135,41 +135,82 @@ func extractHTMLClipboardFragment(raw string) string {
 }
 
 func stripIgnoredHTMLRegions(s string) string {
+	if !strings.ContainsRune(s, '<') {
+		return s
+	}
 	var out strings.Builder
 	out.Grow(len(s))
 	i := 0
 	for i < len(s) {
+		lt := strings.IndexByte(s[i:], '<')
+		if lt < 0 {
+			out.WriteString(s[i:])
+			break
+		}
+		if lt > 0 {
+			out.WriteString(s[i : i+lt])
+			i += lt
+		}
 		if strings.HasPrefix(s[i:], "<!--") {
 			if end := strings.Index(s[i+4:], "-->"); end >= 0 {
 				i += 4 + end + 3
 				continue
 			}
 		}
-		if s[i] == '<' {
-			name, _, closed, empty, consumed, ok := parseTagRaw(s[i:])
-			if ok && !closed && !empty {
-				switch name {
-				case "head", "style", "script", "noscript", "title", "svg", "template":
-					closeNeedle := "</" + name
-					lowerRest := strings.ToLower(s[i+consumed:])
-					if rel := strings.Index(lowerRest, closeNeedle); rel >= 0 {
-						afterClose := i + consumed + rel
-						if gt := strings.IndexByte(s[afterClose:], '>'); gt >= 0 {
-							i = afterClose + gt + 1
-							continue
-						}
+		name, _, closed, empty, consumed, ok := parseTagRaw(s[i:])
+		if ok && !closed && !empty {
+			switch name {
+			case "head", "style", "script", "noscript", "title", "svg", "template":
+				if rel := indexCloseTagFold(s[i+consumed:], name); rel >= 0 {
+					afterClose := i + consumed + rel
+					if gt := strings.IndexByte(s[afterClose:], '>'); gt >= 0 {
+						i = afterClose + gt + 1
+						continue
 					}
 				}
 			}
-			if ok && (name == "meta" || name == "link") {
-				i += consumed
-				continue
-			}
+		}
+		if ok && (name == "meta" || name == "link") {
+			i += consumed
+			continue
 		}
 		out.WriteByte(s[i])
 		i++
 	}
 	return out.String()
+}
+
+func indexCloseTagFold(s, lowerName string) int {
+	n := len(lowerName)
+	pos := 0
+	for pos < len(s) {
+		idx := strings.Index(s[pos:], "</")
+		if idx < 0 {
+			return -1
+		}
+		abs := pos + idx
+		if abs+2+n <= len(s) && asciiEqualFoldLower(s[abs+2:abs+2+n], lowerName) {
+			return abs
+		}
+		pos = abs + 2
+	}
+	return -1
+}
+
+func asciiEqualFoldLower(a, lowerB string) bool {
+	if len(a) != len(lowerB) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		c := a[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != lowerB[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func isCodeEditorHTMLDump(fragment string) bool {
