@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -108,6 +109,9 @@ func run() error {
 			return fmt.Errorf("local seed %q: %w", dir, err)
 		}
 		if isVerified || plugins.IsOfficialRepo(m.Repo) {
+			if err := plugins.ValidateManifestEnglish(m); err != nil {
+				return fmt.Errorf("local seed %q manifest English: %w", dir, err)
+			}
 			if err := plugins.ValidateBilingualDocs(dir); err != nil {
 				return fmt.Errorf("local seed %q bilingual docs: %w", dir, err)
 			}
@@ -134,6 +138,9 @@ func run() error {
 		}
 		seenIDs[entry.ID] = true
 		filtered = append(filtered, entry)
+	}
+	if err := verified.validateApps(filtered); err != nil {
+		return err
 	}
 
 	sort.SliceStable(filtered, func(i, j int) bool {
@@ -314,6 +321,9 @@ func verifyRemotePlugin(
 		return nil, err
 	}
 	if isVerified || plugins.IsOfficialRepo(repo.FullName) {
+		if err := plugins.ValidateManifestEnglish(m); err != nil {
+			return nil, fmt.Errorf("official plugin manifest English check failed: %w", err)
+		}
 		if err := plugins.ValidateBilingualDocs(pluginRoot); err != nil {
 			return nil, fmt.Errorf("official plugin bilingual docs check failed: %w", err)
 		}
@@ -449,24 +459,30 @@ func loadVerifiedRegistry(path string) (verifiedRegistry, error) {
 	}
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return reg, nil
+		return reg, errors.New("verified registry path must not be empty")
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return reg, nil
-		}
 		return reg, err
 	}
-	var bindings map[string]string
-	if err := json.Unmarshal(raw, &bindings); err != nil {
+	bindings, err := decodeStringMapNoDuplicateKeys(raw)
+	if err != nil {
 		return reg, err
+	}
+	if len(bindings) == 0 {
+		return reg, errors.New("verified registry must be a non-empty JSON object")
 	}
 	for rawID, rawRepo := range bindings {
 		id := normalizeKey(rawID)
 		repo := normalizeKey(rawRepo)
 		if id == "" || !isValidRepoSlug(repo) {
 			return reg, fmt.Errorf("invalid verified binding %q -> %q", rawID, rawRepo)
+		}
+		if id == plugins.DiagnosticsPluginID {
+			return reg, fmt.Errorf("verified registry must not include reserved id %q", id)
+		}
+		if prevRepo, exists := reg.idToRepo[id]; exists {
+			return reg, fmt.Errorf("duplicate normalized verified id %q (%q and %q)", id, prevRepo, repo)
 		}
 		if prevID, exists := reg.repoToID[repo]; exists && prevID != id {
 			return reg, fmt.Errorf("duplicate verified repo binding %q for %q and %q", repo, prevID, id)
@@ -475,6 +491,77 @@ func loadVerifiedRegistry(path string) (verifiedRegistry, error) {
 		reg.repoToID[repo] = id
 	}
 	return reg, nil
+}
+
+func decodeStringMapNoDuplicateKeys(raw []byte) (map[string]string, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok || delim != '{' {
+		return nil, errors.New("expected JSON object")
+	}
+	out := make(map[string]string)
+	for dec.More() {
+		ktok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := ktok.(string)
+		if !ok {
+			return nil, errors.New("expected string key")
+		}
+		if _, dup := out[key]; dup {
+			return nil, fmt.Errorf("duplicate JSON key %q", key)
+		}
+		var val string
+		if err := dec.Decode(&val); err != nil {
+			return nil, fmt.Errorf("value for key %q: %w", key, err)
+		}
+		out[key] = val
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("trailing data after JSON object")
+	}
+	return out, nil
+}
+
+func (r verifiedRegistry) validateApps(apps []plugins.StoreAppEntry) error {
+	byID := make(map[string]plugins.StoreAppEntry, len(apps))
+	for _, app := range apps {
+		id := normalizeKey(app.ID)
+		repo := normalizeKey(app.Repo)
+		if id == "" || repo == "" {
+			return fmt.Errorf("store entry missing id or repo: %+v", app)
+		}
+		if id == plugins.DiagnosticsPluginID {
+			return fmt.Errorf("reserved app id %q must not be published", id)
+		}
+		if _, dup := byID[id]; dup {
+			return fmt.Errorf("duplicate app id %q", id)
+		}
+		byID[id] = app
+		if app.Verified {
+			if r.idToRepo[id] != repo {
+				return fmt.Errorf("verified app %q has repo %q, expected %q", app.ID, app.Repo, r.idToRepo[id])
+			}
+		}
+	}
+	for id, expectedRepo := range r.idToRepo {
+		app, ok := byID[id]
+		if !ok {
+			return fmt.Errorf("missing verified app %q (%s) from crawled index", id, expectedRepo)
+		}
+		if normalizeKey(app.Repo) != expectedRepo || !app.Verified {
+			return fmt.Errorf("verified app %q failed binding validation", id)
+		}
+	}
+	return nil
 }
 
 // check enforces 1:1 binding between plugin ID, crawled repo, and manifest repo.
