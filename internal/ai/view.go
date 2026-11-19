@@ -2467,7 +2467,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 							dest = backend.DisplayName()
 						}
 						scope = theme.Tr("发送聊天文字、附件、当前页名称与本轮笔记工具结果", "Sends chat text, attachments, the current page name, and this turn’s notebook tool results")
-					case model.BackendClaude, model.BackendCodex:
+					case model.BackendClaude, model.BackendCodex, model.BackendAgy:
 						scope = theme.Tr("发送聊天文字、附件与本轮笔记工具结果", "Sends chat text, attachments, and this turn’s notebook tool results")
 					}
 					sendTip := bui.TooltipSpec{
@@ -2485,7 +2485,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 							},
 						},
 					}
-					if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex) {
+					if notebook != "" && (backend == model.BackendBuiltin || backend == model.BackendClaude || backend == model.BackendCodex || backend == model.BackendAgy) {
 						label := fmt.Sprintf(theme.Tr("本轮工具可读取「%s」内已保存的 Markdown", "This turn’s tools may read saved Markdown in %s"), notebook)
 						sendTip.Rows = append(sendTip.Rows, bui.TooltipRow{Detail: label})
 					}
