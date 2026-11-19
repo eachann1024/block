@@ -1564,7 +1564,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			}
 			fenced := bui.DiffFenceMask(texts, changes)
 			setext := bui.DiffSetextLevels(texts, changes)
-			tableCols := bui.DiffTableCols(texts, fenced)
+			tableCols := bui.DiffTableCols(texts, changes)
 			headers, seps := bui.DiffTableRoles(texts, changes)
 			var visible []PlanDiffLine
 			for _, dl := range lines {

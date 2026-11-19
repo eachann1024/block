@@ -426,30 +426,50 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 // only the first one does: a later "| --- |" is a data row and stays visible.
 func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	header, sep = make([]bool, len(lines)), make([]bool, len(lines))
+	diffTableRuns(lines, change, func(run []int, h int) {
+		if h >= 0 {
+			header[run[h]], sep[run[h+1]] = true, true
+		}
+	})
+	return header, sep
+}
+
+// diffTableRuns calls fn for each block of table rows (contiguous, outside code, at
+// one indent) of the old and then the new text, with the index in run of its header
+// row, or -1 when no separator makes it a table.
+func diffTableRuns(lines []string, change []int, fn func(run []int, h int)) {
 	old, cur := diffFenceSides(lines, change)
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	indent := func(k int) int { return len(lines[k]) - len(strings.TrimLeft(lines[k], " \t")) }
 	for si, side := range [2]int{-1, 1} {
 		code := [2][]bool{old, cur}[si]
-		prev, done := -1, false
+		var run []int
+		flush := func() {
+			h := -1
+			for j := 1; j < len(run) && h < 0; j++ {
+				if IsDiffTableSep(trim(run[j])) &&
+					len(ParseDiffTableCells(trim(run[j-1]))) == len(ParseDiffTableCells(trim(run[j]))) {
+					h = j - 1
+				}
+			}
+			if len(run) > 0 {
+				fn(run, h)
+			}
+			run = nil
+		}
 		for k := range lines {
 			if change[k] == -side {
 				continue
 			}
-			if code[k] || !IsDiffTableRow(trim(k)) || prev >= 0 && indent(prev) != indent(k) {
-				prev, done = -1, false
+			if code[k] || !IsDiffTableRow(trim(k)) || len(run) > 0 && indent(run[0]) != indent(k) {
+				flush()
 			}
-			if code[k] || !IsDiffTableRow(trim(k)) {
-				continue
+			if !code[k] && IsDiffTableRow(trim(k)) {
+				run = append(run, k)
 			}
-			if !done && prev >= 0 && IsDiffTableSep(trim(k)) &&
-				len(ParseDiffTableCells(trim(prev))) == len(ParseDiffTableCells(trim(k))) {
-				header[prev], sep[k], done = true, true, true
-			}
-			prev = k
 		}
+		flush()
 	}
-	return header, sep
 }
 
 // diffGapRank orders the dropped lines that could keep two tables apart: a blank,
@@ -759,29 +779,21 @@ func ParseDiffTableCells(trimmed string) []string {
 	return cells
 }
 
-// DiffTableCols gives each table row the column count of its whole table (the widest
-// row of the contiguous run of table lines outside code), so a short row still lines
-// up with its header. Non-table lines get 0, and so do runs with no separator row,
-// which are plain text with bars.
-func DiffTableCols(lines []string, code []bool) []int {
+// DiffTableCols gives each table row the column count of its table's header, read in
+// the row's own text (see DiffTableRoles), so a short row still lines up with it.
+// Other lines get 0, and so do rows above the header and runs that no separator of
+// as many cells makes a table, which are plain text with bars.
+func DiffTableCols(lines []string, change []int) []int {
 	cols := make([]int, len(lines))
-	for i := 0; i < len(lines); {
-		if code[i] || !IsDiffTableRow(strings.TrimSpace(lines[i])) {
-			i++
-			continue
+	diffTableRuns(lines, change, func(run []int, h int) {
+		if h < 0 {
+			return
 		}
-		start, widest, sep := i, 0, false
-		for ; i < len(lines) && !code[i] && IsDiffTableRow(strings.TrimSpace(lines[i])); i++ {
-			widest = max(widest, len(ParseDiffTableCells(strings.TrimSpace(lines[i]))))
-			sep = sep || i > start && IsDiffTableSep(strings.TrimSpace(lines[i]))
+		n := len(ParseDiffTableCells(strings.TrimSpace(lines[run[h]])))
+		for _, k := range run[h:] {
+			cols[k] = max(cols[k], n)
 		}
-		if !sep {
-			continue
-		}
-		for j := start; j < i; j++ {
-			cols[j] = widest
-		}
-	}
+	})
 	return cols
 }
 
