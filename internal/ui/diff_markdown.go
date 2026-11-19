@@ -30,6 +30,9 @@ var diffListItemRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])(?:\s|$)`)
 // diffRuleRE matches a thematic break such as "* * *" or "---".
 var diffRuleRE = regexp.MustCompile(`^(?:\*[ \t]*){3,}$|^(?:-[ \t]*){3,}$|^(?:_[ \t]*){3,}$`)
 
+// diffHeadingRE matches an ATX heading such as "## Title".
+var diffHeadingRE = regexp.MustCompile(`^#{1,6}(?:\s|$)`)
+
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
 
@@ -90,6 +93,8 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 				}
 				inIndented = false
 				inList = (diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0)
+				// A rule or heading ends its block on one line, so code may follow at once.
+				prevBlank = !inList && (diffRuleRE.MatchString(t) || diffHeadingRE.MatchString(t))
 			}
 			if fence != "" {
 				mask[i] = true
@@ -100,7 +105,7 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 					t = diffQuoteRE.ReplaceAllString(t, "")
 				}
 				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
-					fence = ""
+					fence, prevBlank, inIndented = "", !nested, false
 				}
 				continue
 			}
