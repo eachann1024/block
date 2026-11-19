@@ -208,6 +208,26 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetLocale: func() string {
 			return string(theme.Language())
 		},
+		GetPerfSnapshot: func(refreshDisk bool) (*plugins.PerfSnapshot, error) {
+			snap := w.modals.PerfSnapshot(refreshDisk)
+			cats := make([]plugins.PerfDiskCategory, len(snap.Categories))
+			for i, c := range snap.Categories {
+				cats[i] = plugins.PerfDiskCategory{
+					ID:     c.ID,
+					Label:  c.Label,
+					Detail: c.Detail,
+					Bytes:  c.Bytes,
+				}
+			}
+			return &plugins.PerfSnapshot{
+				CPUPercent: snap.CPUPercent,
+				RSSBytes:   snap.RSSBytes,
+				TotalBytes: snap.TotalBytes,
+				LastScan:   snap.LastScan,
+				ScanError:  snap.ScanError,
+				Categories: cats,
+			}, nil
+		},
 		PickDirectory: func(title, defaultPath string, onPicked func(path string)) {
 			if !mygo.App.IsReady() {
 				return
@@ -227,6 +247,9 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 		OnChanged: func() {
 			w.RescanNotebook()
+			w.RequestRedraw()
+		},
+		OnRedraw: func() {
 			w.RequestRedraw()
 		},
 	}))
