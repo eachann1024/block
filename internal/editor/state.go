@@ -110,6 +110,9 @@ type Session struct {
 	multiSelFocusPending bool
 	firstLineDeleteArmed bool
 	caretLineHint        int
+	// navCarryX is the sticky window column kept by consecutive Up/Down across blocks.
+	navCarryX float32
+	navCarry  bool
 
 	blockHandles       map[model.BlockID]ui.Handle
 	richInputs         map[model.BlockID]*appUi.RichInputState
@@ -609,6 +612,7 @@ func (s *Session) FocusBlock(idx int) {
 	s.caretHidden = false
 	s.detachedCompose = ""
 	s.codeUndoCmd = ""
+	s.navCarry = false
 }
 
 func isEmptyDoc(doc *model.Doc) bool {
