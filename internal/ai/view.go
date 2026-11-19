@@ -1342,8 +1342,9 @@ var plainEmphasisREs = []*regexp.Regexp{
 	regexp.MustCompile(`(^|[^~\\])~~(\S(?:[^~]*\S)?)~~($|[^~])`),
 	// A single "~" between letters or digits is a range ("20~25"), not strikethrough.
 	regexp.MustCompile(`(^|[^~\\\p{L}\p{N}])~(\S(?:[^~]*\S)?)~($|[^~\p{L}\p{N}])`),
-	regexp.MustCompile(`(^|[^*\\])\*(\S(?:[^*]*\S)?)\*($|[^*])`),
-	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_(\S(?:[^_]*\S)?)_($|[^\p{L}\p{N}_])`),
+	// An escaped marker ("*匹配 \* 号*") is text inside, never the closer.
+	regexp.MustCompile(`(^|[^*\\])\*((?:\\.|[^\s*\\])(?:(?:\\.|[^*\\])*(?:\\.|[^\s*\\]))?)\*($|[^*])`),
+	regexp.MustCompile(`(^|[^\p{L}\p{N}_\\])_((?:\\.|[^\s_\\])(?:(?:\\.|[^_\\])*(?:\\.|[^\s_\\]))?)_($|[^\p{L}\p{N}_])`),
 }
 
 // plainEmphasis drops the markers of re's matches in t; a "*" run that can't open
