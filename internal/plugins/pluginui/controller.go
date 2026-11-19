@@ -29,6 +29,7 @@ type Controller struct {
 	lastSynced     map[string]map[string]string
 	secretRevealed map[string]map[string]bool
 	selectStates   map[string]map[string]*bui.DropdownSelectState
+	treemapStates  map[string]map[string]*bui.TreemapState
 }
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
@@ -39,6 +40,7 @@ func NewController(sup *plugins.Supervisor) *Controller {
 		lastSynced:     make(map[string]map[string]string),
 		secretRevealed: make(map[string]map[string]bool),
 		selectStates:   make(map[string]map[string]*bui.DropdownSelectState),
+		treemapStates:  make(map[string]map[string]*bui.TreemapState),
 	}
 }
 
@@ -269,6 +271,9 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		}
 
 		if vs.Page != nil {
+			if vs.Page.RefreshIntervalMs > 0 {
+				c.sup.ScheduleLiveRefresh(pluginID, vs.Page.RefreshIntervalMs)
+			}
 			renderPageCards(
 				ctx,
 				pluginID,
@@ -357,6 +362,11 @@ func (c *Controller) clearPluginState(pluginID string) {
 			delete(c.selectStates, k)
 		}
 	}
+	for k := range c.treemapStates {
+		if strings.HasSuffix(k, suffix) {
+			delete(c.treemapStates, k)
+		}
+	}
 	c.mu.Unlock()
 }
 
@@ -369,6 +379,23 @@ func (c *Controller) inputBindingsFor(pluginID string) *InputBindings {
 	}
 	return &InputBindings{
 		PickDirectory: pickDirectory,
+		TreemapState: func(controlID string) *bui.TreemapState {
+			stateKey := c.pluginStateKey(pluginID)
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.treemapStates[stateKey] == nil {
+				c.treemapStates[stateKey] = make(map[string]*bui.TreemapState)
+			}
+			st := c.treemapStates[stateKey][controlID]
+			if st == nil {
+				st = &bui.TreemapState{}
+				c.treemapStates[stateKey][controlID] = st
+			}
+			return st
+		},
+		OnTreemapSelect: func() {
+			c.sup.NotifyRedraw()
+		},
 		SelectState: func(controlID string) *bui.DropdownSelectState {
 			stateKey := c.pluginStateKey(pluginID)
 			c.mu.Lock()
