@@ -364,9 +364,10 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 	internalui.Probe(root, "search-window")
 
 	var scopeTrigger ui.Element
+	activeNotebook := s.activeNotebookPath()
 	root.Children(func() {
 		scopeTrigger = renderSearchHeaderView(
-			c, pal, &s.st, &s.query, &s.lastQuery, &s.inputHandle,
+			c, pal, &s.st, activeNotebook, &s.query, &s.lastQuery, &s.inputHandle,
 			searchHeaderCallbacks{
 				onRunSearch: s.runSearch,
 				onMoveSelection: func(delta int) {
@@ -381,8 +382,8 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 				onOpenSelected: func() {
 					s.openHit(s.selected)
 				},
-				onCycleScope: func(delta int) {
-					if s.st.cycleScope(delta) {
+				onToggleScope: func() {
+					if s.st.toggleScope(activeNotebook) {
 						s.runSearch()
 					}
 				},
@@ -435,12 +436,12 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 		}
 	}
 	if root.Shortcut(0, ui.KeyTab) {
-		if s.st.cycleScope(1) {
+		if s.st.toggleScope(activeNotebook) {
 			s.runSearch()
 		}
 	}
 	if root.Shortcut(ui.Shift, ui.KeyTab) {
-		if s.st.cycleScope(-1) {
+		if s.st.toggleScope(activeNotebook) {
 			s.runSearch()
 		}
 	}

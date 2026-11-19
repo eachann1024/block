@@ -318,7 +318,7 @@ func TestFeedbackSearchHistoryExportAboutUpdaterModals(t *testing.T) {
 	if err := tt.Click("notebook"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("全部文件夹"); err != nil {
+	if err := tt.Click("全部"); err != nil {
 		t.Fatal(err)
 	}
 	if !lastAll {
@@ -765,5 +765,125 @@ func TestFontPickerSortOrderAndFoldersListOrder(t *testing.T) {
 	}
 	if !tt.HasText("系统") || !tt.HasText("不参与全局搜索") {
 		t.Fatal("missing expected Folders tab labels (系统 / 不参与全局搜索)")
+	}
+}
+
+func TestSearchTabTogglesCurrentAndAllWithShortcutPlaceholder(t *testing.T) {
+	internalui.ResetSmoke()
+	internalui.EnableSmokeMode()
+	defer internalui.DisableSmokeMode()
+
+	theme.SetLanguage(model.LangZh)
+	m, host, state := setupManager(t)
+
+	nbWork := filepath.Join(t.TempDir(), "work")
+	nbStudy := filepath.Join(t.TempDir(), "study")
+	for _, dir := range []string{nbWork, nbStudy} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nbCurrent := host.activeNotebook
+	host.notebooks = []string{nbCurrent, nbWork, nbStudy}
+	state.Notebooks = []string{nbCurrent, nbWork, nbStudy}
+
+	m.OpenSearch(false)
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			m.RenderModals(c)
+		})
+	}, 900, 680)
+
+	st := m.searchState()
+	if !cleanPathEqual(st.scopeFolder, nbCurrent) {
+		t.Fatalf("expected default scope to be current notebook %q, got %q", nbCurrent, st.scopeFolder)
+	}
+	if got := st.searchPlaceholderParts(nbCurrent); got != (searchPlaceholderSpec{prefix: "搜索标题与正文，按", keycap: "Tab", suffix: "搜全部"}) {
+		t.Fatalf("unexpected current-notebook placeholder parts: %+v", got)
+	}
+	if !tt.HasText("Tab") || !tt.HasText("搜全部") {
+		t.Fatalf("expected inline Tab keycap placeholder rendered, texts=%v", tt.Texts())
+	}
+	if tt.HasText("全部文件夹") || tt.HasText("当前 / 全部") || tt.HasText("切换文件夹") {
+		t.Fatalf("did not expect legacy folder or footer Tab hint text, texts=%v", tt.Texts())
+	}
+
+	// Verify header icon, input, placeholder, and scope button share the same vertical center.
+	iconRect, okIcon := internalui.TargetBounds("search-header-icon")
+	inRect, okIn := internalui.TargetBounds("search-input")
+	phRect, okPH := internalui.TargetBounds("search-placeholder")
+	trigRect, okTrig := internalui.TargetBounds("search-scope-trigger")
+	if !okIcon || !okIn || !okPH || !okTrig {
+		t.Fatalf("expected header probes recorded: icon=%v in=%v ph=%v trig=%v", okIcon, okIn, okPH, okTrig)
+	}
+	refMid := trigRect.Y + trigRect.H/2
+	for name, r := range map[string]ui.Rect{
+		"search-header-icon": iconRect,
+		"search-input":       inRect,
+		"search-placeholder": phRect,
+	} {
+		mid := r.Y + r.H/2
+		if math.Abs(float64(mid-refMid)) > 1.0 {
+			t.Fatalf("%s mid=%.2f differs from scope trigger mid=%.2f (rect=%+v vs %+v)", name, mid, refMid, r, trigRect)
+		}
+	}
+
+	// Tab toggles current notebook -> All (never cycling to nbWork or nbStudy).
+	tt.Key(0, ui.KeyTab)
+	if st.scopeFolder != "" || !m.searchAllNB {
+		t.Fatalf("expected first Tab to switch to All, got scope=%q all=%v", st.scopeFolder, m.searchAllNB)
+	}
+	if got := st.scopeLabel(); got != "全部" {
+		t.Fatalf("expected All scope label '全部', got %q", got)
+	}
+	if got := st.searchPlaceholderParts(nbCurrent); got != (searchPlaceholderSpec{prefix: "搜索全部，按", keycap: "Tab", suffix: "切回当前"}) {
+		t.Fatalf("unexpected All placeholder parts: %+v", got)
+	}
+
+	// Second Tab toggles All -> current notebook.
+	tt.Key(0, ui.KeyTab)
+	if !cleanPathEqual(st.scopeFolder, nbCurrent) || m.searchAllNB {
+		t.Fatalf("expected second Tab to return to current notebook %q, got %q", nbCurrent, st.scopeFolder)
+	}
+
+	// Shift+Tab also toggles current notebook <-> All.
+	tt.Key(ui.Shift, ui.KeyTab)
+	if st.scopeFolder != "" {
+		t.Fatalf("expected Shift+Tab to switch to All, got %q", st.scopeFolder)
+	}
+	tt.Key(ui.Shift, ui.KeyTab)
+	if !cleanPathEqual(st.scopeFolder, nbCurrent) {
+		t.Fatalf("expected second Shift+Tab to return to current notebook %q, got %q", nbCurrent, st.scopeFolder)
+	}
+
+	// Picking another notebook via dropdown then pressing Tab switches to All, then back to current notebook.
+	if !m.selectScopeIndex(2) || !cleanPathEqual(st.scopeFolder, nbWork) {
+		t.Fatalf("expected dropdown selection to pick %q, got %q", nbWork, st.scopeFolder)
+	}
+	tt.Frame()
+	tt.Key(0, ui.KeyTab)
+	if st.scopeFolder != "" {
+		t.Fatalf("expected Tab from non-current notebook to switch to All, got %q", st.scopeFolder)
+	}
+	tt.Key(0, ui.KeyTab)
+	if !cleanPathEqual(st.scopeFolder, nbCurrent) {
+		t.Fatalf("expected next Tab from All to switch to current notebook %q, got %q", nbCurrent, st.scopeFolder)
+	}
+
+	// English labels and fallback placeholder when no active notebook exists.
+	theme.SetLanguage(model.LangEn)
+	defer theme.SetLanguage(model.LangZh)
+	if got := st.searchPlaceholderParts(nbCurrent); got != (searchPlaceholderSpec{prefix: "Search titles & content,", keycap: "Tab", suffix: "for all"}) {
+		t.Fatalf("unexpected en current placeholder parts: %+v", got)
+	}
+	tt.Key(0, ui.KeyTab)
+	if got := st.scopeLabel(); got != "All" {
+		t.Fatalf("expected en All scope label 'All', got %q", got)
+	}
+	if got := st.searchPlaceholderParts(nbCurrent); got != (searchPlaceholderSpec{prefix: "Search all,", keycap: "Tab", suffix: "for current"}) {
+		t.Fatalf("unexpected en All placeholder parts: %+v", got)
+	}
+	if got := st.searchPlaceholderParts(""); got != (searchPlaceholderSpec{prefix: "Search titles and content"}) {
+		t.Fatalf("unexpected en fallback placeholder without active notebook: %+v", got)
 	}
 }
