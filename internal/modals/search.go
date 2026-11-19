@@ -21,7 +21,8 @@ const (
 	searchDialogWidth   float32 = 640
 	searchWindowWidth   float32 = 680
 	searchWindowHeight  float32 = 460
-	searchEmptyHeight   float32 = 96
+	searchMinBodyHeight float32 = 96
+	searchEmptyHeight   float32 = 280
 	searchMaxBodyHeight float32 = 460
 	searchModalRadius   float32 = 12
 	searchHeaderHeight  float32 = 52
@@ -688,8 +689,8 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 	}
 	maxBodyH := searchMaxBodyHeight
 	if vpH > 0 {
-		maxCardH := max(vpH-topPad-24, searchHeaderHeight+searchEmptyHeight+searchFooterHeight)
-		maxBodyH = min(searchMaxBodyHeight, max(maxCardH-searchHeaderHeight-searchFooterHeight, searchEmptyHeight))
+		maxCardH := max(vpH-topPad-24, searchHeaderHeight+searchMinBodyHeight+searchFooterHeight)
+		maxBodyH = min(searchMaxBodyHeight, max(maxCardH-searchHeaderHeight-searchFooterHeight, searchMinBodyHeight))
 	}
 
 	var scopeTrigger ui.Element
@@ -1067,13 +1068,17 @@ func renderSearchBodyView(
 	allowEmptyFoldersSearch bool,
 	onOpenHit func(idx int),
 ) {
+	emptyH := searchEmptyHeight
+	if maxBodyH > 0 && maxBodyH < emptyH {
+		emptyH = maxBodyH
+	}
 	if errMsg != "" {
 		box := ui.Box(c.Key("search-error")).FillWidth().Center().Padding(16).
 			Transition(internalui.SurfaceStageTransition())
 		if fillHeight {
 			box.Grow(1).MinHeight(0)
 		} else {
-			box.Height(searchEmptyHeight)
+			box.Height(emptyH)
 		}
 		box.Children(func() {
 			ui.Text(c, errMsg).FontSize(theme.FontSmall).TextColor(pal.Danger)
@@ -1085,20 +1090,16 @@ func renderSearchBodyView(
 	if len(st.folders) == 0 && len(hits) == 0 {
 		// Still allow SearchFn-backed tests when no folders are configured on disk.
 		if !asked || !allowEmptyFoldersSearch {
-			renderSearchEmpty(c, pal, theme.Tr("请先在主窗口打开文件夹", "Open a folder in the main window first"), fillHeight)
+			renderSearchEmpty(c, pal, theme.Tr("请先在主窗口打开文件夹", "Open a folder in the main window first"), fillHeight, emptyH)
 			return
 		}
 	}
 	if !asked {
-		hint := theme.Tr("输入关键词搜索标题与正文", "Type keywords to search titles and content")
-		if st.scopeFolder == "" {
-			hint = theme.Tr("输入关键词搜索全部笔记的标题与正文", "Type keywords to search titles and content across all notes")
-		}
-		renderSearchEmpty(c, pal, hint, fillHeight)
+		renderSearchEmpty(c, pal, "", fillHeight, emptyH)
 		return
 	}
 	if len(hits) == 0 {
-		renderSearchEmpty(c, pal, theme.Tr("没有找到匹配的笔记", "No matching notes found"), fillHeight)
+		renderSearchEmpty(c, pal, theme.Tr("没有找到匹配的笔记", "No matching notes found"), fillHeight, emptyH)
 		return
 	}
 
@@ -1118,7 +1119,7 @@ func renderSearchBodyView(
 		if maxBodyH <= 0 {
 			maxBodyH = searchMaxBodyHeight
 		}
-		scroll.MaxHeight(maxBodyH)
+		scroll.MinHeight(emptyH).MaxHeight(maxBodyH)
 	}
 	scroll.Children(func() {
 		groups := []struct {
@@ -1173,17 +1174,23 @@ func renderSearchBodyView(
 	})
 }
 
-func renderSearchEmpty(c *ui.Context, pal theme.Palette, hint string, fillHeight bool) {
+func renderSearchEmpty(c *ui.Context, pal theme.Palette, hint string, fillHeight bool, emptyH float32) {
 	box := ui.Box(c.Key("search-empty")).FillWidth().Center().Padding(0, 24, 0, 24).
 		Transition(internalui.SurfaceStageTransition())
 	if fillHeight {
 		box.Grow(1).MinHeight(0)
 	} else {
-		box.Height(searchEmptyHeight)
+		if emptyH <= 0 {
+			emptyH = searchEmptyHeight
+		}
+		box.Height(emptyH)
 	}
-	box.Children(func() {
-		ui.Text(c, hint).FontSize(theme.FontSmall).TextColor(pal.TextSecondary)
-	})
+	internalui.Probe(box, "search-empty")
+	if hint != "" {
+		box.Children(func() {
+			ui.Text(c, hint).FontSize(theme.FontSmall).TextColor(pal.TextSecondary)
+		})
+	}
 }
 
 func renderSearchHitRowView(
