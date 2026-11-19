@@ -24,6 +24,9 @@ type DiffLineStyle struct {
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
 var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 
+// diffListItemRE matches a list item marker at the start of a trimmed line.
+var diffListItemRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])(?:\s|$)`)
+
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
 
@@ -62,11 +65,29 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 	for si, side := range [2]int{-1, 1} {
 		mask := make([]bool, len(lines))
 		fence, nested := "", false
+		// Indented code: four columns in after a blank line (or the start), unless the
+		// text above is a list, whose nested content is indented the same way.
+		inIndented, prevBlank, inList := false, true, false
 		for i, l := range lines {
 			if change[i] == -side {
 				continue
 			}
 			t := strings.TrimSpace(l)
+			if fence == "" {
+				if t == "" {
+					prevBlank = true
+					continue
+				}
+				ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
+				wasBlank := prevBlank
+				prevBlank = false
+				if ind >= 4 && (inIndented || (wasBlank && !inList)) {
+					mask[i], inIndented = true, true
+					continue
+				}
+				inIndented = false
+				inList = diffListItemRE.MatchString(t) || (inList && ind > 0)
+			}
 			if fence != "" {
 				mask[i] = true
 				// Inside a plain fence "> ~~~" is code; only a fence opened behind a list or
@@ -95,9 +116,10 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 // "| --- |" nor writes a change nobody saw. applied[i] says whether changed line i is
 // taken; unchanged lines are ignored. Each side (old text, new text) is read with its
 // own fences. A separator under a changed header follows that header. Under an
-// unchanged header it follows the visible line it replaces, if any; otherwise the
-// other changed rows of its table, and stays as it was when the table has none (an
-// alignment-only change is invisible, so a partial accept keeps the old one).
+// unchanged header it follows the separator it replaces when that one is visible
+// (it was code); otherwise the other changed rows of its table, and stays as it was
+// when the table has none (an alignment-only change is invisible, so a partial
+// accept keeps the old one).
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
 	hidden := func(k int) bool { return !shown[k] && IsDiffTableSep(strings.TrimSpace(lines[k])) }
@@ -137,14 +159,23 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 					continue
 				}
 				applied[j] = any
-				// The line it replaces: the opposite-side change next to it in its run.
-				for _, step := range [2]int{-1, 1} {
-					k := j + step
-					for k >= 0 && k < len(lines) && change[k] == side {
-						k += step
-					}
-					if k >= 0 && k < len(lines) && change[k] == -side && !hidden(k) {
-						applied[j] = applied[k]
+				// The separator it replaces sits in the same run of changes. Two hidden
+				// separators decide together (above); a visible one (the old line was code)
+				// is the user's choice to follow.
+				lo, hi := j, j
+				for lo > 0 && change[lo-1] != 0 {
+					lo--
+				}
+				for hi+1 < len(lines) && change[hi+1] != 0 {
+					hi++
+				}
+				for k := lo; k <= hi; k++ {
+					if change[k] == -side && IsDiffTableSep(strings.TrimSpace(lines[k])) {
+						if !hidden(k) {
+							applied[j] = applied[k]
+						} else if v, ok := diffSepPairForced(change, applied, j, k); ok {
+							applied[j] = v
+						}
 						break
 					}
 				}
@@ -153,11 +184,31 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	}
 }
 
+// diffLinkTitle matches an optional link title: "t", 't' or (t).
+const diffLinkTitle = `(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`
+
 var (
-	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`)
-	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)`)
+	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)` + diffLinkTitle + `\)`)
+	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\((?:[^()\s]|\([^()\s]*\))*` + diffLinkTitle + `\)`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
+
+// diffSepPairForced handles two hidden separators j and k that replace each other.
+// When a line between them stays in the result, only the earlier one can be the
+// table's separator (the later would sit under that line, not under the header), so
+// the pair is forced: keep the earlier, drop the later. ok is false when nothing in
+// between stays, leaving the choice to the table's rows.
+func diffSepPairForced(change []int, applied []bool, j, k int) (v, ok bool) {
+	lo, hi := min(j, k), max(j, k)
+	for m := lo + 1; m < hi; m++ {
+		if (change[m] < 0 && !applied[m]) || (change[m] > 0 && applied[m]) {
+			// Keeping the earlier one means: an inserted earlier separator is applied,
+			// a deleted earlier separator is not (it stays), and the later follows suit.
+			return change[lo] > 0, true
+		}
+	}
+	return false, false
+}
 
 // diffCodeSpans returns the [start, end) byte ranges of the code spans in s, each
 // delimited by equal backtick runs.
@@ -208,7 +259,11 @@ func diffPlainLinks(s string) string {
 		last := 0
 		for _, m := range re.FindAllSubmatchIndex(masked, -1) {
 			b.WriteString(s[last:m[0]])
-			b.WriteString(s[m[2]:m[3]])
+			text := s[m[2]:m[3]]
+			if text == "" && len(m) > 4 && m[4] >= 0 {
+				text = s[m[4]:m[5]] // an image without alt text shows its path
+			}
+			b.WriteString(text)
 			last = m[1]
 		}
 		b.WriteString(s[last:])
@@ -269,9 +324,10 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	body := strings.TrimLeft(line, " \t")
 	indent := len(strings.ReplaceAll(line[:len(line)-len(body)], "\t", "    "))
 	return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
-		// A link reference definition renders as nothing; escape it to show the source.
+		// A link reference definition renders as nothing; escape its colon to show it
+		// (a leading "\\[" would open display math).
 		if diffLinkDefRE.MatchString(body) {
-			body = "\\" + body
+			body = strings.Replace(body, "]:", "]\\:", 1)
 		}
 		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
 	})
