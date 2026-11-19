@@ -77,7 +77,7 @@ func (s *Supervisor) HasPluginError(id string) bool {
 }
 
 func (s *Supervisor) queueNoteSaved(pluginID, root, path, rel string) {
-	key := viewKey{pluginID, root}
+	key := viewKey{pluginID, root, SurfaceSettingsPage}
 	s.mu.Lock()
 	v := s.views[key]
 	if v == nil {
@@ -153,7 +153,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 			if s.views[key] == v && v.editSeq == editSeq {
 				v.Page = page
 				mergePageValues(v, page, nil)
-				v.formVersion = s.formVersions[key.pluginID]
+				v.formVersion = s.formVersions[surfaceKey{key.pluginID, SurfaceSettingsPage}]
 				if page.Status != "" {
 					v.Notice = ""
 				}
