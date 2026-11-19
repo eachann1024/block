@@ -1262,8 +1262,8 @@ func startMCPBridge(ctrl *Controller, convID uint64) (*mcpBridgeServer, error) {
 			name, _ := rpc.Params["name"].(string)
 			argsVal := rpc.Params["arguments"]
 			rawArgs, _ := json.Marshal(argsVal)
+			resJSON, plan, sources := ctrl.executeTool(name, string(rawArgs))
 			ctrl.mu.Lock()
-			resJSON, plan, sources := ctrl.executeToolLocked(name, string(rawArgs))
 			if ctrl.streaming && ctrl.currentID == convID {
 				ctrl.partialSteps = append(ctrl.partialSteps, processStepForTool(name, string(rawArgs)))
 			}

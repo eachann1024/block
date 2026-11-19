@@ -1112,11 +1112,20 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 	}
 	cfg := resolveProviderExecutionConfig(c.providerCfg)
 	thinking := c.backendThinkingLocked(model.BackendBuiltin)
-	root := c.activeRootLocked()
-	currentPage := c.activePageLocked(root)
+	host := c.host
+	c.mu.Unlock()
+
+	root := activeRootWithHost(host)
+	currentPage := activePageWithHost(host, root)
 	currentMD := ""
 	if currentPage != "" {
-		currentMD = c.readPageContentLocked(root, currentPage)
+		currentMD = readPageContent(host, root, currentPage)
+	}
+
+	c.mu.Lock()
+	if !c.providerCfg.Enabled || c.currentID != convID {
+		c.mu.Unlock()
+		return
 	}
 	msgs := c.buildBuiltinAPIMessagesLocked(root, currentPage, currentMD, step)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1208,8 +1217,11 @@ func (c *Controller) startBuiltinTurn(convID uint64, step int) {
 					c.requestRedraw()
 					return
 				}
-				waitingQuestion := c.handleBuiltinToolCallsLocked(convID, step, text, think, ev.toolCalls)
 				c.mu.Unlock()
+				waitingQuestion, cancelled := c.handleBuiltinToolCalls(convID, serial, step, text, think, ev.toolCalls)
+				if cancelled {
+					return
+				}
 				c.requestRedraw()
 				if !waitingQuestion && step < maxBuiltinSteps {
 					c.startBuiltinTurn(convID, step+1)
@@ -1284,7 +1296,7 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(root, currentPage, currentMD 
 	return msgs
 }
 
-func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text, think string, calls []streamToolCall) bool {
+func (c *Controller) handleBuiltinToolCalls(convID uint64, serial uint64, step int, text, think string, calls []streamToolCall) (waitingQuestion bool, cancelled bool) {
 	rawCalls := make([]map[string]any, 0, len(calls))
 	for _, tc := range calls {
 		rawCalls = append(rawCalls, map[string]any{
@@ -1307,14 +1319,20 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text,
 			Done:   true,
 		})
 	}
+
+	c.mu.Lock()
+	if c.streamSerial != serial || c.currentID != convID {
+		c.mu.Unlock()
+		return false, true
+	}
 	c.pushMessageLocked(model.ChatMessage{
 		Role:      "assistant",
 		Content:   text,
 		ToolCalls: rawJSON,
 		Process:   assistantProc,
 	})
+	c.mu.Unlock()
 
-	waitingQuestion := false
 	for _, tc := range calls {
 		procStep := processStepForTool(tc.Name, tc.Arguments)
 		if (tc.Name == "askUserQuestion" || tc.Name == "askQuestion") && !waitingQuestion {
@@ -1322,17 +1340,23 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text,
 			_ = json.Unmarshal([]byte(tc.Arguments), &args)
 			card := parseQuestionCard(tc.ID, args)
 			if card != nil && len(card.Questions) > 0 {
+				c.mu.Lock()
+				if c.streamSerial != serial || c.currentID != convID {
+					c.mu.Unlock()
+					return false, true
+				}
 				c.pushMessageLocked(model.ChatMessage{
 					Role:       "assistant",
 					ToolCallID: tc.ID,
 					Question:   card,
 					Process:    []model.ProcessStep{procStep},
 				})
+				c.mu.Unlock()
 				waitingQuestion = true
 				continue
 			}
 		}
-		resJSON, plan, sources := c.executeToolLocked(tc.Name, tc.Arguments)
+		resJSON, plan, sources := c.executeTool(tc.Name, tc.Arguments)
 		msg := model.ChatMessage{
 			Role:       "tool",
 			Content:    resJSON,
@@ -1341,6 +1365,11 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text,
 			Sources:    sources,
 			Process:    []model.ProcessStep{procStep},
 		}
+		c.mu.Lock()
+		if c.streamSerial != serial || c.currentID != convID {
+			c.mu.Unlock()
+			return false, true
+		}
 		c.pushMessageLocked(msg)
 		if plan != nil {
 			conv := c.findConvLocked(convID)
@@ -1348,9 +1377,9 @@ func (c *Controller) handleBuiltinToolCallsLocked(convID uint64, step int, text,
 				c.linkPlanLocked(convID, len(conv.Messages)-1)
 			}
 		}
+		c.mu.Unlock()
 	}
-	c.persistChatsLocked()
-	return waitingQuestion
+	return waitingQuestion, false
 }
 
 func processStepForTool(name, rawArgs string) model.ProcessStep {
@@ -1440,33 +1469,108 @@ func processStepForTool(name, rawArgs string) model.ProcessStep {
 	}
 }
 
-func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.BatchPlan, []model.SourceNote) {
+func activeRootWithHost(host model.WorkspaceHost) string {
+	if host == nil {
+		return ""
+	}
+	if root := strings.TrimSpace(host.ActiveNotebook()); root != "" {
+		return root
+	}
+	if nbs := host.Notebooks(); len(nbs) > 0 {
+		return nbs[0]
+	}
+	return ""
+}
+
+func activePageWithHost(host model.WorkspaceHost, root string) string {
+	if host == nil {
+		return ""
+	}
+	p := strings.TrimSpace(host.ActiveNotePath())
+	if p == "" {
+		return ""
+	}
+	if root != "" {
+		if rel, err := filepath.Rel(root, p); err == nil && !strings.HasPrefix(rel, "..") {
+			return strings.TrimSuffix(filepath.ToSlash(rel), ".md")
+		}
+	}
+	return strings.TrimSuffix(filepath.Base(p), ".md")
+}
+
+func readPageContent(host model.WorkspaceHost, root, page string) string {
+	if page == "" {
+		return ""
+	}
+	abs := page
+	if !filepath.IsAbs(abs) && root != "" {
+		abs = filepath.Join(root, filepath.FromSlash(page)+".md")
+	}
+	if host != nil {
+		if txt, err := host.ReadNote(abs); err == nil {
+			return txt
+		}
+	}
+	if abs != "" {
+		if b, err := os.ReadFile(abs); err == nil {
+			return string(b)
+		}
+	}
+	return ""
+}
+
+func (c *Controller) executeTool(name, rawArgs string) (string, *model.BatchPlan, []model.SourceNote) {
 	var args map[string]any
 	_ = json.Unmarshal([]byte(rawArgs), &args)
 	if args == nil {
 		args = map[string]any{}
 	}
-	root, _ := args["notebookRoot"].(string)
-	if root == "" {
-		root = c.activeRootLocked()
-	}
 
-	switch name {
-	case "loadSkill":
-		skillName, _ := args["skill"].(string)
-		if spec, ok := c.findSkillLocked(skillName); ok {
+	c.mu.RLock()
+	host := c.host
+	pickerRoot := c.pickerRoot
+	pickerInjected := c.pickerInjected
+	var cachedPages []string
+	if len(c.pickerPages) > 0 && (name == "listPages" || name == "listNotebookFiles" || name == "searchNotes") {
+		cachedPages = append([]string(nil), c.pickerPages...)
+	}
+	var skillSpec model.SkillSpec
+	var skillOK bool
+	var skillName string
+	if name == "loadSkill" {
+		skillName, _ = args["skill"].(string)
+		skillSpec, skillOK = c.findSkillLocked(skillName)
+	}
+	c.mu.RUnlock()
+
+	if name == "loadSkill" {
+		if skillOK {
 			return marshalJSON(map[string]any{
-				"skill":        spec.ID,
+				"skill":        skillSpec.ID,
 				"supported":    true,
-				"instructions": spec.Content,
+				"instructions": skillSpec.Content,
 			}), nil, nil
 		}
 		return marshalJSON(map[string]any{"skill": skillName, "supported": false, "error": "未知 Skill"}), nil, nil
+	}
 
+	root, _ := args["notebookRoot"].(string)
+	if root == "" {
+		root = activeRootWithHost(host)
+	}
+
+	resolvePages := func() []string {
+		if len(cachedPages) > 0 && (root == pickerRoot || pickerInjected) {
+			return cachedPages
+		}
+		return listPagesForRoot(host, root)
+	}
+
+	switch name {
 	case "listNotebooks":
 		var nbs []string
-		if c.host != nil {
-			nbs = c.host.Notebooks()
+		if host != nil {
+			nbs = host.Notebooks()
 		}
 		if len(nbs) == 0 && root != "" {
 			nbs = []string{root}
@@ -1474,7 +1578,7 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 		return marshalJSON(map[string]any{"notebooks": nbs}), nil, nil
 
 	case "listPages", "listNotebookFiles":
-		pages := c.listPagesForRootLocked(root)
+		pages := resolvePages()
 		arr := make([]map[string]any, 0, len(pages))
 		for _, p := range pages {
 			arr = append(arr, map[string]any{"pageId": p, "title": pathBaseSlash(p)})
@@ -1483,8 +1587,8 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 
 	case "searchNotes":
 		q, _ := args["query"].(string)
-		if c.host != nil {
-			if hits, err := c.host.SearchWorkspace(q, root == ""); err == nil {
+		if host != nil {
+			if hits, err := host.SearchWorkspace(q, root == ""); err == nil {
 				results := make([]map[string]any, 0, len(hits))
 				for i, h := range hits {
 					if i >= 20 {
@@ -1506,10 +1610,10 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 			}
 		}
 		lowQ := strings.ToLower(q)
-		pages := c.listPagesForRootLocked(root)
+		pages := resolvePages()
 		var results []map[string]any
 		for _, p := range pages {
-			body := c.readPageContentLocked(root, p)
+			body := readPageContent(host, root, p)
 			if strings.Contains(strings.ToLower(p), lowQ) || strings.Contains(strings.ToLower(body), lowQ) {
 				results = append(results, map[string]any{
 					"pageId":  p,
@@ -1529,11 +1633,11 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 			page, _ = args["path"].(string)
 		}
 		if page == "" {
-			page = c.activePageLocked(root)
+			page = activePageWithHost(host, root)
 		} else if !filepath.IsAbs(page) {
 			page = strings.TrimSuffix(page, ".md")
 		}
-		md := c.readPageContentLocked(root, page)
+		md := readPageContent(host, root, page)
 		if md == "" {
 			return marshalJSON(map[string]any{"error": "找不到页面：" + page}), nil, nil
 		}
@@ -1552,12 +1656,9 @@ func (c *Controller) executeToolLocked(name, rawArgs string) (string, *model.Bat
 	}
 }
 
-func (c *Controller) listPagesForRootLocked(root string) []string {
-	if len(c.pickerPages) > 0 && (root == c.pickerRoot || c.pickerInjected) {
-		return append([]string(nil), c.pickerPages...)
-	}
-	if c.host != nil && root != "" {
-		if entries, err := c.host.ListNotebookFiles(root); err == nil {
+func listPagesForRoot(host model.WorkspaceHost, root string) []string {
+	if host != nil && root != "" {
+		if entries, err := host.ListNotebookFiles(root); err == nil {
 			var out []string
 			var walk func(list []model.FileEntry)
 			walk = func(list []model.FileEntry) {
