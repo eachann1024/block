@@ -23,17 +23,24 @@ const (
 	editorIndentStep         float32 = editorMarkerWidth / 2
 	editorTopPad             float32 = 64
 	editorBottomPad          float32 = 160
-	virtualizeBlockThreshold         = 180
+	virtualizeBlockThreshold         = 80
 )
+
+type virtBlockSpanKey struct {
+	first model.BlockID
+}
+
+type virtBlockEntry struct {
+	id model.BlockID
+	h  float32
+}
 
 // Render draws the block editor, its inline blocks, and all floating overlays/rails.
 func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	readOnly = readOnly || s.previewMedia != nil
-	if s.doc == nil {
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		s.doc = model.NewEmptyDoc()
-	}
-	if len(s.doc.Blocks) == 0 {
-		s.doc = model.NewEmptyDoc()
+		s.docRev++
 	}
 	s.readOnly = readOnly
 	s.ensureAnnotationsLoaded()
@@ -170,7 +177,8 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 					scrolling := s.IsScrollingForHover(c.Now())
 					frameMeta := s.prepareFrameBlocks()
 					nextHover := -1
-					for i := range s.doc.Blocks {
+					nBlocks := len(s.doc.Blocks)
+					for i := 0; i < nBlocks; i++ {
 						if frameMeta[i].Hidden {
 							continue
 						}
@@ -182,12 +190,61 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 						}
 						if canVirt {
 							if cachedR, ok := s.canVirtualizeBlock(i, s.doc.Blocks[i].ID); ok {
-								id := s.doc.Blocks[i].ID
-								sp := ui.Box(c.Key(id)).FillWidth().Height(cachedR.H)
-								s.recordBlockLayoutBounds(id, sp)
-								sp.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-									s.recordBlockWinRect(id, r)
-								})
+								firstID := s.doc.Blocks[i].ID
+								sumH := cachedR.H
+								var spanEntries []virtBlockEntry
+								lastVirt := i
+								for j := i + 1; j < nBlocks; j++ {
+									if frameMeta[j].Hidden {
+										lastVirt = j
+										continue
+									}
+									if s.inlineAI != nil && s.isInlineAIPreviewIndex(j) {
+										break
+									}
+									rj, okJ := s.canVirtualizeBlock(j, s.doc.Blocks[j].ID)
+									if !okJ {
+										break
+									}
+									if spanEntries == nil {
+										spanEntries = []virtBlockEntry{{id: firstID, h: cachedR.H}}
+									}
+									spanEntries = append(spanEntries, virtBlockEntry{id: s.doc.Blocks[j].ID, h: rj.H})
+									sumH += rj.H
+									lastVirt = j
+								}
+								if len(spanEntries) <= 1 {
+									sp := ui.Box(c.Key(firstID)).FillWidth().Height(cachedR.H)
+									s.recordBlockLayoutBounds(firstID, sp)
+									sp.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+										s.recordBlockWinRect(firstID, r)
+									})
+								} else {
+									entries := spanEntries
+									sp := ui.Box(c.Key(virtBlockSpanKey{first: firstID})).FillWidth().Height(sumH)
+									if s.hasCanvasOrigin {
+										if b := sp.Bounds(); b.W > 0 && b.H > 0 {
+											curY := b.Y - s.canvasLayoutOrigin.Y
+											docX := b.X - s.canvasLayoutOrigin.X
+											for _, ent := range entries {
+												s.setBlockDocRect(ent.id, ui.Rect{X: docX, Y: curY, W: b.W, H: ent.h})
+												curY += ent.h
+											}
+										}
+									}
+									sp.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+										if r.W <= 0 || r.H <= 0 {
+											return
+										}
+										docBase := s.winToDocRect(r)
+										curY := docBase.Y
+										for _, ent := range entries {
+											s.setBlockDocRect(ent.id, ui.Rect{X: docBase.X, Y: curY, W: docBase.W, H: ent.h})
+											curY += ent.h
+										}
+									})
+								}
+								i = lastVirt
 								continue
 							}
 						}
@@ -439,14 +496,38 @@ func (s *Session) blockGap(prev, cur *model.Block) float32 {
 	return max(above, below)
 }
 
+func (s *Session) isInlineAIPreviewIndex(idx int) bool {
+	if s.inlineAI == nil {
+		return false
+	}
+	lo := min(s.inlineAI.TargetAnchor.Block, s.inlineAI.TargetHead.Block)
+	hi := max(s.inlineAI.TargetAnchor.Block, s.inlineAI.TargetHead.Block)
+	return idx >= lo-1 && idx <= hi+1
+}
+
 func (s *Session) canVirtualizeBlock(idx int, id model.BlockID) (ui.Rect, bool) {
 	if idx == 0 || idx == len(s.doc.Blocks)-1 || idx == s.focusedBlock || idx == s.hoveredBlock {
 		return ui.Rect{}, false
 	}
-	if s.dragBlockID != 0 || s.isMouseDragging() || s.hasNonEmptySelection() || s.jump.block == id {
+	if s.dragBlockID != 0 || s.jump.block == id {
 		return ui.Rect{}, false
 	}
-	if s.inlineAI != nil || s.blockMenu != nil || s.findOpen || len(s.annotations) > 0 {
+	if s.isMouseDragging() && idx == s.mouseOriginBlock {
+		return ui.Rect{}, false
+	}
+	if s.hasNonEmptySelection() {
+		a, b := s.orderedSelection()
+		if (idx >= a.Block-1 && idx <= a.Block+1) || (idx >= b.Block-1 && idx <= b.Block+1) {
+			return ui.Rect{}, false
+		}
+	}
+	if s.blockMenu != nil && idx == s.blockMenu.BlockIdx {
+		return ui.Rect{}, false
+	}
+	if s.isInlineAIPreviewIndex(idx) {
+		return ui.Rect{}, false
+	}
+	if s.findOpen && s.findCurrent >= 0 && s.findCurrent < len(s.findMatches) && s.findMatches[s.findCurrent].BlockIdx == idx {
 		return ui.Rect{}, false
 	}
 	if s.calloutMenuBlock == id || s.codeLangMenuBlock == id || s.tableMenuBlock == id || s.imagePopBlock == id || s.imgResizeBlock == id || s.isTableExtendingBlock(id) {
