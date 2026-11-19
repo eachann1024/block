@@ -779,15 +779,22 @@ func diffUnbold(s string) string {
 		}
 		return false
 	}
+	// A pair is an opener with text right after it and a closer with text right
+	// before it; "m ** 2" has neither and stays literal.
+	space := func(i int) bool { return i < 0 || i >= len(s) || s[i] == ' ' || s[i] == '\t' }
 	var at []int
+	open := -1
 	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '*' && s[i+1] == '*' && !inCode(i) && !diffEscaped(s, i) {
-			at = append(at, i)
-			i++
+		if s[i] != '*' || s[i+1] != '*' || inCode(i) || diffEscaped(s, i) {
+			continue
 		}
-	}
-	if len(at)%2 != 0 {
-		return s
+		switch {
+		case open >= 0 && !space(i-1):
+			at, open = append(at, open, i), -1
+		case open < 0 && !space(i+2):
+			open = i
+		}
+		i++
 	}
 	var b strings.Builder
 	last := 0
