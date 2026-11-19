@@ -281,6 +281,20 @@ func writeSnapshotFileLocked(pageID, content string) (string, error) {
 	return "", errors.New("could not allocate an immutable snapshot file")
 }
 
+func removeEmptyHistoryPageLocked(idx *historyIndex, key, pageID string) {
+	if pageID != "" {
+		if dir, dirErr := historyPageDir(pageID); dirErr == nil {
+			_ = os.RemoveAll(dir)
+		}
+	}
+	if idx != nil && key != "" {
+		if _, exists := idx.Pages[key]; exists {
+			delete(idx.Pages, key)
+			_ = saveHistoryIndexLocked(idx)
+		}
+	}
+}
+
 // RecordHistorySnapshot saves a deduplicated snapshot for notePath.
 // If the latest snapshot already has the identical SHA-256 content hash, no new
 // snapshot is written and the existing latest snapshot is returned.
@@ -309,6 +323,9 @@ func RecordHistorySnapshot(notePath, content, summary string) (*model.HistorySna
 
 	snapID, err := writeSnapshotFileLocked(pageID, content)
 	if err != nil {
+		if len(metas) == 0 {
+			removeEmptyHistoryPageLocked(idx, absKey, pageID)
+		}
 		return nil, err
 	}
 
@@ -333,6 +350,9 @@ func RecordHistorySnapshot(notePath, content, summary string) (*model.HistorySna
 		if dir, dirErr := historyPageDir(pageID); dirErr == nil {
 			_ = os.Remove(filepath.Join(dir, snapID+".md"))
 		}
+		if len(metas) <= 1 {
+			removeEmptyHistoryPageLocked(idx, absKey, pageID)
+		}
 		return nil, err
 	}
 
@@ -356,7 +376,7 @@ func ListHistorySnapshots(notePath string) ([]model.HistorySnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, pageID, err := lookupHistoryKey(idx, notePath)
+	key, pageID, err := lookupHistoryKey(idx, notePath)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +386,10 @@ func ListHistorySnapshots(notePath string) ([]model.HistorySnapshot, error) {
 	metas, err := loadHistoryMetasLocked(pageID)
 	if err != nil {
 		return nil, err
+	}
+	if len(metas) == 0 {
+		removeEmptyHistoryPageLocked(idx, key, pageID)
+		return nil, nil
 	}
 	out := make([]model.HistorySnapshot, len(metas))
 	for i := range metas {
@@ -387,7 +411,7 @@ func ReadHistorySnapshot(notePath, snapshotID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, pageID, err := lookupHistoryKey(idx, notePath)
+	key, pageID, err := lookupHistoryKey(idx, notePath)
 	if err != nil {
 		return "", err
 	}
@@ -397,6 +421,10 @@ func ReadHistorySnapshot(notePath, snapshotID string) (string, error) {
 	metas, err := loadHistoryMetasLocked(pageID)
 	if err != nil {
 		return "", err
+	}
+	if len(metas) == 0 {
+		removeEmptyHistoryPageLocked(idx, key, pageID)
+		return "", errors.New("version not found")
 	}
 
 	var targetMeta *model.HistorySnapshot
@@ -597,8 +625,8 @@ func myersDiffLines(a, b []string) []diffOp {
 	reachedD := -1
 
 	for d := 0; d <= maxD; d++ {
-		snap := make([]int, len(v))
-		copy(snap, v)
+		snap := make([]int, 2*d+1)
+		copy(snap, v[offset-d:offset+d+1])
 		trace = append(trace, snap)
 
 		found := false
@@ -659,7 +687,7 @@ func myersDiffLines(a, b []string) []diffOp {
 	if reachedD < 0 {
 		return replaceAllOps(n, m)
 	}
-	ops, ok := backtrackMyers(trace, reachedD, n, m, offset, slots)
+	ops, ok := backtrackMyers(trace, reachedD, n, m)
 	if !ok {
 		return replaceAllOps(n, m)
 	}
@@ -677,12 +705,13 @@ func replaceAllOps(n, m int) []diffOp {
 	return ops
 }
 
-func backtrackMyers(trace [][]int, d, n, m, offset, slots int) ([]diffOp, bool) {
+func backtrackMyers(trace [][]int, d, n, m int) ([]diffOp, bool) {
 	var ops []diffOp
 	x, y := n, m
 
 	for step := d; step >= 1; step-- {
 		vPrev := trace[step]
+		snapOffset := step
 		k := x - y
 		var fromBelow bool
 		if k == -step {
@@ -690,8 +719,8 @@ func backtrackMyers(trace [][]int, d, n, m, offset, slots int) ([]diffOp, bool) 
 		} else if k == step {
 			fromBelow = false
 		} else {
-			leftIdx, downIdx := k-1+offset, k+1+offset
-			if leftIdx < 0 || downIdx >= slots {
+			leftIdx, downIdx := k-1+snapOffset, k+1+snapOffset
+			if leftIdx < 0 || downIdx >= len(vPrev) {
 				return nil, false
 			}
 			fromBelow = vPrev[leftIdx] < vPrev[downIdx]
@@ -700,8 +729,8 @@ func backtrackMyers(trace [][]int, d, n, m, offset, slots int) ([]diffOp, bool) 
 		if fromBelow {
 			prevK = k + 1
 		}
-		prevIdx := prevK + offset
-		if prevIdx < 0 || prevIdx >= slots {
+		prevIdx := prevK + snapOffset
+		if prevIdx < 0 || prevIdx >= len(vPrev) {
 			return nil, false
 		}
 		prevX := vPrev[prevIdx]
