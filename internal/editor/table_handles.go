@@ -1428,7 +1428,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 									bd := ui.Transparent
 									fg := pal.TextSecondary
 									if active {
-										bg, bd, fg = pal.Selected, pal.Accent, pal.Text
+										bg, bd, fg = pal.Selected, pal.SelectedBorder, pal.Text
 									} else if hov {
 										bg, fg = pal.MenuHover, pal.Text
 									}

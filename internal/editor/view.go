@@ -745,7 +745,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								gripBD := ui.Transparent
 								if tableWholeActive {
 									gripBG = pal.Selected
-									gripBD = pal.Accent
+									gripBD = pal.SelectedBorder
 								} else if gripActive || gripPressed || gripHovered {
 									gripBG = gripHoverBG
 								}
@@ -753,7 +753,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 								appUi.TactileButton(grip, gripHovered || gripActive || tableWholeActive, gripPressed, tableWholeActive)
 								gripIcon := pal.MonoIconColors(pal.TextSecondary)
 								if tableWholeActive {
-									gripIcon = pal.MonoIconColors(pal.Accent)
+									gripIcon = pal.MonoIconColors(pal.Text)
 								} else if gripActive || gripPressed || gripHovered {
 									gripIcon = pal.DuoIconColors(pal.Text)
 								}
@@ -2130,7 +2130,7 @@ func (s *Session) renderCodePreview(c *ui.Context, id model.BlockID, canon, src 
 
 func mermaidNodeBox(c *ui.Context, label string, fontSize float32) {
 	pal := theme.Ocean()
-	ui.Box(c).Padding(6, 12).Radius(theme.RadiusSM).Background(pal.Selected).Border(1, pal.Accent).Children(func() {
+	ui.Box(c).Padding(6, 12).Radius(theme.RadiusSM).Background(pal.Selected).Border(1, ui.Transparent).Children(func() {
 		ui.Text(c, label).FontSize(fontSize).FontWeight(theme.WeightControl).TextColor(pal.Text)
 	})
 }
