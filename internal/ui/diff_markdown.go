@@ -48,8 +48,19 @@ func diffFenceOpen(t string) string {
 // the old and new text, so each side is scanned on its own: change < 0 lines belong to
 // the old text, > 0 to the new one, 0 to both; a line is code if its side says so.
 func DiffFenceMask(lines []string, change []int) []bool {
-	mask := make([]bool, len(lines))
-	for _, side := range [2]int{-1, 1} {
+	old, cur := diffFenceSides(lines, change)
+	for i := range old {
+		old[i] = old[i] || cur[i]
+	}
+	return old
+}
+
+// diffFenceSides is DiffFenceMask for the old and the new text separately; a line
+// absent from a side is false there.
+func diffFenceSides(lines []string, change []int) (old, cur []bool) {
+	var masks [2][]bool
+	for si, side := range [2]int{-1, 1} {
+		mask := make([]bool, len(lines))
 		fence, nested := "", false
 		for i, l := range lines {
 			if change[i] == -side {
@@ -74,49 +85,69 @@ func DiffFenceMask(lines []string, change []int) []bool {
 				nested = diffContainerRE.MatchString(t)
 			}
 		}
+		masks[si] = mask
 	}
-	return mask
+	return masks[0], masks[1]
 }
 
 // SyncDiffTableSeps decides each changed table separator row, which the review views
 // hide, from the rows the user can see, so a partial accept never leaves an orphan
 // "| --- |" nor writes a change nobody saw. applied[i] says whether changed line i is
-// taken; unchanged lines are ignored. A separator under a changed header follows that
-// header (it goes and comes with it). Under an unchanged header it follows the other
-// changed rows of its table, and stays as it was when the table has none (an
+// taken; unchanged lines are ignored. Each side (old text, new text) is read with its
+// own fences. A separator under a changed header follows that header. Under an
+// unchanged header it follows the visible line it replaces, if any; otherwise the
+// other changed rows of its table, and stays as it was when the table has none (an
 // alignment-only change is invisible, so a partial accept keeps the old one).
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
-	fenced := DiffFenceMask(lines, change)
-	isRow := func(i int) bool { return !fenced[i] && IsDiffTableRow(strings.TrimSpace(lines[i])) }
-	isSep := func(i int) bool { return isRow(i) && IsDiffTableSep(strings.TrimSpace(lines[i])) }
-	for i := 0; i < len(lines); {
-		if !isRow(i) {
-			i++
-			continue
-		}
-		start := i
-		for i < len(lines) && isRow(i) {
-			i++
-		}
-		any := false
-		for j := start; j < i; j++ {
-			if change[j] != 0 && !isSep(j) && applied[j] {
-				any = true
-			}
-		}
-		for j := start; j < i; j++ {
-			if change[j] == 0 || !isSep(j) {
+	shown := DiffFenceMask(lines, change)
+	hidden := func(k int) bool { return !shown[k] && IsDiffTableSep(strings.TrimSpace(lines[k])) }
+	oldM, newM := diffFenceSides(lines, change)
+	for si, side := range [2]int{-1, 1} {
+		mask := [2][]bool{oldM, newM}[si]
+		on := func(i int) bool { return change[i] != -side }
+		isRow := func(i int) bool { return !mask[i] && IsDiffTableRow(strings.TrimSpace(lines[i])) }
+		for i := 0; i < len(lines); {
+			if !on(i) || !isRow(i) {
+				i++
 				continue
 			}
-			// The header is the nearest earlier row on this separator's side.
-			h := j - 1
-			for h >= start && (change[h] == -change[j] || isSep(h)) {
-				h--
+			start, end := i, i
+			for ; i < len(lines) && (!on(i) || isRow(i)); i++ {
+				if on(i) {
+					end = i + 1
+				}
 			}
-			if h >= start && change[h] == change[j] {
-				applied[j] = applied[h]
-			} else {
+			i = end
+			any := false
+			for k := start; k < end; k++ {
+				if change[k] != 0 && !hidden(k) && IsDiffTableRow(strings.TrimSpace(lines[k])) && applied[k] {
+					any = true
+				}
+			}
+			for j := start; j < end; j++ {
+				if change[j] != side || !IsDiffTableSep(strings.TrimSpace(lines[j])) {
+					continue
+				}
+				h := j - 1
+				for h >= start && (!on(h) || IsDiffTableSep(strings.TrimSpace(lines[h]))) {
+					h--
+				}
+				if h >= start && change[h] == side {
+					applied[j] = applied[h]
+					continue
+				}
 				applied[j] = any
+				// The line it replaces: the opposite-side change next to it in its run.
+				for _, step := range [2]int{-1, 1} {
+					k := j + step
+					for k >= 0 && k < len(lines) && change[k] == side {
+						k += step
+					}
+					if k >= 0 && k < len(lines) && change[k] == -side && !hidden(k) {
+						applied[j] = applied[k]
+						break
+					}
+				}
 			}
 		}
 	}
@@ -162,24 +193,20 @@ func diffCodeSpans(s string) [][2]int {
 }
 
 // diffPlainLinks turns links into their text: a link inside a diff row would take the
-// click (opening a browser) instead of the row's accept toggle. A match that starts
-// inside a code span is left as written.
+// click (opening a browser) instead of the row's accept toggle. Links are found with
+// code spans blanked out, so code is never rewritten and brackets inside it don't
+// hide a link.
 func diffPlainLinks(s string) string {
 	for _, re := range []*regexp.Regexp{diffImageRE, diffLinkRE, diffAutolinkRE} {
-		spans := diffCodeSpans(s)
+		masked := []byte(s)
+		for _, sp := range diffCodeSpans(s) {
+			for k := sp[0]; k < sp[1]; k++ {
+				masked[k] = 'x'
+			}
+		}
 		var b strings.Builder
 		last := 0
-		for _, m := range re.FindAllStringSubmatchIndex(s, -1) {
-			inCode := false
-			for _, sp := range spans {
-				if m[0] >= sp[0] && m[0] < sp[1] {
-					inCode = true
-					break
-				}
-			}
-			if inCode {
-				continue
-			}
+		for _, m := range re.FindAllSubmatchIndex(masked, -1) {
 			b.WriteString(s[last:m[0]])
 			b.WriteString(s[m[2]:m[3]])
 			last = m[1]
@@ -242,9 +269,16 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	body := strings.TrimLeft(line, " \t")
 	indent := len(strings.ReplaceAll(line[:len(line)-len(body)], "\t", "    "))
 	return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
+		// A link reference definition renders as nothing; escape it to show the source.
+		if diffLinkDefRE.MatchString(body) {
+			body = "\\" + body
+		}
 		markdown.View(c, diffPlainLinks(body), diffMarkdownOptions(st))
 	})
 }
+
+// diffLinkDefRE matches a link reference definition such as "[api]: https://…".
+var diffLinkDefRE = regexp.MustCompile(`^\[[^\]]+\]:`)
 
 // diffCellBlockRE matches a leading marker that would make a cell parse as a block
 // (heading, quote, fence, bullet, thematic break); a backslash in front keeps it literal.
