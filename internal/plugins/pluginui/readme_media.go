@@ -210,14 +210,16 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 			ref.RawPath, ref.RawQuery = "", ""
 		}
 	}
-	ctx, cancel := context.WithTimeout(m.ctx, 20*time.Second)
-	defer cancel()
-	data, err := fetchReadmeMediaURL(ctx, ref.String(), limit)
+	primaryCtx, primaryCancel := context.WithTimeout(m.ctx, 8*time.Second)
+	data, err := fetchReadmeMediaURL(primaryCtx, ref.String(), limit)
+	primaryCancel()
 	if err == nil {
 		return data, nil
 	}
 	if fallback := rawGitHubToJsDelivr(ref); fallback != "" {
-		return fetchReadmeMediaURL(ctx, fallback, limit)
+		cdnCtx, cdnCancel := context.WithTimeout(m.ctx, 8*time.Second)
+		defer cdnCancel()
+		return fetchReadmeMediaURL(cdnCtx, fallback, limit)
 	}
 	return nil, err
 }
@@ -242,7 +244,8 @@ func rawGitHubToJsDelivr(u *url.URL) string {
 	if u == nil || !strings.EqualFold(u.Hostname(), "raw.githubusercontent.com") {
 		return ""
 	}
-	parts := strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 4)
+	escaped := strings.TrimPrefix(u.EscapedPath(), "/")
+	parts := strings.SplitN(escaped, "/", 4)
 	if len(parts) < 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
 		return ""
 	}

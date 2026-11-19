@@ -289,7 +289,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, entry.Name.Resolve(locale)).
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-					if entry.Verified {
+					if storeAppIsOfficial(entry, installedApp, isInstalled) {
 						bui.OfficialBadge(c, true)
 					}
 					if storeAppIsBeta(entry, installedApp, isInstalled) {
@@ -320,7 +320,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 			if !stacked {
 				readmeW = pageW - theme.StoreDetailSideWidth - theme.Space24
 			}
-			renderStoreDetailReadme(c, ctrl, preview, readmeW, stacked)
+			renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, readmeW, stacked)
 			renderStoreDetailInfo(c, ctrl, entry, locale, stacked)
 		})
 	})
@@ -403,7 +403,15 @@ func renderStoreDetailActions(
 	}
 }
 
-func renderStoreDetailReadme(c *ui.Context, ctrl *Controller, preview *storeReadmePreview, width float32, stacked bool) {
+func renderStoreDetailReadme(
+	c *ui.Context,
+	ctrl *Controller,
+	preview *storeReadmePreview,
+	entry plugins.StoreAppEntry,
+	installed plugins.InstalledApp,
+	width float32,
+	stacked bool,
+) {
 	pal := theme.Ocean()
 	_, winH := c.Size()
 	readmeH := max(winH*0.62, theme.StoreDetailReadmeMinH)
@@ -439,7 +447,7 @@ func renderStoreDetailReadme(c *ui.Context, ctrl *Controller, preview *storeRead
 				refIc := icons.Refresh
 				retry := bui.ActionButton(c, "app-store-readme-retry", theme.Tr("重试", "Retry"), &refIc, bui.ButtonSecondary, false)
 				if retry.Clicked() {
-					ctrl.loadStoreReadme(preview.entry, preview.installed)
+					ctrl.loadStoreReadme(entry, installed)
 				}
 			}
 		})
