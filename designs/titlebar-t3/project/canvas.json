@@ -7,7 +7,7 @@
   "title": "Block 顶栏与侧栏（参照 T3 Code）",
   "launch": {
     "view": "canvas",
-    "page": "brand"
+    "page": "tabs"
   },
   "pages": [
     {
@@ -21,6 +21,10 @@
     {
       "id": "settings",
       "name": "设置与弹窗"
+    },
+    {
+      "id": "tabs",
+      "name": "多标签顶栏"
     }
   ],
   "boards": {
@@ -243,6 +247,16 @@
       "page": "settings",
       "is_interactive": true,
       "radius": 12
+    },
+    "Tabs-Light.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1200,
+      "h": 760,
+      "title": "多标签 · 猫标抠图 · 常规字重",
+      "page": "tabs",
+      "is_interactive": true,
+      "radius": 12
     }
   },
   "order": [
@@ -267,7 +281,8 @@
     "Settings-Keys.dc.html",
     "Settings-Store.dc.html",
     "Settings-Update.dc.html",
-    "Settings-Hidden.dc.html"
+    "Settings-Hidden.dc.html",
+    "Tabs-Light.dc.html"
   ],
   "notes": {
     "row-a": {
