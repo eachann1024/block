@@ -2562,7 +2562,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										// 与变更行的复选框同宽留白，表格列边界才能对齐。
 										ui.Box(c).Width(theme.IconRow).Shrink(0)
 										ui.Box(c).Width(12).Shrink(0)
-										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: pal.TextSecondary, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx], Refs: refs})
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: pal.TextSecondary, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx], Refs: refs[lineIdx]})
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -2598,7 +2598,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 											}
 										})
 										ui.Text(c, gutter).Width(12).Shrink(0).FontSize(theme.FontBody).TextColor(fg).SingleLine()
-										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: fg, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx], Refs: refs})
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, appUi.DiffLineStyle{Text: fg, Code: fenced[lineIdx], Setext: setext[lineIdx], ListNum: listNums[lineIdx], Refs: refs[lineIdx]})
 									})
 								}
 							}

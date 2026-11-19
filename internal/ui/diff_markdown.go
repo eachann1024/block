@@ -127,20 +127,48 @@ func DiffListNumbers(lines []string, change []int) []int {
 	return out
 }
 
-// diffRefDefRE matches a link reference definition line, capturing its label.
-var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:\s*\S`)
+// diffRefDefRE matches the start of a link reference definition, capturing its
+// label and what follows the colon (the destination may sit on the next line).
+var diffRefDefRE = regexp.MustCompile(`^ {0,3}\[((?:\\.|[^\[\]\\])+)\]:(.*)$`)
 
-// DiffRefLabels collects the link reference labels defined outside code in a diff's
-// lines (either version), normalized as the note matches them.
-func DiffRefLabels(lines []string, change []int) map[string]bool {
-	code := DiffFenceMask(lines, change)
-	refs := map[string]bool{}
-	for i, l := range lines {
-		if m := diffRefDefRE.FindStringSubmatch(l); m != nil && !code[i] {
+// DiffRefLabels reports, per line, the link reference labels its own text defines
+// outside code (the old one for change < 0, the new one otherwise), normalized as
+// the note matches them, so a deleted line never borrows a label added by the AI.
+func DiffRefLabels(lines []string, change []int) []map[string]bool {
+	masks, _ := diffScan(lines, change)
+	out := make([]map[string]bool, len(lines))
+	for si, side := range [2]int{-1, 1} {
+		refs := map[string]bool{}
+		for i, l := range lines {
+			if change[i] == -side || masks[si][i] {
+				continue
+			}
+			m := diffRefDefRE.FindStringSubmatch(l)
+			if m == nil {
+				continue
+			}
+			if strings.TrimSpace(m[2]) == "" {
+				// "[docs]:" alone takes its destination from the next line of its text.
+				next := ""
+				for k := i + 1; k < len(lines); k++ {
+					if change[k] != -side {
+						next = strings.TrimSpace(lines[k])
+						break
+					}
+				}
+				if next == "" {
+					continue
+				}
+			}
 			refs[diffRefLabel(m[1])] = true
 		}
+		for i := range lines {
+			if (change[i] < 0) == (side < 0) {
+				out[i] = refs
+			}
+		}
 	}
-	return refs
+	return out
 }
 
 // diffRefLabel normalizes a reference label: case-folded, inner whitespace collapsed.
@@ -769,7 +797,9 @@ func diffPlainLinks(s string, refs map[string]bool) string {
 				if m[4] >= 0 && m[5] > m[4] {
 					label = s[m[4]:m[5]]
 				}
-				if !refs[diffRefLabel(label)] || m[1] < len(s) && (s[m[1]] == ':' || s[m[1]] == '(') {
+				// Only a lone "[label]" at the start may be a definition or inline link.
+				short := m[4] < 0
+				if !refs[diffRefLabel(label)] || short && m[1] < len(s) && (s[m[1]] == '(' || s[m[1]] == ':' && m[0] == 0) {
 					continue
 				}
 				b.WriteString(s[last:m[0]])
