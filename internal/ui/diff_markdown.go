@@ -485,6 +485,8 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		// indented too.
 		// para: the line above is paragraph text, which a "===" underline turns into a heading.
 		inIndented, prevBlank, inList, para, listCol := false, true, false, false, 0
+		// cols: the content columns of the open list items, innermost last.
+		var cols []int
 		// mathClose: the delimiter that ends the open display math block ("": none).
 		mathClose := ""
 		for i, l := range lines {
@@ -521,6 +523,14 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				wasBlank := prevBlank
 				prevBlank = false
+				// After a blank, or at a fence, a line left of a nested item's content
+				// belongs to an outer item: a fence under "1. 检查环境" past its sublist.
+				if len(cols) > 0 && (wasBlank || diffFenceOpen(t) != "") && !diffListItemRE.MatchString(t) {
+					for len(cols) > 1 && ind < cols[len(cols)-1] {
+						cols = cols[:len(cols)-1]
+					}
+					listCol = cols[len(cols)-1]
+				}
 				need := 4
 				if inList {
 					need += listCol
@@ -547,9 +557,16 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(inner)
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
 				if item {
+					for len(cols) > 0 && cols[len(cols)-1] > ind {
+						cols = cols[:len(cols)-1]
+					}
 					listCol = ind + len(diffContainerRE.FindString(t))
+					cols = append(cols, listCol)
 				}
 				inList = item || !setext && inList && ind > 0
+				if !inList {
+					cols = nil
+				}
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || ind < 4 && (diffRuleRE.MatchString(inner) || diffHeadingRE.MatchString(inner) || diffMathStart(inner))
