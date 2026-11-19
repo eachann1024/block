@@ -2479,11 +2479,11 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 				if title == "" {
 					title = theme.Tr("AI 修改审阅", "AI Plan Diff Review")
 				}
-				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Grow(1).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Grow(1).MinWidth(0).Children(func() {
 					icons.Draw(c, icons.Sparkles, theme.IconAction, pal.MonoIconColors(pal.Accent))
-					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 				})
-				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 					rejIc := icons.Close
 					rej := appUi.ActionButton(c, "plan-reject", theme.Tr("拒绝", "Reject"), &rejIc, appUi.ButtonDanger, false)
 					if rej.Clicked() {
