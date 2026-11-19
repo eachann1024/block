@@ -358,6 +358,7 @@ func entryFromManifest(
 		Downloads:   downloads,
 		Stars:       stars,
 		Verified:    isVerified,
+		Beta:        m.Beta,
 		UpdatedAt:   updatedAt,
 		Permissions: perms,
 		Surfaces:    m.Surfaces,
