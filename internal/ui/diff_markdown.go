@@ -567,20 +567,29 @@ func diffLiteralStart(s string) string {
 var diffLinkDefRE = regexp.MustCompile(`^\[[^\]]+\]:`)
 
 // diffCellBlockRE matches a leading marker that would make a cell parse as a block
-// (heading, quote, fence, bullet, thematic break); a backslash in front keeps it literal.
-var diffCellBlockRE = regexp.MustCompile("^(?:#{1,6}(?:\\s|$)|>|~{3,}|`{3,}|[-+*](?:\\s|$)|[-*_](?:\\s*[-*_]){2,}\\s*$)")
+// (heading, quote, bullet, thematic break); a backslash in front keeps it literal.
+var diffCellBlockRE = regexp.MustCompile("^(?:#{1,6}(?:\\s|$)|>|[-+*](?:\\s|$)|[-*_](?:\\s*[-*_]){2,}\\s*$)")
 
 // diffCellListRE matches an ordered-list marker; its "." or ")" gets the backslash.
 var diffCellListRE = regexp.MustCompile(`^(\d{1,9})([.)])(\s|$)`)
 
+// diffInlineStart escapes a leading marker that would make inline text parse as a
+// block: a heading, quote, list item, thematic break or code fence ("```x```" is
+// inline code and stays).
+func diffInlineStart(s string) string {
+	switch {
+	case diffCellListRE.MatchString(s):
+		return diffCellListRE.ReplaceAllString(s, "$1\\$2$3")
+	case diffCellBlockRE.MatchString(s), diffFenceOpen(s) != "" && !diffContainerRE.MatchString(s):
+		return `\` + s
+	}
+	return s
+}
+
 // DiffMarkdownCell renders one table cell's inline Markdown (code spans, emphasis).
 func DiffMarkdownCell(c *ui.Context, cell string, st DiffLineStyle, header bool) ui.Element {
-	// A cell holds inline content only: escape a leading heading, quote or list marker.
-	if diffCellListRE.MatchString(cell) {
-		cell = diffCellListRE.ReplaceAllString(cell, "$1\\$2$3")
-	} else if diffCellBlockRE.MatchString(cell) {
-		cell = "\\" + cell
-	}
+	// A cell holds inline content only.
+	cell = diffInlineStart(cell)
 	if header {
 		cell = "**" + strings.TrimSpace(cell) + "**"
 	}
