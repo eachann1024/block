@@ -7,7 +7,7 @@
   "title": "窄窗边缘唤出浮动侧栏与 AI（不遮挡块把手）",
   "launch": {
     "view": "canvas",
-    "page": "relink"
+    "page": "tabs"
   },
   "pages": [
     {
@@ -17,6 +17,10 @@
     {
       "id": "relink",
       "name": "重新设计 · 联动 / 悬浮"
+    },
+    {
+      "id": "tabs",
+      "name": "标签页 · 关闭按钮"
     }
   ],
   "boards": {
@@ -89,6 +93,46 @@
       "page": "relink",
       "is_interactive": true,
       "radius": 12
+    },
+    "Tab-Now.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 720,
+      "h": 280,
+      "title": "现状",
+      "page": "tabs",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Tab-A.dc.html": {
+      "x": 800,
+      "y": 0,
+      "w": 720,
+      "h": 280,
+      "title": "方案 A · 灰色圆角，拉开间距",
+      "page": "tabs",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Tab-B.dc.html": {
+      "x": 0,
+      "y": 400,
+      "w": 720,
+      "h": 280,
+      "title": "方案 B · 圆形小按钮，悬停才出现",
+      "page": "tabs",
+      "is_interactive": true,
+      "radius": 12
+    },
+    "Tab-A-Dark.dc.html": {
+      "x": 800,
+      "y": 400,
+      "w": 720,
+      "h": 280,
+      "title": "方案 A · 深色",
+      "page": "tabs",
+      "is_interactive": true,
+      "radius": 12
     }
   },
   "order": [
@@ -98,7 +142,11 @@
     "L-Side.dc.html",
     "L-AI.dc.html",
     "F-Hover.dc.html",
-    "F-Pinned.dc.html"
+    "F-Pinned.dc.html",
+    "Tab-Now.dc.html",
+    "Tab-A.dc.html",
+    "Tab-B.dc.html",
+    "Tab-A-Dark.dc.html"
   ],
   "notes": {
     "row-title": {
