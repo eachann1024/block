@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="212" viewBox="0 0 1200 212" role="img" aria-label="Block 应用商店按需扩展：同步、图床上传、笔记迁移、性能与占用" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <clipPath id="frEL"><rect x="0" y="0" width="1200" height="212" rx="18"/></clipPath>
+  </defs>
+  <style>
+
+  .sans{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",sans-serif}
+  .mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  .e-d1{animation:e-dot 6s ease-in-out 0s infinite}
+  .e-d2{animation:e-dot 6s ease-in-out 1.5s infinite}
+  .e-d3{animation:e-dot 6s ease-in-out 3.0s infinite}
+  .e-d4{animation:e-dot 6s ease-in-out 4.5s infinite}
+  @keyframes e-dot{0%,100%{opacity:.28}25%,40%{opacity:1}}
+
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+  <g clip-path="url(#frEL)">
+    <rect width="1200" height="212" fill="#f7f9fc"/>
+    <text class="sans" x="32" y="52" font-size="22" font-weight="700" fill="#161922">写作开箱即用，扩展按需安装</text>
+    <text class="sans" x="1146" y="50" text-anchor="end" font-size="15.5" font-weight="600" fill="#2f57a6">扩展开发指南</text>
+    <g transform="translate(1160 44) scale(0.9)" fill="none" stroke="#2f57a6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-4.5 4.5 L4.5 -4.5 M-1.5 -4.5 H4.5 V1.5"/></g>
+    <rect x="32" y="76" width="272" height="108" rx="12" fill="#ffffff" stroke="#e4e6ea" stroke-width="1.2"/>
+    <rect x="50" y="94" width="30" height="30" rx="8" fill="#c9d8f3"/><path d="M59 106 h12 l-3-3 M71 113 h-12 l3 3" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="90" y="115" font-size="18.5" font-weight="700" fill="#161922">同步</text>
+    <circle class="e-d1" cx="284" cy="108" r="4" fill="#547dd0"/>
+    <text class="sans" x="50" y="158" font-size="15" fill="#525866">目录镜像 · WebDAV · Git</text>
+    <rect x="320" y="76" width="272" height="108" rx="12" fill="#ffffff" stroke="#e4e6ea" stroke-width="1.2"/>
+    <rect x="338" y="94" width="30" height="30" rx="8" fill="#c9d8f3"/><path d="M353 115 v-11 M349 107 l4-4 4 4" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="378" y="115" font-size="18.5" font-weight="700" fill="#161922">图床上传</text>
+    <circle class="e-d2" cx="572" cy="108" r="4" fill="#547dd0"/>
+    <text class="sans" x="338" y="158" font-size="15" fill="#525866">R2 · S3 · GitHub</text>
+    <rect x="608" y="76" width="272" height="108" rx="12" fill="#ffffff" stroke="#e4e6ea" stroke-width="1.2"/>
+    <rect x="626" y="94" width="30" height="30" rx="8" fill="#c9d8f3"/><path d="M637 109 h10 l-3.5-3.5 M647 109 l-3.5 3.5" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="666" y="115" font-size="18.5" font-weight="700" fill="#161922">笔记迁移</text>
+    <circle class="e-d3" cx="860" cy="108" r="4" fill="#547dd0"/>
+    <text class="sans" x="626" y="158" font-size="15" fill="#525866">Obsidian · Notion · 语雀</text>
+    <rect x="896" y="76" width="272" height="108" rx="12" fill="#ffffff" stroke="#e4e6ea" stroke-width="1.2"/>
+    <rect x="914" y="94" width="30" height="30" rx="8" fill="#c9d8f3"/><path d="M922 115 l4-6 4 3 5-8" fill="none" stroke="#547dd0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sans" x="954" y="115" font-size="18.5" font-weight="700" fill="#161922">性能与占用</text>
+    <circle class="e-d4" cx="1148" cy="108" r="4" fill="#547dd0"/>
+    <text class="sans" x="914" y="158" font-size="15" fill="#525866">CPU 内存 · 存储分布</text>
+  </g>
+  <rect x="0.75" y="0.75" width="1198.5" height="210.5" rx="17.25" fill="none" stroke="#e4e6ea" stroke-width="1.5"/>
+</svg>
