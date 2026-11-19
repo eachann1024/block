@@ -115,9 +115,11 @@ func buildExtendedTable(base *model.TableData, targetRows, targetCols int) *mode
 	targetRows = max(targetRows, 1)
 	targetCols = max(targetCols, 1)
 	out := &model.TableData{
-		WasHTML: base.WasHTML,
-		Aligns:  make([]model.ColAlign, targetCols),
-		Rows:    make([][]model.TableCell, targetRows),
+		WasHTML:     base.WasHTML,
+		NoHeaderRow: base.NoHeaderRow,
+		HeaderCol:   base.HeaderCol,
+		Aligns:      make([]model.ColAlign, targetCols),
+		Rows:        make([][]model.TableCell, targetRows),
 	}
 	for c := 0; c < targetCols; c++ {
 		if c < len(base.Aligns) {
@@ -135,7 +137,11 @@ func buildExtendedTable(base *model.TableData, targetRows, targetCols int) *mode
 		if r < len(base.Rows) {
 			srcRow := base.Rows[r]
 			for c := 0; c < targetCols && c < len(srcRow); c++ {
-				row[c] = model.TableCell{Spans: append([]model.Span(nil), srcRow[c].Spans...)}
+				row[c] = model.TableCell{
+					Spans: append([]model.Span(nil), srcRow[c].Spans...),
+					Align: srcRow[c].Align,
+					Tint:  srcRow[c].Tint,
+				}
 			}
 		}
 		out.Rows[r] = row
