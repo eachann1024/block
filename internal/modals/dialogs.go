@@ -532,7 +532,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 						hovered := row.Hovered()
 						pressed := row.Pressed()
 						if selected {
-							row.Background(pal.Selected).Border(1, pal.Accent)
+							row.Background(pal.Selected).Border(1, pal.SelectedBorder)
 						} else if pressed {
 							row.Background(pal.Selected).Border(1, ui.Transparent)
 						} else if hovered {
