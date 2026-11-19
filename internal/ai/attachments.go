@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -25,7 +24,7 @@ import (
 const (
 	maxComposerAttachments = 10
 	maxAttachmentBytes     = 20 << 20
-	maxAttachmentTextBytes = 256 << 10
+	maxAttachmentTextRunes = 12000
 	maxInlineImageBytes    = 8 << 20
 )
 
@@ -182,47 +181,93 @@ func attachmentIsText(a model.Attachment) bool {
 	return strings.HasPrefix(a.Mime, "text/") || a.Mime == "application/json"
 }
 
-// attachmentContext describes attachments for the model: text inline, images
-// and other files by their local path so agents with file access can open them.
-func attachmentContext(atts []model.Attachment) string {
+func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, nativeTools bool) (string, []map[string]any, error) {
+	if len(atts) == 0 {
+		return "", nil, nil
+	}
+	dir := c.attachmentsDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", nil, attachmentUnreadable()
+	}
+	defer root.Close()
 	var b strings.Builder
+	var images []map[string]any
+	imageBudget := int64(maxInlineImageBytes)
 	for _, a := range atts {
-		if attachmentIsText(a) && a.Size <= maxAttachmentTextBytes {
-			if raw, err := os.ReadFile(a.Path); err == nil && utf8.Valid(raw) {
-				fmt.Fprintf(&b, "\n\n# 用户附件：%s\n\n```\n%s\n```", a.Name, truncateRunes(string(raw), 12000))
+		name, err := filepath.Rel(dir, a.Path)
+		if err != nil || !filepath.IsLocal(name) || filepath.Base(name) != name {
+			return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
+		}
+		info, err := root.Lstat(name)
+		if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size || a.Size <= 0 || a.Size > maxAttachmentBytes {
+			return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
+		}
+		if builtin && a.IsImage() {
+			if a.Size > imageBudget {
+				return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("每条消息最多发送 8 MB 图片，请缩小图片或减少张数。", "Images can total up to 8 MB per message. Resize or remove an image."))
+			}
+			raw, err := readCachedAttachment(root, name, a.Size)
+			if err != nil || int64(len(raw)) != a.Size {
+				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
+			}
+			imageBudget -= a.Size
+			url := "data:" + a.Mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
+			images = append(images, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+			continue
+		}
+		if attachmentIsText(a) {
+			limit := min(a.Size, maxAttachmentTextRunes*utf8.UTFMax)
+			raw, err := readCachedAttachment(root, name, limit)
+			if err != nil || int64(len(raw)) != limit {
+				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
+			}
+			if prefix, truncated, ok := attachmentText(raw, a.Size); ok {
+				fmt.Fprintf(&b, "\n\n# 用户附件：%q\n\n    %s", a.Name, strings.ReplaceAll(prefix, "\n", "\n    "))
+				if truncated {
+					b.WriteString("\n\n（附件内容已截断。）")
+					if nativeTools {
+						fmt.Fprintf(&b, "\n完整文件路径：%q", a.Path)
+					}
+				}
 				continue
 			}
 		}
-		kind := "文件"
-		if a.IsImage() {
-			kind = "图片"
+		if !nativeTools {
+			return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("当前 AI 无法读取此附件，请移除附件或切换智能体。", "This AI cannot read this attachment. Remove it or switch agents."))
 		}
-		fmt.Fprintf(&b, "\n\n# 用户附件%s：%s\n\n本地路径：%s（%s，%d 字节）", kind, a.Name, a.Path, a.Mime, a.Size)
+		fmt.Fprintf(&b, "\n\n# 用户附件：%q\n\n本地路径：%q（%s，%d 字节）", a.Name, a.Path, a.Mime, a.Size)
 	}
-	return b.String()
+	return b.String(), images, nil
 }
 
-// attachmentImageParts returns OpenAI-style image_url parts for image attachments.
-func attachmentImageParts(atts []model.Attachment) []map[string]any {
-	var parts []map[string]any
-	for _, a := range atts {
-		if !a.IsImage() || a.Size > maxInlineImageBytes {
-			continue
-		}
-		f, err := os.Open(a.Path)
-		if err != nil {
-			continue
-		}
-		var buf bytes.Buffer
-		_, err = io.Copy(&buf, io.LimitReader(f, maxInlineImageBytes+1))
-		f.Close()
-		if err != nil || buf.Len() > maxInlineImageBytes {
-			continue
-		}
-		url := "data:" + a.Mime + ";base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
-		parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+func attachmentUnreadable() error {
+	return errors.New(theme.Tr("附件无法读取，请移除后重新粘贴。", "The attachment could not be read. Remove and paste it again."))
+}
+
+func readCachedAttachment(root *os.Root, name string, limit int64) ([]byte, error) {
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
 	}
-	return parts
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, attachmentUnreadable()
+	}
+	return io.ReadAll(io.LimitReader(f, limit))
+}
+
+func attachmentText(raw []byte, size int64) (string, bool, bool) {
+	end := 0
+	for n := 0; n < maxAttachmentTextRunes && end < len(raw); n++ {
+		r, width := utf8.DecodeRune(raw[end:])
+		if r == utf8.RuneError && width == 1 {
+			return "", false, false
+		}
+		end += width
+	}
+	return string(raw[:end]), int64(end) < size, true
 }
 
 // openAIPartsToAnthropic converts OpenAI content parts into Anthropic blocks.

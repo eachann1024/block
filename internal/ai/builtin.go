@@ -1328,7 +1328,7 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int
 				content := m.Content
 				if i == turn.userIndex {
 					content += m.Context
-					if imgs := attachmentImageParts(m.Attachments); len(imgs) > 0 {
+					if imgs := turn.attachmentImages; len(imgs) > 0 {
 						parts := append([]map[string]any{{"type": "text", "text": content}}, imgs...)
 						msgs = append(msgs, map[string]any{"role": m.Role, "content": parts})
 						continue

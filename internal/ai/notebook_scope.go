@@ -33,17 +33,18 @@ type assistantTurn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	notebookScope
-	convID        uint64
-	serial        uint64
-	cfg           model.AIProviderConfig
-	thinking      string
-	nativeTools   bool
-	cliPath       string
-	userIndex     int
-	historyEnd    int
-	questionIndex int
-	nextStep      int
-	toolCalls     atomic.Uint32
+	convID           uint64
+	serial           uint64
+	cfg              model.AIProviderConfig
+	thinking         string
+	nativeTools      bool
+	attachmentImages []map[string]any
+	cliPath          string
+	userIndex        int
+	historyEnd       int
+	questionIndex    int
+	nextStep         int
+	toolCalls        atomic.Uint32
 }
 
 func (turn *assistantTurn) allowTool() bool {
