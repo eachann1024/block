@@ -1196,7 +1196,7 @@ func latestStreamLine(s string) string {
 	nums := bui.DiffListNumbers(lines, same)
 	// A setext underline ("===") only makes the line above a heading.
 	setext := bui.DiffSetextLevels(lines, same)
-	fences, quotes := plainFenceLines(lines, code)
+	fences, quotes := bui.DiffFenceLines(lines, same)
 	// A formula shows its source without the "$$" lines around it.
 	math := bui.DiffMathMask(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -1264,37 +1264,6 @@ var plainTagRE = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>`)
 
 // plainBlockPrefixRE matches leading heading, quote and list markers (not "-5").
 var plainBlockPrefixRE = regexp.MustCompile(`^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+)+`)
-
-// plainFenceRE matches a code fence line ("```sh", "> ~~~", "- ```sh") behind quote
-// and list markers; group 1 is the markers.
-var plainFenceRE = regexp.MustCompile("^((?:>\\s*)*(?:(?:[-*+]|\\d{1,9}[.)])\\s+)?)(`{3,}|~{3,})(.*)$")
-
-// plainFenceLines marks the opening and closing fence lines of the code blocks in
-// code (see DiffFenceMask); "~~~ 输出" inside a "~~~" block is a line of code, since
-// a closing fence takes no text. quote gives each code line its block's quote depth.
-func plainFenceLines(lines []string, code []bool) (fence []bool, quote []int) {
-	fence, quote = make([]bool, len(lines)), make([]int, len(lines))
-	open, depth := "", 0
-	for i, l := range lines {
-		if !code[i] {
-			open, depth = "", 0
-			continue
-		}
-		t := strings.TrimSpace(l)
-		m := plainFenceRE.FindStringSubmatch(t)
-		switch {
-		case open == "" && m != nil:
-			open, fence[i] = m[2], true
-			depth = strings.Count(m[1], ">")
-		// It closes at its own quote depth: in "> ~~~", "> > ~~~" is code.
-		case open != "" && m != nil && m[2][0] == open[0] && len(m[2]) >= len(open) && strings.TrimSpace(m[3]) == "" &&
-			strings.Count(m[1], ">") == depth && !strings.ContainsAny(m[1], "-*+.)"):
-			open, fence[i] = "", true
-		}
-		quote[i] = depth
-	}
-	return fence, quote
-}
 
 // plainClosingHashRE matches an ATX heading's optional closing "#"s ("## 安装 ##").
 var plainClosingHashRE = regexp.MustCompile(`(?:^|\s+)#+\s*$`)
@@ -1713,6 +1682,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			math := bui.DiffMathMask(texts, changes)
 			refDefs := bui.DiffRefDefs(texts, changes)
 			alerts := bui.DiffAlertTitles(texts, changes)
+			fenceLines, _ := bui.DiffFenceLines(texts, changes)
 			tableCols := bui.DiffTableCols(texts, changes)
 			headers, seps := bui.DiffTableRoles(texts, changes)
 			var visible []PlanDiffLine
@@ -1793,7 +1763,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index]}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: rowFg, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index]})
 								}
 							})
 							if rowBtn.Clicked() {
@@ -1808,7 +1778,7 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 								if isTable {
 									bui.DiffTableRow(cUI, trimmed, tableCols[dl.Index], bui.DiffLineStyle{Text: pal.Text, CodeBG: pal.CodeBlockBG, Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index]}, isHeader, pal.Hairline)
 								} else {
-									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index]})
+									bui.DiffMarkdownLine(cUI, dl.Text, bui.DiffLineStyle{Text: pal.TextSecondary, CodeBG: pal.CodeBlockBG, Code: code, Setext: setext[dl.Index], ListNum: listNums[dl.Index], Refs: refs[dl.Index], Aligns: aligns[dl.Index], Math: math[dl.Index], RefDef: refDefs[dl.Index], Alert: alerts[dl.Index], Fence: fenceLines[dl.Index]})
 								}
 							})
 						}

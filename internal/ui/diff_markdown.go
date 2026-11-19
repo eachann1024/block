@@ -42,6 +42,9 @@ type DiffLineStyle struct {
 	// Alert is DiffAlertTitles for the line: the title ("Note") its "> [!NOTE]"
 	// marker shows as.
 	Alert string
+	// Fence marks a code fence's opening or closing line (see DiffFenceLines), which
+	// the note shows as the block's edge: an opener shows only its language.
+	Fence bool
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -340,6 +343,47 @@ func DiffFenceMask(lines []string, change []int) []bool {
 		old[i] = old[i] || cur[i]
 	}
 	return old
+}
+
+// diffFenceLineRE matches a code fence line ("```sh", "> ~~~", "- ```sh") behind
+// quote and list markers; group 1 is the markers, 2 the fence run, 3 its info string.
+var diffFenceLineRE = regexp.MustCompile("^((?:>\\s*)*(?:(?:[-*+]|\\d{1,9}[.)])\\s+)?)(`{3,}|~{3,})(.*)$")
+
+// DiffFenceLines marks the opening and closing fence lines of the code blocks in
+// DiffFenceMask, each side read on its own (an unchanged line: the new text); "~~~ 输出"
+// inside a "~~~" block is a line of code, since a closing fence takes no text. quote
+// gives each code line its block's quote depth.
+func DiffFenceLines(lines []string, change []int) (fence []bool, quote []int) {
+	masks, _ := diffScan(lines, change)
+	fence, quote = make([]bool, len(lines)), make([]int, len(lines))
+	for si, side := range [2]int{-1, 1} {
+		open, depth := "", 0
+		for i, l := range lines {
+			if change[i] == -side {
+				continue
+			}
+			// The new text has the last word on a line both sides share.
+			own := change[i] != 0 || side > 0
+			if !masks[si][i] {
+				open, depth = "", 0
+				continue
+			}
+			m := diffFenceLineRE.FindStringSubmatch(strings.TrimSpace(l))
+			f := false
+			switch {
+			case open == "" && m != nil:
+				open, f, depth = m[2], true, strings.Count(m[1], ">")
+			// It closes at its own quote depth: in "> ~~~", "> > ~~~" is code.
+			case open != "" && m != nil && m[2][0] == open[0] && len(m[2]) >= len(open) && strings.TrimSpace(m[3]) == "" &&
+				strings.Count(m[1], ">") == depth && !strings.ContainsAny(m[1], "-*+.)"):
+				open, f = "", true
+			}
+			if own {
+				fence[i], quote[i] = f, depth
+			}
+		}
+	}
+	return fence, quote
 }
 
 // diffFenceSides is DiffFenceMask for the old and the new text separately; a line
@@ -1018,6 +1062,13 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	line = strings.TrimRight(line, "\r\n")
 	if strings.TrimSpace(line) == "" || (st.Setext < 0 || st.RefDef) && !st.Code {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
+	}
+	if st.Fence {
+		info := strings.TrimSpace(strings.TrimLeft(diffFenceLineRE.ReplaceAllString(strings.TrimSpace(line), "$3"), "`~"))
+		if info == "" {
+			return ui.Box(c).FillWidth().Height(theme.Space4)
+		}
+		return ui.Text(c, info).Font("monospace").FontSize(theme.FontBody).TextColor(st.Text).Grow(1).MinWidth(0)
 	}
 	if st.Alert != "" && !st.Code {
 		line = "> **" + st.Alert + "**"
