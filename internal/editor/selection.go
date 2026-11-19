@@ -81,6 +81,22 @@ func (s *Session) hasWholeAtomicSelection() bool {
 	return k == model.BlockImage || k == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block) || (k == model.BlockTable && rlen > 0)
 }
 
+func (s *Session) hasMultiCellTableSelection() bool {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return false
+	}
+	a, b := s.orderedSelection()
+	if a.Block != b.Block || a.Block < 0 || a.Block >= len(s.doc.Blocks) {
+		return false
+	}
+	blk := &s.doc.Blocks[a.Block]
+	if blk.Kind != model.BlockTable || blk.Table == nil {
+		return false
+	}
+	_, _, _, _, singleCell := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset)
+	return !singleCell
+}
+
 func (s *Session) hasFocusedAtomicBlock() bool {
 	if s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
 		return false
@@ -99,7 +115,10 @@ func (s *Session) needsDetachedSelectionFocus() bool {
 	if s.toolbarPop == "link" || s.toolbarPop == "comment" || s.findOpen || s.inlineAI != nil || s.editingAnnotID != "" {
 		return false
 	}
-	return s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() || s.hasFocusedAtomicBlock()
+	if s.readOnly && s.hasNonEmptySelection() {
+		return true
+	}
+	return s.hasMultiBlockSelection() || s.hasMultiCellTableSelection() || s.hasWholeAtomicSelection() || s.hasFocusedAtomicBlock()
 }
 
 func (s *Session) blockSelectionLen(idx int) int {
@@ -220,18 +239,91 @@ func (s *Session) DeleteSelection() bool {
 	return s.ReplaceSelectionWithText("")
 }
 
-// CutSelection copies the selected Markdown to clipboard and deletes the selection when editable.
-func (s *Session) CutSelection(c *ui.Context) bool {
-	if !s.hasNonEmptySelection() {
+// copyFocusedAtomicBlock copies the currently focused atomic block (image, divider, or preview-only code)
+// as multi-format Markdown/HTML/(PNG for local images) to the clipboard via persistent ui.Services.
+func (s *Session) copyFocusedAtomicBlock(svc ui.Services) bool {
+	if !s.hasFocusedAtomicBlock() {
 		return false
 	}
-	if md := s.SelectedMarkdown(); md != "" {
-		c.WriteClipboard(md)
+	blk := &s.doc.Blocks[s.focusedBlock]
+	cp := blk.Clone()
+	cp.ID = model.NewBlockID()
+	cp.Dirty = true
+	cp.CleanSource = ""
+	single := []model.Block{cp}
+	normalizeCopiedBlocks(single)
+	if md := strings.TrimSuffix(s.serializeBlocks(single), "\n"); md != "" {
+		s.writeRichClipboard(svc, md, &model.Doc{Blocks: single, TrailingLine: "\n"}, true)
+		return true
+	}
+	return false
+}
+
+// CopySelection copies the current selection (or focused atomic block) as Markdown/HTML to clipboard.
+func (s *Session) CopySelection(svc ui.Services) bool {
+	if s.hasNonEmptySelection() {
+		return s.writeSelectionToClipboard(svc)
+	}
+	return s.copyFocusedAtomicBlock(svc)
+}
+
+// CutSelection copies the selected Markdown/HTML to clipboard and deletes the selection when editable.
+func (s *Session) CutSelection(svc ui.Services) bool {
+	if !s.CopySelection(svc) {
+		return false
 	}
 	if s.readOnly {
 		return true
 	}
+	if !s.hasNonEmptySelection() {
+		s.deleteBlock(s.focusedBlock)
+		return true
+	}
 	return s.DeleteSelection()
+}
+
+// detachedCaretRect returns the IME caret rectangle in editor-root local coordinates
+// for multi-block, multi-cell table, and atomic block selections.
+func (s *Session) detachedCaretRect() ui.Rect {
+	fallback := ui.Rect{X: 0, Y: 0, W: 1, H: 16}
+	if s.doc == nil || len(s.doc.Blocks) == 0 {
+		return fallback
+	}
+	idx := -1
+	if s.hasNonEmptySelection() {
+		a, _ := s.orderedSelection()
+		idx = a.Block
+	} else if s.hasFocusedAtomicBlock() {
+		idx = s.focusedBlock
+	}
+	if idx < 0 || idx >= len(s.doc.Blocks) {
+		return fallback
+	}
+	blk := &s.doc.Blocks[idx]
+	var r ui.Rect
+	var ok bool
+	if blk.Kind == model.BlockImage {
+		r, ok = s.imageRect(blk.ID)
+	}
+	if !ok || r.H <= 0 {
+		r, ok = s.blockTextRect(blk.ID)
+	}
+	if !ok || r.H <= 0 {
+		r, ok = s.blockRect(blk.ID)
+	}
+	if !ok || r.H <= 0 {
+		return fallback
+	}
+	lx := r.X - s.editorRect.X
+	ly := r.Y - s.editorRect.Y
+	h := clampFloat32(r.H, 16, 28)
+	if s.editorRect.W > 0 {
+		lx = clampFloat32(lx, 0, max(s.editorRect.W-2, 0))
+	}
+	if s.editorRect.H > 0 {
+		ly = clampFloat32(ly, 0, max(s.editorRect.H-h, 0))
+	}
+	return ui.Rect{X: lx, Y: ly, W: 1, H: h}
 }
 
 // ReplaceSelectionWithText replaces the current selection (single-block or multi-block)
@@ -272,9 +364,9 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 				s.selAnchor = Position{Block: nextIdx, Offset: 0}
 				s.selHead = s.selAnchor
 			}
-			s.focusPending = true
-			s.selSyncPending = true
-			s.multiSelFocusPending = false
+			s.multiSelFocusPending = s.needsDetachedSelectionFocus()
+			s.focusPending = !s.multiSelFocusPending
+			s.selSyncPending = !s.multiSelFocusPending
 			s.markDirty()
 			return true
 		}
@@ -301,6 +393,7 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 				s.selHead = s.selAnchor
 				s.focusPending = true
 				s.selSyncPending = true
+				s.multiSelFocusPending = false
 				s.markDirty()
 				return true
 			}
@@ -308,10 +401,18 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 			clearTableRange(blk.Table, a.Offset, b.Offset, insert)
 			blk.Dirty = true
 			blk.CleanSource = ""
+			caret := a.Offset + utf8.RuneCountInString(insert)
 			s.focusedBlock = idx
-			s.selAnchor = Position{Block: idx, Offset: a.Offset}
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, caret, caret); ok {
+				s.tableActiveBlock = blk.ID
+				s.tableActiveRow = row
+				s.tableActiveCol = col
+			}
+			s.selAnchor = Position{Block: idx, Offset: caret}
 			s.selHead = s.selAnchor
 			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
 			s.markDirty()
 			return true
 		}
@@ -544,22 +645,13 @@ func clearTableRange(tbl *model.TableData, startRune, endRune int, insertFirst s
 	}
 }
 
-func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool {
+func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bool {
 	idx := s.focusedBlock
 	if idx < 0 || idx >= len(s.doc.Blocks) {
 		return false
 	}
 	copyAtomic := func() {
-		blk := &s.doc.Blocks[idx]
-		cp := blk.Clone()
-		cp.ID = model.NewBlockID()
-		cp.Dirty = true
-		cp.CleanSource = ""
-		single := []model.Block{cp}
-		normalizeCopiedBlocks(single)
-		if md := strings.TrimSuffix(s.serializeBlocks(single), "\n"); md != "" {
-			c.WriteClipboard(md)
-		}
+		s.copyFocusedAtomicBlock(svc)
 	}
 	switch ev.Kind {
 	case ui.InputCommand:
@@ -568,19 +660,15 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 			copyAtomic()
 			return true
 		case "cut":
-			copyAtomic()
-			if !s.readOnly {
-				s.deleteBlock(idx)
-			}
-			return true
+			return s.CutSelection(svc)
 		case "paste":
 			if !s.readOnly {
-				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case "pasteAndMatchStyle":
 			if !s.readOnly {
-				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PastePlainFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case "selectAll":
@@ -602,7 +690,14 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 			}
 			return true
 		}
+	case ui.InputCompose:
+		if s.readOnly {
+			return false
+		}
+		s.detachedCompose = ev.Text
+		return true
 	case ui.InputText:
+		s.detachedCompose = ""
 		if s.readOnly || ev.Text == "" {
 			return false
 		}
@@ -623,23 +718,19 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyA:
 			s.SelectCurrentBlockOrAll()
 			return true
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyC:
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyC) || (ev.Mods == ui.Ctrl && ev.Key == ui.KeyInsert):
 			copyAtomic()
 			return true
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyX:
-			copyAtomic()
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyX) || (ev.Mods == ui.Shift && ev.Key == ui.KeyDelete):
+			return s.CutSelection(svc)
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyV) || (ev.Mods == ui.Shift && ev.Key == ui.KeyInsert):
 			if !s.readOnly {
-				s.deleteBlock(idx)
-			}
-			return true
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
-			if !s.readOnly {
-				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case (ev.Mods == (ui.Cmd|ui.Shift) || ev.Mods == (ui.Cmd|ui.Shift|ui.Alt)) && ev.Key == ui.KeyV:
 			if !s.readOnly {
-				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PastePlainFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
@@ -675,10 +766,10 @@ func (s *Session) handleFocusedAtomicInput(c *ui.Context, ev ui.InputEvent) bool
 	return false
 }
 
-func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) bool {
+func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) bool {
 	if !s.hasNonEmptySelection() {
 		if s.hasFocusedAtomicBlock() {
-			return s.handleFocusedAtomicInput(c, ev)
+			return s.handleFocusedAtomicInput(svc, ev)
 		}
 		return false
 	}
@@ -686,23 +777,21 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 	case ui.InputCommand:
 		switch ev.Text {
 		case "copy":
-			if md := s.SelectedMarkdown(); md != "" {
-				c.WriteClipboard(md)
-			}
+			s.CopySelection(svc)
 			return true
 		case "cut":
-			return s.CutSelection(c)
+			return s.CutSelection(svc)
 		case "paste":
 			if s.readOnly {
 				return true
 			}
-			s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+			s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 			return true
 		case "pasteAndMatchStyle":
 			if s.readOnly {
 				return true
 			}
-			s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+			s.PastePlainFromClipboard(svc, svc.ReadClipboard(), false)
 			return true
 		case "selectAll":
 			s.SelectAllBlocks()
@@ -744,7 +833,15 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			return true
 		}
 
+	case ui.InputCompose:
+		if s.readOnly {
+			return false
+		}
+		s.detachedCompose = ev.Text
+		return true
+
 	case ui.InputText:
+		s.detachedCompose = ""
 		if s.readOnly || ev.Text == "" {
 			return false
 		}
@@ -755,21 +852,19 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 		case ev.Mods == ui.Cmd && ev.Key == ui.KeyA:
 			s.SelectAllBlocks()
 			return true
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyC:
-			if md := s.SelectedMarkdown(); md != "" {
-				c.WriteClipboard(md)
-			}
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyC) || (ev.Mods == ui.Ctrl && ev.Key == ui.KeyInsert):
+			s.CopySelection(svc)
 			return true
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyX:
-			return s.CutSelection(c)
-		case ev.Mods == ui.Cmd && ev.Key == ui.KeyV:
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyX) || (ev.Mods == ui.Shift && ev.Key == ui.KeyDelete):
+			return s.CutSelection(svc)
+		case (ev.Mods == ui.Cmd && ev.Key == ui.KeyV) || (ev.Mods == ui.Shift && ev.Key == ui.KeyInsert):
 			if !s.readOnly {
-				s.PasteFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PasteFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case (ev.Mods == (ui.Cmd|ui.Shift) || ev.Mods == (ui.Cmd|ui.Shift|ui.Alt)) && ev.Key == ui.KeyV:
 			if !s.readOnly {
-				s.PastePlainFromClipboard(c.Services(), c.ReadClipboard(), false)
+				s.PastePlainFromClipboard(svc, svc.ReadClipboard(), false)
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
@@ -790,6 +885,7 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			s.focusedBlock = a.Block
 			s.selAnchor = a
 			s.selHead = a
+			s.syncCollapsedTableCellFocus(a)
 			s.focusPending = !s.readOnly
 			s.selSyncPending = !s.readOnly
 			s.multiSelFocusPending = false
@@ -799,6 +895,7 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			s.focusedBlock = b.Block
 			s.selAnchor = b
 			s.selHead = b
+			s.syncCollapsedTableCellFocus(b)
 			s.focusPending = !s.readOnly
 			s.selSyncPending = !s.readOnly
 			s.multiSelFocusPending = false
@@ -832,6 +929,7 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 			s.selAnchor = b
 			s.selHead = b
 			s.focusedBlock = b.Block
+			s.syncCollapsedTableCellFocus(b)
 			s.focusPending = !s.readOnly
 			s.selSyncPending = !s.readOnly
 			s.multiSelFocusPending = false
@@ -840,6 +938,21 @@ func (s *Session) handleMultiSelectionInput(c *ui.Context, ev ui.InputEvent) boo
 		}
 	}
 	return false
+}
+
+func (s *Session) syncCollapsedTableCellFocus(pos Position) {
+	if s.doc == nil || pos.Block < 0 || pos.Block >= len(s.doc.Blocks) {
+		return
+	}
+	blk := &s.doc.Blocks[pos.Block]
+	if blk.Kind != model.BlockTable || blk.Table == nil {
+		return
+	}
+	if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, pos.Offset, pos.Offset); ok {
+		s.tableActiveBlock = blk.ID
+		s.tableActiveRow = row
+		s.tableActiveCol = col
+	}
 }
 
 func (s *Session) stepVisibleBlock(from, dir int) int {
@@ -1695,6 +1808,13 @@ func (s *Session) hitPositionAtPoint(wx, wy float32) Position {
 		return Position{Block: idx, Offset: rlen}
 
 	case model.BlockCode, model.BlockRawHTML:
+		if s.isPreviewOnlyCodeBlock(idx) {
+			rlen := s.blockSelectionLen(idx)
+			if wy < rowRect.Y+rowRect.H*0.5 {
+				return Position{Block: idx, Offset: 0}
+			}
+			return Position{Block: idx, Offset: rlen}
+		}
 		off := s.hitOffsetInCodeBlock(b, rowRect, wx, wy)
 		return Position{Block: idx, Offset: off}
 
@@ -2126,6 +2246,31 @@ func (s *Session) codeSyntaxSpansWithSelection(idx int, src, lang string) []ui.S
 }
 
 func (s *Session) pasteOverMultiSelection(norm string) bool {
+	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+		a, b := s.orderedSelection()
+		idx := a.Block
+		if idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].Table == nil {
+			return false
+		}
+		if strings.ContainsAny(norm, "\t\n") {
+			s.pushUndo()
+			blk := &s.doc.Blocks[idx]
+			clearTableRange(blk.Table, a.Offset, b.Offset, "")
+			s.focusedBlock = idx
+			s.tableActiveBlock = blk.ID
+			s.tableActiveRow = 0
+			s.tableActiveCol = 0
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+				s.tableActiveRow = row
+				s.tableActiveCol = col
+			}
+			s.selAnchor = Position{Block: idx, Offset: a.Offset}
+			s.selHead = s.selAnchor
+			s.pasteIntoTableBlock(idx, norm)
+			return true
+		}
+		return s.ReplaceSelectionWithText(norm)
+	}
 	if !s.hasMultiBlockSelection() && !s.hasWholeAtomicSelection() {
 		return false
 	}
