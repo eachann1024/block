@@ -640,11 +640,15 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 		t.Fatal("expected source note daily.md listed")
 	}
 
-	copyPt, ok := bui.TargetCenter("ai-msg-copy-0")
+	scroll, ok := bui.TargetBounds("ai-chat-scroll")
 	if !ok {
-		t.Fatal("missing ai-msg-copy-0")
+		t.Fatal("missing chat scroll area")
 	}
-	tt.ClickAt(copyPt.X, copyPt.Y)
+	// Expanded process and source cards can push the reply below the viewport.
+	tt.Scroll(scroll.X+scroll.W/2, scroll.Y+scroll.H/2, 0, scroll.H)
+	if err := tt.Click("复制回复"); err != nil {
+		t.Fatalf("click copy reply: %v", err)
+	}
 	if !strings.Contains(tt.Clipboard(), "hello block") {
 		t.Fatalf("expected copied markdown code in clipboard, got %q", tt.Clipboard())
 	}
@@ -776,10 +780,10 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	ctrl.SetBackendStatusOverride(model.BackendCodex, &BackendStatus{State: BackendStateReady, Version: "0.42.0"})
 	ctrl.SetBackendStatusOverride(model.BackendClaude, &BackendStatus{State: BackendStateUnauth, Version: "2.1.320"})
 
-	// Verify unrestricted CLI execution is disabled for all adapters.
-	for _, k := range []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi} {
-		if ctrl.BackendsConfig().Adapters[string(k)].FullPermissions {
-			t.Fatalf("expected FullPermissions default false for %s", k)
+	// Native tools require explicit opt-in for each CLI.
+	for _, k := range model.AllBackends {
+		if ctrl.BackendsConfig().Adapters[string(k)].NativeTools {
+			t.Fatalf("native tools enabled by default for %s", k)
 		}
 	}
 
@@ -791,8 +795,8 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	if !ttSet.HasText("API 供应商") || !ttSet.HasText("添加供应商") || !ttSet.HasText("本机 Agent") || !ttSet.HasText("添加 Agent") || !ttSet.HasText("尚未添加本机 Agent") {
 		t.Fatal("missing expected AI Settings labels or empty local agent state")
 	}
-	if ttSet.HasText("最大权限") {
-		t.Fatal("FullPermissions toggle must not be shown to user")
+	if ttSet.HasText("允许本机工具") {
+		t.Fatal("native tool setting visible before adding an agent")
 	}
 	if _, ok := bui.TargetBounds("ai-backend-card-Codex"); ok {
 		t.Fatal("local CLI agent must not appear in list before being explicitly added")
@@ -866,8 +870,18 @@ func TestAISettingsSchemeAAndAddProvider(t *testing.T) {
 	if !ttSet.HasText("可执行路径") || !ttSet.HasText("思考强度") {
 		t.Fatal("expected expanded Codex row to show Binary Path and Thinking Level")
 	}
-	if ttSet.HasText("最大权限") {
-		t.Fatal("FullPermissions toggle must remain absent when CLI agent row is expanded")
+	toolsCenter, ok := bui.TargetCenter("ai-agent-native-tools-Codex")
+	if !ok || !ttSet.HasText("允许本机工具") {
+		t.Fatal("missing native tool setting in expanded Codex row")
+	}
+	ttSet.ClickAt(toolsCenter.X, toolsCenter.Y)
+	persisted := ctrl.readBackendsFile()
+	if !persisted.Adapters[string(model.BackendCodex)].NativeTools || persisted.Adapters[string(model.BackendClaude)].NativeTools {
+		t.Fatal("native tool opt-in was not saved for Codex only")
+	}
+	ttSet.ClickAt(toolsCenter.X, toolsCenter.Y)
+	if ctrl.readBackendsFile().Adapters[string(model.BackendCodex)].NativeTools {
+		t.Fatal("native tool opt-out was not saved")
 	}
 
 	// 3. Verify Annotation Model popover still works.

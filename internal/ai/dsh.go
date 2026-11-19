@@ -34,11 +34,15 @@ func dshCredentialError() error {
 	return errors.New(theme.Tr("请为 Block 的启动环境设置 DEEPSEEK_API_KEY。", "Set DEEPSEEK_API_KEY in Block's launch environment."))
 }
 
-func restrictedDshArgs(ctx context.Context, dir string) ([]string, error) {
-	version, err := dshVersion(ctx)
+func dshCLIArgs(ctx context.Context, executable, settingsDir string, nativeTools bool) ([]string, error) {
+	versionCommand := cliCommandAt(ctx, executable, "--version")
+	versionCommand.Dir = settingsDir
+	versionCommand.Env = restrictedCLIEnv(versionCommand.Env, nil)
+	output, err := versionCommand.Output()
 	if err != nil {
 		return nil, err
 	}
+	version := strings.TrimSpace(string(output))
 	if version != restrictedDshVersion {
 		return nil, dshVersionError(version)
 	}
@@ -47,22 +51,38 @@ func restrictedDshArgs(ctx context.Context, dir string) ([]string, error) {
 	}
 
 	var patch strings.Builder
-	for _, id := range []string{
-		"persistent-bash", "persistent-pwsh", "terminal-bash", "terminal-pwsh",
-		"pty", "subprocess", "tool-fs", "tool-working-directory", "mcp-resources",
-		"attachment-local", "image-offload", "sandbox", "sandbox-policy",
-		"session-log-deepseek", "plugin-package-inventory-deepseek",
-	} {
-		fmt.Fprintf(&patch, "- id: %s\n  disabled: true\n", id)
+	profile := "sdk-minimal"
+	if nativeTools {
+		profile = "sdk"
+		// The user enabled native tools. The Block adapter handles foreground
+		// turns, so disable background jobs and tools without a host UI.
+		patch.WriteString("- id: sandbox-policy\n  config:\n    mode: danger-full-access\n    workspaceRoot: !!js process.cwd()\n")
+		patch.WriteString("- id: approval\n  config:\n    policy: never\n")
+		for _, id := range []string{
+			"session-telemetry-otel", "session-log-deepseek", "plugin-package-inventory-deepseek",
+			"tool-plugin-manager", "tool-schedule", "schedule", "tool-ask-user",
+		} {
+			fmt.Fprintf(&patch, "- id: %s\n  disabled: true\n", id)
+		}
+	} else {
+		for _, id := range []string{
+			"persistent-bash", "persistent-pwsh", "terminal-bash", "terminal-pwsh",
+			"pty", "subprocess", "tool-fs", "tool-working-directory", "mcp-resources",
+			"attachment-local", "image-offload", "sandbox", "sandbox-policy",
+			"session-log-deepseek", "plugin-package-inventory-deepseek",
+		} {
+			fmt.Fprintf(&patch, "- id: %s\n  disabled: true\n", id)
+		}
 	}
-	path := filepath.Join(dir, "block-dsh.yaml")
+	path := filepath.Join(settingsDir, "block-dsh.yaml")
 	if err := os.WriteFile(path, []byte(patch.String()), 0o600); err != nil {
 		return nil, err
 	}
-	return []string{"--profile", "sdk-minimal", "--patch", path}, nil
+	return []string{"--profile", profile, "--patch", path}, nil
 }
 
-func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Scanner, stdin io.Writer, dir, prompt, modelName string) error {
+func (c *Controller) streamDsh(turn *assistantTurn, scanner *bufio.Scanner, stdin io.Writer, dir, prompt, modelName string) error {
+	nativeTools := turn.nativeTools
 	var session [16]byte
 	if _, err := rand.Read(session[:]); err != nil {
 		return err
@@ -72,7 +92,17 @@ func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Sca
 	send := func(id int, method string, params any) error {
 		return out.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 	}
+	reply := func(reqID any, result any, rpcErr map[string]any) error {
+		frame := map[string]any{"jsonrpc": "2.0", "id": reqID}
+		if rpcErr != nil {
+			frame["error"] = rpcErr
+		} else {
+			frame["result"] = result
+		}
+		return out.Encode(frame)
+	}
 
+	toolNames := make(map[string]string)
 	var completed bool
 	read := func(id int) error {
 		for scanner.Scan() && turn.ctx.Err() == nil {
@@ -94,7 +124,17 @@ func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Sca
 				return err
 			}
 			if frame.Method != "" && frame.ID != nil {
-				return errors.New(theme.Tr("dsh 发送了意外的权限请求。", "dsh sent an unexpected request."))
+				if !nativeTools {
+					return errors.New(theme.Tr("dsh 发送了意外的权限请求。", "dsh sent an unexpected request."))
+				}
+				if frame.Method == "approval/request" {
+					if err := reply(frame.ID, map[string]any{"outcome": "allowed-once"}, nil); err != nil {
+						return err
+					}
+				} else if err := reply(frame.ID, nil, map[string]any{"code": -32601, "message": "Method not supported"}); err != nil {
+					return err
+				}
+				continue
 			}
 			if frame.Method == "" && rpcIDMatches(frame.ID, strconv.Itoa(id)) {
 				if frame.Error != nil {
@@ -108,6 +148,9 @@ func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Sca
 			event := frame.Params.Event
 			switch event.Type {
 			case "request/header":
+				if nativeTools {
+					continue
+				}
 				var data struct {
 					Header struct{ Tools []json.RawMessage }
 				}
@@ -117,9 +160,67 @@ func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Sca
 				if len(data.Header.Tools) == 0 {
 					continue
 				}
-				fallthrough
-			case "tool/call":
 				return errors.New(theme.Tr("dsh 本轮意外启用了本地工具。", "dsh enabled tools in a text-only turn."))
+			case "tool/call":
+				if !nativeTools {
+					return errors.New(theme.Tr("dsh 本轮意外启用了本地工具。", "dsh enabled tools in a text-only turn."))
+				}
+				var data struct {
+					CallID    string `json:"callId"`
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}
+				if err := json.Unmarshal(event.Data, &data); err != nil {
+					return err
+				}
+				if data.CallID != "" && data.Name != "" {
+					toolNames[data.CallID] = data.Name
+				}
+				upd := map[string]any{
+					"sessionUpdate": "tool_call",
+					"toolCallId":    data.CallID,
+					"name":          data.Name,
+					"title":         data.Name,
+					"status":        "in_progress",
+				}
+				if data.Arguments != "" {
+					var rawInput any
+					if json.Unmarshal([]byte(data.Arguments), &rawInput) == nil {
+						upd["rawInput"] = rawInput
+					}
+				}
+				c.handleCLIStreamFrame(turn.convID, turn.serial, map[string]any{
+					"method": "session/update",
+					"params": map[string]any{"update": upd},
+				})
+			case "tool/result":
+				if !nativeTools {
+					continue
+				}
+				var data struct {
+					Message struct {
+						ToolCallID string `json:"toolCallId"`
+						IsError    bool   `json:"isError"`
+					} `json:"message"`
+				}
+				if err := json.Unmarshal(event.Data, &data); err != nil {
+					return err
+				}
+				name := toolNames[data.Message.ToolCallID]
+				status := "completed"
+				if data.Message.IsError {
+					status = "failed"
+				}
+				c.handleCLIStreamFrame(turn.convID, turn.serial, map[string]any{
+					"method": "session/update",
+					"params": map[string]any{"update": map[string]any{
+						"sessionUpdate": "tool_call_update",
+						"toolCallId":    data.Message.ToolCallID,
+						"name":          name,
+						"title":         name,
+						"status":        status,
+					}},
+				})
 			case "assistant/message":
 				var data struct{ Message map[string]any }
 				if err := json.Unmarshal(event.Data, &data); err != nil {
@@ -164,6 +265,9 @@ func (c *Controller) streamRestrictedDsh(turn *assistantTurn, scanner *bufio.Sca
 		modelName = "deepseek-flash"
 	}
 	config := map[string]any{"cwd": dir, "provider": "deepseek-official", "model": modelName}
+	if nativeTools {
+		config["approvalRequests"] = true
+	}
 	if turn.thinking != "" {
 		config["reasoningEffort"] = turn.thinking
 	}
