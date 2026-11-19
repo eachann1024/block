@@ -321,14 +321,14 @@ func (c *Controller) readPageWithExistsLocked(root, page string) (string, bool) 
 	return "", false
 }
 
-func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) {
+func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) *model.BatchPlan {
 	conv := c.findConvLocked(convID)
 	if conv == nil || msgIdx < 0 || msgIdx >= len(conv.Messages) {
-		return
+		return nil
 	}
 	plan := conv.Messages[msgIdx].Plan
 	if plan == nil || plan.Status != "pending" || len(plan.Ops) == 0 {
-		return
+		return nil
 	}
 	op := plan.Ops[0]
 	before := plan.Expected[op.Page]
@@ -355,22 +355,32 @@ func (c *Controller) linkPlanLocked(convID uint64, msgIdx int) {
 		IsCreate:   isCreate,
 	}
 	c.computePlanDiffLocked(convID, msgIdx, op.Page, before, after)
-	if c.host != nil {
-		_ = c.host.PreviewPlanInEditor(plan)
-	}
+	return plan
 }
 
-func (c *Controller) linkLatestPendingPlanLocked() {
+func (c *Controller) linkLatestPendingPlanLocked() *model.BatchPlan {
 	conv := c.findConvLocked(c.currentID)
 	if conv == nil {
-		return
+		return nil
 	}
 	for i := len(conv.Messages) - 1; i >= 0; i-- {
 		p := conv.Messages[i].Plan
 		if p != nil && p.Status == "pending" && len(p.Ops) > 0 {
-			c.linkPlanLocked(conv.ID, i)
-			return
+			return c.linkPlanLocked(conv.ID, i)
 		}
+	}
+	return nil
+}
+
+func (c *Controller) previewPlanInEditor(plan *model.BatchPlan) {
+	if plan == nil {
+		return
+	}
+	c.mu.RLock()
+	host := c.host
+	c.mu.RUnlock()
+	if host != nil {
+		_ = host.PreviewPlanInEditor(plan)
 	}
 }
 
