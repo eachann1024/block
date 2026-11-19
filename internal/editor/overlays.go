@@ -2501,31 +2501,20 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 			appUi.Scroll(c.Key("plan-diff-scroll"), &s.planDiffScroll).FillWidth().Grow(1).
 				MaxHeight(maxH-64).Padding(theme.Space10, theme.Space12).Children(func() {
 				ui.Column(c.Key("plan-ops-col")).FillWidth().Gap(theme.Space8).Children(func() {
-					renderLineContent := func(raw, trimmed string, isTable, isHeader, code bool, fg ui.Color) {
+					renderLineContent := func(raw, trimmed string, cols int, isTable, isHeader, code bool, fg ui.Color) {
 						style := appUi.DiffLineStyle{Text: fg, CodeBG: pal.CodeBlockBG, Code: code}
 						if code || !isTable {
 							appUi.DiffMarkdownLine(c, raw, style)
 							return
 						}
-						cells := appUi.ParseDiffTableCells(trimmed)
-						ui.Row(c).Grow(1).MinWidth(0).Children(func() {
-							for ci, cellTxt := range cells {
-								ui.Box(c).Grow(1).Shrink(1).MinWidth(0).Padding(theme.Space4, theme.Space8).
-									BorderWidth(0, boolToBorder(ci+1 < len(cells)), 0, 0).BorderColor(pal.Hairline).
-									Children(func() {
-										appUi.DiffMarkdownCell(c, cellTxt, style, isHeader)
-									})
-							}
-						})
+						appUi.DiffTableRow(c, trimmed, cols, style, isHeader, pal.Hairline)
 					}
 					for opIdx := range plan.Ops {
 						op := &plan.Ops[opIdx]
 						diff := s.ensurePlanOpLineSelection(op)
-						texts := make([]string, len(diff))
-						for i, dl := range diff {
-							texts[i] = dl.Text
-						}
-						fenced := appUi.DiffFenceMask(texts)
+						texts, changes := diffChanges(diff)
+						fenced := appUi.DiffFenceMask(texts, changes)
+						tableCols := appUi.DiffTableCols(texts, fenced)
 						ui.Column(c.Key(fmt.Sprintf("plan-op-%d", opIdx))).FillWidth().
 							Radius(theme.RadiusLG).Border(1, pal.Hairline).Clip().Children(func() {
 							ui.Row(c.Key("op-title")).FillWidth().Padding(theme.Space6, theme.Space10).Radius(theme.RadiusMD, theme.RadiusMD, 0, 0).
@@ -2569,7 +2558,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 										// 与变更行的复选框同宽留白，表格列边界才能对齐。
 										ui.Box(c).Width(theme.IconRow).Shrink(0)
 										ui.Box(c).Width(12).Shrink(0)
-										renderLineContent(dl.Text, trimmed, isTable, isHeader, fenced[lineIdx], pal.TextSecondary)
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, fenced[lineIdx], pal.TextSecondary)
 									})
 								case model.DiffDelete, model.DiffInsert:
 									curSelIdx := selIdx
@@ -2605,7 +2594,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 											}
 										})
 										ui.Text(c, gutter).Width(12).Shrink(0).FontSize(theme.FontBody).TextColor(fg).SingleLine()
-										renderLineContent(dl.Text, trimmed, isTable, isHeader, fenced[lineIdx], fg)
+										renderLineContent(dl.Text, trimmed, tableCols[lineIdx], isTable, isHeader, fenced[lineIdx], fg)
 									})
 								}
 							}
