@@ -56,6 +56,12 @@ func DiffListNumbers(lines []string, change []int) []int {
 				continue
 			}
 			t := strings.TrimSpace(l)
+			// A quote inside an item's content ("   > 需要管理员权限") leaves its list open.
+			lead := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
+			if quote == 0 && diffQuoteDepth(t) > 0 && len(stack) > 0 && lead >= stack[len(stack)-1].content {
+				prevBlank, para = false, false
+				continue
+			}
 			// A list in a blockquote is read behind its markers; another depth is
 			// another container, whose lists start over.
 			if q := diffQuoteDepth(t); q != quote {
@@ -75,8 +81,11 @@ func DiffListNumbers(lines []string, change []int) []int {
 			om := diffCellListRE.FindStringSubmatch(t)
 			// Indented code (masked) is no item.
 			item := !masks[si][i] && (om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
-			plain := !masks[si][i] && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
-				!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
+			text := func(t string) bool {
+				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
+					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
+			}
+			plain := !masks[si][i] && text(t)
 			// The lists the line is not inside: an item left of a list's content is a
 			// sibling of that list's items (or of an outer one).
 			var sib *list
@@ -108,11 +117,14 @@ func DiffListNumbers(lines []string, change []int) []int {
 				para = plain
 				continue
 			}
-			para = true
+			// An item opens a paragraph only with text after its marker ("1. ## 模块" has
+			// a heading, which a nested "2." may follow).
+			content := ind + len(diffContainerRE.FindString(t))
+			para = text(strings.TrimSpace(diffContainerRE.ReplaceAllString(t, "")))
 			if cont && om != nil {
 				n = sib.next
 			}
-			stack = append(stack, list{ind: ind, content: ind + len(diffContainerRE.FindString(t)), kind: kind, next: n + 1})
+			stack = append(stack, list{ind: ind, content: content, kind: kind, next: n + 1})
 			num[i] = n
 		}
 		nums[si] = num
@@ -126,6 +138,9 @@ func DiffListNumbers(lines []string, change []int) []int {
 	}
 	return out
 }
+
+// diffRefDestRE matches a definition's destination with an optional title.
+var diffRefDestRE = regexp.MustCompile(`^\s*(?:<[^<>]*>|[^\s<]\S*)` + diffLinkTitle + `\s*$`)
 
 // diffRefDefRE matches the start of a link reference definition, capturing its
 // label and what follows the colon (the destination may sit on the next line).
