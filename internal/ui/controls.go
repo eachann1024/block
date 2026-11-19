@@ -139,7 +139,7 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		bgCol = pal.Selected
 	case opts.Active:
 		bgCol = pal.Selected
-		bdCol = pal.Accent
+		bdCol = pal.SelectedBorder
 		hasBorder = true
 	case pressed:
 		if opts.ChromeHover {
@@ -166,7 +166,7 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		case opts.Danger && (hovered || pressed || opts.Active):
 			ic = pal.MonoIconColors(pal.Danger)
 		case opts.Active && opts.ActiveStyle != ActiveOutlined:
-			ic = pal.DuoIconColors(pal.Accent)
+			ic = pal.DuoIconColors(pal.Text)
 		case opts.Active || hovered || pressed:
 			ic = pal.DuoIconColors(pal.Text)
 		case opts.AlwaysDuo:
@@ -279,11 +279,11 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		fg = pal.Text
 		bg = pal.Selected
 		if pressed {
-			bg = pal.Selected.Mix(pal.Accent, 0.22)
+			bg = pal.Selected.Mix(pal.Text, 0.08)
 		} else if hovered {
-			bg = pal.Selected.Mix(pal.Accent, 0.12)
+			bg = pal.Selected.Mix(pal.Text, 0.04)
 		}
-		bd = pal.Accent
+		bd = pal.SelectedBorder
 		hasBorder = true
 	case ButtonDanger:
 		fg = pal.Danger
@@ -429,7 +429,7 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 			bd := ui.Transparent
 			if isAct {
 				bg = pal.Selected
-				bd = pal.Accent
+				bd = pal.SelectedBorder
 			} else if pressed {
 				bg = pal.Selected
 			} else if hovered {
