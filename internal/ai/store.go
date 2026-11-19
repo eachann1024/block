@@ -1667,18 +1667,7 @@ func (c *Controller) SendPrompt(text string) {
 		}
 	}
 	if sel != nil {
-		var marker string
-		if sel.StartLine == sel.EndLine {
-			marker = theme.Tr(
-				fmt.Sprintf("「选中第 %d 段」 ", sel.StartLine),
-				fmt.Sprintf("[Block %d] ", sel.StartLine),
-			)
-		} else {
-			marker = theme.Tr(
-				fmt.Sprintf("「选中第 %d–%d 段」 ", sel.StartLine, sel.EndLine),
-				fmt.Sprintf("[Blocks %d–%d] ", sel.StartLine, sel.EndLine),
-			)
-		}
+		marker := "「" + selectionExcerpt(sel, 16) + "」 "
 		shownBuf.WriteString(marker)
 
 		noteName := filepath.Base(sel.NotePath)
@@ -2089,6 +2078,21 @@ func firstTitleLine(s string) string {
 		return truncateRunes(trim, 24)
 	}
 	return ""
+}
+
+// selectionExcerpt returns the opening runes of an editor selection for compact labels.
+func selectionExcerpt(sel *EditorSelection, maxRunes int) string {
+	if sel == nil {
+		return ""
+	}
+	runes := []rune(strings.TrimSuffix(sel.PlainPreview, "…"))
+	if len(runes) == 0 {
+		return theme.Tr("选中内容", "Selection")
+	}
+	if len(runes) <= maxRunes && !strings.HasSuffix(sel.PlainPreview, "…") {
+		return string(runes)
+	}
+	return strings.TrimRight(string(runes[:min(maxRunes, len(runes))]), " ") + "…"
 }
 
 func truncateRunes(s string, maxRunes int) string {
