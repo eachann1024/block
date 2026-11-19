@@ -84,6 +84,7 @@ func (s *Session) DismissTransientOverlay() bool {
 	if s.hasNonEmptySelection() {
 		s.selAnchor = s.selHead
 		s.focusedBlock = s.selHead.Block
+		s.syncCollapsedTableCellFocus(s.selHead)
 		s.multiSelFocusPending = s.needsDetachedSelectionFocus()
 		s.focusPending = !s.multiSelFocusPending
 		s.selSyncPending = !s.multiSelFocusPending

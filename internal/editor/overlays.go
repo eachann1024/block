@@ -136,8 +136,8 @@ func (s *Session) renderFindBar(c *ui.Context) {
 			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
 			in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(theme.HeightCompact).
-				Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
-				Placeholder(theme.Tr("查找…", "Find…")).Label("find-input").
+				Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+				Placeholder(theme.Tr("查找…", "Find…")).PlaceholderColor(pal.Placeholder).Label("find-input").
 				Bind(&s.findInputHandle)
 			appUi.Probe(in, "find-input")
 			in.OnTextKey(func(k ui.TextKey) bool {
@@ -993,8 +993,8 @@ func (s *Session) renderLinkCardPopover(c *ui.Context, vp ui.Rect, winW, winH fl
 
 	card.Children(func() {
 		in := ui.TextInputBase(c.Key("link-input"), &s.linkDraft).Grow(1).Height(theme.HeightCompact).
-			PaddingX(theme.Space8).Radius(theme.RadiusSM).Border(1, pal.BtnBorder).FontSize(theme.FontBody).
-			TextColor(pal.Text).Placeholder("https://...").Label("link-url").
+			Padding(0, theme.Space8).Radius(theme.RadiusSM).Border(1, pal.BtnBorder).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+			TextColor(pal.Text).Placeholder("https://...").PlaceholderColor(pal.Placeholder).Label("link-url").
 			Bind(&s.linkInputHandle)
 		in.OnTextKey(func(k ui.TextKey) bool {
 			if k.Key == ui.KeyEscape {
@@ -1093,8 +1093,8 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 	card.Children(func() {
 		ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
 		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightMicro).
-			Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
-			Placeholder(theme.Tr("添加批注…", "Add annotation…")).Label("annotation-note").
+			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
 			Bind(&s.commentHandle)
 		in.OnTextKey(func(k ui.TextKey) bool {
 			if k.Key == ui.KeyEscape {
@@ -2159,7 +2159,7 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 	pal := theme.Ocean()
 	in := ui.TextAreaBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().MinWidth(0).Lines(1, 8).
 		Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
-		Placeholder(theme.Tr("写下批注…", "Write a note…")).Label(theme.Tr("批注内容", "Annotation")).
+		Placeholder(theme.Tr("写下批注…", "Write a note…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("批注内容", "Annotation")).
 		Bind(&s.editingHandle)
 	in.OnTextKey(func(k ui.TextKey) bool {
 		switch {
