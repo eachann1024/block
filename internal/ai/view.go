@@ -1227,10 +1227,11 @@ func plainInline(s string) string {
 		prev, t = t, plainStrongRE.ReplaceAllString(t, "$1$2$3")
 	}
 	t = strings.ReplaceAll(t, "`", "")
+	// Table bars are trimmed before code returns, so `| grep error` keeps its pipe.
+	t = strings.Trim(t, "| ")
 	for k, code := range codes {
 		t = strings.Replace(t, "\uE000"+strconv.Itoa(k)+"\uE001", code, 1)
 	}
-	t = strings.Trim(t, "| ")
 	return strings.TrimSpace(t)
 }
 
