@@ -1258,6 +1258,9 @@ func latestStreamLine(s string) string {
 	return ""
 }
 
+// plainURLUnescaper drops the escapes PlainLinks puts on a link's markers.
+var plainURLUnescaper = strings.NewReplacer(`\_`, "_", `\*`, "*", `\~`, "~")
+
 // plainTableCut keeps a table row's first n cells, as many as its header has: the
 // note drops the rest.
 func plainTableCut(row string, n int) string {
@@ -1377,7 +1380,8 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 		for _, sp := range spans {
 			u.WriteString(t[last:sp[0]])
 			u.WriteString("\uE000" + strconv.Itoa(len(codes)) + "\uE001")
-			codes = append(codes, t[sp[0]:sp[1]])
+			// A "<https://…>" link made text has its markers escaped already.
+			codes = append(codes, plainURLUnescaper.Replace(t[sp[0]:sp[1]]))
 			last = sp[1]
 		}
 		u.WriteString(t[last:])
