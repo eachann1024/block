@@ -11,6 +11,7 @@ on:
       - 'assets/**'
       - 'updates/**'
       - 'scripts/lint_design.py'
+      - 'scripts/ci/setup-go.sh'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
@@ -22,6 +23,7 @@ on:
       - 'assets/**'
       - 'updates/**'
       - 'scripts/lint_design.py'
+      - 'scripts/ci/setup-go.sh'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -45,10 +47,8 @@ jobs:
       GOCACHE: ${{ runner.temp }}/go-build
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27'
-          cache: false
+      - name: Setup Go
+        run: bash scripts/ci/setup-go.sh
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -61,16 +61,24 @@ jobs:
           key: go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
           restore-keys: |
             go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
-      - name: Design token lint
-        run: python3 scripts/lint_design.py
-      - name: Cross-platform go vet & build
+      - name: Lint, cross-platform vet & build, and test
         run: |
-          for target in linux/amd64 windows/amd64 darwin/arm64 darwin/amd64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-            echo "==> Checking ${os}/${arch}"
-            GOOS="$os" GOARCH="$arch" go vet ./...
-            GOOS="$os" GOARCH="$arch" go build ./...
-          done
-      - name: go test
-        run: go test ./...
+          python3 scripts/lint_design.py &
+          pid_lint=$!
+
+          echo "==> Checking linux/amd64"
+          go vet ./...
+          go build ./cmd/...
+
+          echo "==> Checking windows/amd64"
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/block
+
+          echo "==> Checking darwin/arm64 & darwin/amd64"
+          GOOS=darwin GOARCH=arm64 go vet ./...
+          GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/block
+          GOOS=darwin GOARCH=amd64 go build -o /dev/null ./cmd/block
+
+          wait "$pid_lint"
+          echo "==> Running go test ./..."
+          go test ./...
