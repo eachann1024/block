@@ -10,13 +10,48 @@ import (
 )
 
 type cachedTableCols struct {
-	rev    uint64
+	hash   uint64
 	rows   int
 	cols   int
 	font   string
 	fontSz float32
 	padX   float32
 	wantW  []float32
+}
+
+func tableContentHash(tbl *model.TableData) uint64 {
+	if tbl == nil {
+		return 0
+	}
+	const offset64 = 14695981039346656037
+	const prime64 = 1099511628211
+	h := uint64(offset64)
+	mixByte := func(b byte) {
+		h ^= uint64(b)
+		h *= prime64
+	}
+	mixStr := func(s string) {
+		for i := 0; i < len(s); i++ {
+			h ^= uint64(s[i])
+			h *= prime64
+		}
+		mixByte(0xff)
+	}
+	for _, a := range tbl.Aligns {
+		mixStr(string(a))
+	}
+	mixByte(0xfe)
+	for _, row := range tbl.Rows {
+		for _, cell := range row {
+			for _, sp := range cell.Spans {
+				mixByte(byte(sp.Marks))
+				mixStr(sp.Text)
+			}
+			mixByte(0xfd)
+		}
+		mixByte(0xfc)
+	}
+	return h
 }
 
 type tableGridGeom struct {
@@ -56,8 +91,9 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 	if s.tableColCache == nil {
 		s.tableColCache = make(map[model.BlockID]cachedTableCols)
 	}
+	tblHash := tableContentHash(tbl)
 	cached, ok := s.tableColCache[id]
-	if !ok || cached.rev != s.docRev || cached.rows != len(tbl.Rows) || cached.cols != cols ||
+	if !ok || cached.hash != tblHash || cached.rows != len(tbl.Rows) || cached.cols != cols ||
 		cached.font != edFont || cached.fontSz != tFontSz || cached.padX != tPadX || len(cached.wantW) != cols {
 		wantW := make([]float32, cols)
 		for c := 0; c < cols; c++ {
@@ -93,7 +129,7 @@ func (s *Session) resolveTableColWidths(id model.BlockID, tbl *model.TableData, 
 			}
 		}
 		cached = cachedTableCols{
-			rev:    s.docRev,
+			hash:   tblHash,
 			rows:   len(tbl.Rows),
 			cols:   cols,
 			font:   edFont,
