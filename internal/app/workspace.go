@@ -1354,6 +1354,9 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	if recordNav {
 		w.nav.Push(clean)
 	}
+	if sess != nil && active != prevActive {
+		sess.ClearFocus()
+	}
 	if sess != nil && lineHint > 0 {
 		sess.JumpToSearchHit(model.SearchHit{Line: lineHint, Column: -1})
 	}
@@ -2399,7 +2402,8 @@ func (w *Workspace) CloseTab(path string) {
 	}
 	isVirtual := w.virtualPreview[clean]
 	delete(w.virtualPreview, clean)
-	nextTabs, nextActive, closed := w.tabOps.CloseTab(w.state.OpenTabs, w.state.ActiveTab, clean)
+	prevActive := w.state.ActiveTab
+	nextTabs, nextActive, closed := w.tabOps.CloseTab(w.state.OpenTabs, prevActive, clean)
 	if !closed {
 		w.mu.Unlock()
 		return
@@ -2422,6 +2426,11 @@ func (w *Workspace) CloseTab(path string) {
 
 	if nextActive != "" {
 		_ = w.ensureTabLoaded(nextActive)
+		if nextActive != prevActive {
+			if sess := w.SessionFor(nextActive); sess != nil {
+				sess.ClearFocus()
+			}
+		}
 	}
 	w.persistTabs(tabs, nextActive)
 	w.RequestRedraw()
