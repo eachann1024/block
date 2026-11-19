@@ -1,12 +1,14 @@
 package modals
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,13 +20,23 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// PerfBreakdownEntry describes a single largest file or grouped item within a PerfCategory.
+type PerfBreakdownEntry struct {
+	Name  string
+	Path  string
+	Bytes uint64
+	Count int
+}
+
 // PerfCategory describes one of the 7 disk-usage categories in the Performance modal.
 type PerfCategory struct {
-	ID     string
-	Label  string
-	Detail string
-	Bytes  uint64
-	Color  ui.Color
+	ID        string
+	Label     string
+	Detail    string
+	Bytes     uint64
+	FileCount int
+	Color     ui.Color
+	Entries   []PerfBreakdownEntry
 }
 
 // PerfSnapshotData captures live host process usage and the 7-category storage breakdown.
@@ -196,23 +208,28 @@ func (m *Manager) triggerPerformanceRefresh() {
 	}()
 }
 
-// PerformanceCategories returns a snapshot of the 7 disk categories with current labels and byte counts.
+// PerformanceCategories returns a snapshot of the 7 disk categories with current labels,
+// byte counts, file counts, and top breakdown entries.
 func (m *Manager) PerformanceCategories() []PerfCategory {
 	m.perfMu.Lock()
 	defer m.perfMu.Unlock()
 	out := make([]PerfCategory, len(perfCategoryDefs))
-	byID := make(map[string]uint64, len(m.perfCategories))
+	byID := make(map[string]PerfCategory, len(m.perfCategories))
 	for _, c := range m.perfCategories {
-		byID[c.ID] = c.Bytes
+		byID[c.ID] = c
 	}
 	pal := theme.Ocean()
 	for i, d := range perfCategoryDefs {
+		prev := byID[d.id]
+		entriesCopy := append([]PerfBreakdownEntry(nil), prev.Entries...)
 		out[i] = PerfCategory{
-			ID:     d.id,
-			Label:  theme.Tr(d.zh, d.en),
-			Detail: theme.Tr(d.dZh, d.dEn),
-			Bytes:  byID[d.id],
-			Color:  pal.PerfCategoryColor(d.id),
+			ID:        d.id,
+			Label:     theme.Tr(d.zh, d.en),
+			Detail:    theme.Tr(d.dZh, d.dEn),
+			Bytes:     prev.Bytes,
+			FileCount: prev.FileCount,
+			Color:     pal.PerfCategoryColor(d.id),
+			Entries:   entriesCopy,
 		}
 	}
 	return out
@@ -274,10 +291,144 @@ func (m *Manager) PerfSnapshot(refreshDisk bool) PerfSnapshotData {
 	}
 }
 
+const perfMaxBreakdownEntries = 6
+
+type perfCategoryAccum struct {
+	bytes     uint64
+	fileCount int
+	buckets   map[string]*PerfBreakdownEntry
+}
+
+func newPerfAccum() []perfCategoryAccum {
+	acc := make([]perfCategoryAccum, len(perfCategoryDefs))
+	for i := range acc {
+		acc[i].buckets = make(map[string]*PerfBreakdownEntry)
+	}
+	return acc
+}
+
+func (a *perfCategoryAccum) add(key, name, fullPath string, fileBytes uint64) {
+	a.bytes += fileBytes
+	a.fileCount++
+	if key == "" {
+		key = fullPath
+	}
+	if name == "" {
+		name = filepath.Base(fullPath)
+	}
+	if cur, ok := a.buckets[key]; ok {
+		cur.Bytes += fileBytes
+		cur.Count++
+		return
+	}
+	a.buckets[key] = &PerfBreakdownEntry{
+		Name:  name,
+		Path:  fullPath,
+		Bytes: fileBytes,
+		Count: 1,
+	}
+}
+
+func (a *perfCategoryAccum) topEntries(limit int) []PerfBreakdownEntry {
+	if len(a.buckets) == 0 || limit <= 0 {
+		return nil
+	}
+	all := make([]PerfBreakdownEntry, 0, len(a.buckets))
+	for _, ent := range a.buckets {
+		all = append(all, *ent)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].Bytes != all[j].Bytes {
+			return all[i].Bytes > all[j].Bytes
+		}
+		if all[i].Count != all[j].Count {
+			return all[i].Count > all[j].Count
+		}
+		return all[i].Name < all[j].Name
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all
+}
+
+func loadHistoryPageLabels(dataDir string) map[string]string {
+	out := make(map[string]string)
+	if strings.TrimSpace(dataDir) == "" {
+		return out
+	}
+	for _, dirName := range []string{"History", "history"} {
+		raw, err := os.ReadFile(filepath.Join(dataDir, dirName, "index.json"))
+		if err != nil {
+			continue
+		}
+		var doc struct {
+			Pages map[string]string `json:"pages"`
+		}
+		if json.Unmarshal(raw, &doc) != nil {
+			continue
+		}
+		for origPath, pageID := range doc.Pages {
+			id := strings.TrimSpace(pageID)
+			p := strings.TrimSpace(origPath)
+			if id != "" && p != "" {
+				out[id] = p
+			}
+		}
+		if len(out) > 0 {
+			break
+		}
+	}
+	return out
+}
+
+func shortDisplayPath(fullPath string) string {
+	slash := filepath.ToSlash(filepath.Clean(fullPath))
+	parts := strings.Split(slash, "/")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	}
+	return filepath.Base(fullPath)
+}
+
+func describeBreakdownEntry(idx int, root, fullPath, prefix string, historyLabels map[string]string) (key, name, tipPath string) {
+	rel, err := filepath.Rel(root, fullPath)
+	if err != nil {
+		rel = filepath.Base(fullPath)
+	}
+	relSlash := filepath.ToSlash(rel)
+	parts := strings.Split(relSlash, "/")
+
+	switch idx {
+	case 2: // history: aggregate per page folder and resolve note path via History/index.json
+		if len(parts) >= 2 && strings.EqualFold(parts[0], "history") {
+			pageID := parts[1]
+			if orig, ok := historyLabels[pageID]; ok {
+				return "history:" + pageID, shortDisplayPath(orig), orig
+			}
+			if len(parts) >= 3 {
+				return "history:" + pageID, parts[0] + "/" + pageID, filepath.Join(root, parts[0], pageID)
+			}
+		}
+	case 6: // config: group plugin installs/data per plugin while keeping fonts/json files granular
+		if len(parts) >= 3 && (strings.EqualFold(parts[0], "apps") || strings.EqualFold(parts[0], "apps-data")) {
+			group := parts[0] + "/" + parts[1]
+			return "config:" + group, group, filepath.Join(root, parts[0], parts[1])
+		}
+	}
+
+	display := relSlash
+	if prefix != "" {
+		display = prefix + "/" + relSlash
+	}
+	return fullPath, display, fullPath
+}
+
 func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) (cats []PerfCategory, lastScan, scanErr string) {
-	totals := make([]uint64, len(perfCategoryDefs))
+	acc := newPerfAccum()
 	seen := make(map[fileIdentity]struct{})
 	var errs []string
+	historyLabels := loadHistoryPageLabels(dataDir)
 
 	if strings.TrimSpace(overrideRoot) != "" {
 		absRoot, err := filepath.Abs(overrideRoot)
@@ -286,23 +437,34 @@ func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) 
 		} else {
 			scanTree(absRoot, seen, &errs, func(path string) int {
 				return classifyOverridePath(absRoot, path)
-			}, totals)
+			}, func(idx int, path string) (string, string, string) {
+				return describeBreakdownEntry(idx, absRoot, path, "", historyLabels)
+			}, acc)
 		}
 	} else {
+		multiNB := len(nbRoots) > 1
 		// 1. Notebooks (notes vs assets)
 		for _, nb := range nbRoots {
+			nbPrefix := ""
+			if multiNB {
+				nbPrefix = filepath.Base(filepath.Clean(nb))
+			}
 			scanTree(nb, seen, &errs, func(path string) int {
 				if isMarkdownPath(path) {
 					return 0 // notes
 				}
 				return 1 // assets
-			}, totals)
+			}, func(idx int, path string) (string, string, string) {
+				return describeBreakdownEntry(idx, nb, path, nbPrefix, historyLabels)
+			}, acc)
 		}
 		// 2. Application data directory (history, recovery, ai_sessions, logs, config)
 		if strings.TrimSpace(dataDir) != "" {
 			scanTree(dataDir, seen, &errs, func(path string) int {
 				return classifyDataDirPath(dataDir, path)
-			}, totals)
+			}, func(idx int, path string) (string, string, string) {
+				return describeBreakdownEntry(idx, dataDir, path, "", historyLabels)
+			}, acc)
 		}
 		// 3. OS cache directory
 		if cacheDir, err := os.UserCacheDir(); err == nil && cacheDir != "" {
@@ -310,7 +472,9 @@ func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) 
 			if _, stErr := os.Lstat(blockCache); stErr == nil {
 				scanTree(blockCache, seen, &errs, func(_ string) int {
 					return 3 // recovery
-				}, totals)
+				}, func(idx int, path string) (string, string, string) {
+					return describeBreakdownEntry(idx, blockCache, path, "Cache", historyLabels)
+				}, acc)
 			}
 		}
 	}
@@ -319,11 +483,13 @@ func scanPerformanceDisk(overrideRoot string, nbRoots []string, dataDir string) 
 	cats = make([]PerfCategory, len(perfCategoryDefs))
 	for i, d := range perfCategoryDefs {
 		cats[i] = PerfCategory{
-			ID:     d.id,
-			Label:  theme.Tr(d.zh, d.en),
-			Detail: theme.Tr(d.dZh, d.dEn),
-			Bytes:  totals[i],
-			Color:  pal.PerfCategoryColor(d.id),
+			ID:        d.id,
+			Label:     theme.Tr(d.zh, d.en),
+			Detail:    theme.Tr(d.dZh, d.dEn),
+			Bytes:     acc[i].bytes,
+			FileCount: acc[i].fileCount,
+			Color:     pal.PerfCategoryColor(d.id),
+			Entries:   acc[i].topEntries(perfMaxBreakdownEntries),
 		}
 	}
 	lastScan = time.Now().Format("15:04:05")
@@ -338,7 +504,14 @@ func (m *Manager) notebookRoots() []string {
 	return m.knownNotebooks(st)
 }
 
-func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, classify func(path string) int, totals []uint64) {
+func scanTree(
+	root string,
+	seen map[fileIdentity]struct{},
+	errs *[]string,
+	classify func(path string) int,
+	describe func(idx int, path string) (key, name, tipPath string),
+	acc []perfCategoryAccum,
+) {
 	info, err := os.Lstat(root)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -350,7 +523,7 @@ func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, class
 		return
 	}
 	if !info.IsDir() {
-		addFileBytes(root, info, seen, classify, totals)
+		addFileBytes(root, info, seen, classify, describe, acc)
 		return
 	}
 
@@ -380,7 +553,7 @@ func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, class
 					*errs = append(*errs, stErr.Error())
 					continue
 				}
-				addFileBytes(full, st, seen, classify, totals)
+				addFileBytes(full, st, seen, classify, describe, acc)
 				continue
 			}
 			if typ == 0 {
@@ -395,14 +568,21 @@ func scanTree(root string, seen map[fileIdentity]struct{}, errs *[]string, class
 				if st.IsDir() {
 					stack = append(stack, full)
 				} else if st.Mode().IsRegular() {
-					addFileBytes(full, st, seen, classify, totals)
+					addFileBytes(full, st, seen, classify, describe, acc)
 				}
 			}
 		}
 	}
 }
 
-func addFileBytes(path string, info os.FileInfo, seen map[fileIdentity]struct{}, classify func(string) int, totals []uint64) {
+func addFileBytes(
+	path string,
+	info os.FileInfo,
+	seen map[fileIdentity]struct{},
+	classify func(string) int,
+	describe func(idx int, path string) (key, name, tipPath string),
+	acc []perfCategoryAccum,
+) {
 	id, hasID, fileBytes := statPhysicalFile(info)
 	if hasID {
 		if _, dup := seen[id]; dup {
@@ -412,8 +592,9 @@ func addFileBytes(path string, info os.FileInfo, seen map[fileIdentity]struct{},
 	}
 
 	idx := classify(path)
-	if idx >= 0 && idx < len(totals) {
-		totals[idx] += fileBytes
+	if idx >= 0 && idx < len(acc) {
+		key, name, tipPath := describe(idx, path)
+		acc[idx].add(key, name, tipPath, fileBytes)
 	}
 }
 
@@ -541,12 +722,23 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 	treemapItems := make([]internalui.TreemapItem, len(cats))
 	for i, cat := range cats {
 		totalBytes += cat.Bytes
+		entries := make([]internalui.TreemapEntry, len(cat.Entries))
+		for ei, ent := range cat.Entries {
+			entries[ei] = internalui.TreemapEntry{
+				Name:  ent.Name,
+				Path:  ent.Path,
+				Bytes: ent.Bytes,
+				Count: ent.Count,
+			}
+		}
 		treemapItems[i] = internalui.TreemapItem{
-			ID:     cat.ID,
-			Label:  cat.Label,
-			Detail: cat.Detail,
-			Bytes:  cat.Bytes,
-			Color:  cat.Color,
+			ID:        cat.ID,
+			Label:     cat.Label,
+			Detail:    cat.Detail,
+			Bytes:     cat.Bytes,
+			FileCount: cat.FileCount,
+			Color:     cat.Color,
+			Entries:   entries,
 		}
 	}
 	if lastScan == "" {
@@ -555,13 +747,13 @@ func (m *Manager) renderPerformanceModal(c *ui.Context) {
 
 	winW, winH := c.Size()
 	limitX := max((winW-720)/2, 0) + 120
-	limitY := max((winH-380)/2, 20)
+	limitY := max((winH-520)/2, 20)
 	clampOffset := func() {
 		m.perfOffset.X = max(-limitX, min(limitX, m.perfOffset.X))
 		m.perfOffset.Y = max(-limitY, min(limitY, m.perfOffset.Y))
 	}
 	clampOffset()
-	internalui.Dialog(c, "perf-modal", title, &open, internalui.ModalLayout{Width: 720, MaxHeight: 440, Centered: true, Offset: m.perfOffset}, func() {
+	internalui.Dialog(c, "perf-modal", title, &open, internalui.ModalLayout{Width: 720, MaxHeight: 620, Centered: true, Offset: m.perfOffset}, func() {
 		// Header bar.
 		header := ui.Row(c.Key("perf-header")).Cursor(ui.CursorGrab).FillWidth().Height(46).PaddingX(20).
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).
