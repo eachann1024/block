@@ -95,21 +95,19 @@ func resolveExistingDir(raw string) string {
 	if p == "" {
 		return ""
 	}
-	if st, err := os.Stat(p); err == nil {
-		if st.IsDir() {
-			return p
+	cur := filepath.Clean(p)
+	for {
+		if st, err := os.Stat(cur); err == nil {
+			if st.IsDir() {
+				return cur
+			}
 		}
-		dir := filepath.Dir(p)
-		if dst, dErr := os.Stat(dir); dErr == nil && dst.IsDir() {
-			return dir
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return ""
 		}
-	} else {
-		dir := filepath.Dir(p)
-		if dst, dErr := os.Stat(dir); dErr == nil && dst.IsDir() {
-			return dir
-		}
+		cur = parent
 	}
-	return ""
 }
 
 func appleScriptUTIsForFilters(filters []mygo.FileFilter) []string {
@@ -267,8 +265,8 @@ end run`
 	}
 
 	var paths []string
-	for _, line := range strings.Split(stdout.String(), "\n") {
-		p := strings.TrimSpace(line)
+	for _, line := range strings.Split(strings.TrimRight(stdout.String(), "\r\n"), "\n") {
+		p := strings.TrimRight(line, "\r")
 		if p == "" {
 			continue
 		}
@@ -287,6 +285,12 @@ func saveDialogDarwinOsascript(opts mygo.SaveDialogOptions) (string, error) {
 		} else {
 			defaultDir = resolveExistingDir(filepath.Dir(clean))
 			defaultName = filepath.Base(clean)
+		}
+	}
+	if defaultName != "" && filepath.Ext(defaultName) == "" && len(opts.Filters) > 0 && len(opts.Filters[0].Extensions) > 0 {
+		ext := strings.TrimPrefix(strings.TrimSpace(opts.Filters[0].Extensions[0]), ".")
+		if ext != "" && ext != "*" {
+			defaultName += "." + ext
 		}
 	}
 	prompt := strings.TrimSpace(opts.Title)
@@ -326,16 +330,9 @@ end run`
 		}
 		return "", err
 	}
-	chosen := strings.TrimSpace(stdout.String())
+	chosen := strings.TrimRight(stdout.String(), "\r\n")
 	if chosen == "" {
 		return "", nil
 	}
-	clean := filepath.Clean(chosen)
-	if filepath.Ext(clean) == "" && len(opts.Filters) > 0 && len(opts.Filters[0].Extensions) > 0 {
-		ext := strings.TrimPrefix(strings.TrimSpace(opts.Filters[0].Extensions[0]), ".")
-		if ext != "" && ext != "*" {
-			clean += "." + ext
-		}
-	}
-	return clean, nil
+	return filepath.Clean(chosen), nil
 }

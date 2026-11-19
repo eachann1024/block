@@ -18,6 +18,7 @@ type darwinFileIdentity struct {
 }
 
 var (
+	darwinStartupRawExecPath string
 	darwinStartupExecPath    string
 	darwinStartupExecID      darwinFileIdentity
 	darwinStartupCodeResPath string
@@ -29,6 +30,7 @@ func init() {
 	if err != nil || exe == "" {
 		return
 	}
+	darwinStartupRawExecPath = exe
 	if resolved, rErr := filepath.EvalSymlinks(exe); rErr == nil && resolved != "" {
 		exe = resolved
 	}
@@ -68,7 +70,11 @@ func readDarwinFileIdentity(path string) darwinFileIdentity {
 // running, in-process NSOpenPanel / NSSavePanel can fail ViewBridge signature
 // checks, so we fall back to the out-of-process osascript picker only then.
 func darwinBundleIntact() bool {
-	if darwinStartupExecPath == "" || !darwinStartupExecID.valid {
+	if darwinStartupRawExecPath == "" || darwinStartupExecPath == "" || !darwinStartupExecID.valid {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(darwinStartupRawExecPath)
+	if err != nil || resolved != darwinStartupExecPath {
 		return false
 	}
 	if readDarwinFileIdentity(darwinStartupExecPath) != darwinStartupExecID {
