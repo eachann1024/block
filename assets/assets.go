@@ -9,7 +9,7 @@ import (
 var FS embed.FS
 
 // Read returns the embedded bytes for a relative asset path such as
-// "icons/note.fill.svg", "mascot/no-note.grid.svg", "agents/codex.svg",
+// "icons/note.fill.svg", "mascot/no-note.1.svg", "agents/codex.svg",
 // or "skills/AGENTS.md".
 func Read(rel string) ([]byte, error) {
 	return FS.ReadFile(path.Clean(rel))
