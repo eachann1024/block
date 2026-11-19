@@ -1181,10 +1181,13 @@ func processDisplayOrder(steps []model.ProcessStep, streaming bool) []int {
 func latestStreamLine(s string) string {
 	lines := strings.Split(s, "\n")
 	// Code is shown as written: print("**hi**") keeps its stars.
-	code := bui.DiffFenceMask(lines, make([]int, len(lines)))
+	same := make([]int, len(lines))
+	code := bui.DiffFenceMask(lines, same)
+	// Only a table's own separator is skipped; a later "| --- |" is a data row.
+	_, seps := bui.DiffTableRoles(lines, same)
 	for i := len(lines) - 1; i >= 0; i-- {
 		raw := strings.TrimSpace(lines[i])
-		if raw == "" || !code[i] && bui.IsDiffTableSep(raw) {
+		if raw == "" || seps[i] {
 			continue
 		}
 		t := raw
