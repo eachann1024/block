@@ -27,6 +27,9 @@ var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 // diffListItemRE matches a list item marker at the start of a trimmed line.
 var diffListItemRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])(?:\s|$)`)
 
+// diffRuleRE matches a thematic break such as "* * *" or "---".
+var diffRuleRE = regexp.MustCompile(`^(?:\*[ \t]*){3,}$|^(?:-[ \t]*){3,}$|^(?:_[ \t]*){3,}$`)
+
 // diffQuoteRE matches the blockquote markers in front of a fence closer.
 var diffQuoteRE = regexp.MustCompile(`^(?:>\s*)+`)
 
@@ -86,7 +89,7 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 					continue
 				}
 				inIndented = false
-				inList = diffListItemRE.MatchString(t) || (inList && ind > 0)
+				inList = (diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)) || (inList && ind > 0)
 			}
 			if fence != "" {
 				mask[i] = true
@@ -124,6 +127,32 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
 	hidden := func(k int) bool { return !shown[k] && IsDiffTableSep(strings.TrimSpace(lines[k])) }
 	oldM, newM := diffFenceSides(lines, change)
+	// tableAny[k]: whether a visible changed row of k's table is taken. A table is a run
+	// of lines that are table rows on their own side; both sides share it, so the two
+	// separators of a pair always see the same answer.
+	tableAny := make([]bool, len(lines))
+	ownRow := func(k int) bool {
+		code := shown[k]
+		if change[k] < 0 {
+			code = oldM[k]
+		} else if change[k] > 0 {
+			code = newM[k]
+		}
+		return !code && IsDiffTableRow(strings.TrimSpace(lines[k]))
+	}
+	for i := 0; i < len(lines); {
+		if !ownRow(i) {
+			i++
+			continue
+		}
+		start, any := i, false
+		for ; i < len(lines) && ownRow(i); i++ {
+			any = any || (change[i] != 0 && !hidden(i) && applied[i])
+		}
+		for k := start; k < i; k++ {
+			tableAny[k] = any
+		}
+	}
 	for si, side := range [2]int{-1, 1} {
 		mask := [2][]bool{oldM, newM}[si]
 		on := func(i int) bool { return change[i] != -side }
@@ -140,12 +169,6 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 				}
 			}
 			i = end
-			any := false
-			for k := start; k < end; k++ {
-				if change[k] != 0 && !hidden(k) && IsDiffTableRow(strings.TrimSpace(lines[k])) && applied[k] {
-					any = true
-				}
-			}
 			for j := start; j < end; j++ {
 				if change[j] != side || !IsDiffTableSep(strings.TrimSpace(lines[j])) {
 					continue
@@ -158,7 +181,7 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 					applied[j] = applied[h]
 					continue
 				}
-				applied[j] = any
+				applied[j] = tableAny[j]
 				// The separator it replaces sits in the same run of changes. Two hidden
 				// separators decide together (above); a visible one (the old line was code)
 				// is the user's choice to follow.
@@ -184,12 +207,15 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	}
 }
 
+// diffLinkDest matches a link destination: <with spaces> or bare (one level of parens).
+const diffLinkDest = `(?:<[^<>\n]*>|(?:[^()\s]|\([^()\s]*\))*)`
+
 // diffLinkTitle matches an optional link title: "t", 't' or (t).
 const diffLinkTitle = `(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`
 
 var (
-	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)` + diffLinkTitle + `\)`)
-	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\((?:[^()\s]|\([^()\s]*\))*` + diffLinkTitle + `\)`)
+	diffImageRE    = regexp.MustCompile(`!\[([^\]]*)\]\((` + diffLinkDest + `)` + diffLinkTitle + `\)`)
+	diffLinkRE     = regexp.MustCompile(`\[((?:[^\[\]]|\[[^\[\]]*\])+)\]\(` + diffLinkDest + diffLinkTitle + `\)`)
 	diffAutolinkRE = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*|[^<>\s@]+@[^<>\s@]+)>`)
 )
 
@@ -261,7 +287,10 @@ func diffPlainLinks(s string) string {
 			b.WriteString(s[last:m[0]])
 			text := s[m[2]:m[3]]
 			if text == "" && len(m) > 4 && m[4] >= 0 {
-				text = s[m[4]:m[5]] // an image without alt text shows its path
+				// An image without alt text shows its path, as code so "_" stays literal.
+				if p := strings.Trim(s[m[4]:m[5]], "<>"); p != "" && !strings.Contains(p, "`") {
+					text = "`" + p + "`"
+				}
 			}
 			b.WriteString(text)
 			last = m[1]
