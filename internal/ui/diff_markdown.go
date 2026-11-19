@@ -45,6 +45,9 @@ type DiffLineStyle struct {
 	// Fence marks a code fence's opening or closing line (see DiffFenceLines), which
 	// the note shows as the block's edge: an opener shows only its language.
 	Fence bool
+	// Quote is the quote depth of a code line's block (see DiffFenceLines): in
+	// "> ```sh" the code shows without its ">" markers.
+	Quote int
 }
 
 // DiffListNumbers reports, per line, the number an ordered list item shows in its
@@ -1090,6 +1093,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		})
 	}
 	if st.Code {
+		if st.Quote > 0 {
+			line = diffStripQuotes(line, st.Quote)
+		}
 		return ui.Text(c, strings.ReplaceAll(line, "\t", "    ")).Font("monospace").FontSize(theme.FontBody).
 			TextColor(st.Text).Grow(1).MinWidth(0)
 	}
