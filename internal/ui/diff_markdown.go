@@ -73,7 +73,7 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 	var masks [2][]bool
 	for si, side := range [2]int{-1, 1} {
 		mask := make([]bool, len(lines))
-		fence, nested, fenceList := "", false, false
+		fence, nested, fenceList, fenceQuote := "", false, false, false
 		// Indented code: four columns in after a blank line (or the start), unless the
 		// text above is a list, whose nested content is indented the same way.
 		// para: the line above is paragraph text, which a "===" underline turns into a heading.
@@ -83,6 +83,11 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 				continue
 			}
 			t := strings.TrimSpace(l)
+			// A fence opened in a blockquote ends with the quote: at a blank or a line
+			// without ">", which is read as ordinary text again.
+			if fence != "" && fenceQuote && !strings.HasPrefix(t, ">") {
+				fence = ""
+			}
 			if fence == "" {
 				if t == "" {
 					prevBlank, para = true, false
@@ -122,7 +127,7 @@ func diffFenceSides(lines []string, change []int) (old, cur []bool) {
 			}
 			if fence = diffFenceOpen(t); fence != "" {
 				mask[i], para = true, false
-				nested = diffContainerRE.MatchString(t)
+				nested, fenceQuote = diffContainerRE.MatchString(t), strings.HasPrefix(t, ">")
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 			}
 		}
