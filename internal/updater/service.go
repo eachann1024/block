@@ -106,6 +106,7 @@ type Service struct {
 	errorMsg        string
 	checkGen        uint64
 	checkRunning    bool
+	downloadGen     uint64
 	downloadRunning bool
 	downloadCancel  context.CancelFunc
 	installRunning  bool
@@ -245,6 +246,7 @@ func (s *Service) CancelDownload() {
 		s.mu.Unlock()
 		return
 	}
+	s.downloadGen++
 	s.downloadRunning = false
 	s.preparing = false
 	s.speedMBps = 0
@@ -387,6 +389,10 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 			return
 		}
 		s.checkRunning = false
+		if s.downloadRunning || s.installRunning {
+			s.mu.Unlock()
+			return
+		}
 
 		if err != nil {
 			if !wasReady {
@@ -426,16 +432,36 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 			return
 		}
 
-		latest := s.notes.Versions[0]
-		s.latestEntry = &latest
-		asset, inPlace, pkgManaged := PickPlatformAsset(latest.Assets, runtime.GOOS, runtime.GOARCH)
+		var picked *ReleaseEntry
+		var asset *ReleaseAsset
+		var inPlace, pkgManaged bool
+		for i := range s.notes.Versions {
+			cand := s.notes.Versions[i]
+			a, ip, pm := PickPlatformAsset(cand.Assets, runtime.GOOS, runtime.GOARCH)
+			if a != nil {
+				c := cand
+				picked = &c
+				asset = a
+				inPlace = ip
+				pkgManaged = pm
+				break
+			}
+		}
+		if picked == nil {
+			latest := s.notes.Versions[0]
+			picked = &latest
+		}
+		s.latestEntry = picked
 		s.targetAsset = asset
 		s.inPlace = inPlace
 		s.pkgManaged = pkgManaged
 
-		if s.readyRecord != nil && asset != nil && inPlace && s.readyRecord.Version == latest.Version &&
-			s.readyRecord.Tag == latest.Tag && s.readyRecord.AssetName == asset.Name &&
+		if s.readyRecord != nil && asset != nil && inPlace && s.readyRecord.Version == picked.Version &&
+			s.readyRecord.Tag == picked.Tag && s.readyRecord.AssetName == asset.Name &&
 			s.readyRecord.DownloadURL == asset.DownloadURL && s.readyRecord.SHA256 == asset.EffectiveSHA256() {
+			s.status = StatusReady
+		} else if s.readyRecord != nil && asset == nil && CompareVersion(s.readyRecord.Version, cur) > 0 {
+			// Keep an already verified local package if the newer release has no asset for this platform yet.
 			s.status = StatusReady
 		} else {
 			s.readyRecord = nil
@@ -485,6 +511,8 @@ func (s *Service) StartDownload() {
 	dataDir := s.cfg.DataDir
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	s.downloadGen++
+	dlGen := s.downloadGen
 	s.downloadRunning = true
 	s.downloadCancel = cancel
 	s.status = StatusDownloading
@@ -502,7 +530,7 @@ func (s *Service) StartDownload() {
 
 		rec, err := DownloadAndStage(ctx, dataDir, entry, asset, inPlace, mode, func(dl, tot int64, speed float64, ch string, prep bool) {
 			s.mu.Lock()
-			if !s.downloadRunning {
+			if !s.downloadRunning || dlGen != s.downloadGen {
 				s.mu.Unlock()
 				return
 			}
@@ -532,6 +560,10 @@ func (s *Service) StartDownload() {
 		})
 
 		s.mu.Lock()
+		if dlGen != s.downloadGen {
+			s.mu.Unlock()
+			return
+		}
 		if !s.downloadRunning && errors.Is(err, context.Canceled) {
 			s.mu.Unlock()
 			return
