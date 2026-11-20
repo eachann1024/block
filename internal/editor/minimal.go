@@ -102,6 +102,9 @@ func (s *Session) EnsureEditorFocus() {
 }
 
 func (s *Session) leftContentGutter() float32 {
+	if s.embedded {
+		return 0
+	}
 	if s.minimal {
 		return minimalLeftInset
 	}
@@ -109,6 +112,9 @@ func (s *Session) leftContentGutter() float32 {
 }
 
 func (s *Session) rightContentInset() float32 {
+	if s.embedded {
+		return 0
+	}
 	if s.minimal {
 		return minimalRightInset
 	}

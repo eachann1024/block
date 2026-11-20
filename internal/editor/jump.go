@@ -107,6 +107,9 @@ func (s *Session) jumpTopClearance() float32 {
 }
 
 func (s *Session) baseCanvasTopPad() float32 {
+	if s.embedded {
+		return 0
+	}
 	if s.minimal {
 		return minimalTopPad
 	}

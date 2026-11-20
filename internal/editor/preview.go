@@ -21,6 +21,7 @@ type PreviewAsset struct {
 func NewReadOnlyPreview(doc *model.Doc, codec model.MarkdownCodec, media func(src string, video, load bool) PreviewAsset) *Session {
 	session := NewSession("", doc, codec, nil)
 	session.SetMinimal(true)
+	session.embedded = true
 	session.readOnly = true
 	if media == nil {
 		media = func(string, bool, bool) PreviewAsset { return PreviewAsset{Unavailable: true} }

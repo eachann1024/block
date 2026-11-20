@@ -67,7 +67,12 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.handleGlobalShortcuts(c, readOnly)
 
 	pal := theme.Ocean()
-	root := ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
+	var root ui.Element
+	if s.embedded {
+		root = ui.Column(c.Key("editor-root")).FillWidth().MinWidth(0).Bind(&s.rootHandle)
+	} else {
+		root = ui.Box(c.Key("editor-root")).Fill().Background(pal.Paper).Bind(&s.rootHandle)
+	}
 	if rb := root.Bounds(); rb.W > 0 && rb.H > 0 {
 		s.editorRect = rb
 	}
@@ -109,7 +114,10 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		topPad := s.canvasTopPad()
 		bottomPad := s.scale(editorBottomPad)
 		bottomMinH := s.scale(120)
-		if s.minimal {
+		if s.embedded {
+			bottomPad = 0
+			bottomMinH = 0
+		} else if s.minimal {
 			bottomPad = minimalBottomPad
 			bottomMinH = 36
 		}
@@ -120,38 +128,33 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			bottomMinH += savedTableH
 		}
 
-		// Main scrollable document body
-		scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
-			ObserveInput(s.onScrollObserveInput)
-		if sb := scroll.Bounds(); sb.W > 0 && sb.H > 0 {
-			s.scrollRect = sb
-		}
-		scroll.Draw(func(p *ui.Painter, r ui.Rect) {
-			s.scrollRect = r
-			s.paintBackground(p, r, pal, animEdgeL, animEdgeR)
-		})
-		scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
-			if s.scrollRect != r {
-				prevH := s.scrollRect.H
-				s.scrollRect = r
-				if prevH != r.H {
-					c.Invalidate()
-				}
-			}
-		})
-		scroll.Children(func() {
+		renderCanvas := func() {
 			// Center column: max 672px body + symmetric 68px left/right gutters (54px handle gutter + 14px gap) = 808px (scaled by editor zoom).
 			outerMaxW := s.outerFlowWidth()
 			col := ui.Column(c.Key("editor-canvas")).FillWidth().AlignItems(ui.Center).
 				Padding(topPad, animEdgeR, bottomPad, animEdgeL)
+			if s.embedded {
+				col.ObserveInput(s.onScrollObserveInput)
+				if sb := col.Bounds(); sb.W > 0 && sb.H > 0 {
+					s.scrollRect = sb
+				}
+				col.Draw(func(_ *ui.Painter, r ui.Rect) {
+					s.scrollRect = r
+				})
+				col.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+					s.scrollRect = r
+				})
+			}
 			if cb := col.Bounds(); cb.W > 0 && cb.H > 0 {
 				s.canvasLayoutOrigin = ui.Point{X: cb.X, Y: cb.Y}
 				s.hasCanvasOrigin = true
 			} else {
 				s.hasCanvasOrigin = false
 			}
-			if minCanvasH := max(s.minCanvasHeight, s.scrollRect.H); minCanvasH > 0 {
-				col.MinHeight(minCanvasH)
+			if !s.embedded {
+				if minCanvasH := max(s.minCanvasHeight, s.scrollRect.H); minCanvasH > 0 {
+					col.MinHeight(minCanvasH)
+				}
 			}
 			if !readOnly {
 				col.Cursor(ui.CursorText)
@@ -220,10 +223,13 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 						Cursor(ui.CursorText)
 				}
 
-				flow := ui.Column(c.Key("editor-flow")).FillWidth().MaxWidth(outerMaxW)
+				flow := ui.Column(c.Key("editor-flow")).FillWidth()
+				if !s.embedded {
+					flow.MaxWidth(outerMaxW)
+				}
 				flow.Children(func() {
 					virtSig := viewportWidth*1000 + s.zoom()
-					canVirt := !appUi.IsProbeEnabled() && s.virtReady && s.lastVirtSig == virtSig && len(s.doc.Blocks) > virtualizeBlockThreshold && s.scrollRect.H > 0
+					canVirt := !s.embedded && !appUi.IsProbeEnabled() && s.virtReady && s.lastVirtSig == virtSig && len(s.doc.Blocks) > virtualizeBlockThreshold && s.scrollRect.H > 0
 					s.lastVirtSig = virtSig
 					s.virtReady = true
 
@@ -325,7 +331,32 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 						MinHeight(bottomMinH).Grow(1).Cursor(ui.CursorText)
 				}
 			})
-		})
+		}
+
+		if s.embedded {
+			renderCanvas()
+		} else {
+			// Main scrollable document body
+			scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
+				ObserveInput(s.onScrollObserveInput)
+			if sb := scroll.Bounds(); sb.W > 0 && sb.H > 0 {
+				s.scrollRect = sb
+			}
+			scroll.Draw(func(p *ui.Painter, r ui.Rect) {
+				s.scrollRect = r
+				s.paintBackground(p, r, pal, animEdgeL, animEdgeR)
+			})
+			scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+				if s.scrollRect != r {
+					prevH := s.scrollRect.H
+					s.scrollRect = r
+					if prevH != r.H {
+						c.Invalidate()
+					}
+				}
+			})
+			scroll.Children(renderCanvas)
+		}
 
 		if s.needsDetachedSelectionFocus() {
 			svc := c.Services()
@@ -3066,7 +3097,12 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 	outer.Children(func() {
 		frameWrap := ui.Box(c.Key(fmt.Sprintf("img-wrap-%d", id)))
 		frameWrap.Children(func() {
-			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(theme.RadiusSM).Clip().
+			picRadius := theme.RadiusSM
+			if s.embedded && readOnly && !isVideo && hasImage && !borderHighlighted {
+				picBorder = ui.Transparent
+				picRadius = 0
+			}
+			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(picRadius).Clip().
 				Cursor(picCursor).Border(1, picBorder)
 			picHovered := false
 			if !readOnly {
