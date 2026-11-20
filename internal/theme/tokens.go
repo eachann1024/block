@@ -213,6 +213,10 @@ const (
 	StoreSkeletonSubtitleH float32 = 16  // README skeleton: section heading bar
 	StoreSkeletonLineH     float32 = 10  // README skeleton: body text bar
 	StoreSkeletonMediaH    float32 = 168 // README skeleton: image / video block
+	StoreEmptyIconBox      float32 = 64  // rounded icon tile in App Store empty states
+	StoreEmptyIconGlyph    float32 = 32  // Duo icon size inside StoreEmptyIconBox
+	StoreEmptyMaxWidth     float32 = 420 // copy column width in App Store empty states
+	StoreEmptyPadY         float32 = 64  // vertical padding for App Store empty states
 	// Segmented control metrics.
 	SegmentedControlHeight = HeightControl
 	SegmentedInnerHeight   = HeightChrome

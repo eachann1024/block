@@ -305,8 +305,12 @@ func NewWorkspace(dataDir string) *Workspace {
 			w.syncTarotWithPluginState(false)
 			w.RequestRedraw()
 		},
-		UI: w.pluginUI,
+		OnRedraw: w.RequestRedraw,
+		UI:       w.pluginUI,
 	}))
+	w.pluginsUI.SetOnSuggestPlugin(func(_ plugins.Category) {
+		w.modals.OpenFeedbackWithCategory("idea")
+	})
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
 
