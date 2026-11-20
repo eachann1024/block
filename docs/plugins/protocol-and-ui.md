@@ -81,7 +81,7 @@
      - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
      - **打开与定位输出文件（`open_path` / `reveal_path`）**：切勿在插件内自行调用 `open`/`xdg-open` 子进程。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
 
-4. **`plugin.event`**（需声明 `"events:note_saved"` 权限）
+4. **`plugin.event`**（保存事件需声明 `"events:note_saved"`，系统事件见 3.3 节）
    - 请求 `params`：`{"event": "note.saved", "notebook_root": "/abs/path/to/notebook", "path": "welcome.md", "timestamp": "2026-11-18T10:00:00Z"}`
    - 仅投递给已启用的订阅插件，由已接入该钩子的落盘入口（块编辑保存与其他插件通过 `host.notes.write` 产生的实际变更，不含写入者自身，不包含源码编辑保存分支）触发；`timestamp` 为每次派发/重试时的 UTC 时间。插件应以事件参数自带的 `notebook_root` 与 `path` 为准。
    - 宿主按 `(plugin_id, notebook_root, 绝对路径)` 合并排队（处理期间同文件再次保存会再排一次，跨文件无全局顺序保证）。
@@ -105,6 +105,7 @@
    - 参数解码失败按空对象处理。单键：`{"key": "config"}` -> 命中 `{"value": {"auto_sync": true}, "found": true}`，未命中 `{"value": null, "found": false}`；全量：`{}` -> `{"data": {"config": {"auto_sync": true}}}`。
 2. **`host.storage.set`**（需 `"storage"`）
    - `{"key": "config", "value": {"auto_sync": true}}` -> `{"ok": true}`。`key` 须为非空白字符串（否则 `-32602`）；省略 `value` 会存成 `null`。
+   - `host.storage.set_many` 使用同一权限和 8 MiB 限制。`{"values": {"config": {...}, "migration": null}}` 一次写入 1–64 个非空白键，成功返回 `{"ok": true}`。
 3. **`host.notes.active`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"path": "welcome.md"}`（返回宿主缓存的活动标签相对路径，可能为空、非 Markdown 或尚未更新）。
 4. **`host.notebooks.list`**（需 `"notes:read"`，忽略参数）
@@ -151,6 +152,29 @@
        ]
      }
      ```
+
+### 3.3 系统集成
+
+桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
+
+| 接口 | 权限 | 参数与返回 |
+| --- | --- | --- |
+| `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 和 `rel_path` 指定一篇已注册笔记本内的 Markdown，需 `notes:read`。Block 有焦点时显示应用内提示，否则请求系统通知。桌面支持通知点击时，打开笔记或插件设置。返回 `{"ok":true,"suppressed":false}`，重复或过频的提示返回 `suppressed:true`。 |
+| `host.system.open_url` | `system:open` | `{"url":"https://example.com"}`，仅接受无账号和密码的 HTTP(S) 链接。 |
+| `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
+| `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，取消时 `paths` 为空。 |
+| `host.clipboard.read`、`host.clipboard.write` | `system:clipboard_read`、`system:clipboard_write` | 读取传 `{}`，返回 `{"ok":true,"text":"..."}`。写入传 `{"text":"..."}`。支持最多 64 KiB UTF-8 文本。 |
+| `host.system.trash` | `system:trash`、`notes:write` | 与 `reveal` 参数相同，仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
+| `host.system.badge` | `system:badge` | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
+| `host.secrets.get`、`host.secrets.set`、`host.secrets.delete` | `system:secrets` | `{"key":"auth.token"}`，写入另传 `value`（1–1536 字节，无 NUL）。键以 ASCII 字母或数字开头，后续允许字母、数字、`.`、`_`、`-`，总长最多 128 字符。读取返回 `{"ok":true,"found":true,"value":"..."}` 或 `{"ok":true,"found":false}`。删除支持重复调用。宿主 RPC 按应用数据目录和插件 ID 划分凭据命名空间。 |
+
+其余写操作成功返回 `{"ok":true}`。打开网页、定位文件、文件选择、剪贴板和回收站操作需要由用户触发的 `plugin.action`，且 Block 窗口有焦点。笔记本路径使用 `/` 分隔，相对路径须指向可见项目，路径组件须为真实文件或目录。省略 `notebook_root` 时使用运行时笔记本。系统能力不可用时返回 `-32005`，繁忙时返回 `-32006`，操作取消或失效时返回 `-32007`。
+
+`events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。
+
+macOS 使用通知中心、钥匙串和 Dock。Windows 使用系统通知、凭据管理器和任务栏叠加角标。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 系统凭据需在系统凭据管理器中先解锁。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
+
+回收确认前，宿主先保存正在编辑的内容。确认后，宿主将文件移入同目录的临时子目录并复核文件身份。Windows 在移动前建立用于失败恢复的硬链接，文件系统无法创建硬链接时会保留原文件并返回失败。回收站记录的是暂存位置，恢复时可从回收站将文件取回原目录。凭据权限约束宿主 RPC，独立插件进程仍以当前系统用户运行，其直接访问由操作系统控制。
 
 ---
 
