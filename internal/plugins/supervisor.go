@@ -364,9 +364,11 @@ func (s *Supervisor) ScheduleSurfaceLiveRefresh(pluginID string, surface Surface
 		s.mu.Unlock()
 		return
 	}
-	s.liveTimers[sKey] = time.AfterFunc(interval, func() {
-		s.runLiveRefreshTick(pluginID, surface, interval)
+	var timer *time.Timer
+	timer = time.AfterFunc(interval, func() {
+		s.runLiveRefreshTick(pluginID, surface, interval, &timer)
 	})
+	s.liveTimers[sKey] = timer
 	s.mu.Unlock()
 }
 
@@ -391,12 +393,20 @@ func (s *Supervisor) stopLiveTimersForPluginLocked(pluginID string) {
 	}
 }
 
-func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interval time.Duration) {
+// runLiveRefreshTick keeps its timer registered until it finishes, so a slow
+// plugin gets at most one pending refresh per surface instead of a pile-up.
+func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interval time.Duration, self **time.Timer) {
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
-	s.mu.Lock()
-	delete(s.liveTimers, sKey)
+	defer func() {
+		s.mu.Lock()
+		if s.liveTimers[sKey] == *self {
+			delete(s.liveTimers, sKey)
+		}
+		s.mu.Unlock()
+	}()
+	s.mu.RLock()
 	lastViewed := s.liveViewedAt[sKey]
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
 	maxIdle := max(interval*2, 2500*time.Millisecond)
 	if lastViewed.IsZero() || time.Since(lastViewed) > maxIdle {
@@ -411,7 +421,11 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	defer s.lockPluginRPC(pluginID)()
+	unlock, err := s.lockPluginRPCContext(ctx, pluginID)
+	if err != nil {
+		return
+	}
+	defer unlock()
 
 	s.mu.RLock()
 	vs := s.views[key]
