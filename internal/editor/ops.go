@@ -248,6 +248,20 @@ func hasAnySpanStyle(spans []model.Span) bool {
 	return false
 }
 
+func spansExactEqual(a, b []model.Span) bool {
+	na := normalizeSpans(a)
+	nb := normalizeSpans(b)
+	if len(na) != len(nb) {
+		return false
+	}
+	for i := range na {
+		if na[i] != nb[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func splitInlineSpansForCopy(spans []model.Span) [][]model.Span {
 	lines := [][]model.Span{{}}
 	for _, sp := range spans {
@@ -864,7 +878,7 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	// Single-line text without block markers inserts inline at selection (preserving leading/trailing spaces).
-	preserveInlineImageBlock := b.Kind == model.BlockParagraph && b.PlainText() == "" && strings.Contains(norm, "![")
+	preserveInlineImageBlock := b.Kind == model.BlockParagraph && strings.Contains(norm, "![")
 	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !preserveInlineImageBlock && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
 		if !looksLikeInlineMarkdown(norm) {
 			s.replaceCurrentSelectionInBlock(idx, norm)
@@ -917,11 +931,30 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	if len(filtered) == 1 && filtered[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
-		if b.Kind == model.BlockParagraph && b.PlainText() == "" && !filtered[0].Dirty && filtered[0].CleanSource != "" {
+		if b.Kind == model.BlockParagraph && !filtered[0].Dirty && filtered[0].CleanSource != "" && strings.Contains(filtered[0].CleanSource, "![") {
+			curRunes := []rune(b.PlainText())
+			lo, hi := len(curRunes), len(curRunes)
+			if s.selAnchor.Block == idx && s.selHead.Block == idx {
+				a, bPos := s.orderedSelection()
+				lo = clampInt(a.Offset, 0, len(curRunes))
+				hi = clampInt(bPos.Offset, lo, len(curRunes))
+			}
+			prefixSpans := sliceSpans(b.Spans, 0, lo)
+			suffixSpans := sliceSpans(b.Spans, hi, len(curRunes))
+			pastedClean := strings.TrimSuffix(filtered[0].CleanSource, "\n")
+			var combined string
+			if len(prefixSpans) == 0 && len(suffixSpans) == 0 {
+				combined = pastedClean + "\n"
+			} else {
+				combined = serializeInlineBlockMarkdown(prefixSpans, s.codec) + pastedClean + serializeInlineBlockMarkdown(suffixSpans, s.codec) + "\n"
+			}
 			s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
-			if idx >= 0 && idx < len(s.doc.Blocks) {
-				s.doc.Blocks[idx].CleanSource = filtered[0].CleanSource
-				s.doc.Blocks[idx].Dirty = false
+			if idx >= 0 && idx < len(s.doc.Blocks) && s.codec != nil {
+				if check := s.codec.Parse(combined); check != nil && len(check.Blocks) == 1 &&
+					check.Blocks[0].Kind == model.BlockParagraph && spansExactEqual(check.Blocks[0].Spans, s.doc.Blocks[idx].Spans) {
+					s.doc.Blocks[idx].CleanSource = combined
+					s.doc.Blocks[idx].Dirty = false
+				}
 			}
 			return
 		}

@@ -923,6 +923,11 @@ func (s *Session) markDirty() {
 	s.dirty = true
 	s.docRev++
 	if s.doc != nil {
+		if s.doc.CleanRaw != "" && strings.Contains(s.doc.CleanRaw, "]:") && s.codec != nil {
+			if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+				exp.ExpandBlockRefCleanSources(s.doc.Blocks, s.doc.CleanRaw)
+			}
+		}
 		s.doc.CleanRaw = ""
 	}
 }
@@ -964,6 +969,17 @@ func (s *Session) clampPos(p Position) Position {
 		p.Offset = rlen
 	}
 	return p
+}
+
+// CollapseSelectionToEnd collapses any active non-empty selection to its end
+// position without deleting selected text, so subsequent inserts append after
+// the selection instead of replacing it.
+func (s *Session) CollapseSelectionToEnd() {
+	if !s.hasNonEmptySelection() {
+		return
+	}
+	_, b := s.orderedSelection()
+	s.SelectRange(b.Block, b.Offset, b.Block, b.Offset)
 }
 
 func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {

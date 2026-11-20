@@ -1086,11 +1086,22 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 	if parsed == nil || len(parsed.Blocks) == 0 {
 		return false
 	}
+	if parsed.CleanRaw != "" && strings.Contains(parsed.CleanRaw, "]:") && s.codec != nil {
+		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+			exp.ExpandBlockRefCleanSources(parsed.Blocks, parsed.CleanRaw)
+		}
+	}
 	blocks := make([]model.Block, len(parsed.Blocks))
 	for i, blk := range parsed.Blocks {
 		blk.ID = model.NewBlockID()
-		blk.Dirty = true
-		blk.CleanSource = ""
+		if !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
+			if !strings.HasSuffix(blk.CleanSource, "\n") {
+				blk.CleanSource += "\n"
+			}
+		} else {
+			blk.Dirty = true
+			blk.CleanSource = ""
+		}
 		blocks[i] = blk
 	}
 

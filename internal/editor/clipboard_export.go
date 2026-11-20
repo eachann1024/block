@@ -477,13 +477,10 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 
 	default:
 		if !b.Dirty && b.CleanSource != "" && strings.Contains(b.CleanSource, "![") {
-			if alt, imgSrc, outerHref, ok := parseLinkedOrInlineImageCleanSource(b.CleanSource); ok {
-				imgTag := s.clipboardImageTagHTML(imgSrc, alt, imageBudget)
-				if outerHref != "" && isSafeClipboardRef(outerHref) {
-					fmt.Fprintf(sb, `<p><a href="%s">%s</a></p>`, html.EscapeString(outerHref), imgTag)
-				} else {
-					fmt.Fprintf(sb, `<p>%s</p>`, imgTag)
-				}
+			if rendered, ok := s.renderCleanSourceInlineImagesHTML(b.CleanSource, imageBudget); ok {
+				sb.WriteString("<p>")
+				sb.WriteString(rendered)
+				sb.WriteString("</p>")
 				return
 			}
 		}
@@ -491,6 +488,231 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		writeClipboardSpansHTML(sb, b.Spans)
 		sb.WriteString("</p>")
 	}
+}
+
+func (s *Session) renderCleanSourceInlineImagesHTML(raw string, imageBudget *int) (string, bool) {
+	line := strings.TrimRight(raw, "\r\n")
+	if line == "" || strings.ContainsAny(line, "\r\n") {
+		return "", false
+	}
+	var out strings.Builder
+	segStart := 0
+	foundImg := false
+	flushText := func(end int) {
+		if end <= segStart {
+			return
+		}
+		chunk := line[segStart:end]
+		spans := s.parseInlineSpans(chunk)
+		if len(spans) > 0 {
+			writeClipboardSpansHTML(&out, spans)
+		} else {
+			out.WriteString(html.EscapeString(chunk))
+		}
+	}
+	for i := 0; i < len(line); {
+		switch line[i] {
+		case '\\':
+			i += 2
+			continue
+		case '`':
+			run := 0
+			for i+run < len(line) && line[i+run] == '`' {
+				run++
+			}
+			delim := line[i : i+run]
+			j := i + run
+			closed := -1
+			for j < len(line) {
+				if line[j] == '`' {
+					k := j
+					for k < len(line) && line[k] == '`' {
+						k++
+					}
+					if k-j == run && line[j:k] == delim {
+						closed = k
+						break
+					}
+					j = k
+					continue
+				}
+				j++
+			}
+			if closed > 0 {
+				i = closed
+			} else {
+				i += run
+			}
+			continue
+		case '[':
+			if strings.HasPrefix(line[i:], "[![") {
+				if alt, imgSrc, outerHref, consumed, ok := parseLinkedImageAt(line[i:]); ok {
+					flushText(i)
+					imgTag := s.clipboardImageTagHTML(imgSrc, alt, imageBudget)
+					if outerHref != "" && isSafeClipboardRef(outerHref) {
+						fmt.Fprintf(&out, `<a href="%s">%s</a>`, html.EscapeString(outerHref), imgTag)
+					} else {
+						out.WriteString(imgTag)
+					}
+					foundImg = true
+					i += consumed
+					segStart = i
+					continue
+				}
+			}
+		case '!':
+			if strings.HasPrefix(line[i:], "![") {
+				if alt, imgSrc, consumed, ok := parseInlineImageAt(line[i:]); ok {
+					flushText(i)
+					out.WriteString(s.clipboardImageTagHTML(imgSrc, alt, imageBudget))
+					foundImg = true
+					i += consumed
+					segStart = i
+					continue
+				}
+			}
+		}
+		i++
+	}
+	if !foundImg {
+		return "", false
+	}
+	flushText(len(line))
+	return out.String(), true
+}
+
+func parseClipboardParenDest(str string) (dest string, consumed int, valid bool) {
+	if len(str) < 2 || str[0] != '(' {
+		return "", 0, false
+	}
+	i := 1
+	for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+		i++
+	}
+	if i >= len(str) || str[i] == ')' {
+		return "", 0, false
+	}
+	if str[i] == '<' {
+		i++
+		start := i
+		for i < len(str) && str[i] != '>' {
+			if str[i] == '\\' && i+1 < len(str) {
+				i += 2
+				continue
+			}
+			i++
+		}
+		if i >= len(str) {
+			return "", 0, false
+		}
+		dest = str[start:i]
+		i++
+	} else {
+		start := i
+		depth := 0
+		for i < len(str) {
+			if str[i] == '\\' && i+1 < len(str) {
+				i += 2
+				continue
+			}
+			if str[i] == ' ' || str[i] == '\t' {
+				break
+			}
+			if str[i] == '(' {
+				depth++
+			} else if str[i] == ')' {
+				if depth == 0 {
+					break
+				}
+				depth--
+			}
+			i++
+		}
+		dest = str[start:i]
+	}
+	for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+		i++
+	}
+	if i < len(str) && (str[i] == '"' || str[i] == '\'' || str[i] == '(') {
+		closeQ := str[i]
+		if closeQ == '(' {
+			closeQ = ')'
+		}
+		i++
+		for i < len(str) && str[i] != closeQ {
+			if str[i] == '\\' && i+1 < len(str) {
+				i += 2
+				continue
+			}
+			i++
+		}
+		if i >= len(str) {
+			return "", 0, false
+		}
+		i++
+		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+			i++
+		}
+	}
+	if i >= len(str) || str[i] != ')' {
+		return "", 0, false
+	}
+	return unescapeClipboardLinkDest(dest), i + 1, dest != ""
+}
+
+func findClipboardCloseBracket(str string) int {
+	for i := 0; i < len(str); i++ {
+		if str[i] == '\\' && i+1 < len(str) {
+			i++
+			continue
+		}
+		if str[i] == ']' {
+			return i
+		}
+	}
+	return -1
+}
+
+func parseLinkedImageAt(s string) (alt, imgSrc, outerHref string, consumed int, ok bool) {
+	if !strings.HasPrefix(s, "[![") {
+		return "", "", "", 0, false
+	}
+	closeAlt := findClipboardCloseBracket(s[3:])
+	if closeAlt < 0 {
+		return "", "", "", 0, false
+	}
+	alt = s[3 : 3+closeAlt]
+	pos := 3 + closeAlt + 1
+	src, n1, ok1 := parseClipboardParenDest(s[pos:])
+	if !ok1 {
+		return "", "", "", 0, false
+	}
+	pos += n1
+	if !strings.HasPrefix(s[pos:], "](") {
+		return "", "", "", 0, false
+	}
+	href, n2, ok2 := parseClipboardParenDest(s[pos+1:])
+	if !ok2 {
+		return "", "", "", 0, false
+	}
+	return alt, src, href, pos + 1 + n2, true
+}
+
+func parseInlineImageAt(s string) (alt, imgSrc string, consumed int, ok bool) {
+	if !strings.HasPrefix(s, "![") {
+		return "", "", 0, false
+	}
+	closeAlt := findClipboardCloseBracket(s[2:])
+	if closeAlt < 0 {
+		return "", "", 0, false
+	}
+	alt = s[2 : 2+closeAlt]
+	pos := 2 + closeAlt + 1
+	src, n1, ok1 := parseClipboardParenDest(s[pos:])
+	if !ok1 {
+		return "", "", 0, false
+	}
+	return alt, src, pos + n1, true
 }
 
 func (s *Session) clipboardImageTagHTML(src, alt string, imageBudget *int) string {
@@ -526,138 +748,6 @@ func isSafeClipboardRef(raw string) bool {
 		}
 	}
 	return true
-}
-
-func parseLinkedOrInlineImageCleanSource(raw string) (alt, imgSrc, outerHref string, ok bool) {
-	s := strings.TrimSpace(raw)
-	if strings.ContainsAny(s, "\r\n") {
-		return "", "", "", false
-	}
-	parseParenDest := func(str string) (dest string, consumed int, valid bool) {
-		if len(str) < 2 || str[0] != '(' {
-			return "", 0, false
-		}
-		i := 1
-		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-			i++
-		}
-		if i >= len(str) || str[i] == ')' {
-			return "", 0, false
-		}
-		if str[i] == '<' {
-			i++
-			start := i
-			for i < len(str) && str[i] != '>' {
-				if str[i] == '\\' && i+1 < len(str) {
-					i += 2
-					continue
-				}
-				i++
-			}
-			if i >= len(str) {
-				return "", 0, false
-			}
-			dest = str[start:i]
-			i++
-		} else {
-			start := i
-			depth := 0
-			for i < len(str) {
-				if str[i] == '\\' && i+1 < len(str) {
-					i += 2
-					continue
-				}
-				if str[i] == ' ' || str[i] == '\t' {
-					break
-				}
-				if str[i] == '(' {
-					depth++
-				} else if str[i] == ')' {
-					if depth == 0 {
-						break
-					}
-					depth--
-				}
-				i++
-			}
-			dest = str[start:i]
-		}
-		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-			i++
-		}
-		if i < len(str) && (str[i] == '"' || str[i] == '\'' || str[i] == '(') {
-			closeQ := str[i]
-			if closeQ == '(' {
-				closeQ = ')'
-			}
-			i++
-			for i < len(str) && str[i] != closeQ {
-				if str[i] == '\\' && i+1 < len(str) {
-					i += 2
-					continue
-				}
-				i++
-			}
-			if i >= len(str) {
-				return "", 0, false
-			}
-			i++
-			for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-				i++
-			}
-		}
-		if i >= len(str) || str[i] != ')' {
-			return "", 0, false
-		}
-		return unescapeClipboardLinkDest(dest), i + 1, dest != ""
-	}
-	findClose := func(str string) int {
-		for i := 0; i < len(str); i++ {
-			if str[i] == '\\' && i+1 < len(str) {
-				i++
-				continue
-			}
-			if str[i] == ']' {
-				return i
-			}
-		}
-		return -1
-	}
-	if strings.HasPrefix(s, "[![") {
-		closeAlt := findClose(s[3:])
-		if closeAlt < 0 {
-			return "", "", "", false
-		}
-		alt = s[3 : 3+closeAlt]
-		rest := s[3+closeAlt+1:]
-		src, n1, ok1 := parseParenDest(rest)
-		if !ok1 {
-			return "", "", "", false
-		}
-		rest = rest[n1:]
-		if !strings.HasPrefix(rest, "](") {
-			return "", "", "", false
-		}
-		href, n2, ok2 := parseParenDest(rest[1:])
-		if !ok2 || 1+n2 != len(rest) {
-			return "", "", "", false
-		}
-		return alt, src, href, true
-	}
-	if strings.HasPrefix(s, "![") {
-		closeAlt := findClose(s[2:])
-		if closeAlt < 0 {
-			return "", "", "", false
-		}
-		alt = s[2 : 2+closeAlt]
-		rest := s[2+closeAlt+1:]
-		src, n1, ok1 := parseParenDest(rest)
-		if !ok1 || n1 != len(rest) {
-			return "", "", "", false
-		}
-		return alt, src, "", true
-	}
-	return "", "", "", false
 }
 
 func unescapeClipboardLinkDest(s string) string {
