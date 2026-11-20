@@ -86,13 +86,14 @@ type UITreemapTile struct {
 }
 
 type UILogEntry struct {
-	Title   string  `json:"title"`
-	SubText string  `json:"sub_text,omitempty"`
-	Time    string  `json:"time,omitempty"`
-	Status  string  `json:"status,omitempty"`
-	Tone    string  `json:"tone,omitempty"`
-	Ratio   float64 `json:"ratio,omitempty"`
-	Tooltip string  `json:"tooltip,omitempty"`
+	Title    string  `json:"title"`
+	SubText  string  `json:"sub_text,omitempty"`
+	Time     string  `json:"time,omitempty"`
+	Status   string  `json:"status,omitempty"`
+	Tone     string  `json:"tone,omitempty"`
+	Ratio    float64 `json:"ratio,omitempty"`
+	Tooltip  string  `json:"tooltip,omitempty"`
+	ActionID string  `json:"action_id,omitempty"`
 }
 
 type UIPreviewCard struct {
@@ -631,6 +632,9 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			}
 			if err := checkUserText(fmt.Sprintf("%s.entries[%d].tooltip", prefix, ei), e.Tooltip, false); err != nil {
 				return err
+			}
+			if e.ActionID != "" && (strings.TrimSpace(e.ActionID) == "" || len(e.ActionID) > 128 || ContainsEmoji(e.ActionID)) {
+				return fmt.Errorf("%s.entries[%d].action_id is invalid", prefix, ei)
 			}
 		}
 	default:
