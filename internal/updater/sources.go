@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -174,6 +175,8 @@ func fetchOneCandidate(ctx context.Context, cand LabeledURL) ([]ReleaseEntry, []
 		SchemaVersion: 1,
 		Repo:          PublicRepo,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+		LatestVersion: entries[0].Version,
+		LatestTag:     entries[0].Tag,
 		Releases:      entries,
 	})
 	return entries, feedBytes, elapsedMs, nil
@@ -219,6 +222,9 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 	if len(out) == 0 {
 		return nil, errors.New("no valid releases in feed")
 	}
+	slices.SortFunc(out, func(a, b ReleaseEntry) int {
+		return CompareVersion(b.Version, a.Version)
+	})
 	if len(out[0].Assets) == 0 {
 		return nil, fmt.Errorf("latest release %s in feed has no trusted installer assets", out[0].Tag)
 	}
@@ -264,6 +270,9 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 	if len(out) == 0 {
 		return nil, errors.New("no published releases found")
 	}
+	slices.SortFunc(out, func(a, b ReleaseEntry) int {
+		return CompareVersion(b.Version, a.Version)
+	})
 	return out, nil
 }
 
