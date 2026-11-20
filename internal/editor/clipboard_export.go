@@ -280,7 +280,7 @@ func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
 		}
 	}
 	neededRows := max(len(tbl.Rows), startR+len(srcRows))
-	if neededCols <= 0 || neededRows > maxPastedTableCells/neededCols {
+	if neededCols <= 0 || neededCols > maxPastedTableCols || neededRows > maxPastedTableCells/neededCols {
 		return false
 	}
 

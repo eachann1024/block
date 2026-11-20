@@ -242,6 +242,7 @@ func (s *Session) SelectAllBlocks() {
 		return
 	}
 	endOff := s.blockSelectionLen(last)
+	s.tableActiveBlock = 0
 	s.SelectRange(first, 0, last, endOff)
 }
 
