@@ -929,10 +929,15 @@ func tryParseLinkOrImage(s string, defs map[string]refDef, isImage bool) (label,
 }
 
 func tryParseLinkOrImageAt(st *inlineScanState, start int, defs map[string]refDef, isImage bool) (label, dest string, consumed int, ok bool) {
+	label, dest, _, consumed, ok = tryParseLinkOrImageWithRefAt(st, start, defs, isImage)
+	return label, dest, consumed, ok
+}
+
+func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[string]refDef, isImage bool) (label, dest, refKey string, consumed int, ok bool) {
 	s := st.s
 	lastCB := st.getLastCloseBracket()
 	if start >= lastCB || len(s)-start < 2 || s[start] != '[' {
-		return "", "", 0, false
+		return "", "", "", 0, false
 	}
 	var openBuf [16]int
 	openStack := openBuf[:1]
@@ -975,7 +980,7 @@ func tryParseLinkOrImageAt(st *inlineScanState, start int, defs map[string]refDe
 			st.unclosedBrackets[pos] = true
 		}
 	}
-	return "", "", 0, false
+	return "", "", "", 0, false
 
 foundClose:
 	label = s[start+1 : i]
@@ -983,7 +988,7 @@ foundClose:
 	if after < len(s) && s[after] == '(' {
 		if after < st.getLastCloseParen() && (st.unclosedParens == nil || !st.unclosedParens[after]) {
 			if d, endParen, ok := parseLinkDestinationAt(st, after); ok {
-				return label, d, (after - start) + endParen, true
+				return label, d, "", (after - start) + endParen, true
 			}
 		}
 	}
@@ -996,16 +1001,16 @@ foundClose:
 					key = normRefLabel(label)
 				}
 				if def, exists := defs[key]; exists {
-					return label, def.dest, (after - start) + 1 + closeRef + 1, true
+					return label, def.dest, key, (after - start) + 1 + closeRef + 1, true
 				}
 			}
 		}
 		key := normRefLabel(label)
 		if def, exists := defs[key]; exists {
-			return label, def.dest, after - start, true
+			return label, def.dest, key, after - start, true
 		}
 	}
-	return "", "", 0, false
+	return "", "", "", 0, false
 }
 
 func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consumed int, ok bool) {
