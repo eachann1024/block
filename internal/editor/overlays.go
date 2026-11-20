@@ -728,6 +728,9 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 						})
 						appUi.Probe(btn, it.ID)
 						s.recordOverlayBtn(it.ID, btn)
+						if it.ID == "tb-comment" && btn.Pressed() {
+							s.commentBtnPressed = true
+						}
 						if btn.Clicked() {
 							s.runToolbarItem(it.Kind, false)
 						}
@@ -744,6 +747,9 @@ func (s *Session) renderSelectionToolbar(c *ui.Context) {
 							Active:       active,
 						})
 						s.recordOverlayBtn(it.ID, btn)
+						if it.ID == "tb-comment" && btn.Pressed() {
+							s.commentBtnPressed = true
+						}
 						if btn.Clicked() {
 							s.runToolbarItem(it.Kind, false)
 						}
@@ -1117,7 +1123,7 @@ func (s *Session) renderReactionPicker(c *ui.Context, vp ui.Rect, winW, winH flo
 const annotationComposerWidth float32 = 320
 
 func isAnnotationSubmitKey(k ui.TextKey) bool {
-	return k.Key == ui.KeyEnter && (k.Mods == 0 || k.Mods == ui.Cmd)
+	return k.Key == ui.KeyEnter && k.Mods == 0
 }
 
 func (s *Session) commentComposerSpec(vp ui.Rect, h float32) (appUi.PlacementSpec, bool) {
@@ -1148,15 +1154,6 @@ func (s *Session) commentComposerSpec(vp ui.Rect, h float32) (appUi.PlacementSpe
 			WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8), true
 	}
 	return s.toolbarDropSpec("tb-comment", appUi.AlignLeft, theme.Space6, vp), true
-}
-
-func (s *Session) pointerInOverlayBtn(id string) bool {
-	pt, ok := s.windowPointerStatus()
-	if !ok {
-		return false
-	}
-	r, ok := s.overlayBtnBounds(id)
-	return ok && pt.X >= r.X && pt.X <= r.X+r.W && pt.Y >= r.Y && pt.Y <= r.Y+r.H
 }
 
 func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
@@ -1195,8 +1192,9 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
 			Bind(&s.commentHandle)
 		appUi.AutoHideScrollbars(c, in)
+		composing := in.Composing()
 		in.OnTextKey(func(k ui.TextKey) bool {
-			if in.Composing() {
+			if composing {
 				return false
 			}
 			switch {
@@ -1246,7 +1244,7 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			submit()
 		}
 	})
-	if card.PressedOutside() && !s.pointerInOverlayBtn("tb-comment") && !s.pointerInOverlayBtn("img-tb-comment") {
+	if card.PressedOutside() && !s.commentBtnPressed {
 		s.toolbarPop = ""
 	}
 }
@@ -2275,8 +2273,9 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 		Placeholder(theme.Tr("写下批注…", "Write a note…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("批注内容", "Annotation")).
 		Bind(&s.editingHandle)
 	appUi.AutoHideScrollbars(c, in)
+	composing := in.Composing()
 	in.OnTextKey(func(k ui.TextKey) bool {
-		if in.Composing() {
+		if composing {
 			return false
 		}
 		switch {
@@ -2428,6 +2427,9 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 				top := max(row.targetY, bottom+row.gap)
 				bottom = top + row.height
 				if bottom <= 0 || top >= railHeight {
+					if ann.ID == s.editingAnnotID {
+						s.editingFocusPending = true
+					}
 					continue
 				}
 

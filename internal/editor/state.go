@@ -175,6 +175,7 @@ type Session struct {
 	commentDraft        string
 	commentHandle       ui.Handle
 	commentFocusPending bool
+	commentBtnPressed   bool
 
 	// Inline AI
 	dataDir                 string
