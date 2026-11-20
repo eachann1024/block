@@ -298,8 +298,11 @@ func NewWorkspace(dataDir string) *Workspace {
 			}()
 		},
 		ApplyNoteWrite: w.applyPluginNoteWrite,
-		OnChanged:      w.RequestRedraw,
-		UI:             w.pluginUI,
+		OnChanged: func() {
+			w.syncTarotWithPluginState(false)
+			w.RequestRedraw()
+		},
+		UI: w.pluginUI,
 	}))
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
@@ -309,6 +312,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.wireSearchWindowCallbacks()
 	w.initTarot()
 	w.hydrateInitialWorkspace()
+	w.syncTarotWithPluginState(true)
 	w.lastNotifiedNote = w.State().ActiveTab
 	return w
 }
@@ -355,7 +359,6 @@ func applyThemeFromState(st model.AppState) {
 	theme.SetZoom(float32(zoomPctFromState(st.EditorZoom)) / 100.0)
 	theme.SetFolderRules(st.FolderRules)
 	theme.SetIgnoredSearchFolders(st.IgnoredSearchFolders)
-	theme.SetTarotMode(st.TarotMode)
 }
 
 func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.Session {
@@ -4218,7 +4221,6 @@ func (w *Workspace) Render(c *ui.Context) {
 				AIImmersive:       aiImmersive,
 				AIEnabled:         aiEnabled,
 				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
-				TarotMode:         theme.IsTarotMode(),
 				FeedbackOpen:      w.modals.IsFeedbackOpen(),
 				HasFeedbackDraft:  hasFBDraft,
 				NotebookPath:      activeNB,
@@ -4283,9 +4285,6 @@ func (w *Workspace) Render(c *ui.Context) {
 					} else {
 						w.modals.OpenFeedback()
 					}
-				},
-				OnToggleTarot: func() {
-					w.ToggleTarotMode()
 				},
 				OnToggleAI: func() {
 					w.ToggleAIPanel()
@@ -4685,22 +4684,6 @@ func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 	}
 	if w.palette.IsOpen() {
 		var items []PaletteItem
-		tarotTitle := theme.Tr("进入塔罗模式", "Enter Tarot Mode")
-		if theme.IsTarotMode() {
-			tarotTitle = theme.Tr("退出塔罗模式", "Exit Tarot Mode")
-		}
-		items = append(items, PaletteItem{
-			ID:       "builtin/tarot-toggle",
-			Title:    tarotTitle,
-			Subtitle: theme.Tr("塔罗模式", "Tarot Mode"),
-		})
-		if theme.IsTarotMode() && w.tarot != nil {
-			items = append(items,
-				PaletteItem{ID: "builtin/tarot-table", Title: theme.Tr("前往牌桌 · 三张牌阵", "Open Tarot Table"), Subtitle: theme.Tr("塔罗模式", "Tarot Mode")},
-				PaletteItem{ID: "builtin/tarot-daily", Title: theme.Tr("前往每日一牌", "Open Daily Card"), Subtitle: theme.Tr("塔罗模式", "Tarot Mode")},
-				PaletteItem{ID: "builtin/tarot-deck", Title: theme.Tr("前往牌册", "Open Tarot Deck"), Subtitle: theme.Tr("塔罗模式", "Tarot Mode")},
-			)
-		}
 		if sup := w.Plugins(); sup != nil {
 			for _, cmd := range sup.Commands() {
 				items = append(items, PaletteItem{
@@ -4712,26 +4695,6 @@ func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 			}
 		}
 		w.palette.Render(c, items, func(chosen PaletteItem) {
-			switch chosen.ID {
-			case "builtin/tarot-toggle":
-				w.ToggleTarotMode()
-				return
-			case "builtin/tarot-table":
-				if w.tarot != nil {
-					w.tarot.SetRoom(tarot.RoomTable)
-				}
-				return
-			case "builtin/tarot-daily":
-				if w.tarot != nil {
-					w.tarot.SetRoom(tarot.RoomDaily)
-				}
-				return
-			case "builtin/tarot-deck":
-				if w.tarot != nil {
-					w.tarot.SetRoom(tarot.RoomDeck)
-				}
-				return
-			}
 			sup := w.Plugins()
 			if sup == nil {
 				return

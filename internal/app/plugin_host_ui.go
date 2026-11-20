@@ -492,6 +492,26 @@ func (h *pluginHostUI) EditorInsert(pluginID, expectedNote, text string) error {
 	return <-ch
 }
 
+func (h *pluginHostUI) TarotState() (plugins.TarotState, error) {
+	ch := make(chan plugins.TarotState, 1)
+	if err := h.onMainWait(func() {
+		ch <- h.w.TarotStateSnapshot()
+	}); err != nil {
+		return plugins.TarotState{}, err
+	}
+	return <-ch, nil
+}
+
+func (h *pluginHostUI) SetTarotMode(enabled *bool, toggle bool, room string) (plugins.TarotState, error) {
+	ch := make(chan plugins.TarotState, 1)
+	if err := h.onMainWait(func() {
+		ch <- h.w.ApplyTarotPluginControl(enabled, toggle, room)
+	}); err != nil {
+		return plugins.TarotState{}, err
+	}
+	return <-ch, nil
+}
+
 // isHostReservedShortcut reports chords the editor or app handles after plugin
 // shortcuts run (find, formatting, clipboard, zoom, tab navigation). Plugins
 // cannot bind them, so a plugin never shadows a built-in action.

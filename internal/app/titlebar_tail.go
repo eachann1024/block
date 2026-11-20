@@ -7,7 +7,6 @@ import (
 	"block/internal/icons"
 	"block/internal/plugins"
 	"block/internal/plugins/pluginui"
-	"block/internal/tarot"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -38,7 +37,6 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 			renderNonNoteTitlebarTools(c, p, surface)
 		}
 		renderPluginTitlebarButtons(c, p)
-		renderTarotButton(c, p)
 		if !slotHidden(p, plugins.TitlebarSlotFeedback) {
 			renderFeedbackButton(c, p)
 		}
@@ -121,43 +119,6 @@ func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps) {
 		if btn.Clicked() && p.OnPluginButton != nil {
 			p.OnPluginButton(b)
 		}
-	}
-}
-
-func renderTarotButton(c *ui.Context, p TitlebarProps) {
-	if p.InSettings || p.OnToggleTarot == nil {
-		return
-	}
-	pal := theme.Ocean()
-	tip := theme.Tr("塔罗模式", "Tarot Mode")
-	c.Key("titlebar-tarot")
-	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
-		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(tip)
-	blockui.RichTooltip(c, btn, blockui.TooltipSpec{
-		Placement: blockui.TooltipBelow,
-		Rows:      []blockui.TooltipRow{{Trigger: tip}},
-	})
-	hovered := btn.Hovered()
-	pressed := btn.Pressed()
-	bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, p.TarotMode
-	if p.TarotMode {
-		bgCol = pal.Selected
-		bdCol = pal.SelectedBorder
-	} else if pressed || hovered {
-		bgCol = pal.ShellChrome().Hover
-	}
-	blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
-	blockui.TactileButton(btn, hovered, pressed, false)
-	col := pal.TextSecondary
-	if p.TarotMode || hovered || pressed {
-		col = pal.Text
-	}
-	btn.Children(func() {
-		tarot.IconBox(c, tarot.IconMoon, theme.IconAction, col)
-	})
-	blockui.Probe(btn, "titlebar-tarot")
-	if btn.Clicked() {
-		p.OnToggleTarot()
 	}
 }
 

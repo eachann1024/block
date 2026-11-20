@@ -5,16 +5,20 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"block/internal/editor"
 	"block/internal/files"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/tarot"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+const tarotPluginID = "block-tarot"
 
 func (w *Workspace) initTarot() {
 	w.tarot = tarot.NewController(w.dataDir, tarot.Host{
@@ -103,6 +107,121 @@ func (w *Workspace) Tarot() *tarot.Controller {
 	return w.tarot
 }
 
+func (w *Workspace) isTarotPluginEnabled() bool {
+	sup := w.Plugins()
+	return sup != nil && sup.IsPluginEnabled(tarotPluginID)
+}
+
+func (w *Workspace) syncTarotWithPluginState(initial bool) {
+	enabled := w.isTarotPluginEnabled()
+	if initial {
+		if enabled && w.State().TarotMode {
+			w.SetTarotMode(true)
+			return
+		}
+		theme.SetTarotMode(false)
+		return
+	}
+	if theme.IsTarotMode() && !enabled {
+		w.SetTarotMode(false)
+	}
+}
+
+func tarotRoomName(r tarot.Room) string {
+	switch r {
+	case tarot.RoomTable:
+		return "table"
+	case tarot.RoomDaily:
+		return "daily"
+	case tarot.RoomDeck:
+		return "deck"
+	default:
+		return "writing"
+	}
+}
+
+// TarotStateSnapshot reports the current native Tarot Mode state to host.ui.tarot_state.
+func (w *Workspace) TarotStateSnapshot() plugins.TarotState {
+	st := plugins.TarotState{
+		Supported: true,
+		Enabled:   theme.IsTarotMode(),
+		Room:      "writing",
+		Total:     len(tarot.MajorArcana),
+	}
+	if w.tarot == nil {
+		return st
+	}
+	st.Room = tarotRoomName(w.tarot.Room())
+	snap := w.tarot.Store().Snapshot()
+	st.Collected = len(snap.Collected)
+	today := time.Now().Format("2006-01-02")
+	if snap.Daily.Date == today && snap.Daily.Flipped {
+		st.DailyDrawn = true
+	}
+	w.tarot.SyncNotes(w.EntriesSnapshot(), w.State().ActiveTab, w.activeTabDirty())
+	if active, ok := w.tarot.ActiveNote(); ok {
+		st.ActiveNote = active.Title
+	}
+	if snap.Daily.Date == today && snap.Daily.NotePath != "" {
+		st.DailyNote = strings.TrimSuffix(filepathBase(snap.Daily.NotePath), ".md")
+	}
+	return st
+}
+
+func filepathBase(p string) string {
+	idx := strings.LastIndexAny(p, `/\`)
+	if idx >= 0 && idx+1 < len(p) {
+		return p[idx+1:]
+	}
+	return p
+}
+
+func (w *Workspace) EntriesSnapshot() []model.FileEntry {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return append([]model.FileEntry(nil), w.entries...)
+}
+
+func (w *Workspace) activeTabDirty() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if s := w.sessions[w.state.ActiveTab]; s != nil && s.Dirty() {
+		return true
+	}
+	return false
+}
+
+// ApplyTarotPluginControl applies host.ui.set_tarot from the block-tarot plugin.
+func (w *Workspace) ApplyTarotPluginControl(enabled *bool, toggle bool, room string) plugins.TarotState {
+	roomKey := strings.ToLower(strings.TrimSpace(room))
+	on := theme.IsTarotMode()
+	switch {
+	case toggle:
+		on = !on
+	case enabled != nil:
+		on = *enabled
+	case roomKey != "":
+		on = true
+	}
+	w.SetTarotMode(on)
+	if on && w.tarot != nil && roomKey != "" {
+		switch roomKey {
+		case "writing":
+			w.tarot.SetRoom(tarot.RoomWriting)
+		case "table":
+			w.tarot.SetRoom(tarot.RoomTable)
+		case "daily":
+			w.tarot.SetRoom(tarot.RoomDaily)
+		case "deck":
+			w.tarot.SetRoom(tarot.RoomDeck)
+		}
+		if w.modals != nil && w.modals.IsSettingsOpen() {
+			w.modals.CloseSettings()
+		}
+	}
+	return w.TarotStateSnapshot()
+}
+
 // ToggleTarotMode switches Tarot Mode on or off and persists the preference.
 func (w *Workspace) ToggleTarotMode() {
 	w.SetTarotMode(!theme.IsTarotMode())
@@ -110,6 +229,10 @@ func (w *Workspace) ToggleTarotMode() {
 
 // SetTarotMode enables or disables Tarot Mode while preserving the open note and cursor.
 func (w *Workspace) SetTarotMode(on bool) {
+	if on && !w.isTarotPluginEnabled() {
+		on = false
+	}
+	prev := theme.IsTarotMode()
 	theme.SetTarotMode(on)
 	next, err := files.UpdateState(func(st *model.AppState) {
 		st.TarotMode = on
@@ -135,6 +258,11 @@ func (w *Workspace) SetTarotMode(on bool) {
 	}
 	if w.quick != nil {
 		w.quick.RefreshStyle()
+	}
+	if prev != on {
+		if sup := w.Plugins(); sup != nil {
+			sup.EmitWorkspaceEvent("theme.changed", map[string]any{"tarot": on})
+		}
 	}
 	w.RequestRedraw()
 }
