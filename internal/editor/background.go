@@ -20,7 +20,7 @@ func (s *Session) SetBackground(bg BackgroundStyle) {
 	s.bgStyle = bg
 }
 
-func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette) {
+func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, edgeL, edgeR float32) {
 	mode := s.bgStyle.Mode
 	if mode != "dots" && mode != "grid" {
 		return
@@ -35,32 +35,74 @@ func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette) {
 		step = 16
 	}
 
-	edCols := pal.Editor()
-	high := s.bgStyle.Contrast == "high"
-
-	// Keep a clean breathing margin so patterns stay clear of frame edges and
-	// the right-hand vertical scrollbar.
-	const (
-		insetL float32 = 12
-		insetR float32 = 18
-		insetT float32 = 8
-		insetB float32 = 8
-	)
-	minX := r.X + insetL
-	maxX := r.X + r.W - insetR
-	minY := r.Y + insetT
-	maxY := r.Y + r.H - insetB
-	if maxX <= minX || maxY <= minY {
+	// Confine the background strictly to the centered text column so it never
+	// intrudes on the top-left outline rail or outer shell margins.
+	canvasLeft := r.X + edgeL
+	canvasWidth := max(r.W-edgeL-edgeR, 0)
+	if canvasWidth <= 0 {
+		return
+	}
+	flowWidth := min(canvasWidth, s.outerFlowWidth())
+	flowLeft := canvasLeft + (canvasWidth-flowWidth)*0.5
+	textLeft := flowLeft + s.leftContentGutter()
+	textRight := flowLeft + flowWidth - s.rightContentInset()
+	textW := textRight - textLeft
+	if textW <= 0 {
 		return
 	}
 
-	// Horizontally centered with the centered document column; vertically
-	// phase-locked to top content padding and scroll offset so rows track text.
-	centerX := r.X + r.W*0.5
-	originY := r.Y + s.canvasTopPad() - s.bodyScroll.Y
+	// Symmetric breathing margin around the text column (1 grid step on left,
+	// right, and top), snapped to an integer column count for clean edges.
+	availL := canvasLeft + 12
+	availR := canvasLeft + canvasWidth - 18
+	maxAvailW := availR - availL
+	if maxAvailW < step {
+		return
+	}
 
-	firstX := centerX + float32(math.Ceil(float64((minX-centerX)/step)))*step
-	firstY := originY + float32(math.Ceil(float64((minY-originY)/step)))*step
+	wantW := min(textW+2*step, maxAvailW)
+	cols := max(1, int(math.Round(float64(wantW/step))))
+	for float32(cols)*step > maxAvailW && cols > 1 {
+		cols--
+	}
+	gridW := float32(cols) * step
+	centerX := (textLeft + textRight) * 0.5
+	boxLeft := float32(math.Round(float64(centerX - gridW*0.5)))
+	if boxLeft < availL {
+		boxLeft = availL
+	}
+	if boxLeft+gridW > availR {
+		boxLeft = availR - gridW
+	}
+
+	// Align the top starting whitespace above the first text line with the
+	// exact horizontal padding around the text column (clamped for compact
+	// minimal layouts so the first row never starts below the first text line).
+	vpMargin := min(float32(12), max(s.canvasTopPad()*0.5, 2))
+	sidePad := max((gridW-textW)*0.5, 0)
+	topPadOffset := min(sidePad, max(s.canvasTopPad()-vpMargin, 0))
+	docTop := float32(math.Round(float64(r.Y + s.canvasTopPad() - topPadOffset - s.bodyScroll.Y)))
+
+	minVisY := r.Y + vpMargin
+	maxVisY := r.Y + r.H - vpMargin
+	if maxVisY <= minVisY {
+		return
+	}
+
+	firstY := docTop
+	if firstY < minVisY {
+		firstY = docTop + float32(math.Ceil(float64((minVisY-docTop)/step)))*step
+	}
+	if firstY > maxVisY {
+		return
+	}
+	rows := int(math.Floor(float64((maxVisY - firstY) / step)))
+	if rows < 0 {
+		return
+	}
+
+	edCols := pal.Editor()
+	high := s.bgStyle.Contrast == "high"
 
 	p.Clip(r, 0, func() {
 		if mode == "dots" {
@@ -72,8 +114,10 @@ func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette) {
 			}
 			dotR = max(float32(1.0), min(dotR*s.zoom(), float32(2.6)))
 			d := dotR * 2
-			for y := firstY; y <= maxY; y += step {
-				for x := firstX; x <= maxX; x += step {
+			for j := 0; j <= rows; j++ {
+				y := firstY + float32(j)*step
+				for i := 0; i <= cols; i++ {
+					x := boxLeft + float32(i)*step
 					p.Fill(ui.Rect{X: x - dotR, Y: y - dotR, W: d, H: d}, col, dotR)
 				}
 			}
@@ -85,11 +129,14 @@ func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette) {
 			col = edCols.BgGridHigh
 		}
 		const lineW float32 = 1
-		for y := firstY; y <= maxY; y += step {
-			p.Fill(ui.Rect{X: minX, Y: y, W: maxX - minX, H: lineW}, col, 0)
+		gridH := float32(rows) * step
+		for j := 0; j <= rows; j++ {
+			y := firstY + float32(j)*step
+			p.Fill(ui.Rect{X: boxLeft, Y: y, W: gridW + lineW, H: lineW}, col, 0)
 		}
-		for x := firstX; x <= maxX; x += step {
-			p.Fill(ui.Rect{X: x, Y: minY, W: lineW, H: maxY - minY}, col, 0)
+		for i := 0; i <= cols; i++ {
+			x := boxLeft + float32(i)*step
+			p.Fill(ui.Rect{X: x, Y: firstY, W: lineW, H: gridH + lineW}, col, 0)
 		}
 	})
 }
