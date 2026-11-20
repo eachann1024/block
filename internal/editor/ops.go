@@ -2086,7 +2086,20 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	if newText == oldText {
 		return
 	}
-	clearMask, clearBG := s.consumeNextInsertGuard(b.ID, false, tableCellKey{}, oldText, newText, caretHint)
+	insStart, insLen := computeEditInsertedRange(oldText, newText, caretHint)
+
+	// Currency rollback (e.g. `$5&$10` typed char-by-char: digit immediately after `$5&$`).
+	if b.Kind != model.BlockCode && b.Kind != model.BlockRawHTML {
+		if rolledCaret, rolled := s.tryRollbackCurrencyMathOnBlock(idx, oldText, newText, caretHint); rolled {
+			s.selAnchor = Position{Block: idx, Offset: rolledCaret}
+			s.selHead = s.selAnchor
+			s.markDirty()
+			return
+		}
+	}
+
+	clearMask, clearBG := s.consumeNextInsertGuard(b.ID, false, tableCellKey{}, insStart, insLen)
+	useRightBias := s.consumeRightStyleBias(b.ID, false, tableCellKey{}, insStart, insLen)
 	s.lastAutoConvert = nil
 	s.postEditCodeEdge = appUi.RichCodeEdgeNone
 	s.firstLineDeleteArmed = false
@@ -2110,11 +2123,11 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 
 	// Preserve inline spans when editing text via rune diff.
 	b.Spans = spliceSpansByTextEditWithEdge(b.Spans, oldText, newText, caretHint, codeEdge)
-	if ins := len([]rune(newText)) - len([]rune(oldText)); ins > 0 && (clearMask != 0 || clearBG) {
-		insStart := caretHint - ins
-		if insStart >= 0 {
-			b.Spans = s.applyNextInsertStyleClear(b.Spans, insStart, ins, clearMask, clearBG)
-		}
+	if useRightBias {
+		b.Spans = inheritRightSpanStyleOnInsert(b.Spans, insStart, insLen)
+	}
+	if insLen > 0 && (clearMask != 0 || clearBG) {
+		b.Spans = s.applyNextInsertStyleClear(b.Spans, insStart, insLen, clearMask, clearBG)
 	}
 	b.Dirty = true
 	b.CleanSource = ""
@@ -2135,23 +2148,28 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	// Snapshot right after raw typing so Backspace immediately after any auto-conversion restores raw syntax.
 	rawBeforeConvert := b.Clone()
 	rawCaret := clampInt(caretHint, 0, len([]rune(newText)))
-	insLen := len([]rune(newText)) - len([]rune(oldText))
 
-	// Only trigger auto-conversions on text insertion, never on deletion (so Backspace never re-triggers formatting).
+	// Only trigger auto-conversions when text was actually inserted (including shorter selection replacements),
+	// never on pure deletions (so Backspace/Delete never re-triggers formatting).
 	if insLen > 0 {
-		// Check immediate divider rule (---, ***, ___, －－－, ＊＊＊, ＿＿＿, ——).
+		// Check immediate divider rule (---, －－－, ——; *** and ___ wait for space/Enter so ***bi*** works).
 		if b.Kind == model.BlockParagraph && isImmediateDivider(newText) {
 			s.insertDividerWithParagraph(idx, true)
+			if idx+1 < len(s.doc.Blocks) {
+				s.recordMultiBlockAutoConvert(idx, 2, rawBeforeConvert, rawCaret, &s.doc.Blocks[idx+1], 0)
+			}
 			return
 		}
 
 		// Check trailing space/fullwidth-space block-level Markdown input rules.
-		if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint); ok {
+		if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint, insLen); ok {
 			s.focusedBlock = clampInt(nextIdx, 0, len(s.doc.Blocks)-1)
 			s.selAnchor = Position{Block: s.focusedBlock, Offset: nextCaret}
 			s.selHead = s.selAnchor
-			if nextIdx == idx && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind != model.BlockDivider && s.doc.Blocks[idx].Kind != model.BlockCode {
-				s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], nextCaret)
+			if nextIdx == idx+1 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind == model.BlockDivider && idx+1 < len(s.doc.Blocks) {
+				s.recordMultiBlockAutoConvert(idx, 2, rawBeforeConvert, rawCaret, &s.doc.Blocks[idx+1], nextCaret)
+			} else if nextIdx == idx && idx < len(s.doc.Blocks) {
+				s.recordBlockAutoConvert(idx, rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], nextCaret, false)
 			}
 			if s.needsDetachedSelectionFocus() {
 				s.multiSelFocusPending = true
@@ -2167,14 +2185,11 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 
 		// Check inline rules: :emoji:, smart typography, and inline Markdown constructs.
 		curCaret := rawCaret
-		insStart := curCaret - insLen
-		if insStart < 0 {
-			insStart = 0
-		}
 		converted := false
 		finalEdge := appUi.RichCodeEdgeNone
 		var nextClearMask model.Mark
 		var nextClearBG bool
+		isMathConvert := false
 
 		if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(b.Spans, curCaret); ok {
 			b.Spans = nextSpans
@@ -2188,6 +2203,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		}
 		if res := applyInlineInputRules(b.Spans, curCaret, insLen, b.Kind == model.BlockParagraph); res.toImage {
 			s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
+			s.recordBlockAutoConvert(idx, rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], 0, false)
 			return
 		} else if res.changed {
 			b.Spans = res.spans
@@ -2195,6 +2211,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 			finalEdge = res.codeEdge
 			nextClearMask = res.clearMask
 			nextClearBG = res.clearBG
+			isMathConvert = res.isMath
 			converted = true
 		}
 
@@ -2204,7 +2221,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 			s.selAnchor = Position{Block: idx, Offset: curCaret}
 			s.selHead = s.selAnchor
 			s.postEditCodeEdge = finalEdge
-			s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, b, curCaret)
+			s.recordBlockAutoConvert(idx, rawBeforeConvert, rawCaret, b, curCaret, isMathConvert)
 			if nextClearMask != 0 || nextClearBG {
 				s.nextInsertGuard = &nextInsertStyleGuard{
 					blockID:   b.ID,
@@ -2299,7 +2316,7 @@ func estimateCaretAfterEdit(oldText, newText string) int {
 
 func isImmediateDivider(text string) bool {
 	switch text {
-	case "---", "***", "___", "－－－", "＊＊＊", "＿＿＿", "——":
+	case "---", "－－－", "——":
 		return true
 	}
 	return false
@@ -2397,7 +2414,7 @@ func parseFullOrHalfDigits(s string) (int, bool) {
 	return n, true
 }
 
-func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, int, bool) {
+func (s *Session) trySpaceInputRule(idx int, text string, caretRune, insLen int) (int, int, bool) {
 	b := &s.doc.Blocks[idx]
 	r := []rune(text)
 	if len(r) == 0 {
@@ -2407,10 +2424,14 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 		caretRune = len(r)
 	}
 	// Support both character-by-character typing (trailing space at caret) and
-	// whole-string input such as IME commit or tester Type("# Title") or Type("  - Sub").
+	// multi-rune whole-string commits (e.g. IME commit or tester Type("# Title")).
+	// Single-rune non-space typing (e.g. typing "A" after undoing "# " with Backspace) never re-triggers block prefixes.
 	ruleEnd := caretRune
 	last := r[ruleEnd-1]
 	if last != ' ' && last != '\u3000' {
+		if insLen <= 1 {
+			return 0, 0, false
+		}
 		lead := 0
 		for lead < caretRune && (r[lead] == ' ' || r[lead] == '\t' || r[lead] == '\u3000') {
 			lead++
@@ -2429,7 +2450,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	}
 	rawPrefix := string(r[:ruleEnd-1])
 	rest := string(r[ruleEnd:])
-	newCaret := len([]rune(rest))
+	newCaret := max(caretRune-ruleEnd, 0)
 
 	if b.Kind == model.BlockBullet {
 		trimmed := strings.TrimLeftFunc(rawPrefix, unicode.IsSpace)
@@ -2571,7 +2592,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 					b.Kind = model.BlockTodo
 					b.Checked = checked
 					b.Spans = sliceSpans(b.Spans, tokLen+1, len(restRunes))
-					newCaret = len(restRunes) - (tokLen + 1)
+					newCaret = max(newCaret-(tokLen+1), 0)
 					break
 				}
 			}
@@ -2667,6 +2688,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 
 	// Enter on fence / divider / callout / table / standalone image at end of paragraph.
 	if caretRune == len(r) {
+		rawBeforeEnter := b.Clone()
 		if (b.Kind == model.BlockParagraph || b.Kind == model.BlockQuote) && b.Callout == "" {
 			if kind, ok := matchCalloutPrefix(b.PlainText()); ok {
 				s.pushUndo()
@@ -2680,6 +2702,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				s.selHead = s.selAnchor
 				s.selSyncPending = true
 				s.markDirty()
+				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, b, 0, false)
 				return true
 			}
 		}
@@ -2687,11 +2710,12 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 			if alt, src, ok := matchStandaloneImageLine(b.PlainText()); ok {
 				s.pushUndo()
 				s.convertParagraphToImageBlock(idx, alt, src)
+				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, &s.doc.Blocks[idx], 0, false)
 				return true
 			}
-			if cols, ok := matchTableHeaderLine(b.PlainText()); ok {
+			if headerCells, ok := s.matchTableHeaderCells(b.Spans); ok {
 				s.pushUndo()
-				s.convertParagraphToTableBlock(idx, cols)
+				s.convertParagraphToTableBlock(idx, headerCells)
 				return true
 			}
 			if lang, ok := matchCodeFencePrefix(b.PlainText()); ok {
@@ -2707,11 +2731,15 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				s.selHead = s.selAnchor
 				s.selSyncPending = true
 				s.markDirty()
+				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, b, 0, false)
 				return true
 			}
 			if isDividerLine(b.PlainText()) {
 				s.pushUndo()
 				s.insertDividerWithParagraph(idx, true)
+				if idx+1 < len(s.doc.Blocks) {
+					s.recordMultiBlockAutoConvert(idx, 2, rawBeforeEnter, caretRune, &s.doc.Blocks[idx+1], 0)
+				}
 				return true
 			}
 		}
@@ -3728,6 +3756,8 @@ func (s *Session) AddAnnotation(note string) *model.Annotation {
 	}
 	s.annotations = append(s.annotations, ann)
 	s.activeAnnotID = ""
+	s.annotFlashID = ann.ID
+	s.annotFlashAt = time.Time{}
 	s.caretHidden = true
 	s.persistAnnotations()
 	return ann

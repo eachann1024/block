@@ -11,15 +11,18 @@ import (
 )
 
 type autoConvertRecord struct {
-	blockID    model.BlockID
-	isCell     bool
-	cellKey    tableCellKey
-	docRev     uint64
-	beforeBlk  model.Block
-	beforeCell []model.Span
-	beforePos  int
-	afterPos   int
-	afterText  string
+	blockID       model.BlockID // block ID to match on Backspace (for divider, the trailing empty paragraph ID)
+	targetIdx     int           // starting block index in s.doc.Blocks to replace when restoring
+	replaceCount  int           // number of blocks to replace on restore (1 normally, 2 for divider + paragraph)
+	isCell        bool
+	cellKey       tableCellKey
+	docRev        uint64
+	beforeBlk     model.Block
+	beforeCell    []model.Span
+	beforePos     int
+	afterPos      int
+	afterText     string
+	isMathConvert bool // true when `$...$` just converted to MarkMath (rolls back if immediately followed by ASCII digit)
 }
 
 type nextInsertStyleGuard struct {
@@ -30,6 +33,13 @@ type nextInsertStyleGuard struct {
 	caretPos  int
 	clearMask model.Mark
 	clearBG   bool
+}
+
+type rightStyleBias struct {
+	blockID model.BlockID
+	isCell  bool
+	cellKey tableCellKey
+	pos     int
 }
 
 func cloneSpansSlice(src []model.Span) []model.Span {
@@ -44,33 +54,85 @@ func cloneSpansSlice(src []model.Span) []model.Span {
 func (s *Session) clearAutoConvertState() {
 	s.lastAutoConvert = nil
 	s.nextInsertGuard = nil
+	s.rightStyleBias = nil
 }
 
-func (s *Session) recordBlockAutoConvert(blkBefore model.Block, beforePos int, blkAfter *model.Block, afterPos int) {
+func (s *Session) recordBlockAutoConvert(idx int, blkBefore model.Block, beforePos int, blkAfter *model.Block, afterPos int, isMath bool) {
 	if blkAfter == nil {
 		return
 	}
 	s.lastAutoConvert = &autoConvertRecord{
-		blockID:   blkAfter.ID,
-		docRev:    s.docRev,
-		beforeBlk: blkBefore.Clone(),
-		beforePos: beforePos,
-		afterPos:  afterPos,
-		afterText: blkAfter.PlainText(),
+		blockID:       blkAfter.ID,
+		targetIdx:     idx,
+		replaceCount:  1,
+		docRev:        s.docRev,
+		beforeBlk:     blkBefore.Clone(),
+		beforePos:     beforePos,
+		afterPos:      afterPos,
+		afterText:     blkAfter.PlainText(),
+		isMathConvert: isMath,
 	}
 }
 
-func (s *Session) recordCellAutoConvert(key tableCellKey, beforeSpans []model.Span, beforePos int, afterSpans []model.Span, afterPos int) {
-	s.lastAutoConvert = &autoConvertRecord{
-		blockID:    key.BlockID,
-		isCell:     true,
-		cellKey:    key,
-		docRev:     s.docRev,
-		beforeCell: cloneSpansSlice(beforeSpans),
-		beforePos:  beforePos,
-		afterPos:   afterPos,
-		afterText:  model.PlainTextOfSpans(afterSpans),
+func (s *Session) recordMultiBlockAutoConvert(idx, replaceCount int, blkBefore model.Block, beforePos int, afterFocusBlk *model.Block, afterPos int) {
+	if afterFocusBlk == nil {
+		return
 	}
+	s.lastAutoConvert = &autoConvertRecord{
+		blockID:      afterFocusBlk.ID,
+		targetIdx:    idx,
+		replaceCount: max(replaceCount, 1),
+		docRev:       s.docRev,
+		beforeBlk:    blkBefore.Clone(),
+		beforePos:    beforePos,
+		afterPos:     afterPos,
+		afterText:    afterFocusBlk.PlainText(),
+	}
+}
+
+func (s *Session) recordCellAutoConvert(key tableCellKey, beforeSpans []model.Span, beforePos int, afterSpans []model.Span, afterPos int, isMath bool) {
+	s.lastAutoConvert = &autoConvertRecord{
+		blockID:       key.BlockID,
+		isCell:        true,
+		cellKey:       key,
+		docRev:        s.docRev,
+		beforeCell:    cloneSpansSlice(beforeSpans),
+		beforePos:     beforePos,
+		afterPos:      afterPos,
+		afterText:     model.PlainTextOfSpans(afterSpans),
+		isMathConvert: isMath,
+	}
+}
+
+func (s *Session) restoreBlockAutoConvert(rec *autoConvertRecord) bool {
+	if rec == nil || rec.isCell || s.doc == nil {
+		return false
+	}
+	startIdx := rec.targetIdx
+	repCount := max(rec.replaceCount, 1)
+	if startIdx < 0 || startIdx+repCount > len(s.doc.Blocks) {
+		return false
+	}
+	s.pushUndo()
+	restored := rec.beforeBlk.Clone()
+	restored.Dirty = true
+	restored.CleanSource = ""
+	for i := startIdx; i < startIdx+repCount; i++ {
+		delete(s.richInputs, s.doc.Blocks[i].ID)
+	}
+	s.spliceBlocks(startIdx, startIdx+repCount, []model.Block{restored})
+	s.clearAutoConvertState()
+	s.focusedBlock = startIdx
+	s.selAnchor = Position{Block: startIdx, Offset: rec.beforePos}
+	s.selHead = s.selAnchor
+	s.multiSelFocusPending = false
+	s.selSyncPending = true
+	s.focusPending = true
+	if st, ok := s.richInputs[restored.ID]; ok && st != nil {
+		st.Sync(restored.PlainText(), rec.beforePos, rec.beforePos)
+	}
+	s.markDirty()
+	return true
 }
 
 func (s *Session) tryUndoAutoConvertBackspace(idx int, curText string, caret int) bool {
@@ -82,23 +144,31 @@ func (s *Session) tryUndoAutoConvertBackspace(idx int, curText string, caret int
 	if b.ID != rec.blockID || rec.docRev != s.docRev || caret != rec.afterPos || curText != rec.afterText {
 		return false
 	}
-	s.pushUndo()
-	restored := rec.beforeBlk.Clone()
-	restored.Dirty = true
-	restored.CleanSource = ""
-	s.doc.Blocks[idx] = restored
-	s.lastAutoConvert = nil
-	s.nextInsertGuard = nil
-	s.focusedBlock = idx
-	s.selAnchor = Position{Block: idx, Offset: rec.beforePos}
-	s.selHead = s.selAnchor
-	s.selSyncPending = true
-	s.focusPending = true
-	if st, ok := s.richInputs[b.ID]; ok && st != nil {
-		st.Sync(restored.PlainText(), rec.beforePos, rec.beforePos)
+	return s.restoreBlockAutoConvert(rec)
+}
+
+func (s *Session) tryUndoAtomicAutoConvertBackspace() bool {
+	rec := s.lastAutoConvert
+	if rec == nil || rec.isCell || s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
+		return false
 	}
-	s.markDirty()
-	return true
+	b := &s.doc.Blocks[s.focusedBlock]
+	if b.ID != rec.blockID || rec.docRev != s.docRev {
+		return false
+	}
+	return s.restoreBlockAutoConvert(rec)
+}
+
+func (s *Session) tryUndoCodeAutoConvertBackspace(idx int, curText string) bool {
+	rec := s.lastAutoConvert
+	if rec == nil || rec.isCell || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[idx]
+	if b.Kind != model.BlockCode || b.ID != rec.blockID || rec.docRev != s.docRev || curText != rec.afterText {
+		return false
+	}
+	return s.restoreBlockAutoConvert(rec)
 }
 
 func (s *Session) tryUndoCellAutoConvertBackspace(blockIdx, rIdx, cIdx int, curText string, caret int) bool {
@@ -119,8 +189,7 @@ func (s *Session) tryUndoCellAutoConvertBackspace(blockIdx, rIdx, cIdx int, curT
 	cell.Spans = cloneSpansSlice(rec.beforeCell)
 	b.Dirty = true
 	b.CleanSource = ""
-	s.lastAutoConvert = nil
-	s.nextInsertGuard = nil
+	s.clearAutoConvertState()
 	base := tableCellStartOffset(b.Table, rIdx, cIdx)
 	s.selAnchor = Position{Block: blockIdx, Offset: base + rec.beforePos}
 	s.selHead = s.selAnchor
@@ -132,23 +201,151 @@ func (s *Session) tryUndoCellAutoConvertBackspace(blockIdx, rIdx, cIdx int, curT
 	return true
 }
 
-func (s *Session) consumeNextInsertGuard(blockID model.BlockID, isCell bool, cellKey tableCellKey, oldText, newText string, caretHint int) (model.Mark, bool) {
+// tryRollbackCurrencyMath rolls back an immediately preceding `$...$` -> MarkMath conversion
+// when the very next keystroke is an ASCII digit (e.g. typing `$5&$10` character by character),
+// keeping live typing 100% consistent with Pandoc/Markdown currency boundaries.
+func (s *Session) tryRollbackCurrencyMathOnBlock(idx int, oldText, newText string, caretHint int) (int, bool) {
+	rec := s.lastAutoConvert
+	if rec == nil || rec.isCell || !rec.isMathConvert || rec.docRev != s.docRev || s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
+		return 0, false
+	}
+	b := &s.doc.Blocks[idx]
+	if b.ID != rec.blockID || oldText != rec.afterText {
+		return 0, false
+	}
+	insStart, insLen := computeEditInsertedRange(oldText, newText, caretHint)
+	if insLen <= 0 || insStart != rec.afterPos {
+		return 0, false
+	}
+	newR := []rune(newText)
+	if insStart >= len(newR) || newR[insStart] < '0' || newR[insStart] > '9' {
+		return 0, false
+	}
+	inserted := string(newR[insStart : insStart+insLen])
+	beforeR := []rune(rec.beforeBlk.PlainText())
+	pos := clampInt(rec.beforePos, 0, len(beforeR))
+	restoredText := string(beforeR[:pos]) + inserted + string(beforeR[pos:])
+	b.Spans = spliceSpansByTextEdit(cloneSpansSlice(rec.beforeBlk.Spans), rec.beforeBlk.PlainText(), restoredText)
+	b.Dirty = true
+	b.CleanSource = ""
+	s.clearAutoConvertState()
+	return pos + insLen, true
+}
+
+func (s *Session) tryRollbackCurrencyMathOnCell(blockIdx, rIdx, cIdx int, key tableCellKey, oldText, newText string, caretHint int) (int, bool) {
+	rec := s.lastAutoConvert
+	if rec == nil || !rec.isCell || !rec.isMathConvert || rec.docRev != s.docRev || rec.cellKey != key || oldText != rec.afterText {
+		return 0, false
+	}
+	b := &s.doc.Blocks[blockIdx]
+	cell := &b.Table.Rows[rIdx][cIdx]
+	insStart, insLen := computeEditInsertedRange(oldText, newText, caretHint)
+	if insLen <= 0 || insStart != rec.afterPos {
+		return 0, false
+	}
+	newR := []rune(newText)
+	if insStart >= len(newR) || newR[insStart] < '0' || newR[insStart] > '9' {
+		return 0, false
+	}
+	inserted := string(newR[insStart : insStart+insLen])
+	beforePlain := model.PlainTextOfSpans(rec.beforeCell)
+	beforeR := []rune(beforePlain)
+	pos := clampInt(rec.beforePos, 0, len(beforeR))
+	restoredText := string(beforeR[:pos]) + inserted + string(beforeR[pos:])
+	cell.Spans = spliceSpansByTextEdit(cloneSpansSlice(rec.beforeCell), beforePlain, restoredText)
+	b.Dirty = true
+	b.CleanSource = ""
+	s.clearAutoConvertState()
+	return pos + insLen, true
+}
+
+// computeEditInsertedRange computes the actual inserted rune range [insStart, insStart+insLen)
+// from oldText -> newText, even when replacing a longer selection with a shorter string.
+func computeEditInsertedRange(oldText, newText string, caretHint int) (insStart, insLen int) {
+	oldR := []rune(oldText)
+	newR := []rune(newText)
+	maxPref := min(len(oldR), len(newR))
+	if caretHint >= 0 && caretHint <= len(newR) && caretHint < maxPref {
+		maxPref = caretHint
+	}
+	pref := 0
+	for pref < maxPref && oldR[pref] == newR[pref] {
+		pref++
+	}
+	suf := 0
+	for suf < len(oldR)-pref && suf < len(newR)-pref && oldR[len(oldR)-1-suf] == newR[len(newR)-1-suf] {
+		suf++
+	}
+	insStart = pref
+	insLen = len(newR) - suf - pref
+	if insLen < 0 {
+		insLen = 0
+	}
+	return insStart, insLen
+}
+
+func (s *Session) recordRightStyleBias(blockID model.BlockID, isCell bool, cellKey tableCellKey, spans []model.Span, prevOff, newAnchor, newCaret int) {
+	s.rightStyleBias = nil
+	if newAnchor != newCaret || prevOff <= newCaret || newCaret <= 0 {
+		return
+	}
+	total := utf8.RuneCountInString(model.PlainTextOfSpans(spans))
+	if newCaret >= total {
+		return
+	}
+	left := sliceSpans(spans, newCaret-1, newCaret)
+	right := sliceSpans(spans, newCaret, newCaret+1)
+	if len(left) == 0 || len(right) == 0 {
+		return
+	}
+	if left[0].Marks != right[0].Marks || left[0].BGColor != right[0].BGColor || left[0].FGColor != right[0].FGColor || left[0].Link != right[0].Link {
+		s.rightStyleBias = &rightStyleBias{
+			blockID: blockID,
+			isCell:  isCell,
+			cellKey: cellKey,
+			pos:     newCaret,
+		}
+	}
+}
+
+func (s *Session) consumeRightStyleBias(blockID model.BlockID, isCell bool, cellKey tableCellKey, insStart, insLen int) bool {
+	b := s.rightStyleBias
+	s.rightStyleBias = nil
+	if b == nil || insLen <= 0 {
+		return false
+	}
+	return b.blockID == blockID && b.isCell == isCell && (!isCell || b.cellKey == cellKey) && b.pos == insStart
+}
+
+func inheritRightSpanStyleOnInsert(spans []model.Span, insStart, insLen int) []model.Span {
+	if insLen <= 0 {
+		return spans
+	}
+	total := utf8.RuneCountInString(model.PlainTextOfSpans(spans))
+	if insStart+insLen >= total {
+		return spans
+	}
+	right := sliceSpans(spans, insStart+insLen, insStart+insLen+1)
+	if len(right) == 0 {
+		return spans
+	}
+	tpl := right[0]
+	return applySpanTransform(spans, insStart, insStart+insLen, func(sp model.Span) model.Span {
+		sp.Marks = tpl.Marks
+		sp.FGColor = tpl.FGColor
+		sp.BGColor = tpl.BGColor
+		sp.Link = tpl.Link
+		return sp
+	})
+}
+
+func (s *Session) consumeNextInsertGuard(blockID model.BlockID, isCell bool, cellKey tableCellKey, insStart, insLen int) (model.Mark, bool) {
 	g := s.nextInsertGuard
 	s.nextInsertGuard = nil
 	if g == nil || g.docRev != s.docRev || g.blockID != blockID || g.isCell != isCell || (isCell && g.cellKey != cellKey) {
 		return 0, false
 	}
-	oldR := []rune(oldText)
-	newR := []rune(newText)
-	inserted := len(newR) - len(oldR)
-	if inserted <= 0 {
-		return 0, false
-	}
-	insStart := caretHint - inserted
-	if caretHint < 0 {
-		insStart = g.caretPos
-	}
-	if insStart != g.caretPos {
+	if insLen <= 0 || insStart != g.caretPos {
 		return 0, false
 	}
 	return g.clearMask, g.clearBG
@@ -167,7 +364,7 @@ func (s *Session) applyNextInsertStyleClear(spans []model.Span, insStart, insLen
 	})
 }
 
-// --- Span Protection Helpers ---
+// --- Span Protection Helpers (O(N) monotonic scan) ---
 
 func spanProtectionAt(spans []model.Span, startRune, endRune int) bool {
 	if endRune <= startRune {
@@ -178,8 +375,11 @@ func spanProtectionAt(spans []model.Span, startRune, endRune int) bool {
 		n := utf8.RuneCountInString(sp.Text)
 		s0, s1 := pos, pos+n
 		pos = s1
-		if s1 <= startRune || s0 >= endRune {
+		if s1 <= startRune {
 			continue
+		}
+		if s0 >= endRune {
+			break
 		}
 		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" {
 			return true
@@ -197,8 +397,11 @@ func spanCodeOrMathAt(spans []model.Span, startRune, endRune int) bool {
 		n := utf8.RuneCountInString(sp.Text)
 		s0, s1 := pos, pos+n
 		pos = s1
-		if s1 <= startRune || s0 >= endRune {
+		if s1 <= startRune {
 			continue
+		}
+		if s0 >= endRune {
+			break
 		}
 		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 {
 			return true
@@ -218,39 +421,72 @@ func isEscapedAt(r []rune, pos int) bool {
 	return bs%2 == 1
 }
 
-// inUnclosedLiteralContext detects whether caret `pos` lies inside an unclosed inline
-// code backtick (` / ｀), unclosed inline math ($ / ＄), or an active bare URL token,
-// so smart typography / emoji / other inline formatting rules never corrupt code, LaTeX, or URLs while typing.
+// inUnclosedLiteralContext runs in O(N) over the current line using a monotonic span cursor.
+// It detects whether caret `pos` lies inside:
+//   - an unclosed inline code backtick (` / ｀),
+//   - an unclosed inline math ($ / ＄), or
+//   - an active URL token (bare URL, wrapped like `(https://...`, or Markdown link dest `[甲](https://...`).
 func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick, inMath, inURL bool) {
 	if pos <= 0 || pos > len(r) {
 		return false, false, false
 	}
-	// Find current line start.
 	lineStart := pos
 	for lineStart > 0 && r[lineStart-1] != '\n' {
 		lineStart--
 	}
-	// Check active non-whitespace token for bare URL prefix.
+
+	// Check active non-whitespace token (stripping leading wrappers or `[label](` prefix) for URL.
 	tokStart := pos
 	for tokStart > lineStart && !unicode.IsSpace(r[tokStart-1]) {
 		tokStart--
 	}
 	if tokStart < pos {
-		tokLower := strings.ToLower(string(r[tokStart:pos]))
+		tokStr := string(r[tokStart:pos])
+		if idx := strings.LastIndex(tokStr, "]("); idx >= 0 {
+			tokStr = tokStr[idx+2:]
+		} else if idx := strings.LastIndex(tokStr, "]（"); idx >= 0 {
+			tokStr = tokStr[idx+len("]（"):]
+		} else if idx := strings.LastIndex(tokStr, "］（"); idx >= 0 {
+			tokStr = tokStr[idx+len("］（"):]
+		}
+		tokStr = strings.TrimLeft(tokStr, "([{\"<'（【「『《“‘")
+		tokLower := strings.ToLower(tokStr)
 		if strings.HasPrefix(tokLower, "http://") || strings.HasPrefix(tokLower, "https://") || strings.HasPrefix(tokLower, "www.") {
 			inURL = true
 		}
 	}
-	// Scan line from lineStart to pos skipping already-formatted code/math/link spans.
+
+	// Advance monotonic span cursor to lineStart once: O(N) total across the whole line.
+	spIdx := 0
+	spStart := 0
+	spEnd := 0
+	if len(spans) > 0 {
+		spEnd = utf8.RuneCountInString(spans[0].Text)
+	}
+	advanceSpanTo := func(runePos int) bool {
+		for spIdx < len(spans) && spEnd <= runePos {
+			spIdx++
+			spStart = spEnd
+			if spIdx < len(spans) {
+				spEnd += utf8.RuneCountInString(spans[spIdx].Text)
+			}
+		}
+		if spIdx >= len(spans) {
+			return false
+		}
+		sp := spans[spIdx]
+		return sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != ""
+	}
+	_ = spStart
+
 	var openBT rune
 	var openMath rune
 	for i := lineStart; i < pos; i++ {
-		if spanProtectionAt(spans, i, i+1) {
+		if advanceSpanTo(i) {
 			continue
 		}
 		ch := r[i]
-		if (ch == '`' || ch == '｀') && !isEscapedAt(r, i) {
-			// Skip multi-backtick fences (``` / ``).
+		if openMath == 0 && (ch == '`' || ch == '｀') && !isEscapedAt(r, i) {
 			if (i > lineStart && r[i-1] == ch) || (i+1 < pos && r[i+1] == ch) {
 				continue
 			}
@@ -289,6 +525,7 @@ type inlineRuleResult struct {
 	codeEdge  appUi.RichCodeEdge
 	clearMask model.Mark
 	clearBG   bool
+	isMath    bool
 	toImage   bool
 	imageAlt  string
 	imageSrc  string
@@ -311,9 +548,8 @@ func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImage
 	}
 
 	// 2. Trailing space / fullwidth space triggers:
-	//    - Bare URL auto-link (`https://... ` / `www.... `) on any space insertion
 	//    - Multi-rune commit fallback (e.g. IME committing "`code` " at once, insLen > 1)
-	//      Single-space typing never re-triggers already-undone inline syntax before the space.
+	//    - Bare URL auto-link (`https://... ` / `www.... `) when not inside unclosed code/math
 	if caretRune > 0 && (r[caretRune-1] == ' ' || r[caretRune-1] == '\u3000') {
 		tokenEnd := caretRune - 1
 		if insLen > 1 {
@@ -321,7 +557,6 @@ func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImage
 				if res.toImage {
 					return res
 				}
-				// Keep the trailing space unstyled outside the newly formatted span.
 				spacePos := res.caret
 				res.spans = applySpanTransform(res.spans, spacePos, spacePos+1, func(sp model.Span) model.Span {
 					sp.Marks &^= model.MarkCode | model.MarkMath | model.MarkBold | model.MarkItalic | model.MarkStrike | model.MarkSuperscript | model.MarkSubscript
@@ -351,7 +586,7 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 	}
 	last := r[end-1]
 
-	// Standalone image `![alt](url)` or inline link `[label](url)` / `[label]（https://...）` ending with `)` / `）`.
+	// Standalone image `![alt](url)` or inline link `[label](url)` / `[label]（https://...）` / `［label］（https://...）`.
 	if last == ')' || last == '）' {
 		inBT, inMath, _ := inUnclosedLiteralContext(spans, r, end-1)
 		if inBT || inMath {
@@ -372,9 +607,10 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Inline code `` `code` `` or fullwidth `` ｀code｀ `` (guard against ``` fenced code block and escaped backticks).
+	// Inline code `` `code` `` or fullwidth `` ｀code｀ `` (guard against ```, unclosed math, and URLs).
 	if last == '`' || last == '｀' {
-		if isEscapedAt(r, end-1) || (end >= 2 && r[end-2] == last) {
+		_, inMath, inURL := inUnclosedLiteralContext(spans, r, end-1)
+		if inMath || inURL || isEscapedAt(r, end-1) || (end >= 2 && r[end-2] == last) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		open := -1
@@ -399,10 +635,14 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Inline math `$E=mc^2$` or fullwidth `＄E=mc^2＄` (guard against `$$`, `$5 and $10`, and inside unclosed backtick).
+	// Inline math `$E=mc^2$` or fullwidth `＄E=mc^2＄` (guard against `$$`, unclosed code, URLs, and currency).
 	if last == '$' || last == '＄' {
-		inBT, _, _ := inUnclosedLiteralContext(spans, r, end-1)
-		if inBT || isEscapedAt(r, end-1) || (end >= 2 && (r[end-2] == last || unicode.IsSpace(r[end-2]))) {
+		inBT, _, inURL := inUnclosedLiteralContext(spans, r, end-1)
+		if inBT || inURL || isEscapedAt(r, end-1) || (end >= 2 && (r[end-2] == last || unicode.IsSpace(r[end-2]))) {
+			return inlineRuleResult{spans: spans, caret: end}
+		}
+		// Never close math if immediately followed by another `$` or an ASCII digit (`$5&$10`).
+		if end < len(r) && (r[end] == last || (r[end] >= '0' && r[end] <= '9')) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		open := -1
@@ -419,10 +659,12 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 			}
 		}
 		if open >= 0 && end-1 > open+1 && !unicode.IsSpace(r[open+1]) && !spanCodeOrMathAt(spans, open, end) {
-			return replaceInlineDelimited(spans, len(r), open, end, 1, func(sp model.Span) model.Span {
+			res := replaceInlineDelimited(spans, len(r), open, end, 1, func(sp model.Span) model.Span {
 				sp.Marks = (sp.Marks &^ model.MarkCode) | model.MarkMath
 				return sp
 			}, appUi.RichCodeEdgeAfter, model.MarkCode|model.MarkMath, false)
+			res.isMath = true
+			return res
 		}
 		return inlineRuleResult{spans: spans, caret: end}
 	}
@@ -564,7 +806,6 @@ func findPairedDoubleDelim(r []rune, end int, ch rune) (int, bool) {
 		}
 		if r[i] == ch && r[i-1] == ch {
 			open := i - 1
-			// If opener actually has 3+ chars (e.g. `***bold**`), wait for the 3rd closing char.
 			if open > 0 && r[open-1] == ch {
 				return -1, false
 			}
@@ -593,7 +834,6 @@ func findPairedSingleEmphasisDelim(r []rune, end int, ch rune) (int, bool) {
 			return -1, false
 		}
 		if r[i] == ch {
-			// If opener is part of `**` or `***` (e.g. user is typing `**bold**` and just typed `**bold*`), do not hijack!
 			if (i > 0 && r[i-1] == ch) || (i+1 < innerEnd && r[i+1] == ch) {
 				return -1, false
 			}
@@ -701,20 +941,34 @@ func isPlausibleInlineLinkTarget(raw string, requireExplicitScheme bool) bool {
 	if strings.HasPrefix(u, "/") || strings.HasPrefix(u, "./") || strings.HasPrefix(u, "../") {
 		return len(u) > 1
 	}
-	// Accept bare domain or relative file path (must contain `.` or `/`, and no CJK prose like `[重要](请先备份)`).
-	if strings.ContainsAny(u, "./") {
-		for _, ch := range u {
-			if ch > 0x7F && unicode.Is(unicode.Han, ch) {
-				return strings.ContainsRune(u, '/')
-			}
+	// Accept relative paths/domains/ASCII link targets (e.g. `docs/guide`, `page.html`, `url`),
+	// while rejecting CJK prose notes like `[重要](请先备份)` that contain no path separator.
+	hasNonASCII := false
+	for _, ch := range u {
+		if ch > 0x7F {
+			hasNonASCII = true
+			break
 		}
-		return !strings.HasPrefix(u, ".") && !strings.HasSuffix(u, ".")
 	}
-	return false
+	if hasNonASCII {
+		return strings.ContainsRune(u, '/')
+	}
+	if strings.HasPrefix(u, ".") || strings.HasSuffix(u, ".") {
+		return false
+	}
+	for i := 0; i < len(u); i++ {
+		c := u[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			strings.IndexByte("._~:/?#[]@!$&'()*+,;=%-", c) >= 0) {
+			return false
+		}
+	}
+	return true
 }
 
 func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResult {
-	// Match `[label](url)` or `[label]（https://...）` ending at `end`, allowing balanced `(...)` inside URL.
+	// Match `[label](url)`, `[label]（https://...）`, and `［label］（https://...）` ending at `end`,
+	// allowing balanced `(...)` inside URL.
 	closeParen := r[end-1]
 	openChar := '('
 	fullwidthParen := closeParen == '）'
@@ -736,7 +990,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 				depth--
 				continue
 			}
-			if r[i-1] == ']' {
+			if r[i-1] == ']' || (fullwidthParen && r[i-1] == '］') {
 				openParen = i
 				break
 			}
@@ -747,12 +1001,16 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 	closeBracket := openParen - 1
+	wantOpenBracket := '['
+	if r[closeBracket] == '］' {
+		wantOpenBracket = '［'
+	}
 	openBracket := -1
 	for i := closeBracket - 1; i >= 0; i-- {
-		if r[i] == '\n' || r[i] == ']' {
+		if r[i] == '\n' || r[i] == r[closeBracket] {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		if r[i] == '[' {
+		if r[i] == wantOpenBracket {
 			if isEscapedAt(r, i) {
 				return inlineRuleResult{spans: spans, caret: end}
 			}
@@ -760,7 +1018,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 			break
 		}
 	}
-	if openBracket < 0 || (openBracket > 0 && r[openBracket-1] == '!') {
+	if openBracket < 0 || (openBracket > 0 && (r[openBracket-1] == '!' || r[openBracket-1] == '！')) {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 	labelLen := closeBracket - (openBracket + 1)
@@ -810,14 +1068,16 @@ func tryBareURLAutolinkBefore(spans []model.Span, r []rune, tokenEnd int) inline
 	if tokenEnd <= 0 {
 		return inlineRuleResult{spans: spans, caret: tokenEnd}
 	}
+	if inBT, inMath, _ := inUnclosedLiteralContext(spans, r, tokenEnd); inBT || inMath {
+		return inlineRuleResult{spans: spans, caret: tokenEnd}
+	}
 	start := tokenEnd
 	for start > 0 && !unicode.IsSpace(r[start-1]) {
 		start--
 	}
-	// Strip leading wrapper punctuation like `(https://...` or `「https://...`.
 	for start < tokenEnd {
 		switch r[start] {
-		case '(', '[', '{', '<', '"', '\'', '（', '【', '「', '《', '“':
+		case '(', '[', '{', '<', '"', '\'', '（', '【', '「', '『', '《', '“', '‘':
 			start++
 			continue
 		}
@@ -827,7 +1087,6 @@ func tryBareURLAutolinkBefore(spans []model.Span, r []rune, tokenEnd int) inline
 		return inlineRuleResult{spans: spans, caret: tokenEnd}
 	}
 	end := tokenEnd
-	// Strip trailing punctuation while keeping balanced `)` inside URLs like Wikipedia links.
 	for end > start {
 		ch := r[end-1]
 		if ch == ')' {
@@ -846,7 +1105,7 @@ func tryBareURLAutolinkBefore(spans []model.Span, r []rune, tokenEnd int) inline
 			break
 		}
 		switch ch {
-		case '.', ',', ';', ':', '!', '?', '\'', '"', ']', '}', '>', '。', '，', '；', '：', '！', '？', '）', '】', '》', '」', '』', '”':
+		case '.', ',', ';', ':', '!', '?', '\'', '"', ']', '}', '>', '。', '，', '；', '：', '！', '？', '）', '】', '》', '」', '』', '”', '’':
 			end--
 			continue
 		}
@@ -958,23 +1217,22 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 	if caretRune <= 0 || caretRune > n {
 		caretRune = n
 	}
-	if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune); inBT || inMath || inURL {
-		return spans, caretRune, false
-	}
 
 	// Em-dash `-- ` / `--　` only when preceded by non-dash, non-empty content (never breaks `---` divider).
 	if caretRune >= 4 && (r[caretRune-1] == ' ' || r[caretRune-1] == '\u3000') &&
 		r[caretRune-2] == '-' && r[caretRune-3] == '-' && r[caretRune-4] != '-' && !isEscapedAt(r, caretRune-3) {
-		hasNonDash := false
-		for i := 0; i < caretRune-3; i++ {
-			if r[i] != '-' && !unicode.IsSpace(r[i]) {
-				hasNonDash = true
-				break
+		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune-1); !inBT && !inMath && !inURL {
+			hasNonDash := false
+			for i := 0; i < caretRune-3; i++ {
+				if r[i] != '-' && !unicode.IsSpace(r[i]) {
+					hasNonDash = true
+					break
+				}
 			}
-		}
-		if hasNonDash && !spanProtectionAt(spans, caretRune-3, caretRune-1) {
-			next := replaceSpanRuneRange(spans, n, caretRune-3, caretRune-1, "—")
-			return next, caretRune - 1, true
+			if hasNonDash && !spanProtectionAt(spans, caretRune-3, caretRune-1) {
+				next := replaceSpanRuneRange(spans, n, caretRune-3, caretRune-1, "—")
+				return next, caretRune - 1, true
+			}
 		}
 	}
 
@@ -982,8 +1240,11 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 	curCaret := caretRune
 	changed := false
 
-	// Single-character typing: ONLY match rules ending right at caret so previously undone raw tokens (via Backspace) stay intact.
+	// Single-character typing: ONLY match rules ending right at caret.
 	if insLen == 1 {
+		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, curCaret); inBT || inMath || inURL {
+			return spans, caretRune, false
+		}
 		for _, rule := range smartTypoRules {
 			fl := len(rule.from)
 			if curCaret >= fl && runesEqual(r[curCaret-fl:curCaret], rule.from) {
@@ -1070,7 +1331,7 @@ func applyEmojiShortcodeOnSpans(spans []model.Span, caretRune int) ([]model.Span
 	if caretRune <= 0 || caretRune > n {
 		caretRune = n
 	}
-	if caretRune < 3 || r[caretRune-1] != ':' {
+	if caretRune < 3 || r[caretRune-1] != ':' || isEscapedAt(r, caretRune-1) {
 		return spans, caretRune, false
 	}
 	if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune); inBT || inMath || inURL {
@@ -1081,6 +1342,9 @@ func applyEmojiShortcodeOnSpans(spans []model.Span, caretRune int) ([]model.Span
 	for i := caretRune - 2; i >= minStart; i-- {
 		ch := r[i]
 		if ch == ':' {
+			if isEscapedAt(r, i) {
+				return spans, caretRune, false
+			}
 			open = i
 			break
 		}
@@ -1091,7 +1355,6 @@ func applyEmojiShortcodeOnSpans(spans []model.Span, caretRune int) ([]model.Span
 	if open < 0 || caretRune-1 <= open+1 {
 		return spans, caretRune, false
 	}
-	// Require boundary before opening `:` so URLs or timestamps (e.g. `12:30:00`) never match.
 	if open > 0 {
 		prev := r[open-1]
 		if unicode.IsLetter(prev) || unicode.IsDigit(prev) {
@@ -1135,7 +1398,7 @@ func matchQuotePrefixDepth(rawPrefix string) (int, bool) {
 	}
 	if len(r) == 1 {
 		switch r[0] {
-		case '>', '＞', '》', '"', '“', '”', '|', '｜':
+		case '>', '＞', '》', '"', '“', '”':
 			return 1, true
 		default:
 			return 0, false
@@ -1152,26 +1415,95 @@ func matchQuotePrefixDepth(rawPrefix string) (int, bool) {
 	return 0, false
 }
 
-func matchTableHeaderLine(text string) ([]string, bool) {
-	t := strings.TrimSpace(text)
-	t = strings.ReplaceAll(t, "｜", "|")
-	if len(t) < 3 || !strings.HasPrefix(t, "|") || !strings.HasSuffix(t, "|") {
-		return nil, false
+func isTablePipeRune(ch rune) bool {
+	return ch == '|' || ch == '｜'
+}
+
+func unescapeTableCellSpans(spans []model.Span) []model.Span {
+	if len(spans) == 0 {
+		return nil
 	}
-	inner := t[1 : len(t)-1]
-	parts := strings.Split(inner, "|")
-	if len(parts) < 2 || len(parts) > 16 {
-		return nil, false
-	}
-	allSep := true
-	cols := make([]string, len(parts))
-	for i, p := range parts {
-		cell := strings.TrimSpace(p)
-		cols[i] = cell
-		if cell == "" {
+	out := make([]model.Span, 0, len(spans))
+	for _, sp := range spans {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 {
+			out = append(out, sp)
 			continue
 		}
-		for _, ch := range cell {
+		if strings.Contains(sp.Text, `\|`) || strings.Contains(sp.Text, `\｜`) {
+			txt := strings.ReplaceAll(sp.Text, `\|`, "|")
+			txt = strings.ReplaceAll(txt, `\｜`, "｜")
+			sp.Text = txt
+		}
+		out = append(out, sp)
+	}
+	return normalizeSpans(out)
+}
+
+func trimCellSpansWhitespace(spans []model.Span) []model.Span {
+	plain := model.PlainTextOfSpans(spans)
+	r := []rune(plain)
+	lo := 0
+	for lo < len(r) && unicode.IsSpace(r[lo]) {
+		lo++
+	}
+	hi := len(r)
+	for hi > lo && unicode.IsSpace(r[hi-1]) {
+		hi--
+	}
+	if lo >= hi {
+		return nil
+	}
+	return sliceSpans(spans, lo, hi)
+}
+
+// matchTableHeaderCells splits a pipe header line (e.g. `| **Col1** | a\|b |`) into rich TableCells,
+// preserving existing inline spans and respecting escaped pipes `\|`.
+func (s *Session) matchTableHeaderCells(spans []model.Span) ([]model.TableCell, bool) {
+	plain := model.PlainTextOfSpans(spans)
+	r := []rune(plain)
+	lo := 0
+	for lo < len(r) && unicode.IsSpace(r[lo]) {
+		lo++
+	}
+	hi := len(r)
+	for hi > lo && unicode.IsSpace(r[hi-1]) {
+		hi--
+	}
+	if hi-lo < 3 || !isTablePipeRune(r[lo]) || !isTablePipeRune(r[hi-1]) || isEscapedAt(r, hi-1) {
+		return nil, false
+	}
+
+	var pipePositions []int
+	for i := lo; i < hi; i++ {
+		if isTablePipeRune(r[i]) && !isEscapedAt(r, i) && !spanCodeOrMathAt(spans, i, i+1) {
+			pipePositions = append(pipePositions, i)
+		}
+	}
+	// Need at least 3 pipes for >= 2 columns (`| c1 | c2 |`).
+	if len(pipePositions) < 3 || len(pipePositions)-1 > 16 {
+		return nil, false
+	}
+
+	nCols := len(pipePositions) - 1
+	cells := make([]model.TableCell, nCols)
+	allSep := true
+	for c := 0; c < nCols; c++ {
+		segLo := pipePositions[c] + 1
+		segHi := pipePositions[c+1]
+		segSpans := sliceSpans(spans, segLo, segHi)
+		segSpans = trimCellSpansWhitespace(unescapeTableCellSpans(segSpans))
+		// If the cell is still plain unformatted text that contains Markdown syntax (e.g. from IME paste), parse inline spans.
+		if len(segSpans) == 1 && segSpans[0].Marks == 0 && segSpans[0].Link == "" && segSpans[0].FGColor == "" && segSpans[0].BGColor == "" {
+			if looksLikeInlineMarkdown(segSpans[0].Text) {
+				segSpans = s.parseInlineSpans(segSpans[0].Text)
+			}
+		}
+		cells[c] = model.TableCell{Spans: segSpans}
+		cellTxt := strings.TrimSpace(model.PlainTextOfSpans(segSpans))
+		if cellTxt == "" {
+			continue
+		}
+		for _, ch := range cellTxt {
 			if ch != '-' && ch != ':' && ch != ' ' {
 				allSep = false
 				break
@@ -1181,7 +1513,7 @@ func matchTableHeaderLine(text string) ([]string, bool) {
 	if allSep {
 		return nil, false
 	}
-	return cols, true
+	return cells, true
 }
 
 func (s *Session) convertParagraphToImageBlock(idx int, alt, src string) {
@@ -1203,17 +1535,13 @@ func (s *Session) convertParagraphToImageBlock(idx int, alt, src string) {
 	s.markDirty()
 }
 
-func (s *Session) convertParagraphToTableBlock(idx int, cols []string) {
+func (s *Session) convertParagraphToTableBlock(idx int, headerRow []model.TableCell) {
 	b := &s.doc.Blocks[idx]
-	nCols := len(cols)
-	headerRow := make([]model.TableCell, nCols)
+	nCols := len(headerRow)
 	bodyRow := make([]model.TableCell, nCols)
 	aligns := make([]model.ColAlign, nCols)
-	for i, text := range cols {
+	for i := range aligns {
 		aligns[i] = model.ColAlignLeft
-		if text != "" {
-			headerRow[i] = model.TableCell{Spans: s.parseInlineSpans(text)}
-		}
 	}
 	b.Kind = model.BlockTable
 	b.Spans = nil
@@ -1272,7 +1600,6 @@ func tryAutoWrapSpans(spans []model.Span, lo, hi int, text string) autoWrapResul
 		return autoWrapResult{}
 	}
 
-	// Direct single-key inline mark toggles on selection.
 	switch text {
 	case "`":
 		hasAll := spansAllMatch(spans, lo, hi, func(sp model.Span) bool { return sp.Marks&model.MarkCode != 0 })
@@ -1309,7 +1636,6 @@ func tryAutoWrapSpans(spans []model.Span, lo, hi int, text string) autoWrapResul
 		return autoWrapResult{spans: next, newLo: lo, newHi: hi, handled: true}
 	case "*", "~", "=":
 		ch := []rune(text)[0]
-		// Second consecutive press on already wrapped selection (e.g. `*sel*` + `*` -> bold `sel`).
 		if lo > 0 && hi < n && r[lo-1] == ch && r[hi] == ch {
 			left := sliceSpans(spans, 0, lo-1)
 			mid := sliceSpans(spans, lo, hi)
@@ -1437,7 +1763,22 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 		return
 	}
 	key := tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}
-	clearMask, clearBG := s.consumeNextInsertGuard(b.ID, true, key, oldDraft, newText, caret)
+	insStart, insLen := computeEditInsertedRange(oldDraft, newText, caret)
+
+	// Currency rollback (e.g. `$5&$10` typed char-by-char: digit immediately after `$5&$`).
+	if rolledCaret, rolled := s.tryRollbackCurrencyMathOnCell(blockIdx, rIdx, cIdx, key, oldDraft, newText, caret); rolled {
+		newBase := tableCellStartOffset(b.Table, rIdx, cIdx)
+		s.selAnchor = Position{Block: blockIdx, Offset: newBase + rolledCaret}
+		s.selHead = s.selAnchor
+		s.markDirty()
+		if st, ok := s.tableInputs[key]; ok && st != nil {
+			st.Sync(cell.PlainText(), rolledCaret, rolledCaret)
+		}
+		return
+	}
+
+	clearMask, clearBG := s.consumeNextInsertGuard(b.ID, true, key, insStart, insLen)
+	useRightBias := s.consumeRightStyleBias(b.ID, true, key, insStart, insLen)
 	s.lastAutoConvert = nil
 	s.postEditCodeEdge = appUi.RichCodeEdgeNone
 
@@ -1452,25 +1793,21 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 	}
 
 	cell.Spans = spliceSpansByTextEditWithEdge(cell.Spans, oldDraft, newText, caret, codeEdge)
-	if ins := len([]rune(newText)) - len([]rune(oldDraft)); ins > 0 && (clearMask != 0 || clearBG) {
-		insStart := caret - ins
-		if insStart >= 0 {
-			cell.Spans = s.applyNextInsertStyleClear(cell.Spans, insStart, ins, clearMask, clearBG)
-		}
+	if useRightBias {
+		cell.Spans = inheritRightSpanStyleOnInsert(cell.Spans, insStart, insLen)
+	}
+	if insLen > 0 && (clearMask != 0 || clearBG) {
+		cell.Spans = s.applyNextInsertStyleClear(cell.Spans, insStart, insLen, clearMask, clearBG)
 	}
 
 	beforeConvertSpans := cloneSpansSlice(cell.Spans)
 	beforeConvertCaret := clampInt(caret, 0, len([]rune(newText)))
-	insLen := len([]rune(newText)) - len([]rune(oldDraft))
-	insStart := beforeConvertCaret - max(insLen, 0)
-	if insStart < 0 {
-		insStart = 0
-	}
 	converted := false
 	finalCaret := beforeConvertCaret
 	finalEdge := appUi.RichCodeEdgeNone
 	var nextClearMask model.Mark
 	var nextClearBG bool
+	isMathConvert := false
 
 	if insLen > 0 {
 		if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(cell.Spans, finalCaret); ok {
@@ -1489,6 +1826,7 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 			finalEdge = res.codeEdge
 			nextClearMask = res.clearMask
 			nextClearBG = res.clearBG
+			isMathConvert = res.isMath
 			converted = true
 		}
 	}
@@ -1507,7 +1845,7 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 	s.markDirty()
 
 	if converted {
-		s.recordCellAutoConvert(key, beforeConvertSpans, beforeConvertCaret, cell.Spans, finalCaret)
+		s.recordCellAutoConvert(key, beforeConvertSpans, beforeConvertCaret, cell.Spans, finalCaret, isMathConvert)
 		if nextClearMask != 0 || nextClearBG {
 			s.nextInsertGuard = &nextInsertStyleGuard{
 				blockID:   b.ID,
