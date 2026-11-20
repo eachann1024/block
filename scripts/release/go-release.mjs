@@ -2,12 +2,39 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { feedbackBuildHash, feedbackLdflags, resolveFeedbackBuildConfig } from "../app-bundle.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
+function redactCmdArg(arg) {
+  return String(arg).startsWith("-ldflags=") ? "-ldflags=<redacted>" : String(arg);
+}
+
+function redactBuildOutput(text) {
+  let out = String(text || "");
+  if (!out) return out;
+  try {
+    const { endpoint, clientToken } = resolveFeedbackBuildConfig(ROOT);
+    if (endpoint) out = out.replaceAll(endpoint, "<redacted-endpoint>");
+    if (clientToken) out = out.replaceAll(clientToken, "<redacted-token>");
+  } catch {}
+  return out;
+}
+
 export function run(cmd, args, extra = {}) {
-  const result = spawnSync(cmd, args, { stdio: "inherit", cwd: ROOT, ...extra });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${cmd} ${args.join(" ")} exited ${result.status}`);
+  const hasLdflags = args.some((arg) => String(arg).startsWith("-ldflags="));
+  const opts = hasLdflags
+    ? { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT, ...extra }
+    : { stdio: "inherit", cwd: ROOT, ...extra };
+  const result = spawnSync(cmd, args, opts);
+  if (hasLdflags) {
+    if (result.stdout) process.stdout.write(redactBuildOutput(result.stdout));
+    if (result.stderr) process.stderr.write(redactBuildOutput(result.stderr));
+  }
+  if (result.error) {
+    const code = result.error.code ? ` (${result.error.code})` : "";
+    throw new Error(`${cmd} ${args.map(redactCmdArg).join(" ")} failed to start${code}`);
+  }
+  if (result.status !== 0) throw new Error(`${cmd} ${args.map(redactCmdArg).join(" ")} exited ${result.status}`);
 }
 
 export function releaseBinaryPath(goos, goarch) {
@@ -36,7 +63,8 @@ export function canReuseReleaseBinary({ goos, goarch, version, outFile = release
     return meta?.version === version
       && meta?.goos === goos
       && meta?.goarch === goarch
-      && meta?.sha === currentHeadSha();
+      && meta?.sha === currentHeadSha()
+      && (meta?.feedbackHash || "") === feedbackBuildHash(ROOT);
   } catch {
     return false;
   }
@@ -45,9 +73,14 @@ export function canReuseReleaseBinary({ goos, goarch, version, outFile = release
 export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goarch) }) {
   mkdirSync(dirname(outFile), { recursive: true });
   const version = readPackageVersion(ROOT);
-  const verFlag = `-X block/internal/updater.BuildVersion=${version}`;
-  const ldflags = goos === "windows" ? `-s -w -H=windowsgui ${verFlag}` : `-s -w ${verFlag}`;
-  run("go", ["build", `-ldflags=${ldflags}`, "-o", outFile, "./cmd/block"], {
+  const ldflagParts = [
+    "-s",
+    "-w",
+    ...(goos === "windows" ? ["-H=windowsgui"] : []),
+    `-X block/internal/updater.BuildVersion=${version}`,
+    ...feedbackLdflags(ROOT),
+  ];
+  run("go", ["build", `-ldflags=${ldflagParts.join(" ")}`, "-o", outFile, "./cmd/block"], {
     env: {
       ...process.env,
       CGO_ENABLED: "0",
@@ -57,7 +90,7 @@ export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goar
   });
   writeFileSync(
     releaseBinaryMetaPath(outFile),
-    `${JSON.stringify({ version, goos, goarch, sha: currentHeadSha() }, null, 2)}\n`,
+    `${JSON.stringify({ version, goos, goarch, sha: currentHeadSha(), feedbackHash: feedbackBuildHash(ROOT) }, null, 2)}\n`,
   );
   return outFile;
 }

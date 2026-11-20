@@ -17,6 +17,8 @@ designs/
 *.sketch
 *.xd
 *.psd
+.env.local
+.env.*.local
 .DS_Store
 .artifact-server.json
 .artifact-server.log
