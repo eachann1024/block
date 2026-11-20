@@ -474,11 +474,7 @@ func collectCandidateRefDefsFromLines(src string, lines []string) map[string]ref
 			delimCols := splitPipeCells(trimLineEnding(lines[i+1]))
 			if len(hdrCols) > 0 && len(hdrCols) <= maxParsedTableCells && len(hdrCols) == len(delimCols) {
 				end := i + 2
-				for end < len(lines) {
-					raw := trimLineEnding(lines[end])
-					if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
-						break
-					}
+				for end < len(lines) && isPipeTableRowLine(trimLineEnding(lines[end])) {
 					end++
 				}
 				i = end - 1
@@ -662,7 +658,7 @@ func parseRefDefLines(lines []string) (label string, def refDef, count int, ok b
 			return "", refDef{}, 0, false
 		}
 	}
-	return norm, refDef{dest: html.UnescapeString(dest), title: title}, consumed, true
+	return norm, refDef{dest: html.UnescapeString(dest), title: html.UnescapeString(unescapeLinkText(title))}, consumed, true
 }
 
 func consumedRefDefLines(lines []string, used map[string]bool, consumedOut map[string]bool) int {
@@ -1465,6 +1461,25 @@ func walkPipeCells(line string, visit func(col, start, end int)) {
 
 const maxParsedTableCells = 100_000
 
+func isPipeTableRowLine(raw string) bool {
+	if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
+		return false
+	}
+	if _, _, _, _, _, isFence := parseFenceAnyIndent(raw); isFence {
+		return false
+	}
+	if isThematicBreak(raw) {
+		return false
+	}
+	if _, _, ok := classifyHeading(raw); ok {
+		return false
+	}
+	if strings.HasPrefix(strings.TrimLeft(raw, " "), ">") {
+		return false
+	}
+	return true
+}
+
 func parsePipeTable(lines []string, defs map[string]refDef, usedOut map[string]bool) (model.Block, int, bool) {
 	if len(lines) < 2 {
 		return model.Block{}, 0, false
@@ -1516,19 +1531,7 @@ func parsePipeTable(lines []string, defs map[string]refDef, usedOut map[string]b
 	end := 2
 	for end < len(lines) {
 		raw := trimLineEnding(lines[end])
-		if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
-			break
-		}
-		if _, _, _, _, _, isFence := parseFenceAnyIndent(raw); isFence {
-			break
-		}
-		if isThematicBreak(raw) {
-			break
-		}
-		if _, _, ok := classifyHeading(raw); ok {
-			break
-		}
-		if strings.HasPrefix(strings.TrimLeft(raw, " "), ">") {
+		if !isPipeTableRowLine(raw) {
 			break
 		}
 		cells := splitPipeCells(raw)

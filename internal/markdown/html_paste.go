@@ -1121,8 +1121,27 @@ func (c *htmlPasteConverter) parse(src string) {
 				srcURL := strings.TrimSpace(attrVal(attrs, "src"))
 				if isPasteableRemoteOrLocalImage(srcURL) {
 					alt := strings.TrimSpace(attrVal(attrs, "alt"))
-					c.flushCurrentBlock()
-					c.emitBlockLine(fmt.Sprintf("![%s](%s)", strings.ReplaceAll(alt, "]", `\]`), formatLinkDest(srcURL)))
+					title := strings.TrimSpace(attrVal(attrs, "title"))
+					marks, link, bg := c.activeStyle()
+					inTableCell := c.table != nil && c.table.inCell
+					if inTableCell || link != "" || marks != 0 || bg != "" || len(c.curSpans) > 0 {
+						label := alt
+						if label == "" {
+							label = fallbackImageAlt(srcURL)
+						}
+						target := c.targetSpans()
+						*target = append(*target, model.Span{
+							Text:       label,
+							Marks:      marks,
+							Link:       link,
+							ImageSrc:   srcURL,
+							ImageTitle: title,
+							BGColor:    bg,
+						})
+					} else {
+						c.flushCurrentBlock()
+						c.emitBlockLine(fmt.Sprintf("![%s]%s", strings.ReplaceAll(alt, "]", `\]`), formatRefDefInline(refDef{dest: srcURL, title: title}, false, false)))
+					}
 				}
 			}
 
