@@ -967,7 +967,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.DrawAnimated(c, folderGlyph, theme.IconRow, ic, hovered || menuTarget)
+			icons.Draw(c, folderGlyph, theme.IconRow, ic)
 		} else {
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
@@ -975,27 +975,26 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.DrawAnimated(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
+			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic)
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 
-		if extBadge != "" {
-			moreID := "row-more:" + entry.Path
-			c.Key(moreID)
-			moreBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).MinWidth(theme.TreeMoreBtnSize).Shrink(0).Center().
-				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
-				Label(theme.Tr("更多操作", "More actions"))
-			moreHover := moreBtn.Hovered()
-			morePress := moreBtn.Pressed()
-			showMore := menuTarget || moreHover || morePress
-			moreBG := ui.Transparent
-			if showMore {
-				moreBG = pal.MenuHover
-			}
-			blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
-			blockui.TactileButton(moreBtn, moreHover, morePress, false)
-			moreBtn.Children(func() {
+		moreID := "row-more:" + entry.Path
+		c.Key(moreID)
+		moreBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).MinWidth(theme.TreeMoreBtnSize).Shrink(0).Center().
+			Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+			Label(theme.Tr("更多操作", "More actions"))
+		moreHover := moreBtn.Hovered()
+		morePress := moreBtn.Pressed()
+		showMore := menuTarget || moreHover || morePress
+		moreBG := ui.Transparent
+		if showMore {
+			moreBG = pal.MenuHover
+		}
+		blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
+		moreBtn.Children(func() {
+			if extBadge != "" {
 				badgeWrap := ui.Box(c).Center()
 				if showMore {
 					badgeWrap.Opacity(0)
@@ -1005,43 +1004,17 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				})
 				if showMore {
 					ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Center().Children(func() {
-						icons.DrawAnimated(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text), true)
+						icons.Draw(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text))
 					})
 				}
-			})
-			blockui.Probe(moreBtn, moreID)
-			moreBounds = moreBtn.Bounds()
-			if moreBtn.Clicked() {
-				moreClicked = true
+			} else if showMore {
+				icons.Draw(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text))
 			}
-		} else if hovered || menuTarget {
-			moreID := "row-more:" + entry.Path
-			c.Key(moreID)
-			moreBtn := ui.ButtonBase(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().
-				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
-				Label(theme.Tr("更多操作", "More actions"))
-			moreHover := moreBtn.Hovered()
-			morePress := moreBtn.Pressed()
-			moreBG := ui.Transparent
-			if menuTarget || moreHover || morePress {
-				moreBG = pal.MenuHover
-			}
-			blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
-			blockui.TactileButton(moreBtn, moreHover, morePress, false)
-			moreBtn.Children(func() {
-				ic := pal.MonoIconColors(pal.TextSecondary)
-				if menuTarget || moreHover || morePress {
-					ic = pal.DuoIconColors(pal.Text)
-				}
-				icons.DrawAnimated(c, icons.More, theme.IconInline, ic, menuTarget || moreHover || morePress)
-			})
-			blockui.Probe(moreBtn, moreID)
-			moreBounds = moreBtn.Bounds()
-			if moreBtn.Clicked() {
-				moreClicked = true
-			}
-		} else {
-			ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0)
+		})
+		blockui.Probe(moreBtn, moreID)
+		moreBounds = moreBtn.Bounds()
+		if moreBtn.Clicked() {
+			moreClicked = true
 		}
 	})
 	if isDropReorder || blockui.IsProbeEnabled() {
