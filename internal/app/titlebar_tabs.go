@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"block/internal/icons"
@@ -35,26 +36,19 @@ func tabTransition() ui.ElementTransition {
 	}
 }
 
-// multiTabWidth is the widest a tab may grow when n tabs share the strip
-// (each pill hugs its title up to this cap, min 76), from the tab cell's laid-out width (padding, new-tab button
-// and drag spacer taken out). Past 76 the strip scrolls.
-func multiTabWidth(centerW float32, n int) float32 {
-	if centerW <= 0 || n <= 0 {
-		return tabBasisW
-	}
-	avail := centerW - 20 - (theme.ChromeBoxSize + tabStripGap) - (tabDragSpacerW + tabStripGap)
-	w := (avail - float32(n-1)*tabStripGap) / float32(n)
-	return max(min(w, tabMaxW), tabMinW)
+// multiTabStripChrome is the tab cell width that is not pills: padding, gaps,
+// the new-tab button and the drag spacer.
+func multiTabStripChrome(n int) float32 {
+	return float32(n-1)*tabStripGap + 20 + (theme.ChromeBoxSize + tabStripGap) + (tabDragSpacerW + tabStripGap)
 }
 
-// multiTabStripNeed inverts multiTabWidth: the tab cell width at which every pill
-// shows its full title (up to tabMaxW) instead of being squeezed.
-func multiTabStripNeed(c *ui.Context, p TitlebarProps) float32 {
+// multiTabNaturalWidths is each pill's width with its full title (capped at tabMaxW).
+func multiTabNaturalWidths(c *ui.Context, p TitlebarProps) []float32 {
 	dirSuffixes := tabDirSuffixes(p.Tabs)
-	sum := float32(0)
-	for _, path := range p.Tabs {
+	out := make([]float32, len(p.Tabs))
+	for i, path := range p.Tabs {
 		w, _ := c.MeasureText(0, ui.Span{Text: tabTitle(path), Size: theme.FontSmall, Weight: theme.WeightRegular})
-		w += theme.Space10 + theme.Space6 + tabCloseSlot + theme.Space6 + 2
+		w += theme.Space10 + theme.Space6 + tabCloseSlot + theme.Space6 + 4
 		if s := dirSuffixes[path]; s != "" {
 			sw, _ := c.MeasureText(0, ui.Span{Text: s, Size: theme.FontSmall, Weight: theme.WeightRegular})
 			w += theme.Space6 + sw
@@ -62,9 +56,36 @@ func multiTabStripNeed(c *ui.Context, p TitlebarProps) float32 {
 		if isExternalFile(path, p.NotebookPath) {
 			w += theme.IconMicro + theme.Space6
 		}
-		sum += min(w, tabMaxW)
+		out[i] = min(w, tabMaxW)
 	}
-	return sum + float32(len(p.Tabs)-1)*tabStripGap + 20 + (theme.ChromeBoxSize + tabStripGap) + (tabDragSpacerW + tabStripGap)
+	return out
+}
+
+// multiTabWidths fits pills into the tab cell: all keep their natural width when it
+// fits; otherwise only the longest ones shrink to a shared cap (min tabMinW, past
+// which the strip scrolls), so short tabs never strand space a long title needs.
+func multiTabWidths(natural []float32, centerW float32) []float32 {
+	out := append([]float32(nil), natural...)
+	if centerW <= 0 || len(natural) == 0 {
+		return out
+	}
+	avail := centerW - multiTabStripChrome(len(natural))
+	sorted := append([]float32(nil), natural...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	limit := sorted[len(sorted)-1]
+	for i, w := range sorted {
+		rest := float32(len(sorted) - i)
+		if w*rest > avail {
+			limit = avail / rest
+			break
+		}
+		avail -= w
+	}
+	limit = max(limit, tabMinW)
+	for i, w := range out {
+		out[i] = min(w, limit)
+	}
+	return out
 }
 
 func tabLabel(c *ui.Context, label string, fg ui.Color) {
@@ -94,11 +115,15 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW, availW float32, vie
 			c.After(16 * time.Millisecond)
 		}
 	}
-	tabW := multiTabWidth(centerW, len(p.Tabs))
+	natural := multiTabNaturalWidths(c, p)
+	tabWs := multiTabWidths(natural, centerW)
 	if m := p.MenuState; m != nil {
 		m.tabsNeedW = 0
 		if len(p.Tabs) > 1 {
-			m.tabsNeedW = multiTabStripNeed(c, p)
+			for _, w := range natural {
+				m.tabsNeedW += w
+			}
+			m.tabsNeedW += multiTabStripChrome(len(natural))
 		}
 	}
 	c.Key("titlebar-tab-strip")
@@ -125,7 +150,7 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW, availW float32, vie
 		}
 		dirSuffixes := tabDirSuffixes(p.Tabs)
 		for ix, tabPath := range p.Tabs {
-			renderMultiTab(c, p, ix, tabPath, dirSuffixes[tabPath], tabW, shouldReveal, middleClosePath)
+			renderMultiTab(c, p, ix, tabPath, dirSuffixes[tabPath], tabWs[ix], shouldReveal, middleClosePath)
 		}
 	})
 	if p.MenuState != nil {

@@ -4097,8 +4097,7 @@ func (w *Workspace) shellInputLocked(winW float32) ShellInput {
 		ChatVisible:     aiOpen || pluginPanelOpen,
 		ChatFullscreen:  aiOpen && w.ai.IsFullscreen(),
 		ChatDesiredW:    chatDesiredW,
-		TitlebarNeedW:        w.tabMenu.TitlebarNeedW,
-		TitlebarCompactLeftW: w.tabMenu.CompactLeftW,
+		TitlebarNeedW:   w.tabMenu.TitlebarNeedW,
 	}
 }
 

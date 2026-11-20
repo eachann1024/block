@@ -61,7 +61,6 @@ type TabMenuState struct {
 	// leaves less than that, the sidebar yields before tabs get squeezed.
 	tabsNeedW       float32
 	TitlebarNeedW   float32
-	CompactLeftW    float32
 	lastViewportW   float32
 	revealActiveTab bool
 
@@ -309,9 +308,6 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	leftW := leftLead + theme.ChromeBoxSize + 6
 	if !p.HideMark {
 		leftW += brandMarkGap + blockui.AppMarkButtonWidth
-	}
-	if p.MenuState != nil {
-		p.MenuState.CompactLeftW = leftW
 	}
 	if p.AIImmersive {
 		leftW = leftLead
