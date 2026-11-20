@@ -602,53 +602,78 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 			out.WriteString(strings.Repeat(" ", b.Indent))
 		}
 		inlineStr := SerializeInline(b.Spans)
-		if needsParagraphPrefixEscape(inlineStr) {
-			out.WriteByte('\\')
-		}
-		out.WriteString(inlineStr)
+		out.WriteString(escapeLiteralParagraphPrefix(inlineStr))
 		out.WriteByte('\n')
 	}
 }
 
-func needsParagraphPrefixEscape(s string) bool {
+func escapeLiteralParagraphPrefix(s string) string {
 	if s == "" {
-		return false
+		return s
 	}
-	if strings.HasPrefix(s, "$$") || strings.HasPrefix(s, ":::") {
-		return true
+	lead := 0
+	for lead < len(s) && (s[lead] == ' ' || s[lead] == '\t') {
+		lead++
 	}
-	// ATX headings `# `..`###### `
-	if s[0] == '#' {
+	if lead >= len(s) {
+		return s
+	}
+	rest := s[lead:]
+	// Already escaped or literal HTML tag.
+	if rest[0] == '\\' {
+		return s
+	}
+	// Display math / container / fenced code blocks.
+	if strings.HasPrefix(rest, "$$") || strings.HasPrefix(rest, ":::") ||
+		strings.HasPrefix(rest, "```") || strings.HasPrefix(rest, "~~~") {
+		return s[:lead] + `\` + rest
+	}
+	// ATX headings `# `..`###### ` or bare `#`..`######`.
+	if rest[0] == '#' {
 		n := 0
-		for n < len(s) && n < 6 && s[n] == '#' {
+		for n < len(rest) && n < 6 && rest[n] == '#' {
 			n++
 		}
-		if n >= 1 && n <= 6 && (n == len(s) || s[n] == ' ' || s[n] == '\t') {
-			return true
+		if n >= 1 && n <= 6 && (n == len(rest) || rest[n] == ' ' || rest[n] == '\t') {
+			return s[:lead] + `\` + rest
 		}
 	}
-	// Blockquote `>` / `>> `
-	if s[0] == '>' {
-		return true
+	// Blockquote `>` / `>> `.
+	if rest[0] == '>' {
+		return s[:lead] + `\` + rest
 	}
-	// Bullet `- ` / `+ ` / `* ` (note `*` is already escaped if needed, handle `-` and `+`).
-	if len(s) >= 2 && (s[0] == '-' || s[0] == '+') && (s[1] == ' ' || s[1] == '\t') {
-		return true
+	// Bullet `- ` / `+ ` / `* ` (or bare `-`/`+`/`*` on a line).
+	if rest[0] == '-' || rest[0] == '+' || rest[0] == '*' {
+		if len(rest) == 1 || rest[1] == ' ' || rest[1] == '\t' {
+			return s[:lead] + `\` + rest
+		}
 	}
-	// Thematic break `---`
-	if strings.HasPrefix(s, "---") {
-		allDash := true
-		for i := 0; i < len(s); i++ {
-			if s[i] != '-' && s[i] != ' ' {
-				allDash = false
+	// Thematic break: >= 3 identical `-`, `*`, or `_` with optional spaces/tabs.
+	if rest[0] == '-' || rest[0] == '*' || rest[0] == '_' {
+		ch := rest[0]
+		cnt := 0
+		onlyRule := true
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == ch {
+				cnt++
+			} else if rest[i] != ' ' && rest[i] != '\t' {
+				onlyRule = false
 				break
 			}
 		}
-		if allDash {
-			return true
+		if onlyRule && cnt >= 3 {
+			return s[:lead] + `\` + rest
 		}
 	}
-	return false
+	// Ordered list `1. ` / `1) `.
+	d := 0
+	for d < len(rest) && d < 9 && rest[d] >= '0' && rest[d] <= '9' {
+		d++
+	}
+	if d > 0 && d < len(rest) && (rest[d] == '.' || rest[d] == ')') && (d+1 == len(rest) || rest[d+1] == ' ' || rest[d+1] == '\t') {
+		return s[:lead+d] + `\` + rest[d:]
+	}
+	return s
 }
 
 func serializeImageBlock(b *model.Block, out *strings.Builder) {
@@ -1087,8 +1112,8 @@ func serializeInlineHTML(spans []model.Span, out *strings.Builder) {
 			closeTags = append(closeTags, "</code>")
 		}
 		if sp.Marks&model.MarkMath != 0 {
-			openTags = append(openTags, `<span class="math">$`)
-			closeTags = append(closeTags, `$</span>`)
+			openTags = append(openTags, `<span class="math">`)
+			closeTags = append(closeTags, `</span>`)
 		}
 		for _, t := range openTags {
 			out.WriteString(t)

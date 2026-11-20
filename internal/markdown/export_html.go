@@ -417,6 +417,7 @@ blockquote{margin:0 0 16px}
 .callout-title{font-size:14px;font-weight:700;letter-spacing:.04em;margin-bottom:6px}
 pre{margin:0 0 16px;padding:14px 18px;background:%s;%sborder-radius:%.0fpx;overflow-x:auto;font-family:%s;font-size:%.1fpx;line-height:%.2f;color:%s}
 code{font-family:%s;font-size:.9em;background:%s;padding:1px 5px%s}%s
+code.math{font-style:italic}
 pre code{background:transparent;padding:0;color:inherit}
 %s
 hr{border:0;border-top:1px solid %s;margin:18px 0}
@@ -772,10 +773,14 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 			closeTags = append(closeTags, "</a>")
 		}
 		var css strings.Builder
+		isThemedHighlight := false
 		if !legacy && isDefaultHighlightSpan(sp) && inl.Highlight != nil {
+			isThemedHighlight = true
 			hl := inl.Highlight
 			if hl.BG.A > 0 {
 				css.WriteString("background-color:" + uiColorCSS(hl.BG) + ";padding:1px 3px;border-radius:3px;")
+			} else {
+				css.WriteString("background-color:transparent;color:inherit;")
 			}
 			if hl.FG.A > 0 && !hasFG {
 				css.WriteString("color:" + uiColorCSS(hl.FG) + ";")
@@ -802,7 +807,10 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 		if !legacy && sp.Marks&model.MarkBold != 0 && inl.BoldWeight > 0 {
 			css.WriteString(fmt.Sprintf("font-weight:%d;", inl.BoldWeight))
 		}
-		if css.Len() > 0 {
+		if isThemedHighlight {
+			openTags = append(openTags, fmt.Sprintf(`<mark style="%s">`, css.String()))
+			closeTags = append(closeTags, "</mark>")
+		} else if css.Len() > 0 {
 			openTags = append(openTags, fmt.Sprintf(`<span style="%s">`, css.String()))
 			closeTags = append(closeTags, "</span>")
 		}
@@ -835,7 +843,7 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 			closeTags = append(closeTags, "</code>")
 		}
 		if sp.Marks&model.MarkMath != 0 {
-			openTags = append(openTags, `<code class="math" style="font-style:italic">`)
+			openTags = append(openTags, `<code class="math">`)
 			closeTags = append(closeTags, "</code>")
 		}
 		for _, t := range openTags {
