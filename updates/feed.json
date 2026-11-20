@@ -1,10 +1,88 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-20T18:11:22.282Z",
-  "latest_version": "1.0.856",
-  "latest_tag": "v1.0.856",
+  "updated_at": "2026-11-20T20:19:00.316Z",
+  "latest_version": "1.0.857",
+  "latest_tag": "v1.0.857",
   "releases": [
+    {
+      "version": "1.0.857",
+      "tag": "v1.0.857",
+      "published_at": "2026-11-20T20:18:59Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.857",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "新增了一项提升日常记录与编辑效率的实用功能。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化字体渲染、输入法候选框与文字光标定位。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Add cross-platform desktop system integration."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Bind desktop calls to actions and recover interrupted trash.",
+          "Cancel macOS keychain commands on timeout.",
+          "Stage recycled files in Block data directory.",
+          "Revalidate notice targets and remove stale badges.",
+          "Preserve filenames containing newlines on macOS.",
+          "Report denied macOS notification permission.",
+          "Isolate system credentials by install source.",
+          "Notify when save-triggered sync fails to finish.",
+          "Retain original paths for items restored from Trash.",
+          "Recheck file picker actions and support folder multiselect."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.857/block-macos-arm64.dmg",
+          "size": 15761336,
+          "sha256": "7bb6b6ddb3b3fb2c24066c9b15bd3f4d4d2d3349365a2d3c8a274df8c4a4a32d"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.857/block-macos-x64.dmg",
+          "size": 17290898,
+          "sha256": "b423c9eb23cd161e84d7a0291bf2171d845fad1247b997e1de4e7eed87ea641d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.857/block-windows-x64-setup.exe",
+          "size": 12759087,
+          "sha256": "78970e1ccd66ac8e73654aa39a8d1444082e9b032cf7da5b5b3b0f744b322eb4"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.857/block-linux-x64.deb",
+          "size": 11353170,
+          "sha256": "e48ca6887506d11e9bb5f56ab54902b9f311937f870afeac1821ee348a2f0388"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.857/block-linux-x64.AppImage",
+          "size": 24279544,
+          "sha256": "99f8937329f2642b81f1e930281d6c27474cee050faece8bfcf260682dd73733"
+        }
+      ]
+    },
     {
       "version": "1.0.856",
       "tag": "v1.0.856",
@@ -50,38 +128,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-macos-arm64.dmg",
-          "size": 15707411,
-          "sha256": "c1ca3d98dfc665de79cc0d9a3ef9e6f5dc39919ebe0ba303e954a45b69c8caf8"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-macos-x64.dmg",
-          "size": 17167469,
-          "sha256": "cf0655b795eca5b942b19089dca82640401fcbb9492f5d223b2dad0afe1949fb"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-windows-x64-setup.exe",
-          "size": 12673776,
-          "sha256": "ce46732e04b07c91219c43b7ccc59ed45f1e8137b17a1b53270c7703a3669f30"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-linux-x64.deb",
-          "size": 11208126,
-          "sha256": "6479374b737ca0ff5e92fa7cb09b480c631ad18aa4dacd4e901822082f9441c6"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-linux-x64.AppImage",
-          "size": 24103416,
-          "sha256": "3612cd8471f17a790fb88b38855bd0d4751d0d94b2ec0a6e1e8b1f6d188af150"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.855",
