@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-20T22:37:28.018Z",
-  "latest_version": "1.0.866",
-  "latest_tag": "v1.0.866",
+  "updated_at": "2026-11-20T23:21:37.581Z",
+  "latest_version": "1.0.867",
+  "latest_tag": "v1.0.867",
   "releases": [
+    {
+      "version": "1.0.867",
+      "tag": "v1.0.867",
+      "published_at": "2026-11-20T23:21:36Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.867",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "修复了一处日常编辑与界面交互中的细节问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Cancel native file dialogs with their actions.",
+          "Acknowledge notifications after delivery."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.867/block-macos-arm64.dmg",
+          "size": 15805011,
+          "sha256": "c6ffac4ef808d641e215676a8c3b2b88469efef50b7b9aebd8ad96d3a2fbf21c"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.867/block-macos-x64.dmg",
+          "size": 17338681,
+          "sha256": "f5709f073cacc6a739ccd106ac7c5dc832590481c7c050488767e4d194bad12f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.867/block-windows-x64-setup.exe",
+          "size": 12798061,
+          "sha256": "7b199468e16cfeb485072d1c9124d6b90d0ad87aacc6459ca1fb9ef4eeec3457"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.867/block-linux-x64.deb",
+          "size": 11385850,
+          "sha256": "8b2c930cc391cd39d7ddfb78fa996bc10282f5dcac752e332d66283bb9e58038"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.867/block-linux-x64.AppImage",
+          "size": 24308216,
+          "sha256": "f73997e9f6ec97993faa2c364aa4f527ca7a7c5394d02c67603f1a2b7c256fd6"
+        }
+      ]
+    },
     {
       "version": "1.0.866",
       "tag": "v1.0.866",
@@ -28,38 +86,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.866/block-macos-arm64.dmg",
-          "size": 15793997,
-          "sha256": "bf9a76303e960428ef3fc0c85d42ba5ea90146537dc83e88ab5711bc55076e8c"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.866/block-macos-x64.dmg",
-          "size": 17320867,
-          "sha256": "75b83203cfe86f20700459dbc496c06ce15e1c4d64df980405b7cbb91f5f32fd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.866/block-windows-x64-setup.exe",
-          "size": 12784849,
-          "sha256": "5a2e02ef08ae642a99b871aaf5312858144857a0dda1a45ecb7b37b243c6a787"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.866/block-linux-x64.deb",
-          "size": 11376182,
-          "sha256": "72ac8468191c6c9d58985e60a170b547e4853400f9022d71d0d5adadbcdfaa66"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.866/block-linux-x64.AppImage",
-          "size": 24304120,
-          "sha256": "b2bfeb6dd280ed68f3019c7c93a23578e3b0204ad890c6de25bbc5ba2a616113"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.865",
