@@ -449,13 +449,9 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 	for si, side := range [2]int{-1, 1} {
 		mask, head := make([]bool, len(lines)), make([]int, len(lines))
 		fl := make([]int8, len(lines))
-		fence, nested, fenceList, fenceQuote := "", false, false, 0
+		fence, fenceList, fenceQuote := "", false, 0
 		// fenceIndent: the content column of the list item a fence sits in (0: none).
 		fenceIndent := 0
-		// quoteBase: behind its quote markers, the indent of a fence opened four or more
-		// columns in, which only a quoted list item's content allows ("> 1. 安装" over
-		// ">     ```sh"); its closer may sit as far in.
-		quoteBase := 0
 		// qCol: behind the quote markers, the content column of the quoted list item
 		// the line sits in (0: none); without one, a quoted "```" four columns in is
 		// indented code, not a fence.
@@ -628,21 +624,12 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 			}
 			if fence != "" {
 				mask[i] = true
-				// Inside a plain fence "> ~~~" is code; only a fence opened behind a list or
-				// quote marker may close behind a quote marker. List items close by indent,
-				// so "- ~~~" inside a fence never closes it.
-				// A quote fence closes at its own depth only: in "> ~~~", ">> ~~~" is code.
-				quoteLead := 0
-				if nested && fenceQuote > 0 {
-					r := diffStripQuotes(t, fenceQuote)
-					t = strings.TrimLeft(r, " \t")
-					quoteLead = len(strings.ReplaceAll(r[:len(r)-len(t)], "\t", "    "))
-				} else if nested {
-					t = diffQuoteRE.ReplaceAllString(t, "")
+				// A quoted fence closes at its own quote depth; a plain fence
+				// treats a leading ">" as code. The note allows any closer indent.
+				if fenceQuote > 0 {
+					t = strings.TrimLeft(diffStripQuotes(t, fenceQuote), " \t")
 				}
-				// A closer indented four columns past its block is code.
-				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" &&
-					(fenceQuote > 0 && quoteLead-quoteBase < 4 || fenceQuote == 0 && lead-fenceIndent < 4) {
+				if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
 					// Code may follow at once, unless the fence sat in a list item, whose
 					// content is indented the same way.
 					fence, prevBlank, inIndented = "", !fenceList, false
@@ -662,19 +649,13 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 			if fence != "" {
 				mask[i], para, paraLines = true, false, nil
 				fl[i] = 1
-				nested, fenceQuote = diffContainerRE.MatchString(t), diffQuoteDepth(t)
+				fenceQuote = diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
 				// The item's content column, not the fence's own indent: "    ```" under
 				// "- 运行" still closes at "  ```".
-				fenceIndent, quoteBase = 0, 0
+				fenceIndent = 0
 				if fenceQuote == 0 && fenceList {
 					fenceIndent = listCol
-				}
-				if fenceQuote > 0 {
-					r := diffStripQuotes(t, fenceQuote)
-					if n := len(strings.ReplaceAll(r[:len(r)-len(strings.TrimLeft(r, " \t"))], "\t", "    ")); n >= 4 {
-						quoteBase = n
-					}
 				}
 			}
 		}
