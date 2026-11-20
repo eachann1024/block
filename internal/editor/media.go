@@ -585,10 +585,15 @@ func (s *Session) resetMedia() {
 func (s *Session) closeVideoPlayers() {
 	for k, p := range s.videoPlayers {
 		if p != nil {
+			if st := s.videoCtrlStates[k]; st != nil {
+				st.EndPlayerBoost(p)
+			}
 			p.Close()
 		}
 		delete(s.videoPlayers, k)
 	}
+	clear(s.videoCtrlStates)
+	s.activeVideoSrc = ""
 	clear(s.videoFailed)
 	clear(s.videoBytes)
 }
@@ -672,88 +677,83 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 
 	player, ok := s.resolveVideoPlayer(b.ImageSrc)
 	if ok {
-		vw, vh := player.Size()
-		stage := ui.Column(c.Key(fmt.Sprintf("video-stage-%d", id))).FillWidth().Background(pal.CodeBlockBG)
-		stage.Children(func() {
-			if player.Ready() && vw > 0 && vh > 0 {
-				vidEl := ui.Video(c, player).FillWidth().Cursor(ui.CursorPointer)
-				if vidEl.Clicked() {
-					if player.Playing() {
-						player.Pause()
-					} else {
-						player.Play()
-					}
+		ctrlState := s.videoCtrlState(b.ImageSrc)
+		thisExpanded, anyLightboxOpen := s.previewExpandedState(b.ImageSrc)
+		handleKeys := s.previewMedia != nil && !anyLightboxOpen && !thisExpanded &&
+			(s.activeVideoSrc == b.ImageSrc || (s.activeVideoSrc == "" && player.Playing()))
+		opts := appUi.VideoPlayerOptions{
+			ID:             fmt.Sprintf("video-stage-%d", id),
+			Label:          lbl,
+			PlayProbeID:    fmt.Sprintf("video-play-%d", id),
+			HideVideo:      thisExpanded,
+			HandleKeyboard: handleKeys,
+			OnInteract: func() {
+				s.activeVideoSrc = b.ImageSrc
+			},
+		}
+		if s.previewMedia != nil {
+			opts.MaxHeight = theme.VideoMaxInlineHeight
+			if s.onPreviewMediaOpen != nil {
+				opts.OnExpand = func() {
+					s.activeVideoSrc = b.ImageSrc
+					s.onPreviewMediaOpen(b.ImageSrc, true)
 				}
-			} else if s.previewMedia != nil {
-				ui.Video(c, player).FillWidth().Height(160).Fit(ui.Contain).Label(lbl)
-			} else {
-				ph := ui.Row(c.Key("vid-loading")).FillWidth().Height(160).Center().Gap(theme.Space8).Background(pal.CodeBlockBG)
-				ph.Children(func() {
-					ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
-				})
 			}
-
-			bar := ui.Row(c.Key("vid-controls")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).
-				Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
-			bar.Children(func() {
-				left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(1)
-				left.Children(func() {
-					playText := "▶"
-					playLabel := theme.Tr("播放", "Play")
-					if player.Playing() {
-						playText = "❚❚"
-						playLabel = theme.Tr("暂停", "Pause")
-					}
-					playBtn := ui.ButtonBase(c.Key(fmt.Sprintf("vid-play-%d", id))).Size(theme.IconButtonBox, theme.IconButtonBox).Center().
-						Radius(theme.RadiusSM).Background(pal.Hover).Cursor(ui.CursorPointer).Label(playLabel)
-					playBtn.Children(func() {
-						ui.Text(c, playText).FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
-					})
-					appUi.Probe(playBtn, fmt.Sprintf("video-play-%d", id))
-					if playBtn.Clicked() {
-						if player.Playing() {
-							player.Pause()
-						} else {
-							player.Play()
-						}
-					}
-					ui.Text(c, lbl).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
-				})
-
-				if s.previewMedia != nil {
-					return
-				}
-				openBtn := appUi.IconButton(c, icons.LinkOpen, appUi.IconButtonOptions{
-					ID:       fmt.Sprintf("vid-open-%d", id),
-					Label:    theme.Tr("用默认播放器打开", "Open in default player"),
-					Tooltip:  theme.Tr("用默认播放器打开", "Open in default player"),
-					Size:     theme.IconButtonBox,
-					IconSize: theme.IconInline,
-				})
-				if openBtn.Clicked() {
-					player.Pause()
-					s.openBlockLink(c.Services(), b.ImageSrc)
-				}
-			})
-		})
+		} else {
+			opts.OnOpenExternal = func() {
+				s.openBlockLink(c.Services(), b.ImageSrc)
+			}
+		}
+		appUi.RenderVideoPlayer(c, player, ctrlState, opts)
 		return
 	}
 
 	if s.previewMedia != nil {
 		asset := s.previewMedia(b.ImageSrc, true, false)
+		unavailable := asset.Unavailable || asset.Video != nil || s.videoFailed[b.ImageSrc]
 		label := theme.Tr("播放视频", "Play video")
 		if asset.Loading {
 			label = theme.Tr("正在加载视频…", "Loading video…")
-		} else if asset.Unavailable || asset.Video != nil || s.videoFailed[b.ImageSrc] {
+		} else if unavailable {
 			label = theme.Tr("视频无法播放", "Video unavailable")
 		}
-		ui.Row(c).FillWidth().Height(72).Center().Background(pal.CodeBlockBG).Children(func() {
-			btn := appUi.ActionButton(c, fmt.Sprintf("preview-video-%d", id), label, nil, appUi.ButtonSecondary, asset.Loading || asset.Unavailable || asset.Video != nil || s.videoFailed[b.ImageSrc])
-			if btn.Clicked() {
-				s.previewMedia(b.ImageSrc, true, true)
+		card := ui.Column(c.Key(fmt.Sprintf("preview-video-card-%d", id))).FillWidth().
+			Height(theme.VideoPlaceholderHeight).Center().Gap(theme.Space10).
+			Padding(theme.Space16, theme.Space20).Background(pal.CodeBlockBG)
+		if !asset.Loading && !unavailable {
+			card.Cursor(ui.CursorPointer)
+		}
+		var expandClicked bool
+		var playClicked bool
+		card.Children(func() {
+			if asset.Loading {
+				appUi.SparkleLoader(c, theme.IconChrome, pal.Accent, pal.AccentHover)
+			} else {
+				icons.Duo(c, icons.Video, theme.IconChrome, !unavailable)
 			}
+			ui.Text(c, lbl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+				FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Ellipsis("…")
+			ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+				btn := appUi.ActionButton(c, fmt.Sprintf("preview-video-%d", id), label, nil, appUi.ButtonPrimary, asset.Loading || unavailable)
+				if btn.Clicked() {
+					playClicked = true
+				}
+				if s.onPreviewMediaOpen != nil && !unavailable {
+					expBtn := appUi.ActionButton(c, fmt.Sprintf("preview-video-expand-%d", id), theme.Tr("放大观看", "Open in viewer"), nil, appUi.ButtonSecondary, false)
+					if expBtn.Clicked() {
+						expandClicked = true
+					}
+				}
+			})
 		})
+		if expandClicked {
+			s.activeVideoSrc = b.ImageSrc
+			s.previewMedia(b.ImageSrc, true, true)
+			s.onPreviewMediaOpen(b.ImageSrc, true)
+		} else if playClicked || (!asset.Loading && !unavailable && card.Clicked()) {
+			s.activeVideoSrc = b.ImageSrc
+			s.previewMedia(b.ImageSrc, true, true)
+		}
 		return
 	}
 

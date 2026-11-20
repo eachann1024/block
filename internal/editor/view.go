@@ -3090,8 +3090,11 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			imgSrc, hasImage = s.resolveImageSource(b.ImageSrc)
 		}
 	}
+	previewExpandable := s.previewMedia != nil && !isVideo && hasImage && s.onPreviewMediaOpen != nil
 	picCursor := ui.CursorDefault
-	if !readOnly && (isVideo || !hasImage) {
+	if previewExpandable {
+		picCursor = ui.CursorZoomIn
+	} else if !readOnly && (isVideo || !hasImage) {
 		picCursor = ui.CursorPointer
 	}
 
@@ -3107,7 +3110,10 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 			picBox := ui.Box(c.Key(fmt.Sprintf("img-frame-%d", id))).FillWidth().Radius(picRadius).Clip().
 				Cursor(picCursor).Border(1, picBorder)
 			picHovered := false
-			if !readOnly {
+			previewBadgeClicked := false
+			if previewExpandable {
+				picHovered = picBox.Hovered()
+			} else if !readOnly {
 				picHovered = picBox.Hovered()
 				if picBox.Clicked() {
 					mods := picBox.ClickModifiers()
@@ -3165,7 +3171,16 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				if isVideo {
 					s.renderVideoContent(c, id, b)
 				} else if animation != nil {
-					ui.Video(c, animation).FillWidth().Label(b.ImageAlt)
+					if animExpanded, _ := s.previewExpandedState(b.ImageSrc); animExpanded {
+						ui.Column(c).FillWidth().Height(theme.VideoPlaceholderHeight).Center().Gap(theme.Space8).Background(pal.CodeBlockBG).Children(func() {
+							icons.Duo(c, icons.Image, theme.IconChrome, true)
+							ui.Text(c, theme.Tr("正在放大视图中查看", "Viewing in expanded viewer")).
+								FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+								TextColor(pal.TextSecondary).SingleLine()
+						})
+					} else {
+						ui.Video(c, animation).FillWidth().Label(b.ImageAlt)
+					}
 				} else if hasImage {
 					ui.Image(c, imgSrc).FillWidth()
 				} else {
@@ -3198,7 +3213,15 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(txtCol)
 					})
 				}
+				if previewExpandable {
+					if appUi.DrawMediaExpandBadge(c, fmt.Sprintf("img-expand-%d", id), theme.Tr("点击放大", "Click to zoom"), picHovered) {
+						previewBadgeClicked = true
+					}
+				}
 			})
+			if previewExpandable && (previewBadgeClicked || picBox.Clicked()) {
+				s.onPreviewMediaOpen(b.ImageSrc, false)
+			}
 
 			// Keep the visible grip compact while retaining a larger target for dragging.
 			if showResizeHandles {
