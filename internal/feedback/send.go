@@ -3,6 +3,8 @@ package feedback
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,10 +32,16 @@ import (
 // "token", when the service returns one, is sent back as a Bearer token on
 // the part and complete calls. Any 2xx is success.
 
-// DefaultEndpoint is the base URL of the feedback service. Empty until the
-// service is live: sending then fails with ErrNotConfigured instead of
-// pretending the report went anywhere.
-const DefaultEndpoint = ""
+// DefaultEndpoint is the base URL of the feedback service. Kept empty in the
+// public repository and injected at release build time via -ldflags -X; when
+// empty, sending fails with ErrNotConfigured instead of pretending it sent.
+var DefaultEndpoint = ""
+
+// DefaultClientToken is an optional build-time client identifier sent on
+// POST /reports via X-Feedback-Client when configured. Kept empty in git.
+// Treat it as a public client identifier (anti-casual-spam), not a secret;
+// primary abuse defense lives in server-side rate limits and quotas.
+var DefaultClientToken = ""
 
 // LogPartID is the part id of the diagnostic log.
 const LogPartID = "log"
@@ -42,7 +51,16 @@ func Endpoint() string {
 	if env := strings.TrimSpace(os.Getenv("BLOCK_FEEDBACK_URL")); env != "" {
 		return strings.TrimRight(env, "/")
 	}
-	return strings.TrimRight(DefaultEndpoint, "/")
+	return strings.TrimRight(strings.TrimSpace(DefaultEndpoint), "/")
+}
+
+// ClientToken resolves the optional client token: BLOCK_FEEDBACK_CLIENT_TOKEN,
+// else DefaultClientToken.
+func ClientToken() string {
+	if env := strings.TrimSpace(os.Getenv("BLOCK_FEEDBACK_CLIENT_TOKEN")); env != "" {
+		return env
+	}
+	return strings.TrimSpace(DefaultClientToken)
 }
 
 // ErrKind groups failures by what the user can do about them.
@@ -52,7 +70,8 @@ const (
 	ErrNone          ErrKind = iota
 	ErrNotConfigured         // no service address: nothing was sent
 	ErrOffline               // could not reach the service: retry later
-	ErrServer                // the service failed (5xx, 429): retry later
+	ErrServer                // the service failed (5xx, 408): retry later
+	ErrRateLimited           // the service asked us to slow down (429)
 	ErrTooLarge              // the service refused the size (413)
 	ErrRejected              // the service refused the report (other 4xx)
 	ErrLocalFile             // an attachment could not be read any more
@@ -60,9 +79,11 @@ const (
 
 // SendError is a failed step with its kind and, for HTTP failures, status.
 type SendError struct {
-	Kind   ErrKind
-	Status int
-	Err    error
+	Kind       ErrKind
+	Status     int
+	Code       string
+	RetryAfter time.Duration
+	Err        error
 }
 
 func (e *SendError) Error() string {
@@ -74,8 +95,20 @@ func (e *SendError) Error() string {
 
 func (e *SendError) Unwrap() error { return e.Err }
 
-// retryable reports whether an automatic retry can help.
-func (e *SendError) retryable() bool { return e.Kind == ErrOffline || e.Kind == ErrServer }
+// retryable reports whether an automatic retry can help right away.
+// Long rate-limit cooldowns (> 5s) surface to the user instead of stalling
+// silently or adding more rate-limit strikes.
+func (e *SendError) retryable() bool {
+	if e.Kind == ErrOffline || e.Kind == ErrServer {
+		return true
+	}
+	return e.Kind == ErrRateLimited && e.RetryAfter > 0 && e.RetryAfter <= 5*time.Second
+}
+
+func (e *SendError) sessionExpired() bool {
+	return e != nil && e.Kind == ErrRejected &&
+		(e.Code == "report_expired" || e.Code == "upload_budget_exhausted")
+}
 
 // Report is everything one feedback submission carries.
 type Report struct {
@@ -123,12 +156,13 @@ const (
 
 // Snapshot is a consistent copy of the sender's state for one frame.
 type Snapshot struct {
-	Phase   Phase
-	Parts   []Part
-	Sent    int64
-	Total   int64
-	Attempt int // try of the step in flight, across create / part / complete
-	Err     *SendError
+	Phase        Phase
+	Parts        []Part
+	Sent         int64
+	Total        int64
+	StepProgress float32 // fallback 0..100 progress when Total == 0 (text-only report)
+	Attempt      int     // try of the step in flight, across create / part / complete
+	Err          *SendError
 }
 
 // Percent is the overall upload progress, 0–100.
@@ -137,7 +171,7 @@ func (s Snapshot) Percent() float32 {
 		return 100
 	}
 	if s.Total <= 0 {
-		return 0
+		return min(max(s.StepProgress, 0), 100)
 	}
 	return min(float32(s.Sent)/float32(s.Total)*100, 100)
 }
@@ -160,11 +194,13 @@ const MaxAttempts = 3
 var retryBackoff = []time.Duration{time.Second, 3 * time.Second}
 
 type reportRequest struct {
-	Category string        `json:"category"`
-	Message  string        `json:"message"`
-	Contact  string        `json:"contact,omitempty"`
-	App      reportApp     `json:"app"`
-	Parts    []reportPartV `json:"parts"`
+	Project         string        `json:"project,omitempty"`
+	ClientRequestID string        `json:"client_request_id,omitempty"`
+	Category        string        `json:"category"`
+	Message         string        `json:"message"`
+	Contact         string        `json:"contact,omitempty"`
+	App             reportApp     `json:"app"`
+	Parts           []reportPartV `json:"parts"`
 }
 
 type reportApp struct {
@@ -182,36 +218,50 @@ type reportPartV struct {
 }
 
 type reportResponse struct {
-	ID    string `json:"id"`
-	Token string `json:"token"`
+	ID               string `json:"id"`
+	Token            string `json:"token"`
+	AlreadyCompleted bool   `json:"already_completed"`
 }
 
 // Sender uploads one report in the background. It is safe to read from the
 // UI thread through Snapshot; onChange is called (from the worker) whenever
 // the snapshot changes.
 type Sender struct {
-	report   Report
-	endpoint string
-	client   *http.Client
-	onChange func()
+	report          Report
+	endpoint        string
+	clientToken     string
+	clientRequestID string
+	client          *http.Client
+	onChange        func()
 
-	mu       sync.Mutex
-	snap     Snapshot
-	paths    map[string]string // part id -> file to upload
-	reportID string
-	token    string
-	cancel   context.CancelFunc
-	running  bool
-	lastTick time.Time
+	mu               sync.Mutex
+	snap             Snapshot
+	paths            map[string]string // part id -> file to upload
+	reportID         string
+	token            string
+	alreadyCompleted bool
+	cancel           context.CancelFunc
+	running          bool
+	lastTick         time.Time
+}
+
+func newClientRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("req%016x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // NewSender prepares a submission; nothing is sent until Start.
 func NewSender(r Report, onChange func()) *Sender {
 	s := &Sender{
-		report:   r,
-		endpoint: Endpoint(),
-		onChange: onChange,
-		paths:    map[string]string{},
+		report:          r,
+		endpoint:        Endpoint(),
+		clientToken:     ClientToken(),
+		clientRequestID: newClientRequestID(),
+		onChange:        onChange,
+		paths:           map[string]string{},
 		client: &http.Client{Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			DialContext:           (&net.Dialer{Timeout: 15 * time.Second}).DialContext,
@@ -316,44 +366,97 @@ func (s *Sender) finish(phase Phase, err *SendError) {
 	s.notify(true)
 }
 
+func (s *Sender) resetSession() {
+	s.mu.Lock()
+	s.reportID = ""
+	s.token = ""
+	s.snap.Sent = 0
+	s.snap.StepProgress = 15
+	for i := range s.snap.Parts {
+		p := &s.snap.Parts[i]
+		p.State, p.Sent, p.Err, p.Attempt = PartWaiting, 0, nil, 0
+	}
+	s.mu.Unlock()
+	s.notify(true)
+}
+
+func (s *Sender) setStepProgress(pct float32) {
+	s.mu.Lock()
+	s.snap.StepProgress = pct
+	s.mu.Unlock()
+	s.notify(true)
+}
+
 func (s *Sender) run(ctx context.Context) {
 	if s.endpoint == "" {
 		s.finish(PhaseFailed, &SendError{Kind: ErrNotConfigured, Err: errors.New("feedback service is not configured")})
 		return
 	}
-	if s.reportID == "" {
-		if err := s.withRetry(ctx, nil, s.createReport); err != nil {
-			s.finish(PhaseFailed, err)
-			return
+	for sessionTry := 0; sessionTry < 2; sessionTry++ {
+		if s.reportID == "" {
+			s.setStepProgress(20)
+			if err := s.withRetry(ctx, nil, s.createReport); err != nil {
+				s.finish(PhaseFailed, err)
+				return
+			}
+			s.mu.Lock()
+			alreadyDone := s.alreadyCompleted
+			s.mu.Unlock()
+			if alreadyDone {
+				s.finish(PhaseDone, nil)
+				return
+			}
+			s.setStepProgress(55)
 		}
-	}
-	var firstErr *SendError
-	for i := range s.report.Attachments {
-		a := s.report.Attachments[i]
-		if err := s.uploadPart(ctx, a.ID); err != nil && firstErr == nil {
-			firstErr = err
+		var firstErr *SendError
+		sessionLost := false
+		for i := range s.report.Attachments {
+			a := s.report.Attachments[i]
+			if err := s.uploadPart(ctx, a.ID); err != nil {
+				if err.sessionExpired() && sessionTry == 0 {
+					sessionLost = true
+					break
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+			if ctx.Err() != nil {
+				return
+			}
+		}
+		if !sessionLost && s.report.Log != "" {
+			if err := s.uploadPart(ctx, LogPartID); err != nil {
+				if err.sessionExpired() && sessionTry == 0 {
+					sessionLost = true
+				} else if firstErr == nil {
+					firstErr = err
+				}
+			}
 		}
 		if ctx.Err() != nil {
 			return
 		}
-	}
-	if s.report.Log != "" {
-		if err := s.uploadPart(ctx, LogPartID); err != nil && firstErr == nil {
-			firstErr = err
+		if sessionLost {
+			s.resetSession()
+			continue
 		}
-	}
-	if ctx.Err() != nil {
+		if firstErr != nil {
+			s.finish(PhaseFailed, firstErr)
+			return
+		}
+		s.setStepProgress(80)
+		if err := s.withRetry(ctx, nil, s.completeReport); err != nil {
+			if err.sessionExpired() && sessionTry == 0 {
+				s.resetSession()
+				continue
+			}
+			s.finish(PhaseFailed, err)
+			return
+		}
+		s.finish(PhaseDone, nil)
 		return
 	}
-	if firstErr != nil {
-		s.finish(PhaseFailed, firstErr)
-		return
-	}
-	if err := s.withRetry(ctx, nil, s.completeReport); err != nil {
-		s.finish(PhaseFailed, err)
-		return
-	}
-	s.finish(PhaseDone, nil)
 }
 
 // withRetry runs one step up to MaxAttempts times, backing off between
@@ -378,10 +481,14 @@ func (s *Sender) withRetry(ctx context.Context, part *string, step func(context.
 		if ctx.Err() != nil || !last.retryable() || attempt == MaxAttempts {
 			return last
 		}
+		wait := retryBackoff[min(attempt-1, len(retryBackoff)-1)]
+		if last.RetryAfter > wait {
+			wait = last.RetryAfter
+		}
 		select {
 		case <-ctx.Done():
 			return last
-		case <-time.After(retryBackoff[min(attempt-1, len(retryBackoff)-1)]):
+		case <-time.After(wait):
 		}
 	}
 	return last
@@ -418,11 +525,13 @@ func kindName(k Kind, isLog bool) string {
 
 func (s *Sender) createReport(ctx context.Context) *SendError {
 	req := reportRequest{
-		Category: s.report.Category,
-		Message:  s.report.Message,
-		Contact:  s.report.Contact,
-		App:      reportApp{Version: s.report.AppVersion, OS: runtime.GOOS, Arch: runtime.GOARCH, Lang: s.report.Lang},
-		Parts:    []reportPartV{},
+		Project:         "block",
+		ClientRequestID: s.clientRequestID,
+		Category:        s.report.Category,
+		Message:         s.report.Message,
+		Contact:         s.report.Contact,
+		App:             reportApp{Version: s.report.AppVersion, OS: runtime.GOOS, Arch: runtime.GOARCH, Lang: s.report.Lang},
+		Parts:           []reportPartV{},
 	}
 	for _, p := range s.Snapshot().Parts {
 		req.Parts = append(req.Parts, reportPartV{ID: p.ID, Name: p.Name, Kind: kindName(p.Kind, p.IsLog), Bytes: p.Total})
@@ -433,6 +542,9 @@ func (s *Sender) createReport(ctx context.Context) *SendError {
 		return &SendError{Kind: ErrNotConfigured, Err: err}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if s.clientToken != "" {
+		httpReq.Header.Set("X-Feedback-Client", s.clientToken)
+	}
 	respBody, sendErr := s.do(httpReq)
 	if sendErr != nil {
 		return sendErr
@@ -442,7 +554,7 @@ func (s *Sender) createReport(ctx context.Context) *SendError {
 		return &SendError{Kind: ErrServer, Err: errors.New("feedback service returned no report id")}
 	}
 	s.mu.Lock()
-	s.reportID, s.token = out.ID, out.Token
+	s.reportID, s.token, s.alreadyCompleted = out.ID, out.Token, out.AlreadyCompleted
 	s.mu.Unlock()
 	return nil
 }
@@ -503,17 +615,35 @@ func (s *Sender) putPart(ctx context.Context, id string) *SendError {
 	if id == LogPartID {
 		body, size, name = strings.NewReader(s.report.Log), int64(len(s.report.Log)), "block.log"
 	} else {
-		f, err := os.Open(s.paths[id])
+		p := s.paths[id]
+		if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+			if err == nil {
+				err = errors.New("feedback: attachment is not a regular file")
+			}
+			return &SendError{Kind: ErrLocalFile, Err: err}
+		}
+		f, err := os.Open(p)
 		if err != nil {
 			return &SendError{Kind: ErrLocalFile, Err: err}
 		}
 		defer f.Close()
 		info, err := f.Stat()
-		if err != nil {
+		if err != nil || !info.Mode().IsRegular() {
+			if err == nil {
+				err = errors.New("feedback: attachment is not a regular file")
+			}
 			return &SendError{Kind: ErrLocalFile, Err: err}
 		}
 		body, size = f, info.Size()
-		s.setPart(id, func(p *Part) { name = p.Name })
+		s.mu.Lock()
+		if p := s.partLocked(id); p != nil {
+			name = p.Name
+			if p.Total != size {
+				s.snap.Total += size - p.Total
+				p.Total = size
+			}
+		}
+		s.mu.Unlock()
 	}
 
 	counted := &countingReader{r: body, onRead: func(n int) {
@@ -535,6 +665,22 @@ func (s *Sender) putPart(ctx context.Context, id string) *SendError {
 	return sendErr
 }
 
+func parseRetryAfter(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
+		return min(time.Duration(secs)*time.Second, 10*time.Minute)
+	}
+	if when, err := http.ParseTime(raw); err == nil {
+		if d := time.Until(when); d > 0 {
+			return min(d, 10*time.Minute)
+		}
+	}
+	return 0
+}
+
 // do runs a request and maps the outcome to a SendError.
 func (s *Sender) do(req *http.Request) ([]byte, *SendError) {
 	s.mu.Lock()
@@ -549,15 +695,26 @@ func (s *Sender) do(req *http.Request) ([]byte, *SendError) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	var errPayload struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(body, &errPayload)
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return body, nil
 	case resp.StatusCode == http.StatusRequestEntityTooLarge:
-		return nil, &SendError{Kind: ErrTooLarge, Status: resp.StatusCode}
-	case resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusRequestTimeout:
-		return nil, &SendError{Kind: ErrServer, Status: resp.StatusCode}
+		return nil, &SendError{Kind: ErrTooLarge, Status: resp.StatusCode, Code: errPayload.Code}
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, &SendError{
+			Kind:       ErrRateLimited,
+			Status:     resp.StatusCode,
+			Code:       errPayload.Code,
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
+		}
+	case resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout:
+		return nil, &SendError{Kind: ErrServer, Status: resp.StatusCode, Code: errPayload.Code}
 	default:
-		return nil, &SendError{Kind: ErrRejected, Status: resp.StatusCode}
+		return nil, &SendError{Kind: ErrRejected, Status: resp.StatusCode, Code: errPayload.Code}
 	}
 }
 

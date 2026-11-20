@@ -60,8 +60,16 @@ func Probe(path string) (Attachment, error) {
 	}
 	defer f.Close()
 
+	fi, err := f.Stat()
+	if err != nil {
+		return Attachment{}, err
+	}
+	if !fi.Mode().IsRegular() {
+		return Attachment{}, fmt.Errorf("feedback: %s is not a regular file", path)
+	}
+
 	ext := strings.ToLower(filepath.Ext(path))
-	origBytes := info.Size()
+	origBytes := fi.Size()
 	att := Attachment{
 		ID:         newAttachmentID(),
 		Path:       path,
@@ -88,7 +96,60 @@ func Probe(path string) (Attachment, error) {
 		}
 	}
 
+	// Pin an immutable private snapshot in feedback-tmp for sendable files so
+	// swapping the source path to a symlink/FIFO or editing/moving it before
+	// Send can never upload unexpected data or stall os.Open.
+	if !att.Temp && origBytes <= att.LimitBytes() {
+		if snapPath, snapBytes, err := snapshotAttachment(f, ext, att.LimitBytes()); err == nil {
+			att.UploadPath = snapPath
+			att.OrigBytes = snapBytes
+			att.Bytes = snapBytes
+			att.Temp = true
+		} else {
+			return Attachment{}, err
+		}
+	}
+
 	return att, nil
+}
+
+func snapshotAttachment(f *os.File, ext string, maxBytes int64) (string, int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", 0, err
+	}
+	dir := tempDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", 0, err
+	}
+	tmpFile, err := os.CreateTemp(dir, "fb-snap-*"+safeTempExt(ext))
+	if err != nil {
+		return "", 0, err
+	}
+	tmpPath := tmpFile.Name()
+	_ = tmpFile.Chmod(0o600)
+	n, copyErr := io.Copy(tmpFile, io.LimitReader(f, maxBytes+1))
+	closeErr := tmpFile.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", 0, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", 0, closeErr
+	}
+	return tmpPath, n, nil
+}
+
+func safeTempExt(ext string) string {
+	if len(ext) < 2 || len(ext) > 10 || ext[0] != '.' {
+		return ".bin"
+	}
+	for _, r := range ext[1:] {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return ".bin"
+		}
+	}
+	return ext
 }
 
 // Discard 删除本附件拥有的临时文件（Temp 为 true 时）；可重复调用。
@@ -202,7 +263,7 @@ func compressImageAttachment(r io.Reader, origName string, origBytes int64) (com
 	}
 
 	dir := tempDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return compressedImageResult{}, false
 	}
 	tmpFile, err := os.CreateTemp(dir, "fb-*"+outExt)
@@ -210,6 +271,7 @@ func compressImageAttachment(r io.Reader, origName string, origBytes int64) (com
 		return compressedImageResult{}, false
 	}
 	tmpPath := tmpFile.Name()
+	_ = tmpFile.Chmod(0o600)
 	if _, err := tmpFile.Write(buf.Bytes()); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
