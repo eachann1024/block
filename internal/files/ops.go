@@ -119,7 +119,8 @@ func validateItemName(raw string) (string, error) {
 }
 
 // RenameItem validates newName and renames oldPath on disk, preserving the
-// Markdown extension for Markdown notes and updating history and file_order.
+// hidden ".md" extension for canonical Markdown notes and updating history and
+// file_order.
 func RenameItem(oldPath, newName string) (string, error) {
 	info, err := os.Lstat(oldPath)
 	if err != nil {
@@ -134,12 +135,12 @@ func RenameItem(oldPath, newName string) (string, error) {
 
 	base := filepath.Base(oldPath)
 	fileName := name
-	if !isDir && IsMarkdown(base) {
-		ext := strings.TrimPrefix(filepath.Ext(base), ".")
-		if ext == "" {
-			ext = "md"
+	if !isDir && HasHiddenExtension(base) {
+		if HasHiddenExtension(name) {
+			fileName = name
+		} else {
+			fileName = name + filepath.Ext(base)
 		}
-		fileName = name + "." + ext
 	}
 
 	target := filepath.Join(filepath.Dir(oldPath), fileName)
