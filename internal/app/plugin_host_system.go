@@ -55,7 +55,10 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
 	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
 	if win := w.Window(); win != nil {
-		win.OnFocus(w.pluginUI.restoreDeferredToasts)
+		win.OnFocus(func() {
+			w.pluginUI.restoreDeferredToasts()
+			sup.RetrySyncNotifications()
+		})
 	}
 	if runtime.GOOS == "darwin" {
 		mygo.App.OnDidBecomeActive(onFocus)
@@ -178,17 +181,18 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		if configRoot == "" {
 			configRoot = sup.NotebookRoot()
 		}
-		native := func(ctx context.Context) error {
-			return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, func() bool {
-				current, ok := sup.GetInstalled(pluginID)
-				return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify) &&
-					(pluginID != "block-sync" || plugins.SyncNotificationsEnabled(current.DataDir, configRoot))
-			})
+		stillAllowed := func() bool {
+			current, ok := sup.GetInstalled(pluginID)
+			return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify) &&
+				(pluginID != "block-sync" || plugins.SyncNotificationsEnabled(current.DataDir, configRoot))
 		}
-		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil, native) {
+		native := func(ctx context.Context) error {
+			return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, stillAllowed)
+		}
+		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil, native, stillAllowed) {
 			return plugins.ErrSystemBusy
 		}
-		return nil
+		return plugins.ErrSystemQueued
 	}
 	return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, allowed)
 }

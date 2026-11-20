@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +73,7 @@ var (
 	ErrSystemUnavailable = errors.New("system feature unavailable")
 	ErrSystemBusy        = errors.New("system feature busy")
 	ErrSystemCanceled    = errors.New("system operation canceled")
+	ErrSystemQueued      = errors.New("system notification queued")
 	secretKeyPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 	extensionPattern     = regexp.MustCompile(`^(\*|\.?[A-Za-z0-9][A-Za-z0-9._+-]{0,31})$`)
 )
@@ -417,18 +419,21 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		case <-ctx.Done():
 		}
 	}()
-	suppressed, err := s.sendSystemNotice(ctx, id, title, body, normalizeTone(p.Tone), root, rel, p.DedupKey, allowed)
+	suppressed, delivered, err := s.sendSystemNotice(ctx, id, title, body, normalizeTone(p.Tone), root, rel, p.DedupKey, allowed)
+	if errors.Is(err, ErrSystemQueued) {
+		return map[string]any{"ok": false, "suppressed": false, "queued": true, "delivered": false}, nil
+	}
 	if err != nil {
 		return nil, systemRPCError(err)
 	}
-	return map[string]any{"ok": true, "suppressed": suppressed}, nil
+	return map[string]any{"ok": true, "suppressed": suppressed, "delivered": delivered}, nil
 }
 
-func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel, dedupKey string, allowed func() bool) (bool, error) {
+func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel, dedupKey string, allowed func() bool) (suppressed, delivered bool, err error) {
 	key := sha256.Sum256([]byte(strings.Join([]string{title, body, root, rel, dedupKey}, "\x00")))
 	for {
 		if ctx.Err() != nil || !allowed() {
-			return false, ErrSystemCanceled
+			return false, false, ErrSystemCanceled
 		}
 		s.system.mu.Lock()
 		if s.system.notices == nil {
@@ -447,43 +452,69 @@ func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone
 			case <-prev.done:
 				continue
 			case <-ctx.Done():
-				return false, ErrSystemCanceled
+				return false, false, ErrSystemCanceled
 			}
 		}
-		if (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) || now.Sub(prev.keys[key]) < 2*time.Minute {
+		alreadyDelivered := now.Sub(prev.keys[key]) < 2*time.Minute
+		if alreadyDelivered || (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) {
 			s.system.mu.Unlock()
-			return true, nil
+			return true, alreadyDelivered, nil
 		}
 		done := make(chan struct{})
-		s.system.notices[id] = systemNotice{done: done}
+		prev.done = done
+		s.system.notices[id] = prev
 		s.system.mu.Unlock()
 		err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, fmt.Sprintf("%x", key), allowed)
 		s.system.mu.Lock()
+		prev = s.system.notices[id]
+		prev.done = nil
 		if err == nil {
-			now = time.Now()
-			if prev.keys == nil {
-				prev.keys = make(map[[32]byte]time.Time)
-			}
-			var oldest [32]byte
-			var oldestTime time.Time
-			for event, at := range prev.keys {
-				if now.Sub(at) >= 2*time.Minute {
-					delete(prev.keys, event)
-				} else if oldestTime.IsZero() || at.Before(oldestTime) {
-					oldest, oldestTime = event, at
-				}
-			}
-			if len(prev.keys) >= 64 {
-				delete(prev.keys, oldest)
-			}
-			prev.at = now
-			prev.keys[key] = now
+			prev.markDelivered(key)
 		}
 		s.system.notices[id] = prev
 		close(done)
 		s.system.mu.Unlock()
-		return false, err
+		return false, err == nil, err
 	}
+}
+
+func (s *Supervisor) MarkSystemNoticeDelivered(pluginID, eventKey string) {
+	var key [32]byte
+	if len(eventKey) != hex.EncodedLen(len(key)) {
+		return
+	}
+	if _, err := hex.Decode(key[:], []byte(eventKey)); err != nil {
+		return
+	}
+	s.system.mu.Lock()
+	defer s.system.mu.Unlock()
+	if s.system.notices == nil {
+		s.system.notices = make(map[string]systemNotice)
+	}
+	notice := s.system.notices[pluginID]
+	notice.markDelivered(key)
+	s.system.notices[pluginID] = notice
+}
+
+func (notice *systemNotice) markDelivered(key [32]byte) {
+	now := time.Now()
+	if notice.keys == nil {
+		notice.keys = make(map[[32]byte]time.Time)
+	}
+	var oldest [32]byte
+	var oldestTime time.Time
+	for event, at := range notice.keys {
+		if now.Sub(at) >= 2*time.Minute {
+			delete(notice.keys, event)
+		} else if oldestTime.IsZero() || at.Before(oldestTime) {
+			oldest, oldestTime = event, at
+		}
+	}
+	if len(notice.keys) >= 64 {
+		delete(notice.keys, oldest)
+	}
+	notice.at = now
+	notice.keys[key] = now
 }
 
 func (s *Supervisor) setSystemBadge(rt *Runtime, count int, allowed func() bool) error {
@@ -991,9 +1022,12 @@ func (s *Supervisor) drainSystemFailureNotices() {
 		s.system.mu.Unlock()
 		for _, notice := range pending {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
+			_, _, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
 			expired := ctx.Err() != nil
 			cancel()
+			if errors.Is(err, ErrSystemQueued) {
+				continue
+			}
 			if err != nil && (!errors.Is(err, ErrSystemCanceled) || expired) {
 				break
 			}
