@@ -187,6 +187,7 @@ type AppState struct {
 	FeedbackDraft         *FeedbackDraft      `json:"feedback_draft,omitempty"`
 	UpdateSource          string              `json:"update_source,omitempty"`
 	LastUpdatedFrom       string              `json:"last_updated_from,omitempty"`
+	TelemetryOff          bool                `json:"telemetry_off,omitempty"`
 	BrandDeco             BrandDeco           `json:"brand_deco,omitzero"`
 	TreeSort              TreeSortMode        `json:"tree_sort,omitempty"`
 	TarotMode             bool                `json:"tarot_mode,omitempty"`
