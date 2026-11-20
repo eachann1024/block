@@ -1275,6 +1275,14 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 			}
 		}
 		body = diffEscapeURLs(diffPlainLinks(body, st.Refs))
+		// Only bullet items become tasks in the note. An entity keeps the
+		// ordered item's opening bracket visible without triggering mygo's checkbox.
+		if marker := diffCellListRE.FindString(body[len(q):]); marker != "" {
+			k := len(q) + len(marker)
+			if after := body[k:]; diffTaskMarkRE.MatchString(after) || after == "[ ]" || after == "[x]" || after == "[X]" {
+				body = body[:k] + "&#91;" + after[1:]
+			}
+		}
 		if !math {
 			body = diffLiteralStart(body)
 		}
