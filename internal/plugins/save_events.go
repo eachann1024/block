@@ -177,12 +177,10 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 		v.failedSaves[absNotePath] = relSlash + " · " + err.Error()
 		delete(v.savePausedConfirm, absNotePath)
 	} else if eventOutcome == "pending_confirm" {
-		if v.failedSaves[absNotePath] != "" {
-			if v.savePausedConfirm == nil {
-				v.savePausedConfirm = make(map[string]bool)
-			}
-			v.savePausedConfirm[absNotePath] = true
-		}
+		// The prior save failure has been replaced by the plugin's own pending-confirmation
+		// workflow; clear the stale error so HasPluginError and the titlebar stop showing it.
+		delete(v.failedSaves, absNotePath)
+		delete(v.savePausedConfirm, absNotePath)
 	} else if eventOutcome != "skipped" {
 		delete(v.failedSaves, absNotePath)
 		delete(v.savePausedConfirm, absNotePath)
