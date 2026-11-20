@@ -467,6 +467,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
+	s.commentDraft = ""
 	s.annotFlashID = ""
 	s.annotFlashAt = time.Time{}
 	s.annotFlashAlpha = 0
@@ -893,6 +894,10 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.toolbarMoreIndex = 0
+	s.commentDraft = ""
+	s.annotFlashID = ""
+	s.annotFlashAt = time.Time{}
+	s.annotFlashAlpha = 0
 	s.reactionPickerAnnotID = ""
 	s.cancelInlineAI()
 	s.inlineAI = nil
@@ -1014,6 +1019,7 @@ func (s *Session) closeTransientOverlays() {
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
+	s.commentDraft = ""
 	s.annotFlashID = ""
 	s.annotFlashAt = time.Time{}
 	s.annotFlashAlpha = 0
