@@ -170,6 +170,8 @@ type inlineScanState struct {
 	noCommentCloseFrom    int
 	nextAngleGT           int
 	nextAngleGTLineEnd    int
+	angleAfterGTFor       int
+	angleAfterGTClose     int
 	unclosedBrackets      map[int]bool
 	unclosedParens        map[int]bool
 	tagFailWatermark      int
@@ -186,6 +188,8 @@ func newInlineScanState(s string) *inlineScanState {
 		noCommentCloseFrom: -1,
 		nextAngleGT:        -1,
 		nextAngleGTLineEnd: -1,
+		angleAfterGTFor:    -1,
+		angleAfterGTClose:  -1,
 		tagFailWatermark:   -1,
 	}
 }
@@ -885,14 +889,22 @@ func tryParseAutolink(s string) (display, linkURL string, consumed int, ok bool)
 	if len(s) < 4 || s[0] != '<' {
 		return "", "", 0, false
 	}
-	end := strings.IndexByte(s[1:], '>')
+	end := -1
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '>':
+			end = i - 1
+		case ' ', '\t', '\r', '\n', '<':
+			return "", "", 0, false
+		}
+		if end >= 0 {
+			break
+		}
+	}
 	if end <= 0 {
 		return "", "", 0, false
 	}
 	inner := s[1 : 1+end]
-	if strings.ContainsAny(inner, " \t\r\n<") {
-		return "", "", 0, false
-	}
 	if colon := strings.IndexByte(inner, ':'); colon >= 2 {
 		scheme := inner[:colon]
 		validScheme := isASCIIAlpha(scheme[0])
@@ -1013,7 +1025,9 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 		return "", i + 1 - start, true
 	}
 	urlStart, urlEnd := 0, 0
+	isAngleDest := false
 	if s[i] == '<' {
+		isAngleDest = true
 		i++
 		urlStart = i
 		if i >= st.nextAngleGTLineEnd || (st.nextAngleGT >= 0 && st.nextAngleGT < i) {
@@ -1041,6 +1055,12 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			return "", 0, false
 		}
 		urlEnd = st.nextAngleGT
+		if st.angleAfterGTFor == urlEnd {
+			if st.angleAfterGTClose < 0 {
+				return "", 0, false
+			}
+			return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), st.angleAfterGTClose + 1 - start, true
+		}
 		i = urlEnd + 1
 	} else {
 		urlStart = i
@@ -1094,6 +1114,10 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			i++
 		}
 		if i >= len(s) {
+			if isAngleDest {
+				st.angleAfterGTFor = urlEnd
+				st.angleAfterGTClose = -1
+			}
 			return "", 0, false
 		}
 		i++
@@ -1102,7 +1126,15 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 		}
 	}
 	if i >= len(s) || s[i] != ')' {
+		if isAngleDest {
+			st.angleAfterGTFor = urlEnd
+			st.angleAfterGTClose = -1
+		}
 		return "", 0, false
+	}
+	if isAngleDest {
+		st.angleAfterGTFor = urlEnd
+		st.angleAfterGTClose = i
 	}
 	return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), i + 1 - start, true
 }
