@@ -176,7 +176,9 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 			if in.Changed() || p.query != p.lastQuery {
 				p.lastQuery = p.query
 				p.selected = 0
+				p.scroll.Y = 0
 				p.revealSelected = true
+				filtered = filterPaletteItems(items, p.query)
 			}
 			if !in.Composing() && in.Submitted() {
 				runSelected()
@@ -232,13 +234,18 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 					row.Children(func() {
 						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 							ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
-								ui.Text(c, item.Title).
-									FontSize(theme.FontBody).LineHeight(theme.LineBody / theme.FontBody).
-									FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Ellipsis("…")
+								var titleMarks, subMarks [][2]int
+								if strings.TrimSpace(p.query) != "" {
+									titleMarks = fuzzy.HighlightRanges(item.Title, p.query)
+									if item.Subtitle != "" && len(titleMarks) == 0 {
+										subMarks = fuzzy.HighlightRanges(item.Subtitle, p.query)
+									}
+								}
+								blockui.HighlightedText(c, item.Title, titleMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight).
+									LineHeight(theme.LineBody / theme.FontBody)
 								if item.Subtitle != "" {
-									ui.Text(c, item.Subtitle).
-										FontSize(theme.FontSmall).LineHeight(theme.LineSmall / theme.FontSmall).
-										TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+									blockui.HighlightedText(c, item.Subtitle, subMarks, theme.FontSmall, 0, pal.TextSecondary, pal.SearchHighlight).
+										LineHeight(theme.LineSmall / theme.FontSmall)
 								}
 							})
 							if item.Shortcut != "" {
