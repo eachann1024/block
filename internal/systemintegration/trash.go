@@ -17,19 +17,52 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 	if !allowed() || !validPath() {
 		return errors.New("trash operation is no longer allowed")
 	}
-	parent, name := filepath.Dir(path), filepath.Base(path)
-	root, err := os.OpenRoot(parent)
+	dataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return err
+	}
+	dataDir, err = filepath.EvalSymlinks(dataDir)
+	if err != nil {
+		return err
+	}
+	anchor := filepath.Dir(path)
+	var stagingBase string
+	for {
+		stagingBase, err = filepath.Rel(anchor, filepath.Join(dataDir, "trash-staging"))
+		if err == nil && filepath.IsLocal(stagingBase) {
+			break
+		}
+		parent := filepath.Dir(anchor)
+		if parent == anchor {
+			return errors.New("no safe trash staging location on the file's volume")
+		}
+		anchor = parent
+	}
+	name, err := filepath.Rel(anchor, path)
+	if err != nil || !filepath.IsLocal(name) {
+		return errors.New("invalid trash source")
+	}
+	root, err := os.OpenRoot(anchor)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 	id := rand.Text()
-	dir := ".block-trash-" + id
+	if err := root.MkdirAll(stagingBase, 0o700); err != nil {
+		return err
+	}
+	if info, err := root.Lstat(stagingBase); err != nil || !info.IsDir() {
+		return errors.New("trash staging must be a real app-data directory")
+	}
+	dir := filepath.Join(stagingBase, id)
 	if err := root.Mkdir(dir, 0o700); err != nil {
 		return err
 	}
 	items := filepath.Join(dir, "item")
-	staged := filepath.Join(items, name)
+	staged := filepath.Join(items, filepath.Base(path))
 	backup := filepath.Join(dir, "backup")
 	journalPath := filepath.Join(dataDir, "trash-recovery", id)
 	keepRecovery := false
@@ -73,9 +106,9 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 			return cause
 		}
 		keepRecovery = true
-		return fmt.Errorf("could not recycle or restore the original name; recover the item from %s: %w", filepath.Join(parent, recoverFrom), cause)
+		return fmt.Errorf("could not recycle or restore the original name; recover the item from %s: %w", filepath.Join(anchor, recoverFrom), cause)
 	}
-	stagedPath := filepath.Join(parent, staged)
+	stagedPath := filepath.Join(anchor, staged)
 	info, infoErr := root.Lstat(staged)
 	visible, visibleErr := os.Lstat(stagedPath)
 	if infoErr != nil || visibleErr != nil || !info.Mode().IsRegular() || !visible.Mode().IsRegular() ||
@@ -129,9 +162,8 @@ func PendingTrashRecovery(dataDir string, visit func(original, recovery string))
 		if err != nil || len(raw) > 64*1024 || !filepath.IsAbs(original) || filepath.Clean(original) != original {
 			continue
 		}
-		parent, name := filepath.Dir(original), filepath.Base(original)
-		staging := filepath.Join(parent, ".block-trash-"+id)
-		staged := filepath.Join(staging, "item", name)
+		staging := filepath.Join(dataDir, "trash-staging", id)
+		staged := filepath.Join(staging, "item", filepath.Base(original))
 		stagedInfo, stagedErr := os.Lstat(staged)
 		if stagedErr == nil && stagedInfo.Mode().IsRegular() {
 			visit(original, staged)
