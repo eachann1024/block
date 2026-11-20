@@ -208,14 +208,25 @@ const (
 	BrandDecoOff    BrandDecoMode = "off"
 )
 
+// BrandDecoMotion controls the animation intensity of the brand landscape scene.
+type BrandDecoMotion string
+
+const (
+	BrandDecoMotionRich  BrandDecoMotion = ""
+	BrandDecoMotionCalm  BrandDecoMotion = "calm"
+	BrandDecoMotionStill BrandDecoMotion = "still"
+)
+
 // BrandDeco stores the window brand decoration preferences; its zero value is the default
-// (scene follows the time of day, sun/moon and logo shown).
+// (scene follows the time of day, full motion, sun/moon, cat and logo shown).
 type BrandDeco struct {
-	Mode     BrandDecoMode `json:"mode,omitempty"`
-	PinLight string        `json:"pin_light,omitempty"`
-	PinDark  string        `json:"pin_dark,omitempty"`
-	HideOrb  bool          `json:"hide_orb,omitempty"`
-	HideMark bool          `json:"hide_mark,omitempty"`
+	Mode     BrandDecoMode   `json:"mode,omitempty"`
+	Motion   BrandDecoMotion `json:"motion,omitempty"`
+	PinLight string          `json:"pin_light,omitempty"`
+	PinDark  string          `json:"pin_dark,omitempty"`
+	HideOrb  bool            `json:"hide_orb,omitempty"`
+	HideCat  bool            `json:"hide_cat,omitempty"`
+	HideMark bool            `json:"hide_mark,omitempty"`
 }
 
 func DefaultAppState(defaultLang LanguageMode) AppState {
