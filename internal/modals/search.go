@@ -80,9 +80,12 @@ type searchPaletteState struct {
 	hitMeta           []searchHitMeta
 
 	searchGen     atomic.Uint64
+	appliedGen    uint64
+	appliedQuery  string
 	asyncMu       sync.Mutex
 	asyncPending  bool
 	asyncGen      uint64
+	asyncQuery    string
 	asyncHits     []model.SearchHit
 	asyncMeta     []searchHitMeta
 	asyncErr      string
@@ -106,11 +109,13 @@ func (st *searchPaletteState) cancelSearch() {
 
 func (st *searchPaletteState) scheduleAsyncSearch(
 	gen uint64,
+	query string,
 	delay time.Duration,
 	runFn func(context.Context) ([]model.SearchHit, []searchHitMeta, string),
 	onDone func(),
 ) {
 	ctx, cancel := context.WithCancel(context.Background())
+	normQ := strings.TrimSpace(query)
 
 	st.asyncMu.Lock()
 	if st.debounceTimer != nil {
@@ -120,6 +125,7 @@ func (st *searchPaletteState) scheduleAsyncSearch(
 	prevCancel := st.cancelFn
 	st.cancelFn = cancel
 	st.asyncPending = false
+	st.asyncQuery = ""
 	st.asyncHits = nil
 	st.asyncMeta = nil
 	st.asyncErr = ""
@@ -133,7 +139,7 @@ func (st *searchPaletteState) scheduleAsyncSearch(
 		if ctx.Err() != nil {
 			return
 		}
-		if st.storeAsyncResult(gen, hits, meta, errMsg) && onDone != nil {
+		if st.storeAsyncResult(gen, normQ, hits, meta, errMsg) && onDone != nil {
 			onDone()
 		}
 	}
@@ -156,13 +162,14 @@ func (st *searchPaletteState) scheduleAsyncSearch(
 func (st *searchPaletteState) clearAsync() {
 	st.asyncMu.Lock()
 	st.asyncPending = false
+	st.asyncQuery = ""
 	st.asyncHits = nil
 	st.asyncMeta = nil
 	st.asyncErr = ""
 	st.asyncMu.Unlock()
 }
 
-func (st *searchPaletteState) storeAsyncResult(gen uint64, hits []model.SearchHit, meta []searchHitMeta, errMsg string) bool {
+func (st *searchPaletteState) storeAsyncResult(gen uint64, query string, hits []model.SearchHit, meta []searchHitMeta, errMsg string) bool {
 	if st.searchGen.Load() != gen {
 		return false
 	}
@@ -173,6 +180,7 @@ func (st *searchPaletteState) storeAsyncResult(gen uint64, hits []model.SearchHi
 	}
 	st.asyncPending = true
 	st.asyncGen = gen
+	st.asyncQuery = query
 	st.asyncHits = hits
 	st.asyncMeta = meta
 	st.asyncErr = errMsg
@@ -185,20 +193,29 @@ func (st *searchPaletteState) consumeAsyncResult(hits *[]model.SearchHit, select
 		st.asyncMu.Unlock()
 		return
 	}
+	resGen := st.asyncGen
+	resQuery := st.asyncQuery
 	resHits := st.asyncHits
 	resMeta := st.asyncMeta
 	resErr := st.asyncErr
 	st.asyncPending = false
+	st.asyncQuery = ""
 	st.asyncHits = nil
 	st.asyncMeta = nil
 	st.asyncErr = ""
 	st.asyncMu.Unlock()
 
+	st.appliedGen = resGen
+	st.appliedQuery = resQuery
 	*hits = resHits
 	st.hitMeta = resMeta
 	*errMsg = resErr
 	*selected = 0
 	st.resultsScroll.Y = 0
+}
+
+func (st *searchPaletteState) isResultFresh(query string) bool {
+	return st.appliedGen == st.searchGen.Load() && st.appliedQuery == strings.TrimSpace(query)
 }
 
 // SetOpenFromSearchFn sets the workspace action for opening a selected hit.
@@ -251,7 +268,9 @@ func (m *Manager) OpenSearch(allNotebooks bool) {
 	if strings.TrimSpace(m.searchQuery) != "" {
 		m.runSearch()
 	} else {
-		st.searchGen.Add(1)
+		gen := st.searchGen.Add(1)
+		st.appliedGen = gen
+		st.appliedQuery = ""
 		st.clearAsync()
 		m.searchHits = nil
 		st.hitMeta = nil
@@ -626,7 +645,11 @@ func executeSearchWithSnapshot(
 	}
 	paired := make([]pairedHit, 0, len(hits))
 	for _, h := range hits {
-		titleMarks := files.FindTitleHighlights(h.Title, q)
+		isTitleMatch := h.TitleMatch || h.Line == 0
+		var titleMarks [][2]int
+		if isTitleMatch {
+			titleMarks = files.FindTitleHighlights(h.Title, q)
+		}
 		snippetMarks := files.FindBodyHighlights(h.Snippet, q)
 		if len(snippetMarks) == 0 && h.MatchEnd > h.MatchStart && h.MatchEnd <= len(h.Snippet) {
 			snippetMarks = [][2]int{{h.MatchStart, h.MatchEnd}}
@@ -637,13 +660,24 @@ func executeSearchWithSnapshot(
 		}
 		folder := searchFolderLabel(roots, h.Path, h.Title, h.Notebook, includeRootName)
 		var folderMarks [][2]int
-		if (h.TitleMatch || len(titleMarks) > 0) && len(titleMarks) == 0 && folder != "" {
-			folderMarks = files.FindTitleHighlights(folder, q)
+		if isTitleMatch && folder != "" {
+			if len(titleMarks) == 0 {
+				folderMarks = files.FindTitleHighlights(folder, q)
+			} else if strings.Contains(q, "/") || len(strings.Fields(q)) > 1 {
+				// Highlight matching folder segment when query targets "folder/note" or multi-token path.
+				dirPart := folder
+				if h.Title != "" && strings.HasSuffix(folder, " / "+h.Title) {
+					dirPart = strings.TrimSuffix(folder, " / "+h.Title)
+				}
+				if dirPart != "" {
+					folderMarks = files.FindTitleHighlights(dirPart, q)
+				}
+			}
 		}
 		paired = append(paired, pairedHit{
 			hit: h,
 			meta: searchHitMeta{
-				titleMatch:   h.TitleMatch || len(titleMarks) > 0,
+				titleMatch:   isTitleMatch,
 				titleMarks:   titleMarks,
 				snippetMarks: snippetMarks,
 				folderMarks:  folderMarks,
@@ -688,6 +722,8 @@ func (m *Manager) runSearchWithDelay(delay time.Duration) {
 	st.clearAsync()
 
 	if strings.TrimSpace(m.searchQuery) == "" {
+		st.appliedGen = gen
+		st.appliedQuery = ""
 		m.searchErr = ""
 		m.searchHits = nil
 		st.hitMeta = nil
@@ -697,21 +733,7 @@ func (m *Manager) runSearchWithDelay(delay time.Duration) {
 	}
 
 	if testing.Testing() || internalui.IsProbeEnabled() || m.SearchFn != nil {
-		hits, meta, errMsg := executeSearchQuery(
-			st,
-			m.searchQuery,
-			folders,
-			m.searchActiveNotebookPath(),
-			m.searchScanOptions(),
-			m.SearchFn,
-			m.host,
-		)
-		m.searchAllNB = st.scopeFolder == ""
-		m.searchErr = errMsg
-		m.searchHits = hits
-		st.hitMeta = meta
-		m.searchSelected = 0
-		st.resultsScroll.Y = 0
+		m.runSearchSync(gen, folders)
 		return
 	}
 
@@ -723,7 +745,7 @@ func (m *Manager) runSearchWithDelay(delay time.Duration) {
 	scanOpts := m.searchScanOptions()
 	host := m.host
 
-	st.scheduleAsyncSearch(gen, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
+	st.scheduleAsyncSearch(gen, query, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
 		return executeSearchWithSnapshot(
 			ctx,
 			scopeFolder,
@@ -736,6 +758,52 @@ func (m *Manager) runSearchWithDelay(delay time.Duration) {
 			host,
 		)
 	}, m.requestRedraw)
+}
+
+func (m *Manager) runSearchSync(gen uint64, folders []string) {
+	st := m.searchState()
+	hits, meta, errMsg := executeSearchQuery(
+		st,
+		m.searchQuery,
+		folders,
+		m.searchActiveNotebookPath(),
+		m.searchScanOptions(),
+		m.SearchFn,
+		m.host,
+	)
+	st.appliedGen = gen
+	st.appliedQuery = strings.TrimSpace(m.searchQuery)
+	m.searchAllNB = st.scopeFolder == ""
+	m.searchErr = errMsg
+	m.searchHits = hits
+	st.hitMeta = meta
+	m.searchSelected = 0
+	st.resultsScroll.Y = 0
+}
+
+func (m *Manager) ensureFreshSearchHits() {
+	st := m.searchState()
+	st.consumeAsyncResult(&m.searchHits, &m.searchSelected, &m.searchErr)
+	if st.isResultFresh(m.searchQuery) {
+		return
+	}
+	m.searchLastQuery = m.searchQuery
+	folders := m.notebookFolders()
+	st.syncFolders(folders)
+	gen := st.searchGen.Add(1)
+	st.cancelSearch()
+	st.clearAsync()
+	if strings.TrimSpace(m.searchQuery) == "" {
+		st.appliedGen = gen
+		st.appliedQuery = ""
+		m.searchErr = ""
+		m.searchHits = nil
+		st.hitMeta = nil
+		m.searchSelected = 0
+		st.resultsScroll.Y = 0
+		return
+	}
+	m.runSearchSync(gen, folders)
 }
 
 func stepHitSelection(selected *int, total int, st *searchPaletteState, delta int) {
@@ -824,6 +892,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 							}
 						},
 						onOpenSelected: func() {
+							m.ensureFreshSearchHits()
 							m.openSearchHit(m.searchSelected)
 						},
 						onToggleScope: func() {
@@ -1411,7 +1480,11 @@ func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query strin
 		return st.hitMeta[idx]
 	}
 	q := strings.TrimSpace(query)
-	titleMarks := files.FindTitleHighlights(hit.Title, q)
+	isTitleMatch := hit.TitleMatch || hit.Line == 0
+	var titleMarks [][2]int
+	if isTitleMatch {
+		titleMarks = files.FindTitleHighlights(hit.Title, q)
+	}
 	snippetMarks := files.FindBodyHighlights(hit.Snippet, q)
 	if len(snippetMarks) == 0 && hit.MatchEnd > hit.MatchStart && hit.MatchEnd <= len(hit.Snippet) {
 		snippetMarks = [][2]int{{hit.MatchStart, hit.MatchEnd}}
@@ -1421,11 +1494,11 @@ func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query strin
 		cnt = 1
 	}
 	var folderMarks [][2]int
-	if (hit.TitleMatch || len(titleMarks) > 0) && len(titleMarks) == 0 && hit.Notebook != "" {
+	if isTitleMatch && len(titleMarks) == 0 && hit.Notebook != "" {
 		folderMarks = files.FindTitleHighlights(hit.Notebook, q)
 	}
 	return searchHitMeta{
-		titleMatch:   hit.TitleMatch || len(titleMarks) > 0,
+		titleMatch:   isTitleMatch,
 		titleMarks:   titleMarks,
 		snippetMarks: snippetMarks,
 		folderMarks:  folderMarks,
