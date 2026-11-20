@@ -440,7 +440,7 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		sb.WriteString("<hr>")
 
 	case b.Kind == model.BlockImage:
-		fmt.Fprintf(sb, "<p>%s</p>", s.clipboardImageTagHTML(b.ImageSrc, b.ImageAlt, imageBudget))
+		fmt.Fprintf(sb, "<p>%s</p>", s.clipboardImageTagHTML(b.ImageSrc, b.ImageAlt, b.ImageTitle, imageBudget))
 
 	case b.Kind == model.BlockTable && b.Table != nil && len(b.Table.Rows) > 0:
 		tbl := b.Table
@@ -478,16 +478,21 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 	}
 }
 
-func (s *Session) clipboardImageTagHTML(src, alt string, imageBudget *int) string {
+func (s *Session) clipboardImageTagHTML(src, alt, title string, imageBudget *int) string {
 	escAlt := html.EscapeString(alt)
+	titleAttr := ""
+	if title != "" {
+		escTitle := strings.NewReplacer("\r", "&#13;", "\n", "&#10;").Replace(html.EscapeString(title))
+		titleAttr = fmt.Sprintf(` title="%s"`, escTitle)
+	}
 	if raw, err := s.readClipboardImage(src, int64(*imageBudget)); err == nil {
 		if _, _, format, err := media.DecodeRaster(raw); err == nil {
 			*imageBudget -= len(raw)
-			return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="%s">`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), escAlt)
+			return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="%s"%s>`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), escAlt, titleAttr)
 		}
 	}
 	if isSafeClipboardRef(src) {
-		return fmt.Sprintf(`<img src="%s" alt="%s">`, html.EscapeString(src), escAlt)
+		return fmt.Sprintf(`<img src="%s" alt="%s"%s>`, html.EscapeString(src), escAlt, titleAttr)
 	}
 	return escAlt
 }
@@ -557,7 +562,11 @@ func (s *Session) writeClipboardSpansHTML(sb *strings.Builder, spans []model.Spa
 func (s *Session) writeClipboardSpanInnerHTML(sb *strings.Builder, sp model.Span, imageBudget *int) {
 	var body string
 	if sp.ImageSrc != "" {
-		body = s.clipboardImageTagHTML(sp.ImageSrc, sp.Text, imageBudget)
+		alt := sp.Text
+		if sp.ImageAltEmpty {
+			alt = ""
+		}
+		body = s.clipboardImageTagHTML(sp.ImageSrc, alt, sp.ImageTitle, imageBudget)
 	} else {
 		body = strings.ReplaceAll(html.EscapeString(sp.Text), "\n", "<br>")
 	}

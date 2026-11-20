@@ -2131,6 +2131,10 @@ func applySpanTransform(spans []model.Span, startRune, endRune int, fn func(mode
 			out = append(out, sp)
 			continue
 		}
+		if sp.ImageSrc != "" {
+			out = append(out, fn(sp))
+			continue
+		}
 		lo := max(startRune-s0, 0)
 		hi := min(endRune-s0, n)
 		if lo > 0 {
@@ -2811,9 +2815,39 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 	for suf < len(oldR)-pref && suf < len(newR)-pref && oldR[len(oldR)-1-suf] == newR[len(newR)-1-suf] {
 		suf++
 	}
-	left := sliceSpans(spans, 0, pref)
-	right := sliceSpans(spans, len(oldR)-suf, len(oldR))
+	oldEnd := len(oldR) - suf
 	inserted := string(newR[pref : len(newR)-suf])
+	// Editing inside a single inline-image span mutates its alt text in place instead of
+	// splitting one image into duplicate images.
+	{
+		pos := 0
+		for si, sp := range spans {
+			n := utf8.RuneCountInString(sp.Text)
+			s0, s1 := pos, pos+n
+			pos = s1
+			if sp.ImageSrc != "" && pref >= s0 && oldEnd <= s1 {
+				isBoundaryInsert := inserted != "" && pref == oldEnd && (pref == s0 || pref == s1)
+				isFullReplace := pref == s0 && oldEnd == s1
+				if !isBoundaryInsert && !isFullReplace {
+					spR := []rune(sp.Text)
+					nextText := string(spR[:pref-s0]) + inserted + string(spR[oldEnd-s0:])
+					out := make([]model.Span, 0, len(spans))
+					out = append(out, spans[:si]...)
+					if nextText != "" {
+						cp := sp
+						cp.Text = nextText
+						cp.ImageAltEmpty = false
+						out = append(out, cp)
+					}
+					out = append(out, spans[si+1:]...)
+					return normalizeSpans(out)
+				}
+				break
+			}
+		}
+	}
+	left := sliceSpans(spans, 0, pref)
+	right := sliceSpans(spans, oldEnd, len(oldR))
 	var mid []model.Span
 	if inserted != "" {
 		// Inherit style of the span at insertion boundary if any.
@@ -2837,6 +2871,7 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 		// Never inherit inline image metadata onto newly typed text adjacent to an image.
 		template.ImageSrc = ""
 		template.ImageTitle = ""
+		template.ImageAltEmpty = false
 		mid = []model.Span{template}
 	}
 	var merged []model.Span

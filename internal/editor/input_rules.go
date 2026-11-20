@@ -398,7 +398,7 @@ func spanProtectionAt(spans []model.Span, startRune, endRune int) bool {
 		if s0 >= endRune {
 			break
 		}
-		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" || sp.ImageSrc != "" {
 			return true
 		}
 	}
@@ -1565,7 +1565,7 @@ func buildLiteralProtectedMask(spans []model.Span, r []rune, limit int, protectU
 		if pos >= limit {
 			break
 		}
-		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" || sp.ImageSrc != "" {
 			end := min(pos+spLen, limit)
 			for i := pos; i < end; i++ {
 				prot[i] = true
@@ -1877,7 +1877,7 @@ func buildTablePipeProtectedMask(spans []model.Span, r []rune) []bool {
 	pos := 0
 	for _, sp := range spans {
 		spLen := utf8.RuneCountInString(sp.Text)
-		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" || sp.ImageSrc != "" {
 			end := min(pos+spLen, n)
 			for i := pos; i < end; i++ {
 				prot[i] = true
