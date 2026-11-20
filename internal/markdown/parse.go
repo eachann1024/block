@@ -467,6 +467,11 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 	if len(used) == 0 {
 		return nil, nil
 	}
+	for k := range defs {
+		if !used[k] {
+			delete(defs, k)
+		}
+	}
 	return defs, used
 }
 

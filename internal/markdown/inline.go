@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"html"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -161,14 +162,14 @@ type inlineScanState struct {
 	unclosedBacktickMask  uint64
 	unclosedBacktickLarge map[int]bool
 	btRuns                map[int][]int
-	btHead                map[int]int
 	lastCloseBracket      int
 	lastCloseParen        int
 	lastGT                int
 	lastDQ                int
 	lastSQ                int
 	noCommentCloseFrom    int
-	noAngleDestGTUntil    int
+	nextAngleGT           int
+	nextAngleGTLineEnd    int
 	unclosedBrackets      map[int]bool
 	unclosedParens        map[int]bool
 	tagFailWatermark      int
@@ -183,7 +184,8 @@ func newInlineScanState(s string) *inlineScanState {
 		lastDQ:             -2,
 		lastSQ:             -2,
 		noCommentCloseFrom: -1,
-		noAngleDestGTUntil: -1,
+		nextAngleGT:        -1,
+		nextAngleGTLineEnd: -1,
 		tagFailWatermark:   -1,
 	}
 }
@@ -191,7 +193,6 @@ func newInlineScanState(s string) *inlineScanState {
 func (st *inlineScanState) findClosingBackticks(from, count int) int {
 	if st.btRuns == nil {
 		st.btRuns = make(map[int][]int)
-		st.btHead = make(map[int]int)
 		s := st.s
 		for k := 0; k < len(s); {
 			if s[k] == '`' {
@@ -207,11 +208,7 @@ func (st *inlineScanState) findClosingBackticks(from, count int) int {
 		}
 	}
 	positions := st.btRuns[count]
-	h := st.btHead[count]
-	for h < len(positions) && positions[h] < from {
-		h++
-	}
-	st.btHead[count] = h
+	h := sort.SearchInts(positions, from)
 	if h < len(positions) {
 		return positions[h]
 	}
@@ -590,7 +587,11 @@ func tryParseBareAutolink(s string, start int) (display, linkURL string, consume
 		end += sz
 	}
 
-	// Strip GFM trailing punctuation & unmatched closing brackets/parens.
+	// Strip GFM trailing punctuation & unmatched closing brackets/parens in O(N).
+	parenCounted := false
+	opensP, closesP := 0, 0
+	bracketCounted := false
+	opensB, closesB := 0, 0
 	for end > start+schemeLen {
 		last := s[end-1]
 		switch last {
@@ -598,14 +599,26 @@ func tryParseBareAutolink(s string, start int) (display, linkURL string, consume
 			end--
 			continue
 		case ')':
-			body := s[start+schemeLen : end]
-			if strings.Count(body, ")") > strings.Count(body, "(") {
+			if !parenCounted {
+				body := s[start+schemeLen : end]
+				opensP = strings.Count(body, "(")
+				closesP = strings.Count(body, ")")
+				parenCounted = true
+			}
+			if closesP > opensP {
+				closesP--
 				end--
 				continue
 			}
 		case ']':
-			body := s[start+schemeLen : end]
-			if strings.Count(body, "]") > strings.Count(body, "[") {
+			if !bracketCounted {
+				body := s[start+schemeLen : end]
+				opensB = strings.Count(body, "[")
+				closesB = strings.Count(body, "]")
+				bracketCounted = true
+			}
+			if closesB > opensB {
+				closesB--
 				end--
 				continue
 			}
@@ -999,28 +1012,38 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 	if s[i] == ')' {
 		return "", i + 1 - start, true
 	}
-	var rawDest string
+	urlStart, urlEnd := 0, 0
 	if s[i] == '<' {
 		i++
-		if i < st.noAngleDestGTUntil {
-			return "", 0, false
-		}
-		urlStart := i
-		for i < len(s) && s[i] != '>' && s[i] != '\n' {
-			if s[i] == '\\' && i+1 < len(s) {
-				i += 2
-				continue
+		urlStart = i
+		if i >= st.nextAngleGTLineEnd || (st.nextAngleGT >= 0 && st.nextAngleGT < i) {
+			j := i
+			found := -1
+			for j < len(s) && s[j] != '\n' {
+				if s[j] == '\\' && j+1 < len(s) {
+					j += 2
+					continue
+				}
+				if s[j] == '>' {
+					found = j
+					break
+				}
+				j++
 			}
-			i++
+			st.nextAngleGT = found
+			if found >= 0 {
+				st.nextAngleGTLineEnd = found + 1
+			} else {
+				st.nextAngleGTLineEnd = j
+			}
 		}
-		if i >= len(s) || s[i] != '>' {
-			st.noAngleDestGTUntil = i
+		if st.nextAngleGT < i {
 			return "", 0, false
 		}
-		rawDest = unescapeLinkText(s[urlStart:i])
-		i++
+		urlEnd = st.nextAngleGT
+		i = urlEnd + 1
 	} else {
-		urlStart := i
+		urlStart = i
 		var parenBuf [16]int
 		parenStack := parenBuf[:1]
 		parenStack[0] = start
@@ -1052,7 +1075,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			}
 			return "", 0, false
 		}
-		rawDest = unescapeLinkText(s[urlStart:i])
+		urlEnd = i
 	}
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 		i++
@@ -1081,7 +1104,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 	if i >= len(s) || s[i] != ')' {
 		return "", 0, false
 	}
-	return html.UnescapeString(rawDest), i + 1 - start, true
+	return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), i + 1 - start, true
 }
 
 func unescapeLinkText(s string) string {
