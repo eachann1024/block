@@ -810,9 +810,11 @@ func systemSyncConfig(dataDir, root string) map[string]any {
 		notebooks, _ := state["notebook_configs"].(map[string]any)
 		key := "default"
 		if root != "" {
-			key = syncNotebookKey(root)
+			key = filepath.Clean(root)
 		}
 		if local, ok := notebooks[key].(map[string]any); ok {
+			config = local
+		} else if local, ok := notebooks[syncNotebookKey(root)].(map[string]any); ok {
 			config = local
 		}
 	}
