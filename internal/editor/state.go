@@ -112,6 +112,9 @@ type Session struct {
 	multiSelFocusPending bool
 	firstLineDeleteArmed bool
 	caretLineHint        int
+	lastAutoConvert      *autoConvertRecord
+	nextInsertGuard      *nextInsertStyleGuard
+	postEditCodeEdge     appUi.RichCodeEdge
 	// navCarryX is the sticky window column kept by consecutive Up/Down across blocks.
 	navCarryX float32
 	navCarry  bool
@@ -431,6 +434,8 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.pressJustBegan = false
 	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
+	s.clearAutoConvertState()
+	s.postEditCodeEdge = appUi.RichCodeEdgeNone
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.cancelInlineAI()
@@ -875,6 +880,8 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.caretHidden = false
 	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
+	s.clearAutoConvertState()
+	s.postEditCodeEdge = appUi.RichCodeEdgeNone
 	s.blockMenu = nil
 	s.toolbarPop = ""
 	s.toolbarMoreIndex = 0

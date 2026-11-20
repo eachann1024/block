@@ -2071,6 +2071,9 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	if newText == oldText {
 		return
 	}
+	clearMask, clearBG := s.consumeNextInsertGuard(b.ID, false, tableCellKey{}, oldText, newText, caretHint)
+	s.lastAutoConvert = nil
+	s.postEditCodeEdge = appUi.RichCodeEdgeNone
 	s.firstLineDeleteArmed = false
 	rDelta := len([]rune(newText)) - len([]rune(oldText))
 	if rDelta < 0 {
@@ -2092,6 +2095,12 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 
 	// Preserve inline spans when editing text via rune diff.
 	b.Spans = spliceSpansByTextEditWithEdge(b.Spans, oldText, newText, caretHint, codeEdge)
+	if ins := len([]rune(newText)) - len([]rune(oldText)); ins > 0 && (clearMask != 0 || clearBG) {
+		insStart := caretHint - ins
+		if insStart >= 0 {
+			b.Spans = s.applyNextInsertStyleClear(b.Spans, insStart, ins, clearMask, clearBG)
+		}
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -2108,12 +2117,9 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		}
 	}
 
-	// Check arrow replacements (->, -》, =>, =》, <-, 《-).
-	if nextText, nextCaret, ok := applyArrowRule(newText, caretHint); ok {
-		b.Spans = spliceSpansByTextEdit(b.Spans, newText, nextText)
-		newText = nextText
-		caretHint = nextCaret
-	}
+	// Snapshot right after raw typing so Backspace immediately after any auto-conversion restores raw syntax.
+	rawBeforeConvert := b.Clone()
+	rawCaret := clampInt(caretHint, 0, len([]rune(newText)))
 
 	// Check immediate divider rule (---, ***, ___, －－－, ＊＊＊, ＿＿＿, ——).
 	if b.Kind == model.BlockParagraph && isImmediateDivider(newText) {
@@ -2121,11 +2127,14 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		return
 	}
 
-	// Check trailing space/fullwidth-space Markdown input rules.
+	// Check trailing space/fullwidth-space block-level Markdown input rules.
 	if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint); ok {
 		s.focusedBlock = clampInt(nextIdx, 0, len(s.doc.Blocks)-1)
 		s.selAnchor = Position{Block: s.focusedBlock, Offset: nextCaret}
 		s.selHead = s.selAnchor
+		if nextIdx == idx && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind != model.BlockDivider && s.doc.Blocks[idx].Kind != model.BlockCode {
+			s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], nextCaret)
+		}
 		if s.needsDetachedSelectionFocus() {
 			s.multiSelFocusPending = true
 			s.focusPending = false
@@ -2138,7 +2147,55 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		return
 	}
 
-	rlen := len([]rune(newText))
+	// Check inline rules: :emoji:, smart typography, and inline Markdown constructs.
+	curCaret := rawCaret
+	converted := false
+	finalEdge := appUi.RichCodeEdgeNone
+	var nextClearMask model.Mark
+	var nextClearBG bool
+
+	if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(b.Spans, curCaret); ok {
+		b.Spans = nextSpans
+		curCaret = nextCaret
+		converted = true
+	}
+	if nextSpans, nextCaret, ok := applySmartTypographyOnSpans(b.Spans, curCaret); ok {
+		b.Spans = nextSpans
+		curCaret = nextCaret
+		converted = true
+	}
+	if res := applyInlineInputRules(b.Spans, curCaret, b.Kind == model.BlockParagraph); res.toImage {
+		s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
+		return
+	} else if res.changed {
+		b.Spans = res.spans
+		curCaret = res.caret
+		finalEdge = res.codeEdge
+		nextClearMask = res.clearMask
+		nextClearBG = res.clearBG
+		converted = true
+	}
+
+	if converted {
+		b.Dirty = true
+		b.CleanSource = ""
+		s.selAnchor = Position{Block: idx, Offset: curCaret}
+		s.selHead = s.selAnchor
+		s.postEditCodeEdge = finalEdge
+		s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, b, curCaret)
+		if nextClearMask != 0 || nextClearBG {
+			s.nextInsertGuard = &nextInsertStyleGuard{
+				blockID:   b.ID,
+				docRev:    s.docRev,
+				caretPos:  curCaret,
+				clearMask: nextClearMask,
+				clearBG:   nextClearBG,
+			}
+		}
+		return
+	}
+
+	rlen := len([]rune(b.PlainText()))
 	pos := clampInt(caretHint, 0, rlen)
 	s.selAnchor = Position{Block: idx, Offset: pos}
 	s.selHead = s.selAnchor
@@ -2215,29 +2272,6 @@ func estimateCaretAfterEdit(oldText, newText string) int {
 		suf++
 	}
 	return len(newR) - suf
-}
-
-func applyArrowRule(text string, caretRune int) (string, int, bool) {
-	rules := [][2]string{
-		{"->", "→"}, {"-》", "→"}, {"—>", "→"}, {"—》", "→"},
-		{"=>", "⇒"}, {"=》", "⇒"}, {"<-", "←"}, {"《-", "←"},
-	}
-	next := text
-	changed := false
-	for _, pair := range rules {
-		if strings.Contains(next, pair[0]) {
-			next = strings.ReplaceAll(next, pair[0], pair[1])
-			changed = true
-		}
-	}
-	if !changed {
-		return "", 0, false
-	}
-	nextLen := len([]rune(next))
-	if caretRune <= 0 || caretRune > nextLen {
-		caretRune = nextLen
-	}
-	return next, caretRune, true
 }
 
 func isImmediateDivider(text string) bool {
@@ -2350,18 +2384,22 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 		caretRune = len(r)
 	}
 	// Support both character-by-character typing (trailing space at caret) and
-	// whole-string input such as IME commit or tester Type("# Title").
+	// whole-string input such as IME commit or tester Type("# Title") or Type("  - Sub").
 	ruleEnd := caretRune
 	last := r[ruleEnd-1]
 	if last != ' ' && last != '\u3000' {
+		lead := 0
+		for lead < caretRune && (r[lead] == ' ' || r[lead] == '\t' || r[lead] == '\u3000') {
+			lead++
+		}
 		firstSpace := -1
-		for i := 0; i < caretRune; i++ {
+		for i := lead; i < caretRune; i++ {
 			if r[i] == ' ' || r[i] == '\u3000' {
 				firstSpace = i
 				break
 			}
 		}
-		if firstSpace <= 0 {
+		if firstSpace <= lead {
 			return 0, 0, false
 		}
 		ruleEnd = firstSpace + 1
@@ -2388,6 +2426,15 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 		if kind, ok := matchCalloutPrefix(rawPrefix); ok {
 			b.Kind = model.BlockCallout
 			b.Callout = kind
+			b.QuoteDepth = 0
+			b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
+			b.Dirty = true
+			b.CleanSource = ""
+			return idx, newCaret, true
+		}
+		if addDepth, ok := matchQuotePrefixDepth(rawPrefix); ok {
+			cur := max(b.QuoteDepth, 1)
+			b.QuoteDepth = min(cur+addDepth, 6)
 			b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
 			b.Dirty = true
 			b.CleanSource = ""
@@ -2450,6 +2497,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 		return idx, newCaret, true
 	}
 
+	listIndent := leadingListIndent(rawPrefix)
 	stripped := strings.TrimLeftFunc(rawPrefix, unicode.IsSpace)
 	// Ordered list: 1. / 1。 / 1、 / 1． / 1) / 1） / a. / i.
 	sr := []rune(stripped)
@@ -2459,6 +2507,9 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 			body := string(sr[:len(sr)-1])
 			if n, ok := parseFullOrHalfDigits(body); ok {
 				b.Kind = model.BlockNumbered
+				if listIndent > 0 {
+					b.Indent = listIndent
+				}
 				if n > 1 {
 					b.ListIndex = n
 				} else {
@@ -2471,6 +2522,9 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 			}
 			if body == "a" || body == "i" || body == "A" || body == "I" {
 				b.Kind = model.BlockNumbered
+				if listIndent > 0 {
+					b.Indent = listIndent
+				}
 				b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
 				b.Dirty = true
 				b.CleanSource = ""
@@ -2482,6 +2536,9 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	switch stripped {
 	case "-", "+", "*", "•", "·", "・", "－", "＋", "＊":
 		b.Kind = model.BlockBullet
+		if listIndent > 0 {
+			b.Indent = listIndent
+		}
 		b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
 		b.Dirty = true
 		b.CleanSource = ""
@@ -2491,15 +2548,18 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 	if checked, ok := matchTodoPrefix(stripped); ok {
 		b.Kind = model.BlockTodo
 		b.Checked = checked
+		if listIndent > 0 {
+			b.Indent = listIndent
+		}
 		b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
 		b.Dirty = true
 		b.CleanSource = ""
 		return idx, newCaret, true
 	}
 
-	switch rawPrefix {
-	case ">", "＞", "》", `"`, "“", "”", "|", "｜":
+	if qDepth, ok := matchQuotePrefixDepth(rawPrefix); ok {
 		b.Kind = model.BlockQuote
+		b.QuoteDepth = qDepth
 		b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
 		b.Dirty = true
 		b.CleanSource = ""
@@ -2558,14 +2618,25 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 
 	r := []rune(b.PlainText())
 	caretRune = clampInt(caretRune, 0, len(r))
+	s.clearAutoConvertState()
 
-	// Enter on fence / divider / callout at end of paragraph.
+	// Auto-link bare URL right before caret when pressing Enter.
+	if caretRune > 0 {
+		if res := tryBareURLAutolinkBefore(b.Spans, r, caretRune); res.changed {
+			b.Spans = res.spans
+			b.Dirty = true
+			b.CleanSource = ""
+		}
+	}
+
+	// Enter on fence / divider / callout / table / standalone image at end of paragraph.
 	if caretRune == len(r) {
 		if (b.Kind == model.BlockParagraph || b.Kind == model.BlockQuote) && b.Callout == "" {
 			if kind, ok := matchCalloutPrefix(b.PlainText()); ok {
 				s.pushUndo()
 				b.Kind = model.BlockCallout
 				b.Callout = kind
+				b.QuoteDepth = 0
 				b.Spans = nil
 				b.Dirty = true
 				b.CleanSource = ""
@@ -2577,6 +2648,16 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 			}
 		}
 		if b.Kind == model.BlockParagraph {
+			if alt, src, ok := matchStandaloneImageLine(b.PlainText()); ok {
+				s.pushUndo()
+				s.convertParagraphToImageBlock(idx, alt, src)
+				return true
+			}
+			if cols, ok := matchTableHeaderLine(b.PlainText()); ok {
+				s.pushUndo()
+				s.convertParagraphToTableBlock(idx, cols)
+				return true
+			}
 			if lang, ok := matchCodeFencePrefix(b.PlainText()); ok {
 				s.pushUndo()
 				b.Kind = model.BlockCode
@@ -2746,10 +2827,19 @@ func (s *Session) handleBackspaceOnBlock(idx int, text string, caretRune int) bo
 		return false
 	}
 
-	// Demote styled blocks / outdent lists first.
+	// Demote styled blocks / outdent lists and nested quotes first.
+	if b.Kind == model.BlockQuote && b.QuoteDepth > 1 {
+		s.pushUndo()
+		b.QuoteDepth--
+		b.Dirty = true
+		b.CleanSource = ""
+		s.markDirty()
+		return true
+	}
 	if b.Kind.IsHeading() || b.Kind == model.BlockQuote || b.Kind == model.BlockCallout {
 		s.pushUndo()
 		b.Kind = model.BlockParagraph
+		b.QuoteDepth = 0
 		b.Callout = ""
 		b.Dirty = true
 		b.CleanSource = ""
