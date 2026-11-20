@@ -1173,10 +1173,14 @@ func ParseStoreIndex(raw []byte) (*StoreIndex, error) {
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return nil, errors.New("store index must be a JSON object")
 	}
-	var idx StoreIndex
-	if err := json.Unmarshal(trimmed, &idx); err != nil {
+	var catalog struct {
+		StoreIndex
+		SystemApps []StoreAppEntry `json:"system_apps"`
+	}
+	if err := json.Unmarshal(trimmed, &catalog); err != nil {
 		return nil, err
 	}
+	idx := &catalog.StoreIndex
 	if idx.App != TargetApp {
 		return nil, fmt.Errorf("store index app mismatch: got %q, want %q", idx.App, TargetApp)
 	}
@@ -1186,7 +1190,12 @@ func ParseStoreIndex(raw []byte) (*StoreIndex, error) {
 	if idx.Apps == nil {
 		return nil, errors.New("store index missing apps array")
 	}
-	return &idx, nil
+	if len(catalog.SystemApps) != 0 {
+		current := *idx
+		current.Apps = catalog.SystemApps
+		return mergeStoreIndexes(&current, idx), nil
+	}
+	return idx, nil
 }
 
 // ExtractPluginArchive extracts a ZIP or gzip-compressed tar within the package limits.
