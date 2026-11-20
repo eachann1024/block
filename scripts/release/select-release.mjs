@@ -328,13 +328,12 @@ function feedHasReleaseTag(tag) {
     }
   }
   const parsed = JSON.parse(raw);
+  if (parsed?.latest_tag !== tag) return false;
   const entry = Array.isArray(parsed?.releases) ? parsed.releases.find((r) => r?.tag === tag) : null;
   if (!entry) return false;
-  if (parsed?.latest_tag === tag) {
-    const assets = Array.isArray(entry.assets) ? entry.assets : [];
-    if (assets.length === 0) return false;
-    if (assets.some((a) => !/^[0-9a-f]{64}$/i.test(String(a?.sha256 || "")))) return false;
-  }
+  const assets = Array.isArray(entry.assets) ? entry.assets : [];
+  if (assets.length === 0) return false;
+  if (assets.some((a) => !/^[0-9a-f]{64}$/i.test(String(a?.sha256 || "")))) return false;
   return true;
 }
 
