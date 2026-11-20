@@ -428,6 +428,15 @@ func runeOffsetToUTF16(text string, runeOff int) int {
 }
 
 func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bool, visible bool) {
+	return s.selectionSpanRects(vp, false)
+}
+
+func (s *Session) selectionComposerAnchorRect(vp ui.Rect) (rect ui.Rect, visible bool) {
+	r, _, ok := s.selectionSpanRects(vp, true)
+	return r, ok
+}
+
+func (s *Session) selectionSpanRects(vp ui.Rect, union bool) (rect ui.Rect, isWholeTable bool, visible bool) {
 	if s.doc == nil || !s.hasNonEmptySelection() {
 		return ui.Rect{}, false, false
 	}
@@ -468,6 +477,28 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 	var best ui.Rect
 	found := false
 	sawMeasured := false
+	mergeCand := func(cand ui.Rect) bool {
+		if !inVP(cand) {
+			return false
+		}
+		if !found {
+			best = cand
+			found = true
+			return true
+		}
+		if union {
+			x0 := min(best.X, cand.X)
+			y0 := min(best.Y, cand.Y)
+			x1 := max(best.X+best.W, cand.X+cand.W)
+			y1 := max(best.Y+best.H, cand.Y+cand.H)
+			best = ui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+			return true
+		}
+		if cand.Y < best.Y {
+			best = cand
+		}
+		return true
+	}
 	for idx := a.Block; idx <= b.Block && idx < len(s.doc.Blocks); idx++ {
 		if a.Block != b.Block && idx == b.Block && b.Offset == 0 && s.blockSelectionLen(idx) > 0 {
 			break
@@ -497,6 +528,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 			if layout != nil {
 				u0 := runeOffsetToUTF16(plain, lo)
 				u1 := runeOffsetToUTF16(plain, hi)
+				foundInBlock := false
 				for _, sr := range layout.SelectionRects(ui.TextInputRange{Start: u0, End: u1}) {
 					cand := ui.Rect{
 						X: tr.X + sr.X,
@@ -504,12 +536,11 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 						W: max(sr.W, 2),
 						H: max(sr.H, 16),
 					}
-					if inVP(cand) && (!found || cand.Y < best.Y) {
-						best = cand
-						found = true
+					if mergeCand(cand) {
+						foundInBlock = true
 					}
 				}
-				if found {
+				if foundInBlock {
 					continue
 				}
 			}
@@ -522,10 +553,7 @@ func (s *Session) selectionAnchorRect(vp ui.Rect) (rect ui.Rect, isWholeTable bo
 				W: max(r.W-s.leftContentGutter()-s.rightContentInset(), 24),
 				H: max(r.H, 24),
 			}
-			if inVP(cand) && (!found || cand.Y < best.Y) {
-				best = cand
-				found = true
-			}
+			mergeCand(cand)
 		}
 	}
 	if found {
@@ -1087,24 +1115,44 @@ func (s *Session) renderReactionPicker(c *ui.Context, vp ui.Rect, winW, winH flo
 func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
 	w := min(annotationRailWidth, max(vp.W-16, 180))
-	_, h := s.measuredOrEstSize("annotate-composer", w, 32)
-	spec := s.toolbarDropSpec("tb-comment", appUi.AlignLeft, 6, vp)
+	_, h := s.measuredOrEstSize("annotate-composer", w, 34)
+	var spec appUi.PlacementSpec
+	if selRect, ok := s.selectionComposerAnchorRect(vp); ok {
+		spec = appUi.PlaceBelow(selRect).WithViewport(vp).
+			WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8)
+	} else {
+		spec = s.toolbarDropSpec("tb-comment", appUi.AlignLeft, theme.Space6, vp)
+	}
 	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
-	card := appUi.PopoverSurface(ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
-		Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).Gap(theme.Space6).AlignItems(ui.Center).Clip()).
-		Radius(theme.RadiusMD).Border(1, pal.Accent)
+	card := appUi.FocusedPopoverSurface(ui.Row(c.Key("annotate-composer")).Absolute().Left(x).Top(y).Width(w).
+		Padding(theme.Space4, theme.Space6, theme.Space4, theme.Space10).Gap(theme.Space6).AlignItems(ui.End))
 	appUi.Probe(card, "annotate-composer")
 	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
-		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightMicro).
+		submit := func() {
+			if strings.TrimSpace(s.commentDraft) != "" {
+				s.AddAnnotation(s.commentDraft)
+				s.commentDraft = ""
+				s.toolbarPop = ""
+				s.selAnchor = s.selHead
+				s.selSyncPending = true
+			}
+		}
+		in := ui.TextAreaBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Lines(1, 4).
 			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
 			Bind(&s.commentHandle)
+		appUi.AutoHideScrollbars(c, in)
 		in.OnTextKey(func(k ui.TextKey) bool {
-			if k.Key == ui.KeyEscape {
+			switch {
+			case k.Key == ui.KeyEscape:
 				s.toolbarPop = ""
+				return true
+			case k.Key == ui.KeyEnter && k.Mods == 0:
+				s.commentDraft = k.Text()
+				submit()
 				return true
 			}
 			return false
@@ -1113,30 +1161,28 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			in.Focus()
 			s.commentFocusPending = false
 		}
-		submit := func() {
-			if strings.TrimSpace(s.commentDraft) != "" {
-				s.AddAnnotation(s.commentDraft)
-				s.commentDraft = ""
-				s.toolbarPop = ""
-			}
-		}
-		if in.Submitted() {
-			submit()
-		}
 		hasText := strings.TrimSpace(s.commentDraft) != ""
-		btnBG := pal.BtnBorder
-		if hasText {
-			btnBG = pal.Accent
-		}
 		btn := ui.ButtonBase(c.Key("annotate-submit")).Size(theme.HeightMicro, theme.HeightMicro).Shrink(0).Center().
-			Radius(theme.RadiusPill).Disabled(!hasText).Cursor(ui.CursorPointer).
+			Radius(theme.RadiusPill).Disabled(!hasText).
 			Label(theme.Tr("保存", "Save"))
+		if hasText {
+			btn.Cursor(ui.CursorPointer)
+		}
 		btnHovered := btn.Hovered() && hasText
 		btnPressed := btn.Pressed() && hasText
+		btnBG := ui.Transparent
+		iconColor := pal.Placeholder
+		if hasText {
+			btnBG = pal.Accent
+			if btnHovered {
+				btnBG = pal.AccentHover
+			}
+			iconColor = pal.AccentText
+		}
 		appUi.AnimateSurfaceColors(btn, btnBG, ui.Transparent, false)
 		appUi.TactileButton(btn, btnHovered, btnPressed, !hasText)
 		btn.Children(func() {
-			icons.DrawAnimated(c, icons.ArrowUp, theme.IconInline, pal.MonoIconColors(pal.AccentText), btnHovered || btnPressed)
+			icons.DrawAnimated(c, icons.ArrowUp, theme.IconInline, pal.MonoIconColors(iconColor), btnHovered || btnPressed)
 		})
 		appUi.Probe(btn, "annotate-submit")
 		if btn.Clicked() {
