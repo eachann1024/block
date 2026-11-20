@@ -17,6 +17,12 @@ import (
 	"block/internal/telemetry"
 )
 
+// writeCounted answers like the receiver: 200 with the Beijing day the ping counted for.
+func writeCounted(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"day": time.Now().UTC().Add(8 * time.Hour).Format("2006-01-02")})
+}
+
 var hex32Re = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type capturedPayload struct {
@@ -56,7 +62,7 @@ func readStoredRecord(t *testing.T, dir string) storedRecord {
 	return rec
 }
 
-func TestCheckOnce_Sends204AndSkipsSameDay(t *testing.T) {
+func TestCheckOnce_SendsAndSkipsSameDay(t *testing.T) {
 	clearOptOutEnv(t)
 
 	var hits atomic.Int32
@@ -79,7 +85,7 @@ func TestCheckOnce_Sends204AndSkipsSameDay(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		writeCounted(w)
 	}))
 	defer srv.Close()
 
@@ -158,7 +164,7 @@ func TestCheckOnce_DisabledByConfig(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		w.WriteHeader(http.StatusNoContent)
+		writeCounted(w)
 	}))
 	defer srv.Close()
 
@@ -191,7 +197,7 @@ func TestCheckOnce_DisabledByEnv(t *testing.T) {
 			var hits atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				hits.Add(1)
-				w.WriteHeader(http.StatusNoContent)
+				writeCounted(w)
 			}))
 			defer srv.Close()
 
@@ -235,7 +241,7 @@ func TestCheckOnce_RetriesAfterTransientStatusAndKeepsID(t *testing.T) {
 					w.WriteHeader(status)
 					return
 				}
-				w.WriteHeader(http.StatusNoContent)
+				writeCounted(w)
 			}))
 			defer srv.Close()
 
@@ -332,7 +338,7 @@ func TestCheckOnce_IDPersistsAcrossDays(t *testing.T) {
 			ids = append(ids, p.ID)
 			langs = append(langs, p.Lang)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		writeCounted(w)
 	}))
 	defer srv.Close()
 
