@@ -29,6 +29,11 @@ var _ plugins.SystemHost = (*pluginHostUI)(nil)
 
 var pluginNotificationID = regexp.MustCompile(`^block-plugin-click-[A-Z2-7]{26}$`)
 
+var pluginNativeNotifications = struct {
+	gate    chan struct{}
+	notices []*mygo.Notification
+}{gate: make(chan struct{}, 1)}
+
 type pluginNotificationTarget struct {
 	PluginID    string
 	InstalledAt time.Time
@@ -176,6 +181,12 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		}
 		return err
 	}
+	select {
+	case pluginNativeNotifications.gate <- struct{}{}:
+		defer func() { <-pluginNativeNotifications.gate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	if !allowed() {
 		return plugins.ErrSystemCanceled
 	}
@@ -201,14 +212,37 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	err := note.ShowContext(ctx)
 	if err == nil {
 		err = systemintegration.CheckNotificationPermission(ctx)
+		if err != nil {
+			note.Close()
+		}
 	}
 	if err != nil && record != "" {
 		_ = os.Remove(record)
+	}
+	if err == nil {
+		retainPluginNotification(note)
 	}
 	if errors.Is(err, mygo.ErrNotificationsDenied) {
 		return plugins.ErrSystemUnavailable
 	}
 	return err
+}
+
+func retainPluginNotification(note *mygo.Notification) {
+	notices := pluginNativeNotifications.notices
+	for index, previous := range notices {
+		if previous.ID() == note.ID() {
+			copy(notices[index:], notices[index+1:])
+			notices = notices[:len(notices)-1]
+			break
+		}
+	}
+	if len(notices) >= 128 {
+		notices[0].Close()
+		notices[0] = nil
+		notices = notices[1:]
+	}
+	pluginNativeNotifications.notices = append(notices, note)
 }
 
 func persistPluginNotificationTarget(id string, target pluginNotificationTarget) (string, error) {
@@ -329,7 +363,7 @@ func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []
 	}
 	for _, candidate := range tabs {
 		resolved, err := filepath.EvalSymlinks(candidate)
-		if err != nil || (resolved != path && (runtime.GOOS != "windows" || !strings.EqualFold(resolved, path))) {
+		if err != nil || !sameNotificationPath(path, resolved) {
 			continue
 		}
 		if info, err := os.Stat(resolved); err == nil && os.SameFile(noteInfo, info) {
@@ -345,6 +379,38 @@ func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []
 	w.installClassifiedTab(path, classified)
 	w.activateExternalTab(path)
 	return true
+}
+
+func sameNotificationPath(path, candidate string) bool {
+	if path == candidate {
+		return true
+	}
+	if (runtime.GOOS != "darwin" && runtime.GOOS != "windows") || !strings.EqualFold(path, candidate) {
+		return false
+	}
+	dir, candidateDir := filepath.Dir(path), filepath.Dir(candidate)
+	if dir != candidateDir {
+		info, err := os.Stat(dir)
+		other, otherErr := os.Stat(candidateDir)
+		if err != nil || otherErr != nil || !os.SameFile(info, other) {
+			return false
+		}
+	}
+	name, candidateName := filepath.Base(path), filepath.Base(candidate)
+	if name == candidateName {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	var matches int
+	for _, entry := range entries {
+		if entry.Name() == name || entry.Name() == candidateName {
+			matches++
+		}
+	}
+	return matches == 1
 }
 
 func (h *pluginHostUI) desktopAction(allowed func() bool, run func() error) error {
