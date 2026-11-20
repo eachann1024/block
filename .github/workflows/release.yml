@@ -1,12 +1,20 @@
 # 不要往 GitHub Release 添加允许名单以外的附件。唯一名单是 scripts/release/allowed-assets.mjs 里的 5 个安装包。
 # Do not add GitHub Release assets beyond the allowlist. The only list is the 5 installers in scripts/release/allowed-assets.mjs.
 
-name: Daily Release
+name: Release
 
 on:
-  schedule:
-    # 每天 00:00 UTC（北京时间 08:00）检查；仅当自上一版 Release 后有面向用户的新提交且当日未发版时构建发布。
-    - cron: '0 0 * * *'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'updates/feed.json'
+      - '.ai-map.md'
+      - 'docs/**'
+      - 'README.md'
+      - 'README.en.md'
+      - 'AGENTS.md'
+      - 'DESIGN.md'
+      - '.github/pull_request_template.md'
   workflow_dispatch:
     inputs:
       publish:
@@ -22,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  # Separate from older runs so a cancelled build cannot block or publish this one.
+  # Serialize releases on main so consecutive pushes never compute the same next version.
   group: block-packages-${{ github.ref }}
   cancel-in-progress: false
 
@@ -33,7 +41,10 @@ env:
 jobs:
   prepare:
     name: Select version and release notes
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')))
     runs-on: ubuntu-24.04
     environment: release-notes
     timeout-minutes: 15
@@ -54,7 +65,7 @@ jobs:
           persist-credentials: false
       - name: Setup Node 22
         run: bash scripts/ci/setup-node.sh 22
-      # 只在 main 的定时或手动发布里短时加入 tailnet。身份只存在 Environment release-notes。
+      # 只在 main 的推送或手动发布里短时加入 tailnet。身份只存在 Environment release-notes。
       # 目标只有 100.115.90.80:3425。不要 API key，不要公网地址，不要 3430。
       - name: Detect tailnet identity
         id: tailnet
@@ -97,7 +108,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
+          PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
           MAGPIE_BASE_URL: http://100.115.90.80:3425/v1
           MAGPIE_REACHABLE: ${{ steps.magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
