@@ -57,9 +57,10 @@ type Workspace struct {
 	closed   *ClosedTabs
 	tabOps   TabStripOps
 
-	tabMenu   *TabMenuState
-	sidebarUI *SidebarUIState
-	edgeFloat EdgeFloatController
+	tabMenu    *TabMenuState
+	sidebarUI  *SidebarUIState
+	edgeFloat  EdgeFloatController
+	extPathBar ExternalPathBarState
 
 	exportCtrl   *export.Controller
 	historyView  *PageHistoryView
@@ -4428,6 +4429,9 @@ func (w *Workspace) Render(c *ui.Context) {
 						mainCol := ui.Column(c.Key("stage-workspace")).Grow(1).MinWidth(minMainW).FillHeight().
 							Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
 						mainCol.Children(func() {
+							if activeTab != "" && isExternalFile(activeTab, activeNB) {
+								renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell)
+							}
 							if toast != nil && toast.Active && toast.NotePath == activeTab {
 								toast.RenderBanner(
 									c,
@@ -4885,6 +4889,12 @@ func (w *Workspace) shortcutForSidebar(stSnap model.AppState) string {
 func (w *Workspace) revealInShell(path string) {
 	if path != "" && mygo.App.IsReady() {
 		mygo.Shell.ShowItemInFolder(path)
+	}
+}
+
+func (w *Workspace) openDirInShell(path string) {
+	if path != "" && mygo.App.IsReady() {
+		_ = mygo.Shell.OpenPath(path)
 	}
 }
 
