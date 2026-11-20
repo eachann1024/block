@@ -333,7 +333,7 @@ function feedHasReleaseTag(tag) {
   if (!entry) return false;
   const assets = Array.isArray(entry.assets) ? entry.assets : [];
   if (assets.length === 0) return false;
-  if (assets.some((a) => !/^[0-9a-f]{64}$/i.test(String(a?.sha256 || "")))) return false;
+  if (assets.some((a) => typeof a?.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(a.sha256))) return false;
   return true;
 }
 
