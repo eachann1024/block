@@ -2,9 +2,11 @@ package modals
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -226,7 +228,8 @@ func (m *Manager) addFeedbackFiles(paths []string) {
 	fb.notice = ""
 	m.feedbackErr = ""
 	full, dup := 0, 0
-	for _, path := range paths {
+	for _, rawPath := range paths {
+		path := filepath.Clean(rawPath)
 		switch {
 		case m.feedbackHasPath(path):
 			dup++
@@ -321,8 +324,12 @@ func (m *Manager) submitFeedback() {
 		m.feedbackErr = theme.Tr("写几个字再发送吧。", "Write a few words first.")
 		return
 	}
+	if utf8.RuneCountInString(msg) > 4000 || len(msg) > 16_000 {
+		m.feedbackErr = theme.Tr("内容最多 4000 字，精简一下再发吧。", "Messages can be up to 4,000 characters.")
+		return
+	}
 	contact := strings.TrimSpace(m.feedbackContact)
-	if contact != "" && !validFeedbackEmail(contact) {
+	if contact != "" && (len(contact) > 254 || !validFeedbackEmail(contact)) {
 		m.feedbackErr = theme.Tr("邮箱格式不太对，检查一下？", "That email doesn't look right.")
 		return
 	}
@@ -400,6 +407,13 @@ func feedbackSendErrorText(e *feedback.SendError) string {
 	case feedback.ErrServer:
 		return fmt.Sprintf(theme.Tr("反馈服务暂时出了问题（%d）。稍后重试，已传完的部分不会重传。",
 			"The feedback service had a problem (%d). Retry in a moment; finished parts are not sent again."), e.Status)
+	case feedback.ErrRateLimited:
+		if secs := int((e.RetryAfter + time.Second - 1) / time.Second); secs > 0 {
+			return fmt.Sprintf(theme.Tr("提交太频繁，请约 %d 秒后再重试，已传完的部分不会重传。",
+				"Too many requests. Wait about %d seconds and retry; finished parts are not sent again."), secs)
+		}
+		return theme.Tr("提交太频繁，请稍后再重试，已传完的部分不会重传。",
+			"Too many requests. Retry in a moment; finished parts are not sent again.")
 	case feedback.ErrTooLarge:
 		return theme.Tr("服务端拒收：内容超出大小上限。返回移除较大的附件再发。",
 			"The service refused the size. Go back and remove the larger attachments.")
@@ -412,7 +426,7 @@ func feedbackSendErrorText(e *feedback.SendError) string {
 }
 
 func feedbackRetryable(e *feedback.SendError) bool {
-	return e != nil && (e.Kind == feedback.ErrOffline || e.Kind == feedback.ErrServer)
+	return e != nil && (e.Kind == feedback.ErrOffline || e.Kind == feedback.ErrServer || e.Kind == feedback.ErrRateLimited)
 }
 
 func feedbackProgressPair(sent, total int64) string {
@@ -420,7 +434,14 @@ func feedbackProgressPair(sent, total int64) string {
 	if total >= mb {
 		return fmt.Sprintf("%.1f / %.1f MB", float64(sent)/mb, float64(total)/mb)
 	}
-	return fmt.Sprintf("%d / %d KB", sent/1024, max(total/1024, 1))
+	totalKB := max((total+512)/1024, 1)
+	sentKB := (sent + 512) / 1024
+	if sent >= total && total > 0 {
+		sentKB = totalKB
+	} else if sentKB > totalKB {
+		sentKB = totalKB
+	}
+	return fmt.Sprintf("%d / %d KB", sentKB, totalKB)
 }
 
 // --- Rendering ---
