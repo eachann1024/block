@@ -148,6 +148,7 @@ type Manager struct {
 	settingsScroll         ui.ScrollState
 	storeScroll            ui.ScrollState
 	storeDetailScroll      ui.ScrollState
+	wasStoreDetail         bool
 	settingsFocusHandle    ui.Handle
 	fontSearchHandle       ui.Handle
 
@@ -188,8 +189,8 @@ type Manager struct {
 	feedbackSentContact string
 	feedbackDone        bool
 	feedbackErr         string
-
 	fb                  feedbackUI
+
 	// History modal state.
 	historyOpen           bool
 	historyNotePath       string
@@ -229,8 +230,8 @@ func NewManager(dataDir string, host model.WorkspaceHost) *Manager {
 		fallbackState:    model.DefaultAppState(theme.Language()),
 		settingsTab:      "ai",
 		feedbackCategory: "bug",
-		historyMode:      "diff",
 		fb:               feedbackUI{includeLog: true},
+		historyMode:      "diff",
 		exportFormat:     model.ExportMarkdown,
 		exportTheme:      "current",
 	}
@@ -627,6 +628,13 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 	}
 
 	listing := m.PluginHost != nil && m.PluginHost.StoreListing(tab)
+	inStoreDetail := IsStoreTab(tab) && !listing
+	if inStoreDetail != m.wasStoreDetail {
+		if inStoreDetail {
+			m.storeDetailScroll.Y = 0
+		}
+		m.wasStoreDetail = inStoreDetail
+	}
 	scrollID, scroll := "settings-scroll", &m.settingsScroll
 	contentWidth, titleSize, padBottom := theme.SettingsContentMaxWidth, theme.FontHeading, float32(56)
 	if IsStoreTab(tab) {
@@ -1303,7 +1311,7 @@ func scoreFontCandidate(item fontCandidateItem, q string, qTokens []string) (tie
 			return 4, idx, true
 		}
 	}
-	if sc := fuzzy.SubsequenceScore(item.name, q); sc > 0 {
+	if sc, ok := fuzzy.Score(q, []string{item.name}, nil, false); ok {
 		return 5, -sc, true
 	}
 	return 0, 0, false
@@ -1674,7 +1682,11 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					internalui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
 					internalui.TactileCard(row, hovered || highlighted, pressed, selected, false)
 					row.Children(func() {
-						ui.Text(c, f.Name).FontSize(theme.FontBody).TextColor(pal.Text).SingleLine().Grow(1)
+						var marks [][2]int
+						if strings.TrimSpace(m.fontQuery) != "" {
+							marks = fuzzy.HighlightRanges(f.Name, m.fontQuery)
+						}
+						internalui.HighlightedText(c, f.Name, marks, theme.FontBody, 0, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 						if selected {
 							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), selected || hovered || pressed)
 						}
