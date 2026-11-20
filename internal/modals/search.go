@@ -63,6 +63,7 @@ type searchHitMeta struct {
 	titleMatch   bool
 	titleMarks   [][2]int
 	snippetMarks [][2]int
+	folderMarks  [][2]int
 	count        int
 	folder       string
 }
@@ -634,14 +635,20 @@ func executeSearchWithSnapshot(
 		if cnt < 1 {
 			cnt = 1
 		}
+		folder := searchFolderLabel(roots, h.Path, h.Title, h.Notebook, includeRootName)
+		var folderMarks [][2]int
+		if (h.TitleMatch || len(titleMarks) > 0) && len(titleMarks) == 0 && folder != "" {
+			folderMarks = files.FindTitleHighlights(folder, q)
+		}
 		paired = append(paired, pairedHit{
 			hit: h,
 			meta: searchHitMeta{
 				titleMatch:   h.TitleMatch || len(titleMarks) > 0,
 				titleMarks:   titleMarks,
 				snippetMarks: snippetMarks,
+				folderMarks:  folderMarks,
 				count:        cnt,
-				folder:       searchFolderLabel(roots, h.Path, h.Title, h.Notebook, includeRootName),
+				folder:       folder,
 			},
 		})
 	}
@@ -1331,7 +1338,9 @@ func renderSearchHitRowView(
 	}
 
 	right := meta.folder
+	rightMarks := meta.folderMarks
 	if !meta.titleMatch && meta.count > 1 {
+		rightMarks = nil
 		if theme.IsEn() {
 			right = fmt.Sprintf("%d matches", meta.count)
 		} else {
@@ -1351,17 +1360,17 @@ func renderSearchHitRowView(
 				icons.DrawAnimated(c, icons.Note, theme.IconRow, ic, selected || hovered || pressed)
 
 				ui.Box(c).Grow(1).MinWidth(0).Children(func() {
-					renderHighlightedText(c, label, meta.titleMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight)
+					internalui.HighlightedText(c, label, meta.titleMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight)
 				})
 				if right != "" {
 					ui.Box(c).MaxWidth(220).Shrink(0).Children(func() {
-						ui.Text(c, right).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+						internalui.HighlightedText(c, right, rightMarks, theme.FontMeta, 0, pal.TextSecondary, pal.SearchHighlight)
 					})
 				}
 			})
 			if hit.Snippet != "" {
 				ui.Box(c).FillWidth().Padding(0, 0, 0, 22).Children(func() {
-					renderHighlightedText(c, hit.Snippet, meta.snippetMarks, theme.FontSmall, theme.WeightRegular, pal.TextSecondary, pal.SearchHighlight)
+					internalui.HighlightedText(c, hit.Snippet, meta.snippetMarks, theme.FontSmall, theme.WeightRegular, pal.TextSecondary, pal.SearchHighlight)
 				})
 			}
 		})
@@ -1397,50 +1406,6 @@ func renderFooterHint(c *ui.Context, pal theme.Palette, keys []string, label str
 	})
 }
 
-func renderHighlightedText(c *ui.Context, text string, marks [][2]int, size float32, weight int, fg, hlBG ui.Color) {
-	if len(marks) == 0 {
-		el := ui.Text(c, text).FontSize(size).TextColor(fg).SingleLine().Ellipsis("…")
-		if weight > 0 {
-			el.FontWeight(weight)
-		}
-		return
-	}
-	spans := buildHighlightSpans(text, marks, hlBG)
-	el := ui.RichText(c, spans...).FontSize(size).TextColor(fg).SingleLine().Ellipsis("…")
-	if weight > 0 {
-		el.FontWeight(weight)
-	}
-}
-
-func buildHighlightSpans(text string, marks [][2]int, hlBG ui.Color) []ui.Span {
-	spans := make([]ui.Span, 0, len(marks)*2+1)
-	pos := 0
-	for _, r := range marks {
-		start, end := r[0], r[1]
-		if start < pos {
-			start = pos
-		}
-		if end > len(text) {
-			end = len(text)
-		}
-		if start >= end {
-			continue
-		}
-		if start > pos {
-			spans = append(spans, ui.Span{Text: text[pos:start]})
-		}
-		spans = append(spans, ui.Span{Text: text[start:end], Background: hlBG})
-		pos = end
-	}
-	if pos < len(text) {
-		spans = append(spans, ui.Span{Text: text[pos:]})
-	}
-	if len(spans) == 0 {
-		return []ui.Span{{Text: text}}
-	}
-	return spans
-}
-
 func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query string) searchHitMeta {
 	if idx >= 0 && idx < len(st.hitMeta) {
 		return st.hitMeta[idx]
@@ -1455,10 +1420,15 @@ func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query strin
 	if cnt < 1 {
 		cnt = 1
 	}
+	var folderMarks [][2]int
+	if (hit.TitleMatch || len(titleMarks) > 0) && len(titleMarks) == 0 && hit.Notebook != "" {
+		folderMarks = files.FindTitleHighlights(hit.Notebook, q)
+	}
 	return searchHitMeta{
 		titleMatch:   hit.TitleMatch || len(titleMarks) > 0,
 		titleMarks:   titleMarks,
 		snippetMarks: snippetMarks,
+		folderMarks:  folderMarks,
 		count:        cnt,
 		folder:       hit.Notebook,
 	}
