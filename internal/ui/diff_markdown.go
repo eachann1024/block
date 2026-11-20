@@ -789,7 +789,9 @@ func diffSetextText(lines []string, para []int, q int, item bool) bool {
 			return false
 		}
 		t = strings.TrimSpace(diffStripQuotes(t, q))
-		if diffListItemRE.MatchString(t) && !(item && j == 0) || j > 0 && IsDiffTableSep(t) {
+		// A quote in the item ("1. > 先备份配置") ends before an underline outside it.
+		if diffListItemRE.MatchString(t) && (!item || j > 0 || strings.HasPrefix(t[min(diffItemCol(t), len(t)):], ">")) ||
+			j > 0 && IsDiffTableSep(t) {
 			return false
 		}
 	}
