@@ -3,10 +3,8 @@ package app
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -161,7 +159,9 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		return plugins.ErrSystemCanceled
 	}
 	if win := h.w.Window(); win != nil && win.IsFocused() {
-		h.toast(pluginID, title+" · "+body, tone, eventKey, nil)
+		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil) {
+			return plugins.ErrSystemBusy
+		}
 		return nil
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -184,11 +184,7 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		return plugins.ErrSystemCanceled
 	}
 	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
-	id := "block-plugin-" + pluginID
-	if root != "" {
-		scope := sha256.Sum256([]byte(root))
-		id = fmt.Sprintf("%s-%x", id, scope[:16])
-	}
+	id := "block-plugin-" + pluginID + "-" + eventKey
 	var record string
 	if runtime.GOOS == "darwin" {
 		id = "block-plugin-click-" + rand.Text()
@@ -324,10 +320,19 @@ func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []
 		return false
 	}
 	w.mu.RLock()
+	loaded := w.sessions[path] != nil
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	w.mu.RUnlock()
+	if loaded {
+		w.activateExternalTab(path)
+		return true
+	}
 	for _, candidate := range tabs {
-		if info, err := os.Stat(candidate); err == nil && os.SameFile(noteInfo, info) {
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil || (resolved != path && (runtime.GOOS != "windows" || !strings.EqualFold(resolved, path))) {
+			continue
+		}
+		if info, err := os.Stat(resolved); err == nil && os.SameFile(noteInfo, info) {
 			w.mu.RLock()
 			loaded := w.sessions[candidate] != nil
 			w.mu.RUnlock()
@@ -337,12 +342,7 @@ func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []
 			}
 		}
 	}
-	w.mu.RLock()
-	loaded := w.sessions[path] != nil
-	w.mu.RUnlock()
-	if !loaded {
-		w.installClassifiedTab(path, classified)
-	}
+	w.installClassifiedTab(path, classified)
 	w.activateExternalTab(path)
 	return true
 }

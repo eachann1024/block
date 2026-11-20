@@ -57,6 +57,7 @@ type pluginHostUI struct {
 	nextDialogID    uint64
 	toasts          []pluginToast
 	toastTimer      *time.Timer
+	syncToastRetry  bool
 	activeDialog    *pluginDialogRef
 	activePanel     *pluginPanelRef
 	lastPanel       *pluginPanelRef
@@ -146,13 +147,13 @@ func normalizeToastTone(t string) string {
 }
 
 func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
-	h.toast(pluginID, message, tone, "", icon)
+	h.onMain(func() { h.toast(pluginID, message, tone, "", icon) })
 }
 
-func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec) {
+func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec) bool {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
-		return
+		return false
 	}
 	normTone := normalizeToastTone(tone)
 	var icCopy *plugins.DuoIconSpec
@@ -160,38 +161,50 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		cp := *icon
 		icCopy = &cp
 	}
-	h.onMain(func() {
-		h.mu.Lock()
-		for i := range h.toasts {
-			if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone && h.toasts[i].EventKey == eventKey {
-				if icCopy != nil {
-					h.toasts[i].Icon = icCopy
-				}
-				h.mu.Unlock()
-				h.w.RequestRedraw()
-				return
+	h.mu.Lock()
+	for i := range h.toasts {
+		if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone && h.toasts[i].EventKey == eventKey {
+			if icCopy != nil {
+				h.toasts[i].Icon = icCopy
+			}
+			h.mu.Unlock()
+			h.w.RequestRedraw()
+			return true
+		}
+	}
+	if len(h.toasts) >= pluginToastQueueMax {
+		drop := 0
+		for index := 1; index < len(h.toasts); index++ {
+			if h.toasts[index].EventKey == "" {
+				drop = index
+				break
 			}
 		}
-		if len(h.toasts) >= pluginToastQueueMax {
-			// Keep the visible toast; replace the oldest waiting one.
-			h.toasts = append(h.toasts[:1], h.toasts[2:]...)
+		if drop == 0 {
+			if pluginID == "block-sync" && eventKey != "" {
+				h.syncToastRetry = true
+			}
+			h.mu.Unlock()
+			return false
 		}
-		h.nextToastID++
-		id := h.nextToastID
-		h.toasts = append(h.toasts, pluginToast{
-			ID:       id,
-			PluginID: pluginID,
-			Message:  msg,
-			Tone:     normTone,
-			EventKey: eventKey,
-			Icon:     icCopy,
-		})
-		if len(h.toasts) == 1 {
-			h.scheduleToastTimerLocked(id)
-		}
-		h.mu.Unlock()
-		h.w.RequestRedraw()
+		h.toasts = append(h.toasts[:drop], h.toasts[drop+1:]...)
+	}
+	h.nextToastID++
+	id := h.nextToastID
+	h.toasts = append(h.toasts, pluginToast{
+		ID:       id,
+		PluginID: pluginID,
+		Message:  msg,
+		Tone:     normTone,
+		EventKey: eventKey,
+		Icon:     icCopy,
 	})
+	if len(h.toasts) == 1 {
+		h.scheduleToastTimerLocked(id)
+	}
+	h.mu.Unlock()
+	h.w.RequestRedraw()
+	return true
 }
 
 func (h *pluginHostUI) scheduleToastTimerLocked(id uint64) {
@@ -219,7 +232,12 @@ func (h *pluginHostUI) dismissToast(id uint64) {
 	if len(h.toasts) > 0 {
 		h.scheduleToastTimerLocked(h.toasts[0].ID)
 	}
+	retry := h.syncToastRetry
+	h.syncToastRetry = false
 	h.mu.Unlock()
+	if retry && h.w.Plugins() != nil {
+		h.w.Plugins().RetrySyncNotifications()
+	}
 	h.w.RequestRedraw()
 }
 
