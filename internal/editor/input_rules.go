@@ -207,6 +207,79 @@ func spanCodeOrMathAt(spans []model.Span, startRune, endRune int) bool {
 	return false
 }
 
+func isEscapedAt(r []rune, pos int) bool {
+	if pos <= 0 || pos > len(r) {
+		return false
+	}
+	bs := 0
+	for i := pos - 1; i >= 0 && r[i] == '\\'; i-- {
+		bs++
+	}
+	return bs%2 == 1
+}
+
+// inUnclosedLiteralContext detects whether caret `pos` lies inside an unclosed inline
+// code backtick (` / ｀), unclosed inline math ($ / ＄), or an active bare URL token,
+// so smart typography / emoji / other inline formatting rules never corrupt code, LaTeX, or URLs while typing.
+func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick, inMath, inURL bool) {
+	if pos <= 0 || pos > len(r) {
+		return false, false, false
+	}
+	// Find current line start.
+	lineStart := pos
+	for lineStart > 0 && r[lineStart-1] != '\n' {
+		lineStart--
+	}
+	// Check active non-whitespace token for bare URL prefix.
+	tokStart := pos
+	for tokStart > lineStart && !unicode.IsSpace(r[tokStart-1]) {
+		tokStart--
+	}
+	if tokStart < pos {
+		tokLower := strings.ToLower(string(r[tokStart:pos]))
+		if strings.HasPrefix(tokLower, "http://") || strings.HasPrefix(tokLower, "https://") || strings.HasPrefix(tokLower, "www.") {
+			inURL = true
+		}
+	}
+	// Scan line from lineStart to pos skipping already-formatted code/math/link spans.
+	var openBT rune
+	var openMath rune
+	for i := lineStart; i < pos; i++ {
+		if spanProtectionAt(spans, i, i+1) {
+			continue
+		}
+		ch := r[i]
+		if (ch == '`' || ch == '｀') && !isEscapedAt(r, i) {
+			// Skip multi-backtick fences (``` / ``).
+			if (i > lineStart && r[i-1] == ch) || (i+1 < pos && r[i+1] == ch) {
+				continue
+			}
+			if openBT == 0 {
+				openBT = ch
+			} else if openBT == ch {
+				openBT = 0
+			}
+			continue
+		}
+		if openBT != 0 {
+			continue
+		}
+		if (ch == '$' || ch == '＄') && !isEscapedAt(r, i) {
+			if (i > lineStart && r[i-1] == ch) || (i+1 < pos && r[i+1] == ch) {
+				continue
+			}
+			if openMath == 0 {
+				if i+1 < pos && !unicode.IsSpace(r[i+1]) {
+					openMath = ch
+				}
+			} else if openMath == ch && i > lineStart && !unicode.IsSpace(r[i-1]) {
+				openMath = 0
+			}
+		}
+	}
+	return openBT != 0, openMath != 0, inURL
+}
+
 // --- Inline Markdown Real-Time Conversion ---
 
 type inlineRuleResult struct {
@@ -275,9 +348,13 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 	}
 	last := r[end-1]
 
-	// Standalone image `![alt](url)` or inline link `[label](url)` ending with `)`.
-	if last == ')' {
-		if allowImageBlock {
+	// Standalone image `![alt](url)` or inline link `[label](url)` / `[label]（https://...）` ending with `)` / `）`.
+	if last == ')' || last == '）' {
+		inBT, inMath, _ := inUnclosedLiteralContext(spans, r, end-1)
+		if inBT || inMath {
+			return inlineRuleResult{spans: spans, caret: end}
+		}
+		if allowImageBlock && last == ')' {
 			trimmed := strings.TrimSpace(string(r[:end]))
 			rest := strings.TrimSpace(string(r[end:]))
 			if rest == "" {
@@ -292,9 +369,9 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Inline code `` `code` `` (guard against ``` fenced code block).
-	if last == '`' {
-		if end >= 2 && r[end-2] == '`' {
+	// Inline code `` `code` `` or fullwidth `` ｀code｀ `` (guard against ``` fenced code block and escaped backticks).
+	if last == '`' || last == '｀' {
+		if isEscapedAt(r, end-1) || (end >= 2 && r[end-2] == last) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		open := -1
@@ -302,8 +379,8 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 			if r[i] == '\n' {
 				break
 			}
-			if r[i] == '`' {
-				if i > 0 && r[i-1] == '`' {
+			if r[i] == last && !isEscapedAt(r, i) {
+				if i > 0 && r[i-1] == last {
 					return inlineRuleResult{spans: spans, caret: end}
 				}
 				open = i
@@ -319,9 +396,10 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Inline math `$E=mc^2$` (guard against `$$` display math and `$5 and $10`).
-	if last == '$' {
-		if end >= 2 && (r[end-2] == '$' || r[end-2] == '\\' || unicode.IsSpace(r[end-2])) {
+	// Inline math `$E=mc^2$` or fullwidth `＄E=mc^2＄` (guard against `$$`, `$5 and $10`, and inside unclosed backtick).
+	if last == '$' || last == '＄' {
+		inBT, _, _ := inUnclosedLiteralContext(spans, r, end-1)
+		if inBT || isEscapedAt(r, end-1) || (end >= 2 && (r[end-2] == last || unicode.IsSpace(r[end-2]))) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		open := -1
@@ -329,8 +407,8 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 			if r[i] == '\n' {
 				break
 			}
-			if r[i] == '$' && (i == 0 || r[i-1] != '\\') {
-				if i > 0 && r[i-1] == '$' {
+			if r[i] == last && !isEscapedAt(r, i) {
+				if i > 0 && r[i-1] == last {
 					return inlineRuleResult{spans: spans, caret: end}
 				}
 				open = i
@@ -346,10 +424,15 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Highlight `==text==`.
-	if last == '=' {
-		if end >= 5 && r[end-2] == '=' && (end < 3 || r[end-3] != '=') {
-			if open, ok := findPairedDoubleDelim(r, end, '='); ok && !spanCodeOrMathAt(spans, open, end) {
+	// Do not trigger emphasis / highlight / strike / sup / sub inside unclosed inline code, math, or bare URL.
+	if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, end-1); inBT || inMath || inURL {
+		return inlineRuleResult{spans: spans, caret: end}
+	}
+
+	// Highlight `==text==` or fullwidth `＝＝text＝＝`.
+	if last == '=' || last == '＝' {
+		if end >= 5 && r[end-2] == last && (end < 3 || r[end-3] != last) && !isEscapedAt(r, end-2) {
+			if open, ok := findPairedDoubleDelim(r, end, last); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 2, func(sp model.Span) model.Span {
 					sp.BGColor = "yellow"
 					return sp
@@ -359,10 +442,10 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Strikethrough `~~text~~` or Subscript `~text~`.
-	if last == '~' {
-		if end >= 5 && r[end-2] == '~' && (end < 3 || r[end-3] != '~') {
-			if open, ok := findPairedDoubleDelim(r, end, '~'); ok && !spanCodeOrMathAt(spans, open, end) {
+	// Strikethrough `~~text~~` / `～～text～～` or Subscript `~text~`.
+	if last == '~' || last == '～' {
+		if end >= 5 && r[end-2] == last && (end < 3 || r[end-3] != last) && !isEscapedAt(r, end-2) {
+			if open, ok := findPairedDoubleDelim(r, end, last); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 2, func(sp model.Span) model.Span {
 					sp.Marks |= model.MarkStrike
 					return sp
@@ -370,7 +453,7 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 			}
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		if end >= 3 && r[end-2] != '~' {
+		if last == '~' && end >= 3 && r[end-2] != '~' && !isEscapedAt(r, end-1) {
 			if open, ok := findPairedSingleNoSpaceDelim(r, end, '~'); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 1, func(sp model.Span) model.Span {
 					sp.Marks = (sp.Marks &^ model.MarkSuperscript) | model.MarkSubscript
@@ -383,7 +466,7 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 
 	// Superscript `^text^`.
 	if last == '^' {
-		if end >= 3 && r[end-2] != '^' {
+		if end >= 3 && r[end-2] != '^' && !isEscapedAt(r, end-1) {
 			if open, ok := findPairedSingleNoSpaceDelim(r, end, '^'); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 1, func(sp model.Span) model.Span {
 					sp.Marks = (sp.Marks &^ model.MarkSubscript) | model.MarkSuperscript
@@ -394,14 +477,16 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 
-	// Emphasis: `***text***` / `**text**` / `*text*` and `___text___` / `__text__` / `_text_`.
-	if last == '*' || last == '_' {
-		// Count trailing run of `last`.
+	// Emphasis: `***text***` / `**text**` / `*text*`, `___text___` / `__text__` / `_text_`, and fullwidth `＊＊text＊＊`.
+	if last == '*' || last == '_' || last == '＊' {
 		closeRun := 0
 		for end-1-closeRun >= 0 && r[end-1-closeRun] == last {
 			closeRun++
 		}
-		if closeRun == 3 && end >= 7 {
+		if isEscapedAt(r, end-closeRun) {
+			return inlineRuleResult{spans: spans, caret: end}
+		}
+		if last != '＊' && closeRun == 3 && end >= 7 {
 			if open, ok := findPairedTripleDelim(r, end, last); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 3, func(sp model.Span) model.Span {
 					sp.Marks |= model.MarkBold | model.MarkItalic
@@ -415,7 +500,7 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 					return sp
 				}, appUi.RichCodeEdgeNone, model.MarkBold, false)
 			}
-		} else if closeRun == 1 && end >= 3 {
+		} else if last != '＊' && closeRun == 1 && end >= 3 {
 			if open, ok := findPairedSingleEmphasisDelim(r, end, last); ok && !spanCodeOrMathAt(spans, open, end) {
 				return replaceInlineDelimited(spans, len(r), open, end, 1, func(sp model.Span) model.Span {
 					sp.Marks |= model.MarkItalic
@@ -450,7 +535,7 @@ func findPairedTripleDelim(r []rune, end int, ch rune) (int, bool) {
 			if open > 0 && r[open-1] == ch {
 				return -1, false
 			}
-			if open > 0 && r[open-1] == '\\' {
+			if isEscapedAt(r, open) {
 				return -1, false
 			}
 			if ch == '_' && !isWordBoundaryBeforeUnderscore(r, open) {
@@ -480,7 +565,7 @@ func findPairedDoubleDelim(r []rune, end int, ch rune) (int, bool) {
 			if open > 0 && r[open-1] == ch {
 				return -1, false
 			}
-			if open > 0 && r[open-1] == '\\' {
+			if isEscapedAt(r, open) {
 				return -1, false
 			}
 			if ch == '_' && !isWordBoundaryBeforeUnderscore(r, open) {
@@ -509,7 +594,7 @@ func findPairedSingleEmphasisDelim(r []rune, end int, ch rune) (int, bool) {
 			if (i > 0 && r[i-1] == ch) || (i+1 < innerEnd && r[i+1] == ch) {
 				return -1, false
 			}
-			if i > 0 && r[i-1] == '\\' {
+			if isEscapedAt(r, i) {
 				return -1, false
 			}
 			if ch == '_' && !isWordBoundaryBeforeUnderscore(r, i) {
@@ -534,7 +619,7 @@ func findPairedSingleNoSpaceDelim(r []rune, end int, ch rune) (int, bool) {
 			return -1, false
 		}
 		if r[i] == ch {
-			if (i > 0 && r[i-1] == ch) || (i > 0 && r[i-1] == '\\') {
+			if (i > 0 && r[i-1] == ch) || isEscapedAt(r, i) {
 				return -1, false
 			}
 			if i+1 < innerEnd {
@@ -580,16 +665,79 @@ func normalizeInlineLinkURL(raw string) string {
 	return u
 }
 
+func isPlausibleInlineLinkTarget(raw string, requireExplicitScheme bool) bool {
+	u := strings.TrimSpace(raw)
+	if u == "" || strings.ContainsAny(u, " \t\r\n<>") {
+		return false
+	}
+	lower := strings.ToLower(u)
+	if strings.HasPrefix(lower, "http://") && len(u) > len("http://") {
+		return true
+	}
+	if strings.HasPrefix(lower, "https://") && len(u) > len("https://") {
+		return true
+	}
+	if strings.HasPrefix(lower, "www.") && len(u) > len("www.") && strings.ContainsRune(u[4:], '.') {
+		return true
+	}
+	if requireExplicitScheme {
+		return false
+	}
+	if strings.HasPrefix(lower, "mailto:") && len(u) > len("mailto:") {
+		return true
+	}
+	if strings.HasPrefix(lower, "tel:") && len(u) > len("tel:") {
+		return true
+	}
+	if strings.HasPrefix(lower, "ftp://") && len(u) > len("ftp://") {
+		return true
+	}
+	if strings.HasPrefix(u, "#") && len(u) > 1 {
+		return true
+	}
+	if strings.HasPrefix(u, "/") || strings.HasPrefix(u, "./") || strings.HasPrefix(u, "../") {
+		return len(u) > 1
+	}
+	// Accept bare domain or relative file path (must contain `.` or `/`, and no CJK prose like `[重要](请先备份)`).
+	if strings.ContainsAny(u, "./") {
+		for _, ch := range u {
+			if ch > 0x7F && unicode.Is(unicode.Han, ch) {
+				return strings.ContainsRune(u, '/')
+			}
+		}
+		return !strings.HasPrefix(u, ".") && !strings.HasSuffix(u, ".")
+	}
+	return false
+}
+
 func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResult {
-	// Match `[label](url)` ending at `end` (`r[end-1] == ')'`).
+	// Match `[label](url)` or `[label]（https://...）` ending at `end`, allowing balanced `(...)` inside URL.
+	closeParen := r[end-1]
+	openChar := '('
+	fullwidthParen := closeParen == '）'
+	if fullwidthParen {
+		openChar = '（'
+	}
 	openParen := -1
+	depth := 0
 	for i := end - 2; i >= 1; i-- {
-		if r[i] == '\n' || r[i] == ')' {
+		if r[i] == '\n' {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		if r[i] == '(' && r[i-1] == ']' {
-			openParen = i
-			break
+		if r[i] == closeParen {
+			depth++
+			continue
+		}
+		if r[i] == openChar {
+			if depth > 0 {
+				depth--
+				continue
+			}
+			if r[i-1] == ']' {
+				openParen = i
+				break
+			}
+			return inlineRuleResult{spans: spans, caret: end}
 		}
 	}
 	if openParen < 2 {
@@ -602,7 +750,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		if r[i] == '[' {
-			if i > 0 && r[i-1] == '\\' {
+			if isEscapedAt(r, i) {
 				return inlineRuleResult{spans: spans, caret: end}
 			}
 			openBracket = i
@@ -614,7 +762,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 	}
 	labelLen := closeBracket - (openBracket + 1)
 	rawURL := strings.TrimSpace(string(r[openParen+1 : end-1]))
-	if labelLen <= 0 || rawURL == "" || strings.ContainsAny(rawURL, " \t\r\n") {
+	if labelLen <= 0 || !isPlausibleInlineLinkTarget(rawURL, fullwidthParen) {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 	if spanCodeOrMathAt(spans, openBracket, end) {
@@ -649,7 +797,7 @@ func matchStandaloneImageLine(s string) (alt, src string, ok bool) {
 	}
 	alt = strings.TrimSpace(t[2:mid])
 	src = strings.TrimSpace(t[mid+2 : len(t)-1])
-	if src == "" || strings.ContainsAny(src, "\r\n") {
+	if !isPlausibleInlineLinkTarget(src, false) {
 		return "", "", false
 	}
 	return alt, src, true
@@ -663,15 +811,39 @@ func tryBareURLAutolinkBefore(spans []model.Span, r []rune, tokenEnd int) inline
 	for start > 0 && !unicode.IsSpace(r[start-1]) {
 		start--
 	}
+	// Strip leading wrapper punctuation like `(https://...` or `「https://...`.
+	for start < tokenEnd {
+		switch r[start] {
+		case '(', '[', '{', '<', '"', '\'', '（', '【', '「', '《', '“':
+			start++
+			continue
+		}
+		break
+	}
 	if start >= tokenEnd {
 		return inlineRuleResult{spans: spans, caret: tokenEnd}
 	}
 	end := tokenEnd
-	// Strip common trailing punctuation from bare URLs.
+	// Strip trailing punctuation while keeping balanced `)` inside URLs like Wikipedia links.
 	for end > start {
 		ch := r[end-1]
+		if ch == ')' {
+			opens, closes := 0, 0
+			for i := start; i < end; i++ {
+				if r[i] == '(' {
+					opens++
+				} else if r[i] == ')' {
+					closes++
+				}
+			}
+			if closes > opens {
+				end--
+				continue
+			}
+			break
+		}
 		switch ch {
-		case '.', ',', ';', ':', '!', '?', '\'', '"', ')', ']', '}', '。', '，', '；', '：', '！', '？', '）', '】', '》', '」', '』':
+		case '.', ',', ';', ':', '!', '?', '\'', '"', ']', '}', '>', '。', '，', '；', '：', '！', '？', '）', '】', '》', '」', '』', '”':
 			end--
 			continue
 		}
@@ -770,7 +942,10 @@ func runesEqual(a, b []rune) bool {
 	return true
 }
 
-func applySmartTypographyOnSpans(spans []model.Span, caretRune int) ([]model.Span, int, bool) {
+func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen int) ([]model.Span, int, bool) {
+	if insLen <= 0 {
+		return spans, caretRune, false
+	}
 	plain := model.PlainTextOfSpans(spans)
 	r := []rune(plain)
 	n := len(r)
@@ -780,10 +955,13 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune int) ([]model.Spa
 	if caretRune <= 0 || caretRune > n {
 		caretRune = n
 	}
+	if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune); inBT || inMath || inURL {
+		return spans, caretRune, false
+	}
 
 	// Em-dash `-- ` / `--　` only when preceded by non-dash, non-empty content (never breaks `---` divider).
 	if caretRune >= 4 && (r[caretRune-1] == ' ' || r[caretRune-1] == '\u3000') &&
-		r[caretRune-2] == '-' && r[caretRune-3] == '-' && r[caretRune-4] != '-' {
+		r[caretRune-2] == '-' && r[caretRune-3] == '-' && r[caretRune-4] != '-' && !isEscapedAt(r, caretRune-3) {
 		hasNonDash := false
 		for i := 0; i < caretRune-3; i++ {
 			if r[i] != '-' && !unicode.IsSpace(r[i]) {
@@ -797,10 +975,27 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune int) ([]model.Spa
 		}
 	}
 
-	// Scan all unprotected occurrences up to caret (handles both single-keystroke and whole-string IME/Type input).
 	curSpans := spans
 	curCaret := caretRune
 	changed := false
+
+	// Single-character typing: ONLY match rules ending right at caret so previously undone raw tokens (via Backspace) stay intact.
+	if insLen == 1 {
+		for _, rule := range smartTypoRules {
+			fl := len(rule.from)
+			if curCaret >= fl && runesEqual(r[curCaret-fl:curCaret], rule.from) {
+				start := curCaret - fl
+				if !isEscapedAt(r, start) && !spanProtectionAt(curSpans, start, curCaret) {
+					curSpans = replaceSpanRuneRange(curSpans, n, start, curCaret, string(rule.to))
+					return curSpans, start + len(rule.to), true
+				}
+			}
+		}
+		return spans, caretRune, false
+	}
+
+	// Multi-character commit (IME / whole-string Type): scan only the newly inserted window [scanStart, curCaret).
+	scanStart := max(insStart-3, 0)
 	for {
 		curR := []rune(model.PlainTextOfSpans(curSpans))
 		curN := len(curR)
@@ -808,34 +1003,18 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune int) ([]model.Spa
 			curCaret = curN
 		}
 		matched := false
-		// Check suffix right at caret first (most common typing case).
-		for _, rule := range smartTypoRules {
-			fl := len(rule.from)
-			if curCaret >= fl && runesEqual(curR[curCaret-fl:curCaret], rule.from) {
-				start := curCaret - fl
-				if !spanProtectionAt(curSpans, start, curCaret) {
-					curSpans = replaceSpanRuneRange(curSpans, curN, start, curCaret, string(rule.to))
-					curCaret = start + len(rule.to)
-					changed = true
-					matched = true
-					break
-				}
-			}
-		}
-		if matched {
-			continue
-		}
-		// Fallback scan across text before caret for multi-character commits like "a->b and c-》d".
-		for pos := 0; pos < curCaret && !matched; pos++ {
+		for pos := scanStart; pos < curCaret && !matched; pos++ {
 			for _, rule := range smartTypoRules {
 				fl := len(rule.from)
 				if pos+fl <= curCaret && runesEqual(curR[pos:pos+fl], rule.from) {
-					if !spanProtectionAt(curSpans, pos, pos+fl) {
-						curSpans = replaceSpanRuneRange(curSpans, curN, pos, pos+fl, string(rule.to))
-						curCaret -= fl - len(rule.to)
-						changed = true
-						matched = true
-						break
+					if !isEscapedAt(curR, pos) && !spanProtectionAt(curSpans, pos, pos+fl) {
+						if inBT, inMath, inURL := inUnclosedLiteralContext(curSpans, curR, pos+fl); !inBT && !inMath && !inURL {
+							curSpans = replaceSpanRuneRange(curSpans, curN, pos, pos+fl, string(rule.to))
+							curCaret -= fl - len(rule.to)
+							changed = true
+							matched = true
+							break
+						}
 					}
 				}
 			}
@@ -889,6 +1068,9 @@ func applyEmojiShortcodeOnSpans(spans []model.Span, caretRune int) ([]model.Span
 		caretRune = n
 	}
 	if caretRune < 3 || r[caretRune-1] != ':' {
+		return spans, caretRune, false
+	}
+	if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune); inBT || inMath || inURL {
 		return spans, caretRune, false
 	}
 	open := -1
@@ -1042,6 +1224,9 @@ func (s *Session) convertParagraphToTableBlock(idx int, cols []string) {
 	delete(s.richInputs, b.ID)
 	bodyOff := tableCellStartOffset(b.Table, 1, 0)
 	s.focusedBlock = idx
+	s.tableActiveBlock = b.ID
+	s.tableActiveRow = 1
+	s.tableActiveCol = 0
 	s.selAnchor = Position{Block: idx, Offset: bodyOff}
 	s.selHead = s.selAnchor
 	s.focusPending = true
@@ -1060,8 +1245,10 @@ var autoWrapPairs = map[string][2]string{
 	"（": {"（", "）"},
 	"【": {"【", "】"},
 	"「": {"「", "」"},
+	"『": {"『", "』"},
 	"《": {"《", "》"},
 	"“": {"“", "”"},
+	"‘": {"‘", "’"},
 }
 
 type autoWrapResult struct {
@@ -1271,29 +1458,36 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 
 	beforeConvertSpans := cloneSpansSlice(cell.Spans)
 	beforeConvertCaret := clampInt(caret, 0, len([]rune(newText)))
+	insLen := len([]rune(newText)) - len([]rune(oldDraft))
+	insStart := beforeConvertCaret - max(insLen, 0)
+	if insStart < 0 {
+		insStart = 0
+	}
 	converted := false
 	finalCaret := beforeConvertCaret
 	finalEdge := appUi.RichCodeEdgeNone
 	var nextClearMask model.Mark
 	var nextClearBG bool
 
-	if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(cell.Spans, finalCaret); ok {
-		cell.Spans = nextSpans
-		finalCaret = nextCaret
-		converted = true
-	}
-	if nextSpans, nextCaret, ok := applySmartTypographyOnSpans(cell.Spans, finalCaret); ok {
-		cell.Spans = nextSpans
-		finalCaret = nextCaret
-		converted = true
-	}
-	if res := applyInlineInputRules(cell.Spans, finalCaret, false); res.changed {
-		cell.Spans = res.spans
-		finalCaret = res.caret
-		finalEdge = res.codeEdge
-		nextClearMask = res.clearMask
-		nextClearBG = res.clearBG
-		converted = true
+	if insLen > 0 {
+		if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(cell.Spans, finalCaret); ok {
+			cell.Spans = nextSpans
+			finalCaret = nextCaret
+			converted = true
+		}
+		if nextSpans, nextCaret, ok := applySmartTypographyOnSpans(cell.Spans, finalCaret, insStart, insLen); ok {
+			cell.Spans = nextSpans
+			finalCaret = nextCaret
+			converted = true
+		}
+		if res := applyInlineInputRules(cell.Spans, finalCaret, false); res.changed {
+			cell.Spans = res.spans
+			finalCaret = res.caret
+			finalEdge = res.codeEdge
+			nextClearMask = res.clearMask
+			nextClearBG = res.clearBG
+			converted = true
+		}
 	}
 
 	b.Dirty = true

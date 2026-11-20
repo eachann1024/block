@@ -1769,6 +1769,12 @@ func (s *Session) buildInputTextRanges(idx int, b *model.Block) []ui.TextRange {
 				tr.Weight = theme.WeightRegular
 			}
 			hasStyle = true
+		} else if sp.Marks&model.MarkMath != 0 {
+			tr.Start, tr.End, tr.Color = s0, s1, pal.Accent
+			if tr.Weight == 0 {
+				tr.Weight = theme.WeightRegular
+			}
+			hasStyle = true
 		}
 		if col, ok := theme.ResolveNamedFG(sp.FGColor, dark); ok {
 			tr.Start, tr.End, tr.Color = s0, s1, col
