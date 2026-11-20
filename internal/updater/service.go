@@ -476,8 +476,9 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 			s.readyRecord.Tag == picked.Tag && s.readyRecord.AssetName == asset.Name &&
 			s.readyRecord.DownloadURL == asset.DownloadURL && s.readyRecord.SHA256 == asset.EffectiveSHA256() {
 			s.status = StatusReady
-		} else if s.readyRecord != nil && asset == nil && CompareVersion(s.readyRecord.Version, cur) > 0 {
-			// Keep an already verified local package if the newer release has no asset for this platform yet.
+		} else if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 &&
+			(asset == nil || CompareVersion(s.readyRecord.Version, picked.Version) > 0) {
+			// Keep an already verified local package when the feed lags behind it or lacks a platform asset.
 			s.status = StatusReady
 		} else {
 			s.readyRecord = nil
