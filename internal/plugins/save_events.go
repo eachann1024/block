@@ -175,9 +175,19 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 			v.failedSaves = make(map[string]string)
 		}
 		v.failedSaves[absNotePath] = relSlash + " · " + err.Error()
-	} else if eventOutcome != "pending_confirm" && eventOutcome != "skipped" {
+		delete(v.savePausedConfirm, absNotePath)
+	} else if eventOutcome == "pending_confirm" {
+		if v.failedSaves[absNotePath] != "" {
+			if v.savePausedConfirm == nil {
+				v.savePausedConfirm = make(map[string]bool)
+			}
+			v.savePausedConfirm[absNotePath] = true
+		}
+	} else if eventOutcome != "skipped" {
 		delete(v.failedSaves, absNotePath)
+		delete(v.savePausedConfirm, absNotePath)
 	}
+	s.viewEpoch.Add(1)
 	refreshPage := v.Page != nil && v.BusyAction == ""
 	editSeq := v.editSeq
 	var draftVals map[string]any

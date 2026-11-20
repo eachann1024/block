@@ -54,12 +54,14 @@ type PluginViewState struct {
 	LastActionButtonActive bool
 	LastActionWasHeader    bool
 
-	RetryKind      RetryKind
-	FailedActionID string
-	FailedNotePath string
-	FailedNoteRoot string
-	failedSaves    map[string]string
-	queuedSaves    map[string]*noteSaveRequest
+	RetryKind         RetryKind
+	FailedActionID    string
+	FailedNotePath    string
+	FailedNoteRoot    string
+	SavePausedConfirm bool
+	failedSaves       map[string]string
+	savePausedConfirm map[string]bool
+	queuedSaves       map[string]*noteSaveRequest
 	activeSaves    int
 	retrySavePath  string
 	PendingSaves   int
@@ -1730,6 +1732,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 							if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
 								if syncedRoots[syncNotebookKey(vk.notebookRoot)] {
 									clear(view.failedSaves)
+									clear(view.savePausedConfirm)
 								}
 							}
 						}
@@ -2256,6 +2259,7 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		// CancelPendingSaves all act on the exact same scope.
 		out.PendingSaves = len(in.queuedSaves)
 		var failedPath, failedRoot, failure string
+		var failedPaused bool
 		for key, v := range s.views {
 			if key.pluginID != current.pluginID || key.surface != SurfaceSettingsPage {
 				continue
@@ -2268,6 +2272,7 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 				samePriority := (key == current) == (failedRoot == current.notebookRoot)
 				if failedPath == "" || preferCurrent || (samePriority && path < failedPath) {
 					failedPath, failedRoot, failure = path, key.notebookRoot, message
+					failedPaused = v.savePausedConfirm[path]
 				}
 			}
 		}
@@ -2279,6 +2284,7 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 			out.FailedNotePath = failedPath
 			out.FailedNoteRoot = failedRoot
 			out.RetryKind = RetryKindNoteSaved
+			out.SavePausedConfirm = failedPaused
 		}
 	}
 	return out

@@ -290,6 +290,9 @@ func (c *Controller) renderPluginTitlebarTrailing(
 		}
 
 		// ③ Primary action slot: at most 1 button.
+		// When a retried note.saved paused for confirmation, surface the plugin's primary action
+		// (e.g. Sync Now / Confirm Sync) instead of trapping the user behind a repeating Retry Sync button.
+		showRetryPrimary := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm && live && primaryAct != nil)
 		switch {
 		case uninstBusy:
 			ui.Row(ctx.Key("plugin-tb-uninstalling-"+pluginID)).Height(theme.HeightCompact).PaddingX(theme.Space10).
@@ -301,7 +304,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			})
 		case actionRunning:
 			c.renderRunningActionPill(ctx, pluginID, vs, primaryAct, canCancel)
-		case hasError:
+		case showRetryPrimary:
 			retryLabel := resolvePluginRetryLabel(pluginID, failed, uninstErr != "", vs)
 			refIc := icons.Refresh
 			retryDisabled := vs.Loading || (uninstErr != "" && pluginBusyAny)
@@ -892,9 +895,27 @@ func (c *Controller) buildPluginMoreMenuItems(
 
 	items := make([]bui.MenuItemSpec, 0, 8)
 
-	// 1. Secondary header actions declared by the plugin (e.g. "恢复默认", "重新扫描").
+	// 1. Header actions declared by the plugin (secondary actions, plus primary action if displaced by a retry button).
 	if live && vs.Page != nil {
-		_, secondaryActs := splitHeaderActions(vs.Page)
+		primaryAct, secondaryActs := splitHeaderActions(vs.Page)
+		uninstErr := c.sup.PluginUninstallError(pluginID)
+		hasError := uninstErr != "" || vs.Error != "" || vs.RetryKind != plugins.RetryKindNone
+		primaryDisplaced := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm)
+		if primaryDisplaced && primaryAct != nil {
+			b := *primaryAct
+			ic := resolveActionButtonIcon(b.ID)
+			items = append(items, bui.MenuItemSpec{
+				ID:       "plugin-menu-act-" + pluginID + "-" + b.ID,
+				Label:    b.Label,
+				Icon:     ic,
+				Danger:   b.Variant == plugins.VariantDanger,
+				Disabled: vs.Loading || actionRunning || uninstBusy,
+				OnClick: func() {
+					c.CloseTitlebarOverlays()
+					c.sup.TriggerActionAsync(pluginID, b.ID)
+				},
+			})
+		}
 		for _, act := range secondaryActs {
 			b := act
 			ic := resolveActionButtonIcon(b.ID)
