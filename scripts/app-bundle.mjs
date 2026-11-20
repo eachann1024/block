@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -161,6 +161,64 @@ export function normalizeArch(raw = process.arch) {
   throw new Error(`unsupported arch: ${raw}`);
 }
 
+function readLocalBuildEnv(root = repoRoot) {
+  const out = {};
+  const envFile = join(root, ".env.local");
+  if (!existsSync(envFile)) return out;
+  try {
+    const raw = readFileSync(envFile, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      out[key] = val;
+    }
+  } catch {}
+  return out;
+}
+
+function sanitizeLdflagValue(raw, name) {
+  const val = String(raw || "").trim();
+  if (!val) return "";
+  if (/[\s"'`\\]/.test(val)) {
+    throw new Error(`${name} must not contain whitespace or quotes`);
+  }
+  return val;
+}
+
+export function resolveFeedbackBuildConfig(root = repoRoot) {
+  const local = readLocalBuildEnv(root);
+  const endpoint = sanitizeLdflagValue(
+    process.env.BLOCK_FEEDBACK_URL ?? local.BLOCK_FEEDBACK_URL ?? "",
+    "BLOCK_FEEDBACK_URL",
+  );
+  const clientToken = sanitizeLdflagValue(
+    process.env.BLOCK_FEEDBACK_CLIENT_TOKEN ?? local.BLOCK_FEEDBACK_CLIENT_TOKEN ?? "",
+    "BLOCK_FEEDBACK_CLIENT_TOKEN",
+  );
+  return { endpoint, clientToken };
+}
+
+export function feedbackLdflags(root = repoRoot) {
+  const { endpoint, clientToken } = resolveFeedbackBuildConfig(root);
+  const flags = [];
+  if (endpoint) flags.push(`-X block/internal/feedback.DefaultEndpoint=${endpoint}`);
+  if (clientToken) flags.push(`-X block/internal/feedback.DefaultClientToken=${clientToken}`);
+  return flags;
+}
+
+export function feedbackBuildHash(root = repoRoot) {
+  const { endpoint, clientToken } = resolveFeedbackBuildConfig(root);
+  if (!endpoint && !clientToken) return "";
+  return createHash("sha256").update(`${endpoint}\0${clientToken}`).digest("hex").slice(0, 16);
+}
+
 export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fast", useMygo = false, tempDir } = {}) {
   mkdirSync(dirname(outFile), { recursive: true });
   const env = { ...process.env, CGO_ENABLED: "0" };
@@ -182,7 +240,11 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
       throw new Error(detail || `go tool mygo build exited ${result.status}`);
     }
   }
-  const ldflags = [`-X block/internal/updater.BuildVersion=${readAppVersion(root)}`];
+  const feedbackCfg = resolveFeedbackBuildConfig(root);
+  const ldflags = [
+    `-X block/internal/updater.BuildVersion=${readAppVersion(root)}`,
+    ...feedbackLdflags(root),
+  ];
   if (profile === "release" || goos !== "darwin") {
     ldflags.push("-s", "-w");
   }
@@ -194,15 +256,23 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
     args.push(`-ldflags=${ldflags.join(" ")}`);
   }
   args.push("-o", outFile, "./cmd/block");
+  const redactText = (text) => {
+    let out = String(text || "");
+    if (feedbackCfg.endpoint) out = out.replaceAll(feedbackCfg.endpoint, "<redacted-endpoint>");
+    if (feedbackCfg.clientToken) out = out.replaceAll(feedbackCfg.clientToken, "<redacted-token>");
+    return out;
+  };
   const result = spawnSync("go", args, {
     cwd: root,
     encoding: "utf8",
     env: { ...env, GOOS: goos, GOARCH: goarch },
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.error) throw result.error;
+  if (result.error) {
+    throw new Error(`go build failed to start: ${redactText(result.error.message || result.error.code || "unknown error")}`);
+  }
   if (result.status !== 0) {
-    const detail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+    const detail = redactText(`${result.stderr ?? ""}${result.stdout ?? ""}`.trim());
     throw new Error(detail || `go build exited ${result.status}`);
   }
   if (!existsSync(outFile)) {
