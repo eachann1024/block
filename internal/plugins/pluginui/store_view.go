@@ -471,7 +471,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 2,
 				theme.FontBody, theme.LineTitle, pal.TextSecondary, cardBG)
 			ui.Box(c).Grow(1)
-			renderStoreCardMeta(c, card, locale)
+			renderStoreCardMeta(c, card, locale, cardBG)
 		})
 	})
 	bui.Probe(cardBtn, "app-store-card-"+entry.ID)
@@ -532,7 +532,7 @@ func renderStoreAuthor(c *ui.Context, author string, bg ui.Color) {
 	bui.Tooltip(c, wrapper, author)
 }
 
-func renderStoreCardMeta(c *ui.Context, card storeCard, locale string) {
+func renderStoreCardMeta(c *ui.Context, card storeCard, locale string, fadeBG ui.Color) {
 	pal := theme.Ocean()
 	sc := pal.StoreCard()
 	entry := card.entry
@@ -542,21 +542,35 @@ func renderStoreCardMeta(c *ui.Context, card storeCard, locale string) {
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space10).Children(func() {
 		ui.Box(c).FillWidth().Height(1).Background(sc.Divider)
-		ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightMicro).Gap(theme.Space10).
-			Justify(ui.SpaceBetween).AlignItems(ui.Center).Wrap().Children(func() {
-			ui.Row(c).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Wrap().Children(func() {
-				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
-					Background(sc.CategoryBG).AlignItems(ui.Center).Shrink(0).Children(func() {
-					ui.Text(c, plugins.CategoryLabel(entry.EffectiveCategory(), locale)).FontSize(theme.FontMeta).
-						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
-				})
-				for _, ext := range entry.FileExtensions {
-					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
-						Background(sc.ExtBG).Border(1, sc.ExtBorder).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, ext).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
-					})
+		ui.Row(c).FillWidth().MinWidth(0).Height(theme.HeightMicro).Gap(theme.Space10).
+			Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+			var contentRight float32
+			tagsWrap := ui.Row(c).Grow(1).MinWidth(0).Height(theme.HeightMicro).AlignItems(ui.Center).Clip()
+			tagsWrap.DrawOver(func(p *ui.Painter, bounds ui.Rect) {
+				if contentRight <= bounds.X+bounds.W+0.5 {
+					return
 				}
+				width := min(theme.Space24, bounds.W)
+				fade := ui.Rect{X: bounds.X + bounds.W - width, Y: bounds.Y, W: width, H: bounds.H}
+				p.FillGradient(fade, ui.LinearGradient{From: fadeBG.Alpha(0), To: fadeBG, Angle: 90}, 0)
+			}).Children(func() {
+				ui.Row(c).Height(theme.HeightMicro).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).
+					DrawOver(func(_ *ui.Painter, inner ui.Rect) {
+						contentRight = inner.X + inner.W
+					}).Children(func() {
+					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+						Background(sc.CategoryBG).AlignItems(ui.Center).Shrink(0).Children(func() {
+						ui.Text(c, plugins.CategoryLabel(entry.EffectiveCategory(), locale)).FontSize(theme.FontMeta).
+							FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
+					})
+					for _, ext := range entry.FileExtensions {
+						ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+							Background(sc.ExtBG).Border(1, sc.ExtBorder).AlignItems(ui.Center).Shrink(0).Children(func() {
+							ui.Text(c, ext).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
+						})
+					}
+				})
 			})
 			ui.Row(c).Gap(theme.Space10).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -566,7 +580,7 @@ func renderStoreCardMeta(c *ui.Context, card storeCard, locale string) {
 				})
 				if version != "" {
 					ui.Text(c, "v"+strings.TrimPrefix(version, "v")).Font("monospace").FontSize(theme.FontMeta).
-						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
 				}
 			})
 		})
