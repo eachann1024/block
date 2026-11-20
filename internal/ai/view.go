@@ -2551,11 +2551,12 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 					kind:  pickFolder,
 					value: parent,
 					label: theme.Tr("返回上级", "Parent folder"),
+					root:  c.pickerRoot,
 				})
 			}
 			for _, f := range c.pickerFolders {
 				if pathDirSlash(f) == folder {
-					items = append(items, pickItem{kind: pickFolder, value: f, label: pathBaseSlash(f)})
+					items = append(items, pickItem{kind: pickFolder, value: f, label: pathBaseSlash(f), root: c.pickerRoot})
 				}
 			}
 			refSet := make(map[string]bool, len(c.draftRefs))
@@ -2568,6 +2569,7 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 					value: currentPage,
 					label: pathBaseSlash(currentPage),
 					hint:  theme.Tr("当前文件", "Current file"),
+					root:  c.pickerRoot,
 				})
 			}
 			for _, p := range c.pickerPages {
@@ -2575,7 +2577,7 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 					continue
 				}
 				if pathDirSlash(p) == folder {
-					items = append(items, pickItem{kind: pickPage, value: p, label: pathBaseSlash(p)})
+					items = append(items, pickItem{kind: pickPage, value: p, label: pathBaseSlash(p), root: c.pickerRoot})
 				}
 			}
 			return items
@@ -2585,7 +2587,7 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 		for _, f := range c.pickerFolders {
 			if sc, ok := fuzzy.ScoreFields(q, pathBaseSlash(f), f); ok {
 				scored = append(scored, scoredPickItem{
-					item:  pickItem{kind: pickFolder, value: f, label: f},
+					item:  pickItem{kind: pickFolder, value: f, label: f, root: c.pickerRoot},
 					score: sc,
 				})
 			}
@@ -2602,6 +2604,7 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 						value: currentPage,
 						label: currentPage,
 						hint:  theme.Tr("当前文件", "Current file"),
+						root:  c.pickerRoot,
 					},
 					score: sc + 50,
 				})
@@ -2613,7 +2616,7 @@ func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickI
 			}
 			if sc, ok := fuzzy.ScoreFields(q, pathBaseSlash(p), p); ok {
 				scored = append(scored, scoredPickItem{
-					item:  pickItem{kind: pickPage, value: p, label: p},
+					item:  pickItem{kind: pickPage, value: p, label: p, root: c.pickerRoot},
 					score: sc,
 				})
 			}
@@ -2682,8 +2685,11 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 	rest := c.draftText[:len(c.draftText)-len(token)]
 	switch it.kind {
 	case pickFolder:
+		rawRoot := c.activeRootLocked()
+		if it.root != "" && rawRoot != "" && filepath.Clean(it.root) != filepath.Clean(rawRoot) {
+			return c.draftText, false
+		}
 		if it.value != "" {
-			rawRoot := c.activeRootLocked()
 			if !c.pickerInjected && c.pickerRoot != "" && rawRoot != "" && filepath.Clean(c.pickerRoot) != filepath.Clean(rawRoot) {
 				return c.draftText, false
 			}
@@ -2698,7 +2704,11 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 		c.persistActiveDraftLocked()
 		return c.draftText, true
 	case pickPage:
-		root, err := AuthorizedNotebookRoot(c.host, c.activeRootLocked())
+		rawRoot := c.activeRootLocked()
+		if it.root != "" && rawRoot != "" && filepath.Clean(it.root) != filepath.Clean(rawRoot) {
+			return c.draftText, false
+		}
+		root, err := AuthorizedNotebookRoot(c.host, rawRoot)
 		filename, nameErr := noteFilename(it.value)
 		if err != nil || nameErr != nil {
 			return c.draftText, false
@@ -2747,7 +2757,6 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 	}
 	loading := c.pickerLoading
 	pickerRootSnap := c.pickerRoot
-	pickerGenSnap := c.pickerRefreshGen
 	c.mu.Unlock()
 
 	_, winH := cUI.Size()
@@ -2816,12 +2825,12 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 
 			listH := min(float32(len(items))*36, max(pickerMaxH-32, 36))
 			c.pickerList.Key = func(i int) any {
-				return fmt.Sprintf("%s:%d:%d:%s", pickerRootSnap, pickerGenSnap, items[i].kind, items[i].value)
+				return fmt.Sprintf("%s:%d:%s", pickerRootSnap, items[i].kind, items[i].value)
 			}
 			pickerListEl := ui.List(cUI.Key("ai-picker-virtual-list"), &c.pickerList, len(items), func(i int) {
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
-				row := ui.ButtonBase(cUI.Key(fmt.Sprintf("ai-pick-%s:%d:%d:%d:%s", pickerRootSnap, pickerGenSnap, i, it.kind, it.value))).FillWidth().Height(36).PaddingX(10).Gap(8).
+				row := ui.ButtonBase(cUI.Key(fmt.Sprintf("ai-pick-%s:%d:%s", pickerRootSnap, it.kind, it.value))).FillWidth().Height(36).PaddingX(10).Gap(8).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(it.label)
 				isSel := !nav.pointerMode && i == selected
 				bui.RevealOnHighlight(row, isSel)
@@ -2841,9 +2850,9 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 					ic := icons.Sparkles
 					switch it.kind {
 					case pickFolder:
-						ic = icons.Folder
+						ic = icons.FolderIcon(it.label, false)
 					case pickPage:
-						ic = icons.Note
+						ic = icons.FileIconOrDefault(it.value)
 					}
 					active := isSel || hovered || pressed
 					icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary), active)
