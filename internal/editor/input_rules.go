@@ -294,7 +294,7 @@ type inlineRuleResult struct {
 	imageSrc  string
 }
 
-func applyInlineInputRules(spans []model.Span, caretRune int, allowImageBlock bool) inlineRuleResult {
+func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImageBlock bool) inlineRuleResult {
 	plain := model.PlainTextOfSpans(spans)
 	r := []rune(plain)
 	n := len(r)
@@ -311,27 +311,30 @@ func applyInlineInputRules(spans []model.Span, caretRune int, allowImageBlock bo
 	}
 
 	// 2. Trailing space / fullwidth space triggers:
-	//    - Bare URL auto-link (`https://... ` / `www.... `)
-	//    - Fallback for inline constructs committed with a trailing space (e.g. IME commit "`code` ")
+	//    - Bare URL auto-link (`https://... ` / `www.... `) on any space insertion
+	//    - Multi-rune commit fallback (e.g. IME committing "`code` " at once, insLen > 1)
+	//      Single-space typing never re-triggers already-undone inline syntax before the space.
 	if caretRune > 0 && (r[caretRune-1] == ' ' || r[caretRune-1] == '\u3000') {
 		tokenEnd := caretRune - 1
-		if res := tryInlineConstructEndingAt(spans, r, tokenEnd, allowImageBlock); res.changed || res.toImage {
-			if res.toImage {
+		if insLen > 1 {
+			if res := tryInlineConstructEndingAt(spans, r, tokenEnd, allowImageBlock); res.changed || res.toImage {
+				if res.toImage {
+					return res
+				}
+				// Keep the trailing space unstyled outside the newly formatted span.
+				spacePos := res.caret
+				res.spans = applySpanTransform(res.spans, spacePos, spacePos+1, func(sp model.Span) model.Span {
+					sp.Marks &^= model.MarkCode | model.MarkMath | model.MarkBold | model.MarkItalic | model.MarkStrike | model.MarkSuperscript | model.MarkSubscript
+					sp.BGColor = ""
+					sp.Link = ""
+					return sp
+				})
+				res.caret = spacePos + 1
+				res.codeEdge = appUi.RichCodeEdgeNone
+				res.clearMask = 0
+				res.clearBG = false
 				return res
 			}
-			// Keep the trailing space unstyled outside the newly formatted span.
-			spacePos := res.caret
-			res.spans = applySpanTransform(res.spans, spacePos, spacePos+1, func(sp model.Span) model.Span {
-				sp.Marks &^= model.MarkCode | model.MarkMath | model.MarkBold | model.MarkItalic | model.MarkStrike | model.MarkSuperscript | model.MarkSubscript
-				sp.BGColor = ""
-				sp.Link = ""
-				return sp
-			})
-			res.caret = spacePos + 1
-			res.codeEdge = appUi.RichCodeEdgeNone
-			res.clearMask = 0
-			res.clearBG = false
-			return res
 		}
 		if res := tryBareURLAutolinkBefore(spans, r, tokenEnd); res.changed {
 			res.caret = caretRune
@@ -1480,7 +1483,7 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 			finalCaret = nextCaret
 			converted = true
 		}
-		if res := applyInlineInputRules(cell.Spans, finalCaret, false); res.changed {
+		if res := applyInlineInputRules(cell.Spans, finalCaret, insLen, false); res.changed {
 			cell.Spans = res.spans
 			finalCaret = res.caret
 			finalEdge = res.codeEdge

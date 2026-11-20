@@ -339,6 +339,7 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 
 	s.pushUndo()
 	s.firstLineDeleteArmed = false
+	s.clearAutoConvertState()
 	s.closeTransientOverlays()
 
 	// Single-block selection

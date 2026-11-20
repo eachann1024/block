@@ -702,6 +702,7 @@ func (s *Session) PasteText(raw string) {
 	if len(raw) > media.MaxPasteBytes || s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}
+	s.clearAutoConvertState()
 	idx := s.focusedBlock
 	if idx < 0 || idx >= len(s.doc.Blocks) {
 		idx = 0
@@ -822,6 +823,7 @@ func (s *Session) PastePlainText(raw string) {
 	if len(raw) > media.MaxPasteBytes || s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || raw == "" {
 		return
 	}
+	s.clearAutoConvertState()
 	clean := strings.TrimPrefix(raw, "\uFEFF")
 	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "\r\n", "\n"), "\r", "\n")
 	if clean == "" {
@@ -1779,6 +1781,7 @@ func (s *Session) ToggleMarkOnSelection(m model.Mark) {
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
+	s.clearAutoConvertState()
 	a, b := s.orderedSelection()
 	clearMark := s.selectionHasMark(m)
 	pushedUndo := false
@@ -2183,7 +2186,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 			curCaret = nextCaret
 			converted = true
 		}
-		if res := applyInlineInputRules(b.Spans, curCaret, b.Kind == model.BlockParagraph); res.toImage {
+		if res := applyInlineInputRules(b.Spans, curCaret, insLen, b.Kind == model.BlockParagraph); res.toImage {
 			s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
 			return
 		} else if res.changed {
@@ -2560,6 +2563,19 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune int) (int, i
 			b.Indent = listIndent
 		}
 		b.Spans = sliceSpans(b.Spans, ruleEnd, len(r))
+		// Support single-step `- [ ] task` / `- [x] task` commits (e.g. IME or paste-like typing).
+		restRunes := r[ruleEnd:]
+		for _, tokLen := range []int{2, 3} {
+			if len(restRunes) > tokLen && (restRunes[tokLen] == ' ' || restRunes[tokLen] == '\u3000') {
+				if checked, ok := matchTodoPrefix(string(restRunes[:tokLen])); ok {
+					b.Kind = model.BlockTodo
+					b.Checked = checked
+					b.Spans = sliceSpans(b.Spans, tokLen+1, len(restRunes))
+					newCaret = len(restRunes) - (tokLen + 1)
+					break
+				}
+			}
+		}
 		b.Dirty = true
 		b.CleanSource = ""
 		return idx, newCaret, true
