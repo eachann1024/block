@@ -14,7 +14,8 @@
   <a href="https://block.cooool.top/">Website & Download</a> ·
   <a href="https://github.com/eachann1024/block/releases/latest">Latest Release</a> ·
   <a href="https://block.cooool.top/#compare">Comparison</a> ·
-  <a href="docs/plugin-dev-for-ai.md">Plugin Guide</a>
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="docs/plugins/README.md">Plugin Guide</a>
 </p>
 
 <p align="center">
