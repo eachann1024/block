@@ -103,7 +103,11 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		return false, nil
 	}
 	path := filepath.Join(cfg.DataDir, fileName)
-	rec := load(path)
+	rec, err := load(path)
+	if err != nil {
+		// An id that cannot be kept would be counted as a new install on every check.
+		return false, err
+	}
 	day := today()
 	if rec.LastPing == day {
 		return false, nil
@@ -141,34 +145,38 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
 	rec.LastPing = day
-	save(path, rec)
+	_ = save(path, rec)
 	return resp.StatusCode < 300, nil
 }
 
-func load(path string) record {
+func load(path string) (record, error) {
 	var rec record
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, &rec)
 	}
 	if !idRe.MatchString(rec.ID) {
 		rec = record{ID: newID()}
-		save(path, rec)
+		if err := save(path, rec); err != nil {
+			return rec, fmt.Errorf("telemetry: cannot keep install id: %w", err)
+		}
 	}
-	return rec
+	return rec, nil
 }
 
-func save(path string, rec record) {
+func save(path string, rec record) error {
 	data, err := json.Marshal(rec)
 	if err != nil {
-		return
+		return err
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return
+		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
+		return err
 	}
+	return nil
 }
 
 func newID() string {
