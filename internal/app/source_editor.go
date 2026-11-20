@@ -156,11 +156,48 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 
 func (s *TabSurface) saveSource() error {
 	if !s.IsDirty() {
+		s.StatusMsg = ""
 		return nil
 	}
-	err := files.CheckTextVersion(s.Path, files.TextFingerprint(s.SavedText, s.Source.BOM))
+	expectedFP := s.DiskFingerprint
+	if expectedFP == 0 {
+		expectedFP = files.TextFingerprint(s.SavedText, s.Source.BOM)
+	}
+	if s.Source.BinaryPlist {
+		encoded, err := files.EncodeBinaryPlist(s.Source.Text)
+		if err != nil {
+			msg := err.Error()
+			if s.StatusMsg != msg {
+				files.LogErrorf("binary plist encode failed: path=%s err=%v", s.Path, err)
+				s.StatusMsg = msg
+			}
+			return err
+		}
+		if err := files.CheckTextVersion(s.Path, expectedFP); err != nil {
+			files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
+			s.StatusMsg = err.Error()
+			return err
+		}
+		newFP, err := files.WriteBytesAtomic(s.Path, encoded)
+		if err != nil {
+			files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
+			s.StatusMsg = err.Error()
+			return err
+		}
+		s.SavedText = s.Source.Text
+		s.DiskFingerprint = newFP
+		s.Source.DiskFingerprint = newFP
+		s.FileSize = int64(len(encoded))
+		if s.code != nil {
+			s.code.Buffer.MarkSaved()
+		}
+		s.StatusMsg = ""
+		return nil
+	}
+	err := files.CheckTextVersion(s.Path, expectedFP)
+	var newFP int64
 	if err == nil {
-		_, err = files.WriteRawFileAtomic(s.Path, s.Source.Text, s.Source.BOM)
+		newFP, err = files.WriteRawFileAtomic(s.Path, s.Source.Text, s.Source.BOM)
 	}
 	if err != nil {
 		files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
@@ -168,6 +205,8 @@ func (s *TabSurface) saveSource() error {
 		return err
 	}
 	s.SavedText = s.Source.Text
+	s.DiskFingerprint = newFP
+	s.Source.DiskFingerprint = newFP
 	size := int64(len(s.Source.Text))
 	if s.Source.BOM {
 		size += 3

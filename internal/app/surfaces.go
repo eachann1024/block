@@ -41,8 +41,9 @@ type TabSurface struct {
 	HasSource     bool
 	IsSVG         bool
 	IsHTML        bool
-	SavedText     string
-	FileSize      int64
+	SavedText       string
+	DiskFingerprint int64
+	FileSize        int64
 	BlockedReason string
 	StatusMsg     string
 
@@ -85,18 +86,23 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 	if info, err := os.Stat(path); err == nil && !info.IsDir() {
 		fileSize = info.Size()
 	}
+	diskFP := src.DiskFingerprint
+	if hasSource && diskFP == 0 {
+		diskFP = files.TextFingerprint(src.Text, src.BOM)
+	}
 	s := &TabSurface{
-		Path:          path,
-		Kind:          cf.Kind,
-		Source:        src,
-		HasSource:     hasSource,
-		IsSVG:         isSVG,
-		IsHTML:        isHTML,
-		SavedText:     src.Text,
-		FileSize:      fileSize,
-		BlockedReason: cf.Reason,
-		Zoom:          1.0,
-		ZoomFitMode:   true,
+		Path:            path,
+		Kind:            cf.Kind,
+		Source:          src,
+		HasSource:       hasSource,
+		IsSVG:           isSVG,
+		IsHTML:          isHTML,
+		SavedText:       src.Text,
+		DiskFingerprint: diskFP,
+		FileSize:        fileSize,
+		BlockedReason:   cf.Reason,
+		Zoom:            1.0,
+		ZoomFitMode:     true,
 	}
 	if isSVG {
 		if !hasSource {
