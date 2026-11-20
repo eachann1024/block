@@ -282,6 +282,10 @@ func (m *Manager) IsRecordingShortcut() bool {
 
 // OpenSettings opens the full-window Settings page at `tab` ("ai", "appearance", "folders", "shortcuts", "app-store", or "plugin:<id>").
 func (m *Manager) OpenSettings(tab string) {
+	previous := ""
+	if m.settingsOpen {
+		previous = m.ActiveSettingsTab()
+	}
 	switch {
 	case tab == "ai" || tab == "appearance" || tab == "folders" || tab == "shortcuts":
 		m.settingsTab = tab
@@ -305,6 +309,7 @@ func (m *Manager) OpenSettings(tab string) {
 	m.searchIgnorePicker = internalui.DropdownSelectState{}
 	m.regexRuleError = ""
 	m.settingsOpen = true
+	m.notifySettingsTabChanged(previous, m.ActiveSettingsTab())
 	m.requestRedraw()
 }
 
@@ -313,7 +318,9 @@ func (m *Manager) CloseSettings() {
 	if !m.settingsOpen {
 		return
 	}
+	previous := m.ActiveSettingsTab()
 	m.settingsOpen = false
+	m.notifySettingsTabChanged(previous, "")
 	m.recordingShortcut = ""
 	m.justRecordedPasses = 0
 	m.shortcutConflictNotice = ""
@@ -673,12 +680,20 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 }
 
 func (m *Manager) selectSettingsTab(tab string) {
+	previous := m.ActiveSettingsTab()
 	m.recordingShortcut = ""
 	m.justRecordedPasses = 0
 	m.shortcutConflictNotice = ""
 	m.fontPickerOpen = ""
 	m.searchIgnorePicker.Open = false
 	m.settingsTab = tab
+	m.notifySettingsTabChanged(previous, tab)
+}
+
+func (m *Manager) notifySettingsTabChanged(previous, current string) {
+	if previous != current && m.PluginHost != nil {
+		m.PluginHost.SettingsTabChanged(previous, current)
+	}
 }
 
 func (m *Manager) renderSettingsAITab(c *ui.Context) {
@@ -1057,9 +1072,9 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 }
 
 const (
-	fontPickerRowH         float32 = 34
-	fontPickerVirtThreshold        = 24
-	fontPickerVirtOverscan         = 4
+	fontPickerRowH          float32 = 34
+	fontPickerVirtThreshold         = 24
+	fontPickerVirtOverscan          = 4
 )
 
 type fontPickerCache struct {

@@ -105,24 +105,23 @@ type Supervisor struct {
 	cfg      SupervisorConfig
 	contrib  *contribRegistry
 
-	mu               sync.RWMutex
-	viewEpoch        atomic.Uint64
-	catalog          *StoreIndex
-	installed        []InstalledApp
-	runtimes         map[string]*Runtime
-	views            map[viewKey]*PluginViewState
-	lastViewRoot     map[surfaceKey]string
-	formVersions     map[surfaceKey]uint64
-	liveTimers       map[surfaceKey]*time.Timer
-	liveViewedAt     map[surfaceKey]time.Time
-	feedbackTimers   map[viewKey]*time.Timer
-	storeRefreshing  bool
-	storeRefreshedAt time.Time
-	installingID     string
-	replacingID      string
-	stopping         bool
-	storeErr         string
-	storeNotice      string
+	mu              sync.RWMutex
+	viewEpoch       atomic.Uint64
+	catalog         *StoreIndex
+	installed       []InstalledApp
+	runtimes        map[string]*Runtime
+	views           map[viewKey]*PluginViewState
+	lastViewRoot    map[surfaceKey]string
+	formVersions    map[surfaceKey]uint64
+	liveTimers      map[surfaceKey]*time.Timer
+	liveViewedAt    map[surfaceKey]time.Time
+	feedbackTimers  map[viewKey]*time.Timer
+	storeRefreshing bool
+	installingID    string
+	replacingID     string
+	stopping        bool
+	storeErr        string
+	storeNotice     string
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
@@ -655,26 +654,8 @@ func (s *Supervisor) RefreshCatalogAsync() {
 	s.notifyChanged()
 }
 
-// MaybeRefreshCatalogAsync triggers a background catalog refresh if at least minInterval
-// has elapsed since the last refresh attempt. Safe to call from the 60fps UI render path.
-func (s *Supervisor) MaybeRefreshCatalogAsync(minInterval time.Duration) {
-	s.mu.Lock()
-	if s.stopping || s.storeRefreshing {
-		s.mu.Unlock()
-		return
-	}
-	if !s.storeRefreshedAt.IsZero() && time.Since(s.storeRefreshedAt) < minInterval {
-		s.mu.Unlock()
-		return
-	}
-	s.startCatalogRefreshLocked()
-	s.mu.Unlock()
-	s.notifyChanged()
-}
-
 func (s *Supervisor) startCatalogRefreshLocked() {
 	s.storeRefreshing = true
-	s.storeRefreshedAt = time.Now()
 	s.storeErr = ""
 
 	go func() {
@@ -684,7 +665,6 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 		idx, err := s.store.RefreshCatalog(ctx)
 		s.mu.Lock()
 		s.storeRefreshing = false
-		s.storeRefreshedAt = time.Now()
 		if idx != nil {
 			s.catalog = idx
 		}

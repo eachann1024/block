@@ -13,8 +13,6 @@ import (
 )
 
 func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
-	refreshing, _, _, _ := ctrl.sup.StoreStatus()
-
 	ui.Row(c.Key("app-store-header-extras")).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
 		filterIdx := ctrl.storeFilterValue()
 		if bui.SegmentedControlWithOptions(c, "app-store-filter", &filterIdx, []bui.SegmentOption{
@@ -42,19 +40,6 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 			ctrl.toggleManualOpen()
 		}
 
-		refTip := theme.Tr("刷新", "Refresh")
-		if refreshing {
-			refTip = theme.Tr("刷新中…", "Refreshing…")
-		}
-		refBtn := bui.IconButton(c, icons.Refresh, bui.IconButtonOptions{
-			ID:      "app-store-refresh",
-			Label:   refTip,
-			Tooltip: refTip,
-			Loading: refreshing,
-		})
-		if refBtn.Clicked() && !refreshing {
-			ctrl.sup.RefreshCatalogAsync()
-		}
 	})
 }
 
@@ -402,7 +387,7 @@ func renderStoreAppRow(
 		})
 
 		if len(entry.FileExtensions) > 0 {
-			ui.Row(c.Key("app-store-exts-"+entry.ID)).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+			ui.Row(c.Key("app-store-exts-" + entry.ID)).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
 				for _, ext := range entry.FileExtensions {
 					e := ext
 					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
