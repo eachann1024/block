@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/plugins"
 	"block/internal/theme"
@@ -160,8 +161,12 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 		installedMap[app.Manifest.ID] = app
 	}
 	entries := buildStoreEntries(ctrl.sup.Catalog(), installed)
-	query := strings.ToLower(strings.TrimSpace(ctrl.storeQuery))
-	cards := make([]storeCard, 0, len(entries))
+	query := strings.TrimSpace(ctrl.storeQuery)
+	type scoredStoreCard struct {
+		card  storeCard
+		score int
+	}
+	scoredCards := make([]scoredStoreCard, 0, len(entries))
 	for _, entry := range entries {
 		app, isInstalled := installedMap[entry.ID]
 		if installedOnly && !isInstalled {
@@ -171,24 +176,43 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 		if ctrl.storeSource != "" && ctrl.storeSource != source {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(entry.Name.Resolve(locale)), query) &&
-			!strings.Contains(strings.ToLower(entry.Author), query) &&
-			!strings.Contains(strings.ToLower(entry.Summary.Resolve(locale)), query) &&
-			!strings.Contains(strings.ToLower(strings.Join(entry.FileExtensions, " ")), query) {
-			continue
+		matchScore := 0
+		if query != "" {
+			primary := []string{
+				entry.Name.Resolve(locale),
+				entry.ID,
+				entry.Author,
+				strings.Join(entry.FileExtensions, " "),
+			}
+			secondary := []string{entry.Summary.Resolve(locale)}
+			sc, ok := fuzzy.Score(query, primary, secondary, false)
+			if !ok {
+				continue
+			}
+			matchScore = sc
 		}
-		cards = append(cards, storeCard{
-			entry: entry, installed: app, isInstalled: isInstalled, source: source,
-			downloads: ctrl.sup.Store().EffectiveDownloads(entry),
+		scoredCards = append(scoredCards, scoredStoreCard{
+			card: storeCard{
+				entry: entry, installed: app, isInstalled: isInstalled, source: source,
+				downloads: ctrl.sup.Store().EffectiveDownloads(entry),
+			},
+			score: matchScore,
 		})
 	}
-	sort.SliceStable(cards, func(i, j int) bool {
-		a, b := cards[i], cards[j]
+	sort.SliceStable(scoredCards, func(i, j int) bool {
+		if query != "" && scoredCards[i].score != scoredCards[j].score {
+			return scoredCards[i].score > scoredCards[j].score
+		}
+		a, b := scoredCards[i].card, scoredCards[j].card
 		if ctrl.storeSort != storeSortName && a.downloads != b.downloads {
 			return a.downloads > b.downloads
 		}
 		return strings.ToLower(a.entry.Name.Resolve(locale)) < strings.ToLower(b.entry.Name.Resolve(locale))
 	})
+	cards := make([]storeCard, len(scoredCards))
+	for i, sc := range scoredCards {
+		cards[i] = sc.card
+	}
 	return cards
 }
 
