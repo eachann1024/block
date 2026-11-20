@@ -1,0 +1,61 @@
+:root {
+  --vp-c-brand-1: #547dd0;
+  --vp-c-brand-2: #3d63b0;
+  --vp-c-brand-3: #547dd0;
+  --vp-c-brand-soft: rgba(84, 125, 208, 0.12);
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #fafafa;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f3f1ec;
+  --vp-c-text-1: #20242c;
+  --vp-c-text-2: #526071;
+  --vp-c-divider: #e4e6ea;
+  --vp-c-gutter: #e6e6e6;
+  --vp-code-bg: #f3f1ec;
+  --vp-code-color: #20242c;
+  --vp-code-block-bg: #f3f1ec;
+  --vp-c-default-soft: #f0f0ef;
+  --vp-font-family-base: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.dark {
+  --vp-c-brand-1: #779de8;
+  --vp-c-brand-2: #9dbcf5;
+  --vp-c-brand-3: #547dd0;
+  --vp-c-brand-soft: rgba(119, 157, 232, 0.16);
+  --vp-c-bg: #181818;
+  --vp-c-bg-alt: #222222;
+  --vp-c-bg-elv: #222222;
+  --vp-c-bg-soft: #242424;
+  --vp-c-text-1: #ececec;
+  --vp-c-text-2: #b4b4b4;
+  --vp-c-divider: #292929;
+  --vp-c-gutter: #292929;
+  --vp-code-bg: #242424;
+  --vp-code-color: #ececec;
+  --vp-code-block-bg: #242424;
+  --vp-c-default-soft: #2c2c2c;
+}
+
+::selection {
+  background: #cde2fb;
+  color: #184f95;
+}
+
+.dark ::selection {
+  background: #2d426b;
+  color: #9dbcf5;
+}
+
+.vp-doc blockquote {
+  border-left-color: #dbd9d4;
+}
+
+.dark .vp-doc blockquote {
+  border-left-color: #484848;
+}
+
+.vp-doc table {
+  display: block;
+  overflow-x: auto;
+}
