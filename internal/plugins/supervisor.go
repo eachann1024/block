@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"block/internal/files"
 )
 
 // RetryKind identifies what operation a failed PluginViewState should retry.
@@ -41,6 +43,7 @@ type PluginViewState struct {
 	Loading                bool
 	Refreshing             bool
 	BusyAction             string
+	ActionProgress         ActionProgress
 	Error                  string
 	Notice                 string
 	Page                   *UIPage
@@ -49,6 +52,7 @@ type PluginViewState struct {
 	LastActionTone         string
 	LastActionMessage      string
 	LastActionButtonActive bool
+	LastActionWasHeader    bool
 
 	RetryKind      RetryKind
 	FailedActionID string
@@ -114,9 +118,13 @@ type Supervisor struct {
 	lastViewRoot    map[surfaceKey]string
 	formVersions    map[surfaceKey]uint64
 	liveTimers      map[surfaceKey]*time.Timer
-	liveViewedAt    map[surfaceKey]time.Time
-	feedbackTimers  map[viewKey]*time.Timer
-	storeRefreshing bool
+	liveViewedAt       map[surfaceKey]time.Time
+	feedbackTimers     map[viewKey]*time.Timer
+	activeActionKey    map[string]viewKey
+	activeActionRT     map[string]*Runtime
+	lastProgressRedraw map[string]time.Time
+	uninstallErrors    map[string]string
+	storeRefreshing    bool
 	installingID    string
 	replacingID     string
 	stopping        bool
@@ -138,9 +146,13 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		views:          make(map[viewKey]*PluginViewState),
 		lastViewRoot:   make(map[surfaceKey]string),
 		formVersions:   make(map[surfaceKey]uint64),
-		liveTimers:     make(map[surfaceKey]*time.Timer),
-		liveViewedAt:   make(map[surfaceKey]time.Time),
-		feedbackTimers: make(map[viewKey]*time.Timer),
+		liveTimers:         make(map[surfaceKey]*time.Timer),
+		liveViewedAt:       make(map[surfaceKey]time.Time),
+		feedbackTimers:     make(map[viewKey]*time.Timer),
+		activeActionKey:    make(map[string]viewKey),
+		activeActionRT:     make(map[string]*Runtime),
+		lastProgressRedraw: make(map[string]time.Time),
+		uninstallErrors:    make(map[string]string),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
 	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
@@ -153,9 +165,16 @@ func (s *Supervisor) preparePluginReplacement(pluginID string) error {
 		s.mu.Unlock()
 		return errors.New("plugin supervisor is stopping")
 	}
+	if s.replacingID != pluginID && s.isPluginBusyLocked(pluginID) {
+		s.mu.Unlock()
+		return errors.New("plugin has an active task running; wait or cancel it before updating")
+	}
 	s.replacingID = pluginID
 	rt := s.runtimes[pluginID]
 	delete(s.runtimes, pluginID)
+	delete(s.activeActionKey, pluginID)
+	delete(s.activeActionRT, pluginID)
+	s.clearUninstallErrorLocked(pluginID)
 	s.mu.Unlock()
 	if rt != nil {
 		return rt.Shutdown(context.Background())
@@ -456,7 +475,7 @@ func (s *Supervisor) runLiveRefreshTick(pluginID string, surface Surface, interv
 	if cur := s.views[key]; cur == vs && !cur.Loading && cur.BusyAction == "" && cur.editSeq == seq {
 		cur.Page = page
 		cur.lastLocale = rt.locale()
-		if !cur.errorFromBg {
+		if !cur.errorFromBg && cur.RetryKind != RetryKindAction {
 			cur.Error = ""
 			cur.RetryKind = RetryKindNone
 		}
@@ -521,6 +540,10 @@ func (s *Supervisor) IsPluginEnabled(pluginID string) bool {
 // background runtime immediately when disabled.
 func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	s.mu.Lock()
+	if !enabled && s.isPluginBusyLocked(pluginID) {
+		s.mu.Unlock()
+		return
+	}
 	if err := s.store.SetEnabled(pluginID, enabled); err != nil {
 		s.mu.Unlock()
 		return
@@ -565,10 +588,10 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	}
 }
 
-// WarmupAppearancePluginsAsync initializes enabled appearance-section plugins
-// that have not yet synced for their installed version, so upgrading or opening
-// Block with an already-enabled appearance plugin applies immediately without
-// re-spawning Python processes on every subsequent launch.
+// WarmupAppearancePluginsAsync initializes enabled UI plugins (appearance sections,
+// backdrops, sidebar extensions, status items, titlebar) that have not yet synced
+// for their installed version, so upgrading or opening Block applies immediately
+// without re-spawning Python processes on every subsequent launch.
 func (s *Supervisor) WarmupAppearancePluginsAsync() {
 	if s == nil {
 		return
@@ -759,10 +782,18 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.mu.Unlock()
 		return
 	}
+	if s.isPluginBusyLocked(pluginID) {
+		s.uninstallErrors[pluginID] = "plugin has an active task running; cancel it before uninstalling"
+		s.mu.Unlock()
+		s.notifyChanged()
+		return
+	}
+	s.clearUninstallErrorLocked(pluginID)
 	s.installingID = "__uninstall__"
 	s.replacingID = pluginID
 	if vs := s.views[key]; vs != nil {
 		vs.BusyAction = "__uninstall__"
+		vs.ActionProgress = ActionProgress{}
 		vs.Error = ""
 		vs.RetryKind = RetryKindNone
 		vs.FailedActionID = ""
@@ -784,6 +815,8 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		}
 		rt := s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
+		delete(s.activeActionKey, pluginID)
+		delete(s.activeActionRT, pluginID)
 		s.mu.Unlock()
 		if rt != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -804,6 +837,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		}
 		if err != nil {
 			s.storeErr = err.Error()
+			s.uninstallErrors[pluginID] = err.Error()
 			vs := s.views[key]
 			if vs == nil {
 				vs = &PluginViewState{
@@ -824,6 +858,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 			return
 		}
 		s.storeErr = ""
+		delete(s.uninstallErrors, pluginID)
 		s.deleteViewsForPluginLocked(pluginID)
 		hasRemainingLegacyTitlebarMgr := false
 		for _, a := range s.installed {
@@ -852,8 +887,22 @@ func (s *Supervisor) stopFeedbackTimerLocked(key viewKey) {
 	}
 }
 
+func (s *Supervisor) clearUninstallErrorLocked(pluginID string) {
+	delete(s.uninstallErrors, pluginID)
+	for k, v := range s.views {
+		if k.pluginID == pluginID && v.RetryKind == RetryKindUninstall {
+			v.Error = ""
+			v.RetryKind = RetryKindNone
+			v.errorFromBg = false
+		}
+	}
+}
+
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
 	s.stopLiveTimersForPluginLocked(pluginID)
+	delete(s.activeActionKey, pluginID)
+	delete(s.activeActionRT, pluginID)
+	delete(s.lastProgressRedraw, pluginID)
 	for k := range s.lastViewRoot {
 		if k.pluginID == pluginID {
 			delete(s.lastViewRoot, k)
@@ -1055,11 +1104,13 @@ func (s *Supervisor) reloadSurfaceViewAsync(pluginID string, surface Surface) {
 	vs.Loading = true
 	vs.initialLoadStarted = true
 	vs.Error = ""
+	vs.Notice = ""
 	vs.RetryKind = RetryKindNone
 	vs.FailedActionID = ""
 	vs.FailedNotePath = ""
 	vs.FailedNoteRoot = ""
 	vs.errorFromBg = false
+	s.clearUninstallErrorLocked(pluginID)
 	s.mu.Unlock()
 	s.notifyChanged()
 
@@ -1128,6 +1179,13 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 				vs.Error = ""
 				vs.RetryKind = RetryKindNone
 			}
+			// Clear stale soft-error and notice state from a previous process/session after a clean reload.
+			vs.Notice = ""
+			vs.LastActionID = ""
+			vs.LastActionTone = ""
+			vs.LastActionMessage = ""
+			vs.LastActionButtonActive = false
+			vs.LastActionWasHeader = false
 			vs.Page = page
 			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq, true)
 		}
@@ -1249,18 +1307,21 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	}
 	rawLocale := s.Locale()
 	attemptedLocale := normalizeLocale(rawLocale)
+	if s.cfg.UI != nil {
+	}
 	cfg := HostConfig{
-		PluginDir:       inst.InstallDir,
-		DataDir:         inst.DataDir,
-		NotebookRoot:    nbRoot,
-		ActiveNote:      s.activeNoteFor(nbRoot),
-		Locale:          rawLocale,
-		HostVersion:     hostVer,
-		GetNotebooks:    s.Notebooks,
-		GetPerfSnapshot: s.cfg.GetPerfSnapshot,
-		ApplyNoteWrite:  s.cfg.ApplyNoteWrite,
-		OnNoteWritten:   s.notifyNoteWritten,
-		ContribHost:     s.dispatchContribHostMethod,
+		PluginDir:        inst.InstallDir,
+		DataDir:          inst.DataDir,
+		NotebookRoot:     nbRoot,
+		ActiveNote:       s.activeNoteFor(nbRoot),
+		Locale:           rawLocale,
+		HostVersion:      hostVer,
+		GetNotebooks:     s.Notebooks,
+		GetPerfSnapshot:  s.cfg.GetPerfSnapshot,
+		ApplyNoteWrite:   s.cfg.ApplyNoteWrite,
+		OnNoteWritten:    s.notifyNoteWritten,
+		OnActionProgress: s.reportActionProgress,
+		ContribHost:      s.dispatchContribHostMethod,
 	}
 	s.mu.Lock()
 	current := false
@@ -1526,6 +1587,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 		return
 	}
 	vs.BusyAction = actionID
+	vs.ActionProgress = ActionProgress{}
 	vs.Refreshing = false
 	vs.Error = ""
 	vs.Notice = ""
@@ -1581,11 +1643,21 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				}
 			}
 			if err == nil {
-				s.mu.RLock()
+				s.mu.Lock()
 				values := cloneAnyMap(vs.Values)
 				actionSeq = vs.editSeq
-				s.mu.RUnlock()
+				wasHeader := vs.Page.HasHeaderAction(actionID)
+				s.activeActionKey[pluginID] = key
+				s.activeActionRT[pluginID] = rt
+				s.mu.Unlock()
 				res, err = rt.Action(ctx, surface, actionID, values)
+				s.mu.Lock()
+				if s.activeActionRT[pluginID] == rt && s.activeActionKey[pluginID] == key {
+					delete(s.activeActionKey, pluginID)
+					delete(s.activeActionRT, pluginID)
+				}
+				s.mu.Unlock()
+				_ = wasHeader
 			}
 		}
 		if !testing.Testing() {
@@ -1595,12 +1667,20 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			}
 		}
 
+		if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			files.LogErrorf("plugin action failed: id=%s action=%s err=%v", pluginID, actionID, err)
+		}
+
 		tone := resolveActionTone(res, err)
 		var openTarget, revealTarget string
 		s.mu.Lock()
 		if cur := s.views[key]; cur == vs {
+			prevWasHeader := cur.Page.HasHeaderAction(actionID)
 			cur.actionCancel = nil
-			cur.BusyAction = ""
+			if cur.BusyAction != "__uninstall__" {
+				cur.BusyAction = ""
+			}
+			cur.ActionProgress = ActionProgress{}
 			cur.lastNotebookRoot = nbRoot
 			cur.lastActiveNote = activeNote
 			if rt != nil && res != nil && res.Page != nil {
@@ -1614,8 +1694,13 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.LastActionTone = "danger"
 				cur.LastActionMessage = err.Error()
 				cur.LastActionButtonActive = false
+				cur.LastActionWasHeader = prevWasHeader
 				cur.RetryKind = RetryKindAction
-				cur.FailedActionID = actionID
+				failedID := actionID
+				if pluginID == "block-sync" && actionID == "confirm_sync" {
+					failedID = "sync_now"
+				}
+				cur.FailedActionID = failedID
 				cur.errorFromBg = true
 			} else if res != nil {
 				s.formVersions[sKey]++
@@ -1628,10 +1713,23 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				if statusMsg != "" {
 					cur.Notice = statusMsg
 				}
+				isHeader := prevWasHeader || res.Page.HasHeaderAction(actionID) || (pluginID == "block-sync" && actionID == "confirm_sync")
+				if tone == "danger" && isHeader {
+					if statusMsg == "" {
+						statusMsg = "action failed"
+					}
+					cur.RetryKind = RetryKindAction
+					failedID := actionID
+					if pluginID == "block-sync" && actionID == "confirm_sync" {
+						failedID = "sync_now"
+					}
+					cur.FailedActionID = failedID
+				}
 				cur.LastActionID = actionID
 				cur.LastActionTone = tone
 				cur.LastActionMessage = statusMsg
 				cur.LastActionButtonActive = tone == "success"
+				cur.LastActionWasHeader = isHeader
 				if cur.LastActionButtonActive && !testing.Testing() && !isStickyActionButton(actionID) {
 					s.stopFeedbackTimerLocked(key)
 					s.feedbackTimers[key] = time.AfterFunc(2400*time.Millisecond, func() {
@@ -1689,11 +1787,119 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	}()
 }
 
-func (s *Supervisor) CanCancelAction(pluginID string) bool {
+func (s *Supervisor) reportActionProgress(rt *Runtime, progress ActionProgress) {
+	if rt == nil {
+		return
+	}
+	pluginID := rt.manifest.ID
+	const minRedrawInterval = 40 * time.Millisecond
+
+	s.mu.Lock()
+	if s.runtimes[pluginID] != rt || s.activeActionRT[pluginID] != rt {
+		s.mu.Unlock()
+		return
+	}
+	key, ok := s.activeActionKey[pluginID]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	v := s.views[key]
+	if v == nil || v.actionCancel == nil || v.BusyAction == "" || v.BusyAction == "__uninstall__" {
+		s.mu.Unlock()
+		return
+	}
+	prev := v.ActionProgress
+	if prev == progress {
+		s.mu.Unlock()
+		return
+	}
+	v.ActionProgress = progress
+	s.viewEpoch.Add(1)
+
+	now := time.Now()
+	isFirst := prev == (ActionProgress{})
+	isTerminal := (progress.Total > 0 && progress.Done >= progress.Total) || (progress.HasProgress && progress.Progress >= 1)
+	shouldRedraw := isFirst || isTerminal || now.Sub(s.lastProgressRedraw[pluginID]) >= minRedrawInterval
+	if shouldRedraw {
+		s.lastProgressRedraw[pluginID] = now
+	}
+	s.mu.Unlock()
+	if shouldRedraw {
+		s.notifyRedraw()
+	}
+}
+
+func (s *Supervisor) isPluginBusyLocked(pluginID string) bool {
+	if s.replacingID == pluginID && s.installingID != "" {
+		return true
+	}
+	for key, v := range s.views {
+		if key.pluginID != pluginID {
+			continue
+		}
+		if v.BusyAction != "" || v.actionCancel != nil || v.saveCancel != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPluginBusyAnyNotebook reports whether pluginID has an active action,
+// background save sync, or install/uninstall running in any notebook.
+func (s *Supervisor) IsPluginBusyAnyNotebook(pluginID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	for key, v := range s.views {
-		if key.pluginID == pluginID && (v.actionCancel != nil || len(v.queuedSaves) > 0) {
+	return s.isPluginBusyLocked(pluginID)
+}
+
+// IsPluginUninstalling reports whether pluginID is currently being uninstalled.
+func (s *Supervisor) IsPluginUninstalling(pluginID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.installingID == "__uninstall__" && s.replacingID == pluginID
+}
+
+// UninstallError returns the last uninstall failure message for pluginID, if any.
+func (s *Supervisor) UninstallError(pluginID string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.uninstallErrors[pluginID]
+}
+
+// RestartPluginAsync stops any running process for pluginID (when idle) and
+// reloads its Settings page view from a fresh process.
+func (s *Supervisor) RestartPluginAsync(pluginID string) {
+	s.mu.Lock()
+	if s.isPluginBusyLocked(pluginID) {
+		s.mu.Unlock()
+		return
+	}
+	rt := s.runtimes[pluginID]
+	delete(s.runtimes, pluginID)
+	delete(s.activeActionKey, pluginID)
+	delete(s.activeActionRT, pluginID)
+	s.clearUninstallErrorLocked(pluginID)
+	s.mu.Unlock()
+	if rt != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = rt.Shutdown(ctx)
+			cancel()
+			s.ReloadPluginViewAsync(pluginID)
+		}()
+		return
+	}
+	s.ReloadPluginViewAsync(pluginID)
+}
+
+func (s *Supervisor) CanCancelAction(pluginID string) bool {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if v := s.views[key]; v != nil {
+		if v.actionCancel != nil || (v.BusyAction == "__retry_note_saved__" && v.saveCancel != nil) {
 			return true
 		}
 	}
@@ -1701,22 +1907,47 @@ func (s *Supervisor) CanCancelAction(pluginID string) bool {
 }
 
 func (s *Supervisor) CancelAction(pluginID string) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
 	s.mu.Lock()
-	for key, v := range s.views {
-		if key.pluginID != pluginID {
-			continue
-		}
+	if v := s.views[key]; v != nil {
 		if v.actionCancel != nil {
 			v.actionCancel()
 		}
+		if v.BusyAction == "__retry_note_saved__" {
+			if v.saveCancel != nil {
+				v.saveCancel()
+			}
+			v.BusyAction = ""
+		}
+		v.ActionProgress = ActionProgress{}
+	}
+	if activeKey, ok := s.activeActionKey[pluginID]; ok && activeKey == key {
+		delete(s.activeActionKey, pluginID)
+		delete(s.activeActionRT, pluginID)
+	}
+	s.viewEpoch.Add(1)
+	s.mu.Unlock()
+	s.notifyChanged()
+}
+
+// CancelPendingSaves cancels queued background note.saved sync tasks for pluginID
+// in the current notebook without disturbing other notebooks or manual actions.
+func (s *Supervisor) CancelPendingSaves(pluginID string) {
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
+	s.mu.Lock()
+	if v := s.views[key]; v != nil {
 		if v.saveCancel != nil {
 			v.saveCancel()
 		}
 		clear(v.queuedSaves)
 		if v.BusyAction == "__retry_note_saved__" {
 			v.BusyAction = ""
+			v.ActionProgress = ActionProgress{}
 		}
 	}
+	s.viewEpoch.Add(1)
 	s.mu.Unlock()
 	s.notifyChanged()
 }
@@ -1820,6 +2051,39 @@ func pluginOutputPath(downloadsDir, rawPath string, reveal bool) (string, os.Fil
 	return cleaned, info
 }
 
+// OpenLogFile opens Block's diagnostic log file in the OS default viewer
+// (falling back to the logs folder if the file has not been created yet).
+func OpenLogFile() {
+	logPath := files.LogFilePath()
+	if strings.TrimSpace(logPath) == "" {
+		return
+	}
+	info, err := os.Stat(logPath)
+	if err != nil {
+		logPath = filepath.Dir(logPath)
+		info, err = os.Stat(logPath)
+		if err != nil {
+			return
+		}
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		if info.IsDir() {
+			cmd = exec.Command("open", "-a", "Finder", logPath)
+		} else {
+			cmd = exec.Command("open", logPath)
+		}
+	case "windows":
+		cmd = exec.Command("explorer.exe", logPath)
+	default:
+		cmd = exec.Command("xdg-open", logPath)
+	}
+	if err := cmd.Start(); err == nil {
+		go func() { _ = cmd.Wait() }()
+	}
+}
+
 func openLocalPathInOS(downloadsDir, rawPath string, reveal bool) {
 	cleaned, info := pluginOutputPath(downloadsDir, rawPath, reveal)
 	if info == nil {
@@ -1910,6 +2174,7 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		Loading:                in.Loading,
 		Refreshing:             in.Refreshing,
 		BusyAction:             in.BusyAction,
+		ActionProgress:         in.ActionProgress,
 		Error:                  in.Error,
 		Notice:                 in.Notice,
 		Page:                   in.Page,
@@ -1918,18 +2183,21 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		LastActionTone:         in.LastActionTone,
 		LastActionMessage:      in.LastActionMessage,
 		LastActionButtonActive: in.LastActionButtonActive,
+		LastActionWasHeader:    in.LastActionWasHeader,
 		RetryKind:              in.RetryKind,
 		FailedActionID:         in.FailedActionID,
 		FailedNotePath:         in.FailedNotePath,
 		FailedNoteRoot:         in.FailedNoteRoot,
 	}
 	if current.surface == SurfaceSettingsPage {
+		// Scope PendingSaves to the current notebook so badge count, menu item, and
+		// CancelPendingSaves all act on the exact same scope.
+		out.PendingSaves = len(in.queuedSaves)
 		var failedPath, failedRoot, failure string
 		for key, v := range s.views {
 			if key.pluginID != current.pluginID || key.surface != SurfaceSettingsPage {
 				continue
 			}
-			out.PendingSaves += len(v.queuedSaves)
 			for path, message := range v.failedSaves {
 				if v.queuedSaves[path] != nil {
 					continue
@@ -1941,7 +2209,7 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 				}
 			}
 		}
-		if out.Error == "" && out.BusyAction == "" && failedPath != "" {
+		if out.Error == "" && out.BusyAction == "" && out.RetryKind == RetryKindNone && failedPath != "" {
 			if failedRoot != current.notebookRoot {
 				failure = filepath.Base(failedRoot) + " / " + failure
 			}

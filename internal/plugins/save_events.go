@@ -68,15 +68,36 @@ func (s *Supervisor) notifyNoteWritten(sourcePluginID, nbRoot, absNotePath strin
 }
 
 func (s *Supervisor) HasPluginError(id string) bool {
-	if inst, ok := s.GetInstalled(id); !ok || !inst.Enabled {
+	if inst, ok := s.GetInstalled(id); !ok {
 		return false
+	} else if !inst.Enabled {
+		s.mu.RLock()
+		hasUninstErr := s.uninstallErrors[id] != ""
+		s.mu.RUnlock()
+		return hasUninstErr
 	}
 	root := s.NotebookRoot()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.uninstallErrors[id] != "" {
+		return true
+	}
 	for key, v := range s.views {
-		if key.pluginID == id && (len(v.failedSaves) > 0 || (key.notebookRoot == root && v.Error != "")) {
-			return true
+		if key.pluginID != id {
+			continue
+		}
+		for path := range v.failedSaves {
+			if v.queuedSaves[path] == nil {
+				return true
+			}
+		}
+		if key.notebookRoot == root {
+			if v.Error != "" {
+				return true
+			}
+			if v.LastActionWasHeader && strings.EqualFold(strings.TrimSpace(v.LastActionTone), "danger") {
+				return true
+			}
 		}
 	}
 	return false
@@ -141,6 +162,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	if v.BusyAction == "__retry_note_saved__" {
 		v.BusyAction = ""
 	}
+	v.ActionProgress = ActionProgress{}
 	if err != nil {
 		if v.failedSaves == nil {
 			v.failedSaves = make(map[string]string)

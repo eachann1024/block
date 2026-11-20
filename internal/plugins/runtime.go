@@ -70,8 +70,9 @@ type HostConfig struct {
 	HostVersion     string
 	GetNotebooks    func() []string
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
-	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
-	OnNoteWritten   func(pluginID, notebookRoot, absPath string)
+	ApplyNoteWrite   func(absPath, content string, write func() (bool, error)) (bool, error)
+	OnNoteWritten    func(pluginID, notebookRoot, absPath string)
+	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	// ContribHost handles host.titlebar/status/ui/editor methods; ok=false falls through.
 	ContribHost func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
 }
@@ -504,6 +505,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"ui_capabilities": []string{
 			"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
 			"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
+			"action_progress",
 		},
 	}
 	var res struct {
@@ -751,6 +753,25 @@ func (rt *Runtime) readLoop(r io.Reader) {
 			continue
 		}
 		if env.Method != "" {
+			if env.Method == "host.action.progress" {
+				// Process all progress updates inline in readLoop to guarantee strict ordering
+				// across notifications and calls, and prevent semaphore saturation on tight loops.
+				res, rpcErr := rt.dispatchHostMethod(env.Method, env.Params)
+				trimmedID := bytes.TrimSpace(env.ID)
+				if len(trimmedID) > 0 && !bytes.Equal(trimmedID, []byte("null")) {
+					select {
+					case rt.hostCalls <- struct{}{}:
+						go func(reqID json.RawMessage, result any, callErr *rpcError) {
+							defer func() { <-rt.hostCalls }()
+							rt.writeHostResponse(reqID, result, callErr)
+						}(env.ID, res, rpcErr)
+					default:
+						rt.abort()
+						return
+					}
+				}
+				continue
+			}
 			select {
 			case rt.hostCalls <- struct{}{}:
 				go func() {
@@ -788,9 +809,21 @@ func (rt *Runtime) handleHostCall(req rpcEnvelope) {
 		return
 	}
 	res, rpcErr := rt.dispatchHostMethod(req.Method, req.Params)
+	trimmedID := bytes.TrimSpace(req.ID)
+	if len(trimmedID) == 0 || bytes.Equal(trimmedID, []byte("null")) {
+		// JSON-RPC 2.0 notification: no response is expected.
+		return
+	}
+	rt.writeHostResponse(req.ID, res, rpcErr)
+}
+
+func (rt *Runtime) writeHostResponse(reqID json.RawMessage, res any, rpcErr *rpcError) {
+	if rt.closed.Load() {
+		return
+	}
 	resp := rpcEnvelope{
 		JSONRPC: "2.0",
-		ID:      req.ID,
+		ID:      reqID,
 	}
 	if rpcErr != nil {
 		resp.Error = rpcErr
@@ -973,6 +1006,47 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			rt.cfg.OnNoteWritten(rt.manifest.ID, rootPath, abs)
 		}
 		return map[string]any{"ok": true, "changed": changed}, nil
+
+	case "host.action.progress":
+		var p struct {
+			Progress *float64 `json:"progress,omitempty"`
+			Done     int      `json:"done,omitempty"`
+			Total    int      `json:"total,omitempty"`
+			Label    string   `json:"label,omitempty"`
+		}
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, &rpcError{Code: -32602, Message: "invalid host.action.progress params"}
+			}
+		}
+		lbl := strings.TrimSpace(p.Label)
+		if runes := []rune(lbl); len(runes) > 32 {
+			lbl = string(runes[:32])
+		}
+		ap := ActionProgress{
+			Label: lbl,
+		}
+		if p.Total > 0 {
+			ap.Total = p.Total
+			ap.Done = min(max(p.Done, 0), p.Total)
+		} else if p.Progress != nil {
+			v := *p.Progress
+			if !(v >= 0 && v <= 1) {
+				// Reject NaN, Inf, or out-of-range ratios instead of clamping bogus values.
+				return map[string]any{"ok": false}, nil
+			}
+			ap.HasProgress = true
+			ap.Progress = v
+		}
+		// Ignore empty or malformed payloads (e.g. {}, null, done without total) so they
+		// never overwrite valid in-flight progress.
+		if ap.Total == 0 && !ap.HasProgress && ap.Label == "" {
+			return map[string]any{"ok": false}, nil
+		}
+		if rt.cfg.OnActionProgress != nil {
+			rt.cfg.OnActionProgress(rt, ap)
+		}
+		return map[string]any{"ok": true}, nil
 
 	case "host.perf.snapshot":
 		if !rt.manifest.HasPermission(PermNotesRead) {
