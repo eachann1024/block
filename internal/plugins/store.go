@@ -567,18 +567,13 @@ func (s *StoreManager) ListInstalled() ([]InstalledApp, error) {
 		if err != nil || m.ID != e.Name() {
 			continue
 		}
-		info, _ := e.Info()
-		var installedAt time.Time
-		if info != nil {
-			installedAt = info.ModTime()
-		}
 		dataDir := filepath.Join(s.DataRoot, m.ID)
 		out = append(out, InstalledApp{
 			Manifest:    *m,
 			InstallDir:  dir,
 			DataDir:     dataDir,
 			Enabled:     stateErr == nil && m.ID != DiagnosticsPluginID && !disabled[m.ID],
-			InstalledAt: installedAt,
+			InstalledAt: pluginInstalledAt(dir),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Manifest.ID < out[j].Manifest.ID })
@@ -1052,8 +1047,18 @@ func (s *StoreManager) commitInstallDirLocked(m *Manifest, tmpDir, dstDir, backu
 		InstallDir:  dstDir,
 		DataDir:     filepath.Join(s.DataRoot, m.ID),
 		Enabled:     s.IsEnabled(m.ID),
-		InstalledAt: time.Now(),
+		InstalledAt: pluginInstalledAt(dstDir),
 	}, nil
+}
+
+func pluginInstalledAt(dir string) time.Time {
+	if info, err := os.Lstat(filepath.Join(dir, installSourceFile)); err == nil && info.Mode().IsRegular() {
+		return info.ModTime()
+	}
+	if info, err := os.Stat(dir); err == nil {
+		return info.ModTime()
+	}
+	return time.Time{}
 }
 
 func installSourceRecord(source string) string {

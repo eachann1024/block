@@ -138,9 +138,10 @@ func (h *pluginHostUI) Capabilities() map[string]bool {
 	ready := mygo.App.IsReady()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	notify, _ := systemintegration.NotificationSupport(ctx)
+	notify, notifyClick, _ := systemintegration.NotificationSupport(ctx)
+	notify = ready && notify && mygo.NotificationsSupported() && systemintegration.CheckNotificationPermission(ctx) == nil
 	return map[string]bool{
-		"notify":   ready && notify && mygo.NotificationsSupported() && systemintegration.CheckNotificationPermission(ctx) == nil,
+		"notify": notify, "notify_click": notify && notifyClick,
 		"secrets":  systemintegration.CredentialsAvailable(ctx),
 		"open_url": ready, "reveal": ready, "open_dialog": ready, "save_dialog": ready,
 		"clipboard_read": ready, "clipboard_write": ready, "trash": ready,
@@ -161,7 +162,7 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		return nil
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	supported, encode := systemintegration.NotificationSupport(probeCtx)
+	supported, click, encode := systemintegration.NotificationSupport(probeCtx)
 	cancel()
 	if !supported || !mygo.NotificationsSupported() {
 		return plugins.ErrSystemUnavailable
@@ -191,7 +192,7 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		}
 	}
 	note := mygo.NewNotification(mygo.NotificationOptions{ID: id, Title: title, Body: encode(body), Silent: tone == "info" || tone == "success"})
-	if record == "" {
+	if click && record == "" {
 		note.OnClick(func() { h.openNotificationTarget(target) })
 	}
 	err := note.ShowContext(ctx)
@@ -238,16 +239,24 @@ func (w *Workspace) HandlePluginNotificationClick(id string) {
 		return
 	}
 	path := filepath.Join(files.AppDataDir(), "plugin-notifications", id)
+	expected, err := os.Lstat(path)
+	if err != nil || !expected.Mode().IsRegular() {
+		return
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return
 	}
+	info, statErr := file.Stat()
+	if statErr != nil || !os.SameFile(expected, info) || info.ModTime().Before(time.Now().AddDate(0, 0, -7)) {
+		_ = file.Close()
+		return
+	}
 	var target pluginNotificationTarget
 	err = json.NewDecoder(io.LimitReader(file, 32*1024)).Decode(&target)
-	info, statErr := file.Stat()
 	_ = file.Close()
 	_ = os.Remove(path)
-	if err == nil && statErr == nil && info.ModTime().After(time.Now().AddDate(0, 0, -7)) {
+	if err == nil {
 		w.pluginUI.openNotificationTarget(target)
 	}
 }
@@ -260,10 +269,20 @@ func (h *pluginHostUI) openNotificationTarget(target pluginNotificationTarget) {
 	if h.systemReveal != nil {
 		h.systemReveal()
 	}
-	if target.Root != "" && target.Relative != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
-		path, err := plugins.SystemNotificationNotePath(target.Root, target.Relative, h.w.Notebooks())
-		if err == nil && h.w.OpenExternalFile(path) == nil {
-			return
+	if target.Root != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
+		notebooks := h.w.Notebooks()
+		if target.Relative != "" {
+			path, err := plugins.SystemNotificationNotePath(target.Root, target.Relative, notebooks)
+			if err == nil && h.w.OpenExternalFile(path) == nil {
+				return
+			}
+		} else if target.Root != h.w.ActiveNotebook() {
+			for _, notebook := range notebooks {
+				if candidate, err := filepath.Abs(notebook); err == nil && candidate == target.Root {
+					_ = h.w.SetNotebook(candidate)
+					break
+				}
+			}
 		}
 	}
 	if installed.Manifest.HasSurface(plugins.SurfaceSettingsPage) {

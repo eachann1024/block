@@ -219,7 +219,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	s.mu.Unlock()
 	s.notifyChanged()
 	if blockSync && err != nil && !syncFailureAlreadyReported(err) && !errors.Is(ctx.Err(), context.Canceled) {
-		s.reportSystemSyncFailure(inst, rt, key.notebookRoot, timedOut, false)
+		s.reportSystemSyncFailure(inst, rt, key.notebookRoot, timedOut, syncStateNotSaved(err))
 	}
 	if err == nil && refreshPage {
 		if page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, draftVals); err == nil {

@@ -97,10 +97,9 @@ type systemState struct {
 }
 
 type systemNotice struct {
-	at    time.Time
-	key   [32]byte
-	title string
-	busy  bool
+	at   time.Time
+	key  [32]byte
+	done chan struct{}
 }
 
 type systemBadge struct {
@@ -127,6 +126,7 @@ type systemParams struct {
 	Tone         string   `json:"tone"`
 	NotebookRoot string   `json:"notebook_root"`
 	RelPath      string   `json:"rel_path"`
+	TimeoutMS    int      `json:"timeout_ms"`
 	URL          string   `json:"url"`
 	DefaultPath  string   `json:"default_path"`
 	Extensions   []string `json:"extensions"`
@@ -370,25 +370,31 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		return nil, rpcErr(-32602, "notification title and body are required")
 	}
 	root, rel := "", ""
-	if p.RelPath != "" {
+	if p.RelPath != "" || p.NotebookRoot != "" {
 		if !rt.manifest.HasPermission(PermNotesRead) {
 			return nil, missingPerm(PermNotesRead)
-		}
-		if !files.IsMarkdown(p.RelPath) {
-			return nil, rpcErr(-32602, "notification target must be a Markdown note")
-		}
-		if _, err := systemNotebookPath(rt, p.NotebookRoot, p.RelPath, true); err != nil {
-			return nil, rpcErr(-32602, err.Error())
 		}
 		var err error
 		root, err = rt.resolveNotebookRoot(p.NotebookRoot)
 		if err != nil {
 			return nil, rpcErr(-32602, "notebook is no longer registered")
 		}
-		rel = p.RelPath
+		if p.RelPath != "" {
+			if _, err := SystemNotificationNotePath(root, p.RelPath, []string{root}); err != nil {
+				return nil, rpcErr(-32602, err.Error())
+			}
+			rel = p.RelPath
+		}
 	}
 	id := rt.manifest.ID
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if p.TimeoutMS < 0 || p.TimeoutMS > 15000 {
+		return nil, rpcErr(-32602, "notification timeout must be between 0 and 15000 milliseconds")
+	}
+	timeout := 15 * time.Second
+	if p.TimeoutMS > 0 {
+		timeout = time.Duration(p.TimeoutMS) * time.Millisecond
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	go func() {
 		select {
@@ -406,33 +412,48 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 
 func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel string, allowed func() bool) (bool, error) {
 	key := sha256.Sum256([]byte(strings.Join([]string{title, body, root, rel}, "\x00")))
-	now := time.Now()
-	s.system.mu.Lock()
-	if s.system.notices == nil {
-		s.system.notices = make(map[string]systemNotice)
-	}
-	for pluginID, entry := range s.system.notices {
-		if !entry.busy && now.Sub(entry.at) >= 2*time.Minute {
-			delete(s.system.notices, pluginID)
+	for {
+		if ctx.Err() != nil || !allowed() {
+			return false, ErrSystemCanceled
 		}
-	}
-	prev := s.system.notices[id]
-	newSyncState := id == "block-sync" && title != prev.title
-	if prev.busy || (now.Sub(prev.at) < 10*time.Second && !newSyncState) || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
+		s.system.mu.Lock()
+		if s.system.notices == nil {
+			s.system.notices = make(map[string]systemNotice)
+		}
+		now := time.Now()
+		for pluginID, entry := range s.system.notices {
+			if entry.done == nil && now.Sub(entry.at) >= 2*time.Minute {
+				delete(s.system.notices, pluginID)
+			}
+		}
+		prev := s.system.notices[id]
+		if prev.done != nil {
+			s.system.mu.Unlock()
+			select {
+			case <-prev.done:
+				continue
+			case <-ctx.Done():
+				return false, ErrSystemCanceled
+			}
+		}
+		if (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
+			s.system.mu.Unlock()
+			return true, nil
+		}
+		done := make(chan struct{})
+		s.system.notices[id] = systemNotice{done: done}
 		s.system.mu.Unlock()
-		return true, nil
+		err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, allowed)
+		s.system.mu.Lock()
+		if err == nil {
+			s.system.notices[id] = systemNotice{at: time.Now(), key: key}
+		} else {
+			s.system.notices[id] = prev
+		}
+		close(done)
+		s.system.mu.Unlock()
+		return false, err
 	}
-	s.system.notices[id] = systemNotice{at: now, key: key, title: title, busy: true}
-	s.system.mu.Unlock()
-	err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, allowed)
-	s.system.mu.Lock()
-	if err == nil {
-		s.system.notices[id] = systemNotice{at: time.Now(), key: key, title: title}
-	} else {
-		s.system.notices[id] = prev
-	}
-	s.system.mu.Unlock()
-	return false, err
 }
 
 func (s *Supervisor) setSystemBadge(rt *Runtime, count int, allowed func() bool) error {
@@ -594,8 +615,12 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		params["notebook_root"] = root
 	}
 	var res struct {
-		Outcome         string   `json:"outcome"`
-		SyncedNotebooks []string `json:"synced_notebooks"`
+		Outcome          string   `json:"outcome"`
+		SyncedNotebooks  []string `json:"synced_notebooks"`
+		NotebookOutcomes map[string]struct {
+			Outcome  string `json:"outcome"`
+			Notified bool   `json:"notified"`
+		} `json:"notebook_outcomes"`
 	}
 	timeout := 45 * time.Second
 	if syncEvent {
@@ -627,25 +652,38 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		}
 		return
 	}
-	if syncEvent && res.Outcome == "state_error" {
-		s.reportSystemSyncFailure(installed, rt, root, false, true)
-		return
-	}
 	if res.Outcome != "skipped" && res.Outcome != "" {
 		s.mu.Lock()
 		if !s.isRuntimeActiveLocked(pluginID, rt) {
 			s.mu.Unlock()
 			return
 		}
-		if pluginID == "block-sync" && res.Outcome == "synced" {
+		if syncEvent {
 			s.clearSyncedNotebookErrorsLocked(pluginID, res.SyncedNotebooks)
-		}
-		if pluginID == "block-sync" {
-			delete(s.system.syncErrors, root)
+			if len(res.NotebookOutcomes) == 0 && res.Outcome != "state_error" {
+				delete(s.system.syncErrors, root)
+			}
+			for notebook, result := range res.NotebookOutcomes {
+				if result.Outcome == "synced" || result.Outcome == "pending_confirm" || (result.Outcome == "failed" && result.Notified) {
+					delete(s.system.syncErrors, notebook)
+				}
+			}
 		}
 		view := s.views[viewKey{pluginID, root, SurfaceSettingsPage}]
 		refresh := view != nil && view.Page != nil && view.BusyAction == ""
 		s.mu.Unlock()
+		if syncEvent {
+			if len(res.NotebookOutcomes) == 0 && res.Outcome == "state_error" {
+				s.reportSyncFailure(installed, rt, root, false, true, false, true)
+			}
+			for notebook, result := range res.NotebookOutcomes {
+				if result.Outcome == "state_error" || (result.Outcome == "failed" && !result.Notified) {
+					if registered, err := rt.resolveNotebookRoot(notebook); err == nil {
+						s.reportSyncFailure(installed, rt, registered, false, result.Outcome == "state_error", false, result.Notified)
+					}
+				}
+			}
+		}
 		if refresh {
 			s.reloadSurfaceViewForNotebookAsync(pluginID, root, SurfaceSettingsPage)
 		}
@@ -654,7 +692,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 }
 
 func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed bool) {
-	s.reportSyncFailure(inst, rt, root, timedOut, storageFailed, false)
+	s.reportSyncFailure(inst, rt, root, timedOut, storageFailed, false, false)
 }
 
 func syncFailureAlreadyReported(err error) bool {
@@ -662,7 +700,12 @@ func syncFailureAlreadyReported(err error) bool {
 	return errors.As(err, &response) && response.Code == -32008
 }
 
-func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed, manual bool) {
+func syncStateNotSaved(err error) bool {
+	var response *rpcError
+	return errors.As(err, &response) && response.Code == -32009
+}
+
+func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed, manual, notified bool) {
 	const pluginID = "block-sync"
 	config := systemSyncConfig(inst.DataDir, root)
 	if rt == nil && !manual {
@@ -690,12 +733,6 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 			title = "Automatic sync could not start"
 		}
 	}
-	if storageFailed {
-		title = "同步状态未保存"
-		if locale == "en" {
-			title = "Sync state could not be saved"
-		}
-	}
 	if manual {
 		title = "同步未完成"
 		if locale == "en" {
@@ -706,6 +743,12 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 			if locale == "en" {
 				title = "Sync timed out"
 			}
+		}
+	}
+	if storageFailed {
+		title = "同步状态未保存"
+		if locale == "en" {
+			title = "Sync state could not be saved"
 		}
 	}
 	currentLocked := func() bool {
@@ -735,7 +778,7 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 		s.notifyChanged()
 		files.LogWarnf("plugin %s background system sync failed (timed out: %t)", pluginID, timedOut)
 	}
-	if storageFailed || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || (config == nil && !manual) {
+	if notified || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || (config == nil && !manual) {
 		return
 	}
 	if enabled, ok := config["system_notifications"].(bool); ok && !enabled {
@@ -744,7 +787,7 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", "", "", func() bool {
+		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", root, "", func() bool {
 			s.mu.RLock()
 			defer s.mu.RUnlock()
 			return currentLocked()
