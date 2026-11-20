@@ -45,6 +45,14 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 			key = ui.KeyBackspace
 		case "delete", "del":
 			key = ui.KeyDelete
+		case "left", "arrowleft":
+			key = ui.KeyLeft
+		case "right", "arrowright":
+			key = ui.KeyRight
+		case "up", "arrowup":
+			key = ui.KeyUp
+		case "down", "arrowdown":
+			key = ui.KeyDown
 		case ",", "comma":
 			key = ui.KeyComma
 		case ".", "period":
@@ -198,6 +206,14 @@ func keyDisplayName(k ui.Key) string {
 		return "⌫"
 	case ui.KeyDelete:
 		return "Del"
+	case ui.KeyLeft:
+		return "←"
+	case ui.KeyRight:
+		return "→"
+	case ui.KeyUp:
+		return "↑"
+	case ui.KeyDown:
+		return "↓"
 	default:
 		if k >= ui.KeyF1 && k <= ui.KeyF12 {
 			return fmt.Sprintf("F%d", 1+int(k-ui.KeyF1))
