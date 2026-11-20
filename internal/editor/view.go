@@ -42,7 +42,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	readOnly = readOnly || s.previewMedia != nil
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		s.doc = model.NewEmptyDoc()
-		s.docRev++
+		s.bumpDocRev()
 	}
 	s.readOnly = readOnly
 	s.ensureAnnotationsLoaded()
