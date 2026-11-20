@@ -100,7 +100,11 @@ type Palette struct {
 	MenuDangerFG        ui.Color
 	MenuDangerHoverBG   ui.Color
 	MenuDangerHoverFG   ui.Color
+	SwitchTrackHover    ui.Color
+	SwitchTrackPressed  ui.Color
 	SwitchKnob          ui.Color
+	SwitchKnobBorder    ui.Color
+	SwitchKnobShadow    ui.Color
 	TooltipBG           ui.Color
 	TooltipBorder       ui.Color
 	TooltipDivider      ui.Color
@@ -196,7 +200,11 @@ var OceanLight = Palette{
 	MenuDangerFG:        ui.Hex("#8e2626"),
 	MenuDangerHoverBG:   ui.Hex("#d03b3b"),
 	MenuDangerHoverFG:   ui.Hex("#ffffff"),
+	SwitchTrackHover:    ui.Hex("#c6c7c9"),
+	SwitchTrackPressed:  ui.Hex("#b5b7ba"),
 	SwitchKnob:          ui.Hex("#ffffff"),
+	SwitchKnobBorder:    ui.RGBA(0, 0, 0, 0.06),
+	SwitchKnobShadow:    ui.RGBA(0, 0, 0, 0.20),
 	TooltipBG:           ui.Hex("#ffffff"),
 	TooltipBorder:       ui.Hex("#dedede"),
 	TooltipDivider:      ui.Hex("#edf0f5"),
@@ -291,7 +299,11 @@ var OceanDark = Palette{
 	MenuDangerFG:        ui.Hex("#f28b82"),
 	MenuDangerHoverBG:   ui.Hex("#d03b3b"),
 	MenuDangerHoverFG:   ui.Hex("#ffffff"),
-	SwitchKnob:          ui.Hex("#ffffff"),
+	SwitchTrackHover:    ui.Hex("#585858"),
+	SwitchTrackPressed:  ui.Hex("#666666"),
+	SwitchKnob:          ui.Hex("#f4f4f4"),
+	SwitchKnobBorder:    ui.RGBA(0, 0, 0, 0.22),
+	SwitchKnobShadow:    ui.RGBA(0, 0, 0, 0.36),
 	TooltipBG:           ui.Hex("#262626"),
 	TooltipBorder:       ui.Hex("#3a3a3a"),
 	TooltipDivider:      ui.Hex("#343434"),
