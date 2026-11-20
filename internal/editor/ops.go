@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"block/internal/codepreview"
+	"block/internal/fuzzy"
 	"block/internal/media"
 	"block/internal/model"
 	"block/internal/plugins"
@@ -3210,27 +3211,40 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 	all := slices.DeleteFunc(allSlashItems(), func(it blockMenuItem) bool {
 		return (s.minimal && it.Kind == cmdImage) || (s.aiDisabled && it.Kind == cmdAI)
 	})
-	q := strings.ToLower(strings.TrimSpace(s.blockMenu.Filter))
+	q := strings.TrimSpace(s.blockMenu.Filter)
 	if q == "" {
 		return all
 	}
-	var hits []blockMenuItem
+	type scoredSlashItem struct {
+		item  blockMenuItem
+		score int
+	}
+	var scored []scoredSlashItem
 	for _, it := range all {
 		if it.Separator {
 			continue
 		}
-		lbl := strings.ToLower(it.Label)
-		kw := strings.ToLower(it.Keywords)
-		ht := strings.ToLower(it.Hint)
-		if strings.Contains(lbl, q) || strings.Contains(kw, q) || (ht != "" && strings.Contains(ht, q)) {
-			hits = append(hits, it)
+		primary := make([]string, 0, 4)
+		primary = append(primary, it.Label)
+		if it.Keywords != "" {
+			primary = append(primary, it.Keywords)
+			primary = append(primary, strings.Fields(it.Keywords)...)
+		}
+		var secondary []string
+		if it.Hint != "" {
+			secondary = []string{it.Hint}
+		}
+		if sc, ok := fuzzy.Score(q, primary, secondary, false); ok {
+			scored = append(scored, scoredSlashItem{item: it, score: sc})
 		}
 	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		pi := strings.HasPrefix(strings.ToLower(hits[i].Label), q)
-		pj := strings.HasPrefix(strings.ToLower(hits[j].Label), q)
-		return pi && !pj
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
 	})
+	hits := make([]blockMenuItem, len(scored))
+	for i, s := range scored {
+		hits[i] = s.item
+	}
 	return hits
 }
 
