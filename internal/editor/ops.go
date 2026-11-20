@@ -217,19 +217,50 @@ func (s *Session) SelectedMarkdown() string {
 	return strings.TrimSuffix(s.serializeBlocks(doc.Blocks), "\n")
 }
 
+func hasAnySpanStyle(spans []model.Span) bool {
+	for _, sp := range spans {
+		if sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func splitInlineSpansForCopy(spans []model.Span) [][]model.Span {
+	lines := [][]model.Span{{}}
+	for _, sp := range spans {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || !strings.ContainsRune(sp.Text, '\n') {
+			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
+			continue
+		}
+		parts := strings.Split(sp.Text, "\n")
+		for idx, part := range parts {
+			if idx > 0 {
+				lines = append(lines, []model.Span{})
+			}
+			if part != "" {
+				cp := sp
+				cp.Text = part
+				lines[len(lines)-1] = append(lines[len(lines)-1], cp)
+			}
+		}
+	}
+	return lines
+}
+
 func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec) string {
 	if len(spans) == 0 {
 		return ""
 	}
-	// Split on explicit '\n' so inline lines don't collapse.
 	rawText := model.PlainTextOfSpans(spans)
 	if rawText == "" {
 		return ""
 	}
-	if strings.TrimSpace(rawText) == "" {
+	if strings.TrimSpace(rawText) == "" && !hasAnySpanStyle(spans) {
 		return rawText
 	}
-	if !strings.Contains(rawText, "\n") {
+	lineChunks := splitInlineSpansForCopy(spans)
+	if len(lineChunks) == 1 {
 		if ic, ok := codec.(interface{ SerializeInline([]model.Span) string }); ok {
 			return ic.SerializeInline(spans)
 		}
@@ -240,14 +271,13 @@ func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec)
 		}
 		return serializeSpansFallback(spans)
 	}
-	lines := strings.Split(rawText, "\n")
-	parts := make([]string, 0, len(lines))
-	pos := 0
-	for _, ln := range lines {
-		lnLen := len([]rune(ln))
-		sub := sliceSpans(spans, pos, pos+lnLen)
-		pos += lnLen + 1
-		parts = append(parts, serializeInlineBlockMarkdown(sub, codec))
+	parts := make([]string, 0, len(lineChunks))
+	for _, chunk := range lineChunks {
+		if len(chunk) == 0 {
+			parts = append(parts, "")
+			continue
+		}
+		parts = append(parts, serializeInlineBlockMarkdown(chunk, codec))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -2115,10 +2145,16 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	if rDelta < 0 {
 		rDelta = -rDelta
 	}
-	if rDelta <= 4 && !strings.Contains(newText, "\n") && !strings.Contains(oldText, "\n") {
-		s.pushCoalescedTextUndo(fmt.Sprintf("blk:%d:%d", b.ID, b.Kind))
-	} else {
-		s.pushUndo()
+	batchCont := false
+	if st, ok := s.richInputs[b.ID]; ok && st != nil && st.InBatchContinuation() {
+		batchCont = true
+	}
+	if !batchCont {
+		if rDelta <= 4 && !strings.Contains(newText, "\n") && !strings.Contains(oldText, "\n") {
+			s.pushCoalescedTextUndo(fmt.Sprintf("blk:%d:%d", b.ID, b.Kind))
+		} else {
+			s.pushUndo()
+		}
 	}
 
 	if b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
@@ -2263,9 +2299,13 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 	oldR := []rune(oldText)
 	newR := []rune(newText)
 	maxPref := min(len(oldR), len(newR))
-	if caretHint >= 0 && len(newR) > len(oldR) {
-		if insStart := caretHint - (len(newR) - len(oldR)); insStart >= 0 && insStart < maxPref {
-			maxPref = insStart
+	if caretHint >= 0 {
+		if len(newR) > len(oldR) {
+			if insStart := caretHint - (len(newR) - len(oldR)); insStart >= 0 && insStart < maxPref {
+				maxPref = insStart
+			}
+		} else if caretHint < maxPref {
+			maxPref = caretHint
 		}
 	}
 	pref := 0
@@ -2708,6 +2748,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				b.CleanSource = ""
 				s.selAnchor = Position{Block: idx, Offset: 0}
 				s.selHead = s.selAnchor
+				s.focusPending = true
 				s.selSyncPending = true
 				s.markDirty()
 				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, b, 0, false)
@@ -2724,6 +2765,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 			if headerCells, ok := s.matchTableHeaderCells(b.Spans); ok {
 				s.pushUndo()
 				s.convertParagraphToTableBlock(idx, headerCells)
+				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, &s.doc.Blocks[idx], 0, false)
 				return true
 			}
 			if lang, ok := matchCodeFencePrefix(b.PlainText()); ok {
@@ -2735,8 +2777,11 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				b.Spans = nil
 				b.Dirty = true
 				b.CleanSource = ""
+				s.blockMenu = nil
+				delete(s.richInputs, b.ID)
 				s.selAnchor = Position{Block: idx, Offset: 0}
 				s.selHead = s.selAnchor
+				s.focusPending = true
 				s.selSyncPending = true
 				s.markDirty()
 				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, b, 0, false)
