@@ -188,21 +188,45 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 			}
 		}
 
-		openBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-			ID:       "app-store-detail-open",
-			Label:    theme.Tr("打开设置", "Open Settings"),
-			Style:    bui.ButtonSecondary,
-			Height:   theme.HeightCompact,
-			PaddingX: theme.Space10,
-		})
-		if openBtn.Clicked() && onSelectTab != nil {
-			c.CloseTitlebarOverlays()
-			c.closeStoreReadme()
-			onSelectTab(modals.TabPluginPrefix + entry.ID)
+		if installedApp.Manifest.HasSettingsPage() {
+			openBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+				ID:       "app-store-detail-open",
+				Label:    theme.Tr("打开设置", "Open Settings"),
+				Style:    bui.ButtonSecondary,
+				Height:   theme.HeightCompact,
+				PaddingX: theme.Space10,
+			})
+			if openBtn.Clicked() && onSelectTab != nil {
+				c.CloseTitlebarOverlays()
+				c.closeStoreReadme()
+				onSelectTab(modals.TabPluginPrefix + entry.ID)
+			}
+
+			target := storeDetailMenuTargetPrefix + entry.ID
+			c.renderMoreMenuTrigger(ctx, "store-detail-more-"+entry.ID, target, installingID != "")
+			return
 		}
 
-		target := storeDetailMenuTargetPrefix + entry.ID
-		c.renderMoreMenuTrigger(ctx, "store-detail-more-"+entry.ID, target, installingID != "")
+		uninstBusy := c.sup.IsPluginUninstalling(entry.ID)
+		uninstLbl := theme.Tr("卸载", "Uninstall")
+		if uninstBusy {
+			uninstLbl = theme.Tr("卸载中…", "Uninstalling…")
+		}
+		trashIc := icons.Trash
+		uninstDisabled := installingID != "" || uninstBusy || pluginBusy
+		uninstBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+			ID:       "app-store-detail-uninstall",
+			Label:    uninstLbl,
+			Leading:  &trashIc,
+			Style:    bui.ButtonDanger,
+			Height:   theme.HeightCompact,
+			Disabled: uninstDisabled,
+			Loading:  uninstBusy,
+		})
+		if uninstBtn.Clicked() && !uninstDisabled {
+			c.CloseTitlebarOverlays()
+			c.uninstallPlugin(entry.ID, nil)
+		}
 	})
 }
 

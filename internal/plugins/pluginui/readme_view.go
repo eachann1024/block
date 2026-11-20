@@ -388,8 +388,12 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		renderStoreDetailMeta(c, entry, locale)
 
 		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-		if storeErr != "" {
-			renderStatusTextWithTone(c, storeErr, "danger")
+		errMsg := storeErr
+		if errMsg == "" {
+			errMsg = strings.TrimSpace(ctrl.sup.UninstallError(entry.ID))
+		}
+		if errMsg != "" {
+			renderStatusTextWithTone(c, errMsg, "danger")
 		}
 		renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
 	})

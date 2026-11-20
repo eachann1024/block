@@ -358,77 +358,103 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 	entry := card.entry
 	name := entry.Name.Resolve(locale)
 	busy := installingID == entry.ID
-	storeCardFrame(c, "app-store-tile-"+entry.ID).Children(func() {
-		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
-			open := ui.ButtonBase(c.Key("app-store-card-" + entry.ID)).Grow(1).MinWidth(0).
-				Gap(theme.StoreCardInnerGap).AlignItems(ui.Center).Label(name).Cursor(ui.CursorPointer)
-			bui.Probe(open, "app-store-card-"+entry.ID)
-			open.Children(func() {
-				ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
-					Radius(theme.RadiusLG).Background(pal.Shell).Children(func() {
-					DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
-				})
-				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
-					ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-						var nameMarks [][2]int
-						if q := strings.TrimSpace(ctrl.storeQuery); q != "" {
-							nameMarks = fuzzy.HighlightRanges(name, q)
-						}
-						bui.HighlightedText(c, name, nameMarks, theme.FontTitle, theme.WeightTitle, pal.Text, pal.SearchHighlight).
-							FixedLineHeight(theme.LineTitle).MinWidth(0).Shrink(1)
-						if storeAppIsBeta(entry, card.installed, card.isInstalled) {
-							bui.BetaBadge(c, true)
-						}
-					})
-					renderStoreSource(c, entry.Author, card.source)
-				})
-			})
-			if open.Clicked() {
-				ctrl.closeStoreMenus()
-				ctrl.openStoreReadme(entry, card.installed)
-				c.Invalidate()
-			}
-			if card.isInstalled {
-				openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-					ID:       "app-store-open-" + entry.ID,
-					Label:    theme.Tr("打开", "Open"),
-					Style:    bui.ButtonSecondary,
-					Disabled: busy,
-					Loading:  busy,
-					Height:   theme.HeightCompact,
-					PaddingX: theme.Space10,
-				})
-				if openBtn.Clicked() && !busy {
-					ctrl.closeStoreMenus()
-					if onSelectTab != nil && entry.ID != plugins.DiagnosticsPluginID {
-						onSelectTab(modals.TabPluginPrefix + entry.ID)
-					} else {
-						ctrl.openStoreReadme(entry, card.installed)
-						c.Invalidate()
-					}
-				}
-				return
-			}
+	hasSettings := card.isInstalled && card.installed.Manifest.HasSettingsPage() && entry.ID != plugins.DiagnosticsPluginID
 
-			label, glyph := theme.Tr("安装", "Install"), icons.Download
-			if busy {
-				label = theme.Tr("处理中…", "Working…")
-			}
-			button := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-				ID: "app-store-install-" + entry.ID, Label: label, Leading: &glyph,
-				Style: bui.ButtonAccentOutline, Disabled: installingID != "" && !busy,
-				Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
+	cardBtn := ui.ButtonBase(c.Key("app-store-card-" + entry.ID)).FillWidth().MinWidth(0).
+		Padding(theme.Space20).Radius(theme.RadiusXL).Cursor(ui.CursorPointer).Label(name)
+	hovered := cardBtn.Hovered()
+	pressed := cardBtn.Pressed()
+	border := pal.Hairline
+	if hovered || pressed {
+		border = pal.BtnBorder
+	}
+	bui.AnimateSurfaceColors(cardBtn, pal.ShellChrome().Card, border, false)
+	bui.TactileCard(cardBtn, hovered, pressed, false, false)
+
+	actionHandled := false
+	cardBtn.Children(func() {
+		ui.Column(c.Key("app-store-tile-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.StoreCardInnerGap).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.StoreCardInnerGap).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
+						Radius(theme.RadiusLG).Background(pal.Shell).Children(func() {
+						DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
+					})
+					ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+						ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+							var nameMarks [][2]int
+							if q := strings.TrimSpace(ctrl.storeQuery); q != "" {
+								nameMarks = fuzzy.HighlightRanges(name, q)
+							}
+							bui.HighlightedText(c, name, nameMarks, theme.FontTitle, theme.WeightTitle, pal.Text, pal.SearchHighlight).
+								FixedLineHeight(theme.LineTitle).MinWidth(0).Shrink(1)
+							if storeAppIsBeta(entry, card.installed, card.isInstalled) {
+								bui.BetaBadge(c, true)
+							}
+						})
+						renderStoreSource(c, entry.Author, card.source)
+					})
+				})
+				if card.isInstalled {
+					if hasSettings {
+						openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+							ID:       "app-store-open-" + entry.ID,
+							Label:    theme.Tr("打开", "Open"),
+							Style:    bui.ButtonSecondary,
+							Disabled: busy,
+							Loading:  busy,
+							Height:   theme.HeightCompact,
+							PaddingX: theme.Space10,
+						})
+						if openBtn.Clicked() && !busy {
+							actionHandled = true
+							ctrl.closeStoreMenus()
+							if onSelectTab != nil {
+								onSelectTab(modals.TabPluginPrefix + entry.ID)
+							} else {
+								ctrl.openStoreReadme(entry, card.installed)
+								c.Invalidate()
+							}
+						}
+					} else {
+						ui.Row(c.Key("app-store-installed-"+entry.ID)).Height(theme.HeightCompact).
+							PaddingX(theme.Space8).Gap(theme.Space4).Radius(theme.RadiusMD).
+							Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
+							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+							ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
+								FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
+						})
+					}
+					return
+				}
+
+				label, glyph := theme.Tr("安装", "Install"), icons.Download
+				if busy {
+					label = theme.Tr("处理中…", "Working…")
+				}
+				button := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+					ID: "app-store-install-" + entry.ID, Label: label, Leading: &glyph,
+					Style: bui.ButtonAccentOutline, Disabled: installingID != "" && !busy,
+					Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
+				})
+				if button.Clicked() && !busy {
+					actionHandled = true
+					ctrl.closeStoreMenus()
+					ctrl.openStoreReadme(entry, card.installed)
+					c.Invalidate()
+				}
 			})
-			if button.Clicked() && !busy {
-				ctrl.closeStoreMenus()
-				ctrl.openStoreReadme(entry, card.installed)
-				c.Invalidate()
-			}
+			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
+				theme.FontBody, theme.LineTitle, pal.TextSecondary, pal.ShellChrome().Card)
+			renderStoreCardMeta(c, card, locale)
 		})
-		bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
-			theme.FontBody, theme.LineTitle, pal.TextSecondary, pal.ShellChrome().Card)
-		renderStoreCardMeta(c, card, locale)
 	})
+	bui.Probe(cardBtn, "app-store-card-"+entry.ID)
+	if !actionHandled && cardBtn.Clicked() {
+		ctrl.closeStoreMenus()
+		ctrl.openStoreReadme(entry, card.installed)
+		c.Invalidate()
+	}
 }
 
 func renderStoreSource(c *ui.Context, author, source string) {
