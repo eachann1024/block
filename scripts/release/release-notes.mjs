@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describeCommit } from "./commit-blurb.mjs";
 import {
   EN_SECTIONS,
+  MAX_PER_SECTION,
   ZH_SECTIONS,
   lineMixesLanguages,
   validateReleaseNotes,
@@ -60,7 +61,7 @@ export function isExcludedCommit({ author = "", subject = "", releaseNote = "", 
   if (VERSION_BUMP.test(subject)) return true;
   const hasExplicitNote = Boolean(releaseNote.trim() || releaseNoteEn.trim());
   if (!hasExplicitNote && INTERNAL_COMMIT.test(subject.trim())) return true;
-  if (!hasExplicitNote && Array.isArray(paths) && paths.length > 0 && paths.every(isNonShippablePath)) return true;
+  if (!hasExplicitNote && Array.isArray(paths) && (paths.length === 0 || paths.every(isNonShippablePath))) return true;
   return false;
 }
 
@@ -72,14 +73,18 @@ function splitNote(raw = "") {
 }
 
 export function listCommits(root = ROOT, rangeSpec = "-n 20") {
+  const COMMIT_MARKER = "<<<BLOCK_COMMIT>>>";
   const args = [
+    "-c",
+    "core.quotepath=false",
     "log",
     "--no-merges",
     "--topo-order",
     "--reverse",
     "--date=format-local:%Y-%m-%d",
     "--name-only",
-    "--format=%x1e%H%x1f%an%x1f%cd%x1f%s%x1f%(trailers:key=Release-Note,valueonly,separator=%x20)%x1f%(trailers:key=Release-Note-En,valueonly,separator=%x20)%x1f",
+    "-z",
+    `--format=${COMMIT_MARKER}%x00%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)%x00`,
   ];
   if (rangeSpec.startsWith("-n")) args.push(...rangeSpec.split(/\s+/));
   else args.push(rangeSpec);
@@ -90,18 +95,34 @@ export function listCommits(root = ROOT, rangeSpec = "-n 20") {
     env: { ...process.env, TZ: "Asia/Shanghai" },
   });
   if (!out) return [];
+  const tokens = out.split("\x00");
   const commits = [];
-  for (const chunk of out.split("\x1e")) {
-    if (!chunk) continue;
-    const [sha = "", author = "", date = "", subject = "", releaseNoteRaw = "", releaseNoteEnRaw = "", rest = ""] = chunk.split("\x1f");
-    if (!sha.trim()) continue;
-    const paths = rest
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+  let idx = 0;
+  while (idx < tokens.length) {
+    const token = tokens[idx].replace(/^\n+/, "");
+    if (token !== COMMIT_MARKER) {
+      idx += 1;
+      continue;
+    }
+    const sha = (tokens[idx + 1] || "").trim();
+    const author = tokens[idx + 2] || "";
+    const date = tokens[idx + 3] || "";
+    const subject = tokens[idx + 4] || "";
+    const releaseNoteRaw = tokens[idx + 5] || "";
+    const releaseNoteEnRaw = tokens[idx + 6] || "";
+    idx += 7;
+    const paths = [];
+    while (idx < tokens.length) {
+      const next = tokens[idx].replace(/^\n+/, "");
+      if (next === COMMIT_MARKER) break;
+      const trimmed = next.trim();
+      if (trimmed) paths.push(trimmed);
+      idx += 1;
+    }
+    if (!/^[0-9a-f]{40}$/i.test(sha)) continue;
     const split = splitNote(releaseNoteRaw);
     commits.push({
-      sha: sha.trim(),
+      sha,
       author,
       date,
       subject,
@@ -436,15 +457,35 @@ function isValidFallbackPair(zh, en) {
 }
 
 export function fallbackReleaseNotes(commits) {
-  const buckets = [{ zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }];
+  const buckets = [
+    { zh: [], en: [], seen: new Set() },
+    { zh: [], en: [], seen: new Set() },
+    { zh: [], en: [], seen: new Set() },
+    { zh: [], en: [], seen: new Set() },
+  ];
   const kindIndex = { feat: 0, improve: 1, fix: 2, other: 3 };
+  const overflowSummary = {
+    zh: "以及更多细节优化与稳定性改进。",
+    en: "Additional refinements and stability improvements.",
+  };
   for (const commit of commits.filter((item) => !isExcludedCommit(item))) {
     const pair = describeCommit(commit);
+    const rawEn = commit.releaseNoteEn?.trim() ? commit.releaseNoteEn : pair.en;
     const zh = sanitizeFallbackBullet(pair.zh, true);
-    const en = sanitizeFallbackBullet(pair.en, false);
+    const en = sanitizeFallbackBullet(rawEn, false);
     const bucket = buckets[kindIndex[pair.kind] ?? 3];
     if (!isValidFallbackPair(zh, en)) continue;
-    if (bucket.zh.includes(zh) || bucket.en.includes(en)) continue;
+    const key = `${zh}\x00${en}`;
+    if (bucket.seen.has(key)) continue;
+    if (bucket.zh.length >= MAX_PER_SECTION - 1) {
+      if (!bucket.seen.has("__overflow__")) {
+        bucket.seen.add("__overflow__");
+        bucket.zh.push(overflowSummary.zh);
+        bucket.en.push(overflowSummary.en);
+      }
+      continue;
+    }
+    bucket.seen.add(key);
     bucket.zh.push(zh);
     bucket.en.push(en);
   }
