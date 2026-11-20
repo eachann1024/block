@@ -524,15 +524,15 @@ type cachedTurn struct {
 	userAttachments         []model.Attachment
 	userAttachmentsSeparate bool
 	steps                   []model.ProcessStep
-	notes          []string
-	sources        []model.SourceNote
-	hasPendingPlan bool
-	hasInteractive bool
-	outcome        string
-	cards          []cachedTurnCard
-	replies        []cachedReply
-	nextReplyIdx   int
-	estHeight      float32
+	notes                   []string
+	sources                 []model.SourceNote
+	hasPendingPlan          bool
+	hasInteractive          bool
+	outcome                 string
+	cards                   []cachedTurnCard
+	replies                 []cachedReply
+	nextReplyIdx            int
+	estHeight               float32
 }
 
 type cachedParsedMarkdown struct {
@@ -4205,14 +4205,26 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 	}
 	installCmd, loginCmd := AgentDriverGuide(k)
 
+	c.mu.RLock()
+	probing := c.settingsAgentProbing[k]
+	probeOK := c.settingsAgentProbeOK[k]
+	probeErr := c.settingsAgentProbeErr[k]
+	c.mu.RUnlock()
+
 	ui.Column(cUI.Key("ag-detail-"+suffix)).FillWidth().MinWidth(0).
 		Padding(theme.Space2, 0, theme.Space16, indentLeft).Gap(theme.Space10).Children(func() {
 		if hasSt && (st.State == BackendStateMissing || st.State == BackendStateUnauth) {
 			guideCmd := installCmd
 			guideText := theme.Tr("未检测到 CLI，可执行安装或在下方指定路径", "CLI not found in PATH; install or set path below")
+			if st.State == BackendStateMissing && strings.TrimSpace(st.Message) != "" {
+				guideText = st.Message
+			}
 			if st.State == BackendStateUnauth {
 				guideCmd = loginCmd
 				guideText = theme.Tr("CLI 尚未登录，请在终端执行登录", "Not signed in; run sign-in command in terminal")
+				if loginCmd == "" && strings.TrimSpace(st.Message) != "" {
+					guideText = st.Message
+				}
 			}
 			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Padding(theme.Space4, 0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(cUI, guideText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(120).SingleLine().Ellipsis("…")
@@ -4241,20 +4253,34 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 					FontSize(theme.FontBody).Placeholder(autoBin).PlaceholderColor(pal.Placeholder)
 				bui.Probe(in, "ai-agent-binpath-"+suffix)
 				if in.Changed() {
+					c.mu.Lock()
+					c.resetAgentProbeStateLocked(k)
+					c.mu.Unlock()
 					_ = c.UpdateAgentEntry(k, func(o *model.AIBackendAdapterOptions) {
 						o.BinaryPath = bp
 					})
 				}
-				refIc := icons.Refresh
+				probeLabel := theme.Tr("检测", "Verify")
+				probeIc := icons.Refresh
+				probeStyle := bui.ButtonSecondary
+				if probing {
+					probeLabel = theme.Tr("检测中…", "Checking…")
+				} else if probeOK {
+					probeLabel = theme.Tr("检测通过", "Verified")
+					probeIc = icons.Check
+					probeStyle = bui.ButtonSuccess
+				}
 				reprobeBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
 					ID:       "ai-agent-reprobe-" + suffix,
-					Label:    theme.Tr("检测", "Verify"),
-					Leading:  &refIc,
-					Style:    bui.ButtonSecondary,
+					Label:    probeLabel,
+					Leading:  &probeIc,
+					Style:    probeStyle,
+					Disabled: probing,
+					Loading:  probing,
 					Height:   theme.HeightCompact,
 					PaddingX: theme.Space10,
 				})
-				if reprobeBtn.Clicked() {
+				if reprobeBtn.Clicked() && !probing {
 					c.reprobeSingleBackendAsync(k)
 				}
 			})
@@ -4268,6 +4294,32 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 			ui.Row(cUI).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 				ui.Text(cUI, theme.Tr("可执行路径", "Binary Path")).Width(lblW).Shrink(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
 				renderBinControls()
+			})
+		}
+
+		errText := ""
+		if hasSt && (st.State == BackendStateError || st.State == BackendStateUnsupported) {
+			errText = strings.TrimSpace(st.Message)
+			if errText == "" {
+				errText = probeErr
+			}
+			if errText == "" {
+				if st.State == BackendStateUnsupported {
+					errText = theme.Tr("当前 CLI 版本不受支持，请升级后重试", "This CLI version is not supported; please upgrade and try again")
+				} else {
+					errText = theme.Tr("CLI 检测失败，请检查可执行路径", "CLI verification failed; check the executable path")
+				}
+			}
+		} else if probeErr != "" && !(hasSt && (st.State == BackendStateMissing || st.State == BackendStateUnauth)) {
+			errText = probeErr
+		}
+		if errText != "" {
+			errPadLeft := float32(0)
+			if !stackFields {
+				errPadLeft = lblW + theme.Space12
+			}
+			ui.Row(cUI).FillWidth().MinWidth(0).Padding(0, 0, 0, errPadLeft).Children(func() {
+				ui.Text(cUI, errText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Danger).Grow(1).MinWidth(0)
 			})
 		}
 
@@ -4319,18 +4371,82 @@ func (c *Controller) renderAddedAgentDetailRows(cUI *ui.Context, pal theme.Palet
 }
 
 func (c *Controller) reprobeSingleBackendAsync(kind model.BackendKind) {
+	c.mu.Lock()
+	if c.settingsAgentProbing == nil {
+		c.settingsAgentProbing = make(map[model.BackendKind]bool)
+	}
+	if c.settingsAgentProbeOK == nil {
+		c.settingsAgentProbeOK = make(map[model.BackendKind]bool)
+	}
+	if c.settingsAgentProbeErr == nil {
+		c.settingsAgentProbeErr = make(map[model.BackendKind]string)
+	}
+	if c.settingsAgentProbeSeq == nil {
+		c.settingsAgentProbeSeq = make(map[model.BackendKind]uint64)
+	}
+	if c.settingsAgentProbing[kind] {
+		c.mu.Unlock()
+		return
+	}
+	c.settingsAgentProbing[kind] = true
+	delete(c.settingsAgentProbeOK, kind)
+	delete(c.settingsAgentProbeErr, kind)
+	c.settingsAgentProbeSeq[kind]++
+	seq := c.settingsAgentProbeSeq[kind]
+	binPath := c.backendsCfg.Adapters[string(kind)].BinaryPath
+	ov, hasOv := c.statusOverrides[kind]
+	isMock := c.mockResponder
+	c.mu.Unlock()
+	c.requestRedraw()
+
 	go func() {
-		c.mu.RLock()
-		ov, hasOv := c.statusOverrides[kind]
-		c.mu.RUnlock()
-		st := ov
-		if !hasOv {
-			st = ProbeBackend(kind)
+		start := time.Now()
+		var st BackendStatus
+		if hasOv && strings.TrimSpace(binPath) == "" {
+			st = ov
+		} else {
+			st = ProbeBackendWithPath(kind, binPath)
 		}
+		if !isMock && !hasOv {
+			if rem := 180*time.Millisecond - time.Since(start); rem > 0 {
+				time.Sleep(rem)
+			}
+		}
+		refreshModels := false
 		c.mu.Lock()
+		if c.settingsAgentProbeSeq[kind] != seq {
+			c.mu.Unlock()
+			return
+		}
+		c.settingsAgentProbing[kind] = false
 		c.backendStatuses[kind] = st
 		c.ensureValidSelectionLocked()
+		switch st.State {
+		case BackendStateReady, BackendStateInstalled:
+			c.settingsAgentProbeOK[kind] = true
+			delete(c.settingsAgentProbeErr, kind)
+			refreshModels = !c.mockResponder
+		default:
+			c.settingsAgentProbeOK[kind] = false
+			msg := strings.TrimSpace(st.Message)
+			if msg == "" {
+				switch st.State {
+				case BackendStateMissing:
+					msg = theme.Tr("未检测到可用的 CLI 可执行文件", "CLI executable not found")
+				case BackendStateUnauth:
+					msg = theme.Tr("CLI 尚未登录，请在终端完成登录", "CLI is not signed in; sign in via terminal")
+				case BackendStateUnsupported:
+					msg = theme.Tr("当前 CLI 版本不受支持", "This CLI version is not supported")
+				default:
+					msg = theme.Tr("CLI 检测失败，请检查可执行路径", "CLI verification failed; check the executable path")
+				}
+			}
+			c.settingsAgentProbeErr[kind] = msg
+		}
 		c.mu.Unlock()
+		if refreshModels {
+			c.refreshModelsAsync(kind)
+		}
 		c.requestRedraw()
 	}()
 }
