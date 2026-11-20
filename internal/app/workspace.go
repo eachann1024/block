@@ -4294,12 +4294,19 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	// Window-wide top brand landscape band painted onto root's own backdrop so the
 	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
-	// Only show the horizon orb while the docked sidebar leaves the 40..88px band unobstructed.
+	// Always invoked while !aiImmersive (even when scID == "") so scene switches and on/off
+	// toggles crossfade smoothly instead of snapping.
 	if !aiImmersive {
-		if scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, time.Now()); scID != "" {
-			pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
-			blockui.PaintBrandSceneBand(root, scID, sidebarWide, pauseBrandAnim)
-		}
+		now := time.Now()
+		scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, now)
+		pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
+		blockui.PaintBrandSceneBand(root, scID, chrome.Ground, blockui.BrandScenePaintOpts{
+			ShowOrb:   sidebarWide && !stSnap.BrandDeco.HideOrb,
+			ShowCat:   !stSnap.BrandDeco.HideCat,
+			Motion:    blockui.ResolveBrandMotion(stSnap.BrandDeco),
+			PauseAnim: pauseBrandAnim,
+			Now:       now,
+		})
 	}
 
 	root.Children(func() {
