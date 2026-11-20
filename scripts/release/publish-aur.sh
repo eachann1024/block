@@ -33,11 +33,13 @@ srcinfo="$root/packaging/aur/.SRCINFO"
 sed -i -E "s/^pkgver=.*/pkgver=${pkgver}/" "$pkgbuild"
 sed -i -E "s/^sha256sums=.*/sha256sums=('${sha}')/" "$pkgbuild"
 sed -i -E "s/^([[:space:]]*pkgver = ).*/\1${pkgver}/" "$srcinfo"
-sed -i -E "s|^([[:space:]]*source = block-linux-x64\.deb::https://github\.com/eachann1024/block/releases/download/)v[^/]+(/block-linux-x64\.deb)|\1v${pkgver}\2|" "$srcinfo"
+sed -i -E "s/^([[:space:]]*noextract = ).*/\1block-linux-x64-${pkgver}.deb/" "$srcinfo"
+sed -i -E "s|^([[:space:]]*source = )[^:]+(::https://github\.com/eachann1024/block/releases/download/)v[^/]+(/block-linux-x64\.deb)|\1block-linux-x64-${pkgver}.deb\2v${pkgver}\3|" "$srcinfo"
 sed -i -E "s/^([[:space:]]*sha256sums = ).*/\1${sha}/" "$srcinfo"
 
 grep -q "pkgver = ${pkgver}" "$srcinfo"
-grep -q "releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
+grep -q "noextract = block-linux-x64-${pkgver}.deb" "$srcinfo"
+grep -q "block-linux-x64-${pkgver}.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
 grep -q "sha256sums = ${sha}" "$srcinfo"
 
 mkdir -p "$work/ssh"
@@ -49,6 +51,24 @@ export GIT_SSH_COMMAND="ssh -i $work/ssh/aur -o IdentitiesOnly=yes -o UserKnownH
 git clone ssh://aur@aur.archlinux.org/block-bin.git "$work/aur"
 if ! git -C "$work/aur" rev-parse --verify HEAD >/dev/null 2>&1; then
   git -C "$work/aur" checkout -B master
+fi
+if [[ -f "$work/aur/PKGBUILD" ]]; then
+  remote_pkgver="$(sed -n -E 's/^pkgver=([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
+  if [[ -n "$remote_pkgver" ]]; then
+    cmp_rc=0
+    node -e '
+      const a = process.argv[1].split(".").map(Number);
+      const b = process.argv[2].split(".").map(Number);
+      for (let i = 0; i < 3; i++) {
+        if (a[i] !== b[i]) process.exit(a[i] < b[i] ? 10 : 0);
+      }
+      process.exit(0);
+    ' "$pkgver" "$remote_pkgver" || cmp_rc=$?
+    if [[ "$cmp_rc" -eq 10 ]]; then
+      echo "AUR block-bin is already at newer version ${remote_pkgver}; refusing to downgrade to ${pkgver}."
+      exit 0
+    fi
+  fi
 fi
 cp "$pkgbuild" "$root/packaging/aur/.SRCINFO" "$work/aur/"
 git -C "$work/aur" add PKGBUILD .SRCINFO
