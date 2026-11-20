@@ -157,6 +157,7 @@ type Controller struct {
 	pickerRoot       string
 	pickerRefreshed  time.Time
 	pickerRootMtime  time.Time
+	pickerRefreshGen uint64
 	pickerSkillCache map[string]cachedSkillEntry
 	pickerCache      pickerItemsCache
 
@@ -2297,7 +2298,7 @@ type cachedSkillEntry struct {
 
 func (c *Controller) refreshPickerIfNeeded() {
 	c.mu.Lock()
-	if c.pickerInjected || c.pickerLoading || c.host == nil {
+	if c.pickerInjected || c.host == nil {
 		c.mu.Unlock()
 		return
 	}
@@ -2306,7 +2307,12 @@ func (c *Controller) refreshPickerIfNeeded() {
 		c.mu.Unlock()
 		return
 	}
-	if c.pickerRoot == root && !c.pickerRefreshed.IsZero() && time.Since(c.pickerRefreshed) < pickerRefreshCooldown {
+	rootChanged := c.pickerRoot != root
+	if !rootChanged && c.pickerLoading {
+		c.mu.Unlock()
+		return
+	}
+	if !rootChanged && !c.pickerRefreshed.IsZero() && time.Since(c.pickerRefreshed) < pickerRefreshCooldown {
 		c.mu.Unlock()
 		return
 	}
@@ -2315,19 +2321,22 @@ func (c *Controller) refreshPickerIfNeeded() {
 		prevSkillCache[k] = v
 	}
 	prevRootMtime := c.pickerRootMtime
-	rootChanged := c.pickerRoot != root
 	if rootChanged {
 		c.pickerFolder = ""
 		c.pickerFolders = nil
 		c.pickerPages = nil
 		c.pickerSkills = nil
 		c.pickerRootMtime = time.Time{}
+		c.pickerRefreshed = time.Time{}
 		c.pickerCache.valid = false
 		prevRootMtime = time.Time{}
+		prevSkillCache = make(map[string]cachedSkillEntry)
 	}
 	prevHasData := !rootChanged && (len(c.pickerPages) > 0 || len(c.pickerFolders) > 0)
 	prevFolders := append([]string(nil), c.pickerFolders...)
 	prevPages := append([]string(nil), c.pickerPages...)
+	c.pickerRefreshGen++
+	refreshGen := c.pickerRefreshGen
 	c.pickerLoading = true
 	c.pickerRoot = root
 	host := c.host
@@ -2400,26 +2409,30 @@ func (c *Controller) refreshPickerIfNeeded() {
 		changed := listsChanged || skillsChanged || !rootMtimeUnchanged
 
 		c.mu.Lock()
-		if !c.pickerInjected && c.pickerRoot == root {
-			if listsChanged {
-				c.pickerFolders = folders
-				c.pickerPages = pages
-			}
-			if skillsChanged || !prevHasData {
-				c.loadBuiltinSkillsLocked()
-				for _, sk := range skills {
-					c.upsertSkillLocked(sk)
+		if !c.pickerInjected && c.pickerRoot == root && c.pickerRefreshGen == refreshGen {
+			if err == nil {
+				if listsChanged {
+					c.pickerFolders = folders
+					c.pickerPages = pages
+					c.pickerCache.valid = false
 				}
+				if skillsChanged || !prevHasData {
+					c.loadBuiltinSkillsLocked()
+					for _, sk := range skills {
+						c.upsertSkillLocked(sk)
+					}
+					c.pickerCache.valid = false
+				}
+				c.pickerSkillCache = nextSkillCache
+				if rootStatErr == nil {
+					c.pickerRootMtime = rootInfo.ModTime()
+				}
+				c.pickerRefreshed = time.Now()
 			}
-			c.pickerSkillCache = nextSkillCache
-			if rootStatErr == nil {
-				c.pickerRootMtime = rootInfo.ModTime()
-			}
-			c.pickerRefreshed = time.Now()
+			c.pickerLoading = false
 		}
-		c.pickerLoading = false
 		c.mu.Unlock()
-		if changed {
+		if err == nil && changed {
 			c.requestRedraw()
 		}
 	}()
