@@ -359,7 +359,10 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		return true, nil
 	}
 
-	// Non-swap platform fallback: verify target right before atomic rename.
+	// Non-swap platform/filesystem fallback (e.g. HFS+): preserve the existing old inode via a
+	// same-volume hard link into .block-sync-replaced/ BEFORE dir.Rename replaces base, so an
+	// external editor holding an open fd never sees nlink drop to 0. If the filesystem supports
+	// neither atomic swap nor hard links, abort conditional overwrite rather than risking data loss.
 	curInfoBefore, stErr := dir.Lstat(base)
 	if stErr != nil {
 		if errors.Is(stErr, os.ErrNotExist) {
@@ -367,25 +370,92 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		}
 		return false, stErr
 	}
-	curBytes, rErr := readAllInDir(dir, base)
-	if rErr != nil {
-		if errors.Is(rErr, os.ErrNotExist) {
-			return false, errConflict
+	if !curInfoBefore.Mode().IsRegular() {
+		return false, errConflict
+	}
+	const stashDirName = ".block-sync-replaced"
+	if mkErr := root.MkdirAll(stashDirName, 0o755); mkErr != nil {
+		return false, errConflict
+	}
+	srcRel := base
+	if parent != "" && parent != "." {
+		srcRel = filepath.Join(parent, base)
+	}
+	nowMs := time.Now().UnixMilli()
+	shortHash := conditionalSHA256Hex([]byte(name))
+	if len(shortHash) > 8 {
+		shortHash = shortHash[:8]
+	}
+	baseTag := fmt.Sprintf("%015d-%s-%s", nowMs, shortHash, sanitizeStashBase(base))
+	var stashRel string
+	for i := range 50 {
+		candName := baseTag
+		if i > 0 {
+			candName = fmt.Sprintf("%s-%d", baseTag, i)
 		}
-		return false, rErr
+		candRel := filepath.Join(stashDirName, candName)
+		linkErr := root.Link(srcRel, candRel)
+		if linkErr == nil {
+			stashRel = candRel
+			break
+		}
+		if errors.Is(linkErr, os.ErrExist) {
+			continue
+		}
+		// Filesystem does not support hard links either; cannot safely preserve old inode.
+		return false, errConflict
+	}
+	if stashRel == "" {
+		return false, errConflict
+	}
+	stashFile, openErr := root.Open(stashRel)
+	if openErr != nil {
+		_ = root.Remove(stashRel)
+		return false, errConflict
+	}
+	curBytes, rErr := io.ReadAll(stashFile)
+	stashInfo, stStashErr := stashFile.Stat()
+	_ = stashFile.Close()
+	if rErr != nil || stStashErr != nil {
+		_ = root.Remove(stashRel)
+		return false, errConflict
 	}
 	curHash := conditionalSHA256Hex(curBytes)
 	if curHash != expected && curHash != contentHash {
+		_ = root.Remove(stashRel)
 		return false, errConflict
 	}
 	curInfoAfter, stErr2 := dir.Lstat(base)
-	if stErr2 != nil || !os.SameFile(curInfoBefore, curInfoAfter) || curInfoBefore.Size() != curInfoAfter.Size() || !curInfoBefore.ModTime().Equal(curInfoAfter.ModTime()) {
+	if stErr2 != nil || !os.SameFile(stashInfo, curInfoAfter) || stashInfo.Size() != curInfoAfter.Size() || !stashInfo.ModTime().Equal(curInfoAfter.ModTime()) {
+		_ = root.Remove(stashRel)
 		return false, errConflict
 	}
 	if err := dir.Rename(tmpPath, base); err != nil {
+		_ = root.Remove(stashRel)
 		return false, err
 	}
 	keepTmp = true
+	// Prune old stash entries beyond 64 (never pruning the newly created stashRel or entries < 60s old).
+	if sdir, oErr := root.Open(stashDirName); oErr == nil {
+		names, rnErr := sdir.Readdirnames(-1)
+		_ = sdir.Close()
+		if rnErr == nil && len(names) > 64 {
+			sort.Strings(names)
+			cutoffMs := nowMs - 60000
+			chosenName := filepath.Base(stashRel)
+			for _, oldName := range names[:len(names)-64] {
+				if oldName == chosenName {
+					continue
+				}
+				if tsStr, _, ok := strings.Cut(oldName, "-"); ok {
+					if tsVal, pErr := strconv.ParseInt(tsStr, 10, 64); pErr == nil && tsVal >= cutoffMs {
+						continue
+					}
+				}
+				_ = root.Remove(filepath.Join(stashDirName, oldName))
+			}
+		}
+	}
 	if file, oErr := dir.Open("."); oErr == nil {
 		_ = file.Sync()
 		_ = file.Close()
