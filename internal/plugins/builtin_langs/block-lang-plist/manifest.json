@@ -8,7 +8,7 @@
     "en": "Property List"
   },
   "version": "1.0.0",
-  "author": "Block",
+  "author": "Block Community",
   "repo": "blockmd-plugins/block-lang-plist",
   "summary": {
     "zh": "为 macOS 属性列表文件（.plist）提供 XML 与 OpenStep 语法高亮",
