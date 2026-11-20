@@ -851,6 +851,18 @@ func escapeHeadingInline(s string) string {
 	return s
 }
 
+func serializeStandaloneImageAlt(alt string) string {
+	simple := strings.ReplaceAll(alt, `\`, `\\`)
+	simple = strings.ReplaceAll(simple, `[`, `\[`)
+	simple = strings.ReplaceAll(simple, `]`, `\]`)
+	if plainImageAltFromMarkdown(simple) == alt {
+		return simple
+	}
+	var buf strings.Builder
+	writeInlineText(&buf, alt, true, false, true, true)
+	return buf.String()
+}
+
 func serializeImageBlock(b *model.Block, out *strings.Builder) {
 	out.WriteString(strings.Repeat(" ", b.Indent))
 	align := b.ImageAlign
@@ -863,10 +875,7 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 	hasNewlineAlt := strings.ContainsAny(b.ImageAlt, "\n\r")
 
 	if !hasWidth && !hasAlign && !hasCrop && !hasNewlineAlt {
-		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
-		alt = strings.ReplaceAll(alt, `[`, `\[`)
-		alt = strings.ReplaceAll(alt, `]`, `\]`)
-		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
+		out.WriteString(fmt.Sprintf("![%s]%s\n", serializeStandaloneImageAlt(b.ImageAlt), formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
 	}
 
@@ -879,10 +888,7 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 			formatFloat(b.ImageCrop.Left),
 		))
 		out.WriteString(strings.Repeat(" ", b.Indent))
-		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
-		alt = strings.ReplaceAll(alt, `[`, `\[`)
-		alt = strings.ReplaceAll(alt, `]`, `\]`)
-		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
+		out.WriteString(fmt.Sprintf("![%s]%s\n", serializeStandaloneImageAlt(b.ImageAlt), formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
 	}
 
