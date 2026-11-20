@@ -114,7 +114,8 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	if def.title == "" {
 		return "(" + dest + ")"
 	}
-	title := strings.ReplaceAll(def.title, `\`, `\\`)
+	title := escapeMarkdownTitleEntities(def.title)
+	title = strings.ReplaceAll(title, `\`, `\\`)
 	title = strings.ReplaceAll(title, `"`, `\"`)
 	title = strings.ReplaceAll(title, "\r", "&#13;")
 	title = strings.ReplaceAll(title, "\n", "&#10;")
@@ -127,6 +128,32 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 		title = strings.ReplaceAll(title, "|", `\|`)
 	}
 	return "(" + dest + ` "` + title + `")`
+}
+
+func escapeMarkdownTitleEntities(s string) string {
+	if !strings.ContainsRune(s, '&') || html.UnescapeString(s) == s {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s) + 8)
+	for i := 0; i < len(s); i++ {
+		if s[i] == '&' {
+			end := i + 1
+			for end < len(s) && end-i < 34 && (s[end] == '#' || isASCIIAlpha(s[end]) || (s[end] >= '0' && s[end] <= '9')) {
+				end++
+			}
+			if end < len(s) && s[end] == ';' {
+				end++
+			}
+			tok := s[i:end]
+			if html.UnescapeString(tok) != tok {
+				out.WriteString("&amp;")
+				continue
+			}
+		}
+		out.WriteByte(s[i])
+	}
+	return out.String()
 }
 
 func expandRefLinksInText(s string, defs map[string]refDef, escapePipe bool) (string, bool) {
@@ -1737,9 +1764,9 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 		return raw, []*inlineTok{}, consumed, true
 	}
 	if name == "img" && !closed {
-		alt := strings.TrimSpace(attrVal(attrs, "alt"))
+		alt := attrVal(attrs, "alt")
 		src := strings.TrimSpace(attrVal(attrs, "src"))
-		title := strings.TrimSpace(attrVal(attrs, "title"))
+		title := attrVal(attrs, "title")
 		label := alt
 		altEmpty := label == ""
 		if altEmpty && src != "" {
@@ -2427,7 +2454,7 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 
 		if sp.ImageSrc != "" {
 			inMarkdownLink := len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT
-			if useHTML || sp.Marks&(model.MarkCode|model.MarkMath) != 0 {
+			if useHTML || sp.Marks&(model.MarkCode|model.MarkMath) != 0 || (!sp.ImageAltEmpty && strings.ContainsAny(sp.Text, "\n\r")) {
 				if sp.Marks&model.MarkCode != 0 {
 					out.WriteString("<code>")
 				}

@@ -860,15 +860,17 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 	hasWidth := b.ImageWidth > 0
 	hasAlign := align != model.ImageAlignLeft
 	hasCrop := !b.ImageCrop.IsZero()
+	hasNewlineAlt := strings.ContainsAny(b.ImageAlt, "\n\r")
 
-	if !hasWidth && !hasAlign && !hasCrop {
+	if !hasWidth && !hasAlign && !hasCrop && !hasNewlineAlt {
 		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
+		alt = strings.ReplaceAll(alt, `[`, `\[`)
 		alt = strings.ReplaceAll(alt, `]`, `\]`)
 		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
 	}
 
-	if hasCrop && !hasWidth && !hasAlign {
+	if hasCrop && !hasWidth && !hasAlign && !hasNewlineAlt {
 		out.WriteString(fmt.Sprintf(
 			"<!-- thinkly:image crop=%s,%s,%s,%s -->\n",
 			formatFloat(b.ImageCrop.Top),
@@ -878,6 +880,7 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 		))
 		out.WriteString(strings.Repeat(" ", b.Indent))
 		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
+		alt = strings.ReplaceAll(alt, `[`, `\[`)
 		alt = strings.ReplaceAll(alt, `]`, `\]`)
 		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
@@ -1229,7 +1232,7 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 	for _, sp := range spans {
 		// Keep styled spans intact across soft newlines so SerializeInline preserves marks
 		// (code, math, bold, italic, link, etc.) across `<br>` on one Markdown line.
-		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		styled := sp.Marks != 0 || sp.Link != "" || sp.ImageSrc != "" || sp.FGColor != "" || sp.BGColor != ""
 		if styled || !strings.ContainsRune(sp.Text, '\n') {
 			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
 			continue

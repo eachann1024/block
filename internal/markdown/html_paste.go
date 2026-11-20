@@ -581,11 +581,11 @@ func trimSpanEdges(spans []model.Span) []model.Span {
 	if len(norm) == 0 {
 		return nil
 	}
-	if norm[0].Marks == 0 && norm[0].Link == "" && norm[0].BGColor == "" {
+	if norm[0].Marks == 0 && norm[0].Link == "" && norm[0].ImageSrc == "" && norm[0].BGColor == "" {
 		norm[0].Text = strings.TrimLeft(norm[0].Text, " \t\n")
 	}
 	last := &norm[len(norm)-1]
-	if last.Marks == 0 && last.Link == "" && last.BGColor == "" {
+	if last.Marks == 0 && last.Link == "" && last.ImageSrc == "" && last.BGColor == "" {
 		last.Text = strings.TrimRight(last.Text, " \t\n")
 	}
 	return coalesceSpans(norm)
@@ -713,7 +713,7 @@ func splitSpansOnNewline(spans []model.Span) [][]model.Span {
 	var groups [][]model.Span
 	var cur []model.Span
 	for _, sp := range spans {
-		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		styled := sp.Marks != 0 || sp.Link != "" || sp.ImageSrc != "" || sp.FGColor != "" || sp.BGColor != ""
 		if styled || !strings.ContainsRune(sp.Text, '\n') {
 			cur = append(cur, sp)
 			continue
@@ -884,6 +884,9 @@ func (c *htmlPasteConverter) flushTable() {
 		return
 	}
 	var outRows []string
+	if !tbl.hasHeaderTR {
+		outRows = append(outRows, "<!-- thinkly:table header=0 -->")
+	}
 	for rIdx, row := range tbl.rows {
 		cells := make([]string, maxCols)
 		for col := 0; col < maxCols; col++ {
@@ -974,6 +977,11 @@ func (c *htmlPasteConverter) parse(src string) {
 					c.flushTable()
 				}
 				continue
+			case "thead":
+				if !closed && !empty {
+					c.table.hasHeaderTR = true
+				}
+				continue
 			case "tr":
 				if !closed && !empty {
 					c.table.curRow = nil
@@ -1017,8 +1025,8 @@ func (c *htmlPasteConverter) parse(src string) {
 				if !closed && c.table.inCell {
 					srcURL := strings.TrimSpace(attrVal(attrs, "src"))
 					if isPasteableRemoteOrLocalImage(srcURL) {
-						alt := strings.TrimSpace(attrVal(attrs, "alt"))
-						title := strings.TrimSpace(attrVal(attrs, "title"))
+						alt := attrVal(attrs, "alt")
+						title := attrVal(attrs, "title")
 						marks, link, bg := c.activeStyle()
 						label := alt
 						altEmpty := label == ""
@@ -1153,16 +1161,16 @@ func (c *htmlPasteConverter) parse(src string) {
 			if !closed {
 				srcURL := strings.TrimSpace(attrVal(attrs, "src"))
 				if isPasteableRemoteOrLocalImage(srcURL) {
-					alt := strings.TrimSpace(attrVal(attrs, "alt"))
-					title := strings.TrimSpace(attrVal(attrs, "title"))
+					alt := attrVal(attrs, "alt")
+					title := attrVal(attrs, "title")
 					marks, link, bg := c.activeStyle()
 					inTableCell := c.table != nil && c.table.inCell
+					label := alt
+					altEmpty := label == ""
+					if altEmpty {
+						label = fallbackImageAlt(srcURL)
+					}
 					if inTableCell || link != "" || marks != 0 || bg != "" || len(c.curSpans) > 0 || c.headingLvl > 0 || len(c.liStk) > 0 || c.quoteDepth > 0 || c.inPara > 0 {
-						label := alt
-						altEmpty := label == ""
-						if altEmpty {
-							label = fallbackImageAlt(srcURL)
-						}
 						target := c.targetSpans()
 						*target = append(*target, model.Span{
 							Text:          label,
@@ -1175,7 +1183,12 @@ func (c *htmlPasteConverter) parse(src string) {
 						})
 					} else {
 						c.flushCurrentBlock()
-						c.emitBlockLine(fmt.Sprintf("![%s]%s", strings.ReplaceAll(alt, "]", `\]`), formatRefDefInline(refDef{dest: srcURL, title: title}, false, false)))
+						c.emitBlockLine(SerializeInline([]model.Span{{
+							Text:          label,
+							ImageSrc:      srcURL,
+							ImageTitle:    title,
+							ImageAltEmpty: altEmpty,
+						}}))
 					}
 				}
 			}
