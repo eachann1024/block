@@ -124,14 +124,14 @@ func (c *Controller) closeStoreMenus() {
 	c.storeSortMenu.Open = false
 }
 
-// InstalledCount returns the number of user-visible installed plugins.
+// InstalledCount returns the number of installed plugins that provide a Settings page.
 func (c *Controller) InstalledCount() int {
 	if c.sup == nil {
 		return 0
 	}
 	n := 0
 	for _, inst := range c.sup.Installed() {
-		if inst.Manifest.ID == plugins.DiagnosticsPluginID {
+		if inst.Manifest.ID == plugins.DiagnosticsPluginID || !inst.Manifest.HasSettingsPage() {
 			continue
 		}
 		n++
@@ -139,7 +139,7 @@ func (c *Controller) InstalledCount() int {
 	return n
 }
 
-// NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins.
+// NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins with Settings pages.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	c.closeStoreReadmeIfNotRenderedRecently(2 * time.Second)
 	storeSpec := plugins.AppStoreIconSpec()
@@ -161,7 +161,7 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	}
 	locale := c.sup.Locale()
 	for _, inst := range installed {
-		if inst.Manifest.ID == plugins.DiagnosticsPluginID {
+		if inst.Manifest.ID == plugins.DiagnosticsPluginID || !inst.Manifest.HasSettingsPage() {
 			continue
 		}
 		app := inst
@@ -275,12 +275,17 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		})
 		return
 	}
-	if !inst.Enabled {
+	if !inst.Manifest.HasSettingsPage() {
+		if onSelectTab != nil {
+			c.openInstalledPluginReadme(inst)
+			onSelectTab(modals.TabAppStore)
+			return
+		}
 		renderPluginDormantOverview(ctx, c, inst)
 		return
 	}
-	if inst.Manifest.IsDeclarativeOnly() {
-		renderDeclarativeLanguageTab(ctx, c, inst)
+	if !inst.Enabled {
+		renderPluginDormantOverview(ctx, c, inst)
 		return
 	}
 

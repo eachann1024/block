@@ -329,6 +329,14 @@ func (m *Manifest) HasSurface(s Surface) bool {
 	return m.hasContribSurface(s)
 }
 
+// HasSettingsPage reports whether m declares a dedicated Settings page.
+func (m *Manifest) HasSettingsPage() bool {
+	if m == nil {
+		return false
+	}
+	return m.HasSurface(SurfaceSettingsPage)
+}
+
 func (m *Manifest) Validate() error {
 	if m.App != TargetApp {
 		return fmt.Errorf("manifest.app must be %q, got %q", TargetApp, m.App)
@@ -407,9 +415,6 @@ func (m *Manifest) Validate() error {
 		if ContainsEmoji(zh) || ContainsEmoji(en) {
 			return fmt.Errorf("manifest.permission_reasons[%q] must not contain emoji", perm)
 		}
-	}
-	if !declarative && len(m.Surfaces) == 0 {
-		return errors.New("manifest.surfaces must declare [\"settings_page\"]")
 	}
 	seenSurf := map[Surface]bool{}
 	for _, s := range m.Surfaces {
