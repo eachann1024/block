@@ -6,6 +6,7 @@ import (
 	"errors"
 	"image"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/netip"
@@ -182,6 +183,9 @@ func (m *readmeMedia) read(src string, limit int64) ([]byte, error) {
 		if m.doc.LocalRoot != "" {
 			return readLocalMedia(m.doc.LocalRoot, ref.Path, limit)
 		}
+		if m.doc.LocalFS != nil {
+			return readEmbeddedMedia(m.doc.LocalFS, m.doc.LocalFSSub, ref.Path, limit)
+		}
 		if m.doc.RemoteBase == nil {
 			return nil, errReadmeMedia
 		}
@@ -256,6 +260,23 @@ func rawGitHubToJsDelivr(u *url.URL) string {
 		return ""
 	}
 	return "https://cdn.jsdelivr.net/gh/" + parts[0] + "/" + parts[1] + "@" + parts[2] + "/" + parts[3]
+}
+
+func readEmbeddedMedia(fsys fs.FS, sub, name string, limit int64) ([]byte, error) {
+	clean := strings.TrimPrefix(path.Clean("/"+name), "/")
+	if clean == "" || !fs.ValidPath(clean) {
+		return nil, errReadmeMedia
+	}
+	full := clean
+	if sub != "" {
+		full = path.Join(sub, clean)
+	}
+	f, err := fsys.Open(full)
+	if err != nil {
+		return nil, errReadmeMedia
+	}
+	defer f.Close()
+	return readMediaBytes(f, limit)
 }
 
 func readLocalMedia(dir, name string, limit int64) ([]byte, error) {

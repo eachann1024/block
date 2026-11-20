@@ -155,12 +155,12 @@ func DefaultSeedIndex() *StoreIndex {
 	return builtinIdx
 }
 
-func readBuiltinSeedReadme(id string, en bool) (string, bool) {
+func readBuiltinSeedReadme(id string, en bool) (PluginReadme, bool) {
 	builtinMu.RLock()
 	seed, ok := builtinSeeds[id]
 	builtinMu.RUnlock()
 	if !ok || seed.FS == nil {
-		return "", false
+		return PluginReadme{}, false
 	}
 	candidates := []string{"README.zh.md", "README.md"}
 	if en {
@@ -174,10 +174,10 @@ func readBuiltinSeedReadme(id string, en bool) (string, bool) {
 		}
 		doc, err := readReadmeText(bytes.NewReader(raw))
 		if err == nil {
-			return doc, true
+			return PluginReadme{Text: doc, LocalFS: seed.FS, LocalFSSub: seed.Sub}, true
 		}
 	}
-	return "", false
+	return PluginReadme{}, false
 }
 
 // DefaultStoreIndexURLs fetches catalog digests from the official repository,

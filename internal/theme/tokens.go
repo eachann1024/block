@@ -209,7 +209,6 @@ const (
 	StoreAuthorFadeWidth   float32 = 20
 	StoreDetailIconBox     float32 = 56  // app icon box in the in-place store detail header
 	StoreDetailIconGlyph   float32 = 28  // Duo icon size inside StoreDetailIconBox
-	StoreDetailReadmeMinH  float32 = 360 // minimum height of the embedded README viewport
 	StoreSkeletonTitleH    float32 = 20  // README skeleton: heading bar
 	StoreSkeletonSubtitleH float32 = 16  // README skeleton: section heading bar
 	StoreSkeletonLineH     float32 = 10  // README skeleton: body text bar

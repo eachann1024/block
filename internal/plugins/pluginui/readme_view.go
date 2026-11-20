@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ type storeReadmePreview struct {
 	entry          plugins.StoreAppEntry
 	installed      plugins.InstalledApp
 	locale         string
+	dark           bool
 	cancel         context.CancelFunc
 	ctx            context.Context
 	pending        <-chan readmeResult
@@ -115,12 +117,14 @@ func (ctrl *Controller) closeStoreReadmeIfNotRenderedRecently(maxAge time.Durati
 func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
 	ctrl.closeStoreReadme()
 	locale := ctrl.sup.Locale()
+	dark := theme.IsDark()
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan readmeResult, 1)
 	preview := &storeReadmePreview{
 		entry:          entry,
 		installed:      installed,
 		locale:         readmeLocaleKey(locale),
+		dark:           dark,
 		ctx:            ctx,
 		cancel:         cancel,
 		pending:        result,
@@ -140,7 +144,7 @@ func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed p
 		doc, err := store.ReadPluginReadme(requestCtx, entry, installed, locale)
 		reply := readmeResult{doc: doc, err: err}
 		if err == nil && ctx.Err() == nil {
-			reply.blocks = parseReadmeBlocks(doc.Text)
+			reply.blocks = parseReadmeBlocks(doc.Text, dark)
 		}
 		result <- reply
 		if ctx.Err() == nil {
@@ -276,6 +280,19 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		if preview == nil {
 			return
 		}
+	}
+	if curDark := theme.IsDark(); preview.pending == nil && preview.result.err == nil && preview.result.doc.Text != "" && preview.dark != curDark {
+		preview.dark = curDark
+		blocks := parseReadmeBlocks(preview.result.doc.Text, curDark)
+		preview.result.blocks = blocks
+		preview.editorMu.Lock()
+		if preview.editor != nil {
+			preview.editor.ClosePreview()
+		}
+		if preview.media != nil {
+			preview.editor = editor.NewReadOnlyPreview(blocks, markdown.NewCodec(), preview.media.asset)
+		}
+		preview.editorMu.Unlock()
 	}
 	_, installingID, storeErr, _ := ctrl.sup.StoreStatus()
 
@@ -425,14 +442,12 @@ func renderStoreDetailReadme(
 	width float32,
 ) {
 	pal := theme.Ocean()
-	_, winH := c.Size()
-	readmeH := max(winH*0.62, theme.StoreDetailReadmeMinH)
 
 	ui.Column(c.Key("app-store-detail-readme")).FillWidth().MinWidth(0).Children(func() {
 		preview.editorMu.Lock()
 		ed := preview.editor
 		if ed != nil {
-			ui.Box(c.Key("app-store-detail-readme-view")).FillWidth().Height(readmeH).Radius(theme.RadiusLG).Clip().Children(func() {
+			ui.Column(c.Key("app-store-detail-readme-view")).FillWidth().MinWidth(0).Children(func() {
 				ed.Render(c, width, true)
 			})
 			preview.editorMu.Unlock()
@@ -628,8 +643,71 @@ func formatDownloadCount(n int) string {
 	return string(out)
 }
 
-func parseReadmeBlocks(text string) *model.Doc {
-	doc := markdown.NewCodec().Parse(text)
+var (
+	readmePictureRe = regexp.MustCompile(`(?is)<picture\b[^>]*>(.*?)</picture>`)
+	readmeSourceRe  = regexp.MustCompile(`(?is)<source\b([^>]*)/?>`)
+	readmeImgRe     = regexp.MustCompile(`(?is)<img\b([^>]*)/?>`)
+	readmeAttrRe    = regexp.MustCompile(`(?is)([a-z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+)
+
+func htmlAttr(attrs, name string) string {
+	for _, m := range readmeAttrRe.FindAllStringSubmatch(attrs, -1) {
+		if strings.EqualFold(m[1], name) {
+			if m[2] != "" {
+				return strings.TrimSpace(m[2])
+			}
+			return strings.TrimSpace(m[3])
+		}
+	}
+	return ""
+}
+
+func resolvePictureBlocks(text string, dark bool) string {
+	want := "light"
+	if dark {
+		want = "dark"
+	}
+	return readmePictureRe.ReplaceAllStringFunc(text, func(match string) string {
+		inner := readmePictureRe.FindStringSubmatch(match)
+		if len(inner) < 2 {
+			return match
+		}
+		body := inner[1]
+		var chosen string
+		for _, sm := range readmeSourceRe.FindAllStringSubmatch(body, -1) {
+			media := strings.ToLower(htmlAttr(sm[1], "media"))
+			srcset := htmlAttr(sm[1], "srcset")
+			if srcset == "" {
+				continue
+			}
+			// Take the first URL token in srcset (strip optional 1x/2x descriptor).
+			first := strings.Fields(strings.Split(srcset, ",")[0])
+			if len(first) == 0 {
+				continue
+			}
+			if strings.Contains(media, "prefers-color-scheme") && strings.Contains(media, want) {
+				chosen = first[0]
+				break
+			}
+		}
+		var alt, fallback string
+		if im := readmeImgRe.FindStringSubmatch(body); len(im) >= 2 {
+			alt = htmlAttr(im[1], "alt")
+			fallback = htmlAttr(im[1], "src")
+		}
+		if chosen == "" {
+			chosen = fallback
+		}
+		if chosen == "" {
+			return match
+		}
+		alt = strings.ReplaceAll(alt, "]", `\]`)
+		return "![" + alt + "](" + chosen + ")"
+	})
+}
+
+func parseReadmeBlocks(text string, dark bool) *model.Doc {
+	doc := markdown.NewCodec().Parse(resolvePictureBlocks(text, dark))
 	for i := range doc.Blocks {
 		b := &doc.Blocks[i]
 		if b.Kind != model.BlockParagraph || len(b.Spans) != 1 {
