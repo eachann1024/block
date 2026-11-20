@@ -1,8 +1,11 @@
 package app
 
 import (
+	"errors"
+
 	"block/internal/icons"
 	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -10,7 +13,7 @@ import (
 
 func (h *pluginHostUI) OpenPanel(pluginID, panelID string) {
 	h.onMain(func() {
-		h.openPanelLocal(pluginID, panelID)
+		_, _ = h.openPanelLocal(pluginID, panelID)
 	})
 }
 
@@ -20,24 +23,40 @@ func (h *pluginHostUI) ClosePanel(pluginID, panelID string) {
 	})
 }
 
-func (h *pluginHostUI) TogglePanel(pluginID, panelID string) {
+func (h *pluginHostUI) TogglePanel(pluginID, panelID string) (bool, error) {
+	type res struct {
+		open bool
+		err  error
+	}
+	ch := make(chan res, 1)
+	if err := h.onMainWait(func() {
+		open, terr := h.togglePanelLocal(pluginID, panelID)
+		ch <- res{open: open, err: terr}
+	}); err != nil {
+		return false, err
+	}
+	r := <-ch
+	return r.open, r.err
+}
+
+func (h *pluginHostUI) togglePanelLocal(pluginID, panelID string) (bool, error) {
 	h.mu.Lock()
 	isSame := h.activePanel != nil && h.activePanel.PluginID == pluginID && h.activePanel.PanelID == panelID
 	h.mu.Unlock()
 	if isSame {
 		h.closePanelLocal(pluginID, panelID)
-		return
+		return false, nil
 	}
-	h.openPanelLocal(pluginID, panelID)
+	return h.openPanelLocal(pluginID, panelID)
 }
 
-func (h *pluginHostUI) openPanelLocal(pluginID, panelID string) {
+func (h *pluginHostUI) openPanelLocal(pluginID, panelID string) (bool, error) {
 	sup := h.w.Plugins()
 	if sup == nil {
-		return
+		return false, errors.New("plugin host unavailable")
 	}
 	if _, ok := sup.Panel(pluginID, panelID); !ok {
-		return
+		return false, errors.New("unknown or disabled panel")
 	}
 	ref := &pluginPanelRef{PluginID: pluginID, PanelID: panelID}
 	h.mu.Lock()
@@ -50,6 +69,7 @@ func (h *pluginHostUI) openPanelLocal(pluginID, panelID string) {
 	}
 	h.w.edgeFloat.DismissAll(h.w)
 	h.w.RequestRedraw()
+	return true, nil
 }
 
 func (h *pluginHostUI) closePanelLocal(pluginID, panelID string) {
@@ -150,6 +170,9 @@ func (h *pluginHostUI) renderDockedPanel(c *ui.Context, open bool, width, vpW, c
 				Padding(0, theme.Space12, 0, theme.Space16).Gap(theme.Space8).
 				AlignItems(ui.Center).Background(pal.Paper)
 			header.Children(func() {
+				if len(panel.Icon.StrokePaths) > 0 {
+					pluginui.DrawDuoSpec(c, panel.Icon, theme.IconRow, pal.DuoIconColors(pal.Text))
+				}
 				ui.Text(c, panel.Title).
 					FontSize(theme.FontSmall).
 					FixedLineHeight(theme.LineSmall).

@@ -101,6 +101,9 @@ func allPluginSurfaces(m *plugins.Manifest) []plugins.Surface {
 		for _, p := range m.Contributes.Panels {
 			surfaces = append(surfaces, plugins.PanelSurface(p.ID))
 		}
+		for _, s := range m.Contributes.SidebarSections {
+			surfaces = append(surfaces, plugins.SidebarSectionSurface(s.ID))
+		}
 		for _, d := range m.Contributes.Dialogs {
 			surfaces = append(surfaces, plugins.DialogSurface(d.ID))
 		}

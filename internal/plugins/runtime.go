@@ -66,15 +66,18 @@ type HostConfig struct {
 	DataDir         string
 	DownloadsDir    string
 	NotebookRoot    string
-	ActiveNote      string
-	Locale          string
-	HostVersion     string
-	GetNotebooks    func() []string
-	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
+	ActiveNote       string
+	Locale           string
+	Theme            string
+	Tarot            bool
+	HostVersion      string
+	GetNotebooks     func() []string
+	GetPerfSnapshot  func(refreshDisk bool) (*PerfSnapshot, error)
 	ApplyNoteWrite   func(absPath, content string, write func() (bool, error)) (bool, error)
 	OnNoteWritten    func(pluginID, notebookRoot, absPath string)
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
-	// ContribHost handles host.titlebar/status/ui/editor methods; ok=false falls through.
+	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
+	// ContribHost handles host.titlebar/status/ui/editor/sidebar methods; ok=false falls through.
 	ContribHost func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
 }
 
@@ -200,6 +203,7 @@ type Runtime struct {
 	shuttingDown atomic.Bool
 	// initialized is set once plugin.initialize succeeds; events wait for it.
 	initialized atomic.Bool
+	syncedEpoch atomic.Uint64
 	abortOnce   sync.Once
 }
 
@@ -453,6 +457,7 @@ func (rt *Runtime) knownNotebooks() []string {
 		for _, nb := range getter() {
 			add(nb)
 		}
+		return out
 	}
 	add(active)
 	return out
@@ -465,7 +470,16 @@ func (rt *Runtime) resolveNotebookRoot(requested string) (string, error) {
 		if strings.TrimSpace(nbRoot) == "" {
 			return "", errors.New("no active notebook folder")
 		}
-		return filepath.Abs(nbRoot)
+		reqAbs, err := filepath.Abs(nbRoot)
+		if err != nil {
+			return "", err
+		}
+		for _, allowed := range rt.knownNotebooks() {
+			if allowed == reqAbs {
+				return reqAbs, nil
+			}
+		}
+		return "", fmt.Errorf("notebook root %q is no longer registered in host", nbRoot)
 	}
 	reqAbs, err := filepath.Abs(req)
 	if err != nil {
@@ -497,6 +511,10 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	if rt.manifest.HasPermission(PermNotesRead) {
 		notebooks = rt.knownNotebooks()
 	}
+	themeName := strings.TrimSpace(rt.cfg.Theme)
+	if themeName == "" {
+		themeName = "system"
+	}
 	params := map[string]any{
 		"plugin_id":     rt.manifest.ID,
 		"data_dir":      rt.cfg.DataDir,
@@ -504,11 +522,14 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"notebook_root": notebookRoot,
 		"notebooks":     notebooks,
 		"locale":        locale,
+		"theme":         themeName,
+		"tarot":         rt.cfg.Tarot,
 		"host_version":  ver,
 		"ui_capabilities": []string{
 			"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
 			"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
-			"action_progress",
+			"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
+			"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
 		},
 	}
 	var res struct {
@@ -559,6 +580,10 @@ func (rt *Runtime) RenderWithValuesResult(ctx context.Context, surface Surface, 
 }
 
 func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string, values map[string]any) (*ActionResult, error) {
+	return rt.ActionWithDialogToken(ctx, surface, actionID, values, "")
+}
+
+func (rt *Runtime) ActionWithDialogToken(ctx context.Context, surface Surface, actionID string, values map[string]any, dialogToken string) (*ActionResult, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
@@ -576,6 +601,9 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		"surface":   string(surface),
 		"action_id": actionID,
 		"values":    values,
+	}
+	if strings.TrimSpace(dialogToken) != "" {
+		params["dialog_token"] = strings.TrimSpace(dialogToken)
 	}
 	if err := rt.call(ctx, "plugin.action", params, &rawRes); err != nil {
 		return nil, err
@@ -854,7 +882,79 @@ func (rt *Runtime) writeHostResponse(reqID json.RawMessage, res any, rpcErr *rpc
 	}
 }
 
+func hasUnpairedSurrogateEscape(raw []byte) bool {
+	inStr := false
+	for i := 0; i < len(raw); i++ {
+		b := raw[i]
+		if !inStr {
+			if b == '"' {
+				inStr = true
+			}
+			continue
+		}
+		if b == '"' {
+			inStr = false
+			continue
+		}
+		if b != '\\' {
+			continue
+		}
+		if i+1 >= len(raw) {
+			break
+		}
+		i++
+		if raw[i] != 'u' {
+			continue
+		}
+		if i+4 >= len(raw) {
+			return false
+		}
+		v, ok := parseHex4(raw[i+1 : i+5])
+		if !ok {
+			continue
+		}
+		i += 4
+		if v >= 0xDC00 && v <= 0xDFFF {
+			return true // lone low surrogate
+		}
+		if v >= 0xD800 && v <= 0xDBFF {
+			if i+6 < len(raw) && raw[i+1] == '\\' && raw[i+2] == 'u' {
+				if v2, ok2 := parseHex4(raw[i+3 : i+7]); ok2 && v2 >= 0xDC00 && v2 <= 0xDFFF {
+					i += 6
+					continue
+				}
+			}
+			return true // lone high surrogate
+		}
+	}
+	return false
+}
+
+func parseHex4(b []byte) (uint16, bool) {
+	if len(b) != 4 {
+		return 0, false
+	}
+	var out uint16
+	for _, c := range b {
+		out <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			out |= uint16(c - '0')
+		case c >= 'a' && c <= 'f':
+			out |= uint16(c - 'a' + 10)
+		case c >= 'A' && c <= 'F':
+			out |= uint16(c - 'A' + 10)
+		default:
+			return 0, false
+		}
+	}
+	return out, true
+}
+
 func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (any, *rpcError) {
+	if len(params) > 0 && (!utf8.Valid(params) || hasUnpairedSurrogateEscape(params)) {
+		return nil, &rpcError{Code: -32602, Message: "params must be valid UTF-8"}
+	}
 	switch method {
 	case "host.storage.get":
 		if !rt.manifest.HasPermission(PermStorage) {
@@ -1003,6 +1103,11 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			if rt.closed.Load() {
 				return false, errors.New("plugin is stopping")
 			}
+			// Re-verify notebook registration at commit point (serialized with main-thread
+			// ApplyNoteWrite / notebook removal) so a removed notebook can never receive a write.
+			if _, err := rt.resolveNotebookRoot(rootPath); err != nil {
+				return false, err
+			}
 			return writePluginNote(root, cleanRel, p.Content, p.ExpectedRevision)
 		}
 		var changed bool
@@ -1023,6 +1128,52 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 			rt.cfg.OnNoteWritten(rt.manifest.ID, rootPath, abs)
 		}
 		return map[string]any{"ok": true, "changed": changed}, nil
+
+	case "host.notes.open":
+		if !rt.manifest.HasPermission(PermNotesRead) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
+		}
+		var p struct {
+			NotebookRoot string `json:"notebook_root"`
+			Path         string `json:"path"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
+		rootPath, cleanRel, err := rt.notebookNotePath(p.NotebookRoot, p.Path)
+		if err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		defer root.Close()
+		if err := checkPluginParents(root, cleanRel); err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		info, err := root.Lstat(cleanRel)
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		if !info.Mode().IsRegular() {
+			return nil, &rpcError{Code: -32004, Message: "target note must be a regular file"}
+		}
+		if rt.cfg.OpenNote == nil {
+			return nil, &rpcError{Code: -32005, Message: "host note open unavailable"}
+		}
+		rootInfo, err := root.Stat(".")
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		content, err := readPluginFile(root, cleanRel, maxPluginNote)
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		if err := rt.cfg.OpenNote(rootPath, filepath.ToSlash(cleanRel), rootInfo, content); err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		return map[string]any{"ok": true, "path": filepath.ToSlash(cleanRel)}, nil
 
 	case "host.action.progress":
 		var p struct {
@@ -1208,6 +1359,9 @@ func noteRevision(data []byte) string {
 }
 
 func writePluginNote(root *os.Root, rel, content string, expected *string) (bool, error) {
+	if !utf8.ValidString(content) {
+		return false, errors.New("note content must be valid UTF-8")
+	}
 	if len(content) > maxPluginNote {
 		return false, fmt.Errorf("note exceeds maximum size (%d bytes)", maxPluginNote)
 	}
@@ -1216,6 +1370,9 @@ func writePluginNote(root *os.Root, rel, content string, expected *string) (bool
 		return false, err
 	}
 	exists := err == nil
+	if exists && !utf8.Valid(prior) {
+		return false, errors.New("note file is not valid UTF-8")
+	}
 	if exists && bytes.Equal(prior, []byte(content)) {
 		return false, nil
 	}

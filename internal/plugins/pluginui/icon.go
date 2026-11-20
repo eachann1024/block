@@ -1,18 +1,27 @@
 package pluginui
 
 import (
+	"fmt"
 	"html"
 	"strings"
 	"sync"
 
 	"block/internal/plugins"
 	"block/internal/theme"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
 var (
-	specSVGMu    sync.RWMutex
-	specSVGCache = make(map[string]*ui.SVG)
+	specSVGMu      sync.RWMutex
+	specSVGCache   = make(map[string]*ui.SVG)
+	menuIconMu     sync.RWMutex
+	menuIconCache  = make(map[string]ui.MenuIcon)
+)
+
+const (
+	maxSpecSVGCacheEntries  = 512
+	maxMenuIconCacheEntries = 256
 )
 
 // DrawDuoSpec renders an Ocean Paper Scheme A two-tone icon from a declarative DuoIconSpec
@@ -41,6 +50,87 @@ func DrawDuoSpec(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors t
 	})
 }
 
+// BuildMenuIcon builds and caches a native colored ui.MenuIcon from a plugin DuoIconSpec.
+func BuildMenuIcon(spec plugins.DuoIconSpec, colors theme.IconColors) ui.MenuIcon {
+	raw := assembleColoredSVG(spec, colors)
+	if raw == "" {
+		return nil
+	}
+	menuIconMu.RLock()
+	cached, ok := menuIconCache[raw]
+	menuIconMu.RUnlock()
+	if ok {
+		return cached
+	}
+	parsed, err := ui.ParseSVG([]byte(raw))
+	var out ui.MenuIcon
+	if err == nil && parsed != nil {
+		if ic, icErr := mygo.NewMenuIconSVG(parsed, false); icErr == nil && ic != nil {
+			out = ic
+		}
+	}
+	menuIconMu.Lock()
+	if len(menuIconCache) >= maxMenuIconCacheEntries {
+		clear(menuIconCache)
+	}
+	menuIconCache[raw] = out
+	menuIconMu.Unlock()
+	return out
+}
+
+func svgRGBA(c ui.Color) (hex string, opacity string) {
+	s := c.SRGB()
+	hex = fmt.Sprintf("#%02x%02x%02x", s.R, s.G, s.B)
+	if s.A >= 255 {
+		return hex, "1"
+	}
+	return hex, fmt.Sprintf("%.3f", float64(s.A)/255.0)
+}
+
+func assembleColoredSVG(spec plugins.DuoIconSpec, colors theme.IconColors) string {
+	var b strings.Builder
+	hasPath := false
+	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">`)
+	writeGroup := func(fill bool, paths []string, col ui.Color) {
+		if col.A == 0 || len(paths) == 0 {
+			return
+		}
+		hex, op := svgRGBA(col)
+		if fill {
+			b.WriteString(`<g fill="`)
+			b.WriteString(hex)
+			b.WriteString(`" fill-opacity="`)
+			b.WriteString(op)
+			b.WriteString(`" stroke="none">`)
+		} else {
+			b.WriteString(`<g fill="none" stroke="`)
+			b.WriteString(hex)
+			b.WriteString(`" stroke-opacity="`)
+			b.WriteString(op)
+			b.WriteString(`" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`)
+		}
+		for _, p := range paths {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "" {
+				continue
+			}
+			hasPath = true
+			b.WriteString(`<path d="`)
+			b.WriteString(html.EscapeString(trimmed))
+			b.WriteString(`"/>`)
+		}
+		b.WriteString(`</g>`)
+	}
+	writeGroup(true, spec.FillPaths, colors.Fill)
+	writeGroup(false, spec.StrokePaths, colors.Line)
+	writeGroup(false, spec.AccentPaths, colors.Accent)
+	if !hasPath {
+		return ""
+	}
+	b.WriteString(`</svg>`)
+	return b.String()
+}
+
 func cachedLayerSVG(layer string, paths []string) *ui.SVG {
 	raw := assembleLayerSVG(layer, paths)
 	if raw == "" {
@@ -57,6 +147,9 @@ func cachedLayerSVG(layer string, paths []string) *ui.SVG {
 		parsed = nil
 	}
 	specSVGMu.Lock()
+	if len(specSVGCache) >= maxSpecSVGCacheEntries {
+		clear(specSVGCache)
+	}
 	specSVGCache[raw] = parsed
 	specSVGMu.Unlock()
 	return parsed

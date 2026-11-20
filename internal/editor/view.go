@@ -208,7 +208,11 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 								m.Separator()
 								sepAdded = true
 							}
-							if m.Item(ex.Label).Chosen() && ex.OnChoose != nil {
+							it := m.Item(ex.Label)
+							if ex.Icon != nil {
+								it.Icon(ex.Icon)
+							}
+							if it.Chosen() && ex.OnChoose != nil {
 								ex.OnChoose()
 							}
 						}

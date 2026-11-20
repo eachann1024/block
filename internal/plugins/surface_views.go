@@ -27,7 +27,11 @@ func (s *Supervisor) UpdateSurfaceControlValue(pluginID string, surface Surface,
 // surfaceViewOpened reports whether the surface has been shown in the current
 // notebook, so plugin-initiated refreshes never build pages nobody opened.
 func (s *Supervisor) surfaceViewOpened(pluginID string, surface Surface) bool {
-	key := viewKey{pluginID: pluginID, notebookRoot: s.NotebookRoot(), surface: surface}
+	return s.surfaceViewOpenedForNotebook(pluginID, s.NotebookRoot(), surface)
+}
+
+func (s *Supervisor) surfaceViewOpenedForNotebook(pluginID, nbRoot string, surface Surface) bool {
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	vs, ok := s.views[key]

@@ -401,19 +401,27 @@ func waitForProbeGone(tt *ui.Tester, id string, timeout time.Duration) error {
 }
 
 // scrollSettingsUntilVisible scrolls the right settings content column until
-// target probe id's click center lies within the visible window viewport.
+// target probe id's click center lies within the visible settings-page viewport.
 func scrollSettingsUntilVisible(tt *ui.Tester, id string) (ui.Rect, error) {
+	tt.Frame()
+	minY, maxY := float32(56), float32(776)
+	scrollX, scrollY := float32(760), float32(420)
+	if page, ok := blockui.TargetBounds("settings-page"); ok {
+		minY = page.Y + 4
+		maxY = page.Y + page.H - 4
+		scrollX = page.X + page.W*0.5
+		scrollY = page.Y + page.H*0.5
+	}
 	inView := func(r ui.Rect) bool {
 		cy := r.Y + r.H*0.5
-		return r.W > 0 && r.H > 0 && cy >= 56 && cy <= 776
+		return r.W > 0 && r.H > 0 && cy >= minY && cy <= maxY
 	}
-	tt.Frame()
 	initial, ok := blockui.TargetBounds(id)
 	if ok && inView(initial) {
 		return initial, nil
 	}
 	for i := 0; i < 20; i++ {
-		tt.Scroll(760, 420, 0, 200)
+		tt.Scroll(scrollX, scrollY, 0, 200)
 		tt.Frame()
 		cur, curOK := blockui.TargetBounds(id)
 		if curOK && inView(cur) {
@@ -424,7 +432,7 @@ func scrollSettingsUntilVisible(tt *ui.Tester, id string) (ui.Rect, error) {
 	if !ok {
 		return ui.Rect{}, fmt.Errorf("probe %q missing after scrolling settings", id)
 	}
-	return r, fmt.Errorf("probe %q outside viewport (init=%+v final=%+v)", id, initial, r)
+	return r, fmt.Errorf("probe %q outside viewport [%.1f..%.1f] (init=%+v final=%+v)", id, minY, maxY, initial, r)
 }
 
 func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (string, error) {
@@ -700,6 +708,9 @@ func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (s
 	}
 	if _, err := waitForProbe(tt, dialogID, 5*time.Second); err != nil {
 		return "", fmt.Errorf("plugin dialog did not open from page menu item: %w", err)
+	}
+	if _, err := waitForProbe(tt, dialogInsertBtnID, 6*time.Second); err != nil {
+		return "", fmt.Errorf("reopened plugin dialog did not freshly render its surface: %w", err)
 	}
 	if err := clickTarget(tt, dialogID+"-close"); err != nil {
 		return "", err

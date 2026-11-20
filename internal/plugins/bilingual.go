@@ -116,6 +116,26 @@ func ValidateManifestEnglish(m *Manifest) error {
 			return err
 		}
 	}
+	for i, s := range m.Contributes.SidebarSections {
+		if err := check(fmt.Sprintf("manifest.contributes.sidebar_sections[%d].title.en", i), s.Title.En); err != nil {
+			return err
+		}
+	}
+	for i, fb := range m.Contributes.FileBadges {
+		if err := check(fmt.Sprintf("manifest.contributes.file_badges[%d].tooltip.en", i), fb.Tooltip.En); err != nil {
+			return err
+		}
+	}
+	for i, item := range m.Contributes.SidebarMenu {
+		if err := check(fmt.Sprintf("manifest.contributes.sidebar_menu[%d].title.en", i), item.Title.En); err != nil {
+			return err
+		}
+	}
+	for i, bg := range m.Contributes.Backdrops {
+		if err := check(fmt.Sprintf("manifest.contributes.backdrops[%d].title.en", i), bg.Title.En); err != nil {
+			return err
+		}
+	}
 	for i, l := range m.Contributes.Languages {
 		if err := check(fmt.Sprintf("manifest.contributes.languages[%d].name.en", i), l.Name.En); err != nil {
 			return err

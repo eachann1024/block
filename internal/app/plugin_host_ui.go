@@ -2,13 +2,17 @@ package app
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"block/internal/editor"
 	"block/internal/icons"
 	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo"
@@ -18,8 +22,8 @@ import (
 const (
 	pluginToastDuration = 3 * time.Second
 	// pluginToastQueueMax bounds queued toasts so a chatty plugin cannot
-	// build an endless backlog.
-	pluginToastQueueMax = 4
+	// build an endless backlog while still allowing 4-tone showcase queues.
+	pluginToastQueueMax = 6
 )
 
 var errHostClosing = errors.New("host is shutting down")
@@ -29,11 +33,13 @@ type pluginToast struct {
 	PluginID string
 	Message  string
 	Tone     string
+	Icon     *plugins.DuoIconSpec
 }
 
 type pluginDialogRef struct {
 	PluginID string
 	DialogID string
+	Token    string
 }
 
 type pluginPanelRef struct {
@@ -46,6 +52,7 @@ type pluginHostUI struct {
 
 	mu              sync.Mutex
 	nextToastID     uint64
+	nextDialogID    uint64
 	toasts          []pluginToast
 	toastTimer      *time.Timer
 	activeDialog    *pluginDialogRef
@@ -134,17 +141,26 @@ func normalizeToastTone(t string) string {
 	}
 }
 
-func (h *pluginHostUI) Toast(pluginID, message, tone string) {
+func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		return
 	}
 	normTone := normalizeToastTone(tone)
+	var icCopy *plugins.DuoIconSpec
+	if icon != nil && len(icon.StrokePaths) > 0 {
+		cp := *icon
+		icCopy = &cp
+	}
 	h.onMain(func() {
 		h.mu.Lock()
-		for _, t := range h.toasts {
-			if t.PluginID == pluginID && t.Message == msg {
+		for i := range h.toasts {
+			if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone {
+				if icCopy != nil {
+					h.toasts[i].Icon = icCopy
+				}
 				h.mu.Unlock()
+				h.w.RequestRedraw()
 				return
 			}
 		}
@@ -159,6 +175,7 @@ func (h *pluginHostUI) Toast(pluginID, message, tone string) {
 			PluginID: pluginID,
 			Message:  msg,
 			Tone:     normTone,
+			Icon:     icCopy,
 		})
 		if len(h.toasts) == 1 {
 			h.scheduleToastTimerLocked(id)
@@ -246,8 +263,17 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 		blockui.Elevate(pill, theme.ElevationPopover)
 		blockui.Probe(pill, "plugin-toast")
 		pill.Children(func() {
-			ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).
-				Background(dotCol).Shrink(0)
+			if toast.Icon != nil && len(toast.Icon.StrokePaths) > 0 {
+				ic := theme.IconColors{
+					Line:   textCol,
+					Fill:   dotCol.Alpha(0.22),
+					Accent: dotCol,
+				}
+				pluginui.DrawDuoSpec(c, *toast.Icon, theme.IconAction, ic)
+			} else {
+				ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).
+					Background(dotCol).Shrink(0)
+			}
 			ui.Text(c, toast.Message).
 				FontSize(theme.FontSmall).
 				FixedLineHeight(theme.LineSmall).
@@ -272,20 +298,50 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 	})
 }
 
-func (h *pluginHostUI) OpenDialog(pluginID, dialogID string) {
-	h.onMain(func() {
+func (h *pluginHostUI) OpenDialog(pluginID, dialogID string, checkValid func() error) (string, error) {
+	type res struct {
+		token string
+		err   error
+	}
+	ch := make(chan res, 1)
+	if cerr := h.onMainWait(func() {
+		if checkValid != nil {
+			if verr := checkValid(); verr != nil {
+				ch <- res{err: verr}
+				return
+			}
+		}
 		sup := h.w.Plugins()
 		if sup == nil {
+			ch <- res{err: errors.New("plugin host unavailable")}
 			return
 		}
 		if _, ok := sup.Dialog(pluginID, dialogID); !ok {
+			ch <- res{err: errors.New("unknown dialog")}
 			return
 		}
 		h.mu.Lock()
-		h.activeDialog = &pluginDialogRef{PluginID: pluginID, DialogID: dialogID}
+		h.nextDialogID++
+		tok := fmt.Sprintf("dlg-%d", h.nextDialogID)
+		h.activeDialog = &pluginDialogRef{PluginID: pluginID, DialogID: dialogID, Token: tok}
 		h.mu.Unlock()
+		sup.ResetDialogView(pluginID, dialogID, tok)
 		h.w.RequestRedraw()
-	})
+		ch <- res{token: tok}
+	}); cerr != nil {
+		return "", cerr
+	}
+	r := <-ch
+	return r.token, r.err
+}
+
+func (h *pluginHostUI) ActiveDialogToken(pluginID, dialogID string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.activeDialog != nil && h.activeDialog.PluginID == pluginID && h.activeDialog.DialogID == dialogID {
+		return h.activeDialog.Token
+	}
+	return ""
 }
 
 func (h *pluginHostUI) CloseDialog(pluginID, dialogID string) {
@@ -295,6 +351,7 @@ func (h *pluginHostUI) CloseDialog(pluginID, dialogID string) {
 }
 
 func (h *pluginHostUI) closeDialogLocal(pluginID, dialogID string) {
+	var closedPlugin, closedDialog string
 	h.mu.Lock()
 	if h.activeDialog == nil {
 		h.mu.Unlock()
@@ -302,9 +359,16 @@ func (h *pluginHostUI) closeDialogLocal(pluginID, dialogID string) {
 	}
 	if (pluginID == "" || h.activeDialog.PluginID == pluginID) &&
 		(dialogID == "" || h.activeDialog.DialogID == dialogID) {
+		closedPlugin = h.activeDialog.PluginID
+		closedDialog = h.activeDialog.DialogID
 		h.activeDialog = nil
 	}
 	h.mu.Unlock()
+	if closedPlugin != "" && closedDialog != "" {
+		if sup := h.w.Plugins(); sup != nil {
+			sup.ResetDialogView(closedPlugin, closedDialog, "")
+		}
+	}
 	h.w.RequestRedraw()
 }
 
@@ -351,15 +415,20 @@ func (h *pluginHostUI) renderDialog(c *ui.Context) {
 		ui.Column(c.Key(id + "-body")).FillWidth().Padding(theme.Space20).Gap(theme.Space16).
 			Transition(blockui.SurfaceStageTransition()).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-				ui.Text(c, dlg.Title).
-					FontSize(theme.FontHeading).
-					FixedLineHeight(theme.LineHeading).
-					FontWeight(theme.WeightTitle).
-					TextColor(pal.Text).
-					MinWidth(0).
-					Shrink(1).
-					SingleLine().
-					Ellipsis("…")
+				ui.Row(c).MinWidth(0).Shrink(1).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+					if len(dlg.Icon.StrokePaths) > 0 {
+						pluginui.DrawDuoSpec(c, dlg.Icon, theme.IconRow, pal.DuoIconColors(pal.Text))
+					}
+					ui.Text(c, dlg.Title).
+						FontSize(theme.FontHeading).
+						FixedLineHeight(theme.LineHeading).
+						FontWeight(theme.WeightTitle).
+						TextColor(pal.Text).
+						MinWidth(0).
+						Shrink(1).
+						SingleLine().
+						Ellipsis("…")
+				})
 				cls := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
 					ID:      id + "-close",
 					Label:   theme.Tr("关闭", "Close"),
@@ -377,6 +446,18 @@ func (h *pluginHostUI) renderDialog(c *ui.Context) {
 	if !open {
 		h.closeDialogLocal(dlg.PluginID, dlg.ID)
 	}
+}
+
+func (h *pluginHostUI) OpenNote(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte, checkValid func() error) error {
+	ch := make(chan error, 1)
+	if err := h.onMainWait(func() {
+		openErr := h.w.openRootValidatedNote(notebookRoot, relPath, rootInfo, content, checkValid)
+		h.w.RequestRedraw()
+		ch <- openErr
+	}); err != nil {
+		return err
+	}
+	return <-ch
 }
 
 func (h *pluginHostUI) setEditorFocus(notePath string, focused bool) {
@@ -425,7 +506,7 @@ func (h *pluginHostUI) EditorSelection() (plugins.EditorSelection, error) {
 		h.mu.Unlock()
 		out = plugins.EditorSelection{
 			Note:     noteRel,
-			Text:     sess.SelectedMarkdown(),
+			Text:     sess.SelectedMarkdownForPlugin(),
 			HasFocus: hasFocus,
 		}
 	}); cerr != nil {
@@ -435,61 +516,203 @@ func (h *pluginHostUI) EditorSelection() (plugins.EditorSelection, error) {
 	return r.sel, r.err
 }
 
-func (h *pluginHostUI) EditorInsert(pluginID, expectedNote, text string) error {
-	ch := make(chan error, 1)
+func (h *pluginHostUI) EditorInsert(pluginID, expectedRoot, expectedNote, mode, text string, checkValid func() error) error {
+	type insertOutcome struct {
+		err                  error
+		activeTab            string
+		sess                 *editor.Session
+		docRev               uint64
+		rollback             editor.HostEditRollback
+		saveGen              uint64
+		batch                []pendingSessionSave
+		inFlight             bool
+		stoppedAutoSaveTimer bool
+		syncErr              error
+		rolledBack           bool
+	}
+	ch := make(chan insertOutcome, 1)
 	if cerr := h.onMainWait(func() {
-		var err error
-		defer func() { ch <- err }()
+		var out insertOutcome
+		defer func() { ch <- out }()
+		if checkValid != nil {
+			if verr := checkValid(); verr != nil {
+				out.err = verr
+				return
+			}
+		}
 		if h.w.modals != nil && h.w.modals.IsSettingsOpen() {
-			err = errors.New("no active note editor")
+			out.err = errors.New("no active note editor")
 			return
 		}
 		if (h.w.exportCtrl != nil && h.w.exportCtrl.IsOpen()) || h.w.IsPageHistoryOpen() {
-			err = errors.New("no active note editor")
+			out.err = errors.New("no active note editor")
 			return
 		}
 		activeTab := h.w.ActiveNotePath()
 		if activeTab == "" {
-			err = errors.New("no active note editor")
+			out.err = errors.New("no active note editor")
 			return
 		}
 		if h.w.SurfaceFor(activeTab) != nil {
-			err = errors.New("active note is read-only")
+			out.err = errors.New("active note is read-only")
 			return
 		}
 		sess := h.w.SessionFor(activeTab)
 		if sess == nil || !sess.IsMarkdownNote() {
-			err = errors.New("no active note editor")
+			out.err = errors.New("no active note editor")
 			return
 		}
+		activeRoot := strings.TrimSpace(h.w.State().Folder)
+		if expectedRoot != "" {
+			expAbs, errA := filepath.Abs(expectedRoot)
+			actAbs, errB := filepath.Abs(activeRoot)
+			if errA != nil || errB != nil || expAbs != actAbs {
+				out.err = errors.New("active notebook changed")
+				return
+			}
+		}
 		if expectedNote != "" {
-			activeRel := ""
-			if sup := h.w.Plugins(); sup != nil {
-				activeRel = sup.ActiveNoteRel()
-			}
-			if activeRel != expectedNote {
-				err = errors.New("active note changed")
+			if expectedRoot != "" {
+				expTab := filepath.Clean(filepath.Join(expectedRoot, filepath.FromSlash(expectedNote)))
+				if filepath.Clean(activeTab) != expTab {
+					out.err = errors.New("active note changed")
+					return
+				}
+			} else if sup := h.w.Plugins(); sup == nil || sup.ActiveNoteRel() != expectedNote {
+				out.err = errors.New("active note changed")
 				return
 			}
 		}
-		_, _, _, _, nonEmpty := sess.SelectionKey()
-		if nonEmpty {
-			if !sess.ReplaceSelectionWithText(text) {
-				err = errors.New("editor is read-only")
-				return
-			}
-		} else if text != "" {
-			sess.PastePlainText(text)
+		rb := sess.CaptureHostEditRollback()
+		replaceSelection := mode != "insert"
+		if !sess.InsertMarkdown(text, replaceSelection) {
+			out.err = errors.New("editor insert rejected")
+			return
 		}
+		out.activeTab = activeTab
+		out.sess = sess
+		out.docRev = sess.DocRev()
+		out.rollback = rb
 		h.mu.Lock()
 		h.insertSource[filepath.Clean(activeTab)] = pluginID
 		h.mu.Unlock()
-		h.w.flushOrScheduleDirtySessions()
+		h.w.mu.Lock()
+		virtual := h.w.virtualPreview[activeTab]
+		syncInline := h.w.win == nil || blockui.IsProbeEnabled()
+		if !virtual && !syncInline {
+			if h.w.autoSaveTimer != nil {
+				h.w.autoSaveTimer.Stop()
+				h.w.autoSaveTimer = nil
+				out.stoppedAutoSaveTimer = true
+			}
+			h.w.saveGeneration++
+			out.saveGen = h.w.saveGeneration
+			h.w.pluginInsertInFlight[activeTab]++
+			out.inFlight = true
+			out.batch = append(out.batch, pendingSessionSave{
+				path: activeTab,
+				sess: sess,
+				rev:  out.docRev,
+				md:   sess.Markdown(),
+			})
+		}
+		h.w.mu.Unlock()
+		if !virtual && syncInline {
+			if err := h.w.flushSingleSessionNoRecovery(activeTab, out.docRev); err != nil {
+				// Disk save conflicted/failed in headless mode: revert atomically
+				// without touching redo history, in-progress annotation drafts, or existing recovery files.
+				if sess.DocRev() == out.docRev && sess.RollbackHostEdit(out.rollback) {
+					h.w.mu.Lock()
+					if h.w.autoSaveTimer != nil {
+						h.w.autoSaveTimer.Stop()
+						h.w.autoSaveTimer = nil
+					}
+					h.w.saveGeneration++
+					h.w.mu.Unlock()
+					out.rolledBack = true
+				}
+				h.mu.Lock()
+				delete(h.insertSource, filepath.Clean(activeTab))
+				h.mu.Unlock()
+				out.syncErr = err
+			}
+		}
 		h.w.RequestRedraw()
 	}); cerr != nil {
 		return cerr
 	}
-	return <-ch
+	res := <-ch
+	insertSucceeded := false
+	if res.inFlight {
+		defer func() {
+			var reschedule bool
+			h.w.mu.Lock()
+			if n := h.w.pluginInsertInFlight[res.activeTab]; n <= 1 {
+				delete(h.w.pluginInsertInFlight, res.activeTab)
+			} else {
+				h.w.pluginInsertInFlight[res.activeTab] = n - 1
+			}
+			deferred := h.w.autoSaveDeferred[res.activeTab]
+			delete(h.w.autoSaveDeferred, res.activeTab)
+			if s := h.w.sessions[res.activeTab]; s != nil && s.Dirty() && !h.w.virtualPreview[res.activeTab] {
+				if deferred || res.stoppedAutoSaveTimer || insertSucceeded {
+					reschedule = true
+				}
+			} else if res.stoppedAutoSaveTimer {
+				reschedule = true
+			}
+			h.w.mu.Unlock()
+			if reschedule {
+				_ = h.onMainWait(func() {
+					h.w.flushOrScheduleDirtySessions()
+				})
+			}
+		}()
+	}
+	if res.err != nil {
+		return res.err
+	}
+	if res.syncErr != nil {
+		if res.rolledBack {
+			return fmt.Errorf("%w: disk save failed and editor insert was reverted: %v", plugins.ErrNoteConflict, res.syncErr)
+		}
+		return fmt.Errorf("%w: inserted into editor draft but disk save failed: %v", plugins.ErrNoteConflict, res.syncErr)
+	}
+	if len(res.batch) > 0 {
+		errs, completed := h.w.runSessionSaves(res.saveGen, res.batch, true)
+		saveErr := errs[res.activeTab]
+		if saveErr == nil && !completed[res.activeTab] {
+			saveErr = errors.New("disk save did not complete")
+		}
+		if saveErr != nil {
+			rolledBack := false
+			_ = h.onMainWait(func() {
+				h.w.mu.RLock()
+				sess := h.w.sessions[res.activeTab]
+				h.w.mu.RUnlock()
+				if sess != nil && sess == res.sess && sess.DocRev() == res.docRev && sess.RollbackHostEdit(res.rollback) {
+					h.w.mu.Lock()
+					if h.w.autoSaveTimer != nil {
+						h.w.autoSaveTimer.Stop()
+						h.w.autoSaveTimer = nil
+					}
+					h.w.saveGeneration++
+					h.w.mu.Unlock()
+					rolledBack = true
+				}
+				h.mu.Lock()
+				delete(h.insertSource, filepath.Clean(res.activeTab))
+				h.mu.Unlock()
+				h.w.RequestRedraw()
+			})
+			if rolledBack {
+				return fmt.Errorf("%w: disk save failed and editor insert was reverted: %v", plugins.ErrNoteConflict, saveErr)
+			}
+			return fmt.Errorf("%w: inserted into editor draft but disk save failed: %v", plugins.ErrNoteConflict, saveErr)
+		}
+		insertSucceeded = true
+	}
+	return nil
 }
 
 func (h *pluginHostUI) TarotState() (plugins.TarotState, error) {
