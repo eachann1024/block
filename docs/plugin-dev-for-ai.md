@@ -326,7 +326,7 @@ example-sync/
 
 `events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。
 
-macOS 使用通知中心、钥匙串和 Dock。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 系统凭据需在系统凭据管理器中先解锁。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
+macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 系统凭据需在系统凭据管理器中先解锁。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 
 回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移入 Block 数据目录内的暂存目录并复核文件身份。暂存目录需要与文件位于同一文件系统，Windows 还需要支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据权限约束宿主 RPC，独立插件进程仍以当前系统用户运行，其直接访问由操作系统控制。
 
@@ -663,6 +663,8 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包（`codeload.github.com/{repo}/tar.gz/{default_branch}`）。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
    - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-poop-everywhere`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
    - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
+
+- 带系统权限的发行包通过索引的 `system_apps` 提供，支持该字段的 Block 会优先选用。旧客户端从 `apps` 读取已验证的兼容包。同步插件为旧客户端保留 v1.3.44。
 
 ---
 
