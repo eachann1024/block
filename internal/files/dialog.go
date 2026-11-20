@@ -2,6 +2,7 @@ package files
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -33,6 +34,10 @@ func refocusWindow(win *mygo.Window) {
 // in-place bundle update replaced the app on disk while this process stayed running.
 // Concurrent calls while a picker is already open return (nil, nil) immediately.
 func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error) {
+	return OpenDialogGuarded(win, opts, nil)
+}
+
+func OpenDialogGuarded(win *mygo.Window, opts mygo.OpenDialogOptions, allowed func() bool) ([]string, error) {
 	if !mygo.App.IsReady() {
 		return nil, nil
 	}
@@ -50,21 +55,35 @@ func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error)
 
 	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
 		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
+			if allowed != nil && !allowed() {
+				return nil, context.Canceled
+			}
 			paths, osaErr := openDialogDarwinOsascript(opts)
-			refocusWindow(win)
+			if allowed == nil {
+				refocusWindow(win)
+			}
 			return paths, osaErr
 		}
 	}
 
 	opts.Parent = win
+	if allowed != nil && !allowed() {
+		return nil, context.Canceled
+	}
 	paths, err := mygo.Dialog.Open(opts)
-	refocusWindow(win)
+	if allowed == nil {
+		refocusWindow(win)
+	}
 	return paths, err
 }
 
 // SaveDialog opens a native save-file picker safely across hot bundle updates on macOS.
 // Concurrent calls while a picker is already open return ("", nil) immediately.
 func SaveDialog(win *mygo.Window, opts mygo.SaveDialogOptions) (string, error) {
+	return SaveDialogGuarded(win, opts, nil)
+}
+
+func SaveDialogGuarded(win *mygo.Window, opts mygo.SaveDialogOptions, allowed func() bool) (string, error) {
 	if !mygo.App.IsReady() {
 		return "", nil
 	}
@@ -79,15 +98,25 @@ func SaveDialog(win *mygo.Window, opts mygo.SaveDialogOptions) (string, error) {
 
 	if runtime.GOOS == "darwin" && !darwinBundleIntact() {
 		if _, err := os.Stat("/usr/bin/osascript"); err == nil {
+			if allowed != nil && !allowed() {
+				return "", context.Canceled
+			}
 			chosen, osaErr := saveDialogDarwinOsascript(opts)
-			refocusWindow(win)
+			if allowed == nil {
+				refocusWindow(win)
+			}
 			return chosen, osaErr
 		}
 	}
 
 	opts.Parent = win
+	if allowed != nil && !allowed() {
+		return "", context.Canceled
+	}
 	chosen, err := mygo.Dialog.Save(opts)
-	refocusWindow(win)
+	if allowed == nil {
+		refocusWindow(win)
+	}
 	return chosen, err
 }
 
@@ -185,6 +214,17 @@ func openDialogDarwinOsascript(opts mygo.OpenDialogOptions) ([]string, error) {
 
 	var script string
 	args := []string{"-e"}
+	multiClause := ""
+	retBlock := `return POSIX path of chosen`
+	if opts.Multiple {
+		multiClause = " with multiple selections allowed"
+		retBlock = `set out to ""
+	repeat with entry in chosen
+		if out is not "" then set out to out & (character id 0)
+		set out to out & POSIX path of entry
+	end repeat
+	return out`
+	}
 
 	if opts.Directory {
 		script = `on run argv
@@ -193,15 +233,15 @@ func openDialogDarwinOsascript(opts mygo.OpenDialogOptions) ([]string, error) {
 	set pHidden to (item 3 of argv) is "1"
 	activate
 	if pPrompt is "" and pDir is "" then
-		set d to choose folder invisibles pHidden
+		set chosen to choose folder invisibles pHidden` + multiClause + `
 	else if pDir is "" then
-		set d to choose folder with prompt pPrompt invisibles pHidden
+		set chosen to choose folder with prompt pPrompt invisibles pHidden` + multiClause + `
 	else if pPrompt is "" then
-		set d to choose folder default location (POSIX file pDir) invisibles pHidden
+		set chosen to choose folder default location (POSIX file pDir) invisibles pHidden` + multiClause + `
 	else
-		set d to choose folder with prompt pPrompt default location (POSIX file pDir) invisibles pHidden
+		set chosen to choose folder with prompt pPrompt default location (POSIX file pDir) invisibles pHidden` + multiClause + `
 	end if
-	return POSIX path of d
+	` + retBlock + `
 end run`
 		hiddenFlag := "0"
 		if opts.ShowHiddenFiles {
@@ -217,19 +257,6 @@ end run`
 				quoted[i] = `"` + strings.ReplaceAll(u, `"`, `\"`) + `"`
 			}
 			typeClause = " of type {" + strings.Join(quoted, ", ") + "}"
-		}
-		multiClause := ""
-		if opts.Multiple {
-			multiClause = " with multiple selections allowed"
-		}
-		retBlock := `return POSIX path of chosen`
-		if opts.Multiple {
-			retBlock = `set out to ""
-	repeat with f in chosen
-		if out is not "" then set out to out & (character id 0)
-		set out to out & POSIX path of f
-	end repeat
-	return out`
 		}
 		script = `on run argv
 	set pPrompt to item 1 of argv
@@ -267,7 +294,7 @@ end run`
 	}
 
 	paths := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\x00")
-	if len(paths) != 1 && (!opts.Multiple || opts.Directory) {
+	if len(paths) != 1 && !opts.Multiple {
 		return nil, errors.New("native file picker returned multiple paths")
 	}
 	for i, path := range paths {

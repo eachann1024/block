@@ -224,14 +224,19 @@ func (h *pluginHostUI) Reveal(path string, allowed func() bool) error {
 }
 
 func (h *pluginHostUI) Pick(save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error) {
-	if err := h.desktopAction(allowed, func() error { return nil }); err != nil {
-		return nil, err
-	}
 	var filters []mygo.FileFilter
 	if len(extensions) != 0 {
 		filters = []mygo.FileFilter{{Name: theme.Tr("文件类型", "File types"), Extensions: extensions}}
 	}
 	win := h.w.Window()
+	checkBeforeShow := func() bool {
+		return h.desktopAction(allowed, func() error {
+			if win != h.w.Window() {
+				return plugins.ErrSystemCanceled
+			}
+			return nil
+		}) == nil
+	}
 	var paths []string
 	var err error
 	if !allowed() {
@@ -239,14 +244,14 @@ func (h *pluginHostUI) Pick(save, directory, multiple bool, title, defaultPath s
 	}
 	if save {
 		var path string
-		path, err = files.SaveDialog(win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true})
+		path, err = files.SaveDialogGuarded(win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true}, checkBeforeShow)
 		if path != "" {
 			paths = []string{path}
 		}
 	} else {
-		paths, err = files.OpenDialog(win, mygo.OpenDialogOptions{
+		paths, err = files.OpenDialogGuarded(win, mygo.OpenDialogOptions{
 			Title: title, DefaultPath: defaultPath, Filters: filters, Directory: directory, Multiple: multiple, CreateDirectories: directory,
-		})
+		}, checkBeforeShow)
 	}
 	if !allowed() {
 		return nil, plugins.ErrSystemCanceled
