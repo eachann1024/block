@@ -143,7 +143,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		feedbackTimers: make(map[viewKey]*time.Timer),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
-	SyncActiveLanguages(installed)
+	SyncActiveLanguagesSeq(installed, NextLanguageSyncSeq())
 	return s
 }
 
@@ -541,6 +541,12 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 		s.stopLiveTimersForPluginLocked(pluginID)
 		s.deleteViewsForPluginLocked(pluginID)
 	}
+	var langSnap []InstalledApp
+	var langSeq uint64
+	if changed || rt != nil {
+		langSnap = append([]InstalledApp(nil), s.installed...)
+		langSeq = NextLanguageSyncSeq()
+	}
 	s.mu.Unlock()
 
 	if rt != nil {
@@ -554,7 +560,7 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 		s.warmupPluginAsync(pluginID)
 	}
 	if changed || rt != nil {
-		SyncActiveLanguages(s.Installed())
+		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.notifyChanged()
 	}
 }
@@ -731,10 +737,12 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
 	}
 	s.installed = installedList
+	langSnap := append([]InstalledApp(nil), s.installed...)
+	langSeq := NextLanguageSyncSeq()
 	delete(s.runtimes, inst.Manifest.ID)
 	s.deleteViewsForPluginLocked(inst.Manifest.ID)
 	s.mu.Unlock()
-	SyncActiveLanguages(installedList)
+	SyncActiveLanguagesSeq(langSnap, langSeq)
 	if onInstalled != nil {
 		onInstalled(inst.Manifest.ID)
 	}
@@ -824,8 +832,10 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 				break
 			}
 		}
+		langSnap := append([]InstalledApp(nil), s.installed...)
+		langSeq := NextLanguageSyncSeq()
 		s.mu.Unlock()
-		SyncActiveLanguages(installedList)
+		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.contrib.forgetPlugin(pluginID, wasLegacyTitlebarMgr && !hasRemainingLegacyTitlebarMgr)
 
 		if onDone != nil {
