@@ -291,6 +291,9 @@ func writeClipboardSpansHTML(sb *strings.Builder, spans []model.Span) {
 		if sp.Marks&model.MarkCode != 0 {
 			text = "<code>" + text + "</code>"
 		}
+		if sp.Marks&model.MarkMath != 0 {
+			text = `<code class="math">` + text + `</code>`
+		}
 		if sp.Marks&model.MarkBold != 0 {
 			text = "<strong>" + text + "</strong>"
 		}
@@ -302,6 +305,12 @@ func writeClipboardSpansHTML(sb *strings.Builder, spans []model.Span) {
 		}
 		if sp.Marks&model.MarkStrike != 0 {
 			text = "<s>" + text + "</s>"
+		}
+		if sp.Marks&model.MarkSuperscript != 0 {
+			text = "<sup>" + text + "</sup>"
+		}
+		if sp.Marks&model.MarkSubscript != 0 {
+			text = "<sub>" + text + "</sub>"
 		}
 		if sp.BGColor != "" {
 			text = "<mark>" + text + "</mark>"

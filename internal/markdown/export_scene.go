@@ -240,9 +240,19 @@ func toUISpansWith(spans []model.Span, pal PaperThemeSpec, legacy bool, o spanSt
 				us.Font = inl.BoldFamily
 			}
 		}
-		if sp.Marks&model.MarkCode != 0 || o.isCodeBlock {
+		if sp.Marks&model.MarkSuperscript != 0 {
+			us.Size = maxFloat32(o.size*0.72, 9)
+			us.BaselineShift = o.size * 0.34
+		} else if sp.Marks&model.MarkSubscript != 0 {
+			us.Size = maxFloat32(o.size*0.72, 9)
+			us.BaselineShift = -o.size * 0.18
+		}
+		if sp.Marks&model.MarkCode != 0 || sp.Marks&model.MarkMath != 0 || o.isCodeBlock {
 			us.Font = fontMono
 			us.NoLetterSpacing = true
+			if sp.Marks&model.MarkMath != 0 {
+				us.Italic = true
+			}
 			if !o.isCodeBlock {
 				us.Size = o.size * 0.9
 				cbg := pal.CodeBG

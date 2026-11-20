@@ -1016,7 +1016,7 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 	var out strings.Builder
 	for _, sp := range spans {
 		var rpr strings.Builder
-		if sp.Marks&model.MarkCode != 0 || (!legacy && sp.Link != "" && inl.LinkMono) {
+		if sp.Marks&model.MarkCode != 0 || sp.Marks&model.MarkMath != 0 || (!legacy && sp.Link != "" && inl.LinkMono) {
 			rpr.WriteString(docxFontXML(fontMono))
 		} else {
 			rpr.WriteString(docxFontXML(pal.BodyFamily))
@@ -1025,8 +1025,13 @@ func renderDOCXRuns(spans []model.Span, pal PaperThemeSpec, legacy, baseBold, ba
 		if baseBold || sp.Marks&model.MarkBold != 0 || (isHi && inl.Highlight.Weight >= 600) {
 			rpr.WriteString("<w:b/><w:bCs/>")
 		}
-		if sp.Marks&model.MarkItalic != 0 {
+		if sp.Marks&model.MarkItalic != 0 || sp.Marks&model.MarkMath != 0 {
 			rpr.WriteString("<w:i/><w:iCs/>")
+		}
+		if sp.Marks&model.MarkSuperscript != 0 {
+			rpr.WriteString(`<w:vertAlign w:val="superscript"/>`)
+		} else if sp.Marks&model.MarkSubscript != 0 {
+			rpr.WriteString(`<w:vertAlign w:val="subscript"/>`)
 		}
 		if baseStrike || sp.Marks&model.MarkStrike != 0 {
 			rpr.WriteString("<w:strike/>")
