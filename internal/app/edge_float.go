@@ -491,6 +491,9 @@ func (w *Workspace) renderFloatingSidebarCard(
 		OnTrashItem: func(path string) {
 			_ = w.TrashWorkspaceItem(path)
 		},
+		OnCopyPath: func(path string) {
+			w.copyFilePath(path, c.Services())
+		},
 		OnRevealItem: func(path string) {
 			w.revealInShell(path)
 		},

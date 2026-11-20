@@ -199,6 +199,7 @@ type SidebarProps struct {
 	OnReorderSibling   func(parentDir, srcPath, targetPath string, after bool)
 	OnReorderNotebooks func(fromIdx, toIdx int)
 	OnTrashItem        func(path string)
+	OnCopyPath         func(path string)
 	OnRevealItem       func(path string)
 	OnSwitchNotebook   func(root string)
 	OnForgetNotebook   func(root string)
@@ -1421,6 +1422,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			targetPath := p.State.ContextPath
 			targetDir := p.State.ContextIsDir
 			icOpen := icons.NotePlus
+			icCopyPath := icons.LinkCopy
 			icReveal := icons.FolderReveal
 			icRename := icons.Pencil
 			icMove := icons.ArrowRight
@@ -1460,8 +1462,19 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				}
 				items = append(items,
 					blockui.MenuItemSpec{
+						ID:    "copy-path",
+						Label: theme.Tr("复制文件路径", "Copy File Path"),
+						Icon:  &icCopyPath,
+						OnClick: func() {
+							p.State.ClosePopups()
+							if p.OnCopyPath != nil {
+								p.OnCopyPath(targetPath)
+							}
+						},
+					},
+					blockui.MenuItemSpec{
 						ID:    "reveal",
-						Label: theme.Tr("在访达显示", "Reveal in File Manager"),
+						Label: revealFileLabel(),
 						Icon:  &icReveal,
 						OnClick: func() {
 							p.State.ClosePopups()

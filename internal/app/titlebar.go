@@ -128,7 +128,7 @@ type TitlebarProps struct {
 	OnFormatJSON        func()
 	OnCopyImage         func()
 	OnCopyImageMarkdown func()
-	OnCopyPath          func()
+	OnCopyPath          func(path string)
 	OnOpenExternal      func()
 	OnRevealPath        func(path string)
 	NoteStats           func() (characters, blocks int)
@@ -680,6 +680,8 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 		}}
 	}
 
+	copyPathShortcut := blockui.FormatShortcutDisplay(copyPathShortcutSpec())
+
 	if surface == SurfaceNote {
 		items := []blockui.MenuItemSpec{
 			item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
@@ -705,6 +707,11 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 		}
 		items = append(items,
 			blockui.MenuItemSpec{Separator: true},
+			item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), copyPathShortcut, &icPath, func() {
+				if p.OnCopyPath != nil {
+					p.OnCopyPath(p.ActiveTab)
+				}
+			}),
 			item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 				if p.OnRevealPath != nil {
 					p.OnRevealPath(p.ActiveTab)
@@ -750,7 +757,11 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 		items = append(items, item("page-open-external", theme.Tr("用默认应用打开", "Open in Default App"), "", &icOpen, p.OnOpenExternal))
 	}
 	items = append(items,
-		item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), "", &icPath, p.OnCopyPath),
+		item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), copyPathShortcut, &icPath, func() {
+			if p.OnCopyPath != nil {
+				p.OnCopyPath(p.ActiveTab)
+			}
+		}),
 		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 			if p.OnRevealPath != nil {
 				p.OnRevealPath(p.ActiveTab)
@@ -785,8 +796,20 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 	icOthers := icons.TabCloseOthers
 	icRight := icons.TabCloseRight
 	icAll := icons.TabCloseAll
+	icPath := icons.LinkCopy
 	icReveal := icons.FolderReveal
 	return []blockui.MenuItemSpec{
+		{
+			ID:    "tab-menu-copy-path",
+			Label: theme.Tr("复制文件路径", "Copy File Path"),
+			Icon:  &icPath,
+			OnClick: func() {
+				p.MenuState.Close()
+				if p.OnCopyPath != nil {
+					p.OnCopyPath(target)
+				}
+			},
+		},
 		{
 			ID:    "tab-menu-reveal",
 			Label: revealFileLabel(),
