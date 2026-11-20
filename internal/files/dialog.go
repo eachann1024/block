@@ -99,8 +99,19 @@ func dialogPathsMatchExtensions(paths []string, filters []mygo.FileFilter) bool 
 			extensions[extension] = true
 		}
 	}
+	if len(extensions) == 0 {
+		return true
+	}
 	for _, path := range paths {
-		if len(extensions) > 0 && !extensions[strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")] {
+		name := strings.ToLower(filepath.Base(path))
+		matched := false
+		for extension := range extensions {
+			if strings.HasSuffix(name, "."+extension) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return false
 		}
 	}
