@@ -187,10 +187,11 @@ type RichInputState struct {
 	composeSelected    ui.TextInputRange
 	composeStart       int
 	composeEnd         int
-	composeSavedAnchor int
-	composeSavedCaret  int
-	composeHasRange    bool
-	composing          bool
+	composeSavedAnchor  int
+	composeSavedCaret   int
+	composeHasRange     bool
+	composing           bool
+	inBatchContinuation bool
 
 	dragging  bool
 	dragUnit  int
@@ -721,8 +722,10 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 		// apply the composition commit and the replacement as two separate edits so any
 		// untouched formatted spans between them keep their styling intact.
 		if v0 >= baseA+compLen || v1 <= baseA {
+			beforeStep1 := s.text
 			s.clearComposeState()
 			s.replaceRunes(baseA, baseZ, comp)
+			step1Changed := s.text != beforeStep1
 			curLen := utf8.RuneCountInString(s.text)
 			if v0 >= baseA+compLen {
 				delta := curLen - len(virtR)
@@ -732,7 +735,11 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 				v0 = clampRune(v0, curLen)
 				v1 = clampRune(v1, curLen)
 			}
+			if step1Changed {
+				s.inBatchContinuation = true
+			}
 			s.replaceRunes(v0, v1, ins)
+			s.inBatchContinuation = false
 			return
 		}
 		virtToBaseLo := func(v int) int {
@@ -882,6 +889,10 @@ func (s *RichInputState) IndexForPoint(p ui.Point) (int, bool) {
 }
 
 // --- Editing, Navigation & Input Handling ---
+
+func (s *RichInputState) InBatchContinuation() bool {
+	return s.inBatchContinuation
+}
 
 func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	s.replaceRunesWithCaret(a, z, ins, -1)
