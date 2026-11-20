@@ -8,8 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"block/internal/theme"
 )
@@ -26,6 +29,88 @@ func readAllInDir(dir *os.Root, name string) ([]byte, error) {
 	}
 	defer f.Close()
 	return io.ReadAll(f)
+}
+
+func sanitizeStashBase(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+		if b.Len() >= 48 {
+			break
+		}
+	}
+	if b.Len() == 0 {
+		return "note"
+	}
+	return b.String()
+}
+
+// stashReplacedInodeInRoot moves a swapped-out old inode into <root>/.block-sync-replaced/
+// (same filesystem, exact same inode) so any external editor still holding an open fd that
+// flushes in-place writes after RENAME_SWAP remains recoverable on disk.
+func stashReplacedInodeInRoot(root *os.Root, parent, tmpPath, relName string) bool {
+	if root == nil || tmpPath == "" {
+		return false
+	}
+	const stashDirName = ".block-sync-replaced"
+	if err := root.MkdirAll(stashDirName, 0o755); err != nil {
+		return false
+	}
+	srcRel := tmpPath
+	if parent != "" && parent != "." {
+		srcRel = filepath.Join(parent, tmpPath)
+	}
+	nowMs := time.Now().UnixMilli()
+	shortHash := conditionalSHA256Hex([]byte(relName))
+	if len(shortHash) > 8 {
+		shortHash = shortHash[:8]
+	}
+	baseTag := fmt.Sprintf("%015d-%s-%s", nowMs, shortHash, sanitizeStashBase(filepath.Base(relName)))
+	var chosenName string
+	for i := range 50 {
+		candName := baseTag
+		if i > 0 {
+			candName = fmt.Sprintf("%s-%d", baseTag, i)
+		}
+		dstRel := filepath.Join(stashDirName, candName)
+		if _, err := root.Lstat(dstRel); err == nil {
+			continue
+		}
+		if err := root.Rename(srcRel, dstRel); err == nil {
+			chosenName = candName
+			break
+		}
+		return false
+	}
+	if chosenName == "" {
+		return false
+	}
+	// Prune oldest entries beyond 64 by stash-entry timestamp prefix, never pruning the freshly
+	// stashed inode or any entry stashed within the last 60 seconds.
+	if sdir, err := root.Open(stashDirName); err == nil {
+		names, rErr := sdir.Readdirnames(-1)
+		_ = sdir.Close()
+		if rErr == nil && len(names) > 64 {
+			sort.Strings(names)
+			cutoffMs := nowMs - 60000
+			for _, oldName := range names[:len(names)-64] {
+				if oldName == chosenName {
+					continue
+				}
+				if tsStr, _, ok := strings.Cut(oldName, "-"); ok {
+					if tsVal, pErr := strconv.ParseInt(tsStr, 10, 64); pErr == nil && tsVal >= cutoffMs {
+						continue
+					}
+				}
+				_ = root.Remove(filepath.Join(stashDirName, oldName))
+			}
+		}
+	}
+	return true
 }
 
 func preserveExternalConflictInDir(dir *os.Root, tmpPath, baseName, hashHex string) {
@@ -62,6 +147,17 @@ func preserveExternalConflictInDir(dir *os.Root, tmpPath, baseName, hashHex stri
 			return
 		}
 	}
+}
+
+func sameInodeInDir(dir *os.Root, path string, want os.FileInfo) bool {
+	if want == nil || path == "" {
+		return false
+	}
+	cur, err := dir.Lstat(path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(want, cur)
 }
 
 // WriteNoteConditionalAt writes content to name inside root, enforcing create-only
@@ -117,9 +213,15 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		return false, errors.New(theme.Tr("无法创建临时文件", "Cannot allocate temporary file"))
 	}
 
+	var ourTmpInfo os.FileInfo
 	keepTmp := false
 	defer func() {
-		if !keepTmp && tmpPath != "" {
+		if keepTmp || tmpPath == "" {
+			return
+		}
+		// Only remove tmpPath if it still refers to our own original temp inode (never delete
+		// a swapped-out external file or a second concurrent save!).
+		if ourTmpInfo == nil || sameInodeInDir(dir, tmpPath, ourTmpInfo) {
 			_ = dir.Remove(tmpPath)
 		}
 	}()
@@ -132,8 +234,14 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		_ = tmpFile.Close()
 		return false, err
 	}
+	if st, stErr := tmpFile.Stat(); stErr == nil {
+		ourTmpInfo = st
+	}
 	if err := tmpFile.Close(); err != nil {
 		return false, err
+	}
+	if ourTmpInfo == nil {
+		ourTmpInfo, _ = dir.Lstat(tmpPath)
 	}
 
 	contentHash := conditionalSHA256Hex(data)
@@ -199,33 +307,31 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 			return false, swapErr
 		}
 		oldBytes, rErr := readAllInDir(dir, tmpPath)
-		if rErr != nil {
-			// Roll back on unreadable swapped file to avoid losing external content.
-			_, _ = swapFilesInDir(dir, tmpPath, base)
-			return false, rErr
+		oldHash := ""
+		if rErr == nil {
+			oldHash = conditionalSHA256Hex(oldBytes)
 		}
-		oldHash := conditionalSHA256Hex(oldBytes)
-		if oldHash != expected && oldHash != contentHash {
-			// Concurrent external save B was at target; roll back and verify we didn't clobber a second save C.
+		if rErr != nil || (oldHash != expected && oldHash != contentHash) {
+			// Concurrent external save B (or non-regular object like a directory) was at target.
+			// Roll back and verify via inode identity (ourTmpInfo) that a second save C is never deleted.
 			_, rbErr := swapFilesInDir(dir, tmpPath, base)
 			if rbErr == nil {
-				rbBytes, rbReadErr := readAllInDir(dir, tmpPath)
-				if rbReadErr != nil || conditionalSHA256Hex(rbBytes) != contentHash {
-					// Second concurrent save C landed before rollback; restore C to base and preserve the other copy.
+				if !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+					// Second concurrent save C landed at base before rollback; restore C to base
+					// and preserve whatever came back into tmpPath.
 					_, rb2Err := swapFilesInDir(dir, tmpPath, base)
 					if rb2Err == nil {
-						finBytes, finReadErr := readAllInDir(dir, tmpPath)
-						finHash := ""
-						if finReadErr == nil {
-							finHash = conditionalSHA256Hex(finBytes)
-						}
-						if finHash != contentHash {
+						if !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+							finHash := ""
+							if finBytes, finReadErr := readAllInDir(dir, tmpPath); finReadErr == nil {
+								finHash = conditionalSHA256Hex(finBytes)
+							}
 							preserveExternalConflictInDir(dir, tmpPath, base, finHash)
 							keepTmp = true
 						}
 					} else {
 						rbHash := ""
-						if rbReadErr == nil {
+						if rbBytes, rbReadErr := readAllInDir(dir, tmpPath); rbReadErr == nil {
 							rbHash = conditionalSHA256Hex(rbBytes)
 						}
 						preserveExternalConflictInDir(dir, tmpPath, base, rbHash)
@@ -236,8 +342,16 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 				preserveExternalConflictInDir(dir, tmpPath, base, oldHash)
 				keepTmp = true
 			}
+			if rErr != nil {
+				return false, rErr
+			}
 			return false, errConflict
 		}
+		// Preserve the swapped-out old inode in <root>/.block-sync-replaced/ (same volume, exact inode)
+		// so late in-place writes from an editor holding an open fd remain recoverable on disk.
+		// If stashing fails, keep tmpPath on disk rather than unlinking the inode.
+		stashReplacedInodeInRoot(root, parent, tmpPath, name)
+		keepTmp = true
 		if file, oErr := dir.Open("."); oErr == nil {
 			_ = file.Sync()
 			_ = file.Close()
