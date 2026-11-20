@@ -1181,7 +1181,10 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 	if b.Kind == model.BlockQuote && qDepth < 1 {
 		qDepth = 1
 	}
-	if b.Kind == model.BlockCallout {
+	if kind, ok := poopDropKind(b); ok {
+		st := pal.Callout(poopDropCallout(kind))
+		wrap.Padding(s.scale(6), s.scale(12)).Radius(theme.RadiusMD).Background(st.BG).Border(1, st.Border)
+	} else if b.Kind == model.BlockCallout {
 		st := calloutTone(b.Callout, dark)
 		wrap.Padding(s.scale(38), s.scale(16), s.scale(12), s.scale(44)).Radius(theme.RadiusMD).Background(st.BG).Border(1, st.Border)
 	} else if qDepth > 0 {
