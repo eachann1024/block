@@ -1063,7 +1063,23 @@ func installSourceRecord(source string) string {
 // MatchesOfficialSource reports whether an installed plugin was genuinely installed
 // from the catalog's verified repository (not a spoofed local directory copy).
 func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
-	if !entry.Verified || installed.InstallDir == "" {
+	if !entry.Verified {
+		return false
+	}
+	return s.matchesRepoSource(installed, entry)
+}
+
+// MatchesReviewedSource reports whether an installed plugin was genuinely installed
+// from a trusted reviewed author's repository (not a spoofed local directory copy).
+func (s *StoreManager) MatchesReviewedSource(installed InstalledApp, entry StoreAppEntry) bool {
+	if !IsReviewedAuthorRepo(entry.Repo) {
+		return false
+	}
+	return s.matchesRepoSource(installed, entry)
+}
+
+func (s *StoreManager) matchesRepoSource(installed InstalledApp, entry StoreAppEntry) bool {
+	if installed.InstallDir == "" {
 		return false
 	}
 	wantRepo := strings.ToLower(strings.TrimSpace(entry.Repo))
