@@ -902,15 +902,38 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
-			decoEnabled := st.BrandDeco.Mode != model.BrandDecoOff
+			decoIdx := 3
+			if st.BrandDeco.Mode == model.BrandDecoOff {
+				decoIdx = 0
+			} else {
+				switch st.BrandDeco.Motion {
+				case model.BrandDecoMotionStill:
+					decoIdx = 1
+				case model.BrandDecoMotionCalm:
+					decoIdx = 2
+				}
+			}
 			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
-				if internalui.TogglePill(c, "settings-brand-deco-toggle", theme.Tr("侧栏装饰动画", "Sidebar Decoration"), &decoEnabled, false) {
-					mode := model.BrandDecoOff
-					if decoEnabled {
-						mode = model.BrandDecoByTime
-					}
+				if internalui.SettingsSegmented(c, "settings-brand-deco-seg", &decoIdx, []internalui.SegmentOption{
+					{ID: "settings-brand-deco-off", Label: theme.Tr("关闭", "Off")},
+					{ID: "settings-brand-deco-still", Label: theme.Tr("静止", "Still")},
+					{ID: "settings-brand-deco-calm", Label: theme.Tr("舒缓", "Calm")},
+					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
+				}) {
 					m.mutateState(func(s *model.AppState) {
-						s.BrandDeco.Mode = mode
+						switch decoIdx {
+						case 0:
+							s.BrandDeco.Mode = model.BrandDecoOff
+						case 1:
+							s.BrandDeco.Mode = model.BrandDecoByTime
+							s.BrandDeco.Motion = model.BrandDecoMotionStill
+						case 2:
+							s.BrandDeco.Mode = model.BrandDecoByTime
+							s.BrandDeco.Motion = model.BrandDecoMotionCalm
+						default:
+							s.BrandDeco.Mode = model.BrandDecoByTime
+							s.BrandDeco.Motion = model.BrandDecoMotionRich
+						}
 					})
 				}
 			})
