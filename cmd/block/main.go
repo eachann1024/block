@@ -466,6 +466,17 @@ func main() {
 	})
 
 	mygo.App.OnOpenURL(handleDeepLink)
+	var launchNotification string
+	pluginSystemAttached := false
+	if !smokeFlag && os.Getenv("MYGO_AUTOMATION") == "" {
+		mygo.App.OnNotificationClick(func(id string) {
+			if !pluginSystemAttached {
+				launchNotification = id
+				return
+			}
+			ws.HandlePluginNotificationClick(id)
+		})
+	}
 
 	mygo.App.OnWindowAllClosed(func() {
 		if runtime.GOOS != "darwin" || isIsolatedRun {
@@ -517,6 +528,11 @@ func main() {
 		openMainWindow()
 		if !smokeFlag && os.Getenv("MYGO_AUTOMATION") == "" {
 			ws.AttachPluginSystem(func() { revealMainWindow() })
+			pluginSystemAttached = true
+			if launchNotification != "" {
+				ws.HandlePluginNotificationClick(launchNotification)
+				launchNotification = ""
+			}
 		}
 		if launchStoreLink != "" {
 			handleDeepLink(launchStoreLink)

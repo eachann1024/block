@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -21,6 +25,15 @@ import (
 )
 
 var _ plugins.SystemHost = (*pluginHostUI)(nil)
+
+var pluginNotificationID = regexp.MustCompile(`^block-plugin-click-[A-Z2-7]{26}$`)
+
+type pluginNotificationTarget struct {
+	PluginID    string
+	InstalledAt time.Time
+	Root        string
+	Relative    string
+}
 
 func (w *Workspace) AttachPluginSystem(reveal func()) {
 	sup := w.Plugins()
@@ -162,36 +175,100 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	if !allowed() {
 		return plugins.ErrSystemCanceled
 	}
-	note := mygo.NewNotification(mygo.NotificationOptions{
-		ID: "block-plugin-" + pluginID, Title: title, Body: encode(body),
-		Silent: tone == "info" || tone == "success",
-	})
-	note.OnClick(func() {
-		installed, ok := h.w.Plugins().GetInstalled(pluginID)
-		if !ok || !installed.Enabled || !installed.Manifest.HasPermission(plugins.PermSystemNotify) {
-			return
+	installed, ok := h.w.Plugins().GetInstalled(pluginID)
+	if !ok || !allowed() {
+		return plugins.ErrSystemCanceled
+	}
+	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
+	id := "block-plugin-" + pluginID
+	var record string
+	if runtime.GOOS == "darwin" {
+		id = "block-plugin-click-" + rand.Text()
+		var err error
+		record, err = persistPluginNotificationTarget(id, target)
+		if err != nil {
+			return err
 		}
-		if h.systemReveal != nil {
-			h.systemReveal()
-		}
-		if root != "" && relPath != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
-			path, err := plugins.SystemNotificationNotePath(root, relPath, h.w.Notebooks())
-			if err == nil && h.w.OpenExternalFile(path) == nil {
-				return
-			}
-		}
-		if installed.Manifest.HasSurface(plugins.SurfaceSettingsPage) {
-			h.w.OpenSettings("plugin:" + pluginID)
-		}
-	})
+	}
+	note := mygo.NewNotification(mygo.NotificationOptions{ID: id, Title: title, Body: encode(body), Silent: tone == "info" || tone == "success"})
+	if record == "" {
+		note.OnClick(func() { h.openNotificationTarget(target) })
+	}
 	err := note.ShowContext(ctx)
 	if err == nil {
 		err = systemintegration.CheckNotificationPermission(ctx)
+	}
+	if err != nil && record != "" {
+		_ = os.Remove(record)
 	}
 	if errors.Is(err, mygo.ErrNotificationsDenied) {
 		return plugins.ErrSystemUnavailable
 	}
 	return err
+}
+
+func persistPluginNotificationTarget(id string, target pluginNotificationTarget) (string, error) {
+	dir := filepath.Join(files.AppDataDir(), "plugin-notifications")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	entries, _ := os.ReadDir(dir)
+	cutoff := time.Now().AddDate(0, 0, -7)
+	for _, entry := range entries {
+		if pluginNotificationID.MatchString(entry.Name()) {
+			if info, err := entry.Info(); err == nil && info.ModTime().Before(cutoff) {
+				_ = os.Remove(filepath.Join(dir, entry.Name()))
+			}
+		}
+	}
+	path := filepath.Join(dir, id)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", err
+	}
+	if err := errors.Join(json.NewEncoder(file).Encode(target), file.Close()); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func (w *Workspace) HandlePluginNotificationClick(id string) {
+	if !pluginNotificationID.MatchString(id) {
+		return
+	}
+	path := filepath.Join(files.AppDataDir(), "plugin-notifications", id)
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	var target pluginNotificationTarget
+	err = json.NewDecoder(io.LimitReader(file, 32*1024)).Decode(&target)
+	info, statErr := file.Stat()
+	_ = file.Close()
+	_ = os.Remove(path)
+	if err == nil && statErr == nil && info.ModTime().After(time.Now().AddDate(0, 0, -7)) {
+		w.pluginUI.openNotificationTarget(target)
+	}
+}
+
+func (h *pluginHostUI) openNotificationTarget(target pluginNotificationTarget) {
+	installed, ok := h.w.Plugins().GetInstalled(target.PluginID)
+	if !ok || !installed.Enabled || !installed.InstalledAt.Equal(target.InstalledAt) || !installed.Manifest.HasPermission(plugins.PermSystemNotify) {
+		return
+	}
+	if h.systemReveal != nil {
+		h.systemReveal()
+	}
+	if target.Root != "" && target.Relative != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
+		path, err := plugins.SystemNotificationNotePath(target.Root, target.Relative, h.w.Notebooks())
+		if err == nil && h.w.OpenExternalFile(path) == nil {
+			return
+		}
+	}
+	if installed.Manifest.HasSurface(plugins.SurfaceSettingsPage) {
+		h.w.OpenSettings("plugin:" + target.PluginID)
+	}
 }
 
 func (h *pluginHostUI) desktopAction(allowed func() bool, run func() error) error {
@@ -223,7 +300,7 @@ func (h *pluginHostUI) Reveal(path string, allowed func() bool) error {
 	})
 }
 
-func (h *pluginHostUI) Pick(save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error) {
+func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error) {
 	var filters []mygo.FileFilter
 	if len(extensions) != 0 {
 		filters = []mygo.FileFilter{{Name: theme.Tr("文件类型", "File types"), Extensions: extensions}}
@@ -244,17 +321,20 @@ func (h *pluginHostUI) Pick(save, directory, multiple bool, title, defaultPath s
 	}
 	if save {
 		var path string
-		path, err = files.SaveDialogGuarded(win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true}, checkBeforeShow)
+		path, err = files.SaveDialogGuarded(ctx, win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true}, checkBeforeShow)
 		if path != "" {
 			paths = []string{path}
 		}
 	} else {
-		paths, err = files.OpenDialogGuarded(win, mygo.OpenDialogOptions{
+		paths, err = files.OpenDialogGuarded(ctx, win, mygo.OpenDialogOptions{
 			Title: title, DefaultPath: defaultPath, Filters: filters, Directory: directory, Multiple: multiple, CreateDirectories: directory,
 		}, checkBeforeShow)
 	}
 	if !allowed() {
 		return nil, plugins.ErrSystemCanceled
+	}
+	if errors.Is(err, files.ErrFileDialogBusy) {
+		return nil, plugins.ErrSystemBusy
 	}
 	return paths, err
 }
