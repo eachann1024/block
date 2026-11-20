@@ -611,10 +611,12 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				wasBlank := prevBlank
 				prevBlank = false
-				// After a blank, or at a fence, a line left of a nested item's content
-				// belongs to an outer item (a fence under "1. 检查环境" past its sublist),
-				// and one left of every item's ends the list.
-				if len(cols) > 0 && (wasBlank || diffFenceOpen(t) != "") && !diffListItemRE.MatchString(t) {
+				// A line left of a nested item's content that does not continue a paragraph
+				// (after a blank or a heading, or a fence or quote: "   > 回滚步骤" past
+				// "   - 检查环境") belongs to an outer item, and one left of every item's
+				// ends the list.
+				if len(cols) > 0 && (wasBlank || !para || diffFenceOpen(t) != "" || strings.HasPrefix(t, ">")) &&
+					!diffListItemRE.MatchString(t) {
 					for len(cols) > 0 && ind < cols[len(cols)-1] {
 						cols = cols[:len(cols)-1]
 					}
