@@ -185,6 +185,7 @@ func DownloadAndStage(
 	inPlace bool,
 	mode SourceMode,
 	onProgress DownloadProgressCallback,
+	commitGuard ...func(commit func() error) error,
 ) (*VerifiedRecord, error) {
 	expectedSHA := asset.EffectiveSHA256()
 	version, _, _, validVersion := ParseReleaseTag(entry.Tag)
@@ -247,17 +248,6 @@ func DownloadAndStage(
 		return nil, lastErr
 	}
 
-	if ctx.Err() != nil {
-		_ = os.Remove(partPath)
-		logInfo("download.cancelled", "version", entry.Version, "err", ctx.Err())
-		return nil, ctx.Err()
-	}
-	if err := os.Rename(partPath, finalPath); err != nil {
-		_ = os.Remove(partPath)
-		logError("download.rename_failed", "from", partPath, "to", finalPath, "err", err)
-		return nil, err
-	}
-
 	rec := &VerifiedRecord{
 		Version:     entry.Version,
 		Tag:         entry.Tag,
@@ -271,19 +261,36 @@ func DownloadAndStage(
 		Channel:     usedChannel,
 		InPlace:     inPlace,
 	}
-	if inPlace {
+	doCommit := func() error {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			_ = os.Remove(partPath)
+			logInfo("download.cancelled", "version", entry.Version, "err", ctx.Err())
+			return ctx.Err()
 		}
-		raw, err := json.MarshalIndent(rec, "", "  ")
-		if err != nil {
+		if err := os.Rename(partPath, finalPath); err != nil {
+			_ = os.Remove(partPath)
+			logError("download.rename_failed", "from", partPath, "to", finalPath, "err", err)
+			return err
+		}
+		if inPlace {
+			raw, err := json.MarshalIndent(rec, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := writeFileAtomic(readyRecordPath(dataDir), raw, 0o600); err != nil {
+				logError("ready.persist_failed", "version", entry.Version, "err", err)
+				return err
+			}
+			logInfo("ready.persisted", "version", entry.Version, "record", readyRecordPath(dataDir))
+		}
+		return nil
+	}
+	if len(commitGuard) > 0 && commitGuard[0] != nil {
+		if err := commitGuard[0](doCommit); err != nil {
 			return nil, err
 		}
-		if err := writeFileAtomic(readyRecordPath(dataDir), raw, 0o600); err != nil {
-			logError("ready.persist_failed", "version", entry.Version, "err", err)
-			return nil, err
-		}
-		logInfo("ready.persisted", "version", entry.Version, "record", readyRecordPath(dataDir))
+	} else if err := doCommit(); err != nil {
+		return nil, err
 	}
 	return rec, nil
 }
@@ -771,68 +778,82 @@ func matchOfficialReleaseAsset(release ReleaseEntry, rec *VerifiedRecord, fileSi
 	return nil, false
 }
 
+var errStagedIntegrity = errors.New("staged update integrity failed")
+
 // A ready record is a hint about a local download. GitHub remains authoritative.
 func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *VerifiedRecord) error {
 	version, _, _, valid := ParseReleaseTag(rec.Version)
 	if !valid || version != rec.Version || CompareVersion(rec.Version, runningVersion) <= 0 {
-		return errors.New("staged update version is invalid")
+		return fmt.Errorf("%w: staged update version is invalid", errStagedIntegrity)
 	}
 	asset := ReleaseAsset{Name: rec.AssetName, DownloadURL: rec.DownloadURL, SHA256: rec.SHA256}
 	if !rec.InPlace || !IsTrustedReleaseAsset(asset, rec.Tag) {
-		return errors.New("staged update metadata is invalid")
+		return fmt.Errorf("%w: staged update metadata is invalid", errStagedIntegrity)
 	}
 	expected := filepath.Join(updatesRoot(dataDir), rec.Version, rec.AssetName)
 	if filepath.Clean(rec.ArchivePath) != expected {
-		return errors.New("staged update path does not match the platform asset")
+		return fmt.Errorf("%w: staged update path does not match the platform asset", errStagedIntegrity)
 	}
 	root, err := filepath.EvalSymlinks(updatesRoot(dataDir))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errStagedIntegrity, err)
 	}
 	resolved, err := filepath.EvalSymlinks(expected)
 	if err != nil || resolved != filepath.Join(root, rec.Version, rec.AssetName) {
-		return errors.New("staged update must stay in its cache directory")
+		return fmt.Errorf("%w: staged update must stay in its cache directory", errStagedIntegrity)
 	}
 	info, err := os.Stat(expected)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errStagedIntegrity, err)
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxUpdateBytes {
-		return errors.New("staged update file type or size is invalid")
+		return fmt.Errorf("%w: staged update file type or size is invalid", errStagedIntegrity)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 	defer cancel()
-	releases, _, _, _, err := FetchReleases(ctx, SourceGitHub)
-	if err != nil {
-		return fmt.Errorf("cannot verify the staged update with GitHub: %w", err)
-	}
-	checkedWithAssets := false
-	for _, release := range releases {
-		if release.Version == rec.Version && len(release.Assets) > 0 {
-			checkedWithAssets = true
+	releases, _, _, _, fetchErr := FetchReleases(ctx, SourceGitHub)
+	checkedPlatformAsset := false
+	if fetchErr == nil {
+		for _, release := range releases {
+			if release.Version == rec.Version && release.Tag == rec.Tag {
+				if platformAsset, _, _ := PickPlatformAsset(release.Assets, runtime.GOOS, runtime.GOARCH); platformAsset != nil {
+					checkedPlatformAsset = true
+				}
+			}
+			if official, ok := matchOfficialReleaseAsset(release, rec, info.Size()); ok {
+				if shaErr := VerifyFileSHA256(expected, official.EffectiveSHA256()); shaErr != nil {
+					return fmt.Errorf("%w: %v", errStagedIntegrity, shaErr)
+				}
+				return nil
+			}
 		}
-		if official, ok := matchOfficialReleaseAsset(release, rec, info.Size()); ok {
-			return VerifyFileSHA256(expected, official.EffectiveSHA256())
-		}
 	}
-	if !checkedWithAssets {
-		// Under frequent releases, updates/feed.json only retains assets for the newest release.
-		// Verify older still-valid staged downloads directly against GitHub's tag release API.
+	if !checkedPlatformAsset {
+		// Under frequent releases (or feed outage), verify directly against GitHub's exact tag release API.
 		lookupTags := []string{rec.Tag}
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(rec.Tag)), "v") {
 			lookupTags = append(lookupTags, "v"+rec.Version)
 		}
+		var lastTagErr error
 		for _, tag := range lookupTags {
 			rel, tagErr := FetchReleaseByTag(ctx, tag)
 			if tagErr != nil || rel == nil {
+				lastTagErr = tagErr
 				continue
 			}
 			if official, ok := matchOfficialReleaseAsset(*rel, rec, info.Size()); ok {
-				return VerifyFileSHA256(expected, official.EffectiveSHA256())
+				if shaErr := VerifyFileSHA256(expected, official.EffectiveSHA256()); shaErr != nil {
+					return fmt.Errorf("%w: %v", errStagedIntegrity, shaErr)
+				}
+				return nil
 			}
+			return fmt.Errorf("%w: staged update does not match the official platform release", errStagedIntegrity)
+		}
+		if fetchErr != nil && lastTagErr != nil {
+			return fmt.Errorf("cannot verify the staged update with GitHub: %w", fetchErr)
 		}
 	}
-	return errors.New("staged update does not match the official platform release")
+	return fmt.Errorf("%w: staged update does not match the official platform release", errStagedIntegrity)
 }
 
 const macSwapInstallerScript = `#!/bin/sh
@@ -938,10 +959,43 @@ while kill -0 "$parent_pid" 2>/dev/null; do
   fi
   sleep 0.25
 done
-mv "$next_bin" "$target"
-chmod 755 "$target"
+
+target_dir="$(dirname "$target")"
+target_base="$(basename "$target")"
+staged="$target_dir/.${target_base}.next.$$"
+backup="$target_dir/.${target_base}.bak.$$"
+
+cleanup_staged() { rm -f "$staged"; }
+rollback() {
+  log "rolling back AppImage to $backup"
+  rm -f "$staged"
+  if [ -f "$backup" ]; then
+    mv -f "$backup" "$target" || true
+  fi
+}
+
+cp "$next_bin" "$staged"
+chmod 755 "$staged"
+if [ -f "$target" ]; then
+  cp -p "$target" "$backup"
+fi
+if ! mv -f "$staged" "$target"; then
+  log "ERROR atomic swap failed"
+  rollback
+  exit 1
+fi
 log "swapped AppImage at $target; relaunching"
-exec "$target"
+"$target" >/dev/null 2>&1 &
+new_pid=$!
+sleep 2
+if ! kill -0 "$new_pid" 2>/dev/null; then
+  log "ERROR updated AppImage exited immediately; rolling back"
+  rollback
+  "$target" >/dev/null 2>&1 &
+  exit 1
+fi
+rm -f "$backup" "$next_bin"
+log "updated AppImage running (pid=$new_pid)"
 `
 
 // InstallReady verifies the staged package, flushes workspace data via flushBeforeQuit,
@@ -1107,15 +1161,13 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 				return fmt.Errorf("cannot save changes before updating: %w", err)
 			}
 		}
-		return quitApp(func() error {
-			if err := launchWindowsElevatedInstaller(rec.ArchivePath); err != nil {
-				logError("install.windows_launch_failed", "err", err)
-				return err
-			}
-			logInfo("install.windows_installer_launched", "path", rec.ArchivePath)
-			_ = os.Remove(readyRecordPath(dataDir))
-			return nil
-		})
+		// Trigger UAC elevation BEFORE quitting so canceling UAC keeps Block open and ready.
+		if err := launchWindowsElevatedInstaller(rec.ArchivePath); err != nil {
+			logError("install.windows_launch_failed", "err", err)
+			return err
+		}
+		logInfo("install.windows_installer_launched", "path", rec.ArchivePath)
+		return quitApp(func() error { return nil })
 	}
 
 	return errors.New("unsupported platform for automatic install")
@@ -1129,7 +1181,6 @@ func startInstallerOnQuit(dataDir string, cmd *exec.Cmd, quitApp func(func() err
 		}
 		logInfo("install.helper_spawned", "helper_pid", cmd.Process.Pid)
 		_ = cmd.Process.Release()
-		_ = os.Remove(readyRecordPath(dataDir))
 		return nil
 	})
 }
