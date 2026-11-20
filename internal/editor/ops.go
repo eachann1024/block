@@ -674,10 +674,14 @@ func (s *Session) isTablePasteTarget() bool {
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return false
 	}
-	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
-		return true
+	if s.hasMultiBlockSelection() {
+		return false
 	}
-	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() {
+	if s.hasNonEmptySelection() {
+		a, b := s.orderedSelection()
+		if a.Block == b.Block && a.Block >= 0 && a.Block < len(s.doc.Blocks) {
+			return s.doc.Blocks[a.Block].Kind == model.BlockTable && s.doc.Blocks[a.Block].Table != nil
+		}
 		return false
 	}
 	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
@@ -706,7 +710,7 @@ func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
 	if norm == "" {
 		return
 	}
-	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+	if s.hasMultiCellTableSelection() || (s.hasWholeAtomicSelection() && s.isTablePasteTarget()) {
 		a, b := s.orderedSelection()
 		idx := a.Block
 		if idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].Table == nil {
@@ -894,31 +898,31 @@ func (s *Session) PastePlainText(raw string) {
 	if clean == "" {
 		return
 	}
-	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
-		if strings.ContainsAny(clean, "\t\n") {
-			a, b := s.orderedSelection()
-			idx := a.Block
-			if idx >= 0 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Table != nil {
-				blk := &s.doc.Blocks[idx]
-				startR, startC := 0, 0
-				if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
-					startR, startC = row, col
-				}
-				if !s.canFitTablePaste(blk.Table, startR, startC, clean, true, false) {
-					return
-				}
-				s.pushUndo()
-				clearTableRange(blk.Table, a.Offset, b.Offset, "")
-				s.focusedBlock = idx
-				s.tableActiveBlock = blk.ID
-				s.tableActiveRow = startR
-				s.tableActiveCol = startC
-				s.selAnchor = Position{Block: idx, Offset: a.Offset}
-				s.selHead = s.selAnchor
-				s.pasteIntoTableBlockOpts(idx, clean, true, false)
+	if (s.hasMultiCellTableSelection() || (s.hasWholeAtomicSelection() && s.isTablePasteTarget())) && strings.ContainsAny(clean, "\t\n") {
+		a, b := s.orderedSelection()
+		idx := a.Block
+		if idx >= 0 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Table != nil {
+			blk := &s.doc.Blocks[idx]
+			startR, startC := 0, 0
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+				startR, startC = row, col
 			}
-			return
+			if !s.canFitTablePaste(blk.Table, startR, startC, clean, true, false) {
+				return
+			}
+			s.pushUndo()
+			clearTableRange(blk.Table, a.Offset, b.Offset, "")
+			s.focusedBlock = idx
+			s.tableActiveBlock = blk.ID
+			s.tableActiveRow = startR
+			s.tableActiveCol = startC
+			s.selAnchor = Position{Block: idx, Offset: a.Offset}
+			s.selHead = s.selAnchor
+			s.pasteIntoTableBlockOpts(idx, clean, true, false)
 		}
+		return
+	}
+	if s.hasMultiCellTableSelection() || (s.hasWholeAtomicSelection() && s.isTablePasteTarget()) {
 		s.ReplaceSelectionWithText(clean)
 		return
 	}
@@ -1727,14 +1731,44 @@ func (s *Session) replaceCurrentSelectionInBlock(idx int, insert string) {
 
 // --- Span & Mark Algebra (Rune Offsets) ---
 
+func countUnescapedPipeCols(line string) int {
+	s := strings.TrimSpace(line)
+	if s == "" || s == "|" {
+		return 0
+	}
+	if strings.HasPrefix(s, "|") {
+		s = s[1:]
+	}
+	if strings.HasSuffix(s, "|") {
+		slashes := 0
+		for i := len(s) - 2; i >= 0 && s[i] == '\\'; i-- {
+			slashes++
+		}
+		if slashes%2 == 0 {
+			s = s[:len(s)-1]
+		}
+	}
+	cols := 1
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b == '|' && !escaped {
+			cols++
+		}
+		escaped = b == '\\' && !escaped
+	}
+	return cols
+}
+
 func (s *Session) canFitTablePaste(tbl *model.TableData, startR, startC int, norm string, plain, keepTrailingEmptyRow bool) bool {
 	if tbl == nil || len(tbl.Rows) == 0 {
 		return false
 	}
 	if !plain && strings.HasPrefix(strings.TrimLeft(norm, " \t"), "|") {
-		// Quick pipe-table dimension check before full parse so 50,001-column pipe tables are rejected cleanly.
+		// Quick unescaped pipe-column check before full parse so 50,001-column pipe tables are
+		// rejected cleanly while valid 2-column tables containing 50,001 escaped `\|` are accepted.
 		firstLine, _, _ := strings.Cut(norm, "\n")
-		pipeCols := strings.Count(strings.Trim(strings.TrimSpace(firstLine), "|"), "|") + 1
+		pipeCols := countUnescapedPipeCols(firstLine)
 		if pipeCols > 1 {
 			neededCols := max(len(tbl.Rows[0]), startC+pipeCols)
 			if neededCols <= 0 || len(tbl.Rows) > maxPastedTableCells/neededCols {
@@ -2255,6 +2289,8 @@ func (s *Session) insertDetachedTextIntoFocusedBlock(delStart, delEnd int, ins s
 	if (delEnd <= delStart && ins == "") || s.readOnly || s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
 		return
 	}
+	s.suppressUndo = true
+	defer func() { s.suppressUndo = false }()
 	idx := s.focusedBlock
 	b := &s.doc.Blocks[idx]
 	switch b.Kind {
@@ -2357,7 +2393,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	if rDelta < 0 {
 		rDelta = -rDelta
 	}
-	batchCont := false
+	batchCont := s.suppressUndo
 	if st, ok := s.richInputs[b.ID]; ok && st != nil && st.InBatchContinuation() {
 		batchCont = true
 	}

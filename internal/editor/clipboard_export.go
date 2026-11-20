@@ -247,7 +247,7 @@ func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
 	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(srcRows) == 0 {
 		return false
 	}
-	multiCell := s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection()
+	multiCell := s.hasMultiCellTableSelection() || (s.hasWholeAtomicSelection() && s.isTablePasteTarget())
 	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
 	var a, b Position
 	if multiCell {
