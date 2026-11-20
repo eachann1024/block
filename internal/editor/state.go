@@ -266,10 +266,14 @@ type Session struct {
 	imageLoading      map[string]bool
 	imageEpoch        uint64
 	imageFailed       map[string]bool
-	videoPlayers      map[string]*ui.VideoPlayer
-	videoBytes        map[string]int64
-	previewMedia      func(src string, video, load bool) PreviewAsset
-	videoFailed       map[string]bool
+	videoPlayers           map[string]*ui.VideoPlayer
+	videoCtrlStates        map[string]*appUi.VideoControlState
+	activeVideoSrc         string
+	videoBytes             map[string]int64
+	previewMedia           func(src string, video, load bool) PreviewAsset
+	onPreviewMediaOpen     func(src string, isVideo bool)
+	isPreviewMediaExpanded func(src string) (thisExpanded bool, anyLightboxOpen bool)
+	videoFailed            map[string]bool
 	imageDocRects     map[model.BlockID]ui.Rect
 	imgResizeBlock    model.BlockID
 	imgResizeStartPct float32
