@@ -166,6 +166,9 @@ const (
 	Plug            Icon = "plug"
 	Package         Icon = "package"
 	Zap             Icon = "zap"
+	Video           Icon = "video"
+	Paperclip       Icon = "paperclip"
+	ShieldCheck     Icon = "shield-check"
 )
 
 type MascotState string
