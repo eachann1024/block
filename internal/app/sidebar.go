@@ -640,7 +640,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			sFG = pal.Text
 			sIcon = pal.MonoIconColors(pal.Text)
 		}
-		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, p.SearchOpen)
+		blockui.AnimateSurfaceColors(searchBtn, sBG, sBD, true)
 		blockui.TactileCard(searchBtn, sHov, sPress, p.SearchOpen, false)
 		blockui.RichTooltip(c, searchBtn, blockui.TooltipSpec{
 			Placement: blockui.TooltipBelow,
