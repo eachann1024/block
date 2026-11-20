@@ -15,6 +15,14 @@ on:
       - 'AGENTS.md'
       - 'DESIGN.md'
       - '.github/pull_request_template.md'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/prune-release-assets.yml'
+      - 'scripts/lint_design.py'
+      - 'scripts/gen_ai_map.py'
+      - 'scripts/dump_ai_state.py'
+      - 'scripts/fast-check.sh'
+      - 'scripts/build_readme_svgs.py'
+      - '**/*_test.go'
   workflow_dispatch:
     inputs:
       publish:
@@ -44,7 +52,8 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')))
+        (github.event_name == 'push' &&
+          !(github.event.commits[1] == null && startsWith(github.event.head_commit.message, 'chore(release):'))))
     runs-on: ubuntu-24.04
     environment: release-notes
     timeout-minutes: 15
@@ -52,11 +61,11 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
-      publish: ${{ steps.check.outputs.publish }}
-      version: ${{ steps.check.outputs.version }}
-      release_tag: ${{ steps.check.outputs.release_tag }}
-      auto_bump: ${{ steps.check.outputs.auto_bump }}
+      should_build: ${{ steps.check.outputs.should_build || steps.preflight.outputs.should_build || 'no' }}
+      publish: ${{ steps.check.outputs.publish || steps.preflight.outputs.publish || 'no' }}
+      version: ${{ steps.check.outputs.version || steps.preflight.outputs.version }}
+      release_tag: ${{ steps.check.outputs.release_tag || steps.preflight.outputs.release_tag }}
+      auto_bump: ${{ steps.check.outputs.auto_bump || 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,10 +74,20 @@ jobs:
           persist-credentials: false
       - name: Setup Node 22
         run: bash scripts/ci/setup-node.sh 22
-      # 只在 main 的推送或手动发布里短时加入 tailnet。身份只存在 Environment release-notes。
+      - name: Preflight release check
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+          FORCE: ${{ inputs.force == true }}
+          BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
+        run: node scripts/release/select-release.mjs --preflight
+      # 只在 main 确认需要发版时短时加入 tailnet。身份只存在 Environment release-notes。
       # 目标只有 100.115.90.80:3425。不要 API key，不要公网地址，不要 3430。
       - name: Detect tailnet identity
         id: tailnet
+        if: steps.preflight.outputs.needs_release == 'yes'
         env:
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
@@ -81,7 +100,7 @@ jobs:
           fi
       - name: Join tailnet
         id: tailscale
-        if: steps.tailnet.outputs.ready == 'yes'
+        if: steps.preflight.outputs.needs_release == 'yes' && steps.tailnet.outputs.ready == 'yes'
         continue-on-error: true
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
@@ -95,7 +114,7 @@ jobs:
           args: --shields-up
       - name: Check Magpie TCP 3425
         id: magpie
-        if: steps.tailscale.outcome == 'success'
+        if: steps.preflight.outputs.needs_release == 'yes' && steps.tailscale.outcome == 'success'
         run: |
           if timeout 10 bash -c 'echo >/dev/tcp/100.115.90.80/3425'; then
             echo "reachable=yes" >> "$GITHUB_OUTPUT"
@@ -105,11 +124,14 @@ jobs:
           fi
       - name: Check commits and generate release plan
         id: check
+        if: steps.preflight.outputs.needs_release == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
+          BLOCK_USE_PREFLIGHT: "1"
+          BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
           MAGPIE_BASE_URL: http://100.115.90.80:3425/v1
           MAGPIE_REACHABLE: ${{ steps.magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
           CHANGELOG_MODEL: grok-4.7
