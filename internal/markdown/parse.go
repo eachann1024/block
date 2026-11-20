@@ -460,18 +460,26 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 			}
 			if closeIdx := btScan.findClosingBackticks(i+run, run); closeIdx >= 0 {
 				i = closeIdx + run - 1
-				open = -1
 			} else {
 				i += run - 1
 			}
 		case '[':
 			open = i + 1
 		case ']':
-			if open >= 0 && (i+1 == len(lowerSrc) || (lowerSrc[i+1] != ':' && lowerSrc[i+1] != '(')) {
-				raw := lowerSrc[open:i]
-				if label := normRefLabel(raw); label != "" {
-					if _, ok := defs[label]; ok {
-						used[label] = true
+			if open >= 0 {
+				if i+1 < len(lowerSrc) && lowerSrc[i+1] == '(' {
+					if _, consumed, ok := parseLinkDestinationAt(btScan, i+1); ok {
+						i += consumed
+						open = -1
+						continue
+					}
+				}
+				if i+1 == len(lowerSrc) || lowerSrc[i+1] != ':' {
+					raw := lowerSrc[open:i]
+					if label := normRefLabel(raw); label != "" {
+						if _, ok := defs[label]; ok {
+							used[label] = true
+						}
 					}
 				}
 			}
