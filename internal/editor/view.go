@@ -1402,10 +1402,17 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			},
 			OnSelect: func(anchor, caret int) {
 				s.caretHidden = false
+				prevOff := -1
+				if s.selAnchor.Block == idx && s.selHead.Block == idx && s.selAnchor.Offset == s.selHead.Offset {
+					prevOff = s.selHead.Offset
+				}
 				s.clearAutoConvertState()
 				if !s.hasMultiBlockSelection() {
 					s.selAnchor = Position{Block: idx, Offset: anchor}
 					s.selHead = Position{Block: idx, Offset: caret}
+					if prevOff >= 0 && s.doc != nil && idx >= 0 && idx < len(s.doc.Blocks) {
+						s.recordRightStyleBias(b.ID, false, tableCellKey{}, s.doc.Blocks[idx].Spans, prevOff, anchor, caret)
+					}
 				}
 			},
 			OnCopy: func(svc ui.Services) bool {
@@ -2090,8 +2097,13 @@ func (s *Session) renderCodeBlock(c *ui.Context, idx int, b *model.Block, isFocu
 						if s.hasMultiBlockSelection() {
 							return s.DeleteSelection()
 						}
-						if k.Key == ui.KeyBackspace && k.Text() == "" {
-							return s.handleBackspaceOnBlock(idx, "", 0)
+						if k.Key == ui.KeyBackspace {
+							if s.tryUndoCodeAutoConvertBackspace(idx, k.Text()) {
+								return true
+							}
+							if k.Text() == "" {
+								return s.handleBackspaceOnBlock(idx, "", 0)
+							}
 						}
 					}
 					return false
@@ -2675,11 +2687,18 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				},
 				OnSelect: func(anchor, caret int) {
 					s.caretHidden = false
+					curBase := tableCellStartOffset(tbl, rIdx, cIdx)
+					prevOff := -1
+					if s.selAnchor.Block == blockIdx && s.selHead.Block == blockIdx && s.selAnchor.Offset == s.selHead.Offset {
+						prevOff = s.selHead.Offset - curBase
+					}
 					s.clearAutoConvertState()
 					if !s.hasMultiBlockSelection() {
-						curBase := tableCellStartOffset(tbl, rIdx, cIdx)
 						s.selAnchor = Position{Block: blockIdx, Offset: curBase + anchor}
 						s.selHead = Position{Block: blockIdx, Offset: curBase + caret}
+						if prevOff >= 0 {
+							s.recordRightStyleBias(blockID, true, tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}, cell.Spans, prevOff, anchor, caret)
+						}
 					}
 				},
 				OnCopy: func(svc ui.Services) bool {

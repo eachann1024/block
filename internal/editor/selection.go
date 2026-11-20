@@ -857,6 +857,9 @@ func (s *Session) handleMultiSelectionInput(svc ui.Services, ev ui.InputEvent) b
 			}
 			return true
 		case !s.readOnly && ev.Mods == 0 && (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete):
+			if ev.Key == ui.KeyBackspace && s.tryUndoAtomicAutoConvertBackspace() {
+				return true
+			}
 			return s.DeleteSelection()
 		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
 			return false

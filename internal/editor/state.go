@@ -114,6 +114,7 @@ type Session struct {
 	caretLineHint        int
 	lastAutoConvert      *autoConvertRecord
 	nextInsertGuard      *nextInsertStyleGuard
+	rightStyleBias       *rightStyleBias
 	postEditCodeEdge     appUi.RichCodeEdge
 	// navCarryX is the sticky window column kept by consecutive Up/Down across blocks.
 	navCarryX float32
@@ -233,6 +234,9 @@ type Session struct {
 	editingFocusPending   bool
 	editingHandle         ui.Handle
 	nextAnnotSeq          int
+	annotFlashID          string
+	annotFlashAt          time.Time
+	annotFlashAlpha       float32
 
 	// BatchPlan diff review
 	activePlan     *model.BatchPlan
@@ -463,6 +467,9 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.hoveredAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
+	s.annotFlashID = ""
+	s.annotFlashAt = time.Time{}
+	s.annotFlashAlpha = 0
 	s.reactionPickerAnnotID = ""
 	s.caretHidden = false
 	s.toolbarMoreIndex = 0
@@ -1007,6 +1014,9 @@ func (s *Session) closeTransientOverlays() {
 	s.activeAnnotID = ""
 	s.editingAnnotID = ""
 	s.editingFocusPending = false
+	s.annotFlashID = ""
+	s.annotFlashAt = time.Time{}
+	s.annotFlashAlpha = 0
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
 	s.outlineHovered = false
