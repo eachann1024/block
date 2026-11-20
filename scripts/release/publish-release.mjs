@@ -260,17 +260,28 @@ export async function syncPublishedRelease(tag) {
   assert.ok(version, `Invalid release tag for sync-only: ${tag}`);
   const publishedRelease = fetchGithubReleaseByTag(tag);
   assert.ok(publishedRelease && !publishedRelease.draft, `Published release ${tag} not found`);
+  const fallbackHashes = {};
+  for (const asset of publishedRelease.assets ?? []) {
+    if (!asset?.name || !RELEASE_ASSETS.includes(asset.name)) continue;
+    if (asset.digest && /^sha256:[0-9a-f]{64}$/i.test(asset.digest.trim())) continue;
+    const localPath = join(RELEASE_DIR, asset.name);
+    if (existsSync(localPath) && statSync(localPath).size === asset.size) {
+      fallbackHashes[asset.name] = await sha256File(localPath);
+    } else if (asset.id) {
+      fallbackHashes[asset.name] = await sha256RemoteAsset(asset.id);
+    }
+  }
   const sourceCommit = resolveRemoteTagCommit(tag) || "";
   writebackVersionCommit(version, tag, {
     sourceCommit,
-    buildFeed: () => syncFeedFromGithub({ tagRelease: publishedRelease }),
+    buildFeed: () => syncFeedFromGithub({ tagRelease: publishedRelease, fallbackHashes }),
   });
   const line = `已补齐 ${tag} 的版本与 updates/feed.json 回写。`;
   console.log(line);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
 }
 
-export async function publishRelease() {
+export async function publishRelease({ skipWriteback = false } = {}) {
   const planPath = resolve(ROOT, "release-plan.json");
   assert.ok(existsSync(planPath), "release-plan.json not found");
   const plan = JSON.parse(readFileSync(planPath, "utf8"));
@@ -429,14 +440,16 @@ export async function publishRelease() {
     }
   }
 
-  writebackVersionCommit(version, tag, {
-    sourceCommit: commit,
-    buildFeed: () =>
-      syncFeedFromGithub({
-        tagRelease: publishedRelease,
-        fallbackHashes,
-      }),
-  });
+  if (!skipWriteback) {
+    writebackVersionCommit(version, tag, {
+      sourceCommit: commit,
+      buildFeed: () =>
+        syncFeedFromGithub({
+          tagRelease: publishedRelease,
+          fallbackHashes,
+        }),
+    });
+  }
 
   const summary = `已发布 ${title} (${tag})\n\n${releaseNotes}\n`;
   console.log(summary);
@@ -453,6 +466,6 @@ if (isMain) {
     const tag = (tagIdx >= 0 ? process.argv[tagIdx + 1] : "") || process.env.RELEASE_TAG || "";
     await syncPublishedRelease(tag);
   } else {
-    await publishRelease();
+    await publishRelease({ skipWriteback: process.argv.includes("--no-writeback") });
   }
 }
