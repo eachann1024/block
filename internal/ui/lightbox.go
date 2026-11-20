@@ -115,6 +115,24 @@ func lightboxRevealLabel() string {
 	return theme.Tr("在文件管理器中显示", "Reveal in File Manager")
 }
 
+// lightboxTitlebarClearance returns the height of the hidden-titlebar window
+// controls band (macOS traffic lights, Windows/Linux caption buttons), or 0
+// in fullscreen and natively framed windows.
+func lightboxTitlebarClearance(tb ui.TitleBar) float32 {
+	clearance := max(tb.Bottom, tb.Height)
+	if clearance <= 0 && (tb.Left > 0 || tb.Right > 0) {
+		clearance = theme.HeightControl
+	}
+	return clearance
+}
+
+func lightboxToolbarTopGap(clearance float32) float32 {
+	if clearance > 0 {
+		return theme.Space6
+	}
+	return theme.Space12
+}
+
 // RenderLightbox renders a full-window Ocean Paper attachment and image lightbox overlay.
 func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []LightboxItem, cb LightboxCallbacks) {
 	if st == nil || !st.Open || len(items) == 0 {
@@ -320,24 +338,40 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		activeVideo = itemHasActiveVideo(item)
 
 		vpWinW, vpWinH := c.Size()
+		tb := c.TitleBar()
+		titleClearance := lightboxTitlebarClearance(tb)
+		toolbarTopGap := lightboxToolbarTopGap(titleClearance)
+		toolbarTopTotal := titleClearance + toolbarTopGap
 
 		var (
-			toolbarEl   ui.Element
-			stageEl     ui.Element
-			contentEl   ui.Element
-			prevBtn     ui.Element
-			nextBtn     ui.Element
-			filmstripEl ui.Element
-			stageW      float32
-			stageH      float32
-			stagePadX   = theme.LightboxStagePad
-			drawW       float32
-			drawH       float32
+			titleStripEl ui.Element
+			toolbarEl    ui.Element
+			stageEl      ui.Element
+			contentEl    ui.Element
+			prevBtn      ui.Element
+			nextBtn      ui.Element
+			filmstripEl  ui.Element
+			stageW       float32
+			stageH       float32
+			stagePadX    = theme.LightboxStagePad
+			drawW        float32
+			drawH        float32
 		)
 
 		layer.Children(func() {
+			// 0. Clear OS window controls (macOS traffic lights, Windows/Linux caption buttons)
+			//    and keep the empty titlebar band draggable without dismissing the lightbox.
+			if titleClearance > 0 {
+				titleStripEl = ui.Row(c.Key(id+"-titlebar-strip")).
+					FillWidth().Height(titleClearance).Shrink(0).
+					Padding(0, tb.Right, 0, tb.Left)
+				titleStripEl.Children(func() {
+					ui.Box(c).Fill().DragWindow()
+				})
+			}
+
 			// 1. Top floating Ocean Paper toolbar.
-			ui.Row(c).FillWidth().Padding(theme.Space12, theme.Space16, 0, theme.Space16).Shrink(0).Children(func() {
+			ui.Row(c).FillWidth().Padding(toolbarTopGap, theme.Space16, 0, theme.Space16).Shrink(0).Children(func() {
 				toolbarEl = ui.Row(c.Key(id+"-toolbar")).
 					FillWidth().Height(theme.LightboxToolbarHeight).
 					PaddingX(theme.Space12).Gap(theme.Space12).
@@ -396,7 +430,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								if st.FitScale > 0 {
 									effectiveZoom = st.FitScale
 								} else if item.ImageW > 0 && item.ImageH > 0 && vpWinW > 0 && vpWinH > 0 {
-									estChromeH := theme.LightboxToolbarHeight + theme.Space12*2
+									estChromeH := toolbarTopTotal + theme.LightboxToolbarHeight + theme.Space12
 									estPadX := theme.LightboxStagePad
 									if multi {
 										estChromeH += theme.LightboxFilmstripThumb + theme.Space12*3 + theme.Space2
@@ -573,13 +607,17 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							Label:   theme.Tr("快捷键说明", "Keyboard shortcuts"),
 						})
 						if activeVideo {
+							switchChord := FormatShortcutDisplay("cmd-left") + " / " + FormatShortcutDisplay("cmd-right")
 							TooltipCard(c, helpBtn, TooltipCardSpec{
 								Title: theme.Tr("视频快捷键", "Video Shortcuts"),
 								Body: theme.Tr(
 									"空格：播放/暂停 · ← / →：后退/快进 5 秒\n按住 → 或鼠标右键：3x 倍速，松开恢复原速\n↑ / ↓：调节音量 · M：静音 · R：循环 · < / >：倍速",
 									"Space: Play/Pause · ← / →: Seek ±5s\nHold → or Right-click: 3x speed, release to restore\n↑ / ↓: Volume · M: Mute · R: Loop · < / >: Speed",
 								),
-								Note:      theme.Tr("双击视频切换填充模式 · ⌘← / ⌘→ 切换媒体", "Double-click to toggle fill · ⌘← / ⌘→ switch media"),
+								Note: fmt.Sprintf(
+									theme.Tr("双击视频切换填充模式 · %s 切换媒体", "Double-click to toggle fill · %s switch media"),
+									switchChord,
+								),
 								Placement: TooltipBelow,
 							})
 						} else {
@@ -628,7 +666,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				stageW, stageH = b.W, b.H
 			} else {
 				stageW = max(vpWinW, 1)
-				chromeH := theme.LightboxToolbarHeight + theme.Space12*2
+				chromeH := toolbarTopTotal + theme.LightboxToolbarHeight + theme.Space12
 				if multi {
 					chromeH += theme.LightboxFilmstripThumb + theme.Space12*3 + theme.Space2
 				}
@@ -656,7 +694,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									msg = theme.Tr("正在加载视频…", "Loading video…")
 								}
 								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
-									msg, true, item.IsImage || item.IsAnimation, item.IsVideo)
+									msg, true, item.IsImage || item.IsAnimation, item.IsVideo, nil)
 
 							case item.Unavailable || (item.IsImage && !item.IsAnimation && item.Image == nil) || (item.IsAnimation && item.Video == nil):
 								msg := theme.Tr("附件文件不可用或已被移动", "Attachment is unavailable or was moved")
@@ -665,15 +703,20 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								} else if item.IsImage || item.IsAnimation {
 									msg = theme.Tr("图片无法加载", "Image unavailable")
 								}
+								var onOpen func()
+								if cb.OnOpenURL != nil && item.OpenURL != "" {
+									idxCopy := st.Index
+									onOpen = func() { cb.OnOpenURL(idxCopy) }
+								}
 								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
-									msg, false, item.IsImage || item.IsAnimation, item.IsVideo)
+									msg, false, item.IsImage || item.IsAnimation, item.IsVideo, onOpen)
 
 							case item.IsVideo && item.Video == nil:
 								if cb.OnRequestLoad != nil {
 									cb.OnRequestLoad(st.Index)
 								}
 								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
-									theme.Tr("正在加载视频…", "Loading video…"), true, false, true)
+									theme.Tr("正在加载视频…", "Loading video…"), true, false, true, nil)
 
 							case activeVideo:
 								vidKey := item.ID
@@ -932,7 +975,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			}
 		})
 
-		clickedInteractive := (toolbarEl.Valid() && toolbarEl.PressedInside()) ||
+		clickedInteractive := (titleStripEl.Valid() && titleStripEl.PressedInside()) ||
+			(toolbarEl.Valid() && toolbarEl.PressedInside()) ||
 			(contentEl.Valid() && contentEl.PressedInside()) ||
 			(prevBtn.Valid() && prevBtn.PressedInside()) ||
 			(nextBtn.Valid() && nextBtn.PressedInside()) ||
@@ -959,6 +1003,7 @@ func renderLightboxStatusCard(
 	loading bool,
 	isImage bool,
 	isVideo bool,
+	onOpenURL func(),
 ) ui.Element {
 	card := ui.Column(c.Key(cardID)).
 		Width(theme.EmptyActionWidth).
@@ -993,6 +1038,13 @@ func renderLightboxStatusCard(
 		ui.Text(c, message).
 			FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 			TextColor(pal.TextSecondary)
+		if !loading && onOpenURL != nil {
+			ic := icons.LinkOpen
+			btn := ActionButton(c, cardID+"-open-url", theme.Tr("在浏览器中打开", "Open in Browser"), &ic, ButtonSecondary, false)
+			if btn.Clicked() {
+				onOpenURL()
+			}
+		}
 	})
 	return card
 }
