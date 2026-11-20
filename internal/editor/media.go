@@ -451,6 +451,11 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		}
 		mdStr := string(mdRaw)
 		inTable := s.isTablePasteTarget()
+		if inTable && htmlErr == nil && len(htmlRaw) > 0 {
+			if grid, ok := decodeBlockTableCellsHTML(string(htmlRaw)); ok && s.pasteTableCellsGrid(grid) {
+				return true
+			}
+		}
 		if mdErr == nil && (strings.TrimSpace(mdStr) != "" || (len(mdRaw) > 0 && (inTable || !strings.Contains(mdStr, "\n")))) {
 			if inTable && htmlErr == nil && len(htmlRaw) > 0 && htmlTableRowCountMatches(string(htmlRaw), mdStr) {
 				s.pasteTableWithTrailingEmptyRow(mdStr)
