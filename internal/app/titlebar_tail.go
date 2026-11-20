@@ -38,7 +38,22 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 	showAI := p.AIEnabled && !slotHidden(p, plugins.TitlebarSlotAI)
 	showMore := surface != SurfaceEmpty
 	hasBuiltinTail := showFeedback || showAI || showMore
-	ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(4).Padding(0, pad, 0, 0).Children(func() {
+	tail := ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(4).Padding(0, pad, 0, 0)
+	if m := p.MenuState; m != nil {
+		prevNeed := m.TitlebarNeedW
+		m.TitlebarNeedW = 0
+		if tailW := tail.Bounds().W; tailW > 0 && m.tabsNeedW > 0 && len(p.Tabs) > 1 && !p.InSettings {
+			foldedZone := float32(0)
+			if m.pluginZoneW > 0 {
+				foldedZone = pluginSlotW
+			}
+			m.TitlebarNeedW = m.tabsNeedW + tailW - m.pluginZoneW + foldedZone
+		}
+		if m.TitlebarNeedW != prevNeed {
+			c.After(16 * time.Millisecond)
+		}
+	}
+	tail.Children(func() {
 		if surface != SurfaceNote {
 			renderNonNoteTitlebarTools(c, p, surface, availW)
 		}

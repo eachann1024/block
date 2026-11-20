@@ -214,9 +214,12 @@ func pluginZoneWidth(inline, total int) float32 {
 	return w
 }
 
-// pluginCenterNeed is the minimum center cell width the tabs/title keep before
-// plugin buttons may claim the rest.
+// pluginCenterNeed is the center cell width the tabs/title keep before plugin buttons
+// may claim the rest; multiple tabs keep their full titles, so plugins fold first.
 func pluginCenterNeed(p TitlebarProps) float32 {
+	if m := p.MenuState; m != nil && len(p.Tabs) > 1 && m.tabsNeedW > 0 {
+		return m.tabsNeedW
+	}
 	switch n := len(p.Tabs); {
 	case n == 0:
 		return 140

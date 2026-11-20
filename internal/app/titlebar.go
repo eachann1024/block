@@ -56,8 +56,14 @@ type TabMenuState struct {
 	pluginZoneW      float32
 	pluginInlineN    int
 	pluginLimitReady bool
-	lastViewportW    float32
-	revealActiveTab  bool
+	// tabsNeedW is the tab cell width that shows every multi-tab title in full;
+	// TitlebarNeedW adds the tail with all plugins folded. When the docked sidebar
+	// leaves less than that, the sidebar yields before tabs get squeezed.
+	tabsNeedW       float32
+	TitlebarNeedW   float32
+	CompactLeftW    float32
+	lastViewportW   float32
+	revealActiveTab bool
 
 	TabScroll       ui.ScrollState
 	LastActiveTab   string
@@ -303,6 +309,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	leftW := leftLead + theme.ChromeBoxSize + 6
 	if !p.HideMark {
 		leftW += brandMarkGap + blockui.AppMarkButtonWidth
+	}
+	if p.MenuState != nil {
+		p.MenuState.CompactLeftW = leftW
 	}
 	if p.AIImmersive {
 		leftW = leftLead

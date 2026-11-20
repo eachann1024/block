@@ -30,6 +30,11 @@ type ShellInput struct {
 	ChatVisible     bool
 	ChatFullscreen  bool
 	ChatDesiredW    float32
+	// TitlebarNeedW is the titlebar width (right of the sidebar) that keeps every tab
+	// title whole with plugin buttons folded; 0 means no requirement. The sidebar only
+	// yields for it when the compact left cell (TitlebarCompactLeftW) would then fit.
+	TitlebarNeedW        float32
+	TitlebarCompactLeftW float32
 }
 
 // ShellLayout describes the resolved responsive split layout.
@@ -102,6 +107,7 @@ func ChatLimit(windowW, sidebarW float32, sidebarCollapsed bool, chatMin, chatMa
 //     shrinking down toward ChatMinW (320) only after the file tree has yielded.
 //  3. The yielded file tree remains reachable as a floating drawer when SidebarPinned.
 //  4. Settings blocks AI panel and enforces SettingsFloor (680).
+//  5. The file tree also steps aside before titlebar tabs get squeezed (TitlebarNeedW).
 func ResolveShellLayout(in ShellInput) ShellLayout {
 	winW := in.WindowWidth
 	if winW <= 0 {
@@ -113,6 +119,8 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 	}
 	sbW := ClampSidebarWidth(in.SidebarDesiredW)
 	desiredChat := ClampChatWidth(in.ChatDesiredW)
+	titlebarFits := in.TitlebarNeedW <= 0 || sbW+in.TitlebarNeedW <= winW+0.5 ||
+		in.TitlebarCompactLeftW+in.TitlebarNeedW > winW+0.5
 
 	out := ShellLayout{
 		ContentFloor: floor,
@@ -123,7 +131,7 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 	chatVis := in.ChatVisible && !in.InSettings
 	if !chatVis || in.ChatFullscreen {
 		if in.SidebarVisible {
-			if sbW+floor <= winW+0.5 {
+			if sbW+floor <= winW+0.5 && titlebarFits {
 				out.SidebarDocked = true
 			} else {
 				out.SidebarYielded = true
@@ -148,7 +156,7 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 	}
 
 	threeColFloor := max(floor, ThreeColumnNoteFloor)
-	canDockSidebar := in.SidebarVisible && sbW+threeColFloor+ChatMinW <= winW+0.5
+	canDockSidebar := in.SidebarVisible && sbW+threeColFloor+ChatMinW <= winW+0.5 && titlebarFits
 	if canDockSidebar {
 		out.SidebarDocked = true
 	} else if in.SidebarVisible {
