@@ -39,6 +39,7 @@ const (
 	limitedRetry  = time.Minute      // after a 429: the server's window is 60 s, plus up to limitedJitter
 	limitedJitter = 2 * time.Minute  // spreads out many clients behind one address that were limited together
 	wakeStep      = 5 * time.Minute  // longest single sleep, so a laptop waking from sleep notices a passed deadline
+	behindRetry   = time.Minute      // first recheck after the server counted an earlier day; doubles up to retryInterval
 	fileName      = "telemetry.json"
 )
 
@@ -99,13 +100,21 @@ func envDisabled() bool {
 
 func loop(cfg Config) {
 	time.Sleep(startDelay)
+	behind := behindRetry
 	for {
 		wait := checkInterval
 		day := today()
-		if _, err := CheckOnce(context.Background(), cfg); errors.Is(err, errLimited) {
+		if counted, err := check(context.Background(), cfg); errors.Is(err, errLimited) {
 			wait = limitedRetry + mrand.N(limitedJitter)
 		} else if err != nil {
 			wait = retryInterval
+		} else if counted != "" && counted < day {
+			// The clock runs ahead of the server's around midnight, so the ping counted for
+			// yesterday and today is still due: look again soon, backing off if the gap persists.
+			wait = behind
+			behind = min(behind*2, retryInterval)
+		} else {
+			behind = behindRetry
 		}
 		now := time.Now()
 		// Check again right after midnight so a session spanning it counts for the new day too.
@@ -146,18 +155,25 @@ func today() string {
 // 422, which a retry cannot fix) marks today as done; anything else, such as a
 // 5xx, 429, an edge 403 or a network error, leaves today unmarked for a later check.
 func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
+	counted, err := check(ctx, cfg)
+	return counted != "", err
+}
+
+// check is CheckOnce returning the day the server counted the ping for ("" when nothing was
+// counted). It is earlier than today() when the local clock runs ahead of the server's.
+func check(ctx context.Context, cfg Config) (counted string, err error) {
 	if cfg.DataDir == "" || cfg.Enabled == nil || envDisabled() || !cfg.Enabled() {
-		return false, nil
+		return "", nil
 	}
 	path := filepath.Join(cfg.DataDir, fileName)
 	rec, err := load(path)
 	if err != nil {
 		// An id that cannot be kept would be counted as a new install on every check.
-		return false, err
+		return "", err
 	}
 	day := today()
 	if rec.LastPing == day {
-		return false, nil
+		return "", nil
 	}
 	lang := "en"
 	if cfg.Lang != nil && cfg.Lang() == "zh" {
@@ -165,7 +181,7 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 	}
 	body, err := json.Marshal(payload{ID: rec.ID, V: cfg.Version, OS: runtime.GOOS, OSV: osMajor(), Arch: runtime.GOARCH, Lang: lang})
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
@@ -184,18 +200,18 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Block")
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	var counted struct {
+	var reply struct {
 		Day string `json:"day"`
 	}
-	_ = json.NewDecoder(io.LimitReader(resp.Body, 512)).Decode(&counted)
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 512)).Decode(&reply)
 	resp.Body.Close()
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300,
@@ -203,18 +219,21 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		resp.StatusCode == http.StatusRequestEntityTooLarge,
 		resp.StatusCode == http.StatusUnprocessableEntity:
 	case resp.StatusCode == http.StatusTooManyRequests:
-		return false, errLimited
+		return "", errLimited
 	default:
-		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
+		return "", fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
-	if resp.StatusCode < 300 && dayRe.MatchString(counted.Day) {
+	if resp.StatusCode < 300 && dayRe.MatchString(reply.Day) {
 		// Record the day the server counted: with a clock running ahead around midnight the
 		// ping lands on yesterday, and marking today would skip today altogether.
-		day = counted.Day
+		day = reply.Day
 	}
 	rec.LastPing = day
 	_ = save(path, rec)
-	return resp.StatusCode < 300, nil
+	if resp.StatusCode >= 300 {
+		return "", nil // the payload was rejected: retrying cannot fix it
+	}
+	return day, nil
 }
 
 func load(path string) (record, error) {
