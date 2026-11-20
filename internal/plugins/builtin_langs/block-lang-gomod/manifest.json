@@ -8,7 +8,7 @@
     "en": "Go Modules"
   },
   "version": "1.0.0",
-  "author": "Block",
+  "author": "Block Community",
   "repo": "blockmd-plugins/block-lang-gomod",
   "summary": {
     "zh": "打开 Go 项目文件夹时，为 go.mod、go.sum 与 go.work 提供语法高亮",
