@@ -220,6 +220,12 @@ func load(path string) (record, error) {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
+		if err == nil && freshlyWritten(path) {
+			// Still unfinished after the retries, but only just created: its writer may be paused
+			// and will keep using the id it is writing. Replacing it now would count this install
+			// twice, so leave it for a later check.
+			return rec, errors.New("telemetry: install id file is still being written")
+		}
 		rec = record{ID: newID()}
 		if errors.Is(err, fs.ErrNotExist) && !last {
 			// First run: create the file only if nobody else did, so two processes sharing a
@@ -238,6 +244,12 @@ func load(path string) (record, error) {
 		}
 		return rec, nil
 	}
+}
+
+// freshlyWritten reports whether path was modified in the last ten seconds.
+func freshlyWritten(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && time.Since(info.ModTime()).Abs() < 10*time.Second
 }
 
 // writeTemp writes rec to a new temporary file next to path and returns its name.
