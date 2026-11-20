@@ -334,13 +334,18 @@ func diffRefLabel(s string) string {
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
 var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 
+// diffItemMarkRE matches a list item marker and the spaces after it.
+var diffItemMarkRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])[ \t]*`)
+
 // diffItemCol gives the column a list item's content starts at, from its marker
-// at the start of t: an empty item ("1.") takes one space after its marker.
+// at the start of t: right behind the marker's spaces, so a quote in it ("1. > 备份")
+// is content; an empty item ("1.") takes one space after its marker.
 func diffItemCol(t string) int {
-	if m := diffContainerRE.FindString(t); m != "" {
-		return len(m)
+	m := diffItemMarkRE.FindString(t)
+	if m == t {
+		return len(strings.TrimRight(m, " \t")) + 1
 	}
-	return len(diffListItemRE.FindString(t)) + 1
+	return len(m)
 }
 
 // diffListItemRE matches a list item marker at the start of a trimmed line.
