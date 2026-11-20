@@ -12,6 +12,7 @@ import (
 	"block/internal/files"
 	"block/internal/modals"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"block/internal/updater"
@@ -21,6 +22,9 @@ import (
 )
 
 func main() {
+	if maybeRunMacOpenRelay() {
+		return
+	}
 	theme.ConfigureDefaultFontSmoothing()
 
 	var (
@@ -57,6 +61,7 @@ func main() {
 		if !mygo.App.RequestSingleInstanceLock() {
 			return
 		}
+		plugins.SetFileAssociationSyncEnabled(true)
 	}
 
 	mygo.App.SetName("Block")
@@ -468,6 +473,7 @@ func main() {
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
+		plugins.WaitFileAssociationSync()
 	})
 
 	mygo.App.OnQuitCanceled(func() {
