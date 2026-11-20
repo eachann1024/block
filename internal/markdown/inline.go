@@ -132,27 +132,49 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 }
 
 func escapeMarkdownEntities(s string) string {
-	if !strings.ContainsRune(s, '&') || html.UnescapeString(s) == s {
+	if !strings.ContainsRune(s, '&') || !strings.ContainsRune(s, ';') {
 		return s
 	}
 	var out strings.Builder
 	out.Grow(len(s) + 8)
+	changed := false
 	for i := 0; i < len(s); i++ {
 		if s[i] == '&' {
-			end := i + 1
-			for end < len(s) && end-i < 34 && (s[end] == '#' || isASCIIAlpha(s[end]) || (s[end] >= '0' && s[end] <= '9')) {
-				end++
-			}
-			if end < len(s) && s[end] == ';' {
-				end++
-			}
-			tok := s[i:end]
-			if html.UnescapeString(tok) != tok {
+			if _, _, ok := tryDecodeEntity(s[i:]); ok {
 				out.WriteString("&amp;")
+				changed = true
 				continue
 			}
 		}
 		out.WriteByte(s[i])
+	}
+	if !changed {
+		return s
+	}
+	return out.String()
+}
+
+func unescapeMarkdownEntities(s string) string {
+	if !strings.ContainsRune(s, '&') || !strings.ContainsRune(s, ';') {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	changed := false
+	for i := 0; i < len(s); {
+		if s[i] == '&' {
+			if dec, consumed, ok := tryDecodeEntity(s[i:]); ok {
+				out.WriteString(dec)
+				i += consumed
+				changed = true
+				continue
+			}
+		}
+		out.WriteByte(s[i])
+		i++
+	}
+	if !changed {
+		return s
 	}
 	return out.String()
 }
@@ -658,7 +680,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 					if rawTag, tok, consumed, failPos, sawQuoteOrGT, ok := tryParseHTMLTagAt(s, i, lastGT, lastDQ, lastSQ, pairedUnknown); ok {
 						// Literal HTML inline math (`<span class="math">` / `<code class="math">`) preserving same-tag styles.
 						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].isMark&model.MarkMath != 0 {
-							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, false, tok[0].tag == "span"); okLit {
+							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, true, tok[0].tag == "span"); okLit {
 								extraOpen := *tok[0]
 								extraOpen.isMark &^= model.MarkMath
 								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
@@ -1308,7 +1330,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest, title string,
 			if st.angleAfterGTClose < 0 {
 				return "", "", 0, false
 			}
-			return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), st.angleAfterGTTitle, st.angleAfterGTClose + 1 - start, true
+			return unescapeMarkdownEntities(unescapeLinkText(s[urlStart:urlEnd])), st.angleAfterGTTitle, st.angleAfterGTClose + 1 - start, true
 		}
 		i = urlEnd + 1
 	} else {
@@ -1371,7 +1393,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest, title string,
 			}
 			return "", "", 0, false
 		}
-		title = html.UnescapeString(unescapeLinkText(s[titleStart:i]))
+		title = unescapeMarkdownEntities(unescapeLinkText(s[titleStart:i]))
 		i++
 		for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 			i++
@@ -1390,7 +1412,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest, title string,
 		st.angleAfterGTClose = i
 		st.angleAfterGTTitle = title
 	}
-	return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), title, i + 1 - start, true
+	return unescapeMarkdownEntities(unescapeLinkText(s[urlStart:urlEnd])), title, i + 1 - start, true
 }
 
 func unescapeLinkText(s string) string {
@@ -1475,8 +1497,15 @@ func normRefLabelBounded(label string, maxLen int) (string, bool) {
 }
 
 func tryDecodeEntity(s string) (string, int, bool) {
-	semi := strings.IndexByte(s[1:], ';')
-	if semi <= 0 || semi > 32 {
+	limit := len(s)
+	if limit > 34 {
+		limit = 34
+	}
+	if limit <= 2 {
+		return "", 0, false
+	}
+	semi := strings.IndexByte(s[1:limit], ';')
+	if semi <= 0 {
 		return "", 0, false
 	}
 	body := s[1 : 1+semi]
@@ -2909,8 +2938,8 @@ func formatLinkDest(dest string) string {
 		}
 	}
 	if needAngle {
-		escaped = strings.ReplaceAll(escaped, "<", "%3C")
-		escaped = strings.ReplaceAll(escaped, ">", "%3E")
+		escaped = strings.ReplaceAll(escaped, "<", "&lt;")
+		escaped = strings.ReplaceAll(escaped, ">", "&gt;")
 		return "<" + escaped + ">"
 	}
 	return escaped

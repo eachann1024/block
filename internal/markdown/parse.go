@@ -662,7 +662,7 @@ func parseRefDefLines(lines []string) (label string, def refDef, count int, ok b
 			return "", refDef{}, 0, false
 		}
 	}
-	return norm, refDef{dest: html.UnescapeString(dest), title: html.UnescapeString(unescapeLinkText(title))}, consumed, true
+	return norm, refDef{dest: unescapeMarkdownEntities(dest), title: unescapeMarkdownEntities(unescapeLinkText(title))}, consumed, true
 }
 
 func consumedRefDefLines(lines []string, used map[string]bool, consumedOut map[string]bool) int {
@@ -1119,7 +1119,7 @@ func parseImageLineWithDefs(line string, defs map[string]refDef, used map[string
 		ID:         model.NewBlockID(),
 		Kind:       model.BlockImage,
 		ImageSrc:   dest,
-		ImageAlt:   unescapeLinkText(alt),
+		ImageAlt:   plainImageAltFromMarkdown(alt),
 		ImageTitle: title,
 		ImageAlign: model.ImageAlignLeft,
 	}, true
@@ -1145,10 +1145,18 @@ func parseImageLine(line string) (model.Block, bool) {
 		ID:         model.NewBlockID(),
 		Kind:       model.BlockImage,
 		ImageSrc:   dest,
-		ImageAlt:   unescapeLinkText(alt),
+		ImageAlt:   plainImageAltFromMarkdown(alt),
 		ImageTitle: title,
 		ImageAlign: model.ImageAlignLeft,
 	}, true
+}
+
+func plainImageAltFromMarkdown(alt string) string {
+	if alt == "" {
+		return ""
+	}
+	inner := parseInlineWithDefs(alt, nil)
+	return model.PlainTextOfSpans(inner)
 }
 
 func parseHTMLImageLine(s string) (model.Block, bool) {
@@ -1593,6 +1601,7 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 	inRow := false
 	inThead := false
 	anyRow0Header := false
+	row0AllHeader := true
 	i := 0
 	for i < len(src) {
 		if src[i] != '<' {
@@ -1663,8 +1672,12 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 				inRow = true
 			}
 			isHdr := name == "th" || inThead
-			if len(rows) == 0 && isHdr {
-				anyRow0Header = true
+			if len(rows) == 0 {
+				if isHdr {
+					anyRow0Header = true
+				} else {
+					row0AllHeader = false
+				}
 			}
 			if empty {
 				curRow = append(curRow, model.TableCell{Header: isHdr})
@@ -1712,7 +1725,7 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 	if len(rows) == 0 {
 		return model.TableData{}, false
 	}
-	if !anyRow0Header && !isThinklyV1 && !explicitHeaderAttr {
+	if (!anyRow0Header || !row0AllHeader) && !isThinklyV1 && !explicitHeaderAttr {
 		noHeaderRow = true
 	}
 	cols := 0
