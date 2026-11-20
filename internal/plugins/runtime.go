@@ -280,11 +280,15 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	// Own the stdout pipe instead of cmd.StdoutPipe: Wait must run while the
+	// read loop is still draining, so a crashed plugin whose children keep
+	// the pipe open can still be reaped.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		_ = stdin.Close()
 		return nil, err
 	}
+	cmd.Stdout = stdoutW
 	rt := &Runtime{
 		exited:    make(chan struct{}),
 		reaped:    make(chan struct{}),
@@ -305,13 +309,28 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
 		_ = stdout.Close()
+		_ = stdoutW.Close()
 		return nil, fmt.Errorf("start plugin process %v: %w", m.Entry.Command, err)
 	}
+	_ = stdoutW.Close()
 	started = true
 
+	readDone := make(chan struct{})
 	go func() {
 		rt.readLoop(stdout)
+		close(readDone)
+	}()
+	go func() {
 		_ = cmd.Wait()
+		select {
+		case <-readDone:
+		case <-time.After(time.Second):
+			// Leftover children still hold stdout: stop the process group.
+			_ = stopPluginProcess(cmd)
+			_ = stdout.Close()
+			<-readDone
+		}
+		_ = stdout.Close()
 		_ = dataRoot.Close()
 		close(rt.reaped)
 	}()
