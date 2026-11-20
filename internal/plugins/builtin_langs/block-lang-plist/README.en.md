@@ -1,17 +1,11 @@
-# Property List
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/card-en-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/card-en-light.png">
+  <img alt="Property List" src="assets/card-en-light.png">
+</picture>
 
-Official Block language extension providing syntax highlighting for macOS `.plist` Property List files when opening project folders or writing fenced code blocks.
+- **Both formats**: Highlights XML `<key>`/`<string>`/`<true/>` tags and OpenStep `key = "value";` syntax.
+- **Files & code blocks**: Matches `*.plist` / `Info.plist` and fences tagged `plist`, `property-list`, or `apple-plist`.
+- **Zero overhead**: Official declarative language extension with no subprocess and no permissions required.
 
-## Supported Formats
-
-- **XML Property List**: Distinguishes `<key>` names, `<string>` values, `<integer>` / `<real>` numbers, `<true/>` / `<false/>` booleans, `<date>` / `<data>` payloads, XML declarations, and comments.
-- **OpenStep ASCII Property List**: Supports `key = "value";` entries, hexadecimal `<data>` literals, numbers, and `/* ... */` / `//` comments.
-
-## File Matching & Code Blocks
-
-- Files: `*.plist`, `Info.plist`
-- Markdown code block tags: `plist`, `property-list`, `apple-plist`
-
-## Notes
-
-This is a purely declarative language extension. It runs directly inside Block with zero background processes and requires no host permissions.
+**Install**: Open Block Settings -> App Store -> Languages and install **Property List**.

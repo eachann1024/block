@@ -1,20 +1,11 @@
-# Go Modules
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/card-en-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/card-en-light.png">
+  <img alt="Go Modules" src="assets/card-en-light.png">
+</picture>
 
-Official Block language extension providing syntax highlighting when opening Go project folders or writing fenced code blocks.
+- **Full module coverage**: Highlights directives, module paths, semver versions, and `h1:` hashes in `go.mod`, `go.work`, and `go.sum`.
+- **Code fences included**: Use `gomod`, `go.mod`, `go.work`, `gosum`, or `go.sum` in Markdown notes.
+- **Zero overhead**: Official declarative language extension with no subprocess and no permissions required.
 
-## Supported Files
-
-- `go.mod` / `*.mod`: Highlights `module`, `go`, `toolchain`, `require`, `replace`, `exclude`, `retract`, `use`, and `tool` directives, module paths, semantic versions, `=>` operators, and `// indirect` markers.
-- `go.work` / `*.work`: Shares workspace directive and path highlighting with `go.mod`.
-- `go.sum` / `go.work.sum` / `*.sum`: Distinguishes module paths, version tags (including `/go.mod`), and `h1:` checksum hashes.
-
-## Code Block Tags
-
-Use any of the following language tags in Markdown notes:
-
-- `gomod`, `go.mod`, `go.work`, `gowork`, `mod`
-- `gosum`, `go.sum`, `sum`
-
-## Notes
-
-This is a purely declarative language extension. It runs directly inside Block with zero background processes and requires no host permissions.
+**Install**: Open Block Settings -> App Store -> Languages and install **Go Modules**.
