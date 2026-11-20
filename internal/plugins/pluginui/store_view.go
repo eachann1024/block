@@ -124,10 +124,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 		}
 
 		if len(list) == 0 {
-			msg := theme.Tr("没有符合条件的插件", "No matching plugins")
-			ui.Row(c.Key("app-store-empty")).FillWidth().Padding(theme.Space24, 0).Justify(ui.Center).Children(func() {
-				ui.Text(c, msg).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-			})
+			renderStoreEmptyState(c, ctrl, selectedCat, locale)
 			return
 		}
 

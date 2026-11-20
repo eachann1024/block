@@ -29,6 +29,7 @@ type Controller struct {
 	storeSourceMenu bui.DropdownSelectState
 	storeSortMenu   bui.DropdownSelectState
 	storeCategory   plugins.Category
+	onSuggestPlugin func(category plugins.Category)
 	manualSpec      string
 	drafts          map[string]map[string]string
 	lastSynced      map[string]map[string]string
@@ -578,6 +579,23 @@ func (c *Controller) setStoreCategory(v plugins.Category) {
 	c.mu.Lock()
 	c.storeCategory = v
 	c.mu.Unlock()
+}
+
+// SetOnSuggestPlugin registers the host callback triggered by the "Suggest a plugin"
+// action in App Store empty states (typically opening the Feedback modal).
+func (c *Controller) SetOnSuggestPlugin(fn func(category plugins.Category)) {
+	c.mu.Lock()
+	c.onSuggestPlugin = fn
+	c.mu.Unlock()
+}
+
+func (c *Controller) suggestPlugin(cat plugins.Category) {
+	c.mu.Lock()
+	fn := c.onSuggestPlugin
+	c.mu.Unlock()
+	if fn != nil {
+		fn(cat)
+	}
 }
 
 func (c *Controller) manualSpecValue() string {

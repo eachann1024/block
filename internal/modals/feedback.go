@@ -129,6 +129,15 @@ func (m *Manager) OpenFeedback() {
 	m.requestRedraw()
 }
 
+// OpenFeedbackWithCategory opens the Feedback modal pre-selecting category
+// ("bug", "idea", or "other") when no non-empty draft is currently in progress.
+func (m *Manager) OpenFeedbackWithCategory(category string) {
+	m.OpenFeedback()
+	if m.fb.sender == nil && strings.TrimSpace(m.feedbackMessage) == "" {
+		m.feedbackCategory = normalizeFeedbackCat(category)
+	}
+}
+
 // CloseFeedback closes the Feedback modal, persisting any non-done draft.
 // An upload in flight keeps running in the background.
 func (m *Manager) CloseFeedback() {
