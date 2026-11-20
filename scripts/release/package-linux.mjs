@@ -115,9 +115,10 @@ function writeAppDir(binary, appDir) {
     "[Desktop Entry]",
     "Type=Application",
     "Name=Block",
-    "Exec=block",
+    "Exec=block %F",
     "Icon=block",
-    "Categories=Office;",
+    "Categories=Office;TextEditor;Utility;",
+    "MimeType=text/markdown;text/x-markdown;",
     "Terminal=false",
     "",
   ].join("\n"));
