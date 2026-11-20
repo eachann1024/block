@@ -1054,7 +1054,7 @@ func shortPluginErrorLabel(pluginID string, failed, hasUninstErr bool, vs plugin
 	}
 	switch pluginID {
 	case "block-sync":
-		if vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" {
+		if vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" || vs.LastActionID == "confirm_sync_card" {
 			return theme.Tr("同步失败", "Sync failed")
 		}
 	case "block-migrator":
@@ -1076,14 +1076,14 @@ func resolvePluginRetryLabel(pluginID string, failed, hasUninstErr bool, vs plug
 	if failed || vs.RetryKind == plugins.RetryKindReload {
 		return theme.Tr("重新加载", "Reload")
 	}
-	if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync") {
+	if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" || vs.LastActionID == "confirm_sync_card") {
 		return theme.Tr("重试同步", "Retry Sync")
 	}
 	return theme.Tr("重试", "Retry")
 }
 
 func resolvePluginTitlebarStatus(vs plugins.PluginViewState) (text, tone string) {
-	headerAct := isHeaderActionID(vs.Page, vs.LastActionID)
+	headerAct := vs.LastActionWasHeader || isHeaderActionID(vs.Page, vs.LastActionID)
 	cardAct := vs.LastActionID != "" && !headerAct && isCardActionID(vs.Page, vs.LastActionID)
 	if headerAct && strings.TrimSpace(vs.LastActionMessage) != "" {
 		text = strings.TrimSpace(vs.LastActionMessage)
@@ -1103,6 +1103,9 @@ func resolvePluginTitlebarStatus(vs plugins.PluginViewState) (text, tone string)
 	switch strings.ToLower(text) {
 	case "已启用", "enabled", "已停用", "disabled":
 		return "", ""
+	}
+	if tone == "" && text != "" && vs.Page != nil && vs.Page.HasHeaderAction("confirm_sync") {
+		tone = "warning"
 	}
 	return text, tone
 }

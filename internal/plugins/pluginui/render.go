@@ -1314,7 +1314,7 @@ func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool
 			return theme.Tr("测试中…", "Testing…")
 		case "save_config":
 			return theme.Tr("保存中…", "Saving…")
-		case "sync_now", "confirm_sync", "__retry_note_saved__":
+		case "sync_now", "confirm_sync", "confirm_sync_card", "__retry_note_saved__":
 			return theme.Tr("同步中…", "Syncing…")
 		case "cancel_confirm":
 			return theme.Tr("取消中…", "Cancelling…")
@@ -1349,7 +1349,7 @@ func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool
 			return theme.Tr("连接可用", "Connected")
 		case "save_config":
 			return theme.Tr("已保存", "Saved")
-		case "sync_now", "confirm_sync":
+		case "sync_now", "confirm_sync", "confirm_sync_card":
 			return theme.Tr("已同步", "Synced")
 		case "upload_now":
 			return theme.Tr("已上传", "Uploaded")
@@ -1372,7 +1372,7 @@ func resolveBusyActionHint(actionID string) string {
 		return theme.Tr("正在验证远端连接…", "Verifying remote connection…")
 	case "save_config":
 		return theme.Tr("正在保存配置…", "Saving configuration…")
-	case "sync_now", "confirm_sync":
+	case "sync_now", "confirm_sync", "confirm_sync_card":
 		return theme.Tr("正在执行同步…", "Syncing notes…")
 	case "upload_now":
 		return theme.Tr("正在上传图片…", "Uploading images…")
@@ -1394,7 +1394,7 @@ func resolveActionButtonIcon(actionID string) *icons.Icon {
 		ic = icons.Plug
 	case "save_config", "save", "apply":
 		ic = icons.Check
-	case "sync_now", "confirm_sync", "rescan", "refresh", "reload":
+	case "sync_now", "confirm_sync", "confirm_sync_card", "rescan", "refresh", "reload":
 		ic = icons.Refresh
 	case "upload_now", "upload":
 		ic = icons.Upload

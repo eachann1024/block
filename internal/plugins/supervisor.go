@@ -1697,7 +1697,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.LastActionWasHeader = prevWasHeader
 				cur.RetryKind = RetryKindAction
 				failedID := actionID
-				if pluginID == "block-sync" && actionID == "confirm_sync" {
+				if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 					failedID = "sync_now"
 				}
 				cur.FailedActionID = failedID
@@ -1713,14 +1713,14 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				if statusMsg != "" {
 					cur.Notice = statusMsg
 				}
-				isHeader := prevWasHeader || res.Page.HasHeaderAction(actionID) || (pluginID == "block-sync" && actionID == "confirm_sync")
+				isHeader := prevWasHeader || res.Page.HasHeaderAction(actionID) || (pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card"))
 				if tone == "danger" && isHeader {
 					if statusMsg == "" {
 						statusMsg = "action failed"
 					}
 					cur.RetryKind = RetryKindAction
 					failedID := actionID
-					if pluginID == "block-sync" && actionID == "confirm_sync" {
+					if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 						failedID = "sync_now"
 					}
 					cur.FailedActionID = failedID
