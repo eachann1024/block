@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	"block/internal/icons"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
@@ -22,7 +24,8 @@ type DropdownSelectState struct {
 	Cursor      int
 	// MenuWidth, when set, is the menu's minimum width (default 220 or the trigger width).
 	MenuWidth float32
-	// Compact sizes the trigger to its label instead of the 180px form-field minimum.
+	// Compact fixes the trigger and menu width to fit the widest option (with room for the checkmark)
+	// instead of using the 180px form-field minimum.
 	Compact bool
 }
 
@@ -60,14 +63,8 @@ func DropdownSelect(
 	if id != "" {
 		c.Key(id)
 	}
-	minW, shrink := float32(180), float32(1)
-	if state.Compact {
-		minW, shrink = 0, 0
-	}
 	btn := ui.ButtonBase(c).
-		MinWidth(minW).
 		MaxWidth(theme.AIPanelDefaultWidth).
-		Shrink(shrink).
 		Height(theme.HeightControl).
 		Padding(0, theme.Space10, 0, theme.Space12).
 		AlignItems(ui.Center).
@@ -76,6 +73,11 @@ func DropdownSelect(
 		Radius(theme.RadiusMD).
 		Cursor(ui.CursorPointer).
 		Label(activeLabel)
+	if state.Compact {
+		btn.Width(compactSelectWidth(c, options, placeholder)).Shrink(0)
+	} else {
+		btn.MinWidth(180).Shrink(1)
+	}
 
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
@@ -214,4 +216,33 @@ func selectMenu(c *ui.Context, id string, options []SelectOption, state *Dropdow
 		}
 	})
 	return pickedIdx
+}
+
+func compactSelectWidth(c *ui.Context, options []SelectOption, placeholder string) float32 {
+	var maxContentW float32
+	measure := func(text string) float32 {
+		if text == "" {
+			return 0
+		}
+		w, _ := c.MeasureText(0, ui.Span{Text: text, Size: theme.FontBody})
+		return w
+	}
+	if w := measure(placeholder); w > maxContentW {
+		maxContentW = w
+	}
+	for _, opt := range options {
+		rowW := measure(opt.Label)
+		if opt.Hint != "" {
+			hw, _ := c.MeasureText(0, ui.Span{Text: opt.Hint, Font: "monospace", Size: theme.FontMeta})
+			rowW += theme.Space8 + hw
+		}
+		if rowW > maxContentW {
+			maxContentW = rowW
+		}
+	}
+	// MenuSurface border (2) + MenuPadding*2 + MenuRow PaddingX*2 + Gap + IconMenuCheck + breathing room.
+	menuChrome := 2 + theme.MenuPadding*2 + theme.Space10*2 + theme.Space8 + theme.IconMenuCheck + theme.Space24
+	w := float32(math.Ceil(float64(maxContentW + menuChrome)))
+	w = max(w, theme.SelectCompactMinWidth)
+	return min(w, theme.MenuMaxWidth)
 }
