@@ -11,6 +11,7 @@ import (
 	"sync"
 	"unicode"
 
+	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -1295,6 +1296,9 @@ func scoreFontCandidate(item fontCandidateItem, q string, qTokens []string) (tie
 		if idx := strings.Index(item.searchKey, q); idx >= 0 {
 			return 4, idx, true
 		}
+	}
+	if sc := fuzzy.SubsequenceScore(item.name, q); sc > 0 {
+		return 5, -sc, true
 	}
 	return 0, 0, false
 }
