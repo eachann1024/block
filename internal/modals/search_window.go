@@ -282,6 +282,8 @@ func (s *SearchWindowController) runSearchWithDelay(delay time.Duration) {
 	s.st.clearAsync()
 
 	if strings.TrimSpace(s.query) == "" {
+		s.st.appliedGen = gen
+		s.st.appliedQuery = ""
 		s.errMsg = ""
 		s.hits = nil
 		s.st.hitMeta = nil
@@ -291,20 +293,7 @@ func (s *SearchWindowController) runSearchWithDelay(delay time.Duration) {
 	}
 
 	if testing.Testing() || internalui.IsProbeEnabled() || s.SearchFn != nil {
-		hits, meta, errMsg := executeSearchQuery(
-			&s.st,
-			s.query,
-			folders,
-			s.activeNotebookPath(),
-			s.scanOptions(),
-			s.SearchFn,
-			s.host,
-		)
-		s.errMsg = errMsg
-		s.hits = hits
-		s.st.hitMeta = meta
-		s.selected = 0
-		s.st.resultsScroll.Y = 0
+		s.runSearchSync(gen, folders)
 		return
 	}
 
@@ -316,7 +305,7 @@ func (s *SearchWindowController) runSearchWithDelay(delay time.Duration) {
 	scanOpts := s.scanOptions()
 	host := s.host
 
-	s.st.scheduleAsyncSearch(gen, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
+	s.st.scheduleAsyncSearch(gen, query, delay, func(ctx context.Context) ([]model.SearchHit, []searchHitMeta, string) {
 		return executeSearchWithSnapshot(
 			ctx,
 			scopeFolder,
@@ -329,6 +318,49 @@ func (s *SearchWindowController) runSearchWithDelay(delay time.Duration) {
 			host,
 		)
 	}, s.Invalidate)
+}
+
+func (s *SearchWindowController) runSearchSync(gen uint64, folders []string) {
+	hits, meta, errMsg := executeSearchQuery(
+		&s.st,
+		s.query,
+		folders,
+		s.activeNotebookPath(),
+		s.scanOptions(),
+		s.SearchFn,
+		s.host,
+	)
+	s.st.appliedGen = gen
+	s.st.appliedQuery = strings.TrimSpace(s.query)
+	s.errMsg = errMsg
+	s.hits = hits
+	s.st.hitMeta = meta
+	s.selected = 0
+	s.st.resultsScroll.Y = 0
+}
+
+func (s *SearchWindowController) ensureFreshHits() {
+	s.st.consumeAsyncResult(&s.hits, &s.selected, &s.errMsg)
+	if s.st.isResultFresh(s.query) {
+		return
+	}
+	s.lastQuery = s.query
+	folders := s.notebookFolders()
+	s.st.syncFolders(folders)
+	gen := s.st.searchGen.Add(1)
+	s.st.cancelSearch()
+	s.st.clearAsync()
+	if strings.TrimSpace(s.query) == "" {
+		s.st.appliedGen = gen
+		s.st.appliedQuery = ""
+		s.errMsg = ""
+		s.hits = nil
+		s.st.hitMeta = nil
+		s.selected = 0
+		s.st.resultsScroll.Y = 0
+		return
+	}
+	s.runSearchSync(gen, folders)
 }
 
 func (s *SearchWindowController) openHit(idx int) {
@@ -394,6 +426,7 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 					s.inputHandle.Focus()
 				},
 				onOpenSelected: func() {
+					s.ensureFreshHits()
 					s.openHit(s.selected)
 				},
 				onToggleScope: func() {
