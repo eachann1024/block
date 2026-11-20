@@ -1636,7 +1636,7 @@ func renderChecklistItem(
 	pal := theme.Ocean()
 	disabled := busyAction != ""
 
-	selectedSet, _ := checklistSelectionSet(item, values)
+	selectedSet, selectedCount := checklistSelectionSet(item, values)
 
 	ui.Column(c.Key("plugin-chk-" + pluginID + "-" + item.ID)).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 		if len(item.Options) == 0 {
@@ -1675,7 +1675,7 @@ func renderChecklistItem(
 								nextSet[opt.Value] = true
 							}
 						}
-						commit(nextSet)
+						commitChecklistSelection(item, values, nextSet, onChange)
 					}
 				}
 			})
@@ -1771,7 +1771,7 @@ func renderChecklistItem(
 				} else {
 					nextSet[o.Value] = true
 				}
-				commit(nextSet)
+				commitChecklistSelection(item, values, nextSet, onChange)
 			}
 		}
 	})

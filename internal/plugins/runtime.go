@@ -80,19 +80,21 @@ type HostConfig struct {
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
 
 type ActionResult struct {
-	OK         *bool          `json:"ok,omitempty"`
-	Tone       string         `json:"tone,omitempty"`
-	Values     map[string]any `json:"values,omitempty"`
-	Page       *UIPage        `json:"page,omitempty"`
-	Status     string         `json:"status,omitempty"`
-	OpenPath   string         `json:"open_path,omitempty"`
-	RevealPath string         `json:"reveal_path,omitempty"`
+	OK              *bool          `json:"ok,omitempty"`
+	Tone            string         `json:"tone,omitempty"`
+	Values          map[string]any `json:"values,omitempty"`
+	Page            *UIPage        `json:"page,omitempty"`
+	Status          string         `json:"status,omitempty"`
+	OpenPath        string         `json:"open_path,omitempty"`
+	RevealPath      string         `json:"reveal_path,omitempty"`
+	SyncedNotebooks []string       `json:"synced_notebooks,omitempty"`
 }
 
 const (
 	maxStderrBytes    = 64 * 1024
 	maxPluginStorage  = 8 * 1024 * 1024
 	maxPluginNote     = 16 * 1024 * 1024
+	maxPluginRPCLine  = maxPluginNote*6 + 2*1024*1024 // worst-case 6x JSON \u00xx escape + RPC envelope
 	maxPluginHostRPCs = 8
 )
 
@@ -742,7 +744,7 @@ func (rt *Runtime) writeLine(ctx context.Context, v any) error {
 func (rt *Runtime) readLoop(r io.Reader) {
 	defer close(rt.exited)
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64*1024), 48*1024*1024)
+	sc.Buffer(make([]byte, 64*1024), maxPluginRPCLine)
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {
@@ -1205,10 +1207,7 @@ func writePluginNote(root *os.Root, rel, content string, expected *string) (bool
 	if expected != nil && ((!exists && *expected != "") || (exists && *expected != noteRevision(prior))) {
 		return false, ErrNoteConflict
 	}
-	if err := files.WriteNoteAt(root, rel, content); err != nil {
-		return false, err
-	}
-	return true, nil
+	return files.WriteNoteConditionalAt(root, rel, content, expected, ErrNoteConflict)
 }
 
 func checkPluginParents(root *os.Root, name string) error {

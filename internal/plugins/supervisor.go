@@ -924,8 +924,10 @@ func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
 			if cancel := s.views[k].actionCancel; cancel != nil {
 				cancel()
 			}
-			if cancel := s.views[k].saveCancel; cancel != nil {
-				cancel()
+			for _, req := range s.views[k].queuedSaves {
+				if req != nil && req.cancel != nil {
+					req.cancel()
+				}
 			}
 			delete(s.views, k)
 		}
@@ -1718,21 +1720,17 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.errorFromBg = false
 				if pluginID == "block-sync" && tone == "success" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 					syncedRoots := map[string]bool{}
-					if rawSel, ok := res.Values["selected_notebooks"]; ok {
-						if sel, ok := StringSliceValue(rawSel); ok {
-							for _, r := range sel {
-								if rk := cleanNotebookKey(r); rk != "" {
-									syncedRoots[rk] = true
-								}
-							}
+					for _, r := range res.SyncedNotebooks {
+						if rk := syncNotebookKey(r); rk != "" {
+							syncedRoots[rk] = true
 						}
 					}
 					if len(syncedRoots) == 0 && nbRoot != "" {
-						syncedRoots[cleanNotebookKey(nbRoot)] = true
+						syncedRoots[syncNotebookKey(nbRoot)] = true
 					}
 					for vk, view := range s.views {
 						if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
-							if syncedRoots[cleanNotebookKey(vk.notebookRoot)] {
+							if syncedRoots[syncNotebookKey(vk.notebookRoot)] {
 								clear(view.failedSaves)
 							}
 						}
@@ -1944,8 +1942,12 @@ func (s *Supervisor) CanCancelAction(pluginID string) bool {
 				if req := v.queuedSaves[v.retrySavePath]; req != nil && req.cancel != nil {
 					return true
 				}
-			} else if v.saveCancel != nil {
-				return true
+			} else {
+				for _, req := range v.queuedSaves {
+					if req != nil && req.cancel != nil {
+						return true
+					}
+				}
 			}
 		}
 	}
@@ -1966,8 +1968,13 @@ func (s *Supervisor) CancelAction(pluginID string) {
 					req.cancel()
 				}
 				delete(v.queuedSaves, v.retrySavePath)
-			} else if v.saveCancel != nil {
-				v.saveCancel()
+			} else {
+				for _, req := range v.queuedSaves {
+					if req != nil && req.cancel != nil {
+						req.cancel()
+					}
+				}
+				clear(v.queuedSaves)
 			}
 			v.BusyAction = ""
 			v.retrySavePath = ""
@@ -1994,9 +2001,6 @@ func (s *Supervisor) CancelPendingSaves(pluginID string) {
 			if req != nil && req.cancel != nil {
 				req.cancel()
 			}
-		}
-		if v.saveCancel != nil {
-			v.saveCancel()
 		}
 		clear(v.queuedSaves)
 		if v.BusyAction == "__retry_note_saved__" {
@@ -2292,3 +2296,14 @@ type pluginDisabledError string
 func (e pluginDisabledError) Error() string { return "plugin disabled: " + string(e) }
 
 func errPluginDisabled(id string) error { return pluginDisabledError(id) }
+
+func syncNotebookKey(root string) string {
+	trimmed := strings.TrimSpace(root)
+	if trimmed == "" {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(trimmed); err == nil && resolved != "" {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(trimmed)
+}
