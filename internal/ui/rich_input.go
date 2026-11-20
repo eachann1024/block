@@ -707,14 +707,33 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 	if wasComposing && r != nil {
 		rs := []rune(s.text)
 		baseA, baseZ := s.composeBaseBounds(len(rs))
-		compLen := utf8.RuneCountInString(s.compose)
-		virt := string(rs[:baseA]) + s.compose + string(rs[baseZ:])
+		comp := s.compose
+		compLen := utf8.RuneCountInString(comp)
+		virt := string(rs[:baseA]) + comp + string(rs[baseZ:])
 		virtR := []rune(virt)
 		u0, u1 := min(r.Start, r.End), max(r.Start, r.End)
 		v0 := clampRune(utf16ToRuneOff(virt, u0), len(virtR))
 		v1 := clampRune(utf16ToRuneOff(virt, u1), len(virtR))
 		if v0 > v1 {
 			v0, v1 = v1, v0
+		}
+		// When the explicit replacement range is disjoint from the composition range,
+		// apply the composition commit and the replacement as two separate edits so any
+		// untouched formatted spans between them keep their styling intact.
+		if v0 >= baseA+compLen || v1 <= baseA {
+			s.clearComposeState()
+			s.replaceRunes(baseA, baseZ, comp)
+			curLen := utf8.RuneCountInString(s.text)
+			if v0 >= baseA+compLen {
+				delta := curLen - len(virtR)
+				v0 = clampRune(v0+delta, curLen)
+				v1 = clampRune(v1+delta, curLen)
+			} else {
+				v0 = clampRune(v0, curLen)
+				v1 = clampRune(v1, curLen)
+			}
+			s.replaceRunes(v0, v1, ins)
+			return
 		}
 		virtToBaseLo := func(v int) int {
 			switch {
