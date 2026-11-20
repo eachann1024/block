@@ -625,8 +625,8 @@ func findDelimNoSpaceEnd(s string, from int, ch byte) (end int, inner string, ok
 		if isInlineSpaceByte(c) {
 			return -1, "", false
 		}
-		if c == '\\' && i+1 < n && s[i+1] == ch {
-			buf.WriteByte(ch)
+		if c == '\\' && i+1 < n && (s[i+1] == ch || s[i+1] == '\\') {
+			buf.WriteByte(s[i+1])
 			i++
 			continue
 		}
@@ -652,8 +652,8 @@ func findInlineMathEnd(s string, from int) (end int, inner string, ok bool) {
 		if c == '\n' || c == '\r' {
 			return -1, "", false
 		}
-		if c == '\\' && i+1 < n && s[i+1] == '$' {
-			buf.WriteByte('$')
+		if c == '\\' && i+1 < n && (s[i+1] == '$' || s[i+1] == '\\') {
+			buf.WriteByte(s[i+1])
 			i++
 			continue
 		}
@@ -1312,7 +1312,15 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 	case "del", "s", "strike":
 		tok.isMark |= model.MarkStrike
 	case "code", "kbd", "samp", "tt":
-		tok.isMark |= model.MarkCode
+		if hasCSSClass(attrVal(attrs, "class"), "math") {
+			tok.isMark |= model.MarkMath
+		} else {
+			tok.isMark |= model.MarkCode
+		}
+	case "span":
+		if hasCSSClass(attrVal(attrs, "class"), "math") {
+			tok.isMark |= model.MarkMath
+		}
 	case "sup":
 		tok.isMark |= model.MarkSuperscript
 	case "sub":
@@ -1931,7 +1939,13 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		if sp.Marks&model.MarkCode != 0 {
 			writeInlineCode(&out, sp.Text)
 		} else if sp.Marks&model.MarkMath != 0 {
-			writeInlineMath(&out, sp.Text)
+			if useHTML || !canSerializeDollarMath(sp.Text) {
+				out.WriteString(`<span class="math">`)
+				writeInlineText(&out, sp.Text, false, true, false)
+				out.WriteString(`</span>`)
+			} else {
+				writeInlineMath(&out, sp.Text)
+			}
 		} else if allowBareURL && !useHTML && sp.Link != "" && len(opened) == 0 && isExactBareAutolink(sp.Text, sp.Link) {
 			out.WriteString(sp.Text)
 		} else {
@@ -1944,14 +1958,32 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 	return simplifyInlineEscapes(out.String(), spans)
 }
 
+func hasCSSClass(classAttr, want string) bool {
+	for _, f := range strings.Fields(classAttr) {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+func canSerializeDollarMath(text string) bool {
+	if text == "" || isInlineSpaceByte(text[0]) || isInlineSpaceByte(text[len(text)-1]) {
+		return false
+	}
+	if strings.ContainsAny(text, "\n\r") {
+		return false
+	}
+	return true
+}
+
 func writeInlineMath(out *strings.Builder, text string) {
 	out.WriteByte('$')
 	for i := 0; i < len(text); i++ {
-		if text[i] == '$' {
-			out.WriteString(`\$`)
-		} else {
-			out.WriteByte(text[i])
+		if text[i] == '$' || text[i] == '\\' {
+			out.WriteByte('\\')
 		}
+		out.WriteByte(text[i])
 	}
 	out.WriteByte('$')
 }
