@@ -121,7 +121,7 @@ func blockCodeRanges(b *model.Block, baseSize float32) []appUi.RichCodeRange {
 	for _, sp := range b.Spans {
 		n := utf8.RuneCountInString(sp.Text)
 		_, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark)
-		if sp.Marks&model.MarkCode != 0 && !hasNamedBG && n > 0 {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG && n > 0 {
 			if m := len(out); m > 0 && out[m-1].End == pos {
 				out[m-1].End = pos + n
 			} else {
@@ -144,7 +144,7 @@ func blockHasChipBG(b *model.Block) bool {
 		return false
 	}
 	for _, sp := range b.Spans {
-		if sp.Marks&model.MarkCode != 0 || sp.BGColor != "" {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.BGColor != "" {
 			return true
 		}
 	}

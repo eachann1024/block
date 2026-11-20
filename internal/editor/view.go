@@ -1545,12 +1545,29 @@ func buildPureSpan(sp model.Span, baseSize float32, baseWeight int, codeFG, code
 	if sp.Marks&model.MarkStrike != 0 {
 		u.Strikethrough = true
 	}
+	if sp.Marks&model.MarkSuperscript != 0 {
+		u.Size = max(baseSize*0.72, 9)
+		u.BaselineShift = baseSize * 0.34
+	} else if sp.Marks&model.MarkSubscript != 0 {
+		u.Size = max(baseSize*0.72, 9)
+		u.BaselineShift = -baseSize * 0.18
+	}
 	hasNamedBG := false
 	if sp.Marks&model.MarkCode != 0 {
 		u.Font = resolvedCodeFont()
 		u.Size = baseSize
 		u.Weight = max(u.Weight, theme.WeightRegular)
 		u.Color = codeFG
+		u.Background = codeBG
+		u.Radius = codeRadius
+		u.PaddingX = codePadX
+		u.PaddingY = codePadY
+	} else if sp.Marks&model.MarkMath != 0 {
+		u.Font = resolvedCodeFont()
+		u.Italic = true
+		u.Size = baseSize
+		u.Weight = max(u.Weight, theme.WeightRegular)
+		u.Color = pal.Accent
 		u.Background = codeBG
 		u.Radius = codeRadius
 		u.PaddingX = codePadX
@@ -1590,7 +1607,7 @@ func (s *Session) buildRenderDisplaySpans(b *model.Block, baseSize float32, base
 	out := make([]ui.Span, 0, len(b.Spans))
 	for _, sp := range b.Spans {
 		u, hasNamedBG := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
-		if sp.Marks&model.MarkCode != 0 && !hasNamedBG {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG {
 			u.Background = ui.Color{}
 		}
 		out = append(out, u)
@@ -1671,7 +1688,7 @@ func (s *Session) renderDisplaySpansChildren(c *ui.Context, _ int, b *model.Bloc
 	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
 	for i, sp := range b.Spans {
 		u, hasNamedBG := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
-		if sp.Marks&model.MarkCode != 0 && !hasNamedBG {
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG {
 			u.Background = ui.Color{}
 		}
 		el := ui.RichText(c.Key(spanUIKey{idx: i}), u)
@@ -2773,7 +2790,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					copy(renderSpans, pureSpans)
 					dark := theme.IsDark()
 					for i, sp := range cellBlock.Spans {
-						if _, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark); sp.Marks&model.MarkCode != 0 && !hasNamedBG && i < len(renderSpans) {
+						if _, hasNamedBG := theme.ResolveNamedBG(sp.BGColor, dark); sp.Marks&(model.MarkCode|model.MarkMath) != 0 && !hasNamedBG && i < len(renderSpans) {
 							renderSpans[i].Background = ui.Color{}
 						}
 					}
