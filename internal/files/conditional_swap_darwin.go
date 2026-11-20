@@ -1,0 +1,32 @@
+//go:build darwin
+
+package files
+
+import (
+	"errors"
+	"os"
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
+
+func swapFilesInDir(dir *os.Root, a, b string) (bool, error) {
+	f, err := dir.Open(".")
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	fd := int(f.Fd())
+	err = unix.RenameatxNp(fd, a, fd, b, unix.RENAME_SWAP)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP) ||
+		errors.Is(err, syscall.ENOSYS) || errors.Is(err, syscall.EINVAL) {
+		return false, nil
+	}
+	if errors.Is(err, syscall.ENOENT) {
+		return true, os.ErrNotExist
+	}
+	return true, err
+}
