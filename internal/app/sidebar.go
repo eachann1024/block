@@ -171,13 +171,9 @@ type SidebarProps struct {
 	ActiveNote     string
 	Notice         string
 
-	SettingsOpen  bool
-	SearchOpen    bool
-	Busy          bool
-	HasUpdate     bool
-	UpdateBusy    bool
-	UpdateReady   bool
-	UpdateTooltip string
+	SettingsOpen bool
+	SearchOpen   bool
+	Busy         bool
 
 	SortMode        model.TreeSortMode
 	HideNonMarkdown bool
@@ -205,7 +201,6 @@ type SidebarProps struct {
 	OnForgetNotebook   func(root string)
 	OnChooseNotebook   func()
 	OnOpenSettings     func()
-	OnOpenUpdater      func()
 }
 
 type flatTreeRow struct {
@@ -553,7 +548,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				p.State.treeRows = rows[:0]
 			}
 
-			// 3. Footer: Notebook Switcher + Updater Badge + Settings Button.
+			// 3. Footer: Notebook Switcher + Settings Button.
 			footer := ui.Row(c).FillWidth().Height(48).Shrink(0).Padding(0, 8, 8, 12).Gap(4).AlignItems(ui.Center)
 			if p.FloatingCard {
 				footer.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar)
@@ -611,48 +606,6 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					next := !p.State.SwitcherOpen
 					p.State.ClosePopups()
 					p.State.SwitcherOpen = next
-				}
-
-				if p.HasUpdate {
-					tip := p.UpdateTooltip
-					if tip == "" {
-						tip = theme.Tr("有可用更新", "Update available")
-					}
-					c.Key("updater-badge-button")
-					upBtn := ui.ButtonBase(c).Size(theme.UpdaterBadgeButtonSize, theme.UpdaterBadgeButtonSize).Shrink(0).Center().
-						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-						Label(tip)
-					upHover := upBtn.Hovered()
-					upPress := upBtn.Pressed()
-					upBG := pal.Paper
-					if upPress {
-						upBG = pal.Selected
-					} else if upHover {
-						upBG = pal.Hover
-					}
-					blockui.AnimateSurfaceColors(upBtn, upBG, pal.BtnBorder, true)
-					blockui.TactileButton(upBtn, upHover, upPress, false)
-					blockui.Tooltip(c, upBtn, tip)
-					upBtn.Children(func() {
-						ic := pal.MonoIconColors(pal.TextSecondary)
-						if p.UpdateReady || upHover || upPress {
-							ic = pal.DuoIconColors(pal.Text)
-						}
-						glyph := icons.Download
-						if p.UpdateBusy {
-							glyph = icons.UpdateTangle
-						}
-						icons.DrawAnimated(c, glyph, theme.IconChrome, ic, p.UpdateBusy || upHover || upPress)
-						if p.UpdateReady || !p.UpdateBusy {
-							dotSize := theme.UpdaterBadgeDotSize
-							ui.Box(c).Absolute().Top(theme.Space2).Right(theme.Space2).Size(dotSize, dotSize).
-								Radius(theme.RadiusPill).Background(pal.UpdaterColors().BadgeDot)
-						}
-					})
-					blockui.Probe(upBtn, "updater-badge-button")
-					if upBtn.Clicked() && p.OnOpenUpdater != nil {
-						p.OnOpenUpdater()
-					}
 				}
 
 				setBtn := blockui.IconButton(c, icons.Sliders, blockui.IconButtonOptions{
@@ -941,8 +894,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	}
 	blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
 
-	var moreClicked bool
-	var moreBounds ui.Rect
 	btn.Children(func() {
 		if entry.IsDir {
 			chevTarget := float32(0)
@@ -979,42 +930,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-
-		moreID := "row-more:" + entry.Path
-		c.Key(moreID)
-		moreBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).MinWidth(theme.TreeMoreBtnSize).Shrink(0).Center().
-			Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
-			Label(theme.Tr("更多操作", "More actions"))
-		moreHover := moreBtn.Hovered()
-		morePress := moreBtn.Pressed()
-		showMore := menuTarget || moreHover || morePress
-		moreBG := ui.Transparent
-		if showMore {
-			moreBG = pal.MenuHover
-		}
-		blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
-		moreBtn.Children(func() {
-			if extBadge != "" {
-				badgeWrap := ui.Box(c).Center()
-				if showMore {
-					badgeWrap.Opacity(0)
-				}
-				badgeWrap.Children(func() {
-					blockui.FileExtBadge(c, extBadge, highlighted)
-				})
-				if showMore {
-					ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Center().Children(func() {
-						icons.Draw(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text))
-					})
-				}
-			} else if showMore {
-				icons.Draw(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text))
-			}
-		})
-		blockui.Probe(moreBtn, moreID)
-		moreBounds = moreBtn.Bounds()
-		if moreBtn.Clicked() {
-			moreClicked = true
+		if extBadge != "" {
+			blockui.FileExtBadge(c, extBadge, highlighted)
 		}
 	})
 	if isDropReorder || blockui.IsProbeEnabled() {
@@ -1057,13 +974,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				p.OnOpenNote(entry.Path, true)
 			}
 		}
-	} else if moreClicked {
-		cx, cy := moreBounds.X, moreBounds.Y+moreBounds.H+2
-		if moreBounds.W <= 0 {
-			b := btn.Bounds()
-			cx, cy = b.X+b.W-28, b.Y+b.H
-		}
-		openContextMenu(cx, cy)
 	} else if btn.RightClicked() {
 		b := btn.Bounds()
 		cx, cy := b.X+24, b.Y+b.H
