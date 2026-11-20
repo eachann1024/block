@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EN_FOOTER, ZH_FOOTER } from "./release-notes-check.mjs";
-import { buildReleaseNotes, listCommits } from "./release-notes.mjs";
+import { buildReleaseNotes, isExcludedCommit, listCommits } from "./release-notes.mjs";
 import { resolveReleaseRange } from "./release-range.mjs";
 
 export const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -131,12 +131,25 @@ export function syncVersionFiles(root, version) {
   }
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 export function getReleases() {
-  try {
-    return JSON.parse(gh(["api", `repos/${REPO}/releases?per_page=100`]));
-  } catch {
-    return [];
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const parsed = JSON.parse(gh(["api", `repos/${REPO}/releases?per_page=100`]));
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Unexpected GitHub releases response for ${REPO}`);
+      }
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      if (attempt < 3) sleepSync(1500 * attempt);
+    }
   }
+  throw lastError;
 }
 
 function resolveTagCommit(release) {
@@ -203,49 +216,127 @@ function forcedReleaseNotes() {
   ].join("\n");
 }
 
+function preflightPath() {
+  const custom = process.env.BLOCK_PREFLIGHT_PATH?.trim();
+  return custom ? resolve(custom) : resolve(ROOT, "release-preflight.json");
+}
+
+function loadPreflight(headSha, force) {
+  if (process.env.BLOCK_USE_PREFLIGHT !== "1") return null;
+  const path = preflightPath();
+  if (!existsSync(path)) return null;
+  try {
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    if (data?.headSha === headSha && Boolean(data?.force) === Boolean(force)) {
+      return data;
+    }
+  } catch {}
+  return null;
+}
+
+function writeSkipPlan({ currentVersion, tag, headSha, extraPlan = {}, extraOutputs = {} }) {
+  const plan = { shouldBuild: false, publish: false, version: currentVersion, tag, commit: headSha, ...extraPlan };
+  writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
+  writeOutputs({
+    should_build: outputFlag(false),
+    publish: outputFlag(false),
+    version: currentVersion,
+    release_tag: tag,
+    ...extraOutputs,
+  });
+}
+
 async function main() {
+  const preflightOnly = process.argv.includes("--preflight");
   const headSha = process.env.SOURCE_SHA || process.env.GITHUB_SHA
     || execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   const force = process.env.FORCE === "true";
   const publishInput = process.env.PUBLISH !== "false";
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
-  const currentVersion = readPackageVersion(ROOT);
-  const releases = getReleases();
-  const tagVersions = listGitTagVersions(ROOT);
-  const version = nextReleaseVersion({ currentVersion, releases, tagVersions });
-  const stable = releases
-    .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
-    .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
-  const previous = stable.at(-1) || null;
+  const cached = preflightOnly ? null : loadPreflight(headSha, force);
+  let currentVersion;
+  let version;
+  let previous;
+  let rangeSpec;
+  let commits;
 
-  const previousSha = resolveTagCommit(previous);
-  if (previousSha && previousSha === headSha && !force) {
-    summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
-    const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
-    writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-    writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
-    return;
-  }
+  if (cached) {
+    ({ currentVersion, version, previous, rangeSpec, commits } = cached);
+    rmSync(preflightPath(), { force: true });
+  } else {
+    currentVersion = readPackageVersion(ROOT);
+    const releases = getReleases();
+    const tagVersions = listGitTagVersions(ROOT);
+    version = nextReleaseVersion({ currentVersion, releases, tagVersions });
+    const stable = releases
+      .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
+      .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
+    previous = stable.at(-1) || null;
 
-  let rangeSpec = null;
-  if (!(previousSha && previousSha === headSha)) {
-    try {
-      const resolved = resolveReleaseRange({ previous, previousSha, headSha });
-      rangeSpec = resolved.range;
-      if (resolved.note) summary(resolved.note);
-    } catch (error) {
-      summary(error?.message || String(error));
-      const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous?.tag_name || "", commit: headSha };
-      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous?.tag_name || "" });
+    const previousSha = resolveTagCommit(previous);
+    if (previousSha && previousSha === headSha && !force) {
+      summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
+      writeSkipPlan({
+        currentVersion,
+        tag: previous.tag_name,
+        headSha,
+        extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
+      });
+      return;
+    }
+
+    rangeSpec = null;
+    if (!(previousSha && previousSha === headSha)) {
+      try {
+        const resolved = resolveReleaseRange({ previous, previousSha, headSha });
+        rangeSpec = resolved.range;
+        if (resolved.note) summary(resolved.note);
+      } catch (error) {
+        summary(error?.message || String(error));
+        writeSkipPlan({
+          currentVersion,
+          tag: previous?.tag_name || "",
+          headSha,
+          extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
+        });
+        return;
+      }
+    }
+
+    commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
+    if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
+
+    const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
+    if (previous && userCommits.length === 0 && !force) {
+      summary(`自 ${previous.tag_name} 以来没有面向用户的新提交（共扫描 ${commits.length} 条提交），跳过自动发布。`);
+      writeSkipPlan({
+        currentVersion,
+        tag: previous.tag_name,
+        headSha,
+        extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
+      });
+      return;
+    }
+
+    if (preflightOnly) {
+      const target = preflightPath();
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(
+        target,
+        `${JSON.stringify({ headSha, force, currentVersion, version, previous, rangeSpec, commits }, null, 2)}\n`,
+      );
+      writeOutputs({
+        needs_release: outputFlag(true),
+        version,
+        release_tag: `v${version}`,
+      });
+      summary(`预检通过：准备为 Block v${version} 生成更新说明（面向用户提交 ${userCommits.length} 条）。`);
       return;
     }
   }
 
   const autoBump = version !== currentVersion;
-  const commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
-  if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
   let notes = await buildReleaseNotes({ version, commits });
   warnGeneration(notes);
 
