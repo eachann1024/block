@@ -4239,6 +4239,8 @@ func (w *Workspace) Render(c *ui.Context) {
 				PreviewZoomFit:  zoomFit,
 				SVGShowSource:   svgShowSource,
 				SourceWrap:      SourceSoftWrap(),
+				HasCopyableText: activeSurf != nil && activeSurf.HasCopyableText(),
+				CanFormatJSON:   activeSurf != nil && activeSurf.CanFormatJSON(),
 				CanBack:         w.nav.CanBack(),
 				CanForward:      w.nav.CanForward(),
 				Busy:            w.isBusy(),
@@ -4302,8 +4304,81 @@ func (w *Workspace) Render(c *ui.Context) {
 				OnCopyMarkdown: func() {
 					w.copyActiveMarkdown(c.Services())
 				},
+				OnCopyContent: func() {
+					if activeSurf == nil {
+						return
+					}
+					if txt := activeSurf.CurrentText(); txt != "" {
+						c.Services().WriteClipboard(txt)
+						w.setNotice(theme.Tr("已复制全部内容", "Copied content"))
+					}
+				},
+				OnCopyAsMarkdown: func() {
+					if activeSurf == nil {
+						return
+					}
+					if fenced := activeSurf.MarkdownCodeFence(); fenced != "" {
+						c.Services().WriteClipboard(fenced)
+						w.setNotice(theme.Tr("已复制 Markdown 代码块", "Copied as Markdown code block"))
+					}
+				},
+				OnFormatJSON: func() {
+					if activeSurf == nil {
+						return
+					}
+					changed, err := activeSurf.FormatJSON()
+					if err != nil {
+						w.setNotice(fmt.Sprintf(theme.Tr("JSON 格式有误：%v", "Invalid JSON: %v"), err))
+						return
+					}
+					if !changed {
+						w.setNotice(theme.Tr("JSON 已是规范格式", "JSON is already formatted"))
+						return
+					}
+					w.setNotice(theme.Tr("已格式化 JSON", "Formatted JSON"))
+					w.RequestRedraw()
+				},
+				OnCopyImage: func() {
+					if activeTab == "" {
+						return
+					}
+					if err := copyImageFileToClipboard(activeTab, c.Services()); err != nil {
+						w.setNotice(fmt.Sprintf(theme.Tr("复制图片失败：%v", "Failed to copy image: %v"), err))
+						return
+					}
+					w.setNotice(theme.Tr("已复制图片", "Copied image"))
+				},
+				OnCopyImageMarkdown: func() {
+					if activeTab == "" {
+						return
+					}
+					c.Services().WriteClipboard(markdownImageRef(activeTab, activeNB))
+					w.setNotice(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"))
+				},
+				OnCopyPath: func() {
+					if activeTab == "" {
+						return
+					}
+					c.Services().WriteClipboard(activeTab)
+					w.setNotice(theme.Tr("已复制文件路径", "Copied file path"))
+				},
+				OnOpenExternal: func() {
+					if activeTab != "" {
+						if mygo.App.IsReady() {
+							_ = mygo.Shell.OpenPath(activeTab)
+						} else {
+							c.OpenURL(LocalFileURL(activeTab))
+						}
+					}
+				},
 				OnRevealPath: w.revealInShell,
 				NoteStats:    noteStats,
+				PageStats: func() []PageMenuStat {
+					if activeSurf == nil {
+						return nil
+					}
+					return activeSurf.PageMenuStats()
+				},
 				OnPreviewZoomStep: func(factor float32) {
 					if activeSurf != nil {
 						activeSurf.ZoomStep(factor)
