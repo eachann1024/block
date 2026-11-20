@@ -127,7 +127,7 @@ func (h *pluginHostUI) Capabilities() map[string]bool {
 	defer cancel()
 	notify, _ := systemintegration.NotificationSupport(ctx)
 	return map[string]bool{
-		"notify":   ready && notify && mygo.NotificationsSupported(),
+		"notify":   ready && notify && mygo.NotificationsSupported() && systemintegration.CheckNotificationPermission(ctx) == nil,
 		"secrets":  systemintegration.CredentialsAvailable(ctx),
 		"open_url": ready, "reveal": ready, "open_dialog": ready, "save_dialog": ready,
 		"clipboard_read": ready, "clipboard_write": ready, "trash": ready,
@@ -152,6 +152,12 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	cancel()
 	if !supported || !mygo.NotificationsSupported() {
 		return plugins.ErrSystemUnavailable
+	}
+	if err := systemintegration.CheckNotificationPermission(ctx); err != nil {
+		if errors.Is(err, mygo.ErrNotificationsDenied) {
+			return plugins.ErrSystemUnavailable
+		}
+		return err
 	}
 	if !allowed() {
 		return plugins.ErrSystemCanceled
@@ -178,11 +184,14 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 			h.w.OpenSettings("plugin:" + pluginID)
 		}
 	})
-	if err := note.ShowContext(ctx); errors.Is(err, mygo.ErrNotificationsDenied) {
-		return plugins.ErrSystemUnavailable
-	} else {
-		return err
+	err := note.ShowContext(ctx)
+	if err == nil {
+		err = systemintegration.CheckNotificationPermission(ctx)
 	}
+	if errors.Is(err, mygo.ErrNotificationsDenied) {
+		return plugins.ErrSystemUnavailable
+	}
+	return err
 }
 
 func (h *pluginHostUI) desktopAction(allowed func() bool, run func() error) error {
