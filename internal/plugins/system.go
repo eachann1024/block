@@ -95,6 +95,14 @@ type systemState struct {
 	events       map[string]*systemEventQueue
 	activeEvents map[string]*Runtime
 	syncErrors   map[string]string
+	failureQueue []*systemFailureNotice
+	failureDrain bool
+	failureRetry bool
+}
+
+type systemFailureNotice struct {
+	title, body, root string
+	allowed           func() bool
 }
 
 type systemNotice struct {
@@ -556,9 +564,11 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 	}
 }
 
+const blockSyncNotificationEvent = "plugin.notifications_retry"
+
 func (s *Supervisor) RetrySyncNotifications() {
-	const event = "plugin.notifications_retry"
-	s.queueSystemEvent("block-sync", event, map[string]any{"event": event})
+	s.retrySystemFailureNotices(nil)
+	s.queueSystemEvent("block-sync", blockSyncNotificationEvent, map[string]any{"event": blockSyncNotificationEvent})
 }
 
 func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]any) {
@@ -588,11 +598,17 @@ func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQue
 			return
 		}
 		var params map[string]any
-		for _, name := range []string{"system.wake", "network.changed", "app.focus", blockSyncCredentialEvent} {
+		for _, name := range []string{blockSyncNotificationEvent, "system.wake", "network.changed", "app.focus", blockSyncCredentialEvent} {
 			if params = queue.pending[name]; params != nil {
 				delete(queue.pending, name)
 				break
 			}
+		}
+		if params == nil {
+			delete(s.system.events, pluginID)
+			s.system.mu.Unlock()
+			unlock()
+			return
 		}
 		s.system.mu.Unlock()
 		s.deliverSystemEvent(pluginID, params)
@@ -615,7 +631,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	finishStart()
 	if err != nil {
 		if syncEvent {
-			s.reportSystemSyncStartFailure(installed, root, params["event"] == "network.changed")
+			go s.reportSystemSyncStartFailure(installed, root, params["event"] == "network.changed")
 		}
 		return
 	}
@@ -744,11 +760,17 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active string, networkChange bool) {
 	state := readSyncState(inst.DataDir)
 	global, _ := state["config"].(map[string]any)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 	report := func(root string, config map[string]any) {
-		if !autoSyncConfigured(config) || (networkChange && !systemSyncNeedsNetwork(ctx, inst.DataDir, config)) {
+		if !autoSyncConfigured(config) {
 			return
+		}
+		if networkChange {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			needsNetwork := systemSyncNeedsNetwork(ctx, inst.DataDir, config)
+			cancel()
+			if !needsNetwork {
+				return
+			}
 		}
 		s.reportSyncFailureWithConfig(inst, nil, root, config, false, false, false, false)
 	}
@@ -767,6 +789,7 @@ func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active stri
 
 var syncGitNetworkURL = regexp.MustCompile(`^(?:[^/@:\\]+@)?[^/\\:]+:`)
 var syncGitDrivePath = regexp.MustCompile(`^[A-Za-z]:`)
+var syncGitProbeSlots = make(chan struct{}, 4)
 
 func gitURLNeedsNetwork(raw string) bool {
 	return strings.HasPrefix(raw, `\\`) || (!strings.HasPrefix(strings.ToLower(raw), "file://") && !syncGitDrivePath.MatchString(raw) && syncGitNetworkURL.MatchString(raw))
@@ -797,13 +820,32 @@ func systemSyncNeedsNetwork(ctx context.Context, dataDir string, config map[stri
 	if !filepath.IsAbs(repo) {
 		repo = filepath.Join(dataDir, repo)
 	}
-	if marker, err := os.Stat(filepath.Join(repo, ".git")); err != nil || (!marker.IsDir() && !marker.Mode().IsRegular()) {
-		return false
+	select {
+	case syncGitProbeSlots <- struct{}{}:
+	case <-ctx.Done():
+		return true
+	}
+	result := make(chan bool, 1)
+	go func() {
+		defer func() { <-syncGitProbeSlots }()
+		result <- systemSyncRepositoryNeedsNetwork(ctx, repo)
+	}()
+	select {
+	case needsNetwork := <-result:
+		return needsNetwork
+	case <-ctx.Done():
+		return true
+	}
+}
+
+func systemSyncRepositoryNeedsNetwork(ctx context.Context, repo string) bool {
+	if err := exec.CommandContext(ctx, "git", "-C", repo, "rev-parse", "--resolve-git-dir", ".git").Run(); err != nil {
+		return ctx.Err() != nil
 	}
 	remotes, err := exec.CommandContext(ctx, "git", "-C", repo, "remote").Output()
 	names := strings.Fields(string(remotes))
 	if err != nil || len(names) == 0 {
-		return false
+		return ctx.Err() != nil
 	}
 	name := names[0]
 	for _, candidate := range names {
@@ -827,7 +869,7 @@ func systemSyncNeedsNetwork(ctx context.Context, dataDir string, config map[stri
 			}
 		}
 	}
-	return false
+	return ctx.Err() != nil
 }
 
 func autoSyncConfigured(config map[string]any) bool {
@@ -879,6 +921,12 @@ func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime,
 		if s.stopping || (rt != nil && s.runtimes[pluginID] != rt) {
 			return false
 		}
+		if rt == nil && !manual {
+			current := s.runtimes[pluginID]
+			if current != nil && current.initialized.Load() && !current.closed.Load() {
+				return false
+			}
+		}
 		for _, installed := range s.installed {
 			if installed.Manifest.ID == pluginID {
 				return installed.Enabled && s.replacingID != pluginID && installed.InstallDir == inst.InstallDir && installed.InstalledAt.Equal(inst.InstalledAt)
@@ -908,15 +956,64 @@ func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime,
 	if enabled, ok := config["system_notifications"].(bool); ok && !enabled {
 		return
 	}
-	go func() {
+	s.retrySystemFailureNotices(&systemFailureNotice{title: title, body: body, root: root, allowed: func() bool {
+		s.mu.RLock()
+		current := currentLocked() && (manual || s.system.syncErrors[root] == title+" · "+body)
+		s.mu.RUnlock()
+		if !current {
+			return false
+		}
+		updated := systemSyncConfig(inst.DataDir, root)
+		enabled, set := updated["system_notifications"].(bool)
+		return !set || enabled
+	}})
+}
+
+func (s *Supervisor) retrySystemFailureNotices(notice *systemFailureNotice) {
+	s.system.mu.Lock()
+	defer s.system.mu.Unlock()
+	if notice != nil {
+		if len(s.system.failureQueue) >= 32 {
+			s.system.failureQueue = s.system.failureQueue[1:]
+		}
+		s.system.failureQueue = append(s.system.failureQueue, notice)
+	}
+	if s.system.failureDrain {
+		s.system.failureRetry = true
+		return
+	}
+	if len(s.system.failureQueue) != 0 {
+		s.system.failureDrain = true
+		go s.drainSystemFailureNotices()
+	}
+}
+
+func (s *Supervisor) drainSystemFailureNotices() {
+	for {
+		s.system.mu.Lock()
+		if len(s.system.failureQueue) == 0 {
+			s.system.failureDrain = false
+			s.system.mu.Unlock()
+			return
+		}
+		notice := s.system.failureQueue[0]
+		s.system.failureRetry = false
+		s.system.mu.Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", root, "", "", func() bool {
-			s.mu.RLock()
-			defer s.mu.RUnlock()
-			return currentLocked()
-		})
-	}()
+		_, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
+		cancel()
+		s.system.mu.Lock()
+		if errors.Is(err, ErrSystemBusy) && !s.system.failureRetry {
+			s.system.failureDrain = false
+			s.system.mu.Unlock()
+			return
+		}
+		if !errors.Is(err, ErrSystemBusy) && len(s.system.failureQueue) != 0 && s.system.failureQueue[0] == notice {
+			s.system.failureQueue[0] = nil
+			s.system.failureQueue = s.system.failureQueue[1:]
+		}
+		s.system.mu.Unlock()
+	}
 }
 
 func systemSyncConfig(dataDir, root string) map[string]any {
