@@ -624,10 +624,11 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 		if p.FloatingCard {
 			hoverBG = pal.Hover
 		}
+		mutedFG := pal.Text.Alpha(0.55)
 		sBG := ui.Transparent
 		sBD := ui.Transparent
-		sFG := pal.TextSecondary
-		sIcon := pal.MonoIconColors(pal.TextSecondary)
+		sFG := mutedFG
+		sIcon := pal.MonoIconColors(mutedFG)
 		switch {
 		case p.SearchOpen:
 			sBG = pal.Selected
@@ -667,6 +668,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			Active:      p.State.SortFilterOpen,
 			ActiveStyle: blockui.ActiveAccent,
 			ChromeHover: !p.FloatingCard,
+			RestColor:   mutedFG,
 		})
 		if b := sortBtn.Bounds(); b.W > 0 {
 			p.State.SortFilterBounds = b
@@ -686,6 +688,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewFolder, "cmd-shift-n")),
 			Disabled:    p.Busy || p.ActiveNotebook == "",
 			ChromeHover: !p.FloatingCard,
+			RestColor:   mutedFG,
 		})
 		if folderBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewFolder != nil {
 			p.OnNewFolder()
@@ -700,6 +703,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			Shortcut:    blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutNewNote, "cmd-n")),
 			Disabled:    p.Busy || p.ActiveNotebook == "",
 			ChromeHover: !p.FloatingCard,
+			RestColor:   mutedFG,
 		})
 		if noteBtn.Clicked() && !p.Busy && p.ActiveNotebook != "" && p.OnNewNote != nil {
 			p.OnNewNote()
