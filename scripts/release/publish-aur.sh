@@ -45,13 +45,28 @@ fi
 pkgrel="1"
 remote_epoch="0"
 if [[ -f "$work/aur/PKGBUILD" ]]; then
-  remote_epoch="$(sed -n -E 's/^epoch=([0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
-  remote_epoch="${remote_epoch:-0}"
-  remote_pkgver="$(sed -n -E 's/^pkgver=([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
-  remote_pkgrel="$(sed -n -E 's/^pkgrel=([0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
-  remote_sha="$(sed -n -E "s/^sha256sums=\('([0-9a-fA-F]{64})'\).*/\1/p" "$work/aur/PKGBUILD" | head -n 1)"
-  if [[ -z "$remote_pkgver" || -z "$remote_pkgrel" ]]; then
-    echo "Failed to parse remote AUR PKGBUILD pkgver/pkgrel; aborting to prevent downgrade." >&2
+  remote_meta="$(
+    bash -c '
+      set -euo pipefail
+      epoch=""
+      pkgver=""
+      pkgrel=""
+      sha256sums=()
+      # shellcheck disable=SC1090
+      source "$1" >/dev/null 2>&1
+      printf "%s\n%s\n%s\n%s\n" "${epoch:-0}" "${pkgver:-}" "${pkgrel:-}" "${sha256sums[0]:-}"
+    ' _ "$work/aur/PKGBUILD"
+  )"
+  remote_epoch="$(printf '%s\n' "$remote_meta" | sed -n '1p')"
+  remote_pkgver="$(printf '%s\n' "$remote_meta" | sed -n '2p')"
+  remote_pkgrel="$(printf '%s\n' "$remote_meta" | sed -n '3p')"
+  remote_sha="$(printf '%s\n' "$remote_meta" | sed -n '4p')"
+  if [[ ! "$remote_epoch" =~ ^[0-9]+$ || ! "$remote_pkgver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$remote_pkgrel" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "Failed to parse remote AUR PKGBUILD epoch/pkgver/pkgrel (${remote_epoch}:${remote_pkgver}-${remote_pkgrel}); aborting to prevent downgrade." >&2
+    exit 1
+  fi
+  if [[ "$remote_epoch" -gt 0 ]]; then
+    echo "Remote AUR PKGBUILD uses epoch=${remote_epoch}; refusing to overwrite without explicit epoch handling." >&2
     exit 1
   fi
   cmp_out="$(node -e '
@@ -68,11 +83,14 @@ if [[ -f "$work/aur/PKGBUILD" ]]; then
     echo "AUR block-bin is already at newer version ${remote_epoch}:${remote_pkgver}-${remote_pkgrel}; refusing to downgrade to ${pkgver}."
     exit 0
   elif [[ "$cmp_out" == "equal" ]]; then
-    if [[ "${remote_sha,,}" == "${sha,,}" ]]; then
+    remote_sha_lc="$(printf '%s' "$remote_sha" | tr '[:upper:]' '[:lower:]')"
+    sha_lc="$(printf '%s' "$sha" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$remote_sha_lc" == "$sha_lc" ]]; then
       echo "AUR block-bin already matches ${pkgver} (${sha})."
       exit 0
     fi
-    pkgrel="$((remote_pkgrel + 1))"
+    base_pkgrel="${remote_pkgrel%%.*}"
+    pkgrel="$((base_pkgrel + 1))"
   fi
 fi
 
