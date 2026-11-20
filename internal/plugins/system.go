@@ -111,6 +111,15 @@ type systemEventQueue struct {
 	pending map[string]map[string]any
 }
 
+type systemActionKey struct{}
+
+type systemAction struct {
+	ctx          context.Context
+	rpcID        string
+	notebookRoot string
+	epoch        uint64
+}
+
 type systemParams struct {
 	Title        string   `json:"title"`
 	Body         string   `json:"body"`
@@ -128,15 +137,15 @@ type systemParams struct {
 	Value        *string  `json:"value"`
 }
 
-func (s *Supervisor) dispatchExtensionHostMethod(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool) {
+func (s *Supervisor) dispatchExtensionHostMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool) {
 	if method != "host.system.capabilities" && systemMethods[method] == "" {
 		return s.dispatchContribHostMethod(rt, method, params)
 	}
-	res, rerr := s.dispatchSystemMethod(rt, method, params)
+	res, rerr := s.dispatchSystemMethod(rt, method, params, action)
 	return res, rerr, true
 }
 
-func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params json.RawMessage) (any, *rpcError) {
+func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError) {
 	permission := systemMethods[method]
 	if permission != "" && !rt.manifest.HasPermission(permission) {
 		return nil, missingPerm(permission)
@@ -144,6 +153,10 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 	interactive := permission == PermSystemOpen || permission == PermSystemDialogs || permission == PermSystemTrash ||
 		permission == PermClipboardRead || permission == PermClipboardWrite
 	allowed := func() bool {
+		if interactive && (action == nil || action.ctx.Err() != nil || rt.systemAction.Load() != action ||
+			action.epoch != s.notebookEpoch.Load() || action.notebookRoot != s.NotebookRoot()) {
+			return false
+		}
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 		return s.isRuntimeActiveLocked(rt.manifest.ID, rt) && (!interactive || s.activeActionRT[rt.manifest.ID] == rt)
@@ -502,10 +515,20 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
 		return
 	}
+	syncEvent := pluginID == "block-sync" && (params["event"] == "system.wake" || params["event"] == "network.changed")
+	if syncEvent && params["event"] == "network.changed" && params["online"] != true {
+		return
+	}
 	startCtx, finishStart := context.WithTimeout(context.Background(), 15*time.Second)
 	rt, err := s.ensureRuntime(startCtx, pluginID, root)
 	finishStart()
-	if err != nil || !rt.manifest.HasPermission(PermEventsSystem) {
+	if err != nil {
+		if syncEvent {
+			s.reportSystemSyncFailure(installed, nil, root, false, false)
+		}
+		return
+	}
+	if !rt.manifest.HasPermission(PermEventsSystem) {
 		return
 	}
 	s.mu.Lock()
@@ -531,7 +554,6 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		SyncedNotebooks []string `json:"synced_notebooks"`
 	}
 	timeout := 45 * time.Second
-	syncEvent := pluginID == "block-sync" && (params["event"] == "system.wake" || params["event"] == "network.changed")
 	if syncEvent {
 		timeout = 120 * time.Second
 	}
@@ -539,7 +561,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	defer cancel()
 	if err := rt.call(ctx, "plugin.event", params, &res); err != nil {
 		if syncEvent {
-			s.reportSystemSyncFailure(rt, root, errors.Is(ctx.Err(), context.DeadlineExceeded), false)
+			s.reportSystemSyncFailure(installed, rt, root, errors.Is(ctx.Err(), context.DeadlineExceeded), false)
 		}
 		return
 	}
@@ -562,7 +584,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 		return
 	}
 	if syncEvent && res.Outcome == "state_error" {
-		s.reportSystemSyncFailure(rt, root, false, true)
+		s.reportSystemSyncFailure(installed, rt, root, false, true)
 		return
 	}
 	if res.Outcome != "skipped" && res.Outcome != "" {
@@ -587,31 +609,47 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	}
 }
 
-func (s *Supervisor) reportSystemSyncFailure(rt *Runtime, root string, timedOut, storageFailed bool) {
+func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed bool) {
 	const pluginID = "block-sync"
+	config := systemSyncConfig(inst.DataDir, root)
+	if rt == nil {
+		if enabled, ok := config["auto_sync"].(bool); config == nil || (ok && !enabled) {
+			return
+		}
+	}
 	title, body := "自动同步未完成", "打开同步设置查看状态或重试。"
 	if timedOut {
 		title = "自动同步超时"
 	}
-	if rt.locale() == "en" {
+	locale := normalizeLocale(s.Locale())
+	if rt != nil {
+		locale = rt.locale()
+	}
+	if locale == "en" {
 		title, body = "Automatic sync did not finish", "Open Sync settings to check the status or retry."
 		if timedOut {
 			title = "Automatic sync timed out"
 		}
 	}
+	if rt == nil {
+		title = "自动同步未能启动"
+		if locale == "en" {
+			title = "Automatic sync could not start"
+		}
+	}
 	if storageFailed {
 		title = "同步状态未保存"
-		if rt.locale() == "en" {
+		if locale == "en" {
 			title = "Sync state could not be saved"
 		}
 	}
 	currentLocked := func() bool {
-		if s.stopping || s.runtimes[pluginID] != rt {
+		if s.stopping || (rt != nil && s.runtimes[pluginID] != rt) {
 			return false
 		}
 		for _, installed := range s.installed {
 			if installed.Manifest.ID == pluginID {
-				return installed.Enabled && s.replacingID != pluginID
+				return installed.Enabled && s.replacingID != pluginID && installed.InstallDir == inst.InstallDir && installed.InstalledAt.Equal(inst.InstalledAt)
 			}
 		}
 		return false
@@ -628,23 +666,8 @@ func (s *Supervisor) reportSystemSyncFailure(rt *Runtime, root string, timedOut,
 	s.mu.Unlock()
 	s.notifyChanged()
 	files.LogWarnf("plugin %s background system sync failed (timed out: %t)", pluginID, timedOut)
-	if storageFailed || s.cfg.System == nil || !rt.manifest.HasPermission(PermSystemNotify) {
+	if storageFailed || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || config == nil {
 		return
-	}
-	state, err := rt.readStorageMap()
-	if err != nil {
-		return
-	}
-	config, _ := state["config"].(map[string]any)
-	if _, global := config["selected_notebooks"]; !global {
-		notebooks, _ := state["notebook_configs"].(map[string]any)
-		key := "default"
-		if root != "" {
-			key = filepath.Clean(root)
-		}
-		if local, ok := notebooks[key].(map[string]any); ok {
-			config = local
-		}
 	}
 	if enabled, ok := config["system_notifications"].(bool); ok && !enabled {
 		return
@@ -658,4 +681,28 @@ func (s *Supervisor) reportSystemSyncFailure(rt *Runtime, root string, timedOut,
 			return currentLocked()
 		})
 	}()
+}
+
+func systemSyncConfig(dataDir, root string) map[string]any {
+	data, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return nil
+	}
+	defer data.Close()
+	state, err := readPluginStorageMap(data)
+	if err != nil {
+		return nil
+	}
+	config, _ := state["config"].(map[string]any)
+	if _, global := config["selected_notebooks"]; !global {
+		notebooks, _ := state["notebook_configs"].(map[string]any)
+		key := "default"
+		if root != "" {
+			key = syncNotebookKey(root)
+		}
+		if local, ok := notebooks[key].(map[string]any); ok {
+			config = local
+		}
+	}
+	return config
 }

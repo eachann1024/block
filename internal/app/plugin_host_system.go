@@ -25,6 +25,10 @@ var _ plugins.SystemHost = (*pluginHostUI)(nil)
 func (w *Workspace) AttachPluginSystem(reveal func()) {
 	sup := w.Plugins()
 	w.pluginUI.systemReveal = reveal
+	go systemintegration.PendingTrashRecovery(files.AppDataDir(), func(original, recovery string) {
+		files.LogWarnf("interrupted system trash: original=%s recovery=%s", original, recovery)
+		w.setNotice(theme.Tr("有文件等待从回收暂存目录恢复", "A file can be recovered from interrupted Trash staging") + " · " + recovery)
+	})
 	mygo.Power.OnResume(func() { sup.EmitSystemEvent("system.wake", mygo.Network.Status().Online) })
 	mygo.Network.OnChanged(func(status mygo.NetworkStatus) {
 		sup.EmitSystemEvent("network.changed", status.Online)
@@ -219,6 +223,9 @@ func (h *pluginHostUI) Pick(save, directory, multiple bool, title, defaultPath s
 	win := h.w.Window()
 	var paths []string
 	var err error
+	if !allowed() {
+		return nil, plugins.ErrSystemCanceled
+	}
 	if save {
 		var path string
 		path, err = files.SaveDialog(win, mygo.SaveDialogOptions{Title: title, DefaultPath: defaultPath, Filters: filters, CreateDirectories: true})
@@ -286,13 +293,13 @@ func (h *pluginHostUI) Trash(path string, allowed, validPath func() bool) error 
 	if err != nil {
 		return err
 	}
-	if result.Button != 0 {
+	if result.Button != 0 || !allowed() {
 		return plugins.ErrSystemCanceled
 	}
 	var trashErr error
 	if waitErr := h.onMainWait(func() {
 		trashErr = h.w.trashWorkspaceItem(path, func() error {
-			return systemintegration.TrashFile(path, info, allowed, validPath)
+			return systemintegration.TrashFile(files.AppDataDir(), path, info, allowed, validPath)
 		})
 	}); waitErr != nil {
 		return plugins.ErrSystemCanceled
