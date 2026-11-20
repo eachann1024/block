@@ -1383,12 +1383,13 @@ func renderSearchHitRowView(
 	onOpenHit func(idx int),
 ) {
 	rowID := fmt.Sprintf("search-hit-%d", idx)
+	rowKey := fmt.Sprintf("search-hit-%d:%d:%s:%d", st.appliedGen, idx, hit.Path, hit.Line)
 	label := hit.Title
 	if label == "" {
 		label = filepath.Base(hit.Path)
 	}
 
-	row := ui.ButtonBase(c.Key(rowID)).FillWidth().Padding(8, 12, 8, 12).Gap(2).
+	row := ui.ButtonBase(c.Key(rowKey)).FillWidth().Padding(8, 12, 8, 12).Gap(2).
 		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).TabStop(false).Label(label).
 		Transition(internalui.CascadeItemTransition(orderIdx, false))
 	hovered := row.Hovered()
