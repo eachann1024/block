@@ -1188,6 +1188,16 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 				pb.CleanSource = ""
 				inserted = append(inserted, pb)
 			}
+		} else if firstBlk.Kind == model.BlockTable && firstBlk.Table != nil {
+			total := len([]rune(firstBlk.PlainText()))
+			cut := clampInt(a.Offset, 0, total)
+			if cut > 0 {
+				pb := firstBlk.Clone()
+				clearTableRange(pb.Table, cut, total, "")
+				pb.Dirty = true
+				pb.CleanSource = ""
+				inserted = append(inserted, pb)
+			}
 		} else if firstBlk.Kind != model.BlockTable {
 			prefix := sliceSpans(firstBlk.Spans, 0, a.Offset)
 			if len(prefix) > 0 {
@@ -1210,6 +1220,17 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 				sb := lastBlk.Clone()
 				sb.ID = model.NewBlockID()
 				sb.Code = string(runes[cut:])
+				sb.Dirty = true
+				sb.CleanSource = ""
+				inserted = append(inserted, sb)
+			}
+		} else if lastBlk.Kind == model.BlockTable && lastBlk.Table != nil {
+			total := len([]rune(lastBlk.PlainText()))
+			cut := clampInt(effectiveEndOff, 0, total)
+			if cut < total {
+				sb := lastBlk.Clone()
+				sb.ID = model.NewBlockID()
+				clearTableRange(sb.Table, 0, cut, "")
 				sb.Dirty = true
 				sb.CleanSource = ""
 				inserted = append(inserted, sb)
