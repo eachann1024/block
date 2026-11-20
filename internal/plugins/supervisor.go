@@ -560,8 +560,9 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 }
 
 // WarmupAppearancePluginsAsync initializes enabled appearance-section plugins
-// that have not yet synced an editor background state, so upgrading or opening
-// Block with an already-enabled background plugin applies immediately.
+// that have not yet synced for their installed version, so upgrading or opening
+// Block with an already-enabled appearance plugin applies immediately without
+// re-spawning Python processes on every subsequent launch.
 func (s *Supervisor) WarmupAppearancePluginsAsync() {
 	if s == nil {
 		return
@@ -583,13 +584,8 @@ func (s *Supervisor) WarmupAppearancePluginsAsync() {
 		if !hasAppearance {
 			continue
 		}
-		if s.contrib != nil {
-			s.contrib.mu.RLock()
-			_, synced := s.contrib.editorBG[inst.Manifest.ID]
-			s.contrib.mu.RUnlock()
-			if synced {
-				continue
-			}
+		if s.contrib != nil && s.contrib.isWarmedUp(inst.Manifest.ID, inst.Manifest.Version) {
+			continue
 		}
 		s.warmupPluginAsync(inst.Manifest.ID)
 	}
@@ -610,6 +606,7 @@ func (s *Supervisor) warmupPluginAsync(pluginID string) {
 	if !inst.Manifest.HasPermission(PermUISettings) && !inst.Manifest.HasPermission(PermUITitlebar) {
 		return
 	}
+	version := inst.Manifest.Version
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -621,7 +618,9 @@ func (s *Supervisor) warmupPluginAsync(pluginID string) {
 		if !s.IsPluginEnabled(pluginID) {
 			return
 		}
-		_, _ = s.ensureRuntime(ctx, pluginID, s.NotebookRoot())
+		if _, err := s.ensureRuntime(ctx, pluginID, s.NotebookRoot()); err == nil && s.contrib != nil {
+			s.contrib.markWarmedUp(pluginID, version)
+		}
 	}()
 }
 
@@ -768,6 +767,13 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 
 	go func() {
 		s.mu.Lock()
+		wasLegacyTitlebarMgr := false
+		for _, a := range s.installed {
+			if a.Manifest.ID == pluginID && isLegacyTitlebarManager(a) {
+				wasLegacyTitlebarMgr = true
+				break
+			}
+		}
 		rt := s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
 		s.mu.Unlock()
@@ -811,9 +817,16 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		}
 		s.storeErr = ""
 		s.deleteViewsForPluginLocked(pluginID)
+		hasRemainingLegacyTitlebarMgr := false
+		for _, a := range s.installed {
+			if isLegacyTitlebarManager(a) {
+				hasRemainingLegacyTitlebarMgr = true
+				break
+			}
+		}
 		s.mu.Unlock()
 		SyncActiveLanguages(installedList)
-		s.contrib.forgetPlugin(pluginID)
+		s.contrib.forgetPlugin(pluginID, wasLegacyTitlebarMgr && !hasRemainingLegacyTitlebarMgr)
 
 		if onDone != nil {
 			onDone()

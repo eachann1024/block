@@ -492,8 +492,10 @@ type UIHost interface {
 type contribRegistry struct {
 	mu        sync.RWMutex
 	path      string
-	hidden    map[string]bool                  // titlebar slot id -> hidden
+	hidden    map[string]bool                  // legacy global titlebar slot id -> hidden
+	hiddenBy  map[string]map[string]bool       // plugin id -> hidden titlebar slot ids
 	editorBG  map[string]EditorBackgroundState // plugin id -> editor background
+	warmedUp  map[string]string                // plugin id -> initialized version
 	badges    map[string]string                // plugin slot id -> badge text
 	active    map[string]bool                  // plugin slot id -> active
 	status    map[string]statusOverlay         // "<plugin>/<item>" -> text
@@ -508,14 +510,18 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden    []string                         `json:"titlebar_hidden"`
+	TitlebarHidden    []string                         `json:"titlebar_hidden,omitempty"`
+	TitlebarHiddenBy  map[string][]string              `json:"titlebar_hidden_by,omitempty"`
 	EditorBackgrounds map[string]EditorBackgroundState `json:"editor_backgrounds,omitempty"`
+	WarmedUp          map[string]string                `json:"warmed_up,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
 	r := &contribRegistry{
 		hidden:    map[string]bool{},
+		hiddenBy:  map[string]map[string]bool{},
 		editorBG:  map[string]EditorBackgroundState{},
+		warmedUp:  map[string]string{},
 		badges:    map[string]string{},
 		active:    map[string]bool{},
 		status:    map[string]statusOverlay{},
@@ -533,9 +539,26 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 						r.hidden[id] = true
 					}
 				}
+				for pluginID, slots := range f.TitlebarHiddenBy {
+					if strings.TrimSpace(pluginID) == "" {
+						continue
+					}
+					m := make(map[string]bool, len(slots))
+					for _, id := range slots {
+						if id != "" && id != TitlebarSlotMore {
+							m[id] = true
+						}
+					}
+					r.hiddenBy[pluginID] = m
+				}
 				for pluginID, bg := range f.EditorBackgrounds {
 					if strings.TrimSpace(pluginID) != "" {
 						r.editorBG[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
+					}
+				}
+				for pluginID, ver := range f.WarmedUp {
+					if strings.TrimSpace(pluginID) != "" && strings.TrimSpace(ver) != "" {
+						r.warmedUp[pluginID] = strings.TrimSpace(ver)
 					}
 				}
 			}
@@ -548,13 +571,30 @@ func (r *contribRegistry) saveLocked() {
 	if r.path == "" {
 		return
 	}
-	ids := make([]string, 0, len(r.hidden))
-	for id, h := range r.hidden {
-		if h {
-			ids = append(ids, id)
+	var ids []string
+	if len(r.hiddenBy) == 0 && len(r.hidden) > 0 {
+		ids = make([]string, 0, len(r.hidden))
+		for id, h := range r.hidden {
+			if h {
+				ids = append(ids, id)
+			}
+		}
+		slices.Sort(ids)
+	}
+	var hiddenBy map[string][]string
+	if len(r.hiddenBy) > 0 {
+		hiddenBy = make(map[string][]string, len(r.hiddenBy))
+		for pluginID, slots := range r.hiddenBy {
+			list := make([]string, 0, len(slots))
+			for id, h := range slots {
+				if h && id != TitlebarSlotMore {
+					list = append(list, id)
+				}
+			}
+			slices.Sort(list)
+			hiddenBy[pluginID] = list
 		}
 	}
-	slices.Sort(ids)
 	var bgs map[string]EditorBackgroundState
 	if len(r.editorBG) > 0 {
 		bgs = make(map[string]EditorBackgroundState, len(r.editorBG))
@@ -562,7 +602,19 @@ func (r *contribRegistry) saveLocked() {
 			bgs[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
 		}
 	}
-	b, _ := json.MarshalIndent(contribFile{TitlebarHidden: ids, EditorBackgrounds: bgs}, "", "  ")
+	var warmed map[string]string
+	if len(r.warmedUp) > 0 {
+		warmed = make(map[string]string, len(r.warmedUp))
+		for pluginID, ver := range r.warmedUp {
+			warmed[pluginID] = ver
+		}
+	}
+	b, _ := json.MarshalIndent(contribFile{
+		TitlebarHidden:    ids,
+		TitlebarHiddenBy:  hiddenBy,
+		EditorBackgrounds: bgs,
+		WarmedUp:          warmed,
+	}, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(r.path), 0o755)
 	tmp := r.path + ".tmp"
 	if os.WriteFile(tmp, b, 0o644) == nil {
@@ -570,9 +622,33 @@ func (r *contribRegistry) saveLocked() {
 	}
 }
 
+func (r *contribRegistry) isWarmedUp(pluginID, version string) bool {
+	if r == nil || strings.TrimSpace(pluginID) == "" || strings.TrimSpace(version) == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.warmedUp[pluginID] == strings.TrimSpace(version)
+}
+
+func (r *contribRegistry) markWarmedUp(pluginID, version string) {
+	if r == nil || strings.TrimSpace(pluginID) == "" || strings.TrimSpace(version) == "" {
+		return
+	}
+	version = strings.TrimSpace(version)
+	r.mu.Lock()
+	if r.warmedUp[pluginID] != version {
+		r.warmedUp[pluginID] = version
+		r.saveLocked()
+	}
+	r.mu.Unlock()
+}
+
 // forgetPlugin drops every overlay and hidden flag a plugin left behind, so a
-// later reinstall with the same ID starts clean.
-func (r *contribRegistry) forgetPlugin(pluginID string) {
+// later reinstall with the same ID starts clean. clearLegacyTitlebar is true
+// only when the uninstalled plugin itself owned legacy global titlebar hides
+// and no other legacy titlebar-manager plugin remains installed.
+func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool) {
 	slotPrefix := "plugin:" + pluginID + "/"
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -583,8 +659,28 @@ func (r *contribRegistry) forgetPlugin(pluginID string) {
 			changed = true
 		}
 	}
+	if _, ok := r.hiddenBy[pluginID]; ok {
+		delete(r.hiddenBy, pluginID)
+		changed = true
+	}
+	for _, slots := range r.hiddenBy {
+		for id := range slots {
+			if strings.HasPrefix(id, slotPrefix) {
+				delete(slots, id)
+				changed = true
+			}
+		}
+	}
+	if clearLegacyTitlebar && len(r.hiddenBy) == 0 && len(r.hidden) > 0 {
+		clear(r.hidden)
+		changed = true
+	}
 	if _, ok := r.editorBG[pluginID]; ok {
 		delete(r.editorBG, pluginID)
+		changed = true
+	}
+	if _, ok := r.warmedUp[pluginID]; ok {
+		delete(r.warmedUp, pluginID)
 		changed = true
 	}
 	for id := range r.badges {
@@ -704,13 +800,58 @@ func (s *Supervisor) enabledContribs() []InstalledApp {
 	return out
 }
 
-// TitlebarHidden reports whether a titlebar slot is hidden. "more" is never hidden.
+func isLegacyTitlebarManager(a InstalledApp) bool {
+	return a.Manifest.HasPermission(PermUITitlebar) &&
+		(a.Manifest.Contributes == nil || len(a.Manifest.Contributes.TitlebarButtons) == 0)
+}
+
+func (s *Supervisor) isRuntimeActiveLocked(pluginID string, rt *Runtime) bool {
+	if s.stopping || rt == nil || rt.closed.Load() || s.runtimes[pluginID] != rt {
+		return false
+	}
+	for _, a := range s.installed {
+		if a.Manifest.ID == pluginID {
+			return a.Enabled
+		}
+	}
+	return false
+}
+
+// TitlebarHidden reports whether a titlebar slot is hidden by an enabled
+// titlebar-controlling plugin. "more" is never hidden, and disabling or
+// uninstalling all titlebar plugins immediately restores built-in slots.
 func (s *Supervisor) TitlebarHidden(slotID string) bool {
-	if slotID == TitlebarSlotMore || s.contrib == nil {
+	if slotID == TitlebarSlotMore || s == nil || s.contrib == nil {
+		return false
+	}
+	s.mu.RLock()
+	enabledTitlebarIDs := make([]string, 0, len(s.installed))
+	hasLegacyManager := false
+	for _, a := range s.installed {
+		if a.Enabled && a.Manifest.HasPermission(PermUITitlebar) {
+			enabledTitlebarIDs = append(enabledTitlebarIDs, a.Manifest.ID)
+			if isLegacyTitlebarManager(a) {
+				hasLegacyManager = true
+			}
+		}
+	}
+	s.mu.RUnlock()
+	if len(enabledTitlebarIDs) == 0 {
 		return false
 	}
 	s.contrib.mu.RLock()
 	defer s.contrib.mu.RUnlock()
+	if len(s.contrib.hiddenBy) > 0 {
+		for _, pid := range enabledTitlebarIDs {
+			if s.contrib.hiddenBy[pid][slotID] {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasLegacyManager {
+		return false
+	}
 	return s.contrib.hidden[slotID]
 }
 
@@ -1024,10 +1165,10 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		return nil, nil, false
 	}
 	m := rt.manifest
-	// A runtime that is stopping or was replaced (disable/enable, notebook
-	// switch) must not touch UI that now belongs to its successor.
+	// A runtime that is stopping, disabled, or replaced (disable/enable,
+	// notebook switch) must not touch UI that now belongs to its successor.
 	s.mu.RLock()
-	current := s.runtimes[m.ID] == rt && !rt.closed.Load()
+	current := s.isRuntimeActiveLocked(m.ID, rt)
 	s.mu.RUnlock()
 	if !current {
 		return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
@@ -1068,6 +1209,18 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		for _, sl := range s.TitlebarSlots() {
 			known[sl.ID] = true
 		}
+		// Keep hidden preferences for installed-but-currently-disabled plugin
+		// buttons so toggling another slot does not drop them before re-enable.
+		s.mu.RLock()
+		for _, a := range s.installed {
+			if a.Manifest.Contributes == nil {
+				continue
+			}
+			for _, b := range a.Manifest.Contributes.TitlebarButtons {
+				known[PluginTitlebarSlotID(a.Manifest.ID, b.ID)] = true
+			}
+		}
+		s.mu.RUnlock()
 		next := map[string]bool{}
 		for _, id := range p.Hidden {
 			if id == TitlebarSlotMore || !known[id] {
@@ -1075,12 +1228,20 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			}
 			next[id] = true
 		}
+		s.mu.RLock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.RUnlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
 		s.contrib.mu.Lock()
-		if !maps.Equal(next, s.contrib.hidden) {
-			s.contrib.hidden = next
+		prev, existed := s.contrib.hiddenBy[m.ID]
+		if !existed || !maps.Equal(next, prev) || len(s.contrib.hidden) > 0 {
+			s.contrib.hiddenBy[m.ID] = next
+			clear(s.contrib.hidden)
 			s.contrib.saveLocked()
 		}
 		s.contrib.mu.Unlock()
+		s.mu.RUnlock()
 		return map[string]any{"ok": true, "items": s.TitlebarSlots()}, nil, true
 
 	case "host.titlebar.set_button":
@@ -1269,12 +1430,18 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			return nil, e, true
 		}
 		st := normalizeEditorBackgroundState(p.Mode, p.Contrast)
+		s.mu.RLock()
+		if !s.isRuntimeActiveLocked(m.ID, rt) {
+			s.mu.RUnlock()
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
+		}
 		s.contrib.mu.Lock()
 		if prev, ok := s.contrib.editorBG[m.ID]; !ok || prev != st {
 			s.contrib.editorBG[m.ID] = st
 			s.contrib.saveLocked()
 		}
 		s.contrib.mu.Unlock()
+		s.mu.RUnlock()
 		return st, nil, true
 
 	case "host.editor.selection":
