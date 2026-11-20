@@ -1806,6 +1806,18 @@ func (s *Session) ToggleMarkOnSelection(m model.Mark) {
 			if clearMark {
 				sp.Marks &^= m
 			} else {
+				if m&model.MarkCode != 0 {
+					sp.Marks &^= model.MarkMath
+				}
+				if m&model.MarkMath != 0 {
+					sp.Marks &^= model.MarkCode
+				}
+				if m&model.MarkSuperscript != 0 {
+					sp.Marks &^= model.MarkSubscript
+				}
+				if m&model.MarkSubscript != 0 {
+					sp.Marks &^= model.MarkSuperscript
+				}
 				sp.Marks |= m
 			}
 			return sp
@@ -2120,79 +2132,87 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	// Snapshot right after raw typing so Backspace immediately after any auto-conversion restores raw syntax.
 	rawBeforeConvert := b.Clone()
 	rawCaret := clampInt(caretHint, 0, len([]rune(newText)))
+	insLen := len([]rune(newText)) - len([]rune(oldText))
 
-	// Check immediate divider rule (---, ***, ___, －－－, ＊＊＊, ＿＿＿, ——).
-	if b.Kind == model.BlockParagraph && isImmediateDivider(newText) {
-		s.insertDividerWithParagraph(idx, true)
-		return
-	}
-
-	// Check trailing space/fullwidth-space block-level Markdown input rules.
-	if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint); ok {
-		s.focusedBlock = clampInt(nextIdx, 0, len(s.doc.Blocks)-1)
-		s.selAnchor = Position{Block: s.focusedBlock, Offset: nextCaret}
-		s.selHead = s.selAnchor
-		if nextIdx == idx && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind != model.BlockDivider && s.doc.Blocks[idx].Kind != model.BlockCode {
-			s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], nextCaret)
+	// Only trigger auto-conversions on text insertion, never on deletion (so Backspace never re-triggers formatting).
+	if insLen > 0 {
+		// Check immediate divider rule (---, ***, ___, －－－, ＊＊＊, ＿＿＿, ——).
+		if b.Kind == model.BlockParagraph && isImmediateDivider(newText) {
+			s.insertDividerWithParagraph(idx, true)
+			return
 		}
-		if s.needsDetachedSelectionFocus() {
-			s.multiSelFocusPending = true
-			s.focusPending = false
-			s.selSyncPending = false
-		} else {
-			s.multiSelFocusPending = false
-			s.focusPending = true
-			s.selSyncPending = true
-		}
-		return
-	}
 
-	// Check inline rules: :emoji:, smart typography, and inline Markdown constructs.
-	curCaret := rawCaret
-	converted := false
-	finalEdge := appUi.RichCodeEdgeNone
-	var nextClearMask model.Mark
-	var nextClearBG bool
-
-	if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(b.Spans, curCaret); ok {
-		b.Spans = nextSpans
-		curCaret = nextCaret
-		converted = true
-	}
-	if nextSpans, nextCaret, ok := applySmartTypographyOnSpans(b.Spans, curCaret); ok {
-		b.Spans = nextSpans
-		curCaret = nextCaret
-		converted = true
-	}
-	if res := applyInlineInputRules(b.Spans, curCaret, b.Kind == model.BlockParagraph); res.toImage {
-		s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
-		return
-	} else if res.changed {
-		b.Spans = res.spans
-		curCaret = res.caret
-		finalEdge = res.codeEdge
-		nextClearMask = res.clearMask
-		nextClearBG = res.clearBG
-		converted = true
-	}
-
-	if converted {
-		b.Dirty = true
-		b.CleanSource = ""
-		s.selAnchor = Position{Block: idx, Offset: curCaret}
-		s.selHead = s.selAnchor
-		s.postEditCodeEdge = finalEdge
-		s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, b, curCaret)
-		if nextClearMask != 0 || nextClearBG {
-			s.nextInsertGuard = &nextInsertStyleGuard{
-				blockID:   b.ID,
-				docRev:    s.docRev,
-				caretPos:  curCaret,
-				clearMask: nextClearMask,
-				clearBG:   nextClearBG,
+		// Check trailing space/fullwidth-space block-level Markdown input rules.
+		if nextIdx, nextCaret, ok := s.trySpaceInputRule(idx, newText, caretHint); ok {
+			s.focusedBlock = clampInt(nextIdx, 0, len(s.doc.Blocks)-1)
+			s.selAnchor = Position{Block: s.focusedBlock, Offset: nextCaret}
+			s.selHead = s.selAnchor
+			if nextIdx == idx && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Kind != model.BlockDivider && s.doc.Blocks[idx].Kind != model.BlockCode {
+				s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], nextCaret)
 			}
+			if s.needsDetachedSelectionFocus() {
+				s.multiSelFocusPending = true
+				s.focusPending = false
+				s.selSyncPending = false
+			} else {
+				s.multiSelFocusPending = false
+				s.focusPending = true
+				s.selSyncPending = true
+			}
+			return
 		}
-		return
+
+		// Check inline rules: :emoji:, smart typography, and inline Markdown constructs.
+		curCaret := rawCaret
+		insStart := curCaret - insLen
+		if insStart < 0 {
+			insStart = 0
+		}
+		converted := false
+		finalEdge := appUi.RichCodeEdgeNone
+		var nextClearMask model.Mark
+		var nextClearBG bool
+
+		if nextSpans, nextCaret, ok := applyEmojiShortcodeOnSpans(b.Spans, curCaret); ok {
+			b.Spans = nextSpans
+			curCaret = nextCaret
+			converted = true
+		}
+		if nextSpans, nextCaret, ok := applySmartTypographyOnSpans(b.Spans, curCaret, insStart, insLen); ok {
+			b.Spans = nextSpans
+			curCaret = nextCaret
+			converted = true
+		}
+		if res := applyInlineInputRules(b.Spans, curCaret, b.Kind == model.BlockParagraph); res.toImage {
+			s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
+			return
+		} else if res.changed {
+			b.Spans = res.spans
+			curCaret = res.caret
+			finalEdge = res.codeEdge
+			nextClearMask = res.clearMask
+			nextClearBG = res.clearBG
+			converted = true
+		}
+
+		if converted {
+			b.Dirty = true
+			b.CleanSource = ""
+			s.selAnchor = Position{Block: idx, Offset: curCaret}
+			s.selHead = s.selAnchor
+			s.postEditCodeEdge = finalEdge
+			s.recordBlockAutoConvert(rawBeforeConvert, rawCaret, b, curCaret)
+			if nextClearMask != 0 || nextClearBG {
+				s.nextInsertGuard = &nextInsertStyleGuard{
+					blockID:   b.ID,
+					docRev:    s.docRev,
+					caretPos:  curCaret,
+					clearMask: nextClearMask,
+					clearBG:   nextClearBG,
+				}
+			}
+			return
+		}
 	}
 
 	rlen := len([]rune(b.PlainText()))
