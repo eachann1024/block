@@ -19,6 +19,7 @@ type RichBand struct {
 	Start, End   int
 	Fill         ui.Color
 	Ring         ui.Color
+	Underline    ui.Color
 	Radius       float32
 	PadX         float32
 	FullLineBand bool
@@ -182,9 +183,14 @@ type RichInputState struct {
 	carryWinX       float32
 	hasCarry        bool
 	compose         string
-	composeCaret    int
-	composeSelected ui.TextInputRange
-	composing       bool
+	composeCaret       int
+	composeSelected    ui.TextInputRange
+	composeStart       int
+	composeEnd         int
+	composeSavedAnchor int
+	composeSavedCaret  int
+	composeHasRange    bool
+	composing          bool
 
 	dragging  bool
 	dragUnit  int
@@ -388,7 +394,7 @@ func spansLayoutSig(spans []ui.Span) string {
 	return b.String()
 }
 
-func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose string, codeRanges []RichCodeRange, codeEdge RichCodeEdge) []ui.Span {
+func insertComposeIntoSpans(base []ui.Span, plain string, replaceStart, replaceEnd int, compose string, codeRanges []RichCodeRange, codeEdge RichCodeEdge) []ui.Span {
 	if compose == "" {
 		return base
 	}
@@ -397,6 +403,9 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 			return []ui.Span{{Text: compose, Underline: true}}
 		}
 		base = []ui.Span{{Text: plain}}
+	}
+	if replaceEnd < replaceStart {
+		replaceEnd = replaceStart
 	}
 	hasCodeStartAt := func(pos int) bool {
 		for _, cr := range codeRanges {
@@ -422,6 +431,49 @@ func insertComposeIntoSpans(base []ui.Span, plain string, caretRune int, compose
 		rs := []rune(sp.Text)
 		s0, s1 := pos, pos+len(rs)
 		pos = s1
+
+		// When composing over a non-empty selection [replaceStart, replaceEnd), hide the replaced
+		// runes visually during pre-edit without mutating the underlying document.
+		if replaceEnd > replaceStart {
+			if s1 <= replaceStart {
+				out = append(out, sp)
+				continue
+			}
+			if s0 >= replaceEnd {
+				if !inserted {
+					out = append(out, ui.Span{Text: compose, Underline: true})
+					inserted = true
+				}
+				out = append(out, sp)
+				continue
+			}
+			if s0 < replaceStart {
+				left := sp
+				left.Text = string(rs[:replaceStart-s0])
+				out = append(out, left)
+			}
+			if !inserted {
+				compSpan := ui.Span{
+					Text:      compose,
+					Font:      sp.Font,
+					Size:      sp.Size,
+					Weight:    sp.Weight,
+					Italic:    sp.Italic,
+					Color:     sp.Color,
+					Underline: true,
+				}
+				out = append(out, compSpan)
+				inserted = true
+			}
+			if s1 > replaceEnd {
+				right := sp
+				right.Text = string(rs[replaceEnd-s0:])
+				out = append(out, right)
+			}
+			continue
+		}
+
+		caretRune := replaceStart
 		if !inserted && caretRune >= s0 && caretRune <= s1 {
 			// If caret is inside the start of the upcoming code range, skip the preceding
 			// span's end boundary so composition inherits the code span's styling.
@@ -511,13 +563,26 @@ func (s *RichInputState) currentLayout() *ui.TextLayout {
 	return s.ensureLayout(w)
 }
 
+func (s *RichInputState) composeBaseBounds(n int) (int, int) {
+	if s.composeHasRange {
+		a := clampRune(s.composeStart, n)
+		z := clampRune(s.composeEnd, n)
+		if a > z {
+			a, z = z, a
+		}
+		return a, z
+	}
+	at := clampRune(s.caret, n)
+	return at, at
+}
+
 func (s *RichInputState) virtualString() string {
 	if s.compose == "" {
 		return s.text
 	}
 	rs := []rune(s.text)
-	at := clampRune(s.caret, len(rs))
-	return string(rs[:at]) + s.compose + string(rs[at:])
+	a, z := s.composeBaseBounds(len(rs))
+	return string(rs[:a]) + s.compose + string(rs[z:])
 }
 
 func (s *RichInputState) virtualUTF16ToBaseRune(u16 int) int {
@@ -525,18 +590,53 @@ func (s *RichInputState) virtualUTF16ToBaseRune(u16 int) int {
 		return utf16ToRuneOff(s.text, u16)
 	}
 	rs := []rune(s.text)
-	at := clampRune(s.caret, len(rs))
-	prefix := string(rs[:at])
+	a, z := s.composeBaseBounds(len(rs))
+	prefix := string(rs[:a])
 	prefU := ui.UTF16Len(prefix)
 	compU := ui.UTF16Len(s.compose)
 	if u16 <= prefU {
 		return utf16ToRuneOff(prefix, u16)
 	}
 	if u16 <= prefU+compU {
-		return at
+		return a
 	}
-	suffix := string(rs[at:])
-	return at + utf16ToRuneOff(suffix, u16-prefU-compU)
+	suffix := string(rs[z:])
+	return z + utf16ToRuneOff(suffix, u16-prefU-compU)
+}
+
+func (s *RichInputState) virtualUTF16RangeToBaseRunes(u0, u1 int) (int, int) {
+	if u0 > u1 {
+		u0, u1 = u1, u0
+	}
+	if s.compose == "" {
+		return utf16ToRuneOff(s.text, u0), utf16ToRuneOff(s.text, u1)
+	}
+	rs := []rune(s.text)
+	a, z := s.composeBaseBounds(len(rs))
+	prefix := string(rs[:a])
+	prefU := ui.UTF16Len(prefix)
+	compU := ui.UTF16Len(s.compose)
+	var baseA, baseZ int
+	switch {
+	case u0 <= prefU:
+		baseA = utf16ToRuneOff(prefix, u0)
+	case u0 <= prefU+compU:
+		baseA = a
+	default:
+		baseA = z + utf16ToRuneOff(string(rs[z:]), u0-prefU-compU)
+	}
+	switch {
+	case u1 <= prefU:
+		baseZ = utf16ToRuneOff(prefix, u1)
+	case u1 <= prefU+compU:
+		baseZ = z
+	default:
+		baseZ = z + utf16ToRuneOff(string(rs[z:]), u1-prefU-compU)
+	}
+	if baseA > baseZ {
+		baseA, baseZ = baseZ, baseA
+	}
+	return baseA, baseZ
 }
 
 // --- ui.TextInputClient Implementation ---
@@ -558,7 +658,8 @@ func (s *RichInputState) TextForRange(r ui.TextInputRange) (string, ui.TextInput
 
 func (s *RichInputState) Selection() ui.TextInputSelection {
 	if s.compose != "" {
-		startU := runeToUTF16Off(s.text, s.caret)
+		a, _ := s.composeBaseBounds(utf8.RuneCountInString(s.text))
+		startU := runeToUTF16Off(s.text, a)
 		return ui.TextInputSelection{
 			Range: ui.TextInputRange{
 				Start: startU + s.composeSelected.Start,
@@ -580,8 +681,19 @@ func (s *RichInputState) MarkedRange() (ui.TextInputRange, bool) {
 	if s.compose == "" {
 		return ui.TextInputRange{}, false
 	}
-	startU := runeToUTF16Off(s.text, s.caret)
+	a, _ := s.composeBaseBounds(utf8.RuneCountInString(s.text))
+	startU := runeToUTF16Off(s.text, a)
 	return ui.TextInputRange{Start: startU, End: startU + ui.UTF16Len(s.compose)}, true
+}
+
+func (s *RichInputState) clearComposeState() {
+	s.compose = ""
+	s.composing = false
+	s.composeCaret = 0
+	s.composeSelected = ui.TextInputRange{}
+	s.composeStart = 0
+	s.composeEnd = 0
+	s.composeHasRange = false
 }
 
 func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
@@ -591,21 +703,20 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 	ins = strings.ReplaceAll(ins, "\r\n", "\n")
 	ins = strings.ReplaceAll(ins, "\r", "\n")
 
+	wasComposing := s.compose != "" || s.composing
 	var a, z int
 	switch {
 	case r != nil:
-		u0, u1 := min(r.Start, r.End), max(r.Start, r.End)
-		a = s.virtualUTF16ToBaseRune(u0)
-		z = s.virtualUTF16ToBaseRune(u1)
-	case s.compose != "" || s.composing:
-		a, z = s.caret, s.caret
+		a, z = s.virtualUTF16RangeToBaseRunes(r.Start, r.End)
+	case wasComposing:
+		a, z = s.composeBaseBounds(utf8.RuneCountInString(s.text))
 	default:
 		a, z = s.OrderedSelection()
 	}
-	s.compose = ""
-	s.composing = false
-	s.composeCaret = 0
-	s.composeSelected = ui.TextInputRange{}
+	s.clearComposeState()
+	if !wasComposing && ins != "" && a < z && s.onText != nil && s.onText(ins, a, z) {
+		return
+	}
 	s.replaceRunes(a, z, ins)
 }
 
@@ -616,22 +727,35 @@ func (s *RichInputState) SetMarkedText(r *ui.TextInputRange, text string, select
 	if text == "" && r == nil && s.compose == "" && !s.composing {
 		return
 	}
-	if r != nil {
-		u0, u1 := min(r.Start, r.End), max(r.Start, r.End)
-		a := s.virtualUTF16ToBaseRune(u0)
-		z := s.virtualUTF16ToBaseRune(u1)
-		s.compose = ""
-		if a != z {
-			s.replaceRunes(a, z, "")
+	n := utf8.RuneCountInString(s.text)
+	if !s.composing && !s.composeHasRange {
+		s.composeSavedAnchor = s.anchor
+		s.composeSavedCaret = s.caret
+		if r != nil {
+			a, z := s.virtualUTF16RangeToBaseRunes(r.Start, r.End)
+			s.composeStart, s.composeEnd = a, z
 		} else {
-			s.anchor, s.caret = a, a
+			lo, hi := s.OrderedSelection()
+			s.composeStart, s.composeEnd = lo, hi
 		}
-	} else if !s.composing {
-		lo, hi := s.OrderedSelection()
-		if lo != hi {
-			s.replaceRunes(lo, hi, "")
-		}
+		s.composeHasRange = true
+	} else if r != nil {
+		a, z := s.virtualUTF16RangeToBaseRunes(r.Start, r.End)
+		s.composeStart, s.composeEnd = a, z
+		s.composeHasRange = true
 	}
+
+	if text == "" {
+		// Canceling IME composition restores the untouched original text and selection.
+		savedA := clampRune(s.composeSavedAnchor, n)
+		savedC := clampRune(s.composeSavedCaret, n)
+		s.clearComposeState()
+		s.anchor = savedA
+		s.caret = savedC
+		s.displayText = s.virtualString()
+		return
+	}
+
 	if selected.Start > selected.End {
 		selected.Start, selected.End = selected.End, selected.Start
 	}
@@ -642,7 +766,7 @@ func (s *RichInputState) SetMarkedText(r *ui.TextInputRange, text string, select
 	s1 = ui.UTF16Len(text[:ui.UTF16ByteOffset(text, s1)])
 
 	s.compose = text
-	s.composing = text != ""
+	s.composing = true
 	s.composeSelected = ui.TextInputRange{Start: s0, End: s1}
 	s.composeCaret = utf16ToRuneOff(text, s1)
 	s.displayText = s.virtualString()
@@ -651,16 +775,18 @@ func (s *RichInputState) SetMarkedText(r *ui.TextInputRange, text string, select
 func (s *RichInputState) UnmarkText() {
 	if s.compose != "" {
 		committed := s.compose
-		s.compose = ""
-		s.composing = false
-		s.composeCaret = 0
-		s.composeSelected = ui.TextInputRange{}
-		s.replaceRunes(s.caret, s.caret, committed)
+		a, z := s.composeBaseBounds(utf8.RuneCountInString(s.text))
+		s.clearComposeState()
+		s.replaceRunes(a, z, committed)
 		return
 	}
-	s.composing = false
-	s.composeCaret = 0
-	s.composeSelected = ui.TextInputRange{}
+	if s.composeHasRange {
+		n := utf8.RuneCountInString(s.text)
+		s.anchor = clampRune(s.composeSavedAnchor, n)
+		s.caret = clampRune(s.composeSavedCaret, n)
+	}
+	s.clearComposeState()
+	s.displayText = s.virtualString()
 }
 
 func (s *RichInputState) BoundsForRange(r ui.TextInputRange) (ui.Rect, ui.TextInputRange, bool) {
@@ -1358,12 +1484,11 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		if s.readOnly || ev.Text == "" {
 			return false
 		}
-		s.compose = ""
-		s.composing = false
-		if s.onText != nil && s.onText(ev.Text, s.anchor, s.caret) {
+		s.clearComposeState()
+		lo, hi := s.OrderedSelection()
+		if hi > lo && s.onText != nil && s.onText(ev.Text, lo, hi) {
 			return true
 		}
-		lo, hi := s.OrderedSelection()
 		s.replaceRunes(lo, hi, ev.Text)
 		return true
 
@@ -1652,31 +1777,55 @@ func clearCodeRangeSpanBG(spans []ui.Span, codeRanges []RichCodeRange) []ui.Span
 	return out
 }
 
-func shiftCodeRangesForCompose(codeRanges []RichCodeRange, caretRune, compLen int, codeEdge RichCodeEdge) []RichCodeRange {
-	if len(codeRanges) == 0 || compLen <= 0 {
+func shiftCodeRangesForCompose(codeRanges []RichCodeRange, replaceStart, replaceEnd, compLen int, codeEdge RichCodeEdge) []RichCodeRange {
+	if len(codeRanges) == 0 || (compLen <= 0 && replaceEnd <= replaceStart) {
 		return codeRanges
 	}
-	out := make([]RichCodeRange, len(codeRanges))
-	copy(out, codeRanges)
-	for i := range out {
-		switch {
-		case caretRune < out[i].Start:
-			out[i].Start += compLen
-			out[i].End += compLen
-		case caretRune == out[i].Start:
-			if codeEdge == RichCodeEdgeInsideStart {
-				out[i].End += compLen
-			} else {
-				out[i].Start += compLen
-				out[i].End += compLen
+	if replaceEnd < replaceStart {
+		replaceEnd = replaceStart
+	}
+	delta := compLen - (replaceEnd - replaceStart)
+	out := make([]RichCodeRange, 0, len(codeRanges))
+	for _, cr := range codeRanges {
+		if replaceEnd > replaceStart {
+			switch {
+			case cr.End <= replaceStart:
+				out = append(out, cr)
+			case cr.Start >= replaceEnd:
+				cr.Start += delta
+				cr.End += delta
+				out = append(out, cr)
+			default:
+				ns := min(cr.Start, replaceStart)
+				ne := max(cr.End+delta, replaceStart+compLen)
+				if ne > ns {
+					cr.Start = ns
+					cr.End = ne
+					out = append(out, cr)
+				}
 			}
-		case caretRune < out[i].End:
-			out[i].End += compLen
-		case caretRune == out[i].End:
+			continue
+		}
+		caretRune := replaceStart
+		switch {
+		case caretRune < cr.Start:
+			cr.Start += compLen
+			cr.End += compLen
+		case caretRune == cr.Start:
+			if codeEdge == RichCodeEdgeInsideStart {
+				cr.End += compLen
+			} else {
+				cr.Start += compLen
+				cr.End += compLen
+			}
+		case caretRune < cr.End:
+			cr.End += compLen
+		case caretRune == cr.End:
 			if codeEdge != RichCodeEdgeAfter {
-				out[i].End += compLen
+				cr.End += compLen
 			}
 		}
+		out = append(out, cr)
 	}
 	return out
 }
@@ -1788,6 +1937,10 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 					}
 					if bd.Fill.A > 0 {
 						p.Fill(rr, bd.Fill, bd.Radius)
+					}
+					if bd.Underline.A > 0 {
+						const underlineH float32 = 2
+						p.Fill(ui.Rect{X: rr.X, Y: rr.Y + rr.H - underlineH, W: rr.W, H: underlineH}, bd.Underline, 0)
 					}
 					if bd.Ring.A > 0 {
 						p.Stroke(rr, bd.Ring, bd.Radius, 1)
@@ -1987,8 +2140,9 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	}
 	codeRanges := opts.CodeRanges
 	if st.compose != "" {
-		dispSpans = insertComposeIntoSpans(dispSpans, opts.Text, st.caret, st.compose, opts.CodeRanges, st.codeEdge)
-		codeRanges = shiftCodeRangesForCompose(codeRanges, st.caret, utf8.RuneCountInString(st.compose), st.codeEdge)
+		compA, compZ := st.composeBaseBounds(n)
+		dispSpans = insertComposeIntoSpans(dispSpans, opts.Text, compA, compZ, st.compose, opts.CodeRanges, st.codeEdge)
+		codeRanges = shiftCodeRangesForCompose(codeRanges, compA, compZ, utf8.RuneCountInString(st.compose), st.codeEdge)
 	}
 
 	fam := opts.Font
@@ -2046,11 +2200,12 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	caretPos := -1
 	var caretAlpha float32
 	isFocused := box.Focused() || opts.FocusPending
-	if !opts.ReadOnly && !opts.HideCaret && !opts.SuppressSelection && lo == hi && isFocused && c.WindowActive() {
+	if !opts.ReadOnly && !opts.HideCaret && !opts.SuppressSelection && (lo == hi || st.Composing()) && isFocused && c.WindowActive() {
 		now := c.Now()
 		visCaret := st.caret
 		if st.compose != "" {
-			visCaret += st.composeCaret
+			compA, _ := st.composeBaseBounds(n)
+			visCaret = compA + st.composeCaret
 		}
 		if st.blinkPos != visCaret || st.blinkEpoch.IsZero() {
 			st.blinkPos = visCaret
