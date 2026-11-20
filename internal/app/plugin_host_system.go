@@ -471,18 +471,33 @@ func (h *pluginHostUI) Reveal(path string, allowed func() bool) error {
 }
 
 func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-h.closing:
+				cancel()
+				return
+			case <-ticker.C:
+				if !allowed() {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
 	var filters []mygo.FileFilter
 	if len(extensions) != 0 {
 		filters = []mygo.FileFilter{{Name: theme.Tr("文件类型", "File types"), Extensions: extensions}}
 	}
 	win := h.w.Window()
 	checkBeforeShow := func() bool {
-		return h.desktopAction(allowed, func() error {
-			if win != h.w.Window() {
-				return plugins.ErrSystemCanceled
-			}
-			return nil
-		}) == nil
+		return ctx.Err() == nil && win != nil && win == h.w.Window() && win.IsFocused() && allowed()
 	}
 	var paths []string
 	var err error
@@ -505,6 +520,9 @@ func (h *pluginHostUI) Pick(ctx context.Context, save, directory, multiple bool,
 	}
 	if errors.Is(err, files.ErrFileDialogBusy) {
 		return nil, plugins.ErrSystemBusy
+	}
+	if errors.Is(err, files.ErrFileDialogUnavailable) {
+		return nil, plugins.ErrSystemUnavailable
 	}
 	return paths, err
 }
