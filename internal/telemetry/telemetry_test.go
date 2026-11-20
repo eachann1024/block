@@ -217,59 +217,63 @@ func TestCheckOnce_DisabledByEnv(t *testing.T) {
 	}
 }
 
-func TestCheckOnce_RetriesAfter500AndKeepsID(t *testing.T) {
-	clearOptOutEnv(t)
+func TestCheckOnce_RetriesAfterTransientStatusAndKeepsID(t *testing.T) {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			clearOptOutEnv(t)
 
-	var hits atomic.Int32
-	var ids []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := hits.Add(1)
-		body, _ := io.ReadAll(r.Body)
-		var p capturedPayload
-		if err := json.Unmarshal(body, &p); err == nil {
-			ids = append(ids, p.ID)
-		}
-		if n == 1 {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
+			var hits atomic.Int32
+			var ids []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				n := hits.Add(1)
+				body, _ := io.ReadAll(r.Body)
+				var p capturedPayload
+				if err := json.Unmarshal(body, &p); err == nil {
+					ids = append(ids, p.ID)
+				}
+				if n == 1 {
+					w.WriteHeader(status)
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer srv.Close()
 
-	dir := t.TempDir()
-	cfg := telemetry.Config{
-		DataDir:  dir,
-		Version:  "1.0.0",
-		Enabled:  func() bool { return true },
-		Endpoint: srv.URL,
-		Client:   srv.Client(),
-	}
+			dir := t.TempDir()
+			cfg := telemetry.Config{
+				DataDir:  dir,
+				Version:  "1.0.0",
+				Enabled:  func() bool { return true },
+				Endpoint: srv.URL,
+				Client:   srv.Client(),
+			}
 
-	sent, err := telemetry.CheckOnce(context.Background(), cfg)
-	if err == nil {
-		t.Fatalf("first CheckOnce err = nil, want non-nil on 500")
-	}
-	if sent {
-		t.Fatalf("first CheckOnce sent = true, want false on 500")
-	}
-	rec := readStoredRecord(t, dir)
-	if rec.LastPing != "" {
-		t.Fatalf("stored last_ping after 500 = %q, want empty", rec.LastPing)
-	}
+			sent, err := telemetry.CheckOnce(context.Background(), cfg)
+			if err == nil {
+				t.Fatalf("first CheckOnce err = nil, want non-nil on %d", status)
+			}
+			if sent {
+				t.Fatalf("first CheckOnce sent = true, want false on %d", status)
+			}
+			rec := readStoredRecord(t, dir)
+			if rec.LastPing != "" {
+				t.Fatalf("stored last_ping after %d = %q, want empty", status, rec.LastPing)
+			}
 
-	sent, err = telemetry.CheckOnce(context.Background(), cfg)
-	if err != nil {
-		t.Fatalf("retry CheckOnce returned unexpected error: %v", err)
-	}
-	if !sent {
-		t.Fatalf("retry CheckOnce sent = false, want true")
-	}
-	if hits.Load() != 2 {
-		t.Fatalf("server hits = %d, want 2", hits.Load())
-	}
-	if len(ids) != 2 || !hex32Re.MatchString(ids[0]) || ids[0] != ids[1] {
-		t.Fatalf("ids across retry = %v, want two identical 32-char hex ids", ids)
+			sent, err = telemetry.CheckOnce(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("retry CheckOnce returned unexpected error: %v", err)
+			}
+			if !sent {
+				t.Fatalf("retry CheckOnce sent = false, want true")
+			}
+			if hits.Load() != 2 {
+				t.Fatalf("server hits = %d, want 2", hits.Load())
+			}
+			if len(ids) != 2 || !hex32Re.MatchString(ids[0]) || ids[0] != ids[1] {
+				t.Fatalf("ids across retry = %v, want two identical 32-char hex ids", ids)
+			}
+		})
 	}
 }
 
