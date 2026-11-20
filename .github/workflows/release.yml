@@ -405,7 +405,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: node scripts/release/publish-release.mjs --no-writeback
+        run: node scripts/release/publish-release.mjs
       - name: Prune and verify release assets
         if: needs.prepare.outputs.publish == 'yes'
         env:
@@ -419,13 +419,6 @@ jobs:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: bash scripts/release/publish-aur.sh
-      - name: Sync version manifests and updates/feed.json
-        if: needs.prepare.outputs.publish == 'yes'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-        run: node scripts/release/publish-release.mjs --sync-only --tag "$RELEASE_TAG"
 
   recover-post-publish:
     name: Recover post-publish feed & AUR sync
@@ -446,14 +439,14 @@ jobs:
           persist-credentials: false
       - name: Setup Node 22
         run: bash scripts/ci/setup-node.sh 22
-      - name: Update AUR block-bin
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
-        run: bash scripts/release/publish-aur.sh
       - name: Sync version manifests and updates/feed.json
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
         run: node scripts/release/publish-release.mjs --sync-only --tag "$RELEASE_TAG"
+      - name: Update AUR block-bin
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
+        run: bash scripts/release/publish-aur.sh
