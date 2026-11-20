@@ -1384,12 +1384,18 @@ func (s *Supervisor) updateSurfaceControlValue(pluginID, nbRoot string, surface 
 		vs.editedSeq = make(map[string]uint64)
 	}
 	vs.editedControls[controlID] = true
-	hadFeedback := vs.Notice != "" || vs.LastActionID != "" || vs.LastActionMessage != "" || vs.LastActionButtonActive
+	hadFeedback := vs.Notice != "" || vs.LastActionID != "" || vs.LastActionMessage != "" || vs.LastActionButtonActive || vs.RetryKind == RetryKindAction
 	vs.Notice = ""
 	vs.LastActionID = ""
 	vs.LastActionTone = ""
 	vs.LastActionMessage = ""
 	vs.LastActionButtonActive = false
+	vs.LastActionWasHeader = false
+	if vs.Error == "" && vs.RetryKind == RetryKindAction {
+		vs.RetryKind = RetryKindNone
+		vs.FailedActionID = ""
+		vs.errorFromBg = false
+	}
 	s.stopFeedbackTimerLocked(key)
 	vs.editSeq++
 	vs.editedSeq[controlID] = vs.editSeq
