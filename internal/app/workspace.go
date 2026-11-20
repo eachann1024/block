@@ -4237,6 +4237,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	root.Children(func() {
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
 		if !aiImmersive {
+			brandHasUpdate, brandUpdateTip := w.brandUpdateHint()
 			RenderTitlebar(c, TitlebarProps{
 				SidebarWide:       sidebarWide,
 				SidebarAutoHidden: sidebarAutoHidden,
@@ -4439,6 +4440,19 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 				},
 				HiddenSlots:      w.pluginHiddenTitlebarSlots(),
+				AppVersion:       updater.CurrentVersion(),
+				HasUpdate:        brandHasUpdate,
+				UpdateTooltip:    brandUpdateTip,
+				OnOpenUpdater: func() {
+					w.modals.OpenUpdater()
+					if w.updater != nil && !brandHasUpdate {
+						w.updater.CheckAsync(true)
+					}
+				},
+				OnOpenPluginStore: func() {
+					w.OpenSettings("app-store")
+				},
+				OnOpenAbout: w.modals.OpenAbout,
 				PluginButtons:    w.pluginTitlebarButtons(),
 				OnPluginButton:   w.onPluginTitlebarButton,
 				PluginPageMenu:   w.pluginPageMenuItems(),
@@ -4835,7 +4849,6 @@ func (w *Workspace) renderSidebarColumn(
 	notice string,
 	isDrawer bool,
 ) {
-	hasUpd, updBusy, updReady, updTip := w.sidebarUpdaterProps()
 	hideNonMD := true
 	if stSnap.HideNonMarkdownFiles != nil {
 		hideNonMD = *stSnap.HideNonMarkdownFiles
@@ -4859,10 +4872,6 @@ func (w *Workspace) renderSidebarColumn(
 		SettingsOpen:      w.modals.IsSettingsOpen(),
 		SearchOpen:        w.modals.IsSearchOpen(),
 		Busy:              w.isBusy(),
-		HasUpdate:         hasUpd,
-		UpdateBusy:        updBusy,
-		UpdateReady:       updReady,
-		UpdateTooltip:     updTip,
 		SortMode:          stSnap.TreeSort,
 		HideNonMarkdown:   hideNonMD,
 		HideAssets:        hideAssets,
@@ -4947,9 +4956,6 @@ func (w *Workspace) renderSidebarColumn(
 		OnOpenSettings: func() {
 			w.OpenSettings("ai")
 		},
-		OnOpenUpdater: func() {
-			w.modals.OpenUpdater()
-		},
 	})
 }
 
@@ -4958,23 +4964,25 @@ func (w *Workspace) Updater() *updater.Service {
 	return w.updater
 }
 
-func (w *Workspace) sidebarUpdaterProps() (hasUpdate, busy, ready bool, tip string) {
+// brandUpdateHint reports whether the titlebar brand mark should carry the update dot,
+// and the progress line shown in its tooltip and menu.
+func (w *Workspace) brandUpdateHint() (hasUpdate bool, tip string) {
 	if w.updater == nil {
-		return false, false, false, ""
+		return false, ""
 	}
 	snap := w.updater.Snapshot()
 	if !snap.HasActionableUpdate() {
-		return false, false, false, ""
+		return false, ""
 	}
 	switch snap.Status {
 	case updater.StatusDownloading:
-		return true, true, false, fmt.Sprintf(theme.Tr("正在下载 v%s · %d%%", "Downloading v%s · %d%%"), snap.LatestVersion, snap.Percent)
+		return true, fmt.Sprintf(theme.Tr("正在下载 v%s · %d%%", "Downloading v%s · %d%%"), snap.LatestVersion, snap.Percent)
 	case updater.StatusInstalling:
-		return true, true, true, theme.Tr("正在保存笔记并重启…", "Saving notes and restarting…")
+		return true, theme.Tr("正在保存笔记并重启…", "Saving notes and restarting…")
 	case updater.StatusReady:
-		return true, false, true, fmt.Sprintf(theme.Tr("新版本 v%s 已就绪", "Update v%s is ready"), snap.LatestVersion)
+		return true, fmt.Sprintf(theme.Tr("新版本 v%s 已就绪", "Update v%s is ready"), snap.LatestVersion)
 	default:
-		return true, false, false, fmt.Sprintf(theme.Tr("发现新版本 v%s", "Update v%s available"), snap.LatestVersion)
+		return true, fmt.Sprintf(theme.Tr("发现新版本 v%s", "Update v%s available"), snap.LatestVersion)
 	}
 }
 

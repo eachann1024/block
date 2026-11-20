@@ -31,21 +31,52 @@ func loadCatMark(dark bool) ui.ImageSource {
 	return catMarkImg[0]
 }
 
-// AppMark renders the background-free cat glyph beside a regular-weight "Block" wordmark.
-// The glyph is lifted 1px so its optical center meets the wordmark's cap-height center.
-func AppMark(c *ui.Context) ui.Element {
+// AppMarkOptions configures the titlebar brand button.
+type AppMarkOptions struct {
+	Tooltip   string
+	Active    bool // brand menu is open
+	UpdateDot bool // an application update is waiting
+}
+
+// AppMarkImage draws the background-free cat glyph at size×size.
+func AppMarkImage(c *ui.Context, size float32) {
+	if img := loadCatMark(theme.Ocean().Dark); img != nil {
+		ui.Image(c, img).Size(size, size).Shrink(0)
+	}
+}
+
+// AppMarkButton renders the brand as an icon-only chrome button: the wordmark lives in
+// its tooltip and in the brand menu it opens, so the titlebar keeps room for other tools.
+func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	pal := theme.Ocean()
-	c.Key("app-brand-mark")
-	row := ui.Row(c).Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(6).AlignItems(ui.Center).Shrink(0)
-	Probe(row, "app-brand-mark")
-	row.Children(func() {
-		if img := loadCatMark(pal.Dark); img != nil {
-			ui.Image(c, img).Size(16, 16).Shrink(0).Translate(0, -1)
-		}
-		ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-			FontWeight(theme.WeightRegular).TextColor(pal.Text).SingleLine().Shrink(0)
+	const id = "app-brand-mark"
+	c.Key(id)
+	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label("Block")
+	if !o.Active {
+		Tooltip(c, btn, o.Tooltip)
+	}
+	hovered, pressed := btn.Hovered(), btn.Pressed()
+	bg := ui.Transparent
+	if o.Active || hovered || pressed {
+		bg = pal.ShellChrome().Hover
+	}
+	AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	TactileButton(btn, hovered, pressed, false)
+	btn.Children(func() {
+		AppMarkImage(c, theme.IconChrome)
 	})
-	return row
+	if o.UpdateDot {
+		dot, size := pal.UpdaterColors().BadgeDot, theme.UpdaterBadgeDotSize
+		// DrawOver replaces the smoke probe's, so record its bounds here too.
+		btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			RecordBounds(id, r)
+			pt.Fill(ui.Rect{X: r.X + r.W - size - 2, Y: r.Y + 2, W: size, H: size}, dot, size/2)
+		})
+	} else {
+		Probe(btn, id)
+	}
+	return btn
 }
 
 // MonogramBadge renders an 18x18 rounded semantic badge showing the first rune of title

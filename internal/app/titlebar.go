@@ -26,6 +26,10 @@ type TabMenuState struct {
 	PageMenuOpen   bool
 	PageMenuAnchor ui.Rect
 
+	// Brand menu dropped below the cat mark.
+	BrandMenuOpen   bool
+	BrandMenuAnchor ui.Rect
+
 	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
 	tabCenterW float32
 
@@ -48,11 +52,16 @@ func NewTabMenuState() *TabMenuState {
 
 // Close dismisses any open titlebar menu.
 func (s *TabMenuState) Close() bool {
-	had := s.TabMenuOpen || s.PageMenuOpen
+	had := s.anyOpen()
 	s.TabMenuOpen = false
 	s.PageMenuOpen = false
+	s.BrandMenuOpen = false
 	s.MenuCursor = -1
 	return had
+}
+
+func (s *TabMenuState) anyOpen() bool {
+	return s.TabMenuOpen || s.PageMenuOpen || s.BrandMenuOpen
 }
 
 // TitlebarProps supplies current state and callbacks to RenderTitlebar.
@@ -145,6 +154,14 @@ type TitlebarProps struct {
 	OnPluginButton   func(plugins.ResolvedTitlebarButton)
 	PluginPageMenu   []plugins.ResolvedMenuItem
 	OnPluginMenuItem func(plugins.ResolvedMenuItem)
+
+	// Brand mark: version shown in its tooltip and menu, plus the update hint it carries.
+	AppVersion        string
+	HasUpdate         bool
+	UpdateTooltip     string
+	OnOpenUpdater     func()
+	OnOpenPluginStore func()
+	OnOpenAbout       func()
 }
 
 func slotHidden(p TitlebarProps, slotID string) bool {
@@ -191,6 +208,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	}
 
 	leftW := leftLead + theme.ChromeBoxSize + 6
+	if !p.HideMark {
+		leftW += brandMarkGap + theme.ChromeBoxSize
+	}
 	if p.AIImmersive {
 		leftW = leftLead
 	} else if p.SidebarWide {
@@ -243,12 +263,11 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				p.OnToggleSidebar()
 			}
 
+			if !p.HideMark {
+				renderBrandMark(c, p)
+			}
 			if !p.SidebarWide {
 				return
-			}
-
-			if !p.HideMark {
-				blockui.AppMark(c).Margin(0, 0, 0, 4)
 			}
 			ui.Spacer(c)
 
@@ -550,10 +569,14 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
-		if p.MenuState == nil || (!p.MenuState.TabMenuOpen && !p.MenuState.PageMenuOpen) {
+		if p.MenuState == nil || !p.MenuState.anyOpen() {
 			return
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+		if p.MenuState.BrandMenuOpen {
+			renderBrandMenu(c, p, scrim)
+			return
+		}
 		if p.MenuState.PageMenuOpen {
 			surface := resolveTitlebarSurface(p)
 			if surface == SurfaceEmpty {
