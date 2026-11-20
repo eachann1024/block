@@ -47,17 +47,21 @@ func AppMarkImage(c *ui.Context, size float32) {
 	}
 }
 
-// AppMarkButton renders the brand as an icon-only chrome button: the wordmark lives in
-// its tooltip and in the brand menu it opens, so the titlebar keeps room for other tools.
+// AppMarkButtonWidth is the reserved width of the "cooool.top" titlebar brand button
+// when computing available titlebar width in collapsed-sidebar layouts.
+const AppMarkButtonWidth float32 = 74
+
+// AppMarkButton renders the "cooool.top" titlebar brand button; clicking it opens
+// the brand menu (version, updates, website, plugin store, about).
 func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	pal := theme.Ocean()
 	const id = "app-brand-mark"
 	c.Key(id)
 	a11yLabel := strings.TrimSpace(o.Label)
 	if a11yLabel == "" {
-		a11yLabel = "Block"
+		a11yLabel = "cooool.top"
 	}
-	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
+	btn := ui.ButtonBase(c).Height(theme.ChromeBoxSize).PaddingX(theme.Space4).Shrink(0).Center().
 		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(a11yLabel)
 	if !o.Active {
 		if o.TooltipSpec != nil {
@@ -78,7 +82,12 @@ func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	AnimateSurfaceColors(btn, bg, border, hasBorder)
 	TactileButton(btn, hovered, pressed, false)
 	btn.Children(func() {
-		AppMarkImage(c, theme.IconChrome)
+		ui.Row(c).AlignItems(ui.Center).Shrink(0).Children(func() {
+			ui.Text(c, "cooool").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+				FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+			ui.Text(c, ".top").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+				FontWeight(theme.WeightRegular).TextColor(pal.Text.Alpha(0.55)).SingleLine()
+		})
 	})
 	if o.UpdateDot {
 		dot, size := pal.UpdaterColors().BadgeDot, theme.UpdaterBadgeDotSize
