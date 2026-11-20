@@ -298,10 +298,12 @@ type Block struct {
 	ImageAlign    ImageAlign  `json:"imageAlign,omitempty"`
 	ImageCrop     ImageCrop   `json:"imageCrop,omitempty"`
 	Table         *TableData  `json:"table,omitempty"`
-	CleanSource   string      `json:"-"` // Preserved verbatim when block is untouched
-	Dirty         bool        `json:"-"`
-	SourceLine    int         `json:"-"` // 1-based start line in source Markdown
-	SourceEndLine int         `json:"-"` // 1-based inclusive end line in source Markdown
+	CleanSource      string `json:"-"` // Preserved verbatim when block is untouched
+	Dirty            bool   `json:"-"`
+	SourceLine       int    `json:"-"` // 1-based start line in source Markdown
+	SourceEndLine    int    `json:"-"` // 1-based inclusive end line in source Markdown
+	QuoteNewGroup    bool   `json:"-"` // Starts a top-level blockquote distinct from any preceding quote block
+	QuoteTightBefore bool   `json:"-"` // Immediately follows a shallower blockquote line with no blank ">" separator
 }
 
 func (b *Block) PlainText() string {
