@@ -537,7 +537,7 @@ func tablesEqual(a, b *model.TableData) bool {
 			return false
 		}
 		for c := range a.Rows[r] {
-			if a.Rows[r][c].Align != b.Rows[r][c].Align || a.Rows[r][c].Tint != b.Rows[r][c].Tint {
+			if a.Rows[r][c].Align != b.Rows[r][c].Align || a.Rows[r][c].Tint != b.Rows[r][c].Tint || a.Rows[r][c].Header != b.Rows[r][c].Header {
 				return false
 			}
 			if !spansEqual(a.Rows[r][c].Spans, b.Rows[r][c].Spans) {

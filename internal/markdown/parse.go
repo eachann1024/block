@@ -1588,8 +1588,11 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 	var curRow []model.TableCell
 	isThinklyV1 := false
 	noHeaderRow := false
+	explicitHeaderAttr := false
 	headerCol := false
 	inRow := false
+	inThead := false
+	anyRow0Header := false
 	i := 0
 	for i < len(src) {
 		if src[i] != '<' {
@@ -1602,6 +1605,9 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			continue
 		}
 		if closed {
+			if name == "thead" {
+				inThead = false
+			}
 			if name == "tr" && inRow {
 				if len(curRow) > 0 {
 					rows = append(rows, curRow)
@@ -1613,12 +1619,20 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			continue
 		}
 		switch name {
+		case "thead":
+			if !empty {
+				inThead = true
+			}
+			i += consumed
 		case "table":
 			if attrVal(attrs, "data-thinkly-table") != "" {
 				isThinklyV1 = true
 			}
-			if attrVal(attrs, "data-header-rows") == "0" {
-				noHeaderRow = true
+			if v := attrVal(attrs, "data-header-rows"); v != "" {
+				explicitHeaderAttr = true
+				if v == "0" {
+					noHeaderRow = true
+				}
 			}
 			if attrVal(attrs, "data-header-cols") == "1" {
 				headerCol = true
@@ -1648,8 +1662,12 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 			if !inRow {
 				inRow = true
 			}
+			isHdr := name == "th" || inThead
+			if len(rows) == 0 && isHdr {
+				anyRow0Header = true
+			}
 			if empty {
-				curRow = append(curRow, model.TableCell{})
+				curRow = append(curRow, model.TableCell{Header: isHdr})
 				i += consumed
 				continue
 			}
@@ -1682,7 +1700,7 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 					cellAlign = model.ColAlignNone
 				}
 			}
-			curRow = append(curRow, model.TableCell{Spans: spans, Align: cellAlign})
+			curRow = append(curRow, model.TableCell{Spans: spans, Align: cellAlign, Header: isHdr})
 			i = nextIdx
 		default:
 			i += consumed
@@ -1693,6 +1711,9 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 	}
 	if len(rows) == 0 {
 		return model.TableData{}, false
+	}
+	if !anyRow0Header && !isThinklyV1 && !explicitHeaderAttr {
+		noHeaderRow = true
 	}
 	cols := 0
 	for _, r := range rows {

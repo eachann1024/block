@@ -45,10 +45,11 @@ func (h *refScanHooks) usedOnly() *refScanHooks {
 }
 
 type inlineStyle struct {
-	marks   model.Mark
-	link    string
-	fgColor string
-	bgColor string
+	marks     model.Mark
+	link      string
+	linkTitle string
+	fgColor   string
+	bgColor   string
 }
 
 // ParseInline parses inline Markdown and safe inline HTML into normalized model.Span runs.
@@ -84,14 +85,14 @@ func parseInlineWithDefsAndHooks(raw string, defs map[string]refDef, hooks *refS
 }
 
 func escapeInlineLinkBrackets(s string) string {
-	if !strings.ContainsAny(s, "[]`\\") {
+	if !strings.ContainsAny(s, "[]`") {
 		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 4)
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
-		case '\\', '[', ']', '`':
+		case '[', ']', '`':
 			b.WriteByte('\\')
 		}
 		b.WriteByte(s[i])
@@ -101,7 +102,7 @@ func escapeInlineLinkBrackets(s string) string {
 
 func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	dest := formatLinkDest(def.dest)
-	if escapeBrackets && strings.ContainsAny(dest, "[]`\\") {
+	if escapeBrackets && strings.ContainsAny(dest, "[]`") {
 		if strings.HasPrefix(dest, "<") && strings.HasSuffix(dest, ">") && len(dest) >= 2 {
 			dest = "<" + escapeInlineLinkBrackets(dest[1:len(dest)-1]) + ">"
 		} else {
@@ -114,7 +115,7 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	if def.title == "" {
 		return "(" + dest + ")"
 	}
-	title := escapeMarkdownTitleEntities(def.title)
+	title := escapeMarkdownEntities(def.title)
 	title = strings.ReplaceAll(title, `\`, `\\`)
 	title = strings.ReplaceAll(title, `"`, `\"`)
 	title = strings.ReplaceAll(title, "\r", "&#13;")
@@ -130,7 +131,7 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	return "(" + dest + ` "` + title + `")`
 }
 
-func escapeMarkdownTitleEntities(s string) string {
+func escapeMarkdownEntities(s string) string {
 	if !strings.ContainsRune(s, '&') || html.UnescapeString(s) == s {
 		return s
 	}
@@ -607,8 +608,8 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 				}
 			}
 			if !inLink && htmlLinkDepth == 0 && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
-				if label, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i, defs, false); ok {
-					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
+				if label, dest, linkTitle, refKey, consumed, ok := tryParseLinkOrImageWithTitleRefAt(st, i, defs, false); ok {
+					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest, linkTitle: linkTitle}})
 					innerToks := scanInlineTokensWithCtx(label, defs, true, hooks.at(i+1))
 					resolveDelimiters(innerToks)
 					toks = append(toks, innerToks...)
@@ -1825,6 +1826,7 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 	case "a":
 		if href := attrVal(attrs, "href"); href != "" {
 			tok.style.link = href
+			tok.style.linkTitle = attrVal(attrs, "title")
 			tok.hasLnk = true
 		}
 	}
@@ -2010,21 +2012,26 @@ func resolveDelimiters(toks []*inlineTok) {
 }
 
 type styleFrame struct {
-	tag     string
-	marks   model.Mark
-	fgColor string
-	bgColor string
-	link    string
-	hasFG   bool
-	hasBG   bool
-	hasLnk  bool
+	tag       string
+	marks     model.Mark
+	fgColor   string
+	bgColor   string
+	link      string
+	linkTitle string
+	hasFG     bool
+	hasBG     bool
+	hasLnk    bool
 }
 
 func emitSpans(toks []*inlineTok) []model.Span {
 	var out []model.Span
 	var markCounts [8]int // Bold, Italic, Underline, Strike, Code, Superscript, Subscript, Math
 	var htmlStack []styleFrame
-	var linkStack []string
+	type linkEntry struct {
+		url   string
+		title string
+	}
+	var linkStack []linkEntry
 
 	addMark := func(m model.Mark, delta int) {
 		if m&model.MarkBold != 0 {
@@ -2080,11 +2087,14 @@ func emitSpans(toks []*inlineTok) []model.Span {
 			st.marks |= model.MarkMath
 		}
 		if len(linkStack) > 0 {
-			st.link = linkStack[len(linkStack)-1]
+			top := linkStack[len(linkStack)-1]
+			st.link = top.url
+			st.linkTitle = top.title
 		}
 		for _, f := range htmlStack {
 			if f.hasLnk && f.link != "" {
 				st.link = f.link
+				st.linkTitle = f.linkTitle
 			}
 			if f.hasFG && f.fgColor != "" {
 				st.fgColor = f.fgColor
@@ -2103,11 +2113,12 @@ func emitSpans(toks []*inlineTok) []model.Span {
 		st := currentStyle()
 		st.marks |= extraMark
 		out = append(out, model.Span{
-			Text:    txt,
-			Marks:   st.marks,
-			Link:    st.link,
-			FGColor: st.fgColor,
-			BGColor: st.bgColor,
+			Text:      txt,
+			Marks:     st.marks,
+			Link:      st.link,
+			LinkTitle: st.linkTitle,
+			FGColor:   st.fgColor,
+			BGColor:   st.bgColor,
 		})
 	}
 
@@ -2126,6 +2137,7 @@ func emitSpans(toks []*inlineTok) []model.Span {
 					Text:          tok.text,
 					Marks:         st.marks,
 					Link:          st.link,
+					LinkTitle:     st.linkTitle,
 					ImageSrc:      tok.style.link,
 					ImageTitle:    tok.tag,
 					ImageAltEmpty: tok.canOp,
@@ -2145,7 +2157,7 @@ func emitSpans(toks []*inlineTok) []model.Span {
 				addMark(tok.openMarks[k], 1)
 			}
 		case tokLinkOpen:
-			linkStack = append(linkStack, tok.style.link)
+			linkStack = append(linkStack, linkEntry{url: tok.style.link, title: tok.style.linkTitle})
 		case tokLinkClose:
 			if len(linkStack) > 0 {
 				linkStack = linkStack[:len(linkStack)-1]
@@ -2153,14 +2165,15 @@ func emitSpans(toks []*inlineTok) []model.Span {
 		case tokOpenStyle:
 			addMark(tok.isMark, 1)
 			htmlStack = append(htmlStack, styleFrame{
-				tag:     tok.tag,
-				marks:   tok.isMark,
-				fgColor: tok.style.fgColor,
-				bgColor: tok.style.bgColor,
-				link:    tok.style.link,
-				hasFG:   tok.hasFG,
-				hasBG:   tok.hasBG,
-				hasLnk:  tok.hasLnk,
+				tag:       tok.tag,
+				marks:     tok.isMark,
+				fgColor:   tok.style.fgColor,
+				bgColor:   tok.style.bgColor,
+				link:      tok.style.link,
+				linkTitle: tok.style.linkTitle,
+				hasFG:     tok.hasFG,
+				hasBG:     tok.hasBG,
+				hasLnk:    tok.hasLnk,
 			})
 		case tokCloseStyle:
 			for idx := len(htmlStack) - 1; idx >= 0; idx-- {
@@ -2188,7 +2201,7 @@ func coalesceSpans(spans []model.Span) []model.Span {
 		}
 		if len(out) > 0 {
 			last := &out[len(out)-1]
-			if last.ImageSrc == "" && s.ImageSrc == "" && last.Marks == s.Marks && last.Link == s.Link && last.FGColor == s.FGColor && last.BGColor == s.BGColor {
+			if last.ImageSrc == "" && s.ImageSrc == "" && last.Marks == s.Marks && last.Link == s.Link && last.LinkTitle == s.LinkTitle && last.FGColor == s.FGColor && last.BGColor == s.BGColor {
 				if joined.Len() == 0 {
 					joined.Grow(len(last.Text) + len(s.Text))
 					joined.WriteString(last.Text)
@@ -2275,10 +2288,10 @@ type inlineWrapper struct {
 
 func wrappersForSpan(s model.Span, forceHTML, allowBareURL bool) []inlineWrapper {
 	var w []inlineWrapper
-	isBareSelfLink := allowBareURL && !forceHTML && s.Link != "" && s.ImageSrc == "" &&
+	isBareSelfLink := allowBareURL && !forceHTML && s.Link != "" && s.LinkTitle == "" && s.ImageSrc == "" &&
 		s.Marks == 0 && s.FGColor == "" && s.BGColor == "" && isExactBareAutolink(s.Text, s.Link)
 	if s.Link != "" && !isBareSelfLink {
-		w = append(w, inlineWrapper{kind: wrapLink, val1: s.Link, useHT: forceHTML})
+		w = append(w, inlineWrapper{kind: wrapLink, val1: s.Link, val2: s.LinkTitle, useHT: forceHTML})
 	}
 	if s.FGColor != "" || s.BGColor != "" {
 		w = append(w, inlineWrapper{kind: wrapSpanColor, val1: s.FGColor, val2: s.BGColor})
@@ -2326,7 +2339,13 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 			if w.useHT {
 				out.WriteString(`<a href="`)
 				out.WriteString(escapeAttrValue(w.val1))
-				out.WriteString(`">`)
+				out.WriteByte('"')
+				if w.val2 != "" {
+					out.WriteString(` title="`)
+					out.WriteString(escapeAttrValue(w.val2))
+					out.WriteByte('"')
+				}
+				out.WriteByte('>')
 			} else {
 				out.WriteByte('[')
 			}
@@ -2385,9 +2404,8 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 			if w.useHT {
 				out.WriteString("</a>")
 			} else {
-				out.WriteString("](")
-				out.WriteString(formatLinkDest(w.val1))
-				out.WriteByte(')')
+				out.WriteByte(']')
+				out.WriteString(formatRefDefInline(refDef{dest: w.val1, title: w.val2}, false, false))
 			}
 		case wrapSpanColor:
 			out.WriteString("</span>")
@@ -2791,19 +2809,31 @@ func simplifyInlineEscapesWithDefs(src string, expected []model.Span, reservedDe
 		return src
 	}
 	exp := coalesceSpans(expected)
+	const maxIndividualProbes = 32
+	probes := 0
 	for slot, ch := range escapeSimplifyTargets {
 		if counts[slot] == 0 {
 			continue
 		}
-		if ch != '\\' && counts[slot] >= 2 {
+		if ch == '\\' {
+			candAll := stripSafeBackslashEscapes(src)
+			if candAll != src && spansEqual(parseInlineWithDefs(candAll, reservedDefs), exp) {
+				src = candAll
+			}
+			continue
+		}
+		if counts[slot] >= 2 {
 			candAll := stripAllActiveEscapeFor(src, ch)
 			if spansEqual(parseInlineWithDefs(candAll, reservedDefs), exp) {
 				src = candAll
 				continue
 			}
 		}
+		if len(src) > 2048 || probes >= maxIndividualProbes {
+			continue
+		}
 		pos := 0
-		for pos+1 < len(src) {
+		for pos+1 < len(src) && probes < maxIndividualProbes {
 			idx := strings.IndexByte(src[pos:], '\\')
 			if idx < 0 {
 				break
@@ -2821,6 +2851,7 @@ func simplifyInlineEscapesWithDefs(src string, expected []model.Span, reservedDe
 				pos = bs + 1
 				continue
 			}
+			probes++
 			cand := src[:bs] + src[bs+1:]
 			if spansEqual(parseInlineWithDefs(cand, reservedDefs), exp) {
 				src = cand
@@ -2833,21 +2864,56 @@ func simplifyInlineEscapesWithDefs(src string, expected []model.Span, reservedDe
 	return src
 }
 
+// stripSafeBackslashEscapes simplifies `\\` to `\` in O(N) only where the remaining
+// single `\` is NOT followed by an ASCII punctuation character (and therefore stays literal).
+func stripSafeBackslashEscapes(src string) string {
+	var out strings.Builder
+	out.Grow(len(src))
+	changed := false
+	for i := 0; i < len(src); {
+		if src[i] != '\\' {
+			out.WriteByte(src[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(src) && src[j] == '\\' {
+			j++
+		}
+		run := j - i
+		if run == 2 && (j >= len(src) || !isASCIIPunctByte(src[j])) {
+			out.WriteByte('\\')
+			changed = true
+		} else {
+			out.WriteString(src[i:j])
+		}
+		i = j
+	}
+	if !changed {
+		return src
+	}
+	return out.String()
+}
+
 func formatLinkDest(dest string) string {
+	escaped := escapeMarkdownEntities(dest)
+	if strings.ContainsRune(escaped, '\\') {
+		escaped = strings.ReplaceAll(escaped, `\`, `\\`)
+	}
 	needAngle := false
-	for i := 0; i < len(dest); i++ {
-		c := dest[i]
+	for i := 0; i < len(escaped); i++ {
+		c := escaped[i]
 		if c <= ' ' || c == '<' || c == '>' || c == '(' || c == ')' {
 			needAngle = true
 			break
 		}
 	}
 	if needAngle {
-		escaped := strings.ReplaceAll(dest, "<", "%3C")
+		escaped = strings.ReplaceAll(escaped, "<", "%3C")
 		escaped = strings.ReplaceAll(escaped, ">", "%3E")
 		return "<" + escaped + ">"
 	}
-	return dest
+	return escaped
 }
 
 func escapeAttrValue(v string) string {
@@ -2973,7 +3039,44 @@ var mdEntityReplacer = strings.NewReplacer(
 )
 
 func recoverEntityEscapedMarkdown(s string) string {
-	return mdEntityReplacer.Replace(s)
+	lines := strings.Split(s, "\n")
+	for li, line := range lines {
+		if !strings.ContainsRune(line, '&') {
+			continue
+		}
+		trimmed := strings.TrimLeft(line, " \t")
+		// Already-formatted pipe table rows use `&#124;` intentionally to escape cell pipes.
+		if strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		if !strings.ContainsRune(line, '<') {
+			lines[li] = mdEntityReplacer.Replace(line)
+			continue
+		}
+		var out strings.Builder
+		out.Grow(len(line))
+		pos := 0
+		for pos < len(line) {
+			lt := strings.IndexByte(line[pos:], '<')
+			if lt < 0 {
+				out.WriteString(mdEntityReplacer.Replace(line[pos:]))
+				break
+			}
+			if lt > 0 {
+				out.WriteString(mdEntityReplacer.Replace(line[pos : pos+lt]))
+			}
+			tagStart := pos + lt
+			if _, _, _, _, consumed, ok := parseTagRaw(line[tagStart:]); ok && consumed > 0 {
+				out.WriteString(line[tagStart : tagStart+consumed])
+				pos = tagStart + consumed
+				continue
+			}
+			out.WriteByte('<')
+			pos = tagStart + 1
+		}
+		lines[li] = out.String()
+	}
+	return strings.Join(lines, "\n")
 }
 
 func normalizePastedLine(line string) string {
