@@ -174,19 +174,19 @@ type RichEdge struct {
 // RichInputState holds persistent editing, IME composition, selection, and cached layout state
 // for a single block or table cell.
 type RichInputState struct {
-	text            string
-	anchor          int
-	caret           int
-	affinity        ui.TextAffinity
-	desiredX        float32
-	hasDesired      bool
-	carryWinX       float32
-	hasCarry        bool
-	compose         string
-	composeCaret       int
-	composeSelected    ui.TextInputRange
-	composeStart       int
-	composeEnd         int
+	text                string
+	anchor              int
+	caret               int
+	affinity            ui.TextAffinity
+	desiredX            float32
+	hasDesired          bool
+	carryWinX           float32
+	hasCarry            bool
+	compose             string
+	composeCaret        int
+	composeSelected     ui.TextInputRange
+	composeStart        int
+	composeEnd          int
 	composeSavedAnchor  int
 	composeSavedCaret   int
 	composeHasRange     bool
@@ -880,6 +880,8 @@ func (s *RichInputState) BoundsForRange(r ui.TextInputRange) (ui.Rect, ui.TextIn
 	totalU := ui.UTF16Len(virt)
 	u0 := min(max(min(r.Start, r.End), 0), totalU)
 	u1 := min(max(max(r.Start, r.End), u0), totalU)
+	u0 = ui.UTF16Len(virt[:ui.UTF16ByteOffset(virt, u0)])
+	u1 = ui.UTF16Len(virt[:ui.UTF16ByteOffset(virt, u1)])
 	cr := lay.CaretAt(ui.TextCaretPosition{Index: u0, Affinity: ui.TextDownstream})
 	actual := ui.TextInputRange{Start: u0, End: u0}
 	w := float32(1)
