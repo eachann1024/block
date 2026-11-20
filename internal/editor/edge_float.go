@@ -27,7 +27,7 @@ func (s *Session) OuterFlowWidth() float32 {
 
 // DocRevision returns the monotonic document mutation counter used to detect active typing.
 func (s *Session) DocRevision() uint64 {
-	return s.docRev
+	return s.docRevAtomic.Load()
 }
 
 // IsBusyForEdgeFloat reports whether an active editor drag, resize, or floating menu

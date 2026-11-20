@@ -222,7 +222,7 @@ func (s *Session) cancelTableExtend() {
 		if ext.axis == tableExtendCol {
 			s.tableHScroll(ext.blockID).X = ext.startHScrollX
 		}
-		s.docRev++
+		s.bumpDocRev()
 	}
 	ext.canceled = true
 	ext.active = false
@@ -348,6 +348,11 @@ func (s *Session) applyTableExtendCount(idx int, nextCount int) {
 	ext.curCount = nextCount
 	if nextCount != ext.baseCount() {
 		ext.everChanged = true
+		b.Dirty = true
+		b.CleanSource = ""
+	} else {
+		b.Dirty = ext.origBlockDirty
+		b.CleanSource = ext.origBlockClean
 	}
 
 	if ext.axis == tableExtendRow {
@@ -375,7 +380,7 @@ func (s *Session) applyTableExtendCount(idx int, nextCount int) {
 		s.selHead = s.clampPos(s.selHead)
 	}
 
-	s.docRev++
+	s.bumpDocRev()
 }
 
 func (s *Session) commitTableExtend(idx int, ext *tableExtendState) {
@@ -396,7 +401,7 @@ func (s *Session) commitTableExtend(idx int, ext *tableExtendState) {
 		if ext.axis == tableExtendCol {
 			s.tableHScroll(ext.blockID).X = ext.startHScrollX
 		}
-		s.docRev++
+		s.bumpDocRev()
 		return
 	}
 

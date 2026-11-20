@@ -1992,7 +1992,7 @@ func (s *Session) selectionCoversWholeDoc(a, b Position) bool {
 		return false
 	}
 	lastIdx := len(s.doc.Blocks) - 1
-	return a.Block == 0 && a.Offset == 0 && b.Block == lastIdx && b.Offset == len([]rune(s.doc.Blocks[lastIdx].PlainText()))
+	return a.Block == 0 && a.Offset == 0 && b.Block == lastIdx && b.Offset == s.blockSelectionLen(lastIdx)
 }
 
 func tableCellAtRuneRange(tbl *model.TableData, startRune, endRune int) (row, col, relLo, relHi int, ok bool) {

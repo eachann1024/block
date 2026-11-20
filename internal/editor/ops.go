@@ -232,6 +232,85 @@ func (s *Session) SelectedMarkdown() string {
 	return strings.TrimSuffix(s.serializeBlocks(doc.Blocks), "\n")
 }
 
+func (s *Session) isSingleCellTableActive(blk *model.Block) bool {
+	return blk != nil && blk.Kind == model.BlockTable && s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
+}
+
+// SelectedMarkdownForPlugin returns the selected Markdown for host.editor.selection.
+// When an entire single non-paragraph block (list item, heading, quote, callout, todo)
+// is selected, it preserves the full block-level Markdown prefix so plugins wrapping
+// or replacing the selection via host.editor.insert(mode="replace") never strip container syntax.
+// For multi-block selections covering separate clean blockquotes ("> A\n\n> B"), it
+// preserves their blank-line separation instead of merging them into a single quote.
+func (s *Session) SelectedMarkdownForPlugin() string {
+	if !s.hasNonEmptySelection() || s.doc == nil {
+		return ""
+	}
+	a, b := s.orderedSelection()
+	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
+		return ""
+	}
+	lastLen := s.blockSelectionLen(b.Block)
+	singleCellWholeDoc := len(s.doc.Blocks) == 1 && s.isSingleCellTableActive(&s.doc.Blocks[0])
+	if a.Block == 0 && a.Offset == 0 && b.Block == len(s.doc.Blocks)-1 && b.Offset >= lastLen &&
+		s.doc.CleanRaw != "" && s.tableExtend == nil && !singleCellWholeDoc {
+		allClean := true
+		for i := range s.doc.Blocks {
+			if s.doc.Blocks[i].Dirty {
+				allClean = false
+				break
+			}
+		}
+		if allClean {
+			return strings.TrimRight(s.doc.CleanRaw, "\r\n")
+		}
+	}
+	if a.Block == b.Block {
+		blk := &s.doc.Blocks[a.Block]
+		rlen := s.blockSelectionLen(a.Block)
+		whole := a.Offset == 0 && b.Offset >= rlen
+		if whole && blk.Kind == model.BlockParagraph && !blk.Dirty {
+			if strings.TrimSpace(blk.CleanSource) != "" {
+				cp := blk.Clone()
+				if s.doc.CleanRaw != "" && s.codec != nil {
+					if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+						one := []model.Block{cp}
+						exp.ExpandBlockRefCleanSources(one, s.doc.CleanRaw)
+						cp = one[0]
+					}
+				}
+				if !cp.Dirty && strings.TrimSpace(cp.CleanSource) != "" {
+					return strings.TrimRight(cp.CleanSource, "\r\n")
+				}
+			}
+		}
+		if whole && blk.Kind != model.BlockParagraph && blk.Kind != model.BlockCode &&
+			blk.Kind != model.BlockRawHTML && blk.Kind != model.BlockTable &&
+			blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider {
+			if !blk.Dirty && strings.TrimSpace(blk.CleanSource) != "" {
+				cp := blk.Clone()
+				if s.doc.CleanRaw != "" && s.codec != nil {
+					if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+						one := []model.Block{cp}
+						exp.ExpandBlockRefCleanSources(one, s.doc.CleanRaw)
+						cp = one[0]
+					}
+				}
+				if !cp.Dirty && strings.TrimSpace(cp.CleanSource) != "" {
+					return strings.TrimRight(cp.CleanSource, "\r\n")
+				}
+			}
+			cp := blk.Clone()
+			cp.ID = model.NewBlockID()
+			cp.Dirty = true
+			cp.CleanSource = ""
+			return strings.TrimRight(s.serializeBlocks([]model.Block{cp}), "\r\n")
+		}
+		return s.SelectedMarkdown()
+	}
+	return s.SelectedMarkdown()
+}
+
 func hasAnySpanStyle(spans []model.Span) bool {
 	for _, sp := range spans {
 		if sp.Marks != 0 || sp.Link != "" || sp.ImageSrc != "" || sp.FGColor != "" || sp.BGColor != "" {
@@ -930,73 +1009,384 @@ func (s *Session) PasteText(raw string) {
 	s.splicePastedBlocksAtSelection(idx, filtered)
 }
 
-// InsertMarkdown inserts Markdown-formatted content from a plugin or host action
-// into a Markdown note, rendering native blocks immediately while preserving
-// each newly parsed block's CleanSource so invisible HTML comments (e.g. plugin
-// markers) survive serialization verbatim. When replaceSelection is false, any
-// active selection is collapsed to its end first so user text is never overwritten.
-func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
-	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(source) > media.MaxPasteBytes {
-		return false
+// extractHTMLComments collects real inline HTML comments ("<!-- ... -->") in order
+// from a clean Markdown source line, skipping backslash escapes and inline backtick
+// code spans so literal comment text is never duplicated as a hidden comment.
+func extractHTMLComments(cleanSrc string) string {
+	if !strings.Contains(cleanSrc, "<!--") {
+		return ""
 	}
-	s.clearAutoConvertState()
-	s.closeTransientOverlays()
-
-	clean := strings.TrimPrefix(source, "\uFEFF")
-	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "\r\n", "\n"), "\r", "\n")
-
-	if !replaceSelection {
-		s.CollapseSelectionToEnd()
-	}
-	if clean == "" {
-		if replaceSelection && s.hasNonEmptySelection() {
-			return s.ReplaceSelectionWithText("")
+	var out strings.Builder
+	n := len(cleanSrc)
+	for i := 0; i < n; {
+		if cleanSrc[i] == '\\' && i+1 < n {
+			i += 2
+			continue
 		}
-		return true
-	}
-
-	a, b := s.orderedSelection()
-	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
-		return false
-	}
-	first, last := a.Block, b.Block
-	if first != last && s.crossesHiddenFold(first, last) && !s.selectionCoversWholeDoc(a, b) {
-		return false
-	}
-	startBlk := &s.doc.Blocks[first]
-
-	// Literal insert inside code / raw HTML blocks.
-	if first == last && (startBlk.Kind == model.BlockCode || startBlk.Kind == model.BlockRawHTML) {
-		s.pushUndo()
-		s.firstLineDeleteArmed = false
-		s.replaceCurrentSelectionInBlock(first, clean)
-		return true
-	}
-
-	// Table cell fallback: preserve table structure rather than splitting table rows.
-	if first == last && startBlk.Kind == model.BlockTable && startBlk.Table != nil {
-		rlen := len([]rune(startBlk.PlainText()))
-		if a.Offset != 0 || b.Offset != rlen {
-			if s.hasNonEmptySelection() {
-				return s.ReplaceSelectionWithText(clean)
+		if cleanSrc[i] == '`' {
+			ticks := 0
+			for i+ticks < n && cleanSrc[i+ticks] == '`' {
+				ticks++
 			}
-			s.PastePlainText(clean)
+			j := i + ticks
+			closed := false
+			for j < n {
+				if cleanSrc[j] == '`' {
+					run := 0
+					for j+run < n && cleanSrc[j+run] == '`' {
+						run++
+					}
+					if run == ticks {
+						i = j + run
+						closed = true
+						break
+					}
+					j += run
+					continue
+				}
+				j++
+			}
+			if !closed {
+				i += ticks
+			}
+			continue
+		}
+		if strings.HasPrefix(cleanSrc[i:], "<!--") {
+			j := strings.Index(cleanSrc[i+4:], "-->")
+			if j < 0 {
+				break
+			}
+			end := i + 4 + j + 3
+			out.WriteString(cleanSrc[i:end])
+			i = end
+			continue
+		}
+		i++
+	}
+	return out.String()
+}
+
+// isUnclosedRawHTML reports whether raw ends inside an unclosed CommonMark
+// HTML block (types 1-5) so splicing a new Markdown block right after it
+// would be swallowed into the raw HTML block on reload.
+func isUnclosedRawHTML(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	norm := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\r", "\n")
+	kind := ""
+	for _, line := range strings.Split(norm, "\n") {
+		if kind == "" {
+			trimmed := strings.TrimLeft(line, " ")
+			if len(line)-len(trimmed) > 3 {
+				continue
+			}
+			low := strings.ToLower(trimmed)
+			if tag := htmlType1OpenTag(low); tag != "" {
+				kind = "tag:" + tag
+			} else {
+				switch {
+				case strings.HasPrefix(trimmed, "<!--"):
+					kind = "comment"
+				case strings.HasPrefix(trimmed, "<?"):
+					kind = "pi"
+				case strings.HasPrefix(trimmed, "<![CDATA["):
+					kind = "cdata"
+				case len(trimmed) >= 3 && strings.HasPrefix(trimmed, "<!") &&
+					((trimmed[2] >= 'A' && trimmed[2] <= 'Z') || (trimmed[2] >= 'a' && trimmed[2] <= 'z')):
+					kind = "decl"
+				}
+			}
+		}
+		if kind != "" && htmlRawLineCloses(kind, line) {
+			kind = ""
+		}
+	}
+	return kind != ""
+}
+
+func htmlType1OpenTag(low string) string {
+	for _, tag := range []string{"pre", "script", "style", "textarea", "svg", "iframe"} {
+		prefix := "<" + tag
+		if strings.HasPrefix(low, prefix) {
+			rest := low[len(prefix):]
+			if rest == "" || rest[0] == '>' || rest[0] == '/' || rest[0] == ' ' || rest[0] == '\t' {
+				if strings.HasPrefix(rest, "/>") || (strings.Contains(rest, "/>") && !strings.ContainsRune(rest, '>')) {
+					return ""
+				}
+				return tag
+			}
+		}
+	}
+	return ""
+}
+
+// blockHasUnclosedRawHTML checks RawHTML blocks (and <pre>-origin BlockCode
+// CleanSource) for unclosed HTML blocks that would swallow following blocks.
+func blockHasUnclosedRawHTML(blk *model.Block) bool {
+	if blk == nil {
+		return false
+	}
+	if blk.Kind == model.BlockRawHTML {
+		if !blk.Dirty && blk.CleanSource != "" && isUnclosedRawHTML(blk.CleanSource) {
+			return true
+		}
+		return isUnclosedRawHTML(blk.Code)
+	}
+	if blk.Kind == model.BlockCode && !blk.Dirty && blk.CleanSource != "" {
+		first := blk.CleanSource
+		if nl := strings.IndexByte(first, '\n'); nl >= 0 {
+			first = first[:nl]
+		}
+		trimmed := strings.ToLower(strings.TrimLeft(first, " "))
+		if len(first)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, "<pre") {
+			return isUnclosedRawHTML(blk.CleanSource)
+		}
+	}
+	return false
+}
+
+// blockHasUnclosedCodeFence reports whether a non-dirty block's CleanSource opens
+// a CommonMark fenced code block without a matching closing fence line.
+func blockHasUnclosedCodeFence(blk *model.Block) bool {
+	if blk == nil || blk.Dirty || blk.CleanSource == "" {
+		return false
+	}
+	norm := strings.ReplaceAll(strings.ReplaceAll(blk.CleanSource, "\r\n", "\n"), "\r", "\n")
+	lines := strings.Split(strings.TrimRight(norm, "\n"), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	first := lines[0]
+	trimmed := strings.TrimLeft(first, " ")
+	if len(first)-len(trimmed) > 3 || len(trimmed) < 3 {
+		return false
+	}
+	ch := trimmed[0]
+	if ch != '`' && ch != '~' {
+		return false
+	}
+	fenceLen := 0
+	for fenceLen < len(trimmed) && trimmed[fenceLen] == ch {
+		fenceLen++
+	}
+	if fenceLen < 3 {
+		return false
+	}
+	if ch == '`' && strings.ContainsRune(trimmed[fenceLen:], '`') {
+		return false
+	}
+	for _, line := range lines[1:] {
+		lt := strings.TrimLeft(line, " ")
+		if len(line)-len(lt) > 3 || len(lt) < fenceLen {
+			continue
+		}
+		n := 0
+		for n < len(lt) && lt[n] == ch {
+			n++
+		}
+		if n >= fenceLen && strings.Trim(lt[n:], " \t") == "" {
+			return false
+		}
+	}
+	return true
+}
+
+const blockSwallowSentinel = "BLOCKSWALLOWSENTINEL9F3A7C2E"
+
+func (s *Session) blockSwallowsFollowingBlocks(blk *model.Block) bool {
+	if blk == nil {
+		return false
+	}
+	if blockHasUnclosedRawHTML(blk) || blockHasUnclosedCodeFence(blk) {
+		return true
+	}
+	if s.codec != nil {
+		seg := strings.TrimRight(s.serializeBlocks([]model.Block{blk.Clone()}), "\r\n")
+		if seg == "" {
+			return false
+		}
+		probe := seg + "\n\n" + blockSwallowSentinel + "\n"
+		parsed := s.parseMarkdownDoc(probe)
+		if parsed == nil || len(parsed.Blocks) < 2 {
+			return true
+		}
+		last := parsed.Blocks[len(parsed.Blocks)-1]
+		if last.Kind != model.BlockParagraph || last.Indent != 0 || last.QuoteDepth != 0 || strings.TrimSpace(last.PlainText()) != blockSwallowSentinel {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func isFrontmatterFenceLine(line string) bool {
+	trimmed := strings.TrimRight(strings.TrimSuffix(line, "\r"), " \t")
+	return trimmed == "---"
+}
+
+func (s *Session) pairCorruptsBoundary(left, right *model.Block) bool {
+	if left == nil || right == nil || s.codec == nil {
+		return false
+	}
+	dummy := model.Block{
+		ID:    model.NewBlockID(),
+		Kind:  model.BlockParagraph,
+		Spans: []model.Span{{Text: blockSwallowSentinel}},
+		Dirty: true,
+	}
+	pL := s.parseMarkdownDoc(s.serializeBlocks([]model.Block{dummy, left.Clone()}))
+	pR := s.parseMarkdownDoc(s.serializeBlocks([]model.Block{dummy, right.Clone()}))
+	if pL == nil || pR == nil || len(pL.Blocks) != 2 || len(pR.Blocks) != 2 {
+		return false
+	}
+	if pL.Blocks[1].Kind != left.Kind || pR.Blocks[1].Kind != right.Kind {
+		return false
+	}
+	pBoth := s.parseMarkdownDoc(s.serializeBlocks([]model.Block{dummy, left.Clone(), right.Clone()}))
+	if pBoth == nil || len(pBoth.Blocks) != 3 {
+		return true
+	}
+	gotR := pBoth.Blocks[2]
+	expR := pR.Blocks[1]
+	return gotR.Kind != expR.Kind ||
+		gotR.Language != expR.Language ||
+		gotR.QuoteDepth != expR.QuoteDepth ||
+		gotR.Code != expR.Code ||
+		gotR.PlainText() != expR.PlainText()
+}
+
+// wouldSpliceCorruptBoundaries checks whether replacing s.doc.Blocks[replaceStart:replaceEnd]
+// with replacement would cause any block to swallow or reclassify adjacent blocks on reload
+// (such as unclosed HTML/fences, matching closing tags like <script>...</script>, or a
+// document-start "---" divider turning trailing blocks into yaml-frontmatter).
+func (s *Session) wouldSpliceCorruptBoundaries(replaceStart, replaceEnd int, replacement []model.Block) bool {
+	if s.doc == nil {
+		return false
+	}
+	replaceStart = clampInt(replaceStart, 0, len(s.doc.Blocks))
+	replaceEnd = clampInt(replaceEnd, replaceStart, len(s.doc.Blocks))
+	suffix := s.doc.Blocks[replaceEnd:]
+
+	for i := range replacement {
+		hasNext := i+1 < len(replacement) || len(suffix) > 0
+		if hasNext && s.blockSwallowsFollowingBlocks(&replacement[i]) {
+			return true
+		}
+		if i+1 < len(replacement) && s.pairCorruptsBoundary(&replacement[i], &replacement[i+1]) {
 			return true
 		}
 	}
-
-	parsed := s.parseMarkdownDoc(clean)
-	if parsed == nil || len(parsed.Blocks) == 0 {
-		if s.hasNonEmptySelection() {
-			return s.ReplaceSelectionWithText(clean)
+	if len(replacement) > 0 && len(suffix) > 0 {
+		if s.pairCorruptsBoundary(&replacement[len(replacement)-1], &suffix[0]) {
+			return true
 		}
-		s.PastePlainText(clean)
-		return true
 	}
+	if replaceStart > 0 {
+		prev := &s.doc.Blocks[replaceStart-1]
+		if len(replacement) > 0 {
+			if s.blockSwallowsFollowingBlocks(prev) || s.pairCorruptsBoundary(prev, &replacement[0]) {
+				return true
+			}
+		} else if len(suffix) > 0 {
+			if s.blockSwallowsFollowingBlocks(prev) || s.pairCorruptsBoundary(prev, &suffix[0]) {
+				return true
+			}
+		}
+	}
+	if replaceStart == 0 && s.codec != nil {
+		headLen := len(replacement) + len(suffix)
+		if headLen >= 2 {
+			head := make([]model.Block, 0, headLen)
+			for i := range replacement {
+				head = append(head, replacement[i].Clone())
+			}
+			for i := range suffix {
+				head = append(head, suffix[i].Clone())
+			}
+			if !(head[0].Kind == model.BlockCode && head[0].Language == "yaml-frontmatter") {
+				serialized := s.serializeBlocks(head)
+				firstLine := serialized
+				if nl := strings.IndexByte(firstLine, '\n'); nl >= 0 {
+					firstLine = firstLine[:nl]
+				}
+				if isFrontmatterFenceLine(firstLine) {
+					if parsed := s.parseMarkdownDoc(serialized); parsed != nil && len(parsed.Blocks) > 0 &&
+						parsed.Blocks[0].Kind == model.BlockCode && parsed.Blocks[0].Language == "yaml-frontmatter" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
 
-	blocks := make([]model.Block, 0, len(parsed.Blocks))
+func (s *Session) rawHTMLPrefixCaret(prefixRaw string, repBlocks []model.Block, baseIdx, lo, cleanLen int) (int, int) {
+	if len(repBlocks) == 1 && repBlocks[0].Kind == model.BlockRawHTML {
+		return baseIdx, clampInt(lo+cleanLen, 0, s.blockSelectionLen(baseIdx))
+	}
+	prefixBlocks := s.reparsePartialRawHTML(prefixRaw)
+	if len(prefixBlocks) == 0 {
+		return baseIdx, 0
+	}
+	rel := min(len(prefixBlocks)-1, len(repBlocks)-1)
+	targetIdx := baseIdx + rel
+	lastPrefix := prefixBlocks[len(prefixBlocks)-1]
+	off := utf8.RuneCountInString(lastPrefix.PlainText())
+	if lastPrefix.Kind == model.BlockCode || lastPrefix.Kind == model.BlockRawHTML {
+		off = utf8.RuneCountInString(lastPrefix.Code)
+	}
+	return targetIdx, clampInt(off, 0, s.blockSelectionLen(targetIdx))
+}
+
+func firstTableCellInRange(tbl *model.TableData, startRune, endRune int) (row, col, relOff int, ok bool) {
+	if tbl == nil || startRune > endRune {
+		return 0, 0, 0, false
+	}
+	pos := 0
+	emptyRow, emptyCol := -1, -1
+	for rIdx, r := range tbl.Rows {
+		for cIdx, cell := range r {
+			clen := utf8.RuneCountInString(cell.PlainText())
+			cStart, cEnd := pos, pos+clen
+			ovLo := max(startRune, cStart) - cStart
+			ovHi := min(endRune, cEnd) - cStart
+			if ovLo < ovHi {
+				return rIdx, cIdx, ovLo, true
+			}
+			if emptyRow < 0 && startRune <= cStart && cStart <= endRune && clen == 0 {
+				emptyRow, emptyCol = rIdx, cIdx
+			}
+			pos = cEnd
+			if cIdx+1 < len(r) {
+				pos++
+			}
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++
+		}
+	}
+	if emptyRow >= 0 {
+		return emptyRow, emptyCol, 0, true
+	}
+	return 0, 0, 0, false
+}
+
+func (s *Session) reparsePartialRawHTML(raw string) []model.Block {
+	if s.codec == nil {
+		if raw == "" {
+			return nil
+		}
+		return []model.Block{{ID: model.NewBlockID(), Kind: model.BlockRawHTML, Code: raw, Dirty: true}}
+	}
+	parsed := s.parseMarkdownDoc(raw)
+	if parsed == nil {
+		return nil
+	}
+	out := make([]model.Block, 0, len(parsed.Blocks))
 	for _, blk := range parsed.Blocks {
-		if blk.Kind == model.BlockParagraph && blk.Indent == 0 && len(blk.Spans) == 0 {
+		if blk.Kind == model.BlockParagraph && blk.Indent == 0 && len(blk.Spans) == 0 && strings.TrimSpace(blk.CleanSource) == "" {
 			continue
 		}
 		blk.ID = model.NewBlockID()
@@ -1005,43 +1395,925 @@ func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
 		} else {
 			blk.Dirty = false
 		}
-		blocks = append(blocks, blk)
+		out = append(out, blk)
 	}
+	if len(out) > 0 {
+		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+			exp.ExpandBlockRefCleanSources(out, raw)
+		}
+	}
+	return out
+}
+
+func tablesCellsIdentical(a, b *model.TableData) bool {
+	if a == nil || b == nil || len(a.Rows) != len(b.Rows) {
+		return false
+	}
+	for r := range a.Rows {
+		if len(a.Rows[r]) != len(b.Rows[r]) {
+			return false
+		}
+		for c := range a.Rows[r] {
+			if !spansIdentical(normalizeSpans(a.Rows[r][c].Spans), normalizeSpans(b.Rows[r][c].Spans)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func spansIdentical(a, b []model.Span) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Session) blocksStructurallyEqual(a, b *model.Block) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Kind != b.Kind || a.Indent != b.Indent || a.QuoteDepth != b.QuoteDepth ||
+		a.Checked != b.Checked || a.Callout != b.Callout || a.Language != b.Language ||
+		a.Code != b.Code || a.ImageSrc != b.ImageSrc || a.ImageAlt != b.ImageAlt ||
+		!spansIdentical(a.Spans, b.Spans) {
+		return false
+	}
+	if s.codec == nil {
+		return a.CleanSource == b.CleanSource
+	}
+	sa := strings.TrimRight(s.serializeBlocks([]model.Block{a.Clone()}), "\r\n")
+	sb := strings.TrimRight(s.serializeBlocks([]model.Block{b.Clone()}), "\r\n")
+	return sa == sb
+}
+
+func tableGridDims(raw string) (rows, cols int) {
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+	rows = len(lines)
+	for _, line := range lines {
+		c := strings.Count(line, "\t") + 1
+		if c > cols {
+			cols = c
+		}
+	}
+	return rows, cols
+}
+
+func htmlRawLineCloses(kind, line string) bool {
+	if strings.HasPrefix(kind, "tag:") {
+		tag := strings.TrimPrefix(kind, "tag:")
+		return strings.Contains(strings.ToLower(line), "</"+tag+">")
+	}
+	switch kind {
+	case "comment":
+		return strings.Contains(line, "-->")
+	case "pi":
+		return strings.Contains(line, "?>")
+	case "cdata":
+		return strings.Contains(line, "]]>")
+	case "decl":
+		return strings.Contains(line, ">")
+	default:
+		return false
+	}
+}
+
+// preserveBlockComments reattaches hidden HTML comments from origClean onto a
+// cleanly re-serialized block so SerializeMarkdown retains them verbatim.
+func (s *Session) preserveBlockComments(blk *model.Block, origClean string) {
+	if blk == nil || s.codec == nil {
+		return
+	}
+	comments := extractHTMLComments(origClean)
+	if comments == "" {
+		return
+	}
+	tmp := blk.Clone()
+	tmp.Dirty = true
+	tmp.CleanSource = ""
+	ser := strings.TrimRight(s.codec.Serialize(&model.Doc{Blocks: []model.Block{tmp}}), "\r\n")
+	if ser == "" && blk.PlainText() == "" {
+		return
+	}
+	blk.CleanSource = ser + comments
+	blk.Dirty = false
+}
+
+// InsertMarkdown inserts Markdown-formatted content from a plugin or host action
+// into a Markdown note, rendering native blocks immediately while preserving
+// each newly parsed block's CleanSource so invisible HTML comments (e.g. plugin
+// markers) survive serialization verbatim. When replaceSelection is false, any
+// active selection is collapsed to its end without deleting selected text (and
+// Undo restores the original pre-insert selection).
+func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(source) > media.MaxPasteBytes {
+		return false
+	}
+
+	clean := strings.TrimPrefix(source, "\uFEFF")
+	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "\r\n", "\n"), "\r", "\n")
+
+	// Compute effective selection range WITHOUT mutating s.selAnchor/s.selHead or
+	// flushing overlays yet so pushUndo() records the pre-insert selection
+	// (including reverse selections) and failed/no-op calls have zero side effects.
+	rawA, rawB := s.orderedSelection()
+	if rawA.Block < 0 || rawB.Block >= len(s.doc.Blocks) {
+		return false
+	}
+	hadNonEmpty := s.hasNonEmptySelection()
+	a, b := rawA, rawB
+	if !replaceSelection && hadNonEmpty {
+		a = rawB
+		b = rawB
+	}
+	first, last := a.Block, b.Block
+	if first != last && s.crossesHiddenFold(first, last) && !s.selectionCoversWholeDoc(a, b) {
+		return false
+	}
+
+	isRichKind := func(k model.BlockKind) bool {
+		return k != model.BlockTable && k != model.BlockImage && k != model.BlockDivider && k != model.BlockCode && k != model.BlockRawHTML
+	}
+	beginMutation := func() {
+		s.pushUndo()
+		s.firstLineDeleteArmed = false
+		s.clearAutoConvertState()
+		s.closeNonAnnotationOverlays()
+	}
+
+	parsed := s.parseMarkdownDoc(clean)
+	blocks := make([]model.Block, 0)
+	if clean != "" && parsed != nil {
+		for _, blk := range parsed.Blocks {
+			if blk.Kind == model.BlockParagraph && blk.Indent == 0 && len(blk.Spans) == 0 && strings.TrimSpace(blk.CleanSource) == "" {
+				continue
+			}
+			blk.ID = model.NewBlockID()
+			if blk.CleanSource == "" {
+				blk.Dirty = true
+			} else {
+				blk.Dirty = false
+			}
+			blocks = append(blocks, blk)
+		}
+		if len(blocks) > 0 && s.codec != nil {
+			if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+				exp.ExpandBlockRefCleanSources(blocks, clean)
+			}
+		}
+	}
+
+	// Empty replacement (delete selection while preserving untouched endpoints
+	// and hidden HTML comments on partially retained rich-text blocks).
 	if len(blocks) == 0 {
+		if !replaceSelection || !hadNonEmpty {
+			return false
+		}
+		if first < last {
+			firstLen := s.blockSelectionLen(first)
+			if firstLen > 0 && a.Offset >= firstLen && !(last == first+1 && b.Offset == 0) {
+				first++
+				a = Position{Block: first, Offset: 0}
+			}
+			if first < last && b.Offset == 0 && !(last == first+1 && a.Offset >= s.blockSelectionLen(first)) {
+				last--
+				b = Position{Block: last, Offset: s.blockSelectionLen(last)}
+			}
+		}
+		if first == last {
+			blk := &s.doc.Blocks[first]
+			rlen := s.blockSelectionLen(first)
+			if a.Offset == b.Offset {
+				return false
+			}
+			whole := a.Offset == 0 && b.Offset >= rlen
+			if whole && (blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider ||
+				(blk.Kind == model.BlockTable && rlen > 0 && !s.isSingleCellTableActive(blk)) ||
+				s.isPreviewOnlyCodeBlock(first) ||
+				(rawA.Block < rawB.Block && len(s.doc.Blocks) > 1)) {
+				if len(s.doc.Blocks) > 1 && s.wouldSpliceCorruptBoundaries(first, first+1, nil) {
+					return false
+				}
+				beginMutation()
+				if len(s.doc.Blocks) == 1 {
+					nb := model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
+					s.doc.Blocks[first] = nb
+					s.focusedBlock = first
+					s.selAnchor = Position{Block: first, Offset: 0}
+					s.selHead = s.selAnchor
+				} else {
+					s.spliceBlocks(first, first+1, nil)
+					nextIdx := min(first, len(s.doc.Blocks)-1)
+					s.focusedBlock = nextIdx
+					s.selAnchor = Position{Block: nextIdx, Offset: 0}
+					s.selHead = s.selAnchor
+				}
+				s.multiSelFocusPending = s.needsDetachedSelectionFocus()
+				s.focusPending = !s.multiSelFocusPending
+				s.selSyncPending = !s.multiSelFocusPending
+				s.markDirty()
+				return true
+			}
+			if blk.Kind == model.BlockTable && blk.Table != nil {
+				r1, c1, relOff1, ok1 := firstTableCellInRange(blk.Table, a.Offset, b.Offset)
+				beginMutation()
+				clearTableRange(blk.Table, a.Offset, b.Offset, "")
+				blk.Dirty = true
+				blk.CleanSource = ""
+				s.focusedBlock = first
+				caret := a.Offset
+				if ok1 && r1 < len(blk.Table.Rows) && c1 < len(blk.Table.Rows[r1]) {
+					s.tableActiveBlock = blk.ID
+					s.tableActiveRow = r1
+					s.tableActiveCol = c1
+					cellLen := utf8.RuneCountInString(blk.Table.Rows[r1][c1].PlainText())
+					caret = tableCellStartOffset(blk.Table, r1, c1) + clampInt(relOff1, 0, cellLen)
+				} else if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+					s.tableActiveBlock = blk.ID
+					s.tableActiveRow = row
+					s.tableActiveCol = col
+				}
+				s.selAnchor = Position{Block: first, Offset: caret}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.multiSelFocusPending = false
+				s.markDirty()
+				return true
+			}
+			if blk.Kind == model.BlockCode || blk.Kind == model.BlockRawHTML {
+				runes := []rune(blk.Code)
+				lo := clampInt(a.Offset, 0, len(runes))
+				hi := clampInt(b.Offset, lo, len(runes))
+				newCode := string(runes[:lo]) + string(runes[hi:])
+				if blk.Kind == model.BlockRawHTML {
+					repBlocks := s.reparsePartialRawHTML(newCode)
+					if len(repBlocks) == 0 {
+						if len(s.doc.Blocks) > 1 && s.wouldSpliceCorruptBoundaries(first, first+1, nil) {
+							return false
+						}
+					} else if s.wouldSpliceCorruptBoundaries(first, first+1, repBlocks) {
+						return false
+					}
+					beginMutation()
+					if len(repBlocks) == 0 {
+						if len(s.doc.Blocks) == 1 {
+							s.doc.Blocks[first] = model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
+							s.focusedBlock = first
+							s.selAnchor = Position{Block: first, Offset: 0}
+						} else {
+							s.spliceBlocks(first, first+1, nil)
+							nextIdx := min(first, len(s.doc.Blocks)-1)
+							s.focusedBlock = nextIdx
+							s.selAnchor = Position{Block: nextIdx, Offset: 0}
+						}
+					} else {
+						s.spliceBlocks(first, first+1, repBlocks)
+						targetIdx, caret := s.rawHTMLPrefixCaret(string(runes[:lo]), repBlocks, first, lo, 0)
+						s.focusedBlock = targetIdx
+						s.selAnchor = Position{Block: targetIdx, Offset: caret}
+					}
+					s.selHead = s.selAnchor
+					s.focusPending = true
+					s.selSyncPending = true
+					s.multiSelFocusPending = false
+					s.markDirty()
+					return true
+				}
+				cp := blk.Clone()
+				cp.SetText(newCode)
+				if s.wouldSpliceCorruptBoundaries(first, first+1, []model.Block{cp}) {
+					return false
+				}
+				beginMutation()
+				s.selAnchor = a
+				s.selHead = b
+				s.focusedBlock = first
+				s.replaceCurrentSelectionInBlock(first, "")
+				return true
+			}
+			origClean := ""
+			if !blk.Dirty {
+				origClean = blk.CleanSource
+			}
+			prefix := sliceSpans(blk.Spans, 0, clampInt(a.Offset, 0, rlen))
+			suffix := sliceSpans(blk.Spans, clampInt(b.Offset, 0, rlen), rlen)
+			updated := blk.Clone()
+			updated.Spans = normalizeSpans(append(prefix, suffix...))
+			updated.Dirty = true
+			updated.CleanSource = ""
+			if origClean != "" && !whole {
+				s.preserveBlockComments(&updated, origClean)
+			}
+			if s.wouldSpliceCorruptBoundaries(first, first+1, []model.Block{updated}) {
+				return false
+			}
+			beginMutation()
+			s.doc.Blocks[first] = updated
+			s.focusedBlock = first
+			s.selAnchor = Position{Block: first, Offset: clampInt(a.Offset, 0, rlen)}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+
+		// Multi-block empty replacement across [first..last].
+		firstBlk := &s.doc.Blocks[first]
+		lastBlk := &s.doc.Blocks[last]
+		firstLen := s.blockSelectionLen(first)
+		lastLen := s.blockSelectionLen(last)
+
+		if a.Offset == 0 && b.Offset >= lastLen {
+			if !(first == 0 && last == len(s.doc.Blocks)-1) && s.wouldSpliceCorruptBoundaries(first, last+1, nil) {
+				return false
+			}
+			beginMutation()
+			if first == 0 && last == len(s.doc.Blocks)-1 {
+				nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
+				s.doc.Blocks = []model.Block{nb}
+				s.focusedBlock = 0
+				s.selAnchor = Position{Block: 0, Offset: 0}
+				s.selHead = s.selAnchor
+			} else {
+				s.spliceBlocks(first, last+1, nil)
+				targetIdx := min(first, len(s.doc.Blocks)-1)
+				off := 0
+				if first > 0 && targetIdx == first-1 {
+					off = s.blockSelectionLen(targetIdx)
+				}
+				s.focusedBlock = targetIdx
+				s.selAnchor = Position{Block: targetIdx, Offset: off}
+				s.selHead = s.selAnchor
+			}
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+
+		if isRichKind(firstBlk.Kind) && isRichKind(lastBlk.Kind) {
+			origFirstClean := ""
+			if a.Offset > 0 && !firstBlk.Dirty {
+				origFirstClean = firstBlk.CleanSource
+			}
+			origLastClean := ""
+			if b.Offset < lastLen && !lastBlk.Dirty {
+				origLastClean = lastBlk.CleanSource
+			}
+			prefix := sliceSpans(firstBlk.Spans, 0, clampInt(a.Offset, 0, firstLen))
+			suffix := sliceSpans(lastBlk.Spans, clampInt(b.Offset, 0, lastLen), lastLen)
+			updated := firstBlk.Clone()
+			if a.Offset == 0 && b.Offset < lastLen {
+				updated.Kind = lastBlk.Kind
+				updated.Indent = lastBlk.Indent
+				updated.Callout = lastBlk.Callout
+				updated.Checked = lastBlk.Checked
+				updated.QuoteDepth = lastBlk.QuoteDepth
+				updated.QuoteNewGroup = lastBlk.QuoteNewGroup
+				updated.QuoteTightBefore = lastBlk.QuoteTightBefore
+			}
+			updated.Spans = normalizeSpans(append(prefix, suffix...))
+			updated.Dirty = true
+			updated.CleanSource = ""
+			if origFirstClean != "" || origLastClean != "" {
+				s.preserveBlockComments(&updated, origFirstClean+origLastClean)
+			}
+			if s.wouldSpliceCorruptBoundaries(first, last+1, []model.Block{updated}) {
+				return false
+			}
+			beginMutation()
+			s.spliceBlocks(first, last+1, []model.Block{updated})
+			caret := clampInt(a.Offset, 0, firstLen)
+			s.focusedBlock = first
+			s.selAnchor = Position{Block: first, Offset: caret}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+
+		// Mixed-kind empty deletion preserving partial code/RawHTML/table/rich endpoints.
+		var kept []model.Block
+		caretBlockOffset := 0
+		caretRuneOffset := 0
+		placedCaret := false
+		if a.Offset > 0 {
+			switch firstBlk.Kind {
+			case model.BlockCode:
+				runes := []rune(firstBlk.Code)
+				keep := clampInt(a.Offset, 0, len(runes))
+				cp := firstBlk.Clone()
+				cp.SetText(string(runes[:keep]))
+				kept = append(kept, cp)
+				caretBlockOffset = 0
+				caretRuneOffset = keep
+				placedCaret = true
+			case model.BlockRawHTML:
+				runes := []rune(firstBlk.Code)
+				keep := clampInt(a.Offset, 0, len(runes))
+				if keep >= len(runes) {
+					kept = append(kept, firstBlk.Clone())
+					caretBlockOffset = 0
+					caretRuneOffset = keep
+					placedCaret = true
+				} else {
+					rep := s.reparsePartialRawHTML(string(runes[:keep]))
+					if len(rep) > 0 {
+						kept = append(kept, rep...)
+						caretBlockOffset = len(kept) - 1
+						caretRuneOffset = len([]rune(rep[len(rep)-1].PlainText()))
+						placedCaret = true
+					}
+				}
+			case model.BlockTable:
+				cp := firstBlk.Clone()
+				if cp.Table != nil && a.Offset < firstLen {
+					clearTableRange(cp.Table, a.Offset, firstLen, "")
+					cp.Dirty = true
+					cp.CleanSource = ""
+				}
+				kept = append(kept, cp)
+				caretBlockOffset = 0
+				caretRuneOffset = clampInt(a.Offset, 0, s.blockSelectionLen(first))
+				placedCaret = true
+			case model.BlockImage, model.BlockDivider:
+				if a.Offset >= firstLen {
+					kept = append(kept, firstBlk.Clone())
+				}
+			default:
+				origClean := ""
+				if !firstBlk.Dirty {
+					origClean = firstBlk.CleanSource
+				}
+				cp := firstBlk.Clone()
+				cp.Spans = normalizeSpans(sliceSpans(firstBlk.Spans, 0, clampInt(a.Offset, 0, firstLen)))
+				cp.Dirty = true
+				cp.CleanSource = ""
+				if origClean != "" {
+					s.preserveBlockComments(&cp, origClean)
+				}
+				kept = append(kept, cp)
+				caretBlockOffset = 0
+				caretRuneOffset = clampInt(a.Offset, 0, firstLen)
+				placedCaret = true
+			}
+		}
+		if b.Offset < lastLen {
+			switch lastBlk.Kind {
+			case model.BlockCode:
+				if b.Offset == 0 {
+					if !placedCaret {
+						caretBlockOffset = len(kept)
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, lastBlk.Clone())
+				} else {
+					runes := []rune(lastBlk.Code)
+					cut := clampInt(b.Offset, 0, len(runes))
+					cp := lastBlk.Clone()
+					cp.SetText(string(runes[cut:]))
+					if !placedCaret {
+						caretBlockOffset = len(kept)
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, cp)
+				}
+			case model.BlockRawHTML:
+				if b.Offset == 0 {
+					if !placedCaret {
+						caretBlockOffset = len(kept)
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, lastBlk.Clone())
+				} else {
+					runes := []rune(lastBlk.Code)
+					cut := clampInt(b.Offset, 0, len(runes))
+					rep := s.reparsePartialRawHTML(string(runes[cut:]))
+					if len(rep) > 0 {
+						if !placedCaret {
+							caretBlockOffset = len(kept)
+							caretRuneOffset = 0
+							placedCaret = true
+						}
+						kept = append(kept, rep...)
+					}
+				}
+			case model.BlockTable:
+				cp := lastBlk.Clone()
+				if cp.Table != nil && b.Offset > 0 {
+					clearTableRange(cp.Table, 0, b.Offset, "")
+					cp.Dirty = true
+					cp.CleanSource = ""
+				}
+				if !placedCaret {
+					caretBlockOffset = len(kept)
+					caretRuneOffset = 0
+					placedCaret = true
+				}
+				kept = append(kept, cp)
+			case model.BlockImage, model.BlockDivider:
+				if b.Offset == 0 {
+					if !placedCaret {
+						caretBlockOffset = len(kept)
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, lastBlk.Clone())
+				}
+			default:
+				origClean := ""
+				if !lastBlk.Dirty {
+					origClean = lastBlk.CleanSource
+				}
+				suffix := sliceSpans(lastBlk.Spans, clampInt(b.Offset, 0, lastLen), lastLen)
+				if b.Offset == 0 && len(kept) == 0 {
+					if !placedCaret {
+						caretBlockOffset = 0
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, lastBlk.Clone())
+				} else {
+					cp := lastBlk.Clone()
+					cp.Spans = normalizeSpans(suffix)
+					cp.Dirty = true
+					cp.CleanSource = ""
+					if origClean != "" {
+						s.preserveBlockComments(&cp, origClean)
+					}
+					if !placedCaret {
+						caretBlockOffset = len(kept)
+						caretRuneOffset = 0
+						placedCaret = true
+					}
+					kept = append(kept, cp)
+				}
+			}
+		}
+		// Reject if any kept block would swallow or corrupt a following block on reload.
+		if !(len(kept) == 0 && first == 0 && last == len(s.doc.Blocks)-1) && s.wouldSpliceCorruptBoundaries(first, last+1, kept) {
+			return false
+		}
+		beginMutation()
+		if len(kept) == 0 && first == 0 && last == len(s.doc.Blocks)-1 {
+			kept = []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}}
+		}
+		s.spliceBlocks(first, last+1, kept)
+		targetIdx := clampInt(first+caretBlockOffset, 0, len(s.doc.Blocks)-1)
+		if !placedCaret && len(kept) == 0 {
+			targetIdx = clampInt(first, 0, len(s.doc.Blocks)-1)
+			caretRuneOffset = 0
+		}
+		caretRuneOffset = clampInt(caretRuneOffset, 0, s.blockSelectionLen(targetIdx))
+		s.focusedBlock = targetIdx
+		s.selAnchor = Position{Block: targetIdx, Offset: caretRuneOffset}
+		s.selHead = s.selAnchor
+		s.focusPending = true
+		s.selSyncPending = true
+		s.multiSelFocusPending = false
+		s.markDirty()
 		return true
 	}
 
-	// Single plain/rich paragraph without hidden HTML comments merges inline.
+	// Single plain/rich paragraph without hidden HTML comments can merge inline.
 	isInline := len(blocks) == 1 &&
 		blocks[0].Kind == model.BlockParagraph &&
 		blocks[0].Indent == 0 &&
 		!strings.Contains(blocks[0].CleanSource, "<!--")
+	isStructural := !isInline
 
+	startBlk := &s.doc.Blocks[first]
+
+	// Code / RawHTML single-block target.
+	if first == last && (startBlk.Kind == model.BlockCode || startBlk.Kind == model.BlockRawHTML) {
+		curLen := s.blockSelectionLen(first)
+		// Non-destructive structural insert (or collapsed RawHTML boundary insert)
+		// splices adjacent native blocks instead of burying Markdown inside code/HTML.
+		if ((!replaceSelection || !hadNonEmpty) && isStructural) ||
+			(startBlk.Kind == model.BlockRawHTML && a.Offset == b.Offset && (a.Offset == 0 || a.Offset >= curLen)) {
+			insAt := first + 1
+			if a.Offset == 0 && curLen > 0 {
+				insAt = first
+			}
+			if s.wouldSpliceCorruptBoundaries(insAt, insAt, blocks) {
+				return false
+			}
+			beginMutation()
+			s.spliceBlocks(insAt, insAt, blocks)
+			endIdx := insAt + len(blocks) - 1
+			endOff := s.blockSelectionLen(endIdx)
+			s.focusedBlock = endIdx
+			s.selAnchor = Position{Block: endIdx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+		// Whole-block structural replacement of Code / RawHTML falls through to the
+		// structural splice path below; partial structural replacement inside code/HTML is rejected.
+		if isStructural {
+			if replaceSelection && hadNonEmpty && a.Offset == 0 && b.Offset >= curLen {
+				if strings.TrimRight(s.serializeBlocks([]model.Block{startBlk.Clone()}), "\r\n") ==
+					strings.TrimRight(s.serializeBlocks(blocks), "\r\n") {
+					return false
+				}
+			} else {
+				return false
+			}
+		} else {
+			runes := []rune(startBlk.Code)
+			lo := clampInt(a.Offset, 0, len(runes))
+			hi := clampInt(b.Offset, lo, len(runes))
+			if replaceSelection && hadNonEmpty && string(runes[lo:hi]) == clean {
+				return false
+			}
+			newCode := string(runes[:lo]) + clean + string(runes[hi:])
+			if startBlk.Kind == model.BlockRawHTML {
+				repBlocks := s.reparsePartialRawHTML(newCode)
+				if len(repBlocks) == 0 {
+					return false
+				}
+				if s.wouldSpliceCorruptBoundaries(first, first+1, repBlocks) {
+					return false
+				}
+				beginMutation()
+				s.spliceBlocks(first, first+1, repBlocks)
+				endIdx, caret := s.rawHTMLPrefixCaret(string(runes[:lo])+clean, repBlocks, first, lo, utf8.RuneCountInString(clean))
+				s.focusedBlock = endIdx
+				s.selAnchor = Position{Block: endIdx, Offset: caret}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.multiSelFocusPending = false
+				s.markDirty()
+				return true
+			}
+			cp := startBlk.Clone()
+			cp.SetText(newCode)
+			if s.wouldSpliceCorruptBoundaries(first, first+1, []model.Block{cp}) {
+				return false
+			}
+			beginMutation()
+			s.selAnchor = a
+			s.selHead = b
+			s.focusedBlock = first
+			s.replaceCurrentSelectionInBlock(first, clean)
+			return true
+		}
+	}
+
+	// Table single-block target.
+	if first == last && startBlk.Kind == model.BlockTable && startBlk.Table != nil {
+		rlen := s.blockSelectionLen(first)
+		if (!replaceSelection || !hadNonEmpty) && isStructural {
+			if s.wouldSpliceCorruptBoundaries(first+1, first+1, blocks) {
+				return false
+			}
+			// Splice structural blocks cleanly right after the table without altering cells.
+			beginMutation()
+			s.spliceBlocks(first+1, first+1, blocks)
+			endIdx := first + len(blocks)
+			endOff := s.blockSelectionLen(endIdx)
+			s.focusedBlock = endIdx
+			s.selAnchor = Position{Block: endIdx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+		_, _, _, _, singleCell := tableCellAtRuneRange(startBlk.Table, a.Offset, b.Offset)
+		replaceWholeTable := replaceSelection && hadNonEmpty && a.Offset == 0 && b.Offset >= rlen && rlen > 0 && !s.isSingleCellTableActive(startBlk) && (isStructural || !singleCell)
+		if !replaceWholeTable {
+			// Never bury structural Markdown inside an individual table cell.
+			if isStructural {
+				return false
+			}
+			trimmedCell := strings.TrimSuffix(clean, "\n")
+			if strings.ContainsAny(trimmedCell, "\t\n") {
+				if !replaceSelection || !hadNonEmpty {
+					// Multi-cell/multi-line insert in insert-only mode would overwrite adjacent cells.
+					return false
+				}
+				r1, c1, relLo1, _, ok1 := tableCellAtRuneRange(startBlk.Table, a.Offset, a.Offset)
+				r2, c2, _, relHi2, ok2 := tableCellAtRuneRange(startBlk.Table, b.Offset, b.Offset)
+				if !ok1 || !ok2 {
+					return false
+				}
+				endCellLen := utf8.RuneCountInString(startBlk.Table.Rows[r2][c2].PlainText())
+				pRows, pCols := tableGridDims(clean)
+				// Only allow multi-cell replacement when every overwritten cell is fully
+				// inside the active selection (never clobber unselected cell text or neighbors).
+				if relLo1 != 0 || relHi2 < endCellLen || r1+pRows-1 > r2 || c1+pCols-1 > c2 {
+					return false
+				}
+				if !s.canFitTablePaste(startBlk.Table, r1, c1, clean, true, false) {
+					return false
+				}
+				rawRows := strings.Split(clean, "\n")
+				if len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
+					rawRows = rawRows[:len(rawRows)-1]
+				}
+				simTbl := startBlk.Table.Clone()
+				clearTableRange(simTbl, a.Offset, b.Offset, "")
+				for dr, rLine := range rawRows {
+					cols := strings.Split(rLine, "\t")
+					for dc, cellText := range cols {
+						if r1+dr < len(simTbl.Rows) && c1+dc < len(simTbl.Rows[r1+dr]) {
+							if cellText == "" {
+								simTbl.Rows[r1+dr][c1+dc].Spans = nil
+							} else {
+								simTbl.Rows[r1+dr][c1+dc].Spans = normalizeSpans(s.parseInlineSpans(cellText))
+							}
+						}
+					}
+				}
+				if tablesCellsIdentical(startBlk.Table, simTbl) {
+					return false
+				}
+				beginMutation()
+				for r := range startBlk.Table.Rows {
+					for c := range startBlk.Table.Rows[r] {
+						startBlk.Table.Rows[r][c].Spans = simTbl.Rows[r][c].Spans
+					}
+				}
+				startBlk.Dirty = true
+				startBlk.CleanSource = ""
+				endRow := r1 + len(rawRows) - 1
+				lastCols := strings.Split(rawRows[len(rawRows)-1], "\t")
+				endCol := c1 + len(lastCols) - 1
+				s.focusedBlock = first
+				s.tableActiveBlock = startBlk.ID
+				s.tableActiveRow = endRow
+				s.tableActiveCol = endCol
+				endOff := tableCellStartOffset(startBlk.Table, endRow, endCol) +
+					utf8.RuneCountInString(startBlk.Table.Rows[endRow][endCol].PlainText())
+				s.selAnchor = Position{Block: first, Offset: endOff}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.multiSelFocusPending = false
+				s.markDirty()
+				return true
+			}
+			// Single-line text inside table cell(s): update exact target cell at (a.Offset, b.Offset).
+			row, col, relLo, relHi, ok := tableCellAtRuneRange(startBlk.Table, a.Offset, b.Offset)
+			if !ok {
+				if !replaceSelection {
+					return false
+				}
+				r1, c1, relOff1, ok1 := firstTableCellInRange(startBlk.Table, a.Offset, b.Offset)
+				simTbl := startBlk.Table.Clone()
+				clearTableRange(simTbl, a.Offset, b.Offset, "")
+				insPlainLen := utf8.RuneCountInString(blocks[0].PlainText())
+				if !ok1 {
+					r1, c1, relOff1, _, ok1 = tableCellAtRuneRange(simTbl, a.Offset, a.Offset)
+				}
+				if ok1 && len(blocks[0].Spans) > 0 && r1 < len(simTbl.Rows) && c1 < len(simTbl.Rows[r1]) {
+					c := &simTbl.Rows[r1][c1]
+					clen := utf8.RuneCountInString(c.PlainText())
+					insAt := clampInt(relOff1, 0, clen)
+					var m []model.Span
+					m = append(m, sliceSpans(c.Spans, 0, insAt)...)
+					m = append(m, blocks[0].Spans...)
+					m = append(m, sliceSpans(c.Spans, insAt, clen)...)
+					c.Spans = normalizeSpans(m)
+					relOff1 = insAt
+				}
+				if hadNonEmpty && tablesCellsIdentical(startBlk.Table, simTbl) {
+					return false
+				}
+				beginMutation()
+				for r := range startBlk.Table.Rows {
+					for c := range startBlk.Table.Rows[r] {
+						startBlk.Table.Rows[r][c].Spans = simTbl.Rows[r][c].Spans
+					}
+				}
+				startBlk.Dirty = true
+				startBlk.CleanSource = ""
+				caret := a.Offset + insPlainLen
+				s.focusedBlock = first
+				if ok1 && r1 < len(startBlk.Table.Rows) && c1 < len(startBlk.Table.Rows[r1]) {
+					s.tableActiveBlock = startBlk.ID
+					s.tableActiveRow = r1
+					s.tableActiveCol = c1
+					caret = tableCellStartOffset(startBlk.Table, r1, c1) + relOff1 + insPlainLen
+				} else if r2, c2, _, _, ok2 := tableCellAtRuneRange(startBlk.Table, caret, caret); ok2 {
+					s.tableActiveBlock = startBlk.ID
+					s.tableActiveRow = r2
+					s.tableActiveCol = c2
+				}
+				s.selAnchor = Position{Block: first, Offset: caret}
+				s.selHead = s.selAnchor
+				s.focusPending = true
+				s.selSyncPending = true
+				s.multiSelFocusPending = false
+				s.markDirty()
+				return true
+			}
+			cell := &startBlk.Table.Rows[row][col]
+			cellLen := utf8.RuneCountInString(cell.PlainText())
+			var merged []model.Span
+			merged = append(merged, sliceSpans(cell.Spans, 0, relLo)...)
+			merged = append(merged, blocks[0].Spans...)
+			merged = append(merged, sliceSpans(cell.Spans, relHi, cellLen)...)
+			normMerged := normalizeSpans(merged)
+			if replaceSelection && hadNonEmpty && spansIdentical(cell.Spans, normMerged) {
+				return false
+			}
+			beginMutation()
+			cell.Spans = normMerged
+			startBlk.Dirty = true
+			startBlk.CleanSource = ""
+			caret := a.Offset + utf8.RuneCountInString(blocks[0].PlainText())
+			s.focusedBlock = first
+			s.tableActiveBlock = startBlk.ID
+			s.tableActiveRow = row
+			s.tableActiveCol = col
+			s.selAnchor = Position{Block: first, Offset: caret}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+	}
+
+	// Trim unselected cross-block endpoints so selecting up to offset 0 of a table/code/image/divider
+	// (or from the very end of a leading block) never deletes the untouched endpoint block.
+	if first < last {
+		firstLen := s.blockSelectionLen(first)
+		if firstLen > 0 && a.Offset >= firstLen {
+			first++
+			a = Position{Block: first, Offset: 0}
+		}
+		if first < last && b.Offset == 0 {
+			last--
+			b = Position{Block: last, Offset: s.blockSelectionLen(last)}
+		}
+	}
+
+	// Inline merge across rich-text blocks (preserving hidden HTML comments from clean sources).
 	if isInline {
 		allRich := true
 		for i := first; i <= last; i++ {
-			k := s.doc.Blocks[i].Kind
-			if k == model.BlockTable || k == model.BlockImage || k == model.BlockDivider || k == model.BlockCode || k == model.BlockRawHTML {
+			if !isRichKind(s.doc.Blocks[i].Kind) {
 				allRich = false
 				break
 			}
 		}
 		if allRich {
-			s.pushUndo()
-			s.firstLineDeleteArmed = false
+			origFirstClean := ""
+			if !s.doc.Blocks[first].Dirty && (a.Offset > 0 || (first == last && b.Offset < s.blockSelectionLen(last))) {
+				origFirstClean = s.doc.Blocks[first].CleanSource
+			}
+			origLastClean := ""
+			lastRunes := s.blockSelectionLen(last)
+			if last != first && !s.doc.Blocks[last].Dirty && b.Offset < lastRunes {
+				origLastClean = s.doc.Blocks[last].CleanSource
+			}
 			prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
-			lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
 			suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
 			var merged []model.Span
 			merged = append(merged, prefix...)
 			merged = append(merged, blocks[0].Spans...)
 			merged = append(merged, suffix...)
+			normMerged := normalizeSpans(merged)
+			wholeDropsComment := a.Offset == 0 && b.Offset >= lastRunes && !s.doc.Blocks[first].Dirty && strings.Contains(s.doc.Blocks[first].CleanSource, "<!--")
+			if first == last && replaceSelection && hadNonEmpty && !wholeDropsComment && spansIdentical(s.doc.Blocks[first].Spans, normMerged) {
+				return false
+			}
 			updated := s.doc.Blocks[first].Clone()
-			updated.Spans = normalizeSpans(merged)
+			updated.Spans = normMerged
 			updated.Dirty = true
 			updated.CleanSource = ""
+			if origFirstClean != "" || origLastClean != "" {
+				s.preserveBlockComments(&updated, origFirstClean+origLastClean)
+			}
+			if s.wouldSpliceCorruptBoundaries(first, last+1, []model.Block{updated}) {
+				return false
+			}
+			beginMutation()
 			s.spliceBlocks(first, last+1, []model.Block{updated})
-			caret := a.Offset + len([]rune(blocks[0].PlainText()))
+			caret := a.Offset + utf8.RuneCountInString(blocks[0].PlainText())
 			s.focusedBlock = first
 			s.selAnchor = Position{Block: first, Offset: caret}
 			s.selHead = s.selAnchor
@@ -1053,17 +2325,18 @@ func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
 		}
 	}
 
-	s.pushUndo()
-	s.firstLineDeleteArmed = false
-
 	// Caret collapsed at end or start of a non-empty block: splice adjacent without
 	// dirtying or stripping CleanSource from the untouched neighboring block.
 	if first == last && a.Offset == b.Offset {
 		curBlk := &s.doc.Blocks[first]
 		if curBlk.Kind == model.BlockDivider || curBlk.Kind == model.BlockImage {
+			if s.wouldSpliceCorruptBoundaries(first+1, first+1, blocks) {
+				return false
+			}
+			beginMutation()
 			s.spliceBlocks(first+1, first+1, blocks)
 			endIdx := first + len(blocks)
-			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			endOff := s.blockSelectionLen(endIdx)
 			s.focusedBlock = endIdx
 			s.selAnchor = Position{Block: endIdx, Offset: endOff}
 			s.selHead = s.selAnchor
@@ -1073,11 +2346,32 @@ func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
 			s.markDirty()
 			return true
 		}
-		curLen := len([]rune(curBlk.PlainText()))
+		curLen := s.blockSelectionLen(first)
 		if curLen > 0 && a.Offset >= curLen {
-			s.spliceBlocks(first+1, first+1, blocks)
-			endIdx := first + len(blocks)
-			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			insAt := first + 1
+			var foldedHeadID model.BlockID
+			if curBlk.Kind.IsHeading() && s.folded[curBlk.ID] {
+				foldedHeadID = curBlk.ID
+				insAt = s.foldSectionEnd(first)
+			}
+			if s.wouldSpliceCorruptBoundaries(insAt, insAt, blocks) {
+				return false
+			}
+			beginMutation()
+			s.spliceBlocks(insAt, insAt, blocks)
+			if foldedHeadID != 0 {
+				for _, blk := range blocks {
+					s.noteFoldTail(foldedHeadID, blk.ID)
+					s.showHiddenTail(blk.ID)
+				}
+			}
+			endIdx := insAt + len(blocks) - 1
+			if foldedHeadID != 0 {
+				if idx := s.blockIndexByID(blocks[len(blocks)-1].ID); idx >= 0 {
+					endIdx = idx
+				}
+			}
+			endOff := s.blockSelectionLen(endIdx)
 			s.focusedBlock = endIdx
 			s.selAnchor = Position{Block: endIdx, Offset: endOff}
 			s.selHead = s.selAnchor
@@ -1088,9 +2382,13 @@ func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
 			return true
 		}
 		if curLen > 0 && a.Offset == 0 {
+			if s.wouldSpliceCorruptBoundaries(first, first, blocks) {
+				return false
+			}
+			beginMutation()
 			s.spliceBlocks(first, first, blocks)
 			endIdx := first + len(blocks) - 1
-			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			endOff := s.blockSelectionLen(endIdx)
 			s.focusedBlock = endIdx
 			s.selAnchor = Position{Block: endIdx, Offset: endOff}
 			s.selHead = s.selAnchor
@@ -1102,41 +2400,162 @@ func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
 		}
 	}
 
-	// Structural replacement / mid-block split (preserves CleanSource on inserted blocks).
+	// Structural replacement / mid-block split (preserves CleanSource on inserted blocks,
+	// preserves partial Code/RawHTML/Table endpoints, and preserves inline HTML comments
+	// on untouched rich-text prefix/suffix fragments).
 	var inserted []model.Block
-	if a.Offset > 0 && first < len(s.doc.Blocks) &&
-		s.doc.Blocks[first].Kind != model.BlockTable &&
-		s.doc.Blocks[first].Kind != model.BlockCode &&
-		s.doc.Blocks[first].Kind != model.BlockImage &&
-		s.doc.Blocks[first].Kind != model.BlockDivider {
-		prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
-		if len(prefix) > 0 {
-			pb := s.doc.Blocks[first].Clone()
-			pb.Spans = normalizeSpans(prefix)
-			pb.Dirty = true
-			pb.CleanSource = ""
-			inserted = append(inserted, pb)
+	if a.Offset > 0 && first < len(s.doc.Blocks) {
+		firstBlk := &s.doc.Blocks[first]
+		firstLen := s.blockSelectionLen(first)
+		switch firstBlk.Kind {
+		case model.BlockCode:
+			runes := []rune(firstBlk.Code)
+			keep := clampInt(a.Offset, 0, len(runes))
+			if keep > 0 {
+				cp := firstBlk.Clone()
+				cp.SetText(string(runes[:keep]))
+				if s.blockSwallowsFollowingBlocks(&cp) {
+					return false
+				}
+				inserted = append(inserted, cp)
+			}
+		case model.BlockRawHTML:
+			runes := []rune(firstBlk.Code)
+			keep := clampInt(a.Offset, 0, len(runes))
+			if keep > 0 {
+				if keep >= len(runes) {
+					cp := firstBlk.Clone()
+					if s.blockSwallowsFollowingBlocks(&cp) {
+						return false
+					}
+					inserted = append(inserted, cp)
+				} else {
+					rep := s.reparsePartialRawHTML(string(runes[:keep]))
+					for i := range rep {
+						if s.blockSwallowsFollowingBlocks(&rep[i]) {
+							return false
+						}
+					}
+					inserted = append(inserted, rep...)
+				}
+			}
+		case model.BlockTable:
+			cp := firstBlk.Clone()
+			if cp.Table != nil && a.Offset < firstLen {
+				clearTableRange(cp.Table, a.Offset, firstLen, "")
+				cp.Dirty = true
+				cp.CleanSource = ""
+			}
+			inserted = append(inserted, cp)
+		case model.BlockImage, model.BlockDivider:
+			if a.Offset >= firstLen {
+				inserted = append(inserted, firstBlk.Clone())
+			}
+		default:
+			origClean := ""
+			if !firstBlk.Dirty {
+				origClean = firstBlk.CleanSource
+			}
+			prefix := sliceSpans(firstBlk.Spans, 0, clampInt(a.Offset, 0, firstLen))
+			if len(prefix) > 0 {
+				pb := firstBlk.Clone()
+				pb.Spans = normalizeSpans(prefix)
+				pb.Dirty = true
+				pb.CleanSource = ""
+				if origClean != "" && (first != last || b.Offset >= s.blockSelectionLen(last)) {
+					s.preserveBlockComments(&pb, origClean)
+				}
+				inserted = append(inserted, pb)
+			}
 		}
 	}
 	lastInsertedRel := len(inserted) + len(blocks) - 1
 	inserted = append(inserted, blocks...)
-	if last < len(s.doc.Blocks) &&
-		s.doc.Blocks[last].Kind != model.BlockTable &&
-		s.doc.Blocks[last].Kind != model.BlockCode &&
-		s.doc.Blocks[last].Kind != model.BlockImage &&
-		s.doc.Blocks[last].Kind != model.BlockDivider {
-		lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
+	if last < len(s.doc.Blocks) {
+		lastBlk := &s.doc.Blocks[last]
+		lastRunes := s.blockSelectionLen(last)
 		if b.Offset < lastRunes {
-			suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
-			if len(suffix) > 0 {
-				sb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: normalizeSpans(suffix), Dirty: true}
-				inserted = append(inserted, sb)
+			switch lastBlk.Kind {
+			case model.BlockCode:
+				if b.Offset == 0 {
+					inserted = append(inserted, lastBlk.Clone())
+				} else {
+					runes := []rune(lastBlk.Code)
+					cut := clampInt(b.Offset, 0, len(runes))
+					if cut < len(runes) {
+						cp := lastBlk.Clone()
+						cp.SetText(string(runes[cut:]))
+						inserted = append(inserted, cp)
+					}
+				}
+			case model.BlockRawHTML:
+				if b.Offset == 0 {
+					inserted = append(inserted, lastBlk.Clone())
+				} else {
+					runes := []rune(lastBlk.Code)
+					cut := clampInt(b.Offset, 0, len(runes))
+					if cut < len(runes) {
+						rep := s.reparsePartialRawHTML(string(runes[cut:]))
+						inserted = append(inserted, rep...)
+					}
+				}
+			case model.BlockTable:
+				cp := lastBlk.Clone()
+				if cp.Table != nil && b.Offset > 0 {
+					clearTableRange(cp.Table, 0, b.Offset, "")
+					cp.Dirty = true
+					cp.CleanSource = ""
+				}
+				inserted = append(inserted, cp)
+			case model.BlockImage, model.BlockDivider:
+				if b.Offset == 0 {
+					inserted = append(inserted, lastBlk.Clone())
+				}
+			default:
+				origClean := ""
+				if !lastBlk.Dirty {
+					origClean = lastBlk.CleanSource
+				}
+				suffix := sliceSpans(lastBlk.Spans, clampInt(b.Offset, 0, lastRunes), lastRunes)
+				if len(suffix) > 0 {
+					var sb model.Block
+					if first != last {
+						sb = lastBlk.Clone()
+						sb.ID = model.NewBlockID()
+						sb.Spans = normalizeSpans(suffix)
+						sb.Dirty = true
+						sb.CleanSource = ""
+					} else {
+						sb = model.Block{
+							ID:         model.NewBlockID(),
+							Kind:       model.BlockParagraph,
+							QuoteDepth: lastBlk.QuoteDepth,
+							Spans:      normalizeSpans(suffix),
+							Dirty:      true,
+						}
+					}
+					if origClean != "" {
+						s.preserveBlockComments(&sb, origClean)
+					}
+					inserted = append(inserted, sb)
+				}
 			}
 		}
 	}
+	// Reject if any newly inserted or retained block would swallow or corrupt a following block on reload
+	// (e.g. an unclosed code fence, unclosed HTML tag/comment, or frontmatter formation at doc start).
+	if s.wouldSpliceCorruptBoundaries(first, last+1, inserted) {
+		return false
+	}
+	if first == last && replaceSelection && hadNonEmpty && len(inserted) == 1 &&
+		a.Offset == 0 && b.Offset >= s.blockSelectionLen(first) &&
+		s.blocksStructurallyEqual(&s.doc.Blocks[first], &inserted[0]) {
+		return false
+	}
+	beginMutation()
 	s.spliceBlocks(first, last+1, inserted)
 	endIdx := clampInt(first+lastInsertedRel, 0, len(s.doc.Blocks)-1)
-	endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+	endOff := s.blockSelectionLen(endIdx)
 	s.focusedBlock = endIdx
 	s.selAnchor = Position{Block: endIdx, Offset: endOff}
 	s.selHead = s.selAnchor

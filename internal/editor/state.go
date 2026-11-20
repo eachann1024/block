@@ -81,21 +81,27 @@ type findMatch struct {
 }
 
 type undoSnapshot struct {
-	Doc         *model.Doc
-	FocusIdx    int
-	Anchor      Position
-	Head        Position
-	Annotations []*model.Annotation
-	FoldTails   map[model.BlockID]model.BlockID
+	Doc              *model.Doc
+	FocusIdx         int
+	Anchor           Position
+	Head             Position
+	Annotations      []*model.Annotation
+	FoldTails        map[model.BlockID]model.BlockID
+	ActiveAnnotID    string
+	EditingAnnotID   string
+	EditingAnnotText string
+	CommentDraft     string
+	ToolbarPop       string
 }
 
 // Session holds all document, selection, overlay, and collaboration state for an editor instance.
 type Session struct {
-	notePath string
-	doc      *model.Doc
-	codec    model.MarkdownCodec
-	host     model.WorkspaceHost
-	dirty    bool
+	notePath    string
+	doc         *model.Doc
+	codec       model.MarkdownCodec
+	host        model.WorkspaceHost
+	dirty       bool
+	dirtyAtomic atomic.Bool
 
 	undoStack    []undoSnapshot
 	redoStack    []undoSnapshot
@@ -140,6 +146,7 @@ type Session struct {
 	blockIdxRev        uint64
 	frameBlocks        []frameBlockMeta
 	docRev             uint64
+	docRevAtomic       atomic.Uint64
 	outlineRev         uint64
 	outlineLen         int
 	outlineCache       []model.OutlineItem
@@ -260,16 +267,16 @@ type Session struct {
 	calloutMenuIndex int
 
 	// Image block UI
-	imagePopBlock     model.BlockID
-	imagePopKind      string // "", "more", "alt", "size", "crop"
-	imageAltDraft     string
-	imageAltHandle    ui.Handle
-	imageMu           sync.Mutex
-	imageCache        map[string]ui.ImageSource
-	imageOrder        []string
-	imageLoading      map[string]bool
-	imageEpoch        uint64
-	imageFailed       map[string]bool
+	imagePopBlock          model.BlockID
+	imagePopKind           string // "", "more", "alt", "size", "crop"
+	imageAltDraft          string
+	imageAltHandle         ui.Handle
+	imageMu                sync.Mutex
+	imageCache             map[string]ui.ImageSource
+	imageOrder             []string
+	imageLoading           map[string]bool
+	imageEpoch             uint64
+	imageFailed            map[string]bool
 	videoPlayers           map[string]*ui.VideoPlayer
 	videoCtrlStates        map[string]*appUi.VideoControlState
 	activeVideoSrc         string
@@ -278,10 +285,10 @@ type Session struct {
 	onPreviewMediaOpen     func(src string, isVideo bool)
 	isPreviewMediaExpanded func(src string) (thisExpanded bool, anyLightboxOpen bool)
 	videoFailed            map[string]bool
-	imageDocRects     map[model.BlockID]ui.Rect
-	imgResizeBlock    model.BlockID
-	imgResizeStartPct float32
-	imgResizeCurPct   float32
+	imageDocRects          map[model.BlockID]ui.Rect
+	imgResizeBlock         model.BlockID
+	imgResizeStartPct      float32
+	imgResizeCurPct        float32
 
 	// Table block UI
 	tableActiveBlock  model.BlockID
@@ -392,8 +399,19 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 		overlayPanelRects: make(map[string]ui.Rect),
 		annotRowHeights:   make(map[string]float32),
 	}
+	s.docRevAtomic.Store(s.docRev)
 	s.savedMarkdown = s.Markdown()
 	return s
+}
+
+func (s *Session) bumpDocRev() {
+	s.docRev++
+	s.docRevAtomic.Store(s.docRev)
+}
+
+func (s *Session) setDirty(v bool) {
+	s.dirty = v
+	s.dirtyAtomic.Store(v)
 }
 
 func normalizeDoc(doc *model.Doc) *model.Doc {
@@ -434,7 +452,7 @@ func (s *Session) Doc() *model.Doc {
 func (s *Session) SetDoc(doc *model.Doc) {
 	s.flushAnnotationEdit()
 	s.doc = normalizeDoc(doc)
-	s.dirty = false
+	s.setDirty(false)
 	s.undoStack = nil
 	s.redoStack = nil
 	s.lastUndoAt = time.Time{}
@@ -506,7 +524,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.tableHScrolls)
 	clear(s.blockIdxCache)
 	s.blockIdxRev = 0
-	s.docRev++
+	s.bumpDocRev()
 	s.virtReady = false
 	clear(s.overlayBtnRects)
 	clear(s.overlayPanelRects)
@@ -557,7 +575,7 @@ func (s *Session) TrimInactiveCaches() {
 }
 
 func (s *Session) Dirty() bool {
-	return s.dirty
+	return s.dirtyAtomic.Load()
 }
 
 func (s *Session) DiskFingerprint() int64 {
@@ -569,11 +587,11 @@ func (s *Session) SetDiskFingerprint(version int64) {
 }
 
 func (s *Session) DocRev() uint64 {
-	return s.docRev
+	return s.docRevAtomic.Load()
 }
 
 func (s *Session) MarkSaved() {
-	s.dirty = false
+	s.setDirty(false)
 	s.lastUndoKey = ""
 	s.lastUndoAt = time.Time{}
 	s.savedMarkdown = s.Markdown()
@@ -584,11 +602,19 @@ func (s *Session) MarkSavedIfUnchanged(rev uint64, savedMD string) bool {
 	if s.docRev != rev {
 		return false
 	}
-	s.dirty = false
+	s.setDirty(false)
 	s.lastUndoKey = ""
 	s.lastUndoAt = time.Time{}
 	s.savedMarkdown = savedMD
 	return true
+}
+
+// SyncDiskSavedMarkdown records the Markdown text that was actually written to disk
+// when the session moved to a newer docRev while a save was in flight, ensuring
+// Dirty() reflects divergence from disk (never falsely reporting clean after Undo).
+func (s *Session) SyncDiskSavedMarkdown(diskMD string) {
+	s.savedMarkdown = diskMD
+	s.setDirty(s.Markdown() != diskMD)
 }
 
 func (s *Session) ClearTransientOverlays() {
@@ -795,12 +821,17 @@ func (s *Session) cloneAnnotations(src []*model.Annotation) []*model.Annotation 
 
 func (s *Session) captureUndoSnapshot() undoSnapshot {
 	return undoSnapshot{
-		Doc:         s.doc.Clone(),
-		FocusIdx:    s.focusedBlock,
-		Anchor:      s.selAnchor,
-		Head:        s.selHead,
-		Annotations: s.cloneAnnotations(s.annotations),
-		FoldTails:   cloneFoldTails(s.foldTails),
+		Doc:              s.doc.Clone(),
+		FocusIdx:         s.focusedBlock,
+		Anchor:           s.selAnchor,
+		Head:             s.selHead,
+		Annotations:      s.cloneAnnotations(s.annotations),
+		FoldTails:        cloneFoldTails(s.foldTails),
+		ActiveAnnotID:    s.activeAnnotID,
+		EditingAnnotID:   s.editingAnnotID,
+		EditingAnnotText: s.editingAnnotText,
+		CommentDraft:     s.commentDraft,
+		ToolbarPop:       s.toolbarPop,
 	}
 }
 
@@ -858,6 +889,145 @@ func (s *Session) Undo() bool {
 	return true
 }
 
+// HostEditRollback captures pre-edit document, undo/redo history, and
+// annotation/popup state so a failed host-driven edit can roll back completely
+// without losing prior Undo/Redo history (even at the 200-step undo cap) or
+// in-progress annotation drafts and popups.
+type HostEditRollback struct {
+	valid                 bool
+	preEditSnap           undoSnapshot
+	prevUndo              []undoSnapshot
+	prevRedo              []undoSnapshot
+	prevLastUndoKey       string
+	prevLastUndoAt        time.Time
+	prevWasClean          bool
+	prevSavedMarkdown     string
+	activeAnnotID         string
+	editingAnnotID        string
+	editingAnnotText      string
+	commentDraft          string
+	toolbarPop            string
+	reactionPickerAnnotID string
+	annotFlashID          string
+	annotFlashAt          time.Time
+	annotFlashAlpha       float32
+	tableActiveBlock      model.BlockID
+	tableActiveRow        int
+	tableActiveCol        int
+}
+
+// CaptureHostEditRollback snapshots reversible session state before a host-driven edit.
+func (s *Session) CaptureHostEditRollback() HostEditRollback {
+	var undoCopy []undoSnapshot
+	if s.undoStack != nil {
+		undoCopy = make([]undoSnapshot, len(s.undoStack))
+		copy(undoCopy, s.undoStack)
+	}
+	var redoCopy []undoSnapshot
+	if s.redoStack != nil {
+		redoCopy = make([]undoSnapshot, len(s.redoStack))
+		copy(redoCopy, s.redoStack)
+	}
+	return HostEditRollback{
+		valid:                 true,
+		preEditSnap:           s.captureUndoSnapshot(),
+		prevUndo:              undoCopy,
+		prevRedo:              redoCopy,
+		prevLastUndoKey:       s.lastUndoKey,
+		prevLastUndoAt:        s.lastUndoAt,
+		prevWasClean:          !s.dirty,
+		prevSavedMarkdown:     s.savedMarkdown,
+		activeAnnotID:         s.activeAnnotID,
+		editingAnnotID:        s.editingAnnotID,
+		editingAnnotText:      s.editingAnnotText,
+		commentDraft:          s.commentDraft,
+		toolbarPop:            s.toolbarPop,
+		reactionPickerAnnotID: s.reactionPickerAnnotID,
+		annotFlashID:          s.annotFlashID,
+		annotFlashAt:          s.annotFlashAt,
+		annotFlashAlpha:       s.annotFlashAlpha,
+		tableActiveBlock:      s.tableActiveBlock,
+		tableActiveRow:        s.tableActiveRow,
+		tableActiveCol:        s.tableActiveCol,
+	}
+}
+
+// RollbackHostEdit reverts the edit pushed since rb was captured and restores
+// prior Undo/Redo history and in-progress annotation/popup state verbatim.
+func (s *Session) RollbackHostEdit(rb HostEditRollback) bool {
+	if !rb.valid {
+		return false
+	}
+	s.restoreSnapshot(rb.preEditSnap)
+	if rb.prevUndo != nil {
+		s.undoStack = make([]undoSnapshot, len(rb.prevUndo))
+		copy(s.undoStack, rb.prevUndo)
+	} else {
+		s.undoStack = nil
+	}
+	if rb.prevRedo != nil {
+		s.redoStack = make([]undoSnapshot, len(rb.prevRedo))
+		copy(s.redoStack, rb.prevRedo)
+	} else {
+		s.redoStack = nil
+	}
+	s.lastUndoKey = rb.prevLastUndoKey
+	s.lastUndoAt = rb.prevLastUndoAt
+	s.activeAnnotID = rb.activeAnnotID
+	s.editingAnnotID = rb.editingAnnotID
+	s.editingAnnotText = rb.editingAnnotText
+	s.commentDraft = rb.commentDraft
+	s.toolbarPop = rb.toolbarPop
+	s.reactionPickerAnnotID = rb.reactionPickerAnnotID
+	s.annotFlashID = rb.annotFlashID
+	s.annotFlashAt = rb.annotFlashAt
+	s.annotFlashAlpha = rb.annotFlashAlpha
+	s.tableActiveBlock = rb.tableActiveBlock
+	s.tableActiveRow = rb.tableActiveRow
+	s.tableActiveCol = rb.tableActiveCol
+	if s.editingAnnotID != "" {
+		s.editingFocusPending = true
+	}
+	s.multiSelFocusPending = s.needsDetachedSelectionFocus()
+	s.focusPending = !s.multiSelFocusPending
+	s.selSyncPending = !s.multiSelFocusPending
+	s.savedMarkdown = rb.prevSavedMarkdown
+	if rb.prevWasClean {
+		s.setDirty(false)
+		s.savedMarkdown = s.Markdown()
+	} else {
+		s.setDirty(true)
+	}
+	return true
+}
+
+// RevertLastUndo restores the most recent undo snapshot without recording the
+// reverted state on the redo stack (used when a host-driven edit fails to save
+// and must roll back cleanly without resurfacing on Redo or losing in-progress
+// annotation drafts).
+func (s *Session) RevertLastUndo() bool {
+	if len(s.undoStack) == 0 {
+		return false
+	}
+	s.lastUndoKey = ""
+	s.lastUndoAt = time.Time{}
+	prev := s.undoStack[len(s.undoStack)-1]
+	s.undoStack = s.undoStack[:len(s.undoStack)-1]
+	s.redoStack = nil
+	s.restoreSnapshot(prev)
+	s.activeAnnotID = prev.ActiveAnnotID
+	s.editingAnnotID = prev.EditingAnnotID
+	s.editingAnnotText = prev.EditingAnnotText
+	s.commentDraft = prev.CommentDraft
+	if prev.ToolbarPop == "comment" {
+		s.toolbarPop = prev.ToolbarPop
+	}
+	if s.editingAnnotID != "" {
+		s.editingFocusPending = true
+	}
+	return true
+}
+
 func (s *Session) Redo() bool {
 	if len(s.redoStack) == 0 {
 		return false
@@ -893,9 +1063,9 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 		s.foldTails[k] = v
 	}
 	s.trailingPlus = false
-	s.docRev++
+	s.bumpDocRev()
 	s.virtReady = false
-	s.dirty = s.Markdown() != s.savedMarkdown
+	s.setDirty(s.Markdown() != s.savedMarkdown)
 	s.focusPending = true
 	s.selSyncPending = true
 	s.caretHidden = false
@@ -928,8 +1098,8 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 }
 
 func (s *Session) markDirty() {
-	s.dirty = true
-	s.docRev++
+	s.setDirty(true)
+	s.bumpDocRev()
 	if s.doc != nil {
 		if s.doc.CleanRaw != "" && strings.Contains(s.doc.CleanRaw, "]:") && s.codec != nil {
 			if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
@@ -988,6 +1158,16 @@ func (s *Session) CollapseSelectionToEnd() {
 	}
 	_, b := s.orderedSelection()
 	s.SelectRange(b.Block, b.Offset, b.Block, b.Offset)
+	if b.Block >= 0 && b.Block < len(s.doc.Blocks) {
+		blk := &s.doc.Blocks[b.Block]
+		if blk.Kind == model.BlockTable && blk.Table != nil {
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, b.Offset, b.Offset); ok {
+				s.tableActiveBlock = blk.ID
+				s.tableActiveRow = row
+				s.tableActiveCol = col
+			}
+		}
+	}
 }
 
 func (s *Session) SelectRange(startBlock, startOff, endBlock, endOff int) {
@@ -1054,6 +1234,28 @@ func (s *Session) closeTransientOverlays() {
 	s.annotFlashID = ""
 	s.annotFlashAt = time.Time{}
 	s.annotFlashAlpha = 0
+	s.reactionPickerAnnotID = ""
+	s.trailingPlus = false
+	s.outlineHovered = false
+	s.outlineHoverEnterAt = time.Time{}
+	s.outlineHoverLeaveAt = time.Time{}
+}
+
+// closeNonAnnotationOverlays dismisses geometric popups without committing or
+// discarding any in-progress annotation edit or comment draft.
+func (s *Session) closeNonAnnotationOverlays() {
+	s.blockMenu = nil
+	if s.toolbarPop != "comment" {
+		s.toolbarPop = ""
+	}
+	s.toolbarMoreIndex = 0
+	s.codeLangMenuBlock = 0
+	s.calloutMenuBlock = 0
+	s.calloutMenuIndex = 0
+	s.imagePopBlock = 0
+	s.imagePopKind = ""
+	s.tableMenuBlock = 0
+	s.tableMenuKind = ""
 	s.reactionPickerAnnotID = ""
 	s.trailingPlus = false
 	s.outlineHovered = false
