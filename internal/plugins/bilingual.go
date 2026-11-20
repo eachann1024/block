@@ -20,9 +20,15 @@ func stripHTMLComments(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// IsOfficialRepo reports whether repo belongs to the official blockmd-plugins organization.
+// IsOfficialRepo reports whether repo belongs to the official blockmd-plugins
+// (Block Community) organization.
 func IsOfficialRepo(repo string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repo)), "blockmd-plugins/")
+	slug := strings.ToLower(strings.TrimSpace(repo))
+	owner, name, ok := strings.Cut(slug, "/")
+	if !ok || name == "" || strings.Contains(name, "/") {
+		return false
+	}
+	return owner == "blockmd-plugins"
 }
 
 // IsReviewedAuthorRepo reports whether repo belongs to a trusted first-party
