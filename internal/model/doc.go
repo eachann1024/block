@@ -67,6 +67,38 @@ func (k BlockKind) IsList() bool {
 	return k == BlockBullet || k == BlockNumbered || k == BlockTodo
 }
 
+// NumberedListMarkers computes the displayed list numbers in document order.
+type NumberedListMarkers struct {
+	runLen [13]int
+	base   [13]int
+}
+
+// Next returns the block's visible number, or zero for a non-numbered block.
+func (n *NumberedListMarkers) Next(b Block) int {
+	if b.Kind == BlockParagraph && b.Indent == 0 && b.QuoteDepth == 0 && len(b.Spans) == 0 {
+		return 0
+	}
+	ind := min(max(b.Indent, 0), len(n.runLen)-1)
+	clear(n.runLen[ind+1:])
+	clear(n.base[ind+1:])
+	if b.Kind != BlockNumbered {
+		n.runLen[ind], n.base[ind] = 0, 0
+		return 0
+	}
+
+	n.runLen[ind]++
+	num := n.runLen[ind]
+	if n.base[ind] > 1 {
+		num += n.base[ind] - 1
+	} else if b.ListIndex > 1 {
+		num = b.ListIndex
+	}
+	if b.ListIndex > 1 {
+		n.runLen[ind], n.base[ind] = 1, b.ListIndex
+	}
+	return num
+}
+
 type CalloutKind string
 
 const (

@@ -1192,7 +1192,7 @@ func latestStreamLine(s string) string {
 	defs := bui.DiffRefDefs(lines, same)
 	// Only a table row's edge bars are its own: "| 是 Shell 的管道符" keeps its "|".
 	cols := bui.DiffTableCols(lines, same)
-	// "操作说明\n2. 先备份" keeps its "2." as text, as the note shows it.
+	// Preserve ordered markers that the note reads as literal text.
 	nums := bui.DiffListNumbers(lines, same)
 	// A setext underline ("===") only makes the line above a heading.
 	setext := bui.DiffSetextLevels(lines, same)

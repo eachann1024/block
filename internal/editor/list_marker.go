@@ -156,8 +156,7 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 	}
 
 	var prevVis *model.Block
-	var runLen [13]int
-	var numBase [13]int
+	var numbering model.NumberedListMarkers
 	var ancStack [16]ancStackEntry
 	ancLen := 0
 	lastBlankIdx := -1
@@ -180,31 +179,8 @@ func (s *Session) prepareFrameBlocks() []frameBlockMeta {
 	for i := 0; i < n; i++ {
 		b := &blocks[i]
 		isPlainEmptyZero := isPlainEmptyListBridgeBlock(b)
-		num := 0
+		num := numbering.Next(*b)
 		if !isPlainEmptyZero {
-			ind := min(max(b.Indent, 0), 12)
-			for d := ind + 1; d <= 12; d++ {
-				runLen[d] = 0
-				numBase[d] = 0
-			}
-			if b.Kind == model.BlockNumbered {
-				runLen[ind]++
-				if numBase[ind] > 1 {
-					num = numBase[ind] + runLen[ind] - 1
-				} else if b.ListIndex > 1 {
-					num = b.ListIndex
-				} else {
-					num = runLen[ind]
-				}
-				if b.ListIndex > 1 {
-					numBase[ind] = b.ListIndex
-					runLen[ind] = 1
-				}
-			} else {
-				runLen[ind] = 0
-				numBase[ind] = 0
-			}
-
 			for ancLen > 0 && ancStack[ancLen-1].anc.Indent >= b.Indent {
 				ancLen--
 				finalizeAnc(ancStack[ancLen])
