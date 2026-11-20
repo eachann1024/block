@@ -366,10 +366,11 @@ func utf16ToRuneOff(str string, u16Off int) int {
 	u := 0
 	i := 0
 	for _, r := range str {
-		if u >= u16Off {
+		rl := utf16.RuneLen(r)
+		if u+rl > u16Off {
 			return i
 		}
-		u += utf16.RuneLen(r)
+		u += rl
 		i++
 	}
 	return i
