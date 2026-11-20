@@ -237,14 +237,23 @@ func crawlGitHub(
 	return out, nil
 }
 
+const maxReleasePages = 5
+
 func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) (string, int, string) {
 	updatedAt := firstNonEmpty(repo.PushedAt, repo.UpdatedAt)
-	relsURL := fmt.Sprintf("%s/repos/%s/releases", apiBase, repo.FullName)
-	var rels []ghRelease
-	status, err := fetchJSON(ctx, client, relsURL, token, &rels)
-	if err == nil && status == http.StatusOK {
-		totalDownloads := 0
-		var latest *ghRelease
+	totalDownloads := 0
+	var latest *ghRelease
+	fetchedAny := false
+	hitPageCap := false
+
+	for page := 1; page <= maxReleasePages; page++ {
+		relsURL := fmt.Sprintf("%s/repos/%s/releases?per_page=100&page=%d", apiBase, repo.FullName, page)
+		var rels []ghRelease
+		status, err := fetchJSON(ctx, client, relsURL, token, &rels)
+		if err != nil || status != http.StatusOK {
+			break
+		}
+		fetchedAny = true
 		for i := range rels {
 			for _, a := range rels[i].Assets {
 				if a.DownloadCount > 0 {
@@ -252,20 +261,35 @@ func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token
 				}
 			}
 			if latest == nil && !rels[i].Draft && !rels[i].Prerelease {
-				latest = &rels[i]
+				relCopy := rels[i]
+				latest = &relCopy
 			}
 		}
-		if latest != nil {
-			if latest.PublishedAt != "" {
-				updatedAt = latest.PublishedAt
-			}
-			if assetURL := pickReleaseArchive(*latest); assetURL != "" {
-				return assetURL, totalDownloads, updatedAt
-			}
+		if len(rels) < 100 {
+			break
 		}
-		return fallbackTarballURL(apiBase, repo), totalDownloads, updatedAt
+		if page == maxReleasePages {
+			hitPageCap = true
+		}
 	}
-	return fallbackTarballURL(apiBase, repo), 0, updatedAt
+
+	if latest == nil && (hitPageCap || !fetchedAny) {
+		latestURL := fmt.Sprintf("%s/repos/%s/releases/latest", apiBase, repo.FullName)
+		var rel ghRelease
+		if status, err := fetchJSON(ctx, client, latestURL, token, &rel); err == nil && status == http.StatusOK && !rel.Draft && !rel.Prerelease {
+			latest = &rel
+		}
+	}
+
+	if latest != nil {
+		if latest.PublishedAt != "" {
+			updatedAt = latest.PublishedAt
+		}
+		if assetURL := pickReleaseArchive(*latest); assetURL != "" {
+			return assetURL, totalDownloads, updatedAt
+		}
+	}
+	return fallbackTarballURL(apiBase, repo), totalDownloads, updatedAt
 }
 
 func pickReleaseArchive(rel ghRelease) string {
