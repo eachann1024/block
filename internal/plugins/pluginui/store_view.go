@@ -1,6 +1,7 @@
 package pluginui
 
 import (
+	"strconv"
 	"strings"
 
 	"block/internal/icons"
@@ -71,16 +72,13 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 	}
 
 	entries := buildVisibleStoreEntries(catalog, installed, installedMap, filter)
-
-	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space20)
-	bodyW := body.Bounds().W
-	if bodyW <= 0 {
-		vpW, _ := c.Size()
-		if vpW > 0 {
-			bodyW = vpW - theme.SidebarMinWidth - 2*theme.Space24
-			c.Invalidate()
-		}
+	selectedCat := ctrl.storeCategoryValue()
+	if selectedCat != "" && !plugins.ValidCategory(selectedCat) {
+		selectedCat = ""
 	}
+	groups := groupStoreEntriesByCategory(entries, selectedCat)
+
+	body := ui.Column(c.Key("app-store-body")).FillWidth().MinWidth(0).Gap(theme.Space12)
 
 	body.Children(func() {
 		if storeErr != "" {
@@ -120,10 +118,12 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 			renderManualInstallRow(c, ctrl, installingID)
 		}
 
-		if len(entries) == 0 {
-			c.Key("app-store-empty-card")
-			bui.Card(c, func() {
-				msg := theme.Tr("暂无可用应用", "No apps available")
+		renderStoreCategoryTabs(c, ctrl, entries, selectedCat, locale)
+
+		if len(groups) == 0 {
+			msg := theme.Tr("这个分类下暂时没有符合条件的插件", "No plugins match this category")
+			if selectedCat == "" {
+				msg = theme.Tr("暂无可用应用", "No apps available")
 				if filter == 1 {
 					msg = theme.Tr("暂无已安装应用", "No installed apps")
 				} else if filter == 2 && !refreshing {
@@ -131,27 +131,139 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab s
 				} else if refreshing {
 					msg = theme.Tr("正在加载应用目录…", "Loading catalog…")
 				}
+			}
+			ui.Row(c.Key("app-store-empty")).FillWidth().Padding(theme.Space24, 0).Justify(ui.Center).Children(func() {
 				ui.Text(c, msg).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 			})
 			return
 		}
 
-		ui.Grid(c.Key("app-store-list")).FillWidth().MinWidth(0).
-			Columns(storeColumnCount(bodyW)).Gap(theme.Space4).Children(func() {
-			for _, entry := range entries {
-				app, isInstalled := installedMap[entry.ID]
-				renderStoreAppRow(c, ctrl, entry, locale, app, isInstalled, isInstalled && filter == 0, installingID, onSelectTab)
+		showGroupHeading := selectedCat == ""
+		ui.Column(c.Key("app-store-groups")).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
+			for _, grp := range groups {
+				g := grp
+				ui.Column(c.Key("app-store-group-" + string(g.category))).FillWidth().MinWidth(0).Gap(theme.Space2).Children(func() {
+					if showGroupHeading {
+						ui.Row(c.Key("app-store-group-head-"+string(g.category))).FillWidth().
+							Padding(theme.Space12, theme.Space12, theme.Space4, theme.Space12).Children(func() {
+							ui.Text(c, plugins.CategoryLabel(g.category, locale)).
+								FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+								FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
+						})
+					}
+					for _, entry := range g.items {
+						app, isInstalled := installedMap[entry.ID]
+						renderStoreAppRow(c, ctrl, entry, locale, app, isInstalled, isInstalled && filter == 0, installingID, onSelectTab)
+					}
+				})
 			}
 		})
 	})
 }
 
-func storeColumnCount(bodyW float32) int {
-	if bodyW <= 0 {
-		return 2
+type storeCategoryGroup struct {
+	category plugins.Category
+	items    []plugins.StoreAppEntry
+}
+
+func groupStoreEntriesByCategory(entries []plugins.StoreAppEntry, selected plugins.Category) []storeCategoryGroup {
+	cats := plugins.AllCategories()
+	byCat := make(map[plugins.Category][]plugins.StoreAppEntry, len(cats))
+	for _, entry := range entries {
+		cat := entry.EffectiveCategory()
+		byCat[cat] = append(byCat[cat], entry)
 	}
-	cols := int((bodyW + theme.Space4) / (theme.StoreMinColWidth + theme.Space4))
-	return min(max(cols, 1), 2)
+	out := make([]storeCategoryGroup, 0, len(cats))
+	for _, cat := range cats {
+		if selected != "" && selected != cat {
+			continue
+		}
+		items := byCat[cat]
+		if len(items) == 0 {
+			continue
+		}
+		out = append(out, storeCategoryGroup{category: cat, items: items})
+	}
+	return out
+}
+
+func renderStoreCategoryTabs(
+	c *ui.Context,
+	ctrl *Controller,
+	entries []plugins.StoreAppEntry,
+	selected plugins.Category,
+	locale string,
+) {
+	pal := theme.Ocean()
+	counts := make(map[plugins.Category]int)
+	for _, entry := range entries {
+		counts[entry.EffectiveCategory()]++
+	}
+
+	type catTabSpec struct {
+		cat   plugins.Category
+		key   string
+		label string
+		count int
+	}
+	tabs := make([]catTabSpec, 0, 1+len(plugins.AllCategories()))
+	tabs = append(tabs, catTabSpec{
+		cat:   "",
+		key:   "all",
+		label: theme.Tr("全部", "All"),
+		count: len(entries),
+	})
+	for _, cat := range plugins.AllCategories() {
+		tabs = append(tabs, catTabSpec{
+			cat:   cat,
+			key:   string(cat),
+			label: plugins.CategoryLabel(cat, locale),
+			count: counts[cat],
+		})
+	}
+
+	ui.Column(c.Key("app-store-cat-bar")).FillWidth().MinWidth(0).Gap(theme.Space12).Children(func() {
+		ui.Row(c.Key("app-store-cat-tabs")).FillWidth().MinWidth(0).Gap(theme.Space4).Wrap().AlignItems(ui.Center).Children(func() {
+			for _, t := range tabs {
+				tab := t
+				active := selected == tab.cat
+				btnID := "app-store-cat-" + tab.key
+				btn := ui.ButtonBase(c.Key(btnID)).
+					Height(theme.HeightControl).PaddingX(theme.Space12).Gap(theme.Space6).
+					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+					Label(tab.label).Shrink(0)
+				hovered := btn.Hovered()
+				pressed := btn.Pressed()
+				if active {
+					btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+				} else if pressed {
+					btn.Background(pal.Selected).Border(1, ui.Transparent)
+				} else if hovered {
+					btn.Background(pal.Hover).Border(1, ui.Transparent)
+				} else {
+					btn.Border(1, ui.Transparent)
+				}
+				bui.TactileCard(btn, hovered, pressed, active, false)
+				btn.Children(func() {
+					lblColor := pal.TextSecondary
+					if active || hovered || pressed {
+						lblColor = pal.Text
+					}
+					ui.Text(c, tab.label).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightControl).TextColor(lblColor).SingleLine()
+					ui.Text(c, strconv.Itoa(tab.count)).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightRegular).TextColor(pal.TextSecondary).SingleLine()
+				})
+				bui.Probe(btn, btnID)
+				if btn.Clicked() {
+					ctrl.setStoreCategory(tab.cat)
+				}
+			}
+		})
+		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+	})
 }
 
 func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string) {
@@ -289,6 +401,19 @@ func renderStoreAppRow(
 			}
 		})
 
+		if len(entry.FileExtensions) > 0 {
+			ui.Row(c.Key("app-store-exts-"+entry.ID)).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+				for _, ext := range entry.FileExtensions {
+					e := ext
+					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+						Background(pal.CodeBG).AlignItems(ui.Center).Shrink(0).Children(func() {
+						ui.Text(c, e).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
+					})
+				}
+			})
+		}
+
 		if !hovered && !busy {
 			return
 		}
@@ -378,17 +503,19 @@ func buildVisibleStoreEntries(
 		}
 		seen[id] = true
 		all = append(all, plugins.StoreAppEntry{
-			App:         inst.Manifest.App,
-			ID:          id,
-			Name:        inst.Manifest.Name,
-			Version:     inst.Manifest.Version,
-			Beta:        inst.Manifest.Beta,
-			Author:      inst.Manifest.Author,
-			Repo:        inst.Manifest.Repo,
-			Summary:     inst.Manifest.Summary,
-			Permissions: inst.Manifest.Permissions,
-			Surfaces:    inst.Manifest.Surfaces,
-			Icon:        inst.Manifest.Icon,
+			App:            inst.Manifest.App,
+			ID:             id,
+			Category:       inst.Manifest.EffectiveCategory(),
+			Name:           inst.Manifest.Name,
+			Version:        inst.Manifest.Version,
+			Beta:           inst.Manifest.Beta,
+			Author:         inst.Manifest.Author,
+			Repo:           inst.Manifest.Repo,
+			Summary:        inst.Manifest.Summary,
+			Permissions:    inst.Manifest.Permissions,
+			Surfaces:       inst.Manifest.Surfaces,
+			FileExtensions: inst.Manifest.DisplayFileExtensions(),
+			Icon:           inst.Manifest.Icon,
 		})
 	}
 	if filter != 1 && filter != 2 {

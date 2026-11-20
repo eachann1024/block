@@ -398,6 +398,8 @@ func renderStoreDetailActions(
 	openLabel := theme.Tr("打开", "Open")
 	if entry.ID == "block-sync" {
 		openLabel = theme.Tr("配置同步", "Configure Sync")
+	} else if installedApp.Manifest.IsDeclarativeOnly() {
+		openLabel = theme.Tr("语法与预览", "Syntax & Preview")
 	}
 	openStyle := bui.ButtonPrimary
 	if hasUpdate {
@@ -516,7 +518,8 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 	ver := strings.TrimSpace(entry.Version)
 	author := strings.TrimSpace(entry.Author)
 	repo := strings.TrimSpace(entry.Repo)
-	if ver == "" && author == "" && repo == "" && len(entry.Permissions) == 0 {
+	catLabel := plugins.CategoryLabel(entry.EffectiveCategory(), locale)
+	if ver == "" && author == "" && repo == "" && catLabel == "" && len(entry.Permissions) == 0 && len(entry.FileExtensions) == 0 {
 		return
 	}
 
@@ -529,12 +532,17 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 			}
 			first = false
 		}
-		if ver != "" || author != "" || repo != "" {
+		if ver != "" || author != "" || repo != "" || catLabel != "" {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Wrap().Children(func() {
 				if ver != "" {
 					sep()
 					ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).Font("monospace").FontSize(theme.FontMeta).
 						FontWeight(theme.WeightMono).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine()
+				}
+				if catLabel != "" {
+					sep()
+					ui.Text(c, catLabel).FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).
+						TextColor(pal.TextSecondary).SingleLine()
 				}
 				if author != "" {
 					sep()
@@ -544,6 +552,19 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 				if repo != "" {
 					sep()
 					renderStoreDetailRepoLink(c, repo)
+				}
+			})
+		}
+		if len(entry.FileExtensions) > 0 {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Wrap().Children(func() {
+				ui.Text(c, theme.Tr("支持文件", "Supported Files")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+					TextColor(pal.TextSecondary).SingleLine().Margin(0, theme.Space4, 0, 0)
+				for _, ext := range entry.FileExtensions {
+					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+						Background(pal.CodeBG).AlignItems(ui.Center).Shrink(0).Children(func() {
+						ui.Text(c, ext).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
+					})
 				}
 			})
 		}
