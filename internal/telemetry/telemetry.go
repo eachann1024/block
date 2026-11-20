@@ -195,29 +195,39 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 }
 
 func load(path string) (record, error) {
-	var rec record
-	data, err := os.ReadFile(path)
-	if err == nil {
-		_ = json.Unmarshal(data, &rec)
-	}
-	if idRe.MatchString(rec.ID) {
+	for attempt := 0; ; attempt++ {
+		var rec record
+		data, err := os.ReadFile(path)
+		if err == nil {
+			_ = json.Unmarshal(data, &rec)
+		}
+		if idRe.MatchString(rec.ID) {
+			return rec, nil
+		}
+		last := attempt >= 2
+		if err == nil && !last {
+			// Possibly another process still writing it (see create's fallback): look again.
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		rec = record{ID: newID()}
+		if errors.Is(err, fs.ErrNotExist) && !last {
+			// First run: create the file only if nobody else did, so two processes sharing a
+			// fresh data directory end up with one id instead of being counted as two installs.
+			err = create(path, rec)
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+		} else {
+			// Damaged, unreadable, or a dangling symlink that reads as missing yet blocks
+			// creation: replace it instead of retrying forever.
+			err = save(path, rec)
+		}
+		if err != nil {
+			return rec, fmt.Errorf("telemetry: cannot keep install id: %w", err)
+		}
 		return rec, nil
 	}
-	rec = record{ID: newID()}
-	if errors.Is(err, fs.ErrNotExist) {
-		// First run: create the file only if nobody else did, so two processes sharing a
-		// fresh data directory end up with one id instead of being counted as two installs.
-		err = create(path, rec)
-		if errors.Is(err, fs.ErrExist) {
-			return load(path)
-		}
-	} else {
-		err = save(path, rec) // unreadable or damaged: replace it
-	}
-	if err != nil {
-		return rec, fmt.Errorf("telemetry: cannot keep install id: %w", err)
-	}
-	return rec, nil
 }
 
 // writeTemp writes rec to a new temporary file next to path and returns its name.
@@ -249,13 +259,31 @@ func create(path string, rec record) error {
 		return err
 	}
 	defer os.Remove(tmp)
-	if err := os.Link(tmp, path); err != nil {
-		if _, serr := os.Lstat(path); serr == nil {
-			return fs.ErrExist
-		}
+	err = os.Link(tmp, path)
+	if err == nil {
+		return nil
+	}
+	if _, serr := os.Lstat(path); serr == nil {
+		return fs.ErrExist
+	}
+	// No hard links on this filesystem (exFAT, some network shares): an exclusive create
+	// still lets only one process win; a reader catching it half-written looks again.
+	data, err := json.Marshal(rec)
+	if err != nil {
 		return err
 	}
-	return nil
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err // fs.ErrExist when another process won
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+	}
+	return err
 }
 
 func save(path string, rec record) error {
