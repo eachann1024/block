@@ -196,16 +196,19 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 		ver, tag, _, ok := ParseReleaseTag(r.Tag)
 		if !ok {
 			ver, tag, _, ok = ParseReleaseTag(r.Version)
-		}
-		if !ok {
-			continue
+			if !ok {
+				continue
+			}
+			if !strings.HasPrefix(strings.ToLower(tag), "v") {
+				tag = "v" + ver
+			}
+		} else if strings.TrimSpace(r.Version) != "" {
+			if v2, _, _, ok2 := ParseReleaseTag(r.Version); ok2 && v2 != ver {
+				continue
+			}
 		}
 		r.Version = ver
-		if tag == "" || !strings.HasPrefix(strings.ToLower(tag), "v") {
-			r.Tag = "v" + ver
-		} else {
-			r.Tag = tag
-		}
+		r.Tag = tag
 		filtered := make([]ReleaseAsset, 0, len(r.Assets))
 		for _, a := range r.Assets {
 			if IsTrustedReleaseAsset(a, r.Tag) {
