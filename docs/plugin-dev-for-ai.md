@@ -40,7 +40,7 @@
 
 ## 2. 目录结构与 `manifest.json` 规范
 
-插件根目录至少包含 `manifest.json` 与入口程序；官方插件（`blockmd-plugins/*`）**必须**同时提供 `README.md`（中文）与 `README.en.md`（英文）并完整支持 `locale="en"` 英文界面，社区插件也建议一并提供：
+插件根目录至少包含 `manifest.json` 与入口程序（纯声明式语言扩展插件可省略入口程序，改为提供 `grammars/*.json`）；官方插件（`blockmd-plugins/*`）**必须**同时提供 `README.md`（中文）与 `README.en.md`（英文），有子进程界面的插件须完整支持 `locale="en"` 英文界面，社区插件也建议一并提供：
 
 ```text
 example-sync/
@@ -95,13 +95,20 @@ example-sync/
 - `app`：必填固定字符串 **`"blockmd"`**（用于插件生态识别与自动采集验真）。
 - `schema_version`：必填固定整数 `1`。
 - `id`：必填，匹配正则 `^[a-z0-9][a-z0-9-]{1,47}$`（不可使用保留 ID `block-diagnostics`）。
+- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。应用商店固定按以下 5 个分类与顺序展示：
+  1. `"sync"`：同步与迁移 / Sync & Migration
+  2. `"edit"`：编辑增强 / Writing & Editing
+  3. `"appearance"`：外观 / Appearance
+  4. `"tools"`：工具 / Tools
+  5. `"language"`：语言扩展 / Languages（固定排在最后）
+  - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
 - `beta`：可选布尔值（默认 `false`，正式版省略即可）。仅当插件在 `manifest.json` 中显式声明 `"beta": true` 时，Block 才会在应用商店、设置侧栏与插件页标题旁显示 `Beta` 标识，商店采集器也会自动同步到 `store-index.json`。转正时删掉该字段即可，宿主不做硬编码。
 - `author`：必填非空字符串，禁止含 Emoji。
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
 - `summary`：`zh`（<= 80 个 Unicode 字符）与 `en`（<= 140 个 Unicode 字符）均必填，禁止含 Emoji。
-- `entry.command`：非空字符串数组，工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
+- `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set`）
   - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
@@ -109,8 +116,8 @@ example-sync/
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
   - 以及第 8 节定义的 9 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
-- `surfaces`：必填固定为 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）。
-- `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏与弹窗注入 UI 贡献，详见第 8 节。
+- `surfaces`：常规插件必填固定为 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）；纯声明式语言扩展可省略或为空数组 `[]`。
+- `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见第 8 节与第 9 节。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 
 ---
@@ -565,7 +572,7 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/�
 
 Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
-1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前仅 `block-sync`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文）并支持 `locale="en"` 英文界面**；个人/社区插件同样建议一并提供。
+1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前包括 `block-sync`、`block-lang-gomod`、`block-lang-plist`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；个人/社区插件同样建议一并提供。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
 3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
    - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
@@ -573,7 +580,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的 `scripts/crawl_github.py` 执行）：
    - 采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的前 100 个仓库（无分页），并自动跳过内置保留 ID（`block-diagnostics`）。
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包（`codeload.github.com/{repo}/tar.gz/{default_branch}`）。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
-   - **索引校验**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前仅 `block-sync` 绑定 `blockmd-plugins/block-sync`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配与跨仓重复 `id` 剔除；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
+   - **索引校验**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
    - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
 
 ---
@@ -695,3 +702,154 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 11. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
     - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
+
+---
+
+## 9. 语言扩展规范（`contributes.languages` + `grammars/*.json`）
+
+语言扩展插件用于为 Block 补充代码语法高亮与编辑辅助，采用**纯声明式、零子进程、零权限**模型在宿主机内直接运行：
+
+- **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
+- **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
+- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。
+
+### 9.1 `contributes.languages` 字段定义
+
+`contributes.languages` 为对象数组，单插件最多声明 **16** 个语言条目；所有条目均须符合以下字段与约束：
+
+| 字段 | 必填 | 类型与约束 |
+| --- | --- | --- |
+| `id` | 是 | 字符串，匹配 `^[a-z][a-z0-9_-]{0,31}$`，同一插件内不可重复 |
+| `name` | 是 | `LocalizedText`（`zh` 与 `en` 均必填非空，禁止含 Emoji） |
+| `extensions` | 与 `filenames` 至少其一 | 字符串数组，最多 **16** 项，不可重复；每项匹配 `^\.[a-z0-9][a-z0-9._-]{0,23}$`（小写点号前缀，如 `".plist"`） |
+| `filenames` | 与 `extensions` 至少其一 | 字符串数组，最多 **16** 项，不可重复；纯文件基本名（非空、`<= 64` 字节、不含 `/ \ :`，不可为 `.` 或 `..`） |
+| `aliases` | 否 | 字符串数组，最多 **16** 项，不可重复；每项匹配 `^[a-z0-9][a-z0-9._+-]{0,31}$`（用于 Markdown 代码块围栏标识） |
+| `display_tags` | 否 | 字符串数组，最多 **8** 项；每项去空白后非空且 `<= 24` 字节、禁止含 Emoji。用于商店列表与详情页展示；省略时优先回退 `filenames`，若为空则回退 `extensions`（商店索引 `file_extensions` 跨语言去重后最多保留 **6** 个） |
+| `grammar` | 是 | 字符串，插件目录内相对 `/` 分隔路径，须以 `.json` 结尾，禁止以 `/` 开头、禁止含 `\` 或 `:`、禁止 `..` 路径逃逸；单文件大小上限 **256 KiB** |
+
+### 9.2 `grammars/*.json` Schema（RE2 有状态行分词器）
+
+Grammar JSON 采用严格解码：**禁止重复键、禁止未知字段**。
+
+#### 顶层字段
+
+| 字段 | 必填 | 类型与约束 |
+| --- | --- | --- |
+| `schema_version` | 是 | 固定整数 `1` |
+| `line_comment` | 否 | 字符串，单行注释前缀（如 `"//"`、`"#"`） |
+| `block_comment` | 否 | 2 元素字符串数组 `[open, close]`（如 `["<!--", "-->"]`） |
+| `word_chars` | 否 | 字符串，追加到标识符词边界的额外字符集（如 `".-/"`） |
+| `tab_size` | 否 | 整数，`0`–`16`（`0` 表示沿用编辑器默认） |
+| `hard_tabs` | 否 | 布尔值，是否优先使用硬制表符 `\t`（默认 `false`） |
+| `brackets` | 否 | `[open, close]` 二元组数组，用于括号匹配高亮 |
+| `auto_close` | 否 | `[open, close]` 二元组数组，用于输入时自动闭合括号/引号 |
+| `initial_state` | 否 | 字符串，初始状态名，省略时默认为 `"root"`；必须存在于 `states` 中 |
+| `states` | 是 | 对象（`map[string][]GrammarRule`），至少 **1** 个、最多 **63** 个状态；状态名匹配 `^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$`；每状态最多 **128** 条规则，全部状态合计最多 **512** 条规则；状态栈最大深度 **9** 层（超深时退化为替换当前栈顶） |
+| `sample` | 否 | 字符串，用于设置页/详情页的语法高亮预览示例 |
+
+#### `GrammarRule` 字段
+
+| 字段 | 必填 | 类型与约束 |
+| --- | --- | --- |
+| `match` | 是 | 非空 RE2 正则表达式字符串；编译时自动以 `\A(?:...)` 锚定到当前行扫描位置 |
+| `token` | 否 | 字符串，合法 Token 名称之一（见下表，大小写不敏感） |
+| `captures` | 否 | 对象（`map[string]string`），键为 `"1"`–`"16"` 的捕获组编号（不可超过 `match` 的子表达式数量），值为合法 Token 名称 |
+| `next` | 否 | 字符串，切换到指定状态名（须存在于 `states` 中） |
+| `push` | 否 | 字符串，将指定状态名压栈并进入（须存在于 `states` 中） |
+| `pop` | 否 | 布尔值，`true` 时弹栈返回上一状态（栈空时回到初始状态） |
+
+规则约束：`token`、`captures`、`next`、`push`、`pop` 至少设置其一；`next`、`push`、`pop` 至多设置其一；零长度匹配仅在发生状态转移时允许，连续零步循环上限为 **8** 次。
+
+#### 全部合法 `token` 名称（共 25 个）
+
+- 基础与标识符：`text`、`keyword`、`type`、`function`、`variable`、`property`、`constant`
+- 字面量与注释：`number`、`string`、`escape`、`regexp`、`comment`
+- 语法符号与标记：`operator`、`punctuation`、`tag`、`attribute`、`meta`
+- 文档与差异状态：`heading`、`emphasis`、`strong`、`link`、`code`、`inserted`、`deleted`、`invalid`
+
+### 9.3 可复制的精简示例
+
+目录结构：
+
+```text
+example-lang/
+├── manifest.json
+├── README.md
+├── README.en.md
+└── grammars/
+    └── conf.json
+```
+
+`manifest.json`：
+
+```json
+{
+  "app": "blockmd",
+  "schema_version": 1,
+  "id": "example-lang",
+  "category": "language",
+  "name": {
+    "zh": "示例配置语言",
+    "en": "Example Config"
+  },
+  "version": "1.0.0",
+  "author": "Your Name",
+  "repo": "your-org/example-lang",
+  "summary": {
+    "zh": "为 .conf 配置文件提供语法高亮",
+    "en": "Syntax highlighting for .conf configuration files"
+  },
+  "permissions": [],
+  "surfaces": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "example-conf",
+        "name": {
+          "zh": "示例配置",
+          "en": "Example Config"
+        },
+        "extensions": [".conf"],
+        "filenames": ["example.conf"],
+        "aliases": ["conf", "example-conf"],
+        "display_tags": [".conf"],
+        "grammar": "grammars/conf.json"
+      }
+    ]
+  },
+  "icon": {
+    "view_box": "0 0 24 24",
+    "fill_paths": ["M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z"],
+    "stroke_paths": [
+      "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z",
+      "M14 3.5V8h4.5"
+    ],
+    "accent_paths": ["M9 12.5h6", "M9 16h4"]
+  }
+}
+```
+
+`grammars/conf.json`：
+
+```json
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "tab_size": 2,
+  "brackets": [["[", "]"], ["{", "}"]],
+  "auto_close": [["\"", "\""], ["[", "]"]],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      { "match": "#.*$", "token": "comment" },
+      { "match": "^\\[[^\\]]+\\]", "token": "heading" },
+      { "match": "\"(?:\\\\.|[^\"\\\\])*\"", "token": "string" },
+      { "match": "\\b(?:true|false|null)\\b", "token": "constant" },
+      { "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b", "token": "number" },
+      { "match": "([A-Za-z_][A-Za-z0-9_.-]*)(\\s*=)", "captures": { "1": "property", "2": "operator" } },
+      { "match": "[ \\t]+", "token": "text" }
+    ]
+  },
+  "sample": "# Example config\n[server]\nhost = \"127.0.0.1\"\nport = 8080\ntls = true"
+}
+```
