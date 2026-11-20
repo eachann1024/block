@@ -189,7 +189,38 @@ func validateContribIcon(field string, ic DuoIconSpec) error {
 	if ic.ViewBox != "0 0 24 24" || len(ic.StrokePaths) == 0 {
 		return fmt.Errorf("%s needs view_box \"0 0 24 24\" and at least one stroke path", field)
 	}
+	paths, size := 0, 0
+	for _, layer := range [][]string{ic.FillPaths, ic.StrokePaths, ic.AccentPaths} {
+		paths += len(layer)
+		for _, d := range layer {
+			size += len(d)
+		}
+	}
+	if paths > maxContribIconPaths || size > maxContribIconBytes {
+		return fmt.Errorf("%s allows at most %d paths and %d bytes of path data", field, maxContribIconPaths, maxContribIconBytes)
+	}
 	return nil
+}
+
+// Contribution caps keep a single manifest from flooding host menus,
+// the command palette or the icon cache.
+const (
+	maxContribIconPaths = 16
+	maxContribIconBytes = 4096
+)
+
+var contribLimits = []struct {
+	kind string
+	max  int
+	n    func(Contributes) int
+}{
+	{"settings_sections", 8, func(c Contributes) int { return len(c.SettingsSections) }},
+	{"commands", 64, func(c Contributes) int { return len(c.Commands) }},
+	{"page_menu", 16, func(c Contributes) int { return len(c.PageMenu) }},
+	{"editor_menu", 16, func(c Contributes) int { return len(c.EditorMenu) }},
+	{"panels", 8, func(c Contributes) int { return len(c.Panels) }},
+	{"status_items", 4, func(c Contributes) int { return len(c.StatusItems) }},
+	{"dialogs", 16, func(c Contributes) int { return len(c.Dialogs) }},
 }
 
 func (m *Manifest) validateContributes() error {
@@ -228,6 +259,11 @@ func (m *Manifest) validateContributes() error {
 		}
 		seen[key] = true
 		return nil
+	}
+	for _, lim := range contribLimits {
+		if lim.n(*c) > lim.max {
+			return fmt.Errorf("contributes.%s allows at most %d entries", lim.kind, lim.max)
+		}
 	}
 	if len(c.TitlebarButtons) > 3 {
 		return errors.New("contributes.titlebar_buttons allows at most 3 buttons")

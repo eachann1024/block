@@ -207,6 +207,12 @@ func IsItemVisible(item UIItem, values map[string]any) bool {
 	return true
 }
 
+// Page size caps keep one plugin response from stalling every UI frame.
+const (
+	maxPageCards = 64
+	maxPageItems = 400
+)
+
 func (p *UIPage) Validate() error {
 	if err := checkText("page.title", p.Title, true); err != nil {
 		return err
@@ -225,6 +231,16 @@ func (p *UIPage) Validate() error {
 	}
 	if len(p.Cards) == 0 {
 		return errors.New("page.cards must contain at least one card")
+	}
+	if len(p.Cards) > maxPageCards {
+		return fmt.Errorf("page.cards allows at most %d cards", maxPageCards)
+	}
+	totalItems := 0
+	for _, card := range p.Cards {
+		totalItems += len(card.Items)
+	}
+	if totalItems > maxPageItems {
+		return fmt.Errorf("page allows at most %d items across all cards, got %d", maxPageItems, totalItems)
 	}
 	seenCardIDs := map[string]bool{}
 	seenControlIDs := map[string]bool{}
