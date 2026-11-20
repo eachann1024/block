@@ -215,6 +215,7 @@ type Session struct {
 	edgeScrollInit     bool
 	edgeScrollQuietAt  time.Time
 	hoverScrollQuietAt time.Time
+	bgStyle            BackgroundStyle
 
 	// Annotations
 	annotations           []*model.Annotation

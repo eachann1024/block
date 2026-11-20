@@ -560,6 +560,42 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	}
 }
 
+// WarmupAppearancePluginsAsync initializes enabled appearance-section plugins
+// that have not yet synced an editor background state, so upgrading or opening
+// Block with an already-enabled background plugin applies immediately.
+func (s *Supervisor) WarmupAppearancePluginsAsync() {
+	if s == nil {
+		return
+	}
+	s.mu.RLock()
+	installed := append([]InstalledApp(nil), s.installed...)
+	s.mu.RUnlock()
+	for _, inst := range installed {
+		if !inst.Enabled || !inst.Manifest.HasPermission(PermUISettings) || inst.Manifest.Contributes == nil {
+			continue
+		}
+		hasAppearance := false
+		for _, sec := range inst.Manifest.Contributes.SettingsSections {
+			if sec.Tab == "appearance" {
+				hasAppearance = true
+				break
+			}
+		}
+		if !hasAppearance {
+			continue
+		}
+		if s.contrib != nil {
+			s.contrib.mu.RLock()
+			_, synced := s.contrib.editorBG[inst.Manifest.ID]
+			s.contrib.mu.RUnlock()
+			if synced {
+				continue
+			}
+		}
+		s.warmupPluginAsync(inst.Manifest.ID)
+	}
+}
+
 // warmupPluginAsync initializes a newly installed or enabled UI plugin in the
 // background so its plugin.initialize hook can sync host UI state (such as
 // editor background or titlebar visibility) without waiting for the user to

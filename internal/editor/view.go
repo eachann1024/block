@@ -124,8 +124,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		if sb := scroll.Bounds(); sb.W > 0 && sb.H > 0 {
 			s.scrollRect = sb
 		}
-		scroll.Draw(func(_ *ui.Painter, r ui.Rect) {
+		scroll.Draw(func(p *ui.Painter, r ui.Rect) {
 			s.scrollRect = r
+			s.paintBackground(p, r, pal)
 		})
 		scroll.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 			if s.scrollRect != r {

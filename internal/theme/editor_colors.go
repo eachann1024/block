@@ -197,6 +197,10 @@ type EditorColors struct {
 	ResizeHandleBG   ui.Color
 	InlineAIDiffTint ui.Color
 	JumpRing         ui.Color
+	BgDotStandard    ui.Color
+	BgDotHigh        ui.Color
+	BgGridStandard   ui.Color
+	BgGridHigh       ui.Color
 }
 
 // Editor returns editor-specific chrome and overlay colours.
@@ -207,6 +211,10 @@ func (p Palette) Editor() EditorColors {
 			ResizeHandleBG:   ui.RGBA(34, 34, 34, 0.85),
 			InlineAIDiffTint: ui.RGBA(43, 53, 72, 0.42),
 			JumpRing:         p.Accent.Alpha(0.68),
+			BgDotStandard:    p.Text.Alpha(0.16),
+			BgDotHigh:        p.Text.Alpha(0.36),
+			BgGridStandard:   p.Text.Alpha(0.08),
+			BgGridHigh:       p.Text.Alpha(0.18),
 		}
 	}
 	return EditorColors{
@@ -214,5 +222,9 @@ func (p Palette) Editor() EditorColors {
 		ResizeHandleBG:   ui.RGBA(255, 255, 255, 0.85),
 		InlineAIDiffTint: p.Hover.Alpha(0.72),
 		JumpRing:         p.Accent.Alpha(0.58),
+		BgDotStandard:    p.Text.Alpha(0.18),
+		BgDotHigh:        p.Text.Alpha(0.38),
+		BgGridStandard:   p.Text.Alpha(0.08),
+		BgGridHigh:       p.Text.Alpha(0.18),
 	}
 }
