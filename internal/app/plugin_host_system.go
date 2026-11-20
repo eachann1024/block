@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"block/internal/files"
+	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/systemintegration"
 	"block/internal/theme"
@@ -278,8 +279,7 @@ func (h *pluginHostUI) openNotificationTarget(target pluginNotificationTarget) {
 	if target.Root != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
 		notebooks := h.w.Notebooks()
 		if target.Relative != "" {
-			path, err := plugins.SystemNotificationNotePath(target.Root, target.Relative, notebooks)
-			if err == nil && h.w.OpenExternalFile(path) == nil {
+			if h.w.openNotificationNote(target.Root, target.Relative, notebooks) {
 				return
 			}
 		} else if target.Root != h.w.ActiveNotebook() {
@@ -294,6 +294,43 @@ func (h *pluginHostUI) openNotificationTarget(target pluginNotificationTarget) {
 	if installed.Manifest.HasSurface(plugins.SurfaceSettingsPage) {
 		h.w.OpenSettings("plugin:" + target.PluginID)
 	}
+}
+
+func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []string) bool {
+	base, err := filepath.EvalSymlinks(notebook)
+	if err != nil {
+		return false
+	}
+	expected, err := os.Lstat(base)
+	if err != nil || !expected.IsDir() {
+		return false
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+	info, err := root.Stat(".")
+	if err != nil || !os.SameFile(expected, info) {
+		return false
+	}
+	path, err := plugins.SystemNotificationNotePath(notebook, relative, notebooks)
+	local := filepath.FromSlash(relative)
+	if err != nil || path != filepath.Join(base, local) {
+		return false
+	}
+	classified, err := files.ClassifyNotebookNote(root, local)
+	if err != nil || classified.Kind != model.OpenKindMarkdown {
+		return false
+	}
+	w.mu.RLock()
+	loaded := w.sessions[path] != nil
+	w.mu.RUnlock()
+	if !loaded {
+		w.installClassifiedTab(path, classified)
+	}
+	w.activateExternalTab(path)
+	return true
 }
 
 func (h *pluginHostUI) desktopAction(allowed func() bool, run func() error) error {
