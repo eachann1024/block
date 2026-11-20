@@ -167,6 +167,11 @@ func (s *TabSurface) saveSource() error {
 		return err
 	}
 	s.SavedText = s.Source.Text
+	size := int64(len(s.Source.Text))
+	if s.Source.BOM {
+		size += 3
+	}
+	s.FileSize = size
 	if s.code != nil {
 		s.code.Buffer.MarkSaved()
 	}
