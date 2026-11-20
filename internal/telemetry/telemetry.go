@@ -31,6 +31,7 @@ const Endpoint = "https://block.cooool.top/api/ping"
 const (
 	startDelay    = 5 * time.Second // short enough that quick open-and-close sessions still count
 	checkInterval = 3 * time.Hour
+	retryInterval = 15 * time.Minute // after a failed ping, so a short session later today still counts
 	fileName      = "telemetry.json"
 )
 
@@ -86,8 +87,11 @@ func envDisabled() bool {
 func loop(cfg Config) {
 	time.Sleep(startDelay)
 	for {
-		_, _ = CheckOnce(context.Background(), cfg)
-		time.Sleep(checkInterval)
+		wait := checkInterval
+		if _, err := CheckOnce(context.Background(), cfg); err != nil {
+			wait = retryInterval
+		}
+		time.Sleep(wait)
 	}
 }
 
@@ -129,6 +133,11 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
+	// Never follow redirects: a misrouted endpoint must not get the install id or count
+	// as delivered. The 3xx is returned as is and retried like any other failure.
+	noFollow := *client
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &noFollow
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
