@@ -545,7 +545,12 @@ func renderItem(
 			if curBool {
 				onLbl = theme.Tr("已开启", "On")
 			}
-			if bui.TogglePill(c, "plugin-sw-"+pluginID+"-"+item.ID, onLbl, &curBool, busyAction != "") {
+			if bui.SwitchWithOptions(c, bui.SwitchOptions{
+				ID:       "plugin-sw-" + pluginID + "-" + item.ID,
+				Label:    onLbl,
+				Value:    &curBool,
+				Disabled: busyAction != "",
+			}) {
 				values[item.ID] = curBool
 				if onChange != nil {
 					onChange(item.ID, curBool, true)

@@ -78,11 +78,18 @@ func (c *Controller) OpenStoreSource(source string) {
 	c.closeStoreReadme()
 }
 
+func pluginPluckKey(pluginID string) string {
+	return "plugin-header-" + pluginID
+}
+
 // SettingsTabChanged follows settings navigation. Opening or closing a detail
 // stays within the store tab and therefore does not reload the catalog.
 func (c *Controller) SettingsTabChanged(previous, current string) {
 	if c.sup == nil {
 		return
+	}
+	if prevID, ok := strings.CutPrefix(previous, modals.TabPluginPrefix); ok && prevID != "" {
+		bui.ResetPluck(pluginPluckKey(prevID))
 	}
 	if modals.IsStoreTab(previous) {
 		c.closeStoreReadme()
@@ -91,7 +98,7 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 		c.setStoreCategory("")
 	}
 	c.closeStoreMenus()
-	if current == modals.TabAppStore || (current == modals.TabStoreInstalled && !modals.IsStoreTab(previous)) {
+	if modals.IsStoreTab(current) && !modals.IsStoreTab(previous) {
 		c.sup.RefreshCatalogAsync()
 	}
 }
@@ -110,6 +117,21 @@ func (c *Controller) closeStoreMenus() {
 	c.storeSortMenu.Open = false
 }
 
+// InstalledCount returns the number of user-visible installed plugins.
+func (c *Controller) InstalledCount() int {
+	if c.sup == nil {
+		return 0
+	}
+	n := 0
+	for _, inst := range c.sup.Installed() {
+		if inst.Manifest.ID == plugins.DiagnosticsPluginID {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	c.closeStoreReadmeIfNotRenderedRecently(2 * time.Second)
@@ -121,17 +143,9 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	entries := []modals.PluginNavEntry{
 		{
 			TabID: modals.TabAppStore,
-			Title: theme.Tr("发现", "Discover"),
+			Title: theme.Tr("应用商店", "App Store"),
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, storeSpec, size, colors)
-			},
-		},
-		{
-			TabID:     modals.TabStoreInstalled,
-			Title:     theme.Tr("已安装", "Installed"),
-			CountText: strconv.Itoa(len(installed)),
-			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
-				icons.Draw(ctx, icons.Download, size, colors)
 			},
 		},
 	}
@@ -144,12 +158,15 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 			continue
 		}
 		app := inst
+		hasErr := c.sup.HasPluginError(app.Manifest.ID)
+		lit := app.Enabled && !hasErr
 		entries = append(entries, modals.PluginNavEntry{
 			TabID:     modals.TabPluginPrefix + app.Manifest.ID,
 			Title:     app.Manifest.Name.Resolve(locale),
 			Beta:      app.Manifest.Beta,
+			Lit:       lit,
 			StatusDot: app.Enabled,
-			HasError:  c.sup.HasPluginError(app.Manifest.ID),
+			HasError:  hasErr,
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, app.Manifest.Icon, size, colors)
 			},
@@ -160,14 +177,8 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 
 // TabTitle returns the localized header title for the App Store or an installed plugin tab.
 func (c *Controller) TabTitle(tab string) string {
-	if modals.IsStoreTab(tab) && c.storeDetailOpen() {
+	if modals.IsStoreTab(tab) {
 		return theme.Tr("应用商店", "App Store")
-	}
-	switch tab {
-	case modals.TabAppStore:
-		return theme.Tr("发现", "Discover")
-	case modals.TabStoreInstalled:
-		return theme.Tr("已安装", "Installed")
 	}
 	if pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix); ok {
 		if c.sup != nil {
@@ -178,6 +189,59 @@ func (c *Controller) TabTitle(tab string) string {
 		return pluginID
 	}
 	return ""
+}
+
+// pluginVisualState resolves the master switch and header icon states for one installed plugin.
+func (c *Controller) pluginVisualState(pluginID string, inst plugins.InstalledApp) (vs plugins.PluginViewState, starting, failed, live bool) {
+	declarative := inst.Manifest.IsDeclarativeOnly()
+	if inst.Enabled && !declarative {
+		vs = c.sup.EnsurePluginView(pluginID)
+	}
+	starting = inst.Enabled && !declarative && vs.Loading && vs.Page == nil
+	failed = inst.Enabled && !declarative && !vs.Loading && vs.Error != "" && vs.Page == nil
+	live = inst.Enabled && (declarative || (!starting && !failed))
+	return vs, starting, failed, live
+}
+
+// RenderHeaderLeading renders the 44x44 Duo icon box ahead of an installed plugin's page title.
+func (c *Controller) RenderHeaderLeading(ctx *ui.Context, tab string) {
+	if c.sup == nil {
+		return
+	}
+	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
+	if !ok || pluginID == "" {
+		return
+	}
+	inst, found := c.sup.GetInstalled(pluginID)
+	if !found {
+		return
+	}
+	_, _, _, live := c.pluginVisualState(pluginID, inst)
+	pal := theme.Ocean()
+	colors := pal.MonoIconColors(pal.TextSecondary)
+	if live {
+		colors = pal.DuoIconColors(pal.Text)
+	}
+	ui.Box(ctx.Key("plugin-hdr-icon-"+pluginID)).
+		Size(theme.PluginHeaderIconBox, theme.PluginHeaderIconBox).Shrink(0).Center().
+		Radius(theme.PluginHeaderIconRadius).Background(pal.Shell).Children(func() {
+		DrawDuoSpec(ctx, inst.Manifest.Icon, theme.PluginHeaderIconGlyph, colors)
+	})
+}
+
+// RenderHeaderDivider renders the plucked hairline directly underneath a plugin page header.
+func (c *Controller) RenderHeaderDivider(ctx *ui.Context, tab string) {
+	if c.sup == nil {
+		return
+	}
+	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
+	if !ok || pluginID == "" {
+		return
+	}
+	if _, found := c.sup.GetInstalled(pluginID); !found {
+		return
+	}
+	bui.PluckDivider(ctx, pluginPluckKey(pluginID))
 }
 
 // TabIsBeta reports whether the given Settings tab is a plugin declaring beta=true in its manifest.
@@ -215,21 +279,19 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 		return
 	}
 
-	var vs plugins.PluginViewState
+	vs, starting, failed, live := c.pluginVisualState(pluginID, inst)
 	declarative := inst.Manifest.IsDeclarativeOnly()
-	if inst.Enabled && !declarative {
-		vs = c.sup.EnsurePluginView(pluginID)
-	}
 	pal := theme.Ocean()
 	fb := actionFeedbackFromView(vs)
-	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space10).AlignItems(ui.Center).MinWidth(0).Shrink(1).Children(func() {
-		if declarative {
-			if inst.Enabled {
-				renderStatusText(ctx, theme.Tr("已启用", "Enabled"))
-			} else {
-				renderStatusText(ctx, theme.Tr("已停用", "Disabled"))
-			}
-		} else if inst.Enabled {
+	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space12).AlignItems(ui.Center).MinWidth(0).Shrink(1).Children(func() {
+		switch {
+		case starting:
+			renderStatusText(ctx, theme.Tr("启动中…", "Starting…"))
+		case failed:
+			renderStatusTextWithTone(ctx, theme.Tr("启动失败", "Failed to start"), "danger")
+		case declarative && inst.Enabled:
+			renderStatusText(ctx, theme.Tr("已启用", "Enabled"))
+		case live:
 			if vs.Refreshing && vs.BusyAction == "" {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("更新中", "Refreshing"))
 			}
@@ -255,27 +317,40 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 				statusText = strconv.Itoa(vs.PendingSaves) + theme.Tr(" 项待处理", " pending")
 				statusTone = "info"
 			}
-			if statusText != "" {
-				renderStatusTextWithTone(ctx, statusText, statusTone)
+			if statusText == "" {
+				statusText = theme.Tr("已启用", "Enabled")
 			}
-		} else {
+			renderStatusTextWithTone(ctx, statusText, statusTone)
+		default:
 			renderStatusText(ctx, theme.Tr("已停用", "Disabled"))
 		}
 
-		enabled := inst.Enabled
-		toggleTip := theme.Tr("已停用", "Disabled")
-		if enabled {
-			toggleTip = theme.Tr("已启用", "Enabled")
+		switchVal := inst.Enabled && !failed
+		phase := bui.SwitchIdle
+		if starting {
+			phase = bui.SwitchBusy
+		} else if failed {
+			phase = bui.SwitchError
 		}
-		toggleWrap := ui.Row(ctx.Key("plugin-hdr-enable-wrap-" + pluginID)).AlignItems(ui.Center).Shrink(0)
-		bui.Tooltip(ctx, toggleWrap, toggleTip)
-		toggleWrap.Children(func() {
-			if bui.TogglePill(ctx, "plugin-hdr-enable-"+pluginID, theme.Tr("启用扩展", "Enable Extension"), &enabled, vs.BusyAction != "") {
-				c.sup.SetPluginEnabled(pluginID, enabled)
+		if bui.SwitchWithOptions(ctx, bui.SwitchOptions{
+			ID:          "plugin-hdr-enable-" + pluginID,
+			Label:       theme.Tr("启用扩展", "Enable Extension"),
+			Value:       &switchVal,
+			Size:        bui.SwitchHero,
+			Phase:       phase,
+			ErrorKey:    vs.Error,
+			AsyncEnable: !declarative,
+			Disabled:    vs.BusyAction != "",
+			PluckKey:    pluginPluckKey(pluginID),
+		}) {
+			if failed && switchVal {
+				c.sup.RetryPluginAsync(pluginID)
+			} else {
+				c.sup.SetPluginEnabled(pluginID, switchVal)
 			}
-		})
+		}
 
-		if inst.Enabled && vs.Page != nil {
+		if live && vs.Page != nil {
 			for _, btn := range vs.Page.HeaderActions {
 				b := btn
 				el := renderPluginActionButton(ctx, "plugin-hdr-act-", pluginID, b, fb)
@@ -284,7 +359,7 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 				}
 			}
 		}
-		if inst.Enabled && c.sup.CanCancelAction(pluginID) {
+		if live && c.sup.CanCancelAction(pluginID) {
 			stopIc := icons.Stop
 			cancel := bui.ActionButton(ctx, "plugin-cancel-task-"+pluginID, theme.Tr("取消任务", "Cancel task"), &stopIc, bui.ButtonGhost, false)
 			if cancel.Clicked() {
@@ -307,6 +382,7 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 			Loading:  uninstBusy,
 		})
 		if uninstBtn.Clicked() && !vs.Loading && vs.BusyAction == "" {
+			bui.ResetPluck(pluginPluckKey(pluginID))
 			c.uninstallPlugin(pluginID, func() {
 				if onSelectTab != nil {
 					onSelectTab(modals.TabAppStore)
@@ -326,7 +402,7 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 			renderStoreDetail(ctx, c, onSelectTab)
 			return
 		}
-		renderStoreBody(ctx, c, tab == modals.TabStoreInstalled)
+		renderStoreBody(ctx, c, onSelectTab)
 		return
 	}
 	c.closeStoreReadme()
@@ -352,19 +428,7 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		return
 	}
 	if !inst.Enabled {
-		pal := theme.Ocean()
-		ctx.Key("plugin-disabled-" + pluginID)
-		bui.SettingsSection(ctx, func() {
-			bui.SettingsRowFrame(ui.Row(ctx)).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(ctx, theme.Tr("已停用", "Disabled")).
-					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-				chkIc := icons.Check
-				btn := bui.ActionButton(ctx, "plugin-enable-"+pluginID, theme.Tr("启用", "Enable"), &chkIc, bui.ButtonSecondary, false)
-				if btn.Clicked() {
-					c.sup.SetPluginEnabled(pluginID, true)
-				}
-			})
-		})
+		renderPluginDormantOverview(ctx, c, inst)
 		return
 	}
 	if inst.Manifest.IsDeclarativeOnly() {
@@ -421,20 +485,18 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 							c.sup.ReloadPluginViewAsync(pluginID)
 						}
 					}
+					if vs.Page == nil {
+						disableBtn := bui.ActionButton(ctx, "plugin-disable-failed-"+pluginID, theme.Tr("停用", "Disable"), nil, bui.ButtonGhost, busy)
+						if disableBtn.Clicked() && !busy {
+							c.sup.SetPluginEnabled(pluginID, false)
+						}
+					}
 				})
 			})
 		}
 
 		if vs.Loading && vs.Page == nil {
-			ctx.Key("plugin-loading-" + pluginID)
-			bui.SettingsSection(ctx, func() {
-				msg := theme.Tr("正在加载插件页面…", "Loading plugin page…")
-				bui.SettingsRowFrame(ui.Row(ctx)).Gap(theme.Space8).Children(func() {
-					ui.Spinner(ctx).FontSize(theme.IconAction).TextColor(pal.Accent).Label(msg)
-					ui.Text(ctx, msg).
-						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-				})
-			})
+			renderPluginDormantOverview(ctx, c, inst)
 			return
 		}
 
@@ -456,6 +518,52 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 					c.sup.TriggerActionAsync(pluginID, actionID)
 				},
 			)
+		}
+	})
+}
+
+func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins.InstalledApp) {
+	pal := theme.Ocean()
+	locale := ctrl.sup.Locale()
+	summary := strings.TrimSpace(inst.Manifest.Summary.Resolve(locale))
+	category := plugins.CategoryLabel(inst.Manifest.EffectiveCategory(), locale)
+	source := strings.TrimSpace(inst.Manifest.Author)
+	if catalog := ctrl.sup.Catalog(); catalog != nil {
+		for _, entry := range catalog.Apps {
+			if entry.ID == inst.Manifest.ID {
+				if storeAppSource(ctrl, entry, inst, true) == storeSourceOfficial {
+					source = theme.Tr("Block 官方", "Official by Block")
+				}
+				break
+			}
+		}
+	}
+	if source == "" {
+		source = theme.Tr("本地安装", "Local")
+	}
+	version := strings.TrimSpace(inst.Manifest.Version)
+
+	ui.Column(ctx.Key("plugin-dormant-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
+		Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).
+		Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline).
+		Transition(bui.SurfaceStageTransition()).Children(func() {
+		if summary != "" {
+			ui.Text(ctx, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text)
+			ui.Box(ctx).FillWidth().Height(1).Background(pal.Hairline)
+		}
+		metaRow := func(k, v string) {
+			if strings.TrimSpace(v) == "" {
+				return
+			}
+			ui.Row(ctx).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(ctx, k).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Shrink(0)
+				ui.Text(ctx, v).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+			})
+		}
+		metaRow(theme.Tr("分类", "Category"), category)
+		metaRow(theme.Tr("来源", "Source"), source)
+		if version != "" {
+			metaRow(theme.Tr("版本", "Version"), "v"+strings.TrimPrefix(version, "v"))
 		}
 	})
 }
