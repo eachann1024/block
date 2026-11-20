@@ -62,6 +62,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 
 	s.jumpAlpha = s.jumpHighlight(c)
 	s.annotFlashAlpha = s.annotationFlashAlpha(c)
+	s.commentBtnPressed = false
 
 	s.handleGlobalShortcuts(c, readOnly)
 
@@ -384,8 +385,15 @@ func (s *Session) focusOrInsertBottomParagraph() {
 	s.insertOrFocusBottomParagraph()
 }
 
+// HasAnnotationInputFocused reports whether the floating annotation composer or
+// an in-place annotation card editor currently holds keyboard focus.
+func (s *Session) HasAnnotationInputFocused(c *ui.Context) bool {
+	return s.commentHandle.Focused(c) || s.editingHandle.Focused(c)
+}
+
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	svc := c.Services()
+	annotInputFocused := s.HasAnnotationInputFocused(c)
 	// Only register window-level clipboard/selectAll shortcuts when no editor input
 	// holds focus; otherwise c.Shortcut claims the key in mygo before RichInput /
 	// multi-sel-focus HandleInput can handle single-block Cmd+X or staged table Cmd+A.
@@ -399,7 +407,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd, ui.KeyF) {
 		s.OpenFind()
 	}
-	if !s.commentHandle.Focused(c) && !s.editingHandle.Focused(c) && c.Shortcut(0, ui.KeyEscape) {
+	if !annotInputFocused && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
 		} else if s.isTableExtending() {
@@ -439,20 +447,22 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	} else if c.Shortcut(ui.Cmd, ui.KeyZ) {
 		s.Undo()
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyB) {
-		s.ToggleMarkOnSelection(model.MarkBold)
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyI) {
-		s.ToggleMarkOnSelection(model.MarkItalic)
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyU) {
-		s.ToggleMarkOnSelection(model.MarkUnderline)
-	}
-	if c.Shortcut(ui.Cmd, ui.KeyE) {
-		s.ToggleMarkOnSelection(model.MarkCode)
-	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
-		s.ToggleMarkOnSelection(model.MarkStrike)
+	if !annotInputFocused {
+		if c.Shortcut(ui.Cmd, ui.KeyB) {
+			s.ToggleMarkOnSelection(model.MarkBold)
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyI) {
+			s.ToggleMarkOnSelection(model.MarkItalic)
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyU) {
+			s.ToggleMarkOnSelection(model.MarkUnderline)
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyE) {
+			s.ToggleMarkOnSelection(model.MarkCode)
+		}
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyX) || c.Shortcut(ui.Cmd|ui.Shift, ui.KeyS) {
+			s.ToggleMarkOnSelection(model.MarkStrike)
+		}
 	}
 	if canGlobalClip && (s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()) && c.Shortcut(ui.Cmd, ui.KeyX) {
 		s.CutSelection(svc)
@@ -3306,6 +3316,9 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 					Active: s.toolbarPop == "comment",
 				})
 				s.recordOverlayBtn("img-tb-comment", commentBtn)
+				if commentBtn.Pressed() {
+					s.commentBtnPressed = true
+				}
 				if commentBtn.Clicked() {
 					s.FocusBlock(idx)
 					s.toggleToolbarPop("comment")

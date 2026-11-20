@@ -297,7 +297,7 @@ func (s *Session) handleBlockAndFormatShortcut(mods ui.Modifiers, key ui.Key) bo
 }
 
 func (s *Session) handleGlobalBlockShortcuts(c *ui.Context) {
-	if s.readOnly || s.hasBlockingOverlay() {
+	if s.readOnly || s.inlineAI != nil || s.findOpen || s.toolbarPop != "" || s.editingAnnotID != "" || s.hasMenuPopupOpen() {
 		return
 	}
 	for _, combo := range []struct {
