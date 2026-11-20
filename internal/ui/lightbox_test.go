@@ -174,3 +174,42 @@ func TestLightboxVideoPlaybackShortcuts(t *testing.T) {
 		t.Fatalf("switching away from video should pause outgoing video")
 	}
 }
+
+func TestLightboxCrossPlatformTitlebarClearanceAndShortcuts(t *testing.T) {
+	// Fullscreen / standard OS titlebar: zero clearance, compact 12px top gap.
+	if got := lightboxTitlebarClearance(ui.TitleBar{}); got != 0 {
+		t.Fatalf("fullscreen clearance = %v, want 0", got)
+	}
+	if got := lightboxToolbarTopGap(0); got != 12 {
+		t.Fatalf("fullscreen top gap = %v, want 12", got)
+	}
+
+	// macOS hidden titlebar: clears traffic lights band.
+	macTB := ui.TitleBar{Height: 40, Left: 78, Bottom: 28}
+	if got := lightboxTitlebarClearance(macTB); got != 40 {
+		t.Fatalf("macOS clearance = %v, want 40", got)
+	}
+	if got := lightboxToolbarTopGap(40); got != 6 {
+		t.Fatalf("windowed top gap = %v, want 6", got)
+	}
+
+	// Windows hidden titlebar: clears right caption buttons band.
+	winTB := ui.TitleBar{Height: 40, Right: 138, Bottom: 40}
+	if got := lightboxTitlebarClearance(winTB); got != 40 {
+		t.Fatalf("Windows clearance = %v, want 40", got)
+	}
+
+	// Fallback if a platform reports Left/Right insets without Height/Bottom.
+	linuxFallbackTB := ui.TitleBar{Right: 96}
+	if got := lightboxTitlebarClearance(linuxFallbackTB); got <= 0 {
+		t.Fatalf("fallback clearance should be positive, got %v", got)
+	}
+
+	// Platform-aware arrow shortcuts parse and format cleanly ("⌘←" on macOS, "Ctrl+←" elsewhere).
+	if got := FormatShortcutDisplay("cmd-left"); got != "⌘←" && got != "Ctrl+←" {
+		t.Fatalf("FormatShortcutDisplay(cmd-left) = %q", got)
+	}
+	if got := FormatShortcutDisplay("cmd-right"); got != "⌘→" && got != "Ctrl+→" {
+		t.Fatalf("FormatShortcutDisplay(cmd-right) = %q", got)
+	}
+}
