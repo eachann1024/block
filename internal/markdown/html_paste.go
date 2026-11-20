@@ -243,7 +243,7 @@ func isCodeEditorHTMLDump(fragment string) bool {
 	if !hasMonospaceWrapper {
 		return false
 	}
-	for _, sem := range []string{"<h1", "<h2", "<h3", "<h4", "<h5", "<h6", "<ul", "<ol", "<li", "<table", "<blockquote", "<a ", "<strong", "<b ", "<b>", "<em", "<mark"} {
+	for _, sem := range []string{"<h1", "<h2", "<h3", "<h4", "<h5", "<h6", "<ul", "<ol", "<li", "<table", "<blockquote", "<a ", "<strong", "<b ", "<b>", "<em", "<mark", `class="math"`} {
 		if strings.Contains(lower, sem) {
 			return false
 		}
@@ -288,11 +288,17 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 					return true
 				}
 			default:
+				if hasCSSClass(attrVal(attrs, "class"), "math") {
+					return true
+				}
 				if isCSSBold(cssProp(attrs, "font-weight")) ||
 					strings.EqualFold(cssProp(attrs, "font-style"), "italic") {
 					return true
 				}
 				if td := strings.ToLower(cssProp(attrs, "text-decoration")); strings.Contains(td, "underline") || strings.Contains(td, "line-through") {
+					return true
+				}
+				if isHighlightBGColor(cssProp(attrs, "background-color")) {
 					return true
 				}
 			}
@@ -740,8 +746,25 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 			st.strike = boolPtr(true)
 		}
 	}
+	if isHighlightBGColor(cssProp(attrs, "background-color")) {
+		st.highlight = boolPtr(true)
+	}
 
 	c.inlineStk = append(c.inlineStk, st)
+}
+
+func isHighlightBGColor(raw string) bool {
+	bg := strings.ToLower(strings.TrimSpace(cleanColorValue(raw)))
+	if bg == "" {
+		return false
+	}
+	compact := strings.ReplaceAll(bg, " ", "")
+	switch compact {
+	case "white", "#fff", "#ffffff", "rgb(255,255,255)", "rgba(255,255,255,1)", "rgba(0,0,0,0)",
+		"black", "#000", "#000000", "rgb(0,0,0)", "currentcolor":
+		return false
+	}
+	return true
 }
 
 func (c *htmlPasteConverter) popInlineTag(name string) {

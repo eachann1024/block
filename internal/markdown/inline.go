@@ -442,6 +442,14 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 				}
 				if i >= st.tagFailWatermark {
 					if rawTag, tok, consumed, failPos, sawQuoteOrGT, ok := tryParseHTMLTagAt(s, i, lastGT, lastDQ, lastSQ, pairedUnknown); ok {
+						// Literal HTML inline math: `<span class="math">...</span>` or `<code class="math">...</code>`.
+						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].isMark&model.MarkMath != 0 {
+							if litText, closeEnd, okLit := scanLiteralHTMLMathBody(s, i+consumed, tok[0].tag); okLit {
+								toks = append(toks, &inlineTok{kind: tokMath, text: litText})
+								i = closeEnd
+								continue
+							}
+						}
 						if tok != nil {
 							for _, t := range tok {
 								if t.kind == tokOpenStyle && t.tag == "a" && t.hasLnk {
@@ -490,7 +498,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			i += size
 			for i < n {
 				nb := s[i]
-				if nb == '\\' || nb == '`' || nb == '*' || nb == '_' || nb == '~' || nb == '!' || nb == '[' || nb == '<' || nb == '&' {
+				if nb == '\\' || nb == '`' || nb == '*' || nb == '_' || nb == '~' || nb == '!' || nb == '[' || nb == '<' || nb == '&' || nb == '^' || nb == '$' || nb == '=' {
 					break
 				}
 				if !inLink && htmlLinkDepth == 0 && (nb == 'h' || nb == 'H') {
@@ -697,6 +705,26 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 			i += run
 			continue
 		}
+		if c == '$' {
+			run := 0
+			for i+run < n && s[i+run] == '$' {
+				run++
+			}
+			if run == 1 {
+				if closeM, _, okM := findInlineMathEnd(s, i+1); okM {
+					i = closeM + 1
+					continue
+				}
+			}
+			i += run
+			continue
+		}
+		if c == '[' {
+			if _, _, consumed, okL := tryParseLinkOrImage(s[i:], nil, false); okL && consumed > 0 {
+				i += consumed
+				continue
+			}
+		}
 		if c == '=' && i+1 < n && s[i+1] == '=' {
 			if i > from && !isInlineSpaceByte(s[i-1]) && s[i-1] != '=' && (i+2 >= n || s[i+2] != '=') {
 				return i, true
@@ -709,6 +737,48 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 		i++
 	}
 	return -1, false
+}
+
+func scanLiteralHTMLMathBody(s string, from int, tag string) (text string, nextPos int, ok bool) {
+	closeTag := "</" + tag + ">"
+	n := len(s)
+	for i := from; i < n; i++ {
+		if s[i] == '<' && i+len(closeTag) <= n && strings.EqualFold(s[i:i+len(closeTag)], closeTag) {
+			raw := s[from:i]
+			var out strings.Builder
+			out.Grow(len(raw))
+			for j := 0; j < len(raw); {
+				if raw[j] == '<' {
+					if j+4 <= len(raw) && strings.EqualFold(raw[j:j+4], "<br>") {
+						out.WriteByte('\n')
+						j += 4
+						continue
+					}
+					if j+5 <= len(raw) && strings.EqualFold(raw[j:j+5], "<br/>") {
+						out.WriteByte('\n')
+						j += 5
+						continue
+					}
+					if j+6 <= len(raw) && strings.EqualFold(raw[j:j+6], "<br />") {
+						out.WriteByte('\n')
+						j += 6
+						continue
+					}
+				}
+				if raw[j] == '&' {
+					if decoded, consumed, okEnt := tryDecodeEntity(raw[j:]); okEnt {
+						out.WriteString(decoded)
+						j += consumed
+						continue
+					}
+				}
+				out.WriteByte(raw[j])
+				j++
+			}
+			return out.String(), i + len(closeTag), true
+		}
+	}
+	return "", from, false
 }
 
 func normalizeCodeSpanContent(inner string) string {
@@ -1941,7 +2011,7 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		} else if sp.Marks&model.MarkMath != 0 {
 			if useHTML || !canSerializeDollarMath(sp.Text) {
 				out.WriteString(`<span class="math">`)
-				writeInlineText(&out, sp.Text, false, true, false)
+				writeLiteralHTMLText(&out, sp.Text)
 				out.WriteString(`</span>`)
 			} else {
 				writeInlineMath(&out, sp.Text)
@@ -1956,6 +2026,23 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		writeClose(opened[k])
 	}
 	return simplifyInlineEscapes(out.String(), spans)
+}
+
+func writeLiteralHTMLText(out *strings.Builder, text string) {
+	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case '&':
+			out.WriteString("&amp;")
+		case '<':
+			out.WriteString("&lt;")
+		case '>':
+			out.WriteString("&gt;")
+		case '\n':
+			out.WriteString("<br>")
+		default:
+			out.WriteByte(text[i])
+		}
+	}
 }
 
 func hasCSSClass(classAttr, want string) bool {
@@ -2003,7 +2090,9 @@ func writeInlineCode(out *strings.Builder, text string) {
 	}
 	fence := strings.Repeat("`", longest+1)
 	out.WriteString(fence)
-	if strings.HasPrefix(text, "`") || strings.HasSuffix(text, "`") {
+	needSpacePad := strings.HasPrefix(text, "`") || strings.HasSuffix(text, "`") ||
+		(len(text) >= 2 && text[0] == ' ' && text[len(text)-1] == ' ' && strings.Trim(text, " ") != "")
+	if needSpacePad {
 		out.WriteByte(' ')
 		out.WriteString(text)
 		out.WriteByte(' ')

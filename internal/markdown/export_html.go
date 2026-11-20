@@ -835,7 +835,7 @@ func renderHTMLSpans(out *strings.Builder, spans []model.Span, pal PaperThemeSpe
 			closeTags = append(closeTags, "</code>")
 		}
 		if sp.Marks&model.MarkMath != 0 {
-			openTags = append(openTags, `<code style="font-style:italic">`)
+			openTags = append(openTags, `<code class="math" style="font-style:italic">`)
 			closeTags = append(closeTags, "</code>")
 		}
 		for _, t := range openTags {
