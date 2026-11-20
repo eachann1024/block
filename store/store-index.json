@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T08:17:41Z",
+  "updated_at": "2026-11-20T08:56:06Z",
   "apps": [
     {
       "app": "blockmd",
@@ -11,19 +11,19 @@
         "zh": "同步",
         "en": "Sync"
       },
-      "version": "1.3.18",
+      "version": "1.3.27",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-sync",
       "summary": {
         "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.18/block-sync-v1.3.18.tar.gz",
-      "sha256": "61e97666250484b826e0c85ebc654e73b6287947707f9784bbd6a81e10d2a9f4",
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.27/block-sync-v1.3.27.tar.gz",
+      "sha256": "c00c67e9f96f674451a9180f99c3532f421284dfee716ca5aa5165f1298c85a8",
       "downloads": 1281,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-19T17:59:04Z",
+      "updated_at": "2026-11-20T08:55:29Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -57,19 +57,19 @@
         "zh": "图床上传",
         "en": "Image Host"
       },
-      "version": "1.2.17",
+      "version": "1.2.26",
       "author": "eachann1024",
       "repo": "eachann1024/block-image-host",
       "summary": {
         "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
         "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
       },
-      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.17/block-image-host-v1.2.17.tar.gz",
-      "sha256": "b835822c3f1e235259fc0cbfbdcda8289af03fb706851980cbfd432baaa8293b",
+      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.26/block-image-host-v1.2.26.tar.gz",
+      "sha256": "c8ae9b67b4ebb35c4f3ca2ee6ac843ee7c839a81785ccd6767b15d536e7988bd",
       "downloads": 941,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-19T18:10:52Z",
+      "updated_at": "2026-11-20T08:55:39Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -104,19 +104,19 @@
         "zh": "笔记迁移",
         "en": "Migrator"
       },
-      "version": "1.2.25",
+      "version": "1.2.29",
       "author": "eachann1024",
       "repo": "eachann1024/block-migrator",
       "summary": {
         "zh": "从 Obsidian、Notion 与语雀导出目录或 ZIP 包迁移笔记，自动清洗语法并拷贝附件",
         "en": "Migrate notes from Obsidian, Notion, and Yuque folders or ZIP archives with syntax cleanup and asset copy"
       },
-      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.25/block-migrator-v1.2.25.tar.gz",
-      "sha256": "c24f448ca7af5af84bdb158d2d28f4597067dcc95fa2405eddb92b720dedb1ab",
+      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.29/block-migrator-v1.2.29.tar.gz",
+      "sha256": "68f6192492f3d203b109b461a693c56d98e55cc7d2b0ab4c4b1f5bca402c370d",
       "downloads": 616,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-19T19:11:23Z",
+      "updated_at": "2026-11-20T08:55:44Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -148,19 +148,19 @@
         "zh": "编辑器背景",
         "en": "Editor Background"
       },
-      "version": "1.2.19",
+      "version": "1.2.22",
       "author": "eachann1024",
       "repo": "eachann1024/block-canvas-dots",
       "summary": {
         "zh": "为笔记铺上与行高对齐的点阵或方格，增加对比度，稳定追踪每一行",
         "en": "Line-aligned dot or grid background for notes, adding contrast to track each line"
       },
-      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.19/block-canvas-dots-v1.2.19.tar.gz",
-      "sha256": "6aaeb22702f511e9b11aca2f8969872d7328b804d9337f504106aa3c29b5c701",
-      "downloads": 36,
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.22/block-canvas-dots-v1.2.22.tar.gz",
+      "sha256": "ff05e7af713b658336d598aed31f94627194311f3542ddc194a45b00c25d2b3a",
+      "downloads": 42,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-20T08:17:19Z",
+      "updated_at": "2026-11-20T08:53:47Z",
       "permissions": [
         "storage",
         "ui:settings"
@@ -196,19 +196,19 @@
         "zh": "顶栏图标",
         "en": "Titlebar Icons"
       },
-      "version": "1.0.5",
+      "version": "1.0.14",
       "author": "eachann1024",
       "repo": "eachann1024/block-titlebar",
       "summary": {
         "zh": "自定义顶栏右上角显示的图标，隐藏不需要的按钮",
         "en": "Choose which icons appear in the top-right titlebar"
       },
-      "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.5/block-titlebar-v1.0.5.tar.gz",
-      "sha256": "6cabfc6945fa7d684c0d0e7835a837c0e5fc8425a709474c3b284033e8fd6e0f",
-      "downloads": 26,
+      "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.14/block-titlebar-v1.0.14.tar.gz",
+      "sha256": "338bd1eb0cee951a8e4b3b12e6864aabb04df11802bacba17845419d98394d38",
+      "downloads": 33,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-19T18:19:19Z",
+      "updated_at": "2026-11-20T08:53:45Z",
       "permissions": [
         "storage",
         "ui:titlebar",
@@ -235,6 +235,52 @@
         ]
       },
       "beta": true
+    },
+    {
+      "app": "blockmd",
+      "id": "block-tarot",
+      "name": {
+        "zh": "塔罗模式",
+        "en": "Tarot Mode"
+      },
+      "version": "1.0.7",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-tarot",
+      "summary": {
+        "zh": "午夜铜版塔罗皮肤与写作仪式：牌桌三张牌阵、每日一牌反问、大阿卡纳牌册与速记换肤",
+        "en": "Midnight Copperplate tarot skin and writing rituals: 3-card spread, daily card reflection, 22 Major Arcana deck, and Quick Note skin"
+      },
+      "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.7/block-tarot-v1.0.7.tar.gz",
+      "sha256": "0ac60e7b79890ffe515f198cd40eb23fdd195e40b7f99ba6c373147c550e5d24",
+      "downloads": 6,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-20T08:33:39Z",
+      "permissions": [
+        "storage",
+        "ui:titlebar",
+        "ui:settings",
+        "ui:commands",
+        "ui:notify",
+        "events:workspace"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z"
+        ],
+        "stroke_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z",
+          "M12 6.8l3.8 5.2-3.8 5.2L8.2 12 12 6.8Z"
+        ],
+        "accent_paths": [
+          "M12 9.5v5",
+          "M9.5 12h5"
+        ]
+      }
     }
   ]
 }
