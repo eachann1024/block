@@ -293,7 +293,9 @@ func (s *TabSurface) ZoomFit() {
 	s.ZoomFitMode = true
 }
 
-// SourceStatusLabel returns the compact language + encoding label for titlebar display.
+// SourceStatusLabel returns an exceptional status notice (e.g. read-only preview
+// or transient error/status message) for titlebar display. Routine language and
+// encoding metadata stay hidden to keep the titlebar uncluttered.
 func (s *TabSurface) SourceStatusLabel() string {
 	if s == nil {
 		return ""
@@ -302,24 +304,9 @@ func (s *TabSurface) SourceStatusLabel() string {
 		return s.StatusMsg
 	}
 	if s.Kind == model.OpenKindPreview && s.IsSVG && !s.HasSource {
-		return theme.Tr("SVG · 只读预览", "SVG · Read-only")
+		return theme.Tr("只读预览", "Read-only")
 	}
-	lang := strings.ToUpper(strings.TrimSpace(s.Source.Language))
-	if s.IsSVG {
-		lang = "SVG"
-	} else if lang == "" {
-		ext := strings.TrimPrefix(filepath.Ext(s.Path), ".")
-		if ext != "" {
-			lang = strings.ToUpper(ext)
-		} else {
-			lang = "TEXT"
-		}
-	}
-	enc := "UTF-8"
-	if s.Source.BOM {
-		enc = "UTF-8 BOM"
-	}
-	return fmt.Sprintf("%s · %s", lang, enc)
+	return ""
 }
 
 // Render draws the non-Markdown file surface inside the main workspace column.
