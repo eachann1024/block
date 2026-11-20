@@ -57,6 +57,7 @@ func renderPluginStatusStrip(c *ui.Context, sup *plugins.Supervisor, getSelectio
 							SingleLine().
 							Ellipsis("…")
 					})
+					blockui.Probe(btn, key)
 					if btn.Clicked() {
 						sel := ""
 						if getSelection != nil {
@@ -84,6 +85,7 @@ func renderPluginStatusStrip(c *ui.Context, sup *plugins.Supervisor, getSelectio
 							SingleLine().
 							Ellipsis("…")
 					})
+					blockui.Probe(wrap, key)
 				}
 			}
 		})

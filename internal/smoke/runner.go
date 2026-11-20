@@ -107,7 +107,16 @@ func RunAll(baseTempDir string) (*Report, error) {
 	blockui.EnableSmokeMode()
 	defer blockui.DisableSmokeMode()
 
+	if err := installSmokePluginFixture(baseTempDir, dataDir); err != nil {
+		return nil, fmt.Errorf("installSmokePluginFixture: %w", err)
+	}
+
 	ws := app.NewWorkspace(dataDir)
+	defer func() {
+		if sup := ws.Plugins(); sup != nil {
+			sup.ShutdownAll()
+		}
+	}()
 	if err := ws.SetNotebook(nbDir); err != nil {
 		return nil, fmt.Errorf("SetNotebook: %w", err)
 	}
@@ -121,7 +130,7 @@ func RunAll(baseTempDir string) (*Report, error) {
 	}
 
 	runStep := func(idx int, name string, fn func() (string, error)) error {
-		blockui.SetSmokeStep(nil, fmt.Sprintf("[%d/20] %s", idx, name))
+		blockui.SetSmokeStep(nil, fmt.Sprintf("[%d/26] %s", idx, name))
 		t0 := time.Now()
 		detail, err := fn()
 		dur := time.Since(t0)
@@ -1905,7 +1914,16 @@ func RunAll(baseTempDir string) (*Report, error) {
 		return rep, err
 	}
 
-	blockui.SetSmokeFinished(true, "All 25 acceptance steps passed")
+	// Step 26: Built-in test plugin exercising titlebar hiding (+more lock), Command Palette,
+	// status bar, toast, side panel, dialog & page menu items end-to-end.
+	if err := runStep(26, "Plugin UI surfaces (titlebar hiding, palette, toast, status, panel, dialog & page menu)", func() (string, error) {
+		return runPluginUIAcceptance(ws, tt, firstNotePath)
+	}); err != nil {
+		rep.TotalTime = time.Since(startAll)
+		return rep, err
+	}
+
+	blockui.SetSmokeFinished(true, "All 26 acceptance steps passed")
 	rep.TotalTime = time.Since(startAll)
 	return rep, nil
 }

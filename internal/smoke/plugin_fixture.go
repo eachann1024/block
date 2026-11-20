@@ -1,0 +1,721 @@
+package smoke
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"block/internal/app"
+	"block/internal/plugins"
+	blockui "block/internal/ui"
+	"github.com/egoist/mygo/ui"
+)
+
+const (
+	smokePluginID           = "smoke-ui-probe"
+	smokePluginInsertMarker = "[SMOKE_PLUGIN_INSERTED]"
+)
+
+func resolveSmokePythonCommand() (string, error) {
+	for _, bin := range []string{"python3", "python"} {
+		if _, err := exec.LookPath(bin); err == nil {
+			return bin, nil
+		}
+	}
+	return "", fmt.Errorf("python3/python interpreter not found in PATH for smoke plugin")
+}
+
+// installSmokePluginFixture writes a self-contained out-of-process JSON-RPC test
+// plugin into a temporary directory and installs it into dataDir via StoreManager.
+// It stays disabled until the dedicated plugin UI acceptance step enables it so
+// earlier workspace steps run unaffected.
+func installSmokePluginFixture(baseTempDir, dataDir string) error {
+	pyBin, err := resolveSmokePythonCommand()
+	if err != nil {
+		return err
+	}
+
+	srcDir := filepath.Join(baseTempDir, "smoke-plugin-src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir smoke plugin src: %w", err)
+	}
+
+	icon := plugins.AppStoreIconSpec()
+	manifest := plugins.Manifest{
+		App:           plugins.TargetApp,
+		SchemaVersion: plugins.CurrentSchemaVersion,
+		ID:            smokePluginID,
+		Name:          plugins.LocalizedText{Zh: "烟测界面插件", En: "Smoke UI Probe"},
+		Version:       "1.0.0",
+		Author:        "Block Smoke",
+		Summary:       plugins.LocalizedText{Zh: "验证插件顶栏、命令面板、面板、提示与对话框", En: "Exercises plugin titlebar, palette, panel, toast and dialog UI"},
+		Entry:         plugins.EntrySpec{Command: []string{pyBin, "plugin.py"}},
+		Permissions: []plugins.Permission{
+			plugins.PermUITitlebar,
+			plugins.PermUISettings,
+			plugins.PermUICommands,
+			plugins.PermUIPanels,
+			plugins.PermUIStatus,
+			plugins.PermUINotify,
+			plugins.PermEditorRead,
+			plugins.PermEditorEdit,
+			plugins.PermEventsUI,
+		},
+		Surfaces: []plugins.Surface{plugins.SurfaceSettingsPage},
+		Icon:     icon,
+		Contributes: &plugins.Contributes{
+			TitlebarButtons: []plugins.TitlebarButtonContrib{
+				{
+					ID:      "toggle_panel",
+					Icon:    icon,
+					Tooltip: plugins.LocalizedText{Zh: "打开烟测面板", En: "Toggle Smoke Panel"},
+					Panel:   "inspector",
+				},
+				{
+					ID:      "quick_toast",
+					Icon:    icon,
+					Tooltip: plugins.LocalizedText{Zh: "触发烟测提示", En: "Trigger Smoke Toast"},
+					Command: "show_toast",
+				},
+			},
+			SettingsSections: []plugins.SettingsSectionContrib{
+				{
+					ID:    "titlebar_ctrl",
+					Tab:   "appearance",
+					Title: plugins.LocalizedText{Zh: "顶栏图标控制", En: "Titlebar Controls"},
+				},
+			},
+			Commands: []plugins.CommandContrib{
+				{
+					ID:    "show_toast",
+					Title: plugins.LocalizedText{Zh: "显示烟测提示", En: "Show Smoke Toast"},
+				},
+				{
+					ID:    "open_dialog",
+					Title: plugins.LocalizedText{Zh: "打开烟测对话框", En: "Open Smoke Dialog"},
+				},
+				{
+					ID:    "open_panel",
+					Title: plugins.LocalizedText{Zh: "打开烟测面板", En: "Open Smoke Panel"},
+				},
+				{
+					ID:    "hide_slots",
+					Title: plugins.LocalizedText{Zh: "隐藏顶栏反馈与 AI", En: "Hide Feedback and AI"},
+				},
+				{
+					ID:    "restore_slots",
+					Title: plugins.LocalizedText{Zh: "恢复顶栏图标", En: "Restore Titlebar Icons"},
+				},
+				{
+					ID:    "insert_note",
+					Title: plugins.LocalizedText{Zh: "插入烟测标记", En: "Insert Smoke Marker"},
+				},
+			},
+			PageMenu: []plugins.MenuContrib{
+				{
+					ID:      "menu_dialog",
+					Title:   plugins.LocalizedText{Zh: "打开烟测弹窗", En: "Open Smoke Dialog"},
+					Command: "open_dialog",
+				},
+			},
+			Panels: []plugins.PanelContrib{
+				{
+					ID:    "inspector",
+					Title: plugins.LocalizedText{Zh: "烟测检查面板", En: "Smoke Inspector"},
+					Icon:  icon,
+				},
+			},
+			StatusItems: []plugins.StatusItemContrib{
+				{
+					ID:      "counter",
+					Text:    plugins.LocalizedText{Zh: "烟测就绪", En: "Smoke Ready"},
+					Command: "show_toast",
+				},
+			},
+			Dialogs: []plugins.DialogContrib{
+				{
+					ID:    "confirm_box",
+					Title: plugins.LocalizedText{Zh: "烟测确认对话框", En: "Smoke Confirm Dialog"},
+					Width: 440,
+				},
+			},
+		},
+	}
+
+	rawManifest, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal smoke plugin manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "manifest.json"), rawManifest, 0o600); err != nil {
+		return fmt.Errorf("write smoke plugin manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "plugin.py"), []byte(smokePluginScript), 0o700); err != nil {
+		return fmt.Errorf("write smoke plugin script: %w", err)
+	}
+
+	sm := plugins.NewStoreManager(dataDir)
+	if err := sm.EnsureDirs(); err != nil {
+		return fmt.Errorf("ensure plugin dirs: %w", err)
+	}
+	if _, err := sm.InstallFromDirectory(srcDir); err != nil {
+		return fmt.Errorf("install smoke plugin fixture: %w", err)
+	}
+	return nil
+}
+
+const smokePluginScript = `import json
+import sys
+
+host_seq = 0
+queued_requests = []
+click_count = 0
+
+
+def send_msg(obj):
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def call_host(method, params):
+    global host_seq
+    host_seq += 1
+    req_id = f"h-{host_seq}"
+    send_msg({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            raise RuntimeError("host closed pipe while waiting for response")
+        line = line.strip()
+        if not line:
+            continue
+        msg = json.loads(line)
+        if "method" in msg and msg["method"]:
+            queued_requests.append(msg)
+            continue
+        if str(msg.get("id")) == req_id:
+            if "error" in msg and msg["error"]:
+                raise RuntimeError(str(msg["error"]))
+            return msg.get("result")
+
+
+def build_page(surface):
+    if surface == "settings_section:titlebar_ctrl":
+        return {
+            "title": "顶栏图标控制",
+            "cards": [
+                {
+                    "id": "titlebar_card",
+                    "title": "右上角图标显示",
+                    "items": [
+                        {
+                            "kind": "actions",
+                            "buttons": [
+                                {"id": "apply_hide", "label": "隐藏反馈与 AI", "variant": "primary"},
+                                {"id": "apply_restore", "label": "恢复全部图标", "variant": "secondary"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    if surface == "panel:inspector":
+        return {
+            "title": "烟测检查面板",
+            "cards": [
+                {
+                    "id": "panel_card",
+                    "title": "面板操作",
+                    "items": [
+                        {
+                            "kind": "kv",
+                            "rows": [{"label": "点击计数", "value": str(click_count)}],
+                        },
+                        {
+                            "kind": "actions",
+                            "buttons": [
+                                {"id": "panel_open_dialog", "label": "打开确认对话框", "variant": "primary"},
+                                {"id": "panel_toast", "label": "发送面板提示", "variant": "secondary"},
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+    if surface == "dialog:confirm_box":
+        return {
+            "title": "烟测确认对话框",
+            "cards": [
+                {
+                    "id": "dialog_card",
+                    "title": "对话框动作",
+                    "items": [
+                        {
+                            "kind": "actions",
+                            "buttons": [
+                                {"id": "dialog_insert", "label": "插入标记文本", "variant": "primary"},
+                                {"id": "dialog_close", "label": "关闭对话框", "variant": "secondary"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    return {
+        "title": "烟测界面插件",
+        "cards": [
+            {
+                "id": "overview",
+                "title": "概览",
+                "items": [
+                    {
+                        "kind": "kv",
+                        "rows": [{"label": "状态", "value": "运行中"}],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def trigger_toast():
+    global click_count
+    click_count += 1
+    call_host("host.titlebar.set_button", {"id": "quick_toast", "badge": str(click_count)})
+    call_host("host.status.set", {"id": "counter", "text": f"烟测已触发 {click_count}", "tooltip": "烟测状态更新"})
+    call_host("host.ui.toast", {"message": f"烟测提示 #{click_count}", "tone": "success"})
+
+
+def handle_request(msg):
+    method = msg.get("method", "")
+    params = msg.get("params") or {}
+    req_id = msg.get("id")
+
+    try:
+        if method == "plugin.initialize":
+            result = {"ready": True}
+        elif method == "plugin.render":
+            surface = params.get("surface") or "settings_page"
+            result = {"page": build_page(surface)}
+        elif method == "plugin.action":
+            surface = params.get("surface") or "settings_page"
+            action_id = params.get("action_id") or ""
+            if action_id == "apply_hide":
+                call_host("host.titlebar.set_hidden", {"hidden": ["feedback", "ai", "more"]})
+                result = {"ok": True, "tone": "success", "status": "已隐藏反馈与 AI", "page": build_page(surface)}
+            elif action_id == "apply_restore":
+                call_host("host.titlebar.set_hidden", {"hidden": []})
+                result = {"ok": True, "tone": "success", "status": "已恢复顶栏图标", "page": build_page(surface)}
+            elif action_id == "panel_open_dialog":
+                call_host("host.ui.open_dialog", {"id": "confirm_box"})
+                result = {"ok": True, "tone": "info", "page": build_page(surface)}
+            elif action_id == "panel_toast":
+                trigger_toast()
+                result = {"ok": True, "tone": "success", "page": build_page(surface)}
+            elif action_id == "dialog_insert":
+                call_host("host.editor.insert", {"text": "[SMOKE_PLUGIN_INSERTED]"})
+                call_host("host.ui.toast", {"message": "已插入烟测标记", "tone": "success"})
+                result = {"ok": True, "tone": "success", "page": build_page(surface)}
+            elif action_id == "dialog_close":
+                call_host("host.ui.close_dialog", {"id": "confirm_box"})
+                result = {"ok": True, "tone": "info"}
+            else:
+                result = {"ok": True, "page": build_page(surface)}
+        elif method == "plugin.command":
+            cmd_id = params.get("command_id") or ""
+            if cmd_id == "show_toast":
+                trigger_toast()
+                result = {"ok": True, "tone": "success"}
+            elif cmd_id == "open_dialog":
+                call_host("host.ui.open_dialog", {"id": "confirm_box"})
+                result = {"ok": True, "tone": "info"}
+            elif cmd_id == "open_panel":
+                call_host("host.ui.open_panel", {"id": "inspector"})
+                result = {"ok": True, "tone": "info"}
+            elif cmd_id == "hide_slots":
+                call_host("host.titlebar.set_hidden", {"hidden": ["feedback", "ai", "more"]})
+                result = {"ok": True, "tone": "success", "status": "已隐藏顶栏图标"}
+            elif cmd_id == "restore_slots":
+                call_host("host.titlebar.set_hidden", {"hidden": []})
+                result = {"ok": True, "tone": "success", "status": "已恢复顶栏图标"}
+            elif cmd_id == "insert_note":
+                call_host("host.editor.insert", {"text": "[SMOKE_PLUGIN_INSERTED]"})
+                result = {"ok": True, "tone": "success", "status": "已插入烟测标记"}
+            else:
+                result = {"ok": True}
+        elif method == "plugin.event":
+            result = {"handled": True}
+        elif method == "plugin.shutdown":
+            send_msg({"jsonrpc": "2.0", "id": req_id, "result": {"ok": True}})
+            sys.exit(0)
+        else:
+            send_msg({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"unknown method: {method}"}})
+            return
+        send_msg({"jsonrpc": "2.0", "id": req_id, "result": result})
+    except Exception as exc:
+        send_msg({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
+
+
+while True:
+    if queued_requests:
+        next_msg = queued_requests.pop(0)
+        handle_request(next_msg)
+        continue
+    raw = sys.stdin.readline()
+    if not raw:
+        break
+    raw = raw.strip()
+    if not raw:
+        continue
+    handle_request(json.loads(raw))
+`
+
+func waitForProbe(tt *ui.Tester, id string, timeout time.Duration) (ui.Rect, error) {
+	var found ui.Rect
+	err := waitUntil(timeout, func() bool {
+		tt.Frame()
+		tt.Advance(40 * time.Millisecond)
+		r, ok := blockui.TargetBounds(id)
+		if ok && r.W > 0 && r.H > 0 {
+			found = r
+			return true
+		}
+		return false
+	})
+	if err != nil {
+		return ui.Rect{}, fmt.Errorf("probe %q did not appear: %w", id, err)
+	}
+	return found, nil
+}
+
+func waitForProbeGone(tt *ui.Tester, id string, timeout time.Duration) error {
+	return waitUntil(timeout, func() bool {
+		tt.Frame()
+		tt.Advance(60 * time.Millisecond)
+		_, ok := blockui.TargetBounds(id)
+		return !ok
+	})
+}
+
+// scrollSettingsUntilVisible scrolls the right settings content column until
+// target probe id's click center lies within the visible window viewport.
+func scrollSettingsUntilVisible(tt *ui.Tester, id string) (ui.Rect, error) {
+	inView := func(r ui.Rect) bool {
+		cy := r.Y + r.H*0.5
+		return r.W > 0 && r.H > 0 && cy >= 56 && cy <= 776
+	}
+	tt.Frame()
+	initial, ok := blockui.TargetBounds(id)
+	if ok && inView(initial) {
+		return initial, nil
+	}
+	for i := 0; i < 20; i++ {
+		tt.Scroll(760, 420, 0, 200)
+		tt.Frame()
+		cur, curOK := blockui.TargetBounds(id)
+		if curOK && inView(cur) {
+			return cur, nil
+		}
+	}
+	r, ok := blockui.TargetBounds(id)
+	if !ok {
+		return ui.Rect{}, fmt.Errorf("probe %q missing after scrolling settings", id)
+	}
+	return r, fmt.Errorf("probe %q outside viewport (init=%+v final=%+v)", id, initial, r)
+}
+
+func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (string, error) {
+	sup := ws.Plugins()
+	if sup == nil {
+		return "", fmt.Errorf("workspace has no plugin supervisor")
+	}
+	if !sup.IsInstalled(smokePluginID) {
+		return "", fmt.Errorf("smoke plugin fixture %q not installed", smokePluginID)
+	}
+
+	// Ensure an active Markdown note is open and focused.
+	if err := ws.OpenNote(notePath, 0); err != nil {
+		return "", fmt.Errorf("open note for plugin step: %w", err)
+	}
+	tt.Frame()
+
+	// 1) Enable test plugin -> verify titlebar plugin buttons & status strip appear.
+	sup.SetPluginEnabled(smokePluginID, true)
+	defer sup.SetPluginEnabled(smokePluginID, false)
+
+	panelBtnID := "titlebar-plugin-" + smokePluginID + "-toggle_panel"
+	toastBtnID := "titlebar-plugin-" + smokePluginID + "-quick_toast"
+	statusItemID := "plugin-status-" + smokePluginID + "-counter"
+
+	if _, err := waitForProbe(tt, panelBtnID, 5*time.Second); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, toastBtnID, 5*time.Second); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, "plugin-status-strip", 5*time.Second); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, statusItemID, 5*time.Second); err != nil {
+		return "", err
+	}
+	if _, ok := blockui.TargetBounds("titlebar-feedback"); !ok {
+		return "", fmt.Errorf("expected titlebar-feedback visible before hiding")
+	}
+	if _, ok := blockui.TargetBounds("titlebar-ai"); !ok {
+		return "", fmt.Errorf("expected titlebar-ai visible before hiding")
+	}
+	if _, ok := blockui.TargetBounds("titlebar-more"); !ok {
+		return "", fmt.Errorf("expected titlebar-more visible before hiding")
+	}
+
+	// 2) Settings appearance plugin section -> hide feedback & AI, attempt to hide more (must stay visible).
+	ws.OpenSettings("appearance")
+	tt.Frame()
+	hideActionID := "plugin-act-" + smokePluginID + "-settings_section-titlebar_ctrl-apply_hide"
+	if _, err := waitForProbe(tt, hideActionID, 8*time.Second); err != nil {
+		return "", fmt.Errorf("appearance settings plugin section did not render: %w", err)
+	}
+	hideRect, err := scrollSettingsUntilVisible(tt, hideActionID)
+	if err != nil {
+		return "", err
+	}
+	tt.ClickAt(hideRect.X+hideRect.W*0.5, hideRect.Y+hideRect.H*0.5)
+	if err := waitUntil(5*time.Second, func() bool {
+		tt.Frame()
+		return sup.TitlebarHidden(plugins.TitlebarSlotFeedback) && sup.TitlebarHidden(plugins.TitlebarSlotAI)
+	}); err != nil {
+		return "", fmt.Errorf("host.titlebar.set_hidden did not hide feedback/ai: %w", err)
+	}
+	if sup.TitlebarHidden(plugins.TitlebarSlotMore) {
+		return "", fmt.Errorf("titlebar-more must never be hidden")
+	}
+
+	// Return to workspace and verify titlebar-feedback & titlebar-ai are gone while titlebar-more remains.
+	if err := clickTarget(tt, "settings-sidebar-back"); err != nil {
+		if err := clickTarget(tt, "settings-back"); err != nil {
+			return "", err
+		}
+	}
+	tt.Frame()
+	tt.Advance(popupSettle)
+	tt.Frame()
+	if _, ok := blockui.TargetBounds("titlebar-feedback"); ok {
+		return "", fmt.Errorf("expected titlebar-feedback hidden in titlebar")
+	}
+	if _, ok := blockui.TargetBounds("titlebar-ai"); ok {
+		return "", fmt.Errorf("expected titlebar-ai hidden in titlebar")
+	}
+	if _, ok := blockui.TargetBounds("titlebar-more"); !ok {
+		return "", fmt.Errorf("expected titlebar-more to stay visible when plugin requested hiding it")
+	}
+
+	// 3) Command Palette (Cmd+Shift+P): keyboard navigation + Escape close, then empty filter -> filter & run restore_slots.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyP)
+	if _, err := waitForProbe(tt, "command-palette", 3*time.Second); err != nil {
+		return "", fmt.Errorf("command palette did not open on Cmd+Shift+P: %w", err)
+	}
+	if _, err := waitForProbe(tt, "command-palette-input", 3*time.Second); err != nil {
+		return "", err
+	}
+	if err := clickTarget(tt, "command-palette-input"); err != nil {
+		return "", err
+	}
+	// Exercise OnTextKey Down/Up/Escape branches directly.
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	tt.Key(0, ui.KeyUp)
+	tt.Frame()
+	tt.Key(0, ui.KeyEscape)
+	if err := waitForProbeGone(tt, "command-palette", 3*time.Second); err != nil {
+		return "", fmt.Errorf("command palette did not close on Escape: %w", err)
+	}
+
+	// Re-open command palette, verify empty state on unmatched query, then filter and execute restore_slots.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyP)
+	if _, err := waitForProbe(tt, "command-palette-input", 3*time.Second); err != nil {
+		return "", err
+	}
+	if err := clickTarget(tt, "command-palette-input"); err != nil {
+		return "", err
+	}
+	tt.Type("zzznomatch")
+	if _, err := waitForProbe(tt, "command-palette-empty", 3*time.Second); err != nil {
+		return "", fmt.Errorf("expected command-palette-empty on unmatched query: %w", err)
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Key(0, ui.KeyBackspace)
+	tt.Type("恢复顶栏图标")
+	if _, err := waitForProbe(tt, "command-palette-item-0", 3*time.Second); err != nil {
+		return "", fmt.Errorf("expected filtered restore command in palette: %w", err)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if err := waitForProbeGone(tt, "command-palette", 3*time.Second); err != nil {
+		return "", fmt.Errorf("command palette stayed open after pressing Enter: %w", err)
+	}
+	if err := waitUntil(5*time.Second, func() bool {
+		tt.Frame()
+		return !sup.TitlebarHidden(plugins.TitlebarSlotFeedback) && !sup.TitlebarHidden(plugins.TitlebarSlotAI)
+	}); err != nil {
+		return "", fmt.Errorf("restore_slots command did not restore hidden titlebar slots: %w", err)
+	}
+	if _, err := waitForProbe(tt, "titlebar-feedback", 3*time.Second); err != nil {
+		return "", fmt.Errorf("titlebar-feedback did not reappear after restore: %w", err)
+	}
+	if _, err := waitForProbe(tt, "titlebar-ai", 3*time.Second); err != nil {
+		return "", fmt.Errorf("titlebar-ai did not reappear after restore: %w", err)
+	}
+
+	// Dismiss the status toast produced by restore_slots if shown.
+	tt.Frame()
+	if _, ok := blockui.TargetBounds("plugin-toast-close"); ok {
+		_ = clickTarget(tt, "plugin-toast-close")
+		_ = waitForProbeGone(tt, "plugin-toast", 2*time.Second)
+	}
+
+	// 4) Status bar & titlebar command button clicks -> toast + host.status.set + host.titlebar.set_button badge -> dismiss toast.
+	if err := clickTarget(tt, statusItemID); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, "plugin-toast", 5*time.Second); err != nil {
+		return "", fmt.Errorf("expected plugin-toast after clicking status item: %w", err)
+	}
+	if _, err := waitForProbe(tt, "plugin-toast-close", 2*time.Second); err != nil {
+		return "", err
+	}
+	if err := waitUntil(3*time.Second, func() bool {
+		for _, it := range sup.StatusItems() {
+			if it.PluginID == smokePluginID && it.ID == "counter" && strings.Contains(it.Text, "烟测已触发") {
+				return true
+			}
+		}
+		return false
+	}); err != nil {
+		return "", fmt.Errorf("host.status.set did not update status item text: %w", err)
+	}
+	if err := clickTarget(tt, "plugin-toast-close"); err != nil {
+		return "", err
+	}
+	if err := waitForProbeGone(tt, "plugin-toast", 3*time.Second); err != nil {
+		return "", fmt.Errorf("plugin-toast did not close after clicking close button: %w", err)
+	}
+	// Click titlebar command button and confirm badge updated to "2" and toast re-appeared.
+	if err := clickTarget(tt, toastBtnID); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, "plugin-toast", 5*time.Second); err != nil {
+		return "", fmt.Errorf("expected plugin-toast after clicking titlebar command button: %w", err)
+	}
+	if err := waitUntil(3*time.Second, func() bool {
+		for _, b := range sup.TitlebarButtons() {
+			if b.PluginID == smokePluginID && b.ID == "quick_toast" && b.Badge == "2" {
+				return true
+			}
+		}
+		return false
+	}); err != nil {
+		return "", fmt.Errorf("host.titlebar.set_button did not update button badge to 2: %w", err)
+	}
+	if err := clickTarget(tt, "plugin-toast-close"); err != nil {
+		return "", err
+	}
+	if err := waitForProbeGone(tt, "plugin-toast", 3*time.Second); err != nil {
+		return "", fmt.Errorf("plugin-toast did not close after second dismiss: %w", err)
+	}
+
+	// 5) Plugin side panel: click titlebar button -> panel opens -> panel surface renders -> click panel button to open dialog.
+	if err := clickTarget(tt, panelBtnID); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, "plugin-side-panel", 5*time.Second); err != nil {
+		return "", fmt.Errorf("plugin side panel did not open: %w", err)
+	}
+	panelOpenDlgBtnID := "plugin-act-" + smokePluginID + "-panel-inspector-panel_open_dialog"
+	if _, err := waitForProbe(tt, panelOpenDlgBtnID, 6*time.Second); err != nil {
+		return "", fmt.Errorf("plugin side panel surface did not render action button: %w", err)
+	}
+
+	// 6) Plugin dialog: opened via panel action -> click dialog insert action -> verify note updated -> close via host.ui.close_dialog.
+	if err := clickTarget(tt, panelOpenDlgBtnID); err != nil {
+		return "", err
+	}
+	dialogID := "plugin-dialog-" + smokePluginID + "-confirm_box"
+	dialogInsertBtnID := "plugin-act-" + smokePluginID + "-dialog-confirm_box-dialog_insert"
+	dialogCloseActBtnID := "plugin-act-" + smokePluginID + "-dialog-confirm_box-dialog_close"
+	if _, err := waitForProbe(tt, dialogID, 5*time.Second); err != nil {
+		return "", fmt.Errorf("plugin dialog did not open from panel action: %w", err)
+	}
+	if _, err := waitForProbe(tt, dialogInsertBtnID, 6*time.Second); err != nil {
+		return "", fmt.Errorf("plugin dialog surface did not render insert button: %w", err)
+	}
+	if err := clickTarget(tt, dialogInsertBtnID); err != nil {
+		return "", err
+	}
+	if err := waitUntil(5*time.Second, func() bool {
+		tt.Frame()
+		sess := ws.ActiveSession()
+		return sess != nil && strings.Contains(sess.Markdown(), smokePluginInsertMarker)
+	}); err != nil {
+		return "", fmt.Errorf("host.editor.insert from plugin dialog did not update active note: %w", err)
+	}
+	if _, err := waitForProbe(tt, dialogCloseActBtnID, 3*time.Second); err != nil {
+		return "", err
+	}
+	if err := clickTarget(tt, dialogCloseActBtnID); err != nil {
+		return "", err
+	}
+	if err := waitForProbeGone(tt, dialogID, 4*time.Second); err != nil {
+		return "", fmt.Errorf("plugin dialog did not close via host.ui.close_dialog: %w", err)
+	}
+	// Dismiss insert toast if still visible.
+	if _, ok := blockui.TargetBounds("plugin-toast-close"); ok {
+		_ = clickTarget(tt, "plugin-toast-close")
+		_ = waitForProbeGone(tt, "plugin-toast", 2*time.Second)
+	}
+
+	// 7) Close plugin side panel via close button.
+	if err := clickTarget(tt, "plugin-panel-close"); err != nil {
+		return "", err
+	}
+	if err := waitForProbeGone(tt, "plugin-side-panel", 4*time.Second); err != nil {
+		return "", fmt.Errorf("plugin side panel did not close via plugin-panel-close: %w", err)
+	}
+
+	// 8) Page "…" menu plugin item -> re-opens dialog -> close via header close button.
+	if err := clickTarget(tt, "titlebar-more"); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, "page-more-menu", 3*time.Second); err != nil {
+		return "", err
+	}
+	pageMenuPluginID := "page-plugin-" + smokePluginID + "-menu_dialog"
+	if _, err := waitForProbe(tt, pageMenuPluginID, 3*time.Second); err != nil {
+		return "", fmt.Errorf("plugin page menu item missing: %w", err)
+	}
+	if err := clickTarget(tt, pageMenuPluginID); err != nil {
+		return "", err
+	}
+	if _, err := waitForProbe(tt, dialogID, 5*time.Second); err != nil {
+		return "", fmt.Errorf("plugin dialog did not open from page menu item: %w", err)
+	}
+	if err := clickTarget(tt, dialogID+"-close"); err != nil {
+		return "", err
+	}
+	if err := waitForProbeGone(tt, dialogID, 4*time.Second); err != nil {
+		return "", fmt.Errorf("plugin dialog did not close via header close button: %w", err)
+	}
+
+	// 9) Disable plugin -> verify titlebar plugin buttons and status strip disappear cleanly.
+	sup.SetPluginEnabled(smokePluginID, false)
+	if err := waitForProbeGone(tt, panelBtnID, 4*time.Second); err != nil {
+		return "", fmt.Errorf("plugin titlebar button did not disappear after disable: %w", err)
+	}
+	if err := waitForProbeGone(tt, "plugin-status-strip", 4*time.Second); err != nil {
+		return "", fmt.Errorf("plugin status strip did not disappear after disable: %w", err)
+	}
+
+	return "Titlebar hiding (+more lock), Command Palette, Status bar, Toast, Side Panel, Dialog & Page Menu verified", nil
+}
