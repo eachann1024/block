@@ -24,15 +24,43 @@ const MAX_ATTEMPTS = 2;
 const TIMEOUT_MS = 90_000;
 const BATCH_THRESHOLD = 50;
 const BATCH_SIZE = 40;
+const MAX_POLISH_MS = 8 * 60 * 1000;
 const BOT_AUTHORS = new Set(["github-actions[bot]", "github-actions"]);
 const VERSION_BUMP = /^chore\(release\):\s*v\d+\.\d+\.\d+\s*$/i;
 const INTERNAL_COMMIT = /^(?:chore|ci|docs|test)(?:\([^)]*\))?!?:\s|^Update README\.md$|^(?:feat|fix)\((?:src|assets|scripts|deps|designs)\):\s*(?:add|update|remove)\b/i;
+const NON_SHIPPABLE_EXACT = new Set([
+  "updates/feed.json",
+  ".ai-map.md",
+  "README.md",
+  "README.en.md",
+  "AGENTS.md",
+  "DESIGN.md",
+  ".github/pull_request_template.md",
+  ".github/workflows/ci.yml",
+  ".github/workflows/prune-release-assets.yml",
+  "scripts/lint_design.py",
+  "scripts/gen_ai_map.py",
+  "scripts/dump_ai_state.py",
+  "scripts/fast-check.sh",
+  "scripts/build_readme_svgs.py",
+]);
 
-export function isExcludedCommit({ author = "", subject = "", releaseNote = "" }) {
+function isNonShippablePath(filePath) {
+  const p = String(filePath || "").replaceAll("\\", "/").replace(/^\.\//, "");
+  if (!p) return true;
+  if (NON_SHIPPABLE_EXACT.has(p)) return true;
+  if (p.startsWith("docs/")) return true;
+  if (p.endsWith("_test.go")) return true;
+  return false;
+}
+
+export function isExcludedCommit({ author = "", subject = "", releaseNote = "", releaseNoteEn = "", paths = [] }) {
   if (BOT_AUTHORS.has(author)) return true;
-  if (/^none$/i.test(releaseNote.trim())) return true;
+  if (/^none$/i.test(releaseNote.trim()) || /^none$/i.test(releaseNoteEn.trim())) return true;
   if (VERSION_BUMP.test(subject)) return true;
-  if (!releaseNote.trim() && INTERNAL_COMMIT.test(subject.trim())) return true;
+  const hasExplicitNote = Boolean(releaseNote.trim() || releaseNoteEn.trim());
+  if (!hasExplicitNote && INTERNAL_COMMIT.test(subject.trim())) return true;
+  if (!hasExplicitNote && Array.isArray(paths) && paths.length > 0 && paths.every(isNonShippablePath)) return true;
   return false;
 }
 
@@ -44,26 +72,45 @@ function splitNote(raw = "") {
 }
 
 export function listCommits(root = ROOT, rangeSpec = "-n 20") {
-  const args = ["log", "--first-parent", "--no-merges", "--reverse", "--date=format-local:%Y-%m-%d", "--format=%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)"];
+  const args = [
+    "log",
+    "--no-merges",
+    "--topo-order",
+    "--reverse",
+    "--date=format-local:%Y-%m-%d",
+    "--name-only",
+    "--format=%x1e%H%x1f%an%x1f%cd%x1f%s%x1f%(trailers:key=Release-Note,valueonly,separator=%x20)%x1f%(trailers:key=Release-Note-En,valueonly,separator=%x20)%x1f",
+  ];
   if (rangeSpec.startsWith("-n")) args.push(...rangeSpec.split(/\s+/));
   else args.push(rangeSpec);
-  const out = execFileSync("git", args, { cwd: root, encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } }).trimEnd();
+  const out = execFileSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, TZ: "Asia/Shanghai" },
+  });
   if (!out) return [];
-  return out.split("\n").filter(Boolean).map((line) => {
-    const [sha, author, date, subject, releaseNoteRaw = "", releaseNoteEnRaw = ""] = line.split("\x00");
-    const paths = execFileSync("git", ["diff-tree", "--no-commit-id", "--name-only", "-r", sha], { cwd: root, encoding: "utf8" })
-      .trimEnd().split("\n").filter(Boolean);
+  const commits = [];
+  for (const chunk of out.split("\x1e")) {
+    if (!chunk) continue;
+    const [sha = "", author = "", date = "", subject = "", releaseNoteRaw = "", releaseNoteEnRaw = "", rest = ""] = chunk.split("\x1f");
+    if (!sha.trim()) continue;
+    const paths = rest
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
     const split = splitNote(releaseNoteRaw);
-    return {
-      sha,
+    commits.push({
+      sha: sha.trim(),
       author,
       date,
       subject,
       releaseNote: split.zh,
       releaseNoteEn: (releaseNoteEnRaw || "").trim() || split.en,
       paths,
-    };
-  });
+    });
+  }
+  return commits;
 }
 
 function shortToken(value) {
@@ -310,7 +357,11 @@ export async function polishReleaseNotes({ version, commits, env = process.env }
 
   const batchMarkdowns = [];
   let usedModel = "";
+  const deadline = Date.now() + MAX_POLISH_MS;
   for (let offset = 0; offset < commits.length; offset += BATCH_SIZE) {
+    if (Date.now() >= deadline) {
+      return { status: "fallback", reason: "grok-4.7 多批生成超出时间预算，改用本地规则" };
+    }
     const batch = commits.slice(offset, offset + BATCH_SIZE);
     const result = await polishBatch({ version, commits: batch, url, headers, model, system });
     if (result.status !== "polished") {
@@ -353,16 +404,49 @@ function renderHalf(title, sections, buckets, lang) {
   return any ? lines.join("\n") : "";
 }
 
+function sanitizeFallbackBullet(text, cjk) {
+  let clean = String(text || "")
+    .replace(/`/g, "")
+    .replace(/\(#\d+\)/g, "")
+    .replace(/#\d+/g, "")
+    .replace(/\b[0-9a-f]{7,40}\b/gi, "")
+    .replace(/\b(?:gpui|wgpu|wasm|ipc|debounce|typecheck)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return "";
+  if (cjk) {
+    clean = clean.replace(/[.!?]+$/, "").trim();
+    if (!/[。！？]$/.test(clean)) clean += "。";
+  } else {
+    clean = clean.replace(/[。！？]+$/, "").trim();
+    if (!/[.!?]$/.test(clean)) clean += ".";
+  }
+  return clean;
+}
+
+function isValidFallbackPair(zh, en) {
+  if (!zh || !en) return false;
+  if (lineMixesLanguages(`- ${zh}`) || lineMixesLanguages(`- ${en}`)) return false;
+  try {
+    validateReleaseNotes(`## English\n\n### Improvements\n- ${en}\n\n---\n\n## 中文\n\n### 改进\n- ${zh}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function fallbackReleaseNotes(commits) {
   const buckets = [{ zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }, { zh: [], en: [] }];
   const kindIndex = { feat: 0, improve: 1, fix: 2, other: 3 };
   for (const commit of commits.filter((item) => !isExcludedCommit(item))) {
     const pair = describeCommit(commit);
+    const zh = sanitizeFallbackBullet(pair.zh, true);
+    const en = sanitizeFallbackBullet(pair.en, false);
     const bucket = buckets[kindIndex[pair.kind] ?? 3];
-    if (bucket.zh.includes(pair.zh) || bucket.en.includes(pair.en)) continue;
-    if (lineMixesLanguages(`- ${pair.zh}`) || lineMixesLanguages(`- ${pair.en}`)) continue;
-    bucket.zh.push(pair.zh);
-    bucket.en.push(pair.en);
+    if (!isValidFallbackPair(zh, en)) continue;
+    if (bucket.zh.includes(zh) || bucket.en.includes(en)) continue;
+    bucket.zh.push(zh);
+    bucket.en.push(en);
   }
   const en = renderHalf("## English", EN_SECTIONS, buckets, "en");
   const zh = renderHalf("## 中文", ZH_SECTIONS, buckets, "zh");
