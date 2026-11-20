@@ -118,6 +118,26 @@ func OfficialBadge(c *ui.Context, compact bool) {
 	})
 }
 
+// ReviewedBadge renders an Ocean Paper "Reviewed" badge for plugins from trusted reviewed authors.
+func ReviewedBadge(c *ui.Context, compact bool) {
+	pal := theme.Ocean()
+	h := theme.HeightMicro
+	padX := theme.Space8
+	if compact {
+		h = theme.KeycapHeight
+		padX = theme.Space6
+	}
+	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
+		Background(pal.SuccessSurface).Border(1, pal.Success).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, theme.Tr("已审核", "Reviewed")).
+			FontSize(theme.FontMicro).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightControl).
+			TextColor(pal.Success).
+			SingleLine()
+	})
+}
+
 // FileExtBadge renders a subtle Ocean Paper extension pill (e.g. JSON, PNG, MDX)
 // beside non-.md entries in the file tree so note rows stay uncluttered while
 // non-note formats remain identifiable at a glance.
