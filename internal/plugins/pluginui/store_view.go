@@ -348,38 +348,55 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 }
 
 func storeCardFrame(c *ui.Context, id string) ui.Element {
-	pal := theme.Ocean()
-	return ui.Column(c.Key(id)).FillWidth().MinWidth(0).Padding(theme.Space20).Gap(theme.StoreCardInnerGap).
-		Radius(theme.RadiusXL).Border(1, pal.Hairline).Background(pal.ShellChrome().Card)
+	sc := theme.Ocean().StoreCard()
+	return ui.Column(c.Key(id)).FillWidth().MinWidth(0).
+		Padding(theme.StoreCardPadTop, theme.StoreCardPadX, theme.StoreCardPadBottom, theme.StoreCardPadX).
+		Gap(theme.StoreCardInnerGap).Radius(theme.RadiusXL).Border(1, sc.Border).Background(sc.BG)
 }
 
 func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, installingID string, onSelectTab func(nextTab string)) {
 	pal := theme.Ocean()
+	sc := pal.StoreCard()
 	entry := card.entry
 	name := entry.Name.Resolve(locale)
 	busy := installingID == entry.ID
 	hasSettings := card.isInstalled && card.installed.Manifest.HasSettingsPage() && entry.ID != plugins.DiagnosticsPluginID
 
 	cardBtn := ui.ButtonBase(c.Key("app-store-card-" + entry.ID)).FillWidth().MinWidth(0).
-		Padding(theme.Space20).Radius(theme.RadiusXL).Cursor(ui.CursorPointer).Label(name)
+		Padding(theme.StoreCardPadTop, theme.StoreCardPadX, theme.StoreCardPadBottom, theme.StoreCardPadX).
+		Radius(theme.RadiusXL).Cursor(ui.CursorPointer).Label(name)
 	hovered := cardBtn.Hovered()
 	pressed := cardBtn.Pressed()
-	border := pal.Hairline
+	cardBG := sc.BG
+	cardBorder := sc.Border
 	if hovered || pressed {
-		border = pal.BtnBorder
+		cardBG = sc.HoverBG
+		cardBorder = sc.HoverBorder
 	}
-	bui.AnimateSurfaceColors(cardBtn, pal.ShellChrome().Card, border, false)
+	bui.AnimateSurfaceColors(cardBtn, cardBG, cardBorder, true)
+	if hovered && !pressed {
+		bui.Elevate(cardBtn, theme.ElevationCardHover)
+	}
 	bui.TactileCard(cardBtn, hovered, pressed, false, false)
+
+	iconBG := sc.IconBG
+	iconBorder := sc.IconBorder
+	iconColors := pal.DuoIconColors(pal.Text)
+	if card.source == storeSourceOfficial {
+		iconBG = sc.OfficialIconBG
+		iconBorder = sc.OfficialIconBorder
+		iconColors = pal.DuoIconColors(pal.Accent)
+	}
 
 	actionHandled := false
 	actionHovered := false
 	cardBtn.Children(func() {
-		ui.Column(c.Key("app-store-tile-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.StoreCardInnerGap).Children(func() {
+		ui.Column(c.Key("app-store-tile-" + entry.ID)).FillWidth().Grow(1).MinWidth(0).Gap(theme.StoreCardInnerGap).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
-				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.StoreCardInnerGap).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Shrink(0).Center().
-						Radius(theme.RadiusLG).Background(pal.Shell).Children(func() {
-						DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, pal.DuoIconColors(pal.Text))
+						Radius(theme.RadiusLG).Background(iconBG).Border(1, iconBorder).Children(func() {
+						DrawDuoSpec(c, entry.Icon, theme.StoreIconGlyphSize, iconColors)
 					})
 					ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 						ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
@@ -393,7 +410,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 								bui.BetaBadge(c, true)
 							}
 						})
-						renderStoreSource(c, entry.Author, card.source)
+						renderStoreSource(c, entry.Author, card.source, cardBG)
 					})
 				})
 				if card.isInstalled {
@@ -423,7 +440,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 					} else {
 						ui.Row(c.Key("app-store-installed-"+entry.ID)).Height(theme.HeightCompact).
 							PaddingX(theme.Space8).Gap(theme.Space4).Radius(theme.RadiusMD).
-							Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
+							Background(sc.InstalledPillBG).Border(1, pal.Hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
 							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
 							ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
 								FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
@@ -451,8 +468,9 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 					ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
 				}
 			})
-			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
-				theme.FontBody, theme.LineTitle, pal.TextSecondary, pal.ShellChrome().Card)
+			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 2,
+				theme.FontBody, theme.LineTitle, pal.TextSecondary, cardBG)
+			ui.Box(c).Grow(1)
 			renderStoreCardMeta(c, card, locale)
 		})
 	})
@@ -464,7 +482,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 	}
 }
 
-func renderStoreSource(c *ui.Context, author, source string) {
+func renderStoreSource(c *ui.Context, author, source string, fadeBG ui.Color) {
 	pal := theme.Ocean()
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.LineSmall).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
 		if source == storeSourceOfficial {
@@ -476,7 +494,7 @@ func renderStoreSource(c *ui.Context, author, source string) {
 			return
 		}
 		if strings.TrimSpace(author) != "" {
-			renderStoreAuthor(c, author)
+			renderStoreAuthor(c, author, fadeBG)
 		}
 		if source == storeSourceUnreviewed {
 			renderStoreUnreviewed(c)
@@ -496,9 +514,8 @@ func renderStoreUnreviewed(c *ui.Context) {
 	})
 }
 
-func renderStoreAuthor(c *ui.Context, author string) {
+func renderStoreAuthor(c *ui.Context, author string, bg ui.Color) {
 	pal := theme.Ocean()
-	bg := pal.ShellChrome().Card
 	fullWidth, _ := c.MeasureText(0, ui.Span{Text: author, Size: theme.FontMeta})
 	wrapper := ui.Box(c).MinWidth(0).MaxWidth(fullWidth).Shrink(1).Clip()
 	wrapper.DrawOver(func(p *ui.Painter, bounds ui.Rect) {
@@ -517,35 +534,48 @@ func renderStoreAuthor(c *ui.Context, author string) {
 
 func renderStoreCardMeta(c *ui.Context, card storeCard, locale string) {
 	pal := theme.Ocean()
+	sc := pal.StoreCard()
 	entry := card.entry
 	version := entry.Version
 	if card.isInstalled {
 		version = card.installed.Manifest.Version
 	}
-	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightMicro).Gap(theme.Space10).Wrap().AlignItems(ui.Center).Children(func() {
-		ui.Text(c, plugins.CategoryLabel(entry.EffectiveCategory(), locale)).FontSize(theme.FontSmall).
-			FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
-		ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
-			icons.Draw(c, icons.Download, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
-			ui.Text(c, formatDownloadCount(card.downloads)).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-				TextColor(pal.TextSecondary).SingleLine()
-		})
-		if version != "" {
-			ui.Text(c, "v"+strings.TrimPrefix(version, "v")).Font("monospace").FontSize(theme.FontMeta).
-				FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
-		}
-		for _, ext := range entry.FileExtensions {
-			ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
-				Background(pal.CodeBG).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, ext).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-					FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
+	ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space10).Children(func() {
+		ui.Box(c).FillWidth().Height(1).Background(sc.Divider)
+		ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightMicro).Gap(theme.Space10).
+			Justify(ui.SpaceBetween).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Row(c).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Wrap().Children(func() {
+				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+					Background(sc.CategoryBG).AlignItems(ui.Center).Shrink(0).Children(func() {
+					ui.Text(c, plugins.CategoryLabel(entry.EffectiveCategory(), locale)).FontSize(theme.FontMeta).
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
+				})
+				for _, ext := range entry.FileExtensions {
+					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
+						Background(sc.ExtBG).Border(1, sc.ExtBorder).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, ext).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
+					})
+				}
 			})
-		}
+			ui.Row(c).Gap(theme.Space10).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+					icons.Draw(c, icons.Download, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+					ui.Text(c, formatDownloadCount(card.downloads)).Font("monospace").FontSize(theme.FontMeta).
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).SingleLine()
+				})
+				if version != "" {
+					ui.Text(c, "v"+strings.TrimPrefix(version, "v")).Font("monospace").FontSize(theme.FontMeta).
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
+				}
+			})
+		})
 	})
 }
 
 func renderStoreSkeleton(c *ui.Context) {
 	pal := theme.Ocean()
+	sc := pal.StoreCard()
 	alpha := float32(1)
 	if !c.Preferences().ReduceMotion {
 		phase := float64(time.Now().UnixNano()%int64(storeReadmeSkeletonPeriod)) / float64(storeReadmeSkeletonPeriod)
@@ -569,7 +599,7 @@ func renderStoreSkeleton(c *ui.Context) {
 			for i := range 6 {
 				storeCardFrame(c, "app-store-skeleton-"+strconv.Itoa(i)).Children(func() {
 					ui.Row(c).FillWidth().MinWidth(0).Height(theme.LineTitle + theme.Space2 + theme.LineSmall).
-						Gap(theme.StoreCardInnerGap).AlignItems(ui.Center).Children(func() {
+						Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 						bar(theme.StoreIconBoxSize, theme.StoreIconBoxSize).Radius(theme.RadiusLG)
 						ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space6).Children(func() {
 							bar(0, theme.LineMeta).WidthPercent(60)
@@ -577,15 +607,20 @@ func renderStoreSkeleton(c *ui.Context) {
 						})
 						bar(theme.StoreIconBoxSize+theme.Space16, theme.HeightCompact)
 					})
-					ui.Column(c).FillWidth().Height(3 * theme.LineTitle).Gap(theme.Space12).Justify(ui.Center).Children(func() {
-						for _, pct := range []float32{94, 80, 50} {
+					ui.Column(c).FillWidth().Height(2 * theme.LineTitle).Gap(theme.Space10).Justify(ui.Center).Children(func() {
+						for _, pct := range []float32{94, 72} {
 							bar(0, theme.StoreSkeletonLineH).WidthPercent(pct)
 						}
 					})
-					ui.Row(c).FillWidth().Height(theme.HeightMicro).Gap(theme.Space10).AlignItems(ui.Center).Children(func() {
-						bar(theme.StoreIconBoxSize+theme.Space16, theme.StoreSkeletonLineH)
-						bar(theme.StoreIconBoxSize, theme.StoreSkeletonLineH)
-						bar(theme.StoreIconBoxSize, theme.StoreSkeletonLineH)
+					ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
+						ui.Box(c).FillWidth().Height(1).Background(sc.Divider)
+						ui.Row(c).FillWidth().Height(theme.HeightMicro).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
+							bar(theme.StoreIconBoxSize+theme.Space16, theme.StoreSkeletonLineH)
+							ui.Row(c).Gap(theme.Space10).AlignItems(ui.Center).Children(func() {
+								bar(theme.StoreIconBoxSize, theme.StoreSkeletonLineH)
+								bar(theme.StoreIconBoxSize, theme.StoreSkeletonLineH)
+							})
+						})
 					})
 				})
 			}
