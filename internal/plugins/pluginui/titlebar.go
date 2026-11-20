@@ -898,7 +898,7 @@ func (c *Controller) buildPluginMoreMenuItems(
 	// 1. Header actions declared by the plugin (secondary actions, plus primary action if displaced by a retry button).
 	if live && vs.Page != nil {
 		primaryAct, secondaryActs := splitHeaderActions(vs.Page)
-		uninstErr := c.sup.PluginUninstallError(pluginID)
+		uninstErr := strings.TrimSpace(c.sup.UninstallError(pluginID))
 		hasError := uninstErr != "" || vs.Error != "" || vs.RetryKind != plugins.RetryKindNone
 		primaryDisplaced := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm)
 		if primaryDisplaced && primaryAct != nil {
