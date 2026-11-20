@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -551,6 +552,9 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 	if name != "system.wake" && name != "network.changed" && name != "app.focus" {
 		return
 	}
+	if name == "app.focus" {
+		s.retrySystemFailureNotices(nil)
+	}
 	for _, installed := range s.Installed() {
 		manifest := installed.Manifest
 		if !installed.Enabled || manifest.IsDeclarativeOnly() || !manifest.HasPermission(PermEventsSystem) {
@@ -917,15 +921,9 @@ func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime,
 			title = "Sync state could not be saved"
 		}
 	}
-	currentLocked := func() bool {
-		if s.stopping || (rt != nil && s.runtimes[pluginID] != rt) {
+	currentInstallLocked := func() bool {
+		if s.stopping {
 			return false
-		}
-		if rt == nil && !manual {
-			current := s.runtimes[pluginID]
-			if current != nil && current.initialized.Load() && !current.closed.Load() {
-				return false
-			}
 		}
 		for _, installed := range s.installed {
 			if installed.Manifest.ID == pluginID {
@@ -935,7 +933,9 @@ func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime,
 		return false
 	}
 	s.mu.Lock()
-	if !currentLocked() {
+	currentRuntime := s.runtimes[pluginID]
+	if !currentInstallLocked() || (rt != nil && currentRuntime != rt) ||
+		(rt == nil && !manual && currentRuntime != nil && currentRuntime.initialized.Load() && !currentRuntime.closed.Load()) {
 		s.mu.Unlock()
 		return
 	}
@@ -958,14 +958,9 @@ func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime,
 	}
 	s.retrySystemFailureNotices(&systemFailureNotice{title: title, body: body, root: root, allowed: func() bool {
 		s.mu.RLock()
-		current := currentLocked() && (manual || s.system.syncErrors[root] == title+" · "+body)
+		current := currentInstallLocked() && (manual || s.system.syncErrors[root] == title+" · "+body)
 		s.mu.RUnlock()
-		if !current {
-			return false
-		}
-		updated := systemSyncConfig(inst.DataDir, root)
-		enabled, set := updated["system_notifications"].(bool)
-		return !set || enabled
+		return current && SyncNotificationsEnabled(inst.DataDir, root)
 	}})
 }
 
@@ -991,29 +986,34 @@ func (s *Supervisor) retrySystemFailureNotices(notice *systemFailureNotice) {
 func (s *Supervisor) drainSystemFailureNotices() {
 	for {
 		s.system.mu.Lock()
-		if len(s.system.failureQueue) == 0 {
-			s.system.failureDrain = false
-			s.system.mu.Unlock()
-			return
-		}
-		notice := s.system.failureQueue[0]
+		pending := slices.Clone(s.system.failureQueue)
 		s.system.failureRetry = false
 		s.system.mu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		_, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
-		cancel()
+		for _, notice := range pending {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_, err := s.sendSystemNotice(ctx, "block-sync", notice.title, notice.body, "error", notice.root, "", "", notice.allowed)
+			expired := ctx.Err() != nil
+			cancel()
+			if err != nil && (!errors.Is(err, ErrSystemCanceled) || expired) {
+				break
+			}
+			s.system.mu.Lock()
+			s.system.failureQueue = slices.DeleteFunc(s.system.failureQueue, func(queued *systemFailureNotice) bool { return queued == notice })
+			s.system.mu.Unlock()
+		}
 		s.system.mu.Lock()
-		if errors.Is(err, ErrSystemBusy) && !s.system.failureRetry {
+		if !s.system.failureRetry || len(s.system.failureQueue) == 0 {
 			s.system.failureDrain = false
 			s.system.mu.Unlock()
 			return
-		}
-		if !errors.Is(err, ErrSystemBusy) && len(s.system.failureQueue) != 0 && s.system.failureQueue[0] == notice {
-			s.system.failureQueue[0] = nil
-			s.system.failureQueue = s.system.failureQueue[1:]
 		}
 		s.system.mu.Unlock()
 	}
+}
+
+func SyncNotificationsEnabled(dataDir, root string) bool {
+	enabled, set := systemSyncConfig(dataDir, root)["system_notifications"].(bool)
+	return !set || enabled
 }
 
 func systemSyncConfig(dataDir, root string) map[string]any {
