@@ -525,7 +525,7 @@ func (rc *sceneRenderCtx) paintMeteors(meteors []sceneMeteor) {
 	tailCol := sceneColor("#eef2fb")
 	for i := range meteors {
 		m := &meteors[i]
-		vis := rc.fit(max(m.x0, m.x0+m.dx) + 2)
+		vis := rc.tier(m.tier) * rc.fit(max(m.x0+max(m.tailX, 0), m.x0+m.dx)+2)
 		if vis <= 0.004 {
 			continue
 		}
@@ -1282,21 +1282,20 @@ func (rc *sceneRenderCtx) paintDaybreak(sc *compiledScene, tr *sceneTerrainCache
 	// Fading pre-dawn stars
 	rc.paintStars(sc.stars, rc.vars.starOp)
 
-	// Morning star (Venus) at (716, 14)
-	if rc.w > 725 {
+	// Morning star (Venus), low in the west under the window controls
+	if vis := rc.dRich; vis > 0.004 {
 		vScale, vOp := float32(0.95), float32(0.8)
 		if rc.t > 0 {
-			w := cosWave01(rc.loopPhase(rc.t, 0, 4.6))
+			w := cosWave01(rc.loopPhase(rc.t, 0, 6.5))
 			vScale = lerp(0.70, 1.15, w)
 			vOp = lerp(0.55, 1.0, w)
 		}
-		vx, vy := rc.ox+716, rc.oy+14
-		rc.paintSparkle(vx, vy, 3.4*vScale, sceneColor("#fff1d8"), vOp)
+		vx, vy := rc.ox+38, rc.oy+36
+		rc.paintSparkle(vx, vy, 2.6*vScale, sceneColor("#fff1d8"), vOp*vis)
 		var vc ui.Path
-		vc.Circle(vx, vy, 0.9)
-		rc.p.FillPath(&vc, sceneColor("#fffaf0").Alpha(rc.alpha))
+		vc.Circle(vx, vy, 0.8)
+		rc.p.FillPath(&vc, sceneColor("#fffaf0").Alpha(vis*rc.alpha))
 	}
-
 	// Peaks + warm sunrise rim light
 	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
 	rc.strokeRim(&tr.peakRim, 0.7, sc.rimColor, sc.rimMidStop, sc.rimMidOp, sc.rimPeakOp)
@@ -1327,14 +1326,19 @@ func (rc *sceneRenderCtx) paintDaybreak(sc *compiledScene, tr *sceneTerrainCache
 	// Cottage, smoke, dark pines, sleeping cat, morning mist
 	hx := float32(104)
 	hy := sc.far.y(float64(hx)) + 1
-	rc.paintSmoke(hx, hy, sceneColor("#8c93a6"))
+	rc.layer(rc.dCalm, func() {
+		rc.paintSmoke(hx, hy, sceneColor("#8c93a6"))
+	})
 	rc.paintHouse(hx, hy, sceneColor("#1f2027"), sceneColor("#1a1b21"), sceneColor("#ffc97e"), true, true, 2, 8.3)
-	pineCol := sceneColor("#2a2a33").Alpha(rc.alpha)
-	for _, px := range [5]float32{92, 116, 121, 226, 233} {
-		tx, ty := rc.ox+px, rc.oy+sc.far.y(float64(px))+0.4+rc.layerShiftY
+	for _, pn := range [5][2]float32{{92, 0}, {116, 0}, {121, 1}, {198, 1}, {204, 1}} {
+		vis := rc.tier(uint8(pn[1])) * rc.fit(pn[0]+3) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		tx, ty := rc.ox+pn[0], rc.oy+sc.far.y(float64(pn[0]))+0.4+rc.layerShiftY
 		var pp ui.Path
 		pp.MoveTo(tx-2.2, ty+0.6).LineTo(tx, ty-8).LineTo(tx+2.2, ty+0.6).Close()
-		rc.p.FillPath(&pp, pineCol)
+		rc.p.FillPath(&pp, sceneColor("#2a2a33").Alpha(vis))
 	}
 	rc.paintCat(sc.cat)
 	rc.paintMist(sc.mists[0])
@@ -1357,7 +1361,9 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 	coreCol := sceneColor("#e9fbb0")
 
 	drawFly := func(ff *sceneFirefly) {
-		if ff.x > rc.w+16 {
+		// A fly that would hover in the sidebar's edge feather is left out whole.
+		vis := rc.tier(ff.tier) * rc.fit(ff.x+5)
+		if vis <= 0.004 {
 			return
 		}
 		dx, dy := float32(0), float32(0)
@@ -1370,10 +1376,10 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 			blink = evalFireflyBlinkV2(ff.blinkKind, rc.loopPhase(rc.t, ff.blinkDelaySec, ff.blinkDurSec))
 		}
 		cx, cy := rc.ox+ff.x+dx, rc.oy+ff.y+dy+rc.layerShiftY
-		rc.radialGlow(cx, cy, 4.6*ff.size, glowCol, 0.5*0.85*blink)
+		rc.radialGlow(cx, cy, 4.6*ff.size, glowCol, 0.5*0.85*blink*vis)
 		var core ui.Path
 		core.Circle(cx, cy, 1.1*ff.size)
-		rc.p.FillPath(&core, coreCol.Alpha(0.85*blink*rc.alpha))
+		rc.p.FillPath(&core, coreCol.Alpha(0.85*blink*vis*rc.alpha))
 	}
 
 	// Distant small fireflies behind pond & near ridge
@@ -1407,7 +1413,7 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 			} else {
 				op = (1 - (ph-0.10)/0.50) * 0.70
 			}
-			a := op * rc.wm * rc.alpha
+			a := op * rc.wm * rc.dRich * rc.alpha
 			if a <= 0.003 {
 				continue
 			}
@@ -1427,16 +1433,21 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 		}
 		var dot ui.Path
 		dot.Circle(rc.ox+rx, rc.oy+sc.pondReflY[i]+sy, 0.55)
-		rc.p.FillPath(&dot, glowCol.Alpha(op*rc.alpha))
+		rc.p.FillPath(&dot, glowCol.Alpha(op*rc.dCalm*rc.alpha))
 	}
 
 	rc.fillTerrain(&tr.nearPath, sc.near.fill)
 	rc.paintBlades(sc.blades, sc.bladeColor, "reed")
 
-	// Cattails
-	stalkCol := sceneColor("#34413c").Alpha(rc.alpha)
-	headCol := sceneColor("#3e4c45").Alpha(rc.alpha)
-	for i, cx := range [5]float32{38, 47, 112, 226, 232} {
+	// Cattails: a pair always, more as the density rises
+	for i, ct := range [5][2]float32{{38, 0}, {47, 0}, {112, 1}, {200, 2}, {207, 2}} {
+		vis := rc.tier(uint8(ct[1])) * rc.fit(ct[0]+3) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		stalkCol := sceneColor("#34413c").Alpha(vis)
+		headCol := sceneColor("#3e4c45").Alpha(vis)
+		cx := ct[0]
 		cy := sc.near.y(float64(cx)) + 1.2 + sy
 		skew := float32(0)
 		if rc.t > 0 {
@@ -1451,18 +1462,21 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 			rc.p.FillPath(&hd, headCol)
 		})
 	}
-
-	// Glowing mushrooms
-	mushSpecs := [3][2]float32{{20, 1.0}, {25, 0.7}, {96, 0.85}}
-	mStem := sceneColor("#56655e").Alpha(rc.alpha)
-	mCap := sceneColor("#7f9c8c").Alpha(rc.alpha)
+	// Glowing mushrooms: one always, the others from calm density up
+	mushSpecs := [3][3]float32{{20, 1.0, 0}, {25, 0.7, 1}, {96, 0.85, 1}}
 	for i, ms := range mushSpecs {
+		vis := rc.tier(uint8(ms[2]))
+		if vis <= 0.004 {
+			continue
+		}
+		mStem := sceneColor("#56655e").Alpha(vis * rc.alpha)
+		mCap := sceneColor("#7f9c8c").Alpha(vis * rc.alpha)
 		mx, my := rc.ox+ms[0], rc.oy+sc.near.y(float64(ms[0]))+1+sy
 		gOp := float32(0.65)
 		if rc.t > 0 {
 			gOp = lerp(0.20, 1.0, cosWave01(rc.loopPhase(rc.t, sc.mushDel[i], sc.mushDur[i])))
 		}
-		rc.radialGlow(mx, my-2.4*ms[1], 4*ms[1], glowCol, 0.5*gOp)
+		rc.radialGlow(mx, my-2.4*ms[1], 4*ms[1], glowCol, 0.5*gOp*vis)
 		rc.p.Transform(ui.Scaling(ms[1], ms[1]).Then(ui.Translation(mx, my)), 0, 0, func() {
 			rc.p.Fill(ui.Rect{X: -0.4, Y: -2, W: 0.8, H: 2.6}, mStem, 0)
 			var cap ui.Path
@@ -1470,14 +1484,13 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 			rc.p.FillPath(&cap, mCap)
 		})
 	}
-
 	// Foreground & upper-sky fireflies
 	for i := range sc.fireflies {
 		drawFly(&sc.fireflies[i])
 	}
 
-	// Traveling firefly crossing the titlebar sky (a2 v-tr)
-	if rc.wm > 0.002 {
+	// Traveling firefly wandering across the sidebar sky, below the titlebar controls
+	if vis := rc.wm * rc.dRich; vis > 0.002 {
 		ph := rc.loopPhase(rc.t, 44, 47)
 		if ph < 0.56 {
 			kpts := [7][4]float32{
@@ -1499,12 +1512,10 @@ func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache)
 					break
 				}
 			}
-			scaleX := max(rc.w, brandDesignWidth) / brandDesignWidth
-			cx := rc.ox + 262 + tx*scaleX
-			cy := rc.oy + 38 + ty
-			blink := evalFireflyBlinkV2(ffBlinkSingle, rc.loopPhase(rc.t, 0, 2.3))
-			fa := top * blink * rc.wm
-			if fa > 0.003 && cx < rc.ox+rc.w+10 {
+			cx := rc.ox + 20 + tx*(rc.w-50)/680
+			cy := rc.oy + 40 + ty*0.5
+			blink := evalFireflyBlinkV2(ffBlinkSingle, rc.loopPhase(rc.t, 0, 3.4))
+			if fa := top * blink * vis; fa > 0.003 {
 				rc.radialGlow(cx, cy, 4.6, glowCol, 0.5*fa)
 				var core ui.Path
 				core.Circle(cx, cy, 1.1)
@@ -1533,95 +1544,68 @@ func evalFireflyBlinkV2(kind fireflyBlinkKind, ph float32) float32 {
 // -----------------------------------------------------------------------------
 
 func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
-	// Rotated Milky Way glow + fine dust lane
-	if rc.w > 760 {
-		mwx, mwy := rc.ox+950, rc.oy+22
-		rc.p.Transform(ui.Rotation(6), mwx, mwy, func() {
-			rc.ellipseGlow(mwx, mwy, 200, 13, sceneColor("#8ea4d8"), 0.10)
-		})
-		for i := range sc.dustStars {
-			ds := &sc.dustStars[i]
-			if ds.x >= rc.w-4 {
-				continue
-			}
-			var dot ui.Path
-			dot.Circle(rc.ox+ds.x, rc.oy+ds.y, ds.r)
-			rc.p.FillPath(&dot, ds.color.Alpha(ds.opacity*rc.alpha))
-		}
-	}
 
 	rc.paintStars(sc.stars, 1.0)
 
-	// Constellations: Big Dipper & Cassiopeia
-	if rc.w > 700 {
-		lineCol := sceneColor("#8ea4d8").Alpha(0.28 * rc.alpha)
-		nodeCol := sceneColor("#eef2fb").Alpha(rc.alpha)
-		dip := [7][2]float32{{652, 12}, {665, 9.5}, {677, 12}, {689, 16}, {700, 25}, {716, 27}, {720, 16.5}}
-		cas := [5][2]float32{{748, 25}, {758, 14}, {770, 21}, {782, 10}, {795, 18}}
-
-		var dp ui.Path
-		for i, pt := range dip {
-			if i == 0 {
-				dp.MoveTo(rc.ox+pt[0], rc.oy+pt[1])
-			} else {
-				dp.LineTo(rc.ox+pt[0], rc.oy+pt[1])
+	// Constellations, drawn small in the sky under the titlebar controls: the Big Dipper on the
+	// left, Cassiopeia further right where a wide sidebar leaves room for it.
+	if vis := rc.dRich; vis > 0.004 {
+		dip := [7][2]float32{{20, 32.25}, {26.5, 31}, {32.5, 32.25}, {38.5, 34.25}, {44, 38.75}, {52, 39.75}, {54, 34.5}}
+		cas := [5][2]float32{{296, 39.5}, {301, 34}, {307, 37.5}, {313, 32}, {319.5, 36}}
+		constellation := func(pts [][2]float32, closeTo int, a float32) {
+			if a <= 0.004 {
+				return
+			}
+			var lp ui.Path
+			for i, pt := range pts {
+				if i == 0 {
+					lp.MoveTo(rc.ox+pt[0], rc.oy+pt[1])
+				} else {
+					lp.LineTo(rc.ox+pt[0], rc.oy+pt[1])
+				}
+			}
+			if closeTo >= 0 {
+				lp.LineTo(rc.ox+pts[closeTo][0], rc.oy+pts[closeTo][1])
+			}
+			lp.Join(ui.RoundJoin)
+			rc.p.StrokePath(&lp, 0.45, sceneColor("#8ea4d8").Alpha(0.30*a))
+			for _, pt := range pts {
+				var dot ui.Path
+				dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.7)
+				rc.p.FillPath(&dot, sceneColor("#eef2fb").Alpha(a))
 			}
 		}
-		dp.LineTo(rc.ox+dip[3][0], rc.oy+dip[3][1]).Join(ui.RoundJoin)
-		rc.p.StrokePath(&dp, 0.5, lineCol)
-
-		var cp ui.Path
-		for i, pt := range cas {
-			if i == 0 {
-				cp.MoveTo(rc.ox+pt[0], rc.oy+pt[1])
-			} else {
-				cp.LineTo(rc.ox+pt[0], rc.oy+pt[1])
-			}
-		}
-		cp.Join(ui.RoundJoin)
-		rc.p.StrokePath(&cp, 0.5, lineCol)
-
-		for _, pt := range dip {
-			var dot ui.Path
-			dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.95)
-			rc.p.FillPath(&dot, nodeCol)
-		}
-		for _, pt := range cas {
-			if pt[0] >= rc.w-4 {
+		constellation(dip[:], 3, vis*rc.alpha)
+		constellation(cas[:], -1, vis*rc.fit(322)*rc.alpha)
+	}
+	// Flare stars
+	rc.layer(rc.dCalm, func() {
+		flareCol := sceneColor("#f4f7ff")
+		for _, fl := range sc.flares {
+			fit := rc.fit(fl.x + fl.size)
+			if fit <= 0.004 {
 				continue
 			}
-			var dot ui.Path
-			dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.95)
-			rc.p.FillPath(&dot, nodeCol)
-		}
-	}
-
-	// Flare stars (a1)
-	flareCol := sceneColor("#f4f7ff")
-	for _, fl := range sc.flares {
-		if fl.x >= rc.w-4 {
-			continue
-		}
-		fx, fy := rc.ox+fl.x, rc.oy+fl.y
-		var core ui.Path
-		core.Circle(fx, fy, 0.8)
-		rc.p.FillPath(&core, flareCol.Alpha(rc.alpha))
-		scf, op := float32(0.3), float32(0.3)
-		if rc.t > 0 {
-			ph := rc.loopPhase(rc.t, fl.delaySec, fl.durSec)
-			if ph > 0.80 && ph < 0.90 {
-				u := smooth((ph - 0.80) / 0.10)
-				scf, op = lerp(0.3, 1.0, u), lerp(0.3, 1.0, u)
-			} else if ph >= 0.90 {
-				u := smooth((ph - 0.90) / 0.10)
-				scf, op = lerp(1.0, 0.3, u), lerp(1.0, 0.3, u)
+			fx, fy := rc.ox+fl.x, rc.oy+fl.y
+			var core ui.Path
+			core.Circle(fx, fy, 0.8)
+			rc.p.FillPath(&core, flareCol.Alpha(fit*rc.alpha))
+			scf, op := float32(0.3), float32(0.3)
+			if rc.t > 0 {
+				ph := rc.loopPhase(rc.t, fl.delaySec, fl.durSec)
+				if ph > 0.80 && ph < 0.90 {
+					u := smooth((ph - 0.80) / 0.10)
+					scf, op = lerp(0.3, 1.0, u), lerp(0.3, 1.0, u)
+				} else if ph >= 0.90 {
+					u := smooth((ph - 0.90) / 0.10)
+					scf, op = lerp(1.0, 0.3, u), lerp(1.0, 0.3, u)
+				}
 			}
+			rc.paintSparkle(fx, fy, fl.size*scf, flareCol, op*fit)
 		}
-		rc.paintSparkle(fx, fy, fl.size*scf, flareCol, op)
-	}
-
-	// Passing satellite (a2 v-tr)
-	if rc.wm > 0.002 {
+	})
+	// Passing satellite, gliding through the strip above the titlebar controls
+	if vis := rc.wm * rc.dRich; vis > 0.002 {
 		ph := rc.loopPhase(rc.t, 58, 61)
 		if ph < 0.37 {
 			u := ph / 0.37
@@ -1634,27 +1618,26 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 			default:
 				op = (1 - (ph-0.33)/0.04) * 0.95
 			}
-			sx := rc.ox + 590 + 500*u
-			sy := rc.oy + 3 + 25*u
-			if sx < rc.ox+rc.w-4 {
-				var sat ui.Path
-				sat.Circle(sx, sy, 0.85)
-				rc.p.FillPath(&sat, sceneColor("#e9eefc").Alpha(op*rc.wm*rc.alpha))
-			}
+			var sat ui.Path
+			sat.Circle(rc.ox+8+(rc.w-30)*u, rc.oy+4+3*u, 0.85)
+			rc.p.FillPath(&sat, sceneColor("#e9eefc").Alpha(op*vis*rc.alpha))
 		}
 	}
-
 	rc.paintMeteors(sc.meteors)
 	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
 	rc.fillTerrain(&tr.farPath, sc.far.fill)
 
-	// Pines
-	pineCol := sceneColor("#252a35").Alpha(rc.alpha)
-	pines := [8][2]float32{
-		{18, 1.0}, {27, 0.75}, {33, 1.15}, {62, 0.9},
-		{207, 0.9}, {214, 0.7}, {246, 1.1}, {253, 0.8},
+	// Pines, a shade darker than the ridge so their silhouettes read against it
+	pines := [8][3]float32{
+		{18, 1.0, 0}, {27, 0.75, 1}, {33, 1.15, 0}, {62, 0.9, 1},
+		{207, 0.9, 0}, {214, 0.7, 1}, {246, 1.1, 1}, {253, 0.8, 1},
 	}
 	for _, pn := range pines {
+		vis := rc.tier(uint8(pn[2])) * rc.fit(pn[0]+3) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		pineCol := sceneColor("#1c2029").Alpha(vis)
 		px, py := rc.ox+pn[0], rc.oy+sc.far.y(float64(pn[0]))+0.4+rc.layerShiftY
 		rc.p.Transform(ui.Scaling(pn[1], pn[1]).Then(ui.Translation(px, py)), 0, 0, func() {
 			var pp ui.Path
@@ -1662,7 +1645,6 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 			rc.p.FillPath(&pp, pineCol)
 		})
 	}
-
 	// Camp: bonfire glow, tent, campfire, rising sparks, cat looking up
 	tx := float32(106)
 	ty := sc.far.y(float64(tx)) + 1 + rc.layerShiftY
@@ -1671,7 +1653,7 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 
 	glowOp, glowScale := float32(0.80), float32(1.0)
 	if rc.t > 0 {
-		u := rc.altWave(rc.t, 0, 1.3)
+		u := rc.altWave(rc.t, 0, 2.2)
 		glowOp = lerp(0.55, 1.0, u)
 		glowScale = lerp(0.92, 1.08, u)
 	}
@@ -1716,8 +1698,8 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 				rc.p.FillPath(&fl, c.Alpha(rc.alpha))
 			})
 		}
-		paintFlame(0, 0.7, sceneColor("#f2a25c"), true)
-		paintFlame(0.3, 0.53, sceneColor("#ffd899"), false)
+		paintFlame(0, 1.2, sceneColor("#f2a25c"), true)
+		paintFlame(0.3, 0.9, sceneColor("#ffd899"), false)
 
 		if rc.wm > 0.002 {
 			spCol := sceneColor("#ffcf8a")
@@ -1730,7 +1712,7 @@ func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
 				} else {
 					op = 1 - (ph-0.10)/0.90
 				}
-				a := op * rc.wm * rc.alpha
+				a := op * rc.wm * rc.dCalm * rc.alpha
 				if a <= 0.003 {
 					continue
 				}
@@ -1779,21 +1761,19 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 
 	rc.paintMeteors(sc.meteors)
 
-	// Drifting moonlit cloud wisps (a1)
-	wispBody := sceneColor("#343c50").Alpha(0.72 * rc.alpha)
-	wispRim := sceneColor("#8fa0c8").Alpha(0.35 * rc.alpha)
-	span := max(rc.w, brandDesignWidth) + 520
+	// Thin moonlit cloud wisps drifting through the sidebar sky, clear of the titlebar controls
 	for _, mw := range sc.moonWisps {
-		x := float32(1460)
-		if rc.t > 0 {
-			x = (span - 260) - span*rc.loopPhase(rc.t, mw.delaySec, mw.durSec)
-		} else {
-			// Resting position inside visible sky when still
-			x = 1460 - 1720*(mw.delaySec/mw.durSec)
+		vis := rc.tier(mw.tier) * rc.alpha
+		if mw.minW > 0 {
+			// The third wisp only joins once the sidebar is wide enough to give it its own room.
+			vis *= smooth(clampF((rc.w-mw.minW)/60, 0, 1))
 		}
-		if x > rc.w+40 || x+180*mw.scale < -40 {
+		if vis <= 0.004 {
 			continue
 		}
+		x := rc.w + 10 - (rc.w+110)*modPos(rc.t+float64(mw.delaySec), float64(mw.durSec))
+		wispBody := sceneColor("#343c50").Alpha(0.5 * vis)
+		wispRim := sceneColor("#8fa0c8").Alpha(0.3 * vis)
 		rc.p.Transform(ui.Scaling(mw.scale, mw.scale).Then(ui.Translation(rc.ox+x, rc.oy+mw.y)), 0, 0, func() {
 			rc.p.Fill(ui.Rect{X: 0, Y: 3, W: 150, H: 5}, wispBody, 2.5)
 			rc.p.Fill(ui.Rect{X: 28, Y: 0, W: 92, H: 5}, wispBody, 2.5)
@@ -1801,7 +1781,6 @@ func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
 			rc.p.Fill(ui.Rect{X: 34, Y: 0, W: 80, H: 0.7}, wispRim, 0.35)
 		})
 	}
-
 	// Peaks & far ridge with silver moonlight rim-lights
 	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
 	rc.strokeRim(&tr.peakRim, 0.7, sc.rimColor, sc.rimMidStop, sc.rimMidOp, sc.rimPeakOp)
