@@ -55,8 +55,8 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 	})
 }
 
-// renderPluginTitlebarButtons draws the plugin zone: up to maxInlinePluginButtons
-// buttons, an overflow button for the rest, then a hairline before the built-in tools.
+// renderPluginTitlebarButtons draws the plugin zone: every button that fits the free
+// titlebar space, an overflow button for the rest, then a hairline before the built-in tools.
 func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps, hasBuiltinTail bool, availW float32) {
 	vpW, _ := c.Size()
 	if m := p.MenuState; m != nil {

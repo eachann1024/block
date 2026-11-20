@@ -13,17 +13,14 @@ import (
 )
 
 const (
-	// maxInlinePluginButtons caps how many plugin buttons sit directly in the titlebar;
-	// the rest collapse into the overflow menu so built-in tools never get pushed out.
+	// maxInlinePluginButtons caps how many plugin buttons a user can pin to the front.
 	maxInlinePluginButtons = 3
 	// Responsive titlebar breakpoints: evaluated against both viewport width and
 	// remaining width after subtracting the left cell (sidebar/traffic lights) and
 	// right window-control inset (Windows/Linux), so wide docked sidebars never crowd
 	// out built-in tools or tabs.
 	titlebarNarrowBreakpoint float32 = 720
-	titlebarMediumBreakpoint float32 = 900
 	titlebarNarrowAvailW     float32 = 520
-	titlebarMediumAvailW     float32 = 680
 	titlebarTightAvailW      float32 = 420
 )
 
@@ -183,10 +180,8 @@ func splitPluginTitlebarButtons(p TitlebarProps, vpW, availW float32) (inline, o
 	return ordered[:limit], ordered[limit:]
 }
 
-// pluginInlineLimit decides how many plugin buttons sit inline. Once the titlebar has
-// been laid out it measures the center cell's real slack (plus the plugin zone it
-// already holds) so roomy titlebars never fold plugins; before that it falls back to
-// window breakpoints.
+// pluginInlineLimit decides how many plugin buttons sit inline: every button that fits
+// in the titlebar's real free space stays inline; only the rest fold into overflow.
 func pluginInlineLimit(p TitlebarProps, vpW, availW float32, n int) int {
 	if m := p.MenuState; m != nil && m.pluginLimitReady {
 		return min(m.pluginInlineN, n)
@@ -195,28 +190,17 @@ func pluginInlineLimit(p TitlebarProps, vpW, availW float32, n int) int {
 }
 
 func pluginInlineLimitFor(p TitlebarProps, vpW, availW float32, n int) int {
-	if vpW <= 0 || n == 0 {
-		return min(maxInlinePluginButtons, n)
+	m := p.MenuState
+	if vpW <= 0 || n == 0 || m == nil || m.pluginCenterW <= 0 {
+		return n
 	}
-	if isTightTitlebar(availW) {
-		return 0
-	}
-	if m := p.MenuState; m != nil && m.pluginCenterW > 0 {
-		budget := m.pluginCenterW - pluginCenterNeed(p) + m.pluginZoneW
-		for limit := min(maxInlinePluginButtons, n); limit > 0; limit-- {
-			if pluginZoneWidth(limit, n) <= budget {
-				return limit
-			}
+	budget := m.pluginCenterW - pluginCenterNeed(p) + m.pluginZoneW
+	for limit := n; limit > 0; limit-- {
+		if pluginZoneWidth(limit, n) <= budget {
+			return limit
 		}
-		return 0
 	}
-	switch {
-	case isNarrowTitlebar(vpW, availW):
-		return 0
-	case vpW < titlebarMediumBreakpoint || (availW > 0 && availW < titlebarMediumAvailW):
-		return min(1, n)
-	}
-	return min(maxInlinePluginButtons, n)
+	return 0
 }
 
 // pluginSlotW is one titlebar button plus the tail row gap.
