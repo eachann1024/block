@@ -228,8 +228,15 @@ func ParseFeedBytes(raw []byte) ([]ReleaseEntry, error) {
 	slices.SortFunc(out, func(a, b ReleaseEntry) int {
 		return CompareVersion(b.Version, a.Version)
 	})
-	if len(out[0].Assets) == 0 {
-		return nil, fmt.Errorf("latest release %s in feed has no trusted installer assets", out[0].Tag)
+	hasAnyTrustedAsset := false
+	for _, entry := range out {
+		if len(entry.Assets) > 0 {
+			hasAnyTrustedAsset = true
+			break
+		}
+	}
+	if !hasAnyTrustedAsset {
+		return nil, fmt.Errorf("release feed starting at %s has no trusted installer assets", out[0].Tag)
 	}
 	return out, nil
 }
@@ -279,11 +286,13 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 	return out, nil
 }
 
+var errReleaseNotFound = errors.New("release tag not found")
+
 // FetchReleaseByTag retrieves one authoritative published release directly from GitHub by exact tag.
 func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
 	cleanTag := strings.TrimSpace(tag)
 	if cleanTag == "" {
-		return nil, errors.New("empty release tag")
+		return nil, errReleaseNotFound
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
@@ -308,6 +317,9 @@ func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("%w: HTTP 404", errReleaseNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
