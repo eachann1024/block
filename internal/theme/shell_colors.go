@@ -20,6 +20,34 @@ type ShellChromeColors struct {
 
 // ShellChrome returns the window shell and floating-card token set for p.
 func (p Palette) ShellChrome() ShellChromeColors {
+	if p.Tarot && p.Dark {
+		return ShellChromeColors{
+			Ground:           ui.Hex("#09111e"),
+			Card:             ui.Hex("#0a1322"),
+			CardBorder:       ui.RGBA(201, 162, 90, 0.24),
+			TabBorder:        ui.RGBA(201, 162, 90, 0.28),
+			Hover:            ui.RGBA(201, 162, 90, 0.10),
+			FieldBG:          ui.Hex("#0c182b"),
+			FieldBorder:      ui.RGBA(201, 162, 90, 0.32),
+			FieldBorderHover: ui.Hex("#e2c07e"),
+			KbdBG:            ui.Hex("#0f1b2e"),
+			BadgeFG:          ui.Hex("#e2c07e"),
+		}
+	}
+	if p.Tarot && !p.Dark {
+		return ShellChromeColors{
+			Ground:           ui.Hex("#0e1a2c"),
+			Card:             ui.Hex("#f3ecdc"),
+			CardBorder:       ui.RGBA(167, 132, 63, 0.45),
+			TabBorder:        ui.RGBA(122, 94, 44, 0.22),
+			Hover:            ui.RGBA(122, 94, 44, 0.08),
+			FieldBG:          ui.Hex("#f4ecd9"),
+			FieldBorder:      ui.RGBA(167, 132, 63, 0.38),
+			FieldBorderHover: ui.Hex("#a7843f"),
+			KbdBG:            ui.Hex("#ebe0c6"),
+			BadgeFG:          ui.Hex("#7a5718"),
+		}
+	}
 	if p.Dark {
 		return ShellChromeColors{
 			Ground:           ui.Hex("#222222"),
