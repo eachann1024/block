@@ -636,39 +636,12 @@ func diffSetextText(lines []string, para []int, q int) bool {
 // unchanged (an alignment change, or a table turned into text) follows the AI's text.
 func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 	shown := DiffFenceMask(lines, change)
-	oldM, newM := diffFenceSides(lines, change)
-	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	_, seps := DiffTableRoles(lines, change)
 	cand := func(k int) bool { return change[k] != 0 && !shown[k] && seps[k] }
 	kept := func(k int) bool { return change[k] == 0 || (change[k] < 0) != applied[k] }
 	take := func(k int, in bool) { applied[k] = (change[k] > 0) == in }
-	// A table nested in a list item is indented; a row at another indent belongs to a
-	// different table even with no line between them.
-	indent := func(k int) int { return len(lines[k]) - len(strings.TrimLeft(lines[k], " \t")) }
-
-	// tables[0][k], tables[1][k]: which table of the old / new text line k sits in
-	// (0: none), to tell whether a deleted row belonged to the table it is judged
-	// with, and whether two rows that meet in the result were ever one table.
-	var tables [2][]int
-	for si, side := range [2]int{-1, 1} {
-		mask, ids := [2][]bool{oldM, newM}[si], make([]int, len(lines))
-		for k, id, prev := 0, 0, -1; k < len(lines); k++ {
-			if change[k] == -side {
-				continue
-			}
-			if !mask[k] && IsDiffTableRow(trim(k)) {
-				if prev < 0 || indent(prev) != indent(k) {
-					id++
-				}
-				ids[k], prev = id, k
-			} else {
-				prev = -1
-			}
-		}
-		tables[si] = ids
-	}
-	members := diffTableMembers(lines, change)
-	for diffSepPass(lines, change, applied, cand, kept, take, indent, tables, members, seps) {
+	tables, members := diffTableMembership(lines, change)
+	for diffSepPass(lines, change, applied, cand, kept, take, tables, members, seps) {
 	}
 }
 
@@ -677,7 +650,7 @@ func SyncDiffTableSeps(lines []string, change []int, applied []bool) {
 // blank between them leaves a second separator as a data row); the next pass then
 // sees them apart.
 func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(int) bool,
-	take func(int, bool), indent func(int) int, tables [2][]int, members [2][]bool, seps []bool) bool {
+	take func(int, bool), tables [2][]int, members [2][]bool, seps []bool) bool {
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	oldTable, newTable := tables[0], tables[1]
 	// Rows are read in the written text itself, so code that becomes a table (or a
@@ -719,8 +692,13 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 					drops = append(drops, i)
 				}
 			case row[i]:
-				if len(rows) > 0 && indent(rows[len(rows)-1]) != indent(i) {
-					break run
+				if len(rows) > 0 {
+					prev := rows[len(rows)-1]
+					if diffTableIndent(lines[prev]) != diffTableIndent(lines[i]) &&
+						!(members[0][prev] && members[0][i] && oldTable[prev] == oldTable[i]) &&
+						!(members[1][prev] && members[1][i] && newTable[prev] == newTable[i]) {
+						break run
+					}
 				}
 				rows = append(rows, i)
 			default:
@@ -849,7 +827,7 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 
 // DiffTableRoles reports, per line, whether it is a table's header row or its
 // separator in its own text (the old one for change < 0, the new one for > 0 and 0:
-// a table wrapped in a fence shows its "| --- |" as code). A separator must follow a row of as many cells at the same indent, and
+// a table wrapped in a fence shows its "| --- |" as code). A separator must follow a row of as many cells, and
 // only the first one does: a later "| --- |" is a data row and stays visible.
 func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	header, sep = make([]bool, len(lines)), make([]bool, len(lines))
@@ -863,31 +841,34 @@ func DiffTableRoles(lines []string, change []int) (header, sep []bool) {
 	return header, sep
 }
 
-// diffTableMembers reports, per side (0 old, 1 new), whether a line is part of a
-// table in that text: its header, separator or a data row; rows above a header are
-// paragraph text.
-func diffTableMembers(lines []string, change []int) (members [2][]bool) {
+// diffTableMembership gives each run an ID and marks the rows from its header
+// onward as table members. Rows before the header are paragraph text.
+func diffTableMembership(lines []string, change []int) (ids [2][]int, members [2][]bool) {
+	ids = [2][]int{make([]int, len(lines)), make([]int, len(lines))}
 	members = [2][]bool{make([]bool, len(lines)), make([]bool, len(lines))}
 	diffTableRuns(lines, change, func(si int, run []int, h int) {
-		if h >= 0 {
-			for _, k := range run[h:] {
-				members[si][k] = true
-			}
+		for j, k := range run {
+			ids[si][k] = run[0] + 1
+			members[si][k] = h >= 0 && j >= h
 		}
 	})
-	return members
+	return ids, members
 }
 
-// diffTableRuns calls fn for each block of table rows (contiguous, outside code, at
-// one indent) of the old (side 0) and then the new (side 1) text, with the index in
-// run of its header row, or -1 when no separator makes it a table.
+func diffTableIndent(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " \t"))
+}
+
+// diffTableRuns visits contiguous pipe rows outside code, on the old side and then
+// the new side. An indent change splits a run unless both rows are in one note table.
+// h is the index of the run's header or -1 for a run of plain text.
 func diffTableRuns(lines []string, change []int, fn func(side int, run []int, h int)) {
 	old, cur := diffFenceSides(lines, change)
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
-	indent := func(k int) int { return len(lines[k]) - len(strings.TrimLeft(lines[k], " \t")) }
 	for si, side := range [2]int{-1, 1} {
 		code := [2][]bool{old, cur}[si]
 		var run []int
+		var parsedIDs map[int]int
 		flush := func() {
 			h := -1
 			for j := 1; j < len(run) && h < 0; j++ {
@@ -905,15 +886,35 @@ func diffTableRuns(lines []string, change []int, fn func(side int, run []int, h 
 			if change[k] == -side {
 				continue
 			}
-			if code[k] || !IsDiffTableRow(trim(k)) || len(run) > 0 && indent(run[0]) != indent(k) {
+			if code[k] || !IsDiffTableRow(trim(k)) {
 				flush()
+				continue
 			}
-			if !code[k] && IsDiffTableRow(trim(k)) {
-				run = append(run, k)
+			if end := len(run) - 1; end >= 0 && diffTableIndent(lines[run[end]]) != diffTableIndent(lines[k]) {
+				if parsedIDs == nil {
+					parsedIDs = diffParsedTableIDs(lines, change, side)
+				}
+				if id := parsedIDs[k]; id == 0 || parsedIDs[run[end]] != id {
+					flush()
+				}
 			}
+			run = append(run, k)
 		}
 		flush()
 	}
+}
+
+func diffParsedTableIDs(lines []string, change []int, side int) map[int]int {
+	source, rows := diffSource(lines, change, side)
+	ids := make(map[int]int)
+	for _, block := range notemd.ParseMarkdown(source).Blocks {
+		if block.Kind == model.BlockTable && block.SourceLine > 0 && block.SourceEndLine <= len(rows) {
+			for _, row := range rows[block.SourceLine-1 : block.SourceEndLine] {
+				ids[row] = block.SourceLine
+			}
+		}
+	}
+	return ids
 }
 
 // diffGapRank orders the dropped lines that could keep two tables apart: a blank,
