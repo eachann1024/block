@@ -24,7 +24,7 @@ func emptyStage(c *ui.Context, bg ui.Color, width float32, fill bool, content fu
 	stage := ui.Column(c).Fill().AlignItems(ui.Center).Padding(0, theme.Space24).Background(bg)
 	stage.Children(func() {
 		ui.Box(c).FillWidth().Grow(theme.EmptyLiftTop).Shrink(1)
-		col := ui.Column(c).MaxWidth(width).Shrink(0).AlignItems(ui.Start)
+		col := ui.Column(c).MaxWidth(width).MinWidth(0).Shrink(0).AlignItems(ui.Start)
 		if fill {
 			col.FillWidth()
 		}
