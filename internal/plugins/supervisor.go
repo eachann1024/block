@@ -1585,6 +1585,12 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	rtPtr.Store(rt)
 	s.runtimes[pluginID] = rt
 	s.mu.Unlock()
+	if cfg.SystemIntegration && inst.Manifest.HasPermission(PermSystemBadge) {
+		go func() {
+			<-rt.exited
+			s.clearInactiveSystemBadge(pluginID)
+		}()
+	}
 	if err := rt.Initialize(ctx); err != nil {
 		rt.abort()
 		return nil, attemptedLocale, err

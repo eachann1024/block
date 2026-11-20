@@ -168,9 +168,11 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		if h.systemReveal != nil {
 			h.systemReveal()
 		}
-		if root != "" && relPath != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) &&
-			h.w.OpenDeepLinkedFile(filepath.Join(root, filepath.FromSlash(relPath))) == nil {
-			return
+		if root != "" && relPath != "" && installed.Manifest.HasPermission(plugins.PermNotesRead) {
+			path, err := plugins.SystemNotificationNotePath(root, relPath, h.w.Notebooks())
+			if err == nil && h.w.OpenExternalFile(path) == nil {
+				return
+			}
 		}
 		if installed.Manifest.HasSurface(plugins.SurfaceSettingsPage) {
 			h.w.OpenSettings("plugin:" + pluginID)

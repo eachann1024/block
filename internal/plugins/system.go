@@ -97,9 +97,10 @@ type systemState struct {
 }
 
 type systemNotice struct {
-	at   time.Time
-	key  [32]byte
-	busy bool
+	at    time.Time
+	key   [32]byte
+	title string
+	busy  bool
 }
 
 type systemBadge struct {
@@ -305,7 +306,30 @@ func systemText(raw string, limit int) string {
 }
 
 func systemNotebookPath(rt *Runtime, requestedRoot, rel string, trash bool) (string, error) {
-	if len(rel) > 4096 || len(requestedRoot) > 4096 || strings.ContainsAny(rel, ":\x00\\") || rel == "." || rel == "" {
+	if len(requestedRoot) > 4096 {
+		return "", errors.New("invalid notebook root")
+	}
+	root, err := rt.resolveNotebookRoot(requestedRoot)
+	if err != nil {
+		return "", errors.New("notebook is no longer registered")
+	}
+	return validatedSystemPath(root, rel, trash)
+}
+
+func SystemNotificationNotePath(root, rel string, notebooks []string) (string, error) {
+	if !files.IsMarkdown(rel) {
+		return "", errors.New("notification target must be a Markdown note")
+	}
+	for _, notebook := range notebooks {
+		if candidate, err := filepath.Abs(notebook); err == nil && candidate == root {
+			return validatedSystemPath(root, rel, true)
+		}
+	}
+	return "", errors.New("notebook is no longer registered")
+}
+
+func validatedSystemPath(root, rel string, regular bool) (string, error) {
+	if len(rel) > 4096 || strings.ContainsAny(rel, ":\x00\\") || rel == "." || rel == "" {
 		return "", errors.New("invalid notebook-relative path")
 	}
 	for part := range strings.SplitSeq(rel, "/") {
@@ -317,11 +341,7 @@ func systemNotebookPath(rt *Runtime, requestedRoot, rel string, trash bool) (str
 	if !filepath.IsLocal(local) {
 		return "", errors.New("path must be notebook-relative")
 	}
-	root, err := rt.resolveNotebookRoot(requestedRoot)
-	if err != nil {
-		return "", errors.New("notebook is no longer registered")
-	}
-	root, err = filepath.EvalSymlinks(root)
+	root, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", errors.New("notebook is unavailable")
 	}
@@ -331,7 +351,7 @@ func systemNotebookPath(rt *Runtime, requestedRoot, rel string, trash bool) (str
 		return "", errors.New("notebook item is unavailable or uses a symbolic link")
 	}
 	info, err := os.Lstat(path)
-	if err != nil || (trash && !info.Mode().IsRegular()) || (!info.IsDir() && !info.Mode().IsRegular()) {
+	if err != nil || (regular && !info.Mode().IsRegular()) || (!info.IsDir() && !info.Mode().IsRegular()) {
 		return "", errors.New("unsupported notebook item")
 	}
 	return path, nil
@@ -350,7 +370,7 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		if !files.IsMarkdown(p.RelPath) {
 			return nil, rpcErr(-32602, "notification target must be a Markdown note")
 		}
-		if _, err := systemNotebookPath(rt, p.NotebookRoot, p.RelPath, false); err != nil {
+		if _, err := systemNotebookPath(rt, p.NotebookRoot, p.RelPath, true); err != nil {
 			return nil, rpcErr(-32602, err.Error())
 		}
 		var err error
@@ -373,11 +393,12 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		}
 	}
 	prev := s.system.notices[id]
-	if prev.busy || now.Sub(prev.at) < 10*time.Second || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
+	newSyncState := id == "block-sync" && title != prev.title
+	if prev.busy || (now.Sub(prev.at) < 10*time.Second && !newSyncState) || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
 		s.system.mu.Unlock()
 		return map[string]any{"ok": true, "suppressed": true}, nil
 	}
-	s.system.notices[id] = systemNotice{at: now, key: key, busy: true}
+	s.system.notices[id] = systemNotice{at: now, key: key, title: title, busy: true}
 	s.system.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -391,7 +412,7 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 	err := s.cfg.System.Notify(ctx, id, title, body, normalizeTone(p.Tone), root, rel, allowed)
 	s.system.mu.Lock()
 	if err == nil {
-		s.system.notices[id] = systemNotice{at: time.Now(), key: key}
+		s.system.notices[id] = systemNotice{at: time.Now(), key: key, title: title}
 	} else {
 		s.system.notices[id] = prev
 	}
@@ -412,6 +433,12 @@ func (s *Supervisor) setSystemBadge(rt *Runtime, count int, allowed func() bool)
 	total := count
 	for pluginID, value := range s.system.badges {
 		if pluginID != id {
+			select {
+			case <-value.runtime.exited:
+				delete(s.system.badges, pluginID)
+				continue
+			default:
+			}
 			total = min(999, total+value.count)
 		}
 	}
@@ -442,6 +469,11 @@ func (s *Supervisor) clearInactiveSystemBadge(id string) {
 	s.mu.RLock()
 	active := s.isRuntimeActiveLocked(id, entry.runtime)
 	s.mu.RUnlock()
+	select {
+	case <-entry.runtime.exited:
+		active = false
+	default:
+	}
 	if active {
 		return
 	}
