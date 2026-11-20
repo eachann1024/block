@@ -142,8 +142,9 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	s.mu.Unlock()
 	defer cancel()
 	rt, err := s.ensureRuntime(ctx, key.pluginID, key.notebookRoot)
+	var eventOutcome string
 	if err == nil {
-		err = rt.NotifyNoteSaved(ctx, key.notebookRoot, relSlash)
+		eventOutcome, err = rt.NotifyNoteSavedResult(ctx, key.notebookRoot, relSlash)
 	}
 	s.mu.Lock()
 	v := s.views[key]
@@ -174,7 +175,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 			v.failedSaves = make(map[string]string)
 		}
 		v.failedSaves[absNotePath] = relSlash + " · " + err.Error()
-	} else {
+	} else if eventOutcome != "pending_confirm" && eventOutcome != "skipped" {
 		delete(v.failedSaves, absNotePath)
 	}
 	refreshPage := v.Page != nil && v.BusyAction == ""
