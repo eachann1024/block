@@ -1720,19 +1720,17 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.errorFromBg = false
 				if pluginID == "block-sync" && tone == "success" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 					syncedRoots := map[string]bool{}
-					if res.SyncedNotebooks != nil {
-						for _, r := range res.SyncedNotebooks {
-							if rk := syncNotebookKey(r); rk != "" {
-								syncedRoots[rk] = true
-							}
+					for _, r := range res.SyncedNotebooks {
+						if rk := syncNotebookKey(r); rk != "" {
+							syncedRoots[rk] = true
 						}
-					} else if nbRoot != "" {
-						syncedRoots[syncNotebookKey(nbRoot)] = true
 					}
-					for vk, view := range s.views {
-						if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
-							if syncedRoots[syncNotebookKey(vk.notebookRoot)] {
-								clear(view.failedSaves)
+					if len(syncedRoots) > 0 {
+						for vk, view := range s.views {
+							if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
+								if syncedRoots[syncNotebookKey(vk.notebookRoot)] {
+									clear(view.failedSaves)
+								}
 							}
 						}
 					}
