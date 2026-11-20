@@ -6,8 +6,16 @@ import (
 	"strings"
 )
 
+// devBuildVersion is the value BuildVersion keeps when no version is injected (go run / go test).
+const devBuildVersion = "1.0.379"
+
 // BuildVersion is injected at link time via -ldflags "-X block/internal/updater.BuildVersion=1.0.xxx".
-var BuildVersion = "1.0.379"
+var BuildVersion = devBuildVersion
+
+// IsPackagedBuild reports whether the build script injected a real version.
+func IsPackagedBuild() bool {
+	return BuildVersion != devBuildVersion
+}
 
 // Semver represents a parsed major.minor.patch semantic version.
 type Semver struct {
