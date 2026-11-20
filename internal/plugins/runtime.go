@@ -190,7 +190,6 @@ type Runtime struct {
 	pending   map[string]chan rpcEnvelope
 	nextID    atomic.Int64
 
-	storageMu sync.Mutex
 	noteMu    sync.Mutex
 	cfgMu     sync.RWMutex
 	closed    atomic.Bool
@@ -994,9 +993,20 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 	}
 }
 
+// pluginStorageLocks serializes state.json access per data directory, so an
+// old runtime still finishing a request cannot overwrite what its replacement
+// wrote after a disable/enable or restart.
+var pluginStorageLocks sync.Map // cleaned DataDir -> *sync.Mutex
+
+func (rt *Runtime) storageLock() *sync.Mutex {
+	mu, _ := pluginStorageLocks.LoadOrStore(filepath.Clean(rt.cfg.DataDir), &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
 func (rt *Runtime) loadStorageMap() (map[string]any, error) {
-	rt.storageMu.Lock()
-	defer rt.storageMu.Unlock()
+	mu := rt.storageLock()
+	mu.Lock()
+	defer mu.Unlock()
 	return rt.readStorageMap()
 }
 
@@ -1019,8 +1029,9 @@ func (rt *Runtime) readStorageMap() (map[string]any, error) {
 }
 
 func (rt *Runtime) setStorageKey(key string, val any) error {
-	rt.storageMu.Lock()
-	defer rt.storageMu.Unlock()
+	mu := rt.storageLock()
+	mu.Lock()
+	defer mu.Unlock()
 	cur, err := rt.readStorageMap()
 	if err != nil {
 		return err
