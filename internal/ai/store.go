@@ -86,6 +86,7 @@ type pickItem struct {
 	value string
 	label string
 	hint  string
+	root  string
 }
 
 type questionUIState struct {
