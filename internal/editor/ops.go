@@ -13,9 +13,11 @@ import (
 	"block/internal/codepreview"
 	"block/internal/media"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/theme"
 	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
+	codeed "github.com/egoist/mygo/ui/editor"
 )
 
 // --- Selection Snapshots & Markdown Copy ---
@@ -4215,6 +4217,9 @@ var codeLanguages = []codeLangOption{
 }
 
 func languageDisplayLabel(lang string) string {
+	if lbl, ok := plugins.ResolveLanguageTagDisplay(lang, string(theme.Language())); ok && lbl != "" {
+		return lbl
+	}
 	c := codepreview.CanonicalLanguage(lang)
 	if c == "plaintext" {
 		return theme.Tr("纯文本", "Plain Text")
@@ -4245,9 +4250,41 @@ type syntaxToken struct {
 	Kind  syntaxTokenKind
 }
 
+func mapPluginTokenKind(k codeed.TokenKind) syntaxTokenKind {
+	switch k {
+	case codeed.TokenKeyword, codeed.TokenOperator, codeed.TokenTag:
+		return tokKeyword
+	case codeed.TokenString, codeed.TokenEscape, codeed.TokenRegexp, codeed.TokenLink, codeed.TokenCode:
+		return tokString
+	case codeed.TokenComment:
+		return tokComment
+	case codeed.TokenNumber, codeed.TokenConstant:
+		return tokNumber
+	case codeed.TokenType, codeed.TokenProperty, codeed.TokenAttribute, codeed.TokenHeading:
+		return tokType
+	case codeed.TokenFunction, codeed.TokenMeta:
+		return tokFunc
+	default:
+		return tokPlain
+	}
+}
+
 func tokenizeCode(src, lang string) []syntaxToken {
+	if src == "" {
+		return nil
+	}
+	if ptoks, ok := plugins.TokenizeCodeByTag(lang, src); ok {
+		out := make([]syntaxToken, 0, len(ptoks))
+		for _, tk := range ptoks {
+			kind := mapPluginTokenKind(tk.Kind)
+			if kind != tokPlain && tk.End > tk.Start {
+				out = append(out, syntaxToken{Start: tk.Start, End: tk.End, Kind: kind})
+			}
+		}
+		return out
+	}
 	canon := codepreview.CanonicalLanguage(lang)
-	if canon == "plaintext" || src == "" {
+	if canon == "plaintext" {
 		return nil
 	}
 	r := []rune(src)
