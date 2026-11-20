@@ -43,11 +43,12 @@ const (
 
 // BrandScenePaintOpts configures how PaintBrandSceneBand renders and animates the top band.
 type BrandScenePaintOpts struct {
-	ShowOrb   bool
-	ShowCat   bool
-	Motion    BrandMotionLevel
-	PauseAnim bool
-	Now       time.Time
+	ShowOrb    bool
+	ShowCat    bool
+	SceneWidth float32 // sidebar artwork width; <= 0 paints only the fading sky backdrop
+	Motion     BrandMotionLevel
+	PauseAnim  bool
+	Now        time.Time
 }
 
 // ResolveBrandMotion converts persisted BrandDeco preferences into a runtime motion tier.

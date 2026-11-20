@@ -4316,20 +4316,25 @@ func (w *Workspace) Render(c *ui.Context) {
 		layout.SidebarDrawer = false
 	}
 
-	// Window-wide top brand landscape band painted onto root's own backdrop so the
-	// titlebar, sidebar controls, and right floating paper card always sit cleanly above it.
-	// Always invoked while !aiImmersive (even when scID == "") so scene switches and on/off
-	// toggles crossfade smoothly instead of snapping.
+	// Window-wide top brand sky band + sidebar-width illustrated landscape painted onto
+	// root's own backdrop so the titlebar, sidebar controls, and right floating paper card
+	// always sit cleanly above it. Always invoked while !aiImmersive (even when scID == "")
+	// so scene switches and on/off toggles crossfade smoothly instead of snapping.
 	if !aiImmersive {
 		now := time.Now()
 		scID := blockui.ResolveBrandScene(stSnap.BrandDeco, pal.Dark, now)
 		pauseBrandAnim := !c.WindowActive() || (activeSess != nil && activeSess.IsScrollingForHover(c.Now()))
+		sceneW := float32(0)
+		if sidebarWide {
+			sceneW = max(dockedSidebarWidth, SidebarMinW)
+		}
 		blockui.PaintBrandSceneBand(root, scID, chrome.Ground, blockui.BrandScenePaintOpts{
-			ShowOrb:   sidebarWide && !stSnap.BrandDeco.HideOrb,
-			ShowCat:   !stSnap.BrandDeco.HideCat,
-			Motion:    blockui.ResolveBrandMotion(stSnap.BrandDeco),
-			PauseAnim: pauseBrandAnim,
-			Now:       now,
+			ShowOrb:    sidebarWide && !stSnap.BrandDeco.HideOrb,
+			ShowCat:    !stSnap.BrandDeco.HideCat,
+			SceneWidth: sceneW,
+			Motion:     blockui.ResolveBrandMotion(stSnap.BrandDeco),
+			PauseAnim:  pauseBrandAnim,
+			Now:        now,
 		})
 	}
 
