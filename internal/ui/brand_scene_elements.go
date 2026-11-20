@@ -1051,30 +1051,6 @@ func (rc *sceneRenderCtx) paintDusk(sc *compiledScene, tr *sceneTerrainCache) {
 	// Emerging stars as evening deepens
 	rc.paintStars(sc.stars, rc.vars.starOp)
 
-	// Glowing sunset cloud streaks (a1)
-	litCol := sceneColor("#f9b98f")
-	for _, s := range sc.streaks {
-		if s.cx-s.rx > rc.w {
-			continue
-		}
-		op := float32(0.6)
-		if rc.tA1 > 0 {
-			op = lerp(0.28, 0.95, rc.altWave(rc.tA1, s.delaySec, s.durSec))
-		}
-		var el ui.Path
-		fillEllipse(&el, rc.at, s.cx, s.cy, s.rx, s.ry)
-		rc.p.FillPath(&el, s.color.Alpha(op*rc.alpha))
-		if s.litUnderside {
-			lop := float32(0.5)
-			if rc.tA1 > 0 {
-				lop = lerp(0.28, 0.95, rc.altWave(rc.tA1, s.litDelaySec, s.durSec+4))
-			}
-			var ul ui.Path
-			fillEllipse(&ul, rc.at, s.cx+6, s.cy+s.ry, s.rx*0.6, 0.6)
-			rc.p.FillPath(&ul, litCol.Alpha(lop*0.7*rc.alpha))
-		}
-	}
-
 	// Evening sparkle at (934, 8)
 	if rc.w > 940 {
 		spOp := float32(0.7)

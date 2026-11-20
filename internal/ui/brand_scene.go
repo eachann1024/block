@@ -357,15 +357,6 @@ type sceneDriftItem struct {
 	isLeaf   bool
 }
 
-type sceneDuskStreak struct {
-	cx, cy, rx, ry float32
-	color          ui.Color
-	delaySec       float32
-	durSec         float32
-	litUnderside   bool
-	litDelaySec    float32
-}
-
 type sceneLakeGlint struct {
 	x, y, w  float32
 	delaySec float32
@@ -491,9 +482,6 @@ type compiledScene struct {
 	// Breeze-specific
 	winds      []sceneWindRibbon
 	driftItems []sceneDriftItem
-
-	// Dusk-specific
-	streaks []sceneDuskStreak
 
 	// Firefly-specific
 	ffWanders   []wanderTrack
@@ -946,38 +934,6 @@ func compileDusk(ground ui.Color, starCols []ui.Color) *compiledScene {
 	near := ridgeCurve{base: 65, comps: []ridgeComp{{2.2, 250, 0.3}, {1.0, 91, 1.9}}, fill: sceneColor("#d3cfc0")}
 
 	sts := makeStarsV2(rng, 70, 3, 26, 0.5, starCols, false, nil)
-	streakSpecs := []struct {
-		cx, cy, rx, ry float32
-		hex            string
-		dur            float32
-	}{
-		{96, 13, 70, 1.6, "#f3c4ac", 17},
-		{348, 8, 118, 2.2, "#eec1cf", 23},
-		{540, 27, 62, 1.3, "#f6d2b0", 29},
-		{706, 15, 96, 1.9, "#e3c6e4", 31},
-		{874, 30, 54, 1.2, "#f3c4ac", 19},
-		{958, 9, 104, 2.0, "#eec1cf", 27},
-		{1128, 22, 60, 1.4, "#e3c6e4", 21},
-		{226, 31, 44, 1.1, "#f6d2b0", 25},
-		{432, 21, 82, 1.5, "#f0c9b8", 35},
-		{812, 4, 66, 1.3, "#f6d2b0", 15},
-		// Wide-screen continuation streaks
-		{1340, 14, 92, 1.8, "#eec1cf", 26},
-		{1580, 25, 74, 1.4, "#f6d2b0", 22},
-		{1860, 11, 108, 2.0, "#e3c6e4", 30},
-		{2120, 20, 68, 1.3, "#f3c4ac", 20},
-	}
-	streaks := make([]sceneDuskStreak, len(streakSpecs))
-	for i, sp := range streakSpecs {
-		streaks[i] = sceneDuskStreak{
-			cx: sp.cx, cy: sp.cy, rx: sp.rx, ry: sp.ry,
-			color:        sceneColor(sp.hex),
-			delaySec:     rng.Float32() * 30.0,
-			durSec:       sp.dur,
-			litUnderside: i%3 == 0,
-			litDelaySec:  rng.Float32() * 30.0,
-		}
-	}
 	lk := sceneLake{
 		cx: 178, cy: 60.5, rx: 46, ry: 3.3,
 		fill:       sceneColor("#ecdcd3"),
@@ -1000,7 +956,6 @@ func compileDusk(ground ui.Color, starCols []ui.Color) *compiledScene {
 		hasMid:     true,
 		near:       near,
 		stars:      sts,
-		streaks:    streaks,
 		hasLake:    true,
 		lake:       lk,
 		blades:     bl,
