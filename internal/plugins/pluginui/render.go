@@ -38,6 +38,7 @@ type ActionFeedback struct {
 	FailedActionID         string
 	Error                  string
 	CompactLayout          bool
+	SidebarLayout          bool
 }
 
 func actionFeedbackFromView(vs plugins.PluginViewState) ActionFeedback {
@@ -349,27 +350,37 @@ func renderSectionItem(
 	pal := theme.Ocean()
 	switch {
 	case item.Kind == plugins.KindActions:
-		bui.SettingsRowFrame(ui.Column(c)).AlignItems(ui.Stretch).Justify(ui.Center).
-			Padding(theme.Space8, 0).Children(func() {
-			renderItem(c, pluginID, item, false, values, fb, bindings, onChange, onAction)
-		})
+		if fb.SidebarLayout {
+			ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space6, 0, 0, 0).Children(func() {
+				renderItem(c, pluginID, item, false, values, fb, bindings, onChange, onAction)
+			})
+		} else {
+			bui.SettingsRowFrame(ui.Column(c)).AlignItems(ui.Stretch).Justify(ui.Center).
+				Padding(theme.Space8, 0).Children(func() {
+				renderItem(c, pluginID, item, false, values, fb, bindings, onChange, onAction)
+			})
+		}
 	case isStackedOrGroupItem(item):
-		ui.Column(c).FillWidth().MinWidth(0).
-			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
-			Padding(theme.Space12, 0).Children(func() {
+		block := ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space12, 0)
+		if !fb.SidebarLayout {
+			block.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+		}
+		block.Children(func() {
 			renderItem(c, pluginID, item, false, values, fb, bindings, onChange, onAction)
 		})
 	case isDataBlockItem(item):
 		topPad := float32(0)
 		bottomPad := float32(0)
-		if idx > 0 {
-			topPad = theme.Space12
-		}
-		if idx < count-1 {
-			bottomPad = theme.Space12
+		if !fb.SidebarLayout {
+			if idx > 0 {
+				topPad = theme.Space12
+			}
+			if idx < count-1 {
+				bottomPad = theme.Space12
+			}
 		}
 		block := ui.Column(c).FillWidth().MinWidth(0).Padding(topPad, 0, bottomPad, 0)
-		if idx > 0 {
+		if idx > 0 && !fb.SidebarLayout {
 			block.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
 		}
 		block.Children(func() {
@@ -903,7 +914,7 @@ func renderItem(
 		})
 
 	case plugins.KindLogList:
-		renderLogListItem(c, pluginID, item, values, fb.BusyAction, onAction)
+		renderLogListItem(c, pluginID, item, values, fb.BusyAction, fb.SidebarLayout, onAction)
 	}
 }
 
@@ -950,16 +961,17 @@ func renderLogListItem(
 	item plugins.UIItem,
 	values map[string]any,
 	busyAction string,
+	sidebar bool,
 	onAction func(actionID string, currentValues map[string]any),
 ) {
 	if strings.TrimSpace(item.Label) != "" {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 			renderFieldLabel(c, item.Label)
-			renderLogEntries(c, pluginID, item, values, busyAction, onAction)
+			renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
 		})
 		return
 	}
-	renderLogEntries(c, pluginID, item, values, busyAction, onAction)
+	renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
 }
 
 func renderLogEntries(
@@ -968,6 +980,7 @@ func renderLogEntries(
 	item plugins.UIItem,
 	values map[string]any,
 	busyAction string,
+	sidebar bool,
 	onAction func(actionID string, currentValues map[string]any),
 ) {
 	pal := theme.Ocean()
@@ -1018,12 +1031,31 @@ func renderLogEntries(
 	var timeColW float32
 	if hasTime && !allArrow {
 		timeColW = float32(maxTimeW)*7.5 + 8
-		if timeColW < 56 {
-			timeColW = 56
+		minTime := float32(56)
+		if sidebar {
+			minTime = 36
+		}
+		if timeColW < minTime {
+			timeColW = minTime
 		}
 		if timeColW > 148 {
 			timeColW = 148
 		}
+	}
+
+	rowRadius := theme.RadiusSM
+	rowPadX := theme.Space10
+	rowGap := theme.Space12
+	rowBG := pal.Sidebar
+	titleSize := theme.FontSmall
+	titleLine := theme.LineSmall
+	if sidebar {
+		rowRadius = theme.RadiusMD
+		rowPadX = theme.Space8
+		rowGap = theme.Space8
+		rowBG = ui.Transparent
+		titleSize = theme.FontBody
+		titleLine = theme.LineBody
 	}
 
 	ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
@@ -1035,8 +1067,8 @@ func renderLogEntries(
 			var row ui.Element
 			if clickable {
 				row = ui.ButtonBase(c.Key(rowKey)).FillWidth().MinWidth(0).
-					Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space12).
-					Radius(theme.RadiusSM).Background(pal.Sidebar).
+					Height(theme.HeightControl).PaddingX(rowPadX).Gap(rowGap).
+					Radius(rowRadius).Background(rowBG).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween).
 					Cursor(ui.CursorPointer).Disabled(busyAction != "").Label(e.Title)
 				if e.Ratio <= 0 {
@@ -1048,8 +1080,8 @@ func renderLogEntries(
 				}
 			} else {
 				row = ui.Row(c.Key(rowKey)).FillWidth().MinWidth(0).
-					Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space12).
-					Radius(theme.RadiusSM).Background(pal.Sidebar).
+					Height(theme.HeightControl).PaddingX(rowPadX).Gap(rowGap).
+					Radius(rowRadius).Background(rowBG).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween)
 				if e.Ratio <= 0 && row.Hovered() {
 					row.Background(pal.Hover)
@@ -1068,7 +1100,7 @@ func renderLogEntries(
 				row.Draw(func(p *ui.Painter, bounds ui.Rect) {
 					w := bounds.W * ratio
 					if w >= 2 {
-						p.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, W: w, H: bounds.H}, barColor, theme.RadiusSM)
+						p.Fill(ui.Rect{X: bounds.X, Y: bounds.Y, W: w, H: bounds.H}, barColor, rowRadius)
 					}
 				})
 			}
@@ -1104,7 +1136,7 @@ func renderLogEntries(
 					if showDot {
 						ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotColor).Shrink(0)
 					}
-					ui.Text(c, e.Title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					ui.Text(c, e.Title).FontSize(titleSize).FixedLineHeight(titleLine).
 						TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 					if strings.TrimSpace(e.SubText) != "" {
 						ui.Text(c, e.SubText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
@@ -1124,8 +1156,13 @@ func renderLogEntries(
 						if hasTime {
 							ui.Row(c).Width(timeColW).Justify(ui.End).AlignItems(ui.Center).Shrink(0).Children(func() {
 								if strings.TrimSpace(e.Time) != "" {
-									ui.Text(c, e.Time).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-										TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+									if sidebar {
+										ui.Text(c, e.Time).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+											TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+									} else {
+										ui.Text(c, e.Time).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+									}
 								}
 							})
 						}
@@ -1474,7 +1511,7 @@ func renderPluginActionButton(
 		leading = resolveActionButtonIcon(btn.ID)
 	}
 	label := resolveActionButtonLabel(btn.ID, btn.Label, isBusy, isSuccess)
-	return bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+	opts := bui.ActionButtonOptions{
 		ID:                 idPrefix + pluginID + "-" + btn.ID,
 		Label:              label,
 		AccessibilityLabel: label,
@@ -1483,7 +1520,12 @@ func renderPluginActionButton(
 		Disabled:           disabled,
 		Loading:            isBusy,
 		Truncate:           fb.CompactLayout,
-	})
+	}
+	if fb.SidebarLayout {
+		opts.Height = theme.HeightCompact
+		opts.PaddingX = theme.Space10
+	}
+	return bui.ActionButtonWithOptions(c, opts)
 }
 
 func renderActionsItem(
@@ -1549,11 +1591,15 @@ func renderActionsItem(
 			}
 			bui.WrappedTooltip(c, statusWrap, resMsg)
 			statusWrap.Children(func() {
-				if hasDot {
+				if hasDot && !fb.SidebarLayout {
 					ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
 				}
+				msgColor := pal.TextSecondary
+				if fb.SidebarLayout && resTone == "success" {
+					msgColor = pal.Success
+				}
 				ui.Text(c, resMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+					TextColor(msgColor).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 			})
 		}
 	}
@@ -1586,7 +1632,13 @@ func renderActionsItem(
 			if showInlineStatus {
 				renderStatusNode(true)
 			}
-			ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
+			btnRow := ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center)
+			if fb.SidebarLayout {
+				btnRow.Justify(ui.Start)
+			} else {
+				btnRow.Wrap().Justify(ui.End)
+			}
+			btnRow.Children(func() {
 				for _, btn := range item.Buttons {
 					b := btn
 					el := renderPluginActionButton(c, "plugin-act-", pluginID, b, fb)
