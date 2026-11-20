@@ -182,7 +182,7 @@ func DiffListNumbers(lines []string, change []int) []int {
 			}
 			// An item opens a paragraph only with text after its marker ("1. ## 模块" has
 			// a heading, which a nested "2." may follow).
-			content := ind + len(diffContainerRE.FindString(t))
+			content := ind + diffItemCol(t)
 			para = text(strings.TrimSpace(diffContainerRE.ReplaceAllString(t, "")))
 			if cont && om != nil {
 				n = sib.next
@@ -331,6 +331,15 @@ func diffRefLabel(s string) string {
 
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
 var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
+
+// diffItemCol gives the column a list item's content starts at, from its marker
+// at the start of t: an empty item ("1.") takes one space after its marker.
+func diffItemCol(t string) int {
+	if m := diffContainerRE.FindString(t); m != "" {
+		return len(m)
+	}
+	return len(diffListItemRE.FindString(t)) + 1
+}
 
 // diffListItemRE matches a list item marker at the start of a trimmed line.
 var diffListItemRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])(?:\s|$)`)
@@ -564,7 +573,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				in := strings.TrimLeft(r, " \t")
 				qLead = len(strings.ReplaceAll(r[:len(r)-len(in)], "\t", "    "))
 				if diffListItemRE.MatchString(in) {
-					qCol = qLead + len(diffContainerRE.FindString(in))
+					qCol = qLead + diffItemCol(in)
 				} else if in != "" && qLead < qCol {
 					qCol = 0
 				}
@@ -652,7 +661,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					for len(cols) > 0 && cols[len(cols)-1] > ind {
 						cols = cols[:len(cols)-1]
 					}
-					listCol = ind + len(diffContainerRE.FindString(t))
+					listCol = ind + diffItemCol(t)
 					cols = append(cols, listCol)
 				}
 				inList = item || (!setext || inItem) && inList && ind > 0
@@ -1379,7 +1388,7 @@ func DiffAlertTitles(lines []string, change []int) []string {
 						cols = cols[:len(cols)-1]
 					}
 					if !masks[si][i] && diffListItemRE.MatchString(t) {
-						cols = append(cols, lead+len(diffContainerRE.FindString(t)))
+						cols = append(cols, lead+diffItemCol(t))
 					}
 				}
 			}
