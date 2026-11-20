@@ -2417,6 +2417,9 @@ func (w *Workspace) CreateNewNote() (string, error) {
 		return "", err
 	}
 	w.RescanNotebook()
+	if err := w.openNoteInternal(created, true, true, 0); err != nil {
+		w.setNotice(err.Error())
+	}
 	w.beginCreatedItemRename(folder, created, false)
 	return created, nil
 }
