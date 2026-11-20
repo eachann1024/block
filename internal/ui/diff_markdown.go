@@ -234,8 +234,11 @@ func diffRefLabel(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
+// diffFenceTaskPrefix matches the bullet and checkbox of a task carrying a fence.
+const diffFenceTaskPrefix = `[-*+] \[[ xX]\] `
+
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
-var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
+var diffContainerRE = regexp.MustCompile(`^(?:>\s*|` + diffFenceTaskPrefix + `\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 
 // diffTaskMarkRE matches a task list item's check box with the space after it.
 var diffTaskMarkRE = regexp.MustCompile(`^\[[ xX]\][ \t]+`)
@@ -372,7 +375,7 @@ func DiffHardBreaks(lines []string, change []int) []bool {
 
 // diffFenceLineRE matches a code fence line ("```sh", "> ~~~", "- ```sh") behind
 // quote and list markers; group 1 is the markers, 2 the fence run, 3 its info string.
-var diffFenceLineRE = regexp.MustCompile("^((?:>\\s*)*(?:(?:[-*+]|\\d{1,9}[.)])\\s+)?)(`{3,}|~{3,})(.*)$")
+var diffFenceLineRE = regexp.MustCompile("^((?:>\\s*)*(?:" + diffFenceTaskPrefix + "\\s*|(?:[-*+]|\\d{1,9}[.)])\\s+)?)(`{3,}|~{3,})(.*)$")
 
 // DiffFenceLines marks the opening and closing fence lines of the code blocks in
 // DiffFenceMask, each side read on its own (an unchanged line: the new text); "~~~ 输出"
