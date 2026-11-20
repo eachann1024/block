@@ -42,6 +42,7 @@ type TabSurface struct {
 	IsSVG         bool
 	IsHTML        bool
 	SavedText     string
+	FileSize      int64
 	BlockedReason string
 	StatusMsg     string
 
@@ -80,6 +81,10 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 	}
 	isSVG := files.IsSVGPath(path) || src.SVG
 	isHTML := src.HTML || strings.EqualFold(src.Language, "html")
+	var fileSize int64
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		fileSize = info.Size()
+	}
 	s := &TabSurface{
 		Path:          path,
 		Kind:          cf.Kind,
@@ -88,6 +93,7 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 		IsSVG:         isSVG,
 		IsHTML:        isHTML,
 		SavedText:     src.Text,
+		FileSize:      fileSize,
 		BlockedReason: cf.Reason,
 		Zoom:          1.0,
 		ZoomFitMode:   true,
