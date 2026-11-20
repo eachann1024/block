@@ -6,11 +6,14 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertReleaseAsset, RELEASE_ASSETS } from "./allowed-assets.mjs";
 import {
+  compareVersions,
+  getReleases,
   gh,
   REPO,
   ROOT,
   setMyGoJsonVersion,
   setPackageJsonVersion,
+  versionFromTag,
 } from "./select-release.mjs";
 import { fetchGithubReleaseByTag, syncFeedFromGithub } from "./update-feed.mjs";
 
@@ -36,14 +39,35 @@ function tryFetchReleaseByTag(tag) {
   }
 }
 
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function parseJsonVersion(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return versionFromTag(parsed?.version);
+  } catch {
+    return null;
+  }
+}
+
 function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const head = JSON.parse(gh(["api", `repos/${REPO}/git/ref/heads/main`])).object.sha;
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
     const files = {};
     if (autoBump) {
-      files["package.json"] = setPackageJsonVersion(readFileAtRef(head, "package.json"), version);
-      files["mygo.json"] = setMyGoJsonVersion(readFileAtRef(head, "mygo.json"), version);
+      const pkgText = readFileAtRef(head, "package.json");
+      const pkgVer = parseJsonVersion(pkgText);
+      if (!pkgVer || compareVersions(version, pkgVer) > 0) {
+        files["package.json"] = setPackageJsonVersion(pkgText, version);
+      }
+      const mygoText = readFileAtRef(head, "mygo.json");
+      const mygoVer = parseJsonVersion(mygoText);
+      if (!mygoVer || compareVersions(version, mygoVer) > 0) {
+        files["mygo.json"] = setMyGoJsonVersion(mygoText, version);
+      }
     }
     if (typeof feedJson === "string") {
       files["updates/feed.json"] = feedJson;
@@ -66,7 +90,8 @@ function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}
       }));
       return;
     } catch (err) {
-      if (attempt === 2 || !/409|422/.test(String(err.stderr || err.message))) throw err;
+      if (attempt === 4 || !/409|422/.test(String(err.stderr || err.message))) throw err;
+      sleepSync(500 * (attempt + 1));
     }
   }
 }
@@ -104,26 +129,54 @@ export async function publishRelease() {
     assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
   );
 
+  const allReleases = getReleases();
+  const existingDraft = allReleases.find((r) => r?.draft && r?.tag_name === tag);
+  assert.ok(!existingDraft, `Release ${tag} is an existing draft and requires reconciliation`);
   const existing = tryFetchReleaseByTag(tag);
   const title = `Block ${version}`;
   let publishedRelease;
 
   if (!existing) {
-    gh([
-      "release",
-      "create",
-      tag,
-      ...assetPaths,
-      "--repo",
-      REPO,
-      "--target",
-      commit,
-      "--title",
-      title,
-      "--notes",
-      releaseNotes,
-      "--latest",
-    ]);
+    const hasNewerPublished = allReleases.some((r) => {
+      if (!r || r.draft || r.prerelease) return false;
+      const other = versionFromTag(r.tag_name);
+      return Boolean(other && compareVersions(other, version) > 0);
+    });
+    try {
+      gh([
+        "release",
+        "create",
+        tag,
+        ...assetPaths,
+        "--repo",
+        REPO,
+        "--target",
+        commit,
+        "--title",
+        title,
+        "--notes",
+        releaseNotes,
+        "--draft",
+      ]);
+      gh([
+        "release",
+        "edit",
+        tag,
+        "--repo",
+        REPO,
+        "--draft=false",
+        `--latest=${hasNewerPublished ? "false" : "true"}`,
+      ]);
+    } catch (err) {
+      // Remove only the partial draft we just created so re-running does not burn a version number.
+      try {
+        const createdDraft = getReleases().find((r) => r?.draft && r?.tag_name === tag && r?.id);
+        if (createdDraft) {
+          gh(["api", "--method", "DELETE", `repos/${REPO}/releases/${createdDraft.id}`]);
+        }
+      } catch {}
+      throw err;
+    }
     publishedRelease = fetchGithubReleaseByTag(tag);
   } else {
     publishedRelease = existing;
