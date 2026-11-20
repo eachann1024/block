@@ -362,8 +362,6 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		mask, head := make([]bool, len(lines)), make([]int, len(lines))
 		fl := make([]int8, len(lines))
 		fence, fenceList, fenceQuote := "", false, 0
-		// fenceIndent: the content column of the list item a fence sits in (0: none).
-		fenceIndent := 0
 		// qCol: behind the quote markers, the content column of the quoted list item
 		// the line sits in (0: none); without one, a quoted "```" four columns in is
 		// indented code, not a fence.
@@ -400,10 +398,9 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 			}
 			lead := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 			// A fence opened in a blockquote ends with the quote: at a blank or a line
-			// with fewer ">" markers, which is read as ordinary text again. One in a list
-			// item ends with the item, at a line left of its content.
-			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote ||
-				fence != "" && fenceIndent > 0 && t != "" && lead < fenceIndent {
+			// with fewer ">" markers, which is read as ordinary text again. A list fence
+			// can contain outdented code and closes at any indentation.
+			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote {
 				fence = ""
 			}
 			qLead := 0
@@ -577,12 +574,6 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				fl[i] = 1
 				fenceQuote = diffQuoteDepth(t)
 				fenceList = inList || diffListItemRE.MatchString(diffQuoteRE.ReplaceAllString(t, ""))
-				// The item's content column, not the fence's own indent: "    ```" under
-				// "- 运行" still closes at "  ```".
-				fenceIndent = 0
-				if fenceQuote == 0 && fenceList {
-					fenceIndent = listCol
-				}
 			}
 		}
 		masks[si], heads[si], fences[si] = mask, head, fl
