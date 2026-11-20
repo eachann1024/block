@@ -664,7 +664,11 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					listCol = ind + diffItemCol(t)
 					cols = append(cols, listCol)
 				}
-				inList = item || (!setext || inItem) && inList && ind > 0
+				// Paragraph text at the margin continues the item's paragraph lazily
+				// ("1. 部署" over "补充说明："), so the list stays open.
+				lazy := para && !setext && !item && !strings.HasPrefix(t, ">") && diffFenceOpen(t) == "" &&
+					!diffRuleRE.MatchString(t) && !diffHeadingRE.MatchString(t) && !diffMathStart(t)
+				inList = item || (!setext || inItem) && inList && (ind > 0 || lazy)
 				if !inList {
 					cols = nil
 				}
