@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"block/internal/files"
 )
@@ -966,6 +967,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 		b, err := readPluginFile(root, cleanRel, maxPluginNote)
 		if err != nil {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		if !utf8.Valid(b) {
+			return nil, &rpcError{Code: -32004, Message: "note file is not valid UTF-8"}
 		}
 		return map[string]any{"path": filepath.ToSlash(cleanRel), "content": string(b), "revision": noteRevision(b)}, nil
 
