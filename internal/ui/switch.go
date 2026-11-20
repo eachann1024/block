@@ -17,6 +17,9 @@ const (
 	// SwitchStandard is the default 38x22 switch used across settings rows,
 	// dialogs, AI settings, export options, and plugin-declared controls.
 	SwitchStandard SwitchSize = iota
+	// SwitchCompact is the 34x20 switch used in compact chrome such as the
+	// global plugin settings titlebar.
+	SwitchCompact
 	// SwitchHero is the 52x30 master switch (with a 44px hit height) used for
 	// primary toggles such as plugin page headers.
 	SwitchHero
@@ -223,12 +226,17 @@ func resolveSwitchPhase(opts SwitchOptions) SwitchPhase {
 }
 
 func switchMetrics(size SwitchSize) (trackW, trackH, knobSize, pad, stretch, hitH float32) {
-	if size == SwitchHero {
+	switch size {
+	case SwitchCompact:
+		return theme.SwitchCompactTrackW, theme.SwitchCompactTrackH, theme.SwitchCompactKnobSize,
+			theme.SwitchCompactPad, theme.SwitchCompactPressStretch, theme.SwitchCompactTrackH
+	case SwitchHero:
 		return theme.SwitchHeroTrackW, theme.SwitchHeroTrackH, theme.SwitchHeroKnobSize,
 			theme.SwitchHeroPad, theme.SwitchHeroPressStretch, theme.SwitchHeroHitH
+	default:
+		return theme.SwitchTrackW, theme.SwitchTrackH, theme.SwitchKnobSize,
+			theme.SwitchPad, theme.SwitchPressStretch, theme.SwitchTrackH
 	}
-	return theme.SwitchTrackW, theme.SwitchTrackH, theme.SwitchKnobSize,
-		theme.SwitchPad, theme.SwitchPressStretch, theme.SwitchTrackH
 }
 
 func fillAlphaTarget(on bool, phase SwitchPhase) float32 {
