@@ -111,11 +111,13 @@ func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	if escapePipe && strings.ContainsRune(dest, '|') {
 		dest = strings.ReplaceAll(dest, "|", `\|`)
 	}
-	if def.title == "" || strings.ContainsAny(def.title, "\r\n") {
+	if def.title == "" {
 		return "(" + dest + ")"
 	}
 	title := strings.ReplaceAll(def.title, `\`, `\\`)
 	title = strings.ReplaceAll(title, `"`, `\"`)
+	title = strings.ReplaceAll(title, "\r", "&#13;")
+	title = strings.ReplaceAll(title, "\n", "&#10;")
 	if escapeBrackets {
 		title = strings.ReplaceAll(title, "[", `\[`)
 		title = strings.ReplaceAll(title, "]", `\]`)
@@ -546,13 +548,15 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 						altBuf.WriteString(sp.Text)
 					}
 					plainAlt := altBuf.String()
-					if plainAlt == "" {
+					altEmpty := plainAlt == ""
+					if altEmpty {
 						plainAlt = fallbackImageAlt(dest)
 					}
 					toks = append(toks, &inlineTok{
 						kind:  tokImage,
 						text:  plainAlt,
 						tag:   title,
+						canOp: altEmpty,
 						style: inlineStyle{link: dest},
 					})
 					i += 1 + consumed
@@ -1737,7 +1741,8 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 		src := strings.TrimSpace(attrVal(attrs, "src"))
 		title := strings.TrimSpace(attrVal(attrs, "title"))
 		label := alt
-		if label == "" && src != "" {
+		altEmpty := label == ""
+		if altEmpty && src != "" {
 			label = fallbackImageAlt(src)
 		}
 		if label == "" {
@@ -1745,7 +1750,7 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 		}
 		if src != "" {
 			return raw, []*inlineTok{
-				{kind: tokImage, text: label, tag: title, style: inlineStyle{link: src}},
+				{kind: tokImage, text: label, tag: title, canOp: altEmpty, style: inlineStyle{link: src}},
 			}, consumed, true
 		}
 		return raw, []*inlineTok{{kind: tokText, text: label}}, consumed, true
@@ -2091,13 +2096,14 @@ func emitSpans(toks []*inlineTok) []model.Span {
 			if tok.text != "" {
 				st := currentStyle()
 				out = append(out, model.Span{
-					Text:       tok.text,
-					Marks:      st.marks,
-					Link:       st.link,
-					ImageSrc:   tok.style.link,
-					ImageTitle: tok.tag,
-					FGColor:    st.fgColor,
-					BGColor:    st.bgColor,
+					Text:          tok.text,
+					Marks:         st.marks,
+					Link:          st.link,
+					ImageSrc:      tok.style.link,
+					ImageTitle:    tok.tag,
+					ImageAltEmpty: tok.canOp,
+					FGColor:       st.fgColor,
+					BGColor:       st.bgColor,
 				})
 			}
 		case tokDelim:
@@ -2431,7 +2437,9 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 				out.WriteString(`<img src="`)
 				out.WriteString(escapeAttrValue(sp.ImageSrc))
 				out.WriteString(`" alt="`)
-				out.WriteString(escapeAttrValue(sp.Text))
+				if !sp.ImageAltEmpty {
+					out.WriteString(escapeAttrValue(sp.Text))
+				}
 				out.WriteByte('"')
 				if sp.ImageTitle != "" {
 					out.WriteString(` title="`)
@@ -2447,7 +2455,9 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 				}
 			} else {
 				out.WriteString("![")
-				writeInlineText(&out, sp.Text, true, false, true, true)
+				if !sp.ImageAltEmpty {
+					writeInlineText(&out, sp.Text, true, false, true, true)
+				}
 				out.WriteByte(']')
 				out.WriteString(formatRefDefInline(refDef{dest: sp.ImageSrc, title: sp.ImageTitle}, false, inMarkdownLink))
 			}
@@ -2825,6 +2835,10 @@ func escapeAttrValue(v string) string {
 			b.WriteString("&lt;")
 		case '>':
 			b.WriteString("&gt;")
+		case '\n':
+			b.WriteString("&#10;")
+		case '\r':
+			b.WriteString("&#13;")
 		default:
 			b.WriteRune(r)
 		}

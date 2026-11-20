@@ -446,6 +446,10 @@ func collectCandidateRefDefsFromLines(src string, lines []string) map[string]ref
 			i += count - 1
 			continue
 		}
+		if _, count, ok := parseMultiLineHTMLAnchorBlock(lines[i:], nil, nil); ok && count > 0 {
+			i += count - 1
+			continue
+		}
 		if _, ok := openHTMLProseTag(line); ok {
 			if count := htmlProseLineCount(lines[i:]); count > 0 {
 				i += count - 1
@@ -1104,7 +1108,7 @@ func parseImageLineWithDefs(line string, defs map[string]refDef, used map[string
 		return model.Block{}, false
 	}
 	st := newInlineScanState(s)
-	alt, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, 1, defs, true)
+	alt, dest, title, refKey, consumed, ok := tryParseLinkOrImageWithTitleRefAt(st, 1, defs, true)
 	if !ok || refKey == "" || 1+consumed != len(s) || dest == "" {
 		return model.Block{}, false
 	}
@@ -1115,7 +1119,8 @@ func parseImageLineWithDefs(line string, defs map[string]refDef, used map[string
 		ID:         model.NewBlockID(),
 		Kind:       model.BlockImage,
 		ImageSrc:   dest,
-		ImageAlt:   alt,
+		ImageAlt:   unescapeLinkText(alt),
+		ImageTitle: title,
 		ImageAlign: model.ImageAlignLeft,
 	}, true
 }
@@ -1131,58 +1136,17 @@ func parseImageLine(line string) (model.Block, bool) {
 	if !strings.HasPrefix(s, "![") || !strings.HasSuffix(s, ")") {
 		return model.Block{}, false
 	}
-	mid := -1
-	for k := 2; k+1 < len(s); k++ {
-		if s[k] == '\\' {
-			k++
-			continue
-		}
-		if s[k] == ']' && s[k+1] == '(' {
-			mid = k
-			break
-		}
-	}
-	if mid < 0 {
-		return model.Block{}, false
-	}
-	alt := strings.ReplaceAll(s[2:mid], `\]`, "]")
-	alt = strings.ReplaceAll(alt, `\\`, `\`)
-	inner := s[mid+2 : len(s)-1]
-	var dest, rest string
-	if strings.HasPrefix(inner, "<") {
-		end := strings.IndexByte(inner[1:], '>')
-		if end < 0 {
-			return model.Block{}, false
-		}
-		dest = inner[1 : 1+end]
-		rest = inner[1+end+1:]
-	} else {
-		sp := strings.IndexAny(inner, " \t")
-		if sp < 0 {
-			dest = inner
-		} else {
-			dest = inner[:sp]
-			rest = inner[sp:]
-		}
-	}
-	rest = strings.TrimSpace(rest)
-	if rest != "" {
-		if len(rest) < 2 {
-			return model.Block{}, false
-		}
-		q0, q1 := rest[0], rest[len(rest)-1]
-		if !((q0 == '"' && q1 == '"') || (q0 == '\'' && q1 == '\'') || (q0 == '(' && q1 == ')')) {
-			return model.Block{}, false
-		}
-	}
-	if dest == "" {
+	st := newInlineScanState(s)
+	alt, dest, title, _, consumed, ok := tryParseLinkOrImageWithTitleRefAt(st, 1, nil, true)
+	if !ok || 1+consumed != len(s) || dest == "" {
 		return model.Block{}, false
 	}
 	return model.Block{
 		ID:         model.NewBlockID(),
 		Kind:       model.BlockImage,
 		ImageSrc:   dest,
-		ImageAlt:   alt,
+		ImageAlt:   unescapeLinkText(alt),
+		ImageTitle: title,
 		ImageAlign: model.ImageAlignLeft,
 	}, true
 }
@@ -1263,6 +1227,7 @@ func parseHTMLImageLine(s string) (model.Block, bool) {
 		Kind:       model.BlockImage,
 		ImageSrc:   src,
 		ImageAlt:   alt,
+		ImageTitle: attrVal(attrs, "title"),
 		ImageWidth: w,
 		ImageAlign: align,
 		ImageCrop:  crop,
@@ -1888,6 +1853,53 @@ func htmlBlockTagKind(name string) (model.BlockKind, bool) {
 		return model.BlockHeading6, true
 	}
 	return 0, false
+}
+
+func parseMultiLineHTMLAnchorBlock(lines []string, defs map[string]refDef, usedOut map[string]bool) (model.Block, int, bool) {
+	if len(lines) < 2 {
+		return model.Block{}, 0, false
+	}
+	first := trimLineEnding(lines[0])
+	body := strings.TrimLeft(first, " ")
+	if len(first)-len(body) > 3 || !strings.HasPrefix(strings.ToLower(body), "<a") {
+		return model.Block{}, 0, false
+	}
+	name, _, closed, empty, consumed, ok := parseTagRaw(body)
+	if !ok || closed || empty || name != "a" || strings.Contains(strings.ToLower(body[consumed:]), "</a>") {
+		return model.Block{}, 0, false
+	}
+	end := -1
+	for j := 1; j < len(lines); j++ {
+		ln := trimLineEnding(lines[j])
+		if strings.TrimSpace(ln) == "" {
+			break
+		}
+		if strings.Contains(strings.ToLower(ln), "</a>") {
+			end = j + 1
+			break
+		}
+	}
+	if end < 0 {
+		return model.Block{}, 0, false
+	}
+	var joined strings.Builder
+	for j := 0; j < end; j++ {
+		part := strings.TrimSpace(trimLineEnding(lines[j]))
+		if part == "" {
+			continue
+		}
+		if joined.Len() > 0 && !strings.HasSuffix(joined.String(), ">") && !strings.HasPrefix(part, "<") {
+			joined.WriteByte(' ')
+		}
+		joined.WriteString(part)
+	}
+	orig := strings.Join(lines[:end], "")
+	return model.Block{
+		ID:          model.NewBlockID(),
+		Kind:        model.BlockParagraph,
+		Spans:       parseInlineWithDefsAndUsed(joined.String(), defs, usedOut),
+		CleanSource: orig,
+	}, end, true
 }
 
 func openHTMLProseTag(line string) (string, bool) {
@@ -2670,6 +2682,11 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 					CleanSource: orig,
 				}, count)
 			}
+			i += count
+			continue
+		}
+		if b, count, ok := parseMultiLineHTMLAnchorBlock(lines[i:], defs, usedOut); ok {
+			appendBlock(b, count)
 			i += count
 			continue
 		}

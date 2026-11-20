@@ -162,13 +162,14 @@ const (
 )
 
 type Span struct {
-	Text       string `json:"text"`
-	Marks      Mark   `json:"marks,omitempty"`
-	Link       string `json:"link,omitempty"`
-	ImageSrc   string `json:"imageSrc,omitempty"`
-	ImageTitle string `json:"imageTitle,omitempty"`
-	FGColor    string `json:"fgColor,omitempty"`
-	BGColor    string `json:"bgColor,omitempty"`
+	Text          string `json:"text"`
+	Marks         Mark   `json:"marks,omitempty"`
+	Link          string `json:"link,omitempty"`
+	ImageSrc      string `json:"imageSrc,omitempty"`
+	ImageTitle    string `json:"imageTitle,omitempty"`
+	ImageAltEmpty bool   `json:"imageAltEmpty,omitempty"`
+	FGColor       string `json:"fgColor,omitempty"`
+	BGColor       string `json:"bgColor,omitempty"`
 }
 
 func PlainTextOfSpans(spans []Span) string {
@@ -287,6 +288,7 @@ type Block struct {
 	Code        string      `json:"code,omitempty"` // Used by BlockCode and BlockRawHTML
 	ImageSrc    string      `json:"imageSrc,omitempty"`
 	ImageAlt    string      `json:"imageAlt,omitempty"`
+	ImageTitle  string      `json:"imageTitle,omitempty"`
 	ImageWidth  float32     `json:"imageWidth,omitempty"` // Percentage 10..100 or 0 for auto
 	ImageAlign  ImageAlign  `json:"imageAlign,omitempty"`
 	ImageCrop   ImageCrop   `json:"imageCrop,omitempty"`

@@ -379,6 +379,7 @@ type htmlPasteConverter struct {
 	liStk       []htmlLIState
 	quoteDepth  int
 	headingLvl  int
+	inPara      int
 	inPre       bool
 	preLang     string
 	preBuf      strings.Builder
@@ -1012,6 +1013,30 @@ func (c *htmlPasteConverter) parse(src string) {
 					c.pushBreak()
 				}
 				continue
+			case "img":
+				if !closed && c.table.inCell {
+					srcURL := strings.TrimSpace(attrVal(attrs, "src"))
+					if isPasteableRemoteOrLocalImage(srcURL) {
+						alt := strings.TrimSpace(attrVal(attrs, "alt"))
+						title := strings.TrimSpace(attrVal(attrs, "title"))
+						marks, link, bg := c.activeStyle()
+						label := alt
+						altEmpty := label == ""
+						if altEmpty {
+							label = fallbackImageAlt(srcURL)
+						}
+						c.table.cellSpans = append(c.table.cellSpans, model.Span{
+							Text:          label,
+							Marks:         marks,
+							Link:          link,
+							ImageSrc:      srcURL,
+							ImageTitle:    title,
+							ImageAltEmpty: altEmpty,
+							BGColor:       bg,
+						})
+					}
+				}
+				continue
 			}
 			if isKnownInlineTag(name) {
 				if closed {
@@ -1034,7 +1059,15 @@ func (c *htmlPasteConverter) parse(src string) {
 				c.headingLvl = 0
 			}
 
-		case "p", "div", "section", "article", "header", "footer", "main":
+		case "p":
+			c.flushCurrentBlock()
+			if !closed && !empty {
+				c.inPara++
+			} else if closed && c.inPara > 0 {
+				c.inPara--
+			}
+
+		case "div", "section", "article", "header", "footer", "main":
 			c.flushCurrentBlock()
 
 		case "br":
@@ -1124,19 +1157,21 @@ func (c *htmlPasteConverter) parse(src string) {
 					title := strings.TrimSpace(attrVal(attrs, "title"))
 					marks, link, bg := c.activeStyle()
 					inTableCell := c.table != nil && c.table.inCell
-					if inTableCell || link != "" || marks != 0 || bg != "" || len(c.curSpans) > 0 {
+					if inTableCell || link != "" || marks != 0 || bg != "" || len(c.curSpans) > 0 || c.headingLvl > 0 || len(c.liStk) > 0 || c.quoteDepth > 0 || c.inPara > 0 {
 						label := alt
-						if label == "" {
+						altEmpty := label == ""
+						if altEmpty {
 							label = fallbackImageAlt(srcURL)
 						}
 						target := c.targetSpans()
 						*target = append(*target, model.Span{
-							Text:       label,
-							Marks:      marks,
-							Link:       link,
-							ImageSrc:   srcURL,
-							ImageTitle: title,
-							BGColor:    bg,
+							Text:          label,
+							Marks:         marks,
+							Link:          link,
+							ImageSrc:      srcURL,
+							ImageTitle:    title,
+							ImageAltEmpty: altEmpty,
+							BGColor:       bg,
 						})
 					} else {
 						c.flushCurrentBlock()
