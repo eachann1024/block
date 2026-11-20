@@ -32,35 +32,73 @@ const (
 	brandOrbX        float32 = 190
 )
 
-// BrandMotionLevel controls how much ambient motion plays inside the brand band.
-type BrandMotionLevel uint8
+// BrandDensity controls how many scene elements are drawn. It never changes their speed.
+type BrandDensity uint8
 
 const (
-	BrandMotionRich  BrandMotionLevel = iota // Full layered ambient + detail animation (a1 + a2).
-	BrandMotionCalm                          // Subtle ambient atmosphere only (a1); accents stay calm.
-	BrandMotionStill                         // Static illustrated band with zero per-frame animation.
+	BrandDensityRich    BrandDensity = iota // Every element, including the occasional passers-by.
+	BrandDensityCalm                        // Landmarks plus a moderate amount of ambient detail.
+	BrandDensityMinimal                     // Only the landscape, the orb and the landmark figures.
 )
+
+// BrandTempo controls how fast the scene animates. It never changes what is drawn.
+type BrandTempo uint8
+
+const (
+	BrandTempoLeisurely BrandTempo = iota // Default unhurried pace.
+	BrandTempoSlow                        // Noticeably slower than the default.
+	BrandTempoBrisk                       // The liveliest pace.
+	BrandTempoStill                       // Static illustrated band with zero per-frame animation.
+)
+
+// BrandMotion is the runtime pairing of element density and animation tempo.
+type BrandMotion struct {
+	Density BrandDensity
+	Tempo   BrandTempo
+}
+
+// rate returns the scene clock speed multiplier for the tempo.
+func (t BrandTempo) rate() float32 {
+	switch t {
+	case BrandTempoStill:
+		return 0
+	case BrandTempoSlow:
+		return 0.4
+	case BrandTempoBrisk:
+		return 1
+	default:
+		return 0.64
+	}
+}
 
 // BrandScenePaintOpts configures how PaintBrandSceneBand renders and animates the top band.
 type BrandScenePaintOpts struct {
 	ShowOrb    bool
 	ShowCat    bool
 	SceneWidth float32 // sidebar artwork width; <= 0 paints only the fading sky backdrop
-	Motion     BrandMotionLevel
+	Motion     BrandMotion
 	PauseAnim  bool
 	Now        time.Time
 }
 
-// ResolveBrandMotion converts persisted BrandDeco preferences into a runtime motion tier.
-func ResolveBrandMotion(deco model.BrandDeco) BrandMotionLevel {
-	switch deco.Motion {
-	case model.BrandDecoMotionCalm:
-		return BrandMotionCalm
-	case model.BrandDecoMotionStill:
-		return BrandMotionStill
-	default:
-		return BrandMotionRich
+// ResolveBrandMotion converts persisted BrandDeco preferences into runtime density and tempo.
+func ResolveBrandMotion(deco model.BrandDeco) BrandMotion {
+	var m BrandMotion
+	switch deco.EffectiveDensity() {
+	case model.BrandDecoDensityCalm:
+		m.Density = BrandDensityCalm
+	case model.BrandDecoDensityMinimal:
+		m.Density = BrandDensityMinimal
 	}
+	switch deco.EffectiveTempo() {
+	case model.BrandDecoTempoSlow:
+		m.Tempo = BrandTempoSlow
+	case model.BrandDecoTempoBrisk:
+		m.Tempo = BrandTempoBrisk
+	case model.BrandDecoTempoStill:
+		m.Tempo = BrandTempoStill
+	}
+	return m
 }
 
 // BrandSceneSpec describes metadata for settings cards and scene selection.
@@ -282,7 +320,7 @@ type sceneStar struct {
 	opacity  float32
 	dim      float32
 	twinkle  starTwinkleKind
-	tierA1   bool
+	tier     uint8 // 0 always, 1 calm and richer, 2 rich only
 	delaySec float32
 	durSec   float32
 }
@@ -290,6 +328,7 @@ type sceneStar struct {
 type sceneBlade struct {
 	x, y     float32
 	h, lean  float32
+	tier     uint8
 	delaySec float32
 	durSec   float32
 }
@@ -313,13 +352,15 @@ type sceneMistBand struct {
 	color      ui.Color
 	baseOp     float32
 	kind       mistAnimKind
-	tierA1     bool
+	tier       uint8 // 0 always, 1 calm and richer, 2 rich only
 	delaySec   float32
 	durSec     float32
 }
 
 type sceneCloud struct {
 	x, y, scale float32
+	drift       float32 // horizontal sway in px
+	tier        uint8
 	delaySec    float32
 	durSec      float32
 }
@@ -381,6 +422,7 @@ const (
 type sceneFirefly struct {
 	x, y          float32
 	size          float32
+	tier          uint8
 	flipX         bool
 	wanderIdx     int
 	moveDelaySec  float32
@@ -415,6 +457,7 @@ type sceneMeteor struct {
 
 type sceneMoonWisp struct {
 	y, scale float32
+	tier     uint8
 	delaySec float32
 	durSec   float32
 }
@@ -449,11 +492,11 @@ type compiledScene struct {
 	ground   ui.Color
 	skyStops []ui.GradientStop
 
-	peak peakCurve
-	far  ridgeCurve
-	mid  ridgeCurve
+	peak   peakCurve
+	far    ridgeCurve
+	mid    ridgeCurve
 	hasMid bool
-	near ridgeCurve
+	near   ridgeCurve
 
 	// Rim highlights on peak & far ridge (daybreak, moon)
 	rimX0, rimX1 float32
@@ -464,6 +507,7 @@ type compiledScene struct {
 
 	// Shared optional features
 	stars       []sceneStar
+	spill       []sceneStar // x is relative to the sidebar edge; trails into the titlebar
 	mists       []sceneMistBand
 	blades      []sceneBlade
 	bladeColor  ui.Color
@@ -514,11 +558,12 @@ var (
 	compiledOnce sync.Once
 	compiledByID map[BrandSceneID]*compiledScene
 
+	// Titlebar controls pinned to the window's left edge: traffic lights, sidebar toggle, wordmark.
+	// The back/forward arrows hug the sidebar's right edge instead, so paintStarField avoids them.
 	staticAvoidRects = [][4]float32{
-		{8, 10, 84, 30},
-		{110, 4, 186, 36},
-		{196, 4, 256, 36},
-		{264, 4, 640, 36},
+		{6, 9, 70, 31},
+		{82, 8, 104, 32},
+		{108, 6, 183, 34},
 	}
 )
 
@@ -566,7 +611,7 @@ func makeBlades(rng *rand.Rand, yf func(float64) float32, xs []float32, hMin, hM
 		h := hMin + rng.Float32()*(hMax-hMin)
 		lean := leanMin + rng.Float32()*(leanMax-leanMin)
 		y := yf(float64(x)) + 1.2
-		b := sceneBlade{x: x, y: y, h: h, lean: lean}
+		b := sceneBlade{x: x, y: y, h: h, lean: lean, tier: uint8(len(out) % 3)}
 		switch animMode {
 		case "gust":
 			rem := math.Mod(float64(x)/46.0, 7.0)
@@ -577,7 +622,7 @@ func makeBlades(rng *rand.Rand, yf func(float64) float32, xs []float32, hMin, hM
 			b.durSec = 7.0
 		case "flut":
 			b.delaySec = rng.Float32() * 2.0
-			b.durSec = 1.1 + rng.Float32()*1.0
+			b.durSec = 1.8 + rng.Float32()*1.4
 		case "reed":
 			b.delaySec = rng.Float32() * 8.0
 			b.durSec = 6.0 + rng.Float32()*3.0
@@ -588,7 +633,7 @@ func makeBlades(rng *rand.Rand, yf func(float64) float32, xs []float32, hMin, hM
 	return out, tips
 }
 
-func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colors []ui.Color, tierA1 bool, dimFn func(x, y float32) float32) []sceneStar {
+func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colors []ui.Color, dimFn func(x, y float32) float32) []sceneStar {
 	// Generate exact count across [4, 1200-4] plus seamless continuation across [1200, brandSkyMaxWidth-4] for ultrawide displays.
 	extra := int(float32(count1200) * (brandSkyMaxWidth - brandDesignWidth) / brandDesignWidth)
 	total := count1200 + extra
@@ -623,7 +668,7 @@ func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colo
 			color:   col,
 			opacity: op,
 			dim:     dim,
-			tierA1:  tierA1,
+			tier:    uint8(len(out) % 3),
 		}
 		if twk {
 			if irreg {
@@ -634,6 +679,42 @@ func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colo
 				st.durSec = du
 			}
 			st.delaySec = dl
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+// makeSpill scatters a thinning trail of stars past the sidebar's right edge. x is relative to
+// that edge, density and brightness fall off with distance, and most stars keep to the strips
+// above and below the titlebar's text line so they read as an accent rather than noise.
+func makeSpill(rng *rand.Rand, colors []ui.Color, width float32, n int) []sceneStar {
+	out := make([]sceneStar, 0, n)
+	for i := range n {
+		u := float32(math.Pow(float64(rng.Float32()), 1.6))
+		lane := rng.Float32()
+		v := rng.Float32()
+		st := sceneStar{
+			x:       -10 + u*width,
+			r:       0.38 + 0.7*v*v*v,
+			color:   colors[rng.Intn(len(colors))],
+			opacity: 0.35 + 0.6*v,
+			dim:     float32(math.Pow(float64(1-u), 1.3)),
+			tier:    uint8(i % 3),
+		}
+		switch {
+		case lane < 0.45:
+			st.y = 2.5 + rng.Float32()*5.5
+		case lane < 0.80:
+			st.y = 30 + rng.Float32()*7
+		default:
+			st.y = 9 + rng.Float32()*20
+			st.dim *= 0.5
+		}
+		if rng.Float32() < 0.4 {
+			st.twinkle = twinkleSmooth
+			st.delaySec = rng.Float32() * 6.0
+			st.durSec = 2.6 + rng.Float32()*3.8
 		}
 		out = append(out, st)
 	}
@@ -692,7 +773,7 @@ func makeLakeGlints(rng *rand.Rand, cy, gx float32) []sceneLakeGlint {
 			y:        cy + sp[0],
 			w:        sp[1],
 			delaySec: rng.Float32() * 2.0,
-			durSec:   0.9 + rng.Float32()*1.0,
+			durSec:   1.6 + rng.Float32()*1.4,
 		}
 	}
 	return out
@@ -763,17 +844,17 @@ func compileDawn(ground ui.Color) *compiledScene {
 		near:   near,
 		mists: []sceneMistBand{
 			// 0: behind sun/far ridge
-			{x: 250, y: 39, w: 420, h: 5, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 14, durSec: 33},
+			{x: 250, y: 39, w: 420, h: 5, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 14, durSec: 33},
 			// 1..5: between far & mid ridges (plus wide-screen extension)
-			{x: -40, y: 37, w: 310, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tierA1: true, delaySec: 5, durSec: 23},
-			{x: 430, y: 32, w: 380, h: 5, color: white, baseOp: 0.6, kind: mistDriftLeft, tierA1: true, delaySec: 11, durSec: 31},
-			{x: 890, y: 34, w: 250, h: 6, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 3, durSec: 19},
-			{x: 640, y: 24, w: 150, h: 3.5, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 9, durSec: 27},
-			{x: 1220, y: 33, w: 340, h: 5.5, color: white, baseOp: 0.55, kind: mistDriftLeft, tierA1: true, delaySec: 7, durSec: 29},
+			{x: -40, y: 37, w: 310, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tier: 1, delaySec: 5, durSec: 23},
+			{x: 430, y: 32, w: 380, h: 5, color: white, baseOp: 0.6, kind: mistDriftLeft, tier: 1, delaySec: 11, durSec: 31},
+			{x: 890, y: 34, w: 250, h: 6, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 3, durSec: 19},
+			{x: 640, y: 24, w: 150, h: 3.5, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 9, durSec: 27},
+			{x: 1220, y: 33, w: 340, h: 5.5, color: white, baseOp: 0.55, kind: mistDriftLeft, tier: 1, delaySec: 7, durSec: 29},
 			// 6: between mid & near ridges
-			{x: 70, y: 50, w: 250, h: 8, color: white, baseOp: 0.6, kind: mistDriftLeft, tierA1: true, delaySec: 17, durSec: 37},
+			{x: 70, y: 50, w: 250, h: 8, color: white, baseOp: 0.6, kind: mistDriftLeft, tier: 1, delaySec: 17, durSec: 37},
 			// 7: foreground mist
-			{x: -20, y: 61, w: 190, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tierA1: true, delaySec: 20, durSec: 41},
+			{x: -20, y: 61, w: 190, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tier: 1, delaySec: 20, durSec: 41},
 		},
 		blades:     bl,
 		bladeColor: sceneColor("#b2cca8"),
@@ -933,7 +1014,7 @@ func compileDusk(ground ui.Color, starCols []ui.Color) *compiledScene {
 	mid := ridgeCurve{base: 55, comps: []ridgeComp{{4, 320, 1.4}, {1.8, 119, 2.7}}, fill: sceneColor("#ddd6cb")}
 	near := ridgeCurve{base: 65, comps: []ridgeComp{{2.2, 250, 0.3}, {1.0, 91, 1.9}}, fill: sceneColor("#d3cfc0")}
 
-	sts := makeStarsV2(rng, 70, 3, 26, 0.5, starCols, false, nil)
+	sts := makeStarsV2(rng, 70, 3, 26, 0.5, starCols, nil)
 	lk := sceneLake{
 		cx: 178, cy: 60.5, rx: 46, ry: 3.3,
 		fill:       sceneColor("#ecdcd3"),
@@ -978,7 +1059,7 @@ func compileDaybreak(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.
 		d := float32(math.Hypot(float64(x-brandOrbX), float64((y-58)*3)))
 		return clampF((d-90)/560, 0.12, 1.0)
 	}
-	sts := makeStarsV2(rng, 120, 3, 34, 0.45, starCols, false, dimFn)
+	sts := makeStarsV2(rng, 120, 3, 34, 0.45, starCols, dimFn)
 	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 10, 254, 7, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
 	mistCol := sceneColor("#cfd6e6")
 
@@ -998,8 +1079,8 @@ func compileDaybreak(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.
 		rimMidOp:   0.6,
 		stars:      sts,
 		mists: []sceneMistBand{
-			{x: -30, y: 56, w: 260, h: 6, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tierA1: false, delaySec: 8, durSec: 29},
-			{x: 40, y: 64, w: 210, h: 5, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tierA1: false, delaySec: 20, durSec: 37},
+			{x: -30, y: 56, w: 260, h: 6, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 8, durSec: 29},
+			{x: 40, y: 64, w: 210, h: 5, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 20, durSec: 37},
 		},
 		blades:     bl,
 		bladeColor: sceneColor("#2d2f38"),
@@ -1022,7 +1103,7 @@ func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.C
 	for i := range wanders {
 		wanders[i] = makeWanderTrack(rng, wCounts[rng.Intn(len(wCounts))], 10, 6, 0)
 	}
-	sts := makeStarsV2(rng, 70, 3, 36, 0.4, starCols, false, nil)
+	sts := makeStarsV2(rng, 70, 3, 36, 0.4, starCols, nil)
 
 	mkFly := func(x, y, size float32) sceneFirefly {
 		bk := fireflyBlinkKind(rng.Intn(3))
@@ -1149,7 +1230,7 @@ func compileNight(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Col
 			})
 		}
 	}
-	sts := makeStarsV2(rng, 210, 3, 50, 0.3, starCols, true, nil)
+	sts := makeStarsV2(rng, 210, 3, 50, 0.3, starCols, nil)
 
 	flareSpecs := [][4]float32{
 		{244, 42, 3.0, 9.7},
@@ -1202,7 +1283,7 @@ func compileMoon(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Colo
 	far := ridgeCurve{base: 54, comps: []ridgeComp{{4, 420, 1.1}, {2, 147, 2.6}, {1, 69, 0.9}}, fill: sceneColor("#262b36")}
 	near := ridgeCurve{base: 64, comps: []ridgeComp{{2.4, 268, 2.2}, {1.1, 105, 0.7}}, fill: sceneColor("#22262f")}
 
-	sts := makeStarsV2(rng, 105, 4, 46, 0.5, starCols, false, nil)
+	sts := makeStarsV2(rng, 105, 4, 46, 0.5, starCols, nil)
 	shotSpecs := [][7]float32{
 		{300, 5, 66, 21, 19, 62, 8},
 		{772, 3, 50, 25, 31, 44, 22},

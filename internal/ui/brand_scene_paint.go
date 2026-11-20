@@ -19,15 +19,16 @@ type brandSceneState struct {
 	transProg float32
 	transDur  time.Duration
 
-	wA1  float32
-	wA2  float32
-	wOrb float32
-	wArt float32
-	artW float32
+	wm    float32 // motion envelope: 0 while still, 1 while animating
+	rate  float32 // eased tempo multiplier applied to the scene clock
+	dCalm float32 // density envelope of the calm tier
+	dRich float32 // density envelope of the rich tier
+	wOrb  float32
+	wArt  float32
+	artW  float32
 
-	elapsedA1 float64
-	elapsedA2 float64
-	lastWall  time.Time
+	elapsed  float64
+	lastWall time.Time
 }
 
 const (
@@ -38,6 +39,8 @@ const (
 	brandSceneFadeOutDur   = 420 * time.Millisecond
 	brandSceneOrbFadeDur   = 300 * time.Millisecond
 	brandSceneMotionEnvDur = 450 * time.Millisecond
+	brandSceneTempoEaseDur = 600 * time.Millisecond
+	brandSceneDensityDur   = 500 * time.Millisecond
 	brandSceneArtFeatherW  = float32(24)
 	brandSceneSkyTailFade  = float32(0.75) // matches CSS mask fading to 0.25 at the right edge
 )
@@ -77,14 +80,20 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		if opts.SceneWidth > 0 {
 			targetArt = 1
 		}
-		targetA1, targetA2 := float32(0), float32(0)
+		targetRate := float32(0)
 		if !reduced {
-			switch opts.Motion {
-			case BrandMotionRich:
-				targetA1, targetA2 = 1, 1
-			case BrandMotionCalm:
-				targetA1 = 1
-			}
+			targetRate = opts.Motion.Tempo.rate()
+		}
+		targetM := float32(0)
+		if targetRate > 0 {
+			targetM = 1
+		}
+		targetCalm, targetRich := float32(1), float32(0)
+		switch opts.Motion.Density {
+		case BrandDensityRich:
+			targetRich = 1
+		case BrandDensityMinimal:
+			targetCalm = 0
 		}
 
 		if !st.init {
@@ -95,18 +104,11 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			st.wOrb = targetOrb
 			st.wArt = targetArt
 			st.artW = opts.SceneWidth
-			st.wA1 = targetA1
-			st.wA2 = targetA2
+			st.wm = targetM
+			st.rate = targetRate
+			st.dCalm = targetCalm
+			st.dRich = targetRich
 			st.lastWall = wall
-			if !reduced && opts.Motion != BrandMotionStill {
-				seed := float64(wall.UnixMilli()%(24*3600*1000))/1000.0 + 1.0
-				if targetA1 > 0 {
-					st.elapsedA1 = seed
-				}
-				if targetA2 > 0 {
-					st.elapsedA2 = seed
-				}
-			}
 		} else {
 			if opts.SceneWidth > 0 {
 				st.artW = opts.SceneWidth
@@ -128,16 +130,6 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 					st.transProg = 0
 					st.transDur = transitionDuration(st.prevID, st.curID)
 				}
-				// Turning back ON from OFF in animated mode: seed clock if never started.
-				if st.curID != "" && !reduced && opts.Motion != BrandMotionStill && st.elapsedA1 == 0 && st.elapsedA2 == 0 {
-					seed := float64(wall.UnixMilli()%(24*3600*1000))/1000.0 + 1.0
-					if targetA1 > 0 {
-						st.elapsedA1 = seed
-					}
-					if targetA2 > 0 {
-						st.elapsedA2 = seed
-					}
-				}
 			}
 
 			dt := wall.Sub(st.lastWall)
@@ -153,8 +145,10 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				st.prevID = ""
 				st.wOrb = targetOrb
 				st.wArt = targetArt
-				st.wA1 = 0
-				st.wA2 = 0
+				st.wm = 0
+				st.rate = 0
+				st.dCalm = targetCalm
+				st.dRich = targetRich
 			} else if dt > 0 {
 				if st.transProg < 1 {
 					dur := st.transDur
@@ -170,18 +164,19 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				st.wOrb = moveToward(st.wOrb, targetOrb, orbStep)
 				st.wArt = moveToward(st.wArt, targetArt, orbStep)
 				envStep := float32(dt) / float32(brandSceneMotionEnvDur)
-				st.wA1 = moveToward(st.wA1, targetA1, envStep)
-				st.wA2 = moveToward(st.wA2, targetA2, envStep)
+				st.wm = moveToward(st.wm, targetM, envStep)
+				st.rate = moveToward(st.rate, targetRate, float32(dt)/float32(brandSceneTempoEaseDur))
+				densStep := float32(dt) / float32(brandSceneDensityDur)
+				st.dCalm = moveToward(st.dCalm, targetCalm, densStep)
+				st.dRich = moveToward(st.dRich, targetRich, densStep)
 				if !opts.PauseAnim {
-					dtSec := dt.Seconds()
-					if st.wA1 > 0 {
-						st.elapsedA1 += dtSec * float64(smooth(st.wA1))
-					}
-					if st.wA2 > 0 {
-						st.elapsedA2 += dtSec * float64(smooth(st.wA2))
-					}
+					st.elapsed += dt.Seconds() * float64(st.rate)
 				}
 			}
+		}
+		// Start the clock from the time of day so a fresh window never opens on the rest pose.
+		if targetRate > 0 && st.elapsed == 0 {
+			st.elapsed = float64(wall.UnixMilli()%(24*3600*1000))/1000.0 + 1.0
 		}
 
 		curSc := compiledByID[st.curID]
@@ -202,12 +197,11 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		orbSettleDY := 4.0 * (1 - orbEase)
 		artEase := smooth(st.wArt)
 
-		tA1, tA2 := st.elapsedA1, st.elapsedA2
-		wA1, wA2 := smooth(st.wA1), smooth(st.wA2)
+		t, wm := st.elapsed, smooth(st.wm)
 		if reduced {
-			tA1, tA2 = 0, 0
-			wA1, wA2 = 0, 0
+			t, wm = 0, 0
 		}
+		dCalm, dRich := smooth(st.dCalm), smooth(st.dRich)
 
 		u := smootherstep(st.transProg)
 		alphaOut, alphaIn := float32(0), float32(0)
@@ -272,22 +266,21 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				p.Clip(artRect, 0, func() {
 					if prevSc != nil && alphaOut > 0.002 {
 						paintSceneArt(p, prevSc, sceneRenderCtx{
-							p:              p,
-							ox:             bandRect.X,
-							oy:             bandRect.Y,
-							w:              artW,
-							h:              BrandBandHeight,
-							alpha:          alphaOut * artEase,
-							tA1:            tA1,
-							tA2:            tA2,
-							wA1:            wA1,
-							wA2:            wA2,
-							orbAlpha:       orbEase,
-							orbExtraDY:     orbSettleDY + 6.0*u,
-							layerShiftY:    3.5 * u,
-							showCat:        opts.ShowCat,
-							avoidRightTail: false,
-							vars:           evalSceneTimeVars(prevSc.id, sceneProgress(prevSc.id, nowClock)),
+							p:           p,
+							ox:          bandRect.X,
+							oy:          bandRect.Y,
+							w:           artW,
+							h:           BrandBandHeight,
+							alpha:       alphaOut * artEase,
+							t:           t,
+							wm:          wm,
+							dCalm:       dCalm,
+							dRich:       dRich,
+							orbAlpha:    orbEase,
+							orbExtraDY:  orbSettleDY + 6.0*u,
+							layerShiftY: 3.5 * u,
+							showCat:     opts.ShowCat,
+							vars:        evalSceneTimeVars(prevSc.id, sceneProgress(prevSc.id, nowClock)),
 						})
 					}
 					if curSc != nil && alphaIn > 0.002 {
@@ -298,22 +291,21 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 							shiftY = 3.5 * (1 - u)
 						}
 						paintSceneArt(p, curSc, sceneRenderCtx{
-							p:              p,
-							ox:             bandRect.X,
-							oy:             bandRect.Y,
-							w:              artW,
-							h:              BrandBandHeight,
-							alpha:          alphaIn * artEase,
-							tA1:            tA1,
-							tA2:            tA2,
-							wA1:            wA1,
-							wA2:            wA2,
-							orbAlpha:       orbEase,
-							orbExtraDY:     orbDY,
-							layerShiftY:    shiftY,
-							showCat:        opts.ShowCat,
-							avoidRightTail: false,
-							vars:           evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
+							p:           p,
+							ox:          bandRect.X,
+							oy:          bandRect.Y,
+							w:           artW,
+							h:           BrandBandHeight,
+							alpha:       alphaIn * artEase,
+							t:           t,
+							wm:          wm,
+							dCalm:       dCalm,
+							dRich:       dRich,
+							orbAlpha:    orbEase,
+							orbExtraDY:  orbDY,
+							layerShiftY: shiftY,
+							showCat:     opts.ShowCat,
+							vars:        evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
 						})
 					}
 
@@ -348,6 +340,23 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				})
 			}
 
+			// 3. A few stars trail past the sidebar edge into the titlebar as a quiet accent.
+			if artEase > 0.002 && artW > 0 && bandRect.W > artW {
+				spill := func(sc *compiledScene, a float32) {
+					if sc == nil || len(sc.spill) == 0 || a <= 0.002 {
+						return
+					}
+					rc := sceneRenderCtx{
+						p: p, ox: bandRect.X, oy: bandRect.Y, w: artW, h: BrandBandHeight,
+						alpha: a * artEase, t: t, wm: wm, dCalm: dCalm, dRich: dRich,
+						vars: evalSceneTimeVars(sc.id, sceneProgress(sc.id, nowClock)),
+					}
+					rc.paintSpill(sc, bandRect.W)
+				}
+				spill(prevSc, alphaOut)
+				spill(curSc, alphaIn)
+			}
+
 			// Equivalent to CSS mask-image: linear-gradient(to bottom, #000 52%, transparent)
 			// composited into the active window ground so y=88 is always seamless.
 			p.FillGradient(ui.Rect{X: bandRect.X, Y: bandRect.Y, W: bandRect.W, H: BrandBandHeight}, ui.LinearGradient{
@@ -359,11 +368,12 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			}, 0)
 		})
 
-		inTransition := st.transProg < 1 || st.wOrb != targetOrb || st.wArt != targetArt || st.wA1 != targetA1 || st.wA2 != targetA2
+		inTransition := st.transProg < 1 || st.wOrb != targetOrb || st.wArt != targetArt || st.wm != targetM ||
+			st.rate != targetRate || st.dCalm != targetCalm || st.dRich != targetRich
 		if !reduced {
 			if inTransition {
 				p.AnimationFrame()
-			} else if !opts.PauseAnim && curSc != nil && (st.wA1 > 0 || st.wA2 > 0) && artEase > 0.002 {
+			} else if !opts.PauseAnim && curSc != nil && st.rate > 0 && artEase > 0.002 {
 				p.AnimationFrameRate(brandSceneFrameRate)
 			}
 		}
@@ -402,20 +412,19 @@ func BrandSceneThumbnail(c *ui.Context, id BrandSceneID, showOrb bool) ui.Elemen
 		oy := r.Y + (r.H-BrandBandHeight*scale)*0.5
 		p.Transform(ui.Translation(ox-r.X, oy-r.Y).Then(ui.Scaling(scale, scale)), r.X, r.Y, func() {
 			paintScene(p, sc, sceneRenderCtx{
-				p:              p,
-				ox:             r.X,
-				oy:             r.Y,
-				w:              BrandTileWidth,
-				h:              BrandBandHeight,
-				alpha:          1,
-				tA1:            tSec,
-				tA2:            tSec,
-				wA1:            w,
-				wA2:            w,
-				orbAlpha:       orbA,
-				showCat:        true,
-				avoidRightTail: false,
-				vars:           evalSceneTimeVars(sc.id, 0.5),
+				p:        p,
+				ox:       r.X,
+				oy:       r.Y,
+				w:        BrandTileWidth,
+				h:        BrandBandHeight,
+				alpha:    1,
+				t:        tSec,
+				wm:       w,
+				dCalm:    1,
+				dRich:    1,
+				orbAlpha: orbA,
+				showCat:  true,
+				vars:     evalSceneTimeVars(sc.id, 0.5),
 			})
 		})
 	})
