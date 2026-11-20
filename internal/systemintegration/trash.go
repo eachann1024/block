@@ -67,13 +67,18 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 	journalPath := filepath.Join(dataDir, "trash-recovery", id)
 	keepRecovery := false
 	journalWritten := false
+	recycled := false
 	defer func() {
-		if !keepRecovery {
-			if err := root.Remove(backup); err == nil || errors.Is(err, os.ErrNotExist) {
-				_ = root.Remove(items)
-				if err := root.Remove(dir); journalWritten && (err == nil || errors.Is(err, os.ErrNotExist)) {
-					_ = os.Remove(journalPath)
-				}
+		if keepRecovery {
+			return
+		}
+		if err := root.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		if !recycled {
+			_ = root.Remove(items)
+			if err := root.Remove(dir); journalWritten && (err == nil || errors.Is(err, os.ErrNotExist)) {
+				_ = os.Remove(journalPath)
 			}
 		}
 	}()
@@ -123,6 +128,7 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 		}
 		return restore(err)
 	}
+	recycled = true
 	return nil
 }
 
