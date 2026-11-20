@@ -22,17 +22,20 @@ type Controller struct {
 	sup         *plugins.Supervisor
 	storeReadme *storeReadmePreview
 
-	mu             sync.Mutex
-	storeFilter    int
-	storeCategory  plugins.Category
-	manualSpec     string
-	manualOpen     bool
-	drafts         map[string]map[string]string
-	lastSynced     map[string]map[string]string
-	secretRevealed map[string]map[string]bool
-	selectStates   map[string]map[string]*bui.DropdownSelectState
-	treemapStates  map[string]map[string]*bui.TreemapState
-	cardExpanded   map[string]map[string]bool
+	mu              sync.Mutex
+	storeQuery      string
+	storeSource     string
+	storeSort       string
+	storeSourceMenu bui.DropdownSelectState
+	storeSortMenu   bui.DropdownSelectState
+	storeCategory   plugins.Category
+	manualSpec      string
+	drafts          map[string]map[string]string
+	lastSynced      map[string]map[string]string
+	secretRevealed  map[string]map[string]bool
+	selectStates    map[string]map[string]*bui.DropdownSelectState
+	treemapStates   map[string]map[string]*bui.TreemapState
+	cardExpanded    map[string]map[string]bool
 }
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
@@ -81,11 +84,30 @@ func (c *Controller) SettingsTabChanged(previous, current string) {
 	if c.sup == nil {
 		return
 	}
-	if current == modals.TabAppStore {
-		c.sup.RefreshCatalogAsync()
-	} else if previous == modals.TabAppStore {
+	if modals.IsStoreTab(previous) {
 		c.closeStoreReadme()
 	}
+	if modals.IsStoreTab(current) {
+		c.setStoreCategory("")
+	}
+	c.closeStoreMenus()
+	if current == modals.TabAppStore || (current == modals.TabStoreInstalled && !modals.IsStoreTab(previous)) {
+		c.sup.RefreshCatalogAsync()
+	}
+}
+
+func (c *Controller) StoreListing(tab string) bool {
+	return c.sup != nil && modals.IsStoreTab(tab) && !c.storeDetailOpen()
+}
+
+func (c *Controller) RenderStoreFooter(ctx *ui.Context) {
+	_, installingID, _, _ := c.sup.StoreStatus()
+	renderManualInstallRow(ctx, c, installingID)
+}
+
+func (c *Controller) closeStoreMenus() {
+	c.storeSourceMenu.Open = false
+	c.storeSortMenu.Open = false
 }
 
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins.
@@ -98,11 +120,18 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	}
 	entries := []modals.PluginNavEntry{
 		{
-			TabID:     modals.TabAppStore,
-			Title:     theme.Tr("应用商店", "App Store"),
-			CountText: strconv.Itoa(len(installed)),
+			TabID: modals.TabAppStore,
+			Title: theme.Tr("发现", "Discover"),
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
 				DrawDuoSpec(ctx, storeSpec, size, colors)
+			},
+		},
+		{
+			TabID:     modals.TabStoreInstalled,
+			Title:     theme.Tr("已安装", "Installed"),
+			CountText: strconv.Itoa(len(installed)),
+			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
+				icons.Draw(ctx, icons.Download, size, colors)
 			},
 		},
 	}
@@ -131,8 +160,14 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 
 // TabTitle returns the localized header title for the App Store or an installed plugin tab.
 func (c *Controller) TabTitle(tab string) string {
-	if tab == modals.TabAppStore {
+	if modals.IsStoreTab(tab) && c.storeDetailOpen() {
 		return theme.Tr("应用商店", "App Store")
+	}
+	switch tab {
+	case modals.TabAppStore:
+		return theme.Tr("发现", "Discover")
+	case modals.TabStoreInstalled:
+		return theme.Tr("已安装", "Installed")
 	}
 	if pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix); ok {
 		if c.sup != nil {
@@ -162,7 +197,7 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 	if c.sup == nil {
 		return
 	}
-	if tab == modals.TabAppStore {
+	if modals.IsStoreTab(tab) {
 		if c.storeDetailOpen() {
 			renderStoreDetailBack(ctx, c)
 		} else {
@@ -286,12 +321,12 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 	if c.sup == nil {
 		return
 	}
-	if tab == modals.TabAppStore {
+	if modals.IsStoreTab(tab) {
 		if c.storeDetailOpen() {
 			renderStoreDetail(ctx, c, onSelectTab)
 			return
 		}
-		renderStoreBody(ctx, c, onSelectTab)
+		renderStoreBody(ctx, c, tab == modals.TabStoreInstalled)
 		return
 	}
 	c.closeStoreReadme()
@@ -425,18 +460,6 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 	})
 }
 
-func (c *Controller) storeFilterValue() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.storeFilter
-}
-
-func (c *Controller) setStoreFilter(v int) {
-	c.mu.Lock()
-	c.storeFilter = v
-	c.mu.Unlock()
-}
-
 func (c *Controller) storeCategoryValue() plugins.Category {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -458,21 +481,6 @@ func (c *Controller) manualSpecValue() string {
 func (c *Controller) setManualSpec(v string) {
 	c.mu.Lock()
 	c.manualSpec = v
-	c.mu.Unlock()
-}
-
-func (c *Controller) manualOpenValue() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.manualOpen || c.manualSpec != ""
-}
-
-func (c *Controller) toggleManualOpen() {
-	c.mu.Lock()
-	c.manualOpen = !(c.manualOpen || c.manualSpec != "")
-	if !c.manualOpen {
-		c.manualSpec = ""
-	}
 	c.mu.Unlock()
 }
 

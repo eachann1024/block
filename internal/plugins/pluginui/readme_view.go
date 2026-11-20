@@ -70,7 +70,7 @@ func renderStoreDetailBack(c *ui.Context, ctrl *Controller) {
 	backIcon := icons.ArrowLeft
 	backBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 		ID:       "app-store-detail-back",
-		Label:    theme.Tr("应用商店", "App Store"),
+		Label:    theme.Tr("返回", "Back"),
 		Leading:  &backIcon,
 		Style:    bui.ButtonGhost,
 		Height:   theme.HeightCompact,

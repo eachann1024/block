@@ -141,6 +141,8 @@ type Manager struct {
 	regexRuleError         string
 	advancedRulesOpen      bool
 	settingsScroll         ui.ScrollState
+	storeScroll            ui.ScrollState
+	storeDetailScroll      ui.ScrollState
 	settingsFocusHandle    ui.Handle
 	fontSearchHandle       ui.Handle
 
@@ -349,7 +351,7 @@ func (m *Manager) resolveSettingsTabTitle(tab string) string {
 				return t
 			}
 		}
-		if tab == TabAppStore {
+		if IsStoreTab(tab) {
 			return theme.Tr("应用商店", "App Store")
 		}
 		return strings.TrimPrefix(tab, TabPluginPrefix)
@@ -492,11 +494,24 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 						baseIdx := len(settingsTabs)
 						for j, entry := range pluginNavs {
 							ent := entry
+							if ent.TabID == TabAppStore {
+								ui.Row(c.Key("settings-store-section")).Padding(theme.Space4, theme.Space10).Children(func() {
+									ui.Text(c, theme.Tr("应用商店", "App Store")).FontSize(theme.FontBody).
+										FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
+								})
+							} else if j > 0 && pluginNavs[j-1].TabID == TabStoreInstalled {
+								ui.Box(c.Key("settings-store-divider")).FillWidth().Padding(theme.Space8, theme.Space6).Children(func() {
+									ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+								})
+							}
 							active := tab == ent.TabID
 							navID := "settings-tab-" + ent.TabID
 							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space8).
 								AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 								Label(ent.Title).Transition(internalui.CascadeRowTransition(baseIdx + j))
+							if IsStoreTab(ent.TabID) {
+								btn.Padding(0, theme.Space10, 0, theme.Space20)
+							}
 							hovered := btn.Hovered()
 							pressed := btn.Pressed()
 							if active {
@@ -604,21 +619,47 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 		}
 	}
 
+	listing := m.PluginHost != nil && m.PluginHost.StoreListing(tab)
+	scrollID, scroll := "settings-scroll", &m.settingsScroll
+	contentWidth, titleSize, padBottom := theme.SettingsContentMaxWidth, theme.FontHeading, float32(56)
+	if IsStoreTab(tab) {
+		scrollID, scroll = "settings-store-detail-scroll", &m.storeDetailScroll
+	}
+	if listing {
+		scrollID, scroll = "settings-store-scroll", &m.storeScroll
+		contentWidth, titleSize, padBottom = theme.StoreContentMaxWidth, theme.FontPage, theme.Space24
+		if padX > theme.Space16 {
+			padX = theme.StorePagePadding
+		}
+	}
+
 	root.Children(func() {
-		internalui.Scroll(c.Key("settings-scroll"), &m.settingsScroll).Grow(1).MinWidth(0).Fill().
-			Background(cardBG).Padding(40, padX, 56, padX).AlignItems(ui.Center).Children(func() {
-			ui.Column(c.Key("settings-content")).FillWidth().MinWidth(0).MaxWidth(theme.SettingsContentMaxWidth).
+		internalui.Scroll(c.Key(scrollID), scroll).Grow(1).MinHeight(0).MinWidth(0).Fill().
+			Background(cardBG).Padding(theme.StorePagePadding, padX, padBottom, padX).AlignItems(ui.Center).Children(func() {
+			ui.Column(c.Key("settings-content")).FillWidth().MinWidth(0).MaxWidth(contentWidth).
 				Gap(theme.Space24).Children(func() {
-				ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-					ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+				header := ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12)
+				if listing {
+					header.Wrap()
+				}
+				header.Children(func() {
+					title := ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center)
+					if listing {
+						title.Basis(theme.StoreTitleWidth)
+					}
+					title.Children(func() {
+						ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(titleSize).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 						if IsPluginSystemTab(tab) && m.PluginHost != nil && m.PluginHost.TabIsBeta(tab) {
 							internalui.BetaBadge(c, false)
 						}
 					})
 					hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
 					if hasExtras || showCloseBtn {
-						ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
+						extras := ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0)
+						if listing {
+							extras.MinWidth(0).MaxWidthPercent(100).Shrink(1).Wrap()
+						}
+						extras.Children(func() {
 							if hasExtras {
 								m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
 							}
@@ -657,6 +698,13 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 				})
 			})
 		})
+		if listing {
+			ui.Column(c.Key("settings-store-footer")).FillWidth().MinWidth(0).Shrink(0).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+				ui.Column(c).FillWidth().MaxWidth(contentWidth+2*padX).Padding(theme.Space12, padX, theme.Space16, padX).
+					Children(func() { m.PluginHost.RenderStoreFooter(c) })
+			})
+		}
 	})
 
 	if m.fontPickerOpen != "" {
@@ -691,7 +739,13 @@ func (m *Manager) selectSettingsTab(tab string) {
 }
 
 func (m *Manager) notifySettingsTabChanged(previous, current string) {
-	if previous != current && m.PluginHost != nil {
+	if previous == current {
+		return
+	}
+	if IsStoreTab(current) {
+		m.storeScroll.ScrollTo(0, 0, ui.Animation{})
+	}
+	if m.PluginHost != nil {
 		m.PluginHost.SettingsTabChanged(previous, current)
 	}
 }

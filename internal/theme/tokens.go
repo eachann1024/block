@@ -198,7 +198,14 @@ const (
 	StoreIconBoxSize       float32 = 40  // leading app icon box inside a store card header
 	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
 	StoreStatusDotSize     float32 = 6   // active indicator dot on installed plugin nav rows
-	StoreMinColWidth       float32 = 340 // minimum column width for the multi-column store grid
+	StoreMinColWidth       float32 = 380 // minimum column width for the multi-column store grid
+	StoreContentMaxWidth   float32 = 1160
+	StorePagePadding       float32 = 40
+	StoreCardGap           float32 = 18
+	StoreCardInnerGap      float32 = 14
+	StoreTitleWidth        float32 = 120
+	StoreSearchWidth       float32 = 192
+	StoreAuthorFadeWidth   float32 = 20
 	StoreDetailIconBox     float32 = 56  // app icon box in the in-place store detail header
 	StoreDetailIconGlyph   float32 = 28  // Duo icon size inside StoreDetailIconBox
 	StoreDetailReadmeMinH  float32 = 360 // minimum height of the embedded README viewport
