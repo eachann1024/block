@@ -208,6 +208,21 @@ func sniffHead(path string) []byte {
 	return buf[:n]
 }
 
+// ClassifyBytes classifies already-read file bytes using the same UTF-8,
+// single-line length, and TextLimit rules as ClassifyFile without reopening
+// the path from disk.
+func ClassifyBytes(path string, data []byte) model.ClassifiedFile {
+	rawSize := int64(len(data))
+	if rawSize > TextLimit {
+		return model.ClassifiedFile{
+			Kind:    model.OpenKindBlocked,
+			Reason:  theme.Tr("文件超过 5 MiB 编辑上限", "File exceeds the 5 MiB edit limit"),
+			RawSize: rawSize,
+		}
+	}
+	return classifyBytes(path, data)
+}
+
 func classifyBytes(path string, data []byte) model.ClassifiedFile {
 	rawSize := int64(len(data))
 	if IsSVGPath(path) {
