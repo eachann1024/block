@@ -1272,18 +1272,23 @@ func bareURLCandidateBefore(r []rune, tokenEnd int) (start, end int, url string,
 		return 0, 0, "", false
 	}
 	end = tokenEnd
+	parenCounted := false
+	opens, closes := 0, 0
 	for end > start {
 		ch := r[end-1]
 		if ch == ')' {
-			opens, closes := 0, 0
-			for i := start; i < end; i++ {
-				if r[i] == '(' {
-					opens++
-				} else if r[i] == ')' {
-					closes++
+			if !parenCounted {
+				for i := start; i < end; i++ {
+					if r[i] == '(' {
+						opens++
+					} else if r[i] == ')' {
+						closes++
+					}
 				}
+				parenCounted = true
 			}
 			if closes > opens {
+				closes--
 				end--
 				continue
 			}
@@ -1338,35 +1343,36 @@ func tryBareURLAutolinkBefore(spans []model.Span, r []rune, tokenEnd int) inline
 // --- Smart Typography Replacements ---
 
 type smartTypoRule struct {
-	from []rune
-	to   []rune
+	from  []rune
+	to    []rune
+	toStr string
 }
 
 var smartTypoRules = []smartTypoRule{
-	{[]rune("<->"), []rune("↔")},
-	{[]rune("<=>"), []rune("⇔")},
-	{[]rune("←>"), []rune("↔")},
-	{[]rune("⇐>"), []rune("⇔")},
-	{[]rune("≤>"), []rune("⇔")},
-	{[]rune("->"), []rune("→")},
-	{[]rune("-》"), []rune("→")},
-	{[]rune("—>"), []rune("→")},
-	{[]rune("—》"), []rune("→")},
-	{[]rune("=>"), []rune("⇒")},
-	{[]rune("=》"), []rune("⇒")},
-	{[]rune("<-"), []rune("←")},
-	{[]rune("《-"), []rune("←")},
-	{[]rune("!="), []rune("≠")},
-	{[]rune("<="), []rune("≤")},
-	{[]rune(">="), []rune("≥")},
-	{[]rune("+-"), []rune("±")},
-	{[]rune("..."), []rune("…")},
-	{[]rune("(c)"), []rune("©")},
-	{[]rune("(C)"), []rune("©")},
-	{[]rune("(tm)"), []rune("™")},
-	{[]rune("(TM)"), []rune("™")},
-	{[]rune("(r)"), []rune("®")},
-	{[]rune("(R)"), []rune("®")},
+	{[]rune("<->"), []rune("↔"), "↔"},
+	{[]rune("<=>"), []rune("⇔"), "⇔"},
+	{[]rune("←>"), []rune("↔"), "↔"},
+	{[]rune("⇐>"), []rune("⇔"), "⇔"},
+	{[]rune("≤>"), []rune("⇔"), "⇔"},
+	{[]rune("->"), []rune("→"), "→"},
+	{[]rune("-》"), []rune("→"), "→"},
+	{[]rune("—>"), []rune("→"), "→"},
+	{[]rune("—》"), []rune("→"), "→"},
+	{[]rune("=>"), []rune("⇒"), "⇒"},
+	{[]rune("=》"), []rune("⇒"), "⇒"},
+	{[]rune("<-"), []rune("←"), "←"},
+	{[]rune("《-"), []rune("←"), "←"},
+	{[]rune("!="), []rune("≠"), "≠"},
+	{[]rune("<="), []rune("≤"), "≤"},
+	{[]rune(">="), []rune("≥"), "≥"},
+	{[]rune("+-"), []rune("±"), "±"},
+	{[]rune("..."), []rune("…"), "…"},
+	{[]rune("(c)"), []rune("©"), "©"},
+	{[]rune("(C)"), []rune("©"), "©"},
+	{[]rune("(tm)"), []rune("™"), "™"},
+	{[]rune("(TM)"), []rune("™"), "™"},
+	{[]rune("(r)"), []rune("®"), "®"},
+	{[]rune("(R)"), []rune("®"), "®"},
 }
 
 func replaceSpanRuneRange(spans []model.Span, total, start, end int, replacement string) []model.Span {
@@ -1443,7 +1449,7 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 			if curCaret >= fl && runesEqual(r[curCaret-fl:curCaret], rule.from) {
 				start := curCaret - fl
 				if !isEscapedAt(r, start) && !spanProtectionAt(curSpans, start, curCaret) {
-					curSpans = replaceSpanRuneRange(curSpans, n, start, curCaret, string(rule.to))
+					curSpans = replaceSpanRuneRange(curSpans, n, start, curCaret, rule.toStr)
 					return curSpans, start + len(rule.to), true
 				}
 			}
@@ -1468,7 +1474,7 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 					}
 				}
 				if !blocked {
-					edits = append(edits, batchRuneEdit{start: pos, end: pos + fl, repl: string(rule.to)})
+					edits = append(edits, batchRuneEdit{start: pos, end: pos + fl, repl: rule.toStr})
 					pos += fl
 					matchedRule = true
 					break
