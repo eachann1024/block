@@ -79,7 +79,7 @@ type SystemHost interface {
 	Notify(ctx context.Context, pluginID, title, body, tone, root, relPath string, allowed func() bool) error
 	OpenURL(rawURL string, allowed func() bool) error
 	Reveal(path string, allowed func() bool) error
-	Pick(save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error)
+	Pick(ctx context.Context, save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error)
 	Clipboard(read bool, text string, allowed func() bool) (string, error)
 	Trash(path string, allowed, validPath func() bool) error
 	Badge(count int) error
@@ -227,7 +227,7 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 				return nil, rpcErr(-32602, "invalid file extension")
 			}
 		}
-		paths, pickErr := host.Pick(save, p.Directory, p.Multiple, systemText(p.Title, 80), p.DefaultPath, p.Extensions, allowed)
+		paths, pickErr := host.Pick(action.ctx, save, p.Directory, p.Multiple, systemText(p.Title, 80), p.DefaultPath, p.Extensions, allowed)
 		if pickErr == nil {
 			if paths == nil {
 				paths = []string{}
@@ -388,6 +388,23 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		rel = p.RelPath
 	}
 	id := rt.manifest.ID
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	go func() {
+		select {
+		case <-rt.exited:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	suppressed, err := s.sendSystemNotice(ctx, id, title, body, normalizeTone(p.Tone), root, rel, allowed)
+	if err != nil {
+		return nil, systemRPCError(err)
+	}
+	return map[string]any{"ok": true, "suppressed": suppressed}, nil
+}
+
+func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel string, allowed func() bool) (bool, error) {
 	key := sha256.Sum256([]byte(strings.Join([]string{title, body, root, rel}, "\x00")))
 	now := time.Now()
 	s.system.mu.Lock()
@@ -403,20 +420,11 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 	newSyncState := id == "block-sync" && title != prev.title
 	if prev.busy || (now.Sub(prev.at) < 10*time.Second && !newSyncState) || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
 		s.system.mu.Unlock()
-		return map[string]any{"ok": true, "suppressed": true}, nil
+		return true, nil
 	}
 	s.system.notices[id] = systemNotice{at: now, key: key, title: title, busy: true}
 	s.system.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	go func() {
-		select {
-		case <-rt.exited:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	err := s.cfg.System.Notify(ctx, id, title, body, normalizeTone(p.Tone), root, rel, allowed)
+	err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, allowed)
 	s.system.mu.Lock()
 	if err == nil {
 		s.system.notices[id] = systemNotice{at: time.Now(), key: key, title: title}
@@ -424,10 +432,7 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		s.system.notices[id] = prev
 	}
 	s.system.mu.Unlock()
-	if err != nil {
-		return nil, systemRPCError(err)
-	}
-	return map[string]any{"ok": true, "suppressed": false}, nil
+	return false, err
 }
 
 func (s *Supervisor) setSystemBadge(rt *Runtime, count int, allowed func() bool) error {
@@ -649,9 +654,18 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 }
 
 func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed bool) {
+	s.reportSyncFailure(inst, rt, root, timedOut, storageFailed, false)
+}
+
+func syncFailureAlreadyReported(err error) bool {
+	var response *rpcError
+	return errors.As(err, &response) && response.Code == -32008
+}
+
+func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed, manual bool) {
 	const pluginID = "block-sync"
 	config := systemSyncConfig(inst.DataDir, root)
-	if rt == nil {
+	if rt == nil && !manual {
 		if enabled, ok := config["auto_sync"].(bool); config == nil || (ok && !enabled) {
 			return
 		}
@@ -682,6 +696,18 @@ func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, roo
 			title = "Sync state could not be saved"
 		}
 	}
+	if manual {
+		title = "同步未完成"
+		if locale == "en" {
+			title = "Sync did not finish"
+		}
+		if timedOut {
+			title = "同步超时"
+			if locale == "en" {
+				title = "Sync timed out"
+			}
+		}
+	}
 	currentLocked := func() bool {
 		if s.stopping || (rt != nil && s.runtimes[pluginID] != rt) {
 			return false
@@ -698,14 +724,18 @@ func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, roo
 		s.mu.Unlock()
 		return
 	}
-	if s.system.syncErrors == nil {
-		s.system.syncErrors = make(map[string]string)
+	if !manual {
+		if s.system.syncErrors == nil {
+			s.system.syncErrors = make(map[string]string)
+		}
+		s.system.syncErrors[root] = title + " · " + body
 	}
-	s.system.syncErrors[root] = title + " · " + body
 	s.mu.Unlock()
-	s.notifyChanged()
-	files.LogWarnf("plugin %s background system sync failed (timed out: %t)", pluginID, timedOut)
-	if storageFailed || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || config == nil {
+	if !manual {
+		s.notifyChanged()
+		files.LogWarnf("plugin %s background system sync failed (timed out: %t)", pluginID, timedOut)
+	}
+	if storageFailed || s.cfg.System == nil || !inst.Manifest.HasPermission(PermSystemNotify) || (config == nil && !manual) {
 		return
 	}
 	if enabled, ok := config["system_notifications"].(bool); ok && !enabled {
@@ -714,7 +744,7 @@ func (s *Supervisor) reportSystemSyncFailure(inst InstalledApp, rt *Runtime, roo
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_ = s.cfg.System.Notify(ctx, pluginID, title, body, "error", "", "", func() bool {
+		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", "", "", func() bool {
 			s.mu.RLock()
 			defer s.mu.RUnlock()
 			return currentLocked()

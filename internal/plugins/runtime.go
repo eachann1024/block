@@ -37,6 +37,10 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+func (err *rpcError) Error() string {
+	return fmt.Sprintf("rpc error (%d): %s", err.Code, err.Message)
+}
+
 type PerfBreakdownEntry struct {
 	Name  string `json:"name"`
 	Path  string `json:"path,omitempty"`
@@ -756,7 +760,7 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 	select {
 	case resp := <-ch:
 		if resp.Error != nil {
-			return fmt.Errorf("%s rpc error (%d): %s", method, resp.Error.Code, resp.Error.Message)
+			return fmt.Errorf("%s %w", method, resp.Error)
 		}
 		if out != nil && len(resp.Result) > 0 {
 			if err := json.Unmarshal(resp.Result, out); err != nil {

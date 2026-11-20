@@ -16,6 +16,8 @@ import (
 
 var fileDialogBusy atomic.Bool
 
+var ErrFileDialogBusy = errors.New("a native file dialog is already open")
+
 func refocusWindow(win *mygo.Window) {
 	if !mygo.App.IsReady() {
 		return
@@ -34,14 +36,17 @@ func refocusWindow(win *mygo.Window) {
 // in-place bundle update replaced the app on disk while this process stayed running.
 // Concurrent calls while a picker is already open return (nil, nil) immediately.
 func OpenDialog(win *mygo.Window, opts mygo.OpenDialogOptions) ([]string, error) {
-	return OpenDialogGuarded(win, opts, nil)
+	return OpenDialogGuarded(context.Background(), win, opts, nil)
 }
 
-func OpenDialogGuarded(win *mygo.Window, opts mygo.OpenDialogOptions, allowed func() bool) ([]string, error) {
+func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDialogOptions, allowed func() bool) ([]string, error) {
 	if !mygo.App.IsReady() {
 		return nil, nil
 	}
 	if !fileDialogBusy.CompareAndSwap(false, true) {
+		if allowed != nil {
+			return nil, ErrFileDialogBusy
+		}
 		return nil, nil
 	}
 	defer fileDialogBusy.Store(false)
@@ -58,7 +63,7 @@ func OpenDialogGuarded(win *mygo.Window, opts mygo.OpenDialogOptions, allowed fu
 			if allowed != nil && !allowed() {
 				return nil, context.Canceled
 			}
-			paths, osaErr := openDialogDarwinOsascript(opts)
+			paths, osaErr := openDialogDarwinOsascript(ctx, opts)
 			if allowed == nil {
 				refocusWindow(win)
 			}
@@ -67,7 +72,7 @@ func OpenDialogGuarded(win *mygo.Window, opts mygo.OpenDialogOptions, allowed fu
 	}
 
 	opts.Parent = win
-	if allowed != nil && !allowed() {
+	if ctx.Err() != nil || (allowed != nil && !allowed()) {
 		return nil, context.Canceled
 	}
 	paths, err := mygo.Dialog.Open(opts)
@@ -80,14 +85,17 @@ func OpenDialogGuarded(win *mygo.Window, opts mygo.OpenDialogOptions, allowed fu
 // SaveDialog opens a native save-file picker safely across hot bundle updates on macOS.
 // Concurrent calls while a picker is already open return ("", nil) immediately.
 func SaveDialog(win *mygo.Window, opts mygo.SaveDialogOptions) (string, error) {
-	return SaveDialogGuarded(win, opts, nil)
+	return SaveDialogGuarded(context.Background(), win, opts, nil)
 }
 
-func SaveDialogGuarded(win *mygo.Window, opts mygo.SaveDialogOptions, allowed func() bool) (string, error) {
+func SaveDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.SaveDialogOptions, allowed func() bool) (string, error) {
 	if !mygo.App.IsReady() {
 		return "", nil
 	}
 	if !fileDialogBusy.CompareAndSwap(false, true) {
+		if allowed != nil {
+			return "", ErrFileDialogBusy
+		}
 		return "", nil
 	}
 	defer fileDialogBusy.Store(false)
@@ -101,7 +109,7 @@ func SaveDialogGuarded(win *mygo.Window, opts mygo.SaveDialogOptions, allowed fu
 			if allowed != nil && !allowed() {
 				return "", context.Canceled
 			}
-			chosen, osaErr := saveDialogDarwinOsascript(opts)
+			chosen, osaErr := saveDialogDarwinOsascript(ctx, opts)
 			if allowed == nil {
 				refocusWindow(win)
 			}
@@ -110,7 +118,7 @@ func SaveDialogGuarded(win *mygo.Window, opts mygo.SaveDialogOptions, allowed fu
 	}
 
 	opts.Parent = win
-	if allowed != nil && !allowed() {
+	if ctx.Err() != nil || (allowed != nil && !allowed()) {
 		return "", context.Canceled
 	}
 	chosen, err := mygo.Dialog.Save(opts)
@@ -208,7 +216,7 @@ func appleScriptUTIsForFilters(filters []mygo.FileFilter) []string {
 	return out
 }
 
-func openDialogDarwinOsascript(opts mygo.OpenDialogOptions) ([]string, error) {
+func openDialogDarwinOsascript(ctx context.Context, opts mygo.OpenDialogOptions) ([]string, error) {
 	defaultDir := resolveExistingDir(opts.DefaultPath)
 	prompt := strings.TrimSpace(opts.Title)
 
@@ -282,7 +290,7 @@ end run`
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("/usr/bin/osascript", args...)
+	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -306,7 +314,7 @@ end run`
 	return paths, nil
 }
 
-func saveDialogDarwinOsascript(opts mygo.SaveDialogOptions) (string, error) {
+func saveDialogDarwinOsascript(ctx context.Context, opts mygo.SaveDialogOptions) (string, error) {
 	defaultDir := ""
 	defaultName := ""
 	if strings.TrimSpace(opts.DefaultPath) != "" {
@@ -352,7 +360,7 @@ func saveDialogDarwinOsascript(opts mygo.SaveDialogOptions) (string, error) {
 end run`
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("/usr/bin/osascript", "-e", script, "--", prompt, defaultDir, defaultName)
+	cmd := exec.CommandContext(ctx, "/usr/bin/osascript", "-e", script, "--", prompt, defaultDir, defaultName)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
