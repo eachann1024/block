@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T15:05:00Z",
+  "updated_at": "2026-11-20T15:59:52Z",
   "apps": [
     {
       "app": "blockmd",
@@ -79,19 +79,19 @@
         "zh": "到处拉屎",
         "en": "Poop Everywhere"
       },
-      "version": "1.0.8",
+      "version": "1.0.9",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-poop-everywhere",
       "summary": {
         "zh": "官方全扩展点示范插件：覆盖顶栏、侧栏、文件树角标、编辑区背景、面板、菜单、状态栏与弹窗",
         "en": "Official kitchen-sink demo covering titlebar, sidebar sections, file badges, editor backdrops, panels, menus, status bar, and dialogs"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/download/v1.0.8/block-poop-everywhere-v1.0.8.tar.gz",
-      "sha256": "3389b517e1cc57ef51372937aca128b64fccb177b7e7dc366dcd8b2af6e562e0",
-      "downloads": 34,
+      "download_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/download/v1.0.9/block-poop-everywhere-v1.0.9.tar.gz",
+      "sha256": "98a5dcba1ff311de489bd27700d386a743a10605c2c77c47bae9d770586ac303",
+      "downloads": 37,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-20T15:03:58Z",
+      "updated_at": "2026-11-20T15:58:54Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -188,6 +188,90 @@
           "en": "React to note open, theme change, and locale change workspace events."
         }
       }
+    },
+    {
+      "app": "blockmd",
+      "id": "block-lang-gomod",
+      "name": {
+        "zh": "Go Modules",
+        "en": "Go Modules"
+      },
+      "version": "1.0.3",
+      "author": "Block",
+      "repo": "blockmd-plugins/block-lang-gomod",
+      "summary": {
+        "zh": "打开 Go 项目文件夹时，为 go.mod、go.sum 与 go.work 提供语法高亮",
+        "en": "Syntax highlighting for go.mod, go.sum, and go.work files when opening Go project folders"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-lang-gomod/releases/download/v1.0.3/block-lang-gomod-v1.0.3.tar.gz",
+      "sha256": "d2c293cca0ac273f5d6e933f757718b15e19bd9f23b154e447411a27d536f986",
+      "downloads": 4,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-20T14:00:39Z",
+      "permissions": [],
+      "surfaces": [],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z"
+        ],
+        "stroke_paths": [
+          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z",
+          "M14 3.5V8h4.5"
+        ],
+        "accent_paths": [
+          "M10 12.5L8 14.5l2 2",
+          "M14 12.5l2 2-2 2"
+        ]
+      },
+      "category": "language",
+      "file_extensions": [
+        "go.mod",
+        "go.work",
+        "go.sum"
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-lang-plist",
+      "name": {
+        "zh": "Property List",
+        "en": "Property List"
+      },
+      "version": "1.0.3",
+      "author": "Block",
+      "repo": "blockmd-plugins/block-lang-plist",
+      "summary": {
+        "zh": "为 macOS 属性列表文件（.plist）提供 XML 与 OpenStep 语法高亮",
+        "en": "Syntax highlighting for macOS Property List (.plist) files in XML and OpenStep formats"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-lang-plist/releases/download/v1.0.3/block-lang-plist-v1.0.3.tar.gz",
+      "sha256": "2d470b1d949305bbed57770f6205bff3af9c950657b6df5ff3777ac6e8a70bb9",
+      "downloads": 4,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-20T14:00:34Z",
+      "permissions": [],
+      "surfaces": [],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z"
+        ],
+        "stroke_paths": [
+          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z",
+          "M14 3.5V8h4.5"
+        ],
+        "accent_paths": [
+          "M9 12.5h6",
+          "M9 16h4"
+        ]
+      },
+      "category": "language",
+      "file_extensions": [
+        ".plist"
+      ]
     },
     {
       "app": "blockmd",
@@ -332,7 +416,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.25/block-canvas-dots-v1.2.25.tar.gz",
       "sha256": "4de6eb77061ccdd6b17b57626d8f6cb999c16348c5a12e25b21d851f39b62663",
-      "downloads": 60,
+      "downloads": 61,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T13:59:33Z",
@@ -390,7 +474,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.17/block-titlebar-v1.0.17.tar.gz",
       "sha256": "714174bc47d35e50cdeb4fa38bb20ee75129f4e1f1c859a49b318e21d0aa4639",
-      "downloads": 50,
+      "downloads": 51,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T13:59:41Z",
@@ -451,7 +535,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.10/block-tarot-v1.0.10.tar.gz",
       "sha256": "2d4cb7d3b0e8936e23920e6bfc52078c2477bbf03840fa432864923b874d3053",
-      "downloads": 22,
+      "downloads": 23,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T13:59:43Z",
@@ -506,90 +590,6 @@
           "en": "Listen to locale and theme change events to sync button and UI state"
         }
       }
-    },
-    {
-      "app": "blockmd",
-      "id": "block-lang-gomod",
-      "name": {
-        "zh": "Go Modules",
-        "en": "Go Modules"
-      },
-      "version": "1.0.3",
-      "author": "Block",
-      "repo": "blockmd-plugins/block-lang-gomod",
-      "summary": {
-        "zh": "打开 Go 项目文件夹时，为 go.mod、go.sum 与 go.work 提供语法高亮",
-        "en": "Syntax highlighting for go.mod, go.sum, and go.work files when opening Go project folders"
-      },
-      "download_url": "https://github.com/blockmd-plugins/block-lang-gomod/releases/download/v1.0.3/block-lang-gomod-v1.0.3.tar.gz",
-      "sha256": "d2c293cca0ac273f5d6e933f757718b15e19bd9f23b154e447411a27d536f986",
-      "downloads": 3,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T14:00:39Z",
-      "permissions": [],
-      "surfaces": [],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z"
-        ],
-        "stroke_paths": [
-          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z",
-          "M14 3.5V8h4.5"
-        ],
-        "accent_paths": [
-          "M10 12.5L8 14.5l2 2",
-          "M14 12.5l2 2-2 2"
-        ]
-      },
-      "category": "language",
-      "file_extensions": [
-        "go.mod",
-        "go.work",
-        "go.sum"
-      ]
-    },
-    {
-      "app": "blockmd",
-      "id": "block-lang-plist",
-      "name": {
-        "zh": "Property List",
-        "en": "Property List"
-      },
-      "version": "1.0.3",
-      "author": "Block",
-      "repo": "blockmd-plugins/block-lang-plist",
-      "summary": {
-        "zh": "为 macOS 属性列表文件（.plist）提供 XML 与 OpenStep 语法高亮",
-        "en": "Syntax highlighting for macOS Property List (.plist) files in XML and OpenStep formats"
-      },
-      "download_url": "https://github.com/blockmd-plugins/block-lang-plist/releases/download/v1.0.3/block-lang-plist-v1.0.3.tar.gz",
-      "sha256": "2d470b1d949305bbed57770f6205bff3af9c950657b6df5ff3777ac6e8a70bb9",
-      "downloads": 3,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T14:00:34Z",
-      "permissions": [],
-      "surfaces": [],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z"
-        ],
-        "stroke_paths": [
-          "M5.5 3.5h8.5l4.5 4.5v12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5v-17Z",
-          "M14 3.5V8h4.5"
-        ],
-        "accent_paths": [
-          "M9 12.5h6",
-          "M9 16h4"
-        ]
-      },
-      "category": "language",
-      "file_extensions": [
-        ".plist"
-      ]
     }
   ]
 }
