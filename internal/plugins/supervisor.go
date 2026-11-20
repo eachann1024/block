@@ -2191,12 +2191,12 @@ func (s *Supervisor) CanCancelAction(pluginID string) bool {
 		}
 		if v.BusyAction == "__retry_note_saved__" {
 			if v.retrySavePath != "" {
-				if req := v.queuedSaves[v.retrySavePath]; req != nil && req.cancel != nil {
+				if req := v.queuedSaves[v.retrySavePath]; req != nil {
 					return true
 				}
 			} else {
 				for _, req := range v.queuedSaves {
-					if req != nil && req.cancel != nil {
+					if req != nil {
 						return true
 					}
 				}
