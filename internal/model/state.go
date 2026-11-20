@@ -131,12 +131,14 @@ const (
 )
 
 type SourceFile struct {
-	Text      string
-	BOM       bool
-	Language  string
-	Highlight bool
-	HTML      bool
-	SVG       bool
+	Text            string
+	BOM             bool
+	BinaryPlist     bool
+	DiskFingerprint int64
+	Language        string
+	Highlight       bool
+	HTML            bool
+	SVG             bool
 }
 
 type ClassifiedFile struct {
