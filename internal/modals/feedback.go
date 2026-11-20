@@ -463,12 +463,20 @@ func feedbackTile(c *ui.Context, glyph icons.Icon, fg, bg ui.Color) {
 		})
 }
 
-func feedbackKindIcon(k feedback.Kind) icons.Icon {
+func feedbackAttachmentIcon(k feedback.Kind, name string) icons.Icon {
 	switch k {
 	case feedback.KindImage:
+		if strings.EqualFold(filepath.Ext(name), ".svg") {
+			return icons.FileSvg
+		}
 		return icons.Image
 	case feedback.KindVideo:
 		return icons.Video
+	}
+	if name != "" {
+		if ic, ok := icons.FileIcon(name); ok {
+			return ic
+		}
 	}
 	return icons.Note
 }
@@ -800,7 +808,7 @@ func (m *Manager) renderFeedbackAttachmentRow(c *ui.Context, index int, a feedba
 		row.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
 	}
 	row.Children(func() {
-		feedbackTile(c, feedbackKindIcon(a.Kind), tileFG, tileBG)
+		feedbackTile(c, feedbackAttachmentIcon(a.Kind, a.Name), tileFG, tileBG)
 		feedbackRowName(c, a.Name)
 		feedbackMeta(c, meta, metaFG)
 		rm := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
@@ -1059,7 +1067,7 @@ func renderFeedbackPart(c *ui.Context, index int, p feedback.Part) {
 				name = theme.Tr("诊断日志（已打码）", "Diagnostic log (masked)")
 				feedbackTile(c, icons.ShieldCheck, pal.Success, pal.SuccessSurface)
 			} else {
-				feedbackTile(c, feedbackKindIcon(p.Kind), pal.TextSecondary, pal.Shell)
+				feedbackTile(c, feedbackAttachmentIcon(p.Kind, p.Name), pal.TextSecondary, pal.Shell)
 			}
 			feedbackRowName(c, name)
 			size := feedback.FormatBytes(p.Total)

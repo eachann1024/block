@@ -1431,7 +1431,7 @@ func renderSearchHitRowView(
 				} else if hovered || pressed {
 					ic = pal.DuoIconColors(pal.Text)
 				}
-				icons.DrawAnimated(c, icons.Note, theme.IconRow, ic, selected || hovered || pressed)
+				icons.DrawAnimated(c, icons.FileIconOrDefault(hit.Path), theme.IconRow, ic, selected || hovered || pressed)
 
 				ui.Box(c).Grow(1).MinWidth(0).Children(func() {
 					internalui.HighlightedText(c, label, meta.titleMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight)

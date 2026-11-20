@@ -151,6 +151,23 @@ func normalizeState(st *model.AppState) {
 			st.ActiveTab = st.OpenTabs[0]
 		}
 	}
+
+	if len(st.PinnedPluginButtons) > 0 {
+		cleanPinned := make([]string, 0, len(st.PinnedPluginButtons))
+		seenPinned := make(map[string]bool, len(st.PinnedPluginButtons))
+		for _, id := range st.PinnedPluginButtons {
+			id = strings.TrimSpace(id)
+			if id == "" || seenPinned[id] {
+				continue
+			}
+			seenPinned[id] = true
+			cleanPinned = append(cleanPinned, id)
+			if len(cleanPinned) >= 3 {
+				break
+			}
+		}
+		st.PinnedPluginButtons = cleanPinned
+	}
 }
 
 func loadStateLocked(path string) (model.AppState, error) {

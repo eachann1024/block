@@ -188,6 +188,7 @@ type AppState struct {
 	BrandDeco             BrandDeco           `json:"brand_deco,omitzero"`
 	TreeSort              TreeSortMode        `json:"tree_sort,omitempty"`
 	TarotMode             bool                `json:"tarot_mode,omitempty"`
+	PinnedPluginButtons   []string            `json:"pinned_plugin_buttons,omitempty"`
 }
 
 // TreeSortMode controls how sibling entries are ordered in the sidebar file tree.
