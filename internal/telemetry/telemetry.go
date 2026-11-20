@@ -91,12 +91,17 @@ func loop(cfg Config) {
 	time.Sleep(startDelay)
 	for {
 		wait := checkInterval
+		day := today()
 		if _, err := CheckOnce(context.Background(), cfg); err != nil {
 			wait = retryInterval
 		}
 		now := time.Now()
 		// Check again right after midnight so a session spanning it counts for the new day too.
 		wait = min(wait, untilNextDay(now))
+		if today() != day {
+			// Midnight passed while that check ran, so it covered yesterday: today is still due.
+			wait = min(wait, time.Minute)
+		}
 		sleepUntil(now.Add(wait).Round(0))
 	}
 }
