@@ -1288,6 +1288,9 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 		}
 		edFont := resolvedEditorFont()
 		plain := b.PlainText()
+		if drop, ok := poopDropKind(b); ok {
+			plain = poopDropDisplayText(plain, drop)
+		}
 		var rt ui.Element
 		if len(b.Spans) == 0 || plain == "" {
 			rt = ui.Text(c.Key("rt-empty"), "").PreserveSpaces().FontSize(fontSize).FontWeight(weight).LineHeight(lh).
@@ -1384,6 +1387,9 @@ func spanLinkAtOffset(b *model.Block, off int) string {
 func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block, fontSize float32, weight int, lh float32, deleteArmed bool) {
 	pal := theme.Ocean()
 	draft := b.PlainText()
+	if drop, ok := poopDropKind(b); ok {
+		draft = poopDropDisplayText(draft, drop)
+	}
 	st := s.richInputState(b.ID)
 
 	wrap := ui.Box(c.Key("edit-wrap")).FillWidth()

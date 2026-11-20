@@ -19,6 +19,9 @@ func poopDropKind(b *model.Block) (string, bool) {
 	if b == nil || b.Kind != model.BlockQuote {
 		return "", false
 	}
+	if b.PoopKind != "" {
+		return b.PoopKind, true
+	}
 	if m := poopSigRe.FindStringSubmatch(b.CleanSource); m != nil {
 		if m[1] != "" {
 			return m[1], true
@@ -42,4 +45,12 @@ func poopDropCallout(kind string) model.CalloutKind {
 	default:
 		return model.CalloutWarning
 	}
+}
+
+func poopDropDisplayText(plain, _ string) string {
+	plain = strings.TrimSpace(plain)
+	if plain == "" {
+		return "到此一拉"
+	}
+	return plain
 }
