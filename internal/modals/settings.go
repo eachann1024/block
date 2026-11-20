@@ -1124,6 +1124,17 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					}
 				}
 			})
+
+			telemetryOn := !st.TelemetryOff
+			telemetryLabel := theme.Tr("匿名使用统计", "Anonymous Usage Stats")
+			internalui.SettingsRow(c, telemetryLabel, func() {
+				if internalui.TogglePill(c, "settings-telemetry-pill", telemetryLabel, &telemetryOn, false) {
+					off := !telemetryOn
+					m.mutateState(func(s *model.AppState) {
+						s.TelemetryOff = off
+					})
+				}
+			})
 		})
 
 		if m.PluginHost != nil {
