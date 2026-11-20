@@ -18,15 +18,21 @@ function releaseCommitOnHistory(tag, head) {
   try {
     const out = execFileSync(
       "git",
-      ["log", head, "--fixed-strings", `--grep=${needle}`, "--format=%H%x00%s"],
-      { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-    ).trim();
-    for (const line of out.split("\n")) {
-      if (!line) continue;
-      const [sha = "", subject = ""] = line.split("\x00");
-      if (subject.trim() === needle && /^[0-9a-f]{40}$/i.test(sha) && isAncestor(sha, head)) {
-        return { sha, needle };
+      ["log", head, "--fixed-strings", `--grep=${needle}`, "--format=%x1e%H%x1f%s%x1f%b"],
+      { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 },
+    );
+    for (const chunk of out.split("\x1e")) {
+      if (!chunk) continue;
+      const [sha = "", subject = "", body = ""] = chunk.split("\x1f");
+      const trimmedSha = sha.trim();
+      if (subject.trim() !== needle || !/^[0-9a-f]{40}$/i.test(trimmedSha) || !isAncestor(trimmedSha, head)) {
+        continue;
       }
+      const sourceMatch = /^Release-Source-SHA:\s*([0-9a-f]{40})\s*$/im.exec(body);
+      if (sourceMatch && isAncestor(sourceMatch[1], head)) {
+        return { sha: sourceMatch[1], needle: `${needle} (source ${sourceMatch[1].slice(0, 7)})` };
+      }
+      return { sha: trimmedSha, needle };
     }
   } catch {}
   return null;
