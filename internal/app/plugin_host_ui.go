@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -35,6 +36,7 @@ type pluginToast struct {
 	Tone     string
 	EventKey string
 	Icon     *plugins.DuoIconSpec
+	native   func(context.Context) error
 }
 
 type pluginDialogRef struct {
@@ -147,10 +149,10 @@ func normalizeToastTone(t string) string {
 }
 
 func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
-	h.onMain(func() { h.toast(pluginID, message, tone, "", icon) })
+	h.onMain(func() { h.toast(pluginID, message, tone, "", icon, nil) })
 }
 
-func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec) bool {
+func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec, native func(context.Context) error) bool {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		return false
@@ -198,6 +200,7 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		Tone:     normTone,
 		EventKey: eventKey,
 		Icon:     icCopy,
+		native:   native,
 	})
 	if len(h.toasts) == 1 {
 		h.scheduleToastTimerLocked(id)
@@ -212,10 +215,35 @@ func (h *pluginHostUI) scheduleToastTimerLocked(id uint64) {
 		h.toastTimer.Stop()
 	}
 	h.toastTimer = time.AfterFunc(pluginToastDuration, func() {
-		h.onMain(func() {
-			h.dismissToast(id)
-		})
+		h.onMain(func() { h.expireToast(id) })
 	})
+}
+
+func (h *pluginHostUI) expireToast(id uint64) {
+	toast, ok := h.currentToast()
+	if !ok || toast.ID != id {
+		return
+	}
+	if win := h.w.Window(); toast.native == nil || win != nil && win.IsFocused() {
+		h.dismissToast(id)
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		err := toast.native(ctx)
+		h.onMain(func() {
+			if err == nil || errors.Is(err, plugins.ErrSystemCanceled) {
+				h.dismissToast(id)
+				return
+			}
+			h.mu.Lock()
+			if len(h.toasts) != 0 && h.toasts[0].ID == id {
+				h.scheduleToastTimerLocked(id)
+			}
+			h.mu.Unlock()
+		})
+	}()
 }
 
 func (h *pluginHostUI) dismissToast(id uint64) {
