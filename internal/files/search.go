@@ -371,7 +371,7 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 	bodyMatched := false
 	var bodyTier uint8
 
-	if len(data) > 0 && !skipBody {
+	if len(data) > 0 && (!skipBody || titleMatched) {
 		multiTok := len(spec.foldedTokens) > 1
 		var (
 			hasSameLine    bool
@@ -524,36 +524,57 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 	}, true, nil
 }
 
-func hasNonASCIIBytes(b []byte) bool {
-	for _, c := range b {
+func firstNonASCIIByte(b []byte) int {
+	for i, c := range b {
 		if c >= utf8.RuneSelf {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func findFoldMatchBytesCtx(ctx context.Context, line []byte, rawNeedle, foldedNeedle string, needleIsASCII bool, lps []int) (int, int, bool, error) {
 	if len(foldedNeedle) == 0 || len(line) == 0 {
 		return 0, 0, false, nil
 	}
-	// If the line contains non-ASCII runes (e.g. Kelvin K, Turkish İ, German ß), always run
-	// linear-time Unicode folding so earliest match byte offsets stay consistent with FindFoldMatches
-	// (e.g. "K k" searching "k" hits byte 0, not byte 4) and long lines respect ctx cancellation.
-	if hasNonASCIIBytes(line) {
-		return fuzzy.FindFirstFoldRangeCtx(ctx, string(line), rawNeedle)
-	}
-	if !needleIsASCII {
+	nonASCIIIdx := firstNonASCIIByte(line)
+	if nonASCIIIdx < 0 {
+		if !needleIsASCII {
+			return 0, 0, false, nil
+		}
+		idx, err := indexFoldASCIIBytesCtx(ctx, line, foldedNeedle, lps)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if idx >= 0 {
+			return idx, idx + len(foldedNeedle), true, nil
+		}
 		return 0, 0, false, nil
 	}
-	idx, err := indexFoldASCIIBytesCtx(ctx, line, foldedNeedle, lps)
-	if err != nil {
+
+	// For ASCII-folded queries, scan the pure-ASCII prefix first in O(N) zero-alloc time:
+	// an early match before the first non-ASCII byte is guaranteed to be the earliest match
+	// and avoids folding megabytes of trailing text just because a non-ASCII rune appears later.
+	if needleIsASCII && nonASCIIIdx >= len(foldedNeedle) {
+		idx, err := indexFoldASCIIBytesCtx(ctx, line[:nonASCIIIdx], foldedNeedle, lps)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if idx >= 0 {
+			return idx, idx + len(foldedNeedle), true, nil
+		}
+	}
+
+	// Only fold the tail starting from (nonASCIIIdx - overlap) when the pure-ASCII prefix missed.
+	tailStart := 0
+	if needleIsASCII && nonASCIIIdx > 0 {
+		tailStart = max(0, nonASCIIIdx-len(foldedNeedle)+1)
+	}
+	s, e, ok, err := fuzzy.FindFirstFoldRangeCtx(ctx, string(line[tailStart:]), rawNeedle)
+	if err != nil || !ok {
 		return 0, 0, false, err
 	}
-	if idx >= 0 {
-		return idx, idx + len(foldedNeedle), true, nil
-	}
-	return 0, 0, false, nil
+	return tailStart + s, tailStart + e, true, nil
 }
 
 func indexFoldASCIIBytesCtx(ctx context.Context, hay []byte, foldedNeedle string, lps []int) (int, error) {
@@ -785,6 +806,21 @@ func snippetAround(text string, matchStart, matchEnd int) string {
 	return snippetWindow(text, matchStart, matchEnd, snippetBeforeRunes, snippetAfterRunes)
 }
 
+func runeDisplayWidth(r rune) int {
+	if r >= utf8.RuneSelf && (unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r) || r >= 0xFF00) {
+		return 2
+	}
+	return 1
+}
+
+func stringDisplayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		w += runeDisplayWidth(r)
+	}
+	return w
+}
+
 func snippetAroundRanges(text string, ranges [][2]int) string {
 	merged := fuzzy.MergeRanges(append([][2]int(nil), ranges...))
 	if len(merged) == 0 {
@@ -795,11 +831,11 @@ func snippetAroundRanges(text string, ranges [][2]int) string {
 	}
 	firstStart := max(0, merged[0][0])
 	lastEnd := min(len(text), merged[len(merged)-1][1])
-	if utf8.RuneCountInString(text[firstStart:lastEnd]) <= snippetBeforeRunes+snippetAfterRunes {
-		return snippetWindow(text, firstStart, lastEnd, 16, 20)
+	if stringDisplayWidth(text[firstStart:lastEnd]) <= 56 {
+		return snippetWindowWidth(text, firstStart, lastEnd, 14, 18)
 	}
-	// Group nearby token matches into merged windows and keep up to 4 separated excerpts
-	// so multi-token matches spread across a long line (e.g. 3 words 100 chars apart) stay visible.
+	// Group nearby token matches into merged windows and keep separated excerpts within
+	// single-line visual width budget (CJK chars count as width 2) so all words remain visible.
 	type win struct {
 		start int
 		end   int
@@ -810,27 +846,74 @@ func snippetAroundRanges(text string, ranges [][2]int) string {
 		if s >= e {
 			continue
 		}
-		if len(wins) > 0 && utf8.RuneCountInString(text[wins[len(wins)-1].end:s]) <= 24 {
+		if len(wins) > 0 && stringDisplayWidth(text[wins[len(wins)-1].end:s]) <= 16 {
 			wins[len(wins)-1].end = e
 		} else {
 			wins = append(wins, win{start: s, end: e})
-			if len(wins) >= 4 {
+			if len(wins) >= 5 {
 				break
 			}
 		}
 	}
 	if len(wins) == 1 {
-		return snippetWindow(text, wins[0].start, wins[0].end, 16, 20)
+		return snippetWindowWidth(text, wins[0].start, wins[0].end, 14, 18)
 	}
-	before, after := 12, 14
-	if len(wins) >= 3 {
-		before, after = 8, 10
+	beforeW, afterW := 10, 12
+	switch {
+	case len(wins) >= 4:
+		beforeW, afterW = 2, 2
+	case len(wins) == 3:
+		beforeW, afterW = 4, 4
 	}
 	parts := make([]string, 0, len(wins))
 	for _, w := range wins {
-		parts = append(parts, snippetWindow(text, w.start, w.end, before, after))
+		parts = append(parts, snippetWindowWidth(text, w.start, w.end, beforeW, afterW))
 	}
 	return strings.Join(parts, " ")
+}
+
+func snippetWindowWidth(text string, matchStart, matchEnd, beforeWidth, afterWidth int) string {
+	if matchStart < 0 {
+		matchStart = 0
+	}
+	if matchEnd > len(text) {
+		matchEnd = len(text)
+	}
+	start := matchStart
+	for used := 0; start > 0 && used < beforeWidth; {
+		r, size := utf8.DecodeLastRuneInString(text[:start])
+		w := runeDisplayWidth(r)
+		if used > 0 && used+w > beforeWidth {
+			break
+		}
+		start -= size
+		used += w
+	}
+	end := matchEnd
+	for used := 0; end < len(text) && used < afterWidth; {
+		r, size := utf8.DecodeRuneInString(text[end:])
+		w := runeDisplayWidth(r)
+		if used > 0 && used+w > afterWidth {
+			break
+		}
+		end += size
+		used += w
+	}
+	var b strings.Builder
+	if start > 0 {
+		b.WriteString("…")
+	}
+	for _, r := range text[start:end] {
+		if unicode.IsControl(r) {
+			b.WriteByte(' ')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	if end < len(text) {
+		b.WriteString("…")
+	}
+	return b.String()
 }
 
 func snippetWindow(text string, matchStart, matchEnd, beforeRunes, afterRunes int) string {
