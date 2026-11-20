@@ -264,10 +264,7 @@ export async function syncPublishedRelease(tag) {
   for (const asset of publishedRelease.assets ?? []) {
     if (!asset?.name || !RELEASE_ASSETS.includes(asset.name)) continue;
     if (asset.digest && /^sha256:[0-9a-f]{64}$/i.test(asset.digest.trim())) continue;
-    const localPath = join(RELEASE_DIR, asset.name);
-    if (existsSync(localPath) && statSync(localPath).size === asset.size) {
-      fallbackHashes[asset.name] = await sha256File(localPath);
-    } else if (asset.id) {
+    if (asset.id) {
       fallbackHashes[asset.name] = await sha256RemoteAsset(asset.id);
     }
   }
