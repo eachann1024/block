@@ -2,6 +2,7 @@ package files
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,7 +226,8 @@ end run`
 		if opts.Multiple {
 			retBlock = `set out to ""
 	repeat with f in chosen
-		set out to out & POSIX path of f & linefeed
+		if out is not "" then set out to out & (character id 0)
+		set out to out & POSIX path of f
 	end repeat
 	return out`
 		}
@@ -264,13 +266,15 @@ end run`
 		return nil, err
 	}
 
-	var paths []string
-	for _, line := range strings.Split(strings.TrimRight(stdout.String(), "\r\n"), "\n") {
-		p := strings.TrimRight(line, "\r")
-		if p == "" {
-			continue
+	paths := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\x00")
+	if len(paths) != 1 && (!opts.Multiple || opts.Directory) {
+		return nil, errors.New("native file picker returned multiple paths")
+	}
+	for i, path := range paths {
+		if !filepath.IsAbs(path) {
+			return nil, errors.New("native file picker returned an invalid path")
 		}
-		paths = append(paths, filepath.Clean(p))
+		paths[i] = filepath.Clean(path)
 	}
 	return paths, nil
 }
@@ -330,9 +334,9 @@ end run`
 		}
 		return "", err
 	}
-	chosen := strings.TrimRight(stdout.String(), "\r\n")
-	if chosen == "" {
-		return "", nil
+	chosen := strings.TrimSuffix(stdout.String(), "\n")
+	if !filepath.IsAbs(chosen) || strings.ContainsRune(chosen, 0) {
+		return "", errors.New("native save picker returned an invalid path")
 	}
 	return filepath.Clean(chosen), nil
 }
