@@ -43,9 +43,31 @@ type CommandPalette struct {
 	cacheValid    bool
 	cacheQuery    string
 	cacheCount    int
-	cacheFirstID  string
-	cacheLastID   string
+	cacheHash     uint64
 	cacheFiltered []PaletteItem
+}
+
+func hashPaletteItems64(items []PaletteItem) uint64 {
+	const (
+		offset uint64 = 14695981039346656037
+		prime  uint64 = 1099511628211
+	)
+	h := offset
+	feed := func(s string) {
+		for i := range len(s) {
+			h ^= uint64(s[i])
+			h *= prime
+		}
+		h ^= 0xff
+		h *= prime
+	}
+	for i := range items {
+		feed(items[i].ID)
+		feed(items[i].Title)
+		feed(items[i].Subtitle)
+		feed(items[i].Shortcut)
+	}
+	return h
 }
 
 // Open opens the command palette and resets filter and selection state.
@@ -72,20 +94,15 @@ func (p *CommandPalette) Close() {
 }
 
 func (p *CommandPalette) filteredItems(items []PaletteItem) []PaletteItem {
-	firstID, lastID := "", ""
-	if n := len(items); n > 0 {
-		firstID = items[0].ID + "|" + items[0].Title
-		lastID = items[n-1].ID + "|" + items[n-1].Title
-	}
-	if p.cacheValid && p.cacheQuery == p.query && p.cacheCount == len(items) && p.cacheFirstID == firstID && p.cacheLastID == lastID {
+	ih := hashPaletteItems64(items)
+	if p.cacheValid && p.cacheQuery == p.query && p.cacheCount == len(items) && p.cacheHash == ih {
 		return p.cacheFiltered
 	}
 	filtered := filterPaletteItems(items, p.query)
 	p.cacheValid = true
 	p.cacheQuery = p.query
 	p.cacheCount = len(items)
-	p.cacheFirstID = firstID
-	p.cacheLastID = lastID
+	p.cacheHash = ih
 	p.cacheFiltered = filtered
 	return filtered
 }
