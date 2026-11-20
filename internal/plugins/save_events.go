@@ -138,7 +138,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	request.again = false
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	request.cancel = cancel
-	original.saveCancel = cancel
+	original.activeSaves++
 	s.mu.Unlock()
 	defer cancel()
 	rt, err := s.ensureRuntime(ctx, key.pluginID, key.notebookRoot)
@@ -147,13 +147,13 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	}
 	s.mu.Lock()
 	v := s.views[key]
+	if original.activeSaves > 0 {
+		original.activeSaves--
+	}
+	request.cancel = nil
 	if v != original {
 		s.mu.Unlock()
 		return
-	}
-	request.cancel = nil
-	if v.saveCancel != nil && len(v.queuedSaves) <= 1 {
-		v.saveCancel = nil
 	}
 	if v.queuedSaves[absNotePath] != request {
 		s.mu.Unlock()
