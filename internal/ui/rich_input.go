@@ -193,7 +193,7 @@ type RichInputState struct {
 	composing           bool
 	inBatchContinuation bool
 	detached            bool
-	onDetachedInsert    func(ins string)
+	onDetachedReplace   func(delStart, delEnd int, ins string)
 
 	dragging  bool
 	dragUnit  int
@@ -728,8 +728,13 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 			s.clearComposeState()
 			s.replaceRunes(baseA, baseZ, comp)
 			if s.detached {
-				if ins != "" && s.onDetachedInsert != nil {
-					s.onDetachedInsert(ins)
+				delStart, delEnd := 0, 0
+				if v0 >= baseA+compLen {
+					delStart = v0 - (baseA + compLen)
+					delEnd = v1 - (baseA + compLen)
+				}
+				if (delEnd > delStart || ins != "") && s.onDetachedReplace != nil {
+					s.onDetachedReplace(delStart, delEnd, ins)
 				}
 				return
 			}
@@ -906,8 +911,8 @@ func (s *RichInputState) SetDetached(v bool) {
 	s.detached = v
 }
 
-func (s *RichInputState) SetOnDetachedInsert(fn func(ins string)) {
-	s.onDetachedInsert = fn
+func (s *RichInputState) SetOnDetachedReplace(fn func(delStart, delEnd int, ins string)) {
+	s.onDetachedReplace = fn
 }
 
 func (s *RichInputState) replaceRunes(a, z int, ins string) {
