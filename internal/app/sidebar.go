@@ -979,7 +979,41 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 
-		if hovered || menuTarget {
+		if extBadge != "" {
+			moreID := "row-more:" + entry.Path
+			c.Key(moreID)
+			moreBtn := ui.ButtonBase(c).Height(theme.TreeMoreBtnSize).MinWidth(theme.TreeMoreBtnSize).Shrink(0).Center().
+				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+				Label(theme.Tr("更多操作", "More actions"))
+			moreHover := moreBtn.Hovered()
+			morePress := moreBtn.Pressed()
+			showMore := menuTarget || moreHover || morePress
+			moreBG := ui.Transparent
+			if showMore {
+				moreBG = pal.MenuHover
+			}
+			blockui.AnimateSurfaceColors(moreBtn, moreBG, ui.Transparent, false)
+			blockui.TactileButton(moreBtn, moreHover, morePress, false)
+			moreBtn.Children(func() {
+				badgeWrap := ui.Box(c).Center()
+				if showMore {
+					badgeWrap.Opacity(0)
+				}
+				badgeWrap.Children(func() {
+					blockui.FileExtBadge(c, extBadge, highlighted)
+				})
+				if showMore {
+					ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Center().Children(func() {
+						icons.DrawAnimated(c, icons.More, theme.IconInline, pal.DuoIconColors(pal.Text), true)
+					})
+				}
+			})
+			blockui.Probe(moreBtn, moreID)
+			moreBounds = moreBtn.Bounds()
+			if moreBtn.Clicked() {
+				moreClicked = true
+			}
+		} else if hovered || menuTarget {
 			moreID := "row-more:" + entry.Path
 			c.Key(moreID)
 			moreBtn := ui.ButtonBase(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().
@@ -1005,8 +1039,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			if moreBtn.Clicked() {
 				moreClicked = true
 			}
-		} else if extBadge != "" {
-			blockui.FileExtBadge(c, extBadge, highlighted)
 		} else {
 			ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0)
 		}
