@@ -2,7 +2,7 @@
 
 > 本地优先的 Markdown 块笔记软件 · Ocean Paper 设计语言 · 开放插件生态
 
-本目录是 **Block** 项目的唯一文档总源（Single Source of Truth），同时服务于 GitHub 仓库阅读与官网 [block.cooool.top/plugins](https://block.cooool.top/plugins/) 的自动映射构建。
+本目录是 **Block** 项目的唯一文档总源（Single Source of Truth），同时服务于 GitHub 仓库阅读与在线文档站 [block.cooool.top/docs](https://block.cooool.top/docs/)（推送 `docs/**` 后由 VitePress 自动构建发布）。
 
 ---
 
