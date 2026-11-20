@@ -179,6 +179,15 @@ func (s *Service) Snapshot() Snapshot {
 	if pubAt == "" && s.readyRecord != nil {
 		pubAt = s.readyRecord.PublishedAt
 	}
+	if s.status == StatusReady && s.readyRecord != nil {
+		latest = s.readyRecord.Version
+		if s.readyRecord.PublishedAt != "" {
+			pubAt = s.readyRecord.PublishedAt
+		}
+		if s.readyRecord.ReleaseURL != "" {
+			relURL = s.readyRecord.ReleaseURL
+		}
+	}
 
 	return Snapshot{
 		Status:          s.status,
@@ -423,10 +432,14 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 		logInfo("check.summary", "manual", manual, "current", cur, "latest", s.notes.ToVersion, "has_newer", s.notes.HasNewer, "aggregated_versions", s.notes.VersionCount, "channel", channel, "latency_ms", latencyMs)
 
 		if !s.notes.HasNewer || len(s.notes.Versions) == 0 {
-			s.latestEntry = nil
-			s.targetAsset = nil
-			s.readyRecord = nil
-			s.status = StatusUpToDate
+			if s.readyRecord != nil && CompareVersion(s.readyRecord.Version, cur) > 0 {
+				s.status = StatusReady
+			} else {
+				s.latestEntry = nil
+				s.targetAsset = nil
+				s.readyRecord = nil
+				s.status = StatusUpToDate
+			}
 			s.mu.Unlock()
 			s.notify()
 			return
@@ -434,16 +447,19 @@ func (s *Service) CheckAsyncWithAfter(manual bool, onDone func()) {
 
 		var picked *ReleaseEntry
 		var asset *ReleaseAsset
-		var inPlace, pkgManaged bool
+		var inPlace bool
+		_, _, pkgManaged := PickPlatformAsset(s.notes.Versions[0].Assets, runtime.GOOS, runtime.GOARCH)
 		for i := range s.notes.Versions {
 			cand := s.notes.Versions[i]
 			a, ip, pm := PickPlatformAsset(cand.Assets, runtime.GOOS, runtime.GOARCH)
+			if pm {
+				pkgManaged = true
+			}
 			if a != nil {
 				c := cand
 				picked = &c
 				asset = a
 				inPlace = ip
-				pkgManaged = pm
 				break
 			}
 		}
@@ -557,6 +573,13 @@ func (s *Service) StartDownload() {
 			}
 			s.mu.Unlock()
 			s.notify()
+		}, func(commit func() error) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if !s.downloadRunning || dlGen != s.downloadGen {
+				return context.Canceled
+			}
+			return commit()
 		})
 
 		s.mu.Lock()
@@ -632,11 +655,16 @@ func (s *Service) InstallNow() {
 		if err != nil {
 			s.mu.Lock()
 			s.installRunning = false
-			if _, ok := os.Stat(rec.ArchivePath); ok == nil {
+			if errors.Is(err, errStagedIntegrity) {
+				_ = os.Remove(readyRecordPath(dataDir))
+				s.readyRecord = nil
+				s.status = StatusError
+			} else if _, ok := os.Stat(rec.ArchivePath); ok == nil {
 				s.status = StatusReady
 			} else {
+				_ = os.Remove(readyRecordPath(dataDir))
 				s.readyRecord = nil
-				s.status = StatusAvailable
+				s.status = StatusError
 			}
 			s.errorMsg = err.Error()
 			s.mu.Unlock()
