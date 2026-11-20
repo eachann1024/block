@@ -360,6 +360,9 @@ func (w *Workspace) renderTarotWorkspace(
 				}
 
 				w.tarot.RenderWritingStage(c, effMainW, func(sheetW float32) {
+					if activeTab != "" && isExternalFile(activeTab, activeNB) {
+						renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell)
+					}
 					if toast != nil && toast.Active && toast.NotePath == activeTab {
 						toast.RenderBanner(
 							c,
