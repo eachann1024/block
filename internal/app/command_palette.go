@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 
+	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -301,11 +301,9 @@ func filterPaletteItems(items []PaletteItem, rawQuery string) []PaletteItem {
 	if q == "" {
 		return items
 	}
-	lowerQ := strings.ToLower(q)
-	tokens := strings.Fields(lowerQ)
 	scored := make([]scoredPaletteItem, 0, len(items))
 	for i, it := range items {
-		if sc, ok := scorePaletteItem(it, lowerQ, tokens); ok {
+		if sc, ok := fuzzy.ScoreFields(q, it.Title, it.Subtitle); ok {
 			scored = append(scored, scoredPaletteItem{item: it, score: sc, index: i})
 		}
 	}
@@ -318,101 +316,6 @@ func filterPaletteItems(items []PaletteItem, rawQuery string) []PaletteItem {
 	out := make([]PaletteItem, len(scored))
 	for i, s := range scored {
 		out[i] = s.item
-	}
-	return out
-}
-
-func scorePaletteItem(it PaletteItem, lowerQ string, tokens []string) (int, bool) {
-	title := strings.ToLower(it.Title)
-	sub := strings.ToLower(it.Subtitle)
-	combined := title
-	if sub != "" {
-		combined = title + " " + sub
-	}
-
-	if title == lowerQ {
-		return 1000, true
-	}
-	if strings.HasPrefix(title, lowerQ) {
-		return 800, true
-	}
-	if strings.Contains(title, lowerQ) {
-		return 600, true
-	}
-	if sub != "" && strings.Contains(sub, lowerQ) {
-		return 450, true
-	}
-
-	if len(tokens) > 1 {
-		allTokens := true
-		tokenScore := 350
-		for _, tok := range tokens {
-			switch {
-			case strings.Contains(title, tok):
-				tokenScore += 40
-			case sub != "" && strings.Contains(sub, tok):
-				tokenScore += 20
-			case fuzzySubsequenceScore(title, tok) > 0:
-				tokenScore += 10
-			default:
-				allTokens = false
-			}
-			if !allTokens {
-				break
-			}
-		}
-		if allTokens {
-			return tokenScore, true
-		}
-	}
-
-	if sc := fuzzySubsequenceScore(title, lowerQ); sc > 0 {
-		return 200 + sc, true
-	}
-	if sc := fuzzySubsequenceScore(combined, lowerQ); sc > 0 {
-		return 100 + sc, true
-	}
-	return 0, false
-}
-
-func fuzzySubsequenceScore(haystack, needle string) int {
-	nRunes := compactNonSpaceRunes(needle)
-	if len(nRunes) == 0 {
-		return 0
-	}
-	hRunes := []rune(haystack)
-	hi := 0
-	consecutive := 0
-	score := 0
-	for _, nr := range nRunes {
-		found := false
-		for hi < len(hRunes) {
-			if hRunes[hi] == nr {
-				found = true
-				consecutive++
-				score += 10 + consecutive*4
-				if hi == 0 || unicode.IsSpace(hRunes[hi-1]) || hRunes[hi-1] == ':' || hRunes[hi-1] == '/' || hRunes[hi-1] == '-' {
-					score += 8
-				}
-				hi++
-				break
-			}
-			consecutive = 0
-			hi++
-		}
-		if !found {
-			return 0
-		}
-	}
-	return score
-}
-
-func compactNonSpaceRunes(s string) []rune {
-	out := make([]rune, 0, len(s))
-	for _, r := range s {
-		if !unicode.IsSpace(r) {
-			out = append(out, r)
-		}
 	}
 	return out
 }
