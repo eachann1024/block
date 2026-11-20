@@ -151,7 +151,9 @@ func DiffListNumbers(lines []string, change []int) []int {
 			// sibling of that list's items (or of an outer one).
 			var sib *list
 			saved := slices.Clone(stack)
-			if item || blank || !plain {
+			// Only paragraph text continues lazily: after code, "恢复步骤：" at the margin
+			// ends the list.
+			if item || blank || !plain || !para {
 				for len(stack) > 0 && stack[len(stack)-1].content > ind {
 					top := stack[len(stack)-1]
 					sib, stack = &top, stack[:len(stack)-1]
@@ -171,7 +173,7 @@ func DiffListNumbers(lines []string, change []int) []int {
 				item, num[i] = false, -1
 			}
 			if !item {
-				if plain && !blank {
+				if plain && !blank && para {
 					// A lazy continuation line leaves every list open.
 					stack = saved
 				}
