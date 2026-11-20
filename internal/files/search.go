@@ -213,7 +213,7 @@ func walkSearchDir(
 		seenFiles[fullPath] = true
 
 		skipBody := len(*bodyHits) >= maxSearchHits
-		stem := strings.TrimSuffix(rawName, mdExt)
+		stem := DisplayName(rawName)
 		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, stem, notebook, rawQuery, foldedQuery, queryIsASCII, skipBody); ok {
 			if ranked.titleMatch {
 				*titleHits = append(*titleHits, ranked)

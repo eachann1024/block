@@ -56,6 +56,24 @@ func IsMarkdown(name string) bool {
 	return markdownExtension(name) != ""
 }
 
+// HasHiddenExtension reports whether name uses the canonical ".md" extension
+// that Block hides in note titles and auto-preserves on rename. Variant
+// Markdown extensions (e.g. ".mdx", ".markdown") stay visible to avoid
+// collisions with sibling ".md" notes.
+func HasHiddenExtension(name string) bool {
+	ext := filepath.Ext(name)
+	return strings.EqualFold(ext, ".md") && len(name) > len(ext)
+}
+
+// DisplayName returns the user-facing title for a file name, stripping only
+// the canonical ".md" extension while keeping other extensions visible.
+func DisplayName(name string) string {
+	if HasHiddenExtension(name) {
+		return strings.TrimSuffix(name, filepath.Ext(name))
+	}
+	return name
+}
+
 func markdownExtension(name string) string {
 	ext := filepath.Ext(name)
 	if markdownExtensions[strings.ToLower(strings.TrimPrefix(ext, "."))] {
@@ -164,7 +182,7 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 		}
 		out = append(out, model.FileEntry{
 			Path:       fullPath,
-			Name:       strings.TrimSuffix(rawName, mdExt),
+			Name:       DisplayName(rawName),
 			RawName:    rawName,
 			IsDir:      false,
 			IsMarkdown: mdExt != "",

@@ -149,9 +149,8 @@ func noteDisplayTitle(p string, isDir bool) string {
 		return ""
 	}
 	base := filepath.Base(p)
-	if !isDir && files.IsMarkdown(base) {
-		ext := filepath.Ext(base)
-		return strings.TrimSuffix(base, ext)
+	if !isDir {
+		return files.DisplayName(base)
 	}
 	return base
 }
