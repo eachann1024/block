@@ -4512,8 +4512,8 @@ func (w *Workspace) Render(c *ui.Context) {
 				c.Key("sidebar-drawer-panel")
 				drawer := blockui.Elevate(
 					ui.Row(c).Absolute().
-						Left(theme.EdgeFloatInset).Top(theme.EdgeFloatInset).Bottom(theme.EdgeFloatInset).
-						Width(drawerW).Radius(theme.RadiusXL).Clip().
+						Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
+						Width(drawerW).Radius(theme.RadiusLG).Clip().
 						Background(pal.Sidebar).Border(1, efPal.CardBorder).
 						Transition(blockui.EdgeFloatCardTransition(false)),
 					theme.ElevationDrawer,

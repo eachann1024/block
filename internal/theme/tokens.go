@@ -179,7 +179,7 @@ const (
 	EdgeHotZoneWidth     float32 = 8 // outer window-edge pointer sensor width
 	EdgeStripIdleWidth   float32 = 3 // resting colored edge indicator bar width
 	EdgeStripHotWidth    float32 = 4 // hovered / active colored edge indicator bar width
-	EdgeFloatInset               = Space10
+	EdgeFloatInset               = Space8 // = stage card side/bottom gutter; floating cards sit flush on the card (top 0)
 	EdgeFloatGutterGap           = Space6
 	EdgeFloatSafeClear   float32 = 10 // minimum clearance between edge strip and 54px handle gutter
 	EdgeFloatHoverBuffer         = Space6
