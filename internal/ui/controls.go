@@ -500,62 +500,16 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 	return *active != prev
 }
 
-// TogglePill renders an iOS/macOS-style Ocean Paper boolean switch pill.
+// TogglePill renders the global Block Pluck Switch at standard size.
+// Kept as a compatibility wrapper so all existing callers automatically use
+// the unified SwitchWithOptions implementation.
 func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) bool {
-	pal := theme.Ocean()
-	prev := *value
-	if id != "" {
-		c.Key(id)
-	}
-	cursor := ui.CursorPointer
-	if disabled {
-		cursor = ui.CursorDefault
-	}
-	sw := ui.SwitchBase(c, value).Size(38, 22).Shrink(0).Padding(2).AlignItems(ui.Center).Radius(theme.RadiusPill).
-		Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(label)
-	hovered := sw.Hovered() && !disabled
-	pressed := sw.Pressed() && !disabled
-	bg := pal.BtnBorder
-	if *value {
-		switch {
-		case pressed:
-			bg = pal.AccentPressed
-		case hovered:
-			bg = pal.AccentHover
-		default:
-			bg = pal.Accent
-		}
-	} else {
-		switch {
-		case pressed:
-			bg = pal.BtnBorder.Mix(pal.Text, 0.22)
-		case hovered:
-			bg = pal.BtnBorder.Mix(pal.Text, 0.12)
-		}
-	}
-	sw.Background(bg)
-	TactileCard(sw, hovered, pressed, false, disabled)
-	if disabled {
-		sw.Opacity(theme.DisabledOpacity)
-	}
-	sw.Children(func() {
-		targetW := float32(18)
-		if pressed {
-			targetW = 21
-		}
-		targetX := float32(0)
-		if *value {
-			targetX = 34 - targetW
-		}
-		knobW := sw.AnimateTo("swKnobW", targetW, SpringTactile)
-		knobX := sw.AnimateTo("swKnobX", targetX, SpringTactile)
-		Elevate(ui.Box(c).Size(knobW, 18).Radius(theme.RadiusPill).Background(pal.SwitchKnob).
-			Left(knobX), theme.ElevationRaised)
+	return SwitchWithOptions(c, SwitchOptions{
+		ID:       id,
+		Label:    label,
+		Value:    value,
+		Disabled: disabled,
 	})
-	if id != "" {
-		Probe(sw, id)
-	}
-	return *value != prev
 }
 
 // MenuItemSpec describes a row in an Ocean Paper floating menu.
