@@ -24,6 +24,7 @@ type Controller struct {
 
 	mu             sync.Mutex
 	storeFilter    int
+	storeCategory  plugins.Category
 	manualSpec     string
 	manualOpen     bool
 	drafts         map[string]map[string]string
@@ -167,13 +168,20 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 	}
 
 	var vs plugins.PluginViewState
-	if inst.Enabled {
+	declarative := inst.Manifest.IsDeclarativeOnly()
+	if inst.Enabled && !declarative {
 		vs = c.sup.EnsurePluginView(pluginID)
 	}
 	pal := theme.Ocean()
 	fb := actionFeedbackFromView(vs)
 	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space10).AlignItems(ui.Center).MinWidth(0).Shrink(1).Children(func() {
-		if inst.Enabled {
+		if declarative {
+			if inst.Enabled {
+				renderStatusText(ctx, theme.Tr("已启用", "Enabled"))
+			} else {
+				renderStatusText(ctx, theme.Tr("已停用", "Disabled"))
+			}
+		} else if inst.Enabled {
 			if vs.Refreshing && vs.BusyAction == "" {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("更新中", "Refreshing"))
 			}
@@ -312,6 +320,10 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		})
 		return
 	}
+	if inst.Manifest.IsDeclarativeOnly() {
+		renderDeclarativeLanguageTab(ctx, c, inst)
+		return
+	}
 
 	vs := c.sup.EnsurePluginView(pluginID)
 	pal := theme.Ocean()
@@ -410,6 +422,18 @@ func (c *Controller) storeFilterValue() int {
 func (c *Controller) setStoreFilter(v int) {
 	c.mu.Lock()
 	c.storeFilter = v
+	c.mu.Unlock()
+}
+
+func (c *Controller) storeCategoryValue() plugins.Category {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.storeCategory
+}
+
+func (c *Controller) setStoreCategory(v plugins.Category) {
+	c.mu.Lock()
+	c.storeCategory = v
 	c.mu.Unlock()
 }
 
