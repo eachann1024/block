@@ -279,24 +279,24 @@ func (t *TableData) Clone() *TableData {
 }
 
 type Block struct {
-	ID          BlockID     `json:"id"`
-	Kind        BlockKind   `json:"kind"`
-	Indent      int         `json:"indent,omitempty"`
-	QuoteDepth  int         `json:"quoteDepth,omitempty"`
-	ListIndex   int         `json:"listIndex,omitempty"`
-	Checked     bool        `json:"checked,omitempty"`
-	Callout     CalloutKind `json:"callout,omitempty"`
-	Language    string      `json:"language,omitempty"`
-	ShowSource  bool        `json:"showSource,omitempty"`
-	WrapCode    bool        `json:"wrapCode,omitempty"`
-	Spans       []Span      `json:"spans,omitempty"`
-	Code        string      `json:"code,omitempty"` // Used by BlockCode and BlockRawHTML
-	ImageSrc    string      `json:"imageSrc,omitempty"`
-	ImageAlt    string      `json:"imageAlt,omitempty"`
-	ImageTitle  string      `json:"imageTitle,omitempty"`
-	ImageWidth  float32     `json:"imageWidth,omitempty"` // Percentage 10..100 or 0 for auto
-	ImageAlign  ImageAlign  `json:"imageAlign,omitempty"`
-	ImageCrop   ImageCrop   `json:"imageCrop,omitempty"`
+	ID            BlockID     `json:"id"`
+	Kind          BlockKind   `json:"kind"`
+	Indent        int         `json:"indent,omitempty"`
+	QuoteDepth    int         `json:"quoteDepth,omitempty"`
+	ListIndex     int         `json:"listIndex,omitempty"`
+	Checked       bool        `json:"checked,omitempty"`
+	Callout       CalloutKind `json:"callout,omitempty"`
+	Language      string      `json:"language,omitempty"`
+	ShowSource    bool        `json:"showSource,omitempty"`
+	WrapCode      bool        `json:"wrapCode,omitempty"`
+	Spans         []Span      `json:"spans,omitempty"`
+	Code          string      `json:"code,omitempty"` // Used by BlockCode and BlockRawHTML
+	ImageSrc      string      `json:"imageSrc,omitempty"`
+	ImageAlt      string      `json:"imageAlt,omitempty"`
+	ImageTitle    string      `json:"imageTitle,omitempty"`
+	ImageWidth    float32     `json:"imageWidth,omitempty"` // Percentage 10..100 or 0 for auto
+	ImageAlign    ImageAlign  `json:"imageAlign,omitempty"`
+	ImageCrop     ImageCrop   `json:"imageCrop,omitempty"`
 	Table         *TableData  `json:"table,omitempty"`
 	CleanSource   string      `json:"-"` // Preserved verbatim when block is untouched
 	Dirty         bool        `json:"-"`

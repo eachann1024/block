@@ -640,4 +640,3 @@ func TestExportAll12PaperThemesAndOptions(t *testing.T) {
 		t.Fatalf("expected no prepended title when ShowTitle=false, got %q", string(mdWithoutTitle))
 	}
 }
-
