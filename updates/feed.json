@@ -1,10 +1,88 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-20T15:55:08.606Z",
-  "latest_version": "1.0.855",
-  "latest_tag": "v1.0.855",
+  "updated_at": "2026-11-20T18:11:22.282Z",
+  "latest_version": "1.0.856",
+  "latest_tag": "v1.0.856",
   "releases": [
+    {
+      "version": "1.0.856",
+      "tag": "v1.0.856",
+      "published_at": "2026-11-20T18:11:21Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.856",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "支持应用内检查更新、跨版本日志展示与平滑升级。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "修复了一处日常编辑与界面交互中的细节问题。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化侧栏文件树、标签页与笔记本切换体验。",
+          "优化段落与列表拖拽移动时的跟手度与指示线。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Paginate GitHub releases in store crawler with latest fallback.",
+          "Recheck soon when the server counted an earlier day.",
+          "Serialize headless editor render with pluginHostUI.onMainWait.",
+          "Retry a success reply that does not name the counted day.",
+          "Treat a counted day that is not a real date as a failed ping.",
+          "Allow canceling a queued note retry before it starts.",
+          "Paint plugin drop quotes as callout chips.",
+          "Align sidebar plugin cards with the file tree.",
+          "Keep plugin buttons inline whenever they fit.",
+          "Fold plugin icons, then yield sidebar, before squeezing tabs.",
+          "Give short tabs' spare width to long titles and always yield sidebar before squeezing tabs.",
+          "Hide poop marker syntax inside drop quotes."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-macos-arm64.dmg",
+          "size": 15707411,
+          "sha256": "c1ca3d98dfc665de79cc0d9a3ef9e6f5dc39919ebe0ba303e954a45b69c8caf8"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-macos-x64.dmg",
+          "size": 17167469,
+          "sha256": "cf0655b795eca5b942b19089dca82640401fcbb9492f5d223b2dad0afe1949fb"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-windows-x64-setup.exe",
+          "size": 12673776,
+          "sha256": "ce46732e04b07c91219c43b7ccc59ed45f1e8137b17a1b53270c7703a3669f30"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-linux-x64.deb",
+          "size": 11208126,
+          "sha256": "6479374b737ca0ff5e92fa7cb09b480c631ad18aa4dacd4e901822082f9441c6"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.856/block-linux-x64.AppImage",
+          "size": 24103416,
+          "sha256": "3612cd8471f17a790fb88b38855bd0d4751d0d94b2ec0a6e1e8b1f6d188af150"
+        }
+      ]
+    },
     {
       "version": "1.0.855",
       "tag": "v1.0.855",
@@ -838,38 +916,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.855/block-macos-arm64.dmg",
-          "size": 15640262,
-          "sha256": "6cec6f33c7a971e9aad8edaa869039f7eca35cb42b96660bcb448267e5ddca7d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.855/block-macos-x64.dmg",
-          "size": 17145419,
-          "sha256": "987a06264255de909d3ba6719535716a7b8f58a2fb56c888ead6863d947cd7fd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.855/block-windows-x64-setup.exe",
-          "size": 12654122,
-          "sha256": "ae063d02149d97cda7277c962137fb071498dc96e24f0d4805d3f3dec1fd1d4a"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.855/block-linux-x64.deb",
-          "size": 11187742,
-          "sha256": "37c67020a577f929b97b485d7647f0ec5fab9d603a62b8f5a98d7812e105598e"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.855/block-linux-x64.AppImage",
-          "size": 24078840,
-          "sha256": "cc02fae804bd43a817e87568cbe38829ad610c5cc842b4503a3762248dd6ed3a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.854",
