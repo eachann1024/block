@@ -421,11 +421,62 @@ func isEscapedAt(r []rune, pos int) bool {
 	return bs%2 == 1
 }
 
+func hasURLSchemePrefixRunes(r []rune, pos, limit int) bool {
+	rem := limit - pos
+	if rem >= 8 && strings.EqualFold(string(r[pos:pos+8]), "https://") {
+		return true
+	}
+	if rem >= 7 && strings.EqualFold(string(r[pos:pos+7]), "http://") {
+		return true
+	}
+	if rem >= 4 && strings.EqualFold(string(r[pos:pos+4]), "www.") {
+		return true
+	}
+	return false
+}
+
+func isURLStartBoundary(r []rune, i, lineStart int) bool {
+	if i <= lineStart {
+		return true
+	}
+	prev := r[i-1]
+	if unicode.IsSpace(prev) {
+		return true
+	}
+	switch prev {
+	case '(', '[', '{', '<', '"', '\'', '（', '【', '「', '『', '《', '“', '‘':
+		return true
+	}
+	return false
+}
+
+func scanURLTokenEnd(r []rune, start, limit int, inParen bool, closeParen rune) int {
+	i := start
+	depth := 0
+	for i < limit && !unicode.IsSpace(r[i]) {
+		if inParen {
+			openParen := '('
+			if closeParen == '）' {
+				openParen = '（'
+			}
+			if r[i] == openParen {
+				depth++
+			} else if r[i] == closeParen {
+				if depth == 0 {
+					break
+				}
+				depth--
+			}
+		}
+		i++
+	}
+	return i
+}
+
 // inUnclosedLiteralContext runs in O(N) over the current line using a monotonic span cursor.
-// It detects whether caret `pos` lies inside:
-//   - an unclosed inline code backtick (` / ｀),
-//   - an unclosed inline math ($ / ＄), or
-//   - an active URL token (bare URL, wrapped like `(https://...`, or Markdown link dest `[甲](https://...`).
+// It skips completed URL tokens and Markdown link destinations so unpaired `$` or `` ` ``
+// inside an earlier URL never taint subsequent prose, while still protecting active URLs,
+// unclosed inline code backticks (` / ｀), and unclosed inline math ($ / ＄).
 func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick, inMath, inURL bool) {
 	if pos <= 0 || pos > len(r) {
 		return false, false, false
@@ -435,30 +486,8 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 		lineStart--
 	}
 
-	// Check active non-whitespace token (stripping leading wrappers or `[label](` prefix) for URL.
-	tokStart := pos
-	for tokStart > lineStart && !unicode.IsSpace(r[tokStart-1]) {
-		tokStart--
-	}
-	if tokStart < pos {
-		tokStr := string(r[tokStart:pos])
-		if idx := strings.LastIndex(tokStr, "]("); idx >= 0 {
-			tokStr = tokStr[idx+2:]
-		} else if idx := strings.LastIndex(tokStr, "]（"); idx >= 0 {
-			tokStr = tokStr[idx+len("]（"):]
-		} else if idx := strings.LastIndex(tokStr, "］（"); idx >= 0 {
-			tokStr = tokStr[idx+len("］（"):]
-		}
-		tokStr = strings.TrimLeft(tokStr, "([{\"<'（【「『《“‘")
-		tokLower := strings.ToLower(tokStr)
-		if strings.HasPrefix(tokLower, "http://") || strings.HasPrefix(tokLower, "https://") || strings.HasPrefix(tokLower, "www.") {
-			inURL = true
-		}
-	}
-
 	// Advance monotonic span cursor to lineStart once: O(N) total across the whole line.
 	spIdx := 0
-	spStart := 0
 	spEnd := 0
 	if len(spans) > 0 {
 		spEnd = utf8.RuneCountInString(spans[0].Text)
@@ -466,7 +495,6 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 	advanceSpanTo := func(runePos int) bool {
 		for spIdx < len(spans) && spEnd <= runePos {
 			spIdx++
-			spStart = spEnd
 			if spIdx < len(spans) {
 				spEnd += utf8.RuneCountInString(spans[spIdx].Text)
 			}
@@ -477,7 +505,6 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 		sp := spans[spIdx]
 		return sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != ""
 	}
-	_ = spStart
 
 	var openBT rune
 	var openMath rune
@@ -486,6 +513,21 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 			continue
 		}
 		ch := r[i]
+		// Outside unclosed code/math, detect URL tokens (bare, wrapped, or link destination)
+		// and skip their contents so unpaired `$` or `` ` `` inside a URL never taint later text.
+		if openBT == 0 && openMath == 0 && isURLStartBoundary(r, i, lineStart) && hasURLSchemePrefixRunes(r, i, pos) {
+			inParen := i > lineStart && (r[i-1] == '(' || r[i-1] == '（')
+			closeParen := ')'
+			if i > lineStart && r[i-1] == '（' {
+				closeParen = '）'
+			}
+			urlEnd := scanURLTokenEnd(r, i, pos, inParen, closeParen)
+			if urlEnd == pos {
+				return false, false, true
+			}
+			i = urlEnd - 1
+			continue
+		}
 		if openMath == 0 && (ch == '`' || ch == '｀') && !isEscapedAt(r, i) {
 			if (i > lineStart && r[i-1] == ch) || (i+1 < pos && r[i+1] == ch) {
 				continue
@@ -513,7 +555,7 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 			}
 		}
 	}
-	return openBT != 0, openMath != 0, inURL
+	return openBT != 0, openMath != 0, false
 }
 
 // --- Inline Markdown Real-Time Conversion ---
@@ -1456,8 +1498,132 @@ func trimCellSpansWhitespace(spans []model.Span) []model.Span {
 	return sliceSpans(spans, lo, hi)
 }
 
+func buildTablePipeProtectedMask(spans []model.Span, r []rune) []bool {
+	n := len(r)
+	prot := make([]bool, n)
+	// 1. Protect already-formatted inline code, math, and link spans.
+	pos := 0
+	for _, sp := range spans {
+		spLen := utf8.RuneCountInString(sp.Text)
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || sp.Link != "" {
+			end := min(pos+spLen, n)
+			for i := pos; i < end; i++ {
+				prot[i] = true
+			}
+		}
+		pos += spLen
+	}
+	// 2. Protect raw unformatted inline code (`...`), inline math ($...$), and links ([...](...)).
+	for i := 0; i < n; {
+		if prot[i] {
+			i++
+			continue
+		}
+		ch := r[i]
+		if (ch == '`' || ch == '｀') && !isEscapedAt(r, i) {
+			run := 0
+			for i+run < n && r[i+run] == ch {
+				run++
+			}
+			closeIdx := -1
+			for j := i + run; j < n; {
+				if r[j] == ch {
+					cRun := 0
+					for j+cRun < n && r[j+cRun] == ch {
+						cRun++
+					}
+					if cRun == run {
+						closeIdx = j
+						break
+					}
+					j += cRun
+					continue
+				}
+				j++
+			}
+			if closeIdx > i+run {
+				for k := i; k < closeIdx+run; k++ {
+					prot[k] = true
+				}
+				i = closeIdx + run
+				continue
+			}
+			i += run
+			continue
+		}
+		if (ch == '$' || ch == '＄') && !isEscapedAt(r, i) {
+			run := 0
+			for i+run < n && r[i+run] == ch {
+				run++
+			}
+			if run == 1 && i+1 < n && !unicode.IsSpace(r[i+1]) {
+				closeIdx := -1
+				for j := i + 1; j < n; j++ {
+					if r[j] == '\n' {
+						break
+					}
+					if r[j] == ch && !isEscapedAt(r, j) {
+						if j > i+1 && !unicode.IsSpace(r[j-1]) && (j+1 >= n || (r[j+1] != ch && !(r[j+1] >= '0' && r[j+1] <= '9'))) {
+							closeIdx = j
+						}
+						break
+					}
+				}
+				if closeIdx > i+1 {
+					for k := i; k <= closeIdx; k++ {
+						prot[k] = true
+					}
+					i = closeIdx + 1
+					continue
+				}
+			}
+			i += run
+			continue
+		}
+		if ch == '[' && !isEscapedAt(r, i) {
+			closeB := -1
+			for j := i + 1; j < n; j++ {
+				if r[j] == '\n' {
+					break
+				}
+				if r[j] == ']' && !isEscapedAt(r, j) {
+					closeB = j
+					break
+				}
+			}
+			if closeB > i+1 && closeB+1 < n && r[closeB+1] == '(' {
+				depth := 0
+				closeP := -1
+				for j := closeB + 2; j < n; j++ {
+					if r[j] == '\n' {
+						break
+					}
+					if r[j] == '(' {
+						depth++
+					} else if r[j] == ')' {
+						if depth == 0 {
+							closeP = j
+							break
+						}
+						depth--
+					}
+				}
+				if closeP > closeB+2 {
+					for k := i; k <= closeP; k++ {
+						prot[k] = true
+					}
+					i = closeP + 1
+					continue
+				}
+			}
+		}
+		i++
+	}
+	return prot
+}
+
 // matchTableHeaderCells splits a pipe header line (e.g. `| **Col1** | a\|b |`) into rich TableCells,
-// preserving existing inline spans and respecting escaped pipes `\|`.
+// preserving existing inline spans, respecting escaped pipes `\|`, and never splitting inside code, math, or links.
 func (s *Session) matchTableHeaderCells(spans []model.Span) ([]model.TableCell, bool) {
 	plain := model.PlainTextOfSpans(spans)
 	r := []rune(plain)
@@ -1469,13 +1635,18 @@ func (s *Session) matchTableHeaderCells(spans []model.Span) ([]model.TableCell, 
 	for hi > lo && unicode.IsSpace(r[hi-1]) {
 		hi--
 	}
-	if hi-lo < 3 || !isTablePipeRune(r[lo]) || !isTablePipeRune(r[hi-1]) || isEscapedAt(r, hi-1) {
+	if hi-lo < 3 {
+		return nil, false
+	}
+	prot := buildTablePipeProtectedMask(spans, r)
+	if !isTablePipeRune(r[lo]) || prot[lo] || isEscapedAt(r, lo) ||
+		!isTablePipeRune(r[hi-1]) || prot[hi-1] || isEscapedAt(r, hi-1) {
 		return nil, false
 	}
 
 	var pipePositions []int
 	for i := lo; i < hi; i++ {
-		if isTablePipeRune(r[i]) && !isEscapedAt(r, i) && !spanCodeOrMathAt(spans, i, i+1) {
+		if isTablePipeRune(r[i]) && !isEscapedAt(r, i) && !prot[i] {
 			pipePositions = append(pipePositions, i)
 		}
 	}
@@ -1760,6 +1931,10 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 	cell := &b.Table.Rows[rIdx][cIdx]
 	oldDraft := cell.PlainText()
 	if newText == oldDraft {
+		// Still sync collapsed caret (e.g. IME committing identical text over a selection via UnmarkText).
+		newBase := tableCellStartOffset(b.Table, rIdx, cIdx)
+		s.selAnchor = Position{Block: blockIdx, Offset: newBase + anchor}
+		s.selHead = Position{Block: blockIdx, Offset: newBase + caret}
 		return
 	}
 	key := tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}

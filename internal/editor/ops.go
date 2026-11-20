@@ -2084,6 +2084,10 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 	b := &s.doc.Blocks[idx]
 	oldText := b.PlainText()
 	if newText == oldText {
+		// Still sync collapsed caret (e.g. IME committing identical text over a selection via UnmarkText).
+		pos := clampInt(caretHint, 0, len([]rune(newText)))
+		s.selAnchor = Position{Block: idx, Offset: pos}
+		s.selHead = s.selAnchor
 		return
 	}
 	insStart, insLen := computeEditInsertedRange(oldText, newText, caretHint)
