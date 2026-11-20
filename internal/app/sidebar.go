@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"block/internal/files"
@@ -54,6 +55,15 @@ type SidebarUIState struct {
 
 	treeScroll ui.ScrollState
 	treeRows   []flatTreeRow
+
+	nbAvail *notebookAvailability
+}
+
+func (s *SidebarUIState) notebookAvail() *notebookAvailability {
+	if s.nbAvail == nil {
+		s.nbAvail = &notebookAvailability{}
+	}
+	return s.nbAvail
 }
 
 // NewSidebarUIState initializes transient sidebar UI state.
@@ -200,6 +210,7 @@ type SidebarProps struct {
 	OnSwitchNotebook   func(root string)
 	OnForgetNotebook   func(root string)
 	OnChooseNotebook   func()
+	RequestRedraw      func()
 	OnOpenSettings     func()
 }
 
@@ -550,6 +561,9 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
 					}
 					ui.Text(c, nbTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if p.ActiveNotebook != "" && p.State.notebookAvail().Missing(p.ActiveNotebook) {
+						ui.Box(c).Size(6, 6).Shrink(0).Radius(theme.RadiusPill).Background(pal.Warning).Tooltip(theme.Tr("当前文件夹已不可用", "Current folder is unavailable"))
+					}
 					chevTarget := float32(0)
 					if p.State.SwitcherOpen {
 						chevTarget = 180
@@ -571,6 +585,9 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					next := !p.State.SwitcherOpen
 					p.State.ClosePopups()
 					p.State.SwitcherOpen = next
+					if next {
+						p.State.notebookAvail().Check(p.Notebooks, p.RequestRedraw)
+					}
 				}
 
 				setBtn := blockui.IconButton(c, icons.Sliders, blockui.IconButtonOptions{
@@ -1093,8 +1110,24 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				},
 			}
 			choices := make([]blockui.MenuItemSpec, 0, len(p.Notebooks)+1)
+			avail := p.State.notebookAvail()
+			missingCount := 0
+			for _, nb := range p.Notebooks {
+				if avail.Missing(nb) {
+					missingCount++
+				}
+			}
+			if missingCount > 0 && p.OnForgetNotebook != nil {
+				estH += theme.MenuItemHeight + theme.MenuGap
+			}
 			for _, nb := range p.Notebooks {
 				choices = append(choices, blockui.MenuItemSpec{OnClick: func() {
+					if avail.Missing(nb) {
+						if p.OnForgetNotebook != nil {
+							p.State.ConfirmForgetNotebook = nb
+						}
+						return
+					}
 					p.State.ClosePopups()
 					if nb != p.ActiveNotebook && p.OnSwitchNotebook != nil {
 						p.OnSwitchNotebook(nb)
@@ -1124,6 +1157,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							nb := nb
 							checked := nb == p.ActiveNotebook
 							confirming := p.State.ConfirmForgetNotebook == nb
+							missing := avail.Missing(nb)
 							c.Key("nb-item:" + nb)
 							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusMD)
 							nbDrop := false
@@ -1201,8 +1235,16 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									if actIco {
 										ic = pal.DuoIconColors(pal.MenuIcon)
 									}
+									nameColor := pal.Text
+									if missing {
+										ic = pal.MonoIconColors(pal.TextSecondary)
+										nameColor = pal.TextSecondary
+									}
 									icons.Draw(c, icons.Folder, theme.IconRow, ic)
-									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(nameColor).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+									if missing && !confirming && !rowHover {
+										ui.Text(c, theme.Tr("已移动或删除", "Moved or deleted")).FontSize(theme.FontSmall).TextColor(pal.Warning).Shrink(0).SingleLine()
+									}
 									if checked && !confirming && !(rowHover && p.OnForgetNotebook != nil) {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
 											icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
@@ -1210,6 +1252,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									}
 								})
 								blockui.Probe(sel, "nb-select:"+nb)
+								if missing {
+									sel.Tooltip(nb)
+								}
 								if sel.Clicked() {
 									if confirming {
 										p.State.ConfirmForgetNotebook = ""
@@ -1229,6 +1274,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 											p.State.ConfirmForgetNotebook = ""
 										} else if confirmed {
 											p.State.ConfirmForgetNotebook = ""
+											avail.Forget(nb)
 											p.OnForgetNotebook(nb)
 										}
 									} else if rowHover {
@@ -1246,6 +1292,23 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 									}
 								}
 							})
+						}
+						if missingCount > 0 && p.OnForgetNotebook != nil {
+							label := theme.Tr("移除不可用的文件夹", "Remove unavailable folders")
+							if missingCount > 1 {
+								label = theme.Tr("移除 %d 个不可用的文件夹", "Remove %d unavailable folders")
+								label = strings.Replace(label, "%d", strconv.Itoa(missingCount), 1)
+							}
+							icTrash := icons.Trash
+							if blockui.GhostRow(c, "nb-forget-missing", label, icTrash).Clicked() {
+								for _, nb := range append([]string(nil), p.Notebooks...) {
+									if avail.Missing(nb) {
+										avail.Forget(nb)
+										p.OnForgetNotebook(nb)
+									}
+								}
+								p.State.ConfirmForgetNotebook = ""
+							}
 						}
 						if len(p.Notebooks) > 0 {
 							ui.Box(c).FillWidth().Height(1).MarginY(3).Background(pal.MenuSeparator)
