@@ -2535,12 +2535,15 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 		var scored []scoredPickItem
 		for _, it := range all {
 			var primary []string
+			var secondary []string
 			if it.kind == pickNewConv {
 				primary = []string{"new", "新会话", it.label}
+				secondary = []string{it.hint, "开启空白对话", "Start a new chat"}
 			} else {
 				primary = []string{it.value, it.label}
+				secondary = []string{it.hint}
 			}
-			if sc, ok := fuzzy.Score(q, primary, []string{it.hint}, false); ok {
+			if sc, ok := fuzzy.Score(q, primary, secondary, false); ok {
 				scored = append(scored, scoredPickItem{item: it, score: sc})
 			}
 		}
@@ -2711,9 +2714,18 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 					}
 					active := isSel || hovered || pressed
 					icons.DrawAnimated(cUI, ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary), active)
-					ui.Text(cUI, it.label).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
+					pickQ := strings.TrimSpace(token[1:])
+					var labelMarks [][2]int
+					if pickQ != "" {
+						labelMarks = fuzzy.HighlightRanges(it.label, pickQ)
+					}
+					bui.HighlightedText(cUI, it.label, labelMarks, theme.FontBody, 0, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 					if it.hint != "" {
-						ui.Text(cUI, it.hint).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
+						var hintMarks [][2]int
+						if pickQ != "" && len(labelMarks) == 0 {
+							hintMarks = fuzzy.HighlightRanges(it.hint, pickQ)
+						}
+						bui.HighlightedText(cUI, it.hint, hintMarks, theme.FontBody, 0, pal.TextSecondary, pal.SearchHighlight).Shrink(0)
 					}
 					if it.kind == pickFolder {
 						icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), active)
@@ -3416,29 +3428,32 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						type deckModelCursorKey struct{}
 						deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
 						bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
-						lowQ := strings.ToLower(strings.TrimSpace(search))
-						var filtered []ModelOption
-						if lowQ == "" {
-							filtered = models
-						} else {
+						filterDeckModels := func(rawQ string) []ModelOption {
+							q := strings.TrimSpace(rawQ)
+							if q == "" {
+								return models
+							}
 							type scoredModel struct {
 								opt   ModelOption
 								score int
 							}
 							var scored []scoredModel
 							for _, m := range models {
-								if sc, ok := fuzzy.Score(lowQ, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
+								if sc, ok := fuzzy.Score(q, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
 									scored = append(scored, scoredModel{opt: m, score: sc})
 								}
 							}
 							sort.SliceStable(scored, func(i, j int) bool {
 								return scored[i].score > scored[j].score
 							})
-							filtered = make([]ModelOption, len(scored))
+							out := make([]ModelOption, len(scored))
 							for i, s := range scored {
-								filtered[i] = s.opt
+								out[i] = s.opt
 							}
+							return out
 						}
+						lowQ := strings.TrimSpace(search)
+						filtered := filterDeckModels(lowQ)
 						if *deckCursor >= len(filtered) {
 							*deckCursor = len(filtered) - 1
 						}
@@ -3455,6 +3470,9 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 								bui.Probe(sInput, "ai-deck-search")
 								if sInput.Changed() {
 									*deckCursor = 0
+									c.deckScroll.Y = 0
+									lowQ = strings.TrimSpace(q)
+									filtered = filterDeckModels(lowQ)
 									c.mu.Lock()
 									c.deckSearch = q
 									c.mu.Unlock()
@@ -3550,7 +3568,11 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 										if active {
 											fw = theme.WeightControl
 										}
-										ui.Text(cUI, m.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+										var marks [][2]int
+										if lowQ != "" {
+											marks = fuzzy.HighlightRanges(m.Label, lowQ)
+										}
+										bui.HighlightedText(cUI, m.Label, marks, theme.FontBody, fw, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 										if active {
 											icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), active)
 										}
@@ -5339,7 +5361,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 	trigger := c.annotMenuTriggerBox
 	activeKind := c.annotMenuBackend
 	annotCfg := c.annotCfg
-	query := strings.ToLower(strings.TrimSpace(c.annotMenuSearch))
+	query := strings.TrimSpace(c.annotMenuSearch)
 	choices := append([]ModelOption(nil), c.backendModels[activeKind]...)
 	status := c.modelStatus[activeKind]
 	enabledOrder := c.visibleBackendsLocked()
@@ -5434,19 +5456,24 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 				opt   ModelOption
 				score int
 			}
-			var filteredAnnot []indexedAnnotChoice
-			for idx, m := range choices {
-				if query == "" {
-					filteredAnnot = append(filteredAnnot, indexedAnnotChoice{idx: idx, opt: m})
-				} else if sc, ok := fuzzy.Score(query, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
-					filteredAnnot = append(filteredAnnot, indexedAnnotChoice{idx: idx, opt: m, score: sc})
+			filterAnnotChoices := func(rawQ string) []indexedAnnotChoice {
+				q := strings.TrimSpace(rawQ)
+				var out []indexedAnnotChoice
+				for idx, m := range choices {
+					if q == "" {
+						out = append(out, indexedAnnotChoice{idx: idx, opt: m})
+					} else if sc, ok := fuzzy.Score(q, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
+						out = append(out, indexedAnnotChoice{idx: idx, opt: m, score: sc})
+					}
 				}
+				if q != "" {
+					sort.SliceStable(out, func(i, j int) bool {
+						return out[i].score > out[j].score
+					})
+				}
+				return out
 			}
-			if query != "" {
-				sort.SliceStable(filteredAnnot, func(i, j int) bool {
-					return filteredAnnot[i].score > filteredAnnot[j].score
-				})
-			}
+			filteredAnnot := filterAnnotChoices(query)
 			if *annotCursor >= len(filteredAnnot) {
 				*annotCursor = len(filteredAnnot) - 1
 			}
@@ -5461,6 +5488,9 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					bui.Probe(in, "annotation-model-search")
 					if in.Changed() {
 						*annotCursor = 0
+						c.annotMenuScroll.Y = 0
+						query = strings.TrimSpace(c.annotMenuSearch)
+						filteredAnnot = filterAnnotChoices(query)
 					}
 					in.OnTextKey(func(k ui.TextKey) bool {
 						switch k.Key {
@@ -5542,7 +5572,11 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							if isAct {
 								fw = theme.WeightControl
 							}
-							ui.Text(cUI, opt.Label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							var marks [][2]int
+							if query != "" {
+								marks = fuzzy.HighlightRanges(opt.Label, query)
+							}
+							bui.HighlightedText(cUI, opt.Label, marks, theme.FontBody, fw, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 							if isAct {
 								icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
 							}
