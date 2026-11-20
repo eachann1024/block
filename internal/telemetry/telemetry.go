@@ -96,8 +96,9 @@ func today() string {
 }
 
 // CheckOnce sends today's ping if it is due. sent reports whether the server
-// accepted a request. A 5xx, 429 or network error leaves today unmarked so a
-// later check retries; any other response marks today as done.
+// accepted a request. Only a 2xx or a rejection of the payload itself (400, 413,
+// 422, which a retry cannot fix) marks today as done; anything else, such as a
+// 5xx, 429, an edge 403 or a network error, leaves today unmarked for a later check.
 func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 	if cfg.DataDir == "" || cfg.Enabled == nil || envDisabled() || !cfg.Enabled() {
 		return false, nil
@@ -141,7 +142,12 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		return false, err
 	}
 	resp.Body.Close()
-	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300,
+		resp.StatusCode == http.StatusBadRequest,
+		resp.StatusCode == http.StatusRequestEntityTooLarge,
+		resp.StatusCode == http.StatusUnprocessableEntity:
+	default:
 		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
 	rec.LastPing = day
