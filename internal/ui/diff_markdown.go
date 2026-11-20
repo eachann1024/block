@@ -659,7 +659,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := setext || ind < 4 && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
+				ends := setext || (item || ind < 4 || inList && ind < listCol+4) && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
 				prevBlank, para = !inList && ends, !ends && blk != ""
 				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t), inItem) {
 					for _, p := range paraLines {
