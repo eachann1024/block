@@ -447,13 +447,27 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 	}
 	used := make(map[string]bool)
 	lowerSrc := strings.ToLower(src)
+	btScan := newInlineScanState(lowerSrc)
 	open := -1
 	for i := 0; i < len(lowerSrc); i++ {
 		switch lowerSrc[i] {
+		case '\\':
+			i++
+		case '`':
+			run := 0
+			for i+run < len(lowerSrc) && lowerSrc[i+run] == '`' {
+				run++
+			}
+			if closeIdx := btScan.findClosingBackticks(i+run, run); closeIdx >= 0 {
+				i = closeIdx + run - 1
+				open = -1
+			} else {
+				i += run - 1
+			}
 		case '[':
 			open = i + 1
 		case ']':
-			if open >= 0 && (i+1 == len(lowerSrc) || lowerSrc[i+1] != ':') {
+			if open >= 0 && (i+1 == len(lowerSrc) || (lowerSrc[i+1] != ':' && lowerSrc[i+1] != '(')) {
 				raw := lowerSrc[open:i]
 				if label := normRefLabel(raw); label != "" {
 					if _, ok := defs[label]; ok {
