@@ -152,10 +152,16 @@ function formatLatestAssets(rawAssets, fallbackHashes) {
     .sort((a, b) => ASSET_ORDER.get(a.name) - ASSET_ORDER.get(b.name));
 }
 
-function releasePreferenceScore(release, version) {
-  let score = 0;
-  if (release?.tag_name === `v${version}`) score += 4;
-  if (Array.isArray(release?.assets) && release.assets.length > 0) score += 2;
+function countTrustedAssets(release, fallbackHashes = {}, fallbackHashesTag = "") {
+  const tag = String(release?.tag_name || "").trim();
+  const hashes = !fallbackHashesTag || tag === fallbackHashesTag ? fallbackHashes : {};
+  return formatLatestAssets(release?.assets, hashes).filter((a) => Boolean(a.sha256)).length;
+}
+
+function releasePreferenceScore(release, version, fallbackHashes = {}, fallbackHashesTag = "") {
+  const trustedCount = countTrustedAssets(release, fallbackHashes, fallbackHashesTag);
+  let score = trustedCount > 0 ? 100 + trustedCount * 10 : 0;
+  if (release?.tag_name === `v${version}`) score += 1;
   return score;
 }
 
@@ -169,7 +175,11 @@ export function buildFeedFromReleases(
     const version = versionFromTag(release.tag_name);
     if (!version || !/^\d+\.\d+\.\d+$/.test(version)) continue;
     const existing = byVersion.get(version);
-    if (!existing || releasePreferenceScore(release, version) > releasePreferenceScore(existing, version)) {
+    if (
+      !existing
+      || releasePreferenceScore(release, version, fallbackHashes, fallbackHashesTag)
+        > releasePreferenceScore(existing, version, fallbackHashes, fallbackHashesTag)
+    ) {
       byVersion.set(version, release);
     }
   }
@@ -178,10 +188,22 @@ export function buildFeedFromReleases(
     .sort(([a], [b]) => compareVersions(b, a))
     .slice(0, MAX_FEED_RELEASES);
 
+  const coveredPlatforms = new Set();
   const releases = sorted.map(([version, release], index) => {
     const tag = String(release.tag_name || "").trim() || `v${version}`;
     const parsed = parseReleaseBody(release.body);
     const matchingFallbackHashes = !fallbackHashesTag || tag === fallbackHashesTag ? fallbackHashes : {};
+    const formattedAssets = formatLatestAssets(release.assets, matchingFallbackHashes);
+    let keptAssets = [];
+    if (index === 0) {
+      keptAssets = formattedAssets;
+      for (const a of keptAssets) {
+        if (a.sha256) coveredPlatforms.add(a.name);
+      }
+    } else if (coveredPlatforms.size < RELEASE_ASSETS.length) {
+      keptAssets = formattedAssets.filter((a) => a.sha256 && !coveredPlatforms.has(a.name));
+      for (const a of keptAssets) coveredPlatforms.add(a.name);
+    }
     return {
       version,
       tag,
@@ -189,7 +211,7 @@ export function buildFeedFromReleases(
       html_url: String(release.html_url || `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}`),
       zh: parsed.zh,
       en: parsed.en,
-      assets: index === 0 ? formatLatestAssets(release.assets, matchingFallbackHashes) : [],
+      assets: keptAssets,
     };
   });
 
