@@ -78,7 +78,8 @@ type HostConfig struct {
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
 	// ContribHost handles host.titlebar/status/ui/editor/sidebar methods; ok=false falls through.
-	ContribHost func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
+	ContribHost       func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
+	SystemIntegration bool
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
@@ -515,22 +516,26 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	if themeName == "" {
 		themeName = "system"
 	}
+	capabilities := []string{
+		"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
+		"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
+		"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
+		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
+	}
+	if rt.cfg.SystemIntegration {
+		capabilities = append(capabilities, "system_integration")
+	}
 	params := map[string]any{
-		"plugin_id":     rt.manifest.ID,
-		"data_dir":      rt.cfg.DataDir,
-		"downloads_dir": rt.cfg.DownloadsDir,
-		"notebook_root": notebookRoot,
-		"notebooks":     notebooks,
-		"locale":        locale,
-		"theme":         themeName,
-		"tarot":         rt.cfg.Tarot,
-		"host_version":  ver,
-		"ui_capabilities": []string{
-			"kv_tooltip", "treemap", "host_perf", "checklist", "form_layout", "multi_notebook",
-			"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
-			"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
-			"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
-		},
+		"plugin_id":       rt.manifest.ID,
+		"data_dir":        rt.cfg.DataDir,
+		"downloads_dir":   rt.cfg.DownloadsDir,
+		"notebook_root":   notebookRoot,
+		"notebooks":       notebooks,
+		"locale":          locale,
+		"theme":           themeName,
+		"tarot":           rt.cfg.Tarot,
+		"host_version":    ver,
+		"ui_capabilities": capabilities,
 	}
 	var res struct {
 		Ready bool `json:"ready"`
@@ -992,6 +997,26 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 		}
 		return map[string]any{"ok": true}, nil
 
+	case "host.storage.set_many":
+		if !rt.manifest.HasPermission(PermStorage) {
+			return nil, missingPerm(PermStorage)
+		}
+		var p struct {
+			Values map[string]any `json:"values"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || len(p.Values) == 0 || len(p.Values) > 64 {
+			return nil, rpcErr(-32602, "values must contain 1–64 storage entries")
+		}
+		for key := range p.Values {
+			if strings.TrimSpace(key) == "" {
+				return nil, rpcErr(-32602, "storage keys must not be blank")
+			}
+		}
+		if err := rt.setStorageValues(p.Values); err != nil {
+			return nil, rpcErr(-32002, err.Error())
+		}
+		return map[string]any{"ok": true}, nil
+
 	case "host.notes.active":
 		if !rt.manifest.HasPermission(PermNotesRead) {
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
@@ -1281,6 +1306,10 @@ func (rt *Runtime) readStorageMap() (map[string]any, error) {
 }
 
 func (rt *Runtime) setStorageKey(key string, val any) error {
+	return rt.setStorageValues(map[string]any{key: val})
+}
+
+func (rt *Runtime) setStorageValues(values map[string]any) error {
 	mu := rt.storageLock()
 	mu.Lock()
 	defer mu.Unlock()
@@ -1288,7 +1317,9 @@ func (rt *Runtime) setStorageKey(key string, val any) error {
 	if err != nil {
 		return err
 	}
-	cur[key] = val
+	for key, val := range values {
+		cur[key] = val
+	}
 	// Compact JSON: indentation grows quadratically with nesting depth and
 	// would allocate far past the limit before the size check below.
 	raw, err := json.Marshal(cur)

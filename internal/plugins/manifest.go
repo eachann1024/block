@@ -39,6 +39,12 @@ var validPermissions = map[Permission]bool{
 
 func PermissionLabel(p Permission, locale string) string {
 	en := strings.HasPrefix(strings.ToLower(locale), "en")
+	if text, ok := systemPermissions[p]; ok {
+		if en {
+			return text[1]
+		}
+		return text[0]
+	}
 	switch p {
 	case PermStorage:
 		if en {
@@ -77,6 +83,12 @@ func PermissionLabel(p Permission, locale string) string {
 // granting p allows a plugin to do.
 func PermissionDescription(p Permission, locale string) string {
 	en := strings.HasPrefix(strings.ToLower(locale), "en")
+	if text, ok := systemPermissions[p]; ok {
+		if en {
+			return text[3]
+		}
+		return text[2]
+	}
 	switch p {
 	case PermStorage:
 		if en {

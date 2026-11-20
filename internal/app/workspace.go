@@ -332,6 +332,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 		OnRedraw: w.RequestRedraw,
 		UI:       w.pluginUI,
+		System:   w.pluginUI,
 	}))
 	w.pluginsUI.SetOnSuggestPlugin(func(_ plugins.Category) {
 		w.modals.OpenFeedbackWithCategory("idea")
@@ -2744,6 +2745,10 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 
 // TrashWorkspaceItem moves path to Trash and closes any affected tabs.
 func (w *Workspace) TrashWorkspaceItem(path string) error {
+	return w.trashWorkspaceItem(path, func() error { return files.TrashItem(path) })
+}
+
+func (w *Workspace) trashWorkspaceItem(path string, moveToTrash func() error) error {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
 	if err := w.flushDirtySessionsLocked(); err != nil {
@@ -2751,7 +2756,7 @@ func (w *Workspace) TrashWorkspaceItem(path string) error {
 		w.setNotice(err.Error())
 		return err
 	}
-	if err := files.TrashItem(path); err != nil {
+	if err := moveToTrash(); err != nil {
 		files.LogErrorf("trash failed: path=%s err=%v", path, err)
 		w.setNotice(err.Error())
 		return err
