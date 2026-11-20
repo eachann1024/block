@@ -26,8 +26,8 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 	sup := w.Plugins()
 	w.pluginUI.systemReveal = reveal
 	go systemintegration.PendingTrashRecovery(files.AppDataDir(), func(original, recovery string) {
-		files.LogWarnf("interrupted system trash: original=%s recovery=%s", original, recovery)
-		w.setNotice(theme.Tr("有文件等待从回收暂存目录恢复", "A file can be recovered from interrupted Trash staging") + " · " + recovery)
+		files.LogWarnf("system trash recovery: original=%s recovery=%s", original, recovery)
+		w.setNotice(theme.Tr("可从回收暂存目录恢复文件", "A file is available in Trash staging") + " · " + recovery + " → " + original)
 	})
 	mygo.Power.OnResume(func() { sup.EmitSystemEvent("system.wake", mygo.Network.Status().Online) })
 	mygo.Network.OnChanged(func(status mygo.NetworkStatus) {
