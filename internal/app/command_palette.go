@@ -147,8 +147,9 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 			})
 
 		if in.Valid() {
+			composing := in.Composing()
 			in.OnTextKey(func(k ui.TextKey) bool {
-				if in.Composing() {
+				if composing {
 					return false
 				}
 				switch k.Key {
