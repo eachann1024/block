@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/user"
@@ -71,13 +72,13 @@ var (
 	reTag    = regexp.MustCompile(`<(?:path|file|host|text):[0-9a-f]{4}(?:\.[a-z0-9]{1,5})?>|<(?:key|email|ip|user)>`)
 	reURL    = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s"'<>]+`)
 	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-	reKV     = regexp.MustCompile(`(?i)\b((?:api[_-]?)?key|token|secret|password|passwd|pwd|authorization|auth|cookie|session|signature)\b(\s*[=:]\s*)(?:"[^"\n]*"|[^\s,;&]+)`)
+	reKV     = regexp.MustCompile(`(?i)\b([A-Za-z0-9_]*?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key|secret[_-]?key|key|token|secret|password|passwd|pwd|authorization|auth|cookie|session|signature))\b(\s*[=:]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&]+)`)
 	reBearer = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}`)
-	reSecret = regexp.MustCompile(`\b(?:sk|pk|rk|ghp|gho|ghs|ghu|github_pat|xox[abprs]|AKIA|AIza|eyJ)[-_]?[A-Za-z0-9_\-]{8,}[A-Za-z0-9._\-]*`)
+	reSecret = regexp.MustCompile(`\b(?:sk-[A-Za-z0-9_-]{8,}|(?:pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|gh[posu]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]*)?|xai-[A-Za-z0-9_-]{12,}|gsk_[A-Za-z0-9]{12,}|pplx-[A-Za-z0-9]{12,}|hf_[A-Za-z0-9]{12,}|glpat-[A-Za-z0-9_-]{12,}|npm_[A-Za-z0-9]{12,}|pypi-[A-Za-z0-9_-]{12,}|sntryu_[A-Za-z0-9]{12,})`)
 	reBlob   = regexp.MustCompile(`[A-Za-z0-9+/_=-]{32,}`)
 	reIPv4   = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	reIPv6   = regexp.MustCompile(`\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b`)
-	rePath   = regexp.MustCompile(`(?:~|[A-Za-z]:)?(?:[/\\][^/\\\n\r\t:"'<>|*?]+){2,}`)
+	reIPv6C  = regexp.MustCompile(`(?:\b[0-9a-fA-F]{1,4}:|::)[0-9a-fA-F:.]*(?:%[A-Za-z0-9._-]+)?`)
+	rePath   = regexp.MustCompile(`(?:~[/\\][^/\\\n\r\t:"'<>|*?]+(?:[/\\][^/\\\n\r\t:"'<>|*?]+)*|(?:[A-Za-z]:)?(?:[/\\][^/\\\n\r\t:"'<>|*?]+){2,})`)
 	reFile   = regexp.MustCompile(`(?i)[^\s/\\:"'<>|()\[\]{},;=]+\.(?:` + fileExtAlternation + `)\b`)
 	reQuoted = regexp.MustCompile(`"[^"\n]+"`)
 	reExtEnd = regexp.MustCompile(`\.[A-Za-z0-9]{1,5}$`)
@@ -222,6 +223,32 @@ var reUserName = func() *regexp.Regexp {
 	return regexp.MustCompile(`(?i)` + regexp.QuoteMeta(redactUserName))
 }()
 
+func redactIPv6(s string) string {
+	return reIPv6C.ReplaceAllStringFunc(s, func(cand string) string {
+		prefix, suffix := "", ""
+		trimmed := cand
+		if strings.HasPrefix(trimmed, ":") && !strings.HasPrefix(trimmed, "::") {
+			prefix = ":"
+			trimmed = trimmed[1:]
+		}
+		if dot := strings.TrimRight(trimmed, "."); len(dot) != len(trimmed) {
+			suffix = trimmed[len(dot):] + suffix
+			trimmed = dot
+		}
+		if strings.HasSuffix(trimmed, ":") && !strings.HasSuffix(trimmed, "::") {
+			suffix = ":" + suffix
+			trimmed = trimmed[:len(trimmed)-1]
+		}
+		if strings.Count(trimmed, ":") < 2 {
+			return cand
+		}
+		if addr, err := netip.ParseAddr(trimmed); err == nil && addr.Is6() {
+			return prefix + "<ip>" + suffix
+		}
+		return cand
+	})
+}
+
 // Redact masks everything on a log line that could identify the user or
 // their notes. It is idempotent: its own tags pass through unchanged.
 func Redact(s string) string {
@@ -237,8 +264,8 @@ func Redact(s string) string {
 		redactPaths,
 		nil, // quoted text: runs on the whole line, see redactQuoted
 		func(p string) string { return reBlob.ReplaceAllString(p, "<key>") },
+		redactIPv6,
 		func(p string) string { return reIPv4.ReplaceAllString(p, "<ip>") },
-		func(p string) string { return reIPv6.ReplaceAllString(p, "<ip>") },
 		func(p string) string { return reFile.ReplaceAllStringFunc(p, fileTag) },
 		redactNonASCII,
 	}
