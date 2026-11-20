@@ -74,12 +74,14 @@ type TitlebarProps struct {
 	ActiveTab    string
 	IsDirty      func(path string) bool
 
-	ActiveSurface  TitlebarSurfaceKind
-	SourceStatus   string
-	PreviewZoomPct string
-	PreviewZoomFit bool
-	SVGShowSource  bool
-	SourceWrap     bool
+	ActiveSurface   TitlebarSurfaceKind
+	SourceStatus    string
+	PreviewZoomPct  string
+	PreviewZoomFit  bool
+	SVGShowSource   bool
+	SourceWrap      bool
+	HasCopyableText bool
+	CanFormatJSON   bool
 
 	CanBack    bool
 	CanForward bool
@@ -118,17 +120,25 @@ type TitlebarProps struct {
 	OnNewNote          func()
 	OnToggleFeedback   func()
 	OnToggleAI         func()
-	OnOpenHistory      func()
-	OnOpenExport       func()
-	OnCopyMarkdown     func()
-	OnRevealPath       func(path string)
-	NoteStats          func() (characters, blocks int)
-	OnPreviewZoomStep  func(factor float32)
-	OnPreviewActual    func()
-	OnPreviewFit       func()
-	OnSelectSVGSource  func(showSource bool)
-	OnToggleSourceWrap func()
-	OnOpenInBrowser    func()
+	OnOpenHistory       func()
+	OnOpenExport        func()
+	OnCopyMarkdown      func()
+	OnCopyContent       func()
+	OnCopyAsMarkdown    func()
+	OnFormatJSON        func()
+	OnCopyImage         func()
+	OnCopyImageMarkdown func()
+	OnCopyPath          func()
+	OnOpenExternal      func()
+	OnRevealPath        func(path string)
+	NoteStats           func() (characters, blocks int)
+	PageStats           func() []PageMenuStat
+	OnPreviewZoomStep   func(factor float32)
+	OnPreviewActual     func()
+	OnPreviewFit        func()
+	OnSelectSVGSource   func(showSource bool)
+	OnToggleSourceWrap  func()
+	OnOpenInBrowser     func()
 
 	HiddenSlots      map[string]bool
 	PluginButtons    []plugins.ResolvedTitlebarButton
@@ -385,7 +395,6 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 	switch surface {
 	case SurfaceImagePreview:
 		renderZoomCluster(c, "tb-img-zoom", p)
-		renderRevealButton(c, p)
 	case SurfaceSVG:
 		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
@@ -405,24 +414,24 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		} else {
 			renderSourceWrapButton(c, p)
 		}
-		renderRevealButton(c, p)
 	case SurfaceHTML:
 		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
-		icOpen := icons.LinkOpen
-		openBtn := blockui.ActionButton(c, "html-browser", theme.Tr("浏览器打开", "Open in Browser"), &icOpen, blockui.ButtonSecondary, false)
+		openBtn := blockui.IconButton(c, icons.LinkOpen, blockui.IconButtonOptions{
+			ID:          "html-browser",
+			Tooltip:     theme.Tr("在浏览器中打开", "Open in Browser"),
+			ChromeHover: true,
+		})
 		if openBtn.Clicked() && p.OnOpenInBrowser != nil {
 			p.OnOpenInBrowser()
 		}
 		renderSourceWrapButton(c, p)
-		renderRevealButton(c, p)
 	case SurfaceCode:
 		if showStatus {
 			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 		}
 		renderSourceWrapButton(c, p)
-		renderRevealButton(c, p)
 	}
 }
 
@@ -503,25 +512,38 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
 	})
 }
 
-func renderRevealButton(c *ui.Context, p TitlebarProps) {
-	if slotHidden(p, plugins.TitlebarSlotReveal) {
-		return
-	}
-	revBtn := blockui.IconButton(c, icons.FolderReveal, blockui.IconButtonOptions{
-		ID:          "tb-reveal",
-		Tooltip:     revealFileLabel(),
-		ChromeHover: true,
-	})
-	if revBtn.Clicked() && p.OnRevealPath != nil {
-		p.OnRevealPath(p.ActiveTab)
-	}
-}
-
 func revealFileLabel() string {
 	if theme.IsMacOS() {
 		return theme.Tr("在访达中显示", "Reveal in Finder")
 	}
 	return theme.Tr("在文件管理器中显示", "Reveal in File Manager")
+}
+
+func resolveTitlebarSurface(p TitlebarProps) TitlebarSurfaceKind {
+	if len(p.Tabs) == 0 {
+		return SurfaceEmpty
+	}
+	if p.ActiveSurface == SurfaceEmpty {
+		return SurfaceNote
+	}
+	return p.ActiveSurface
+}
+
+func resolvePageMenuStats(p TitlebarProps, surface TitlebarSurfaceKind) []PageMenuStat {
+	if surface == SurfaceNote {
+		if p.NoteStats == nil {
+			return nil
+		}
+		characters, blocks := p.NoteStats()
+		return []PageMenuStat{
+			{ID: "page-stat-characters", Label: theme.Tr("字符数", "Characters"), Value: strconv.Itoa(characters)},
+			{ID: "page-stat-blocks", Label: theme.Tr("内容块", "Blocks"), Value: strconv.Itoa(blocks)},
+		}
+	}
+	if p.PageStats == nil {
+		return nil
+	}
+	return p.PageStats()
 }
 
 func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
@@ -533,18 +555,24 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 		if p.MenuState.PageMenuOpen {
-			menuW := min(float32(216), max(vpW-16, 1))
-			items := buildPageMenuItems(p)
+			surface := resolveTitlebarSurface(p)
+			if surface == SurfaceEmpty {
+				p.MenuState.Close()
+				return
+			}
+			menuW := min(float32(232), max(vpW-16, 1))
+			stats := resolvePageMenuStats(p, surface)
+			items := buildPageMenuItems(p, surface)
 			estH := estimateMenuHeight(items)
-			if p.NoteStats != nil {
-				estH += 2*theme.MenuItemHeight + 7 + 3*theme.MenuGap
+			if len(stats) > 0 {
+				estH += float32(len(stats))*theme.MenuItemHeight + 7 + float32(len(stats)+1)*theme.MenuGap
 			}
 			anchor := p.MenuState.PageMenuAnchor
 			if anchor.W <= 0 {
 				anchor = ui.Rect{X: vpW - 40, Y: 6, W: theme.ChromeBoxSize, H: theme.ChromeBoxSize}
 			}
 			spec := blockui.PlaceBelow(anchor).WithAlignX(blockui.AlignX{Kind: blockui.AlignRight})
-			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
+			maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 360)
 			popH := min(estH, maxH)
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
@@ -555,10 +583,10 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			card.Children(func() {
 				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
-						if p.NoteStats != nil {
-							characters, blocks := p.NoteStats()
-							renderPageStat(c, "page-stat-characters", theme.Tr("字符数", "Characters"), characters)
-							renderPageStat(c, "page-stat-blocks", theme.Tr("内容块", "Blocks"), blocks)
+						if len(stats) > 0 {
+							for _, st := range stats {
+								renderPageStat(c, st.ID, st.Label, st.Value)
+							}
 							blockui.MenuRow(c, blockui.MenuItemSpec{Separator: true}, false)
 						}
 						for i, it := range items {
@@ -606,14 +634,14 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 	})
 }
 
-func renderPageStat(c *ui.Context, id, label string, value int) {
+func renderPageStat(c *ui.Context, id, label, value string) {
 	pal := theme.Ocean()
 	row := ui.Row(c.Key(id)).FillWidth().Height(theme.MenuItemHeight).PaddingX(10).Gap(8).AlignItems(ui.Center)
 	blockui.Probe(row, id)
 	row.Children(func() {
 		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 			TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		ui.Text(c, strconv.Itoa(value)).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+		ui.Text(c, value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 			TextColor(pal.Text).Shrink(0).SingleLine()
 	})
 }
@@ -633,11 +661,15 @@ func estimateMenuHeight(items []blockui.MenuItemSpec) float32 {
 	return h
 }
 
-// buildPageMenuItems mirrors thinkly-fast page-more-menu.
-func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
+// buildPageMenuItems builds the titlebar "more" menu tailored to the active surface.
+func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.MenuItemSpec {
 	icHist := icons.History
 	icImg := icons.Image
 	icCopy := icons.Copy
+	icCode := icons.Code
+	icFormat := icons.Sparkles
+	icOpen := icons.LinkOpen
+	icPath := icons.LinkCopy
 	icReveal := icons.FolderReveal
 	item := func(id, label, shortcut string, ic *icons.Icon, fn func()) blockui.MenuItemSpec {
 		return blockui.MenuItemSpec{ID: id, Label: label, Shortcut: shortcut, Icon: ic, OnClick: func() {
@@ -647,30 +679,78 @@ func buildPageMenuItems(p TitlebarProps) []blockui.MenuItemSpec {
 			}
 		}}
 	}
-	items := []blockui.MenuItemSpec{
-		item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
-		item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
-		item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
-	}
-	if len(p.PluginPageMenu) > 0 {
-		items = append(items, blockui.MenuItemSpec{Separator: true})
-		for _, pm := range p.PluginPageMenu {
-			pmItem := pm
-			items = append(items, item(
-				"page-plugin-"+pmItem.PluginID+"-"+pmItem.ID,
-				pmItem.Title,
-				"",
-				nil,
-				func() {
-					if p.OnPluginMenuItem != nil {
-						p.OnPluginMenuItem(pmItem)
-					}
-				},
-			))
+
+	if surface == SurfaceNote {
+		items := []blockui.MenuItemSpec{
+			item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
+			item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
+			item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
 		}
+		if len(p.PluginPageMenu) > 0 {
+			items = append(items, blockui.MenuItemSpec{Separator: true})
+			for _, pm := range p.PluginPageMenu {
+				pmItem := pm
+				items = append(items, item(
+					"page-plugin-"+pmItem.PluginID+"-"+pmItem.ID,
+					pmItem.Title,
+					"",
+					nil,
+					func() {
+						if p.OnPluginMenuItem != nil {
+							p.OnPluginMenuItem(pmItem)
+						}
+					},
+				))
+			}
+		}
+		items = append(items,
+			blockui.MenuItemSpec{Separator: true},
+			item("page-reveal", revealFileLabel(), "", &icReveal, func() {
+				if p.OnRevealPath != nil {
+					p.OnRevealPath(p.ActiveTab)
+				}
+			}),
+		)
+		return items
+	}
+
+	var items []blockui.MenuItemSpec
+	switch surface {
+	case SurfaceCode, SurfaceHTML, SurfaceSVG:
+		if p.HasCopyableText {
+			copyLabel := theme.Tr("复制全部内容", "Copy Content")
+			if surface == SurfaceSVG {
+				copyLabel = theme.Tr("复制 SVG 源码", "Copy SVG Source")
+			}
+			items = append(items,
+				item("page-copy-content", copyLabel, "", &icCopy, p.OnCopyContent),
+				item("page-copy-md-fence", theme.Tr("复制为 Markdown 代码块", "Copy as Markdown Block"), "", &icCode, p.OnCopyAsMarkdown),
+			)
+		}
+		if p.CanFormatJSON {
+			items = append(items, item("page-format-json", theme.Tr("格式化 JSON", "Format JSON"), "", &icFormat, p.OnFormatJSON))
+		}
+		if surface == SurfaceHTML {
+			items = append(items, item("page-open-browser", theme.Tr("在浏览器中打开", "Open in Browser"), "", &icOpen, p.OnOpenInBrowser))
+		}
+		if surface == SurfaceSVG {
+			items = append(items, item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown))
+		}
+	case SurfaceImagePreview:
+		items = append(items,
+			item("page-copy-image", theme.Tr("复制图片", "Copy Image"), "", &icCopy, p.OnCopyImage),
+			item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown),
+		)
+	}
+
+	if len(items) > 0 {
+		items = append(items, blockui.MenuItemSpec{Separator: true})
+	}
+	if surface != SurfaceHTML {
+		items = append(items, item("page-open-external", theme.Tr("用默认应用打开", "Open in Default App"), "", &icOpen, p.OnOpenExternal))
 	}
 	items = append(items,
-		blockui.MenuItemSpec{Separator: true},
+		item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), "", &icPath, p.OnCopyPath),
 		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 			if p.OnRevealPath != nil {
 				p.OnRevealPath(p.ActiveTab)

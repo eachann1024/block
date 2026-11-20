@@ -43,7 +43,7 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 		if p.AIEnabled && !slotHidden(p, plugins.TitlebarSlotAI) {
 			renderAIButton(c, p)
 		}
-		if surface == SurfaceNote {
+		if surface != SurfaceEmpty {
 			renderPageMorePill(c, p)
 		}
 	})
@@ -169,7 +169,7 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 // staying in the layout, so the titlebar icons beside it glide instead of jump.
 func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
-	split := p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
+	split := p.ActiveSurface == SurfaceNote && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
 	c.Key("titlebar-action-pill")
 	pill := ui.Row(c).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusMD)
