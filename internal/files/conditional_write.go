@@ -168,11 +168,17 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		return false, errors.New(theme.Tr("无效的笔记根目录", "Invalid notebook root"))
 	}
 	parent := filepath.Dir(name)
-	if err := root.MkdirAll(parent, 0o755); err != nil {
-		return false, err
+	requireExisting := expectedSHA256 != nil && *expectedSHA256 != ""
+	if !requireExisting {
+		if err := root.MkdirAll(parent, 0o755); err != nil {
+			return false, err
+		}
 	}
 	dir, err := root.OpenRoot(parent)
 	if err != nil {
+		if requireExisting && errors.Is(err, os.ErrNotExist) {
+			return false, errConflict
+		}
 		return false, err
 	}
 	defer dir.Close()
@@ -187,7 +193,27 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 	}
 
 	perm := os.FileMode(0o644)
-	if info, stErr := dir.Stat(base); stErr == nil {
+	if requireExisting {
+		info, stErr := dir.Lstat(base)
+		if stErr != nil {
+			if errors.Is(stErr, os.ErrNotExist) {
+				return false, errConflict
+			}
+			return false, stErr
+		}
+		if !info.Mode().IsRegular() {
+			return false, errConflict
+		}
+		perm = info.Mode().Perm()
+		if cur, rErr := readAllInDir(dir, base); rErr == nil {
+			if bytes.Equal(cur, data) {
+				return false, nil
+			}
+			if conditionalSHA256Hex(cur) != *expectedSHA256 {
+				return false, errConflict
+			}
+		}
+	} else if info, stErr := dir.Stat(base); stErr == nil {
 		perm = info.Mode().Perm()
 	}
 
@@ -311,9 +337,11 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		if rErr == nil {
 			oldHash = conditionalSHA256Hex(oldBytes)
 		}
-		if rErr != nil || (oldHash != expected && oldHash != contentHash) {
-			// Concurrent external save B (or non-regular object like a directory) was at target.
-			// Roll back and verify via inode identity (ourTmpInfo) that a second save C is never deleted.
+		if rErr != nil || oldHash != expected {
+			// Concurrent external save B (or identical content written externally, or non-regular object)
+			// was at target. Roll back and verify via inode identity (ourTmpInfo) that a second save C
+			// is never deleted. When oldHash == contentHash, return (false, nil) with no stash side effects.
+			sameContent := rErr == nil && oldHash == contentHash
 			_, rbErr := swapFilesInDir(dir, tmpPath, base)
 			if rbErr == nil {
 				if !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
@@ -338,9 +366,12 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 						keepTmp = true
 					}
 				}
-			} else {
+			} else if !sameContent {
 				preserveExternalConflictInDir(dir, tmpPath, base, oldHash)
 				keepTmp = true
+			}
+			if sameContent {
+				return false, nil
 			}
 			if rErr != nil {
 				return false, rErr
@@ -421,7 +452,11 @@ func WriteNoteConditionalAt(root *os.Root, name, content string, expectedSHA256 
 		return false, errConflict
 	}
 	curHash := conditionalSHA256Hex(curBytes)
-	if curHash != expected && curHash != contentHash {
+	if curHash == contentHash {
+		_ = root.Remove(stashRel)
+		return false, nil
+	}
+	if curHash != expected {
 		_ = root.Remove(stashRel)
 		return false, errConflict
 	}
