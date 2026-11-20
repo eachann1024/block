@@ -981,11 +981,16 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
+	// Results only land in the view that asked for them. A disable/enable or
+	// uninstall in the meantime replaces the view, and its own load runs next.
+	s.mu.RLock()
+	origin := s.views[key]
+	s.mu.RUnlock()
 	defer s.lockPluginRPC(pluginID)()
 	rt, attemptedLocale, err := s.ensureRuntimeWithLocale(ctx, pluginID, nbRoot)
 	if err != nil {
 		s.mu.Lock()
-		if vs := s.views[key]; vs != nil {
+		if vs := s.views[key]; vs != nil && vs == origin {
 			vs.Loading = false
 			vs.formVersion = s.formVersions[sKey]
 			if attemptedLocale != "" {
@@ -1016,7 +1021,7 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 
 	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, draftVals)
 	s.mu.Lock()
-	if vs := s.views[key]; vs != nil {
+	if vs := s.views[key]; vs != nil && vs == origin {
 		vs.Loading = false
 		vs.formVersion = s.formVersions[sKey]
 		vs.lastNotebookRoot = nbRoot
