@@ -118,7 +118,8 @@ func DropdownSelect(
 	}
 
 	changed := false
-	if picked := SelectMenu(c, id, options, state, curVal); picked >= 0 {
+	// The menu matches the trigger width so both edges line up instead of overhanging it.
+	if picked := selectMenu(c, id, options, state, curVal, 0); picked >= 0 {
 		if nextVal := options[picked].Value; nextVal != *value {
 			*value = nextVal
 			changed = true
@@ -130,6 +131,10 @@ func DropdownSelect(
 // SelectMenu renders the floating option menu below state.TriggerRect while state.Open is set,
 // so custom triggers can reuse DropdownSelect's popover. It returns the picked index, or -1.
 func SelectMenu(c *ui.Context, id string, options []SelectOption, state *DropdownSelectState, curVal string) int {
+	return selectMenu(c, id, options, state, curVal, 220)
+}
+
+func selectMenu(c *ui.Context, id string, options []SelectOption, state *DropdownSelectState, curVal string, minW float32) int {
 	pickedIdx := -1
 	if !state.Open || state.TriggerRect.W <= 0 || state.TriggerRect.H <= 0 || len(options) == 0 {
 		return pickedIdx
@@ -141,7 +146,7 @@ func SelectMenu(c *ui.Context, id string, options []SelectOption, state *Dropdow
 	if winH <= 0 {
 		winH = 760
 	}
-	popW := max(state.TriggerRect.W, float32(220), state.MenuWidth)
+	popW := max(state.TriggerRect.W, minW, state.MenuWidth)
 	popW = min(popW, max(winW-theme.Space16, 160))
 	if state.MenuWidth <= 0 {
 		popW = min(popW, theme.MenuMaxWidth)
