@@ -187,6 +187,7 @@ type AppState struct {
 	LastUpdatedFrom       string              `json:"last_updated_from,omitempty"`
 	BrandDeco             BrandDeco           `json:"brand_deco,omitzero"`
 	TreeSort              TreeSortMode        `json:"tree_sort,omitempty"`
+	TarotMode             bool                `json:"tarot_mode,omitempty"`
 }
 
 // TreeSortMode controls how sibling entries are ordered in the sidebar file tree.
