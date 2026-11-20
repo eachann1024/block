@@ -165,6 +165,7 @@ type Span struct {
 	Text          string `json:"text"`
 	Marks         Mark   `json:"marks,omitempty"`
 	Link          string `json:"link,omitempty"`
+	LinkTitle     string `json:"linkTitle,omitempty"`
 	ImageSrc      string `json:"imageSrc,omitempty"`
 	ImageTitle    string `json:"imageTitle,omitempty"`
 	ImageAltEmpty bool   `json:"imageAltEmpty,omitempty"`
@@ -187,9 +188,10 @@ func PlainTextOfSpans(spans []Span) string {
 }
 
 type TableCell struct {
-	Spans []Span    `json:"spans"`
-	Align ColAlign  `json:"align,omitempty"`
-	Tint  TableTint `json:"tint,omitempty"`
+	Spans  []Span    `json:"spans"`
+	Align  ColAlign  `json:"align,omitempty"`
+	Tint   TableTint `json:"tint,omitempty"`
+	Header bool      `json:"header,omitempty"`
 }
 
 func (c TableCell) PlainText() string {
@@ -208,6 +210,9 @@ type TableData struct {
 func (t *TableData) IsHeaderCell(row, col int) bool {
 	if t == nil {
 		return false
+	}
+	if row >= 0 && row < len(t.Rows) && col >= 0 && col < len(t.Rows[row]) && t.Rows[row][col].Header {
+		return true
 	}
 	return (row == 0 && !t.NoHeaderRow) || (col == 0 && t.HeaderCol)
 }
