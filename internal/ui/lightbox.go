@@ -14,17 +14,22 @@ const (
 	lightboxMinZoom  float32 = 0.25
 	lightboxMaxZoom  float32 = 4.0
 	lightboxZoomStep float32 = 1.2
+	lightboxPanStep  float32 = 80
 )
 
-// LightboxItem describes one attachment rendered inside RenderLightbox.
+// LightboxItem describes one attachment, image, animated GIF, or video rendered inside RenderLightbox.
 type LightboxItem struct {
 	ID            string
 	Name          string
 	Meta          string
 	IsImage       bool
+	IsVideo       bool
+	IsAnimation   bool
 	Image         ui.ImageSource
+	Video         *ui.VideoPlayer
 	ImageW        int
 	ImageH        int
+	OpenURL       string
 	TextPreview   string
 	TextTruncated bool
 	Unavailable   bool
@@ -32,24 +37,33 @@ type LightboxItem struct {
 	CanRemove     bool
 }
 
-// LightboxState holds the open/index/zoom/scroll state for RenderLightbox.
+// LightboxState holds the open/index/zoom/scroll/video state for RenderLightbox.
 type LightboxState struct {
-	Open        bool
-	Index       int
-	Zoom        float32
-	FitMode     bool
-	FitScale    float32
-	Scroll      ui.ScrollState
-	CopiedUntil time.Time
+	Open          bool
+	Index         int
+	Zoom          float32
+	FitMode       bool
+	FitScale      float32
+	Scroll        ui.ScrollState
+	CopiedUntil   time.Time
+	Video         VideoControlState
+	VideoFillMode bool
+
+	panDragging     bool
+	panScrollStartX float32
+	panScrollStartY float32
+	panMoved        bool
 }
 
 // LightboxCallbacks supplies optional actions triggered from the lightbox chrome.
 type LightboxCallbacks struct {
-	OnClose  func()
-	OnSelect func(index int)
-	OnCopy   func(index int) bool
-	OnReveal func(index int)
-	OnRemove func(index int)
+	OnClose       func()
+	OnSelect      func(index int)
+	OnCopy        func(index int) bool
+	OnReveal      func(index int)
+	OnOpenURL     func(index int)
+	OnRequestLoad func(index int)
+	OnRemove      func(index int)
 }
 
 type lightboxLocalKey struct{}
@@ -59,7 +73,7 @@ type lightboxLocalState struct {
 	lastIndex     int
 }
 
-// ResetView restores fit-to-viewport zoom and clears the stage scroll offset.
+// ResetView restores fit-to-viewport zoom, clears pan/scroll state, and resets transient video UI state.
 func (s *LightboxState) ResetView() {
 	if s == nil {
 		return
@@ -68,6 +82,10 @@ func (s *LightboxState) ResetView() {
 	s.FitMode = true
 	s.FitScale = 0
 	s.Scroll = ui.ScrollState{}
+	s.VideoFillMode = false
+	s.panDragging = false
+	s.panMoved = false
+	s.Video.ResetTransient()
 }
 
 func clampLightboxZoom(z, minZoom float32) float32 {
@@ -121,9 +139,22 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		displayName = theme.Tr("未命名附件", "Untitled attachment")
 	}
 	multi := len(items) > 1
-	canZoom := item.IsImage && item.Image != nil && !item.Loading && !item.Unavailable
+	itemCanZoom := func(it LightboxItem) bool {
+		if it.Loading || it.Unavailable || it.IsVideo {
+			return false
+		}
+		return (it.IsImage && it.Image != nil) || (it.IsAnimation && it.Video != nil)
+	}
+	itemHasActiveVideo := func(it LightboxItem) bool {
+		return it.IsVideo && it.Video != nil && !it.Loading && !it.Unavailable
+	}
+	canZoom := itemCanZoom(item)
+	activeVideo := itemHasActiveVideo(item)
 
 	closeLightbox := func() {
+		if item.Video != nil {
+			st.Video.EndPlayerBoost(item.Video)
+		}
 		st.Open = false
 		if cb.OnClose != nil {
 			cb.OnClose()
@@ -134,12 +165,21 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		if idx < 0 || idx >= len(items) || idx == st.Index {
 			return
 		}
+		if item.IsVideo && item.Video != nil {
+			st.Video.EndPlayerBoost(item.Video)
+			item.Video.Pause()
+		}
 		st.Index = idx
 		st.ResetView()
 		st.CopiedUntil = time.Time{}
 		if cb.OnSelect != nil {
 			cb.OnSelect(idx)
 		}
+	}
+
+	panStage := func(dx, dy float32) {
+		st.Scroll.X = min(max(st.Scroll.X+dx, 0), max(st.Scroll.MaxX, 0))
+		st.Scroll.Y = min(max(st.Scroll.Y+dy, 0), max(st.Scroll.MaxY, 0))
 	}
 
 	stepZoom := func(factor float32) {
@@ -195,12 +235,60 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			return
 		}
 		if multi {
-			if layer.OverlayShortcut(0, ui.KeyLeft) {
+			if layer.OverlayShortcut(ui.Cmd, ui.KeyLeft) ||
+				layer.OverlayShortcut(0, ui.KeyPageUp) ||
+				layer.OverlayShortcut(0, ui.KeyBracketLeft) {
 				selectItem((st.Index - 1 + len(items)) % len(items))
-			} else if layer.OverlayShortcut(0, ui.KeyRight) {
+			} else if layer.OverlayShortcut(ui.Cmd, ui.KeyRight) ||
+				layer.OverlayShortcut(0, ui.KeyPageDown) ||
+				layer.OverlayShortcut(0, ui.KeyBracketRight) {
 				selectItem((st.Index + 1) % len(items))
 			}
 		}
+
+		// Re-resolve active item in case Cmd+Arrow / PageUp / PageDown switched index.
+		item = items[st.Index]
+		canZoom = itemCanZoom(item)
+		activeVideo = itemHasActiveVideo(item)
+
+		if activeVideo {
+			HandleVideoShortcuts(c, &layer, item.Video, &st.Video, true, nil)
+		} else {
+			if canZoom && !st.FitMode && st.Scroll.MaxX > 0.5 {
+				if layer.OverlayShortcut(0, ui.KeyLeft) {
+					panStage(-lightboxPanStep, 0)
+				} else if layer.OverlayShortcut(0, ui.KeyRight) {
+					panStage(lightboxPanStep, 0)
+				}
+			} else if multi {
+				if layer.OverlayShortcut(0, ui.KeyLeft) {
+					selectItem((st.Index - 1 + len(items)) % len(items))
+				} else if layer.OverlayShortcut(0, ui.KeyRight) {
+					selectItem((st.Index + 1) % len(items))
+				}
+			}
+
+			if canZoom && !st.FitMode && st.Scroll.MaxY > 0.5 {
+				if layer.OverlayShortcut(0, ui.KeyUp) {
+					panStage(0, -lightboxPanStep)
+				} else if layer.OverlayShortcut(0, ui.KeyDown) {
+					panStage(0, lightboxPanStep)
+				}
+			} else if multi {
+				if layer.OverlayShortcut(0, ui.KeyUp) {
+					selectItem((st.Index - 1 + len(items)) % len(items))
+				} else if layer.OverlayShortcut(0, ui.KeyDown) {
+					selectItem((st.Index + 1) % len(items))
+				}
+			}
+
+			if item.IsAnimation && item.Video != nil {
+				if layer.OverlayShortcut(0, ui.KeySpace) && !c.ShortcutRepeated() {
+					st.Video.TogglePlayPause(uiVideoTarget{p: item.Video}, c.Now())
+				}
+			}
+		}
+
 		if canZoom {
 			if layer.OverlayShortcut(0, ui.KeyEqual) ||
 				layer.OverlayShortcut(ui.Shift, ui.KeyEqual) ||
@@ -213,11 +301,12 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				setFitZoom()
 			} else if layer.OverlayShortcut(0, ui.Key1) {
 				setActualZoom()
-			} else if cb.OnCopy != nil && layer.OverlayShortcut(ui.Cmd, ui.KeyC) {
-				if cb.OnCopy(st.Index) {
-					st.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
-					c.After(1505 * time.Millisecond)
-				}
+			}
+		}
+		if cb.OnCopy != nil && layer.OverlayShortcut(ui.Cmd, ui.KeyC) && (canZoom || item.TextPreview != "" || item.OpenURL != "") {
+			if cb.OnCopy(st.Index) {
+				st.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
+				c.After(1505 * time.Millisecond)
 			}
 		}
 
@@ -227,7 +316,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		if displayName == "" {
 			displayName = theme.Tr("未命名附件", "Untitled attachment")
 		}
-		canZoom = item.IsImage && item.Image != nil && !item.Loading && !item.Unavailable
+		canZoom = itemCanZoom(item)
+		activeVideo = itemHasActiveVideo(item)
 
 		vpWinW, vpWinH := c.Size()
 
@@ -261,7 +351,9 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 					// Left: icon + filename + meta + index counter.
 					ui.Row(c).Grow(1).Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 						leadIcon := icons.Note
-						if item.IsImage {
+						if item.IsVideo {
+							leadIcon = icons.Video
+						} else if item.IsImage || item.IsAnimation {
 							leadIcon = icons.Image
 						}
 						icons.Draw(c, leadIcon, theme.IconAction, pal.DuoIconColors(pal.TextSecondary))
@@ -411,7 +503,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							})
 						}
 
-						canCopy := (item.IsImage && item.Image != nil && !item.Loading && !item.Unavailable) || item.TextPreview != ""
+						canCopy := canZoom || item.TextPreview != "" || item.OpenURL != ""
 						if cb.OnCopy != nil && canCopy {
 							now := c.Now()
 							copiedActive := !st.CopiedUntil.IsZero() && now.Before(st.CopiedUntil)
@@ -422,12 +514,15 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							}
 							copyIcon := icons.Copy
 							copyTip := theme.Tr("复制", "Copy")
+							if item.IsVideo && item.OpenURL != "" {
+								copyTip = theme.Tr("复制链接", "Copy Link")
+							}
 							if copiedActive {
 								copyIcon = icons.Check
 								copyTip = theme.Tr("已复制", "Copied")
 							}
 							copyShortcut := ""
-							if item.IsImage {
+							if canZoom || item.OpenURL != "" {
 								copyShortcut = "cmd-c"
 							}
 							copyBtn := IconButton(c, copyIcon, IconButtonOptions{
@@ -447,6 +542,18 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							}
 						}
 
+						if cb.OnOpenURL != nil && item.OpenURL != "" {
+							openBtn := IconButton(c, icons.LinkOpen, IconButtonOptions{
+								ID:      id + "-open-url-" + itemKey,
+								Variant: IconChrome,
+								Tooltip: theme.Tr("在浏览器中打开", "Open in Browser"),
+							})
+							Probe(openBtn, id+"-open-url")
+							if openBtn.Clicked() {
+								cb.OnOpenURL(st.Index)
+							}
+						}
+
 						if cb.OnReveal != nil && !item.Unavailable {
 							revBtn := IconButton(c, icons.FolderReveal, IconButtonOptions{
 								ID:      id + "-reveal-" + itemKey,
@@ -457,6 +564,34 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							if revBtn.Clicked() {
 								cb.OnReveal(st.Index)
 							}
+						}
+
+						// Contextual keyboard/mouse shortcuts help button.
+						helpBtn := IconButton(c, icons.HelpCircle, IconButtonOptions{
+							ID:      id + "-help",
+							Variant: IconChrome,
+							Label:   theme.Tr("快捷键说明", "Keyboard shortcuts"),
+						})
+						if activeVideo {
+							TooltipCard(c, helpBtn, TooltipCardSpec{
+								Title: theme.Tr("视频快捷键", "Video Shortcuts"),
+								Body: theme.Tr(
+									"空格：播放/暂停 · ← / →：后退/快进 5 秒\n按住 → 或鼠标右键：3x 倍速，松开恢复原速\n↑ / ↓：调节音量 · M：静音 · R：循环 · < / >：倍速",
+									"Space: Play/Pause · ← / →: Seek ±5s\nHold → or Right-click: 3x speed, release to restore\n↑ / ↓: Volume · M: Mute · R: Loop · < / >: Speed",
+								),
+								Note:      theme.Tr("双击视频切换填充模式 · ⌘← / ⌘→ 切换媒体", "Double-click to toggle fill · ⌘← / ⌘→ switch media"),
+								Placement: TooltipBelow,
+							})
+						} else {
+							TooltipCard(c, helpBtn, TooltipCardSpec{
+								Title: theme.Tr("预览快捷键", "Viewer Shortcuts"),
+								Body: theme.Tr(
+									"点击图片：切换 100% / 适应窗口 · 拖拽平移大图\n+ / - / 0 / 1：缩放与复位 · 方向键：平移或切换",
+									"Click image: Toggle 100% / Fit · Drag to pan when zoomed\n+ / - / 0 / 1: Zoom & reset · Arrows: Pan or switch",
+								),
+								Note:      theme.Tr("Esc 关闭预览", "Esc to close"),
+								Placement: TooltipBelow,
+							})
 						}
 
 						if item.CanRemove && cb.OnRemove != nil {
@@ -516,16 +651,64 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						Children(func() {
 							switch {
 							case item.Loading:
+								msg := theme.Tr("正在加载预览…", "Loading preview…")
+								if item.IsVideo {
+									msg = theme.Tr("正在加载视频…", "Loading video…")
+								}
 								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
-									theme.Tr("正在加载预览…", "Loading preview…"), true, item.IsImage)
+									msg, true, item.IsImage || item.IsAnimation, item.IsVideo)
 
-							case item.Unavailable || (item.IsImage && item.Image == nil):
+							case item.Unavailable || (item.IsImage && !item.IsAnimation && item.Image == nil) || (item.IsAnimation && item.Video == nil):
+								msg := theme.Tr("附件文件不可用或已被移动", "Attachment is unavailable or was moved")
+								if item.IsVideo {
+									msg = theme.Tr("视频无法播放", "Video unavailable")
+								} else if item.IsImage || item.IsAnimation {
+									msg = theme.Tr("图片无法加载", "Image unavailable")
+								}
 								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
-									theme.Tr("附件文件不可用或已被移动", "Attachment is unavailable or was moved"), false, item.IsImage)
+									msg, false, item.IsImage || item.IsAnimation, item.IsVideo)
 
-							case item.IsImage:
+							case item.IsVideo && item.Video == nil:
+								if cb.OnRequestLoad != nil {
+									cb.OnRequestLoad(st.Index)
+								}
+								contentEl = renderLightboxStatusCard(c, id+"-card", pal, displayName, item.Meta,
+									theme.Tr("正在加载视频…", "Loading video…"), true, false, true)
+
+							case activeVideo:
+								vidKey := item.ID
+								if vidKey == "" {
+									vidKey = fmt.Sprintf("idx-%d", st.Index)
+								}
+								vidWrap := ui.Column(c.Key(id+"-video-wrap-"+vidKey)).
+									MaxWidth(min(max(stageW-2*stagePadX, 320), theme.LightboxVideoMaxWidth)).
+									Shrink(0)
+								vidWrap.Children(func() {
+									RenderVideoPlayer(c, item.Video, &st.Video, VideoPlayerOptions{
+										ID:          id + "-video-" + vidKey,
+										Label:       displayName,
+										StageWidth:  min(max(stageW-2*stagePadX, 320), theme.LightboxVideoMaxWidth),
+										StageHeight: max(stageH-2*theme.LightboxStagePad, 220),
+										InLightbox:  true,
+										FillMode:    st.VideoFillMode,
+										OnToggleFill: func() {
+											st.VideoFillMode = !st.VideoFillMode
+										},
+									})
+								})
+								contentEl = vidWrap
+
+							case canZoom:
 								iw, ih := float32(item.ImageW), float32(item.ImageH)
-								if iw <= 0 || ih <= 0 {
+								if item.IsAnimation && item.Video != nil {
+									vw, vh := item.Video.Size()
+									if iw <= 0 && vw > 0 {
+										iw = float32(vw)
+									}
+									if ih <= 0 && vh > 0 {
+										ih = float32(vh)
+									}
+								} else if iw <= 0 || ih <= 0 {
 									sw, sh := ui.ImageSize(item.Image)
 									if iw <= 0 {
 										iw = sw
@@ -541,8 +724,9 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									ih = 240
 								}
 
-								availW := max(stageW-2*stagePadX, 1)
-								availH := max(stageH-2*theme.LightboxStagePad, 1)
+								frameChrome := (theme.Space2 + 1) * 2
+								availW := max(stageW-2*stagePadX-frameChrome, 1)
+								availH := max(stageH-2*theme.LightboxStagePad-frameChrome, 1)
 								fitScale := min(float32(1.0), min(availW/iw, availH/ih))
 								if fitScale <= 0 {
 									fitScale = 0.01
@@ -559,9 +743,18 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								drawW = max(iw*effectiveZoom, 4)
 								drawH = max(ih*effectiveZoom, 4)
 
+								overflows := drawW > availW+1 || drawH > availH+1
 								cursor := ui.CursorZoomIn
 								if !st.FitMode {
-									cursor = ui.CursorZoomOut
+									if overflows {
+										if st.panDragging {
+											cursor = ui.CursorGrabbing
+										} else {
+											cursor = ui.CursorGrab
+										}
+									} else {
+										cursor = ui.CursorZoomOut
+									}
 								}
 								imgKey := item.ID
 								if imgKey == "" {
@@ -576,22 +769,45 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								Elevate(frame, theme.ElevationDialog)
 								Probe(frame, id+"-image")
 								frame.Children(func() {
-									ui.Image(c, item.Image).Size(drawW, drawH).Shrink(0).
-										Radius(theme.RadiusMD).Clip()
+									if item.IsAnimation && item.Video != nil {
+										ui.Video(c, item.Video).Size(drawW, drawH).Shrink(0).
+											Radius(theme.RadiusMD).Clip().Label(displayName)
+									} else {
+										ui.Image(c, item.Image).Size(drawW, drawH).Shrink(0).
+											Radius(theme.RadiusMD).Clip()
+									}
 								})
+								dx, dy, dragging := frame.Dragged()
+								if overflows && dragging {
+									if !st.panDragging {
+										st.panDragging = true
+										st.panMoved = false
+									}
+									if math.Abs(float64(dx)) > 0.5 || math.Abs(float64(dy)) > 0.5 {
+										st.panMoved = true
+										st.Scroll.X = min(max(st.Scroll.X-dx, 0), max(st.Scroll.MaxX, 0))
+										st.Scroll.Y = min(max(st.Scroll.Y-dy, 0), max(st.Scroll.MaxY, 0))
+									}
+								} else if st.panDragging {
+									st.panDragging = false
+								}
 								if frame.Clicked() {
-									if st.FitMode {
-										st.FitMode = false
-										if math.Abs(float64(fitScale-1.0)) < 0.05 {
-											st.Zoom = 2.0
+									if st.panMoved {
+										st.panMoved = false
+									} else {
+										if st.FitMode {
+											st.FitMode = false
+											if math.Abs(float64(fitScale-1.0)) < 0.05 {
+												st.Zoom = 2.0
+											} else {
+												st.Zoom = 1.0
+											}
 										} else {
+											st.FitMode = true
 											st.Zoom = 1.0
 										}
-									} else {
-										st.FitMode = true
-										st.Zoom = 1.0
+										st.Scroll = ui.ScrollState{}
 									}
-									st.Scroll = ui.ScrollState{}
 								}
 								contentEl = frame
 
@@ -604,6 +820,12 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				if multi {
 					navSize := theme.HeightLarge
 					navTop := max((stageH-navSize)*0.5, theme.Space8)
+					prevShortcut := "←"
+					nextShortcut := "→"
+					if activeVideo {
+						prevShortcut = "cmd-left"
+						nextShortcut = "cmd-right"
+					}
 
 					prevBtn = IconButton(c, icons.ChevronLeft, IconButtonOptions{
 						ID:       id + "-prev",
@@ -611,8 +833,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						Size:     navSize,
 						IconSize: theme.IconChrome,
 						Radius:   theme.RadiusPill,
-						Tooltip:  theme.Tr("上一张", "Previous"),
-						Shortcut: "←",
+						Tooltip:  theme.Tr("上一个", "Previous"),
+						Shortcut: prevShortcut,
 					}).Absolute().Left(theme.Space16).Top(navTop)
 					Elevate(prevBtn, theme.ElevationDialog)
 					if prevBtn.Clicked() {
@@ -625,8 +847,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						Size:     navSize,
 						IconSize: theme.IconChrome,
 						Radius:   theme.RadiusPill,
-						Tooltip:  theme.Tr("下一张", "Next"),
-						Shortcut: "→",
+						Tooltip:  theme.Tr("下一个", "Next"),
+						Shortcut: nextShortcut,
 					}).Absolute().Right(theme.Space16).Top(navTop)
 					Elevate(nextBtn, theme.ElevationDialog)
 					if nextBtn.Clicked() {
@@ -681,13 +903,15 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 
 									thumb.Children(func() {
 										switch {
-										case it.IsImage && it.Image != nil && !it.Unavailable:
+										case it.IsImage && !it.IsAnimation && it.Image != nil && !it.Unavailable:
 											ui.Image(c, it.Image).Fill().Fit(ui.Cover).Clip()
 										case it.Loading:
 											ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
+										case it.IsVideo:
+											icons.Duo(c, icons.Video, theme.IconRow, isSelected)
 										default:
 											glyph := icons.Note
-											if it.IsImage {
+											if it.IsImage || it.IsAnimation {
 												glyph = icons.Image
 											}
 											icons.Duo(c, glyph, theme.IconRow, isSelected)
@@ -734,6 +958,7 @@ func renderLightboxStatusCard(
 	message string,
 	loading bool,
 	isImage bool,
+	isVideo bool,
 ) ui.Element {
 	card := ui.Column(c.Key(cardID)).
 		Width(theme.EmptyActionWidth).
@@ -749,7 +974,9 @@ func renderLightboxStatusCard(
 			SparkleLoader(c, theme.IconChrome, pal.Accent, pal.AccentHover)
 		} else {
 			glyph := icons.Note
-			if isImage {
+			if isVideo {
+				glyph = icons.Video
+			} else if isImage {
 				glyph = icons.Image
 			}
 			icons.Duo(c, glyph, theme.EmptyMascotCompactSize, false)
