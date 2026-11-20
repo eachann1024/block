@@ -92,10 +92,11 @@ const (
 const (
 	DisabledOpacity float32 = 0.5
 
-	MenuItemHeight         = HeightCompact
-	MenuPadding            = Space4
-	MenuGap                = Space2
-	MenuMaxWidth   float32 = 320
+	MenuItemHeight                = HeightCompact
+	MenuPadding                   = Space4
+	MenuGap                       = Space2
+	MenuMaxWidth          float32 = 320
+	SelectCompactMinWidth float32 = 144
 
 	TitleBarTitleMaxWidth float32 = 240
 	ExternalPathBarHeight float32 = 40 // Scheme C top breadcrumb path bar for external files
