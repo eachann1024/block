@@ -408,14 +408,20 @@ func (ctrl *Controller) ensureDailyLocked(now time.Time) {
 	today := now.Format("2006-01-02")
 	snap := ctrl.store.Snapshot()
 	dc := PickDailyCard(ctrl.notes, today, snap.Daily, ctrl.host.ReadNoteText, now)
+	freshDay := !ctrl.Daily.Initialized || ctrl.Daily.Date != today
 	ctrl.Daily.Date = today
 	ctrl.Daily.Card = dc
 	ctrl.Daily.Initialized = true
-	if snap.Daily.Date == today && snap.Daily.Flipped {
-		ctrl.Daily.Flipped = true
-		if ctrl.Daily.FlipAt.IsZero() {
+	if freshDay {
+		ctrl.Daily.Flipped = snap.Daily.Date == today && snap.Daily.Flipped
+		if ctrl.Daily.Flipped {
 			ctrl.Daily.FlipAt = now.Add(-2 * time.Second)
+		} else {
+			ctrl.Daily.FlipAt = time.Time{}
 		}
+		ctrl.Daily.GlintAt = time.Time{}
+		ctrl.Daily.DoubtOpen = false
+		ctrl.Daily.DoubtAt = time.Time{}
 	}
 }
 
@@ -669,8 +675,10 @@ func (ctrl *Controller) FlipDaily() {
 	ctrl.Daily.FlipAt = now
 	if willFlip {
 		ctrl.Daily.GlintAt = now.Add(300 * time.Millisecond)
-		dc := ctrl.Daily.Card
-		ctrl.store.MarkDailyFlipped(ctrl.Daily.Date, dc.Note, dc.Reversed, dc.DoubtQuestions, now)
+		if !ctrl.store.DailyDrawnToday(ctrl.Daily.Date) {
+			dc := ctrl.Daily.Card
+			ctrl.store.MarkDailyFlipped(ctrl.Daily.Date, dc.Note, dc.Reversed, dc.DoubtQuestions, now)
+		}
 	} else {
 		ctrl.Daily.DoubtOpen = false
 	}
