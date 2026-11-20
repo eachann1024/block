@@ -315,7 +315,7 @@ func (s *Session) recordRightStyleBias(blockID model.BlockID, isCell bool, cellK
 	if len(left) == 0 || len(right) == 0 {
 		return
 	}
-	if left[0].Marks != right[0].Marks || left[0].BGColor != right[0].BGColor || left[0].FGColor != right[0].FGColor || left[0].Link != right[0].Link {
+	if left[0].ImageSrc != "" || right[0].ImageSrc != "" || left[0].Marks != right[0].Marks || left[0].BGColor != right[0].BGColor || left[0].FGColor != right[0].FGColor || left[0].Link != right[0].Link {
 		s.rightStyleBias = &rightStyleBias{
 			blockID: blockID,
 			isCell:  isCell,
@@ -2104,7 +2104,7 @@ func (s *Session) matchTableHeaderCells(spans []model.Span) ([]model.TableCell, 
 		segSpans := sliceSpans(spans, segLo, segHi)
 		segSpans = trimCellSpansWhitespace(unescapeTableCellSpans(segSpans))
 		// If the cell is still plain unformatted text that contains Markdown syntax (e.g. from IME paste), parse inline spans.
-		if len(segSpans) == 1 && segSpans[0].Marks == 0 && segSpans[0].Link == "" && segSpans[0].FGColor == "" && segSpans[0].BGColor == "" {
+		if len(segSpans) == 1 && segSpans[0].ImageSrc == "" && segSpans[0].Marks == 0 && segSpans[0].Link == "" && segSpans[0].FGColor == "" && segSpans[0].BGColor == "" {
 			if looksLikeInlineMarkdown(segSpans[0].Text) {
 				segSpans = s.parseInlineSpans(segSpans[0].Text)
 			}
