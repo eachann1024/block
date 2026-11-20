@@ -56,6 +56,9 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 	} else {
 		rewriteCleanValid = cleanValid
 	}
+	// Collect any surviving literal ref-def paragraphs (e.g. untouched `[unused]: /later`) so newly
+	// serialized blocks escape `[unused]` instead of accidentally turning plain text into links on reload.
+	survivingDefs := collectSurvivingRefDefs(blocks)
 
 	for i := 0; i < len(blocks); i++ {
 		b := &blocks[i]
@@ -107,17 +110,17 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 				out.WriteString(expanded)
 			} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 				var sub strings.Builder
-				serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
+				serializeBlockWithCtxDefs(b, i == 0, n, inListChild, survivingDefs, &sub)
 				prefixQuoteLines(sub.String(), extraQ, &out)
 			} else {
-				serializeBlockWithCtx(b, i == 0, n, inListChild, &out)
+				serializeBlockWithCtxDefs(b, i == 0, n, inListChild, survivingDefs, &out)
 			}
 		} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 			var sub strings.Builder
-			serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
+			serializeBlockWithCtxDefs(b, i == 0, n, inListChild, survivingDefs, &sub)
 			prefixQuoteLines(sub.String(), extraQ, &out)
 		} else {
-			serializeBlockWithCtx(b, i == 0, n, inListChild, &out)
+			serializeBlockWithCtxDefs(b, i == 0, n, inListChild, survivingDefs, &out)
 		}
 		if sourceRanges != nil {
 			serialized := out.String()
@@ -303,6 +306,67 @@ func expandRefLinksInBlockCleanSource(b *model.Block, defs map[string]refDef, is
 	return "", false
 }
 
+func collectSurvivingRefDefs(blocks []model.Block) map[string]refDef {
+	var surviving map[string]refDef
+	for i := range blocks {
+		b := &blocks[i]
+		if b.Kind != model.BlockParagraph || b.Indent > 3 || b.QuoteDepth > 0 || b.Dirty || b.CleanSource == "" {
+			continue
+		}
+		if !strings.Contains(b.CleanSource, "]:") {
+			continue
+		}
+		cand := splitLinesInclusive(b.CleanSource)
+		if i+1 < len(blocks) {
+			nb := &blocks[i+1]
+			if nb.Kind == model.BlockParagraph && !nb.Dirty && nb.CleanSource != "" {
+				cand = append(cand, splitLinesInclusive(nb.CleanSource)...)
+			}
+		}
+		if label, def, _, ok := parseRefDefLines(cand); ok {
+			if surviving == nil {
+				surviving = make(map[string]refDef)
+			}
+			if _, exists := surviving[label]; !exists {
+				surviving[label] = def
+			}
+		}
+	}
+	return surviving
+}
+
+func expandBlockRefCleanSources(blocks []model.Block, cleanRaw string) {
+	if len(blocks) == 0 || !strings.Contains(cleanRaw, "]:") {
+		return
+	}
+	defs, _ := collectRefDefs(strings.TrimPrefix(decodeRawBlockGuard(cleanRaw), "\uFEFF"))
+	if len(defs) == 0 {
+		return
+	}
+	var num listNumbering
+	for i := range blocks {
+		b := &blocks[i]
+		n := 0
+		if !isBlankBlock(b) {
+			n = num.next(b)
+		}
+		if b.Dirty || b.CleanSource == "" {
+			continue
+		}
+		if canUseCleanSource(b, i == 0, n, nil) {
+			continue
+		}
+		if canUseCleanSource(b, i == 0, n, defs) {
+			if expanded, ok := expandRefLinksInBlockCleanSource(b, defs, i == 0, n); ok {
+				b.CleanSource = expanded
+				continue
+			}
+		}
+		b.CleanSource = ""
+		b.Dirty = true
+	}
+}
+
 func effectiveQuoteDepth(b *model.Block) int {
 	if b == nil {
 		return 0
@@ -485,10 +549,14 @@ func tablesEqual(a, b *model.TableData) bool {
 }
 
 func serializeBlock(b *model.Block, isFirst bool, listNum int, out *strings.Builder) {
-	serializeBlockWithCtx(b, isFirst, listNum, false, out)
+	serializeBlockWithCtxDefs(b, isFirst, listNum, false, nil, out)
 }
 
 func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChild bool, out *strings.Builder) {
+	serializeBlockWithCtxDefs(b, isFirst, listNum, inListChild, nil, out)
+}
+
+func serializeBlockWithCtxDefs(b *model.Block, isFirst bool, listNum int, inListChild bool, reservedDefs map[string]refDef, out *strings.Builder) {
 	switch b.Kind {
 	case model.BlockDivider:
 		out.WriteString(strings.Repeat(" ", b.Indent))
@@ -505,7 +573,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 		out.WriteString("> [!")
 		out.WriteString(tag)
 		out.WriteString("]\n")
-		lines := serializeSafeBlockLines(b.Spans, false, false)
+		lines := serializeSafeBlockLinesDefs(b.Spans, false, false, reservedDefs)
 		if len(lines) == 0 {
 			return
 		}
@@ -517,7 +585,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 
 	case model.BlockQuote:
 		indentStr := strings.Repeat(" ", b.Indent)
-		lines := serializeSafeBlockLines(b.Spans, false, true)
+		lines := serializeSafeBlockLinesDefs(b.Spans, false, true, reservedDefs)
 		if len(lines) == 0 {
 			out.WriteString(indentStr)
 			out.WriteString("> \n")
@@ -615,7 +683,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 
 	case model.BlockTable:
 		if b.Table != nil {
-			serializeTable(b.Table, out)
+			serializeTableWithDefs(b.Table, reservedDefs, out)
 		}
 
 	case model.BlockRawHTML:
@@ -629,7 +697,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 		out.WriteString(strings.Repeat(" ", b.Indent))
 		out.WriteString(strings.Repeat("#", level))
 		out.WriteByte(' ')
-		out.WriteString(escapeHeadingInline(SerializeInline(b.Spans)))
+		out.WriteString(escapeHeadingInline(serializeInlineWithDefs(b.Spans, reservedDefs)))
 		out.WriteByte('\n')
 
 	case model.BlockBullet, model.BlockNumbered, model.BlockTodo:
@@ -646,7 +714,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 				marker = "- [ ] "
 			}
 		}
-		lines := serializeSafeBlockLines(b.Spans, true, false)
+		lines := serializeSafeBlockLinesDefs(b.Spans, true, false, reservedDefs)
 		if len(lines) == 0 {
 			out.WriteString(strings.Repeat(" ", b.Indent))
 			out.WriteString(marker)
@@ -680,7 +748,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 		if b.Indent > 0 && inListChild {
 			out.WriteString(strings.Repeat(" ", b.Indent))
 		}
-		inlineStr := SerializeInline(b.Spans)
+		inlineStr := serializeInlineWithDefs(b.Spans, reservedDefs)
 		out.WriteString(escapeLiteralParagraphPrefix(inlineStr))
 		out.WriteByte('\n')
 	}
@@ -1064,6 +1132,10 @@ func serializeTableMetaComment(t *model.TableData, out *strings.Builder) {
 }
 
 func serializeTable(t *model.TableData, out *strings.Builder) {
+	serializeTableWithDefs(t, nil, out)
+}
+
+func serializeTableWithDefs(t *model.TableData, reservedDefs map[string]refDef, out *strings.Builder) {
 	if len(t.Rows) == 0 {
 		return
 	}
@@ -1114,9 +1186,9 @@ func serializeTable(t *model.TableData, out *strings.Builder) {
 		for c := 0; c < cols; c++ {
 			out.WriteByte(' ')
 			if c < len(row) {
-				cellStr := SerializeInline(row[c].Spans)
+				cellStr := serializeInlineWithDefs(row[c].Spans, reservedDefs)
 				if strings.Contains(cellStr, `\|`) {
-					cellStr = strings.ReplaceAll(serializeInlineWithMode(row[c].Spans, true, false), "|", "&#124;")
+					cellStr = strings.ReplaceAll(serializeInlineWithModeDefs(row[c].Spans, true, false, reservedDefs), "|", "&#124;")
 				} else {
 					cellStr = strings.ReplaceAll(cellStr, "|", `\|`)
 				}
@@ -1177,13 +1249,17 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 }
 
 func serializeSafeBlockLines(spans []model.Span, isList, isQuote bool) []string {
+	return serializeSafeBlockLinesDefs(spans, isList, isQuote, nil)
+}
+
+func serializeSafeBlockLinesDefs(spans []model.Span, isList, isQuote bool, reservedDefs map[string]refDef) []string {
 	chunks := splitSpansByNewline(spans)
 	if len(chunks) == 0 {
 		return nil
 	}
 	raw := make([]string, len(chunks))
 	for i, ch := range chunks {
-		raw[i] = SerializeInline(ch)
+		raw[i] = serializeInlineWithDefs(ch, reservedDefs)
 	}
 	// Merge unsafe continuation lines with `<br>` so reload never splits a single
 	// quote/callout/list block into sub-blocks, callouts, or drops blank/leading lines.

@@ -83,8 +83,31 @@ func parseInlineWithDefsAndHooks(raw string, defs map[string]refDef, hooks *refS
 	return coalesceSpans(spans)
 }
 
-func formatRefDefInline(def refDef, escapePipe bool) string {
+func escapeInlineLinkBrackets(s string) string {
+	if !strings.ContainsAny(s, "[]`\\") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\', '[', ']', '`':
+			b.WriteByte('\\')
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func formatRefDefInline(def refDef, escapePipe, escapeBrackets bool) string {
 	dest := formatLinkDest(def.dest)
+	if escapeBrackets && strings.ContainsAny(dest, "[]`\\") {
+		if strings.HasPrefix(dest, "<") && strings.HasSuffix(dest, ">") && len(dest) >= 2 {
+			dest = "<" + escapeInlineLinkBrackets(dest[1:len(dest)-1]) + ">"
+		} else {
+			dest = escapeInlineLinkBrackets(dest)
+		}
+	}
 	if escapePipe && strings.ContainsRune(dest, '|') {
 		dest = strings.ReplaceAll(dest, "|", `\|`)
 	}
@@ -93,6 +116,11 @@ func formatRefDefInline(def refDef, escapePipe bool) string {
 	}
 	title := strings.ReplaceAll(def.title, `\`, `\\`)
 	title = strings.ReplaceAll(title, `"`, `\"`)
+	if escapeBrackets {
+		title = strings.ReplaceAll(title, "[", `\[`)
+		title = strings.ReplaceAll(title, "]", `\]`)
+		title = strings.ReplaceAll(title, "`", "\\`")
+	}
 	if escapePipe && strings.ContainsRune(title, '|') {
 		title = strings.ReplaceAll(title, "|", `\|`)
 	}
@@ -259,6 +287,10 @@ type inlineScanState struct {
 	unclosedBrackets      map[int]bool
 	unclosedParens        map[int]bool
 	tagFailWatermark      int
+	imgCloseValidFrom     int
+	imgClosePos           int
+	maxDefKeyLen          int
+	maxDefKeyComputed     bool
 }
 
 func newInlineScanState(s string) *inlineScanState {
@@ -275,7 +307,23 @@ func newInlineScanState(s string) *inlineScanState {
 		angleAfterGTFor:    -1,
 		angleAfterGTClose:  -1,
 		tagFailWatermark:   -1,
+		imgCloseValidFrom:  -1,
+		imgClosePos:        -2,
 	}
+}
+
+func (st *inlineScanState) getMaxDefKeyLen(defs map[string]refDef) int {
+	if !st.maxDefKeyComputed {
+		m := 0
+		for k := range defs {
+			if len(k) > m {
+				m = len(k)
+			}
+		}
+		st.maxDefKeyLen = m
+		st.maxDefKeyComputed = true
+	}
+	return st.maxDefKeyLen
 }
 
 func (st *inlineScanState) findClosingBackticks(from, count int) int {
@@ -485,7 +533,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							*hooks.edits = append(*hooks.edits, refSpanEdit{
 								start: suffixStart,
 								end:   suffixEnd,
-								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe),
+								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe, inLink),
 							})
 						}
 					}
@@ -535,7 +583,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							*hooks.edits = append(*hooks.edits, refSpanEdit{
 								start: suffixStart,
 								end:   suffixEnd,
-								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe),
+								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe, inLink),
 							})
 						}
 					}
@@ -1051,15 +1099,26 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 	if start >= lastCB || len(s)-start < 2 || s[start] != '[' {
 		return "", "", "", 0, false
 	}
+	if isImage && st.imgCloseValidFrom >= 0 && start >= st.imgCloseValidFrom {
+		if st.imgClosePos < 0 {
+			return "", "", "", 0, false
+		}
+		if start < st.imgClosePos {
+			i := st.imgClosePos
+			return finishLinkOrImageAt(st, start, i, defs)
+		}
+	}
 	var openBuf [16]int
 	openStack := openBuf[:1]
 	openStack[0] = start
 	i := start + 1
 	limit := lastCB + 1
+	imgSafeFrom := start + 1
 	for i < limit {
 		switch s[i] {
 		case '\\':
 			i += 2
+			imgSafeFrom = i
 			continue
 		case '`':
 			run := 0
@@ -1068,9 +1127,11 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 			}
 			if end := st.findClosingBackticks(i+run, run); end >= 0 {
 				i = end + run
+				imgSafeFrom = i
 				continue
 			}
 			i += run
+			imgSafeFrom = i
 			continue
 		case '[':
 			if !isImage {
@@ -1079,12 +1140,19 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 		case ']':
 			openStack = openStack[:len(openStack)-1]
 			if len(openStack) == 0 {
-				goto foundClose
+				if isImage {
+					st.imgCloseValidFrom = imgSafeFrom
+					st.imgClosePos = i
+				}
+				return finishLinkOrImageAt(st, start, i, defs)
 			}
 		}
 		i++
 	}
-	if !isImage && len(openStack) > 0 {
+	if isImage {
+		st.imgCloseValidFrom = imgSafeFrom
+		st.imgClosePos = -1
+	} else if len(openStack) > 0 {
 		if st.unclosedBrackets == nil {
 			st.unclosedBrackets = make(map[int]bool, len(openStack))
 		}
@@ -1093,10 +1161,13 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 		}
 	}
 	return "", "", "", 0, false
+}
 
-foundClose:
-	label = s[start+1 : i]
-	after := i + 1
+func finishLinkOrImageAt(st *inlineScanState, start, closeBracket int, defs map[string]refDef) (label, dest, refKey string, consumed int, ok bool) {
+	s := st.s
+	lastCB := st.getLastCloseBracket()
+	label = s[start+1 : closeBracket]
+	after := closeBracket + 1
 	if after < len(s) && s[after] == '(' {
 		if after < st.getLastCloseParen() && (st.unclosedParens == nil || !st.unclosedParens[after]) {
 			if d, endParen, ok := parseLinkDestinationAt(st, after); ok {
@@ -1105,21 +1176,25 @@ foundClose:
 		}
 	}
 	if len(defs) > 0 {
+		maxKeyLen := st.getMaxDefKeyLen(defs)
 		if after < len(s) && s[after] == '[' && after+1 <= lastCB {
 			if closeRef := findUnescapedByte(s[after+1:lastCB+1], ']'); closeRef >= 0 {
 				refLabel := s[after+1 : after+1+closeRef]
-				key := normRefLabel(refLabel)
-				if key == "" {
-					key = normRefLabel(label)
+				key, okKey := normRefLabelBounded(refLabel, maxKeyLen)
+				if !okKey && strings.TrimSpace(refLabel) == "" {
+					key, okKey = normRefLabelBounded(label, maxKeyLen)
 				}
-				if def, exists := defs[key]; exists {
-					return label, def.dest, key, (after - start) + 1 + closeRef + 1, true
+				if okKey {
+					if def, exists := defs[key]; exists {
+						return label, def.dest, key, (after - start) + 1 + closeRef + 1, true
+					}
 				}
 			}
 		}
-		key := normRefLabel(label)
-		if def, exists := defs[key]; exists {
-			return label, def.dest, key, after - start, true
+		if key, okKey := normRefLabelBounded(label, maxKeyLen); okKey {
+			if def, exists := defs[key]; exists {
+				return label, def.dest, key, after - start, true
+			}
 		}
 	}
 	return "", "", "", 0, false
@@ -1288,6 +1363,53 @@ func findUnescapedByte(s string, target byte) int {
 
 func normRefLabel(label string) string {
 	return strings.ToLower(strings.Join(strings.Fields(label), " "))
+}
+
+func normRefLabelBounded(label string, maxLen int) (string, bool) {
+	if maxLen <= 0 {
+		return "", false
+	}
+	var b strings.Builder
+	inSpace := false
+	started := false
+	for i := 0; i < len(label); {
+		r, sz := utf8.DecodeRuneInString(label[i:])
+		i += sz
+		if unicode.IsSpace(r) {
+			if started {
+				inSpace = true
+			}
+			continue
+		}
+		if inSpace {
+			if b.Len()+1 > maxLen {
+				return "", false
+			}
+			b.WriteByte(' ')
+			inSpace = false
+		}
+		started = true
+		if r < 0x80 {
+			c := byte(r)
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if b.Len()+1 > maxLen {
+				return "", false
+			}
+			b.WriteByte(c)
+		} else {
+			low := strings.ToLower(string(r))
+			if b.Len()+len(low) > maxLen {
+				return "", false
+			}
+			b.WriteString(low)
+		}
+	}
+	if !started {
+		return "", false
+	}
+	return b.String(), true
 }
 
 func tryDecodeEntity(s string) (string, int, bool) {
@@ -2032,21 +2154,25 @@ func spansEqual(a, b []model.Span) bool {
 // SerializeInline serializes rich inline spans back to Markdown (using minimal HTML
 // only for styles Markdown cannot represent such as underline or colors).
 func SerializeInline(spans []model.Span) string {
+	return serializeInlineWithDefs(spans, nil)
+}
+
+func serializeInlineWithDefs(spans []model.Span, reservedDefs map[string]refDef) string {
 	norm := coalesceSpans(spans)
 	if len(norm) == 0 {
 		return ""
 	}
-	mdBare := serializeInlineWithMode(norm, false, true)
-	if spansEqual(ParseInline(mdBare), norm) {
+	mdBare := serializeInlineWithModeDefs(norm, false, true, reservedDefs)
+	if spansEqual(parseInlineWithDefs(mdBare, reservedDefs), norm) {
 		return mdBare
 	}
-	mdExplicit := serializeInlineWithMode(norm, false, false)
-	if spansEqual(ParseInline(mdExplicit), norm) {
+	mdExplicit := serializeInlineWithModeDefs(norm, false, false, reservedDefs)
+	if spansEqual(parseInlineWithDefs(mdExplicit, reservedDefs), norm) {
 		return mdExplicit
 	}
 	// Fallback to HTML formatting tags for non-round-tripping delimiter edge cases.
-	htmlCandidate := serializeInlineWithMode(norm, true, false)
-	if spansEqual(ParseInline(htmlCandidate), norm) {
+	htmlCandidate := serializeInlineWithModeDefs(norm, true, false, reservedDefs)
+	if spansEqual(parseInlineWithDefs(htmlCandidate, reservedDefs), norm) {
 		return htmlCandidate
 	}
 	return htmlCandidate
@@ -2112,6 +2238,10 @@ func isExactBareAutolink(text, link string) bool {
 }
 
 func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) string {
+	return serializeInlineWithModeDefs(spans, forceHTML, allowBareURL, nil)
+}
+
+func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL bool, reservedDefs map[string]refDef) string {
 	var out strings.Builder
 	var opened []inlineWrapper
 
@@ -2270,13 +2400,13 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		} else if allowBareURL && !useHTML && sp.Link != "" && len(opened) == 0 && isExactBareAutolink(sp.Text, sp.Link) {
 			out.WriteString(sp.Text)
 		} else {
-			writeInlineText(&out, sp.Text, len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT, useHTML, sp.Link == "")
+			writeInlineText(&out, sp.Text, len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT, useHTML, sp.Link == "", len(reservedDefs) > 0)
 		}
 	}
 	for k := len(opened) - 1; k >= 0; k-- {
 		writeClose(opened[k])
 	}
-	return simplifyInlineEscapes(out.String(), spans)
+	return simplifyInlineEscapesWithDefs(out.String(), spans, reservedDefs)
 }
 
 func writeLiteralHTMLText(out *strings.Builder, text string) {
@@ -2375,7 +2505,7 @@ func writeInlineCode(out *strings.Builder, text string) {
 	out.WriteString(fence)
 }
 
-func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx, escapeBareURL bool) {
+func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx, escapeBareURL, escapeBrackets bool) {
 	for i := 0; i < len(text); {
 		r, sz := utf8.DecodeRuneInString(text[i:])
 		switch r {
@@ -2421,7 +2551,7 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx,
 			}
 			out.WriteByte('=')
 		case '[', ']':
-			if inMarkdownLink || textContainsLinkSyntax(text) {
+			if inMarkdownLink || escapeBrackets || textContainsLinkSyntax(text) {
 				out.WriteByte('\\')
 			}
 			out.WriteRune(r)
@@ -2502,6 +2632,10 @@ func stripAllActiveEscapeFor(src string, ch byte) string {
 }
 
 func simplifyInlineEscapes(src string, expected []model.Span) string {
+	return simplifyInlineEscapesWithDefs(src, expected, nil)
+}
+
+func simplifyInlineEscapesWithDefs(src string, expected []model.Span, reservedDefs map[string]refDef) string {
 	if !strings.ContainsRune(src, '\\') {
 		return src
 	}
@@ -2550,7 +2684,7 @@ func simplifyInlineEscapes(src string, expected []model.Span) string {
 		}
 		if ch != '\\' && counts[slot] >= 2 {
 			candAll := stripAllActiveEscapeFor(src, ch)
-			if spansEqual(ParseInline(candAll), exp) {
+			if spansEqual(parseInlineWithDefs(candAll, reservedDefs), exp) {
 				src = candAll
 				continue
 			}
@@ -2575,7 +2709,7 @@ func simplifyInlineEscapes(src string, expected []model.Span) string {
 				continue
 			}
 			cand := src[:bs] + src[bs+1:]
-			if spansEqual(ParseInline(cand), exp) {
+			if spansEqual(parseInlineWithDefs(cand, reservedDefs), exp) {
 				src = cand
 				pos = bs + 1
 			} else {

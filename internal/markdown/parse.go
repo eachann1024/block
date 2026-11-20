@@ -30,6 +30,10 @@ func (c *Codec) SerializeInline(spans []model.Span) string {
 	return SerializeInline(spans)
 }
 
+func (c *Codec) ExpandBlockRefCleanSources(blocks []model.Block, cleanRaw string) {
+	expandBlockRefCleanSources(blocks, cleanRaw)
+}
+
 func (c *Codec) NormalizePaste(raw string) string {
 	return NormalizePasteText(raw)
 }
@@ -441,6 +445,47 @@ func collectCandidateRefDefsFromLines(src string, lines []string) map[string]ref
 		if count, ok := rawHTMLLineCount(lines[i:]); ok {
 			i += count - 1
 			continue
+		}
+		if _, ok := openHTMLProseTag(line); ok {
+			if count := htmlProseLineCount(lines[i:]); count > 0 {
+				i += count - 1
+				continue
+			}
+		}
+		if lowerTrim := strings.ToLower(strings.TrimLeft(line, " \t")); strings.HasPrefix(lowerTrim, "<table") {
+			if count := htmlTableLineCount(lines[i:]); count > 0 {
+				i += count - 1
+				continue
+			}
+		} else if strings.HasPrefix(lowerTrim, "<ul") || strings.HasPrefix(lowerTrim, "<ol") {
+			if count := htmlListLineCount(lines[i:]); count > 0 {
+				i += count - 1
+				continue
+			}
+		}
+		if firstTrim := strings.TrimLeft(line, " \t"); strings.HasPrefix(firstTrim, ":::") && strings.TrimSpace(firstTrim) != ":::" {
+			if _, count, ok := parseCustomContainerBlock(lines[i:], nil, nil); ok && count > 0 {
+				i += count - 1
+				continue
+			}
+		}
+		if isPipeCandidate(lines, i) {
+			end := i + 2
+			for end < len(lines) {
+				raw := trimLineEnding(lines[end])
+				if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
+					break
+				}
+				end++
+			}
+			i = end - 1
+			continue
+		}
+		if _, ok := classifyListMarker(line); ok {
+			if _, count, okL := parseListItem(lines[i:], nil, nil, 1, 0); okL && count > 0 {
+				i += count - 1
+				continue
+			}
 		}
 		trimmed := strings.TrimLeft(line, " ")
 		if len(line)-len(trimmed) <= 3 && len(trimmed) > 0 && trimmed[0] == '[' && !strings.HasPrefix(trimmed, "[^") {
@@ -2449,6 +2494,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 	}
 	var result []model.Block
 	i := 0
+	unusedRefDefEnd := -1
 	appendBlock := func(b model.Block, count int) {
 		b.SourceLine = startLine + i
 		b.SourceEndLine = b.SourceLine + count - 1
@@ -2731,6 +2777,15 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			i++
 			continue
 		}
+		isUnusedRefDef := i < unusedRefDefEnd
+		if !isUnusedRefDef && indentCols <= 3 && len(bodyTrimmed) > 0 && bodyTrimmed[0] == '[' && !strings.HasPrefix(bodyTrimmed, "[^") {
+			if _, _, refConsumed, okRef := parseRefDefLines(lines[i:]); okRef {
+				isUnusedRefDef = true
+				if i+refConsumed > unusedRefDefEnd {
+					unusedRefDefEnd = i + refConsumed
+				}
+			}
+		}
 		if indentCols <= 3 && i+1 < len(lines) {
 			nextLine := trimLineEnding(lines[i+1])
 			nextBody := strings.TrimLeft(nextLine, " ")
@@ -2744,10 +2799,6 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 						setextKind = model.BlockHeading2
 					}
 					if setextKind != 0 {
-						isUnusedRefDef := false
-						if len(bodyTrimmed) > 0 && bodyTrimmed[0] == '[' && !strings.HasPrefix(bodyTrimmed, "[^") {
-							_, _, _, isUnusedRefDef = parseRefDefLines(lines[i:])
-						}
 						if !isUnusedRefDef {
 							orig := lines[i] + lines[i+1]
 							appendBlock(model.Block{
@@ -2766,16 +2817,55 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 		if indentCols > 12 {
 			indentCols = 12
 		}
+		var paraSpans []model.Span
+		if isUnusedRefDef {
+			// Unused link reference definitions remain literal paragraphs and must not resolve
+			// other reference definitions inside their URL or title.
+			paraSpans = parseInlineWithDefs(bodyTrimmed, nil)
+		} else {
+			paraSpans = parseInlineWithDefsAndUsed(bodyTrimmed, defs, usedOut)
+		}
 		appendBlock(model.Block{
 			ID:          model.NewBlockID(),
 			Kind:        model.BlockParagraph,
 			Indent:      indentCols,
-			Spans:       parseInlineWithDefsAndUsed(bodyTrimmed, defs, usedOut),
+			Spans:       paraSpans,
 			CleanSource: rawLine,
 		}, 1)
 		i++
 	}
 	return result
+}
+
+func htmlListLineCount(lines []string) int {
+	depth := 0
+	for idx, l := range lines {
+		pos := 0
+		for pos < len(l) {
+			lt := strings.IndexByte(l[pos:], '<')
+			if lt < 0 {
+				break
+			}
+			pos += lt
+			name, _, closed, empty, consumed, ok := parseTagRaw(l[pos:])
+			if !ok {
+				pos++
+				continue
+			}
+			if (name == "ul" || name == "ol") && !empty {
+				if closed {
+					depth--
+					if depth == 0 {
+						return idx + 1
+					}
+				} else {
+					depth++
+				}
+			}
+			pos += consumed
+		}
+	}
+	return 0
 }
 
 func parseHTMLListLines(lines []string, defs map[string]refDef, usedOut map[string]bool, startLine int) ([]model.Block, int, bool) {
