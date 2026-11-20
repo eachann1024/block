@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"block/internal/model"
 )
@@ -426,31 +428,31 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 		out.WriteString("> [!")
 		out.WriteString(tag)
 		out.WriteString("]\n")
-		lines := splitSpansByNewline(b.Spans)
+		lines := serializeSafeBlockLines(b.Spans, false, false)
 		if len(lines) == 0 {
 			return
 		}
-		for _, lineSpans := range lines {
+		for _, lineStr := range lines {
 			out.WriteString("> ")
-			out.WriteString(SerializeInline(lineSpans))
+			out.WriteString(lineStr)
 			out.WriteByte('\n')
 		}
 
 	case model.BlockQuote:
 		indentStr := strings.Repeat(" ", b.Indent)
-		lines := splitSpansByNewline(b.Spans)
+		lines := serializeSafeBlockLines(b.Spans, false, true)
 		if len(lines) == 0 {
 			out.WriteString(indentStr)
 			out.WriteString("> \n")
 			return
 		}
-		for _, lineSpans := range lines {
+		for _, lineStr := range lines {
 			out.WriteString(indentStr)
-			if len(lineSpans) == 0 {
+			if lineStr == "" {
 				out.WriteString(">\n")
 			} else {
 				out.WriteString("> ")
-				out.WriteString(SerializeInline(lineSpans))
+				out.WriteString(lineStr)
 				out.WriteByte('\n')
 			}
 		}
@@ -550,7 +552,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 		out.WriteString(strings.Repeat(" ", b.Indent))
 		out.WriteString(strings.Repeat("#", level))
 		out.WriteByte(' ')
-		out.WriteString(SerializeInline(b.Spans))
+		out.WriteString(escapeHeadingInline(SerializeInline(b.Spans)))
 		out.WriteByte('\n')
 
 	case model.BlockBullet, model.BlockNumbered, model.BlockTodo:
@@ -567,7 +569,7 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 				marker = "- [ ] "
 			}
 		}
-		lines := splitSpansByNewline(b.Spans)
+		lines := serializeSafeBlockLines(b.Spans, true, false)
 		if len(lines) == 0 {
 			out.WriteString(strings.Repeat(" ", b.Indent))
 			out.WriteString(marker)
@@ -575,14 +577,14 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 			return
 		}
 		contPad := strings.Repeat(" ", b.Indent+len(marker))
-		for idx, lineSpans := range lines {
+		for idx, lineStr := range lines {
 			if idx == 0 {
 				out.WriteString(strings.Repeat(" ", b.Indent))
 				out.WriteString(marker)
 			} else {
 				out.WriteString(contPad)
 			}
-			out.WriteString(SerializeInline(lineSpans))
+			out.WriteString(lineStr)
 			out.WriteByte('\n')
 		}
 
@@ -669,6 +671,12 @@ func escapeLiteralParagraphPrefix(s string) string {
 			return `\` + rest
 		}
 	}
+	// Reference link definition `[label]: /url` so reload does not swallow the paragraph.
+	if rest[0] == '[' && !strings.HasPrefix(rest, "[^") {
+		if _, _, _, isRef := parseRefDefLines([]string{rest + "\n"}); isRef {
+			return `\` + rest
+		}
+	}
 	// Ordered list `1. ` / `1) `.
 	d := 0
 	for d < len(rest) && d < 9 && rest[d] >= '0' && rest[d] <= '9' {
@@ -676,6 +684,24 @@ func escapeLiteralParagraphPrefix(s string) string {
 	}
 	if d > 0 && d < len(rest) && (rest[d] == '.' || rest[d] == ')') && (d+1 == len(rest) || rest[d+1] == ' ' || rest[d+1] == '\t') {
 		return rest[:d] + `\` + rest[d:]
+	}
+	return s
+}
+
+func escapeHeadingInline(s string) string {
+	if s == "" {
+		return s
+	}
+	if s[0] == ' ' {
+		s = "&#32;" + s[1:]
+	} else if s[0] == '\t' {
+		s = "&#9;" + s[1:]
+	}
+	if strings.HasSuffix(s, "#") {
+		stripped := strings.TrimRight(s, "#")
+		if stripped == "" || strings.HasSuffix(stripped, " ") || strings.HasSuffix(stripped, "\t") {
+			s = s[:len(s)-1] + `\#`
+		}
 	}
 	return s
 }
@@ -1051,10 +1077,10 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 	}
 	lines := [][]model.Span{{}}
 	for _, sp := range spans {
-		// Keep inline code/math spans intact across soft newlines so SerializeInline
-		// emits <code>...<br>...</code> / <span class="math">...<br>...</span> on one
-		// Markdown line instead of splitting them into separate chips.
-		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || !strings.ContainsRune(sp.Text, '\n') {
+		// Keep styled spans intact across soft newlines so SerializeInline preserves marks
+		// (code, math, bold, italic, link, etc.) across `<br>` on one Markdown line.
+		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		if styled || !strings.ContainsRune(sp.Text, '\n') {
 			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
 			continue
 		}
@@ -1073,23 +1099,76 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 	return lines
 }
 
+func serializeSafeBlockLines(spans []model.Span, isList, isQuote bool) []string {
+	chunks := splitSpansByNewline(spans)
+	if len(chunks) == 0 {
+		return nil
+	}
+	raw := make([]string, len(chunks))
+	for i, ch := range chunks {
+		raw[i] = SerializeInline(ch)
+	}
+	// Merge unsafe continuation lines with `<br>` so reload never splits a single
+	// quote/callout/list block into sub-blocks, callouts, or drops blank/leading lines.
+	isUnsafeCont := func(s string) bool {
+		if s == "" {
+			return true
+		}
+		if s[0] == ' ' || s[0] == '\t' {
+			return true
+		}
+		if _, isAlert := parseAlertTag(s); isAlert {
+			return true
+		}
+		if isList && startsBlockInList(s, "", nil) {
+			return true
+		}
+		if !isList && (strings.HasPrefix(s, "|") || blockquoteNeedsStructuredParse([]string{s})) {
+			return true
+		}
+		return escapeLiteralParagraphPrefix(s) != s
+	}
+
+	out := make([]string, 0, len(raw))
+	for i, line := range raw {
+		if i == 0 {
+			if line != "" {
+				if line[0] == ' ' {
+					line = "&#32;" + line[1:]
+				} else if line[0] == '\t' {
+					line = "&#9;" + line[1:]
+				} else if isQuote {
+					if _, isAlert := parseAlertTag(line); isAlert {
+						line = `\` + line
+					} else if strings.HasPrefix(line, "|") {
+						line = `\` + line
+					} else if blockquoteNeedsStructuredParse([]string{line}) {
+						line = escapeLiteralParagraphPrefix(line)
+					}
+				}
+			}
+			out = append(out, line)
+			continue
+		}
+		// Leading empty line in list (`\none`) or any unsafe continuation line stays on the previous line via `<br>`.
+		if (len(out) == 1 && out[0] == "" && (isList || isQuote)) || isUnsafeCont(line) {
+			out[len(out)-1] += "<br>" + line
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
 func preserveEdgeWhitespace(s string) string {
 	if s == "" {
 		return s
 	}
-	switch s[0] {
-	case ' ':
-		s = "&#32;" + s[1:]
-	case '\t':
-		s = "&#9;" + s[1:]
+	if r, sz := utf8.DecodeRuneInString(s); unicode.IsSpace(r) {
+		s = fmt.Sprintf("&#%d;", r) + s[sz:]
 	}
-	last := s[len(s)-1]
-	if last == ' ' || last == '\t' {
-		entity := "&#32;"
-		if last == '\t' {
-			entity = "&#9;"
-		}
-		prefix := s[:len(s)-1]
+	if r, sz := utf8.DecodeLastRuneInString(s); unicode.IsSpace(r) {
+		prefix := s[:len(s)-sz]
 		slashes := 0
 		for i := len(prefix) - 1; i >= 0 && prefix[i] == '\\'; i-- {
 			slashes++
@@ -1097,7 +1176,7 @@ func preserveEdgeWhitespace(s string) string {
 		if slashes%2 == 1 {
 			prefix += `\`
 		}
-		s = prefix + entity
+		s = prefix + fmt.Sprintf("&#%d;", r)
 	}
 	return s
 }

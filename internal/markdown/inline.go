@@ -2052,7 +2052,11 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		}
 		opened = target
 
-		if sp.Marks&model.MarkCode != 0 {
+		if sp.Marks&model.MarkCode != 0 && sp.Marks&model.MarkMath != 0 {
+			out.WriteString(`<code><span class="math">`)
+			writeLiteralMathHTMLText(&out, sp.Text)
+			out.WriteString(`</span></code>`)
+		} else if sp.Marks&model.MarkCode != 0 {
 			if useHTML || strings.ContainsAny(sp.Text, "\n\r") {
 				out.WriteString("<code>")
 				writeLiteralHTMLText(&out, sp.Text)
@@ -2429,14 +2433,14 @@ func NormalizePasteText(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	// 1. Strip UTF-8 BOM & zero-width artifacts, normalize line endings and NBSP.
+	// 1. Strip UTF-8 BOM & stray zero-width artifacts (preserving U+200D ZWJ for composite emoji),
+	// normalize line endings and NBSP.
 	s := strings.TrimPrefix(raw, "\uFEFF")
 	s = strings.NewReplacer(
 		"\r\n", "\n",
 		"\r", "\n",
 		"\u200B", "",
 		"\u200C", "",
-		"\u200D", "",
 		"\uFEFF", "",
 		"\u00A0", " ",
 	).Replace(s)
