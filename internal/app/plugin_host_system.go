@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -182,6 +184,10 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	}
 	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
 	id := "block-plugin-" + pluginID
+	if root != "" {
+		scope := sha256.Sum256([]byte(root))
+		id = fmt.Sprintf("%s-%x", id, scope[:16])
+	}
 	var record string
 	if runtime.GOOS == "darwin" {
 		id = "block-plugin-click-" + rand.Text()
