@@ -39,6 +39,13 @@ type CommandPalette struct {
 	focusPending   bool
 	inputHandle    ui.Handle
 	scroll         ui.ScrollState
+
+	cacheValid    bool
+	cacheQuery    string
+	cacheCount    int
+	cacheFirstID  string
+	cacheLastID   string
+	cacheFiltered []PaletteItem
 }
 
 // Open opens the command palette and resets filter and selection state.
@@ -49,6 +56,7 @@ func (p *CommandPalette) Open() {
 	p.selected = 0
 	p.revealSelected = false
 	p.focusPending = true
+	p.cacheValid = false
 }
 
 // Close closes the command palette and clears the active filter.
@@ -59,6 +67,27 @@ func (p *CommandPalette) Close() {
 	p.selected = 0
 	p.revealSelected = false
 	p.focusPending = false
+	p.cacheValid = false
+	p.cacheFiltered = nil
+}
+
+func (p *CommandPalette) filteredItems(items []PaletteItem) []PaletteItem {
+	firstID, lastID := "", ""
+	if n := len(items); n > 0 {
+		firstID = items[0].ID + "|" + items[0].Title
+		lastID = items[n-1].ID + "|" + items[n-1].Title
+	}
+	if p.cacheValid && p.cacheQuery == p.query && p.cacheCount == len(items) && p.cacheFirstID == firstID && p.cacheLastID == lastID {
+		return p.cacheFiltered
+	}
+	filtered := filterPaletteItems(items, p.query)
+	p.cacheValid = true
+	p.cacheQuery = p.query
+	p.cacheCount = len(items)
+	p.cacheFirstID = firstID
+	p.cacheLastID = lastID
+	p.cacheFiltered = filtered
+	return filtered
 }
 
 // IsOpen reports whether the command palette is currently visible.
@@ -73,7 +102,7 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 	}
 
 	pal := theme.Ocean()
-	filtered := filterPaletteItems(items, p.query)
+	filtered := p.filteredItems(items)
 	if len(filtered) == 0 {
 		p.selected = 0
 	} else if p.selected < 0 {
@@ -90,6 +119,12 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 	maxBodyH := max(maxCardH-commandPaletteHeaderH-commandPaletteFooterH-2, commandPaletteMinBodyH)
 
 	runSelected := func() {
+		if p.query != p.lastQuery {
+			p.lastQuery = p.query
+			p.selected = 0
+			p.scroll.Y = 0
+			filtered = p.filteredItems(items)
+		}
 		if len(filtered) == 0 || p.selected < 0 || p.selected >= len(filtered) {
 			return
 		}
@@ -178,7 +213,7 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 				p.selected = 0
 				p.scroll.Y = 0
 				p.revealSelected = true
-				filtered = filterPaletteItems(items, p.query)
+				filtered = p.filteredItems(items)
 			}
 			if !in.Composing() && in.Submitted() {
 				runSelected()
