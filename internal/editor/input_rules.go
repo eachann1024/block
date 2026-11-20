@@ -585,9 +585,10 @@ type inlineRuleResult struct {
 	clearMask model.Mark
 	clearBG   bool
 	isMath    bool
-	toImage   bool
-	imageAlt  string
-	imageSrc  string
+	toImage    bool
+	imageAlt   string
+	imageSrc   string
+	imageTitle string
 }
 
 func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImageBlock bool) inlineRuleResult {
@@ -784,8 +785,8 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 			trimmed := strings.TrimSpace(string(r[:end]))
 			rest := strings.TrimSpace(string(r[end:]))
 			if rest == "" {
-				if alt, src, ok := matchStandaloneImageLine(trimmed); ok {
-					return inlineRuleResult{toImage: true, imageAlt: alt, imageSrc: src}
+				if alt, src, title, ok := matchStandaloneImageLine(trimmed); ok {
+					return inlineRuleResult{toImage: true, imageAlt: alt, imageSrc: src, imageTitle: title}
 				}
 			}
 		}
@@ -1206,15 +1207,53 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 			break
 		}
 	}
-	if openBracket < 0 || (openBracket > 0 && (r[openBracket-1] == '!' || r[openBracket-1] == '！')) {
+	if openBracket < 0 {
 		return inlineRuleResult{spans: spans, caret: end}
+	}
+	isImage := openBracket > 0 && (r[openBracket-1] == '!' || r[openBracket-1] == '！') && !isEscapedAt(r, openBracket-1)
+	if isImage {
+		imgStart := openBracket - 1
+		rawInner := strings.TrimSpace(string(r[openParen+1 : end-1]))
+		url, title, ok := splitInlineTargetAndTitle(rawInner, fullwidthParen)
+		if !ok || spanCodeOrMathAt(spans, imgStart, end) || spanHasInlineImageAt(spans, imgStart, end) {
+			return inlineRuleResult{spans: spans, caret: end}
+		}
+		alt := string(r[openBracket+1 : closeBracket])
+		label := alt
+		altEmpty := label == ""
+		if altEmpty {
+			label = fallbackInlineImageAlt(url)
+		}
+		imgSpan := model.Span{
+			Text:          label,
+			ImageSrc:      url,
+			ImageTitle:    title,
+			ImageAltEmpty: altEmpty,
+		}
+		if outer := sliceSpans(spans, imgStart, imgStart+1); len(outer) > 0 {
+			imgSpan.Marks = outer[0].Marks &^ (model.MarkCode | model.MarkMath)
+			imgSpan.Link = outer[0].Link
+			imgSpan.FGColor = outer[0].FGColor
+			imgSpan.BGColor = outer[0].BGColor
+		}
+		left := sliceSpans(spans, 0, imgStart)
+		right := sliceSpans(spans, end, len(r))
+		var merged []model.Span
+		merged = append(merged, left...)
+		merged = append(merged, imgSpan)
+		merged = append(merged, right...)
+		return inlineRuleResult{
+			spans:   normalizeSpans(merged),
+			caret:   imgStart + utf8.RuneCountInString(label),
+			changed: true,
+		}
 	}
 	labelLen := closeBracket - (openBracket + 1)
 	rawURL := strings.TrimSpace(string(r[openParen+1 : end-1]))
 	if labelLen <= 0 || !isPlausibleInlineLinkTarget(rawURL, fullwidthParen) {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
-	if spanCodeOrMathAt(spans, openBracket, end) {
+	if spanCodeOrMathAt(spans, openBracket, end) || spanHasInlineImageAt(spans, openBracket, end) {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 	url := normalizeInlineLinkURL(rawURL)
@@ -1235,21 +1274,172 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 	}
 }
 
-func matchStandaloneImageLine(s string) (alt, src string, ok bool) {
+func fallbackInlineImageAlt(dest string) string {
+	d := strings.TrimSpace(dest)
+	if idx := strings.LastIndexByte(d, '/'); idx >= 0 && idx+1 < len(d) {
+		return d[idx+1:]
+	}
+	if d != "" {
+		return d
+	}
+	return "image"
+}
+
+func spanHasInlineImageAt(spans []model.Span, start, end int) bool {
+	if end <= start {
+		return false
+	}
+	pos := 0
+	for _, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if s1 <= start {
+			continue
+		}
+		if s0 >= end {
+			break
+		}
+		if sp.ImageSrc != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func splitInlineTargetAndTitle(raw string, fullwidthParen bool) (url, title string, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", "", false
+	}
+	var dest, rest string
+	if s[0] == '<' {
+		gt := -1
+		for i := 1; i < len(s); i++ {
+			if s[i] == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if s[i] == '>' {
+				gt = i
+				break
+			}
+			if s[i] == '<' || s[i] == '\n' || s[i] == '\r' {
+				return "", "", false
+			}
+		}
+		if gt <= 1 {
+			return "", "", false
+		}
+		dest = s[1:gt]
+		rest = strings.TrimSpace(s[gt+1:])
+	} else {
+		depth := 0
+		split := len(s)
+		for i := 0; i < len(s); i++ {
+			if s[i] == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if s[i] == '(' {
+				depth++
+			} else if s[i] == ')' {
+				if depth == 0 {
+					return "", "", false
+				}
+				depth--
+			} else if (s[i] == ' ' || s[i] == '\t') && depth == 0 {
+				split = i
+				break
+			}
+		}
+		if depth != 0 {
+			return "", "", false
+		}
+		dest = s[:split]
+		rest = strings.TrimSpace(s[split:])
+		if !isPlausibleInlineLinkTarget(dest, fullwidthParen) {
+			return "", "", false
+		}
+	}
+	if rest != "" {
+		if len(rest) < 2 {
+			return "", "", false
+		}
+		openQ := rest[0]
+		var closeQ byte
+		switch openQ {
+		case '"':
+			closeQ = '"'
+		case '\'':
+			closeQ = '\''
+		case '(':
+			closeQ = ')'
+		default:
+			return "", "", false
+		}
+		var tb strings.Builder
+		closed := false
+		for i := 1; i < len(rest); i++ {
+			if rest[i] == '\\' && i+1 < len(rest) {
+				tb.WriteByte(rest[i+1])
+				i++
+				continue
+			}
+			if rest[i] == closeQ {
+				if i != len(rest)-1 {
+					return "", "", false
+				}
+				closed = true
+				break
+			}
+			tb.WriteByte(rest[i])
+		}
+		if !closed {
+			return "", "", false
+		}
+		title = tb.String()
+	}
+	return normalizeInlineLinkURL(dest), title, true
+}
+
+func matchStandaloneImageLine(s string) (alt, src, title string, ok bool) {
 	t := strings.TrimSpace(s)
 	if !strings.HasPrefix(t, "![") || !strings.HasSuffix(t, ")") {
-		return "", "", false
+		return "", "", "", false
 	}
-	mid := strings.Index(t, "](")
-	if mid < 2 {
-		return "", "", false
+	closeBracket := -1
+	depth := 0
+	for i := 2; i < len(t)-1; i++ {
+		if t[i] == '\\' && i+1 < len(t)-1 {
+			i++
+			continue
+		}
+		if t[i] == '[' {
+			depth++
+			continue
+		}
+		if t[i] == ']' {
+			if depth > 0 {
+				depth--
+				continue
+			}
+			if i+1 < len(t)-1 && t[i+1] == '(' {
+				closeBracket = i
+				break
+			}
+			return "", "", "", false
+		}
 	}
-	alt = strings.TrimSpace(t[2:mid])
-	src = strings.TrimSpace(t[mid+2 : len(t)-1])
-	if !isPlausibleInlineLinkTarget(src, false) {
-		return "", "", false
+	if closeBracket < 2 {
+		return "", "", "", false
 	}
-	return alt, src, true
+	alt = t[2:closeBracket]
+	src, title, ok = splitInlineTargetAndTitle(t[closeBracket+2:len(t)-1], false)
+	if !ok {
+		return "", "", "", false
+	}
+	return alt, src, title, true
 }
 
 func bareURLCandidateBefore(r []rune, tokenEnd int) (start, end int, url string, ok bool) {
@@ -2127,11 +2317,12 @@ func (s *Session) matchTableHeaderCells(spans []model.Span) ([]model.TableCell, 
 	return cells, true
 }
 
-func (s *Session) convertParagraphToImageBlock(idx int, alt, src string) {
+func (s *Session) convertParagraphToImageBlock(idx int, alt, src, title string) {
 	b := &s.doc.Blocks[idx]
 	b.Kind = model.BlockImage
 	b.ImageAlt = alt
 	b.ImageSrc = src
+	b.ImageTitle = title
 	b.Spans = nil
 	b.Dirty = true
 	b.CleanSource = ""

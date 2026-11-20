@@ -2745,7 +2745,7 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 			converted = true
 		}
 		if res := applyInlineInputRules(b.Spans, curCaret, insLen, b.Kind == model.BlockParagraph); res.toImage {
-			s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc)
+			s.convertParagraphToImageBlock(idx, res.imageAlt, res.imageSrc, res.imageTitle)
 			s.recordBlockAutoConvert(idx, rawBeforeConvert, rawCaret, &s.doc.Blocks[idx], 0, false)
 			return
 		} else if res.changed {
@@ -3290,9 +3290,9 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 			}
 		}
 		if b.Kind == model.BlockParagraph {
-			if alt, src, ok := matchStandaloneImageLine(b.PlainText()); ok {
+			if alt, src, title, ok := matchStandaloneImageLine(b.PlainText()); ok {
 				s.pushUndo()
-				s.convertParagraphToImageBlock(idx, alt, src)
+				s.convertParagraphToImageBlock(idx, alt, src, title)
 				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, &s.doc.Blocks[idx], 0, false)
 				return true
 			}
