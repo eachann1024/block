@@ -12,25 +12,15 @@ func noHitTest(_, _ float32, _ ui.Rect) bool { return false }
 type brandSceneClockKey struct{}
 
 type brandSceneClock struct {
-	lastWall  time.Time
-	elapsedMs int64
-	init      bool
+	lastWall time.Time
+	elapsed  time.Duration
+	init     bool
 }
 
 const (
-	brandSceneAmbientStepMs = 500
-	brandSceneMeteorStepMs  = 50
+	brandSceneFrameRate = 30
+	brandSceneMaxDt     = 100 * time.Millisecond
 )
-
-func sceneNextStepMs(sc *compiledScene, tSec float64) time.Duration {
-	if sc != nil && sc.shootStar {
-		ph := modPos(tSec, 13.0)
-		if ph >= 0.82 && ph < 0.95 {
-			return brandSceneMeteorStepMs * time.Millisecond
-		}
-	}
-	return brandSceneAmbientStepMs * time.Millisecond
-}
 
 // PaintBrandSceneBand paints the 88px full-window-width landscape band onto el's own backdrop
 // (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card),
@@ -55,27 +45,22 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool
 		}
 		reduced := p.Preferences().ReduceMotion
 		tSec := float64(0)
-		stepDur := time.Duration(brandSceneAmbientStepMs) * time.Millisecond
 		if !reduced {
 			now := p.Now()
 			if !clk.init {
 				clk.init = true
 				clk.lastWall = now
-				clk.elapsedMs = now.UnixMilli()
+				clk.elapsed = time.Duration(now.UnixMilli()%(24*3600*1000))*time.Millisecond + time.Second
 			} else if pauseAnim {
 				clk.lastWall = now
-			} else {
-				dt := now.Sub(clk.lastWall).Milliseconds()
-				if dt > 0 {
-					if dt > 600 {
-						dt = 600
-					}
-					clk.elapsedMs += dt
-					clk.lastWall = now
+			} else if dt := now.Sub(clk.lastWall); dt > 0 {
+				if dt > brandSceneMaxDt {
+					dt = brandSceneMaxDt
 				}
+				clk.elapsed += dt
+				clk.lastWall = now
 			}
-			tSec = float64(clk.elapsedMs) * 0.001
-			stepDur = sceneNextStepMs(sc, tSec)
+			tSec = clk.elapsed.Seconds()
 		}
 		p.Clip(bandRect, 0, func() {
 			paintScene(p, sc, bandRect.X, bandRect.Y, bandRect.W, BrandBandHeight, tSec, showOrb, true)
@@ -92,7 +77,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, showOrb, pauseAnim bool
 		})
 
 		if !reduced && !pauseAnim {
-			p.After(stepDur)
+			p.AnimationFrameRate(brandSceneFrameRate)
 		}
 	})
 }
