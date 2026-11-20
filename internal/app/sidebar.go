@@ -295,9 +295,8 @@ func parentRootOfEntries(entries []model.FileEntry, fallback string) string {
 
 // splitSidebarFileLabel splits an unrecognized non-.md file name into its clean
 // stem and a short uppercase extension badge (up to 6 chars) for the sidebar row.
-// Canonical ".md" notes, folders, files with dedicated icons, extensionless files,
-// and very long suffixes stay badge-free (files with dedicated icons keep their
-// full filename so icon + filename read cleanly together).
+// Canonical ".md" notes, folders, extensionless files, and very long suffixes
+// stay badge-free.
 func splitSidebarFileLabel(entry model.FileEntry) (title, extBadge string) {
 	if entry.IsDir {
 		return entry.Name, ""
@@ -307,9 +306,6 @@ func splitSidebarFileLabel(entry model.FileEntry) (title, extBadge string) {
 		raw = filepath.Base(entry.Path)
 	}
 	if files.HasHiddenExtension(raw) {
-		return entry.Name, ""
-	}
-	if _, dedicated := icons.FileIcon(raw); dedicated {
 		return entry.Name, ""
 	}
 	ext := filepath.Ext(raw)
