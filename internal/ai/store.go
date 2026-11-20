@@ -2315,7 +2315,17 @@ func (c *Controller) refreshPickerIfNeeded() {
 		prevSkillCache[k] = v
 	}
 	prevRootMtime := c.pickerRootMtime
-	prevHasData := len(c.pickerPages) > 0 || len(c.pickerFolders) > 0
+	rootChanged := c.pickerRoot != root
+	if rootChanged {
+		c.pickerFolder = ""
+		c.pickerFolders = nil
+		c.pickerPages = nil
+		c.pickerSkills = nil
+		c.pickerRootMtime = time.Time{}
+		c.pickerCache.valid = false
+		prevRootMtime = time.Time{}
+	}
+	prevHasData := !rootChanged && (len(c.pickerPages) > 0 || len(c.pickerFolders) > 0)
 	prevFolders := append([]string(nil), c.pickerFolders...)
 	prevPages := append([]string(nil), c.pickerPages...)
 	c.pickerLoading = true

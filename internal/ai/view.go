@@ -2422,7 +2422,8 @@ type pickerItemsCache struct {
 	valid       bool
 	token       string
 	folder      string
-	currentPage string
+	rawRoot     string
+	rawNotePath string
 	pickerRoot  string
 	foldersHash uint64
 	foldersLen  int
@@ -2479,7 +2480,11 @@ func hashModelOptions64(xs []ModelOption) uint64 {
 }
 
 func (c *Controller) pickerItemsLocked(token string) []pickItem {
-	currentPage := c.activePageLocked(c.activeRootLocked())
+	rawRoot := c.activeRootLocked()
+	rawNotePath := ""
+	if c.host != nil {
+		rawNotePath = c.host.ActiveNotePath()
+	}
 	foldersHash := hashStringSlice64(c.pickerFolders)
 	pagesHash := hashStringSlice64(c.pickerPages)
 	skillsHash := hashSkillSlice64(c.pickerSkills)
@@ -2489,7 +2494,8 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 	if c.pickerCache.valid &&
 		c.pickerCache.token == token &&
 		c.pickerCache.folder == c.pickerFolder &&
-		c.pickerCache.currentPage == currentPage &&
+		c.pickerCache.rawRoot == rawRoot &&
+		c.pickerCache.rawNotePath == rawNotePath &&
 		c.pickerCache.pickerRoot == c.pickerRoot &&
 		c.pickerCache.foldersLen == len(c.pickerFolders) &&
 		c.pickerCache.foldersHash == foldersHash &&
@@ -2503,12 +2509,14 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 		return c.pickerCache.items
 	}
 
+	currentPage := c.activePageLocked(rawRoot)
 	items := c.computePickerItemsLocked(token, currentPage)
 	c.pickerCache = pickerItemsCache{
 		valid:       true,
 		token:       token,
 		folder:      c.pickerFolder,
-		currentPage: currentPage,
+		rawRoot:     rawRoot,
+		rawNotePath: rawNotePath,
 		pickerRoot:  c.pickerRoot,
 		foldersHash: foldersHash,
 		foldersLen:  len(c.pickerFolders),
