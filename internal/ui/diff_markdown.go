@@ -497,6 +497,10 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		// columns in, which only a quoted list item's content allows ("> 1. 安装" over
 		// ">     ```sh"); its closer may sit as far in.
 		quoteBase := 0
+		// qCol: behind the quote markers, the content column of the quoted list item
+		// the line sits in (0: none); without one, a quoted "```" four columns in is
+		// indented code, not a fence.
+		qCol := 0
 		var paraLines []int
 		// Indented code: four columns in after a blank line (or the start); in a list,
 		// four past the item's content column (listCol), since its nested content is
@@ -519,6 +523,19 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 			if fence != "" && fenceQuote > 0 && diffQuoteDepth(t) < fenceQuote ||
 				fence != "" && fenceIndent > 0 && t != "" && lead < fenceIndent {
 				fence = ""
+			}
+			qLead := 0
+			if q := diffQuoteDepth(t); fence == "" && q > 0 {
+				r := diffStripQuotes(t, q)
+				in := strings.TrimLeft(r, " \t")
+				qLead = len(strings.ReplaceAll(r[:len(r)-len(in)], "\t", "    "))
+				if diffListItemRE.MatchString(in) {
+					qCol = qLead + len(diffContainerRE.FindString(in))
+				} else if in != "" && qLead < qCol {
+					qCol = 0
+				}
+			} else if fence == "" && t != "" {
+				qCol = 0
 			}
 			// A display math block is a block of its own to its closer: "x^2$$" over
 			// "---" is no heading.
@@ -639,7 +656,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 			if inList {
 				lim += listCol
 			}
-			if fence = diffFenceOpen(t); fence != "" && lead >= lim {
+			if fence = diffFenceOpen(t); fence != "" && (lead >= lim || diffQuoteDepth(t) > 0 && qLead >= 4+qCol) {
 				fence = ""
 			}
 			if fence != "" {
