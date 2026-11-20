@@ -245,6 +245,11 @@ func redactIPv6(s string) string {
 		if addr, err := netip.ParseAddr(trimmed); err == nil && addr.Is6() {
 			return prefix + "<ip>" + suffix
 		}
+		if strings.HasPrefix(trimmed, ":::") {
+			if addr, err := netip.ParseAddr(trimmed[1:]); err == nil && addr.Is6() {
+				return prefix + ":<ip>" + suffix
+			}
+		}
 		return cand
 	})
 }
