@@ -1478,11 +1478,39 @@ func (w *Workspace) notifyPluginNoteSaved(absPath string) {
 	}
 }
 
+// openSessionPathLocked maps a plugin-supplied path to the key of an open
+// session for the same file. On case-insensitive volumes "Notes/A.md" and
+// "notes/a.md" are one file, and the dirty check must see the open tab.
+// Caller holds w.mu.
+func (w *Workspace) openSessionPathLocked(absPath string) string {
+	if _, ok := w.sessions[absPath]; ok {
+		return absPath
+	}
+	var target os.FileInfo
+	for key := range w.sessions {
+		if !strings.EqualFold(key, absPath) {
+			continue
+		}
+		if target == nil {
+			fi, err := os.Stat(absPath)
+			if err != nil {
+				return absPath
+			}
+			target = fi
+		}
+		if fi, err := os.Stat(key); err == nil && os.SameFile(fi, target) {
+			return key
+		}
+	}
+	return absPath
+}
+
 func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (bool, error)) (bool, error) {
 	apply := func() (bool, error) {
 		w.bgSaveMu.Lock()
 		defer w.bgSaveMu.Unlock()
 		w.mu.RLock()
+		absPath = w.openSessionPathLocked(absPath)
 		sess := w.sessions[absPath]
 		isVirtual := w.virtualPreview[absPath]
 		w.mu.RUnlock()
