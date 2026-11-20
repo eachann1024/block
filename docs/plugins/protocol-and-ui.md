@@ -155,11 +155,11 @@
 
 ### 3.3 系统集成
 
-桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
+桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
 
 | 接口 | 权限 | 参数与返回 |
 | --- | --- | --- |
-| `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 和 `rel_path` 指定一篇已注册笔记本内的 Markdown，需 `notes:read`。Block 有焦点时显示应用内提示，否则请求系统通知。桌面支持通知点击时，打开笔记或插件设置。返回 `{"ok":true,"suppressed":false}`，重复或过频的提示返回 `suppressed:true`。 |
+| `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 指定已注册笔记本内的插件设置，或同时传 `rel_path` 指定 Markdown 笔记，需 `notes:read`。可用 `timeout_ms` 缩短等待时间，默认 15000 毫秒。Block 有焦点时显示应用内提示，否则请求系统通知。桌面支持通知点击时，打开目标笔记或插件设置。返回 `{"ok":true,"suppressed":false}`，重复或过频的提示返回 `suppressed:true`。 |
 | `host.system.open_url` | `system:open` | `{"url":"https://example.com"}`，仅接受无账号和密码的 HTTP(S) 链接。 |
 | `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
 | `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，取消时 `paths` 为空。 |
@@ -172,7 +172,7 @@
 
 `events:system` 通过 `plugin.event` 接收 `system.wake`、`network.changed`、`app.focus`。事件包含 `event` 和 UTC `timestamp`，唤醒和网络变化包含系统报告的 `online` 布尔值。需要笔记权限或保存事件权限才能收到 `notebook_root`。宿主可启动已启用的订阅插件，并按插件串行处理，排队中的同类事件只保留最新一条。`network.changed` 涵盖系统报告的状态变化和检测到的网卡地址变化。服务器可达性由插件自行判断。
 
-macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 系统凭据需在系统凭据管理器中先解锁。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
+macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨 Block 重启保留七天，点击时重新检查安装状态和权限。Windows 使用系统通知、凭据管理器和任务栏叠加角标，通知点击依赖系统横幅仍然有效。Linux 使用桌面通知服务、Secret Service 和兼容 Unity Launcher 协议的 Dock，唤醒事件依赖 logind。Linux 需要通知服务支持 `actions` 才能点击通知，`notify_click:false` 时仍可能显示通知。Linux 系统凭据需在系统凭据管理器中先解锁。系统选择框已打开时，原生后端可能需要用户关闭窗口，宿主会丢弃已过期动作的选择结果。缺少相应服务时，插件应根据能力查询或调用错误调整界面和行为。
 
 回收确认前，宿主先保存正在编辑的内容。确认后，宿主记录恢复位置，将文件移入 Block 数据目录内的暂存目录并复核文件身份。暂存目录需要与文件位于同一文件系统，Windows 还需要支持硬链接。条件不满足时保留原文件。回收失败时优先恢复原路径，原路径已被占用时保留暂存文件。系统「还原」会将文件放回暂存目录。Block 会保留原路径记录，启动时提示可恢复文件及其原路径。凭据权限约束宿主 RPC，独立插件进程仍以当前系统用户运行，其直接访问由操作系统控制。
 
