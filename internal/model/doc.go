@@ -279,31 +279,32 @@ func (t *TableData) Clone() *TableData {
 }
 
 type Block struct {
-	ID            BlockID     `json:"id"`
-	Kind          BlockKind   `json:"kind"`
-	Indent        int         `json:"indent,omitempty"`
-	QuoteDepth    int         `json:"quoteDepth,omitempty"`
-	ListIndex     int         `json:"listIndex,omitempty"`
-	Checked       bool        `json:"checked,omitempty"`
-	Callout       CalloutKind `json:"callout,omitempty"`
-	Language      string      `json:"language,omitempty"`
-	ShowSource    bool        `json:"showSource,omitempty"`
-	WrapCode      bool        `json:"wrapCode,omitempty"`
-	Spans         []Span      `json:"spans,omitempty"`
-	Code          string      `json:"code,omitempty"` // Used by BlockCode and BlockRawHTML
-	ImageSrc      string      `json:"imageSrc,omitempty"`
-	ImageAlt      string      `json:"imageAlt,omitempty"`
-	ImageTitle    string      `json:"imageTitle,omitempty"`
-	ImageWidth    float32     `json:"imageWidth,omitempty"` // Percentage 10..100 or 0 for auto
-	ImageAlign    ImageAlign  `json:"imageAlign,omitempty"`
-	ImageCrop     ImageCrop   `json:"imageCrop,omitempty"`
-	Table         *TableData  `json:"table,omitempty"`
-	CleanSource      string `json:"-"` // Preserved verbatim when block is untouched
-	Dirty            bool   `json:"-"`
-	SourceLine       int    `json:"-"` // 1-based start line in source Markdown
-	SourceEndLine    int    `json:"-"` // 1-based inclusive end line in source Markdown
-	QuoteNewGroup    bool   `json:"-"` // Starts a top-level blockquote distinct from any preceding quote block
-	QuoteTightBefore bool   `json:"-"` // Immediately follows a shallower blockquote line with no blank ">" separator
+	ID               BlockID     `json:"id"`
+	Kind             BlockKind   `json:"kind"`
+	Indent           int         `json:"indent,omitempty"`
+	QuoteDepth       int         `json:"quoteDepth,omitempty"`
+	ListIndex        int         `json:"listIndex,omitempty"`
+	Checked          bool        `json:"checked,omitempty"`
+	Callout          CalloutKind `json:"callout,omitempty"`
+	PoopKind         string      `json:"poopKind,omitempty"`
+	Language         string      `json:"language,omitempty"`
+	ShowSource       bool        `json:"showSource,omitempty"`
+	WrapCode         bool        `json:"wrapCode,omitempty"`
+	Spans            []Span      `json:"spans,omitempty"`
+	Code             string      `json:"code,omitempty"` // Used by BlockCode and BlockRawHTML
+	ImageSrc         string      `json:"imageSrc,omitempty"`
+	ImageAlt         string      `json:"imageAlt,omitempty"`
+	ImageTitle       string      `json:"imageTitle,omitempty"`
+	ImageWidth       float32     `json:"imageWidth,omitempty"` // Percentage 10..100 or 0 for auto
+	ImageAlign       ImageAlign  `json:"imageAlign,omitempty"`
+	ImageCrop        ImageCrop   `json:"imageCrop,omitempty"`
+	Table            *TableData  `json:"table,omitempty"`
+	CleanSource      string      `json:"-"` // Preserved verbatim when block is untouched
+	Dirty            bool        `json:"-"`
+	SourceLine       int         `json:"-"` // 1-based start line in source Markdown
+	SourceEndLine    int         `json:"-"` // 1-based inclusive end line in source Markdown
+	QuoteNewGroup    bool        `json:"-"` // Starts a top-level blockquote distinct from any preceding quote block
+	QuoteTightBefore bool        `json:"-"` // Immediately follows a shallower blockquote line with no blank ">" separator
 }
 
 func (b *Block) PlainText() string {

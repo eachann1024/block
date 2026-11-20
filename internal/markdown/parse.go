@@ -2290,7 +2290,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 			spans = append(spans, parseInlineWithDefsAndUsed(body, defs, usedOut)...)
 		}
 	}
-	return []model.Block{{
+	blk := model.Block{
 		ID:            model.NewBlockID(),
 		Kind:          model.BlockQuote,
 		QuoteDepth:    1,
@@ -2299,7 +2299,135 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 		CleanSource:   origSrc,
 		SourceLine:    startLine,
 		SourceEndLine: startLine + end - 1,
-	}}, end, true
+	}
+	absorbPoopQuote(&blk)
+	return []model.Block{blk}, end, true
+}
+
+func absorbPoopQuote(b *model.Block) {
+	if b == nil || b.Kind != model.BlockQuote {
+		return
+	}
+	if spans, kind := stripPoopMarkers(b.Spans); kind != "" {
+		b.Spans = spans
+		b.PoopKind = kind
+		return
+	}
+	if kind := poopKindFromSource(b.CleanSource); kind != "" {
+		b.PoopKind = kind
+	}
+}
+
+func poopKindFromSource(src string) string {
+	const key = "block-poop-everywhere:drop"
+	i := strings.Index(src, key)
+	if i < 0 {
+		return ""
+	}
+	rest := src[i+len(key):]
+	if rest == "" || rest[0] != ':' {
+		return "classic"
+	}
+	rest = rest[1:]
+	j := 0
+	for j < len(rest) {
+		c := rest[j]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			j++
+			continue
+		}
+		break
+	}
+	if j == 0 {
+		return "classic"
+	}
+	return rest[:j]
+}
+
+func poopMarkerCut(line string) (kind string, n int, ok bool) {
+	const prefix = "[poop:"
+	if !strings.HasPrefix(line, prefix) {
+		return "", 0, false
+	}
+	end := strings.IndexByte(line, ']')
+	if end <= len(prefix) {
+		return "", 0, false
+	}
+	kind = line[len(prefix):end]
+	for _, c := range kind {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' && c != '-' {
+			return "", 0, false
+		}
+	}
+	n = end + 1
+	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
+		n++
+	}
+	return kind, n, true
+}
+
+func stripPoopMarkers(spans []model.Span) ([]model.Span, string) {
+	text := model.PlainTextOfSpans(spans)
+	if !strings.Contains(text, "[poop:") {
+		return spans, ""
+	}
+	rs := []rune(text)
+	type cut struct{ lo, hi int }
+	var cuts []cut
+	kind := ""
+	lineStart := 0
+	for i := 0; i <= len(rs); i++ {
+		if i != len(rs) && rs[i] != '\n' {
+			continue
+		}
+		line := string(rs[lineStart:i])
+		if marker, n, ok := poopMarkerCut(line); ok {
+			if kind == "" {
+				kind = marker
+			}
+			cuts = append(cuts, cut{lineStart, lineStart + len([]rune(line[:n]))})
+		}
+		lineStart = i + 1
+	}
+	if kind == "" {
+		return spans, ""
+	}
+	for i := len(cuts) - 1; i >= 0; i-- {
+		spans = deleteSpanRunes(spans, cuts[i].lo, cuts[i].hi)
+	}
+	return coalesceSpans(spans), kind
+}
+
+func deleteSpanRunes(spans []model.Span, lo, hi int) []model.Span {
+	if hi <= lo {
+		return spans
+	}
+	out := make([]model.Span, 0, len(spans))
+	pos := 0
+	for _, sp := range spans {
+		r := []rune(sp.Text)
+		next := pos + len(r)
+		if next <= lo || pos >= hi {
+			if sp.Text != "" {
+				out = append(out, sp)
+			}
+			pos = next
+			continue
+		}
+		var b strings.Builder
+		for i, ch := range r {
+			at := pos + i
+			if at < lo || at >= hi {
+				b.WriteRune(ch)
+			}
+		}
+		sp.Text = b.String()
+		if sp.Text != "" {
+			out = append(out, sp)
+		}
+		pos = next
+	}
+	return out
 }
 
 func startsBlockInList(line string, nextRaw string, tail []string) bool {
