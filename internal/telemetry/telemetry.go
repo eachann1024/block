@@ -151,7 +151,7 @@ func today() string {
 }
 
 // CheckOnce sends today's ping if it is due. sent reports whether the server
-// accepted a request. Only a 2xx or a rejection of the payload itself (400, 413,
+// accepted a request. Only a 2xx naming the counted day or a rejection of the payload itself (400, 413,
 // 422, which a retry cannot fix) marks today as done; anything else, such as a
 // 5xx, 429, an edge 403 or a network error, leaves today unmarked for a later check.
 func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
@@ -223,9 +223,14 @@ func check(ctx context.Context, cfg Config) (counted string, err error) {
 	default:
 		return "", fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
-	if resp.StatusCode < 300 && dayRe.MatchString(reply.Day) {
+	if resp.StatusCode < 300 {
 		// Record the day the server counted: with a clock running ahead around midnight the
-		// ping lands on yesterday, and marking today would skip today altogether.
+		// ping lands on yesterday, and marking today would skip today altogether. A success
+		// without a readable day (a proxy or captive portal answering 200) proves nothing,
+		// so it is retried like a failure instead of marking today as done.
+		if !dayRe.MatchString(reply.Day) {
+			return "", fmt.Errorf("telemetry: server %d without a day", resp.StatusCode)
+		}
 		day = reply.Day
 	}
 	rec.LastPing = day
