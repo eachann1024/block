@@ -42,14 +42,14 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 	ctrl.storeSourceMenu.Compact = true
 	ctrl.storeSortMenu.Compact = true
 	bui.DropdownSelect(c, "app-store-source", &ctrl.storeSource, []bui.SelectOption{
-		{Label: theme.Tr("来源 · 全部", "Source · All")},
+		{Label: theme.Tr("全部来源", "All sources")},
 		{Value: storeSourceOfficial, Label: theme.Tr("Block 官方", "Official by Block")},
 		{Value: storeSourceReviewed, Label: theme.Tr("已审核", "Reviewed")},
 		{Value: storeSourceUnreviewed, Label: theme.Tr("未审核", "Unreviewed")},
 	}, &ctrl.storeSourceMenu, "")
 	bui.DropdownSelect(c, "app-store-sort", &ctrl.storeSort, []bui.SelectOption{
-		{Label: theme.Tr("排序 · 最热", "Sort · Most downloaded")},
-		{Value: storeSortName, Label: theme.Tr("排序 · 名称", "Sort · Name")},
+		{Label: theme.Tr("最多下载", "Most downloaded")},
+		{Value: storeSortName, Label: theme.Tr("按名称", "By name")},
 	}, &ctrl.storeSortMenu, "")
 }
 
