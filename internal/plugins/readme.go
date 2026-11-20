@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,6 +27,8 @@ var ErrReadmeUnavailable = errors.New("plugin README unavailable")
 type PluginReadme struct {
 	Text       string
 	LocalRoot  string
+	LocalFS    fs.FS
+	LocalFSSub string
 	RemoteBase *url.URL
 }
 
@@ -44,7 +47,7 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 	}
 	if strings.HasPrefix(strings.TrimSpace(entry.DownloadURL), "builtin://") {
 		if doc, ok := readBuiltinSeedReadme(entry.ID, en); ok {
-			return PluginReadme{Text: doc}, nil
+			return doc, nil
 		}
 	}
 	repo := readmeRepo(entry.Repo)
@@ -86,7 +89,7 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		return doc, nil
 	}
 	if doc, ok := readBuiltinSeedReadme(entry.ID, en); ok {
-		return PluginReadme{Text: doc}, nil
+		return doc, nil
 	}
 	return PluginReadme{}, remoteErr
 }
