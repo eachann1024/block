@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	mrand "math/rand/v2"
 	"net/http"
@@ -41,7 +42,10 @@ const (
 	fileName      = "telemetry.json"
 )
 
-var idRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+var (
+	idRe  = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	dayRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+)
 
 // errLimited reports a 429: the source address sent too many pings in the last minute.
 var errLimited = errors.New("telemetry: rate limited")
@@ -188,6 +192,10 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	var counted struct {
+		Day string `json:"day"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 512)).Decode(&counted)
 	resp.Body.Close()
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300,
@@ -198,6 +206,11 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		return false, errLimited
 	default:
 		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
+	}
+	if resp.StatusCode < 300 && dayRe.MatchString(counted.Day) {
+		// Record the day the server counted: with a clock running ahead around midnight the
+		// ping lands on yesterday, and marking today would skip today altogether.
+		day = counted.Day
 	}
 	rec.LastPing = day
 	_ = save(path, rec)
