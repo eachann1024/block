@@ -50,7 +50,7 @@ func ParseMarkdown(src string) *model.Doc {
 	cleaned := strings.TrimPrefix(decoded, "\uFEFF")
 	lines := splitLinesInclusive(cleaned)
 	defs, usedLabels := collectRefDefsFromLines(cleaned, lines)
-	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1, 0)
+	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1, 0, nil)
 	blocks = swallowSeparators(blocks)
 	hadLegacyEmptyBlock := stripLegacyEmptyBlockComments(blocks)
 	normalizeImportedStarts(blocks)
@@ -464,6 +464,32 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 		return nil, nil
 	}
 	return defs, used
+}
+
+// LinkReferenceLines gives the labels available for inline links and the
+// 1-based source lines the note parser consumes as definitions.
+func LinkReferenceLines(src string) (labels map[string]bool, hidden []int) {
+	if !strings.Contains(src, "]:") {
+		return nil, nil
+	}
+	var originalLines []int
+	cleaned := strings.TrimPrefix(decodeRawBlockGuardWithLines(src, &originalLines), "\uFEFF")
+	lines := splitLinesInclusive(cleaned)
+	defs, used := collectRefDefsFromLines(cleaned, lines)
+	if len(used) == 0 {
+		return nil, nil
+	}
+	labels = make(map[string]bool, len(defs))
+	for label := range defs {
+		labels[label] = true
+	}
+	parseBlocksWithLinesAt(lines, defs, used, 1, 0, &hidden)
+	if len(originalLines) > 0 {
+		for i, line := range hidden {
+			hidden[i] = originalLines[line-1]
+		}
+	}
+	return labels, hidden
 }
 
 func parseRefDefLines(lines []string) (label string, def refDef, count int, ok bool) {
@@ -2309,10 +2335,10 @@ func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[stri
 }
 
 func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int) []model.Block {
-	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine, depth)
+	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine, depth, nil)
 }
 
-func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int) []model.Block {
+func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int, refLines *[]int) []model.Block {
 	const maxBlockDepth = 48
 	if depth >= maxBlockDepth && len(lines) > 0 {
 		raw := strings.Join(lines, "")
@@ -2391,6 +2417,11 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			continue
 		}
 		if count := consumedRefDefLines(lines[i:], usedLabels); count > 0 {
+			if refLines != nil {
+				for j := range count {
+					*refLines = append(*refLines, startLine+i+j)
+				}
+			}
 			i += count
 			continue
 		}

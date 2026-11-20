@@ -1186,10 +1186,8 @@ func latestStreamLine(s string) string {
 	code := bui.DiffFenceMask(lines, same)
 	// Only a table's own separator is skipped; a later "| --- |" is a data row.
 	_, seps := bui.DiffTableRoles(lines, same)
-	// "[配置文件][config]" shows its text when the reply defines "config".
-	refs := bui.DiffRefLabels(lines, same)
-	// A definition ("[doc]: /guide") shows nothing in the note.
-	defs := bui.DiffRefDefs(lines, same)
+	// Show reference text and skip definitions consumed by the note parser.
+	refs, defs := bui.DiffReferences(lines, same)
 	// Only a table row's edge bars are its own: "| 是 Shell 的管道符" keeps its "|".
 	cols := bui.DiffTableCols(lines, same)
 	// Preserve ordered markers that the note reads as literal text.
@@ -1801,10 +1799,9 @@ func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID u
 			fenced := bui.DiffFenceMask(texts, changes)
 			setext := bui.DiffSetextLevels(texts, changes)
 			listNums := bui.DiffListNumbers(texts, changes)
-			refs := bui.DiffRefLabels(texts, changes)
+			refs, refDefs := bui.DiffReferences(texts, changes)
 			aligns := bui.DiffTableAligns(texts, changes)
 			math := bui.DiffMathMask(texts, changes)
-			refDefs := bui.DiffRefDefs(texts, changes)
 			alerts, alertBodies := bui.DiffAlerts(texts, changes)
 			fenceLines, fenceQuotes := bui.DiffFenceLines(texts, changes)
 			hardBreaks := bui.DiffHardBreaks(texts, changes)
