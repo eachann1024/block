@@ -72,6 +72,7 @@ jobs:
       version: ${{ steps.check.outputs.version || steps.preflight.outputs.version }}
       release_tag: ${{ steps.check.outputs.release_tag || steps.preflight.outputs.release_tag }}
       auto_bump: ${{ steps.check.outputs.auto_bump || 'false' }}
+      sync_only_tag: ${{ steps.check.outputs.sync_only_tag || steps.preflight.outputs.sync_only_tag || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -417,4 +418,34 @@ jobs:
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: bash scripts/release/publish-aur.sh
+
+  recover-post-publish:
+    name: Recover post-publish feed & AUR sync
+    needs: [prepare]
+    if: >-
+      needs.prepare.outputs.should_build != 'yes' &&
+      needs.prepare.outputs.sync_only_tag != '' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - name: Setup Node 22
+        run: bash scripts/ci/setup-node.sh 22
+      - name: Sync version manifests and updates/feed.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
+        run: node scripts/release/publish-release.mjs --sync-only --tag "$RELEASE_TAG"
+      - name: Update AUR block-bin
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.sync_only_tag }}
         run: bash scripts/release/publish-aur.sh
