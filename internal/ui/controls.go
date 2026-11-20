@@ -49,6 +49,7 @@ type IconButtonOptions struct {
 	AlwaysDuo   bool
 	ChromeHover bool
 	CardBorder  bool
+	RestColor   ui.Color // optional resting icon color override (defaults to TextSecondary)
 	Disabled    bool
 	Loading     bool
 	Danger      bool
@@ -185,6 +186,8 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			ic = pal.DuoIconColors(pal.TextSecondary)
 		case opts.Variant == IconBordered:
 			ic = pal.MonoIconColors(pal.Text)
+		case opts.RestColor.A > 0:
+			ic = pal.MonoIconColors(opts.RestColor)
 		default:
 			ic = pal.MonoIconColors(pal.TextSecondary)
 		}
