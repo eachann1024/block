@@ -337,8 +337,8 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 		c.Key("edge-float-sidebar")
 		card := blockui.Elevate(
 			ui.Row(c).Absolute().
-				Left(theme.EdgeFloatInset).Top(theme.EdgeFloatInset).Bottom(theme.EdgeFloatInset).
-				Width(leftCardW).Radius(theme.RadiusXL).Clip().
+				Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
+				Width(leftCardW).Radius(theme.RadiusLG).Clip().
 				Background(pal.Sidebar).Border(1, efPal.CardBorder).
 				Bind(&ef.leftCardHandle).
 				Transition(blockui.EdgeFloatCardTransition(false)),
@@ -363,8 +363,8 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 		c.Key("edge-float-ai")
 		card := blockui.Elevate(
 			ui.Column(c).Absolute().
-				Right(theme.EdgeFloatInset).Top(theme.EdgeFloatInset).Bottom(theme.EdgeFloatInset).
-				Width(rightCardW).Radius(theme.RadiusXL).Clip().
+				Right(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
+				Width(rightCardW).Radius(theme.RadiusLG).Clip().
 				Background(pal.Paper).Border(1, efPal.CardBorder).
 				Bind(&ef.rightCardHandle).
 				Transition(blockui.EdgeFloatCardTransition(true)),
