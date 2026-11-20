@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"unicode/utf8"
 
+	"block/internal/files"
 	codeed "github.com/egoist/mygo/ui/editor"
 )
 
@@ -792,6 +793,7 @@ func SyncActiveLanguages(installed []InstalledApp) {
 	}
 	activeLangSnap.Store(snap)
 	activeLangGen.Add(1)
+	scheduleFileAssociationSync(files.AppDataDir(), snap)
 }
 
 // LanguageGeneration returns a monotonic counter incremented whenever enabled
