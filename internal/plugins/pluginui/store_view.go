@@ -372,6 +372,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 	bui.TactileCard(cardBtn, hovered, pressed, false, false)
 
 	actionHandled := false
+	actionHovered := false
 	cardBtn.Children(func() {
 		ui.Column(c.Key("app-store-tile-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.StoreCardInnerGap).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
@@ -406,6 +407,9 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 							Height:   theme.HeightCompact,
 							PaddingX: theme.Space10,
 						})
+						if openBtn.Hovered() {
+							actionHovered = true
+						}
 						if openBtn.Clicked() && !busy {
 							actionHandled = true
 							ctrl.closeStoreMenus()
@@ -430,18 +434,21 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 
 				label, glyph := theme.Tr("安装", "Install"), icons.Download
 				if busy {
-					label = theme.Tr("处理中…", "Working…")
+					label = theme.Tr("安装中…", "Installing…")
 				}
+				disabled := installingID != "" && !busy
 				button := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 					ID: "app-store-install-" + entry.ID, Label: label, Leading: &glyph,
-					Style: bui.ButtonAccentOutline, Disabled: installingID != "" && !busy,
+					Style: bui.ButtonAccentOutline, Disabled: disabled,
 					Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
 				})
-				if button.Clicked() && !busy {
+				if button.Hovered() {
+					actionHovered = true
+				}
+				if button.Clicked() && !busy && !disabled {
 					actionHandled = true
 					ctrl.closeStoreMenus()
-					ctrl.openStoreReadme(entry, card.installed)
-					c.Invalidate()
+					ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
 				}
 			})
 			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 3,
@@ -450,7 +457,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 		})
 	})
 	bui.Probe(cardBtn, "app-store-card-"+entry.ID)
-	if !actionHandled && cardBtn.Clicked() {
+	if !actionHandled && !actionHovered && cardBtn.Clicked() {
 		ctrl.closeStoreMenus()
 		ctrl.openStoreReadme(entry, card.installed)
 		c.Invalidate()
