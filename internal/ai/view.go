@@ -2481,6 +2481,9 @@ func hashModelOptions64(xs []ModelOption) uint64 {
 
 func (c *Controller) pickerItemsLocked(token string) []pickItem {
 	rawRoot := c.activeRootLocked()
+	if strings.HasPrefix(token, "@") && !c.pickerInjected && c.pickerRoot != "" && rawRoot != "" && filepath.Clean(c.pickerRoot) != filepath.Clean(rawRoot) {
+		return nil
+	}
 	rawNotePath := ""
 	if c.host != nil {
 		rawNotePath = c.host.ActiveNotePath()
@@ -2698,6 +2701,12 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 			}
 		}
 		ref := filepath.Join(root, filename)
+		if !c.pickerInjected {
+			info, statErr := os.Stat(ref)
+			if statErr != nil || info.IsDir() {
+				return c.draftText, false
+			}
+		}
 		if !containsString(c.draftRefs, ref) {
 			c.draftRefs = append(c.draftRefs, ref)
 		}
@@ -2801,7 +2810,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 			pickerListEl := ui.List(cUI.Key("ai-picker-virtual-list"), &c.pickerList, len(items), func(i int) {
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
-				row := ui.ButtonBase(cUI.Key(rowID)).FillWidth().Height(36).PaddingX(10).Gap(8).
+				row := ui.ButtonBase(cUI.Key(fmt.Sprintf("ai-pick-%d:%d:%s", i, it.kind, it.value))).FillWidth().Height(36).PaddingX(10).Gap(8).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(it.label)
 				isSel := !nav.pointerMode && i == selected
 				bui.RevealOnHighlight(row, isSel)
@@ -3018,6 +3027,10 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 					return true
 				case k.Key == ui.KeyEnter && k.Mods == 0:
+					if open && c.pickerLoading && len(items) == 0 {
+						c.mu.Unlock()
+						return true
+					}
 					if open && len(items) > 0 {
 						idx := min(c.pickIndex, len(items)-1)
 						it := items[idx]
