@@ -2779,6 +2779,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						if rlen == 0 || (cLo == 0 && cHi >= rlen) {
 							tblLen := s.blockSelectionLen(blockIdx)
 							if tblLen > 0 {
+								s.tableActiveBlock = 0
 								s.SelectRange(blockIdx, 0, blockIdx, tblLen)
 								return true
 							}

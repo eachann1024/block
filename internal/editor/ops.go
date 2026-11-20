@@ -1408,7 +1408,10 @@ func (s *Session) replaceSelectionWithSpansInBlock(idx int, insertSpans []model.
 	s.markDirty()
 }
 
-const maxPastedTableCells = 100_000
+const (
+	maxPastedTableCells = 100_000
+	maxPastedTableCols  = 50_000
+)
 
 func (s *Session) buildTableFromTSV(tsv string) *model.TableData {
 	rawRows := strings.Split(tsv, "\n")
@@ -1493,7 +1496,7 @@ func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keep
 				}
 			}
 			neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
-			if neededRows > maxPastedTableCells/neededCols {
+			if neededCols > maxPastedTableCols || neededRows > maxPastedTableCells/neededCols {
 				return
 			}
 			for len(tbl.Aligns) < neededCols {
@@ -1538,7 +1541,7 @@ func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keep
 		neededCols = max(neededCols, startC+1+strings.Count(rLine, "\t"))
 	}
 	neededRows := max(len(tbl.Rows), startR+len(rawRows))
-	if neededRows > maxPastedTableCells/neededCols {
+	if neededCols > maxPastedTableCols || neededRows > maxPastedTableCells/neededCols {
 		return
 	}
 	for len(tbl.Aligns) < neededCols {
@@ -1765,13 +1768,27 @@ func (s *Session) canFitTablePaste(tbl *model.TableData, startR, startC int, nor
 		return false
 	}
 	if !plain && strings.HasPrefix(strings.TrimLeft(norm, " \t"), "|") {
-		// Quick unescaped pipe-column check before full parse so 50,001-column pipe tables are
-		// rejected cleanly while valid 2-column tables containing 50,001 escaped `\|` are accepted.
-		firstLine, _, _ := strings.Cut(norm, "\n")
-		pipeCols := countUnescapedPipeCols(firstLine)
-		if pipeCols > 1 {
-			neededCols := max(len(tbl.Rows[0]), startC+pipeCols)
-			if neededCols <= 0 || len(tbl.Rows) > maxPastedTableCells/neededCols {
+		// Check unescaped pipe columns across EVERY line (header + body rows) before falling
+		// back, so an oversized body row cannot bypass the guard via parser code-block fallback.
+		lines := strings.Split(norm, "\n")
+		maxPipeCols := 0
+		pipeRows := 0
+		for i, ln := range lines {
+			if strings.TrimSpace(ln) == "" {
+				continue
+			}
+			cols := countUnescapedPipeCols(ln)
+			if cols > maxPipeCols {
+				maxPipeCols = cols
+			}
+			if i != 1 {
+				pipeRows++
+			}
+		}
+		if maxPipeCols > 1 {
+			neededCols := max(len(tbl.Rows[0]), startC+maxPipeCols)
+			neededRows := max(len(tbl.Rows), startR+max(pipeRows, 1))
+			if neededCols <= 0 || neededCols > maxPastedTableCols || neededRows > maxPastedTableCells/neededCols {
 				return false
 			}
 		}
@@ -1786,7 +1803,7 @@ func (s *Session) canFitTablePaste(tbl *model.TableData, startR, startC int, nor
 					}
 				}
 				neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
-				return neededCols > 0 && neededRows <= maxPastedTableCells/neededCols
+				return neededCols > 0 && neededCols <= maxPastedTableCols && neededRows <= maxPastedTableCells/neededCols
 			}
 		}
 	}
@@ -1799,7 +1816,7 @@ func (s *Session) canFitTablePaste(tbl *model.TableData, startR, startC int, nor
 		neededCols = max(neededCols, startC+1+strings.Count(rLine, "\t"))
 	}
 	neededRows := max(len(tbl.Rows), startR+len(rawRows))
-	return neededCols > 0 && neededRows <= maxPastedTableCells/neededCols
+	return neededCols > 0 && neededCols <= maxPastedTableCols && neededRows <= maxPastedTableCells/neededCols
 }
 
 func normalizeSpans(spans []model.Span) []model.Span {
