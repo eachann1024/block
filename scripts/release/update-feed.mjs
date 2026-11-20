@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { RELEASE_ASSETS } from "./allowed-assets.mjs";
 import {
   compareVersions,
+  fetchReleasePage,
   gh,
   REPO,
   ROOT,
@@ -231,8 +232,33 @@ export function formatFeedJson(feed) {
 }
 
 export function fetchGithubReleases(repo = REPO) {
-  const pages = JSON.parse(gh(["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`]));
-  return Array.isArray(pages) ? pages.flat() : [];
+  const byVersion = new Map();
+  const trimToTop = () => {
+    if (byVersion.size <= MAX_FEED_RELEASES * 2) return;
+    const keep = Array.from(byVersion.keys())
+      .sort((a, b) => compareVersions(b, a))
+      .slice(0, MAX_FEED_RELEASES);
+    const keepSet = new Set(keep);
+    for (const key of byVersion.keys()) {
+      if (!keepSet.has(key)) byVersion.delete(key);
+    }
+  };
+  for (let page = 1; ; page += 1) {
+    const batch = fetchReleasePage(repo, page);
+    if (batch.length === 0) break;
+    for (const release of batch) {
+      if (!release || release.draft || release.prerelease) continue;
+      const version = versionFromTag(release.tag_name);
+      if (!version || !/^\d+\.\d+\.\d+$/.test(version)) continue;
+      const existing = byVersion.get(version);
+      if (!existing || releasePreferenceScore(release, version) > releasePreferenceScore(existing, version)) {
+        byVersion.set(version, release);
+      }
+    }
+    trimToTop();
+    if (batch.length < 100) break;
+  }
+  return Array.from(byVersion.values());
 }
 
 export function fetchGithubReleaseByTag(tag, repo = REPO) {
