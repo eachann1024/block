@@ -295,7 +295,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 
 	leftW := leftLead + theme.ChromeBoxSize + 6
 	if !p.HideMark {
-		leftW += brandMarkGap + theme.ChromeBoxSize
+		leftW += brandMarkGap + blockui.AppMarkButtonWidth
 	}
 	if p.AIImmersive {
 		leftW = leftLead
@@ -322,10 +322,15 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	blockui.Probe(bar, "titlebar")
 
 	bar.Children(func() {
-		// 1. Left cell: traffic-light clearance, fixed sidebar toggle, brand mark, and Back/Forward.
+		// 1. Left cell: traffic-light clearance, fixed sidebar toggle, brand wordmark, and Back/Forward.
 		c.Key("titlebar-left")
-		left := ui.Row(c).Width(leftW).FillHeight().Shrink(0).AlignItems(ui.Center).
+		left := ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).
 			Padding(0, 6, 0, leftLead).DragWindow()
+		if p.AIImmersive {
+			left.Width(leftW)
+		} else if p.SidebarWide {
+			left.MinWidth(leftW)
+		}
 		blockui.Probe(left, "titlebar-left")
 		left.Children(func() {
 			if p.AIImmersive {

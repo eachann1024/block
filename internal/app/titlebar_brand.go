@@ -13,14 +13,14 @@ const (
 	brandWebsiteHost = "block.cooool.top"
 	// brandReleasesURL lists full version changelogs on GitHub Releases.
 	brandReleasesURL = "https://github.com/eachann1024/block/releases"
-	// brandMarkGap separates the brand mark from the sidebar toggle.
-	brandMarkGap = 4
+	// brandMarkGap separates the brand wordmark from the sidebar toggle.
+	brandMarkGap = 2
 	// brandMenuHeaderH is the brand menu's identity header (mark + name + version line).
 	brandMenuHeaderH = 44
 )
 
-// renderBrandMark draws the icon-only brand button after the sidebar toggle. The
-// wordmark moved into its tooltip and menu; a pending update shows as a dot on it.
+// renderBrandMark draws the "cooool.top" brand button after the sidebar toggle;
+// clicking it opens the brand menu and a pending update shows as a dot on it.
 func renderBrandMark(c *ui.Context, p TitlebarProps) {
 	open := p.MenuState != nil && p.MenuState.BrandMenuOpen
 	versionLabel := brandVersionLabel(p)
