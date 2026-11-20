@@ -332,6 +332,30 @@ func fileEntryIcon(name string) icons.Icon {
 	}
 }
 
+// splitSidebarFileLabel splits a non-.md file name into its clean stem and a
+// short uppercase extension badge (up to 6 chars) for the sidebar row, keeping
+// canonical ".md" notes, folders, extensionless files, and very long suffixes
+// badge-free.
+func splitSidebarFileLabel(entry model.FileEntry) (title, extBadge string) {
+	if entry.IsDir {
+		return entry.Name, ""
+	}
+	raw := entry.RawName
+	if raw == "" {
+		raw = filepath.Base(entry.Path)
+	}
+	if files.HasHiddenExtension(raw) {
+		return entry.Name, ""
+	}
+	ext := filepath.Ext(raw)
+	tag := strings.TrimPrefix(ext, ".")
+	stem := strings.TrimSuffix(raw, ext)
+	if stem == "" || tag == "" || len(tag) > 6 {
+		return entry.Name, ""
+	}
+	return stem, strings.ToUpper(tag)
+}
+
 func moveNotebookMenuItems(p SidebarProps, srcPath string) []blockui.MenuItemSpec {
 	active := filepath.Clean(p.ActiveNotebook)
 	parent := filepath.Dir(filepath.Clean(srcPath))
@@ -952,7 +976,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			}
 			icons.DrawAnimated(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
 		}
-		ui.Text(c, entry.Name).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		rowTitle, extBadge := splitSidebarFileLabel(entry)
+		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 
 		if hovered || menuTarget {
 			moreID := "row-more:" + entry.Path
@@ -980,6 +1005,8 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			if moreBtn.Clicked() {
 				moreClicked = true
 			}
+		} else if extBadge != "" {
+			blockui.FileExtBadge(c, extBadge, highlighted)
 		} else {
 			ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0)
 		}
