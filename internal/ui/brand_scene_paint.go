@@ -22,6 +22,8 @@ type brandSceneState struct {
 	wA1  float32
 	wA2  float32
 	wOrb float32
+	wArt float32
+	artW float32
 
 	elapsedA1 float64
 	elapsedA2 float64
@@ -36,11 +38,14 @@ const (
 	brandSceneFadeOutDur   = 420 * time.Millisecond
 	brandSceneOrbFadeDur   = 300 * time.Millisecond
 	brandSceneMotionEnvDur = 450 * time.Millisecond
+	brandSceneArtFeatherW  = float32(24)
+	brandSceneSkyTailFade  = float32(0.75) // matches CSS mask fading to 0.25 at the right edge
 )
 
-// PaintBrandSceneBand paints the 88px full-window-width landscape band onto el's own backdrop
-// (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card),
-// smoothly fading into ground from 52% height down to 88px.
+// PaintBrandSceneBand paints the 88px top brand band onto el's own backdrop
+// (strictly behind all child elements such as the titlebar, sidebar controls, and right paper card):
+// the sky gradient spans the full window and fades smoothly to the right, while illustrated
+// landscape artwork is confined to opts.SceneWidth (the docked sidebar) with a soft right feather.
 //
 // Pass id == "" when the brand decoration is disabled so turning it off fades out naturally
 // instead of vanishing abruptly.
@@ -68,6 +73,10 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		if opts.ShowOrb {
 			targetOrb = 1
 		}
+		targetArt := float32(0)
+		if opts.SceneWidth > 0 {
+			targetArt = 1
+		}
 		targetA1, targetA2 := float32(0), float32(0)
 		if !reduced {
 			switch opts.Motion {
@@ -84,6 +93,8 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			st.prevID = ""
 			st.transProg = 1
 			st.wOrb = targetOrb
+			st.wArt = targetArt
+			st.artW = opts.SceneWidth
 			st.wA1 = targetA1
 			st.wA2 = targetA2
 			st.lastWall = wall
@@ -97,6 +108,9 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				}
 			}
 		} else {
+			if opts.SceneWidth > 0 {
+				st.artW = opts.SceneWidth
+			}
 			// Detect scene changes (time-of-day crossing, theme switch, or on/off toggle).
 			if id != st.curID {
 				if reduced {
@@ -138,6 +152,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 				st.transProg = 1
 				st.prevID = ""
 				st.wOrb = targetOrb
+				st.wArt = targetArt
 				st.wA1 = 0
 				st.wA2 = 0
 			} else if dt > 0 {
@@ -151,7 +166,9 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 						st.prevID = ""
 					}
 				}
-				st.wOrb = moveToward(st.wOrb, targetOrb, float32(dt)/float32(brandSceneOrbFadeDur))
+				orbStep := float32(dt) / float32(brandSceneOrbFadeDur)
+				st.wOrb = moveToward(st.wOrb, targetOrb, orbStep)
+				st.wArt = moveToward(st.wArt, targetArt, orbStep)
 				envStep := float32(dt) / float32(brandSceneMotionEnvDur)
 				st.wA1 = moveToward(st.wA1, targetA1, envStep)
 				st.wA2 = moveToward(st.wA2, targetA2, envStep)
@@ -183,6 +200,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		}
 		orbEase := smooth(st.wOrb)
 		orbSettleDY := 4.0 * (1 - orbEase)
+		artEase := smooth(st.wArt)
 
 		tA1, tA2 := st.elapsedA1, st.elapsedA2
 		wA1, wA2 := smooth(st.wA1), smooth(st.wA2)
@@ -192,27 +210,74 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		}
 
 		u := smootherstep(st.transProg)
+		alphaOut, alphaIn := float32(0), float32(0)
+		if st.transProg < 1 {
+			if prevSc != nil {
+				alphaOut = 1 - u
+				// Keep outgoing hills fuller mid-crossfade on same-theme switches to avoid a hollow dip.
+				if curSc != nil && prevSc.dark == curSc.dark {
+					alphaOut = 1 - u*u
+				}
+			}
+			if curSc != nil {
+				alphaIn = u
+			}
+		} else if curSc != nil {
+			alphaIn = 1
+		}
+
 		p.Clip(bandRect, 0, func() {
-			if st.transProg < 1 {
-				// Outgoing scene gently dissolves and settles out.
-				if prevSc != nil {
-					alphaOut := 1 - u
-					// Keep outgoing hills fuller mid-crossfade on same-theme switches to avoid a hollow dip.
-					if curSc != nil && prevSc.dark == curSc.dark {
-						alphaOut = 1 - u*u
-					}
-					if alphaOut > 0.002 {
-						// Smoothly dissolve backdrop ground during Light <-> Dark theme switches.
-						if prevSc.ground != ground {
-							p.Fill(bandRect, prevSc.ground.Alpha(1-u), 0)
-						}
-						paintScene(p, prevSc, sceneRenderCtx{
+			effGround := ground
+			// Smoothly dissolve backdrop ground during Light <-> Dark theme switches.
+			if st.transProg < 1 && prevSc != nil && prevSc.ground != ground && alphaOut > 0.002 {
+				p.Fill(bandRect, prevSc.ground.Alpha(1-u), 0)
+				effGround = prevSc.ground.Alpha(1 - u).Over(ground)
+			}
+
+			// 1. Full-window sky backdrop gradient, fading horizontally toward the right edge.
+			skyRect := ui.Rect{X: bandRect.X, Y: bandRect.Y, W: bandRect.W, H: BrandBandHeight}
+			if prevSc != nil && alphaOut > 0.002 {
+				paintSceneSky(p, prevSc, skyRect, alphaOut)
+			}
+			if curSc != nil && alphaIn > 0.002 {
+				paintSceneSky(p, curSc, skyRect, alphaIn)
+			}
+			hasSky := (prevSc != nil && alphaOut > 0.002 && len(prevSc.skyStops) > 0) ||
+				(curSc != nil && alphaIn > 0.002 && len(curSc.skyStops) > 0)
+
+			skyFadeStart := opts.SceneWidth
+			if skyFadeStart <= 0 {
+				skyFadeStart = BrandTileWidth
+			}
+			if skyFadeStart > bandRect.W {
+				skyFadeStart = bandRect.W
+			}
+			if hasSky && bandRect.W > skyFadeStart {
+				p.FillGradient(ui.Rect{
+					X: bandRect.X + skyFadeStart,
+					Y: bandRect.Y,
+					W: bandRect.W - skyFadeStart,
+					H: BrandBandHeight,
+				}, ui.LinearGradient{
+					Angle: 90,
+					From:  effGround.Alpha(0),
+					To:    effGround.Alpha(brandSceneSkyTailFade),
+				}, 0)
+			}
+
+			// 2. Sidebar-only illustrated scene artwork, softly feathered on its right edge.
+			artW := min(st.artW, bandRect.W)
+			if artEase > 0.002 && artW > 0 {
+				artRect := ui.Rect{X: bandRect.X, Y: bandRect.Y, W: artW, H: bandRect.H}
+				p.Clip(artRect, 0, func() {
+					if prevSc != nil && alphaOut > 0.002 {
+						paintSceneArt(p, prevSc, sceneRenderCtx{
 							p:              p,
 							ox:             bandRect.X,
 							oy:             bandRect.Y,
-							w:              bandRect.W,
+							w:              artW,
 							h:              BrandBandHeight,
-							alpha:          alphaOut,
+							alpha:          alphaOut * artEase,
 							tA1:            tA1,
 							tA2:            tA2,
 							wA1:            wA1,
@@ -221,50 +286,67 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 							orbExtraDY:     orbSettleDY + 6.0*u,
 							layerShiftY:    3.5 * u,
 							showCat:        opts.ShowCat,
-							avoidRightTail: true,
+							avoidRightTail: false,
 							vars:           evalSceneTimeVars(prevSc.id, sceneProgress(prevSc.id, nowClock)),
 						})
 					}
-				}
-				// Incoming scene gently emerges and lifts into place.
-				if curSc != nil && u > 0.002 {
-					paintScene(p, curSc, sceneRenderCtx{
-						p:              p,
-						ox:             bandRect.X,
-						oy:             bandRect.Y,
-						w:              bandRect.W,
-						h:              BrandBandHeight,
-						alpha:          u,
-						tA1:            tA1,
-						tA2:            tA2,
-						wA1:            wA1,
-						wA2:            wA2,
-						orbAlpha:       orbEase,
-						orbExtraDY:     orbSettleDY + 6.0*(1-u),
-						layerShiftY:    3.5 * (1 - u),
-						showCat:        opts.ShowCat,
-						avoidRightTail: true,
-						vars:           evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
-					})
-				}
-			} else if curSc != nil {
-				paintScene(p, curSc, sceneRenderCtx{
-					p:              p,
-					ox:             bandRect.X,
-					oy:             bandRect.Y,
-					w:              bandRect.W,
-					h:              BrandBandHeight,
-					alpha:          1,
-					tA1:            tA1,
-					tA2:            tA2,
-					wA1:            wA1,
-					wA2:            wA2,
-					orbAlpha:       orbEase,
-					orbExtraDY:     orbSettleDY,
-					layerShiftY:    0,
-					showCat:        opts.ShowCat,
-					avoidRightTail: true,
-					vars:           evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
+					if curSc != nil && alphaIn > 0.002 {
+						orbDY := orbSettleDY
+						shiftY := float32(0)
+						if st.transProg < 1 {
+							orbDY += 6.0 * (1 - u)
+							shiftY = 3.5 * (1 - u)
+						}
+						paintSceneArt(p, curSc, sceneRenderCtx{
+							p:              p,
+							ox:             bandRect.X,
+							oy:             bandRect.Y,
+							w:              artW,
+							h:              BrandBandHeight,
+							alpha:          alphaIn * artEase,
+							tA1:            tA1,
+							tA2:            tA2,
+							wA1:            wA1,
+							wA2:            wA2,
+							orbAlpha:       orbEase,
+							orbExtraDY:     orbDY,
+							layerShiftY:    shiftY,
+							showCat:        opts.ShowCat,
+							avoidRightTail: false,
+							vars:           evalSceneTimeVars(curSc.id, sceneProgress(curSc.id, nowClock)),
+						})
+					}
+
+					featherW := min(brandSceneArtFeatherW, artW)
+					fx := bandRect.X + artW - featherW
+					if !hasSky {
+						p.FillGradient(ui.Rect{X: fx, Y: bandRect.Y, W: featherW, H: BrandBandHeight}, ui.LinearGradient{
+							Angle: 90,
+							From:  effGround.Alpha(0),
+							To:    effGround,
+						}, 0)
+					} else {
+						const strips = 22
+						stripH := BrandBandHeight / strips
+						for i := range strips {
+							y0 := float32(i) * stripH
+							t := (y0 + stripH*0.5) / BrandBandHeight
+							col := effGround
+							if prevSc != nil && alphaOut > 0.002 && len(prevSc.skyStops) > 0 {
+								scCol := sampleGradientStops(prevSc.skyStops, t)
+								col = scCol.Alpha((float32(scCol.A) / 255.0) * alphaOut).Over(col)
+							}
+							if curSc != nil && alphaIn > 0.002 && len(curSc.skyStops) > 0 {
+								scCol := sampleGradientStops(curSc.skyStops, t)
+								col = scCol.Alpha((float32(scCol.A) / 255.0) * alphaIn).Over(col)
+							}
+							p.FillGradient(ui.Rect{X: fx, Y: bandRect.Y + y0, W: featherW, H: stripH}, ui.LinearGradient{
+								Angle: 90,
+								From:  col.Alpha(0),
+								To:    col,
+							}, 0)
+						}
+					}
 				})
 			}
 
@@ -279,11 +361,11 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			}, 0)
 		})
 
-		inTransition := st.transProg < 1 || st.wOrb != targetOrb || st.wA1 != targetA1 || st.wA2 != targetA2
+		inTransition := st.transProg < 1 || st.wOrb != targetOrb || st.wArt != targetArt || st.wA1 != targetA1 || st.wA2 != targetA2
 		if !reduced {
 			if inTransition {
 				p.AnimationFrame()
-			} else if !opts.PauseAnim && curSc != nil && (st.wA1 > 0 || st.wA2 > 0) {
+			} else if !opts.PauseAnim && curSc != nil && (st.wA1 > 0 || st.wA2 > 0) && artEase > 0.002 {
 				p.AnimationFrameRate(brandSceneFrameRate)
 			}
 		}
@@ -387,21 +469,31 @@ func paintScene(p *ui.Painter, sc *compiledScene, rc sceneRenderCtx) {
 	if rc.alpha <= 0.002 {
 		return
 	}
-	// Sky backdrop gradient (if any), multiplied by scene alpha for smooth crossfades.
-	if len(sc.skyStops) > 0 {
-		stops := make([]ui.GradientStop, len(sc.skyStops))
-		for i, st := range sc.skyStops {
-			stops[i] = ui.GradientStop{
-				Color: st.Color.Alpha((float32(st.Color.A) / 255.0) * rc.alpha),
-				At:    st.At,
-			}
-		}
-		p.FillGradient(ui.Rect{X: rc.ox, Y: rc.oy, W: rc.w, H: rc.h}, ui.LinearGradient{
-			Angle: 180,
-			Stops: stops,
-		}, 0)
-	}
+	paintSceneSky(p, sc, ui.Rect{X: rc.ox, Y: rc.oy, W: rc.w, H: rc.h}, rc.alpha)
+	paintSceneArt(p, sc, rc)
+}
 
+func paintSceneSky(p *ui.Painter, sc *compiledScene, r ui.Rect, alpha float32) {
+	if alpha <= 0.002 || len(sc.skyStops) == 0 {
+		return
+	}
+	stops := make([]ui.GradientStop, len(sc.skyStops))
+	for i, st := range sc.skyStops {
+		stops[i] = ui.GradientStop{
+			Color: st.Color.Alpha((float32(st.Color.A) / 255.0) * alpha),
+			At:    st.At,
+		}
+	}
+	p.FillGradient(r, ui.LinearGradient{
+		Angle: 180,
+		Stops: stops,
+	}, 0)
+}
+
+func paintSceneArt(p *ui.Painter, sc *compiledScene, rc sceneRenderCtx) {
+	if rc.alpha <= 0.002 {
+		return
+	}
 	tr := sc.ensureTerrain(rc.w)
 	switch sc.id {
 	case SceneDawn:
@@ -421,4 +513,28 @@ func paintScene(p *ui.Painter, sc *compiledScene, rc sceneRenderCtx) {
 	case SceneMoon:
 		rc.paintMoon(sc, tr)
 	}
+}
+
+func sampleGradientStops(stops []ui.GradientStop, t float32) ui.Color {
+	if len(stops) == 0 {
+		return ui.Transparent
+	}
+	if t <= stops[0].At || len(stops) == 1 {
+		return stops[0].Color
+	}
+	last := stops[len(stops)-1]
+	if t >= last.At {
+		return last.Color
+	}
+	for i := 1; i < len(stops); i++ {
+		if t <= stops[i].At {
+			a, b := stops[i-1], stops[i]
+			span := b.At - a.At
+			if span <= 0 {
+				return b.Color
+			}
+			return a.Color.Mix(b.Color, (t-a.At)/span)
+		}
+	}
+	return last.Color
 }
