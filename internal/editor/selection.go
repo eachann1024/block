@@ -387,21 +387,19 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 		if blk.Kind == model.BlockTable && blk.Table != nil {
 			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
 				cell := &blk.Table.Rows[row][col]
-				cellLen := utf8.RuneCountInString(cell.PlainText())
-				var merged []model.Span
-				merged = append(merged, sliceSpans(cell.Spans, 0, relLo)...)
+				var ins []model.Span
 				if insert != "" {
-					merged = append(merged, model.Span{Text: insert})
+					ins = []model.Span{{Text: insert}}
 				}
-				merged = append(merged, sliceSpans(cell.Spans, relHi, cellLen)...)
-				cell.Spans = normalizeSpans(merged)
+				nextSpans, nextRel := replaceSpanRange(cell.Spans, relLo, relHi, ins)
+				cell.Spans = nextSpans
 				blk.Dirty = true
 				blk.CleanSource = ""
 				s.focusedBlock = idx
 				s.tableActiveBlock = blk.ID
 				s.tableActiveRow = row
 				s.tableActiveCol = col
-				caret := a.Offset + utf8.RuneCountInString(insert)
+				caret := tableCellStartOffset(blk.Table, row, col) + nextRel
 				s.selAnchor = Position{Block: idx, Offset: caret}
 				s.selHead = s.selAnchor
 				s.focusPending = true

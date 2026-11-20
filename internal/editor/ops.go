@@ -895,6 +895,32 @@ func (s *Session) PasteText(raw string) {
 		s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
 		return
 	}
+	if len(filtered) == 1 && filtered[0].Kind == model.BlockImage &&
+		filtered[0].ImageWidth == 0 && (filtered[0].ImageAlign == "" || filtered[0].ImageAlign == model.ImageAlignLeft) && filtered[0].ImageCrop.IsZero() &&
+		b.Kind != model.BlockDivider && b.Kind != model.BlockImage && b.Kind != model.BlockTable && b.Kind != model.BlockCode && b.Kind != model.BlockRawHTML {
+		curLen := len([]rune(b.PlainText()))
+		a, endPos := s.orderedSelection()
+		lo, hi := curLen, curLen
+		if a.Block == idx && endPos.Block == idx {
+			lo = clampInt(a.Offset, 0, curLen)
+			hi = clampInt(endPos.Offset, lo, curLen)
+		}
+		if lo > 0 || hi < curLen {
+			img := filtered[0]
+			label := img.ImageAlt
+			altEmpty := label == ""
+			if altEmpty {
+				label = fallbackInlineImageAlt(img.ImageSrc)
+			}
+			s.replaceSelectionWithSpansInBlock(idx, []model.Span{{
+				Text:          label,
+				ImageSrc:      img.ImageSrc,
+				ImageTitle:    img.ImageTitle,
+				ImageAltEmpty: altEmpty,
+			}})
+			return
+		}
+	}
 
 	s.splicePastedBlocksAtSelection(idx, filtered)
 }
@@ -1541,7 +1567,8 @@ func looksLikeMarkdownBlock(line string) bool {
 		strings.HasPrefix(t, "> ") || t == ">" ||
 		strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") || strings.HasPrefix(t, "$$") ||
 		t == "---" || t == "***" || t == "___" || strings.HasPrefix(t, "|") ||
-		(strings.HasPrefix(t, "![") && strings.Contains(t, "](") && strings.HasSuffix(t, ")")) {
+		(strings.HasPrefix(t, "![") && strings.Contains(t, "](") && strings.HasSuffix(t, ")")) ||
+		(strings.HasPrefix(strings.ToLower(t), "<img ") && strings.HasSuffix(t, ">")) {
 		return true
 	}
 	// Ordered list marker `1. ` or `1) `.
@@ -1623,15 +1650,11 @@ func (s *Session) replaceSelectionWithSpansInBlock(idx int, insertSpans []model.
 		lo = clampInt(a.Offset, 0, curLen)
 		hi = clampInt(endPos.Offset, lo, curLen)
 	}
-	var merged []model.Span
-	merged = append(merged, sliceSpans(b.Spans, 0, lo)...)
-	merged = append(merged, insertSpans...)
-	merged = append(merged, sliceSpans(b.Spans, hi, curLen)...)
-	b.Spans = normalizeSpans(merged)
+	nextSpans, nextCaret := replaceSpanRange(b.Spans, lo, hi, insertSpans)
+	b.Spans = nextSpans
 	b.Dirty = true
 	b.CleanSource = ""
-	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
-	s.selAnchor = Position{Block: idx, Offset: lo + insLen}
+	s.selAnchor = Position{Block: idx, Offset: nextCaret}
 	s.selHead = s.selAnchor
 	s.focusPending = true
 	s.selSyncPending = true
@@ -1715,7 +1738,8 @@ func (s *Session) pasteIntoTableBlockOpts(idx int, norm string, plain bool, keep
 		}
 		return
 	}
-	if !plain && s.codec != nil && strings.HasPrefix(strings.TrimLeft(norm, " \t"), "|") {
+	trimmedNorm := strings.TrimLeft(norm, " \t")
+	if !plain && s.codec != nil && (strings.HasPrefix(trimmedNorm, "|") || strings.HasPrefix(trimmedNorm, "<!-- thinkly:table")) {
 		if parsed := s.codec.Parse(norm); parsed != nil && len(parsed.Blocks) == 1 &&
 			parsed.Blocks[0].Kind == model.BlockTable && parsed.Blocks[0].Table != nil && len(parsed.Blocks[0].Table.Rows) > 0 {
 			srcTbl := parsed.Blocks[0].Table
@@ -1833,16 +1857,12 @@ func (s *Session) spliceSpansIntoActiveTableCell(idx int, insertSpans []model.Sp
 		cLo = clampInt(a.Offset-base, 0, cellLen)
 		cHi = clampInt(endPos.Offset-base, cLo, cellLen)
 	}
-	var merged []model.Span
-	merged = append(merged, sliceSpans(cell.Spans, 0, cLo)...)
-	merged = append(merged, insertSpans...)
-	merged = append(merged, sliceSpans(cell.Spans, cHi, cellLen)...)
-	cell.Spans = normalizeSpans(merged)
+	nextSpans, nextCaret := replaceSpanRange(cell.Spans, cLo, cHi, insertSpans)
+	cell.Spans = nextSpans
 	b.Dirty = true
 	b.CleanSource = ""
-	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
 	newBase := tableCellStartOffset(tbl, startR, startC)
-	s.selAnchor = Position{Block: idx, Offset: newBase + cLo + insLen}
+	s.selAnchor = Position{Block: idx, Offset: newBase + nextCaret}
 	s.selHead = s.selAnchor
 	s.focusPending = true
 	s.selSyncPending = true
@@ -1942,19 +1962,36 @@ func (s *Session) replaceCurrentSelectionInBlock(idx int, insert string) {
 		b.SetText(string(next))
 		caret := startOff + len(insRunes)
 		s.selAnchor = Position{Block: idx, Offset: caret}
+	// Never split a single inline-image span across prefix and suffix blocks.
+	{
+		pos := 0
+		for _, sp := range b.Spans {
+			n := utf8.RuneCountInString(sp.Text)
+			s0, s1 := pos, pos+n
+			pos = s1
+			if sp.ImageSrc != "" && lo > s0 && hi < s1 {
+				if lo == hi {
+					lo, hi = s1, s1
+				} else {
+					b.Spans, _ = replaceSpanRange(b.Spans, lo, hi, nil)
+					curText = []rune(b.PlainText())
+					lo = s1 - (hi - lo)
+					hi = lo
+				}
+				break
+			}
+		}
+	}
 		s.selHead = s.selAnchor
 	} else {
-		left := sliceSpans(b.Spans, 0, startOff)
-		right := sliceSpans(b.Spans, endOff, len([]rune(b.PlainText())))
-		mid := []model.Span{{Text: insert}}
-		var merged []model.Span
-		merged = append(merged, left...)
-		merged = append(merged, mid...)
-		merged = append(merged, right...)
-		b.Spans = normalizeSpans(merged)
+		var ins []model.Span
+		if insert != "" {
+			ins = []model.Span{{Text: insert}}
+		}
+		nextSpans, caret := replaceSpanRange(b.Spans, startOff, endOff, ins)
+		b.Spans = nextSpans
 		b.Dirty = true
 		b.CleanSource = ""
-		caret := startOff + len([]rune(insert))
 		s.selAnchor = Position{Block: idx, Offset: caret}
 		s.selHead = s.selAnchor
 	}
@@ -2325,6 +2362,83 @@ func (s *Session) ApplyLinkOnSelection(url string) {
 			return
 		}
 	}
+// replaceSpanRange replaces rune range [lo, hi) in spans with insertSpans while
+// keeping any single inline-image span indivisible (editing its alt in place
+// instead of duplicating the image across both halves).
+func replaceSpanRange(spans []model.Span, lo, hi int, insertSpans []model.Span) ([]model.Span, int) {
+	total := len([]rune(model.PlainTextOfSpans(spans)))
+	lo = clampInt(lo, 0, total)
+	hi = clampInt(hi, lo, total)
+	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
+
+	pos := 0
+	for si, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc != "" && lo >= s0 && hi <= s1 {
+			isBoundaryInsert := len(insertSpans) > 0 && lo == hi && (lo == s0 || lo == s1)
+			isFullReplace := lo == s0 && hi == s1
+			if !isBoundaryInsert && !isFullReplace {
+				hasInsertedImage := false
+				for _, isp := range insertSpans {
+					if isp.ImageSrc != "" {
+						hasInsertedImage = true
+						break
+					}
+				}
+				spR := []rune(sp.Text)
+				out := make([]model.Span, 0, len(spans)+len(insertSpans))
+				out = append(out, spans[:si]...)
+				if !hasInsertedImage {
+					plainIns := model.PlainTextOfSpans(insertSpans)
+					nextText := string(spR[:lo-s0]) + plainIns + string(spR[hi-s0:])
+					if nextText != "" {
+						cp := sp
+						cp.Text = nextText
+						cp.ImageAltEmpty = false
+						out = append(out, cp)
+					}
+					out = append(out, spans[si+1:]...)
+					return normalizeSpans(out), lo + insLen
+				}
+				nextText := string(spR[:lo-s0]) + string(spR[hi-s0:])
+				afterImg := s0
+				if nextText != "" {
+					cp := sp
+					cp.Text = nextText
+					cp.ImageAltEmpty = false
+					out = append(out, cp)
+					afterImg = s0 + utf8.RuneCountInString(nextText)
+				}
+				out = append(out, insertSpans...)
+				out = append(out, spans[si+1:]...)
+				return normalizeSpans(out), afterImg + insLen
+			}
+			break
+		}
+	}
+
+	var merged []model.Span
+	merged = append(merged, sliceSpans(spans, 0, lo)...)
+	merged = append(merged, insertSpans...)
+	merged = append(merged, sliceSpans(spans, hi, total)...)
+	return normalizeSpans(merged), lo + insLen
+}
+
+func snapSplitOutsideInlineImage(spans []model.Span, off int) int {
+	pos := 0
+	for _, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc != "" && off > s0 && off < s1 {
+			return s1
+		}
+	}
+	return off
+}
+
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
@@ -4093,6 +4207,7 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 func (s *Session) OpenFind() {
 	wasOpen := s.findOpen
 	oldPad := s.canvasTopPad()
+			caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 	s.findOpen = true
 	if !wasOpen {
 		if delta := s.canvasTopPad() - oldPad; delta > 0 {
@@ -4106,6 +4221,7 @@ func (s *Session) OpenFind() {
 		a, b := s.orderedSelection()
 		if a.Block == b.Block && a.Block >= 0 && a.Block < len(s.doc.Blocks) {
 			r := []rune(s.doc.Blocks[a.Block].PlainText())
+	caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 			lo, hi := clampInt(a.Offset, 0, len(r)), clampInt(b.Offset, 0, len(r))
 			if hi > lo && hi-lo <= 80 {
 				part := string(r[lo:hi])
