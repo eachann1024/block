@@ -101,10 +101,12 @@ func DiffListNumbers(lines []string, change []int) []int {
 			if inItem(i) {
 				// The nested quote is a container of its own, whose lists are numbered
 				// apart from the item's ("> 1. 部署" over ">    > 1. 备份").
-				end := i + 1
+				// A quote left of the sublist it started in sits in an outer item, another
+				// container whose lists start over.
+				end, depth := i+1, len(stack)
 				for j := i + 1; j < len(lines); j++ {
 					if change[j] != -side {
-						if !inItem(j) {
+						if !inItem(j) || len(stack) != depth {
 							break
 						}
 						end = j + 1
