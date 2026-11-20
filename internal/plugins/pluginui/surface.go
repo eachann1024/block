@@ -103,6 +103,9 @@ func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plu
 				strings.HasPrefix(string(surface), plugins.SurfacePrefixPanel) {
 				fb.CompactLayout = true
 			}
+			if strings.HasPrefix(string(surface), plugins.SurfacePrefixSidebarSection) {
+				fb.SidebarLayout = true
+			}
 			renderPageCardsWithScope(
 				ctx,
 				scope,
@@ -163,7 +166,7 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 	}
 	pal := theme.Ocean()
 	bui.Scroll(ctx.Key("plugin-sidebar-sections")).FillWidth().MaxHeight(240).Shrink(1).Children(func() {
-		ui.Column(ctx).FillWidth().Padding(theme.Space6, theme.Space8, theme.Space4, theme.Space8).Gap(theme.Space8).Children(func() {
+		ui.Column(ctx).FillWidth().Padding(theme.Space6, theme.TreeOuterPadX, theme.Space4, theme.TreeOuterPadX).Gap(theme.Space8).Children(func() {
 			for _, sec := range sections {
 				s := sec
 				key := "plugin-sidebar-sec-" + s.PluginID + "-" + s.ID
@@ -174,13 +177,13 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 				}
 				card := ui.Column(ctx.Key(key)).FillWidth().Shrink(0).
 					Padding(theme.Space8).Gap(theme.Space6).
-					Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline)
+					Radius(theme.RadiusLG).Background(pal.Paper).Border(1, pal.Hairline)
 				bui.Probe(card, key)
 				card.Children(func() {
 					headerRow := func() {
-						DrawDuoSpec(ctx, s.Icon, theme.IconAction, pal.DuoIconColors(pal.Text))
+						DrawDuoSpec(ctx, s.Icon, theme.IconRow, pal.DuoIconColors(pal.Text))
 						ui.Text(ctx, s.Title).
-							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 							FontWeight(theme.WeightTitle).TextColor(pal.Text).
 							Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 						if s.Collapsible {
@@ -192,9 +195,9 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 						}
 					}
 					if s.Collapsible {
-						hdr := ui.ButtonBase(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightChrome).
-							Padding(0, theme.Space4).Gap(theme.Space8).AlignItems(ui.Center).
-							Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(s.Title)
+						hdr := ui.ButtonBase(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightControl).
+							Padding(0, theme.Space8).Gap(theme.Space8).AlignItems(ui.Center).
+							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(s.Title)
 						bg := ui.Transparent
 						if hdr.Pressed() {
 							bg = pal.Selected
@@ -207,8 +210,8 @@ func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
 							bindings.ToggleCardExpanded("__sidebar_sec__:"+s.ID, s.DefaultCollapsed)
 						}
 					} else {
-						ui.Row(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightChrome).
-							Padding(0, theme.Space4).Gap(theme.Space8).AlignItems(ui.Center).
+						ui.Row(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightControl).
+							Padding(0, theme.Space8).Gap(theme.Space8).AlignItems(ui.Center).
 							Children(headerRow)
 					}
 					if expanded {
