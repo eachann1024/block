@@ -58,6 +58,7 @@ type pluginHostUI struct {
 	nextToastID     uint64
 	nextDialogID    uint64
 	toasts          []pluginToast
+	deferredToasts  []pluginToast
 	toastTimer      *time.Timer
 	syncToastRetry  bool
 	activeDialog    *pluginDialogRef
@@ -164,17 +165,19 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		icCopy = &cp
 	}
 	h.mu.Lock()
-	for i := range h.toasts {
-		if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone && h.toasts[i].EventKey == eventKey {
-			if icCopy != nil {
-				h.toasts[i].Icon = icCopy
+	for _, queue := range [][]pluginToast{h.toasts, h.deferredToasts} {
+		for index, toast := range queue {
+			if toast.PluginID == pluginID && toast.Message == msg && toast.Tone == normTone && toast.EventKey == eventKey {
+				if icCopy != nil {
+					queue[index].Icon = icCopy
+				}
+				h.mu.Unlock()
+				h.w.RequestRedraw()
+				return true
 			}
-			h.mu.Unlock()
-			h.w.RequestRedraw()
-			return true
 		}
 	}
-	if len(h.toasts) >= pluginToastQueueMax {
+	if len(h.toasts)+len(h.deferredToasts) >= pluginToastQueueMax {
 		drop := 0
 		for index := 1; index < len(h.toasts); index++ {
 			if h.toasts[index].EventKey == "" {
@@ -225,7 +228,7 @@ func (h *pluginHostUI) expireToast(id uint64) {
 		return
 	}
 	if win := h.w.Window(); toast.native == nil || win != nil && win.IsFocused() {
-		h.dismissToast(id)
+		h.finishToast(id, false)
 		return
 	}
 	go func() {
@@ -233,25 +236,47 @@ func (h *pluginHostUI) expireToast(id uint64) {
 		defer cancel()
 		err := toast.native(ctx)
 		h.onMain(func() {
-			if err == nil || errors.Is(err, plugins.ErrSystemCanceled) {
-				h.dismissToast(id)
-				return
-			}
-			h.mu.Lock()
-			if len(h.toasts) != 0 && h.toasts[0].ID == id {
-				h.scheduleToastTimerLocked(id)
-			}
-			h.mu.Unlock()
+			h.finishToast(id, err != nil && !errors.Is(err, plugins.ErrSystemCanceled))
 		})
 	}()
 }
 
-func (h *pluginHostUI) dismissToast(id uint64) {
+func (h *pluginHostUI) restoreDeferredToasts() {
+	h.mu.Lock()
+	if len(h.deferredToasts) == 0 {
+		h.mu.Unlock()
+		return
+	}
+	idle := len(h.toasts) == 0
+	h.toasts = append(h.toasts, h.deferredToasts...)
+	h.deferredToasts = nil
+	if idle {
+		h.scheduleToastTimerLocked(h.toasts[0].ID)
+	}
+	h.mu.Unlock()
+	h.w.RequestRedraw()
+}
+
+func (h *pluginHostUI) finishToast(id uint64, deferred bool) {
+	focused := false
+	if deferred {
+		win := h.w.Window()
+		focused = win != nil && win.IsFocused()
+	}
 	h.mu.Lock()
 	if len(h.toasts) == 0 || h.toasts[0].ID != id {
 		h.mu.Unlock()
 		return
 	}
+	if deferred {
+		if focused {
+			h.scheduleToastTimerLocked(id)
+			h.mu.Unlock()
+			return
+		}
+		h.deferredToasts = append(h.deferredToasts, h.toasts[0])
+	}
+	h.toasts[0] = pluginToast{}
 	h.toasts = h.toasts[1:]
 	if h.toastTimer != nil {
 		h.toastTimer.Stop()
@@ -260,8 +285,10 @@ func (h *pluginHostUI) dismissToast(id uint64) {
 	if len(h.toasts) > 0 {
 		h.scheduleToastTimerLocked(h.toasts[0].ID)
 	}
-	retry := h.syncToastRetry
-	h.syncToastRetry = false
+	retry := !deferred && h.syncToastRetry
+	if retry {
+		h.syncToastRetry = false
+	}
 	h.mu.Unlock()
 	if retry && h.w.Plugins() != nil {
 		h.w.Plugins().RetrySyncNotifications()
@@ -347,7 +374,7 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 				Tooltip:  theme.Tr("关闭", "Dismiss"),
 			})
 			if cls.Clicked() {
-				h.dismissToast(toast.ID)
+				h.finishToast(toast.ID, false)
 			}
 		})
 	})

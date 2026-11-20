@@ -53,8 +53,12 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 		sup.EmitSystemEvent("network.changed", status.Online)
 	})
 	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
+	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
+	if win := w.Window(); win != nil {
+		win.OnFocus(w.pluginUI.restoreDeferredToasts)
+	}
 	if runtime.GOOS == "darwin" {
-		mygo.App.OnDidBecomeActive(func() { sup.EmitSystemEvent("app.focus", false) })
+		mygo.App.OnDidBecomeActive(onFocus)
 		return
 	}
 	active := false
@@ -68,7 +72,7 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 			}
 		}
 		if focused && !active {
-			sup.EmitSystemEvent("app.focus", false)
+			onFocus()
 		}
 		active = focused
 	}
@@ -163,16 +167,22 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	if !allowed() {
 		return plugins.ErrSystemCanceled
 	}
-	installed, ok := h.w.Plugins().GetInstalled(pluginID)
+	sup := h.w.Plugins()
+	installed, ok := sup.GetInstalled(pluginID)
 	if !ok || !allowed() {
 		return plugins.ErrSystemCanceled
 	}
 	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
 	if win := h.w.Window(); win != nil && win.IsFocused() {
+		configRoot := root
+		if configRoot == "" {
+			configRoot = sup.NotebookRoot()
+		}
 		native := func(ctx context.Context) error {
 			return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, func() bool {
-				current, ok := h.w.Plugins().GetInstalled(pluginID)
-				return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify)
+				current, ok := sup.GetInstalled(pluginID)
+				return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify) &&
+					(pluginID != "block-sync" || plugins.SyncNotificationsEnabled(current.DataDir, configRoot))
 			})
 		}
 		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil, native) {
