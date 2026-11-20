@@ -202,16 +202,16 @@ type Controller struct {
 	onPickAttachments    func()
 	onRevealPath         func(path string)
 
-	mediaCache     *attachmentMediaCache
+	mediaCache *attachmentMediaCache
 
 	tarotWasStreaming bool
 	tarotGlintAt      time.Time
-	lightboxOpen   bool              // synchronized under c.mu for cross-thread queries
-	lightbox       bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
-	lightboxSource attachmentLightboxSource
-	clipSeq        uint64
-	pendingClip    *pendingAttachmentClip
-	onEnabledChanged     func(bool)
+	lightboxOpen      bool              // synchronized under c.mu for cross-thread queries
+	lightbox          bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
+	lightboxSource    attachmentLightboxSource
+	clipSeq           uint64
+	pendingClip       *pendingAttachmentClip
+	onEnabledChanged  func(bool)
 
 	activePlan     *ActivePlanPreview
 	planInFlight   string
@@ -224,20 +224,24 @@ type Controller struct {
 	questionUI          map[string]*questionUIState
 	approvalUI          map[string]*approvalUIState
 
-	settingsFocused      model.BackendKind
-	settingsExpandedProv string
-	settingsExpandedAg   model.BackendKind
-	settingsProbedOnce   bool
-	settingsShowKey      bool
-	settingsProvShowKey  map[string]bool
-	settingsTesting      bool
-	settingsTestingProv  string
-	settingsTestOK       bool
-	settingsTestErr      string
-	settingsModelStatus  string
-	settingsBaseURL      string
-	settingsAPIKey       string
-	settingsModel        string
+	settingsFocused       model.BackendKind
+	settingsExpandedProv  string
+	settingsExpandedAg    model.BackendKind
+	settingsProbedOnce    bool
+	settingsShowKey       bool
+	settingsProvShowKey   map[string]bool
+	settingsAgentProbing  map[model.BackendKind]bool
+	settingsAgentProbeOK  map[model.BackendKind]bool
+	settingsAgentProbeErr map[model.BackendKind]string
+	settingsAgentProbeSeq map[model.BackendKind]uint64
+	settingsTesting       bool
+	settingsTestingProv   string
+	settingsTestOK        bool
+	settingsTestErr       string
+	settingsModelStatus   string
+	settingsBaseURL       string
+	settingsAPIKey        string
+	settingsModel         string
 
 	addProvModalOpen bool
 	addProvPreset    string
@@ -282,26 +286,30 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		}
 	}
 	ctrl := &Controller{
-		dataDir:             dataDir,
-		host:                host,
-		codec:               codec,
-		panelWidth:          defaultPanelWidth,
-		tabDrafts:           make(map[uint64]tabDraft),
-		backendStatuses:     make(map[model.BackendKind]BackendStatus),
-		backendModels:       make(map[model.BackendKind][]ModelOption),
-		modelStatus:         make(map[model.BackendKind]string),
-		modelRefreshed:      make(map[model.BackendKind]time.Time),
-		modelGeneration:     make(map[model.BackendKind]uint64),
-		statusOverrides:     make(map[model.BackendKind]BackendStatus),
-		planSelections:      make(map[planSelKey]*diffSelection),
-		expandedProcess:     make(map[string]bool),
-		expandedStepDetails: make(map[string]bool),
-		expandedSources:     make(map[string]bool),
-		expandedNotes:       make(map[string]bool),
-		questionUI:          make(map[string]*questionUIState),
-		approvalUI:          make(map[string]*approvalUIState),
-		settingsFocused:     model.BackendBuiltin,
-		settingsProvShowKey: make(map[string]bool),
+		dataDir:               dataDir,
+		host:                  host,
+		codec:                 codec,
+		panelWidth:            defaultPanelWidth,
+		tabDrafts:             make(map[uint64]tabDraft),
+		backendStatuses:       make(map[model.BackendKind]BackendStatus),
+		backendModels:         make(map[model.BackendKind][]ModelOption),
+		modelStatus:           make(map[model.BackendKind]string),
+		modelRefreshed:        make(map[model.BackendKind]time.Time),
+		modelGeneration:       make(map[model.BackendKind]uint64),
+		statusOverrides:       make(map[model.BackendKind]BackendStatus),
+		planSelections:        make(map[planSelKey]*diffSelection),
+		expandedProcess:       make(map[string]bool),
+		expandedStepDetails:   make(map[string]bool),
+		expandedSources:       make(map[string]bool),
+		expandedNotes:         make(map[string]bool),
+		questionUI:            make(map[string]*questionUIState),
+		approvalUI:            make(map[string]*approvalUIState),
+		settingsFocused:       model.BackendBuiltin,
+		settingsProvShowKey:   make(map[string]bool),
+		settingsAgentProbing:  make(map[model.BackendKind]bool),
+		settingsAgentProbeOK:  make(map[model.BackendKind]bool),
+		settingsAgentProbeErr: make(map[model.BackendKind]string),
+		settingsAgentProbeSeq: make(map[model.BackendKind]uint64),
 	}
 	ctrl.backendStatuses[model.BackendBuiltin] = BackendStatus{
 		State:   BackendStateReady,
@@ -1491,11 +1499,28 @@ func (c *Controller) RemoveAgentEntry(kind model.BackendKind) error {
 	if c.settingsExpandedAg == kind {
 		c.settingsExpandedAg = ""
 	}
+	c.resetAgentProbeStateLocked(kind)
 	c.ensureValidSelectionLocked()
 	err := c.writeJSONFile("ai-backends.json", c.backendsCfg)
 	c.mu.Unlock()
 	c.requestRedraw()
 	return err
+}
+
+func (c *Controller) resetAgentProbeStateLocked(kind model.BackendKind) {
+	if c.settingsAgentProbing != nil {
+		delete(c.settingsAgentProbing, kind)
+	}
+	if c.settingsAgentProbeOK != nil {
+		delete(c.settingsAgentProbeOK, kind)
+	}
+	if c.settingsAgentProbeErr != nil {
+		delete(c.settingsAgentProbeErr, kind)
+	}
+	if c.settingsAgentProbeSeq == nil {
+		c.settingsAgentProbeSeq = make(map[model.BackendKind]uint64)
+	}
+	c.settingsAgentProbeSeq[kind]++
 }
 
 // SetBackendLocked sets the locked flag for a backend adapter and persists it.
