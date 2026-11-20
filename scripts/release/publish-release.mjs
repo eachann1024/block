@@ -55,7 +55,7 @@ function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}
     })));
     if (tree.sha === commit.tree.sha) return;
     const next = JSON.parse(gh(["api", "--method", "POST", `repos/${REPO}/git/commits`, "--input", "-"], JSON.stringify({
-      message: `chore(release): ${tag}`,
+      message: `chore(release): ${tag}\n\n[skip ci]`,
       tree: tree.sha,
       parents: [head],
     })));
