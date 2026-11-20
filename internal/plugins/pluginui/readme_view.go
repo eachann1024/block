@@ -269,6 +269,17 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		entry.SHA256 = ""
 		entry.Verified = false
 		entry.Version = installedApp.Manifest.Version
+		entry.Permissions = installedApp.Manifest.Permissions
+	}
+	if isInstalled && len(installedApp.Manifest.PermissionReasons) > 0 {
+		merged := plugins.ClonePermissionReasons(entry.PermissionReasons)
+		if merged == nil {
+			merged = make(map[plugins.Permission]plugins.LocalizedText, len(installedApp.Manifest.PermissionReasons))
+		}
+		for perm, reason := range installedApp.Manifest.PermissionReasons {
+			merged[perm] = reason
+		}
+		entry.PermissionReasons = merged
 	}
 	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
 		preview.installed.Manifest.Version != installedApp.Manifest.Version
@@ -593,10 +604,39 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 			ui.Text(c, theme.Tr("需要权限", "Permissions")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 				TextColor(pal.TextSecondary).SingleLine().Margin(0, theme.Space4, 0, 0)
 			for _, p := range entry.Permissions {
-				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-					Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
-					ui.Text(c, plugins.PermissionLabel(p, locale)).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).SingleLine()
+				perm := p
+				label := plugins.PermissionLabel(perm, locale)
+				customReason := ""
+				if entry.PermissionReasons != nil {
+					customReason = entry.PermissionReasons[perm].Resolve(locale)
+				}
+				defaultDesc := plugins.PermissionDescription(perm, locale)
+				card := bui.TooltipCardSpec{
+					Title:     label,
+					Code:      string(perm),
+					Placement: bui.TooltipBelow,
+				}
+				if customReason != "" {
+					card.Body = customReason
+					card.Note = theme.Tr("权限说明：", "Scope: ") + defaultDesc
+				} else {
+					card.Body = defaultDesc
+				}
+				tag := ui.Row(c.Key("app-store-detail-perm-" + string(perm))).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+					AlignItems(ui.Center).Shrink(0)
+				bg := pal.Shell
+				border := ui.Transparent
+				textCol := pal.TextSecondary
+				if tag.Hovered() {
+					bg = pal.Hover
+					border = pal.BtnBorder
+					textCol = pal.Text
+				}
+				bui.AnimateSurfaceColors(tag, bg, border, true)
+				bui.TooltipCard(c, tag, card)
+				tag.Children(func() {
+					ui.Text(c, label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(textCol).SingleLine()
 				})
 			}
 		})
