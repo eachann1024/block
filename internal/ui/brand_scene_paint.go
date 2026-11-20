@@ -333,12 +333,10 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 							t := (y0 + stripH*0.5) / BrandBandHeight
 							col := effGround
 							if prevSc != nil && alphaOut > 0.002 && len(prevSc.skyStops) > 0 {
-								scCol := sampleGradientStops(prevSc.skyStops, t)
-								col = scCol.Alpha((float32(scCol.A) / 255.0) * alphaOut).Over(col)
+								col = sampleSkyOver(prevSc.skyStops, t, alphaOut, col)
 							}
 							if curSc != nil && alphaIn > 0.002 && len(curSc.skyStops) > 0 {
-								scCol := sampleGradientStops(curSc.skyStops, t)
-								col = scCol.Alpha((float32(scCol.A) / 255.0) * alphaIn).Over(col)
+								col = sampleSkyOver(curSc.skyStops, t, alphaIn, col)
 							}
 							p.FillGradient(ui.Rect{X: fx, Y: bandRect.Y + y0, W: featherW, H: stripH}, ui.LinearGradient{
 								Angle: 90,
@@ -515,26 +513,28 @@ func paintSceneArt(p *ui.Painter, sc *compiledScene, rc sceneRenderCtx) {
 	}
 }
 
-func sampleGradientStops(stops []ui.GradientStop, t float32) ui.Color {
+// sampleSkyOver returns the sky gradient's colour at t as it appears on screen over bg. Each stop
+// is composited first and the results interpolated, which is how the painter blends a gradient
+// whose stops are translucent; mixing the stops and compositing afterwards applies the fade twice.
+func sampleSkyOver(stops []ui.GradientStop, t, alpha float32, bg ui.Color) ui.Color {
 	if len(stops) == 0 {
-		return ui.Transparent
+		return bg
+	}
+	over := func(c ui.Color) ui.Color {
+		return c.Alpha((float32(c.A) / 255.0) * alpha).Over(bg)
 	}
 	if t <= stops[0].At || len(stops) == 1 {
-		return stops[0].Color
-	}
-	last := stops[len(stops)-1]
-	if t >= last.At {
-		return last.Color
+		return over(stops[0].Color)
 	}
 	for i := 1; i < len(stops); i++ {
 		if t <= stops[i].At {
 			a, b := stops[i-1], stops[i]
 			span := b.At - a.At
 			if span <= 0 {
-				return b.Color
+				return over(b.Color)
 			}
-			return a.Color.Mix(b.Color, (t-a.At)/span)
+			return over(a.Color).Mix(over(b.Color), (t-a.At)/span)
 		}
 	}
-	return last.Color
+	return over(stops[len(stops)-1].Color)
 }
