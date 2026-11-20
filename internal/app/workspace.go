@@ -1480,10 +1480,18 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 		w.mu.RLock()
 		existingSurf := w.surfaces[clean]
 		w.mu.RUnlock()
-		bom := existingSurf != nil && existingSurf.Source.BOM
-		if _, err := files.WriteRawFileAtomic(clean, content, bom); err != nil {
-			files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
-			return err
+		binaryPlist := (existingSurf != nil && existingSurf.Source.BinaryPlist) || (existingSurf == nil && files.IsBinaryPlistFile(clean))
+		if binaryPlist {
+			if _, _, err := files.WriteBinaryPlistAtomic(clean, content); err != nil {
+				files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
+				return err
+			}
+		} else {
+			bom := existingSurf != nil && existingSurf.Source.BOM
+			if _, err := files.WriteRawFileAtomic(clean, content, bom); err != nil {
+				files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
+				return err
+			}
 		}
 		if cf, err := files.ClassifyFile(clean); err == nil {
 			w.mu.Lock()

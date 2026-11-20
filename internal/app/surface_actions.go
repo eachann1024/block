@@ -248,7 +248,9 @@ func (s *TabSurface) sourceFormatLabel() string {
 		}
 	}
 	enc := "UTF-8"
-	if s.Source.BOM {
+	if s.Source.BinaryPlist {
+		enc = theme.Tr("二进制 Plist", "Binary Plist")
+	} else if s.Source.BOM {
 		enc = "UTF-8 BOM"
 	}
 	return fmt.Sprintf("%s · %s", lang, enc)
