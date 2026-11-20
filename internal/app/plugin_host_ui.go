@@ -90,6 +90,8 @@ func (h *pluginHostUI) HostClosing() {
 // closing first. Plugin RPC goroutines use it for calls that return a result.
 func (h *pluginHostUI) onMainWait(fn func()) error {
 	if !mygo.App.IsReady() {
+		h.w.headlessMainMu.Lock()
+		defer h.w.headlessMainMu.Unlock()
 		fn()
 		return nil
 	}
