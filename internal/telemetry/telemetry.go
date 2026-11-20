@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	mrand "math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,11 +35,16 @@ const (
 	startDelay    = 5 * time.Second // short enough that quick open-and-close sessions still count
 	checkInterval = 3 * time.Hour
 	retryInterval = 15 * time.Minute // after a failed ping, so a short session later today still counts
+	limitedRetry  = time.Minute      // after a 429: the server's window is 60 s, plus up to limitedJitter
+	limitedJitter = 2 * time.Minute  // spreads out many clients behind one address that were limited together
 	wakeStep      = 5 * time.Minute  // longest single sleep, so a laptop waking from sleep notices a passed deadline
 	fileName      = "telemetry.json"
 )
 
 var idRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// errLimited reports a 429: the source address sent too many pings in the last minute.
+var errLimited = errors.New("telemetry: rate limited")
 
 // Config wires the sender to the app. Enabled and Lang are read before every check,
 // so turning the setting off takes effect without a restart.
@@ -92,7 +98,9 @@ func loop(cfg Config) {
 	for {
 		wait := checkInterval
 		day := today()
-		if _, err := CheckOnce(context.Background(), cfg); err != nil {
+		if _, err := CheckOnce(context.Background(), cfg); errors.Is(err, errLimited) {
+			wait = limitedRetry + mrand.N(limitedJitter)
+		} else if err != nil {
 			wait = retryInterval
 		}
 		now := time.Now()
@@ -186,6 +194,8 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 		resp.StatusCode == http.StatusBadRequest,
 		resp.StatusCode == http.StatusRequestEntityTooLarge,
 		resp.StatusCode == http.StatusUnprocessableEntity:
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return false, errLimited
 	default:
 		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
