@@ -2682,6 +2682,15 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 	rest := c.draftText[:len(c.draftText)-len(token)]
 	switch it.kind {
 	case pickFolder:
+		if it.value != "" {
+			rawRoot := c.activeRootLocked()
+			if !c.pickerInjected && c.pickerRoot != "" && rawRoot != "" && filepath.Clean(c.pickerRoot) != filepath.Clean(rawRoot) {
+				return c.draftText, false
+			}
+			if !containsString(c.pickerFolders, it.value) {
+				return c.draftText, false
+			}
+		}
 		c.pickerFolder = it.value
 		c.pickIndex = 0
 		c.draftText = rest + "@"
@@ -2737,6 +2746,8 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 		selected = max(len(items)-1, 0)
 	}
 	loading := c.pickerLoading
+	pickerRootSnap := c.pickerRoot
+	pickerGenSnap := c.pickerRefreshGen
 	c.mu.Unlock()
 
 	_, winH := cUI.Size()
@@ -2805,12 +2816,12 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 
 			listH := min(float32(len(items))*36, max(pickerMaxH-32, 36))
 			c.pickerList.Key = func(i int) any {
-				return fmt.Sprintf("%d:%s", items[i].kind, items[i].value)
+				return fmt.Sprintf("%s:%d:%d:%s", pickerRootSnap, pickerGenSnap, items[i].kind, items[i].value)
 			}
 			pickerListEl := ui.List(cUI.Key("ai-picker-virtual-list"), &c.pickerList, len(items), func(i int) {
 				it := items[i]
 				rowID := fmt.Sprintf("ai-pick-%d", i)
-				row := ui.ButtonBase(cUI.Key(fmt.Sprintf("ai-pick-%d:%d:%s", i, it.kind, it.value))).FillWidth().Height(36).PaddingX(10).Gap(8).
+				row := ui.ButtonBase(cUI.Key(fmt.Sprintf("ai-pick-%s:%d:%d:%d:%s", pickerRootSnap, pickerGenSnap, i, it.kind, it.value))).FillWidth().Height(36).PaddingX(10).Gap(8).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(it.label)
 				isSel := !nav.pointerMode && i == selected
 				bui.RevealOnHighlight(row, isSel)
@@ -3027,7 +3038,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 					return true
 				case k.Key == ui.KeyEnter && k.Mods == 0:
-					if open && c.pickerLoading && len(items) == 0 {
+					if open && len(items) == 0 && (c.pickerLoading || (strings.HasPrefix(tok, "@") && !c.pickerInjected && c.pickerRefreshed.IsZero())) {
 						c.mu.Unlock()
 						return true
 					}
