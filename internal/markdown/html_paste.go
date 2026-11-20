@@ -314,6 +314,7 @@ type htmlInlineState struct {
 	underline *bool
 	strike    *bool
 	code      *bool
+	math      *bool
 	sup       *bool
 	sub       *bool
 	highlight *bool
@@ -357,7 +358,7 @@ type htmlPasteConverter struct {
 }
 
 func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg string) {
-	var bold, italic, under, strike, code, sup, sub, hi bool
+	var bold, italic, under, strike, code, mathMark, sup, sub, hi bool
 	for _, f := range c.inlineStk {
 		if f.bold != nil {
 			bold = *f.bold
@@ -373,6 +374,9 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 		}
 		if f.code != nil {
 			code = *f.code
+		}
+		if f.math != nil {
+			mathMark = *f.math
 		}
 		if f.sup != nil {
 			sup = *f.sup
@@ -399,7 +403,9 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 	if strike {
 		marks |= model.MarkStrike
 	}
-	if code {
+	if mathMark {
+		marks |= model.MarkMath
+	} else if code {
 		marks |= model.MarkCode
 	}
 	if sup {
@@ -691,7 +697,15 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 	case "del", "s", "strike":
 		st.strike = boolPtr(true)
 	case "code", "kbd", "samp", "tt":
-		st.code = boolPtr(true)
+		if hasCSSClass(attrVal(attrs, "class"), "math") {
+			st.math = boolPtr(true)
+		} else {
+			st.code = boolPtr(true)
+		}
+	case "span":
+		if hasCSSClass(attrVal(attrs, "class"), "math") {
+			st.math = boolPtr(true)
+		}
 	case "sup":
 		st.sup = boolPtr(true)
 	case "sub":
