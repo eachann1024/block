@@ -3841,6 +3841,10 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.copyActiveMarkdown(c.Services())
 		return
 	}
+	if matchRaw(copyPathShortcutSpec()) {
+		w.copyActiveFilePath(c.Services())
+		return
+	}
 	if c.Shortcut(ui.Cmd, ui.KeyS) {
 		w.FlushDirtySessions()
 		if theme.IsTarotMode() && w.tarot != nil {
@@ -3932,10 +3936,28 @@ func isTextInputReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
 }
 
 func copyMarkdownShortcutSpec() string {
-	if theme.IsMacOS() {
-		return "alt-cmd-c"
-	}
+	// Alt+Cmd+C on macOS, Ctrl+Alt+C on Windows/Linux (keeps Cmd/Ctrl+Shift+C free for Copy File Path).
+	return "alt-cmd-c"
+}
+
+func copyPathShortcutSpec() string {
+	// Cmd+Shift+C on macOS, Ctrl+Shift+C on Windows/Linux.
 	return "cmd-shift-c"
+}
+
+func (w *Workspace) copyFilePath(path string, svc ui.Services) {
+	if path == "" {
+		return
+	}
+	svc.WriteClipboard(path)
+	w.setNotice(theme.Tr("已复制文件路径", "Copied file path"))
+}
+
+func (w *Workspace) copyActiveFilePath(svc ui.Services) {
+	w.mu.Lock()
+	active := w.state.ActiveTab
+	w.mu.Unlock()
+	w.copyFilePath(active, svc)
 }
 
 func (w *Workspace) copyActiveMarkdown(svc ui.Services) {
@@ -4355,12 +4377,8 @@ func (w *Workspace) Render(c *ui.Context) {
 					c.Services().WriteClipboard(markdownImageRef(activeTab, activeNB))
 					w.setNotice(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"))
 				},
-				OnCopyPath: func() {
-					if activeTab == "" {
-						return
-					}
-					c.Services().WriteClipboard(activeTab)
-					w.setNotice(theme.Tr("已复制文件路径", "Copied file path"))
+				OnCopyPath: func(path string) {
+					w.copyFilePath(path, c.Services())
 				},
 				OnOpenExternal: func() {
 					if activeTab != "" {
@@ -4912,6 +4930,9 @@ func (w *Workspace) renderSidebarColumn(
 		OnReorderNotebooks: w.ReorderNotebooks,
 		OnTrashItem: func(path string) {
 			_ = w.TrashWorkspaceItem(path)
+		},
+		OnCopyPath: func(path string) {
+			w.copyFilePath(path, c.Services())
 		},
 		OnRevealItem: func(path string) {
 			if mygo.App.IsReady() {
