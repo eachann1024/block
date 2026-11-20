@@ -956,41 +956,84 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
+			// Density decides how much is drawn and tempo how fast it moves; the two never mix.
+			density, tempo := st.BrandDeco.EffectiveDensity(), st.BrandDeco.EffectiveTempo()
+			decoOn := st.BrandDeco.Mode != model.BrandDecoOff
 			decoIdx := 3
-			if st.BrandDeco.Mode == model.BrandDecoOff {
+			switch {
+			case !decoOn:
 				decoIdx = 0
-			} else {
-				switch st.BrandDeco.Motion {
-				case model.BrandDecoMotionStill:
-					decoIdx = 1
-				case model.BrandDecoMotionCalm:
-					decoIdx = 2
-				}
+			case density == model.BrandDecoDensityMinimal:
+				decoIdx = 1
+			case density == model.BrandDecoDensityCalm:
+				decoIdx = 2
+			}
+			tempoIdx := 2
+			switch tempo {
+			case model.BrandDecoTempoStill:
+				tempoIdx = 0
+			case model.BrandDecoTempoSlow:
+				tempoIdx = 1
+			case model.BrandDecoTempoBrisk:
+				tempoIdx = 3
+			}
+			// Writing either row stores both values explicitly and retires the legacy combined tier.
+			saveDeco := func(apply func(d *model.BrandDeco)) {
+				m.mutateState(func(s *model.AppState) {
+					s.BrandDeco.Density, s.BrandDeco.Tempo = density, tempo
+					s.BrandDeco.Motion = model.BrandDecoMotionRich
+					apply(&s.BrandDeco)
+				})
 			}
 			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
 				if internalui.SettingsSegmented(c, "settings-brand-deco-seg", &decoIdx, []internalui.SegmentOption{
 					{ID: "settings-brand-deco-off", Label: theme.Tr("关闭", "Off")},
-					{ID: "settings-brand-deco-still", Label: theme.Tr("静止", "Still")},
+					{ID: "settings-brand-deco-minimal", Label: theme.Tr("简约", "Minimal")},
 					{ID: "settings-brand-deco-calm", Label: theme.Tr("舒缓", "Calm")},
 					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
 				}) {
-					m.mutateState(func(s *model.AppState) {
+					saveDeco(func(d *model.BrandDeco) {
+						if decoIdx == 0 {
+							d.Mode = model.BrandDecoOff
+							return
+						}
+						if d.Mode == model.BrandDecoOff {
+							d.Mode = model.BrandDecoByTime
+						}
 						switch decoIdx {
-						case 0:
-							s.BrandDeco.Mode = model.BrandDecoOff
 						case 1:
-							s.BrandDeco.Mode = model.BrandDecoByTime
-							s.BrandDeco.Motion = model.BrandDecoMotionStill
+							d.Density = model.BrandDecoDensityMinimal
 						case 2:
-							s.BrandDeco.Mode = model.BrandDecoByTime
-							s.BrandDeco.Motion = model.BrandDecoMotionCalm
+							d.Density = model.BrandDecoDensityCalm
 						default:
-							s.BrandDeco.Mode = model.BrandDecoByTime
-							s.BrandDeco.Motion = model.BrandDecoMotionRich
+							d.Density = model.BrandDecoDensityRich
 						}
 					})
 				}
 			})
+			if decoOn {
+				internalui.SettingsRow(c, theme.Tr("动画速度", "Animation Speed"), func() {
+					if internalui.SettingsSegmented(c, "settings-brand-tempo-seg", &tempoIdx, []internalui.SegmentOption{
+						{ID: "settings-brand-tempo-still", Label: theme.Tr("静止", "Still")},
+						{ID: "settings-brand-tempo-slow", Label: theme.Tr("缓慢", "Slow")},
+						{ID: "settings-brand-tempo-leisurely", Label: theme.Tr("悠闲", "Leisurely")},
+						{ID: "settings-brand-tempo-brisk", Label: theme.Tr("轻快", "Brisk")},
+					}) {
+						saveDeco(func(d *model.BrandDeco) {
+							switch tempoIdx {
+							case 0:
+								d.Tempo = model.BrandDecoTempoStill
+							case 1:
+								d.Tempo = model.BrandDecoTempoSlow
+							case 3:
+								d.Tempo = model.BrandDecoTempoBrisk
+							default:
+								d.Tempo = model.BrandDecoTempoLeisurely
+							}
+						})
+					}
+				})
+			}
 		})
 
 		// Card 2: Editor Typography & Fonts (app_settings_tabs.rs:67-70).
