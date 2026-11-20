@@ -31,7 +31,7 @@
     - 笔记读取及写入前读取旧文件上限 **16 MiB**；`host.notes.write` 传入的新正文同时受 4 MiB 单行传输上限约束。
     - 安装归档下载 <= **64 MiB**、单文件 <= **32 MiB**、解包或本地目录复制总计 <= **256 MiB**（tar 解压流 <= **320 MiB**）、路径/条目数 <= **8192**（含推导父目录）、单路径 <= 1024 字节且 `< 32` 级目录、禁止 `\` 与 `:`、仅允许普通文件与目录（不支持符号链接）。
 - **原生设置挂载、应用商店与详情页**：
-  - **侧栏与顶栏控制**：已安装插件统一收拢在「设置」左侧导航栏「已安装」分组下（位于「应用商店」之下），带运行状态指示点。插件设置页头部与设置窗口标题栏统一采用 Ocean Paper 拨弦开关（Pluck Switch / `PluckDivider`）作为主控开关，并自动提供单行合并状态位、主操作位/实时进度胶囊与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与卸载），插件无需自行绘制启用开关或卸载按钮。
+  - **侧栏与顶栏控制**：声明了 `settings_page` 的已安装插件统一收拢在「设置」左侧导航栏「已安装」分组下（位于「应用商店」之下），带运行状态指示点；未声明独立设置页的插件（如语言扩展、主题类）不占用侧栏设置页，点击应用商店整张卡片进入详情页即可直接卸载。插件设置页头部与设置窗口标题栏统一采用 Ocean Paper 拨弦开关（Pluck Switch / `PluckDivider`）作为主控开关，并自动提供单行合并状态位、主操作位/实时进度胶囊与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与卸载），插件无需自行绘制启用开关或卸载按钮。
   - **分类、筛选与搜索**：应用商店固定提供 5 大分类标签（同步与迁移 / 编辑增强 / 外观 / 工具 / 语言扩展），支持按安装状态（全部 / 已安装 / 未安装）与来源筛选，支持中英文名称与摘要联合模糊搜索并高亮命中字符；目录拉取在主源不可达时自动回退 jsDelivr CDN。
   - **三级信任标识**：应用商店按来源区分三类状态——`Block 官方`（`blockmd-plugins/*` 且在 `verified.json` 1:1 绑定，展示官方徽章）、`已审核`（`eachann1024/*` 信任作者源）、`未审核`（其余社区仓库，展示审阅风险提示）。
   - **权限胶囊悬停说明**：商店详情页在元信息行下方以胶囊形式列出 `permissions`，鼠标悬停每个权限胶囊时弹出结构化信息卡片：若插件在 `manifest.permission_reasons` 中填写了自定义缘由，优先展示该插件的具体用途并附带系统权限范围说明；未填写时自动展示系统内置的双语权限说明。
@@ -144,16 +144,16 @@ example-sync/
 - `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set`）
-  - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
+  - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
   - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`）
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
-  - 以及第 8 节定义的 9 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
+  - 以及第 8 节定义的 11 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
 - `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐填写以帮助用户在安装前理解用途）：
   - 每个键必须是合法权限枚举，且**必须已声明在 `manifest.permissions` 中**（不可为未申请的权限填写缘由）。
   - 每项须提供 `zh` 或 `en` 至少其一非空文本（启用双语门禁的官方或 `-bilingual` 插件必须同时提供纯英文 `en`），长度限制 `zh <= 80` 个 Unicode 字符、`en <= 140` 个 Unicode 字符，**严禁包含 Emoji**。
   - **展示规则**：在应用商店详情页鼠标悬停权限胶囊时，若填写了自定义缘由，气泡优先显示该插件的具体用途，并在下方附带系统默认权限边界说明；若未填写，宿主自动展示内置的双语权限说明。商店采集器会将 `permission_reasons` 同步写入 `store-index.json`。
-- `surfaces`：常规插件必填固定为 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）；纯声明式语言扩展可省略或为空数组 `[]`。
+- `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见第 8 节与第 9 节。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
 
@@ -175,18 +175,23 @@ example-sync/
        "notebook_root": "/abs/path/to/notebook",
        "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
+       "theme": "system",
+       "tarot": false,
        "host_version": "1.0.854",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "host_perf", "checklist", "form_layout",
          "multi_notebook", "card_collapse", "metric_tone", "log_columns", "file_picker",
-         "action_feedback", "action_progress", "note_revision"
+         "action_feedback", "action_progress", "note_revision",
+         "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
+         "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
+         "editor_insert_mode", "dialog_token"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -269,7 +274,9 @@ example-sync/
      2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
      3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
    - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
-8. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
+8. **`host.notes.open`**（需 `"notes:read"`）
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选；严格校验目标为已注册笔记本内的合法普通 Markdown 文件且非符号链接）-> 在桌面编辑器中切换打开目标笔记（若设置页开着会自动收起）并返回 `{"ok": true, "path": "welcome.md"}`；无 UI 宿主环境（如 CLI 校验）返回 `-32005`。
+9. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
    - 在 `plugin.action` 执行期间实时上报进度，推荐以 JSON-RPC 2.0 通知（省略 `id`，无需等待响应，宿主走内联快速通道以保证顺序且不占并发槽）发送，也支持普通调用（返回 `{"ok": true}`）：
      - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
      - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
@@ -464,6 +471,7 @@ example-sync/
     - `tone`：前导状态点支持语义色（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`/`"accent"`）与柔和色板键；`ratio` 占比条仅使用柔和色板键（传 `"success"` 等语义色会回退中性底色）
     - `ratio`：约定传 `0`–`1` 浮点数（`<= 0` 不画条，`> 0` 渲染时夹到 `4%`–`100%` 并隐藏前导状态点）
     - `tooltip`：整行悬停提示
+    - `action_id`：可选点击动作 ID（`ui_capabilities` 含 `log_actions` 时生效，<= 128 字符、禁止 Emoji；点击该行时触发当前表面的 `plugin.action`，常配合 `host.notes.open` 实现侧栏/面板一键跳转笔记）
     ```json
     {
       "kind": "log_list",
@@ -620,7 +628,7 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/�
 
 Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
-1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前包括 `block-sync`、`block-lang-gomod`、`block-lang-plist`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档与 `permission_reasons`。
+1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前包括 `block-sync`、`block-poop-everywhere`、`block-lang-gomod`、`block-lang-plist`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档与 `permission_reasons`。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
 3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
    - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
@@ -628,25 +636,27 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
    - 采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的前 100 个仓库（无分页），并自动跳过内置保留 ID（`block-diagnostics`）。
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包（`codeload.github.com/{repo}/tar.gz/{default_branch}`）。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
-   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
+   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-poop-everywhere`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
    - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
 
 ---
 
 ## 8. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器菜单、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限与编辑器/界面事件权限。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限与编辑器/界面事件权限。
 
-### 8.1 新增权限（9 项）
+### 8.1 新增权限（11 项）
 
 | 权限枚举 | 说明 | 关联贡献 / 能力 |
 | --- | --- | --- |
 | `"ui:titlebar"` | 顶栏按钮与顶栏槽位显隐控制 | `contributes.titlebar_buttons`、`host.titlebar.get_items` / `set_hidden` / `set_button` |
 | `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections`、`host.ui.editor_background` / `set_editor_background`、`host.ui.tarot_state` / `set_tarot` |
 | `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu` |
-| `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` |
+| `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` / `toggle_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
 | `"ui:notify"` | Toast 轻提示与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
+| `"ui:sidebar"` | 左侧栏分区、文件树角标与侧栏右键菜单 | `contributes.sidebar_sections`、`contributes.file_badges`、`contributes.sidebar_menu`、`host.sidebar.set_badges` / `get_badges` |
+| `"ui:appearance"` | 编辑区自定义矢量背景（水印/平铺图案） | `contributes.backdrops`、`host.ui.backdrop` / `set_backdrop` |
 | `"editor:read"` | 读取当前编辑器选区 | `host.editor.selection` |
 | `"editor:write"` | 替换选区或光标处插入文本 | `host.editor.insert` |
 | `"events:workspace"` | 订阅工作区界面事件 | `plugin.event`（`note.opened`、`theme.changed`、`locale.changed`） |
@@ -656,37 +666,48 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
 - 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
-- 数量上限：`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`panels` 8、`status_items` 4、`dialogs` 16。
+- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
 1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。所有插件的按钮合计最多直接显示 **3** 个（窗口宽度小于 900 或扣除停靠侧栏与窗口控制区后可用宽度小于 680 时 1 个；窗口宽度小于 720 或可用宽度小于 520 时 0 个）；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
 2. **`settings_sections`**（需 `"ui:settings"`）：在内置设置标签页末尾追加一张声明式设置分区卡片（单卡片标题与分区标题一致时宿主自动去重）。
-   - `id`（必填）、`title`（必填 `LocalizedText`）。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
    - `tab`（必填）：仅允许 `"ai"` | `"appearance"` | `"folders"` | `"shortcuts"`。
    - 对应渲染表面：`"settings_section:<id>"`。
 3. **`commands`**（需 `"ui:commands"`）：注册到命令面板并支持默认快捷键。
-   - `id`（必填）、`title`（必填 `LocalizedText`）。
-   - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-shift-t"`。宿主与编辑器已占用的组合（如 `cmd-f`、`cmd-b`、`cmd-s`、`cmd-1`…`cmd-9`）不会触发插件命令。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+   - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-alt-p"`。宿主与编辑器已占用的组合（如 `cmd-f`、`cmd-b`、`cmd-s`、`cmd-shift-p`、`cmd-shift-k`、`cmd-1`…`cmd-9`）不会触发插件命令。
 4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。
-   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）。
-5. **`editor_menu`**（需 `"ui:commands"`）：向编辑器右键菜单追加条目。
-   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）。
-6. **`panels`**（需 `"ui:panels"`）：注册右侧边栏面板。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+5. **`editor_menu`**（需 `"ui:commands"`）：向编辑器右键菜单追加条目（渲染原生彩色 SVG 图标）。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+6. **`sidebar_menu`**（需 `"ui:sidebar"`，且 `command` 引用已声明的 `commands[].id`）：向左侧栏文件树笔记右键菜单追加条目。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。触发时 `context.source` 为 `"sidebar_menu"`，`context.note` 为右键目标笔记的相对路径。
+7. **`panels`**（需 `"ui:panels"`）：注册右侧边栏面板（标题栏自动渲染 `icon`）。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
    - 对应渲染表面：`"panel:<id>"`。
-7. **`status_items`**（需 `"ui:status"`）：注册底部状态栏条目。
-   - `id`（必填）、`text`（可选 `LocalizedText`，作为 `host.status.set` 覆盖前的初始文案；解析后为空白时不显示）、`command`（可选，非空时须引用 `commands[].id`）。
-8. **`dialogs`**（需 `"ui:notify"`）：注册模态弹窗（由 `host.ui.open_dialog` 打开）。
-   - `id`（必填）、`title`（必填 `LocalizedText`）、`width`（可选整数；`0` 或省略默认 `460`，显式指定时须在 `320`–`720` 之间）。
-   - 对应渲染表面：`"dialog:<id>"`。
+8. **`sidebar_sections`**（需 `"ui:sidebar"`，最多 **4** 个）：在左侧栏文件树下方、笔记本切换器上方追加紧凑可折叠声明式卡片。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）、`collapsible`（可选 bool）、`default_collapsed`（可选 bool）。
+   - 对应渲染表面：`"sidebar_section:<id>"`。
+9. **`file_badges`**（需 `"ui:sidebar"`，最多 **4** 个）：声明左侧栏文件树笔记行尾角标图标，运行时通过 `host.sidebar.set_badges` 按笔记相对路径推送（单行最多展示 2 个角标，停用或卸载插件立即清除）。
+   - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（可选 `LocalizedText`）。
+10. **`backdrops`**（需 `"ui:appearance"`，最多 **8** 个）：声明编辑区自定义矢量背景图案，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
+    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
+    - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"`，默认 `"scatter"`）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
+11. **`status_items`**（需 `"ui:status"`）：注册底部状态栏条目。
+    - `id`（必填）、`text`（可选 `LocalizedText`，作为 `host.status.set` 覆盖前的初始文案；解析后为空白时不显示）、`command`（可选，非空时须引用 `commands[].id`）、`icon`（可选 `DuoIconSpec`）。
+12. **`dialogs`**（需 `"ui:notify"`）：注册模态弹窗（由 `host.ui.open_dialog` 打开，标题栏渲染图标）。
+    - `id`（必填）、`title`（必填 `LocalizedText`）、`width`（可选整数；`0` 或省略默认 `460`，显式指定时须在 `320`–`720` 之间）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+    - 对应渲染表面：`"dialog:<id>"`。
 
 ### 8.3 多表面（Surfaces）渲染与状态隔离
 
-- `manifest.surfaces` 仍固定填写 `["settings_page"]`；`settings_sections`、`panels`、`dialogs` 会自动启用下列前缀表面：
+- 需要独立设置页时在 `manifest.surfaces` 中填写 `["settings_page"]`（无独立设置页的插件可省略）；`settings_sections`、`panels`、`sidebar_sections`、`dialogs` 会自动启用下列前缀表面：
   - `"settings_section:<id>"`
   - `"panel:<id>"`
+  - `"sidebar_section:<id>"`
   - `"dialog:<id>"`
 - 宿主调用 `plugin.render` 与 `plugin.action` 时会在 `params.surface` 中传入对应的表面标识，插件按 `surface` 返回各自独立的 `UIPage` 与 `ActionResult`。
 - 宿主按 `(plugin_id, notebook_root, surface)` 分别隔离加载态、忙碌/反馈状态、表单值、定时刷新（`refresh_interval_ms`）与笔记本切换感知；停用或卸载插件时会销毁其全部表面视图。
@@ -694,7 +715,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 ### 8.4 `plugin.command` 与工作区 `plugin.event`
 
 1. **`plugin.command`**（Host -> Plugin）
-   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
+   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
    - 请求 `params`：
      ```json
      {
@@ -706,8 +727,8 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
        }
      }
      ```
-     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径）、`context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"status"`）。
-   - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行"}`（字段均可选；`status` 非空时宿主会弹出对应 `tone` 的 Toast 提示，默认 `"info"`）。
+     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径；`sidebar_menu` 时填充右键目标笔记相对路径）、`context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"sidebar_menu"` | `"status"`）。
+   - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行", "show_plugin_icon": true}`（字段均可选；`status` 非空时宿主会弹出对应 `tone` 的 Toast 提示，默认 `"info"` 并附带插件图标，传 `"show_plugin_icon": false` 可恢复纯色圆点）。
 
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
    - 仅向**已启动运行中**的插件派发（5 秒超时），宿主**不会**为这类事件冷启动已停止的插件。
@@ -728,29 +749,36 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - 参数：`{"id": "<button_id>", "badge": "3", "active": true}`（`id` 必填且须为本插件声明的 `titlebar_buttons[].id`；`badge` 可选，会去首尾空白并截断至最多 3 个 Unicode 字符；`active` 可选布尔值）。
    - 返回：`{"ok": true}`。
 4. **`host.status.set`**（需 `"ui:status"`）
-   - 参数：`{"id": "<item_id>", "text": "Synced", "tooltip": "上次同步 10:00"}`（`id` 必填且须为本插件声明的 `status_items[].id`；`text` 禁止含 Emoji 并截断至 40 个字符；`tooltip` 截断至 200 个字符）。
+   - 参数：`{"id": "<item_id>", "text": "Synced", "tooltip": "上次同步 10:00", "icon": {...}, "show_plugin_icon": true, "clear_icon": false}`（`id` 必填且须为本插件声明的 `status_items[].id`；`text` 禁止含 Emoji 并截断至 40 个字符；`tooltip` 截断至 200 个字符；`icon` / `show_plugin_icon` / `clear_icon` 均为可选）。
    - 返回：`{"ok": true}`。
 5. **`host.ui.toast`**（需 `"ui:notify"`）
-   - 参数：`{"message": "操作完成", "tone": "info"}`（`message` 必填非空白，截断至 160 个字符；`tone` 仅接受 `"success"` | `"error"` | `"warning"`，其余归一化为 `"info"`）。
+   - 参数：`{"message": "操作完成", "tone": "info", "icon": {...}, "show_plugin_icon": true}`（`message` 必填非空白，截断至 160 个字符；`tone` 仅接受 `"success"` | `"error"` | `"warning"`，其余归一化为 `"info"`；`icon` / `show_plugin_icon` 可选，用于在提示左侧展示双色矢量图标）。
    - 返回：`{"ok": true}`。
 6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（需 `"ui:notify"`）
    - 参数：`{"id": "<dialog_id>"}`（`id` 须为本插件声明的 `dialogs[].id`）。
-   - 返回：`{"ok": true}`。
-7. **`host.ui.open_panel` / `host.ui.close_panel`**（需 `"ui:panels"`）
+   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗的 `"dialog_token"`，插件可严格核对来源表面与一次性令牌；`close_dialog` 返回 `{"ok": true}`。
+7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（需 `"ui:panels"`）
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
-   - 返回：`{"ok": true}`。
+   - 返回：`open_panel` / `close_panel` 返回 `{"ok": true}`；`toggle_panel` 返回 `{"ok": true, "open": true|false}`（由宿主原子切换并回传当前开关态，避免插件自维护状态与宿主关闭按钮失步）。
 8. **`host.ui.refresh`**（仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
    - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
    - 返回：`{"ok": true}`。
-9. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
-   - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
-10. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
+9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（需 `"ui:sidebar"`）
+   - `host.sidebar.set_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
+   - `host.sidebar.get_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
+10. **`host.ui.backdrop` / `host.ui.set_backdrop`**（需 `"ui:appearance"`）
+    - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
+    - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
+    - 「到处拉屎」插件在 `plugin.initialize` 读取已保存的背景设置并调用 `host.ui.set_backdrop`，外观设置中的控件变化通过 `plugin.render` 的 `values` 即时保存和应用。
+11. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
+    - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
+12. **`host.editor.insert`**（需 `"editor:write"`）
+    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
-11. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
+13. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
     - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
-12. **`host.ui.editor_background` / `host.ui.set_editor_background`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
+14. **`host.ui.editor_background` / `host.ui.set_editor_background`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
     - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
 

@@ -17,7 +17,7 @@
 | `"ui:titlebar"` | 顶栏按钮与顶栏槽位显隐控制 | `contributes.titlebar_buttons`、`host.titlebar.get_items` / `set_hidden` / `set_button` |
 | `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections`、`host.ui.editor_background` / `set_editor_background`、`host.ui.tarot_state` / `set_tarot` |
 | `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu` |
-| `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` |
+| `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` / `toggle_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
 | `"ui:notify"` | Toast 轻提示与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
 | `"ui:sidebar"` | 左侧栏分区、文件树角标与侧栏右键菜单 | `contributes.sidebar_sections`、`contributes.file_badges`、`contributes.sidebar_menu`、`host.sidebar.set_badges` / `get_badges` |
@@ -121,10 +121,10 @@
    - 返回：`{"ok": true}`。
 6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（需 `"ui:notify"`）
    - 参数：`{"id": "<dialog_id>"}`（`id` 须为本插件声明的 `dialogs[].id`）。
-   - 返回：`{"ok": true}`。
-7. **`host.ui.open_panel` / `host.ui.close_panel`**（需 `"ui:panels"`）
+   - 返回：`open_dialog` 在宿主成功打开后返回 `{"ok": true, "dialog_token": "dlg-..."}`（无宿主 UI 时返回 `-32005`），且用户在对应 `dialog:*` 表面触发 `plugin.action` 时宿主会随参数附带当前活动弹窗的 `"dialog_token"`，插件可严格核对来源表面与一次性令牌；`close_dialog` 返回 `{"ok": true}`。
+7. **`host.ui.open_panel` / `host.ui.close_panel` / `host.ui.toggle_panel`**（需 `"ui:panels"`）
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
-   - 返回：`{"ok": true}`。
+   - 返回：`open_panel` / `close_panel` 返回 `{"ok": true}`；`toggle_panel` 返回 `{"ok": true, "open": true|false}`（由宿主原子切换并回传当前开关态，避免插件自维护状态与宿主关闭按钮失步）。
 8. **`host.ui.refresh`**（仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
    - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
    - 返回：`{"ok": true}`。
@@ -134,10 +134,11 @@
 10. **`host.ui.backdrop` / `host.ui.set_backdrop`**（需 `"ui:appearance"`）
     - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
     - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
+    - 「到处拉屎」插件在 `plugin.initialize` 读取已保存的背景设置并调用 `host.ui.set_backdrop`，外观设置中的控件变化通过 `plugin.render` 的 `values` 即时保存和应用。
 11. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 12. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
+    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
 13. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
