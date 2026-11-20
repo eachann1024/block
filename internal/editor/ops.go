@@ -79,18 +79,23 @@ func (s *Session) SelectedDoc() *model.Doc {
 		rlen := s.blockSelectionLen(a.Block)
 		whole := a.Offset == 0 && b.Offset >= rlen
 
-		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
-			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-				spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
-				return &model.Doc{
-					Blocks:       []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}},
-					TrailingLine: "\n",
+		if blk.Kind == model.BlockTable && blk.Table != nil {
+			singleCellActive := s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
+			if !whole || singleCellActive {
+				if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+					spans := sliceSpansForClipboard(blk.Table.Rows[row][col].Spans, relLo, relHi)
+					return &model.Doc{
+						Blocks:       []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}},
+						TrailingLine: "\n",
+					}
 				}
 			}
-			if sliced, ok := sliceTableSelection(blk, a.Offset, b.Offset); ok {
-				return &model.Doc{
-					Blocks:       []model.Block{sliced},
-					TrailingLine: "\n",
+			if !whole {
+				if sliced, ok := sliceTableSelection(blk, a.Offset, b.Offset); ok {
+					return &model.Doc{
+						Blocks:       []model.Block{sliced},
+						TrailingLine: "\n",
+					}
 				}
 			}
 		}
@@ -184,7 +189,7 @@ func (s *Session) SelectedMarkdown() string {
 			singleCellActive := s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
 			if !whole || singleCellActive {
 				if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-					spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+					spans := sliceSpansForClipboard(blk.Table.Rows[row][col].Spans, relLo, relHi)
 					return serializeInlineBlockMarkdown(spans, s.codec)
 				}
 			}
@@ -211,7 +216,7 @@ func (s *Session) SelectedMarkdown() string {
 			hi := clampInt(b.Offset, lo, len(runes))
 			return string(runes[lo:hi])
 		}
-		spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
+		spans := sliceSpansForClipboard(blk.Spans, a.Offset, b.Offset)
 		return serializeInlineBlockMarkdown(spans, s.codec)
 	}
 
@@ -455,7 +460,7 @@ func (s *Session) sliceBlockForSelection(idx, lo, hi int, preserveContainer bool
 			Dirty: true,
 		}
 	}
-	spans := sliceSpans(blk.Spans, lo, hi)
+	spans := sliceSpansForClipboard(blk.Spans, lo, hi)
 	if !preserveContainer {
 		return model.Block{
 			ID:    model.NewBlockID(),
@@ -1254,6 +1259,26 @@ func (s *Session) splicePastedBlocksAtSelection(idx int, pasted []model.Block) {
 		lo = clampInt(a.Offset, 0, len(curText))
 		hi = clampInt(endPos.Offset, lo, len(curText))
 	}
+	// Never split a single inline-image span across prefix and suffix blocks.
+	{
+		pos := 0
+		for _, sp := range b.Spans {
+			n := utf8.RuneCountInString(sp.Text)
+			s0, s1 := pos, pos+n
+			pos = s1
+			if sp.ImageSrc != "" && lo > s0 && hi < s1 {
+				if lo == hi {
+					lo, hi = s1, s1
+				} else {
+					b.Spans, _ = replaceSpanRange(b.Spans, lo, hi, nil)
+					curText = []rune(b.PlainText())
+					lo = s1 - (hi - lo)
+					hi = lo
+				}
+				break
+			}
+		}
+	}
 
 	inheritContainer := func(blocks []model.Block) []model.Block {
 		if b.Indent == 0 && b.QuoteDepth == 0 {
@@ -1563,12 +1588,15 @@ func looksLikeMarkdownBlock(line string) bool {
 			return true
 		}
 	}
+	lowerT := strings.ToLower(t)
 	if strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "+ ") ||
 		strings.HasPrefix(t, "> ") || t == ">" ||
 		strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") || strings.HasPrefix(t, "$$") ||
 		t == "---" || t == "***" || t == "___" || strings.HasPrefix(t, "|") ||
 		(strings.HasPrefix(t, "![") && strings.Contains(t, "](") && strings.HasSuffix(t, ")")) ||
-		(strings.HasPrefix(strings.ToLower(t), "<img ") && strings.HasSuffix(t, ">")) {
+		(strings.HasPrefix(lowerT, "<img ") && strings.HasSuffix(t, ">")) ||
+		((strings.HasPrefix(lowerT, "<p ") && strings.HasSuffix(lowerT, "</p>")) && strings.Contains(lowerT, "<img ")) ||
+		((strings.HasPrefix(lowerT, "<div ") && strings.HasSuffix(lowerT, "</div>")) && strings.Contains(lowerT, "<img ")) {
 		return true
 	}
 	// Ordered list marker `1. ` or `1) `.
@@ -1962,26 +1990,6 @@ func (s *Session) replaceCurrentSelectionInBlock(idx int, insert string) {
 		b.SetText(string(next))
 		caret := startOff + len(insRunes)
 		s.selAnchor = Position{Block: idx, Offset: caret}
-	// Never split a single inline-image span across prefix and suffix blocks.
-	{
-		pos := 0
-		for _, sp := range b.Spans {
-			n := utf8.RuneCountInString(sp.Text)
-			s0, s1 := pos, pos+n
-			pos = s1
-			if sp.ImageSrc != "" && lo > s0 && hi < s1 {
-				if lo == hi {
-					lo, hi = s1, s1
-				} else {
-					b.Spans, _ = replaceSpanRange(b.Spans, lo, hi, nil)
-					curText = []rune(b.PlainText())
-					lo = s1 - (hi - lo)
-					hi = lo
-				}
-				break
-			}
-		}
-	}
 		s.selHead = s.selAnchor
 	} else {
 		var ins []model.Span
@@ -2105,7 +2113,7 @@ func normalizeSpans(spans []model.Span) []model.Span {
 				j++
 				continue
 			}
-			if base.ImageSrc != "" || spans[j].ImageSrc != "" || spans[j].Marks != base.Marks || spans[j].Link != base.Link || spans[j].FGColor != base.FGColor || spans[j].BGColor != base.BGColor {
+			if base.ImageSrc != "" || spans[j].ImageSrc != "" || spans[j].Marks != base.Marks || spans[j].Link != base.Link || spans[j].LinkTitle != base.LinkTitle || spans[j].FGColor != base.FGColor || spans[j].BGColor != base.BGColor {
 				break
 			}
 			totalBytes += len(spans[j].Text)
@@ -2362,83 +2370,6 @@ func (s *Session) ApplyLinkOnSelection(url string) {
 			return
 		}
 	}
-// replaceSpanRange replaces rune range [lo, hi) in spans with insertSpans while
-// keeping any single inline-image span indivisible (editing its alt in place
-// instead of duplicating the image across both halves).
-func replaceSpanRange(spans []model.Span, lo, hi int, insertSpans []model.Span) ([]model.Span, int) {
-	total := len([]rune(model.PlainTextOfSpans(spans)))
-	lo = clampInt(lo, 0, total)
-	hi = clampInt(hi, lo, total)
-	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
-
-	pos := 0
-	for si, sp := range spans {
-		n := utf8.RuneCountInString(sp.Text)
-		s0, s1 := pos, pos+n
-		pos = s1
-		if sp.ImageSrc != "" && lo >= s0 && hi <= s1 {
-			isBoundaryInsert := len(insertSpans) > 0 && lo == hi && (lo == s0 || lo == s1)
-			isFullReplace := lo == s0 && hi == s1
-			if !isBoundaryInsert && !isFullReplace {
-				hasInsertedImage := false
-				for _, isp := range insertSpans {
-					if isp.ImageSrc != "" {
-						hasInsertedImage = true
-						break
-					}
-				}
-				spR := []rune(sp.Text)
-				out := make([]model.Span, 0, len(spans)+len(insertSpans))
-				out = append(out, spans[:si]...)
-				if !hasInsertedImage {
-					plainIns := model.PlainTextOfSpans(insertSpans)
-					nextText := string(spR[:lo-s0]) + plainIns + string(spR[hi-s0:])
-					if nextText != "" {
-						cp := sp
-						cp.Text = nextText
-						cp.ImageAltEmpty = false
-						out = append(out, cp)
-					}
-					out = append(out, spans[si+1:]...)
-					return normalizeSpans(out), lo + insLen
-				}
-				nextText := string(spR[:lo-s0]) + string(spR[hi-s0:])
-				afterImg := s0
-				if nextText != "" {
-					cp := sp
-					cp.Text = nextText
-					cp.ImageAltEmpty = false
-					out = append(out, cp)
-					afterImg = s0 + utf8.RuneCountInString(nextText)
-				}
-				out = append(out, insertSpans...)
-				out = append(out, spans[si+1:]...)
-				return normalizeSpans(out), afterImg + insLen
-			}
-			break
-		}
-	}
-
-	var merged []model.Span
-	merged = append(merged, sliceSpans(spans, 0, lo)...)
-	merged = append(merged, insertSpans...)
-	merged = append(merged, sliceSpans(spans, hi, total)...)
-	return normalizeSpans(merged), lo + insLen
-}
-
-func snapSplitOutsideInlineImage(spans []model.Span, off int) int {
-	pos := 0
-	for _, sp := range spans {
-		n := utf8.RuneCountInString(sp.Text)
-		s0, s1 := pos, pos+n
-		pos = s1
-		if sp.ImageSrc != "" && off > s0 && off < s1 {
-			return s1
-		}
-	}
-	return off
-}
-
 	if !s.hasNonEmptySelection() || s.doc == nil {
 		return
 	}
@@ -3143,6 +3074,9 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune, insLen int)
 		}
 		ruleEnd = firstSpace + 1
 	}
+	if spanHasInlineImageAt(b.Spans, 0, ruleEnd) {
+		return 0, 0, false
+	}
 	rawPrefix := string(r[:ruleEnd-1])
 	rest := string(r[ruleEnd:])
 	newCaret := max(caretRune-ruleEnd, 0)
@@ -3373,6 +3307,31 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	caretRune = clampInt(caretRune, 0, len(r))
 	s.clearAutoConvertState()
 
+	// If Enter is pressed with an active intra-block selection, delete the selected range
+	// first (keeping inline image spans indivisible) before splitting the block.
+	pushedUndo := false
+	if s.hasNonEmptySelection() {
+		a, endPos := s.orderedSelection()
+		if a.Block == idx && endPos.Block == idx && a.Offset < endPos.Offset {
+			s.pushUndo()
+			pushedUndo = true
+			nextSpans, nextCaret := replaceSpanRange(b.Spans, a.Offset, endPos.Offset, nil)
+			b.Spans = nextSpans
+			b.Dirty = true
+			b.CleanSource = ""
+			r = []rune(b.PlainText())
+			caretRune = clampInt(nextCaret, 0, len(r))
+			s.selAnchor = Position{Block: idx, Offset: caretRune}
+			s.selHead = s.selAnchor
+		}
+	}
+	pushUndoOnce := func() {
+		if !pushedUndo {
+			s.pushUndo()
+			pushedUndo = true
+		}
+	}
+
 	// Auto-link bare URL right before caret when pressing Enter.
 	if caretRune > 0 {
 		if res := tryBareURLAutolinkBefore(b.Spans, r, caretRune); res.changed {
@@ -3383,11 +3342,11 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	}
 
 	// Enter on fence / divider / callout / table / standalone image at end of paragraph.
-	if caretRune == len(r) {
+	if caretRune == len(r) && !hasInlineImageSpan(b.Spans) {
 		rawBeforeEnter := b.Clone()
 		if (b.Kind == model.BlockParagraph || b.Kind == model.BlockQuote) && b.Callout == "" {
 			if kind, ok := matchCalloutPrefix(b.PlainText()); ok {
-				s.pushUndo()
+				pushUndoOnce()
 				b.Kind = model.BlockCallout
 				b.Callout = kind
 				b.QuoteDepth = 0
@@ -3405,19 +3364,19 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 		}
 		if b.Kind == model.BlockParagraph {
 			if alt, src, title, ok := matchStandaloneImageLine(b.PlainText()); ok {
-				s.pushUndo()
+				pushUndoOnce()
 				s.convertParagraphToImageBlock(idx, alt, src, title)
 				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, &s.doc.Blocks[idx], 0, false)
 				return true
 			}
 			if headerCells, ok := s.matchTableHeaderCells(b.Spans); ok {
-				s.pushUndo()
+				pushUndoOnce()
 				s.convertParagraphToTableBlock(idx, headerCells)
 				s.recordBlockAutoConvert(idx, rawBeforeEnter, caretRune, &s.doc.Blocks[idx], 0, false)
 				return true
 			}
 			if lang, ok := matchCodeFencePrefix(b.PlainText()); ok {
-				s.pushUndo()
+				pushUndoOnce()
 				b.Kind = model.BlockCode
 				b.Language = codepreview.CanonicalLanguage(lang)
 				b.ShowSource = codepreview.IsPreviewLanguage(b.Language)
@@ -3436,7 +3395,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				return true
 			}
 			if isDividerLine(b.PlainText()) {
-				s.pushUndo()
+				pushUndoOnce()
 				s.insertDividerWithParagraph(idx, true)
 				if idx+1 < len(s.doc.Blocks) {
 					s.recordMultiBlockAutoConvert(idx, 2, rawBeforeEnter, caretRune, &s.doc.Blocks[idx+1], 0)
@@ -3448,7 +3407,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 
 	// Empty list or quote item: outdent or demote to paragraph instead of splitting.
 	if len(r) == 0 && (b.Kind.IsList() || b.Kind == model.BlockQuote || b.Kind == model.BlockCallout) {
-		s.pushUndo()
+		pushUndoOnce()
 		if b.Kind.IsList() && b.Indent > 0 {
 			b.Indent--
 		} else {
@@ -3468,7 +3427,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 
 	// Keep the existing block's ID, annotations and metadata with its content.
 	if !s.hasNonEmptySelection() && caretRune == 0 && len(r) > 0 && b.Kind != model.BlockQuote {
-		s.pushUndo()
+		pushUndoOnce()
 		blank := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}
 		if b.Kind.IsList() {
 			blank.Kind = b.Kind
@@ -3485,14 +3444,15 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 		return true
 	}
 	if b.Kind == model.BlockQuote && len(r) > 0 && !s.hasNonEmptySelection() {
-		s.pushUndo()
-		if caretRune == len(r) && r[caretRune-1] == '\n' {
+		pushUndoOnce()
+		if caretRune == len(r) && r[caretRune-1] == '\n' && !spanHasInlineImageAt(b.Spans, caretRune-1, caretRune) {
 			b.Spans = sliceSpans(b.Spans, 0, caretRune-1)
 			b.CleanSource = ""
 			b.Dirty = true
 			s.spliceBlocks(idx+1, idx+1, []model.Block{{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}})
 			s.FocusBlock(idx + 1)
 		} else {
+			caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 			b.Spans = spliceSpansByTextEdit(b.Spans, string(r), string(r[:caretRune])+"\n"+string(r[caretRune:]))
 			b.Dirty = true
 			b.CleanSource = ""
@@ -3505,7 +3465,8 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	}
 
 	// Split block into [idx] and [idx+1].
-	s.pushUndo()
+	pushUndoOnce()
+	caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 	leftSpans := sliceSpans(b.Spans, 0, caretRune)
 	rightSpans := sliceSpans(b.Spans, caretRune, len(r))
 
@@ -4207,7 +4168,6 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 func (s *Session) OpenFind() {
 	wasOpen := s.findOpen
 	oldPad := s.canvasTopPad()
-			caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 	s.findOpen = true
 	if !wasOpen {
 		if delta := s.canvasTopPad() - oldPad; delta > 0 {
@@ -4221,7 +4181,6 @@ func (s *Session) OpenFind() {
 		a, b := s.orderedSelection()
 		if a.Block == b.Block && a.Block >= 0 && a.Block < len(s.doc.Blocks) {
 			r := []rune(s.doc.Blocks[a.Block].PlainText())
-	caretRune = snapSplitOutsideInlineImage(b.Spans, caretRune)
 			lo, hi := clampInt(a.Offset, 0, len(r)), clampInt(b.Offset, 0, len(r))
 			if hi > lo && hi-lo <= 80 {
 				part := string(r[lo:hi])

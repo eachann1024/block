@@ -433,22 +433,31 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		}
 	}
 
-	// 3. Smart URL paste over selected text (Notion / Feishu behavior).
-	if s.tryPasteURLOverSelection(fallbackText) {
-		return true
-	}
-
-	// 4. Smart dual-channel clipboard: explicit Markdown format or semantic HTML from web / Feishu / Notion / Word.
+	// 3. Read rich clipboard (Markdown/HTML) before URL-over-selection shortcut so an HTML
+	//    image copied alongside its URL in text/plain still pastes as an image rather than a link.
 	richData := svc.ReadClipboardData(transfer.Markdown, transfer.HTML)
+	var mdRaw, htmlRaw []byte
+	var mdErr, htmlErr error
 	if len(richData.Items()) > 0 {
-		mdRaw, mdErr := richData.Read(transfer.Markdown)
-		htmlRaw, htmlErr := richData.Read(transfer.HTML)
+		mdRaw, mdErr = richData.Read(transfer.Markdown)
+		htmlRaw, htmlErr = richData.Read(transfer.HTML)
 		if len(mdRaw) > media.MaxPasteBytes {
 			mdRaw = nil
 		}
 		if len(htmlRaw) > media.MaxPasteBytes {
 			htmlRaw = nil
 		}
+	}
+	hasRichImageOrMD := (mdErr == nil && strings.TrimSpace(string(mdRaw)) != "") ||
+		(htmlErr == nil && len(htmlRaw) > 0 && strings.Contains(strings.ToLower(string(htmlRaw)), "<img"))
+
+	// Smart URL paste over selected text (Notion / Feishu behavior) when clipboard doesn't carry rich Markdown or HTML image.
+	if !hasRichImageOrMD && s.tryPasteURLOverSelection(fallbackText) {
+		return true
+	}
+
+	// 4. Smart dual-channel clipboard: explicit Markdown format or semantic HTML from web / Feishu / Notion / Word.
+	if len(richData.Items()) > 0 {
 		mdStr := string(mdRaw)
 		inTable := s.isTablePasteTarget()
 		if inTable && htmlErr == nil && len(htmlRaw) > 0 {
