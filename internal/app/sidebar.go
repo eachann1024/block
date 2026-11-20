@@ -8,6 +8,8 @@ import (
 	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/model"
+	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -207,11 +209,15 @@ type SidebarProps struct {
 	OnTrashItem        func(path string)
 	OnCopyPath         func(path string)
 	OnRevealItem       func(path string)
-	OnSwitchNotebook   func(root string)
-	OnForgetNotebook   func(root string)
-	OnChooseNotebook   func()
-	RequestRedraw      func()
-	OnOpenSettings     func()
+	OnSwitchNotebook     func(root string)
+	OnForgetNotebook     func(root string)
+	OnChooseNotebook     func()
+	RequestRedraw        func()
+	OnOpenSettings       func()
+	FileBadges           map[string][]plugins.ResolvedFileBadge
+	PluginContextMenu    []plugins.ResolvedMenuItem
+	OnPluginContextMenu  func(item plugins.ResolvedMenuItem, targetPath string, isDir bool)
+	RenderPluginSections func(c *ui.Context)
 }
 
 type flatTreeRow struct {
@@ -409,7 +415,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			}
 
 			// 2. Scrollable File Tree + floating workspace notice.
-			treeContainer := ui.Box(c).Grow(1).MinHeight(0).FillWidth()
+			treeContainer := ui.Box(c).Grow(1).MinHeight(120).FillWidth()
 			treeContainer.Children(func() {
 				c.Key("file-tree-focus")
 				treeFocus := ui.Column(c).Fill().Focusable().FocusRing(false)
@@ -522,6 +528,11 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			if cap(rows)/2 <= max(len(rows), 128) {
 				clear(rows)
 				p.State.treeRows = rows[:0]
+			}
+
+			// 2.5. Plugin sidebar sections (contributes.sidebar_sections).
+			if p.RenderPluginSections != nil {
+				p.RenderPluginSections(c)
 			}
 
 			// 3. Footer: Notebook Switcher + Settings Button.
@@ -915,6 +926,13 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if extBadge != "" {
 			blockui.FileExtBadge(c, extBadge, highlighted)
+		}
+		if !entry.IsDir && len(p.FileBadges) > 0 && p.ActiveNotebook != "" {
+			if rel, err := filepath.Rel(filepath.Clean(p.ActiveNotebook), filepath.Clean(entry.Path)); err == nil {
+				if badges := p.FileBadges[filepath.ToSlash(rel)]; len(badges) > 0 {
+					renderTreeFileBadges(c, badges, pal)
+				}
+			}
 		}
 	})
 	if isDropReorder || blockui.IsProbeEnabled() {
@@ -1448,6 +1466,29 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						},
 					)
 				}
+				if !targetDir && len(p.PluginContextMenu) > 0 {
+					items = append(items, blockui.MenuItemSpec{Separator: true})
+					for _, pm := range p.PluginContextMenu {
+						pmItem := pm
+						spec := blockui.MenuItemSpec{
+							ID:    "tree-plugin:" + pmItem.PluginID + "/" + pmItem.ID,
+							Label: pmItem.Title,
+							OnClick: func() {
+								p.State.ClosePopups()
+								if p.OnPluginContextMenu != nil {
+									p.OnPluginContextMenu(pmItem, targetPath, targetDir)
+								}
+							},
+						}
+						if len(pmItem.Icon.StrokePaths) > 0 {
+							icSpec := pmItem.Icon
+							spec.CustomIcon = func(c *ui.Context, size float32, colors theme.IconColors) {
+								pluginui.DrawDuoSpec(c, icSpec, size, colors)
+							}
+						}
+						items = append(items, spec)
+					}
+				}
 				items = append(items,
 					blockui.MenuItemSpec{Separator: true},
 					blockui.MenuItemSpec{
@@ -1591,4 +1632,46 @@ func blankTreeMenuItems(p SidebarProps) []blockui.MenuItemSpec {
 			},
 		},
 	}
+}
+
+func renderTreeFileBadges(c *ui.Context, badges []plugins.ResolvedFileBadge, pal theme.Palette) {
+	ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+		for _, b := range badges {
+			badge := b
+			toneCol := pal.Accent
+			switch badge.Tone {
+			case "success":
+				toneCol = pal.Success
+			case "warning":
+				toneCol = pal.Warning
+			case "danger":
+				toneCol = pal.Danger
+			}
+			ic := theme.IconColors{
+				Line:   toneCol,
+				Fill:   toneCol.Alpha(0.22),
+				Accent: toneCol,
+			}
+			chip := ui.Row(c.Key("tree-badge-"+badge.PluginID+"-"+badge.BadgeID)).
+				Gap(theme.Space2).AlignItems(ui.Center).Shrink(0)
+			if badge.Tooltip != "" {
+				blockui.RichTooltip(c, chip, blockui.TooltipSpec{
+					Placement: blockui.TooltipAbove,
+					Rows:      []blockui.TooltipRow{{Trigger: badge.Tooltip}},
+				})
+			}
+			chip.Children(func() {
+				pluginui.DrawDuoSpec(c, badge.Icon, theme.IconInline, ic)
+				if badge.Text != "" {
+					ui.Text(c, badge.Text).
+						Font("monospace").
+						FontSize(theme.FontMicro).
+						FixedLineHeight(theme.LineMeta).
+						FontWeight(theme.WeightMono).
+						TextColor(toneCol).
+						SingleLine()
+				}
+			})
+		}
+	})
 }

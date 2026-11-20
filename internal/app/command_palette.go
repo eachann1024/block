@@ -7,6 +7,8 @@ import (
 
 	"block/internal/fuzzy"
 	"block/internal/icons"
+	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -27,6 +29,7 @@ type PaletteItem struct {
 	Title    string
 	Subtitle string
 	Shortcut string
+	Icon     *plugins.DuoIconSpec
 }
 
 // CommandPalette manages state and rendering for the centered command palette modal.
@@ -284,7 +287,14 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 						p.revealSelected = false
 					}
 					row.Children(func() {
-						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(theme.Space10).Children(func() {
+							if item.Icon != nil && len(item.Icon.StrokePaths) > 0 {
+								ic := pal.MonoIconColors(pal.TextSecondary)
+								if selected || hovered || pressed {
+									ic = pal.DuoIconColors(pal.Text)
+								}
+								pluginui.DrawDuoSpec(c, *item.Icon, theme.IconRow, ic)
+							}
 							ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 								var titleMarks, subMarks [][2]int
 								if strings.TrimSpace(p.query) != "" {

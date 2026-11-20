@@ -70,10 +70,12 @@ type PluginViewState struct {
 	lastActiveNote     string
 	lastNotebooksKey   string
 	lastLocale         string
+	dialogToken        string
 	editSeq            uint64
 	formVersion        uint64
 	errorFromBg        bool
 	initialLoadStarted bool
+	pendingReload      bool
 	actionCancel       context.CancelFunc
 	editedControls     map[string]bool
 	editedSeq          map[string]uint64
@@ -94,6 +96,7 @@ type SupervisorConfig struct {
 	GetNotebooks    func() []string
 	GetActiveNote   func() string
 	GetLocale       func() string
+	GetTheme        func() (string, bool)
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory   func(title, defaultPath string, onPicked func(path string))
 	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
@@ -114,6 +117,7 @@ type Supervisor struct {
 
 	mu              sync.RWMutex
 	viewEpoch       atomic.Uint64
+	notebookEpoch   atomic.Uint64
 	catalog         *StoreIndex
 	installed       []InstalledApp
 	runtimes        map[string]*Runtime
@@ -592,9 +596,13 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 }
 
 // WarmupAppearancePluginsAsync initializes enabled UI plugins (appearance sections,
-// backdrops, sidebar extensions, status items, titlebar) that have not yet synced
-// for their installed version, so upgrading or opening Block applies immediately
-// without re-spawning Python processes on every subsequent launch.
+// backdrops, sidebar extensions, status items, titlebar buttons) so host UI
+// surfaces stay in sync on startup and notebook switches without waiting for
+// the user to open settings. Plugins that only push persisted preferences
+// (like editor background or hidden titlebar slots) skip re-spawning once
+// warmed up for their installed version; plugins with in-memory dynamic
+// surfaces (status items, titlebar buttons, sidebar sections/badges) warm up
+// for the active notebook scope.
 func (s *Supervisor) WarmupAppearancePluginsAsync() {
 	if s == nil {
 		return
@@ -603,30 +611,63 @@ func (s *Supervisor) WarmupAppearancePluginsAsync() {
 	installed := append([]InstalledApp(nil), s.installed...)
 	s.mu.RUnlock()
 	for _, inst := range installed {
-		if !inst.Enabled || !inst.Manifest.HasPermission(PermUISettings) || inst.Manifest.Contributes == nil {
+		if !inst.Enabled || !shouldAutoWarmupPlugin(inst.Manifest) {
 			continue
 		}
-		hasAppearance := false
-		for _, sec := range inst.Manifest.Contributes.SettingsSections {
-			if sec.Tab == "appearance" {
-				hasAppearance = true
-				break
-			}
-		}
-		if !hasAppearance {
-			continue
-		}
-		if s.contrib != nil && s.contrib.isWarmedUp(inst.Manifest.ID, inst.Manifest.Version) {
+		if !needsTransientUISync(inst.Manifest) && s.contrib != nil && s.contrib.isWarmedUp(inst.Manifest.ID, inst.Manifest.Version) {
 			continue
 		}
 		s.warmupPluginAsync(inst.Manifest.ID)
 	}
 }
 
+// OnNotebookSwitched clears in-memory per-notebook transient UI overrides
+// (titlebar badges/active highlights and status bar overrides), closes active
+// plugin dialogs tied to the previous notebook, advances the notebook epoch,
+// and re-warms enabled UI plugins for the newly active notebook scope.
+func (s *Supervisor) OnNotebookSwitched() {
+	if s == nil {
+		return
+	}
+	s.notebookEpoch.Add(1)
+	if s.cfg.UI != nil {
+		s.cfg.UI.CloseDialog("", "")
+	}
+	if s.contrib != nil {
+		s.contrib.clearTransientOverrides()
+	}
+	s.notifyChanged()
+	s.WarmupAppearancePluginsAsync()
+}
+
+func shouldAutoWarmupPlugin(m Manifest) bool {
+	if m.HasPermission(PermUIAppearance) || m.HasPermission(PermUISidebar) || m.HasPermission(PermUIStatus) || m.HasPermission(PermUITitlebar) {
+		return true
+	}
+	if m.HasPermission(PermUISettings) && m.Contributes != nil {
+		for _, sec := range m.Contributes.SettingsSections {
+			if sec.Tab == "appearance" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func needsTransientUISync(m Manifest) bool {
+	if m.HasPermission(PermUIStatus) || m.HasPermission(PermUISidebar) {
+		return true
+	}
+	if m.HasPermission(PermUITitlebar) && m.Contributes != nil && len(m.Contributes.TitlebarButtons) > 0 {
+		return true
+	}
+	return false
+}
+
 // warmupPluginAsync initializes a newly installed or enabled UI plugin in the
 // background so its plugin.initialize hook can sync host UI state (such as
-// editor background or titlebar visibility) without waiting for the user to
-// open the plugin's settings page.
+// editor backdrops, sidebar badges, status text, or titlebar badges) without
+// waiting for the user to open the plugin's settings page.
 func (s *Supervisor) warmupPluginAsync(pluginID string) {
 	if s == nil || strings.TrimSpace(pluginID) == "" {
 		return
@@ -635,12 +676,16 @@ func (s *Supervisor) warmupPluginAsync(pluginID string) {
 	if !ok || !inst.Enabled {
 		return
 	}
-	if !inst.Manifest.HasPermission(PermUISettings) && !inst.Manifest.HasPermission(PermUITitlebar) {
+	if !inst.Manifest.HasPermission(PermUISettings) &&
+		!inst.Manifest.HasPermission(PermUITitlebar) &&
+		!inst.Manifest.HasPermission(PermUISidebar) &&
+		!inst.Manifest.HasPermission(PermUIAppearance) &&
+		!inst.Manifest.HasPermission(PermUIStatus) {
 		return
 	}
 	version := inst.Manifest.Version
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
 		if err != nil {
@@ -650,7 +695,8 @@ func (s *Supervisor) warmupPluginAsync(pluginID string) {
 		if !s.IsPluginEnabled(pluginID) {
 			return
 		}
-		if _, err := s.ensureRuntime(ctx, pluginID, s.NotebookRoot()); err == nil && s.contrib != nil {
+		nbRoot := s.NotebookRoot()
+		if _, err := s.ensureRuntime(ctx, pluginID, nbRoot); err == nil && s.contrib != nil {
 			s.contrib.markWarmedUp(pluginID, version)
 		}
 	}()
@@ -984,9 +1030,46 @@ func (s *Supervisor) EnsurePluginView(pluginID string) PluginViewState {
 	return s.EnsureSurfaceView(pluginID, SurfaceSettingsPage)
 }
 
+// ResetDialogView clears cached view state for a dialog surface whenever a
+// dialog opens (new token) or closes so stale pages/actions from a previous
+// dialog instance can never be displayed or executed against the new instance.
+func (s *Supervisor) ResetDialogView(pluginID, dialogID, dialogToken string) {
+	if pluginID == "" || dialogID == "" {
+		return
+	}
+	surface := DialogSurface(dialogID)
+	s.mu.Lock()
+	changed := false
+	for k, vs := range s.views {
+		if k.pluginID == pluginID && k.surface == surface {
+			if vs != nil && vs.actionCancel != nil {
+				vs.actionCancel()
+				vs.actionCancel = nil
+			}
+			delete(s.views, k)
+			changed = true
+		}
+	}
+	if changed || dialogToken != "" {
+		s.viewEpoch.Add(1)
+	}
+	s.mu.Unlock()
+	if changed {
+		s.notifyChanged()
+	}
+}
+
 func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginViewState {
 	if inst, ok := s.GetInstalled(pluginID); !ok || !inst.Enabled {
 		return PluginViewState{Values: map[string]any{}}
+	}
+	isDialog := strings.HasPrefix(string(surface), SurfacePrefixDialog)
+	curDialogToken := ""
+	if isDialog && s.cfg.UI != nil {
+		curDialogToken = s.cfg.UI.ActiveDialogToken(pluginID, strings.TrimPrefix(string(surface), SurfacePrefixDialog))
+		if curDialogToken == "" {
+			return PluginViewState{Values: map[string]any{}}
+		}
 	}
 	nbRoot := s.NotebookRoot()
 	curLocale := normalizeLocale(s.Locale())
@@ -1003,6 +1086,7 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 	s.lastViewRoot[sKey] = nbRoot
 	if vs, ok := s.views[key]; ok &&
 		!rootChanged &&
+		(!isDialog || vs.dialogToken == curDialogToken) &&
 		vs.lastLocale == curLocale &&
 		vs.formVersion == s.formVersions[sKey] &&
 		epoch == vs.cachedEpoch &&
@@ -1021,6 +1105,15 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 
 	s.mu.Lock()
 	vs, ok := s.views[key]
+	if ok && isDialog && vs.dialogToken != curDialogToken {
+		if vs.actionCancel != nil {
+			vs.actionCancel()
+			vs.actionCancel = nil
+		}
+		delete(s.views, key)
+		s.viewEpoch.Add(1)
+		ok = false
+	}
 	if ok {
 		if vs.Page == nil && !vs.Loading && !vs.initialLoadStarted {
 			vs.Loading = true
@@ -1029,6 +1122,7 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 			vs.lastActiveNote = activeNote
 			vs.lastNotebooksKey = nbKey
 			vs.lastLocale = curLocale
+			vs.dialogToken = curDialogToken
 			snap := s.snapshotViewLocked(key, vs)
 			s.recordCachedViewLocked(vs, snap, epoch, rawActive, rawNBs)
 			s.mu.Unlock()
@@ -1066,6 +1160,7 @@ func (s *Supervisor) ensureSurfaceView(pluginID string, surface Surface) PluginV
 		lastActiveNote:     activeNote,
 		lastNotebooksKey:   nbKey,
 		lastLocale:         curLocale,
+		dialogToken:        curDialogToken,
 		initialLoadStarted: true,
 	}
 	s.views[key] = vs
@@ -1093,20 +1188,34 @@ func (s *Supervisor) ReloadPluginViewAsync(pluginID string) {
 }
 
 func (s *Supervisor) reloadSurfaceViewAsync(pluginID string, surface Surface) {
-	nbRoot := s.NotebookRoot()
+	s.reloadSurfaceViewForNotebookAsync(pluginID, s.NotebookRoot(), surface)
+}
+
+func (s *Supervisor) reloadSurfaceViewForNotebookAsync(pluginID, nbRoot string, surface Surface) {
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
+	curDialogToken := ""
+	if strings.HasPrefix(string(surface), SurfacePrefixDialog) && s.cfg.UI != nil {
+		curDialogToken = s.cfg.UI.ActiveDialogToken(pluginID, strings.TrimPrefix(string(surface), SurfacePrefixDialog))
+		if curDialogToken == "" {
+			return
+		}
+	}
 
 	s.mu.Lock()
 	vs, ok := s.views[key]
 	if !ok {
-		vs = &PluginViewState{Values: map[string]any{}, lastNotebookRoot: nbRoot}
+		vs = &PluginViewState{Values: map[string]any{}, lastNotebookRoot: nbRoot, dialogToken: curDialogToken}
 		s.views[key] = vs
+	} else if curDialogToken != "" && vs.dialogToken != curDialogToken {
+		vs.dialogToken = curDialogToken
 	}
 	if vs.Loading {
+		vs.pendingReload = true
 		s.mu.Unlock()
 		return
 	}
 	vs.Loading = true
+	vs.pendingReload = false
 	vs.initialLoadStarted = true
 	vs.Error = ""
 	vs.Notice = ""
@@ -1123,6 +1232,10 @@ func (s *Supervisor) reloadSurfaceViewAsync(pluginID string, surface Surface) {
 }
 
 func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surface) {
+	s.loadAndRenderSurfaceOnce(pluginID, nbRoot, surface, false)
+}
+
+func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface Surface, retriedOnErr bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -1132,10 +1245,39 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	// uninstall in the meantime replaces the view, and its own load runs next.
 	s.mu.RLock()
 	origin := s.views[key]
+	originDialogToken := ""
+	if origin != nil {
+		originDialogToken = origin.dialogToken
+	}
 	s.mu.RUnlock()
 	defer s.lockPluginRPC(pluginID)()
+	isDialog := strings.HasPrefix(string(surface), SurfacePrefixDialog)
+	dialogID := strings.TrimPrefix(string(surface), SurfacePrefixDialog)
+	if isDialog && s.cfg.UI != nil && originDialogToken != "" && s.cfg.UI.ActiveDialogToken(pluginID, dialogID) != originDialogToken {
+		return
+	}
+	if cleanNotebookKey(s.NotebookRoot()) != cleanNotebookKey(nbRoot) {
+		// Notebook switched while this reload was queued; reset initial-load flag
+		// when no page ever rendered and invalidate cached snapshots so returning
+		// to this notebook triggers a fresh load instead of rendering blank.
+		s.mu.Lock()
+		if vs := s.views[key]; vs != nil && vs == origin {
+			vs.Loading = false
+			vs.pendingReload = false
+			vs.lastNotebookRoot = ""
+			if vs.Page == nil {
+				vs.initialLoadStarted = false
+			}
+			vs.cachedSnap = nil
+			s.viewEpoch.Add(1)
+		}
+		s.mu.Unlock()
+		return
+	}
 	rt, attemptedLocale, err := s.ensureRuntimeWithLocale(ctx, pluginID, nbRoot)
 	if err != nil {
+		sameNB := cleanNotebookKey(s.NotebookRoot()) == cleanNotebookKey(nbRoot)
+		rerun := false
 		s.mu.Lock()
 		if vs := s.views[key]; vs != nil && vs == origin {
 			vs.Loading = false
@@ -1147,9 +1289,27 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 				vs.Error = err.Error()
 				vs.RetryKind = RetryKindReload
 			}
+			if vs.pendingReload && !retriedOnErr && sameNB {
+				vs.pendingReload = false
+				vs.Loading = true
+				rerun = true
+			} else {
+				vs.pendingReload = false
+			}
 		}
 		s.mu.Unlock()
+		if rerun && cleanNotebookKey(s.NotebookRoot()) != cleanNotebookKey(nbRoot) {
+			rerun = false
+			s.mu.Lock()
+			if vs := s.views[key]; vs != nil && vs == origin {
+				vs.Loading = false
+			}
+			s.mu.Unlock()
+		}
 		s.notifyChanged()
+		if rerun {
+			go s.loadAndRenderSurfaceOnce(pluginID, nbRoot, surface, true)
+		}
 		return
 	}
 
@@ -1167,6 +1327,12 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 	s.mu.RUnlock()
 
 	page, returnedVals, err := rt.RenderWithValuesResult(ctx, surface, draftVals)
+	if isDialog && s.cfg.UI != nil && originDialogToken != "" && s.cfg.UI.ActiveDialogToken(pluginID, dialogID) != originDialogToken {
+		return
+	}
+	sameNB := cleanNotebookKey(s.NotebookRoot()) == cleanNotebookKey(nbRoot)
+	rerun := false
+	nextRetried := retriedOnErr
 	s.mu.Lock()
 	if vs := s.views[key]; vs != nil && vs == origin {
 		vs.Loading = false
@@ -1178,6 +1344,14 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 			if !vs.errorFromBg {
 				vs.Error = err.Error()
 				vs.RetryKind = RetryKindReload
+			}
+			if vs.pendingReload && !retriedOnErr && sameNB {
+				vs.pendingReload = false
+				vs.Loading = true
+				rerun = true
+				nextRetried = true
+			} else {
+				vs.pendingReload = false
 			}
 		} else {
 			preserveActionErr := vs.errorFromBg || vs.RetryKind == RetryKindAction
@@ -1195,10 +1369,29 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 			}
 			vs.Page = page
 			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq, true)
+			if vs.pendingReload && sameNB {
+				vs.pendingReload = false
+				vs.Loading = true
+				rerun = true
+				nextRetried = false
+			} else {
+				vs.pendingReload = false
+			}
 		}
 	}
 	s.mu.Unlock()
+	if rerun && cleanNotebookKey(s.NotebookRoot()) != cleanNotebookKey(nbRoot) {
+		rerun = false
+		s.mu.Lock()
+		if vs := s.views[key]; vs != nil && vs == origin {
+			vs.Loading = false
+		}
+		s.mu.Unlock()
+	}
 	s.notifyChanged()
+	if rerun {
+		go s.loadAndRenderSurfaceOnce(pluginID, nbRoot, surface, nextRetried)
+	}
 }
 
 func mergePageValues(view *PluginViewState, page *UIPage, returned map[string]any) {
@@ -1294,18 +1487,20 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		return nil, "", errPluginDisabled(pluginID)
 	}
 	wantLocale := normalizeLocale(s.Locale())
+	curEpoch := s.notebookEpoch.Load()
 	s.mu.RLock()
 	existing := s.runtimes[pluginID]
 	s.mu.RUnlock()
 	if existing != nil && !existing.closed.Load() {
-		if existing.notebookRoot() == nbRoot && existing.locale() == wantLocale {
+		epochFresh := !needsTransientUISync(inst.Manifest) || existing.syncedEpoch.Load() == curEpoch
+		if existing.notebookRoot() == nbRoot && existing.locale() == wantLocale && epochFresh {
 			select {
 			case <-existing.exited:
 			default:
 				return existing, existing.locale(), nil
 			}
 		}
-		// Plugins receive the notebook root and locale at initialization.
+		// Plugins receive the notebook root, locale, and transient UI sync at initialization.
 		_ = existing.Shutdown(ctx)
 	}
 	hostVer := s.cfg.HostVersion
@@ -1314,7 +1509,33 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	}
 	rawLocale := s.Locale()
 	attemptedLocale := normalizeLocale(rawLocale)
+	var rtPtr atomic.Pointer[Runtime]
+	var openNoteFn func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
 	if s.cfg.UI != nil {
+		uiHost := s.cfg.UI
+		openNoteFn = func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error {
+			expectedEpoch := s.notebookEpoch.Load()
+			checkValid := func() error {
+				s.mu.RLock()
+				active := rtPtr.Load() != nil && s.isRuntimeActiveLocked(pluginID, rtPtr.Load())
+				s.mu.RUnlock()
+				if !active {
+					return errors.New("plugin runtime is no longer active")
+				}
+				if s.notebookEpoch.Load() != expectedEpoch {
+					return errors.New("notebook changed during open")
+				}
+				return nil
+			}
+			if err := checkValid(); err != nil {
+				return err
+			}
+			return uiHost.OpenNote(notebookRoot, relPath, rootInfo, content, checkValid)
+		}
+	}
+	curTheme, curTarot := "system", false
+	if s.cfg.GetTheme != nil {
+		curTheme, curTarot = s.cfg.GetTheme()
 	}
 	cfg := HostConfig{
 		PluginDir:        inst.InstallDir,
@@ -1322,12 +1543,15 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		NotebookRoot:     nbRoot,
 		ActiveNote:       s.activeNoteFor(nbRoot),
 		Locale:           rawLocale,
+		Theme:            curTheme,
+		Tarot:            curTarot,
 		HostVersion:      hostVer,
 		GetNotebooks:     s.Notebooks,
 		GetPerfSnapshot:  s.cfg.GetPerfSnapshot,
 		ApplyNoteWrite:   s.cfg.ApplyNoteWrite,
 		OnNoteWritten:    s.notifyNoteWritten,
 		OnActionProgress: s.reportActionProgress,
+		OpenNote:         openNoteFn,
 		ContribHost:      s.dispatchContribHostMethod,
 	}
 	s.mu.Lock()
@@ -1347,6 +1571,8 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		s.mu.Unlock()
 		return nil, attemptedLocale, err
 	}
+	rt.syncedEpoch.Store(curEpoch)
+	rtPtr.Store(rt)
 	s.runtimes[pluginID] = rt
 	s.mu.Unlock()
 	if err := rt.Initialize(ctx); err != nil {
@@ -1592,10 +1818,22 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	nbRoot := s.NotebookRoot()
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
+	isDialog := strings.HasPrefix(string(surface), SurfacePrefixDialog)
+	var dialogToken string
+	if isDialog && s.cfg.UI != nil {
+		dialogToken = s.cfg.UI.ActiveDialogToken(pluginID, strings.TrimPrefix(string(surface), SurfacePrefixDialog))
+		if dialogToken == "" {
+			return
+		}
+	}
 
 	s.mu.Lock()
 	vs := s.views[key]
 	if vs == nil || vs.Loading || vs.BusyAction != "" {
+		s.mu.Unlock()
+		return
+	}
+	if isDialog && (vs.Page == nil || (s.cfg.UI != nil && vs.dialogToken != dialogToken)) {
 		s.mu.Unlock()
 		return
 	}
@@ -1663,7 +1901,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				s.activeActionKey[pluginID] = key
 				s.activeActionRT[pluginID] = rt
 				s.mu.Unlock()
-				res, err = rt.Action(ctx, surface, actionID, values)
+				res, err = rt.ActionWithDialogToken(ctx, surface, actionID, values, dialogToken)
 				s.mu.Lock()
 				if s.activeActionRT[pluginID] == rt && s.activeActionKey[pluginID] == key {
 					delete(s.activeActionKey, pluginID)

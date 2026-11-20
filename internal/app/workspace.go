@@ -49,7 +49,11 @@ type Workspace struct {
 	zoomPct        int
 	entries        []model.FileEntry
 	notice         string
-	virtualPreview map[string]bool // createNote preview tabs not yet written to disk
+	virtualPreview       map[string]bool // createNote preview tabs not yet written to disk
+	pluginInsertInFlight map[string]int  // tabs currently saving/rolling back a plugin EditorInsert
+	autoSaveDeferred     map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
+	diskWriteSeq         map[string]uint64 // monotonic per-path disk write sequence preventing stale save callbacks
+	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
 	ghostTitle     string          // title typed on the no-note ghost page
 
 	codec    *markdown.Codec
@@ -137,7 +141,11 @@ func NewWorkspace(dataDir string) *Workspace {
 		sidebarWidth:        SidebarDefaultW,
 		zoomPct:             zoomPctFromState(st.EditorZoom),
 		persistWindowBounds: true,
-		virtualPreview:      make(map[string]bool),
+		virtualPreview:       make(map[string]bool),
+		pluginInsertInFlight: make(map[string]int),
+		autoSaveDeferred:     make(map[string]bool),
+		diskWriteSeq:         make(map[string]uint64),
+		lastDiskMarkdown:     make(map[string]string),
 		codec:               codec,
 		sessions:            make(map[string]*editor.Session),
 		surfaces:            make(map[string]*TabSurface),
@@ -240,6 +248,13 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 		GetLocale: func() string {
 			return string(theme.Language())
+		},
+		GetTheme: func() (string, bool) {
+			mode := string(w.State().Theme)
+			if mode == "" {
+				mode = string(model.ThemeSystem)
+			}
+			return mode, theme.IsTarotMode()
 		},
 		GetPerfSnapshot: func(refreshDisk bool) (*plugins.PerfSnapshot, error) {
 			snap := w.modals.PerfSnapshot(refreshDisk)
@@ -399,10 +414,17 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 			return nil
 		}
 		out := make([]editor.ContextMenuExtra, 0, len(items))
+		pal := theme.Ocean()
+		iconCols := pal.DuoIconColors(pal.Text)
 		for _, it := range items {
 			item := it
+			var menuIcon ui.MenuIcon
+			if len(item.Icon.StrokePaths) > 0 {
+				menuIcon = pluginui.BuildMenuIcon(item.Icon, iconCols)
+			}
 			out = append(out, editor.ContextMenuExtra{
 				Label: item.Title,
+				Icon:  menuIcon,
 				OnChoose: func() {
 					sup.RunCommandAsync(item.PluginID, item.Command, plugins.CommandContext{
 						Note:      sup.ActiveNoteRel(),
@@ -866,7 +888,7 @@ func (w *Workspace) wireModalCallbacks() {
 		return files.DiffLines(oldText, newText)
 	}
 	w.modals.FeedbackNoticeFn = func(message, tone string) {
-		w.pluginUI.Toast("", message, tone)
+		w.pluginUI.Toast("", message, tone, nil)
 	}
 	w.modals.ExportFn = func(format model.ExportFormat, outPath string) error {
 		active := w.ActiveNotePath()
@@ -1255,6 +1277,7 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 	w.mu.Lock()
 	if oldSess := w.sessions[clean]; oldSess != nil {
 		delete(w.sessions, clean)
+		delete(w.lastDiskMarkdown, clean)
 		defer oldSess.Close()
 	}
 	w.surfaces[clean] = surf
@@ -1320,6 +1343,10 @@ func (w *Workspace) OpenPageHistory() bool {
 		sess.SetDiskFingerprint(fingerprint)
 		sess.SetDoc(w.codec.Parse(curText))
 		sess.MarkSaved()
+		w.mu.Lock()
+		w.bumpDiskWriteSeqLocked(active)
+		delete(w.lastDiskMarkdown, filepath.Clean(active))
+		w.mu.Unlock()
 	}
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
@@ -1531,6 +1558,8 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 		w.sessions[clean] = w.newEditorSession(clean, doc)
 	}
 	w.sessions[clean].SetDiskFingerprint(fingerprint)
+	w.bumpDiskWriteSeqLocked(clean)
+	delete(w.lastDiskMarkdown, clean)
 	w.mu.Unlock()
 
 	w.RescanNotebook()
@@ -1595,8 +1624,9 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 		absPath = w.openSessionPathLocked(absPath)
 		sess := w.sessions[absPath]
 		isVirtual := w.virtualPreview[absPath]
+		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[filepath.Clean(absPath)]
 		w.mu.RUnlock()
-		if sess != nil && (isVirtual || sess.Dirty()) {
+		if sess != nil && (isVirtual || sess.Dirty() || (hasLastDisk && sess.Markdown() != lastDiskMD)) {
 			return false, plugins.ErrNoteConflict
 		}
 		changed, err := write()
@@ -1610,6 +1640,8 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 			sess.SetDiskFingerprint(files.TextFingerprint(content, false))
 			sess.SetDoc(doc)
 			sess.MarkSaved()
+			w.bumpDiskWriteSeqLocked(absPath)
+			delete(w.lastDiskMarkdown, filepath.Clean(absPath))
 			w.mu.Unlock()
 		}
 		return true, nil
@@ -1631,6 +1663,98 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {
 	return w.openNoteInternal(absPath, true, true, lineHint)
+}
+
+// openRootValidatedNote opens a note already verified and read through an
+// os.Root handle by a plugin runtime, re-checking runtime/epoch liveness,
+// notebook registration, directory identity, and full Markdown content
+// classification on the main thread without re-opening the path through
+// symlink-following filesystem calls.
+func (w *Workspace) openRootValidatedNote(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte, checkValid func() error) error {
+	if checkValid != nil {
+		if err := checkValid(); err != nil {
+			return err
+		}
+	}
+	rootAbs, err := filepath.Abs(strings.TrimSpace(notebookRoot))
+	if err != nil {
+		return err
+	}
+	registered := false
+	for _, nb := range w.Notebooks() {
+		if nbAbs, err := filepath.Abs(nb); err == nil && nbAbs == rootAbs {
+			registered = true
+			break
+		}
+	}
+	if !registered {
+		return errors.New("notebook is no longer registered")
+	}
+	if rootInfo != nil {
+		curInfo, statErr := os.Stat(rootAbs)
+		if statErr != nil || !os.SameFile(curInfo, rootInfo) {
+			return errors.New("notebook directory changed while opening")
+		}
+	}
+	if relPath == "" || strings.HasPrefix(relPath, "/") || strings.HasSuffix(relPath, "/") ||
+		strings.ContainsAny(relPath, "\\:\x00\r\n") {
+		return errors.New("invalid relative note path")
+	}
+	for _, seg := range strings.Split(relPath, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return errors.New("invalid relative note path")
+		}
+	}
+	// Validate target file bytes BEFORE switching notebooks or reusing cached tabs
+	// so invalid UTF-8 / oversized / non-Markdown files never mutate workspace state.
+	clean := filepath.Clean(filepath.Join(rootAbs, filepath.FromSlash(relPath)))
+	cf := files.ClassifyBytes(clean, content)
+	if cf.Kind != model.OpenKindMarkdown {
+		if cf.Reason != "" {
+			return errors.New(cf.Reason)
+		}
+		return errors.New("target file cannot be opened as Markdown")
+	}
+	curRoot := strings.TrimSpace(w.State().Folder)
+	if curRoot != "" {
+		if curAbs, err := filepath.Abs(curRoot); err == nil {
+			curRoot = curAbs
+		}
+	}
+	if curRoot != rootAbs {
+		if err := w.SetNotebook(rootAbs); err != nil {
+			return err
+		}
+		if rootInfo != nil {
+			curInfo, statErr := os.Stat(rootAbs)
+			if statErr != nil || !os.SameFile(curInfo, rootInfo) {
+				return errors.New("notebook directory changed while switching")
+			}
+		}
+	}
+	w.mu.RLock()
+	_, hasSess := w.sessions[clean]
+	surf := w.surfaces[clean]
+	hasDirtySurf := surf != nil && surf.IsDirty()
+	w.mu.RUnlock()
+	if !hasSess && !hasDirtySurf {
+		doc := w.codec.Parse(cf.Text)
+		sess := w.newEditorSession(clean, doc)
+		sess.SetDiskFingerprint(files.TextFingerprint(cf.Text, false))
+		w.mu.Lock()
+		if _, exists := w.sessions[clean]; exists {
+			w.mu.Unlock()
+			sess.Close()
+		} else if existingSurf := w.surfaces[clean]; existingSurf != nil && existingSurf.IsDirty() {
+			w.mu.Unlock()
+			sess.Close()
+		} else {
+			delete(w.surfaces, clean)
+			w.sessions[clean] = sess
+			w.mu.Unlock()
+		}
+	}
+	return w.openNoteInternal(clean, false, true, 0)
 }
 
 func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav bool, lineHint int) error {
@@ -1696,11 +1820,15 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 
 	var evictedSess *editor.Session
 	if prevActive != "" && prevActive != clean && !slices.Contains(w.state.OpenTabs, prevActive) {
-		if s := w.sessions[prevActive]; s != nil && !s.Dirty() {
+		prevClean := filepath.Clean(prevActive)
+		inFlight := w.pluginInsertInFlight[prevActive] > 0 || w.pluginInsertInFlight[prevClean] > 0
+		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[prevClean]
+		if s := w.sessions[prevActive]; s != nil && !inFlight && !s.Dirty() && (!hasLastDisk || s.Markdown() == lastDiskMD) {
 			evictedSess = s
 			delete(w.sessions, prevActive)
 			delete(w.virtualPreview, prevActive)
 			delete(w.lastSnapAt, prevActive)
+			delete(w.lastDiskMarkdown, prevClean)
 		}
 		if sf := w.surfaces[prevActive]; sf != nil && !sf.IsDirty() {
 			delete(w.surfaces, prevActive)
@@ -1901,6 +2029,8 @@ func (w *Workspace) executeAIPlan(plan *model.BatchPlan, undo bool) error {
 				sess.SetDiskFingerprint(files.TextFingerprint(content, false))
 				sess.SetDoc(doc)
 				sess.MarkSaved()
+				w.bumpDiskWriteSeqLocked(target)
+				delete(w.lastDiskMarkdown, filepath.Clean(target))
 			}
 			w.mu.Unlock()
 		}
@@ -1931,6 +2061,7 @@ func (w *Workspace) RejectBatchPlan(planID string) error {
 	for _, drop := range virtualDrops {
 		delete(w.virtualPreview, drop)
 		delete(w.sessions, drop)
+		delete(w.lastDiskMarkdown, filepath.Clean(drop))
 		w.state.OpenTabs, w.state.ActiveTab, _ = w.tabOps.CloseTab(w.state.OpenTabs, w.state.ActiveTab, drop)
 	}
 	active := w.state.ActiveTab
@@ -2057,6 +2188,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 		w.surfaces = make(map[string]*TabSurface)
 		w.virtualPreview = make(map[string]bool)
 		w.lastSnapAt = make(map[string]time.Time)
+		w.lastDiskMarkdown = make(map[string]string)
 		w.closed = NewClosedTabs()
 		w.nav = NewNavHistory()
 		w.historyToast = nil
@@ -2076,6 +2208,9 @@ func (w *Workspace) SetNotebook(folder string) error {
 	if switched {
 		notes, dirs := countWorkspaceEntries(w.Entries())
 		files.LogInfof("workspace switched: folder=%s notes=%d dirs=%d", clean, notes, dirs)
+		if sup := w.Plugins(); sup != nil {
+			sup.OnNotebookSwitched()
+		}
 	}
 	if w.win != nil {
 		w.startWatching(clean)
@@ -2220,7 +2355,10 @@ func (w *Workspace) ForgetNotebook(root string) {
 	w.mu.RUnlock()
 
 	if prevFolder == clean {
-		_ = w.flushDirtySessions()
+		if err := w.flushDirtySessions(); errors.Is(err, errPluginInsertInFlight) {
+			w.setNotice(err.Error())
+			return
+		}
 	}
 
 	var switched bool
@@ -2265,6 +2403,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 			w.surfaces = make(map[string]*TabSurface)
 			w.virtualPreview = make(map[string]bool)
 			w.lastSnapAt = make(map[string]time.Time)
+			w.lastDiskMarkdown = make(map[string]string)
 			w.closed = NewClosedTabs()
 			w.nav = NewNavHistory()
 			w.historyToast = nil
@@ -2289,6 +2428,9 @@ func (w *Workspace) ForgetNotebook(root string) {
 		w.RescanNotebook()
 		if w.win != nil {
 			w.startWatching(next.Folder)
+		}
+		if sup := w.Plugins(); sup != nil {
+			sup.OnNotebookSwitched()
 		}
 	}
 	if w.searchWin != nil {
@@ -2404,7 +2546,7 @@ func (w *Workspace) beginCreatedItemRename(root, path string, isDir bool) {
 	w.RequestRedraw()
 }
 
-// CreateNewNote creates an Untitled.md / 未命名.md note and starts inline rename.
+// CreateNewNote creates an Untitled.md / 未命名.md note, switches to it immediately, and starts inline rename.
 func (w *Workspace) CreateNewNote() (string, error) {
 	folder := w.ActiveNotebook()
 	if folder == "" {
@@ -2690,6 +2832,16 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	}
 	w.lastSnapAt = nextSnap
 
+	nextDiskMD := make(map[string]string, len(w.lastDiskMarkdown))
+	for k, v := range w.lastDiskMarkdown {
+		if next, ok := rebase(k); ok {
+			nextDiskMD[filepath.Clean(next)] = v
+		} else {
+			nextDiskMD[k] = v
+		}
+	}
+	w.lastDiskMarkdown = nextDiskMD
+
 	nextSessions := make(map[string]*editor.Session, len(w.sessions))
 	for k, sess := range w.sessions {
 		if next, ok := rebase(k); ok {
@@ -2737,6 +2889,7 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 			delete(w.sessions, k)
 			delete(w.virtualPreview, k)
 			delete(w.lastSnapAt, k)
+			delete(w.lastDiskMarkdown, filepath.Clean(k))
 		}
 	}
 	for k := range w.surfaces {
@@ -2832,15 +2985,13 @@ func (w *Workspace) CloseTab(path string) {
 	w.tabMenu.Close()
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
-	w.mu.Lock()
-	delete(w.lastSnapAt, clean)
-	w.mu.Unlock()
 	if err := w.flushSingleSession(clean); err != nil {
 		w.setNotice(err.Error())
 		return
 	}
 
 	w.mu.Lock()
+	delete(w.lastSnapAt, clean)
 	closedIdx := -1
 	for i, t := range w.state.OpenTabs {
 		if t == clean {
@@ -2861,6 +3012,7 @@ func (w *Workspace) CloseTab(path string) {
 	closedSess := w.sessions[clean]
 	delete(w.sessions, clean)
 	delete(w.surfaces, clean)
+	delete(w.lastDiskMarkdown, clean)
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) == clean {
 		w.historyToast = nil
 	}
@@ -2969,6 +3121,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
+		w.setNotice(err.Error())
 		return
 	}
 	clean := filepath.Clean(keepPath)
@@ -2990,6 +3143,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
 		delete(w.lastSnapAt, p)
+		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) != clean {
 		w.historyToast = nil
@@ -3027,6 +3181,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
+		w.setNotice(err.Error())
 		return
 	}
 	clean := filepath.Clean(pivotPath)
@@ -3058,6 +3213,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
 		delete(w.lastSnapAt, p)
+		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
 	if w.historyToast != nil && closedSet[filepath.Clean(w.historyToast.NotePath)] {
 		w.historyToast = nil
@@ -3095,6 +3251,7 @@ func (w *Workspace) CloseAllTabs() {
 	w.sidebarUI.ClosePopups()
 	w.edgeFloat.DismissAll(w)
 	if err := w.flushDirtySessions(); err != nil {
+		w.setNotice(err.Error())
 		return
 	}
 	w.mu.Lock()
@@ -3109,6 +3266,7 @@ func (w *Workspace) CloseAllTabs() {
 	w.sessions = make(map[string]*editor.Session)
 	w.surfaces = make(map[string]*TabSurface)
 	w.lastSnapAt = make(map[string]time.Time)
+	w.lastDiskMarkdown = make(map[string]string)
 	w.historyToast = nil
 	if w.historyView != nil && w.historyView.Open {
 		w.historyView.Close()
@@ -3427,6 +3585,13 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 			var batch []pendingSessionSave
 			for p, sess := range w.sessions {
 				if sess != nil && sess.Dirty() && !w.virtualPreview[p] {
+					if w.pluginInsertInFlight[p] > 0 || w.pluginInsertInFlight[filepath.Clean(p)] > 0 {
+						if w.autoSaveDeferred == nil {
+							w.autoSaveDeferred = make(map[string]bool)
+						}
+						w.autoSaveDeferred[p] = true
+						continue
+					}
 					batch = append(batch, pendingSessionSave{
 						path: p,
 						sess: sess,
@@ -3446,35 +3611,87 @@ func (w *Workspace) flushOrScheduleDirtySessions() {
 	w.mu.Unlock()
 }
 
+func (w *Workspace) bumpDiskWriteSeqLocked(path string) uint64 {
+	clean := filepath.Clean(path)
+	if w.diskWriteSeq == nil {
+		w.diskWriteSeq = make(map[string]uint64)
+	}
+	w.diskWriteSeq[clean]++
+	return w.diskWriteSeq[clean]
+}
+
+func (w *Workspace) bumpDiskWriteSeq(path string) uint64 {
+	w.mu.Lock()
+	seq := w.bumpDiskWriteSeqLocked(path)
+	w.mu.Unlock()
+	return seq
+}
+
+func (w *Workspace) currentDiskWriteSeq(path string) uint64 {
+	clean := filepath.Clean(path)
+	w.mu.RLock()
+	seq := w.diskWriteSeq[clean]
+	w.mu.RUnlock()
+	return seq
+}
+
 func (w *Workspace) runAsyncSessionSaves(generation uint64, batch []pendingSessionSave) {
+	_, _ = w.runSessionSaves(generation, batch, false)
+}
+
+func (w *Workspace) runSessionSaves(generation uint64, batch []pendingSessionSave, force bool) (map[string]error, map[string]bool) {
 	w.bgSaveMu.Lock()
 	w.mu.RLock()
 	current := w.saveGeneration
 	w.mu.RUnlock()
-	if generation != current {
+	if !force && generation != current {
 		w.bgSaveMu.Unlock()
-		return
+		return nil, nil
 	}
 
 	type completedSave struct {
 		item pendingSessionSave
+		seq  uint64
 	}
 	var done []completedSave
 	var saveError error
+	perPathErr := make(map[string]error)
+	completed := make(map[string]bool)
 	for _, item := range batch {
 		w.mu.RLock()
 		live := w.sessions[item.path] == item.sess && !w.virtualPreview[item.path]
 		w.mu.RUnlock()
 		if !live {
+			if force {
+				perPathErr[item.path] = errors.New("note session closed before save completed")
+			}
 			continue
 		}
-		if err := w.saveSessionMarkdown(item.path, item.sess, item.md); err != nil {
+		if item.sess.DocRev() != item.rev {
+			if force {
+				perPathErr[item.path] = errors.New("save superseded before disk flush completed")
+			}
+			continue
+		}
+		writeRecovery := !force
+		if err := w.saveSessionMarkdownOpts(item.path, item.sess, item.md, item.rev, writeRecovery); err != nil {
+			if errors.Is(err, errSaveSuperseded) {
+				if force {
+					perPathErr[item.path] = err
+				}
+				continue
+			}
+			perPathErr[item.path] = err
 			if saveError == nil {
 				saveError = err
 			}
 			continue
 		}
-		files.ClearRecovery(item.path)
+		seq := w.currentDiskWriteSeq(item.path)
+		completed[item.path] = true
+		if writeRecovery {
+			files.ClearRecovery(item.path)
+		}
 		now := time.Now()
 		w.mu.RLock()
 		lastSnap := w.lastSnapAt[item.path]
@@ -3485,25 +3702,49 @@ func (w *Workspace) runAsyncSessionSaves(generation uint64, batch []pendingSessi
 			w.lastSnapAt[item.path] = now
 			w.mu.Unlock()
 		}
-		done = append(done, completedSave{item: item})
+		done = append(done, completedSave{item: item, seq: seq})
+	}
+	if force && len(perPathErr) > 0 {
+		// Invalidate any pending async autosave captured before the caller rolls back
+		// so a stale snapshot can never sneak in and write rolled-back text to disk.
+		w.mu.Lock()
+		if w.autoSaveTimer != nil {
+			w.autoSaveTimer.Stop()
+			w.autoSaveTimer = nil
+		}
+		w.saveGeneration++
+		w.mu.Unlock()
 	}
 	w.bgSaveMu.Unlock()
 	if len(done) == 0 && saveError == nil {
-		return
+		return perPathErr, completed
 	}
-	mygo.RunOnMain(func() {
+	applyOnMain := func() {
 		if saveError != nil {
 			w.setNotice(saveError.Error())
 		}
 		anyMarked := false
+		needReschedule := false
 		for _, d := range done {
+			cleanPath := filepath.Clean(d.item.path)
 			w.mu.RLock()
 			live := w.sessions[d.item.path] == d.item.sess
+			latestSeq := w.diskWriteSeq[cleanPath]
 			w.mu.RUnlock()
-			if !live {
+			if !live || latestSeq != d.seq {
 				continue
 			}
 			if d.item.sess.MarkSavedIfUnchanged(d.item.rev, d.item.md) {
+				anyMarked = true
+			} else {
+				// Session moved to a newer docRev while d.item.md was being written to disk
+				// (e.g. user pressed Undo back to BASE mid-write). Sync savedMarkdown with
+				// what is actually on disk so Dirty() never falsely reports clean, and
+				// trigger autosave to converge disk back to the current session text.
+				d.item.sess.SyncDiskSavedMarkdown(d.item.md)
+				if d.item.sess.Dirty() {
+					needReschedule = true
+				}
 				anyMarked = true
 			}
 			w.notifyPluginNoteSaved(d.item.path)
@@ -3511,7 +3752,16 @@ func (w *Workspace) runAsyncSessionSaves(generation uint64, batch []pendingSessi
 		if anyMarked {
 			w.RequestRedraw()
 		}
-	})
+		if needReschedule {
+			w.flushOrScheduleDirtySessions()
+		}
+	}
+	if mygo.App.IsReady() {
+		mygo.RunOnMain(applyOnMain)
+	} else {
+		applyOnMain()
+	}
+	return perPathErr, completed
 }
 
 func (w *Workspace) scheduleSaveSidebarWidth(clamped float32) {
@@ -3578,11 +3828,31 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 		w.autoSaveTimer.Stop()
 		w.autoSaveTimer = nil
 	}
+	type sessionCandidate struct {
+		path        string
+		sess        *editor.Session
+		lastDiskMD  string
+		hasLastDisk bool
+	}
+	candidates := make([]sessionCandidate, 0, len(w.sessions))
 	paths := make([]string, 0, len(w.sessions))
+	hasInFlight := false
 	for p, sess := range w.sessions {
-		if sess.Dirty() && !w.virtualPreview[p] {
-			paths = append(paths, p)
+		if sess == nil || w.virtualPreview[p] {
+			continue
 		}
+		clean := filepath.Clean(p)
+		if w.pluginInsertInFlight[p] > 0 || w.pluginInsertInFlight[clean] > 0 {
+			hasInFlight = true
+			continue
+		}
+		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[clean]
+		candidates = append(candidates, sessionCandidate{
+			path:        p,
+			sess:        sess,
+			lastDiskMD:  lastDiskMD,
+			hasLastDisk: hasLastDisk,
+		})
 	}
 	for path, surface := range w.surfaces {
 		if surface.IsDirty() {
@@ -3590,11 +3860,19 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 		}
 	}
 	w.mu.Unlock()
+	for _, c := range candidates {
+		if c.sess.Dirty() || (c.hasLastDisk && c.sess.Markdown() != c.lastDiskMD) {
+			paths = append(paths, c.path)
+		}
+	}
 	var firstErr error
 	for _, p := range paths {
 		if err := w.flushSingleSessionLocked(p); err != nil && firstErr == nil {
 			firstErr = err
 		}
+	}
+	if firstErr == nil && hasInFlight {
+		firstErr = errPluginInsertInFlight
 	}
 	return firstErr
 }
@@ -3606,19 +3884,28 @@ func (w *Workspace) flushSingleSession(path string) error {
 }
 
 func (w *Workspace) flushSingleSessionLocked(path string) error {
+	clean := filepath.Clean(path)
 	w.mu.RLock()
 	source := w.surfaces[path]
 	sess := w.sessions[path]
 	isVirtual := w.virtualPreview[path]
+	inFlight := w.pluginInsertInFlight[path] > 0 || w.pluginInsertInFlight[clean] > 0
 	lastSnap := w.lastSnapAt[path]
+	lastDiskMD, hasLastDisk := w.lastDiskMarkdown[clean]
 	w.mu.RUnlock()
 	if source != nil && source.IsDirty() {
 		return source.saveSource()
 	}
-	if sess == nil || !sess.Dirty() || isVirtual {
+	if inFlight {
+		return errPluginInsertInFlight
+	}
+	if sess == nil || isVirtual {
 		return nil
 	}
 	md := sess.Markdown()
+	if !sess.Dirty() && (!hasLastDisk || md == lastDiskMD) {
+		return nil
+	}
 	if err := w.saveSessionMarkdown(path, sess, md); err != nil {
 		return err
 	}
@@ -3635,19 +3922,65 @@ func (w *Workspace) flushSingleSessionLocked(path string) error {
 	return nil
 }
 
+var (
+	errSaveSuperseded       = errors.New("save superseded before disk flush completed")
+	errPluginInsertInFlight = errors.New("editor insert save in progress")
+)
+
+func (w *Workspace) flushSingleSessionNoRecovery(path string, expectedRev uint64) error {
+	w.bgSaveMu.Lock()
+	defer w.bgSaveMu.Unlock()
+	w.mu.RLock()
+	sess := w.sessions[path]
+	isVirtual := w.virtualPreview[path]
+	lastSnap := w.lastSnapAt[path]
+	w.mu.RUnlock()
+	if sess == nil || !sess.Dirty() || isVirtual {
+		return nil
+	}
+	md := sess.Markdown()
+	if err := w.saveSessionMarkdownOpts(path, sess, md, expectedRev, false); err != nil {
+		return err
+	}
+	sess.MarkSaved()
+	now := time.Now()
+	if now.Sub(lastSnap) >= 5*time.Second {
+		_, _ = files.RecordHistorySnapshot(path, md, theme.Tr("自动保存", "Auto-save"))
+		w.mu.Lock()
+		w.lastSnapAt[path] = now
+		w.mu.Unlock()
+	}
+	w.notifyPluginNoteSaved(path)
+	return nil
+}
+
 func (w *Workspace) saveSessionMarkdown(path string, sess *editor.Session, text string) error {
-	err := files.CheckTextVersion(path, sess.DiskFingerprint())
+	return w.saveSessionMarkdownOpts(path, sess, text, 0, true)
+}
+
+func (w *Workspace) saveSessionMarkdownOpts(path string, sess *editor.Session, text string, expectedRev uint64, writeRecovery bool) error {
+	if expectedRev != 0 && sess.DocRev() != expectedRev {
+		return errSaveSuperseded
+	}
+	w.markSelfWriteWindow(800 * time.Millisecond)
+	fingerprint, err := files.WriteNoteConditionalFingerprint(path, text, sess.DiskFingerprint())
 	if err == nil {
-		w.markSelfWriteWindow(800 * time.Millisecond)
-		var fingerprint int64
-		fingerprint, err = files.WriteNoteAtomic(path, text)
-		if err == nil {
-			sess.SetDiskFingerprint(fingerprint)
-			w.markSelfWriteWindow(800 * time.Millisecond)
-			return nil
+		sess.SetDiskFingerprint(fingerprint)
+		clean := filepath.Clean(path)
+		w.mu.Lock()
+		w.bumpDiskWriteSeqLocked(clean)
+		if w.lastDiskMarkdown == nil {
+			w.lastDiskMarkdown = make(map[string]string)
 		}
+		w.lastDiskMarkdown[clean] = text
+		w.mu.Unlock()
+		w.markSelfWriteWindow(800 * time.Millisecond)
+		return nil
 	}
 	files.LogWarnf("auto-save failed for %s: %v", path, err)
+	if !writeRecovery {
+		return err
+	}
 	if recoveryErr := files.SaveRecoveryForVersion(path, text, sess.DiskFingerprint()); recoveryErr != nil {
 		files.LogErrorf("recovery draft save failed: path=%s err=%v", path, recoveryErr)
 		return errors.Join(err, recoveryErr)
@@ -4734,9 +5067,6 @@ func (w *Workspace) Render(c *ui.Context) {
 										!w.edgeFloat.LeftOpen() && !w.edgeFloat.RightOpen()
 									w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 								}
-								if w.pluginUI != nil {
-									w.pluginUI.renderToast(c)
-								}
 							})
 							renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText)
 						})
@@ -4845,9 +5175,67 @@ func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
 		return editor.BackgroundStyle{}
 	}
 	bg := sup.EditorBackground()
-	return editor.BackgroundStyle{
+	style := editor.BackgroundStyle{
 		Mode:     bg.Mode,
 		Contrast: bg.Contrast,
+	}
+	if bd, ok := sup.ActiveBackdrop(); ok {
+		style.Backdrop = &editor.BackdropSpec{
+			FillPaths:   bd.Icon.FillPaths,
+			StrokePaths: bd.Icon.StrokePaths,
+			AccentPaths: bd.Icon.AccentPaths,
+			Pattern:     bd.Pattern,
+			Density:     bd.Density,
+			Opacity:     bd.Opacity,
+			Tint:        bd.Tint,
+			DarkGlow:    bd.DarkGlow,
+		}
+	}
+	return style
+}
+
+func (w *Workspace) pluginSidebarFileBadges(activeNB string) map[string][]plugins.ResolvedFileBadge {
+	sup := w.Plugins()
+	if sup == nil || activeNB == "" {
+		return nil
+	}
+	return sup.FileBadgesForNotebook(activeNB)
+}
+
+func (w *Workspace) pluginSidebarMenuItems() []plugins.ResolvedMenuItem {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	return sup.SidebarMenuItems()
+}
+
+func (w *Workspace) onPluginSidebarMenuItem(it plugins.ResolvedMenuItem, targetPath string, _ bool) {
+	sup := w.Plugins()
+	if sup == nil || it.Command == "" || targetPath == "" {
+		return
+	}
+	nb := sup.NotebookRoot()
+	if nb == "" {
+		return
+	}
+	rel, err := filepath.Rel(filepath.Clean(nb), filepath.Clean(targetPath))
+	if err != nil {
+		return
+	}
+	noteRel := filepath.ToSlash(rel)
+	if noteRel == "" || noteRel == "." || noteRel == ".." || strings.HasPrefix(noteRel, "../") || strings.HasPrefix(noteRel, "/") {
+		return
+	}
+	sup.RunCommandAsync(it.PluginID, it.Command, plugins.CommandContext{
+		Note:   noteRel,
+		Source: "sidebar_menu",
+	})
+}
+
+func (w *Workspace) renderPluginSidebarSections(c *ui.Context) {
+	if w.pluginsUI != nil {
+		w.pluginsUI.RenderSidebarSections(c)
 	}
 }
 
@@ -4894,7 +5282,7 @@ func (w *Workspace) pluginTitlebarButtons() []plugins.ResolvedTitlebarButton {
 func (w *Workspace) onPluginTitlebarButton(b plugins.ResolvedTitlebarButton) {
 	if b.Panel != "" {
 		if w.pluginUI != nil {
-			w.pluginUI.TogglePanel(b.PluginID, b.Panel)
+			w.pluginUI.togglePanelLocal(b.PluginID, b.Panel)
 		}
 		return
 	}
@@ -4931,17 +5319,24 @@ func (w *Workspace) onPluginPageMenuItem(it plugins.ResolvedMenuItem) {
 
 func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 	if w.pluginUI != nil {
+		w.pluginUI.renderToast(c)
 		w.pluginUI.renderDialog(c)
 	}
 	if w.palette.IsOpen() {
 		var items []PaletteItem
 		if sup := w.Plugins(); sup != nil {
 			for _, cmd := range sup.Commands() {
+				var ic *plugins.DuoIconSpec
+				if len(cmd.Icon.StrokePaths) > 0 {
+					cp := cmd.Icon
+					ic = &cp
+				}
 				items = append(items, PaletteItem{
 					ID:       cmd.PluginID + "/" + cmd.ID,
 					Title:    cmd.Title,
 					Subtitle: cmd.PluginName,
 					Shortcut: cmd.Shortcut,
+					Icon:     ic,
 				})
 			}
 		}
@@ -5081,6 +5476,10 @@ func (w *Workspace) renderSidebarColumn(
 		OnOpenSettings: func() {
 			w.OpenSettings("ai")
 		},
+		FileBadges:           w.pluginSidebarFileBadges(activeNB),
+		PluginContextMenu:    w.pluginSidebarMenuItems(),
+		OnPluginContextMenu:  w.onPluginSidebarMenuItem,
+		RenderPluginSections: w.renderPluginSidebarSections,
 	})
 }
 
@@ -5109,7 +5508,7 @@ func (w *Workspace) togglePinnedPluginButton(slotID string) bool {
 		msg := theme.Tr("保存固定设置失败", "Failed to save pinned buttons")
 		w.setNotice(msg)
 		if w.pluginUI != nil {
-			w.pluginUI.Toast("", msg, "error")
+			w.pluginUI.Toast("", msg, "error", nil)
 		}
 		w.RequestRedraw()
 		return false

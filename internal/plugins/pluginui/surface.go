@@ -41,6 +41,9 @@ func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plu
 	if surface == plugins.SurfaceSettingsPage {
 		bodyGap = theme.SettingsSectionGap
 		cardGap = theme.SettingsSectionGap
+	} else if strings.HasPrefix(string(surface), plugins.SurfacePrefixSidebarSection) {
+		bodyGap = theme.Space6
+		cardGap = theme.Space8
 	}
 
 	ui.Column(ctx.Key("plugin-surface-body-" + scope)).FillWidth().MinWidth(0).Gap(bodyGap).Children(func() {
@@ -95,13 +98,18 @@ func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plu
 				cloned.Cards = cards
 				page = &cloned
 			}
+			fb := actionFeedbackFromView(vs)
+			if strings.HasPrefix(string(surface), plugins.SurfacePrefixSidebarSection) ||
+				strings.HasPrefix(string(surface), plugins.SurfacePrefixPanel) {
+				fb.CompactLayout = true
+			}
 			renderPageCardsWithScope(
 				ctx,
 				scope,
 				cardGap,
 				page,
 				vs.Values,
-				actionFeedbackFromView(vs),
+				fb,
 				c.inputBindingsForSurface(pluginID, surface),
 				func(controlID string, nextValue any, immediate bool) {
 					c.sup.UpdateSurfaceControlValue(pluginID, surface, controlID, nextValue, immediate)
@@ -123,14 +131,91 @@ func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string) {
 	if len(sections) == 0 {
 		return
 	}
+	pal := theme.Ocean()
 	for _, sec := range sections {
 		s := sec
 		ctx.Key("plugin-settings-sec-" + s.PluginID + "-" + s.ID)
 		bui.SettingsSection(ctx, func() {
 			if strings.TrimSpace(s.Title) != "" {
-				bui.SettingsSectionTitle(ctx, s.Title, nil)
+				var lead func()
+				if len(s.Icon.StrokePaths) > 0 {
+					icSpec := s.Icon
+					lead = func() {
+						DrawDuoSpec(ctx, icSpec, theme.IconRow, pal.DuoIconColors(pal.Text))
+					}
+				}
+				bui.SettingsSectionTitleWithIcon(ctx, lead, s.Title, nil)
 			}
 			c.renderSurface(ctx, s.PluginID, s.Surface, s.Title)
 		})
 	}
+}
+
+// RenderSidebarSections draws compact declarative cards contributed by enabled
+// ui:sidebar plugins above the sidebar footer.
+func (c *Controller) RenderSidebarSections(ctx *ui.Context) {
+	if c == nil || c.sup == nil {
+		return
+	}
+	sections := c.sup.SidebarSections()
+	if len(sections) == 0 {
+		return
+	}
+	pal := theme.Ocean()
+	bui.Scroll(ctx.Key("plugin-sidebar-sections")).FillWidth().MaxHeight(240).Shrink(1).Children(func() {
+		ui.Column(ctx).FillWidth().Padding(theme.Space6, theme.Space8, theme.Space4, theme.Space8).Gap(theme.Space8).Children(func() {
+			for _, sec := range sections {
+				s := sec
+				key := "plugin-sidebar-sec-" + s.PluginID + "-" + s.ID
+				bindings := c.inputBindingsForSurface(s.PluginID, s.Surface)
+				expanded := true
+				if s.Collapsible && bindings != nil && bindings.IsCardExpanded != nil {
+					expanded = bindings.IsCardExpanded("__sidebar_sec__:"+s.ID, s.DefaultCollapsed)
+				}
+				card := ui.Column(ctx.Key(key)).FillWidth().Shrink(0).
+					Padding(theme.Space8).Gap(theme.Space6).
+					Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline)
+				bui.Probe(card, key)
+				card.Children(func() {
+					headerRow := func() {
+						DrawDuoSpec(ctx, s.Icon, theme.IconAction, pal.DuoIconColors(pal.Text))
+						ui.Text(ctx, s.Title).
+							FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+							FontWeight(theme.WeightTitle).TextColor(pal.Text).
+							Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						if s.Collapsible {
+							chev := icons.TbChevronRight
+							if expanded {
+								chev = icons.ChevronDown
+							}
+							icons.Draw(ctx, chev, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+						}
+					}
+					if s.Collapsible {
+						hdr := ui.ButtonBase(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightChrome).
+							Padding(0, theme.Space4).Gap(theme.Space8).AlignItems(ui.Center).
+							Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(s.Title)
+						bg := ui.Transparent
+						if hdr.Pressed() {
+							bg = pal.Selected
+						} else if hdr.Hovered() {
+							bg = pal.Hover
+						}
+						bui.AnimateSurfaceColors(hdr, bg, ui.Transparent, false)
+						hdr.Children(headerRow)
+						if hdr.Clicked() && bindings != nil && bindings.ToggleCardExpanded != nil {
+							bindings.ToggleCardExpanded("__sidebar_sec__:"+s.ID, s.DefaultCollapsed)
+						}
+					} else {
+						ui.Row(ctx.Key(key+"-hdr")).FillWidth().Height(theme.HeightChrome).
+							Padding(0, theme.Space4).Gap(theme.Space8).AlignItems(ui.Center).
+							Children(headerRow)
+					}
+					if expanded {
+						c.renderSurface(ctx, s.PluginID, s.Surface, s.Title)
+					}
+				})
+			}
+		})
+	})
 }

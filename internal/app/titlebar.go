@@ -8,6 +8,7 @@ import (
 	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -150,20 +151,20 @@ func navigateTitlebarMenu(c *ui.Context, card ui.Element, items []blockui.MenuIt
 
 // TitlebarProps supplies current state and callbacks to RenderTitlebar.
 type TitlebarProps struct {
-	SidebarWide       bool
-	SidebarAutoHidden bool
-	SidebarWidth      float32
+	SidebarWide            bool
+	SidebarAutoHidden      bool
+	SidebarWidth           float32
 	InSettings             bool
 	SettingsTabLabel       string
 	RenderSettingsLeading  func(c *ui.Context) bool
 	RenderSettingsTrailing func(c *ui.Context)
 	RenderSettingsOverlays func(c *ui.Context)
 	HideMark               bool
-	AIImmersive       bool
-	AIEnabled         bool
-	AIOpen            bool
-	FeedbackOpen      bool
-	HasFeedbackDraft  bool
+	AIImmersive            bool
+	AIEnabled              bool
+	AIOpen                 bool
+	FeedbackOpen           bool
+	HasFeedbackDraft       bool
 
 	NotebookPath string
 	Tabs         []string
@@ -203,19 +204,19 @@ type TitlebarProps struct {
 	ShortcutNewNote string
 	OnOpenSearch    func()
 
-	OnToggleSidebar    func()
-	OnCloseSettings    func()
-	OnBack             func()
-	OnForward          func()
-	OnSelectTab        func(path string)
-	OnCloseTab         func(path string)
-	OnCloseOthers      func(keepPath string)
-	OnCloseRight       func(pivotPath string)
-	OnCloseAll         func()
-	OnReorderTab       func(srcPath, targetPath string, after bool)
-	OnNewNote          func()
-	OnToggleFeedback   func()
-	OnToggleAI         func()
+	OnToggleSidebar     func()
+	OnCloseSettings     func()
+	OnBack              func()
+	OnForward           func()
+	OnSelectTab         func(path string)
+	OnCloseTab          func(path string)
+	OnCloseOthers       func(keepPath string)
+	OnCloseRight        func(pivotPath string)
+	OnCloseAll          func()
+	OnReorderTab        func(srcPath, targetPath string, after bool)
+	OnNewNote           func()
+	OnToggleFeedback    func()
+	OnToggleAI          func()
 	OnOpenHistory       func()
 	OnOpenExport        func()
 	OnCopyMarkdown      func()
@@ -417,10 +418,10 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		center := ui.Row(c).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).Gap(4).PaddingX(4).Clip()
 		blockui.Probe(center, "titlebar-tabs")
 		centerW := center.Bounds().W
-		center.Children(func() {
 		if p.MenuState != nil {
 			p.MenuState.pluginCenterW = centerW
 		}
+		center.Children(func() {
 			if p.InSettings {
 				if p.RenderSettingsLeading != nil && p.RenderSettingsLeading(c) {
 					return
@@ -517,8 +518,8 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 					if closeBtn.Clicked() && p.OnCloseSettings != nil {
 						p.OnCloseSettings()
 					}
-				})
-			}
+				}
+			})
 		} else if !p.AIImmersive {
 			renderTitlebarTail(c, p, tb.Right, availW)
 		}
@@ -943,7 +944,7 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 				pmItem := pm
 				id := "page-plugin:" + pmItem.PluginID + "/" + pmItem.ID
 				legacyProbeIDs[id] = "page-plugin-" + pmItem.PluginID + "-" + pmItem.ID
-				items = append(items, item(
+				spec := item(
 					id,
 					pmItem.Title,
 					"",
@@ -953,7 +954,14 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 							p.OnPluginMenuItem(pmItem)
 						}
 					},
-				))
+				)
+				if len(pmItem.Icon.StrokePaths) > 0 {
+					icSpec := pmItem.Icon
+					spec.CustomIcon = func(c *ui.Context, size float32, colors theme.IconColors) {
+						pluginui.DrawDuoSpec(c, icSpec, size, colors)
+					}
+				}
+				items = append(items, spec)
 			}
 		}
 		items = append(items,

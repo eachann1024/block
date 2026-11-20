@@ -426,11 +426,8 @@ func (m *Manifest) Validate() error {
 		}
 		seenSurf[s] = true
 	}
-	if m.Icon.ViewBox != "0 0 24 24" {
-		return fmt.Errorf("manifest.icon.view_box must be \"0 0 24 24\", got %q", m.Icon.ViewBox)
-	}
-	if len(m.Icon.StrokePaths) == 0 {
-		return errors.New("manifest.icon.stroke_paths must contain at least one SVG path")
+	if err := validateContribIcon("manifest.icon", m.Icon); err != nil {
+		return err
 	}
 	return m.validateContributes()
 }
