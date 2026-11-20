@@ -1086,22 +1086,11 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 	if parsed == nil || len(parsed.Blocks) == 0 {
 		return false
 	}
-	if parsed.CleanRaw != "" && strings.Contains(parsed.CleanRaw, "]:") && s.codec != nil {
-		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
-			exp.ExpandBlockRefCleanSources(parsed.Blocks, parsed.CleanRaw)
-		}
-	}
 	blocks := make([]model.Block, len(parsed.Blocks))
 	for i, blk := range parsed.Blocks {
 		blk.ID = model.NewBlockID()
-		if !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
-			if !strings.HasSuffix(blk.CleanSource, "\n") {
-				blk.CleanSource += "\n"
-			}
-		} else {
-			blk.Dirty = true
-			blk.CleanSource = ""
-		}
+		blk.Dirty = true
+		blk.CleanSource = ""
 		blocks[i] = blk
 	}
 
@@ -1139,9 +1128,21 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 		}
 	}
 
+	// When a cross-block selection stops at offset 0 of a trailing code/table/atomic block,
+	// zero content of that block is selected — keep it untouched outside the splice range.
+	effectiveLast := last
+	effectiveEndOff := b.Offset
+	if first < last && b.Offset == 0 {
+		tk := s.doc.Blocks[last].Kind
+		if tk == model.BlockCode || tk == model.BlockRawHTML || tk == model.BlockTable || tk == model.BlockImage || tk == model.BlockDivider {
+			effectiveLast = last - 1
+			effectiveEndOff = len([]rune(s.doc.Blocks[effectiveLast].PlainText()))
+		}
+	}
+
 	// Inline replacement across rich-text blocks (no tables, atomic blocks, or code blocks).
 	allRich := true
-	for i := first; i <= last; i++ {
+	for i := first; i <= effectiveLast; i++ {
 		k := s.doc.Blocks[i].Kind
 		if k == model.BlockTable || k == model.BlockImage || k == model.BlockDivider || k == model.BlockCode || k == model.BlockRawHTML {
 			allRich = false
@@ -1151,8 +1152,8 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 	if isInline && allRich {
 		s.pushUndo()
 		prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
-		lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
-		suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
+		lastRunes := len([]rune(s.doc.Blocks[effectiveLast].PlainText()))
+		suffix := sliceSpans(s.doc.Blocks[effectiveLast].Spans, effectiveEndOff, lastRunes)
 		var merged []model.Span
 		merged = append(merged, prefix...)
 		merged = append(merged, blocks[0].Spans...)
@@ -1161,7 +1162,7 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 		updated.Spans = normalizeSpans(merged)
 		updated.Dirty = true
 		updated.CleanSource = ""
-		s.spliceBlocks(first, last+1, []model.Block{updated})
+		s.spliceBlocks(first, effectiveLast+1, []model.Block{updated})
 		caret := a.Offset + len([]rune(blocks[0].PlainText()))
 		s.focusedBlock = first
 		s.selAnchor = Position{Block: first, Offset: caret}
@@ -1175,29 +1176,57 @@ func (s *Session) ReplaceAIMarkdown(source string) bool {
 	// Structural multi-block splice.
 	s.pushUndo()
 	var inserted []model.Block
-	if a.Offset > 0 && first < len(s.doc.Blocks) && s.doc.Blocks[first].Kind != model.BlockTable && s.doc.Blocks[first].Kind != model.BlockCode {
-		prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
-		if len(prefix) > 0 {
-			pb := s.doc.Blocks[first].Clone()
-			pb.Spans = prefix
-			pb.Dirty = true
-			pb.CleanSource = ""
-			inserted = append(inserted, pb)
-		}
-	}
-	inserted = append(inserted, blocks...)
-	if last < len(s.doc.Blocks) && s.doc.Blocks[last].Kind != model.BlockTable && s.doc.Blocks[last].Kind != model.BlockCode {
-		lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
-		if b.Offset < lastRunes {
-			suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
-			if len(suffix) > 0 {
-				sb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: suffix, Dirty: true}
-				inserted = append(inserted, sb)
+	if a.Offset > 0 && first < len(s.doc.Blocks) {
+		firstBlk := &s.doc.Blocks[first]
+		if firstBlk.Kind == model.BlockCode || firstBlk.Kind == model.BlockRawHTML {
+			runes := []rune(firstBlk.Code)
+			cut := clampInt(a.Offset, 0, len(runes))
+			if cut > 0 {
+				pb := firstBlk.Clone()
+				pb.Code = string(runes[:cut])
+				pb.Dirty = true
+				pb.CleanSource = ""
+				inserted = append(inserted, pb)
+			}
+		} else if firstBlk.Kind != model.BlockTable {
+			prefix := sliceSpans(firstBlk.Spans, 0, a.Offset)
+			if len(prefix) > 0 {
+				pb := firstBlk.Clone()
+				pb.Spans = prefix
+				pb.Dirty = true
+				pb.CleanSource = ""
+				inserted = append(inserted, pb)
 			}
 		}
 	}
-	s.spliceBlocks(first, last+1, inserted)
-	endIdx := first + len(inserted) - 1
+	inserted = append(inserted, blocks...)
+	pastedEndIdx := first + len(inserted) - 1
+	if effectiveLast < len(s.doc.Blocks) {
+		lastBlk := &s.doc.Blocks[effectiveLast]
+		if lastBlk.Kind == model.BlockCode || lastBlk.Kind == model.BlockRawHTML {
+			runes := []rune(lastBlk.Code)
+			cut := clampInt(effectiveEndOff, 0, len(runes))
+			if cut < len(runes) {
+				sb := lastBlk.Clone()
+				sb.ID = model.NewBlockID()
+				sb.Code = string(runes[cut:])
+				sb.Dirty = true
+				sb.CleanSource = ""
+				inserted = append(inserted, sb)
+			}
+		} else if lastBlk.Kind != model.BlockTable {
+			lastRunes := len([]rune(lastBlk.PlainText()))
+			if effectiveEndOff < lastRunes {
+				suffix := sliceSpans(lastBlk.Spans, effectiveEndOff, lastRunes)
+				if len(suffix) > 0 {
+					sb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: suffix, Dirty: true}
+					inserted = append(inserted, sb)
+				}
+			}
+		}
+	}
+	s.spliceBlocks(first, effectiveLast+1, inserted)
+	endIdx := clampInt(pastedEndIdx, 0, len(s.doc.Blocks)-1)
 	endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
 	s.focusedBlock = endIdx
 	s.selAnchor = Position{Block: endIdx, Offset: endOff}
