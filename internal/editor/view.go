@@ -1430,7 +1430,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			OnChange: func(newText string, _, caret int) {
 				s.caretHidden = false
 				s.reactionPickerAnnotID = ""
-				st.SetOnDetachedInsert(s.insertDetachedTextIntoFocusedBlock)
+				st.SetOnDetachedReplace(s.insertDetachedTextIntoFocusedBlock)
 				s.applyBlockTextEditWithEdge(idx, newText, caret, st.CodeEdge())
 				if s.doc != nil && s.focusedBlock == idx && idx < len(s.doc.Blocks) {
 					after := s.doc.Blocks[idx].PlainText()

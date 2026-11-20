@@ -234,7 +234,8 @@ func hasAnySpanStyle(spans []model.Span) bool {
 func splitInlineSpansForCopy(spans []model.Span) [][]model.Span {
 	lines := [][]model.Span{{}}
 	for _, sp := range spans {
-		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || !strings.ContainsRune(sp.Text, '\n') {
+		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		if styled || !strings.ContainsRune(sp.Text, '\n') {
 			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
 			continue
 		}
@@ -664,7 +665,6 @@ func normalizeTablePasteRaw(raw string) string {
 		"\r\n", "\n",
 		"\r", "\n",
 		"\u200B", "",
-		"\u200C", "",
 		"\uFEFF", "",
 		"\u00A0", " ",
 	).Replace(cleaned)
@@ -717,7 +717,7 @@ func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
 		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
 			startR, startC = row, col
 		}
-		if !canFitTableTSVPaste(blk.Table, startR, startC, norm, true) {
+		if !s.canFitTablePaste(blk.Table, startR, startC, norm, false, true) {
 			return
 		}
 		s.pushUndo()
@@ -733,6 +733,15 @@ func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
 	}
 	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
 	if s.doc.Blocks[idx].Kind == model.BlockTable && s.doc.Blocks[idx].Table != nil {
+		tbl := s.doc.Blocks[idx].Table
+		startR := clampInt(s.tableActiveRow, 0, max(len(tbl.Rows)-1, 0))
+		startC := 0
+		if len(tbl.Rows) > 0 {
+			startC = clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
+		}
+		if !s.canFitTablePaste(tbl, startR, startC, norm, false, true) {
+			return
+		}
 		s.pushUndo()
 		s.firstLineDeleteArmed = false
 		s.pasteIntoTableBlockOpts(idx, norm, false, true)
@@ -789,6 +798,17 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	b := &s.doc.Blocks[idx]
+	// Validate table paste dimensions BEFORE pushing undo so rejected oversized pastes never pollute undo history.
+	if b.Kind == model.BlockTable && b.Table != nil && strings.ContainsAny(norm, "\t\n") {
+		startR := clampInt(s.tableActiveRow, 0, max(len(b.Table.Rows)-1, 0))
+		startC := 0
+		if len(b.Table.Rows) > 0 {
+			startC = clampInt(s.tableActiveCol, 0, max(len(b.Table.Rows[0])-1, 0))
+		}
+		if !s.canFitTablePaste(b.Table, startR, startC, norm, false, false) {
+			return
+		}
+	}
 	s.pushUndo()
 	s.firstLineDeleteArmed = false
 
@@ -884,7 +904,7 @@ func (s *Session) PastePlainText(raw string) {
 				if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
 					startR, startC = row, col
 				}
-				if !canFitTableTSVPaste(blk.Table, startR, startC, clean, false) {
+				if !s.canFitTablePaste(blk.Table, startR, startC, clean, true, false) {
 					return
 				}
 				s.pushUndo()
@@ -911,6 +931,17 @@ func (s *Session) PastePlainText(raw string) {
 		idx = 0
 	}
 	b := &s.doc.Blocks[idx]
+	// Validate table paste dimensions BEFORE pushing undo so rejected oversized pastes never pollute undo history.
+	if b.Kind == model.BlockTable && b.Table != nil && strings.ContainsAny(clean, "\t\n") {
+		startR := clampInt(s.tableActiveRow, 0, max(len(b.Table.Rows)-1, 0))
+		startC := 0
+		if len(b.Table.Rows) > 0 {
+			startC = clampInt(s.tableActiveCol, 0, max(len(b.Table.Rows[0])-1, 0))
+		}
+		if !s.canFitTablePaste(b.Table, startR, startC, clean, true, false) {
+			return
+		}
+	}
 	s.pushUndo()
 	s.firstLineDeleteArmed = false
 
@@ -1696,9 +1727,34 @@ func (s *Session) replaceCurrentSelectionInBlock(idx int, insert string) {
 
 // --- Span & Mark Algebra (Rune Offsets) ---
 
-func canFitTableTSVPaste(tbl *model.TableData, startR, startC int, norm string, keepTrailingEmptyRow bool) bool {
+func (s *Session) canFitTablePaste(tbl *model.TableData, startR, startC int, norm string, plain, keepTrailingEmptyRow bool) bool {
 	if tbl == nil || len(tbl.Rows) == 0 {
 		return false
+	}
+	if !plain && strings.HasPrefix(strings.TrimLeft(norm, " \t"), "|") {
+		// Quick pipe-table dimension check before full parse so 50,001-column pipe tables are rejected cleanly.
+		firstLine, _, _ := strings.Cut(norm, "\n")
+		pipeCols := strings.Count(strings.Trim(strings.TrimSpace(firstLine), "|"), "|") + 1
+		if pipeCols > 1 {
+			neededCols := max(len(tbl.Rows[0]), startC+pipeCols)
+			if neededCols <= 0 || len(tbl.Rows) > maxPastedTableCells/neededCols {
+				return false
+			}
+		}
+		if s.codec != nil {
+			if parsed := s.codec.Parse(norm); parsed != nil && len(parsed.Blocks) == 1 &&
+				parsed.Blocks[0].Kind == model.BlockTable && parsed.Blocks[0].Table != nil && len(parsed.Blocks[0].Table.Rows) > 0 {
+				srcTbl := parsed.Blocks[0].Table
+				neededCols := max(len(tbl.Rows[0]), 1)
+				for _, r := range srcTbl.Rows {
+					if startC+len(r) > neededCols {
+						neededCols = startC + len(r)
+					}
+				}
+				neededRows := max(len(tbl.Rows), startR+len(srcTbl.Rows))
+				return neededCols > 0 && neededRows <= maxPastedTableCells/neededCols
+			}
+		}
 	}
 	rawRows := strings.Split(norm, "\n")
 	if !keepTrailingEmptyRow && len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
@@ -2195,14 +2251,34 @@ func (s *Session) detachRichInput(id model.BlockID) {
 	delete(s.richInputs, id)
 }
 
-func (s *Session) insertDetachedTextIntoFocusedBlock(ins string) {
-	if ins == "" || s.readOnly || s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
+func (s *Session) insertDetachedTextIntoFocusedBlock(delStart, delEnd int, ins string) {
+	if (delEnd <= delStart && ins == "") || s.readOnly || s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
 		return
 	}
 	idx := s.focusedBlock
 	b := &s.doc.Blocks[idx]
 	switch b.Kind {
-	case model.BlockDivider, model.BlockImage:
+	case model.BlockDivider:
+		return
+	case model.BlockImage:
+		if ins == "" {
+			return
+		}
+		para := model.Block{
+			ID:    model.NewBlockID(),
+			Kind:  model.BlockParagraph,
+			Spans: []model.Span{{Text: ins}},
+			Dirty: true,
+		}
+		s.spliceBlocks(idx+1, idx+1, []model.Block{para})
+		pos := len([]rune(ins))
+		s.focusedBlock = idx + 1
+		s.selAnchor = Position{Block: idx + 1, Offset: pos}
+		s.selHead = s.selAnchor
+		s.focusPending = true
+		s.selSyncPending = true
+		s.multiSelFocusPending = false
+		s.markDirty()
 		return
 	case model.BlockTable:
 		if b.Table == nil || len(b.Table.Rows) == 0 {
@@ -2215,8 +2291,10 @@ func (s *Session) insertDetachedTextIntoFocusedBlock(ins string) {
 		rs := []rune(cur)
 		base := tableCellStartOffset(b.Table, rIdx, cIdx)
 		pos := clampInt(s.selHead.Offset-base, 0, len(rs))
-		next := string(rs[:pos]) + ins + string(rs[pos:])
-		newPos := pos + len([]rune(ins))
+		lo := clampInt(pos+delStart, 0, len(rs))
+		hi := clampInt(pos+delEnd, lo, len(rs))
+		next := string(rs[:lo]) + ins + string(rs[hi:])
+		newPos := lo + len([]rune(ins))
 		s.applyTableCellTextEdit(idx, rIdx, cIdx, next, newPos, newPos, appUi.RichCodeEdgeNone)
 		key := tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}
 		if st, ok := s.tableInputs[key]; ok && st != nil {
@@ -2227,8 +2305,10 @@ func (s *Session) insertDetachedTextIntoFocusedBlock(ins string) {
 		cur := b.PlainText()
 		rs := []rune(cur)
 		pos := clampInt(s.selHead.Offset, 0, len(rs))
-		next := string(rs[:pos]) + ins + string(rs[pos:])
-		newPos := pos + len([]rune(ins))
+		lo := clampInt(pos+delStart, 0, len(rs))
+		hi := clampInt(pos+delEnd, lo, len(rs))
+		next := string(rs[:lo]) + ins + string(rs[hi:])
+		newPos := lo + len([]rune(ins))
 		s.applyBlockTextEditWithEdge(idx, next, newPos, appUi.RichCodeEdgeNone)
 		if st, ok := s.richInputs[b.ID]; ok && st != nil {
 			st.Sync(b.PlainText(), s.selAnchor.Offset, s.selHead.Offset)
