@@ -16,12 +16,18 @@ function isAncestor(sha, head) {
 function releaseCommitOnHistory(tag, head) {
   const needle = `chore(release): ${tag}`;
   try {
-    const sha = execFileSync(
+    const out = execFileSync(
       "git",
-      ["log", head, "-1", "--fixed-strings", `--grep=${needle}`, "--format=%H"],
+      ["log", head, "--fixed-strings", `--grep=${needle}`, "--format=%H%x00%s"],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     ).trim();
-    if (/^[0-9a-f]{40}$/i.test(sha) && isAncestor(sha, head)) return { sha, needle };
+    for (const line of out.split("\n")) {
+      if (!line) continue;
+      const [sha = "", subject = ""] = line.split("\x00");
+      if (subject.trim() === needle && /^[0-9a-f]{40}$/i.test(sha) && isAncestor(sha, head)) {
+        return { sha, needle };
+      }
+    }
   } catch {}
   return null;
 }
