@@ -60,7 +60,7 @@ type PluginViewState struct {
 	FailedNoteRoot string
 	failedSaves    map[string]string
 	queuedSaves    map[string]*noteSaveRequest
-	saveCancel     context.CancelFunc
+	activeSaves    int
 	retrySavePath  string
 	PendingSaves   int
 
@@ -1701,7 +1701,11 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.RetryKind = RetryKindAction
 				failedID := actionID
 				if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-					failedID = "sync_now"
+					if cur.Page != nil && cur.Page.HasHeaderAction("confirm_sync") {
+						failedID = "confirm_sync"
+					} else {
+						failedID = "sync_now"
+					}
 				}
 				cur.FailedActionID = failedID
 				cur.errorFromBg = true
@@ -1712,6 +1716,28 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.RetryKind = RetryKindNone
 				cur.FailedActionID = ""
 				cur.errorFromBg = false
+				if pluginID == "block-sync" && tone == "success" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
+					syncedRoots := map[string]bool{}
+					if rawSel, ok := res.Values["selected_notebooks"]; ok {
+						if sel, ok := StringSliceValue(rawSel); ok {
+							for _, r := range sel {
+								if rk := cleanNotebookKey(r); rk != "" {
+									syncedRoots[rk] = true
+								}
+							}
+						}
+					}
+					if len(syncedRoots) == 0 && nbRoot != "" {
+						syncedRoots[cleanNotebookKey(nbRoot)] = true
+					}
+					for vk, view := range s.views {
+						if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
+							if syncedRoots[cleanNotebookKey(vk.notebookRoot)] {
+								clear(view.failedSaves)
+							}
+						}
+					}
+				}
 				statusMsg := strings.TrimSpace(res.Status)
 				if statusMsg != "" {
 					cur.Notice = statusMsg
@@ -1724,7 +1750,11 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 					cur.RetryKind = RetryKindAction
 					failedID := actionID
 					if pluginID == "block-sync" && (actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-						failedID = "sync_now"
+						if res.Page != nil && res.Page.HasHeaderAction("confirm_sync") {
+							failedID = "confirm_sync"
+						} else {
+							failedID = "sync_now"
+						}
 					}
 					cur.FailedActionID = failedID
 				}
@@ -1845,7 +1875,7 @@ func (s *Supervisor) isPluginBusyLocked(pluginID string) bool {
 		if key.pluginID != pluginID {
 			continue
 		}
-		if v.BusyAction != "" || v.actionCancel != nil || v.saveCancel != nil {
+		if v.BusyAction != "" || v.actionCancel != nil || v.activeSaves > 0 {
 			return true
 		}
 	}

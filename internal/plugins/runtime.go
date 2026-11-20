@@ -742,7 +742,7 @@ func (rt *Runtime) writeLine(ctx context.Context, v any) error {
 func (rt *Runtime) readLoop(r io.Reader) {
 	defer close(rt.exited)
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64*1024), 24*1024*1024)
+	sc.Buffer(make([]byte, 64*1024), 48*1024*1024)
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {
@@ -1191,6 +1191,9 @@ func noteRevision(data []byte) string {
 }
 
 func writePluginNote(root *os.Root, rel, content string, expected *string) (bool, error) {
+	if len(content) > maxPluginNote {
+		return false, fmt.Errorf("note exceeds maximum size (%d bytes)", maxPluginNote)
+	}
 	prior, err := readPluginFile(root, rel, maxPluginNote)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, err
