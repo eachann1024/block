@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
@@ -15,6 +15,33 @@ export function releaseBinaryPath(goos, goarch) {
   return resolve(ROOT, "dist", "release-bin", `${goos}-${goarch}`, `block${ext}`);
 }
 
+function releaseBinaryMetaPath(outFile) {
+  return `${outFile}.meta.json`;
+}
+
+function currentHeadSha() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return "";
+  }
+}
+
+export function canReuseReleaseBinary({ goos, goarch, version, outFile = releaseBinaryPath(goos, goarch) }) {
+  if (!existsSync(outFile)) return false;
+  const metaPath = releaseBinaryMetaPath(outFile);
+  if (!existsSync(metaPath)) return false;
+  try {
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    return meta?.version === version
+      && meta?.goos === goos
+      && meta?.goarch === goarch
+      && meta?.sha === currentHeadSha();
+  } catch {
+    return false;
+  }
+}
+
 export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goarch) }) {
   mkdirSync(dirname(outFile), { recursive: true });
   const version = readPackageVersion(ROOT);
@@ -28,6 +55,10 @@ export function goRelease({ goos, goarch, outFile = releaseBinaryPath(goos, goar
       GOARCH: goarch,
     },
   });
+  writeFileSync(
+    releaseBinaryMetaPath(outFile),
+    `${JSON.stringify({ version, goos, goarch, sha: currentHeadSha() }, null, 2)}\n`,
+  );
   return outFile;
 }
 

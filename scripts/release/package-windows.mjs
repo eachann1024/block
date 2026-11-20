@@ -3,8 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installerFor } from "./allowed-assets.mjs";
-import { goRelease, releaseBinaryPath, run } from "./go-release.mjs";
-import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
+import { canReuseReleaseBinary, goRelease, releaseBinaryPath, run } from "./go-release.mjs";
+import { applyReleasePlanVersion, assertValidWindowsPEVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 const WINDOWS_ARCH = process.env.BLOCK_ARCH || "x64";
 if (WINDOWS_ARCH !== "x64" && WINDOWS_ARCH !== "amd64") {
@@ -15,10 +15,9 @@ const RELEASE_DIR = resolve(ROOT, "dist/release");
 
 export async function packageWindows() {
   const reuse = process.env.BLOCK_REUSE_BINARY === "1";
-  const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
-  assert.match(version, /^\d+\.\d+\.\d+$/);
+  const version = assertValidWindowsPEVersion(reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion());
   let binary = releaseBinaryPath("windows", "amd64");
-  if (!reuse || !existsSync(binary)) {
+  if (!reuse || !canReuseReleaseBinary({ goos: "windows", goarch: "amd64", version, outFile: binary })) {
     binary = goRelease({ goos: "windows", goarch: "amd64", outFile: binary });
   }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
