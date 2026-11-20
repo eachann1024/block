@@ -238,12 +238,16 @@ func renderPageCardsWithScope(
 				}
 			}
 			bui.SettingsSection(c, func() {
+				mergedChecklist := len(visibleItems) == 1 &&
+					visibleItems[0].Kind == plugins.KindChecklist &&
+					strings.TrimSpace(visibleItems[0].Label) == "" &&
+					len(visibleItems[0].Options) > 1
 				hasTitle := strings.TrimSpace(cd.Title) != ""
 				hasBadge := strings.TrimSpace(cd.Badge) != ""
 				hasMeta := strings.TrimSpace(cd.Meta) != ""
-				if hasTitle || hasBadge || hasMeta || cd.Collapsible {
+				if hasTitle || hasBadge || hasMeta || cd.Collapsible || mergedChecklist {
 					var trailing func()
-					if hasBadge || hasMeta || cd.Collapsible {
+					if hasBadge || hasMeta || cd.Collapsible || mergedChecklist {
 						trailing = func() {
 							if hasBadge {
 								ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
@@ -259,6 +263,9 @@ func renderPageCardsWithScope(
 									TextColor(pal.TextSecondary).
 									Shrink(0).
 									SingleLine()
+							}
+							if mergedChecklist {
+								renderChecklistSelectAllAction(c, pluginID, visibleItems[0], values, fb.BusyAction != "", onChange)
 							}
 							if cd.Collapsible {
 								toggleLabel := theme.Tr("展开配置", "Expand")
@@ -306,7 +313,7 @@ func isStackedOrGroupItem(item plugins.UIItem) bool {
 		return item.Layout == "full" || item.Layout == "stacked"
 	case plugins.KindFolder, plugins.KindInput, plugins.KindSecret:
 		return item.Layout == "stacked"
-	case plugins.KindGroup, plugins.KindChecklist:
+	case plugins.KindGroup:
 		return true
 	default:
 		return false
@@ -315,7 +322,7 @@ func isStackedOrGroupItem(item plugins.UIItem) bool {
 
 func isDataBlockItem(item plugins.UIItem) bool {
 	switch item.Kind {
-	case plugins.KindMetrics, plugins.KindTreemap, plugins.KindPreview, plugins.KindLogList:
+	case plugins.KindMetrics, plugins.KindTreemap, plugins.KindPreview, plugins.KindLogList, plugins.KindChecklist:
 		return true
 	default:
 		return false
@@ -506,7 +513,7 @@ func renderItem(
 		})
 
 	case plugins.KindChecklist:
-		renderChecklistItem(c, pluginID, item, values, busyAction, onChange)
+		renderChecklistItem(c, pluginID, item, values, busyAction, false, onChange)
 
 	case plugins.KindGroup:
 		visibleFields := make([]plugins.UIItem, 0, len(item.Fields))
@@ -1307,7 +1314,7 @@ func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool
 			return theme.Tr("测试中…", "Testing…")
 		case "save_config":
 			return theme.Tr("保存中…", "Saving…")
-		case "sync_now", "confirm_sync":
+		case "sync_now", "confirm_sync", "__retry_note_saved__":
 			return theme.Tr("同步中…", "Syncing…")
 		case "cancel_confirm":
 			return theme.Tr("取消中…", "Cancelling…")
@@ -1553,17 +1560,7 @@ func renderFieldLabel(c *ui.Context, text string) {
 		SingleLine()
 }
 
-func renderChecklistItem(
-	c *ui.Context,
-	pluginID string,
-	item plugins.UIItem,
-	values map[string]any,
-	busyAction string,
-	onChange func(controlID string, nextValue any, immediate bool),
-) {
-	pal := theme.Ocean()
-	disabled := busyAction != ""
-
+func checklistSelectionSet(item plugins.UIItem, values map[string]any) (map[string]bool, int) {
 	selected, ok := plugins.StringSliceValue(values[item.ID])
 	if !ok {
 		selected, _ = plugins.StringSliceValue(item.Value)
@@ -1572,19 +1569,74 @@ func renderChecklistItem(
 	for _, v := range selected {
 		selectedSet[v] = true
 	}
-
-	commit := func(nextSet map[string]bool) {
-		next := make([]string, 0, len(item.Options))
-		for _, opt := range item.Options {
-			if nextSet[opt.Value] {
-				next = append(next, opt.Value)
-			}
-		}
-		values[item.ID] = next
-		if onChange != nil {
-			onChange(item.ID, next, true)
+	selectedCount := 0
+	for _, opt := range item.Options {
+		if selectedSet[opt.Value] {
+			selectedCount++
 		}
 	}
+	return selectedSet, selectedCount
+}
+
+func commitChecklistSelection(
+	item plugins.UIItem,
+	values map[string]any,
+	nextSet map[string]bool,
+	onChange func(controlID string, nextValue any, immediate bool),
+) {
+	next := make([]string, 0, len(item.Options))
+	for _, opt := range item.Options {
+		if nextSet[opt.Value] {
+			next = append(next, opt.Value)
+		}
+	}
+	values[item.ID] = next
+	if onChange != nil {
+		onChange(item.ID, next, true)
+	}
+}
+
+func renderChecklistSelectAllAction(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	disabled bool,
+	onChange func(controlID string, nextValue any, immediate bool),
+) {
+	_, selectedCount := checklistSelectionSet(item, values)
+	allSelected := selectedCount == len(item.Options)
+	toggleLabel := theme.Tr("全选", "Select All")
+	if allSelected {
+		toggleLabel = theme.Tr("全不选", "Clear All")
+	}
+	actBtn := bui.SettingsTextAction(c, "plugin-chk-all-"+pluginID+"-"+item.ID, toggleLabel, nil)
+	if disabled {
+		actBtn.Disabled(true).Opacity(theme.DisabledOpacity)
+	} else if actBtn.Clicked() {
+		nextSet := make(map[string]bool, len(item.Options))
+		if !allSelected {
+			for _, opt := range item.Options {
+				nextSet[opt.Value] = true
+			}
+		}
+		commitChecklistSelection(item, values, nextSet, onChange)
+	}
+}
+
+func renderChecklistItem(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	busyAction string,
+	hideHeader bool,
+	onChange func(controlID string, nextValue any, immediate bool),
+) {
+	pal := theme.Ocean()
+	disabled := busyAction != ""
+
+	selectedSet, _ := checklistSelectionSet(item, values)
 
 	ui.Column(c.Key("plugin-chk-" + pluginID + "-" + item.ID)).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 		if len(item.Options) == 0 {
@@ -1592,21 +1644,15 @@ func renderChecklistItem(
 			if empty == "" {
 				empty = theme.Tr("暂无可选项", "No options available")
 			}
-			ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space12, theme.Space12).Radius(theme.RadiusMD).
+			ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space12, theme.Space16).Radius(theme.RadiusLG).
 				Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
 				ui.Text(c, empty).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 			})
 			return
 		}
 
-		selectedCount := 0
-		for _, opt := range item.Options {
-			if selectedSet[opt.Value] {
-				selectedCount++
-			}
-		}
 		hasLabel := strings.TrimSpace(item.Label) != ""
-		if hasLabel || len(item.Options) > 1 {
+		if !hideHeader && (hasLabel || len(item.Options) > 1) {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				if hasLabel {
 					renderFieldLabel(c, item.Label)
