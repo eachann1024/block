@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T07:09:13Z",
+  "updated_at": "2026-11-20T08:17:41Z",
   "apps": [
     {
       "app": "blockmd",
@@ -152,19 +152,19 @@
         "zh": "编辑器背景",
         "en": "Editor Background"
       },
-      "version": "1.2.18",
+      "version": "1.2.19",
       "author": "eachann1024",
       "repo": "eachann1024/block-canvas-dots",
       "summary": {
         "zh": "为笔记铺上与行高对齐的点阵或方格，增加对比度，稳定追踪每一行",
         "en": "Line-aligned dot or grid background for notes, adding contrast to track each line"
       },
-      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.18/block-canvas-dots-v1.2.18.tar.gz",
-      "sha256": "036844ca7649e05c1169af41f8dd523be762a2fd4307cc811f857ecb0bc73301",
-      "downloads": 33,
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.19/block-canvas-dots-v1.2.19.tar.gz",
+      "sha256": "6aaeb22702f511e9b11aca2f8969872d7328b804d9337f504106aa3c29b5c701",
+      "downloads": 36,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-20T07:58:39Z",
+      "updated_at": "2026-11-20T08:17:19Z",
       "permissions": [
         "storage",
         "ui:settings"
