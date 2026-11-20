@@ -59,25 +59,28 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 				}
 			}
 		} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider && !s.isPreviewOnlyCodeBlock(a.Block) {
-			if whole && !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
+			spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
+			if whole && hasInlineImageSpan(spans) {
 				cp := blk.Clone()
 				cp.ID = model.NewBlockID()
-				single := []model.Block{cp}
-				if s.doc != nil && s.doc.CleanRaw != "" && s.codec != nil {
-					if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
-						exp.ExpandBlockRefCleanSources(single, s.doc.CleanRaw)
-					}
-				}
-				s.writeRichClipboard(svc, md, &model.Doc{Blocks: single, TrailingLine: "\n"}, true)
+				s.writeRichClipboard(svc, md, &model.Doc{Blocks: []model.Block{cp}, TrailingLine: "\n"}, true)
 				return true
 			}
-			spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
 			s.writeInlineSpansClipboard(svc, md, spans)
 			return true
 		}
 	}
 	s.writeRichClipboard(svc, md, s.SelectedDoc(), true)
 	return true
+}
+
+func hasInlineImageSpan(spans []model.Span) bool {
+	for _, sp := range spans {
+		if sp.ImageSrc != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Session) writeInlineSpansClipboard(svc ui.Services, md string, spans []model.Span) {
@@ -88,7 +91,8 @@ func (s *Session) writeInlineSpansClipboard(svc ui.Services, md string, spans []
 	)
 	if len(spans) > 0 {
 		var sb strings.Builder
-		writeClipboardSpansHTML(&sb, spans)
+		imageBudget := media.MaxImageBytes
+		s.writeClipboardSpansHTML(&sb, spans, &imageBudget)
 		if frag := sb.String(); frag != "" {
 			reps = append(reps, transfer.Bytes(transfer.HTML, []byte(frag)))
 		}
@@ -133,12 +137,13 @@ func (s *Session) writeTableCellsClipboard(svc ui.Services, plain string, rows [
 	)
 	if len(rows) > 0 {
 		var sb strings.Builder
+		imageBudget := media.MaxImageBytes
 		sb.WriteString("<table><tbody>")
 		for _, row := range rows {
 			sb.WriteString("<tr>")
 			for _, cell := range row {
 				sb.WriteString("<td>")
-				writeClipboardSpansHTML(&sb, cell.Spans)
+				s.writeClipboardSpansHTML(&sb, cell.Spans, &imageBudget)
 				sb.WriteString("</td>")
 			}
 			sb.WriteString("</tr>")
@@ -392,7 +397,7 @@ func (s *Session) clipboardHTMLForDoc(doc *model.Doc) string {
 						sb.WriteString(`<input type="checkbox" disabled> `)
 					}
 				}
-				writeClipboardSpansHTML(&sb, doc.Blocks[i].Spans)
+				s.writeClipboardSpansHTML(&sb, doc.Blocks[i].Spans, &imageBudget)
 				sb.WriteString("</li>")
 				i++
 			}
@@ -413,12 +418,12 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 	case b.Kind.IsHeading():
 		lvl := b.Kind.HeadingLevel()
 		fmt.Fprintf(sb, "<h%d>", lvl)
-		writeClipboardSpansHTML(sb, b.Spans)
+		s.writeClipboardSpansHTML(sb, b.Spans, imageBudget)
 		fmt.Fprintf(sb, "</h%d>", lvl)
 
 	case b.Kind == model.BlockQuote || b.Kind == model.BlockCallout:
 		sb.WriteString("<blockquote><p>")
-		writeClipboardSpansHTML(sb, b.Spans)
+		s.writeClipboardSpansHTML(sb, b.Spans, imageBudget)
 		sb.WriteString("</p></blockquote>")
 
 	case b.Kind == model.BlockCode:
@@ -435,16 +440,7 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		sb.WriteString("<hr>")
 
 	case b.Kind == model.BlockImage:
-		alt := html.EscapeString(b.ImageAlt)
-		raw, err := s.readClipboardImage(b.ImageSrc, int64(*imageBudget))
-		if err == nil {
-			if _, _, format, err := media.DecodeRaster(raw); err == nil {
-				*imageBudget -= len(raw)
-				fmt.Fprintf(sb, `<p><img src="data:%s;base64,%s" alt="%s"></p>`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), alt)
-				return
-			}
-		}
-		fmt.Fprintf(sb, "<p>%s</p>", alt)
+		fmt.Fprintf(sb, "<p>%s</p>", s.clipboardImageTagHTML(b.ImageSrc, b.ImageAlt, imageBudget))
 
 	case b.Kind == model.BlockTable && b.Table != nil && len(b.Table.Rows) > 0:
 		tbl := b.Table
@@ -453,7 +449,7 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		if !tbl.NoHeaderRow {
 			sb.WriteString("<thead><tr>")
 			for cIdx, cell := range tbl.Rows[0] {
-				writeClipboardTableCellHTML(sb, "th", cell, tbl, cIdx)
+				s.writeClipboardTableCellHTML(sb, "th", cell, tbl, cIdx, imageBudget)
 			}
 			sb.WriteString("</tr></thead>")
 			startBody = 1
@@ -467,7 +463,7 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 					if tbl.IsHeaderCell(rIdx, cIdx) {
 						tag = "th"
 					}
-					writeClipboardTableCellHTML(sb, tag, cell, tbl, cIdx)
+					s.writeClipboardTableCellHTML(sb, tag, cell, tbl, cIdx, imageBudget)
 				}
 				sb.WriteString("</tr>")
 			}
@@ -476,243 +472,10 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		sb.WriteString("</table>")
 
 	default:
-		if !b.Dirty && b.CleanSource != "" && strings.Contains(b.CleanSource, "![") {
-			if rendered, ok := s.renderCleanSourceInlineImagesHTML(b.CleanSource, imageBudget); ok {
-				sb.WriteString("<p>")
-				sb.WriteString(rendered)
-				sb.WriteString("</p>")
-				return
-			}
-		}
 		sb.WriteString("<p>")
-		writeClipboardSpansHTML(sb, b.Spans)
+		s.writeClipboardSpansHTML(sb, b.Spans, imageBudget)
 		sb.WriteString("</p>")
 	}
-}
-
-func (s *Session) renderCleanSourceInlineImagesHTML(raw string, imageBudget *int) (string, bool) {
-	line := strings.TrimRight(raw, "\r\n")
-	if line == "" || strings.ContainsAny(line, "\r\n") {
-		return "", false
-	}
-	var out strings.Builder
-	segStart := 0
-	foundImg := false
-	flushText := func(end int) {
-		if end <= segStart {
-			return
-		}
-		chunk := line[segStart:end]
-		spans := s.parseInlineSpans(chunk)
-		if len(spans) > 0 {
-			writeClipboardSpansHTML(&out, spans)
-		} else {
-			out.WriteString(html.EscapeString(chunk))
-		}
-	}
-	for i := 0; i < len(line); {
-		switch line[i] {
-		case '\\':
-			i += 2
-			continue
-		case '`':
-			run := 0
-			for i+run < len(line) && line[i+run] == '`' {
-				run++
-			}
-			delim := line[i : i+run]
-			j := i + run
-			closed := -1
-			for j < len(line) {
-				if line[j] == '`' {
-					k := j
-					for k < len(line) && line[k] == '`' {
-						k++
-					}
-					if k-j == run && line[j:k] == delim {
-						closed = k
-						break
-					}
-					j = k
-					continue
-				}
-				j++
-			}
-			if closed > 0 {
-				i = closed
-			} else {
-				i += run
-			}
-			continue
-		case '[':
-			if strings.HasPrefix(line[i:], "[![") {
-				if alt, imgSrc, outerHref, consumed, ok := parseLinkedImageAt(line[i:]); ok {
-					flushText(i)
-					imgTag := s.clipboardImageTagHTML(imgSrc, alt, imageBudget)
-					if outerHref != "" && isSafeClipboardRef(outerHref) {
-						fmt.Fprintf(&out, `<a href="%s">%s</a>`, html.EscapeString(outerHref), imgTag)
-					} else {
-						out.WriteString(imgTag)
-					}
-					foundImg = true
-					i += consumed
-					segStart = i
-					continue
-				}
-			}
-		case '!':
-			if strings.HasPrefix(line[i:], "![") {
-				if alt, imgSrc, consumed, ok := parseInlineImageAt(line[i:]); ok {
-					flushText(i)
-					out.WriteString(s.clipboardImageTagHTML(imgSrc, alt, imageBudget))
-					foundImg = true
-					i += consumed
-					segStart = i
-					continue
-				}
-			}
-		}
-		i++
-	}
-	if !foundImg {
-		return "", false
-	}
-	flushText(len(line))
-	return out.String(), true
-}
-
-func parseClipboardParenDest(str string) (dest string, consumed int, valid bool) {
-	if len(str) < 2 || str[0] != '(' {
-		return "", 0, false
-	}
-	i := 1
-	for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-		i++
-	}
-	if i >= len(str) || str[i] == ')' {
-		return "", 0, false
-	}
-	if str[i] == '<' {
-		i++
-		start := i
-		for i < len(str) && str[i] != '>' {
-			if str[i] == '\\' && i+1 < len(str) {
-				i += 2
-				continue
-			}
-			i++
-		}
-		if i >= len(str) {
-			return "", 0, false
-		}
-		dest = str[start:i]
-		i++
-	} else {
-		start := i
-		depth := 0
-		for i < len(str) {
-			if str[i] == '\\' && i+1 < len(str) {
-				i += 2
-				continue
-			}
-			if str[i] == ' ' || str[i] == '\t' {
-				break
-			}
-			if str[i] == '(' {
-				depth++
-			} else if str[i] == ')' {
-				if depth == 0 {
-					break
-				}
-				depth--
-			}
-			i++
-		}
-		dest = str[start:i]
-	}
-	for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-		i++
-	}
-	if i < len(str) && (str[i] == '"' || str[i] == '\'' || str[i] == '(') {
-		closeQ := str[i]
-		if closeQ == '(' {
-			closeQ = ')'
-		}
-		i++
-		for i < len(str) && str[i] != closeQ {
-			if str[i] == '\\' && i+1 < len(str) {
-				i += 2
-				continue
-			}
-			i++
-		}
-		if i >= len(str) {
-			return "", 0, false
-		}
-		i++
-		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
-			i++
-		}
-	}
-	if i >= len(str) || str[i] != ')' {
-		return "", 0, false
-	}
-	return unescapeClipboardLinkDest(dest), i + 1, dest != ""
-}
-
-func findClipboardCloseBracket(str string) int {
-	for i := 0; i < len(str); i++ {
-		if str[i] == '\\' && i+1 < len(str) {
-			i++
-			continue
-		}
-		if str[i] == ']' {
-			return i
-		}
-	}
-	return -1
-}
-
-func parseLinkedImageAt(s string) (alt, imgSrc, outerHref string, consumed int, ok bool) {
-	if !strings.HasPrefix(s, "[![") {
-		return "", "", "", 0, false
-	}
-	closeAlt := findClipboardCloseBracket(s[3:])
-	if closeAlt < 0 {
-		return "", "", "", 0, false
-	}
-	alt = s[3 : 3+closeAlt]
-	pos := 3 + closeAlt + 1
-	src, n1, ok1 := parseClipboardParenDest(s[pos:])
-	if !ok1 {
-		return "", "", "", 0, false
-	}
-	pos += n1
-	if !strings.HasPrefix(s[pos:], "](") {
-		return "", "", "", 0, false
-	}
-	href, n2, ok2 := parseClipboardParenDest(s[pos+1:])
-	if !ok2 {
-		return "", "", "", 0, false
-	}
-	return alt, src, href, pos + 1 + n2, true
-}
-
-func parseInlineImageAt(s string) (alt, imgSrc string, consumed int, ok bool) {
-	if !strings.HasPrefix(s, "![") {
-		return "", "", 0, false
-	}
-	closeAlt := findClipboardCloseBracket(s[2:])
-	if closeAlt < 0 {
-		return "", "", 0, false
-	}
-	alt = s[2 : 2+closeAlt]
-	pos := 2 + closeAlt + 1
-	src, n1, ok1 := parseClipboardParenDest(s[pos:])
-	if !ok1 {
-		return "", "", 0, false
-	}
-	return alt, src, pos + n1, true
 }
 
 func (s *Session) clipboardImageTagHTML(src, alt string, imageBudget *int) string {
@@ -750,24 +513,7 @@ func isSafeClipboardRef(raw string) bool {
 	return true
 }
 
-func unescapeClipboardLinkDest(s string) string {
-	if !strings.ContainsRune(s, '\\') {
-		return s
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) && strings.ContainsRune(`!"#$%&'()*+,-./:;<=>?@[\]^_`+"`"+`{|}~`, rune(s[i+1])) {
-			b.WriteByte(s[i+1])
-			i++
-			continue
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}
-
-func writeClipboardTableCellHTML(sb *strings.Builder, tag string, cell model.TableCell, tbl *model.TableData, cIdx int) {
+func (s *Session) writeClipboardTableCellHTML(sb *strings.Builder, tag string, cell model.TableCell, tbl *model.TableData, cIdx int, imageBudget *int) {
 	align := cell.Align
 	if align == model.ColAlignNone && cIdx < len(tbl.Aligns) {
 		align = tbl.Aligns[cIdx]
@@ -780,43 +526,67 @@ func writeClipboardTableCellHTML(sb *strings.Builder, tag string, cell model.Tab
 	default:
 		fmt.Fprintf(sb, "<%s>", tag)
 	}
-	writeClipboardSpansHTML(sb, cell.Spans)
+	s.writeClipboardSpansHTML(sb, cell.Spans, imageBudget)
 	fmt.Fprintf(sb, "</%s>", tag)
 }
 
-func writeClipboardSpansHTML(sb *strings.Builder, spans []model.Span) {
-	for _, sp := range spans {
-		text := strings.ReplaceAll(html.EscapeString(sp.Text), "\n", "<br>")
-		if sp.Marks&model.MarkCode != 0 {
-			text = "<code>" + text + "</code>"
+func (s *Session) writeClipboardSpansHTML(sb *strings.Builder, spans []model.Span, imageBudget *int) {
+	for i := 0; i < len(spans); {
+		href := ""
+		if isSafeClipboardRef(spans[i].Link) {
+			href = spans[i].Link
 		}
-		if sp.Marks&model.MarkMath != 0 {
-			text = `<code class="math">` + text + `</code>`
+		if href != "" {
+			j := i + 1
+			for j < len(spans) && spans[j].Link == href {
+				j++
+			}
+			fmt.Fprintf(sb, `<a href="%s">`, html.EscapeString(href))
+			for k := i; k < j; k++ {
+				s.writeClipboardSpanInnerHTML(sb, spans[k], imageBudget)
+			}
+			sb.WriteString("</a>")
+			i = j
+			continue
 		}
-		if sp.Marks&model.MarkBold != 0 {
-			text = "<strong>" + text + "</strong>"
-		}
-		if sp.Marks&model.MarkItalic != 0 {
-			text = "<em>" + text + "</em>"
-		}
-		if sp.Marks&model.MarkUnderline != 0 {
-			text = "<u>" + text + "</u>"
-		}
-		if sp.Marks&model.MarkStrike != 0 {
-			text = "<s>" + text + "</s>"
-		}
-		if sp.Marks&model.MarkSuperscript != 0 {
-			text = "<sup>" + text + "</sup>"
-		}
-		if sp.Marks&model.MarkSubscript != 0 {
-			text = "<sub>" + text + "</sub>"
-		}
-		if sp.BGColor != "" {
-			text = "<mark>" + text + "</mark>"
-		}
-		if href := media.WebLink(sp.Link); href != "" {
-			text = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(href), text)
-		}
-		sb.WriteString(text)
+		s.writeClipboardSpanInnerHTML(sb, spans[i], imageBudget)
+		i++
 	}
+}
+
+func (s *Session) writeClipboardSpanInnerHTML(sb *strings.Builder, sp model.Span, imageBudget *int) {
+	var body string
+	if sp.ImageSrc != "" {
+		body = s.clipboardImageTagHTML(sp.ImageSrc, sp.Text, imageBudget)
+	} else {
+		body = strings.ReplaceAll(html.EscapeString(sp.Text), "\n", "<br>")
+	}
+	if sp.Marks&model.MarkCode != 0 {
+		body = "<code>" + body + "</code>"
+	}
+	if sp.Marks&model.MarkMath != 0 {
+		body = `<code class="math">` + body + `</code>`
+	}
+	if sp.Marks&model.MarkBold != 0 {
+		body = "<strong>" + body + "</strong>"
+	}
+	if sp.Marks&model.MarkItalic != 0 {
+		body = "<em>" + body + "</em>"
+	}
+	if sp.Marks&model.MarkUnderline != 0 {
+		body = "<u>" + body + "</u>"
+	}
+	if sp.Marks&model.MarkStrike != 0 {
+		body = "<s>" + body + "</s>"
+	}
+	if sp.Marks&model.MarkSuperscript != 0 {
+		body = "<sup>" + body + "</sup>"
+	}
+	if sp.Marks&model.MarkSubscript != 0 {
+		body = "<sub>" + body + "</sub>"
+	}
+	if sp.BGColor != "" {
+		body = "<mark>" + body + "</mark>"
+	}
+	sb.WriteString(body)
 }

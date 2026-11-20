@@ -211,18 +211,6 @@ func (s *Session) SelectedMarkdown() string {
 			hi := clampInt(b.Offset, lo, len(runes))
 			return string(runes[lo:hi])
 		}
-		if whole && !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
-			cp := blk.Clone()
-			cp.ID = model.NewBlockID()
-			single := []model.Block{cp}
-			normalizeCopiedBlocks(single)
-			if s.doc != nil && s.doc.CleanRaw != "" && s.codec != nil {
-				if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
-					exp.ExpandBlockRefCleanSources(single, s.doc.CleanRaw)
-				}
-			}
-			return strings.TrimSuffix(s.serializeBlocks(single), "\n")
-		}
 		spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
 		return serializeInlineBlockMarkdown(spans, s.codec)
 	}
@@ -241,31 +229,17 @@ func (s *Session) SelectedMarkdown() string {
 
 func hasAnySpanStyle(spans []model.Span) bool {
 	for _, sp := range spans {
-		if sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != "" {
+		if sp.Marks != 0 || sp.Link != "" || sp.ImageSrc != "" || sp.FGColor != "" || sp.BGColor != "" {
 			return true
 		}
 	}
 	return false
 }
 
-func spansExactEqual(a, b []model.Span) bool {
-	na := normalizeSpans(a)
-	nb := normalizeSpans(b)
-	if len(na) != len(nb) {
-		return false
-	}
-	for i := range na {
-		if na[i] != nb[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func splitInlineSpansForCopy(spans []model.Span) [][]model.Span {
 	lines := [][]model.Span{{}}
 	for _, sp := range spans {
-		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		styled := sp.Marks != 0 || sp.Link != "" || sp.ImageSrc != "" || sp.FGColor != "" || sp.BGColor != ""
 		if styled || !strings.ContainsRune(sp.Text, '\n') {
 			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
 			continue
@@ -878,8 +852,7 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	// Single-line text without block markers inserts inline at selection (preserving leading/trailing spaces).
-	preserveInlineImageBlock := b.Kind == model.BlockParagraph && strings.Contains(norm, "![")
-	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !preserveInlineImageBlock && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
 		if !looksLikeInlineMarkdown(norm) {
 			s.replaceCurrentSelectionInBlock(idx, norm)
 		} else {
@@ -900,11 +873,6 @@ func (s *Session) PasteText(raw string) {
 		}
 		return
 	}
-	if parsed.CleanRaw != "" && strings.Contains(parsed.CleanRaw, "]:") && s.codec != nil {
-		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
-			exp.ExpandBlockRefCleanSources(parsed.Blocks, parsed.CleanRaw)
-		}
-	}
 
 	// Collapse blank separator blocks so pasting never spawns empty paragraph blocks (Notion / Feishu rule).
 	filtered := make([]model.Block, 0, len(parsed.Blocks))
@@ -915,15 +883,8 @@ func (s *Session) PasteText(raw string) {
 		if pb.ID == 0 {
 			pb.ID = model.NewBlockID()
 		}
-		if !pb.Dirty && pb.CleanSource != "" && strings.Contains(pb.CleanSource, "![") {
-			// Preserve self-contained CleanSource for inline/nested image syntax (e.g. `[![alt](img)](url)`).
-			if !strings.HasSuffix(pb.CleanSource, "\n") {
-				pb.CleanSource += "\n"
-			}
-		} else {
-			pb.Dirty = true
-			pb.CleanSource = ""
-		}
+		pb.Dirty = true
+		pb.CleanSource = ""
 		filtered = append(filtered, pb)
 	}
 	if len(filtered) == 0 {
@@ -931,33 +892,6 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	if len(filtered) == 1 && filtered[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
-		if b.Kind == model.BlockParagraph && !filtered[0].Dirty && filtered[0].CleanSource != "" && strings.Contains(filtered[0].CleanSource, "![") {
-			curRunes := []rune(b.PlainText())
-			lo, hi := len(curRunes), len(curRunes)
-			if s.selAnchor.Block == idx && s.selHead.Block == idx {
-				a, bPos := s.orderedSelection()
-				lo = clampInt(a.Offset, 0, len(curRunes))
-				hi = clampInt(bPos.Offset, lo, len(curRunes))
-			}
-			prefixSpans := sliceSpans(b.Spans, 0, lo)
-			suffixSpans := sliceSpans(b.Spans, hi, len(curRunes))
-			pastedClean := strings.TrimSuffix(filtered[0].CleanSource, "\n")
-			var combined string
-			if len(prefixSpans) == 0 && len(suffixSpans) == 0 {
-				combined = pastedClean + "\n"
-			} else {
-				combined = serializeInlineBlockMarkdown(prefixSpans, s.codec) + pastedClean + serializeInlineBlockMarkdown(suffixSpans, s.codec) + "\n"
-			}
-			s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
-			if idx >= 0 && idx < len(s.doc.Blocks) && s.codec != nil {
-				if check := s.codec.Parse(combined); check != nil && len(check.Blocks) == 1 &&
-					check.Blocks[0].Kind == model.BlockParagraph && spansExactEqual(check.Blocks[0].Spans, s.doc.Blocks[idx].Spans) {
-					s.doc.Blocks[idx].CleanSource = combined
-					s.doc.Blocks[idx].Dirty = false
-				}
-			}
-			return
-		}
 		s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
 		return
 	}
@@ -1632,6 +1566,7 @@ func looksLikeInlineMarkdown(line string) bool {
 		strings.Contains(lower, "<del>") || strings.Contains(lower, "<s>") ||
 		strings.Contains(lower, "<b>") || strings.Contains(lower, "<i>") ||
 		strings.Contains(lower, "<br>") || strings.Contains(lower, "<br/>") || strings.Contains(lower, "<br />") ||
+		strings.Contains(lower, "<img") ||
 		strings.Contains(lower, "http://") || strings.Contains(lower, "https://")
 }
 
@@ -2133,7 +2068,7 @@ func normalizeSpans(spans []model.Span) []model.Span {
 				j++
 				continue
 			}
-			if spans[j].Marks != base.Marks || spans[j].Link != base.Link || spans[j].FGColor != base.FGColor || spans[j].BGColor != base.BGColor {
+			if base.ImageSrc != "" || spans[j].ImageSrc != "" || spans[j].Marks != base.Marks || spans[j].Link != base.Link || spans[j].FGColor != base.FGColor || spans[j].BGColor != base.BGColor {
 				break
 			}
 			totalBytes += len(spans[j].Text)
@@ -2899,6 +2834,9 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 		if template.Link != "" && pref+suf == len(oldR) && (len(right) == 0 || right[0].Link != template.Link) {
 			template.Link = ""
 		}
+		// Never inherit inline image metadata onto newly typed text adjacent to an image.
+		template.ImageSrc = ""
+		template.ImageTitle = ""
 		mid = []model.Span{template}
 	}
 	var merged []model.Span
