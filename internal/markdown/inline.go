@@ -32,7 +32,7 @@ func parseInlineWithDefs(raw string, defs map[string]refDef) []model.Span {
 	}
 	// Ordinary punctuation is literal. Only scan runs that can contain an
 	// inline construct or a bare HTTP(S) link.
-	if !strings.ContainsAny(raw, "\\`*_~![<&") && !strings.Contains(raw, "://") {
+	if !strings.ContainsAny(raw, "\\`*_~![<&$^=") && !strings.Contains(raw, "://") {
 		return []model.Span{{Text: raw}}
 	}
 	toks := scanInlineTokensWithCtx(raw, defs, false)
@@ -46,6 +46,7 @@ type tokKind uint8
 const (
 	tokText tokKind = iota
 	tokCode
+	tokMath
 	tokDelim
 	tokOpenStyle
 	tokCloseStyle
@@ -285,6 +286,20 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			for i+run < n && s[i+run] == b {
 				run++
 			}
+			if b == '~' && run == 1 {
+				if end, inner, ok := findDelimNoSpaceEnd(s, i+1, '~'); ok {
+					toks = append(toks,
+						&inlineTok{kind: tokOpenStyle, tag: "sub", isMark: model.MarkSubscript},
+						&inlineTok{kind: tokText, text: inner},
+						&inlineTok{kind: tokCloseStyle, tag: "sub"},
+					)
+					i = end + 1
+					continue
+				}
+				toks = append(toks, &inlineTok{kind: tokText, text: "~"})
+				i++
+				continue
+			}
 			if b == '~' && run != 2 {
 				toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
 				i += run
@@ -300,6 +315,64 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 				canOp: op,
 				canCl: cl,
 			})
+			i += run
+
+		case '^':
+			run := 0
+			for i+run < n && s[i+run] == '^' {
+				run++
+			}
+			if run == 1 {
+				if end, inner, ok := findDelimNoSpaceEnd(s, i+1, '^'); ok {
+					toks = append(toks,
+						&inlineTok{kind: tokOpenStyle, tag: "sup", isMark: model.MarkSuperscript},
+						&inlineTok{kind: tokText, text: inner},
+						&inlineTok{kind: tokCloseStyle, tag: "sup"},
+					)
+					i = end + 1
+					continue
+				}
+			}
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+			i += run
+
+		case '$':
+			run := 0
+			for i+run < n && s[i+run] == '$' {
+				run++
+			}
+			if run == 1 {
+				if end, inner, ok := findInlineMathEnd(s, i+1); ok {
+					toks = append(toks, &inlineTok{kind: tokMath, text: inner})
+					i = end + 1
+					continue
+				}
+			}
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+			i += run
+
+		case '=':
+			run := 0
+			for i+run < n && s[i+run] == '=' {
+				run++
+			}
+			if run == 2 {
+				if end, ok := findDoubleEqualEnd(s, i+2); ok {
+					innerToks := scanInlineTokensWithCtx(s[i+2:end], defs, inLink)
+					resolveDelimiters(innerToks)
+					toks = append(toks, &inlineTok{
+						kind:  tokOpenStyle,
+						tag:   "mark",
+						style: inlineStyle{bgColor: "yellow"},
+						hasBG: true,
+					})
+					toks = append(toks, innerToks...)
+					toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: "mark"})
+					i = end + 2
+					continue
+				}
+			}
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
 			i += run
 
 		case '!':
@@ -535,6 +608,107 @@ func findClosingBackticks(s string, from, count int) int {
 		}
 	}
 	return -1
+}
+
+func isInlineSpaceByte(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+}
+
+func findDelimNoSpaceEnd(s string, from int, ch byte) (end int, inner string, ok bool) {
+	n := len(s)
+	if from >= n {
+		return -1, "", false
+	}
+	var buf strings.Builder
+	for i := from; i < n; i++ {
+		c := s[i]
+		if isInlineSpaceByte(c) {
+			return -1, "", false
+		}
+		if c == '\\' && i+1 < n && s[i+1] == ch {
+			buf.WriteByte(ch)
+			i++
+			continue
+		}
+		if c == ch {
+			if i == from || (i+1 < n && s[i+1] == ch) {
+				return -1, "", false
+			}
+			return i, buf.String(), true
+		}
+		buf.WriteByte(c)
+	}
+	return -1, "", false
+}
+
+func findInlineMathEnd(s string, from int) (end int, inner string, ok bool) {
+	n := len(s)
+	if from >= n || isInlineSpaceByte(s[from]) || s[from] == '$' {
+		return -1, "", false
+	}
+	var buf strings.Builder
+	for i := from; i < n; i++ {
+		c := s[i]
+		if c == '\n' || c == '\r' {
+			return -1, "", false
+		}
+		if c == '\\' && i+1 < n && s[i+1] == '$' {
+			buf.WriteByte('$')
+			i++
+			continue
+		}
+		if c == '$' {
+			if i == from || isInlineSpaceByte(s[i-1]) {
+				return -1, "", false
+			}
+			if i+1 < n && (s[i+1] == '$' || (s[i+1] >= '0' && s[i+1] <= '9')) {
+				return -1, "", false
+			}
+			return i, buf.String(), true
+		}
+		buf.WriteByte(c)
+	}
+	return -1, "", false
+}
+
+func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
+	n := len(s)
+	if from >= n || isInlineSpaceByte(s[from]) || s[from] == '=' {
+		return -1, false
+	}
+	for i := from; i < n; {
+		c := s[i]
+		if c == '\n' || c == '\r' {
+			return -1, false
+		}
+		if c == '\\' && i+1 < n {
+			i += 2
+			continue
+		}
+		if c == '`' {
+			run := 0
+			for i+run < n && s[i+run] == '`' {
+				run++
+			}
+			if closeBT := findClosingBackticks(s, i+run, run); closeBT >= 0 {
+				i = closeBT + run
+				continue
+			}
+			i += run
+			continue
+		}
+		if c == '=' && i+1 < n && s[i+1] == '=' {
+			if i > from && !isInlineSpaceByte(s[i-1]) && s[i-1] != '=' && (i+2 >= n || s[i+2] != '=') {
+				return i, true
+			}
+			for i < n && s[i] == '=' {
+				i++
+			}
+			continue
+		}
+		i++
+	}
+	return -1, false
 }
 
 func normalizeCodeSpanContent(inner string) string {
@@ -1139,6 +1313,10 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 		tok.isMark |= model.MarkStrike
 	case "code", "kbd", "samp", "tt":
 		tok.isMark |= model.MarkCode
+	case "sup":
+		tok.isMark |= model.MarkSuperscript
+	case "sub":
+		tok.isMark |= model.MarkSubscript
 	case "mark":
 		tok.style.bgColor = "yellow"
 		tok.hasBG = true
@@ -1342,7 +1520,7 @@ type styleFrame struct {
 
 func emitSpans(toks []*inlineTok) []model.Span {
 	var out []model.Span
-	var markCounts [5]int // Bold, Italic, Underline, Strike, Code
+	var markCounts [8]int // Bold, Italic, Underline, Strike, Code, Superscript, Subscript, Math
 	var htmlStack []styleFrame
 	var linkStack []string
 
@@ -1362,6 +1540,15 @@ func emitSpans(toks []*inlineTok) []model.Span {
 		if m&model.MarkCode != 0 {
 			markCounts[4] += delta
 		}
+		if m&model.MarkSuperscript != 0 {
+			markCounts[5] += delta
+		}
+		if m&model.MarkSubscript != 0 {
+			markCounts[6] += delta
+		}
+		if m&model.MarkMath != 0 {
+			markCounts[7] += delta
+		}
 	}
 
 	currentStyle := func() inlineStyle {
@@ -1380,6 +1567,15 @@ func emitSpans(toks []*inlineTok) []model.Span {
 		}
 		if markCounts[4] > 0 {
 			st.marks |= model.MarkCode
+		}
+		if markCounts[5] > 0 {
+			st.marks |= model.MarkSuperscript
+		}
+		if markCounts[6] > 0 {
+			st.marks |= model.MarkSubscript
+		}
+		if markCounts[7] > 0 {
+			st.marks |= model.MarkMath
 		}
 		if len(linkStack) > 0 {
 			st.link = linkStack[len(linkStack)-1]
@@ -1419,6 +1615,8 @@ func emitSpans(toks []*inlineTok) []model.Span {
 			appendText(tok.text, 0)
 		case tokCode:
 			appendText(tok.text, model.MarkCode)
+		case tokMath:
+			appendText(tok.text, model.MarkMath)
 		case tokDelim:
 			for _, m := range tok.closeMarks {
 				addMark(m, -1)
@@ -1544,6 +1742,8 @@ const (
 	wrapStrike
 	wrapBold
 	wrapItalic
+	wrapSup
+	wrapSub
 )
 
 type inlineWrapper struct {
@@ -1574,6 +1774,12 @@ func wrappersForSpan(s model.Span, forceHTML, allowBareURL bool) []inlineWrapper
 	}
 	if s.Marks&model.MarkItalic != 0 {
 		w = append(w, inlineWrapper{kind: wrapItalic, useHT: forceHTML})
+	}
+	if s.Marks&model.MarkSuperscript != 0 {
+		w = append(w, inlineWrapper{kind: wrapSup, useHT: forceHTML})
+	}
+	if s.Marks&model.MarkSubscript != 0 {
+		w = append(w, inlineWrapper{kind: wrapSub, useHT: forceHTML})
 	}
 	return w
 }
@@ -1634,6 +1840,18 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 			} else {
 				out.WriteByte('*')
 			}
+		case wrapSup:
+			if w.useHT {
+				out.WriteString("<sup>")
+			} else {
+				out.WriteByte('^')
+			}
+		case wrapSub:
+			if w.useHT {
+				out.WriteString("<sub>")
+			} else {
+				out.WriteByte('~')
+			}
 		}
 	}
 
@@ -1669,6 +1887,18 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 			} else {
 				out.WriteByte('*')
 			}
+		case wrapSup:
+			if w.useHT {
+				out.WriteString("</sup>")
+			} else {
+				out.WriteByte('^')
+			}
+		case wrapSub:
+			if w.useHT {
+				out.WriteString("</sub>")
+			} else {
+				out.WriteByte('~')
+			}
 		}
 	}
 
@@ -1677,6 +1907,11 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		useHTML := forceHTML
 		if !useHTML && sp.Marks&(model.MarkBold|model.MarkItalic|model.MarkStrike) != 0 {
 			if strings.HasPrefix(sp.Text, " ") || strings.HasSuffix(sp.Text, " ") || strings.ContainsRune(sp.Text, '\n') {
+				useHTML = true
+			}
+		}
+		if !useHTML && sp.Marks&(model.MarkSuperscript|model.MarkSubscript) != 0 {
+			if strings.ContainsAny(sp.Text, " \t\n\r") {
 				useHTML = true
 			}
 		}
@@ -1695,6 +1930,8 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 
 		if sp.Marks&model.MarkCode != 0 {
 			writeInlineCode(&out, sp.Text)
+		} else if sp.Marks&model.MarkMath != 0 {
+			writeInlineMath(&out, sp.Text)
 		} else if allowBareURL && !useHTML && sp.Link != "" && len(opened) == 0 && isExactBareAutolink(sp.Text, sp.Link) {
 			out.WriteString(sp.Text)
 		} else {
@@ -1705,6 +1942,18 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		writeClose(opened[k])
 	}
 	return simplifyInlineEscapes(out.String(), spans)
+}
+
+func writeInlineMath(out *strings.Builder, text string) {
+	out.WriteByte('$')
+	for i := 0; i < len(text); i++ {
+		if text[i] == '$' {
+			out.WriteString(`\$`)
+		} else {
+			out.WriteByte(text[i])
+		}
+	}
+	out.WriteByte('$')
 }
 
 func writeInlineCode(out *strings.Builder, text string) {
@@ -1765,9 +2014,14 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx,
 			} else {
 				out.WriteByte(':')
 			}
-		case '\\', '`', '*', '~', '_':
+		case '\\', '`', '*', '~', '_', '^', '$':
 			out.WriteByte('\\')
 			out.WriteRune(r)
+		case '=':
+			if strings.Contains(text, "==") {
+				out.WriteByte('\\')
+			}
+			out.WriteByte('=')
 		case '[', ']':
 			if inMarkdownLink || textContainsLinkSyntax(text) {
 				out.WriteByte('\\')
@@ -1784,7 +2038,7 @@ func textContainsLinkSyntax(s string) bool {
 	return strings.ContainsRune(s, '[') && (strings.Contains(s, "](") || strings.Contains(s, "][") || strings.Contains(s, "[^"))
 }
 
-var escapeSimplifyTargets = [10]byte{'~', '*', '_', '[', ']', '`', '<', '&', ':', '\\'}
+var escapeSimplifyTargets = [13]byte{'~', '*', '_', '[', ']', '`', '<', '&', ':', '\\', '^', '$', '='}
 
 func escapeSimplifySlot(ch byte) int {
 	switch ch {
@@ -1808,6 +2062,12 @@ func escapeSimplifySlot(ch byte) int {
 		return 8
 	case '\\':
 		return 9
+	case '^':
+		return 10
+	case '$':
+		return 11
+	case '=':
+		return 12
 	default:
 		return -1
 	}
@@ -1847,7 +2107,7 @@ func simplifyInlineEscapes(src string, expected []model.Span) string {
 	if !strings.ContainsRune(src, '\\') {
 		return src
 	}
-	var counts [10]int
+	var counts [13]int
 	anyFound := false
 	for i := 0; i+1 < len(src); {
 		idx := strings.IndexByte(src[i:], '\\')

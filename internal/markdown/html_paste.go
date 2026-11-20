@@ -268,7 +268,7 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 			switch name {
 			case "h1", "h2", "h3", "h4", "h5", "h6",
 				"ul", "ol", "li", "table", "blockquote", "aside", "pre", "hr",
-				"strong", "em", "i", "u", "ins", "del", "s", "strike", "code", "kbd", "samp", "mark":
+				"strong", "em", "i", "u", "ins", "del", "s", "strike", "code", "kbd", "samp", "mark", "sup", "sub":
 				return true
 			case "b":
 				fw := strings.ToLower(strings.TrimSpace(cssProp(attrs, "font-weight")))
@@ -314,6 +314,8 @@ type htmlInlineState struct {
 	underline *bool
 	strike    *bool
 	code      *bool
+	sup       *bool
+	sub       *bool
 	highlight *bool
 	link      *string
 }
@@ -355,7 +357,7 @@ type htmlPasteConverter struct {
 }
 
 func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg string) {
-	var bold, italic, under, strike, code, hi bool
+	var bold, italic, under, strike, code, sup, sub, hi bool
 	for _, f := range c.inlineStk {
 		if f.bold != nil {
 			bold = *f.bold
@@ -371,6 +373,12 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 		}
 		if f.code != nil {
 			code = *f.code
+		}
+		if f.sup != nil {
+			sup = *f.sup
+		}
+		if f.sub != nil {
+			sub = *f.sub
 		}
 		if f.highlight != nil {
 			hi = *f.highlight
@@ -393,6 +401,12 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 	}
 	if code {
 		marks |= model.MarkCode
+	}
+	if sup {
+		marks |= model.MarkSuperscript
+	}
+	if sub {
+		marks |= model.MarkSubscript
 	}
 	if hi {
 		bg = "yellow"
@@ -678,6 +692,10 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 		st.strike = boolPtr(true)
 	case "code", "kbd", "samp", "tt":
 		st.code = boolPtr(true)
+	case "sup":
+		st.sup = boolPtr(true)
+	case "sub":
+		st.sub = boolPtr(true)
 	case "mark":
 		st.highlight = boolPtr(true)
 	case "a":
