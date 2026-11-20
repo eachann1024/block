@@ -77,8 +77,19 @@ func (s *Session) hasWholeAtomicSelection() bool {
 	if a.Offset != 0 || b.Offset < rlen {
 		return false
 	}
-	k := s.doc.Blocks[a.Block].Kind
-	return k == model.BlockImage || k == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block) || (k == model.BlockTable && rlen > 0)
+	blk := &s.doc.Blocks[a.Block]
+	k := blk.Kind
+	if k == model.BlockTable && rlen > 0 {
+		// Selecting text inside a single active cell (e.g. Shift+Right across a 1x1 table cell)
+		// is an inline cell selection, not a whole-table atomic selection.
+		if s.tableActiveBlock == blk.ID && blk.Table != nil {
+			if _, _, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+				return false
+			}
+		}
+		return true
+	}
+	return k == model.BlockImage || k == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block)
 }
 
 func (s *Session) hasMultiCellTableSelection() bool {
@@ -2234,7 +2245,7 @@ func (s *Session) pasteOverMultiSelection(norm string) bool {
 			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
 				startR, startC = row, col
 			}
-			if !canFitTableTSVPaste(blk.Table, startR, startC, norm, false) {
+			if !s.canFitTablePaste(blk.Table, startR, startC, norm, false, false) {
 				return true
 			}
 			s.pushUndo()
