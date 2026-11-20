@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T08:56:06Z",
+  "updated_at": "2026-11-20T09:10:00Z",
   "apps": [
     {
       "app": "blockmd",
@@ -12,19 +12,19 @@
         "zh": "同步",
         "en": "Sync"
       },
-      "version": "1.3.27",
+      "version": "1.3.28",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-sync",
       "summary": {
         "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.27/block-sync-v1.3.27.tar.gz",
-      "sha256": "c00c67e9f96f674451a9180f99c3532f421284dfee716ca5aa5165f1298c85a8",
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.28/block-sync-v1.3.28.tar.gz",
+      "sha256": "3f18bbc28cf43743a65463f8e0b5d58bc09d7faf9633b167d16baad3aa20019a",
       "downloads": 1281,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-20T08:55:29Z",
+      "updated_at": "2026-11-20T09:08:38Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -59,19 +59,19 @@
         "zh": "图床上传",
         "en": "Image Host"
       },
-      "version": "1.2.26",
+      "version": "1.2.27",
       "author": "eachann1024",
       "repo": "eachann1024/block-image-host",
       "summary": {
         "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
         "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
       },
-      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.26/block-image-host-v1.2.26.tar.gz",
-      "sha256": "c8ae9b67b4ebb35c4f3ca2ee6ac843ee7c839a81785ccd6767b15d536e7988bd",
+      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.27/block-image-host-v1.2.27.tar.gz",
+      "sha256": "9d481c0a88ea7d4d95912234f20b8238d28414d701c73b227aa0dd0aab0f1143",
       "downloads": 941,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-20T08:55:39Z",
+      "updated_at": "2026-11-20T09:09:41Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -107,19 +107,19 @@
         "zh": "笔记迁移",
         "en": "Migrator"
       },
-      "version": "1.2.29",
+      "version": "1.2.30",
       "author": "eachann1024",
       "repo": "eachann1024/block-migrator",
       "summary": {
         "zh": "从 Obsidian、Notion 与语雀导出目录或 ZIP 包迁移笔记，自动清洗语法并拷贝附件",
         "en": "Migrate notes from Obsidian, Notion, and Yuque folders or ZIP archives with syntax cleanup and asset copy"
       },
-      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.29/block-migrator-v1.2.29.tar.gz",
-      "sha256": "68f6192492f3d203b109b461a693c56d98e55cc7d2b0ab4c4b1f5bca402c370d",
+      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.30/block-migrator-v1.2.30.tar.gz",
+      "sha256": "a8d8f93bbbffe0f04bd06ea47eb2d094e9fbab0f028c4f624e9a067a29dff025",
       "downloads": 616,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-20T08:55:44Z",
+      "updated_at": "2026-11-20T09:08:57Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -161,7 +161,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.22/block-canvas-dots-v1.2.22.tar.gz",
       "sha256": "ff05e7af713b658336d598aed31f94627194311f3542ddc194a45b00c25d2b3a",
-      "downloads": 42,
+      "downloads": 44,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T08:53:47Z",
@@ -210,7 +210,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.14/block-titlebar-v1.0.14.tar.gz",
       "sha256": "338bd1eb0cee951a8e4b3b12e6864aabb04df11802bacba17845419d98394d38",
-      "downloads": 33,
+      "downloads": 35,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T08:53:45Z",
@@ -258,7 +258,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.7/block-tarot-v1.0.7.tar.gz",
       "sha256": "0ac60e7b79890ffe515f198cd40eb23fdd195e40b7f99ba6c373147c550e5d24",
-      "downloads": 6,
+      "downloads": 7,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T08:33:39Z",
