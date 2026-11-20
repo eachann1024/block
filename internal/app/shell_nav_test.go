@@ -476,16 +476,12 @@ func TestEdgeHotZoneOnlyWhenYieldedAndHovered(t *testing.T) {
 	if _, ok := blockui.TargetBounds("edge-hotzone-left"); !ok {
 		t.Fatal("expected left edge hot-zone when open sidebar yielded due to narrow space")
 	}
-	if stripIdle, ok := blockui.TargetBounds("edge-strip-left"); ok && stripIdle.W > 0 {
-		t.Fatalf("expected left edge strip hidden (width 0) at rest, got %+v", stripIdle)
-	}
 
-	// Hovering over the left edge immediately reveals both the indicator strip and the floating sidebar card.
+	// Hovering over the left edge opens the floating sidebar card at once, with no visible edge strip.
 	tt.Move(2, 300)
 	tt.Frame()
-	stripHover, ok := blockui.TargetBounds("edge-strip-left")
-	if !ok || stripHover.W <= 0 {
-		t.Fatalf("expected left edge strip visible when hovered, got ok=%v rect=%+v", ok, stripHover)
+	if _, ok := blockui.TargetBounds("edge-strip-left"); ok {
+		t.Fatal("expected no visible edge strip on hover")
 	}
 	if _, ok := blockui.TargetBounds("edge-float-sidebar"); !ok {
 		t.Fatal("expected floating sidebar card to open immediately on hover without dwell delay")

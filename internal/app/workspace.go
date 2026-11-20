@@ -4530,13 +4530,10 @@ func (w *Workspace) Render(c *ui.Context) {
 						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
 					}
 				})
-				renderColoredEdgeHotZone(
+				renderEdgeHotZone(
 					c,
 					"edge-hotzone-left",
-					"edge-strip-left",
 					false,
-					false,
-					efPal,
 					theme.Tr("收起侧栏", "Collapse Sidebar"),
 					func() {
 						w.ToggleSidebar(vpW)
