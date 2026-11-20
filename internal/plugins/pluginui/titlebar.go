@@ -241,7 +241,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 	declarative := inst.Manifest.IsDeclarativeOnly()
 	uninstBusy := c.sup.IsPluginUninstalling(pluginID) || vs.BusyAction == "__uninstall__"
 	pluginBusyAny := c.sup.IsPluginBusyAnyNotebook(pluginID)
-	actionRunning := live && vs.BusyAction != "" && !uninstBusy
+	actionRunning := !uninstBusy && vs.BusyAction != "" && (live || (inst.Enabled && vs.BusyAction == "__retry_note_saved__"))
 	canCancel := actionRunning && c.sup.CanCancelAction(pluginID)
 	uninstErr := strings.TrimSpace(c.sup.UninstallError(pluginID))
 
@@ -265,14 +265,14 @@ func (c *Controller) renderPluginTitlebarTrailing(
 		switch {
 		case hasError:
 			c.renderTitlebarErrorPill(ctx, pluginID, shortPluginErrorLabel(pluginID, failed, uninstErr != "", vs), errDetail)
+		case actionRunning:
+			// Progress is integrated directly into the running primary action pill.
 		case starting:
 			ui.Row(ctx.Key("plugin-tb-starting-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("启动中", "Starting"))
 				ui.Text(ctx, theme.Tr("启动中…", "Starting…")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					TextColor(pal.TextSecondary).SingleLine()
 			})
-		case actionRunning:
-			// Progress is integrated directly into the running primary action pill.
 		case narrowTitlebar:
 			// Keep breadcrumb, primary action, switch and overflow menu legible on narrow windows.
 		case live && vs.PendingSaves > 0:
@@ -887,11 +887,11 @@ func (c *Controller) buildPluginMoreMenuItems(
 	inst plugins.InstalledApp,
 	onSelectTab func(nextTab string),
 ) []bui.MenuItemSpec {
-	vs, _, _, live := c.pluginVisualState(pluginID, inst)
+	vs, _, failed, live := c.pluginVisualState(pluginID, inst)
 	declarative := inst.Manifest.IsDeclarativeOnly()
 	uninstBusy := c.sup.IsPluginUninstalling(pluginID) || vs.BusyAction == "__uninstall__"
 	pluginBusyAny := c.sup.IsPluginBusyAnyNotebook(pluginID)
-	actionRunning := live && vs.BusyAction != "" && !uninstBusy
+	actionRunning := !uninstBusy && vs.BusyAction != "" && (live || (inst.Enabled && vs.BusyAction == "__retry_note_saved__"))
 
 	items := make([]bui.MenuItemSpec, 0, 8)
 
@@ -899,7 +899,8 @@ func (c *Controller) buildPluginMoreMenuItems(
 	if live && vs.Page != nil {
 		primaryAct, secondaryActs := splitHeaderActions(vs.Page)
 		uninstErr := strings.TrimSpace(c.sup.UninstallError(pluginID))
-		hasError := uninstErr != "" || vs.Error != "" || vs.RetryKind != plugins.RetryKindNone
+		errDetail := resolvePluginErrorDetail(vs, uninstErr)
+		hasError := !uninstBusy && (uninstErr != "" || failed || (live && !actionRunning && errDetail != ""))
 		primaryDisplaced := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm)
 		if primaryDisplaced && primaryAct != nil {
 			b := *primaryAct
