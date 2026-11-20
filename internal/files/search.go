@@ -44,8 +44,8 @@ type searchQuerySpec struct {
 }
 
 func compileSearchQuery(q string) searchQuerySpec {
-	isASCII := fuzzy.IsASCII(q)
-	foldedQ := foldPreserveLen(q)
+	foldedQ := fuzzy.FoldString(q)
+	isASCII := fuzzy.IsASCII(foldedQ)
 	spec := searchQuerySpec{
 		raw:     q,
 		folded:  foldedQ,
@@ -58,12 +58,12 @@ func compileSearchQuery(q string) searchQuerySpec {
 	if len(rawTokens) > 1 {
 		seen := make(map[string]bool, len(rawTokens))
 		for _, rt := range rawTokens {
-			ft := foldPreserveLen(rt)
+			ft := fuzzy.FoldString(rt)
 			if ft == "" || seen[ft] {
 				continue
 			}
 			seen[ft] = true
-			tokASCII := fuzzy.IsASCII(rt)
+			tokASCII := fuzzy.IsASCII(ft)
 			spec.rawTokens = append(spec.rawTokens, rt)
 			spec.foldedTokens = append(spec.foldedTokens, ft)
 			spec.tokenASCII = append(spec.tokenASCII, tokASCII)
@@ -288,11 +288,12 @@ func walkSearchDir(
 		}
 		if ok {
 			if ranked.titleMatch {
-				if ranked.titleTier <= 2 {
+				if ranked.titleTier == 0 {
 					*exactTitleCount++
 					*titleHits = append(*titleHits, ranked)
-				} else if ranked.titleTier == 3 {
-					// Never drop multi-token title or literal relative-path hits behind earlier fuzzy noise.
+				} else if ranked.titleTier <= 3 {
+					// Keep prefix, substring, multi-token, and literal relative-path hits intact
+					// without stopping traversal early before exact tier-0 titles are found.
 					*titleHits = append(*titleHits, ranked)
 				} else if len(*titleHits) < maxSearchHits*4 {
 					*titleHits = append(*titleHits, ranked)
@@ -373,13 +374,11 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 	if len(data) > 0 && !skipBody {
 		multiTok := len(spec.foldedTokens) > 1
 		var (
-			hasSameLine   bool
-			sameLineNum   int
-			sameLineCol   int
-			sameLineEnd   int
-			sameLineLastS int
-			sameLineLastE int
-			sameLineBytes []byte
+			hasSameLine    bool
+			sameLineNum    int
+			sameLineCol    int
+			sameLineRanges [][2]int
+			sameLineBytes  []byte
 
 			hasFirstTok   bool
 			firstTokLine  int
@@ -431,7 +430,10 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 			if multiTok && len(lineBytes) > 0 {
 				lineAll := !hasSameLine
 				firstStart, firstEnd := -1, 0
-				lastStart, lastEnd := -1, 0
+				var curLineRanges [][2]int
+				if lineAll {
+					curLineRanges = make([][2]int, 0, len(spec.foldedTokens))
+				}
 				for ti, ft := range spec.foldedTokens {
 					ts, te, tokOK, tokErr := findFoldMatchBytesCtx(ctx, lineBytes, spec.rawTokens[ti], ft, spec.tokenASCII[ti], spec.tokenLPS[ti])
 					if tokErr != nil {
@@ -445,8 +447,8 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 						if firstStart < 0 || ts < firstStart {
 							firstStart, firstEnd = ts, te
 						}
-						if lastStart < 0 || ts > lastStart {
-							lastStart, lastEnd = ts, te
+						if lineAll {
+							curLineRanges = append(curLineRanges, [2]int{ts, te})
 						}
 					} else {
 						lineAll = false
@@ -456,9 +458,7 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 					hasSameLine = true
 					sameLineNum = lineNum
 					sameLineCol = firstStart
-					sameLineEnd = firstEnd
-					sameLineLastS = lastStart
-					sameLineLastE = lastEnd
+					sameLineRanges = curLineRanges
 					sameLineBytes = lineBytes
 				}
 				if !hasFirstTok && firstStart >= 0 {
@@ -479,7 +479,7 @@ func inspectSearchFile(ctx context.Context, entry os.DirEntry, info os.FileInfo,
 				bodyMatched = true
 				bodyTier = 1
 				matchLine, matchColumn = sameLineNum, sameLineCol
-				lineSnippet = snippetAroundMulti(string(sameLineBytes), sameLineCol, sameLineEnd, sameLineLastS, sameLineLastE)
+				lineSnippet = snippetAroundRanges(string(sameLineBytes), sameLineRanges)
 				if ranges := FindBodyHighlights(lineSnippet, spec.raw); len(ranges) > 0 {
 					mStart, mEnd = ranges[0][0], ranges[0][1]
 				}
@@ -537,35 +537,21 @@ func findFoldMatchBytesCtx(ctx context.Context, line []byte, rawNeedle, foldedNe
 	if len(foldedNeedle) == 0 || len(line) == 0 {
 		return 0, 0, false, nil
 	}
-	if needleIsASCII {
-		idx, err := indexFoldASCIIBytesCtx(ctx, line, foldedNeedle, lps)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		if idx >= 0 {
-			return idx, idx + len(foldedNeedle), true, nil
-		}
-		// If the line contains non-ASCII runes (e.g. Kelvin K, Turkish İ, German ß),
-		// fall back to Unicode-aware folding so ASCII queries like "k", "i", "strasse" match.
-		if !hasNonASCIIBytes(line) {
-			return 0, 0, false, nil
-		}
-		if err := ctx.Err(); err != nil {
-			return 0, 0, false, err
-		}
-		if ranges := fuzzy.FindFoldRanges(string(line), rawNeedle); len(ranges) > 0 {
-			return ranges[0][0], ranges[0][1], true, nil
-		}
+	// If the line contains non-ASCII runes (e.g. Kelvin K, Turkish İ, German ß), always run
+	// linear-time Unicode folding so earliest match byte offsets stay consistent with FindFoldMatches
+	// (e.g. "K k" searching "k" hits byte 0, not byte 4) and long lines respect ctx cancellation.
+	if hasNonASCIIBytes(line) {
+		return fuzzy.FindFirstFoldRangeCtx(ctx, string(line), rawNeedle)
+	}
+	if !needleIsASCII {
 		return 0, 0, false, nil
 	}
-	if !hasNonASCIIBytes(line) {
-		return 0, 0, false, nil
-	}
-	if err := ctx.Err(); err != nil {
+	idx, err := indexFoldASCIIBytesCtx(ctx, line, foldedNeedle, lps)
+	if err != nil {
 		return 0, 0, false, err
 	}
-	if ranges := fuzzy.FindFoldRanges(string(line), rawNeedle); len(ranges) > 0 {
-		return ranges[0][0], ranges[0][1], true, nil
+	if idx >= 0 {
+		return idx, idx + len(foldedNeedle), true, nil
 	}
 	return 0, 0, false, nil
 }
@@ -700,27 +686,6 @@ func firstContentLineBytes(data []byte) string {
 	return ""
 }
 
-// foldPreserveLen lowercases ASCII text directly and delegates non-ASCII strings cleanly.
-func foldPreserveLen(text string) string {
-	if fuzzy.IsASCII(text) {
-		return asciiLower(text)
-	}
-	return strings.ToLower(text)
-}
-
-func asciiLower(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := range len(s) {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b.WriteByte(c)
-	}
-	return b.String()
-}
-
 // FindFoldMatches returns all non-overlapping case-folded byte ranges [start, end]
 // of needle in text that align with UTF-8 rune boundaries.
 func FindFoldMatches(text, needle string) [][2]int {
@@ -820,24 +785,52 @@ func snippetAround(text string, matchStart, matchEnd int) string {
 	return snippetWindow(text, matchStart, matchEnd, snippetBeforeRunes, snippetAfterRunes)
 }
 
-func snippetAroundMulti(text string, firstStart, firstEnd, lastStart, lastEnd int) string {
-	if lastStart <= firstStart || lastEnd <= firstEnd {
-		return snippetAround(text, firstStart, firstEnd)
+func snippetAroundRanges(text string, ranges [][2]int) string {
+	merged := fuzzy.MergeRanges(append([][2]int(nil), ranges...))
+	if len(merged) == 0 {
+		return snippetAround(text, 0, 0)
 	}
-	if firstStart < 0 {
-		firstStart = 0
+	if len(merged) == 1 {
+		return snippetAround(text, merged[0][0], merged[0][1])
 	}
-	if lastEnd > len(text) {
-		lastEnd = len(text)
-	}
-	spanRunes := utf8.RuneCountInString(text[firstStart:lastEnd])
-	if spanRunes <= snippetBeforeRunes+snippetAfterRunes {
+	firstStart := max(0, merged[0][0])
+	lastEnd := min(len(text), merged[len(merged)-1][1])
+	if utf8.RuneCountInString(text[firstStart:lastEnd]) <= snippetBeforeRunes+snippetAfterRunes {
 		return snippetWindow(text, firstStart, lastEnd, 16, 20)
 	}
-	// Two tokens far apart on the same line: show both in a dual-window excerpt.
-	left := snippetWindow(text, firstStart, firstEnd, 14, 18)
-	right := snippetWindow(text, lastStart, lastEnd, 14, 18)
-	return left + " " + right
+	// Group nearby token matches into merged windows and keep up to 4 separated excerpts
+	// so multi-token matches spread across a long line (e.g. 3 words 100 chars apart) stay visible.
+	type win struct {
+		start int
+		end   int
+	}
+	var wins []win
+	for _, r := range merged {
+		s, e := max(0, r[0]), min(len(text), r[1])
+		if s >= e {
+			continue
+		}
+		if len(wins) > 0 && utf8.RuneCountInString(text[wins[len(wins)-1].end:s]) <= 24 {
+			wins[len(wins)-1].end = e
+		} else {
+			wins = append(wins, win{start: s, end: e})
+			if len(wins) >= 4 {
+				break
+			}
+		}
+	}
+	if len(wins) == 1 {
+		return snippetWindow(text, wins[0].start, wins[0].end, 16, 20)
+	}
+	before, after := 12, 14
+	if len(wins) >= 3 {
+		before, after = 8, 10
+	}
+	parts := make([]string, 0, len(wins))
+	for _, w := range wins {
+		parts = append(parts, snippetWindow(text, w.start, w.end, before, after))
+	}
+	return strings.Join(parts, " ")
 }
 
 func snippetWindow(text string, matchStart, matchEnd, beforeRunes, afterRunes int) string {
