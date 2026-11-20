@@ -434,12 +434,6 @@ type sceneFirefly struct {
 	blinkDurSec   float32
 }
 
-type sceneDustStar struct {
-	x, y, r float32
-	color   ui.Color
-	opacity float32
-}
-
 type sceneFlareStar struct {
 	x, y, size float32
 	delaySec   float32
@@ -455,11 +449,13 @@ type sceneMeteor struct {
 	atFrac     float32
 	delaySec   float32
 	isNightMet bool
+	tier       uint8
 }
 
 type sceneMoonWisp struct {
 	y, scale float32
 	tier     uint8
+	minW     float32 // narrowest sidebar the wisp shows in; 0 means any
 	delaySec float32
 	durSec   float32
 }
@@ -542,8 +538,7 @@ type compiledScene struct {
 	mushDur     [3]float32
 
 	// Night-specific
-	dustStars []sceneDustStar
-	flares    []sceneFlareStar
+	flares []sceneFlareStar
 
 	// Meteors (night & moon)
 	meteors []sceneMeteor
@@ -755,6 +750,33 @@ func makeSpill(rng *rand.Rand, colors []ui.Color, width float32, n int) []sceneS
 			st.twinkle = twinkleSmooth
 			st.delaySec = rng.Float32() * 6.0
 			st.durSec = 2.6 + rng.Float32()*3.8
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+// makeDustLane scatters a faint diagonal lane of star dust that starts just inside the sidebar
+// edge and climbs away across the titlebar, like a far-off arm of the Milky Way. x is relative to
+// the sidebar edge, and the lane dims where it crosses the titlebar's text line.
+func makeDustLane(rng *rand.Rand, colors []ui.Color, n int) []sceneStar {
+	out := make([]sceneStar, 0, n)
+	for range n {
+		t := rng.Float32()
+		st := sceneStar{
+			x:       -34 + 200*t + float32(rng.NormFloat64())*7,
+			y:       40 - 36*t + float32(rng.NormFloat64())*3.5,
+			r:       0.26 + rng.Float32()*0.24,
+			color:   colors[rng.Intn(len(colors))],
+			opacity: 0.20 + rng.Float32()*0.40,
+			dim:     1 - 0.55*t,
+			tier:    2,
+		}
+		if st.y < 1.5 || st.y > 44 {
+			continue
+		}
+		if st.y > 9 && st.y < 30 {
+			st.dim *= 0.5
 		}
 		out = append(out, st)
 	}
@@ -1108,7 +1130,8 @@ func compileDaybreak(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.
 		d := float32(math.Hypot(float64(x-brandOrbX), float64((y-58)*3)))
 		return clampF((d-90)/560, 0.12, 1.0)
 	}
-	sts := makeStarsV2(rng, 120, 3, 34, 0.45, starCols, dimFn)
+	sts := makeStarsV2(rng, 120, 3, 42, 0.45, starCols, dimFn)
+	sts = append(sts, makeSidebarStars(rand.New(rand.NewSource(1053)), 30, 42, 0.45, starCols, dimFn)...)
 	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 10, 254, 7, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
 	mistCol := sceneColor("#cfd6e6")
 
@@ -1127,9 +1150,10 @@ func compileDaybreak(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.
 		rimMidStop: 0.4,
 		rimMidOp:   0.6,
 		stars:      sts,
+		spill:      makeSpill(rand.New(rand.NewSource(2053)), starCols, 120, 16),
 		mists: []sceneMistBand{
-			{x: -30, y: 56, w: 260, h: 6, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 8, durSec: 29},
-			{x: 40, y: 64, w: 210, h: 5, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 20, durSec: 37},
+			{x: -30, y: 56, w: 210, h: 6, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 8, durSec: 29},
+			{x: 40, y: 64, w: 170, h: 5, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tier: 1, delaySec: 20, durSec: 37},
 		},
 		blades:     bl,
 		bladeColor: sceneColor("#2d2f38"),
@@ -1152,7 +1176,8 @@ func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.C
 	for i := range wanders {
 		wanders[i] = makeWanderTrack(rng, wCounts[rng.Intn(len(wCounts))], 10, 6, 0)
 	}
-	sts := makeStarsV2(rng, 70, 3, 36, 0.4, starCols, nil)
+	sts := makeStarsV2(rng, 70, 3, 42, 0.4, starCols, nil)
+	sts = append(sts, makeSidebarStars(rand.New(rand.NewSource(1067)), 25, 42, 0.4, starCols, nil)...)
 
 	mkFly := func(x, y, size float32) sceneFirefly {
 		bk := fireflyBlinkKind(rng.Intn(3))
@@ -1185,6 +1210,7 @@ func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.C
 	farFlies := make([]sceneFirefly, len(farCoords))
 	for i, c := range farCoords {
 		farFlies[i] = mkFly(c[0], c[1], 0.6)
+		farFlies[i].tier = uint8(i % 3)
 	}
 
 	var pondY, pondDel, pondDur [4]float32
@@ -1208,24 +1234,33 @@ func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.C
 
 	nearCoords := [][2]float32{
 		{22, 54}, {48, 44}, {71, 60}, {97, 50}, {118, 66},
-		{139, 43}, {164, 55}, {189, 50}, {212, 64}, {236, 46}, {252, 58},
+		{139, 43}, {164, 55}, {189, 50}, {212, 64}, {200, 57}, {176, 45},
 	}
 	skyCoords := [][2]float32{
 		{304, 33}, {388, 27}, {521, 34}, {742, 30}, {921, 35}, {1124, 31},
 		{1420, 32}, {1760, 29}, {2080, 33},
 	}
-	flies := make([]sceneFirefly, 0, len(nearCoords)+len(skyCoords))
-	for _, c := range nearCoords {
+	flies := make([]sceneFirefly, 0, len(nearCoords)+len(skyCoords)+2)
+	for i, c := range nearCoords {
 		sz := float32(1.0)
 		if rng.Intn(3) == 2 {
 			sz = 1.25
 		}
-		flies = append(flies, mkFly(c[0], c[1], sz))
+		ff := mkFly(c[0], c[1], sz)
+		ff.tier = uint8(i % 3)
+		flies = append(flies, ff)
 	}
 	for _, c := range skyCoords {
-		flies = append(flies, mkFly(c[0], c[1], 1.0))
+		ff := mkFly(c[0], c[1], 1.0)
+		ff.tier = 2
+		flies = append(flies, ff)
 	}
-
+	// Two more drift through the sky under the titlebar controls when the scene is rich
+	for _, c := range [][2]float32{{60, 38}, {146, 38.5}} {
+		ff := mkFly(c[0], c[1], 0.9)
+		ff.tier = 2
+		flies = append(flies, ff)
+	}
 	return &compiledScene{
 		id:          SceneFirefly,
 		dark:        true,
@@ -1235,6 +1270,7 @@ func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.C
 		far:         far,
 		near:        near,
 		stars:       sts,
+		spill:       makeSpill(rand.New(rand.NewSource(2067)), starCols, 120, 14),
 		ffWanders:   wanders,
 		farFlies:    farFlies,
 		fireflies:   flies,
@@ -1263,26 +1299,15 @@ func compileNight(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Col
 	far := ridgeCurve{base: 56, comps: []ridgeComp{{4.5, 400, 2.9}, {2.2, 153, 0.4}, {1.1, 65, 1.8}}, fill: sceneColor("#252a35")}
 	near := ridgeCurve{base: 64, comps: []ridgeComp{{3, 262, 1.3}, {1.2, 95, 0.2}}, fill: sceneColor("#20232b")}
 
-	dustCols := []ui.Color{sceneColor("#cfdcff"), sceneColor("#cfdcff"), sceneColor("#f1e4ff")}
-	dust := make([]sceneDustStar, 0, 190)
-	for range 190 {
-		t := rng.Float32()
-		x := 820 + 270*t + float32(rng.NormFloat64())*11
-		y := 4 + 32*t + float32(rng.NormFloat64())*5.5
-		if y > 0 && y < 44 && isSkyClear(x, y) {
-			dust = append(dust, sceneDustStar{
-				x:       x,
-				y:       y,
-				r:       0.26 + rng.Float32()*0.24,
-				color:   dustCols[rng.Intn(len(dustCols))],
-				opacity: 0.20 + rng.Float32()*0.40,
-			})
-		}
-	}
 	sts := makeStarsV2(rng, 210, 3, 50, 0.3, starCols, nil)
+	sts = append(sts, makeSidebarStars(rand.New(rand.NewSource(1079)), 50, 48, 0.3, starCols, nil)...)
+	// The densest sky of the set trails furthest into the titlebar, with a lane of fine dust.
+	spillRng := rand.New(rand.NewSource(2079))
+	spill := makeSpill(spillRng, starCols, 170, 34)
+	spill = append(spill, makeDustLane(spillRng, []ui.Color{sceneColor("#cfdcff"), sceneColor("#cfdcff"), sceneColor("#f1e4ff")}, 44)...)
 
 	flareSpecs := [][4]float32{
-		{244, 42, 3.0, 9.7},
+		{204, 36, 3.0, 9.7},
 		{836, 9, 3.6, 13.1},
 		{988, 33, 2.8, 11.3},
 		{1046, 7, 3.2, 17.9},
@@ -1308,13 +1333,13 @@ func compileNight(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Col
 		peak:       pk,
 		far:        far,
 		near:       near,
-		dustStars:  dust,
+		spill:      spill,
 		stars:      sts,
 		flares:     flares,
 		blades:     bl,
 		bladeColor: sceneColor("#2a2f3a"),
 		meteors: []sceneMeteor{
-			{x0: 1004, y0: 6, dx: -58, dy: 22, tailX: 22, tailY: -8.3, durSec: 37, atFrac: 0.88, delaySec: 22, isNightMet: true},
+			{x0: 150, y0: 33, dx: -46, dy: 10, tailX: 19.6, tailY: -4.3, durSec: 37, atFrac: 0.88, delaySec: 22, isNightMet: true, tier: 2},
 		},
 		cat: sceneCatSpec{
 			x: float32(tx + 26), y: far.y(tx+26) + 0.8,
@@ -1333,10 +1358,14 @@ func compileMoon(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Colo
 	near := ridgeCurve{base: 64, comps: []ridgeComp{{2.4, 268, 2.2}, {1.1, 105, 0.7}}, fill: sceneColor("#22262f")}
 
 	sts := makeStarsV2(rng, 105, 4, 46, 0.5, starCols, nil)
-	shotSpecs := [][7]float32{
-		{300, 5, 66, 21, 19, 62, 8},
-		{772, 3, 50, 25, 31, 44, 22},
-		{1034, 9, -54, 19, 43, 71, 30},
+	sts = append(sts, makeSidebarStars(rand.New(rand.NewSource(1083)), 15, 46, 0.5, starCols, nil)...)
+	shotSpecs := [][8]float32{ // x0, y0, dx, dy, dur, at%, from%, tier
+		{300, 5, 66, 21, 19, 62, 8, 1},
+		{772, 3, 50, 25, 31, 44, 22, 1},
+		{1034, 9, -54, 19, 43, 71, 30, 1},
+		// Two short streaks that fit inside the sidebar: above the wordmark, and low on the left
+		{184, 2.5, -44, 5, 29, 55, 12, 2},
+		{20, 30, 44, 9, 41, 35, 20, 2},
 	}
 	meteors := make([]sceneMeteor, len(shotSpecs))
 	for i, sh := range shotSpecs {
@@ -1349,6 +1378,7 @@ func compileMoon(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Colo
 			durSec:   sh[4],
 			atFrac:   sh[5] / 100.0,
 			delaySec: sh[4] * (sh[5] - sh[6]) / 100.0,
+			tier:     uint8(sh[7]),
 		}
 	}
 	lk := sceneLake{
@@ -1375,11 +1405,11 @@ func compileMoon(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Colo
 		rimMidOp:   0.5,
 		stars:      sts,
 		meteors:    meteors,
+		spill:      makeSpill(rand.New(rand.NewSource(2083)), starCols, 120, 14),
 		moonWisps: []sceneMoonWisp{
-			{y: 31, scale: 1.0, delaySec: 96, durSec: 132},
-			{y: 12, scale: 1.5, delaySec: 40, durSec: 176},
-			{y: 24, scale: 0.7, delaySec: 20, durSec: 104},
-			{y: 4, scale: 0.9, delaySec: 118, durSec: 151},
+			{y: 31, scale: 0.42, tier: 1, delaySec: 60, durSec: 118},
+			{y: 2.5, scale: 0.34, tier: 2, delaySec: 14, durSec: 96},
+			{y: 41, scale: 0.3, tier: 2, minW: 300, delaySec: 92, durSec: 131},
 		},
 		hasLake:    true,
 		lake:       lk,
