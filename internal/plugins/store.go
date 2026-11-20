@@ -1061,12 +1061,12 @@ func installSourceRecord(source string) string {
 }
 
 // MatchesOfficialSource reports whether an installed plugin was genuinely installed
-// from the catalog's verified repository (not a spoofed local directory copy).
+// from the catalog's verified official repository (not a spoofed local directory copy).
 func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
-	if !entry.Verified {
+	if !entry.Verified || !IsOfficialRepo(entry.Repo) {
 		return false
 	}
-	return s.matchesRepoSource(installed, entry)
+	return s.matchesRepoSource(installed, entry, false)
 }
 
 // MatchesReviewedSource reports whether an installed plugin was genuinely installed
@@ -1075,16 +1075,25 @@ func (s *StoreManager) MatchesReviewedSource(installed InstalledApp, entry Store
 	if !IsReviewedAuthorRepo(entry.Repo) {
 		return false
 	}
-	return s.matchesRepoSource(installed, entry)
+	return s.matchesRepoSource(installed, entry, true)
 }
 
-func (s *StoreManager) matchesRepoSource(installed InstalledApp, entry StoreAppEntry) bool {
+func (s *StoreManager) matchesRepoSource(installed InstalledApp, entry StoreAppEntry, allowMigratedOfficial bool) bool {
 	if installed.InstallDir == "" {
 		return false
 	}
 	wantRepo := strings.ToLower(strings.TrimSpace(entry.Repo))
 	gotRepo := strings.ToLower(strings.TrimSpace(installed.Manifest.Repo))
-	if wantRepo == "" || gotRepo != wantRepo {
+	if wantRepo == "" {
+		return false
+	}
+	repoMatches := gotRepo == wantRepo
+	if !repoMatches && allowMigratedOfficial && strings.TrimSpace(entry.DownloadURL) != "" && IsOfficialRepo(gotRepo) {
+		_, wantName, okW := strings.Cut(wantRepo, "/")
+		_, gotName, okG := strings.Cut(gotRepo, "/")
+		repoMatches = okW && okG && wantName == gotName
+	}
+	if !repoMatches {
 		return false
 	}
 	root, err := os.OpenRoot(installed.InstallDir)
@@ -1094,13 +1103,16 @@ func (s *StoreManager) matchesRepoSource(installed InstalledApp, entry StoreAppE
 	defer root.Close()
 	raw, err := readPluginFile(root, installSourceFile, 128)
 	if err != nil {
-		return false
+		// Pre-provenance catalog installations lack .block-install-source; trust
+		// them only when the entry is backed by the catalog and its repo matches.
+		return errors.Is(err, os.ErrNotExist) && strings.TrimSpace(entry.DownloadURL) != ""
 	}
 	recorded := strings.TrimSpace(string(raw))
 	allowed := []string{
 		installSourceRecord("catalog-github:" + wantRepo),
 		installSourceRecord("github:" + wantRepo),
 		installSourceRecord("builtin:" + entry.ID),
+		wantRepo,
 	}
 	if u, err := parseArchiveURL(strings.TrimSpace(entry.DownloadURL)); err == nil {
 		allowed = append(allowed, installSourceRecord("catalog-url:"+u.String()))
