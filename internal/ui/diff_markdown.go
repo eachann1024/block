@@ -1657,8 +1657,8 @@ func ParseDiffTableCells(trimmed string) []string {
 	return cells
 }
 
-// DiffTableCols gives each table row the column count of its table's header, read in
-// the row's own text (see DiffTableRoles), so a short row still lines up with it.
+// DiffTableCols gives each table row the width of its widest row on the same
+// side of the diff, so shorter rows still line up with it.
 // Other lines get 0, and so do rows above the header and runs that no separator of
 // as many cells makes a table, which are plain text with bars.
 func DiffTableCols(lines []string, change []int) []int {
@@ -1668,14 +1668,15 @@ func DiffTableCols(lines []string, change []int) []int {
 		if h < 0 {
 			return
 		}
-		n := len(ParseDiffTableCells(strings.TrimSpace(lines[run[h]])))
+		n := 0
+		for _, k := range run[h:] {
+			n = max(n, len(ParseDiffTableCells(lines[k])))
+		}
 		for _, k := range run[h:] {
 			side[si][k] = n
 		}
 	})
-	// A row takes its own text's header (a deleted row is in the old text only); an
-	// unchanged one the new header, so a table cut from two columns to one shows one
-	// cell in a kept "| x | y |" row.
+	// Deleted rows use the old table width. Other rows use the new width.
 	cols := side[1]
 	for k := range lines {
 		// An unchanged row is read in the new text only: with the separator deleted,
@@ -1771,10 +1772,6 @@ func DiffTableRow(c *ui.Context, trimmed string, cols int, st DiffLineStyle, hea
 	cells := ParseDiffTableCells(trimmed)
 	for len(cells) < cols {
 		cells = append(cells, "")
-	}
-	// Cells past the header's count are dropped, as in the note.
-	if cols > 0 && len(cells) > cols {
-		cells = cells[:cols]
 	}
 	return ui.Row(c).Grow(1).MinWidth(0).Children(func() {
 		for ci, cell := range cells {
