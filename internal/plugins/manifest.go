@@ -130,17 +130,42 @@ type Manifest struct {
 	App           string        `json:"app"`
 	SchemaVersion int           `json:"schema_version"`
 	ID            string        `json:"id"`
+	Category      Category      `json:"category,omitempty"`
 	Name          LocalizedText `json:"name"`
 	Version       string        `json:"version"`
 	Beta          bool          `json:"beta,omitempty"`
 	Author        string        `json:"author"`
 	Repo          string        `json:"repo,omitempty"`
 	Summary       LocalizedText `json:"summary"`
-	Entry         EntrySpec     `json:"entry"`
-	Permissions   []Permission  `json:"permissions"`
-	Surfaces      []Surface     `json:"surfaces"`
+	Entry         EntrySpec     `json:"entry,omitempty"`
+	Permissions   []Permission  `json:"permissions,omitempty"`
+	Surfaces      []Surface     `json:"surfaces,omitempty"`
 	Icon          DuoIconSpec   `json:"icon"`
 	Contributes   *Contributes  `json:"contributes,omitempty"`
+}
+
+// EffectiveCategory returns the canonical App Store category for m.
+func (m *Manifest) EffectiveCategory() Category {
+	if m == nil {
+		return CategoryTools
+	}
+	hasLangs := m.Contributes != nil && len(m.Contributes.Languages) > 0
+	return ResolveCategory(m.Category, m.ID, hasLangs)
+}
+
+// IsDeclarativeOnly reports whether m is a zero-process, zero-permission
+// declarative language extension plugin that runs purely in-host.
+func (m *Manifest) IsDeclarativeOnly() bool {
+	if m == nil {
+		return false
+	}
+	return len(m.Entry.Command) == 0 &&
+		len(m.Permissions) == 0 &&
+		len(m.Surfaces) == 0 &&
+		m.Category == CategoryLanguage &&
+		m.Contributes != nil &&
+		len(m.Contributes.Languages) > 0 &&
+		!m.Contributes.hasRuntimeContributions()
 }
 
 var (
@@ -263,6 +288,13 @@ func (m *Manifest) Validate() error {
 	if !pluginIDRe.MatchString(m.ID) {
 		return fmt.Errorf("manifest.id %q must match %s", m.ID, pluginIDRe.String())
 	}
+	if m.Category != "" && !ValidCategory(m.Category) {
+		return fmt.Errorf("manifest.category %q is not a valid category (allowed: sync, edit, appearance, tools, language)", m.Category)
+	}
+	hasLanguages := m.Contributes != nil && len(m.Contributes.Languages) > 0
+	if hasLanguages && m.Category != CategoryLanguage {
+		return fmt.Errorf("manifest.category must be %q when contributes.languages is declared", CategoryLanguage)
+	}
 	if strings.TrimSpace(m.Name.Zh) == "" || strings.TrimSpace(m.Name.En) == "" {
 		return errors.New("manifest.name.zh and manifest.name.en are both required")
 	}
@@ -290,8 +322,11 @@ func (m *Manifest) Validate() error {
 	if ContainsEmoji(m.Summary.Zh) || ContainsEmoji(m.Summary.En) {
 		return errors.New("manifest.summary must not contain emoji")
 	}
-	if len(m.Entry.Command) == 0 || strings.TrimSpace(m.Entry.Command[0]) == "" {
-		return errors.New("manifest.entry.command must be a non-empty string array")
+	declarative := m.IsDeclarativeOnly()
+	if !declarative {
+		if len(m.Entry.Command) == 0 || strings.TrimSpace(m.Entry.Command[0]) == "" {
+			return errors.New("manifest.entry.command must be a non-empty string array")
+		}
 	}
 	seenPerm := map[Permission]bool{}
 	for _, p := range m.Permissions {
@@ -303,7 +338,7 @@ func (m *Manifest) Validate() error {
 		}
 		seenPerm[p] = true
 	}
-	if len(m.Surfaces) == 0 {
+	if !declarative && len(m.Surfaces) == 0 {
 		return errors.New("manifest.surfaces must declare [\"settings_page\"]")
 	}
 	seenSurf := map[Surface]bool{}

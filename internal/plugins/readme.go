@@ -42,6 +42,11 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 		}
 		localErr = err
 	}
+	if strings.HasPrefix(strings.TrimSpace(entry.DownloadURL), "builtin://") {
+		if doc, ok := readBuiltinSeedReadme(entry.ID, en); ok {
+			return PluginReadme{Text: doc}, nil
+		}
+	}
 	repo := readmeRepo(entry.Repo)
 	if repo == "" {
 		repo = readmeRepo(installed.Manifest.Repo)
@@ -79,6 +84,9 @@ func (s *StoreManager) ReadPluginReadme(ctx context.Context, entry StoreAppEntry
 	defer cdnCancel()
 	if doc, cdnErr := s.fetchCDNReadme(cdnCtx, repo, en); cdnErr == nil {
 		return doc, nil
+	}
+	if doc, ok := readBuiltinSeedReadme(entry.ID, en); ok {
+		return PluginReadme{Text: doc}, nil
 	}
 	return PluginReadme{}, remoteErr
 }

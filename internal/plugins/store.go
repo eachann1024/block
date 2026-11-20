@@ -31,6 +31,7 @@ import (
 type StoreAppEntry struct {
 	App            string        `json:"app"`
 	ID             string        `json:"id"`
+	Category       Category      `json:"category,omitempty"`
 	Name           LocalizedText `json:"name"`
 	Version        string        `json:"version"`
 	Author         string        `json:"author"`
@@ -45,8 +46,14 @@ type StoreAppEntry struct {
 	UpdatedAt      string        `json:"updated_at,omitempty"`
 	Permissions    []Permission  `json:"permissions"`
 	Surfaces       []Surface     `json:"surfaces"`
+	FileExtensions []string      `json:"file_extensions,omitempty"`
 	Icon           DuoIconSpec   `json:"icon"`
 	MinHostVersion string        `json:"min_host_version,omitempty"`
+}
+
+// EffectiveCategory returns the canonical App Store category for e.
+func (e StoreAppEntry) EffectiveCategory() Category {
+	return ResolveCategory(e.Category, e.ID, len(e.FileExtensions) > 0)
 }
 
 type StoreIndex struct {
@@ -106,7 +113,21 @@ func RegisterBuiltinCatalogApp(entry StoreAppEntry, files fs.FS, subDir string) 
 func DefaultSeedIndex() *StoreIndex {
 	builtinMu.RLock()
 	defer builtinMu.RUnlock()
-	if len(builtinSeeds) == 0 && embeddedFallbackIndex != nil {
+	seedApps := make([]StoreAppEntry, 0, len(builtinSeeds))
+	for _, s := range builtinSeeds {
+		if s.Entry.ID == "" || s.Entry.ID == DiagnosticsPluginID {
+			continue
+		}
+		seedApps = append(seedApps, s.Entry)
+	}
+	sort.Slice(seedApps, func(i, j int) bool {
+		if seedApps[i].Downloads != seedApps[j].Downloads {
+			return seedApps[i].Downloads > seedApps[j].Downloads
+		}
+		return seedApps[i].ID < seedApps[j].ID
+	})
+	var fallback *StoreIndex
+	if embeddedFallbackIndex != nil {
 		cp := *embeddedFallbackIndex
 		filtered := make([]StoreAppEntry, 0, len(embeddedFallbackIndex.Apps))
 		for _, a := range embeddedFallbackIndex.Apps {
@@ -116,28 +137,47 @@ func DefaultSeedIndex() *StoreIndex {
 			filtered = append(filtered, a)
 		}
 		cp.Apps = filtered
-		return &cp
+		fallback = &cp
 	}
-	apps := make([]StoreAppEntry, 0, len(builtinSeeds))
-	for _, s := range builtinSeeds {
-		if s.Entry.ID == "" || s.Entry.ID == DiagnosticsPluginID {
-			continue
-		}
-		apps = append(apps, s.Entry)
+	if len(seedApps) == 0 && fallback != nil {
+		return fallback
 	}
-	sort.Slice(apps, func(i, j int) bool {
-		if apps[i].Downloads != apps[j].Downloads {
-			return apps[i].Downloads > apps[j].Downloads
-		}
-		return apps[i].ID < apps[j].ID
-	})
-	return &StoreIndex{
+	builtinIdx := &StoreIndex{
 		App:           TargetApp,
 		SchemaVersion: CurrentSchemaVersion,
 		Topic:         PluginTopic,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
-		Apps:          apps,
+		Apps:          seedApps,
 	}
+	if fallback != nil {
+		return mergeStoreIndexes(fallback, builtinIdx)
+	}
+	return builtinIdx
+}
+
+func readBuiltinSeedReadme(id string, en bool) (string, bool) {
+	builtinMu.RLock()
+	seed, ok := builtinSeeds[id]
+	builtinMu.RUnlock()
+	if !ok || seed.FS == nil {
+		return "", false
+	}
+	candidates := []string{"README.zh.md", "README.md"}
+	if en {
+		candidates = []string{"README.en.md", "README.md"}
+	}
+	for _, name := range candidates {
+		p := path.Join(seed.Sub, name)
+		raw, err := fs.ReadFile(seed.FS, p)
+		if err != nil {
+			continue
+		}
+		doc, err := readReadmeText(bytes.NewReader(raw))
+		if err == nil {
+			return doc, true
+		}
+	}
+	return "", false
 }
 
 // DefaultStoreIndexURLs fetches catalog digests from the official repository,
@@ -878,8 +918,15 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 			return nil, fmt.Errorf("plugin permissions differ from catalog entry %s", entry.ID)
 		}
 	}
-	if _, err := pluginCommand(tmpDir, m.Entry.Command[0]); err != nil {
-		return nil, err
+	if len(m.Entry.Command) > 0 {
+		if _, err := pluginCommand(tmpDir, m.Entry.Command[0]); err != nil {
+			return nil, err
+		}
+	}
+	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
+		if err := ValidatePluginLanguages(tmpDir, m); err != nil {
+			return nil, err
+		}
 	}
 	return m, nil
 }
@@ -980,7 +1027,7 @@ func (s *StoreManager) commitInstallDirLocked(m *Manifest, tmpDir, dstDir, backu
 		}
 	}
 	if !wasInstalled {
-		if err := s.SetEnabled(m.ID, false); err != nil {
+		if err := s.SetEnabled(m.ID, m.IsDeclarativeOnly()); err != nil {
 			return nil, err
 		}
 	}
