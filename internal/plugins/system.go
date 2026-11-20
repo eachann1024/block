@@ -123,6 +123,7 @@ type systemAction struct {
 type systemParams struct {
 	Title        string   `json:"title"`
 	Body         string   `json:"body"`
+	DedupKey     string   `json:"dedup_key"`
 	Tone         string   `json:"tone"`
 	NotebookRoot string   `json:"notebook_root"`
 	RelPath      string   `json:"rel_path"`
@@ -369,6 +370,9 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 	if title == "" || body == "" {
 		return nil, rpcErr(-32602, "notification title and body are required")
 	}
+	if len(p.DedupKey) > 128 {
+		return nil, rpcErr(-32602, "notification dedup key must be at most 128 bytes")
+	}
 	root, rel := "", ""
 	if p.RelPath != "" || p.NotebookRoot != "" {
 		if !rt.manifest.HasPermission(PermNotesRead) {
@@ -403,15 +407,15 @@ func (s *Supervisor) systemNotify(rt *Runtime, p systemParams, allowed func() bo
 		case <-ctx.Done():
 		}
 	}()
-	suppressed, err := s.sendSystemNotice(ctx, id, title, body, normalizeTone(p.Tone), root, rel, allowed)
+	suppressed, err := s.sendSystemNotice(ctx, id, title, body, normalizeTone(p.Tone), root, rel, p.DedupKey, allowed)
 	if err != nil {
 		return nil, systemRPCError(err)
 	}
 	return map[string]any{"ok": true, "suppressed": suppressed}, nil
 }
 
-func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel string, allowed func() bool) (bool, error) {
-	key := sha256.Sum256([]byte(strings.Join([]string{title, body, root, rel}, "\x00")))
+func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone, root, rel, dedupKey string, allowed func() bool) (bool, error) {
+	key := sha256.Sum256([]byte(strings.Join([]string{title, body, root, rel, dedupKey}, "\x00")))
 	for {
 		if ctx.Err() != nil || !allowed() {
 			return false, ErrSystemCanceled
@@ -589,7 +593,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	finishStart()
 	if err != nil {
 		if syncEvent {
-			s.reportSystemSyncFailure(installed, nil, root, false, false)
+			s.reportSystemSyncStartFailure(installed, root, params["event"] == "network.changed")
 		}
 		return
 	}
@@ -706,13 +710,44 @@ func syncStateNotSaved(err error) bool {
 }
 
 func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root string, timedOut, storageFailed, manual, notified bool) {
-	const pluginID = "block-sync"
 	config := systemSyncConfig(inst.DataDir, root)
 	if rt == nil && !manual {
-		if enabled, ok := config["auto_sync"].(bool); config == nil || (ok && !enabled) {
+		if !autoSyncConfigured(config) {
 			return
 		}
 	}
+	s.reportSyncFailureWithConfig(inst, rt, root, config, timedOut, storageFailed, manual, notified)
+}
+
+func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active string, networkChange bool) {
+	state := readSyncState(inst.DataDir)
+	global, _ := state["config"].(map[string]any)
+	report := func(root string, config map[string]any) {
+		if !autoSyncConfigured(config) || (networkChange && config["protocol"] == "local_mirror") {
+			return
+		}
+		s.reportSyncFailureWithConfig(inst, nil, root, config, false, false, false, false)
+	}
+	if _, shared := global["selected_notebooks"]; shared {
+		report(active, global)
+		return
+	}
+	for _, root := range s.Notebooks() {
+		config := systemSyncNotebookConfig(state, root)
+		if config == nil && root == active {
+			config = global
+		}
+		report(root, config)
+	}
+}
+
+func autoSyncConfigured(config map[string]any) bool {
+	enabled, set := config["auto_sync"].(bool)
+	return config != nil && (!set || enabled)
+}
+
+func (s *Supervisor) reportSyncFailureWithConfig(inst InstalledApp, rt *Runtime, root string, config map[string]any, timedOut, storageFailed, manual, notified bool) {
+	const pluginID = "block-sync"
 	title, body := "自动同步未完成", "打开同步设置查看状态或重试。"
 	if timedOut {
 		title = "自动同步超时"
@@ -787,7 +822,7 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", root, "", func() bool {
+		_, _ = s.sendSystemNotice(ctx, pluginID, title, body, "error", root, "", "", func() bool {
 			s.mu.RLock()
 			defer s.mu.RUnlock()
 			return currentLocked()
@@ -796,6 +831,17 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 }
 
 func systemSyncConfig(dataDir, root string) map[string]any {
+	state := readSyncState(dataDir)
+	config, _ := state["config"].(map[string]any)
+	if _, global := config["selected_notebooks"]; !global {
+		if local := systemSyncNotebookConfig(state, root); local != nil {
+			return local
+		}
+	}
+	return config
+}
+
+func readSyncState(dataDir string) map[string]any {
 	data, err := os.OpenRoot(dataDir)
 	if err != nil {
 		return nil
@@ -805,18 +851,18 @@ func systemSyncConfig(dataDir, root string) map[string]any {
 	if err != nil {
 		return nil
 	}
-	config, _ := state["config"].(map[string]any)
-	if _, global := config["selected_notebooks"]; !global {
-		notebooks, _ := state["notebook_configs"].(map[string]any)
-		key := "default"
-		if root != "" {
-			key = filepath.Clean(root)
-		}
-		if local, ok := notebooks[key].(map[string]any); ok {
-			config = local
-		} else if local, ok := notebooks[syncNotebookKey(root)].(map[string]any); ok {
-			config = local
-		}
+	return state
+}
+
+func systemSyncNotebookConfig(state map[string]any, root string) map[string]any {
+	notebooks, _ := state["notebook_configs"].(map[string]any)
+	key := "default"
+	if root != "" {
+		key = filepath.Clean(root)
 	}
-	return config
+	if local, ok := notebooks[key].(map[string]any); ok {
+		return local
+	}
+	local, _ := notebooks[syncNotebookKey(root)].(map[string]any)
+	return local
 }
