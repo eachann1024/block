@@ -24,6 +24,7 @@ import (
 	"block/internal/plugins"
 	"block/internal/plugins/pluginui"
 	"block/internal/tarot"
+	"block/internal/telemetry"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"block/internal/updater"
@@ -216,6 +217,14 @@ func NewWorkspace(dataDir string) *Workspace {
 		},
 	})
 	w.modals.Updater = w.updater
+	if updater.IsPackagedBuild() && !blockui.IsSmokeActive() {
+		telemetry.Start(telemetry.Config{
+			DataDir: actualDir,
+			Version: updater.CurrentVersion(),
+			Enabled: func() bool { return !w.State().TelemetryOff },
+			Lang:    func() string { return string(theme.Language()) },
+		})
+	}
 	w.pluginUI = newPluginHostUI(w)
 	w.pluginsUI = pluginui.NewController(plugins.NewSupervisor(plugins.SupervisorConfig{
 		AppDataDir:  actualDir,
