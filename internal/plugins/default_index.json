@@ -7,6 +7,7 @@
     {
       "app": "blockmd",
       "id": "block-sync",
+      "category": "sync",
       "name": {
         "zh": "同步",
         "en": "Sync"
@@ -53,6 +54,7 @@
     {
       "app": "blockmd",
       "id": "block-image-host",
+      "category": "edit",
       "name": {
         "zh": "图床上传",
         "en": "Image Host"
@@ -100,6 +102,7 @@
     {
       "app": "blockmd",
       "id": "block-migrator",
+      "category": "sync",
       "name": {
         "zh": "笔记迁移",
         "en": "Migrator"
@@ -144,26 +147,27 @@
     {
       "app": "blockmd",
       "id": "block-canvas-dots",
+      "category": "appearance",
       "name": {
         "zh": "编辑器背景",
         "en": "Editor Background"
       },
-      "version": "1.2.15",
+      "version": "1.2.18",
       "author": "eachann1024",
       "repo": "eachann1024/block-canvas-dots",
       "summary": {
         "zh": "为笔记铺上与行高对齐的点阵或方格，增加对比度，稳定追踪每一行",
         "en": "Line-aligned dot or grid background for notes, adding contrast to track each line"
       },
-      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.15/block-canvas-dots-v1.2.15.tar.gz",
-      "sha256": "b576aa69503f024fe472a90294760e85bdac50940f629f63c3f65a6552662055",
-      "downloads": 31,
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.18/block-canvas-dots-v1.2.18.tar.gz",
+      "sha256": "036844ca7649e05c1169af41f8dd523be762a2fd4307cc811f857ecb0bc73301",
+      "downloads": 33,
       "stars": 0,
       "verified": false,
-      "updated_at": "2026-11-20T06:54:05Z",
+      "updated_at": "2026-11-20T07:58:39Z",
       "permissions": [
         "storage",
-        "notes:read"
+        "ui:settings"
       ],
       "surfaces": [
         "settings_page"
@@ -192,6 +196,7 @@
     {
       "app": "blockmd",
       "id": "block-titlebar",
+      "category": "appearance",
       "name": {
         "zh": "顶栏图标",
         "en": "Titlebar Icons"
@@ -239,6 +244,7 @@
     {
       "app": "blockmd",
       "id": "block-tarot",
+      "category": "tools",
       "name": {
         "zh": "塔罗模式",
         "en": "Tarot Mode"

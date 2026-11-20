@@ -1,3 +1,5 @@
 {
-  "block-sync": "blockmd-plugins/block-sync"
+  "block-sync": "blockmd-plugins/block-sync",
+  "block-lang-gomod": "blockmd-plugins/block-lang-gomod",
+  "block-lang-plist": "blockmd-plugins/block-lang-plist"
 }
