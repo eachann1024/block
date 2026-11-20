@@ -157,7 +157,7 @@ func TestSettingsNavigationControlsAndShortcutRecording(t *testing.T) {
 	if err := tt.Click("Shortcuts"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("⌥N"); err != nil {
+	if err := tt.Click(formatShortcutLabel(defaultQuickShortcut)); err != nil {
 		t.Fatal(err)
 	}
 	if !m.IsRecordingShortcut() {
@@ -618,8 +618,8 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 		}
 	}
 
-	// Record custom shortcut onto global_summon ("⇧⌘K" button).
-	if err := tt.Click("⇧⌘K"); err != nil {
+	// Record a custom shortcut for global_summon.
+	if err := tt.Click(formatShortcutLabel(defaultSearchShortcut)); err != nil {
 		t.Fatal(err)
 	}
 	if !m.IsRecordingShortcut() || m.recordingShortcut != "global_summon" {
@@ -649,7 +649,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 
 	// Conflict resolution: record "alt-n" (currently quick_note's default) onto global_summon.
 	tt.Frame()
-	if err := tt.Click("⌘F5"); err != nil {
+	if err := tt.Click(formatShortcutLabel("cmd-f5")); err != nil {
 		t.Fatal(err)
 	}
 	tt.Key(ui.Alt, ui.KeyN)
@@ -665,7 +665,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 	}
 
 	// Also customize quick_note to cmd-\ and verify reset clears all custom fields.
-	if err := tt.Click("⌘F5"); err != nil {
+	if err := tt.Click(formatShortcutLabel("cmd-f5")); err != nil {
 		t.Fatal(err)
 	}
 	tt.Key(ui.Cmd, ui.KeyBackslash)
