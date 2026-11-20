@@ -160,6 +160,7 @@ const (
 	tokText tokKind = iota
 	tokCode
 	tokMath
+	tokImage
 	tokDelim
 	tokOpenStyle
 	tokCloseStyle
@@ -284,6 +285,7 @@ type inlineScanState struct {
 	nextAngleGTLineEnd    int
 	angleAfterGTFor       int
 	angleAfterGTClose     int
+	angleAfterGTTitle     string
 	unclosedBrackets      map[int]bool
 	matchedBrackets       map[int]int
 	unclosedParens        map[int]bool
@@ -523,7 +525,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 
 		case '!':
 			if i+1 < n && s[i+1] == '[' && i+1 < st.getLastCloseBracket() {
-				if alt, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i+1, defs, true); ok {
+				if alt, dest, title, refKey, consumed, ok := tryParseLinkOrImageWithTitleRefAt(st, i+1, defs, true); ok {
 					if refKey != "" && hooks != nil {
 						if hooks.used != nil {
 							hooks.used[refKey] = true
@@ -538,15 +540,21 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							})
 						}
 					}
-					if alt == "" {
-						alt = fallbackImageAlt(dest)
-					}
-					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
 					inner := parseInlineWithDefsAndHooks(alt, defs, hooks.usedOnly())
+					var altBuf strings.Builder
 					for _, sp := range inner {
-						toks = append(toks, &inlineTok{kind: tokText, text: sp.Text})
+						altBuf.WriteString(sp.Text)
 					}
-					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					plainAlt := altBuf.String()
+					if plainAlt == "" {
+						plainAlt = fallbackImageAlt(dest)
+					}
+					toks = append(toks, &inlineTok{
+						kind:  tokImage,
+						text:  plainAlt,
+						tag:   title,
+						style: inlineStyle{link: dest},
+					})
 					i += 1 + consumed
 					continue
 				}
@@ -1095,14 +1103,19 @@ func tryParseLinkOrImageAt(st *inlineScanState, start int, defs map[string]refDe
 }
 
 func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[string]refDef, isImage bool) (label, dest, refKey string, consumed int, ok bool) {
+	label, dest, _, refKey, consumed, ok = tryParseLinkOrImageWithTitleRefAt(st, start, defs, isImage)
+	return label, dest, refKey, consumed, ok
+}
+
+func tryParseLinkOrImageWithTitleRefAt(st *inlineScanState, start int, defs map[string]refDef, isImage bool) (label, dest, title, refKey string, consumed int, ok bool) {
 	s := st.s
 	lastCB := st.getLastCloseBracket()
 	if start >= lastCB || len(s)-start < 2 || s[start] != '[' {
-		return "", "", "", 0, false
+		return "", "", "", "", 0, false
 	}
 	if isImage && st.imgCloseValidFrom >= 0 && start >= st.imgCloseValidFrom {
 		if st.imgClosePos < 0 {
-			return "", "", "", 0, false
+			return "", "", "", "", 0, false
 		}
 		if start < st.imgClosePos {
 			return finishLinkOrImageAt(st, start, st.imgClosePos, defs)
@@ -1172,18 +1185,18 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 			st.unclosedBrackets[pos] = true
 		}
 	}
-	return "", "", "", 0, false
+	return "", "", "", "", 0, false
 }
 
-func finishLinkOrImageAt(st *inlineScanState, start, closeBracket int, defs map[string]refDef) (label, dest, refKey string, consumed int, ok bool) {
+func finishLinkOrImageAt(st *inlineScanState, start, closeBracket int, defs map[string]refDef) (label, dest, title, refKey string, consumed int, ok bool) {
 	s := st.s
 	lastCB := st.getLastCloseBracket()
 	label = s[start+1 : closeBracket]
 	after := closeBracket + 1
 	if after < len(s) && s[after] == '(' {
 		if after < st.getLastCloseParen() && (st.unclosedParens == nil || !st.unclosedParens[after]) {
-			if d, endParen, ok := parseLinkDestinationAt(st, after); ok {
-				return label, d, "", (after - start) + endParen, true
+			if d, ttl, endParen, ok := parseLinkDestinationAt(st, after); ok {
+				return label, d, ttl, "", (after - start) + endParen, true
 			}
 		}
 	}
@@ -1198,35 +1211,35 @@ func finishLinkOrImageAt(st *inlineScanState, start, closeBracket int, defs map[
 				}
 				if okKey {
 					if def, exists := defs[key]; exists {
-						return label, def.dest, key, (after - start) + 1 + closeRef + 1, true
+						return label, def.dest, def.title, key, (after - start) + 1 + closeRef + 1, true
 					}
 				}
 			}
 		}
 		if key, okKey := normRefLabelBounded(label, maxKeyLen); okKey {
 			if def, exists := defs[key]; exists {
-				return label, def.dest, key, after - start, true
+				return label, def.dest, def.title, key, after - start, true
 			}
 		}
 	}
-	return "", "", "", 0, false
+	return "", "", "", "", 0, false
 }
 
-func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consumed int, ok bool) {
+func parseLinkDestinationAt(st *inlineScanState, start int) (dest, title string, consumed int, ok bool) {
 	s := st.s
 	lastCP := st.getLastCloseParen()
 	if start >= lastCP || len(s)-start < 2 || s[start] != '(' {
-		return "", 0, false
+		return "", "", 0, false
 	}
 	i := start + 1
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 		i++
 	}
 	if i >= len(s) {
-		return "", 0, false
+		return "", "", 0, false
 	}
 	if s[i] == ')' {
-		return "", i + 1 - start, true
+		return "", "", i + 1 - start, true
 	}
 	urlStart, urlEnd := 0, 0
 	isAngleDest := false
@@ -1256,14 +1269,14 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			}
 		}
 		if st.nextAngleGT < i {
-			return "", 0, false
+			return "", "", 0, false
 		}
 		urlEnd = st.nextAngleGT
 		if st.angleAfterGTFor == urlEnd {
 			if st.angleAfterGTClose < 0 {
-				return "", 0, false
+				return "", "", 0, false
 			}
-			return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), st.angleAfterGTClose + 1 - start, true
+			return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), st.angleAfterGTTitle, st.angleAfterGTClose + 1 - start, true
 		}
 		i = urlEnd + 1
 	} else {
@@ -1297,7 +1310,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			for _, p := range parenStack {
 				st.unclosedParens[p] = true
 			}
-			return "", 0, false
+			return "", "", 0, false
 		}
 		urlEnd = i
 	}
@@ -1310,6 +1323,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			closeQuote = ')'
 		}
 		i++
+		titleStart := i
 		for i < len(s) && s[i] != closeQuote {
 			if s[i] == '\\' && i+1 < len(s) {
 				i += 2
@@ -1321,9 +1335,11 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			if isAngleDest {
 				st.angleAfterGTFor = urlEnd
 				st.angleAfterGTClose = -1
+				st.angleAfterGTTitle = ""
 			}
-			return "", 0, false
+			return "", "", 0, false
 		}
+		title = html.UnescapeString(unescapeLinkText(s[titleStart:i]))
 		i++
 		for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n') {
 			i++
@@ -1333,14 +1349,16 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 		if isAngleDest {
 			st.angleAfterGTFor = urlEnd
 			st.angleAfterGTClose = -1
+			st.angleAfterGTTitle = ""
 		}
-		return "", 0, false
+		return "", "", 0, false
 	}
 	if isAngleDest {
 		st.angleAfterGTFor = urlEnd
 		st.angleAfterGTClose = i
+		st.angleAfterGTTitle = title
 	}
-	return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), i + 1 - start, true
+	return html.UnescapeString(unescapeLinkText(s[urlStart:urlEnd])), title, i + 1 - start, true
 }
 
 func unescapeLinkText(s string) string {
@@ -1717,6 +1735,7 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 	if name == "img" && !closed {
 		alt := strings.TrimSpace(attrVal(attrs, "alt"))
 		src := strings.TrimSpace(attrVal(attrs, "src"))
+		title := strings.TrimSpace(attrVal(attrs, "title"))
 		label := alt
 		if label == "" && src != "" {
 			label = fallbackImageAlt(src)
@@ -1726,9 +1745,7 @@ func finishParsedHTMLTag(s, name string, attrs [][2]string, closed, empty bool, 
 		}
 		if src != "" {
 			return raw, []*inlineTok{
-				{kind: tokLinkOpen, style: inlineStyle{link: src}},
-				{kind: tokText, text: label},
-				{kind: tokLinkClose},
+				{kind: tokImage, text: label, tag: title, style: inlineStyle{link: src}},
 			}, consumed, true
 		}
 		return raw, []*inlineTok{{kind: tokText, text: label}}, consumed, true
@@ -2070,6 +2087,19 @@ func emitSpans(toks []*inlineTok) []model.Span {
 			appendText(tok.text, model.MarkCode)
 		case tokMath:
 			appendText(tok.text, model.MarkMath)
+		case tokImage:
+			if tok.text != "" {
+				st := currentStyle()
+				out = append(out, model.Span{
+					Text:       tok.text,
+					Marks:      st.marks,
+					Link:       st.link,
+					ImageSrc:   tok.style.link,
+					ImageTitle: tok.tag,
+					FGColor:    st.fgColor,
+					BGColor:    st.bgColor,
+				})
+			}
 		case tokDelim:
 			for _, m := range tok.closeMarks {
 				addMark(m, -1)
@@ -2125,7 +2155,7 @@ func coalesceSpans(spans []model.Span) []model.Span {
 		}
 		if len(out) > 0 {
 			last := &out[len(out)-1]
-			if last.Marks == s.Marks && last.Link == s.Link && last.FGColor == s.FGColor && last.BGColor == s.BGColor {
+			if last.ImageSrc == "" && s.ImageSrc == "" && last.Marks == s.Marks && last.Link == s.Link && last.FGColor == s.FGColor && last.BGColor == s.BGColor {
 				if joined.Len() == 0 {
 					joined.Grow(len(last.Text) + len(s.Text))
 					joined.WriteString(last.Text)
@@ -2212,7 +2242,7 @@ type inlineWrapper struct {
 
 func wrappersForSpan(s model.Span, forceHTML, allowBareURL bool) []inlineWrapper {
 	var w []inlineWrapper
-	isBareSelfLink := allowBareURL && !forceHTML && s.Link != "" &&
+	isBareSelfLink := allowBareURL && !forceHTML && s.Link != "" && s.ImageSrc == "" &&
 		s.Marks == 0 && s.FGColor == "" && s.BGColor == "" && isExactBareAutolink(s.Text, s.Link)
 	if s.Link != "" && !isBareSelfLink {
 		w = append(w, inlineWrapper{kind: wrapLink, val1: s.Link, useHT: forceHTML})
@@ -2389,7 +2419,39 @@ func serializeInlineWithModeDefs(spans []model.Span, forceHTML, allowBareURL boo
 		}
 		opened = target
 
-		if sp.Marks&model.MarkCode != 0 && sp.Marks&model.MarkMath != 0 {
+		if sp.ImageSrc != "" {
+			inMarkdownLink := len(opened) > 0 && opened[0].kind == wrapLink && !opened[0].useHT
+			if useHTML || sp.Marks&(model.MarkCode|model.MarkMath) != 0 {
+				if sp.Marks&model.MarkCode != 0 {
+					out.WriteString("<code>")
+				}
+				if sp.Marks&model.MarkMath != 0 {
+					out.WriteString(`<span class="math">`)
+				}
+				out.WriteString(`<img src="`)
+				out.WriteString(escapeAttrValue(sp.ImageSrc))
+				out.WriteString(`" alt="`)
+				out.WriteString(escapeAttrValue(sp.Text))
+				out.WriteByte('"')
+				if sp.ImageTitle != "" {
+					out.WriteString(` title="`)
+					out.WriteString(escapeAttrValue(sp.ImageTitle))
+					out.WriteByte('"')
+				}
+				out.WriteByte('>')
+				if sp.Marks&model.MarkMath != 0 {
+					out.WriteString("</span>")
+				}
+				if sp.Marks&model.MarkCode != 0 {
+					out.WriteString("</code>")
+				}
+			} else {
+				out.WriteString("![")
+				writeInlineText(&out, sp.Text, true, false, true, true)
+				out.WriteByte(']')
+				out.WriteString(formatRefDefInline(refDef{dest: sp.ImageSrc, title: sp.ImageTitle}, false, inMarkdownLink))
+			}
+		} else if sp.Marks&model.MarkCode != 0 && sp.Marks&model.MarkMath != 0 {
 			out.WriteString(`<code><span class="math">`)
 			writeLiteralMathHTMLText(&out, sp.Text)
 			out.WriteString(`</span></code>`)
@@ -2518,6 +2580,8 @@ func writeInlineCode(out *strings.Builder, text string) {
 }
 
 func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx, escapeBareURL, escapeBrackets bool) {
+	hasDoubleEqual := strings.Contains(text, "==")
+	needBracketEscape := inMarkdownLink || escapeBrackets || textContainsLinkSyntax(text)
 	for i := 0; i < len(text); {
 		r, sz := utf8.DecodeRuneInString(text[i:])
 		switch r {
@@ -2558,12 +2622,12 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx,
 			out.WriteByte('\\')
 			out.WriteRune(r)
 		case '=':
-			if strings.Contains(text, "==") {
+			if hasDoubleEqual {
 				out.WriteByte('\\')
 			}
 			out.WriteByte('=')
 		case '[', ']':
-			if inMarkdownLink || escapeBrackets || textContainsLinkSyntax(text) {
+			if needBracketEscape {
 				out.WriteByte('\\')
 			}
 			out.WriteRune(r)

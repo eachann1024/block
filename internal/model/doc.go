@@ -162,11 +162,13 @@ const (
 )
 
 type Span struct {
-	Text    string `json:"text"`
-	Marks   Mark   `json:"marks,omitempty"`
-	Link    string `json:"link,omitempty"`
-	FGColor string `json:"fgColor,omitempty"`
-	BGColor string `json:"bgColor,omitempty"`
+	Text       string `json:"text"`
+	Marks      Mark   `json:"marks,omitempty"`
+	Link       string `json:"link,omitempty"`
+	ImageSrc   string `json:"imageSrc,omitempty"`
+	ImageTitle string `json:"imageTitle,omitempty"`
+	FGColor    string `json:"fgColor,omitempty"`
+	BGColor    string `json:"bgColor,omitempty"`
 }
 
 func PlainTextOfSpans(spans []Span) string {
