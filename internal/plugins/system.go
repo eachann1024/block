@@ -177,7 +177,11 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 		return nil, systemRPCError(ErrSystemUnavailable)
 	}
 	if method == "host.system.capabilities" {
-		return host.Capabilities(), nil
+		caps := host.Capabilities()
+		if rt.cfg.credentialScope == "" && caps != nil {
+			caps["secrets"] = false
+		}
+		return caps, nil
 	}
 	result := map[string]any{"ok": true}
 	var err error
@@ -249,6 +253,9 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 			result["text"] = text
 		}
 	case "host.secrets.get", "host.secrets.set", "host.secrets.delete":
+		if rt.cfg.credentialScope == "" {
+			return nil, systemRPCError(ErrSystemUnavailable)
+		}
 		if !secretKeyPattern.MatchString(p.Key) {
 			return nil, rpcErr(-32602, "invalid credential key")
 		}
@@ -259,7 +266,7 @@ func (s *Supervisor) dispatchSystemMethod(rt *Runtime, method string, params jso
 			}
 			value = *p.Value
 		}
-		account := fmt.Sprintf("%x", sha256.Sum256([]byte(filepath.Clean(s.cfg.AppDataDir)+"\x00"+rt.manifest.ID+"\x00"+p.Key)))
+		account := fmt.Sprintf("%x", sha256.Sum256([]byte(filepath.Clean(s.cfg.AppDataDir)+"\x00"+rt.manifest.ID+"\x00"+rt.cfg.credentialScope+"\x00"+p.Key)))
 		var found bool
 		value, found, err = host.Secret(method, account, value)
 		if method == "host.secrets.get" && err == nil {

@@ -1564,6 +1564,9 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		ContribHost:       s.dispatchExtensionHostMethod,
 		SystemIntegration: s.cfg.System != nil,
 	}
+	if cfg.SystemIntegration && inst.Manifest.HasPermission(PermSystemSecrets) {
+		cfg.credentialScope = inst.credentialScope()
+	}
 	s.mu.Lock()
 	current := false
 	for _, app := range s.installed {
@@ -1595,7 +1598,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		rt.abort()
 		return nil, attemptedLocale, err
 	}
-	if cfg.SystemIntegration && pluginID == "block-sync" && rt.manifest.HasPermission(PermSystemSecrets) && rt.manifest.HasPermission(PermEventsSystem) {
+	if cfg.credentialScope != "" && pluginID == "block-sync" && rt.manifest.HasPermission(PermEventsSystem) {
 		s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
 	}
 	return rt, attemptedLocale, nil
