@@ -550,7 +550,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 							hovered := btn.Hovered()
 							pressed := btn.Pressed()
 							if active {
-								btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+								btn.Background(pal.Selected).Border(1, ui.Transparent)
 							} else if pressed || hovered {
 								btn.Background(chrome.Hover).Border(1, ui.Transparent)
 							} else {
