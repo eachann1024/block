@@ -8,7 +8,8 @@ import (
 )
 
 type noteSaveRequest struct {
-	again bool
+	again  bool
+	cancel context.CancelFunc
 }
 
 func relativeNotePath(nbRoot, absNotePath string) (string, bool) {
@@ -136,6 +137,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	}
 	request.again = false
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	request.cancel = cancel
 	original.saveCancel = cancel
 	s.mu.Unlock()
 	defer cancel()
@@ -149,7 +151,10 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 		s.mu.Unlock()
 		return
 	}
-	v.saveCancel = nil
+	request.cancel = nil
+	if v.saveCancel != nil && len(v.queuedSaves) <= 1 {
+		v.saveCancel = nil
+	}
 	if v.queuedSaves[absNotePath] != request {
 		s.mu.Unlock()
 		return
@@ -159,10 +164,11 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	} else {
 		delete(v.queuedSaves, absNotePath)
 	}
-	if v.BusyAction == "__retry_note_saved__" {
+	if v.BusyAction == "__retry_note_saved__" && (v.retrySavePath == "" || v.retrySavePath == absNotePath) {
 		v.BusyAction = ""
+		v.retrySavePath = ""
+		v.ActionProgress = ActionProgress{}
 	}
-	v.ActionProgress = ActionProgress{}
 	if err != nil {
 		if v.failedSaves == nil {
 			v.failedSaves = make(map[string]string)
@@ -173,17 +179,28 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	}
 	refreshPage := v.Page != nil && v.BusyAction == ""
 	editSeq := v.editSeq
+	var draftVals map[string]any
+	if refreshPage {
+		draftVals = pendingDraftValuesLocked(v)
+	}
 	s.mu.Unlock()
 	s.notifyChanged()
 	if err == nil && refreshPage {
-		if page, err := rt.Render(ctx, SurfaceSettingsPage); err == nil {
+		if page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, draftVals); err == nil {
 			s.mu.Lock()
-			if s.views[key] == v && v.editSeq == editSeq {
+			if s.views[key] == v {
 				v.Page = page
-				mergePageValues(v, page, nil)
+				mergePageValuesUpToSeq(v, page, returnedVals, editSeq, true)
 				v.formVersion = s.formVersions[surfaceKey{key.pluginID, SurfaceSettingsPage}]
 				if page.Status != "" {
 					v.Notice = ""
+					if v.Error == "" {
+						v.LastActionID = ""
+						v.LastActionTone = ""
+						v.LastActionMessage = ""
+						v.LastActionButtonActive = false
+						v.LastActionWasHeader = false
+					}
 				}
 			}
 			s.mu.Unlock()
