@@ -667,7 +667,9 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				// blk: the line's block behind its markers ("### 安装" in "- ### 安装").
 				blk := inner
 				if item || !setext && inner != t && diffListItemRE.MatchString(inner) && !diffRuleRE.MatchString(inner) {
+					// A task's check box comes first: "- [x] ### 发布完成" holds a heading.
 					blk = strings.TrimSpace(diffContainerRE.ReplaceAllString(inner, ""))
+					blk = strings.TrimSpace(diffTaskMarkRE.ReplaceAllString(blk, ""))
 					if diffListItemRE.FindString(blk) == blk {
 						blk = "" // an empty item ("-")
 					}
