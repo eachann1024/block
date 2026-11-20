@@ -1940,7 +1940,7 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 					}
 					if bd.Underline.A > 0 {
 						const underlineH float32 = 2
-						p.Fill(ui.Rect{X: rr.X, Y: rr.Y + rr.H - underlineH, W: rr.W, H: underlineH}, bd.Underline, 0)
+						p.Fill(ui.Rect{X: rr.X, Y: rr.Y + rr.H - underlineH, W: rr.W, H: underlineH}, bd.Underline, underlineH*0.5)
 					}
 					if bd.Ring.A > 0 {
 						p.Stroke(rr, bd.Ring, bd.Radius, 1)
