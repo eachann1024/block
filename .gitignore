@@ -9,8 +9,14 @@ scripts/release/block.exe
 !.github/workflows/**
 !docs/
 !docs/**
-!designs/
-!designs/**
+# Design files (never commit or push)
+designs/
+*.dc.html
+*.pen
+*.fig
+*.sketch
+*.xd
+*.psd
 .DS_Store
 .artifact-server.json
 .artifact-server.log
