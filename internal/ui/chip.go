@@ -87,12 +87,15 @@ func BetaBadge(c *ui.Context, compact bool) {
 		h = theme.KeycapHeight
 		padX = theme.Space6
 	}
+	// Light outline only: no fill, softened warm ring, regular weight.
+	ring := pal.Warning
+	ring.A = ring.A * 9 / 20
 	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
-		Background(pal.WarningSurface).Border(1, pal.Warning).AlignItems(ui.Center).Children(func() {
+		Border(1, ring).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "Beta").
 			FontSize(theme.FontMicro).
 			FixedLineHeight(theme.LineMeta).
-			FontWeight(theme.WeightControl).
+			FontWeight(theme.WeightRegular).
 			TextColor(pal.Warning).
 			SingleLine()
 	})
