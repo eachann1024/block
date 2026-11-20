@@ -370,6 +370,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		qCol := 0
 		var paraLines []int
 		var quoteSetext1 map[int]bool
+		var refDefs map[int]bool
 		// Indented code: four columns in after a blank line (or the start); in a list,
 		// four past the item's content column (listCol), since its nested content is
 		// indented too.
@@ -384,6 +385,19 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				continue
 			}
 			t := strings.TrimSpace(l)
+			if refDefs == nil && strings.Contains(t, "]:") {
+				source, rows := diffSource(lines, change, side)
+				_, hidden := notemd.LinkReferenceLines(source)
+				refDefs = make(map[int]bool, len(hidden))
+				for _, line := range hidden {
+					refDefs[rows[line-1]] = true
+				}
+			}
+			if refDefs[i] {
+				// A consumed definition cannot be the text of a setext heading.
+				prevBlank, inIndented, para, paraLines = true, false, false, nil
+				continue
+			}
 			lead := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
 			// A fence opened in a blockquote ends with the quote: at a blank or a line
 			// with fewer ">" markers, which is read as ordinary text again. One in a list
