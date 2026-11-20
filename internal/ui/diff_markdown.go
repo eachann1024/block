@@ -1211,7 +1211,9 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 		// ordered item's opening bracket visible without triggering mygo's checkbox.
 		if marker := diffCellListRE.FindString(body[len(q):]); marker != "" {
 			k := len(q) + len(marker)
-			if after := body[k:]; diffTaskMarkRE.MatchString(after) || after == "[ ]" || after == "[x]" || after == "[X]" {
+			after := strings.TrimLeft(body[k:], " \t")
+			if diffTaskMarkRE.MatchString(after) || after == "[ ]" || after == "[x]" || after == "[X]" {
+				k = len(body) - len(after)
 				body = body[:k] + "&#91;" + after[1:]
 			}
 		}
