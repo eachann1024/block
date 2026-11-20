@@ -1999,6 +1999,10 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 							H: h,
 						}
 						p.Fill(rr, tint, sub.Radius)
+						if bd.Underline.A > 0 {
+							const underlineH float32 = 2
+							p.Fill(ui.Rect{X: rr.X, Y: rr.Y + rr.H - underlineH, W: rr.W, H: underlineH}, bd.Underline, underlineH*0.5)
+						}
 					}
 				}
 			}
