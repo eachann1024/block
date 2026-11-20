@@ -4,6 +4,7 @@ import (
 	"block/updates"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
@@ -614,9 +615,17 @@ func (s *Service) InstallNow() {
 
 func (s *Service) installMockUpdate() {
 	cur := CurrentVersion()
+	_, _, sv, ok := ParseReleaseTag(cur)
+	if !ok {
+		sv = Semver{Major: 1, Minor: 0, Patch: 0}
+	}
+	nextVer := fmt.Sprintf("%d.%d.%d", sv.Major, sv.Minor, sv.Patch+2)
+	prevVer := fmt.Sprintf("%d.%d.%d", sv.Major, sv.Minor, sv.Patch+1)
+	nextTag := "v" + nextVer
+	prevTag := "v" + prevVer
 	r1 := ReleaseEntry{
-		Version:     "1.0.999",
-		Tag:         "v1.0.999",
+		Version:     nextVer,
+		Tag:         nextTag,
 		PublishedAt: "2026-11-18T12:00:00Z",
 		HTMLURL:     PublicReleasesWebURL,
 		Zh: LocalizedNotes{
@@ -631,8 +640,8 @@ func (s *Service) installMockUpdate() {
 		},
 	}
 	r2 := ReleaseEntry{
-		Version:     "1.0.998",
-		Tag:         "v1.0.998",
+		Version:     prevVer,
+		Tag:         prevTag,
 		PublishedAt: "2026-11-16T09:30:00Z",
 		HTMLURL:     PublicReleasesWebURL,
 		Zh: LocalizedNotes{
@@ -647,7 +656,7 @@ func (s *Service) installMockUpdate() {
 	entries := []ReleaseEntry{r1, r2}
 	asset := ReleaseAsset{
 		Name:        "block-macos-arm64.dmg",
-		DownloadURL: "https://github.com/eachann1024/block/releases/download/v1.0.999/block-macos-arm64.dmg",
+		DownloadURL: fmt.Sprintf("https://github.com/%s/releases/download/%s/block-macos-arm64.dmg", PublicRepo, nextTag),
 		Size:        13_421_772,
 	}
 	s.mu.Lock()
