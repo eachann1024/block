@@ -26,9 +26,11 @@ type TabMenuState struct {
 	PageMenuOpen   bool
 	PageMenuAnchor ui.Rect
 
-	// Brand menu dropped below the cat mark.
-	BrandMenuOpen   bool
-	BrandMenuAnchor ui.Rect
+	// Brand menu (cat mark) and the overflow menu for plugin titlebar buttons.
+	BrandMenuOpen    bool
+	BrandMenuAnchor  ui.Rect
+	PluginMenuOpen   bool
+	PluginMenuAnchor ui.Rect
 
 	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
 	tabCenterW float32
@@ -56,12 +58,13 @@ func (s *TabMenuState) Close() bool {
 	s.TabMenuOpen = false
 	s.PageMenuOpen = false
 	s.BrandMenuOpen = false
+	s.PluginMenuOpen = false
 	s.MenuCursor = -1
 	return had
 }
 
 func (s *TabMenuState) anyOpen() bool {
-	return s.TabMenuOpen || s.PageMenuOpen || s.BrandMenuOpen
+	return s.TabMenuOpen || s.PageMenuOpen || s.BrandMenuOpen || s.PluginMenuOpen
 }
 
 // TitlebarProps supplies current state and callbacks to RenderTitlebar.
@@ -575,6 +578,10 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 		if p.MenuState.BrandMenuOpen {
 			renderBrandMenu(c, p, scrim)
+			return
+		}
+		if p.MenuState.PluginMenuOpen {
+			renderPluginOverflowMenu(c, p, scrim)
 			return
 		}
 		if p.MenuState.PageMenuOpen {

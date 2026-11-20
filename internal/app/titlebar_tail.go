@@ -49,76 +49,121 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 	})
 }
 
+// renderPluginTitlebarButtons draws the plugin zone: up to maxInlinePluginButtons
+// buttons, an overflow button for the rest, then a hairline before the built-in tools.
 func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps) {
-	if len(p.PluginButtons) == 0 {
+	vpW, _ := c.Size()
+	inline, overflow := splitPluginTitlebarButtons(p, vpW)
+	if len(inline) == 0 && len(overflow) == 0 {
 		return
 	}
-	pal := theme.Ocean()
-	for _, rawBtn := range p.PluginButtons {
-		b := rawBtn
-		slotID := b.SlotID
-		if slotID == "" {
-			slotID = plugins.PluginTitlebarSlotID(b.PluginID, b.ID)
-		}
-		if slotHidden(p, slotID) {
-			continue
-		}
-		id := "titlebar-plugin-" + b.PluginID + "-" + b.ID
-		c.Key(id)
-		btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
-			Radius(theme.RadiusMD).Cursor(ui.CursorPointer)
-		label := b.Tooltip
-		if label == "" {
-			label = b.ID
-		}
-		btn.Label(label)
-		if b.Tooltip != "" {
-			blockui.RichTooltip(c, btn, blockui.TooltipSpec{
-				Placement: blockui.TooltipBelow,
-				Rows:      []blockui.TooltipRow{{Trigger: b.Tooltip}},
-			})
-		}
-		hovered := btn.Hovered()
-		pressed := btn.Pressed()
-		bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, b.Active
-		if b.Active {
-			bgCol = pal.Selected
-			bdCol = pal.SelectedBorder
-		} else if pressed || hovered {
-			bgCol = pal.ShellChrome().Hover
-		}
-		blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
-		blockui.TactileButton(btn, hovered, pressed, false)
+	for _, b := range inline {
+		renderPluginTitlebarButton(c, p, b)
+	}
+	if len(overflow) > 0 {
+		renderPluginOverflowButton(c, p, overflow)
+	}
+	ui.Box(c).Size(1, 14).Shrink(0).MarginX(2).Background(theme.Ocean().BtnBorder)
+}
 
-		badge := strings.TrimSpace(b.Badge)
-		isDotBadge := badge == "." || badge == "•" || badge == "dot"
-		btn.Children(func() {
-			ic := pal.MonoIconColors(pal.TextSecondary)
-			if b.Active || hovered || pressed {
-				ic = pal.DuoIconColors(pal.Text)
-			}
-			pluginui.DrawDuoSpec(c, b.Icon, theme.IconChrome, ic)
-			if badge != "" && !isDotBadge {
-				ui.Box(c).Absolute().Top(0).Right(0).Height(13).MinWidth(13).PaddingX(theme.Space2).
-					Center().Radius(theme.RadiusPill).Background(pal.Accent).IgnoreInput(true).
-					Children(func() {
-						ui.Text(c, badge).FontSize(theme.FontMicro).LineHeight(1).
-							FontWeight(theme.WeightTitle).TextColor(pal.AccentText).SingleLine()
-					})
-			}
+func renderPluginOverflowButton(c *ui.Context, p TitlebarProps, overflow []plugins.ResolvedTitlebarButton) {
+	open := p.MenuState != nil && p.MenuState.PluginMenuOpen
+	tip := theme.Tr("更多插件", "More Plugins") + " · " + strconv.Itoa(len(overflow))
+	if open {
+		tip = ""
+	}
+	const id = "titlebar-plugin-overflow"
+	btn := blockui.IconButton(c, icons.Plug, blockui.IconButtonOptions{
+		ID:          id,
+		Label:       theme.Tr("更多插件", "More Plugins"),
+		Tooltip:     tip,
+		Active:      open,
+		ActiveStyle: blockui.ActiveAccent,
+		ChromeHover: true,
+	})
+	// A folded button that is active or carries a badge still needs to be noticed.
+	attention := false
+	for _, b := range overflow {
+		if b.Active || strings.TrimSpace(b.Badge) != "" {
+			attention = true
+			break
+		}
+	}
+	if attention && !open {
+		dot := theme.Ocean().Accent
+		// DrawOver replaces the smoke probe's, so record its bounds here too.
+		btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			blockui.RecordBounds(id, r)
+			pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
 		})
-		if isDotBadge {
-			dot := pal.Accent
-			btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-				blockui.RecordBounds(id, r)
-				pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
-			})
-		} else {
-			blockui.Probe(btn, id)
+	}
+	if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
+		p.MenuState.PluginMenuAnchor = b
+	}
+	if btn.Clicked() && p.MenuState != nil {
+		p.MenuState.Close()
+		p.MenuState.PluginMenuOpen = !open
+	}
+}
+
+func isDotBadge(badge string) bool {
+	badge = strings.TrimSpace(badge)
+	return badge == "." || badge == "•" || badge == "dot"
+}
+
+func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.ResolvedTitlebarButton) {
+	pal := theme.Ocean()
+	id := "titlebar-plugin-" + b.PluginID + "-" + b.ID
+	c.Key(id)
+	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer)
+	btn.Label(pluginButtonLabel(b))
+	if b.Tooltip != "" {
+		blockui.RichTooltip(c, btn, blockui.TooltipSpec{
+			Placement: blockui.TooltipBelow,
+			Rows:      []blockui.TooltipRow{{Trigger: b.Tooltip}},
+		})
+	}
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+	bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, b.Active
+	if b.Active {
+		bgCol = pal.Selected
+		bdCol = pal.SelectedBorder
+	} else if pressed || hovered {
+		bgCol = pal.ShellChrome().Hover
+	}
+	blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
+	blockui.TactileButton(btn, hovered, pressed, false)
+
+	badge := strings.TrimSpace(b.Badge)
+	dotBadge := isDotBadge(badge)
+	btn.Children(func() {
+		ic := pal.MonoIconColors(pal.TextSecondary)
+		if b.Active || hovered || pressed {
+			ic = pal.DuoIconColors(pal.Text)
 		}
-		if btn.Clicked() && p.OnPluginButton != nil {
-			p.OnPluginButton(b)
+		pluginui.DrawDuoSpec(c, b.Icon, theme.IconChrome, ic)
+		if badge != "" && !dotBadge {
+			ui.Box(c).Absolute().Top(0).Right(0).Height(13).MinWidth(13).PaddingX(theme.Space2).
+				Center().Radius(theme.RadiusPill).Background(pal.Accent).IgnoreInput(true).
+				Children(func() {
+					ui.Text(c, badge).FontSize(theme.FontMicro).LineHeight(1).
+						FontWeight(theme.WeightTitle).TextColor(pal.AccentText).SingleLine()
+				})
 		}
+	})
+	if dotBadge {
+		dot := pal.Accent
+		btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			blockui.RecordBounds(id, r)
+			pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
+		})
+	} else {
+		blockui.Probe(btn, id)
+	}
+	if btn.Clicked() && p.OnPluginButton != nil {
+		p.OnPluginButton(b)
 	}
 }
 
