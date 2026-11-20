@@ -71,11 +71,11 @@ export function assertValidWindowsPEVersion(version) {
 }
 
 export function nextReleaseVersion({ currentVersion, releases = [], tagVersions = [], headSha = "" }) {
-  const publishedOrTagged = [
-    ...releases.filter((r) => r && !r.draft).map((release) => versionFromTag(release.tag_name)),
-    ...tagVersions.map((tag) => versionFromTag(tag)),
-  ].filter(Boolean);
-  const highestPublished = publishedOrTagged.reduce(
+  const publishedOnly = releases
+    .filter((r) => r && !r.draft)
+    .map((release) => versionFromTag(release.tag_name))
+    .filter(Boolean);
+  const highestPublished = publishedOnly.reduce(
     (best, item) => (!best || compareVersions(item, best) > 0 ? item : best),
     null,
   );
@@ -172,21 +172,46 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-export function getReleases() {
+export function fetchReleasePage(repo = REPO, page = 1) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const pages = JSON.parse(gh(["api", "--paginate", "--slurp", `repos/${REPO}/releases?per_page=100`]));
-      if (!Array.isArray(pages)) {
-        throw new Error(`Unexpected GitHub releases response for ${REPO}`);
+      const batch = JSON.parse(gh(["api", `repos/${repo}/releases?per_page=100&page=${page}`]));
+      if (!Array.isArray(batch)) {
+        throw new Error(`Unexpected GitHub releases page ${page} response for ${repo}`);
       }
-      return pages.flat();
+      return batch;
     } catch (err) {
       lastError = err;
       if (attempt < 3) sleepSync(1500 * attempt);
     }
   }
   throw lastError;
+}
+
+export function getReleases({ repo = REPO, includeBody = false } = {}) {
+  const out = [];
+  for (let page = 1; ; page += 1) {
+    const batch = fetchReleasePage(repo, page);
+    if (batch.length === 0) break;
+    if (includeBody) {
+      out.push(...batch);
+    } else {
+      for (const r of batch) {
+        out.push({
+          id: r?.id,
+          tag_name: r?.tag_name,
+          target_commitish: r?.target_commitish,
+          draft: Boolean(r?.draft),
+          prerelease: Boolean(r?.prerelease),
+          published_at: r?.published_at,
+          created_at: r?.created_at,
+        });
+      }
+    }
+    if (batch.length < 100) break;
+  }
+  return out;
 }
 
 function resolveTagCommit(release) {
@@ -303,10 +328,14 @@ function feedHasReleaseTag(tag) {
     }
   }
   const parsed = JSON.parse(raw);
-  return Boolean(
-    parsed?.latest_tag === tag
-    || (Array.isArray(parsed?.releases) && parsed.releases.some((r) => r?.tag === tag)),
-  );
+  const entry = Array.isArray(parsed?.releases) ? parsed.releases.find((r) => r?.tag === tag) : null;
+  if (!entry) return false;
+  if (parsed?.latest_tag === tag) {
+    const assets = Array.isArray(entry.assets) ? entry.assets : [];
+    if (assets.length === 0) return false;
+    if (assets.some((a) => !/^[0-9a-f]{64}$/i.test(String(a?.sha256 || "")))) return false;
+  }
+  return true;
 }
 
 function writeSkipPlan({ currentVersion, tag, headSha, extraPlan = {}, extraOutputs = {} }) {
@@ -351,8 +380,9 @@ async function main() {
     const previousMissingFeed = Boolean(previous && !feedHasReleaseTag(previous.tag_name));
 
     const previousSha = resolveTagCommit(previous);
+    const canSyncPostPublish = Boolean(onMain && publishInput);
     if (previousSha && previousSha === headSha && !force) {
-      if (previousMissingFeed) {
+      if (previousMissingFeed && canSyncPostPublish) {
         summary(`最新 Release ${previous.tag_name} 已发布但 updates/feed.json 尚未回写，触发发布后同步补偿。`);
         writeSkipPlan({
           currentVersion,
@@ -387,7 +417,7 @@ async function main() {
 
     const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
     if (previous && userCommits.length === 0 && !force) {
-      if (previousMissingFeed) {
+      if (previousMissingFeed && canSyncPostPublish) {
         summary(`无面向用户的新提交，但 ${previous.tag_name} 尚未写入 updates/feed.json，触发发布后同步补偿。`);
         writeSkipPlan({
           currentVersion,
