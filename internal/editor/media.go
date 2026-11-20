@@ -452,7 +452,8 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		mdStr := string(mdRaw)
 		inTable := s.isTablePasteTarget()
 		if inTable && htmlErr == nil && len(htmlRaw) > 0 {
-			if grid, ok := decodeBlockTableCellsHTML(string(htmlRaw)); ok && s.pasteTableCellsGrid(grid) {
+			if grid, ok := decodeBlockTableCellsHTML(string(htmlRaw)); ok {
+				s.pasteTableCellsGrid(grid)
 				return true
 			}
 		}
