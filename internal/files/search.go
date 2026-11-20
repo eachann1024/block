@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"block/internal/fuzzy"
 	"block/internal/model"
 	"block/internal/theme"
 )
@@ -24,7 +25,41 @@ const (
 type rankedSearchHit struct {
 	hit        model.SearchHit
 	titleMatch bool
+	titleTier  uint8
 	titleStart int
+	titleScore int
+	bodyTier   uint8
+}
+
+type searchQuerySpec struct {
+	raw          string
+	folded       string
+	isASCII      bool
+	foldedTokens []string
+	tokenASCII   []bool
+}
+
+func compileSearchQuery(q string) searchQuerySpec {
+	foldedQ := foldPreserveLen(q)
+	spec := searchQuerySpec{
+		raw:     q,
+		folded:  foldedQ,
+		isASCII: isASCIIString(foldedQ),
+	}
+	rawTokens := strings.Fields(q)
+	if len(rawTokens) > 1 {
+		seen := make(map[string]bool, len(rawTokens))
+		for _, rt := range rawTokens {
+			ft := foldPreserveLen(rt)
+			if ft == "" || seen[ft] {
+				continue
+			}
+			seen[ft] = true
+			spec.foldedTokens = append(spec.foldedTokens, ft)
+			spec.tokenASCII = append(spec.tokenASCII, isASCIIString(ft))
+		}
+	}
+	return spec
 }
 
 // SearchNotebooks walks each root notebook directory and performs a
@@ -46,22 +81,23 @@ func SearchNotebooksContext(ctx context.Context, roots []string, query string, o
 	if q == "" {
 		return nil, nil
 	}
-	foldedQ := foldPreserveLen(q)
-	if foldedQ == "" {
+	spec := compileSearchQuery(q)
+	if spec.folded == "" {
 		return nil, nil
 	}
-	queryIsASCII := isASCIIString(foldedQ)
 
 	seenRoots := make(map[string]bool, len(roots))
 	seenFiles := make(map[string]bool)
 	var titleHits []rankedSearchHit
 	var bodyHits []rankedSearchHit
+	exactTitleCount := 0
+	exactBodyCount := 0
 
 	for _, root := range roots {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if len(titleHits) >= maxSearchHits {
+		if exactTitleCount >= maxSearchHits {
 			break
 		}
 		root = strings.TrimSpace(root)
@@ -82,20 +118,22 @@ func SearchNotebooksContext(ctx context.Context, roots []string, query string, o
 		}
 
 		notebookName := filepath.Base(cleanRoot)
-		if err := walkSearchDir(ctx, cleanRoot, notebookName, q, foldedQ, queryIsASCII, opts, 0, seenFiles, &titleHits, &bodyHits); err != nil {
+		if err := walkSearchDir(ctx, cleanRoot, "", notebookName, spec, opts, 0, seenFiles, &titleHits, &bodyHits, &exactTitleCount, &exactBodyCount); err != nil {
 			return nil, err
 		}
 	}
 
 	sort.Slice(titleHits, func(i, j int) bool {
 		a, b := titleHits[i], titleHits[j]
-		ra := titleHitRank(a, q)
-		rb := titleHitRank(b, q)
-		if ra.tier != rb.tier {
-			return ra.tier < rb.tier
+		if a.titleTier != b.titleTier {
+			return a.titleTier < b.titleTier
 		}
-		if ra.start != rb.start {
-			return ra.start < rb.start
+		if a.titleTier <= 2 {
+			if a.titleStart != b.titleStart {
+				return a.titleStart < b.titleStart
+			}
+		} else if a.titleScore != b.titleScore {
+			return a.titleScore > b.titleScore
 		}
 		la, lb := strings.ToLower(a.hit.Title), strings.ToLower(b.hit.Title)
 		if la != lb {
@@ -106,6 +144,9 @@ func SearchNotebooksContext(ctx context.Context, roots []string, query string, o
 
 	sort.Slice(bodyHits, func(i, j int) bool {
 		a, b := bodyHits[i], bodyHits[j]
+		if a.bodyTier != b.bodyTier {
+			return a.bodyTier < b.bodyTier
+		}
 		la, lb := strings.ToLower(a.hit.Title), strings.ToLower(b.hit.Title)
 		if la != lb {
 			return la < lb
@@ -129,33 +170,19 @@ func SearchNotebooksContext(ctx context.Context, roots []string, query string, o
 	return out, nil
 }
 
-type titleRank struct {
-	tier  uint8
-	start int
-}
-
-func titleHitRank(h rankedSearchHit, query string) titleRank {
-	if h.titleStart == 0 && len(h.hit.Title) == len(query) && strings.EqualFold(h.hit.Title, query) {
-		return titleRank{tier: 0, start: 0}
-	}
-	if h.titleStart == 0 {
-		return titleRank{tier: 1, start: 0}
-	}
-	return titleRank{tier: 2, start: h.titleStart}
-}
-
 func walkSearchDir(
 	ctx context.Context,
 	dir string,
+	relPrefix string,
 	notebook string,
-	rawQuery string,
-	foldedQuery string,
-	queryIsASCII bool,
+	spec searchQuerySpec,
 	opts ScanOptions,
 	depth int,
 	seenFiles map[string]bool,
 	titleHits *[]rankedSearchHit,
 	bodyHits *[]rankedSearchHit,
+	exactTitleCount *int,
+	exactBodyCount *int,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -171,8 +198,8 @@ func walkSearchDir(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		// Title matches alone fill the entire result list.
-		if len(*titleHits) >= maxSearchHits {
+		// Exact title matches alone fill the entire result list.
+		if *exactTitleCount >= maxSearchHits {
 			return nil
 		}
 		rawName := entry.Name()
@@ -183,7 +210,11 @@ func walkSearchDir(
 				continue
 			}
 			fullPath := filepath.Join(dir, rawName)
-			if err := walkSearchDir(ctx, fullPath, notebook, rawQuery, foldedQuery, queryIsASCII, opts, depth+1, seenFiles, titleHits, bodyHits); err != nil {
+			nextPrefix := rawName
+			if relPrefix != "" {
+				nextPrefix = relPrefix + "/" + rawName
+			}
+			if err := walkSearchDir(ctx, fullPath, nextPrefix, notebook, spec, opts, depth+1, seenFiles, titleHits, bodyHits, exactTitleCount, exactBodyCount); err != nil {
 				return err
 			}
 			continue
@@ -212,12 +243,24 @@ func walkSearchDir(
 		}
 		seenFiles[fullPath] = true
 
-		skipBody := len(*bodyHits) >= maxSearchHits
+		skipBody := *exactBodyCount >= maxSearchHits
 		stem := DisplayName(rawName)
-		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, stem, notebook, rawQuery, foldedQuery, queryIsASCII, skipBody); ok {
+		relStem := stem
+		if relPrefix != "" {
+			relStem = relPrefix + "/" + stem
+		}
+		if ranked, ok := inspectSearchFile(entry, fileInfo, fullPath, stem, relStem, notebook, spec, skipBody); ok {
 			if ranked.titleMatch {
-				*titleHits = append(*titleHits, ranked)
-			} else if len(*bodyHits) < maxSearchHits {
+				if ranked.titleTier <= 2 {
+					*exactTitleCount++
+					*titleHits = append(*titleHits, ranked)
+				} else if len(*titleHits) < maxSearchHits*4 {
+					*titleHits = append(*titleHits, ranked)
+				}
+			} else if ranked.bodyTier == 0 {
+				*exactBodyCount++
+				*bodyHits = append(*bodyHits, ranked)
+			} else if len(*bodyHits) < maxSearchHits*4 {
 				*bodyHits = append(*bodyHits, ranked)
 			}
 		}
@@ -225,14 +268,54 @@ func walkSearchDir(
 	return nil
 }
 
-func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, notebook, rawQuery, foldedQuery string, queryIsASCII, skipBody bool) (rankedSearchHit, bool) {
+func matchTitleOrPath(stem, relStem string, spec searchQuerySpec) (matched bool, tier uint8, start int, score int) {
 	var titleStart int
-	var titleMatched bool
-	if queryIsASCII {
-		titleStart, _, titleMatched = findFoldMatchASCIIString(stem, foldedQuery)
+	var exactMatched bool
+	if spec.isASCII {
+		titleStart, _, exactMatched = findFoldMatchASCIIString(stem, spec.folded)
 	} else {
-		titleStart, _, titleMatched = findFoldMatchFolded(stem, foldedQuery)
+		titleStart, _, exactMatched = findFoldMatchFolded(stem, spec.folded)
 	}
+	if exactMatched {
+		if titleStart == 0 && len(stem) == len(spec.raw) && strings.EqualFold(stem, spec.raw) {
+			return true, 0, 0, 10000
+		}
+		if titleStart == 0 {
+			return true, 1, 0, 8000
+		}
+		return true, 2, titleStart, 6000
+	}
+
+	if sc, ok := fuzzy.Score(spec.raw, []string{stem}, nil, false); ok {
+		if len(spec.foldedTokens) > 1 && sc >= 3500 {
+			return true, 3, 0, sc
+		}
+		return true, 4, 0, sc
+	}
+
+	if relStem != stem {
+		if len(spec.foldedTokens) > 1 || strings.Contains(spec.raw, "/") {
+			if sc, ok := fuzzy.Score(spec.raw, []string{relStem}, nil, false); ok {
+				return true, 5, 0, sc
+			}
+		} else {
+			var pathMatched bool
+			if spec.isASCII {
+				_, _, pathMatched = findFoldMatchASCIIString(relStem, spec.folded)
+			} else {
+				_, _, pathMatched = findFoldMatchFolded(relStem, spec.folded)
+			}
+			if pathMatched {
+				return true, 5, 0, 4500
+			}
+		}
+	}
+
+	return false, 0, 0, 0
+}
+
+func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, relStem, notebook string, spec searchQuerySpec, skipBody bool) (rankedSearchHit, bool) {
+	titleMatched, titleTier, titleStart, titleScore := matchTitleOrPath(stem, relStem, spec)
 	if !titleMatched && skipBody {
 		return rankedSearchHit{}, false
 	}
@@ -253,8 +336,29 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, note
 	var lineSnippet string
 	var mStart, mEnd int
 	bodyMatched := false
+	var bodyTier uint8
 
 	if len(data) > 0 && !skipBody {
+		multiTok := len(spec.foldedTokens) > 1
+		var (
+			hasSameLine   bool
+			sameLineNum   int
+			sameLineCol   int
+			sameLineEnd   int
+			sameLineBytes []byte
+
+			hasFirstTok   bool
+			firstTokLine  int
+			firstTokCol   int
+			firstTokEnd   int
+			firstTokBytes []byte
+			seenTokens    []bool
+			seenCount     int
+		)
+		if multiTok {
+			seenTokens = make([]bool, len(spec.foldedTokens))
+		}
+
 		rest := data
 		lineNum := 0
 		for {
@@ -270,23 +374,76 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, note
 			if len(lineBytes) > 0 && lineBytes[len(lineBytes)-1] == '\r' {
 				lineBytes = lineBytes[:len(lineBytes)-1]
 			}
-			s, e, ok := findFoldMatchBytes(lineBytes, foldedQuery, queryIsASCII)
+			s, e, ok := findFoldMatchBytes(lineBytes, spec.folded, spec.isASCII)
 			if ok {
 				lineStr := string(lineBytes)
 				bodyMatched = true
+				bodyTier = 0
 				matchLine, matchColumn = lineNum, s
 				lineSnippet = snippetAround(lineStr, s, e)
-				if queryIsASCII {
-					if ms, me, found := findFoldMatchASCIIString(lineSnippet, foldedQuery); found {
+				if spec.isASCII {
+					if ms, me, found := findFoldMatchASCIIString(lineSnippet, spec.folded); found {
 						mStart, mEnd = ms, me
 					}
-				} else if ms, me, found := findFoldMatchFolded(lineSnippet, foldedQuery); found {
+				} else if ms, me, found := findFoldMatchFolded(lineSnippet, spec.folded); found {
 					mStart, mEnd = ms, me
 				}
 				break
 			}
+			if multiTok && len(lineBytes) > 0 {
+				lineAll := !hasSameLine
+				firstStart, firstEnd := -1, 0
+				for ti, ft := range spec.foldedTokens {
+					ts, te, tokOK := findFoldMatchBytes(lineBytes, ft, spec.tokenASCII[ti])
+					if tokOK {
+						if !seenTokens[ti] {
+							seenTokens[ti] = true
+							seenCount++
+						}
+						if firstStart < 0 || ts < firstStart {
+							firstStart, firstEnd = ts, te
+						}
+					} else {
+						lineAll = false
+					}
+				}
+				if lineAll && firstStart >= 0 {
+					hasSameLine = true
+					sameLineNum = lineNum
+					sameLineCol = firstStart
+					sameLineEnd = firstEnd
+					sameLineBytes = lineBytes
+				}
+				if !hasFirstTok && firstStart >= 0 {
+					hasFirstTok = true
+					firstTokLine = lineNum
+					firstTokCol = firstStart
+					firstTokEnd = firstEnd
+					firstTokBytes = lineBytes
+				}
+			}
 			if nl < 0 {
 				break
+			}
+		}
+
+		if !bodyMatched && multiTok {
+			if hasSameLine {
+				bodyMatched = true
+				bodyTier = 1
+				matchLine, matchColumn = sameLineNum, sameLineCol
+				lineSnippet = snippetAround(string(sameLineBytes), sameLineCol, sameLineEnd)
+				if ranges := FindBodyHighlights(lineSnippet, spec.raw); len(ranges) > 0 {
+					mStart, mEnd = ranges[0][0], ranges[0][1]
+				}
+			} else if seenCount == len(spec.foldedTokens) && hasFirstTok {
+				bodyMatched = true
+				bodyTier = 2
+				matchLine, matchColumn = firstTokLine, firstTokCol
+				lineSnippet = snippetAround(string(firstTokBytes), firstTokCol, firstTokEnd)
+				if ranges := FindBodyHighlights(lineSnippet, spec.raw); len(ranges) > 0 {
+					mStart, mEnd = ranges[0][0], ranges[0][1]
+				}
 			}
 		}
 	}
@@ -304,7 +461,8 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, note
 			Path:       fullPath,
 			Notebook:   notebook,
 			Title:      stem,
-			Query:      rawQuery,
+			TitleMatch: titleMatched,
+			Query:      spec.raw,
 			Line:       matchLine,
 			Column:     matchColumn,
 			Snippet:    lineSnippet,
@@ -312,7 +470,10 @@ func inspectSearchFile(entry os.DirEntry, info os.FileInfo, fullPath, stem, note
 			MatchEnd:   mEnd,
 		},
 		titleMatch: titleMatched,
+		titleTier:  titleTier,
 		titleStart: titleStart,
+		titleScore: titleScore,
+		bodyTier:   bodyTier,
 	}, true
 }
 
@@ -532,12 +693,91 @@ func FindFoldMatches(text, needle string) [][2]int {
 	return out
 }
 
+// FindTitleHighlights returns merged UTF-8 byte ranges in title matching query:
+// exact substring first, then multi-token substrings, then fuzzy subsequence ranges.
+func FindTitleHighlights(title, query string) [][2]int {
+	q := strings.TrimSpace(query)
+	if q == "" || title == "" {
+		return nil
+	}
+	if exact := FindFoldMatches(title, q); len(exact) > 0 {
+		return exact
+	}
+	if multi := findTokenFoldMatches(title, q); len(multi) > 0 {
+		return multi
+	}
+	return fuzzy.SubsequenceRanges(title, q)
+}
+
+// FindBodyHighlights returns merged UTF-8 byte ranges in text matching query:
+// exact substring first, then multi-token substrings (never char-level fuzzy).
+func FindBodyHighlights(text, query string) [][2]int {
+	q := strings.TrimSpace(query)
+	if q == "" || text == "" {
+		return nil
+	}
+	if exact := FindFoldMatches(text, q); len(exact) > 0 {
+		return exact
+	}
+	return findTokenFoldMatches(text, q)
+}
+
+func findTokenFoldMatches(text, query string) [][2]int {
+	tokens := strings.Fields(query)
+	if len(tokens) <= 1 {
+		return nil
+	}
+	var all [][2]int
+	for _, tok := range tokens {
+		all = append(all, FindFoldMatches(text, tok)...)
+	}
+	return mergeHighlightRanges(all)
+}
+
+func mergeHighlightRanges(ranges [][2]int) [][2]int {
+	if len(ranges) <= 1 {
+		return ranges
+	}
+	sort.Slice(ranges, func(i, j int) bool {
+		if ranges[i][0] != ranges[j][0] {
+			return ranges[i][0] < ranges[j][0]
+		}
+		return ranges[i][1] < ranges[j][1]
+	})
+	out := make([][2]int, 0, len(ranges))
+	for _, r := range ranges {
+		if r[0] >= r[1] {
+			continue
+		}
+		if len(out) > 0 && r[0] <= out[len(out)-1][1] {
+			if r[1] > out[len(out)-1][1] {
+				out[len(out)-1][1] = r[1]
+			}
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // ResolveSearchMatch revalidates a search result against the open note. If edits
 // moved the match, prefer the occurrence nearest its original line and column.
 func ResolveSearchMatch(text string, hit model.SearchHit) (line, column int) {
 	if hit.Line <= 0 || hit.Query == "" {
 		return hit.Line, hit.Column
 	}
+	if l, c, ok := resolveSearchMatchWith(text, hit, FindFoldMatches); ok {
+		return l, c
+	}
+	if len(strings.Fields(hit.Query)) > 1 {
+		if l, c, ok := resolveSearchMatchWith(text, hit, FindBodyHighlights); ok {
+			return l, c
+		}
+	}
+	return hit.Line, hit.Column
+}
+
+func resolveSearchMatchWith(text string, hit model.SearchHit, matcher func(string, string) [][2]int) (line, column int, found bool) {
 	bestLineDistance, bestColumnDistance := len(text)+hit.Line, len(text)+hit.Column
 	var i int
 	for raw := range strings.SplitSeq(text, "\n") {
@@ -549,18 +789,19 @@ func ResolveSearchMatch(text string, hit model.SearchHit) (line, column int) {
 			}
 			continue
 		}
-		for _, match := range FindFoldMatches(raw, hit.Query) {
+		for _, match := range matcher(raw, hit.Query) {
 			columnDistance := absSearchDistance(match[0] - hit.Column)
-			if lineDistance < bestLineDistance || (lineDistance == bestLineDistance && columnDistance < bestColumnDistance) {
+			if !found || lineDistance < bestLineDistance || (lineDistance == bestLineDistance && columnDistance < bestColumnDistance) {
 				line, column = i, match[0]
 				bestLineDistance, bestColumnDistance = lineDistance, columnDistance
+				found = true
 			}
 		}
-		if bestLineDistance == 0 {
+		if found && bestLineDistance == 0 {
 			break
 		}
 	}
-	return line, column
+	return line, column, found
 }
 
 func absSearchDistance(distance int) int {
