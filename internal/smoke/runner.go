@@ -351,6 +351,23 @@ func RunAll(baseTempDir string) (*Report, error) {
 		tt.Key(0, ui.KeyEscape)
 		tt.Frame()
 
+		// Brand menu drops below the icon-only cat mark
+		markR, ok := blockui.TargetBounds("app-brand-mark")
+		if !ok {
+			return "", fmt.Errorf("app-brand-mark missing")
+		}
+		if err := clickTarget(tt, "app-brand-mark"); err != nil {
+			return "", err
+		}
+		if r, ok := blockui.TargetBounds("brand-menu"); !ok || r.X < 0 || r.Y < markR.Y+markR.H {
+			return "", fmt.Errorf("brand-menu not below its mark: mark=%+v menu=%+v", markR, r)
+		}
+		if _, ok := blockui.TargetBounds("brand-about"); !ok {
+			return "", fmt.Errorf("brand-menu rows missing")
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+
 		// Upward notebook switcher above footer trigger
 		swTrig, ok := blockui.TargetBounds("notebook-switcher")
 		if !ok {
