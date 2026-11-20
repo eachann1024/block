@@ -1150,12 +1150,22 @@ func (s *Session) commentComposerSpec(vp ui.Rect, h float32) (appUi.PlacementSpe
 	return s.toolbarDropSpec("tb-comment", appUi.AlignLeft, theme.Space6, vp), true
 }
 
+func (s *Session) pointerInOverlayBtn(id string) bool {
+	pt, ok := s.windowPointerStatus()
+	if !ok {
+		return false
+	}
+	r, ok := s.overlayBtnBounds(id)
+	return ok && pt.X >= r.X && pt.X <= r.X+r.W && pt.Y >= r.Y && pt.Y <= r.Y+r.H
+}
+
 func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
 	w := min(annotationComposerWidth, max(vp.W-16, 180))
 	_, h := s.measuredOrEstSize("annotate-composer", w, 34)
 	spec, ok := s.commentComposerSpec(vp, h)
 	if !ok {
+		s.commentFocusPending = true
 		return
 	}
 	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
@@ -1166,8 +1176,13 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
+		submitted := false
 		submit := func() {
+			if submitted || s.toolbarPop != "comment" {
+				return
+			}
 			if strings.TrimSpace(s.commentDraft) != "" {
+				submitted = true
 				s.AddAnnotation(s.commentDraft)
 				s.commentDraft = ""
 				s.toolbarPop = ""
@@ -1180,9 +1195,8 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
 			Bind(&s.commentHandle)
 		appUi.AutoHideScrollbars(c, in)
-		composing := in.Composing()
 		in.OnTextKey(func(k ui.TextKey) bool {
-			if composing {
+			if in.Composing() {
 				return false
 			}
 			switch {
@@ -1191,6 +1205,9 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 				s.toolbarPop = ""
 				return true
 			case isAnnotationSubmitKey(k):
+				if submitted || s.toolbarPop != "comment" {
+					return true
+				}
 				s.commentDraft = k.Text()
 				submit()
 				return true
@@ -1229,7 +1246,7 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			submit()
 		}
 	})
-	if card.PressedOutside() {
+	if card.PressedOutside() && !s.pointerInOverlayBtn("tb-comment") && !s.pointerInOverlayBtn("img-tb-comment") {
 		s.toolbarPop = ""
 	}
 }
@@ -2258,9 +2275,8 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 		Placeholder(theme.Tr("写下批注…", "Write a note…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("批注内容", "Annotation")).
 		Bind(&s.editingHandle)
 	appUi.AutoHideScrollbars(c, in)
-	composing := in.Composing()
 	in.OnTextKey(func(k ui.TextKey) bool {
-		if composing {
+		if in.Composing() {
 			return false
 		}
 		switch {
@@ -2268,6 +2284,9 @@ func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 			s.editingAnnotID = ""
 			return true
 		case isAnnotationSubmitKey(k):
+			if s.editingAnnotID != ann.ID {
+				return true
+			}
 			s.editingAnnotText = k.Text()
 			s.commitAnnotationEdit(ann.ID)
 			return true
