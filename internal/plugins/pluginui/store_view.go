@@ -16,6 +16,7 @@ import (
 
 const (
 	storeSourceOfficial   = "official"
+	storeSourceReviewed   = "reviewed"
 	storeSourceUnreviewed = "unreviewed"
 	storeSortName         = "name"
 )
@@ -41,6 +42,7 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 	bui.DropdownSelect(c, "app-store-source", &ctrl.storeSource, []bui.SelectOption{
 		{Label: theme.Tr("来源 · 全部", "Source · All")},
 		{Value: storeSourceOfficial, Label: theme.Tr("Block 官方", "Official by Block")},
+		{Value: storeSourceReviewed, Label: theme.Tr("已审核", "Reviewed")},
 		{Value: storeSourceUnreviewed, Label: theme.Tr("未审核", "Unreviewed")},
 	}, &ctrl.storeSourceMenu, "")
 	bui.DropdownSelect(c, "app-store-sort", &ctrl.storeSort, []bui.SelectOption{
@@ -54,7 +56,7 @@ type storeCard struct {
 	installed   plugins.InstalledApp
 	downloads   int
 	isInstalled bool
-	official    bool
+	source      string
 }
 
 func renderStoreBody(c *ui.Context, ctrl *Controller, installedOnly bool) {
@@ -163,8 +165,8 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 		if installedOnly && !isInstalled {
 			continue
 		}
-		official := storeAppIsOfficial(ctrl, entry, app, isInstalled)
-		if (ctrl.storeSource == storeSourceOfficial && !official) || (ctrl.storeSource == storeSourceUnreviewed && official) {
+		source := storeAppSource(ctrl, entry, app, isInstalled)
+		if ctrl.storeSource != "" && ctrl.storeSource != source {
 			continue
 		}
 		if query != "" && !strings.Contains(strings.ToLower(entry.Name.Resolve(locale)), query) &&
@@ -174,7 +176,7 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 			continue
 		}
 		cards = append(cards, storeCard{
-			entry: entry, installed: app, isInstalled: isInstalled, official: official,
+			entry: entry, installed: app, isInstalled: isInstalled, source: source,
 			downloads: ctrl.sup.Store().EffectiveDownloads(entry),
 		})
 	}
@@ -361,7 +363,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 							bui.BetaBadge(c, true)
 						}
 					})
-					renderStoreSource(c, entry.Author, card.official)
+					renderStoreSource(c, entry.Author, card.source)
 				})
 			})
 			if open.Clicked() {
@@ -399,20 +401,26 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 	})
 }
 
-func renderStoreSource(c *ui.Context, author string, official bool) {
+func renderStoreSource(c *ui.Context, author, source string) {
 	pal := theme.Ocean()
 	color, label := pal.Warning, theme.Tr("未审核", "Unreviewed")
-	if official {
+	switch source {
+	case storeSourceOfficial:
 		color, label = pal.Accent, theme.Tr("Block 官方", "Official by Block")
+	case storeSourceReviewed:
+		color, label = pal.Success, theme.Tr("已审核", "Reviewed")
 	}
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.LineSmall).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-		if !official && strings.TrimSpace(author) != "" {
+		if source != storeSourceOfficial && strings.TrimSpace(author) != "" {
 			renderStoreAuthor(c, author)
 		}
 		ui.Row(c).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-			if official {
+			switch source {
+			case storeSourceOfficial:
 				DrawDuoSpec(c, plugins.AppStoreIconSpec(), theme.IconMicro, pal.DuoIconColors(color))
-			} else {
+			case storeSourceReviewed:
+				icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(color))
+			default:
 				ui.Box(c).Size(theme.IconMicro, theme.IconMicro).Shrink(0).Radius(theme.RadiusPill).
 					Border(1, color).Center().Children(func() {
 					ui.Text(c, "!").FontSize(theme.FontMicro).FixedLineHeight(theme.IconMicro).TextColor(color)
@@ -528,6 +536,16 @@ func storeAppIsBeta(entry plugins.StoreAppEntry, installed plugins.InstalledApp,
 	return entry.Beta
 }
 
+func storeAppSource(ctrl *Controller, entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) string {
+	if storeAppIsOfficial(ctrl, entry, installed, isInstalled) {
+		return storeSourceOfficial
+	}
+	if storeAppIsReviewed(ctrl, entry, installed, isInstalled) {
+		return storeSourceReviewed
+	}
+	return storeSourceUnreviewed
+}
+
 func storeAppIsOfficial(ctrl *Controller, entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
 	if !entry.Verified {
 		return false
@@ -539,6 +557,19 @@ func storeAppIsOfficial(ctrl *Controller, entry plugins.StoreAppEntry, installed
 		return false
 	}
 	return ctrl.sup.Store().MatchesOfficialSource(installed, entry)
+}
+
+func storeAppIsReviewed(ctrl *Controller, entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
+	if !plugins.IsReviewedAuthorRepo(entry.Repo) {
+		return false
+	}
+	if !isInstalled {
+		return true
+	}
+	if ctrl == nil || ctrl.sup == nil || ctrl.sup.Store() == nil {
+		return false
+	}
+	return ctrl.sup.Store().MatchesReviewedSource(installed, entry)
 }
 
 func buildStoreEntries(catalog *plugins.StoreIndex, installed []plugins.InstalledApp) []plugins.StoreAppEntry {

@@ -305,8 +305,11 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, entry.Name.Resolve(locale)).
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-					if storeAppIsOfficial(ctrl, entry, installedApp, isInstalled) {
+					switch storeAppSource(ctrl, entry, installedApp, isInstalled) {
+					case storeSourceOfficial:
 						bui.OfficialBadge(c, true)
+					case storeSourceReviewed:
+						bui.ReviewedBadge(c, true)
 					}
 					if storeAppIsBeta(entry, installedApp, isInstalled) {
 						bui.BetaBadge(c, true)
