@@ -90,7 +90,7 @@ export async function packageNative() {
   const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
   const names = archNames();
   let binary = releaseBinaryPath("linux", names.deb);
-  if (!existsSync(binary)) {
+  if (!reuse || !existsSync(binary)) {
     binary = goRelease({ goos: "linux", goarch: names.deb, outFile: binary });
   }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
