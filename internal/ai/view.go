@@ -1531,6 +1531,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 		Radius(theme.RadiusMD).Background(ais.WellBG).Border(1, pal.Hairline).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-process-card")
+	bui.RevealOnExpand(card, !streaming && expanded)
 
 	card.Children(func() {
 		if !streaming {
@@ -1627,11 +1628,34 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 							c.mu.Unlock()
 						}
 
+						type stepDetailRevealKey struct{}
+						type stepDetailRevealState struct {
+							initialized bool
+							open        bool
+						}
+						detRev := ui.Local(row, stepDetailRevealKey{}, func() stepDetailRevealState {
+							return stepDetailRevealState{}
+						})
+						justOpenedDetail := false
+						if !detRev.initialized {
+							detRev.initialized = true
+							detRev.open = detailOpen
+						} else if detailOpen != detRev.open {
+							detRev.open = detailOpen
+							justOpenedDetail = detailOpen
+						}
+
 						if detailOpen {
 							detID := fmt.Sprintf("ai-process-tool-detail-%d", i)
 							detBox := ui.Column(cUI.Key(detID+"-"+turnKey)).FillWidth().Padding(4, 12).
 								BorderWidth(0, 0, 0, 2).BorderColor(pal.Hairline)
 							bui.Probe(detBox, detID)
+							if justOpenedDetail {
+								detBox.ScrollIntoView(ui.ScrollIntoViewOptions{
+									Block:     ui.ScrollNearest,
+									Animation: bui.JumpScrollAnimation(true),
+								})
+							}
 							detBox.Children(func() {
 								txt := st.Detail
 								if txt == "" {
@@ -1673,6 +1697,7 @@ func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnK
 	card := ui.Column(cUI.Key("ai-sources-" + turnKey)).FillWidth().Gap(6).
 		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
 	bui.Probe(card, "ai-context-card")
+	bui.RevealOnExpand(card, expanded)
 	card.Children(func() {
 		toggle := ui.ButtonBase(cUI.Key("ai-sources-toggle-" + turnKey)).Height(28).PaddingX(6).Gap(8).
 			AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
