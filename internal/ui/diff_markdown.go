@@ -367,7 +367,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		// indented code, not a fence.
 		qCol := 0
 		var paraLines []int
-		var quoteSetext1 map[int]bool
+		var parsedSetext map[int]bool
 		var refDefs map[int]bool
 		var parsedTables map[int]int
 		tableID := 0
@@ -483,7 +483,8 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				// In a blockquote the block is read behind its markers: "> 标题" over "> ---"
 				// is a heading in the quote.
 				inner := t
-				if q := diffQuoteDepth(t); q > 0 {
+				q := diffQuoteDepth(t)
+				if q > 0 {
 					inner = strings.TrimSpace(diffStripQuotes(t, q))
 				}
 				// A quote line with nothing behind its ">" ends the paragraph above it:
@@ -494,29 +495,34 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				// A deeper quote starts a paragraph of its own: "   > 回滚步骤" under an
 				// item's text.
-				if n := len(paraLines); n > 0 && diffQuoteDepth(strings.TrimSpace(lines[paraLines[n-1]])) < diffQuoteDepth(t) {
+				if n := len(paraLines); n > 0 && diffQuoteDepth(strings.TrimSpace(lines[paraLines[n-1]])) < q {
 					paraLines = nil
 				}
 				// Under paragraph text "-" or "==" is a setext underline, not an empty list
 				// item, which may not interrupt a paragraph; in a list item's content too
 				// ("   > 回滚步骤" over "   > ---"), though never under the item's own text.
 				inItem := inList && ind >= listCol && ind < listCol+4 ||
-					qCol > 0 && diffQuoteDepth(t) > 0 && qLead >= qCol && qLead < qCol+4
+					qCol > 0 && q > 0 && qLead >= qCol && qLead < qCol+4
 				setext := para && (ind < 4 && !inList || inItem) && diffSetextRE.MatchString(inner)
-				// A plain quote keeps "===" as text. A structured quote can still
-				// contain an H1, so use the note parser to distinguish the two.
-				if setext && inner[0] == '=' && diffQuoteDepth(t) > 0 {
-					if quoteSetext1 == nil {
-						quoteSetext1 = make(map[int]bool)
+				var previous string
+				if n := len(paraLines); setext && refDefs != nil && n > 0 {
+					previous = strings.TrimSpace(lines[paraLines[n-1]])
+					previous = strings.TrimSpace(diffStripQuotes(previous, diffQuoteDepth(previous)))
+				}
+				// The note keeps unused definitions and plain quoted "===" as text.
+				// Confirm these candidates before hiding the underline.
+				if setext && (q > 0 && inner[0] == '=' || strings.HasPrefix(previous, "[") && strings.Contains(previous, "]:")) {
+					if parsedSetext == nil {
+						parsedSetext = make(map[int]bool)
 						source, rows := diffSource(lines, change, side)
 						for _, block := range notemd.ParseMarkdown(source).Blocks {
-							if block.Kind == model.BlockHeading1 && block.QuoteDepth > 0 &&
-								block.SourceEndLine > block.SourceLine && block.SourceEndLine <= len(rows) {
-								quoteSetext1[rows[block.SourceEndLine-1]] = true
+							if (block.Kind == model.BlockHeading1 || block.Kind == model.BlockHeading2) &&
+								block.SourceLine > 0 && block.SourceEndLine > block.SourceLine && block.SourceEndLine <= len(rows) {
+								parsedSetext[rows[block.SourceEndLine-1]] = true
 							}
 						}
 					}
-					setext = quoteSetext1[i]
+					setext = parsedSetext[i]
 				}
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
 				// blk: the line's block behind its markers. An item's text is inline only in
@@ -549,7 +555,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || !itemLine && (ind < 4 || inList && ind < listCol+4) && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
 				prevBlank, para = ends, !ends && blk != ""
-				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t)) {
+				if setext && diffSetextText(lines, paraLines, q) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
 					}
