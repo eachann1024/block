@@ -1098,7 +1098,6 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 	s.recordOverlayPanel("annotate-composer", card)
 
 	card.Children(func() {
-		ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
 		in := ui.TextInputBase(c.Key("comment-input"), &s.commentDraft).Grow(1).MinWidth(0).Height(theme.HeightMicro).
 			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
