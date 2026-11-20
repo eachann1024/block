@@ -29,6 +29,7 @@ type rpcEnvelope struct {
 	Params  json.RawMessage `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
+	action  *systemAction
 }
 
 type rpcError struct {
@@ -62,10 +63,10 @@ type PerfSnapshot struct {
 }
 
 type HostConfig struct {
-	PluginDir       string
-	DataDir         string
-	DownloadsDir    string
-	NotebookRoot    string
+	PluginDir        string
+	DataDir          string
+	DownloadsDir     string
+	NotebookRoot     string
 	ActiveNote       string
 	Locale           string
 	Theme            string
@@ -78,7 +79,7 @@ type HostConfig struct {
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
 	// ContribHost handles host.titlebar/status/ui/editor/sidebar methods; ok=false falls through.
-	ContribHost       func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
+	ContribHost       func(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool)
 	SystemIntegration bool
 }
 
@@ -191,12 +192,13 @@ type Runtime struct {
 	stdout io.ReadCloser
 	stderr *ringBuffer
 
-	writeGate chan struct{}
-	callGate  chan struct{}
-	hostCalls chan struct{}
-	pendingMu sync.Mutex
-	pending   map[string]chan rpcEnvelope
-	nextID    atomic.Int64
+	writeGate    chan struct{}
+	callGate     chan struct{}
+	hostCalls    chan struct{}
+	pendingMu    sync.Mutex
+	pending      map[string]chan rpcEnvelope
+	nextID       atomic.Int64
+	systemAction atomic.Pointer[systemAction]
 
 	noteMu       sync.Mutex
 	cfgMu        sync.RWMutex
@@ -740,6 +742,11 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 		Method:  method,
 		Params:  paramsRaw,
 	}
+	if scope, ok := ctx.Value(systemActionKey{}).(systemAction); ok && method == "plugin.action" {
+		scope.ctx, scope.rpcID = ctx, idKey
+		rt.systemAction.Store(&scope)
+		defer rt.systemAction.CompareAndSwap(&scope, nil)
+	}
 	if err := rt.writeLine(ctx, req); err != nil {
 		rt.abort()
 		return fmt.Errorf("send %s: %w (stderr: %s)", method, err, strings.TrimSpace(rt.Stderr()))
@@ -803,7 +810,7 @@ func (rt *Runtime) readLoop(r io.Reader) {
 			if env.Method == "host.action.progress" {
 				// Process all progress updates inline in readLoop to guarantee strict ordering
 				// across notifications and calls, and prevent semaphore saturation on tight loops.
-				res, rpcErr := rt.dispatchHostMethod(env.Method, env.Params)
+				res, rpcErr := rt.dispatchHostMethod(env.Method, env.Params, nil)
 				trimmedID := bytes.TrimSpace(env.ID)
 				if len(trimmedID) > 0 && !bytes.Equal(trimmedID, []byte("null")) {
 					select {
@@ -819,6 +826,7 @@ func (rt *Runtime) readLoop(r io.Reader) {
 				}
 				continue
 			}
+			env.action = rt.systemAction.Load()
 			select {
 			case rt.hostCalls <- struct{}{}:
 				go func() {
@@ -832,6 +840,9 @@ func (rt *Runtime) readLoop(r io.Reader) {
 			continue
 		}
 		idKey := normalizeID(env.ID)
+		if scope := rt.systemAction.Load(); scope != nil && scope.rpcID == idKey {
+			rt.systemAction.CompareAndSwap(scope, nil)
+		}
 		rt.pendingMu.Lock()
 		ch, ok := rt.pending[idKey]
 		rt.pendingMu.Unlock()
@@ -855,7 +866,7 @@ func (rt *Runtime) handleHostCall(req rpcEnvelope) {
 	if rt.closed.Load() {
 		return
 	}
-	res, rpcErr := rt.dispatchHostMethod(req.Method, req.Params)
+	res, rpcErr := rt.dispatchHostMethod(req.Method, req.Params, req.action)
 	trimmedID := bytes.TrimSpace(req.ID)
 	if len(trimmedID) == 0 || bytes.Equal(trimmedID, []byte("null")) {
 		// JSON-RPC 2.0 notification: no response is expected.
@@ -956,7 +967,7 @@ func parseHex4(b []byte) (uint16, bool) {
 	return out, true
 }
 
-func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (any, *rpcError) {
+func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, action *systemAction) (any, *rpcError) {
 	if len(params) > 0 && (!utf8.Valid(params) || hasUnpairedSurrogateEscape(params)) {
 		return nil, &rpcError{Code: -32602, Message: "params must be valid UTF-8"}
 	}
@@ -1262,7 +1273,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 
 	default:
 		if rt.cfg.ContribHost != nil {
-			if res, rerr, ok := rt.cfg.ContribHost(rt, method, params); ok {
+			if res, rerr, ok := rt.cfg.ContribHost(rt, method, params, action); ok {
 				return res, rerr
 			}
 		}
@@ -1288,7 +1299,11 @@ func (rt *Runtime) loadStorageMap() (map[string]any, error) {
 }
 
 func (rt *Runtime) readStorageMap() (map[string]any, error) {
-	b, err := readPluginFile(rt.dataRoot, "state.json", maxPluginStorage)
+	return readPluginStorageMap(rt.dataRoot)
+}
+
+func readPluginStorageMap(root *os.Root) (map[string]any, error) {
+	b, err := readPluginFile(root, "state.json", maxPluginStorage)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]any{}, nil
 	}

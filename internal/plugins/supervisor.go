@@ -62,9 +62,9 @@ type PluginViewState struct {
 	failedSaves       map[string]string
 	savePausedConfirm map[string]bool
 	queuedSaves       map[string]*noteSaveRequest
-	activeSaves    int
-	retrySavePath  string
-	PendingSaves   int
+	activeSaves       int
+	retrySavePath     string
+	PendingSaves      int
 
 	lastNotebookRoot   string
 	lastActiveNote     string
@@ -117,16 +117,16 @@ type Supervisor struct {
 	contrib  *contribRegistry
 	system   systemState
 
-	mu              sync.RWMutex
-	viewEpoch       atomic.Uint64
-	notebookEpoch   atomic.Uint64
-	catalog         *StoreIndex
-	installed       []InstalledApp
-	runtimes        map[string]*Runtime
-	views           map[viewKey]*PluginViewState
-	lastViewRoot    map[surfaceKey]string
-	formVersions    map[surfaceKey]uint64
-	liveTimers      map[surfaceKey]*time.Timer
+	mu                 sync.RWMutex
+	viewEpoch          atomic.Uint64
+	notebookEpoch      atomic.Uint64
+	catalog            *StoreIndex
+	installed          []InstalledApp
+	runtimes           map[string]*Runtime
+	views              map[viewKey]*PluginViewState
+	lastViewRoot       map[surfaceKey]string
+	formVersions       map[surfaceKey]uint64
+	liveTimers         map[surfaceKey]*time.Timer
 	liveViewedAt       map[surfaceKey]time.Time
 	feedbackTimers     map[viewKey]*time.Timer
 	activeActionKey    map[string]viewKey
@@ -134,11 +134,11 @@ type Supervisor struct {
 	lastProgressRedraw map[string]time.Time
 	uninstallErrors    map[string]string
 	storeRefreshing    bool
-	installingID    string
-	replacingID     string
-	stopping        bool
-	storeErr        string
-	storeNotice     string
+	installingID       string
+	replacingID        string
+	stopping           bool
+	storeErr           string
+	storeNotice        string
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
@@ -146,15 +146,15 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	_ = sm.EnsureDirs()
 	installed, _ := sm.ListInstalled()
 	s := &Supervisor{
-		store:          sm,
-		cfg:            cfg,
-		contrib:        newContribRegistry(cfg.AppDataDir),
-		catalog:        sm.LoadCachedOrSeedCatalog(),
-		installed:      installed,
-		runtimes:       make(map[string]*Runtime),
-		views:          make(map[viewKey]*PluginViewState),
-		lastViewRoot:   make(map[surfaceKey]string),
-		formVersions:   make(map[surfaceKey]uint64),
+		store:              sm,
+		cfg:                cfg,
+		contrib:            newContribRegistry(cfg.AppDataDir),
+		catalog:            sm.LoadCachedOrSeedCatalog(),
+		installed:          installed,
+		runtimes:           make(map[string]*Runtime),
+		views:              make(map[viewKey]*PluginViewState),
+		lastViewRoot:       make(map[surfaceKey]string),
+		formVersions:       make(map[surfaceKey]uint64),
 		liveTimers:         make(map[surfaceKey]*time.Timer),
 		liveViewedAt:       make(map[surfaceKey]time.Time),
 		feedbackTimers:     make(map[viewKey]*time.Timer),
@@ -1828,6 +1828,7 @@ func (s *Supervisor) TriggerActionAsync(pluginID, actionID string) {
 }
 
 func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface, actionID string) {
+	notebookEpoch := s.notebookEpoch.Load()
 	nbRoot := s.NotebookRoot()
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
@@ -1867,7 +1868,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	vs.errorFromBg = false
 	vs.editSeq++
 	actionSeq := vs.editSeq
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	queueCtx, cancel := context.WithCancel(context.Background())
 	vs.actionCancel = cancel
 	s.mu.Unlock()
 	s.notifyRedraw()
@@ -1876,7 +1877,9 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 		startedAt := time.Now()
 		defer cancel()
 
-		unlockRPC, err := s.lockPluginRPCContext(ctx, pluginID)
+		unlockRPC, err := s.lockPluginRPCContext(queueCtx, pluginID)
+		ctx, finish := context.WithTimeout(queueCtx, 120*time.Second)
+		defer finish()
 		var rt *Runtime
 		if err == nil {
 			rt, err = s.ensureRuntime(ctx, pluginID, nbRoot)
@@ -1914,7 +1917,9 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				s.activeActionKey[pluginID] = key
 				s.activeActionRT[pluginID] = rt
 				s.mu.Unlock()
-				res, err = rt.ActionWithDialogToken(ctx, surface, actionID, values, dialogToken)
+				scope := systemAction{notebookRoot: nbRoot, epoch: notebookEpoch}
+				actionCtx := context.WithValue(ctx, systemActionKey{}, scope)
+				res, err = rt.ActionWithDialogToken(actionCtx, surface, actionID, values, dialogToken)
 				s.mu.Lock()
 				if s.activeActionRT[pluginID] == rt && s.activeActionKey[pluginID] == key {
 					delete(s.activeActionKey, pluginID)
@@ -2602,6 +2607,13 @@ func (s *Supervisor) clearSyncedNotebookErrorsLocked(pluginID string, roots []st
 	for _, root := range roots {
 		if key := syncNotebookKey(root); key != "" {
 			syncedRoots[key] = true
+		}
+	}
+	if pluginID == "block-sync" {
+		for root := range s.system.syncErrors {
+			if syncedRoots[syncNotebookKey(root)] {
+				delete(s.system.syncErrors, root)
+			}
 		}
 	}
 	for key, view := range s.views {
