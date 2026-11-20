@@ -13,13 +13,11 @@ import (
 	"block/internal/editor"
 	"block/internal/icons"
 	"block/internal/markdown"
-	"block/internal/modals"
 	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
-	"golang.org/x/mod/semver"
 )
 
 type readmeResult struct {
@@ -88,6 +86,54 @@ func (ctrl *Controller) storeDetailOpen() bool {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 	return ctrl.storeReadme != nil
+}
+
+func (ctrl *Controller) resolveStoreDetailState() (
+	entry plugins.StoreAppEntry,
+	installedApp plugins.InstalledApp,
+	isInstalled bool,
+	installingID string,
+	ok bool,
+) {
+	ctrl.mu.Lock()
+	preview := ctrl.storeReadme
+	ctrl.mu.Unlock()
+	if preview == nil || ctrl.sup == nil {
+		return plugins.StoreAppEntry{}, plugins.InstalledApp{}, false, "", false
+	}
+	entry = preview.entry
+	inCatalog := false
+	if catalog := ctrl.sup.Catalog(); catalog != nil {
+		for _, app := range catalog.Apps {
+			if app.ID == entry.ID {
+				entry = app
+				inCatalog = true
+				break
+			}
+		}
+	}
+	installedApp, isInstalled = ctrl.sup.GetInstalled(entry.ID)
+	if isInstalled {
+		if !inCatalog {
+			entry.DownloadURL = ""
+			entry.SHA256 = ""
+			entry.Verified = false
+			entry.Version = installedApp.Manifest.Version
+			entry.Permissions = installedApp.Manifest.Permissions
+		}
+		if len(installedApp.Manifest.PermissionReasons) > 0 {
+			merged := plugins.ClonePermissionReasons(entry.PermissionReasons)
+			if merged == nil {
+				merged = make(map[plugins.Permission]plugins.LocalizedText, len(installedApp.Manifest.PermissionReasons))
+			}
+			for perm, reason := range installedApp.Manifest.PermissionReasons {
+				merged[perm] = reason
+			}
+			entry.PermissionReasons = merged
+		}
+	}
+	_, installingID, _, _ = ctrl.sup.StoreStatus()
+	return entry, installedApp, isInstalled, installingID, true
 }
 
 func (ctrl *Controller) touchStoreReadmeRendered(preview *storeReadmePreview) {
@@ -269,17 +315,6 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		entry.SHA256 = ""
 		entry.Verified = false
 		entry.Version = installedApp.Manifest.Version
-		entry.Permissions = installedApp.Manifest.Permissions
-	}
-	if isInstalled && len(installedApp.Manifest.PermissionReasons) > 0 {
-		merged := plugins.ClonePermissionReasons(entry.PermissionReasons)
-		if merged == nil {
-			merged = make(map[plugins.Permission]plugins.LocalizedText, len(installedApp.Manifest.PermissionReasons))
-		}
-		for perm, reason := range installedApp.Manifest.PermissionReasons {
-			merged[perm] = reason
-		}
-		entry.PermissionReasons = merged
 	}
 	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
 		preview.installed.Manifest.Version != installedApp.Manifest.Version
@@ -305,7 +340,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 		preview.editorMu.Unlock()
 	}
-	_, installingID, storeErr, _ := ctrl.sup.StoreStatus()
+	_, _, storeErr, _ := ctrl.sup.StoreStatus()
 
 	page := ui.Column(c.Key("app-store-detail-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.Space24)
 	pageW := page.Bounds().W
@@ -347,12 +382,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 				}
 			})
-			ui.Row(c).Gap(theme.Space16).AlignItems(ui.Center).Shrink(0).Children(func() {
-				renderStoreDetailDownloads(c, ctrl, entry)
-				ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
-					renderStoreDetailActions(c, ctrl, entry, installedApp, isInstalled, installingID, onSelectTab)
-				})
-			})
+			renderStoreDetailDownloads(c, ctrl, entry)
 		})
 
 		renderStoreDetailMeta(c, entry, locale)
@@ -363,85 +393,6 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 		renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
 	})
-}
-
-func renderStoreDetailActions(
-	c *ui.Context,
-	ctrl *Controller,
-	entry plugins.StoreAppEntry,
-	installedApp plugins.InstalledApp,
-	isInstalled bool,
-	installingID string,
-	onSelectTab func(nextTab string),
-) {
-	busy := installingID == entry.ID
-	if !isInstalled {
-		lbl := theme.Tr("安装", "Install")
-		if busy {
-			lbl = theme.Tr("安装中…", "Installing…")
-		}
-		dlIc := icons.Download
-		btn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID:       "app-store-detail-install",
-			Label:    lbl,
-			Leading:  &dlIc,
-			Style:    bui.ButtonPrimary,
-			Disabled: installingID != "" && !busy,
-			Loading:  busy,
-		})
-		if btn.Clicked() && !busy {
-			ctrl.sup.InstallEntryAsync(entry, nil)
-		}
-		return
-	}
-
-	trashIc := icons.Trash
-	uninst := bui.ActionButton(c, "app-store-detail-uninstall", theme.Tr("卸载", "Uninstall"), &trashIc, bui.ButtonGhost, installingID != "")
-	if uninst.Clicked() {
-		ctrl.uninstallPlugin(entry.ID, nil)
-	}
-	if entry.ID == plugins.DiagnosticsPluginID {
-		ui.Text(c, theme.Tr("已内置于 Block", "Built into Block")).FontSize(theme.FontBody).TextColor(theme.Ocean().TextSecondary)
-		return
-	}
-
-	hasUpdate := entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
-		semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+installedApp.Manifest.Version) > 0
-	if hasUpdate {
-		lbl := theme.Tr("更新", "Update")
-		if busy {
-			lbl = theme.Tr("更新中…", "Updating…")
-		}
-		upIc := icons.Refresh
-		upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-			ID:       "app-store-detail-update",
-			Label:    lbl,
-			Leading:  &upIc,
-			Style:    bui.ButtonAccentOutline,
-			Disabled: installingID != "" && !busy,
-			Loading:  busy,
-		})
-		if upBtn.Clicked() && !busy {
-			ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
-		}
-	}
-
-	openLabel := theme.Tr("打开", "Open")
-	if entry.ID == "block-sync" {
-		openLabel = theme.Tr("配置同步", "Configure Sync")
-	} else if installedApp.Manifest.IsDeclarativeOnly() {
-		openLabel = theme.Tr("语法与预览", "Syntax & Preview")
-	}
-	openStyle := bui.ButtonPrimary
-	if hasUpdate {
-		openStyle = bui.ButtonSecondary
-	}
-	openIc := icons.Sliders
-	openBtn := bui.ActionButton(c, "app-store-detail-open", openLabel, &openIc, openStyle, false)
-	if openBtn.Clicked() && onSelectTab != nil {
-		ctrl.closeStoreReadme()
-		onSelectTab(modals.TabPluginPrefix + entry.ID)
-	}
 }
 
 func renderStoreDetailReadme(

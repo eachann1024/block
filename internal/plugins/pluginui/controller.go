@@ -1,7 +1,6 @@
 package pluginui
 
 import (
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +36,18 @@ type Controller struct {
 	selectStates    map[string]map[string]*bui.DropdownSelectState
 	treemapStates   map[string]map[string]*bui.TreemapState
 	cardExpanded    map[string]map[string]bool
+
+	titlebarMenuOpen    bool
+	titlebarMenuTarget  string
+	titlebarMenuAnchor  ui.Rect
+	titlebarMenuCursor  int
+	titlebarErrOpen     bool
+	titlebarErrPluginID string
+	titlebarErrNotebook string
+	titlebarErrAnchor   ui.Rect
+	titlebarErrScroll   ui.ScrollState
+	titlebarErrCopiedAt time.Time
+	activeSettingsTab   string
 }
 
 // NewController constructs a PluginSettingsHost controller backed by sup.
@@ -79,19 +90,14 @@ func (c *Controller) OpenStoreSource(source string) {
 	c.closeStoreReadme()
 }
 
-func pluginPluckKey(pluginID string) string {
-	return "plugin-header-" + pluginID
-}
-
 // SettingsTabChanged follows settings navigation. Opening or closing a detail
 // stays within the store tab and therefore does not reload the catalog.
 func (c *Controller) SettingsTabChanged(previous, current string) {
+	c.activeSettingsTab = current
 	if c.sup == nil {
 		return
 	}
-	if prevID, ok := strings.CutPrefix(previous, modals.TabPluginPrefix); ok && prevID != "" {
-		bui.ResetPluck(pluginPluckKey(prevID))
-	}
+	c.CloseTitlebarOverlays()
 	if modals.IsStoreTab(previous) {
 		c.closeStoreReadme()
 	}
@@ -204,47 +210,6 @@ func (c *Controller) pluginVisualState(pluginID string, inst plugins.InstalledAp
 	return vs, starting, failed, live
 }
 
-// RenderHeaderLeading renders the 44x44 Duo icon box ahead of an installed plugin's page title.
-func (c *Controller) RenderHeaderLeading(ctx *ui.Context, tab string) {
-	if c.sup == nil {
-		return
-	}
-	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
-	if !ok || pluginID == "" {
-		return
-	}
-	inst, found := c.sup.GetInstalled(pluginID)
-	if !found {
-		return
-	}
-	_, _, _, live := c.pluginVisualState(pluginID, inst)
-	pal := theme.Ocean()
-	colors := pal.MonoIconColors(pal.TextSecondary)
-	if live {
-		colors = pal.DuoIconColors(pal.Text)
-	}
-	ui.Box(ctx.Key("plugin-hdr-icon-"+pluginID)).
-		Size(theme.PluginHeaderIconBox, theme.PluginHeaderIconBox).Shrink(0).Center().
-		Radius(theme.PluginHeaderIconRadius).Background(pal.Shell).Children(func() {
-		DrawDuoSpec(ctx, inst.Manifest.Icon, theme.PluginHeaderIconGlyph, colors)
-	})
-}
-
-// RenderHeaderDivider renders the plucked hairline directly underneath a plugin page header.
-func (c *Controller) RenderHeaderDivider(ctx *ui.Context, tab string) {
-	if c.sup == nil {
-		return
-	}
-	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
-	if !ok || pluginID == "" {
-		return
-	}
-	if _, found := c.sup.GetInstalled(pluginID); !found {
-		return
-	}
-	bui.PluckDivider(ctx, pluginPluckKey(pluginID))
-}
-
 // TabIsBeta reports whether the given Settings tab is a plugin declaring beta=true in its manifest.
 func (c *Controller) TabIsBeta(tab string) bool {
 	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
@@ -257,7 +222,8 @@ func (c *Controller) TabIsBeta(tab string) bool {
 	return false
 }
 
-// RenderHeaderExtras renders the trailing controls in the Settings top header for App Store or plugin tabs.
+// RenderHeaderExtras renders the trailing controls in the Settings body header
+// for App Store listing (search/source/sort) or standalone Settings fallback.
 func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab func(nextTab string)) {
 	if c.sup == nil {
 		return
@@ -271,126 +237,7 @@ func (c *Controller) RenderHeaderExtras(ctx *ui.Context, tab string, onSelectTab
 		return
 	}
 	c.closeStoreReadme()
-	pluginID, ok := strings.CutPrefix(tab, modals.TabPluginPrefix)
-	if !ok || pluginID == "" {
-		return
-	}
-	inst, ok := c.sup.GetInstalled(pluginID)
-	if !ok {
-		return
-	}
-
-	vs, starting, failed, live := c.pluginVisualState(pluginID, inst)
-	declarative := inst.Manifest.IsDeclarativeOnly()
-	pal := theme.Ocean()
-	fb := actionFeedbackFromView(vs)
-	ui.Row(ctx.Key("plugin-header-extras-" + pluginID)).Gap(theme.Space12).AlignItems(ui.Center).MinWidth(0).Shrink(1).Children(func() {
-		switch {
-		case starting:
-			renderStatusText(ctx, theme.Tr("启动中…", "Starting…"))
-		case failed:
-			renderStatusTextWithTone(ctx, theme.Tr("启动失败", "Failed to start"), "danger")
-		case declarative && inst.Enabled:
-			renderStatusText(ctx, theme.Tr("已启用", "Enabled"))
-		case live:
-			if vs.Refreshing && vs.BusyAction == "" {
-				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("更新中", "Refreshing"))
-			}
-			headerAct := isHeaderActionID(vs.Page, vs.LastActionID)
-			cardAct := vs.LastActionID != "" && !headerAct && isCardActionID(vs.Page, vs.LastActionID)
-			statusText := ""
-			statusTone := ""
-			if headerAct && strings.TrimSpace(vs.LastActionMessage) != "" {
-				statusText = strings.TrimSpace(vs.LastActionMessage)
-				statusTone = vs.LastActionTone
-			} else if !cardAct {
-				statusText = strings.TrimSpace(vs.Notice)
-				if statusText == "" && vs.Page != nil {
-					statusText = strings.TrimSpace(vs.Page.Status)
-				}
-			} else if vs.Page != nil {
-				pageSt := strings.TrimSpace(vs.Page.Status)
-				if pageSt != "" && pageSt != strings.TrimSpace(vs.LastActionMessage) {
-					statusText = pageSt
-				}
-			}
-			if vs.PendingSaves > 0 {
-				statusText = strconv.Itoa(vs.PendingSaves) + theme.Tr(" 项待处理", " pending")
-				statusTone = "info"
-			}
-			if statusText == "" {
-				statusText = theme.Tr("已启用", "Enabled")
-			}
-			renderStatusTextWithTone(ctx, statusText, statusTone)
-		default:
-			renderStatusText(ctx, theme.Tr("已停用", "Disabled"))
-		}
-
-		switchVal := inst.Enabled && !failed
-		phase := bui.SwitchIdle
-		if starting {
-			phase = bui.SwitchBusy
-		} else if failed {
-			phase = bui.SwitchError
-		}
-		if bui.SwitchWithOptions(ctx, bui.SwitchOptions{
-			ID:          "plugin-hdr-enable-" + pluginID,
-			Label:       theme.Tr("启用扩展", "Enable Extension"),
-			Value:       &switchVal,
-			Size:        bui.SwitchHero,
-			Phase:       phase,
-			ErrorKey:    vs.Error,
-			AsyncEnable: !declarative,
-			Disabled:    vs.BusyAction != "",
-			PluckKey:    pluginPluckKey(pluginID),
-		}) {
-			if failed && switchVal {
-				c.sup.RetryPluginAsync(pluginID)
-			} else {
-				c.sup.SetPluginEnabled(pluginID, switchVal)
-			}
-		}
-
-		if live && vs.Page != nil {
-			for _, btn := range vs.Page.HeaderActions {
-				b := btn
-				el := renderPluginActionButton(ctx, "plugin-hdr-act-", pluginID, b, fb)
-				if el.Clicked() && vs.BusyAction == "" {
-					c.sup.TriggerActionAsync(pluginID, b.ID)
-				}
-			}
-		}
-		if live && c.sup.CanCancelAction(pluginID) {
-			stopIc := icons.Stop
-			cancel := bui.ActionButton(ctx, "plugin-cancel-task-"+pluginID, theme.Tr("取消任务", "Cancel task"), &stopIc, bui.ButtonGhost, false)
-			if cancel.Clicked() {
-				c.sup.CancelAction(pluginID)
-			}
-		}
-
-		uninstBusy := vs.BusyAction == "__uninstall__"
-		uninstLbl := theme.Tr("卸载", "Uninstall")
-		if uninstBusy {
-			uninstLbl = theme.Tr("卸载中…", "Uninstalling…")
-		}
-		trashIc := icons.Trash
-		uninstBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-			ID:       "plugin-hdr-uninstall-" + pluginID,
-			Label:    uninstLbl,
-			Leading:  &trashIc,
-			Style:    bui.ButtonDanger,
-			Disabled: vs.Loading || (vs.BusyAction != "" && !uninstBusy),
-			Loading:  uninstBusy,
-		})
-		if uninstBtn.Clicked() && !vs.Loading && vs.BusyAction == "" {
-			bui.ResetPluck(pluginPluckKey(pluginID))
-			c.uninstallPlugin(pluginID, func() {
-				if onSelectTab != nil {
-					onSelectTab(modals.TabAppStore)
-				}
-			})
-		}
-	})
+	c.RenderTitlebarTrailing(ctx, tab, onSelectTab)
 }
 
 // RenderTabBody renders the main body of the App Store or an installed plugin Settings page.
@@ -438,88 +285,30 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 	}
 
 	vs := c.sup.EnsurePluginView(pluginID)
-	pal := theme.Ocean()
 
 	ui.Column(ctx.Key("plugin-tab-body-" + pluginID)).FillWidth().MinWidth(0).Gap(theme.SettingsSectionGap).Children(func() {
-		if vs.Error != "" {
-			ui.Row(ctx.Key("plugin-error-"+pluginID)).FillWidth().MinWidth(0).
-				Padding(theme.Space10, theme.Space12).Gap(theme.Space12).Radius(theme.RadiusMD).
-				Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				Transition(bui.CascadeRowTransition(0)).Children(func() {
-				ui.Text(ctx, vs.Error).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					TextColor(pal.Danger).Grow(1).MinWidth(0)
-				ui.Row(ctx.Key("plugin-error-actions-" + pluginID)).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0).Children(func() {
-					busy := vs.Loading || vs.BusyAction != ""
-					label := theme.Tr("重试", "Retry")
-					if vs.RetryKind == plugins.RetryKindReload {
-						label = theme.Tr("重新加载", "Reload")
-					} else if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now") {
-						label = theme.Tr("重试同步", "Retry sync")
-					}
-					if busy {
-						label = theme.Tr("重试中…", "Retrying…")
-					}
-					refIc := icons.Refresh
-					retryBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-						ID:       "plugin-retry-" + pluginID,
-						Label:    label,
-						Leading:  &refIc,
-						Style:    bui.ButtonSecondary,
-						Disabled: busy,
-						Loading:  busy,
-					})
-					if retryBtn.Clicked() && !busy {
-						if vs.RetryKind == plugins.RetryKindUninstall {
-							c.uninstallPlugin(pluginID, func() {
-								if onSelectTab != nil {
-									onSelectTab(modals.TabAppStore)
-								}
-							})
-						} else {
-							c.sup.RetryPluginAsync(pluginID)
-						}
-					}
-					if vs.RetryKind != plugins.RetryKindNone && vs.RetryKind != plugins.RetryKindReload {
-						reloadIc := icons.Refresh
-						reloadBtn := bui.ActionButton(ctx, "plugin-reload-"+pluginID, theme.Tr("重新加载", "Reload"), &reloadIc, bui.ButtonSecondary, busy)
-						if reloadBtn.Clicked() && !busy {
-							c.sup.ReloadPluginViewAsync(pluginID)
-						}
-					}
-					if vs.Page == nil {
-						disableBtn := bui.ActionButton(ctx, "plugin-disable-failed-"+pluginID, theme.Tr("停用", "Disable"), nil, bui.ButtonGhost, busy)
-						if disableBtn.Clicked() && !busy {
-							c.sup.SetPluginEnabled(pluginID, false)
-						}
-					}
-				})
-			})
-		}
-
-		if vs.Loading && vs.Page == nil {
+		if vs.Page == nil {
 			renderPluginDormantOverview(ctx, c, inst)
 			return
 		}
 
-		if vs.Page != nil {
-			if vs.Page.RefreshIntervalMs > 0 {
-				c.sup.ScheduleLiveRefresh(pluginID, vs.Page.RefreshIntervalMs)
-			}
-			renderPageCards(
-				ctx,
-				pluginID,
-				vs.Page,
-				vs.Values,
-				actionFeedbackFromView(vs),
-				c.inputBindingsFor(pluginID),
-				func(controlID string, nextValue any, immediate bool) {
-					c.sup.UpdateControlValue(pluginID, controlID, nextValue, immediate)
-				},
-				func(actionID string, _ map[string]any) {
-					c.sup.TriggerActionAsync(pluginID, actionID)
-				},
-			)
+		if vs.Page.RefreshIntervalMs > 0 {
+			c.sup.ScheduleLiveRefresh(pluginID, vs.Page.RefreshIntervalMs)
 		}
+		renderPageCards(
+			ctx,
+			pluginID,
+			vs.Page,
+			vs.Values,
+			actionFeedbackFromView(vs),
+			c.inputBindingsFor(pluginID),
+			func(controlID string, nextValue any, immediate bool) {
+				c.sup.UpdateControlValue(pluginID, controlID, nextValue, immediate)
+			},
+			func(actionID string, _ map[string]any) {
+				c.sup.TriggerActionAsync(pluginID, actionID)
+			},
+		)
 	})
 }
 

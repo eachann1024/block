@@ -42,9 +42,11 @@ type PluginSettingsHost interface {
 	InstalledCount() int
 	TabTitle(tab string) string
 	TabIsBeta(tab string) bool
-	RenderHeaderLeading(c *ui.Context, tab string)
+	RenderTitlebarLeading(c *ui.Context, tab string, onSelectTab func(nextTab string)) bool
+	RenderTitlebarTrailing(c *ui.Context, tab string, onSelectTab func(nextTab string))
+	RenderTitlebarOverlays(c *ui.Context, tab string, onSelectTab func(nextTab string))
+	CloseTitlebarOverlays() bool
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
-	RenderHeaderDivider(c *ui.Context, tab string)
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderSettingsSections(c *ui.Context, tab string)
 }
