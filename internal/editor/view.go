@@ -61,6 +61,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 	s.viewportHeight = winH
 
 	s.jumpAlpha = s.jumpHighlight(c)
+	s.annotFlashAlpha = s.annotationFlashAlpha(c)
 
 	s.handleGlobalShortcuts(c, readOnly)
 
@@ -1364,13 +1365,13 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			CaretColor:        caretCol,
 			LinkColor:         pal.Link,
 			HideCaret:         s.caretHidden,
-			SuppressSelection: multiSel,
+			SuppressSelection: multiSel || s.toolbarPop == "comment",
 			SuppressNavKeys:   s.hasMenuPopupOpen(),
 			SyncSelection:     syncSel,
 			FocusPending:      s.focusPending,
 			Anchor:            s.selAnchor.Offset,
 			Caret:             s.selHead.Offset,
-			Bands:             s.blockHighlightBands(idx, b, pal, multiSel),
+			Bands:             s.blockHighlightBands(idx, b, pal, multiSel || s.toolbarPop == "comment"),
 			Links:             blockLinkRanges(b),
 			CodeRanges:        blockCodeRanges(b, fontSize),
 			CodeBG:            pal.InlineCodeBG,

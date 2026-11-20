@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"time"
 	"unicode/utf8"
 
 	"block/internal/model"
@@ -8,6 +9,32 @@ import (
 	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
 )
+
+const (
+	annotFlashHold = 240 * time.Millisecond
+	annotFlashFade = 360 * time.Millisecond
+)
+
+func (s *Session) annotationFlashAlpha(c *ui.Context) float32 {
+	if s.annotFlashID == "" {
+		return 0
+	}
+	if s.annotFlashAt.IsZero() {
+		s.annotFlashAt = c.Now()
+	}
+	elapsed := c.Now().Sub(s.annotFlashAt)
+	if elapsed < annotFlashHold {
+		c.After(annotFlashHold - elapsed)
+		return 1
+	}
+	if elapsed >= annotFlashHold+annotFlashFade {
+		s.annotFlashID = ""
+		s.annotFlashAt = time.Time{}
+		return 0
+	}
+	c.AnimationFrame()
+	return 1 - float32(elapsed-annotFlashHold)/float32(annotFlashFade)
+}
 
 // editLayout is retained on Session for compatibility and lightweight geometry helpers.
 type editLayout struct {
@@ -36,6 +63,8 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 		fill := pal.AnnotationBG
 		if ann.ID == s.activeAnnotID || ann.ID == s.hoveredAnnotID {
 			fill = pal.AnnotationActive
+		} else if ann.ID == s.annotFlashID && s.annotFlashAlpha > 0 {
+			fill = pal.AnnotationBG.Mix(pal.AnnotationActive, s.annotFlashAlpha)
 		}
 		out = append(out, appUi.RichBand{
 			Start:    lo,
@@ -64,15 +93,26 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 
 	if includeSelection {
 		if selLo, selHi, _, selOk := s.blockSelectionSpanRange(idx); selOk && selHi > selLo {
-			out = append(out, appUi.RichBand{
-				Start:        selLo,
-				End:          selHi,
-				Fill:         pal.EditorSelectionBG(),
-				Radius:       theme.EditorSelectionRadius,
-				PadX:         theme.EditorSelectionPadX,
-				FullLineBand: true,
-				TintOver:     true,
-			})
+			if s.toolbarPop == "comment" {
+				out = append(out, appUi.RichBand{
+					Start:     selLo,
+					End:       selHi,
+					Fill:      pal.AnnotationBG,
+					Underline: pal.AnnotationActive,
+					Radius:    theme.RadiusXS,
+					TintOver:  true,
+				})
+			} else {
+				out = append(out, appUi.RichBand{
+					Start:        selLo,
+					End:          selHi,
+					Fill:         pal.EditorSelectionBG(),
+					Radius:       theme.EditorSelectionRadius,
+					PadX:         theme.EditorSelectionPadX,
+					FullLineBand: true,
+					TintOver:     true,
+				})
+			}
 		}
 	}
 	return out
