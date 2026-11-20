@@ -61,7 +61,7 @@ func (s *Session) blockHighlightBands(idx int, b *model.Block, pal theme.Palette
 			continue
 		}
 		fill := pal.AnnotationBG
-		if ann.ID == s.activeAnnotID || ann.ID == s.hoveredAnnotID {
+		if ann.ID == s.activeAnnotID || ann.ID == s.hoveredAnnotID || ann.ID == s.editingAnnotID {
 			fill = pal.AnnotationActive
 		} else if ann.ID == s.annotFlashID && s.annotFlashAlpha > 0 {
 			fill = pal.AnnotationBG.Mix(pal.AnnotationActive, s.annotFlashAlpha)
