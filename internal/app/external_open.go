@@ -16,15 +16,22 @@ import (
 // ResolveExternalPath normalizes a raw external file/folder argument or file:// URL
 // into a clean local path, resolving leaf symlinks to their target file.
 func ResolveExternalPath(rawPath, baseDir string) string {
-	p := strings.TrimSpace(rawPath)
-	if p == "" {
+	if strings.TrimSpace(rawPath) == "" {
 		return ""
+	}
+	p := rawPath
+	if _, err := os.Lstat(p); err != nil {
+		p = strings.TrimSpace(rawPath)
 	}
 	if strings.HasPrefix(strings.ToLower(p), "file://") {
 		if u, err := url.Parse(p); err == nil && strings.EqualFold(u.Scheme, "file") {
 			p = filepath.FromSlash(u.Path)
-			if runtime.GOOS == "windows" && len(p) >= 3 && p[0] == '\\' && p[2] == ':' {
-				p = p[1:]
+			if runtime.GOOS == "windows" {
+				if u.Host != "" && !strings.EqualFold(u.Host, "localhost") {
+					p = `\\` + u.Host + p
+				} else if len(p) >= 3 && p[0] == '\\' && p[2] == ':' {
+					p = p[1:]
+				}
 			}
 		}
 	}
