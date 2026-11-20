@@ -308,8 +308,8 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					switch storeAppSource(ctrl, entry, installedApp, isInstalled) {
 					case storeSourceOfficial:
 						bui.OfficialBadge(c, true)
-					case storeSourceReviewed:
-						bui.ReviewedBadge(c, true)
+					case storeSourceUnreviewed:
+						renderStoreUnreviewed(c)
 					}
 					if storeAppIsBeta(entry, installedApp, isInstalled) {
 						bui.BetaBadge(c, true)
