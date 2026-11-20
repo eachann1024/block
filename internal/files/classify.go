@@ -223,31 +223,31 @@ func ClassifyBytes(path string, data []byte) model.ClassifiedFile {
 	return classifyBytes(path, data)
 }
 
-func ClassifyNotebookNote(root *os.Root, name string) (model.ClassifiedFile, error) {
+func ClassifyNotebookNote(root *os.Root, name string) (model.ClassifiedFile, os.FileInfo, error) {
 	expected, err := root.Lstat(name)
 	if err != nil {
-		return model.ClassifiedFile{}, err
+		return model.ClassifiedFile{}, nil, err
 	}
 	if !expected.Mode().IsRegular() {
-		return model.ClassifiedFile{}, errors.New("notebook note must be a regular file")
+		return model.ClassifiedFile{}, nil, errors.New("notebook note must be a regular file")
 	}
 	file, err := root.OpenFile(name, os.O_RDONLY|oNonBlockFlag, 0)
 	if err != nil {
-		return model.ClassifiedFile{}, err
+		return model.ClassifiedFile{}, nil, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return model.ClassifiedFile{}, err
+		return model.ClassifiedFile{}, nil, err
 	}
 	if !info.Mode().IsRegular() || !os.SameFile(expected, info) {
-		return model.ClassifiedFile{}, errors.New("notebook note changed while opening")
+		return model.ClassifiedFile{}, nil, errors.New("notebook note changed while opening")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, TextLimit+1))
 	if err != nil {
-		return model.ClassifiedFile{}, err
+		return model.ClassifiedFile{}, nil, err
 	}
-	return ClassifyBytes(name, data), nil
+	return ClassifyBytes(name, data), info, nil
 }
 
 func classifyBytes(path string, data []byte) model.ClassifiedFile {

@@ -33,6 +33,7 @@ type pluginToast struct {
 	PluginID string
 	Message  string
 	Tone     string
+	EventKey string
 	Icon     *plugins.DuoIconSpec
 }
 
@@ -145,6 +146,10 @@ func normalizeToastTone(t string) string {
 }
 
 func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
+	h.toast(pluginID, message, tone, "", icon)
+}
+
+func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec) {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		return
@@ -158,7 +163,7 @@ func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIc
 	h.onMain(func() {
 		h.mu.Lock()
 		for i := range h.toasts {
-			if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone {
+			if h.toasts[i].PluginID == pluginID && h.toasts[i].Message == msg && h.toasts[i].Tone == normTone && h.toasts[i].EventKey == eventKey {
 				if icCopy != nil {
 					h.toasts[i].Icon = icCopy
 				}
@@ -178,6 +183,7 @@ func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIc
 			PluginID: pluginID,
 			Message:  msg,
 			Tone:     normTone,
+			EventKey: eventKey,
 			Icon:     icCopy,
 		})
 		if len(h.toasts) == 1 {

@@ -76,7 +76,7 @@ var (
 
 type SystemHost interface {
 	Capabilities() map[string]bool
-	Notify(ctx context.Context, pluginID, title, body, tone, root, relPath string, allowed func() bool) error
+	Notify(ctx context.Context, pluginID, title, body, tone, root, relPath, eventKey string, allowed func() bool) error
 	OpenURL(rawURL string, allowed func() bool) error
 	Reveal(path string, allowed func() bool) error
 	Pick(ctx context.Context, save, directory, multiple bool, title, defaultPath string, extensions []string, allowed func() bool) ([]string, error)
@@ -98,7 +98,7 @@ type systemState struct {
 
 type systemNotice struct {
 	at   time.Time
-	key  [32]byte
+	keys map[[32]byte]time.Time
 	done chan struct{}
 }
 
@@ -440,20 +440,36 @@ func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone
 				return false, ErrSystemCanceled
 			}
 		}
-		if (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) || (prev.key == key && now.Sub(prev.at) < 2*time.Minute) {
+		if (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) || now.Sub(prev.keys[key]) < 2*time.Minute {
 			s.system.mu.Unlock()
 			return true, nil
 		}
 		done := make(chan struct{})
 		s.system.notices[id] = systemNotice{done: done}
 		s.system.mu.Unlock()
-		err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, allowed)
+		err := s.cfg.System.Notify(ctx, id, title, body, tone, root, rel, fmt.Sprintf("%x", key), allowed)
 		s.system.mu.Lock()
 		if err == nil {
-			s.system.notices[id] = systemNotice{at: time.Now(), key: key}
-		} else {
-			s.system.notices[id] = prev
+			now = time.Now()
+			if prev.keys == nil {
+				prev.keys = make(map[[32]byte]time.Time)
+			}
+			var oldest [32]byte
+			var oldestTime time.Time
+			for event, at := range prev.keys {
+				if now.Sub(at) >= 2*time.Minute {
+					delete(prev.keys, event)
+				} else if oldestTime.IsZero() || at.Before(oldestTime) {
+					oldest, oldestTime = event, at
+				}
+			}
+			if len(prev.keys) >= 64 {
+				delete(prev.keys, oldest)
+			}
+			prev.at = now
+			prev.keys[key] = now
 		}
+		s.system.notices[id] = prev
 		close(done)
 		s.system.mu.Unlock()
 		return false, err
@@ -723,7 +739,12 @@ func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active stri
 	state := readSyncState(inst.DataDir)
 	global, _ := state["config"].(map[string]any)
 	report := func(root string, config map[string]any) {
-		if !autoSyncConfigured(config) || (networkChange && config["protocol"] == "local_mirror") {
+		if !autoSyncConfigured(config) {
+			return
+		}
+		protocol, _ := config["protocol"].(string)
+		remote, _ := config["git_remote"].(string)
+		if networkChange && protocol != "webdav" && (protocol != "git" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(remote)), "file://")) {
 			return
 		}
 		s.reportSyncFailureWithConfig(inst, nil, root, config, false, false, false, false)

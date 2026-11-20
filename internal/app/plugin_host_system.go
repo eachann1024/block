@@ -153,7 +153,7 @@ func (h *pluginHostUI) Capabilities() map[string]bool {
 	}
 }
 
-func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, root, relPath string, allowed func() bool) error {
+func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, root, relPath, eventKey string, allowed func() bool) error {
 	if !mygo.App.IsReady() {
 		return plugins.ErrSystemUnavailable
 	}
@@ -161,7 +161,7 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		return plugins.ErrSystemCanceled
 	}
 	if win := h.w.Window(); win != nil && win.IsFocused() {
-		h.Toast(pluginID, title+" · "+body, tone, nil)
+		h.toast(pluginID, title+" · "+body, tone, eventKey, nil)
 		return nil
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -319,9 +319,23 @@ func (w *Workspace) openNotificationNote(notebook, relative string, notebooks []
 	if err != nil || path != filepath.Join(base, local) {
 		return false
 	}
-	classified, err := files.ClassifyNotebookNote(root, local)
+	classified, noteInfo, err := files.ClassifyNotebookNote(root, local)
 	if err != nil || classified.Kind != model.OpenKindMarkdown {
 		return false
+	}
+	w.mu.RLock()
+	tabs := append([]string(nil), w.state.OpenTabs...)
+	w.mu.RUnlock()
+	for _, candidate := range tabs {
+		if info, err := os.Stat(candidate); err == nil && os.SameFile(noteInfo, info) {
+			w.mu.RLock()
+			loaded := w.sessions[candidate] != nil
+			w.mu.RUnlock()
+			if loaded {
+				w.activateExternalTab(candidate)
+				return true
+			}
+		}
 	}
 	w.mu.RLock()
 	loaded := w.sessions[path] != nil
