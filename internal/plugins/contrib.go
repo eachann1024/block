@@ -416,6 +416,19 @@ type EditorSelection struct {
 	HasFocus bool   `json:"has_focus"`
 }
 
+// TarotState describes the host's native Tarot Mode state for host.ui.tarot_state
+// and host.ui.set_tarot.
+type TarotState struct {
+	Supported  bool   `json:"supported"`
+	Enabled    bool   `json:"enabled"`
+	Room       string `json:"room"`
+	Collected  int    `json:"collected"`
+	Total      int    `json:"total"`
+	DailyDrawn bool   `json:"daily_drawn"`
+	DailyNote  string `json:"daily_note"`
+	ActiveNote string `json:"active_note"`
+}
+
 // UIHost is implemented by the app so plugins can drive host UI. All methods
 // may be called from plugin goroutines and must be safe off the UI thread.
 type UIHost interface {
@@ -430,6 +443,8 @@ type UIHost interface {
 	// (notebook-relative path) is still the active one. pluginID identifies the
 	// writer so its own note.saved echo can be suppressed.
 	EditorInsert(pluginID, expectedNote, text string) error
+	TarotState() (TarotState, error)
+	SetTarotMode(enabled *bool, toggle bool, room string) (TarotState, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,6 +1126,40 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			go s.ReloadSurfaceViewAsync(m.ID, surf)
 		}
 		return map[string]any{"ok": true}, nil, true
+
+	case "host.ui.tarot_state":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		if ui == nil {
+			return TarotState{Supported: false, Room: "writing", Total: 22}, nil, true
+		}
+		st, err := ui.TarotState()
+		if err != nil {
+			return nil, rpcErr(-32005, err.Error()), true
+		}
+		return st, nil, true
+
+	case "host.ui.set_tarot":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		var p struct {
+			Enabled *bool  `json:"enabled"`
+			Toggle  bool   `json:"toggle"`
+			Room    string `json:"room"`
+		}
+		if e := decode(&p); e != nil {
+			return nil, e, true
+		}
+		if ui == nil {
+			return nil, rpcErr(-32005, "tarot host unavailable"), true
+		}
+		st, err := ui.SetTarotMode(p.Enabled, p.Toggle, p.Room)
+		if err != nil {
+			return nil, rpcErr(-32004, err.Error()), true
+		}
+		return st, nil, true
 
 	case "host.editor.selection":
 		if !m.HasPermission(PermEditorRead) {
