@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"time"
@@ -129,6 +130,8 @@ func (s *Supervisor) queueNoteSaved(pluginID, root, path, rel string) {
 
 func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string, request *noteSaveRequest) {
 	defer s.lockPluginRPC(key.pluginID)()
+	inst, installed := s.GetInstalled(key.pluginID)
+	blockSync := installed && key.pluginID == "block-sync"
 	s.mu.Lock()
 	original := s.views[key]
 	if original == nil || original.queuedSaves[absNotePath] != request {
@@ -136,15 +139,33 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 		return
 	}
 	request.again = false
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	timeout := 45 * time.Second
+	if blockSync {
+		timeout = 135 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	request.cancel = cancel
 	original.activeSaves++
 	s.mu.Unlock()
 	defer cancel()
-	rt, err := s.ensureRuntime(ctx, key.pluginID, key.notebookRoot)
+	startCtx := ctx
+	if blockSync {
+		var finishStart context.CancelFunc
+		startCtx, finishStart = context.WithTimeout(ctx, 15*time.Second)
+		defer finishStart()
+	}
+	rt, err := s.ensureRuntime(startCtx, key.pluginID, key.notebookRoot)
+	timedOut := errors.Is(startCtx.Err(), context.DeadlineExceeded)
 	var eventOutcome string
 	if err == nil {
-		eventOutcome, err = rt.NotifyNoteSavedResult(ctx, key.notebookRoot, relSlash)
+		eventCtx := ctx
+		if blockSync {
+			var finishEvent context.CancelFunc
+			eventCtx, finishEvent = context.WithTimeout(ctx, 120*time.Second)
+			defer finishEvent()
+		}
+		eventOutcome, err = rt.NotifyNoteSavedResult(eventCtx, key.notebookRoot, relSlash)
+		timedOut = errors.Is(eventCtx.Err(), context.DeadlineExceeded)
 	}
 	s.mu.Lock()
 	v := s.views[key]
@@ -185,6 +206,9 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 		delete(v.failedSaves, absNotePath)
 		delete(v.savePausedConfirm, absNotePath)
 	}
+	if blockSync && eventOutcome == "synced" {
+		delete(s.system.syncErrors, key.notebookRoot)
+	}
 	s.viewEpoch.Add(1)
 	refreshPage := v.Page != nil && v.BusyAction == ""
 	editSeq := v.editSeq
@@ -194,6 +218,9 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 	}
 	s.mu.Unlock()
 	s.notifyChanged()
+	if blockSync && err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+		s.reportSystemSyncFailure(inst, rt, key.notebookRoot, timedOut, false)
+	}
 	if err == nil && refreshPage {
 		if page, returnedVals, err := rt.RenderWithValuesResult(ctx, SurfaceSettingsPage, draftVals); err == nil {
 			s.mu.Lock()
