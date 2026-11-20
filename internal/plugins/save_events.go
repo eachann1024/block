@@ -203,7 +203,7 @@ func (s *Supervisor) dispatchNoteSaved(key viewKey, absNotePath, relSlash string
 				v.formVersion = s.formVersions[surfaceKey{key.pluginID, SurfaceSettingsPage}]
 				if page.Status != "" {
 					v.Notice = ""
-					if v.Error == "" {
+					if v.Error == "" && v.RetryKind != RetryKindAction {
 						v.LastActionID = ""
 						v.LastActionTone = ""
 						v.LastActionMessage = ""
