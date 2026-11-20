@@ -372,7 +372,7 @@ func CheckTextVersion(path string, expected int64) error {
 	if !before.Mode().IsRegular() || before.Size() > TextLimit {
 		return errors.New(theme.Tr("文件类型或大小已变化，无法覆盖", "File type or size has changed"))
 	}
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|oNonBlockFlag, 0)
 	if err != nil {
 		return err
 	}
