@@ -81,9 +81,12 @@ func (s *Session) paintBackground(p *ui.Painter, r ui.Rect, pal theme.Palette, e
 	vpMargin := min(float32(12), max(s.canvasTopPad()*0.5, 2))
 	sidePad := max((gridW-textW)*0.5, 0)
 	topPadOffset := min(sidePad, max(s.canvasTopPad()-vpMargin, 0))
-	docTop := float32(math.Round(float64(r.Y + s.canvasTopPad() - topPadOffset - s.bodyScroll.Y)))
+	docTop := float32(math.Floor(float64(r.Y + s.canvasTopPad() - topPadOffset - s.bodyScroll.Y)))
 
 	minVisY := r.Y + vpMargin
+	if s.bodyScroll.Y <= 0 && docTop < minVisY {
+		minVisY = docTop
+	}
 	maxVisY := r.Y + r.H - vpMargin
 	if maxVisY <= minVisY {
 		return
