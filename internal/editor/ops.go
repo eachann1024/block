@@ -175,13 +175,18 @@ func (s *Session) SelectedMarkdown() string {
 		rlen := s.blockSelectionLen(a.Block)
 		whole := a.Offset == 0 && b.Offset >= rlen
 
-		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
-			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-				spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
-				return serializeInlineBlockMarkdown(spans, s.codec)
+		if blk.Kind == model.BlockTable && blk.Table != nil {
+			singleCellActive := s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
+			if !whole || singleCellActive {
+				if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+					spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+					return serializeInlineBlockMarkdown(spans, s.codec)
+				}
 			}
-			// Partial multi-cell table slice preserves cell inline formatting across tabs/newlines.
-			return serializeTableMultiCellMarkdown(blk.Table, a.Offset, b.Offset, s.codec)
+			if !whole {
+				// Partial multi-cell table slice preserves cell inline formatting across tabs/newlines.
+				return serializeTableMultiCellMarkdown(blk.Table, a.Offset, b.Offset, s.codec)
+			}
 		}
 
 		if whole && (blk.Kind == model.BlockTable || blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || s.isPreviewOnlyCodeBlock(a.Block)) {
@@ -660,7 +665,6 @@ func normalizeTablePasteRaw(raw string) string {
 		"\r", "\n",
 		"\u200B", "",
 		"\u200C", "",
-		"\u200D", "",
 		"\uFEFF", "",
 		"\u00A0", " ",
 	).Replace(cleaned)
@@ -708,17 +712,20 @@ func (s *Session) pasteTableWithTrailingEmptyRow(raw string) {
 		if idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].Table == nil {
 			return
 		}
-		s.pushUndo()
 		blk := &s.doc.Blocks[idx]
+		startR, startC := 0, 0
+		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+			startR, startC = row, col
+		}
+		if !canFitTableTSVPaste(blk.Table, startR, startC, norm, true) {
+			return
+		}
+		s.pushUndo()
 		clearTableRange(blk.Table, a.Offset, b.Offset, "")
 		s.focusedBlock = idx
 		s.tableActiveBlock = blk.ID
-		s.tableActiveRow = 0
-		s.tableActiveCol = 0
-		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
-			s.tableActiveRow = row
-			s.tableActiveCol = col
-		}
+		s.tableActiveRow = startR
+		s.tableActiveCol = startC
 		s.selAnchor = Position{Block: idx, Offset: a.Offset}
 		s.selHead = s.selAnchor
 		s.pasteIntoTableBlockOpts(idx, norm, false, true)
@@ -808,9 +815,13 @@ func (s *Session) PasteText(raw string) {
 		}
 	}
 
-	// Single-line plain text without markdown block/inline markers inserts inline at selection.
-	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !looksLikeInlineMarkdown(norm) && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
-		s.replaceCurrentSelectionInBlock(idx, norm)
+	// Single-line text without block markers inserts inline at selection (preserving leading/trailing spaces).
+	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		if !looksLikeInlineMarkdown(norm) {
+			s.replaceCurrentSelectionInBlock(idx, norm)
+		} else {
+			s.replaceSelectionWithSpansInBlock(idx, s.parseInlineSpans(norm))
+		}
 		return
 	}
 
@@ -863,7 +874,35 @@ func (s *Session) PastePlainText(raw string) {
 	if clean == "" {
 		return
 	}
-	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() || s.hasMultiCellTableSelection() {
+	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+		if strings.ContainsAny(clean, "\t\n") {
+			a, b := s.orderedSelection()
+			idx := a.Block
+			if idx >= 0 && idx < len(s.doc.Blocks) && s.doc.Blocks[idx].Table != nil {
+				blk := &s.doc.Blocks[idx]
+				startR, startC := 0, 0
+				if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+					startR, startC = row, col
+				}
+				if !canFitTableTSVPaste(blk.Table, startR, startC, clean, false) {
+					return
+				}
+				s.pushUndo()
+				clearTableRange(blk.Table, a.Offset, b.Offset, "")
+				s.focusedBlock = idx
+				s.tableActiveBlock = blk.ID
+				s.tableActiveRow = startR
+				s.tableActiveCol = startC
+				s.selAnchor = Position{Block: idx, Offset: a.Offset}
+				s.selHead = s.selAnchor
+				s.pasteIntoTableBlockOpts(idx, clean, true, false)
+			}
+			return
+		}
+		s.ReplaceSelectionWithText(clean)
+		return
+	}
+	if s.hasMultiBlockSelection() || s.hasWholeAtomicSelection() {
 		s.ReplaceSelectionWithText(clean)
 		return
 	}
@@ -1256,8 +1295,13 @@ func looksLikeInlineMarkdown(line string) bool {
 	lower := strings.ToLower(line)
 	return strings.ContainsAny(line, "*_`~[$^") ||
 		strings.Contains(line, "==") ||
-		strings.Contains(line, "<span") || strings.Contains(line, "<u>") || strings.Contains(line, "<a ") ||
-		strings.Contains(line, "<sup>") || strings.Contains(line, "<sub>") || strings.Contains(line, "<mark>") ||
+		strings.Contains(lower, "<span") || strings.Contains(lower, "<u>") || strings.Contains(lower, "<a ") ||
+		strings.Contains(lower, "<sup>") || strings.Contains(lower, "<sub>") || strings.Contains(lower, "<mark>") ||
+		strings.Contains(lower, "<code>") || strings.Contains(lower, "<code ") ||
+		strings.Contains(lower, "<strong>") || strings.Contains(lower, "<em>") ||
+		strings.Contains(lower, "<del>") || strings.Contains(lower, "<s>") ||
+		strings.Contains(lower, "<b>") || strings.Contains(lower, "<i>") ||
+		strings.Contains(lower, "<br>") || strings.Contains(lower, "<br/>") || strings.Contains(lower, "<br />") ||
 		strings.Contains(lower, "http://") || strings.Contains(lower, "https://")
 }
 
@@ -1652,23 +1696,60 @@ func (s *Session) replaceCurrentSelectionInBlock(idx int, insert string) {
 
 // --- Span & Mark Algebra (Rune Offsets) ---
 
+func canFitTableTSVPaste(tbl *model.TableData, startR, startC int, norm string, keepTrailingEmptyRow bool) bool {
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return false
+	}
+	rawRows := strings.Split(norm, "\n")
+	if !keepTrailingEmptyRow && len(rawRows) > 1 && rawRows[len(rawRows)-1] == "" {
+		rawRows = rawRows[:len(rawRows)-1]
+	}
+	neededCols := max(len(tbl.Rows[0]), 1)
+	for _, rLine := range rawRows {
+		neededCols = max(neededCols, startC+1+strings.Count(rLine, "\t"))
+	}
+	neededRows := max(len(tbl.Rows), startR+len(rawRows))
+	return neededCols > 0 && neededRows <= maxPastedTableCells/neededCols
+}
+
 func normalizeSpans(spans []model.Span) []model.Span {
 	if len(spans) == 0 {
 		return nil
 	}
 	out := make([]model.Span, 0, len(spans))
-	for _, sp := range spans {
-		if sp.Text == "" {
+	for i := 0; i < len(spans); {
+		if spans[i].Text == "" {
+			i++
 			continue
 		}
-		if len(out) > 0 {
-			last := &out[len(out)-1]
-			if last.Marks == sp.Marks && last.Link == sp.Link && last.FGColor == sp.FGColor && last.BGColor == sp.BGColor {
-				last.Text += sp.Text
+		base := spans[i]
+		j := i + 1
+		totalBytes := len(base.Text)
+		count := 1
+		for j < len(spans) {
+			if spans[j].Text == "" {
+				j++
 				continue
 			}
+			if spans[j].Marks != base.Marks || spans[j].Link != base.Link || spans[j].FGColor != base.FGColor || spans[j].BGColor != base.BGColor {
+				break
+			}
+			totalBytes += len(spans[j].Text)
+			count++
+			j++
 		}
-		out = append(out, sp)
+		if count > 1 {
+			var sb strings.Builder
+			sb.Grow(totalBytes)
+			for k := i; k < j; k++ {
+				if spans[k].Text != "" {
+					sb.WriteString(spans[k].Text)
+				}
+			}
+			base.Text = sb.String()
+		}
+		out = append(out, base)
+		i = j
 	}
 	return out
 }
@@ -2107,6 +2188,54 @@ func (s *Session) SetSelectionBlockKind(kind model.BlockKind, toggleIfSame bool)
 
 // --- Text Sync & Input Rules (Chinese & English Markdown) ---
 
+func (s *Session) detachRichInput(id model.BlockID) {
+	if st, ok := s.richInputs[id]; ok && st != nil {
+		st.SetDetached(true)
+	}
+	delete(s.richInputs, id)
+}
+
+func (s *Session) insertDetachedTextIntoFocusedBlock(ins string) {
+	if ins == "" || s.readOnly || s.doc == nil || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
+		return
+	}
+	idx := s.focusedBlock
+	b := &s.doc.Blocks[idx]
+	switch b.Kind {
+	case model.BlockDivider, model.BlockImage:
+		return
+	case model.BlockTable:
+		if b.Table == nil || len(b.Table.Rows) == 0 {
+			return
+		}
+		rIdx := clampInt(s.tableActiveRow, 0, len(b.Table.Rows)-1)
+		cIdx := clampInt(s.tableActiveCol, 0, max(len(b.Table.Rows[rIdx])-1, 0))
+		cell := &b.Table.Rows[rIdx][cIdx]
+		cur := cell.PlainText()
+		rs := []rune(cur)
+		base := tableCellStartOffset(b.Table, rIdx, cIdx)
+		pos := clampInt(s.selHead.Offset-base, 0, len(rs))
+		next := string(rs[:pos]) + ins + string(rs[pos:])
+		newPos := pos + len([]rune(ins))
+		s.applyTableCellTextEdit(idx, rIdx, cIdx, next, newPos, newPos, appUi.RichCodeEdgeNone)
+		key := tableCellKey{BlockID: b.ID, Row: rIdx, Col: cIdx}
+		if st, ok := s.tableInputs[key]; ok && st != nil {
+			st.Sync(cell.PlainText(), newPos, newPos)
+		}
+		return
+	default:
+		cur := b.PlainText()
+		rs := []rune(cur)
+		pos := clampInt(s.selHead.Offset, 0, len(rs))
+		next := string(rs[:pos]) + ins + string(rs[pos:])
+		newPos := pos + len([]rune(ins))
+		s.applyBlockTextEditWithEdge(idx, next, newPos, appUi.RichCodeEdgeNone)
+		if st, ok := s.richInputs[b.ID]; ok && st != nil {
+			st.Sync(b.PlainText(), s.selAnchor.Offset, s.selHead.Offset)
+		}
+	}
+}
+
 func (s *Session) applyBlockTextEdit(idx int, newText string, caretHint int) {
 	s.applyBlockTextEditWithEdge(idx, newText, caretHint, appUi.RichCodeEdgeNone)
 }
@@ -2116,6 +2245,9 @@ func (s *Session) applyBlockTextEditWithEdge(idx int, newText string, caretHint 
 		return
 	}
 	b := &s.doc.Blocks[idx]
+	if b.Kind == model.BlockDivider || b.Kind == model.BlockImage || b.Kind == model.BlockTable {
+		return
+	}
 	oldText := b.PlainText()
 	if newText == oldText {
 		// Still sync collapsed caret (e.g. IME committing identical text over a selection via UnmarkText).
@@ -2577,6 +2709,7 @@ func (s *Session) trySpaceInputRule(idx int, text string, caretRune, insLen int)
 		b.Dirty = true
 		b.CleanSource = ""
 		s.blockMenu = nil
+		s.detachRichInput(b.ID)
 		return idx, newCaret, true
 	}
 
@@ -2680,7 +2813,7 @@ func (s *Session) insertDividerWithParagraph(idx int, replace bool) {
 	end := idx
 	if replace {
 		divider.ID = s.doc.Blocks[idx].ID
-		delete(s.richInputs, divider.ID)
+		s.detachRichInput(divider.ID)
 		end++
 	} else {
 		divider.ID = model.NewBlockID()
@@ -2778,7 +2911,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 				b.Dirty = true
 				b.CleanSource = ""
 				s.blockMenu = nil
-				delete(s.richInputs, b.ID)
+				s.detachRichInput(b.ID)
 				s.selAnchor = Position{Block: idx, Offset: 0}
 				s.selHead = s.selAnchor
 				s.focusPending = true

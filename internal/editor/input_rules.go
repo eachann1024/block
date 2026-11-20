@@ -669,6 +669,12 @@ func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImage
 	return inlineRuleResult{spans: spans, caret: caretRune}
 }
 
+type batchURLLink struct {
+	start int
+	end   int
+	url   string
+}
+
 func autolinkBareURLsInWindow(spans []model.Span, r []rune, scanLo, limit int) ([]model.Span, bool) {
 	if limit <= 0 || limit > len(r) {
 		limit = len(r)
@@ -677,18 +683,20 @@ func autolinkBareURLsInWindow(spans []model.Span, r []rune, scanLo, limit int) (
 		scanLo = 0
 	}
 	var prot []bool
-	cur := spans
-	changed := false
+	var links []batchURLLink
 	for i := scanLo; i < limit; i++ {
-		if r[i] != ' ' && r[i] != '\u3000' {
+		if !unicode.IsSpace(r[i]) {
 			continue
 		}
 		start, end, url, ok := bareURLCandidateBefore(r, i)
 		if !ok {
 			continue
 		}
+		if len(links) > 0 && start < links[len(links)-1].end {
+			continue
+		}
 		if prot == nil {
-			prot = buildLiteralProtectedMask(cur, r, limit, false)
+			prot = buildLiteralProtectedMask(spans, r, limit, false)
 		}
 		blocked := false
 		for k := start; k < end; k++ {
@@ -697,16 +705,67 @@ func autolinkBareURLsInWindow(spans []model.Span, r []rune, scanLo, limit int) (
 				break
 			}
 		}
-		if blocked || spanProtectionAt(cur, start, end) {
+		if blocked {
 			continue
 		}
-		cur = applySpanTransform(cur, start, end, func(sp model.Span) model.Span {
-			sp.Link = url
-			return sp
-		})
-		changed = true
+		links = append(links, batchURLLink{start: start, end: end, url: url})
 	}
-	return cur, changed
+	if len(links) == 0 {
+		return spans, false
+	}
+	return applyBatchURLLinksToSpans(spans, links), true
+}
+
+func applyBatchURLLinksToSpans(spans []model.Span, links []batchURLLink) []model.Span {
+	out := make([]model.Span, 0, len(spans)+len(links)*2)
+	li := 0
+	spStart := 0
+	for _, sp := range spans {
+		rs := []rune(sp.Text)
+		spLen := len(rs)
+		spEnd := spStart + spLen
+		if spLen == 0 {
+			continue
+		}
+		for li < len(links) && links[li].end <= spStart {
+			li++
+		}
+		if li >= len(links) || links[li].start >= spEnd {
+			out = append(out, sp)
+			spStart = spEnd
+			continue
+		}
+		cursor := spStart
+		for li < len(links) && links[li].start < spEnd {
+			lk := links[li]
+			if lk.start > cursor {
+				seg := sp
+				seg.Text = string(rs[cursor-spStart : lk.start-spStart])
+				out = append(out, seg)
+			}
+			hi := min(lk.end, spEnd)
+			lo := max(lk.start, cursor)
+			if hi > lo {
+				seg := sp
+				seg.Text = string(rs[lo-spStart : hi-spStart])
+				seg.Link = lk.url
+				out = append(out, seg)
+			}
+			cursor = hi
+			if lk.end <= spEnd {
+				li++
+			} else {
+				break
+			}
+		}
+		if cursor < spEnd {
+			seg := sp
+			seg.Text = string(rs[cursor-spStart:])
+			out = append(out, seg)
+		}
+		spStart = spEnd
+	}
+	return normalizeSpans(out)
 }
 
 func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImageBlock bool) inlineRuleResult {
@@ -1771,12 +1830,64 @@ func buildTablePipeProtectedMask(spans []model.Span, r []rune) []bool {
 		pos += spLen
 	}
 	// 2. Protect raw unformatted inline code (`...`), inline math ($...$), and links ([...](...))
-	// in O(N) using monotonic watermarks / cached next-closer positions.
-	noCloseBT := map[int]bool{}
+	// in strict O(N) using lazy O(N) backtick/paren match tables and monotonic closer cursors.
+	var btRuns map[int][]int
+	var btHead map[int]int
+	var parenMatch []int
 	nextDollarPos, nextDollarLineEnd := -1, -1
 	nextFWDollarPos, nextFWDollarLineEnd := -1, -1
 	nextCloseBPos, nextCloseBLineEnd := -1, -1
-	cachedParenFor, cachedParenPos := -1, -1
+
+	ensureBTRuns := func() {
+		if btRuns != nil {
+			return
+		}
+		btRuns = make(map[int][]int)
+		btHead = make(map[int]int)
+		for k := 0; k < n; {
+			if r[k] == '`' || r[k] == '｀' {
+				c := r[k]
+				run := 0
+				for k+run < n && r[k+run] == c {
+					run++
+				}
+				key := run
+				if c == '｀' {
+					key = -run
+				}
+				btRuns[key] = append(btRuns[key], k)
+				k += run
+				continue
+			}
+			k++
+		}
+	}
+
+	ensureParenMatch := func() {
+		if parenMatch != nil {
+			return
+		}
+		parenMatch = make([]int, n)
+		for k := range parenMatch {
+			parenMatch[k] = -1
+		}
+		var stack []int
+		for k := 0; k < n; k++ {
+			switch r[k] {
+			case '\n':
+				stack = stack[:0]
+			case '(':
+				stack = append(stack, k)
+			case ')':
+				if len(stack) > 0 {
+					openIdx := stack[len(stack)-1]
+					stack = stack[:len(stack)-1]
+					parenMatch[openIdx] = k
+				}
+			}
+		}
+	}
+
 	for i := 0; i < n; {
 		if prot[i] {
 			i++
@@ -1788,37 +1899,27 @@ func buildTablePipeProtectedMask(spans []model.Span, r []rune) []bool {
 			for i+run < n && r[i+run] == ch {
 				run++
 			}
+			ensureBTRuns()
 			btKey := run
 			if ch == '｀' {
 				btKey = -run
 			}
-			if !noCloseBT[btKey] {
-				closeIdx := -1
-				for j := i + run; j < n; {
-					if r[j] == ch {
-						cRun := 0
-						for j+cRun < n && r[j+cRun] == ch {
-							cRun++
-						}
-						if cRun == run {
-							closeIdx = j
-							break
-						}
-						j += cRun
-						continue
-					}
-					j++
+			positions := btRuns[btKey]
+			h := btHead[btKey]
+			for h < len(positions) && positions[h] <= i {
+				h++
+			}
+			btHead[btKey] = h
+			closeIdx := -1
+			if h < len(positions) {
+				closeIdx = positions[h]
+			}
+			if closeIdx > i+run {
+				for k := i; k < closeIdx+run; k++ {
+					prot[k] = true
 				}
-				if closeIdx > i+run {
-					for k := i; k < closeIdx+run; k++ {
-						prot[k] = true
-					}
-					i = closeIdx + run
-					continue
-				}
-				if closeIdx < 0 {
-					noCloseBT[btKey] = true
-				}
+				i = closeIdx + run
+				continue
 			}
 			i += run
 			continue
@@ -1889,29 +1990,8 @@ func buildTablePipeProtectedMask(spans []model.Span, r []rune) []bool {
 			}
 			closeB := nextCloseBPos
 			if closeB > i+1 && closeB+1 < n && r[closeB+1] == '(' {
-				var closeP int
-				if cachedParenFor == closeB {
-					closeP = cachedParenPos
-				} else {
-					depth := 0
-					closeP = -1
-					for j := closeB + 2; j < n; j++ {
-						if r[j] == '\n' {
-							break
-						}
-						if r[j] == '(' {
-							depth++
-						} else if r[j] == ')' {
-							if depth == 0 {
-								closeP = j
-								break
-							}
-							depth--
-						}
-					}
-					cachedParenFor = closeB
-					cachedParenPos = closeP
-				}
+				ensureParenMatch()
+				closeP := parenMatch[closeB+1]
 				if closeP > closeB+2 {
 					for k := i; k <= closeP; k++ {
 						prot[k] = true
@@ -2000,7 +2080,7 @@ func (s *Session) convertParagraphToImageBlock(idx int, alt, src string) {
 	b.Dirty = true
 	b.CleanSource = ""
 	s.blockMenu = nil
-	delete(s.richInputs, b.ID)
+	s.detachRichInput(b.ID)
 	s.focusedBlock = idx
 	s.selAnchor = Position{Block: idx, Offset: 0}
 	s.selHead = s.selAnchor
@@ -2027,7 +2107,7 @@ func (s *Session) convertParagraphToTableBlock(idx int, headerRow []model.TableC
 	b.Dirty = true
 	b.CleanSource = ""
 	s.blockMenu = nil
-	delete(s.richInputs, b.ID)
+	s.detachRichInput(b.ID)
 	bodyOff := tableCellStartOffset(b.Table, 1, 0)
 	s.focusedBlock = idx
 	s.tableActiveBlock = b.ID
