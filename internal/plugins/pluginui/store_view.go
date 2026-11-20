@@ -39,6 +39,8 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 	if input.Changed() {
 		ctrl.storeQuery = query
 	}
+	ctrl.storeSourceMenu.Compact = true
+	ctrl.storeSortMenu.Compact = true
 	bui.DropdownSelect(c, "app-store-source", &ctrl.storeSource, []bui.SelectOption{
 		{Label: theme.Tr("来源 · 全部", "Source · All")},
 		{Value: storeSourceOfficial, Label: theme.Tr("Block 官方", "Official by Block")},
