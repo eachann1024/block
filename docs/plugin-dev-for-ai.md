@@ -692,3 +692,6 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 10. **`host.editor.insert`**（需 `"editor:write"`）
     - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
+11. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
+    - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
+    - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
