@@ -226,17 +226,16 @@ const (
 	TreeRowPadLeft          = Space8
 	TreeMoreBtnSize         = HeightMicro
 
-	// Updater modal & sidebar badge metrics.
-	UpdaterModalWidth      float32 = 600
-	UpdaterModalMaxHeight  float32 = 650
-	UpdaterNotesMaxHeight  float32 = 350
-	UpdaterHeaderIconBox   float32 = 36
-	UpdaterHeaderMarkSize  float32 = 30
-	UpdaterProgressHeight  float32 = 6
-	UpdaterBadgeButtonSize float32 = 30
-	UpdaterBadgeDotSize    float32 = 6
-	UpdaterBulletDotSize   float32 = 5
-	UpdaterBulletBoxWidth  float32 = 12
+	// Updater modal & titlebar brand-mark update dot metrics.
+	UpdaterModalWidth     float32 = 600
+	UpdaterModalMaxHeight float32 = 650
+	UpdaterNotesMaxHeight float32 = 350
+	UpdaterHeaderIconBox  float32 = 36
+	UpdaterHeaderMarkSize float32 = 30
+	UpdaterProgressHeight float32 = 6
+	UpdaterBadgeDotSize   float32 = 6
+	UpdaterBulletDotSize  float32 = 5
+	UpdaterBulletBoxWidth float32 = 12
 
 	// Export theme picker tile metrics (designs/export-themes/project/Main.dc.html).
 	ExportThemeTileHeight  float32 = 90

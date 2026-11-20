@@ -454,7 +454,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 	notice string,
 ) {
 	fw := cardWidth
-	hasUpd, updBusy, updReady, updTip := w.sidebarUpdaterProps()
 	RenderSidebar(c, SidebarProps{
 		State:           w.sidebarUI,
 		Width:           &fw,
@@ -465,10 +464,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 		ActiveNote:      activeNote,
 		Notice:          notice,
 		SettingsOpen:    w.modals.IsSettingsOpen(),
-		HasUpdate:       hasUpd,
-		UpdateBusy:      updBusy,
-		UpdateReady:     updReady,
-		UpdateTooltip:   updTip,
 		ShortcutNewNote: w.shortcutForSidebar(stSnap),
 		OnNewFolder: func() {
 			_, _ = w.CreateNewFolder()
@@ -505,10 +500,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 		OnOpenSettings: func() {
 			w.edgeFloat.DismissAll(w)
 			w.OpenSettings("ai")
-		},
-		OnOpenUpdater: func() {
-			w.edgeFloat.DismissAll(w)
-			w.modals.OpenUpdater()
 		},
 	})
 }
