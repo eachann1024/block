@@ -15,6 +15,35 @@ type refDef struct {
 	title string
 }
 
+type refSpanEdit struct {
+	start int
+	end   int
+	repl  string
+}
+
+type refScanHooks struct {
+	used       map[string]bool
+	edits      *[]refSpanEdit
+	base       int
+	escapePipe bool
+}
+
+func (h *refScanHooks) at(offset int) *refScanHooks {
+	if h == nil {
+		return nil
+	}
+	cp := *h
+	cp.base += offset
+	return &cp
+}
+
+func (h *refScanHooks) usedOnly() *refScanHooks {
+	if h == nil || h.used == nil {
+		return nil
+	}
+	return &refScanHooks{used: h.used}
+}
+
 type inlineStyle struct {
 	marks   model.Mark
 	link    string
@@ -28,6 +57,18 @@ func ParseInline(raw string) []model.Span {
 }
 
 func parseInlineWithDefs(raw string, defs map[string]refDef) []model.Span {
+	return parseInlineWithDefsAndUsed(raw, defs, nil)
+}
+
+func parseInlineWithDefsAndUsed(raw string, defs map[string]refDef, used map[string]bool) []model.Span {
+	var hooks *refScanHooks
+	if used != nil && len(defs) > 0 {
+		hooks = &refScanHooks{used: used}
+	}
+	return parseInlineWithDefsAndHooks(raw, defs, hooks)
+}
+
+func parseInlineWithDefsAndHooks(raw string, defs map[string]refDef, hooks *refScanHooks) []model.Span {
 	if raw == "" {
 		return nil
 	}
@@ -36,10 +77,53 @@ func parseInlineWithDefs(raw string, defs map[string]refDef) []model.Span {
 	if !strings.ContainsAny(raw, "\\`*_~![<&$^=") && !strings.Contains(raw, "://") {
 		return []model.Span{{Text: raw}}
 	}
-	toks := scanInlineTokensWithCtx(raw, defs, false)
+	toks := scanInlineTokensWithCtx(raw, defs, false, hooks)
 	resolveDelimiters(toks)
 	spans := emitSpans(toks)
 	return coalesceSpans(spans)
+}
+
+func formatRefDefInline(def refDef, escapePipe bool) string {
+	dest := formatLinkDest(def.dest)
+	if escapePipe && strings.ContainsRune(dest, '|') {
+		dest = strings.ReplaceAll(dest, "|", `\|`)
+	}
+	if def.title == "" || strings.ContainsAny(def.title, "\r\n") {
+		return "(" + dest + ")"
+	}
+	title := strings.ReplaceAll(def.title, `\`, `\\`)
+	title = strings.ReplaceAll(title, `"`, `\"`)
+	if escapePipe && strings.ContainsRune(title, '|') {
+		title = strings.ReplaceAll(title, "|", `\|`)
+	}
+	return "(" + dest + ` "` + title + `")`
+}
+
+func expandRefLinksInText(s string, defs map[string]refDef, escapePipe bool) (string, bool) {
+	if len(defs) == 0 || !strings.ContainsRune(s, '[') {
+		return s, false
+	}
+	var edits []refSpanEdit
+	scanInlineTokensWithCtx(s, defs, false, &refScanHooks{
+		edits:      &edits,
+		escapePipe: escapePipe,
+	})
+	if len(edits) == 0 {
+		return s, false
+	}
+	var out strings.Builder
+	out.Grow(len(s) + len(edits)*16)
+	cursor := 0
+	for _, e := range edits {
+		if e.start < cursor || e.end < e.start || e.end > len(s) {
+			return "", false
+		}
+		out.WriteString(s[cursor:e.start])
+		out.WriteString(e.repl)
+		cursor = e.end
+	}
+	out.WriteString(s[cursor:])
+	return out.String(), true
 }
 
 type tokKind uint8
@@ -154,7 +238,7 @@ func classifyDelim(s string, start, end int, ch byte) (canOpen, canClose bool) {
 }
 
 func scanInlineTokens(s string, defs map[string]refDef) []*inlineTok {
-	return scanInlineTokensWithCtx(s, defs, false)
+	return scanInlineTokensWithCtx(s, defs, false, nil)
 }
 
 type inlineScanState struct {
@@ -246,7 +330,7 @@ func (st *inlineScanState) getTagBounds() (int, int, int) {
 	return st.lastGT, st.lastDQ, st.lastSQ
 }
 
-func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*inlineTok {
+func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hooks *refScanHooks) []*inlineTok {
 	var toks []*inlineTok
 	pairedUnknown := scanPairedUnknownTags(s)
 	st := newInlineScanState(s)
@@ -371,7 +455,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 			}
 			if run == 2 {
 				if end, ok := findDoubleEqualEnd(s, i+2); ok {
-					innerToks := scanInlineTokensWithCtx(s[i+2:end], defs, inLink)
+					innerToks := scanInlineTokensWithCtx(s[i+2:end], defs, inLink, hooks.at(i+2))
 					resolveDelimiters(innerToks)
 					toks = append(toks, &inlineTok{
 						kind:  tokOpenStyle,
@@ -390,12 +474,26 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 
 		case '!':
 			if i+1 < n && s[i+1] == '[' && i+1 < st.getLastCloseBracket() {
-				if alt, dest, consumed, ok := tryParseLinkOrImageAt(st, i+1, defs, true); ok {
+				if alt, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i+1, defs, true); ok {
+					if refKey != "" && hooks != nil {
+						if hooks.used != nil {
+							hooks.used[refKey] = true
+						}
+						if hooks.edits != nil {
+							suffixStart := hooks.base + i + 3 + len(alt)
+							suffixEnd := hooks.base + i + 1 + consumed
+							*hooks.edits = append(*hooks.edits, refSpanEdit{
+								start: suffixStart,
+								end:   suffixEnd,
+								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe),
+							})
+						}
+					}
 					if alt == "" {
 						alt = fallbackImageAlt(dest)
 					}
 					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
-					inner := parseInlineWithDefs(alt, defs)
+					inner := parseInlineWithDefsAndHooks(alt, defs, hooks.usedOnly())
 					for _, sp := range inner {
 						toks = append(toks, &inlineTok{kind: tokText, text: sp.Text})
 					}
@@ -421,12 +519,26 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 				}
 			}
 			if !inLink && htmlLinkDepth == 0 && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
-				if label, dest, consumed, ok := tryParseLinkOrImageAt(st, i, defs, false); ok {
+				if label, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i, defs, false); ok {
 					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
-					innerToks := scanInlineTokensWithCtx(label, defs, true)
+					innerToks := scanInlineTokensWithCtx(label, defs, true, hooks.at(i+1))
 					resolveDelimiters(innerToks)
 					toks = append(toks, innerToks...)
 					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					if refKey != "" && hooks != nil {
+						if hooks.used != nil {
+							hooks.used[refKey] = true
+						}
+						if hooks.edits != nil {
+							suffixStart := hooks.base + i + 2 + len(label)
+							suffixEnd := hooks.base + i + consumed
+							*hooks.edits = append(*hooks.edits, refSpanEdit{
+								start: suffixStart,
+								end:   suffixEnd,
+								repl:  formatRefDefInline(defs[refKey], hooks.escapePipe),
+							})
+						}
+					}
 					i += consumed
 					continue
 				}

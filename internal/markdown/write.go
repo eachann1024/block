@@ -102,6 +102,16 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		blockStart := out.Len()
 		if canUseCleanSourceCached(b, i == 0, n, nil, rewriteCleanValid, i) {
 			out.WriteString(b.CleanSource)
+		} else if len(defs) > 0 && canUseCleanSourceCached(b, i == 0, n, defs, cleanValid, i) {
+			if expanded, ok := expandRefLinksInBlockCleanSource(b, defs, i == 0, n); ok {
+				out.WriteString(expanded)
+			} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
+				var sub strings.Builder
+				serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
+				prefixQuoteLines(sub.String(), extraQ, &out)
+			} else {
+				serializeBlockWithCtx(b, i == 0, n, inListChild, &out)
+			}
 		} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 			var sub strings.Builder
 			serializeBlockWithCtx(b, i == 0, n, inListChild, &sub)
@@ -233,6 +243,64 @@ func canUseCleanSource(b *model.Block, isFirst bool, listNum int, defs map[strin
 		}
 	}
 	return blockMatchesCleanSource(b, defs)
+}
+
+func expandRefLinksInBlockCleanSource(b *model.Block, defs map[string]refDef, isFirst bool, listNum int) (string, bool) {
+	if b == nil || b.CleanSource == "" || len(defs) == 0 || !strings.ContainsRune(b.CleanSource, '[') {
+		return "", false
+	}
+	src := b.CleanSource
+	prefixLen := 0
+	if b.Kind.IsList() {
+		firstLine := src
+		if nl := strings.IndexByte(src, '\n'); nl >= 0 {
+			firstLine = src[:nl]
+		}
+		firstLine = trimLineEnding(firstLine)
+		if m, ok := classifyListMarker(firstLine); ok && len(m.body) <= len(firstLine) {
+			prefixLen = len(firstLine) - len(m.body)
+		}
+	} else if b.Kind == model.BlockCallout {
+		if nl := strings.IndexByte(src, '\n'); nl >= 0 {
+			firstLine := strings.TrimLeft(trimLineEnding(src[:nl]), " ")
+			if strings.HasPrefix(firstLine, ">") {
+				prefixLen = nl + 1
+			}
+		}
+	}
+	escapePipe := b.Kind == model.BlockTable
+	verify := func(cand string) (string, bool) {
+		bCopy := *b
+		bCopy.CleanSource = cand
+		if canUseCleanSource(&bCopy, isFirst, listNum, nil) {
+			return cand, true
+		}
+		return "", false
+	}
+	if expandedBody, changed := expandRefLinksInText(src[prefixLen:], defs, escapePipe); changed {
+		if cand, ok := verify(src[:prefixLen] + expandedBody); ok {
+			return cand, true
+		}
+	}
+	if strings.ContainsRune(src[prefixLen:], '\n') {
+		var lineOut strings.Builder
+		lineOut.WriteString(src[:prefixLen])
+		anyChanged := false
+		for _, ln := range splitLinesInclusive(src[prefixLen:]) {
+			if exp, ch := expandRefLinksInText(ln, defs, escapePipe); ch {
+				lineOut.WriteString(exp)
+				anyChanged = true
+			} else {
+				lineOut.WriteString(ln)
+			}
+		}
+		if anyChanged {
+			if cand, ok := verify(lineOut.String()); ok {
+				return cand, true
+			}
+		}
+	}
+	return "", false
 }
 
 func effectiveQuoteDepth(b *model.Block) int {
