@@ -334,6 +334,9 @@ func diffRefLabel(s string) string {
 // diffContainerRE matches the blockquote and list markers a fence may sit behind.
 var diffContainerRE = regexp.MustCompile(`^(?:>\s*|(?:[-*+]|\d{1,9}[.)])\s+)+`)
 
+// diffTaskMarkRE matches a task list item's check box with the space after it.
+var diffTaskMarkRE = regexp.MustCompile(`^\[[ xX]\][ \t]+`)
+
 // diffItemMarkRE matches a list item marker and the spaces after it.
 var diffItemMarkRE = regexp.MustCompile(`^(?:[-*+]|\d{1,9}[.)])[ \t]*`)
 
@@ -1375,8 +1378,12 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 					body = h[:k] + `\` + h[k:]
 				}
 			}
-			// In a blockquote or list item the heading marker goes behind its markers.
+			// In a blockquote or list item the heading marker goes behind its markers,
+			// and a task's check box ("- [x] 备份配置") stays in front of it.
 			q := diffContainerRE.FindString(body)
+			if diffListItemRE.MatchString(strings.TrimLeft(strings.ReplaceAll(q, ">", ""), " \t")) {
+				q += diffTaskMarkRE.FindString(body[len(q):])
+			}
 			body = q + strings.Repeat("#", st.Setext) + " " + body[len(q):]
 		}
 		markdown.View(c, body, diffMarkdownOptions(st))
