@@ -1645,15 +1645,11 @@ func renderChecklistItem(
 			hovered := row.Hovered() && !disabled
 			pressed := row.Pressed() && !disabled
 
+			// Multi-select rows: the accent checkbox carries the checked state,
+			// so checked rows keep the plain surface instead of a gray fill.
 			bg := ui.Transparent
 			bd := pal.Hairline
-			if checked {
-				bg = pal.Selected
-				bd = pal.SelectedBorder
-			} else if pressed {
-				bg = pal.Selected
-				bd = pal.SelectedBorder
-			} else if hovered {
+			if pressed || hovered {
 				bg = pal.Hover
 			}
 			bui.AnimateSurfaceColors(row, bg, bd, true)
