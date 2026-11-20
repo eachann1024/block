@@ -1007,7 +1007,9 @@ func (rt *Runtime) setStorageKey(key string, val any) error {
 		return err
 	}
 	cur[key] = val
-	raw, err := json.MarshalIndent(cur, "", "  ")
+	// Compact JSON: indentation grows quadratically with nesting depth and
+	// would allocate far past the limit before the size check below.
+	raw, err := json.Marshal(cur)
 	if err != nil {
 		return err
 	}
