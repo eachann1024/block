@@ -53,9 +53,44 @@ export function listGitTagVersions(root = ROOT) {
   }
 }
 
-export const MAX_WINDOWS_PE_PATCH = 65535;
+export const MAX_WINDOWS_PE_PART = 65535;
 
-export function nextReleaseVersion({ currentVersion, releases = [], tagVersions = [] }) {
+export function assertValidWindowsPEVersion(version) {
+  if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`Invalid semantic version: ${version}`);
+  }
+  const parts = version.split(".").map(Number);
+  for (const part of parts) {
+    if (!Number.isInteger(part) || part < 0 || part > MAX_WINDOWS_PE_PART) {
+      throw new Error(
+        `Version ${version} exceeds Windows PE 16-bit component limit (${MAX_WINDOWS_PE_PART}); bump major/minor version in package.json/mygo.json first.`,
+      );
+    }
+  }
+  return version;
+}
+
+export function nextReleaseVersion({ currentVersion, releases = [], tagVersions = [], headSha = "" }) {
+  const publishedOrTagged = [
+    ...releases.filter((r) => r && !r.draft).map((release) => versionFromTag(release.tag_name)),
+    ...tagVersions.map((tag) => versionFromTag(tag)),
+  ].filter(Boolean);
+  const highestPublished = publishedOrTagged.reduce(
+    (best, item) => (!best || compareVersions(item, best) > 0 ? item : best),
+    null,
+  );
+  if (headSha) {
+    const matchingDrafts = releases.filter(
+      (r) => r?.draft && r.target_commitish === headSha && versionFromTag(r.tag_name),
+    );
+    if (matchingDrafts.length === 1) {
+      const draftVer = versionFromTag(matchingDrafts[0].tag_name);
+      if (draftVer && (!highestPublished || compareVersions(draftVer, highestPublished) > 0)) {
+        return assertValidWindowsPEVersion(draftVer);
+      }
+    }
+  }
+
   const taken = [
     ...releases.map((release) => versionFromTag(release?.tag_name)),
     ...tagVersions.map((tag) => versionFromTag(tag)),
@@ -75,13 +110,7 @@ export function nextReleaseVersion({ currentVersion, releases = [], tagVersions 
   }
   const used = new Set(taken);
   while (used.has(version)) version = bumpPatch(version);
-  const patch = Number(version.split(".")[2]);
-  if (patch > MAX_WINDOWS_PE_PATCH) {
-    throw new Error(
-      `Next version ${version} exceeds Windows PE 16-bit patch limit (${MAX_WINDOWS_PE_PATCH}); bump minor version in package.json/mygo.json first.`,
-    );
-  }
-  return version;
+  return assertValidWindowsPEVersion(version);
 }
 
 export function readPackageVersion(root = ROOT) {
@@ -238,33 +267,46 @@ function loadPreflight(headSha, force) {
   const data = JSON.parse(readFileSync(path, "utf8"));
   const valid = data
     && data.headSha === headSha
-    && Boolean(data.force) === Boolean(force)
+    && typeof data.force === "boolean"
+    && data.force === Boolean(force)
     && typeof data.currentVersion === "string"
-    && /^\d+\.\d+\.\d+$/.test(data.version || "")
+    && /^\d+\.\d+\.\d+$/.test(data.currentVersion)
+    && typeof data.version === "string"
     && Array.isArray(data.commits);
   if (!valid) {
     throw new Error(`Invalid or mismatched preflight snapshot at ${path}`);
   }
+  assertValidWindowsPEVersion(data.version);
   return data;
 }
 
 function feedHasReleaseTag(tag) {
   if (!tag) return true;
+  let raw = null;
   for (const ref of ["origin/main", "HEAD"]) {
     try {
-      const raw = execFileSync("git", ["show", `${ref}:updates/feed.json`], {
+      raw = execFileSync("git", ["show", `${ref}:updates/feed.json`], {
         cwd: ROOT,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
-      const parsed = JSON.parse(raw);
-      return Boolean(
-        parsed?.latest_tag === tag
-        || (Array.isArray(parsed?.releases) && parsed.releases.some((r) => r?.tag === tag)),
-      );
+      break;
     } catch {}
   }
-  return true;
+  if (raw === null) {
+    try {
+      const data = JSON.parse(gh(["api", `repos/${REPO}/contents/updates/feed.json?ref=main`]));
+      raw = Buffer.from(String(data.content).replaceAll("\n", ""), "base64").toString("utf8");
+    } catch (err) {
+      if (/\b404\b|Not Found/i.test(String(err?.stderr || err?.message || ""))) return false;
+      throw new Error(`Failed to read updates/feed.json while verifying ${tag}: ${err?.message || err}`);
+    }
+  }
+  const parsed = JSON.parse(raw);
+  return Boolean(
+    parsed?.latest_tag === tag
+    || (Array.isArray(parsed?.releases) && parsed.releases.some((r) => r?.tag === tag)),
+  );
 }
 
 function writeSkipPlan({ currentVersion, tag, headSha, extraPlan = {}, extraOutputs = {} }) {
@@ -301,18 +343,27 @@ async function main() {
     currentVersion = readPackageVersion(ROOT);
     const releases = getReleases();
     const tagVersions = listGitTagVersions(ROOT);
-    version = nextReleaseVersion({ currentVersion, releases, tagVersions });
+    version = nextReleaseVersion({ currentVersion, releases, tagVersions, headSha });
     const stable = releases
       .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
       .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
     previous = stable.at(-1) || null;
+    const previousMissingFeed = Boolean(previous && !feedHasReleaseTag(previous.tag_name));
 
     const previousSha = resolveTagCommit(previous);
     if (previousSha && previousSha === headSha && !force) {
-      if (!feedHasReleaseTag(previous.tag_name)) {
-        throw new Error(
-          `最新 Release ${previous.tag_name} 已发布但 updates/feed.json 尚未回写该版本，请使用 force=true 或补齐 feed 后再试。`,
-        );
+      if (previousMissingFeed) {
+        summary(`最新 Release ${previous.tag_name} 已发布但 updates/feed.json 尚未回写，触发发布后同步补偿。`);
+        writeSkipPlan({
+          currentVersion,
+          tag: previous.tag_name,
+          headSha,
+          extraOutputs: {
+            ...(preflightOnly ? { needs_release: outputFlag(false) } : {}),
+            sync_only_tag: previous.tag_name,
+          },
+        });
+        return;
       }
       summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
       writeSkipPlan({
@@ -336,6 +387,19 @@ async function main() {
 
     const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
     if (previous && userCommits.length === 0 && !force) {
+      if (previousMissingFeed) {
+        summary(`无面向用户的新提交，但 ${previous.tag_name} 尚未写入 updates/feed.json，触发发布后同步补偿。`);
+        writeSkipPlan({
+          currentVersion,
+          tag: previous.tag_name,
+          headSha,
+          extraOutputs: {
+            ...(preflightOnly ? { needs_release: outputFlag(false) } : {}),
+            sync_only_tag: previous.tag_name,
+          },
+        });
+        return;
+      }
       summary(`自 ${previous.tag_name} 以来没有面向用户的新提交（共扫描 ${commits.length} 条提交），跳过自动发布。`);
       writeSkipPlan({
         currentVersion,
