@@ -1180,17 +1180,19 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 				vs.RetryKind = RetryKindReload
 			}
 		} else {
-			if !vs.errorFromBg {
+			preserveActionErr := vs.errorFromBg || vs.RetryKind == RetryKindAction
+			if !preserveActionErr {
 				vs.Error = ""
 				vs.RetryKind = RetryKindNone
+				vs.FailedActionID = ""
+				// Clear stale soft-error and notice state from a previous process/session after a clean reload.
+				vs.Notice = ""
+				vs.LastActionID = ""
+				vs.LastActionTone = ""
+				vs.LastActionMessage = ""
+				vs.LastActionButtonActive = false
+				vs.LastActionWasHeader = false
 			}
-			// Clear stale soft-error and notice state from a previous process/session after a clean reload.
-			vs.Notice = ""
-			vs.LastActionID = ""
-			vs.LastActionTone = ""
-			vs.LastActionMessage = ""
-			vs.LastActionButtonActive = false
-			vs.LastActionWasHeader = false
 			vs.Page = page
 			mergePageValuesUpToSeq(vs, page, returnedVals, renderSeq, true)
 		}
@@ -1757,6 +1759,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 						}
 					}
 					cur.FailedActionID = failedID
+					cur.errorFromBg = true
 				}
 				cur.LastActionID = actionID
 				cur.LastActionTone = tone
@@ -1875,7 +1878,7 @@ func (s *Supervisor) isPluginBusyLocked(pluginID string) bool {
 		if key.pluginID != pluginID {
 			continue
 		}
-		if v.BusyAction != "" || v.actionCancel != nil || v.activeSaves > 0 {
+		if v.BusyAction != "" || v.actionCancel != nil || v.activeSaves > 0 || len(v.queuedSaves) > 0 {
 			return true
 		}
 	}
@@ -1935,8 +1938,11 @@ func (s *Supervisor) CanCancelAction(pluginID string) bool {
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if v := s.views[key]; v != nil {
-		if v.actionCancel != nil {
+	for vk, v := range s.views {
+		if vk.pluginID != pluginID || vk.surface != SurfaceSettingsPage || v == nil {
+			continue
+		}
+		if vk == key && v.actionCancel != nil {
 			return true
 		}
 		if v.BusyAction == "__retry_note_saved__" {
@@ -1960,8 +1966,11 @@ func (s *Supervisor) CancelAction(pluginID string) {
 	nbRoot := s.NotebookRoot()
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
 	s.mu.Lock()
-	if v := s.views[key]; v != nil {
-		if v.actionCancel != nil {
+	for vk, v := range s.views {
+		if vk.pluginID != pluginID || vk.surface != SurfaceSettingsPage || v == nil {
+			continue
+		}
+		if vk == key && v.actionCancel != nil {
 			v.actionCancel()
 		}
 		if v.BusyAction == "__retry_note_saved__" {
@@ -1976,12 +1985,13 @@ func (s *Supervisor) CancelAction(pluginID string) {
 						req.cancel()
 					}
 				}
-				clear(v.queuedSaves)
 			}
 			v.BusyAction = ""
 			v.retrySavePath = ""
+			v.ActionProgress = ActionProgress{}
+		} else if vk == key {
+			v.ActionProgress = ActionProgress{}
 		}
-		v.ActionProgress = ActionProgress{}
 	}
 	if activeKey, ok := s.activeActionKey[pluginID]; ok && activeKey == key {
 		delete(s.activeActionKey, pluginID)
@@ -2258,6 +2268,15 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 		// Scope PendingSaves to the current notebook so badge count, menu item, and
 		// CancelPendingSaves all act on the exact same scope.
 		out.PendingSaves = len(in.queuedSaves)
+		if out.BusyAction == "" {
+			for key, v := range s.views {
+				if key.pluginID == current.pluginID && key.surface == SurfaceSettingsPage && v != nil && v.BusyAction == "__retry_note_saved__" {
+					out.BusyAction = v.BusyAction
+					out.ActionProgress = v.ActionProgress
+					break
+				}
+			}
+		}
 		var failedPath, failedRoot, failure string
 		var failedPaused bool
 		for key, v := range s.views {
