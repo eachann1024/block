@@ -97,10 +97,11 @@ type Session struct {
 	host     model.WorkspaceHost
 	dirty    bool
 
-	undoStack   []undoSnapshot
-	redoStack   []undoSnapshot
-	lastUndoAt  time.Time
-	lastUndoKey string
+	undoStack    []undoSnapshot
+	redoStack    []undoSnapshot
+	lastUndoAt   time.Time
+	lastUndoKey  string
+	suppressUndo bool
 
 	focusedBlock         int
 	hoveredBlock         int
@@ -337,6 +338,7 @@ type Session struct {
 // ContextMenuExtra describes an extra item appended to the editor canvas context menu.
 type ContextMenuExtra struct {
 	Label    string
+	Icon     ui.MenuIcon
 	OnChoose func()
 }
 

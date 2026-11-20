@@ -2233,7 +2233,7 @@ func (s *Session) codeSyntaxSpansWithSelection(idx int, src, lang string) []ui.S
 }
 
 func (s *Session) pasteOverMultiSelection(norm string) bool {
-	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+	if s.hasMultiCellTableSelection() || (s.hasWholeAtomicSelection() && s.isTablePasteTarget()) {
 		a, b := s.orderedSelection()
 		idx := a.Block
 		if idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].Table == nil {
@@ -2259,7 +2259,9 @@ func (s *Session) pasteOverMultiSelection(norm string) bool {
 			s.pasteIntoTableBlock(idx, norm)
 			return true
 		}
-		return s.ReplaceSelectionWithText(norm)
+		if !s.hasWholeAtomicSelection() {
+			return s.ReplaceSelectionWithText(norm)
+		}
 	}
 	if !s.hasMultiBlockSelection() && !s.hasWholeAtomicSelection() {
 		return false
