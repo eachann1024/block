@@ -54,6 +54,7 @@ type Workspace struct {
 	autoSaveDeferred     map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
 	diskWriteSeq         map[string]uint64 // monotonic per-path disk write sequence preventing stale save callbacks
 	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
+	headlessMainMu       sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
 	ghostTitle     string          // title typed on the no-note ghost page
 
 	codec    *markdown.Codec
@@ -5048,6 +5049,10 @@ func (w *Workspace) Render(c *ui.Context) {
 										},
 									)
 								case activeSess != nil:
+									headlessLock := !mygo.App.IsReady()
+									if headlessLock {
+										w.headlessMainMu.Lock()
+									}
 									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
 									activeSess.SetBackground(w.pluginEditorBackground())
@@ -5057,6 +5062,9 @@ func (w *Workspace) Render(c *ui.Context) {
 									}
 									if aiEligible {
 										w.syncAIEditorSelection(c, activeSess)
+									}
+									if headlessLock {
+										w.headlessMainMu.Unlock()
 									}
 								default:
 									if w.pluginUI != nil {
