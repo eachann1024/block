@@ -1304,45 +1304,26 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	})
 }
 
-// diffAlertRE matches a top-level quote line that marks a GitHub alert ("> [!NOTE]").
-var diffAlertRE = regexp.MustCompile(`(?i)^ {0,3}>[ \t]*\[!(note|tip|important|warning|caution)\][ \t]*$`)
-
-// DiffAlertTitles gives an alert marker line its title ("Note"), in the line's own
-// text (an unchanged line: the new one); other lines get "". Like the note, a
-// marker makes an alert only with a line of text after it.
+// DiffAlertTitles gives each GitHub alert marker its title, using the note's
+// callout boundaries. Deleted lines use the old text and other lines use the new text.
 func DiffAlertTitles(lines []string, change []int) []string {
-	masks, _ := diffScan(lines, change)
 	out := make([]string, len(lines))
-	for si, side := range [2]int{-1, 1} {
-		// A quote in a list item ("   > [!WARNING]") marks an alert too, as in the note.
-		for i, l := range lines {
-			// The old text reads its deleted lines, the new one the rest.
-			if change[i] == -side || side < 0 && change[i] == 0 || masks[si][i] {
+	for _, side := range [2]int{-1, 1} {
+		source, rows := diffSource(lines, change, side)
+		if !strings.Contains(source, "[!") {
+			continue
+		}
+		for _, block := range notemd.ParseMarkdown(source).Blocks {
+			if block.Kind != model.BlockCallout || block.SourceLine < 1 || block.SourceLine > len(rows) {
 				continue
 			}
-			// A plan's diff lines keep their "\n".
-			m := diffAlertRE.FindStringSubmatch(strings.TrimRight(l, "\r\n"))
-			if m == nil {
-				continue
-			}
-			// Only a quote's first line marks it: in "> 引用原文\n> [!NOTE]" it is text.
-			inQuote := false
-			for k := i - 1; k >= 0; k-- {
-				if change[k] != -side {
-					inQuote = !masks[si][k] && strings.HasPrefix(strings.TrimSpace(lines[k]), ">")
-					break
-				}
-			}
-			if inQuote {
-				continue
-			}
-			for k := i + 1; k < len(lines); k++ {
-				if change[k] != -side {
-					if strings.TrimSpace(lines[k]) != "" {
-						out[i] = strings.ToUpper(m[1][:1]) + strings.ToLower(m[1][1:])
-					}
-					break
-				}
+			row := rows[block.SourceLine-1]
+			t := strings.TrimSpace(lines[row])
+			depth := diffQuoteDepth(t)
+			// Custom callouts use different markers; this view renders GitHub alerts.
+			if (change[row] != 0 || side > 0) && depth > 0 && strings.HasPrefix(strings.TrimSpace(diffStripQuotes(t, depth)), "[!") {
+				title := string(block.Callout)
+				out[row] = title[:1] + strings.ToLower(title[1:])
 			}
 		}
 	}
