@@ -1485,7 +1485,9 @@ func plainInline(s string, refs map[string]bool, table bool) string {
 	// Only a ";"-ended one counts: "?lang=zh&currency=CNY" keeps its "&currency".
 	t = plainEntityRE.ReplaceAllStringFunc(t, html.UnescapeString)
 	t = strings.ReplaceAll(t, "", "&")
-	for k, code := range codes {
+	// Last first: a link's text may hold an earlier placeholder ("<https://x>(`/api`)").
+	for k := len(codes) - 1; k >= 0; k-- {
+		code := codes[k]
 		// In a table row "\|" is a bar even in code: `foo\|bar` reads foo|bar.
 		if table {
 			code = strings.ReplaceAll(code, `\|`, "|")
