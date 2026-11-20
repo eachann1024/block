@@ -868,8 +868,8 @@ func (m *Manager) renderFeedbackLogChoice(c *ui.Context) {
 		ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space10, theme.Space12).Gap(theme.Space8).
 			BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
 			icons.Draw(c, icons.ShieldCheck, 16, pal.MonoIconColors(pal.Success))
-			ui.Text(c, theme.Tr("日志在离开这台设备前就已打码。笔记内容、文件名、路径和密钥绝不会上传。",
-				"The log is masked before it leaves this device. Note content, file names, paths and keys are never uploaded.")).
+			ui.Text(c, theme.Tr("日志在这台设备上打码后才发送，不含笔记内容、路径和密钥。你添加的附件会连同文件名原样发送。",
+				"The log is masked on this device before sending, with no note content, paths or keys. Attachments you add are sent as-is, file names included.")).
 				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
 		})
 	})
