@@ -60,6 +60,8 @@ type DiffLineStyle struct {
 // paragraph). A changed line takes its own side, an unchanged one the new text.
 func DiffListNumbers(lines []string, change []int) []int {
 	masks, heads, fences := diffScanFences(lines, change)
+	// Bar lines no separator makes a table ("| grep ERROR") are paragraph text.
+	tables := diffTableMembers(lines, change)
 	var nums [2][]int
 	for si, side := range [2]int{-1, 1} {
 		num := make([]int, len(lines))
@@ -143,10 +145,10 @@ func DiffListNumbers(lines []string, change []int) []int {
 				(om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
 			text := func(t string) bool {
 				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
-					!strings.HasPrefix(t, ">") && !IsDiffTableRow(t) && diffFenceOpen(t) == ""
+					!strings.HasPrefix(t, ">") && diffFenceOpen(t) == ""
 			}
 			// A setext underline ("===") ends its heading: "2. 启动服务" below is an item.
-			plain := !masks[si][i] && text(t) && heads[si][i] >= 0
+			plain := !masks[si][i] && text(t) && heads[si][i] >= 0 && !tables[si][i]
 			// The lists the line is not inside: an item left of a list's content is a
 			// sibling of that list's items (or of an outer one).
 			var sib *list
