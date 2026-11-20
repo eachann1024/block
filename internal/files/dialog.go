@@ -17,6 +17,36 @@ import (
 var fileDialogBusy atomic.Bool
 
 var ErrFileDialogBusy = errors.New("a native file dialog is already open")
+var ErrFileDialogUnavailable = errors.New("native file picker unavailable")
+
+type pluginPickerOptions struct {
+	mygo.OpenDialogOptions
+	save bool
+}
+
+func (opts pluginPickerOptions) defaultLocation() (dir, name string) {
+	if opts.DefaultPath == "" {
+		return "", ""
+	}
+	if info, err := os.Stat(opts.DefaultPath); err == nil && info.IsDir() {
+		return opts.DefaultPath, ""
+	}
+	return filepath.Dir(opts.DefaultPath), filepath.Base(opts.DefaultPath)
+}
+
+func pickPluginFiles(ctx context.Context, opts pluginPickerOptions, allowed func() bool) ([]string, error) {
+	if opts.Parent == nil || ctx.Err() != nil {
+		return nil, context.Canceled
+	}
+	paths, err := showPluginPicker(ctx, opts, allowed)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err == nil && !opts.save && !opts.Directory && !dialogPathsMatchExtensions(paths, opts.Filters) {
+		return nil, errors.New("selected file does not match the requested extensions")
+	}
+	return paths, err
+}
 
 func refocusWindow(win *mygo.Window) {
 	if !mygo.App.IsReady() {
@@ -75,13 +105,14 @@ func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDial
 	}
 
 	opts.Parent = win
-	if ctx.Err() != nil || (allowed != nil && !allowed()) {
+	if allowed != nil {
+		return pickPluginFiles(ctx, pluginPickerOptions{OpenDialogOptions: opts}, allowed)
+	}
+	if ctx.Err() != nil {
 		return nil, context.Canceled
 	}
 	paths, err := mygo.Dialog.Open(opts)
-	if allowed == nil {
-		refocusWindow(win)
-	}
+	refocusWindow(win)
 	return paths, err
 }
 
@@ -154,13 +185,21 @@ func SaveDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.SaveDial
 	}
 
 	opts.Parent = win
-	if ctx.Err() != nil || (allowed != nil && !allowed()) {
+	if allowed != nil {
+		paths, err := pickPluginFiles(ctx, pluginPickerOptions{OpenDialogOptions: mygo.OpenDialogOptions{
+			Parent: win, Title: opts.Title, DefaultPath: opts.DefaultPath, Filters: opts.Filters,
+			CreateDirectories: opts.CreateDirectories,
+		}, save: true}, allowed)
+		if len(paths) != 0 {
+			return paths[0], err
+		}
+		return "", err
+	}
+	if ctx.Err() != nil {
 		return "", context.Canceled
 	}
 	chosen, err := mygo.Dialog.Save(opts)
-	if allowed == nil {
-		refocusWindow(win)
-	}
+	refocusWindow(win)
 	return chosen, err
 }
 
