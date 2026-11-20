@@ -15,7 +15,7 @@ const (
 	tabAnimMs      = 100
 	tabBasisW      = 220
 	tabMinW        = 76
-	tabMaxW        = 180
+	tabMaxW        = 220
 	tabCloseSlot   = 18
 	singleTabMaxW  = 240
 	tabPillH       = 28
@@ -91,8 +91,9 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
 			renderSingleTab(c, p, p.Tabs[0])
 			return
 		}
+		dirSuffixes := tabDirSuffixes(p.Tabs)
 		for ix, tabPath := range p.Tabs {
-			renderMultiTab(c, p, ix, tabPath, tabW, shouldReveal, middleClosePath)
+			renderMultiTab(c, p, ix, tabPath, dirSuffixes[tabPath], tabW, shouldReveal, middleClosePath)
 		}
 	})
 	if p.MenuState != nil {
@@ -112,8 +113,9 @@ func tabTitle(path string) string {
 func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	pal := theme.Ocean()
 	dirty := p.IsDirty != nil && p.IsDirty(path)
+	external := isExternalFile(path, p.NotebookPath)
 
-	if p.NotebookPath != "" {
+	if !external && p.NotebookPath != "" {
 		nbTitle := noteDisplayTitle(p.NotebookPath, true)
 		c.Key("titlebar-nb-crumb")
 		crumb := ui.Row(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
@@ -129,13 +131,24 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 
 	c.Key("tab:" + path)
 	pill := ui.Row(c).Height(tabPillH).MinWidth(0).MaxWidth(singleTabMaxW).Shrink(1).
-		Padding(0, 8, 0, 6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
+		Padding(0, 8, 0, 6).Gap(theme.Space6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
 		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
+	if external {
+		blockui.RichTooltip(c, pill, blockui.TooltipSpec{
+			Rows: []blockui.TooltipRow{
+				{Trigger: theme.DisplayFolderPath(path)},
+				{Detail: theme.Tr("不在当前文件夹", "Outside current folder")},
+			},
+		})
+	}
 	pill.Children(func() {
+		if external {
+			icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+		}
 		ui.Text(c, tabTitle(path)).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if dirty {
-			tabDirtyDot(c).Margin(0, 0, 0, 6)
+			tabDirtyDot(c)
 		}
 	})
 	if blockui.IsProbeEnabled() {
@@ -146,15 +159,27 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 	}
 }
 
-func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW float32, shouldReveal bool, middleClosePath string) {
+func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix string, tabW float32, shouldReveal bool, middleClosePath string) {
 	pal := theme.Ocean()
 	active := path == p.ActiveTab
 	dirty := p.IsDirty != nil && p.IsDirty(path)
+	external := isExternalFile(path, p.NotebookPath)
 	label := tabTitle(path)
+	a11yLabel := label
+	if dirSuffix != "" {
+		a11yLabel = label + " · " + dirSuffix
+	}
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).MaxWidth(tabW).Shrink(0).Height(tabPillH).Padding(0, 6, 0, 12).Gap(8).
+	pill := ui.ButtonBase(c).MaxWidth(tabW).Shrink(0).Height(tabPillH).Padding(0, theme.Space6, 0, theme.Space10).Gap(theme.Space6).
 		Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.Start).Clip().Cursor(ui.CursorPointer).FocusRing(false).
-		Role(ui.RoleTab).AccessSelected(active).Label(label).Transition(tabTransition())
+		Role(ui.RoleTab).AccessSelected(active).Label(a11yLabel).Transition(tabTransition())
+	if (external || dirSuffix != "") && (p.MenuState == nil || !p.MenuState.TabMenuOpen) {
+		rows := []blockui.TooltipRow{{Trigger: theme.DisplayFolderPath(path)}}
+		if external {
+			rows = append(rows, blockui.TooltipRow{Detail: theme.Tr("不在当前文件夹", "Outside current folder")})
+		}
+		blockui.RichTooltip(c, pill, blockui.TooltipSpec{Rows: rows})
+	}
 	if !p.Busy && p.OnReorderTab != nil {
 		pill.Drag(tabDragItem{Path: path})
 	}
@@ -245,7 +270,15 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path string, tabW fl
 	}
 
 	pill.Children(func() {
+		if external {
+			icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+		}
 		tabLabel(c, label, fg)
+		if dirSuffix != "" {
+			ui.Text(c, dirSuffix).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
+				FontWeight(theme.WeightRegular).TextColor(pal.MenuMuted).
+				Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+		}
 		// The close slot is always reserved so a pill never changes width on hover.
 		switch {
 		case hovered || (active && !dirty):
