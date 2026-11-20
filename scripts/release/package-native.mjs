@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installerFor } from "./allowed-assets.mjs";
-import { goRelease, releaseBinaryPath, run } from "./go-release.mjs";
+import { canReuseReleaseBinary, goRelease, releaseBinaryPath, run } from "./go-release.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
@@ -90,7 +90,7 @@ export async function packageNative() {
   const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
   const names = archNames();
   let binary = releaseBinaryPath("linux", names.deb);
-  if (!reuse || !existsSync(binary)) {
+  if (!reuse || !canReuseReleaseBinary({ goos: "linux", goarch: names.deb, version, outFile: binary })) {
     binary = goRelease({ goos: "linux", goarch: names.deb, outFile: binary });
   }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);

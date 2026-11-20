@@ -4,7 +4,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync }
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installerFor } from "./allowed-assets.mjs";
-import { goRelease, releaseBinaryPath } from "./go-release.mjs";
+import { canReuseReleaseBinary, goRelease, releaseBinaryPath } from "./go-release.mjs";
 import { applyReleasePlanVersion, readPackageVersion, ROOT } from "./select-release.mjs";
 
 const ARCH = process.env.BLOCK_ARCH || (process.arch === "arm64" ? "arm64" : "x64");
@@ -137,7 +137,7 @@ export async function packageLinux() {
   const reuse = process.env.BLOCK_REUSE_BINARY === "1";
   const version = reuse ? readPackageVersion(ROOT) : applyReleasePlanVersion();
   let binary = releaseBinaryPath("linux", "amd64");
-  if (!reuse || !existsSync(binary)) {
+  if (!reuse || !canReuseReleaseBinary({ goos: "linux", goarch: "amd64", version, outFile: binary })) {
     binary = goRelease({ goos: "linux", goarch: "amd64", outFile: binary });
   }
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
