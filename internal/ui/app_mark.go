@@ -33,9 +33,11 @@ func loadCatMark(dark bool) ui.ImageSource {
 
 // AppMarkOptions configures the titlebar brand button.
 type AppMarkOptions struct {
-	Tooltip   string
-	Active    bool // brand menu is open
-	UpdateDot bool // an application update is waiting
+	Label       string
+	Tooltip     string
+	TooltipSpec *TooltipSpec
+	Active      bool // brand menu is open
+	UpdateDot   bool // an application update is waiting
 }
 
 // AppMarkImage draws the background-free cat glyph at size×size.
@@ -51,17 +53,29 @@ func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	pal := theme.Ocean()
 	const id = "app-brand-mark"
 	c.Key(id)
+	a11yLabel := strings.TrimSpace(o.Label)
+	if a11yLabel == "" {
+		a11yLabel = "Block"
+	}
 	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
-		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label("Block")
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(a11yLabel)
 	if !o.Active {
-		Tooltip(c, btn, o.Tooltip)
+		if o.TooltipSpec != nil {
+			RichTooltip(c, btn, *o.TooltipSpec)
+		} else {
+			Tooltip(c, btn, o.Tooltip)
+		}
 	}
 	hovered, pressed := btn.Hovered(), btn.Pressed()
-	bg := ui.Transparent
-	if o.Active || hovered || pressed {
+	bg, border, hasBorder := ui.Transparent, ui.Transparent, o.Active
+	switch {
+	case o.Active:
+		bg = pal.Selected
+		border = pal.SelectedBorder
+	case pressed || hovered:
 		bg = pal.ShellChrome().Hover
 	}
-	AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	AnimateSurfaceColors(btn, bg, border, hasBorder)
 	TactileButton(btn, hovered, pressed, false)
 	btn.Children(func() {
 		AppMarkImage(c, theme.IconChrome)
