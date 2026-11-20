@@ -11,6 +11,7 @@ import (
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -448,7 +449,14 @@ func (c *Controller) clearManualSpec() {
 func (c *Controller) uninstallPlugin(pluginID string, onDone func()) {
 	c.sup.UninstallAsync(pluginID, func() {
 		c.clearPluginState(pluginID)
-		if onDone != nil {
+		if onDone == nil {
+			return
+		}
+		// UninstallAsync finishes on a background goroutine; Settings state
+		// (selected tab, shortcut recording) is owned by the main thread.
+		if mygo.App.IsReady() {
+			mygo.RunOnMain(onDone)
+		} else {
 			onDone()
 		}
 	})
