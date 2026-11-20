@@ -104,6 +104,9 @@ func run() error {
 		if m.ID == plugins.DiagnosticsPluginID || matchesSet(blocklist, m.ID, m.Repo) {
 			continue
 		}
+		if err := plugins.ValidatePluginLanguages(dir, m); err != nil {
+			return fmt.Errorf("local seed %q languages: %w", dir, err)
+		}
 		isVerified, err := verified.check(m.ID, m.Repo, m.Repo)
 		if err != nil {
 			return fmt.Errorf("local seed %q: %w", dir, err)
@@ -320,6 +323,9 @@ func verifyRemotePlugin(
 	if m.ID == plugins.DiagnosticsPluginID || matchesSet(blocklist, m.ID, m.Repo, repo.FullName) {
 		return nil, nil
 	}
+	if err := plugins.ValidatePluginLanguages(pluginRoot, m); err != nil {
+		return nil, fmt.Errorf("plugin languages check failed: %w", err)
+	}
 	isVerified, err := verified.check(m.ID, repo.FullName, m.Repo)
 	if err != nil {
 		return nil, err
@@ -363,24 +369,30 @@ func entryFromManifest(
 	if perms == nil {
 		perms = []plugins.Permission{}
 	}
+	surfs := m.Surfaces
+	if surfs == nil {
+		surfs = []plugins.Surface{}
+	}
 	return plugins.StoreAppEntry{
-		App:         m.App,
-		ID:          m.ID,
-		Name:        m.Name,
-		Version:     m.Version,
-		Author:      m.Author,
-		Repo:        repoSlug,
-		Summary:     m.Summary,
-		DownloadURL: downloadURL,
-		SHA256:      shaHex,
-		Downloads:   downloads,
-		Stars:       stars,
-		Verified:    isVerified,
-		Beta:        m.Beta,
-		UpdatedAt:   updatedAt,
-		Permissions: perms,
-		Surfaces:    m.Surfaces,
-		Icon:        m.Icon,
+		App:            m.App,
+		ID:             m.ID,
+		Category:       m.EffectiveCategory(),
+		Name:           m.Name,
+		Version:        m.Version,
+		Author:         m.Author,
+		Repo:           repoSlug,
+		Summary:        m.Summary,
+		DownloadURL:    downloadURL,
+		SHA256:         shaHex,
+		Downloads:      downloads,
+		Stars:          stars,
+		Verified:       isVerified,
+		Beta:           m.Beta,
+		UpdatedAt:      updatedAt,
+		Permissions:    perms,
+		Surfaces:       surfs,
+		FileExtensions: m.DisplayFileExtensions(),
+		Icon:           m.Icon,
 	}
 }
 

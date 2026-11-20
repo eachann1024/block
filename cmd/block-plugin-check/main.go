@@ -29,8 +29,16 @@ func main() {
 	if err != nil {
 		fail("manifest validation failed: %v", err)
 	}
-	fmt.Printf("[OK] manifest: app=%s id=%s (%s / %s v%s beta=%v) surfaces=%v permissions=%v\n",
-		m.App, m.ID, m.Name.Zh, m.Name.En, m.Version, m.Beta, m.Surfaces, m.Permissions)
+	fmt.Printf("[OK] manifest: app=%s id=%s category=%s (%s / %s v%s beta=%v) surfaces=%v permissions=%v\n",
+		m.App, m.ID, m.EffectiveCategory(), m.Name.Zh, m.Name.En, m.Version, m.Beta, m.Surfaces, m.Permissions)
+
+	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
+		if err := plugins.ValidatePluginLanguages(pluginDir, m); err != nil {
+			fail("language grammar validation failed: %v", err)
+		}
+		fmt.Printf("[OK] languages: %d grammar(s) compiled cleanly (tags=%v)\n",
+			len(m.Contributes.Languages), m.DisplayFileExtensions())
+	}
 
 	isOfficial := plugins.IsOfficialRepo(m.Repo)
 	requireBilingual := *bilingualFlag || isOfficial
@@ -42,6 +50,25 @@ func main() {
 			fail("bilingual docs validation failed: %v", err)
 		}
 		fmt.Println("[OK] docs: manifest English fields, README.md (zh), and README.en.md (en) validated")
+	}
+
+	if m.IsDeclarativeOnly() {
+		sandboxDir, err := os.MkdirTemp("", "block-plugin-check-lang-*")
+		if err != nil {
+			fail("create sandbox: %v", err)
+		}
+		defer os.RemoveAll(sandboxDir)
+		storeMgr := plugins.NewStoreManager(filepath.Join(sandboxDir, "block-appdata"))
+		installed, err := storeMgr.InstallFromDirectory(pluginDir)
+		if err != nil {
+			fail("store install simulation failed: %v", err)
+		}
+		if err := plugins.ValidatePluginLanguages(installed.InstallDir, &installed.Manifest); err != nil {
+			fail("installed language grammar verification failed: %v", err)
+		}
+		fmt.Printf("[OK] install: declarative language plugin verified in isolated store (enabled=%v)\n", installed.Enabled)
+		fmt.Printf("[PASS] Plugin %q passed all Block App Store checks.\n", m.ID)
+		return
 	}
 
 	zhSnap, err := runLocaleChecks(m, pluginDir, "zh", false)
