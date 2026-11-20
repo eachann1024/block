@@ -284,6 +284,7 @@ example-sync/
 ```
 - `title`：必填非空字符串（桌面设置顶栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
 - `status`：可选只读次级状态短文本（仅展示真实执行结果或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` 等占位文案）。
+- `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
 - `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
 - `header_actions`：可选顶栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
@@ -599,7 +600,8 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
-- 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`。
+- 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
+- 数量上限：`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`panels` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
 1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。
@@ -683,10 +685,10 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - 参数：`{"id": "<panel_id>"}`（`id` 须为本插件声明的 `panels[].id`）。
    - 返回：`{"ok": true}`。
 8. **`host.ui.refresh`**（仅要求目标表面属于 `"settings_page"` 或本插件 `contributes` 声明的表面）
-   - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘）。
+   - 参数：`{"surface": "panel:outline"}`（异步触发对应表面的后台 `plugin.render` 重绘；用户在当前笔记本中尚未打开过的表面不会渲染，首次打开时自然加载最新内容）。
    - 返回：`{"ok": true}`。
 9. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
    - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 10. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，编辑器不可用返回 `-32005`，插入失败返回 `-32004`）。
+    - 参数：`{"text": "插入内容", "note": "welcome.md"}`（`note` 可选：给定时只有该笔记仍是活动笔记才写入，否则返回 `-32004`；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。替换当前选区或在光标处插入；`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
