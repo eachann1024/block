@@ -53,8 +53,7 @@ func ParseMarkdown(src string) *model.Doc {
 	decoded := decodeRawBlockGuard(src)
 	cleaned := strings.TrimPrefix(decoded, "\uFEFF")
 	lines := splitLinesInclusive(cleaned)
-	defs, usedLabels := collectRefDefsFromLines(cleaned, lines)
-	blocks := parseBlocksWithLinesAt(lines, defs, usedLabels, 1, 0, nil)
+	blocks, _, _, _ := parseBlocksAndRefDefs(cleaned, lines, false)
 	blocks = swallowSeparators(blocks)
 	hadLegacyEmptyBlock := stripLegacyEmptyBlockComments(blocks)
 	normalizeImportedStarts(blocks)
@@ -408,32 +407,39 @@ func collectRefDefs(src string) (map[string]refDef, map[string]bool) {
 	return collectRefDefsFromLines(src, nil)
 }
 
-func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map[string]bool) {
+func collectCandidateRefDefsFromLines(src string, lines []string) map[string]refDef {
 	if !strings.Contains(src, "]:") {
-		return nil, nil
+		return nil
 	}
 	if lines == nil {
 		lines = splitLinesInclusive(src)
 	}
 	defs := make(map[string]refDef)
-	skipLine := make([]bool, len(lines))
 	inFence := false
 	var fc byte
 	var fl int
 	for i := 0; i < len(lines); i++ {
 		line := trimLineEnding(lines[i])
+		if i == 0 {
+			if _, count, ok := parseFrontmatter(lines); ok {
+				i += count - 1
+				continue
+			}
+		}
 		if inFence {
-			skipLine[i] = true
 			if closesFenceAnyIndent(line, fc, fl) {
 				inFence = false
 			}
 			continue
 		}
 		if _, _, m, w, _, ok := parseFenceAnyIndent(line); ok {
-			skipLine[i] = true
 			inFence = true
 			fc = m
 			fl = w
+			continue
+		}
+		if count, ok := rawHTMLLineCount(lines[i:]); ok {
+			i += count - 1
 			continue
 		}
 		trimmed := strings.TrimLeft(line, " ")
@@ -442,121 +448,78 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 				if _, exists := defs[label]; !exists {
 					defs[label] = def
 				}
-				for j := 0; j < consumed && i+j < len(lines); j++ {
-					skipLine[i+j] = true
-				}
 				i += consumed - 1
 			}
 		}
 	}
 	if len(defs) == 0 {
-		return nil, nil
+		return nil
 	}
-	used := make(map[string]bool)
-	var paraBuf strings.Builder
-	flushPara := func() {
-		if paraBuf.Len() == 0 {
-			return
-		}
-		collectUsedRefLabelsInText(paraBuf.String(), defs, used, false)
-		paraBuf.Reset()
-	}
-	for i, rawLine := range lines {
-		if skipLine[i] || strings.TrimSpace(rawLine) == "" {
-			flushPara()
-			continue
-		}
-		paraBuf.WriteString(rawLine)
-	}
-	flushPara()
-	if len(used) == 0 {
-		return nil, nil
-	}
-	for k := range defs {
-		if !used[k] {
-			delete(defs, k)
-		}
-	}
-	return defs, used
+	return defs
 }
 
-// collectUsedRefLabelsInText scans a single paragraph's inline text using the same O(N)
-// inlineScanState and tryParseLinkOrImageWithRefAt matcher as ParseInline, so inline code,
-// autolinks, inline link destinations/titles, nested brackets, and unclosed parens are handled
-// identically without crossing paragraph boundaries or quadratic rescans.
-func collectUsedRefLabelsInText(s string, defs map[string]refDef, used map[string]bool, inLink bool) {
-	if !strings.ContainsRune(s, '[') {
-		return
+// parseBlocksAndRefDefs parses blocks and resolves link reference definitions using the
+// real block and inline parsers as the single source of truth, so block boundaries (e.g.
+// headings/tables/fences) and inline literals (code, math, HTML tags, bare URLs, autolinks,
+// inline link destinations/titles) never diverge between usage detection and parsing.
+func parseBlocksAndRefDefs(src string, lines []string, collectHidden bool) ([]model.Block, map[string]refDef, map[string]bool, []int) {
+	if lines == nil {
+		lines = splitLinesInclusive(src)
 	}
-	st := newInlineScanState(s)
-	lastCB := st.getLastCloseBracket()
-	if lastCB < 0 {
-		return
+	allDefs := collectCandidateRefDefsFromLines(src, lines)
+	if len(allDefs) == 0 {
+		return parseBlocksWithLinesAt(lines, nil, nil, nil, nil, 1, 0, nil), nil, nil, nil
 	}
-	n := len(s)
-	for i := 0; i < n; {
-		switch s[i] {
-		case '\\':
-			i += 2
-			continue
-		case '`':
-			run := 0
-			for i+run < n && s[i+run] == '`' {
-				run++
-			}
-			if end := st.findClosingBackticks(i+run, run); end >= 0 {
-				i = end + run
-				continue
-			}
-			i += run
-			continue
-		case '<':
-			if strings.HasPrefix(s[i:], "<!--") {
-				if st.noCommentCloseFrom < 0 || i+4 < st.noCommentCloseFrom {
-					if end := strings.Index(s[i+4:], "-->"); end >= 0 {
-						i += 4 + end + 3
-						continue
-					}
-					st.noCommentCloseFrom = i + 4
-				}
-			}
-			lastGT, _, _ := st.getTagBounds()
-			if i < lastGT {
-				if _, _, consumed, ok := tryParseAutolink(s[i : lastGT+1]); ok {
-					i += consumed
-					continue
-				}
-			}
-			i++
-		case '!':
-			if i+1 < n && s[i+1] == '[' && i+1 < lastCB {
-				if _, _, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i+1, defs, true); ok {
-					if refKey != "" {
-						used[refKey] = true
-					}
-					i += 1 + consumed
-					continue
-				}
-			}
-			i++
-		case '[':
-			if !inLink && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
-				if label, _, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i, defs, false); ok {
-					if refKey != "" {
-						used[refKey] = true
-					}
-					if strings.Contains(label, "![") {
-						collectUsedRefLabelsInText(label, defs, used, true)
-					}
-					i += consumed
-					continue
-				}
-			}
-			i++
-		default:
-			i++
+	return parseBlocksWithCandidateRefDefs(lines, allDefs, collectHidden)
+}
+
+func parseBlocksWithCandidateRefDefs(lines []string, allDefs map[string]refDef, collectHidden bool) ([]model.Block, map[string]refDef, map[string]bool, []int) {
+	hideAll := make(map[string]bool, len(allDefs))
+	for k := range allDefs {
+		hideAll[k] = true
+	}
+	used := make(map[string]bool)
+	consumed := make(map[string]bool)
+	var hidden []int
+	var hiddenPtr *[]int
+	if collectHidden {
+		hiddenPtr = &hidden
+	}
+	blocks := parseBlocksWithLinesAt(lines, allDefs, hideAll, used, consumed, 1, 0, hiddenPtr)
+	for k := range used {
+		if !consumed[k] {
+			delete(used, k)
 		}
 	}
+	if len(used) == 0 {
+		return parseBlocksWithLinesAt(lines, nil, nil, nil, nil, 1, 0, nil), nil, nil, nil
+	}
+	if len(used) == len(allDefs) {
+		return blocks, allDefs, used, hidden
+	}
+	for k := range allDefs {
+		if !used[k] {
+			delete(allDefs, k)
+		}
+	}
+	hidden = nil
+	blocks = parseBlocksWithLinesAt(lines, allDefs, used, nil, nil, 1, 0, hiddenPtr)
+	return blocks, allDefs, used, hidden
+}
+
+func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map[string]bool) {
+	if !strings.Contains(src, "]:") {
+		return nil, nil
+	}
+	if lines == nil {
+		lines = splitLinesInclusive(src)
+	}
+	allDefs := collectCandidateRefDefsFromLines(src, lines)
+	if len(allDefs) == 0 {
+		return nil, nil
+	}
+	_, defs, used, _ := parseBlocksWithCandidateRefDefs(lines, allDefs, false)
+	return defs, used
 }
 
 // LinkReferenceLines gives the labels available for inline links and the
@@ -568,7 +531,11 @@ func LinkReferenceLines(src string) (labels map[string]bool, hidden []int) {
 	var originalLines []int
 	cleaned := strings.TrimPrefix(decodeRawBlockGuardWithLines(src, &originalLines), "\uFEFF")
 	lines := splitLinesInclusive(cleaned)
-	defs, used := collectRefDefsFromLines(cleaned, lines)
+	allDefs := collectCandidateRefDefsFromLines(cleaned, lines)
+	if len(allDefs) == 0 {
+		return nil, nil
+	}
+	_, defs, used, hidden := parseBlocksWithCandidateRefDefs(lines, allDefs, true)
 	if len(used) == 0 {
 		return nil, nil
 	}
@@ -576,7 +543,6 @@ func LinkReferenceLines(src string) (labels map[string]bool, hidden []int) {
 	for label := range defs {
 		labels[label] = true
 	}
-	parseBlocksWithLinesAt(lines, defs, used, 1, 0, &hidden)
 	if len(originalLines) > 0 {
 		for i, line := range hidden {
 			hidden[i] = originalLines[line-1]
@@ -650,12 +616,15 @@ func parseRefDefLines(lines []string) (label string, def refDef, count int, ok b
 	return norm, refDef{dest: html.UnescapeString(dest), title: title}, consumed, true
 }
 
-func consumedRefDefLines(lines []string, used map[string]bool) int {
+func consumedRefDefLines(lines []string, used map[string]bool, consumedOut map[string]bool) int {
 	if len(used) == 0 {
 		return 0
 	}
 	label, _, count, ok := parseRefDefLines(lines)
 	if ok && used[label] {
+		if consumedOut != nil {
+			consumedOut[label] = true
+		}
 		return count
 	}
 	return 0
@@ -1078,6 +1047,34 @@ func parseImageCrop(raw string) model.ImageCrop {
 	return model.ImageCrop{Top: vals[0], Right: vals[1], Bottom: vals[2], Left: vals[3]}
 }
 
+func parseImageLineWithDefs(line string, defs map[string]refDef, used map[string]bool) (model.Block, bool) {
+	if b, ok := parseImageLine(line); ok {
+		return b, true
+	}
+	if len(defs) == 0 {
+		return model.Block{}, false
+	}
+	s := strings.TrimSpace(line)
+	if !strings.HasPrefix(s, "![") || strings.ContainsRune(s, '\n') {
+		return model.Block{}, false
+	}
+	st := newInlineScanState(s)
+	alt, dest, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, 1, defs, true)
+	if !ok || refKey == "" || 1+consumed != len(s) || dest == "" {
+		return model.Block{}, false
+	}
+	if used != nil {
+		used[refKey] = true
+	}
+	return model.Block{
+		ID:         model.NewBlockID(),
+		Kind:       model.BlockImage,
+		ImageSrc:   dest,
+		ImageAlt:   alt,
+		ImageAlign: model.ImageAlignLeft,
+	}, true
+}
+
 func parseImageLine(line string) (model.Block, bool) {
 	s := strings.TrimSpace(line)
 	if s == "" || strings.ContainsRune(s, '\n') {
@@ -1419,7 +1416,7 @@ func walkPipeCells(line string, visit func(col, start, end int)) {
 
 const maxParsedTableCells = 100_000
 
-func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, bool) {
+func parsePipeTable(lines []string, defs map[string]refDef, usedOut map[string]bool) (model.Block, int, bool) {
 	if len(lines) < 2 {
 		return model.Block{}, 0, false
 	}
@@ -1461,7 +1458,7 @@ func parsePipeTable(lines []string, defs map[string]refDef) (model.Block, int, b
 		row := make([]model.TableCell, len(rawCells))
 		for c, cellStr := range rawCells {
 			unesc := strings.ReplaceAll(cellStr, `\|`, "|")
-			row[c] = model.TableCell{Spans: parseInlineWithDefs(unesc, defs)}
+			row[c] = model.TableCell{Spans: parseInlineWithDefsAndUsed(unesc, defs, usedOut)}
 		}
 		return row
 	}
@@ -1954,7 +1951,7 @@ func parseHTMLProseBlock(orig string) model.Block {
 	}
 }
 
-func parseCalloutBlock(lines []string, defs map[string]refDef) (model.Block, int, bool) {
+func parseCalloutBlock(lines []string, defs map[string]refDef, usedOut map[string]bool) (model.Block, int, bool) {
 	if len(lines) == 0 {
 		return model.Block{}, 0, false
 	}
@@ -1989,7 +1986,7 @@ func parseCalloutBlock(lines []string, defs map[string]refDef) (model.Block, int
 			spans = append(spans, model.Span{Text: "\n"})
 		}
 		if body != "" {
-			spans = append(spans, parseInlineWithDefs(body, defs)...)
+			spans = append(spans, parseInlineWithDefsAndUsed(body, defs, usedOut)...)
 		}
 	}
 	spans = coalesceSpans(spans)
@@ -2002,7 +1999,7 @@ func parseCalloutBlock(lines []string, defs map[string]refDef) (model.Block, int
 	}, end, true
 }
 
-func parseCustomContainerBlock(lines []string, defs map[string]refDef) (model.Block, int, bool) {
+func parseCustomContainerBlock(lines []string, defs map[string]refDef, usedOut map[string]bool) (model.Block, int, bool) {
 	if len(lines) == 0 {
 		return model.Block{}, 0, false
 	}
@@ -2065,7 +2062,7 @@ func parseCustomContainerBlock(lines []string, defs map[string]refDef) (model.Bl
 	}
 	var spans []model.Span
 	if title != "" {
-		tSpans := parseInlineWithDefs(title, defs)
+		tSpans := parseInlineWithDefsAndUsed(title, defs, usedOut)
 		for i := range tSpans {
 			tSpans[i].Marks |= model.MarkBold
 		}
@@ -2079,7 +2076,7 @@ func parseCustomContainerBlock(lines []string, defs map[string]refDef) (model.Bl
 		if len(spans) > 0 {
 			spans = append(spans, model.Span{Text: "\n"})
 		}
-		spans = append(spans, parseInlineWithDefs(body, defs)...)
+		spans = append(spans, parseInlineWithDefsAndUsed(body, defs, usedOut)...)
 	}
 	return model.Block{
 		ID:          model.NewBlockID(),
@@ -2111,7 +2108,7 @@ func blockquoteNeedsStructuredParse(inner []string) bool {
 	return false
 }
 
-func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine, depth int) ([]model.Block, int, bool) {
+func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[string]bool, startLine, depth int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2147,7 +2144,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine, de
 			innerBuf.WriteString(l)
 			innerBuf.WriteByte('\n')
 		}
-		children := swallowSeparators(parseBlocksWithDefsAt(innerBuf.String(), defs, nil, startLine, depth+1))
+		children := swallowSeparators(parseBlocksWithDefsAndUsedAt(innerBuf.String(), defs, nil, usedOut, startLine, depth+1))
 		var out []model.Block
 		for _, ch := range children {
 			if isBlankBlock(&ch) && len(children) > 1 {
@@ -2173,7 +2170,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, startLine, de
 			spans = append(spans, model.Span{Text: "\n"})
 		}
 		if body != "" {
-			spans = append(spans, parseInlineWithDefs(body, defs)...)
+			spans = append(spans, parseInlineWithDefsAndUsed(body, defs, usedOut)...)
 		}
 	}
 	return []model.Block{{
@@ -2226,7 +2223,7 @@ func startsBlockInList(line string, nextRaw string, tail []string) bool {
 	return strings.ContainsRune(trimmed, '|') && nextRaw != "" && isPipeDelimiterLine(trimLineEnding(nextRaw))
 }
 
-func parseListItem(lines []string, defs map[string]refDef, startLine, depth int) ([]model.Block, int, bool) {
+func parseListItem(lines []string, defs map[string]refDef, usedOut map[string]bool, startLine, depth int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2318,7 +2315,7 @@ func parseListItem(lines []string, defs map[string]refDef, startLine, depth int)
 		Indent:        marker.indent,
 		ListIndex:     marker.start,
 		Checked:       marker.checked,
-		Spans:         parseInlineWithDefs(joinedBody, defs),
+		Spans:         parseInlineWithDefsAndUsed(joinedBody, defs, usedOut),
 		SourceLine:    startLine,
 		SourceEndLine: startLine + paraEnd - 1,
 	}
@@ -2388,7 +2385,7 @@ func parseListItem(lines []string, defs map[string]refDef, startLine, depth int)
 			childSource.WriteString(stripColumns(lines[i], stripCols))
 		}
 	}
-	children := parseBlocksWithDefsAt(childSource.String(), defs, nil, startLine+firstChild, depth+1)
+	children := parseBlocksWithDefsAndUsedAt(childSource.String(), defs, nil, usedOut, startLine+firstChild, depth+1)
 
 	parent.CleanSource = strings.Join(lines[:paraEnd], "")
 	result := []model.Block{parent}
@@ -2430,14 +2427,18 @@ func countCleanLines(s string) int {
 }
 
 func parseBlocksWithDefs(src string, defs map[string]refDef, usedLabels map[string]bool) []model.Block {
-	return parseBlocksWithDefsAt(src, defs, usedLabels, 1, 0)
+	return parseBlocksWithDefsAndUsedAt(src, defs, usedLabels, nil, 1, 0)
 }
 
 func parseBlocksWithDefsAt(src string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int) []model.Block {
-	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, startLine, depth, nil)
+	return parseBlocksWithDefsAndUsedAt(src, defs, usedLabels, nil, startLine, depth)
 }
 
-func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, startLine, depth int, refLines *[]int) []model.Block {
+func parseBlocksWithDefsAndUsedAt(src string, defs map[string]refDef, usedLabels map[string]bool, usedOut map[string]bool, startLine, depth int) []model.Block {
+	return parseBlocksWithLinesAt(splitLinesInclusive(src), defs, usedLabels, usedOut, nil, startLine, depth, nil)
+}
+
+func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels map[string]bool, usedOut map[string]bool, consumedOut map[string]bool, startLine, depth int, refLines *[]int) []model.Block {
 	const maxBlockDepth = 48
 	if depth >= maxBlockDepth && len(lines) > 0 {
 		raw := strings.Join(lines, "")
@@ -2493,7 +2494,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 		}
 		// Image metadata comment immediately followed by an image line.
 		if meta, ok := parseImageMetaComment(line); ok && i+1 < len(lines) {
-			if img, imgOK := parseImageLine(trimLineEnding(lines[i+1])); imgOK {
+			if img, imgOK := parseImageLineWithDefs(trimLineEnding(lines[i+1]), defs, usedOut); imgOK {
 				if meta.width > 0 {
 					img.ImageWidth = meta.width
 				}
@@ -2509,13 +2510,13 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 				continue
 			}
 		}
-		if img, ok := parseImageLine(line); ok {
+		if img, ok := parseImageLineWithDefs(line, defs, usedOut); ok {
 			img.CleanSource = rawLine
 			appendBlock(img, 1)
 			i++
 			continue
 		}
-		if count := consumedRefDefLines(lines[i:], usedLabels); count > 0 {
+		if count := consumedRefDefLines(lines[i:], usedLabels, consumedOut); count > 0 {
 			if refLines != nil {
 				for j := range count {
 					*refLines = append(*refLines, startLine+i+j)
@@ -2524,28 +2525,28 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			i += count
 			continue
 		}
-		if b, count, ok := parseCalloutBlock(lines[i:], defs); ok {
+		if b, count, ok := parseCalloutBlock(lines[i:], defs, usedOut); ok {
 			appendBlock(b, count)
 			i += count
 			continue
 		}
-		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs, startLine+i, depth); ok {
+		if qBlocks, count, ok := parseBlockquoteBlocks(lines[i:], defs, usedOut, startLine+i, depth); ok {
 			result = append(result, qBlocks...)
 			i += count
 			continue
 		}
-		if items, count, ok := parseListItem(lines[i:], defs, startLine+i, depth); ok {
+		if items, count, ok := parseListItem(lines[i:], defs, usedOut, startLine+i, depth); ok {
 			result = append(result, items...)
 			i += count
 			continue
 		}
-		if b, count, ok := parseCustomContainerBlock(lines[i:], defs); ok {
+		if b, count, ok := parseCustomContainerBlock(lines[i:], defs, usedOut); ok {
 			appendBlock(b, count)
 			i += count
 			continue
 		}
 		if lowerTrim := strings.ToLower(strings.TrimLeft(line, " \t")); strings.HasPrefix(lowerTrim, "<ul") || strings.HasPrefix(lowerTrim, "<ol") {
-			if listBlocks, count, ok := parseHTMLListLines(lines[i:], defs, startLine+i); ok {
+			if listBlocks, count, ok := parseHTMLListLines(lines[i:], defs, usedOut, startLine+i); ok {
 				result = append(result, listBlocks...)
 				i += count
 				continue
@@ -2589,7 +2590,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 					continue
 				}
 			} else if isPipeCandidate(lines, i+1) {
-				if b, count, pOK := parsePipeTable(lines[i+1:], defs); pOK {
+				if b, count, pOK := parsePipeTable(lines[i+1:], defs, usedOut); pOK {
 					applyTableMeta(b.Table, meta)
 					b.CleanSource = lines[i] + b.CleanSource
 					appendBlock(b, 1+count)
@@ -2627,7 +2628,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			continue
 		}
 		if isPipeCandidate(lines, i) {
-			if b, count, ok := parsePipeTable(lines[i:], defs); ok {
+			if b, count, ok := parsePipeTable(lines[i:], defs, usedOut); ok {
 				appendBlock(b, count)
 				i += count
 				continue
@@ -2724,7 +2725,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			appendBlock(model.Block{
 				ID:          model.NewBlockID(),
 				Kind:        hKind,
-				Spans:       parseInlineWithDefs(hText, defs),
+				Spans:       parseInlineWithDefsAndUsed(hText, defs, usedOut),
 				CleanSource: rawLine,
 			}, 1)
 			i++
@@ -2752,7 +2753,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 							appendBlock(model.Block{
 								ID:          model.NewBlockID(),
 								Kind:        setextKind,
-								Spans:       parseInlineWithDefs(bodyTrimmed, defs),
+								Spans:       parseInlineWithDefsAndUsed(bodyTrimmed, defs, usedOut),
 								CleanSource: orig,
 							}, 2)
 							i += 2
@@ -2769,7 +2770,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 			ID:          model.NewBlockID(),
 			Kind:        model.BlockParagraph,
 			Indent:      indentCols,
-			Spans:       parseInlineWithDefs(bodyTrimmed, defs),
+			Spans:       parseInlineWithDefsAndUsed(bodyTrimmed, defs, usedOut),
 			CleanSource: rawLine,
 		}, 1)
 		i++
@@ -2777,7 +2778,7 @@ func parseBlocksWithLinesAt(lines []string, defs map[string]refDef, usedLabels m
 	return result
 }
 
-func parseHTMLListLines(lines []string, defs map[string]refDef, startLine int) ([]model.Block, int, bool) {
+func parseHTMLListLines(lines []string, defs map[string]refDef, usedOut map[string]bool, startLine int) ([]model.Block, int, bool) {
 	if len(lines) == 0 {
 		return nil, 0, false
 	}
@@ -2859,7 +2860,7 @@ func parseHTMLListLines(lines []string, defs map[string]refDef, startLine int) (
 			SourceLine:    liLine,
 			SourceEndLine: line,
 			Checked:       liChecked,
-			Spans:         parseInlineWithDefs(raw, defs),
+			Spans:         parseInlineWithDefsAndUsed(raw, defs, usedOut),
 		})
 		liTodo = false
 		liChecked = false
