@@ -43,9 +43,10 @@ type DiffLineStyle struct {
 	// RefDef marks a link reference definition's line (see DiffRefDefs), which the
 	// note does not show.
 	RefDef bool
-	// Alert is DiffAlertTitles for the line: the title ("Note") its "> [!NOTE]"
-	// marker shows as.
+	// Alert is the title a GitHub alert marker shows ("Note").
 	Alert string
+	// AlertBody is the number of quote markers before an alert's inline body.
+	AlertBody int
 	// Fence marks a code fence's opening or closing line (see DiffFenceLines), which
 	// the note shows as the block's edge: an opener shows only its language.
 	Fence bool
@@ -1192,6 +1193,23 @@ func diffMarkdownOptions(st DiffLineStyle) *markdown.Options {
 // Blank lines collapse to a thin spacer so paragraphs keep their rhythm.
 func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 	line = strings.TrimRight(line, "\r\n")
+	if st.Alert != "" || st.AlertBody > 0 {
+		trimmed := strings.TrimLeft(line, " \t")
+		body := "**" + st.Alert + "**"
+		depth := 1
+		if st.AlertBody > 0 {
+			depth = st.AlertBody
+			body = strings.TrimLeft(diffStripQuotes(trimmed, depth), " \t")
+			body = diffInlineStart(diffLiteralStart(diffEscapeURLs(diffPlainLinks(body, st.Refs))))
+		}
+		if body == "" {
+			return ui.Box(c).FillWidth().Height(theme.Space4)
+		}
+		indent := len(strings.ReplaceAll(line[:len(line)-len(trimmed)], "\t", "    "))
+		return ui.Box(c).Grow(1).MinWidth(0).Padding(0, 0, 0, float32(indent/2)*theme.Space8).Children(func() {
+			markdown.View(c, strings.Repeat("> ", depth)+body, diffMarkdownOptions(st))
+		})
+	}
 	if strings.TrimSpace(line) == "" || (st.Setext < 0 || st.RefDef) && !st.Code {
 		return ui.Box(c).FillWidth().Height(theme.Space4)
 	}
@@ -1216,9 +1234,6 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 			return ui.Box(c).FillWidth().Height(theme.Space4)
 		}
 		return ui.Text(c, info[0]).Font("monospace").FontSize(theme.FontBody).TextColor(st.Text).Grow(1).MinWidth(0)
-	}
-	if st.Alert != "" && !st.Code {
-		line = "> **" + st.Alert + "**"
 	}
 	if st.Math {
 		t := strings.TrimSpace(line)
@@ -1307,7 +1322,13 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 // DiffAlertTitles gives each GitHub alert marker its title, using the note's
 // callout boundaries. Deleted lines use the old text and other lines use the new text.
 func DiffAlertTitles(lines []string, change []int) []string {
-	out := make([]string, len(lines))
+	titles, _ := DiffAlerts(lines, change)
+	return titles
+}
+
+// DiffAlerts gives the title of each GitHub alert and the quote depth of its body.
+func DiffAlerts(lines []string, change []int) (titles []string, bodies []int) {
+	titles, bodies = make([]string, len(lines)), make([]int, len(lines))
 	for _, side := range [2]int{-1, 1} {
 		source, rows := diffSource(lines, change, side)
 		if !strings.Contains(source, "[!") {
@@ -1321,13 +1342,21 @@ func DiffAlertTitles(lines []string, change []int) []string {
 			t := strings.TrimSpace(lines[row])
 			depth := diffQuoteDepth(t)
 			// Custom callouts use different markers; this view renders GitHub alerts.
-			if (change[row] != 0 || side > 0) && depth > 0 && strings.HasPrefix(strings.TrimSpace(diffStripQuotes(t, depth)), "[!") {
+			if depth == 0 || !strings.HasPrefix(strings.TrimSpace(diffStripQuotes(t, depth)), "[!") {
+				continue
+			}
+			if change[row] != 0 || side > 0 {
 				title := string(block.Callout)
-				out[row] = title[:1] + strings.ToLower(title[1:])
+				titles[row] = title[:1] + strings.ToLower(title[1:])
+			}
+			for _, row := range rows[block.SourceLine:min(block.SourceEndLine, len(rows))] {
+				if change[row] != 0 || side > 0 {
+					bodies[row] = depth
+				}
 			}
 		}
 	}
-	return out
+	return titles, bodies
 }
 
 // diffLiteralStart keeps a line or cell start the parser would swallow: a link
