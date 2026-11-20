@@ -912,6 +912,10 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 					c, pal, st, m.searchQuery, m.searchHits, m.searchSelected, m.searchErr,
 					false, maxBodyH, m.SearchFn != nil,
 					func(idx int) {
+						if !st.isResultFresh(m.searchQuery) {
+							m.ensureFreshSearchHits()
+							return
+						}
 						m.searchSelected = idx
 						m.openSearchHit(idx)
 					},

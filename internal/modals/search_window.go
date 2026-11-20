@@ -446,6 +446,10 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 			c, pal, &s.st, s.query, s.hits, s.selected, s.errMsg,
 			true, 0, s.SearchFn != nil,
 			func(idx int) {
+				if !s.st.isResultFresh(s.query) {
+					s.ensureFreshHits()
+					return
+				}
 				s.selected = idx
 				s.openHit(idx)
 			},
