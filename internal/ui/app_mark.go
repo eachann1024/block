@@ -81,12 +81,16 @@ func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	}
 	AnimateSurfaceColors(btn, bg, border, hasBorder)
 	TactileButton(btn, hovered, pressed, false)
+	fg := pal.Text.Alpha(0.55)
+	if o.Active || hovered || pressed {
+		fg = pal.Text
+	}
 	btn.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Text(c, "cooool").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-				FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+				FontWeight(theme.WeightTitle).TextColor(fg).SingleLine()
 			ui.Text(c, ".top").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-				FontWeight(theme.WeightRegular).TextColor(pal.Text.Alpha(0.55)).SingleLine()
+				FontWeight(theme.WeightRegular).TextColor(fg).SingleLine()
 		})
 	})
 	if o.UpdateDot {
