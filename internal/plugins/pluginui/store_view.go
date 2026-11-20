@@ -429,32 +429,33 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 
 func renderStoreSource(c *ui.Context, author, source string) {
 	pal := theme.Ocean()
-	color, label := pal.Warning, theme.Tr("未审核", "Unreviewed")
-	switch source {
-	case storeSourceOfficial:
-		color, label = pal.Accent, theme.Tr("Block 官方", "Official by Block")
-	case storeSourceReviewed:
-		color, label = pal.Success, theme.Tr("已审核", "Reviewed")
-	}
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.LineSmall).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-		if source != storeSourceOfficial && strings.TrimSpace(author) != "" {
+		if source == storeSourceOfficial {
+			ui.Row(c).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+				DrawDuoSpec(c, plugins.AppStoreIconSpec(), theme.IconMicro, pal.DuoIconColors(pal.Accent))
+				ui.Text(c, theme.Tr("Block 官方", "Official by Block")).FontSize(theme.FontMeta).
+					FixedLineHeight(theme.LineSmall).TextColor(pal.Accent).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+			return
+		}
+		if strings.TrimSpace(author) != "" {
 			renderStoreAuthor(c, author)
 		}
-		ui.Row(c).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-			switch source {
-			case storeSourceOfficial:
-				DrawDuoSpec(c, plugins.AppStoreIconSpec(), theme.IconMicro, pal.DuoIconColors(color))
-			case storeSourceReviewed:
-				icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(color))
-			default:
-				ui.Box(c).Size(theme.IconMicro, theme.IconMicro).Shrink(0).Radius(theme.RadiusPill).
-					Border(1, color).Center().Children(func() {
-					ui.Text(c, "!").FontSize(theme.FontMicro).FixedLineHeight(theme.IconMicro).TextColor(color)
-				})
-			}
-			ui.Text(c, label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineSmall).
-				TextColor(color).MinWidth(0).SingleLine().Ellipsis("…")
+		if source == storeSourceUnreviewed {
+			renderStoreUnreviewed(c)
+		}
+	})
+}
+
+func renderStoreUnreviewed(c *ui.Context) {
+	color := theme.Ocean().Warning
+	ui.Row(c).MinWidth(0).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(theme.IconMicro, theme.IconMicro).Shrink(0).Radius(theme.RadiusPill).
+			Border(1, color).Center().Children(func() {
+			ui.Text(c, "!").FontSize(theme.FontMicro).FixedLineHeight(theme.IconMicro).TextColor(color)
 		})
+		ui.Text(c, theme.Tr("未审核", "Unreviewed")).FontSize(theme.FontMeta).
+			FixedLineHeight(theme.LineSmall).TextColor(color).MinWidth(0).SingleLine().Ellipsis("…")
 	})
 }
 
