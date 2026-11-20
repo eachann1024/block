@@ -9,6 +9,7 @@ import (
 
 	"block/internal/fuzzy"
 	"block/internal/icons"
+	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
@@ -62,7 +63,7 @@ type storeCard struct {
 	source      string
 }
 
-func renderStoreBody(c *ui.Context, ctrl *Controller, installedOnly bool) {
+func renderStoreBody(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab string)) {
 	pal := theme.Ocean()
 	locale := ctrl.sup.Locale()
 	refreshing, installingID, storeErr, storeNotice := ctrl.sup.StoreStatus()
@@ -104,13 +105,13 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, installedOnly bool) {
 			})
 		}
 
-		if refreshing && !installedOnly {
+		if refreshing {
 			renderStoreSkeleton(c)
 			return
 		}
 
-		cards := visibleStoreCards(ctrl, locale, installedOnly)
-		renderStoreCategoryTabs(c, ctrl, cards, selectedCat, locale)
+		cards := visibleStoreCards(ctrl, locale)
+		renderStoreCategoryTabs(c, ctrl, selectedCat, locale)
 
 		list := cards
 		if selectedCat != "" {
@@ -124,9 +125,6 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, installedOnly bool) {
 
 		if len(list) == 0 {
 			msg := theme.Tr("没有符合条件的插件", "No matching plugins")
-			if installedOnly && selectedCat == "" && ctrl.storeQuery == "" && ctrl.storeSource == "" {
-				msg = theme.Tr("暂无已安装插件", "No installed plugins")
-			}
 			ui.Row(c.Key("app-store-empty")).FillWidth().Padding(theme.Space24, 0).Justify(ui.Center).Children(func() {
 				ui.Text(c, msg).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 			})
@@ -135,7 +133,7 @@ func renderStoreBody(c *ui.Context, ctrl *Controller, installedOnly bool) {
 
 		renderStoreGrid(c, len(list), func() {
 			for _, card := range list {
-				renderStoreCard(c, ctrl, card, locale, installingID)
+				renderStoreCard(c, ctrl, card, locale, installingID, onSelectTab)
 			}
 		})
 	})
@@ -154,7 +152,7 @@ func renderStoreGrid(c *ui.Context, count int, children func()) {
 	}).Children(children)
 }
 
-func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []storeCard {
+func visibleStoreCards(ctrl *Controller, locale string) []storeCard {
 	installed := ctrl.sup.Installed()
 	installedMap := make(map[string]plugins.InstalledApp, len(installed))
 	for _, app := range installed {
@@ -169,9 +167,6 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 	scoredCards := make([]scoredStoreCard, 0, len(entries))
 	for _, entry := range entries {
 		app, isInstalled := installedMap[entry.ID]
-		if installedOnly && !isInstalled {
-			continue
-		}
 		source := storeAppSource(ctrl, entry, app, isInstalled)
 		if ctrl.storeSource != "" && ctrl.storeSource != source {
 			continue
@@ -225,35 +220,27 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 func renderStoreCategoryTabs(
 	c *ui.Context,
 	ctrl *Controller,
-	cards []storeCard,
 	selected plugins.Category,
 	locale string,
 ) {
 	pal := theme.Ocean()
-	counts := make(map[plugins.Category]int)
-	for _, card := range cards {
-		counts[card.entry.EffectiveCategory()]++
-	}
 
 	type catTabSpec struct {
 		cat   plugins.Category
 		key   string
 		label string
-		count int
 	}
 	tabs := make([]catTabSpec, 0, 1+len(plugins.AllCategories()))
 	tabs = append(tabs, catTabSpec{
 		cat:   "",
 		key:   "all",
 		label: theme.Tr("全部", "All"),
-		count: len(cards),
 	})
 	for _, cat := range plugins.AllCategories() {
 		tabs = append(tabs, catTabSpec{
 			cat:   cat,
 			key:   string(cat),
 			label: plugins.CategoryLabel(cat, locale),
-			count: counts[cat],
 		})
 	}
 
@@ -287,9 +274,6 @@ func renderStoreCategoryTabs(
 					ui.Text(c, tab.label).
 						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 						FontWeight(theme.WeightControl).TextColor(lblColor).SingleLine()
-					ui.Text(c, strconv.Itoa(tab.count)).
-						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightRegular).TextColor(pal.TextSecondary).SingleLine()
 				})
 				bui.Probe(btn, btnID)
 				if btn.Clicked() {
@@ -372,7 +356,7 @@ func storeCardFrame(c *ui.Context, id string) ui.Element {
 		Radius(theme.RadiusXL).Border(1, pal.Hairline).Background(pal.ShellChrome().Card)
 }
 
-func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, installingID string) {
+func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, installingID string, onSelectTab func(nextTab string)) {
 	pal := theme.Ocean()
 	entry := card.entry
 	name := entry.Name.Resolve(locale)
@@ -408,10 +392,23 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 				c.Invalidate()
 			}
 			if card.isInstalled {
-				enabled := card.installed.Enabled
-				if bui.TogglePill(c, "app-store-toggle-"+entry.ID,
-					theme.Tr("启用 ", "Enable ")+name, &enabled, busy) {
-					ctrl.sup.SetPluginEnabled(entry.ID, enabled)
+				openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+					ID:       "app-store-open-" + entry.ID,
+					Label:    theme.Tr("打开", "Open"),
+					Style:    bui.ButtonSecondary,
+					Disabled: busy,
+					Loading:  busy,
+					Height:   theme.HeightCompact,
+					PaddingX: theme.Space10,
+				})
+				if openBtn.Clicked() && !busy {
+					ctrl.closeStoreMenus()
+					if onSelectTab != nil && entry.ID != plugins.DiagnosticsPluginID {
+						onSelectTab(modals.TabPluginPrefix + entry.ID)
+					} else {
+						ctrl.openStoreReadme(entry, card.installed)
+						c.Invalidate()
+					}
 				}
 				return
 			}

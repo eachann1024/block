@@ -27,6 +27,7 @@ type PluginNavEntry struct {
 	Title     string
 	CountText string
 	Beta      bool
+	Lit       bool
 	StatusDot bool
 	HasError  bool
 	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
@@ -38,9 +39,12 @@ type PluginSettingsHost interface {
 	StoreListing(tab string) bool
 	RenderStoreFooter(c *ui.Context)
 	NavEntries() []PluginNavEntry
+	InstalledCount() int
 	TabTitle(tab string) string
 	TabIsBeta(tab string) bool
+	RenderHeaderLeading(c *ui.Context, tab string)
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
+	RenderHeaderDivider(c *ui.Context, tab string)
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderSettingsSections(c *ui.Context, tab string)
 }
