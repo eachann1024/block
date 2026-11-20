@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -555,6 +556,11 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 	}
 }
 
+func (s *Supervisor) RetrySyncNotifications() {
+	const event = "plugin.notifications_retry"
+	s.queueSystemEvent("block-sync", event, map[string]any{"event": event})
+}
+
 func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]any) {
 	s.system.mu.Lock()
 	if s.system.events == nil {
@@ -738,13 +744,10 @@ func (s *Supervisor) reportSyncFailure(inst InstalledApp, rt *Runtime, root stri
 func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active string, networkChange bool) {
 	state := readSyncState(inst.DataDir)
 	global, _ := state["config"].(map[string]any)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	report := func(root string, config map[string]any) {
-		if !autoSyncConfigured(config) {
-			return
-		}
-		protocol, _ := config["protocol"].(string)
-		remote, _ := config["git_remote"].(string)
-		if networkChange && protocol != "webdav" && (protocol != "git" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(remote)), "file://")) {
+		if !autoSyncConfigured(config) || (networkChange && !systemSyncNeedsNetwork(ctx, inst.DataDir, config)) {
 			return
 		}
 		s.reportSyncFailureWithConfig(inst, nil, root, config, false, false, false, false)
@@ -760,6 +763,71 @@ func (s *Supervisor) reportSystemSyncStartFailure(inst InstalledApp, active stri
 		}
 		report(root, config)
 	}
+}
+
+var syncGitNetworkURL = regexp.MustCompile(`^(?:[^/@:\\]+@)?[^/\\:]+:`)
+var syncGitDrivePath = regexp.MustCompile(`^[A-Za-z]:`)
+
+func gitURLNeedsNetwork(raw string) bool {
+	return strings.HasPrefix(raw, `\\`) || (!strings.HasPrefix(strings.ToLower(raw), "file://") && !syncGitDrivePath.MatchString(raw) && syncGitNetworkURL.MatchString(raw))
+}
+
+func systemSyncNeedsNetwork(ctx context.Context, dataDir string, config map[string]any) bool {
+	protocol, _ := config["protocol"].(string)
+	if protocol == "webdav" {
+		return true
+	}
+	if protocol != "git" {
+		return false
+	}
+	raw, _ := config["git_remote"].(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(strings.ToLower(raw), "file://") {
+		return false
+	}
+	if gitURLNeedsNetwork(raw) {
+		return true
+	}
+	repo := raw
+	if strings.HasPrefix(repo, "~/") || strings.HasPrefix(repo, `~\`) || repo == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			repo = filepath.Join(home, strings.TrimLeft(repo[1:], `/\`))
+		}
+	}
+	if !filepath.IsAbs(repo) {
+		repo = filepath.Join(dataDir, repo)
+	}
+	if marker, err := os.Stat(filepath.Join(repo, ".git")); err != nil || (!marker.IsDir() && !marker.Mode().IsRegular()) {
+		return false
+	}
+	remotes, err := exec.CommandContext(ctx, "git", "-C", repo, "remote").Output()
+	names := strings.Fields(string(remotes))
+	if err != nil || len(names) == 0 {
+		return false
+	}
+	name := names[0]
+	for _, candidate := range names {
+		if candidate == "origin" {
+			name = candidate
+			break
+		}
+	}
+	for _, push := range []bool{false, true} {
+		args := []string{"-C", repo, "remote", "get-url", "--all"}
+		if push {
+			args = append(args, "--push")
+		}
+		urls, err := exec.CommandContext(ctx, "git", append(args, name)...).Output()
+		if err != nil {
+			continue
+		}
+		for rawURL := range strings.SplitSeq(strings.TrimSpace(string(urls)), "\n") {
+			if gitURLNeedsNetwork(strings.TrimSpace(rawURL)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func autoSyncConfigured(config map[string]any) bool {
