@@ -156,6 +156,9 @@ const (
 	MarkUnderline
 	MarkStrike
 	MarkCode
+	MarkSuperscript
+	MarkSubscript
+	MarkMath
 )
 
 type Span struct {
