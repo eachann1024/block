@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"block/internal/app"
 	"block/internal/files"
@@ -31,10 +32,11 @@ func main() {
 		dataDirFlag   string
 		notebookFlag  string
 		hiddenFlag    bool
-		smokeFlag     bool
-		smokeOnceFlag bool
-		mockAIFlag    bool
-		versionFlag   bool
+		smokeFlag           bool
+		smokeOnceFlag       bool
+		mockAIFlag          bool
+		versionFlag         bool
+		cleanupFileAssocFlg bool
 	)
 	flag.StringVar(&dataDirFlag, "data-dir", "", "Override Block application data directory")
 	flag.StringVar(&notebookFlag, "notebook", "", "Open a specific notebook folder on launch")
@@ -43,10 +45,22 @@ func main() {
 	flag.BoolVar(&smokeOnceFlag, "smoke-once", false, "Run headless/automated full click acceptance suite once and exit")
 	flag.BoolVar(&mockAIFlag, "mock-ai", false, "Enable deterministic offline AI responder for E2E verification")
 	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
+	flag.BoolVar(&cleanupFileAssocFlg, "cleanup-file-associations", false, "Remove current user's Block-managed OS file associations and exit")
 	flag.Parse()
 
 	if versionFlag {
 		fmt.Println(updater.CurrentVersion())
+		return
+	}
+	if cleanupFileAssocFlg {
+		isolated := dataDirFlag != "" || strings.TrimSpace(os.Getenv("BLOCK_DATA_DIR")) != ""
+		if dataDirFlag != "" {
+			files.SetDataDirOverride(dataDirFlag)
+		}
+		if err := plugins.CleanupFileAssociations(files.AppDataDir(), isolated); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -61,7 +75,9 @@ func main() {
 		if !mygo.App.RequestSingleInstanceLock() {
 			return
 		}
-		plugins.SetFileAssociationSyncEnabled(true)
+		if strings.TrimSpace(os.Getenv("BLOCK_DATA_DIR")) == "" {
+			plugins.SetFileAssociationSyncEnabled(true)
+		}
 	}
 
 	mygo.App.SetName("Block")
@@ -84,26 +100,25 @@ func main() {
 	var launchStoreLink string
 	if launchArgs := flag.Args(); len(launchArgs) > 0 {
 		launchWD, _ := os.Getwd()
-		for _, a := range launchArgs {
-			trimmed := strings.TrimSpace(a)
-			if trimmed == "" || strings.HasPrefix(trimmed, "-") {
+		for _, raw := range launchArgs {
+			if raw == "" || strings.HasPrefix(raw, "-psn_") {
 				continue
 			}
-			lower := strings.ToLower(trimmed)
+			lower := strings.ToLower(strings.TrimSpace(raw))
 			if strings.HasPrefix(lower, "block://") || strings.HasPrefix(lower, "blockmd://") {
-				if u, err := url.Parse(trimmed); err == nil {
+				if u, err := url.Parse(strings.TrimSpace(raw)); err == nil {
 					switch u.Host {
 					case "open":
 						if p := u.Query().Get("path"); p != "" {
 							_ = ws.OpenDeepLinkedFile(p)
 						}
 					case "store", "install":
-						launchStoreLink = trimmed
+						launchStoreLink = strings.TrimSpace(raw)
 					}
 				}
 				continue
 			}
-			_ = ws.OpenExternalTarget(trimmed, launchWD)
+			_ = ws.OpenExternalTarget(raw, launchWD)
 		}
 	}
 
@@ -417,17 +432,26 @@ func main() {
 
 	mygo.App.OnSecondInstance(func(args []string, wd string) {
 		revealMainWindow()
-		for _, a := range args[1:] {
-			trimmed := strings.TrimSpace(a)
-			if trimmed == "" || strings.HasPrefix(trimmed, "-") {
+		endOfFlags := false
+		for _, raw := range args {
+			if raw == "" {
 				continue
 			}
-			lower := strings.ToLower(trimmed)
+			if !endOfFlags {
+				if raw == "--" {
+					endOfFlags = true
+					continue
+				}
+				if strings.HasPrefix(raw, "-") {
+					continue
+				}
+			}
+			lower := strings.ToLower(strings.TrimSpace(raw))
 			if strings.HasPrefix(lower, "block://") || strings.HasPrefix(lower, "blockmd://") {
-				handleDeepLink(trimmed)
+				handleDeepLink(strings.TrimSpace(raw))
 				continue
 			}
-			_ = ws.OpenExternalTarget(trimmed, wd)
+			_ = ws.OpenExternalTarget(raw, wd)
 		}
 	})
 
@@ -473,7 +497,7 @@ func main() {
 		if sup := ws.Plugins(); sup != nil {
 			sup.ShutdownAll()
 		}
-		plugins.WaitFileAssociationSync()
+		plugins.WaitFileAssociationSyncTimeout(800 * time.Millisecond)
 	})
 
 	mygo.App.OnQuitCanceled(func() {
