@@ -144,6 +144,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		feedbackTimers: make(map[viewKey]*time.Timer),
 	}
 	sm.beforeReplace = s.preparePluginReplacement
+	SyncActiveLanguages(installed)
 	return s
 }
 
@@ -550,9 +551,43 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 			_ = rt.Shutdown(ctx)
 		}()
 	}
+	if enabled {
+		s.warmupPluginAsync(pluginID)
+	}
 	if changed || rt != nil {
+		SyncActiveLanguages(s.Installed())
 		s.notifyChanged()
 	}
+}
+
+// warmupPluginAsync initializes a newly installed or enabled UI plugin in the
+// background so its plugin.initialize hook can sync host UI state (such as
+// editor background or titlebar visibility) without waiting for the user to
+// open the plugin's settings page.
+func (s *Supervisor) warmupPluginAsync(pluginID string) {
+	if s == nil || strings.TrimSpace(pluginID) == "" {
+		return
+	}
+	inst, ok := s.GetInstalled(pluginID)
+	if !ok || !inst.Enabled {
+		return
+	}
+	if !inst.Manifest.HasPermission(PermUISettings) && !inst.Manifest.HasPermission(PermUITitlebar) {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
+		if err != nil {
+			return
+		}
+		defer unlock()
+		if !s.IsPluginEnabled(pluginID) {
+			return
+		}
+		_, _ = s.ensureRuntime(ctx, pluginID, s.NotebookRoot())
+	}()
 }
 
 func (s *Supervisor) StoreStatus() (refreshing bool, installingID string, errMsg string, notice string) {
@@ -684,9 +719,11 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 	delete(s.runtimes, inst.Manifest.ID)
 	s.deleteViewsForPluginLocked(inst.Manifest.ID)
 	s.mu.Unlock()
+	SyncActiveLanguages(installedList)
 	if onInstalled != nil {
 		onInstalled(inst.Manifest.ID)
 	}
+	s.warmupPluginAsync(inst.Manifest.ID)
 	s.notifyChanged()
 }
 
@@ -759,6 +796,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.storeErr = ""
 		s.deleteViewsForPluginLocked(pluginID)
 		s.mu.Unlock()
+		SyncActiveLanguages(installedList)
 		s.contrib.forgetPlugin(pluginID)
 
 		if onDone != nil {
@@ -1137,6 +1175,9 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	inst, ok := s.GetInstalled(pluginID)
 	if !ok {
 		return nil, "", osErrNotInstalled(pluginID)
+	}
+	if inst.Manifest.IsDeclarativeOnly() {
+		return nil, "", errors.New("declarative language plugin has no runtime process")
 	}
 	if !inst.Enabled {
 		s.mu.Lock()

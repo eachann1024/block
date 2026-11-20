@@ -73,7 +73,7 @@ var contribIDRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 // Built-in settings tabs that accept plugin sections.
 var SettingsSectionTabs = []string{"ai", "appearance", "folders", "shortcuts"}
 
-// Contributes declares where a plugin places UI in the host.
+// Contributes declares where a plugin places UI or language extensions in the host.
 type Contributes struct {
 	TitlebarButtons  []TitlebarButtonContrib  `json:"titlebar_buttons,omitempty"`
 	SettingsSections []SettingsSectionContrib `json:"settings_sections,omitempty"`
@@ -83,6 +83,7 @@ type Contributes struct {
 	Panels           []PanelContrib           `json:"panels,omitempty"`
 	StatusItems      []StatusItemContrib      `json:"status_items,omitempty"`
 	Dialogs          []DialogContrib          `json:"dialogs,omitempty"`
+	Languages        []LanguageContrib        `json:"languages,omitempty"`
 }
 
 // TitlebarButtonContrib is an icon button in the titlebar right rail. Clicking
@@ -141,9 +142,13 @@ type DialogContrib struct {
 	Width int           `json:"width,omitempty"`
 }
 
+func (c *Contributes) hasRuntimeContributions() bool {
+	return c != nil && (len(c.TitlebarButtons) > 0 || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
+		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.Panels) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0)
+}
+
 func (c *Contributes) empty() bool {
-	return c == nil || (len(c.TitlebarButtons) == 0 && len(c.SettingsSections) == 0 && len(c.Commands) == 0 &&
-		len(c.PageMenu) == 0 && len(c.EditorMenu) == 0 && len(c.Panels) == 0 && len(c.StatusItems) == 0 && len(c.Dialogs) == 0)
+	return c == nil || (!c.hasRuntimeContributions() && len(c.Languages) == 0)
 }
 
 func (c *Contributes) hasCommand(id string) bool {
@@ -222,6 +227,7 @@ var contribLimits = []struct {
 	{"panels", 8, func(c Contributes) int { return len(c.Panels) }},
 	{"status_items", 4, func(c Contributes) int { return len(c.StatusItems) }},
 	{"dialogs", 16, func(c Contributes) int { return len(c.Dialogs) }},
+	{"languages", 16, func(c Contributes) int { return len(c.Languages) }},
 }
 
 func (m *Manifest) validateContributes() error {
@@ -356,6 +362,14 @@ func (m *Manifest) validateContributes() error {
 			return fmt.Errorf("contributes.dialogs %q width must be 320-720", d.ID)
 		}
 	}
+	for _, l := range c.Languages {
+		if err := id("languages", l.ID); err != nil {
+			return err
+		}
+		if err := validateLanguageContrib(l); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -429,6 +443,31 @@ type TarotState struct {
 	ActiveNote string `json:"active_note"`
 }
 
+// EditorBackgroundState describes the host editor's decorative background
+// controlled via host.ui.editor_background and host.ui.set_editor_background.
+type EditorBackgroundState struct {
+	Mode     string `json:"mode"`     // "off" | "dots" | "grid"
+	Contrast string `json:"contrast"` // "standard" | "high"
+}
+
+func normalizeEditorBackgroundState(mode, contrast string) EditorBackgroundState {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "dots":
+		mode = "dots"
+	case "grid":
+		mode = "grid"
+	default:
+		mode = "off"
+	}
+	switch strings.ToLower(strings.TrimSpace(contrast)) {
+	case "high", "strong":
+		contrast = "high"
+	default:
+		contrast = "standard"
+	}
+	return EditorBackgroundState{Mode: mode, Contrast: contrast}
+}
+
 // UIHost is implemented by the app so plugins can drive host UI. All methods
 // may be called from plugin goroutines and must be safe off the UI thread.
 type UIHost interface {
@@ -453,11 +492,12 @@ type UIHost interface {
 type contribRegistry struct {
 	mu        sync.RWMutex
 	path      string
-	hidden    map[string]bool          // titlebar slot id -> hidden
-	badges    map[string]string        // plugin slot id -> badge text
-	active    map[string]bool          // plugin slot id -> active
-	status    map[string]statusOverlay // "<plugin>/<item>" -> text
-	refreshed map[string]time.Time     // surface refresh requests "<plugin>|<surface>"
+	hidden    map[string]bool                  // titlebar slot id -> hidden
+	editorBG  map[string]EditorBackgroundState // plugin id -> editor background
+	badges    map[string]string                // plugin slot id -> badge text
+	active    map[string]bool                  // plugin slot id -> active
+	status    map[string]statusOverlay         // "<plugin>/<item>" -> text
+	refreshed map[string]time.Time             // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
 }
@@ -468,12 +508,14 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden []string `json:"titlebar_hidden"`
+	TitlebarHidden    []string                         `json:"titlebar_hidden"`
+	EditorBackgrounds map[string]EditorBackgroundState `json:"editor_backgrounds,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
 	r := &contribRegistry{
 		hidden:    map[string]bool{},
+		editorBG:  map[string]EditorBackgroundState{},
 		badges:    map[string]string{},
 		active:    map[string]bool{},
 		status:    map[string]statusOverlay{},
@@ -489,6 +531,11 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 				for _, id := range f.TitlebarHidden {
 					if id != TitlebarSlotMore {
 						r.hidden[id] = true
+					}
+				}
+				for pluginID, bg := range f.EditorBackgrounds {
+					if strings.TrimSpace(pluginID) != "" {
+						r.editorBG[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
 					}
 				}
 			}
@@ -508,7 +555,14 @@ func (r *contribRegistry) saveLocked() {
 		}
 	}
 	slices.Sort(ids)
-	b, _ := json.MarshalIndent(contribFile{TitlebarHidden: ids}, "", "  ")
+	var bgs map[string]EditorBackgroundState
+	if len(r.editorBG) > 0 {
+		bgs = make(map[string]EditorBackgroundState, len(r.editorBG))
+		for pluginID, bg := range r.editorBG {
+			bgs[pluginID] = normalizeEditorBackgroundState(bg.Mode, bg.Contrast)
+		}
+	}
+	b, _ := json.MarshalIndent(contribFile{TitlebarHidden: ids, EditorBackgrounds: bgs}, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(r.path), 0o755)
 	tmp := r.path + ".tmp"
 	if os.WriteFile(tmp, b, 0o644) == nil {
@@ -528,6 +582,10 @@ func (r *contribRegistry) forgetPlugin(pluginID string) {
 			delete(r.hidden, id)
 			changed = true
 		}
+	}
+	if _, ok := r.editorBG[pluginID]; ok {
+		delete(r.editorBG, pluginID)
+		changed = true
 	}
 	for id := range r.badges {
 		if strings.HasPrefix(id, slotPrefix) {
@@ -654,6 +712,32 @@ func (s *Supervisor) TitlebarHidden(slotID string) bool {
 	s.contrib.mu.RLock()
 	defer s.contrib.mu.RUnlock()
 	return s.contrib.hidden[slotID]
+}
+
+// EditorBackground returns the active decorative editor background set by the
+// first enabled plugin with a non-"off" mode. Disabling or uninstalling that
+// plugin immediately restores "off".
+func (s *Supervisor) EditorBackground() EditorBackgroundState {
+	if s == nil || s.contrib == nil {
+		return EditorBackgroundState{Mode: "off", Contrast: "standard"}
+	}
+	s.mu.RLock()
+	enabledIDs := make([]string, 0, len(s.installed))
+	for _, a := range s.installed {
+		if a.Enabled {
+			enabledIDs = append(enabledIDs, a.Manifest.ID)
+		}
+	}
+	s.mu.RUnlock()
+
+	s.contrib.mu.RLock()
+	defer s.contrib.mu.RUnlock()
+	for _, id := range enabledIDs {
+		if st, ok := s.contrib.editorBG[id]; ok && st.Mode != "" && st.Mode != "off" {
+			return normalizeEditorBackgroundState(st.Mode, st.Contrast)
+		}
+	}
+	return EditorBackgroundState{Mode: "off", Contrast: "standard"}
 }
 
 // TitlebarSlots lists built-in and plugin titlebar slots with hidden state.
@@ -1159,6 +1243,38 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if err != nil {
 			return nil, rpcErr(-32004, err.Error()), true
 		}
+		return st, nil, true
+
+	case "host.ui.editor_background":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		s.contrib.mu.RLock()
+		st, ok := s.contrib.editorBG[m.ID]
+		s.contrib.mu.RUnlock()
+		if !ok {
+			st = EditorBackgroundState{Mode: "off", Contrast: "standard"}
+		}
+		return normalizeEditorBackgroundState(st.Mode, st.Contrast), nil, true
+
+	case "host.ui.set_editor_background":
+		if !m.HasPermission(PermUISettings) && !m.HasPermission(PermUICommands) && !m.HasPermission(PermUITitlebar) {
+			return nil, missingPerm(PermUISettings), true
+		}
+		var p struct {
+			Mode     string `json:"mode"`
+			Contrast string `json:"contrast"`
+		}
+		if e := decode(&p); e != nil {
+			return nil, e, true
+		}
+		st := normalizeEditorBackgroundState(p.Mode, p.Contrast)
+		s.contrib.mu.Lock()
+		if prev, ok := s.contrib.editorBG[m.ID]; !ok || prev != st {
+			s.contrib.editorBG[m.ID] = st
+			s.contrib.saveLocked()
+		}
+		s.contrib.mu.Unlock()
 		return st, nil, true
 
 	case "host.editor.selection":

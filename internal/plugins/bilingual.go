@@ -86,6 +86,11 @@ func ValidateManifestEnglish(m *Manifest) error {
 			return err
 		}
 	}
+	for i, l := range m.Contributes.Languages {
+		if err := check(fmt.Sprintf("manifest.contributes.languages[%d].name.en", i), l.Name.En); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
