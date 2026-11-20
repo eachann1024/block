@@ -49,7 +49,7 @@ func AppMarkImage(c *ui.Context, size float32) {
 
 // AppMarkButtonWidth is the reserved width of the "cooool.top" titlebar brand button
 // when computing available titlebar width in collapsed-sidebar layouts.
-const AppMarkButtonWidth float32 = 74
+const AppMarkButtonWidth float32 = 76
 
 // AppMarkButton renders the "cooool.top" titlebar brand button; clicking it opens
 // the brand menu (version, updates, website, plugin store, about).
@@ -71,7 +71,7 @@ func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 		}
 	}
 	hovered, pressed := btn.Hovered(), btn.Pressed()
-	bg, border, hasBorder := ui.Transparent, ui.Transparent, o.Active
+	bg, border := ui.Transparent, ui.Transparent
 	switch {
 	case o.Active:
 		bg = pal.Selected
@@ -79,7 +79,9 @@ func AppMarkButton(c *ui.Context, o AppMarkOptions) ui.Element {
 	case pressed || hovered:
 		bg = pal.ShellChrome().Hover
 	}
-	AnimateSurfaceColors(btn, bg, border, hasBorder)
+	// Always reserve the 1px border box (transparent when inactive) so opening the
+	// brand menu never changes the auto-sized wordmark width or shifts adjacent controls.
+	AnimateSurfaceColors(btn, bg, border, true)
 	TactileButton(btn, hovered, pressed, false)
 	fg := pal.Text.Alpha(0.55)
 	if o.Active || hovered || pressed {
