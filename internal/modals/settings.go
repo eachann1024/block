@@ -352,8 +352,8 @@ type settingsTabSpec struct {
 }
 
 var settingsTabs = []settingsTabSpec{
-	{id: "ai", icon: icons.Sparkles, zh: "AI 助手", en: "AI Assistant"},
 	{id: "appearance", icon: icons.Sliders, zh: "外观与字体", en: "Appearance & Fonts"},
+	{id: "ai", icon: icons.Sparkles, zh: "AI 助手", en: "AI Assistant"},
 	{id: "folders", icon: icons.Folder, zh: "文件夹", en: "Folders"},
 	{id: "shortcuts", icon: icons.Code, zh: "快捷键", en: "Shortcuts"},
 }
