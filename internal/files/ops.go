@@ -439,6 +439,13 @@ func WriteRawFileAtomic(path, text string, bom bool) (int64, error) {
 	} else {
 		data = []byte(text)
 	}
+	return WriteBytesAtomic(path, data)
+}
+
+// WriteBytesAtomic atomically writes raw bytes to path via a temp file in the
+// same directory, preserving existing file permissions, and returns the written
+// byte fingerprint.
+func WriteBytesAtomic(path string, data []byte) (int64, error) {
 	if err := writeBytesAtomic(path, data, true); err != nil {
 		return 0, err
 	}

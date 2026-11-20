@@ -272,6 +272,29 @@ func classifyBytes(path string, data []byte) model.ClassifiedFile {
 }
 
 func decodeSource(path string, data []byte, svg bool) (model.SourceFile, string) {
+	if !svg && IsBinaryPlist(data) {
+		xmlText, err := DecodeBinaryPlist(data)
+		if err != nil {
+			return model.SourceFile{}, theme.Tr("无法解析二进制 Plist 文件", "Failed to decode binary plist")
+		}
+		if int64(len(xmlText)) > TextLimit {
+			return model.SourceFile{}, theme.Tr("文件超过 5 MB", "File is larger than 5 MB")
+		}
+		if lineTooLong(xmlText) {
+			return model.SourceFile{}, theme.Tr("单行过长，无法预览", "A line is too long to preview")
+		}
+		lang := LanguageTagForPath(path)
+		if lang == "plaintext" {
+			lang = "xml"
+		}
+		return model.SourceFile{
+			Text:            xmlText,
+			BinaryPlist:     true,
+			DiskFingerprint: fingerprintBytes(data),
+			Language:        lang,
+			Highlight:       len(xmlText) <= HighlightLimit,
+		}, ""
+	}
 	bom := false
 	rest := data
 	if bytes.HasPrefix(data, utf8BOM) {
@@ -290,12 +313,13 @@ func decodeSource(path string, data []byte, svg bool) (model.SourceFile, string)
 	}
 	ext := extOf(path)
 	return model.SourceFile{
-		Text:      text,
-		BOM:       bom,
-		Language:  LanguageTagForPath(path),
-		Highlight: len(text) <= HighlightLimit,
-		HTML:      ext == "html" || ext == "htm" || ext == "xhtml",
-		SVG:       svg,
+		Text:            text,
+		BOM:             bom,
+		DiskFingerprint: fingerprintBytes(data),
+		Language:        LanguageTagForPath(path),
+		Highlight:       len(text) <= HighlightLimit,
+		HTML:            ext == "html" || ext == "htm" || ext == "xhtml",
+		SVG:             svg,
 	}, ""
 }
 

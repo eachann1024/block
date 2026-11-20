@@ -7,6 +7,7 @@ require (
 	github.com/egoist/mygo v0.9.2
 	golang.org/x/image v0.46.0
 	golang.org/x/mod v0.43.0
+	howett.net/plist v1.0.1
 )
 
 require (
