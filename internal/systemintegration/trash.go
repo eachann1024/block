@@ -2,6 +2,7 @@ package systemintegration
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,9 +10,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/egoist/mygo"
 )
+
+var errTrashVolume = errors.New("trash staging is on a different volume")
+
+type trashRecoveryRecord struct {
+	Original string `json:"original"`
+	Adjacent bool   `json:"adjacent,omitempty"`
+}
 
 func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath func() bool) error {
 	if !allowed() || !validPath() {
@@ -28,16 +37,32 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 	if err != nil {
 		return err
 	}
+	const windowsNotSameDevice = syscall.Errno(17)
+	err = trashFileAtStage(dataDir, path, expected, allowed, validPath, false)
+	if !errors.Is(err, errTrashVolume) && !errors.Is(err, syscall.EXDEV) &&
+		!(runtime.GOOS == "windows" && errors.Is(err, windowsNotSameDevice)) {
+		return err
+	}
+	if !allowed() || !validPath() {
+		return errors.New("trash operation is no longer allowed")
+	}
+	return trashFileAtStage(dataDir, path, expected, allowed, validPath, true)
+}
+
+func trashFileAtStage(dataDir, path string, expected os.FileInfo, allowed, validPath func() bool, adjacent bool) error {
+	id := rand.Text()
+	stage := trashStagingPath(dataDir, path, id, adjacent)
 	anchor := filepath.Dir(path)
-	var stagingBase string
+	var dir string
 	for {
-		stagingBase, err = filepath.Rel(anchor, filepath.Join(dataDir, "trash-staging"))
-		if err == nil && filepath.IsLocal(stagingBase) {
+		rel, err := filepath.Rel(anchor, stage)
+		if err == nil && filepath.IsLocal(rel) {
+			dir = rel
 			break
 		}
 		parent := filepath.Dir(anchor)
 		if parent == anchor {
-			return errors.New("no safe trash staging location on the file's volume")
+			return errTrashVolume
 		}
 		anchor = parent
 	}
@@ -50,14 +75,15 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 		return err
 	}
 	defer root.Close()
-	id := rand.Text()
-	if err := root.MkdirAll(stagingBase, 0o700); err != nil {
-		return err
+	stagingBase := filepath.Dir(dir)
+	if !adjacent {
+		if err := root.MkdirAll(stagingBase, 0o700); err != nil {
+			return err
+		}
+		if info, err := root.Lstat(stagingBase); err != nil || !info.IsDir() {
+			return errors.New("trash staging must be a real app-data directory")
+		}
 	}
-	if info, err := root.Lstat(stagingBase); err != nil || !info.IsDir() {
-		return errors.New("trash staging must be a real app-data directory")
-	}
-	dir := filepath.Join(stagingBase, id)
 	if err := root.Mkdir(dir, 0o700); err != nil {
 		return err
 	}
@@ -89,7 +115,7 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 	if err != nil || !current.Mode().IsRegular() || !os.SameFile(expected, current) || !allowed() || !validPath() {
 		return errors.New("file changed before recycling")
 	}
-	if err := writeTrashRecovery(journalPath, path); err != nil {
+	if err := writeTrashRecovery(journalPath, trashRecoveryRecord{Original: path, Adjacent: adjacent}); err != nil {
 		return err
 	}
 	journalWritten = true
@@ -111,7 +137,7 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 			return cause
 		}
 		keepRecovery = true
-		return fmt.Errorf("could not recycle or restore the original name; recover the item from %s: %w", filepath.Join(anchor, recoverFrom), cause)
+		return fmt.Errorf("could not recycle or restore the original name; recover the item from %s: %v", filepath.Join(anchor, recoverFrom), cause)
 	}
 	stagedPath := filepath.Join(anchor, staged)
 	info, infoErr := root.Lstat(staged)
@@ -126,13 +152,20 @@ func TrashFile(dataDir, path string, expected os.FileInfo, allowed, validPath fu
 				recoverFrom = backup
 			}
 		}
-		return restore(err)
+		return restore(fmt.Errorf("system trash failed: %v", err))
 	}
 	recycled = true
 	return nil
 }
 
-func writeTrashRecovery(path, original string) error {
+func trashStagingPath(dataDir, original, id string, adjacent bool) string {
+	if adjacent {
+		return filepath.Join(filepath.Dir(original), ".block-trash-"+id)
+	}
+	return filepath.Join(dataDir, "trash-staging", id)
+}
+
+func writeTrashRecovery(path string, record trashRecoveryRecord) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -140,7 +173,7 @@ func writeTrashRecovery(path, original string) error {
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.WriteString(original)
+	writeErr := json.NewEncoder(file).Encode(record)
 	err = errors.Join(writeErr, file.Sync(), file.Close())
 	if err != nil {
 		_ = os.Remove(path)
@@ -164,11 +197,18 @@ func PendingTrashRecovery(dataDir string, visit func(original, recovery string))
 		}
 		raw, err := io.ReadAll(io.LimitReader(entryFile, 64*1024+1))
 		_ = entryFile.Close()
-		original := string(raw)
-		if err != nil || len(raw) > 64*1024 || !filepath.IsAbs(original) || filepath.Clean(original) != original {
+		if err != nil || len(raw) > 64*1024 {
 			continue
 		}
-		staging := filepath.Join(dataDir, "trash-staging", id)
+		record := trashRecoveryRecord{Original: string(raw)}
+		if strings.HasPrefix(record.Original, "{") && json.Unmarshal(raw, &record) != nil {
+			continue
+		}
+		original := record.Original
+		if !filepath.IsAbs(original) || filepath.Clean(original) != original {
+			continue
+		}
+		staging := trashStagingPath(dataDir, original, id, record.Adjacent)
 		staged := filepath.Join(staging, "item", filepath.Base(original))
 		stagedInfo, stagedErr := os.Lstat(staged)
 		if stagedErr == nil && stagedInfo.Mode().IsRegular() {
