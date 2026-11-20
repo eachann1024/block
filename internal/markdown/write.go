@@ -93,9 +93,21 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 			prevQ := effectiveQuoteDepth(&blocks[i-1])
 			curQ := effectiveQuoteDepth(b)
 			if prevQ > 0 && curQ > 0 {
-				qSep := strings.TrimRight(strings.Repeat("> ", minInt(prevQ, curQ)), " ") + "\n"
-				if !strings.HasSuffix(out.String(), "\n"+qSep) && !strings.HasSuffix(out.String(), "\n\n") {
-					out.WriteString(qSep)
+				if b.QuoteNewGroup || b.Indent != blocks[i-1].Indent {
+					if !strings.HasSuffix(out.String(), "\n\n") {
+						out.WriteByte('\n')
+					}
+				} else if b.QuoteTightBefore && curQ > prevQ {
+					// Tightly nested blockquote (e.g. "> A\n> > B"): keep single newline without inserting ">\n".
+				} else {
+					indent := ""
+					if b.Indent > 0 {
+						indent = strings.Repeat(" ", b.Indent)
+					}
+					qSep := indent + strings.TrimRight(strings.Repeat("> ", minInt(prevQ, curQ)), " ") + "\n"
+					if !strings.HasSuffix(out.String(), "\n"+qSep) && !strings.HasSuffix(out.String(), "\n\n") {
+						out.WriteString(qSep)
+					}
 				}
 			} else if !strings.HasSuffix(out.String(), "\n\n") {
 				out.WriteByte('\n')

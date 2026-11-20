@@ -2244,6 +2244,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 		}
 		children := swallowSeparators(parseBlocksWithDefsAndUsedAt(innerBuf.String(), defs, nil, usedOut, startLine, depth+1))
 		var out []model.Block
+		prevEndLine := startLine - 1
 		for _, ch := range children {
 			if isBlankBlock(&ch) && len(children) > 1 {
 				continue
@@ -2252,13 +2253,31 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 			if ch.Kind == model.BlockParagraph && ch.Indent == 0 {
 				ch.Kind = model.BlockQuote
 			}
-			ch.CleanSource = ""
+			if ch.CleanSource != "" &&
+				ch.SourceLine >= startLine &&
+				ch.SourceEndLine >= ch.SourceLine &&
+				ch.SourceEndLine < startLine+end &&
+				ch.SourceLine > prevEndLine {
+				ch.CleanSource = strings.Join(lines[ch.SourceLine-startLine:ch.SourceEndLine-startLine+1], "")
+				prevEndLine = ch.SourceEndLine
+			} else {
+				ch.CleanSource = ""
+			}
 			out = append(out, ch)
 		}
 		if len(out) == 1 {
 			out[0].CleanSource = origSrc
 		}
 		if len(out) > 0 {
+			out[0].QuoteNewGroup = true
+			for i := 1; i < len(out); i++ {
+				out[i].QuoteNewGroup = false
+				if out[i].QuoteDepth > out[i-1].QuoteDepth &&
+					out[i].SourceLine > 0 && out[i-1].SourceEndLine > 0 &&
+					out[i].SourceLine == out[i-1].SourceEndLine+1 {
+					out[i].QuoteTightBefore = true
+				}
+			}
 			return out, end, true
 		}
 	}
@@ -2275,6 +2294,7 @@ func parseBlockquoteBlocks(lines []string, defs map[string]refDef, usedOut map[s
 		ID:            model.NewBlockID(),
 		Kind:          model.BlockQuote,
 		QuoteDepth:    1,
+		QuoteNewGroup: true,
 		Spans:         coalesceSpans(spans),
 		CleanSource:   origSrc,
 		SourceLine:    startLine,
