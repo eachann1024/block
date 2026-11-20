@@ -414,6 +414,7 @@ func (w *Workspace) renderTarotWorkspace(
 						case activeSess != nil:
 							activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 							activeSess.SetOutlineForceNarrow(true)
+							activeSess.SetBackground(w.pluginEditorBackground())
 							activeSess.Render(c, sheetW, false)
 							if w.pluginUI != nil {
 								w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))

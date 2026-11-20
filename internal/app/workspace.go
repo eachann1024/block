@@ -313,6 +313,9 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.initTarot()
 	w.hydrateInitialWorkspace()
 	w.syncTarotWithPluginState(true)
+	if sup := w.Plugins(); sup != nil {
+		sup.WarmupAppearancePluginsAsync()
+	}
 	w.lastNotifiedNote = w.State().ActiveTab
 	return w
 }
@@ -4479,6 +4482,7 @@ func (w *Workspace) Render(c *ui.Context) {
 								case activeSess != nil:
 									activeSess.SetEdgeFloatInsets(edgeSafeL, edgeSafeR)
 									activeSess.SetOutlineForceNarrow(!layout.ShowOutline || w.edgeFloat.LeftOpen())
+									activeSess.SetBackground(w.pluginEditorBackground())
 									activeSess.Render(c, effMainW, false)
 									if w.pluginUI != nil {
 										w.pluginUI.setEditorFocus(activeTab, activeSess.HasFocus(c))
@@ -4598,6 +4602,18 @@ func (w *Workspace) activeSelectionText() string {
 		return sess.SelectedMarkdown()
 	}
 	return ""
+}
+
+func (w *Workspace) pluginEditorBackground() editor.BackgroundStyle {
+	sup := w.Plugins()
+	if sup == nil {
+		return editor.BackgroundStyle{}
+	}
+	bg := sup.EditorBackground()
+	return editor.BackgroundStyle{
+		Mode:     bg.Mode,
+		Contrast: bg.Contrast,
+	}
 }
 
 func (w *Workspace) pluginHiddenTitlebarSlots() map[string]bool {
