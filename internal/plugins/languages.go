@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode/utf8"
 
@@ -730,13 +731,29 @@ type languageSnapshot struct {
 }
 
 var (
-	activeLangSnap atomic.Pointer[languageSnapshot]
-	activeLangGen  atomic.Uint64
+	activeLangPublishMu    sync.Mutex
+	activeLangSyncSeq      atomic.Uint64
+	activeLangPublishedSeq uint64
+	activeLangSnap         atomic.Pointer[languageSnapshot]
+	activeLangGen          atomic.Uint64
 )
+
+// NextLanguageSyncSeq allocates a strictly monotonic sequence number for an
+// installed-plugin state snapshot while the caller holds Supervisor.mu, so
+// slower out-of-order grammar compilations can never overwrite a newer toggle.
+func NextLanguageSyncSeq() uint64 {
+	return activeLangSyncSeq.Add(1)
+}
 
 // SyncActiveLanguages compiles all languages from enabled installed plugins and
 // publishes them atomically for the source editor and Markdown code blocks.
 func SyncActiveLanguages(installed []InstalledApp) {
+	SyncActiveLanguagesSeq(installed, 0)
+}
+
+// SyncActiveLanguagesSeq compiles and publishes installed languages only if seq
+// is zero or at least as new as the last published sequence number.
+func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
 	snap := &languageSnapshot{
 		byFilename: make(map[string]*PluginLanguageInfo),
 		byExt:      make(map[string]*PluginLanguageInfo),
@@ -791,9 +808,18 @@ func SyncActiveLanguages(installed []InstalledApp) {
 		}
 		root.Close()
 	}
+	activeLangPublishMu.Lock()
+	if seq != 0 && seq < activeLangPublishedSeq {
+		activeLangPublishMu.Unlock()
+		return
+	}
+	if seq != 0 {
+		activeLangPublishedSeq = seq
+	}
 	activeLangSnap.Store(snap)
-	activeLangGen.Add(1)
-	scheduleFileAssociationSync(files.AppDataDir(), snap)
+	gen := activeLangGen.Add(1)
+	scheduleFileAssociationSync(files.AppDataDir(), snap, gen)
+	activeLangPublishMu.Unlock()
 }
 
 // LanguageGeneration returns a monotonic counter incremented whenever enabled
