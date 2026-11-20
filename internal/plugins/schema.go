@@ -152,12 +152,36 @@ type UICard struct {
 	Items            []UIItem `json:"items"`
 }
 
+// ActionProgress captures live progress reported by a plugin during an active
+// action via host.action.progress or declaratively on UIPage.Progress.
+type ActionProgress struct {
+	HasProgress bool
+	Progress    float64 // 0..1 ratio when HasProgress is true
+	Done        int     // completed items when Total > 0
+	Total       int     // total items when > 0
+	Label       string  // optional short override label
+}
+
 type UIPage struct {
 	Title             string     `json:"title"`
 	Status            string     `json:"status,omitempty"`
+	Progress          *float64   `json:"progress,omitempty"`
 	RefreshIntervalMs int        `json:"refresh_interval_ms,omitempty"`
 	HeaderActions     []UIButton `json:"header_actions,omitempty"`
 	Cards             []UICard   `json:"cards"`
+}
+
+// HasHeaderAction reports whether actionID matches any button in HeaderActions.
+func (p *UIPage) HasHeaderAction(actionID string) bool {
+	if p == nil || actionID == "" {
+		return false
+	}
+	for _, b := range p.HeaderActions {
+		if b.ID == actionID {
+			return true
+		}
+	}
+	return false
 }
 
 func DecodePageStrict(raw json.RawMessage) (*UIPage, error) {
@@ -219,6 +243,9 @@ func (p *UIPage) Validate() error {
 	}
 	if err := checkUserText("page.status", p.Status, false); err != nil {
 		return err
+	}
+	if p.Progress != nil && !(*p.Progress >= 0 && *p.Progress <= 1) {
+		return fmt.Errorf("page.progress must be between 0 and 1, got %v", *p.Progress)
 	}
 	if p.RefreshIntervalMs != 0 && (p.RefreshIntervalMs < 500 || p.RefreshIntervalMs > 60000) {
 		return fmt.Errorf("page.refresh_interval_ms must be 0 or between 500 and 60000, got %d", p.RefreshIntervalMs)

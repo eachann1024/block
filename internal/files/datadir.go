@@ -142,6 +142,11 @@ func resolveLogPath() string {
 	return filepath.Join(AppDataDir(), "logs", "block.log")
 }
 
+// LogFilePath returns the resolved path to Block's diagnostic log file.
+func LogFilePath() string {
+	return resolveLogPath()
+}
+
 func openLogFile(path string) *os.File {
 	if parent := filepath.Dir(path); parent != "" {
 		_ = os.MkdirAll(parent, 0o755)
