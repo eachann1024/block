@@ -30,17 +30,6 @@ fi
 
 pkgbuild="$root/packaging/aur/PKGBUILD"
 srcinfo="$root/packaging/aur/.SRCINFO"
-sed -i -E "s/^pkgver=.*/pkgver=${pkgver}/" "$pkgbuild"
-sed -i -E "s/^sha256sums=.*/sha256sums=('${sha}')/" "$pkgbuild"
-sed -i -E "s/^([[:space:]]*pkgver = ).*/\1${pkgver}/" "$srcinfo"
-sed -i -E "s/^([[:space:]]*noextract = ).*/\1block-linux-x64-${pkgver}.deb/" "$srcinfo"
-sed -i -E "s|^([[:space:]]*source = )[^:]+(::https://github\.com/eachann1024/block/releases/download/)v[^/]+(/block-linux-x64\.deb)|\1block-linux-x64-${pkgver}.deb\2v${pkgver}\3|" "$srcinfo"
-sed -i -E "s/^([[:space:]]*sha256sums = ).*/\1${sha}/" "$srcinfo"
-
-grep -q "pkgver = ${pkgver}" "$srcinfo"
-grep -q "noextract = block-linux-x64-${pkgver}.deb" "$srcinfo"
-grep -q "block-linux-x64-${pkgver}.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
-grep -q "sha256sums = ${sha}" "$srcinfo"
 
 mkdir -p "$work/ssh"
 printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$work/ssh/aur"
@@ -52,24 +41,55 @@ git clone ssh://aur@aur.archlinux.org/block-bin.git "$work/aur"
 if ! git -C "$work/aur" rev-parse --verify HEAD >/dev/null 2>&1; then
   git -C "$work/aur" checkout -B master
 fi
+
+pkgrel="1"
+remote_epoch="0"
 if [[ -f "$work/aur/PKGBUILD" ]]; then
+  remote_epoch="$(sed -n -E 's/^epoch=([0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
+  remote_epoch="${remote_epoch:-0}"
   remote_pkgver="$(sed -n -E 's/^pkgver=([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
-  if [[ -n "$remote_pkgver" ]]; then
-    cmp_rc=0
-    node -e '
-      const a = process.argv[1].split(".").map(Number);
-      const b = process.argv[2].split(".").map(Number);
-      for (let i = 0; i < 3; i++) {
-        if (a[i] !== b[i]) process.exit(a[i] < b[i] ? 10 : 0);
-      }
-      process.exit(0);
-    ' "$pkgver" "$remote_pkgver" || cmp_rc=$?
-    if [[ "$cmp_rc" -eq 10 ]]; then
-      echo "AUR block-bin is already at newer version ${remote_pkgver}; refusing to downgrade to ${pkgver}."
+  remote_pkgrel="$(sed -n -E 's/^pkgrel=([0-9]+).*/\1/p' "$work/aur/PKGBUILD" | head -n 1)"
+  remote_sha="$(sed -n -E "s/^sha256sums=\('([0-9a-fA-F]{64})'\).*/\1/p" "$work/aur/PKGBUILD" | head -n 1)"
+  if [[ -z "$remote_pkgver" || -z "$remote_pkgrel" ]]; then
+    echo "Failed to parse remote AUR PKGBUILD pkgver/pkgrel; aborting to prevent downgrade." >&2
+    exit 1
+  fi
+  cmp_out="$(node -e '
+    const target = [0, ...process.argv[1].split(".").map(Number)];
+    const remote = [Number(process.argv[2]), ...process.argv[3].split(".").map(Number)];
+    if (target.some(Number.isNaN) || remote.some(Number.isNaN)) process.exit(2);
+    for (let i = 0; i < 4; i++) {
+      if (target[i] < remote[i]) { console.log("older"); process.exit(0); }
+      if (target[i] > remote[i]) { console.log("newer"); process.exit(0); }
+    }
+    console.log("equal");
+  ' "$pkgver" "$remote_epoch" "$remote_pkgver")"
+  if [[ "$cmp_out" == "older" ]]; then
+    echo "AUR block-bin is already at newer version ${remote_epoch}:${remote_pkgver}-${remote_pkgrel}; refusing to downgrade to ${pkgver}."
+    exit 0
+  elif [[ "$cmp_out" == "equal" ]]; then
+    if [[ "${remote_sha,,}" == "${sha,,}" ]]; then
+      echo "AUR block-bin already matches ${pkgver} (${sha})."
       exit 0
     fi
+    pkgrel="$((remote_pkgrel + 1))"
   fi
 fi
+
+sed -i -E "s/^pkgver=.*/pkgver=${pkgver}/" "$pkgbuild"
+sed -i -E "s/^pkgrel=.*/pkgrel=${pkgrel}/" "$pkgbuild"
+sed -i -E "s/^sha256sums=.*/sha256sums=('${sha}')/" "$pkgbuild"
+sed -i -E "s/^([[:space:]]*pkgver = ).*/\1${pkgver}/" "$srcinfo"
+sed -i -E "s/^([[:space:]]*pkgrel = ).*/\1${pkgrel}/" "$srcinfo"
+sed -i -E "s/^([[:space:]]*noextract = ).*/\1block-linux-x64-${pkgver}.deb/" "$srcinfo"
+sed -i -E "s|^([[:space:]]*source = )[^:]+(::https://github\.com/eachann1024/block/releases/download/)v[^/]+(/block-linux-x64\.deb)|\1block-linux-x64-${pkgver}.deb\2v${pkgver}\3|" "$srcinfo"
+sed -i -E "s/^([[:space:]]*sha256sums = ).*/\1${sha}/" "$srcinfo"
+
+grep -q "pkgver = ${pkgver}" "$srcinfo"
+grep -q "pkgrel = ${pkgrel}" "$srcinfo"
+grep -q "noextract = block-linux-x64-${pkgver}.deb" "$srcinfo"
+grep -q "block-linux-x64-${pkgver}.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
+grep -q "sha256sums = ${sha}" "$srcinfo"
 cp "$pkgbuild" "$root/packaging/aur/.SRCINFO" "$work/aur/"
 git -C "$work/aur" add PKGBUILD .SRCINFO
 if git -C "$work/aur" diff --cached --quiet; then
