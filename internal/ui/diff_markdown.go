@@ -628,18 +628,28 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				// Under paragraph text "-" or "==" is a setext underline, not an empty list
 				// item, which may not interrupt a paragraph; in a list item's content
-				// ("- 部署说明" over "  ---") it makes the item's text a heading.
-				inItem := inList && ind >= listCol && ind < listCol+4
+				// ("- 部署说明" over "  ---", or "> - 部署说明" over ">   ---") it makes the
+				// item's text a heading.
+				inItem := inList && ind >= listCol && ind < listCol+4 ||
+					qCol > 0 && diffQuoteDepth(t) > 0 && qLead >= qCol && qLead < qCol+4
 				setext := para && (ind < 4 && !inList || inItem) && diffSetextRE.MatchString(inner)
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
+				// blk: the line's block behind its markers ("### 安装" in "- ### 安装").
+				blk := inner
+				if item || !setext && inner != t && diffListItemRE.MatchString(inner) && !diffRuleRE.MatchString(inner) {
+					blk = strings.TrimSpace(diffContainerRE.ReplaceAllString(inner, ""))
+					if diffListItemRE.FindString(blk) == blk {
+						blk = "" // an empty item ("-")
+					}
+					// The item's text starts a paragraph of its own.
+					paraLines = nil
+				}
 				if item {
 					for len(cols) > 0 && cols[len(cols)-1] > ind {
 						cols = cols[:len(cols)-1]
 					}
 					listCol = ind + len(diffContainerRE.FindString(t))
 					cols = append(cols, listCol)
-					// The item's text starts a paragraph of its own.
-					paraLines = nil
 				}
 				inList = item || (!setext || inItem) && inList && ind > 0
 				if !inList {
@@ -647,8 +657,8 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := setext || ind < 4 && (diffRuleRE.MatchString(inner) || diffHeadingRE.MatchString(inner) || diffMathStart(inner))
-				prevBlank, para = !inList && ends, !ends
+				ends := setext || ind < 4 && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
+				prevBlank, para = !inList && ends, !ends && blk != ""
 				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t), inItem) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
