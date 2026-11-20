@@ -500,6 +500,9 @@ func serializeSpansFallback(spans []model.Span) string {
 		if sp.Marks&model.MarkCode != 0 {
 			t = "`" + t + "`"
 		}
+		if sp.Marks&model.MarkMath != 0 {
+			t = "$" + t + "$"
+		}
 		if sp.Marks&model.MarkBold != 0 {
 			t = "**" + t + "**"
 		}
@@ -511,6 +514,12 @@ func serializeSpansFallback(spans []model.Span) string {
 		}
 		if sp.Marks&model.MarkUnderline != 0 {
 			t = "<u>" + t + "</u>"
+		}
+		if sp.Marks&model.MarkSuperscript != 0 {
+			t = "^" + t + "^"
+		}
+		if sp.Marks&model.MarkSubscript != 0 {
+			t = "~" + t + "~"
 		}
 		if sp.Link != "" {
 			t = fmt.Sprintf("[%s](%s)", t, sp.Link)
@@ -1209,8 +1218,10 @@ func looksLikeMarkdownBlock(line string) bool {
 
 func looksLikeInlineMarkdown(line string) bool {
 	lower := strings.ToLower(line)
-	return strings.ContainsAny(line, "*_`~[") ||
+	return strings.ContainsAny(line, "*_`~[$^") ||
+		strings.Contains(line, "==") ||
 		strings.Contains(line, "<span") || strings.Contains(line, "<u>") || strings.Contains(line, "<a ") ||
+		strings.Contains(line, "<sup>") || strings.Contains(line, "<sub>") || strings.Contains(line, "<mark>") ||
 		strings.Contains(lower, "http://") || strings.Contains(lower, "https://")
 }
 
@@ -2167,7 +2178,7 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 	if inserted != "" {
 		// Inherit style of the span at insertion boundary if any.
 		template := model.Span{Text: inserted}
-		if codeEdge == appUi.RichCodeEdgeInsideStart && len(right) > 0 && right[0].Marks&model.MarkCode != 0 {
+		if codeEdge == appUi.RichCodeEdgeInsideStart && len(right) > 0 && right[0].Marks&(model.MarkCode|model.MarkMath) != 0 {
 			template = right[0]
 			template.Text = inserted
 		} else if pref > 0 {
@@ -2177,7 +2188,7 @@ func spliceSpansByTextEditWithEdge(spans []model.Span, oldText, newText string, 
 			}
 		}
 		if codeEdge == appUi.RichCodeEdgeAfter {
-			template.Marks &^= model.MarkCode
+			template.Marks &^= model.MarkCode | model.MarkMath
 		}
 		// Typing at the end of a link keeps the surrounding style and exits the link.
 		if template.Link != "" && pref+suf == len(oldR) && (len(right) == 0 || right[0].Link != template.Link) {
