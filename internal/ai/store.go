@@ -203,6 +203,9 @@ type Controller struct {
 	onRevealPath         func(path string)
 
 	mediaCache     *attachmentMediaCache
+
+	tarotWasStreaming bool
+	tarotGlintAt      time.Time
 	lightboxOpen   bool              // synchronized under c.mu for cross-thread queries
 	lightbox       bui.LightboxState // UI-thread-only persistent state (stable Scroll pointer)
 	lightboxSource attachmentLightboxSource

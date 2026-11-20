@@ -17,6 +17,7 @@ import (
 
 	"block/internal/icons"
 	"block/internal/model"
+	"block/internal/tarot"
 	"block/internal/theme"
 	bui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -67,6 +68,9 @@ func (c *Controller) RenderPanel(cUI *ui.Context) {
 		panel.FillWidth().Grow(1)
 	} else {
 		panel.Width(panelW).Shrink(0)
+		if theme.IsTarotMode() {
+			panel.BorderWidth(0, 0, 0, 1).BorderColor(theme.Tarot().GoldBorderHair)
+		}
 	}
 	if b := panel.Bounds(); b.W > 0 {
 		c.mu.Lock()
@@ -828,6 +832,17 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 		clear(turnHeights)
 	}
 	streaming := c.streaming
+	now := cUI.Now()
+	if c.tarotWasStreaming && !streaming {
+		c.tarotGlintAt = now
+	}
+	c.tarotWasStreaming = streaming
+	tarotGlintProg := float32(0)
+	if !streaming && !c.tarotGlintAt.IsZero() {
+		if el := now.Sub(c.tarotGlintAt).Seconds(); el >= 0 && el < 1.3 {
+			tarotGlintProg = float32(el / 1.3)
+		}
+	}
 	partial := c.partialText.String()
 	var partialSteps []model.ProcessStep
 	if streaming && len(c.partialSteps) > 0 {
@@ -918,6 +933,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 				turnWrap.Children(func() {
 					if t.hasUser {
 						c.renderUserMessage(cUI, pal, convID, t.startIdx, t.userText, t.userAttachments, t.userAttachmentsSeparate)
+					}
+
+					if theme.IsTarotMode() && ti == len(turns)-1 && (turnStreaming || tarotGlintProg > 0) {
+						tarot.RenderAIDevelopingCard(cUI, turnStreaming, tarotGlintProg)
 					}
 
 					steps := t.steps
