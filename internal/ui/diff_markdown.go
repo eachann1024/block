@@ -369,6 +369,8 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		var paraLines []int
 		var quoteSetext1 map[int]bool
 		var refDefs map[int]bool
+		var parsedTables map[int]int
+		tableID := 0
 		// Indented code: four columns in after a blank line (or the start); in a list,
 		// four past the item's content column (listCol), since its nested content is
 		// indented too.
@@ -456,7 +458,20 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				if inList {
 					need += listCol
 				}
-				if ind >= need && (inIndented || wasBlank) {
+				indentedCode := ind >= need && (inIndented || wasBlank)
+				if indentedCode && IsDiffTableRow(t) {
+					if parsedTables == nil {
+						parsedTables = diffParsedTableIDs(lines, change, side)
+					}
+					tableID = parsedTables[i]
+				}
+				if tableID != 0 && parsedTables[i] == tableID {
+					// The note recognizes a pipe table before considering indented code.
+					prevBlank, inIndented, para, paraLines = true, false, false, nil
+					continue
+				}
+				tableID = 0
+				if indentedCode {
 					mask[i], inIndented, para, paraLines = true, true, false, nil
 					continue
 				}
@@ -653,19 +668,30 @@ func diffSepPass(lines []string, change []int, applied []bool, cand, kept func(i
 	take func(int, bool), tables [2][]int, members [2][]bool, seps []bool) bool {
 	trim := func(k int) string { return strings.TrimSpace(lines[k]) }
 	oldTable, newTable := tables[0], tables[1]
-	// Rows are read in the written text itself, so code that becomes a table (or a
-	// table that becomes code) counts the way the result parses.
+	// Read rows in the text that would be written. Include a fitting separator
+	// under an indented row in this scan: without it, the note can read the
+	// prospective table as indented code.
 	var res []int
 	var resText []string
 	for k := range lines {
-		if kept(k) && !cand(k) {
-			res, resText = append(res, k), append(resText, lines[k])
+		if cand(k) {
+			if len(res) == 0 {
+				continue
+			}
+			h := res[len(res)-1]
+			if cand(h) || diffTableIndent(lines[h]) == 0 && diffTableIndent(lines[k]) == 0 ||
+				!IsDiffTableRow(trim(h)) || len(ParseDiffTableCells(trim(h))) != len(ParseDiffTableCells(trim(k))) {
+				continue
+			}
+		} else if !kept(k) {
+			continue
 		}
+		res, resText = append(res, k), append(resText, lines[k])
 	}
 	resCode, _ := diffFenceSides(resText, make([]int, len(resText)))
 	row := make([]bool, len(lines))
 	for j, k := range res {
-		row[k] = !resCode[j] && IsDiffTableRow(trim(k))
+		row[k] = !cand(k) && !resCode[j] && IsDiffTableRow(trim(k))
 	}
 
 	for i := 0; i < len(lines); {
