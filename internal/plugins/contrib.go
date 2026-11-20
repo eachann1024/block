@@ -57,6 +57,55 @@ func contribPermissionLabel(p Permission, en bool) (string, bool) {
 	return l[0], true
 }
 
+func contribPermissionDescription(p Permission, en bool) (string, bool) {
+	descs := map[Permission][2]string{
+		PermUITitlebar: {
+			"在窗口顶栏右侧添加图标按钮，或调整顶栏控件的显隐布局。",
+			"Add icon buttons to the titlebar right rail or control titlebar item visibility.",
+		},
+		PermUISettings: {
+			"在内置设置页（AI、外观、文件夹、快捷键）末尾嵌入专属设置卡片。",
+			"Embed custom settings cards inside built-in settings tabs.",
+		},
+		PermUICommands: {
+			"向命令面板、默认快捷键、页面「…」菜单或编辑器右键菜单注册操作。",
+			"Register commands, default shortcuts, page menu items, or editor context menu items.",
+		},
+		PermUIPanels: {
+			"在工作区右侧打开或切换插件提供的原生侧边面板。",
+			"Open or toggle native side panels provided by the plugin.",
+		},
+		PermUIStatus: {
+			"在窗口底部状态栏展示简洁的实时状态与点击操作。",
+			"Display compact status indicators and actions in the bottom status bar.",
+		},
+		PermUINotify: {
+			"在应用内弹出轻提示（Toast）或原生声明式对话框。",
+			"Show in-app toast notifications or native declarative dialogs.",
+		},
+		PermEditorRead: {
+			"读取当前编辑中的笔记选中文本与光标上下文。",
+			"Read the active selection and cursor context in the current editor.",
+		},
+		PermEditorEdit: {
+			"向当前编辑器光标位置或选区插入、替换正文内容。",
+			"Insert or replace text at the active cursor or selection in the editor.",
+		},
+		PermEventsUI: {
+			"监听切换笔记、切换深浅色主题或切换界面语言等工作区事件。",
+			"Listen for workspace events such as note open, theme change, or locale change.",
+		},
+	}
+	d, ok := descs[p]
+	if !ok {
+		return "", false
+	}
+	if en {
+		return d[1], true
+	}
+	return d[0], true
+}
+
 // Prefixed surfaces rendered with plugin.render / plugin.action.
 const (
 	SurfacePrefixSettingsSection = "settings_section:"

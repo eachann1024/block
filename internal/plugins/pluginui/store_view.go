@@ -633,9 +633,10 @@ func buildStoreEntries(catalog *plugins.StoreIndex, installed []plugins.Installe
 			Beta:           inst.Manifest.Beta,
 			Author:         inst.Manifest.Author,
 			Repo:           inst.Manifest.Repo,
-			Summary:        inst.Manifest.Summary,
-			Permissions:    inst.Manifest.Permissions,
-			Surfaces:       inst.Manifest.Surfaces,
+			Summary:           inst.Manifest.Summary,
+			Permissions:       inst.Manifest.Permissions,
+			PermissionReasons: plugins.ClonePermissionReasons(inst.Manifest.PermissionReasons),
+			Surfaces:          inst.Manifest.Surfaces,
 			FileExtensions: inst.Manifest.DisplayFileExtensions(),
 			Icon:           inst.Manifest.Icon,
 		})

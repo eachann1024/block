@@ -60,6 +60,19 @@ func ValidateManifestEnglish(m *Manifest) error {
 	if err := check("manifest.summary.en", m.Summary.En); err != nil {
 		return err
 	}
+	for _, perm := range m.Permissions {
+		reason, ok := m.PermissionReasons[perm]
+		if !ok {
+			continue
+		}
+		field := fmt.Sprintf("manifest.permission_reasons[%q].en", perm)
+		if strings.TrimSpace(reason.En) == "" {
+			return fmt.Errorf("%s is required for bilingual plugins", field)
+		}
+		if err := check(field, reason.En); err != nil {
+			return err
+		}
+	}
 	if m.Contributes == nil {
 		return nil
 	}

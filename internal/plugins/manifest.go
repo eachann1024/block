@@ -73,6 +73,56 @@ func PermissionLabel(p Permission, locale string) string {
 	}
 }
 
+// PermissionDescription returns the built-in localized explanation of what
+// granting p allows a plugin to do.
+func PermissionDescription(p Permission, locale string) string {
+	en := strings.HasPrefix(strings.ToLower(locale), "en")
+	switch p {
+	case PermStorage:
+		if en {
+			return "Read and write this plugin's isolated private settings and state under apps-data."
+		}
+		return "读写该插件专属的私有配置与状态文件（位于 apps-data 目录）。"
+	case PermNotesRead:
+		if en {
+			return "List and read Markdown notes and folder structure in open notebooks."
+		}
+		return "列出并读取当前已打开笔记本中的 Markdown 笔记与目录结构。"
+	case PermNotesWrite:
+		if en {
+			return "Create, modify, or update Markdown note files in open notebooks."
+		}
+		return "在当前已打开笔记本中创建、修改或更新笔记文件。"
+	case PermNetwork:
+		if en {
+			return "Declares that this plugin may make outbound network requests (such as sync, image hosting, or remote APIs)."
+		}
+		return "声明该插件可能发起外部网络请求（如同步、图床或调用远程 API）。"
+	case PermEventNoteSaved:
+		if en {
+			return "Receive notifications whenever a note is saved so the plugin can run automatic workflows."
+		}
+		return "在用户保存笔记后接收事件通知，以便自动触发同步或后续处理。"
+	default:
+		if d, ok := contribPermissionDescription(p, en); ok {
+			return d
+		}
+		return string(p)
+	}
+}
+
+// ClonePermissionReasons returns a shallow copy of reasons, or nil when empty.
+func ClonePermissionReasons(reasons map[Permission]LocalizedText) map[Permission]LocalizedText {
+	if len(reasons) == 0 {
+		return nil
+	}
+	out := make(map[Permission]LocalizedText, len(reasons))
+	for k, v := range reasons {
+		out[k] = v
+	}
+	return out
+}
+
 type Surface string
 
 const (
@@ -137,11 +187,12 @@ type Manifest struct {
 	Author        string        `json:"author"`
 	Repo          string        `json:"repo,omitempty"`
 	Summary       LocalizedText `json:"summary"`
-	Entry         EntrySpec     `json:"entry,omitempty"`
-	Permissions   []Permission  `json:"permissions,omitempty"`
-	Surfaces      []Surface     `json:"surfaces,omitempty"`
-	Icon          DuoIconSpec   `json:"icon"`
-	Contributes   *Contributes  `json:"contributes,omitempty"`
+	Entry             EntrySpec                    `json:"entry,omitempty"`
+	Permissions       []Permission                 `json:"permissions,omitempty"`
+	PermissionReasons map[Permission]LocalizedText `json:"permission_reasons,omitempty"`
+	Surfaces          []Surface                    `json:"surfaces,omitempty"`
+	Icon              DuoIconSpec                  `json:"icon"`
+	Contributes       *Contributes                 `json:"contributes,omitempty"`
 }
 
 // EffectiveCategory returns the canonical App Store category for m.
@@ -337,6 +388,25 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("manifest.permissions duplicates %q", p)
 		}
 		seenPerm[p] = true
+	}
+	for perm, reason := range m.PermissionReasons {
+		if !validPermissions[perm] {
+			return fmt.Errorf("manifest.permission_reasons contains unknown permission %q", perm)
+		}
+		if !seenPerm[perm] {
+			return fmt.Errorf("manifest.permission_reasons[%q] requires %q in manifest.permissions", perm, perm)
+		}
+		zh := strings.TrimSpace(reason.Zh)
+		en := strings.TrimSpace(reason.En)
+		if zh == "" && en == "" {
+			return fmt.Errorf("manifest.permission_reasons[%q] must provide zh or en text", perm)
+		}
+		if utf8.RuneCountInString(zh) > 80 || utf8.RuneCountInString(en) > 140 {
+			return fmt.Errorf("manifest.permission_reasons[%q] exceeds length limit (zh<=80, en<=140)", perm)
+		}
+		if ContainsEmoji(zh) || ContainsEmoji(en) {
+			return fmt.Errorf("manifest.permission_reasons[%q] must not contain emoji", perm)
+		}
 	}
 	if !declarative && len(m.Surfaces) == 0 {
 		return errors.New("manifest.surfaces must declare [\"settings_page\"]")
