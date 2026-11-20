@@ -180,11 +180,17 @@ func visibleStoreCards(ctrl *Controller, locale string, installedOnly bool) []st
 		if query != "" {
 			primary := []string{
 				entry.Name.Resolve(locale),
+				entry.Name.Zh,
+				entry.Name.En,
 				entry.ID,
 				entry.Author,
 				strings.Join(entry.FileExtensions, " "),
 			}
-			secondary := []string{entry.Summary.Resolve(locale)}
+			secondary := []string{
+				entry.Summary.Resolve(locale),
+				entry.Summary.Zh,
+				entry.Summary.En,
+			}
 			sc, ok := fuzzy.Score(query, primary, secondary, false)
 			if !ok {
 				continue
@@ -383,8 +389,12 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, name).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-							FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						var nameMarks [][2]int
+						if q := strings.TrimSpace(ctrl.storeQuery); q != "" {
+							nameMarks = fuzzy.HighlightRanges(name, q)
+						}
+						bui.HighlightedText(c, name, nameMarks, theme.FontTitle, theme.WeightTitle, pal.Text, pal.SearchHighlight).
+							FixedLineHeight(theme.LineTitle).MinWidth(0).Shrink(1)
 						if storeAppIsBeta(entry, card.installed, card.isInstalled) {
 							bui.BetaBadge(c, true)
 						}
