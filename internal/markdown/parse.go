@@ -140,8 +140,8 @@ func stripColumns(line string, cols int) string {
 				return spaces + line[i+1:]
 			}
 		default:
-			idx = i
-			rem = 0
+			// Only whitespace is stripped: "```" at column 0 keeps all its backticks.
+			return line[i:]
 		}
 	}
 	return line[idx:]
