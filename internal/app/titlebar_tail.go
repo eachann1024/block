@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,7 @@ const titlebarActionTrailing = 12
 // renderTitlebarTail renders the right rail (thinkly-fast render_titlebar_tail):
 // notes show feedback, AI, then the page more pill; other surfaces put their
 // context tools before feedback and AI.
-func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
+func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float32) {
 	pad := float32(titlebarActionTrailing)
 	if !theme.IsMacOS() {
 		pad = 0
@@ -32,28 +33,32 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset float32) {
 	} else if surface == SurfaceEmpty {
 		surface = SurfaceNote
 	}
+	showFeedback := !slotHidden(p, plugins.TitlebarSlotFeedback)
+	showAI := p.AIEnabled && !slotHidden(p, plugins.TitlebarSlotAI)
+	showMore := surface != SurfaceEmpty
+	hasBuiltinTail := showFeedback || showAI || showMore
 	ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(4).Padding(0, pad, 0, 0).Children(func() {
 		if surface != SurfaceNote {
-			renderNonNoteTitlebarTools(c, p, surface)
+			renderNonNoteTitlebarTools(c, p, surface, availW)
 		}
-		renderPluginTitlebarButtons(c, p)
-		if !slotHidden(p, plugins.TitlebarSlotFeedback) {
+		renderPluginTitlebarButtons(c, p, hasBuiltinTail, availW)
+		if showFeedback {
 			renderFeedbackButton(c, p)
 		}
-		if p.AIEnabled && !slotHidden(p, plugins.TitlebarSlotAI) {
+		if showAI {
 			renderAIButton(c, p)
 		}
-		if surface != SurfaceEmpty {
-			renderPageMorePill(c, p)
+		if showMore {
+			renderPageMorePill(c, p, availW)
 		}
 	})
 }
 
 // renderPluginTitlebarButtons draws the plugin zone: up to maxInlinePluginButtons
 // buttons, an overflow button for the rest, then a hairline before the built-in tools.
-func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps) {
+func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps, hasBuiltinTail bool, availW float32) {
 	vpW, _ := c.Size()
-	inline, overflow := splitPluginTitlebarButtons(p, vpW)
+	inline, overflow := splitPluginTitlebarButtons(p, vpW, availW)
 	if len(inline) == 0 && len(overflow) == 0 {
 		return
 	}
@@ -63,46 +68,95 @@ func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps) {
 	if len(overflow) > 0 {
 		renderPluginOverflowButton(c, p, overflow)
 	}
-	ui.Box(c).Size(1, 14).Shrink(0).MarginX(2).Background(theme.Ocean().BtnBorder)
+	if hasBuiltinTail {
+		ui.Box(c).Size(1, 14).Shrink(0).MarginX(2).Background(theme.Ocean().BtnBorder)
+	}
 }
 
 func renderPluginOverflowButton(c *ui.Context, p TitlebarProps, overflow []plugins.ResolvedTitlebarButton) {
+	pal := theme.Ocean()
 	open := p.MenuState != nil && p.MenuState.PluginMenuOpen
-	tip := theme.Tr("更多插件", "More Plugins") + " · " + strconv.Itoa(len(overflow))
-	if open {
-		tip = ""
-	}
 	const id = "titlebar-plugin-overflow"
-	btn := blockui.IconButton(c, icons.Plug, blockui.IconButtonOptions{
-		ID:          id,
-		Label:       theme.Tr("更多插件", "More Plugins"),
-		Tooltip:     tip,
-		Active:      open,
-		ActiveStyle: blockui.ActiveAccent,
-		ChromeHover: true,
-	})
 	// A folded button that is active or carries a badge still needs to be noticed.
 	attention := false
+	attentionLabel := ""
 	for _, b := range overflow {
 		if b.Active || strings.TrimSpace(b.Badge) != "" {
 			attention = true
-			break
+			if attentionLabel == "" {
+				attentionLabel = pluginButtonLabel(b)
+			}
 		}
 	}
-	if attention && !open {
-		dot := theme.Ocean().Accent
-		// DrawOver replaces the smoke probe's, so record its bounds here too.
-		btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-			blockui.RecordBounds(id, r)
-			pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
+	a11yLabel := fmt.Sprintf(theme.Tr("更多插件（%d 个已收起）", "More Plugins (%d folded)"), len(overflow))
+	if attentionLabel != "" {
+		a11yLabel = fmt.Sprintf(theme.Tr("更多插件（%d 个已收起，含提醒：%s）", "More Plugins (%d folded, attention: %s)"), len(overflow), attentionLabel)
+	}
+	c.Key(id)
+	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
+		Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(a11yLabel)
+	if p.MenuState != nil {
+		btn.Bind(&p.MenuState.PluginOverflowTrigger)
+	}
+	if !open {
+		rows := []blockui.TooltipRow{{
+			Trigger: theme.Tr("更多插件", "More Plugins"),
+			Detail:  strconv.Itoa(len(overflow)),
+		}}
+		if attentionLabel != "" {
+			rows = append(rows, blockui.TooltipRow{
+				Trigger:     attentionLabel,
+				TriggerTone: blockui.TooltipToneAccent,
+			})
+		}
+		blockui.RichTooltip(c, btn, blockui.TooltipSpec{
+			Placement: blockui.TooltipBelow,
+			Rows:      rows,
 		})
 	}
+	hovered, pressed := btn.Hovered(), btn.Pressed()
+	bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, open
+	if open {
+		bgCol = pal.Selected
+		bdCol = pal.SelectedBorder
+	} else if pressed || hovered {
+		bgCol = pal.ShellChrome().Hover
+	}
+	blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
+	blockui.TactileButton(btn, hovered, pressed, false)
+	btn.Children(func() {
+		ic := pal.MonoIconColors(pal.TextSecondary)
+		if open || hovered || pressed {
+			ic = pal.DuoIconColors(pal.Text)
+		}
+		icons.DrawAnimated(c, icons.Plug, theme.IconChrome, ic, open || hovered || pressed)
+		if !open {
+			countText := strconv.Itoa(len(overflow))
+			if len(overflow) > 9 {
+				countText = "9+"
+			}
+			badgeBG, badgeFG := pal.IconFill, pal.Text
+			if attention {
+				badgeBG, badgeFG = pal.Accent, pal.AccentText
+			}
+			ui.Box(c).Absolute().Top(0).Right(0).Height(13).MinWidth(13).PaddingX(theme.Space2).
+				Center().Radius(theme.RadiusPill).Background(badgeBG).IgnoreInput(true).
+				Children(func() {
+					ui.Text(c, countText).FontSize(theme.FontMicro).LineHeight(1).
+						FontWeight(theme.WeightTitle).TextColor(badgeFG).SingleLine()
+				})
+		}
+	})
+	blockui.Probe(btn, id)
 	if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
 		p.MenuState.PluginMenuAnchor = b
 	}
 	if btn.Clicked() && p.MenuState != nil {
 		p.MenuState.Close()
 		p.MenuState.PluginMenuOpen = !open
+		if !open {
+			p.MenuState.MenuTrigger = &p.MenuState.PluginOverflowTrigger
+		}
 	}
 }
 
@@ -113,12 +167,18 @@ func isDotBadge(badge string) bool {
 
 func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.ResolvedTitlebarButton) {
 	pal := theme.Ocean()
-	id := "titlebar-plugin-" + b.PluginID + "-" + b.ID
-	c.Key(id)
+	slotID := pluginButtonSlotID(b)
+	ctxOpen := p.MenuState != nil && p.MenuState.PluginCtxOpen && p.MenuState.PluginCtxSlotID == slotID
+	key := "titlebar-plugin:" + slotID
+	legacyProbeID := "titlebar-plugin-" + b.PluginID + "-" + b.ID
+	c.Key(key)
 	btn := ui.ButtonBase(c).Size(theme.ChromeBoxSize, theme.ChromeBoxSize).Shrink(0).Center().
 		Radius(theme.RadiusMD).Cursor(ui.CursorPointer)
+	if ctxOpen {
+		btn.Bind(&p.MenuState.PluginCtxTrigger)
+	}
 	btn.Label(pluginButtonLabel(b))
-	if b.Tooltip != "" {
+	if b.Tooltip != "" && !ctxOpen {
 		blockui.RichTooltip(c, btn, blockui.TooltipSpec{
 			Placement: blockui.TooltipBelow,
 			Rows:      []blockui.TooltipRow{{Trigger: b.Tooltip}},
@@ -126,8 +186,9 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 	}
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, b.Active
-	if b.Active {
+	active := b.Active || ctxOpen
+	bgCol, bdCol, hasBorder := ui.Transparent, ui.Transparent, active
+	if active {
 		bgCol = pal.Selected
 		bdCol = pal.SelectedBorder
 	} else if pressed || hovered {
@@ -140,7 +201,7 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 	dotBadge := isDotBadge(badge)
 	btn.Children(func() {
 		ic := pal.MonoIconColors(pal.TextSecondary)
-		if b.Active || hovered || pressed {
+		if active || hovered || pressed {
 			ic = pal.DuoIconColors(pal.Text)
 		}
 		pluginui.DrawDuoSpec(c, b.Icon, theme.IconChrome, ic)
@@ -156,13 +217,30 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 	if dotBadge {
 		dot := pal.Accent
 		btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
-			blockui.RecordBounds(id, r)
+			blockui.RecordBounds(key, r)
+			blockui.RecordBounds(legacyProbeID, r)
 			pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
 		})
-	} else {
-		blockui.Probe(btn, id)
+	} else if blockui.IsProbeEnabled() {
+		btn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+			blockui.RecordBounds(key, r)
+			blockui.RecordBounds(legacyProbeID, r)
+		})
 	}
-	if btn.Clicked() && p.OnPluginButton != nil {
+	if ctxOpen {
+		if bounds := btn.Bounds(); bounds.W > 0 {
+			p.MenuState.PluginCtxAnchor = bounds
+		}
+	}
+	openCtx := btn.RightClicked() ||
+		((btn.Shortcut(0, ui.KeyP) || btn.Shortcut(ui.Shift, ui.KeyF10)) && !c.ShortcutRepeated())
+	if openCtx && p.MenuState != nil && (p.OnTogglePinPlugin != nil || p.OnOpenPluginStore != nil) {
+		p.MenuState.Close()
+		p.MenuState.PluginCtxOpen = true
+		p.MenuState.PluginCtxSlotID = slotID
+		p.MenuState.PluginCtxAnchor = btn.Bounds()
+		p.MenuState.MenuTrigger = &p.MenuState.PluginCtxTrigger
+	} else if btn.Clicked() && p.OnPluginButton != nil {
 		p.OnPluginButton(b)
 	}
 }
@@ -212,9 +290,13 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 // joined with the annotation send segment when the note has annotations. The
 // segment unfolds leftward out of the more button and folds back into it while
 // staying in the layout, so the titlebar icons beside it glide instead of jump.
-func renderPageMorePill(c *ui.Context, p TitlebarProps) {
+func renderPageMorePill(c *ui.Context, p TitlebarProps, availW float32) {
 	pal := theme.Ocean()
-	split := p.ActiveSurface == SurfaceNote && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
+	vpW, _ := c.Size()
+	narrow := isNarrowTitlebar(vpW, availW)
+	hasSendAction := p.ActiveSurface == SurfaceNote && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll)
+	split := hasSendAction && !narrow
+	foldedSendAttention := hasSendAction && narrow && (p.AnnotDrafts > 0 || p.AnnotGenerating)
 	open := p.MenuState != nil && p.MenuState.PageMenuOpen
 	c.Key("titlebar-action-pill")
 	pill := ui.Row(c).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusMD)
@@ -231,22 +313,47 @@ func renderPageMorePill(c *ui.Context, p TitlebarProps) {
 		if split || reveal > 0.001 {
 			renderSendGroup(c, p, reveal)
 		}
+		moreLabel := theme.Tr("页面操作", "Page Actions")
+		moreTip := ""
+		if foldedSendAttention {
+			if p.AnnotGenerating {
+				moreLabel = theme.Tr("页面操作 · 批注生成中…", "Page Actions · Generating annotations…")
+			} else {
+				moreLabel = theme.Tr("页面操作 · 待发送批注 ", "Page Actions · Pending annotations ") + strconv.Itoa(p.AnnotDrafts)
+			}
+			if !open {
+				moreTip = moreLabel
+			}
+		}
 		btn := blockui.IconButton(c, icons.More, blockui.IconButtonOptions{
 			ID:          "titlebar-more",
-			Label:       theme.Tr("页面操作", "Page Actions"),
+			Label:       moreLabel,
+			Tooltip:     moreTip,
 			Active:      open,
 			ActiveStyle: blockui.ActiveAccent,
 			Size:        theme.HeightChrome - inset,
 			Radius:      theme.RadiusMD - inset,
 			ChromeHover: !split,
 		})
+		if p.MenuState != nil {
+			btn.Bind(&p.MenuState.PageMoreTrigger)
+		}
+		if foldedSendAttention && !open {
+			dot := pal.AnnotSendDot
+			btn.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+				blockui.RecordBounds("titlebar-more", r)
+				pt.Fill(ui.Rect{X: r.X + r.W - 3 - 5.5, Y: r.Y + 3, W: 5.5, H: 5.5}, dot, 2.75)
+			})
+		}
 		if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
 			p.MenuState.PageMenuAnchor = b
 		}
 		if btn.Clicked() && p.MenuState != nil {
-			p.MenuState.MenuCursor = -1
-			p.MenuState.TabMenuOpen = false
-			p.MenuState.PageMenuOpen = !p.MenuState.PageMenuOpen
+			p.MenuState.Close()
+			p.MenuState.PageMenuOpen = !open
+			if !open {
+				p.MenuState.MenuTrigger = &p.MenuState.PageMoreTrigger
+			}
 		}
 	})
 }

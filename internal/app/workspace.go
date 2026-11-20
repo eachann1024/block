@@ -4315,8 +4315,10 @@ func (w *Workspace) Render(c *ui.Context) {
 
 	root.Children(func() {
 		// 1. Top 40px Titlebar (hidden in AI Immersive full-window mode).
-		if !aiImmersive {
-			brandHasUpdate, brandUpdateTip := w.brandUpdateHint()
+		if aiImmersive {
+			w.tabMenu.Close()
+		} else {
+			brandHasUpdate, brandUpdateChecking, brandUpdateTip, brandUpdateMenuLabel, brandUpdateHint := w.brandUpdateHint()
 			RenderTitlebar(c, TitlebarProps{
 				SidebarWide:       sidebarWide,
 				SidebarAutoHidden: sidebarAutoHidden,
@@ -4521,21 +4523,33 @@ func (w *Workspace) Render(c *ui.Context) {
 				HiddenSlots:      w.pluginHiddenTitlebarSlots(),
 				AppVersion:       updater.CurrentVersion(),
 				HasUpdate:        brandHasUpdate,
+				UpdateChecking:   brandUpdateChecking,
 				UpdateTooltip:    brandUpdateTip,
+				UpdateMenuLabel:  brandUpdateMenuLabel,
+				UpdateHint:       brandUpdateHint,
 				OnOpenUpdater: func() {
+					// OpenUpdater already initiates a check when StatusIdle; only force a
+					// manual refresh if the updater was already settled at UpToDate/Error.
+					forceRefresh := false
+					if w.updater != nil {
+						snap := w.updater.Snapshot()
+						forceRefresh = snap.Status == updater.StatusUpToDate || snap.Status == updater.StatusError
+					}
 					w.modals.OpenUpdater()
-					if w.updater != nil && !brandHasUpdate {
+					if forceRefresh && w.updater != nil {
 						w.updater.CheckAsync(true)
 					}
 				},
 				OnOpenPluginStore: func() {
 					w.OpenSettings("app-store")
 				},
-				OnOpenAbout: w.modals.OpenAbout,
-				PluginButtons:    w.pluginTitlebarButtons(),
-				OnPluginButton:   w.onPluginTitlebarButton,
-				PluginPageMenu:   w.pluginPageMenuItems(),
-				OnPluginMenuItem: w.onPluginPageMenuItem,
+				OnOpenAbout:       w.modals.OpenAbout,
+				PluginButtons:     w.pluginTitlebarButtons(),
+				PinnedPluginSlots: stSnap.PinnedPluginButtons,
+				OnTogglePinPlugin: w.togglePinnedPluginButton,
+				OnPluginButton:    w.onPluginTitlebarButton,
+				PluginPageMenu:    w.pluginPageMenuItems(),
+				OnPluginMenuItem:  w.onPluginPageMenuItem,
 			})
 		}
 
@@ -5043,25 +5057,76 @@ func (w *Workspace) Updater() *updater.Service {
 	return w.updater
 }
 
+func (w *Workspace) togglePinnedPluginButton(slotID string) bool {
+	slotID = strings.TrimSpace(slotID)
+	if slotID == "" {
+		return false
+	}
+	var activeSlots map[string]bool
+	if buttons := w.pluginTitlebarButtons(); len(buttons) > 0 {
+		activeSlots = make(map[string]bool, len(buttons))
+		for _, b := range buttons {
+			activeSlots[pluginButtonSlotID(b)] = true
+		}
+	}
+	next, err := files.UpdateState(func(s *model.AppState) {
+		s.PinnedPluginButtons = TogglePinnedPluginSlot(s.PinnedPluginButtons, slotID, activeSlots)
+	})
+	if err != nil {
+		files.LogWarnf("pinned plugin buttons save failed: %v", err)
+		msg := theme.Tr("保存固定设置失败", "Failed to save pinned buttons")
+		w.setNotice(msg)
+		if w.pluginUI != nil {
+			w.pluginUI.Toast("", msg, "error")
+		}
+		w.RequestRedraw()
+		return false
+	}
+	w.mu.Lock()
+	w.state.PinnedPluginButtons = next.PinnedPluginButtons
+	w.mu.Unlock()
+	w.RequestRedraw()
+	return true
+}
+
 // brandUpdateHint reports whether the titlebar brand mark should carry the update dot,
-// and the progress line shown in its tooltip and menu.
-func (w *Workspace) brandUpdateHint() (hasUpdate bool, tip string) {
+// whether an update check is currently in flight, and concise labels for tooltip & menu.
+func (w *Workspace) brandUpdateHint() (hasUpdate, checking bool, tip, menuLabel, menuHint string) {
 	if w.updater == nil {
-		return false, ""
+		return false, false, "", "", ""
 	}
 	snap := w.updater.Snapshot()
+	if snap.Status == updater.StatusChecking {
+		return false, true, "", theme.Tr("正在检查更新…", "Checking for Updates…"), ""
+	}
 	if !snap.HasActionableUpdate() {
-		return false, ""
+		return false, false, "", "", ""
+	}
+	ver := ""
+	if snap.LatestVersion != "" {
+		ver = "v" + snap.LatestVersion
 	}
 	switch snap.Status {
 	case updater.StatusDownloading:
-		return true, fmt.Sprintf(theme.Tr("正在下载 v%s · %d%%", "Downloading v%s · %d%%"), snap.LatestVersion, snap.Percent)
+		return true, false,
+			fmt.Sprintf(theme.Tr("正在下载 %s · %d%%", "Downloading %s · %d%%"), nonEmptyOr(ver, theme.Tr("更新", "update")), snap.Percent),
+			theme.Tr("正在下载更新", "Downloading Update"),
+			fmt.Sprintf("%d%%", snap.Percent)
 	case updater.StatusInstalling:
-		return true, theme.Tr("正在保存笔记并重启…", "Saving notes and restarting…")
+		return true, false,
+			theme.Tr("正在保存笔记并重启…", "Saving notes and restarting…"),
+			theme.Tr("正在重启安装…", "Restarting to Install…"),
+			""
 	case updater.StatusReady:
-		return true, fmt.Sprintf(theme.Tr("新版本 v%s 已就绪", "Update v%s is ready"), snap.LatestVersion)
+		return true, false,
+			fmt.Sprintf(theme.Tr("新版本 %s 已就绪", "Update %s is ready"), nonEmptyOr(ver, theme.Tr("更新", "update"))),
+			theme.Tr("新版本已就绪", "Update Ready"),
+			ver
 	default:
-		return true, fmt.Sprintf(theme.Tr("发现新版本 v%s", "Update v%s available"), snap.LatestVersion)
+		return true, false,
+			fmt.Sprintf(theme.Tr("发现新版本 %s", "Update %s available"), nonEmptyOr(ver, theme.Tr("更新", "update"))),
+			theme.Tr("发现新版本", "Update Available"),
+			ver
 	}
 }
 
