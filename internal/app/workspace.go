@@ -1878,10 +1878,10 @@ func (w *Workspace) UndoLastPlan(plan *model.BatchPlan) error {
 }
 
 func (w *Workspace) OpenPluginStoreSource(source string) {
+	w.OpenSettings(modals.TabAppStore)
 	if w.pluginsUI != nil {
 		w.pluginsUI.OpenStoreSource(source)
 	}
-	w.OpenSettings(modals.TabAppStore)
 }
 
 func (w *Workspace) OpenSettings(tab string) {

@@ -8,12 +8,17 @@ import (
 )
 
 const (
-	TabAppStore     = "app-store"
-	TabPluginPrefix = "plugin:"
+	TabAppStore       = "app-store"
+	TabStoreInstalled = "app-store-installed"
+	TabPluginPrefix   = "plugin:"
 )
 
 func IsPluginSystemTab(tab string) bool {
-	return tab == TabAppStore || strings.HasPrefix(tab, TabPluginPrefix)
+	return IsStoreTab(tab) || strings.HasPrefix(tab, TabPluginPrefix)
+}
+
+func IsStoreTab(tab string) bool {
+	return tab == TabAppStore || tab == TabStoreInstalled
 }
 
 // PluginNavEntry represents a lower-partition Settings sidebar row ("应用商店" or an installed app).
@@ -30,6 +35,8 @@ type PluginNavEntry struct {
 // PluginSettingsHost decouples Settings UI chrome from the App Store & out-of-process plugin runtime.
 type PluginSettingsHost interface {
 	SettingsTabChanged(previous, current string)
+	StoreListing(tab string) bool
+	RenderStoreFooter(c *ui.Context)
 	NavEntries() []PluginNavEntry
 	TabTitle(tab string) string
 	TabIsBeta(tab string) bool
