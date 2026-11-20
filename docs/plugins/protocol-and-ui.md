@@ -22,18 +22,23 @@
        "notebook_root": "/abs/path/to/notebook",
        "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
+       "theme": "system",
+       "tarot": false,
        "host_version": "1.0.854",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "host_perf", "checklist", "form_layout",
          "multi_notebook", "card_collapse", "metric_tone", "log_columns", "file_picker",
-         "action_feedback", "action_progress", "note_revision"
+         "action_feedback", "action_progress", "note_revision",
+         "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
+         "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
+         "editor_insert_mode", "dialog_token"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -116,7 +121,9 @@
      2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
      3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
    - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
-8. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
+8. **`host.notes.open`**（需 `"notes:read"`）
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选；严格校验目标为已注册笔记本内的合法普通 Markdown 文件且非符号链接）-> 在桌面编辑器中切换打开目标笔记（若设置页开着会自动收起）并返回 `{"ok": true, "path": "welcome.md"}`；无 UI 宿主环境（如 CLI 校验）返回 `-32005`。
+9. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
    - 在 `plugin.action` 执行期间实时上报进度，推荐以 JSON-RPC 2.0 通知（省略 `id`，无需等待响应，宿主走内联快速通道以保证顺序且不占并发槽）发送，也支持普通调用（返回 `{"ok": true}`）：
      - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
      - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
@@ -311,6 +318,7 @@
     - `tone`：前导状态点支持语义色（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`/`"accent"`）与柔和色板键；`ratio` 占比条仅使用柔和色板键（传 `"success"` 等语义色会回退中性底色）
     - `ratio`：约定传 `0`–`1` 浮点数（`<= 0` 不画条，`> 0` 渲染时夹到 `4%`–`100%` 并隐藏前导状态点）
     - `tooltip`：整行悬停提示
+    - `action_id`：可选点击动作 ID（`ui_capabilities` 含 `log_actions` 时生效，<= 128 字符、禁止 Emoji；点击该行时触发当前表面的 `plugin.action`，常配合 `host.notes.open` 实现侧栏/面板一键跳转笔记）
     ```json
     {
       "kind": "log_list",
