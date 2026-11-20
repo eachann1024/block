@@ -162,6 +162,11 @@ func (s *Session) SelectedDoc() *model.Doc {
 		return nil
 	}
 	normalizeCopiedBlocks(blocks)
+	if s.doc != nil && s.doc.CleanRaw != "" && s.codec != nil {
+		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+			exp.ExpandBlockRefCleanSources(blocks, s.doc.CleanRaw)
+		}
+	}
 	return &model.Doc{Blocks: blocks, TrailingLine: "\n"}
 }
 
@@ -205,6 +210,18 @@ func (s *Session) SelectedMarkdown() string {
 			lo := clampInt(a.Offset, 0, len(runes))
 			hi := clampInt(b.Offset, lo, len(runes))
 			return string(runes[lo:hi])
+		}
+		if whole && !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
+			cp := blk.Clone()
+			cp.ID = model.NewBlockID()
+			single := []model.Block{cp}
+			normalizeCopiedBlocks(single)
+			if s.doc != nil && s.doc.CleanRaw != "" && s.codec != nil {
+				if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+					exp.ExpandBlockRefCleanSources(single, s.doc.CleanRaw)
+				}
+			}
+			return strings.TrimSuffix(s.serializeBlocks(single), "\n")
 		}
 		spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
 		return serializeInlineBlockMarkdown(spans, s.codec)
@@ -410,10 +427,13 @@ func (s *Session) sliceBlockForSelection(idx, lo, hi int, preserveContainer bool
 	if lo == 0 && hi == rlen && preserveContainer {
 		cp := blk.Clone()
 		cp.ID = model.NewBlockID()
-		cp.Dirty = true
-		cp.CleanSource = ""
 		if cp.Kind == model.BlockNumbered {
-			cp.ListIndex = s.numberedListIndex(idx)
+			nextIdx := s.numberedListIndex(idx)
+			if nextIdx != cp.ListIndex {
+				cp.Dirty = true
+				cp.CleanSource = ""
+			}
+			cp.ListIndex = nextIdx
 		}
 		return cp
 	}
@@ -488,6 +508,10 @@ func normalizeCopiedBlocks(blocks []model.Block) {
 			}
 		} else if orig > 0 {
 			b.Indent = 0
+		}
+		if b.Indent != orig {
+			b.Dirty = true
+			b.CleanSource = ""
 		}
 		if isList {
 			ancestors = append(ancestors, ancestor{orig: orig, next: b.Indent})
@@ -840,7 +864,8 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	// Single-line text without block markers inserts inline at selection (preserving leading/trailing spaces).
-	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+	preserveInlineImageBlock := b.Kind == model.BlockParagraph && b.PlainText() == "" && strings.Contains(norm, "![")
+	if !strings.Contains(norm, "\n") && !looksLikeMarkdownBlock(norm) && !preserveInlineImageBlock && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
 		if !looksLikeInlineMarkdown(norm) {
 			s.replaceCurrentSelectionInBlock(idx, norm)
 		} else {
@@ -861,6 +886,11 @@ func (s *Session) PasteText(raw string) {
 		}
 		return
 	}
+	if parsed.CleanRaw != "" && strings.Contains(parsed.CleanRaw, "]:") && s.codec != nil {
+		if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+			exp.ExpandBlockRefCleanSources(parsed.Blocks, parsed.CleanRaw)
+		}
+	}
 
 	// Collapse blank separator blocks so pasting never spawns empty paragraph blocks (Notion / Feishu rule).
 	filtered := make([]model.Block, 0, len(parsed.Blocks))
@@ -871,8 +901,15 @@ func (s *Session) PasteText(raw string) {
 		if pb.ID == 0 {
 			pb.ID = model.NewBlockID()
 		}
-		pb.Dirty = true
-		pb.CleanSource = ""
+		if !pb.Dirty && pb.CleanSource != "" && strings.Contains(pb.CleanSource, "![") {
+			// Preserve self-contained CleanSource for inline/nested image syntax (e.g. `[![alt](img)](url)`).
+			if !strings.HasSuffix(pb.CleanSource, "\n") {
+				pb.CleanSource += "\n"
+			}
+		} else {
+			pb.Dirty = true
+			pb.CleanSource = ""
+		}
 		filtered = append(filtered, pb)
 	}
 	if len(filtered) == 0 {
@@ -880,11 +917,236 @@ func (s *Session) PasteText(raw string) {
 	}
 
 	if len(filtered) == 1 && filtered[0].Kind == model.BlockParagraph && b.Kind != model.BlockDivider && b.Kind != model.BlockImage {
+		if b.Kind == model.BlockParagraph && b.PlainText() == "" && !filtered[0].Dirty && filtered[0].CleanSource != "" {
+			s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
+			if idx >= 0 && idx < len(s.doc.Blocks) {
+				s.doc.Blocks[idx].CleanSource = filtered[0].CleanSource
+				s.doc.Blocks[idx].Dirty = false
+			}
+			return
+		}
 		s.replaceSelectionWithSpansInBlock(idx, filtered[0].Spans)
 		return
 	}
 
 	s.splicePastedBlocksAtSelection(idx, filtered)
+}
+
+// InsertMarkdown inserts Markdown-formatted content from a plugin or host action
+// into a Markdown note, rendering native blocks immediately while preserving
+// each newly parsed block's CleanSource so invisible HTML comments (e.g. plugin
+// markers) survive serialization verbatim. When replaceSelection is false, any
+// active selection is collapsed to its end first so user text is never overwritten.
+func (s *Session) InsertMarkdown(source string, replaceSelection bool) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(source) > media.MaxPasteBytes {
+		return false
+	}
+	s.clearAutoConvertState()
+	s.closeTransientOverlays()
+
+	clean := strings.TrimPrefix(source, "\uFEFF")
+	clean = strings.ReplaceAll(strings.ReplaceAll(clean, "\r\n", "\n"), "\r", "\n")
+
+	if !replaceSelection {
+		s.CollapseSelectionToEnd()
+	}
+	if clean == "" {
+		if replaceSelection && s.hasNonEmptySelection() {
+			return s.ReplaceSelectionWithText("")
+		}
+		return true
+	}
+
+	a, b := s.orderedSelection()
+	if a.Block < 0 || b.Block >= len(s.doc.Blocks) {
+		return false
+	}
+	first, last := a.Block, b.Block
+	if first != last && s.crossesHiddenFold(first, last) && !s.selectionCoversWholeDoc(a, b) {
+		return false
+	}
+	startBlk := &s.doc.Blocks[first]
+
+	// Literal insert inside code / raw HTML blocks.
+	if first == last && (startBlk.Kind == model.BlockCode || startBlk.Kind == model.BlockRawHTML) {
+		s.pushUndo()
+		s.firstLineDeleteArmed = false
+		s.replaceCurrentSelectionInBlock(first, clean)
+		return true
+	}
+
+	// Table cell fallback: preserve table structure rather than splitting table rows.
+	if first == last && startBlk.Kind == model.BlockTable && startBlk.Table != nil {
+		rlen := len([]rune(startBlk.PlainText()))
+		if a.Offset != 0 || b.Offset != rlen {
+			if s.hasNonEmptySelection() {
+				return s.ReplaceSelectionWithText(clean)
+			}
+			s.PastePlainText(clean)
+			return true
+		}
+	}
+
+	parsed := s.parseMarkdownDoc(clean)
+	if parsed == nil || len(parsed.Blocks) == 0 {
+		if s.hasNonEmptySelection() {
+			return s.ReplaceSelectionWithText(clean)
+		}
+		s.PastePlainText(clean)
+		return true
+	}
+
+	blocks := make([]model.Block, 0, len(parsed.Blocks))
+	for _, blk := range parsed.Blocks {
+		if blk.Kind == model.BlockParagraph && blk.Indent == 0 && len(blk.Spans) == 0 {
+			continue
+		}
+		blk.ID = model.NewBlockID()
+		if blk.CleanSource == "" {
+			blk.Dirty = true
+		} else {
+			blk.Dirty = false
+		}
+		blocks = append(blocks, blk)
+	}
+	if len(blocks) == 0 {
+		return true
+	}
+
+	// Single plain/rich paragraph without hidden HTML comments merges inline.
+	isInline := len(blocks) == 1 &&
+		blocks[0].Kind == model.BlockParagraph &&
+		blocks[0].Indent == 0 &&
+		!strings.Contains(blocks[0].CleanSource, "<!--")
+
+	if isInline {
+		allRich := true
+		for i := first; i <= last; i++ {
+			k := s.doc.Blocks[i].Kind
+			if k == model.BlockTable || k == model.BlockImage || k == model.BlockDivider || k == model.BlockCode || k == model.BlockRawHTML {
+				allRich = false
+				break
+			}
+		}
+		if allRich {
+			s.pushUndo()
+			s.firstLineDeleteArmed = false
+			prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
+			lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
+			suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
+			var merged []model.Span
+			merged = append(merged, prefix...)
+			merged = append(merged, blocks[0].Spans...)
+			merged = append(merged, suffix...)
+			updated := s.doc.Blocks[first].Clone()
+			updated.Spans = normalizeSpans(merged)
+			updated.Dirty = true
+			updated.CleanSource = ""
+			s.spliceBlocks(first, last+1, []model.Block{updated})
+			caret := a.Offset + len([]rune(blocks[0].PlainText()))
+			s.focusedBlock = first
+			s.selAnchor = Position{Block: first, Offset: caret}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+	}
+
+	s.pushUndo()
+	s.firstLineDeleteArmed = false
+
+	// Caret collapsed at end or start of a non-empty block: splice adjacent without
+	// dirtying or stripping CleanSource from the untouched neighboring block.
+	if first == last && a.Offset == b.Offset {
+		curBlk := &s.doc.Blocks[first]
+		if curBlk.Kind == model.BlockDivider || curBlk.Kind == model.BlockImage {
+			s.spliceBlocks(first+1, first+1, blocks)
+			endIdx := first + len(blocks)
+			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			s.focusedBlock = endIdx
+			s.selAnchor = Position{Block: endIdx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+		curLen := len([]rune(curBlk.PlainText()))
+		if curLen > 0 && a.Offset >= curLen {
+			s.spliceBlocks(first+1, first+1, blocks)
+			endIdx := first + len(blocks)
+			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			s.focusedBlock = endIdx
+			s.selAnchor = Position{Block: endIdx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+		if curLen > 0 && a.Offset == 0 {
+			s.spliceBlocks(first, first, blocks)
+			endIdx := first + len(blocks) - 1
+			endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+			s.focusedBlock = endIdx
+			s.selAnchor = Position{Block: endIdx, Offset: endOff}
+			s.selHead = s.selAnchor
+			s.focusPending = true
+			s.selSyncPending = true
+			s.multiSelFocusPending = false
+			s.markDirty()
+			return true
+		}
+	}
+
+	// Structural replacement / mid-block split (preserves CleanSource on inserted blocks).
+	var inserted []model.Block
+	if a.Offset > 0 && first < len(s.doc.Blocks) &&
+		s.doc.Blocks[first].Kind != model.BlockTable &&
+		s.doc.Blocks[first].Kind != model.BlockCode &&
+		s.doc.Blocks[first].Kind != model.BlockImage &&
+		s.doc.Blocks[first].Kind != model.BlockDivider {
+		prefix := sliceSpans(s.doc.Blocks[first].Spans, 0, a.Offset)
+		if len(prefix) > 0 {
+			pb := s.doc.Blocks[first].Clone()
+			pb.Spans = normalizeSpans(prefix)
+			pb.Dirty = true
+			pb.CleanSource = ""
+			inserted = append(inserted, pb)
+		}
+	}
+	lastInsertedRel := len(inserted) + len(blocks) - 1
+	inserted = append(inserted, blocks...)
+	if last < len(s.doc.Blocks) &&
+		s.doc.Blocks[last].Kind != model.BlockTable &&
+		s.doc.Blocks[last].Kind != model.BlockCode &&
+		s.doc.Blocks[last].Kind != model.BlockImage &&
+		s.doc.Blocks[last].Kind != model.BlockDivider {
+		lastRunes := len([]rune(s.doc.Blocks[last].PlainText()))
+		if b.Offset < lastRunes {
+			suffix := sliceSpans(s.doc.Blocks[last].Spans, b.Offset, lastRunes)
+			if len(suffix) > 0 {
+				sb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: normalizeSpans(suffix), Dirty: true}
+				inserted = append(inserted, sb)
+			}
+		}
+	}
+	s.spliceBlocks(first, last+1, inserted)
+	endIdx := clampInt(first+lastInsertedRel, 0, len(s.doc.Blocks)-1)
+	endOff := len([]rune(s.doc.Blocks[endIdx].PlainText()))
+	s.focusedBlock = endIdx
+	s.selAnchor = Position{Block: endIdx, Offset: endOff}
+	s.selHead = s.selAnchor
+	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
+	s.markDirty()
+	return true
 }
 
 // PastePlainText inserts unformatted literal text (Cmd/Ctrl+Shift+V) without parsing Markdown, HTML, or URLs.
