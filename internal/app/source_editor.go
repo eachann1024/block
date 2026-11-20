@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"block/internal/files"
+	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -78,15 +79,38 @@ func sourceEditorTheme(pal theme.Palette) *codeed.Theme {
 	return ct
 }
 
-// ensureCodeState creates the editor state from the surface's source text once.
+func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
+	if lang, tag := plugins.ResolveCodeLanguageForFile(filePath); lang != nil {
+		return lang, tag
+	}
+	lang := codeed.LanguageForText(filepath.Base(filePath), text)
+	return lang, files.LanguageTagForPath(filePath)
+}
+
+// ensureCodeState creates the editor state from the surface's source text once
+// and refreshes its syntax language whenever enabled language plugins change.
 func (s *TabSurface) ensureCodeState() *codeed.State {
+	langGen := plugins.LanguageGeneration()
 	if s.code != nil {
+		if s.codeLangGen != langGen {
+			lang, tag := resolveSourceLanguage(s.Path, s.Source.Text)
+			s.code.Buffer.SetLanguage(lang)
+			if tag != "" {
+				s.Source.Language = tag
+			}
+			s.codeLangGen = langGen
+		}
 		return s.code
 	}
 	buf := codeed.NewBuffer(s.Source.Text)
-	buf.SetLanguage(codeed.LanguageForText(filepath.Base(s.Path), s.Source.Text))
+	lang, tag := resolveSourceLanguage(s.Path, s.Source.Text)
+	buf.SetLanguage(lang)
+	if tag != "" {
+		s.Source.Language = tag
+	}
 	s.code = &codeed.State{Buffer: buf, Label: filepath.Base(s.Path)}
 	s.codeVersion = buf.Version()
+	s.codeLangGen = langGen
 	return s.code
 }
 
