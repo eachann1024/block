@@ -32,6 +32,7 @@ const (
 	startDelay    = 5 * time.Second // short enough that quick open-and-close sessions still count
 	checkInterval = 3 * time.Hour
 	retryInterval = 15 * time.Minute // after a failed ping, so a short session later today still counts
+	wakeStep      = 5 * time.Minute  // longest single sleep, so a laptop waking from sleep notices a passed deadline
 	fileName      = "telemetry.json"
 )
 
@@ -91,7 +92,29 @@ func loop(cfg Config) {
 		if _, err := CheckOnce(context.Background(), cfg); err != nil {
 			wait = retryInterval
 		}
-		time.Sleep(wait)
+		now := time.Now()
+		// Check again right after midnight so a session spanning it counts for the new day too.
+		wait = min(wait, untilNextDay(now))
+		sleepUntil(now.Add(wait).Round(0))
+	}
+}
+
+// untilNextDay is the time from now until one minute past the next Beijing midnight.
+func untilNextDay(now time.Time) time.Duration {
+	bj := now.UTC().Add(8 * time.Hour)
+	return bj.Truncate(24 * time.Hour).Add(24*time.Hour + time.Minute).Sub(bj)
+}
+
+// sleepUntil waits for a wall-clock deadline in short steps. The monotonic clock behind
+// time.Sleep can stop while the machine sleeps, which would stretch one long sleep far
+// past the deadline; deadline carries no monotonic reading, so time.Until uses the wall clock.
+func sleepUntil(deadline time.Time) {
+	for {
+		d := time.Until(deadline)
+		if d <= 0 {
+			return
+		}
+		time.Sleep(min(d, wakeStep))
 	}
 }
 
