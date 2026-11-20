@@ -829,16 +829,24 @@ func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *Verifi
 		}
 	}
 	if !checkedPlatformAsset {
-		// Under frequent releases (or feed outage), verify directly against GitHub's exact tag release API.
+		// Under frequent releases (or feed outage), verify directly against GitHub's exact tag release API
+		// with its own fresh timeout budget so an earlier feed timeout cannot starve tag verification.
 		lookupTags := []string{rec.Tag}
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(rec.Tag)), "v") {
 			lookupTags = append(lookupTags, "v"+rec.Version)
 		}
-		var lastTagErr error
+		var transientErr error
 		for _, tag := range lookupTags {
-			rel, tagErr := FetchReleaseByTag(ctx, tag)
-			if tagErr != nil || rel == nil {
-				lastTagErr = tagErr
+			tagCtx, tagCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			rel, tagErr := FetchReleaseByTag(tagCtx, tag)
+			tagCancel()
+			if tagErr != nil {
+				if !errors.Is(tagErr, errReleaseNotFound) {
+					transientErr = tagErr
+				}
+				continue
+			}
+			if rel == nil {
 				continue
 			}
 			if official, ok := matchOfficialReleaseAsset(*rel, rec, info.Size()); ok {
@@ -849,7 +857,10 @@ func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *Verifi
 			}
 			return fmt.Errorf("%w: staged update does not match the official platform release", errStagedIntegrity)
 		}
-		if fetchErr != nil && lastTagErr != nil {
+		if transientErr != nil {
+			return fmt.Errorf("cannot verify the staged update with GitHub: %w", transientErr)
+		}
+		if fetchErr != nil {
 			return fmt.Errorf("cannot verify the staged update with GitHub: %w", fetchErr)
 		}
 	}
@@ -964,8 +975,16 @@ target_dir="$(dirname "$target")"
 target_base="$(basename "$target")"
 staged="$target_dir/.${target_base}.next.$$"
 backup="$target_dir/.${target_base}.bak.$$"
+swapped=0
 
-cleanup_staged() { rm -f "$staged"; }
+cleanup() {
+  rm -f "$staged"
+  if [ "$swapped" -eq 0 ]; then
+    rm -f "$backup"
+  fi
+}
+trap cleanup EXIT
+
 rollback() {
   log "rolling back AppImage to $backup"
   rm -f "$staged"
@@ -984,6 +1003,7 @@ if ! mv -f "$staged" "$target"; then
   rollback
   exit 1
 fi
+swapped=1
 log "swapped AppImage at $target; relaunching"
 "$target" >/dev/null 2>&1 &
 new_pid=$!
