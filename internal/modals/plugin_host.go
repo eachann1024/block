@@ -46,6 +46,7 @@ type PluginSettingsHost interface {
 	RenderTitlebarTrailing(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTitlebarOverlays(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	CloseTitlebarOverlays() bool
+	IsStoreLightboxOpen() bool
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderSettingsSections(c *ui.Context, tab string)
