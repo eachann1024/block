@@ -1,0 +1,1777 @@
+package ui
+
+import (
+	"math"
+
+	"github.com/egoist/mygo/ui"
+)
+
+type sceneRenderCtx struct {
+	p              *ui.Painter
+	ox, oy, w, h   float32
+	alpha          float32 // overall scene opacity [0..1] for smooth crossfades
+	tA1, tA2       float64 // elapsed seconds for tier a1 & tier a2
+	wA1, wA2       float32 // smooth motion envelope [0..1] (fades v-tr cleanly)
+	orbAlpha       float32 // smooth orb visibility [0..1]
+	orbExtraDY     float32 // gentle rise/set during scene or sidebar transitions
+	layerShiftY    float32 // gentle vertical settle during scene transitions
+	showCat        bool
+	avoidRightTail bool
+	vars           sceneTimeVars
+}
+
+func (rc *sceneRenderCtx) at(x, y float32) (float32, float32) {
+	return rc.ox + x, rc.oy + y
+}
+
+func (rc *sceneRenderCtx) col(c ui.Color, op float32) ui.Color {
+	return c.Alpha(op * rc.alpha)
+}
+
+func (rc *sceneRenderCtx) altWave(t float64, delay, dur float32) float32 {
+	if t <= 0 || dur <= 0 {
+		return 0
+	}
+	// CSS animation-direction: alternate with ease-in-out has full round-trip 2*dur.
+	ph := modPos(t+float64(delay), float64(dur)*2)
+	if ph < 0.5 {
+		return smooth(ph * 2)
+	}
+	return smooth((1 - ph) * 2)
+}
+
+func (rc *sceneRenderCtx) loopPhase(t float64, delay, dur float32) float32 {
+	if t <= 0 || dur <= 0 {
+		return 0
+	}
+	return modPos(t+float64(delay), float64(dur))
+}
+
+func (rc *sceneRenderCtx) radialGlow(cx, cy, r float32, c ui.Color, op float32) {
+	a := op * rc.alpha
+	if a <= 0.002 || r <= 0 {
+		return
+	}
+	rc.p.FillRadialGradient(ui.Rect{X: cx - r, Y: cy - r, W: 2 * r, H: 2 * r}, ui.RadialGradient{
+		Radius: r,
+		Stops: []ui.GradientStop{
+			{Color: c.Alpha(a), At: 0},
+			{Color: c.Alpha(0), At: 1},
+		},
+	}, r)
+}
+
+func (rc *sceneRenderCtx) ellipseGlow(cx, cy, rx, ry float32, c ui.Color, op float32) {
+	a := op * rc.alpha
+	if a <= 0.002 || rx <= 0 || ry <= 0 {
+		return
+	}
+	rc.p.Transform(ui.Scaling(rx/ry, 1), cx, cy, func() {
+		rc.p.FillRadialGradient(ui.Rect{X: cx - ry, Y: cy - ry, W: 2 * ry, H: 2 * ry}, ui.RadialGradient{
+			Radius: ry,
+			Stops: []ui.GradientStop{
+				{Color: c.Alpha(a), At: 0},
+				{Color: c.Alpha(0), At: 1},
+			},
+		}, ry)
+	})
+}
+
+func (rc *sceneRenderCtx) fillTerrain(path *ui.Path, c ui.Color) {
+	if rc.alpha <= 0.002 {
+		return
+	}
+	rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
+		rc.p.FillPath(path, c.Alpha(rc.alpha))
+	})
+}
+
+func (rc *sceneRenderCtx) strokeRim(path *ui.Path, width float32, c ui.Color, midStop, midOp, extraOp float32) {
+	a := midOp * extraOp * rc.alpha
+	if a <= 0.002 {
+		return
+	}
+	rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
+		rc.p.StrokePathGradient(path, width, ui.LinearGradient{
+			Angle: 90,
+			Stops: []ui.GradientStop{
+				{Color: c.Alpha(0), At: 0},
+				{Color: c.Alpha(a), At: midStop},
+				{Color: c.Alpha(0), At: 1},
+			},
+		})
+	})
+}
+
+func (rc *sceneRenderCtx) paintMist(m sceneMistBand) {
+	if m.x > rc.w+40 || m.x+m.w < -40 {
+		return
+	}
+	t := rc.tA2
+	if m.tierA1 {
+		t = rc.tA1
+	}
+	dx := float32(0)
+	sx := float32(1)
+	elemOp := float32(0.6)
+	if !m.tierA1 {
+		elemOp = 0.65
+	}
+	if t > 0 {
+		u := rc.altWave(t, m.delaySec, m.durSec)
+		switch m.kind {
+		case mistDriftRight:
+			dx = lerp(0, 24, u)
+			elemOp = lerp(0.40, 0.90, u)
+		case mistDriftLeft:
+			dx = lerp(0, -28, u)
+			sx = lerp(1.0, 1.14, u)
+			elemOp = lerp(0.85, 0.35, u)
+		case mistPulse:
+			elemOp = lerp(0.12, 0.80, u)
+		}
+	}
+	peakA := m.baseOp * elemOp * rc.alpha
+	if peakA <= 0.002 {
+		return
+	}
+	w := m.w * sx
+	cx := m.x + m.w*0.5 + dx
+	x0 := rc.ox + cx - w*0.5
+	y0 := rc.oy + m.y + rc.layerShiftY
+	rc.p.FillGradient(ui.Rect{X: x0, Y: y0, W: w, H: m.h}, ui.LinearGradient{
+		Angle: 90,
+		Stops: []ui.GradientStop{
+			{Color: m.color.Alpha(0), At: 0},
+			{Color: m.color.Alpha(peakA), At: 0.28},
+			{Color: m.color.Alpha(peakA), At: 0.72},
+			{Color: m.color.Alpha(0), At: 1},
+		},
+	}, m.h*0.5)
+}
+
+func (rc *sceneRenderCtx) paintStars(stars []sceneStar, groupOp float32) {
+	if len(stars) == 0 || groupOp*rc.alpha <= 0.002 {
+		return
+	}
+	for i := range stars {
+		st := &stars[i]
+		if st.x >= rc.w-4 {
+			continue
+		}
+		if rc.avoidRightTail && rc.w > 320 && st.x > rc.w-140 && st.y > 4 && st.y < 36 {
+			continue
+		}
+		op := st.opacity
+		if st.twinkle != twinkleNone {
+			t := rc.tA2
+			if st.tierA1 {
+				t = rc.tA1
+			}
+			if t > 0 {
+				ph := rc.loopPhase(t, st.delaySec, st.durSec)
+				if st.twinkle == twinkleSmooth {
+					op = lerp(0.20, 1.0, cosWave01(ph))
+				} else {
+					op = irregularTwinkle(ph)
+				}
+			}
+		}
+		a := op * st.dim * groupOp * rc.alpha
+		if a <= 0.004 {
+			continue
+		}
+		var dot ui.Path
+		dot.Circle(rc.ox+st.x, rc.oy+st.y, st.r)
+		rc.p.FillPath(&dot, st.color.Alpha(a))
+	}
+}
+
+func irregularTwinkle(ph float32) float32 {
+	// Keyframes: 0:0.35, 0.17:1, 0.31:0.5, 0.48:0.9, 0.63:0.25, 0.82:0.8, 1:0.35
+	ks := [7][2]float32{
+		{0.00, 0.35}, {0.17, 1.00}, {0.31, 0.50}, {0.48, 0.90},
+		{0.63, 0.25}, {0.82, 0.80}, {1.00, 0.35},
+	}
+	return evalKeyframes1D(ks[:], ph)
+}
+
+func evalKeyframes1D(ks [][2]float32, ph float32) float32 {
+	for i := 0; i < len(ks)-1; i++ {
+		if ph <= ks[i+1][0] {
+			span := ks[i+1][0] - ks[i][0]
+			if span <= 0 {
+				return ks[i+1][1]
+			}
+			u := smooth((ph - ks[i][0]) / span)
+			return lerp(ks[i][1], ks[i+1][1], u)
+		}
+	}
+	return ks[len(ks)-1][1]
+}
+
+func (rc *sceneRenderCtx) paintSparkle(cx, cy, s float32, c ui.Color, op float32) {
+	a := op * rc.alpha
+	if a <= 0.002 || s <= 0.05 {
+		return
+	}
+	var sp ui.Path
+	sp.MoveTo(cx, cy-s).
+		QuadTo(cx, cy, cx+s, cy).
+		QuadTo(cx, cy, cx, cy+s).
+		QuadTo(cx, cy, cx-s, cy).
+		QuadTo(cx, cy, cx, cy-s).
+		Close()
+	rc.p.FillPath(&sp, c.Alpha(a))
+}
+
+func (rc *sceneRenderCtx) paintHouse(x, y float32, wall, roof, win ui.Color, hasWin, flickerWin bool, winDelay, winDur float32) {
+	if rc.alpha <= 0.002 {
+		return
+	}
+	px, py := rc.ox+x, rc.oy+y+rc.layerShiftY
+	rc.p.Fill(ui.Rect{X: px - 3, Y: py - 4, W: 6, H: 4.4}, wall.Alpha(rc.alpha), 0)
+	var rf ui.Path
+	rf.MoveTo(px-3.9, py-4).LineTo(px, py-7.2).LineTo(px+3.9, py-4).Close()
+	rc.p.FillPath(&rf, roof.Alpha(rc.alpha))
+	rc.p.Fill(ui.Rect{X: px + 1.4, Y: py - 7.5, W: 1.1, H: 2.6}, roof.Alpha(rc.alpha), 0)
+	if hasWin {
+		wop := float32(1.0)
+		if flickerWin && rc.tA2 > 0 {
+			ph := rc.loopPhase(rc.tA2, winDelay, winDur)
+			ks := [5][2]float32{{0, 0.75}, {0.43, 1.0}, {0.47, 0.60}, {0.52, 1.0}, {1, 0.75}}
+			wop = evalKeyframes1D(ks[:], ph)
+		}
+		rc.p.Fill(ui.Rect{X: px - 1.9, Y: py - 3.1, W: 1.6, H: 1.6}, win.Alpha(wop*rc.alpha), 0)
+	}
+}
+
+func (rc *sceneRenderCtx) paintSmoke(x, y float32, c ui.Color) {
+	if rc.wA2 <= 0.002 || rc.alpha <= 0.002 {
+		return
+	}
+	cx, cy := rc.ox+x+1.95, rc.oy+y-8+rc.layerShiftY
+	for _, del := range [3]float32{0, 2.2, 4.4} {
+		ph := rc.loopPhase(rc.tA2, del, 6.6)
+		easeOut := 1 - (1-ph)*(1-ph)
+		var op float32
+		if ph < 0.15 {
+			op = (ph / 0.15) * 0.75
+		} else {
+			op = (1 - (ph-0.15)/0.85) * 0.75
+		}
+		a := op * rc.wA2 * rc.alpha
+		if a <= 0.003 {
+			continue
+		}
+		r := 1.2 * lerp(0.5, 2.0, easeOut)
+		var puff ui.Path
+		puff.Circle(cx+6*easeOut, cy-13*easeOut, r)
+		rc.p.FillPath(&puff, c.Alpha(a))
+	}
+}
+
+func (rc *sceneRenderCtx) paintLake(lk sceneLake) {
+	if rc.alpha <= 0.002 {
+		return
+	}
+	sy := rc.layerShiftY
+	var body ui.Path
+	fillEllipse(&body, func(x, y float32) (float32, float32) {
+		return rc.ox + x, rc.oy + y + sy
+	}, lk.cx, lk.cy, lk.rx, lk.ry)
+	rc.p.FillPath(&body, lk.fill.Alpha(rc.alpha))
+
+	for _, g := range lk.glints {
+		op := float32(0.6)
+		sx := float32(1.0)
+		if rc.tA2 > 0 {
+			u := rc.altWave(rc.tA2, g.delaySec, g.durSec)
+			op = lerp(0.15, 0.95, u)
+			sx = lerp(0.5, 1.15, u)
+		}
+		w := g.w * sx
+		gx := rc.ox + g.x + (g.w-w)*0.5
+		gy := rc.oy + g.y + sy
+		rc.p.Fill(ui.Rect{X: gx, Y: gy, W: w, H: 0.7}, lk.glintColor.Alpha(op*rc.alpha), 0.35)
+	}
+}
+
+func (rc *sceneRenderCtx) paintCat(c sceneCatSpec) {
+	if !rc.showCat || rc.alpha <= 0.002 {
+		return
+	}
+	px, py := rc.ox+c.x, rc.oy+c.y+rc.layerShiftY
+	col := c.color.Alpha(rc.alpha)
+
+	draw := func() {
+		if c.sleep {
+			breatheY := float32(1.0)
+			if rc.tA2 > 0 {
+				breatheY = lerp(1.0, 1.08, cosWave01(rc.loopPhase(rc.tA2, 0, 4.4)))
+			}
+			rc.p.Transform(ui.Scaling(1, breatheY), 0, 0, func() {
+				var body ui.Path
+				body.MoveTo(-4.6, 0).
+					CubeTo(-4.8, -3.2, -1.6, -4.5, 1, -4.3).
+					CubeTo(3.7, -4.1, 5, -2.1, 4.7, 0).
+					Close()
+				rc.p.FillPath(&body, col)
+				var e1 ui.Path
+				e1.MoveTo(2.2, -3.6).LineTo(2.8, -5.7).LineTo(3.9, -3.9).Close()
+				rc.p.FillPath(&e1, col)
+				var e2 ui.Path
+				e2.MoveTo(3.9, -3.3).LineTo(5.1, -5).LineTo(5.3, -2.7).Close()
+				rc.p.FillPath(&e2, col)
+			})
+			var tail ui.Path
+			tail.MoveTo(-4.4, -0.7).QuadTo(-6.3, -2.2, -4.9, -3.4).Cap(ui.RoundCap)
+			rc.p.StrokePath(&tail, 1.1, col)
+			if c.hasZzz && rc.wA2 > 0.002 {
+				for _, del := range [2]float32{0, 2.3} {
+					ph := rc.loopPhase(rc.tA2, del, 4.6)
+					easeOut := 1 - (1-ph)*(1-ph)
+					var op float32
+					if ph < 0.20 {
+						op = (ph / 0.20) * 0.85
+					} else {
+						op = (1 - (ph-0.20)/0.80) * 0.85
+					}
+					za := op * rc.wA2 * rc.alpha
+					if za <= 0.003 {
+						continue
+					}
+					zx := 5.5 + 4*easeOut
+					zy := -6 - 7*easeOut
+					var zp ui.Path
+					zp.MoveTo(zx, zy).LineTo(zx+1.9, zy).LineTo(zx, zy+2.1).LineTo(zx+1.9, zy+2.1).
+						Cap(ui.RoundCap).Join(ui.RoundJoin)
+					rc.p.StrokePath(&zp, 0.55, c.zzzColor.Alpha(za))
+				}
+			}
+			return
+		}
+
+		// Seated cat silhouette
+		var body ui.Path
+		body.MoveTo(-3, 0).
+			CubeTo(-3.5, -3, -2.3, -5.7, 0, -5.9).
+			CubeTo(2.1, -5.7, 3.1, -3.2, 3, 0).
+			Close()
+		rc.p.FillPath(&body, col)
+
+		// Head + ears + optional glowing blinking eyes
+		drawHead := func() {
+			var hd ui.Path
+			hd.Circle(1.3, -7.2, 2.1)
+			rc.p.FillPath(&hd, col)
+			var el ui.Path
+			el.MoveTo(-0.5, -8.3).LineTo(0, -10.7).LineTo(1.3, -9.2).Close()
+			rc.p.FillPath(&el, col)
+
+			earDeg := float32(0)
+			if rc.tA2 > 0 {
+				ph := rc.loopPhase(rc.tA2, 1.0, 7.9)
+				if ph > 0.90 && ph < 0.94 {
+					earDeg = 20 * smooth((ph-0.90)/0.04)
+				} else if ph >= 0.94 {
+					earDeg = 20 * (1 - smooth((ph-0.94)/0.06))
+				}
+			}
+			rc.p.Transform(ui.Rotation(earDeg), 1.84, -8.2, func() {
+				var er ui.Path
+				er.MoveTo(1.5, -9.2).LineTo(3, -10.6).LineTo(3.2, -8.2).Close()
+				rc.p.FillPath(&er, col)
+			})
+			if c.hasEyes {
+				blinkY := float32(1.0)
+				if rc.tA2 > 0 {
+					ph := rc.loopPhase(rc.tA2, 0, 6.1)
+					if ph > 0.92 && ph < 0.95 {
+						blinkY = lerp(1.0, 0.1, smooth((ph-0.92)/0.03))
+					} else if ph >= 0.95 {
+						blinkY = lerp(0.1, 1.0, smooth((ph-0.95)/0.05))
+					}
+				}
+				eyeCol := c.eyeColor.Alpha(rc.alpha)
+				for _, ecx := range [2]float32{0.7, 2.1} {
+					rc.p.Transform(ui.Scaling(1, blinkY), ecx, -7.3, func() {
+						var ep ui.Path
+						ep.Circle(ecx, -7.3, 0.45)
+						rc.p.FillPath(&ep, eyeCol)
+					})
+				}
+			}
+		}
+		if c.lookDeg != 0 {
+			rc.p.Transform(ui.Rotation(c.lookDeg), 0.6, -6, drawHead)
+		} else {
+			drawHead()
+		}
+
+		// Swaying tail
+		tailDeg := float32(0)
+		if rc.tA2 > 0 && c.tailDur > 0 {
+			tailDeg = lerp(-8, 15, cosWave01(rc.loopPhase(rc.tA2, 0, c.tailDur)))
+		}
+		rc.p.Transform(ui.Rotation(tailDeg), -2.6, -0.7, func() {
+			var tp ui.Path
+			tp.MoveTo(-2.6, -0.7).QuadTo(-5.8, -0.2, -6.0, -3.7).Cap(ui.RoundCap)
+			rc.p.StrokePath(&tp, 1.1, col)
+		})
+	}
+
+	xform := ui.Translation(px, py)
+	if c.flip {
+		xform = ui.Scaling(-1, 1).Then(xform)
+	}
+	rc.p.Transform(xform, 0, 0, draw)
+}
+
+func (rc *sceneRenderCtx) paintBlades(blades []sceneBlade, c ui.Color, animMode string) {
+	if len(blades) == 0 || rc.alpha <= 0.002 {
+		return
+	}
+	var bp ui.Path
+	any := false
+	sy := rc.layerShiftY
+	for i := range blades {
+		bl := &blades[i]
+		if bl.x < -8 || bl.x > rc.w+8 {
+			continue
+		}
+		any = true
+		sway := float32(0)
+		switch animMode {
+		case "gust":
+			if rc.tA1 > 0 {
+				ph := rc.loopPhase(rc.tA1, bl.delaySec, bl.durSec)
+				ks := [6][2]float32{{0, -3}, {0.18, 14}, {0.30, 3}, {0.40, 8}, {0.58, -3}, {1, -3}}
+				deg := evalKeyframes1D(ks[:], ph)
+				sway = float32(math.Tan(float64(deg) * math.Pi / 180))
+			}
+		case "flut":
+			if rc.tA1 > 0 {
+				deg := lerp(3, 15, rc.altWave(rc.tA1, bl.delaySec, bl.durSec))
+				sway = float32(math.Tan(float64(deg) * math.Pi / 180))
+			}
+		case "reed":
+			if rc.tA2 > 0 {
+				deg := lerp(-2, 3, rc.altWave(rc.tA2, bl.delaySec, bl.durSec))
+				sway = float32(math.Tan(float64(deg) * math.Pi / 180))
+			}
+		}
+		x0, y0 := rc.ox+bl.x, rc.oy+bl.y+sy
+		ctrlX := x0 + bl.lean*0.4 + sway*(bl.h*0.55)
+		ctrlY := y0 - bl.h*0.55
+		tipX := x0 + bl.lean + sway*bl.h
+		tipY := y0 - bl.h
+		bp.MoveTo(x0, y0).QuadTo(ctrlX, ctrlY, tipX, tipY)
+	}
+	if any {
+		bp.Cap(ui.RoundCap)
+		rc.p.StrokePath(&bp, 1.1, c.Alpha(rc.alpha))
+	}
+}
+
+func (rc *sceneRenderCtx) paintMeteors(meteors []sceneMeteor) {
+	if rc.wA2 <= 0.002 || rc.alpha <= 0.002 || len(meteors) == 0 {
+		return
+	}
+	tailCol := sceneColor("#eef2fb")
+	for i := range meteors {
+		m := &meteors[i]
+		ph := rc.loopPhase(rc.tA2, m.delaySec, m.durSec)
+		var start, peak, end float32
+		if m.isNightMet {
+			start, peak, end = 0.88, 0.895, 0.93
+		} else {
+			start = m.atFrac
+			peak = m.atFrac + 0.18/m.durSec
+			end = m.atFrac + 0.85/m.durSec
+		}
+		if ph <= start || ph >= end {
+			continue
+		}
+		u := (ph - start) / (end - start)
+		ease := 1 - (1-u)*(1-u)
+		var op float32
+		if ph < peak {
+			op = (ph - start) / max(peak-start, 0.001)
+		} else {
+			op = 1 - (ph-peak)/max(end-peak, 0.001)
+		}
+		a := op * 0.95 * rc.wA2 * rc.alpha
+		if a <= 0.003 {
+			continue
+		}
+		hx := rc.ox + m.x0 + m.dx*ease
+		hy := rc.oy + m.y0 + m.dy*ease
+		var sp ui.Path
+		sp.MoveTo(hx+m.tailX, hy+m.tailY).LineTo(hx, hy).Cap(ui.RoundCap)
+		ang := float32(math.Atan2(float64(m.dx), float64(-m.dy)) * 180 / math.Pi)
+		rc.p.StrokePathGradient(&sp, 1.1, ui.LinearGradient{
+			Angle: ang,
+			Stops: []ui.GradientStop{
+				{Color: tailCol.Alpha(0), At: 0},
+				{Color: tailCol.Alpha(a), At: 1},
+			},
+		})
+	}
+}
+
+func evalWander(trk wanderTrack, ph float32) (float32, float32) {
+	n := len(trk.pts) - 1
+	if n <= 0 {
+		return 0, 0
+	}
+	if ph <= trk.restFrac {
+		return 0, 0
+	}
+	u := (ph - trk.restFrac) / (1 - trk.restFrac)
+	pos := u * float32(n)
+	seg := min(int(pos), n-1)
+	local := smooth(pos - float32(seg))
+	return lerp(trk.pts[seg].x, trk.pts[seg+1].x, local),
+		lerp(trk.pts[seg].y, trk.pts[seg+1].y, local)
+}
+
+func evalDrift(item sceneDriftItem, ph float32) (x, y, rot, op float32) {
+	n := len(item.pts) - 1
+	if n <= 0 {
+		return 0, 0, 0, 0
+	}
+	pos := ph * float32(n)
+	seg := min(int(pos), n-1)
+	local := smooth(pos - float32(seg))
+	a, b := item.pts[seg], item.pts[seg+1]
+	return lerp(a.x, b.x, local), lerp(a.y, b.y, local), lerp(a.rot, b.rot, local), lerp(a.op, b.op, local)
+}
+
+func paintCrescentMoon(p *ui.Painter, cx, cy, r float32, col ui.Color) {
+	const k = 0.5523
+	rxIn := r * 0.66
+	var m ui.Path
+	m.MoveTo(cx, cy-r).
+		CubeTo(cx-k*r, cy-r, cx-r, cy-k*r, cx-r, cy).
+		CubeTo(cx-r, cy+k*r, cx-k*r, cy+r, cx, cy+r).
+		CubeTo(cx-k*rxIn, cy+r, cx-rxIn, cy+k*r, cx-rxIn, cy).
+		CubeTo(cx-rxIn, cy-k*r, cx-k*rxIn, cy-r, cx, cy-r).
+		Close()
+	p.FillPath(&m, col)
+}
+
+// -----------------------------------------------------------------------------
+// 1. 晨雾 Dawn (Light, 05–10)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintDawn(sc *compiledScene, tr *sceneTerrainCache) {
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+	rc.paintMist(sc.mists[0])
+
+	// Sun + volumetric morning rays
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		sy := sc.far.y(float64(brandOrbX)) + 0.5 + rc.vars.orbDy + rc.orbExtraDY
+		cx, cy := rc.ox+brandOrbX, rc.oy+sy
+		rayAngles := [4][2]float64{{-158, -146}, {-124, -108}, {-74, -60}, {-38, -26}}
+		rayDurs := [4]float32{11, 14, 9, 13}
+		rayCol := sceneColor("#fff1e0")
+		for i, ang := range rayAngles {
+			op := float32(0.20)
+			if rc.tA2 > 0 {
+				op = lerp(0.04, 0.42, rc.altWave(rc.tA2, float32(i)*3.1, rayDurs[i]))
+			}
+			a0, a1 := ang[0]*math.Pi/180, ang[1]*math.Pi/180
+			var ray ui.Path
+			ray.MoveTo(cx, cy).
+				LineTo(cx+float32(96*math.Cos(a0)), cy+float32(96*math.Sin(a0))).
+				LineTo(cx+float32(96*math.Cos(a1)), cy+float32(96*math.Sin(a1))).
+				Close()
+			rc.p.FillPath(&ray, rayCol.Alpha(op*oa))
+		}
+		haloOp, haloScale := float32(0.75), float32(1.0)
+		if rc.tA2 > 0 {
+			w := cosWave01(rc.loopPhase(rc.tA2, 2, 9))
+			haloOp = lerp(0.55, 1.0, w)
+			haloScale = lerp(1.0, 1.14, w)
+		}
+		hr := 13 * haloScale
+		rc.p.FillRadialGradient(
+			ui.Rect{X: cx - hr, Y: cy - hr, W: 2 * hr, H: 2 * hr},
+			ui.RadialGradient{
+				Radius: hr,
+				Stops: []ui.GradientStop{
+					{Color: sceneColor("#ffdcb8").Alpha(0.95 * haloOp * oa), At: 0},
+					{Color: sceneColor("#ffdcb8").Alpha(0), At: 1},
+				},
+			}, hr,
+		)
+		var core ui.Path
+		core.Circle(cx, cy, 4)
+		rc.p.FillPath(&core, sceneColor("#ffc993").Alpha(oa))
+	}
+
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	for i := 1; i <= 5; i++ {
+		rc.paintMist(sc.mists[i])
+	}
+	rc.fillTerrain(&tr.midPath, sc.mid.fill)
+
+	// Cottage, chimney smoke, pines, cat
+	hx := float32(108)
+	hy := sc.mid.y(float64(hx)) + 1
+	rc.paintSmoke(hx, hy, sceneColor("#ffffff"))
+	rc.paintHouse(hx, hy, sceneColor("#cdd8c7"), sceneColor("#bccab5"), sceneColor("#ffd9a8"), true, false, 0, 0)
+	pineCol := sceneColor("#c3d2bc").Alpha(rc.alpha)
+	for _, px := range [3]float32{96, 119, 124} {
+		tx, ty := rc.ox+px, rc.oy+sc.mid.y(float64(px))+1+rc.layerShiftY
+		var trp ui.Path
+		trp.MoveTo(tx-2, ty-2).LineTo(tx, ty-8).LineTo(tx+2, ty-2).Close()
+		rc.p.FillPath(&trp, pineCol)
+		rc.p.Line(tx, ty+0.5, tx, ty-3, 0.6, pineCol)
+	}
+	rc.paintCat(sc.cat)
+	rc.paintMist(sc.mists[6])
+
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "")
+
+	// Morning dew glints on grass tips
+	dewCol := sceneColor("#ffffff")
+	for _, d := range sc.dewDrops {
+		op, scf := float32(0.4), float32(1.0)
+		if rc.tA2 > 0 {
+			ph := rc.loopPhase(rc.tA2, d.delaySec, d.durSec)
+			if ph > 0.84 && ph < 0.91 {
+				u := smooth((ph - 0.84) / 0.07)
+				op = lerp(0.4, 1.0, u)
+				scf = lerp(1.0, 2.1, u)
+			} else if ph >= 0.91 {
+				u := smooth((ph - 0.91) / 0.09)
+				op = lerp(1.0, 0.4, u)
+				scf = lerp(2.1, 1.0, u)
+			}
+		}
+		var dp ui.Path
+		dp.Circle(rc.ox+d.x, rc.oy+d.y+rc.layerShiftY, 0.9*scf)
+		rc.p.FillPath(&dp, dewCol.Alpha(op*rc.alpha))
+	}
+	rc.paintMist(sc.mists[7])
+}
+
+// -----------------------------------------------------------------------------
+// 2. 草原 Meadow (Light, 10–15)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) {
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+
+	// Sun with slowly spinning rays
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		sy := sc.far.y(float64(brandOrbX)) - 4 + rc.vars.orbDy + rc.orbExtraDY
+		cx, cy := rc.ox+brandOrbX, rc.oy+sy
+		rayDeg := float32(0)
+		if rc.tA2 > 0 {
+			rayDeg = 360 * rc.loopPhase(rc.tA2, 0, 80)
+		}
+		rc.p.Transform(ui.Rotation(rayDeg), cx, cy, func() {
+			var rp ui.Path
+			for i := range 8 {
+				a := float64(i) * math.Pi / 4
+				ca, sa := float32(math.Cos(a)), float32(math.Sin(a))
+				rp.MoveTo(cx+6.2*ca, cy+6.2*sa).LineTo(cx+8.4*ca, cy+8.4*sa)
+			}
+			rp.Cap(ui.RoundCap)
+			rc.p.StrokePath(&rp, 0.9, sceneColor("#fbdf9c").Alpha(oa))
+		})
+		var core ui.Path
+		core.Circle(cx, cy, 3.6)
+		rc.p.FillPath(&core, sceneColor("#ffdf96").Alpha(oa))
+	}
+
+	// Fluffy clouds with underside shadow
+	shadeCol := sceneColor("#e4e9ee").Alpha(rc.alpha)
+	whiteCol := sceneColor("#ffffff").Alpha(rc.alpha)
+	for _, cl := range sc.clouds {
+		if cl.x > rc.w+60 {
+			continue
+		}
+		dx := float32(0)
+		if rc.tA2 > 0 {
+			dx = lerp(0, 30, rc.altWave(rc.tA2, cl.delaySec, cl.durSec))
+		}
+		xform := ui.Scaling(cl.scale, cl.scale).Then(ui.Translation(rc.ox+cl.x+dx, rc.oy+cl.y))
+		rc.p.Transform(xform, 0, 0, func() {
+			rc.p.Fill(ui.Rect{X: 1, Y: 6, W: 34, H: 5}, shadeCol, 2.5)
+			rc.p.Fill(ui.Rect{X: 0, Y: 4, W: 34, H: 6}, whiteCol, 3)
+			var puffs ui.Path
+			puffs.Circle(11, 4.5, 4.5).Circle(20, 3, 5.5).Circle(27, 6, 3.2)
+			rc.p.FillPath(&puffs, whiteCol)
+		})
+	}
+
+	// Distant hot-air balloon
+	if rc.w > 640 {
+		bx, by := float32(668), float32(16)
+		if rc.tA2 > 0 {
+			u := rc.altWave(rc.tA2, 30, 170)
+			bx += 180 * u
+			kby := [5][2]float32{{0, 0}, {0.25, -3}, {0.5, 1}, {0.75, -2}, {1, 0}}
+			by += evalKeyframes1D(kby[:], u)
+		}
+		rc.p.Transform(ui.Translation(rc.ox+bx, rc.oy+by), 0, 0, func() {
+			var env ui.Path
+			env.MoveTo(0, -4.2).
+				CubeTo(2.6, -4.2, 3.6, -2.2, 3.4, -0.6).
+				CubeTo(3.2, 1, 1.4, 2.4, 0.9, 3.2).
+				LineTo(-0.9, 3.2).
+				CubeTo(-1.4, 2.4, -3.2, 1, -3.4, -0.6).
+				CubeTo(-3.6, -2.2, -2.6, -4.2, 0, -4.2).Close()
+			rc.p.FillPath(&env, sceneColor("#f1c6cf").Alpha(rc.alpha))
+			var stripe ui.Path
+			stripe.MoveTo(0, -4.2).
+				CubeTo(1, -3, 1, 1.6, 0.4, 3.2).
+				LineTo(-0.4, 3.2).
+				CubeTo(-1, 1.6, -1, -3, 0, -4.2).Close()
+			rc.p.FillPath(&stripe, whiteCol)
+			rc.p.Fill(ui.Rect{X: -0.8, Y: 4, W: 1.6, H: 1.3}, sceneColor("#c9b79c").Alpha(rc.alpha), 0)
+		})
+	}
+
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	rc.fillTerrain(&tr.midPath, sc.mid.fill)
+
+	// 3 grazing sheep
+	legCol := sceneColor("#97a691").Alpha(rc.alpha)
+	headCol := sceneColor("#93a38d").Alpha(rc.alpha)
+	sheepXs := [3]float32{38, 50, 116}
+	sheepDurs := [3]float32{9.5, 13, 11}
+	for i, sx := range sheepXs {
+		sy := sc.mid.y(float64(sx)) + 1.2 + rc.layerShiftY
+		rc.p.Transform(ui.Translation(rc.ox+sx, rc.oy+sy), 0, 0, func() {
+			rc.p.Line(-1.6, 0.4, -1.6, -1.2, 0.6, legCol)
+			rc.p.Line(1.3, 0.4, 1.3, -1.2, 0.6, legCol)
+			var wool ui.Path
+			fillEllipse(&wool, func(x, y float32) (float32, float32) { return x, y }, 0, -2.7, 2.7, 1.8)
+			rc.p.FillPath(&wool, whiteCol)
+			gDeg := float32(0)
+			if rc.tA2 > 0 {
+				ph := rc.loopPhase(rc.tA2, float32(i)*4.1, sheepDurs[i])
+				ks := [5][2]float32{{0, 0}, {0.52, 0}, {0.62, 58}, {0.88, 58}, {1, 0}}
+				gDeg = evalKeyframes1D(ks[:], ph)
+			}
+			rc.p.Transform(ui.Rotation(gDeg), 2.2, -3.3, func() {
+				var hd ui.Path
+				fillEllipse(&hd, func(x, y float32) (float32, float32) { return x, y }, 3.2, -3.1, 1.1, 0.85)
+				rc.p.FillPath(&hd, headCol)
+			})
+		})
+	}
+
+	rc.paintCat(sc.cat)
+
+	// Drifting cloud shadow across midground
+	shX := float32(-170)
+	if rc.tA2 > 0 {
+		shX = lerp(-170, 430, rc.loopPhase(rc.tA2, 14, 52))
+	}
+	if shX > -80 && shX < rc.w+80 {
+		var sh ui.Path
+		fillEllipse(&sh, func(x, y float32) (float32, float32) {
+			return rc.ox + x, rc.oy + y + rc.layerShiftY
+		}, shX, 58, 64, 7)
+		rc.p.FillPath(&sh, sceneColor("#c6d9be").Alpha(0.6*rc.alpha))
+	}
+
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+
+	// Wooden fence
+	posts := [6]float32{16, 27, 38, 49, 60, 71}
+	var fp ui.Path
+	for _, x := range posts {
+		y := rc.oy + sc.near.y(float64(x)) + 1 + rc.layerShiftY
+		fp.MoveTo(rc.ox+x, y).LineTo(rc.ox+x, y-4)
+	}
+	for _, dy := range [2]float32{-1.4, -3.0} {
+		for i, x := range posts {
+			y := rc.oy + sc.near.y(float64(x)) + 1 + dy + rc.layerShiftY
+			if i == 0 {
+				fp.MoveTo(rc.ox+x, y)
+			} else {
+				fp.LineTo(rc.ox+x, y)
+			}
+		}
+	}
+	fp.Cap(ui.RoundCap)
+	rc.p.StrokePath(&fp, 0.7, sceneColor("#b3c8ab").Alpha(rc.alpha))
+
+	// Wildflowers
+	for _, fl := range sc.flowers {
+		var dot ui.Path
+		dot.Circle(rc.ox+fl.x, rc.oy+fl.y+rc.layerShiftY, fl.r)
+		rc.p.FillPath(&dot, fl.color.Alpha(rc.alpha))
+	}
+
+	// Wind-gusting grass layers
+	rc.paintBlades(sc.blades, sc.bladeColor, "gust")
+	rc.paintBlades(sc.blades2, sc.blade2Color, "gust")
+
+	// Wandering butterfly
+	bfX, bfY := float32(166), sc.mid.y(166)-5+rc.layerShiftY
+	if rc.tA2 > 0 {
+		dx, dy := evalWander(sc.butterflyTrk, rc.loopPhase(rc.tA2, 3, 27))
+		bfX += dx
+		bfY += dy
+	}
+	wingSX := float32(1.0)
+	if rc.tA2 > 0 {
+		wingSX = lerp(1.0, 0.18, rc.altWave(rc.tA2, 0, 0.3))
+	}
+	bfCol := sceneColor("#e79bb2").Alpha(rc.alpha)
+	rc.p.Transform(ui.Translation(rc.ox+bfX, rc.oy+bfY), 0, 0, func() {
+		rc.p.Transform(ui.Scaling(wingSX, 1), 0, -1.5, func() {
+			var wl, wr ui.Path
+			fillEllipse(&wl, func(x, y float32) (float32, float32) { return x, y }, -1.3, -1.5, 1.4, 1.9)
+			fillEllipse(&wr, func(x, y float32) (float32, float32) { return x, y }, 1.3, -1.5, 1.4, 1.9)
+			rc.p.FillPath(&wl, bfCol)
+			rc.p.FillPath(&wr, bfCol)
+		})
+	})
+}
+
+// -----------------------------------------------------------------------------
+// 3. 微风 Breeze (Light, 15–18)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) {
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+
+	// Soft afternoon sun
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		sy := sc.far.y(float64(brandOrbX)) - 6 + rc.vars.orbDy + rc.orbExtraDY
+		cx, cy := rc.ox+brandOrbX, rc.oy+sy
+		var outer, inner ui.Path
+		outer.Circle(cx, cy, 6.5)
+		rc.p.FillPath(&outer, sceneColor("#fff3cf").Alpha(0.8*oa))
+		inner.Circle(cx, cy, 3.4)
+		rc.p.FillPath(&inner, sceneColor("#ffe2a4").Alpha(oa))
+	}
+
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+
+	// Flowing wind ribbons (a1 v-tr)
+	if rc.wA1 > 0.002 {
+		rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
+			for i := range sc.winds {
+				wr := &sc.winds[i]
+				ph := rc.loopPhase(rc.tA1, wr.delaySec, wr.durSec)
+				if ph <= 0 || ph >= 0.46 {
+					continue
+				}
+				var op float32
+				switch {
+				case ph < 0.06:
+					op = ph / 0.06
+				case ph < 0.36:
+					op = 1.0
+				default:
+					op = 1 - (ph-0.36)/0.10
+				}
+				a := op * rc.wA1 * rc.alpha
+				if a <= 0.003 {
+					continue
+				}
+				u := smooth(ph / 0.46)
+				seg := min(float32(0.38), 62.0/max(wr.approxL, 80))
+				head := lerp(0, 1+seg, u)
+				from := clampF(head-seg, 0, 1)
+				to := clampF(head, 0, 1)
+				if to <= from+0.002 {
+					continue
+				}
+				paintBreezeWindPath(rc.p, i, from, to, wr.color.Alpha(a))
+			}
+		})
+	}
+
+	// Kite anchored at (508, 48)
+	if rc.w > 490 {
+		kiteDeg := float32(0)
+		tailSkew := float32(0)
+		if rc.tA2 > 0 {
+			kiteDeg = lerp(-4, 5, rc.altWave(rc.tA2, 1, 5.3))
+			tailSkew = lerp(-16, 18, rc.altWave(rc.tA2, 0, 0.9))
+		}
+		rc.p.Transform(ui.Translation(rc.ox+508, rc.oy+48+rc.layerShiftY), 0, 0, func() {
+			rc.p.Transform(ui.Rotation(kiteDeg), 0, 0, func() {
+				var str ui.Path
+				str.MoveTo(0, 0).QuadTo(30, -14, 62, -30)
+				rc.p.StrokePath(&str, 0.45, sceneColor("#b9c4b4").Alpha(rc.alpha))
+				var body ui.Path
+				body.MoveTo(62, -40).LineTo(65.4, -35).LineTo(62, -30).LineTo(58.6, -35).Close()
+				rc.p.FillPath(&body, sceneColor("#ecb1a5").Alpha(rc.alpha))
+				var spar ui.Path
+				spar.MoveTo(62, -40).LineTo(62, -30).MoveTo(58.6, -35).LineTo(65.4, -35)
+				rc.p.StrokePath(&spar, 0.4, sceneColor("#d99a8d").Alpha(rc.alpha))
+				rc.p.Transform(ui.Skewing(tailSkew, 0), 62, -30, func() {
+					var tl ui.Path
+					tl.MoveTo(62, -30).QuadTo(60, -27.6, 62, -25.4).QuadTo(64, -23.4, 62, -21).Cap(ui.RoundCap)
+					rc.p.StrokePath(&tl, 0.6, sceneColor("#ecb1a5").Alpha(rc.alpha))
+				})
+			})
+		})
+	}
+
+	rc.fillTerrain(&tr.midPath, sc.mid.fill)
+
+	// Windmill at x=110 with variable-speed breeze rotation (a1)
+	mx := float32(110)
+	my := sc.mid.y(float64(mx)) + 1 + rc.layerShiftY
+	millDeg := float32(0)
+	if rc.tA1 > 0 {
+		ph := rc.loopPhase(rc.tA1, 2, 11)
+		ks := [5][2]float32{{0, 0}, {0.22, 150}, {0.48, 250}, {0.70, 460}, {1, 720}}
+		millDeg = evalKeyframes1D(ks[:], ph)
+	}
+	rc.p.Transform(ui.Translation(rc.ox+mx, rc.oy+my), 0, 0, func() {
+		var tw ui.Path
+		tw.MoveTo(-1.7, 0.5).LineTo(-0.9, -9).LineTo(0.9, -9).LineTo(1.7, 0.5).Close()
+		rc.p.FillPath(&tw, sceneColor("#c6d4c0").Alpha(rc.alpha))
+		armCol := sceneColor("#b5c5ae").Alpha(rc.alpha)
+		sailCol := sceneColor("#dbe5d6").Alpha(rc.alpha)
+		rc.p.Transform(ui.Rotation(millDeg), 0, -9, func() {
+			for _, a := range [4]float32{0, 90, 180, 270} {
+				rc.p.Transform(ui.Rotation(a), 0, -9, func() {
+					rc.p.Line(0, -9, 0, -15.8, 0.6, armCol)
+					rc.p.Fill(ui.Rect{X: 0.3, Y: -15.8, W: 1.5, H: 4.8}, sailCol, 0)
+				})
+			}
+			var hub ui.Path
+			hub.Circle(0, -9, 0.8)
+			rc.p.FillPath(&hub, armCol)
+		})
+	})
+
+	rc.paintCat(sc.cat)
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "flut")
+
+	// 3 Dandelions
+	stemCol := sceneColor("#a9c69f").Alpha(rc.alpha)
+	puffCol := sceneColor("#b9c6b3").Alpha(rc.alpha)
+	for _, dx := range [3]float32{62, 214, 236} {
+		dy := sc.near.y(float64(dx)) + 1 + rc.layerShiftY
+		rc.p.Transform(ui.Translation(rc.ox+dx, rc.oy+dy), 0, 0, func() {
+			var st ui.Path
+			st.MoveTo(0, 0).QuadTo(1.6, -5, 1, -9.5).Cap(ui.RoundCap)
+			rc.p.StrokePath(&st, 0.9, stemCol)
+			var ring ui.Path
+			ring.Circle(1, -11.5, 2.5).Dash(0, 0.6, 1.2).Cap(ui.RoundCap)
+			rc.p.StrokePath(&ring, 0.7, puffCol)
+			var ctr ui.Path
+			ctr.Circle(1, -11.5, 0.7)
+			rc.p.FillPath(&ctr, puffCol)
+		})
+	}
+
+	// Drifting dandelion seeds & tumbling leaves (a2 v-tr)
+	if rc.wA2 > 0.002 {
+		scaleX := max(rc.w, brandDesignWidth) / brandDesignWidth
+		for _, item := range sc.driftItems {
+			ph := rc.loopPhase(rc.tA2, item.delaySec, item.durSec)
+			x, y, rot, op := evalDrift(item, ph)
+			x *= scaleX
+			a := op * rc.wA2 * rc.alpha
+			if a <= 0.003 || x < -20 || x > rc.w+20 {
+				continue
+			}
+			c := item.color.Alpha(a)
+			rc.p.Transform(ui.Rotation(rot).Then(ui.Translation(rc.ox+x, rc.oy+y)), 0, 0, func() {
+				if item.isLeaf {
+					var lf ui.Path
+					lf.MoveTo(-1.8, 0).QuadTo(0, -1.3, 1.8, 0).QuadTo(0, 1.3, -1.8, 0).Close()
+					rc.p.FillPath(&lf, c)
+				} else {
+					var sd ui.Path
+					sd.MoveTo(0, 0).LineTo(0, 3.2).
+						MoveTo(0, 0).LineTo(-1.9, -1.5).
+						MoveTo(0, 0).LineTo(-0.7, -2.3).
+						MoveTo(0, 0).LineTo(0.7, -2.3).
+						MoveTo(0, 0).LineTo(1.9, -1.5).
+						Cap(ui.RoundCap)
+					rc.p.StrokePath(&sd, 0.55, c)
+				}
+			})
+		}
+	}
+}
+
+func paintBreezeWindPath(p *ui.Painter, idx int, from, to float32, c ui.Color) {
+	var wp ui.Path
+	switch idx {
+	case 0:
+		wp.MoveTo(24, 33).CubeTo(54, 25, 84, 39, 120, 31).CubeTo(156, 23, 160, 21, 184, 27)
+	case 1:
+		wp.MoveTo(330, 31).CubeTo(370, 25, 400, 35, 430, 29).
+			CubeTo(444, 26, 446, 15, 436, 15).
+			CubeTo(427, 15, 428, 26, 442, 27).
+			CubeTo(462, 28, 482, 21, 512, 23)
+	case 2:
+		wp.MoveTo(612, 21).CubeTo(662, 28, 702, 13, 762, 19)
+	case 3:
+		wp.MoveTo(770, 35).CubeTo(800, 31, 814, 37, 850, 32).CubeTo(886, 27, 900, 26, 924, 32)
+	case 4:
+		wp.MoveTo(946, 25).CubeTo(976, 29, 1006, 19, 1030, 23).
+			CubeTo(1042, 25, 1042, 12, 1033, 13).
+			CubeTo(1025, 14, 1028, 23, 1041, 23).
+			CubeTo(1065, 23, 1081, 15, 1113, 18)
+	case 5:
+		wp.MoveTo(44, 53).CubeTo(84, 47, 124, 59, 176, 51)
+	case 6:
+		wp.MoveTo(690, 9).CubeTo(726, 5, 754, 14, 794, 9)
+	case 7:
+		wp.MoveTo(1260, 22).CubeTo(1304, 16, 1338, 28, 1392, 19)
+	case 8:
+		wp.MoveTo(1560, 30).CubeTo(1594, 35, 1626, 23, 1658, 28).
+			CubeTo(1670, 30, 1670, 17, 1661, 18).
+			CubeTo(1653, 19, 1656, 28, 1669, 28).
+			CubeTo(1693, 28, 1709, 20, 1741, 24)
+	default:
+		return
+	}
+	wp.Trim(from, to).Cap(ui.RoundCap)
+	p.StrokePath(&wp, 1.2, c)
+}
+
+// -----------------------------------------------------------------------------
+// 4. 晚霞 Dusk (Light, 18–05)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintDusk(sc *compiledScene, tr *sceneTerrainCache) {
+	// Emerging stars as evening deepens
+	rc.paintStars(sc.stars, rc.vars.starOp)
+
+	// Glowing sunset cloud streaks (a1)
+	litCol := sceneColor("#f9b98f")
+	for _, s := range sc.streaks {
+		if s.cx-s.rx > rc.w {
+			continue
+		}
+		op := float32(0.6)
+		if rc.tA1 > 0 {
+			op = lerp(0.28, 0.95, rc.altWave(rc.tA1, s.delaySec, s.durSec))
+		}
+		var el ui.Path
+		fillEllipse(&el, rc.at, s.cx, s.cy, s.rx, s.ry)
+		rc.p.FillPath(&el, s.color.Alpha(op*rc.alpha))
+		if s.litUnderside {
+			lop := float32(0.5)
+			if rc.tA1 > 0 {
+				lop = lerp(0.28, 0.95, rc.altWave(rc.tA1, s.litDelaySec, s.durSec+4))
+			}
+			var ul ui.Path
+			fillEllipse(&ul, rc.at, s.cx+6, s.cy+s.ry, s.rx*0.6, 0.6)
+			rc.p.FillPath(&ul, litCol.Alpha(lop*0.7*rc.alpha))
+		}
+	}
+
+	// Evening sparkle at (934, 8)
+	if rc.w > 940 {
+		spOp := float32(0.7)
+		if rc.tA2 > 0 {
+			spOp = lerp(0.20, 1.0, cosWave01(rc.loopPhase(rc.tA2, 1, 5.5)))
+		}
+		rc.paintSparkle(rc.ox+934, rc.oy+8, 2.2, sceneColor("#ffffff"), spOp)
+	}
+
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+
+	// Setting sun
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		sy := sc.far.y(float64(brandOrbX)) - 1 + rc.vars.orbDy + rc.orbExtraDY
+		cx, cy := rc.ox+brandOrbX, rc.oy+sy
+		haloOp, haloScale := float32(0.75), float32(1.0)
+		if rc.tA2 > 0 {
+			w := cosWave01(rc.loopPhase(rc.tA2, 4, 11))
+			haloOp = lerp(0.55, 1.0, w)
+			haloScale = lerp(1.0, 1.14, w)
+		}
+		r := 14 * haloScale
+		rc.p.FillRadialGradient(ui.Rect{X: cx - r, Y: cy - r, W: 2 * r, H: 2 * r}, ui.RadialGradient{
+			Radius: r,
+			Stops: []ui.GradientStop{
+				{Color: sceneColor("#f7c9ab").Alpha(0.95 * haloOp * oa), At: 0},
+				{Color: sceneColor("#f7c9ab").Alpha(0), At: 1},
+			},
+		}, r)
+		var core ui.Path
+		core.Circle(cx, cy, 4.6)
+		rc.p.FillPath(&core, sceneColor("#f2a679").Alpha(oa))
+	}
+
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	rc.fillTerrain(&tr.midPath, sc.mid.fill)
+
+	// Two round-canopy trees
+	treeCol := sceneColor("#cbc3b5").Alpha(rc.alpha)
+	for _, ts := range [2][2]float32{{56, 1.0}, {229, 0.7}} {
+		tx, ty := rc.ox+ts[0], rc.oy+sc.mid.y(float64(ts[0]))+1+rc.layerShiftY
+		rc.p.Transform(ui.Scaling(ts[1], ts[1]).Then(ui.Translation(tx, ty)), 0, 0, func() {
+			rc.p.Fill(ui.Rect{X: -0.6, Y: -6, W: 1.2, H: 7}, treeCol, 0)
+			var canopy ui.Path
+			canopy.Circle(0, -8.4, 3.4).Circle(-2.6, -6.6, 2.5).Circle(2.6, -6.8, 2.3)
+			rc.p.FillPath(&canopy, treeCol)
+		})
+	}
+
+	// Lit cottage, cat, shimmering sunset lake
+	rc.paintHouse(82, sc.mid.y(82)+1, sceneColor("#cfc7b9"), sceneColor("#c0b7a8"), sceneColor("#ffc97e"), true, true, 0, 7.7)
+	rc.paintCat(sc.cat)
+	rc.paintLake(sc.lake)
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "")
+
+	// V-formation wild geese flying right-to-left (a2 v-tr)
+	if rc.wA2 > 0.002 {
+		ph := rc.loopPhase(rc.tA2, 10, 62)
+		if ph < 0.72 {
+			u := ph / 0.72
+			startX := max(rc.w, brandDesignWidth) + 50
+			fx := lerp(startX, -90, u)
+			fy := lerp(33, 7, u)
+			birdCol := sceneColor("#b49c8e").Alpha(rc.wA2 * rc.alpha)
+			flock := [7][3]float32{
+				{0, 0, 0.42}, {9, 4, 0.47}, {18, 9, 0.39}, {8, -5, 0.45},
+				{19, -9, 0.50}, {29, 13, 0.44}, {30, -13, 0.41},
+			}
+			for _, g := range flock {
+				bx, by := rc.ox+fx+g[0], rc.oy+fy+g[1]
+				if bx < -20 || bx > rc.w+20 {
+					continue
+				}
+				w := rc.altWave(rc.tA2, g[2]*0.5, g[2])
+				lDeg := lerp(24, -28, w)
+				rDeg := lerp(-24, 28, w)
+				rc.p.Transform(ui.Rotation(lDeg), bx, by, func() {
+					var wl ui.Path
+					wl.MoveTo(bx, by).QuadTo(bx-1.6, by-2.2, bx-3.6, by-0.6).Cap(ui.RoundCap)
+					rc.p.StrokePath(&wl, 0.9, birdCol)
+				})
+				rc.p.Transform(ui.Rotation(rDeg), bx, by, func() {
+					var wr ui.Path
+					wr.MoveTo(bx, by).QuadTo(bx+1.6, by-2.2, bx+3.6, by-0.6).Cap(ui.RoundCap)
+					rc.p.StrokePath(&wr, 0.9, birdCol)
+				})
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 5. 破晓 Daybreak (Dark, 04–07)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintDaybreak(sc *compiledScene, tr *sceneTerrainCache) {
+	// Swelling dawn horizon glow (a1, scaled by glowOp)
+	if gop := rc.vars.glowOp; gop > 0.002 {
+		bandOp := float32(0.75)
+		swellOp, swellScale := float32(0.85), float32(1.0)
+		if rc.tA1 > 0 {
+			bandOp = lerp(0.40, 1.0, rc.altWave(rc.tA1, 3, 17))
+			sw := rc.altWave(rc.tA1, 1, 13)
+			swellOp = lerp(0.65, 1.0, sw)
+			swellScale = lerp(0.90, 1.12, sw)
+		}
+		rc.ellipseGlow(rc.ox+brandOrbX, rc.oy+42, 760, 9, sceneColor("#f0aa80"), 0.20*bandOp*gop)
+		rc.ellipseGlow(rc.ox+brandOrbX, rc.oy+58, 172*swellScale, 48*swellScale, sceneColor("#eca076"), 0.30*swellOp*gop)
+	}
+
+	// Fading pre-dawn stars
+	rc.paintStars(sc.stars, rc.vars.starOp)
+
+	// Morning star (Venus) at (716, 14)
+	if rc.w > 725 {
+		vScale, vOp := float32(0.95), float32(0.8)
+		if rc.tA2 > 0 {
+			w := cosWave01(rc.loopPhase(rc.tA2, 0, 4.6))
+			vScale = lerp(0.70, 1.15, w)
+			vOp = lerp(0.55, 1.0, w)
+		}
+		vx, vy := rc.ox+716, rc.oy+14
+		rc.paintSparkle(vx, vy, 3.4*vScale, sceneColor("#fff1d8"), vOp)
+		var vc ui.Path
+		vc.Circle(vx, vy, 0.9)
+		rc.p.FillPath(&vc, sceneColor("#fffaf0").Alpha(rc.alpha))
+	}
+
+	// Peaks + warm sunrise rim light
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+	rc.strokeRim(&tr.peakRim, 0.7, sc.rimColor, sc.rimMidStop, sc.rimMidOp, sc.rimPeakOp)
+
+	// Horizon glow orb
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		haloOp, haloScale := float32(0.75), float32(1.0)
+		if rc.tA2 > 0 {
+			w := cosWave01(rc.loopPhase(rc.tA2, 2, 9))
+			haloOp = lerp(0.55, 1.0, w)
+			haloScale = lerp(1.0, 1.14, w)
+		}
+		cx, cy := rc.ox+brandOrbX, rc.oy+57+rc.orbExtraDY
+		r := 9 * haloScale
+		rc.p.FillRadialGradient(ui.Rect{X: cx - r, Y: cy - r, W: 2 * r, H: 2 * r}, ui.RadialGradient{
+			Radius: r,
+			Stops: []ui.GradientStop{
+				{Color: sceneColor("#f2b48a").Alpha(0.5 * haloOp * oa), At: 0},
+				{Color: sceneColor("#f2b48a").Alpha(0), At: 1},
+			},
+		}, r)
+	}
+
+	// Far ridge + warm sunrise rim light
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	rc.strokeRim(&tr.farRim, 0.9, sc.rimColor, sc.rimMidStop, sc.rimMidOp, 1.0)
+
+	// Cottage, smoke, dark pines, sleeping cat, morning mist
+	hx := float32(104)
+	hy := sc.far.y(float64(hx)) + 1
+	rc.paintSmoke(hx, hy, sceneColor("#8c93a6"))
+	rc.paintHouse(hx, hy, sceneColor("#1f2027"), sceneColor("#1a1b21"), sceneColor("#ffc97e"), true, true, 2, 8.3)
+	pineCol := sceneColor("#2a2a33").Alpha(rc.alpha)
+	for _, px := range [5]float32{92, 116, 121, 226, 233} {
+		tx, ty := rc.ox+px, rc.oy+sc.far.y(float64(px))+0.4+rc.layerShiftY
+		var pp ui.Path
+		pp.MoveTo(tx-2.2, ty+0.6).LineTo(tx, ty-8).LineTo(tx+2.2, ty+0.6).Close()
+		rc.p.FillPath(&pp, pineCol)
+	}
+	rc.paintCat(sc.cat)
+	rc.paintMist(sc.mists[0])
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "")
+	rc.paintMist(sc.mists[1])
+}
+
+// -----------------------------------------------------------------------------
+// 6. 萤火 Firefly (Dark, 07–20)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintFirefly(sc *compiledScene, tr *sceneTerrainCache) {
+	rc.paintStars(sc.stars, 1.0)
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	rc.paintCat(sc.cat)
+
+	glowCol := sceneColor("#d7f08a")
+	coreCol := sceneColor("#e9fbb0")
+
+	drawFly := func(ff *sceneFirefly) {
+		if ff.x > rc.w+16 {
+			return
+		}
+		dx, dy := float32(0), float32(0)
+		blink := float32(0.85)
+		if rc.tA1 > 0 {
+			dx, dy = evalWander(sc.ffWanders[ff.wanderIdx], rc.loopPhase(rc.tA1, ff.moveDelaySec, ff.moveDurSec))
+			if ff.flipX {
+				dx = -dx
+			}
+			blink = evalFireflyBlinkV2(ff.blinkKind, rc.loopPhase(rc.tA1, ff.blinkDelaySec, ff.blinkDurSec))
+		}
+		cx, cy := rc.ox+ff.x+dx, rc.oy+ff.y+dy+rc.layerShiftY
+		rc.radialGlow(cx, cy, 4.6*ff.size, glowCol, 0.5*0.85*blink)
+		var core ui.Path
+		core.Circle(cx, cy, 1.1*ff.size)
+		rc.p.FillPath(&core, coreCol.Alpha(0.85*blink*rc.alpha))
+	}
+
+	// Distant small fireflies behind pond & near ridge
+	for i := range sc.farFlies {
+		drawFly(&sc.farFlies[i])
+	}
+
+	// Pond + rim + expanding ripples + firefly water reflections
+	sy := rc.layerShiftY
+	var pond ui.Path
+	fillEllipse(&pond, func(x, y float32) (float32, float32) {
+		return rc.ox + x, rc.oy + y + sy
+	}, 176, 60, 44, 3.2)
+	rc.p.FillPath(&pond, sceneColor("#1b232d").Alpha(rc.alpha))
+	var rim ui.Path
+	rim.MoveTo(rc.ox+134, rc.oy+59.4+sy).QuadTo(rc.ox+176, rc.oy+56.4+sy, rc.ox+218, rc.oy+59.4+sy)
+	rc.p.StrokePath(&rim, 0.5, sceneColor("#37475a").Alpha(0.7*rc.alpha))
+
+	if rc.wA2 > 0.002 {
+		ripCol := sceneColor("#63788c")
+		for _, rp := range [2][3]float32{{160, 0, 7.3}, {192, 3.9, 9.7}} {
+			ph := rc.loopPhase(rc.tA2, rp[1], rp[2])
+			if ph >= 0.60 {
+				continue
+			}
+			u := ph / 0.60
+			easeOut := 1 - (1-u)*(1-u)
+			var op float32
+			if ph < 0.10 {
+				op = (ph / 0.10) * 0.70
+			} else {
+				op = (1 - (ph-0.10)/0.50) * 0.70
+			}
+			a := op * rc.wA2 * rc.alpha
+			if a <= 0.003 {
+				continue
+			}
+			s := lerp(0.2, 1.3, easeOut)
+			var ep ui.Path
+			fillEllipse(&ep, func(x, y float32) (float32, float32) {
+				return rc.ox + x, rc.oy + y + sy
+			}, rp[0], 60.4, 9*s, 1.5*s)
+			rc.p.StrokePath(&ep, 0.5, ripCol.Alpha(a))
+		}
+	}
+	reflXs := [4]float32{150, 171, 187, 203}
+	for i, rx := range reflXs {
+		op := float32(0.6)
+		if rc.tA1 > 0 {
+			op = lerp(0.20, 1.0, cosWave01(rc.loopPhase(rc.tA1, sc.pondReflDel[i], sc.pondReflDur[i])))
+		}
+		var dot ui.Path
+		dot.Circle(rc.ox+rx, rc.oy+sc.pondReflY[i]+sy, 0.55)
+		rc.p.FillPath(&dot, glowCol.Alpha(op*rc.alpha))
+	}
+
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "reed")
+
+	// Cattails
+	stalkCol := sceneColor("#34413c").Alpha(rc.alpha)
+	headCol := sceneColor("#3e4c45").Alpha(rc.alpha)
+	for i, cx := range [5]float32{38, 47, 112, 226, 232} {
+		cy := sc.near.y(float64(cx)) + 1.2 + sy
+		skew := float32(0)
+		if rc.tA2 > 0 {
+			skew = lerp(-2, 3, rc.altWave(rc.tA2, sc.cattailDel[i], sc.cattailDur[i]))
+		}
+		rc.p.Transform(ui.Skewing(skew, 0).Then(ui.Translation(rc.ox+cx, rc.oy+cy)), 0, 0, func() {
+			var st ui.Path
+			st.MoveTo(0, 0).QuadTo(1, -7, 0.4, -13).Cap(ui.RoundCap)
+			rc.p.StrokePath(&st, 0.9, stalkCol)
+			var hd ui.Path
+			fillEllipse(&hd, func(x, y float32) (float32, float32) { return x, y }, 0.5, -13.5, 1.1, 2.7)
+			rc.p.FillPath(&hd, headCol)
+		})
+	}
+
+	// Glowing mushrooms
+	mushSpecs := [3][2]float32{{20, 1.0}, {25, 0.7}, {96, 0.85}}
+	mStem := sceneColor("#56655e").Alpha(rc.alpha)
+	mCap := sceneColor("#7f9c8c").Alpha(rc.alpha)
+	for i, ms := range mushSpecs {
+		mx, my := rc.ox+ms[0], rc.oy+sc.near.y(float64(ms[0]))+1+sy
+		gOp := float32(0.65)
+		if rc.tA2 > 0 {
+			gOp = lerp(0.20, 1.0, cosWave01(rc.loopPhase(rc.tA2, sc.mushDel[i], sc.mushDur[i])))
+		}
+		rc.radialGlow(mx, my-2.4*ms[1], 4*ms[1], glowCol, 0.5*gOp)
+		rc.p.Transform(ui.Scaling(ms[1], ms[1]).Then(ui.Translation(mx, my)), 0, 0, func() {
+			rc.p.Fill(ui.Rect{X: -0.4, Y: -2, W: 0.8, H: 2.6}, mStem, 0)
+			var cap ui.Path
+			cap.MoveTo(-2.1, -2).CubeTo(-2.1, -4.53, 2.1, -4.53, 2.1, -2).Close()
+			rc.p.FillPath(&cap, mCap)
+		})
+	}
+
+	// Foreground & upper-sky fireflies
+	for i := range sc.fireflies {
+		drawFly(&sc.fireflies[i])
+	}
+
+	// Traveling firefly crossing the titlebar sky (a2 v-tr)
+	if rc.wA2 > 0.002 {
+		ph := rc.loopPhase(rc.tA2, 44, 47)
+		if ph < 0.56 {
+			kpts := [7][4]float32{
+				{0.00, 0, 0, 0},
+				{0.04, 40, -6, 1},
+				{0.14, 150, -12, 1},
+				{0.24, 260, -3, 1},
+				{0.36, 420, -14, 1},
+				{0.48, 560, -6, 1},
+				{0.56, 680, -16, 0},
+			}
+			var tx, ty, top float32
+			for i := 0; i < len(kpts)-1; i++ {
+				if ph <= kpts[i+1][0] {
+					u := smooth((ph - kpts[i][0]) / (kpts[i+1][0] - kpts[i][0]))
+					tx = lerp(kpts[i][1], kpts[i+1][1], u)
+					ty = lerp(kpts[i][2], kpts[i+1][2], u)
+					top = lerp(kpts[i][3], kpts[i+1][3], u)
+					break
+				}
+			}
+			scaleX := max(rc.w, brandDesignWidth) / brandDesignWidth
+			cx := rc.ox + 262 + tx*scaleX
+			cy := rc.oy + 38 + ty
+			blink := evalFireflyBlinkV2(ffBlinkSingle, rc.loopPhase(rc.tA2, 0, 2.3))
+			fa := top * blink * rc.wA2
+			if fa > 0.003 && cx < rc.ox+rc.w+10 {
+				rc.radialGlow(cx, cy, 4.6, glowCol, 0.5*fa)
+				var core ui.Path
+				core.Circle(cx, cy, 1.1)
+				rc.p.FillPath(&core, coreCol.Alpha(fa*rc.alpha))
+			}
+		}
+	}
+}
+
+func evalFireflyBlinkV2(kind fireflyBlinkKind, ph float32) float32 {
+	switch kind {
+	case ffBlinkDouble:
+		ks := [6][2]float32{{0, 0.08}, {0.10, 1.0}, {0.18, 0.20}, {0.28, 1.0}, {0.45, 0.08}, {1, 0.08}}
+		return evalKeyframes1D(ks[:], ph)
+	case ffBlinkSlow:
+		ks := [4][2]float32{{0, 0.08}, {0.30, 0.90}, {0.70, 0.90}, {1, 0.08}}
+		return evalKeyframes1D(ks[:], ph)
+	default:
+		ks := [4][2]float32{{0, 0.10}, {0.40, 1.0}, {0.60, 1.0}, {1, 0.10}}
+		return evalKeyframes1D(ks[:], ph)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 7. 星空 Night (Dark, 20–01)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintNight(sc *compiledScene, tr *sceneTerrainCache) {
+	// Rotated Milky Way glow + fine dust lane
+	if rc.w > 760 {
+		mwx, mwy := rc.ox+950, rc.oy+22
+		rc.p.Transform(ui.Rotation(6), mwx, mwy, func() {
+			rc.ellipseGlow(mwx, mwy, 200, 13, sceneColor("#8ea4d8"), 0.10)
+		})
+		for i := range sc.dustStars {
+			ds := &sc.dustStars[i]
+			if ds.x >= rc.w-4 {
+				continue
+			}
+			if rc.avoidRightTail && rc.w > 320 && ds.x > rc.w-140 && ds.y > 4 && ds.y < 36 {
+				continue
+			}
+			var dot ui.Path
+			dot.Circle(rc.ox+ds.x, rc.oy+ds.y, ds.r)
+			rc.p.FillPath(&dot, ds.color.Alpha(ds.opacity*rc.alpha))
+		}
+	}
+
+	rc.paintStars(sc.stars, 1.0)
+
+	// Constellations: Big Dipper & Cassiopeia
+	if rc.w > 700 {
+		lineCol := sceneColor("#8ea4d8").Alpha(0.28 * rc.alpha)
+		nodeCol := sceneColor("#eef2fb").Alpha(rc.alpha)
+		dip := [7][2]float32{{652, 12}, {665, 9.5}, {677, 12}, {689, 16}, {700, 25}, {716, 27}, {720, 16.5}}
+		cas := [5][2]float32{{748, 25}, {758, 14}, {770, 21}, {782, 10}, {795, 18}}
+
+		var dp ui.Path
+		for i, pt := range dip {
+			if i == 0 {
+				dp.MoveTo(rc.ox+pt[0], rc.oy+pt[1])
+			} else {
+				dp.LineTo(rc.ox+pt[0], rc.oy+pt[1])
+			}
+		}
+		dp.LineTo(rc.ox+dip[3][0], rc.oy+dip[3][1]).Join(ui.RoundJoin)
+		rc.p.StrokePath(&dp, 0.5, lineCol)
+
+		var cp ui.Path
+		for i, pt := range cas {
+			if i == 0 {
+				cp.MoveTo(rc.ox+pt[0], rc.oy+pt[1])
+			} else {
+				cp.LineTo(rc.ox+pt[0], rc.oy+pt[1])
+			}
+		}
+		cp.Join(ui.RoundJoin)
+		rc.p.StrokePath(&cp, 0.5, lineCol)
+
+		for _, pt := range dip {
+			var dot ui.Path
+			dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.95)
+			rc.p.FillPath(&dot, nodeCol)
+		}
+		for _, pt := range cas {
+			if pt[0] >= rc.w-4 {
+				continue
+			}
+			var dot ui.Path
+			dot.Circle(rc.ox+pt[0], rc.oy+pt[1], 0.95)
+			rc.p.FillPath(&dot, nodeCol)
+		}
+	}
+
+	// Flare stars (a1)
+	flareCol := sceneColor("#f4f7ff")
+	for _, fl := range sc.flares {
+		if fl.x >= rc.w-4 {
+			continue
+		}
+		if rc.avoidRightTail && rc.w > 320 && fl.x > rc.w-140 && fl.y > 4 && fl.y < 36 {
+			continue
+		}
+		fx, fy := rc.ox+fl.x, rc.oy+fl.y
+		var core ui.Path
+		core.Circle(fx, fy, 0.8)
+		rc.p.FillPath(&core, flareCol.Alpha(rc.alpha))
+		scf, op := float32(0.3), float32(0.3)
+		if rc.tA1 > 0 {
+			ph := rc.loopPhase(rc.tA1, fl.delaySec, fl.durSec)
+			if ph > 0.80 && ph < 0.90 {
+				u := smooth((ph - 0.80) / 0.10)
+				scf, op = lerp(0.3, 1.0, u), lerp(0.3, 1.0, u)
+			} else if ph >= 0.90 {
+				u := smooth((ph - 0.90) / 0.10)
+				scf, op = lerp(1.0, 0.3, u), lerp(1.0, 0.3, u)
+			}
+		}
+		rc.paintSparkle(fx, fy, fl.size*scf, flareCol, op)
+	}
+
+	// Passing satellite (a2 v-tr)
+	if rc.wA2 > 0.002 {
+		ph := rc.loopPhase(rc.tA2, 58, 61)
+		if ph < 0.37 {
+			u := ph / 0.37
+			var op float32
+			switch {
+			case ph < 0.04:
+				op = (ph / 0.04) * 0.95
+			case ph < 0.33:
+				op = 0.95
+			default:
+				op = (1 - (ph-0.33)/0.04) * 0.95
+			}
+			sx := rc.ox + 590 + 500*u
+			sy := rc.oy + 3 + 25*u
+			if sx < rc.ox+rc.w-4 {
+				var sat ui.Path
+				sat.Circle(sx, sy, 0.85)
+				rc.p.FillPath(&sat, sceneColor("#e9eefc").Alpha(op*rc.wA2*rc.alpha))
+			}
+		}
+	}
+
+	rc.paintMeteors(sc.meteors)
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+
+	// Pines
+	pineCol := sceneColor("#252a35").Alpha(rc.alpha)
+	pines := [8][2]float32{
+		{18, 1.0}, {27, 0.75}, {33, 1.15}, {62, 0.9},
+		{207, 0.9}, {214, 0.7}, {246, 1.1}, {253, 0.8},
+	}
+	for _, pn := range pines {
+		px, py := rc.ox+pn[0], rc.oy+sc.far.y(float64(pn[0]))+0.4+rc.layerShiftY
+		rc.p.Transform(ui.Scaling(pn[1], pn[1]).Then(ui.Translation(px, py)), 0, 0, func() {
+			var pp ui.Path
+			pp.MoveTo(-2.3, 0.6).LineTo(0, -7.5).LineTo(2.3, 0.6).Close()
+			rc.p.FillPath(&pp, pineCol)
+		})
+	}
+
+	// Camp: bonfire glow, tent, campfire, rising sparks, cat looking up
+	tx := float32(106)
+	ty := sc.far.y(float64(tx)) + 1 + rc.layerShiftY
+	fx := tx + 13
+	fy := sc.far.y(float64(fx)) + 0.8 + rc.layerShiftY
+
+	glowOp, glowScale := float32(0.80), float32(1.0)
+	if rc.tA2 > 0 {
+		u := rc.altWave(rc.tA2, 0, 1.3)
+		glowOp = lerp(0.55, 1.0, u)
+		glowScale = lerp(0.92, 1.08, u)
+	}
+	rc.radialGlow(rc.ox+fx, rc.oy+fy-1.8, 11*glowScale, sceneColor("#f2a25c"), 0.34*glowOp)
+
+	// Tent
+	rc.p.Transform(ui.Translation(rc.ox+tx, rc.oy+ty), 0, 0, func() {
+		var body, lit, door ui.Path
+		body.MoveTo(-6.5, 0).LineTo(0, -7).LineTo(6.5, 0).Close()
+		lit.MoveTo(0, -7).LineTo(6.5, 0).LineTo(2.2, 0).Close()
+		door.MoveTo(-1.5, 0).LineTo(0, -3.8).LineTo(1.5, 0).Close()
+		rc.p.FillPath(&body, sceneColor("#30374a").Alpha(rc.alpha))
+		rc.p.FillPath(&lit, sceneColor("#3a4258").Alpha(rc.alpha))
+		rc.p.FillPath(&door, sceneColor("#191c24").Alpha(rc.alpha))
+	})
+
+	// Campfire logs, dancing flames, sparks
+	rc.p.Transform(ui.Translation(rc.ox+fx, rc.oy+fy), 0, 0, func() {
+		logCol := sceneColor("#3b3230").Alpha(rc.alpha)
+		var logs ui.Path
+		logs.MoveTo(-2.4, 0.2).LineTo(2.4, -0.6).MoveTo(-2.4, -0.6).LineTo(2.4, 0.2).Cap(ui.RoundCap)
+		rc.p.StrokePath(&logs, 0.8, logCol)
+
+		paintFlame := func(delay, dur float32, c ui.Color, outer bool) {
+			sx, sy, sk := float32(1), float32(1), float32(0)
+			if rc.tA2 > 0 {
+				u := rc.altWave(rc.tA2, delay, dur)
+				ksX := [4][2]float32{{0, 1}, {0.3, 0.88}, {0.6, 1.08}, {1, 0.95}}
+				ksY := [4][2]float32{{0, 1}, {0.3, 1.20}, {0.6, 0.88}, {1, 1.12}}
+				ksS := [4][2]float32{{0, 0}, {0.3, -6}, {0.6, 5}, {1, -2}}
+				sx = evalKeyframes1D(ksX[:], u)
+				sy = evalKeyframes1D(ksY[:], u)
+				sk = evalKeyframes1D(ksS[:], u)
+			}
+			rc.p.Transform(ui.Scaling(sx, sy).Then(ui.Skewing(sk, 0)), 0, 0, func() {
+				var fl ui.Path
+				if outer {
+					fl.MoveTo(-1.5, 0).CubeTo(-1.7, -1.7, -0.3, -2.1, 0, -4.1).CubeTo(0.5, -2.3, 1.8, -1.7, 1.5, 0).Close()
+				} else {
+					fl.MoveTo(-0.8, 0).CubeTo(-0.9, -1, -0.1, -1.2, 0, -2.3).CubeTo(0.3, -1.3, 1, -1, 0.8, 0).Close()
+				}
+				rc.p.FillPath(&fl, c.Alpha(rc.alpha))
+			})
+		}
+		paintFlame(0, 0.7, sceneColor("#f2a25c"), true)
+		paintFlame(0.3, 0.53, sceneColor("#ffd899"), false)
+
+		if rc.wA2 > 0.002 {
+			spCol := sceneColor("#ffcf8a")
+			for _, sp := range [2][4]float32{{0, 0.4, 0, 3.1}, {-0.8, 0.35, 1.7, 4.3}} {
+				ph := rc.loopPhase(rc.tA2, sp[2], sp[3])
+				easeOut := 1 - (1-ph)*(1-ph)
+				var op float32
+				if ph < 0.10 {
+					op = ph / 0.10
+				} else {
+					op = 1 - (ph-0.10)/0.90
+				}
+				a := op * rc.wA2 * rc.alpha
+				if a <= 0.003 {
+					continue
+				}
+				var dot ui.Path
+				dot.Circle(sp[0]+3*easeOut, lerp(-3, -15, easeOut), sp[1])
+				rc.p.FillPath(&dot, spCol.Alpha(a))
+			}
+		}
+	})
+
+	rc.paintCat(sc.cat)
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "")
+}
+
+// -----------------------------------------------------------------------------
+// 8. 新月 Moon (Dark, 01–04)
+// -----------------------------------------------------------------------------
+
+func (rc *sceneRenderCtx) paintMoon(sc *compiledScene, tr *sceneTerrainCache) {
+	rc.paintStars(sc.stars, 1.0)
+
+	// Crescent moon + earthshine dark disc + soft moonlight halo
+	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
+		cy := rc.oy + 37.5 + rc.vars.orbDy + rc.orbExtraDY
+		haloOp, haloScale := float32(0.75), float32(1.0)
+		if rc.tA2 > 0 {
+			w := cosWave01(rc.loopPhase(rc.tA2, 3, 10))
+			haloOp = lerp(0.55, 1.0, w)
+			haloScale = lerp(1.0, 1.14, w)
+		}
+		r := 15 * haloScale
+		hcx := rc.ox + 189
+		rc.p.FillRadialGradient(ui.Rect{X: hcx - r, Y: cy - r, W: 2 * r, H: 2 * r}, ui.RadialGradient{
+			Radius: r,
+			Stops: []ui.GradientStop{
+				{Color: sceneColor("#9fb4e6").Alpha(0.26 * haloOp * oa), At: 0},
+				{Color: sceneColor("#9fb4e6").Alpha(0), At: 1},
+			},
+		}, r)
+		var earthshine ui.Path
+		earthshine.Circle(rc.ox+brandOrbX, cy, 4.5)
+		rc.p.FillPath(&earthshine, sceneColor("#e7ecf8").Alpha(0.09*oa))
+		paintCrescentMoon(rc.p, rc.ox+brandOrbX, cy, 4.5, sceneColor("#e7ecf8").Alpha(oa))
+	}
+
+	rc.paintMeteors(sc.meteors)
+
+	// Drifting moonlit cloud wisps (a1)
+	wispBody := sceneColor("#343c50").Alpha(0.72 * rc.alpha)
+	wispRim := sceneColor("#8fa0c8").Alpha(0.35 * rc.alpha)
+	span := max(rc.w, brandDesignWidth) + 520
+	for _, mw := range sc.moonWisps {
+		x := float32(1460)
+		if rc.tA1 > 0 {
+			x = (span - 260) - span*rc.loopPhase(rc.tA1, mw.delaySec, mw.durSec)
+		} else {
+			// Resting position inside visible sky when still
+			x = 1460 - 1720*(mw.delaySec/mw.durSec)
+		}
+		if x > rc.w+40 || x+180*mw.scale < -40 {
+			continue
+		}
+		rc.p.Transform(ui.Scaling(mw.scale, mw.scale).Then(ui.Translation(rc.ox+x, rc.oy+mw.y)), 0, 0, func() {
+			rc.p.Fill(ui.Rect{X: 0, Y: 3, W: 150, H: 5}, wispBody, 2.5)
+			rc.p.Fill(ui.Rect{X: 28, Y: 0, W: 92, H: 5}, wispBody, 2.5)
+			rc.p.Fill(ui.Rect{X: 54, Y: 6.5, W: 124, H: 4}, wispBody, 2)
+			rc.p.Fill(ui.Rect{X: 34, Y: 0, W: 80, H: 0.7}, wispRim, 0.35)
+		})
+	}
+
+	// Peaks & far ridge with silver moonlight rim-lights
+	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
+	rc.strokeRim(&tr.peakRim, 0.7, sc.rimColor, sc.rimMidStop, sc.rimMidOp, sc.rimPeakOp)
+	rc.fillTerrain(&tr.farPath, sc.far.fill)
+	rc.strokeRim(&tr.farRim, 0.9, sc.rimColor, sc.rimMidStop, sc.rimMidOp, 1.0)
+
+	// Bare tree with blinking owl at x=58
+	tx := float32(58)
+	ty := sc.far.y(float64(tx)) + 0.6 + rc.layerShiftY
+	treeCol := sceneColor("#1d2029").Alpha(rc.alpha)
+	rc.p.Transform(ui.Translation(rc.ox+tx, rc.oy+ty), 0, 0, func() {
+		var trunk ui.Path
+		trunk.MoveTo(0, 0.6).CubeTo(0.5, -5, -0.6, -9, 0, -14.5).Cap(ui.RoundCap)
+		rc.p.StrokePath(&trunk, 1.3, treeCol)
+		var b1, b2, b3, b4 ui.Path
+		b1.MoveTo(0, -8).QuadTo(4, -10, 7.4, -9.4).Cap(ui.RoundCap)
+		b2.MoveTo(0, -11).QuadTo(-3.5, -12.6, -6, -15.8).Cap(ui.RoundCap)
+		b3.MoveTo(4.5, -9.3).QuadTo(5.5, -11.5, 7.7, -12.1).Cap(ui.RoundCap)
+		b4.MoveTo(-3, -13).QuadTo(-3.4, -14.8, -2.4, -16).Cap(ui.RoundCap)
+		rc.p.StrokePath(&b1, 0.9, treeCol)
+		rc.p.StrokePath(&b2, 0.8, treeCol)
+		rc.p.StrokePath(&b3, 0.6, treeCol)
+		rc.p.StrokePath(&b4, 0.6, treeCol)
+
+		// Owl perched on branch at (4.4, -9.5)
+		rc.p.Transform(ui.Translation(4.4, -9.5), 0, 0, func() {
+			var body ui.Path
+			fillEllipse(&body, func(x, y float32) (float32, float32) { return x, y }, 0, -2, 1.6, 2.1)
+			rc.p.FillPath(&body, treeCol)
+			var el, er ui.Path
+			el.MoveTo(-1.5, -3.4).LineTo(-1.2, -4.8).LineTo(-0.3, -3.8).Close()
+			er.MoveTo(1.5, -3.4).LineTo(1.2, -4.8).LineTo(0.3, -3.8).Close()
+			rc.p.FillPath(&el, treeCol)
+			rc.p.FillPath(&er, treeCol)
+
+			blinkY := float32(1.0)
+			if rc.tA2 > 0 {
+				ph := rc.loopPhase(rc.tA2, 0, 7.3)
+				if ph > 0.92 && ph < 0.95 {
+					blinkY = lerp(1.0, 0.1, smooth((ph-0.92)/0.03))
+				} else if ph >= 0.95 {
+					blinkY = lerp(0.1, 1.0, smooth((ph-0.95)/0.05))
+				}
+			}
+			eyeCol := sceneColor("#e7ecf8").Alpha(rc.alpha)
+			for _, ex := range [2]float32{-0.6, 0.6} {
+				rc.p.Transform(ui.Scaling(1, blinkY), ex, -2.7, func() {
+					var ep ui.Path
+					ep.Circle(ex, -2.7, 0.45)
+					rc.p.FillPath(&ep, eyeCol)
+				})
+			}
+		})
+	})
+
+	rc.paintCat(sc.cat)
+	rc.paintLake(sc.lake)
+	rc.fillTerrain(&tr.nearPath, sc.near.fill)
+	rc.paintBlades(sc.blades, sc.bladeColor, "")
+}

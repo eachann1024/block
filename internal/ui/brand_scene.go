@@ -26,7 +26,41 @@ const (
 
 	BrandBandHeight float32 = 88
 	BrandTileWidth  float32 = 260
+
+	brandDesignWidth float32 = 1200
+	brandSkyMaxWidth float32 = 2800
+	brandOrbX        float32 = 190
 )
+
+// BrandMotionLevel controls how much ambient motion plays inside the brand band.
+type BrandMotionLevel uint8
+
+const (
+	BrandMotionRich  BrandMotionLevel = iota // Full layered ambient + detail animation (a1 + a2).
+	BrandMotionCalm                          // Subtle ambient atmosphere only (a1); accents stay calm.
+	BrandMotionStill                         // Static illustrated band with zero per-frame animation.
+)
+
+// BrandScenePaintOpts configures how PaintBrandSceneBand renders and animates the top band.
+type BrandScenePaintOpts struct {
+	ShowOrb   bool
+	ShowCat   bool
+	Motion    BrandMotionLevel
+	PauseAnim bool
+	Now       time.Time
+}
+
+// ResolveBrandMotion converts persisted BrandDeco preferences into a runtime motion tier.
+func ResolveBrandMotion(deco model.BrandDeco) BrandMotionLevel {
+	switch deco.Motion {
+	case model.BrandDecoMotionCalm:
+		return BrandMotionCalm
+	case model.BrandDecoMotionStill:
+		return BrandMotionStill
+	default:
+		return BrandMotionRich
+	}
+}
 
 // BrandSceneSpec describes metadata for settings cards and scene selection.
 type BrandSceneSpec struct {
@@ -130,361 +164,1212 @@ func ResolveBrandScene(deco model.BrandDeco, dark bool, now time.Time) BrandScen
 	return l
 }
 
-// Precomputed deterministic geometry for zero-allocation 60fps painting.
+// sceneColor parses scenic artwork colors used exclusively inside the decorative brand band.
+func sceneColor(hex string) ui.Color {
+	return ui.Hex(hex) // design:allow
+}
+
+// sceneProgress returns [0..1] progress within a scene's time-of-day window.
+func sceneProgress(id BrandSceneID, now time.Time) float32 {
+	if now.IsZero() {
+		return 0.5
+	}
+	var lo, hi float64
+	switch id {
+	case SceneDawn:
+		lo, hi = 5, 10
+	case SceneMeadow:
+		lo, hi = 10, 15
+	case SceneBreeze:
+		lo, hi = 15, 18
+	case SceneDusk:
+		lo, hi = 18, 20
+	case SceneDaybreak:
+		lo, hi = 4, 7
+	case SceneMoon:
+		lo, hi = 1, 4
+	default:
+		return 0.5
+	}
+	t := float64(now.Hour()) + float64(now.Minute())/60.0 + float64(now.Second())/3600.0
+	if id == SceneDusk && (t > hi || t < 5) {
+		return 1
+	}
+	if t < lo || t > hi {
+		return 0.5
+	}
+	return float32((t - lo) / (hi - lo))
+}
+
+type sceneTimeVars struct {
+	orbDy  float32
+	glowOp float32
+	starOp float32
+}
+
+func evalSceneTimeVars(id BrandSceneID, p float32) sceneTimeVars {
+	v := sceneTimeVars{glowOp: 1, starOp: 1}
+	switch id {
+	case SceneDawn:
+		v.orbDy = lerp(3, -9, p)
+	case SceneMeadow:
+		v.orbDy = -6 * float32(math.Sin(math.Pi*float64(p)))
+	case SceneBreeze:
+		v.orbDy = lerp(-4, 3, p)
+	case SceneDusk:
+		v.orbDy = lerp(-5, 7, p)
+		v.starOp = lerp(0, 0.9, p)
+	case SceneDaybreak:
+		v.glowOp = lerp(0.5, 1.0, p)
+		v.starOp = lerp(1.0, 0.3, p)
+	case SceneMoon:
+		v.orbDy = lerp(-3, 7, p)
+	}
+	return v
+}
+
+// -----------------------------------------------------------------------------
+// Mathematical continuous terrain functions (non-tiling across any width)
+// -----------------------------------------------------------------------------
+
+type ridgeComp struct {
+	amp, wl, phase float64
+}
+
+type ridgeCurve struct {
+	base  float64
+	comps []ridgeComp
+	fill  ui.Color
+}
+
+func (r ridgeCurve) y(x float64) float32 {
+	v := r.base
+	for _, c := range r.comps {
+		v -= c.amp * math.Sin(2*math.Pi*x/c.wl+c.phase)
+	}
+	return float32(v)
+}
+
+type peakCurve struct {
+	base, amp, wl, phase, sharp float64
+	fill                        ui.Color
+}
+
+func (p peakCurve) y(x float64) float32 {
+	v1 := math.Pow(1-math.Abs(math.Sin(math.Pi*x/p.wl+p.phase)), p.sharp)
+	v2 := math.Pow(1-math.Abs(math.Sin(math.Pi*x/(p.wl*0.37)+p.phase*2.3)), p.sharp)
+	env := 0.55 + 0.45*math.Sin(2*math.Pi*x/977.0+p.phase*1.7)
+	return float32(p.base - p.amp*env*(0.7*v1+0.3*v2))
+}
+
+// -----------------------------------------------------------------------------
+// Precomputed deterministic scene primitives
+// -----------------------------------------------------------------------------
+
+type starTwinkleKind uint8
+
 const (
-	sceneSpanTiles = 8
-	sceneSpanWidth = BrandTileWidth * sceneSpanTiles // 2080px seamless period
-	brandOrbX      = float32(190)
+	twinkleNone starTwinkleKind = iota
+	twinkleSmooth
+	twinkleIrregular
 )
-
-type sceneBlade struct {
-	x, y     float32
-	h, lean  float32
-}
-
-type sceneBladeGroup struct {
-	color    ui.Color
-	delaySec float32
-	blades   []sceneBlade
-}
-
-type sceneMistBar struct {
-	x, y, w float32
-	opacity float32
-}
-
-type sceneWindLine struct {
-	x, y     float32
-	color    ui.Color
-	delaySec float32
-	durSec   float32
-}
-
-type sceneLayer struct {
-	driftSec float32
-	hasHill  bool
-	hillB    float32
-	hillA    float32
-	hillInv  bool
-	hillFill ui.Color
-	mists    []sceneMistBar
-	winds    []sceneWindLine
-	blades   []sceneBladeGroup
-}
 
 type sceneStar struct {
 	x, y     float32
 	r        float32
-	twinkle  bool
+	color    ui.Color
 	opacity  float32
+	dim      float32
+	twinkle  starTwinkleKind
+	tierA1   bool
 	delaySec float32
 	durSec   float32
 }
 
-type sceneFirefly struct {
-	x, y          float32
-	moveDelaySec  float32
-	moveDurSec    float32
-	blinkDelaySec float32
+type sceneBlade struct {
+	x, y     float32
+	h, lean  float32
+	delaySec float32
+	durSec   float32
 }
 
-type sceneOrbKind uint8
+type sceneDewDrop struct {
+	x, y     float32
+	delaySec float32
+	durSec   float32
+}
+
+type mistAnimKind uint8
 
 const (
-	orbNone sceneOrbKind = iota
-	orbSun
-	orbDaybreak
-	orbCrescent
+	mistDriftRight mistAnimKind = iota // v-mist: translateX 0..24, op 0.4..0.9
+	mistDriftLeft                      // dw-mb: translateX 0..-28, scaleX 1..1.14, op 0.85..0.35
+	mistPulse                          // dw-mc: op 0.12..0.8
 )
 
+type sceneMistBand struct {
+	x, y, w, h float32
+	color      ui.Color
+	baseOp     float32
+	kind       mistAnimKind
+	tierA1     bool
+	delaySec   float32
+	durSec     float32
+}
+
+type sceneCloud struct {
+	x, y, scale float32
+	delaySec    float32
+	durSec      float32
+}
+
+type sceneFlower struct {
+	x, y, r float32
+	color   ui.Color
+}
+
+type sceneWindRibbon struct {
+	approxL  float32
+	color    ui.Color
+	delaySec float32
+	durSec   float32
+}
+
+type wanderWaypoint struct {
+	x, y float32
+}
+
+type wanderTrack struct {
+	pts      []wanderWaypoint
+	restFrac float32
+}
+
+type driftWaypoint struct {
+	x, y, rot, op float32
+}
+
+type sceneDriftItem struct {
+	pts      []driftWaypoint
+	delaySec float32
+	durSec   float32
+	color    ui.Color
+	isLeaf   bool
+}
+
+type sceneDuskStreak struct {
+	cx, cy, rx, ry float32
+	color          ui.Color
+	delaySec       float32
+	durSec         float32
+	litUnderside   bool
+	litDelaySec    float32
+}
+
+type sceneLakeGlint struct {
+	x, y, w  float32
+	delaySec float32
+	durSec   float32
+}
+
+type sceneLake struct {
+	cx, cy, rx, ry float32
+	fill           ui.Color
+	glintColor     ui.Color
+	glints         []sceneLakeGlint
+}
+
+type fireflyBlinkKind uint8
+
+const (
+	ffBlinkSingle fireflyBlinkKind = iota
+	ffBlinkDouble
+	ffBlinkSlow
+)
+
+type sceneFirefly struct {
+	x, y          float32
+	size          float32
+	flipX         bool
+	wanderIdx     int
+	moveDelaySec  float32
+	moveDurSec    float32
+	blinkKind     fireflyBlinkKind
+	blinkDelaySec float32
+	blinkDurSec   float32
+}
+
+type sceneDustStar struct {
+	x, y, r float32
+	color   ui.Color
+	opacity float32
+}
+
+type sceneFlareStar struct {
+	x, y, size float32
+	delaySec   float32
+	durSec     float32
+}
+
+type sceneMeteor struct {
+	x0, y0     float32
+	dx, dy     float32
+	tailX      float32
+	tailY      float32
+	durSec     float32
+	atFrac     float32
+	delaySec   float32
+	isNightMet bool
+}
+
+type sceneMoonWisp struct {
+	y, scale float32
+	delaySec float32
+	durSec   float32
+}
+
+type sceneCatSpec struct {
+	x, y     float32
+	color    ui.Color
+	sleep    bool
+	flip     bool
+	tailDur  float32
+	lookDeg  float32
+	hasEyes  bool
+	eyeColor ui.Color
+	hasZzz   bool
+	zzzColor ui.Color
+}
+
+type sceneTerrainCache struct {
+	widthBucket int
+	peakPath    ui.Path
+	farPath     ui.Path
+	midPath     ui.Path
+	nearPath    ui.Path
+	hasMid      bool
+	peakRim     ui.Path
+	farRim      ui.Path
+}
+
 type compiledScene struct {
-	id         BrandSceneID
-	dark       bool
-	ground     ui.Color
-	skyStops   []ui.GradientStop
-	horizonGlow bool
-	galaxyBand bool
-	shootStar  bool
-	birds      bool
-	orbKind    sceneOrbKind
-	orbCY      float32
-	orbR       float32
-	orbCore    ui.Color
-	orbHalo    ui.Color
-	orbHaloOp  float32
-	stars      []sceneStar
-	layers     []sceneLayer
-	fireflies  []sceneFirefly
+	id       BrandSceneID
+	dark     bool
+	ground   ui.Color
+	skyStops []ui.GradientStop
+
+	peak peakCurve
+	far  ridgeCurve
+	mid  ridgeCurve
+	hasMid bool
+	near ridgeCurve
+
+	// Rim highlights on peak & far ridge (daybreak, moon)
+	rimX0, rimX1 float32
+	rimColor     ui.Color
+	rimPeakOp    float32
+	rimMidStop   float32
+	rimMidOp     float32
+
+	// Shared optional features
+	stars       []sceneStar
+	mists       []sceneMistBand
+	blades      []sceneBlade
+	bladeColor  ui.Color
+	blades2     []sceneBlade
+	blade2Color ui.Color
+	dewDrops    []sceneDewDrop
+	cat         sceneCatSpec
+	hasLake     bool
+	lake        sceneLake
+
+	// Meadow-specific
+	clouds       []sceneCloud
+	flowers      []sceneFlower
+	butterflyTrk wanderTrack
+
+	// Breeze-specific
+	winds      []sceneWindRibbon
+	driftItems []sceneDriftItem
+
+	// Dusk-specific
+	streaks []sceneDuskStreak
+
+	// Firefly-specific
+	ffWanders   []wanderTrack
+	fireflies   []sceneFirefly
+	farFlies    []sceneFirefly
+	pondReflY   [4]float32
+	pondReflDel [4]float32
+	pondReflDur [4]float32
+	cattailDel  [5]float32
+	cattailDur  [5]float32
+	mushDel     [3]float32
+	mushDur     [3]float32
+
+	// Night-specific
+	dustStars []sceneDustStar
+	flares    []sceneFlareStar
+
+	// Meteors (night & moon)
+	meteors []sceneMeteor
+
+	// Moon-specific
+	moonWisps []sceneMoonWisp
+
+	// Cached continuous terrain paths keyed by quantized width
+	terrainMu sync.Mutex
+	terrain   sceneTerrainCache
 }
 
 var (
-	compiledOnce  sync.Once
-	compiledByID  map[BrandSceneID]*compiledScene
-	starAvoidRect = [][4]float32{
+	compiledOnce sync.Once
+	compiledByID map[BrandSceneID]*compiledScene
+
+	staticAvoidRects = [][4]float32{
 		{8, 10, 84, 30},
 		{110, 4, 186, 36},
 		{196, 4, 256, 36},
 		{264, 4, 640, 36},
 	}
-	starRadii = [...]float32{0.55, 0.6, 0.7, 0.8, 0.9, 1.05}
 )
 
-func hillY(x, b, a float32, inv bool) float32 {
-	amp := a
-	if inv {
-		amp = -a
+func isSkyClear(x, y float32) bool {
+	if math.Abs(float64(x-brandOrbX)) < 13 && math.Abs(float64(y-38)) < 13 {
+		return false
 	}
-	return b - 0.75*amp*float32(math.Sin(2*math.Pi*float64(x)/float64(BrandTileWidth)))
-}
-
-func makeBladeGroup(b, a float32, inv bool, xs []float32, hex string, seed int64, delaySec float32) sceneBladeGroup {
-	rng := rand.New(rand.NewSource(seed*7919 + 104729))
-	out := make([]sceneBlade, 0, len(xs)*sceneSpanTiles)
-	for _, bx := range xs {
-		by := hillY(bx, b, a, inv) + 1.2
-		for k := 0; k < sceneSpanTiles; k++ {
-			h := 4.0 + rng.Float32()*3.5
-			lean := -1.6 + rng.Float32()*3.2
-			out = append(out, sceneBlade{
-				x:    bx + float32(k)*BrandTileWidth,
-				y:    by,
-				h:    h,
-				lean: lean,
-			})
+	for _, r := range staticAvoidRects {
+		if x > r[0] && x < r[2] && y > r[1] && y < r[3] {
+			return false
 		}
 	}
-	return sceneBladeGroup{
-		color:    ui.Hex(hex), // design:allow
-		delaySec: delaySec,
-		blades:   out,
-	}
+	return true
 }
 
-func makeStars(density int, yMin, yMax, twinkleProb float32, seed int64) []sceneStar {
-	rng := rand.New(rand.NewSource(seed*65537 + 17))
-	count := int(float32(density) * sceneSpanWidth / BrandTileWidth)
-	out := make([]sceneStar, 0, count)
-	for range count {
-		x := 4 + rng.Float32()*(sceneSpanWidth-8)
-		y := yMin + rng.Float32()*(yMax-yMin)
-		skip := false
-		for _, av := range starAvoidRect {
-			if x > av[0] && x < av[2] && y > av[1] && y < av[3] {
-				skip = true
-				break
+func makeTuftXs(rng *rand.Rand, lo, hi float32, n, perMin, perMax int, spread float32) []float32 {
+	xs := make([]float32, 0, n*perMax)
+	for range n {
+		c := lo + rng.Float32()*(hi-lo)
+		cnt := perMin
+		if perMax > perMin {
+			cnt += rng.Intn(perMax - perMin + 1)
+		}
+		for range cnt {
+			xs = append(xs, c+float32(rng.NormFloat64())*(spread*0.5))
+		}
+	}
+	// Insertion sort keeps blades nicely ordered left-to-right.
+	for i := 1; i < len(xs); i++ {
+		v := xs[i]
+		j := i - 1
+		for j >= 0 && xs[j] > v {
+			xs[j+1] = xs[j]
+			j--
+		}
+		xs[j+1] = v
+	}
+	return xs
+}
+
+func makeBlades(rng *rand.Rand, yf func(float64) float32, xs []float32, hMin, hMax, leanMin, leanMax float32, animMode string) ([]sceneBlade, [][2]float32) {
+	out := make([]sceneBlade, 0, len(xs))
+	tips := make([][2]float32, 0, len(xs))
+	for _, x := range xs {
+		h := hMin + rng.Float32()*(hMax-hMin)
+		lean := leanMin + rng.Float32()*(leanMax-leanMin)
+		y := yf(float64(x)) + 1.2
+		b := sceneBlade{x: x, y: y, h: h, lean: lean}
+		switch animMode {
+		case "gust":
+			rem := math.Mod(float64(x)/46.0, 7.0)
+			if rem < 0 {
+				rem += 7.0
 			}
+			b.delaySec = float32(7.0 - rem)
+			b.durSec = 7.0
+		case "flut":
+			b.delaySec = rng.Float32() * 2.0
+			b.durSec = 1.1 + rng.Float32()*1.0
+		case "reed":
+			b.delaySec = rng.Float32() * 8.0
+			b.durSec = 6.0 + rng.Float32()*3.0
 		}
-		if skip || (math.Abs(float64(x-brandOrbX)) < 9 && math.Abs(float64(y-38)) < 9) {
+		out = append(out, b)
+		tips = append(tips, [2]float32{x + lean, y - h})
+	}
+	return out, tips
+}
+
+func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colors []ui.Color, tierA1 bool, dimFn func(x, y float32) float32) []sceneStar {
+	// Generate exact count across [4, 1200-4] plus seamless continuation across [1200, brandSkyMaxWidth-4] for ultrawide displays.
+	extra := int(float32(count1200) * (brandSkyMaxWidth - brandDesignWidth) / brandDesignWidth)
+	total := count1200 + extra
+	out := make([]sceneStar, 0, total)
+	for i := range total {
+		var x float32
+		if i < count1200 {
+			x = 4 + rng.Float32()*(brandDesignWidth-8)
+		} else {
+			x = brandDesignWidth + rng.Float32()*(brandSkyMaxWidth-brandDesignWidth-4)
+		}
+		y := yMin + rng.Float32()*(yMax-yMin)
+		u := rng.Float32()
+		r := 0.38 + 0.78*u*u*u
+		op := 0.30 + 0.65*float32(math.Pow(float64(u), 1.5))
+		col := colors[rng.Intn(len(colors))]
+		twk := rng.Float32() < twProb
+		irreg := rng.Intn(3) == 2
+		dl := rng.Float32() * 6.0
+		du := 2.6 + rng.Float32()*3.8
+		if !isSkyClear(x, y) {
 			continue
 		}
-		rad := starRadii[rng.Intn(len(starRadii))]
-		if rng.Float32() < twinkleProb {
-			out = append(out, sceneStar{
-				x:        x,
-				y:        y,
-				r:        rad,
-				twinkle:  true,
-				delaySec: rng.Float32() * 4.0,
-				durSec:   2.8 + rng.Float32()*2.4,
-			})
-		} else {
-			out = append(out, sceneStar{
-				x:       x,
-				y:       y,
-				r:       rad,
-				opacity: 0.45 + rng.Float32()*0.50,
-			})
+		dim := float32(1.0)
+		if dimFn != nil {
+			dim = dimFn(x, y)
 		}
+		st := sceneStar{
+			x:       x,
+			y:       y,
+			r:       r,
+			color:   col,
+			opacity: op,
+			dim:     dim,
+			tierA1:  tierA1,
+		}
+		if twk {
+			if irreg {
+				st.twinkle = twinkleIrregular
+				st.durSec = du * 2.2
+			} else {
+				st.twinkle = twinkleSmooth
+				st.durSec = du
+			}
+			st.delaySec = dl
+		}
+		out = append(out, st)
 	}
 	return out
 }
 
-func makeFireflies(seed int64) []sceneFirefly {
-	rng := rand.New(rand.NewSource(seed*48271 + 31))
-	count := int(9 * sceneSpanWidth / BrandTileWidth)
-	out := make([]sceneFirefly, 0, count)
-	for range count {
-		out = append(out, sceneFirefly{
-			x:             12 + rng.Float32()*(sceneSpanWidth-24),
-			y:             38 + rng.Float32()*28,
-			moveDelaySec:  rng.Float32() * 8.0,
-			moveDurSec:    6.0 + rng.Float32()*4.0,
-			blinkDelaySec: rng.Float32() * 4.0,
-		})
+func makeWanderTrack(rng *rand.Rand, n int, rx, ry, restFrac float32) wanderTrack {
+	pts := make([]wanderWaypoint, n+1)
+	for i := 1; i < n; i++ {
+		pts[i] = wanderWaypoint{
+			x: (rng.Float32()*2 - 1) * rx,
+			y: (rng.Float32()*2 - 1) * ry,
+		}
+	}
+	return wanderTrack{pts: pts, restFrac: restFrac}
+}
+
+func makeDriftItem(rng *rand.Rand, x0, y0, endX float32, n int, yLo, yHi, rotMax, peak, delay, dur float32, col ui.Color, isLeaf bool) sceneDriftItem {
+	pts := make([]driftWaypoint, n+1)
+	for i := 0; i <= n; i++ {
+		t := float32(i) / float32(n)
+		x := x0 + (endX-x0)*t
+		if i > 0 && i < n {
+			x += (rng.Float32()*2 - 1) * 18
+		}
+		y := y0
+		if i > 0 {
+			y = yLo + rng.Float32()*(yHi-yLo)
+		}
+		op := peak
+		if i == 0 || i == n {
+			op = 0
+		}
+		pts[i] = driftWaypoint{
+			x:   x,
+			y:   y,
+			rot: (rng.Float32()*2 - 1) * rotMax,
+			op:  op,
+		}
+	}
+	return sceneDriftItem{
+		pts:      pts,
+		delaySec: delay,
+		durSec:   dur,
+		color:    col,
+		isLeaf:   isLeaf,
+	}
+}
+
+func makeLakeGlints(rng *rand.Rand, cy, gx float32) []sceneLakeGlint {
+	specs := [][2]float32{{-1.7, 5}, {-0.8, 9}, {0.1, 12}, {1.0, 8}, {1.8, 4}}
+	out := make([]sceneLakeGlint, len(specs))
+	for i, sp := range specs {
+		out[i] = sceneLakeGlint{
+			x:        gx - sp[1]*0.5 + (rng.Float32()*4 - 2),
+			y:        cy + sp[0],
+			w:        sp[1],
+			delaySec: rng.Float32() * 2.0,
+			durSec:   0.9 + rng.Float32()*1.0,
+		}
 	}
 	return out
 }
 
 func ensureCompiledScenes() {
 	compiledOnce.Do(func() {
-		sceneHex := func(s string) ui.Color { return ui.Hex(s) } // design:allow
-		lightGround := sceneHex("#f1f1f1")
-		darkGround := sceneHex("#222222")
+		lightGround := sceneColor("#f1f1f1")
+		darkGround := sceneColor("#222222")
 		nightSky := []ui.GradientStop{
-			{Color: sceneHex("#1b2131"), At: 0},
+			{Color: sceneColor("#1b2131"), At: 0},
 			{Color: darkGround.Alpha(0), At: 1},
 		}
+		starCols := []ui.Color{
+			sceneColor("#dfe6f5"), sceneColor("#dfe6f5"), sceneColor("#dfe6f5"),
+			sceneColor("#dfe6f5"), sceneColor("#dfe6f5"), sceneColor("#dfe6f5"),
+			sceneColor("#f5ead8"), sceneColor("#cfdcff"), sceneColor("#ffe9c9"),
+		}
+		duskStarCols := []ui.Color{
+			sceneColor("#ffffff"), sceneColor("#fff4e6"), sceneColor("#f3eaff"),
+		}
+
 		compiledByID = map[BrandSceneID]*compiledScene{
-			SceneDawn: {
-				id:     SceneDawn,
-				ground: lightGround,
-				skyStops: []ui.GradientStop{
-					{Color: sceneHex("#fbe9dc"), At: 0},
-					{Color: lightGround.Alpha(0), At: 1},
-				},
-				orbKind:   orbSun,
-				orbCY:     41,
-				orbR:      3.8,
-				orbCore:   sceneHex("#ffc993"),
-				orbHalo:   sceneHex("#ffe6cc"),
-				orbHaloOp: 1,
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 44, hillA: 6, hillFill: sceneHex("#e7ece3")},
-					{driftSec: 56, mists: []sceneMistBar{
-						{x: 20, y: 40, w: 90, opacity: 0.70},
-						{x: 150, y: 47, w: 70, opacity: 0.60},
-					}},
-					{driftSec: 48, hasHill: true, hillB: 56, hillA: 5, hillInv: true, hillFill: sceneHex("#dce6d6")},
-					{driftSec: 140, mists: []sceneMistBar{
-						{x: 60, y: 58, w: 110, opacity: 0.55},
-					}},
-					{
-						driftSec: 32, hasHill: true, hillB: 64, hillA: 3, hillFill: sceneHex("#d2e0cb"),
-						blades: []sceneBladeGroup{
-							makeBladeGroup(64, 3, false, []float32{20, 64, 112, 170, 214}, "#b2cca8", 3, 0),
-						},
-					},
-				},
-			},
-			SceneMeadow: {
-				id:        SceneMeadow,
-				ground:    lightGround,
-				orbKind:   orbSun,
-				orbCY:     40,
-				orbR:      3.6,
-				orbCore:   sceneHex("#ffdf96"),
-				orbHalo:   sceneHex("#fff0c4"),
-				orbHaloOp: 1,
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 41, hillA: 6, hillFill: sceneHex("#e2eadf")},
-					{driftSec: 48, hasHill: true, hillB: 50, hillA: 6, hillInv: true, hillFill: sceneHex("#d6e4d0")},
-					{
-						driftSec: 32, hasHill: true, hillB: 60, hillA: 4, hillFill: sceneHex("#cadcc2"),
-						blades: []sceneBladeGroup{
-							makeBladeGroup(60, 4, false, []float32{14, 22, 57, 63, 101, 139, 146, 183, 224, 231}, "#a9c69f", 7, 0),
-							makeBladeGroup(60, 4, false, []float32{36, 82, 118, 165, 203, 247}, "#9bbd90", 8, 2.2),
-						},
-					},
-				},
-			},
-			SceneBreeze: {
-				id:     SceneBreeze,
-				ground: lightGround,
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 50, hillA: 5, hillFill: sceneHex("#e3ebdf")},
-					{driftSec: 26, winds: []sceneWindLine{
-						{x: 6, y: 36, color: sceneHex("#b7d1ae"), delaySec: 0, durSec: 5.5},
-						{x: 96, y: 44, color: sceneHex("#c3d6ec"), delaySec: 1.8, durSec: 6.5},
-						{x: 170, y: 30, color: sceneHex("#c3d6ec"), delaySec: 3.1, durSec: 6.0},
-						{x: 150, y: 52, color: sceneHex("#b7d1ae"), delaySec: 2.4, durSec: 7.0},
-					}},
-					{
-						driftSec: 38, hasHill: true, hillB: 60, hillA: 3, hillInv: true, hillFill: sceneHex("#d7e5d1"),
-						blades: []sceneBladeGroup{
-							makeBladeGroup(60, 3, true, []float32{18, 26, 74, 128, 136, 196, 238}, "#a9c69f", 9, 0),
-						},
-					},
-				},
-			},
-			SceneDusk: {
-				id:     SceneDusk,
-				ground: lightGround,
-				skyStops: []ui.GradientStop{
-					{Color: sceneHex("#f6dfd2"), At: 0},
-					{Color: sceneHex("#efe3ee"), At: 0.45},
-					{Color: lightGround.Alpha(0), At: 1},
-				},
-				birds:     true,
-				orbKind:   orbSun,
-				orbCY:     44,
-				orbR:      4.2,
-				orbCore:   sceneHex("#f2a679"),
-				orbHalo:   sceneHex("#f8d3bb"),
-				orbHaloOp: 1,
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 46, hillA: 6, hillFill: sceneHex("#e8e0d8")},
-					{driftSec: 38, hasHill: true, hillB: 55, hillA: 5, hillInv: true, hillFill: sceneHex("#ddd6cb")},
-					{
-						driftSec: 26, hasHill: true, hillB: 63, hillA: 3, hillFill: sceneHex("#d3cfc0"),
-						blades: []sceneBladeGroup{
-							makeBladeGroup(63, 3, false, []float32{30, 92, 150, 206}, "#bdb6a2", 4, 0),
-						},
-					},
-				},
-			},
-			SceneDaybreak: {
-				id:          SceneDaybreak,
-				dark:        true,
-				ground:      darkGround,
-				skyStops:    nightSky,
-				horizonGlow: true,
-				orbKind:     orbDaybreak,
-				orbCY:       56,
-				orbR:        7,
-				orbHalo:     sceneHex("#f2b48a"),
-				orbHaloOp:   0.35,
-				stars:       makeStars(14, 3, 30, 0.70, 31),
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 54, hillA: 6, hillFill: sceneHex("#2a2a33")},
-					{driftSec: 140, hasHill: true, hillB: 63, hillA: 4, hillInv: true, hillFill: sceneHex("#23242b")},
-				},
-			},
-			SceneFirefly: {
-				id:       SceneFirefly,
-				dark:     true,
-				ground:   darkGround,
-				skyStops: nightSky,
-				stars:    makeStars(10, 3, 36, 0.50, 41),
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 52, hillA: 6, hillFill: sceneHex("#252b31")},
-					{
-						driftSec: 140, hasHill: true, hillB: 62, hillA: 4, hillInv: true, hillFill: sceneHex("#1f2428"),
-						blades: []sceneBladeGroup{
-							makeBladeGroup(62, 4, true, []float32{22, 70, 130, 188, 232}, "#34413c", 5, 0),
-						},
-					},
-				},
-				fireflies: makeFireflies(51),
-			},
-			SceneNight: {
-				id:         SceneNight,
-				dark:       true,
-				ground:     darkGround,
-				skyStops:   nightSky,
-				galaxyBand: true,
-				stars:      makeStars(40, 3, 50, 0.45, 11),
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 56, hillA: 6, hillFill: sceneHex("#252a35")},
-					{driftSec: 140, hasHill: true, hillB: 64, hillA: 4, hillInv: true, hillFill: sceneHex("#20232b")},
-				},
-			},
-			SceneMoon: {
-				id:        SceneMoon,
-				dark:      true,
-				ground:    darkGround,
-				skyStops:  nightSky,
-				shootStar: true,
-				orbKind:   orbCrescent,
-				orbCY:     37.5,
-				orbR:      4.5,
-				orbCore:   sceneHex("#e7ecf8"),
-				orbHalo:   sceneHex("#9fb4e6"),
-				orbHaloOp: 0.12,
-				stars:     makeStars(18, 4, 46, 0.60, 23),
-				layers: []sceneLayer{
-					{driftSec: 90, hasHill: true, hillB: 60, hillA: 5, hillInv: true, hillFill: sceneHex("#22262f")},
-				},
-			},
+			SceneDawn:     compileDawn(lightGround),
+			SceneMeadow:   compileMeadow(lightGround),
+			SceneBreeze:   compileBreeze(lightGround),
+			SceneDusk:     compileDusk(lightGround, duskStarCols),
+			SceneDaybreak: compileDaybreak(darkGround, nightSky, starCols),
+			SceneFirefly:  compileFirefly(darkGround, nightSky, starCols),
+			SceneNight:    compileNight(darkGround, nightSky, starCols),
+			SceneMoon:     compileMoon(darkGround, nightSky, starCols),
 		}
 	})
+}
+
+func compileDawn(ground ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(11))
+	pk := peakCurve{base: 45, amp: 17, wl: 263, phase: 0.6, sharp: 1.7, fill: sceneColor("#e8ecec")}
+	far := ridgeCurve{base: 43, comps: []ridgeComp{{4.5, 410, 0.4}, {2.5, 173, 1.9}, {1.4, 67, 0.7}}, fill: sceneColor("#e7ece3")}
+	mid := ridgeCurve{base: 53, comps: []ridgeComp{{4, 330, 2.2}, {2, 121, 0.3}}, fill: sceneColor("#dce6d6")}
+	near := ridgeCurve{base: 63, comps: []ridgeComp{{2.6, 260, 1.1}, {1.2, 93, 2.5}}, fill: sceneColor("#d2e0cb")}
+
+	bl, tips := makeBlades(rng, near.y, makeTuftXs(rng, 6, 258, 9, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
+	dewDurs := []float32{7.3, 9.1, 11.7, 13.3}
+	dews := make([]sceneDewDrop, 0, len(tips)/2+1)
+	for i, pt := range tips {
+		if i%2 == 0 {
+			dews = append(dews, sceneDewDrop{
+				x:        pt[0],
+				y:        pt[1],
+				delaySec: rng.Float32() * 12.0,
+				durSec:   dewDurs[rng.Intn(len(dewDurs))],
+			})
+		}
+	}
+	white := sceneColor("#ffffff")
+	return &compiledScene{
+		id:     SceneDawn,
+		ground: ground,
+		skyStops: []ui.GradientStop{
+			{Color: sceneColor("#fbe9dc"), At: 0},
+			{Color: ground.Alpha(0), At: 1},
+		},
+		peak:   pk,
+		far:    far,
+		mid:    mid,
+		hasMid: true,
+		near:   near,
+		mists: []sceneMistBand{
+			// 0: behind sun/far ridge
+			{x: 250, y: 39, w: 420, h: 5, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 14, durSec: 33},
+			// 1..5: between far & mid ridges (plus wide-screen extension)
+			{x: -40, y: 37, w: 310, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tierA1: true, delaySec: 5, durSec: 23},
+			{x: 430, y: 32, w: 380, h: 5, color: white, baseOp: 0.6, kind: mistDriftLeft, tierA1: true, delaySec: 11, durSec: 31},
+			{x: 890, y: 34, w: 250, h: 6, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 3, durSec: 19},
+			{x: 640, y: 24, w: 150, h: 3.5, color: white, baseOp: 0.6, kind: mistPulse, tierA1: true, delaySec: 9, durSec: 27},
+			{x: 1220, y: 33, w: 340, h: 5.5, color: white, baseOp: 0.55, kind: mistDriftLeft, tierA1: true, delaySec: 7, durSec: 29},
+			// 6: between mid & near ridges
+			{x: 70, y: 50, w: 250, h: 8, color: white, baseOp: 0.6, kind: mistDriftLeft, tierA1: true, delaySec: 17, durSec: 37},
+			// 7: foreground mist
+			{x: -20, y: 61, w: 190, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tierA1: true, delaySec: 20, durSec: 41},
+		},
+		blades:     bl,
+		bladeColor: sceneColor("#b2cca8"),
+		dewDrops:   dews,
+		cat: sceneCatSpec{
+			x: 152, y: mid.y(152) + 0.8,
+			color:   sceneColor("#a3b39b"),
+			tailDur: 6.2,
+		},
+	}
+}
+
+func compileMeadow(ground ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(23))
+	pk := peakCurve{base: 46, amp: 13, wl: 341, phase: 1.9, sharp: 1.1, fill: sceneColor("#e9eee6")}
+	far := ridgeCurve{base: 43, comps: []ridgeComp{{5, 380, 2.8}, {2.2, 151, 0.2}, {1.2, 59, 1.4}}, fill: sceneColor("#e2eadf")}
+	mid := ridgeCurve{base: 51, comps: []ridgeComp{{4.5, 300, 0.9}, {2, 133, 2.4}}, fill: sceneColor("#d6e4d0")}
+	near := ridgeCurve{base: 61, comps: []ridgeComp{{3, 240, 2.0}, {1.3, 101, 0.6}}, fill: sceneColor("#cadcc2")}
+
+	bt := makeWanderTrack(rng, 6, 34, 7, 0.14)
+	flowerCols := []ui.Color{sceneColor("#ffffff"), sceneColor("#f6dc8c"), sceneColor("#f1c9d3")}
+	flowers := make([]sceneFlower, 15)
+	for i := range flowers {
+		x := 8 + rng.Float32()*278
+		yf := near.y
+		if rng.Intn(3) == 0 {
+			yf = mid.y
+		}
+		flowers[i] = sceneFlower{
+			x:     x,
+			y:     yf(float64(x)) + 1.6 + rng.Float32()*2.4,
+			r:     0.7 + rng.Float32()*0.4,
+			color: flowerCols[rng.Intn(len(flowerCols))],
+		}
+	}
+	b1, _ := makeBlades(rng, near.y, makeTuftXs(rng, 2, 298, 15, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "gust")
+	b2, _ := makeBlades(rng, near.y, makeTuftXs(rng, 6, 294, 8, 2, 4, 5.0), 5.0, 9.0, -1.6, 1.6, "gust")
+
+	return &compiledScene{
+		id:           SceneMeadow,
+		ground:       ground,
+		peak:         pk,
+		far:          far,
+		mid:          mid,
+		hasMid:       true,
+		near:         near,
+		butterflyTrk: bt,
+		clouds: []sceneCloud{
+			{x: 462, y: 9, scale: 1.0, delaySec: 12, durSec: 71},
+			{x: 836, y: 3, scale: 1.35, delaySec: 40, durSec: 97},
+			{x: 1012, y: 19, scale: 0.7, delaySec: 5, durSec: 59},
+			{x: 281, y: -3, scale: 0.8, delaySec: 22, durSec: 83},
+			// Wide-screen continuation clouds
+			{x: 1320, y: 7, scale: 1.05, delaySec: 18, durSec: 79},
+			{x: 1680, y: 14, scale: 0.85, delaySec: 33, durSec: 67},
+			{x: 2040, y: 5, scale: 1.2, delaySec: 9, durSec: 89},
+		},
+		flowers:     flowers,
+		blades:      b1,
+		bladeColor:  sceneColor("#a9c69f"),
+		blades2:     b2,
+		blade2Color: sceneColor("#9bbd90"),
+		cat: sceneCatSpec{
+			x: 150, y: mid.y(150) + 0.8,
+			color:   sceneColor("#8fae86"),
+			tailDur: 3.4,
+		},
+	}
+}
+
+func compileBreeze(ground ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(37))
+	pk := peakCurve{base: 47, amp: 12, wl: 297, phase: 2.7, sharp: 1.2, fill: sceneColor("#eaefe7")}
+	far := ridgeCurve{base: 44, comps: []ridgeComp{{4.5, 440, 1.6}, {2.4, 163, 0.9}, {1.2, 71, 2.9}}, fill: sceneColor("#e3ebdf")}
+	mid := ridgeCurve{base: 54, comps: []ridgeComp{{3.5, 310, 0.2}, {1.8, 127, 1.7}}, fill: sceneColor("#dde8d7")}
+	near := ridgeCurve{base: 62, comps: []ridgeComp{{2.6, 250, 2.6}, {1.2, 97, 0.4}}, fill: sceneColor("#d7e5d1")}
+
+	windSpecs := []struct {
+		approxL float32
+		hex     string
+		delay   float32
+		dur     float32
+	}{
+		{170, "#b7d1ae", 1.0, 9.5},
+		{230, "#c3d6ec", 4.2, 11.0},
+		{160, "#b7d1ae", 6.5, 8.3},
+		{165, "#c3d6ec", 2.4, 13.7},
+		{220, "#b7d1ae", 9.0, 12.1},
+		{140, "#c3d6ec", 5.2, 10.3},
+		{110, "#c3d6ec", 12.0, 15.3},
+		// Wide-screen wind ribbons
+		{145, "#c3d6ec", 3.4, 11.4},
+		{220, "#b7d1ae", 7.8, 13.1},
+	}
+	winds := make([]sceneWindRibbon, len(windSpecs))
+	for i, ws := range windSpecs {
+		winds[i] = sceneWindRibbon{
+			approxL:  ws.approxL,
+			color:    sceneColor(ws.hex),
+			delaySec: ws.delay,
+			durSec:   ws.dur,
+		}
+	}
+
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 4, 294, 12, 2, 5, 5.0), 4.0, 7.5, 1.2, 3.4, "flut")
+
+	seedCol := sceneColor("#a3b39c")
+	seedSpecs := [][6]float32{
+		{63, 50, 760, 7, 34, 2},
+		{63, 50, 1240, 9, 47, 19},
+		{215, 48, 1240, 8, 39, 30},
+		{215, 48, 620, 6, 29, 11},
+		{237, 49, 1240, 9, 53, 44},
+	}
+	drifts := make([]sceneDriftItem, 0, len(seedSpecs)+3)
+	for _, sp := range seedSpecs {
+		drifts = append(drifts, makeDriftItem(rng, sp[0], sp[1], sp[2], int(sp[3]), 7, 35, 34, 0.9, sp[5], sp[4], seedCol, false))
+	}
+	leafSpecs := []struct {
+		hex   string
+		dur   float32
+		delay float32
+	}{
+		{"#b7d1ae", 21, 6},
+		{"#d8cba6", 27, 17},
+		{"#c5d9bd", 33, 3},
+	}
+	for _, ls := range leafSpecs {
+		y0 := 14 + rng.Float32()*20
+		drifts = append(drifts, makeDriftItem(rng, -12, y0, 1240, 7, 6, 36, 320, 0.9, ls.delay, ls.dur, sceneColor(ls.hex), true))
+	}
+
+	return &compiledScene{
+		id:         SceneBreeze,
+		ground:     ground,
+		peak:       pk,
+		far:        far,
+		mid:        mid,
+		hasMid:     true,
+		near:       near,
+		winds:      winds,
+		blades:     bl,
+		bladeColor: sceneColor("#a9c69f"),
+		driftItems: drifts,
+		cat: sceneCatSpec{
+			x: 152, y: mid.y(152) + 0.8,
+			color:   sceneColor("#98b190"),
+			tailDur: 1.9,
+		},
+	}
+}
+
+func compileDusk(ground ui.Color, starCols []ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(41))
+	pk := peakCurve{base: 47, amp: 18, wl: 229, phase: 0.3, sharp: 2.1, fill: sceneColor("#ebe1e0")}
+	far := ridgeCurve{base: 45, comps: []ridgeComp{{4.5, 400, 3.3}, {2.3, 157, 1.2}, {1.2, 63, 0.1}}, fill: sceneColor("#e8e0d8")}
+	mid := ridgeCurve{base: 55, comps: []ridgeComp{{4, 320, 1.4}, {1.8, 119, 2.7}}, fill: sceneColor("#ddd6cb")}
+	near := ridgeCurve{base: 65, comps: []ridgeComp{{2.2, 250, 0.3}, {1.0, 91, 1.9}}, fill: sceneColor("#d3cfc0")}
+
+	sts := makeStarsV2(rng, 70, 3, 26, 0.5, starCols, false, nil)
+	streakSpecs := []struct {
+		cx, cy, rx, ry float32
+		hex            string
+		dur            float32
+	}{
+		{96, 13, 70, 1.6, "#f3c4ac", 17},
+		{348, 8, 118, 2.2, "#eec1cf", 23},
+		{540, 27, 62, 1.3, "#f6d2b0", 29},
+		{706, 15, 96, 1.9, "#e3c6e4", 31},
+		{874, 30, 54, 1.2, "#f3c4ac", 19},
+		{958, 9, 104, 2.0, "#eec1cf", 27},
+		{1128, 22, 60, 1.4, "#e3c6e4", 21},
+		{226, 31, 44, 1.1, "#f6d2b0", 25},
+		{432, 21, 82, 1.5, "#f0c9b8", 35},
+		{812, 4, 66, 1.3, "#f6d2b0", 15},
+		// Wide-screen continuation streaks
+		{1340, 14, 92, 1.8, "#eec1cf", 26},
+		{1580, 25, 74, 1.4, "#f6d2b0", 22},
+		{1860, 11, 108, 2.0, "#e3c6e4", 30},
+		{2120, 20, 68, 1.3, "#f3c4ac", 20},
+	}
+	streaks := make([]sceneDuskStreak, len(streakSpecs))
+	for i, sp := range streakSpecs {
+		streaks[i] = sceneDuskStreak{
+			cx: sp.cx, cy: sp.cy, rx: sp.rx, ry: sp.ry,
+			color:        sceneColor(sp.hex),
+			delaySec:     rng.Float32() * 30.0,
+			durSec:       sp.dur,
+			litUnderside: i%3 == 0,
+			litDelaySec:  rng.Float32() * 30.0,
+		}
+	}
+	lk := sceneLake{
+		cx: 178, cy: 60.5, rx: 46, ry: 3.3,
+		fill:       sceneColor("#ecdcd3"),
+		glintColor: sceneColor("#f4a877"),
+		glints:     makeLakeGlints(rng, 60.5, 188),
+	}
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 10, 252, 7, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
+
+	return &compiledScene{
+		id:     SceneDusk,
+		ground: ground,
+		skyStops: []ui.GradientStop{
+			{Color: sceneColor("#f6dfd2"), At: 0},
+			{Color: sceneColor("#efe3ee"), At: 0.45},
+			{Color: ground.Alpha(0), At: 1},
+		},
+		peak:       pk,
+		far:        far,
+		mid:        mid,
+		hasMid:     true,
+		near:       near,
+		stars:      sts,
+		streaks:    streaks,
+		hasLake:    true,
+		lake:       lk,
+		blades:     bl,
+		bladeColor: sceneColor("#bdb6a2"),
+		cat: sceneCatSpec{
+			x: 128, y: mid.y(128) + 0.8,
+			color:   sceneColor("#b3a896"),
+			tailDur: 5.4,
+		},
+	}
+}
+
+func compileDaybreak(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(53))
+	pk := peakCurve{base: 50, amp: 19, wl: 247, phase: 1.3, sharp: 2.0, fill: sceneColor("#252733")}
+	far := ridgeCurve{base: 54, comps: []ridgeComp{{4.5, 390, 0.8}, {2.2, 149, 2.1}, {1.1, 61, 0.5}}, fill: sceneColor("#2a2a33")}
+	near := ridgeCurve{base: 63, comps: []ridgeComp{{3, 270, 2.4}, {1.2, 99, 1.0}}, fill: sceneColor("#23242b")}
+
+	dimFn := func(x, y float32) float32 {
+		d := float32(math.Hypot(float64(x-brandOrbX), float64((y-58)*3)))
+		return clampF((d-90)/560, 0.12, 1.0)
+	}
+	sts := makeStarsV2(rng, 120, 3, 34, 0.45, starCols, false, dimFn)
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 10, 254, 7, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
+	mistCol := sceneColor("#cfd6e6")
+
+	return &compiledScene{
+		id:         SceneDaybreak,
+		dark:       true,
+		ground:     ground,
+		skyStops:   nightSky,
+		peak:       pk,
+		far:        far,
+		near:       near,
+		rimX0:      24,
+		rimX1:      432,
+		rimColor:   sceneColor("#f2b48a"),
+		rimPeakOp:  0.6,
+		rimMidStop: 0.4,
+		rimMidOp:   0.6,
+		stars:      sts,
+		mists: []sceneMistBand{
+			{x: -30, y: 56, w: 260, h: 6, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tierA1: false, delaySec: 8, durSec: 29},
+			{x: 40, y: 64, w: 210, h: 5, color: mistCol, baseOp: 0.09, kind: mistDriftRight, tierA1: false, delaySec: 20, durSec: 37},
+		},
+		blades:     bl,
+		bladeColor: sceneColor("#2d2f38"),
+		cat: sceneCatSpec{
+			x: 150, y: far.y(150) + 0.8,
+			color: sceneColor("#1b1c22"),
+			sleep: true,
+		},
+	}
+}
+
+func compileFirefly(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(67))
+	pk := peakCurve{base: 49, amp: 15, wl: 311, phase: 2.2, sharp: 1.4, fill: sceneColor("#222830")}
+	far := ridgeCurve{base: 52, comps: []ridgeComp{{4.5, 370, 1.9}, {2.2, 141, 0.6}, {1.1, 57, 2.2}}, fill: sceneColor("#252b31")}
+	near := ridgeCurve{base: 63, comps: []ridgeComp{{2.6, 255, 0.5}, {1.2, 103, 2.0}}, fill: sceneColor("#1f2428")}
+
+	wanders := make([]wanderTrack, 6)
+	wCounts := []int{5, 6, 7}
+	for i := range wanders {
+		wanders[i] = makeWanderTrack(rng, wCounts[rng.Intn(len(wCounts))], 10, 6, 0)
+	}
+	sts := makeStarsV2(rng, 70, 3, 36, 0.4, starCols, false, nil)
+
+	mkFly := func(x, y, size float32) sceneFirefly {
+		bk := fireflyBlinkKind(rng.Intn(3))
+		baseDur := float32(3.4)
+		switch bk {
+		case ffBlinkDouble:
+			baseDur = 5.3
+		case ffBlinkSlow:
+			baseDur = 6.7
+		}
+		return sceneFirefly{
+			x:             x,
+			y:             y,
+			size:          size,
+			flipX:         rng.Intn(2) == 1,
+			wanderIdx:     rng.Intn(len(wanders)),
+			moveDelaySec:  rng.Float32() * 12.0,
+			moveDurSec:    9.0 + rng.Float32()*10.0,
+			blinkKind:     bk,
+			blinkDelaySec: rng.Float32() * 6.0,
+			blinkDurSec:   baseDur * (0.9 + rng.Float32()*0.25),
+		}
+	}
+
+	farCoords := [][2]float32{
+		{30, 47}, {84, 45}, {146, 48}, {204, 44}, {244, 49},
+		{338, 36}, {612, 37}, {834, 36}, {1022, 37},
+		{1340, 36}, {1690, 35},
+	}
+	farFlies := make([]sceneFirefly, len(farCoords))
+	for i, c := range farCoords {
+		farFlies[i] = mkFly(c[0], c[1], 0.6)
+	}
+
+	var pondY, pondDel, pondDur [4]float32
+	for i := range 4 {
+		pondY[i] = 60 + (rng.Float32()*1.8 - 0.8)
+		pondDel[i] = rng.Float32() * 5.0
+		pondDur[i] = 3.4 + rng.Float32()*3.3
+	}
+
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 6, 288, 10, 2, 5, 5.0), 5.0, 11.0, -1.6, 1.6, "reed")
+	var catDel, catDur [5]float32
+	for i := range 5 {
+		catDel[i] = rng.Float32() * 8.0
+		catDur[i] = 7.0 + rng.Float32()*3.0
+	}
+	var mDel, mDur [3]float32
+	for i := range 3 {
+		mDel[i] = rng.Float32() * 5.0
+		mDur[i] = 5.0 + rng.Float32()*3.0
+	}
+
+	nearCoords := [][2]float32{
+		{22, 54}, {48, 44}, {71, 60}, {97, 50}, {118, 66},
+		{139, 43}, {164, 55}, {189, 50}, {212, 64}, {236, 46}, {252, 58},
+	}
+	skyCoords := [][2]float32{
+		{304, 33}, {388, 27}, {521, 34}, {742, 30}, {921, 35}, {1124, 31},
+		{1420, 32}, {1760, 29}, {2080, 33},
+	}
+	flies := make([]sceneFirefly, 0, len(nearCoords)+len(skyCoords))
+	for _, c := range nearCoords {
+		sz := float32(1.0)
+		if rng.Intn(3) == 2 {
+			sz = 1.25
+		}
+		flies = append(flies, mkFly(c[0], c[1], sz))
+	}
+	for _, c := range skyCoords {
+		flies = append(flies, mkFly(c[0], c[1], 1.0))
+	}
+
+	return &compiledScene{
+		id:          SceneFirefly,
+		dark:        true,
+		ground:      ground,
+		skyStops:    nightSky,
+		peak:        pk,
+		far:         far,
+		near:        near,
+		stars:       sts,
+		ffWanders:   wanders,
+		farFlies:    farFlies,
+		fireflies:   flies,
+		pondReflY:   pondY,
+		pondReflDel: pondDel,
+		pondReflDur: pondDur,
+		blades:      bl,
+		bladeColor:  sceneColor("#34413c"),
+		cattailDel:  catDel,
+		cattailDur:  catDur,
+		mushDel:     mDel,
+		mushDur:     mDur,
+		cat: sceneCatSpec{
+			x: 128, y: far.y(128) + 0.8,
+			color:    sceneColor("#15181b"),
+			tailDur:  4.8,
+			hasEyes:  true,
+			eyeColor: sceneColor("#d7f08a"),
+		},
+	}
+}
+
+func compileNight(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(79))
+	pk := peakCurve{base: 52, amp: 17, wl: 271, phase: 0.9, sharp: 1.9, fill: sceneColor("#222734")}
+	far := ridgeCurve{base: 56, comps: []ridgeComp{{4.5, 400, 2.9}, {2.2, 153, 0.4}, {1.1, 65, 1.8}}, fill: sceneColor("#252a35")}
+	near := ridgeCurve{base: 64, comps: []ridgeComp{{3, 262, 1.3}, {1.2, 95, 0.2}}, fill: sceneColor("#20232b")}
+
+	dustCols := []ui.Color{sceneColor("#cfdcff"), sceneColor("#cfdcff"), sceneColor("#f1e4ff")}
+	dust := make([]sceneDustStar, 0, 190)
+	for range 190 {
+		t := rng.Float32()
+		x := 820 + 270*t + float32(rng.NormFloat64())*11
+		y := 4 + 32*t + float32(rng.NormFloat64())*5.5
+		if y > 0 && y < 44 && isSkyClear(x, y) {
+			dust = append(dust, sceneDustStar{
+				x:       x,
+				y:       y,
+				r:       0.26 + rng.Float32()*0.24,
+				color:   dustCols[rng.Intn(len(dustCols))],
+				opacity: 0.20 + rng.Float32()*0.40,
+			})
+		}
+	}
+	sts := makeStarsV2(rng, 210, 3, 50, 0.3, starCols, true, nil)
+
+	flareSpecs := [][4]float32{
+		{244, 42, 3.0, 9.7},
+		{836, 9, 3.6, 13.1},
+		{988, 33, 2.8, 11.3},
+		{1046, 7, 3.2, 17.9},
+		{96, 38, 2.6, 15.1},
+		{668, 34, 2.4, 12.7},
+	}
+	flares := make([]sceneFlareStar, len(flareSpecs))
+	for i, fs := range flareSpecs {
+		flares[i] = sceneFlareStar{
+			x: fs[0], y: fs[1], size: fs[2],
+			delaySec: rng.Float32() * 9.0,
+			durSec:   fs[3],
+		}
+	}
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 10, 254, 6, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
+	tx := float64(106)
+
+	return &compiledScene{
+		id:         SceneNight,
+		dark:       true,
+		ground:     ground,
+		skyStops:   nightSky,
+		peak:       pk,
+		far:        far,
+		near:       near,
+		dustStars:  dust,
+		stars:      sts,
+		flares:     flares,
+		blades:     bl,
+		bladeColor: sceneColor("#2a2f3a"),
+		meteors: []sceneMeteor{
+			{x0: 1004, y0: 6, dx: -58, dy: 22, tailX: 22, tailY: -8.3, durSec: 37, atFrac: 0.88, delaySec: 22, isNightMet: true},
+		},
+		cat: sceneCatSpec{
+			x: float32(tx + 26), y: far.y(tx+26) + 0.8,
+			color:   sceneColor("#171a20"),
+			flip:    true,
+			tailDur: 5.6,
+			lookDeg: -20,
+		},
+	}
+}
+
+func compileMoon(ground ui.Color, nightSky []ui.GradientStop, starCols []ui.Color) *compiledScene {
+	rng := rand.New(rand.NewSource(83))
+	pk := peakCurve{base: 50, amp: 20, wl: 219, phase: 1.6, sharp: 2.4, fill: sceneColor("#232834")}
+	far := ridgeCurve{base: 54, comps: []ridgeComp{{4, 420, 1.1}, {2, 147, 2.6}, {1, 69, 0.9}}, fill: sceneColor("#262b36")}
+	near := ridgeCurve{base: 64, comps: []ridgeComp{{2.4, 268, 2.2}, {1.1, 105, 0.7}}, fill: sceneColor("#22262f")}
+
+	sts := makeStarsV2(rng, 105, 4, 46, 0.5, starCols, false, nil)
+	shotSpecs := [][7]float32{
+		{300, 5, 66, 21, 19, 62, 8},
+		{772, 3, 50, 25, 31, 44, 22},
+		{1034, 9, -54, 19, 43, 71, 30},
+	}
+	meteors := make([]sceneMeteor, len(shotSpecs))
+	for i, sh := range shotSpecs {
+		n := float32(math.Hypot(float64(sh[2]), float64(sh[3])))
+		meteors[i] = sceneMeteor{
+			x0: sh[0], y0: sh[1],
+			dx: sh[2], dy: sh[3],
+			tailX:    -sh[2] / n * 24,
+			tailY:    -sh[3] / n * 24,
+			durSec:   sh[4],
+			atFrac:   sh[5] / 100.0,
+			delaySec: sh[4] * (sh[5] - sh[6]) / 100.0,
+		}
+	}
+	lk := sceneLake{
+		cx: 182, cy: 60.5, rx: 46, ry: 3.2,
+		fill:       sceneColor("#1e2530"),
+		glintColor: sceneColor("#aebfe8"),
+		glints:     makeLakeGlints(rng, 60.5, 189),
+	}
+	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 12, 252, 6, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "")
+
+	return &compiledScene{
+		id:         SceneMoon,
+		dark:       true,
+		ground:     ground,
+		skyStops:   nightSky,
+		peak:       pk,
+		far:        far,
+		near:       near,
+		rimX0:      48,
+		rimX1:      336,
+		rimColor:   sceneColor("#aebfe8"),
+		rimPeakOp:  0.7,
+		rimMidStop: 0.5,
+		rimMidOp:   0.5,
+		stars:      sts,
+		meteors:    meteors,
+		moonWisps: []sceneMoonWisp{
+			{y: 31, scale: 1.0, delaySec: 96, durSec: 132},
+			{y: 12, scale: 1.5, delaySec: 40, durSec: 176},
+			{y: 24, scale: 0.7, delaySec: 20, durSec: 104},
+			{y: 4, scale: 0.9, delaySec: 118, durSec: 151},
+		},
+		hasLake:    true,
+		lake:       lk,
+		blades:     bl,
+		bladeColor: sceneColor("#303746"),
+		cat: sceneCatSpec{
+			x: 128, y: far.y(128) + 0.8,
+			color:    sceneColor("#191c24"),
+			sleep:    true,
+			hasZzz:   true,
+			zzzColor: sceneColor("#8fa0c8"),
+		},
+	}
+}
+
+func buildCurvePath(dst *ui.Path, yf func(float64) float32, x0, x1, step float32, closeBottom bool) {
+	dst.Reset()
+	n := int((x1-x0)/step) + 1
+	if n < 3 {
+		return
+	}
+	px0, py0 := x0, yf(float64(x0))
+	dst.MoveTo(px0, py0)
+	prevX, prevY := px0, py0
+	for i := 1; i < n; i++ {
+		cx := x0 + float32(i)*step
+		if cx > x1 {
+			cx = x1
+		}
+		cy := yf(float64(cx))
+		if i > 1 {
+			mx := (prevX + cx) * 0.5
+			my := (prevY + cy) * 0.5
+			dst.QuadTo(prevX, prevY, mx, my)
+		}
+		prevX, prevY = cx, cy
+	}
+	dst.LineTo(prevX, prevY)
+	if closeBottom {
+		bottom := BrandBandHeight + 16
+		dst.LineTo(x1, bottom).LineTo(x0, bottom).Close()
+	}
+}
+
+func (sc *compiledScene) ensureTerrain(w float32) *sceneTerrainCache {
+	bucket := (int(w)/64 + 1) * 64
+	if bucket < int(brandDesignWidth) {
+		bucket = int(brandDesignWidth)
+	}
+	sc.terrainMu.Lock()
+	defer sc.terrainMu.Unlock()
+	if sc.terrain.widthBucket != bucket {
+		x0 := float32(-24)
+		x1 := float32(bucket) + 24
+		buildCurvePath(&sc.terrain.peakPath, sc.peak.y, x0, x1, 6, true)
+		buildCurvePath(&sc.terrain.farPath, sc.far.y, x0, x1, 12, true)
+		sc.terrain.hasMid = sc.hasMid
+		if sc.hasMid {
+			buildCurvePath(&sc.terrain.midPath, sc.mid.y, x0, x1, 12, true)
+		}
+		buildCurvePath(&sc.terrain.nearPath, sc.near.y, x0, x1, 12, true)
+		if sc.rimX1 > sc.rimX0 {
+			buildCurvePath(&sc.terrain.peakRim, sc.peak.y, sc.rimX0, sc.rimX1, 6, false)
+			buildCurvePath(&sc.terrain.farRim, sc.far.y, sc.rimX0, sc.rimX1, 12, false)
+		}
+		sc.terrain.widthBucket = bucket
+	}
+	return &sc.terrain
+}
+
+func clampF(v, lo, hi float32) float32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
