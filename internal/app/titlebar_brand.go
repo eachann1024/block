@@ -11,6 +11,8 @@ const (
 	// brandWebsiteURL is where the brand menu's "open website" row leads.
 	brandWebsiteURL  = "https://block.cooool.top"
 	brandWebsiteHost = "block.cooool.top"
+	// brandReleasesURL lists full version changelogs on GitHub Releases.
+	brandReleasesURL = "https://github.com/eachann1024/block/releases"
 	// brandMarkGap separates the brand mark from the sidebar toggle.
 	brandMarkGap = 4
 	// brandMenuHeaderH is the brand menu's identity header (mark + name + version line).
@@ -21,21 +23,50 @@ const (
 // wordmark moved into its tooltip and menu; a pending update shows as a dot on it.
 func renderBrandMark(c *ui.Context, p TitlebarProps) {
 	open := p.MenuState != nil && p.MenuState.BrandMenuOpen
-	tip := brandVersionLabel(p)
-	if p.HasUpdate && p.UpdateTooltip != "" {
-		tip = p.UpdateTooltip
+	versionLabel := brandVersionLabel(p)
+	a11yLabel := versionLabel
+	rows := []blockui.TooltipRow{{Trigger: versionLabel}}
+	switch {
+	case p.HasUpdate:
+		status := nonEmptyOr(p.UpdateTooltip, theme.Tr("有可用更新", "Update available"))
+		a11yLabel = versionLabel + " · " + status
+		rows = append(rows, blockui.TooltipRow{
+			Trigger:     status,
+			TriggerTone: blockui.TooltipToneAccent,
+		})
+	case p.UpdateChecking:
+		checking := theme.Tr("正在检查更新…", "Checking for updates…")
+		a11yLabel = versionLabel + " · " + checking
+		rows = append(rows, blockui.TooltipRow{
+			Detail: checking,
+		})
+	default:
+		rows = append(rows, blockui.TooltipRow{
+			Detail: brandWebsiteHost,
+		})
+	}
+	spec := blockui.TooltipSpec{
+		Placement: blockui.TooltipBelow,
+		Rows:      rows,
 	}
 	btn := blockui.AppMarkButton(c, blockui.AppMarkOptions{
-		Tooltip:   tip,
-		Active:    open,
-		UpdateDot: p.HasUpdate,
+		Label:       a11yLabel,
+		TooltipSpec: &spec,
+		Active:      open,
+		UpdateDot:   p.HasUpdate,
 	}).Margin(0, 0, 0, brandMarkGap)
+	if p.MenuState != nil {
+		btn.Bind(&p.MenuState.BrandTrigger)
+	}
 	if b := btn.Bounds(); p.MenuState != nil && b.W > 0 {
 		p.MenuState.BrandMenuAnchor = b
 	}
 	if btn.Clicked() && p.MenuState != nil {
 		p.MenuState.Close()
 		p.MenuState.BrandMenuOpen = !open
+		if !open {
+			p.MenuState.MenuTrigger = &p.MenuState.BrandTrigger
+		}
 	}
 }
 
@@ -49,26 +80,43 @@ func brandVersionLabel(p TitlebarProps) string {
 // buildBrandMenuItems lists where the app comes from and how to keep it current.
 func buildBrandMenuItems(c *ui.Context, p TitlebarProps) []blockui.MenuItemSpec {
 	icSite := icons.LinkOpen
-	icUpdate := icons.Download
+	icUpdate := icons.UpdateTangle
+	if p.HasUpdate {
+		icUpdate = icons.Download
+	}
+	icChangelog := icons.History
 	icStore := icons.Plug
-	item := func(id, label string, ic *icons.Icon, fn func()) blockui.MenuItemSpec {
-		return blockui.MenuItemSpec{ID: id, Label: label, Icon: ic, OnClick: func() {
-			p.MenuState.Close()
+	icAbout := icons.HelpCircle
+	item := func(id, label, hint string, ic *icons.Icon, restoreFocus bool, fn func()) blockui.MenuItemSpec {
+		return blockui.MenuItemSpec{ID: id, Label: label, Hint: hint, Icon: ic, OnClick: func() {
+			if restoreFocus {
+				p.MenuState.CloseAndRestoreFocus(c)
+			} else {
+				p.MenuState.Close()
+			}
 			if fn != nil {
 				fn()
 			}
 		}}
 	}
-	updateLabel := theme.Tr("检查更新…", "Check for Updates…")
-	if p.HasUpdate {
-		updateLabel = nonEmptyOr(p.UpdateTooltip, theme.Tr("有可用更新", "Update available"))
+	updateLabel := p.UpdateMenuLabel
+	if updateLabel == "" {
+		switch {
+		case p.HasUpdate:
+			updateLabel = nonEmptyOr(p.UpdateTooltip, theme.Tr("有可用更新", "Update available"))
+		case p.UpdateChecking:
+			updateLabel = theme.Tr("正在检查更新…", "Checking for Updates…")
+		default:
+			updateLabel = theme.Tr("检查更新…", "Check for Updates…")
+		}
 	}
 	items := []blockui.MenuItemSpec{
-		item("brand-update", updateLabel, &icUpdate, p.OnOpenUpdater),
-		item("brand-website", theme.Tr("打开官网", "Open Website"), &icSite, func() { c.OpenURL(brandWebsiteURL) }),
-		item("brand-plugin-store", theme.Tr("插件商店", "Plugin Store"), &icStore, p.OnOpenPluginStore),
+		item("brand-update", updateLabel, p.UpdateHint, &icUpdate, false, p.OnOpenUpdater),
+		item("brand-changelog", theme.Tr("更新日志", "Release Notes"), "", &icChangelog, true, func() { c.OpenURL(brandReleasesURL) }),
+		item("brand-website", theme.Tr("打开官网", "Open Website"), "", &icSite, true, func() { c.OpenURL(brandWebsiteURL) }),
+		item("brand-plugin-store", theme.Tr("插件商店", "Plugin Store"), "", &icStore, false, p.OnOpenPluginStore),
 		{Separator: true},
-		item("brand-about", theme.Tr("关于 Block", "About Block"), nil, p.OnOpenAbout),
+		item("brand-about", theme.Tr("关于 Block", "About Block"), "", &icAbout, false, p.OnOpenAbout),
 	}
 	return items
 }
@@ -115,7 +163,15 @@ type titlebarMenuSpec struct {
 func renderTitlebarAnchoredMenu(c *ui.Context, p TitlebarProps, scrim ui.Element, m titlebarMenuSpec) {
 	vpW, vpH := c.Size()
 	menuW := min(m.Width, max(vpW-16, 1))
-	spec := blockui.PlaceBelow(m.Anchor)
+	anchor := m.Anchor
+	if anchor.W <= 0 {
+		ax := float32(12)
+		if m.AlignRight {
+			ax = max(vpW-40, 8)
+		}
+		anchor = ui.Rect{X: ax, Y: 6, W: theme.ChromeBoxSize, H: theme.ChromeBoxSize}
+	}
+	spec := blockui.PlaceBelow(anchor)
 	if m.AlignRight {
 		spec = spec.WithAlignX(blockui.AlignX{Kind: blockui.AlignRight})
 	}
@@ -124,8 +180,9 @@ func renderTitlebarAnchoredMenu(c *ui.Context, p TitlebarProps, scrim ui.Element
 	ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 	c.Key(m.Key)
-	card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-	blockui.NavigateMenu(c, card, m.Items, &p.MenuState.MenuCursor)
+	card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
+		Focusable().FocusRing(false).AutoFocus().Role(ui.RoleMenu))
+	navigateTitlebarMenu(c, card, m.Items, p.MenuState)
 	blockui.Probe(card, m.Key)
 	card.Children(func() {
 		blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
@@ -134,12 +191,17 @@ func renderTitlebarAnchoredMenu(c *ui.Context, p TitlebarProps, scrim ui.Element
 					m.Header()
 				}
 				for i, it := range m.Items {
-					blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+					row := blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+					if i == p.MenuState.MenuCursor && p.MenuState.MenuRevealCursor {
+						blockui.RevealActiveItem(row)
+					}
 				}
 			})
 		})
 	})
-	if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+	if scrim.OverlayShortcut(0, ui.KeyEscape) {
+		p.MenuState.CloseAndRestoreFocus(c)
+	} else if card.PressedOutside() {
 		p.MenuState.Close()
 	}
 }

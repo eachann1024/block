@@ -58,11 +58,13 @@ func tabDirtyDot(c *ui.Context) ui.Element {
 
 // renderTabStrip renders the titlebar tab pills (thinkly-fast render_tab_pill).
 // renderTabStrip lays out the pills; past their 76px minimum the strip scrolls.
-func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
+func renderTabStrip(c *ui.Context, p TitlebarProps, centerW, availW float32, viewportResized bool) {
 	// Pills are sized from the last frame's cell width: ask for one more
 	// frame whenever it changed so they settle on the current one. A cell
 	// with no width yet asks once (tabCenterW -1), never every frame.
+	widthShrank := false
 	if m := p.MenuState; m != nil {
+		widthShrank = centerW > 0 && m.tabCenterW > 0 && centerW < m.tabCenterW
 		switch {
 		case centerW > 0 && centerW != m.tabCenterW:
 			m.tabCenterW = centerW
@@ -83,12 +85,16 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW float32) {
 			middleClosePath = p.MenuState.MiddleClosePath
 			p.MenuState.MiddleClosePath = ""
 		}
-		shouldReveal = p.MenuState.LastActiveTab != p.ActiveTab || p.MenuState.LastTabCount != len(p.Tabs)
+		postResizeReveal := p.MenuState.revealActiveTab && !viewportResized
+		if postResizeReveal {
+			p.MenuState.revealActiveTab = false
+		}
+		shouldReveal = widthShrank || postResizeReveal || p.MenuState.LastActiveTab != p.ActiveTab || p.MenuState.LastTabCount != len(p.Tabs)
 	}
 	blockui.Probe(strip, "titlebar-tab-strip")
 	strip.Children(func() {
 		if len(p.Tabs) == 1 {
-			renderSingleTab(c, p, p.Tabs[0])
+			renderSingleTab(c, p, p.Tabs[0], centerW, availW)
 			return
 		}
 		dirSuffixes := tabDirSuffixes(p.Tabs)
@@ -110,29 +116,36 @@ func tabTitle(path string) string {
 }
 
 // renderSingleTab renders the notebook badge + breadcrumb + active page title on the drag area.
-func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
+// In narrow windows or tight center cells, the notebook prefix collapses so the filename stays readable.
+func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, availW float32) {
 	pal := theme.Ocean()
+	vpW, _ := c.Size()
 	dirty := p.IsDirty != nil && p.IsDirty(path)
 	external := isExternalFile(path, p.NotebookPath)
-
+	compactCrumb := isNarrowTitlebar(vpW, availW) || (centerW > 0 && centerW < 240)
+	nbTitle := ""
 	if !external && p.NotebookPath != "" {
-		nbTitle := noteDisplayTitle(p.NotebookPath, true)
+		nbTitle = noteDisplayTitle(p.NotebookPath, true)
+	}
+
+	if nbTitle != "" && !compactCrumb {
 		c.Key("titlebar-nb-crumb")
 		crumb := ui.Row(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
 			AlignItems(ui.Center).DragWindow()
 		crumb.Children(func() {
 			blockui.MonogramBadge(c, nbTitle)
 			ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
-				TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+				TextColor(pal.TextSecondary).MaxWidth(120).SingleLine().Ellipsis("…").Shrink(0)
 		})
 		blockui.Probe(crumb, "titlebar-nb-crumb")
 		ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 	}
 
+	title := tabTitle(path)
 	c.Key("tab:" + path)
 	pill := ui.Row(c).Height(tabPillH).MinWidth(0).MaxWidth(singleTabMaxW).Shrink(1).
 		Padding(0, 8, 0, 6).Gap(theme.Space6).Radius(theme.RadiusMD).AlignItems(ui.Center).Clip().DragWindow().
-		Role(ui.RoleTab).AccessSelected(true).Label(tabTitle(path))
+		Role(ui.RoleTab).AccessSelected(true).Label(title)
 	if external {
 		blockui.RichTooltip(c, pill, blockui.TooltipSpec{
 			Rows: []blockui.TooltipRow{
@@ -140,12 +153,18 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string) {
 				{Detail: theme.Tr("不在当前文件夹", "Outside current folder")},
 			},
 		})
+	} else if compactCrumb && nbTitle != "" {
+		blockui.RichTooltip(c, pill, blockui.TooltipSpec{
+			Rows: []blockui.TooltipRow{
+				{Trigger: nbTitle + " / " + title},
+			},
+		})
 	}
 	pill.Children(func() {
 		if external {
 			icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
 		}
-		ui.Text(c, tabTitle(path)).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
+		ui.Text(c, title).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if dirty {
 			tabDirtyDot(c)
@@ -170,9 +189,8 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		a11yLabel = label + " · " + dirSuffix
 	}
 	c.Key("tab:" + path)
-	pill := ui.ButtonBase(c).MaxWidth(tabW).Shrink(0).Height(tabPillH).Padding(0, theme.Space6, 0, theme.Space10).Gap(theme.Space6).
-		Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.Start).Clip().Cursor(ui.CursorPointer).FocusRing(false).
-		Role(ui.RoleTab).AccessSelected(active).Label(a11yLabel).Transition(tabTransition())
+	pill := ui.Row(c).MaxWidth(tabW).Shrink(0).Height(tabPillH).Padding(0, theme.Space6, 0, 0).Gap(theme.Space6).
+		Radius(theme.RadiusMD).AlignItems(ui.Center).Justify(ui.Start).Clip().Transition(tabTransition())
 	if (external || dirSuffix != "") && (p.MenuState == nil || !p.MenuState.TabMenuOpen) {
 		rows := []blockui.TooltipRow{{Trigger: theme.DisplayFolderPath(path)}}
 		if external {
@@ -243,10 +261,14 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 	closeHover, closeClicked := false, false
 	closeBtn := func() {
 		c.Key("tab-close:" + path)
+		cursor := ui.CursorPointer
+		if p.Busy {
+			cursor = ui.CursorDefault
+		}
 		cb := ui.ButtonBase(c).Size(18, 18).Shrink(0).Center().Radius(theme.RadiusXS).
-			Cursor(ui.CursorPointer).Label(theme.Tr("关闭标签页", "Close Tab"))
-		closeHover = cb.Hovered()
-		closePress := cb.Pressed()
+			Cursor(cursor).Disabled(p.Busy).Label(fmt.Sprintf(theme.Tr("关闭标签页「%s」", "Close Tab %s"), label))
+		closeHover = !p.Busy && cb.Hovered()
+		closePress := !p.Busy && cb.Pressed()
 		ic := pal.MonoIconColors(pal.TextSecondary)
 		cbBG := ui.Transparent
 		if active {
@@ -269,19 +291,34 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		closeClicked = cb.Clicked()
 	}
 
+	var sel ui.Element
+	tabCtxOpen := p.MenuState != nil && p.MenuState.TabMenuOpen && p.MenuState.TabMenuPath == path
 	pill.Children(func() {
-		if external {
-			icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+		tabCursor := ui.CursorPointer
+		if p.Busy {
+			tabCursor = ui.CursorDefault
 		}
-		tabLabel(c, label, fg)
-		if dirSuffix != "" {
-			ui.Text(c, dirSuffix).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
-				FontWeight(theme.WeightRegular).TextColor(pal.MenuMuted).
-				Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+		sel = ui.ButtonBase(c.Key("tab-select:"+path)).Grow(1).MinWidth(0).FillHeight().Padding(0, 0, 0, theme.Space10).Gap(theme.Space6).
+			AlignItems(ui.Center).Justify(ui.Start).Cursor(tabCursor).Disabled(p.Busy).DimDisabled(false).
+			FocusRing(false).Role(ui.RoleTab).AccessSelected(active).Label(a11yLabel)
+		if tabCtxOpen {
+			sel.Bind(&p.MenuState.TabCtxTrigger)
 		}
+		sel.Children(func() {
+			if external {
+				icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+			}
+			tabLabel(c, label, fg)
+			if dirSuffix != "" {
+				ui.Text(c, dirSuffix).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
+					FontWeight(theme.WeightRegular).TextColor(pal.MenuMuted).
+					Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+			}
+		})
 		// The close slot is always reserved so a pill never changes width on hover.
+		// FocusWithin keeps the close button reachable via keyboard Tab on any tab.
 		switch {
-		case hovered || (active && !dirty):
+		case hovered || pill.FocusWithin() || (active && !dirty):
 			closeBtn()
 		case dirty:
 			ui.Box(c).Size(tabCloseSlot, tabCloseSlot).Shrink(0).Center().Children(func() { tabDirtyDot(c) })
@@ -308,8 +345,9 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		})
 	}
 
-	btn, pressing := pill.PressedButton()
+	btn, pressing := sel.PressedButton()
 	midTriggered := middleClosePath == path || (p.MenuState == nil && pressing && btn == 2)
+	rightClicked := sel.RightClicked() || pill.RightClicked()
 	switch {
 	case (closeClicked || midTriggered) && !p.Busy:
 		if p.MenuState != nil {
@@ -318,20 +356,20 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		if p.OnCloseTab != nil {
 			p.OnCloseTab(path)
 		}
-	case pill.RightClicked() && !p.Busy && p.MenuState != nil:
+	case rightClicked && !p.Busy && p.MenuState != nil:
 		b := pill.Bounds()
 		tx, ty := b.X+8, b.Y+b.H+4
 		if px, py, ok := pill.PointerPosition(); ok {
 			tx, ty = b.X+px, b.Y+py
 		}
-		p.MenuState.MenuCursor = -1
-		p.MenuState.PageMenuOpen = false
+		p.MenuState.Close()
 		p.MenuState.TabMenuOpen = true
 		p.MenuState.TabMenuIndex = ix
 		p.MenuState.TabMenuPath = path
 		p.MenuState.TabMenuX = tx
 		p.MenuState.TabMenuY = ty
-	case ((pressing && btn == 0) || pill.Clicked()) && !closeHover && !active && !p.Busy && !pill.Dragging():
+		p.MenuState.MenuTrigger = &p.MenuState.TabCtxTrigger
+	case ((pressing && btn == 0) || sel.Clicked()) && !closeHover && !active && !p.Busy && !pill.Dragging():
 		if p.MenuState != nil {
 			p.MenuState.Close()
 		}

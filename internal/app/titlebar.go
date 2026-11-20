@@ -16,7 +16,18 @@ import (
 // TabMenuState tracks open titlebar floating menus (tab context menu or page "more" menu),
 // plus horizontal tab strip scroll, middle-click close, and drag-reorder state.
 type TabMenuState struct {
-	MenuCursor   int
+	MenuCursor       int
+	MenuCursorID     string
+	MenuRevealCursor bool
+	// Persistent trigger handles bound to live titlebar elements so Escape restores
+	// focus without registering new handles each frame.
+	MenuTrigger           *ui.Handle
+	BrandTrigger          ui.Handle
+	PluginOverflowTrigger ui.Handle
+	PageMoreTrigger       ui.Handle
+	PluginCtxTrigger      ui.Handle
+	TabCtxTrigger         ui.Handle
+
 	TabMenuOpen  bool
 	TabMenuIndex int
 	TabMenuPath  string
@@ -26,14 +37,20 @@ type TabMenuState struct {
 	PageMenuOpen   bool
 	PageMenuAnchor ui.Rect
 
-	// Brand menu (cat mark) and the overflow menu for plugin titlebar buttons.
-	BrandMenuOpen    bool
-	BrandMenuAnchor  ui.Rect
-	PluginMenuOpen   bool
-	PluginMenuAnchor ui.Rect
+	// Brand menu (cat mark) and the overflow / context menus for plugin titlebar buttons.
+	BrandMenuOpen     bool
+	BrandMenuAnchor   ui.Rect
+	PluginMenuOpen    bool
+	PluginMenuAnchor  ui.Rect
+	HoverPluginSlotID string
+	PluginCtxOpen     bool
+	PluginCtxSlotID   string
+	PluginCtxAnchor   ui.Rect
 
 	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
-	tabCenterW float32
+	tabCenterW      float32
+	lastViewportW   float32
+	revealActiveTab bool
 
 	TabScroll       ui.ScrollState
 	LastActiveTab   string
@@ -59,12 +76,70 @@ func (s *TabMenuState) Close() bool {
 	s.PageMenuOpen = false
 	s.BrandMenuOpen = false
 	s.PluginMenuOpen = false
+	s.HoverPluginSlotID = ""
+	s.PluginCtxOpen = false
+	s.PluginCtxSlotID = ""
 	s.MenuCursor = -1
+	s.MenuCursorID = ""
+	s.MenuRevealCursor = false
+	s.MenuTrigger = nil
+	return had
+}
+
+// CloseAndRestoreFocus dismisses any open titlebar menu (e.g. via Escape) and returns
+// keyboard focus to the live titlebar trigger button that opened it.
+func (s *TabMenuState) CloseAndRestoreFocus(c *ui.Context) bool {
+	trigger := s.MenuTrigger
+	had := s.Close()
+	if had && trigger != nil {
+		trigger.Focus(c)
+	}
 	return had
 }
 
 func (s *TabMenuState) anyOpen() bool {
-	return s.TabMenuOpen || s.PageMenuOpen || s.BrandMenuOpen || s.PluginMenuOpen
+	return s.TabMenuOpen || s.PageMenuOpen || s.BrandMenuOpen || s.PluginMenuOpen || s.PluginCtxOpen
+}
+
+// navigateTitlebarMenu reconciles the keyboard cursor against stable MenuItemSpec IDs
+// before running NavigateMenu, so dynamic item insertions or reordering (e.g. window
+// resize across breakpoints or plugin pinning) never shift Enter onto a different action.
+// Tab / Shift+Tab are also consumed at the menu layer so focus cannot drift onto a
+// different row button behind MenuCursor.
+func navigateTitlebarMenu(c *ui.Context, card ui.Element, items []blockui.MenuItemSpec, s *TabMenuState) {
+	if s == nil {
+		return
+	}
+	_ = card.OverlayShortcut(0, ui.KeyTab)
+	_ = card.OverlayShortcut(ui.Shift, ui.KeyTab)
+	s.MenuRevealCursor = false
+	// If pointer movement/scroll cleared MenuCursor to -1 since the last frame,
+	// drop the remembered ID too so hover stays in control.
+	if s.MenuCursor < 0 {
+		s.MenuCursorID = ""
+	}
+	prevCursor := s.MenuCursor
+	if s.MenuCursorID != "" {
+		found := -1
+		for i, it := range items {
+			if it.ID == s.MenuCursorID && !it.Separator && !it.Disabled {
+				found = i
+				break
+			}
+		}
+		s.MenuCursor = found
+		if found < 0 {
+			s.MenuCursorID = ""
+		} else if found != prevCursor {
+			s.MenuRevealCursor = true
+		}
+	}
+	blockui.NavigateMenu(c, card, items, &s.MenuCursor)
+	if s.MenuCursor >= 0 && s.MenuCursor < len(items) && items[s.MenuCursor].ID != "" {
+		s.MenuCursorID = items[s.MenuCursor].ID
+	} else {
+		s.MenuCursorID = ""
+	}
 }
 
 // TitlebarProps supplies current state and callbacks to RenderTitlebar.
@@ -152,16 +227,21 @@ type TitlebarProps struct {
 	OnToggleSourceWrap  func()
 	OnOpenInBrowser     func()
 
-	HiddenSlots      map[string]bool
-	PluginButtons    []plugins.ResolvedTitlebarButton
-	OnPluginButton   func(plugins.ResolvedTitlebarButton)
-	PluginPageMenu   []plugins.ResolvedMenuItem
-	OnPluginMenuItem func(plugins.ResolvedMenuItem)
+	HiddenSlots       map[string]bool
+	PluginButtons     []plugins.ResolvedTitlebarButton
+	PinnedPluginSlots []string
+	OnTogglePinPlugin func(slotID string) bool
+	OnPluginButton    func(plugins.ResolvedTitlebarButton)
+	PluginPageMenu    []plugins.ResolvedMenuItem
+	OnPluginMenuItem  func(plugins.ResolvedMenuItem)
 
 	// Brand mark: version shown in its tooltip and menu, plus the update hint it carries.
 	AppVersion        string
 	HasUpdate         bool
+	UpdateChecking    bool
 	UpdateTooltip     string
+	UpdateMenuLabel   string
+	UpdateHint        string
 	OnOpenUpdater     func()
 	OnOpenPluginStore func()
 	OnOpenAbout       func()
@@ -218,6 +298,20 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		leftW = leftLead
 	} else if p.SidebarWide {
 		leftW = max(p.SidebarWidth, SidebarMinW)
+	}
+	vpW, _ := c.Size()
+	availW := titlebarAvailableWidth(vpW, leftW, tb.Right)
+	viewportResized := false
+	if m := p.MenuState; m != nil && vpW > 0 {
+		if m.lastViewportW > 0 && vpW != m.lastViewportW {
+			viewportResized = true
+			if vpW < m.lastViewportW {
+				m.revealActiveTab = true
+			}
+			// Request one post-layout frame so updated button anchors and centerW settle.
+			c.Invalidate()
+		}
+		m.lastViewportW = vpW
 	}
 
 	c.Key("titlebar")
@@ -334,7 +428,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 
 			multi := len(p.Tabs) > 1
-			renderTabStrip(c, p, centerW)
+			renderTabStrip(c, p, centerW, availW, viewportResized)
 
 			if multi {
 				newTabBtn := blockui.IconButton(c, icons.Plus, blockui.IconButtonOptions{
@@ -403,23 +497,43 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				})
 			}
 		} else if !p.AIImmersive {
-			renderTitlebarTail(c, p, tb.Right)
+			renderTitlebarTail(c, p, tb.Right, availW)
 		}
 	})
 
-	renderTitlebarMenus(c, p)
+	renderTitlebarMenus(c, p, availW)
 }
 
-func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind) {
+func renderSourceStatusText(c *ui.Context, status string, isError bool) {
 	pal := theme.Ocean()
+	col := pal.TextSecondary
+	if isError {
+		col = pal.Danger
+	}
+	txt := ui.Text(c, status).FontSize(theme.FontMeta).TextColor(col).MaxWidth(140).SingleLine().Ellipsis("…")
+	if isError {
+		blockui.RichTooltip(c, txt, blockui.TooltipSpec{
+			Danger:    true,
+			Placement: blockui.TooltipBelow,
+			Rows: []blockui.TooltipRow{
+				{Trigger: theme.Tr("保存失败", "Save failed"), TriggerTone: blockui.TooltipToneDanger},
+				{Detail: status},
+			},
+		})
+	}
+}
+
+func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface TitlebarSurfaceKind, availW float32) {
 	vpW, _ := c.Size()
-	showStatus := p.SourceStatus != "" && (vpW <= 0 || vpW >= 860)
+	isReadOnlyHint := p.SourceStatus == theme.Tr("只读预览", "Read-only")
+	isSaveError := p.SourceStatus != "" && !isReadOnlyHint
+	showStatus := isSaveError || (p.SourceStatus != "" && (vpW <= 0 || (vpW >= 860 && (availW <= 0 || availW >= 620))))
 	switch surface {
 	case SurfaceImagePreview:
-		renderZoomCluster(c, "tb-img-zoom", p)
+		renderZoomCluster(c, "tb-img-zoom", p, availW)
 	case SurfaceSVG:
 		if showStatus {
-			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
 		svgIdx := 0
 		if p.SVGShowSource {
@@ -432,33 +546,36 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 			p.OnSelectSVGSource(svgIdx == 1)
 		}
 		if !p.SVGShowSource {
-			renderZoomCluster(c, "tb-svg-zoom", p)
+			renderZoomCluster(c, "tb-svg-zoom", p, availW)
 		} else {
-			renderSourceWrapButton(c, p)
+			renderSourceWrapButton(c, p, availW)
 		}
 	case SurfaceHTML:
 		if showStatus {
-			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
-		openBtn := blockui.IconButton(c, icons.LinkOpen, blockui.IconButtonOptions{
-			ID:          "html-browser",
-			Tooltip:     theme.Tr("在浏览器中打开", "Open in Browser"),
-			ChromeHover: true,
-		})
-		if openBtn.Clicked() && p.OnOpenInBrowser != nil {
-			p.OnOpenInBrowser()
+		if !isNarrowTitlebar(vpW, availW) {
+			openBtn := blockui.IconButton(c, icons.LinkOpen, blockui.IconButtonOptions{
+				ID:          "html-browser",
+				Tooltip:     theme.Tr("在浏览器中打开", "Open in Browser"),
+				ChromeHover: true,
+			})
+			if openBtn.Clicked() && p.OnOpenInBrowser != nil {
+				p.OnOpenInBrowser()
+			}
 		}
-		renderSourceWrapButton(c, p)
+		renderSourceWrapButton(c, p, availW)
 	case SurfaceCode:
 		if showStatus {
-			ui.Text(c, p.SourceStatus).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
-		renderSourceWrapButton(c, p)
+		renderSourceWrapButton(c, p, availW)
 	}
 }
 
-func renderSourceWrapButton(c *ui.Context, p TitlebarProps) {
-	if slotHidden(p, plugins.TitlebarSlotWrap) {
+func renderSourceWrapButton(c *ui.Context, p TitlebarProps, availW float32) {
+	vpW, _ := c.Size()
+	if slotHidden(p, plugins.TitlebarSlotWrap) || isNarrowTitlebar(vpW, availW) {
 		return
 	}
 	btn := blockui.IconButton(c, icons.Wrap, blockui.IconButtonOptions{
@@ -472,8 +589,8 @@ func renderSourceWrapButton(c *ui.Context, p TitlebarProps) {
 	}
 }
 
-func renderZoomCluster(c *ui.Context, id string, p TitlebarProps) {
-	if slotHidden(p, plugins.TitlebarSlotZoom) {
+func renderZoomCluster(c *ui.Context, id string, p TitlebarProps, availW float32) {
+	if slotHidden(p, plugins.TitlebarSlotZoom) || isTightTitlebar(availW) {
 		return
 	}
 	pal := theme.Ocean()
@@ -568,11 +685,19 @@ func resolvePageMenuStats(p TitlebarProps, surface TitlebarSurfaceKind) []PageMe
 	return p.PageStats()
 }
 
-func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
+func renderTitlebarMenus(c *ui.Context, p TitlebarProps, availW float32) {
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
 		if p.MenuState == nil || !p.MenuState.anyOpen() {
+			return
+		}
+		if p.HideMark && p.MenuState.BrandMenuOpen {
+			p.MenuState.Close()
+			return
+		}
+		if p.InSettings && (p.MenuState.PluginMenuOpen || p.MenuState.PluginCtxOpen || p.MenuState.PageMenuOpen || p.MenuState.TabMenuOpen) {
+			p.MenuState.Close()
 			return
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
@@ -581,7 +706,11 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			return
 		}
 		if p.MenuState.PluginMenuOpen {
-			renderPluginOverflowMenu(c, p, scrim)
+			renderPluginOverflowMenu(c, p, scrim, availW)
+			return
+		}
+		if p.MenuState.PluginCtxOpen {
+			renderPluginContextMenu(c, p, scrim, availW)
 			return
 		}
 		if p.MenuState.PageMenuOpen {
@@ -592,7 +721,7 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			}
 			menuW := min(float32(232), max(vpW-16, 1))
 			stats := resolvePageMenuStats(p, surface)
-			items := buildPageMenuItems(p, surface)
+			items, legacyProbeIDs := buildPageMenuItems(p, surface, vpW, availW)
 			estH := estimateMenuHeight(items)
 			if len(stats) > 0 {
 				estH += float32(len(stats))*theme.MenuItemHeight + 7 + float32(len(stats)+1)*theme.MenuGap
@@ -607,8 +736,9 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("page-more-menu")
-			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-			blockui.NavigateMenu(c, card, items, &p.MenuState.MenuCursor)
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
+				Focusable().FocusRing(false).AutoFocus().Role(ui.RoleMenu))
+			navigateTitlebarMenu(c, card, items, p.MenuState)
 			blockui.Probe(card, "page-more-menu")
 			card.Children(func() {
 				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
@@ -620,12 +750,24 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 							blockui.MenuRow(c, blockui.MenuItemSpec{Separator: true}, false)
 						}
 						for i, it := range items {
-							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+							row := blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+							if i == p.MenuState.MenuCursor && p.MenuState.MenuRevealCursor {
+								blockui.RevealActiveItem(row)
+							}
+							if blockui.IsProbeEnabled() && legacyProbeIDs[it.ID] != "" {
+								id, legacyID := it.ID, legacyProbeIDs[it.ID]
+								row.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+									blockui.RecordBounds(id, r)
+									blockui.RecordBounds(legacyID, r)
+								})
+							}
 						}
 					})
 				})
 			})
-			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+			if scrim.OverlayShortcut(0, ui.KeyEscape) {
+				p.MenuState.CloseAndRestoreFocus(c)
+			} else if card.PressedOutside() {
 				p.MenuState.Close()
 			}
 			return
@@ -645,23 +787,37 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps) {
 			ox, oy := blockui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
 
 			c.Key("tab-context-menu")
-			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
-			blockui.NavigateMenu(c, card, items, &p.MenuState.MenuCursor)
+			card := blockui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).
+				Focusable().FocusRing(false).AutoFocus().Role(ui.RoleMenu))
+			navigateTitlebarMenu(c, card, items, p.MenuState)
 			blockui.Probe(card, "tab-context-menu")
 			card.Children(func() {
 				blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
 					ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
 						for i, it := range items {
-							blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+							row := blockui.MenuRow(c, it, i == p.MenuState.MenuCursor)
+							if i == p.MenuState.MenuCursor && p.MenuState.MenuRevealCursor {
+								blockui.RevealActiveItem(row)
+							}
 						}
 					})
 				})
 			})
-			if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+			if scrim.OverlayShortcut(0, ui.KeyEscape) {
+				p.MenuState.CloseAndRestoreFocus(c)
+			} else if card.PressedOutside() {
 				p.MenuState.Close()
 			}
 		}
 	})
+	if p.MenuState != nil && p.MenuState.anyOpen() {
+		blockui.ReserveMenuNavKeys(c)
+		c.Shortcut(0, ui.KeyTab)
+		c.Shortcut(ui.Shift, ui.KeyTab)
+		if p.MenuState.PluginMenuOpen {
+			c.Shortcut(0, ui.KeyP)
+		}
+	}
 }
 
 func renderPageStat(c *ui.Context, id, label, value string) {
@@ -692,7 +848,8 @@ func estimateMenuHeight(items []blockui.MenuItemSpec) float32 {
 }
 
 // buildPageMenuItems builds the titlebar "more" menu tailored to the active surface.
-func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.MenuItemSpec {
+// It also returns any legacy smoke-probe aliases for collision-free plugin item IDs.
+func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, availW float32) ([]blockui.MenuItemSpec, map[string]string) {
 	icHist := icons.History
 	icImg := icons.Image
 	icCopy := icons.Copy
@@ -701,6 +858,14 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 	icOpen := icons.LinkOpen
 	icPath := icons.LinkCopy
 	icReveal := icons.FolderReveal
+	icWrap := icons.Wrap
+	icSend := icons.Send
+	icZoomIn := icons.TbPlus
+	icZoomOut := icons.TbMinus
+	icZoomReset := icons.TbReset
+	narrow := isNarrowTitlebar(vpW, availW)
+	tight := isTightTitlebar(availW)
+	var legacyProbeIDs map[string]string
 	item := func(id, label, shortcut string, ic *icons.Icon, fn func()) blockui.MenuItemSpec {
 		return blockui.MenuItemSpec{ID: id, Label: label, Shortcut: shortcut, Icon: ic, OnClick: func() {
 			p.MenuState.Close()
@@ -713,17 +878,47 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 	copyPathShortcut := blockui.FormatShortcutDisplay(copyPathShortcutSpec())
 
 	if surface == SurfaceNote {
-		items := []blockui.MenuItemSpec{
+		var items []blockui.MenuItemSpec
+		if narrow && p.AnnotHasAny && !slotHidden(p, plugins.TitlebarSlotSendAll) {
+			enabled := p.AnnotDrafts > 0 && !p.AnnotGenerating && p.OnSendAnnotations != nil
+			sendLabel := theme.Tr("统一发送批注", "Send All Annotations")
+			sendHint := ""
+			if p.AnnotGenerating {
+				sendLabel = theme.Tr("批注生成中…", "Generating Annotations…")
+			} else if p.AnnotDrafts > 0 {
+				sendHint = strconv.Itoa(p.AnnotDrafts)
+			}
+			items = append(items,
+				blockui.MenuItemSpec{
+					ID:       "page-annotations-send-all",
+					Label:    sendLabel,
+					Hint:     sendHint,
+					Icon:     &icSend,
+					Disabled: !enabled,
+					OnClick: func() {
+						p.MenuState.Close()
+						if p.OnSendAnnotations != nil {
+							p.OnSendAnnotations()
+						}
+					},
+				},
+				blockui.MenuItemSpec{Separator: true},
+			)
+		}
+		items = append(items,
 			item("page-history", theme.Tr("页面历史…", "Page History…"), "", &icHist, p.OnOpenHistory),
 			item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
 			item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
-		}
+		)
 		if len(p.PluginPageMenu) > 0 {
 			items = append(items, blockui.MenuItemSpec{Separator: true})
+			legacyProbeIDs = make(map[string]string, len(p.PluginPageMenu))
 			for _, pm := range p.PluginPageMenu {
 				pmItem := pm
+				id := "page-plugin:" + pmItem.PluginID + "/" + pmItem.ID
+				legacyProbeIDs[id] = "page-plugin-" + pmItem.PluginID + "-" + pmItem.ID
 				items = append(items, item(
-					"page-plugin-"+pmItem.PluginID+"-"+pmItem.ID,
+					id,
 					pmItem.Title,
 					"",
 					nil,
@@ -748,12 +943,71 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 				}
 			}),
 		)
-		return items
+		return items, legacyProbeIDs
 	}
 
 	var items []blockui.MenuItemSpec
+	appendZoomItems := func() {
+		if !tight || slotHidden(p, plugins.TitlebarSlotZoom) {
+			return
+		}
+		items = append(items,
+			item("page-zoom-in", theme.Tr("放大", "Zoom In"), "", &icZoomIn, func() {
+				if p.OnPreviewZoomStep != nil {
+					p.OnPreviewZoomStep(1.2)
+				}
+			}),
+			item("page-zoom-out", theme.Tr("缩小", "Zoom Out"), "", &icZoomOut, func() {
+				if p.OnPreviewZoomStep != nil {
+					p.OnPreviewZoomStep(1.0 / 1.2)
+				}
+			}),
+			blockui.MenuItemSpec{
+				ID:    "page-zoom-actual",
+				Label: theme.Tr("实际大小", "Actual Size"),
+				Hint:  "100%",
+				Icon:  &icZoomReset,
+				OnClick: func() {
+					p.MenuState.Close()
+					if p.OnPreviewActual != nil {
+						p.OnPreviewActual()
+					}
+				},
+			},
+			blockui.MenuItemSpec{
+				ID:      "page-zoom-fit",
+				Label:   theme.Tr("适应窗口", "Fit to Window"),
+				Hint:    nonEmptyOr(p.PreviewZoomPct, "100%"),
+				Checked: p.PreviewZoomFit,
+				OnClick: func() {
+					p.MenuState.Close()
+					if p.OnPreviewFit != nil {
+						p.OnPreviewFit()
+					}
+				},
+			},
+			blockui.MenuItemSpec{Separator: true},
+		)
+	}
 	switch surface {
 	case SurfaceCode, SurfaceHTML, SurfaceSVG:
+		if surface == SurfaceSVG && !p.SVGShowSource {
+			appendZoomItems()
+		}
+		if narrow && !slotHidden(p, plugins.TitlebarSlotWrap) && (surface != SurfaceSVG || p.SVGShowSource) {
+			items = append(items, blockui.MenuItemSpec{
+				ID:      "page-source-wrap",
+				Label:   theme.Tr("自动换行", "Word Wrap"),
+				Icon:    &icWrap,
+				Checked: p.SourceWrap,
+				OnClick: func() {
+					p.MenuState.Close()
+					if p.OnToggleSourceWrap != nil {
+						p.OnToggleSourceWrap()
+					}
+				},
+			})
+		}
 		if p.HasCopyableText {
 			copyLabel := theme.Tr("复制全部内容", "Copy Content")
 			if surface == SurfaceSVG {
@@ -774,6 +1028,7 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 			items = append(items, item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown))
 		}
 	case SurfaceImagePreview:
+		appendZoomItems()
 		items = append(items,
 			item("page-copy-image", theme.Tr("复制图片", "Copy Image"), "", &icCopy, p.OnCopyImage),
 			item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown),
@@ -798,7 +1053,7 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind) []blockui.
 			}
 		}),
 	)
-	return items
+	return items, legacyProbeIDs
 }
 
 func nonEmptyOr(val, fallback string) string {
