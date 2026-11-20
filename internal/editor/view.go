@@ -10,6 +10,7 @@ import (
 	"block/internal/icons"
 	"block/internal/media"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/theme"
 	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -1646,11 +1647,12 @@ type tableCellPosKey struct {
 }
 
 type cachedCodeSyntax struct {
-	code   string
-	canon  string
-	dark   bool
-	spans  []ui.Span
-	ranges []ui.TextRange
+	code    string
+	canon   string
+	dark    bool
+	langGen uint64
+	spans   []ui.Span
+	ranges  []ui.TextRange
 }
 
 type cachedCodePreview struct {
@@ -2147,7 +2149,8 @@ func (s *Session) cachedCodeSyntaxFor(id model.BlockID, code, canon string, dark
 	if s.codeSyntaxCache == nil {
 		s.codeSyntaxCache = make(map[model.BlockID]cachedCodeSyntax)
 	}
-	if entry, ok := s.codeSyntaxCache[id]; ok && entry.code == code && entry.canon == canon && entry.dark == dark {
+	langGen := plugins.LanguageGeneration()
+	if entry, ok := s.codeSyntaxCache[id]; ok && entry.code == code && entry.canon == canon && entry.dark == dark && entry.langGen == langGen {
 		return entry.spans, entry.ranges
 	}
 	var spans []ui.Span
@@ -2176,11 +2179,12 @@ func (s *Session) cachedCodeSyntaxFor(id model.BlockID, code, canon string, dark
 		}
 	}
 	s.codeSyntaxCache[id] = cachedCodeSyntax{
-		code:   code,
-		canon:  canon,
-		dark:   dark,
-		spans:  spans,
-		ranges: ranges,
+		code:    code,
+		canon:   canon,
+		dark:    dark,
+		langGen: langGen,
+		spans:   spans,
+		ranges:  ranges,
 	}
 	return spans, ranges
 }
