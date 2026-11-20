@@ -1317,7 +1317,23 @@ func DiffAlertTitles(lines []string, change []int) []string {
 	masks, _ := diffScan(lines, change)
 	out := make([]string, len(lines))
 	for si, side := range [2]int{-1, 1} {
+		// listCol: the content column of the list item above (0: none); a quote
+		// indented as far sits in the item, where the note reads no alert.
+		listCol := 0
 		for i, l := range lines {
+			if change[i] != -side && !masks[si][i] {
+				if t := strings.TrimLeft(l, " \t"); strings.TrimSpace(t) != "" {
+					lead := len(strings.ReplaceAll(l[:len(l)-len(t)], "\t", "    "))
+					if diffListItemRE.MatchString(t) {
+						listCol = lead + len(diffContainerRE.FindString(t))
+					} else if lead < listCol {
+						listCol = 0
+					}
+				}
+			}
+			if listCol > 0 {
+				continue
+			}
 			// The old text reads its deleted lines, the new one the rest.
 			if change[i] == -side || side < 0 && change[i] == 0 || masks[si][i] {
 				continue
