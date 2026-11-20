@@ -163,11 +163,34 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	if !allowed() {
 		return plugins.ErrSystemCanceled
 	}
+	installed, ok := h.w.Plugins().GetInstalled(pluginID)
+	if !ok || !allowed() {
+		return plugins.ErrSystemCanceled
+	}
+	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
 	if win := h.w.Window(); win != nil && win.IsFocused() {
-		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil) {
+		native := func(ctx context.Context) error {
+			return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, func() bool {
+				current, ok := h.w.Plugins().GetInstalled(pluginID)
+				return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify)
+			})
+		}
+		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil, native) {
 			return plugins.ErrSystemBusy
 		}
 		return nil
+	}
+	return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, allowed)
+}
+
+func (h *pluginHostUI) showNativePluginNotification(ctx context.Context, target pluginNotificationTarget, title, body, tone, eventKey string, allowed func() bool) error {
+	select {
+	case <-h.closing:
+		return plugins.ErrSystemCanceled
+	default:
+	}
+	if !mygo.App.IsReady() || !allowed() {
+		return plugins.ErrSystemCanceled
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	supported, click, encode := systemintegration.NotificationSupport(probeCtx)
@@ -190,12 +213,7 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 	if !allowed() {
 		return plugins.ErrSystemCanceled
 	}
-	installed, ok := h.w.Plugins().GetInstalled(pluginID)
-	if !ok || !allowed() {
-		return plugins.ErrSystemCanceled
-	}
-	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
-	id := "block-plugin-" + pluginID + "-" + eventKey
+	id := "block-plugin-" + target.PluginID + "-" + eventKey
 	var record string
 	if runtime.GOOS == "darwin" {
 		id = "block-plugin-click-" + rand.Text()
