@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,14 +32,48 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function releaseVersion(root = ROOT, sha = "HEAD") {
-  const count = execFileSync("git", ["rev-list", "--count", sha], {
-    cwd: root,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  }).trim();
-  assert.match(count, /^[1-9]\d*$/, `git rev-list --count returned ${count}`);
-  return `1.0.${count}`;
+export function bumpPatch(version) {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+export function listGitTagVersions(root = ROOT) {
+  try {
+    const out = execFileSync("git", ["tag", "--list", "v*"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out
+      .split("\n")
+      .map((tag) => versionFromTag(tag.trim()))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+export function nextReleaseVersion({ currentVersion, releases = [], tagVersions = [] }) {
+  const taken = [
+    ...releases.map((release) => versionFromTag(release?.tag_name)),
+    ...tagVersions.map((tag) => versionFromTag(tag)),
+  ].filter(Boolean);
+  const highestTaken = taken.reduce(
+    (best, item) => (!best || compareVersions(item, best) > 0 ? item : best),
+    null,
+  );
+  const normalizedCurrent = versionFromTag(currentVersion);
+  let version;
+  if (!highestTaken) {
+    version = normalizedCurrent || "1.0.1";
+  } else if (normalizedCurrent && compareVersions(normalizedCurrent, highestTaken) > 0) {
+    version = normalizedCurrent;
+  } else {
+    version = bumpPatch(highestTaken);
+  }
+  const used = new Set(taken);
+  while (used.has(version)) version = bumpPatch(version);
+  return version;
 }
 
 export function readPackageVersion(root = ROOT) {
@@ -98,16 +131,6 @@ export function syncVersionFiles(root, version) {
   }
 }
 
-function shanghaiDay(isoString) {
-  if (!isoString) return "";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(isoString));
-}
-
 export function getReleases() {
   try {
     return JSON.parse(gh(["api", `repos/${REPO}/releases?per_page=100`]));
@@ -158,21 +181,6 @@ function outputFlag(value) {
   return value ? "yes" : "no";
 }
 
-function bumpPatch(version) {
-  const [major, minor, patch] = version.split(".").map(Number);
-  return `${major}.${minor}.${patch + 1}`;
-}
-
-function versionAboveExisting(computed, releases) {
-  const taken = releases.map((release) => versionFromTag(release.tag_name)).filter(Boolean);
-  let version = computed;
-  const highest = taken.reduce((best, item) => (!best || compareVersions(item, best) > 0 ? item : best), null);
-  if (highest && compareVersions(version, highest) <= 0) version = bumpPatch(highest);
-  const used = new Set(taken);
-  while (used.has(version)) version = bumpPatch(version);
-  return version;
-}
-
 function forcedReleaseNotes() {
   return [
     "## English",
@@ -198,30 +206,18 @@ function forcedReleaseNotes() {
 async function main() {
   const headSha = process.env.SOURCE_SHA || process.env.GITHUB_SHA
     || execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
-  const scheduled = process.env.GITHUB_EVENT_NAME === "schedule";
   const force = process.env.FORCE === "true";
   const publishInput = process.env.PUBLISH !== "false";
   const onMain = !process.env.GITHUB_REF || process.env.GITHUB_REF === "refs/heads/main";
 
   const currentVersion = readPackageVersion(ROOT);
-  let version = releaseVersion(ROOT, headSha);
   const releases = getReleases();
+  const tagVersions = listGitTagVersions(ROOT);
+  const version = nextReleaseVersion({ currentVersion, releases, tagVersions });
   const stable = releases
     .filter((r) => !r.draft && !r.prerelease && versionFromTag(r.tag_name))
     .sort((a, b) => compareVersions(versionFromTag(a.tag_name), versionFromTag(b.tag_name)));
   const previous = stable.at(-1) || null;
-
-  if (scheduled && !force && previous?.published_at) {
-    const today = shanghaiDay(new Date().toISOString());
-    const lastDay = shanghaiDay(previous.published_at);
-    if (today === lastDay) {
-      summary(`今日（${today}）已发布过 ${previous.tag_name}，每日最多自动发布一次，本次跳过。`);
-      const plan = { shouldBuild: false, publish: false, version: currentVersion, tag: previous.tag_name, commit: headSha };
-      writeFileSync(resolve(ROOT, "release-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
-      writeOutputs({ should_build: outputFlag(false), publish: outputFlag(false), version: currentVersion, release_tag: previous.tag_name });
-      return;
-    }
-  }
 
   const previousSha = resolveTagCommit(previous);
   if (previousSha && previousSha === headSha && !force) {
@@ -247,7 +243,6 @@ async function main() {
     }
   }
 
-  if (force) version = versionAboveExisting(version, releases);
   const autoBump = version !== currentVersion;
   const commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
   if (rangeSpec) summary(`更新说明区间 ${rangeSpec}，共 ${commits.length} 条提交。`);
