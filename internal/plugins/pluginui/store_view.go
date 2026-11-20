@@ -202,10 +202,18 @@ func visibleStoreCards(ctrl *Controller, locale string) []storeCard {
 			return scoredCards[i].score > scoredCards[j].score
 		}
 		a, b := scoredCards[i].card, scoredCards[j].card
-		if ctrl.storeSort != storeSortName && a.downloads != b.downloads {
-			return a.downloads > b.downloads
+		if ctrl.storeSort != storeSortName {
+			// Sort by catalog downloads only so local installs never shift card positions.
+			da, db := max(0, a.entry.Downloads), max(0, b.entry.Downloads)
+			if da != db {
+				return da > db
+			}
 		}
-		return strings.ToLower(a.entry.Name.Resolve(locale)) < strings.ToLower(b.entry.Name.Resolve(locale))
+		na, nb := strings.ToLower(a.entry.Name.Resolve(locale)), strings.ToLower(b.entry.Name.Resolve(locale))
+		if na != nb {
+			return na < nb
+		}
+		return a.entry.ID < b.entry.ID
 	})
 	cards := make([]storeCard, len(scoredCards))
 	for i, sc := range scoredCards {
