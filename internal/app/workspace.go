@@ -5260,7 +5260,7 @@ func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoF
 			w.ghostTitle = ""
 		}
 		ui.Text(c, theme.Tr("直接输入就会新建一篇笔记，也可以从左侧选一篇。", "Type a title and press Return to create a note, or pick one on the left.")).
-			FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).TextColor(pal.TextSecondary).Margin(theme.Space12, 0, 0, 0)
+			FillWidth().MinWidth(0).FontSize(theme.FontEditor).FixedLineHeight(theme.LineEditor).TextColor(pal.TextSecondary).Margin(theme.Space12, 0, 0, 0)
 		ui.Row(c).Gap(theme.Space20).AlignItems(ui.Center).Wrap().Margin(theme.Space24, 0, 0, 0).Children(func() {
 			blockui.EmptyHint(c, func() { blockui.Keycap(c, "/") }, theme.Tr("插入块", "Insert block"))
 			if sc := modals.EffectiveShortcut(st, "search"); sc != "" {
