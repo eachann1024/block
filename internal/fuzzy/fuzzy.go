@@ -1,6 +1,7 @@
 package fuzzy
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"unicode"
@@ -126,6 +127,12 @@ func expandFoldedNeedleRunes(s string, skipSpace bool) ([]rune, bool) {
 	return out, allASCIIAlnum
 }
 
+// FoldString returns the canonical case-folded comparison string for s
+// (mapping ß/ẞ -> ss, İ -> i, K -> k, ſ -> s, and removing combining dot after i).
+func FoldString(s string) string {
+	return foldString(s)
+}
+
 func foldString(s string) string {
 	if IsASCII(s) {
 		return asciiLower(s)
@@ -145,6 +152,121 @@ func asciiLower(s string) string {
 		b.WriteByte(c)
 	}
 	return b.String()
+}
+
+func buildRuneKMPTable(pattern []rune) []int {
+	n := len(pattern)
+	lps := make([]int, n)
+	length := 0
+	for i := 1; i < n; {
+		if pattern[i] == pattern[length] {
+			length++
+			lps[i] = length
+			i++
+		} else if length != 0 {
+			length = lps[length-1]
+		} else {
+			lps[i] = 0
+			i++
+		}
+	}
+	return lps
+}
+
+func expandFoldedCtx(ctx context.Context, text string) ([]foldedChar, error) {
+	out := make([]foldedChar, 0, len(text))
+	var prev rune
+	var prevFolded rune
+	steps := 0
+	for bytePos, r := range text {
+		steps++
+		if steps&65535 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+		sz := utf8.RuneLen(r)
+		if sz < 0 {
+			sz = 1
+		}
+		byteEnd := bytePos + sz
+		if r == '\u0307' && prevFolded == 'i' {
+			continue
+		}
+		bnd := bytePos == 0 || isRuneBoundary(prev, r)
+		switch r {
+		case 'ß', 'ẞ':
+			out = append(out,
+				foldedChar{ch: 's', bytePos: bytePos, byteEnd: byteEnd, boundary: bnd},
+				foldedChar{ch: 's', bytePos: bytePos, byteEnd: byteEnd, boundary: false},
+			)
+			prevFolded = 's'
+		case '\u0130':
+			out = append(out, foldedChar{ch: 'i', bytePos: bytePos, byteEnd: byteEnd, boundary: bnd})
+			prevFolded = 'i'
+		case '\u212A':
+			out = append(out, foldedChar{ch: 'k', bytePos: bytePos, byteEnd: byteEnd, boundary: bnd})
+			prevFolded = 'k'
+		case '\u017F':
+			out = append(out, foldedChar{ch: 's', bytePos: bytePos, byteEnd: byteEnd, boundary: bnd})
+			prevFolded = 's'
+		default:
+			lr := unicode.ToLower(r)
+			out = append(out, foldedChar{ch: lr, bytePos: bytePos, byteEnd: byteEnd, boundary: bnd})
+			prevFolded = lr
+		}
+		prev = r
+	}
+	return out, nil
+}
+
+// FindFirstFoldRangeCtx finds the first case-folded byte range [start, end) of needle
+// in text in linear O(N+M) time while checking ctx cancellation periodically.
+func FindFirstFoldRangeCtx(ctx context.Context, text, needle string) (int, int, bool, error) {
+	if needle == "" || text == "" {
+		return 0, 0, false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	nRunes, _ := expandFoldedNeedleRunes(needle, false)
+	nLen := len(nRunes)
+	if nLen == 0 {
+		return 0, 0, false, nil
+	}
+	hay, err := expandFoldedCtx(ctx, text)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	hLen := len(hay)
+	if hLen < nLen {
+		return 0, 0, false, nil
+	}
+	lps := buildRuneKMPTable(nRunes)
+	j := 0
+	for i := 0; i < hLen; {
+		if i&65535 == 0 {
+			if err := ctx.Err(); err != nil {
+				return 0, 0, false, err
+			}
+		}
+		if hay[i].ch == nRunes[j] {
+			i++
+			j++
+			if j == nLen {
+				startIdx := i - nLen
+				return hay[startIdx].bytePos, hay[i-1].byteEnd, true, nil
+			}
+		} else if j != 0 {
+			j = lps[j-1]
+		} else {
+			i++
+		}
+	}
+	return 0, 0, false, nil
 }
 
 // FindFoldRanges returns all non-overlapping case-folded byte ranges [start, end)
@@ -175,25 +297,29 @@ func FindFoldRanges(text, needle string) [][2]int {
 	}
 
 	nRunes, _ := expandFoldedNeedleRunes(needle, false)
-	if len(nRunes) == 0 {
+	nLen := len(nRunes)
+	if nLen == 0 {
 		return nil
 	}
 	hay := expandFolded(text)
-	if len(hay) < len(nRunes) {
+	hLen := len(hay)
+	if hLen < nLen {
 		return nil
 	}
+	lps := buildRuneKMPTable(nRunes)
 	var out [][2]int
-	for i := 0; i <= len(hay)-len(nRunes); {
-		ok := true
-		for j := range nRunes {
-			if hay[i+j].ch != nRunes[j] {
-				ok = false
-				break
+	j := 0
+	for i := 0; i < hLen; {
+		if hay[i].ch == nRunes[j] {
+			i++
+			j++
+			if j == nLen {
+				startIdx := i - nLen
+				out = append(out, [2]int{hay[startIdx].bytePos, hay[i-1].byteEnd})
+				j = 0
 			}
-		}
-		if ok {
-			out = append(out, [2]int{hay[i].bytePos, hay[i+len(nRunes)-1].byteEnd})
-			i += len(nRunes)
+		} else if j != 0 {
+			j = lps[j-1]
 		} else {
 			i++
 		}
@@ -890,6 +1016,9 @@ func matchSubsequence(text, needle string, wantRanges bool) (int, [][2]int, bool
 		if tight, ok := findTightestMatch(hay, nRunes); ok && passesAntiNoiseGuard(hay, tight, needleASCIIAlnum) {
 			matchedIdx = tight
 			score = scoreMatchedPath(hay, tight)
+		} else if anchored, ancScore, ok := findBoundaryAnchoredMatch(hay, nRunes); ok && passesAntiNoiseGuard(hay, anchored, needleASCIIAlnum) {
+			matchedIdx = anchored
+			score = ancScore
 		} else {
 			return 0, nil, false
 		}
@@ -911,4 +1040,93 @@ func matchSubsequence(text, needle string, wantRanges bool) (int, [][2]int, bool
 		}
 	}
 	return score, ranges, true
+}
+
+// findBoundaryAnchoredMatch finds the highest-scoring subsequence match that includes
+// at least one word-boundary or consecutive character hit, so a noisy early occurrence
+// cannot shadow a valid later word-boundary occurrence (e.g. "xaxxxb.../a...b...").
+func findBoundaryAnchoredMatch(hay []foldedChar, nRunes []rune) ([]int, int, bool) {
+	nLen := len(nRunes)
+	hLen := len(hay)
+	var bestIdx []int
+	bestScore := -1
+
+	tryAnchor := func(anchorNI, anchorHI int) {
+		cur := make([]int, nLen)
+		cur[anchorNI] = anchorHI
+		// Match prefix backwards greedily to keep span tight around the anchor.
+		pos := anchorHI - 1
+		for ni := anchorNI - 1; ni >= 0; ni-- {
+			found := false
+			for pos >= 0 {
+				if hay[pos].ch == nRunes[ni] {
+					cur[ni] = pos
+					pos--
+					found = true
+					break
+				}
+				pos--
+			}
+			if !found {
+				return
+			}
+		}
+		// Match suffix forwards, preferring word-boundary matches when available.
+		pos = anchorHI + 1
+		for ni := anchorNI + 1; ni < nLen; ni++ {
+			firstMatch := -1
+			bndMatch := -1
+			for p := pos; p < hLen; p++ {
+				if hay[p].ch == nRunes[ni] {
+					if firstMatch < 0 {
+						firstMatch = p
+					}
+					if hay[p].boundary {
+						bndMatch = p
+						break
+					}
+				}
+			}
+			pick := firstMatch
+			if bndMatch >= 0 {
+				// Verify remaining suffix still fits after bndMatch.
+				remNI := ni + 1
+				for p := bndMatch + 1; p < hLen && remNI < nLen; p++ {
+					if hay[p].ch == nRunes[remNI] {
+						remNI++
+					}
+				}
+				if remNI == nLen {
+					pick = bndMatch
+				}
+			}
+			if pick < 0 {
+				return
+			}
+			cur[ni] = pick
+			pos = pick + 1
+		}
+		sc := scoreMatchedPath(hay, cur)
+		if sc > bestScore {
+			bestScore = sc
+			bestIdx = cur
+		}
+	}
+
+	for ni := 0; ni < nLen; ni++ {
+		for hi := ni; hi < hLen; hi++ {
+			if hay[hi].ch == nRunes[ni] && hay[hi].boundary {
+				tryAnchor(ni, hi)
+			}
+		}
+	}
+	// Also check any consecutive pair anchor.
+	for ni := 0; ni+1 < nLen; ni++ {
+		for hi := ni; hi+1 < hLen; hi++ {
+			if hay[hi].ch == nRunes[ni] && hay[hi+1].ch == nRunes[ni+1] {
+				tryAnchor(ni, hi)
+			}
+		}
+	}
+	return bestIdx, bestScore, bestIdx != nil
 }
