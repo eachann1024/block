@@ -871,7 +871,7 @@ func (s *Supervisor) EmitWorkspaceEvent(event string, data map[string]any) {
 	s.mu.RLock()
 	targets := make([]*Runtime, 0, len(s.runtimes))
 	for _, rt := range s.runtimes {
-		if rt != nil && !rt.closed.Load() && rt.manifest.HasPermission(PermEventsUI) {
+		if rt != nil && !rt.closed.Load() && rt.initialized.Load() && rt.manifest.HasPermission(PermEventsUI) {
 			targets = append(targets, rt)
 		}
 	}
@@ -912,10 +912,19 @@ func missingPerm(p Permission) *rpcError {
 
 // dispatchContribHostMethod handles host.titlebar.*, host.status.*, host.ui.*
 // and host.editor.*. ok=false means the method is not a contrib method.
-func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params json.RawMessage) (res any, rerr *rpcError, ok bool) {
+func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, params json.RawMessage) (res any, rerr *rpcError, ok bool) {
 	if !strings.HasPrefix(method, "host.titlebar.") && !strings.HasPrefix(method, "host.status.") &&
 		!strings.HasPrefix(method, "host.ui.") && !strings.HasPrefix(method, "host.editor.") {
 		return nil, nil, false
+	}
+	m := rt.manifest
+	// A runtime that is stopping or was replaced (disable/enable, notebook
+	// switch) must not touch UI that now belongs to its successor.
+	s.mu.RLock()
+	current := s.runtimes[m.ID] == rt && !rt.closed.Load()
+	s.mu.RUnlock()
+	if !current {
+		return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
 	}
 	decode := func(v any) *rpcError {
 		if len(params) == 0 {

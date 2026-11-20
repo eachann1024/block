@@ -73,7 +73,7 @@ type HostConfig struct {
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	OnNoteWritten   func(pluginID, notebookRoot, absPath string)
 	// ContribHost handles host.titlebar/status/ui/editor methods; ok=false falls through.
-	ContribHost func(m Manifest, method string, params json.RawMessage) (any, *rpcError, bool)
+	ContribHost func(rt *Runtime, method string, params json.RawMessage) (any, *rpcError, bool)
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")
@@ -190,10 +190,12 @@ type Runtime struct {
 	pending   map[string]chan rpcEnvelope
 	nextID    atomic.Int64
 
-	noteMu    sync.Mutex
-	cfgMu     sync.RWMutex
-	closed    atomic.Bool
-	abortOnce sync.Once
+	noteMu sync.Mutex
+	cfgMu  sync.RWMutex
+	closed atomic.Bool
+	// initialized is set once plugin.initialize succeeds; events wait for it.
+	initialized atomic.Bool
+	abortOnce   sync.Once
 }
 
 func (rt *Runtime) SetNotebookRoot(root string) {
@@ -507,6 +509,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	if !res.Ready {
 		return errors.New("plugin.initialize did not return {\"ready\": true}")
 	}
+	rt.initialized.Store(true)
 	return nil
 }
 
@@ -985,7 +988,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage) (an
 
 	default:
 		if rt.cfg.ContribHost != nil {
-			if res, rerr, ok := rt.cfg.ContribHost(rt.manifest, method, params); ok {
+			if res, rerr, ok := rt.cfg.ContribHost(rt, method, params); ok {
 				return res, rerr
 			}
 		}
