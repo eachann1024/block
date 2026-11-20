@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"encoding/base64"
 	"fmt"
 	"html"
 	"strconv"
@@ -333,8 +334,38 @@ func hasSemanticHTMLFeatures(fragment string) bool {
 }
 
 func isPasteableRemoteOrLocalImage(src string) bool {
-	link := strings.ToLower(media.WebLink(src))
-	return strings.HasPrefix(link, "https://") || strings.HasPrefix(link, "http://")
+	s := strings.TrimSpace(src)
+	link := strings.ToLower(media.WebLink(s))
+	if strings.HasPrefix(link, "https://") || strings.HasPrefix(link, "http://") {
+		return true
+	}
+	return isSafeRasterDataImageURI(s)
+}
+
+func isSafeRasterDataImageURI(src string) bool {
+	if len(src) == 0 || len(src) > media.MaxPasteBytes {
+		return false
+	}
+	comma := strings.IndexByte(src, ',')
+	if comma <= 0 {
+		return false
+	}
+	header := strings.ToLower(strings.TrimSpace(src[:comma]))
+	switch header {
+	case "data:image/png;base64", "data:image/jpeg;base64", "data:image/jpg;base64", "data:image/webp;base64", "data:image/gif;base64":
+	default:
+		return false
+	}
+	payload := strings.TrimSpace(src[comma+1:])
+	if payload == "" || base64.StdEncoding.DecodedLen(len(payload)) > media.MaxImageBytes {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil || len(raw) == 0 || len(raw) > media.MaxImageBytes {
+		return false
+	}
+	_, _, _, err = media.DecodeRaster(raw)
+	return err == nil
 }
 
 type htmlInlineState struct {
@@ -349,6 +380,7 @@ type htmlInlineState struct {
 	sub       *bool
 	bgColor   *string
 	link      *string
+	linkTitle *string
 }
 
 type htmlListCtx struct {
@@ -363,32 +395,44 @@ type htmlLIState struct {
 	extraIndent int
 }
 
+type htmlTableCell struct {
+	spans    []model.Span
+	pipeText string
+	isHeader bool
+}
+
 type htmlTableCtx struct {
-	rows        [][]string
-	curRow      []string
+	rows        [][]htmlTableCell
+	curRow      []htmlTableCell
 	inCell      bool
 	cellSpans   []model.Span
-	hasHeaderTR bool
+	cellHeader  bool
+	cellColspan int
+	inThead     bool
+	nestedDepth int
 }
 
 type htmlPasteConverter struct {
-	blocks      []string
-	curSpans    []model.Span
-	inlineStk   []htmlInlineState
-	listStk     []htmlListCtx
-	liStk       []htmlLIState
-	quoteDepth  int
-	headingLvl  int
-	inPara      int
-	inPre       bool
-	preLang     string
-	preBuf      strings.Builder
-	table       *htmlTableCtx
-	outputBytes int
-	overBudget  bool
+	blocks         []string
+	curSpans       []model.Span
+	inlineStk      []htmlInlineState
+	listStk        []htmlListCtx
+	liStk          []htmlLIState
+	quoteDepth     int
+	headingLvl     int
+	inPara         int
+	paraAlignStk   []model.ImageAlign
+	soloImgWidth   float32
+	soloImgAlign   model.ImageAlign
+	inPre          bool
+	preLang        string
+	preBuf         strings.Builder
+	table          *htmlTableCtx
+	outputBytes    int
+	overBudget     bool
 }
 
-func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg string) {
+func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link, linkTitle, bg string) {
 	var bold, italic, under, strike, code, mathMark, sup, sub bool
 	for _, f := range c.inlineStk {
 		if f.bold != nil {
@@ -420,6 +464,11 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 		}
 		if f.link != nil {
 			link = *f.link
+			if f.linkTitle != nil {
+				linkTitle = *f.linkTitle
+			} else {
+				linkTitle = ""
+			}
 		}
 	}
 	if bold && c.headingLvl == 0 {
@@ -446,7 +495,7 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 	if sub {
 		marks |= model.MarkSubscript
 	}
-	return marks, link, bg
+	return marks, link, linkTitle, bg
 }
 
 func (c *htmlPasteConverter) inLiteralInline() bool {
@@ -491,24 +540,26 @@ func (c *htmlPasteConverter) pushText(raw string) {
 		}
 		if lit.Len() > 0 {
 			spansPtr := c.targetSpans()
-			marks, link, bg := c.activeStyle()
+			marks, link, linkTitle, bg := c.activeStyle()
 			*spansPtr = append(*spansPtr, model.Span{
-				Text:    lit.String(),
-				Marks:   marks,
-				Link:    link,
-				BGColor: bg,
+				Text:      lit.String(),
+				Marks:     marks,
+				Link:      link,
+				LinkTitle: linkTitle,
+				BGColor:   bg,
 			})
 		}
 		return
 	}
-	marks, link, bg := c.activeStyle()
+	marks, link, linkTitle, bg := c.activeStyle()
 	if (marks != 0 || link != "" || bg != "") && !strings.ContainsAny(decoded, "\r\n\t") && strings.Trim(strings.ReplaceAll(decoded, "\u00A0", " "), " ") == "" {
 		spansPtr := c.targetSpans()
 		*spansPtr = append(*spansPtr, model.Span{
-			Text:    strings.ReplaceAll(decoded, "\u00A0", " "),
-			Marks:   marks,
-			Link:    link,
-			BGColor: bg,
+			Text:      strings.ReplaceAll(decoded, "\u00A0", " "),
+			Marks:     marks,
+			Link:      link,
+			LinkTitle: linkTitle,
+			BGColor:   bg,
 		})
 		return
 	}
@@ -520,8 +571,8 @@ func (c *htmlPasteConverter) pushText(raw string) {
 	if len(*spansPtr) == 0 {
 		lastSpace = true
 	} else {
-		prev := (*spansPtr)[len(*spansPtr)-1].Text
-		if strings.HasSuffix(prev, " ") || strings.HasSuffix(prev, "\n") {
+		prevSpan := (*spansPtr)[len(*spansPtr)-1]
+		if prevSpan.ImageSrc == "" && (strings.HasSuffix(prevSpan.Text, " ") || strings.HasSuffix(prevSpan.Text, "\n")) {
 			lastSpace = true
 		}
 	}
@@ -547,10 +598,11 @@ func (c *htmlPasteConverter) pushText(raw string) {
 		return
 	}
 	*spansPtr = append(*spansPtr, model.Span{
-		Text:    txt,
-		Marks:   marks,
-		Link:    link,
-		BGColor: bg,
+		Text:      txt,
+		Marks:     marks,
+		Link:      link,
+		LinkTitle: linkTitle,
+		BGColor:   bg,
 	})
 }
 
@@ -563,16 +615,19 @@ func (c *htmlPasteConverter) pushBreak() {
 	if len(*spansPtr) == 0 {
 		return
 	}
-	marks, link, bg := c.activeStyle()
+	marks, link, linkTitle, bg := c.activeStyle()
 	if !c.inLiteralInline() {
 		last := &(*spansPtr)[len(*spansPtr)-1]
-		last.Text = strings.TrimRight(last.Text, " ")
+		if last.ImageSrc == "" {
+			last.Text = strings.TrimRight(last.Text, " ")
+		}
 	}
 	*spansPtr = append(*spansPtr, model.Span{
-		Text:    "\n",
-		Marks:   marks,
-		Link:    link,
-		BGColor: bg,
+		Text:      "\n",
+		Marks:     marks,
+		Link:      link,
+		LinkTitle: linkTitle,
+		BGColor:   bg,
 	})
 }
 
@@ -612,9 +667,46 @@ func (c *htmlPasteConverter) emitBlockLine(blockMD string) {
 	c.appendOutput(blockMD)
 }
 
+func (c *htmlPasteConverter) currentParaAlign() model.ImageAlign {
+	for i := len(c.paraAlignStk) - 1; i >= 0; i-- {
+		if c.paraAlignStk[i] != "" {
+			return c.paraAlignStk[i]
+		}
+	}
+	return model.ImageAlignLeft
+}
+
+func formatStyledBlockImageHTML(src, alt, title string, width float32, align model.ImageAlign) string {
+	var img strings.Builder
+	img.WriteString(`<img src="`)
+	img.WriteString(escapeAttrValue(src))
+	img.WriteString(`" alt="`)
+	img.WriteString(escapeAttrValue(alt))
+	img.WriteByte('"')
+	if title != "" {
+		img.WriteString(` title="`)
+		img.WriteString(escapeAttrValue(title))
+		img.WriteByte('"')
+	}
+	if width > 0 {
+		img.WriteString(` width="`)
+		img.WriteString(formatFloat(width))
+		img.WriteString(`%"`)
+	}
+	img.WriteByte('>')
+	if align != "" && align != model.ImageAlignLeft {
+		return fmt.Sprintf(`<p align="%s">%s</p>`, string(align), img.String())
+	}
+	return img.String()
+}
+
 func (c *htmlPasteConverter) flushCurrentBlock() {
 	spans := trimSpanEdges(c.curSpans)
+	soloW := c.soloImgWidth
+	soloAlign := c.soloImgAlign
 	c.curSpans = nil
+	c.soloImgWidth = 0
+	c.soloImgAlign = ""
 	hasActiveLI := len(c.listStk) > 0 && len(c.liStk) > 0
 	var li *htmlLIState
 	if hasActiveLI {
@@ -622,6 +714,21 @@ func (c *htmlPasteConverter) flushCurrentBlock() {
 	}
 	if len(spans) == 0 && !(hasActiveLI && li.todo && !li.flushed) {
 		return
+	}
+
+	if c.headingLvl == 0 && !hasActiveLI && c.quoteDepth == 0 && len(spans) == 1 && spans[0].ImageSrc != "" &&
+		spans[0].Marks == 0 && spans[0].Link == "" && spans[0].FGColor == "" && spans[0].BGColor == "" {
+		if soloAlign == "" {
+			soloAlign = c.currentParaAlign()
+		}
+		if soloW > 0 || (soloAlign != "" && soloAlign != model.ImageAlignLeft) {
+			alt := spans[0].Text
+			if spans[0].ImageAltEmpty {
+				alt = ""
+			}
+			c.emitBlockLine(formatStyledBlockImageHTML(spans[0].ImageSrc, alt, spans[0].ImageTitle, soloW, soloAlign))
+			return
+		}
 	}
 
 	if c.headingLvl >= 1 && c.headingLvl <= 6 {
@@ -808,6 +915,9 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 	case "a":
 		if href := media.WebLink(attrVal(attrs, "href")); href != "" {
 			st.link = strPtr(href)
+			if title := attrVal(attrs, "title"); title != "" {
+				st.linkTitle = strPtr(title)
+			}
 		}
 	}
 
@@ -863,10 +973,86 @@ func (c *htmlPasteConverter) popInlineTag(name string) {
 	}
 }
 
+func (c *htmlPasteConverter) finishTableCell() {
+	if c.table == nil || !c.table.inCell {
+		return
+	}
+	spans := trimSpanEdges(c.table.cellSpans)
+	isHdr := c.table.cellHeader
+	colspan := c.table.cellColspan
+	if colspan < 1 {
+		colspan = 1
+	}
+	c.table.cellSpans = nil
+	c.table.inCell = false
+	c.table.cellHeader = false
+	c.table.cellColspan = 1
+
+	var parts []string
+	for _, grp := range splitSpansOnNewline(spans) {
+		if s := strings.TrimSpace(SerializeInline(grp)); s != "" {
+			if strings.Contains(s, `\|`) {
+				s = strings.ReplaceAll(strings.TrimSpace(serializeInlineWithModeDefs(grp, true, false, nil)), "|", "&#124;")
+			} else {
+				s = strings.ReplaceAll(s, "|", `\|`)
+			}
+			parts = append(parts, s)
+		}
+	}
+	c.table.curRow = append(c.table.curRow, htmlTableCell{
+		spans:    spans,
+		pipeText: strings.Join(parts, "<br>"),
+		isHeader: isHdr,
+	})
+	for k := 1; k < colspan; k++ {
+		c.table.curRow = append(c.table.curRow, htmlTableCell{isHeader: isHdr})
+	}
+}
+
+func (c *htmlPasteConverter) finishTableRow() {
+	if c.table == nil {
+		return
+	}
+	if c.table.inCell {
+		c.finishTableCell()
+	}
+	if len(c.table.curRow) > 0 {
+		c.table.rows = append(c.table.rows, c.table.curRow)
+		c.table.curRow = nil
+	}
+}
+
+func parseHTMLColspan(attrs [][2]string) int {
+	raw := strings.TrimSpace(attrVal(attrs, "colspan"))
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	if n > 64 {
+		return 64
+	}
+	return n
+}
+
 func (c *htmlPasteConverter) flushTable() {
 	tbl := c.table
 	c.table = nil
-	if tbl == nil || len(tbl.rows) == 0 {
+	if tbl == nil {
+		return
+	}
+	if tbl.inCell {
+		c.table = tbl
+		c.finishTableCell()
+		c.table = nil
+	}
+	if len(tbl.curRow) > 0 {
+		tbl.rows = append(tbl.rows, tbl.curRow)
+		tbl.curRow = nil
+	}
+	if len(tbl.rows) == 0 {
 		return
 	}
 	maxCols := 0
@@ -883,15 +1069,63 @@ func (c *htmlPasteConverter) flushTable() {
 		c.overBudget = true
 		return
 	}
+	row0AnyHeader := false
+	row0AllHeader := true
+	nonRow0AnyHeader := false
+	for rIdx, row := range tbl.rows {
+		for col := 0; col < maxCols; col++ {
+			hdr := col < len(row) && row[col].isHeader
+			if rIdx == 0 {
+				if hdr {
+					row0AnyHeader = true
+				} else {
+					row0AllHeader = false
+				}
+			} else if hdr {
+				nonRow0AnyHeader = true
+			}
+		}
+	}
+	if (row0AnyHeader && !row0AllHeader) || nonRow0AnyHeader {
+		var sb strings.Builder
+		sb.WriteString("<!-- thinkly:table header=0 -->\n<table>\n")
+		for _, row := range tbl.rows {
+			sb.WriteString("<tr>")
+			for col := 0; col < maxCols; col++ {
+				tag := "td"
+				var spans []model.Span
+				if col < len(row) {
+					if row[col].isHeader {
+						tag = "th"
+					}
+					spans = row[col].spans
+				}
+				sb.WriteByte('<')
+				sb.WriteString(tag)
+				sb.WriteByte('>')
+				var cellBuf strings.Builder
+				serializeInlineHTML(spans, &cellBuf)
+				sb.WriteString(cellBuf.String())
+				sb.WriteString("</")
+				sb.WriteString(tag)
+				sb.WriteByte('>')
+			}
+			sb.WriteString("</tr>\n")
+		}
+		sb.WriteString("</table>")
+		c.appendOutput(sb.String())
+		return
+	}
+
 	var outRows []string
-	if !tbl.hasHeaderTR {
+	if !row0AnyHeader {
 		outRows = append(outRows, "<!-- thinkly:table header=0 -->")
 	}
 	for rIdx, row := range tbl.rows {
 		cells := make([]string, maxCols)
 		for col := 0; col < maxCols; col++ {
 			if col < len(row) {
-				cells[col] = row[col]
+				cells[col] = row[col].pipeText
 			}
 		}
 		outRows = append(outRows, "| "+strings.Join(cells, " | ")+" |")
@@ -971,44 +1205,104 @@ func (c *htmlPasteConverter) parse(src string) {
 		}
 
 		if c.table != nil {
+			if c.table.nestedDepth > 0 {
+				switch name {
+				case "table":
+					if !closed && !empty {
+						c.table.nestedDepth++
+					} else if closed {
+						c.table.nestedDepth--
+					}
+				case "tr", "p", "div":
+					if closed && c.table.inCell && len(c.table.cellSpans) > 0 {
+						c.pushBreak()
+					}
+				case "br":
+					if !closed && c.table.inCell {
+						c.pushBreak()
+					}
+				case "td", "th":
+					if closed && c.table.inCell && len(c.table.cellSpans) > 0 {
+						c.pushText(" ")
+					}
+				case "img":
+					if !closed && c.table.inCell {
+						srcURL := strings.TrimSpace(attrVal(attrs, "src"))
+						if isPasteableRemoteOrLocalImage(srcURL) {
+							alt := attrVal(attrs, "alt")
+							title := attrVal(attrs, "title")
+							marks, link, linkTitle, bg := c.activeStyle()
+							label := alt
+							altEmpty := label == ""
+							if altEmpty {
+								label = fallbackImageAlt(srcURL)
+							}
+							c.table.cellSpans = append(c.table.cellSpans, model.Span{
+								Text:          label,
+								Marks:         marks,
+								Link:          link,
+								LinkTitle:     linkTitle,
+								ImageSrc:      srcURL,
+								ImageTitle:    title,
+								ImageAltEmpty: altEmpty,
+								BGColor:       bg,
+							})
+						}
+					}
+				default:
+					if isKnownInlineTag(name) {
+						if closed {
+							c.popInlineTag(name)
+						} else if !empty {
+							c.pushInlineTag(name, attrs)
+						}
+					}
+				}
+				continue
+			}
+
 			switch name {
 			case "table":
-				if closed {
+				if !closed && !empty {
+					c.table.nestedDepth++
+				} else if closed {
+					c.finishTableRow()
 					c.flushTable()
 				}
 				continue
 			case "thead":
 				if !closed && !empty {
-					c.table.hasHeaderTR = true
+					c.table.inThead = true
+				} else if closed {
+					c.table.inThead = false
+				}
+				continue
+			case "tbody", "tfoot":
+				if !closed && !empty {
+					c.table.inThead = false
 				}
 				continue
 			case "tr":
 				if !closed && !empty {
-					c.table.curRow = nil
-				} else if closed && len(c.table.curRow) > 0 {
-					c.table.rows = append(c.table.rows, c.table.curRow)
-					c.table.curRow = nil
+					c.finishTableRow()
+				} else if closed {
+					c.finishTableRow()
 				}
 				continue
 			case "th", "td":
-				if !closed && !empty {
+				if !closed {
+					if c.table.inCell {
+						c.finishTableCell()
+					}
 					c.table.inCell = true
 					c.table.cellSpans = nil
-					if name == "th" {
-						c.table.hasHeaderTR = true
+					c.table.cellHeader = name == "th" || c.table.inThead
+					c.table.cellColspan = parseHTMLColspan(attrs)
+					if empty {
+						c.finishTableCell()
 					}
 				} else if closed && c.table.inCell {
-					spans := trimSpanEdges(c.table.cellSpans)
-					c.table.cellSpans = nil
-					c.table.inCell = false
-					var parts []string
-					for _, grp := range splitSpansOnNewline(spans) {
-						if s := strings.TrimSpace(SerializeInline(grp)); s != "" {
-							s = strings.ReplaceAll(s, "|", `\|`)
-							parts = append(parts, s)
-						}
-					}
-					c.table.curRow = append(c.table.curRow, strings.Join(parts, "<br>"))
+					c.finishTableCell()
 				}
 				continue
 			case "br":
@@ -1027,7 +1321,7 @@ func (c *htmlPasteConverter) parse(src string) {
 					if isPasteableRemoteOrLocalImage(srcURL) {
 						alt := attrVal(attrs, "alt")
 						title := attrVal(attrs, "title")
-						marks, link, bg := c.activeStyle()
+						marks, link, linkTitle, bg := c.activeStyle()
 						label := alt
 						altEmpty := label == ""
 						if altEmpty {
@@ -1037,6 +1331,7 @@ func (c *htmlPasteConverter) parse(src string) {
 							Text:          label,
 							Marks:         marks,
 							Link:          link,
+							LinkTitle:     linkTitle,
 							ImageSrc:      srcURL,
 							ImageTitle:    title,
 							ImageAltEmpty: altEmpty,
@@ -1071,12 +1366,31 @@ func (c *htmlPasteConverter) parse(src string) {
 			c.flushCurrentBlock()
 			if !closed && !empty {
 				c.inPara++
+				al := parseImageAlign(attrVal(attrs, "align"))
+				if al == "" {
+					al = parseImageAlign(cssProp(attrs, "text-align"))
+				}
+				c.paraAlignStk = append(c.paraAlignStk, al)
 			} else if closed && c.inPara > 0 {
 				c.inPara--
+				if len(c.paraAlignStk) > 0 {
+					c.paraAlignStk = c.paraAlignStk[:len(c.paraAlignStk)-1]
+				}
 			}
 
 		case "div", "section", "article", "header", "footer", "main":
 			c.flushCurrentBlock()
+			if name == "div" {
+				if !closed && !empty {
+					al := parseImageAlign(attrVal(attrs, "align"))
+					if al == "" {
+						al = parseImageAlign(cssProp(attrs, "text-align"))
+					}
+					c.paraAlignStk = append(c.paraAlignStk, al)
+				} else if closed && len(c.paraAlignStk) > 0 {
+					c.paraAlignStk = c.paraAlignStk[:len(c.paraAlignStk)-1]
+				}
+			}
 
 		case "br":
 			if !closed {
@@ -1163,7 +1477,14 @@ func (c *htmlPasteConverter) parse(src string) {
 				if isPasteableRemoteOrLocalImage(srcURL) {
 					alt := attrVal(attrs, "alt")
 					title := attrVal(attrs, "title")
-					marks, link, bg := c.activeStyle()
+					imgW := parseImageWidth(attrVal(attrs, "width"))
+					if imgW == 0 {
+						if sw := cssProp(attrs, "width"); sw != "" {
+							imgW = parseImageWidth(sw)
+						}
+					}
+					imgAlign := parseImageAlign(attrVal(attrs, "align"))
+					marks, link, linkTitle, bg := c.activeStyle()
 					inTableCell := c.table != nil && c.table.inCell
 					label := alt
 					altEmpty := label == ""
@@ -1171,11 +1492,18 @@ func (c *htmlPasteConverter) parse(src string) {
 						label = fallbackImageAlt(srcURL)
 					}
 					if inTableCell || link != "" || marks != 0 || bg != "" || len(c.curSpans) > 0 || c.headingLvl > 0 || len(c.liStk) > 0 || c.quoteDepth > 0 || c.inPara > 0 {
+						if !inTableCell && len(c.curSpans) == 0 && c.headingLvl == 0 && len(c.liStk) == 0 && c.quoteDepth == 0 {
+							c.soloImgWidth = imgW
+							if imgAlign != "" {
+								c.soloImgAlign = imgAlign
+							}
+						}
 						target := c.targetSpans()
 						*target = append(*target, model.Span{
 							Text:          label,
 							Marks:         marks,
 							Link:          link,
+							LinkTitle:     linkTitle,
 							ImageSrc:      srcURL,
 							ImageTitle:    title,
 							ImageAltEmpty: altEmpty,
@@ -1183,12 +1511,20 @@ func (c *htmlPasteConverter) parse(src string) {
 						})
 					} else {
 						c.flushCurrentBlock()
-						c.emitBlockLine(SerializeInline([]model.Span{{
-							Text:          label,
-							ImageSrc:      srcURL,
-							ImageTitle:    title,
-							ImageAltEmpty: altEmpty,
-						}}))
+						al := imgAlign
+						if al == "" {
+							al = c.currentParaAlign()
+						}
+						if imgW > 0 || (al != "" && al != model.ImageAlignLeft) {
+							c.emitBlockLine(formatStyledBlockImageHTML(srcURL, alt, title, imgW, al))
+						} else {
+							c.emitBlockLine(SerializeInline([]model.Span{{
+								Text:          label,
+								ImageSrc:      srcURL,
+								ImageTitle:    title,
+								ImageAltEmpty: altEmpty,
+							}}))
+						}
 					}
 				}
 			}
