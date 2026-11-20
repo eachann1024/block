@@ -458,6 +458,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 		// indented code, not a fence.
 		qCol := 0
 		var paraLines []int
+		var quoteSetext1 map[int]bool
 		// Indented code: four columns in after a blank line (or the start); in a list,
 		// four past the item's content column (listCol), since its nested content is
 		// indented too.
@@ -565,6 +566,21 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				inItem := inList && ind >= listCol && ind < listCol+4 ||
 					qCol > 0 && diffQuoteDepth(t) > 0 && qLead >= qCol && qLead < qCol+4
 				setext := para && (ind < 4 && !inList || inItem) && diffSetextRE.MatchString(inner)
+				// A plain quote keeps "===" as text. A structured quote can still
+				// contain an H1, so use the note parser to distinguish the two.
+				if setext && inner[0] == '=' && diffQuoteDepth(t) > 0 {
+					if quoteSetext1 == nil {
+						quoteSetext1 = make(map[int]bool)
+						source, rows := diffSource(lines, change, side)
+						for _, block := range notemd.ParseMarkdown(source).Blocks {
+							if block.Kind == model.BlockHeading1 && block.QuoteDepth > 0 &&
+								block.SourceEndLine > block.SourceLine && block.SourceEndLine <= len(rows) {
+								quoteSetext1[rows[block.SourceEndLine-1]] = true
+							}
+						}
+					}
+					setext = quoteSetext1[i]
+				}
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
 				// blk: the line's block behind its markers. An item's text is inline only in
 				// the note: "- ### 安装" shows its "###" and ends no block.
