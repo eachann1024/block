@@ -12,6 +12,9 @@ import (
 
 const maxLogBytes int64 = 2 * 1024 * 1024
 
+// logRetention is how long a log line is kept on this device.
+const logRetention = 7 * 24 * time.Hour
+
 var (
 	dataDirMu       sync.RWMutex
 	dataDirOverride string
@@ -143,10 +146,11 @@ func openLogFile(path string) *os.File {
 	if parent := filepath.Dir(path); parent != "" {
 		_ = os.MkdirAll(parent, 0o755)
 	}
+	prev := filepath.Join(filepath.Dir(path), "block.prev.log")
 	if info, err := os.Stat(path); err == nil && info.Size() > maxLogBytes {
-		prev := filepath.Join(filepath.Dir(path), "block.prev.log")
 		_ = os.Rename(path, prev)
 	}
+	pruneLogs(path, prev, time.Now().Add(-logRetention))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil
@@ -175,6 +179,8 @@ func (l *fileLogger) writeLine(level, msg string, flushDisk bool) {
 		l.file = openLogFile(targetPath)
 	}
 
+	msg = Redact(strings.ReplaceAll(msg, "\n", " | "))
+
 	var line string
 	if l.context == "" {
 		line = fmt.Sprintf("[%s] [%s] %s\n", ts, level, msg)
@@ -191,12 +197,20 @@ func (l *fileLogger) writeLine(level, msg string, flushDisk bool) {
 	}
 }
 
+// LogInfof writes an INFO diagnostic entry to logs/block.log.
+//
+// Every Log*f line is masked before it reaches the disk (see redact.go):
+// pass paths, names and errors as arguments, never note content.
+func LogInfof(format string, args ...any) {
+	logger.writeLine("INFO", fmt.Sprintf(format, redactArgs(args)...), false)
+}
+
 // LogWarnf writes a WARN diagnostic entry to logs/block.log.
 func LogWarnf(format string, args ...any) {
-	logger.writeLine("WARN", fmt.Sprintf(format, args...), false)
+	logger.writeLine("WARN", fmt.Sprintf(format, redactArgs(args)...), false)
 }
 
 // LogErrorf writes an ERROR diagnostic entry to logs/block.log and flushes to disk.
 func LogErrorf(format string, args ...any) {
-	logger.writeLine("ERROR", fmt.Sprintf(format, args...), true)
+	logger.writeLine("ERROR", fmt.Sprintf(format, redactArgs(args)...), true)
 }
