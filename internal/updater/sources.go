@@ -276,6 +276,79 @@ func parseGitHubAPIReleases(raw []byte) ([]ReleaseEntry, error) {
 	return out, nil
 }
 
+// FetchReleaseByTag retrieves one authoritative published release directly from GitHub by exact tag.
+func FetchReleaseByTag(ctx context.Context, tag string) (*ReleaseEntry, error) {
+	cleanTag := strings.TrimSpace(tag)
+	if cleanTag == "" {
+		return nil, errors.New("empty release tag")
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+
+	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", PublicRepo, url.PathEscape(cleanTag))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Block-Updater/"+CurrentVersion())
+	req.Header.Set("Cache-Control", "no-cache")
+
+	client := *sharedHTTPClient
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 10 || next.URL.Scheme != "https" || next.URL.Host != req.URL.Host {
+			return errors.New("untrusted release metadata redirect")
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > maxFeedBytes {
+		return nil, errors.New("release metadata exceeds the size limit")
+	}
+	var item ghAPIRawRelease
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return nil, err
+	}
+	if item.Draft || item.Prerelease {
+		return nil, errors.New("release is not published")
+	}
+	ver, parsedTag, _, ok := ParseReleaseTag(item.TagName)
+	if !ok {
+		return nil, errors.New("release tag is invalid")
+	}
+	zh, en := ParseReleaseBody(item.Body)
+	filtered := make([]ReleaseAsset, 0, len(item.Assets))
+	for _, a := range item.Assets {
+		if IsTrustedReleaseAsset(a, parsedTag) {
+			a.SHA256 = a.EffectiveSHA256()
+			filtered = append(filtered, a)
+		}
+	}
+	htmlURL := item.HTMLURL
+	if htmlURL == "" {
+		htmlURL = fmt.Sprintf("https://github.com/%s/releases/tag/%s", PublicRepo, url.PathEscape(parsedTag))
+	}
+	return &ReleaseEntry{
+		Version:     ver,
+		Tag:         parsedTag,
+		PublishedAt: item.PublishedAt,
+		HTMLURL:     htmlURL,
+		Zh:          zh,
+		En:          en,
+		Assets:      filtered,
+	}, nil
+}
+
 // FetchReleases retrieves authoritative release metadata directly from GitHub.
 func FetchReleases(ctx context.Context, mode SourceMode) (entries []ReleaseEntry, channel string, latencyMs int64, rawFeed []byte, err error) {
 	cands := feedCandidates()
