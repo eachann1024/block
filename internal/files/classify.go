@@ -50,7 +50,7 @@ var knownTextExts = map[string]bool{
 	"cs": true, "rb": true, "php": true, "lua": true, "sql": true,
 	"sh": true, "bash": true, "zsh": true, "fish": true, "ps1": true, "bat": true, "cmd": true,
 	"vue": true, "svelte": true, "astro": true,
-	"lock": true, "gradle": true, "mod": true, "sum": true,
+	"lock": true, "gradle": true, "mod": true, "sum": true, "work": true, "plist": true,
 	"rst": true, "tex": true, "latex": true, "ltx": true,
 	"lean": true, "mmd": true, "mermaid": true, "bib": true, "graphql": true, "proto": true, "zig": true,
 	"kt": true, "kts": true, "swift": true, "dart": true,

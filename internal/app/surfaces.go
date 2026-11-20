@@ -13,6 +13,7 @@ import (
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
+	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -64,6 +65,7 @@ type TabSurface struct {
 
 	code        *codeed.State
 	codeVersion uint64
+	codeLangGen uint64
 }
 
 // NewTabSurface constructs a TabSurface from a ClassifiedFile.
@@ -72,6 +74,9 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 	hasSource := cf.Source != nil
 	if hasSource {
 		src = *cf.Source
+		if _, tag := plugins.ResolveCodeLanguageForFile(path); tag != "" {
+			src.Language = tag
+		}
 	}
 	isSVG := files.IsSVGPath(path) || src.SVG
 	isHTML := src.HTML || strings.EqualFold(src.Language, "html")
