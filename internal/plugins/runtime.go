@@ -562,13 +562,14 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		values = map[string]any{}
 	}
 	var rawRes struct {
-		OK         *bool           `json:"ok,omitempty"`
-		Tone       string          `json:"tone,omitempty"`
-		Values     map[string]any  `json:"values,omitempty"`
-		Page       json.RawMessage `json:"page,omitempty"`
-		Status     string          `json:"status,omitempty"`
-		OpenPath   string          `json:"open_path,omitempty"`
-		RevealPath string          `json:"reveal_path,omitempty"`
+		OK              *bool           `json:"ok,omitempty"`
+		Tone            string          `json:"tone,omitempty"`
+		Values          map[string]any  `json:"values,omitempty"`
+		Page            json.RawMessage `json:"page,omitempty"`
+		Status          string          `json:"status,omitempty"`
+		OpenPath        string          `json:"open_path,omitempty"`
+		RevealPath      string          `json:"reveal_path,omitempty"`
+		SyncedNotebooks []string        `json:"synced_notebooks,omitempty"`
 	}
 	params := map[string]any{
 		"surface":   string(surface),
@@ -579,12 +580,13 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 		return nil, err
 	}
 	out := &ActionResult{
-		OK:         rawRes.OK,
-		Tone:       strings.TrimSpace(rawRes.Tone),
-		Values:     rawRes.Values,
-		Status:     rawRes.Status,
-		OpenPath:   strings.TrimSpace(rawRes.OpenPath),
-		RevealPath: strings.TrimSpace(rawRes.RevealPath),
+		OK:              rawRes.OK,
+		Tone:            strings.TrimSpace(rawRes.Tone),
+		Values:          rawRes.Values,
+		Status:          rawRes.Status,
+		OpenPath:        strings.TrimSpace(rawRes.OpenPath),
+		RevealPath:      strings.TrimSpace(rawRes.RevealPath),
+		SyncedNotebooks: rawRes.SyncedNotebooks,
 	}
 	if len(rawRes.Page) > 0 && string(rawRes.Page) != "null" {
 		page, err := DecodePageStrict(rawRes.Page)
