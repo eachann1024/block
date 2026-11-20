@@ -104,7 +104,8 @@ type SupervisorConfig struct {
 	OnChanged       func()
 	OnRedraw        func()
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
-	UI UIHost
+	UI     UIHost
+	System SystemHost
 }
 
 // Supervisor coordinates StoreManager, lazy plugin Runtime subprocesses, async form actions,
@@ -114,6 +115,7 @@ type Supervisor struct {
 	store    *StoreManager
 	cfg      SupervisorConfig
 	contrib  *contribRegistry
+	system   systemState
 
 	mu              sync.RWMutex
 	viewEpoch       atomic.Uint64
@@ -184,8 +186,10 @@ func (s *Supervisor) preparePluginReplacement(pluginID string) error {
 	s.clearUninstallErrorLocked(pluginID)
 	s.mu.Unlock()
 	if rt != nil {
+		go s.clearInactiveSystemBadge(pluginID)
 		return rt.Shutdown(context.Background())
 	}
+	go s.clearInactiveSystemBadge(pluginID)
 	return nil
 }
 
@@ -588,6 +592,8 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 	}
 	if enabled {
 		s.warmupPluginAsync(pluginID)
+	} else if changed {
+		go s.clearInactiveSystemBadge(pluginID)
 	}
 	if changed || rt != nil {
 		SyncActiveLanguagesSeq(langSnap, langSeq)
@@ -921,6 +927,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 		s.mu.Unlock()
 		SyncActiveLanguagesSeq(langSnap, langSeq)
 		s.contrib.forgetPlugin(pluginID, wasLegacyTitlebarMgr && !hasRemainingLegacyTitlebarMgr)
+		s.clearInactiveSystemBadge(pluginID)
 
 		if onDone != nil {
 			onDone()
@@ -948,6 +955,9 @@ func (s *Supervisor) clearUninstallErrorLocked(pluginID string) {
 }
 
 func (s *Supervisor) deleteViewsForPluginLocked(pluginID string) {
+	if pluginID == "block-sync" {
+		clear(s.system.syncErrors)
+	}
 	s.stopLiveTimersForPluginLocked(pluginID)
 	delete(s.activeActionKey, pluginID)
 	delete(s.activeActionRT, pluginID)
@@ -1236,9 +1246,6 @@ func (s *Supervisor) loadAndRenderSurface(pluginID, nbRoot string, surface Surfa
 }
 
 func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface Surface, retriedOnErr bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
 	sKey := surfaceKey{pluginID: pluginID, surface: surface}
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
 	// Results only land in the view that asked for them. A disable/enable or
@@ -1251,6 +1258,8 @@ func (s *Supervisor) loadAndRenderSurfaceOnce(pluginID, nbRoot string, surface S
 	}
 	s.mu.RUnlock()
 	defer s.lockPluginRPC(pluginID)()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	isDialog := strings.HasPrefix(string(surface), SurfacePrefixDialog)
 	dialogID := strings.TrimPrefix(string(surface), SurfacePrefixDialog)
 	if isDialog && s.cfg.UI != nil && originDialogToken != "" && s.cfg.UI.ActiveDialogToken(pluginID, dialogID) != originDialogToken {
@@ -1538,21 +1547,22 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		curTheme, curTarot = s.cfg.GetTheme()
 	}
 	cfg := HostConfig{
-		PluginDir:        inst.InstallDir,
-		DataDir:          inst.DataDir,
-		NotebookRoot:     nbRoot,
-		ActiveNote:       s.activeNoteFor(nbRoot),
-		Locale:           rawLocale,
-		Theme:            curTheme,
-		Tarot:            curTarot,
-		HostVersion:      hostVer,
-		GetNotebooks:     s.Notebooks,
-		GetPerfSnapshot:  s.cfg.GetPerfSnapshot,
-		ApplyNoteWrite:   s.cfg.ApplyNoteWrite,
-		OnNoteWritten:    s.notifyNoteWritten,
-		OnActionProgress: s.reportActionProgress,
-		OpenNote:         openNoteFn,
-		ContribHost:      s.dispatchContribHostMethod,
+		PluginDir:         inst.InstallDir,
+		DataDir:           inst.DataDir,
+		NotebookRoot:      nbRoot,
+		ActiveNote:        s.activeNoteFor(nbRoot),
+		Locale:            rawLocale,
+		Theme:             curTheme,
+		Tarot:             curTarot,
+		HostVersion:       hostVer,
+		GetNotebooks:      s.Notebooks,
+		GetPerfSnapshot:   s.cfg.GetPerfSnapshot,
+		ApplyNoteWrite:    s.cfg.ApplyNoteWrite,
+		OnNoteWritten:     s.notifyNoteWritten,
+		OnActionProgress:  s.reportActionProgress,
+		OpenNote:          openNoteFn,
+		ContribHost:       s.dispatchExtensionHostMethod,
+		SystemIntegration: s.cfg.System != nil,
 	}
 	s.mu.Lock()
 	current := false
@@ -1578,6 +1588,9 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 	if err := rt.Initialize(ctx); err != nil {
 		rt.abort()
 		return nil, attemptedLocale, err
+	}
+	if cfg.SystemIntegration && pluginID == "block-sync" && rt.manifest.HasPermission(PermSystemSecrets) && rt.manifest.HasPermission(PermEventsSystem) {
+		s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
 	}
 	return rt, attemptedLocale, nil
 }
@@ -1684,9 +1697,9 @@ func (s *Supervisor) refreshPreviewForSeq(pluginID, nbRoot string, surface Surfa
 		}
 	}()
 
+	defer s.lockPluginRPC(pluginID)()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	defer s.lockPluginRPC(pluginID)()
 	s.mu.RLock()
 	if s.views[key] != vs || vs.BusyAction != "" || vs.editSeq != seq {
 		s.mu.RUnlock()
@@ -1908,6 +1921,10 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 					delete(s.activeActionRT, pluginID)
 				}
 				s.mu.Unlock()
+				if err == nil && res != nil && res.OK != nil && *res.OK && pluginID == "block-sync" &&
+					actionID == "forget_credential" && rt.manifest.HasPermission(PermSystemSecrets) && rt.manifest.HasPermission(PermEventsSystem) {
+					s.queueSystemEvent(pluginID, blockSyncCredentialEvent, map[string]any{"event": blockSyncCredentialEvent})
+				}
 				_ = wasHeader
 			}
 		}
@@ -1966,22 +1983,10 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.RetryKind = RetryKindNone
 				cur.FailedActionID = ""
 				cur.errorFromBg = false
-				if pluginID == "block-sync" && tone == "success" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
-					syncedRoots := map[string]bool{}
-					for _, r := range res.SyncedNotebooks {
-						if rk := syncNotebookKey(r); rk != "" {
-							syncedRoots[rk] = true
-						}
-					}
-					if len(syncedRoots) > 0 {
-						for vk, view := range s.views {
-							if vk.pluginID == pluginID && vk.surface == SurfaceSettingsPage && view != nil && len(view.failedSaves) > 0 {
-								if syncedRoots[syncNotebookKey(vk.notebookRoot)] {
-									clear(view.failedSaves)
-									clear(view.savePausedConfirm)
-								}
-							}
-						}
+				if pluginID == "block-sync" && (actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
+					delete(s.system.syncErrors, nbRoot)
+					if tone == "success" {
+						s.clearSyncedNotebookErrorsLocked(pluginID, res.SyncedNotebooks)
 					}
 				}
 				statusMsg := strings.TrimSpace(res.Status)
@@ -2115,6 +2120,9 @@ func (s *Supervisor) reportActionProgress(rt *Runtime, progress ActionProgress) 
 }
 
 func (s *Supervisor) isPluginBusyLocked(pluginID string) bool {
+	if s.system.activeEvents[pluginID] != nil {
+		return true
+	}
 	if s.replacingID == pluginID && s.installingID != "" {
 		return true
 	}
@@ -2294,7 +2302,7 @@ func (s *Supervisor) RetrySurfaceAsync(pluginID string, surface Surface) {
 	}
 	snapshot := s.snapshotViewLocked(key, vs)
 	kind := snapshot.RetryKind
-	actionID := vs.FailedActionID
+	actionID := snapshot.FailedActionID
 	notePath := snapshot.FailedNotePath
 	noteRoot := snapshot.FailedNoteRoot
 	if kind == RetryKindNoteSaved {
@@ -2549,6 +2557,16 @@ func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) Pl
 			out.RetryKind = RetryKindNoteSaved
 			out.SavePausedConfirm = failedPaused
 		}
+		if current.pluginID == "block-sync" && out.Error == "" && out.BusyAction == "" && out.RetryKind == RetryKindNone {
+			if failure := s.system.syncErrors[current.notebookRoot]; failure != "" {
+				out.Error = failure
+				out.RetryKind = RetryKindReload
+				if out.Page.HasHeaderAction("sync_now") {
+					out.RetryKind = RetryKindAction
+					out.FailedActionID = "sync_now"
+				}
+			}
+		}
 	}
 	return out
 }
@@ -2574,4 +2592,22 @@ func syncNotebookKey(root string) string {
 		return filepath.Clean(resolved)
 	}
 	return filepath.Clean(trimmed)
+}
+
+func (s *Supervisor) clearSyncedNotebookErrorsLocked(pluginID string, roots []string) {
+	if len(roots) == 0 {
+		return
+	}
+	syncedRoots := make(map[string]bool, len(roots))
+	for _, root := range roots {
+		if key := syncNotebookKey(root); key != "" {
+			syncedRoots[key] = true
+		}
+	}
+	for key, view := range s.views {
+		if key.pluginID == pluginID && key.surface == SurfaceSettingsPage && view != nil && syncedRoots[syncNotebookKey(key.notebookRoot)] {
+			clear(view.failedSaves)
+			clear(view.savePausedConfirm)
+		}
+	}
 }

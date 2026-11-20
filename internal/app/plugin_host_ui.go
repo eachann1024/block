@@ -48,7 +48,8 @@ type pluginPanelRef struct {
 }
 
 type pluginHostUI struct {
-	w *Workspace
+	systemReveal func()
+	w            *Workspace
 
 	mu              sync.Mutex
 	nextToastID     uint64

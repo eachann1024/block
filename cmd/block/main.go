@@ -515,6 +515,9 @@ func main() {
 		})
 
 		openMainWindow()
+		if !smokeFlag && os.Getenv("MYGO_AUTOMATION") == "" {
+			ws.AttachPluginSystem(func() { revealMainWindow() })
+		}
 		if launchStoreLink != "" {
 			handleDeepLink(launchStoreLink)
 			launchStoreLink = ""
