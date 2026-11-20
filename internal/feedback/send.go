@@ -476,7 +476,9 @@ func (s *Sender) uploadPart(ctx context.Context, id string) *SendError {
 	}
 	s.setPart(id, func(p *Part) {
 		if err != nil {
-			p.State, p.Err = PartFailed, err
+			// A failed part counts for nothing: the bar must not read as full.
+			s.snap.Sent -= p.Sent
+			p.State, p.Sent, p.Err = PartFailed, 0, err
 			return
 		}
 		s.snap.Sent += p.Total - p.Sent
