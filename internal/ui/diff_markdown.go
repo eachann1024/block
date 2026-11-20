@@ -182,10 +182,11 @@ func DiffListNumbers(lines []string, change []int) []int {
 				para = plain
 				continue
 			}
-			// An item opens a paragraph only with text after its marker ("1. ## 模块" has
-			// a heading, which a nested "2." may follow).
+			// An item opens a paragraph with any text after its marker: the note reads
+			// "1. ## 模块" as inline text, which "2. 这是正文" below continues.
 			content := ind + diffItemCol(t)
-			para = text(strings.TrimSpace(diffContainerRE.ReplaceAllString(t, "")))
+			after := strings.TrimSpace(diffContainerRE.ReplaceAllString(t, ""))
+			para = after != "" && diffFenceOpen(after) == ""
 			if cont && om != nil {
 				n = sib.next
 			}
@@ -657,24 +658,22 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					paraLines = nil
 				}
 				// Under paragraph text "-" or "==" is a setext underline, not an empty list
-				// item, which may not interrupt a paragraph; in a list item's content
-				// ("- 部署说明" over "  ---", or "> - 部署说明" over ">   ---") it makes the
-				// item's text a heading.
+				// item, which may not interrupt a paragraph; in a list item's content too
+				// ("   > 回滚步骤" over "   > ---"), though never under the item's own text.
 				inItem := inList && ind >= listCol && ind < listCol+4 ||
 					qCol > 0 && diffQuoteDepth(t) > 0 && qLead >= qCol && qLead < qCol+4
 				setext := para && (ind < 4 && !inList || inItem) && diffSetextRE.MatchString(inner)
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
-				// blk: the line's block behind its markers ("### 安装" in "- ### 安装").
-				blk := inner
+				// blk: the line's block behind its markers. An item's text is inline only in
+				// the note: "- ### 安装" shows its "###" and ends no block.
+				blk, itemLine := inner, false
 				if item || !setext && inner != t && diffListItemRE.MatchString(inner) && !diffRuleRE.MatchString(inner) {
-					// A task's check box comes first: "- [x] ### 发布完成" holds a heading.
 					blk = strings.TrimSpace(diffContainerRE.ReplaceAllString(inner, ""))
-					blk = strings.TrimSpace(diffTaskMarkRE.ReplaceAllString(blk, ""))
 					if diffListItemRE.FindString(blk) == blk {
 						blk = "" // an empty item ("-")
 					}
 					// The item's text starts a paragraph of its own.
-					paraLines = nil
+					paraLines, itemLine = nil, true
 				}
 				if item {
 					for len(cols) > 0 && cols[len(cols)-1] > ind {
@@ -693,9 +692,9 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				}
 				// A rule, heading or setext underline ends its block on that line, so code
 				// may follow at once. Indented four or more, such a line is paragraph text.
-				ends := setext || (item || ind < 4 || inList && ind < listCol+4) && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
+				ends := setext || !itemLine && (ind < 4 || inList && ind < listCol+4) && (diffRuleRE.MatchString(blk) || diffHeadingRE.MatchString(blk) || diffMathStart(blk))
 				prevBlank, para = ends, !ends && blk != ""
-				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t), inItem) {
+				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t)) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
 					}
@@ -792,18 +791,15 @@ func diffMathStart(t string) bool {
 // setext heading: not a list item or table, and in the underline's blockquote depth
 // q, since a quoted paragraph over a bare "---" is a rule (no lazy underline). Bar
 // lines are paragraph text until a separator row makes them a table: "| A |" over
-// "---" is a heading, since the underline is read first. In a list item (item) the
-// first line may be the item's own.
-func diffSetextText(lines []string, para []int, q int, item bool) bool {
+// "---" is a heading, since the underline is read first.
+func diffSetextText(lines []string, para []int, q int) bool {
 	for j, p := range para {
 		t := strings.TrimSpace(lines[p])
 		if diffQuoteDepth(t) != q {
 			return false
 		}
 		t = strings.TrimSpace(diffStripQuotes(t, q))
-		// A quote in the item ("1. > 先备份配置") ends before an underline outside it.
-		if diffListItemRE.MatchString(t) && (!item || j > 0 || strings.HasPrefix(t[min(diffItemCol(t), len(t)):], ">")) ||
-			j > 0 && IsDiffTableSep(t) {
+		if diffListItemRE.MatchString(t) || j > 0 && IsDiffTableSep(t) {
 			return false
 		}
 	}
@@ -1368,6 +1364,15 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 				body = q + rest[:m[3]] + `\` + rest[m[3]:]
 			}
 		}
+		// An item's text is inline only in the note: "- ### 安装" and "1. > 保留配置"
+		// show their "###" and ">", behind a task's check box too.
+		if rest := body[len(q):]; st.ListNum >= 0 && diffListItemRE.MatchString(rest) && !diffRuleRE.MatchString(rest) {
+			k := len(q) + len(diffItemMarkRE.FindString(rest))
+			k += len(diffTaskMarkRE.FindString(body[k:]))
+			if after := body[k:]; strings.HasPrefix(after, ">") || diffHeadingRE.MatchString(after) {
+				body = body[:k] + `\` + after
+			}
+		}
 		body = diffEscapeURLs(diffPlainLinks(body, st.Refs))
 		if !math {
 			body = diffLiteralStart(body)
@@ -1382,12 +1387,8 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 					body = h[:k] + `\` + h[k:]
 				}
 			}
-			// In a blockquote or list item the heading marker goes behind its markers,
-			// and a task's check box ("- [x] 备份配置") stays in front of it.
-			q := diffContainerRE.FindString(body)
-			if diffListItemRE.MatchString(strings.TrimLeft(strings.ReplaceAll(q, ">", ""), " \t")) {
-				q += diffTaskMarkRE.FindString(body[len(q):])
-			}
+			// In a blockquote the heading marker goes behind the quote markers.
+			q := diffQuoteRE.FindString(body)
 			body = q + strings.Repeat("#", st.Setext) + " " + body[len(q):]
 		}
 		markdown.View(c, body, diffMarkdownOptions(st))
