@@ -19,11 +19,22 @@ func SettingsSection(c *ui.Context, children func()) ui.Element {
 // SettingsSectionTitle renders a section heading (14px, title weight, primary
 // text) with an optional trailing action (e.g. SettingsTextAction) on the right.
 func SettingsSectionTitle(c *ui.Context, title string, trailing func()) {
+	SettingsSectionTitleWithIcon(c, nil, title, trailing)
+}
+
+// SettingsSectionTitleWithIcon renders a section heading with an optional
+// leading icon slot and trailing action.
+func SettingsSectionTitleWithIcon(c *ui.Context, leading func(), title string, trailing func()) {
 	pal := theme.Ocean()
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.SettingsSectionTitleH).Margin(0, 0, theme.Space6, 0).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
-		ui.Text(c, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).
-			TextColor(pal.Text).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
+		ui.Row(c).MinWidth(0).Shrink(1).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+			if leading != nil {
+				leading()
+			}
+			ui.Text(c, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).
+				TextColor(pal.Text).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
+		})
 		if trailing != nil {
 			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space4).Children(trailing)
 		}

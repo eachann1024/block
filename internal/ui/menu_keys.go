@@ -65,6 +65,39 @@ func RevealOnHighlight(el ui.Element, highlighted bool) {
 	}
 }
 
+type revealExpandKey struct{}
+
+type revealExpandState struct {
+	initialized bool
+	expanded    bool
+}
+
+// RevealOnExpand scrolls el into view using ScrollNearest on the exact frame
+// expanded transitions from false to true, so newly expanded content below a
+// disclosure toggle is not clipped below the bottom edge of its scroll viewport.
+func RevealOnExpand(el ui.Element, expanded bool) {
+	if !el.Valid() {
+		return
+	}
+	st := ui.Local(el, revealExpandKey{}, func() revealExpandState {
+		return revealExpandState{}
+	})
+	if !st.initialized {
+		st.initialized = true
+		st.expanded = expanded
+		return
+	}
+	if expanded != st.expanded {
+		st.expanded = expanded
+		if expanded {
+			el.ScrollIntoView(ui.ScrollIntoViewOptions{
+				Block:     ui.ScrollNearest,
+				Animation: JumpScrollAnimation(true),
+			})
+		}
+	}
+}
+
 // ObserveMenuPointer clears *cursor to -1 whenever the pointer moves or scrolls
 // over panel so hover and mouse-wheel scrolling cleanly take over from keyboard
 // selection without consuming InputScroll events needed by child scroll containers.
