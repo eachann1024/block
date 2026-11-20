@@ -266,6 +266,8 @@ func TestFeedbackSearchHistoryExportAboutUpdaterModals(t *testing.T) {
 	m, host, state := setupManager(t)
 
 	// 1. Feedback modal: switch category, draft auto-save, submit -> done.
+	// The real upload needs the network; the hook stands in for it.
+	m.FeedbackSubmitFn = func(category, message, contact string) error { return nil }
 	m.OpenFeedback()
 	tt := ui.NewTester(func(c *ui.Context) {
 		ui.Box(c).Fill().Children(func() {

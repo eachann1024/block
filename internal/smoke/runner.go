@@ -632,7 +632,9 @@ func RunAll(baseTempDir string) (*Report, error) {
 		tt.SetSize(1200, 780)
 		tt.Frame()
 
-		// Feedback modal: draft persistence + submit thank-you state
+		// Feedback modal: draft persistence + submit thank-you state.
+		// The real upload needs the network; the hook stands in for it.
+		ws.Modals().FeedbackSubmitFn = func(category, message, contact string) error { return nil }
 		if err := clickTarget(tt, "titlebar-feedback"); err != nil {
 			return "", err
 		}

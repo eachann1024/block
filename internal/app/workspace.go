@@ -15,6 +15,7 @@ import (
 	"block/internal/ai"
 	"block/internal/editor"
 	"block/internal/export"
+	"block/internal/feedback"
 	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/markdown"
@@ -165,6 +166,7 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.ai.SetOnRevealPath(w.revealInShell)
 	w.ai.SetOnPickAttachments(w.pickAIAttachments)
 	w.modals = modals.NewManager(actualDir, w)
+	go feedback.CleanTemp() // compressed copies a previous run left behind
 	w.updater = updater.NewService(updater.Config{
 		DataDir:           actualDir,
 		InitialSourceMode: updater.NormalizeSourceMode(st.UpdateSource),
@@ -849,6 +851,9 @@ func (w *Workspace) wireModalCallbacks() {
 	}
 	w.modals.DiffLinesFn = func(oldText, newText string) []model.DiffLine {
 		return files.DiffLines(oldText, newText)
+	}
+	w.modals.FeedbackNoticeFn = func(message, tone string) {
+		w.pluginUI.Toast("", message, tone)
 	}
 	w.modals.ExportFn = func(format model.ExportFormat, outPath string) error {
 		active := w.ActiveNotePath()

@@ -114,7 +114,11 @@ type Manager struct {
 	ReadHistoryFn         func(notePath, snapID string) (string, error)
 	DiffLinesFn           func(oldText, newText string) []model.DiffLine
 	ExportFn              func(format model.ExportFormat, outPath string) error
-	FeedbackSubmitFn      func(category, message, contact string) error
+	// FeedbackSubmitFn, when set, replaces the real upload with one synchronous
+	// call (tests and smoke runs); attachments and the log are not sent.
+	FeedbackSubmitFn func(category, message, contact string) error
+	// FeedbackNoticeFn shows a toast for a report that finished in the background.
+	FeedbackNoticeFn func(message, tone string)
 
 	fallbackState model.AppState
 
@@ -185,6 +189,7 @@ type Manager struct {
 	feedbackDone        bool
 	feedbackErr         string
 
+	fb                  feedbackUI
 	// History modal state.
 	historyOpen           bool
 	historyNotePath       string
@@ -225,6 +230,7 @@ func NewManager(dataDir string, host model.WorkspaceHost) *Manager {
 		settingsTab:      "ai",
 		feedbackCategory: "bug",
 		historyMode:      "diff",
+		fb:               feedbackUI{includeLog: true},
 		exportFormat:     model.ExportMarkdown,
 		exportTheme:      "current",
 	}
