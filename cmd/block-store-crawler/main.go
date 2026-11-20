@@ -42,8 +42,9 @@ type ghRepo struct {
 
 type ghRelease struct {
 	TagName     string `json:"tag_name"`
+	Draft       bool   `json:"draft"`
+	Prerelease  bool   `json:"prerelease"`
 	TarballURL  string `json:"tarball_url"`
-	ZipballURL  string `json:"zipball_url"`
 	PublishedAt string `json:"published_at"`
 	Assets      []struct {
 		Name               string `json:"name"`
@@ -238,22 +239,31 @@ func crawlGitHub(
 
 func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) (string, int, string) {
 	updatedAt := firstNonEmpty(repo.PushedAt, repo.UpdatedAt)
-	relURL := fmt.Sprintf("%s/repos/%s/releases/latest", apiBase, repo.FullName)
-	var rel ghRelease
-	status, err := fetchJSON(ctx, client, relURL, token, &rel)
+	relsURL := fmt.Sprintf("%s/repos/%s/releases", apiBase, repo.FullName)
+	var rels []ghRelease
+	status, err := fetchJSON(ctx, client, relsURL, token, &rels)
 	if err == nil && status == http.StatusOK {
-		if rel.PublishedAt != "" {
-			updatedAt = rel.PublishedAt
-		}
 		totalDownloads := 0
-		for _, a := range rel.Assets {
-			if a.DownloadCount > 0 {
-				totalDownloads += a.DownloadCount
+		var latest *ghRelease
+		for i := range rels {
+			for _, a := range rels[i].Assets {
+				if a.DownloadCount > 0 {
+					totalDownloads += a.DownloadCount
+				}
+			}
+			if latest == nil && !rels[i].Draft && !rels[i].Prerelease {
+				latest = &rels[i]
 			}
 		}
-		if assetURL := pickReleaseArchive(rel); assetURL != "" {
-			return assetURL, totalDownloads, updatedAt
+		if latest != nil {
+			if latest.PublishedAt != "" {
+				updatedAt = latest.PublishedAt
+			}
+			if assetURL := pickReleaseArchive(*latest); assetURL != "" {
+				return assetURL, totalDownloads, updatedAt
+			}
 		}
+		return fallbackTarballURL(apiBase, repo), totalDownloads, updatedAt
 	}
 	return fallbackTarballURL(apiBase, repo), 0, updatedAt
 }
@@ -267,10 +277,7 @@ func pickReleaseArchive(rel ghRelease) string {
 			}
 		}
 	}
-	if rel.TarballURL != "" {
-		return rel.TarballURL
-	}
-	return rel.ZipballURL
+	return rel.TarballURL
 }
 
 func fallbackTarballURL(apiBase string, repo ghRepo) string {
