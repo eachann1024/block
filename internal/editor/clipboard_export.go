@@ -206,7 +206,7 @@ func extractTableMultiCellGrid(tbl *model.TableData, startRune, endRune int) [][
 				ovHi := min(endRune, cEnd) - cStart
 				if ovLo < ovHi {
 					touched = true
-					sub = sliceSpans(cell.Spans, ovLo, ovHi)
+					sub = sliceSpansForClipboard(cell.Spans, ovLo, ovHi)
 				}
 			} else if startRune <= cStart && cStart <= endRune {
 				touched = true
@@ -440,7 +440,12 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		sb.WriteString("<hr>")
 
 	case b.Kind == model.BlockImage:
-		fmt.Fprintf(sb, "<p>%s</p>", s.clipboardImageTagHTML(b.ImageSrc, b.ImageAlt, b.ImageTitle, imageBudget))
+		tag := s.clipboardImageTagHTMLWithWidth(b.ImageSrc, b.ImageAlt, b.ImageTitle, b.ImageWidth, imageBudget)
+		if b.ImageAlign != "" && b.ImageAlign != model.ImageAlignLeft {
+			fmt.Fprintf(sb, `<p align="%s">%s</p>`, html.EscapeString(string(b.ImageAlign)), tag)
+		} else {
+			fmt.Fprintf(sb, "<p>%s</p>", tag)
+		}
 
 	case b.Kind == model.BlockTable && b.Table != nil && len(b.Table.Rows) > 0:
 		tbl := b.Table
@@ -479,22 +484,60 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 }
 
 func (s *Session) clipboardImageTagHTML(src, alt, title string, imageBudget *int) string {
-	escAlt := html.EscapeString(alt)
+	return s.clipboardImageTagHTMLWithWidth(src, alt, title, 0, imageBudget)
+}
+
+func (s *Session) clipboardImageTagHTMLWithWidth(src, alt, title string, width float32, imageBudget *int) string {
+	escAlt := strings.NewReplacer("\r", "&#13;", "\n", "&#10;").Replace(html.EscapeString(alt))
 	titleAttr := ""
 	if title != "" {
 		escTitle := strings.NewReplacer("\r", "&#13;", "\n", "&#10;").Replace(html.EscapeString(title))
 		titleAttr = fmt.Sprintf(` title="%s"`, escTitle)
 	}
+	widthAttr := ""
+	if width > 0 {
+		widthAttr = fmt.Sprintf(` width="%g%%"`, width)
+	}
 	if raw, err := s.readClipboardImage(src, int64(*imageBudget)); err == nil {
 		if _, _, format, err := media.DecodeRaster(raw); err == nil {
 			*imageBudget -= len(raw)
-			return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="%s"%s>`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), escAlt, titleAttr)
+			return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="%s"%s%s>`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), escAlt, titleAttr, widthAttr)
 		}
 	}
+	if isSafeClipboardRasterDataURI(src, imageBudget) {
+		return fmt.Sprintf(`<img src="%s" alt="%s"%s%s>`, html.EscapeString(strings.TrimSpace(src)), escAlt, titleAttr, widthAttr)
+	}
 	if isSafeClipboardRef(src) {
-		return fmt.Sprintf(`<img src="%s" alt="%s"%s>`, html.EscapeString(src), escAlt, titleAttr)
+		return fmt.Sprintf(`<img src="%s" alt="%s"%s%s>`, html.EscapeString(src), escAlt, titleAttr, widthAttr)
 	}
 	return escAlt
+}
+
+func isSafeClipboardRasterDataURI(src string, imageBudget *int) bool {
+	s := strings.TrimSpace(src)
+	comma := strings.IndexByte(s, ',')
+	if comma <= 0 {
+		return false
+	}
+	header := strings.ToLower(strings.TrimSpace(s[:comma]))
+	switch header {
+	case "data:image/png;base64", "data:image/jpeg;base64", "data:image/jpg;base64", "data:image/webp;base64", "data:image/gif;base64":
+	default:
+		return false
+	}
+	payload := strings.TrimSpace(s[comma+1:])
+	if payload == "" || base64.StdEncoding.DecodedLen(len(payload)) > *imageBudget {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil || len(raw) == 0 || len(raw) > *imageBudget {
+		return false
+	}
+	if _, _, _, err := media.DecodeRaster(raw); err != nil {
+		return false
+	}
+	*imageBudget -= len(raw)
+	return true
 }
 
 func isSafeClipboardRef(raw string) bool {

@@ -322,7 +322,7 @@ func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune in
 				ovHi := min(endRune, cEnd) - cStart
 				if ovLo < ovHi {
 					rowTouched = true
-					sub := sliceSpans(cell.Spans, ovLo, ovHi)
+					sub := sliceSpansForClipboard(cell.Spans, ovLo, ovHi)
 					cellParts = append(cellParts, sanitizeTableCellTSV(serializeInlineBlockMarkdown(sub, codec)))
 				}
 			} else if startRune <= cStart && cStart <= endRune {
@@ -395,7 +395,7 @@ func sliceTableSelection(blk *model.Block, startRune, endRune int) (model.Block,
 	}
 	for _, h := range hits {
 		cell := tbl.Rows[h.r][h.c]
-		cell.Spans = sliceSpans(cell.Spans, h.lo, h.hi)
+		cell.Spans = sliceSpansForClipboard(cell.Spans, h.lo, h.hi)
 		rows[h.r-rMin][h.c-cMin] = cell
 	}
 	var aligns []model.ColAlign

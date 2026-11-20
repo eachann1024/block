@@ -400,6 +400,11 @@ func (s *Session) tableToggleHeaderRow(blockID model.BlockID) {
 	}
 	s.pushUndo()
 	b.Table.NoHeaderRow = !b.Table.NoHeaderRow
+	if b.Table.NoHeaderRow && len(b.Table.Rows) > 0 {
+		for c := range b.Table.Rows[0] {
+			b.Table.Rows[0][c].Header = false
+		}
+	}
 	b.Dirty = true
 	b.CleanSource = ""
 	s.markDirty()
@@ -1086,7 +1091,7 @@ func (s *Session) renderTableBorderChrome(
 		wholeID := fmt.Sprintf("table-whole-handle-%d", id)
 		wholeSel := s.isTableWholeSelected(id)
 		wb := ui.ButtonBase(c.Key(wholeID)).Absolute().
-			Left(-rowW * 0.5).Top(-colH * 0.5).Size(rowW+s.scale(theme.Space2), colH+s.scale(theme.Space2)).
+			Left(-rowW*0.5).Top(-colH*0.5).Size(rowW+s.scale(theme.Space2), colH+s.scale(theme.Space2)).
 			Radius(theme.RadiusXS).Cursor(ui.CursorPointer).KeepFocus().
 			Label(theme.Tr("整表操作", "Table options"))
 		wHov := wb.Hovered()
@@ -1130,7 +1135,7 @@ func (s *Session) renderTableBorderChrome(
 			colName = fmt.Sprintf("#%d", cIdx+1)
 		}
 		btn := ui.ButtonBase(c.Key(btnID)).Absolute().
-			Left(centerX - colW*0.5).Top(-colH * 0.5).Size(colW, colH).
+			Left(centerX-colW*0.5).Top(-colH*0.5).Size(colW, colH).
 			Radius(theme.RadiusXS).KeepFocus().
 			Label(fmt.Sprintf(theme.Tr("选中列 %s", "Select column %s"), colName))
 		hovered := btn.Hovered()
@@ -1212,7 +1217,7 @@ func (s *Session) renderTableBorderChrome(
 		}
 
 		btn := ui.ButtonBase(c.Key(btnID)).Absolute().
-			Left(-rowW * 0.5).Top(centerY - rowH*0.5).Size(rowW, rowH).
+			Left(-rowW*0.5).Top(centerY-rowH*0.5).Size(rowW, rowH).
 			Radius(theme.RadiusXS).KeepFocus().
 			Label(fmt.Sprintf(theme.Tr("选中第 %d 行", "Select row %d"), rIdx+1))
 		hovered := btn.Hovered()
