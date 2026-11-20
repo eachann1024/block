@@ -1,7 +1,6 @@
 package app
 
 import (
-	"testing"
 	"time"
 
 	"block/internal/editor"
@@ -378,16 +377,13 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 		})
 	}
 
-	// 5. Colored Left & Right Edge Hot-Zones (Scheme A visible Ocean Accent strip + tactile spring).
+	// 5. Invisible Left & Right Edge Hot-Zones.
 	if canLeft {
 		prevHover := ef.leftZoneHovered
-		ef.leftZoneHovered = renderColoredEdgeHotZone(
+		ef.leftZoneHovered = renderEdgeHotZone(
 			c,
 			"edge-hotzone-left",
-			"edge-strip-left",
 			false,
-			inLeftZone || ef.active == edgeSideLeft,
-			efPal,
 			theme.Tr("贴边唤出浮动侧栏", "Float Sidebar"),
 			func() {
 				if ef.active == edgeSideLeft {
@@ -407,13 +403,10 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 
 	if canRight {
 		prevHover := ef.rightZoneHovered
-		ef.rightZoneHovered = renderColoredEdgeHotZone(
+		ef.rightZoneHovered = renderEdgeHotZone(
 			c,
 			"edge-hotzone-right",
-			"edge-strip-right",
 			true,
-			inRightZone || ef.active == edgeSideRight,
-			efPal,
 			theme.Tr("贴边唤出浮动 AI", "Float AI Panel"),
 			func() {
 				if ef.active == edgeSideRight {
@@ -432,71 +425,22 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	}
 }
 
-func renderColoredEdgeHotZone(
-	c *ui.Context,
-	zoneID, stripID string,
-	rightEdge bool,
-	hot bool,
-	efPal theme.EdgeFloatColors,
-	label string,
-	onClick func(),
-) bool {
+// renderEdgeHotZone is the invisible window-edge sensor that summons a
+// floating card; it draws nothing so the edge stays clean.
+func renderEdgeHotZone(c *ui.Context, zoneID string, rightEdge bool, label string, onClick func()) bool {
 	zone := ui.ButtonBase(c.Key(zoneID)).Absolute().Top(0).Bottom(0).
-		Width(theme.EdgeHotZoneWidth).Clip().
+		Width(theme.EdgeHotZoneWidth).
 		Cursor(ui.CursorPointer).KeepFocus().Label(label)
 	if rightEdge {
 		zone.Right(0)
 	} else {
 		zone.Left(0)
 	}
-
-	hovered := zone.Hovered()
-	isLit := hot || hovered || zone.Pressed()
-
-	glowTarget := ui.Transparent
-	if isLit {
-		glowTarget = efPal.StripGlow
-	}
-	blockui.AnimateSurfaceColors(zone, glowTarget, ui.Transparent, false)
 	blockui.Probe(zone, zoneID)
-
-	zone.Children(func() {
-		strip := ui.Box(c.Key(stripID)).Absolute().Top(theme.Space6).Bottom(theme.Space6)
-		targetW := float32(0)
-		if isLit {
-			targetW = theme.EdgeStripHotWidth
-		}
-		animW := blockui.SpringTo(strip, "ew", targetW)
-
-		colTarget := ui.Transparent
-		if isLit {
-			colTarget = efPal.StripHot
-		}
-		stripCol := colTarget
-		if !testing.Testing() {
-			stripCol = strip.AnimateColor("ec", colTarget, blockui.FadeColor)
-		}
-
-		// Offset 2px into the clipped outer edge so the outer side sits flush with the window
-		// while the inner side keeps crisp rounded corners; collapse to 0 when unlit.
-		const outerBleed float32 = 2
-		barW := float32(0)
-		if animW > 0.05 {
-			barW = animW + outerBleed
-		}
-		strip.Width(barW).Radius(theme.RadiusXS).Background(stripCol)
-		if rightEdge {
-			strip.Right(-outerBleed)
-		} else {
-			strip.Left(-outerBleed)
-		}
-		blockui.Probe(strip, stripID)
-	})
-
 	if zone.Clicked() && onClick != nil {
 		onClick()
 	}
-	return hovered
+	return zone.Hovered()
 }
 
 func (w *Workspace) renderFloatingSidebarCard(
