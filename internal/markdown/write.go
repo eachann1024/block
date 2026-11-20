@@ -499,7 +499,7 @@ func blockMatchesCleanSource(b *model.Block, defs map[string]refDef) bool {
 	if p.Language != b.Language || p.Code != b.Code {
 		return false
 	}
-	if p.ImageSrc != b.ImageSrc || p.ImageAlt != b.ImageAlt || p.ImageWidth != b.ImageWidth || p.ImageAlign != b.ImageAlign || p.ImageCrop != b.ImageCrop {
+	if p.ImageSrc != b.ImageSrc || p.ImageAlt != b.ImageAlt || p.ImageTitle != b.ImageTitle || p.ImageWidth != b.ImageWidth || p.ImageAlign != b.ImageAlign || p.ImageCrop != b.ImageCrop {
 		return false
 	}
 	if p.Indent != expectedIndent {
@@ -864,11 +864,7 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 	if !hasWidth && !hasAlign && !hasCrop {
 		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
 		alt = strings.ReplaceAll(alt, `]`, `\]`)
-		dest := b.ImageSrc
-		if strings.ContainsAny(dest, " \t()<>") {
-			dest = "<" + strings.ReplaceAll(strings.ReplaceAll(dest, "<", "%3C"), ">", "%3E") + ">"
-		}
-		out.WriteString(fmt.Sprintf("![%s](%s)\n", alt, dest))
+		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
 	}
 
@@ -883,7 +879,7 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 		out.WriteString(strings.Repeat(" ", b.Indent))
 		alt := strings.ReplaceAll(b.ImageAlt, `\`, `\\`)
 		alt = strings.ReplaceAll(alt, `]`, `\]`)
-		out.WriteString(fmt.Sprintf("![%s](%s)\n", alt, formatLinkDest(b.ImageSrc)))
+		out.WriteString(fmt.Sprintf("![%s]%s\n", alt, formatRefDefInline(refDef{dest: b.ImageSrc, title: b.ImageTitle}, false, false)))
 		return
 	}
 
@@ -893,6 +889,11 @@ func serializeImageBlock(b *model.Block, out *strings.Builder) {
 	img.WriteString(`" alt="`)
 	img.WriteString(escapeAttrValue(b.ImageAlt))
 	img.WriteByte('"')
+	if b.ImageTitle != "" {
+		img.WriteString(` title="`)
+		img.WriteString(escapeAttrValue(b.ImageTitle))
+		img.WriteByte('"')
+	}
 	if hasWidth {
 		img.WriteString(` width="`)
 		img.WriteString(formatFloat(b.ImageWidth))
