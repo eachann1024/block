@@ -31,10 +31,8 @@ type ShellInput struct {
 	ChatFullscreen  bool
 	ChatDesiredW    float32
 	// TitlebarNeedW is the titlebar width (right of the sidebar) that keeps every tab
-	// title whole with plugin buttons folded; 0 means no requirement. The sidebar only
-	// yields for it when the compact left cell (TitlebarCompactLeftW) would then fit.
-	TitlebarNeedW        float32
-	TitlebarCompactLeftW float32
+	// title whole with plugin buttons folded; 0 means no requirement.
+	TitlebarNeedW float32
 }
 
 // ShellLayout describes the resolved responsive split layout.
@@ -119,8 +117,7 @@ func ResolveShellLayout(in ShellInput) ShellLayout {
 	}
 	sbW := ClampSidebarWidth(in.SidebarDesiredW)
 	desiredChat := ClampChatWidth(in.ChatDesiredW)
-	titlebarFits := in.TitlebarNeedW <= 0 || sbW+in.TitlebarNeedW <= winW+0.5 ||
-		in.TitlebarCompactLeftW+in.TitlebarNeedW > winW+0.5
+	titlebarFits := in.TitlebarNeedW <= 0 || sbW+in.TitlebarNeedW <= winW+0.5
 
 	out := ShellLayout{
 		ContentFloor: floor,
