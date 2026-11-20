@@ -1228,6 +1228,8 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			}
 			next[id] = true
 		}
+		isLegacyMgr := m.HasPermission(PermUITitlebar) &&
+			(m.Contributes == nil || len(m.Contributes.TitlebarButtons) == 0)
 		s.mu.RLock()
 		if !s.isRuntimeActiveLocked(m.ID, rt) {
 			s.mu.RUnlock()
@@ -1235,9 +1237,12 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		s.contrib.mu.Lock()
 		prev, existed := s.contrib.hiddenBy[m.ID]
-		if !existed || !maps.Equal(next, prev) || len(s.contrib.hidden) > 0 {
+		clearLegacy := isLegacyMgr && len(s.contrib.hidden) > 0
+		if !existed || !maps.Equal(next, prev) || clearLegacy {
 			s.contrib.hiddenBy[m.ID] = next
-			clear(s.contrib.hidden)
+			if clearLegacy {
+				clear(s.contrib.hidden)
+			}
 			s.contrib.saveLocked()
 		}
 		s.contrib.mu.Unlock()
@@ -1477,6 +1482,12 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		expected := strings.TrimSpace(p.Note)
 		if expected == "" {
 			expected = s.contrib.runningCommandNote(m.ID)
+		}
+		s.mu.RLock()
+		stillActive := s.isRuntimeActiveLocked(m.ID, rt)
+		s.mu.RUnlock()
+		if !stillActive {
+			return nil, rpcErr(-32603, "plugin runtime is no longer active"), true
 		}
 		if err := ui.EditorInsert(m.ID, expected, p.Text); err != nil {
 			return nil, rpcErr(-32004, err.Error()), true
