@@ -21,6 +21,7 @@ import (
 	"block/internal/icons"
 	"block/internal/markdown"
 	"block/internal/model"
+	"block/internal/tarot"
 	"block/internal/theme"
 	internalui "block/internal/ui"
 	"github.com/egoist/mygo"
@@ -170,9 +171,11 @@ type QuickNoteController struct {
 	noticeUntil     time.Time
 	noticeSeq       uint64
 	noticeTimer     *time.Timer
-	savedBounds     *model.SavedWindowBounds
-	boundsTimer     *time.Timer
-	syncTimer       *time.Timer
+	savedBounds      *model.SavedWindowBounds
+	boundsTimer      *time.Timer
+	syncTimer        *time.Timer
+	tarotDealAt      time.Time
+	tarotSaveFlashAt time.Time
 }
 
 // NewQuickNoteController creates a QuickNoteController backed by `dataDir/quick`.
@@ -1066,6 +1069,7 @@ func (q *QuickNoteController) switchSlot(slot int) {
 	if q.activeSlot != slot {
 		q.syncSessionToDiskLocked(q.activeSlot)
 		q.activeSlot = slot
+		q.tarotDealAt = time.Now()
 		q.ensureSlotFileLocked(slot)
 		q.noticeSeq++
 		if q.noticeTimer != nil {
@@ -1146,6 +1150,9 @@ func (q *QuickNoteController) SaveToNotebook() (string, error) {
 	}
 
 	q.SetText("")
+	q.mu.Lock()
+	q.tarotSaveFlashAt = time.Now()
+	q.mu.Unlock()
 	q.setNotice(theme.Tr("已存入 ", "Saved to ")+filepath.Base(outPath), true)
 	if q.OnSavedNote != nil {
 		q.OnSavedNote(outPath)
@@ -1527,6 +1534,9 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	notice := q.notice
 	savedFlash := q.savedFlash
 	noticeUntil := q.noticeUntil
+	slotNames := q.names
+	dealAt := q.tarotDealAt
+	saveFlashAt := q.tarotSaveFlashAt
 	q.mu.Unlock()
 
 	if (notice != "" || savedFlash) && !noticeUntil.IsZero() {
@@ -1544,6 +1554,50 @@ func (q *QuickNoteController) RenderView(c *ui.Context) {
 	}
 	if sess != nil {
 		sess.SetMinCanvasHeight(max(winH-44, 0))
+	}
+
+	if theme.IsTarotMode() {
+		tp := theme.TarotPaperPalette()
+		tTheme := tp.ToUITheme("")
+		tTheme.ScrollbarStyle = ui.ScrollbarStyle{
+			TrackWidth: 6,
+			ThumbWidth: theme.ScrollThumbWidth,
+			MinLength:  28,
+			Thumb:      tp.ScrollThumb,
+			Hover:      tp.ScrollThumbHover,
+			Active:     tp.ScrollThumbHover,
+		}
+		c.SetTheme(&tTheme)
+		if sess != nil {
+			sess.SetMinCanvasHeight(max(winH-68, 0))
+		}
+		tarot.RenderQuickNoteSkin(c, tarot.QuickNoteProps{
+			ActiveSlot:  activeSlot,
+			SlotNames:   slotNames,
+			SavedFlash:  savedFlash,
+			Notice:      notice,
+			DealAt:      dealAt,
+			SaveFlashAt: saveFlashAt,
+			OnHide:      q.Hide,
+			OnSelectSlot: func(slot int) {
+				q.switchSlot(slot)
+			},
+			OnSave: func() {
+				_, _ = q.SaveToNotebook()
+			},
+			OnWheelScroll: func(axis float32) {
+				if sess != nil && sess.HasScrollablePopupOpen() {
+					return
+				}
+				q.OnWheelScroll(axis)
+			},
+		}, func() {
+			if sess != nil {
+				sess.Render(c, max(winW-theme.Space24, 240), false)
+			}
+		})
+		q.scheduleSyncActiveSlot()
+		return
 	}
 
 	root := ui.Column(c.Key("quick-note-root")).Fill().Background(pal.Paper).TextColor(pal.Text).Clip()
