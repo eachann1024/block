@@ -1282,7 +1282,7 @@ func DiffAlerts(lines []string, change []int) (titles []string, bodies []int) {
 // reference definition renders as nothing (its colon gets escaped), and an escaped
 // "\[" would open display math (it becomes an entity, shown as a bracket).
 func diffLiteralStart(s string) string {
-	if diffLinkDefRE.MatchString(s) {
+	if q := diffQuoteRE.FindString(s); diffLinkDefRE.MatchString(s[len(q):]) {
 		s = strings.Replace(s, "]:", `]\:`, 1)
 	}
 	if strings.HasPrefix(s, `\[`) {
