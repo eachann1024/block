@@ -31,6 +31,28 @@
         "network",
         "events:note_saved"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存各笔记本的同步配置、同步状态元信息与近期同步日志",
+          "en": "Save per-notebook sync settings, sync state metadata, and recent logs"
+        },
+        "notes:read": {
+          "zh": "读取待同步笔记与附件内容，用于增量比对与上传",
+          "en": "Read notes and attachments for incremental comparison and upload"
+        },
+        "notes:write": {
+          "zh": "将远端拉取的新增或更新笔记、冲突副本写入本地工作区",
+          "en": "Write remote note updates and conflict copies into the local workspace"
+        },
+        "network": {
+          "zh": "连接 WebDAV 服务器或远程 Git 仓库执行双向同步",
+          "en": "Connect to WebDAV servers or remote Git repositories for sync"
+        },
+        "events:note_saved": {
+          "zh": "在笔记保存后自动触发增量同步",
+          "en": "Automatically trigger incremental sync when a note is saved"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
@@ -77,6 +99,28 @@
         "network",
         "events:note_saved"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存图床服务商凭证、命名规则与上传记录",
+          "en": "Save image host credentials, naming rules, and upload logs"
+        },
+        "notes:read": {
+          "zh": "读取笔记正文与本地图片引用，筛选需要上传的图片",
+          "en": "Read note content and local image links to find images to upload"
+        },
+        "notes:write": {
+          "zh": "图片上传成功后将笔记中的本地路径替换为远程图床链接",
+          "en": "Replace local image paths with uploaded remote URLs in notes"
+        },
+        "network": {
+          "zh": "向 Cloudflare R2、S3 兼容存储或 GitHub 仓库上传图片",
+          "en": "Upload images to Cloudflare R2, S3-compatible storage, or GitHub"
+        },
+        "events:note_saved": {
+          "zh": "在保存笔记时自动检测并上传其中的本地图片",
+          "en": "Automatically detect and upload local images when a note is saved"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
@@ -122,6 +166,20 @@
         "notes:read",
         "notes:write"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存导入配置偏好、迁移统计与历史记录",
+          "en": "Save import preferences, migration statistics, and history"
+        },
+        "notes:read": {
+          "zh": "检查目标工作区现有笔记路径，避免导入时意外覆盖",
+          "en": "Check existing note paths in the workspace to avoid unintended overwrites"
+        },
+        "notes:write": {
+          "zh": "将转换后的 Markdown 笔记及附件写入当前工作区",
+          "en": "Write converted Markdown notes and attachments into the workspace"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
@@ -165,6 +223,16 @@
         "storage",
         "ui:settings"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存背景样式、对比度与对齐方式设置",
+          "en": "Save editor background style, contrast, and alignment preferences"
+        },
+        "ui:settings": {
+          "zh": "在外观设置中应用并切换编辑器点阵或方格背景",
+          "en": "Apply and toggle editor dot or grid backgrounds in Appearance settings"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
@@ -214,6 +282,20 @@
         "ui:titlebar",
         "ui:settings"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存已隐藏的顶栏图标列表配置",
+          "en": "Save the list of hidden titlebar icons"
+        },
+        "ui:titlebar": {
+          "zh": "读取顶栏图标项并控制各个按钮的显示与隐藏",
+          "en": "Read titlebar items and control visibility of individual buttons"
+        },
+        "ui:settings": {
+          "zh": "在「设置 → 外观」中嵌入顶栏图标管理区块并同步刷新",
+          "en": "Embed titlebar icon settings under Appearance and refresh the UI"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
@@ -264,6 +346,32 @@
         "ui:notify",
         "events:workspace"
       ],
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存塔罗模式开关偏好，在重启后恢复状态",
+          "en": "Save Tarot Mode toggle preference across restarts"
+        },
+        "ui:titlebar": {
+          "zh": "在顶栏挂载塔罗模式月亮快捷切换按钮",
+          "en": "Show the Tarot Mode moon toggle button in the titlebar"
+        },
+        "ui:settings": {
+          "zh": "在外观设置中切换塔罗皮肤及进入牌桌、每日一牌与牌册房间",
+          "en": "Toggle Tarot skin in Appearance settings and open tarot ritual rooms"
+        },
+        "ui:commands": {
+          "zh": "向命令面板注册切换塔罗模式与打开各仪式房间的快捷命令",
+          "en": "Register command palette actions for Tarot Mode and ritual rooms"
+        },
+        "ui:notify": {
+          "zh": "切换塔罗模式或进入仪式房间时显示状态提示",
+          "en": "Show status feedback when toggling Tarot Mode or opening ritual rooms"
+        },
+        "events:workspace": {
+          "zh": "监听语言与主题切换事件，同步更新顶栏按钮与界面状态",
+          "en": "Listen to locale and theme change events to sync button and UI state"
+        }
+      },
       "surfaces": [
         "settings_page"
       ],
