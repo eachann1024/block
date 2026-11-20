@@ -12,7 +12,7 @@ export default defineConfig({
   title: "Block 文档",
   titleTemplate: ":title · Block",
   description: "Block 插件开发文档：清单、协议、界面扩展、语言扩展与上架流程。",
-  base: "/docs/",
+  base: "/",
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: [aiGuide, "node_modules/**"],
@@ -31,7 +31,7 @@ export default defineConfig({
     siteTitle: "Block 文档",
     nav: [
       { text: "插件开发", link: "/plugins/" },
-      { text: "AI 全量规范", link: `https://block.cooool.top/docs/${aiGuide}`, target: "_blank" },
+      { text: "AI 全量规范", link: `https://docs.block.cooool.top/${aiGuide}`, target: "_blank" },
       { text: "官网", link: "https://block.cooool.top" },
     ],
     sidebar: {
