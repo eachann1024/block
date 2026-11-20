@@ -86,12 +86,15 @@ example-sync/
 - `app`：必填固定字符串 **`"blockmd"`**（用于插件生态识别与自动采集验真）。
 - `schema_version`：必填固定整数 `1`。
 - `id`：必填，匹配正则 `^[a-z0-9][a-z0-9-]{1,47}$`（不可使用保留 ID `block-diagnostics`）。
-- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。应用商店固定按以下 5 个分类与顺序展示：
+- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。应用商店固定按以下 8 个分类与顺序展示：
   1. `"sync"`：同步与迁移 / Sync & Migration
   2. `"edit"`：编辑增强 / Writing & Editing
-  3. `"appearance"`：外观 / Appearance
-  4. `"tools"`：工具 / Tools
-  5. `"language"`：语言扩展 / Languages（固定排在最后）
+  3. `"organize"`：整理与检索 / Organize & Search
+  4. `"ai"`：AI 增强 / AI Enhancements
+  5. `"publish"`：导出与发布 / Export & Publish
+  6. `"appearance"`：外观 / Appearance
+  7. `"tools"`：工具 / Tools
+  8. `"language"`：语言扩展 / Languages（固定排在最后）
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
@@ -102,11 +105,11 @@ example-sync/
 - `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set`）
-  - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
+  - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
   - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`）
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
-  - 以及第 8 节定义的 9 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
+  - 以及第 8 节定义的 11 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
 - `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐填写以帮助用户在安装前理解用途）：
   - 每个键必须是合法权限枚举，且**必须已声明在 `manifest.permissions` 中**（不可为未申请的权限填写缘由）。
   - 每项须提供 `zh` 或 `en` 至少其一非空文本（启用双语门禁的官方或 `-bilingual` 插件必须同时提供纯英文 `en`），长度限制 `zh <= 80` 个 Unicode 字符、`en <= 140` 个 Unicode 字符，**严禁包含 Emoji**。

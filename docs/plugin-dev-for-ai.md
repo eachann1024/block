@@ -125,12 +125,15 @@ example-sync/
 - `app`：必填固定字符串 **`"blockmd"`**（用于插件生态识别与自动采集验真）。
 - `schema_version`：必填固定整数 `1`。
 - `id`：必填，匹配正则 `^[a-z0-9][a-z0-9-]{1,47}$`（不可使用保留 ID `block-diagnostics`）。
-- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。应用商店固定按以下 5 个分类与顺序展示：
+- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。应用商店固定按以下 8 个分类与顺序展示：
   1. `"sync"`：同步与迁移 / Sync & Migration
   2. `"edit"`：编辑增强 / Writing & Editing
-  3. `"appearance"`：外观 / Appearance
-  4. `"tools"`：工具 / Tools
-  5. `"language"`：语言扩展 / Languages（固定排在最后）
+  3. `"organize"`：整理与检索 / Organize & Search
+  4. `"ai"`：AI 增强 / AI Enhancements
+  5. `"publish"`：导出与发布 / Export & Publish
+  6. `"appearance"`：外观 / Appearance
+  7. `"tools"`：工具 / Tools
+  8. `"language"`：语言扩展 / Languages（固定排在最后）
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
