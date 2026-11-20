@@ -23,6 +23,9 @@ on:
       - 'scripts/fast-check.sh'
       - 'scripts/build_readme_svgs.py'
       - '**/*_test.go'
+  schedule:
+    # 每日兜底补偿：若此前 push 触发失败、被取消或命中 300 文件路径过滤上限，自动从上一版补发积压改动。
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       publish:
@@ -52,8 +55,11 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'schedule' ||
         (github.event_name == 'push' &&
-          !(github.event.commits[1] == null && startsWith(github.event.head_commit.message, 'chore(release):'))))
+          !(github.event.commits[1] == null &&
+            github.event.head_commit.author.name == 'github-actions[bot]' &&
+            startsWith(github.event.head_commit.message, 'chore(release): v'))))
     runs-on: ubuntu-24.04
     environment: release-notes
     timeout-minutes: 15
@@ -79,15 +85,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+          PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
         run: node scripts/release/select-release.mjs --preflight
-      # 只在 main 确认需要发版时短时加入 tailnet。身份只存在 Environment release-notes。
+      # 只在 main 确认需要发版（且非仅预览构建）时短时加入 tailnet。身份只存在 Environment release-notes。
       # 目标只有 100.115.90.80:3425。不要 API key，不要公网地址，不要 3430。
       - name: Detect tailnet identity
         id: tailnet
-        if: steps.preflight.outputs.needs_release == 'yes'
+        if: steps.preflight.outputs.needs_release == 'yes' && (github.event_name != 'workflow_dispatch' || inputs.publish == true)
         env:
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
@@ -128,7 +134,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+          PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' || inputs.publish == true }}
           FORCE: ${{ inputs.force == true }}
           BLOCK_USE_PREFLIGHT: "1"
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
