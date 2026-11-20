@@ -251,6 +251,74 @@ func TooltipSplit(c *ui.Context, anchor ui.Element, primary, detail string) ui.E
 	})
 }
 
+// TooltipCardSpec configures a multi-line Ocean Paper informational tooltip card
+// with a title, optional monospace code identifier, primary body, and optional muted note.
+type TooltipCardSpec struct {
+	Title     string
+	Code      string
+	Body      string
+	Note      string
+	Placement TooltipPlacement
+}
+
+// TooltipCard attaches a multi-line structured Ocean Paper tooltip card to anchor.
+func TooltipCard(c *ui.Context, anchor ui.Element, spec TooltipCardSpec) ui.Element {
+	title := strings.TrimSpace(spec.Title)
+	code := strings.TrimSpace(spec.Code)
+	body := strings.TrimSpace(spec.Body)
+	note := strings.TrimSpace(spec.Note)
+	if title == "" && body == "" && note == "" {
+		return anchor
+	}
+	var a11y []string
+	if title != "" {
+		a11y = append(a11y, title)
+	}
+	if body != "" {
+		a11y = append(a11y, body)
+	}
+	if note != "" {
+		a11y = append(a11y, note)
+	}
+	anchor.Description(strings.Join(a11y, " · "))
+	pal := theme.Ocean()
+	ui.TooltipBase(c, anchor, func(tip ui.Element) {
+		styleTooltipSurface(tip, anchor, pal, TooltipSpec{Placement: spec.Placement})
+		width, _ := c.Size()
+		maxWidth := float32(340)
+		if width > 2*theme.Space12 {
+			maxWidth = min(maxWidth, width-2*theme.Space12)
+		}
+		tip.MaxWidth(maxWidth).Padding(theme.Space8, theme.Space12)
+		tip.Children(func() {
+			ui.Column(c).MinWidth(0).Gap(theme.Space4).Children(func() {
+				if title != "" || code != "" {
+					ui.Row(c).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).Wrap().Children(func() {
+						if title != "" {
+							ui.Text(c, title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+								FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+						}
+						if code != "" {
+							ui.Text(c, code).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightMono).TextColor(pal.TooltipMuted).SingleLine()
+						}
+					})
+				}
+				if body != "" {
+					ui.Text(c, body).MinWidth(0).FontSize(theme.FontSmall).
+						FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+				}
+				if note != "" {
+					ui.Box(c).FillWidth().Height(1).Background(pal.TooltipDivider).Margin(theme.Space2, 0, theme.Space2, 0)
+					ui.Text(c, note).MinWidth(0).FontSize(theme.FontMeta).
+						FixedLineHeight(theme.LineMeta).TextColor(pal.TooltipMuted)
+				}
+			})
+		})
+	})
+	return anchor
+}
+
 // TooltipTrigger attaches a semantic trigger+effect tooltip (Ocean blue accent or destructive red).
 func TooltipTrigger(c *ui.Context, anchor ui.Element, trigger, detail string, danger bool) ui.Element {
 	tone := TooltipToneAccent
