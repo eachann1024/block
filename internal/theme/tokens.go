@@ -98,6 +98,7 @@ const (
 	MenuMaxWidth   float32 = 320
 
 	TitleBarTitleMaxWidth float32 = 240
+	ExternalPathBarHeight float32 = 40 // Scheme C top breadcrumb path bar for external files
 
 	// Settings pages: centred content column, flat sections with hairline rows.
 	SettingsContentMaxWidth float32 = 600

@@ -9,6 +9,7 @@ type ShellChromeColors struct {
 	Ground           ui.Color
 	Card             ui.Color
 	CardBorder       ui.Color
+	PathBarBorder    ui.Color // subtle bottom hairline of the external-file breadcrumb bar
 	TabBorder        ui.Color // hairline ring of the active titlebar tab
 	Hover            ui.Color
 	FieldBG          ui.Color
@@ -25,6 +26,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 			Ground:           ui.Hex("#09111e"),
 			Card:             ui.Hex("#0a1322"),
 			CardBorder:       ui.RGBA(201, 162, 90, 0.24),
+			PathBarBorder:    ui.RGBA(201, 162, 90, 0.18),
 			TabBorder:        ui.RGBA(201, 162, 90, 0.28),
 			Hover:            ui.RGBA(201, 162, 90, 0.10),
 			FieldBG:          ui.Hex("#0c182b"),
@@ -39,6 +41,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 			Ground:           ui.Hex("#0e1a2c"),
 			Card:             ui.Hex("#f3ecdc"),
 			CardBorder:       ui.RGBA(167, 132, 63, 0.45),
+			PathBarBorder:    ui.RGBA(122, 94, 44, 0.16),
 			TabBorder:        ui.RGBA(122, 94, 44, 0.22),
 			Hover:            ui.RGBA(122, 94, 44, 0.08),
 			FieldBG:          ui.Hex("#f4ecd9"),
@@ -53,6 +56,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 			Ground:           ui.Hex("#222222"),
 			Card:             ui.Hex("#181818"),
 			CardBorder:       ui.Hex("#2e2e2e"),
+			PathBarBorder:    ui.RGBA(0xff, 0xff, 0xff, 0.07),
 			TabBorder:        ui.RGBA(0xff, 0xff, 0xff, 0.08),
 			Hover:            ui.RGBA(0xff, 0xff, 0xff, 0.07),
 			FieldBG:          ui.Hex("#2a2a2a"),
@@ -66,6 +70,7 @@ func (p Palette) ShellChrome() ShellChromeColors {
 		Ground:           ui.Hex("#f1f1f1"),
 		Card:             ui.Hex("#ffffff"),
 		CardBorder:       ui.Hex("#e4e6ea"),
+		PathBarBorder:    ui.RGBA(0, 0, 0, 0.05),
 		TabBorder:        ui.RGBA(0, 0, 0, 0.06),
 		Hover:            ui.RGBA(0x20, 0x24, 0x2c, 0.07),
 		FieldBG:          ui.Hex("#ffffff"),
