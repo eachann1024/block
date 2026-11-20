@@ -46,23 +46,35 @@ pkgrel="1"
 remote_epoch="0"
 if [[ -f "$work/aur/PKGBUILD" ]]; then
   remote_meta="$(
-    bash -c '
-      set -euo pipefail
-      epoch=""
-      pkgver=""
-      pkgrel=""
-      sha256sums=()
-      # shellcheck disable=SC1090
-      source "$1" >/dev/null 2>&1
-      printf "%s\n%s\n%s\n%s\n" "${epoch:-0}" "${pkgver:-}" "${pkgrel:-}" "${sha256sums[0]:-}"
-    ' _ "$work/aur/PKGBUILD"
+    node -e '
+      const fs = require("node:fs");
+      const text = fs.readFileSync(process.argv[1], "utf8");
+      const unquote = (raw) => {
+        const s = String(raw || "").trim();
+        if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("\x27") && s.endsWith("\x27"))) {
+          return s.slice(1, -1);
+        }
+        return s;
+      };
+      const readScalar = (name) => {
+        const re = new RegExp(`^\\s*${name}=([^#\\n]+)`, "m");
+        const m = re.exec(text);
+        return m ? unquote(m[1]) : "";
+      };
+      const epoch = readScalar("epoch") || "0";
+      const pkgver = readScalar("pkgver");
+      const pkgrel = readScalar("pkgrel");
+      const shaMatch = /^\s*sha256sums=\(\s*["\x27]?([0-9a-fA-F]{64})["\x27]?/m.exec(text);
+      const sha = shaMatch ? shaMatch[1] : "";
+      process.stdout.write(`${epoch}\n${pkgver}\n${pkgrel}\n${sha}\n`);
+    ' "$work/aur/PKGBUILD"
   )"
   remote_epoch="$(printf '%s\n' "$remote_meta" | sed -n '1p')"
   remote_pkgver="$(printf '%s\n' "$remote_meta" | sed -n '2p')"
   remote_pkgrel="$(printf '%s\n' "$remote_meta" | sed -n '3p')"
   remote_sha="$(printf '%s\n' "$remote_meta" | sed -n '4p')"
-  if [[ ! "$remote_epoch" =~ ^[0-9]+$ || ! "$remote_pkgver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$remote_pkgrel" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    echo "Failed to parse remote AUR PKGBUILD epoch/pkgver/pkgrel (${remote_epoch}:${remote_pkgver}-${remote_pkgrel}); aborting to prevent downgrade." >&2
+  if [[ ! "$remote_epoch" =~ ^[0-9]+$ || ! "$remote_pkgver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$remote_pkgrel" =~ ^[0-9]+(\.[0-9]+)?$ || ! "$remote_sha" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    echo "Failed to statically parse remote AUR PKGBUILD metadata (${remote_epoch}:${remote_pkgver}-${remote_pkgrel}); aborting safely." >&2
     exit 1
   fi
   if [[ "$remote_epoch" -gt 0 ]]; then
