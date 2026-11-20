@@ -47,6 +47,26 @@ func multiTabWidth(centerW float32, n int) float32 {
 	return max(min(w, tabMaxW), tabMinW)
 }
 
+// multiTabStripNeed inverts multiTabWidth: the tab cell width at which every pill
+// shows its full title (up to tabMaxW) instead of being squeezed.
+func multiTabStripNeed(c *ui.Context, p TitlebarProps) float32 {
+	dirSuffixes := tabDirSuffixes(p.Tabs)
+	sum := float32(0)
+	for _, path := range p.Tabs {
+		w, _ := c.MeasureText(0, ui.Span{Text: tabTitle(path), Size: theme.FontSmall, Weight: theme.WeightRegular})
+		w += theme.Space10 + theme.Space6 + tabCloseSlot + theme.Space6 + 2
+		if s := dirSuffixes[path]; s != "" {
+			sw, _ := c.MeasureText(0, ui.Span{Text: s, Size: theme.FontSmall, Weight: theme.WeightRegular})
+			w += theme.Space6 + sw
+		}
+		if isExternalFile(path, p.NotebookPath) {
+			w += theme.IconMicro + theme.Space6
+		}
+		sum += min(w, tabMaxW)
+	}
+	return sum + float32(len(p.Tabs)-1)*tabStripGap + 20 + (theme.ChromeBoxSize + tabStripGap) + (tabDragSpacerW + tabStripGap)
+}
+
 func tabLabel(c *ui.Context, label string, fg ui.Color) {
 	ui.Text(c, label).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 		FontWeight(theme.WeightRegular).TextColor(fg).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -75,6 +95,12 @@ func renderTabStrip(c *ui.Context, p TitlebarProps, centerW, availW float32, vie
 		}
 	}
 	tabW := multiTabWidth(centerW, len(p.Tabs))
+	if m := p.MenuState; m != nil {
+		m.tabsNeedW = 0
+		if len(p.Tabs) > 1 {
+			m.tabsNeedW = multiTabStripNeed(c, p)
+		}
+	}
 	c.Key("titlebar-tab-strip")
 	strip := ui.ScrollHorizontal(c).FillHeight().Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(tabStripGap).Scrollbars(false)
 	var middleClosePath string
