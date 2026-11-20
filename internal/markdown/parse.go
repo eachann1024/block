@@ -416,18 +416,21 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 		lines = splitLinesInclusive(src)
 	}
 	defs := make(map[string]refDef)
+	skipLine := make([]bool, len(lines))
 	inFence := false
 	var fc byte
 	var fl int
 	for i := 0; i < len(lines); i++ {
 		line := trimLineEnding(lines[i])
 		if inFence {
+			skipLine[i] = true
 			if closesFenceAnyIndent(line, fc, fl) {
 				inFence = false
 			}
 			continue
 		}
 		if _, _, m, w, _, ok := parseFenceAnyIndent(line); ok {
+			skipLine[i] = true
 			inFence = true
 			fc = m
 			fl = w
@@ -435,10 +438,14 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 		}
 		trimmed := strings.TrimLeft(line, " ")
 		if len(line)-len(trimmed) <= 3 && len(trimmed) > 0 && trimmed[0] == '[' && !strings.HasPrefix(trimmed, "[^") {
-			if label, def, _, ok := parseRefDefLines(lines[i:]); ok {
+			if label, def, consumed, ok := parseRefDefLines(lines[i:]); ok {
 				if _, exists := defs[label]; !exists {
 					defs[label] = def
 				}
+				for j := 0; j < consumed && i+j < len(lines); j++ {
+					skipLine[i+j] = true
+				}
+				i += consumed - 1
 			}
 		}
 	}
@@ -446,46 +453,22 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 		return nil, nil
 	}
 	used := make(map[string]bool)
-	lowerSrc := strings.ToLower(src)
-	btScan := newInlineScanState(lowerSrc)
-	open := -1
-	for i := 0; i < len(lowerSrc); i++ {
-		switch lowerSrc[i] {
-		case '\\':
-			i++
-		case '`':
-			run := 0
-			for i+run < len(lowerSrc) && lowerSrc[i+run] == '`' {
-				run++
-			}
-			if closeIdx := btScan.findClosingBackticks(i+run, run); closeIdx >= 0 {
-				i = closeIdx + run - 1
-			} else {
-				i += run - 1
-			}
-		case '[':
-			open = i + 1
-		case ']':
-			if open >= 0 {
-				if i+1 < len(lowerSrc) && lowerSrc[i+1] == '(' {
-					if _, consumed, ok := parseLinkDestinationAt(btScan, i+1); ok {
-						i += consumed
-						open = -1
-						continue
-					}
-				}
-				if i+1 == len(lowerSrc) || lowerSrc[i+1] != ':' {
-					raw := lowerSrc[open:i]
-					if label := normRefLabel(raw); label != "" {
-						if _, ok := defs[label]; ok {
-							used[label] = true
-						}
-					}
-				}
-			}
-			open = -1
+	var paraBuf strings.Builder
+	flushPara := func() {
+		if paraBuf.Len() == 0 {
+			return
 		}
+		collectUsedRefLabelsInText(paraBuf.String(), defs, used, false)
+		paraBuf.Reset()
 	}
+	for i, rawLine := range lines {
+		if skipLine[i] || strings.TrimSpace(rawLine) == "" {
+			flushPara()
+			continue
+		}
+		paraBuf.WriteString(rawLine)
+	}
+	flushPara()
 	if len(used) == 0 {
 		return nil, nil
 	}
@@ -495,6 +478,85 @@ func collectRefDefsFromLines(src string, lines []string) (map[string]refDef, map
 		}
 	}
 	return defs, used
+}
+
+// collectUsedRefLabelsInText scans a single paragraph's inline text using the same O(N)
+// inlineScanState and tryParseLinkOrImageWithRefAt matcher as ParseInline, so inline code,
+// autolinks, inline link destinations/titles, nested brackets, and unclosed parens are handled
+// identically without crossing paragraph boundaries or quadratic rescans.
+func collectUsedRefLabelsInText(s string, defs map[string]refDef, used map[string]bool, inLink bool) {
+	if !strings.ContainsRune(s, '[') {
+		return
+	}
+	st := newInlineScanState(s)
+	lastCB := st.getLastCloseBracket()
+	if lastCB < 0 {
+		return
+	}
+	n := len(s)
+	for i := 0; i < n; {
+		switch s[i] {
+		case '\\':
+			i += 2
+			continue
+		case '`':
+			run := 0
+			for i+run < n && s[i+run] == '`' {
+				run++
+			}
+			if end := st.findClosingBackticks(i+run, run); end >= 0 {
+				i = end + run
+				continue
+			}
+			i += run
+			continue
+		case '<':
+			if strings.HasPrefix(s[i:], "<!--") {
+				if st.noCommentCloseFrom < 0 || i+4 < st.noCommentCloseFrom {
+					if end := strings.Index(s[i+4:], "-->"); end >= 0 {
+						i += 4 + end + 3
+						continue
+					}
+					st.noCommentCloseFrom = i + 4
+				}
+			}
+			lastGT, _, _ := st.getTagBounds()
+			if i < lastGT {
+				if _, _, consumed, ok := tryParseAutolink(s[i : lastGT+1]); ok {
+					i += consumed
+					continue
+				}
+			}
+			i++
+		case '!':
+			if i+1 < n && s[i+1] == '[' && i+1 < lastCB {
+				if _, _, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i+1, defs, true); ok {
+					if refKey != "" {
+						used[refKey] = true
+					}
+					i += 1 + consumed
+					continue
+				}
+			}
+			i++
+		case '[':
+			if !inLink && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
+				if label, _, refKey, consumed, ok := tryParseLinkOrImageWithRefAt(st, i, defs, false); ok {
+					if refKey != "" {
+						used[refKey] = true
+					}
+					if strings.Contains(label, "![") {
+						collectUsedRefLabelsInText(label, defs, used, true)
+					}
+					i += consumed
+					continue
+				}
+			}
+			i++
+		default:
+			i++
+		}
+	}
 }
 
 // LinkReferenceLines gives the labels available for inline links and the
