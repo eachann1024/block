@@ -159,7 +159,7 @@
 
 | 接口 | 权限 | 参数与返回 |
 | --- | --- | --- |
-| `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 指定已注册笔记本内的插件设置，或同时传 `rel_path` 指定 Markdown 笔记，需 `notes:read`。可用 `timeout_ms` 缩短等待时间，默认 15000 毫秒。Block 有焦点时显示应用内提示，否则请求系统通知。桌面支持通知点击时，打开目标笔记或插件设置。返回 `{"ok":true,"suppressed":false}`，重复或过频的提示返回 `suppressed:true`。 |
+| `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 指定已注册笔记本内的插件设置，或同时传 `rel_path` 指定 Markdown 笔记，需 `notes:read`。可用 `timeout_ms` 缩短等待时间，默认 15000 毫秒。可传最长 128 字节的 `dedup_key` 区分文案及目标相同的独立事件，同一事件重试时沿用原值。Block 有焦点时显示应用内提示，否则请求系统通知。桌面支持通知点击时，打开目标笔记或插件设置。返回 `{"ok":true,"suppressed":false}`，重复或过频的提示返回 `suppressed:true`。 |
 | `host.system.open_url` | `system:open` | `{"url":"https://example.com"}`，仅接受无账号和密码的 HTTP(S) 链接。 |
 | `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
 | `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，取消时 `paths` 为空。 |
