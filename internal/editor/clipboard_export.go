@@ -59,6 +59,18 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 				}
 			}
 		} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider && !s.isPreviewOnlyCodeBlock(a.Block) {
+			if whole && !blk.Dirty && blk.CleanSource != "" && strings.Contains(blk.CleanSource, "![") {
+				cp := blk.Clone()
+				cp.ID = model.NewBlockID()
+				single := []model.Block{cp}
+				if s.doc != nil && s.doc.CleanRaw != "" && s.codec != nil {
+					if exp, ok := s.codec.(interface{ ExpandBlockRefCleanSources([]model.Block, string) }); ok {
+						exp.ExpandBlockRefCleanSources(single, s.doc.CleanRaw)
+					}
+				}
+				s.writeRichClipboard(svc, md, &model.Doc{Blocks: single, TrailingLine: "\n"}, true)
+				return true
+			}
 			spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
 			s.writeInlineSpansClipboard(svc, md, spans)
 			return true
@@ -464,10 +476,205 @@ func (s *Session) writeClipboardBlockHTML(sb *strings.Builder, b *model.Block, i
 		sb.WriteString("</table>")
 
 	default:
+		if !b.Dirty && b.CleanSource != "" && strings.Contains(b.CleanSource, "![") {
+			if alt, imgSrc, outerHref, ok := parseLinkedOrInlineImageCleanSource(b.CleanSource); ok {
+				imgTag := s.clipboardImageTagHTML(imgSrc, alt, imageBudget)
+				if outerHref != "" && isSafeClipboardRef(outerHref) {
+					fmt.Fprintf(sb, `<p><a href="%s">%s</a></p>`, html.EscapeString(outerHref), imgTag)
+				} else {
+					fmt.Fprintf(sb, `<p>%s</p>`, imgTag)
+				}
+				return
+			}
+		}
 		sb.WriteString("<p>")
 		writeClipboardSpansHTML(sb, b.Spans)
 		sb.WriteString("</p>")
 	}
+}
+
+func (s *Session) clipboardImageTagHTML(src, alt string, imageBudget *int) string {
+	escAlt := html.EscapeString(alt)
+	if raw, err := s.readClipboardImage(src, int64(*imageBudget)); err == nil {
+		if _, _, format, err := media.DecodeRaster(raw); err == nil {
+			*imageBudget -= len(raw)
+			return fmt.Sprintf(`<img src="data:%s;base64,%s" alt="%s">`, media.ImageMIME(format), base64.StdEncoding.EncodeToString(raw), escAlt)
+		}
+	}
+	if isSafeClipboardRef(src) {
+		return fmt.Sprintf(`<img src="%s" alt="%s">`, html.EscapeString(src), escAlt)
+	}
+	return escAlt
+}
+
+func isSafeClipboardRef(raw string) bool {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return false
+	}
+	if media.WebLink(s) != "" {
+		return true
+	}
+	// Allow safe relative URLs/paths without a dangerous scheme prefix.
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == ':' {
+			return false
+		}
+		if c == '/' || c == '?' || c == '#' {
+			return true
+		}
+	}
+	return true
+}
+
+func parseLinkedOrInlineImageCleanSource(raw string) (alt, imgSrc, outerHref string, ok bool) {
+	s := strings.TrimSpace(raw)
+	if strings.ContainsAny(s, "\r\n") {
+		return "", "", "", false
+	}
+	parseParenDest := func(str string) (dest string, consumed int, valid bool) {
+		if len(str) < 2 || str[0] != '(' {
+			return "", 0, false
+		}
+		i := 1
+		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+			i++
+		}
+		if i >= len(str) || str[i] == ')' {
+			return "", 0, false
+		}
+		if str[i] == '<' {
+			i++
+			start := i
+			for i < len(str) && str[i] != '>' {
+				if str[i] == '\\' && i+1 < len(str) {
+					i += 2
+					continue
+				}
+				i++
+			}
+			if i >= len(str) {
+				return "", 0, false
+			}
+			dest = str[start:i]
+			i++
+		} else {
+			start := i
+			depth := 0
+			for i < len(str) {
+				if str[i] == '\\' && i+1 < len(str) {
+					i += 2
+					continue
+				}
+				if str[i] == ' ' || str[i] == '\t' {
+					break
+				}
+				if str[i] == '(' {
+					depth++
+				} else if str[i] == ')' {
+					if depth == 0 {
+						break
+					}
+					depth--
+				}
+				i++
+			}
+			dest = str[start:i]
+		}
+		for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+			i++
+		}
+		if i < len(str) && (str[i] == '"' || str[i] == '\'' || str[i] == '(') {
+			closeQ := str[i]
+			if closeQ == '(' {
+				closeQ = ')'
+			}
+			i++
+			for i < len(str) && str[i] != closeQ {
+				if str[i] == '\\' && i+1 < len(str) {
+					i += 2
+					continue
+				}
+				i++
+			}
+			if i >= len(str) {
+				return "", 0, false
+			}
+			i++
+			for i < len(str) && (str[i] == ' ' || str[i] == '\t') {
+				i++
+			}
+		}
+		if i >= len(str) || str[i] != ')' {
+			return "", 0, false
+		}
+		return unescapeClipboardLinkDest(dest), i + 1, dest != ""
+	}
+	findClose := func(str string) int {
+		for i := 0; i < len(str); i++ {
+			if str[i] == '\\' && i+1 < len(str) {
+				i++
+				continue
+			}
+			if str[i] == ']' {
+				return i
+			}
+		}
+		return -1
+	}
+	if strings.HasPrefix(s, "[![") {
+		closeAlt := findClose(s[3:])
+		if closeAlt < 0 {
+			return "", "", "", false
+		}
+		alt = s[3 : 3+closeAlt]
+		rest := s[3+closeAlt+1:]
+		src, n1, ok1 := parseParenDest(rest)
+		if !ok1 {
+			return "", "", "", false
+		}
+		rest = rest[n1:]
+		if !strings.HasPrefix(rest, "](") {
+			return "", "", "", false
+		}
+		href, n2, ok2 := parseParenDest(rest[1:])
+		if !ok2 || 1+n2 != len(rest) {
+			return "", "", "", false
+		}
+		return alt, src, href, true
+	}
+	if strings.HasPrefix(s, "![") {
+		closeAlt := findClose(s[2:])
+		if closeAlt < 0 {
+			return "", "", "", false
+		}
+		alt = s[2 : 2+closeAlt]
+		rest := s[2+closeAlt+1:]
+		src, n1, ok1 := parseParenDest(rest)
+		if !ok1 || n1 != len(rest) {
+			return "", "", "", false
+		}
+		return alt, src, "", true
+	}
+	return "", "", "", false
+}
+
+func unescapeClipboardLinkDest(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && strings.ContainsRune(`!"#$%&'()*+,-./:;<=>?@[\]^_`+"`"+`{|}~`, rune(s[i+1])) {
+			b.WriteByte(s[i+1])
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 func writeClipboardTableCellHTML(sb *strings.Builder, tag string, cell model.TableCell, tbl *model.TableData, cIdx int) {
