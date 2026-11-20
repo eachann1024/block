@@ -4219,7 +4219,7 @@ func (w *Workspace) Render(c *ui.Context) {
 		c, w, vpW, layout, inSettings, aiImmersive, activeSess,
 	)
 	// Handle narrow sidebar drawer Escape before activeSess.Render registers its window Escape shortcut.
-	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && c.Shortcut(0, ui.KeyEscape) {
+	if layout.SidebarDrawer && !aiImmersive && !inSettings && !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !w.sidebarUI.HasActiveOverlay() && (activeSess == nil || !activeSess.HasAnnotationInputFocused(c)) && c.Shortcut(0, ui.KeyEscape) {
 		w.ToggleSidebar(vpW)
 		layout.SidebarDrawer = false
 	}
