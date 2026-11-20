@@ -2229,17 +2229,20 @@ func (s *Session) pasteOverMultiSelection(norm string) bool {
 			return false
 		}
 		if strings.ContainsAny(norm, "\t\n") {
-			s.pushUndo()
 			blk := &s.doc.Blocks[idx]
+			startR, startC := 0, 0
+			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+				startR, startC = row, col
+			}
+			if !canFitTableTSVPaste(blk.Table, startR, startC, norm, false) {
+				return true
+			}
+			s.pushUndo()
 			clearTableRange(blk.Table, a.Offset, b.Offset, "")
 			s.focusedBlock = idx
 			s.tableActiveBlock = blk.ID
-			s.tableActiveRow = 0
-			s.tableActiveCol = 0
-			if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
-				s.tableActiveRow = row
-				s.tableActiveCol = col
-			}
+			s.tableActiveRow = startR
+			s.tableActiveCol = startC
 			s.selAnchor = Position{Block: idx, Offset: a.Offset}
 			s.selHead = s.selAnchor
 			s.pasteIntoTableBlock(idx, norm)

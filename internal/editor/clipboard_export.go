@@ -43,11 +43,20 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 		}
 
 		// Single-cell table or single rich-text inline selection: emit inline HTML without wrapping <p>.
-		if blk.Kind == model.BlockTable && blk.Table != nil && !whole {
-			if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-				spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
-				s.writeInlineSpansClipboard(svc, md, spans)
-				return true
+		if blk.Kind == model.BlockTable && blk.Table != nil {
+			singleCellActive := s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
+			if !whole || singleCellActive {
+				if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
+					spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+					s.writeInlineSpansClipboard(svc, md, spans)
+					return true
+				}
+			}
+			if !whole {
+				if grid := extractTableMultiCellGrid(blk.Table, a.Offset, b.Offset); len(grid) > 0 {
+					s.writeTableCellsClipboard(svc, md, grid)
+					return true
+				}
 			}
 		} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider && !s.isPreviewOnlyCodeBlock(a.Block) {
 			spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
@@ -154,44 +163,116 @@ func decodeBlockTableCellsHTML(htmlRaw string) ([][]model.TableCell, bool) {
 	return rows, true
 }
 
+func extractTableMultiCellGrid(tbl *model.TableData, startRune, endRune int) [][]model.TableCell {
+	if tbl == nil || startRune >= endRune {
+		return nil
+	}
+	type cellEntry struct {
+		row   int
+		col   int
+		spans []model.Span
+		align model.ColAlign
+		tint  model.TableTint
+	}
+	var entries []cellEntry
+	minRow, maxRow := -1, -1
+	minCol, maxCol := -1, -1
+	pos := 0
+	for rIdx, r := range tbl.Rows {
+		for cIdx, cell := range r {
+			clen := len([]rune(cell.PlainText()))
+			cStart, cEnd := pos, pos+clen
+			touched := false
+			var sub []model.Span
+			if clen > 0 {
+				ovLo := max(startRune, cStart) - cStart
+				ovHi := min(endRune, cEnd) - cStart
+				if ovLo < ovHi {
+					touched = true
+					sub = sliceSpans(cell.Spans, ovLo, ovHi)
+				}
+			} else if startRune <= cStart && cStart <= endRune {
+				touched = true
+			}
+			if touched {
+				if minRow < 0 || rIdx < minRow {
+					minRow = rIdx
+				}
+				if rIdx > maxRow {
+					maxRow = rIdx
+				}
+				if minCol < 0 || cIdx < minCol {
+					minCol = cIdx
+				}
+				if cIdx > maxCol {
+					maxCol = cIdx
+				}
+				entries = append(entries, cellEntry{
+					row:   rIdx,
+					col:   cIdx,
+					spans: sub,
+					align: cell.Align,
+					tint:  cell.Tint,
+				})
+			}
+			pos = cEnd
+			if cIdx+1 < len(r) {
+				pos++ // '\t'
+			}
+		}
+		if rIdx+1 < len(tbl.Rows) {
+			pos++ // '\n'
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	numRows := maxRow - minRow + 1
+	numCols := maxCol - minCol + 1
+	grid := make([][]model.TableCell, numRows)
+	for r := range grid {
+		grid[r] = make([]model.TableCell, numCols)
+	}
+	for _, e := range entries {
+		grid[e.row-minRow][e.col-minCol] = model.TableCell{
+			Spans: e.spans,
+			Align: e.align,
+			Tint:  e.tint,
+		}
+	}
+	return grid
+}
+
 func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
 	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(srcRows) == 0 {
 		return false
 	}
-	s.clearAutoConvertState()
+	multiCell := s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection()
 	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
-	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
-		a, b := s.orderedSelection()
+	var a, b Position
+	if multiCell {
+		a, b = s.orderedSelection()
 		if a.Block < 0 || a.Block >= len(s.doc.Blocks) || s.doc.Blocks[a.Block].Table == nil {
 			return false
 		}
 		idx = a.Block
-		blk := &s.doc.Blocks[idx]
-		s.pushUndo()
-		clearTableRange(blk.Table, a.Offset, b.Offset, "")
-		s.focusedBlock = idx
-		s.tableActiveBlock = blk.ID
-		s.tableActiveRow = 0
-		s.tableActiveCol = 0
-		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
-			s.tableActiveRow = row
-			s.tableActiveCol = col
-		}
-		s.selAnchor = Position{Block: idx, Offset: a.Offset}
-		s.selHead = s.selAnchor
-	} else {
-		if s.doc.Blocks[idx].Kind != model.BlockTable || s.doc.Blocks[idx].Table == nil {
-			return false
-		}
-		s.pushUndo()
+	} else if s.doc.Blocks[idx].Kind != model.BlockTable || s.doc.Blocks[idx].Table == nil {
+		return false
 	}
-	b := &s.doc.Blocks[idx]
-	tbl := b.Table
+	blk := &s.doc.Blocks[idx]
+	tbl := blk.Table
 	if tbl == nil || len(tbl.Rows) == 0 {
 		return false
 	}
+	// Validate target bounds and maxPastedTableCells BEFORE pushing undo or mutating any cell.
 	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
 	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
+	if multiCell {
+		startR, startC = 0, 0
+		if row, col, _, _, ok := tableCellAtRuneRange(tbl, a.Offset, a.Offset); ok {
+			startR, startC = row, col
+		}
+	}
 	neededCols := max(len(tbl.Rows[0]), 1)
 	for _, r := range srcRows {
 		if startC+len(r) > neededCols {
@@ -199,8 +280,14 @@ func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
 		}
 	}
 	neededRows := max(len(tbl.Rows), startR+len(srcRows))
-	if neededRows > maxPastedTableCells/neededCols {
+	if neededCols <= 0 || neededRows > maxPastedTableCells/neededCols {
 		return false
+	}
+
+	s.clearAutoConvertState()
+	s.pushUndo()
+	if multiCell {
+		clearTableRange(tbl, a.Offset, b.Offset, "")
 	}
 	for len(tbl.Aligns) < neededCols {
 		tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
@@ -219,11 +306,11 @@ func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
 			dst.Spans = append([]model.Span(nil), srcCell.Spans...)
 		}
 	}
-	b.Dirty = true
-	b.CleanSource = ""
+	blk.Dirty = true
+	blk.CleanSource = ""
 	s.firstLineDeleteArmed = false
 	s.focusedBlock = idx
-	s.tableActiveBlock = b.ID
+	s.tableActiveBlock = blk.ID
 	s.tableActiveRow = startR + len(srcRows) - 1
 	s.tableActiveCol = startC + max(len(srcRows[len(srcRows)-1])-1, 0)
 	endOff := tableCellStartOffset(tbl, s.tableActiveRow, s.tableActiveCol) +
