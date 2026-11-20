@@ -21,6 +21,10 @@ func surfaceRenderScope(pluginID string, surface plugins.Surface) string {
 // RenderSurface draws one plugin surface (settings section, panel or dialog
 // body) with the same declarative renderer as plugin settings pages.
 func (c *Controller) RenderSurface(ctx *ui.Context, pluginID string, surface plugins.Surface) {
+	c.renderSurface(ctx, pluginID, surface, "")
+}
+
+func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plugins.Surface, outerSectionTitle string) {
 	if c == nil || c.sup == nil {
 		return
 	}
@@ -82,11 +86,20 @@ func (c *Controller) RenderSurface(ctx *ui.Context, pluginID string, surface plu
 			if surface == plugins.SurfaceSettingsPage && vs.Page.RefreshIntervalMs > 0 {
 				c.sup.ScheduleLiveRefresh(pluginID, vs.Page.RefreshIntervalMs)
 			}
+			page := vs.Page
+			if outerSectionTitle != "" && len(page.Cards) == 1 &&
+				strings.EqualFold(strings.TrimSpace(page.Cards[0].Title), strings.TrimSpace(outerSectionTitle)) {
+				cloned := *page
+				cards := append([]plugins.UICard(nil), page.Cards...)
+				cards[0].Title = ""
+				cloned.Cards = cards
+				page = &cloned
+			}
 			renderPageCardsWithScope(
 				ctx,
 				scope,
 				cardGap,
-				vs.Page,
+				page,
 				vs.Values,
 				actionFeedbackFromView(vs),
 				c.inputBindingsForSurface(pluginID, surface),
@@ -117,7 +130,7 @@ func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string) {
 			if strings.TrimSpace(s.Title) != "" {
 				bui.SettingsSectionTitle(ctx, s.Title, nil)
 			}
-			c.RenderSurface(ctx, s.PluginID, s.Surface)
+			c.renderSurface(ctx, s.PluginID, s.Surface, s.Title)
 		})
 	}
 }
