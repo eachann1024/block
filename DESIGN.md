@@ -58,6 +58,7 @@
 - **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#292929`），圆角引用 `theme.RadiusSurface`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
 - **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; padding: 3px; gap: 2px`，外槽与内部按钮 `.seg`（高 `32px–34px`）圆角统一引用 `theme.RadiusControl`（`8px`），选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
 - **三联直选卡片（AI 服务商方案 C）**：仅保留 **DeepSeek**、**OpenAI 协议**、**Claude 协议** 三项，横排等宽，默认态 `background: shell; border: 1px solid border`，选中态 `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`。
+- **复选列表行（插件 checklist）**：选中状态只由强调色复选框表达，行本身保持透明底与 `1px solid border`，悬停/按下才用 `hover` 底色，**禁止选中后整行铺 `selected` 灰底**。
 
 ---
 
