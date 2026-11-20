@@ -1387,14 +1387,21 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				s.applyBlockTextEditWithEdge(idx, newText, caret, st.CodeEdge())
 				if s.doc != nil && s.focusedBlock == idx && idx < len(s.doc.Blocks) {
 					after := s.doc.Blocks[idx].PlainText()
-					if after != newText {
-						st.Sync(after, s.selAnchor.Offset, s.selHead.Offset)
+					if after != newText || s.postEditCodeEdge != appUi.RichCodeEdgeNone {
+						st.SyncWithCodeEdge(after, s.selAnchor.Offset, s.selHead.Offset, s.postEditCodeEdge)
+						s.postEditCodeEdge = appUi.RichCodeEdgeNone
 						s.selSyncPending = false
 					}
 				}
 			},
+			OnText: func(text string, anchor, caret int) bool {
+				s.caretHidden = false
+				s.reactionPickerAnnotID = ""
+				return s.handleBlockTextInput(idx, text, anchor, caret)
+			},
 			OnSelect: func(anchor, caret int) {
 				s.caretHidden = false
+				s.clearAutoConvertState()
 				if !s.hasMultiBlockSelection() {
 					s.selAnchor = Position{Block: idx, Offset: anchor}
 					s.selHead = Position{Block: idx, Offset: caret}
@@ -1480,8 +1487,13 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 					if s.hasMultiBlockSelection() {
 						return s.DeleteSelection()
 					}
-					if key == ui.KeyBackspace && selLo == selHi && s.handleBackspaceOnBlock(idx, curText, caret) {
-						return true
+					if key == ui.KeyBackspace && selLo == selHi {
+						if s.tryUndoAutoConvertBackspace(idx, curText, caret) {
+							return true
+						}
+						if s.handleBackspaceOnBlock(idx, curText, caret) {
+							return true
+						}
 					}
 				case mods == 0 && key == ui.KeyTab:
 					if b.Kind.IsList() && b.Indent < 8 {
@@ -2648,29 +2660,15 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				},
 				OnChange: func(newText string, anchor, caret int) {
 					s.caretHidden = false
-					oldDraft := cell.PlainText()
-					if newText == oldDraft {
-						return
-					}
-					rDelta := len([]rune(newText)) - len([]rune(oldDraft))
-					if rDelta < 0 {
-						rDelta = -rDelta
-					}
-					if rDelta <= 4 && !strings.Contains(newText, "\n") && !strings.Contains(oldDraft, "\n") {
-						s.pushCoalescedTextUndo(fmt.Sprintf("cell:%d:%d:%d", blockID, rIdx, cIdx))
-					} else {
-						s.pushUndo()
-					}
-					cell.Spans = spliceSpansByTextEditWithEdge(cell.Spans, oldDraft, newText, caret, st.CodeEdge())
-					s.doc.Blocks[blockIdx].Dirty = true
-					s.doc.Blocks[blockIdx].CleanSource = ""
-					newBase := tableCellStartOffset(tbl, rIdx, cIdx)
-					s.selAnchor = Position{Block: blockIdx, Offset: newBase + anchor}
-					s.selHead = Position{Block: blockIdx, Offset: newBase + caret}
-					s.markDirty()
+					s.applyTableCellTextEdit(blockIdx, rIdx, cIdx, newText, anchor, caret, st.CodeEdge())
+				},
+				OnText: func(text string, anchor, caret int) bool {
+					s.caretHidden = false
+					return s.handleTableCellTextInput(blockIdx, rIdx, cIdx, text, anchor, caret)
 				},
 				OnSelect: func(anchor, caret int) {
 					s.caretHidden = false
+					s.clearAutoConvertState()
 					if !s.hasMultiBlockSelection() {
 						curBase := tableCellStartOffset(tbl, rIdx, cIdx)
 						s.selAnchor = Position{Block: blockIdx, Offset: curBase + anchor}
@@ -2716,6 +2714,11 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 								s.SelectAllBlocks()
 								return true
 							}
+						}
+					}
+					if key == ui.KeyBackspace && mods == 0 && cAnchor == cCaret {
+						if s.tryUndoCellAutoConvertBackspace(blockIdx, rIdx, cIdx, curCellText, cCaret) {
+							return true
 						}
 					}
 					if key == ui.KeyTab {
