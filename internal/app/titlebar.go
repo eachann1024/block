@@ -66,6 +66,7 @@ type TitlebarProps struct {
 	AIImmersive       bool
 	AIEnabled         bool
 	AIOpen            bool
+	TarotMode         bool
 	FeedbackOpen      bool
 	HasFeedbackDraft  bool
 
@@ -117,6 +118,7 @@ type TitlebarProps struct {
 	OnReorderTab       func(srcPath, targetPath string, after bool)
 	OnNewNote          func()
 	OnToggleFeedback   func()
+	OnToggleTarot      func()
 	OnToggleAI         func()
 	OnOpenHistory      func()
 	OnOpenExport       func()
