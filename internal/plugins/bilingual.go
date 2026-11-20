@@ -25,6 +25,17 @@ func IsOfficialRepo(repo string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(repo)), "blockmd-plugins/")
 }
 
+// IsReviewedAuthorRepo reports whether repo belongs to a trusted first-party
+// author whose plugins are marked as reviewed in the App Store.
+func IsReviewedAuthorRepo(repo string) bool {
+	slug := strings.ToLower(strings.TrimSpace(repo))
+	owner, name, ok := strings.Cut(slug, "/")
+	if !ok || name == "" || strings.Contains(name, "/") {
+		return false
+	}
+	return owner == "eachann1024"
+}
+
 // ValidateManifestEnglish verifies that all English-localized strings in manifest
 // (including contributes) contain no Chinese characters or CJK/full-width punctuation.
 func ValidateManifestEnglish(m *Manifest) error {
