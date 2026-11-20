@@ -3,6 +3,7 @@ package editor
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html"
 	"image/png"
@@ -12,6 +13,11 @@ import (
 	"block/internal/model"
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
+)
+
+const (
+	blockTableCellsHTMLPrefix = "<!-- block-cells:"
+	blockTableCellsHTMLSuffix = " -->"
 )
 
 // writeSelectionToClipboard serializes the current non-empty selection into multi-format
@@ -117,9 +123,118 @@ func (s *Session) writeTableCellsClipboard(svc ui.Services, plain string, rows [
 			sb.WriteString("</tr>")
 		}
 		sb.WriteString("</tbody></table>")
+		if rawJSON, err := json.Marshal(rows); err == nil {
+			sb.WriteString(blockTableCellsHTMLPrefix)
+			sb.WriteString(base64.StdEncoding.EncodeToString(rawJSON))
+			sb.WriteString(blockTableCellsHTMLSuffix)
+		}
 		reps = append(reps, transfer.Bytes(transfer.HTML, []byte(sb.String())))
 	}
 	svc.WriteClipboardData(transfer.New(transfer.NewItem(reps...)))
+}
+
+func decodeBlockTableCellsHTML(htmlRaw string) ([][]model.TableCell, bool) {
+	start := strings.Index(htmlRaw, blockTableCellsHTMLPrefix)
+	if start < 0 {
+		return nil, false
+	}
+	rest := htmlRaw[start+len(blockTableCellsHTMLPrefix):]
+	end := strings.Index(rest, blockTableCellsHTMLSuffix)
+	if end <= 0 {
+		return nil, false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(rest[:end])
+	if err != nil {
+		return nil, false
+	}
+	var rows [][]model.TableCell
+	if err := json.Unmarshal(decoded, &rows); err != nil || len(rows) == 0 {
+		return nil, false
+	}
+	return rows, true
+}
+
+func (s *Session) pasteTableCellsGrid(srcRows [][]model.TableCell) bool {
+	if s.readOnly || s.doc == nil || len(s.doc.Blocks) == 0 || len(srcRows) == 0 {
+		return false
+	}
+	s.clearAutoConvertState()
+	idx := clampInt(s.focusedBlock, 0, len(s.doc.Blocks)-1)
+	if s.hasMultiCellTableSelection() && !s.hasWholeAtomicSelection() {
+		a, b := s.orderedSelection()
+		if a.Block < 0 || a.Block >= len(s.doc.Blocks) || s.doc.Blocks[a.Block].Table == nil {
+			return false
+		}
+		idx = a.Block
+		blk := &s.doc.Blocks[idx]
+		s.pushUndo()
+		clearTableRange(blk.Table, a.Offset, b.Offset, "")
+		s.focusedBlock = idx
+		s.tableActiveBlock = blk.ID
+		s.tableActiveRow = 0
+		s.tableActiveCol = 0
+		if row, col, _, _, ok := tableCellAtRuneRange(blk.Table, a.Offset, a.Offset); ok {
+			s.tableActiveRow = row
+			s.tableActiveCol = col
+		}
+		s.selAnchor = Position{Block: idx, Offset: a.Offset}
+		s.selHead = s.selAnchor
+	} else {
+		if s.doc.Blocks[idx].Kind != model.BlockTable || s.doc.Blocks[idx].Table == nil {
+			return false
+		}
+		s.pushUndo()
+	}
+	b := &s.doc.Blocks[idx]
+	tbl := b.Table
+	if tbl == nil || len(tbl.Rows) == 0 {
+		return false
+	}
+	startR := clampInt(s.tableActiveRow, 0, len(tbl.Rows)-1)
+	startC := clampInt(s.tableActiveCol, 0, max(len(tbl.Rows[0])-1, 0))
+	neededCols := max(len(tbl.Rows[0]), 1)
+	for _, r := range srcRows {
+		if startC+len(r) > neededCols {
+			neededCols = startC + len(r)
+		}
+	}
+	neededRows := max(len(tbl.Rows), startR+len(srcRows))
+	if neededRows > maxPastedTableCells/neededCols {
+		return false
+	}
+	for len(tbl.Aligns) < neededCols {
+		tbl.Aligns = append(tbl.Aligns, model.ColAlignNone)
+	}
+	for len(tbl.Rows) < neededRows {
+		tbl.Rows = append(tbl.Rows, make([]model.TableCell, neededCols))
+	}
+	for r := range tbl.Rows {
+		for len(tbl.Rows[r]) < neededCols {
+			tbl.Rows[r] = append(tbl.Rows[r], model.TableCell{})
+		}
+	}
+	for dr, srcRow := range srcRows {
+		for dc, srcCell := range srcRow {
+			dst := &tbl.Rows[startR+dr][startC+dc]
+			dst.Spans = append([]model.Span(nil), srcCell.Spans...)
+		}
+	}
+	b.Dirty = true
+	b.CleanSource = ""
+	s.firstLineDeleteArmed = false
+	s.focusedBlock = idx
+	s.tableActiveBlock = b.ID
+	s.tableActiveRow = startR + len(srcRows) - 1
+	s.tableActiveCol = startC + max(len(srcRows[len(srcRows)-1])-1, 0)
+	endOff := tableCellStartOffset(tbl, s.tableActiveRow, s.tableActiveCol) +
+		len([]rune(tbl.Rows[s.tableActiveRow][s.tableActiveCol].PlainText()))
+	s.selAnchor = Position{Block: idx, Offset: endOff}
+	s.selHead = s.selAnchor
+	s.focusPending = true
+	s.selSyncPending = true
+	s.multiSelFocusPending = false
+	s.markDirty()
+	return true
 }
 
 func (s *Session) readClipboardImage(src string, limit int64) ([]byte, error) {
