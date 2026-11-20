@@ -81,6 +81,7 @@ type HostConfig struct {
 	// ContribHost handles host.titlebar/status/ui/editor/sidebar methods; ok=false falls through.
 	ContribHost       func(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool)
 	SystemIntegration bool
+	credentialScope   string
 }
 
 var ErrNoteConflict = errors.New("note changed; read it again before writing")

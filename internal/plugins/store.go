@@ -1061,6 +1061,28 @@ func installSourceRecord(source string) string {
 	return "v1:" + hex.EncodeToString(sum[:])
 }
 
+func (inst InstalledApp) credentialScope() string {
+	root, err := os.OpenRoot(inst.InstallDir)
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
+	const recordSize = len("v1:") + sha256.Size*2
+	raw, err := readPluginFile(root, installSourceFile, int64(recordSize))
+	record := string(raw)
+	if err != nil || len(raw) != recordSize || !strings.HasPrefix(record, "v1:") {
+		return ""
+	}
+	if _, err := hex.DecodeString(record[len("v1:"):]); err != nil {
+		return ""
+	}
+	repo := strings.ToLower(strings.TrimSpace(inst.Manifest.Repo))
+	if validRepoSlug(repo) && record == installSourceRecord("catalog-github:"+repo) {
+		return installSourceRecord("github:" + repo)
+	}
+	return record
+}
+
 // MatchesOfficialSource reports whether an installed plugin was genuinely installed
 // from the catalog's verified official repository (not a spoofed local directory copy).
 func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
