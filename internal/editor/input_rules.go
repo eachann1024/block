@@ -1460,6 +1460,56 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 	// Multi-character commit (IME / whole-string Type): O(N) single-pass scan over [scanStart, curCaret).
 	scanStart := max(insStart-3, 0)
 	prot := buildLiteralProtectedMask(curSpans, r, curCaret, true)
+
+	// Zero-overhead streaming fast path when the entire block/cell is a single span (no cross-span edits possible).
+	if len(curSpans) == 1 {
+		var sb strings.Builder
+		sb.Grow(len(plain))
+		matchedAny := false
+		delta := 0
+		if scanStart > 0 {
+			for k := 0; k < scanStart; k++ {
+				sb.WriteRune(r[k])
+			}
+		}
+		for pos := scanStart; pos < curCaret; {
+			matchedRule := false
+			for _, rule := range smartTypoRules {
+				fl := len(rule.from)
+				if pos+fl <= curCaret && runesEqual(r[pos:pos+fl], rule.from) && !isEscapedAt(r, pos) {
+					blocked := false
+					for k := pos; k < pos+fl; k++ {
+						if prot[k] {
+							blocked = true
+							break
+						}
+					}
+					if !blocked {
+						sb.WriteString(rule.toStr)
+						delta += fl - len(rule.to)
+						pos += fl
+						matchedRule = true
+						matchedAny = true
+						break
+					}
+				}
+			}
+			if !matchedRule {
+				sb.WriteRune(r[pos])
+				pos++
+			}
+		}
+		if !matchedAny {
+			return curSpans, curCaret, false
+		}
+		for k := curCaret; k < len(r); k++ {
+			sb.WriteRune(r[k])
+		}
+		sp := curSpans[0]
+		sp.Text = sb.String()
+		return []model.Span{sp}, curCaret - delta, true
+	}
+
 	var edits []batchRuneEdit
 	for pos := scanStart; pos < curCaret; {
 		matchedRule := false
@@ -1492,7 +1542,7 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 	for _, e := range edits {
 		delta += (e.end - e.start) - utf8.RuneCountInString(e.repl)
 	}
-	return applyBatchRuneEditsToSpans(curSpans, edits), curCaret - delta, true
+	return applyBatchRuneEditsToSpans(curSpans, r, edits), curCaret - delta, true
 }
 
 type batchRuneEdit struct {
@@ -1601,16 +1651,15 @@ func buildLiteralProtectedMask(spans []model.Span, r []rune, limit int, protectU
 	return prot
 }
 
-func applyBatchRuneEditsToSpans(spans []model.Span, edits []batchRuneEdit) []model.Span {
+func applyBatchRuneEditsToSpans(spans []model.Span, allRunes []rune, edits []batchRuneEdit) []model.Span {
 	if len(edits) == 0 {
 		return spans
 	}
-	out := make([]model.Span, 0, len(spans)+len(edits))
+	out := make([]model.Span, 0, len(spans))
 	ei := 0
 	spStart := 0
 	for _, sp := range spans {
-		rs := []rune(sp.Text)
-		spLen := len(rs)
+		spLen := utf8.RuneCountInString(sp.Text)
 		spEnd := spStart + spLen
 		if spLen == 0 {
 			continue
@@ -1623,18 +1672,16 @@ func applyBatchRuneEditsToSpans(spans []model.Span, edits []batchRuneEdit) []mod
 			spStart = spEnd
 			continue
 		}
+		var sb strings.Builder
+		sb.Grow(len(sp.Text))
 		cursor := spStart
 		for ei < len(edits) && edits[ei].start < spEnd {
 			e := edits[ei]
-			if e.start > cursor {
-				seg := sp
-				seg.Text = string(rs[cursor-spStart : e.start-spStart])
-				out = append(out, seg)
+			for k := cursor; k < e.start; k++ {
+				sb.WriteRune(allRunes[k])
 			}
 			if e.start >= spStart && e.start < spEnd && e.repl != "" {
-				tpl := sp
-				tpl.Text = e.repl
-				out = append(out, tpl)
+				sb.WriteString(e.repl)
 			}
 			if e.end <= spEnd {
 				cursor = max(cursor, e.end)
@@ -1644,9 +1691,12 @@ func applyBatchRuneEditsToSpans(spans []model.Span, edits []batchRuneEdit) []mod
 				break
 			}
 		}
-		if cursor < spEnd {
+		for k := cursor; k < spEnd; k++ {
+			sb.WriteRune(allRunes[k])
+		}
+		if sb.Len() > 0 {
 			seg := sp
-			seg.Text = string(rs[cursor-spStart:])
+			seg.Text = sb.String()
 			out = append(out, seg)
 		}
 		spStart = spEnd
@@ -2351,7 +2401,7 @@ func (s *Session) applyTableCellTextEdit(blockIdx, rIdx, cIdx int, newText strin
 	if rDelta < 0 {
 		rDelta = -rDelta
 	}
-	batchCont := false
+	batchCont := s.suppressUndo
 	if st, ok := s.tableInputs[key]; ok && st != nil && st.InBatchContinuation() {
 		batchCont = true
 	}
