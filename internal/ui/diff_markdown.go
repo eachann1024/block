@@ -73,24 +73,49 @@ func DiffListNumbers(lines []string, change []int) []int {
 		// para: the line above is paragraph text, which only a bullet or "1." may
 		// interrupt. quote: the blockquote depth the open lists sit in.
 		prevBlank, para, quote := false, false, 0
-		for i, l := range lines {
-			if change[i] == -side {
-				continue
-			}
-			t := strings.TrimSpace(l)
-			// A quote inside an item's content ("   > 需要管理员权限", or ">    > 先备份" in
-			// a quoted list) leaves its list open; left of a nested item's content it
-			// closes that sublist only.
-			inner := l
+		// skip: the lines up to here belong to a quote nested in an item, numbered already.
+		skip := 0
+		// inItem reports whether line j is a quote inside an open item's content
+		// ("   > 需要管理员权限", or ">    > 先备份" in a quoted list), which leaves its list
+		// open; left of a nested item's content it closes that sublist only.
+		inItem := func(j int) bool {
+			t := strings.TrimSpace(lines[j])
+			inner := lines[j]
 			if quote > 0 {
 				inner = diffStripQuotes(t, quote)
 			}
 			lead := len(strings.ReplaceAll(inner[:len(inner)-len(strings.TrimLeft(inner, " \t"))], "\t", "    "))
-			if diffQuoteDepth(t) > quote && len(stack) > 0 && lead >= stack[0].content {
-				for stack[len(stack)-1].content > lead {
-					stack = stack[:len(stack)-1]
+			if diffQuoteDepth(t) <= quote || len(stack) == 0 || lead < stack[0].content {
+				return false
+			}
+			for stack[len(stack)-1].content > lead {
+				stack = stack[:len(stack)-1]
+			}
+			return true
+		}
+		for i, l := range lines {
+			if change[i] == -side || i < skip {
+				continue
+			}
+			t := strings.TrimSpace(l)
+			if inItem(i) {
+				// The nested quote is a container of its own, whose lists are numbered
+				// apart from the item's ("> 1. 部署" over ">    > 1. 备份").
+				end := i + 1
+				for j := i + 1; j < len(lines); j++ {
+					if change[j] != -side {
+						if !inItem(j) {
+							break
+						}
+						end = j + 1
+					}
 				}
-				prevBlank, para = false, false
+				var sub []string
+				for j := i; j < end; j++ {
+					sub = append(sub, strings.TrimSpace(diffStripQuotes(strings.TrimSpace(lines[j]), quote)))
+				}
+				copy(num[i:], DiffListNumbers(sub, change[i:end]))
+				skip, prevBlank, para = end, false, false
 				continue
 			}
 			// A list in a blockquote is read behind its markers; another depth is
