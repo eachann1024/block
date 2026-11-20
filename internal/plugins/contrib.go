@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -926,7 +927,11 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 		return nil
 	}
 	ui := s.cfg.UI
-	defer s.notifyRedraw()
+	defer func() {
+		if rerr == nil {
+			s.notifyRedraw()
+		}
+	}()
 	switch method {
 	case "host.titlebar.get_items":
 		if !m.HasPermission(PermUITitlebar) {
@@ -948,15 +953,18 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 		for _, sl := range s.TitlebarSlots() {
 			known[sl.ID] = true
 		}
-		s.contrib.mu.Lock()
-		s.contrib.hidden = map[string]bool{}
+		next := map[string]bool{}
 		for _, id := range p.Hidden {
 			if id == TitlebarSlotMore || !known[id] {
 				continue
 			}
-			s.contrib.hidden[id] = true
+			next[id] = true
 		}
-		s.contrib.saveLocked()
+		s.contrib.mu.Lock()
+		if !maps.Equal(next, s.contrib.hidden) {
+			s.contrib.hidden = next
+			s.contrib.saveLocked()
+		}
 		s.contrib.mu.Unlock()
 		return map[string]any{"ok": true, "items": s.TitlebarSlots()}, nil, true
 
@@ -1081,7 +1089,11 @@ func (s *Supervisor) dispatchContribHostMethod(m Manifest, method string, params
 		if !m.HasSurface(surf) {
 			return nil, rpcErr(-32602, "unknown surface: "+p.Surface), true
 		}
-		go s.ReloadSurfaceViewAsync(m.ID, surf)
+		// Only surfaces the user has opened are re-rendered; unopened ones
+		// load fresh when they are first shown.
+		if s.surfaceViewOpened(m.ID, surf) {
+			go s.ReloadSurfaceViewAsync(m.ID, surf)
+		}
 		return map[string]any{"ok": true}, nil, true
 
 	case "host.editor.selection":
