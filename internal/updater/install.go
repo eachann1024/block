@@ -247,6 +247,11 @@ func DownloadAndStage(
 		return nil, lastErr
 	}
 
+	if ctx.Err() != nil {
+		_ = os.Remove(partPath)
+		logInfo("download.cancelled", "version", entry.Version, "err", ctx.Err())
+		return nil, ctx.Err()
+	}
 	if err := os.Rename(partPath, finalPath); err != nil {
 		_ = os.Remove(partPath)
 		logError("download.rename_failed", "from", partPath, "to", finalPath, "err", err)
@@ -267,10 +272,18 @@ func DownloadAndStage(
 		InPlace:     inPlace,
 	}
 	if inPlace {
-		if raw, err := json.MarshalIndent(rec, "", "  "); err == nil {
-			_ = os.WriteFile(readyRecordPath(dataDir), raw, 0o600)
-			logInfo("ready.persisted", "version", entry.Version, "record", readyRecordPath(dataDir))
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
+		raw, err := json.MarshalIndent(rec, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		if err := writeFileAtomic(readyRecordPath(dataDir), raw, 0o600); err != nil {
+			logError("ready.persist_failed", "version", entry.Version, "err", err)
+			return nil, err
+		}
+		logInfo("ready.persisted", "version", entry.Version, "record", readyRecordPath(dataDir))
 	}
 	return rec, nil
 }
@@ -703,6 +716,61 @@ func RestoreReady(dataDir, runningVersion string) (*VerifiedRecord, bool) {
 	return &rec, true
 }
 
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-ready-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
+}
+
+func matchOfficialReleaseAsset(release ReleaseEntry, rec *VerifiedRecord, fileSize int64) (*ReleaseAsset, bool) {
+	if release.Version != rec.Version {
+		return nil, false
+	}
+	tagMatches := release.Tag == rec.Tag
+	if !tagMatches {
+		// Allow legacy ready.json records that stored unprefixed version in Tag to re-bind
+		// when the asset URL and SHA-256 still match the official release.
+		normRecVer, _, _, ok := ParseReleaseTag(rec.Tag)
+		tagMatches = ok && normRecVer == release.Version && strings.EqualFold(release.Tag, "v"+release.Version)
+	}
+	if !tagMatches {
+		return nil, false
+	}
+	official, inPlace, _ := PickPlatformAsset(release.Assets, runtime.GOOS, runtime.GOARCH)
+	if inPlace && official != nil && official.Name == rec.AssetName && official.DownloadURL == rec.DownloadURL &&
+		(official.Size <= 0 || official.Size == fileSize) &&
+		strings.EqualFold(official.EffectiveSHA256(), rec.SHA256) {
+		rec.Tag = release.Tag
+		return official, true
+	}
+	return nil, false
+}
+
 // A ready record is a hint about a local download. GitHub remains authoritative.
 func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *VerifiedRecord) error {
 	version, _, _, valid := ParseReleaseTag(rec.Version)
@@ -738,15 +806,30 @@ func validateReadyFromOfficialSource(dataDir, runningVersion string, rec *Verifi
 	if err != nil {
 		return fmt.Errorf("cannot verify the staged update with GitHub: %w", err)
 	}
+	checkedWithAssets := false
 	for _, release := range releases {
-		if release.Version != rec.Version || release.Tag != rec.Tag {
-			continue
+		if release.Version == rec.Version && len(release.Assets) > 0 {
+			checkedWithAssets = true
 		}
-		official, inPlace, _ := PickPlatformAsset(release.Assets, runtime.GOOS, runtime.GOARCH)
-		if inPlace && official != nil && official.Name == rec.AssetName && official.DownloadURL == rec.DownloadURL &&
-			(official.Size <= 0 || official.Size == info.Size()) &&
-			strings.EqualFold(official.EffectiveSHA256(), rec.SHA256) {
+		if official, ok := matchOfficialReleaseAsset(release, rec, info.Size()); ok {
 			return VerifyFileSHA256(expected, official.EffectiveSHA256())
+		}
+	}
+	if !checkedWithAssets {
+		// Under frequent releases, updates/feed.json only retains assets for the newest release.
+		// Verify older still-valid staged downloads directly against GitHub's tag release API.
+		lookupTags := []string{rec.Tag}
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(rec.Tag)), "v") {
+			lookupTags = append(lookupTags, "v"+rec.Version)
+		}
+		for _, tag := range lookupTags {
+			rel, tagErr := FetchReleaseByTag(ctx, tag)
+			if tagErr != nil || rel == nil {
+				continue
+			}
+			if official, ok := matchOfficialReleaseAsset(*rel, rec, info.Size()); ok {
+				return VerifyFileSHA256(expected, official.EffectiveSHA256())
+			}
 		}
 	}
 	return errors.New("staged update does not match the official platform release")
@@ -1024,9 +1107,15 @@ func InstallReady(dataDir string, rec *VerifiedRecord, isEn bool, flushBeforeQui
 				return fmt.Errorf("cannot save changes before updating: %w", err)
 			}
 		}
-		cmd := exec.Command(rec.ArchivePath, "--updated", "--force-run")
-		configureDetachedProcess(cmd)
-		return startInstallerOnQuit(dataDir, cmd, quitApp)
+		return quitApp(func() error {
+			if err := launchWindowsElevatedInstaller(rec.ArchivePath); err != nil {
+				logError("install.windows_launch_failed", "err", err)
+				return err
+			}
+			logInfo("install.windows_installer_launched", "path", rec.ArchivePath)
+			_ = os.Remove(readyRecordPath(dataDir))
+			return nil
+		})
 	}
 
 	return errors.New("unsupported platform for automatic install")
