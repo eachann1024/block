@@ -989,7 +989,9 @@ func serializeTable(t *model.TableData, out *strings.Builder) {
 					out.WriteByte('"')
 				}
 				out.WriteByte('>')
-				serializeInlineHTML(cell.Spans, out)
+				var cellBuf strings.Builder
+				serializeInlineHTML(cell.Spans, &cellBuf)
+				out.WriteString(preserveEdgeWhitespace(cellBuf.String()))
 				out.WriteString("</")
 				out.WriteString(tag)
 				out.WriteByte('>')
@@ -1010,8 +1012,12 @@ func serializeTable(t *model.TableData, out *strings.Builder) {
 			out.WriteByte(' ')
 			if c < len(row) {
 				cellStr := SerializeInline(row[c].Spans)
-				cellStr = strings.ReplaceAll(cellStr, "|", `\|`)
-				out.WriteString(cellStr)
+				if strings.Contains(cellStr, `\|`) {
+					cellStr = strings.ReplaceAll(serializeInlineWithMode(row[c].Spans, true, false), "|", "&#124;")
+				} else {
+					cellStr = strings.ReplaceAll(cellStr, "|", `\|`)
+				}
+				out.WriteString(preserveEdgeWhitespace(cellStr))
 			}
 			out.WriteString(" |")
 		}
@@ -1067,73 +1073,37 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 	return lines
 }
 
-func serializeInlineHTML(spans []model.Span, out *strings.Builder) {
-	for _, sp := range coalesceSpans(spans) {
-		var openTags, closeTags []string
-		if sp.Link != "" {
-			openTags = append(openTags, fmt.Sprintf(`<a href="%s">`, escapeAttrValue(sp.Link)))
-			closeTags = append(closeTags, "</a>")
-		}
-		if sp.FGColor != "" || sp.BGColor != "" {
-			var css strings.Builder
-			if sp.FGColor != "" {
-				css.WriteString("color:")
-				css.WriteString(escapeAttrValue(sp.FGColor))
-			}
-			if sp.BGColor != "" {
-				if sp.FGColor != "" {
-					css.WriteByte(';')
-				}
-				css.WriteString("background-color:")
-				css.WriteString(escapeAttrValue(sp.BGColor))
-			}
-			openTags = append(openTags, fmt.Sprintf(`<span style="%s">`, css.String()))
-			closeTags = append(closeTags, "</span>")
-		}
-		if sp.Marks&model.MarkUnderline != 0 {
-			openTags = append(openTags, "<u>")
-			closeTags = append(closeTags, "</u>")
-		}
-		if sp.Marks&model.MarkStrike != 0 {
-			openTags = append(openTags, "<del>")
-			closeTags = append(closeTags, "</del>")
-		}
-		if sp.Marks&model.MarkBold != 0 {
-			openTags = append(openTags, "<strong>")
-			closeTags = append(closeTags, "</strong>")
-		}
-		if sp.Marks&model.MarkItalic != 0 {
-			openTags = append(openTags, "<em>")
-			closeTags = append(closeTags, "</em>")
-		}
-		if sp.Marks&model.MarkSuperscript != 0 {
-			openTags = append(openTags, "<sup>")
-			closeTags = append(closeTags, "</sup>")
-		}
-		if sp.Marks&model.MarkSubscript != 0 {
-			openTags = append(openTags, "<sub>")
-			closeTags = append(closeTags, "</sub>")
-		}
-		if sp.Marks&model.MarkCode != 0 {
-			openTags = append(openTags, "<code>")
-			closeTags = append(closeTags, "</code>")
-		}
-		if sp.Marks&model.MarkMath != 0 {
-			openTags = append(openTags, `<span class="math">`)
-			closeTags = append(closeTags, `</span>`)
-		}
-		for _, t := range openTags {
-			out.WriteString(t)
-		}
-		if sp.Marks&model.MarkMath != 0 {
-			writeLiteralMathHTMLText(out, sp.Text)
-		} else {
-			writeLiteralHTMLText(out, sp.Text)
-		}
-		for i := len(closeTags) - 1; i >= 0; i-- {
-			out.WriteString(closeTags[i])
-		}
+func preserveEdgeWhitespace(s string) string {
+	if s == "" {
+		return s
 	}
+	switch s[0] {
+	case ' ':
+		s = "&#32;" + s[1:]
+	case '\t':
+		s = "&#9;" + s[1:]
+	}
+	last := s[len(s)-1]
+	if last == ' ' || last == '\t' {
+		entity := "&#32;"
+		if last == '\t' {
+			entity = "&#9;"
+		}
+		prefix := s[:len(s)-1]
+		slashes := 0
+		for i := len(prefix) - 1; i >= 0 && prefix[i] == '\\'; i-- {
+			slashes++
+		}
+		if slashes%2 == 1 {
+			prefix += `\`
+		}
+		s = prefix + entity
+	}
+	return s
+}
+
+func serializeInlineHTML(spans []model.Span, out *strings.Builder) {
+	out.WriteString(serializeInlineWithMode(spans, true, false))
 }
 
 func minInt(a, b int) int {
