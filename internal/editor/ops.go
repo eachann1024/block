@@ -230,6 +230,9 @@ func serializeInlineBlockMarkdown(spans []model.Span, codec model.MarkdownCodec)
 		return rawText
 	}
 	if !strings.Contains(rawText, "\n") {
+		if ic, ok := codec.(interface{ SerializeInline([]model.Span) string }); ok {
+			return ic.SerializeInline(spans)
+		}
 		blk := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Spans: spans, Dirty: true}
 		if codec != nil {
 			md := codec.Serialize(&model.Doc{Blocks: []model.Block{blk}, TrailingLine: "\n"})
