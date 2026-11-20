@@ -160,12 +160,15 @@ type inlineScanState struct {
 	s                     string
 	unclosedBacktickMask  uint64
 	unclosedBacktickLarge map[int]bool
+	btRuns                map[int][]int
+	btHead                map[int]int
 	lastCloseBracket      int
 	lastCloseParen        int
 	lastGT                int
 	lastDQ                int
 	lastSQ                int
 	noCommentCloseFrom    int
+	noAngleDestGTUntil    int
 	unclosedBrackets      map[int]bool
 	unclosedParens        map[int]bool
 	tagFailWatermark      int
@@ -180,30 +183,39 @@ func newInlineScanState(s string) *inlineScanState {
 		lastDQ:             -2,
 		lastSQ:             -2,
 		noCommentCloseFrom: -1,
+		noAngleDestGTUntil: -1,
 		tagFailWatermark:   -1,
 	}
 }
 
 func (st *inlineScanState) findClosingBackticks(from, count int) int {
-	if count > 0 && count < 64 {
-		if (st.unclosedBacktickMask & (uint64(1) << count)) != 0 {
-			return -1
-		}
-	} else if st.unclosedBacktickLarge != nil && st.unclosedBacktickLarge[count] {
-		return -1
-	}
-	end := findClosingBackticks(st.s, from, count)
-	if end < 0 {
-		if count > 0 && count < 64 {
-			st.unclosedBacktickMask |= uint64(1) << count
-		} else {
-			if st.unclosedBacktickLarge == nil {
-				st.unclosedBacktickLarge = make(map[int]bool)
+	if st.btRuns == nil {
+		st.btRuns = make(map[int][]int)
+		st.btHead = make(map[int]int)
+		s := st.s
+		for k := 0; k < len(s); {
+			if s[k] == '`' {
+				run := 0
+				for k+run < len(s) && s[k+run] == '`' {
+					run++
+				}
+				st.btRuns[run] = append(st.btRuns[run], k)
+				k += run
+				continue
 			}
-			st.unclosedBacktickLarge[count] = true
+			k++
 		}
 	}
-	return end
+	positions := st.btRuns[count]
+	h := st.btHead[count]
+	for h < len(positions) && positions[h] < from {
+		h++
+	}
+	st.btHead[count] = h
+	if h < len(positions) {
+		return positions[h]
+	}
+	return -1
 }
 
 func (st *inlineScanState) getLastCloseBracket() int {
@@ -407,7 +419,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 					}
 				}
 			}
-			if i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
+			if !inLink && htmlLinkDepth == 0 && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
 				if label, dest, consumed, ok := tryParseLinkOrImageAt(st, i, defs, false); ok {
 					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest}})
 					innerToks := scanInlineTokensWithCtx(label, defs, true)
@@ -564,6 +576,13 @@ func tryParseBareAutolink(s string, start int) (display, linkURL string, consume
 
 	end := start + schemeLen
 	for end < len(s) {
+		if s[end] == '&' {
+			if dec, _, ok := tryDecodeEntity(s[end:]); ok && len(dec) > 0 {
+				if dr, _ := utf8.DecodeRuneInString(dec); unicode.IsSpace(dr) {
+					break
+				}
+			}
+		}
 		r, sz := utf8.DecodeRuneInString(s[end:])
 		if r <= 0x20 || r >= 0x7F || r == '<' || r == '>' || r == '"' || r == '`' {
 			break
@@ -983,6 +1002,9 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 	var rawDest string
 	if s[i] == '<' {
 		i++
+		if i < st.noAngleDestGTUntil {
+			return "", 0, false
+		}
 		urlStart := i
 		for i < len(s) && s[i] != '>' && s[i] != '\n' {
 			if s[i] == '\\' && i+1 < len(s) {
@@ -992,6 +1014,7 @@ func parseLinkDestinationAt(st *inlineScanState, start int) (dest string, consum
 			i++
 		}
 		if i >= len(s) || s[i] != '>' {
+			st.noAngleDestGTUntil = i
 			return "", 0, false
 		}
 		rawDest = unescapeLinkText(s[urlStart:i])
@@ -2433,14 +2456,13 @@ func NormalizePasteText(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	// 1. Strip UTF-8 BOM & stray zero-width artifacts (preserving U+200D ZWJ for composite emoji),
-	// normalize line endings and NBSP.
+	// 1. Strip UTF-8 BOM & stray zero-width space (preserving U+200C ZWNJ & U+200D ZWJ for
+	// Persian/Indic scripts and composite emoji), normalize line endings and NBSP.
 	s := strings.TrimPrefix(raw, "\uFEFF")
 	s = strings.NewReplacer(
 		"\r\n", "\n",
 		"\r", "\n",
 		"\u200B", "",
-		"\u200C", "",
 		"\uFEFF", "",
 		"\u00A0", " ",
 	).Replace(s)

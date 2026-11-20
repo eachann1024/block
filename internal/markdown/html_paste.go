@@ -435,7 +435,8 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 	}
 	if mathMark {
 		marks |= model.MarkMath
-	} else if code {
+	}
+	if code {
 		marks |= model.MarkCode
 	}
 	if sup {
@@ -499,6 +500,17 @@ func (c *htmlPasteConverter) pushText(raw string) {
 		}
 		return
 	}
+	marks, link, bg := c.activeStyle()
+	if (marks != 0 || link != "" || bg != "") && !strings.ContainsAny(decoded, "\r\n\t") && strings.Trim(strings.ReplaceAll(decoded, "\u00A0", " "), " ") == "" {
+		spansPtr := c.targetSpans()
+		*spansPtr = append(*spansPtr, model.Span{
+			Text:    strings.ReplaceAll(decoded, "\u00A0", " "),
+			Marks:   marks,
+			Link:    link,
+			BGColor: bg,
+		})
+		return
+	}
 	// Collapse HTML source formatting newlines/tabs into single spaces while keeping non-breaking spaces clean.
 	var norm strings.Builder
 	norm.Grow(len(decoded))
@@ -533,7 +545,6 @@ func (c *htmlPasteConverter) pushText(raw string) {
 	if txt == "" {
 		return
 	}
-	marks, link, bg := c.activeStyle()
 	*spansPtr = append(*spansPtr, model.Span{
 		Text:    txt,
 		Marks:   marks,
@@ -551,9 +562,17 @@ func (c *htmlPasteConverter) pushBreak() {
 	if len(*spansPtr) == 0 {
 		return
 	}
-	last := &(*spansPtr)[len(*spansPtr)-1]
-	last.Text = strings.TrimRight(last.Text, " ")
-	*spansPtr = append(*spansPtr, model.Span{Text: "\n"})
+	marks, link, bg := c.activeStyle()
+	if !c.inLiteralInline() {
+		last := &(*spansPtr)[len(*spansPtr)-1]
+		last.Text = strings.TrimRight(last.Text, " ")
+	}
+	*spansPtr = append(*spansPtr, model.Span{
+		Text:    "\n",
+		Marks:   marks,
+		Link:    link,
+		BGColor: bg,
+	})
 }
 
 func trimSpanEdges(spans []model.Span) []model.Span {
@@ -561,8 +580,13 @@ func trimSpanEdges(spans []model.Span) []model.Span {
 	if len(norm) == 0 {
 		return nil
 	}
-	norm[0].Text = strings.TrimLeft(norm[0].Text, " \t\n")
-	norm[len(norm)-1].Text = strings.TrimRight(norm[len(norm)-1].Text, " \t\n")
+	if norm[0].Marks == 0 && norm[0].Link == "" && norm[0].BGColor == "" {
+		norm[0].Text = strings.TrimLeft(norm[0].Text, " \t\n")
+	}
+	last := &norm[len(norm)-1]
+	if last.Marks == 0 && last.Link == "" && last.BGColor == "" {
+		last.Text = strings.TrimRight(last.Text, " \t\n")
+	}
 	return coalesceSpans(norm)
 }
 
@@ -606,7 +630,7 @@ func (c *htmlPasteConverter) flushCurrentBlock() {
 		}
 		text := strings.TrimSpace(SerializeInline(spans))
 		if text != "" {
-			c.emitBlockLine(strings.Repeat("#", c.headingLvl) + " " + text)
+			c.emitBlockLine(strings.Repeat("#", c.headingLvl) + " " + escapeHeadingInline(text))
 		}
 		return
 	}
@@ -688,6 +712,11 @@ func splitSpansOnNewline(spans []model.Span) [][]model.Span {
 	var groups [][]model.Span
 	var cur []model.Span
 	for _, sp := range spans {
+		styled := sp.Marks != 0 || sp.Link != "" || sp.FGColor != "" || sp.BGColor != ""
+		if styled || !strings.ContainsRune(sp.Text, '\n') {
+			cur = append(cur, sp)
+			continue
+		}
 		parts := strings.Split(sp.Text, "\n")
 		for i, p := range parts {
 			if p != "" {
