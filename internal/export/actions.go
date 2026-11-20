@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"block/internal/files"
 	"block/internal/markdown"
@@ -121,9 +122,9 @@ func writeExportFileAtomic(outPath string, data []byte) error {
 	return nil
 }
 
-func (c *Controller) copyWithCache(req exportRequest, services ui.Services) error {
+func (c *Controller) copyWithCache(req exportRequest, services ui.Services) (int, error) {
 	if req.doc == nil {
-		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
+		return 0, errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
 	}
 	format := req.format
 	switch format {
@@ -133,7 +134,7 @@ func (c *Controller) copyWithCache(req exportRequest, services ui.Services) erro
 	}
 	raw, err := c.exportBytes(req, format)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var item transfer.Item
 	switch format {
@@ -146,10 +147,10 @@ func (c *Controller) copyWithCache(req exportRequest, services ui.Services) erro
 	}
 	data := transfer.New(item)
 	if mygo.App.IsReady() {
-		return mygo.Clipboard.Write(data)
+		return len(raw), mygo.Clipboard.Write(data)
 	}
 	services.WriteClipboardData(data)
-	return nil
+	return len(raw), nil
 }
 
 func (c *Controller) CopyToClipboard() error {
@@ -160,7 +161,15 @@ func (c *Controller) CopyToClipboard() error {
 }
 
 func (c *Controller) copyRequest(req exportRequest, services ui.Services) error {
-	err := c.copyWithCache(req, services)
+	start := time.Now()
+	files.LogInfof("export started: target=clipboard format=%s", req.format)
+	size, err := c.copyWithCache(req, services)
+	elapsed := time.Since(start).Round(time.Millisecond)
+	if err != nil {
+		files.LogErrorf("export failed: target=clipboard format=%s elapsed=%s err=%v", req.format, elapsed, err)
+	} else {
+		files.LogInfof("export succeeded: target=clipboard format=%s bytes=%d elapsed=%s", req.format, size, elapsed)
+	}
 	c.mu.Lock()
 	if c.isCurrentRequestLocked(req) {
 		if err != nil {
@@ -183,16 +192,28 @@ func (c *Controller) SaveToPath(outPath string) error {
 }
 
 func (c *Controller) saveRequest(req exportRequest, outPath string) error {
+	start := time.Now()
+	files.LogInfof("export started: target=file format=%s", req.format)
 	outPath = strings.TrimSpace(outPath)
 	if outPath == "" {
-		return errors.New("output path cannot be empty")
+		err := errors.New("output path cannot be empty")
+		files.LogErrorf("export failed: target=file format=%s elapsed=%s err=%v", req.format, time.Since(start).Round(time.Millisecond), err)
+		return err
 	}
 	if req.doc == nil {
-		return errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
+		err := errors.New(theme.Tr("当前没有可导出的内容", "Nothing to export"))
+		files.LogErrorf("export failed: target=file format=%s elapsed=%s err=%v", req.format, time.Since(start).Round(time.Millisecond), err)
+		return err
 	}
 	data, err := c.exportBytes(req, req.format)
 	if err == nil {
 		err = writeExportFileAtomic(outPath, data)
+	}
+	elapsed := time.Since(start).Round(time.Millisecond)
+	if err != nil {
+		files.LogErrorf("export failed: target=file format=%s elapsed=%s err=%v", req.format, elapsed, err)
+	} else {
+		files.LogInfof("export succeeded: target=file format=%s bytes=%d elapsed=%s", req.format, len(data), elapsed)
 	}
 	if absOut, absErr := filepath.Abs(outPath); absErr == nil {
 		outPath = absOut

@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"block/internal/files"
 	"block/internal/model"
 	"block/internal/theme"
 )
@@ -750,6 +751,9 @@ func (c *Controller) refreshModelsAsync(kind model.BackendKind) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		opts, err := listModelsForBackend(ctx, kind, cfg)
+		if err != nil {
+			files.LogWarnf("ai model refresh failed: backend=%s err=%v", kind, err)
+		}
 		c.mu.Lock()
 		changed := c.finishModelRefreshLocked(kind, gen, opts, err)
 		c.mu.Unlock()
@@ -1516,7 +1520,17 @@ func cliTurnPrompt(messages []model.ChatMessage, userIndex int) string {
 	return prompt.String()
 }
 
-func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.BackendKind, prompt, modelName string) error {
+func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.BackendKind, prompt, modelName string) (retErr error) {
+	start := time.Now()
+	files.LogInfof("ai cli request started: backend=%s model=%s", kind, modelName)
+	defer func() {
+		elapsed := time.Since(start).Round(time.Millisecond)
+		if retErr != nil {
+			files.LogErrorf("ai cli request failed: backend=%s model=%s elapsed=%s err=%v", kind, modelName, elapsed, retErr)
+		} else {
+			files.LogInfof("ai cli request succeeded: backend=%s model=%s elapsed=%s", kind, modelName, elapsed)
+		}
+	}()
 	if !supportsCLI(kind) {
 		return errors.New(theme.Tr("暂不支持此本机 Agent", "This local agent is not supported"))
 	}

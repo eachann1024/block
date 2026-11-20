@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"block/assets"
+	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/theme"
@@ -654,10 +655,12 @@ func testBuiltinConnection(ctx context.Context, cfg model.AIProviderConfig) erro
 	}
 	resp, err := doJSONRequest(ctx, cfg, path, body)
 	if err != nil {
+		files.LogWarnf("ai connection test failed: provider=%s model=%s err=%v", cfg.Provider, cfg.Model, err)
 		return errors.New(formatProviderError(err.Error()))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		files.LogWarnf("ai connection test failed: provider=%s model=%s status=%d", cfg.Provider, cfg.Model, resp.StatusCode)
 		return errors.New(readHTTPError(resp))
 	}
 	return nil
@@ -680,6 +683,8 @@ func emitSSE(ctx context.Context, out chan<- sseEvent, event sseEvent) {
 }
 
 func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map[string]any, tools []any, thinkingLevel string, out chan<- sseEvent) {
+	start := time.Now()
+	files.LogInfof("ai request started: provider=%s protocol=%s model=%s", cfg.Provider, cfg.Protocol, cfg.Model)
 	body := map[string]any{
 		"model":    cfg.Model,
 		"stream":   true,
@@ -697,13 +702,16 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 
 	resp, err := doJSONRequest(ctx, cfg, "/chat/completions", body)
 	if err != nil {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), err)
 		emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error()), settings: true})
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errMsg := readHTTPError(resp)
+		files.LogErrorf("ai request failed: provider=%s model=%s status=%d elapsed=%s", cfg.Provider, cfg.Model, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 		emitSSE(ctx, out, sseEvent{
-			err:      readHTTPError(resp),
+			err:      errMsg,
 			settings: resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound,
 		})
 		return
@@ -718,6 +726,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
+			files.LogWarnf("ai request canceled: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), ctx.Err())
 			return
 		}
 		line := strings.TrimSpace(scanner.Text())
@@ -757,6 +766,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			continue
 		}
 		if chunk.Error != nil && chunk.Error.Message != "" {
+			files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=provider stream error", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
 			emitSSE(ctx, out, sseEvent{err: formatProviderError(chunk.Error.Message)})
 			return
 		}
@@ -781,6 +791,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			}
 			toolArgBytes += len(tc.ID) + len(tc.Function.Name) + len(tc.Function.Arguments)
 			if idx >= maxTurnTools || toolArgBytes > maxToolArgsBytes {
+				files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
 				emitSSE(ctx, out, sseEvent{err: "工具调用数量或参数超过上限"})
 				return
 			}
@@ -804,10 +815,12 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 		}
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), err)
 		emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error())})
 		return
 	}
 	if !completed && !gotAny {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("empty response"))
 		emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 未返回可写入的内容。", "AI returned an empty response.")})
 		return
 	}
@@ -819,10 +832,13 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			calls[i].Arguments = "{}"
 		}
 	}
+	files.LogInfof("ai request succeeded: provider=%s model=%s elapsed=%s", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
 	emitSSE(ctx, out, sseEvent{toolCalls: calls, done: true})
 }
 
 func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map[string]any, tools []any, thinkingLevel string, out chan<- sseEvent) {
+	start := time.Now()
+	files.LogInfof("ai request started: provider=%s protocol=%s model=%s", cfg.Provider, cfg.Protocol, cfg.Model)
 	systemText, anthropicMsgs := convertMessagesToAnthropic(msgs)
 	body := map[string]any{
 		"model":      cfg.Model,
@@ -843,13 +859,16 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 
 	resp, err := doJSONRequest(ctx, cfg, "/messages", body)
 	if err != nil {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), err)
 		emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error()), settings: true})
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errMsg := readHTTPError(resp)
+		files.LogErrorf("ai request failed: provider=%s model=%s status=%d elapsed=%s", cfg.Provider, cfg.Model, resp.StatusCode, time.Since(start).Round(time.Millisecond))
 		emitSSE(ctx, out, sseEvent{
-			err:      readHTTPError(resp),
+			err:      errMsg,
 			settings: resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound,
 		})
 		return
@@ -867,6 +886,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
+			files.LogWarnf("ai request canceled: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), ctx.Err())
 			return
 		}
 		line := strings.TrimSpace(scanner.Text())
@@ -909,11 +929,13 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 			} else if ev.Message != "" {
 				msg = ev.Message
 			}
+			files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=provider stream error", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
 			emitSSE(ctx, out, sseEvent{err: formatProviderError(msg)})
 			return
 		case "content_block_start":
 			if ev.ContentBlock != nil && ev.ContentBlock.Type == "tool_use" {
 				if len(calls) >= maxTurnTools {
+					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
 					emitSSE(ctx, out, sseEvent{err: "工具调用数量超过上限"})
 					return
 				}
@@ -941,6 +963,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 			case "input_json_delta":
 				toolArgBytes += len(ev.Delta.PartialJSON)
 				if toolArgBytes > maxToolArgsBytes {
+					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool arguments limit exceeded"))
 					emitSSE(ctx, out, sseEvent{err: "工具参数超过上限"})
 					return
 				}
@@ -954,10 +977,12 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 		}
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), err)
 		emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error())})
 		return
 	}
 	if !completed && len(calls) == 0 {
+		files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("empty response"))
 		emitSSE(ctx, out, sseEvent{err: theme.Tr("AI 响应中断，请重试。", "AI response interrupted. Please retry.")})
 		return
 	}
@@ -971,6 +996,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 		}
 		finalCalls[i] = c.call
 	}
+	files.LogInfof("ai request succeeded: provider=%s model=%s elapsed=%s", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond))
 	emitSSE(ctx, out, sseEvent{toolCalls: finalCalls, done: true})
 }
 

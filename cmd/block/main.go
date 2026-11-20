@@ -111,6 +111,8 @@ func main() {
 	default:
 		mygo.Theme.SetSource(mygo.ThemeSystem)
 	}
+	files.LogInfof("app started: version=%s os=%s arch=%s lang=%s theme=%s",
+		updater.CurrentVersion(), runtime.GOOS, runtime.GOARCH, theme.Language(), st.Theme)
 
 	isQuitting := false
 

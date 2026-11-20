@@ -299,6 +299,14 @@ func removeEmptyHistoryPageLocked(idx *historyIndex, key, pageID string) {
 // If the latest snapshot already has the identical SHA-256 content hash, no new
 // snapshot is written and the existing latest snapshot is returned.
 func RecordHistorySnapshot(notePath, content, summary string) (*model.HistorySnapshot, error) {
+	snap, err := recordHistorySnapshot(notePath, content, summary)
+	if err != nil {
+		LogWarnf("history snapshot record failed: path=%s err=%v", notePath, err)
+	}
+	return snap, err
+}
+
+func recordHistorySnapshot(notePath, content, summary string) (*model.HistorySnapshot, error) {
 	historyMu.Lock()
 	defer historyMu.Unlock()
 
@@ -369,6 +377,14 @@ func RecordHistorySnapshot(notePath, content, summary string) (*model.HistorySna
 
 // ListHistorySnapshots returns stored snapshots for notePath ordered newest first.
 func ListHistorySnapshots(notePath string) ([]model.HistorySnapshot, error) {
+	snaps, err := listHistorySnapshots(notePath)
+	if err != nil {
+		LogWarnf("history list failed: path=%s err=%v", notePath, err)
+	}
+	return snaps, err
+}
+
+func listHistorySnapshots(notePath string) ([]model.HistorySnapshot, error) {
 	historyMu.Lock()
 	defer historyMu.Unlock()
 
@@ -400,6 +416,14 @@ func ListHistorySnapshots(notePath string) ([]model.HistorySnapshot, error) {
 
 // ReadHistorySnapshot loads and verifies a stored snapshot by ID.
 func ReadHistorySnapshot(notePath, snapshotID string) (string, error) {
+	text, err := readHistorySnapshot(notePath, snapshotID)
+	if err != nil {
+		LogWarnf("history snapshot read failed: path=%s err=%v", notePath, err)
+	}
+	return text, err
+}
+
+func readHistorySnapshot(notePath, snapshotID string) (string, error) {
 	if !safeHistoryComponent(snapshotID) {
 		return "", errors.New("invalid snapshot id")
 	}
