@@ -704,6 +704,48 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 	ins = strings.ReplaceAll(ins, "\r", "\n")
 
 	wasComposing := s.compose != "" || s.composing
+	if wasComposing && r != nil {
+		rs := []rune(s.text)
+		baseA, baseZ := s.composeBaseBounds(len(rs))
+		compLen := utf8.RuneCountInString(s.compose)
+		virt := string(rs[:baseA]) + s.compose + string(rs[baseZ:])
+		virtR := []rune(virt)
+		u0, u1 := min(r.Start, r.End), max(r.Start, r.End)
+		v0 := clampRune(utf16ToRuneOff(virt, u0), len(virtR))
+		v1 := clampRune(utf16ToRuneOff(virt, u1), len(virtR))
+		if v0 > v1 {
+			v0, v1 = v1, v0
+		}
+		virtToBaseLo := func(v int) int {
+			switch {
+			case v <= baseA:
+				return v
+			case v <= baseA+compLen:
+				return baseA
+			default:
+				return baseZ + (v - baseA - compLen)
+			}
+		}
+		virtToBaseHi := func(v int) int {
+			switch {
+			case v < baseA:
+				return v
+			case v < baseA+compLen:
+				return baseZ
+			default:
+				return baseZ + (v - baseA - compLen)
+			}
+		}
+		repStart := min(baseA, virtToBaseLo(v0))
+		repEnd := max(baseZ, virtToBaseHi(v1))
+		virtEnd := clampRune(baseA+compLen+(repEnd-baseZ), len(virtR))
+		mergedIns := string(virtR[repStart:v0]) + ins + string(virtR[v1:virtEnd])
+		finalCaret := v0 + utf8.RuneCountInString(ins)
+		s.clearComposeState()
+		s.replaceRunesWithCaret(repStart, repEnd, mergedIns, finalCaret)
+		return
+	}
+
 	var a, z int
 	switch {
 	case r != nil:
@@ -823,6 +865,10 @@ func (s *RichInputState) IndexForPoint(p ui.Point) (int, bool) {
 // --- Editing, Navigation & Input Handling ---
 
 func (s *RichInputState) replaceRunes(a, z int, ins string) {
+	s.replaceRunesWithCaret(a, z, ins, -1)
+}
+
+func (s *RichInputState) replaceRunesWithCaret(a, z int, ins string, caretOverride int) {
 	rs := []rune(s.text)
 	a = clampRune(a, len(rs))
 	z = clampRune(z, len(rs))
@@ -848,6 +894,9 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	}
 	next := string(rs[:a]) + ins + string(rs[z:])
 	newCaret := a + utf8.RuneCountInString(ins)
+	if caretOverride >= 0 {
+		newCaret = clampRune(caretOverride, utf8.RuneCountInString(next))
+	}
 	s.text = next
 	s.anchor = newCaret
 	s.caret = newCaret
