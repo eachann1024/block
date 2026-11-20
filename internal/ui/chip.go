@@ -117,3 +117,24 @@ func OfficialBadge(c *ui.Context, compact bool) {
 			SingleLine()
 	})
 }
+
+// FileExtBadge renders a subtle Ocean Paper extension pill (e.g. JSON, PNG, MDX)
+// beside non-.md entries in the file tree so note rows stay uncluttered while
+// non-note formats remain identifiable at a glance.
+func FileExtBadge(c *ui.Context, ext string, active bool) {
+	pal := theme.Ocean()
+	fg := pal.MenuMuted
+	if active {
+		fg = pal.TextSecondary
+	}
+	ui.Row(c).Height(theme.KeycapHeight).PaddingX(theme.Space4).Radius(theme.RadiusXS).Shrink(0).
+		Background(pal.MenuHover).Border(1, pal.Hairline).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, ext).
+			Font("monospace").
+			FontSize(theme.FontMicro).
+			FixedLineHeight(theme.LineMeta).
+			FontWeight(theme.WeightMono).
+			TextColor(fg).
+			SingleLine()
+	})
+}
