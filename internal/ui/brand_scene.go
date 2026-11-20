@@ -372,6 +372,7 @@ type sceneFlower struct {
 
 type sceneWindRibbon struct {
 	approxL  float32
+	endX     float32 // rightmost x the ribbon reaches
 	color    ui.Color
 	delaySec float32
 	durSec   float32
@@ -396,6 +397,7 @@ type sceneDriftItem struct {
 	durSec   float32
 	color    ui.Color
 	isLeaf   bool
+	tier     uint8
 }
 
 type sceneLakeGlint struct {
@@ -685,6 +687,44 @@ func makeStarsV2(rng *rand.Rand, count1200 int, yMin, yMax, twProb float32, colo
 	return out
 }
 
+// makeSidebarStars adds stars to the strip a docked sidebar can actually show: makeStarsV2 spreads
+// its count over the whole design width, so only a fraction ever lands there. They keep to the
+// lanes above and below the titlebar controls and start at the calm tier, which leaves the
+// minimal density with the original sparse sky.
+func makeSidebarStars(rng *rand.Rand, n int, yMax, twProb float32, colors []ui.Color, dimFn func(x, y float32) float32) []sceneStar {
+	out := make([]sceneStar, 0, n)
+	for i := range n {
+		x := 4 + rng.Float32()*416
+		y := 2.5 + rng.Float32()*5.5
+		if rng.Float32() < 0.62 {
+			y = 30 + rng.Float32()*(yMax-30)
+		}
+		u := rng.Float32()
+		st := sceneStar{
+			x:       x,
+			y:       y,
+			r:       0.36 + 0.62*u*u*u,
+			color:   colors[rng.Intn(len(colors))],
+			opacity: 0.30 + 0.6*float32(math.Pow(float64(u), 1.5)),
+			dim:     1,
+			tier:    uint8(1 + i%2),
+		}
+		if rng.Float32() < twProb {
+			st.twinkle = twinkleSmooth
+			st.delaySec = rng.Float32() * 6.0
+			st.durSec = 3.4 + rng.Float32()*4.2
+		}
+		if !isSkyClear(x, y) {
+			continue
+		}
+		if dimFn != nil {
+			st.dim = dimFn(x, y)
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
 // makeSpill scatters a thinning trail of stars past the sidebar's right edge. x is relative to
 // that edge, density and brightness fall off with distance, and most stars keep to the strips
 // above and below the titlebar's text line so they read as an accent rather than noise.
@@ -820,7 +860,8 @@ func compileDawn(ground ui.Color) *compiledScene {
 	dewDurs := []float32{7.3, 9.1, 11.7, 13.3}
 	dews := make([]sceneDewDrop, 0, len(tips)/2+1)
 	for i, pt := range tips {
-		if i%2 == 0 {
+		// Dew sits on the calm-tier blades, so it thins out together with the grass.
+		if i%3 == 1 {
 			dews = append(dews, sceneDewDrop{
 				x:        pt[0],
 				y:        pt[1],
@@ -844,17 +885,17 @@ func compileDawn(ground ui.Color) *compiledScene {
 		near:   near,
 		mists: []sceneMistBand{
 			// 0: behind sun/far ridge
-			{x: 250, y: 39, w: 420, h: 5, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 14, durSec: 33},
+			{x: 250, y: 39, w: 420, h: 5, color: white, baseOp: 0.42, kind: mistPulse, tier: 1, delaySec: 14, durSec: 33},
 			// 1..5: between far & mid ridges (plus wide-screen extension)
-			{x: -40, y: 37, w: 310, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tier: 1, delaySec: 5, durSec: 23},
-			{x: 430, y: 32, w: 380, h: 5, color: white, baseOp: 0.6, kind: mistDriftLeft, tier: 1, delaySec: 11, durSec: 31},
-			{x: 890, y: 34, w: 250, h: 6, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 3, durSec: 19},
-			{x: 640, y: 24, w: 150, h: 3.5, color: white, baseOp: 0.6, kind: mistPulse, tier: 1, delaySec: 9, durSec: 27},
-			{x: 1220, y: 33, w: 340, h: 5.5, color: white, baseOp: 0.55, kind: mistDriftLeft, tier: 1, delaySec: 7, durSec: 29},
+			{x: -30, y: 37, w: 180, h: 7, color: white, baseOp: 0.42, kind: mistDriftRight, tier: 1, delaySec: 5, durSec: 23},
+			{x: 430, y: 32, w: 380, h: 5, color: white, baseOp: 0.42, kind: mistDriftLeft, tier: 1, delaySec: 11, durSec: 31},
+			{x: 890, y: 34, w: 250, h: 6, color: white, baseOp: 0.42, kind: mistPulse, tier: 1, delaySec: 3, durSec: 19},
+			{x: 640, y: 24, w: 150, h: 3.5, color: white, baseOp: 0.42, kind: mistPulse, tier: 1, delaySec: 9, durSec: 27},
+			{x: 1220, y: 33, w: 340, h: 5.5, color: white, baseOp: 0.4, kind: mistDriftLeft, tier: 1, delaySec: 7, durSec: 29},
 			// 6: between mid & near ridges
-			{x: 70, y: 50, w: 250, h: 8, color: white, baseOp: 0.6, kind: mistDriftLeft, tier: 1, delaySec: 17, durSec: 37},
+			{x: 60, y: 50, w: 150, h: 8, color: white, baseOp: 0.42, kind: mistDriftLeft, tier: 1, delaySec: 17, durSec: 37},
 			// 7: foreground mist
-			{x: -20, y: 61, w: 190, h: 7, color: white, baseOp: 0.6, kind: mistDriftRight, tier: 1, delaySec: 20, durSec: 41},
+			{x: -20, y: 61, w: 150, h: 7, color: white, baseOp: 0.42, kind: mistDriftRight, tier: 2, delaySec: 20, durSec: 41},
 		},
 		blades:     bl,
 		bladeColor: sceneColor("#b2cca8"),
@@ -890,8 +931,8 @@ func compileMeadow(ground ui.Color) *compiledScene {
 			color: flowerCols[rng.Intn(len(flowerCols))],
 		}
 	}
-	b1, _ := makeBlades(rng, near.y, makeTuftXs(rng, 2, 298, 15, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "gust")
-	b2, _ := makeBlades(rng, near.y, makeTuftXs(rng, 6, 294, 8, 2, 4, 5.0), 5.0, 9.0, -1.6, 1.6, "gust")
+	b1, _ := makeBlades(rng, near.y, makeTuftXs(rng, 2, 298, 11, 2, 5, 5.0), 4.0, 7.5, -1.6, 1.6, "gust")
+	b2, _ := makeBlades(rng, near.y, makeTuftXs(rng, 6, 294, 5, 2, 4, 5.0), 5.0, 9.0, -1.6, 1.6, "gust")
 
 	return &compiledScene{
 		id:           SceneMeadow,
@@ -903,14 +944,16 @@ func compileMeadow(ground ui.Color) *compiledScene {
 		near:         near,
 		butterflyTrk: bt,
 		clouds: []sceneCloud{
-			{x: 462, y: 9, scale: 1.0, delaySec: 12, durSec: 71},
-			{x: 836, y: 3, scale: 1.35, delaySec: 40, durSec: 97},
-			{x: 1012, y: 19, scale: 0.7, delaySec: 5, durSec: 59},
-			{x: 281, y: -3, scale: 0.8, delaySec: 22, durSec: 83},
+			// A small low cloud that fits inside the sidebar, under the titlebar controls
+			{x: 96, y: 31.5, scale: 0.62, drift: 16, tier: 1, delaySec: 0, durSec: 64},
+			{x: 462, y: 9, scale: 1.0, drift: 30, delaySec: 12, durSec: 71},
+			{x: 836, y: 3, scale: 1.35, drift: 30, delaySec: 40, durSec: 97},
+			{x: 1012, y: 19, scale: 0.7, drift: 30, delaySec: 5, durSec: 59},
+			{x: 281, y: 1.5, scale: 0.6, drift: 30, tier: 2, delaySec: 22, durSec: 83},
 			// Wide-screen continuation clouds
-			{x: 1320, y: 7, scale: 1.05, delaySec: 18, durSec: 79},
-			{x: 1680, y: 14, scale: 0.85, delaySec: 33, durSec: 67},
-			{x: 2040, y: 5, scale: 1.2, delaySec: 9, durSec: 89},
+			{x: 1320, y: 7, scale: 1.05, drift: 30, delaySec: 18, durSec: 79},
+			{x: 1680, y: 14, scale: 0.85, drift: 30, delaySec: 33, durSec: 67},
+			{x: 2040, y: 5, scale: 1.2, drift: 30, delaySec: 9, durSec: 89},
 		},
 		flowers:     flowers,
 		blades:      b1,
@@ -934,59 +977,64 @@ func compileBreeze(ground ui.Color) *compiledScene {
 
 	windSpecs := []struct {
 		approxL float32
+		endX    float32
 		hex     string
 		delay   float32
 		dur     float32
 	}{
-		{170, "#b7d1ae", 1.0, 9.5},
-		{230, "#c3d6ec", 4.2, 11.0},
-		{160, "#b7d1ae", 6.5, 8.3},
-		{165, "#c3d6ec", 2.4, 13.7},
-		{220, "#b7d1ae", 9.0, 12.1},
-		{140, "#c3d6ec", 5.2, 10.3},
-		{110, "#c3d6ec", 12.0, 15.3},
+		{170, 184, "#b7d1ae", 1.0, 9.5},
+		{230, 512, "#c3d6ec", 4.2, 11.0},
+		{160, 762, "#b7d1ae", 6.5, 8.3},
+		{165, 924, "#c3d6ec", 2.4, 13.7},
+		{220, 1113, "#b7d1ae", 9.0, 12.1},
+		{140, 176, "#c3d6ec", 5.2, 10.3},
+		{110, 794, "#c3d6ec", 12.0, 15.3},
 		// Wide-screen wind ribbons
-		{145, "#c3d6ec", 3.4, 11.4},
-		{220, "#b7d1ae", 7.8, 13.1},
+		{145, 1392, "#c3d6ec", 3.4, 11.4},
+		{220, 1741, "#b7d1ae", 7.8, 13.1},
 	}
 	winds := make([]sceneWindRibbon, len(windSpecs))
 	for i, ws := range windSpecs {
 		winds[i] = sceneWindRibbon{
 			approxL:  ws.approxL,
+			endX:     ws.endX,
 			color:    sceneColor(ws.hex),
 			delaySec: ws.delay,
 			durSec:   ws.dur,
 		}
 	}
-
 	bl, _ := makeBlades(rng, near.y, makeTuftXs(rng, 4, 294, 12, 2, 5, 5.0), 4.0, 7.5, 1.2, 3.4, "flut")
 
+	// Seeds lift off the dandelions and leaves tumble through below the titlebar controls; the
+	// painter stretches each flight to end at the sidebar edge.
 	seedCol := sceneColor("#a3b39c")
-	seedSpecs := [][6]float32{
-		{63, 50, 760, 7, 34, 2},
-		{63, 50, 1240, 9, 47, 19},
-		{215, 48, 1240, 8, 39, 30},
-		{215, 48, 620, 6, 29, 11},
-		{237, 49, 1240, 9, 53, 44},
+	seedSpecs := [][5]float32{ // x0, y0, dur, delay, tier
+		{63, 50, 34, 2, 1},
+		{63, 50, 47, 19, 2},
+		{207, 48, 29, 11, 2},
+		{63, 50, 39, 30, 2},
 	}
 	drifts := make([]sceneDriftItem, 0, len(seedSpecs)+3)
 	for _, sp := range seedSpecs {
-		drifts = append(drifts, makeDriftItem(rng, sp[0], sp[1], sp[2], int(sp[3]), 7, 35, 34, 0.9, sp[5], sp[4], seedCol, false))
+		it := makeDriftItem(rng, sp[0], sp[1], 262, 4, 29, 43, 34, 0.9, sp[3], sp[2], seedCol, false)
+		it.tier = uint8(sp[4])
+		drifts = append(drifts, it)
 	}
 	leafSpecs := []struct {
 		hex   string
 		dur   float32
 		delay float32
 	}{
-		{"#b7d1ae", 21, 6},
-		{"#d8cba6", 27, 17},
-		{"#c5d9bd", 33, 3},
+		{"#b7d1ae", 34, 6},
+		{"#d8cba6", 41, 17},
+		{"#c5d9bd", 49, 3},
 	}
 	for _, ls := range leafSpecs {
-		y0 := 14 + rng.Float32()*20
-		drifts = append(drifts, makeDriftItem(rng, -12, y0, 1240, 7, 6, 36, 320, 0.9, ls.delay, ls.dur, sceneColor(ls.hex), true))
+		y0 := 30 + rng.Float32()*10
+		it := makeDriftItem(rng, -12, y0, 262, 5, 28, 44, 220, 0.9, ls.delay, ls.dur, sceneColor(ls.hex), true)
+		it.tier = 2
+		drifts = append(drifts, it)
 	}
-
 	return &compiledScene{
 		id:         SceneBreeze,
 		ground:     ground,
@@ -1002,7 +1050,7 @@ func compileBreeze(ground ui.Color) *compiledScene {
 		cat: sceneCatSpec{
 			x: 152, y: mid.y(152) + 0.8,
 			color:   sceneColor("#98b190"),
-			tailDur: 1.9,
+			tailDur: 3.2,
 		},
 	}
 }
@@ -1014,7 +1062,8 @@ func compileDusk(ground ui.Color, starCols []ui.Color) *compiledScene {
 	mid := ridgeCurve{base: 55, comps: []ridgeComp{{4, 320, 1.4}, {1.8, 119, 2.7}}, fill: sceneColor("#ddd6cb")}
 	near := ridgeCurve{base: 65, comps: []ridgeComp{{2.2, 250, 0.3}, {1.0, 91, 1.9}}, fill: sceneColor("#d3cfc0")}
 
-	sts := makeStarsV2(rng, 70, 3, 26, 0.5, starCols, nil)
+	sts := makeStarsV2(rng, 70, 2.5, 40, 0.5, starCols, nil)
+	sts = append(sts, makeSidebarStars(rand.New(rand.NewSource(1041)), 40, 40, 0.5, starCols, nil)...)
 	lk := sceneLake{
 		cx: 178, cy: 60.5, rx: 46, ry: 3.3,
 		fill:       sceneColor("#ecdcd3"),

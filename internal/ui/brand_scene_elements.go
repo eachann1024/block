@@ -163,15 +163,21 @@ func (rc *sceneRenderCtx) paintMist(m sceneMistBand) {
 	cx := m.x + m.w*0.5 + dx
 	x0 := rc.ox + cx - w*0.5
 	y0 := rc.oy + m.y + rc.layerShiftY
-	rc.p.FillGradient(ui.Rect{X: x0, Y: y0, W: w, H: m.h}, ui.LinearGradient{
-		Angle: 90,
-		Stops: []ui.GradientStop{
-			{Color: m.color.Alpha(0), At: 0},
-			{Color: m.color.Alpha(peakA), At: 0.28},
-			{Color: m.color.Alpha(peakA), At: 0.72},
-			{Color: m.color.Alpha(0), At: 1},
-		},
-	}, m.h*0.5)
+	// Two stacked bands, the inner one thinner, so the mist thins out toward its top and bottom
+	// instead of ending on a hard edge.
+	for _, s := range [2]float32{1, 0.5} {
+		h := m.h * s
+		a := peakA * 0.56
+		rc.p.FillGradient(ui.Rect{X: x0, Y: y0 + (m.h-h)*0.5, W: w, H: h}, ui.LinearGradient{
+			Angle: 90,
+			Stops: []ui.GradientStop{
+				{Color: m.color.Alpha(0), At: 0},
+				{Color: m.color.Alpha(a), At: 0.28},
+				{Color: m.color.Alpha(a), At: 0.72},
+				{Color: m.color.Alpha(0), At: 1},
+			},
+		}, h*0.5)
+	}
 }
 
 // paintStars draws the in-sidebar star field, keeping the right-aligned titlebar arrows clear.
@@ -634,25 +640,43 @@ func (rc *sceneRenderCtx) paintDawn(sc *compiledScene, tr *sceneTerrainCache) {
 	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
 	rc.paintMist(sc.mists[0])
 
-	// Sun + volumetric morning rays
+	// Sun + soft morning rays
 	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
 		sy := sc.far.y(float64(brandOrbX)) + 0.5 + rc.vars.orbDy + rc.orbExtraDY
 		cx, cy := rc.ox+brandOrbX, rc.oy+sy
-		rayAngles := [4][2]float64{{-158, -146}, {-124, -108}, {-74, -60}, {-38, -26}}
-		rayDurs := [4]float32{11, 14, 9, 13}
-		rayCol := sceneColor("#fff1e0")
-		for i, ang := range rayAngles {
-			op := float32(0.20)
-			if rc.t > 0 {
-				op = lerp(0.04, 0.42, rc.altWave(rc.t, float32(i)*3.1, rayDurs[i]))
+		if rayVis := oa * rc.dCalm; rayVis > 0.004 {
+			const rayR = 66
+			rayAngles := [4][2]float64{{-158, -146}, {-124, -108}, {-74, -60}, {-38, -26}}
+			rayDurs := [4]float32{17, 22, 14, 20}
+			rayCol := sceneColor("#fff1e0")
+			rayRect := ui.Rect{X: cx - rayR, Y: cy - rayR, W: 2 * rayR, H: 2 * rayR}
+			for i, ang := range rayAngles {
+				op := float32(0.17)
+				if rc.t > 0 {
+					op = lerp(0.04, 0.30, rc.altWave(rc.t, float32(i)*3.1, rayDurs[i]))
+				}
+				// Nested wedges feather the sides of each ray; the radial falloff dissolves its far end,
+				// so the rays read as a glow behind the titlebar instead of hard blades across it.
+				span := ang[1] - ang[0]
+				for _, inset := range [2]float64{0, 0.24} {
+					a0 := (ang[0] + span*inset) * math.Pi / 180
+					a1 := (ang[1] - span*inset) * math.Pi / 180
+					var ray ui.Path
+					ray.MoveTo(cx, cy).
+						LineTo(cx+float32(1.2*rayR*math.Cos(a0)), cy+float32(1.2*rayR*math.Sin(a0))).
+						LineTo(cx+float32(1.2*rayR*math.Cos(a1)), cy+float32(1.2*rayR*math.Sin(a1))).
+						Close()
+					rc.p.ClipPath(&ray, func() {
+						rc.p.FillRadialGradient(rayRect, ui.RadialGradient{
+							Radius: rayR,
+							Stops: []ui.GradientStop{
+								{Color: rayCol.Alpha(0.6 * op * rayVis), At: 0},
+								{Color: rayCol.Alpha(0), At: 1},
+							},
+						}, rayR)
+					})
+				}
 			}
-			a0, a1 := ang[0]*math.Pi/180, ang[1]*math.Pi/180
-			var ray ui.Path
-			ray.MoveTo(cx, cy).
-				LineTo(cx+float32(96*math.Cos(a0)), cy+float32(96*math.Sin(a0))).
-				LineTo(cx+float32(96*math.Cos(a1)), cy+float32(96*math.Sin(a1))).
-				Close()
-			rc.p.FillPath(&ray, rayCol.Alpha(op*oa))
 		}
 		haloOp, haloScale := float32(0.75), float32(1.0)
 		if rc.t > 0 {
@@ -685,7 +709,9 @@ func (rc *sceneRenderCtx) paintDawn(sc *compiledScene, tr *sceneTerrainCache) {
 	// Cottage, chimney smoke, pines, cat
 	hx := float32(108)
 	hy := sc.mid.y(float64(hx)) + 1
-	rc.paintSmoke(hx, hy, sceneColor("#ffffff"))
+	rc.layer(rc.dCalm, func() {
+		rc.paintSmoke(hx, hy, sceneColor("#ffffff"))
+	})
 	rc.paintHouse(hx, hy, sceneColor("#cdd8c7"), sceneColor("#bccab5"), sceneColor("#ffd9a8"), true, false, 0, 0)
 	pineCol := sceneColor("#c3d2bc").Alpha(rc.alpha)
 	for _, px := range [3]float32{96, 119, 124} {
@@ -702,26 +728,39 @@ func (rc *sceneRenderCtx) paintDawn(sc *compiledScene, tr *sceneTerrainCache) {
 	rc.paintBlades(sc.blades, sc.bladeColor, "")
 
 	// Morning dew glints on grass tips
-	dewCol := sceneColor("#ffffff")
-	for _, d := range sc.dewDrops {
-		op, scf := float32(0.4), float32(1.0)
-		if rc.t > 0 {
-			ph := rc.loopPhase(rc.t, d.delaySec, d.durSec)
-			if ph > 0.84 && ph < 0.91 {
-				u := smooth((ph - 0.84) / 0.07)
-				op = lerp(0.4, 1.0, u)
-				scf = lerp(1.0, 2.1, u)
-			} else if ph >= 0.91 {
-				u := smooth((ph - 0.91) / 0.09)
-				op = lerp(1.0, 0.4, u)
-				scf = lerp(2.1, 1.0, u)
+	if dewVis := rc.dCalm * rc.alpha; dewVis > 0.004 {
+		dewCol := sceneColor("#ffffff")
+		for _, d := range sc.dewDrops {
+			op, scf := float32(0.4), float32(1.0)
+			if rc.t > 0 {
+				ph := rc.loopPhase(rc.t, d.delaySec, d.durSec)
+				if ph > 0.84 && ph < 0.91 {
+					u := smooth((ph - 0.84) / 0.07)
+					op = lerp(0.4, 1.0, u)
+					scf = lerp(1.0, 1.5, u)
+				} else if ph >= 0.91 {
+					u := smooth((ph - 0.91) / 0.09)
+					op = lerp(1.0, 0.4, u)
+					scf = lerp(1.5, 1.0, u)
+				}
 			}
+			var dp ui.Path
+			dp.Circle(rc.ox+d.x, rc.oy+d.y+rc.layerShiftY, 0.7*scf)
+			rc.p.FillPath(&dp, dewCol.Alpha(op*dewVis))
 		}
-		var dp ui.Path
-		dp.Circle(rc.ox+d.x, rc.oy+d.y+rc.layerShiftY, 0.9*scf)
-		rc.p.FillPath(&dp, dewCol.Alpha(op*rc.alpha))
 	}
 	rc.paintMist(sc.mists[7])
+
+	// A few early birds gliding low across the morning sky
+	if vis := rc.wm * rc.dRich; vis > 0.004 {
+		if ph := rc.loopPhase(rc.t, 21, 70); ph < 0.30 {
+			u := ph / 0.30
+			rc.layer(vis*smooth(clampF(min(u, 1-u)*10, 0, 1)), func() {
+				flock := [3][3]float32{{0, 0, 0.8}, {-6, 2.2, 0.9}, {-11, -1.6, 0.74}}
+				rc.paintFlock(flock[:], lerp(-14, rc.w+26, u), lerp(34.5, 31, u), 0.85, sceneColor("#b3b8a8"))
+			})
+		}
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -735,35 +774,39 @@ func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) 
 	if oa := rc.orbAlpha * rc.alpha; oa > 0.002 {
 		sy := sc.far.y(float64(brandOrbX)) - 4 + rc.vars.orbDy + rc.orbExtraDY
 		cx, cy := rc.ox+brandOrbX, rc.oy+sy
-		rayDeg := float32(0)
-		if rc.t > 0 {
-			rayDeg = 360 * rc.loopPhase(rc.t, 0, 80)
-		}
-		rc.p.Transform(ui.Rotation(rayDeg), cx, cy, func() {
-			var rp ui.Path
-			for i := range 8 {
-				a := float64(i) * math.Pi / 4
-				ca, sa := float32(math.Cos(a)), float32(math.Sin(a))
-				rp.MoveTo(cx+6.2*ca, cy+6.2*sa).LineTo(cx+8.4*ca, cy+8.4*sa)
+		if rayA := oa * rc.dCalm; rayA > 0.004 {
+			rayDeg := float32(0)
+			if rc.t > 0 {
+				rayDeg = 360 * rc.loopPhase(rc.t, 0, 80)
 			}
-			rp.Cap(ui.RoundCap)
-			rc.p.StrokePath(&rp, 0.9, sceneColor("#fbdf9c").Alpha(oa))
-		})
+			rc.p.Transform(ui.Rotation(rayDeg), cx, cy, func() {
+				var rp ui.Path
+				for i := range 8 {
+					a := float64(i) * math.Pi / 4
+					ca, sa := float32(math.Cos(a)), float32(math.Sin(a))
+					rp.MoveTo(cx+6.2*ca, cy+6.2*sa).LineTo(cx+8.4*ca, cy+8.4*sa)
+				}
+				rp.Cap(ui.RoundCap)
+				rc.p.StrokePath(&rp, 0.9, sceneColor("#fbdf9c").Alpha(rayA))
+			})
+		}
 		var core ui.Path
 		core.Circle(cx, cy, 3.6)
 		rc.p.FillPath(&core, sceneColor("#ffdf96").Alpha(oa))
 	}
 
-	// Fluffy clouds with underside shadow
-	shadeCol := sceneColor("#e4e9ee").Alpha(rc.alpha)
-	whiteCol := sceneColor("#ffffff").Alpha(rc.alpha)
+	// Fluffy clouds with underside shadow; a cloud that would not fit inside the sidebar is left out
+	// whole rather than sliced by its edge.
 	for _, cl := range sc.clouds {
-		if cl.x > rc.w+60 {
+		vis := rc.tier(cl.tier) * rc.fit(cl.x+34*cl.scale+cl.drift)
+		if vis <= 0.004 {
 			continue
 		}
+		shadeCol := sceneColor("#e4e9ee").Alpha(vis * rc.alpha)
+		whiteCol := sceneColor("#ffffff").Alpha(vis * rc.alpha)
 		dx := float32(0)
 		if rc.t > 0 {
-			dx = lerp(0, 30, rc.altWave(rc.t, cl.delaySec, cl.durSec))
+			dx = lerp(0, cl.drift, rc.altWave(rc.t, cl.delaySec, cl.durSec))
 		}
 		xform := ui.Scaling(cl.scale, cl.scale).Then(ui.Translation(rc.ox+cl.x+dx, rc.oy+cl.y))
 		rc.p.Transform(xform, 0, 0, func() {
@@ -775,16 +818,17 @@ func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) 
 		})
 	}
 
-	// Distant hot-air balloon
-	if rc.w > 640 {
-		bx, by := float32(668), float32(16)
+	// Distant hot-air balloon drifting above the hills
+	if vis := rc.dRich * rc.fit(76); vis > 0.004 {
+		bx, by := float32(28), float32(34)
 		if rc.t > 0 {
 			u := rc.altWave(rc.t, 30, 170)
-			bx += 180 * u
-			kby := [5][2]float32{{0, 0}, {0.25, -3}, {0.5, 1}, {0.75, -2}, {1, 0}}
+			bx += 42 * u
+			kby := [5][2]float32{{0, 0}, {0.25, -1.5}, {0.5, 0.5}, {0.75, -1}, {1, 0}}
 			by += evalKeyframes1D(kby[:], u)
 		}
-		rc.p.Transform(ui.Translation(rc.ox+bx, rc.oy+by), 0, 0, func() {
+		a := vis * rc.alpha
+		rc.p.Transform(ui.Scaling(0.8, 0.8).Then(ui.Translation(rc.ox+bx, rc.oy+by)), 0, 0, func() {
 			var env ui.Path
 			env.MoveTo(0, -4.2).
 				CubeTo(2.6, -4.2, 3.6, -2.2, 3.4, -0.6).
@@ -792,36 +836,43 @@ func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) 
 				LineTo(-0.9, 3.2).
 				CubeTo(-1.4, 2.4, -3.2, 1, -3.4, -0.6).
 				CubeTo(-3.6, -2.2, -2.6, -4.2, 0, -4.2).Close()
-			rc.p.FillPath(&env, sceneColor("#f1c6cf").Alpha(rc.alpha))
+			rc.p.FillPath(&env, sceneColor("#f1c6cf").Alpha(a))
 			var stripe ui.Path
 			stripe.MoveTo(0, -4.2).
 				CubeTo(1, -3, 1, 1.6, 0.4, 3.2).
 				LineTo(-0.4, 3.2).
 				CubeTo(-1, 1.6, -1, -3, 0, -4.2).Close()
-			rc.p.FillPath(&stripe, whiteCol)
-			rc.p.Fill(ui.Rect{X: -0.8, Y: 4, W: 1.6, H: 1.3}, sceneColor("#c9b79c").Alpha(rc.alpha), 0)
+			rc.p.FillPath(&stripe, sceneColor("#ffffff").Alpha(a))
+			rc.p.Fill(ui.Rect{X: -0.8, Y: 4, W: 1.6, H: 1.3}, sceneColor("#c9b79c").Alpha(a), 0)
 		})
 	}
 
 	rc.fillTerrain(&tr.farPath, sc.far.fill)
 	rc.fillTerrain(&tr.midPath, sc.mid.fill)
 
-	// 3 grazing sheep
-	legCol := sceneColor("#97a691").Alpha(rc.alpha)
-	headCol := sceneColor("#93a38d").Alpha(rc.alpha)
-	sheepXs := [3]float32{38, 50, 116}
-	sheepDurs := [3]float32{9.5, 13, 11}
-	for i, sx := range sheepXs {
-		sy := sc.mid.y(float64(sx)) + 1.2 + rc.layerShiftY
-		rc.p.Transform(ui.Translation(rc.ox+sx, rc.oy+sy), 0, 0, func() {
+	// Grazing sheep: one always, the pair on the left from calm density up
+	sheep := [3]struct {
+		x, dur float32
+		tier   uint8
+	}{{38, 9.5, 1}, {50, 13, 1}, {116, 11, 0}}
+	for i, sh := range sheep {
+		vis := rc.tier(sh.tier) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		legCol := sceneColor("#97a691").Alpha(vis)
+		headCol := sceneColor("#93a38d").Alpha(vis)
+		woolCol := sceneColor("#ffffff").Alpha(vis)
+		sy := sc.mid.y(float64(sh.x)) + 1.2 + rc.layerShiftY
+		rc.p.Transform(ui.Translation(rc.ox+sh.x, rc.oy+sy), 0, 0, func() {
 			rc.p.Line(-1.6, 0.4, -1.6, -1.2, 0.6, legCol)
 			rc.p.Line(1.3, 0.4, 1.3, -1.2, 0.6, legCol)
 			var wool ui.Path
 			fillEllipse(&wool, func(x, y float32) (float32, float32) { return x, y }, 0, -2.7, 2.7, 1.8)
-			rc.p.FillPath(&wool, whiteCol)
+			rc.p.FillPath(&wool, woolCol)
 			gDeg := float32(0)
 			if rc.t > 0 {
-				ph := rc.loopPhase(rc.t, float32(i)*4.1, sheepDurs[i])
+				ph := rc.loopPhase(rc.t, float32(i)*4.1, sh.dur)
 				ks := [5][2]float32{{0, 0}, {0.52, 0}, {0.62, 58}, {0.88, 58}, {1, 0}}
 				gDeg = evalKeyframes1D(ks[:], ph)
 			}
@@ -835,17 +886,16 @@ func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) 
 
 	rc.paintCat(sc.cat)
 
-	// Drifting cloud shadow across midground
-	shX := float32(-170)
-	if rc.t > 0 {
-		shX = lerp(-170, 430, rc.loopPhase(rc.t, 14, 52))
-	}
-	if shX > -80 && shX < rc.w+80 {
-		var sh ui.Path
-		fillEllipse(&sh, func(x, y float32) (float32, float32) {
-			return rc.ox + x, rc.oy + y + rc.layerShiftY
-		}, shX, 58, 64, 7)
-		rc.p.FillPath(&sh, sceneColor("#c6d9be").Alpha(0.6*rc.alpha))
+	// Small cloud shadow gliding across the midground
+	if vis := rc.wm * rc.dRich; vis > 0.004 {
+		shX := lerp(-60, rc.w+60, rc.loopPhase(rc.t, 14, 80))
+		if shX > -44 && shX < rc.w+44 {
+			var sh ui.Path
+			fillEllipse(&sh, func(x, y float32) (float32, float32) {
+				return rc.ox + x, rc.oy + y + rc.layerShiftY
+			}, shX, 58, 40, 5)
+			rc.p.FillPath(&sh, sceneColor("#c6d9be").Alpha(0.4*vis*rc.alpha))
+		}
 	}
 
 	rc.fillTerrain(&tr.nearPath, sc.near.fill)
@@ -870,38 +920,44 @@ func (rc *sceneRenderCtx) paintMeadow(sc *compiledScene, tr *sceneTerrainCache) 
 	fp.Cap(ui.RoundCap)
 	rc.p.StrokePath(&fp, 0.7, sceneColor("#b3c8ab").Alpha(rc.alpha))
 
-	// Wildflowers
-	for _, fl := range sc.flowers {
+	// Wildflowers: half from calm density up, the rest only when rich
+	for i, fl := range sc.flowers {
+		vis := rc.tier(uint8(1 + i%2))
+		if vis <= 0.004 {
+			continue
+		}
 		var dot ui.Path
 		dot.Circle(rc.ox+fl.x, rc.oy+fl.y+rc.layerShiftY, fl.r)
-		rc.p.FillPath(&dot, fl.color.Alpha(rc.alpha))
+		rc.p.FillPath(&dot, fl.color.Alpha(vis*rc.alpha))
 	}
 
-	// Wind-gusting grass layers
+	// Wind-gusting grass; the taller second layer only joins when rich
 	rc.paintBlades(sc.blades, sc.bladeColor, "gust")
-	rc.paintBlades(sc.blades2, sc.blade2Color, "gust")
+	rc.layer(rc.dRich, func() {
+		rc.paintBlades(sc.blades2, sc.blade2Color, "gust")
+	})
 
 	// Wandering butterfly
-	bfX, bfY := float32(166), sc.mid.y(166)-5+rc.layerShiftY
-	if rc.t > 0 {
-		dx, dy := evalWander(sc.butterflyTrk, rc.loopPhase(rc.t, 3, 27))
-		bfX += dx
-		bfY += dy
-	}
-	wingSX := float32(1.0)
-	if rc.t > 0 {
-		wingSX = lerp(1.0, 0.18, rc.altWave(rc.t, 0, 0.3))
-	}
-	bfCol := sceneColor("#e79bb2").Alpha(rc.alpha)
-	rc.p.Transform(ui.Translation(rc.ox+bfX, rc.oy+bfY), 0, 0, func() {
-		rc.p.Transform(ui.Scaling(wingSX, 1), 0, -1.5, func() {
-			var wl, wr ui.Path
-			fillEllipse(&wl, func(x, y float32) (float32, float32) { return x, y }, -1.3, -1.5, 1.4, 1.9)
-			fillEllipse(&wr, func(x, y float32) (float32, float32) { return x, y }, 1.3, -1.5, 1.4, 1.9)
-			rc.p.FillPath(&wl, bfCol)
-			rc.p.FillPath(&wr, bfCol)
+	if vis := rc.dCalm; vis > 0.004 {
+		bfX, bfY := float32(166), sc.mid.y(166)-5+rc.layerShiftY
+		wingSX := float32(1.0)
+		if rc.t > 0 {
+			dx, dy := evalWander(sc.butterflyTrk, rc.loopPhase(rc.t, 3, 27))
+			bfX += dx
+			bfY += dy
+			wingSX = lerp(1.0, 0.18, rc.altWave(rc.t, 0, 0.55))
+		}
+		bfCol := sceneColor("#e79bb2").Alpha(vis * rc.alpha)
+		rc.p.Transform(ui.Translation(rc.ox+bfX, rc.oy+bfY), 0, 0, func() {
+			rc.p.Transform(ui.Scaling(wingSX, 1), 0, -1.5, func() {
+				var wl, wr ui.Path
+				fillEllipse(&wl, func(x, y float32) (float32, float32) { return x, y }, -1.3, -1.5, 1.4, 1.9)
+				fillEllipse(&wr, func(x, y float32) (float32, float32) { return x, y }, 1.3, -1.5, 1.4, 1.9)
+				rc.p.FillPath(&wl, bfCol)
+				rc.p.FillPath(&wr, bfCol)
+			})
 		})
-	})
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -924,11 +980,15 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 
 	rc.fillTerrain(&tr.farPath, sc.far.fill)
 
-	// Flowing wind ribbons (a1 v-tr)
-	if rc.wm > 0.002 {
+	// Flowing wind ribbons; only the ones that fit inside the sidebar are drawn
+	if vis := rc.wm * rc.dCalm; vis > 0.002 {
 		rc.p.Transform(ui.Translation(rc.ox, rc.oy+rc.layerShiftY), 0, 0, func() {
 			for i := range sc.winds {
 				wr := &sc.winds[i]
+				fit := rc.fit(wr.endX)
+				if fit <= 0.004 {
+					continue
+				}
 				ph := rc.loopPhase(rc.t, wr.delaySec, wr.durSec)
 				if ph <= 0 || ph >= 0.46 {
 					continue
@@ -942,7 +1002,7 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 				default:
 					op = 1 - (ph-0.36)/0.10
 				}
-				a := op * rc.wm * rc.alpha
+				a := op * vis * fit * rc.alpha
 				if a <= 0.003 {
 					continue
 				}
@@ -959,29 +1019,31 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 		})
 	}
 
-	// Kite anchored at (508, 48)
-	if rc.w > 490 {
+	// Kite on a long string, flying just above the far hills
+	if vis := rc.dRich * rc.fit(72); vis > 0.004 {
 		kiteDeg := float32(0)
 		tailSkew := float32(0)
 		if rc.t > 0 {
-			kiteDeg = lerp(-4, 5, rc.altWave(rc.t, 1, 5.3))
-			tailSkew = lerp(-16, 18, rc.altWave(rc.t, 0, 0.9))
+			kiteDeg = lerp(-4, 5, rc.altWave(rc.t, 1, 7))
+			tailSkew = lerp(-16, 18, rc.altWave(rc.t, 0, 1.8))
 		}
-		rc.p.Transform(ui.Translation(rc.ox+508, rc.oy+48+rc.layerShiftY), 0, 0, func() {
+		a := vis * rc.alpha
+		const ax = 20
+		rc.p.Transform(ui.Translation(rc.ox+ax, rc.oy+sc.mid.y(ax)+1+rc.layerShiftY), 0, 0, func() {
 			rc.p.Transform(ui.Rotation(kiteDeg), 0, 0, func() {
 				var str ui.Path
-				str.MoveTo(0, 0).QuadTo(30, -14, 62, -30)
-				rc.p.StrokePath(&str, 0.45, sceneColor("#b9c4b4").Alpha(rc.alpha))
+				str.MoveTo(0, 0).QuadTo(19, -5, 40, -13)
+				rc.p.StrokePath(&str, 0.45, sceneColor("#b9c4b4").Alpha(a))
 				var body ui.Path
-				body.MoveTo(62, -40).LineTo(65.4, -35).LineTo(62, -30).LineTo(58.6, -35).Close()
-				rc.p.FillPath(&body, sceneColor("#ecb1a5").Alpha(rc.alpha))
+				body.MoveTo(40, -21).LineTo(42.8, -17).LineTo(40, -13).LineTo(37.2, -17).Close()
+				rc.p.FillPath(&body, sceneColor("#ecb1a5").Alpha(a))
 				var spar ui.Path
-				spar.MoveTo(62, -40).LineTo(62, -30).MoveTo(58.6, -35).LineTo(65.4, -35)
-				rc.p.StrokePath(&spar, 0.4, sceneColor("#d99a8d").Alpha(rc.alpha))
-				rc.p.Transform(ui.Skewing(tailSkew, 0), 62, -30, func() {
+				spar.MoveTo(40, -21).LineTo(40, -13).MoveTo(37.2, -17).LineTo(42.8, -17)
+				rc.p.StrokePath(&spar, 0.4, sceneColor("#d99a8d").Alpha(a))
+				rc.p.Transform(ui.Skewing(tailSkew, 0), 40, -13, func() {
 					var tl ui.Path
-					tl.MoveTo(62, -30).QuadTo(60, -27.6, 62, -25.4).QuadTo(64, -23.4, 62, -21).Cap(ui.RoundCap)
-					rc.p.StrokePath(&tl, 0.6, sceneColor("#ecb1a5").Alpha(rc.alpha))
+					tl.MoveTo(40, -13).QuadTo(38.4, -11, 40, -9.2).QuadTo(41.6, -7.6, 40, -5.6).Cap(ui.RoundCap)
+					rc.p.StrokePath(&tl, 0.6, sceneColor("#ecb1a5").Alpha(a))
 				})
 			})
 		})
@@ -989,12 +1051,12 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 
 	rc.fillTerrain(&tr.midPath, sc.mid.fill)
 
-	// Windmill at x=110 with variable-speed breeze rotation (a1)
+	// Windmill at x=110 with variable-speed breeze rotation
 	mx := float32(110)
 	my := sc.mid.y(float64(mx)) + 1 + rc.layerShiftY
 	millDeg := float32(0)
 	if rc.t > 0 {
-		ph := rc.loopPhase(rc.t, 2, 11)
+		ph := rc.loopPhase(rc.t, 2, 18)
 		ks := [5][2]float32{{0, 0}, {0.22, 150}, {0.48, 250}, {0.70, 460}, {1, 720}}
 		millDeg = evalKeyframes1D(ks[:], ph)
 	}
@@ -1021,12 +1083,16 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 	rc.fillTerrain(&tr.nearPath, sc.near.fill)
 	rc.paintBlades(sc.blades, sc.bladeColor, "flut")
 
-	// 3 Dandelions
-	stemCol := sceneColor("#a9c69f").Alpha(rc.alpha)
-	puffCol := sceneColor("#b9c6b3").Alpha(rc.alpha)
-	for _, dx := range [3]float32{62, 214, 236} {
-		dy := sc.near.y(float64(dx)) + 1 + rc.layerShiftY
-		rc.p.Transform(ui.Translation(rc.ox+dx, rc.oy+dy), 0, 0, func() {
+	// Dandelions: one always, a second from calm density up, a third when rich
+	for _, dn := range [3][2]float32{{62, 0}, {206, 1}, {188, 2}} {
+		vis := rc.tier(uint8(dn[1])) * rc.fit(dn[0]+4) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		stemCol := sceneColor("#a9c69f").Alpha(vis)
+		puffCol := sceneColor("#b9c6b3").Alpha(vis)
+		dy := sc.near.y(float64(dn[0])) + 1 + rc.layerShiftY
+		rc.p.Transform(ui.Translation(rc.ox+dn[0], rc.oy+dy), 0, 0, func() {
 			var st ui.Path
 			st.MoveTo(0, 0).QuadTo(1.6, -5, 1, -9.5).Cap(ui.RoundCap)
 			rc.p.StrokePath(&st, 0.9, stemCol)
@@ -1039,14 +1105,20 @@ func (rc *sceneRenderCtx) paintBreeze(sc *compiledScene, tr *sceneTerrainCache) 
 		})
 	}
 
-	// Drifting dandelion seeds & tumbling leaves (a2 v-tr)
+	// Dandelion seeds and tumbling leaves carried off by the breeze
 	if rc.wm > 0.002 {
-		scaleX := max(rc.w, brandDesignWidth) / brandDesignWidth
 		for _, item := range sc.driftItems {
+			vis := rc.tier(item.tier)
+			if vis <= 0.004 {
+				continue
+			}
 			ph := rc.loopPhase(rc.t, item.delaySec, item.durSec)
 			x, y, rot, op := evalDrift(item, ph)
-			x *= scaleX
-			a := op * rc.wm * rc.alpha
+			// Stretch the flight so it always ends just past the sidebar edge, whatever its width.
+			if x0, x1 := item.pts[0].x, item.pts[len(item.pts)-1].x; x1 > x0 {
+				x = x0 + (x-x0)*(rc.w+8-x0)/(x1-x0)
+			}
+			a := op * vis * rc.wm * rc.alpha
 			if a <= 0.003 || x < -20 || x > rc.w+20 {
 				continue
 			}
@@ -1075,7 +1147,7 @@ func paintBreezeWindPath(p *ui.Painter, idx int, from, to float32, c ui.Color) {
 	var wp ui.Path
 	switch idx {
 	case 0:
-		wp.MoveTo(24, 33).CubeTo(54, 25, 84, 39, 120, 31).CubeTo(156, 23, 160, 21, 184, 27)
+		wp.MoveTo(24, 41).CubeTo(54, 33, 84, 47, 120, 39).CubeTo(156, 31, 160, 29, 184, 35)
 	case 1:
 		wp.MoveTo(330, 31).CubeTo(370, 25, 400, 35, 430, 29).
 			CubeTo(444, 26, 446, 15, 436, 15).
@@ -1116,13 +1188,13 @@ func (rc *sceneRenderCtx) paintDusk(sc *compiledScene, tr *sceneTerrainCache) {
 	// Emerging stars as evening deepens
 	rc.paintStars(sc.stars, rc.vars.starOp)
 
-	// Evening sparkle at (934, 8)
-	if rc.w > 940 {
+	// Evening sparkle in the strip above the titlebar controls
+	if vis := rc.dRich; vis > 0.004 {
 		spOp := float32(0.7)
 		if rc.t > 0 {
 			spOp = lerp(0.20, 1.0, cosWave01(rc.loopPhase(rc.t, 1, 5.5)))
 		}
-		rc.paintSparkle(rc.ox+934, rc.oy+8, 2.2, sceneColor("#ffffff"), spOp)
+		rc.paintSparkle(rc.ox+rc.w-34, rc.oy+5.5, 2.0, sceneColor("#ffffff"), spOp*vis)
 	}
 
 	rc.fillTerrain(&tr.peakPath, sc.peak.fill)
@@ -1153,9 +1225,13 @@ func (rc *sceneRenderCtx) paintDusk(sc *compiledScene, tr *sceneTerrainCache) {
 	rc.fillTerrain(&tr.farPath, sc.far.fill)
 	rc.fillTerrain(&tr.midPath, sc.mid.fill)
 
-	// Two round-canopy trees
-	treeCol := sceneColor("#cbc3b5").Alpha(rc.alpha)
-	for _, ts := range [2][2]float32{{56, 1.0}, {229, 0.7}} {
+	// Round-canopy trees: one always, a smaller companion from calm density up
+	for _, ts := range [2][3]float32{{56, 1.0, 0}, {43, 0.7, 1}} {
+		vis := rc.tier(uint8(ts[2])) * rc.alpha
+		if vis <= 0.004 {
+			continue
+		}
+		treeCol := sceneColor("#cbc3b5").Alpha(vis)
 		tx, ty := rc.ox+ts[0], rc.oy+sc.mid.y(float64(ts[0]))+1+rc.layerShiftY
 		rc.p.Transform(ui.Scaling(ts[1], ts[1]).Then(ui.Translation(tx, ty)), 0, 0, func() {
 			rc.p.Fill(ui.Rect{X: -0.6, Y: -6, W: 1.2, H: 7}, treeCol, 0)
@@ -1172,38 +1248,14 @@ func (rc *sceneRenderCtx) paintDusk(sc *compiledScene, tr *sceneTerrainCache) {
 	rc.fillTerrain(&tr.nearPath, sc.near.fill)
 	rc.paintBlades(sc.blades, sc.bladeColor, "")
 
-	// V-formation wild geese flying right-to-left (a2 v-tr)
-	if rc.wm > 0.002 {
-		ph := rc.loopPhase(rc.t, 10, 62)
-		if ph < 0.72 {
-			u := ph / 0.72
-			startX := max(rc.w, brandDesignWidth) + 50
-			fx := lerp(startX, -90, u)
-			fy := lerp(33, 7, u)
-			birdCol := sceneColor("#b49c8e").Alpha(rc.wm * rc.alpha)
-			flock := [7][3]float32{
-				{0, 0, 0.42}, {9, 4, 0.47}, {18, 9, 0.39}, {8, -5, 0.45},
-				{19, -9, 0.50}, {29, 13, 0.44}, {30, -13, 0.41},
-			}
-			for _, g := range flock {
-				bx, by := rc.ox+fx+g[0], rc.oy+fy+g[1]
-				if bx < -20 || bx > rc.w+20 {
-					continue
-				}
-				w := rc.altWave(rc.t, g[2]*0.5, g[2])
-				lDeg := lerp(24, -28, w)
-				rDeg := lerp(-24, 28, w)
-				rc.p.Transform(ui.Rotation(lDeg), bx, by, func() {
-					var wl ui.Path
-					wl.MoveTo(bx, by).QuadTo(bx-1.6, by-2.2, bx-3.6, by-0.6).Cap(ui.RoundCap)
-					rc.p.StrokePath(&wl, 0.9, birdCol)
-				})
-				rc.p.Transform(ui.Rotation(rDeg), bx, by, func() {
-					var wr ui.Path
-					wr.MoveTo(bx, by).QuadTo(bx+1.6, by-2.2, bx+3.6, by-0.6).Cap(ui.RoundCap)
-					rc.p.StrokePath(&wr, 0.9, birdCol)
-				})
-			}
+	// A small V of wild geese heading home, right to left
+	if vis := rc.wm * rc.dRich; vis > 0.004 {
+		if ph := rc.loopPhase(rc.t, 10, 62); ph < 0.45 {
+			u := ph / 0.45
+			rc.layer(vis*smooth(clampF(min(u, 1-u)*10, 0, 1)), func() {
+				flock := [5][3]float32{{0, 0, 0.67}, {6, 1.8, 0.75}, {12, 3.6, 0.62}, {6, -1.8, 0.72}, {12, -3.6, 0.8}}
+				rc.paintFlock(flock[:], lerp(rc.w+16, -40, u), lerp(34.5, 32, u), 0.8, sceneColor("#b49c8e"))
+			})
 		}
 	}
 }
