@@ -405,8 +405,12 @@ if (import.meta.main) {
     ? `${process.argv[sinceIdx + 1]}..HEAD`
     : `-n ${limitIdx >= 0 && process.argv[limitIdx + 1] ? process.argv[limitIdx + 1] : "12"}`;
   const commits = listCommits(ROOT, range);
-  const count = execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
-  const result = await buildReleaseNotes({ version: `1.0.${count}`, commits });
+  const { listGitTagVersions, nextReleaseVersion, readPackageVersion } = await import("./select-release.mjs");
+  const version = nextReleaseVersion({
+    currentVersion: readPackageVersion(ROOT),
+    tagVersions: listGitTagVersions(ROOT),
+  });
+  const result = await buildReleaseNotes({ version, commits });
   if (result.generationFailed) {
     console.error(`警告：grok-4.7 没有生成更新说明（${result.reason}）。下面不是模型结果。`);
   }
