@@ -1317,21 +1317,23 @@ func DiffAlertTitles(lines []string, change []int) []string {
 	masks, _ := diffScan(lines, change)
 	out := make([]string, len(lines))
 	for si, side := range [2]int{-1, 1} {
-		// listCol: the content column of the list item above (0: none); a quote
-		// indented as far sits in the item, where the note reads no alert.
-		listCol := 0
+		// cols: the content columns of the open list items (nested ones last); a
+		// quote indented as far as one sits in that item, where the note reads no
+		// alert. A line left of a nested item's content closes that item only.
+		var cols []int
 		for i, l := range lines {
 			if change[i] != -side && !masks[si][i] {
 				if t := strings.TrimLeft(l, " \t"); strings.TrimSpace(t) != "" {
 					lead := len(strings.ReplaceAll(l[:len(l)-len(t)], "\t", "    "))
+					for len(cols) > 0 && cols[len(cols)-1] > lead {
+						cols = cols[:len(cols)-1]
+					}
 					if diffListItemRE.MatchString(t) {
-						listCol = lead + len(diffContainerRE.FindString(t))
-					} else if lead < listCol {
-						listCol = 0
+						cols = append(cols, lead+len(diffContainerRE.FindString(t)))
 					}
 				}
 			}
-			if listCol > 0 {
+			if len(cols) > 0 {
 				continue
 			}
 			// The old text reads its deleted lines, the new one the rest.
