@@ -410,8 +410,34 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		return true
 	}
 
-	// 2. Direct clipboard bitmap (screenshots, copied web/chat images) when no plain text is on clipboard.
-	if fallbackText == "" {
+	// 2. Read rich clipboard (Markdown/HTML) upfront so styled HTML images / Markdown
+	//    preserve selection replacement and image attributes even when PNG or URL text is also present.
+	richData := svc.ReadClipboardData(transfer.Markdown, transfer.HTML)
+	var mdRaw, htmlRaw []byte
+	var mdErr, htmlErr error
+	if len(richData.Items()) > 0 {
+		mdRaw, mdErr = richData.Read(transfer.Markdown)
+		htmlRaw, htmlErr = richData.Read(transfer.HTML)
+		if len(mdRaw) > media.MaxPasteBytes {
+			mdRaw = nil
+		}
+		if len(htmlRaw) > media.MaxPasteBytes {
+			htmlRaw = nil
+		}
+	}
+	hasConvertibleHTML := false
+	convertedHTML := ""
+	if htmlErr == nil && len(htmlRaw) > 0 && s.codec != nil {
+		if conv, ok := s.codec.ConvertHTMLPaste(string(htmlRaw), fallbackText); ok {
+			hasConvertibleHTML = true
+			convertedHTML = conv
+		}
+	}
+	hasRichMD := mdErr == nil && strings.TrimSpace(string(mdRaw)) != ""
+
+	// Direct clipboard bitmap (screenshots, raw copied images) only when clipboard has
+	// no plain text, no Markdown, and no convertible semantic HTML.
+	if fallbackText == "" && !hasRichMD && !hasConvertibleHTML {
 		imgFormats := []struct {
 			fmt transfer.Format
 			ext string
@@ -433,25 +459,10 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 		}
 	}
 
-	// 3. Read rich clipboard (Markdown/HTML) before URL-over-selection shortcut so an HTML
-	//    image copied alongside its URL in text/plain still pastes as an image rather than a link.
-	richData := svc.ReadClipboardData(transfer.Markdown, transfer.HTML)
-	var mdRaw, htmlRaw []byte
-	var mdErr, htmlErr error
-	if len(richData.Items()) > 0 {
-		mdRaw, mdErr = richData.Read(transfer.Markdown)
-		htmlRaw, htmlErr = richData.Read(transfer.HTML)
-		if len(mdRaw) > media.MaxPasteBytes {
-			mdRaw = nil
-		}
-		if len(htmlRaw) > media.MaxPasteBytes {
-			htmlRaw = nil
-		}
-	}
-	hasRichImageOrMD := (mdErr == nil && strings.TrimSpace(string(mdRaw)) != "") ||
+	hasRichImageOrMD := hasRichMD ||
 		(htmlErr == nil && len(htmlRaw) > 0 && strings.Contains(strings.ToLower(string(htmlRaw)), "<img"))
 
-	// Smart URL paste over selected text (Notion / Feishu behavior) when clipboard doesn't carry rich Markdown or HTML image.
+	// 3. Smart URL paste over selected text (Notion / Feishu behavior) when clipboard doesn't carry rich Markdown or HTML image.
 	if !hasRichImageOrMD && s.tryPasteURLOverSelection(fallbackText) {
 		return true
 	}
@@ -474,11 +485,9 @@ func (s *Session) pasteFromClipboard(svc ui.Services, fallbackText string, inlin
 			s.PasteText(mdStr)
 			return true
 		}
-		if htmlErr == nil && len(htmlRaw) > 0 && s.codec != nil {
-			if converted, ok := s.codec.ConvertHTMLPaste(string(htmlRaw), fallbackText); ok {
-				s.PasteText(converted)
-				return true
-			}
+		if hasConvertibleHTML {
+			s.PasteText(convertedHTML)
+			return true
 		}
 	}
 

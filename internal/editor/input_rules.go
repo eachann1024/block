@@ -491,8 +491,59 @@ func scanURLTokenEnd(r []rune, start, limit int, inParen bool, closeParen rune) 
 	return i
 }
 
+// inUnclosedMarkdownLinkDest reports whether rune position `pos` on the current line
+// is inside an unclosed `[...](...` / `![...](...` destination or title.
+func inUnclosedMarkdownLinkDest(r []rune, lineStart, pos int) bool {
+	if pos <= lineStart+3 {
+		return false
+	}
+	inDest := false
+	inQuote := rune(0)
+	parenDepth := 0
+	for i := lineStart; i < pos; i++ {
+		ch := r[i]
+		if !inDest {
+			if ch == '(' && i > lineStart && r[i-1] == ']' && !isEscapedAt(r, i-1) {
+				// Verify there is a matching unescaped `[` earlier on the line.
+				for j := i - 2; j >= lineStart; j-- {
+					if r[j] == ']' && !isEscapedAt(r, j) {
+						break
+					}
+					if r[j] == '[' && !isEscapedAt(r, j) {
+						inDest = true
+						inQuote = 0
+						parenDepth = 0
+						break
+					}
+				}
+			}
+			continue
+		}
+		if inQuote != 0 {
+			if ch == inQuote && !isEscapedAt(r, i) {
+				inQuote = 0
+			}
+			continue
+		}
+		if (ch == '"' || ch == '\'') && !isEscapedAt(r, i) {
+			inQuote = ch
+			continue
+		}
+		if ch == '(' && !isEscapedAt(r, i) {
+			parenDepth++
+		} else if ch == ')' && !isEscapedAt(r, i) {
+			if parenDepth > 0 {
+				parenDepth--
+			} else {
+				inDest = false
+			}
+		}
+	}
+	return inDest
+}
+
 // inUnclosedLiteralContext runs in O(N) over the current line using a monotonic span cursor.
-// It skips completed URL tokens and Markdown link destinations so unpaired `$` or `` ` ``
+// It skips completed URL tokens and Markdown link destinations so unpaired `$` or “ ` “
 // inside an earlier URL never taint subsequent prose, while still protecting active URLs,
 // unclosed inline code backticks (` / ｀), and unclosed inline math ($ / ＄).
 func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick, inMath, inURL bool) {
@@ -579,13 +630,13 @@ func inUnclosedLiteralContext(spans []model.Span, r []rune, pos int) (inBacktick
 // --- Inline Markdown Real-Time Conversion ---
 
 type inlineRuleResult struct {
-	spans     []model.Span
-	caret     int
-	changed   bool
-	codeEdge  appUi.RichCodeEdge
-	clearMask model.Mark
-	clearBG   bool
-	isMath    bool
+	spans      []model.Span
+	caret      int
+	changed    bool
+	codeEdge   appUi.RichCodeEdge
+	clearMask  model.Mark
+	clearBG    bool
+	isMath     bool
 	toImage    bool
 	imageAlt   string
 	imageSrc   string
@@ -1175,6 +1226,38 @@ func isASCIIPunctByteLocal(b byte) bool {
 	return (b >= '!' && b <= '/') || (b >= ':' && b <= '@') || (b >= '[' && b <= '`') || (b >= '{' && b <= '~')
 }
 
+func unescapeMarkdownEntitiesLocal(s string) string {
+	if !strings.ContainsRune(s, '&') || !strings.ContainsRune(s, ';') {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	changed := false
+	for i := 0; i < len(s); {
+		if s[i] == '&' {
+			limit := len(s)
+			if limit > i+34 {
+				limit = i + 34
+			}
+			if semi := strings.IndexByte(s[i+1:limit], ';'); semi > 0 {
+				raw := s[i : i+semi+2]
+				if dec := html.UnescapeString(raw); dec != raw {
+					out.WriteString(dec)
+					i += semi + 2
+					changed = true
+					continue
+				}
+			}
+		}
+		out.WriteByte(s[i])
+		i++
+	}
+	if !changed {
+		return s
+	}
+	return out.String()
+}
+
 func unescapeMarkdownPunct(s string) string {
 	if !strings.ContainsRune(s, '\\') {
 		return s
@@ -1285,7 +1368,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		if !ok || spanCodeOrMathAt(spans, imgStart, end) || spanHasInlineImageAt(spans, imgStart, end) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		alt := html.UnescapeString(unescapeMarkdownPunct(string(r[openBracket+1 : closeBracket])))
+		alt := unescapeMarkdownEntitiesLocal(unescapeMarkdownPunct(string(r[openBracket+1 : closeBracket])))
 		label := alt
 		altEmpty := label == ""
 		if altEmpty {
@@ -1317,20 +1400,23 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		}
 	}
 	labelLen := closeBracket - (openBracket + 1)
-	rawURL := strings.TrimSpace(string(r[openParen+1 : end-1]))
-	if labelLen <= 0 || !isPlausibleInlineLinkTarget(rawURL, fullwidthParen) {
+	rawInner := strings.TrimSpace(string(r[openParen+1 : end-1]))
+	url, linkTitle, ok := splitInlineTargetAndTitle(rawInner, fullwidthParen)
+	if labelLen <= 0 || !ok {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
-	if spanCodeOrMathAt(spans, openBracket, end) || spanHasInlineImageAt(spans, openBracket, end) {
+	if spanCodeOrMathAt(spans, openBracket, end) ||
+		spanHasInlineImageAt(spans, openBracket, openBracket+1) ||
+		spanHasInlineImageAt(spans, closeBracket, end) ||
+		spanBoundarySplitsInlineImage(spans, openBracket+1, closeBracket) {
 		return inlineRuleResult{spans: spans, caret: end}
 	}
-	url := normalizeInlineLinkURL(rawURL)
 	left := sliceSpans(spans, 0, openBracket)
 	mid := sliceSpans(spans, openBracket+1, closeBracket)
 	right := sliceSpans(spans, end, len(r))
 	for i := range mid {
 		mid[i].Link = url
-		mid[i].LinkTitle = ""
+		mid[i].LinkTitle = linkTitle
 	}
 	var merged []model.Span
 	merged = append(merged, left...)
@@ -1472,9 +1558,9 @@ func splitInlineTargetAndTitle(raw string, fullwidthParen bool) (url, title stri
 		if !closed {
 			return "", "", false
 		}
-		title = html.UnescapeString(tb.String())
+		title = unescapeMarkdownEntitiesLocal(tb.String())
 	}
-	return normalizeInlineLinkURL(html.UnescapeString(unescapeMarkdownPunct(dest))), title, true
+	return normalizeInlineLinkURL(unescapeMarkdownEntitiesLocal(unescapeMarkdownPunct(dest))), title, true
 }
 
 func matchStandaloneImageLine(s string) (alt, src, title string, ok bool) {
@@ -1685,7 +1771,11 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 	// Em-dash `-- ` / `--　` only when preceded by non-dash, non-empty content (never breaks `---` divider).
 	if caretRune >= 4 && (r[caretRune-1] == ' ' || r[caretRune-1] == '\u3000') &&
 		r[caretRune-2] == '-' && r[caretRune-3] == '-' && r[caretRune-4] != '-' && !isEscapedAt(r, caretRune-3) {
-		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune-1); !inBT && !inMath && !inURL {
+		emLineStart := caretRune - 1
+		for emLineStart > 0 && r[emLineStart-1] != '\n' {
+			emLineStart--
+		}
+		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, caretRune-1); !inBT && !inMath && !inURL && !inUnclosedMarkdownLinkDest(r, emLineStart, caretRune-1) {
 			hasNonDash := false
 			for i := 0; i < caretRune-3; i++ {
 				if r[i] != '-' && !unicode.IsSpace(r[i]) {
@@ -1705,7 +1795,11 @@ func applySmartTypographyOnSpans(spans []model.Span, caretRune, insStart, insLen
 
 	// Single-character typing: ONLY match rules ending right at caret.
 	if insLen == 1 {
-		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, curCaret); inBT || inMath || inURL {
+		lineStart := curCaret
+		for lineStart > 0 && r[lineStart-1] != '\n' {
+			lineStart--
+		}
+		if inBT, inMath, inURL := inUnclosedLiteralContext(spans, r, curCaret); inBT || inMath || inURL || inUnclosedMarkdownLinkDest(r, lineStart, curCaret) {
 			return spans, caretRune, false
 		}
 		for _, rule := range smartTypoRules {
@@ -2614,9 +2708,7 @@ func sliceSpansForClipboard(spans []model.Span, startRune, endRune int) []model.
 			cp := sp
 			cp.Text = string(r[lo:hi])
 			if cp.ImageSrc != "" && (lo > 0 || hi < n) {
-				cp.ImageSrc = ""
-				cp.ImageTitle = ""
-				cp.ImageAltEmpty = false
+				cp = model.Span{Text: cp.Text}
 			}
 			out = append(out, cp)
 		}
