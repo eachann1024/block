@@ -1,8 +1,8 @@
 // Package telemetry sends one anonymous "this install is alive" ping per day.
 //
 // Payload: a random install id (generated locally, not derived from hardware),
-// app version, OS, CPU architecture and UI language. Nothing else — no paths,
-// note content, account names or hardware identifiers.
+// app version, OS, OS major version, CPU architecture and UI language. Nothing
+// else — no paths, note content, account names or hardware identifiers.
 //
 // Users can turn it off in Settings; DO_NOT_TRACK=1 or BLOCK_NO_TELEMETRY=1
 // also disable it. Development builds never send.
@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ import (
 	"time"
 )
 
-// Endpoint receives the daily ping. See public/deploy/cloudflare/telemetry.js.
+// Endpoint is the default receiver of the daily ping (cooool-block worker).
 const Endpoint = "https://block.cooool.top/api/ping"
 
 const (
@@ -35,12 +36,15 @@ const (
 
 var idRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
-// Config wires the sender to the app. Enabled and Lang are read before every ping.
+// Config wires the sender to the app. Enabled and Lang are read before every check,
+// so turning the setting off takes effect without a restart.
 type Config struct {
-	DataDir string
-	Version string
-	Enabled func() bool
-	Lang    func() string
+	DataDir  string
+	Version  string
+	Enabled  func() bool
+	Lang     func() string
+	Endpoint string       // empty means Endpoint
+	Client   *http.Client // nil means a client with a short timeout
 }
 
 type record struct {
@@ -52,6 +56,7 @@ type payload struct {
 	ID   string `json:"id"`
 	V    string `json:"v"`
 	OS   string `json:"os"`
+	OSV  string `json:"osv"`
 	Arch string `json:"arch"`
 	Lang string `json:"lang"`
 }
@@ -80,9 +85,8 @@ func envDisabled() bool {
 
 func loop(cfg Config) {
 	time.Sleep(startDelay)
-	client := &http.Client{Timeout: 15 * time.Second}
 	for {
-		tick(cfg, client)
+		_, _ = CheckOnce(context.Background(), cfg)
 		time.Sleep(checkInterval)
 	}
 }
@@ -91,40 +95,54 @@ func today() string {
 	return time.Now().UTC().Add(8 * time.Hour).Format("2006-01-02")
 }
 
-func tick(cfg Config, client *http.Client) {
-	if !cfg.Enabled() {
-		return
+// CheckOnce sends today's ping if it is due. sent reports whether the server
+// accepted a request. A 5xx or network error leaves today unmarked so a later
+// check retries; any other response marks today as done.
+func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
+	if cfg.DataDir == "" || cfg.Enabled == nil || envDisabled() || !cfg.Enabled() {
+		return false, nil
 	}
 	path := filepath.Join(cfg.DataDir, fileName)
 	rec := load(path)
 	day := today()
 	if rec.LastPing == day {
-		return
+		return false, nil
 	}
 	lang := "en"
 	if cfg.Lang != nil && cfg.Lang() == "zh" {
 		lang = "zh"
 	}
-	body, _ := json.Marshal(payload{ID: rec.ID, V: cfg.Version, OS: runtime.GOOS, Arch: runtime.GOARCH, Lang: lang})
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, Endpoint, bytes.NewReader(body))
+	body, err := json.Marshal(payload{ID: rec.ID, V: cfg.Version, OS: runtime.GOOS, OSV: osMajor(), Arch: runtime.GOARCH, Lang: lang})
 	if err != nil {
-		return
+		return false, err
+	}
+	endpoint := cfg.Endpoint
+	if endpoint == "" {
+		endpoint = Endpoint
+	}
+	client := cfg.Client
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Block")
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return false, err
 	}
 	resp.Body.Close()
-	// 4xx means the server rejected this payload; retrying today would not help.
 	if resp.StatusCode >= 500 {
-		return
+		return false, fmt.Errorf("telemetry: server %d", resp.StatusCode)
 	}
 	rec.LastPing = day
 	save(path, rec)
+	return resp.StatusCode < 300, nil
 }
 
 func load(path string) record {
@@ -157,4 +175,17 @@ func newID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+// majorLabel builds "<family>-<major>" and falls back to "unknown" when major is not a small number.
+func majorLabel(family, major string) string {
+	if len(major) == 0 || len(major) > 3 {
+		return "unknown"
+	}
+	for _, r := range major {
+		if r < '0' || r > '9' {
+			return "unknown"
+		}
+	}
+	return family + "-" + major
 }
