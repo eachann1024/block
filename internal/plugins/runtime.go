@@ -190,9 +190,10 @@ type Runtime struct {
 	pending   map[string]chan rpcEnvelope
 	nextID    atomic.Int64
 
-	noteMu sync.Mutex
-	cfgMu  sync.RWMutex
-	closed atomic.Bool
+	noteMu       sync.Mutex
+	cfgMu        sync.RWMutex
+	closed       atomic.Bool
+	shuttingDown atomic.Bool
 	// initialized is set once plugin.initialize succeeds; events wait for it.
 	initialized atomic.Bool
 	abortOnce   sync.Once
@@ -308,11 +309,13 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 	cmd.Stderr = rt.stderr
 
 	if err := cmd.Start(); err != nil {
+		files.LogErrorf("plugin start failed: id=%s version=%s err=%v", m.ID, m.Version, err)
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stdoutW.Close()
 		return nil, fmt.Errorf("start plugin process %v: %w", m.Entry.Command, err)
 	}
+	files.LogInfof("plugin started: id=%s version=%s", m.ID, m.Version)
 	_ = stdoutW.Close()
 	started = true
 
@@ -322,7 +325,10 @@ func StartRuntime(ctx context.Context, m Manifest, cfg HostConfig) (*Runtime, er
 		close(readDone)
 	}()
 	go func() {
-		_ = cmd.Wait()
+		waitErr := cmd.Wait()
+		if !rt.shuttingDown.Load() && ctx.Err() == nil {
+			files.LogErrorf("plugin exited unexpectedly: id=%s err=%v", rt.manifest.ID, waitErr)
+		}
 		select {
 		case <-readDone:
 		case <-time.After(time.Second):
@@ -612,6 +618,7 @@ func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath st
 func (rt *Runtime) Shutdown(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	rt.shuttingDown.Store(true)
 	if !rt.closed.Swap(true) {
 		_ = rt.call(ctx, "plugin.shutdown", map[string]any{}, nil)
 		_ = rt.stdin.Close()

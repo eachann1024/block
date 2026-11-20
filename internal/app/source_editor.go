@@ -163,6 +163,7 @@ func (s *TabSurface) saveSource() error {
 		_, err = files.WriteRawFileAtomic(s.Path, s.Source.Text, s.Source.BOM)
 	}
 	if err != nil {
+		files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
 		s.StatusMsg = err.Error()
 		return err
 	}

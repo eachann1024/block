@@ -998,6 +998,39 @@ func (w *Workspace) hydrateInitialWorkspace() {
 		_ = w.ensureTabLoaded(active)
 		w.nav.Push(active)
 	}
+	if w.state.Folder != "" {
+		notes, dirs := countWorkspaceEntries(w.Entries())
+		files.LogInfof("workspace opened: folder=%s notes=%d dirs=%d tabs=%d", w.state.Folder, notes, dirs, len(validTabs))
+	}
+}
+
+func countWorkspaceEntries(entries []model.FileEntry) (notes, dirs int) {
+	for _, entry := range entries {
+		if entry.IsDir {
+			dirs++
+			n, d := countWorkspaceEntries(entry.Children)
+			notes += n
+			dirs += d
+			continue
+		}
+		notes++
+	}
+	return notes, dirs
+}
+
+func openKindName(kind model.OpenKind) string {
+	switch kind {
+	case model.OpenKindMarkdown:
+		return "markdown"
+	case model.OpenKindSource:
+		return "source"
+	case model.OpenKindPreview:
+		return "preview"
+	case model.OpenKindBlocked:
+		return "blocked"
+	default:
+		return "unknown"
+	}
 }
 
 // AttachWindow binds the main *mygo.Window and starts folder file watching.
@@ -1189,8 +1222,10 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 
 	cf, err := files.ClassifyFile(clean)
 	if err != nil {
+		files.LogErrorf("note read failed: path=%s err=%v", clean, err)
 		return err
 	}
+	files.LogInfof("note opened: path=%s bytes=%d kind=%s", clean, cf.RawSize, openKindName(cf.Kind))
 	if cf.Kind == model.OpenKindMarkdown {
 		doc := w.codec.Parse(cf.Text)
 		sess := w.newEditorSession(clean, doc)
@@ -1419,6 +1454,9 @@ func (w *Workspace) ReadNote(absPath string) (string, error) {
 		return surf.Source.Text, nil
 	}
 	content, _, err := files.ReadNote(clean)
+	if err != nil {
+		files.LogErrorf("note read failed: path=%s err=%v", clean, err)
+	}
 	return content, err
 }
 
@@ -1431,6 +1469,7 @@ func (w *Workspace) WriteNote(absPath string, content string) error {
 func (w *Workspace) writeNoteLocked(absPath, content string) error {
 	clean := filepath.Clean(absPath)
 	if err := os.MkdirAll(filepath.Dir(clean), 0o755); err != nil {
+		files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
 		return err
 	}
 	if !files.IsMarkdown(clean) {
@@ -1439,6 +1478,7 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 		w.mu.RUnlock()
 		bom := existingSurf != nil && existingSurf.Source.BOM
 		if _, err := files.WriteRawFileAtomic(clean, content, bom); err != nil {
+			files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
 			return err
 		}
 		if cf, err := files.ClassifyFile(clean); err == nil {
@@ -1453,6 +1493,7 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 
 	fingerprint, err := files.WriteNoteAtomic(clean, content)
 	if err != nil {
+		files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
 		return err
 	}
 	files.ClearRecovery(clean)
@@ -1938,10 +1979,13 @@ func (w *Workspace) SetNotebook(folder string) error {
 	clean := filepath.Clean(folder)
 	info, err := os.Stat(clean)
 	if err != nil {
+		files.LogErrorf("workspace switch failed: folder=%s err=%v", clean, err)
 		return err
 	}
 	if !info.IsDir() {
-		return errors.New("notebook path is not a directory")
+		err := errors.New("notebook path is not a directory")
+		files.LogErrorf("workspace switch failed: folder=%s err=%v", clean, err)
+		return err
 	}
 
 	w.mu.RLock()
@@ -1982,6 +2026,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 		}
 	})
 	if saveErr != nil {
+		files.LogErrorf("workspace switch state save failed: folder=%s err=%v", clean, saveErr)
 		return saveErr
 	}
 	w.mu.Lock()
@@ -2007,6 +2052,10 @@ func (w *Workspace) SetNotebook(folder string) error {
 	w.mu.Unlock()
 
 	w.RescanNotebook()
+	if switched {
+		notes, dirs := countWorkspaceEntries(w.Entries())
+		files.LogInfof("workspace switched: folder=%s notes=%d dirs=%d", clean, notes, dirs)
+	}
 	if w.win != nil {
 		w.startWatching(clean)
 	}
@@ -2290,6 +2339,9 @@ func (w *Workspace) rescanNotebook() bool {
 		w.entries = list
 	}
 	w.mu.Unlock()
+	if err != nil && changed {
+		files.LogWarnf("workspace scan failed: folder=%s err=%v", folder, err)
+	}
 	return changed
 }
 
@@ -2477,11 +2529,13 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
 	if err := w.flushDirtySessionsLocked(); err != nil {
+		files.LogErrorf("rename failed: path=%s err=%v", oldPath, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
 	newPath, err := files.RenameItem(oldPath, newName)
 	if err != nil {
+		files.LogErrorf("rename failed: path=%s err=%v", oldPath, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
@@ -2500,11 +2554,13 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
 	if err := w.flushDirtySessionsLocked(); err != nil {
+		files.LogErrorf("move failed: src=%s dst=%s err=%v", srcPath, dstDir, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
 	newPath, err := files.MoveItem(srcPath, dstDir)
 	if err != nil {
+		files.LogErrorf("move failed: src=%s dst=%s err=%v", srcPath, dstDir, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
@@ -2524,10 +2580,12 @@ func (w *Workspace) TrashWorkspaceItem(path string) error {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
 	if err := w.flushDirtySessionsLocked(); err != nil {
+		files.LogErrorf("trash failed: path=%s err=%v", path, err)
 		w.setNotice(err.Error())
 		return err
 	}
 	if err := files.TrashItem(path); err != nil {
+		files.LogErrorf("trash failed: path=%s err=%v", path, err)
 		w.setNotice(err.Error())
 		return err
 	}
@@ -3567,6 +3625,7 @@ func (w *Workspace) saveSessionMarkdown(path string, sess *editor.Session, text 
 	}
 	files.LogWarnf("auto-save failed for %s: %v", path, err)
 	if recoveryErr := files.SaveRecoveryForVersion(path, text, sess.DiskFingerprint()); recoveryErr != nil {
+		files.LogErrorf("recovery draft save failed: path=%s err=%v", path, recoveryErr)
 		return errors.Join(err, recoveryErr)
 	}
 	return err
@@ -3595,6 +3654,7 @@ func (w *Workspace) startWatching(folder string) {
 		},
 	})
 	if err != nil {
+		files.LogWarnf("file watcher start failed: folder=%s err=%v", folder, err)
 		return
 	}
 	go func() {
@@ -3603,6 +3663,9 @@ func (w *Workspace) startWatching(folder string) {
 		go func() {
 			for {
 				if _, err := watcher.Next(ctx); err != nil {
+					if ctx.Err() == nil {
+						files.LogWarnf("file watcher stopped: folder=%s err=%v", folder, err)
+					}
 					close(events)
 					return
 				}
