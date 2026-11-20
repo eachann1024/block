@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"block/internal/fuzzy"
 	"block/internal/icons"
 	"block/internal/model"
 	"block/internal/tarot"
@@ -2418,26 +2419,59 @@ func activePickerToken(text string, composing bool, dismissed bool) (string, boo
 }
 
 func (c *Controller) pickerItemsLocked(token string) []pickItem {
+	type scoredPickItem struct {
+		item  pickItem
+		score int
+	}
 	if strings.HasPrefix(token, "@") {
-		q := strings.ToLower(strings.TrimPrefix(token, "@"))
+		q := strings.TrimSpace(strings.TrimPrefix(token, "@"))
 		folder := c.pickerFolder
 		currentPage := c.activePageLocked(c.activeRootLocked())
-		var items []pickItem
-		if q == "" && folder != "" {
-			parent := pathDirSlash(folder)
-			items = append(items, pickItem{
-				kind:  pickFolder,
-				value: parent,
-				label: theme.Tr("返回上级", "Parent folder"),
-			})
-		}
-		for _, f := range c.pickerFolders {
-			if (q == "" && pathDirSlash(f) == folder) || (q != "" && strings.Contains(strings.ToLower(f), q)) {
-				lbl := f
-				if q == "" {
-					lbl = pathBaseSlash(f)
+		if q == "" {
+			var items []pickItem
+			if folder != "" {
+				parent := pathDirSlash(folder)
+				items = append(items, pickItem{
+					kind:  pickFolder,
+					value: parent,
+					label: theme.Tr("返回上级", "Parent folder"),
+				})
+			}
+			for _, f := range c.pickerFolders {
+				if pathDirSlash(f) == folder {
+					items = append(items, pickItem{kind: pickFolder, value: f, label: pathBaseSlash(f)})
 				}
-				items = append(items, pickItem{kind: pickFolder, value: f, label: lbl})
+			}
+			refSet := make(map[string]bool, len(c.draftRefs))
+			for _, r := range c.draftRefs {
+				refSet[referencePageID(c.pickerRoot, r)] = true
+			}
+			if currentPage != "" && !refSet[currentPage] && pathDirSlash(currentPage) == folder {
+				items = append(items, pickItem{
+					kind:  pickPage,
+					value: currentPage,
+					label: pathBaseSlash(currentPage),
+					hint:  theme.Tr("当前文件", "Current file"),
+				})
+			}
+			for _, p := range c.pickerPages {
+				if p == currentPage || refSet[p] {
+					continue
+				}
+				if pathDirSlash(p) == folder {
+					items = append(items, pickItem{kind: pickPage, value: p, label: pathBaseSlash(p)})
+				}
+			}
+			return items
+		}
+
+		var scored []scoredPickItem
+		for _, f := range c.pickerFolders {
+			if sc, ok := fuzzy.ScoreFields(q, pathBaseSlash(f), f); ok {
+				scored = append(scored, scoredPickItem{
+					item:  pickItem{kind: pickFolder, value: f, label: f},
+					score: sc,
+				})
 			}
 		}
 		refSet := make(map[string]bool, len(c.draftRefs))
@@ -2445,16 +2479,15 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 			refSet[referencePageID(c.pickerRoot, r)] = true
 		}
 		if currentPage != "" && !refSet[currentPage] {
-			if (q == "" && pathDirSlash(currentPage) == folder) || (q != "" && strings.Contains(strings.ToLower(currentPage), q)) {
-				lbl := currentPage
-				if q == "" {
-					lbl = pathBaseSlash(currentPage)
-				}
-				items = append(items, pickItem{
-					kind:  pickPage,
-					value: currentPage,
-					label: lbl,
-					hint:  theme.Tr("当前文件", "Current file"),
+			if sc, ok := fuzzy.ScoreFields(q, pathBaseSlash(currentPage), currentPage); ok {
+				scored = append(scored, scoredPickItem{
+					item: pickItem{
+						kind:  pickPage,
+						value: currentPage,
+						label: currentPage,
+						hint:  theme.Tr("当前文件", "Current file"),
+					},
+					score: sc + 50,
 				})
 			}
 		}
@@ -2462,19 +2495,25 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 			if p == currentPage || refSet[p] {
 				continue
 			}
-			if (q == "" && pathDirSlash(p) == folder) || (q != "" && strings.Contains(strings.ToLower(p), q)) {
-				lbl := p
-				if q == "" {
-					lbl = pathBaseSlash(p)
-				}
-				items = append(items, pickItem{kind: pickPage, value: p, label: lbl})
+			if sc, ok := fuzzy.ScoreFields(q, pathBaseSlash(p), p); ok {
+				scored = append(scored, scoredPickItem{
+					item:  pickItem{kind: pickPage, value: p, label: p},
+					score: sc,
+				})
 			}
+		}
+		sort.SliceStable(scored, func(i, j int) bool {
+			return scored[i].score > scored[j].score
+		})
+		items := make([]pickItem, len(scored))
+		for i, s := range scored {
+			items[i] = s.item
 		}
 		return items
 	}
 
 	if strings.HasPrefix(token, "/") {
-		q := strings.ToLower(strings.TrimPrefix(token, "/"))
+		q := strings.TrimSpace(strings.TrimPrefix(token, "/"))
 		newLabel := theme.Tr("/新会话", "/new")
 		all := []pickItem{{
 			kind:  pickNewConv,
@@ -2490,14 +2529,27 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 				hint:  sk.Description,
 			})
 		}
-		var out []pickItem
+		if q == "" {
+			return all
+		}
+		var scored []scoredPickItem
 		for _, it := range all {
-			if q == "" ||
-				strings.Contains(strings.ToLower(it.label), q) ||
-				strings.Contains(strings.ToLower(it.hint), q) ||
-				(q == "new" && it.kind == pickNewConv) {
-				out = append(out, it)
+			var primary []string
+			if it.kind == pickNewConv {
+				primary = []string{"new", "新会话", it.label}
+			} else {
+				primary = []string{it.value, it.label}
 			}
+			if sc, ok := fuzzy.Score(q, primary, []string{it.hint}, false); ok {
+				scored = append(scored, scoredPickItem{item: it, score: sc})
+			}
+		}
+		sort.SliceStable(scored, func(i, j int) bool {
+			return scored[i].score > scored[j].score
+		})
+		out := make([]pickItem, len(scored))
+		for i, s := range scored {
+			out[i] = s.item
 		}
 		return out
 	}
@@ -3366,9 +3418,25 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
 						lowQ := strings.ToLower(strings.TrimSpace(search))
 						var filtered []ModelOption
-						for _, m := range models {
-							if lowQ == "" || strings.Contains(strings.ToLower(m.Value), lowQ) || strings.Contains(strings.ToLower(m.Label), lowQ) || strings.Contains(strings.ToLower(m.Group), lowQ) {
-								filtered = append(filtered, m)
+						if lowQ == "" {
+							filtered = models
+						} else {
+							type scoredModel struct {
+								opt   ModelOption
+								score int
+							}
+							var scored []scoredModel
+							for _, m := range models {
+								if sc, ok := fuzzy.Score(lowQ, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
+									scored = append(scored, scoredModel{opt: m, score: sc})
+								}
+							}
+							sort.SliceStable(scored, func(i, j int) bool {
+								return scored[i].score > scored[j].score
+							})
+							filtered = make([]ModelOption, len(scored))
+							for i, s := range scored {
+								filtered[i] = s.opt
 							}
 						}
 						if *deckCursor >= len(filtered) {
@@ -3454,7 +3522,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 										if idx == 0 {
 											topPad = 2
 										}
-										ui.Box(cUI.Key("ai-model-grp-"+grp)).FillWidth().Padding(topPad, rowPX, 2, rowPX).Children(func() {
+										ui.Box(cUI.Key(fmt.Sprintf("ai-model-grp-%d-%s", idx, grp))).FillWidth().Padding(topPad, rowPX, 2, rowPX).Children(func() {
 											ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 										})
 									}
@@ -5362,14 +5430,22 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 			annotCursor := ui.Local(annotCol, annotModelCursorKey{}, func() int { return -1 })
 			bui.ObserveMenuPointer(cUI, annotCol, annotCursor)
 			type indexedAnnotChoice struct {
-				idx int
-				opt ModelOption
+				idx   int
+				opt   ModelOption
+				score int
 			}
 			var filteredAnnot []indexedAnnotChoice
 			for idx, m := range choices {
-				if query == "" || strings.Contains(strings.ToLower(m.Value), query) || strings.Contains(strings.ToLower(m.Label), query) || strings.Contains(strings.ToLower(m.Group), query) {
+				if query == "" {
 					filteredAnnot = append(filteredAnnot, indexedAnnotChoice{idx: idx, opt: m})
+				} else if sc, ok := fuzzy.Score(query, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
+					filteredAnnot = append(filteredAnnot, indexedAnnotChoice{idx: idx, opt: m, score: sc})
 				}
+			}
+			if query != "" {
+				sort.SliceStable(filteredAnnot, func(i, j int) bool {
+					return filteredAnnot[i].score > filteredAnnot[j].score
+				})
 			}
 			if *annotCursor >= len(filteredAnnot) {
 				*annotCursor = len(filteredAnnot) - 1
@@ -5439,7 +5515,7 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 							if pos == 0 {
 								topPad = 2
 							}
-							ui.Box(cUI.Key("annotation-model-grp-"+grp)).FillWidth().Padding(topPad, 10, 2, 10).Children(func() {
+							ui.Box(cUI.Key(fmt.Sprintf("annotation-model-grp-%d-%s", pos, grp))).FillWidth().Padding(topPad, 10, 2, 10).Children(func() {
 								ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 							})
 						}
