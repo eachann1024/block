@@ -1033,9 +1033,21 @@ func serializeInlineHTML(spans []model.Span, out *strings.Builder) {
 			openTags = append(openTags, "<em>")
 			closeTags = append(closeTags, "</em>")
 		}
+		if sp.Marks&model.MarkSuperscript != 0 {
+			openTags = append(openTags, "<sup>")
+			closeTags = append(closeTags, "</sup>")
+		}
+		if sp.Marks&model.MarkSubscript != 0 {
+			openTags = append(openTags, "<sub>")
+			closeTags = append(closeTags, "</sub>")
+		}
 		if sp.Marks&model.MarkCode != 0 {
 			openTags = append(openTags, "<code>")
 			closeTags = append(closeTags, "</code>")
+		}
+		if sp.Marks&model.MarkMath != 0 {
+			openTags = append(openTags, `<span class="math">$`)
+			closeTags = append(closeTags, `$</span>`)
 		}
 		for _, t := range openTags {
 			out.WriteString(t)
