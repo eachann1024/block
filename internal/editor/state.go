@@ -328,6 +328,7 @@ type Session struct {
 	frameAnnotations  annotationFrame
 	readOnly          bool
 	minimal           bool
+	embedded          bool
 	minCanvasHeight   float32
 	OnPickImages      func(blockID model.BlockID, replace bool)
 	ExtraContextItems func() []ContextMenuExtra
