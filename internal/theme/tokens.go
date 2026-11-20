@@ -213,8 +213,26 @@ const (
 	StoreSkeletonSubtitleH float32 = 16  // README skeleton: section heading bar
 	StoreSkeletonLineH     float32 = 10  // README skeleton: body text bar
 	StoreSkeletonMediaH    float32 = 168 // README skeleton: image / video block
-	SegmentedControlHeight         = HeightControl
-	SegmentedInnerHeight           = HeightChrome
+	// Segmented control metrics.
+	SegmentedControlHeight = HeightControl
+	SegmentedInnerHeight   = HeightChrome
+
+	// Global Pluck Switch & Plugin header metrics (designs/plugin-master-switch).
+	SwitchTrackW           float32 = 38
+	SwitchTrackH           float32 = 22
+	SwitchKnobSize         float32 = 18
+	SwitchPad              float32 = 2
+	SwitchPressStretch     float32 = 3
+	SwitchHeroTrackW       float32 = 52
+	SwitchHeroTrackH       float32 = 30
+	SwitchHeroKnobSize     float32 = 24
+	SwitchHeroPad          float32 = 3
+	SwitchHeroPressStretch float32 = 5
+	SwitchHeroHitH         float32 = 44
+	PluckDividerHeight     float32 = 20
+	PluginHeaderIconBox    float32 = 44
+	PluginHeaderIconGlyph  float32 = 24
+	PluginHeaderIconRadius float32 = 12
 )
 
 // Sidebar file tree & updater metrics.
