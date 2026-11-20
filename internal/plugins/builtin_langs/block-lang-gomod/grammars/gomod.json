@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "word_chars": ".-/",
+  "tab_size": 4,
+  "hard_tabs": true,
+  "brackets": [
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "//\\s*indirect\\b.*$",
+        "token": "meta"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "`[^`]*`",
+        "token": "string"
+      },
+      {
+        "match": "=>",
+        "token": "operator"
+      },
+      {
+        "match": "\\b(?:module|go|toolchain|require|exclude|replace|retract|ignore|use|godebug|tool)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\bgo[0-9]+\\.[0-9]+(?:\\.[0-9]+)?(?:rc[0-9]+|beta[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\bv[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.+-]+)?(?:\\+incompatible)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9]+\\.[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z0-9._-]+(?:/[A-Za-z0-9._~-]+)+",
+        "token": "type"
+      },
+      {
+        "match": "[()\\[\\],]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "module github.com/blockmd/example\n\ngo 1.24.0\ntoolchain go1.24.2\n\nrequire (\n\tgithub.com/egoist/mygo v0.9.2\n\tgolang.org/x/mod v0.24.0 // indirect\n)\n\nreplace github.com/egoist/mygo => ../mygo"
+}

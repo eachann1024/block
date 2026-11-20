@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "block_comment": ["<!--", "-->"],
+  "word_chars": ".-_:",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["<", ">"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "<\\?xml\\b[^?]*\\?>",
+        "token": "meta"
+      },
+      {
+        "match": "<!DOCTYPE\\b[^>]*>",
+        "token": "meta"
+      },
+      {
+        "match": "<!--",
+        "token": "comment",
+        "push": "xml_comment"
+      },
+      {
+        "match": "(<key>)([^<]*)(</key>)",
+        "captures": {
+          "1": "tag",
+          "2": "property",
+          "3": "tag"
+        }
+      },
+      {
+        "match": "(<string>)([^<]*)(</string>)",
+        "captures": {
+          "1": "tag",
+          "2": "string",
+          "3": "tag"
+        }
+      },
+      {
+        "match": "(<(?:integer|real)>)([^<]*)(</(?:integer|real)>)",
+        "captures": {
+          "1": "tag",
+          "2": "number",
+          "3": "tag"
+        }
+      },
+      {
+        "match": "(<(?:date|data)>)([^<]*)(</(?:date|data)>)",
+        "captures": {
+          "1": "tag",
+          "2": "constant",
+          "3": "tag"
+        }
+      },
+      {
+        "match": "<(?:true|false)\\s*/>",
+        "token": "constant"
+      },
+      {
+        "match": "<key>",
+        "token": "tag",
+        "push": "xml_key"
+      },
+      {
+        "match": "<string>",
+        "token": "tag",
+        "push": "xml_string"
+      },
+      {
+        "match": "<data>",
+        "token": "tag",
+        "push": "xml_data"
+      },
+      {
+        "match": "(</?)([A-Za-z_][A-Za-z0-9:._-]*)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "xml_tag"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "<[0-9A-Fa-f \\t]+>",
+        "token": "constant"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_.-]*)(\\s*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\\b(?:YES|NO|true|false)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[{}()=;,]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "xml_comment": [
+      {
+        "match": "-->",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "xml_tag": [
+      {
+        "match": "/?>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9:._-]*)(\\s*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "xml_key": [
+      {
+        "match": "</key>",
+        "token": "tag",
+        "pop": true
+      },
+      {
+        "match": "[^<]+|<",
+        "token": "property"
+      }
+    ],
+    "xml_string": [
+      {
+        "match": "</string>",
+        "token": "tag",
+        "pop": true
+      },
+      {
+        "match": "&[A-Za-z0-9#]+;",
+        "token": "escape"
+      },
+      {
+        "match": "[^<&]+|[<&]",
+        "token": "string"
+      }
+    ],
+    "xml_data": [
+      {
+        "match": "</data>",
+        "token": "tag",
+        "pop": true
+      },
+      {
+        "match": "[^<]+|<",
+        "token": "constant"
+      }
+    ]
+  },
+  "sample": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <!-- Application Metadata -->\n  <key>CFBundleIdentifier</key>\n  <string>top.cooool.block</string>\n  <key>LSMinimumSystemVersion</key>\n  <string>14.0</string>\n  <key>NSHighResolutionCapable</key>\n  <true/>\n  <key>CFBundleVersion</key>\n  <integer>1024</integer>\n</dict>\n</plist>"
+}
