@@ -646,6 +646,11 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					prevBlank, para, paraLines = true, false, nil
 					continue
 				}
+				// A deeper quote starts a paragraph of its own: "   > 回滚步骤" under an
+				// item's text.
+				if n := len(paraLines); n > 0 && diffQuoteDepth(strings.TrimSpace(lines[paraLines[n-1]])) < diffQuoteDepth(t) {
+					paraLines = nil
+				}
 				// Under paragraph text "-" or "==" is a setext underline, not an empty list
 				// item, which may not interrupt a paragraph; in a list item's content
 				// ("- 部署说明" over "  ---", or "> - 部署说明" over ">   ---") it makes the
