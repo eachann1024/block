@@ -376,7 +376,7 @@ func (s *TabSurface) Render(
 							}
 							ui.Image(c, s.SVGSrc).Size(max(drawW, 4), max(drawH, 4))
 						} else {
-							icons.Duo(c, icons.Code, 42, true)
+							icons.Duo(c, icons.FileSvg, 42, true)
 							ui.Text(c, theme.Tr("SVG 预览不可用，可切换到源码编辑", "SVG preview unavailable — switch to Source")).
 								FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						}

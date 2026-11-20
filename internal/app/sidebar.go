@@ -293,45 +293,11 @@ func parentRootOfEntries(entries []model.FileEntry, fallback string) string {
 	return filepath.Dir(filepath.Clean(entries[0].Path))
 }
 
-func fileEntryIcon(name string) icons.Icon {
-	if files.IsMarkdown(name) {
-		return icons.Note
-	}
-	ext := strings.ToLower(filepath.Ext(name))
-	switch ext {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg":
-		return icons.Image
-	case ".html", ".htm":
-		return icons.LangHtml
-	case ".json":
-		return icons.LangJson
-	case ".yaml", ".yml":
-		return icons.LangYaml
-	case ".js", ".mjs", ".cjs":
-		return icons.LangJs
-	case ".ts", ".tsx":
-		return icons.LangTs
-	case ".py":
-		return icons.LangPython
-	case ".rs":
-		return icons.LangRust
-	case ".css":
-		return icons.LangCss
-	case ".sh", ".zsh", ".bash":
-		return icons.LangBash
-	case ".sql":
-		return icons.LangSql
-	case ".xml":
-		return icons.LangXml
-	default:
-		return icons.Code
-	}
-}
-
-// splitSidebarFileLabel splits a non-.md file name into its clean stem and a
-// short uppercase extension badge (up to 6 chars) for the sidebar row, keeping
-// canonical ".md" notes, folders, extensionless files, and very long suffixes
-// badge-free.
+// splitSidebarFileLabel splits an unrecognized non-.md file name into its clean
+// stem and a short uppercase extension badge (up to 6 chars) for the sidebar row.
+// Canonical ".md" notes, folders, files with dedicated icons, extensionless files,
+// and very long suffixes stay badge-free (files with dedicated icons keep their
+// full filename so icon + filename read cleanly together).
 func splitSidebarFileLabel(entry model.FileEntry) (title, extBadge string) {
 	if entry.IsDir {
 		return entry.Name, ""
@@ -341,6 +307,9 @@ func splitSidebarFileLabel(entry model.FileEntry) (title, extBadge string) {
 		raw = filepath.Base(entry.Path)
 	}
 	if files.HasHiddenExtension(raw) {
+		return entry.Name, ""
+	}
+	if _, dedicated := icons.FileIcon(raw); dedicated {
 		return entry.Name, ""
 	}
 	ext := filepath.Ext(raw)
@@ -761,9 +730,9 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		box := ui.Row(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
 			Radius(theme.RadiusMD).Background(pal.Paper).Border(1, pal.Accent)
 		box.Children(func() {
-			glyph := fileEntryIcon(filepath.Base(entry.Path))
+			glyph := icons.FileIconOrDefault(filepath.Base(entry.Path))
 			if entry.IsDir {
-				glyph = icons.Folder
+				glyph = icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
 			}
 			icons.Draw(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent))
 			c.Key("tree-rename-input")
@@ -908,10 +877,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			chevBox.Children(func() {
 				icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 			})
-			folderGlyph := icons.Folder
-			if r.Expanded {
-				folderGlyph = icons.FolderOpen
-			}
+			folderGlyph := icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
 				ic = pal.DuoIconColors(pal.Text)
@@ -926,7 +892,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, fileEntryIcon(filepath.Base(entry.Path)), theme.IconRow, ic)
+			icons.Draw(c, icons.FileIconOrDefault(filepath.Base(entry.Path)), theme.IconRow, ic)
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
