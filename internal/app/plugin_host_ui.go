@@ -37,6 +37,9 @@ type pluginToast struct {
 	EventKey string
 	Icon     *plugins.DuoIconSpec
 	native   func(context.Context) error
+	allowed  func() bool
+	shown    bool
+	sending  bool
 }
 
 type pluginDialogRef struct {
@@ -150,10 +153,10 @@ func normalizeToastTone(t string) string {
 }
 
 func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
-	h.onMain(func() { h.toast(pluginID, message, tone, "", icon, nil) })
+	h.onMain(func() { h.toast(pluginID, message, tone, "", icon, nil, nil) })
 }
 
-func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec, native func(context.Context) error) bool {
+func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec, native func(context.Context) error, allowed func() bool) bool {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		return false
@@ -204,7 +207,11 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		EventKey: eventKey,
 		Icon:     icCopy,
 		native:   native,
+		allowed:  allowed,
 	})
+	if pluginID == "block-sync" && native != nil {
+		h.syncToastRetry = true
+	}
 	if len(h.toasts) == 1 {
 		h.scheduleToastTimerLocked(id)
 	}
@@ -227,15 +234,34 @@ func (h *pluginHostUI) expireToast(id uint64) {
 	if !ok || toast.ID != id {
 		return
 	}
-	if win := h.w.Window(); toast.native == nil || win != nil && win.IsFocused() {
+	if toast.native == nil || toast.shown || (toast.allowed != nil && !toast.allowed()) {
 		h.finishToast(id, false)
 		return
 	}
+	if win := h.w.Window(); win != nil && win.IsFocused() {
+		h.mu.Lock()
+		if len(h.toasts) != 0 && h.toasts[0].ID == id {
+			h.scheduleToastTimerLocked(id)
+		}
+		h.mu.Unlock()
+		h.w.RequestRedraw()
+		return
+	}
+	h.mu.Lock()
+	if len(h.toasts) == 0 || h.toasts[0].ID != id || h.toasts[0].sending {
+		h.mu.Unlock()
+		return
+	}
+	h.toasts[0].sending = true
+	h.mu.Unlock()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		err := toast.native(ctx)
 		h.onMain(func() {
+			if err == nil {
+				h.markToastDelivered(toast)
+			}
 			h.finishToast(id, err != nil && !errors.Is(err, plugins.ErrSystemCanceled))
 		})
 	}()
@@ -247,14 +273,35 @@ func (h *pluginHostUI) restoreDeferredToasts() {
 		h.mu.Unlock()
 		return
 	}
+	deferred := append([]pluginToast(nil), h.deferredToasts...)
+	h.mu.Unlock()
+	for index, toast := range deferred {
+		if toast.allowed != nil && !toast.allowed() {
+			deferred[index] = pluginToast{}
+		}
+	}
+	h.mu.Lock()
 	idle := len(h.toasts) == 0
-	h.toasts = append(h.toasts, h.deferredToasts...)
+	for _, toast := range deferred {
+		if toast.ID != 0 {
+			h.toasts = append(h.toasts, toast)
+		}
+	}
 	h.deferredToasts = nil
-	if idle {
+	if idle && len(h.toasts) != 0 {
 		h.scheduleToastTimerLocked(h.toasts[0].ID)
 	}
 	h.mu.Unlock()
 	h.w.RequestRedraw()
+}
+
+func (h *pluginHostUI) markToastDelivered(toast pluginToast) {
+	if sup := h.w.Plugins(); sup != nil {
+		sup.MarkSystemNoticeDelivered(toast.PluginID, toast.EventKey)
+		if toast.PluginID == "block-sync" {
+			sup.RetrySyncNotifications()
+		}
+	}
 }
 
 func (h *pluginHostUI) finishToast(id uint64, deferred bool) {
@@ -269,6 +316,7 @@ func (h *pluginHostUI) finishToast(id uint64, deferred bool) {
 		return
 	}
 	if deferred {
+		h.toasts[0].sending = false
 		if focused {
 			h.scheduleToastTimerLocked(id)
 			h.mu.Unlock()
@@ -307,8 +355,17 @@ func (h *pluginHostUI) currentToast() (pluginToast, bool) {
 
 func (h *pluginHostUI) renderToast(c *ui.Context) {
 	toast, ok := h.currentToast()
-	if !ok {
+	if !ok || toast.sending {
 		return
+	}
+	if toast.native != nil {
+		if win := h.w.Window(); win == nil || !win.IsFocused() {
+			return
+		}
+		if !toast.shown && toast.allowed != nil && !toast.allowed() {
+			h.finishToast(toast.ID, false)
+			return
+		}
 	}
 	pal := theme.Ocean()
 	bg := pal.Menu
@@ -378,6 +435,15 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 			}
 		})
 	})
+	if toast.native != nil && !toast.shown {
+		h.mu.Lock()
+		if len(h.toasts) != 0 && h.toasts[0].ID == toast.ID {
+			h.toasts[0].shown = true
+			h.scheduleToastTimerLocked(toast.ID)
+		}
+		h.mu.Unlock()
+		h.markToastDelivered(toast)
+	}
 }
 
 func (h *pluginHostUI) OpenDialog(pluginID, dialogID string, checkValid func() error) (string, error) {
