@@ -228,7 +228,7 @@ func check(ctx context.Context, cfg Config) (counted string, err error) {
 		// ping lands on yesterday, and marking today would skip today altogether. A success
 		// without a readable day (a proxy or captive portal answering 200) proves nothing,
 		// so it is retried like a failure instead of marking today as done.
-		if !dayRe.MatchString(reply.Day) {
+		if _, perr := time.Parse("2006-01-02", reply.Day); perr != nil || !dayRe.MatchString(reply.Day) {
 			return "", fmt.Errorf("telemetry: server %d without a day", resp.StatusCode)
 		}
 		day = reply.Day
