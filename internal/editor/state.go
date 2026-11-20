@@ -895,6 +895,9 @@ func (s *Session) restoreSnapshot(snap undoSnapshot) {
 	s.toolbarPop = ""
 	s.toolbarMoreIndex = 0
 	s.commentDraft = ""
+	s.editingAnnotID = ""
+	s.editingAnnotText = ""
+	s.editingFocusPending = false
 	s.annotFlashID = ""
 	s.annotFlashAt = time.Time{}
 	s.annotFlashAlpha = 0

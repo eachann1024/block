@@ -399,7 +399,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if c.Shortcut(ui.Cmd, ui.KeyF) {
 		s.OpenFind()
 	}
-	if c.Shortcut(0, ui.KeyEscape) {
+	if !s.commentHandle.Focused(c) && !s.editingHandle.Focused(c) && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
 			s.cancelBlockDrag()
 		} else if s.isTableExtending() {
@@ -408,6 +408,9 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 			s.aiEscape()
 		} else if s.findOpen {
 			s.CloseFind()
+		} else if s.editingAnnotID != "" {
+			s.editingAnnotID = ""
+			s.editingFocusPending = false
 		} else if s.hasAnyOverlayOpen() {
 			s.closeTransientOverlays()
 		}
