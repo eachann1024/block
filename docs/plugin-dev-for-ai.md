@@ -611,7 +611,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 - 数量上限：`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`panels` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
-1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。
+1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。所有插件的按钮合计最多直接显示 **3** 个（窗口宽度小于 900 时 1 个，小于 720 时 0 个），其余按声明顺序收进顶栏的「更多插件」菜单，菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
 2. **`settings_sections`**（需 `"ui:settings"`）：在内置设置标签页末尾追加一张声明式设置分区卡片。
