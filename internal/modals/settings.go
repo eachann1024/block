@@ -614,6 +614,54 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 	})
 }
 
+// RenderSettingsTitlebarLeading lets the active plugin/store tab render its own
+// breadcrumb inside the window titlebar. Returns true if handled.
+func (m *Manager) RenderSettingsTitlebarLeading(c *ui.Context) bool {
+	if !m.settingsOpen || m.PluginHost == nil {
+		return false
+	}
+	tab := m.ActiveSettingsTab()
+	if !IsPluginSystemTab(tab) {
+		return false
+	}
+	return m.PluginHost.RenderTitlebarLeading(c, tab, m.selectSettingsTab)
+}
+
+// RenderSettingsTitlebarTrailing renders the unified right-side controls
+// (status, primary action / running progress, compact switch, more menu) in the
+// window titlebar for plugin and App Store detail tabs.
+func (m *Manager) RenderSettingsTitlebarTrailing(c *ui.Context) {
+	if !m.settingsOpen || m.PluginHost == nil {
+		return
+	}
+	tab := m.ActiveSettingsTab()
+	if !IsPluginSystemTab(tab) {
+		return
+	}
+	m.PluginHost.RenderTitlebarTrailing(c, tab, m.selectSettingsTab)
+}
+
+// RenderSettingsTitlebarOverlays draws floating menus and error popovers owned
+// by the Settings titlebar inside the top-level Overlay layer.
+func (m *Manager) RenderSettingsTitlebarOverlays(c *ui.Context) {
+	if !m.settingsOpen || m.PluginHost == nil {
+		return
+	}
+	tab := m.ActiveSettingsTab()
+	if !IsPluginSystemTab(tab) {
+		return
+	}
+	m.PluginHost.RenderTitlebarOverlays(c, tab, m.selectSettingsTab)
+}
+
+// CloseSettingsTitlebarOverlays closes any open plugin titlebar menu/popover.
+func (m *Manager) CloseSettingsTitlebarOverlays() bool {
+	if m.PluginHost == nil {
+		return false
+	}
+	return m.PluginHost.CloseTitlebarOverlays()
+}
+
 // RenderSettingsBody draws the scrollable Settings content page inside the workspace floating card.
 func (m *Manager) RenderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDrawer func()) {
 	m.renderSettingsBody(c, drawerOpen, onDismissDrawer, false)
@@ -684,62 +732,63 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 	if isPluginPage {
 		contentGap = theme.Space16
 	}
+	hideBodyHeader := !showCloseBtn && (isPluginPage || inStoreDetail)
+	padTop := theme.StorePagePadding
+	if hideBodyHeader {
+		padTop = theme.Space24
+	}
 
 	root.Children(func() {
 		internalui.Scroll(c.Key(scrollID), scroll).Grow(1).MinHeight(0).MinWidth(0).Fill().
-			Background(cardBG).Padding(theme.StorePagePadding, padX, padBottom, padX).AlignItems(ui.Center).Children(func() {
+			Background(cardBG).Padding(padTop, padX, padBottom, padX).AlignItems(ui.Center).Children(func() {
 			ui.Column(c.Key("settings-content")).FillWidth().MinWidth(0).MaxWidth(contentWidth).
 				Gap(contentGap).Children(func() {
-				ui.Column(c.Key("settings-header-wrap")).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
-					header := ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12)
-					if listing {
-						header.Wrap()
-					}
-					header.Children(func() {
-						title := ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center)
+				if !hideBodyHeader {
+					ui.Column(c.Key("settings-header-wrap")).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
+						header := ui.Row(c.Key("settings-header")).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12)
 						if listing {
-							title.Basis(theme.StoreTitleWidth)
+							header.Wrap()
 						}
-						title.Children(func() {
-							if isPluginPage {
-								m.PluginHost.RenderHeaderLeading(c, tab)
-							}
-							ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(titleSize).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-								if IsPluginSystemTab(tab) && m.PluginHost != nil && m.PluginHost.TabIsBeta(tab) {
-									internalui.BetaBadge(c, false)
-								}
-							})
-						})
-						hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
-						if hasExtras || showCloseBtn {
-							extras := ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0)
+						header.Children(func() {
+							title := ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center)
 							if listing {
-								extras.MinWidth(0).MaxWidthPercent(100).Shrink(1).Wrap()
+								title.Basis(theme.StoreTitleWidth)
 							}
-							extras.Children(func() {
-								if hasExtras {
-									m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
-								}
-								if showCloseBtn {
-									backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
-										ID:       "settings-back",
-										Label:    theme.Tr("返回", "Back"),
-										Tooltip:  theme.Tr("关闭设置", "Close Settings"),
-										Variant:  internalui.IconChrome,
-										IconSize: theme.IconInline,
-									})
-									if backBtn.Clicked() {
-										m.CloseSettings()
+							title.Children(func() {
+								ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+									ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(titleSize).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+									if IsPluginSystemTab(tab) && m.PluginHost != nil && m.PluginHost.TabIsBeta(tab) {
+										internalui.BetaBadge(c, false)
 									}
-								}
+								})
 							})
-						}
+							hasExtras := IsPluginSystemTab(tab) && m.PluginHost != nil
+							if hasExtras || showCloseBtn {
+								extras := ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Shrink(0)
+								if listing {
+									extras.MinWidth(0).MaxWidthPercent(100).Shrink(1).Wrap()
+								}
+								extras.Children(func() {
+									if hasExtras {
+										m.PluginHost.RenderHeaderExtras(c, tab, m.selectSettingsTab)
+									}
+									if showCloseBtn {
+										backBtn := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
+											ID:       "settings-back",
+											Label:    theme.Tr("返回", "Back"),
+											Tooltip:  theme.Tr("关闭设置", "Close Settings"),
+											Variant:  internalui.IconChrome,
+											IconSize: theme.IconInline,
+										})
+										if backBtn.Clicked() {
+											m.CloseSettings()
+										}
+									}
+								})
+							}
+						})
 					})
-					if isPluginPage {
-						m.PluginHost.RenderHeaderDivider(c, tab)
-					}
-				})
+				}
 
 				ui.Column(c.Key("settings-tab-stage-" + tab)).FillWidth().MinWidth(0).
 					Transition(internalui.SurfaceStageTransition()).Children(func() {
@@ -778,6 +827,7 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 			m.fontPickerOpen = ""
 		case m.searchIgnorePicker.Open:
 			m.searchIgnorePicker.Open = false
+		case m.CloseSettingsTitlebarOverlays():
 		case drawerOpen && onDismissDrawer != nil:
 			onDismissDrawer()
 		default:
@@ -800,6 +850,10 @@ func (m *Manager) selectSettingsTab(tab string) {
 	m.fontPickerOpen = ""
 	m.searchIgnorePicker.Open = false
 	m.settingsTab = tab
+	if previous == tab && IsStoreTab(tab) && m.PluginHost != nil && !m.PluginHost.StoreListing(tab) {
+		m.PluginHost.SettingsTabChanged(previous, tab)
+		return
+	}
 	m.notifySettingsTabChanged(previous, tab)
 }
 

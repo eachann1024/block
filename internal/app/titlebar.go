@@ -147,9 +147,12 @@ type TitlebarProps struct {
 	SidebarWide       bool
 	SidebarAutoHidden bool
 	SidebarWidth      float32
-	InSettings        bool
-	SettingsTabLabel  string
-	HideMark          bool
+	InSettings             bool
+	SettingsTabLabel       string
+	RenderSettingsLeading  func(c *ui.Context) bool
+	RenderSettingsTrailing func(c *ui.Context)
+	RenderSettingsOverlays func(c *ui.Context)
+	HideMark               bool
 	AIImmersive       bool
 	AIEnabled         bool
 	AIOpen            bool
@@ -405,6 +408,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		centerW := center.Bounds().W
 		center.Children(func() {
 			if p.InSettings {
+				if p.RenderSettingsLeading != nil && p.RenderSettingsLeading(c) {
+					return
+				}
 				crumb := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(4).PaddingX(6).DragWindow()
 				crumb.Children(func() {
 					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
@@ -473,18 +479,21 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			}
 		})
 
-		// 3. Right tail: Settings close button (only when the docked sidebar's
+		// 3. Right tail: Settings plugin/store controls + close button (when docked sidebar's
 		// "返回" is hidden), or contextual file tools + Feedback + AI Panel + Page More pill.
 		if p.InSettings {
-			if !p.SidebarWide {
-				pad := float32(titlebarActionTrailing)
-				if !theme.IsMacOS() {
-					pad = 0
-					if tb.Right > 0 {
-						pad = tb.Right + 8
-					}
+			pad := float32(titlebarActionTrailing)
+			if !theme.IsMacOS() {
+				pad = 0
+				if tb.Right > 0 {
+					pad = tb.Right + 8
 				}
-				ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Padding(0, pad, 0, 0).Children(func() {
+			}
+			ui.Row(c).FillHeight().Shrink(0).AlignItems(ui.Center).Gap(theme.Space8).Padding(0, pad, 0, 0).Children(func() {
+				if p.RenderSettingsTrailing != nil {
+					p.RenderSettingsTrailing(c)
+				}
+				if !p.SidebarWide {
 					closeBtn := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
 						ID:          "settings-back",
 						Label:       theme.Tr("关闭设置", "Close Settings"),
@@ -689,6 +698,9 @@ func renderTitlebarMenus(c *ui.Context, p TitlebarProps, availW float32) {
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
+		if p.InSettings && p.RenderSettingsOverlays != nil {
+			p.RenderSettingsOverlays(c)
+		}
 		if p.MenuState == nil || !p.MenuState.anyOpen() {
 			return
 		}
