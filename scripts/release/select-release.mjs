@@ -53,6 +53,8 @@ export function listGitTagVersions(root = ROOT) {
   }
 }
 
+export const MAX_WINDOWS_PE_PATCH = 65535;
+
 export function nextReleaseVersion({ currentVersion, releases = [], tagVersions = [] }) {
   const taken = [
     ...releases.map((release) => versionFromTag(release?.tag_name)),
@@ -73,6 +75,12 @@ export function nextReleaseVersion({ currentVersion, releases = [], tagVersions 
   }
   const used = new Set(taken);
   while (used.has(version)) version = bumpPatch(version);
+  const patch = Number(version.split(".")[2]);
+  if (patch > MAX_WINDOWS_PE_PATCH) {
+    throw new Error(
+      `Next version ${version} exceeds Windows PE 16-bit patch limit (${MAX_WINDOWS_PE_PATCH}); bump minor version in package.json/mygo.json first.`,
+    );
+  }
   return version;
 }
 
@@ -139,11 +147,11 @@ export function getReleases() {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const parsed = JSON.parse(gh(["api", `repos/${REPO}/releases?per_page=100`]));
-      if (!Array.isArray(parsed)) {
+      const pages = JSON.parse(gh(["api", "--paginate", "--slurp", `repos/${REPO}/releases?per_page=100`]));
+      if (!Array.isArray(pages)) {
         throw new Error(`Unexpected GitHub releases response for ${REPO}`);
       }
-      return parsed;
+      return pages.flat();
     } catch (err) {
       lastError = err;
       if (attempt < 3) sleepSync(1500 * attempt);
@@ -224,14 +232,39 @@ function preflightPath() {
 function loadPreflight(headSha, force) {
   if (process.env.BLOCK_USE_PREFLIGHT !== "1") return null;
   const path = preflightPath();
-  if (!existsSync(path)) return null;
-  try {
-    const data = JSON.parse(readFileSync(path, "utf8"));
-    if (data?.headSha === headSha && Boolean(data?.force) === Boolean(force)) {
-      return data;
-    }
-  } catch {}
-  return null;
+  if (!existsSync(path)) {
+    throw new Error(`BLOCK_USE_PREFLIGHT=1 is set but preflight snapshot is missing at ${path}`);
+  }
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  const valid = data
+    && data.headSha === headSha
+    && Boolean(data.force) === Boolean(force)
+    && typeof data.currentVersion === "string"
+    && /^\d+\.\d+\.\d+$/.test(data.version || "")
+    && Array.isArray(data.commits);
+  if (!valid) {
+    throw new Error(`Invalid or mismatched preflight snapshot at ${path}`);
+  }
+  return data;
+}
+
+function feedHasReleaseTag(tag) {
+  if (!tag) return true;
+  for (const ref of ["origin/main", "HEAD"]) {
+    try {
+      const raw = execFileSync("git", ["show", `${ref}:updates/feed.json`], {
+        cwd: ROOT,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const parsed = JSON.parse(raw);
+      return Boolean(
+        parsed?.latest_tag === tag
+        || (Array.isArray(parsed?.releases) && parsed.releases.some((r) => r?.tag === tag)),
+      );
+    } catch {}
+  }
+  return true;
 }
 
 function writeSkipPlan({ currentVersion, tag, headSha, extraPlan = {}, extraOutputs = {} }) {
@@ -276,6 +309,11 @@ async function main() {
 
     const previousSha = resolveTagCommit(previous);
     if (previousSha && previousSha === headSha && !force) {
+      if (!feedHasReleaseTag(previous.tag_name)) {
+        throw new Error(
+          `最新 Release ${previous.tag_name} 已发布但 updates/feed.json 尚未回写该版本，请使用 force=true 或补齐 feed 后再试。`,
+        );
+      }
       summary(`当前 HEAD (${headSha.slice(0, 7)}) 与最新 Release ${previous.tag_name} 完全一致，跳过构建。`);
       writeSkipPlan({
         currentVersion,
@@ -288,20 +326,9 @@ async function main() {
 
     rangeSpec = null;
     if (!(previousSha && previousSha === headSha)) {
-      try {
-        const resolved = resolveReleaseRange({ previous, previousSha, headSha });
-        rangeSpec = resolved.range;
-        if (resolved.note) summary(resolved.note);
-      } catch (error) {
-        summary(error?.message || String(error));
-        writeSkipPlan({
-          currentVersion,
-          tag: previous?.tag_name || "",
-          headSha,
-          extraOutputs: preflightOnly ? { needs_release: outputFlag(false) } : {},
-        });
-        return;
-      }
+      const resolved = resolveReleaseRange({ previous, previousSha, headSha });
+      rangeSpec = resolved.range;
+      if (resolved.note) summary(resolved.note);
     }
 
     commits = rangeSpec ? listCommits(ROOT, rangeSpec) : [];
@@ -337,6 +364,7 @@ async function main() {
   }
 
   const autoBump = version !== currentVersion;
+  const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
   let notes = await buildReleaseNotes({ version, commits });
   warnGeneration(notes);
 
@@ -356,9 +384,9 @@ async function main() {
   }
 
   if (!notes.markdown) {
-    if (commits.length === 0 && force) {
+    if (userCommits.length === 0 && force) {
       notes = { markdown: forcedReleaseNotes(), source: "forced" };
-      summary("没有新提交，因 force=true 使用手动发布说明。");
+      summary("没有面向用户的新提交，因 force=true 使用手动发布说明。");
     } else {
       summary(`更新说明没有覆盖区间里的 ${commits.length} 条提交（${notes.reason || "空"}），停止发布。`);
       const plan = {
