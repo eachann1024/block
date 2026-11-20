@@ -1056,7 +1056,7 @@ func renderFeedbackPart(c *ui.Context, index int, p feedback.Part) {
 				if p.Total > 0 {
 					pct = int(min(p.Sent*100/p.Total, 100))
 				}
-				feedbackMeta(c, fmt.Sprintf("%d%%", pct), pal.Accent).Width(30).TextAlign(ui.End)
+				feedbackMeta(c, fmt.Sprintf("%d%%", pct), pal.Accent).Width(38).TextAlign(ui.End)
 			case feedback.PartFailed:
 				feedbackMeta(c, size+theme.Tr(" · 没传上去", " · not uploaded"), pal.MenuDangerFG)
 			default:
