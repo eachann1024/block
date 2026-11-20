@@ -444,7 +444,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 					if rawTag, tok, consumed, failPos, sawQuoteOrGT, ok := tryParseHTMLTagAt(s, i, lastGT, lastDQ, lastSQ, pairedUnknown); ok {
 						// Literal HTML inline math (`<span class="math">` / `<code class="math">`) preserving same-tag styles.
 						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].isMark&model.MarkMath != 0 {
-							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, false); okLit {
+							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, false, tok[0].tag == "span"); okLit {
 								extraOpen := *tok[0]
 								extraOpen.isMark &^= model.MarkMath
 								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
@@ -461,7 +461,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 						}
 						// Literal HTML inline code (`<code>...</code>` without nested non-<br> tags) so soft-newlines round-trip.
 						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].tag == "code" && tok[0].isMark&model.MarkCode != 0 {
-							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, "code", true); okLit {
+							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, "code", true, false); okLit {
 								extraOpen := *tok[0]
 								extraOpen.isMark &^= model.MarkCode
 								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
@@ -754,7 +754,7 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 		if c == '<' {
 			if name, attrs, closed, empty, consumed, okTag := parseTagRaw(s[i:]); okTag && !closed && !empty {
 				if (name == "span" || name == "code") && (hasCSSClass(attrVal(attrs, "class"), "math") || name == "code") {
-					if _, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, name, name == "code" && !hasCSSClass(attrVal(attrs, "class"), "math")); okLit {
+					if _, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, name, name == "code" && !hasCSSClass(attrVal(attrs, "class"), "math"), false); okLit {
 						i = closeEnd
 						continue
 					}
@@ -775,12 +775,17 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 	return -1, false
 }
 
-func scanLiteralHTMLBody(s string, from int, tag string, rejectNestedTags bool) (text string, nextPos int, ok bool) {
+func scanLiteralHTMLBody(s string, from int, tag string, rejectNestedTags, stripLegacyDollar bool) (text string, nextPos int, ok bool) {
 	closeTag := "</" + tag + ">"
 	n := len(s)
 	for i := from; i < n; i++ {
 		if s[i] == '<' && i+len(closeTag) <= n && strings.EqualFold(s[i:i+len(closeTag)], closeTag) {
 			raw := s[from:i]
+			// Legacy Block versions wrapped <span class="math"> body in raw $...$;
+			// newly serialized literal $...$ uses &#36; at the outer boundaries.
+			if stripLegacyDollar && len(raw) >= 3 && raw[0] == '$' && raw[len(raw)-1] == '$' {
+				raw = raw[1 : len(raw)-1]
+			}
 			var out strings.Builder
 			out.Grow(len(raw))
 			for j := 0; j < len(raw); {
@@ -2058,7 +2063,7 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		} else if sp.Marks&model.MarkMath != 0 {
 			if useHTML || !canSerializeDollarMath(sp.Text) {
 				out.WriteString(`<span class="math">`)
-				writeLiteralHTMLText(&out, sp.Text)
+				writeLiteralMathHTMLText(&out, sp.Text)
 				out.WriteString(`</span>`)
 			} else {
 				writeInlineMath(&out, sp.Text)
@@ -2077,6 +2082,28 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 
 func writeLiteralHTMLText(out *strings.Builder, text string) {
 	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case '&':
+			out.WriteString("&amp;")
+		case '<':
+			out.WriteString("&lt;")
+		case '>':
+			out.WriteString("&gt;")
+		case '\n':
+			out.WriteString("<br>")
+		default:
+			out.WriteByte(text[i])
+		}
+	}
+}
+
+func writeLiteralMathHTMLText(out *strings.Builder, text string) {
+	escapeOuterDollar := len(text) >= 3 && text[0] == '$' && text[len(text)-1] == '$'
+	for i := 0; i < len(text); i++ {
+		if escapeOuterDollar && (i == 0 || i == len(text)-1) {
+			out.WriteString("&#36;")
+			continue
+		}
 		switch text[i] {
 		case '&':
 			out.WriteString("&amp;")

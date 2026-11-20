@@ -611,22 +611,26 @@ func escapeLiteralParagraphPrefix(s string) string {
 	if s == "" {
 		return s
 	}
-	lead := 0
-	for lead < len(s) && (s[lead] == ' ' || s[lead] == '\t') {
-		lead++
+	// Preserve literal leading whitespace in a plain paragraph so reload does not
+	// turn it into block Indent, an indented code block, or strip a space-only line.
+	if s[0] == ' ' {
+		return "&#32;" + s[1:]
 	}
-	if lead >= len(s) {
-		return s
+	if s[0] == '\t' {
+		return "&#9;" + s[1:]
 	}
-	rest := s[lead:]
+	rest := s
 	// Already escaped or literal HTML tag.
 	if rest[0] == '\\' {
 		return s
 	}
-	// Display math / container / fenced code blocks.
-	if strings.HasPrefix(rest, "$$") || strings.HasPrefix(rest, ":::") ||
-		strings.HasPrefix(rest, "```") || strings.HasPrefix(rest, "~~~") {
-		return s[:lead] + `\` + rest
+	// Display math / container / fenced code blocks (only when parseFenceBody would actually treat it as a fence,
+	// so leading inline code spans like ```a``b``` are not corrupted).
+	if strings.HasPrefix(rest, "$$") || strings.HasPrefix(rest, ":::") {
+		return `\` + rest
+	}
+	if _, _, _, isFence := parseFenceBody(rest); isFence {
+		return `\` + rest
 	}
 	// ATX headings `# `..`###### ` or bare `#`..`######`.
 	if rest[0] == '#' {
@@ -635,17 +639,17 @@ func escapeLiteralParagraphPrefix(s string) string {
 			n++
 		}
 		if n >= 1 && n <= 6 && (n == len(rest) || rest[n] == ' ' || rest[n] == '\t') {
-			return s[:lead] + `\` + rest
+			return `\` + rest
 		}
 	}
 	// Blockquote `>` / `>> `.
 	if rest[0] == '>' {
-		return s[:lead] + `\` + rest
+		return `\` + rest
 	}
 	// Bullet `- ` / `+ ` / `* ` (or bare `-`/`+`/`*` on a line).
 	if rest[0] == '-' || rest[0] == '+' || rest[0] == '*' {
 		if len(rest) == 1 || rest[1] == ' ' || rest[1] == '\t' {
-			return s[:lead] + `\` + rest
+			return `\` + rest
 		}
 	}
 	// Thematic break: >= 3 identical `-`, `*`, or `_` with optional spaces/tabs.
@@ -662,7 +666,7 @@ func escapeLiteralParagraphPrefix(s string) string {
 			}
 		}
 		if onlyRule && cnt >= 3 {
-			return s[:lead] + `\` + rest
+			return `\` + rest
 		}
 	}
 	// Ordered list `1. ` / `1) `.
@@ -671,7 +675,7 @@ func escapeLiteralParagraphPrefix(s string) string {
 		d++
 	}
 	if d > 0 && d < len(rest) && (rest[d] == '.' || rest[d] == ')') && (d+1 == len(rest) || rest[d+1] == ' ' || rest[d+1] == '\t') {
-		return s[:lead+d] + `\` + rest[d:]
+		return rest[:d] + `\` + rest[d:]
 	}
 	return s
 }
@@ -1041,7 +1045,10 @@ func splitSpansByNewline(spans []model.Span) [][]model.Span {
 	}
 	lines := [][]model.Span{{}}
 	for _, sp := range spans {
-		if !strings.ContainsRune(sp.Text, '\n') {
+		// Keep inline code/math spans intact across soft newlines so SerializeInline
+		// emits <code>...<br>...</code> / <span class="math">...<br>...</span> on one
+		// Markdown line instead of splitting them into separate chips.
+		if sp.Marks&(model.MarkCode|model.MarkMath) != 0 || !strings.ContainsRune(sp.Text, '\n') {
 			lines[len(lines)-1] = append(lines[len(lines)-1], sp)
 			continue
 		}
@@ -1118,19 +1125,10 @@ func serializeInlineHTML(spans []model.Span, out *strings.Builder) {
 		for _, t := range openTags {
 			out.WriteString(t)
 		}
-		for i := 0; i < len(sp.Text); i++ {
-			switch sp.Text[i] {
-			case '&':
-				out.WriteString("&amp;")
-			case '<':
-				out.WriteString("&lt;")
-			case '>':
-				out.WriteString("&gt;")
-			case '\n':
-				out.WriteString("<br>")
-			default:
-				out.WriteByte(sp.Text[i])
-			}
+		if sp.Marks&model.MarkMath != 0 {
+			writeLiteralMathHTMLText(out, sp.Text)
+		} else {
+			writeLiteralHTMLText(out, sp.Text)
 		}
 		for i := len(closeTags) - 1; i >= 0; i-- {
 			out.WriteString(closeTags[i])

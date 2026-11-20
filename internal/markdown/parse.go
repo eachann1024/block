@@ -26,6 +26,10 @@ func (c *Codec) Serialize(doc *model.Doc) string {
 	return SerializeMarkdown(doc)
 }
 
+func (c *Codec) SerializeInline(spans []model.Span) string {
+	return SerializeInline(spans)
+}
+
 func (c *Codec) NormalizePaste(raw string) string {
 	return NormalizePasteText(raw)
 }
