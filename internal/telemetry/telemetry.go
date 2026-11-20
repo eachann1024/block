@@ -29,7 +29,7 @@ import (
 const Endpoint = "https://block.cooool.top/api/ping"
 
 const (
-	startDelay    = 45 * time.Second
+	startDelay    = 5 * time.Second // short enough that quick open-and-close sessions still count
 	checkInterval = 3 * time.Hour
 	fileName      = "telemetry.json"
 )
