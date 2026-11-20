@@ -247,6 +247,7 @@ type SearchHit struct {
 	Path       string
 	Notebook   string
 	Title      string
+	TitleMatch bool
 	Query      string
 	Line       int // 1-based source line, or 0 for a title-only match
 	Column     int // 0-based byte offset within the source line

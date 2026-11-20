@@ -607,6 +607,7 @@ func executeSearchWithSnapshot(
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return nil, nil, ""
 		}
+		files.LogWarnf("workspace search failed: err=%v", err)
 		return nil, nil, err.Error()
 	}
 	if ctx.Err() != nil {
@@ -624,8 +625,8 @@ func executeSearchWithSnapshot(
 	}
 	paired := make([]pairedHit, 0, len(hits))
 	for _, h := range hits {
-		titleMarks := files.FindFoldMatches(h.Title, q)
-		snippetMarks := files.FindFoldMatches(h.Snippet, q)
+		titleMarks := files.FindTitleHighlights(h.Title, q)
+		snippetMarks := files.FindBodyHighlights(h.Snippet, q)
 		if len(snippetMarks) == 0 && h.MatchEnd > h.MatchStart && h.MatchEnd <= len(h.Snippet) {
 			snippetMarks = [][2]int{{h.MatchStart, h.MatchEnd}}
 		}
@@ -636,7 +637,7 @@ func executeSearchWithSnapshot(
 		paired = append(paired, pairedHit{
 			hit: h,
 			meta: searchHitMeta{
-				titleMatch:   len(titleMarks) > 0,
+				titleMatch:   h.TitleMatch || len(titleMarks) > 0,
 				titleMarks:   titleMarks,
 				snippetMarks: snippetMarks,
 				count:        cnt,
@@ -1445,8 +1446,8 @@ func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query strin
 		return st.hitMeta[idx]
 	}
 	q := strings.TrimSpace(query)
-	titleMarks := files.FindFoldMatches(hit.Title, q)
-	snippetMarks := files.FindFoldMatches(hit.Snippet, q)
+	titleMarks := files.FindTitleHighlights(hit.Title, q)
+	snippetMarks := files.FindBodyHighlights(hit.Snippet, q)
 	if len(snippetMarks) == 0 && hit.MatchEnd > hit.MatchStart && hit.MatchEnd <= len(hit.Snippet) {
 		snippetMarks = [][2]int{{hit.MatchStart, hit.MatchEnd}}
 	}
@@ -1455,7 +1456,7 @@ func hitMetaAt(st *searchPaletteState, idx int, hit model.SearchHit, query strin
 		cnt = 1
 	}
 	return searchHitMeta{
-		titleMatch:   len(titleMarks) > 0,
+		titleMatch:   hit.TitleMatch || len(titleMarks) > 0,
 		titleMarks:   titleMarks,
 		snippetMarks: snippetMarks,
 		count:        cnt,
