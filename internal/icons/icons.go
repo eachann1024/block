@@ -169,6 +169,44 @@ const (
 	Video           Icon = "video"
 	Paperclip       Icon = "paperclip"
 	ShieldCheck     Icon = "shield-check"
+	FilePdf         Icon = "file-pdf"
+	FileWord        Icon = "file-word"
+	FileSheet       Icon = "file-sheet"
+	FileSlides      Icon = "file-slides"
+	FileLog         Icon = "file-log"
+	FileBook        Icon = "file-book"
+	LangReact       Icon = "lang-react"
+	LangGo          Icon = "lang-go"
+	LangJava        Icon = "lang-java"
+	LangKotlin      Icon = "lang-kotlin"
+	LangSwift       Icon = "lang-swift"
+	LangC           Icon = "lang-c"
+	LangCpp         Icon = "lang-cpp"
+	LangCsharp      Icon = "lang-csharp"
+	LangRuby        Icon = "lang-ruby"
+	LangPhp         Icon = "lang-php"
+	LangLua         Icon = "lang-lua"
+	LangVue         Icon = "lang-vue"
+	FileConfig      Icon = "file-config"
+	FileEnv         Icon = "file-env"
+	FileLock        Icon = "file-lock"
+	FileSvg         Icon = "file-svg"
+	FileAudio       Icon = "file-audio"
+	FileFont        Icon = "file-font"
+	FileArchive     Icon = "file-archive"
+	FileBinary      Icon = "file-binary"
+	FileReadme      Icon = "file-readme"
+	FileLicense     Icon = "file-license"
+	FileDocker      Icon = "file-docker"
+	FileGit         Icon = "file-git"
+	Wrench          Icon = "wrench"
+	Tag             Icon = "tag"
+	FolderSrc       Icon = "folder-src"
+	FolderDocs      Icon = "folder-docs"
+	FolderAssets    Icon = "folder-assets"
+	FolderTests     Icon = "folder-tests"
+	FolderGit       Icon = "folder-git"
+	FolderDeps      Icon = "folder-deps"
 )
 
 type MascotState string
@@ -256,6 +294,15 @@ func Draw(c *ui.Context, glyph Icon, size float32, colors theme.IconColors) ui.E
 	return root
 }
 
+func isFolderIcon(glyph Icon) bool {
+	switch glyph {
+	case Folder, FolderOpen, FolderPlus,
+		FolderSrc, FolderDocs, FolderAssets, FolderTests, FolderGit, FolderDeps:
+		return true
+	}
+	return false
+}
+
 // DrawAnimated gives semantic icon layers short hover motion with immediate color feedback.
 func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColors, active bool) ui.Element {
 	if size <= 0 {
@@ -274,7 +321,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 
 	if moving {
 		switch glyph {
-		case Folder, FolderOpen, FolderPlus:
+		case Folder, FolderOpen, FolderPlus,
+			FolderSrc, FolderDocs, FolderAssets, FolderTests, FolderGit, FolderDeps:
 			root.Translate(0, -1.2*k*p)
 		case FolderReveal:
 			sc := 1 + 0.05*p
@@ -322,8 +370,7 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 	}
 
 	root.Children(func() {
-		isFolder := glyph == Folder || glyph == FolderOpen || glyph == FolderPlus
-		if isFolder {
+		if isFolderIcon(glyph) {
 			if lineCol.A > 0 {
 				if line := loadSVG("icons/" + string(glyph) + ".line.svg"); line != nil {
 					ui.Icon(c, line).Absolute().Top(0).Left(0).Size(size, size).TextColor(lineCol)
