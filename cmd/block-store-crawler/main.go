@@ -490,8 +490,8 @@ func loadVerifiedRegistry(path string) (verifiedRegistry, error) {
 	for rawID, rawRepo := range bindings {
 		id := normalizeKey(rawID)
 		repo := normalizeKey(rawRepo)
-		if id == "" || !isValidRepoSlug(repo) {
-			return reg, fmt.Errorf("invalid verified binding %q -> %q", rawID, rawRepo)
+		if id == "" || !isValidRepoSlug(repo) || !plugins.IsOfficialRepo(repo) {
+			return reg, fmt.Errorf("invalid verified binding %q -> %q (must belong to blockmd-plugins/)", rawID, rawRepo)
 		}
 		if id == plugins.DiagnosticsPluginID {
 			return reg, fmt.Errorf("verified registry must not include reserved id %q", id)
