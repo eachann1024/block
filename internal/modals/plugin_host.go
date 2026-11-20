@@ -29,6 +29,7 @@ type PluginNavEntry struct {
 
 // PluginSettingsHost decouples Settings UI chrome from the App Store & out-of-process plugin runtime.
 type PluginSettingsHost interface {
+	SettingsTabChanged(previous, current string)
 	NavEntries() []PluginNavEntry
 	TabTitle(tab string) string
 	TabIsBeta(tab string) bool

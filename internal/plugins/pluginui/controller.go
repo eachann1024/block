@@ -75,6 +75,19 @@ func (c *Controller) OpenStoreSource(source string) {
 	c.closeStoreReadme()
 }
 
+// SettingsTabChanged follows settings navigation. Opening or closing a detail
+// stays within the store tab and therefore does not reload the catalog.
+func (c *Controller) SettingsTabChanged(previous, current string) {
+	if c.sup == nil {
+		return
+	}
+	if current == modals.TabAppStore {
+		c.sup.RefreshCatalogAsync()
+	} else if previous == modals.TabAppStore {
+		c.closeStoreReadme()
+	}
+}
+
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	c.closeStoreReadmeIfNotRenderedRecently(2 * time.Second)
@@ -274,7 +287,6 @@ func (c *Controller) RenderTabBody(ctx *ui.Context, tab string, onSelectTab func
 		return
 	}
 	if tab == modals.TabAppStore {
-		c.sup.MaybeRefreshCatalogAsync(5 * time.Minute)
 		if c.storeDetailOpen() {
 			renderStoreDetail(ctx, c, onSelectTab)
 			return
