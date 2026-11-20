@@ -69,7 +69,7 @@
 
 ### 8.3 多表面（Surfaces）渲染与状态隔离
 
-- `manifest.surfaces` 仍固定填写 `["settings_page"]`；`settings_sections`、`panels`、`sidebar_sections`、`dialogs` 会自动启用下列前缀表面：
+- 需要独立设置页时在 `manifest.surfaces` 中填写 `["settings_page"]`（无独立设置页的插件可省略）；`settings_sections`、`panels`、`sidebar_sections`、`dialogs` 会自动启用下列前缀表面：
   - `"settings_section:<id>"`
   - `"panel:<id>"`
   - `"sidebar_section:<id>"`
