@@ -48,9 +48,15 @@ type TabMenuState struct {
 	PluginCtxAnchor   ui.Rect
 
 	// tabCenterW is the tab cell width the pills were last sized from (-1: not laid out yet).
-	tabCenterW      float32
-	lastViewportW   float32
-	revealActiveTab bool
+	tabCenterW float32
+	// plugin*: last laid-out center cell width and plugin zone, so inline plugin
+	// buttons fill real free space instead of fixed window breakpoints.
+	pluginCenterW    float32
+	pluginZoneW      float32
+	pluginInlineN    int
+	pluginLimitReady bool
+	lastViewportW    float32
+	revealActiveTab  bool
 
 	TabScroll       ui.ScrollState
 	LastActiveTab   string
@@ -412,6 +418,9 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		blockui.Probe(center, "titlebar-tabs")
 		centerW := center.Bounds().W
 		center.Children(func() {
+		if p.MenuState != nil {
+			p.MenuState.pluginCenterW = centerW
+		}
 			if p.InSettings {
 				if p.RenderSettingsLeading != nil && p.RenderSettingsLeading(c) {
 					return

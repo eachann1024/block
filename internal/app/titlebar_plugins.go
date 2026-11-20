@@ -176,18 +176,71 @@ func splitPluginTitlebarButtons(p TitlebarProps, vpW, availW float32) (inline, o
 			used[slot] = true
 		}
 	}
-	limit := maxInlinePluginButtons
-	switch {
-	case vpW <= 0:
-	case isNarrowTitlebar(vpW, availW):
-		limit = 0
-	case vpW < titlebarMediumBreakpoint || (availW > 0 && availW < titlebarMediumAvailW):
-		limit = 1
-	}
+	limit := pluginInlineLimit(p, vpW, availW, len(ordered))
 	if len(ordered) <= limit {
 		return ordered, nil
 	}
 	return ordered[:limit], ordered[limit:]
+}
+
+// pluginInlineLimit decides how many plugin buttons sit inline. Once the titlebar has
+// been laid out it measures the center cell's real slack (plus the plugin zone it
+// already holds) so roomy titlebars never fold plugins; before that it falls back to
+// window breakpoints.
+func pluginInlineLimit(p TitlebarProps, vpW, availW float32, n int) int {
+	if m := p.MenuState; m != nil && m.pluginLimitReady {
+		return min(m.pluginInlineN, n)
+	}
+	return pluginInlineLimitFor(p, vpW, availW, n)
+}
+
+func pluginInlineLimitFor(p TitlebarProps, vpW, availW float32, n int) int {
+	if vpW <= 0 || n == 0 {
+		return min(maxInlinePluginButtons, n)
+	}
+	if isTightTitlebar(availW) {
+		return 0
+	}
+	if m := p.MenuState; m != nil && m.pluginCenterW > 0 {
+		budget := m.pluginCenterW - pluginCenterNeed(p) + m.pluginZoneW
+		for limit := min(maxInlinePluginButtons, n); limit > 0; limit-- {
+			if pluginZoneWidth(limit, n) <= budget {
+				return limit
+			}
+		}
+		return 0
+	}
+	switch {
+	case isNarrowTitlebar(vpW, availW):
+		return 0
+	case vpW < titlebarMediumBreakpoint || (availW > 0 && availW < titlebarMediumAvailW):
+		return min(1, n)
+	}
+	return min(maxInlinePluginButtons, n)
+}
+
+// pluginSlotW is one titlebar button plus the tail row gap.
+const pluginSlotW = float32(theme.ChromeBoxSize) + 4
+
+func pluginZoneWidth(inline, total int) float32 {
+	w := float32(inline) * pluginSlotW
+	if total > inline {
+		w += pluginSlotW
+	}
+	return w
+}
+
+// pluginCenterNeed is the minimum center cell width the tabs/title keep before
+// plugin buttons may claim the rest.
+func pluginCenterNeed(p TitlebarProps) float32 {
+	switch n := len(p.Tabs); {
+	case n == 0:
+		return 140
+	case n == 1:
+		return 260
+	default:
+		return min(float32(n)*tabMinW+float32(theme.ChromeBoxSize)+12, 420)
+	}
 }
 
 func pluginButtonSlotID(b plugins.ResolvedTitlebarButton) string {

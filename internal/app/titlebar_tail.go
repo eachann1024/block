@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"block/internal/icons"
 	"block/internal/plugins"
@@ -58,7 +59,19 @@ func renderTitlebarTail(c *ui.Context, p TitlebarProps, rightInset, availW float
 // buttons, an overflow button for the rest, then a hairline before the built-in tools.
 func renderPluginTitlebarButtons(c *ui.Context, p TitlebarProps, hasBuiltinTail bool, availW float32) {
 	vpW, _ := c.Size()
+	if m := p.MenuState; m != nil {
+		m.pluginLimitReady = false
+	}
 	inline, overflow := splitPluginTitlebarButtons(p, vpW, availW)
+	if m := p.MenuState; m != nil {
+		zone := pluginZoneWidth(len(inline), len(inline)+len(overflow))
+		if zone != m.pluginZoneW {
+			c.After(16 * time.Millisecond)
+		}
+		m.pluginZoneW = zone
+		m.pluginInlineN = len(inline)
+		m.pluginLimitReady = true
+	}
 	if len(inline) == 0 && len(overflow) == 0 {
 		return
 	}

@@ -497,6 +497,7 @@ func (w *Workspace) renderFloatingSidebarCard(
 		},
 		OnForgetNotebook: w.ForgetNotebook,
 		OnChooseNotebook: w.ChooseNotebookDialog,
+		RequestRedraw:    w.RequestRedraw,
 		OnOpenSettings: func() {
 			w.edgeFloat.DismissAll(w)
 			w.OpenSettings("ai")

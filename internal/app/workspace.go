@@ -5077,6 +5077,7 @@ func (w *Workspace) renderSidebarColumn(
 		},
 		OnForgetNotebook: w.ForgetNotebook,
 		OnChooseNotebook: w.ChooseNotebookDialog,
+		RequestRedraw:    w.RequestRedraw,
 		OnOpenSettings: func() {
 			w.OpenSettings("ai")
 		},
