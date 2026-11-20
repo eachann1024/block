@@ -14,7 +14,8 @@
   <a href="https://block.cooool.top/">官网下载</a> ·
   <a href="https://github.com/eachann1024/block/releases/latest">最新版本</a> ·
   <a href="https://block.cooool.top/#compare">软件对比</a> ·
-  <a href="docs/plugin-dev-for-ai.md">插件开发指南</a>
+  <a href="docs/README.md">完整文档</a> ·
+  <a href="docs/plugins/README.md">插件开发指南</a>
 </p>
 
 <p align="center">

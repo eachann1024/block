@@ -1,5 +1,7 @@
 # Block 应用商店插件开发指南（AI 自包含规范 v1 · `blockmd`）
 
+> 本文由 `bun run docs:sync` 自动从 [`docs/plugins/`](plugins/README.md) 各章节拼装生成，与 GitHub 仓库文档及官网 [block.cooool.top/plugins](https://block.cooool.top/plugins/) 保持同源同步。
+
 本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。
 
 ---
@@ -10,7 +12,7 @@
   - 安装路径：`<BlockAppData>/apps/<plugin-id>/`
   - 私有存储：`<BlockAppData>/apps-data/<plugin-id>/state.json`（停用状态与目录缓存位于 `<BlockAppData>/apps-cache/`）
   - 外部深度链接（`block://`、`blockmd://` 的 `store` / `install`）：按 `repo` → `url` → `id` 顺序取**第一个非空**查询参数，仅用该单一值匹配当前目录中的 `id`、`repo` 或精确 `download_url`（未命中时不会回退尝试后续参数，直接停留在商店列表），不自动安装。
-  - 新安装的插件默认停用，用户手动启用后才会启动；同 `id` 升级保留原有启用状态。商店卡片的「更新」按钮仅在目录版本高于已装版本时出现；手动安装同 `id` 不要求版本递增。
+  - 新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。商店卡片的「更新」按钮仅在目录版本高于已装版本时出现；手动安装同 `id` 不要求版本递增。
   - 替换机制：用户在应用商店或手动安装中主动点击安装/更新，宿主会先校验候选包与现有包清单、停止旧进程，再通过两步目录重命名配合 `.previous` 备份完成可恢复替换，允许跨来源或新增权限；非交互接口默认拒绝跨来源、旧包无来源记录或新增权限的替换。桌面卸载移除插件程序，并保留私有配置供重新安装。
   - **保留 ID**：`block-diagnostics` 对应 Block 内置「性能与占用」窗口，宿主拒绝安装与启用该 ID、设置侧栏不挂载，远程采集器、缓存合并与离线内置索引回退均会过滤该 ID。
 - **跨语言双向 JSON-RPC 2.0**：宿主以独立子进程启动 `manifest.json` 中的 `entry.command`（推荐 `["python3", "-u", "main.py"]`、`["node", "main.mjs"]` 或编译后可执行文件），通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换笔记本或切换 Block 界面语言（`zh` / `en`）时，宿主会自动重启插件子进程并以新 `locale` 重新渲染所有活跃表面。
@@ -18,7 +20,7 @@
   - **环境变量白名单**：宿主仅显式传入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`、`BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`，不继承其他宿主环境变量。
   - **超时与进程终止**：
     - 首载 15s、编辑预览 8s、定时轮询 5s 由初始化与渲染共享，计时在等待外层插件 RPC 锁前起算；这三条路径的锁等待不可取消（总耗时可能超过标称值，且仅在锁队列中耗尽预算不会强杀正在执行另一请求的进程）。
-    - `plugin.action` 120s 含可取消的排队等待与表单补刷（顶栏提供「取消任务」）。
+    - `plugin.action` 120s 含可取消的排队等待与表单补刷（顶栏运行胶囊提供 `■` 取消按钮）。
     - `plugin.event` 45s 在拿到插件 RPC 锁后起算，由初始化、事件与后续刷新共享。
     - 宿主回写 `host.*` 响应的 5s 超时在宿主方法执行完成后起算。
     - `plugin.shutdown` 给 2s 优雅退出窗口，超时强杀后再最多等 1s。macOS/Linux 在独立进程组（`Setpgid`）运行并在超时/强杀时终止整组，其他平台终止直接子进程。
@@ -28,13 +30,18 @@
     - 私有存储 `state.json` 序列化上限 **8 MiB**（单次 `host.storage.set` 行仍受 4 MiB 上限约束）。
     - 笔记读取及写入前读取旧文件上限 **16 MiB**；`host.notes.write` 传入的新正文同时受 4 MiB 单行传输上限约束。
     - 安装归档下载 <= **64 MiB**、单文件 <= **32 MiB**、解包或本地目录复制总计 <= **256 MiB**（tar 解压流 <= **320 MiB**）、路径/条目数 <= **8192**（含推导父目录）、单路径 <= 1024 字节且 `< 32` 级目录、禁止 `\` 与 `:`、仅允许普通文件与目录（不支持符号链接）。
-- **原生设置挂载与商店详情页**：已安装插件自动挂载在「设置」左侧导航栏分割线下方（位于「应用商店」之下），设置顶栏显示 `manifest.name`，并自动提供启用开关（`TogglePill`）、运行状态/取消任务与「卸载」入口。应用商店支持「全部 / 已安装 / 未安装」筛选，官方认证插件展示「官方 / Official」徽章，目录拉取在主源不可达时自动回退 jsDelivr CDN；点击卡片在商店内以只读编辑器渲染插件说明文档（中文优先，正文上限 512 KiB UTF-8）：
-  - 本地已安装包按语言查根目录普通文件（不区分大小写）：中文依次查 `README.zh.md` → `README.md` → `README.markdown` → `README.txt` → `README`；英文依次查 `README.en.md` → `README.en.markdown` → `README.en.txt` → `README.md` → `README.markdown` → `README.txt` → `README`。
-  - 本地缺失、为空或读取失败且存在有效仓库时优先回退 GitHub API（英文先查 `contents/README.en.md`，404 时再回退 `/readme`；中文直接查 `/readme`），当 GitHub API 不可达或限流时自动回退 jsDelivr CDN（`README.en.md` / `README.md`）；切换界面语言或完成安装/更新时自动刷新详情页说明。
-  - 详情页支持相对路径图片、SVG、GIF（超动画预算可降为静态）与受限视频（最多 24 项媒体，其中视频最多 2 项，单张图片 <= 6 MiB，单个视频 <= 24 MiB）。
+- **原生设置挂载、应用商店与详情页**：
+  - **侧栏与顶栏控制**：已安装插件统一收拢在「设置」左侧导航栏「已安装」分组下（位于「应用商店」之下），带运行状态指示点。插件设置页头部与设置窗口标题栏统一采用 Ocean Paper 拨弦开关（Pluck Switch / `PluckDivider`）作为主控开关，并自动提供单行合并状态位、主操作位/实时进度胶囊与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与卸载），插件无需自行绘制启用开关或卸载按钮。
+  - **分类、筛选与搜索**：应用商店固定提供 5 大分类标签（同步与迁移 / 编辑增强 / 外观 / 工具 / 语言扩展），支持按安装状态（全部 / 已安装 / 未安装）与来源筛选，支持中英文名称与摘要联合模糊搜索并高亮命中字符；目录拉取在主源不可达时自动回退 jsDelivr CDN。
+  - **三级信任标识**：应用商店按来源区分三类状态——`Block 官方`（`blockmd-plugins/*` 且在 `verified.json` 1:1 绑定，展示官方徽章）、`已审核`（`eachann1024/*` 信任作者源）、`未审核`（其余社区仓库，展示审阅风险提示）。
+  - **权限胶囊悬停说明**：商店详情页在元信息行下方以胶囊形式列出 `permissions`，鼠标悬停每个权限胶囊时弹出结构化信息卡片：若插件在 `manifest.permission_reasons` 中填写了自定义缘由，优先展示该插件的具体用途并附带系统权限范围说明；未填写时自动展示系统内置的双语权限说明。
+  - **详情页 README 渲染**：点击卡片在商店内以无嵌套滚动的只读编辑器直排渲染插件说明文档（中文优先，正文上限 512 KiB UTF-8），支持 GitHub 风格 `<picture>` 深浅色自适应图：
+    - 本地已安装包按语言查根目录普通文件（不区分大小写）：中文依次查 `README.zh.md` → `README.md` → `README.markdown` → `README.txt` → `README`；英文依次查 `README.en.md` → `README.en.markdown` → `README.en.txt` → `README.md` → `README.markdown` → `README.txt` → `README`。
+    - 本地缺失、为空或读取失败且存在有效仓库时优先回退 GitHub API（英文先查 `contents/README.en.md`，404 时再回退 `/readme`；中文直接查 `/readme`），当 GitHub API 不可达或限流时自动回退 jsDelivr CDN（`README.en.md` / `README.md`）；切换界面语言或完成安装/更新时自动刷新详情页说明。
+    - 详情页支持相对路径图片、SVG、GIF（超动画预算可降为静态）与受限视频（最多 24 项媒体，其中视频最多 2 项，单张图片 <= 6 MiB，单个视频 <= 24 MiB）。
 - **两项强制校验规则（违规直接拒绝加载）**：
-  1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary` 以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（`U+1F300–U+1FAFF`、`U+2600–U+27BF`、`U+FE00–U+FE0F`），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
-  2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。
+  1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（`U+1F300–U+1FAFF`、`U+2600–U+27BF`、`U+FE00–U+FE0F`），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
+  2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象，且禁止重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。
 
 ---
 
@@ -57,6 +64,7 @@ example-sync/
   "app": "blockmd",
   "schema_version": 1,
   "id": "example-sync",
+  "category": "sync",
   "name": {
     "zh": "示例同步",
     "en": "Example Sync"
@@ -79,6 +87,28 @@ example-sync/
     "network",
     "events:note_saved"
   ],
+  "permission_reasons": {
+    "storage": {
+      "zh": "保存同步通道配置、凭据摘要与最近同步记录。",
+      "en": "Store sync target configuration, credentials, and recent sync history."
+    },
+    "notes:read": {
+      "zh": "扫描已选笔记本中的 Markdown 文件以计算增量差异。",
+      "en": "Scan Markdown files in selected notebooks to compute incremental diffs."
+    },
+    "notes:write": {
+      "zh": "将远端更新写回本地笔记本并按策略处理冲突副本。",
+      "en": "Write remote updates back to local notebooks and save conflict copies."
+    },
+    "network": {
+      "zh": "连接 WebDAV 服务器或远程 Git 仓库收发笔记变更。",
+      "en": "Connect to WebDAV servers or remote Git repositories to transfer changes."
+    },
+    "events:note_saved": {
+      "zh": "在保存笔记后自动触发后台增量同步。",
+      "en": "Automatically trigger incremental background sync after saving a note."
+    }
+  },
   "surfaces": [
     "settings_page"
   ],
@@ -116,6 +146,10 @@ example-sync/
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
   - 以及第 8 节定义的 9 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
+- `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐填写以帮助用户在安装前理解用途）：
+  - 每个键必须是合法权限枚举，且**必须已声明在 `manifest.permissions` 中**（不可为未申请的权限填写缘由）。
+  - 每项须提供 `zh` 或 `en` 至少其一非空文本（启用双语门禁的官方或 `-bilingual` 插件必须同时提供纯英文 `en`），长度限制 `zh <= 80` 个 Unicode 字符、`en <= 140` 个 Unicode 字符，**严禁包含 Emoji**。
+  - **展示规则**：在应用商店详情页鼠标悬停权限胶囊时，若填写了自定义缘由，气泡优先显示该插件的具体用途，并在下方附带系统默认权限边界说明；若未填写，宿主自动展示内置的双语权限说明。商店采集器会将 `permission_reasons` 同步写入 `store-index.json`。
 - `surfaces`：常规插件必填固定为 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）；纯声明式语言扩展可省略或为空数组 `[]`。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见第 8 节与第 9 节。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。
@@ -138,7 +172,7 @@ example-sync/
        "notebook_root": "/abs/path/to/notebook",
        "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
        "locale": "zh",
-       "host_version": "1.0.696",
+       "host_version": "1.0.854",
        "ui_capabilities": [
          "kv_tooltip", "treemap", "host_perf", "checklist", "form_layout",
          "multi_notebook", "card_collapse", "metric_tone", "log_columns", "file_picker",
@@ -232,7 +266,13 @@ example-sync/
      2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
      3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
    - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
-8. **`host.perf.snapshot`**（需 `"notes:read"`）
+8. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
+   - 在 `plugin.action` 执行期间实时上报进度，推荐以 JSON-RPC 2.0 通知（省略 `id`，无需等待响应，宿主走内联快速通道以保证顺序且不占并发槽）发送，也支持普通调用（返回 `{"ok": true}`）：
+     - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
+     - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
+     - 可选 `label` 覆盖运行动词（最多 32 字符；默认由宿主按 `action_id` 推断，如 `同步中` / `迁入中` / `上传中`）
+   - 空载荷或无效参数不会覆盖当前进度；动作结束或取消时宿主自动清空进度，并在内部节流重绘（保留首帧与末帧）。
+9. **`host.perf.snapshot`**（需 `"notes:read"`）
    - `{"refresh_disk": false}`（可选，解码失败按 `false`；仅在宿主尚无磁盘扫描缓存时，传 `false` 才会触发首次扫描，内置性能窗口可能已生成缓存）-> 返回宿主资源与 7 类磁盘占用摘要（分类 ID：`notes`、`assets`、`history`、`recovery`、`ai_sessions`、`logs`、`config`；每类 `entries` 最多前 6 条摘要；`scan_error`、`file_count`、`entries` 与明细 `path`/`count` 可省略；磁盘扫描异常写在成功响应的 `scan_error` 中，仅回调不可用或失败时返回 `-32005`）：
      ```json
      {
@@ -259,7 +299,7 @@ example-sync/
 
 ## 4. 声明式 UI Schema（`UIPage`）精确定义
 
-同一 `UIPage` 内：所有 `card.id` 唯一、所有表单控件 `item.id` 唯一、所有按钮 `button.id`（含 `header_actions` 与 `actions` 项）唯一。宿主已在顶栏自动提供插件启用开关（`TogglePill`）与「卸载」按钮，插件无需自己声明。
+同一 `UIPage` 内：所有 `card.id` 唯一、所有表单控件 `item.id` 唯一、所有按钮 `button.id`（含 `header_actions` 与 `actions` 项）唯一。宿主已在设置窗口标题栏与插件页头部统一提供面包屑、单行合并状态位、主操作位、拨弦启用开关（Pluck Switch）与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与红色卸载），插件无需自己声明开关、取消任务按钮或卸载按钮。
 
 ### `UIPage` 顶层最小可复制示例
 ```json
@@ -289,11 +329,12 @@ example-sync/
   ]
 }
 ```
-- `title`：必填非空字符串（桌面设置顶栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
-- `status`：可选只读次级状态短文本（仅展示真实执行结果或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` 等占位文案）。
+- `title`：必填非空字符串（桌面设置标题栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
+- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。
+- `progress`：可选 `0`–`1` 浮点数，用于声明式独立后台任务在空闲轮询刷新时展示百分比进度；`plugin.action` 执行期间请使用 `host.action.progress`。
 - `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
 - `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
-- `header_actions`：可选顶栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。
+- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"` 放在标题栏主操作位（运行中自动变为带进度与 `■` 取消按钮的胶囊），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
 
 ### 14 种 `UIItem` 控件（按 `kind` 区分）
@@ -356,7 +397,7 @@ example-sync/
    }
    ```
 5. **`secret`（密码/凭证输入框）**：字段同 `input`，`value` 必须为 `string`（宿主自动掩码并支持显示/隐藏切换）。
-6. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`：
+6. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`（宿主统一使用 Ocean Paper Pluck Switch 渲染）：
    ```json
    {
      "kind": "switch",
@@ -515,6 +556,9 @@ class HostBridge:
         sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
+    def notify_host(self, method, params=None):
+        self.send({"jsonrpc": "2.0", "method": method, "params": params or {}})
+
     def call_host(self, method, params=None):
         self._seq += 1
         req_id = f"p-{self._seq}"
@@ -554,15 +598,16 @@ class HostBridge:
 
 ## 6. 本地协议检查命令
 
-以下命令在临时笔记本与插件数据目录中执行本地协议检查（目录安装完成后，按语言各自起算 20 秒 RPC 预算）：依次校验 `manifest.json`、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收：
+以下命令在临时笔记本与插件数据目录中执行本地协议检查（目录安装完成后，按语言各自起算 20 秒 RPC 预算）：依次校验 `manifest.json`（含 `permission_reasons` 键匹配、字数与禁 Emoji 规则）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需子进程，仅校验清单、双语文档与语法编译）：
 
 ```bash
 CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
 ```
 
 - **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（社区插件可追加 `-bilingual` 参数主动开启）：
-  1. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；
-  2. 分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同。
+  1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
+  2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；
+  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同。
 
 终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。注意：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
 
@@ -572,15 +617,15 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/�
 
 Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
-1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前包括 `block-sync`、`block-lang-gomod`、`block-lang-plist`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；个人/社区插件同样建议一并提供。
+1. 将插件代码推送到公开、非 Fork、未归档的 GitHub 仓库，确保仓库根目录（或归档内根/唯一单层顶层目录）包含通过第 6 节检查的 `manifest.json`（含 `"app": "blockmd"`；若填写 `repo` 须与仓库 `owner/repo` 一致）。**官方插件（`blockmd-plugins/*`，当前包括 `block-sync`、`block-lang-gomod`、`block-lang-plist`，其余以个人或社区名义发布）必须同时放置 `README.md`（中文）与 `README.en.md`（英文），有子进程 UI 的插件还须支持 `locale="en"` 英文界面**；已审核作者（`eachann1024/*`）与社区插件同样建议提供双语文档与 `permission_reasons`。
 2. 在 GitHub 仓库主页右侧 **About -> Topics** 添加标签：**`blockmd-plugin`**。
 3. 发布标准 **GitHub Release**（不要标为 Draft 或 Prerelease，建议保持 Release Tag 与包内 `manifest.version` 一致）：
    - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
    - **手动发版**：也可推送 `vX.Y.Z` Tag 触发同工作流打包对应版本。
-4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的 `scripts/crawl_github.py` 执行）：
+4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
    - 采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的前 100 个仓库（无分页），并自动跳过内置保留 ID（`block-diagnostics`）。
    - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包（`codeload.github.com/{repo}/tar.gz/{default_branch}`）。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
-   - **索引校验**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
+   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定（当前绑定 `block-sync`、`block-lang-gomod`、`block-lang-plist`）、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
    - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
 
 ---
@@ -594,7 +639,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 | 权限枚举 | 说明 | 关联贡献 / 能力 |
 | --- | --- | --- |
 | `"ui:titlebar"` | 顶栏按钮与顶栏槽位显隐控制 | `contributes.titlebar_buttons`、`host.titlebar.get_items` / `set_hidden` / `set_button` |
-| `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections` |
+| `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections`、`host.ui.editor_background` / `set_editor_background`、`host.ui.tarot_state` / `set_tarot` |
 | `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu` |
 | `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
@@ -611,10 +656,10 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 - 数量上限：`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`panels` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
-1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。所有插件的按钮合计最多直接显示 **3** 个（窗口宽度小于 900 时 1 个，小于 720 时 0 个），其余按声明顺序收进顶栏的「更多插件」菜单，菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
+1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。所有插件的按钮合计最多直接显示 **3** 个（窗口宽度小于 900 时 1 个，小于 720 时 0 个）；用户可在「更多插件」菜单（悬停星标或选中后按 `P`）或右键顶栏插件图标固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。
    - `command`（可选）与 `panel`（可选）：**必须且只能二选一**，分别引用同清单 `commands[].id` 或 `panels[].id`（点击时执行命令或切换面板）。
-2. **`settings_sections`**（需 `"ui:settings"`）：在内置设置标签页末尾追加一张声明式设置分区卡片。
+2. **`settings_sections`**（需 `"ui:settings"`）：在内置设置标签页末尾追加一张声明式设置分区卡片（单卡片标题与分区标题一致时宿主自动去重）。
    - `id`（必填）、`title`（必填 `LocalizedText`）。
    - `tab`（必填）：仅允许 `"ai"` | `"appearance"` | `"folders"` | `"shortcuts"`。
    - 对应渲染表面：`"settings_section:<id>"`。
@@ -673,7 +718,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": ""}]}`
    - 内置槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"reveal"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。
 2. **`host.titlebar.set_hidden`**（需 `"ui:titlebar"`）
-   - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（以传入的已知槽位列表整体覆盖隐藏集合，持久化于 `<BlockAppData>/plugins/contrib-state.json`）。
+   - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（按插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用插件时自动收回其隐藏设置）。
    - **不可隐藏约束**：内置槽位 `"more"`（页面 `…` 操作按钮）永久锁定，**永远不可隐藏**（传入 `"more"` 或未知槽位 ID 会被宿主忽略）。
    - 返回：`{"ok": true, "items": [...]}`（返回更新后的完整槽位列表）。
 3. **`host.titlebar.set_button`**（需 `"ui:titlebar"`）
@@ -702,6 +747,9 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 11. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
     - `host.ui.set_tarot`（参数 `{"enabled": true, "toggle": false, "room": "writing"|"table"|"daily"|"deck"}`，字段均可选）：切换宿主原生塔罗模式（午夜铜版）或直接进入指定房间（从设置页指定 `room` 时自动收起设置），返回最新状态对象。
+12. **`host.ui.editor_background` / `host.ui.set_editor_background`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
+    - `host.ui.editor_background`（参数 `{}`）：返回当前插件设置的编辑器背景状态 `{"mode": "off"|"dots"|"grid", "contrast": "standard"|"high"}`。
+    - `host.ui.set_editor_background`（参数 `{"mode": "dots", "contrast": "standard"}`）：设置与编辑器行高对齐的点阵（`"dots"`）、方格（`"grid"`）或关闭（`"off"`）背景及对比度（`"standard"` | `"high"`，兼容 `"strong"` 归一化为 `"high"`），持久化于 `contrib-state.json` 并按插件隔离；停用插件时自动失效，返回归一化后的状态对象。
 
 ---
 
@@ -712,6 +760,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 - **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
 - **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。
+- **系统「打开方式」自动关联**：启用、停用或卸载语言扩展时，宿主会在后台无感同步 `extensions` 到操作系统的「打开方式」菜单（macOS 通过用户目录中转小壳自动跳过主程序已接管的纯文本与多段后缀；Windows 写当前用户 `HKCU` `OpenWithProgids`；Linux 维护用户级 XDG `.desktop` 与自定义 MIME），不抢占默认程序、无需管理员权限；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
 
 ### 9.1 `contributes.languages` 字段定义
 

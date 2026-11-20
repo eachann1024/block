@@ -1,0 +1,451 @@
+<!-- ai-guide:skip-start -->
+# 双向 JSON-RPC 2.0 协议、声明式 UI 与 Python 骨架
+
+> [← 清单与权限](manifest.md) · [文档中心](../README.md) · [检查与上架 →](check-and-store.md)
+
+---
+<!-- ai-guide:skip-end -->
+
+## 3. 双向 JSON-RPC 2.0 通信协议
+
+所有请求与响应均为单行 UTF-8 JSON（末尾 `\n`）。
+
+### 3.1 宿主调用插件（Host -> Plugin）
+
+1. **`plugin.initialize`**
+   - 请求 `params`：
+     ```json
+     {
+       "plugin_id": "example-sync",
+       "data_dir": "/abs/path/to/apps-data/example-sync",
+       "downloads_dir": "/Users/name/Downloads",
+       "notebook_root": "/abs/path/to/notebook",
+       "notebooks": ["/abs/path/to/notebook", "/abs/path/to/other-notebook"],
+       "locale": "zh",
+       "host_version": "1.0.854",
+       "ui_capabilities": [
+         "kv_tooltip", "treemap", "host_perf", "checklist", "form_layout",
+         "multi_notebook", "card_collapse", "metric_tone", "log_columns", "file_picker",
+         "action_feedback", "note_revision"
+       ]
+     }
+     ```
+     - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
+     - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
+     - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`note_revision`（`revision`/`expected_revision` 乐观并发）。
+   - 返回 `result`：`{"ready": true}`。
+
+2. **`plugin.render`**
+   - 请求 `params`：例如 `{"surface": "settings_page", "values": {"protocol": "webdav"}}`。
+     - 首次打开、切换笔记本/当前笔记/笔记本列表、动作前表单补刷、定时轮询及 `note.saved` 成功后刷新时省略 `values`。
+     - 用户在界面编辑控件时（离散控件约 25ms 防抖，文本输入约 220ms 防抖），`values` 仅包含用户尚未同步的改动字段。将这些字段合并到持久配置后生成预览；需要显式提交的表单由 `plugin.action` 保存。
+   - 返回 `result`：包含必填 `page`（严格解码）与可选 `values`。
+     - **值合并规则**：
+       - 首次加载、笔记本/活动笔记/笔记本列表变化触发的重载、编辑预览刷新与动作前表单补刷都会消费 `result.values`（更新表单并清除对应字段的未同步标记）。
+       - 定时轮询（`refresh_interval_ms`）与 `note.saved` 成功后的刷新忽略 `result.values`，但仍会用新 `page` 的控件默认值更新未被用户编辑的键（`!editedControls`）。
+       - 编辑预览刷新中，新 `page` 的控件默认值只补全缓存里尚不存在的新键（已存在的键以用户编辑态或 `result.values` 为准）。
+
+3. **`plugin.action`**
+   - 用户点击页面按钮时触发。注意：本地校验器会调用初始 `UIPage` 中的**全部** `header_actions` 与卡片顶层 `actions` 按钮（不判断 `visible_when` 与卡片折叠状态），需避免默认配置下触发非预期外部副作用。
+   - 请求 `params`：
+     ```json
+     {
+       "surface": "settings_page",
+       "action_id": "save_config",
+       "values": {
+         "protocol": "local_mirror",
+         "mirror_dir": "/Users/name/Sync",
+         "selected_notebooks": ["/Users/name/Notes/Work"]
+       }
+     }
+     ```
+     `values` 为宿主缓存的整份表单值（覆盖 `segmented`、`select`、`input`、`folder`、`secret`、`switch`、`checklist`，含 `group` 内子控件，也可能残留当前隐藏、已移除或插件此前回传的键）；插件应按当前有效分支读取并合并持久化到 `host.storage.set`。
+   - 返回 `result`（字段均可选；`page` 若返回须为完整合法 `UIPage` 对象，见第 4 节）：
+     ```json
+     {
+       "ok": true,
+       "tone": "success",
+       "values": { "protocol": "local_mirror" },
+       "status": "已同步 2 篇笔记",
+       "open_path": "/Users/name/Downloads/欢迎使用 Block.html",
+       "reveal_path": "/Users/name/Downloads/欢迎使用 Block.html"
+     }
+     ```
+     - **表单更新顺序**：若同时返回 `page` 与 `values`，宿主先用新 `page` 的控件默认值覆盖对应键，再应用 `result.values` 并清除对应字段的未同步标记；若 `page.status` 为空且 `result.status` 非空，宿主自动将 `result.status` 填入 `page.status`。
+     - **动作反馈（`ok` / `tone` / `status`）**：合法 `tone`（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`）优先级最高；未知或空 `tone` 回退按 `ok` 判定（`true` 为 `success`，`false` 为 `danger`）；两者均省略时按 `status` 关键词推断，未命中默认 `"success"`。卡片内按钮返回 `danger`/`warning` 且 `status` 非空时，在按钮上方显示提示条，`success`/`info` 在按钮旁显示单行状态；`header_actions` 在顶栏展示状态。`success` 态按钮会短暂切换为绿色勾选态（2.4s）；`action_id` 为 `test_conn`、以 `test_` 开头或以 `_test` 结尾的连接测试按钮会保持成功态，直到用户修改表单或触发下一次动作。
+     - **打开与定位输出文件（`open_path` / `reveal_path`）**：切勿在插件内自行调用 `open`/`xdg-open` 子进程。宿主会先对路径做 `Clean` 归一化，再验证目标**已存在且位于 `downloads_dir` 内**，且 `downloads_dir` 之下的相对路径组件及目标均不得为符号链接（`downloads_dir` 本身及其祖先不在逐段检查范围内），不满足则静默忽略。`open_path` 禁止打开 `.app` 目录，且普通文件仅允许 `.html`、`.htm`、`.pdf`、`.txt`、`.md`、`.markdown`、`.csv`、`.tsv`、`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.docx`、`.xlsx`、`.pptx`；其余格式（如 `.zip`）请使用 `reveal_path`（Linux 下对文件打开其父目录）。即便 `ok: false`，宿主仍会处理非空路径，因此失败动作应省略这两个字段。
+
+4. **`plugin.event`**（需声明 `"events:note_saved"` 权限）
+   - 请求 `params`：`{"event": "note.saved", "notebook_root": "/abs/path/to/notebook", "path": "welcome.md", "timestamp": "2026-11-18T10:00:00Z"}`
+   - 仅投递给已启用的订阅插件，由已接入该钩子的落盘入口（块编辑保存与其他插件通过 `host.notes.write` 产生的实际变更，不含写入者自身，不包含源码编辑保存分支）触发；`timestamp` 为每次派发/重试时的 UTC 时间。插件应以事件参数自带的 `notebook_root` 与 `path` 为准。
+   - 宿主按 `(plugin_id, notebook_root, 绝对路径)` 合并排队（处理期间同文件再次保存会再排一次，跨文件无全局顺序保证）。
+   - 响应要求：宿主会将 `result` 解码为 `{"handled": <bool>}`（返回 `{"handled": true}`、`{"handled": false}` 或 `{}` 均视为成功；返回非对象如 `true` 或错误类型如 `{"handled": "false"}` 会因解码失败报错）。业务失败须返回 JSON-RPC `error`，宿主才会在侧栏标错并在空闲、同路径未重新排队且无更高优先错误时展示重试入口（可能来自另一笔记本）。成功后若该笔记本已有缓存页且无忙碌动作，宿主会自动触发 `plugin.render` 刷新（即使当前未停留在插件页）。
+
+5. **`plugin.shutdown`**
+   - 请求 `params`：`{}`
+   - 宿主发出 `plugin.shutdown` 前已将运行时标为关闭并停止受理反向 `host.*` 调用，因此关闭阶段**切勿调用 `host.storage.set` 等宿主 RPC**。推荐直接返回 `{"ok": true}`（宿主不校验响应内容），随后在 2 秒内正常退出。
+
+---
+
+### 3.2 插件调用宿主能力（Plugin -> Host）
+
+插件在处理 `plugin.initialize`、`plugin.render`、`plugin.action` 或 `plugin.event` 请求期间，可向 `stdout` 发送 JSON-RPC 请求调用 `host.*`，并从 `stdin` 读取匹配 `id` 的响应后再返回外层结果（同时在途不超过 8 个；`plugin.shutdown` 期间宿主不再响应 `host.*`）。
+
+常见错误码：`-32001` 缺少权限、`-32002` 存储失败或超 8 MiB、`-32003` 列举笔记失败（含未注册笔记本）、`-32004` 笔记文件系统错误（含文件打开/读写失败、路径下存在符号链接或超 16 MiB）、`-32005` 性能快照回调不可用或返回错误、`-32006` 编辑器脏状态/虚拟预览或版本冲突、`-32601` 未知方法、`-32602` 参数无效（含 `read`/`write` 未注册笔记本或参数路径不合规）。
+
+笔记路径边界：支持扩展名 `.md`、`.markdown`、`.mdown`、`.mkd`、`.mkdn`、`.mdwn`、`.mdtxt`、`.mdtext`、`.mdx`（不区分大小写）。显式 `notebook_root` 会去空白并转绝对路径后与已注册笔记本精确匹配；省略时使用当前运行时上下文根。`host.notes.list` 跳过 `.` 开头项与非普通文件；`host.notes.read`/`write` 先对相对路径做 `Clean` 归一化，参数层校验须位于笔记本内、无 `:`、无 `.` 开头路径段且为支持后缀（不合规则报 `-32602`），文件系统层打开时拒绝符号链接且限制旧文件/读取 <= 16 MiB（失败报 `-32004`）。
+
+1. **`host.storage.get`**（需 `"storage"`）
+   - 参数解码失败按空对象处理。单键：`{"key": "config"}` -> 命中 `{"value": {"auto_sync": true}, "found": true}`，未命中 `{"value": null, "found": false}`；全量：`{}` -> `{"data": {"config": {"auto_sync": true}}}`。
+2. **`host.storage.set`**（需 `"storage"`）
+   - `{"key": "config", "value": {"auto_sync": true}}` -> `{"ok": true}`。`key` 须为非空白字符串（否则 `-32602`）；省略 `value` 会存成 `null`。
+3. **`host.notes.active`**（需 `"notes:read"`，忽略参数）
+   - `{}` -> `{"path": "welcome.md"}`（返回宿主缓存的活动标签相对路径，可能为空、非 Markdown 或尚未更新）。
+4. **`host.notebooks.list`**（需 `"notes:read"`，忽略参数）
+   - `{}` -> `{"notebooks": [{"path": "/abs/path/to/notebook", "name": "notebook", "active": true}]}`（`active` 反映当前运行时上下文根，建议配合 `checklist` 控件勾选范围）。
+5. **`host.notes.list`**（需 `"notes:read"`）
+   - `{"notebook_root": "/abs/path/to/notebook"}`（可选；解码失败按省略处理；省略且运行时根为空时返回 `[]`；传未注册笔记本报 `-32003`）-> `{"notes": [{"path": "welcome.md", "size": 42, "mod_time": "2026-11-18T10:00:00Z"}]}`
+6. **`host.notes.read`**（需 `"notes:read"`）
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选，省略且运行时根为空报 `-32602`；`path` 必填）-> `{"path": "welcome.md", "content": "# 欢迎...", "revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
+7. **`host.notes.write`**（需 `"notes:write"`）
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/synced.md", "content": "# 内容", "expected_revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}` -> `{"ok": true, "changed": true}`（示例哈希须替换为 `host.notes.read` 实际返回的 `revision`，原样传固定值会在实际写入时触发 `-32006`）。
+   - **必须始终显式传入字符串 `content`**（省略或 `null` 会按空字符串写入）；`content` 需满足单行 4 MiB 传输预算。
+   - **冲突与幂等判定顺序**：
+     1. 桌面端先检查编辑器会话：若目标笔记存在未保存修改或处于虚拟预览，直接返回 `-32006`（即使目标字节相同；此类冲突需用户先保存或退出预览）。
+     2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
+     3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
+   - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
+8. **`host.action.progress`**（无需额外权限）
+   - 在 `plugin.action` 执行期间实时上报进度，推荐以 JSON-RPC 2.0 通知（省略 `id`，无需等待响应，宿主走内联快速通道以保证顺序且不占并发槽）发送，也支持普通调用（返回 `{"ok": true}`）：
+     - 计数模式：`{"done": 12, "total": 48}`（宿主在标题栏运行胶囊中展示 `12/48`）
+     - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，宿主在标题栏运行胶囊中展示 `32%`）
+     - 可选 `label` 覆盖运行动词（默认由宿主按 `action_id` 推断，如 `同步中` / `迁入中` / `上传中`）
+   - 动作结束或取消时宿主自动清空进度；兼容旧宿主时可忽略 `-32601` 错误。
+9. **`host.perf.snapshot`**（需 `"notes:read"`）
+   - `{"refresh_disk": false}`（可选，解码失败按 `false`；仅在宿主尚无磁盘扫描缓存时，传 `false` 才会触发首次扫描，内置性能窗口可能已生成缓存）-> 返回宿主资源与 7 类磁盘占用摘要（分类 ID：`notes`、`assets`、`history`、`recovery`、`ai_sessions`、`logs`、`config`；每类 `entries` 最多前 6 条摘要；`scan_error`、`file_count`、`entries` 与明细 `path`/`count` 可省略；磁盘扫描异常写在成功响应的 `scan_error` 中，仅回调不可用或失败时返回 `-32005`）：
+     ```json
+     {
+       "cpu_percent": 1.2,
+       "rss_bytes": 125829120,
+       "total_bytes": 52428800,
+       "last_scan": "01:00:00",
+       "categories": [
+         {
+           "id": "notes",
+           "label": "笔记",
+           "detail": "Markdown 正文",
+           "bytes": 10485760,
+           "file_count": 128,
+           "entries": [
+             { "name": "Work", "path": "/abs/path/Work", "bytes": 5242880, "count": 64 }
+           ]
+         }
+       ]
+     }
+     ```
+
+---
+
+## 4. 声明式 UI Schema（`UIPage`）精确定义
+
+同一 `UIPage` 内：所有 `card.id` 唯一、所有表单控件 `item.id` 唯一、所有按钮 `button.id`（含 `header_actions` 与 `actions` 项）唯一。宿主已在设置窗口标题栏与插件页头部统一提供面包屑、单行合并状态位、主操作位、拨弦启用开关（Pluck Switch）与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与红色卸载），插件无需自己声明开关、取消任务按钮或卸载按钮。
+
+### `UIPage` 顶层最小可复制示例
+```json
+{
+  "title": "示例同步",
+  "status": "上次同步 14:20",
+  "header_actions": [
+    { "id": "sync_now", "label": "立即同步", "variant": "primary" }
+  ],
+  "cards": [
+    {
+      "id": "target-card",
+      "title": "存储目标",
+      "items": [
+        {
+          "kind": "segmented",
+          "id": "protocol",
+          "label": "存储目标",
+          "value": "local_mirror",
+          "options": [
+            { "value": "local_mirror", "label": "目录镜像" },
+            { "value": "webdav", "label": "WebDAV" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+- `title`：必填非空字符串（桌面设置标题栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
+- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。
+- `progress`：可选 `0`–`1` 浮点数，用于在定时轮询场景下向标题栏运行胶囊回报百分比进度；动作执行中优先使用 `host.action.progress`。
+- `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
+- `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
+- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"` 放在标题栏主操作位（运行中自动变为带进度与 `■` 取消按钮的胶囊），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
+- `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
+
+### 14 种 `UIItem` 控件（按 `kind` 区分）
+
+**交互与布局准则**
+
+- 选择本地文件夹使用 `folder`，需要同时允许选文件时附加 `accept_extensions`（如 `[".zip"]`）；远端路径和分支等文本使用 `input` 并给合理默认值；单项下拉用 `select`，多选列表（如勾选多个笔记本）用 `checklist`。
+- 离散控件（`switch`、`segmented`、`select`、`checklist`、`folder`）切换后建议立即在 `plugin.render` 中持久化并通过 `result.values` 回传，不要强制用户再点「保存」；仅在包含远端地址、密钥等多项文本输入时提供「测试连接 / 保存」按钮。
+- 涉及多笔记本同步或批量处理的插件，应通过 `host.notebooks.list` 列出全部笔记本并交由 `checklist` 勾选，只对勾选的笔记本执行操作。
+- `layout` 合法值为 `""` | `"stacked"` | `"full"`：`"stacked"` 由 `segmented`/`folder`/`input`/`secret` 消费，`"full"` 仅 `segmented` 消费（且此时可省略 `label`）。
+- 柔和色板键（用于 `metrics[].tone`、`log_list` 占比条与 `treemap.tiles[].color`）：`"assets"`（绿）、`"config"`（蓝）、`"notes"`（靛紫）、`"history"`（紫）、`"recovery"`（青）、`"logs"`（红）、`"ai_sessions"`（琥珀），省略或未知值回退中性底色。
+
+任意 `UIItem`（含 `group.fields` 子项）均支持可选字段 **`visible_when`**，按其他控件当前值**零延迟动态显隐**（`control_id` 必填，至少提供 `equals` 或非空 `in`；`in` 为字符串数组且非空时优先于 `equals`；`equals: true` 与 `equals: "true"` 按 JSON 类型严格区分；未知 `control_id` 视为隐藏；若需按条件隐藏整组避免卡片只剩空标题，请将 `visible_when` 写在 `group` 上）：
+```json
+{
+  "visible_when": { "control_id": "protocol", "equals": "webdav" }
+}
+```
+或匹配多个字符串值：
+```json
+{
+  "visible_when": { "control_id": "provider", "in": ["r2", "s3"] }
+}
+```
+
+1. **`segmented`（分段切换，适合 2–3 个短选项）**：`id` 必填，`label` 在 `layout != "full"` 时必填，`options` 至少 2 项（每项 `value` 与 `label` 必填非空），`value`（`string`）必须命中某个 `options[].value`，可选 `layout`（`""` | `"stacked"` | `"full"`）：
+   ```json
+   {
+     "kind": "segmented",
+     "id": "protocol",
+     "label": "存储目标",
+     "value": "local_mirror",
+     "options": [
+       { "value": "local_mirror", "label": "目录镜像" },
+       { "value": "webdav", "label": "WebDAV" },
+       { "value": "git", "label": "Git 仓库" }
+     ]
+   }
+   ```
+2. **`select`（下拉选单）**：`id`、`label` 必填，`options` 至少 1 项（每项 `value` 与 `label` 必填非空），`value`（`string`）必须命中某个 `options[].value`，`placeholder` 可选。
+3. **`input`（单行文本输入框）**：`id`、`label` 必填，`value` 必须为 `string`，`placeholder`、`layout`（`""` | `"stacked"`）可选：
+   ```json
+   {
+     "kind": "input",
+     "id": "endpoint_url",
+     "label": "服务器地址",
+     "value": "",
+     "placeholder": "https://dav.example.com/dav"
+   }
+   ```
+4. **`folder`（本地文件夹 / 可选文件选择器）**：`id`、`label`、`value` 必填，`value` 传完整路径或 `""`；可选 `layout`（`""` | `"stacked"`）与 `accept_extensions`（非空字符串数组如 `[".zip"]` 且宿主提供文件选择器时，额外显示文件选择按钮）。目录选择器允许新建目录，完整路径通过悬停提示展示；对话框默认打开当前绝对路径或笔记本根，切换笔记本会丢弃旧选择。注意：`accept_extensions` 仅为系统对话框过滤提示，宿主不复核选中路径后缀，插件处理前须自行校验文件类型与内容：
+   ```json
+   {
+     "kind": "folder",
+     "id": "source_path",
+     "label": "导入目录或压缩包",
+     "layout": "stacked",
+     "value": "",
+     "accept_extensions": [".zip"]
+   }
+   ```
+5. **`secret`（密码/凭证输入框）**：字段同 `input`，`value` 必须为 `string`（宿主自动掩码并支持显示/隐藏切换）。
+6. **`switch`（布尔开关）**：`id`、`label` 必填，`value` 必须为 `bool`（宿主统一使用 Ocean Paper Pluck Switch 渲染）：
+   ```json
+   {
+     "kind": "switch",
+     "id": "auto_sync",
+     "label": "保存笔记后自动同步",
+     "value": true
+   }
+   ```
+7. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组：
+   ```json
+   {
+     "kind": "actions",
+     "buttons": [
+       { "id": "save_config", "label": "保存配置", "variant": "primary" },
+       { "id": "test_conn", "label": "测试连接", "variant": "secondary" }
+     ]
+   }
+   ```
+8. **`metrics`（多列数据指标宫格）**：不含 `id`/`label`，仅含非空 `metrics` 数组（每项 `label`、`value` 必填非空，`tone` 可选，取值见柔和色板键；宿主按数量与视口宽度自动渲染为 1–4 列等宽卡片）：
+   ```json
+   {
+     "kind": "metrics",
+     "metrics": [
+       { "label": "笔记篇数", "value": "128", "tone": "notes" },
+       { "label": "附件体积", "value": "14.2 MB", "tone": "assets" }
+     ]
+   }
+   ```
+9. **`kv`（只读状态键值行）**：`rows` 为非空数组，每行 `label` 与 `value` 均必填非空。若 `ui_capabilities` 包含 `kv_tooltip`，可加 `tooltip` 在悬停时展示补充信息（勿放密码或令牌）：
+   ```json
+   {
+     "kind": "kv",
+     "rows": [
+       { "label": "当前笔记本", "value": "团队笔记", "tooltip": "/Users/name/Documents/团队笔记" }
+     ]
+   }
+   ```
+10. **`preview`（实时视觉预览卡片）**：不含 `id`/`label`，必填 `preview` 对象：
+    - `variant`：`"article"`（最多显示 14 条非空行）| `"cards"`（每卡最多 5 条非空行；`cards` 为空时回退 `article`）| `"diff"`（`before`/`after`/`body` 各最多 6 条非空行）| `"plan"`（默认，最多 10 条非空行）
+    - `palette`：可选 `"ocean"`（默认）| `"paper"`（浅色纸感）| `"ink"`（暗色墨夜）| `"warm"`（暖纸衬线）
+    - `title`：必填；`badge`、`subtitle` 可选
+    - `body`：多行正文（`"article"` 支持 `# `、`## `、`> `、`[1] ` 脚注行）
+    - `before` / `after`：用于 `"diff"` 对照文本
+    - `cards`：用于 `"cards"` 的卡片数组 `[{"badge": "封面", "title": "...", "body": "..."}]`
+    ```json
+    {
+      "kind": "preview",
+      "preview": {
+        "variant": "article",
+        "palette": "paper",
+        "title": "实时排版预览 · 欢迎使用 Block",
+        "badge": "海盐纸感 · 单文件 HTML",
+        "subtitle": "欢迎使用 Block.html",
+        "body": "# 欢迎使用 Block\n## 核心特性\n> 模块化无侵入插件体系"
+      }
+    }
+    ```
+11. **`log_list`（运行记录 / 队列 / 占比列表）**：`empty_text` 必填非空，`label` 可选，`entries` 可为空数组。每项 `title` 必填，其余可选：
+    - `sub_text`：标题旁的次级说明
+    - `status` / `time`：右侧自动对齐的等宽列；若**全部条目**均传 `"status": "→"`，宿主切换为 `title → time` 双栏映射样式（隐藏 `sub_text` 与前导状态点，保留占比条与 `tooltip`）
+    - `tone`：前导状态点支持语义色（`"success"` | `"warning"`/`"warn"` | `"danger"`/`"error"` | `"info"`/`"accent"`）与柔和色板键；`ratio` 占比条仅使用柔和色板键（传 `"success"` 等语义色会回退中性底色）
+    - `ratio`：约定传 `0`–`1` 浮点数（`<= 0` 不画条，`> 0` 渲染时夹到 `4%`–`100%` 并隐藏前导状态点）
+    - `tooltip`：整行悬停提示
+    ```json
+    {
+      "kind": "log_list",
+      "empty_text": "暂无同步记录",
+      "entries": [
+        { "title": "welcome.md", "sub_text": "Work", "time": "12:30", "status": "成功", "tone": "success" }
+      ]
+    }
+    ```
+12. **`checklist`（多选勾选列表，推荐用于多笔记本勾选）**：`id` 必填，`label`、`empty_text` 可选，`value` 为已选 `string[]`（省略或 `null` 归一化为 `[]`，不会在解码时过滤旧选项值），`options` 每项含 `value`（必填唯一）、`label`（必填）及可选 `detail` / `badge` / `tooltip`；多于 1 项时宿主自动提供「全选 / 取消全选」。注意 `checklist` 只能放在卡片顶层，不能放入 `group`：
+    ```json
+    {
+      "kind": "checklist",
+      "id": "selected_notebooks",
+      "value": ["/Users/name/Notes/Work"],
+      "empty_text": "暂无已打开的笔记本",
+      "options": [
+        {
+          "value": "/Users/name/Notes/Work",
+          "label": "Work",
+          "badge": "当前",
+          "detail": "~/Notes/Work",
+          "tooltip": "/Users/name/Notes/Work"
+        }
+      ]
+    }
+    ```
+13. **`group`（并排表单分组）**：`fields` 至少包含 2 个表单项（仅允许 `input`、`secret`、`segmented`、`select`、`folder`、`switch`），宿主自动并排展示；未显式设 `layout`（或 `layout: ""`）的子项默认按 `"stacked"` 排布（`switch` 仍横排），各子项可独立声明 `visible_when`。
+14. **`treemap`（磁盘/空间分布图，固定 Bento 布局按字节排序，非严格面积比例）**：`tiles` 为必填非空数组，`id`（同页有多个图时须显式传不同 `id` 以免共享选中状态）、`total_bytes`（非负整数 `uint64`，`0` 或省略时取各瓦片 `bytes` 之和）、`summary` 可选：
+    ```json
+    {
+      "kind": "treemap",
+      "id": "storage-map",
+      "total_bytes": 15728640,
+      "summary": {
+        "total_label": "总占用",
+        "total_value": "15.0 MB",
+        "sub_text": "共 2 类数据",
+        "metrics": [{ "label": "文件数", "value": "140" }]
+      },
+      "tiles": [
+        {
+          "id": "notes",
+          "label": "笔记",
+          "detail": "Markdown 正文",
+          "bytes": 10485760,
+          "file_count": 120,
+          "color": "notes",
+          "entries": [
+            { "name": "Work", "path": "/abs/path/Work", "bytes": 6291456, "count": 72 }
+          ]
+        },
+        {
+          "id": "assets",
+          "label": "附件",
+          "detail": "图片与文档",
+          "bytes": 5242880,
+          "file_count": 20,
+          "color": "assets"
+        }
+      ]
+    }
+    ```
+    其中 `total_bytes` 与两级 `bytes` 均为无符号整数（负数或小数会解码失败）；`summary` 若存在，`total_value` 必填（`summary.metrics[].tone` 可解码但渲染不消费）；每个 `tile` 的 `id`（唯一）与 `label` 必填，`color` 默认取 `tile.id`（柔和色板键）；每条 `entries` 的 `name` 必填，`path`/`count` 可选（`count <= 0` 汇总时按 `1` 计数）。
+
+---
+
+## 5. Python 标准库双向通信骨架
+
+```python
+#!/usr/bin/env python3
+import json
+import sys
+
+if hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+
+class HostRPCError(RuntimeError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class HostBridge:
+    def __init__(self):
+        self._seq = 1000
+
+    def send(self, obj):
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+
+    def notify_host(self, method, params=None):
+        self.send({"jsonrpc": "2.0", "method": method, "params": params or {}})
+
+    def call_host(self, method, params=None):
+        self._seq += 1
+        req_id = f"p-{self._seq}"
+        self.send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}})
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                raise RuntimeError("stdin closed while awaiting host response")
+            msg = json.loads(line)
+            if str(msg.get("id")) == req_id:
+                if "error" in msg and msg["error"]:
+                    err = msg["error"]
+                    raise HostRPCError(err.get("code", -32000), err.get("message", "host error"))
+                return msg.get("result", {})
+
+    def serve(self, handler):
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            req = json.loads(line)
+            method = req.get("method")
+            req_id = req.get("id")
+            try:
+                result = handler(self, method, req.get("params") or {})
+                self.send({"jsonrpc": "2.0", "id": req_id, "result": result})
+                if method == "plugin.shutdown":
+                    break
+            except Exception as exc:
+                self.send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
+```
+
+<!-- ai-guide:skip-start -->
+---
+
+下一步：[4. 本地协议检查与发布到应用商店 →](check-and-store.md)
+<!-- ai-guide:skip-end -->
