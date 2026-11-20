@@ -22,10 +22,13 @@ import (
 )
 
 const (
-	defaultAPIBase   = "https://api.github.com"
-	maxArchiveBytes  = 64 * 1024 * 1024
-	maxResponseBytes = 8 * 1024 * 1024
-	crawlerUserAgent = "Block-Store-Crawler/1.0 (blockmd)"
+	defaultAPIBase        = "https://api.github.com"
+	maxArchiveBytes       = 64 * 1024 * 1024
+	maxResponseBytes      = 8 * 1024 * 1024
+	crawlerUserAgent      = "Block-Store-Crawler/1.0 (blockmd)"
+	legacySyncURL         = "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.44/block-sync-v1.3.44.tar.gz"
+	legacySyncSHA256      = "568b59736dfaf8aefddac049e68aed9d3adae621072be4b2a5ea4ee72f547d29"
+	legacySyncPublishedAt = "2026-11-20T14:03:35Z"
 )
 
 type ghSearchResponse struct {
@@ -164,12 +167,35 @@ func run() error {
 		return filtered[i].ID < filtered[j].ID
 	})
 
-	index := plugins.StoreIndex{
-		App:           plugins.TargetApp,
-		SchemaVersion: plugins.CurrentSchemaVersion,
-		Topic:         plugins.PluginTopic,
-		UpdatedAt:     nowStr,
-		Apps:          filtered,
+	index := struct {
+		plugins.StoreIndex
+		SystemApps []plugins.StoreAppEntry `json:"system_apps,omitempty"`
+	}{StoreIndex: plugins.StoreIndex{
+		App: plugins.TargetApp, SchemaVersion: plugins.CurrentSchemaVersion, Topic: plugins.PluginTopic,
+		UpdatedAt: nowStr, Apps: make([]plugins.StoreAppEntry, 0, len(filtered)),
+	}}
+	for _, entry := range filtered {
+		if !requiresSystemHost(entry) {
+			index.Apps = append(index.Apps, entry)
+			continue
+		}
+		index.SystemApps = append(index.SystemApps, entry)
+		if *skipGitHub || entry.ID != "block-sync" || entry.Repo != "blockmd-plugins/block-sync" {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		client := &http.Client{Timeout: 30 * time.Second}
+		legacy, err := verifyRemotePlugin(ctx, client, *apiBase, os.Getenv("GITHUB_TOKEN"),
+			ghRepo{FullName: entry.Repo, Stargazers: entry.Stars}, legacySyncURL, entry.Downloads, legacySyncPublishedAt, blocklist, verified)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("verify compatible Sync release: %w", err)
+		}
+		if legacy == nil || !legacy.Verified || legacy.ID != entry.ID || legacy.Version != "1.3.44" ||
+			legacy.SHA256 != legacySyncSHA256 || requiresSystemHost(*legacy) {
+			return errors.New("compatible Sync release has an unexpected identity, digest or permissions")
+		}
+		index.Apps = append(index.Apps, *legacy)
 	}
 
 	encoded, err := json.MarshalIndent(index, "", "  ")
@@ -187,6 +213,15 @@ func run() error {
 		return fmt.Errorf("write output %q: %w", *outPath, err)
 	}
 	return nil
+}
+
+func requiresSystemHost(entry plugins.StoreAppEntry) bool {
+	for _, permission := range entry.Permissions {
+		if strings.HasPrefix(string(permission), "system:") || permission == plugins.PermEventsSystem {
+			return true
+		}
+	}
+	return false
 }
 
 func crawlGitHub(
