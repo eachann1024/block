@@ -43,9 +43,10 @@ type StoreAppEntry struct {
 	Stars          int           `json:"stars,omitempty"`
 	Verified       bool          `json:"verified,omitempty"`
 	Beta           bool          `json:"beta,omitempty"`
-	UpdatedAt      string        `json:"updated_at,omitempty"`
-	Permissions    []Permission  `json:"permissions"`
-	Surfaces       []Surface     `json:"surfaces"`
+	UpdatedAt         string                       `json:"updated_at,omitempty"`
+	Permissions       []Permission                 `json:"permissions"`
+	PermissionReasons map[Permission]LocalizedText `json:"permission_reasons,omitempty"`
+	Surfaces          []Surface                    `json:"surfaces"`
 	FileExtensions []string      `json:"file_extensions,omitempty"`
 	Icon           DuoIconSpec   `json:"icon"`
 	MinHostVersion string        `json:"min_host_version,omitempty"`

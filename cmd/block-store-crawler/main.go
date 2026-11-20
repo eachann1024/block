@@ -388,9 +388,10 @@ func entryFromManifest(
 		Stars:          stars,
 		Verified:       isVerified,
 		Beta:           m.Beta,
-		UpdatedAt:      updatedAt,
-		Permissions:    perms,
-		Surfaces:       surfs,
+		UpdatedAt:         updatedAt,
+		Permissions:       perms,
+		PermissionReasons: plugins.ClonePermissionReasons(m.PermissionReasons),
+		Surfaces:          surfs,
 		FileExtensions: m.DisplayFileExtensions(),
 		Icon:           m.Icon,
 	}

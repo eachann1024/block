@@ -46,9 +46,10 @@ func init() {
 			Summary:        m.Summary,
 			DownloadURL:    "builtin://" + m.ID,
 			Verified:       IsOfficialRepo(m.Repo),
-			Beta:           m.Beta,
-			Permissions:    perms,
-			Surfaces:       surfs,
+			Beta:              m.Beta,
+			Permissions:       perms,
+			PermissionReasons: ClonePermissionReasons(m.PermissionReasons),
+			Surfaces:          surfs,
 			FileExtensions: m.DisplayFileExtensions(),
 			Icon:           m.Icon,
 		}
