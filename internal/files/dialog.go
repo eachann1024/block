@@ -67,6 +67,9 @@ func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDial
 			if allowed == nil {
 				refocusWindow(win)
 			}
+			if osaErr == nil && !opts.Directory && !dialogPathsMatchExtensions(paths, opts.Filters) {
+				return nil, errors.New("selected file does not match the requested extensions")
+			}
 			return paths, osaErr
 		}
 	}
@@ -80,6 +83,28 @@ func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDial
 		refocusWindow(win)
 	}
 	return paths, err
+}
+
+func dialogPathsMatchExtensions(paths []string, filters []mygo.FileFilter) bool {
+	extensions := make(map[string]bool)
+	for _, filter := range filters {
+		if len(filter.MIMETypes) > 0 || len(filter.Extensions) == 0 {
+			return true
+		}
+		for _, extension := range filter.Extensions {
+			extension = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(extension)), ".")
+			if extension == "*" {
+				return true
+			}
+			extensions[extension] = true
+		}
+	}
+	for _, path := range paths {
+		if len(extensions) > 0 && !extensions[strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")] {
+			return false
+		}
+	}
+	return true
 }
 
 // SaveDialog opens a native save-file picker safely across hot bundle updates on macOS.
@@ -202,6 +227,8 @@ func appleScriptUTIsForFilters(filters []mygo.FileFilter) []string {
 			}
 			if uti, ok := extUTI[el]; ok {
 				add(uti)
+			} else {
+				return nil
 			}
 		}
 	}
