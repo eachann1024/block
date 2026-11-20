@@ -860,6 +860,8 @@ func (s *Session) toggleToolbarPop(name string) {
 	s.toolbarPop = name
 	s.toolbarMoreIndex = -1
 	if name == "comment" {
+		s.flushAnnotationEdit()
+		s.commentDraft = ""
 		s.commentFocusPending = true
 	}
 }
@@ -1112,16 +1114,49 @@ func (s *Session) renderReactionPicker(c *ui.Context, vp ui.Rect, winW, winH flo
 	}
 }
 
+const annotationComposerWidth float32 = 320
+
+func isAnnotationSubmitKey(k ui.TextKey) bool {
+	return k.Key == ui.KeyEnter && (k.Mods == 0 || k.Mods == ui.Cmd)
+}
+
+func (s *Session) commentComposerSpec(vp ui.Rect, h float32) (appUi.PlacementSpec, bool) {
+	if s.hasNonEmptySelection() {
+		selRect, ok := s.selectionComposerAnchorRect(vp)
+		if !ok {
+			return appUi.PlacementSpec{}, false
+		}
+		tb := s.toolbarRect
+		// If the selection toolbar flipped below the selection (near the top edge of the viewport),
+		// stack the composer below the toolbar so it never covers the toolbar or selected text.
+		if tb.H > 0 && tb.Y >= selRect.Y+selRect.H-1 {
+			return appUi.PlaceBelow(tb).WithViewport(vp).
+				WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8), true
+		}
+		// Normal case: place directly below the selection.
+		if selRect.Y+selRect.H+theme.Space6+h <= vp.Y+vp.H-theme.Space8 {
+			return appUi.PlaceBelow(selRect).WithViewport(vp).
+				WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8), true
+		}
+		// Tight bottom edge: if the toolbar is above the selection, place the composer above the toolbar
+		// instead of flipping into the toolbar's slot.
+		if tb.H > 0 && tb.Y+tb.H <= selRect.Y+1 {
+			return appUi.PlaceAbove(tb).WithViewport(vp).
+				WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8), true
+		}
+		return appUi.PlaceBelow(selRect).WithViewport(vp).
+			WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8), true
+	}
+	return s.toolbarDropSpec("tb-comment", appUi.AlignLeft, theme.Space6, vp), true
+}
+
 func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH float32) {
 	pal := theme.Ocean()
-	w := min(annotationRailWidth, max(vp.W-16, 180))
+	w := min(annotationComposerWidth, max(vp.W-16, 180))
 	_, h := s.measuredOrEstSize("annotate-composer", w, 34)
-	var spec appUi.PlacementSpec
-	if selRect, ok := s.selectionComposerAnchorRect(vp); ok {
-		spec = appUi.PlaceBelow(selRect).WithViewport(vp).
-			WithAlignX(appUi.AlignX{Kind: appUi.AlignPinLeft}).WithGap(theme.Space6).WithMargin(theme.Space8)
-	} else {
-		spec = s.toolbarDropSpec("tb-comment", appUi.AlignLeft, theme.Space6, vp)
+	spec, ok := s.commentComposerSpec(vp, h)
+	if !ok {
+		return
 	}
 	x, y := appUi.ResolveOrigin(spec, w, h, winW, winH)
 
@@ -1145,12 +1180,17 @@ func (s *Session) renderCommentComposer(c *ui.Context, vp ui.Rect, winW, winH fl
 			Placeholder(theme.Tr("添加批注…", "Add annotation…")).PlaceholderColor(pal.Placeholder).Label("annotation-note").
 			Bind(&s.commentHandle)
 		appUi.AutoHideScrollbars(c, in)
+		composing := in.Composing()
 		in.OnTextKey(func(k ui.TextKey) bool {
+			if composing {
+				return false
+			}
 			switch {
 			case k.Key == ui.KeyEscape:
+				s.commentDraft = ""
 				s.toolbarPop = ""
 				return true
-			case k.Key == ui.KeyEnter && k.Mods == 0:
+			case isAnnotationSubmitKey(k):
 				s.commentDraft = k.Text()
 				submit()
 				return true
@@ -2214,15 +2254,20 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 func (s *Session) renderAnnotationEditor(c *ui.Context, ann *model.Annotation) {
 	pal := theme.Ocean()
 	in := ui.TextAreaBase(c.Key("edit-ann-"+ann.ID), &s.editingAnnotText).FillWidth().MinWidth(0).Lines(1, 8).
-		Padding(0).FontSize(theme.FontBody).TextColor(pal.Text).CaretColor(pal.Accent).
+		Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
 		Placeholder(theme.Tr("写下批注…", "Write a note…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("批注内容", "Annotation")).
 		Bind(&s.editingHandle)
+	appUi.AutoHideScrollbars(c, in)
+	composing := in.Composing()
 	in.OnTextKey(func(k ui.TextKey) bool {
+		if composing {
+			return false
+		}
 		switch {
 		case k.Key == ui.KeyEscape:
 			s.editingAnnotID = ""
 			return true
-		case k.Key == ui.KeyEnter && k.Mods == 0:
+		case isAnnotationSubmitKey(k):
 			s.editingAnnotText = k.Text()
 			s.commitAnnotationEdit(ann.ID)
 			return true
@@ -2246,6 +2291,9 @@ func (s *Session) flushAnnotationEdit() {
 func (s *Session) beginAnnotationEdit(ann *model.Annotation) {
 	if s.editingAnnotID == ann.ID {
 		return
+	}
+	if s.toolbarPop == "comment" {
+		s.toolbarPop = ""
 	}
 	s.flushAnnotationEdit()
 	s.editingAnnotID = ann.ID
