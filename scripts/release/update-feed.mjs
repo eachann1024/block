@@ -154,7 +154,7 @@ function formatLatestAssets(rawAssets, fallbackHashes) {
 
 export function buildFeedFromReleases(
   rawReleases,
-  { repo = REPO, updatedAt = new Date().toISOString(), fallbackHashes = {} } = {},
+  { repo = REPO, updatedAt = new Date().toISOString(), fallbackHashes = {}, fallbackHashesTag = "" } = {},
 ) {
   const byVersion = new Map();
   for (const release of rawReleases || []) {
@@ -173,6 +173,7 @@ export function buildFeedFromReleases(
   const releases = sorted.map(([version, release], index) => {
     const tag = `v${version}`;
     const parsed = parseReleaseBody(release.body);
+    const matchingFallbackHashes = !fallbackHashesTag || release.tag_name === fallbackHashesTag ? fallbackHashes : {};
     return {
       version,
       tag,
@@ -180,7 +181,7 @@ export function buildFeedFromReleases(
       html_url: String(release.html_url || `https://github.com/${repo}/releases/tag/${tag}`),
       zh: parsed.zh,
       en: parsed.en,
-      assets: index === 0 ? formatLatestAssets(release.assets, fallbackHashes) : [],
+      assets: index === 0 ? formatLatestAssets(release.assets, matchingFallbackHashes) : [],
     };
   });
 
@@ -235,7 +236,12 @@ export function syncFeedFromGithub({
     merged.unshift(tagRelease);
     releases.splice(0, releases.length, ...merged);
   }
-  const feed = buildFeedFromReleases(releases, { repo, updatedAt, fallbackHashes });
+  const feed = buildFeedFromReleases(releases, {
+    repo,
+    updatedAt,
+    fallbackHashes,
+    fallbackHashesTag: tagRelease?.tag_name || "",
+  });
   const json = formatFeedJson(feed);
   if (write) {
     mkdirSync(dirname(outPath), { recursive: true });
