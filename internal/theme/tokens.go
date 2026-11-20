@@ -222,21 +222,31 @@ const (
 	SegmentedInnerHeight   = HeightChrome
 
 	// Global Pluck Switch & Plugin header metrics (designs/plugin-master-switch).
-	SwitchTrackW           float32 = 38
-	SwitchTrackH           float32 = 22
-	SwitchKnobSize         float32 = 18
-	SwitchPad              float32 = 2
-	SwitchPressStretch     float32 = 3
-	SwitchHeroTrackW       float32 = 52
-	SwitchHeroTrackH       float32 = 30
-	SwitchHeroKnobSize     float32 = 24
-	SwitchHeroPad          float32 = 3
-	SwitchHeroPressStretch float32 = 5
-	SwitchHeroHitH         float32 = 44
-	PluckDividerHeight     float32 = 20
-	PluginHeaderIconBox    float32 = 44
-	PluginHeaderIconGlyph  float32 = 24
-	PluginHeaderIconRadius float32 = 12
+	SwitchCompactTrackW       float32 = 34
+	SwitchCompactTrackH       float32 = 20
+	SwitchCompactKnobSize     float32 = 16
+	SwitchCompactPad          float32 = 2
+	SwitchCompactPressStretch float32 = 2.5
+	SwitchTrackW              float32 = 38
+	SwitchTrackH              float32 = 22
+	SwitchKnobSize            float32 = 18
+	SwitchPad                 float32 = 2
+	SwitchPressStretch        float32 = 3
+	SwitchHeroTrackW          float32 = 52
+	SwitchHeroTrackH          float32 = 30
+	SwitchHeroKnobSize        float32 = 24
+	SwitchHeroPad             float32 = 3
+	SwitchHeroPressStretch    float32 = 5
+	SwitchHeroHitH            float32 = 44
+	PluckDividerHeight        float32 = 20
+	PluginHeaderIconBox       float32 = 44
+	PluginHeaderIconGlyph     float32 = 24
+	PluginHeaderIconRadius    float32 = 12
+	PluginTitlebarStatusMaxW  float32 = 240
+	PluginTitlebarPopoverW    float32 = 320
+	PluginTitlebarMenuW       float32 = 240
+	PluginCancelChipSize      float32 = 20
+	PluginCancelStopSize      float32 = 8
 )
 
 // Sidebar file tree & updater metrics.
