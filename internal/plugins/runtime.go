@@ -602,8 +602,13 @@ func (rt *Runtime) Action(ctx context.Context, surface Surface, actionID string,
 }
 
 func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath string) error {
+	_, err := rt.NotifyNoteSavedResult(ctx, notebookRoot, relPath)
+	return err
+}
+
+func (rt *Runtime) NotifyNoteSavedResult(ctx context.Context, notebookRoot, relPath string) (string, error) {
 	if !rt.manifest.HasPermission(PermEventNoteSaved) {
-		return nil
+		return "", nil
 	}
 	nbRoot := strings.TrimSpace(notebookRoot)
 	if nbRoot == "" {
@@ -616,9 +621,13 @@ func (rt *Runtime) NotifyNoteSaved(ctx context.Context, notebookRoot, relPath st
 		"timestamp":     time.Now().UTC().Format(time.RFC3339),
 	}
 	var res struct {
-		Handled bool `json:"handled"`
+		Handled bool   `json:"handled"`
+		Outcome string `json:"outcome,omitempty"`
 	}
-	return rt.call(ctx, "plugin.event", params, &res)
+	if err := rt.call(ctx, "plugin.event", params, &res); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(res.Outcome), nil
 }
 
 func (rt *Runtime) Shutdown(ctx context.Context) error {
