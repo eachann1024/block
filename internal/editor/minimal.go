@@ -334,6 +334,9 @@ func (s *Session) handleGlobalBlockShortcuts(c *ui.Context) {
 		{ui.Cmd | ui.Shift, ui.KeyH},
 		{ui.Cmd | ui.Shift, ui.KeyBackslash},
 	} {
+		if (combo.key == ui.KeyUp || combo.key == ui.KeyDown || combo.key == ui.KeyD) && s.hasBlockingOverlay() {
+			continue
+		}
 		if c.Shortcut(combo.mods, combo.key) {
 			s.handleBlockAndFormatShortcut(combo.mods, combo.key)
 			return
