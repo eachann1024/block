@@ -22,6 +22,8 @@ type DropdownSelectState struct {
 	Cursor      int
 	// MenuWidth, when set, is the menu's minimum width (default 220 or the trigger width).
 	MenuWidth float32
+	// Compact sizes the trigger to its label instead of the 180px form-field minimum.
+	Compact bool
 }
 
 // DropdownSelect renders an Ocean Paper dropdown trigger button and viewport-aware floating menu.
@@ -58,10 +60,14 @@ func DropdownSelect(
 	if id != "" {
 		c.Key(id)
 	}
+	minW, shrink := float32(180), float32(1)
+	if state.Compact {
+		minW, shrink = 0, 0
+	}
 	btn := ui.ButtonBase(c).
-		MinWidth(180).
+		MinWidth(minW).
 		MaxWidth(theme.AIPanelDefaultWidth).
-		Shrink(1).
+		Shrink(shrink).
 		Height(theme.HeightControl).
 		Padding(0, theme.Space10, 0, theme.Space12).
 		AlignItems(ui.Center).
