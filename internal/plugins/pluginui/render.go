@@ -37,6 +37,7 @@ type ActionFeedback struct {
 	LastActionButtonActive bool
 	FailedActionID         string
 	Error                  string
+	CompactLayout          bool
 }
 
 func actionFeedbackFromView(vs plugins.PluginViewState) ActionFeedback {
@@ -297,6 +298,10 @@ func renderPageCardsWithScope(
 							i := idx
 							ui.Column(c.Key(pluginItemKey(pluginID, cd.ID, i, it))).FillWidth().MinWidth(0).
 								Transition(bui.CascadeRowTransition(i)).Children(func() {
+								if mergedChecklist {
+									renderChecklistItem(c, pluginID, it, values, fb.BusyAction, true, onChange)
+									return
+								}
 								renderSectionItem(c, pluginID, it, i, len(visibleItems), values, fb, bindings, onChange, onAction)
 							})
 						}
@@ -898,7 +903,7 @@ func renderItem(
 		})
 
 	case plugins.KindLogList:
-		renderLogListItem(c, pluginID, item)
+		renderLogListItem(c, pluginID, item, values, fb.BusyAction, onAction)
 	}
 }
 
@@ -939,18 +944,32 @@ func logToneBarColor(pal theme.Palette, tone string) ui.Color {
 	return pal.PerfTileColors(t).BarBG
 }
 
-func renderLogListItem(c *ui.Context, pluginID string, item plugins.UIItem) {
+func renderLogListItem(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	busyAction string,
+	onAction func(actionID string, currentValues map[string]any),
+) {
 	if strings.TrimSpace(item.Label) != "" {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 			renderFieldLabel(c, item.Label)
-			renderLogEntries(c, pluginID, item)
+			renderLogEntries(c, pluginID, item, values, busyAction, onAction)
 		})
 		return
 	}
-	renderLogEntries(c, pluginID, item)
+	renderLogEntries(c, pluginID, item, values, busyAction, onAction)
 }
 
-func renderLogEntries(c *ui.Context, pluginID string, item plugins.UIItem) {
+func renderLogEntries(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	busyAction string,
+	onAction func(actionID string, currentValues map[string]any),
+) {
 	pal := theme.Ocean()
 	if len(item.Entries) == 0 {
 		if strings.TrimSpace(item.EmptyText) != "" {
@@ -1011,12 +1030,30 @@ func renderLogEntries(c *ui.Context, pluginID string, item plugins.UIItem) {
 		for idx, entry := range item.Entries {
 			e := entry
 			rowKey := fmt.Sprintf("plugin-log-%s-%s-%d", pluginID, item.ID, idx)
-			row := ui.Row(c.Key(rowKey)).FillWidth().MinWidth(0).
-				Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space12).
-				Radius(theme.RadiusSM).Background(pal.Sidebar).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween)
-			if e.Ratio <= 0 && row.Hovered() {
-				row.Background(pal.Hover)
+			actID := strings.TrimSpace(e.ActionID)
+			clickable := actID != "" && onAction != nil
+			var row ui.Element
+			if clickable {
+				row = ui.ButtonBase(c.Key(rowKey)).FillWidth().MinWidth(0).
+					Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space12).
+					Radius(theme.RadiusSM).Background(pal.Sidebar).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).
+					Cursor(ui.CursorPointer).Disabled(busyAction != "").Label(e.Title)
+				if e.Ratio <= 0 {
+					if row.Pressed() {
+						row.Background(pal.Selected)
+					} else if row.Hovered() {
+						row.Background(pal.Hover)
+					}
+				}
+			} else {
+				row = ui.Row(c.Key(rowKey)).FillWidth().MinWidth(0).
+					Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space12).
+					Radius(theme.RadiusSM).Background(pal.Sidebar).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween)
+				if e.Ratio <= 0 && row.Hovered() {
+					row.Background(pal.Hover)
+				}
 			}
 
 			if e.Ratio > 0 {
@@ -1052,6 +1089,9 @@ func renderLogEntries(c *ui.Context, pluginID string, item plugins.UIItem) {
 							TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 					})
 				})
+				if clickable && busyAction == "" && row.Clicked() {
+					onAction(actID, cloneValues(values))
+				}
 				continue
 			}
 
@@ -1092,6 +1132,9 @@ func renderLogEntries(c *ui.Context, pluginID string, item plugins.UIItem) {
 					})
 				}
 			})
+			if clickable && busyAction == "" && row.Clicked() {
+				onAction(actID, cloneValues(values))
+			}
 		}
 	})
 }
@@ -1439,6 +1482,7 @@ func renderPluginActionButton(
 		Style:              style,
 		Disabled:           disabled,
 		Loading:            isBusy,
+		Truncate:           fb.CompactLayout,
 	})
 }
 
@@ -1475,7 +1519,50 @@ func renderActionsItem(
 	showCallout := activeBusyID == "" && matchedResult && resMsg != "" && (resTone == "danger" || resTone == "warning")
 	showInlineStatus := activeBusyID != "" || (matchedResult && resMsg != "" && !showCallout)
 
-	ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space10).Children(func() {
+	renderStatusNode := func(stacked bool) {
+		if activeBusyID != "" {
+			hint := resolveBusyActionHint(activeBusyID)
+			row := ui.Row(c.Key("plugin-act-busy-hint-" + pluginID + "-" + activeBusyID)).
+				Gap(theme.Space6).AlignItems(ui.Center).
+				Transition(bui.CascadeRowTransition(0))
+			if stacked {
+				row.FillWidth().MinWidth(0)
+			} else {
+				row.Grow(1).MinWidth(theme.SelectCompactMinWidth)
+			}
+			row.Children(func() {
+				ui.Text(c, hint).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+			})
+			return
+		}
+		if showInlineStatus {
+			firstID := item.Buttons[0].ID
+			dotCol, hasDot := logToneDotColor(pal, resTone)
+			statusWrap := ui.Row(c.Key("plugin-act-status-" + pluginID + "-" + firstID)).
+				Gap(theme.Space6).AlignItems(ui.Center).
+				Transition(bui.CascadeRowTransition(0))
+			if stacked {
+				statusWrap.FillWidth().MinWidth(0)
+			} else {
+				statusWrap.Grow(1).MinWidth(theme.SelectCompactMinWidth)
+			}
+			bui.WrappedTooltip(c, statusWrap, resMsg)
+			statusWrap.Children(func() {
+				if hasDot {
+					ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
+				}
+				ui.Text(c, resMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+			})
+		}
+	}
+
+	colGap := theme.Space10
+	if fb.CompactLayout {
+		colGap = theme.Space6
+	}
+	ui.Column(c).FillWidth().MinWidth(0).Gap(colGap).Children(func() {
 		if showCallout {
 			bgCol := pal.DangerSurface
 			bdCol := pal.Danger.Alpha(0.35)
@@ -1495,34 +1582,28 @@ func renderActionsItem(
 			})
 		}
 
+		if fb.CompactLayout {
+			if showInlineStatus {
+				renderStatusNode(true)
+			}
+			ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
+				for _, btn := range item.Buttons {
+					b := btn
+					el := renderPluginActionButton(c, "plugin-act-", pluginID, b, fb)
+					if el.Clicked() && fb.BusyAction == "" && onAction != nil {
+						onAction(b.ID, cloneValues(values))
+					}
+				}
+			})
+			return
+		}
+
 		justify := ui.End
 		if showInlineStatus {
 			justify = ui.SpaceBetween
 		}
 		ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space12).AlignItems(ui.Center).Justify(justify).Children(func() {
-			if activeBusyID != "" {
-				hint := resolveBusyActionHint(activeBusyID)
-				ui.Row(c.Key("plugin-act-busy-hint-" + pluginID + "-" + activeBusyID)).
-					Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).
-					Transition(bui.CascadeRowTransition(0)).Children(func() {
-					ui.Text(c, hint).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-				})
-			} else if showInlineStatus {
-				firstID := item.Buttons[0].ID
-				dotCol, hasDot := logToneDotColor(pal, resTone)
-				statusWrap := ui.Row(c.Key("plugin-act-status-" + pluginID + "-" + firstID)).
-					Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).
-					Transition(bui.CascadeRowTransition(0))
-				bui.WrappedTooltip(c, statusWrap, resMsg)
-				statusWrap.Children(func() {
-					if hasDot {
-						ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
-					}
-					ui.Text(c, resMsg).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-				})
-			}
+			renderStatusNode(false)
 
 			ui.Row(c).Wrap().Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.End).Shrink(0).Children(func() {
 				for _, btn := range item.Buttons {
@@ -1636,7 +1717,7 @@ func renderChecklistItem(
 	pal := theme.Ocean()
 	disabled := busyAction != ""
 
-	selectedSet, selectedCount := checklistSelectionSet(item, values)
+	selectedSet, _ := checklistSelectionSet(item, values)
 
 	ui.Column(c.Key("plugin-chk-" + pluginID + "-" + item.ID)).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 		if len(item.Options) == 0 {
@@ -1660,120 +1741,106 @@ func renderChecklistItem(
 					ui.Box(c).Grow(1)
 				}
 				if len(item.Options) > 1 {
-					allSelected := selectedCount == len(item.Options)
-					toggleLabel := theme.Tr("全选", "Select All")
-					if allSelected {
-						toggleLabel = theme.Tr("取消全选", "Clear All")
-					}
-					actBtn := bui.SettingsTextAction(c, "plugin-chk-all-"+pluginID+"-"+item.ID, toggleLabel, nil)
-					if disabled {
-						actBtn.Disabled(true).Opacity(theme.DisabledOpacity)
-					} else if actBtn.Clicked() {
-						nextSet := make(map[string]bool, len(item.Options))
-						if !allSelected {
-							for _, opt := range item.Options {
-								nextSet[opt.Value] = true
-							}
-						}
-						commitChecklistSelection(item, values, nextSet, onChange)
-					}
+					renderChecklistSelectAllAction(c, pluginID, item, values, disabled, onChange)
 				}
 			})
 		}
 
-		for idx, opt := range item.Options {
-			o := opt
-			checked := selectedSet[o.Value]
-			rowID := fmt.Sprintf("plugin-chk-%s-%s-%d", pluginID, item.ID, idx)
-			cursor := ui.CursorPointer
-			if disabled {
-				cursor = ui.CursorDefault
-			}
-			row := ui.ButtonBase(c.Key(rowID)).FillWidth().MinWidth(0).
-				MinHeight(theme.SettingsRowHeight).Padding(theme.Space6, theme.Space12).
-				Gap(theme.Space10).AlignItems(ui.Center).Radius(theme.RadiusMD).
-				Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(o.Label)
-			hovered := row.Hovered() && !disabled
-			pressed := row.Pressed() && !disabled
-
-			// Multi-select rows: the accent checkbox carries the checked state,
-			// so checked rows keep the plain surface instead of a gray fill.
-			bg := ui.Transparent
-			bd := pal.Hairline
-			if pressed || hovered {
-				bg = pal.Hover
-			}
-			bui.AnimateSurfaceColors(row, bg, bd, true)
-			bui.TactileCard(row, hovered, pressed, checked, disabled)
-			if disabled {
-				row.Opacity(theme.DisabledOpacity)
-			}
-			if strings.TrimSpace(o.Tooltip) != "" {
-				bui.WrappedTooltip(c, row, o.Tooltip)
-			}
-			bui.Probe(row, rowID)
-
-			row.Children(func() {
-				boxBG := ui.Transparent
-				boxBD := pal.BtnBorder
-				if checked {
-					boxBG = pal.Accent
-					boxBD = pal.Accent
-				} else if hovered {
-					boxBD = pal.Accent
+		// Unified single card with hairline dividers between rows.
+		ui.Column(c.Key("plugin-chk-card-"+pluginID+"-"+item.ID)).FillWidth().MinWidth(0).
+			Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Clip().Children(func() {
+			for idx, opt := range item.Options {
+				o := opt
+				checked := selectedSet[o.Value]
+				rowChecked := checked
+				rowID := fmt.Sprintf("plugin-chk-%s-%s-%s", pluginID, item.ID, o.Value)
+				cursor := ui.CursorPointer
+				if disabled {
+					cursor = ui.CursorDefault
 				}
-				box := ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Center().Shrink(0)
-				bui.AnimateSurfaceColors(box, boxBG, boxBD, true)
-				box.Children(func() {
+				row := ui.CheckboxBase(c.Key(rowID), &rowChecked).Row().FillWidth().MinWidth(0).
+					MinHeight(theme.SettingsListRowHeight).Padding(theme.Space6, theme.Space16).
+					Gap(theme.Space12).AlignItems(ui.Center).
+					Cursor(cursor).Disabled(disabled).DimDisabled(false).Label(o.Label)
+				if idx > 0 {
+					row.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+				}
+				hovered := row.Hovered() && !disabled
+				pressed := row.Pressed() && !disabled
+
+				bg := ui.Transparent
+				if pressed {
+					bg = pal.Selected
+				} else if hovered {
+					bg = pal.Hover
+				}
+				bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+				if disabled {
+					row.Opacity(theme.DisabledOpacity)
+				}
+				if strings.TrimSpace(o.Tooltip) != "" {
+					bui.WrappedTooltip(c, row, o.Tooltip)
+				}
+				bui.Probe(row, rowID)
+
+				row.Children(func() {
+					boxBG := ui.Transparent
+					boxBD := pal.BtnBorder
 					if checked {
-						icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.AccentText))
+						boxBG = pal.Accent
+						boxBD = pal.Accent
+					} else if hovered {
+						boxBD = pal.Accent
+					}
+					box := ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Center().Shrink(0)
+					bui.AnimateSurfaceColors(box, boxBG, boxBD, true)
+					box.Children(func() {
+						if checked {
+							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.AccentText))
+						}
+					})
+
+					nameCol := pal.Text
+					nameWeight := theme.WeightControl
+					if !checked && !hovered {
+						nameCol = pal.TextSecondary
+						nameWeight = theme.WeightRegular
+					}
+					ui.Text(c, o.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(nameWeight).TextColor(nameCol).SingleLine().Shrink(0)
+
+					if strings.TrimSpace(o.Badge) != "" {
+						ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusXS).
+							Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
+							ui.Text(c, o.Badge).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).SingleLine()
+						})
+					}
+
+					if strings.TrimSpace(o.Detail) != "" {
+						ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, o.Detail).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+						})
+					} else {
+						ui.Box(c).Grow(1)
 					}
 				})
 
-				icCol := pal.MonoIconColors(pal.TextSecondary)
-				if checked || hovered {
-					icCol = pal.DuoIconColors(pal.Text)
+				if !disabled && rowChecked != checked {
+					nextSet := make(map[string]bool, len(selectedSet)+1)
+					for k, v := range selectedSet {
+						nextSet[k] = v
+					}
+					if rowChecked {
+						nextSet[o.Value] = true
+					} else {
+						delete(nextSet, o.Value)
+					}
+					commitChecklistSelection(item, values, nextSet, onChange)
 				}
-				icons.Draw(c, icons.Folder, theme.IconRow, icCol)
-
-				nameCol := pal.Text
-				if !checked && !hovered {
-					nameCol = pal.TextSecondary
-				}
-				ui.Text(c, o.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightRegular).TextColor(nameCol).SingleLine().Shrink(0)
-
-				if strings.TrimSpace(o.Badge) != "" {
-					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusSM).
-						Background(pal.Shell).Border(1, pal.Hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
-						ui.Text(c, o.Badge).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-							TextColor(pal.TextSecondary).SingleLine()
-					})
-				}
-
-				if strings.TrimSpace(o.Detail) != "" {
-					ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, o.Detail).Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-							TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
-					})
-				} else {
-					ui.Box(c).Grow(1)
-				}
-			})
-
-			if !disabled && row.Clicked() {
-				nextSet := make(map[string]bool, len(selectedSet)+1)
-				for k, v := range selectedSet {
-					nextSet[k] = v
-				}
-				if checked {
-					delete(nextSet, o.Value)
-				} else {
-					nextSet[o.Value] = true
-				}
-				commitChecklistSelection(item, values, nextSet, onChange)
 			}
-		}
+		})
 	})
 }
 
