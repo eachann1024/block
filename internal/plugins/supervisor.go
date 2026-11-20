@@ -1954,7 +1954,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			if pluginID == "block-sync" && !syncFailureAlreadyReported(err) &&
 				(actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 				if installed, ok := s.GetInstalled(pluginID); ok {
-					s.reportSyncFailure(installed, rt, nbRoot, errors.Is(ctx.Err(), context.DeadlineExceeded), false, true)
+					s.reportSyncFailure(installed, rt, nbRoot, errors.Is(ctx.Err(), context.DeadlineExceeded), syncStateNotSaved(err), true, false)
 				}
 			}
 		}

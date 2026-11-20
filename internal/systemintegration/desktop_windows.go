@@ -36,8 +36,8 @@ var (
 	overlaySubclass      uintptr
 )
 
-func NotificationSupport(context.Context) (bool, func(string) string) {
-	return true, func(text string) string { return text }
+func NotificationSupport(context.Context) (bool, bool, func(string) string) {
+	return true, true, func(text string) string { return text }
 }
 
 func CredentialsAvailable(context.Context) bool { return true }

@@ -11,23 +11,24 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func NotificationSupport(ctx context.Context) (bool, func(string) string) {
+func NotificationSupport(ctx context.Context) (bool, bool, func(string) string) {
 	plain := func(text string) string { return text }
 	bus, err := dbus.ConnectSessionBus(dbus.WithContext(ctx))
 	if err != nil {
-		return false, plain
+		return false, false, plain
 	}
 	defer bus.Close()
 	const service = "org.freedesktop.Notifications"
 	var caps []string
 	err = bus.Object(service, "/org/freedesktop/Notifications").CallWithContext(ctx, service+".GetCapabilities", 0).Store(&caps)
 	if err != nil {
-		return false, plain
+		return false, false, plain
 	}
+	click := slices.Contains(caps, "actions")
 	if slices.Contains(caps, "body-markup") {
-		return true, html.EscapeString
+		return true, click, html.EscapeString
 	}
-	return true, plain
+	return true, click, plain
 }
 
 func CredentialsAvailable(ctx context.Context) bool {

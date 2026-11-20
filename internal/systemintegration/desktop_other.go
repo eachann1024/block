@@ -10,8 +10,9 @@ import (
 	"github.com/egoist/mygo"
 )
 
-func NotificationSupport(context.Context) (bool, func(string) string) {
-	return runtime.GOOS == "darwin", func(text string) string { return text }
+func NotificationSupport(context.Context) (bool, bool, func(string) string) {
+	supported := runtime.GOOS == "darwin"
+	return supported, supported, func(text string) string { return text }
 }
 
 func CredentialsAvailable(context.Context) bool { return runtime.GOOS == "darwin" }
