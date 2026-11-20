@@ -2731,6 +2731,15 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						return true
 					}
 					if key == ui.KeyEnter && mods == 0 {
+						if cCaret > 0 {
+							if res := tryBareURLAutolinkBefore(cell.Spans, []rune(curCellText), cCaret); res.changed {
+								s.pushUndo()
+								cell.Spans = res.spans
+								s.doc.Blocks[blockIdx].Dirty = true
+								s.doc.Blocks[blockIdx].CleanSource = ""
+								s.markDirty()
+							}
+						}
 						s.stepTableCell(blockID, tbl, rIdx, cIdx, len(tbl.Rows[0]))
 						return true
 					}
