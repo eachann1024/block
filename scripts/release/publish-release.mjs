@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, createReadStream, existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertReleaseAsset, RELEASE_ASSETS } from "./allowed-assets.mjs";
@@ -15,7 +15,7 @@ import {
   setPackageJsonVersion,
   versionFromTag,
 } from "./select-release.mjs";
-import { fetchGithubReleaseByTag, syncFeedFromGithub } from "./update-feed.mjs";
+import { syncFeedFromGithub } from "./update-feed.mjs";
 
 const RELEASE_DIR = resolve(ROOT, "dist/release");
 
@@ -31,11 +31,77 @@ function readFileAtRef(ref, path) {
   return Buffer.from(String(data.content).replaceAll("\n", ""), "base64").toString("utf8");
 }
 
-function tryFetchReleaseByTag(tag) {
+function sha256File(filePath) {
+  return new Promise((resolveHash, rejectHash) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", rejectHash);
+    stream.on("end", () => resolveHash(hash.digest("hex")));
+  });
+}
+
+function isNotFoundError(err) {
+  const detail = String(err?.stderr || err?.message || "");
+  return /\b404\b|Not Found/i.test(detail);
+}
+
+function resolveRemoteTagCommit(tag) {
+  let refData;
   try {
-    return fetchGithubReleaseByTag(tag);
-  } catch {
-    return null;
+    refData = JSON.parse(gh(["api", `repos/${REPO}/git/ref/tags/${encodeURIComponent(tag)}`]));
+  } catch (err) {
+    if (isNotFoundError(err)) return null;
+    throw err;
+  }
+  let obj = refData?.object;
+  for (let depth = 0; depth < 5 && obj?.type === "tag" && obj?.sha; depth += 1) {
+    const tagObj = JSON.parse(gh(["api", `repos/${REPO}/git/tags/${obj.sha}`]));
+    obj = tagObj?.object;
+  }
+  return obj?.type === "commit" && /^[0-9a-f]{40}$/i.test(obj.sha || "") ? obj.sha : null;
+}
+
+function fetchReleaseById(id) {
+  return JSON.parse(gh(["api", `repos/${REPO}/releases/${id}`]));
+}
+
+function uploadReleaseAsset(releaseId, name, filePath) {
+  const url = `https://uploads.github.com/repos/${REPO}/releases/${releaseId}/assets?name=${encodeURIComponent(name)}`;
+  return JSON.parse(
+    gh([
+      "api",
+      "--method",
+      "POST",
+      "-H",
+      "Content-Type: application/octet-stream",
+      "--input",
+      filePath,
+      url,
+    ]),
+  );
+}
+
+function verifyReleaseAssets(release, assets, assetSizes, fallbackHashes, tag) {
+  const remoteAssets = release?.assets ?? [];
+  assert.equal(
+    remoteAssets.length,
+    assets.length,
+    `Release ${tag} has ${remoteAssets.length} assets, expected exactly ${assets.length}.`,
+  );
+  for (const name of assets) {
+    const matches = remoteAssets.filter((asset) => asset?.name === name);
+    assert.equal(matches.length, 1, `Release ${tag} must have exactly one asset named ${name}.`);
+    const asset = matches[0];
+    assert.equal(asset.state, "uploaded", `Release ${tag} asset ${name} is not uploaded (state=${asset.state}).`);
+    assert.equal(asset.size, assetSizes[name], `Release ${tag} asset ${name} size mismatch.`);
+    if (asset.digest) {
+      assert.equal(
+        asset.digest.toLowerCase(),
+        `sha256:${fallbackHashes[name]}`,
+        `Release ${tag} asset ${name} digest mismatch.`,
+      );
+    }
   }
 }
 
@@ -52,26 +118,59 @@ function parseJsonVersion(text) {
   }
 }
 
-function writebackVersionCommit(version, tag, { autoBump = true, feedJson } = {}) {
+function feedContentSignature(jsonText) {
+  try {
+    const parsed = JSON.parse(jsonText);
+    const { updated_at: _ignored, ...rest } = parsed || {};
+    return JSON.stringify(rest);
+  } catch {
+    return null;
+  }
+}
+
+function feedLatestVersion(jsonText) {
+  try {
+    const parsed = JSON.parse(jsonText);
+    return versionFromTag(parsed?.latest_version || parsed?.latest_tag);
+  } catch {
+    return null;
+  }
+}
+
+function writebackVersionCommit(version, tag, { buildFeed }) {
+  let feedState = buildFeed();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const head = JSON.parse(gh(["api", `repos/${REPO}/git/ref/heads/main`])).object.sha;
     const commit = JSON.parse(gh(["api", `repos/${REPO}/git/commits/${head}`]));
     const files = {};
-    if (autoBump) {
-      const pkgText = readFileAtRef(head, "package.json");
-      const pkgVer = parseJsonVersion(pkgText);
-      if (!pkgVer || compareVersions(version, pkgVer) > 0) {
-        files["package.json"] = setPackageJsonVersion(pkgText, version);
-      }
-      const mygoText = readFileAtRef(head, "mygo.json");
-      const mygoVer = parseJsonVersion(mygoText);
-      if (!mygoVer || compareVersions(version, mygoVer) > 0) {
-        files["mygo.json"] = setMyGoJsonVersion(mygoText, version);
-      }
+
+    const pkgText = readFileAtRef(head, "package.json");
+    const pkgVer = parseJsonVersion(pkgText);
+    if (!pkgVer || compareVersions(version, pkgVer) > 0) {
+      files["package.json"] = setPackageJsonVersion(pkgText, version);
     }
-    if (typeof feedJson === "string") {
-      files["updates/feed.json"] = feedJson;
+    const mygoText = readFileAtRef(head, "mygo.json");
+    const mygoVer = parseJsonVersion(mygoText);
+    if (!mygoVer || compareVersions(version, mygoVer) > 0) {
+      files["mygo.json"] = setMyGoJsonVersion(mygoText, version);
     }
+
+    let headFeedText = "";
+    try {
+      headFeedText = readFileAtRef(head, "updates/feed.json");
+    } catch {}
+    const headFeedVer = feedLatestVersion(headFeedText);
+    const nextFeedVer = versionFromTag(feedState.feed?.latest_version || feedState.feed?.latest_tag);
+    if (headFeedVer && nextFeedVer && compareVersions(headFeedVer, nextFeedVer) > 0) {
+      feedState = buildFeed();
+    }
+    const refreshedVer = versionFromTag(feedState.feed?.latest_version || feedState.feed?.latest_tag);
+    const shouldWriteFeed = (!headFeedVer || !refreshedVer || compareVersions(refreshedVer, headFeedVer) >= 0)
+      && feedContentSignature(headFeedText) !== feedContentSignature(feedState.json);
+    if (shouldWriteFeed) {
+      files["updates/feed.json"] = feedState.json;
+    }
+
     if (Object.keys(files).length === 0) return;
     const tree = JSON.parse(gh(["api", "--method", "POST", `repos/${REPO}/git/trees`, "--input", "-"], JSON.stringify({
       base_tree: commit.tree.sha,
@@ -105,7 +204,7 @@ export async function publishRelease() {
     return;
   }
 
-  const { version, tag, commit, releaseNotes, autoBump } = plan;
+  const { version, tag, commit, releaseNotes } = plan;
   assert.ok(version && tag && commit && releaseNotes, "Incomplete release-plan.json");
   assert.equal(tag, `v${version}`);
   assert.notEqual(tag, "v0.1.0");
@@ -120,82 +219,135 @@ export async function publishRelease() {
     assertReleaseAsset(name);
     return true;
   });
-  const assetPaths = assets.map((name) => {
+  const assetPathMap = {};
+  const assetSizes = {};
+  for (const name of assets) {
     const p = join(RELEASE_DIR, name);
     assert.ok(existsSync(p), `Missing release asset: ${p}`);
-    return p;
-  });
+    assetPathMap[name] = p;
+    assetSizes[name] = statSync(p).size;
+  }
   const fallbackHashes = Object.fromEntries(
-    assets.map((name) => [name, createHash("sha256").update(readFileSync(join(RELEASE_DIR, name))).digest("hex")]),
+    await Promise.all(assets.map(async (name) => [name, await sha256File(assetPathMap[name])])),
   );
 
+  const remoteTagCommit = resolveRemoteTagCommit(tag);
+  if (remoteTagCommit) {
+    assert.equal(
+      remoteTagCommit,
+      commit,
+      `Tag ${tag} already points to ${remoteTagCommit}, refusing to publish binaries built from ${commit}.`,
+    );
+  }
+
   const allReleases = getReleases();
-  const existingDraft = allReleases.find((r) => r?.draft && r?.tag_name === tag);
-  assert.ok(!existingDraft, `Release ${tag} is an existing draft and requires reconciliation`);
-  const existing = tryFetchReleaseByTag(tag);
+  const existingPublished = allReleases.find((r) => r && !r.draft && r.tag_name === tag) || null;
+  const matchingDrafts = allReleases.filter((r) => r && r.draft && r.tag_name === tag);
   const title = `Block ${version}`;
   let publishedRelease;
 
-  if (!existing) {
+  if (existingPublished) {
+    assert.equal(
+      remoteTagCommit,
+      commit,
+      `Published release ${tag} tag commit (${remoteTagCommit || "missing"}) does not match planned commit ${commit}.`,
+    );
+    publishedRelease = fetchReleaseById(existingPublished.id);
+    verifyReleaseAssets(publishedRelease, assets, assetSizes, fallbackHashes, tag);
+  } else {
+    let draft = null;
+    let createdDraftId = null;
+    if (matchingDrafts.length === 1 && matchingDrafts[0].target_commitish === commit) {
+      draft = fetchReleaseById(matchingDrafts[0].id);
+      console.log(`Resuming existing draft release #${draft.id} for ${tag} (${commit.slice(0, 7)})`);
+    } else if (matchingDrafts.length > 0) {
+      throw new Error(
+        `Release ${tag} has ${matchingDrafts.length} conflicting draft(s) requiring manual reconciliation.`,
+      );
+    }
+
     const hasNewerPublished = allReleases.some((r) => {
       if (!r || r.draft || r.prerelease) return false;
       const other = versionFromTag(r.tag_name);
       return Boolean(other && compareVersions(other, version) > 0);
     });
+
+    let published = false;
     try {
-      gh([
-        "release",
-        "create",
-        tag,
-        ...assetPaths,
-        "--repo",
-        REPO,
-        "--target",
-        commit,
-        "--title",
-        title,
-        "--notes",
-        releaseNotes,
-        "--draft",
-      ]);
-      gh([
-        "release",
-        "edit",
-        tag,
-        "--repo",
-        REPO,
-        "--draft=false",
-        `--latest=${hasNewerPublished ? "false" : "true"}`,
-      ]);
-    } catch (err) {
-      // Remove only the partial draft we just created so re-running does not burn a version number.
-      try {
-        const createdDraft = getReleases().find((r) => r?.draft && r?.tag_name === tag && r?.id);
-        if (createdDraft) {
-          gh(["api", "--method", "DELETE", `repos/${REPO}/releases/${createdDraft.id}`]);
+      if (!draft) {
+        draft = JSON.parse(
+          gh(
+            ["api", "--method", "POST", `repos/${REPO}/releases`, "--input", "-"],
+            JSON.stringify({
+              tag_name: tag,
+              target_commitish: commit,
+              name: title,
+              body: releaseNotes,
+              draft: true,
+              prerelease: false,
+            }),
+          ),
+        );
+        createdDraftId = draft.id;
+      }
+
+      const allowSet = new Set(assets);
+      const validUploaded = new Set();
+      for (const remote of draft.assets ?? []) {
+        const matchesLocal = allowSet.has(remote.name)
+          && remote.state === "uploaded"
+          && remote.size === assetSizes[remote.name]
+          && (!remote.digest || remote.digest.toLowerCase() === `sha256:${fallbackHashes[remote.name]}`);
+        if (matchesLocal && !validUploaded.has(remote.name)) {
+          validUploaded.add(remote.name);
+        } else if (remote.id) {
+          gh(["api", "--method", "DELETE", `repos/${REPO}/releases/assets/${remote.id}`]);
         }
-      } catch {}
-      throw err;
-    }
-    publishedRelease = fetchGithubReleaseByTag(tag);
-  } else {
-    publishedRelease = existing;
-    assert.ok(!publishedRelease.draft, `Release ${tag} is an existing draft and requires reconciliation`);
-    for (const name of assets) {
-      const matches = (publishedRelease.assets ?? []).filter((asset) => asset.name === name);
-      assert.ok(
-        matches.length === 1 && matches[0].digest?.toLowerCase() === `sha256:${fallbackHashes[name]}`,
-        `Release ${tag} already exists with a different or unverifiable ${name}. Publish corrections under a new version.`,
+      }
+
+      for (const name of assets) {
+        if (!validUploaded.has(name)) {
+          uploadReleaseAsset(draft.id, name, assetPathMap[name]);
+        }
+      }
+
+      const verifiedDraft = fetchReleaseById(draft.id);
+      verifyReleaseAssets(verifiedDraft, assets, assetSizes, fallbackHashes, tag);
+
+      publishedRelease = JSON.parse(
+        gh(
+          ["api", "--method", "PATCH", `repos/${REPO}/releases/${draft.id}`, "--input", "-"],
+          JSON.stringify({
+            name: title,
+            body: releaseNotes,
+            target_commitish: commit,
+            draft: false,
+            make_latest: hasNewerPublished ? "false" : "true",
+          }),
+        ),
       );
+      published = true;
+    } catch (err) {
+      if (createdDraftId && !published) {
+        try {
+          gh(["api", "--method", "DELETE", `repos/${REPO}/releases/${createdDraftId}`]);
+        } catch (cleanupErr) {
+          console.error(
+            `::warning title=publish-cleanup::Failed to delete partial draft #${createdDraftId} for ${tag}: ${cleanupErr?.message || cleanupErr}`,
+          );
+        }
+      }
+      throw err;
     }
   }
 
-  const { json: feedJson } = syncFeedFromGithub({
-    tagRelease: publishedRelease,
-    fallbackHashes,
+  writebackVersionCommit(version, tag, {
+    buildFeed: () =>
+      syncFeedFromGithub({
+        tagRelease: publishedRelease,
+        fallbackHashes,
+      }),
   });
-
-  writebackVersionCommit(version, tag, { autoBump: Boolean(autoBump), feedJson });
 
   const summary = `已发布 ${title} (${tag})\n\n${releaseNotes}\n`;
   console.log(summary);
