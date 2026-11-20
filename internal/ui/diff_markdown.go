@@ -8,6 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	notemd "block/internal/markdown"
+	"block/internal/model"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
@@ -54,156 +56,55 @@ type DiffLineStyle struct {
 	Break bool
 }
 
-// DiffListNumbers reports, per line, the number an ordered list item shows in its
-// own text (0: not one), since each line alone would show its written number; -1
-// marks an item marker that is paragraph text instead ("2." may not interrupt a
-// paragraph). A changed line takes its own side, an unchanged one the new text.
-func DiffListNumbers(lines []string, change []int) []int {
-	masks, heads, fences := diffScanFences(lines, change)
-	// Bar lines no separator makes a table ("| grep ERROR") are paragraph text.
-	tables := diffTableMembers(lines, change)
-	var nums [2][]int
-	for si, side := range [2]int{-1, 1} {
-		num := make([]int, len(lines))
-		// One open list per nesting level: its marker column, content column, kind
-		// ("." ")" for ordered, the bullet otherwise) and next number.
-		type list struct {
-			ind, content, next int
-			kind               string
+// diffSource builds one side's note text and maps its source lines to diff rows.
+func diffSource(lines []string, change []int, side int) (string, []int) {
+	var source strings.Builder
+	var rows []int
+	for i, line := range lines {
+		if change[i] != -side {
+			source.WriteString(strings.TrimRight(line, "\r\n"))
+			source.WriteByte('\n')
+			rows = append(rows, i)
 		}
-		var stack []list
-		// para: the line above is paragraph text, which only a bullet or "1." may
-		// interrupt. quote: the blockquote depth the open lists sit in.
-		prevBlank, para, quote := false, false, 0
-		// skip: the lines up to here belong to a quote nested in an item, numbered already.
-		skip := 0
-		// inItem reports whether line j is a quote inside an open item's content
-		// ("   > 需要管理员权限", or ">    > 先备份" in a quoted list), which leaves its list
-		// open; left of a nested item's content it closes that sublist only.
-		inItem := func(j int) bool {
-			t := strings.TrimSpace(lines[j])
-			inner := lines[j]
-			if quote > 0 {
-				inner = diffStripQuotes(t, quote)
-			}
-			lead := len(strings.ReplaceAll(inner[:len(inner)-len(strings.TrimLeft(inner, " \t"))], "\t", "    "))
-			if diffQuoteDepth(t) <= quote || len(stack) == 0 || lead < stack[0].content {
-				return false
-			}
-			for stack[len(stack)-1].content > lead {
-				stack = stack[:len(stack)-1]
-			}
-			return true
-		}
-		for i, l := range lines {
-			if change[i] == -side || i < skip {
-				continue
-			}
-			t := strings.TrimSpace(l)
-			if inItem(i) {
-				// The nested quote is a container of its own, whose lists are numbered
-				// apart from the item's ("> 1. 部署" over ">    > 1. 备份").
-				// A quote left of the sublist it started in sits in an outer item, another
-				// container whose lists start over.
-				end, depth := i+1, len(stack)
-				for j := i + 1; j < len(lines); j++ {
-					if change[j] != -side {
-						if !inItem(j) || len(stack) != depth {
-							break
-						}
-						end = j + 1
-					}
-				}
-				var sub []string
-				for j := i; j < end; j++ {
-					sub = append(sub, strings.TrimSpace(diffStripQuotes(strings.TrimSpace(lines[j]), quote)))
-				}
-				copy(num[i:], DiffListNumbers(sub, change[i:end]))
-				skip, prevBlank, para = end, false, false
-				continue
-			}
-			// A list in a blockquote is read behind its markers; another depth is
-			// another container, whose lists start over.
-			if q := diffQuoteDepth(t); q != quote {
-				stack, para, quote = nil, false, q
-			}
-			if quote > 0 {
-				l = diffStripQuotes(t, quote)
-				t = strings.TrimSpace(l)
-			}
-			if t == "" {
-				prevBlank, para = true, false
-				continue
-			}
-			ind := len(strings.ReplaceAll(l[:len(l)-len(strings.TrimLeft(l, " \t"))], "\t", "    "))
-			blank := prevBlank
-			prevBlank = false
-			om := diffCellListRE.FindStringSubmatch(t)
-			// Indented code (masked) is no item, but "1. ```bash" opening a fence is; an
-			// indented paragraph line ("    1. 启动服务" under "操作示例：") is text.
-			item := (!masks[si][i] || fences[si][i] == 1) && heads[si][i] != DiffParaText && heads[si][i] >= 0 &&
-				(om != nil || diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t))
-			text := func(t string) bool {
-				return t != "" && !diffHeadingRE.MatchString(t) && !diffRuleRE.MatchString(t) &&
-					!strings.HasPrefix(t, ">") && diffFenceOpen(t) == ""
-			}
-			// A setext underline ("===") ends its heading: "2. 启动服务" below is an item.
-			plain := !masks[si][i] && text(t) && heads[si][i] >= 0 && !tables[si][i]
-			// The lists the line is not inside: an item left of a list's content is a
-			// sibling of that list's items (or of an outer one).
-			var sib *list
-			saved := slices.Clone(stack)
-			// Only paragraph text continues lazily: after code, "恢复步骤：" at the margin
-			// ends the list.
-			if item || blank || !plain || !para {
-				for len(stack) > 0 && stack[len(stack)-1].content > ind {
-					top := stack[len(stack)-1]
-					sib, stack = &top, stack[:len(stack)-1]
-				}
-			}
-			kind, n := "", 0
-			if item {
-				kind = t[:1]
-				if om != nil {
-					kind = om[2]
-					n, _ = strconv.Atoi(om[1])
-				}
-			}
-			cont := item && sib != nil && sib.kind == kind
-			if item && !cont && para && om != nil && n != 1 {
-				// Paragraph text: "2. 这是正文" under "先说明" continues it.
-				item, num[i] = false, -1
-			}
-			if !item {
-				if plain && !blank && para {
-					// A lazy continuation line leaves every list open.
-					stack = saved
-				}
-				para = plain
-				continue
-			}
-			// An item opens a paragraph with any text after its marker: the note reads
-			// "1. ## 模块" as inline text, which "2. 这是正文" below continues.
-			content := ind + diffItemCol(t)
-			after := strings.TrimSpace(diffContainerRE.ReplaceAllString(t, ""))
-			para = after != "" && diffFenceOpen(after) == ""
-			if cont && om != nil {
-				n = sib.next
-			}
-			stack = append(stack, list{ind: ind, content: content, kind: kind, next: n + 1})
-			num[i] = n
-		}
-		nums[si] = num
 	}
+	return source.String(), rows
+}
+
+// DiffListNumbers gives ordered items their note's display numbers. An ordered
+// marker read as literal text gets -1, and other lines get 0. Deleted lines use
+// the old text, and inserted and unchanged lines use the new text.
+func DiffListNumbers(lines []string, change []int) []int {
 	out := make([]int, len(lines))
-	for i := range lines {
-		out[i] = nums[1][i]
-		if change[i] < 0 {
-			out[i] = nums[0][i]
+	for _, side := range [2]int{-1, 1} {
+		source, rows := diffSource(lines, change, side)
+		if !diffOrderedLineRE.MatchString(source) {
+			continue
+		}
+		for _, row := range rows {
+			if change[row] == 0 && side < 0 {
+				continue
+			}
+			t := strings.TrimSpace(lines[row])
+			t = strings.TrimSpace(diffStripQuotes(t, diffQuoteDepth(t)))
+			if diffCellListRE.MatchString(t) {
+				out[row] = -1
+			}
+		}
+		var numbering model.NumberedListMarkers
+		for _, block := range notemd.ParseMarkdown(source).Blocks {
+			num := numbering.Next(block)
+			if num > 0 && block.SourceLine > 0 && block.SourceLine <= len(rows) {
+				row := rows[block.SourceLine-1]
+				if out[row] == -1 && (change[row] != 0 || side > 0) {
+					out[row] = num
+				}
+			}
 		}
 	}
 	return out
 }
+
+var diffOrderedLineRE = regexp.MustCompile(`(?m)^[ \t>]*[0-9]{1,9}[.)](?:[ \t]|$)`)
 
 // diffRefDestRE matches a definition's destination with an optional title.
 var diffRefDestRE = regexp.MustCompile(`^\s*(?:<[^<>]*>|[^\s<]\S*)` + diffLinkTitle + `\s*$`)
