@@ -152,6 +152,13 @@ function formatLatestAssets(rawAssets, fallbackHashes) {
     .sort((a, b) => ASSET_ORDER.get(a.name) - ASSET_ORDER.get(b.name));
 }
 
+function releasePreferenceScore(release, version) {
+  let score = 0;
+  if (release?.tag_name === `v${version}`) score += 4;
+  if (Array.isArray(release?.assets) && release.assets.length > 0) score += 2;
+  return score;
+}
+
 export function buildFeedFromReleases(
   rawReleases,
   { repo = REPO, updatedAt = new Date().toISOString(), fallbackHashes = {}, fallbackHashesTag = "" } = {},
@@ -161,7 +168,8 @@ export function buildFeedFromReleases(
     if (!release || release.draft || release.prerelease) continue;
     const version = versionFromTag(release.tag_name);
     if (!version || !/^\d+\.\d+\.\d+$/.test(version)) continue;
-    if (!byVersion.has(version)) {
+    const existing = byVersion.get(version);
+    if (!existing || releasePreferenceScore(release, version) > releasePreferenceScore(existing, version)) {
       byVersion.set(version, release);
     }
   }
@@ -171,14 +179,14 @@ export function buildFeedFromReleases(
     .slice(0, MAX_FEED_RELEASES);
 
   const releases = sorted.map(([version, release], index) => {
-    const tag = `v${version}`;
+    const tag = String(release.tag_name || "").trim() || `v${version}`;
     const parsed = parseReleaseBody(release.body);
-    const matchingFallbackHashes = !fallbackHashesTag || release.tag_name === fallbackHashesTag ? fallbackHashes : {};
+    const matchingFallbackHashes = !fallbackHashesTag || tag === fallbackHashesTag ? fallbackHashes : {};
     return {
       version,
       tag,
       published_at: String(release.published_at || release.created_at || ""),
-      html_url: String(release.html_url || `https://github.com/${repo}/releases/tag/${tag}`),
+      html_url: String(release.html_url || `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}`),
       zh: parsed.zh,
       en: parsed.en,
       assets: index === 0 ? formatLatestAssets(release.assets, matchingFallbackHashes) : [],
@@ -200,21 +208,9 @@ export function formatFeedJson(feed) {
   return `${JSON.stringify(feed, null, 2)}\n`;
 }
 
-export function fetchGithubReleases(repo = REPO, { maxValid = MAX_FEED_RELEASES } = {}) {
-  const out = [];
-  const seenVersions = new Set();
-  for (let page = 1; page <= 10; page += 1) {
-    const batch = JSON.parse(gh(["api", `repos/${repo}/releases?per_page=100&page=${page}`]));
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    out.push(...batch);
-    for (const r of batch) {
-      if (!r || r.draft || r.prerelease) continue;
-      const v = versionFromTag(r.tag_name);
-      if (v && /^\d+\.\d+\.\d+$/.test(v)) seenVersions.add(v);
-    }
-    if (seenVersions.size >= maxValid || batch.length < 100) break;
-  }
-  return out;
+export function fetchGithubReleases(repo = REPO) {
+  const pages = JSON.parse(gh(["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`]));
+  return Array.isArray(pages) ? pages.flat() : [];
 }
 
 export function fetchGithubReleaseByTag(tag, repo = REPO) {
