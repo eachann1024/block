@@ -742,7 +742,7 @@ func (rt *Runtime) writeLine(ctx context.Context, v any) error {
 func (rt *Runtime) readLoop(r io.Reader) {
 	defer close(rt.exited)
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	sc.Buffer(make([]byte, 64*1024), 24*1024*1024)
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {

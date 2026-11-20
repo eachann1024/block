@@ -1016,9 +1016,24 @@ func splitHeaderActions(page *plugins.UIPage) (primary *plugins.UIButton, second
 	if page == nil || len(page.HeaderActions) == 0 {
 		return nil, nil
 	}
+	primaryIdx := -1
+	for i := range page.HeaderActions {
+		if page.HeaderActions[i].Variant == plugins.VariantPrimary {
+			primaryIdx = i
+			break
+		}
+	}
+	if primaryIdx < 0 {
+		for i := range page.HeaderActions {
+			if page.HeaderActions[i].Variant == plugins.VariantDanger {
+				primaryIdx = i
+				break
+			}
+		}
+	}
 	for i := range page.HeaderActions {
 		b := page.HeaderActions[i]
-		if primary == nil && b.Variant == plugins.VariantPrimary {
+		if i == primaryIdx {
 			cp := b
 			primary = &cp
 			continue

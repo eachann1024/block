@@ -61,6 +61,7 @@ type PluginViewState struct {
 	failedSaves    map[string]string
 	queuedSaves    map[string]*noteSaveRequest
 	saveCancel     context.CancelFunc
+	retrySavePath  string
 	PendingSaves   int
 
 	lastNotebookRoot   string
@@ -1673,6 +1674,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 
 		tone := resolveActionTone(res, err)
 		var openTarget, revealTarget string
+		reloadAfterCancel := false
 		s.mu.Lock()
 		if cur := s.views[key]; cur == vs {
 			prevWasHeader := cur.Page.HasHeaderAction(actionID)
@@ -1688,6 +1690,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
 				cur.Notice = ""
+				reloadAfterCancel = true
 			} else if err != nil {
 				cur.Error = err.Error()
 				cur.LastActionID = actionID
@@ -1746,13 +1749,14 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 						}
 					})
 				}
+				keepDrafts := actionID == "test_conn" && len(res.Values) == 0
 				if res.Page != nil {
 					cur.Page = res.Page
 					if cur.Page.Status == "" && statusMsg != "" {
 						cur.Page.Status = statusMsg
 					}
 					for k, v := range res.Page.ExtractDefaultValues() {
-						if cur.editedControls[k] && cur.editedSeq[k] > actionSeq {
+						if cur.editedControls[k] && (keepDrafts || cur.editedSeq[k] > actionSeq) {
 							continue
 						}
 						cur.Values[k] = v
@@ -1777,6 +1781,9 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 			unlockRPC()
 		}
 		s.notifyChanged()
+		if reloadAfterCancel {
+			s.ReloadSurfaceViewAsync(pluginID, surface)
+		}
 
 		if openTarget != "" && !rt.closed.Load() {
 			openLocalPathInOS(rt.cfg.DownloadsDir, openTarget, false)
@@ -1899,8 +1906,17 @@ func (s *Supervisor) CanCancelAction(pluginID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if v := s.views[key]; v != nil {
-		if v.actionCancel != nil || (v.BusyAction == "__retry_note_saved__" && v.saveCancel != nil) {
+		if v.actionCancel != nil {
 			return true
+		}
+		if v.BusyAction == "__retry_note_saved__" {
+			if v.retrySavePath != "" {
+				if req := v.queuedSaves[v.retrySavePath]; req != nil && req.cancel != nil {
+					return true
+				}
+			} else if v.saveCancel != nil {
+				return true
+			}
 		}
 	}
 	return false
@@ -1915,10 +1931,16 @@ func (s *Supervisor) CancelAction(pluginID string) {
 			v.actionCancel()
 		}
 		if v.BusyAction == "__retry_note_saved__" {
-			if v.saveCancel != nil {
+			if v.retrySavePath != "" {
+				if req := v.queuedSaves[v.retrySavePath]; req != nil && req.cancel != nil {
+					req.cancel()
+				}
+				delete(v.queuedSaves, v.retrySavePath)
+			} else if v.saveCancel != nil {
 				v.saveCancel()
 			}
 			v.BusyAction = ""
+			v.retrySavePath = ""
 		}
 		v.ActionProgress = ActionProgress{}
 	}
@@ -1938,12 +1960,18 @@ func (s *Supervisor) CancelPendingSaves(pluginID string) {
 	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: SurfaceSettingsPage}
 	s.mu.Lock()
 	if v := s.views[key]; v != nil {
+		for _, req := range v.queuedSaves {
+			if req != nil && req.cancel != nil {
+				req.cancel()
+			}
+		}
 		if v.saveCancel != nil {
 			v.saveCancel()
 		}
 		clear(v.queuedSaves)
 		if v.BusyAction == "__retry_note_saved__" {
 			v.BusyAction = ""
+			v.retrySavePath = ""
 			v.ActionProgress = ActionProgress{}
 		}
 	}
@@ -1995,6 +2023,7 @@ func (s *Supervisor) RetrySurfaceAsync(pluginID string, surface Surface) {
 			return
 		}
 		target.BusyAction = "__retry_note_saved__"
+		target.retrySavePath = notePath
 		s.mu.Unlock()
 		s.notifyChanged()
 		s.queueNoteSaved(pluginID, noteRoot, notePath, relSlash)
