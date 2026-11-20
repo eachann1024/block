@@ -299,19 +299,34 @@ func appendUnique(dst []string, item string) []string {
 	return append(dst, item)
 }
 
-func appendUniqueTagged(dst []TaggedBullet, text, ver string) []TaggedBullet {
-	if text == "" {
-		return dst
-	}
-	for _, existing := range dst {
-		if existing.Text == text {
-			return dst
-		}
-	}
-	return append(dst, TaggedBullet{Text: text, Version: ver})
+type sectionSeen struct {
+	newSet map[string]struct{}
+	impSet map[string]struct{}
+	fixSet map[string]struct{}
+	othSet map[string]struct{}
 }
 
-func mergeLocalized(dst *LocalizedNotes, tagged *TaggedLocalizedNotes, src LocalizedNotes, verTag string) {
+func newSectionSeen() *sectionSeen {
+	return &sectionSeen{
+		newSet: make(map[string]struct{}),
+		impSet: make(map[string]struct{}),
+		fixSet: make(map[string]struct{}),
+		othSet: make(map[string]struct{}),
+	}
+}
+
+func appendUniqueSet(dst []string, tagged []TaggedBullet, seen map[string]struct{}, item, verTag string) ([]string, []TaggedBullet) {
+	if item == "" {
+		return dst, tagged
+	}
+	if _, dup := seen[item]; dup {
+		return dst, tagged
+	}
+	seen[item] = struct{}{}
+	return append(dst, item), append(tagged, TaggedBullet{Text: item, Version: verTag})
+}
+
+func mergeLocalized(dst *LocalizedNotes, tagged *TaggedLocalizedNotes, seen *sectionSeen, src LocalizedNotes, verTag string) {
 	if dst.Highlights == "" && src.Highlights != "" {
 		dst.Highlights = src.Highlights
 	}
@@ -319,20 +334,16 @@ func mergeLocalized(dst *LocalizedNotes, tagged *TaggedLocalizedNotes, src Local
 		tagged.Highlights = src.Highlights
 	}
 	for _, it := range src.New {
-		dst.New = appendUnique(dst.New, it)
-		tagged.New = appendUniqueTagged(tagged.New, it, verTag)
+		dst.New, tagged.New = appendUniqueSet(dst.New, tagged.New, seen.newSet, it, verTag)
 	}
 	for _, it := range src.Improvements {
-		dst.Improvements = appendUnique(dst.Improvements, it)
-		tagged.Improvements = appendUniqueTagged(tagged.Improvements, it, verTag)
+		dst.Improvements, tagged.Improvements = appendUniqueSet(dst.Improvements, tagged.Improvements, seen.impSet, it, verTag)
 	}
 	for _, it := range src.Fixes {
-		dst.Fixes = appendUnique(dst.Fixes, it)
-		tagged.Fixes = appendUniqueTagged(tagged.Fixes, it, verTag)
+		dst.Fixes, tagged.Fixes = appendUniqueSet(dst.Fixes, tagged.Fixes, seen.fixSet, it, verTag)
 	}
 	for _, it := range src.Other {
-		dst.Other = appendUnique(dst.Other, it)
-		tagged.Other = appendUniqueTagged(tagged.Other, it, verTag)
+		dst.Other, tagged.Other = appendUniqueSet(dst.Other, tagged.Other, seen.othSet, it, verTag)
 	}
 }
 
@@ -340,19 +351,22 @@ func mergeLocalized(dst *LocalizedNotes, tagged *TaggedLocalizedNotes, src Local
 func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom string) AggregatedNotes {
 	normalized := make([]ReleaseEntry, 0, len(releases))
 	for _, r := range releases {
-		ver, tag, _, ok := ParseReleaseTag(r.Version)
+		ver, tag, _, ok := ParseReleaseTag(r.Tag)
 		if !ok {
-			ver, tag, _, ok = ParseReleaseTag(r.Tag)
-		}
-		if !ok {
-			continue
+			ver, tag, _, ok = ParseReleaseTag(r.Version)
+			if !ok {
+				continue
+			}
+			if !strings.HasPrefix(strings.ToLower(tag), "v") {
+				tag = "v" + ver
+			}
+		} else if strings.TrimSpace(r.Version) != "" {
+			if v2, _, _, ok2 := ParseReleaseTag(r.Version); ok2 && v2 != ver {
+				continue
+			}
 		}
 		r.Version = ver
-		if r.Tag == "" {
-			r.Tag = "v" + ver
-		} else {
-			r.Tag = tag
-		}
+		r.Tag = tag
 		normalized = append(normalized, r)
 	}
 
@@ -383,10 +397,12 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 			PublishedAt:  newer[0].PublishedAt,
 			Versions:     newer,
 		}
+		seenZh := newSectionSeen()
+		seenEn := newSectionSeen()
 		for _, r := range newer {
 			vLabel := "v" + r.Version
-			mergeLocalized(&out.MergedZh, &out.TaggedZh, r.Zh, vLabel)
-			mergeLocalized(&out.MergedEn, &out.TaggedEn, r.En, vLabel)
+			mergeLocalized(&out.MergedZh, &out.TaggedZh, seenZh, r.Zh, vLabel)
+			mergeLocalized(&out.MergedEn, &out.TaggedEn, seenEn, r.En, vLabel)
 		}
 		return out
 	}
@@ -407,10 +423,12 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 				PublishedAt:  recent[0].PublishedAt,
 				Versions:     recent,
 			}
+			seenZh := newSectionSeen()
+			seenEn := newSectionSeen()
 			for _, r := range recent {
 				vLabel := "v" + r.Version
-				mergeLocalized(&out.MergedZh, &out.TaggedZh, r.Zh, vLabel)
-				mergeLocalized(&out.MergedEn, &out.TaggedEn, r.En, vLabel)
+				mergeLocalized(&out.MergedZh, &out.TaggedZh, seenZh, r.Zh, vLabel)
+				mergeLocalized(&out.MergedEn, &out.TaggedEn, seenEn, r.En, vLabel)
 			}
 			return out
 		}
@@ -432,7 +450,7 @@ func AggregateReleases(releases []ReleaseEntry, currentVersion, lastUpdatedFrom 
 		Versions:     []ReleaseEntry{picked},
 	}
 	vLabel := "v" + picked.Version
-	mergeLocalized(&out.MergedZh, &out.TaggedZh, picked.Zh, vLabel)
-	mergeLocalized(&out.MergedEn, &out.TaggedEn, picked.En, vLabel)
+	mergeLocalized(&out.MergedZh, &out.TaggedZh, newSectionSeen(), picked.Zh, vLabel)
+	mergeLocalized(&out.MergedEn, &out.TaggedEn, newSectionSeen(), picked.En, vLabel)
 	return out
 }
