@@ -229,6 +229,7 @@ type ActionButtonOptions struct {
 	PaddingX           float32
 	Grow               float32
 	Shrink             *float32
+	Truncate           bool
 	SecondaryShellBG   bool
 	RegularWeight      bool
 }
@@ -282,6 +283,9 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	}
 	if opts.Shrink != nil {
 		btn.Shrink(*opts.Shrink)
+	}
+	if opts.Truncate {
+		btn.MaxWidthPercent(100).MinWidth(0)
 	}
 	hovered := btn.Hovered() && !isDisabled
 	pressed := btn.Pressed() && !isDisabled
@@ -383,7 +387,10 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			}
 			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
 		}
-		ui.Text(c, opts.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(fg).SingleLine()
+		txt := ui.Text(c, opts.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(fg).SingleLine()
+		if opts.Truncate {
+			txt.MinWidth(0).Shrink(1).Ellipsis("…")
+		}
 	})
 	if opts.ID != "" {
 		Probe(btn, opts.ID)
@@ -525,6 +532,7 @@ type MenuItemSpec struct {
 	Shortcut      string
 	Hint          string
 	Icon          *icons.Icon
+	CustomIcon    func(c *ui.Context, size float32, colors theme.IconColors)
 	Checked       bool
 	Danger        bool
 	Separator     bool
@@ -577,7 +585,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		row.Opacity(theme.DisabledOpacity)
 	}
 	row.Children(func() {
-		if item.Icon != nil {
+		if item.Icon != nil || item.CustomIcon != nil {
 			var ic theme.IconColors
 			switch {
 			case item.Danger && active:
@@ -589,7 +597,11 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			default:
 				ic = pal.MonoIconColors(iconLine)
 			}
-			icons.Draw(c, *item.Icon, theme.IconRow, ic)
+			if item.Icon != nil {
+				icons.Draw(c, *item.Icon, theme.IconRow, ic)
+			} else {
+				item.CustomIcon(c, theme.IconRow, ic)
+			}
 		}
 		ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if item.Hint != "" {
