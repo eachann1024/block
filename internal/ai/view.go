@@ -2418,7 +2418,75 @@ func activePickerToken(text string, composing bool, dismissed bool) (string, boo
 	return "", false
 }
 
+type pickerItemsCache struct {
+	valid       bool
+	token       string
+	folder      string
+	currentPage string
+	pickerRoot  string
+	foldersSig  string
+	pagesSig    string
+	skillsSig   string
+	refsSig     string
+	localeEn    bool
+	items       []pickItem
+}
+
+func sliceSignature(xs []string) string {
+	n := len(xs)
+	if n == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d:%s|%s|%s", n, xs[0], xs[n/2], xs[n-1])
+}
+
+func skillSliceSignature(xs []model.SkillSpec) string {
+	n := len(xs)
+	if n == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d:%s|%s|%s", n, xs[0].Name, xs[n/2].Name, xs[n-1].Name)
+}
+
 func (c *Controller) pickerItemsLocked(token string) []pickItem {
+	currentPage := c.activePageLocked(c.activeRootLocked())
+	foldersSig := sliceSignature(c.pickerFolders)
+	pagesSig := sliceSignature(c.pickerPages)
+	skillsSig := skillSliceSignature(c.pickerSkills)
+	refsSig := strings.Join(c.draftRefs, "\x00")
+	localeEn := theme.IsEn()
+
+	if c.pickerCache.valid &&
+		c.pickerCache.token == token &&
+		c.pickerCache.folder == c.pickerFolder &&
+		c.pickerCache.currentPage == currentPage &&
+		c.pickerCache.pickerRoot == c.pickerRoot &&
+		c.pickerCache.foldersSig == foldersSig &&
+		c.pickerCache.pagesSig == pagesSig &&
+		c.pickerCache.skillsSig == skillsSig &&
+		c.pickerCache.refsSig == refsSig &&
+		c.pickerCache.localeEn == localeEn {
+		return c.pickerCache.items
+	}
+
+	items := c.computePickerItemsLocked(token, currentPage)
+	c.pickerCache = pickerItemsCache{
+		valid:       true,
+		token:       token,
+		folder:      c.pickerFolder,
+		currentPage: currentPage,
+		pickerRoot:  c.pickerRoot,
+		foldersSig:  foldersSig,
+		pagesSig:    pagesSig,
+		skillsSig:   skillsSig,
+		refsSig:     refsSig,
+		localeEn:    localeEn,
+		items:       items,
+	}
+	return items
+}
+
+func (c *Controller) computePickerItemsLocked(token, currentPage string) []pickItem {
 	type scoredPickItem struct {
 		item  pickItem
 		score int
@@ -2426,7 +2494,6 @@ func (c *Controller) pickerItemsLocked(token string) []pickItem {
 	if strings.HasPrefix(token, "@") {
 		q := strings.TrimSpace(strings.TrimPrefix(token, "@"))
 		folder := c.pickerFolder
-		currentPage := c.activePageLocked(c.activeRootLocked())
 		if q == "" {
 			var items []pickItem
 			if folder != "" {
@@ -2603,10 +2670,10 @@ func (c *Controller) applyPickerChoiceLocked(it pickItem, token string) (newDraf
 }
 
 func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen bool) {
-	c.mu.RLock()
+	c.mu.Lock()
 	token, open := activePickerToken(c.draftText, c.composerComposing, c.pickerDismissed)
 	if !open {
-		c.mu.RUnlock()
+		c.mu.Unlock()
 		return
 	}
 	items := c.pickerItemsLocked(token)
@@ -2615,7 +2682,7 @@ func (c *Controller) renderPicker(cUI *ui.Context, pal theme.Palette, fullscreen
 		selected = max(len(items)-1, 0)
 	}
 	loading := c.pickerLoading
-	c.mu.RUnlock()
+	c.mu.Unlock()
 
 	_, winH := cUI.Size()
 	if winH <= 0 {
@@ -3428,10 +3495,28 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						type deckModelCursorKey struct{}
 						deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
 						bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
+						type deckModelFilterCacheKey struct{}
+						type deckModelFilterCache struct {
+							valid    bool
+							query    string
+							count    int
+							firstVal string
+							lastVal  string
+							filtered []ModelOption
+						}
+						deckCache := ui.Local(centerCol, deckModelFilterCacheKey{}, func() deckModelFilterCache { return deckModelFilterCache{} })
 						filterDeckModels := func(rawQ string) []ModelOption {
 							q := strings.TrimSpace(rawQ)
 							if q == "" {
 								return models
+							}
+							firstVal, lastVal := "", ""
+							if n := len(models); n > 0 {
+								firstVal = models[0].Value
+								lastVal = models[n-1].Value
+							}
+							if deckCache.valid && deckCache.query == q && deckCache.count == len(models) && deckCache.firstVal == firstVal && deckCache.lastVal == lastVal {
+								return deckCache.filtered
 							}
 							type scoredModel struct {
 								opt   ModelOption
@@ -3449,6 +3534,9 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							out := make([]ModelOption, len(scored))
 							for i, s := range scored {
 								out[i] = s.opt
+							}
+							*deckCache = deckModelFilterCache{
+								valid: true, query: q, count: len(models), firstVal: firstVal, lastVal: lastVal, filtered: out,
 							}
 							return out
 						}
@@ -5456,8 +5544,26 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 				opt   ModelOption
 				score int
 			}
+			type annotFilterCacheKey struct{}
+			type annotFilterCache struct {
+				valid    bool
+				query    string
+				count    int
+				firstVal string
+				lastVal  string
+				filtered []indexedAnnotChoice
+			}
+			annotCache := ui.Local(annotCol, annotFilterCacheKey{}, func() annotFilterCache { return annotFilterCache{} })
 			filterAnnotChoices := func(rawQ string) []indexedAnnotChoice {
 				q := strings.TrimSpace(rawQ)
+				firstVal, lastVal := "", ""
+				if n := len(choices); n > 0 {
+					firstVal = choices[0].Value
+					lastVal = choices[n-1].Value
+				}
+				if annotCache.valid && annotCache.query == q && annotCache.count == len(choices) && annotCache.firstVal == firstVal && annotCache.lastVal == lastVal {
+					return annotCache.filtered
+				}
 				var out []indexedAnnotChoice
 				for idx, m := range choices {
 					if q == "" {
@@ -5470,6 +5576,9 @@ func (c *Controller) renderAnnotationModelPopover(cUI *ui.Context, pal theme.Pal
 					sort.SliceStable(out, func(i, j int) bool {
 						return out[i].score > out[j].score
 					})
+				}
+				*annotCache = annotFilterCache{
+					valid: true, query: q, count: len(choices), firstVal: firstVal, lastVal: lastVal, filtered: out,
 				}
 				return out
 			}

@@ -158,6 +158,7 @@ type Controller struct {
 	pickerRefreshed  time.Time
 	pickerRootMtime  time.Time
 	pickerSkillCache map[string]cachedSkillEntry
+	pickerCache      pickerItemsCache
 
 	historyOpen      bool
 	historyScroll    ui.ScrollState
