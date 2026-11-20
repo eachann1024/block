@@ -196,14 +196,17 @@ const (
 	OutlineHoverLeaveMs = 90
 
 	// App Store card & header toolbar metrics.
-	StoreIconBoxSize       float32 = 40  // leading app icon box inside a store card header
+	StoreIconBoxSize       float32 = 42  // leading app icon box inside a store card header
 	StoreIconGlyphSize     float32 = 20  // Duo icon size inside StoreIconBoxSize
 	StoreStatusDotSize     float32 = 6   // active indicator dot on installed plugin nav rows
 	StoreMinColWidth       float32 = 380 // minimum column width for the multi-column store grid
 	StoreContentMaxWidth   float32 = 1160
 	StorePagePadding       float32 = 40
-	StoreCardGap           float32 = 18
+	StoreCardGap           float32 = 16
 	StoreCardInnerGap      float32 = 14
+	StoreCardPadTop                = CardPadY
+	StoreCardPadX                  = Space20
+	StoreCardPadBottom             = StoreCardInnerGap
 	StoreTitleWidth        float32 = 120
 	StoreSearchWidth       float32 = 192
 	StoreAuthorFadeWidth   float32 = 20
@@ -285,6 +288,20 @@ const (
 	LightboxStagePad           float32 = 28
 	LightboxMaxTextWidth       float32 = 680
 	LightboxMaxTextHeight      float32 = 560
+	LightboxVideoMaxWidth      float32 = 1120
+
+	// Media & video player control metrics (inline preview & full-window lightbox).
+	VideoControlBarHeight    float32 = 40
+	VideoScrubberHeight      float32 = 16
+	VideoScrubberTrackH      float32 = 4
+	VideoScrubberTrackHoverH float32 = 6
+	VideoScrubberThumbSize   float32 = 12
+	VideoVolumeSliderW       float32 = 64
+	VideoMaxInlineHeight     float32 = 480
+	VideoPlaceholderHeight   float32 = 180
+	VideoPlayBadgeSize       float32 = 52
+	VideoOSDVolumeBarW       float32 = 72
+	VideoOSDVolumeBarH       float32 = 4
 
 	// Tarot mode ("午夜铜版") typography, radii, and layout metrics.
 	TarotTopbarHeight       float32 = 44

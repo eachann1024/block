@@ -81,6 +81,94 @@ func (p Palette) ShellChrome() ShellChromeColors {
 	}
 }
 
+// StoreCardColors holds surface, icon badge, footer, and chip colours for App Store
+// tinted paper cards (Scheme A: recessed tile lifting to crisp paper on hover).
+type StoreCardColors struct {
+	BG                 ui.Color
+	Border             ui.Color
+	HoverBG            ui.Color
+	HoverBorder        ui.Color
+	IconBG             ui.Color
+	IconBorder         ui.Color
+	OfficialIconBG     ui.Color
+	OfficialIconBorder ui.Color
+	Divider            ui.Color
+	CategoryBG         ui.Color
+	ExtBG              ui.Color
+	ExtBorder          ui.Color
+	InstalledPillBG    ui.Color
+}
+
+// StoreCard returns the tinted App Store card token set for p.
+func (p Palette) StoreCard() StoreCardColors {
+	if p.Tarot && p.Dark {
+		return StoreCardColors{
+			BG:                 ui.Hex("#0e192b"),
+			Border:             ui.RGBA(201, 162, 90, 0.22),
+			HoverBG:            ui.Hex("#13223a"),
+			HoverBorder:        ui.RGBA(201, 162, 90, 0.42),
+			IconBG:             ui.Hex("#0a1322"),
+			IconBorder:         ui.RGBA(201, 162, 90, 0.26),
+			OfficialIconBG:     ui.Hex("#182844"),
+			OfficialIconBorder: ui.RGBA(201, 162, 90, 0.45),
+			Divider:            ui.RGBA(201, 162, 90, 0.16),
+			CategoryBG:         ui.Hex("#15243c"),
+			ExtBG:              ui.Hex("#0a1322"),
+			ExtBorder:          ui.RGBA(201, 162, 90, 0.24),
+			InstalledPillBG:    ui.Hex("#15243c"),
+		}
+	}
+	if p.Tarot && !p.Dark {
+		return StoreCardColors{
+			BG:                 ui.Hex("#ede4d0"),
+			Border:             ui.RGBA(167, 132, 63, 0.34),
+			HoverBG:            ui.Hex("#f6f0e2"),
+			HoverBorder:        ui.RGBA(167, 132, 63, 0.56),
+			IconBG:             ui.Hex("#f6f0e2"),
+			IconBorder:         ui.RGBA(167, 132, 63, 0.30),
+			OfficialIconBG:     ui.Hex("#e7dec7"),
+			OfficialIconBorder: ui.RGBA(167, 132, 63, 0.48),
+			Divider:            ui.RGBA(167, 132, 63, 0.20),
+			CategoryBG:         ui.Hex("#e5dac1"),
+			ExtBG:              ui.Hex("#f6f0e2"),
+			ExtBorder:          ui.RGBA(167, 132, 63, 0.28),
+			InstalledPillBG:    ui.Hex("#e5dac1"),
+		}
+	}
+	if p.Dark {
+		return StoreCardColors{
+			BG:                 ui.Hex("#1f1f1f"),
+			Border:             ui.Hex("#2d2d2d"),
+			HoverBG:            ui.Hex("#252525"),
+			HoverBorder:        ui.Hex("#434343"),
+			IconBG:             ui.Hex("#181818"),
+			IconBorder:         ui.Hex("#303030"),
+			OfficialIconBG:     ui.Hex("#1e2a3f"),
+			OfficialIconBorder: ui.Hex("#2f4569"),
+			Divider:            ui.Hex("#2a2a2a"),
+			CategoryBG:         ui.Hex("#292929"),
+			ExtBG:              ui.Hex("#282828"),
+			ExtBorder:          ui.Hex("#353535"),
+			InstalledPillBG:    ui.Hex("#262626"),
+		}
+	}
+	return StoreCardColors{
+		BG:                 ui.Hex("#f8f8f7"),
+		Border:             ui.Hex("#e6e6e3"),
+		HoverBG:            ui.Hex("#ffffff"),
+		HoverBorder:        ui.Hex("#cfd3da"),
+		IconBG:             ui.Hex("#ffffff"),
+		IconBorder:         ui.Hex("#e4e5e2"),
+		OfficialIconBG:     ui.Hex("#eef3fc"),
+		OfficialIconBorder: ui.Hex("#d3e0f6"),
+		Divider:            ui.Hex("#eaeae7"),
+		CategoryBG:         ui.Hex("#ecece9"),
+		ExtBG:              ui.Hex("#ffffff"),
+		ExtBorder:          ui.Hex("#e2e4e8"),
+		InstalledPillBG:    ui.Hex("#efefed"),
+	}
+}
+
 // DotPagerColors holds recessed-track tactile bead and companion header dot colours.
 type DotPagerColors struct {
 	TrackBG          ui.Color
