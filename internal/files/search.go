@@ -694,19 +694,9 @@ func FindFoldMatches(text, needle string) [][2]int {
 }
 
 // FindTitleHighlights returns merged UTF-8 byte ranges in title matching query:
-// exact substring first, then multi-token substrings, then fuzzy subsequence ranges.
+// exact substring first, then multi-token/delimiter substrings, then fuzzy subsequence ranges.
 func FindTitleHighlights(title, query string) [][2]int {
-	q := strings.TrimSpace(query)
-	if q == "" || title == "" {
-		return nil
-	}
-	if exact := FindFoldMatches(title, q); len(exact) > 0 {
-		return exact
-	}
-	if multi := findTokenFoldMatches(title, q); len(multi) > 0 {
-		return multi
-	}
-	return fuzzy.SubsequenceRanges(title, q)
+	return fuzzy.HighlightRanges(title, query)
 }
 
 // FindBodyHighlights returns merged UTF-8 byte ranges in text matching query:
@@ -731,33 +721,7 @@ func findTokenFoldMatches(text, query string) [][2]int {
 	for _, tok := range tokens {
 		all = append(all, FindFoldMatches(text, tok)...)
 	}
-	return mergeHighlightRanges(all)
-}
-
-func mergeHighlightRanges(ranges [][2]int) [][2]int {
-	if len(ranges) <= 1 {
-		return ranges
-	}
-	sort.Slice(ranges, func(i, j int) bool {
-		if ranges[i][0] != ranges[j][0] {
-			return ranges[i][0] < ranges[j][0]
-		}
-		return ranges[i][1] < ranges[j][1]
-	})
-	out := make([][2]int, 0, len(ranges))
-	for _, r := range ranges {
-		if r[0] >= r[1] {
-			continue
-		}
-		if len(out) > 0 && r[0] <= out[len(out)-1][1] {
-			if r[1] > out[len(out)-1][1] {
-				out[len(out)-1][1] = r[1]
-			}
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
+	return fuzzy.MergeRanges(all)
 }
 
 // ResolveSearchMatch revalidates a search result against the open note. If edits

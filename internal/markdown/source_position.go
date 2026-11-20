@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"block/internal/fuzzy"
 	"block/internal/model"
 )
 
@@ -56,7 +57,10 @@ func (m SourceMap) Locate(line, column int, query string) (SourceTarget, bool) {
 	}
 
 	var blockRange sourceLineRange
-	foldedQuery := strings.ToLower(query)
+	foldedQuery := strings.ToLower(strings.TrimSpace(query))
+	queryTokens := fuzzy.Tokens(query)
+	matchedTokenBlock := -1
+	var matchedTokenRange sourceLineRange
 	for i := range m.doc.Blocks {
 		block := &m.doc.Blocks[i]
 		r := sourceLineRange{block.SourceLine, block.SourceEndLine}
@@ -70,9 +74,28 @@ func (m SourceMap) Locate(line, column int, query string) (SourceTarget, bool) {
 			target.Block, blockRange = i, r
 		}
 		// HTML list items can share a source line. Favor the item that displays the match.
-		if foldedQuery == "" || strings.Contains(strings.ToLower(block.PlainText()), foldedQuery) {
+		if foldedQuery == "" {
 			target.Block, blockRange = i, r
 			break
+		}
+		plain := strings.ToLower(block.PlainText())
+		if strings.Contains(plain, foldedQuery) {
+			target.Block, blockRange = i, r
+			break
+		}
+		if len(queryTokens) > 1 && matchedTokenBlock < 0 {
+			for _, tok := range queryTokens {
+				if strings.Contains(plain, tok) {
+					matchedTokenBlock, matchedTokenRange = i, r
+					break
+				}
+			}
+		}
+	}
+	if matchedTokenBlock >= 0 && foldedQuery != "" {
+		plain := strings.ToLower(m.doc.Blocks[target.Block].PlainText())
+		if !strings.Contains(plain, foldedQuery) {
+			target.Block, blockRange = matchedTokenBlock, matchedTokenRange
 		}
 	}
 	if target.Block < 0 {
