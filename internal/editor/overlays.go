@@ -843,16 +843,22 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	dark := theme.IsDark()
 	menuW := float32(196)
 	spec := s.toolbarDropSpec("tb-palette", appUi.AlignLeft, 4, vp)
-	maxH := appUi.MaxHeightForSpec(spec, winW, winH, 304)
-	_, measH := s.measuredOrEstSize("palette-panel", menuW, 296)
-	estH := min(measH, maxH)
-	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 	curFG, curBG := s.selectionColors()
 
 	swatches := theme.FormatPalette(dark)
 	limit := min(len(swatches), 6)
 	bgChoices := []string{"default", "yellow"}
 	totalChoices := limit + len(bgChoices)
+
+	rawH := theme.MenuPadding*2 + 2 +
+		2*(theme.LineSmall+theme.Space4*2) +
+		(1 + theme.Space4*2) +
+		float32(totalChoices)*theme.MenuItemHeight +
+		float32(totalChoices+2)*theme.MenuGap
+	maxH := appUi.MaxHeightForSpec(spec, winW, winH, max(rawH+32, 380))
+	_, measH := s.measuredOrEstSize("palette-panel", menuW, rawH)
+	estH := min(measH, maxH)
+	x, y := appUi.ResolveOrigin(spec, menuW, estH, winW, winH)
 
 	panel := appUi.MenuSurface(ui.Column(c.Key("palette-panel")).Absolute().Left(x).Top(y).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
 	cur := ui.Local(panel, localMenuCursorKey{}, func() int { return -1 })
