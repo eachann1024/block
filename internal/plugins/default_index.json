@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T06:54:32Z",
+  "updated_at": "2026-11-20T07:09:13Z",
   "apps": [
     {
       "app": "blockmd",
@@ -157,7 +157,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.15/block-canvas-dots-v1.2.15.tar.gz",
       "sha256": "b576aa69503f024fe472a90294760e85bdac50940f629f63c3f65a6552662055",
-      "downloads": 28,
+      "downloads": 31,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-20T06:54:05Z",
@@ -205,7 +205,7 @@
       },
       "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.5/block-titlebar-v1.0.5.tar.gz",
       "sha256": "6cabfc6945fa7d684c0d0e7835a837c0e5fc8425a709474c3b284033e8fd6e0f",
-      "downloads": 26,
+      "downloads": 27,
       "stars": 0,
       "verified": false,
       "updated_at": "2026-11-19T18:19:19Z",
@@ -235,6 +235,52 @@
         ]
       },
       "beta": true
+    },
+    {
+      "app": "blockmd",
+      "id": "block-tarot",
+      "name": {
+        "zh": "塔罗模式",
+        "en": "Tarot Mode"
+      },
+      "version": "1.0.6",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-tarot",
+      "summary": {
+        "zh": "午夜铜版塔罗皮肤与写作仪式：牌桌三张牌阵、每日一牌反问、大阿卡纳牌册与速记换肤",
+        "en": "Midnight Copperplate tarot skin and writing rituals: 3-card spread, daily card reflection, 22 Major Arcana deck, and Quick Note skin"
+      },
+      "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.6/block-tarot-v1.0.6.tar.gz",
+      "sha256": "13c3943e176bfee312c886db07df38e6fd74e7924c6d07bcf7bfe6d1df8ff826",
+      "downloads": 0,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-20T07:08:17Z",
+      "permissions": [
+        "storage",
+        "ui:titlebar",
+        "ui:settings",
+        "ui:commands",
+        "ui:notify",
+        "events:workspace"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z"
+        ],
+        "stroke_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z",
+          "M12 6.8l3.8 5.2-3.8 5.2L8.2 12 12 6.8Z"
+        ],
+        "accent_paths": [
+          "M12 9.5v5",
+          "M9.5 12h5"
+        ]
+      }
     }
   ]
 }
