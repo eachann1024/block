@@ -2,6 +2,7 @@ package editor
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -777,15 +778,11 @@ func tryInlineConstructEndingAt(spans []model.Span, r []rune, end int, allowImag
 
 	// Standalone image `![alt](url)` or inline link `[label](url)` / `[label]（https://...）` / `［label］（https://...）`.
 	if last == ')' || last == '）' {
-		inBT, inMath, _ := inUnclosedLiteralContext(spans, r, end-1)
-		if inBT || inMath {
-			return inlineRuleResult{spans: spans, caret: end}
-		}
 		if allowImageBlock && last == ')' {
 			trimmed := strings.TrimSpace(string(r[:end]))
 			rest := strings.TrimSpace(string(r[end:]))
 			if rest == "" {
-				if alt, src, title, ok := matchStandaloneImageLine(trimmed); ok {
+				if alt, src, title, ok := matchStandaloneImageLine(trimmed); ok && !spanHasInlineImageAt(spans, 0, len(r)) && !spanCodeOrMathAt(spans, 0, len(r)) {
 					return inlineRuleResult{toImage: true, imageAlt: alt, imageSrc: src, imageTitle: title}
 				}
 			}
@@ -1063,7 +1060,26 @@ func findPairedSingleNoSpaceDelim(r []rune, end int, ch rune) (int, bool) {
 	return -1, false
 }
 
+func spanSplitsInlineImage(spans []model.Span, open, end, delimLen int) bool {
+	pos := 0
+	for _, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc == "" {
+			continue
+		}
+		if (open+delimLen > s0 && open < s1) || (end-delimLen < s1 && end > s0) {
+			return true
+		}
+	}
+	return false
+}
+
 func replaceInlineDelimited(spans []model.Span, totalRunes, open, end, delimLen int, fn func(model.Span) model.Span, codeEdge appUi.RichCodeEdge, clearMask model.Mark, clearBG bool) inlineRuleResult {
+	if spanSplitsInlineImage(spans, open, end, delimLen) {
+		return inlineRuleResult{spans: spans, caret: end}
+	}
 	left := sliceSpans(spans, 0, open)
 	mid := sliceSpans(spans, open+delimLen, end-delimLen)
 	right := sliceSpans(spans, end, totalRunes)
@@ -1155,9 +1171,30 @@ func isPlausibleInlineLinkTarget(raw string, requireExplicitScheme bool) bool {
 	return true
 }
 
+func isASCIIPunctByteLocal(b byte) bool {
+	return (b >= '!' && b <= '/') || (b >= ':' && b <= '@') || (b >= '[' && b <= '`') || (b >= '{' && b <= '~')
+}
+
+func unescapeMarkdownPunct(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && isASCIIPunctByteLocal(s[i+1]) {
+			b.WriteByte(s[i+1])
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResult {
-	// Match `[label](url)`, `[label]（https://...）`, and `［label］（https://...）` ending at `end`,
-	// allowing balanced `(...)` inside URL.
+	// Match `[label](url)`, `![alt](url "title")`, `[label]（https://...）`, and `［label］（https://...）` ending at `end`,
+	// allowing balanced `(...)` inside URL and quoted titles containing `(`.
 	closeParen := r[end-1]
 	openChar := '('
 	fullwidthParen := closeParen == '）'
@@ -1166,20 +1203,43 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 	}
 	openParen := -1
 	depth := 0
+	inQuote := rune(0)
 	for i := end - 2; i >= 1; i-- {
 		if r[i] == '\n' {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		if r[i] == closeParen {
+		if !fullwidthParen && (r[i] == '"' || r[i] == '\'') && !isEscapedAt(r, i) {
+			if inQuote == 0 {
+				// Only enter quoted title mode when closing quote is followed solely by spaces before `)`.
+				onlySpaceAfter := true
+				for k := i + 1; k < end-1; k++ {
+					if r[k] != ' ' && r[k] != '\t' {
+						onlySpaceAfter = false
+						break
+					}
+				}
+				if onlySpaceAfter {
+					inQuote = r[i]
+					continue
+				}
+			} else if inQuote == r[i] {
+				inQuote = 0
+				continue
+			}
+		}
+		if inQuote != 0 {
+			continue
+		}
+		if r[i] == closeParen && !isEscapedAt(r, i) {
 			depth++
 			continue
 		}
-		if r[i] == openChar {
+		if r[i] == openChar && !isEscapedAt(r, i) {
 			if depth > 0 {
 				depth--
 				continue
 			}
-			if r[i-1] == ']' || (fullwidthParen && r[i-1] == '］') {
+			if (r[i-1] == ']' || (fullwidthParen && r[i-1] == '］')) && !isEscapedAt(r, i-1) {
 				openParen = i
 				break
 			}
@@ -1196,12 +1256,12 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 	}
 	openBracket := -1
 	for i := closeBracket - 1; i >= 0; i-- {
-		if r[i] == '\n' || r[i] == r[closeBracket] {
+		if r[i] == '\n' || (r[i] == r[closeBracket] && !isEscapedAt(r, i)) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
 		if r[i] == wantOpenBracket {
 			if isEscapedAt(r, i) {
-				return inlineRuleResult{spans: spans, caret: end}
+				continue
 			}
 			openBracket = i
 			break
@@ -1211,6 +1271,13 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		return inlineRuleResult{spans: spans, caret: end}
 	}
 	isImage := openBracket > 0 && (r[openBracket-1] == '!' || r[openBracket-1] == '！') && !isEscapedAt(r, openBracket-1)
+	startPos := openBracket
+	if isImage {
+		startPos = openBracket - 1
+	}
+	if inBT, inMath, _ := inUnclosedLiteralContext(spans, r, startPos); inBT || inMath {
+		return inlineRuleResult{spans: spans, caret: end}
+	}
 	if isImage {
 		imgStart := openBracket - 1
 		rawInner := strings.TrimSpace(string(r[openParen+1 : end-1]))
@@ -1218,7 +1285,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		if !ok || spanCodeOrMathAt(spans, imgStart, end) || spanHasInlineImageAt(spans, imgStart, end) {
 			return inlineRuleResult{spans: spans, caret: end}
 		}
-		alt := string(r[openBracket+1 : closeBracket])
+		alt := html.UnescapeString(unescapeMarkdownPunct(string(r[openBracket+1 : closeBracket])))
 		label := alt
 		altEmpty := label == ""
 		if altEmpty {
@@ -1233,6 +1300,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 		if outer := sliceSpans(spans, imgStart, imgStart+1); len(outer) > 0 {
 			imgSpan.Marks = outer[0].Marks &^ (model.MarkCode | model.MarkMath)
 			imgSpan.Link = outer[0].Link
+			imgSpan.LinkTitle = outer[0].LinkTitle
 			imgSpan.FGColor = outer[0].FGColor
 			imgSpan.BGColor = outer[0].BGColor
 		}
@@ -1262,6 +1330,7 @@ func tryInlineLinkEndingAt(spans []model.Span, r []rune, end int) inlineRuleResu
 	right := sliceSpans(spans, end, len(r))
 	for i := range mid {
 		mid[i].Link = url
+		mid[i].LinkTitle = ""
 	}
 	var merged []model.Span
 	merged = append(merged, left...)
@@ -1382,7 +1451,12 @@ func splitInlineTargetAndTitle(raw string, fullwidthParen bool) (url, title stri
 		closed := false
 		for i := 1; i < len(rest); i++ {
 			if rest[i] == '\\' && i+1 < len(rest) {
-				tb.WriteByte(rest[i+1])
+				if isASCIIPunctByteLocal(rest[i+1]) {
+					tb.WriteByte(rest[i+1])
+				} else {
+					tb.WriteByte('\\')
+					tb.WriteByte(rest[i+1])
+				}
 				i++
 				continue
 			}
@@ -1398,9 +1472,9 @@ func splitInlineTargetAndTitle(raw string, fullwidthParen bool) (url, title stri
 		if !closed {
 			return "", "", false
 		}
-		title = tb.String()
+		title = html.UnescapeString(tb.String())
 	}
-	return normalizeInlineLinkURL(dest), title, true
+	return normalizeInlineLinkURL(html.UnescapeString(unescapeMarkdownPunct(dest))), title, true
 }
 
 func matchStandaloneImageLine(s string) (alt, src, title string, ok bool) {
@@ -1434,7 +1508,7 @@ func matchStandaloneImageLine(s string) (alt, src, title string, ok bool) {
 	if closeBracket < 2 {
 		return "", "", "", false
 	}
-	alt = t[2:closeBracket]
+	alt = unescapeMarkdownPunct(t[2:closeBracket])
 	src, title, ok = splitInlineTargetAndTitle(t[closeBracket+2:len(t)-1], false)
 	if !ok {
 		return "", "", "", false
@@ -2437,6 +2511,12 @@ func tryAutoWrapSpans(spans []model.Span, lo, hi int, text string) autoWrapResul
 		})
 		return autoWrapResult{spans: next, newLo: lo, newHi: hi, handled: true}
 	case "*", "~", "=":
+		if res, ok := wrapInsideSingleInlineImage(spans, lo, hi, text, text); ok {
+			return res
+		}
+		if spanBoundarySplitsInlineImage(spans, lo, hi) {
+			return autoWrapResult{}
+		}
 		ch := []rune(text)[0]
 		if lo > 0 && hi < n && r[lo-1] == ch && r[hi] == ch {
 			left := sliceSpans(spans, 0, lo-1)
@@ -2467,7 +2547,167 @@ func tryAutoWrapSpans(spans []model.Span, lo, hi int, text string) autoWrapResul
 	return autoWrapResult{}
 }
 
+func wrapInsideSingleInlineImage(spans []model.Span, lo, hi int, openStr, closeStr string) (autoWrapResult, bool) {
+	pos := 0
+	for si, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc != "" && lo >= s0 && hi <= s1 && !(lo == s0 && hi == s1) {
+			spR := []rune(sp.Text)
+			nextText := string(spR[:lo-s0]) + openStr + string(spR[lo-s0:hi-s0]) + closeStr + string(spR[hi-s0:])
+			cp := sp
+			cp.Text = nextText
+			cp.ImageAltEmpty = false
+			out := make([]model.Span, 0, len(spans))
+			out = append(out, spans[:si]...)
+			out = append(out, cp)
+			out = append(out, spans[si+1:]...)
+			openLen := utf8.RuneCountInString(openStr)
+			return autoWrapResult{
+				spans:   normalizeSpans(out),
+				newLo:   lo + openLen,
+				newHi:   hi + openLen,
+				handled: true,
+			}, true
+		}
+	}
+	return autoWrapResult{}, false
+}
+
+func spanBoundarySplitsInlineImage(spans []model.Span, lo, hi int) bool {
+	pos := 0
+	for _, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc == "" {
+			continue
+		}
+		if (lo > s0 && lo < s1) || (hi > s0 && hi < s1) {
+			return true
+		}
+	}
+	return false
+}
+
+// sliceSpansForClipboard slices spans over [startRune, endRune) for copy/cut.
+// Any inline image span that is only partially covered by the selection is downgraded
+// to plain alt text so cutting/copying a substring of alt never duplicates the image.
+func sliceSpansForClipboard(spans []model.Span, startRune, endRune int) []model.Span {
+	if startRune >= endRune {
+		return nil
+	}
+	var out []model.Span
+	pos := 0
+	for _, sp := range spans {
+		r := []rune(sp.Text)
+		n := len(r)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if s1 <= startRune || s0 >= endRune {
+			continue
+		}
+		lo := max(startRune-s0, 0)
+		hi := min(endRune-s0, n)
+		if hi > lo {
+			cp := sp
+			cp.Text = string(r[lo:hi])
+			if cp.ImageSrc != "" && (lo > 0 || hi < n) {
+				cp.ImageSrc = ""
+				cp.ImageTitle = ""
+				cp.ImageAltEmpty = false
+			}
+			out = append(out, cp)
+		}
+	}
+	return normalizeSpans(out)
+}
+
+// replaceSpanRange replaces rune range [lo, hi) in spans with insertSpans while
+// keeping any single inline-image span indivisible (editing its alt in place
+// instead of duplicating the image across both halves).
+func replaceSpanRange(spans []model.Span, lo, hi int, insertSpans []model.Span) ([]model.Span, int) {
+	total := len([]rune(model.PlainTextOfSpans(spans)))
+	lo = clampInt(lo, 0, total)
+	hi = clampInt(hi, lo, total)
+	insLen := len([]rune(model.PlainTextOfSpans(insertSpans)))
+
+	pos := 0
+	for si, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc != "" && lo >= s0 && hi <= s1 {
+			isBoundaryInsert := len(insertSpans) > 0 && lo == hi && (lo == s0 || lo == s1)
+			isFullReplace := lo == s0 && hi == s1
+			if !isBoundaryInsert && !isFullReplace {
+				hasInsertedImage := false
+				for _, isp := range insertSpans {
+					if isp.ImageSrc != "" {
+						hasInsertedImage = true
+						break
+					}
+				}
+				spR := []rune(sp.Text)
+				out := make([]model.Span, 0, len(spans)+len(insertSpans))
+				out = append(out, spans[:si]...)
+				if !hasInsertedImage {
+					plainIns := model.PlainTextOfSpans(insertSpans)
+					nextText := string(spR[:lo-s0]) + plainIns + string(spR[hi-s0:])
+					if nextText != "" {
+						cp := sp
+						cp.Text = nextText
+						cp.ImageAltEmpty = false
+						out = append(out, cp)
+					}
+					out = append(out, spans[si+1:]...)
+					return normalizeSpans(out), lo + insLen
+				}
+				nextText := string(spR[:lo-s0]) + string(spR[hi-s0:])
+				afterImg := s0
+				if nextText != "" {
+					cp := sp
+					cp.Text = nextText
+					cp.ImageAltEmpty = false
+					out = append(out, cp)
+					afterImg = s0 + utf8.RuneCountInString(nextText)
+				}
+				out = append(out, insertSpans...)
+				out = append(out, spans[si+1:]...)
+				return normalizeSpans(out), afterImg + insLen
+			}
+			break
+		}
+	}
+
+	var merged []model.Span
+	merged = append(merged, sliceSpans(spans, 0, lo)...)
+	merged = append(merged, insertSpans...)
+	merged = append(merged, sliceSpans(spans, hi, total)...)
+	return normalizeSpans(merged), lo + insLen
+}
+
+func snapSplitOutsideInlineImage(spans []model.Span, off int) int {
+	pos := 0
+	for _, sp := range spans {
+		n := utf8.RuneCountInString(sp.Text)
+		s0, s1 := pos, pos+n
+		pos = s1
+		if sp.ImageSrc != "" && off > s0 && off < s1 {
+			return s1
+		}
+	}
+	return off
+}
+
 func wrapSpansWithPair(spans []model.Span, total, lo, hi int, openStr, closeStr string) autoWrapResult {
+	if res, ok := wrapInsideSingleInlineImage(spans, lo, hi, openStr, closeStr); ok {
+		return res
+	}
+	if spanBoundarySplitsInlineImage(spans, lo, hi) {
+		return autoWrapResult{}
+	}
 	left := sliceSpans(spans, 0, lo)
 	mid := sliceSpans(spans, lo, hi)
 	right := sliceSpans(spans, hi, total)

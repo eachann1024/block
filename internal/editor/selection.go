@@ -361,7 +361,7 @@ func (s *Session) ReplaceSelectionWithText(insert string) bool {
 		rlen := s.blockSelectionLen(idx)
 		whole := a.Offset == 0 && b.Offset >= rlen
 
-		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole) || (whole && s.isPreviewOnlyCodeBlock(idx)) {
+		if blk.Kind == model.BlockImage || blk.Kind == model.BlockDivider || (blk.Kind == model.BlockTable && whole && s.hasWholeAtomicSelection()) || (whole && s.isPreviewOnlyCodeBlock(idx)) {
 			if insert != "" || len(s.doc.Blocks) == 1 {
 				nb := model.Block{ID: blk.ID, Kind: model.BlockParagraph, Dirty: true}
 				nb.SetText(insert)

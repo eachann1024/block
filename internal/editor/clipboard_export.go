@@ -47,7 +47,7 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 			singleCellActive := s.tableActiveBlock == blk.ID && !s.hasWholeAtomicSelection()
 			if !whole || singleCellActive {
 				if row, col, relLo, relHi, ok := tableCellAtRuneRange(blk.Table, a.Offset, b.Offset); ok {
-					spans := sliceSpans(blk.Table.Rows[row][col].Spans, relLo, relHi)
+					spans := sliceSpansForClipboard(blk.Table.Rows[row][col].Spans, relLo, relHi)
 					s.writeInlineSpansClipboard(svc, md, spans)
 					return true
 				}
@@ -59,7 +59,7 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 				}
 			}
 		} else if blk.Kind != model.BlockTable && blk.Kind != model.BlockImage && blk.Kind != model.BlockDivider && !s.isPreviewOnlyCodeBlock(a.Block) {
-			spans := sliceSpans(blk.Spans, a.Offset, b.Offset)
+			spans := sliceSpansForClipboard(blk.Spans, a.Offset, b.Offset)
 			if whole && hasInlineImageSpan(spans) {
 				cp := blk.Clone()
 				cp.ID = model.NewBlockID()
@@ -542,11 +542,17 @@ func (s *Session) writeClipboardSpansHTML(sb *strings.Builder, spans []model.Spa
 			href = spans[i].Link
 		}
 		if href != "" {
+			linkTitle := spans[i].LinkTitle
 			j := i + 1
-			for j < len(spans) && spans[j].Link == href {
+			for j < len(spans) && spans[j].Link == href && spans[j].LinkTitle == linkTitle {
 				j++
 			}
-			fmt.Fprintf(sb, `<a href="%s">`, html.EscapeString(href))
+			if linkTitle != "" {
+				escTitle := strings.NewReplacer("\r", "&#13;", "\n", "&#10;").Replace(html.EscapeString(linkTitle))
+				fmt.Fprintf(sb, `<a href="%s" title="%s">`, html.EscapeString(href), escTitle)
+			} else {
+				fmt.Fprintf(sb, `<a href="%s">`, html.EscapeString(href))
+			}
 			for k := i; k < j; k++ {
 				s.writeClipboardSpanInnerHTML(sb, spans[k], imageBudget)
 			}
