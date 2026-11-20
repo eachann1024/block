@@ -132,6 +132,8 @@ type RichInputOptions struct {
 	OnPastePlain func(svc ui.Services, pastedText string) bool
 	// OnKey sees non-character keys before RichInput handles them; returning true consumes the key.
 	OnKey func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
+	// OnText sees committed character input before RichInput replaces the selection; returning true consumes it.
+	OnText func(text string, anchor, caret int) bool
 	// OnEdge runs when an arrow key would move the caret past the start or end of this input
 	// (Up/Down on the first/last visual line, Left/Right at offset 0/len); returning true consumes it.
 	OnEdge func(RichEdge) bool
@@ -212,11 +214,13 @@ type RichInputState struct {
 	onPaste         func(svc ui.Services, pastedText string) bool
 	onPastePlain    func(svc ui.Services, pastedText string) bool
 	onKey           func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
+	onText          func(text string, anchor, caret int) bool
 	onEdge          func(RichEdge) bool
 	onOpenLink      func(url string)
 
-	blinkPos   int
-	blinkEpoch time.Time
+	edgeSyncedInChange bool
+	blinkPos           int
+	blinkEpoch         time.Time
 }
 
 var _ ui.TextInputClient = (*RichInputState)(nil)
@@ -228,13 +232,27 @@ const (
 
 // Sync updates the state's underlying text and rune selection immediately.
 func (s *RichInputState) Sync(text string, anchor, caret int) {
+	s.SyncWithCodeEdge(text, anchor, caret, RichCodeEdgeNone)
+}
+
+// SyncWithCodeEdge updates text, selection, and inline-code/math boundary bias immediately.
+func (s *RichInputState) SyncWithCodeEdge(text string, anchor, caret int, edge RichCodeEdge) {
 	n := utf8.RuneCountInString(text)
 	s.text = text
 	s.anchor = clampRune(anchor, n)
 	s.caret = clampRune(caret, n)
 	s.affinity = ui.TextDownstream
-	s.codeEdge = RichCodeEdgeNone
+	s.codeEdge = edge
+	if edge != RichCodeEdgeNone {
+		s.edgeSyncedInChange = true
+	}
 	s.resetColumn()
+}
+
+// SetCodeEdge sets the inline-code/math boundary bias directly.
+func (s *RichInputState) SetCodeEdge(edge RichCodeEdge) {
+	s.codeEdge = edge
+	s.blinkEpoch = time.Time{}
 }
 
 // CodeEdge reports the current inline-code boundary state for the caret.
@@ -710,6 +728,7 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 	s.affinity = ui.TextDownstream
 	s.resetColumn()
 	s.blinkEpoch = time.Time{}
+	s.edgeSyncedInChange = false
 	if s.onChange != nil {
 		s.onChange(s.text, s.anchor, s.caret)
 	}
@@ -736,8 +755,11 @@ func (s *RichInputState) replaceRunes(a, z int, ins string) {
 		}
 		s.codeRanges = updated
 	}
-	s.codeEdge = postDeleteEdge
-	s.normalizeCodeEdge()
+	if !s.edgeSyncedInChange {
+		s.codeEdge = postDeleteEdge
+		s.normalizeCodeEdge()
+	}
+	s.edgeSyncedInChange = false
 	s.displayText = s.virtualString()
 }
 
@@ -1338,6 +1360,9 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		}
 		s.compose = ""
 		s.composing = false
+		if s.onText != nil && s.onText(ev.Text, s.anchor, s.caret) {
+			return true
+		}
 		lo, hi := s.OrderedSelection()
 		s.replaceRunes(lo, hi, ev.Text)
 		return true
@@ -1928,6 +1953,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.onPaste = opts.OnPaste
 	st.onPastePlain = opts.OnPastePlain
 	st.onKey = opts.OnKey
+	st.onText = opts.OnText
 	st.onEdge = opts.OnEdge
 	st.onOpenLink = opts.OnOpenLink
 
