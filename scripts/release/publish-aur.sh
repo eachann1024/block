@@ -64,7 +64,7 @@ if [[ -f "$work/aur/PKGBUILD" ]]; then
       const epoch = readScalar("epoch") || "0";
       const pkgver = readScalar("pkgver");
       const pkgrel = readScalar("pkgrel");
-      const shaMatch = /^\s*sha256sums=\(\s*["\x27]?([0-9a-fA-F]{64})["\x27]?/m.exec(text);
+      const shaMatch = /^\s*sha256sums=\(\s*["\x27]?([0-9a-fA-F]{64})["\x27]?(?=\s|\))/m.exec(text);
       const sha = shaMatch ? shaMatch[1] : "";
       process.stdout.write(`${epoch}\n${pkgver}\n${pkgrel}\n${sha}\n`);
     ' "$work/aur/PKGBUILD"
