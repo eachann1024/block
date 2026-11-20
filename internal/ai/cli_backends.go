@@ -182,10 +182,16 @@ func ProbeBackendWithPath(kind model.BackendKind, customPath string) BackendStat
 	}
 	cand := expandHomePath(trimmed)
 	info, err := os.Stat(cand)
-	if err != nil || info.IsDir() {
+	if err != nil {
 		return BackendStatus{
 			State:   BackendStateMissing,
 			Message: theme.Tr("指定的可执行文件不存在", "Specified executable path does not exist"),
+		}
+	}
+	if info.IsDir() {
+		return BackendStatus{
+			State:   BackendStateMissing,
+			Message: theme.Tr("指定路径是文件夹，请填写可执行文件路径", "Specified path is a directory; enter an executable path"),
 		}
 	}
 	prevVal, hadPrev := customCLIBinaryPaths.Load(string(kind))
@@ -314,7 +320,7 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 	case model.BackendAgy:
 		out, err := cliCommand(ctx, "agy", "--version").Output()
 		if err != nil {
-			return BackendStatus{State: BackendStateInstalled}
+			return BackendStatus{State: BackendStateError, Message: theme.Tr("无法检测 agy CLI 版本", "Failed to detect agy CLI version")}
 		}
 		return BackendStatus{State: BackendStateInstalled, Version: strings.TrimSpace(string(out))}
 
