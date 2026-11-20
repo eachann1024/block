@@ -192,6 +192,8 @@ type RichInputState struct {
 	composeHasRange     bool
 	composing           bool
 	inBatchContinuation bool
+	detached            bool
+	onDetachedInsert    func(ins string)
 
 	dragging  bool
 	dragUnit  int
@@ -725,6 +727,12 @@ func (s *RichInputState) ReplaceText(r *ui.TextInputRange, ins string) {
 			beforeStep1 := s.text
 			s.clearComposeState()
 			s.replaceRunes(baseA, baseZ, comp)
+			if s.detached {
+				if ins != "" && s.onDetachedInsert != nil {
+					s.onDetachedInsert(ins)
+				}
+				return
+			}
 			step1Changed := s.text != beforeStep1
 			curLen := utf8.RuneCountInString(s.text)
 			if v0 >= baseA+compLen {
@@ -892,6 +900,14 @@ func (s *RichInputState) IndexForPoint(p ui.Point) (int, bool) {
 
 func (s *RichInputState) InBatchContinuation() bool {
 	return s.inBatchContinuation
+}
+
+func (s *RichInputState) SetDetached(v bool) {
+	s.detached = v
+}
+
+func (s *RichInputState) SetOnDetachedInsert(fn func(ins string)) {
+	s.onDetachedInsert = fn
 }
 
 func (s *RichInputState) replaceRunes(a, z int, ins string) {
