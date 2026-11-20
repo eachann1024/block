@@ -821,7 +821,7 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 	if m.fontPickerOpen != "" {
 		m.renderFontPickerOverlay(c)
 	}
-	if m.recordingShortcut == "" && m.justRecordedPasses == 0 && c.Shortcut(0, ui.KeyEscape) {
+	if m.recordingShortcut == "" && m.justRecordedPasses == 0 && (m.PluginHost == nil || !m.PluginHost.IsStoreLightboxOpen()) && c.Shortcut(0, ui.KeyEscape) {
 		switch {
 		case m.fontPickerOpen != "":
 			m.fontPickerOpen = ""

@@ -3,7 +3,10 @@ package pluginui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +31,12 @@ type readmeResult struct {
 
 const storeReadmeIdleTimeout = 10 * time.Second
 
+type readmeMediaEntry struct {
+	src     string
+	alt     string
+	isVideo bool
+}
+
 // storeReadmePreview is the App Store detail page shown in place of the list.
 type storeReadmePreview struct {
 	entry          plugins.StoreAppEntry
@@ -41,6 +50,8 @@ type storeReadmePreview struct {
 	editorMu       sync.Mutex
 	editor         *editor.Session
 	media          *readmeMedia
+	lightbox       bui.LightboxState
+	lightboxItems  []readmeMediaEntry
 	lastRenderedAt time.Time
 	idleTimer      *time.Timer
 }
@@ -232,6 +243,7 @@ func releaseStoreReadmePreview(preview *storeReadmePreview) {
 	if preview == nil {
 		return
 	}
+	preview.lightbox.Open = false
 	preview.cancel()
 	preview.editorMu.Lock()
 	if preview.editor != nil {
@@ -256,6 +268,80 @@ func (ctrl *Controller) closeStoreReadme() {
 	releaseStoreReadmePreview(preview)
 }
 
+func collectReadmeMedia(doc *model.Doc) []readmeMediaEntry {
+	if doc == nil {
+		return nil
+	}
+	var out []readmeMediaEntry
+	for _, b := range doc.Blocks {
+		if b.Kind != model.BlockImage {
+			continue
+		}
+		src := strings.TrimSpace(b.ImageSrc)
+		if src == "" {
+			continue
+		}
+		isVideo := editor.IsPreviewVideo(src) || strings.Contains(strings.ToLower(b.CleanSource), "<video ")
+		out = append(out, readmeMediaEntry{
+			src:     src,
+			alt:     strings.TrimSpace(b.ImageAlt),
+			isVideo: isVideo,
+		})
+	}
+	return out
+}
+
+func (p *storeReadmePreview) attachEditorHooks(ed *editor.Session) {
+	if p == nil || ed == nil {
+		return
+	}
+	ed.SetPreviewMediaHooks(
+		func(src string, isVideo bool) {
+			p.openLightboxFor(src, isVideo)
+		},
+		func(src string) (bool, bool) {
+			if !p.lightbox.Open {
+				return false, false
+			}
+			if p.lightbox.Index >= 0 && p.lightbox.Index < len(p.lightboxItems) {
+				return p.lightboxItems[p.lightbox.Index].src == src, true
+			}
+			return false, true
+		},
+	)
+}
+
+func (p *storeReadmePreview) openLightboxFor(src string, isVideo bool) {
+	if p == nil || src == "" {
+		return
+	}
+	idx := -1
+	for i, item := range p.lightboxItems {
+		if item.src == src && item.isVideo == isVideo {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		for i, item := range p.lightboxItems {
+			if item.src == src {
+				idx = i
+				break
+			}
+		}
+	}
+	if idx < 0 {
+		p.lightboxItems = append(p.lightboxItems, readmeMediaEntry{src: src, isVideo: isVideo})
+		idx = len(p.lightboxItems) - 1
+	}
+	if isVideo && p.media != nil {
+		p.media.asset(src, true, true)
+	}
+	p.lightbox.Open = true
+	p.lightbox.Index = idx
+	p.lightbox.ResetView()
+}
+
 func (ctrl *Controller) pollStoreReadme(c *ui.Context, preview *storeReadmePreview) {
 	if preview == nil || preview.pending == nil {
 		return
@@ -268,8 +354,11 @@ func (ctrl *Controller) pollStoreReadme(c *ui.Context, preview *storeReadmePrevi
 				ctx: preview.ctx, doc: preview.result.doc, services: c.Services(),
 				slots: make(chan struct{}, 2), assets: make(map[readmeMediaKey]editor.PreviewAsset),
 			}
+			preview.lightboxItems = collectReadmeMedia(preview.result.blocks)
 			preview.editorMu.Lock()
-			preview.editor = editor.NewReadOnlyPreview(preview.result.blocks, markdown.NewCodec(), preview.media.asset)
+			ed := editor.NewReadOnlyPreview(preview.result.blocks, markdown.NewCodec(), preview.media.asset)
+			preview.attachEditorHooks(ed)
+			preview.editor = ed
 			preview.editorMu.Unlock()
 		}
 	default:
@@ -331,12 +420,18 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		preview.dark = curDark
 		blocks := parseReadmeBlocks(preview.result.doc.Text, curDark)
 		preview.result.blocks = blocks
+		preview.lightboxItems = collectReadmeMedia(blocks)
+		if preview.lightbox.Index >= len(preview.lightboxItems) && len(preview.lightboxItems) > 0 {
+			preview.lightbox.Index = len(preview.lightboxItems) - 1
+		}
 		preview.editorMu.Lock()
 		if preview.editor != nil {
 			preview.editor.ClosePreview()
 		}
 		if preview.media != nil {
-			preview.editor = editor.NewReadOnlyPreview(blocks, markdown.NewCodec(), preview.media.asset)
+			ed := editor.NewReadOnlyPreview(blocks, markdown.NewCodec(), preview.media.asset)
+			preview.attachEditorHooks(ed)
+			preview.editor = ed
 		}
 		preview.editorMu.Unlock()
 	}
@@ -351,8 +446,10 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 	}
 
+	lightboxWasOpen := preview.lightbox.Open
+
 	page.Children(func() {
-		if c.Shortcut(0, ui.KeyEscape) {
+		if !lightboxWasOpen && !preview.lightbox.Open && c.Shortcut(0, ui.KeyEscape) {
 			ctrl.closeStoreReadme()
 			c.Invalidate()
 			return
@@ -397,6 +494,135 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 		renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
 	})
+
+	renderStoreDetailLightbox(c, preview)
+}
+
+func readmeMediaDisplayName(entry readmeMediaEntry) string {
+	if entry.alt != "" {
+		return entry.alt
+	}
+	if u, err := url.Parse(entry.src); err == nil && u.Path != "" {
+		if base := path.Base(u.Path); base != "" && base != "." && base != "/" {
+			return base
+		}
+	}
+	if entry.isVideo {
+		return theme.Tr("演示视频", "Demo Video")
+	}
+	return theme.Tr("应用截图", "App Screenshot")
+}
+
+func renderStoreDetailLightbox(c *ui.Context, preview *storeReadmePreview) {
+	if preview == nil || !preview.lightbox.Open || len(preview.lightboxItems) == 0 || preview.media == nil {
+		return
+	}
+	items := make([]bui.LightboxItem, len(preview.lightboxItems))
+	for i, entry := range preview.lightboxItems {
+		item := bui.LightboxItem{
+			ID:      fmt.Sprintf("store-media-%d", i),
+			Name:    readmeMediaDisplayName(entry),
+			OpenURL: preview.media.resolveOpenURL(entry.src),
+		}
+		if entry.isVideo {
+			item.IsVideo = true
+			asset := preview.media.asset(entry.src, true, false)
+			item.Loading = asset.Loading
+			item.Unavailable = asset.Unavailable
+			preview.editorMu.Lock()
+			ed := preview.editor
+			var player *ui.VideoPlayer
+			var ok bool
+			if ed != nil {
+				player, ok = ed.ResolvePreviewVideoPlayer(entry.src)
+			}
+			preview.editorMu.Unlock()
+			if ok && player != nil {
+				item.Video = player
+				item.Loading = false
+				item.Unavailable = false
+				vw, vh := player.Size()
+				dur := player.Duration()
+				switch {
+				case vw > 0 && vh > 0 && dur > 0:
+					item.Meta = fmt.Sprintf("%d × %d · %s", vw, vh, bui.FormatMediaDuration(dur))
+				case vw > 0 && vh > 0:
+					item.Meta = fmt.Sprintf("%d × %d", vw, vh)
+				case dur > 0:
+					item.Meta = bui.FormatMediaDuration(dur)
+				default:
+					item.Meta = theme.Tr("视频", "Video")
+				}
+			} else if len(asset.Video) > 0 {
+				item.Unavailable = true
+			}
+		} else {
+			asset := preview.media.asset(entry.src, false, true)
+			item.Loading = asset.Loading
+			item.Unavailable = asset.Unavailable
+			if asset.Animation != nil {
+				item.IsImage = true
+				item.IsAnimation = true
+				item.Video = asset.Animation
+				vw, vh := asset.Animation.Size()
+				item.ImageW, item.ImageH = vw, vh
+				if vw > 0 && vh > 0 {
+					item.Meta = fmt.Sprintf("GIF · %d × %d", vw, vh)
+				} else {
+					item.Meta = "GIF"
+				}
+			} else {
+				item.IsImage = true
+				item.Image = asset.Image
+				if asset.Image != nil {
+					sw, sh := ui.ImageSize(asset.Image)
+					item.ImageW, item.ImageH = int(math.Round(float64(sw))), int(math.Round(float64(sh)))
+					if item.ImageW > 0 && item.ImageH > 0 {
+						item.Meta = fmt.Sprintf("%d × %d", item.ImageW, item.ImageH)
+					}
+				}
+			}
+		}
+		items[i] = item
+	}
+
+	cb := bui.LightboxCallbacks{
+		OnClose: func() {
+			preview.editorMu.Lock()
+			ed := preview.editor
+			preview.editorMu.Unlock()
+			if ed != nil {
+				ed.PauseAllVideos()
+			}
+			c.Invalidate()
+		},
+		OnSelect: func(idx int) {
+			if idx >= 0 && idx < len(preview.lightboxItems) && preview.lightboxItems[idx].isVideo {
+				preview.media.asset(preview.lightboxItems[idx].src, true, true)
+			}
+			c.Invalidate()
+		},
+		OnRequestLoad: func(idx int) {
+			if idx >= 0 && idx < len(preview.lightboxItems) && preview.lightboxItems[idx].isVideo {
+				preview.media.asset(preview.lightboxItems[idx].src, true, true)
+			}
+		},
+		OnCopy: func(idx int) bool {
+			if idx < 0 || idx >= len(preview.lightboxItems) {
+				return false
+			}
+			entry := preview.lightboxItems[idx]
+			return preview.media.copyMedia(c.Services(), entry.src, entry.isVideo)
+		},
+		OnOpenURL: func(idx int) {
+			if idx < 0 || idx >= len(items) || items[idx].OpenURL == "" {
+				return
+			}
+			c.OpenURL(items[idx].OpenURL)
+		},
+	}
+
+	bui.RenderLightbox(c, "store-media-lightbox", &preview.lightbox, items, cb)
 }
 
 func renderStoreDetailReadme(

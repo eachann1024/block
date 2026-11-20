@@ -3779,6 +3779,9 @@ func (w *Workspace) isAIPanelVisible(vpW float32) bool {
 }
 
 func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
+	if w.pluginsUI != nil && w.pluginsUI.IsStoreLightboxOpen() {
+		return
+	}
 	if w.ai != nil && w.ai.IsLightboxOpen() {
 		if w.isAIPanelVisible(vpW) {
 			return

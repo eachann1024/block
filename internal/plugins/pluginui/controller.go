@@ -114,6 +114,17 @@ func (c *Controller) StoreListing(tab string) bool {
 	return c.sup != nil && modals.IsStoreTab(tab) && !c.storeDetailOpen()
 }
 
+// IsStoreLightboxOpen reports whether the App Store README full-window media lightbox is open.
+func (c *Controller) IsStoreLightboxOpen() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	preview := c.storeReadme
+	c.mu.Unlock()
+	return preview != nil && preview.lightbox.Open
+}
+
 func (c *Controller) RenderStoreFooter(ctx *ui.Context) {
 	_, installingID, _, _ := c.sup.StoreStatus()
 	renderManualInstallRow(ctx, c, installingID)

@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
 	"io"
 	"io/fs"
 	"net"
@@ -22,6 +25,7 @@ import (
 
 	"block/internal/editor"
 	"block/internal/plugins"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -44,12 +48,16 @@ type readmeMedia struct {
 	pixels   atomic.Int64
 	mu       sync.Mutex
 	assets   map[readmeMediaKey]editor.PreviewAsset
+	rawImage map[string][]byte
 	videos   int
 }
 
 func (m *readmeMedia) asset(src string, video, load bool) editor.PreviewAsset {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.assets == nil {
+		m.assets = make(map[readmeMediaKey]editor.PreviewAsset)
+	}
 	key := readmeMediaKey{src, video}
 	if a, ok := m.assets[key]; ok {
 		return a
@@ -57,7 +65,7 @@ func (m *readmeMedia) asset(src string, video, load bool) editor.PreviewAsset {
 	if src == "" || len(m.assets) >= 24 || (video && m.videos >= 2) {
 		return editor.PreviewAsset{Unavailable: true}
 	}
-	if !load {
+	if !load || m.ctx == nil || m.ctx.Err() != nil {
 		return editor.PreviewAsset{}
 	}
 	if video {
@@ -102,6 +110,12 @@ func (m *readmeMedia) load(key readmeMediaKey) {
 		return
 	}
 	m.assets[key] = asset
+	if !key.video && !asset.Unavailable && len(data) > 0 {
+		if m.rawImage == nil {
+			m.rawImage = make(map[string][]byte)
+		}
+		m.rawImage[key.source] = data
+	}
 	if key.video && asset.Unavailable {
 		m.videos--
 	}
@@ -120,6 +134,76 @@ func (m *readmeMedia) close() {
 		}
 	}
 	clear(m.assets)
+	clear(m.rawImage)
+}
+
+// resolveOpenURL resolves src to a safe external HTTPS URL when the README media
+// comes from a remote repository or HTTPS link. Local/embedded assets return "".
+func (m *readmeMedia) resolveOpenURL(src string) string {
+	ref, err := url.Parse(strings.TrimSpace(src))
+	if err != nil || ref.Path == "" || strings.Contains(ref.Path, "\\") {
+		return ""
+	}
+	if ref.Scheme == "" && ref.Host == "" {
+		if m.doc.LocalRoot != "" || m.doc.LocalFS != nil || m.doc.RemoteBase == nil {
+			return ""
+		}
+		base := m.doc.RemoteBase
+		parts := strings.SplitN(base.EscapedPath(), "/", 5)
+		if len(parts) < 5 {
+			return ""
+		}
+		repoRoot := strings.Join(parts[:4], "/") + "/"
+		escapedRef := ref.EscapedPath()
+		if strings.HasPrefix(escapedRef, "/") {
+			joined := repoRoot + strings.TrimLeft(escapedRef, "/")
+			if parsedRoot, err := url.Parse(joined); err == nil {
+				ref.Path = parsedRoot.Path
+				ref.RawPath = parsedRoot.RawPath
+			}
+		}
+		ref = base.ResolveReference(ref)
+		if !strings.HasPrefix(ref.EscapedPath(), repoRoot) {
+			return ""
+		}
+	}
+	if !validReadmeMediaURL(ref) {
+		return ""
+	}
+	return ref.String()
+}
+
+var pngMagicHeader = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+
+// copyMedia copies an image bitmap as PNG to the clipboard when available, or
+// falls back to copying the resolved HTTPS media URL.
+func (m *readmeMedia) copyMedia(svc ui.Services, src string, isVideo bool) bool {
+	if m == nil {
+		return false
+	}
+	if !isVideo {
+		m.mu.Lock()
+		raw := m.rawImage[src]
+		m.mu.Unlock()
+		if len(raw) > 0 {
+			if bytes.HasPrefix(raw, pngMagicHeader) {
+				svc.WriteClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, raw))))
+				return true
+			}
+			if img, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
+				var buf bytes.Buffer
+				if err := png.Encode(&buf, img); err == nil {
+					svc.WriteClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, buf.Bytes()))))
+					return true
+				}
+			}
+		}
+	}
+	if u := m.resolveOpenURL(src); u != "" {
+		svc.WriteClipboard(u)
+		return true
+	}
+	return false
 }
 
 func (m *readmeMedia) decodeAnimation(data []byte) *ui.VideoPlayer {
