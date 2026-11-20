@@ -827,6 +827,12 @@ func (rt *Runtime) Command(ctx context.Context, commandID string, cc CommandCont
 // RunCommandAsync starts the plugin (if needed) and runs one command. Errors
 // and a non-empty status are shown as a toast.
 func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandContext) {
+	// The note and selection belong to the notebook open right now; a command
+	// still queued after a notebook switch must not run against another one.
+	nbRoot := s.NotebookRoot()
+	if cc.Note == "" {
+		cc.Note = s.ActiveNoteRel()
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -836,10 +842,11 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			return
 		}
 		defer unlock()
-		if cc.Note == "" {
-			cc.Note = s.ActiveNoteRel()
+		if s.NotebookRoot() != nbRoot {
+			s.toast(pluginID, LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "warning")
+			return
 		}
-		rt, err := s.ensureRuntime(ctx, pluginID, s.NotebookRoot())
+		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		if err != nil {
 			s.toast(pluginID, err.Error(), "error")
 			return
