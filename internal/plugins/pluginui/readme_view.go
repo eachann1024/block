@@ -3,6 +3,7 @@ package pluginui
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -225,9 +226,9 @@ func (ctrl *Controller) pollStoreReadme(c *ui.Context, preview *storeReadmePrevi
 	}
 }
 
-// renderStoreDetail draws the App Store detail page: a quiet header with the
-// single relevant action, the README, and an info column with the metadata the
-// list rows leave out.
+// renderStoreDetail draws the App Store detail page: a header carrying the
+// download count beside the actions, one compact meta line (version, author,
+// repository) with permission tags, then the README at full width.
 func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab string)) {
 	ctrl.mu.Lock()
 	preview := ctrl.storeReadme
@@ -315,29 +316,21 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 					ui.Text(c, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 				}
 			})
-			ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
-				renderStoreDetailActions(c, ctrl, entry, installedApp, isInstalled, installingID, onSelectTab)
+			ui.Row(c).Gap(theme.Space16).AlignItems(ui.Center).Shrink(0).Children(func() {
+				renderStoreDetailDownloads(c, ctrl, entry)
+				ui.Row(c).Gap(theme.Space4).AlignItems(ui.Center).Shrink(0).Children(func() {
+					renderStoreDetailActions(c, ctrl, entry, installedApp, isInstalled, installingID, onSelectTab)
+				})
 			})
 		})
+
+		renderStoreDetailMeta(c, entry, locale)
 
 		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
 		if storeErr != "" {
 			renderStatusTextWithTone(c, storeErr, "danger")
 		}
-
-		stacked := pageW > 0 && pageW < theme.StoreDetailStackWidth
-		body := ui.Row(c.Key("app-store-detail-body")).FillWidth().MinWidth(0).Gap(theme.Space24).AlignItems(ui.Start)
-		if stacked {
-			body = ui.Column(c.Key("app-store-detail-body-stacked")).FillWidth().MinWidth(0).Gap(theme.Space24)
-		}
-		body.Children(func() {
-			readmeW := pageW
-			if !stacked {
-				readmeW = pageW - theme.StoreDetailSideWidth - theme.Space24
-			}
-			renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, readmeW, stacked)
-			renderStoreDetailInfo(c, ctrl, entry, locale, stacked)
-		})
+		renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
 	})
 }
 
@@ -425,17 +418,12 @@ func renderStoreDetailReadme(
 	entry plugins.StoreAppEntry,
 	installed plugins.InstalledApp,
 	width float32,
-	stacked bool,
 ) {
 	pal := theme.Ocean()
 	_, winH := c.Size()
 	readmeH := max(winH*0.62, theme.StoreDetailReadmeMinH)
 
-	col := ui.Column(c.Key("app-store-detail-readme")).MinWidth(0).Grow(1).Shrink(1)
-	if stacked {
-		col.FillWidth()
-	}
-	col.Children(func() {
+	ui.Column(c.Key("app-store-detail-readme")).FillWidth().MinWidth(0).Children(func() {
 		preview.editorMu.Lock()
 		ed := preview.editor
 		if ed != nil {
@@ -446,15 +434,15 @@ func renderStoreDetailReadme(
 			return
 		}
 		preview.editorMu.Unlock()
-		message := theme.Tr("正在加载说明…", "Loading README…")
-		failed := false
-		if preview.pending == nil {
-			if errors.Is(preview.result.err, plugins.ErrReadmeUnavailable) {
-				message = theme.Tr("这个应用还没有说明", "This app has no README yet")
-			} else {
-				message = theme.Tr("说明加载失败", "Could not load README")
-				failed = true
-			}
+		if preview.pending != nil {
+			renderStoreReadmeSkeleton(c)
+			return
+		}
+		message := theme.Tr("说明加载失败", "Could not load README")
+		failed := true
+		if errors.Is(preview.result.err, plugins.ErrReadmeUnavailable) {
+			message = theme.Tr("这个应用还没有说明", "This app has no README yet")
+			failed = false
 		}
 		ui.Row(c).Gap(theme.Space12).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, message).Role(ui.RoleStatus).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
@@ -469,56 +457,132 @@ func renderStoreDetailReadme(
 	})
 }
 
-func renderStoreDetailInfo(c *ui.Context, ctrl *Controller, entry plugins.StoreAppEntry, locale string, stacked bool) {
+// storeReadmeSkeletonPeriod is one full breathe cycle of the README skeleton.
+const storeReadmeSkeletonPeriod = 1600 * time.Millisecond
+
+// renderStoreReadmeSkeleton mirrors a typical README (title, paragraph, media,
+// list) with soft bars that breathe in unison while the README downloads.
+func renderStoreReadmeSkeleton(c *ui.Context) {
 	pal := theme.Ocean()
-	downloads := max(entry.Downloads, 0)
-	if store := ctrl.sup.Store(); store != nil {
-		downloads = store.EffectiveDownloads(entry)
-	}
+	phase := float64(time.Now().UnixNano()%int64(storeReadmeSkeletonPeriod)) / float64(storeReadmeSkeletonPeriod)
+	alpha := float32(0.55 + 0.45*(0.5+0.5*math.Cos(2*math.Pi*phase)))
+	c.Invalidate()
 
-	info := ui.Column(c.Key("app-store-detail-info")).MinWidth(0).Gap(theme.Space16).Shrink(0)
-	if stacked {
-		info.FillWidth()
-	} else {
-		info.Width(theme.StoreDetailSideWidth)
+	bar := func(pct, h float32) {
+		ui.Box(c).WidthPercent(pct).Height(h).Radius(theme.RadiusXS).Background(pal.Selected)
 	}
-	info.Children(func() {
-		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space10).Children(func() {
-			if ver := strings.TrimSpace(entry.Version); ver != "" {
-				renderStoreDetailField(c, theme.Tr("版本", "Version"), "v"+strings.TrimPrefix(ver, "v"), true)
-			}
-			if author := strings.TrimSpace(entry.Author); author != "" {
-				renderStoreDetailField(c, theme.Tr("作者", "Author"), author, false)
-			}
-			renderStoreDetailField(c, theme.Tr("下载", "Downloads"), formatDownloadCount(downloads), false)
-			if repo := strings.TrimSpace(entry.Repo); repo != "" {
-				renderStoreDetailField(c, theme.Tr("仓库", "Repository"), repo, false)
-			}
+	ui.Column(c.Key("app-store-readme-skeleton")).FillWidth().MinWidth(0).Gap(theme.Space24).
+		Opacity(alpha).Role(ui.RoleStatus).Label(theme.Tr("正在加载说明…", "Loading README…")).Children(func() {
+		bar(36, theme.StoreSkeletonTitleH)
+		ui.Column(c).FillWidth().Gap(theme.Space12).Children(func() {
+			bar(94, theme.StoreSkeletonLineH)
+			bar(88, theme.StoreSkeletonLineH)
+			bar(62, theme.StoreSkeletonLineH)
 		})
-
-		if len(entry.Permissions) == 0 {
-			return
-		}
-		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space8).
-			Padding(theme.Space16, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-			ui.Text(c, theme.Tr("需要的权限", "Permissions")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-			for _, p := range entry.Permissions {
-				ui.Text(c, plugins.PermissionLabel(p, locale)).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).SingleLine().Ellipsis("…")
+		ui.Box(c).FillWidth().Height(theme.StoreSkeletonMediaH).Radius(theme.RadiusLG).Background(pal.Selected)
+		ui.Column(c).FillWidth().Gap(theme.Space12).Children(func() {
+			bar(24, theme.StoreSkeletonSubtitleH)
+			for _, pct := range []float32{80, 72, 54} {
+				ui.Row(c).FillWidth().Gap(theme.Space10).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).Background(pal.Selected).Shrink(0)
+					bar(pct, theme.StoreSkeletonLineH)
+				})
 			}
 		})
 	})
 }
 
-func renderStoreDetailField(c *ui.Context, label, value string, mono bool) {
+// renderStoreDetailDownloads puts the download count beside the actions, the
+// one number a visitor weighs before installing.
+func renderStoreDetailDownloads(c *ui.Context, ctrl *Controller, entry plugins.StoreAppEntry) {
 	pal := theme.Ocean()
-	ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).Shrink(0).SingleLine()
-		v := ui.Text(c, value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
-			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if mono {
-			v.Font("monospace").FontSize(theme.FontSmall).FontWeight(theme.WeightMono)
-		}
+	downloads := max(entry.Downloads, 0)
+	if store := ctrl.sup.Store(); store != nil {
+		downloads = store.EffectiveDownloads(entry)
+	}
+	ui.Column(c.Key("app-store-detail-downloads")).AlignItems(ui.End).Shrink(0).Children(func() {
+		ui.Text(c, formatDownloadCount(downloads)).FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
+			FontWeight(theme.WeightTitle).FontFeatures("tnum").TextColor(pal.Text).SingleLine()
+		ui.Text(c, theme.Tr("次下载", "downloads")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+			TextColor(pal.TextSecondary).SingleLine()
 	})
+}
+
+// renderStoreDetailMeta lays version, author and repository on one quiet line
+// under the title, then the permissions as small tags.
+func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale string) {
+	pal := theme.Ocean()
+	indent := theme.StoreDetailIconBox + theme.Space16
+	ver := strings.TrimSpace(entry.Version)
+	author := strings.TrimSpace(entry.Author)
+	repo := strings.TrimSpace(entry.Repo)
+	if ver == "" && author == "" && repo == "" && len(entry.Permissions) == 0 {
+		return
+	}
+
+	ui.Column(c.Key("app-store-detail-meta")).FillWidth().MinWidth(0).Gap(theme.Space10).
+		Padding(0, 0, 0, indent).Children(func() {
+		first := true
+		sep := func() {
+			if !first {
+				ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+			}
+			first = false
+		}
+		if ver != "" || author != "" || repo != "" {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Wrap().Children(func() {
+				if ver != "" {
+					sep()
+					ui.Text(c, "v"+strings.TrimPrefix(ver, "v")).Font("monospace").FontSize(theme.FontMeta).
+						FontWeight(theme.WeightMono).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine()
+				}
+				if author != "" {
+					sep()
+					ui.Text(c, author).FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).
+						TextColor(pal.TextSecondary).SingleLine()
+				}
+				if repo != "" {
+					sep()
+					renderStoreDetailRepoLink(c, repo)
+				}
+			})
+		}
+		if len(entry.Permissions) == 0 {
+			return
+		}
+		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Text(c, theme.Tr("需要权限", "Permissions")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+				TextColor(pal.TextSecondary).SingleLine().Margin(0, theme.Space4, 0, 0)
+			for _, p := range entry.Permissions {
+				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+					Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
+					ui.Text(c, plugins.PermissionLabel(p, locale)).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(pal.TextSecondary).SingleLine()
+				})
+			}
+		})
+	})
+}
+
+func renderStoreDetailRepoLink(c *ui.Context, repo string) {
+	pal := theme.Ocean()
+	link := ui.ButtonBase(c.Key("app-store-detail-repo")).Height(theme.HeightMicro).PaddingX(theme.Space4).Gap(theme.Space4).AlignItems(ui.Center).
+		Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(repo).MinWidth(0)
+	bg := ui.Transparent
+	if link.Pressed() {
+		bg = pal.Selected
+	} else if link.Hovered() {
+		bg = pal.Hover
+	}
+	bui.AnimateSurfaceColors(link, bg, ui.Transparent, false)
+	link.Children(func() {
+		icons.Draw(c, icons.TbLink, theme.IconInline, pal.MonoIconColors(pal.Link))
+		ui.Text(c, repo).FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).TextColor(pal.Link).
+			SingleLine().Ellipsis("…").MinWidth(0)
+	})
+	if link.Clicked() {
+		c.OpenURL("https://github.com/" + repo)
+	}
 }
 
 func formatDownloadCount(n int) string {

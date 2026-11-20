@@ -200,9 +200,11 @@ const (
 	StoreMinColWidth       float32 = 340 // minimum column width for the multi-column store grid
 	StoreDetailIconBox     float32 = 56  // app icon box in the in-place store detail header
 	StoreDetailIconGlyph   float32 = 28  // Duo icon size inside StoreDetailIconBox
-	StoreDetailSideWidth   float32 = 240 // info column (version, author, permissions) beside the README
-	StoreDetailStackWidth  float32 = 760 // below this body width the info column stacks under the README
 	StoreDetailReadmeMinH  float32 = 360 // minimum height of the embedded README viewport
+	StoreSkeletonTitleH    float32 = 20  // README skeleton: heading bar
+	StoreSkeletonSubtitleH float32 = 16  // README skeleton: section heading bar
+	StoreSkeletonLineH     float32 = 10  // README skeleton: body text bar
+	StoreSkeletonMediaH    float32 = 168 // README skeleton: image / video block
 	SegmentedControlHeight         = HeightControl
 	SegmentedInnerHeight           = HeightChrome
 )
