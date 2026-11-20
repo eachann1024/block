@@ -223,6 +223,33 @@ func ClassifyBytes(path string, data []byte) model.ClassifiedFile {
 	return classifyBytes(path, data)
 }
 
+func ClassifyNotebookNote(root *os.Root, name string) (model.ClassifiedFile, error) {
+	expected, err := root.Lstat(name)
+	if err != nil {
+		return model.ClassifiedFile{}, err
+	}
+	if !expected.Mode().IsRegular() {
+		return model.ClassifiedFile{}, errors.New("notebook note must be a regular file")
+	}
+	file, err := root.OpenFile(name, os.O_RDONLY|oNonBlockFlag, 0)
+	if err != nil {
+		return model.ClassifiedFile{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return model.ClassifiedFile{}, err
+	}
+	if !info.Mode().IsRegular() || !os.SameFile(expected, info) {
+		return model.ClassifiedFile{}, errors.New("notebook note changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, TextLimit+1))
+	if err != nil {
+		return model.ClassifiedFile{}, err
+	}
+	return ClassifyBytes(name, data), nil
+}
+
 func classifyBytes(path string, data []byte) model.ClassifiedFile {
 	rawSize := int64(len(data))
 	if IsSVGPath(path) {

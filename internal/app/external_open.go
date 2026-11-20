@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"block/internal/files"
@@ -172,7 +173,11 @@ func (w *Workspace) OpenExternalFile(rawPath string) error {
 	if err := w.ensureTabLoaded(clean); err != nil {
 		return err
 	}
+	w.activateExternalTab(clean)
+	return nil
+}
 
+func (w *Workspace) activateExternalTab(clean string) {
 	w.modals.CloseSettings()
 	w.modals.CloseSearch()
 	if w.searchWin != nil {
@@ -207,31 +212,21 @@ func (w *Workspace) OpenExternalFile(rawPath string) error {
 
 	prevTabs := append([]string(nil), w.state.OpenTabs...)
 	prevActive := w.state.ActiveTab
-	target := findExistingTabForFile(w.state.OpenTabs, clean)
-	switch {
-	case len(w.state.OpenTabs) == 0:
-		target = clean
-		w.state.OpenTabs = []string{target}
-		w.state.ActiveTab = target
-	case target != "":
-		w.state.ActiveTab = target
-	default:
-		target = clean
-		w.state.OpenTabs = append(w.state.OpenTabs, target)
-		w.state.ActiveTab = target
+	if !slices.Contains(w.state.OpenTabs, clean) {
+		w.state.OpenTabs = append(w.state.OpenTabs, clean)
 	}
+	w.state.ActiveTab = clean
 
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
 	tabsChanged := active != prevActive || !stringSlicesEqual(tabs, prevTabs)
 	w.mu.Unlock()
 
-	w.nav.Push(target)
+	w.nav.Push(clean)
 	if tabsChanged {
 		w.persistTabs(tabs, active)
 	}
 	w.RequestRedraw()
-	return nil
 }
 
 func (w *Workspace) handleWindowFileDrop(e *mygo.FileDropEvent) {

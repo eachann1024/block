@@ -1262,6 +1262,11 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 		files.LogErrorf("note read failed: path=%s err=%v", clean, err)
 		return err
 	}
+	w.installClassifiedTab(clean, cf)
+	return nil
+}
+
+func (w *Workspace) installClassifiedTab(clean string, cf model.ClassifiedFile) {
 	files.LogInfof("note opened: path=%s bytes=%d kind=%s", clean, cf.RawSize, openKindName(cf.Kind))
 	if cf.Kind == model.OpenKindMarkdown {
 		doc := w.codec.Parse(cf.Text)
@@ -1271,7 +1276,7 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 		delete(w.surfaces, clean)
 		w.sessions[clean] = sess
 		w.mu.Unlock()
-		return nil
+		return
 	}
 
 	surf := NewTabSurface(clean, cf)
@@ -1284,7 +1289,6 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 	}
 	w.surfaces[clean] = surf
 	w.mu.Unlock()
-	return nil
 }
 
 // OpenExportStage opens the full-window 12-theme A-Export stage for the active Markdown note.
