@@ -54,6 +54,7 @@ func TitleBarActionTrailing() float32 {
 // Palette holds the complete Ocean Paper Light or Dark token set.
 type Palette struct {
 	Dark           bool
+	Tarot          bool
 	Shell          ui.Color
 	Sidebar        ui.Color
 	SettingsBG     ui.Color
@@ -583,6 +584,9 @@ func IsDark() bool {
 }
 
 func Ocean() Palette {
+	if ov, ok := activePaletteOverride(); ok {
+		return ov
+	}
 	if IsDark() {
 		return OceanDark
 	}

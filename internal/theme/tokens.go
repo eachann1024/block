@@ -244,4 +244,24 @@ const (
 	LightboxStagePad           float32 = 28
 	LightboxMaxTextWidth       float32 = 680
 	LightboxMaxTextHeight      float32 = 560
+
+	// Tarot mode ("午夜铜版") typography, radii, and layout metrics.
+	TarotTopbarHeight       float32 = 44
+	TarotSidebarWidth       float32 = 260
+	TarotReadingAsideWidth  float32 = 320
+	TarotDeckAsideWidth     float32 = 380
+	TarotSheetMaxWidth      float32 = 820
+	TarotRadiusCard         float32 = 12
+	TarotRadiusDailyCard    float32 = 16
+	TarotRadiusDeckDetail   float32 = 14
+	TarotFontRomanSmall     float32 = 16
+	TarotFontRomanCard      float32 = 22
+	TarotFontRomanDetail    float32 = 26
+	TarotFontRomanDaily     float32 = 32
+	TarotFontReading        float32 = 19
+	TarotFontCardTitle      float32 = 15
+	TarotFontDailyTitle     float32 = 20
+	TarotFontPosLabel       float32 = 20
+	TarotFontDeckHeading    float32 = 28
+	TarotWeightBold                 = 650
 )

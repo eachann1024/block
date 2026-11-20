@@ -12,6 +12,8 @@ const (
 	ElevationPopover                  // menus, tooltips, toolbars, popovers
 	ElevationDialog                   // modal dialogs, search, export, command panels
 	ElevationDrawer                   // side drawers sliding over content
+	ElevationTarotCard                // tarot cards hovering over the midnight table
+	ElevationTarotSheet               // tarot parchment sheet over the crosshatch desk
 )
 
 // Shadow is one layer of an elevation stack.
@@ -40,6 +42,14 @@ func (p Palette) Shadows(e Elevation) []Shadow {
 		return []Shadow{{0, 2, 6, 0, black(0.08)}, {0, 12, 32, 0, black(0.14)}}
 	case ElevationDrawer:
 		return []Shadow{{8, 0, 28, 0, black(0.18)}}
+	case ElevationTarotCard:
+		return []Shadow{{0, 18, 36, 0, ui.RGBA(2, 6, 14, 0.58)}}
+	case ElevationTarotSheet:
+		return []Shadow{
+			{0, 1, 0, 0, ui.Hex("#d9cdaf")},
+			{0, 2, 0, 0, ui.Hex("#8f7f5c")},
+			{0, 24, 56, 0, ui.RGBA(2, 6, 14, 0.55)},
+		}
 	default:
 		return []Shadow{{0, 1, 2, 0, black(0.05)}, {0, 6, 20, 0, black(0.09)}}
 	}
