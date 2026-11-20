@@ -470,16 +470,20 @@ func collectCandidateRefDefsFromLines(src string, lines []string) map[string]ref
 			}
 		}
 		if isPipeCandidate(lines, i) {
-			end := i + 2
-			for end < len(lines) {
-				raw := trimLineEnding(lines[end])
-				if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
-					break
+			hdrCols := splitPipeCells(trimLineEnding(lines[i]))
+			delimCols := splitPipeCells(trimLineEnding(lines[i+1]))
+			if len(hdrCols) > 0 && len(hdrCols) <= maxParsedTableCells && len(hdrCols) == len(delimCols) {
+				end := i + 2
+				for end < len(lines) {
+					raw := trimLineEnding(lines[end])
+					if strings.TrimSpace(raw) == "" || !strings.ContainsRune(raw, '|') {
+						break
+					}
+					end++
 				}
-				end++
+				i = end - 1
+				continue
 			}
-			i = end - 1
-			continue
 		}
 		if _, ok := classifyListMarker(line); ok {
 			if _, count, okL := parseListItem(lines[i:], nil, nil, 1, 0); okL && count > 0 {

@@ -285,6 +285,7 @@ type inlineScanState struct {
 	angleAfterGTFor       int
 	angleAfterGTClose     int
 	unclosedBrackets      map[int]bool
+	matchedBrackets       map[int]int
 	unclosedParens        map[int]bool
 	tagFailWatermark      int
 	imgCloseValidFrom     int
@@ -1104,8 +1105,12 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 			return "", "", "", 0, false
 		}
 		if start < st.imgClosePos {
-			i := st.imgClosePos
-			return finishLinkOrImageAt(st, start, i, defs)
+			return finishLinkOrImageAt(st, start, st.imgClosePos, defs)
+		}
+	}
+	if !isImage && st.matchedBrackets != nil {
+		if closePos, okMatch := st.matchedBrackets[start]; okMatch {
+			return finishLinkOrImageAt(st, start, closePos, defs)
 		}
 	}
 	var openBuf [16]int
@@ -1138,6 +1143,7 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 				openStack = append(openStack, i)
 			}
 		case ']':
+			top := openStack[len(openStack)-1]
 			openStack = openStack[:len(openStack)-1]
 			if len(openStack) == 0 {
 				if isImage {
@@ -1145,6 +1151,12 @@ func tryParseLinkOrImageWithRefAt(st *inlineScanState, start int, defs map[strin
 					st.imgClosePos = i
 				}
 				return finishLinkOrImageAt(st, start, i, defs)
+			}
+			if !isImage {
+				if st.matchedBrackets == nil {
+					st.matchedBrackets = make(map[int]int, len(openStack)+1)
+				}
+				st.matchedBrackets[top] = i
 			}
 		}
 		i++
