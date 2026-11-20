@@ -94,7 +94,13 @@ func (w *Workspace) initTarot() {
 			return w.ai != nil && w.ai.IsOpen()
 		},
 		IsAIEnabled: func() bool {
-			return w.ai != nil && w.ai.Enabled()
+			if w.ai == nil || !w.ai.Enabled() {
+				return false
+			}
+			if sup := w.Plugins(); sup != nil && sup.TitlebarHidden(plugins.TitlebarSlotAI) {
+				return false
+			}
+			return true
 		},
 		IsAIStreaming: func() bool {
 			return w.ai != nil && w.ai.IsStreaming()
