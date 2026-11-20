@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"block/internal/codepreview"
 	"block/internal/icons"
@@ -775,6 +776,23 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 	showIdleHandles := !overlayBlocking && !isDraggingAny && s.typingPointer == nil
 	showHandles := !s.minimal && !readOnly && ((showIdleHandles && (hoveredForHandles || hasBlockFocus)) || (!overlayBlocking && s.dragBlockID == id) || tableWholeActive)
 	showBlankAdd := !s.minimal && !readOnly && showIdleHandles && (hoveredForHandles || (!hasTextFocus && s.hoveredBlock == idx))
+	// A document that is just one blank line keeps its add button visible;
+	// it enters by playing the hover animation once instead of popping in.
+	soloBlank := !s.minimal && !readOnly && len(s.doc.Blocks) == 1 && isPlainEmptyParagraph(b) &&
+		!overlayBlocking && !isDraggingAny
+	soloIntro := false
+	if soloBlank {
+		showBlankAdd = true
+		if s.soloAddID != id {
+			s.soloAddID, s.soloAddAt = id, time.Now()
+		}
+		if time.Since(s.soloAddAt) < soloAddIntroDur {
+			soloIntro = true
+			c.Invalidate()
+		}
+	} else if s.soloAddID == id {
+		s.soloAddID = 0
+	}
 	isFolded := !s.minimal && !readOnly && b.Kind.IsHeading() && s.folded[id]
 	blankPara := isPlainEmptyParagraph(b)
 	listCtx := meta.List
@@ -875,6 +893,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 										TooltipSpec: &addTip,
 										Size:        btn24,
 										IconSize:    icGutter,
+										ForceHover:  soloIntro,
 									})
 									addBtn.KeepFocus()
 									s.recordOverlayBtn(addID, addBtn)
@@ -3509,3 +3528,6 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 		}
 	})
 }
+
+// soloAddIntroDur is how long the single-line add button plays its hover intro.
+const soloAddIntroDur = 450 * time.Millisecond

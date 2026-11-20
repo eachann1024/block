@@ -149,6 +149,10 @@ type Session struct {
 	foldTails          map[model.BlockID]model.BlockID
 	trailingPlus       bool
 	typingPointer      *ui.Point
+	// soloAddID/soloAddAt track when the persistent add button of a
+	// single-blank-line document first appeared, to play its hover intro.
+	soloAddID model.BlockID
+	soloAddAt time.Time
 
 	// Mouse multi-block / marquee selection
 	mouseMode        mouseSelMode

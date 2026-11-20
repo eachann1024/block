@@ -53,6 +53,9 @@ type IconButtonOptions struct {
 	Disabled    bool
 	Loading     bool
 	Danger      bool
+	// ForceHover draws the hover state (and plays the glyph's hover animation)
+	// without the pointer, e.g. for an intro when a control first appears.
+	ForceHover bool
 }
 
 func (o IconButtonOptions) metrics() (box, glyph, radius float32) {
@@ -123,7 +126,7 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			}},
 		})
 	}
-	hovered := btn.Hovered() && !isDisabled
+	hovered := (btn.Hovered() || opts.ForceHover) && !isDisabled
 	pressed := btn.Pressed() && !isDisabled
 
 	bgCol := ui.Transparent
