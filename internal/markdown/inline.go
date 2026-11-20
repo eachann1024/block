@@ -442,10 +442,36 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool) []*i
 				}
 				if i >= st.tagFailWatermark {
 					if rawTag, tok, consumed, failPos, sawQuoteOrGT, ok := tryParseHTMLTagAt(s, i, lastGT, lastDQ, lastSQ, pairedUnknown); ok {
-						// Literal HTML inline math: `<span class="math">...</span>` or `<code class="math">...</code>`.
+						// Literal HTML inline math (`<span class="math">` / `<code class="math">`) preserving same-tag styles.
 						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].isMark&model.MarkMath != 0 {
-							if litText, closeEnd, okLit := scanLiteralHTMLMathBody(s, i+consumed, tok[0].tag); okLit {
+							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, false); okLit {
+								extraOpen := *tok[0]
+								extraOpen.isMark &^= model.MarkMath
+								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
+								if hasExtra {
+									toks = append(toks, &extraOpen)
+								}
 								toks = append(toks, &inlineTok{kind: tokMath, text: litText})
+								if hasExtra {
+									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag})
+								}
+								i = closeEnd
+								continue
+							}
+						}
+						// Literal HTML inline code (`<code>...</code>` without nested non-<br> tags) so soft-newlines round-trip.
+						if len(tok) == 1 && tok[0].kind == tokOpenStyle && tok[0].tag == "code" && tok[0].isMark&model.MarkCode != 0 {
+							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, "code", true); okLit {
+								extraOpen := *tok[0]
+								extraOpen.isMark &^= model.MarkCode
+								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
+								if hasExtra {
+									toks = append(toks, &extraOpen)
+								}
+								toks = append(toks, &inlineTok{kind: tokCode, text: litText})
+								if hasExtra {
+									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag})
+								}
 								i = closeEnd
 								continue
 							}
@@ -725,6 +751,16 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 				continue
 			}
 		}
+		if c == '<' {
+			if name, attrs, closed, empty, consumed, okTag := parseTagRaw(s[i:]); okTag && !closed && !empty {
+				if (name == "span" || name == "code") && (hasCSSClass(attrVal(attrs, "class"), "math") || name == "code") {
+					if _, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, name, name == "code" && !hasCSSClass(attrVal(attrs, "class"), "math")); okLit {
+						i = closeEnd
+						continue
+					}
+				}
+			}
+		}
 		if c == '=' && i+1 < n && s[i+1] == '=' {
 			if i > from && !isInlineSpaceByte(s[i-1]) && s[i-1] != '=' && (i+2 >= n || s[i+2] != '=') {
 				return i, true
@@ -739,7 +775,7 @@ func findDoubleEqualEnd(s string, from int) (end int, ok bool) {
 	return -1, false
 }
 
-func scanLiteralHTMLMathBody(s string, from int, tag string) (text string, nextPos int, ok bool) {
+func scanLiteralHTMLBody(s string, from int, tag string, rejectNestedTags bool) (text string, nextPos int, ok bool) {
 	closeTag := "</" + tag + ">"
 	n := len(s)
 	for i := from; i < n; i++ {
@@ -763,6 +799,11 @@ func scanLiteralHTMLMathBody(s string, from int, tag string) (text string, nextP
 						out.WriteByte('\n')
 						j += 6
 						continue
+					}
+					if rejectNestedTags {
+						if _, _, _, _, _, okSub := parseTagRaw(raw[j:]); okSub {
+							return "", from, false
+						}
 					}
 				}
 				if raw[j] == '&' {
@@ -2007,7 +2048,13 @@ func serializeInlineWithMode(spans []model.Span, forceHTML, allowBareURL bool) s
 		opened = target
 
 		if sp.Marks&model.MarkCode != 0 {
-			writeInlineCode(&out, sp.Text)
+			if useHTML || strings.ContainsAny(sp.Text, "\n\r") {
+				out.WriteString("<code>")
+				writeLiteralHTMLText(&out, sp.Text)
+				out.WriteString("</code>")
+			} else {
+				writeInlineCode(&out, sp.Text)
+			}
 		} else if sp.Marks&model.MarkMath != 0 {
 			if useHTML || !canSerializeDollarMath(sp.Text) {
 				out.WriteString(`<span class="math">`)
@@ -2129,9 +2176,13 @@ func writeInlineText(out *strings.Builder, text string, inMarkdownLink, htmlCtx,
 				out.WriteByte('>')
 			}
 		case ':':
-			if escapeBareURL && !inMarkdownLink && !htmlCtx && strings.HasPrefix(text[i:], "://") &&
+			if escapeBareURL && !inMarkdownLink && strings.HasPrefix(text[i:], "://") &&
 				((i >= 4 && strings.EqualFold(text[i-4:i], "http")) || (i >= 5 && strings.EqualFold(text[i-5:i], "https"))) {
-				out.WriteString(`\:`)
+				if htmlCtx {
+					out.WriteString("&#58;")
+				} else {
+					out.WriteString(`\:`)
+				}
 			} else {
 				out.WriteByte(':')
 			}

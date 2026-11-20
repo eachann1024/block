@@ -21,11 +21,11 @@ func ConvertClipboardHTML(htmlRaw, plainFallback string) (string, bool) {
 	if len(htmlRaw) > media.MaxPasteBytes || len(plainFallback) > media.MaxPasteBytes || strings.TrimSpace(htmlRaw) == "" {
 		return "", false
 	}
-	if looksLikeAuthoredMarkdown(plainFallback) {
-		return "", false
-	}
 	fragment := extractHTMLClipboardFragment(htmlRaw)
 	if strings.TrimSpace(fragment) == "" {
+		return "", false
+	}
+	if !containsMathHTML(fragment) && looksLikeAuthoredMarkdown(plainFallback) {
 		return "", false
 	}
 	if isCodeEditorHTMLDump(fragment) || !hasSemanticHTMLFeatures(fragment) {
@@ -42,6 +42,30 @@ func ConvertClipboardHTML(htmlRaw, plainFallback string) (string, bool) {
 		return "", false
 	}
 	return out, true
+}
+
+func containsMathHTML(fragment string) bool {
+	lower := strings.ToLower(fragment)
+	if !strings.Contains(lower, "math") {
+		return false
+	}
+	for i := 0; i < len(fragment); {
+		lt := strings.IndexByte(fragment[i:], '<')
+		if lt < 0 {
+			break
+		}
+		i += lt
+		name, attrs, closed, _, consumed, ok := parseClipboardTag(fragment, i)
+		if !ok {
+			i++
+			continue
+		}
+		if !closed && (name == "code" || name == "span") && hasCSSClass(attrVal(attrs, "class"), "math") {
+			return true
+		}
+		i += consumed
+	}
+	return false
 }
 
 func looksLikeAuthoredMarkdown(plain string) bool {
@@ -323,7 +347,7 @@ type htmlInlineState struct {
 	math      *bool
 	sup       *bool
 	sub       *bool
-	highlight *bool
+	bgColor   *string
 	link      *string
 }
 
@@ -364,7 +388,7 @@ type htmlPasteConverter struct {
 }
 
 func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg string) {
-	var bold, italic, under, strike, code, mathMark, sup, sub, hi bool
+	var bold, italic, under, strike, code, mathMark, sup, sub bool
 	for _, f := range c.inlineStk {
 		if f.bold != nil {
 			bold = *f.bold
@@ -390,8 +414,8 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 		if f.sub != nil {
 			sub = *f.sub
 		}
-		if f.highlight != nil {
-			hi = *f.highlight
+		if f.bgColor != nil {
+			bg = *f.bgColor
 		}
 		if f.link != nil {
 			link = *f.link
@@ -420,10 +444,16 @@ func (c *htmlPasteConverter) activeStyle() (marks model.Mark, link string, bg st
 	if sub {
 		marks |= model.MarkSubscript
 	}
-	if hi {
-		bg = "yellow"
-	}
 	return marks, link, bg
+}
+
+func (c *htmlPasteConverter) inLiteralInline() bool {
+	for _, f := range c.inlineStk {
+		if (f.math != nil && *f.math) || (f.code != nil && *f.code) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *htmlPasteConverter) targetSpans() *[]model.Span {
@@ -440,6 +470,33 @@ func (c *htmlPasteConverter) pushText(raw string) {
 	decoded := html.UnescapeString(raw)
 	if c.inPre {
 		c.preBuf.WriteString(decoded)
+		return
+	}
+	if c.inLiteralInline() {
+		var lit strings.Builder
+		lit.Grow(len(decoded))
+		for _, r := range decoded {
+			if r == '\u00A0' {
+				r = ' '
+			}
+			if r == '\r' {
+				continue
+			}
+			if r != '\n' && r != '\t' && unicode.IsControl(r) {
+				continue
+			}
+			lit.WriteRune(r)
+		}
+		if lit.Len() > 0 {
+			spansPtr := c.targetSpans()
+			marks, link, bg := c.activeStyle()
+			*spansPtr = append(*spansPtr, model.Span{
+				Text:    lit.String(),
+				Marks:   marks,
+				Link:    link,
+				BGColor: bg,
+			})
+		}
 		return
 	}
 	// Collapse HTML source formatting newlines/tabs into single spaces while keeping non-breaking spaces clean.
@@ -717,7 +774,7 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 	case "sub":
 		st.sub = boolPtr(true)
 	case "mark":
-		st.highlight = boolPtr(true)
+		st.bgColor = strPtr("yellow")
 	case "a":
 		if href := media.WebLink(attrVal(attrs, "href")); href != "" {
 			st.link = strPtr(href)
@@ -746,8 +803,8 @@ func (c *htmlPasteConverter) pushInlineTag(name string, attrs [][2]string) {
 			st.strike = boolPtr(true)
 		}
 	}
-	if isHighlightBGColor(cssProp(attrs, "background-color")) {
-		st.highlight = boolPtr(true)
+	if bg := cleanColorValue(cssProp(attrs, "background-color")); isHighlightBGColor(bg) {
+		st.bgColor = strPtr(bg)
 	}
 
 	c.inlineStk = append(c.inlineStk, st)
