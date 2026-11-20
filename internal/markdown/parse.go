@@ -1279,10 +1279,16 @@ func isPipeCandidate(lines []string, idx int) bool {
 	return true
 }
 
+func trimTableCellSpace(s string) string {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return r != '\u0085' && unicode.IsSpace(r)
+	})
+}
+
 func splitPipeCells(line string) []string {
 	var cells []string
 	walkPipeCells(line, func(_, start, end int) {
-		cells = append(cells, strings.TrimSpace(line[start:end]))
+		cells = append(cells, trimTableCellSpace(line[start:end]))
 	})
 	return cells
 }
@@ -1550,7 +1556,7 @@ func parseHTMLTableCells(src string, visit func(row, col, start, end int)) (mode
 				visit(len(rows), len(curRow), bodyStart, bodyEnd)
 			}
 			inner := src[bodyStart:bodyEnd]
-			spans := ParseInline(strings.TrimSpace(inner))
+			spans := ParseInline(trimTableCellSpace(inner))
 			cellAlign := model.ColAlignNone
 			if ta := cssProp(attrs, "text-align"); ta != "" {
 				cellAlign = parseColAlign(ta)

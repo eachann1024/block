@@ -48,6 +48,15 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		*sourceRanges = make([]sourceLineRange, len(blocks))
 	}
 
+	// When rewriting a modified document block-by-block, reference definitions from doc.CleanRaw
+	// are not emitted at the bottom, so untouched blocks must not keep CleanSource that depends on defs.
+	var rewriteCleanValid []int8
+	if len(defs) > 0 {
+		rewriteCleanValid = make([]int8, len(doc.Blocks))
+	} else {
+		rewriteCleanValid = cleanValid
+	}
+
 	for i := 0; i < len(blocks); i++ {
 		b := &blocks[i]
 		n := 0
@@ -91,7 +100,7 @@ func serializeMarkdown(doc *model.Doc, sourceRanges *[]sourceLineRange) string {
 		}
 
 		blockStart := out.Len()
-		if canUseCleanSourceCached(b, i == 0, n, defs, cleanValid, i) {
+		if canUseCleanSourceCached(b, i == 0, n, nil, rewriteCleanValid, i) {
 			out.WriteString(b.CleanSource)
 		} else if extraQ := extraQuotePrefixCount(b); extraQ > 0 {
 			var sub strings.Builder
@@ -1137,12 +1146,12 @@ func serializeSafeBlockLines(spans []model.Span, isList, isQuote bool) []string 
 					line = "&#32;" + line[1:]
 				} else if line[0] == '\t' {
 					line = "&#9;" + line[1:]
-				} else if isQuote {
+				} else if !isList {
 					if _, isAlert := parseAlertTag(line); isAlert {
 						line = `\` + line
-					} else if strings.HasPrefix(line, "|") {
+					} else if isQuote && strings.HasPrefix(line, "|") {
 						line = `\` + line
-					} else if blockquoteNeedsStructuredParse([]string{line}) {
+					} else if isQuote && blockquoteNeedsStructuredParse([]string{line}) {
 						line = escapeLiteralParagraphPrefix(line)
 					}
 				}
@@ -1164,10 +1173,10 @@ func preserveEdgeWhitespace(s string) string {
 	if s == "" {
 		return s
 	}
-	if r, sz := utf8.DecodeRuneInString(s); unicode.IsSpace(r) {
+	if r, sz := utf8.DecodeRuneInString(s); r != '\u0085' && unicode.IsSpace(r) {
 		s = fmt.Sprintf("&#%d;", r) + s[sz:]
 	}
-	if r, sz := utf8.DecodeLastRuneInString(s); unicode.IsSpace(r) {
+	if r, sz := utf8.DecodeLastRuneInString(s); r != '\u0085' && unicode.IsSpace(r) {
 		prefix := s[:len(s)-sz]
 		slashes := 0
 		for i := len(prefix) - 1; i >= 0 && prefix[i] == '\\'; i-- {
