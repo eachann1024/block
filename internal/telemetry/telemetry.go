@@ -14,7 +14,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -189,25 +191,71 @@ func CheckOnce(ctx context.Context, cfg Config) (sent bool, err error) {
 
 func load(path string) (record, error) {
 	var rec record
-	if data, err := os.ReadFile(path); err == nil {
+	data, err := os.ReadFile(path)
+	if err == nil {
 		_ = json.Unmarshal(data, &rec)
 	}
-	if !idRe.MatchString(rec.ID) {
-		rec = record{ID: newID()}
-		if err := save(path, rec); err != nil {
-			return rec, fmt.Errorf("telemetry: cannot keep install id: %w", err)
+	if idRe.MatchString(rec.ID) {
+		return rec, nil
+	}
+	rec = record{ID: newID()}
+	if errors.Is(err, fs.ErrNotExist) {
+		// First run: create the file only if nobody else did, so two processes sharing a
+		// fresh data directory end up with one id instead of being counted as two installs.
+		err = create(path, rec)
+		if errors.Is(err, fs.ErrExist) {
+			return load(path)
 		}
+	} else {
+		err = save(path, rec) // unreadable or damaged: replace it
+	}
+	if err != nil {
+		return rec, fmt.Errorf("telemetry: cannot keep install id: %w", err)
 	}
 	return rec, nil
 }
 
-func save(path string, rec record) error {
+// writeTemp writes rec to a new temporary file next to path and returns its name.
+func writeTemp(path string, rec record) (string, error) {
 	data, err := json.Marshal(rec)
+	if err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+// create publishes rec at path only if path does not exist yet (fs.ErrExist otherwise).
+// A hard link is atomic and never replaces, so a reader sees either nothing or the full file.
+func create(path string, rec record) error {
+	tmp, err := writeTemp(path, rec)
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	defer os.Remove(tmp)
+	if err := os.Link(tmp, path); err != nil {
+		if _, serr := os.Lstat(path); serr == nil {
+			return fs.ErrExist
+		}
+		return err
+	}
+	return nil
+}
+
+func save(path string, rec record) error {
+	tmp, err := writeTemp(path, rec)
+	if err != nil {
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
