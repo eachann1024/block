@@ -602,12 +602,53 @@ func serializeBlockWithCtx(b *model.Block, isFirst bool, listNum int, inListChil
 			out.WriteString(strings.Repeat(" ", b.Indent))
 		}
 		inlineStr := SerializeInline(b.Spans)
-		if strings.HasPrefix(inlineStr, "$$") || strings.HasPrefix(inlineStr, ":::") {
+		if needsParagraphPrefixEscape(inlineStr) {
 			out.WriteByte('\\')
 		}
 		out.WriteString(inlineStr)
 		out.WriteByte('\n')
 	}
+}
+
+func needsParagraphPrefixEscape(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "$$") || strings.HasPrefix(s, ":::") {
+		return true
+	}
+	// ATX headings `# `..`###### `
+	if s[0] == '#' {
+		n := 0
+		for n < len(s) && n < 6 && s[n] == '#' {
+			n++
+		}
+		if n >= 1 && n <= 6 && (n == len(s) || s[n] == ' ' || s[n] == '\t') {
+			return true
+		}
+	}
+	// Blockquote `>` / `>> `
+	if s[0] == '>' {
+		return true
+	}
+	// Bullet `- ` / `+ ` / `* ` (note `*` is already escaped if needed, handle `-` and `+`).
+	if len(s) >= 2 && (s[0] == '-' || s[0] == '+') && (s[1] == ' ' || s[1] == '\t') {
+		return true
+	}
+	// Thematic break `---`
+	if strings.HasPrefix(s, "---") {
+		allDash := true
+		for i := 0; i < len(s); i++ {
+			if s[i] != '-' && s[i] != ' ' {
+				allDash = false
+				break
+			}
+		}
+		if allDash {
+			return true
+		}
+	}
+	return false
 }
 
 func serializeImageBlock(b *model.Block, out *strings.Builder) {
