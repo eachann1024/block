@@ -601,9 +601,11 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					prevBlank, para, paraLines = true, false, nil
 					continue
 				}
-				// Under paragraph text (not a list item) "-" or "==" is a setext underline,
-				// not an empty list item, which may not interrupt a paragraph.
-				setext := ind < 4 && para && !inList && diffSetextRE.MatchString(inner)
+				// Under paragraph text "-" or "==" is a setext underline, not an empty list
+				// item, which may not interrupt a paragraph; in a list item's content
+				// ("- 部署说明" over "  ---") it makes the item's text a heading.
+				inItem := inList && ind >= listCol && ind < listCol+4
+				setext := para && (ind < 4 && !inList || inItem) && diffSetextRE.MatchString(inner)
 				item := !setext && diffListItemRE.MatchString(t) && !diffRuleRE.MatchString(t)
 				if item {
 					for len(cols) > 0 && cols[len(cols)-1] > ind {
@@ -611,8 +613,10 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 					}
 					listCol = ind + len(diffContainerRE.FindString(t))
 					cols = append(cols, listCol)
+					// The item's text starts a paragraph of its own.
+					paraLines = nil
 				}
-				inList = item || !setext && inList && ind > 0
+				inList = item || (!setext || inItem) && inList && ind > 0
 				if !inList {
 					cols = nil
 				}
@@ -620,7 +624,7 @@ func diffScanFences(lines []string, change []int) (masks [2][]bool, heads [2][]i
 				// may follow at once. Indented four or more, such a line is paragraph text.
 				ends := setext || ind < 4 && (diffRuleRE.MatchString(inner) || diffHeadingRE.MatchString(inner) || diffMathStart(inner))
 				prevBlank, para = !inList && ends, !ends
-				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t)) {
+				if setext && diffSetextText(lines, paraLines, diffQuoteDepth(t), inItem) {
 					for _, p := range paraLines {
 						head[p] = 2 - min(1, strings.Count(t, "="))
 					}
@@ -717,15 +721,16 @@ func diffMathStart(t string) bool {
 // setext heading: not a list item or table, and in the underline's blockquote depth
 // q, since a quoted paragraph over a bare "---" is a rule (no lazy underline). Bar
 // lines are paragraph text until a separator row makes them a table: "| A |" over
-// "---" is a heading, since the underline is read first.
-func diffSetextText(lines []string, para []int, q int) bool {
+// "---" is a heading, since the underline is read first. In a list item (item) the
+// first line may be the item's own.
+func diffSetextText(lines []string, para []int, q int, item bool) bool {
 	for j, p := range para {
 		t := strings.TrimSpace(lines[p])
 		if diffQuoteDepth(t) != q {
 			return false
 		}
 		t = strings.TrimSpace(diffStripQuotes(t, q))
-		if diffListItemRE.MatchString(t) || j > 0 && IsDiffTableSep(t) {
+		if diffListItemRE.MatchString(t) && !(item && j == 0) || j > 0 && IsDiffTableSep(t) {
 			return false
 		}
 	}
@@ -1304,8 +1309,8 @@ func DiffMarkdownLine(c *ui.Context, line string, st DiffLineStyle) ui.Element {
 					body = h[:k] + `\` + h[k:]
 				}
 			}
-			// In a blockquote the heading marker goes behind the quote markers.
-			q := diffQuoteRE.FindString(body)
+			// In a blockquote or list item the heading marker goes behind its markers.
+			q := diffContainerRE.FindString(body)
 			body = q + strings.Repeat("#", st.Setext) + " " + body[len(q):]
 		}
 		markdown.View(c, body, diffMarkdownOptions(st))
