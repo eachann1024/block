@@ -48,8 +48,10 @@ type StoreAppEntry struct {
 	PermissionReasons map[Permission]LocalizedText `json:"permission_reasons,omitempty"`
 	Surfaces          []Surface                    `json:"surfaces"`
 	FileExtensions []string      `json:"file_extensions,omitempty"`
-	Icon           DuoIconSpec   `json:"icon"`
-	MinHostVersion string        `json:"min_host_version,omitempty"`
+	Icon           DuoIconSpec          `json:"icon"`
+	MinHostVersion string               `json:"min_host_version,omitempty"`
+	ChangelogURL   string               `json:"changelog_url,omitempty"`
+	Changelog      []PluginReleaseEntry `json:"changelog,omitempty"`
 }
 
 // EffectiveCategory returns the canonical App Store category for e.

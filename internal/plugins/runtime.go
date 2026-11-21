@@ -533,6 +533,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")
 	}
+	capabilities = append(capabilities, "store_changelog")
 	params := map[string]any{
 		"plugin_id":       rt.manifest.ID,
 		"data_dir":        rt.cfg.DataDir,
