@@ -296,13 +296,14 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 	}
 
 	hovered := pill.Hovered()
+	tabCtxOpen := p.MenuState != nil && p.MenuState.TabMenuOpen && p.MenuState.TabMenuPath == path
 	chrome := pal.ShellChrome()
 	fg := pal.TextSecondary
 	switch {
 	case active:
 		blockui.Elevate(pill.Background(pal.Paper).Border(1, chrome.TabBorder), theme.ElevationCard)
 		fg = pal.Text
-	case hovered || isDropTarget:
+	case hovered || tabCtxOpen || isDropTarget:
 		pill.Background(chrome.Hover).Border(1, ui.Transparent)
 		fg = pal.Text
 	default:
@@ -343,7 +344,6 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 	}
 
 	var sel ui.Element
-	tabCtxOpen := p.MenuState != nil && p.MenuState.TabMenuOpen && p.MenuState.TabMenuPath == path
 	pill.Children(func() {
 		tabCursor := ui.CursorPointer
 		if p.Busy {
