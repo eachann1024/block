@@ -2,6 +2,7 @@
 /build
 /.mygo
 /AGENTS.md
+/.agents/
 /release-plan.json
 scripts/release/block.exe
 !.github/
