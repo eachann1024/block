@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T09:21:46.378Z",
-  "latest_version": "1.0.896",
-  "latest_tag": "v1.0.896",
+  "updated_at": "2026-11-21T09:25:04.140Z",
+  "latest_version": "1.0.897",
+  "latest_tag": "v1.0.897",
   "releases": [
+    {
+      "version": "1.0.897",
+      "tag": "v1.0.897",
+      "published_at": "2026-11-21T09:25:03Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.897",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "批注页边卡片现已支持直接针对 AI 回复进行追问。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Margin annotation cards now allow you to follow up directly on AI replies."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-macos-arm64.dmg",
+          "size": 15058805,
+          "sha256": "05fb56733d5942a3d58799abd6f9ce141d1bbda485ab1cbedd38d476f9e17c37"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-macos-x64.dmg",
+          "size": 16574089,
+          "sha256": "f922f1eec1868d5522f9b4e2574aea7771450141967fa6fd3dcd78031faf4e1f"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-windows-x64-setup.exe",
+          "size": 12052399,
+          "sha256": "cfe7e4bde26bc3c5246f489a23ed94dbd8f3996c4142635ba14f9eba3b628cea"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-linux-x64.deb",
+          "size": 10645320,
+          "sha256": "8b356542e27afc57b3cd06fb739d1f6f6fed30c4c4ec66037a59d9f23e740994"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-linux-x64.AppImage",
+          "size": 23570936,
+          "sha256": "4b28b311c99500857c677a087d84dd936de62e333a294a7281af888026eae761"
+        }
+      ]
+    },
     {
       "version": "1.0.896",
       "tag": "v1.0.896",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-macos-arm64.dmg",
-          "size": 15056331,
-          "sha256": "9ac35667a0281acaaa75a626417276621a4aa525f941ea3ebd6e2505b528c5fc"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-macos-x64.dmg",
-          "size": 16570092,
-          "sha256": "77b027d1fd610c74da62d2857a247d823fb593df9fbd0149c8008535df6a409e"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-windows-x64-setup.exe",
-          "size": 12049422,
-          "sha256": "47c0e75f9b71378ea1800635562171d01c1431d086ec13720a804275748fa1b8"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-linux-x64.deb",
-          "size": 10630880,
-          "sha256": "57049bcc2dda2ca7647e4a173fa43bee5883fff4d8fa82a6dfbf98f2bd0b2435"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-linux-x64.AppImage",
-          "size": 23566840,
-          "sha256": "e8d252a346a9c65daae1d3c770ae49305b7293037deee83d034a4b58117e832d"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.895",
@@ -2590,55 +2615,6 @@
           "Fixed scrolling jitter in the slash menu within compact windows.",
           "Fixed issues when adding annotations or reactions across multiple selected blocks, keeping multiline content in a single record.",
           "Fixed positioning and edge alignment issues for toolbars, cascading menus, and popups."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.325",
-      "tag": "v1.0.325",
-      "published_at": "2026-11-06T13:32:06Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.325",
-      "zh": {
-        "highlights": "implement scheme C unified agent deck, folio empty state, and fullscreen toggle；simplify header, empty state capabilities, and composer controls。",
-        "new": [
-          "implement scheme C unified agent deck, folio empty state, and fullscreen toggle。",
-          "simplify header, empty state capabilities, and composer controls。",
-          "replace disabled-state error banner with clickable enable cover。",
-          "Make the AI sidebar resizable with persistent width。",
-          "Clarify isolated in-app acceptance and computer-use boundaries。",
-          "Enable AI message selection and report interrupted responses。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "Avoid redundant file opens and workspace traversal。",
-          "prevent agent deck layout jitter on selection and fit input placeholder。",
-          "anchor model picker beside its trigger。",
-          "Fix closing the last tab window without quitting on macOS。",
-          "Fix selected feedback chip text contrast in dark mode。",
-          "Fix chat composer multiline wrapping and bounded growth。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "implement scheme C unified agent deck, folio empty state, and fullscreen toggle; simplify header, empty state capabilities, and composer controls.",
-        "new": [
-          "implement scheme C unified agent deck, folio empty state, and fullscreen toggle.",
-          "simplify header, empty state capabilities, and composer controls.",
-          "replace disabled-state error banner with clickable enable cover.",
-          "Make the AI sidebar resizable with persistent width.",
-          "Clarify isolated in-app acceptance and computer-use boundaries.",
-          "Enable AI message selection and report interrupted responses."
-        ],
-        "improvements": [],
-        "fixes": [
-          "Avoid redundant file opens and workspace traversal.",
-          "prevent agent deck layout jitter on selection and fit input placeholder.",
-          "anchor model picker beside its trigger.",
-          "Fix closing the last tab window without quitting on macOS.",
-          "Fix selected feedback chip text contrast in dark mode.",
-          "Fix chat composer multiline wrapping and bounded growth."
         ],
         "other": []
       },
