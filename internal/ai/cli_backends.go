@@ -538,7 +538,7 @@ func (c *Controller) SetActiveBackend(kind model.BackendKind) error {
 	c.mu.Lock()
 	if !c.isCLIAvailableLocked(kind) {
 		c.mu.Unlock()
-		return fmt.Errorf("%s CLI 未安装或不可用", kind.DisplayName())
+		return fmt.Errorf("%s %s", kind.DisplayName(), theme.Tr("CLI 未安装或不可用", "CLI is not installed or unavailable"))
 	}
 	if kind != model.BackendBuiltin {
 		if c.backendsCfg.Adapters == nil {
@@ -1538,7 +1538,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		return err
 	}
 	if turn.cliPath == "" {
-		return fmt.Errorf("%s CLI 未安装或不在 PATH 中", kind.DisplayName())
+		return fmt.Errorf("%s %s", kind.DisplayName(), theme.Tr("CLI 未安装或不在 PATH 中", "CLI is not installed or not in PATH"))
 	}
 	dir, err := os.MkdirTemp("", "block-ai-turn-")
 	if err != nil {
@@ -1831,9 +1831,9 @@ func (c *Controller) streamCodex(turn *assistantTurn, scanner *bufio.Scanner, st
 			if wanted != "" && frame["method"] == nil && rpcIDMatches(frame["id"], wanted) {
 				if frame["error"] != nil {
 					if msg := rpcErrorMessage(frame["error"]); msg != "" {
-						return nil, fmt.Errorf("Codex 拒绝了本轮配置: %s", msg)
+						return nil, fmt.Errorf("%s: %s", theme.Tr("Codex 拒绝了本轮配置", "Codex rejected this turn's configuration"), msg)
 					}
-					return nil, errors.New("Codex 拒绝了本轮配置")
+					return nil, errors.New(theme.Tr("Codex 拒绝了本轮配置", "Codex rejected this turn's configuration"))
 				}
 				result, _ := frame["result"].(map[string]any)
 				return result, nil
@@ -1884,7 +1884,7 @@ func (c *Controller) streamCodex(turn *assistantTurn, scanner *bufio.Scanner, st
 			}
 			return nil, errors.New(theme.Tr("Codex 进程意外退出", "Codex process exited unexpectedly"))
 		}
-		return nil, errors.New("Codex 未完成会话初始化")
+		return nil, errors.New(theme.Tr("Codex 未完成会话初始化", "Codex did not finish starting the session"))
 	}
 
 	if err := send(1, "initialize", map[string]any{"clientInfo": map[string]string{"name": "block", "version": "1.0"}}); err != nil {
@@ -1913,7 +1913,7 @@ func (c *Controller) streamCodex(turn *assistantTurn, scanner *bufio.Scanner, st
 	thread, _ := result["thread"].(map[string]any)
 	id, _ := thread["id"].(string)
 	if id == "" {
-		return errors.New("Codex 未返回会话 ID")
+		return errors.New(theme.Tr("Codex 未返回会话 ID", "Codex did not return a session ID"))
 	}
 	c.handleCLIStreamFrame(turn.convID, turn.serial, map[string]any{
 		"method": "thread/started", "params": map[string]any{"thread": thread},
