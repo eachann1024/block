@@ -245,7 +245,9 @@ type Session struct {
 	annotLoadFailed       bool                              // store unreadable: never write over it
 	annotAppliedRaw       map[string]files.StoredAnnotation // applied annotations' stored body/rewrite, kept on re-save
 	annotUnresolved       []files.StoredAnnotation          // stored entries whose anchor is not in this doc, written back verbatim
-	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]string
+	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply
+	annotGenCh            chan map[string]model.AnnotationReply
+	annotExtraBottom      float32
 	activeAnnotID         string
 	hoveredAnnotID        string
 	editingAnnotID        string

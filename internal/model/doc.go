@@ -426,11 +426,20 @@ type Annotation struct {
 	Reactions     []string `json:"reactions,omitempty"`
 	RewritePrompt string   `json:"rewritePrompt,omitempty"`
 	RewriteResult string   `json:"rewriteResult,omitempty"`
+	Answer        string   `json:"answer,omitempty"` // AI reply when the note asks a question instead of requesting an edit
 	AIError       string   `json:"aiError,omitempty"`
 	Applied       bool     `json:"applied,omitempty"`
 	RewriteBusy   bool     `json:"-"`
 	CreatedAtUnix int64    `json:"createdAt"`
 }
+
+// AnnotationReply is the AI's reply to one annotation: an edit proposal or an answer.
+type AnnotationReply struct {
+	Kind string // "edit" or "answer"
+	Text string
+}
+
+const AnnotationReplyAnswer = "answer"
 
 type OutlineItem struct {
 	BlockIndex int

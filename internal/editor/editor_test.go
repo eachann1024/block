@@ -1149,17 +1149,21 @@ func TestEditorZeroHoverAndFocusJitter(t *testing.T) {
 	s.SelectRange(2, 0, 2, 0)
 	s.MarkSaved()
 
-	s.SetAnnotationAIResponder(func(docMarkdown string, pending []*model.Annotation) map[string]string {
+	s.SetAnnotationAIResponder(func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply {
 		if !strings.Contains(docMarkdown, "Body paragraph") || len(pending) != 2 {
-			t.Fatalf("unexpected responder args: pending=%d", len(pending))
+			t.Errorf("unexpected responder args: pending=%d", len(pending))
 		}
-		return map[string]string{
-			ann1.ID: "Main",
-			ann2.ID: "para",
+		return map[string]model.AnnotationReply{
+			ann1.ID: {Kind: "edit", Text: "Main"},
+			ann2.ID: {Kind: "edit", Text: "para"},
 		}
 	})
 	if n := s.GeneratePendingAnnotations(); n != 2 {
-		t.Fatalf("expected 2 updated annotations, got %d", n)
+		t.Fatalf("expected 2 sent annotations, got %d", n)
+	}
+	for i := 0; i < 200 && s.annotGenCh != nil; i++ {
+		time.Sleep(5 * time.Millisecond)
+		s.pollAnnotationGeneration()
 	}
 	if s.Dirty() {
 		t.Fatalf("expected session not dirty until rewrite accepted")

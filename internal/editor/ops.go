@@ -6032,7 +6032,7 @@ func (s *Session) toggleReactionOnIndex(idx int, emoji string) {
 	ann := s.annotations[idx]
 	if slices.Contains(ann.Reactions, emoji) {
 		ann.Reactions = nil
-		if ann.Note == "" && ann.RewriteResult == "" {
+		if ann.Note == "" && ann.RewriteResult == "" && ann.Answer == "" {
 			s.annotations = append(s.annotations[:idx], s.annotations[idx+1:]...)
 			if s.activeAnnotID == ann.ID {
 				s.activeAnnotID = ""
@@ -6086,47 +6086,81 @@ func (s *Session) updateAnnotationNote(id, note string) bool {
 	return false
 }
 
-func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending []*model.Annotation) map[string]string) {
+func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply) {
 	s.annotationAIResponder = fn
 }
 
+func isPendingAnnotation(a *model.Annotation) bool {
+	return a != nil && !a.Applied && !a.RewriteBusy && strings.TrimSpace(a.Note) != "" && a.RewriteResult == "" && a.Answer == ""
+}
+
+// GeneratePendingAnnotations sends every unanswered note to the AI in the
+// background; replies land in pollAnnotationGeneration so the UI never blocks.
 func (s *Session) GeneratePendingAnnotations() int {
 	s.ensureAnnotationsLoaded()
-	if s.aiDisabled || s.annotationAIResponder == nil || len(s.annotations) == 0 {
+	if s.aiDisabled || s.annotationAIResponder == nil || len(s.annotations) == 0 || s.annotGenCh != nil {
 		return 0
 	}
 	var pending []*model.Annotation
 	for _, a := range s.annotations {
-		if a != nil && !a.Applied && strings.TrimSpace(a.Note) != "" && a.RewriteResult == "" {
+		if isPendingAnnotation(a) {
 			cp := *a
 			if len(a.Reactions) > 0 {
 				cp.Reactions = slices.Clone(a.Reactions)
 			}
 			pending = append(pending, &cp)
+			a.RewriteBusy = true
+			a.AIError = ""
 		}
 	}
 	if len(pending) == 0 {
 		return 0
 	}
-	results := s.annotationAIResponder(s.Markdown(), pending)
-	if len(results) == 0 {
-		return 0
+	ch := make(chan map[string]model.AnnotationReply, 1)
+	s.annotGenCh = ch
+	responder := s.annotationAIResponder
+	docMarkdown := s.Markdown()
+	go func() {
+		ch <- responder(docMarkdown, pending)
+		s.requestRedraw()
+	}()
+	return len(pending)
+}
+
+// pollAnnotationGeneration applies a finished background reply; call once per frame.
+func (s *Session) pollAnnotationGeneration() {
+	if s.annotGenCh == nil {
+		return
 	}
+	var results map[string]model.AnnotationReply
+	select {
+	case results = <-s.annotGenCh:
+	default:
+		return
+	}
+	s.annotGenCh = nil
 	updated := 0
 	for _, a := range s.annotations {
-		if a == nil || a.Applied || strings.TrimSpace(a.Note) == "" || a.RewriteResult != "" {
+		if a == nil || !a.RewriteBusy {
 			continue
 		}
-		if res, ok := results[a.ID]; ok && strings.TrimSpace(res) != "" {
-			a.RewriteResult = res
-			a.AIError = ""
-			updated++
+		a.RewriteBusy = false
+		res, ok := results[a.ID]
+		text := strings.TrimSpace(res.Text)
+		if !ok || text == "" || a.Applied || strings.TrimSpace(a.Note) == "" {
+			continue
 		}
+		if res.Kind == model.AnnotationReplyAnswer {
+			a.Answer = text
+		} else {
+			a.RewriteResult = res.Text
+		}
+		a.AIError = ""
+		updated++
 	}
 	if updated > 0 {
 		s.persistAnnotations()
 	}
-	return updated
 }
 
 func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
@@ -6223,6 +6257,7 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	ann.Note = ""
 	ann.RewritePrompt = ""
 	ann.RewriteResult = ""
+	ann.Answer = ""
 	ann.AIError = ""
 	if len(ann.Reactions) == 0 {
 		for i, item := range s.annotations {

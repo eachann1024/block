@@ -2186,7 +2186,7 @@ func (s *Session) placeAnnotations(c *ui.Context, canvasLeft, canvasWidth float3
 }
 
 func isReactionOnlyAnnotation(ann *model.Annotation) bool {
-	return ann != nil && ann.Note == "" && ann.RewriteResult == "" && ann.RewritePrompt == "" && ann.AIError == "" && len(ann.Reactions) > 0
+	return ann != nil && ann.Note == "" && ann.RewriteResult == "" && ann.Answer == "" && ann.RewritePrompt == "" && ann.AIError == "" && len(ann.Reactions) > 0
 }
 
 func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annotation, emoji string) {
@@ -2230,7 +2230,8 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32) {
 	pal := theme.Ocean()
 	editing := s.editingAnnotID == ann.ID && !s.readOnly
-	isResult := !s.aiDisabled && !editing && ann.RewriteResult != ""
+	isAnswer := !s.aiDisabled && !editing && ann.Answer != ""
+	isResult := !s.aiDisabled && !editing && (ann.RewriteResult != "" || isAnswer)
 
 	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).MaxWidthPercent(100).
 		Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space12).
@@ -2252,6 +2253,8 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 		switch {
 		case editing:
 			s.renderAnnotationEditor(c, ann)
+		case isAnswer:
+			s.renderAnnotationAnswer(c, ann)
 		case isResult:
 			s.renderAnnotationResult(c, ann)
 		default:
@@ -2277,6 +2280,9 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 		head := ann.QuotedText
 		if isResult {
 			head = theme.Tr("AI 改写", "AI rewrite")
+			if ann.Answer != "" {
+				head = theme.Tr("AI 回答", "AI answer")
+			}
 		}
 		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
 			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
@@ -2313,6 +2319,12 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 				s.beginAnnotationEdit(ann)
 			}
 		}
+	}
+	if ann.RewriteBusy && !s.aiDisabled {
+		ui.Row(c).FillWidth().Height(theme.HeightMicro).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+			ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
+			ui.Text(c, theme.Tr("思考中…", "Thinking…")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+		})
 	}
 	if s.aiDisabled || ann.RewritePrompt == "" || s.readOnly {
 		return
@@ -2357,6 +2369,44 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 			s.dismissAnnotationRewrite(ann.ID)
 		}
 	})
+}
+
+// renderAnnotationAnswer shows the AI's reply to a question note: the question, then the answer; nothing to replace.
+func (s *Session) renderAnnotationAnswer(c *ui.Context, ann *model.Annotation) {
+	pal := theme.Ocean()
+	if ann.Note != "" {
+		ui.Text(c, ann.Note).FillWidth().MinWidth(0).
+			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+	}
+	ui.Text(c, ann.Answer).FillWidth().MinWidth(0).
+		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+	if s.readOnly {
+		return
+	}
+	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+		chkIc := icons.Check
+		done := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Leading: &chkIc, Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
+		})
+		if done.Clicked() {
+			s.deleteAnnotationByID(ann.ID)
+		}
+	})
+}
+
+// forwardRailScroll lets the wheel over a margin card scroll the document beneath it.
+func (s *Session) forwardRailScroll(ev ui.InputEvent) bool {
+	if ev.Kind != ui.InputScroll || ev.Mods&ui.Ctrl != 0 {
+		return false
+	}
+	next := min(max(s.bodyScroll.Y+ev.DY, 0), s.bodyScroll.MaxY)
+	if next != s.bodyScroll.Y {
+		s.bodyScroll.Y = next
+		if s.bodyScroll.Scrolling() {
+			s.bodyScroll.ScrollTo(s.bodyScroll.X, next, ui.Animation{})
+		}
+	}
+	return true
 }
 
 // renderAnnotationEditor edits the note in place: Enter or clicking outside saves, Shift+Enter breaks the line, Esc cancels.
@@ -2454,6 +2504,9 @@ func (s *Session) estimateAnnotationRowMetrics(ann *model.Annotation, isEditing 
 	switch {
 	case isEditing:
 		height = 64
+	case !s.aiDisabled && ann.Answer != "":
+		lines := max((len([]rune(ann.Answer))+15)/16, 1)
+		height = 96 + float32(lines-1)*theme.LineBody
 	case !s.aiDisabled && ann.RewriteResult != "":
 		height = 122
 	default:
@@ -2472,6 +2525,7 @@ func (s *Session) estimateAnnotationRowMetrics(ann *model.Annotation, isEditing 
 func (s *Session) renderAnnotationRail(c *ui.Context) {
 	frame := &s.frameAnnotations
 	if len(frame.right) == 0 {
+		s.setAnnotExtraBottom(0)
 		return
 	}
 	railTop := s.editorRect.Y
@@ -2510,6 +2564,23 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 		return cmp.Compare(a.targetY, b.targetY)
 	})
 
+	// Cards stacked past the document end need room below it, or the last ones can never scroll into view.
+	stackBottom := float32(-math.MaxFloat32)
+	for _, row := range rows {
+		stackBottom = max(row.targetY, stackBottom+row.gap) + row.height
+	}
+	extra := float32(0)
+	if last := s.visibleAnnotationAnchorIndex(-1); last >= 0 {
+		if r, ok := s.blockRect(s.doc.Blocks[last].ID); ok {
+			tail := s.scale(editorBottomPad)
+			if !s.readOnly {
+				tail += s.scale(120)
+			}
+			extra = max(stackBottom+theme.Space24-(r.Y+r.H-railTop)-tail, 0)
+		}
+	}
+	s.setAnnotExtraBottom(extra)
+
 	ui.Overlay(c, func() {
 		rail := ui.Box(c.Key("annotation-rail")).Absolute().Left(frame.railLeft).Top(railTop).
 			Width(frame.railWidth).Height(railHeight).PassThrough().Clip()
@@ -2528,7 +2599,8 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 				}
 
 				slot := ui.Column(c.Key("annotation-wrap-" + ann.ID)).Absolute().Top(top).Left(0).
-					Width(frame.railWidth).AlignItems(ui.Start).Gap(theme.Space4)
+					Width(frame.railWidth).AlignItems(ui.Start).Gap(theme.Space4).
+					HandleInput(s.forwardRailScroll)
 				slot.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 					if r.H > 0 {
 						if s.annotRowHeights == nil {
@@ -2555,6 +2627,13 @@ func (s *Session) renderAnnotationRail(c *ui.Context) {
 			}
 		})
 	})
+}
+
+func (s *Session) setAnnotExtraBottom(v float32) {
+	if math.Abs(float64(v-s.annotExtraBottom)) > 1 {
+		s.annotExtraBottom = v
+		s.requestRedraw()
+	}
 }
 
 func (s *Session) visibleAnnotationAnchorIndex(anchor int) int {
