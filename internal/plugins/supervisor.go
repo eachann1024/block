@@ -100,6 +100,7 @@ type SupervisorConfig struct {
 	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
 	PickDirectory   func(title, defaultPath string, onPicked func(path string))
 	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
+	AddNotebook     func(path string) error
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
 	OnChanged       func()
 	OnRedraw        func()
@@ -334,6 +335,52 @@ func (s *Supervisor) PickSurfaceDirectoryForControl(pluginID string, surface Sur
 			return
 		}
 		s.updateSurfaceControlValue(pluginID, nbRoot, surface, controlID, p, true)
+	})
+}
+
+// PickChecklistFolderForControl lets the user choose a folder for a checklist
+// declared with add_folder. The folder is registered as a notebook (without
+// switching to it) so host.notes.* accepts it, then appended to the control value.
+func (s *Supervisor) PickChecklistFolderForControl(pluginID string, surface Surface, controlID, title string) {
+	if !s.CanPickDirectory() {
+		return
+	}
+	nbRoot := s.NotebookRoot()
+	key := viewKey{pluginID: pluginID, notebookRoot: nbRoot, surface: surface}
+	s.mu.RLock()
+	view := s.views[key]
+	s.mu.RUnlock()
+	if view == nil {
+		return
+	}
+	s.pickDirectory(title, nbRoot, func(picked string) {
+		if s.NotebookRoot() != nbRoot {
+			return
+		}
+		abs, err := filepath.Abs(picked)
+		if err != nil {
+			return
+		}
+		if s.cfg.AddNotebook != nil {
+			if err := s.cfg.AddNotebook(abs); err != nil {
+				return
+			}
+		}
+		s.mu.RLock()
+		var current []string
+		if live := s.views[key]; live != nil {
+			current, _ = StringSliceValue(live.Values[controlID])
+		}
+		s.mu.RUnlock()
+		next := make([]string, 0, len(current)+1)
+		for _, existing := range current {
+			if existing == abs {
+				return
+			}
+			next = append(next, existing)
+		}
+		next = append(next, abs)
+		s.updateSurfaceControlValue(pluginID, nbRoot, surface, controlID, next, true)
 	})
 }
 

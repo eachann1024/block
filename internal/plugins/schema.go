@@ -129,6 +129,7 @@ type UIItem struct {
 	Value            any               `json:"value,omitempty"`
 	Placeholder      string            `json:"placeholder,omitempty"`
 	AcceptExtensions []string          `json:"accept_extensions,omitempty"`
+	AddFolder        bool              `json:"add_folder,omitempty"`
 	Options          []UIOption        `json:"options,omitempty"`
 	Fields           []UIItem          `json:"fields,omitempty"`
 	Buttons          []UIButton        `json:"buttons,omitempty"`
@@ -375,6 +376,9 @@ func (p *UIPage) CollectActionIDs() []string {
 }
 
 func validateItem(prefix string, item UIItem, seenControls, seenActions map[string]bool) error {
+	if item.AddFolder && item.Kind != KindChecklist {
+		return fmt.Errorf("%s.add_folder is only allowed on checklist", prefix)
+	}
 	if item.VisibleWhen != nil {
 		if strings.TrimSpace(item.VisibleWhen.ControlID) == "" {
 			return fmt.Errorf("%s.visible_when.control_id is required", prefix)
