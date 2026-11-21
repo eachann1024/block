@@ -128,7 +128,6 @@ func (ctrl *Controller) RenderWritingSidebar(c *ui.Context, activeNotebook strin
 				}
 				for idx, item := range notes {
 					n := item
-					arc := n.Arcana()
 					rowID := fmt.Sprintf("tarot-note-row-%d", idx)
 					row := ui.ButtonBase(c.Key(rowID)).FillWidth().Height(46).
 						PaddingX(theme.Space12).Gap(theme.Space10).AlignItems(ui.Center).
@@ -160,15 +159,11 @@ func (ctrl *Controller) RenderWritingSidebar(c *ui.Context, activeNotebook strin
 						})
 					}
 
-					numCol := tc.Gold
 					titleCol := tc.TextPrimary
 					if n.IsActive {
-						numCol = tc.InkAccent
 						titleCol = tc.InkDark
 					}
 					row.Children(func() {
-						ui.Text(c, arc.Num).Font(theme.TarotRomanFont()).FontSize(theme.TarotFontRomanSmall).
-							FontWeight(theme.WeightTitle).TextColor(numCol).Width(36).SingleLine().Shrink(0)
 						ui.Text(c, n.Title).Font(theme.TarotSerifFont()).FontSize(theme.FontBody).
 							TextColor(titleCol).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					})
