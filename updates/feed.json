@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T07:26:07.220Z",
+  "updated_at": "2026-11-21T08:03:37.993Z",
   "latest_version": "1.0.889",
   "latest_tag": "v1.0.889",
   "releases": [
@@ -15,8 +15,8 @@
         "new": [],
         "improvements": [],
         "fixes": [
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化侧栏文件树、标签页与笔记本切换体验。"
+          "打开标签页的上下文菜单时，当前标签页会继续保持高亮。",
+          "侧边栏树形列表在 Shell 主题下以及打开行菜单时，都会显示悬停高亮。"
         ],
         "other": []
       },
@@ -25,8 +25,8 @@
         "new": [],
         "improvements": [],
         "fixes": [
-          "Keep tab highlighted while its context menu is open.",
-          "Show tree row hover on shell themes and while its menu is open."
+          "The selected tab stays highlighted while its context menu is open.",
+          "Sidebar tree rows show their hover highlight in shell themes and while their context menu is open."
         ],
         "other": []
       },
@@ -70,19 +70,19 @@
       "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.888",
       "zh": {
         "highlights": "",
-        "new": [
-          "优化侧栏文件树、标签页与笔记本切换体验。"
+        "new": [],
+        "improvements": [
+          "侧边栏树形列表的右键菜单经过简化，更便于查找和使用。"
         ],
-        "improvements": [],
         "fixes": [],
         "other": []
       },
       "en": {
         "highlights": "",
-        "new": [
-          "Simplify tree context menu."
+        "new": [],
+        "improvements": [
+          "The sidebar tree context menu is simpler to navigate."
         ],
-        "improvements": [],
         "fixes": [],
         "other": []
       },
@@ -96,24 +96,26 @@
       "zh": {
         "highlights": "",
         "new": [],
-        "improvements": [],
+        "improvements": [
+          "差异代码块现在会用不同颜色标出新增行和删除行。",
+          "长代码块现在会限制语法高亮的处理量，让编辑保持流畅。"
+        ],
         "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
+          "属性列表中的有效注释现在会得到保留。",
+          "已停用的语言插件现在仍可进行来源验证。"
         ],
         "other": []
       },
       "en": {
         "highlights": "",
         "new": [],
-        "improvements": [],
+        "improvements": [
+          "Diff blocks now use distinct colors to highlight added and removed lines.",
+          "Long code blocks now limit syntax highlighting work to keep editing responsive."
+        ],
         "fixes": [
-          "Preserve valid comments in property lists.",
-          "Color added and removed lines in diff blocks.",
-          "Bound syntax highlighting work for long code blocks.",
-          "Keep source verification for retired language plugins."
+          "Valid comments are now preserved in property lists.",
+          "Source verification now remains available for retired language plugins."
         ],
         "other": []
       },
@@ -127,10 +129,10 @@
       "zh": {
         "highlights": "",
         "new": [
-          "优化侧栏文件树、标签页与笔记本切换体验。"
+          "插件现在可以为标签页和侧边栏文件夹添加菜单，并读取当前笔记的文件路径。"
         ],
         "improvements": [
-          "优化侧栏文件树、标签页与笔记本切换体验。"
+          "现在可以在标签页和文件夹菜单中使用“复制文件路径”命令。"
         ],
         "fixes": [],
         "other": []
@@ -138,10 +140,10 @@
       "en": {
         "highlights": "",
         "new": [
-          "Add tab menu, sidebar folder targets and notes:path file context."
+          "Plugins can now add menus to tabs and sidebar folders, and access the current note’s file path."
         ],
         "improvements": [
-          "Move Copy File Path to a plugin and wire tab/folder plugin menus."
+          "The Copy File Path command is now available in tab and folder menus."
         ],
         "fixes": [],
         "other": []
