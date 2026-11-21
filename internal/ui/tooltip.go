@@ -71,16 +71,12 @@ func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec Tooltip
 	if spec.Pill {
 		radius = theme.RadiusPill
 	}
-	borderCol := pal.TooltipBorder
-	if spec.Danger {
-		borderCol = pal.TooltipDangerBorder
-	}
 	tip.Transition(ui.ElementTransition{
 		Duration: 100 * time.Millisecond,
 		Colors:   true,
 		Enter:    &ui.Motion{},
 		Exit:     &ui.Motion{},
-	}).Radius(radius).Background(pal.TooltipBG).Border(1, borderCol).Clip()
+	}).Radius(radius).Background(pal.TooltipBG).Clip()
 	Elevate(tip, theme.ElevationPopover)
 	if spec.Placement == TooltipAbove {
 		tip.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Margin(0, 0, theme.TooltipOffset, 0)
@@ -89,24 +85,15 @@ func styleTooltipSurface(tip, anchor ui.Element, pal theme.Palette, spec Tooltip
 	}
 }
 
-func renderTooltipShortcutPill(c *ui.Context, pal theme.Palette, shortcut string, roundPill bool) {
-	r := theme.RadiusXS
-	padX := theme.Space6
-	if roundPill {
-		r = theme.RadiusPill
-	}
-	ui.Row(c).Height(theme.KeycapHeight).Padding(0, padX, 0, padX).Shrink(0).
-		AlignItems(ui.Center).Justify(ui.Center).
-		Radius(r).Background(pal.TooltipPillBG).Border(1, pal.TooltipPillBorder).
-		Children(func() {
-			ShortcutLabel(c, shortcut, ShortcutLabelStyle{
-				FontSize:   theme.FontMeta,
-				LineHeight: theme.LineMeta,
-				FontWeight: theme.WeightMono,
-				Color:      pal.TooltipPillFG,
-				IsShortcut: true,
-			})
-		})
+func renderTooltipShortcutPill(c *ui.Context, pal theme.Palette, shortcut string, _ bool) {
+	ShortcutLabel(c, shortcut, ShortcutLabelStyle{
+		Font:       "monospace",
+		FontSize:   theme.FontMeta,
+		LineHeight: theme.LineMeta,
+		FontWeight: theme.WeightMono,
+		Color:      pal.TooltipMuted,
+		IsShortcut: true,
+	})
 }
 
 func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill bool) {
@@ -128,9 +115,6 @@ func renderTooltipRow(c *ui.Context, pal theme.Palette, row TooltipRow, pill boo
 			FontWeight: triggerWeight,
 			Color:      triggerCol,
 		})
-	}
-	if row.SplitDetail && row.Trigger != "" && row.Detail != "" {
-		ui.Box(c).Size(1, 12).Shrink(0).Background(pal.TooltipDivider)
 	}
 	if row.Detail != "" {
 		ShortcutLabel(c, row.Detail, ShortcutLabelStyle{

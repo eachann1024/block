@@ -8,6 +8,7 @@ import (
 // KeycapOptions configures an extended Keycap chip (such as shortcut recording chips).
 type KeycapOptions struct {
 	Recording bool
+	Plain     bool
 	Height    float32
 	MinWidth  float32
 	PaddingX  float32
@@ -21,6 +22,22 @@ func KeycapWithOptions(c *ui.Context, label string, opts KeycapOptions) ui.Eleme
 	h := opts.Height
 	if h <= 0 {
 		h = theme.KeycapHeight
+	}
+	if opts.Plain && !opts.Recording {
+		chip := ui.Row(c).Height(h).Shrink(0).AlignItems(ui.Center).Justify(ui.Center)
+		if opts.MinWidth > 0 {
+			chip.MinWidth(opts.MinWidth)
+		}
+		return chip.Children(func() {
+			ShortcutLabel(c, label, ShortcutLabelStyle{
+				Font:       "monospace",
+				FontSize:   theme.KeycapFontSize,
+				LineHeight: theme.LineMeta,
+				FontWeight: theme.WeightMono,
+				Color:      pal.TextSecondary,
+				IsShortcut: true,
+			})
+		})
 	}
 	padX := opts.PaddingX
 	if padX <= 0 {

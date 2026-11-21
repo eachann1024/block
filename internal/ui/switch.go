@@ -249,12 +249,13 @@ func fillAlphaTarget(on bool, phase SwitchPhase) float32 {
 	return 1
 }
 
-// Switch renders the global Block Pluck Switch at standard size.
+// Switch renders the global Block Pluck Switch at compact size.
 func Switch(c *ui.Context, id, label string, value *bool) bool {
 	return SwitchWithOptions(c, SwitchOptions{
 		ID:    id,
 		Label: label,
 		Value: value,
+		Size:  SwitchCompact,
 	})
 }
 

@@ -33,7 +33,6 @@ type DotPagerOptions struct {
 func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 	pal := theme.Ocean()
 	dp := pal.DotPager()
-	rimCol := pal.Paper
 
 	pagerID := opts.PagerID
 	if pagerID == "" {
@@ -110,18 +109,18 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 				targetX := float32(clamped) * step
 				beadX := inner.AnimateTo("beadX", targetX, SpringTactile)
 
-				targetScale := float32(1.0)
+				targetScale := float32(1.08)
 				targetLiftY := float32(0.0)
 				targetCore := float32(2.5)
 				targetBeadCol := pal.Accent
 				switch {
 				case activePressed:
-					targetScale = 0.88
+					targetScale = 0.94
 					targetLiftY = 0.4
 					targetCore = 2.0
 					targetBeadCol = pal.AccentPressed
 				case activeHovered:
-					targetScale = 1.08
+					targetScale = 1.14
 					targetLiftY = -0.6
 					targetCore = 3.2
 					targetBeadCol = pal.AccentHover
@@ -135,15 +134,14 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 				dy := beadWrap.AnimateTo("beadDy", targetLiftY, SpringTactile)
 				coreSz := beadWrap.AnimateTo("beadCore", targetCore, SpringTactile)
 				beadCol := beadWrap.AnimateColor("beadBg", targetBeadCol, FadeColor)
-				beadRim := beadWrap.AnimateColor("beadRim", rimCol, FadeColor)
 
 				travel := min(float32(math.Abs(float64(targetX-beadX)))/step, 1.0)
 				sx := sc * (1.0 + 0.10*travel)
 				sy := sc * (1.0 - 0.06*travel)
 
 				beadWrap.Children(func() {
-					bead := Elevate(ui.Row(c).Size(dotPagerBeadSize, dotPagerBeadSize).Center().
-						Radius(theme.RadiusPill).Background(beadCol).Border(2, beadRim), theme.ElevationRaised)
+					bead := ui.Row(c).Size(dotPagerBeadSize, dotPagerBeadSize).Center().
+						Radius(theme.RadiusPill).Background(beadCol)
 					if !almostZero(sx-1, 0.002) || !almostZero(sy-1, 0.002) || !almostZero(dy, 0.02) {
 						bead.Translate(0, dy).Scale(sx, sy)
 					}
