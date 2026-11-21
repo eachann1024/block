@@ -19,7 +19,7 @@
 | `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu`、`contributes.tab_menu` |
 | `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` / `toggle_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
-| `"ui:notify"` | Toast 轻提示与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
+| `"ui:notify"` | 应用内全局通知与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
 | `"ui:sidebar"` | 左侧栏分区、文件树角标与侧栏右键菜单 | `contributes.sidebar_sections`、`contributes.file_badges`、`contributes.sidebar_menu`、`host.sidebar.set_badges` / `get_badges` |
 | `"ui:appearance"` | 编辑区自定义矢量背景（水印/平铺图案） | `contributes.backdrops`、`host.ui.backdrop` / `set_backdrop` |
 | `"editor:read"` | 读取当前编辑器选区 | `host.editor.selection` |
@@ -129,7 +129,8 @@
 4. **`host.status.set`**（需 `"ui:status"`）
    - 参数：`{"id": "<item_id>", "text": "Synced", "tooltip": "上次同步 10:00", "icon": {...}, "show_plugin_icon": true, "clear_icon": false}`（`id` 必填且须为本插件声明的 `status_items[].id`；`text` 禁止含 Emoji 并截断至 40 个字符；`tooltip` 截断至 200 个字符；`icon` / `show_plugin_icon` / `clear_icon` 均为可选）。
    - 返回：`{"ok": true}`。
-5. **`host.ui.toast`**（需 `"ui:notify"`）
+5. **`host.ui.toast`**（需 `"ui:notify"`，开放给所有插件）
+   - 弹出应用内全局通知（窗口底部居中统一浮条，与主应用共用同一套通知队列和视觉样式，3 秒后自动收起或手动关闭）。与系统通知（`host.system.notify`）互相独立：需要应用内全局轻提示时调用本接口，需要操作系统原生通知中心横幅时调用 `host.system.notify`。
    - 参数：`{"message": "操作完成", "tone": "info", "icon": {...}, "show_plugin_icon": true}`（`message` 必填非空白，截断至 160 个字符；`tone` 仅接受 `"success"` | `"error"` | `"warning"`，其余归一化为 `"info"`；`icon` / `show_plugin_icon` 可选，用于在提示左侧展示双色矢量图标）。
    - 返回：`{"ok": true}`。
 6. **`host.ui.open_dialog` / `host.ui.close_dialog`**（需 `"ui:notify"`）
