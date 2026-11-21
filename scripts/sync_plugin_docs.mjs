@@ -23,7 +23,7 @@ const CHAPTERS = [
 
 const HEADER = `# Block 应用商店插件开发指南（AI 自包含规范 v1 · \`blockmd\`）
 
-> 本文由 \`bun run docs:sync\` 自动从 [\`docs/plugins/\`](plugins/README.md) 各章节拼装生成，与 GitHub 仓库文档及官网 [block.cooool.top/plugins](https://block.cooool.top/plugins/) 保持同源同步。
+> 本文由 \`bun run docs:sync\` 自动从 [\`docs/plugins/\`](plugins/README.md) 各章节拼装生成，与 GitHub 仓库文档及在线文档站 [docs.block.cooool.top/plugins](https://docs.block.cooool.top/plugins/) 保持同源同步。
 
 本文是开发、校验与发布 **Block** 应用商店插件的**唯一权威规范**。AI 或开发者无需阅读 Block 宿主源码，仅凭本文即可从零构建可安装、渲染原生 Ocean Paper 设置页、并通过本地协议检查的插件。`;
 
