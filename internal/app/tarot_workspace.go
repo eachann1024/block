@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"strings"
 	"time"
@@ -279,7 +280,7 @@ func (w *Workspace) syncTarotDeckIfNeeded(entries []model.FileEntry, activeNB, a
 	if w.tarot == nil {
 		return
 	}
-	key := fmt.Sprintf("%s|%s|%v|%d", activeNB, activeTab, activeDirty, countMarkdownEntries(entries))
+	key := fmt.Sprintf("%s|%s|%v|%x", activeNB, activeTab, activeDirty, markdownEntriesSignature(entries))
 	w.mu.Lock()
 	same := w.tarotSyncKey == key
 	if !same {
@@ -291,16 +292,21 @@ func (w *Workspace) syncTarotDeckIfNeeded(entries []model.FileEntry, activeNB, a
 	}
 }
 
-func countMarkdownEntries(entries []model.FileEntry) int {
-	total := 0
-	for _, e := range entries {
-		if e.IsDir {
-			total += countMarkdownEntries(e.Children)
-		} else if e.IsMarkdown {
-			total++
+func markdownEntriesSignature(entries []model.FileEntry) uint64 {
+	hash := fnv.New64a()
+	var walk func([]model.FileEntry)
+	walk = func(list []model.FileEntry) {
+		for _, e := range list {
+			if e.IsDir {
+				walk(e.Children)
+			} else if e.IsMarkdown {
+				_, _ = hash.Write([]byte(e.Path))
+				_, _ = hash.Write([]byte{0})
+			}
 		}
 	}
-	return total
+	walk(entries)
+	return hash.Sum64()
 }
 
 func (w *Workspace) renderTarotWorkspace(
