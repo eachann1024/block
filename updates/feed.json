@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T03:57:03.713Z",
-  "latest_version": "1.0.875",
-  "latest_tag": "v1.0.875",
+  "updated_at": "2026-11-21T05:01:23.903Z",
+  "latest_version": "1.0.876",
+  "latest_tag": "v1.0.876",
   "releases": [
+    {
+      "version": "1.0.876",
+      "tag": "v1.0.876",
+      "published_at": "2026-11-21T05:01:23Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.876",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "打磨设置面板、快捷键与菜单界面细节。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "修复了一处日常编辑与界面交互中的细节问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Support text chips in plugin UI icons."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Describe send all slot as the real send chip."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.876/block-macos-arm64.dmg",
+          "size": 15830357,
+          "sha256": "2c68abf3a393b32594f48d009df06ab31b97d9b7ef734ffd00bb83c4dae551be"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.876/block-macos-x64.dmg",
+          "size": 17342392,
+          "sha256": "a5067da525937359c9cdceb38d991b676927ad902266ebae3f69d0952a8af212"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.876/block-windows-x64-setup.exe",
+          "size": 12822457,
+          "sha256": "ed14b9d23a016130a312cb21c21159b794ffd364d7d0aa8fdb4d11b3ca27da1c"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.876/block-linux-x64.deb",
+          "size": 11399728,
+          "sha256": "546c02c163869cef21dc3322eaa29a4a39b906bda0768bdc8963a65201f5bf67"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.876/block-linux-x64.AppImage",
+          "size": 24332792,
+          "sha256": "82a79411e6a63793eea4233233ae9f6ab582364f4177b7c45d33945098b2c969"
+        }
+      ]
+    },
     {
       "version": "1.0.875",
       "tag": "v1.0.875",
@@ -30,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.875/block-macos-arm64.dmg",
-          "size": 15828363,
-          "sha256": "1df59016584ca851f30546ada8a817c2dd5283b5360ede8f8c4eb3101ee0b86e"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.875/block-macos-x64.dmg",
-          "size": 17343349,
-          "sha256": "39f3932456326bed6d4a3d3be08deac885d2cbf7ea766773b7a4d7a10cc4078f"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.875/block-windows-x64-setup.exe",
-          "size": 12819170,
-          "sha256": "465b9596d7b112da43eeaed50b1c46a55b5b78f8ddb07751a28bf8f0646b7cc3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.875/block-linux-x64.deb",
-          "size": 11398514,
-          "sha256": "69f85ee95f32ced3d24fe3886192196b7b00db4c7f7b8b41125938a2788e323e"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.875/block-linux-x64.AppImage",
-          "size": 24336888,
-          "sha256": "dead5b68773ddf2789365f4e6bf4fbdfa2251a0209108774771b83763083b8a9"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.874",
