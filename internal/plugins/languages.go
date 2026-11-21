@@ -754,12 +754,7 @@ func SyncActiveLanguages(installed []InstalledApp) {
 // SyncActiveLanguagesSeq compiles and publishes installed languages only if seq
 // is zero or at least as new as the last published sequence number.
 func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
-	snap := &languageSnapshot{
-		byFilename: make(map[string]*PluginLanguageInfo),
-		byExt:      make(map[string]*PluginLanguageInfo),
-		byTag:      make(map[string]*PluginLanguageInfo),
-		byPlugin:   make(map[string][]PluginLanguageInfo),
-	}
+	snap := newLanguageSnapshot()
 	for _, app := range installed {
 		if !app.Enabled || app.InstallDir == "" || app.Manifest.Contributes == nil || len(app.Manifest.Contributes.Languages) == 0 {
 			continue
@@ -773,38 +768,7 @@ func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
 			if err != nil {
 				continue
 			}
-			snap.all = append(snap.all, *info)
-			snap.byPlugin[app.Manifest.ID] = append(snap.byPlugin[app.Manifest.ID], *info)
-			stored := info
-			for _, fn := range lc.Filenames {
-				key := strings.ToLower(fn)
-				if _, exists := snap.byFilename[key]; !exists {
-					snap.byFilename[key] = stored
-				}
-			}
-			for _, ext := range lc.Extensions {
-				key := strings.ToLower(ext)
-				if _, exists := snap.byExt[key]; !exists {
-					snap.byExt[key] = stored
-				}
-			}
-			registerTag := func(tag string) {
-				k := strings.ToLower(strings.TrimSpace(tag))
-				if k == "" {
-					return
-				}
-				if _, exists := snap.byTag[k]; !exists {
-					snap.byTag[k] = stored
-				}
-			}
-			registerTag(lc.ID)
-			registerTag(lc.Name.En)
-			for _, a := range lc.Aliases {
-				registerTag(a)
-			}
-			for _, ext := range lc.Extensions {
-				registerTag(strings.TrimPrefix(ext, "."))
-			}
+			snap.add(info)
 		}
 		root.Close()
 	}
@@ -822,6 +786,51 @@ func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
 	activeLangPublishMu.Unlock()
 }
 
+func newLanguageSnapshot() *languageSnapshot {
+	return &languageSnapshot{
+		byFilename: make(map[string]*PluginLanguageInfo),
+		byExt:      make(map[string]*PluginLanguageInfo),
+		byTag:      make(map[string]*PluginLanguageInfo),
+		byPlugin:   make(map[string][]PluginLanguageInfo),
+	}
+}
+
+// add indexes info by filename, extension and tag; earlier entries win.
+func (snap *languageSnapshot) add(info *PluginLanguageInfo) {
+	lc := info.Contrib
+	snap.all = append(snap.all, *info)
+	snap.byPlugin[info.PluginID] = append(snap.byPlugin[info.PluginID], *info)
+	for _, fn := range lc.Filenames {
+		key := strings.ToLower(fn)
+		if _, exists := snap.byFilename[key]; !exists {
+			snap.byFilename[key] = info
+		}
+	}
+	for _, ext := range lc.Extensions {
+		key := strings.ToLower(ext)
+		if _, exists := snap.byExt[key]; !exists {
+			snap.byExt[key] = info
+		}
+	}
+	registerTag := func(tag string) {
+		k := strings.ToLower(strings.TrimSpace(tag))
+		if k == "" {
+			return
+		}
+		if _, exists := snap.byTag[k]; !exists {
+			snap.byTag[k] = info
+		}
+	}
+	registerTag(lc.ID)
+	registerTag(lc.Name.En)
+	for _, a := range lc.Aliases {
+		registerTag(a)
+	}
+	for _, ext := range lc.Extensions {
+		registerTag(strings.TrimPrefix(ext, "."))
+	}
+}
+
 // LanguageGeneration returns a monotonic counter incremented whenever enabled
 // language extension plugins change.
 func LanguageGeneration() uint64 {
@@ -831,31 +840,48 @@ func LanguageGeneration() uint64 {
 // ResolveCodeLanguageForFile matches filePath against active language plugins
 // (exact filename first, then extension). Returns (nil, "") when none match.
 func ResolveCodeLanguageForFile(filePath string) (*codeed.Language, string) {
-	snap := activeLangSnap.Load()
-	if snap == nil {
-		return nil, ""
-	}
 	base := strings.ToLower(filepath.Base(filePath))
-	if info := snap.byFilename[base]; info != nil {
-		return info.CodeLang, info.Contrib.ID
-	}
 	ext := strings.ToLower(filepath.Ext(base))
-	if ext != "" {
-		if info := snap.byExt[ext]; info != nil {
+	for _, snap := range languageSnapshots() {
+		if info := snap.byFilename[base]; info != nil {
 			return info.CodeLang, info.Contrib.ID
+		}
+		if ext != "" {
+			if info := snap.byExt[ext]; info != nil {
+				return info.CodeLang, info.Contrib.ID
+			}
 		}
 	}
 	return nil, ""
 }
 
+// languageSnapshots returns enabled plugin languages first, then built-in
+// grammars, so an installed plugin can override a built-in language.
+func languageSnapshots() []*languageSnapshot {
+	out := make([]*languageSnapshot, 0, 2)
+	if snap := activeLangSnap.Load(); snap != nil {
+		out = append(out, snap)
+	}
+	if b := builtinLanguages(); b != nil {
+		out = append(out, b)
+	}
+	return out
+}
+
+func lookupLanguageTag(tag string) *PluginLanguageInfo {
+	key := strings.ToLower(strings.TrimSpace(tag))
+	for _, snap := range languageSnapshots() {
+		if info := snap.byTag[key]; info != nil {
+			return info
+		}
+	}
+	return nil
+}
+
 // ResolveLanguageTagDisplay returns the localized/canonical display label for a
 // code-block language tag or plugin language ID if provided by an active plugin.
 func ResolveLanguageTagDisplay(tag, locale string) (string, bool) {
-	snap := activeLangSnap.Load()
-	if snap == nil {
-		return "", false
-	}
-	info := snap.byTag[strings.ToLower(strings.TrimSpace(tag))]
+	info := lookupLanguageTag(tag)
 	if info == nil {
 		return "", false
 	}
@@ -864,11 +890,7 @@ func ResolveLanguageTagDisplay(tag, locale string) (string, bool) {
 
 // TokenizeCodeByTag highlights src using an active language plugin matching tag.
 func TokenizeCodeByTag(tag, src string) ([]CodeRuneToken, bool) {
-	snap := activeLangSnap.Load()
-	if snap == nil {
-		return nil, false
-	}
-	info := snap.byTag[strings.ToLower(strings.TrimSpace(tag))]
+	info := lookupLanguageTag(tag)
 	if info == nil || info.Tokenizer == nil {
 		return nil, false
 	}

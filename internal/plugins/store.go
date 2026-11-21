@@ -116,7 +116,7 @@ func DefaultSeedIndex() *StoreIndex {
 	defer builtinMu.RUnlock()
 	seedApps := make([]StoreAppEntry, 0, len(builtinSeeds))
 	for _, s := range builtinSeeds {
-		if s.Entry.ID == "" || s.Entry.ID == DiagnosticsPluginID {
+		if hiddenCatalogID(s.Entry.ID) {
 			continue
 		}
 		seedApps = append(seedApps, s.Entry)
@@ -132,7 +132,7 @@ func DefaultSeedIndex() *StoreIndex {
 		cp := *embeddedFallbackIndex
 		filtered := make([]StoreAppEntry, 0, len(embeddedFallbackIndex.Apps))
 		for _, a := range embeddedFallbackIndex.Apps {
-			if a.ID == "" || a.ID == DiagnosticsPluginID {
+			if hiddenCatalogID(a.ID) {
 				continue
 			}
 			filtered = append(filtered, a)
@@ -485,6 +485,12 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 	return baseline, lastErr
 }
 
+// hiddenCatalogID reports catalog entries the store never lists: empty IDs,
+// the built-in diagnostics window and language packs now shipped built in.
+func hiddenCatalogID(id string) bool {
+	return id == "" || id == DiagnosticsPluginID || SupersededLanguagePluginIDs[id]
+}
+
 func filterStoreIndex(idx *StoreIndex) *StoreIndex {
 	return mergeStoreIndexes(idx, nil)
 }
@@ -503,7 +509,7 @@ func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 	seen := make(map[string]bool, len(primary.Apps))
 	merged := make([]StoreAppEntry, 0, capLen)
 	for _, a := range primary.Apps {
-		if a.ID == "" || a.ID == DiagnosticsPluginID || seen[a.ID] {
+		if hiddenCatalogID(a.ID) || seen[a.ID] {
 			continue
 		}
 		seen[a.ID] = true
@@ -511,7 +517,7 @@ func mergeStoreIndexes(primary, fallback *StoreIndex) *StoreIndex {
 	}
 	if fallback != nil {
 		for _, a := range fallback.Apps {
-			if a.ID == "" || a.ID == DiagnosticsPluginID || seen[a.ID] {
+			if hiddenCatalogID(a.ID) || seen[a.ID] {
 				continue
 			}
 			seen[a.ID] = true
