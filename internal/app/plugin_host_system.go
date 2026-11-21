@@ -57,7 +57,6 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
 	if win := w.Window(); win != nil {
 		win.OnFocus(func() {
-			w.pluginUI.restoreDeferredToasts()
 			sup.RetrySyncNotifications()
 		})
 	}
@@ -190,24 +189,6 @@ func (h *pluginHostUI) Notify(ctx context.Context, pluginID, title, body, tone, 
 		return plugins.ErrSystemCanceled
 	}
 	target := pluginNotificationTarget{pluginID, installed.InstalledAt, root, relPath}
-	if win := h.w.Window(); win != nil && win.IsFocused() {
-		configRoot := root
-		if configRoot == "" {
-			configRoot = sup.NotebookRoot()
-		}
-		stillAllowed := func() bool {
-			current, ok := sup.GetInstalled(pluginID)
-			return ok && current.Enabled && current.InstalledAt.Equal(target.InstalledAt) && current.Manifest.HasPermission(plugins.PermSystemNotify) &&
-				(pluginID != "block-sync" || plugins.SyncNotificationsEnabled(current.DataDir, configRoot))
-		}
-		native := func(ctx context.Context) error {
-			return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, stillAllowed)
-		}
-		if !h.toast(pluginID, title+" · "+body, tone, eventKey, nil, native, stillAllowed) {
-			return plugins.ErrSystemBusy
-		}
-		return plugins.ErrSystemQueued
-	}
 	return h.showNativePluginNotification(ctx, target, title, body, tone, eventKey, allowed)
 }
 
