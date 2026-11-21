@@ -191,7 +191,7 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-// BuildDeckNotes flattens workspace FileEntries into Markdown NoteCards.
+// BuildDeckNotes flattens workspace FileEntries into Markdown NoteCards in file-tree order.
 func BuildDeckNotes(
 	entries []model.FileEntry,
 	activePath string,
@@ -246,16 +246,6 @@ func BuildDeckNotes(
 		}
 	}
 	walk(entries)
-	// Sort active first, then by recent modified time descending so the sidebar deck feels alive.
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].IsActive != out[j].IsActive {
-			return out[i].IsActive
-		}
-		if out[i].ModUnix != out[j].ModUnix {
-			return out[i].ModUnix > out[j].ModUnix
-		}
-		return out[i].Title < out[j].Title
-	})
 	return out
 }
 
