@@ -49,6 +49,9 @@ type ghRelease struct {
 	Prerelease  bool   `json:"prerelease"`
 	TarballURL  string `json:"tarball_url"`
 	PublishedAt string `json:"published_at"`
+	CreatedAt   string `json:"created_at"`
+	HTMLURL     string `json:"html_url"`
+	Body        string `json:"body"`
 	Assets      []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
@@ -65,6 +68,7 @@ func main() {
 
 func run() error {
 	outPath := flag.String("out", "store/store-index.json", "output store-index.json path")
+	changelogsDir := flag.String("changelogs-dir", "", "optional directory to write per-plugin changelogs/<id>.json files")
 	blocklistPath := flag.String("blocklist", "store/blocklist.json", "path to blocklist.json")
 	verifiedPath := flag.String("verified", "store/verified.json", "path to verified.json")
 	localSeed := flag.String("local-seed", "", "comma-separated local plugin directories")
@@ -83,12 +87,13 @@ func run() error {
 	seedDirs := splitCSV(*localSeed)
 
 	entries := make([]plugins.StoreAppEntry, 0)
+	fullChangelogs := make(map[string][]plugins.PluginReleaseEntry)
 
 	if !*skipGitHub {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
-		ghEntries, ghErr := crawlGitHub(ctx, *apiBase, os.Getenv("GITHUB_TOKEN"), blocklist, verified)
+		ghEntries, ghChangelogs, ghErr := crawlGitHub(ctx, *apiBase, os.Getenv("GITHUB_TOKEN"), blocklist, verified)
 		if ghErr != nil {
 			if len(seedDirs) == 0 {
 				return ghErr
@@ -96,6 +101,9 @@ func run() error {
 			fmt.Fprintf(os.Stderr, "[WARN] GitHub crawl failed (%v); continuing with local seeds\n", ghErr)
 		} else {
 			entries = append(entries, ghEntries...)
+			for id, rels := range ghChangelogs {
+				fullChangelogs[id] = rels
+			}
 		}
 	}
 
@@ -140,11 +148,32 @@ func run() error {
 		}
 		owners[entry.ID] = owner
 	}
+	// Keep the repo that already owned the ID in the previous index, so a new
+	// repo cannot hijack or knock out an existing listing by reusing its ID.
+	incumbent := loadPreviousOwners(*outPath)
+	for id := range conflicts {
+		if prev := incumbent[id]; prev != "" {
+			kept := false
+			for _, entry := range entries {
+				if entry.ID == id && normalizeKey(entry.Repo) == prev {
+					kept = true
+					break
+				}
+			}
+			if kept {
+				owners[id] = prev
+				delete(conflicts, id)
+				fmt.Fprintf(os.Stderr, "[WARN] duplicate id %q: keeping previous owner %s\n", id, prev)
+				continue
+			}
+		}
+		fmt.Fprintf(os.Stderr, "[WARN] duplicate id %q without a previous owner: dropping all copies\n", id)
+	}
 	seenIDs := make(map[string]bool)
 	// Double-check blocklist filter across all entries and sort deterministically.
 	filtered := make([]plugins.StoreAppEntry, 0, len(entries))
 	for _, entry := range entries {
-		if conflicts[entry.ID] || seenIDs[entry.ID] || matchesSet(blocklist, entry.ID, entry.Repo) {
+		if conflicts[entry.ID] || seenIDs[entry.ID] || normalizeKey(entry.Repo) != owners[entry.ID] || matchesSet(blocklist, entry.ID, entry.Repo) {
 			continue
 		}
 		seenIDs[entry.ID] = true
@@ -195,6 +224,7 @@ func run() error {
 			legacy.SHA256 != legacySyncSHA256 || requiresSystemHost(*legacy) {
 			return errors.New("compatible Sync release has an unexpected identity, digest or permissions")
 		}
+		legacy.ChangelogURL = entry.ChangelogURL
 		index.Apps = append(index.Apps, *legacy)
 	}
 
@@ -212,7 +242,69 @@ func run() error {
 	if err := os.WriteFile(*outPath, encoded, 0o644); err != nil {
 		return fmt.Errorf("write output %q: %w", *outPath, err)
 	}
+	if dir := strings.TrimSpace(*changelogsDir); dir != "" {
+		if err := writePluginChangelogs(dir, nowStr, filtered, fullChangelogs); err != nil {
+			return fmt.Errorf("write changelogs: %w", err)
+		}
+	}
 	return nil
+}
+
+func writePluginChangelogs(
+	dir string,
+	nowStr string,
+	entries []plugins.StoreAppEntry,
+	fullChangelogs map[string][]plugins.PluginReleaseEntry,
+) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		releases := fullChangelogs[entry.ID]
+		if len(releases) == 0 {
+			continue
+		}
+		doc := plugins.PluginChangelog{
+			App:           plugins.TargetApp,
+			SchemaVersion: plugins.CurrentSchemaVersion,
+			ID:            entry.ID,
+			Repo:          entry.Repo,
+			UpdatedAt:     nowStr,
+			LatestVersion: releases[0].Version,
+			Releases:      releases,
+		}
+		raw, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return err
+		}
+		raw = append(raw, '\n')
+		if err := os.WriteFile(filepath.Join(dir, entry.ID+".json"), raw, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadPreviousOwners maps id -> repo from the index being replaced.
+func loadPreviousOwners(path string) map[string]string {
+	out := map[string]string{}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	var prev struct {
+		Apps       []plugins.StoreAppEntry `json:"apps"`
+		SystemApps []plugins.StoreAppEntry `json:"system_apps"`
+	}
+	if json.Unmarshal(raw, &prev) != nil {
+		return out
+	}
+	for _, entry := range append(prev.Apps, prev.SystemApps...) {
+		if entry.ID != "" && entry.Repo != "" {
+			out[entry.ID] = normalizeKey(entry.Repo)
+		}
+	}
+	return out
 }
 
 func requiresSystemHost(entry plugins.StoreAppEntry) bool {
@@ -230,7 +322,7 @@ func crawlGitHub(
 	token string,
 	blocklist map[string]bool,
 	verified verifiedRegistry,
-) ([]plugins.StoreAppEntry, error) {
+) ([]plugins.StoreAppEntry, map[string][]plugins.PluginReleaseEntry, error) {
 	base := strings.TrimRight(strings.TrimSpace(apiBase), "/")
 	if base == "" {
 		base = defaultAPIBase
@@ -245,18 +337,40 @@ func crawlGitHub(
 	var searchResp ghSearchResponse
 	status, err := fetchJSON(ctx, client, searchURL, token, &searchResp)
 	if err != nil {
-		return nil, fmt.Errorf("search repositories: %w", err)
+		return nil, nil, fmt.Errorf("search repositories: %w", err)
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("search repositories: HTTP %d", status)
+		return nil, nil, fmt.Errorf("search repositories: HTTP %d", status)
 	}
 
-	out := make([]plugins.StoreAppEntry, 0, len(searchResp.Items))
-	for _, repo := range searchResp.Items {
+	// The search is capped at 100 results; fetch verified official repos
+	// directly so a lower-ranked one can never fail the whole round.
+	repos := append([]ghRepo(nil), searchResp.Items...)
+	seenRepos := make(map[string]bool, len(repos))
+	for _, repo := range repos {
+		seenRepos[normalizeKey(repo.FullName)] = true
+	}
+	for _, repoName := range verified.repos() {
+		if seenRepos[repoName] {
+			continue
+		}
+		var repo ghRepo
+		status, err := fetchJSON(ctx, client, fmt.Sprintf("%s/repos/%s", base, repoName), token, &repo)
+		if err != nil || status != http.StatusOK || repo.FullName == "" {
+			fmt.Fprintf(os.Stderr, "[WARN] verified repo %s unavailable (HTTP %d, %v)\n", repoName, status, err)
+			continue
+		}
+		seenRepos[repoName] = true
+		repos = append(repos, repo)
+	}
+
+	out := make([]plugins.StoreAppEntry, 0, len(repos))
+	changelogs := make(map[string][]plugins.PluginReleaseEntry)
+	for _, repo := range repos {
 		if repo.FullName == "" || matchesSet(blocklist, repo.FullName) {
 			continue
 		}
-		downloadURL, downloads, updatedAt := resolveRepoArchive(ctx, client, base, token, repo)
+		downloadURL, downloads, updatedAt, fullRels, inlineRels := resolveRepoArchive(ctx, client, base, token, repo)
 		if downloadURL == "" {
 			continue
 		}
@@ -266,20 +380,36 @@ func crawlGitHub(
 			continue
 		}
 		if entry != nil {
+			if len(fullRels) > 0 {
+				entry.ChangelogURL = fmt.Sprintf("https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/%s.json", entry.ID)
+				entry.Changelog = inlineRels
+				changelogs[entry.ID] = fullRels
+			}
 			out = append(out, *entry)
 		}
 	}
-	return out, nil
+	return out, changelogs, nil
 }
 
-const maxReleasePages = 5
+const (
+	maxReleasePages       = 5
+	maxFullChangelogItems = 20
+	maxInlineChangelog    = 5
+)
 
-func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) (string, int, string) {
+func resolveRepoArchive(
+	ctx context.Context,
+	client *http.Client,
+	apiBase, token string,
+	repo ghRepo,
+) (string, int, string, []plugins.PluginReleaseEntry, []plugins.PluginReleaseEntry) {
 	updatedAt := firstNonEmpty(repo.PushedAt, repo.UpdatedAt)
 	totalDownloads := 0
 	var latest *ghRelease
 	fetchedAny := false
 	hitPageCap := false
+	fullRels := make([]plugins.PluginReleaseEntry, 0, maxFullChangelogItems)
+	inlineRels := make([]plugins.PluginReleaseEntry, 0, maxInlineChangelog)
 
 	for page := 1; page <= maxReleasePages; page++ {
 		relsURL := fmt.Sprintf("%s/repos/%s/releases?per_page=100&page=%d", apiBase, repo.FullName, page)
@@ -295,9 +425,18 @@ func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token
 					totalDownloads += a.DownloadCount
 				}
 			}
-			if latest == nil && !rels[i].Draft && !rels[i].Prerelease {
-				relCopy := rels[i]
-				latest = &relCopy
+			if !rels[i].Draft && !rels[i].Prerelease {
+				if latest == nil {
+					relCopy := rels[i]
+					latest = &relCopy
+				}
+				if strings.TrimSpace(rels[i].TagName) != "" && len(fullRels) < maxFullChangelogItems {
+					pub := firstNonEmpty(rels[i].PublishedAt, rels[i].CreatedAt)
+					fullRels = append(fullRels, plugins.NormalizePluginReleaseEntry(rels[i].TagName, pub, rels[i].HTMLURL, rels[i].Body, true))
+					if len(inlineRels) < maxInlineChangelog {
+						inlineRels = append(inlineRels, plugins.NormalizePluginReleaseEntry(rels[i].TagName, pub, rels[i].HTMLURL, rels[i].Body, false))
+					}
+				}
 			}
 		}
 		if len(rels) < 100 {
@@ -313,6 +452,11 @@ func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token
 		var rel ghRelease
 		if status, err := fetchJSON(ctx, client, latestURL, token, &rel); err == nil && status == http.StatusOK && !rel.Draft && !rel.Prerelease {
 			latest = &rel
+			if strings.TrimSpace(rel.TagName) != "" && len(fullRels) == 0 {
+				pub := firstNonEmpty(rel.PublishedAt, rel.CreatedAt)
+				fullRels = append(fullRels, plugins.NormalizePluginReleaseEntry(rel.TagName, pub, rel.HTMLURL, rel.Body, true))
+				inlineRels = append(inlineRels, plugins.NormalizePluginReleaseEntry(rel.TagName, pub, rel.HTMLURL, rel.Body, false))
+			}
 		}
 	}
 
@@ -321,10 +465,22 @@ func resolveRepoArchive(ctx context.Context, client *http.Client, apiBase, token
 			updatedAt = latest.PublishedAt
 		}
 		if assetURL := pickReleaseArchive(*latest); assetURL != "" {
-			return assetURL, totalDownloads, updatedAt
+			return assetURL, totalDownloads, updatedAt, fullRels, inlineRels
 		}
 	}
-	return fallbackTarballURL(apiBase, repo), totalDownloads, updatedAt
+	return fallbackTarballURL(ctx, client, apiBase, token, repo), totalDownloads, updatedAt, fullRels, inlineRels
+}
+
+func isCommitSHA(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func pickReleaseArchive(rel ghRelease) string {
@@ -339,11 +495,21 @@ func pickReleaseArchive(rel ghRelease) string {
 	return rel.TarballURL
 }
 
-func fallbackTarballURL(apiBase string, repo ghRepo) string {
+// fallbackTarballURL pins the default-branch source archive to the commit
+// seen now, so the indexed sha256 keeps matching after later pushes.
+func fallbackTarballURL(ctx context.Context, client *http.Client, apiBase, token string, repo ghRepo) string {
 	branch := strings.TrimSpace(repo.DefaultBranch)
 	if branch == "" {
 		branch = "main"
 	}
+	var head struct {
+		SHA string `json:"sha"`
+	}
+	headURL := fmt.Sprintf("%s/repos/%s/commits/%s", apiBase, repo.FullName, url.PathEscape(branch))
+	if status, err := fetchJSON(ctx, client, headURL, token, &head); err != nil || status != http.StatusOK || !isCommitSHA(head.SHA) {
+		return ""
+	}
+	branch = head.SHA
 	if apiBase == defaultAPIBase {
 		return fmt.Sprintf("https://codeload.github.com/%s/tar.gz/%s", repo.FullName, url.PathEscape(branch))
 	}
@@ -532,6 +698,15 @@ func sameHost(a, b string) bool {
 type verifiedRegistry struct {
 	idToRepo map[string]string
 	repoToID map[string]string
+}
+
+func (v verifiedRegistry) repos() []string {
+	out := make([]string, 0, len(v.repoToID))
+	for repo := range v.repoToID {
+		out = append(out, repo)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func loadVerifiedRegistry(path string) (verifiedRegistry, error) {
