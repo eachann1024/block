@@ -752,12 +752,13 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 			ui.Text(c, lbl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 				FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-				btn := appUi.ActionButton(c, fmt.Sprintf("preview-video-%d", id), label, nil, appUi.ButtonPrimary, asset.Loading || unavailable)
+				vidIc := icons.Video
+				btn := appUi.ActionButton(c, fmt.Sprintf("preview-video-%d", id), label, &vidIc, appUi.ButtonPrimary, asset.Loading || unavailable)
 				if btn.Clicked() {
 					playClicked = true
 				}
 				if s.onPreviewMediaOpen != nil && !unavailable {
-					expBtn := appUi.ActionButton(c, fmt.Sprintf("preview-video-expand-%d", id), theme.Tr("放大观看", "Open in viewer"), nil, appUi.ButtonSecondary, false)
+					expBtn := appUi.BtnExpand(c, fmt.Sprintf("preview-video-expand-%d", id), appUi.PresetOptions{})
 					if expBtn.Clicked() {
 						expandClicked = true
 					}

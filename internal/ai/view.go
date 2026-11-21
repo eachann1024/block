@@ -2018,7 +2018,8 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 	}
 
 	if dismissed {
-		reopen := bui.ActionButton(cUI, "ai-question-reopen", theme.Tr("展开待确认问题", "Open question"), nil, bui.ButtonSecondary, false)
+		qIc := icons.HelpCircle
+		reopen := bui.ActionButton(cUI, "ai-question-reopen", theme.Tr("展开待确认问题", "Open question"), &qIc, bui.ButtonSecondary, false)
 		if reopen.Clicked() {
 			c.mu.Lock()
 			st.dismissed = false
@@ -2169,7 +2170,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 			})
 
 			ui.Row(cUI).Gap(8).Children(func() {
-				skipBtn := bui.ActionButton(cUI, "ai-question-skip", theme.Tr("跳过", "Skip"), nil, bui.ButtonSecondary, false)
+				skipBtn := bui.BtnSkip(cUI, "ai-question-skip", bui.PresetOptions{})
 				if skipBtn.Clicked() {
 					c.mu.Lock()
 					delete(st.answers, qi)
@@ -2184,10 +2185,12 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 					}
 				}
 				contLabel := theme.Tr("继续", "Continue")
+				contIc := icons.ArrowRight
 				if last {
 					contLabel = theme.Tr("发送", "Send")
+					contIc = icons.Send
 				}
-				contBtn := bui.ActionButton(cUI, "ai-question-continue", contLabel, nil, bui.ButtonPrimary, !hasAnswer)
+				contBtn := bui.ActionButton(cUI, "ai-question-continue", contLabel, &contIc, bui.ButtonPrimary, !hasAnswer)
 				if contBtn.Clicked() && hasAnswer {
 					if !last {
 						c.mu.Lock()
@@ -2289,7 +2292,7 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 		ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Text(cUI, "1 / 1").FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			ui.Row(cUI).Gap(8).Children(func() {
-				skipBtn := bui.ActionButton(cUI, "ai-approval-skip", theme.Tr("跳过", "Skip"), nil, bui.ButtonSecondary, submitted)
+				skipBtn := bui.BtnSkip(cUI, "ai-approval-skip", bui.PresetOptions{Disabled: submitted})
 				if skipBtn.Clicked() && !submitted {
 					c.mu.Lock()
 					st.choice = model.ApprovalSkip
@@ -2297,11 +2300,16 @@ func (c *Controller) renderApprovalCard(cUI *ui.Context, pal theme.Palette, conv
 					c.mu.Unlock()
 					c.RespondApproval(convID, msgIdx, model.ApprovalDeny)
 				}
-				contLabel := theme.Tr("继续", "Continue")
+				var contBtn ui.Element
 				if cardModel.Failed {
-					contLabel = theme.Tr("重试", "Retry")
+					contBtn = bui.BtnRetry(cUI, "ai-approval-continue", bui.PresetOptions{
+						Disabled: !enabled,
+						Style:    bui.StyleRef(bui.ButtonPrimary),
+					})
+				} else {
+					contIc := icons.ArrowRight
+					contBtn = bui.ActionButton(cUI, "ai-approval-continue", theme.Tr("继续", "Continue"), &contIc, bui.ButtonPrimary, !enabled)
 				}
-				contBtn := bui.ActionButton(cUI, "ai-approval-continue", contLabel, nil, bui.ButtonPrimary, !enabled)
 				if !enabled {
 					bui.Probe(contBtn, "ai-approval-continue-disabled")
 				}
@@ -3156,7 +3164,7 @@ func (c *Controller) renderComposerArea(cUI *ui.Context, pal theme.Palette, full
 					}
 
 					if busy {
-						stopBtn := bui.ActionButton(cUI, "ai-chat-stop", theme.Tr("停止", "Stop"), nil, bui.ButtonSecondary, false)
+						stopBtn := bui.BtnStop(cUI, "ai-chat-stop", bui.PresetOptions{})
 						if stopBtn.Clicked() {
 							c.StopStreaming()
 						}
@@ -4071,7 +4079,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									chevBtn.Background(pal.Hover)
 								}
 								chevBtn.Children(func() {
-									icons.Draw(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
 								})
 								if chevBtn.Clicked() {
 									toggleExpand()
@@ -4115,9 +4123,11 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 						ui.Text(cUI, theme.Tr("尚未添加本机 Agent", "No local agents added")).
 							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).
 							Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						addIc := icons.AiPlus
 						empBtn := bui.ActionButtonWithOptions(cUI, bui.ActionButtonOptions{
 							ID:       "ai-empty-add-agent",
 							Label:    theme.Tr("立即添加", "Add Now"),
+							Leading:  &addIc,
 							Style:    bui.ButtonSecondary,
 							Height:   theme.HeightCompact,
 							PaddingX: theme.Space10,
@@ -4220,7 +4230,7 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 									chevBtn.Background(pal.Hover)
 								}
 								chevBtn.Children(func() {
-									icons.Draw(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+									icons.DrawAnimated(cUI, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary), chevBtn.Hovered() || chevBtn.Pressed())
 								})
 								if chevBtn.Clicked() {
 									toggleExpand()
@@ -4813,7 +4823,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 						if isSel || hov || prs {
 							col = pal.Text
 						}
-						icons.Draw(cUI, pr.Icon, 14, pal.MonoIconColors(pr.BrandColor))
+						icons.DrawAnimated(cUI, pr.Icon, 14, pal.MonoIconColors(pr.BrandColor), hov || prs)
 						ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 					})
 					if chip.Clicked() {
@@ -4927,7 +4937,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 				}
 
 				ui.Row(cUI).Gap(8).AlignItems(ui.Center).Children(func() {
-					cancelBtn := bui.ActionButton(cUI, "ai-add-provider-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
+					cancelBtn := bui.BtnCancel(cUI, "ai-add-provider-cancel", bui.PresetOptions{})
 					if cancelBtn.Clicked() {
 						modalOpen = false
 					}
@@ -5163,7 +5173,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 								if badge != "" {
 									ui.Text(cUI, badge).Font("monospace").FontSize(theme.FontMeta).TextColor(badgeCol).SingleLine()
 								}
-								icons.Draw(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary))
+								icons.DrawAnimated(cUI, icons.ChevronRight, 14, pal.MonoIconColors(pal.TextSecondary), hov || prs)
 							})
 						})
 						if btn.Clicked() {
@@ -5197,7 +5207,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 
 				ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
 					if !showMore {
-						moreBtn := bui.ActionButton(cUI, "ai-agent-show-more", theme.Tr("显示更多", "Show more"), nil, bui.ButtonGhost, false)
+						moreBtn := bui.BtnMore(cUI, "ai-agent-show-more", bui.PresetOptions{})
 						if moreBtn.Clicked() {
 							c.mu.Lock()
 							c.addAgentShowMore = true
@@ -5206,7 +5216,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 					} else {
 						ui.Box(cUI)
 					}
-					cancelBtn := bui.ActionButton(cUI, "ai-add-agent-cancel", theme.Tr("取消", "Cancel"), nil, bui.ButtonSecondary, false)
+					cancelBtn := bui.BtnCancel(cUI, "ai-add-agent-cancel", bui.PresetOptions{})
 					if cancelBtn.Clicked() {
 						modalOpen = false
 					}

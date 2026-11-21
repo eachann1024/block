@@ -121,7 +121,7 @@ func (m *Manager) renderAboutModal(c *ui.Context) {
 					c.OpenURL("https://github.com/eachann1024/block")
 				}
 			})
-			if internalui.ActionButton(c, "about-done", theme.Tr("关闭", "Close"), nil, internalui.ButtonPrimary, false).Clicked() {
+			if internalui.BtnClose(c, "about-done", internalui.PresetOptions{}).Clicked() {
 				m.CloseAbout()
 			}
 		})
@@ -265,7 +265,7 @@ func (m *Manager) renderHistoryModal(c *ui.Context) {
 				ui.Text(c, theme.Tr("确认用选中的历史快照覆盖当前笔记内容？", "Replace current note with this historical snapshot?")).
 					FontSize(theme.FontBody).TextColor(pal.Text)
 				ui.Row(c).Gap(8).Children(func() {
-					cancelBtn := internalui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, internalui.ButtonSecondary, false)
+					cancelBtn := internalui.BtnCancel(c, "history-cancel-restore", internalui.PresetOptions{})
 					if cancelBtn.Clicked() {
 						m.historyConfirmRestore = false
 					}
@@ -721,13 +721,14 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 			formats := []struct {
 				fmt   model.ExportFormat
 				label string
+				icon  icons.Icon
 			}{
-				{model.ExportMarkdown, "Markdown"},
-				{model.ExportHTML, "HTML"},
-				{model.ExportPDF, "PDF"},
-				{model.ExportPNG, "PNG"},
-				{model.ExportDOCX, "Word (DOCX)"},
-				{model.ExportZIP, "ZIP"},
+				{model.ExportMarkdown, "Markdown", icons.Note},
+				{model.ExportHTML, "HTML", icons.LangHtml},
+				{model.ExportPDF, "PDF", icons.FilePdf},
+				{model.ExportPNG, "PNG", icons.Image},
+				{model.ExportDOCX, "Word (DOCX)", icons.FileWord},
+				{model.ExportZIP, "ZIP", icons.FileArchive},
 			}
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
 				ui.Text(c, theme.Tr("导出格式", "Format")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
@@ -738,7 +739,8 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 						if selected {
 							style = internalui.ButtonPrimary
 						}
-						btn := internalui.ActionButton(c, "export-fmt-"+string(item.fmt), item.label, nil, style, false)
+						ic := item.icon
+						btn := internalui.ActionButton(c, "export-fmt-"+string(item.fmt), item.label, &ic, style, false)
 						if selected {
 							btn.Border(1, ui.Transparent)
 						}

@@ -390,7 +390,7 @@ func renderPluginOverflowMenu(c *ui.Context, p TitlebarProps, scrim ui.Element, 
 								}
 							}
 							if b.Active {
-								icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+								icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHover || kbActive)
 							}
 						})
 						blockui.Probe(sel, selID)

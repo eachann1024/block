@@ -78,12 +78,7 @@ func (ctrl *Controller) openStoreReadme(entry plugins.StoreAppEntry, installed p
 // renderStoreDetailBack sits in the settings header slot the list's filter
 // and tools occupy, so the detail page needs no extra row for navigation.
 func renderStoreDetailBack(c *ui.Context, ctrl *Controller) {
-	backIcon := icons.ArrowLeft
-	backBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-		ID:       "app-store-detail-back",
-		Label:    theme.Tr("返回", "Back"),
-		Leading:  &backIcon,
-		Style:    bui.ButtonGhost,
+	backBtn := bui.BtnBack(c, "app-store-detail-back", bui.PresetOptions{
 		Height:   theme.HeightCompact,
 		PaddingX: theme.Space8,
 	})
@@ -836,7 +831,7 @@ func renderStoreDetailRepoLink(c *ui.Context, repo string) {
 	}
 	bui.AnimateSurfaceColors(link, bg, ui.Transparent, false)
 	link.Children(func() {
-		icons.Draw(c, icons.TbLink, theme.IconInline, pal.MonoIconColors(pal.Link))
+		icons.DrawAnimated(c, icons.TbLink, theme.IconInline, pal.MonoIconColors(pal.Link), link.Hovered() || link.Pressed())
 		ui.Text(c, repo).FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).TextColor(pal.Link).
 			SingleLine().Ellipsis("…").MinWidth(0)
 	})

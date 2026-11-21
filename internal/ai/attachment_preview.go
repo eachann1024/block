@@ -434,7 +434,7 @@ func (c *Controller) renderComposerImageTile(cUI *ui.Context, pal theme.Palette,
 		}
 		bui.Tooltip(cUI, xBtn, theme.Tr("移除附件", "Remove attachment"))
 		xBtn.Children(func() {
-			icons.Draw(cUI, icons.Close, theme.IconMicro, pal.MonoIconColors(pal.ImageOverlayBadgeFG()))
+			icons.DrawAnimated(cUI, icons.Close, theme.IconMicro, pal.MonoIconColors(pal.ImageOverlayBadgeFG()), xHover || xBtn.Pressed())
 		})
 		removeClicked = xBtn.Clicked()
 		xPressedInside = xBtn.PressedInside()

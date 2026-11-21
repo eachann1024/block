@@ -124,18 +124,14 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 
 	bgCol := ui.Transparent
 	bdCol := ui.Transparent
-	hasBorder := opts.Active && opts.ActiveStyle != ActiveAccentFlat
+	hasBorder := false
 	switch {
 	case opts.Danger && pressed:
 		bgCol = pal.Danger.Alpha(0.22)
 	case opts.Danger && hovered:
 		bgCol = pal.DangerSurface
-	case opts.Active && opts.ActiveStyle == ActiveAccentFlat:
-		bgCol = pal.Selected
 	case opts.Active:
 		bgCol = pal.Selected
-		bdCol = pal.SelectedBorder
-		hasBorder = true
 	case pressed:
 		if opts.ChromeHover {
 			bgCol = pal.ShellChrome().Hover
@@ -167,9 +163,13 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		switch {
 		case opts.Danger && (hovered || pressed || opts.Active):
 			ic = pal.MonoIconColors(pal.Danger)
-		case opts.Active && opts.ActiveStyle != ActiveOutlined:
-			ic = pal.DuoIconColors(pal.Text)
-		case opts.Active || hovered || pressed:
+		case opts.Active:
+			ic = theme.IconColors{
+				Line:   pal.Accent,
+				Fill:   pal.Accent.Alpha(0.18),
+				Accent: pal.Accent,
+			}
+		case hovered || pressed:
 			ic = pal.DuoIconColors(pal.Text)
 		case opts.AlwaysDuo:
 			ic = pal.DuoIconColors(pal.TextSecondary)
@@ -180,7 +180,11 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 		default:
 			ic = pal.MonoIconColors(pal.TextSecondary)
 		}
-		icons.DrawAnimated(c, glyph, glyphSize, ic, hovered || pressed)
+		icoWrap := ui.Box(c).Size(glyphSize, glyphSize).Shrink(0)
+		TactileIcon(icoWrap, pressed, isDisabled)
+		icoWrap.Children(func() {
+			icons.DrawAnimated(c, glyph, glyphSize, ic, hovered || pressed)
+		})
 	})
 	if opts.ID != "" {
 		Probe(btn, opts.ID)
@@ -581,7 +585,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 				ic = pal.MonoIconColors(iconLine)
 			}
 			if item.Icon != nil {
-				icons.Draw(c, *item.Icon, theme.IconRow, ic)
+				icons.DrawAnimated(c, *item.Icon, theme.IconRow, ic, active)
 			} else {
 				item.CustomIcon(c, theme.IconRow, ic)
 			}
@@ -614,7 +618,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol), active)
 		}
 		if item.Checked {
-			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Accent))
+			icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Accent), active)
 		}
 	})
 	if item.ID != "" {

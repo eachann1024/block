@@ -576,7 +576,10 @@ func (m *Manager) renderFeedbackDone(c *ui.Context) {
 			ui.Text(c, theme.Tr("有进展会回复到 "+m.feedbackSentContact, "We will reply to "+m.feedbackSentContact)).
 				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
 		}
-		doneBtn := internalui.ActionButton(c, "feedback-done-close", theme.Tr("好的", "Done"), nil, internalui.ButtonSecondary, false)
+		doneBtn := internalui.BtnConfirm(c, "feedback-done-close", internalui.PresetOptions{
+			Label: theme.Tr("好的", "Done"),
+			Style: internalui.StyleRef(internalui.ButtonSecondary),
+		})
 		if doneBtn.Clicked() {
 			m.CloseFeedback()
 		}
@@ -682,7 +685,7 @@ func (m *Manager) renderFeedbackForm(c *ui.Context, title string) {
 		})
 
 		feedbackFooter(c, "feedback-footer", func() {
-			cancelBtn := internalui.ActionButton(c, "feedback-cancel", theme.Tr("取消", "Cancel"), nil, internalui.ButtonSecondary, false)
+			cancelBtn := internalui.BtnCancel(c, "feedback-cancel", internalui.PresetOptions{})
 			if cancelBtn.Clicked() {
 				m.CloseFeedback()
 			}
@@ -762,10 +765,9 @@ func (m *Manager) renderFeedbackAttachments(c *ui.Context) {
 				"视频最大 %s，其他文件最大 %s。把录屏剪短到出问题的那几秒再试。",
 				"Videos up to %s, other files up to %s. Trim the recording to the few seconds that show the problem."),
 				feedback.FormatBytes(feedback.MaxVideoBytes), feedback.FormatBytes(feedback.MaxFileBytes)), true, func() {
-				btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-					ID:     "feedback-remove-over",
+				btn := internalui.BtnDelete(c, "feedback-remove-over", internalui.PresetOptions{
 					Label:  theme.Tr("移除超限项", "Remove oversized"),
-					Style:  internalui.ButtonSecondary,
+					Style:  internalui.StyleRef(internalui.ButtonSecondary),
 					Height: theme.HeightCompact,
 				})
 				if btn.Clicked() {
@@ -945,7 +947,9 @@ func (m *Manager) renderFeedbackLog(c *ui.Context) {
 				fb.copiedAt = time.Now()
 				time.AfterFunc(1600*time.Millisecond, m.requestRedraw)
 			}
-			if internalui.ActionButton(c, "feedback-log-done", theme.Tr("返回", "Back"), nil, internalui.ButtonPrimary, false).Clicked() {
+			if internalui.BtnBack(c, "feedback-log-done", internalui.PresetOptions{
+				Style: internalui.StyleRef(internalui.ButtonPrimary),
+			}).Clicked() {
 				fb.view = feedbackViewForm
 			}
 		})
@@ -1031,21 +1035,28 @@ func (m *Manager) renderFeedbackSending(c *ui.Context, snap feedback.Snapshot) {
 
 		feedbackFooter(c, "feedback-sending-footer", func() {
 			if failed {
-				if internalui.ActionButton(c, "feedback-send-back", theme.Tr("返回修改", "Back to edit"), nil, internalui.ButtonSecondary, false).Clicked() {
+				if internalui.BtnBack(c, "feedback-send-back", internalui.PresetOptions{
+					Label: theme.Tr("返回修改", "Back to edit"),
+					Style: internalui.StyleRef(internalui.ButtonSecondary),
+				}).Clicked() {
 					m.backToFeedbackForm()
 				}
 				if feedbackRetryable(snap.Err) {
-					retryIc := icons.Refresh
-					if internalui.ActionButton(c, "feedback-send-retry", theme.Tr("重试", "Retry"), &retryIc, internalui.ButtonPrimary, false).Clicked() {
+					if internalui.BtnRetry(c, "feedback-send-retry", internalui.PresetOptions{
+						Style: internalui.StyleRef(internalui.ButtonPrimary),
+					}).Clicked() {
 						m.fb.sender.Retry()
 					}
 				}
 				return
 			}
-			if internalui.ActionButton(c, "feedback-send-cancel", theme.Tr("取消发送", "Cancel sending"), nil, internalui.ButtonSecondary, false).Clicked() {
+			if internalui.BtnCancel(c, "feedback-send-cancel", internalui.PresetOptions{
+				Label: theme.Tr("取消发送", "Cancel sending"),
+			}).Clicked() {
 				m.backToFeedbackForm()
 			}
-			if internalui.ActionButton(c, "feedback-send-background", theme.Tr("后台继续", "Continue in background"), nil, internalui.ButtonSecondary, false).Clicked() {
+			bgIc := icons.Clock
+			if internalui.ActionButton(c, "feedback-send-background", theme.Tr("后台继续", "Continue in background"), &bgIc, internalui.ButtonSecondary, false).Clicked() {
 				m.CloseFeedback()
 			}
 		})
