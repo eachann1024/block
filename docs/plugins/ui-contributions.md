@@ -8,15 +8,15 @@
 
 ## 8. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限与编辑器/界面事件权限。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限、编辑器/界面事件权限与文件路径权限。
 
-### 8.1 新增权限（11 项）
+### 8.1 新增权限（12 项）
 
 | 权限枚举 | 说明 | 关联贡献 / 能力 |
 | --- | --- | --- |
 | `"ui:titlebar"` | 顶栏按钮与顶栏槽位显隐控制 | `contributes.titlebar_buttons`、`host.titlebar.get_items` / `set_hidden` / `set_button` |
 | `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections`、`host.ui.editor_background` / `set_editor_background`、`host.ui.tarot_state` / `set_tarot` |
-| `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu` |
+| `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu`、`contributes.tab_menu` |
 | `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` / `toggle_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
 | `"ui:notify"` | Toast 轻提示与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
@@ -25,13 +25,14 @@
 | `"editor:read"` | 读取当前编辑器选区 | `host.editor.selection` |
 | `"editor:write"` | 替换选区或光标处插入文本 | `host.editor.insert` |
 | `"events:workspace"` | 订阅工作区界面事件 | `plugin.event`（`note.opened`、`theme.changed`、`locale.changed`） |
+| `"notes:path"` | 读取命令目标文件的本机绝对路径（含笔记本外打开的文件），不读内容 | `plugin.command` 的 `context.file` |
 
 ### 8.2 `manifest.contributes` 字段定义
 
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
 - 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
-- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16。
+- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
 1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
@@ -44,12 +45,17 @@
 3. **`commands`**（需 `"ui:commands"`）：注册到命令面板并支持默认快捷键。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
    - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-alt-p"`。宿主与编辑器已占用的组合（如 `cmd-f`、`cmd-b`、`cmd-s`、`cmd-shift-p`、`cmd-shift-k`、`cmd-1`…`cmd-9`）不会触发插件命令。
-4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。
+4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。Markdown 笔记、代码/HTML/SVG 源码与图片预览等所有页面都会显示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
 5. **`editor_menu`**（需 `"ui:commands"`）：向编辑器右键菜单追加条目（渲染原生彩色 SVG 图标）。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
-6. **`sidebar_menu`**（需 `"ui:sidebar"`，且 `command` 引用已声明的 `commands[].id`）：向左侧栏文件树笔记右键菜单追加条目。
-   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。触发时 `context.source` 为 `"sidebar_menu"`，`context.note` 为右键目标笔记的相对路径。
+6. **`sidebar_menu`**（需 `"ui:sidebar"`，且 `command` 引用已声明的 `commands[].id`）：向左侧栏文件树右键菜单追加条目。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+   - `targets`（可选字符串数组，仅 `sidebar_menu` 可用）：`"note"` | `"folder"`，不可重复；省略时为 `["note"]`（只在笔记行显示）。声明 `["note", "folder"]` 可同时出现在文件夹行。
+   - 触发时 `context.source` 为 `"sidebar_menu"`；右键笔记时 `context.note` 为其相对路径，右键文件夹时改为 `context.folder`（文件夹相对路径，`note` 为空）。
+6.1. **`tab_menu`**（需 `"ui:commands"`，且 `command` 引用已声明的 `commands[].id`）：向顶栏标签页右键菜单顶部追加条目。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+   - 触发时 `context.source` 为 `"tab_menu"`，目标是被右键的标签（不一定是当前活动标签）。目标在当前笔记本内时 `context.note` 为其相对路径；笔记本外打开的文件 `note` 为空，只能通过 `context.file`（需 `"notes:path"`）拿到路径。
 7. **`panels`**（需 `"ui:panels"`）：注册右侧边栏面板（标题栏自动渲染 `icon`）。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
    - 对应渲染表面：`"panel:<id>"`。
@@ -80,19 +86,24 @@
 ### 8.4 `plugin.command` 与工作区 `plugin.event`
 
 1. **`plugin.command`**（Host -> Plugin）
-   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
+   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单、标签页右键菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
    - 请求 `params`：
      ```json
      {
        "command_id": "toggle_focus",
        "context": {
          "note": "welcome.md",
+         "file": "/abs/path/to/notebook/welcome.md",
          "selection": "选中的文本",
          "source": "palette"
        }
      }
      ```
-     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径；`sidebar_menu` 时填充右键目标笔记相对路径）、`context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"sidebar_menu"` | `"status"`）。
+     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径；`sidebar_menu` / `tab_menu` 时为右键目标的相对路径，目标不在当前笔记本内时为空）。
+     - `context.folder`（可选，仅 `sidebar_menu` 右键文件夹行时下发，文件夹相对路径）。
+     - `context.file`（可选，仅当插件持有 `"notes:path"` 时下发）：目标的本机绝对路径。菜单类来源为右键目标，其余来源为当前活动标签；包括代码、图片等非 Markdown 文件与笔记本外打开的文件。没有打开的标签时为空。
+     - `context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）。
+     - `context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"sidebar_menu"` | `"tab_menu"` | `"status"`）。
    - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行", "show_plugin_icon": true}`（字段均可选；`status` 非空时宿主会弹出对应 `tone` 的 Toast 提示，默认 `"info"` 并附带插件图标，传 `"show_plugin_icon": false` 可恢复纯色圆点）。
 
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）

@@ -147,8 +147,9 @@ example-sync/
   - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`）
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
+  - `"notes:path"`：在 `plugin.command` 的 `context.file` 中接收目标文件的本机绝对路径（含笔记本外打开的文件），不授予读取内容的能力
   - `"system:notify"`、`"system:secrets"`、`"system:open"`、`"system:dialogs"`、`"system:clipboard_read"`、`"system:clipboard_write"`、`"system:trash"`、`"system:badge"`、`"events:system"`。见[系统集成](protocol-and-ui.md#_3-3-系统集成)。
-  - 以及第 8 节定义的 11 项 UI 扩展权限（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
+  - 以及第 8 节定义的 11 项 UI / 编辑器 / 事件扩展权限（`"notes:path"` 已在上方列出）（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
 - `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐填写以帮助用户在安装前理解用途）：
   - 每个键必须是合法权限枚举，且**必须已声明在 `manifest.permissions` 中**（不可为未申请的权限填写缘由）。
   - 每项须提供 `zh` 或 `en` 至少其一非空文本（启用双语门禁的官方或 `-bilingual` 插件必须同时提供纯英文 `en`），长度限制 `zh <= 80` 个 Unicode 字符、`en <= 140` 个 Unicode 字符，**严禁包含 Emoji**。
@@ -184,14 +185,15 @@ example-sync/
          "action_feedback", "action_progress", "note_revision",
          "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
          "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
-         "editor_insert_mode", "dialog_token", "checklist_add_folder", "item_icons"
+         "editor_insert_mode", "dialog_token", "checklist_add_folder", "item_icons",
+         "tab_menu", "file_path"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -693,15 +695,15 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
 ## 8. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限与编辑器/界面事件权限。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目与弹窗，并按需申请对应的 UI 权限、编辑器/界面事件权限与文件路径权限。
 
-### 8.1 新增权限（11 项）
+### 8.1 新增权限（12 项）
 
 | 权限枚举 | 说明 | 关联贡献 / 能力 |
 | --- | --- | --- |
 | `"ui:titlebar"` | 顶栏按钮与顶栏槽位显隐控制 | `contributes.titlebar_buttons`、`host.titlebar.get_items` / `set_hidden` / `set_button` |
 | `"ui:settings"` | 内置设置标签页扩展分区 | `contributes.settings_sections`、`host.ui.editor_background` / `set_editor_background`、`host.ui.tarot_state` / `set_tarot` |
-| `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu` |
+| `"ui:commands"` | 命令面板、快捷键与菜单项 | `contributes.commands`、`contributes.page_menu`、`contributes.editor_menu`、`contributes.tab_menu` |
 | `"ui:panels"` | 右侧边栏面板 | `contributes.panels`、`host.ui.open_panel` / `close_panel` / `toggle_panel` |
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
 | `"ui:notify"` | Toast 轻提示与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
@@ -710,13 +712,14 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 | `"editor:read"` | 读取当前编辑器选区 | `host.editor.selection` |
 | `"editor:write"` | 替换选区或光标处插入文本 | `host.editor.insert` |
 | `"events:workspace"` | 订阅工作区界面事件 | `plugin.event`（`note.opened`、`theme.changed`、`locale.changed`） |
+| `"notes:path"` | 读取命令目标文件的本机绝对路径（含笔记本外打开的文件），不读内容 | `plugin.command` 的 `context.file` |
 
 ### 8.2 `manifest.contributes` 字段定义
 
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
 - 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
-- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16。
+- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
 1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
@@ -729,12 +732,17 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 3. **`commands`**（需 `"ui:commands"`）：注册到命令面板并支持默认快捷键。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
    - `shortcut`（可选字符串）：`shortcuts.go` 规格形式，如 `"cmd-alt-p"`。宿主与编辑器已占用的组合（如 `cmd-f`、`cmd-b`、`cmd-s`、`cmd-shift-p`、`cmd-shift-k`、`cmd-1`…`cmd-9`）不会触发插件命令。
-4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。
+4. **`page_menu`**（需 `"ui:commands"`）：向页面右上角 `…` 菜单追加条目。Markdown 笔记、代码/HTML/SVG 源码与图片预览等所有页面都会显示。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
 5. **`editor_menu`**（需 `"ui:commands"`）：向编辑器右键菜单追加条目（渲染原生彩色 SVG 图标）。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填，须引用已声明的 `commands[].id`）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
-6. **`sidebar_menu`**（需 `"ui:sidebar"`，且 `command` 引用已声明的 `commands[].id`）：向左侧栏文件树笔记右键菜单追加条目。
-   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。触发时 `context.source` 为 `"sidebar_menu"`，`context.note` 为右键目标笔记的相对路径。
+6. **`sidebar_menu`**（需 `"ui:sidebar"`，且 `command` 引用已声明的 `commands[].id`）：向左侧栏文件树右键菜单追加条目。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+   - `targets`（可选字符串数组，仅 `sidebar_menu` 可用）：`"note"` | `"folder"`，不可重复；省略时为 `["note"]`（只在笔记行显示）。声明 `["note", "folder"]` 可同时出现在文件夹行。
+   - 触发时 `context.source` 为 `"sidebar_menu"`；右键笔记时 `context.note` 为其相对路径，右键文件夹时改为 `context.folder`（文件夹相对路径，`note` 为空）。
+6.1. **`tab_menu`**（需 `"ui:commands"`，且 `command` 引用已声明的 `commands[].id`）：向顶栏标签页右键菜单顶部追加条目。
+   - `id`（必填）、`title`（必填 `LocalizedText`）、`command`（必填）、`icon`（可选 `DuoIconSpec`，缺省回退 `manifest.icon`）。
+   - 触发时 `context.source` 为 `"tab_menu"`，目标是被右键的标签（不一定是当前活动标签）。目标在当前笔记本内时 `context.note` 为其相对路径；笔记本外打开的文件 `note` 为空，只能通过 `context.file`（需 `"notes:path"`）拿到路径。
 7. **`panels`**（需 `"ui:panels"`）：注册右侧边栏面板（标题栏自动渲染 `icon`）。
    - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
    - 对应渲染表面：`"panel:<id>"`。
@@ -765,19 +773,24 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 ### 8.4 `plugin.command` 与工作区 `plugin.event`
 
 1. **`plugin.command`**（Host -> Plugin）
-   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
+   - 触发来源：命令面板、快捷键、顶栏按钮、页面菜单、编辑器菜单、侧栏右键菜单、标签页右键菜单或状态栏条目（30 秒超时；若插件未启动，宿主会自动拉起）。
    - 请求 `params`：
      ```json
      {
        "command_id": "toggle_focus",
        "context": {
          "note": "welcome.md",
+         "file": "/abs/path/to/notebook/welcome.md",
          "selection": "选中的文本",
          "source": "palette"
        }
      }
      ```
-     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径；`sidebar_menu` 时填充右键目标笔记相对路径）、`context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）、`context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"sidebar_menu"` | `"status"`）。
+     - `context.note`（可选，缺省时由宿主填充当前活动笔记相对路径；`sidebar_menu` / `tab_menu` 时为右键目标的相对路径，目标不在当前笔记本内时为空）。
+     - `context.folder`（可选，仅 `sidebar_menu` 右键文件夹行时下发，文件夹相对路径）。
+     - `context.file`（可选，仅当插件持有 `"notes:path"` 时下发）：目标的本机绝对路径。菜单类来源为右键目标，其余来源为当前活动标签；包括代码、图片等非 Markdown 文件与笔记本外打开的文件。没有打开的标签时为空。
+     - `context.selection`（可选，仅当插件持有 `"editor:read"` 时下发）。
+     - `context.source`（`"palette"` | `"shortcut"` | `"titlebar"` | `"page_menu"` | `"editor_menu"` | `"sidebar_menu"` | `"tab_menu"` | `"status"`）。
    - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行", "show_plugin_icon": true}`（字段均可选；`status` 非空时宿主会弹出对应 `tone` 的 Toast 提示，默认 `"info"` 并附带插件图标，传 `"show_plugin_icon": false` 可恢复纯色圆点）。
 
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
@@ -841,8 +854,8 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
 - **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
-- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。
 - **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python、Ruby、PHP、Lua、R、JavaScript、TypeScript、HTML、Vue、Svelte、CSS/SCSS/Less、JSON、YAML、TOML/INI、XML、Property List、SQL、GraphQL、Protobuf、Shell、Dockerfile、Makefile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
+- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。
 - **系统「打开方式」自动关联**：启用、停用或卸载语言扩展时，宿主会在后台无感同步 `extensions` 到操作系统的「打开方式」菜单（macOS 通过用户目录隐形中转小壳自动跳过主程序已接管的纯文本与多段后缀；Windows 写当前用户 `HKCU` 专属 `Block.Document` ProgID 的 `OpenWithProgids`，均不抢占默认程序；Linux 维护 `NoDisplay=true` 的用户级 `block-plugins.desktop`，仅关联系统 MIME 数据库已收录的类型、不覆写主入口也不新增自定义 MIME，若桌面未给某细分子类型单独指定默认应用，部分桌面如 GNOME/GIO 可能优先按精确子类型回落），无需管理员权限；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
 
 ### 9.1 `contributes.languages` 字段定义
