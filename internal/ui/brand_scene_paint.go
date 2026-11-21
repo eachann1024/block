@@ -32,17 +32,18 @@ type brandSceneState struct {
 }
 
 const (
-	brandSceneFrameRate    = 30
-	brandSceneMaxDt        = 100 * time.Millisecond
-	brandSceneSwitchDur    = 900 * time.Millisecond
-	brandSceneFadeInDur    = 520 * time.Millisecond
-	brandSceneFadeOutDur   = 420 * time.Millisecond
-	brandSceneOrbFadeDur   = 300 * time.Millisecond
-	brandSceneMotionEnvDur = 450 * time.Millisecond
-	brandSceneTempoEaseDur = 600 * time.Millisecond
-	brandSceneDensityDur   = 500 * time.Millisecond
-	brandSceneArtFeatherW  = float32(24)
-	brandSceneSkyTailFade  = float32(0.75) // matches CSS mask fading to 0.25 at the right edge
+	brandSceneFrameRate        = 30
+	brandSceneMinimalFrameRate = 10
+	brandSceneMaxDt            = 100 * time.Millisecond
+	brandSceneSwitchDur        = 900 * time.Millisecond
+	brandSceneFadeInDur        = 520 * time.Millisecond
+	brandSceneFadeOutDur       = 420 * time.Millisecond
+	brandSceneOrbFadeDur       = 300 * time.Millisecond
+	brandSceneMotionEnvDur     = 450 * time.Millisecond
+	brandSceneTempoEaseDur     = 600 * time.Millisecond
+	brandSceneDensityDur       = 500 * time.Millisecond
+	brandSceneArtFeatherW      = float32(24)
+	brandSceneSkyTailFade      = float32(0.75) // matches CSS mask fading to 0.25 at the right edge
 )
 
 // PaintBrandSceneBand paints the 88px top brand band onto el's own backdrop
@@ -374,7 +375,12 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 			if inTransition {
 				p.AnimationFrame()
 			} else if !opts.PauseAnim && curSc != nil && st.rate > 0 && artEase > 0.002 {
-				p.AnimationFrameRate(brandSceneFrameRate)
+				// Minimal keeps only slow landscape motion, so it redraws far less often to save power.
+				fps := float32(brandSceneFrameRate)
+				if opts.Motion.Density == BrandDensityMinimal {
+					fps = brandSceneMinimalFrameRate
+				}
+				p.AnimationFrameRate(fps)
 			}
 		}
 	})
