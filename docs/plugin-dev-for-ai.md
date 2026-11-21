@@ -185,14 +185,14 @@ example-sync/
          "action_feedback", "action_progress", "note_revision",
          "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
          "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
-         "editor_insert_mode", "dialog_token"
+         "editor_insert_mode", "dialog_token", "checklist_add_folder"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -378,7 +378,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
 
 - 选择本地文件夹使用 `folder`，需要同时允许选文件时附加 `accept_extensions`（如 `[".zip"]`）；远端路径和分支等文本使用 `input` 并给合理默认值；单项下拉用 `select`，多选列表（如勾选多个笔记本）用 `checklist`。
 - 离散控件（`switch`、`segmented`、`select`、`checklist`、`folder`）切换后建议立即在 `plugin.render` 中持久化并通过 `result.values` 回传，不要强制用户再点「保存」；仅在包含远端地址、密钥等多项文本输入时提供「测试连接 / 保存」按钮。
-- 涉及多笔记本同步或批量处理的插件，应通过 `host.notebooks.list` 列出全部笔记本并交由 `checklist` 勾选，只对勾选的笔记本执行操作。
+- 涉及多笔记本同步或批量处理的插件，不要扫描并列出全部笔记本：声明 `ui_capabilities` 含 `"checklist_add_folder"` 时，用 `add_folder: true` 的 `checklist` 只展示用户通过右上角加号主动添加的文件夹，只对列表内的文件夹执行操作；旧宿主缺少该能力时回退为 `host.notebooks.list` 加普通 `checklist` 勾选。
 - `layout` 合法值为 `""` | `"stacked"` | `"full"`：`"stacked"` 由 `segmented`/`folder`/`input`/`secret` 消费，`"full"` 仅 `segmented` 消费（且此时可省略 `label`）。
 - 柔和色板键（用于 `metrics[].tone`、`log_list` 占比条与 `treemap.tiles[].color`）：`"assets"`（绿）、`"config"`（蓝）、`"notes"`（靛紫）、`"history"`（紫）、`"recovery"`（青）、`"logs"`（红）、`"ai_sessions"`（琥珀），省略或未知值回退中性底色。
 
@@ -472,7 +472,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
    ```
 10. **`preview`（实时视觉预览卡片）**：不含 `id`/`label`，必填 `preview` 对象：
     - `variant`：`"article"`（最多显示 14 条非空行）| `"cards"`（每卡最多 5 条非空行；`cards` 为空时回退 `article`）| `"diff"`（`before`/`after`/`body` 各最多 6 条非空行）| `"plan"`（默认，最多 10 条非空行）
-    - `palette`：可选 `"ocean"`（默认）| `"paper"`（浅色纸感）| `"ink"`（暗色墨夜）| `"warm"`（暖纸衬线）
+    - `palette`：可选 `"ocean"`（默认）| `"paper"`（浅色纸感）| `"ink"`（暗色墨夜）| `"warm"`（暖纸衬线）。`article` / `cards` / `diff` 按所选纸面绘制；`plan` 在深色主题下若选 `paper` 或 `warm`，列表改跟应用底色，避免浅色字落在白底上。
     - `title`：必填；`badge`、`subtitle` 可选
     - `body`：多行正文（`"article"` 支持 `# `、`## `、`> `、`[1] ` 脚注行）
     - `before` / `after`：用于 `"diff"` 对照文本
@@ -506,7 +506,21 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
       ]
     }
     ```
-12. **`checklist`（多选勾选列表，推荐用于多笔记本勾选）**：`id` 必填，`label`、`empty_text` 可选，`value` 为已选 `string[]`（省略或 `null` 归一化为 `[]`，不会在解码时过滤旧选项值），`options` 每项含 `value`（必填唯一）、`label`（必填）及可选 `detail` / `badge` / `tooltip`；多于 1 项时宿主自动提供「全选 / 取消全选」。注意 `checklist` 只能放在卡片顶层，不能放入 `group`：
+12. **`checklist`（多选勾选列表）**：`id` 必填，`label`、`empty_text` 可选，`value` 为已选 `string[]`（省略或 `null` 归一化为 `[]`，不会在解码时过滤旧选项值），`options` 每项含 `value`（必填唯一）、`label`（必填）及可选 `detail` / `badge` / `tooltip`；多于 1 项时宿主自动提供「全选 / 取消全选」。注意 `checklist` 只能放在卡片顶层，不能放入 `group`。
+    - **`add_folder`（可选 `bool`，仅限 `checklist`，需 `"checklist_add_folder"` 能力）**：改为「用户添加的文件夹列表」。宿主在卡片标题栏右上角（或控件自身标题行右侧）显示加号按钮，点击弹出系统目录选择器；选中的目录会登记为宿主笔记本（不切换当前笔记本，`host.notes.*` 因此可访问），以绝对路径追加到 `value` 并立即触发 `plugin.render`。列表只渲染 `value` 中存在对应 `options` 的项，每行没有勾选框，行尾提供移除按钮（仅从 `value` 移除，不会删除笔记本或文件）。插件应让 `options` 只包含 `value` 内的路径；`value` 为空时显示 `empty_text`：
+      ```json
+      {
+        "kind": "checklist",
+        "id": "selected_notebooks",
+        "add_folder": true,
+        "value": ["/Users/name/Notes/Work"],
+        "empty_text": "点击右上角 + 添加要同步的文件夹",
+        "options": [
+          { "value": "/Users/name/Notes/Work", "label": "Work", "detail": "~/Notes/Work", "tooltip": "/Users/name/Notes/Work" }
+        ]
+      }
+      ```
+    - 普通勾选列表示例：
     ```json
     {
       "kind": "checklist",
