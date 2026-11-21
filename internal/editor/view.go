@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -427,6 +428,16 @@ func (s *Session) HasAnnotationInputFocused(c *ui.Context) bool {
 	return s.commentHandle.Focused(c) || s.editingHandle.Focused(c)
 }
 
+var findShortcut = func() *atomic.Value { v := &atomic.Value{}; v.Store("cmd-f"); return v }()
+
+// SetFindShortcut sets the chord that opens find-in-note for every editor session.
+func SetFindShortcut(spec string) {
+	if strings.TrimSpace(spec) == "" {
+		spec = "cmd-f"
+	}
+	findShortcut.Store(spec)
+}
+
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	svc := c.Services()
 	annotInputFocused := s.HasAnnotationInputFocused(c)
@@ -440,7 +451,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if s.previewMedia != nil {
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyF) {
+	if mods, key, ok := appUi.ParseShortcut(findShortcut.Load().(string)); ok && c.Shortcut(mods, key) {
 		s.OpenFind()
 	}
 	if !annotInputFocused && c.Shortcut(0, ui.KeyEscape) {

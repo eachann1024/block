@@ -39,6 +39,7 @@ var shortcutActionSpecs = []shortcutActionSpec{
 	{action: "global_summon", buttonID: "settings-rec-search", def: defaultSearchShortcut, zh: "全局唤出", en: "Global Summon"},
 	{action: "quick_note", buttonID: "settings-rec-quick", def: defaultQuickShortcut, zh: "速记小窗", en: "Quick Note"},
 	{action: "search", buttonID: "settings-rec-inapp-search", def: "cmd-k", zh: "搜索笔记", en: "Search Notes"},
+	{action: "find", buttonID: "settings-keycap-find", def: "cmd-f", zh: "当前笔记查找", en: "Find in Note"},
 	{action: "new_note", buttonID: "settings-rec-new-note", def: "cmd-n", zh: "新建笔记", en: "New Note"},
 	{action: "toggle_sidebar", buttonID: "settings-rec-sidebar", def: "alt-b", zh: "显示或隐藏侧栏", en: "Toggle Sidebar"},
 	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI 助手面板", en: "AI Assistant Panel"},
@@ -77,8 +78,6 @@ func EffectiveShortcut(st model.AppState, action string) string {
 			}
 		}
 		return defaultQuickShortcut
-	case "find":
-		return "cmd-f"
 	case "performance":
 		return "cmd-shift-m"
 	default:
@@ -2254,14 +2253,7 @@ func (m *Manager) saveFolderRules(rules []model.FolderRule) {
 	})
 }
 
-// renderSettingsShortcutsTab renders the exact 7-row Shortcuts list from app_settings_tabs.rs:74-103:
-// 1. 全局唤出 (recorder)
-// 2. 速记小窗 (recorder)
-// 3. 搜索笔记 (static keycap)
-// 4. 当前笔记查找 (static keycap)
-// 5. 新建笔记 (static keycap)
-// 6. AI 助手面板 (static keycap)
-// 7. 性能与占用 (static keycap)
+// renderSettingsShortcutsTab renders the Shortcuts tab; every listed row is a recorder.
 func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 	pal := theme.Ocean()
 	st := m.currentState()
@@ -2310,17 +2302,17 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		internalui.SettingsSection(c, func() {
 			internalui.SettingsSectionTitle(c, theme.Tr("应用内", "In App"), nil)
 			internalui.SettingsRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
-				staticKeycapTray(c, "settings-keycap-search", EffectiveShortcut(st, "search"))
+				m.shortcutRecorderTray(c, "settings-keycap-search", "search", EffectiveShortcut(st, "search"))
 			})
 			internalui.SettingsRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
-				staticKeycapTray(c, "settings-keycap-find", "cmd-f")
+				m.shortcutRecorderTray(c, "settings-keycap-find", "find", EffectiveShortcut(st, "find"))
 			})
 			internalui.SettingsRow(c, theme.Tr("新建笔记", "New Note"), func() {
-				staticKeycapTray(c, "settings-keycap-new", EffectiveShortcut(st, "new_note"))
+				m.shortcutRecorderTray(c, "settings-keycap-new", "new_note", EffectiveShortcut(st, "new_note"))
 			})
 			if m.AIEnabled == nil || m.AIEnabled() {
 				internalui.SettingsRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
-					staticKeycapTray(c, "settings-keycap-ai", EffectiveShortcut(st, "toggle_ai"))
+					m.shortcutRecorderTray(c, "settings-keycap-ai", "toggle_ai", EffectiveShortcut(st, "toggle_ai"))
 				})
 			}
 		})
@@ -2379,24 +2371,6 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 			m.recordingShortcut = kind
 		}
 	}
-}
-
-func staticKeycapTray(c *ui.Context, id, spec string) {
-	pal := theme.Ocean()
-	tray := ui.Row(c.Key(id)).Height(theme.HeightCompact).Gap(theme.Space4).
-		AlignItems(ui.Center).Justify(ui.Center)
-	internalui.Probe(tray, id)
-	tray.Children(func() {
-		for _, part := range hotkeyParts(spec) {
-			internalui.ShortcutLabel(c, part, internalui.ShortcutLabelStyle{
-				FontSize:   theme.KeycapFontSize,
-				LineHeight: theme.LineMeta,
-				FontWeight: theme.WeightMono,
-				Color:      pal.TextSecondary,
-				IsShortcut: true,
-			})
-		}
-	})
 }
 
 func hotkeyParts(spec string) []string {

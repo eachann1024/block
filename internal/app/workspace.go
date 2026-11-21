@@ -4196,6 +4196,7 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 	}
 
 	st := w.State()
+	editor.SetFindShortcut(modals.EffectiveShortcut(st, "find"))
 
 	matchRaw := func(raw string) bool {
 		mods, key, ok := blockui.ParseShortcut(raw)
