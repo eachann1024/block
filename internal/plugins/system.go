@@ -600,10 +600,27 @@ func (s *Supervisor) EmitSystemEvent(name string, online bool) {
 }
 
 const blockSyncNotificationEvent = "plugin.notifications_retry"
+const blockSyncIntervalEvent = "plugin.sync_interval"
 
 func (s *Supervisor) RetrySyncNotifications() {
 	s.retrySystemFailureNotices(nil)
 	s.queueSystemEvent("block-sync", blockSyncNotificationEvent, map[string]any{"event": blockSyncNotificationEvent})
+}
+
+// EmitSyncInterval wakes block-sync so it can run its scheduled sync when due.
+func (s *Supervisor) EmitSyncInterval(online bool) {
+	installed, ok := s.GetInstalled("block-sync")
+	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
+		return
+	}
+	if state := readSyncState(installed.DataDir); state["config"] == nil && state["notebook_configs"] == nil {
+		return
+	}
+	s.queueSystemEvent("block-sync", blockSyncIntervalEvent, map[string]any{
+		"event":     blockSyncIntervalEvent,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"online":    online,
+	})
 }
 
 func (s *Supervisor) queueSystemEvent(pluginID, name string, params map[string]any) {
@@ -633,7 +650,7 @@ func (s *Supervisor) dispatchSystemEvents(pluginID string, queue *systemEventQue
 			return
 		}
 		var params map[string]any
-		for _, name := range []string{blockSyncNotificationEvent, "system.wake", "network.changed", "app.focus", blockSyncCredentialEvent} {
+		for _, name := range []string{blockSyncNotificationEvent, "system.wake", "network.changed", blockSyncIntervalEvent, "app.focus", blockSyncCredentialEvent} {
 			if params = queue.pending[name]; params != nil {
 				delete(queue.pending, name)
 				break
@@ -657,7 +674,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	if !ok || !installed.Enabled || !installed.Manifest.HasPermission(PermEventsSystem) {
 		return
 	}
-	syncEvent := pluginID == "block-sync" && (params["event"] == "system.wake" || params["event"] == "network.changed")
+	syncEvent := pluginID == "block-sync" && (params["event"] == "system.wake" || params["event"] == "network.changed" || params["event"] == blockSyncIntervalEvent)
 	if syncEvent && params["event"] == "network.changed" && params["online"] != true {
 		return
 	}
@@ -665,7 +682,7 @@ func (s *Supervisor) deliverSystemEvent(pluginID string, params map[string]any) 
 	rt, err := s.ensureRuntime(startCtx, pluginID, root)
 	finishStart()
 	if err != nil {
-		if syncEvent {
+		if syncEvent && params["event"] != blockSyncIntervalEvent {
 			go s.reportSystemSyncStartFailure(installed, root, params["event"] == "network.changed")
 		}
 		return
