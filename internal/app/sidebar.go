@@ -54,6 +54,9 @@ type SidebarUIState struct {
 	ContextY        float32
 	MoveSubmenuOpen bool
 	MoveRowBounds   ui.Rect
+	// MoveHoverHold blocks hover from reopening the cascade after a keyboard
+	// close until the pointer leaves the "Move to…" row.
+	MoveHoverHold bool
 
 	treeScroll ui.ScrollState
 	treeRows   []flatTreeRow
@@ -99,6 +102,7 @@ func (s *SidebarUIState) OpenBlankContextMenu(x, y float32) {
 	s.ContextIsDir = false
 	s.ContextX, s.ContextY = x, y
 	s.MoveSubmenuOpen = false
+	s.MoveHoverHold = false
 }
 
 type sidebarContextKey struct {
@@ -119,6 +123,7 @@ func (s *SidebarUIState) ClosePopups() bool {
 	s.ConfirmForgetNotebook = ""
 	s.ContextOpen = false
 	s.MoveSubmenuOpen = false
+	s.MoveHoverHold = false
 	s.MenuCursor, s.MoveCursor = -1, -1
 	return had
 }
@@ -172,6 +177,9 @@ func isSameOrDescendant(path, ancestor string) bool {
 
 // SidebarProps supplies current workspace state and callbacks to RenderSidebar.
 type SidebarProps struct {
+	// DeferPopups, when set, queues the menu overlays so they are built after
+	// the editor and stack above its floating toolbars.
+	DeferPopups    func(fn func())
 	State          *SidebarUIState
 	Width          *float32
 	OnWidthChanged func(w float32)
@@ -181,7 +189,6 @@ type SidebarProps struct {
 	Notebooks      []string
 	Entries        []model.FileEntry
 	ActiveNote     string
-	Notice         string
 
 	SettingsOpen bool
 	SearchOpen   bool
@@ -507,20 +514,6 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 					}
 					p.State.OpenBlankContextMenu(cx, cy)
 				}
-
-				if p.Notice != "" {
-					noticeBG := chrome.Ground
-					if p.FloatingCard {
-						noticeBG = pal.Sidebar
-					}
-					noticeBar := ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).MaxHeight(48).
-						Padding(4, 20, 4, 20).Background(noticeBG)
-					noticeBar.Children(func() {
-						blockui.Scroll(c).MaxHeight(40).Children(func() {
-							ui.Text(c, p.Notice).FontSize(theme.FontMeta).TextColor(pal.TextSecondary)
-						})
-					})
-				}
 			})
 
 			// Reuse storage on the next frame without retaining the file tree.
@@ -627,6 +620,10 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 		}
 	})
 
+	if p.DeferPopups != nil {
+		p.DeferPopups(func() { renderSidebarPopups(c, p) })
+		return
+	}
 	renderSidebarPopups(c, p)
 }
 
@@ -966,6 +963,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		p.State.ContextY = cy
 		p.State.MoveSubmenuOpen = false
 		p.State.MoveRowBounds = ui.Rect{}
+		p.State.MoveHoverHold = false
 	}
 
 	if p.State.PendingMiddleOpenPath == entry.Path {
@@ -1500,7 +1498,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 								if b := el.Bounds(); b.W > 0 {
 									p.State.MoveRowBounds = b
 								}
-								if el.Hovered() && !p.State.MoveSubmenuOpen {
+								if !el.Hovered() {
+									p.State.MoveHoverHold = false
+								} else if !p.State.MoveSubmenuOpen && !p.State.MoveHoverHold {
 									p.State.MoveSubmenuOpen = true
 									p.State.MoveCursor = -1
 								}
@@ -1529,6 +1529,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				blockui.Probe(subCard, "tree-move-pop")
 				if subCard.OverlayShortcut(0, ui.KeyLeft) {
 					p.State.MoveSubmenuOpen = false
+					p.State.MoveHoverHold = true
 					p.State.MoveCursor = -1
 				} else {
 					blockui.NavigateMenu(c, subCard, choices, &p.State.MoveCursor)
@@ -1548,6 +1549,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			if scrim.OverlayShortcut(0, ui.KeyEscape) {
 				if p.State.MoveSubmenuOpen {
 					p.State.MoveSubmenuOpen = false
+					p.State.MoveHoverHold = true
 					p.State.MoveCursor = -1
 				} else {
 					p.State.ClosePopups()

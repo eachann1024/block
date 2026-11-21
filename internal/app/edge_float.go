@@ -201,7 +201,6 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	notebooks []string,
 	entries []model.FileEntry,
 	activeTab string,
-	notice string,
 	activeSess *editor.Session,
 ) {
 	if !canLeft && !canRight {
@@ -352,7 +351,7 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 					w.RequestRedraw()
 				})
 			} else {
-				w.renderFloatingSidebarCard(c, leftCardW, stSnap, activeNB, notebooks, entries, activeTab, notice)
+				w.renderFloatingSidebarCard(c, leftCardW, stSnap, activeNB, notebooks, entries, activeTab)
 			}
 		})
 	}
@@ -451,7 +450,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 	notebooks []string,
 	entries []model.FileEntry,
 	activeNote string,
-	notice string,
 ) {
 	fw := cardWidth
 	RenderSidebar(c, SidebarProps{
@@ -462,7 +460,6 @@ func (w *Workspace) renderFloatingSidebarCard(
 		Notebooks:       notebooks,
 		Entries:         entries,
 		ActiveNote:      activeNote,
-		Notice:          notice,
 		SettingsOpen:    w.modals.IsSettingsOpen(),
 		ShortcutNewNote: w.shortcutForSidebar(stSnap),
 		OnNewFolder: func() {

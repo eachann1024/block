@@ -27,6 +27,9 @@ const (
 
 // Host decouples Tarot UI & rituals from Workspace internals.
 type Host struct {
+	// DeferMenus, when set, queues sidebar menu overlays so the host builds
+	// them after the editor (above its floating toolbars, below modals).
+	DeferMenus     func(fn func())
 	OpenNote       func(absPath string)
 	ToggleAI       func()
 	OpenAIWithMsg  func(prompt string)

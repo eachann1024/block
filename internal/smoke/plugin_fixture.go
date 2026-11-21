@@ -579,19 +579,19 @@ func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (s
 
 	// Dismiss the status toast produced by restore_slots if shown.
 	tt.Frame()
-	if _, ok := blockui.TargetBounds("plugin-toast-close"); ok {
-		_ = clickTarget(tt, "plugin-toast-close")
-		_ = waitForProbeGone(tt, "plugin-toast", 2*time.Second)
+	if _, ok := blockui.TargetBounds("global-toast-close"); ok {
+		_ = clickTarget(tt, "global-toast-close")
+		_ = waitForProbeGone(tt, "global-toast", 2*time.Second)
 	}
 
 	// 4) Status bar & titlebar command button clicks -> toast + host.status.set + host.titlebar.set_button badge -> dismiss toast.
 	if err := clickTarget(tt, statusItemID); err != nil {
 		return "", err
 	}
-	if _, err := waitForProbe(tt, "plugin-toast", 5*time.Second); err != nil {
-		return "", fmt.Errorf("expected plugin-toast after clicking status item: %w", err)
+	if _, err := waitForProbe(tt, "global-toast", 5*time.Second); err != nil {
+		return "", fmt.Errorf("expected global-toast after clicking status item: %w", err)
 	}
-	if _, err := waitForProbe(tt, "plugin-toast-close", 2*time.Second); err != nil {
+	if _, err := waitForProbe(tt, "global-toast-close", 2*time.Second); err != nil {
 		return "", err
 	}
 	if err := waitUntil(3*time.Second, func() bool {
@@ -604,18 +604,18 @@ func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (s
 	}); err != nil {
 		return "", fmt.Errorf("host.status.set did not update status item text: %w", err)
 	}
-	if err := clickTarget(tt, "plugin-toast-close"); err != nil {
+	if err := clickTarget(tt, "global-toast-close"); err != nil {
 		return "", err
 	}
-	if err := waitForProbeGone(tt, "plugin-toast", 3*time.Second); err != nil {
-		return "", fmt.Errorf("plugin-toast did not close after clicking close button: %w", err)
+	if err := waitForProbeGone(tt, "global-toast", 3*time.Second); err != nil {
+		return "", fmt.Errorf("global-toast did not close after clicking close button: %w", err)
 	}
 	// Click titlebar command button and confirm badge updated to "2" and toast re-appeared.
 	if err := clickTarget(tt, toastBtnID); err != nil {
 		return "", err
 	}
-	if _, err := waitForProbe(tt, "plugin-toast", 5*time.Second); err != nil {
-		return "", fmt.Errorf("expected plugin-toast after clicking titlebar command button: %w", err)
+	if _, err := waitForProbe(tt, "global-toast", 5*time.Second); err != nil {
+		return "", fmt.Errorf("expected global-toast after clicking titlebar command button: %w", err)
 	}
 	if err := waitUntil(3*time.Second, func() bool {
 		for _, b := range sup.TitlebarButtons() {
@@ -627,11 +627,11 @@ func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (s
 	}); err != nil {
 		return "", fmt.Errorf("host.titlebar.set_button did not update button badge to 2: %w", err)
 	}
-	if err := clickTarget(tt, "plugin-toast-close"); err != nil {
+	if err := clickTarget(tt, "global-toast-close"); err != nil {
 		return "", err
 	}
-	if err := waitForProbeGone(tt, "plugin-toast", 3*time.Second); err != nil {
-		return "", fmt.Errorf("plugin-toast did not close after second dismiss: %w", err)
+	if err := waitForProbeGone(tt, "global-toast", 3*time.Second); err != nil {
+		return "", fmt.Errorf("global-toast did not close after second dismiss: %w", err)
 	}
 
 	// 5) Plugin side panel: click titlebar button -> panel opens -> panel surface renders -> click panel button to open dialog.
@@ -679,9 +679,9 @@ func runPluginUIAcceptance(ws *app.Workspace, tt *ui.Tester, notePath string) (s
 		return "", fmt.Errorf("plugin dialog did not close via host.ui.close_dialog: %w", err)
 	}
 	// Dismiss insert toast if still visible.
-	if _, ok := blockui.TargetBounds("plugin-toast-close"); ok {
-		_ = clickTarget(tt, "plugin-toast-close")
-		_ = waitForProbeGone(tt, "plugin-toast", 2*time.Second)
+	if _, ok := blockui.TargetBounds("global-toast-close"); ok {
+		_ = clickTarget(tt, "global-toast-close")
+		_ = waitForProbeGone(tt, "global-toast", 2*time.Second)
 	}
 
 	// 7) Close plugin side panel via close button.
