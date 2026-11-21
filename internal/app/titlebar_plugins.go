@@ -385,7 +385,7 @@ func renderPluginOverflowMenu(c *ui.Context, p TitlebarProps, scrim ui.Element, 
 										Center().Radius(theme.RadiusPill).Background(pal.Accent).
 										Children(func() {
 											ui.Text(c, badge).FontSize(theme.FontMicro).LineHeight(1).
-												FontWeight(theme.WeightTitle).TextColor(pal.AccentText).SingleLine()
+												FontWeight(theme.WeightControl).TextColor(pal.AccentText).SingleLine()
 										})
 								}
 							}

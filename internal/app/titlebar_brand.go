@@ -131,7 +131,7 @@ func renderBrandMenu(c *ui.Context, p TitlebarProps, scrim ui.Element) {
 				blockui.AppMarkImage(c, theme.IconChrome+4)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, "Block").FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 					sub := brandWebsiteHost
 					if p.AppVersion != "" {
 						sub = "v" + p.AppVersion + " · " + sub

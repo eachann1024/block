@@ -280,7 +280,7 @@ func TooltipCard(c *ui.Context, anchor ui.Element, spec TooltipCardSpec) ui.Elem
 					ui.Row(c).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space6).Wrap().Children(func() {
 						if title != "" {
 							ui.Text(c, title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-								FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+								FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 						}
 						if code != "" {
 							ui.Text(c, code).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).

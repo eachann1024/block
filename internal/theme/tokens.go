@@ -31,17 +31,19 @@ const (
 	FontBody    float32 = 14 // controls, list rows, UI body (baseline)
 	FontTitle   float32 = 15 // card titles, dialog titles
 	FontEditor  float32 = 15 // editor body copy
-	FontHeading float32 = 18 // panel headings, empty-state titles
-	FontPage    float32 = 24 // settings page titles
-	FontDisplay float32 = 32 // ghost-page title of the no-note empty state
+	FontHeading       float32 = 18 // panel headings, empty-state titles
+	FontSettingsTitle float32 = 20 // settings, plugin & store page titles
+	FontPage          float32 = 24 // large display numbers, about modal title
+	FontDisplay       float32 = 32 // ghost-page title of the no-note empty state
 
-	LineMeta    float32 = 16
-	LineSmall   float32 = 18
-	LineBody    float32 = 20
-	LineTitle   float32 = 22
-	LineEditor  float32 = 24
-	LineHeading float32 = 26
-	LinePage    float32 = 32
+	LineMeta          float32 = 16
+	LineSmall         float32 = 18
+	LineBody          float32 = 20
+	LineTitle         float32 = 22
+	LineEditor        float32 = 24
+	LineHeading       float32 = 26
+	LineSettingsTitle float32 = 28
+	LinePage          float32 = 32
 	LineDisplay float32 = 40
 )
 

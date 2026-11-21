@@ -868,7 +868,7 @@ func (h *PageHistoryView) Render(
 				ui.Row(c).FillWidth().Height(38).PaddingX(14).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 					BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
 					ui.Text(c, fmt.Sprintf("%s (%d)", theme.Tr("历史版本", "Snapshots"), len(h.Entries))).
-						FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+						FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 				})
 				blockui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Padding(8).Children(func() {
 					ui.Column(c).FillWidth().Gap(4).Children(func() {

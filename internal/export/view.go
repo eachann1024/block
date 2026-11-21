@@ -571,7 +571,7 @@ func (c *Controller) renderHeader(ctx *ui.Context, pal theme.Palette, title stri
 		// Center: icon + Title · 导出预览
 		ui.Row(ctx).Grow(1).MinWidth(0).FillHeight().PaddingX(8).Center().Gap(8).Clip().DragWindow().Children(func() {
 			icons.Draw(ctx, icons.Image, 18, pal.MonoIconColors(pal.TextSecondary))
-			ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
+			ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if !compact {
 				ui.Text(ctx, theme.Tr("· 导出预览", "· Export Preview")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 			}
@@ -767,7 +767,7 @@ func (c *Controller) renderSidebar(
 
 func renderOptionSection(ctx *ui.Context, pal theme.Palette, title string, content func()) {
 	ui.Column(ctx).FillWidth().Gap(8).Children(func() {
-		ui.Text(ctx, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+		ui.Text(ctx, title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 		content()
 	})
 }

@@ -921,6 +921,6 @@ func perfMetric(c *ui.Context, label, value string) {
 	pal := theme.Ocean()
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, label).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-		ui.Text(c, value).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+		ui.Text(c, value).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
 	})
 }

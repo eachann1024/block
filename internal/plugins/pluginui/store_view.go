@@ -417,8 +417,8 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 							if q := strings.TrimSpace(ctrl.storeQuery); q != "" {
 								nameMarks = fuzzy.HighlightRanges(name, q)
 							}
-							bui.HighlightedText(c, name, nameMarks, theme.FontTitle, theme.WeightTitle, pal.Text, pal.SearchHighlight).
-								FixedLineHeight(theme.LineTitle).MinWidth(0).Shrink(1)
+							bui.HighlightedText(c, name, nameMarks, theme.FontBody, theme.WeightControl, pal.Text, pal.SearchHighlight).
+								FixedLineHeight(theme.LineBody).MinWidth(0).Shrink(1)
 							if storeAppIsBeta(entry, card.installed, card.isInstalled) {
 								bui.BetaBadge(c, true)
 							}

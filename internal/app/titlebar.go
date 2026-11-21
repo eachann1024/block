@@ -437,7 +437,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				crumb := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(4).PaddingX(6).DragWindow()
 				crumb.Children(func() {
 					ui.Text(c, theme.Tr("设置", "Settings")).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-					ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+					ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 					ui.Text(c, localizeSettingsTabLabel(p.SettingsTabLabel)).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 				return
