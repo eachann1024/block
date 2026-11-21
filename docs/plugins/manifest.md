@@ -95,7 +95,7 @@ example-sync/
   - 另有两个不显示标签的值：`"tools"`（其他 / Other，只出现在「全部」）与 `"language"`（代码高亮 / Code Highlighting，平时不在列表中出现，仅在搜索或已安装时可见）。
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
-- `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
+- `version`：必填，须同时满足正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$` 与标准 SemVer 合法性（`golang.org/x/mod/semver`，与商店更新比较共用同一规则；如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据、禁止前导零与空预发布段如 `2.0.0-..`）。
 - `beta`：可选布尔值，默认 `false`，**正式版不要写这个字段**。写了 `"beta": true` 后，应用商店、设置侧栏和插件页标题旁会显示 `Beta` 标识，商店采集器也会同步到 `store-index.json`；转正时删掉该字段即可，宿主不做硬编码。
   - **只有同时满足以下两条才标 `beta`**：
     1. 功能还在试验，交互、设置项或存储格式随时可能大改，升级后可能需要用户重新配置；
@@ -104,7 +104,7 @@ example-sync/
 - `author`：必填非空字符串，禁止含 Emoji。
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
 - `summary`：`zh`（<= 80 个 Unicode 字符）与 `en`（<= 140 个 Unicode 字符）均必填，禁止含 Emoji。
-- `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
+- `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空；若 `category: "language"` 同时声明了 `entry.command` 或 `surfaces`/`permissions`，则按交互式插件生命周期运行，不再走纯声明式自动启用），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set` / `host.storage.set_many`）
   - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
