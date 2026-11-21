@@ -172,19 +172,21 @@ type DuoIconSpec struct {
 	AccentPaths []string `json:"accent_paths,omitempty"`
 }
 
-// AppStoreIconSpec returns the standard Ocean Paper 2x2 grid icon for the App Store sidebar entry.
+// AppStoreIconSpec returns the three-tiles-plus-add icon for the App Store sidebar entry.
 func AppStoreIconSpec() DuoIconSpec {
 	return DuoIconSpec{
 		ViewBox:   "0 0 24 24",
-		FillPaths: []string{"M4 4h6.5v6.5H4z", "M4 13.5h6.5V20H4z", "M13.5 13.5H20V20h-6.5z"},
+		FillPaths: []string{
+			"M6 4.25H9A1.75 1.75 0 0 1 10.75 6V9A1.75 1.75 0 0 1 9 10.75H6A1.75 1.75 0 0 1 4.25 9V6A1.75 1.75 0 0 1 6 4.25Z",
+			"M15 4.25H18A1.75 1.75 0 0 1 19.75 6V9A1.75 1.75 0 0 1 18 10.75H15A1.75 1.75 0 0 1 13.25 9V6A1.75 1.75 0 0 1 15 4.25Z",
+			"M6 13.25H9A1.75 1.75 0 0 1 10.75 15V18A1.75 1.75 0 0 1 9 19.75H6A1.75 1.75 0 0 1 4.25 18V15A1.75 1.75 0 0 1 6 13.25Z",
+		},
 		StrokePaths: []string{
-			"M4.8 4h4.9c.44 0 .8.36.8.8v4.9c0 .44-.36.8-.8.8H4.8a.8.8 0 0 1-.8-.8V4.8c0-.44.36-.8.8-.8Z",
-			"M4.8 13.5h4.9c.44 0 .8.36.8.8v4.9c0 .44-.36.8-.8.8H4.8a.8.8 0 0 1-.8-.8v-4.9c0-.44.36-.8.8-.8Z",
-			"M14.3 13.5h4.9c.44 0 .8.36.8.8v4.9c0 .44-.36.8-.8.8h-4.9a.8.8 0 0 1-.8-.8v-4.9c0-.44.36-.8.8-.8Z",
+			"M6 4.25H9A1.75 1.75 0 0 1 10.75 6V9A1.75 1.75 0 0 1 9 10.75H6A1.75 1.75 0 0 1 4.25 9V6A1.75 1.75 0 0 1 6 4.25Z",
+			"M15 4.25H18A1.75 1.75 0 0 1 19.75 6V9A1.75 1.75 0 0 1 18 10.75H15A1.75 1.75 0 0 1 13.25 9V6A1.75 1.75 0 0 1 15 4.25Z",
+			"M6 13.25H9A1.75 1.75 0 0 1 10.75 15V18A1.75 1.75 0 0 1 9 19.75H6A1.75 1.75 0 0 1 4.25 18V15A1.75 1.75 0 0 1 6 13.25Z",
 		},
-		AccentPaths: []string{
-			"M14.3 4h4.9c.44 0 .8.36.8.8v4.9c0 .44-.36.8-.8.8h-4.9a.8.8 0 0 1-.8-.8V4.8c0-.44.36-.8.8-.8Z",
-		},
+		AccentPaths: []string{"M16.5 13.5V19.5M13.5 16.5H19.5"},
 	}
 }
 

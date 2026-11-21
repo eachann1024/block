@@ -210,6 +210,12 @@ const (
 	Clock           Icon = "clock"
 	SkipForward     Icon = "skip-forward"
 	Maximize        Icon = "maximize"
+
+	// Settings sidebar categories: one 24 grid, 1.5 stroke, optical centre on (12, 12).
+	SettingsAppearance Icon = "settings-appearance"
+	SettingsAI         Icon = "settings-ai"
+	SettingsFolder     Icon = "settings-folder"
+	SettingsShortcuts  Icon = "settings-shortcuts"
 )
 
 type MascotState string
