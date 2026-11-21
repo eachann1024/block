@@ -27,7 +27,7 @@ func (w *Workspace) initTarot() {
 			if absPath == "" {
 				return
 			}
-			_ = w.OpenNote(absPath, 0)
+			_ = w.openNoteInternal(absPath, false, true, 0)
 		},
 		ToggleAI: func() {
 			w.ToggleAIPanel()
