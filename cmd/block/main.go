@@ -288,6 +288,7 @@ func main() {
 			"global_summon":  modals.EffectiveShortcut(cur, "global_summon"),
 			"quick_note":     modals.EffectiveShortcut(cur, "quick_note"),
 			"search":         modals.EffectiveShortcut(cur, "search"),
+			"find":           modals.EffectiveShortcut(cur, "find"),
 			"new_note":       modals.EffectiveShortcut(cur, "new_note"),
 			"toggle_sidebar": modals.EffectiveShortcut(cur, "toggle_sidebar"),
 			"toggle_ai":      modals.EffectiveShortcut(cur, "toggle_ai"),
