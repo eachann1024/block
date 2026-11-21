@@ -81,6 +81,9 @@ func sourceEditorTheme(pal theme.Palette) *codeed.Theme {
 
 func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
 	if lang, tag := plugins.ResolveCodeLanguageForFile(filePath); lang != nil {
+		if tag == "plist" {
+			lang = plistSourceLanguage(lang, text)
+		}
 		return lang, tag
 	}
 	lang := codeed.LanguageForText(filepath.Base(filePath), text)
@@ -89,6 +92,42 @@ func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
 		tag = sourceTagForLanguage(lang.Name)
 	}
 	return lang, tag
+}
+
+// plistSourceLanguage preserves the highlighter and uses the source format's comment delimiters.
+func plistSourceLanguage(lang *codeed.Language, text string) *codeed.Language {
+	line := "//"
+	block := [2]string{"/*", "*/"}
+	if isXMLPlistSource(text) {
+		line = ""
+		block = [2]string{"<!--", "-->"}
+	}
+	if lang.LineComment == line && lang.BlockComment == block {
+		return lang
+	}
+	configured := *lang
+	configured.LineComment = line
+	configured.BlockComment = block
+	return &configured
+}
+
+func isXMLPlistSource(text string) bool {
+	markup, ok := strings.CutPrefix(strings.TrimSpace(text), "<")
+	if !ok {
+		return false
+	}
+	if strings.HasPrefix(markup, "?") || strings.HasPrefix(markup, "!") {
+		return true
+	}
+	if end := strings.IndexAny(markup, " \t\r\n/>"); end >= 0 {
+		markup = markup[:end]
+	}
+	switch markup {
+	case "plist", "array", "dict", "key", "string", "integer", "real", "date", "data", "true", "false":
+		return true
+	default:
+		return false
+	}
 }
 
 // sourceTagForLanguage turns a MyGo language name into the fence tag Markdown
@@ -166,6 +205,9 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 		var sb strings.Builder
 		_, _ = st.Buffer.WriteTo(&sb)
 		s.Source.Text = sb.String()
+		if s.Source.Language == "plist" {
+			st.Buffer.SetLanguage(plistSourceLanguage(st.Buffer.Language(), s.Source.Text))
+		}
 		if s.IsSVG {
 			s.reparseSVG()
 		}
