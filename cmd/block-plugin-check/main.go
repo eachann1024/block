@@ -159,8 +159,11 @@ func runLocaleChecks(m *plugins.Manifest, pluginDir, locale string, enforceNoChi
 	}
 	defer rt.Shutdown(context.Background())
 
-	if err := rt.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("[%s] plugin.initialize: %w", locale, err)
+	initCtx, initCancel := context.WithTimeout(ctx, 15*time.Second)
+	err = rt.Initialize(initCtx)
+	initCancel()
+	if err != nil {
+		return nil, fmt.Errorf("[%s] plugin.initialize (desktop 15s budget): %w", locale, err)
 	}
 	fmt.Printf("[OK] [%s] lifecycle: plugin.initialize ready=true\n", locale)
 
@@ -443,6 +446,12 @@ func checkEnglishItem(prefix string, item plugins.UIItem, sandboxDir string) err
 		}
 	}
 	if err := checkEnglishText(prefix+".empty_text", item.EmptyText); err != nil {
+		return err
+	}
+	if err := checkEnglishText(prefix+".status", stripSandboxPrefix(item.Status, sandboxDir)); err != nil {
+		return err
+	}
+	if err := checkEnglishText(prefix+".tooltip", stripSandboxPrefix(item.Tooltip, sandboxDir)); err != nil {
 		return err
 	}
 	for i, opt := range item.Options {
