@@ -2597,8 +2597,16 @@ func (w *Workspace) CreateNewNote() (string, error) {
 	if folder == "" {
 		return "", errors.New(theme.Tr("请先打开一个笔记本文件夹", "Open a notebook folder first"))
 	}
-	targetDir := w.targetCreateDir(folder)
-	created, err := files.CreateNewNote(targetDir, theme.IsEn())
+	return w.CreateNewNoteIn(w.targetCreateDir(folder))
+}
+
+// CreateNewNoteIn creates a new note inside dir, opens it, and starts inline rename.
+func (w *Workspace) CreateNewNoteIn(dir string) (string, error) {
+	folder := w.ActiveNotebook()
+	if folder == "" || dir == "" {
+		return "", errors.New(theme.Tr("请先打开一个笔记本文件夹", "Open a notebook folder first"))
+	}
+	created, err := files.CreateNewNote(dir, theme.IsEn())
 	if err != nil {
 		w.setNotice(err.Error())
 		return "", err
@@ -5520,6 +5528,9 @@ func (w *Workspace) renderSidebarColumn(
 		},
 		OnNewNote: func() {
 			_, _ = w.CreateNewNote()
+		},
+		OnNewNoteIn: func(dir string) {
+			_, _ = w.CreateNewNoteIn(dir)
 		},
 		OnOpenNote: func(path string, inNewTab bool) {
 			if isDrawer {

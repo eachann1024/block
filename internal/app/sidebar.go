@@ -201,6 +201,7 @@ type SidebarProps struct {
 	OnToggleShowAssets   func()
 	OnNewFolder          func()
 	OnNewNote            func()
+	OnNewNoteIn          func(dir string)
 	OnOpenNote           func(path string, inNewTab bool)
 	OnRenameItem         func(oldPath, newName string) error
 	OnMoveItem           func(srcPath, dstDir string)
@@ -1354,18 +1355,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			icReveal := icons.FolderReveal
 			icRename := icons.Pencil
 			icMove := icons.ArrowRight
-			icUp := icons.ArrowUp
-			icDown := icons.ArrowDown
 			icTrash := icons.Trash
-
-			sibs := findSameKindSiblings(p.Entries, targetPath)
-			sibIdx := -1
-			for i, s := range sibs {
-				if filepath.Clean(s.Path) == filepath.Clean(targetPath) {
-					sibIdx = i
-					break
-				}
-			}
 
 			var items []blockui.MenuItemSpec
 			if targetPath == "" {
@@ -1387,19 +1377,21 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						},
 						blockui.MenuItemSpec{Separator: true},
 					)
+				} else if p.OnNewNoteIn != nil {
+					items = append(items,
+						blockui.MenuItemSpec{
+							ID:    "tree-new-note-in",
+							Label: theme.Tr("新建页面", "New Page"),
+							Icon:  &icOpen,
+							OnClick: func() {
+								p.State.ClosePopups()
+								p.OnNewNoteIn(targetPath)
+							},
+						},
+						blockui.MenuItemSpec{Separator: true},
+					)
 				}
 				items = append(items,
-					blockui.MenuItemSpec{
-						ID:    "reveal",
-						Label: revealFileLabel(),
-						Icon:  &icReveal,
-						OnClick: func() {
-							p.State.ClosePopups()
-							if p.OnRevealItem != nil {
-								p.OnRevealItem(targetPath)
-							}
-						},
-					},
 					blockui.MenuItemSpec{
 						ID:       "rename",
 						Label:    theme.Tr("重命名", "Rename"),
@@ -1423,36 +1415,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						},
 					},
 				)
-				if len(sibs) > 1 && p.OnReorderSibling != nil {
-					canUp := sibIdx > 0
-					canDown := sibIdx >= 0 && sibIdx+1 < len(sibs)
-					items = append(items,
-						blockui.MenuItemSpec{
-							ID:       "tree-reorder-up",
-							Label:    theme.Tr("上移", "Move Up"),
-							Icon:     &icUp,
-							Disabled: !canUp,
-							OnClick: func() {
-								p.State.ClosePopups()
-								if canUp {
-									p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx-1].Path, false)
-								}
-							},
-						},
-						blockui.MenuItemSpec{
-							ID:       "tree-reorder-down",
-							Label:    theme.Tr("下移", "Move Down"),
-							Icon:     &icDown,
-							Disabled: !canDown,
-							OnClick: func() {
-								p.State.ClosePopups()
-								if canDown {
-									p.OnReorderSibling(filepath.Dir(targetPath), targetPath, sibs[sibIdx+1].Path, true)
-								}
-							},
-						},
-					)
-				}
 				var treePlugins []plugins.ResolvedMenuItem
 				for _, pm := range p.PluginContextMenu {
 					if (targetDir && pm.OnFolder) || (!targetDir && pm.OnNote) {
@@ -1494,6 +1456,18 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							p.State.ClosePopups()
 							if p.OnTrashItem != nil {
 								p.OnTrashItem(targetPath)
+							}
+						},
+					},
+					blockui.MenuItemSpec{Separator: true},
+					blockui.MenuItemSpec{
+						ID:    "reveal",
+						Label: revealFileLabel(),
+						Icon:  &icReveal,
+						OnClick: func() {
+							p.State.ClosePopups()
+							if p.OnRevealItem != nil {
+								p.OnRevealItem(targetPath)
 							}
 						},
 					},
