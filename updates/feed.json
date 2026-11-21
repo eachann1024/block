@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T09:08:43.993Z",
-  "latest_version": "1.0.893",
-  "latest_tag": "v1.0.893",
+  "updated_at": "2026-11-21T09:12:49.248Z",
+  "latest_version": "1.0.894",
+  "latest_tag": "v1.0.894",
   "releases": [
+    {
+      "version": "1.0.894",
+      "tag": "v1.0.894",
+      "published_at": "2026-11-21T09:12:48Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.894",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "边栏批注卡片现在可以正常滚动浏览，全部发送批注改为在后台处理，且 AI 会解答提问而不是重写选中文本。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Margin annotation cards can now be scrolled through properly, sending all annotations is handled in the background, and AI answers questions instead of rewriting selected text."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.894/block-macos-arm64.dmg",
+          "size": 15051651,
+          "sha256": "6a78f5ae101f002ec447b1f4564f4322053f037302754a89a28cc736611c8027"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.894/block-macos-x64.dmg",
+          "size": 16569893,
+          "sha256": "9c1a61652bed2abf6a83cda4769c05f9dc5f7d05c5549b41da8985456445617d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.894/block-windows-x64-setup.exe",
+          "size": 12049942,
+          "sha256": "e450fd76cc72f4c251501c9345fd65414d9734d48ce4d656c06b3f762b74c38a"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.894/block-linux-x64.deb",
+          "size": 10637504,
+          "sha256": "57d6033f3d8b3c8dbae5ca8171eae7568fb9ef55666f4992d271235581f699eb"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.894/block-linux-x64.AppImage",
+          "size": 23558648,
+          "sha256": "93220a258850efe3f4c22fe3db4b45aa3ced6087c53db112dece7a19a82e8b21"
+        }
+      ]
+    },
     {
       "version": "1.0.893",
       "tag": "v1.0.893",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-macos-arm64.dmg",
-          "size": 15047574,
-          "sha256": "245696014e5726348fef9f941bc56501fbcd0caea11254c7d40c502e1ba011d3"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-macos-x64.dmg",
-          "size": 16565124,
-          "sha256": "a0cc8460bee77eb2a2b571f15d999c25174d634e9849bd0e884eb1b238245318"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-windows-x64-setup.exe",
-          "size": 12048388,
-          "sha256": "500a977d33bde057699eea5f3d785454b756da8a04a6dbaceda330d3507e9031"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-linux-x64.deb",
-          "size": 10628164,
-          "sha256": "fc8f09df191c1e4ed3413acdf762e69a70bed1a97743f4095450735511d2c9b9"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-linux-x64.AppImage",
-          "size": 23554552,
-          "sha256": "35dcbdfb4330f3700a58e09e87fbb35b0699e23e319b4a6922f87b5eaabc9864"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.892",
@@ -2606,61 +2631,6 @@
         "improvements": [],
         "fixes": [
           "Fixed feedback sometimes failing to send when the \"Download or install\" type was selected."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.225",
-      "tag": "v1.0.225",
-      "published_at": "2026-11-05T07:44:30Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.225",
-      "zh": {
-        "highlights": "笔记正文可以按比例缩放并记住，从速记回到主窗口时窗口会到前台；表格、代码块等块的上方也可以插入新段落。",
-        "new": [
-          "笔记正文可以按比例缩放并记住，从速记回到主窗口时窗口会到前台。",
-          "表格、代码块等块的上方也可以插入新段落。"
-        ],
-        "improvements": [
-          "侧栏加宽后，搜索框可以完整显示。",
-          "行内代码不再弹出悬停提示。",
-          "复制行内代码后会立刻出现已复制的提示。",
-          "行内代码改成描边样式，光标走到边缘后可以继续移出。",
-          "设置页会显示当前版本号。",
-          "标签页不再显示文档小图标，顶栏更干净。"
-        ],
-        "fixes": [
-          "窄侧栏里的搜索文字不再被截断。",
-          "速记里按下修饰键时，不再打断中文输入。",
-          "可以用原来的快捷键重新打开刚关掉的标签页。",
-          "切换浅色或深色时不再突然退出。",
-          "行内代码里划选文字时，选中范围不再高出文字。",
-          "窗口不在前台时，文字光标不再一直留在笔记上。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "Note content can now be zoomed and remembered, and switching back from Quick Note brings the main window to the front. You can also insert a new paragraph directly above tables, code blocks, and other blocks.",
-        "new": [
-          "Note content can now be zoomed and remembered, and switching back from Quick Note brings the main window to the front.",
-          "You can now insert a new paragraph directly above tables, code blocks, and other blocks."
-        ],
-        "improvements": [
-          "The search box now shows completely when the sidebar is widened.",
-          "Inline code no longer shows a tip when you point at it.",
-          "Copying inline code now immediately shows a copied notification.",
-          "Inline code now uses an outlined style, and the cursor can move past its edges.",
-          "Settings now displays the current version number.",
-          "Tabs no longer show document icons, keeping the top bar cleaner."
-        ],
-        "fixes": [
-          "Search text in a narrow sidebar is no longer cut off.",
-          "Pressing modifier keys in Quick Note no longer interrupts Chinese input.",
-          "You can now reopen recently closed tabs with the original shortcut.",
-          "Switching between light and dark mode no longer unexpectedly quits the app.",
-          "Highlighting text in inline code no longer extends above the text.",
-          "The text cursor no longer stays visible on notes when the window is in the background."
         ],
         "other": []
       },
