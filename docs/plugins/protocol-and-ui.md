@@ -32,14 +32,15 @@
          "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
          "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
          "editor_insert_mode", "dialog_token", "checklist_add_folder", "item_icons",
-         "tab_menu", "file_path"
+         "tab_menu", "file_path", "log_timeline", "progress_bar", "segmented_status",
+         "store_changelog"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -130,6 +131,7 @@
      - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
      - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
      - 可选 `label` 覆盖运行动词（最多 32 字符；默认由宿主按 `action_id` 推断，如 `同步中` / `迁入中` / `上传中`）
+     - 分通道模式（需 `"progress_bar"`）：附加可选 `channel`（最多 64 字符，小写字母/数字/`-`/`_`）、`tone`（`""` | `"accent"` | `"info"` | `"success"` | `"warning"` | `"danger"`）与 `running`（布尔值，省略时按是否达终态自动推断），宿主将进度路由至绑定相同 `channel` 的 `progress` 控件与 `segmented` 选项，互不覆盖顶栏总进度。
    - 空载荷或无效参数不会覆盖当前进度；动作结束或取消时宿主自动清空进度，并在内部节流重绘（保留首帧与末帧）。
 9. **`host.perf.snapshot`**（需 `"notes:read"`）
    - `{"refresh_disk": false}`（可选，解码失败按 `false`；仅在宿主尚无磁盘扫描缓存时，传 `false` 才会触发首次扫描，内置性能窗口可能已生成缓存）-> 返回宿主资源与 7 类磁盘占用摘要（分类 ID：`notes`、`assets`、`history`、`recovery`、`ai_sessions`、`logs`、`config`；每类 `entries` 最多前 6 条摘要；`scan_error`、`file_count`、`entries` 与明细 `path`/`count` 可省略；磁盘扫描异常写在成功响应的 `scan_error` 中，仅回调不可用或失败时返回 `-32005`）：
@@ -153,6 +155,10 @@
        ]
      }
      ```
+
+10. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
+    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "block-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
+    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
 
 ### 3.3 系统集成
 
@@ -212,14 +218,14 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
 }
 ```
 - `title`：必填非空字符串（桌面设置标题栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
-- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。
+- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。为保持顶栏克制，宿主在正常闲置时仅展示可提取的极简 `HH:MM` 时间（悬停显示完整原文）或隐藏冗长常规描述，仅在告警/出错时展示完整提示或红色错误详情胶囊。
 - `progress`：可选 `0`–`1` 浮点数，用于声明式独立后台任务在空闲轮询刷新时展示百分比进度；`plugin.action` 执行期间请使用 `host.action.progress`。
 - `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
 - `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
-- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"` 放在标题栏主操作位（运行中自动变为带进度与 `■` 取消按钮的胶囊），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
+- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"`（无 primary 时回退首个 `danger`）放在标题栏主操作位，并**统一强制渲染为轻量幽灵按钮**（`26px` 高、透明底、悬停轻灰底；运行中变为同高轻量进度与 `■` 取消按钮），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
 
-### 15 种 `UIItem` 控件（按 `kind` 区分）
+### 16 种 `UIItem` 控件（按 `kind` 区分）
 
 **交互与布局准则**
 
@@ -242,7 +248,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
 }
 ```
 
-1. **`segmented`（分段切换，适合 2–3 个短选项）**：`id` 必填，`label` 在 `layout != "full"` 时必填，`options` 至少 2 项（每项 `value` 与 `label` 必填非空），`value`（`string`）必须命中某个 `options[].value`，可选 `layout`（`""` | `"stacked"` | `"full"`）：
+1. **`segmented`（分段切换，适合 2–3 个短选项）**：`id` 必填，`label` 在 `layout != "full"` 时必填，`options` 至少 2 项（每项 `value` 与 `label` 必填非空；需 `"segmented_status"` 时可选 `tone` 显示状态圆点、`tooltip` 显示悬停提示、`channel` 绑定 `host.action.progress` 实时运行/完成状态），`value`（`string`）必须命中某个 `options[].value`，可选 `layout`（`""` | `"stacked"` | `"full"`）：
    ```json
    {
      "kind": "segmented",
@@ -345,6 +351,12 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
     - `ratio`：约定传 `0`–`1` 浮点数（`<= 0` 不画条，`> 0` 渲染时夹到 `4%`–`100%` 并隐藏前导状态点）
     - `tooltip`：整行悬停提示
     - `action_id`：可选点击动作 ID（`ui_capabilities` 含 `log_actions` 时生效，<= 128 字符、禁止 Emoji；点击该行时触发当前表面的 `plugin.action`，常配合 `host.notes.open` 实现侧栏/面板一键跳转笔记）
+    - **垂直时间轴模式（需 `ui_capabilities` 含 `log_timeline`）**：控件级传 `"variant": "timeline"`（省略或 `"list"` 为默认列表）。此时每项支持可选扩展字段：
+      - `kind`：`""` / `"event"`（圆点事件节点）或 `"span"`（虚线折叠静默区间卡片）
+      - `badge`：`span` 卡片左侧胶囊标签（如 `"静默 44 分钟"`）
+      - `span`：`span` 卡片右侧等宽时间段（如 `"16:09 → 16:53"`）
+      - `tags`：普通事件下方流式排列的紧凑标签数组（最多 24 项，适合聚合展示同批变动的文件/附件）
+      - `details`：`span` 卡片点击展开后的时间点/明细数组（最多 64 项，点击卡片自动在前端切换展开与收起）
     ```json
     {
       "kind": "log_list",
@@ -430,6 +442,19 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
       "kind": "icon_strip",
       "icons": [{ "name": "message-square", "tooltip": "反馈" }, { "name": "more", "tooltip": "页面操作" }],
       "empty_text": "未显示任何图标"
+    }
+    ```
+
+16. **`progress`（独立进度条，需 `"progress_bar"` 能力）**：用于为插件内不同页面或目标展示独立状态与同步/任务进度条；`label` 与 `status` 至少提供一项，`progress` 为可选 `0`–`1` 静态进度，`tone` 为可选状态色（`""` | `"accent"` | `"info"` | `"success"` | `"warning"` | `"danger"`），`tooltip` 为可选悬停详情，`channel` 为可选实时通道 ID（在 `plugin.action` 期间自动接收同通道的 `host.action.progress` 更新并在未定计数阶段展示平滑扫动进度条）：
+    ```json
+    {
+      "kind": "progress",
+      "id": "progress_git",
+      "channel": "git",
+      "label": "Git 仓库同步进度",
+      "status": "17:32 · 已是最新",
+      "progress": 1.0,
+      "tone": "success"
     }
     ```
 

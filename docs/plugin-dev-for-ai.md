@@ -15,20 +15,22 @@
   - 新安装的交互式插件默认停用，用户手动启用后才会启动；纯声明式语言扩展首次安装自动启用；同 `id` 升级保留原有启用状态。商店卡片的「更新」按钮仅在目录版本高于已装版本时出现；手动安装同 `id` 不要求版本递增。
   - 替换机制：用户在应用商店或手动安装中主动点击安装/更新，宿主会先校验候选包与现有包清单、停止旧进程，再通过两步目录重命名配合 `.previous` 备份完成可恢复替换，允许跨来源或新增权限；非交互接口默认拒绝跨来源、旧包无来源记录或新增权限的替换。桌面卸载移除插件程序，并保留私有配置供重新安装。
   - **保留 ID**：`block-diagnostics` 对应 Block 内置「性能与占用」窗口，宿主拒绝安装与启用该 ID、设置侧栏不挂载，远程采集器、缓存合并与离线内置索引回退均会过滤该 ID。
-- **跨语言双向 JSON-RPC 2.0**：宿主以独立子进程启动 `manifest.json` 中的 `entry.command`（推荐 `["python3", "-u", "main.py"]`、`["node", "main.mjs"]` 或编译后可执行文件），通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换笔记本或切换 Block 界面语言（`zh` / `en`）时，宿主会自动重启插件子进程并以新 `locale` 重新渲染所有活跃表面。
+- **跨语言双向 JSON-RPC 2.0**：宿主以独立子进程启动 `manifest.json` 中的 `entry.command`（推荐 `["python3", "-u", "main.py"]`、`["node", "main.mjs"]` 或编译后可执行文件），通过 UTF-8 **按行分隔（`\n`）的 JSON-RPC 2.0** 在 `stdin` / `stdout` 双向通信，`stderr` 仅用于调试（宿主用 64 KiB 环形缓冲区保留尾部）。切换桌面笔记本或界面语言（`zh` / `en`）不会立即重启全部后台进程：仅在下次调用该插件且目标笔记本或语言发生变化时，宿主才关闭旧进程并按新上下文重新初始化（当前打开的活跃表面会随切换触发重渲染，从而立即按新上下文重启）。
   - `entry.command[0]` 必须是 `PATH` 可执行文件名（走 `LookPath`），或插件目录内解析后的相对普通文件（如 `"./bin/plugin"`，禁止符号链接、冒号或越出插件目录）。
-  - **环境变量白名单**：宿主仅显式传入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`、`BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`，不继承其他宿主环境变量。
+  - **环境变量白名单**：宿主仅显式传入 `PATH`、`HOME`、`TMPDIR`、`PYTHONUNBUFFERED=1`、`BLOCK_PLUGIN_ID`、`BLOCK_DATA_DIR`、`BLOCKMD_PLUGIN_ID`、`BLOCKMD_DATA_DIR`、`BLOCKMD_DOWNLOADS_DIR`，不继承其他宿主环境变量。Windows 上不传入 `USERPROFILE` / `APPDATA` 等目录变量，插件应直接使用 `plugin.initialize` 传入的 `data_dir` / `downloads_dir` 或上述环境变量，避免依赖 `Path.home()`。
   - **超时与进程终止**：
     - 首载 15s 和编辑预览 8s 在取得插件 RPC 锁后起算。定时轮询 5s 包含锁等待。各自的预算由初始化和渲染共享。
+    - `plugin.command` 单次 30s（含锁等待与按需初始化）；`events:workspace`（`note.opened` / `theme.changed` / `locale.changed`）单次 5s（仅投递给已运行进程，不冷启动）。
     - `plugin.action` 120s 含可取消的排队等待与表单补刷（顶栏运行胶囊提供 `■` 取消按钮）。
     - 保存事件取得插件 RPC 锁后有 45s，由初始化、事件与后续刷新共享。系统事件取得锁后有 15s 初始化预算，事件本身有 45s。`block-sync` 的唤醒、网络补同步和定时同步事件有 120s。宿主每分钟向 `block-sync` 发送一次定时同步事件，由插件按设置的间隔决定是否同步。
     - 宿主回写 `host.*` 响应的 5s 超时在宿主方法执行完成后起算。
     - `plugin.shutdown` 给 2s 优雅退出窗口，超时强杀后再最多等 1s。macOS/Linux 在独立进程组（`Setpgid`）运行并在超时/强杀时终止整组，其他平台终止直接子进程。
+    - 本地校验器 `block-plugin-check` 为 `plugin.initialize` 单独执行与桌面一致的 15s 预算，单语言整轮总超时 20s。
   - **体积与打包上限**：
-    - 插件发往宿主（`stdout`）的单行 JSON-RPC 上限 **4 MiB**（含 JSON 封装、转义与换行；宿主发往插件 `stdin` 无此扫描上限）。
+    - 插件发往宿主（`stdout`）的单行 JSON-RPC 扫描上限 **98 MiB**（覆盖 16 MiB 笔记在最坏 6× JSON 转义下的体积与 RPC 信封；宿主发往插件 `stdin` 无此扫描上限）。
     - 同时在途 `host.*` 调用上限 **8** 个（超出将中止插件进程）。
-    - 私有存储 `state.json` 序列化上限 **8 MiB**（单次 `host.storage.set` 行仍受 4 MiB 上限约束）。
-    - 笔记读取及写入前读取旧文件上限 **16 MiB**；`host.notes.write` 传入的新正文同时受 4 MiB 单行传输上限约束。
+    - 私有存储 `state.json` 序列化上限 **8 MiB**。
+    - 笔记读取与 `host.notes.write` 单文件上限 **16 MiB**；`host.editor.insert` 单次插入文本上限 **4 MiB**。
     - 安装归档下载 <= **64 MiB**、单文件 <= **32 MiB**、解包或本地目录复制总计 <= **256 MiB**（tar 解压流 <= **320 MiB**）、路径/条目数 <= **8192**（含推导父目录）、单路径 <= 1024 字节且 `< 32` 级目录、禁止 `\` 与 `:`、仅允许普通文件与目录（不支持符号链接）。
 - **原生设置挂载、应用商店与详情页**：
   - **侧栏与顶栏控制**：声明了 `settings_page` 的已安装插件统一收拢在「设置」左侧导航栏「已安装」分组下（位于「应用商店」之下），带运行状态指示点；未声明独立设置页的插件（如语言扩展、主题类）不占用侧栏设置页，点击应用商店整张卡片进入详情页即可直接卸载。插件设置页头部与设置窗口标题栏统一采用 Ocean Paper 拨弦开关（Pluck Switch / `PluckDivider`）作为主控开关，并自动提供单行合并状态位、主操作位/实时进度胶囊与「⋯」更多菜单（含次要操作、查看说明/应用商店、重新加载与卸载），插件无需自行绘制启用开关或卸载按钮。
@@ -40,7 +42,7 @@
     - 本地缺失、为空或读取失败且存在有效仓库时优先回退 GitHub API（英文先查 `contents/README.en.md`，404 时再回退 `/readme`；中文直接查 `/readme`），当 GitHub API 不可达或限流时自动回退 jsDelivr CDN（`README.en.md` / `README.md`）；切换界面语言或完成安装/更新时自动刷新详情页说明。
     - 详情页支持相对路径图片、SVG、GIF（超动画预算可降为静态）与受限视频（最多 24 项媒体，其中视频最多 2 项，单张图片 <= 6 MiB，单个视频 <= 24 MiB）。
 - **两项强制校验规则（违规直接拒绝加载）**：
-  1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（`U+1F300–U+1FAFF`、`U+2600–U+27BF`、`U+FE00–U+FE0F`），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
+  1. **禁止 Emoji**：`manifest.json` 的 `name`、`author`、`summary`、`permission_reasons`、`contributes` 静态文案，以及 `UIPage` 的静态界面文案（`page.title`、`card.title`、控件 `label`、按钮 `label`、`placeholder`、`empty_text`、`kv.rows[].label`、`metrics[].label`、`checklist.options[].badge`、`treemap` 瓦片 `label`/`detail` 与 `summary.total_label`、`preview.badge`/`cards[].badge`）**严禁包含 Emoji**（覆盖标准与扩展 Emoji 区块、变体选择符 `U+FE00–U+FE0F`、区域指示符/标签序列、ZWJ/键帽组合及常见 Emoji 符号如 `⭐`/`⌚`/`‼` 等），图标仅通过 `manifest.icon` 双色 SVG 路径定义。用户笔记内容、路径等动态字段（如 `page.status`、`card.meta`、`options[].label`/`detail`、`kv.rows[].value`、`metrics[].value`、`preview` 标题与正文、`log_list.entries`）放行用户原有字符，但插件自写文案仍应避免 Emoji。
   2. **严格 JSON 解码**：`manifest.json`（上限 256 KiB，须为单个 JSON 对象，且禁止重复键）与 `UIPage` 启用 `DisallowUnknownFields`，**严禁出现未定义字段名**（外层 JSON-RPC 包与 `host.*` 参数使用普通解码；`UIItem` 为共享结构，已知字段仅在消费它的 `kind` 上生效）。
 
 ---
@@ -134,7 +136,7 @@ example-sync/
   - 另有两个不显示标签的值：`"tools"`（其他 / Other，只出现在「全部」）与 `"language"`（代码高亮 / Code Highlighting，平时不在列表中出现，仅在搜索或已安装时可见）。
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
-- `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
+- `version`：必填，须同时满足正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$` 与标准 SemVer 合法性（`golang.org/x/mod/semver`，与商店更新比较共用同一规则；如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据、禁止前导零与空预发布段如 `2.0.0-..`）。
 - `beta`：可选布尔值，默认 `false`，**正式版不要写这个字段**。写了 `"beta": true` 后，应用商店、设置侧栏和插件页标题旁会显示 `Beta` 标识，商店采集器也会同步到 `store-index.json`；转正时删掉该字段即可，宿主不做硬编码。
   - **只有同时满足以下两条才标 `beta`**：
     1. 功能还在试验，交互、设置项或存储格式随时可能大改，升级后可能需要用户重新配置；
@@ -143,7 +145,7 @@ example-sync/
 - `author`：必填非空字符串，禁止含 Emoji。
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
 - `summary`：`zh`（<= 80 个 Unicode 字符）与 `en`（<= 140 个 Unicode 字符）均必填，禁止含 Emoji。
-- `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
+- `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空；若 `category: "language"` 同时声明了 `entry.command` 或 `surfaces`/`permissions`，则按交互式插件生命周期运行，不再走纯声明式自动启用），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set` / `host.storage.set_many`）
   - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
@@ -189,14 +191,15 @@ example-sync/
          "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
          "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
          "editor_insert_mode", "dialog_token", "checklist_add_folder", "item_icons",
-         "tab_menu", "file_path"
+         "tab_menu", "file_path", "log_timeline", "progress_bar", "segmented_status",
+         "store_changelog"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）、`tab_menu`（标签页右键菜单 `contributes.tab_menu` 与 `sidebar_menu.targets` 文件夹行）、`file_path`（`plugin.command` 的 `context.file` / `context.folder`，`file` 需 `"notes:path"`）、`log_timeline`（`log_list` 的 `"variant": "timeline"` 垂直时间轴模式，支持折叠静默区间 `kind: "span"`、`badge`/`span`/`details` 与聚合标签 `tags`）、`progress_bar`（`progress` 内联进度条控件及 `host.action.progress` 的独立通道 `channel` / `tone` / `running`）、`segmented_status`（`segmented` 选项的状态圆点 `tone`、悬停提示 `tooltip` 与通道实时状态绑定 `channel`）、`store_changelog`（`host.store.changelog` 查询应用商店插件更新日志接口）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -262,7 +265,7 @@ example-sync/
 1. **`host.storage.get`**（需 `"storage"`）
    - 参数解码失败按空对象处理。单键：`{"key": "config"}` -> 命中 `{"value": {"auto_sync": true}, "found": true}`，未命中 `{"value": null, "found": false}`；全量：`{}` -> `{"data": {"config": {"auto_sync": true}}}`。
 2. **`host.storage.set`**（需 `"storage"`）
-   - `{"key": "config", "value": {"auto_sync": true}}` -> `{"ok": true}`。`key` 须为非空白字符串（否则 `-32602`）；省略 `value` 会存成 `null`。
+   - `{"key": "config", "value": {"auto_sync": true}}` -> `{"ok": true}`。`key` 须为非空白字符串（否则 `-32602`）；省略 `value` 会存成 `null`。宿主按原始 JSON 保留值（大整数游标等数值不会经浮点数转换而丢精度）。
    - `host.storage.set_many` 使用同一权限和 8 MiB 限制。`{"values": {"config": {...}, "migration": null}}` 一次写入 1–64 个非空白键，成功返回 `{"ok": true}`。
 3. **`host.notes.active`**（需 `"notes:read"`，忽略参数）
    - `{}` -> `{"path": "welcome.md"}`（返回宿主缓存的活动标签相对路径，可能为空、非 Markdown 或尚未更新）。
@@ -274,7 +277,7 @@ example-sync/
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选，省略且运行时根为空报 `-32602`；`path` 必填）-> `{"path": "welcome.md", "content": "# 欢迎...", "revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
 7. **`host.notes.write`**（需 `"notes:write"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/synced.md", "content": "# 内容", "expected_revision": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}` -> `{"ok": true, "changed": true}`（示例哈希须替换为 `host.notes.read` 实际返回的 `revision`，原样传固定值会在实际写入时触发 `-32006`）。
-   - **必须始终显式传入字符串 `content`**（省略或 `null` 会按空字符串写入）；`content` 需满足单行 4 MiB 传输预算。
+   - **必须显式传入字符串 `content`**（省略或传 `null` 直接返回 `-32602`，不会清空笔记；如需清空请显式传入 `""`）；单文件上限 **16 MiB**。
    - **冲突与幂等判定顺序**：
      1. 桌面端先检查编辑器会话：若目标笔记存在未保存修改或处于虚拟预览，直接返回 `-32006`（即使目标字节相同；此类冲突需用户先保存或退出预览）。
      2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
@@ -287,6 +290,7 @@ example-sync/
      - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
      - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
      - 可选 `label` 覆盖运行动词（最多 32 字符；默认由宿主按 `action_id` 推断，如 `同步中` / `迁入中` / `上传中`）
+     - 分通道模式（需 `"progress_bar"`）：附加可选 `channel`（最多 64 字符，小写字母/数字/`-`/`_`）、`tone`（`""` | `"accent"` | `"info"` | `"success"` | `"warning"` | `"danger"`）与 `running`（布尔值，省略时按是否达终态自动推断），宿主将进度路由至绑定相同 `channel` 的 `progress` 控件与 `segmented` 选项，互不覆盖顶栏总进度。
    - 空载荷或无效参数不会覆盖当前进度；动作结束或取消时宿主自动清空进度，并在内部节流重绘（保留首帧与末帧）。
 9. **`host.perf.snapshot`**（需 `"notes:read"`）
    - `{"refresh_disk": false}`（可选，解码失败按 `false`；仅在宿主尚无磁盘扫描缓存时，传 `false` 才会触发首次扫描，内置性能窗口可能已生成缓存）-> 返回宿主资源与 7 类磁盘占用摘要（分类 ID：`notes`、`assets`、`history`、`recovery`、`ai_sessions`、`logs`、`config`；每类 `entries` 最多前 6 条摘要；`scan_error`、`file_count`、`entries` 与明细 `path`/`count` 可省略；磁盘扫描异常写在成功响应的 `scan_error` 中，仅回调不可用或失败时返回 `-32005`）：
@@ -311,6 +315,10 @@ example-sync/
      }
      ```
 
+10. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
+    - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "block-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
+    - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
+
 ### 3.3 系统集成
 
 桌面宿主在 `plugin.initialize.ui_capabilities` 中提供 `"system_integration"`。`host.system.capabilities {}` 无需额外权限，返回布尔值对象，字段为 `notify`、`notify_click`、`secrets`、`open_url`、`reveal`、`open_dialog`、`save_dialog`、`clipboard_read`、`clipboard_write`、`trash`、`badge`、`wake`、`network`、`focus`。结果反映当前桌面可用性，实际调用还受清单权限、系统授权和服务状态影响。
@@ -320,7 +328,7 @@ example-sync/
 | `host.system.notify` | `system:notify` | `{"title":"同步失败","body":"打开同步设置查看详情。","tone":"error"}`。开放给所有插件，直接发送操作系统原生系统通知（无论 Block 窗口是否聚焦；若需应用内全局轻提示，请改用 `host.ui.toast`）。`title` 和 `body` 必填，分别截断至 80 和 240 字符。可传 `notebook_root` 指定已注册笔记本内的插件设置，或同时传 `rel_path` 指定 Markdown 笔记，需 `notes:read`。可用 `timeout_ms` 缩短等待时间，默认 15000 毫秒。可传最长 128 字节的 `dedup_key` 区分文案及目标相同的独立事件，同一事件重试时沿用原值。桌面支持通知点击时，打开目标笔记或插件设置。宿主提交至系统通知服务或识别到同一事件 2 分钟内已经送达时返回 `delivered:true`。需要跨重启补送的插件应保留待发记录，直至收到 `delivered:true`。2 分钟内重复的相同事件返回 `suppressed:true`。每个插件 10 秒内最多投递 5 条不同通知，超出时返回 `-32006`，稍后重试即可。 |
 | `host.system.open_url` | `system:open` | `{"url":"https://example.com"}`，仅接受无账号和密码的 HTTP(S) 链接。 |
 | `host.system.reveal` | `system:open`、`notes:read` | `{"rel_path":"assets/example.png","notebook_root":"/abs/notebook"}`，在系统文件管理器里显示文件。 |
-| `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，用户取消时 `paths` 为空。发起动作取消或超时会关闭选择框并返回 `-32007`。 |
+| `host.system.open_dialog`、`host.system.save_dialog` | `system:dialogs` | 可传 `title`、`default_path`、`extensions`。打开框另支持 `directory`、`multiple`。选目录时省略 `extensions`。返回 `{"ok":true,"paths":["/abs/file"],"canceled":false}`，用户主动取消时 `canceled` 为 `true` 且 `paths` 为空。发起动作被用户取消或动作超时时返回 `-32007`（若系统原生选择框无法由宿主强制关闭，用户后续关闭时宿主会直接丢弃过期结果）。 |
 | `host.clipboard.read`、`host.clipboard.write` | `system:clipboard_read`、`system:clipboard_write` | 读取传 `{}`，返回 `{"ok":true,"text":"..."}`。写入传 `{"text":"..."}`。支持最多 64 KiB UTF-8 文本。 |
 | `host.system.trash` | `system:trash`、`notes:write` | 与 `reveal` 参数相同，仅支持普通文件。用户在原生确认框确认后，宿主移到系统回收站并更新相关标签页。 |
 | `host.system.badge` | `system:badge` | `{"count":3}`，范围 0–999，0 清除本插件角标。宿主合计已启用插件的数值，上限 999。 |
@@ -369,14 +377,14 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
 }
 ```
 - `title`：必填非空字符串（桌面设置标题栏展示 `manifest.name`，但 `UIPage.title` 仍须提供）。
-- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。
+- `status`：可选只读次级状态短文本（仅展示真实执行结果、配置摘要或最近运行时间，闲置或未配置时传 `""`；严禁写 `"已就绪"` / `"已启用"` / `"已停用"` / `"迁入中…"` 等占位或运行中文案）。为保持顶栏克制，宿主在正常闲置时仅展示可提取的极简 `HH:MM` 时间（悬停显示完整原文）或隐藏冗长常规描述，仅在告警/出错时展示完整提示或红色错误详情胶囊。
 - `progress`：可选 `0`–`1` 浮点数，用于声明式独立后台任务在空闲轮询刷新时展示百分比进度；`plugin.action` 执行期间请使用 `host.action.progress`。
 - `cards`：必填，最多 64 张卡片；所有卡片的 `items` 合计最多 400 项。
 - `refresh_interval_ms`：可选定时刷新间隔（`500`–`60000` 毫秒，`0` 或省略表示不自动轮询；仅在最近绘制时间窗口内且空闲时触发）。
-- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"` 放在标题栏主操作位（运行中自动变为带进度与 `■` 取消按钮的胶囊），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
+- `header_actions`：可选标题栏动作按钮数组；每项含 `id`（必填唯一）、`label`（必填）、`variant`（仅限 `"primary"` | `"secondary"` | `"danger"`）。宿主将首个 `variant: "primary"`（无 primary 时回退首个 `danger`）放在标题栏主操作位，并**统一强制渲染为轻量幽灵按钮**（`26px` 高、透明底、悬停轻灰底；运行中变为同高轻量进度与 `■` 取消按钮），其余 `secondary` / `danger` / 多余按钮自动收进标题栏 `⋯` 菜单顶部。
 - `cards`：必填非空数组；每项含 `id`（必填唯一）、`title`（可选）、`meta`（可选右侧副信息）、`badge`（可选右侧胶囊徽章）、`collapsible` / `default_collapsed`（可选折叠配置卡片，展开状态保存在当前控制器内存中）、`items`（必填非空数组；若卡片内所有顶层项均被 `visible_when` 隐藏，整个卡片自动隐藏）。
 
-### 14 种 `UIItem` 控件（按 `kind` 区分）
+### 16 种 `UIItem` 控件（按 `kind` 区分）
 
 **交互与布局准则**
 
@@ -399,7 +407,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
 }
 ```
 
-1. **`segmented`（分段切换，适合 2–3 个短选项）**：`id` 必填，`label` 在 `layout != "full"` 时必填，`options` 至少 2 项（每项 `value` 与 `label` 必填非空），`value`（`string`）必须命中某个 `options[].value`，可选 `layout`（`""` | `"stacked"` | `"full"`）：
+1. **`segmented`（分段切换，适合 2–3 个短选项）**：`id` 必填，`label` 在 `layout != "full"` 时必填，`options` 至少 2 项（每项 `value` 与 `label` 必填非空；需 `"segmented_status"` 时可选 `tone` 显示状态圆点、`tooltip` 显示悬停提示、`channel` 绑定 `host.action.progress` 实时运行/完成状态），`value`（`string`）必须命中某个 `options[].value`，可选 `layout`（`""` | `"stacked"` | `"full"`）：
    ```json
    {
      "kind": "segmented",
@@ -502,6 +510,12 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
     - `ratio`：约定传 `0`–`1` 浮点数（`<= 0` 不画条，`> 0` 渲染时夹到 `4%`–`100%` 并隐藏前导状态点）
     - `tooltip`：整行悬停提示
     - `action_id`：可选点击动作 ID（`ui_capabilities` 含 `log_actions` 时生效，<= 128 字符、禁止 Emoji；点击该行时触发当前表面的 `plugin.action`，常配合 `host.notes.open` 实现侧栏/面板一键跳转笔记）
+    - **垂直时间轴模式（需 `ui_capabilities` 含 `log_timeline`）**：控件级传 `"variant": "timeline"`（省略或 `"list"` 为默认列表）。此时每项支持可选扩展字段：
+      - `kind`：`""` / `"event"`（圆点事件节点）或 `"span"`（虚线折叠静默区间卡片）
+      - `badge`：`span` 卡片左侧胶囊标签（如 `"静默 44 分钟"`）
+      - `span`：`span` 卡片右侧等宽时间段（如 `"16:09 → 16:53"`）
+      - `tags`：普通事件下方流式排列的紧凑标签数组（最多 24 项，适合聚合展示同批变动的文件/附件）
+      - `details`：`span` 卡片点击展开后的时间点/明细数组（最多 64 项，点击卡片自动在前端切换展开与收起）
     ```json
     {
       "kind": "log_list",
@@ -544,7 +558,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
     }
     ```
 13. **`group`（并排表单分组）**：`fields` 至少包含 2 个表单项（仅允许 `input`、`secret`、`segmented`、`select`、`folder`、`switch`），宿主自动并排展示；未显式设 `layout`（或 `layout: ""`）的子项默认按 `"stacked"` 排布（`switch` 仍横排），各子项可独立声明 `visible_when`。
-14. **`treemap`（磁盘/空间分布图，固定 Bento 布局按字节排序，非严格面积比例）**：`tiles` 为必填非空数组，`id`（同页有多个图时须显式传不同 `id` 以免共享选中状态）、`total_bytes`（非负整数 `uint64`，`0` 或省略时取各瓦片 `bytes` 之和）、`summary` 可选：
+14. **`treemap`（磁盘/空间分布图，固定 Bento 布局按字节排序，非严格面积比例）**：`tiles` 为必填非空数组，`id`（同页有多个图时须显式传不同 `id` 以免共享选中状态）、`total_bytes`（非负整数 `uint64`，`0` 或省略时取各瓦片 `bytes` 之和，求和采用 `uint64` 饱和加法防止溢出归零）、`summary` 可选：
     ```json
     {
       "kind": "treemap",
@@ -590,6 +604,19 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
     }
     ```
 
+16. **`progress`（独立进度条，需 `"progress_bar"` 能力）**：用于为插件内不同页面或目标展示独立状态与同步/任务进度条；`label` 与 `status` 至少提供一项，`progress` 为可选 `0`–`1` 静态进度，`tone` 为可选状态色（`""` | `"accent"` | `"info"` | `"success"` | `"warning"` | `"danger"`），`tooltip` 为可选悬停详情，`channel` 为可选实时通道 ID（在 `plugin.action` 期间自动接收同通道的 `host.action.progress` 更新并在未定计数阶段展示平滑扫动进度条）：
+    ```json
+    {
+      "kind": "progress",
+      "id": "progress_git",
+      "channel": "git",
+      "label": "Git 仓库同步进度",
+      "status": "17:32 · 已是最新",
+      "progress": 1.0,
+      "tone": "success"
+    }
+    ```
+
 ---
 
 ## 5. Python 标准库双向通信骨架
@@ -631,7 +658,15 @@ class HostBridge:
             line = sys.stdin.readline()
             if not line:
                 raise RuntimeError("stdin closed while awaiting host response")
-            msg = json.loads(line)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
+                continue
             if str(msg.get("id")) == req_id:
                 if "error" in msg and msg["error"]:
                     err = msg["error"]
@@ -646,32 +681,44 @@ class HostBridge:
             line = line.strip()
             if not line:
                 continue
-            req = json.loads(line)
-            method = req.get("method")
-            req_id = req.get("id")
             try:
-                result = handler(self, method, req.get("params") or {})
-                self.send({"jsonrpc": "2.0", "id": req_id, "result": result})
+                req = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(req, dict):
+                continue
+            method = req.get("method")
+            if not isinstance(method, str) or not method:
+                continue
+            req_id = req.get("id")
+            params = req.get("params")
+            if not isinstance(params, dict):
+                params = {}
+            try:
+                result = handler(self, method, params)
+                if req_id is not None:
+                    self.send({"jsonrpc": "2.0", "id": req_id, "result": result})
                 if method == "plugin.shutdown":
                     break
             except Exception as exc:
-                self.send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
+                if req_id is not None:
+                    self.send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(exc)}})
 ```
 
 ---
 
 ## 6. 本地协议检查命令
 
-以下命令在临时笔记本与插件数据目录中执行本地协议检查（目录安装完成后，按语言各自起算 20 秒 RPC 预算）：依次校验 `manifest.json`（含 `permission_reasons` 键匹配、字数与禁 Emoji 规则）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需子进程，仅校验清单、双语文档与语法编译）：
+以下命令在临时笔记本与插件数据目录中执行本地协议检查（目录安装完成后，按语言各自起算 20 秒整轮 RPC 预算，其中 `plugin.initialize` 单独执行与桌面端一致的 **15 秒**预算）：依次校验 `manifest.json`（含 `permission_reasons` 键匹配、字数与禁 Emoji 规则）、目录安装、初始化、无参初始渲染、携带完整默认值渲染、递归收集卡片顶层与 `group` 内的 `segmented`/`select`/`switch` 并逐项单值切换渲染（不做多控件组合，不遍历 `checklist`）、调用初始页全部 `header_actions` 与顶层 `actions` 按钮（不判断 `visible_when` 与折叠状态；对返回的 `open_path`/`reveal_path` 仅以 `os.Stat` 验证存在性，`ok: false` 仍可通过）、在声明 `"events:note_saved"` 时直接发送 `note.saved` 事件（不走桌面队列）以及 `plugin.shutdown` 回收（纯声明式语言扩展无需子进程，仅校验清单、双语文档与语法编译）：
 
 ```bash
 CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/到你的插件目录
 ```
 
-- **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（社区插件可追加 `-bilingual` 参数主动开启）：
+- **双语门禁**：当 `manifest.repo` 属于官方仓库（`blockmd-plugins/*`）时，校验器会**自动启用双语检查**（官方仓库 CI 建议显式追加 `-bilingual` 参数，避免清单漏写 `repo` 时跳过双语门禁；社区插件也可追加 `-bilingual` 主动开启）：
   1. 校验清单中 `name.en`、`summary.en`、`contributes.*.en` 及已声明的 `permission_reasons[*].en` 均为非空纯英文且不含中文字符或中文标点；
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；
-  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同。
+  3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同（注意：CLI 不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
 
 终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。注意：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
 
@@ -687,9 +734,10 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - **官方推荐自动版本号与发布门禁**：复用 `blockmd-plugins/block-sync` 的 `.github/workflows/release.yml`（`Daily Release`）。仓库 `manifest.json` 仅保留主次版本基线（如 `"1.2.0"`），日常改动直接推送 `main`；工作流每天 `00:00 UTC`（或手动 `workflow_dispatch`）检测代码或双语 README 变更，**打包前强制执行 `README.md` / `README.en.md` 与 `locale="en"` 英文界面门禁（未通过即中止发布）**，通过后以 `<major>.<minor>.<提交总数>` 生成候选版本（若不高于已有最高版本则递增）动态写入产物包并发布 Release，不向 `main` 回写提交。
    - **手动发版**：也可推送 `vX.Y.Z` Tag 触发同工作流打包对应版本。
 4. **线上采集与校验规则**（由 `blockmd-plugins/store-index` 仓库的采集任务及 `cmd/block-store-crawler` 执行）：
-   - 采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的前 100 个仓库（无分页），并自动跳过内置保留 ID（`block-diagnostics`）。
-   - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包（`codeload.github.com/{repo}/tar.gz/{default_branch}`）。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
-   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 剔除，并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
+   - 采集器抓取 `topic:blockmd-plugin fork:false archived:false` 按 stars 降序的前 100 个仓库（无分页），并对 `verified.json` 中未落入前 100 的官方仓库单独拉取，同时自动跳过内置保留 ID（`block-diagnostics`）。
+   - **选包顺序**：拉取仓库 `/releases` 列表并筛选首个非草稿（`!draft`）、非预发布（`!prerelease`）的 Release，优先取其首个 `.tar.gz`/`.tgz`/`.zip` 附件，无匹配附件时回退该 Release 的 `tarball_url`（无 `zipball_url` 分支）；仅在尚未选出下载 URL 时才回退默认分支源码包，且会先解析默认分支当前提交 SHA 并固定到不可变归档地址（`codeload.github.com/{repo}/tar.gz/{commit_sha}`），防止后续推送导致索引 `sha256` 失效。已选归档下载或解析失败会直接跳过该仓库，不向低优先级回退重试。
+   - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）与双语无 Emoji 清单校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 处理（若上一版索引中已有归属仓库则保留原归属，否则全部剔除），并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
+   - **更新日志采集与对外接口**：采集器在拉取插件 Releases 时，自动提取最近版本的结构化双语更新日志（解析 `## 中文` / `## English` 与 `新增功能` / `体验优化` / `问题修复` / `其他改动`），在 `store-index.json` 的每个插件条目中内联最近 5 条 `changelog` 与 `changelog_url`，同时在 `blockmd-plugins/store-index` 仓库的 `changelogs/<id>.json`（附带 jsDelivr 镜像）对外提供最多 20 条完整版本历史的只读 JSON API。Block 应用商店详情页提供「说明 / 更新日志」标签页展示版本变更，插件亦可通过 `host.store.changelog` RPC 读取同源更新日志。
    - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
 
 - 带系统权限的发行包通过索引的 `system_apps` 提供，支持该字段的 Block 会优先选用。旧客户端从 `apps` 读取已验证的兼容包。同步插件为旧客户端保留 v1.3.44。随包索引与采集器使用相同分流规则，采集器校验兼容包的固定 SHA-256 后才写入索引。
@@ -800,7 +848,9 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
    - 仅向**已启动运行中**的插件派发（5 秒超时），宿主**不会**为这类事件冷启动已停止的插件。
    - 请求 `params`：`{"event": "<事件名>", "timestamp": "2026-11-20T02:00:00Z", ...}`
-     - 支持事件：`"note.opened"`、`"theme.changed"`、`"locale.changed"`（附加字段随事件携带）。
+     - `"note.opened"`：携带 `{"path": "<当前打开笔记相对路径>"}`（申请 `events:workspace` 即可收到当前打开笔记的相对路径，无需 `notes:read`）。
+     - `"theme.changed"`：携带当前主题信息（如 `{"theme": "light"|"dark"}`）。
+     - `"locale.changed"`：携带当前语言（如 `{"locale": "zh"|"en"}`）。
    - 返回 `result`：`{"handled": true}`（可选）。
 
 ### 8.5 UI 贡献宿主方法（Plugin -> Host）
@@ -842,7 +892,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 11. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 12. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
+    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（**`text` 必填字符串**，省略或传 `null` 直接返回 `-32602`，不会误删当前选区；按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记，若右键菜单命令的目标是文件夹或笔记本外文件则直接返回 `-32004` 拒绝写入，不会落入其他活动标签页。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
 13. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
@@ -860,7 +910,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 - **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
 - **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python、Ruby、PHP、Lua、R、JavaScript、TypeScript、HTML、Vue、Svelte、CSS/SCSS/Less、JSON、YAML、TOML/INI、XML、Property List、SQL、GraphQL、Protobuf、Shell、Dockerfile、Makefile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
-- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
+- **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件同时声明了 `entry.command` 或 `surfaces`，则作为混合型交互插件按普通插件生命周期管理。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
 - **大代码块**：Markdown 代码块含超长单行时会使用基础高亮。整个代码块超过大小上限时会按纯文本显示，以保持编辑响应。
 - **系统「打开方式」自动关联**：启用、停用或卸载语言扩展时，宿主会在后台无感同步 `extensions` 到操作系统的「打开方式」菜单（macOS 通过用户目录隐形中转小壳自动跳过主程序已接管的纯文本与多段后缀；Windows 写当前用户 `HKCU` 专属 `Block.Document` ProgID 的 `OpenWithProgids`，均不抢占默认程序；Linux 维护 `NoDisplay=true` 的用户级 `block-plugins.desktop`，仅关联系统 MIME 数据库已收录的类型、不覆写主入口也不新增自定义 MIME，若桌面未给某细分子类型单独指定默认应用，部分桌面如 GNOME/GIO 可能优先按精确子类型回落），无需管理员权限；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
 
@@ -872,7 +922,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 | --- | --- | --- |
 | `id` | 是 | 字符串，匹配 `^[a-z][a-z0-9_-]{0,31}$`，同一插件内不可重复 |
 | `name` | 是 | `LocalizedText`（`zh` 与 `en` 均必填非空，禁止含 Emoji） |
-| `extensions` | 与 `filenames` 至少其一 | 字符串数组，最多 **16** 项，不可重复；每项匹配 `^\.[a-z0-9][a-z0-9._-]{0,23}$`（小写点号前缀，如 `".plist"`） |
+| `extensions` | 与 `filenames` 至少其一 | 字符串数组，最多 **16** 项，不可重复；每项匹配 `^\.[a-z0-9][a-z0-9._-]{0,23}$`（小写点号前缀，如 `".plist"`、`".d.ts"`；匹配文件时按最长后缀优先，例如 `".d.ts"` 优先于 `".ts"`） |
 | `filenames` | 与 `extensions` 至少其一 | 字符串数组，最多 **16** 项，不可重复；纯文件基本名（非空、`<= 64` 字节、不含 `/ \ :`，不可为 `.` 或 `..`） |
 | `aliases` | 否 | 字符串数组，最多 **16** 项，不可重复；每项匹配 `^[a-z0-9][a-z0-9._+-]{0,31}$`（用于 Markdown 代码块围栏标识） |
 | `display_tags` | 否 | 字符串数组，最多 **8** 项；每项去空白后非空且 `<= 24` 字节、禁止含 Emoji。用于商店列表与详情页展示；省略时优先回退 `filenames`，若为空则回退 `extensions`（商店索引 `file_extensions` 跨语言去重后最多保留 **6** 个） |
@@ -910,6 +960,11 @@ Grammar JSON 采用严格解码：**禁止重复键、禁止未知字段**。
 | `pop` | 否 | 布尔值，`true` 时弹栈返回上一状态（栈空时回到初始状态） |
 
 规则约束：`token`、`captures`、`next`、`push`、`pop` 至少设置其一；`next`、`push`、`pop` 至多设置其一；零长度匹配仅在发生状态转移时允许，连续零步循环上限为 **8** 次。
+
+扫描器行为说明：
+- 每一步仅在当前剩余切片 `line[pos:]` 上匹配 `\A(?:match)`，因此 `^` 等价于当前扫描位置而非整行行首，`\b` 也会把 `line[pos:]` 开头视为词边界；为避免关键字规则误标标识符后缀（如 `untrue` 中的 `true`），请在关键字规则之后放置整词标识符规则（如 `[A-Za-z_][A-Za-z0-9_]*`）。
+- 若当前位置无任何规则命中，扫描器消耗 **1 个 UTF-8 字符**并输出 `text`，然后继续前进。
+- 当 `pos == len(line)` 到达行尾时循环直接结束，因此零宽 `$` 退栈规则不会在行尾触发；单行上下文请用消费到行尾的规则（如 `[^\n]*` 或换行外字符匹配）或状态切换处理。
 
 #### 全部合法 `token` 名称（共 25 个）
 
@@ -993,11 +1048,12 @@ example-lang/
   "states": {
     "root": [
       { "match": "#.*$", "token": "comment" },
-      { "match": "^\\[[^\\]]+\\]", "token": "heading" },
+      { "match": "\\[[^\\]]+\\]", "token": "heading" },
       { "match": "\"(?:\\\\.|[^\"\\\\])*\"", "token": "string" },
-      { "match": "\\b(?:true|false|null)\\b", "token": "constant" },
-      { "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b", "token": "number" },
       { "match": "([A-Za-z_][A-Za-z0-9_.-]*)(\\s*=)", "captures": { "1": "property", "2": "operator" } },
+      { "match": "(?:true|false|null)\\b", "token": "constant" },
+      { "match": "[A-Za-z_][A-Za-z0-9_]*", "token": "text" },
+      { "match": "[0-9]+(?:\\.[0-9]+)?\\b", "token": "number" },
       { "match": "[ \\t]+", "token": "text" }
     ]
   },

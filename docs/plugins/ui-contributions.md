@@ -110,7 +110,9 @@
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
    - 仅向**已启动运行中**的插件派发（5 秒超时），宿主**不会**为这类事件冷启动已停止的插件。
    - 请求 `params`：`{"event": "<事件名>", "timestamp": "2026-11-20T02:00:00Z", ...}`
-     - 支持事件：`"note.opened"`、`"theme.changed"`、`"locale.changed"`（附加字段随事件携带）。
+     - `"note.opened"`：携带 `{"path": "<当前打开笔记相对路径>"}`（申请 `events:workspace` 即可收到当前打开笔记的相对路径，无需 `notes:read`）。
+     - `"theme.changed"`：携带当前主题信息（如 `{"theme": "light"|"dark"}`）。
+     - `"locale.changed"`：携带当前语言（如 `{"locale": "zh"|"en"}`）。
    - 返回 `result`：`{"handled": true}`（可选）。
 
 ### 8.5 UI 贡献宿主方法（Plugin -> Host）
@@ -152,7 +154,7 @@
 11. **`host.editor.selection`**（需 `"editor:read"`，参数 `{}`）
     - 返回：`{"note": "welcome.md", "text": "选中文本", "has_focus": true}`（编辑器不可用时返回 `-32005`）。
 12. **`host.editor.insert`**（需 `"editor:write"`）
-    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
+    - 参数：`{"text": "插入内容", "note": "welcome.md", "mode": "replace"|"insert"}`（**`text` 必填字符串**，省略或传 `null` 直接返回 `-32602`，不会误删当前选区；按 Markdown 解析为原生块后插入，并在写入磁盘时保留块级隐藏 HTML 注释签名且立即落盘，避免编辑器未保存状态与 `host.notes.read/write` 竞争；`mode` 默认 `"replace"` 替换当前选区，传 `"insert"` 时将选区折叠到末尾后再插入、不覆盖选中正文；`note` 可选：给定时主线程联合校验运行时存活、笔记本代次与绝对路径；在 `plugin.command` 处理期间省略时默认绑定发起命令的笔记，若右键菜单命令的目标是文件夹或笔记本外文件则直接返回 `-32004` 拒绝写入，不会落入其他活动标签页。`text` 上限 4 MiB，超限返回 `-32602`，宿主没有编辑器返回 `-32005`；没有打开的笔记或插入失败返回 `-32004`）。
     - 返回：`{"ok": true}`。
 13. **`host.ui.tarot_state` / `host.ui.set_tarot`**（需 `"ui:settings"`、`"ui:commands"` 或 `"ui:titlebar"` 任一权限）
     - `host.ui.tarot_state`（参数 `{}`）：返回 `{"supported": true, "enabled": false, "room": "writing", "collected": 3, "total": 22, "daily_drawn": false, "daily_note": "", "active_note": ""}`。
