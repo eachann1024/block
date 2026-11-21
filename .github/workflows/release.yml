@@ -91,7 +91,7 @@ jobs:
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
         run: node scripts/release/select-release.mjs --preflight
       # 只在 main 确认需要发版（且非仅预览构建）时短时加入 tailnet。身份只存在 Environment release-notes。
-      # 更新说明只经 tailnet 用 Magpie：先 gpt-6-luna，失败再 deepseek-flash。不要用 Gemini。
+      # 更新说明只经 tailnet 用 Magpie：Mac 在线先用 Mac 的 agy-cli/gemini-3.8-flash，再 VPS gpt-6-luna，最后 deepseek-flash。不要用 Google AI Studio key。
       # Magpie 目标只有 100.115.90.80:3425，不要公网地址，不要 3430。
       - name: Detect tailnet identity
         id: tailnet
@@ -130,6 +130,16 @@ jobs:
             echo "reachable=no" >> "$GITHUB_OUTPUT"
             echo "::warning title=release-notes::100.115.90.80:3425 不可达，无法生成更新说明。"
           fi
+      - name: Check Mac Magpie TCP 3425
+        id: mac_magpie
+        if: steps.preflight.outputs.needs_release == 'yes' && steps.tailscale.outcome == 'success'
+        run: |
+          if timeout 8 bash -c 'echo >/dev/tcp/100.118.27.43/3425'; then
+            echo "reachable=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "reachable=no" >> "$GITHUB_OUTPUT"
+            echo "Mac 不在线，跳过 Mac 上的 gemini-3.8-flash。"
+          fi
       - name: Check commits and generate release plan
         id: check
         if: steps.preflight.outputs.needs_release == 'yes'
@@ -142,6 +152,7 @@ jobs:
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
           MAGPIE_BASE_URL: http://100.115.90.80:3425/v1
           MAGPIE_REACHABLE: ${{ steps.magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
+          MAC_MAGPIE_REACHABLE: ${{ steps.mac_magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
         run: node scripts/release/select-release.mjs
       - uses: actions/upload-artifact@v4
         if: steps.check.outputs.should_build == 'yes'
