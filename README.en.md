@@ -6,7 +6,7 @@
 
 <a href="https://block.cooool.top/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/features.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/features.svg"><img alt="Block Highlights" src="docs/readme/en/light/features.svg"></picture></a>
 
-<a href="https://block.cooool.top/plugins/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/ecosystem.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/ecosystem.svg"><img alt="Block App Store Extensions" src="docs/readme/en/light/ecosystem.svg"></picture></a>
+<a href="https://docs.block.cooool.top/plugins/"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/ecosystem.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/ecosystem.svg"><img alt="Block App Store Extensions" src="docs/readme/en/light/ecosystem.svg"></picture></a>
 
 <a href="https://block.cooool.top/#compare"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/en/dark/compare.svg"><source media="(prefers-color-scheme: light)" srcset="docs/readme/en/light/compare.svg"><img alt="Block Advantages & Comparison" src="docs/readme/en/light/compare.svg"></picture></a>
 
@@ -14,8 +14,8 @@
   <a href="https://block.cooool.top/">Website & Download</a> ·
   <a href="https://github.com/eachann1024/block/releases/latest">Latest Release</a> ·
   <a href="https://block.cooool.top/#compare">Comparison</a> ·
-  <a href="docs/README.md">Documentation</a> ·
-  <a href="docs/plugins/README.md">Plugin Guide</a>
+  <a href="https://docs.block.cooool.top/">Documentation</a> ·
+  <a href="https://docs.block.cooool.top/plugins/">Plugin Guide</a>
 </p>
 
 <p align="center">
