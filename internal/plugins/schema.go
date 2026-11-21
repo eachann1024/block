@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 type ItemKind string
@@ -66,6 +67,8 @@ type UIIcon struct {
 	StrokePaths []string `json:"stroke_paths,omitempty"`
 	AccentPaths []string `json:"accent_paths,omitempty"`
 	Tooltip     string   `json:"tooltip,omitempty"`
+	Chip        string   `json:"chip,omitempty"`
+	Dot         bool     `json:"dot,omitempty"`
 }
 
 // Spec returns the inline vector form of the icon.
@@ -83,6 +86,15 @@ const maxIconStripIcons = 32
 func validateUIIcon(field string, ic UIIcon) error {
 	if err := checkUserText(field+".tooltip", ic.Tooltip, false); err != nil {
 		return err
+	}
+	if ic.Chip != "" || ic.Dot {
+		if ic.Name != "" || len(ic.StrokePaths) > 0 || len(ic.FillPaths) > 0 || len(ic.AccentPaths) > 0 {
+			return fmt.Errorf("%s uses either chip/dot or an icon, not both", field)
+		}
+		if utf8.RuneCountInString(ic.Chip) > 16 {
+			return fmt.Errorf("%s.chip allows at most 16 characters", field)
+		}
+		return checkText(field+".chip", ic.Chip, false)
 	}
 	if ic.Name != "" {
 		if len(ic.StrokePaths) > 0 || len(ic.FillPaths) > 0 || len(ic.AccentPaths) > 0 {

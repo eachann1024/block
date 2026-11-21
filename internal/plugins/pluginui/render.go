@@ -977,6 +977,13 @@ func renderIconStrip(c *ui.Context, item plugins.UIItem) {
 			}
 			for _, ic := range item.Icons {
 				icon := ic
+				if icon.Chip != "" {
+					chip := DrawUIChip(c, icon)
+					if icon.Tooltip != "" {
+						bui.WrappedTooltip(c, chip, icon.Tooltip)
+					}
+					continue
+				}
 				box := ui.Box(c).Size(theme.HeightChrome, theme.HeightChrome).Shrink(0).Center().Children(func() {
 					DrawUIIcon(c, icon, theme.IconChrome, colors)
 				})
