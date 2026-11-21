@@ -471,6 +471,9 @@ func (w *Workspace) renderFloatingSidebarCard(
 		OnNewNote: func() {
 			_, _ = w.CreateNewNote()
 		},
+		OnNewNoteIn: func(dir string) {
+			_, _ = w.CreateNewNoteIn(dir)
+		},
 		OnOpenNote: func(path string, inNewTab bool) {
 			if !inNewTab {
 				w.edgeFloat.DismissAll(w)
