@@ -170,6 +170,11 @@ func visibleStoreCards(ctrl *Controller, locale string) []storeCard {
 		if ctrl.storeSource != "" && ctrl.storeSource != source {
 			continue
 		}
+		// Code highlighting packs stay out of the browsing list; they only
+		// surface when searched for or already installed.
+		if query == "" && !isInstalled && entry.EffectiveCategory() == plugins.CategoryLanguage {
+			continue
+		}
 		matchScore := 0
 		if query != "" {
 			primary := []string{
@@ -237,13 +242,13 @@ func renderStoreCategoryTabs(
 		key   string
 		label string
 	}
-	tabs := make([]catTabSpec, 0, 1+len(plugins.AllCategories()))
+	tabs := make([]catTabSpec, 0, 1+len(plugins.StoreCategories()))
 	tabs = append(tabs, catTabSpec{
 		cat:   "",
 		key:   "all",
 		label: theme.Tr("全部", "All"),
 	})
-	for _, cat := range plugins.AllCategories() {
+	for _, cat := range plugins.StoreCategories() {
 		tabs = append(tabs, catTabSpec{
 			cat:   cat,
 			key:   string(cat),
@@ -611,7 +616,7 @@ func renderStoreSkeleton(c *ui.Context) {
 		Label(theme.Tr("正在加载插件目录", "Loading plugin catalog")).Children(func() {
 		ui.Column(c).FillWidth().Gap(theme.Space12).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-				for range 1 + len(plugins.AllCategories()) {
+				for range 1 + len(plugins.StoreCategories()) {
 					bar(theme.StoreIconBoxSize+theme.Space24, theme.HeightControl)
 				}
 			})

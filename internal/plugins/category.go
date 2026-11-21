@@ -6,58 +6,70 @@ import (
 )
 
 // Category classifies plugins in the Block App Store.
-// Language extensions are always ordered last.
+//
+// Block is a note app, so the store only shows six everyday categories.
+// CategoryTools ("other") and CategoryLanguage (code highlighting) stay valid
+// manifest values for compatibility, but have no store tab: "other" plugins
+// only appear under "All", and language packs stay out of sight unless the
+// user searches for them or already has them installed.
 type Category string
 
 const (
-	CategorySync       Category = "sync"
+	CategoryAppearance Category = "appearance"
 	CategoryEdit       Category = "edit"
 	CategoryOrganize   Category = "organize"
 	CategoryAI         Category = "ai"
 	CategoryPublish    Category = "publish"
-	CategoryAppearance Category = "appearance"
+	CategorySync       Category = "sync"
 	CategoryTools      Category = "tools"
 	CategoryLanguage   Category = "language"
 )
 
-var orderedCategories = []Category{
-	CategorySync,
+// storeCategories are the tabs shown in the App Store, in display order.
+var storeCategories = []Category{
+	CategoryAppearance,
 	CategoryEdit,
 	CategoryOrganize,
 	CategoryAI,
 	CategoryPublish,
-	CategoryAppearance,
-	CategoryTools,
-	CategoryLanguage,
+	CategorySync,
 }
 
-var validCategories = map[Category]bool{
-	CategorySync:       true,
-	CategoryEdit:       true,
-	CategoryOrganize:   true,
-	CategoryAI:         true,
-	CategoryPublish:    true,
-	CategoryAppearance: true,
-	CategoryTools:      true,
-	CategoryLanguage:   true,
-}
+// orderedCategories lists every valid manifest category: store tabs first,
+// then the hidden ones.
+var orderedCategories = append(append([]Category{}, storeCategories...), CategoryTools, CategoryLanguage)
+
+var validCategories = func() map[Category]bool {
+	m := make(map[Category]bool, len(orderedCategories))
+	for _, c := range orderedCategories {
+		m[c] = true
+	}
+	return m
+}()
 
 // legacyPluginCategories provides backwards-compatible category defaults for
 // existing store entries published before manifest.category was introduced.
 var legacyPluginCategories = map[string]Category{
 	"block-sync":        CategorySync,
-	"block-migrator":    CategorySync,
+	"block-migrator":    CategoryPublish,
 	"block-image-host":  CategoryEdit,
 	"block-canvas-dots": CategoryAppearance,
 	"block-titlebar":    CategoryAppearance,
-	"block-tarot":       CategoryTools,
+	"block-tarot":       CategoryAppearance,
 }
 
-// AllCategories returns the canonical App Store category order, with
-// CategoryLanguage always last.
+// AllCategories returns every valid manifest category: the store tabs in
+// display order, followed by the hidden CategoryTools and CategoryLanguage.
 func AllCategories() []Category {
 	out := make([]Category, len(orderedCategories))
 	copy(out, orderedCategories)
+	return out
+}
+
+// StoreCategories returns the categories shown as App Store tabs.
+func StoreCategories() []Category {
+	out := make([]Category, len(storeCategories))
+	copy(out, storeCategories)
 	return out
 }
 
@@ -80,46 +92,43 @@ func ValidCategory(c Category) bool {
 func CategoryLabel(c Category, locale string) string {
 	en := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en")
 	switch c {
-	case CategorySync:
-		if en {
-			return "Sync & Migration"
-		}
-		return "同步与迁移"
-	case CategoryEdit:
-		if en {
-			return "Writing & Editing"
-		}
-		return "编辑增强"
-	case CategoryOrganize:
-		if en {
-			return "Organize & Search"
-		}
-		return "整理与检索"
-	case CategoryAI:
-		if en {
-			return "AI Enhancements"
-		}
-		return "AI 增强"
-	case CategoryPublish:
-		if en {
-			return "Export & Publish"
-		}
-		return "导出与发布"
 	case CategoryAppearance:
 		if en {
 			return "Appearance"
 		}
 		return "外观"
+	case CategoryEdit:
+		if en {
+			return "Writing"
+		}
+		return "写作"
+	case CategoryOrganize:
+		if en {
+			return "Organize"
+		}
+		return "整理"
+	case CategoryAI:
+		return "AI"
+	case CategoryPublish:
+		if en {
+			return "Import & Export"
+		}
+		return "导入导出"
+	case CategorySync:
+		if en {
+			return "Sync"
+		}
+		return "同步"
 	case CategoryTools:
 		if en {
-			return "Tools"
+			return "Other"
 		}
-		return "工具"
+		return "其他"
 	case CategoryLanguage:
 		if en {
-			return "Languages"
+			return "Code Highlighting"
 		}
-		return "语言扩展"
+		return "代码高亮"
 	default:
 		return string(c)
 	}
@@ -146,51 +155,51 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 	switch c {
 	case CategorySync:
 		if en {
-			body = "Plugins for multi-device sync and note migration will appear here once published."
+			body = "Plugins that back up notes and keep them in sync across devices will appear here once published."
 		} else {
-			body = "多端同步与外部笔记迁移类插件，上架后会出现在这里。"
+			body = "把笔记存到网盘、多台设备随时查看的插件，上架后会出现在这里。"
 		}
 	case CategoryEdit:
 		if en {
-			body = "Plugins that enhance writing and editing workflows will appear here once published."
+			body = "Plugins for formatting, templates, and proofreading will appear here once published."
 		} else {
-			body = "增强写作与编辑体验的插件，上架后会出现在这里。"
+			body = "排版、模板、纠错这类让写作更顺手的插件，上架后会出现在这里。"
 		}
 	case CategoryOrganize:
 		if en {
-			body = "Plugins for tags, backlinks, and full-text search will appear here once published."
+			body = "Plugins for tags, linked notes, outlines, and quick search will appear here once published."
 		} else {
-			body = "标签、反向链接、全文检索这类帮你理清笔记的插件，上架后会出现在这里。"
+			body = "标签、笔记互链、目录与快速查找这类帮你理清笔记的插件，上架后会出现在这里。"
 		}
 	case CategoryAI:
 		if en {
-			body = "Plugins for extra AI models, prompt templates, and writing assistants will appear here once published."
+			body = "Plugins that polish, summarize, and answer questions about your notes will appear here once published."
 		} else {
-			body = "接入更多模型、提示词模板与写作助手的插件，上架后会出现在这里。"
+			body = "帮你润色、总结和随时问答的 AI 插件，上架后会出现在这里。"
 		}
 	case CategoryPublish:
 		if en {
-			body = "Plugins for extra export formats and publishing to blogs or newsletters will appear here once published."
+			body = "Plugins that bring notes in from other apps or export them as web pages and more will appear here once published."
 		} else {
-			body = "导出为更多格式、一键发布到博客或公众号的插件，上架后会出现在这里。"
+			body = "把别家笔记搬进来、或导出成网页等格式的插件，上架后会出现在这里。"
 		}
 	case CategoryAppearance:
 		if en {
-			body = "Plugins for customizing appearance, themes, and backgrounds will appear here once published."
+			body = "Plugins for themes, fonts, and icons will appear here once published."
 		} else {
-			body = "自定义界面样式、主题与背景的插件，上架后会出现在这里。"
+			body = "换主题、换字体和图标的插件，上架后会出现在这里。"
 		}
 	case CategoryTools:
 		if en {
-			body = "Utility and productivity plugins will appear here once published."
+			body = "Plugins that do not fit other categories will appear here once published."
 		} else {
-			body = "实用小工具与效率扩展类插件，上架后会出现在这里。"
+			body = "暂时不好归类的插件，上架后会出现在这里。"
 		}
 	case CategoryLanguage:
 		if en {
-			body = "Syntax highlighting extensions for code files and fenced blocks will appear here once published."
+			body = "Highlighting packs for code blocks will appear here once published."
 		} else {
-			body = "源码与代码块语法高亮扩展，上架后会出现在这里。"
+			body = "代码块高亮扩展，上架后会出现在这里。"
 		}
 	default:
 		if en {

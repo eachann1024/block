@@ -47,7 +47,7 @@ func TestResolveStoreEmptySpecVariants(t *testing.T) {
 	if spec.glyph != icons.Sparkles {
 		t.Fatalf("AI empty glyph = %q, want %q", spec.glyph, icons.Sparkles)
 	}
-	if spec.title != "「AI 增强」暂无插件" || !strings.Contains(spec.body, "模型") {
+	if spec.title != "「AI」暂无插件" || !strings.Contains(spec.body, "润色") {
 		t.Fatalf("AI empty copy = (%q, %q)", spec.title, spec.body)
 	}
 	if !spec.showGuide || spec.primaryID != "app-store-empty-idea" {
