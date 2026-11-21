@@ -40,10 +40,6 @@ func renderBrandMark(c *ui.Context, p TitlebarProps) {
 		rows = append(rows, blockui.TooltipRow{
 			Detail: checking,
 		})
-	default:
-		rows = append(rows, blockui.TooltipRow{
-			Detail: brandWebsiteHost,
-		})
 	}
 	spec := blockui.TooltipSpec{
 		Placement: blockui.TooltipBelow,
