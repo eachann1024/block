@@ -225,24 +225,31 @@ const (
 	SegmentedInnerHeight   = HeightChrome
 
 	// Global Pluck Switch & Plugin header metrics (designs/plugin-master-switch).
-	SwitchCompactTrackW       float32 = 34
-	SwitchCompactTrackH       float32 = 20
-	SwitchCompactKnobSize     float32 = 16
+	// Light switch (designs/settings-light V4 方案 C): 28×16 track, 12px knob when
+	// on, 10px when off, no shadow. Every size shares the same visual track; the
+	// hero size only keeps a taller hit box.
+	SwitchCompactTrackW       float32 = 28
+	SwitchCompactTrackH       float32 = 16
+	SwitchCompactKnobSize     float32 = 12
 	SwitchCompactPad          float32 = 2
-	SwitchCompactPressStretch float32 = 2.5
-	SwitchTrackW              float32 = 38
-	SwitchTrackH              float32 = 22
-	SwitchKnobSize            float32 = 18
+	SwitchCompactPressStretch float32 = 2
+	SwitchTrackW              float32 = 28
+	SwitchTrackH              float32 = 16
+	SwitchKnobSize            float32 = 12
 	SwitchPad                 float32 = 2
-	SwitchPressStretch        float32 = 3
-	SwitchHeroTrackW          float32 = 52
-	SwitchHeroTrackH          float32 = 30
-	SwitchHeroKnobSize        float32 = 24
-	SwitchHeroPad             float32 = 3
-	SwitchHeroPressStretch    float32 = 5
+	SwitchPressStretch        float32 = 2
+	SwitchHeroTrackW          float32 = 28
+	SwitchHeroTrackH          float32 = 16
+	SwitchHeroKnobSize        float32 = 12
+	SwitchHeroPad             float32 = 2
+	SwitchHeroPressStretch    float32 = 2
 	SwitchHeroHitH            float32 = 44
 	PluckDividerHeight        float32 = 20
 	PluginHeaderIconBox       float32 = 44
+	SwitchKnobOffSize         float32 = 10
+	SwitchOnTrackAlpha        float32 = 0.24
+	SwitchOnTrackHoverAlpha   float32 = 0.32
+	SwitchOnTrackPressedAlpha float32 = 0.40
 	PluginHeaderIconGlyph     float32 = 24
 	PluginHeaderIconRadius    float32 = 12
 	PluginTitlebarStatusMaxW  float32 = 240
