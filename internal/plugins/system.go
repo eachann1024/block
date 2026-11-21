@@ -178,6 +178,10 @@ type systemParams struct {
 }
 
 func (s *Supervisor) dispatchExtensionHostMethod(rt *Runtime, method string, params json.RawMessage, action *systemAction) (any, *rpcError, bool) {
+	if method == "host.store.changelog" {
+		res, rerr := s.dispatchStoreChangelogMethod(rt, params)
+		return res, rerr, true
+	}
 	if method != "host.system.capabilities" && systemMethods[method] == "" {
 		return s.dispatchContribHostMethod(rt, method, params)
 	}
