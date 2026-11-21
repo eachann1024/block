@@ -41,9 +41,10 @@ permissions:
   contents: read
 
 concurrency:
-  # Serialize releases on main so consecutive pushes never compute the same next version.
-  group: block-packages-${{ github.ref }}
-  cancel-in-progress: false
+  # Cancel stale builds immediately when a newer commit or manual release starts;
+  # the newer run recomputes the next version from the last published release.
+  group: block-release
+  cancel-in-progress: true
 
 env:
   SOURCE_SHA: ${{ github.sha }}

@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: block-prune-${{ github.event.release.tag_name || inputs.tag }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   prune:
