@@ -124,9 +124,15 @@ func (s *Session) renderFindBar(c *ui.Context) {
 		inputW = clampFloat32(180-(420-vp.W), 72, 180)
 	}
 
+	canReplace := !s.readOnly
+	padLeft := theme.Space10
+	if canReplace {
+		padLeft = theme.Space4
+	}
+
 	ui.Overlay(c, func() {
 		bar := appUi.Elevate(ui.Column(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).MaxWidth(maxBarW).
-			Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space4).
+			Padding(theme.Space4, theme.Space4, theme.Space4, padLeft).Gap(theme.Space4).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(theme.FindBarBorderWidth, pal.MenuBorder).
 			Transition(appUi.PopoverSpringTransition()), theme.ElevationPopover)
 		appUi.Probe(bar, "find-bar")
@@ -134,6 +140,27 @@ func (s *Session) renderFindBar(c *ui.Context) {
 
 		bar.Children(func() {
 			ui.Row(c.Key("find-row")).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+				if canReplace {
+					glyph, label := icons.ChevronRight, theme.Tr("展开替换", "Show replace")
+					if s.findReplaceOpen {
+						glyph, label = icons.ChevronDown, theme.Tr("收起替换", "Hide replace")
+					}
+					toggle := appUi.IconButton(c, glyph, appUi.IconButtonOptions{
+						ID:       "find-replace-toggle",
+						Label:    label,
+						Tooltip:  label,
+						Size:     theme.HeightControl,
+						IconSize: theme.IconInline,
+					})
+					if toggle.Clicked() {
+						s.findReplaceOpen = !s.findReplaceOpen
+						if s.findReplaceOpen {
+							s.findReplaceFocusPending = true
+						} else {
+							s.findFocusPending = true
+						}
+					}
+				}
 				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
 				in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(theme.HeightCompact).
@@ -154,7 +181,8 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						s.CloseFind()
 						return true
 					}
-					if k.Key == ui.KeyTab && k.Mods == 0 && !s.readOnly {
+					if k.Key == ui.KeyTab && k.Mods == 0 && canReplace {
+						s.findReplaceOpen = true
 						s.findReplaceFocusPending = true
 						c.Invalidate()
 						return true
@@ -221,7 +249,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 					s.CloseFind()
 				}
 			})
-			if !s.readOnly {
+			if canReplace && s.findReplaceOpen {
 				s.renderFindReplaceRow(c, inputW)
 			}
 		})
@@ -231,7 +259,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 func (s *Session) renderFindReplaceRow(c *ui.Context, inputW float32) {
 	pal := theme.Ocean()
 	ui.Row(c.Key("find-replace-row")).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Width(theme.IconRow).Height(theme.IconRow)
+		ui.Box(c).Width(theme.HeightControl + theme.Space4 + theme.IconRow).Height(theme.IconRow)
 
 		in := ui.TextInputBase(c.Key("find-replace-input"), &s.findReplace).Width(inputW).Height(theme.HeightCompact).
 			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
