@@ -65,6 +65,11 @@ func (w *Workspace) initTarot() {
 		OpenSettings: func() {
 			w.OpenSettings("appearance")
 		},
+		Notebooks: w.Notebooks,
+		SwitchNotebook: func(root string) {
+			_ = w.SetNotebook(root)
+		},
+		ChooseNotebook: w.ChooseNotebookDialog,
 		RequestRedraw: func() {
 			w.RequestRedraw()
 		},
