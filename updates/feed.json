@@ -1,10 +1,95 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T06:23:50.273Z",
-  "latest_version": "1.0.884",
-  "latest_tag": "v1.0.884",
+  "updated_at": "2026-11-21T07:08:14.219Z",
+  "latest_version": "1.0.886",
+  "latest_tag": "v1.0.886",
   "releases": [
+    {
+      "version": "1.0.886",
+      "tag": "v1.0.886",
+      "published_at": "2026-11-21T07:08:13Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.886",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "优化侧栏文件树、标签页与笔记本切换体验。"
+        ],
+        "improvements": [
+          "优化侧栏文件树、标签页与笔记本切换体验。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Add tab menu, sidebar folder targets and notes:path file context."
+        ],
+        "improvements": [
+          "Move Copy File Path to a plugin and wire tab/folder plugin menus."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.886/block-macos-arm64.dmg",
+          "size": 15021868,
+          "sha256": "559afbd0778cee61df3c6fcf0a88581d5c88d89b6226f85db62f742df9270257"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.886/block-macos-x64.dmg",
+          "size": 16544597,
+          "sha256": "24905a33c7b08455bbcfe3188208a6bcf8169e20f6ecebbdd655106499a3a3d4"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.886/block-windows-x64-setup.exe",
+          "size": 12028601,
+          "sha256": "75e16703d63053c97d468f88fef840f800f7947d07b7c44ef0f1c4152b34472a"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.886/block-linux-x64.deb",
+          "size": 10617142,
+          "sha256": "1fd49d59aa04001298c3951800f2dfc520982cea5642b12aa1271ac4a5a1e734"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.886/block-linux-x64.AppImage",
+          "size": 23538168,
+          "sha256": "4fc171bb6e65c49187c916c195557505b4a09868f904ad7a6931f7a847c065b9"
+        }
+      ]
+    },
+    {
+      "version": "1.0.885",
+      "tag": "v1.0.885",
+      "published_at": "2026-11-21T07:05:40Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.885",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "优化侧栏文件树、标签页与笔记本切换体验。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Simplify categories to six note-friendly tabs."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": []
+    },
     {
       "version": "1.0.884",
       "tag": "v1.0.884",
@@ -30,38 +115,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.884/block-macos-arm64.dmg",
-          "size": 15017067,
-          "sha256": "4be807dc243dabca1ee46f1d3faf92a1ad36e2ff21a2f01c2d0efbc814ada4d3"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.884/block-macos-x64.dmg",
-          "size": 16534350,
-          "sha256": "84d36fa6fb53d82b04290081945b02c1a74df81c2f8fda9eb54345014e8ff6d5"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.884/block-windows-x64-setup.exe",
-          "size": 12023948,
-          "sha256": "f45e75a6b53e93e8f317a6b7ab638b3a3ebea731283cb4588714acc4362e5ab0"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.884/block-linux-x64.deb",
-          "size": 10613890,
-          "sha256": "b1c543a97a23720f23ee48b3ccdedcfe49f86e3ba4e5df59f50007f689de4118"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.884/block-linux-x64.AppImage",
-          "size": 23534072,
-          "sha256": "aad057886abee8ba54f0a22614a92c73fcadee7aba4d285c6340e09d445363a1"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.883",
