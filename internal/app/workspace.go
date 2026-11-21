@@ -618,10 +618,11 @@ func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Ann
 
 	if w.ai != nil && w.ai.IsLiveProviderReady() {
 		type reqItem struct {
-			ID         string   `json:"id"`
-			AnchorText string   `json:"anchor_text"`
-			Note       string   `json:"note"`
-			Reactions  []string `json:"reactions,omitempty"`
+			ID         string                 `json:"id"`
+			AnchorText string                 `json:"anchor_text"`
+			Note       string                 `json:"note"`
+			Reactions  []string               `json:"reactions,omitempty"`
+			Earlier    []model.AnnotationTurn `json:"earlier,omitempty"`
 		}
 		items := make([]reqItem, 0, len(pending))
 		for _, a := range pending {
@@ -633,12 +634,14 @@ func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Ann
 				AnchorText: a.QuotedText,
 				Note:       a.Note,
 				Reactions:  a.Reactions,
+				Earlier:    a.Thread,
 			})
 		}
 		payload, _ := json.MarshalIndent(items, "", "  ")
 		sysPrompt := `You handle margin notes on a Markdown document. For each note decide its intent:
 - "edit": the note asks to change the anchored text (rewrite, shorten, translate, fix, reformat). "text" is the full replacement for anchor_text only.
 - "answer": the note asks a question or wants an opinion, explanation or check, without asking for a change. "text" is a short, direct answer in the note's language; never a rewritten version of the text.
+"earlier" (when present) lists previous rounds on the same note, oldest first ({"q": note, "a": your reply}); "note" is then a follow-up to them, so read it in that context.
 When unsure, prefer "answer". Return ONLY valid JSON: [{"id":"...","kind":"edit"|"answer","text":"..."}]. No markdown fences or extra prose.`
 		userPrompt := fmt.Sprintf("Document Markdown:\n%s\n\nNotes:\n%s", docMarkdown, string(payload))
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)

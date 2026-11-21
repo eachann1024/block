@@ -247,6 +247,8 @@ type Session struct {
 	annotUnresolved       []files.StoredAnnotation          // stored entries whose anchor is not in this doc, written back verbatim
 	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply
 	annotGenCh            chan map[string]model.AnnotationReply
+	annotGenInFlight      int
+	followupDrafts        map[string]*string
 	annotExtraBottom      float32
 	activeAnnotID         string
 	hoveredAnnotID        string
