@@ -42,7 +42,9 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 		ctrl.storeQuery = query
 	}
 	ctrl.storeSourceMenu.Compact = true
+	ctrl.storeSourceMenu.Borderless = true
 	ctrl.storeSortMenu.Compact = true
+	ctrl.storeSortMenu.Borderless = true
 	bui.DropdownSelect(c, "app-store-source", &ctrl.storeSource, []bui.SelectOption{
 		{Label: theme.Tr("全部来源", "All sources")},
 		{Value: storeSourceOfficial, Label: theme.Tr("Block 官方", "Official by Block")},
@@ -310,10 +312,8 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 			MinWidth(0)
 		if in.Focused() {
 			in.Background(pal.Card).Border(1, pal.Accent)
-		} else if in.Hovered() {
-			in.Background(pal.Shell).Border(1, pal.BtnBorder.Mix(pal.Text, 0.20))
 		} else {
-			in.Background(pal.Shell).Border(1, pal.BtnBorder)
+			in.Background(pal.Shell).Border(1, ui.Transparent)
 		}
 		bui.Probe(in, "app-store-manual-input")
 		if in.Changed() {

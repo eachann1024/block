@@ -378,7 +378,7 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			ID:          "plugin-hdr-enable-" + pluginID,
 			Label:       theme.Tr("启用插件", "Enable Plugin"),
 			Value:       &switchVal,
-			Size:        bui.SwitchCompact,
+			Size:        bui.SwitchHero,
 			Phase:       phase,
 			ErrorKey:    vs.Error,
 			AsyncEnable: !declarative,
