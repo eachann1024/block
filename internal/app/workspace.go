@@ -245,6 +245,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		GetNotebooks: func() []string {
 			return w.Notebooks()
 		},
+		AddNotebook: w.RegisterNotebook,
 		GetActiveNote: func() string {
 			return w.State().ActiveTab
 		},
@@ -2444,6 +2445,42 @@ func (w *Workspace) ForgetNotebook(root string) {
 		w.searchWin.Invalidate()
 	}
 	w.RequestRedraw()
+}
+
+// RegisterNotebook adds folder to the notebook list without switching to it.
+func (w *Workspace) RegisterNotebook(folder string) error {
+	clean := filepath.Clean(folder)
+	info, err := os.Stat(clean)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("notebook path is not a directory")
+	}
+	w.mu.RLock()
+	for _, nb := range w.state.Notebooks {
+		if filepath.Clean(nb) == clean {
+			w.mu.RUnlock()
+			return nil
+		}
+	}
+	w.mu.RUnlock()
+	next, err := files.UpdateState(func(st *model.AppState) {
+		for _, nb := range st.Notebooks {
+			if filepath.Clean(nb) == clean {
+				return
+			}
+		}
+		st.Notebooks = append(st.Notebooks, clean)
+	})
+	if err != nil {
+		return err
+	}
+	w.mu.Lock()
+	w.state.Notebooks = next.Notebooks
+	w.mu.Unlock()
+	w.RequestRedraw()
+	return nil
 }
 
 // ChooseNotebookDialog opens the native directory picker to switch notebooks.
