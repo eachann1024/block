@@ -195,20 +195,19 @@ type SidebarProps struct {
 	ShortcutNewFolder string
 	ShortcutNewNote   string
 
-	OnOpenSearch       func()
-	OnSetSortMode      func(mode model.TreeSortMode)
-	OnToggleShowNonMD  func()
-	OnToggleShowAssets func()
-	OnNewFolder        func()
-	OnNewNote          func()
-	OnOpenNote         func(path string, inNewTab bool)
-	OnRenameItem       func(oldPath, newName string) error
-	OnMoveItem         func(srcPath, dstDir string)
-	OnReorderSibling   func(parentDir, srcPath, targetPath string, after bool)
-	OnReorderNotebooks func(fromIdx, toIdx int)
-	OnTrashItem        func(path string)
-	OnCopyPath         func(path string)
-	OnRevealItem       func(path string)
+	OnOpenSearch         func()
+	OnSetSortMode        func(mode model.TreeSortMode)
+	OnToggleShowNonMD    func()
+	OnToggleShowAssets   func()
+	OnNewFolder          func()
+	OnNewNote            func()
+	OnOpenNote           func(path string, inNewTab bool)
+	OnRenameItem         func(oldPath, newName string) error
+	OnMoveItem           func(srcPath, dstDir string)
+	OnReorderSibling     func(parentDir, srcPath, targetPath string, after bool)
+	OnReorderNotebooks   func(fromIdx, toIdx int)
+	OnTrashItem          func(path string)
+	OnRevealItem         func(path string)
 	OnSwitchNotebook     func(root string)
 	OnForgetNotebook     func(root string)
 	OnChooseNotebook     func()
@@ -1352,7 +1351,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 			targetPath := p.State.ContextPath
 			targetDir := p.State.ContextIsDir
 			icOpen := icons.NotePlus
-			icCopyPath := icons.LinkCopy
 			icReveal := icons.FolderReveal
 			icRename := icons.Pencil
 			icMove := icons.ArrowRight
@@ -1391,17 +1389,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					)
 				}
 				items = append(items,
-					blockui.MenuItemSpec{
-						ID:    "copy-path",
-						Label: theme.Tr("复制文件路径", "Copy File Path"),
-						Icon:  &icCopyPath,
-						OnClick: func() {
-							p.State.ClosePopups()
-							if p.OnCopyPath != nil {
-								p.OnCopyPath(targetPath)
-							}
-						},
-					},
 					blockui.MenuItemSpec{
 						ID:    "reveal",
 						Label: revealFileLabel(),
@@ -1466,9 +1453,15 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						},
 					)
 				}
-				if !targetDir && len(p.PluginContextMenu) > 0 {
+				var treePlugins []plugins.ResolvedMenuItem
+				for _, pm := range p.PluginContextMenu {
+					if (targetDir && pm.OnFolder) || (!targetDir && pm.OnNote) {
+						treePlugins = append(treePlugins, pm)
+					}
+				}
+				if len(treePlugins) > 0 {
 					items = append(items, blockui.MenuItemSpec{Separator: true})
-					for _, pm := range p.PluginContextMenu {
+					for _, pm := range treePlugins {
 						pmItem := pm
 						spec := blockui.MenuItemSpec{
 							ID:    "tree-plugin:" + pmItem.PluginID + "/" + pmItem.ID,
@@ -1652,7 +1645,7 @@ func renderTreeFileBadges(c *ui.Context, badges []plugins.ResolvedFileBadge, pal
 				Fill:   toneCol.Alpha(0.22),
 				Accent: toneCol,
 			}
-			chip := ui.Row(c.Key("tree-badge-"+badge.PluginID+"-"+badge.BadgeID)).
+			chip := ui.Row(c.Key("tree-badge-" + badge.PluginID + "-" + badge.BadgeID)).
 				Gap(theme.Space2).AlignItems(ui.Center).Shrink(0)
 			if badge.Tooltip != "" {
 				blockui.RichTooltip(c, chip, blockui.TooltipSpec{

@@ -232,7 +232,6 @@ type TitlebarProps struct {
 	OnFormatJSON        func()
 	OnCopyImage         func()
 	OnCopyImageMarkdown func()
-	OnCopyPath          func(path string)
 	OnOpenExternal      func()
 	OnRevealPath        func(path string)
 	NoteStats           func() (characters, blocks int)
@@ -251,6 +250,8 @@ type TitlebarProps struct {
 	OnPluginButton    func(plugins.ResolvedTitlebarButton)
 	PluginPageMenu    []plugins.ResolvedMenuItem
 	OnPluginMenuItem  func(plugins.ResolvedMenuItem)
+	PluginTabMenu     []plugins.ResolvedMenuItem
+	OnPluginTabMenu   func(item plugins.ResolvedMenuItem, path string)
 
 	// Brand mark: version shown in its tooltip and menu, plus the update hint it carries.
 	AppVersion        string
@@ -890,7 +891,6 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 	icCode := icons.Code
 	icFormat := icons.Sparkles
 	icOpen := icons.LinkOpen
-	icPath := icons.LinkCopy
 	icReveal := icons.FolderReveal
 	icWrap := icons.Wrap
 	icSend := icons.Send
@@ -909,7 +909,34 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 		}}
 	}
 
-	copyPathShortcut := blockui.FormatShortcutDisplay(copyPathShortcutSpec())
+	// Plugin page_menu items apply to every surface (notes, code, images…).
+	appendPluginPageItems := func(items []blockui.MenuItemSpec) []blockui.MenuItemSpec {
+		if len(p.PluginPageMenu) == 0 {
+			return items
+		}
+		items = append(items, blockui.MenuItemSpec{Separator: true})
+		if legacyProbeIDs == nil {
+			legacyProbeIDs = make(map[string]string, len(p.PluginPageMenu))
+		}
+		for _, pm := range p.PluginPageMenu {
+			pmItem := pm
+			id := "page-plugin:" + pmItem.PluginID + "/" + pmItem.ID
+			legacyProbeIDs[id] = "page-plugin-" + pmItem.PluginID + "-" + pmItem.ID
+			spec := item(id, pmItem.Title, "", nil, func() {
+				if p.OnPluginMenuItem != nil {
+					p.OnPluginMenuItem(pmItem)
+				}
+			})
+			if len(pmItem.Icon.StrokePaths) > 0 {
+				icSpec := pmItem.Icon
+				spec.CustomIcon = func(c *ui.Context, size float32, colors theme.IconColors) {
+					pluginui.DrawDuoSpec(c, icSpec, size, colors)
+				}
+			}
+			items = append(items, spec)
+		}
+		return items
+	}
 
 	if surface == SurfaceNote {
 		var items []blockui.MenuItemSpec
@@ -951,40 +978,9 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 			}
 			items = append(items, item("page-view-source", srcLabel, "", &icCode, p.OnToggleNoteSource))
 		}
-		if len(p.PluginPageMenu) > 0 {
-			items = append(items, blockui.MenuItemSpec{Separator: true})
-			legacyProbeIDs = make(map[string]string, len(p.PluginPageMenu))
-			for _, pm := range p.PluginPageMenu {
-				pmItem := pm
-				id := "page-plugin:" + pmItem.PluginID + "/" + pmItem.ID
-				legacyProbeIDs[id] = "page-plugin-" + pmItem.PluginID + "-" + pmItem.ID
-				spec := item(
-					id,
-					pmItem.Title,
-					"",
-					nil,
-					func() {
-						if p.OnPluginMenuItem != nil {
-							p.OnPluginMenuItem(pmItem)
-						}
-					},
-				)
-				if len(pmItem.Icon.StrokePaths) > 0 {
-					icSpec := pmItem.Icon
-					spec.CustomIcon = func(c *ui.Context, size float32, colors theme.IconColors) {
-						pluginui.DrawDuoSpec(c, icSpec, size, colors)
-					}
-				}
-				items = append(items, spec)
-			}
-		}
+		items = appendPluginPageItems(items)
 		items = append(items,
 			blockui.MenuItemSpec{Separator: true},
-			item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), copyPathShortcut, &icPath, func() {
-				if p.OnCopyPath != nil {
-					p.OnCopyPath(p.ActiveTab)
-				}
-			}),
 			item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 				if p.OnRevealPath != nil {
 					p.OnRevealPath(p.ActiveTab)
@@ -1086,15 +1082,14 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 	if len(items) > 0 {
 		items = append(items, blockui.MenuItemSpec{Separator: true})
 	}
+	items = appendPluginPageItems(items)
+	if len(p.PluginPageMenu) > 0 {
+		items = append(items, blockui.MenuItemSpec{Separator: true})
+	}
 	if surface != SurfaceHTML {
 		items = append(items, item("page-open-external", theme.Tr("用默认应用打开", "Open in Default App"), "", &icOpen, p.OnOpenExternal))
 	}
 	items = append(items,
-		item("page-copy-path", theme.Tr("复制文件路径", "Copy File Path"), copyPathShortcut, &icPath, func() {
-			if p.OnCopyPath != nil {
-				p.OnCopyPath(p.ActiveTab)
-			}
-		}),
 		item("page-reveal", revealFileLabel(), "", &icReveal, func() {
 			if p.OnRevealPath != nil {
 				p.OnRevealPath(p.ActiveTab)
@@ -1129,20 +1124,32 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 	icOthers := icons.TabCloseOthers
 	icRight := icons.TabCloseRight
 	icAll := icons.TabCloseAll
-	icPath := icons.LinkCopy
 	icReveal := icons.FolderReveal
-	return []blockui.MenuItemSpec{
-		{
-			ID:    "tab-menu-copy-path",
-			Label: theme.Tr("复制文件路径", "Copy File Path"),
-			Icon:  &icPath,
+	var pluginItems []blockui.MenuItemSpec
+	for _, pm := range p.PluginTabMenu {
+		pmItem := pm
+		spec := blockui.MenuItemSpec{
+			ID:    "tab-plugin:" + pmItem.PluginID + "/" + pmItem.ID,
+			Label: pmItem.Title,
 			OnClick: func() {
 				p.MenuState.Close()
-				if p.OnCopyPath != nil {
-					p.OnCopyPath(target)
+				if p.OnPluginTabMenu != nil {
+					p.OnPluginTabMenu(pmItem, target)
 				}
 			},
-		},
+		}
+		if len(pmItem.Icon.StrokePaths) > 0 {
+			icSpec := pmItem.Icon
+			spec.CustomIcon = func(c *ui.Context, size float32, colors theme.IconColors) {
+				pluginui.DrawDuoSpec(c, icSpec, size, colors)
+			}
+		}
+		pluginItems = append(pluginItems, spec)
+	}
+	if len(pluginItems) > 0 {
+		pluginItems = append(pluginItems, blockui.MenuItemSpec{Separator: true})
+	}
+	return append(pluginItems, []blockui.MenuItemSpec{
 		{
 			ID:    "tab-menu-reveal",
 			Label: revealFileLabel(),
@@ -1203,5 +1210,5 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 				}
 			},
 		},
-	}
+	}...)
 }

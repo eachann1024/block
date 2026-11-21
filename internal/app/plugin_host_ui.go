@@ -899,7 +899,7 @@ func isHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
 		return key >= ui.Key1 && key <= ui.Key9
 	case ui.Cmd | ui.Shift:
 		switch key {
-		case ui.KeyC, ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
+		case ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
 			ui.KeyBracketLeft, ui.KeyBracketRight:
 			return true
 		}
