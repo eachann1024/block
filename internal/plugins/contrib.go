@@ -831,11 +831,12 @@ const (
 
 // TitlebarSlot describes one titlebar item for host.titlebar.get_items.
 type TitlebarSlot struct {
-	ID     string `json:"id"`
-	Label  string `json:"label"`
-	Locked bool   `json:"locked"`
-	Hidden bool   `json:"hidden"`
-	Plugin string `json:"plugin,omitempty"`
+	ID     string  `json:"id"`
+	Label  string  `json:"label"`
+	Locked bool    `json:"locked"`
+	Hidden bool    `json:"hidden"`
+	Plugin string  `json:"plugin,omitempty"`
+	Icon   *UIIcon `json:"icon,omitempty"`
 }
 
 // PluginTitlebarSlotID is the slot id for a plugin button: "plugin:<pluginID>/<buttonID>".
@@ -851,13 +852,13 @@ func builtinTitlebarSlots(en bool) []TitlebarSlot {
 		return zh
 	}
 	return []TitlebarSlot{
-		{ID: TitlebarSlotFeedback, Label: tr("反馈", "Feedback")},
-		{ID: TitlebarSlotAI, Label: tr("AI 助手", "AI Assistant")},
-		{ID: TitlebarSlotSendAll, Label: tr("统一发送批注", "Send All Annotations")},
-		{ID: TitlebarSlotWrap, Label: tr("自动换行", "Word Wrap")},
-		{ID: TitlebarSlotZoom, Label: tr("缩放", "Zoom")},
-		{ID: TitlebarSlotReveal, Label: tr("在文件夹中显示", "Reveal in Folder")},
-		{ID: TitlebarSlotMore, Label: tr("页面操作", "Page Actions"), Locked: true},
+		{ID: TitlebarSlotFeedback, Label: tr("反馈", "Feedback"), Icon: &UIIcon{Name: "message-square"}},
+		{ID: TitlebarSlotAI, Label: tr("AI 助手", "AI Assistant"), Icon: &UIIcon{Name: "sparkles"}},
+		{ID: TitlebarSlotSendAll, Label: tr("统一发送批注", "Send All Annotations"), Icon: &UIIcon{Name: "send"}},
+		{ID: TitlebarSlotWrap, Label: tr("自动换行", "Word Wrap"), Icon: &UIIcon{Name: "wrap"}},
+		{ID: TitlebarSlotZoom, Label: tr("缩放", "Zoom"), Icon: &UIIcon{Name: "tb-plus"}},
+		{ID: TitlebarSlotReveal, Label: tr("在文件夹中显示", "Reveal in Folder"), Icon: &UIIcon{Name: "folder-reveal"}},
+		{ID: TitlebarSlotMore, Label: tr("页面操作", "Page Actions"), Locked: true, Icon: &UIIcon{Name: "more"}},
 	}
 }
 
@@ -1603,6 +1604,7 @@ func (s *Supervisor) TitlebarSlots() []TitlebarSlot {
 				ID:     PluginTitlebarSlotID(a.Manifest.ID, b.ID),
 				Label:  b.Tooltip.Resolve(loc),
 				Plugin: a.Manifest.ID,
+				Icon:   IconFromSpec(b.Icon),
 			})
 		}
 	}
