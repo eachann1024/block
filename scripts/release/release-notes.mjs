@@ -206,7 +206,7 @@ export function resolveProviders(env) {
         skipped.push(`${model}：Mac 不在线`);
         continue;
       }
-      ready.push({ model, url: MAC_MAGPIE_CHAT_URL, headers: { "content-type": "application/json" }, timeoutMs: 45_000 });
+      ready.push({ model, url: MAC_MAGPIE_CHAT_URL, headers: { "content-type": "application/json" }, timeoutMs: 120_000 });
       continue;
     }
     if (env.MAGPIE_REACHABLE === "no") {
