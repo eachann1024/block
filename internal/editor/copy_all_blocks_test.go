@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -363,6 +364,15 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		s := NewSession("/tmp/table-menu.md", doc, nil, nil)
 		s.focusedBlock = 0
 		tt := ui.NewTester(makeSessionView(s, false), 900, 500)
+		// The Edit menu's copy command reaches overlay shortcuts only on macOS;
+		// elsewhere the key itself comes first.
+		menuCopy := func() {
+			if runtime.GOOS == "darwin" {
+				tt.Command("copy")
+			} else {
+				tt.Key(ui.Cmd, ui.KeyC)
+			}
+		}
 
 		// Row handle menu selected -> both Command(copy) (macOS Cmd+C) and Key(Cmd+C) copy row with inline Markdown.
 		s.tableMenuBlock = 10
@@ -370,7 +380,7 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		s.tableMenuIndex = 0
 		tt.Frame()
 		tt.SetClipboard("stale")
-		tt.Command("copy")
+		menuCopy()
 		if got := tt.Clipboard(); got != "Hi **Bold**\t`Code`" {
 			t.Fatalf("Table row menu Command(copy) got %q, want %q", got, "Hi **Bold**\t`Code`")
 		}
@@ -381,7 +391,7 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		s.tableMenuIndex = 1
 		tt.Frame()
 		tt.SetClipboard("stale")
-		tt.Command("copy")
+		menuCopy()
 		if got := tt.Clipboard(); got != "`Code`\nRow2B" {
 			t.Fatalf("Table col menu Command(copy) got %q, want %q", got, "`Code`\nRow2B")
 		}
@@ -392,7 +402,7 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		s.tableMenuIndex = 0
 		tt.Frame()
 		tt.SetClipboard("stale")
-		tt.Command("copy")
+		menuCopy()
 		if got := tt.Clipboard(); !strings.Contains(got, "| Hi **Bold** | `Code` |") {
 			t.Fatalf("Table whole menu Command(copy) got %q", got)
 		}

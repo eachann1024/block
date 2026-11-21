@@ -268,7 +268,13 @@ func TestStoreAndBackendsPersistence(t *testing.T) {
 		t.Fatal("expected Pi backend locked flag persisted")
 	}
 
-	// Reload from disk.
+	// Reload from disk. The status override does not survive, so put a pi
+	// binary on PATH for machines (CI) that do not have one installed.
+	binDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binDir, "pi"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	reloaded := NewController(ctrl.dataDir, nil, nil)
 	if reloaded.ProviderConfig().Model != "gpt-test" {
 		t.Fatalf("expected persisted model gpt-test, got %q", reloaded.ProviderConfig().Model)
