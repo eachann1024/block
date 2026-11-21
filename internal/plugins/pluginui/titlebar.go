@@ -365,9 +365,18 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			}
 		}
 
-		// ④ Compact enable switch (34x20). Reflects actual persisted enabled state;
-		// when startup failed, stays ON with error ring so toggling OFF disables cleanly.
+		// ④ Light enable switch (28x16, same as settings rows) with a plain state
+		// label. Reflects actual persisted enabled state; when startup failed, stays
+		// ON with error ring so toggling OFF disables cleanly.
 		switchVal := inst.Enabled
+		if !starting && !failed && !uninstBusy {
+			stateText, stateCol := theme.Tr("已停用", "Disabled"), pal.Placeholder
+			if switchVal {
+				stateText, stateCol = theme.Tr("运行中", "Running"), pal.TextSecondary
+			}
+			ui.Text(ctx, stateText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+				FontWeight(theme.WeightRegular).TextColor(stateCol).SingleLine().Shrink(0)
+		}
 		phase := bui.SwitchIdle
 		if starting {
 			phase = bui.SwitchBusy

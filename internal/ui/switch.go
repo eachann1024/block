@@ -378,29 +378,25 @@ func SwitchWithOptions(c *ui.Context, opts SwitchOptions) bool {
 			p.Stroke(ringRect, pal.Accent, trackR+3, 2)
 		}
 
-		// Base track surface.
-		trackCol := pal.BtnBorder
-		if !curOn {
-			switch {
-			case pressed:
-				trackCol = pal.SwitchTrackPressed
-			case hovered:
-				trackCol = pal.SwitchTrackHover
-			}
-		} else if hovered && !isBusy {
+		// Base track surface: quiet grey when off (design V4 方案 C).
+		trackCol := pal.SwitchTrackOff
+		switch {
+		case pressed:
+			trackCol = pal.SwitchTrackPressed
+		case hovered:
 			trackCol = pal.SwitchTrackHover
 		}
 		p.Fill(trackRect, trackCol, trackR)
 
-		// Animated accent fill pill sweeping from left (trackH -> trackW).
+		// Animated light-accent fill sweeping from left (trackH -> trackW).
 		if fillA > 0.005 {
-			fillCol := pal.Accent
+			fillAlpha := theme.SwitchOnTrackAlpha
 			if !isBusy {
 				switch {
 				case pressed:
-					fillCol = pal.AccentPressed
+					fillAlpha = theme.SwitchOnTrackPressedAlpha
 				case hovered:
-					fillCol = pal.AccentHover
+					fillAlpha = theme.SwitchOnTrackHoverAlpha
 				}
 			}
 			fillW := trackH + (trackW-trackH)*clamp01(fillRatio)
@@ -411,7 +407,7 @@ func SwitchWithOptions(c *ui.Context, opts SwitchOptions) bool {
 					W: fillW,
 					H: trackRect.H,
 				}
-				p.Fill(fillRect, fillCol.Alpha(clamp01(fillA)), trackR)
+				p.Fill(fillRect, pal.Accent.Alpha(fillAlpha*clamp01(fillA)), trackR)
 			})
 		}
 
@@ -426,16 +422,18 @@ func SwitchWithOptions(c *ui.Context, opts SwitchOptions) bool {
 			p.Stroke(errRect, pal.Danger, max(trackR-0.75, 0), 1.5)
 		}
 
-		// Knob geometry: directional press stretch keeps the leading edge anchored.
-		travel := trackW - knobSize - pad*2
+		// Knob geometry: the knob grows from the small off size to the on size as
+		// it travels; directional press stretch keeps the leading edge anchored.
+		kPos := clamp01(pos)
+		knobH := theme.SwitchKnobOffSize + (knobSize-theme.SwitchKnobOffSize)*kPos
+		inset := pad + (knobSize-knobH)*0.5
+		travel := trackW - knobH - inset*2
 		extraW := maxStretch * clamp01(stretchAmt)
-		knobW := knobSize + extraW
-		// Base left position interpolates smoothly with overshoot curve; when on and pressed,
-		// shift left by extraW so the right edge stays flush with the right padding.
-		knobX := trackRect.X + pad + travel*pos - extraW*clamp01(pos)
+		knobW := knobH + extraW
+		knobX := trackRect.X + inset + travel*pos - extraW*kPos
 		maxOver := pad * 0.6
-		minKnobX := trackRect.X + pad
-		maxKnobX := trackRect.X + trackW - pad - knobW
+		minKnobX := trackRect.X + inset
+		maxKnobX := trackRect.X + trackW - inset - knobW
 		if knobX < minKnobX-maxOver {
 			knobX = minKnobX - maxOver
 		} else if knobX > maxKnobX+maxOver {
@@ -443,19 +441,19 @@ func SwitchWithOptions(c *ui.Context, opts SwitchOptions) bool {
 		}
 		knobRect := ui.Rect{
 			X: knobX,
-			Y: trackRect.Y + pad,
+			Y: trackRect.Y + (trackH-knobH)*0.5,
 			W: knobW,
-			H: knobSize,
+			H: knobH,
 		}
-		knobR := knobSize * 0.5
+		knobR := knobH * 0.5
 
-		p.Shadow(knobRect, knobR, 0, 1, 2, 0, pal.SwitchKnobShadow) // design:allow
-		p.Fill(knobRect, pal.SwitchKnob, knobR)
-		p.Stroke(knobRect, pal.SwitchKnobBorder, knobR, 0.5)
+		// Knob colour follows the fill: grey off, accent on. No shadow, no border.
+		knobCol := pal.SwitchKnobOff.Mix(pal.Accent, clamp01(fillRatio)*clamp01(fillA/fillAlphaTarget(true, SwitchIdle)))
+		p.Fill(knobRect, knobCol, knobR)
 
 		// Busy spinner arc centered inside the knob.
 		if isBusy {
-			drawKnobSpinner(p, knobRect, pal.Accent, spinAngle, rm)
+			drawKnobSpinner(p, knobRect, pal.AccentText, spinAngle, rm)
 		}
 
 		if animating && !rm {
