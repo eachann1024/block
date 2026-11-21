@@ -528,7 +528,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
 		"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
 		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
-		"checklist_add_folder",
+		"checklist_add_folder", "item_icons",
 	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")

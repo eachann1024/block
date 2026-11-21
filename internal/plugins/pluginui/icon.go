@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"block/internal/icons"
 	"block/internal/plugins"
 	"block/internal/theme"
 	"github.com/egoist/mygo"
@@ -48,6 +49,15 @@ func DrawDuoSpec(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors t
 			}
 		}
 	})
+}
+
+// DrawUIIcon renders a plugin UI icon: a host built-in glyph by name, or an inline vector.
+func DrawUIIcon(c *ui.Context, ic plugins.UIIcon, size float32, colors theme.IconColors) {
+	if ic.Name != "" {
+		icons.Draw(c, icons.Icon(ic.Name), size, colors)
+		return
+	}
+	DrawDuoSpec(c, ic.Spec(), size, colors)
 }
 
 // BuildMenuIcon builds and caches a native colored ui.MenuIcon from a plugin DuoIconSpec.

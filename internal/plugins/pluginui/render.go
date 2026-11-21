@@ -592,13 +592,16 @@ func renderItem(
 		if inGroup {
 			ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).Gap(theme.Space16).
 				AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+					renderRowIcon(c, item.Icon)
+					ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
 				renderSwitch()
 			})
 			return
 		}
-		bui.SettingsRow(c, item.Label, renderSwitch)
+		renderIconSettingsRow(c, item.Icon, item.Label, renderSwitch)
 
 	case plugins.KindFolder:
 		path, ok := values[item.ID].(string)
@@ -914,7 +917,7 @@ func renderItem(
 		ui.Column(c).FillWidth().MinWidth(0).Children(func() {
 			for _, row := range item.Rows {
 				rw := row
-				bui.SettingsRow(c, rw.Label, func() {
+				renderIconSettingsRow(c, rw.Icon, rw.Label, func() {
 					value := ui.Text(c, rw.Value).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 						TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 					bui.WrappedTooltip(c, value, rw.Tooltip)
@@ -922,9 +925,67 @@ func renderItem(
 			}
 		})
 
+	case plugins.KindIconStrip:
+		renderIconStrip(c, item)
+
 	case plugins.KindLogList:
 		renderLogListItem(c, pluginID, item, values, fb.BusyAction, fb.SidebarLayout, onAction)
 	}
+}
+
+func renderRowIcon(c *ui.Context, ic *plugins.UIIcon) {
+	if ic == nil {
+		return
+	}
+	pal := theme.Ocean()
+	DrawUIIcon(c, *ic, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+}
+
+// renderIconSettingsRow is bui.SettingsRow with an optional leading icon.
+func renderIconSettingsRow(c *ui.Context, ic *plugins.UIIcon, label string, control func()) {
+	if ic == nil {
+		bui.SettingsRow(c, label, control)
+		return
+	}
+	pal := theme.Ocean()
+	bui.SettingsRowFrame(ui.Row(c)).Justify(ui.SpaceBetween).Children(func() {
+		ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+			renderRowIcon(c, ic)
+			ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightRegular).
+				TextColor(pal.Text).SingleLine().Shrink(0)
+		})
+		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space12).Children(control)
+	})
+}
+
+// renderIconStrip draws a titlebar-like bar of right-aligned icons in their visible order.
+func renderIconStrip(c *ui.Context, item plugins.UIItem) {
+	pal := theme.Ocean()
+	colors := pal.MonoIconColors(pal.TextSecondary)
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightLarge).Padding(theme.Space4, theme.Space8).
+		Radius(theme.RadiusMD).Background(pal.Sidebar).Border(1, pal.Hairline).
+		AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+		if strings.TrimSpace(item.Label) != "" {
+			ui.Text(c, item.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+				TextColor(pal.TextSecondary).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
+		}
+		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+			if len(item.Icons) == 0 {
+				ui.Text(c, item.EmptyText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(pal.TextSecondary).SingleLine()
+				return
+			}
+			for _, ic := range item.Icons {
+				icon := ic
+				box := ui.Box(c).Size(theme.HeightChrome, theme.HeightChrome).Shrink(0).Center().Children(func() {
+					DrawUIIcon(c, icon, theme.IconChrome, colors)
+				})
+				if icon.Tooltip != "" {
+					bui.WrappedTooltip(c, box, icon.Tooltip)
+				}
+			}
+		})
+	})
 }
 
 func logVisualWidth(s string) int {
