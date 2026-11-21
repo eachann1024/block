@@ -4,6 +4,7 @@ import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveLocalBuildVersion } from "./local-version.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -112,7 +113,11 @@ export function readAppVersion(root = repoRoot) {
   return "1.0.0";
 }
 
-export function plist(version = readAppVersion()) {
+export function buildVersion(root = repoRoot) {
+  return resolveLocalBuildVersion(root, readAppVersion(root));
+}
+
+export function plist(version = buildVersion()) {
   const body = plistKeys
     .map(([key, value]) => [key, key === "CFBundleShortVersionString" || key === "CFBundleVersion" ? version : value])
     .map(([key, value]) => `  <key>${key}</key>\n${tag(value, "  ")}`)
@@ -242,7 +247,7 @@ export function goBuild({ root = repoRoot, goos, goarch, outFile, profile = "fas
   }
   const feedbackCfg = resolveFeedbackBuildConfig(root);
   const ldflags = [
-    `-X block/internal/updater.BuildVersion=${readAppVersion(root)}`,
+    `-X block/internal/updater.BuildVersion=${buildVersion(root)}`,
     ...feedbackLdflags(root),
   ];
   if (profile === "release" || goos !== "darwin") {
