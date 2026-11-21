@@ -22,7 +22,7 @@ import (
 const (
 	PermUITitlebar   Permission = "ui:titlebar"   // titlebar buttons + titlebar layout control
 	PermUISettings   Permission = "ui:settings"   // sections inside built-in settings tabs
-	PermUICommands   Permission = "ui:commands"   // commands, shortcuts, page / editor menu items
+	PermUICommands   Permission = "ui:commands"   // commands, shortcuts, page / editor / tab menu items
 	PermUIPanels     Permission = "ui:panels"     // side panels
 	PermUIStatus     Permission = "ui:status"     // status bar items
 	PermUINotify     Permission = "ui:notify"     // toasts and plugin dialogs
@@ -31,12 +31,13 @@ const (
 	PermEditorRead   Permission = "editor:read"
 	PermEditorEdit   Permission = "editor:write"
 	PermEventsUI     Permission = "events:workspace" // note.opened / theme.changed / locale.changed
+	PermNotesPath    Permission = "notes:path"       // absolute file path in plugin.command context
 )
 
 func init() {
 	for _, p := range []Permission{
 		PermUITitlebar, PermUISettings, PermUICommands, PermUIPanels, PermUIStatus, PermUINotify,
-		PermUISidebar, PermUIAppearance, PermEditorRead, PermEditorEdit, PermEventsUI,
+		PermUISidebar, PermUIAppearance, PermEditorRead, PermEditorEdit, PermEventsUI, PermNotesPath,
 	} {
 		validPermissions[p] = true
 	}
@@ -55,6 +56,7 @@ func contribPermissionLabel(p Permission, en bool) (string, bool) {
 		PermEditorRead:   {"读取选区", "Read Selection"},
 		PermEditorEdit:   {"编辑正文", "Edit Note Text"},
 		PermEventsUI:     {"界面事件", "Workspace Events"},
+		PermNotesPath:    {"文件路径", "File Paths"},
 	}
 	l, ok := labels[p]
 	if !ok {
@@ -77,8 +79,8 @@ func contribPermissionDescription(p Permission, en bool) (string, bool) {
 			"Embed custom settings cards inside built-in settings tabs.",
 		},
 		PermUICommands: {
-			"向命令面板、默认快捷键、页面「…」菜单或编辑器右键菜单注册操作。",
-			"Register commands, default shortcuts, page menu items, or editor context menu items.",
+			"向命令面板、默认快捷键、页面「…」菜单、编辑器右键菜单或标签页右键菜单注册操作。",
+			"Register commands, default shortcuts, page menu items, editor context menu items, or tab context menu items.",
 		},
 		PermUIPanels: {
 			"在工作区右侧打开或切换插件提供的原生侧边面板。",
@@ -111,6 +113,10 @@ func contribPermissionDescription(p Permission, en bool) (string, bool) {
 		PermEventsUI: {
 			"监听切换笔记、切换深浅色主题或切换界面语言等工作区事件。",
 			"Listen for workspace events such as note open, theme change, or locale change.",
+		},
+		PermNotesPath: {
+			"在你触发插件命令时，获取目标文件在本机上的完整路径（含笔记本外打开的文件），不读取文件内容。",
+			"Receive the full on-disk path of the target file (including files opened outside notebooks) when you run a plugin command. File contents are not read.",
 		},
 	}
 	d, ok := descs[p]
@@ -149,6 +155,7 @@ type Contributes struct {
 	PageMenu         []MenuContrib            `json:"page_menu,omitempty"`
 	EditorMenu       []MenuContrib            `json:"editor_menu,omitempty"`
 	SidebarMenu      []MenuContrib            `json:"sidebar_menu,omitempty"`
+	TabMenu          []MenuContrib            `json:"tab_menu,omitempty"`
 	Panels           []PanelContrib           `json:"panels,omitempty"`
 	SidebarSections  []SidebarSectionContrib  `json:"sidebar_sections,omitempty"`
 	FileBadges       []FileBadgeContrib       `json:"file_badges,omitempty"`
@@ -192,6 +199,26 @@ type MenuContrib struct {
 	Title   LocalizedText `json:"title"`
 	Command string        `json:"command"`
 	Icon    *DuoIconSpec  `json:"icon,omitempty"`
+	// Targets limits sidebar_menu items to "note" and/or "folder" rows.
+	// Empty means ["note"]. Other menu kinds must leave it empty.
+	Targets []string `json:"targets,omitempty"`
+}
+
+// showsOn reports whether a sidebar menu item applies to a note or folder row.
+func (it MenuContrib) showsOn(folder bool) bool {
+	if len(it.Targets) == 0 {
+		return !folder
+	}
+	want := "note"
+	if folder {
+		want = "folder"
+	}
+	for _, t := range it.Targets {
+		if t == want {
+			return true
+		}
+	}
+	return false
 }
 
 // PanelContrib is a right side panel rendered from surface "panel:<id>".
@@ -250,7 +277,7 @@ type DialogContrib struct {
 
 func (c *Contributes) hasRuntimeContributions() bool {
 	return c != nil && (len(c.TitlebarButtons) > 0 || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
-		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 ||
+		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 || len(c.TabMenu) > 0 ||
 		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 ||
 		len(c.Backdrops) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0)
 }
@@ -558,6 +585,7 @@ var contribLimits = []struct {
 	{"page_menu", 16, func(c Contributes) int { return len(c.PageMenu) }},
 	{"editor_menu", 16, func(c Contributes) int { return len(c.EditorMenu) }},
 	{"sidebar_menu", 16, func(c Contributes) int { return len(c.SidebarMenu) }},
+	{"tab_menu", 16, func(c Contributes) int { return len(c.TabMenu) }},
 	{"panels", 8, func(c Contributes) int { return len(c.Panels) }},
 	{"sidebar_sections", 4, func(c Contributes) int { return len(c.SidebarSections) }},
 	{"file_badges", 4, func(c Contributes) int { return len(c.FileBadges) }},
@@ -585,6 +613,7 @@ func (m *Manifest) validateContributes() error {
 		need("page_menu", len(c.PageMenu), PermUICommands),
 		need("editor_menu", len(c.EditorMenu), PermUICommands),
 		need("sidebar_menu", len(c.SidebarMenu), PermUISidebar),
+		need("tab_menu", len(c.TabMenu), PermUICommands),
 		need("panels", len(c.Panels), PermUIPanels),
 		need("sidebar_sections", len(c.SidebarSections), PermUISidebar),
 		need("file_badges", len(c.FileBadges), PermUISidebar),
@@ -669,6 +698,7 @@ func (m *Manifest) validateContributes() error {
 		"page_menu":    c.PageMenu,
 		"editor_menu":  c.EditorMenu,
 		"sidebar_menu": c.SidebarMenu,
+		"tab_menu":     c.TabMenu,
 	} {
 		for _, it := range items {
 			if err := id(kind, it.ID); err != nil {
@@ -684,6 +714,19 @@ func (m *Manifest) validateContributes() error {
 				if err := validateContribIcon("contributes."+kind+".icon", *it.Icon); err != nil {
 					return err
 				}
+			}
+			if len(it.Targets) > 0 && kind != "sidebar_menu" {
+				return fmt.Errorf("contributes.%s %q: targets is only allowed in sidebar_menu", kind, it.ID)
+			}
+			seenTarget := map[string]bool{}
+			for _, t := range it.Targets {
+				if t != "note" && t != "folder" {
+					return fmt.Errorf("contributes.%s %q: invalid target %q (want \"note\" or \"folder\")", kind, it.ID, t)
+				}
+				if seenTarget[t] {
+					return fmt.Errorf("contributes.%s %q: duplicate target %q", kind, it.ID, t)
+				}
+				seenTarget[t] = true
 			}
 		}
 	}
@@ -1048,16 +1091,16 @@ type UIHost interface {
 type contribRegistry struct {
 	mu         sync.RWMutex
 	path       string
-	hidden     map[string]bool                                                 // legacy global titlebar slot id -> hidden
-	hiddenBy   map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
-	editorBG   map[string]EditorBackgroundState                                // plugin id -> editor background
-	backdropBy map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
-	fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
-	warmedUp   map[string]string                                               // plugin id -> initialized version
-	badges     map[string]string                                               // plugin slot id -> badge text
-	active     map[string]bool                                                 // plugin slot id -> active
-	status     map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
-	refreshed  map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
+	hidden     map[string]bool                                            // legacy global titlebar slot id -> hidden
+	hiddenBy   map[string]map[string]bool                                 // plugin id -> hidden titlebar slot ids
+	editorBG   map[string]EditorBackgroundState                           // plugin id -> editor background
+	backdropBy map[string]EditorBackdropState                             // plugin id -> custom vector backdrop
+	fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry // pluginID -> notebookRoot -> badgeID -> relPath -> entry
+	warmedUp   map[string]string                                          // plugin id -> initialized version
+	badges     map[string]string                                          // plugin slot id -> badge text
+	active     map[string]bool                                            // plugin slot id -> active
+	status     map[string]statusOverlay                                   // "<plugin>/<item>" -> text/icon
+	refreshed  map[string]time.Time                                       // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
 }
@@ -1070,12 +1113,12 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden    []string                                                 `json:"titlebar_hidden,omitempty"`
-	TitlebarHiddenBy  map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
-	EditorBackgrounds map[string]EditorBackgroundState                         `json:"editor_backgrounds,omitempty"`
-	EditorBackdrops   map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
+	TitlebarHidden    []string                                                   `json:"titlebar_hidden,omitempty"`
+	TitlebarHiddenBy  map[string][]string                                        `json:"titlebar_hidden_by,omitempty"`
+	EditorBackgrounds map[string]EditorBackgroundState                           `json:"editor_backgrounds,omitempty"`
+	EditorBackdrops   map[string]EditorBackdropState                             `json:"editor_backdrops,omitempty"`
 	FileBadges        map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
-	WarmedUp          map[string]string                                        `json:"warmed_up,omitempty"`
+	WarmedUp          map[string]string                                          `json:"warmed_up,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {
@@ -1434,6 +1477,8 @@ type ResolvedMenuItem struct {
 	Title    string
 	Command  string
 	Icon     DuoIconSpec
+	OnNote   bool // sidebar_menu: shown on note rows
+	OnFolder bool // sidebar_menu: shown on folder rows
 }
 
 type ResolvedPanel struct {
@@ -1725,6 +1770,8 @@ func (s *Supervisor) menuItems(pick func(*Contributes) []MenuContrib) []Resolved
 				Title:    it.Title.Resolve(loc),
 				Command:  it.Command,
 				Icon:     resolveContribIcon(it.Icon, a.Manifest.Icon),
+				OnNote:   it.showsOn(false),
+				OnFolder: it.showsOn(true),
 			})
 		}
 	}
@@ -1744,6 +1791,11 @@ func (s *Supervisor) EditorMenuItems() []ResolvedMenuItem {
 // SidebarMenuItems returns plugin items for the left sidebar file-tree context menu.
 func (s *Supervisor) SidebarMenuItems() []ResolvedMenuItem {
 	return s.menuItems(func(c *Contributes) []MenuContrib { return c.SidebarMenu })
+}
+
+// TabMenuItems returns plugin items for the titlebar tab context menu.
+func (s *Supervisor) TabMenuItems() []ResolvedMenuItem {
+	return s.menuItems(func(c *Contributes) []MenuContrib { return c.TabMenu })
 }
 
 // SidebarSections returns enabled plugin sections anchored in the left sidebar.
@@ -1923,8 +1975,10 @@ func (s *Supervisor) StatusItems() []ResolvedStatusItem {
 // CommandContext is sent with plugin.command.
 type CommandContext struct {
 	Note      string `json:"note,omitempty"`
+	Folder    string `json:"folder,omitempty"` // sidebar_menu on a folder row: notebook-relative folder path
+	File      string `json:"file,omitempty"`   // absolute path of the target file or folder; only sent with notes:path
 	Selection string `json:"selection,omitempty"`
-	Source    string `json:"source"` // palette | shortcut | titlebar | page_menu | editor_menu | sidebar_menu | status
+	Source    string `json:"source"` // palette | shortcut | titlebar | page_menu | editor_menu | sidebar_menu | tab_menu | status
 }
 
 // CommandResult extends ActionResult with command-specific toast presentation fields.
@@ -1963,12 +2017,20 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 	// The note and selection belong to the notebook open right now; a command
 	// still queued after a notebook switch must not run against another one.
 	nbRoot := s.NotebookRoot()
-	if cc.Source == "sidebar_menu" {
-		if cc.Note == "" {
+	switch cc.Source {
+	case "sidebar_menu":
+		if cc.Note == "" && cc.Folder == "" {
 			return
 		}
-	} else if cc.Note == "" {
-		cc.Note = s.ActiveNoteRel()
+	case "tab_menu":
+		// Tab targets may live outside the notebook; note stays empty then.
+		if cc.Note == "" && cc.File == "" {
+			return
+		}
+	default:
+		if cc.Note == "" {
+			cc.Note = s.ActiveNoteRel()
+		}
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1990,6 +2052,9 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 		}
 		if !rt.manifest.HasPermission(PermEditorRead) {
 			cc.Selection = ""
+		}
+		if !rt.manifest.HasPermission(PermNotesPath) {
+			cc.File = ""
 		}
 		s.contrib.setCommandNote(pluginID, cc.Note)
 		res, err := rt.Command(ctx, commandID, cc)
