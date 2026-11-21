@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 
+	"block/internal/icons"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -184,8 +185,29 @@ func (ctrl *Controller) RenderWritingSidebar(c *ui.Context, activeNotebook strin
 			AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space6).
 			BorderWidth(1, 0, 0, 0).BorderColor(tc.GoldBorderSub).Padding(theme.Space6, 0, 0, 0).
 			Children(func() {
-				ui.Text(c, nbName).FontSize(theme.FontMeta).TextColor(tc.TextMuted).
-					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				nbBtn := ui.ButtonBase(c.Key("tarot-notebook-switch")).Height(theme.HeightChrome).
+					Grow(1).MinWidth(0).PaddingX(theme.Space6).AlignItems(ui.Center).
+					Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(theme.Tr("切换笔记本", "Switch Notebook"))
+				nbFG := tc.TextMuted
+				if nbBtn.Hovered() || ctrl.NotebookMenuOpen {
+					nbBtn.Background(tc.GoldHoverWash)
+					nbFG = tc.GoldBright
+				}
+				nbBtn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
+					ctrl.NotebookMenuAnchor = r
+				})
+				nbBtn.Children(func() {
+					ui.Text(c, nbName).FontSize(theme.FontMeta).TextColor(nbFG).
+						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
+				blockui.Probe(nbBtn, "tarot-notebook-switch")
+				if activeNotebook != "" {
+					blockui.Tooltip(c, nbBtn, activeNotebook)
+				}
+				if nbBtn.Clicked() {
+					ctrl.NotebookMenuOpen = !ctrl.NotebookMenuOpen
+					ctrl.NotebookMenuCursor = -1
+				}
 				footerBtn := func(id, label string, fn func()) {
 					b := ui.ButtonBase(c.Key(id)).Height(theme.HeightChrome).PaddingX(theme.Space8).
 						Center().Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(label)
@@ -206,5 +228,81 @@ func (ctrl *Controller) RenderWritingSidebar(c *ui.Context, activeNotebook strin
 				footerBtn("tarot-new-note", theme.Tr("+ 新建", "+ New"), host.NewNote)
 				footerBtn("tarot-search", theme.Tr("搜索", "Find"), host.OpenSearch)
 			})
+	})
+	ctrl.renderNotebookMenu(c, activeNotebook)
+}
+
+func (ctrl *Controller) renderNotebookMenu(c *ui.Context, activeNotebook string) {
+	if !ctrl.NotebookMenuOpen {
+		return
+	}
+	host := ctrl.Host()
+	vpW, vpH := c.Size()
+	ui.Overlay(c, func() {
+		closeMenu := func() {
+			ctrl.NotebookMenuOpen = false
+		}
+		var notebooks []string
+		if host.Notebooks != nil {
+			notebooks = host.Notebooks()
+		}
+		items := make([]blockui.MenuItemSpec, 0, len(notebooks)+2)
+		for _, nb := range notebooks {
+			root := nb
+			items = append(items, blockui.MenuItemSpec{
+				ID:      "tarot-nb:" + root,
+				Label:   filepath.Base(root),
+				Checked: root == activeNotebook,
+				OnClick: func() {
+					closeMenu()
+					if root != activeNotebook && host.SwitchNotebook != nil {
+						host.SwitchNotebook(root)
+					}
+				},
+			})
+		}
+		if len(items) > 0 {
+			items = append(items, blockui.MenuItemSpec{Separator: true})
+		}
+		folderIcon := icons.FolderPlus
+		items = append(items, blockui.MenuItemSpec{
+			ID:    "tarot-nb-choose",
+			Label: theme.Tr("选择文件夹…", "Choose Folder…"),
+			Icon:  &folderIcon,
+			OnClick: func() {
+				closeMenu()
+				if host.ChooseNotebook != nil {
+					host.ChooseNotebook()
+				}
+			},
+		})
+
+		menuW := min(float32(theme.TarotSidebarWidth-theme.Space16*2), max(vpW-16, 1))
+		estH := theme.MenuPadding*2 + float32(len(items))*(theme.MenuItemHeight+theme.MenuGap)
+		anchor := ctrl.NotebookMenuAnchor
+		if anchor.W <= 0 {
+			anchor = ui.Rect{X: theme.Space16, Y: vpH - 42, W: menuW, H: 30}
+		}
+		spec := blockui.PlaceAbove(anchor)
+		maxH := blockui.MaxHeightForSpec(spec, vpW, vpH, 304)
+		ox, oy := blockui.ResolveOrigin(spec, menuW, min(estH, maxH), vpW, vpH)
+
+		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+		card := blockui.MenuSurface(ui.Column(c.Key("tarot-notebook-menu")).Absolute().
+			Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+		blockui.NavigateMenu(c, card, items, &ctrl.NotebookMenuCursor)
+		blockui.Probe(card, "tarot-notebook-menu")
+		card.Children(func() {
+			blockui.Scroll(c).FillWidth().MaxHeight(blockui.MenuInnerMaxHeight(maxH)).Children(func() {
+				ui.Column(c).FillWidth().Gap(theme.MenuGap).Children(func() {
+					for i, it := range items {
+						blockui.MenuRow(c, it, i == ctrl.NotebookMenuCursor)
+					}
+				})
+			})
+		})
+		if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+			closeMenu()
+		}
 	})
 }

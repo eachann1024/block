@@ -27,21 +27,24 @@ const (
 
 // Host decouples Tarot UI & rituals from Workspace internals.
 type Host struct {
-	OpenNote      func(absPath string)
-	ToggleAI      func()
-	OpenAIWithMsg func(prompt string)
-	ExitTarot     func()
-	ToggleSidebar func()
-	NewNote       func()
-	OpenSearch    func()
-	OpenSettings  func()
-	RequestRedraw func()
-	ReadNoteText  func(absPath string) string
-	CompleteAI    func(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-	IsAIReady     func() bool
-	IsAIOpen      func() bool
-	IsAIEnabled   func() bool
-	IsAIStreaming func() bool
+	OpenNote       func(absPath string)
+	ToggleAI       func()
+	OpenAIWithMsg  func(prompt string)
+	ExitTarot      func()
+	ToggleSidebar  func()
+	NewNote        func()
+	OpenSearch     func()
+	OpenSettings   func()
+	Notebooks      func() []string
+	SwitchNotebook func(root string)
+	ChooseNotebook func()
+	RequestRedraw  func()
+	ReadNoteText   func(absPath string) string
+	CompleteAI     func(ctx context.Context, systemPrompt, userPrompt string) (string, error)
+	IsAIReady      func() bool
+	IsAIOpen       func() bool
+	IsAIEnabled    func() bool
+	IsAIStreaming  func() bool
 }
 
 // TableState holds the 3-card spread ritual and its animation timeline.
@@ -113,6 +116,10 @@ type Controller struct {
 	SaveFlashAt   time.Time
 	PageSwitchAt  time.Time
 	SidebarScroll ui.ScrollState
+
+	NotebookMenuOpen   bool
+	NotebookMenuAnchor ui.Rect
+	NotebookMenuCursor int
 
 	// QuickNote skin animations
 	QuickSaveFlashAt time.Time
