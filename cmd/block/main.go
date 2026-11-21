@@ -373,6 +373,7 @@ func main() {
 			TrafficLightPosition: &mygo.Point{X: 16, Y: 13},
 			BackgroundColor:      "light-dark(#f0f2f4, #14191e)",
 			Content:              ui.View(ws.Render),
+			Page:                 mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
 		}
 		if resolved.HasPosition {
 			winOpts.X = resolved.Rect.X

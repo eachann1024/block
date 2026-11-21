@@ -668,6 +668,7 @@ func (q *QuickNoteController) AttachDesktop() {
 			HideWindowButtons: true,
 			BackgroundColor:   "light-dark(#ffffff, #161920)",
 			Content:           ui.View(q.RenderView),
+			Page:              mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
 		})
 		if hasExplicit || rect.X != 0 || rect.Y != 0 {
 			win.SetBounds(rect)
