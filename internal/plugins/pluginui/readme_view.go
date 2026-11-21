@@ -39,21 +39,30 @@ type readmeMediaEntry struct {
 
 // storeReadmePreview is the App Store detail page shown in place of the list.
 type storeReadmePreview struct {
-	entry          plugins.StoreAppEntry
-	installed      plugins.InstalledApp
-	locale         string
-	dark           bool
-	cancel         context.CancelFunc
-	ctx            context.Context
-	pending        <-chan readmeResult
-	result         readmeResult
-	editorMu       sync.Mutex
-	editor         *editor.Session
-	media          *readmeMedia
-	lightbox       bui.LightboxState
-	lightboxItems  []readmeMediaEntry
-	lastRenderedAt time.Time
-	idleTimer      *time.Timer
+	entry            plugins.StoreAppEntry
+	installed        plugins.InstalledApp
+	locale           string
+	dark             bool
+	activeTab        string
+	cancel           context.CancelFunc
+	ctx              context.Context
+	pending          <-chan readmeResult
+	result           readmeResult
+	editorMu         sync.Mutex
+	editor           *editor.Session
+	media            *readmeMedia
+	lightbox         bui.LightboxState
+	lightboxItems    []readmeMediaEntry
+	changelogMu      sync.Mutex
+	changelogCancel  context.CancelFunc
+	changelogPending <-chan changelogResult
+	changelogLoaded  bool
+	changelogDoc     plugins.PluginChangelog
+	changelogErr     error
+	changelogDark    bool
+	changelogEditor  *editor.Session
+	lastRenderedAt   time.Time
+	idleTimer        *time.Timer
 }
 
 func readmeLocaleKey(locale string) string {
@@ -246,6 +255,16 @@ func releaseStoreReadmePreview(preview *storeReadmePreview) {
 		preview.editor = nil
 	}
 	preview.editorMu.Unlock()
+	preview.changelogMu.Lock()
+	if preview.changelogCancel != nil {
+		preview.changelogCancel()
+		preview.changelogCancel = nil
+	}
+	if preview.changelogEditor != nil {
+		preview.changelogEditor.ClosePreview()
+		preview.changelogEditor = nil
+	}
+	preview.changelogMu.Unlock()
 	if preview.media != nil {
 		preview.media.close()
 	}
@@ -372,6 +391,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 	}
 	ctrl.touchStoreReadmeRendered(preview)
 	ctrl.pollStoreReadme(c, preview)
+	ctrl.pollStoreChangelog(preview)
 
 	pal := theme.Ocean()
 	locale := ctrl.sup.Locale()
@@ -403,12 +423,17 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 	installedChanged := preview.installed.InstallDir != installedApp.InstallDir ||
 		preview.installed.Manifest.Version != installedApp.Manifest.Version
 	if preview.locale != readmeLocaleKey(locale) || installedChanged {
+		prevTab := preview.activeTab
 		ctrl.loadStoreReadme(entry, installedApp)
 		ctrl.mu.Lock()
 		preview = ctrl.storeReadme
 		ctrl.mu.Unlock()
 		if preview == nil {
 			return
+		}
+		preview.activeTab = prevTab
+		if prevTab == storeDetailTabChangelog {
+			ctrl.loadStoreChangelog(preview, entry, installedApp)
 		}
 	}
 	if curDark := theme.IsDark(); preview.pending == nil && preview.result.err == nil && preview.result.doc.Text != "" && preview.dark != curDark {
@@ -429,6 +454,18 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 			preview.editor = ed
 		}
 		preview.editorMu.Unlock()
+	}
+	if curDark := theme.IsDark(); preview.changelogDark != curDark {
+		preview.changelogMu.Lock()
+		if preview.changelogPending == nil {
+			preview.changelogDark = curDark
+			if preview.changelogEditor != nil && strings.TrimSpace(preview.changelogDoc.Markdown) != "" {
+				preview.changelogEditor.ClosePreview()
+				clBlocks := parseReadmeBlocks(preview.changelogDoc.Markdown, curDark)
+				preview.changelogEditor = editor.NewReadOnlyPreview(clBlocks, markdown.NewCodec(), nil)
+			}
+		}
+		preview.changelogMu.Unlock()
 	}
 	_, _, storeErr, _ := ctrl.sup.StoreStatus()
 
@@ -479,7 +516,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 
 		renderStoreDetailMeta(c, entry, locale)
 
-		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+		renderStoreDetailTabs(c, ctrl, preview, entry, installedApp)
 		errMsg := storeErr
 		if errMsg == "" {
 			errMsg = strings.TrimSpace(ctrl.sup.UninstallError(entry.ID))
@@ -487,7 +524,11 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		if errMsg != "" {
 			renderStatusTextWithTone(c, errMsg, "danger")
 		}
-		renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
+		if preview.activeTab == storeDetailTabChangelog {
+			renderStoreDetailChangelog(c, ctrl, preview, entry, installedApp, isInstalled, locale, pageW)
+		} else {
+			renderStoreDetailReadme(c, ctrl, preview, entry, installedApp, pageW)
+		}
 	})
 
 	renderStoreDetailLightbox(c, preview)
