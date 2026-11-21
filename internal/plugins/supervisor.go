@@ -44,6 +44,7 @@ type PluginViewState struct {
 	Refreshing             bool
 	BusyAction             string
 	ActionProgress         ActionProgress
+	ChannelProgress        map[string]ActionProgress
 	Error                  string
 	Notice                 string
 	Page                   *UIPage
@@ -896,6 +897,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 	if vs := s.views[key]; vs != nil {
 		vs.BusyAction = "__uninstall__"
 		vs.ActionProgress = ActionProgress{}
+		vs.ChannelProgress = nil
 		vs.Error = ""
 		vs.RetryKind = RetryKindNone
 		vs.FailedActionID = ""
@@ -1909,6 +1911,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 	}
 	vs.BusyAction = actionID
 	vs.ActionProgress = ActionProgress{}
+	vs.ChannelProgress = nil
 	vs.Refreshing = false
 	vs.Error = ""
 	vs.Notice = ""
@@ -1999,7 +2002,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 		if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
 			files.LogErrorf("plugin action failed: id=%s action=%s err=%v", pluginID, actionID, err)
 			if pluginID == "block-sync" && !syncFailureAlreadyReported(err) &&
-				(actionID == "sync_now" || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
+				(actionID == "sync_now" || strings.HasPrefix(actionID, "sync_") || actionID == "confirm_sync" || actionID == "confirm_sync_card") {
 				if installed, ok := s.GetInstalled(pluginID); ok {
 					s.reportSyncFailure(installed, rt, nbRoot, errors.Is(ctx.Err(), context.DeadlineExceeded), syncStateNotSaved(err), true, false)
 				}
@@ -2017,6 +2020,7 @@ func (s *Supervisor) triggerSurfaceActionAsync(pluginID string, surface Surface,
 				cur.BusyAction = ""
 			}
 			cur.ActionProgress = ActionProgress{}
+			cur.ChannelProgress = nil
 			cur.lastNotebookRoot = nbRoot
 			cur.lastActiveNote = activeNote
 			if rt != nil && res != nil && res.Page != nil {
@@ -2165,17 +2169,32 @@ func (s *Supervisor) reportActionProgress(rt *Runtime, progress ActionProgress) 
 		s.mu.Unlock()
 		return
 	}
-	prev := v.ActionProgress
-	if prev == progress {
-		s.mu.Unlock()
-		return
+	now := time.Now()
+	var isFirst, isTerminal bool
+	if progress.Channel != "" {
+		if v.ChannelProgress == nil {
+			v.ChannelProgress = make(map[string]ActionProgress, 4)
+		}
+		prev, existed := v.ChannelProgress[progress.Channel]
+		if existed && prev == progress {
+			s.mu.Unlock()
+			return
+		}
+		v.ChannelProgress[progress.Channel] = progress
+		isFirst = !existed
+		isTerminal = !progress.Running || (progress.Total > 0 && progress.Done >= progress.Total) || (progress.HasProgress && progress.Progress >= 1)
+	} else {
+		prev := v.ActionProgress
+		if prev == progress {
+			s.mu.Unlock()
+			return
+		}
+		v.ActionProgress = progress
+		isFirst = prev == (ActionProgress{})
+		isTerminal = (progress.Total > 0 && progress.Done >= progress.Total) || (progress.HasProgress && progress.Progress >= 1)
 	}
-	v.ActionProgress = progress
 	s.viewEpoch.Add(1)
 
-	now := time.Now()
-	isFirst := prev == (ActionProgress{})
-	isTerminal := (progress.Total > 0 && progress.Done >= progress.Total) || (progress.HasProgress && progress.Progress >= 1)
 	shouldRedraw := isFirst || isTerminal || now.Sub(s.lastProgressRedraw[pluginID]) >= minRedrawInterval
 	if shouldRedraw {
 		s.lastProgressRedraw[pluginID] = now
@@ -2308,8 +2327,10 @@ func (s *Supervisor) CancelAction(pluginID string) {
 			v.BusyAction = ""
 			v.retrySavePath = ""
 			v.ActionProgress = ActionProgress{}
+			v.ChannelProgress = nil
 		} else if vk == key {
 			v.ActionProgress = ActionProgress{}
+			v.ChannelProgress = nil
 		}
 	}
 	if activeKey, ok := s.activeActionKey[pluginID]; ok && activeKey == key {
@@ -2338,6 +2359,7 @@ func (s *Supervisor) CancelPendingSaves(pluginID string) {
 			v.BusyAction = ""
 			v.retrySavePath = ""
 			v.ActionProgress = ActionProgress{}
+			v.ChannelProgress = nil
 		}
 	}
 	s.viewEpoch.Add(1)
@@ -2563,12 +2585,24 @@ func cloneAnyMap(in map[string]any) map[string]any {
 	return out
 }
 
+func cloneChannelProgress(in map[string]ActionProgress) map[string]ActionProgress {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]ActionProgress, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 func (s *Supervisor) snapshotViewLocked(current viewKey, in *PluginViewState) PluginViewState {
 	out := PluginViewState{
 		Loading:                in.Loading,
 		Refreshing:             in.Refreshing,
 		BusyAction:             in.BusyAction,
 		ActionProgress:         in.ActionProgress,
+		ChannelProgress:        cloneChannelProgress(in.ChannelProgress),
 		Error:                  in.Error,
 		Notice:                 in.Notice,
 		Page:                   in.Page,

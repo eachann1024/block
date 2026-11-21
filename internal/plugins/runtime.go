@@ -528,7 +528,8 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"card_collapse", "metric_tone", "log_columns", "file_picker", "action_feedback", "note_revision",
 		"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
 		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
-		"checklist_add_folder", "item_icons", "tab_menu", "file_path",
+		"checklist_add_folder", "item_icons", "tab_menu", "file_path", "log_timeline",
+		"progress_bar", "segmented_status",
 	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")
@@ -997,6 +998,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return map[string]any{"data": store}, nil
 		}
 		val, ok := store[p.Key]
+		if !ok {
+			val = json.RawMessage("null")
+		}
 		return map[string]any{"value": val, "found": ok}, nil
 
 	case "host.storage.set":
@@ -1004,8 +1008,8 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32001, Message: "missing permission: storage"}
 		}
 		var p struct {
-			Key   string `json:"key"`
-			Value any    `json:"value"`
+			Key   string          `json:"key"`
+			Value json.RawMessage `json:"value"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil || strings.TrimSpace(p.Key) == "" {
 			return nil, &rpcError{Code: -32602, Message: "host.storage.set requires non-empty key"}
@@ -1020,7 +1024,7 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, missingPerm(PermStorage)
 		}
 		var p struct {
-			Values map[string]any `json:"values"`
+			Values map[string]json.RawMessage `json:"values"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil || len(p.Values) == 0 || len(p.Values) > 64 {
 			return nil, rpcErr(-32602, "values must contain 1–64 storage entries")
@@ -1123,12 +1127,17 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		var p struct {
 			NotebookRoot     string  `json:"notebook_root"`
 			Path             string  `json:"path"`
-			Content          string  `json:"content"`
+			Content          *string `json:"content"`
 			ExpectedRevision *string `json:"expected_revision"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
 		}
+		// A missing or null content must never be read as "clear the note".
+		if p.Content == nil {
+			return nil, &rpcError{Code: -32602, Message: "host.notes.write requires a string content; pass \"\" to clear"}
+		}
+		content := *p.Content
 		rootPath, cleanRel, err := rt.notebookNotePath(p.NotebookRoot, p.Path)
 		if err != nil {
 			return nil, &rpcError{Code: -32602, Message: err.Error()}
@@ -1151,11 +1160,11 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			if _, err := rt.resolveNotebookRoot(rootPath); err != nil {
 				return false, err
 			}
-			return writePluginNote(root, cleanRel, p.Content, p.ExpectedRevision)
+			return writePluginNote(root, cleanRel, content, p.ExpectedRevision)
 		}
 		var changed bool
 		if rt.cfg.ApplyNoteWrite != nil {
-			changed, err = rt.cfg.ApplyNoteWrite(abs, p.Content, write)
+			changed, err = rt.cfg.ApplyNoteWrite(abs, content, write)
 		} else {
 			rt.noteMu.Lock()
 			changed, err = write()
@@ -1220,22 +1229,37 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 
 	case "host.action.progress":
 		var p struct {
+			Channel  string   `json:"channel,omitempty"`
 			Progress *float64 `json:"progress,omitempty"`
 			Done     int      `json:"done,omitempty"`
 			Total    int      `json:"total,omitempty"`
 			Label    string   `json:"label,omitempty"`
+			Tone     string   `json:"tone,omitempty"`
+			Running  *bool    `json:"running,omitempty"`
 		}
 		if len(params) > 0 {
 			if err := json.Unmarshal(params, &p); err != nil {
 				return nil, &rpcError{Code: -32602, Message: "invalid host.action.progress params"}
 			}
 		}
+		ch := strings.TrimSpace(p.Channel)
+		if ch != "" {
+			if err := validateProgressChannel("channel", ch); err != nil {
+				return nil, &rpcError{Code: -32602, Message: err.Error()}
+			}
+		}
+		tone := strings.ToLower(strings.TrimSpace(p.Tone))
+		if err := validateStatusTone("tone", tone); err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
 		lbl := strings.TrimSpace(p.Label)
 		if runes := []rune(lbl); len(runes) > 32 {
 			lbl = string(runes[:32])
 		}
 		ap := ActionProgress{
-			Label: lbl,
+			Channel: ch,
+			Label:   lbl,
+			Tone:    tone,
 		}
 		if p.Total > 0 {
 			ap.Total = p.Total
@@ -1249,9 +1273,16 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			ap.HasProgress = true
 			ap.Progress = v
 		}
+		if p.Running != nil {
+			ap.Running = *p.Running
+		} else if ch != "" {
+			terminal := tone == "success" || tone == "danger" || tone == "error" || tone == "warning" || tone == "warn" ||
+				(ap.HasProgress && ap.Progress >= 1) || (ap.Total > 0 && ap.Done >= ap.Total)
+			ap.Running = !terminal
+		}
 		// Ignore empty or malformed payloads (e.g. {}, null, done without total) so they
 		// never overwrite valid in-flight progress.
-		if ap.Total == 0 && !ap.HasProgress && ap.Label == "" {
+		if ap.Total == 0 && !ap.HasProgress && ap.Label == "" && ap.Channel == "" {
 			return map[string]any{"ok": false}, nil
 		}
 		if rt.cfg.OnActionProgress != nil {
@@ -1298,15 +1329,31 @@ func (rt *Runtime) storageLock() *sync.Mutex {
 	return mu.(*sync.Mutex)
 }
 
-func (rt *Runtime) loadStorageMap() (map[string]any, error) {
+func (rt *Runtime) loadStorageMap() (map[string]json.RawMessage, error) {
 	mu := rt.storageLock()
 	mu.Lock()
 	defer mu.Unlock()
 	return rt.readStorageMap()
 }
 
-func (rt *Runtime) readStorageMap() (map[string]any, error) {
-	return readPluginStorageMap(rt.dataRoot)
+// readStorageMap keeps every value as raw JSON so numbers such as 64-bit
+// cursors round-trip exactly instead of passing through float64.
+func (rt *Runtime) readStorageMap() (map[string]json.RawMessage, error) {
+	b, err := readPluginFile(rt.dataRoot, "state.json", maxPluginStorage)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]json.RawMessage{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]json.RawMessage{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return map[string]json.RawMessage{}, nil
+	}
+	return out, nil
 }
 
 func readPluginStorageMap(root *os.Root) (map[string]any, error) {
@@ -1327,11 +1374,11 @@ func readPluginStorageMap(root *os.Root) (map[string]any, error) {
 	return out, nil
 }
 
-func (rt *Runtime) setStorageKey(key string, val any) error {
-	return rt.setStorageValues(map[string]any{key: val})
+func (rt *Runtime) setStorageKey(key string, val json.RawMessage) error {
+	return rt.setStorageValues(map[string]json.RawMessage{key: val})
 }
 
-func (rt *Runtime) setStorageValues(values map[string]any) error {
+func (rt *Runtime) setStorageValues(values map[string]json.RawMessage) error {
 	mu := rt.storageLock()
 	mu.Lock()
 	defer mu.Unlock()
@@ -1340,6 +1387,9 @@ func (rt *Runtime) setStorageValues(values map[string]any) error {
 		return err
 	}
 	for key, val := range values {
+		if len(val) == 0 {
+			val = json.RawMessage("null")
+		}
 		cur[key] = val
 	}
 	// Compact JSON: indentation grows quadratically with nesting depth and

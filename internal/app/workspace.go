@@ -573,13 +573,25 @@ func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction st
 		}
 		switch {
 		case strings.Contains(inst, "大纲") || strings.Contains(instLower, "outline"):
-			return fmt.Sprintf("### %s 核心脉络\n\n- 背景与目标界定\n- 关键执行步骤\n- 风险与验收标准", topic)
+			return fmt.Sprintf(theme.Tr(
+				"### %s 核心脉络\n\n- 背景与目标界定\n- 关键执行步骤\n- 风险与验收标准",
+				"### %s outline\n\n- Background and goal\n- Main steps\n- Risks and how to check the result",
+			), topic)
 		case strings.Contains(inst, "待办") || strings.Contains(instLower, "to-do") || strings.Contains(instLower, "todo") || strings.Contains(inst, "- [ ]"):
-			return fmt.Sprintf("- [ ] 梳理 %s 的核心需求\n- [ ] 完成方案设计与实现\n- [ ] 执行端到端验证与复盘", topic)
+			return fmt.Sprintf(theme.Tr(
+				"- [ ] 梳理 %s 的核心需求\n- [ ] 完成方案设计与实现\n- [ ] 执行端到端验证与复盘",
+				"- [ ] List the core requirements for %s\n- [ ] Design and build the approach\n- [ ] Check the result end to end and review it",
+			), topic)
 		case strings.Contains(inst, "风暴") || strings.Contains(instLower, "brainstorm") || strings.Contains(inst, "发散"):
-			return fmt.Sprintf("- 从用户高频痛点切入优化 %s\n- 简化交互层级，保持单屏直达\n- 引入自动化回归保障稳定性\n- 沉淀可复用的模块化组件", topic)
+			return fmt.Sprintf(theme.Tr(
+				"- 从用户高频痛点切入优化 %s\n- 简化交互层级，保持单屏直达\n- 引入自动化回归保障稳定性\n- 沉淀可复用的模块化组件",
+				"- Improve %s by starting from the most common pain\n- Keep the interaction shallow so one screen is enough\n- Add automatic checks so it stays stable\n- Save the reusable pieces",
+			), topic)
 		default:
-			return fmt.Sprintf("围绕「%s」，进一步明确核心边界与落地路径，让整体结构紧凑清晰、易于推进。", topic)
+			return fmt.Sprintf(theme.Tr(
+				"围绕「%s」，进一步明确核心边界与落地路径，让整体结构紧凑清晰、易于推进。",
+				"For %s, make the boundary and the next step clearer so the structure stays compact and easy to move forward.",
+			), topic)
 		}
 	}
 
@@ -596,7 +608,7 @@ func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction st
 		if hasCJK {
 			return fmt.Sprintf("Translated: %s", src)
 		}
-		return fmt.Sprintf("译文：%s", src)
+		return fmt.Sprintf(theme.Tr("译文：%s", "Translation: %s"), src)
 	case strings.Contains(inst, "精简") || strings.Contains(instLower, "simplify"):
 		runes := []rune(src)
 		if len(runes) > 24 {
@@ -604,9 +616,9 @@ func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction st
 		}
 		return strings.TrimSuffix(strings.TrimSuffix(src, "。"), ".")
 	case strings.Contains(inst, "通俗") || strings.Contains(instLower, "plain"):
-		return fmt.Sprintf("通俗来说：%s", src)
+		return fmt.Sprintf(theme.Tr("通俗来说：%s", "In plain words: %s"), src)
 	default:
-		return fmt.Sprintf("%s（已润色）", strings.TrimSuffix(strings.TrimSuffix(src, "。"), "."))
+		return fmt.Sprintf(theme.Tr("%s（已润色）", "%s (polished)"), strings.TrimSuffix(strings.TrimSuffix(src, "。"), "."))
 	}
 }
 

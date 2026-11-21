@@ -2118,7 +2118,6 @@ func outlineBarWidth(level int) float32 {
 // --- 6. Right-side annotations & block-foot fallback ---
 
 const (
-	annotationRailWidth    float32 = 208
 	annotationCardMinWidth float32 = 180
 )
 
@@ -2227,38 +2226,68 @@ func (s *Session) renderReactionPill(c *ui.Context, id string, ann *model.Annota
 	}
 }
 
+func (s *Session) annotationBlockInEditMode(ann *model.Annotation) bool {
+	if ann == nil || s.readOnly || s.doc == nil || s.annotInlineEditBlock == 0 || s.focusedBlock < 0 || s.focusedBlock >= len(s.doc.Blocks) {
+		return false
+	}
+	if s.doc.Blocks[s.focusedBlock].ID != s.annotInlineEditBlock {
+		return false
+	}
+	aIdx := s.blockIndexByID(ann.StartBlockID)
+	bIdx := s.blockIndexByID(ann.EndBlockID)
+	if aIdx < 0 || bIdx < 0 {
+		return false
+	}
+	if aIdx > bIdx {
+		aIdx, bIdx = bIdx, aIdx
+	}
+	return s.focusedBlock >= aIdx && s.focusedBlock <= bIdx
+}
+
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32) {
 	pal := theme.Ocean()
+	compact := maxW > 0 && maxW < 360
 	editing := s.editingAnnotID == ann.ID && !s.readOnly
-	isAnswer := !s.aiDisabled && !editing && ann.Answer != ""
-	isResult := !s.aiDisabled && !editing && (ann.RewriteResult != "" || isAnswer)
+	busy := !s.aiDisabled && !editing && ann.RewriteBusy
+	activeVer, verIdx, verTotal, hasVer := s.activeAnnotationVersion(ann)
+	isResult := !s.aiDisabled && !editing && !busy && hasVer
 
-	card := ui.Column(c.Key("annotation-card-"+ann.ID)).Width(maxW).MinWidth(0).MaxWidthPercent(100).
-		Padding(theme.Space8, theme.Space10, theme.Space10, theme.Space12).
+	card := ui.Column(c.Key("annotation-card-" + ann.ID)).MinWidth(0).
+		Padding(theme.Space6, theme.Space8, theme.Space6, theme.Space10).
 		Gap(theme.Space4).Radius(theme.RadiusLG).Clip().
 		Transition(appUi.GutterHandleTransition())
+	if maxW > 0 {
+		card.Width(maxW).MaxWidthPercent(100)
+	} else {
+		card.FillWidth()
+	}
 	cardHovered := card.Hovered()
 	if cardHovered {
 		s.frameAnnotations.hovered = ann.ID
 	}
 	hot := cardHovered || s.hoveredAnnotID == ann.ID
 	borderCol := pal.Hairline
-	if hot || editing {
+	if hot || editing || busy {
 		borderCol = pal.SelectedBorder
 	}
 	appUi.AnimateSurfaceColors(card, pal.Menu, borderCol, true)
 	appUi.Probe(card, "annotation-card-"+ann.ID)
 	card.Children(func() {
-		s.renderAnnotationHeader(c, ann, isResult, hot && !editing && !isResult && !s.readOnly)
 		switch {
 		case editing:
+			s.renderAnnotationHeader(c, ann, false, false)
 			s.renderAnnotationEditor(c, ann)
-		case isAnswer:
-			s.renderAnnotationAnswer(c, ann)
+		case busy:
+			s.renderAnnotationBusy(c, ann, compact)
 		case isResult:
-			s.renderAnnotationResult(c, ann)
+			s.renderAnnotationResultBar(c, ann, activeVer, verIdx, verTotal, compact)
 		default:
-			s.renderAnnotationNote(c, ann)
+			if compact {
+				s.renderAnnotationHeader(c, ann, false, hot && !s.readOnly)
+				s.renderAnnotationNote(c, ann, true)
+			} else {
+				s.renderAnnotationNoteBar(c, ann)
+			}
 		}
 	})
 	if editing && card.PressedOutside() {
@@ -2286,15 +2315,6 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 		}
 		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
 			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
-		if isResult && ann.Answer != "" && !s.readOnly {
-			done := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-				ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Size: theme.HeightMicro, IconSize: theme.IconInline,
-			})
-			if done.Clicked() {
-				s.deleteAnnotationByID(ann.ID)
-			}
-			return
-		}
 		if !showActions {
 			return
 		}
@@ -2307,7 +2327,57 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 	})
 }
 
-func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
+// renderAnnotationNoteBar draws the compact Scheme C full-width note bar (C1).
+func (s *Session) renderAnnotationNoteBar(c *ui.Context, ann *model.Annotation) {
+	pal := theme.Ocean()
+	noteTxt := ann.Note
+	if noteTxt == "" && !s.aiDisabled {
+		noteTxt = ann.RewritePrompt
+	}
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightCompact).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+		ui.Box(c).Size(theme.Space6, theme.Space6).Shrink(0).Radius(theme.RadiusPill).Background(pal.AnnotSendDot)
+		if s.readOnly {
+			ui.Text(c, noteTxt).Grow(1).Shrink(1).MinWidth(0).
+				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+		} else {
+			body := ui.ButtonBase(c.Key("annotation-edit-" + ann.ID)).Grow(1).Shrink(1).MinWidth(0).
+				Cursor(ui.CursorText).Label(theme.Tr("编辑批注", "Edit annotation"))
+			body.Children(func() {
+				ui.Text(c, noteTxt).FillWidth().MinWidth(0).
+					FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+			})
+			if body.Clicked() {
+				s.beginAnnotationEdit(ann)
+			}
+		}
+		if s.readOnly {
+			return
+		}
+		delBtn := appUi.IconButton(c, icons.Trash, appUi.IconButtonOptions{
+			ID: "annotation-delete-" + ann.ID, Label: theme.Tr("删除批注", "Delete annotation"), Size: theme.HeightCompact, IconSize: theme.IconInline, Danger: true,
+		})
+		if delBtn.Clicked() {
+			s.deleteAnnotationByID(ann.ID)
+		}
+		canRewrite := !s.aiDisabled && (ann.RewritePrompt != "" || (strings.TrimSpace(ann.Note) != "" && s.annotationAIResponder != nil))
+		if canRewrite {
+			sparkles := icons.Sparkles
+			apply := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+				ID: "annotation-accept-" + ann.ID, Label: theme.Tr("按批注改写", "Rewrite"), Leading: &sparkles,
+				Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
+			})
+			if apply.Clicked() {
+				if ann.RewritePrompt != "" {
+					s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+				} else {
+					s.GenerateAnnotationByID(ann.ID)
+				}
+			}
+		}
+	})
+}
+
+func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation, compact bool) {
 	pal := theme.Ocean()
 	noteTxt := ann.Note
 	if noteTxt == "" && !s.aiDisabled {
@@ -2335,15 +2405,11 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 			}
 		}
 	}
-	if ann.RewriteBusy && !s.aiDisabled {
-		ui.Row(c).FillWidth().Height(theme.HeightMicro).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-			ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
-			ui.Text(c, theme.Tr("思考中…", "Thinking…")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
-		})
-	}
-	if s.aiDisabled || ann.RewritePrompt == "" || s.readOnly {
+	canRewrite := !s.aiDisabled && !s.readOnly && (ann.RewritePrompt != "" || (strings.TrimSpace(ann.Note) != "" && s.annotationAIResponder != nil))
+	if !canRewrite {
 		return
 	}
+	_ = compact
 	sparkles := icons.Sparkles
 	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Children(func() {
 		apply := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
@@ -2351,55 +2417,280 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 			Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
 		})
 		if apply.Clicked() {
-			s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+			if ann.RewritePrompt != "" {
+				s.ApplyAnnotationRewrite(ann.ID, ann.RewritePrompt)
+			} else {
+				s.GenerateAnnotationByID(ann.ID)
+			}
 		}
 	})
 }
 
-func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
+// renderAnnotationBusy renders the in-flight generation bar (C3) with stop control and prompt history.
+func (s *Session) renderAnnotationBusy(c *ui.Context, ann *model.Annotation, compact bool) {
 	pal := theme.Ocean()
-	if ann.QuotedText != "" {
-		ui.Text(c, ann.QuotedText).FillWidth().MinWidth(0).Strikethrough().
-			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+	isFollowup := len(ann.Thread) > 0
+	statusLabel := theme.Tr("思考中…", "Thinking…")
+	if isFollowup {
+		statusLabel = theme.Tr("正在按追问改写…", "Revising follow-up…")
 	}
-	ui.Text(c, ann.RewriteResult).FillWidth().MinWidth(0).
-		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.SelectionFG)
-	if s.readOnly {
-		return
-	}
-	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
-		chkIc := icons.Check
-		acc := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-accept-" + ann.ID, Label: theme.Tr("替换原文", "Replace"), Leading: &chkIc, Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightCompact).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
+			ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
 		})
-		if acc.Clicked() {
-			s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
+		ui.Text(c, statusLabel).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		if !s.readOnly {
+			stopIc := icons.Stop
+			stopBtn := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+				ID: "ann-stop-" + ann.ID, Label: theme.Tr("停止", "Stop"), Leading: &stopIc,
+				Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
+			})
+			if stopBtn.Clicked() {
+				s.CancelAnnotationGeneration(ann.ID)
+			}
 		}
-		dismiss := appUi.BtnClose(c, "ann-dismiss-"+ann.ID, appUi.PresetOptions{
-			Label:  theme.Tr("忽略", "Dismiss"),
-			Style:  appUi.StyleRef(appUi.ButtonGhost),
-			Height: theme.HeightCompact,
+	})
+	prompts := make([]string, 0, len(ann.Thread)+1)
+	for _, t := range ann.Thread {
+		prompts = append(prompts, t.Q)
+	}
+	if strings.TrimSpace(ann.Note) != "" {
+		prompts = append(prompts, ann.Note)
+	}
+	if len(prompts) > 0 {
+		s.renderAnnotationPromptHistory(c, ann.ID, prompts, len(prompts)-1, false, compact)
+	}
+}
+
+// renderAnnotationResultBar renders Scheme C's control bar for single-turn (C2) and multi-turn (C4) results.
+func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation, activeVer annotationVersion, verIdx, verTotal int, compact bool) {
+	pal := theme.Ocean()
+	isAnswer := activeVer.Kind == model.AnnotationReplyAnswer
+	versions := annotationVersions(ann)
+
+	renderActions := func() {
+		if s.readOnly {
+			return
+		}
+		if isAnswer {
+			done := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+				ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Size: theme.HeightCompact, IconSize: theme.IconInline,
+			})
+			if done.Clicked() {
+				s.deleteAnnotationByID(ann.ID)
+			}
+			return
+		}
+		dismiss := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"),
+			Style: appUi.ButtonGhost, Height: theme.HeightCompact,
 		})
 		if dismiss.Clicked() {
 			s.dismissAnnotationRewrite(ann.ID)
 		}
-	})
-	s.renderAnnotationFollowup(c, ann)
-}
-
-// renderAnnotationAnswer shows the AI's reply to a question note: the question, then the answer; nothing to replace.
-func (s *Session) renderAnnotationAnswer(c *ui.Context, ann *model.Annotation) {
-	pal := theme.Ocean()
-	if ann.Note != "" {
-		ui.Text(c, ann.Note).FillWidth().MinWidth(0).
-			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		acc := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "ann-accept-" + ann.ID, Label: theme.Tr("替换原文", "Replace"),
+			Style: appUi.ButtonPrimary, Height: theme.HeightCompact,
+		})
+		if acc.Clicked() {
+			s.ApplyAnnotationRewrite(ann.ID, activeVer.Text)
+		}
 	}
-	s.annotationMarkdown(c, ann.Answer)
-	s.renderAnnotationFollowup(c, ann)
+
+	// Top row: sparkles + version switcher (or single-turn prompt) + actions (wide mode).
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightCompact).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
+		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
+			icons.Draw(c, icons.Sparkles, theme.IconInline, pal.MonoIconColors(pal.Accent))
+		})
+		switch {
+		case verTotal > 1:
+			ui.Row(c).Grow(1).Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space2).Children(func() {
+				prevBtn := appUi.IconButton(c, icons.ChevronLeft, appUi.IconButtonOptions{
+					ID: "ann-ver-prev-" + ann.ID, Label: theme.Tr("上一版", "Previous version"),
+					Size: theme.IconButtonBox, IconSize: theme.IconMicro, Disabled: verIdx <= 0,
+				})
+				if prevBtn.Clicked() && verIdx > 0 {
+					s.setAnnotationVersion(ann.ID, verIdx-1)
+				}
+				ui.Text(c, fmt.Sprintf("%d / %d", verIdx+1, verTotal)).SingleLine().
+					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.TextSecondary)
+				nextBtn := appUi.IconButton(c, icons.ChevronRight, appUi.IconButtonOptions{
+					ID: "ann-ver-next-" + ann.ID, Label: theme.Tr("下一版", "Next version"),
+					Size: theme.IconButtonBox, IconSize: theme.IconMicro, Disabled: verIdx >= verTotal-1,
+				})
+				if nextBtn.Clicked() && verIdx < verTotal-1 {
+					s.setAnnotationVersion(ann.ID, verIdx+1)
+				}
+			})
+		case !compact && !isAnswer:
+			ui.Text(c, theme.Tr("批注", "Note")).Shrink(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Placeholder)
+			ui.Text(c, activeVer.Prompt).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		default:
+			head := theme.Tr("AI 改写", "AI rewrite")
+			if isAnswer {
+				head = theme.Tr("AI 回答", "AI answer")
+			}
+			ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		}
+		if !compact {
+			renderActions()
+		}
+	})
+
+	// Multi-turn prompt history (or single-turn prompt in compact / answer mode).
+	if verTotal > 1 || isAnswer || compact {
+		prompts := make([]string, len(versions))
+		for i, v := range versions {
+			prompts[i] = v.Prompt
+		}
+		if len(prompts) > 0 && (verTotal > 1 || strings.TrimSpace(prompts[0]) != "") {
+			s.renderAnnotationPromptHistory(c, ann.ID, prompts, verIdx, verTotal > 1, compact)
+		}
+	}
+
+	// Body preview: always shown for AI answers; for rewrites, shown only when the paragraph
+	// is focused for editing (so inline diff in the paragraph yields cleanly to the editor input).
+	if isAnswer {
+		padLeft := theme.Space20
+		if compact {
+			padLeft = 0
+		}
+		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space2, 0, theme.Space2, padLeft).Children(func() {
+			s.annotationMarkdown(c, activeVer.Text)
+		})
+	} else if s.annotationBlockInEditMode(ann) {
+		padLeft := theme.Space20
+		if compact {
+			padLeft = 0
+		}
+		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space2, 0, theme.Space2, padLeft).Children(func() {
+			ui.Text(c, activeVer.Text).FillWidth().MinWidth(0).
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.SelectionFG)
+		})
+	}
+
+	// Narrow rail fallback: put actions on their own row so buttons never clip.
+	if compact && !s.readOnly {
+		ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
+			renderActions()
+		})
+	}
+
+	s.renderAnnotationFollowup(c, ann, verTotal > 1)
 }
 
-// renderAnnotationFollowup is the always-there "追问…" line under an AI reply: type, Enter sends it for this card.
-func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation) {
+// renderAnnotationPromptHistory displays initial note + follow-up rounds, folding middle turns when > 2.
+func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompts []string, activeIdx int, selectable, compact bool) {
+	pal := theme.Ocean()
+	padLeft := theme.Space20
+	if compact {
+		padLeft = 0
+	}
+	expanded := s.annotThreadExpanded != nil && s.annotThreadExpanded[id]
+
+	renderTurnRow := func(turnIdx int, text string) {
+		label := theme.Tr("追问", "Follow-up")
+		if turnIdx == 0 {
+			label = theme.Tr("批注", "Note")
+		} else if len(prompts) > 2 {
+			label = fmt.Sprintf(theme.Tr("追问 %d", "Follow-up %d"), turnIdx)
+		}
+		isActive := turnIdx == activeIdx
+		txtCol := pal.TextSecondary
+		if isActive {
+			txtCol = pal.Text
+		}
+		rowFn := func() {
+			ui.Text(c, label).Shrink(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Placeholder)
+			ui.Text(c, text).Grow(1).Shrink(1).MinWidth(0).
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(txtCol)
+		}
+		if selectable {
+			btn := ui.ButtonBase(c.Key(fmt.Sprintf("ann-turn-%s-%d", id, turnIdx))).FillWidth().MinWidth(0).
+				Radius(theme.RadiusSM).Padding(theme.Space2, theme.Space4).AlignItems(ui.Start).Gap(theme.Space8).
+				Cursor(ui.CursorPointer).Label(label)
+			if btn.Hovered() {
+				btn.Background(pal.Hover)
+			}
+			btn.Children(rowFn)
+			if btn.Clicked() {
+				s.setAnnotationVersion(id, turnIdx)
+			}
+			return
+		}
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(theme.Space8).Children(rowFn)
+	}
+
+	ui.Column(c).FillWidth().MinWidth(0).Padding(0, 0, 0, padLeft).Gap(theme.Space2).Children(func() {
+		n := len(prompts)
+		if n <= 2 || expanded {
+			for i, p := range prompts {
+				renderTurnRow(i, p)
+			}
+			if n > 2 {
+				toggle := ui.ButtonBase(c.Key("ann-thread-toggle-" + id)).Height(theme.HeightMicro).PaddingX(theme.Space4).
+					Radius(theme.RadiusSM).AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).
+					Label(theme.Tr("收起历史", "Collapse history"))
+				if toggle.Hovered() {
+					toggle.Background(pal.Hover)
+				}
+				toggle.Children(func() {
+					icons.Draw(c, icons.ChevronUp, theme.IconMicro, pal.MonoIconColors(pal.Placeholder))
+					ui.Text(c, theme.Tr("收起历史", "Collapse history")).SingleLine().
+						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
+				})
+				if toggle.Clicked() {
+					if s.annotThreadExpanded == nil {
+						s.annotThreadExpanded = make(map[string]bool)
+					}
+					s.annotThreadExpanded[id] = false
+					s.requestRedraw()
+				}
+			}
+			return
+		}
+
+		// Folded view for 3+ rounds: show first note, fold toggle, and active/latest follow-up.
+		renderTurnRow(0, prompts[0])
+		hidden := n - 2
+		showMidActive := activeIdx > 0 && activeIdx < n-1
+		if showMidActive {
+			hidden = n - 3
+		}
+		if hidden > 0 {
+			lbl := fmt.Sprintf(theme.Tr("展开其余 %d 条追问", "Show %d earlier follow-ups"), hidden)
+			toggle := ui.ButtonBase(c.Key("ann-thread-toggle-" + id)).Height(theme.HeightMicro).PaddingX(theme.Space4).
+				Radius(theme.RadiusSM).AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Label(lbl)
+			if toggle.Hovered() {
+				toggle.Background(pal.Hover)
+			}
+			toggle.Children(func() {
+				icons.Draw(c, icons.ChevronDown, theme.IconMicro, pal.MonoIconColors(pal.Placeholder))
+				ui.Text(c, lbl).SingleLine().
+					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).TextColor(pal.Placeholder)
+			})
+			if toggle.Clicked() {
+				if s.annotThreadExpanded == nil {
+					s.annotThreadExpanded = make(map[string]bool)
+				}
+				s.annotThreadExpanded[id] = true
+				s.requestRedraw()
+			}
+		}
+		if showMidActive {
+			renderTurnRow(activeIdx, prompts[activeIdx])
+		}
+		renderTurnRow(n-1, prompts[n-1])
+	})
+}
+
+// renderAnnotationFollowup is the rounded follow-up input bar under an AI reply: type, Enter or click arrow to send.
+func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation, hasMultipleTurns bool) {
 	if s.readOnly || s.aiDisabled || s.annotationAIResponder == nil {
 		return
 	}
@@ -2412,15 +2703,22 @@ func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation)
 		draft = new(string)
 		s.followupDrafts[ann.ID] = draft
 	}
-	ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space6, 0, 0, 0).Gap(theme.Space8).Children(func() {
-		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
-		in := ui.TextAreaBase(c.Key("ann-followup-"+ann.ID), draft).FillWidth().MinWidth(0).Lines(1, 4).
-			Padding(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text).CaretColor(pal.Accent).
-			Placeholder(theme.Tr("追问…", "Follow up…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("追问", "Follow up"))
+	ph := theme.Tr("不满意？继续追问…", "Not quite right? Ask a follow-up…")
+	if hasMultipleTurns {
+		ph = theme.Tr("还想怎么改？继续追问…", "Refine further…")
+	}
+	hasDraft := strings.TrimSpace(*draft) != ""
+	id := ann.ID
+
+	ui.Row(c.Key("ann-followup-wrap-"+id)).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).
+		Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space6).
+		AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell).Children(func() {
+		in := ui.TextAreaBase(c.Key("ann-followup-"+id), draft).Grow(1).Shrink(1).MinWidth(0).Lines(1, 4).
+			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+			Placeholder(ph).PlaceholderColor(pal.Placeholder).Label(theme.Tr("追问", "Follow up"))
 		appUi.AutoHideScrollbars(c, in)
-		appUi.Probe(in, "ann-followup-"+ann.ID)
+		appUi.Probe(in, "ann-followup-"+id)
 		composing := in.Composing()
-		id := ann.ID
 		in.OnTextKey(func(k ui.TextKey) bool {
 			if composing {
 				return false
@@ -2437,6 +2735,32 @@ func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation)
 			}
 			return false
 		})
+
+		sendBG := pal.BtnBorder
+		sendFG := pal.AccentText
+		if hasDraft {
+			sendBG = pal.Accent
+		}
+		sendBtn := ui.ButtonBase(c.Key("ann-followup-send-"+id)).Size(theme.IconButtonBox, theme.IconButtonBox).
+			Shrink(0).Center().Radius(theme.RadiusPill).Background(sendBG).
+			Label(theme.Tr("发送追问", "Send follow-up"))
+		if hasDraft {
+			sendBtn.Cursor(ui.CursorPointer)
+			if sendBtn.Hovered() {
+				sendBtn.Background(pal.AccentHover)
+			}
+		} else {
+			sendBtn.Disabled(true)
+		}
+		sendBtn.Children(func() {
+			icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
+		})
+		appUi.Probe(sendBtn, "ann-followup-send-"+id)
+		if hasDraft && sendBtn.Clicked() {
+			if s.SendAnnotationFollowup(id, *draft) {
+				delete(s.followupDrafts, id)
+			}
+		}
 	})
 }
 
@@ -2713,7 +3037,6 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, b *model.Block) {
 	if b.Kind == model.BlockTable {
 		botPad = theme.Space10
 	}
-	maxChipW := min(annotationRailWidth, max(s.viewportWidth-32, 160))
 
 	strip := ui.Column(c.Key(fmt.Sprintf("annotate-foot-%d", b.ID))).FillWidth().MinWidth(0).
 		Padding(theme.Space6, 0, botPad, 0).Gap(theme.Space6).AlignItems(ui.Start)
@@ -2729,7 +3052,7 @@ func (s *Session) renderBlockAnnotationsFoot(c *ui.Context, b *model.Block) {
 		}
 		for _, ann := range anchored {
 			if !isReactionOnlyAnnotation(ann) {
-				s.renderAnnotationItem(c, ann, maxChipW)
+				s.renderAnnotationItem(c, ann, 0)
 			}
 		}
 	})

@@ -270,11 +270,11 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 				return "", nil, fmt.Errorf("%q: %w", a.Name, attachmentUnreadable())
 			}
 			if prefix, truncated, ok := attachmentText(raw, a.Size); ok {
-				fmt.Fprintf(&b, "\n\n# 用户附件：%q\n\n    %s", a.Name, strings.ReplaceAll(prefix, "\n", "\n    "))
+				fmt.Fprintf(&b, theme.Tr("\n\n# 用户附件：%q\n\n    %s", "\n\n# User attachment: %q\n\n    %s"), a.Name, strings.ReplaceAll(prefix, "\n", "\n    "))
 				if truncated {
-					b.WriteString("\n\n（附件内容已截断。）")
+					b.WriteString(theme.Tr("\n\n（附件内容已截断。）", "\n\n(Attachment content was cut off.)"))
 					if nativeTools {
-						fmt.Fprintf(&b, "\n完整文件路径：%q", a.Path)
+						fmt.Fprintf(&b, theme.Tr("\n完整文件路径：%q", "\nFull file path: %q"), a.Path)
 					}
 				}
 				continue
@@ -283,7 +283,7 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 		if !nativeTools {
 			return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("当前 AI 无法读取此附件，请移除附件或切换智能体。", "This AI cannot read this attachment. Remove it or switch agents."))
 		}
-		fmt.Fprintf(&b, "\n\n# 用户附件：%q\n\n本地路径：%q（%s，%d 字节）", a.Name, a.Path, a.Mime, a.Size)
+		fmt.Fprintf(&b, theme.Tr("\n\n# 用户附件：%q\n\n本地路径：%q（%s，%d 字节）", "\n\n# User attachment: %q\n\nLocal path: %q (%s, %d bytes)"), a.Name, a.Path, a.Mime, a.Size)
 	}
 	return b.String(), images, nil
 }

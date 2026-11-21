@@ -1423,20 +1423,24 @@ func (r *contribRegistry) clearTransientOverrides() {
 
 // setCommandNote records the note a running command was invoked on, so
 // host.editor.insert during that command cannot land in another note.
+// An entry (even with an empty note) means a command is in flight.
 func (r *contribRegistry) setCommandNote(pluginID, note string) {
 	r.mu.Lock()
-	if note == "" {
-		delete(r.commandNote, pluginID)
-	} else {
-		r.commandNote[pluginID] = note
-	}
+	r.commandNote[pluginID] = note
 	r.mu.Unlock()
 }
 
-func (r *contribRegistry) runningCommandNote(pluginID string) string {
+func (r *contribRegistry) clearCommandNote(pluginID string) {
+	r.mu.Lock()
+	delete(r.commandNote, pluginID)
+	r.mu.Unlock()
+}
+
+func (r *contribRegistry) runningCommandNote(pluginID string) (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.commandNote[pluginID]
+	note, ok := r.commandNote[pluginID]
+	return note, ok
 }
 
 // ---------------------------------------------------------------------------
@@ -2056,9 +2060,15 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 		if !rt.manifest.HasPermission(PermNotesPath) {
 			cc.File = ""
 		}
-		s.contrib.setCommandNote(pluginID, cc.Note)
+		// Menu commands target a specific row or tab; with no note in this
+		// notebook, record an empty target so host.editor.insert refuses to
+		// write into the unrelated active tab. Other sources target the
+		// active tab, so an empty note keeps the active-tab fallback.
+		if cc.Note != "" || cc.Source == "sidebar_menu" || cc.Source == "tab_menu" {
+			s.contrib.setCommandNote(pluginID, cc.Note)
+		}
 		res, err := rt.Command(ctx, commandID, cc)
-		s.contrib.setCommandNote(pluginID, "")
+		s.contrib.clearCommandNote(pluginID)
 		if err != nil {
 			s.toast(pluginID, err.Error(), "error", nil)
 			return
@@ -2815,17 +2825,21 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			return nil, missingPerm(PermEditorEdit), true
 		}
 		var p struct {
-			Text string `json:"text"`
-			Note string `json:"note"`
-			Mode string `json:"mode"` // "" | "replace" | "insert"
+			Text *string `json:"text"`
+			Note string  `json:"note"`
+			Mode string  `json:"mode"` // "" | "replace" | "insert"
 		}
 		if e := decode(&p); e != nil {
 			return nil, e, true
 		}
+		// A missing or null text would otherwise delete the selection.
+		if p.Text == nil {
+			return nil, rpcErr(-32602, "host.editor.insert requires a string text"), true
+		}
 		if ui == nil {
 			return nil, rpcErr(-32005, "editor unavailable"), true
 		}
-		if len(p.Text) > maxPluginNoteWrite {
+		if len(*p.Text) > maxPluginNoteWrite {
 			return nil, rpcErr(-32602, "text too large"), true
 		}
 		mode := strings.ToLower(strings.TrimSpace(p.Mode))
@@ -2837,7 +2851,13 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		}
 		expected := p.Note
 		if expected == "" {
-			expected = s.contrib.runningCommandNote(m.ID)
+			note, running := s.contrib.runningCommandNote(m.ID)
+			// A command aimed at a folder or a file outside the notebook has
+			// no note target; never fall back to whichever tab is active.
+			if running && note == "" {
+				return nil, rpcErr(-32004, "command target is not a note in the current notebook"), true
+			}
+			expected = note
 		}
 		expectedRoot := rt.notebookRoot()
 		expectedEpoch := s.notebookEpoch.Load()
@@ -2859,7 +2879,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		if err := checkValid(); err != nil {
 			return nil, rpcErr(-32603, err.Error()), true
 		}
-		if err := ui.EditorInsert(m.ID, expectedRoot, expected, mode, p.Text, checkValid); err != nil {
+		if err := ui.EditorInsert(m.ID, expectedRoot, expected, mode, *p.Text, checkValid); err != nil {
 			if errors.Is(err, ErrNoteConflict) {
 				return nil, rpcErr(-32006, err.Error()), true
 			}

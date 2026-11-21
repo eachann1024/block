@@ -838,18 +838,23 @@ func LanguageGeneration() uint64 {
 }
 
 // ResolveCodeLanguageForFile matches filePath against active language plugins
-// (exact filename first, then extension). Returns (nil, "") when none match.
+// (exact filename first, then longest matching extension such as .d.ts before
+// .ts). Returns (nil, "") when none match.
 func ResolveCodeLanguageForFile(filePath string) (*codeed.Language, string) {
 	base := strings.ToLower(filepath.Base(filePath))
-	ext := strings.ToLower(filepath.Ext(base))
 	for _, snap := range languageSnapshots() {
 		if info := snap.byFilename[base]; info != nil {
 			return info.CodeLang, info.Contrib.ID
 		}
-		if ext != "" {
-			if info := snap.byExt[ext]; info != nil {
+		for i := strings.IndexByte(base, '.'); i >= 0 && i < len(base)-1; {
+			if info := snap.byExt[base[i:]]; info != nil {
 				return info.CodeLang, info.Contrib.ID
 			}
+			next := strings.IndexByte(base[i+1:], '.')
+			if next < 0 {
+				break
+			}
+			i += 1 + next
 		}
 	}
 	return nil, ""

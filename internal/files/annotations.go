@@ -92,8 +92,9 @@ type StoredAnnotation struct {
 
 // StoredAnnotationTurn is one earlier note/reply round of a follow-up thread.
 type StoredAnnotationTurn struct {
-	Q string `json:"q"`
-	A string `json:"a"`
+	Q    string `json:"q"`
+	A    string `json:"a"`
+	Kind string `json:"kind,omitempty"`
 }
 
 // AnnotationStore matches thinkly-fast's {"notes": {"<abs_path>": [...]}} format.

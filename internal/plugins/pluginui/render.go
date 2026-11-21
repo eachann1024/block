@@ -2,6 +2,7 @@ package pluginui
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 
@@ -32,6 +33,7 @@ type InputBindings struct {
 // ActionFeedback describes the live execution and completion state of plugin actions.
 type ActionFeedback struct {
 	BusyAction             string
+	ChannelProgress        map[string]plugins.ActionProgress
 	LastActionID           string
 	LastActionTone         string
 	LastActionMessage      string
@@ -45,6 +47,7 @@ type ActionFeedback struct {
 func actionFeedbackFromView(vs plugins.PluginViewState) ActionFeedback {
 	return ActionFeedback{
 		BusyAction:             vs.BusyAction,
+		ChannelProgress:        vs.ChannelProgress,
 		LastActionID:           vs.LastActionID,
 		LastActionTone:         vs.LastActionTone,
 		LastActionMessage:      vs.LastActionMessage,
@@ -328,7 +331,7 @@ func isStackedOrGroupItem(item plugins.UIItem) bool {
 		return item.Layout == "full" || item.Layout == "stacked"
 	case plugins.KindFolder, plugins.KindInput, plugins.KindSecret:
 		return item.Layout == "stacked"
-	case plugins.KindGroup:
+	case plugins.KindGroup, plugins.KindProgress:
 		return true
 	default:
 		return false
@@ -465,10 +468,31 @@ func renderItem(
 		activeIdx := 0
 		segOpts := make([]bui.SegmentOption, len(item.Options))
 		for i, opt := range item.Options {
-			segOpts[i] = bui.SegmentOption{
-				ID:    fmt.Sprintf("plugin-seg-%s-%s-%s", pluginID, item.ID, opt.Value),
-				Label: opt.Label,
+			segOpt := bui.SegmentOption{
+				ID:      fmt.Sprintf("plugin-seg-%s-%s-%s", pluginID, item.ID, opt.Value),
+				Label:   opt.Label,
+				Tooltip: opt.Tooltip,
 			}
+			tone := opt.Tone
+			if opt.Channel != "" && fb.BusyAction != "" && len(fb.ChannelProgress) > 0 {
+				if ap, ok := fb.ChannelProgress[opt.Channel]; ok {
+					if ap.Running {
+						segOpt.Spinning = true
+					} else if ap.Tone != "" {
+						tone = ap.Tone
+					}
+					if liveTip := formatChannelProgressText(ap); liveTip != "" {
+						segOpt.Tooltip = liveTip
+					}
+				}
+			}
+			if !segOpt.Spinning {
+				if dotCol, ok := logToneDotColor(pal, tone); ok {
+					dc := dotCol
+					segOpt.DotColor = &dc
+				}
+			}
+			segOpts[i] = segOpt
 			if opt.Value == curStr {
 				activeIdx = i
 			}
@@ -854,7 +878,12 @@ func renderItem(
 			if colorKey == "" {
 				colorKey = t.ID
 			}
-			sumBytes += t.Bytes
+			// Saturate instead of wrapping so huge tiles cannot sum to ~0.
+			if sumBytes > math.MaxUint64-t.Bytes {
+				sumBytes = math.MaxUint64
+			} else {
+				sumBytes += t.Bytes
+			}
 			entries := make([]bui.TreemapEntry, len(t.Entries))
 			for ei, ent := range t.Entries {
 				entries[ei] = bui.TreemapEntry{
@@ -929,8 +958,125 @@ func renderItem(
 		renderIconStrip(c, item)
 
 	case plugins.KindLogList:
-		renderLogListItem(c, pluginID, item, values, fb.BusyAction, fb.SidebarLayout, onAction)
+		renderLogListItem(c, pluginID, item, values, bindings, fb.BusyAction, fb.SidebarLayout, onAction)
+
+	case plugins.KindProgress:
+		renderProgressItem(c, pluginID, item, fb)
 	}
+}
+
+func formatChannelProgressText(ap plugins.ActionProgress) string {
+	var metric string
+	if ap.Total > 0 {
+		metric = fmt.Sprintf("%d/%d", ap.Done, ap.Total)
+	} else if ap.HasProgress {
+		pct := int(math.Round(ap.Progress * 100))
+		metric = fmt.Sprintf("%d%%", min(max(pct, 0), 100))
+	}
+	lbl := strings.TrimSpace(ap.Label)
+	switch {
+	case lbl != "" && metric != "":
+		return lbl + " · " + metric
+	case lbl != "":
+		return lbl
+	default:
+		return metric
+	}
+}
+
+func renderProgressItem(c *ui.Context, pluginID string, item plugins.UIItem, fb ActionFeedback) {
+	pal := theme.Ocean()
+	live := false
+	var ap plugins.ActionProgress
+	if item.Channel != "" && fb.BusyAction != "" && len(fb.ChannelProgress) > 0 {
+		ap, live = fb.ChannelProgress[item.Channel]
+	}
+
+	label := strings.TrimSpace(item.Label)
+	statusText := strings.TrimSpace(item.Status)
+	tooltip := strings.TrimSpace(item.Tooltip)
+	tone := strings.ToLower(strings.TrimSpace(item.Tone))
+	pct := float32(0)
+	if item.Progress != nil {
+		pct = float32(*item.Progress * 100)
+	}
+	indeterminate := false
+	spinning := false
+
+	if live {
+		if ap.Tone != "" {
+			tone = strings.ToLower(strings.TrimSpace(ap.Tone))
+		} else if ap.Running {
+			tone = "accent"
+		}
+		if liveText := formatChannelProgressText(ap); liveText != "" {
+			statusText = liveText
+			tooltip = liveText
+		}
+		spinning = ap.Running
+		if ap.Total > 0 {
+			pct = float32(ap.Done) * 100 / float32(ap.Total)
+		} else if ap.HasProgress {
+			pct = float32(ap.Progress * 100)
+		} else if ap.Running {
+			indeterminate = true
+		}
+	}
+
+	fill := pal.Accent
+	statusCol := pal.TextSecondary
+	switch tone {
+	case "success":
+		fill = pal.Success
+	case "warning", "warn":
+		fill = pal.Warning
+		statusCol = pal.Warning
+	case "danger", "error":
+		fill = pal.Danger
+		statusCol = pal.Danger
+	case "accent", "info":
+		fill = pal.Accent
+		if live && spinning {
+			statusCol = pal.Accent
+		}
+	}
+	dotCol, showDot := logToneDotColor(pal, tone)
+
+	barKey := fmt.Sprintf("plugin-progress-%s-%s", pluginID, item.ID)
+	if strings.TrimSpace(item.ID) == "" {
+		barKey = fmt.Sprintf("plugin-progress-%s-%s", pluginID, item.Channel)
+	}
+	wrap := ui.Column(c.Key(barKey)).FillWidth().MinWidth(0).Gap(theme.Space6).
+		Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).
+		Background(pal.Sidebar).Border(1, pal.Hairline)
+	if tooltip != "" {
+		bui.WrappedTooltip(c, wrap, tooltip)
+	}
+	wrap.Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).MinWidth(0).Shrink(0).Children(func() {
+				if spinning {
+					ui.Spinner(c).FontSize(theme.FontMeta).TextColor(fill).Label(label)
+				} else if showDot {
+					ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
+						Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
+				}
+				if label != "" {
+					ui.Text(c, label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+						FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+				}
+			})
+			if statusText != "" {
+				ui.Text(c, statusText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+					TextColor(statusCol).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+			}
+		})
+		if indeterminate {
+			bui.ProgressBarIndeterminate(c, barKey+"-indet", theme.Space4, fill)
+		} else {
+			bui.ProgressBarWithColor(c, barKey+"-bar", pct, theme.Space4, fill)
+		}
+	})
 }
 
 func renderRowIcon(c *ui.Context, ic *plugins.UIIcon) {
@@ -1037,18 +1183,265 @@ func renderLogListItem(
 	pluginID string,
 	item plugins.UIItem,
 	values map[string]any,
+	bindings *InputBindings,
 	busyAction string,
 	sidebar bool,
 	onAction func(actionID string, currentValues map[string]any),
 ) {
+	renderBody := func() {
+		if item.Variant == "timeline" {
+			renderLogTimeline(c, pluginID, item, values, bindings, busyAction, sidebar, onAction)
+			return
+		}
+		renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
+	}
 	if strings.TrimSpace(item.Label) != "" {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
 			renderFieldLabel(c, item.Label)
-			renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
+			renderBody()
 		})
 		return
 	}
-	renderLogEntries(c, pluginID, item, values, busyAction, sidebar, onAction)
+	renderBody()
+}
+
+func renderLogTimeline(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	bindings *InputBindings,
+	busyAction string,
+	sidebar bool,
+	onAction func(actionID string, currentValues map[string]any),
+) {
+	pal := theme.Ocean()
+	if len(item.Entries) == 0 {
+		if strings.TrimSpace(item.EmptyText) != "" {
+			ui.Text(c, item.EmptyText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		}
+		return
+	}
+
+	configColors := pal.PerfTileColors("config")
+	spanBG := configColors.BarBG
+	spanHoverBG := pal.Hover
+	spanBadgeBorder := pal.Hairline
+	dottedColor := pal.BtnBorder
+	if !pal.Dark {
+		spanHoverBG = pal.TooltipPillBG
+		spanBadgeBorder = pal.TooltipDivider
+	}
+
+	timeColW := float32(48)
+	if sidebar {
+		timeColW = 42
+	}
+	railColW := float32(20)
+	total := len(item.Entries)
+
+	ui.Column(c).FillWidth().MinWidth(0).Children(func() {
+		for idx, entry := range item.Entries {
+			e := entry
+			isFirst := idx == 0
+			isLast := idx == total-1
+			isSpan := e.Kind == "span"
+			rowKey := fmt.Sprintf("plugin-tl-%s-%s-%d", pluginID, item.ID, idx)
+
+			dotColor, hasDot := logToneDotColor(pal, e.Tone)
+			if !hasDot {
+				dotColor = pal.Accent
+			}
+			toneLower := strings.ToLower(strings.TrimSpace(e.Tone))
+			isHollow := toneLower == "danger" || toneLower == "error" || toneLower == "warning" || toneLower == "warn"
+			timeColor := pal.TextSecondary
+			if toneLower == "danger" || toneLower == "error" {
+				timeColor = pal.Danger
+			}
+
+			ui.Row(c.Key(rowKey)).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Stretch).Children(func() {
+				// 1. Left time column
+				timePadTop := float32(10)
+				if isSpan {
+					timePadTop = 16
+				}
+				ui.Row(c).Width(timeColW).Shrink(0).Justify(ui.End).Padding(timePadTop, 0, 0, 0).Children(func() {
+					if strings.TrimSpace(e.Time) != "" {
+						ui.Text(c, e.Time).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(timeColor).SingleLine()
+					}
+				})
+
+				// 2. Center vertical rail (solid line + dot, or dotted line for quiet spans)
+				ui.Box(c).Width(railColW).Shrink(0).Draw(func(p *ui.Painter, bounds ui.Rect) {
+					cx := bounds.X + bounds.W/2
+					if isSpan {
+						yStart := bounds.Y + 2
+						yEnd := bounds.Y + bounds.H - 2
+						if isFirst {
+							yStart = bounds.Y + 10
+						}
+						if isLast {
+							yEnd = bounds.Y + bounds.H - 10
+						}
+						for y := yStart; y+2 <= yEnd; y += 5 {
+							p.Fill(ui.Rect{X: cx - 1, Y: y, W: 2, H: 2}, dottedColor, 1)
+						}
+						return
+					}
+					dotCY := bounds.Y + 18
+					dotR := float32(4.5)
+					if !isFirst {
+						topH := (dotCY - dotR - 2) - bounds.Y
+						if topH > 0 {
+							p.Fill(ui.Rect{X: cx - 1, Y: bounds.Y, W: 2, H: topH}, pal.Hairline, 0)
+						}
+					}
+					if !isLast {
+						botY := dotCY + dotR + 2
+						botH := (bounds.Y + bounds.H) - botY
+						if botH > 0 {
+							p.Fill(ui.Rect{X: cx - 1, Y: botY, W: 2, H: botH}, pal.Hairline, 0)
+						}
+					}
+					p.Fill(ui.Rect{X: cx - dotR, Y: dotCY - dotR, W: dotR * 2, H: dotR * 2}, dotColor, dotR)
+					if isHollow {
+						innerR := dotR - 2
+						p.Fill(ui.Rect{X: cx - innerR, Y: dotCY - innerR, W: innerR * 2, H: innerR * 2}, pal.Card, innerR)
+					}
+				})
+
+				// 3. Right content column
+				if isSpan {
+					hasDetails := len(e.Details) > 0
+					spanStateKey := fmt.Sprintf("__log_span__:%s:%s:%s:%s", item.ID, e.Time, e.Span, e.Badge)
+					expanded := false
+					if hasDetails && bindings != nil && bindings.IsCardExpanded != nil {
+						expanded = bindings.IsCardExpanded(spanStateKey, true)
+					}
+					ui.Column(c).Grow(1).MinWidth(0).PaddingY(theme.Space6).Children(func() {
+						card := ui.Column(c.Key(rowKey+"-span")).FillWidth().MinWidth(0).
+							Radius(theme.RadiusMD).Background(spanBG)
+						card.Children(func() {
+							var hdr ui.Element
+							if hasDetails {
+								hdr = ui.ButtonBase(c.Key(rowKey+"-btn")).FillWidth().MinWidth(0).
+									Padding(theme.Space8, theme.Space12).Gap(theme.Space10).
+									Radius(theme.RadiusMD).AlignItems(ui.Center).
+									Cursor(ui.CursorPointer).Label(e.Title)
+								if hdr.Hovered() {
+									hdr.Background(spanHoverBG)
+								}
+							} else {
+								hdr = ui.Row(c).FillWidth().MinWidth(0).
+									Padding(theme.Space8, theme.Space12).Gap(theme.Space10).
+									AlignItems(ui.Center)
+							}
+							if tip := strings.TrimSpace(e.Tooltip); tip != "" {
+								bui.WrappedTooltip(c, hdr, tip)
+							}
+							hdr.Children(func() {
+								if strings.TrimSpace(e.Badge) != "" {
+									ui.Row(c).Height(22).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+										Background(pal.Card).Border(1, spanBadgeBorder).
+										AlignItems(ui.Center).Shrink(0).Children(func() {
+										ui.Text(c, e.Badge).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+									})
+								}
+								ui.Text(c, e.Title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+									TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+								if strings.TrimSpace(e.Span) != "" {
+									ui.Text(c, e.Span).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.TextSecondary).Shrink(0).SingleLine()
+								}
+								if hasDetails {
+									chev := icons.ChevronDown
+									if expanded {
+										chev = icons.ChevronUp
+									}
+									icons.Draw(c, chev, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
+								}
+							})
+							if hasDetails && hdr.Clicked() && bindings != nil && bindings.ToggleCardExpanded != nil {
+								bindings.ToggleCardExpanded(spanStateKey, true)
+							}
+							if expanded && hasDetails {
+								ui.Box(c).FillWidth().Height(1).Background(spanBadgeBorder)
+								ui.Row(c).FillWidth().MinWidth(0).Wrap().
+									Padding(theme.Space8, theme.Space12).Gap(theme.Space6).Children(func() {
+									for _, det := range e.Details {
+										ui.Row(c).Height(22).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+											Background(pal.Card).AlignItems(ui.Center).Shrink(0).Children(func() {
+											ui.Text(c, det).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+												TextColor(pal.TextSecondary).SingleLine()
+										})
+									}
+								})
+							}
+						})
+					})
+					return
+				}
+
+				actID := strings.TrimSpace(e.ActionID)
+				clickable := actID != "" && onAction != nil
+				var content ui.Element
+				padBot := theme.Space10
+				if isLast {
+					padBot = theme.Space4
+				}
+				if clickable {
+					content = ui.ButtonBase(c.Key(rowKey+"-act")).Grow(1).MinWidth(0).
+						Padding(theme.Space8, theme.Space6, padBot, theme.Space6).
+						Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Disabled(busyAction != "").Label(e.Title)
+					if content.Hovered() {
+						content.Background(pal.Hover)
+					}
+				} else {
+					content = ui.Column(c).Grow(1).MinWidth(0).
+						Padding(theme.Space8, 0, padBot, 0)
+				}
+				if tip := strings.TrimSpace(e.Tooltip); tip != "" {
+					bui.WrappedTooltip(c, content, tip)
+				}
+				content.Children(func() {
+					ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
+						ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, e.Title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+								TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							if strings.TrimSpace(e.Status) != "" {
+								statusColor := pal.TextSecondary
+								if toneLower == "danger" || toneLower == "error" {
+									statusColor = pal.Danger
+								}
+								ui.Text(c, e.Status).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+									TextColor(statusColor).Shrink(0).SingleLine()
+							}
+						})
+						if strings.TrimSpace(e.SubText) != "" {
+							ui.Text(c, e.SubText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								TextColor(pal.TextSecondary).MinWidth(0).SingleLine().Ellipsis("…")
+						}
+						if len(e.Tags) > 0 {
+							ui.Row(c).FillWidth().MinWidth(0).Wrap().Gap(theme.Space6).Padding(theme.Space2, 0, 0, 0).Children(func() {
+								for _, tag := range e.Tags {
+									ui.Row(c).Height(22).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+										Background(pal.Shell).AlignItems(ui.Center).MaxWidth(360).Children(func() {
+										ui.Text(c, tag).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											TextColor(pal.Text).MinWidth(0).SingleLine().Ellipsis("…")
+									})
+								}
+							})
+						}
+					})
+				})
+				if clickable && busyAction == "" && content.Clicked() {
+					onAction(actID, cloneValues(values))
+				}
+			})
+		}
+	})
 }
 
 func renderLogEntries(
@@ -1473,16 +1866,21 @@ func mapButtonStyle(v plugins.ButtonVariant) bui.ActionButtonStyle {
 	}
 }
 
+func isSyncActionID(id string) bool {
+	return id == "sync_now" || strings.HasPrefix(id, "sync_") || id == "confirm_sync" || id == "confirm_sync_card"
+}
+
 func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool) string {
 	id := strings.ToLower(strings.TrimSpace(actionID))
 	if isBusy {
+		if isSyncActionID(id) || id == "__retry_note_saved__" {
+			return theme.Tr("同步中…", "Syncing…")
+		}
 		switch id {
 		case "test_conn":
 			return theme.Tr("测试中…", "Testing…")
 		case "save_config":
 			return theme.Tr("保存中…", "Saving…")
-		case "sync_now", "confirm_sync", "confirm_sync_card", "__retry_note_saved__":
-			return theme.Tr("同步中…", "Syncing…")
 		case "cancel_confirm":
 			return theme.Tr("取消中…", "Cancelling…")
 		case "upload_now":
@@ -1511,13 +1909,14 @@ func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool
 		}
 	}
 	if isSuccess {
+		if isSyncActionID(id) {
+			return theme.Tr("已同步", "Synced")
+		}
 		switch id {
 		case "test_conn":
 			return theme.Tr("连接可用", "Connected")
 		case "save_config":
 			return theme.Tr("已保存", "Saved")
-		case "sync_now", "confirm_sync", "confirm_sync_card":
-			return theme.Tr("已同步", "Synced")
 		case "upload_now":
 			return theme.Tr("已上传", "Uploaded")
 		case "rescan":
@@ -1534,13 +1933,15 @@ func resolveActionButtonLabel(actionID, baseLabel string, isBusy, isSuccess bool
 }
 
 func resolveBusyActionHint(actionID string) string {
-	switch strings.ToLower(strings.TrimSpace(actionID)) {
+	id := strings.ToLower(strings.TrimSpace(actionID))
+	if isSyncActionID(id) {
+		return theme.Tr("正在执行同步…", "Syncing notes…")
+	}
+	switch id {
 	case "test_conn":
 		return theme.Tr("正在验证远端连接…", "Verifying remote connection…")
 	case "save_config":
 		return theme.Tr("正在保存配置…", "Saving configuration…")
-	case "sync_now", "confirm_sync", "confirm_sync_card":
-		return theme.Tr("正在执行同步…", "Syncing notes…")
 	case "upload_now":
 		return theme.Tr("正在上传图片…", "Uploading images…")
 	case "rescan":
@@ -1556,12 +1957,17 @@ func resolveBusyActionHint(actionID string) string {
 
 func resolveActionButtonIcon(actionID string) *icons.Icon {
 	var ic icons.Icon
-	switch strings.ToLower(strings.TrimSpace(actionID)) {
+	id := strings.ToLower(strings.TrimSpace(actionID))
+	if isSyncActionID(id) {
+		ic = icons.Refresh
+		return &ic
+	}
+	switch id {
 	case "test_conn", "test_connection", "ping":
 		ic = icons.Plug
 	case "save_config", "save", "apply":
 		ic = icons.Check
-	case "sync_now", "confirm_sync", "confirm_sync_card", "rescan", "refresh", "reload":
+	case "rescan", "refresh", "reload":
 		ic = icons.Refresh
 	case "upload_now", "upload":
 		ic = icons.Upload

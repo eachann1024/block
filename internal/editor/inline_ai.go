@@ -100,21 +100,45 @@ func (p PromptPreset) MatchesInput(raw string) bool {
 func (p PromptPreset) Prompt() string {
 	switch p {
 	case PresetContinue:
-		return "顺着上文语境自然往下续写，保持语气与结构连贯，不要重复上文。"
+		return theme.Tr(
+			"顺着上文语境自然往下续写，保持语气与结构连贯，不要重复上文。",
+			"Continue naturally from the text above. Keep the same voice and structure, and do not repeat what is already written.",
+		)
 	case PresetOutline:
-		return "结合当前主题列出结构清晰的三级标题（###）与要点大纲。"
+		return theme.Tr(
+			"结合当前主题列出结构清晰的三级标题（###）与要点大纲。",
+			"Turn the current topic into a clear outline of level-3 headings (###) and bullet points.",
+		)
 	case PresetTasks:
-		return "生成具体可执行的 Markdown 待办清单，每项使用独立的 `- [ ] ` 行。"
+		return theme.Tr(
+			"生成具体可执行的 Markdown 待办清单，每项使用独立的 `- [ ] ` 行。",
+			"Write a concrete Markdown to-do list. Put each item on its own `- [ ] ` line.",
+		)
 	case PresetBrainstorm:
-		return "围绕当前主题发散列出 4 到 5 个有启发性的思路要点，每项使用独立的 `- ` 行。"
+		return theme.Tr(
+			"围绕当前主题发散列出 4 到 5 个有启发性的思路要点，每项使用独立的 `- ` 行。",
+			"List 4 or 5 useful ideas about the current topic, each on its own `- ` line.",
+		)
 	case PresetPolish:
-		return "润色给定片段，使表达更清晰流畅，保留原意与关键细节。"
+		return theme.Tr(
+			"润色给定片段，使表达更清晰流畅，保留原意与关键细节。",
+			"Polish the given text so it reads more clearly, while keeping the meaning and important details.",
+		)
 	case PresetSimplify:
-		return "精简给定片段，删去冗余修饰，只保留核心信息。"
+		return theme.Tr(
+			"精简给定片段，删去冗余修饰，只保留核心信息。",
+			"Shorten the given text. Remove extra wording and keep only the core point.",
+		)
 	case PresetPlain:
-		return "用通俗直白的大白话改写给定片段，去掉生僻黑话或绕口表达。"
+		return theme.Tr(
+			"用通俗直白的大白话改写给定片段，去掉生僻黑话或绕口表达。",
+			"Rewrite the given text in plain language. Remove jargon and awkward phrasing.",
+		)
 	case PresetTranslate:
-		return "智能中英互译：若给定片段主要为中文则准确自然地翻译成英文；若主要为英文或其他外语则准确自然地翻译成中文。保留专有名词、代码标识符与原有 Markdown 格式。"
+		return theme.Tr(
+			"智能中英互译：若给定片段主要为中文则准确自然地翻译成英文；若主要为英文或其他外语则准确自然地翻译成中文。保留专有名词、代码标识符与原有 Markdown 格式。",
+			"Translate between Chinese and English: if the text is mostly Chinese, translate it into natural English; if it is mostly English or another language, translate it into natural Chinese. Keep proper nouns, code identifiers, and the existing Markdown formatting.",
+		)
 	default:
 		return ""
 	}
@@ -1327,17 +1351,29 @@ func offlineInlineAI(ctxBefore, orig, prevDraft, instruction string) string {
 	if src == "" {
 		topic := lastNonEmptyLine(ctxBefore)
 		if topic == "" {
-			topic = "当前主题"
+			topic = theme.Tr("当前主题", "this topic")
 		}
 		switch {
 		case PresetContinue.MatchesInput(inst) || strings.Contains(inst, "续写"):
-			return "在此基础上，可以进一步明确关键步骤与预期产出，确保后续执行清晰可追踪。"
+			return theme.Tr(
+				"在此基础上，可以进一步明确关键步骤与预期产出，确保后续执行清晰可追踪。",
+				"From here, spell out the next steps and the expected result so the work stays easy to follow.",
+			)
 		case PresetOutline.MatchesInput(inst) || strings.Contains(inst, "大纲"):
-			return fmt.Sprintf("### 背景与目标\n- 明确围绕「%s」的核心目标\n\n### 核心方案\n- 拆解关键里程碑与交付物", topic)
+			return fmt.Sprintf(theme.Tr(
+				"### 背景与目标\n- 明确围绕「%s」的核心目标\n\n### 核心方案\n- 拆解关键里程碑与交付物",
+				"### Background and goal\n- State the goal for %s\n\n### Approach\n- Break out the milestones and deliverables",
+			), topic)
 		case PresetTasks.MatchesInput(inst) || strings.Contains(inst, "待办"):
-			return "- [ ] 梳理核心需求与边界\n- [ ] 完成第一版实现并自测\n- [ ] 复核细节并整理结论"
+			return theme.Tr(
+				"- [ ] 梳理核心需求与边界\n- [ ] 完成第一版实现并自测\n- [ ] 复核细节并整理结论",
+				"- [ ] List the requirements and boundaries\n- [ ] Build a first version and try it\n- [ ] Review the details and write up the result",
+			)
 		case PresetBrainstorm.MatchesInput(inst) || strings.Contains(inst, "头脑风暴"):
-			return "- 从用户高频场景切入，减少前置配置成本\n- 优先打磨核心闭环体验\n- 提供可逆操作与清晰反馈\n- 结合示例模板降低上手门槛"
+			return theme.Tr(
+				"- 从用户高频场景切入，减少前置配置成本\n- 优先打磨核心闭环体验\n- 提供可逆操作与清晰反馈\n- 结合示例模板降低上手门槛",
+				"- Start from the most common task and cut setup work\n- Polish the core loop first\n- Make actions reversible and the feedback clear\n- Add an example template so it is easier to start",
+			)
 		default:
 			return inst
 		}
@@ -1351,16 +1387,16 @@ func offlineInlineAI(ctxBefore, orig, prevDraft, instruction string) string {
 		}
 		runes := []rune(src)
 		if len(runes) > 36 {
-			return strings.TrimSpace(string(runes[:36])) + "。"
+			return strings.TrimSpace(string(runes[:36])) + theme.Tr("。", ".")
 		}
 		return src
 	case PresetTranslate.MatchesInput(inst) || strings.Contains(inst, "译") || strings.Contains(strings.ToLower(inst), "translate"):
 		if containsCJK(src) {
 			return "[EN] " + src
 		}
-		return "[译] " + src
+		return theme.Tr("[译] ", "[ZH] ") + src
 	case PresetPlain.MatchesInput(inst) || strings.Contains(inst, "通俗"):
-		return strings.TrimSpace(src) + "（简言之：核心意思保持不变，表达更直观）"
+		return strings.TrimSpace(src) + theme.Tr("（简言之：核心意思保持不变，表达更直观）", " (in short: same meaning, plainer wording)")
 	case PresetPolish.MatchesInput(inst) || strings.Contains(inst, "润色"):
 		return strings.TrimSpace(src)
 	default:

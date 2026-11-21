@@ -1904,7 +1904,7 @@ func (c *Controller) SendPrompt(text string) {
 			return
 		}
 		shownBuf.WriteString("@" + page + " ")
-		ctxBuf.WriteString(fmt.Sprintf("\n\n# 引用文件：%s（pageId: %s）\n\n%s", page, page, truncateRunes(md, 12000)))
+		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 引用文件：%s（pageId: %s）\n\n%s", "\n\n# Referenced file: %s (pageId: %s)\n\n%s"), page, page, truncateRunes(md, 12000)))
 	}
 	if sel != nil {
 		page, err := notePageID(scope.root, sel.NotePath)
@@ -1939,18 +1939,18 @@ func (c *Controller) SendPrompt(text string) {
 		}
 		var lineLabel string
 		if sel.StartLine == sel.EndLine {
-			lineLabel = fmt.Sprintf("第 %d 段", sel.StartLine)
+			lineLabel = fmt.Sprintf(theme.Tr("第 %d 段", "paragraph %d"), sel.StartLine)
 		} else {
-			lineLabel = fmt.Sprintf("第 %d–%d 段", sel.StartLine, sel.EndLine)
+			lineLabel = fmt.Sprintf(theme.Tr("第 %d–%d 段", "paragraphs %d–%d"), sel.StartLine, sel.EndLine)
 		}
-		ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户选中的内容（来自 %s，%s）\n\n%s", noteName, lineLabel, truncateRunes(sel.Markdown, 12000)))
+		ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户选中的内容（来自 %s，%s）\n\n%s", "\n\n# User selection (from %s, %s)\n\n%s"), noteName, lineLabel, truncateRunes(sel.Markdown, 12000)))
 	}
 	for _, sk := range skills {
 		shownBuf.WriteString("/")
 		shownBuf.WriteString(sk)
 		shownBuf.WriteByte(' ')
 		if spec, ok := c.findSkillLocked(sk); ok && spec.Content != "" && ctxBuf.Len() < 192*1024 {
-			ctxBuf.WriteString(fmt.Sprintf("\n\n# 用户调用的 Skill：%s\n\n%s", sk, truncateRunes(spec.Content, 12000)))
+			ctxBuf.WriteString(fmt.Sprintf(theme.Tr("\n\n# 用户调用的 Skill：%s\n\n%s", "\n\n# Skill the user called: %s\n\n%s"), sk, truncateRunes(spec.Content, 12000)))
 		}
 	}
 

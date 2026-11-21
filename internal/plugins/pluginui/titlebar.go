@@ -1192,7 +1192,7 @@ func shortPluginErrorLabel(pluginID string, failed, hasUninstErr bool, vs plugin
 	}
 	switch pluginID {
 	case "block-sync":
-		if vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" || vs.LastActionID == "confirm_sync_card" {
+		if vs.RetryKind == plugins.RetryKindNoteSaved || isSyncActionID(vs.FailedActionID) || isSyncActionID(vs.LastActionID) {
 			return theme.Tr("同步失败", "Sync failed")
 		}
 	case "block-image-host":
@@ -1210,7 +1210,7 @@ func resolvePluginRetryLabel(pluginID string, failed, hasUninstErr bool, vs plug
 	if failed || vs.RetryKind == plugins.RetryKindReload {
 		return theme.Tr("重新加载", "Reload")
 	}
-	if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" || vs.LastActionID == "confirm_sync_card") {
+	if pluginID == "block-sync" && (vs.RetryKind == plugins.RetryKindNoteSaved || isSyncActionID(vs.FailedActionID) || isSyncActionID(vs.LastActionID)) {
 		return theme.Tr("重试同步", "Retry Sync")
 	}
 	return theme.Tr("重试", "Retry")

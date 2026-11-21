@@ -247,10 +247,14 @@ type Session struct {
 	annotAppliedRaw       map[string]files.StoredAnnotation // applied annotations' stored body/rewrite, kept on re-save
 	annotUnresolved       []files.StoredAnnotation          // stored entries whose anchor is not in this doc, written back verbatim
 	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply
-	annotGenCh            chan map[string]model.AnnotationReply
+	annotGenCh            chan annotGenBatch
 	annotMDOpts           markdown.Options
 	annotMDKey            annotMDKey
 	annotGenInFlight      int
+	annotGenSeq           map[string]uint64
+	annotVersionIdx       map[string]int
+	annotThreadExpanded   map[string]bool
+	annotInlineEditBlock  model.BlockID
 	followupDrafts        map[string]*string
 	annotExtraBottom      float32
 	activeAnnotID         string
@@ -542,6 +546,11 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	clear(s.overlayBtnRects)
 	clear(s.overlayPanelRects)
 	clear(s.annotRowHeights)
+	clear(s.annotGenSeq)
+	clear(s.annotVersionIdx)
+	clear(s.annotThreadExpanded)
+	s.annotInlineEditBlock = 0
+	clear(s.followupDrafts)
 	s.toolbarRect = ui.Rect{}
 	s.savedMarkdown = s.Markdown()
 	s.ensureAnnotationsLoaded()

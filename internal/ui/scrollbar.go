@@ -12,6 +12,10 @@ import (
 // movement stops, matching macOS overlay scrollers and ScrollbarMode::Scrolling.
 const ScrollHideDelay = 750 * time.Millisecond
 
+// HoverScrollSuppressDelay is how long transient row hover chrome stays quiet
+// after scroll movement stops, matching the editor's hover suppression window.
+const HoverScrollSuppressDelay = 140 * time.Millisecond
+
 type windowScrollInputKey struct{}
 
 type windowScrollInput struct {
@@ -61,11 +65,13 @@ type scrollHideState struct {
 	lastX            float32
 	lastY            float32
 	showUntil        time.Time
+	hoverQuietUntil  time.Time
 	frameAt          time.Time
 	framePrevVisible bool
 	initialized      bool
 	visible          bool
 	holdingBar       bool
+	sawScrollInput   bool
 }
 
 // Scroll creates a vertical scroll container whose scrollbar stays hidden when
@@ -92,6 +98,22 @@ func AutoHideScrollbars(c *ui.Context, el ui.Element, track ...*ui.ScrollState) 
 	return attachScrollHide(c, el, axisVertical, track...)
 }
 
+// IsScrollingForHover reports whether a scroll container attached via Scroll or
+// AutoHideScrollbars is actively scrolling or within the short quiet window
+// afterward, so rows can suppress transient hover flicker while scrolling.
+func IsScrollingForHover(c *ui.Context, el ui.Element) bool {
+	if c == nil || !el.Valid() {
+		return false
+	}
+	local := ui.Local(el, scrollHideKey{}, func() scrollHideState {
+		return scrollHideState{}
+	})
+	if local.holdingBar || local.sawScrollInput {
+		return true
+	}
+	return !local.hoverQuietUntil.IsZero() && c.Now().Before(local.hoverQuietUntil)
+}
+
 func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*ui.ScrollState) ui.Element {
 	if !el.Valid() {
 		return el
@@ -104,6 +126,21 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 		st = track[0]
 	}
 	el.TrackScroll(st)
+	el.ObserveInput(func(ev ui.InputEvent) {
+		if ev.Kind != ui.InputScroll {
+			return
+		}
+		if axes&axisVertical != 0 && ev.DY != 0 && st.MaxY > 0.5 {
+			if (ev.DY > 0 && st.Y < st.MaxY-0.5) || (ev.DY < 0 && st.Y > 0.5) {
+				local.sawScrollInput = true
+			}
+		}
+		if axes&axisHorizontal != 0 && ev.DX != 0 && st.MaxX > 0.5 {
+			if (ev.DX > 0 && st.X < st.MaxX-0.5) || (ev.DX < 0 && st.X > 0.5) {
+				local.sawScrollInput = true
+			}
+		}
+	})
 
 	now := c.Now()
 	win := ensureWindowScrollInput(c)
@@ -120,7 +157,9 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 		local.lastY = st.Y
 		local.initialized = true
 		local.showUntil = time.Time{}
+		local.hoverQuietUntil = time.Time{}
 		local.holdingBar = false
+		local.sawScrollInput = false
 		local.visible = false
 	} else {
 		dx := math.Abs(float64(st.X - local.lastX))
@@ -129,6 +168,13 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 			local.lastX = st.X
 			local.lastY = st.Y
 			local.showUntil = now.Add(ScrollHideDelay)
+			if dx > 0.5 || dy > 0.5 {
+				local.hoverQuietUntil = now.Add(HoverScrollSuppressDelay)
+			}
+		}
+		if local.sawScrollInput {
+			local.sawScrollInput = false
+			local.hoverQuietUntil = now.Add(HoverScrollSuppressDelay)
 		}
 
 		if !primaryDown {
@@ -146,6 +192,14 @@ func attachScrollHide(c *ui.Context, el ui.Element, axes scrollAxes, track ...*u
 		}
 
 		local.visible = !local.showUntil.IsZero() && now.Before(local.showUntil)
+	}
+
+	if !local.hoverQuietUntil.IsZero() {
+		if rem := local.hoverQuietUntil.Sub(now); rem > 0 {
+			c.After(rem + 5*time.Millisecond)
+		} else {
+			local.hoverQuietUntil = time.Time{}
+		}
 	}
 
 	if local.visible {
