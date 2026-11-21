@@ -12,6 +12,7 @@ on:
       - 'updates/**'
       - 'scripts/lint_design.py'
       - 'scripts/ci/setup-go.sh'
+      - 'scripts/ci/check.sh'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
@@ -24,6 +25,7 @@ on:
       - 'updates/**'
       - 'scripts/lint_design.py'
       - 'scripts/ci/setup-go.sh'
+      - 'scripts/ci/check.sh'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -59,30 +61,4 @@ jobs:
           restore-keys: |
             go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
       - name: Lint, cross-platform vet & build, and test
-        run: |
-          python3 scripts/lint_design.py &
-          pid_lint=$!
-
-          echo "==> Checking linux/amd64"
-          mkdir -p "$RUNNER_TEMP/ci-bins"
-          go vet ./...
-          go build -o "$RUNNER_TEMP/ci-bins/" ./cmd/...
-
-          echo "==> Checking windows/amd64, darwin/arm64 & darwin/amd64 in parallel"
-          (
-            GOOS=windows GOARCH=amd64 go vet ./...
-            GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/block
-          ) &
-          pid_win=$!
-          (
-            GOOS=darwin GOARCH=arm64 go vet ./...
-            GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/block
-            GOOS=darwin GOARCH=amd64 go build -o /dev/null ./cmd/block
-          ) &
-          pid_mac=$!
-
-          wait "$pid_win"
-          wait "$pid_mac"
-          wait "$pid_lint"
-          echo "==> Running go test ./..."
-          go test ./...
+        run: bash scripts/ci/check.sh
