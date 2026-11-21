@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T09:45:09.190Z",
-  "latest_version": "1.0.898",
-  "latest_tag": "v1.0.898",
+  "updated_at": "2026-11-21T10:08:49.843Z",
+  "latest_version": "1.0.899",
+  "latest_tag": "v1.0.899",
   "releases": [
+    {
+      "version": "1.0.899",
+      "tag": "v1.0.899",
+      "published_at": "2026-11-21T10:08:49Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.899",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件系统现已支持从商店获取并读取版本更新日志。",
+          "应用商店的插件详情页新增了更新日志标签页，便于查阅各版本的历史更新记录。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The plugin system now supports fetching and reading version changelogs from the store.",
+          "Plugin detail pages in the App Store now feature a dedicated Changelog tab to display version update histories."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-macos-arm64.dmg",
+          "size": 15083256,
+          "sha256": "073d97bcc616e57ee29c7144a1045ca2f569f895281dad7bff2561a84610e5a6"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-macos-x64.dmg",
+          "size": 16607156,
+          "sha256": "5484d5b8b4b0b9dd35cbc338e989590f0dda6c1df3e1449a5642ff560901c401"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-windows-x64-setup.exe",
+          "size": 12088480,
+          "sha256": "8490b8e07f47dd15b24b6f5ebaf3c7881bf47a6e7d8f74c5a62513b3c2e543c6"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-linux-x64.deb",
+          "size": 10662414,
+          "sha256": "84eb0ae7f2ece2b4f5e4af65d0665929efa6b6ec058565b12acbe0377d654f08"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-linux-x64.AppImage",
+          "size": 23599608,
+          "sha256": "924df26bcdceed1686b84f957e70d9d9377614ce12902752884949f7dca5cd31"
+        }
+      ]
+    },
     {
       "version": "1.0.898",
       "tag": "v1.0.898",
@@ -28,38 +86,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-macos-arm64.dmg",
-          "size": 15056067,
-          "sha256": "1a00ba7c788d0a9a5801ebc5504dbabbf7fc5fc8c2fd629c619a421539216ce9"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-macos-x64.dmg",
-          "size": 16574356,
-          "sha256": "1c6c2534e81d89466acdcf14347a2ba42c25058a1af19104a0586c7217846fca"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-windows-x64-setup.exe",
-          "size": 12053453,
-          "sha256": "0a01e69b62ebb09194a88b3d55e43f1d54c1c397d033b4efa37fff5203a1dc4e"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-linux-x64.deb",
-          "size": 10636894,
-          "sha256": "6c4310880f6501cf3c42ccf269f1af5f1ee10f117066962c6c6a14caa051950a"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-linux-x64.AppImage",
-          "size": 23575032,
-          "sha256": "ffe670210c5a2fed8e4d8ab3b8136ff51ab683d540b064bc4a8e8e81f87787f2"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.897",
@@ -2497,87 +2524,6 @@
         ],
         "other": [
           "Removed the legacy dictation helper to keep the app lean."
-        ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.379",
-      "tag": "v1.0.379",
-      "published_at": "2026-11-07T11:28:00Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.379",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "可以显示或收起侧栏；指向顶栏上的按钮时，会说明它是做什么的。",
-          "内置助手不再绑在总开关上。每个智能体可以单独设置启动参数和优先级。",
-          "性能监视器改到 Block 菜单里打开，并有了快捷键。",
-          "性能监视器可以拖动，会显示正在加载，统计笔记本占用时会跳过你设为忽略的文件夹。",
-          "笔记的修改建议会直接在编辑器里打开给你看，不再单独放一个审阅按钮。",
-          "选择智能体和启用它分成了两步，智能体卡片也更大。"
-        ],
-        "improvements": [
-          "每次打开速记，它都单独待着，不再跟着主窗口绑在一起。",
-          "反馈的类型更少、说法更清楚，写完后顶部标题会收起。",
-          "常用控件重新画过，AI 对话看起来更简单。",
-          "挑选智能体时不会立刻启用，确认后才会保存。",
-          "编辑器里查看 AI 修改的卡片重新排过，不再出现空行。",
-          "AI 设置收成完整权限开关，以及后端实际提供的模型列表。"
-        ],
-        "fixes": [
-          "对话框和下面的按钮对齐了，发送图标也更清楚。",
-          "新建的表格会适应页面宽度；整张表被选中时，可以把它删掉。",
-          "提示优先出现在按钮上方，靠近屏幕边缘时会挪开，避免被挡住。",
-          "在 macOS 上把笔记移到废纸篓不再因为权限失败；也可以把文件夹拖到侧栏来打开。",
-          "审阅卡片里的文字不再溢出；代码块两端的标记行不会被当成修改。",
-          "嵌套列表里的代码能正常显示；AI 给出的笔记修改会先检查，再写入。"
-        ],
-        "other": [
-          "性能监视器的设计稿可以点着试用。",
-          "本地构建和发版构建走了更短的同一条流水线。",
-          "更新说明先写英文，下面再写中文。",
-          "发布页只放给人下载的安装包。",
-          "发布之后会再核对一遍，多出来的附件会被去掉。",
-          "本地构建不再在你没要求时重新打开 Block。",
-          "安装包固定为五个；手动强制构建时，也会带上自上一个版本以来的全部更新说明。",
-          "可以用 Linux 安装包给 Arch 用户发布。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "You can show or hide the sidebar, and the title bar explains the control when you point at it.",
-          "The built-in assistant is no longer tied to one master switch. Each agent can have its own launch options and priority.",
-          "The performance monitor opens from the Block menu, and it has a shortcut.",
-          "The performance monitor can be dragged, shows a loading state, and skips folders you set to ignore when measuring the notebook.",
-          "A suggested change to a note opens in the editor for review, without a separate review button.",
-          "Choosing an agent is separate from turning it on, and the agent cards are larger."
-        ],
-        "improvements": [
-          "Quick Note stays on its own each time you open it, instead of tying itself to the main window.",
-          "Feedback types are fewer and the wording is clearer, and the header hides when you finish.",
-          "Shared controls were redrawn, and AI chat is simpler to look at.",
-          "You can look through agents without turning one on, and the choice is saved when you confirm.",
-          "The card that reviews an AI change in the note was redesigned, and it no longer shows empty rows.",
-          "AI settings are a switch for full permissions and the model list the backend actually returns."
-        ],
-        "fixes": [
-          "The chat box lines up with the buttons under it, and the send icon is sharper.",
-          "A new table fits the page, and selecting the whole table deletes it.",
-          "Tips prefer to appear above a control, and they move so they stay on screen.",
-          "Moving a note to the Trash on macOS no longer fails with a permission error, and you can drop a folder on the sidebar to open it.",
-          "Text in the review card stays inside the card, and the opening and closing lines of a code block are not shown as changes.",
-          "Code inside a nested list renders correctly, and an AI suggestion is checked before it changes the note."
-        ],
-        "other": [
-          "The performance monitor design board can be clicked through.",
-          "Local builds and release builds now share a shorter pipeline.",
-          "Release notes are written in English first, with Chinese below.",
-          "The release page only keeps the installers people download.",
-          "After publishing, the release is checked again and extra files are removed.",
-          "A local build no longer restarts Block when you did not ask it to.",
-          "The release ships the five installers, and a forced build still gets notes for every commit since the previous release.",
-          "The Linux package can be published for Arch users."
         ]
       },
       "assets": []
