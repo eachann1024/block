@@ -352,10 +352,10 @@ type settingsTabSpec struct {
 }
 
 var settingsTabs = []settingsTabSpec{
-	{id: "appearance", icon: icons.Sliders, zh: "外观与字体", en: "Appearance & Fonts"},
-	{id: "ai", icon: icons.Sparkles, zh: "AI 助手", en: "AI Assistant"},
-	{id: "folders", icon: icons.Folder, zh: "文件夹", en: "Folders"},
-	{id: "shortcuts", icon: icons.Code, zh: "快捷键", en: "Shortcuts"},
+	{id: "appearance", icon: icons.SettingsAppearance, zh: "外观与字体", en: "Appearance & Fonts"},
+	{id: "ai", icon: icons.SettingsAI, zh: "AI 助手", en: "AI Assistant"},
+	{id: "folders", icon: icons.SettingsFolder, zh: "文件夹", en: "Folders"},
+	{id: "shortcuts", icon: icons.SettingsShortcuts, zh: "快捷键", en: "Shortcuts"},
 }
 
 func (m *Manager) resolveSettingsTabTitle(tab string) string {
@@ -430,8 +430,8 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 		}
 		col.Children(func() {
 			ui.Column(c).Padding(4, 8, 8, 12).Gap(2).Grow(1).Children(func() {
-				backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(32).PaddingX(8).Gap(9).
-					Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusSM).
+				backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
+					Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).
 					Cursor(ui.CursorPointer).Label(theme.Tr("返回", "Back"))
 				backHov := backRow.Hovered()
 				backPress := backRow.Pressed()
@@ -445,7 +445,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 				internalui.TactileCard(backRow, backHov, backPress, false, false)
 				backRow.Children(func() {
 					icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG), backHov || backPress)
-					ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).TextColor(backFG).SingleLine()
+					ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(backFG).SingleLine()
 				})
 				internalui.Probe(backRow, "settings-sidebar-back")
 				if backRow.Clicked() {
@@ -459,8 +459,8 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					active := tab == spec.id
 					navID := "settings-tab-" + spec.id
 					title := theme.Tr(spec.zh, spec.en)
-					btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(32).PaddingX(8).Gap(9).
-						AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+					btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
+						AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 						Label(title).Transition(internalui.CascadeRowTransition(i))
 					hovered := btn.Hovered()
 					pressed := btn.Pressed()
@@ -479,16 +479,17 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 						} else if hovered || pressed {
 							ic = pal.DuoIconColors(pal.Text)
 						}
-						icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, active || hovered || pressed)
+						// Selected rows stay still: only the tint changes; motion is a hover cue on idle rows.
+						icons.DrawAnimated(c, spec.icon, theme.IconRow, ic, !active && (hovered || pressed))
 						col := pal.TextSecondary
-						weight := 400
+						weight := theme.WeightRegular
 						if active {
 							col = pal.Text
-							weight = 460
+							weight = theme.WeightControl
 						} else if hovered || pressed {
 							col = pal.Text
 						}
-						ui.Text(c, title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						ui.Text(c, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(col).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					})
 					internalui.Probe(btn, navID)
 					if btn.Clicked() {
@@ -544,7 +545,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 							}
 							active := tab == ent.TabID
 							navID := "settings-tab-" + ent.TabID
-							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space10).Gap(theme.Space8).
+							btn := ui.ButtonBase(c.Key(navID)).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
 								AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 								Label(ent.Title).Transition(internalui.CascadeRowTransition(baseIdx + j))
 							hovered := btn.Hovered()
@@ -586,7 +587,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 									col = pal.Text
 								}
 								ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+									ui.Text(c, ent.Title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(col).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 									if ent.Beta {
 										betaCol := pal.TextSecondary
 										if disabled {
