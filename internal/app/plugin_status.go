@@ -8,7 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func renderPluginStatusStrip(c *ui.Context, sup *plugins.Supervisor, getSelection func() string) {
+func renderPluginStatusStrip(c *ui.Context, sup *plugins.Supervisor, getSelection, getFile func() string) {
 	if sup == nil {
 		return
 	}
@@ -69,6 +69,7 @@ func renderPluginStatusStrip(c *ui.Context, sup *plugins.Supervisor, getSelectio
 						}
 						sup.RunCommandAsync(item.PluginID, item.Command, plugins.CommandContext{
 							Note:      sup.ActiveNoteRel(),
+							File:      getFile(),
 							Selection: sel,
 							Source:    "status",
 						})

@@ -42,21 +42,21 @@ type Workspace struct {
 	dataDir string
 	win     *mygo.Window
 
-	state          model.AppState
-	sidebarWidth   float32
-	sidebarPinned  bool
-	lastViewportW  float32
-	zoomPct        int
-	entries        []model.FileEntry
-	notice         string
-	virtualPreview       map[string]bool // createNote preview tabs not yet written to disk
-	pluginInsertInFlight map[string]int  // tabs currently saving/rolling back a plugin EditorInsert
+	state                model.AppState
+	sidebarWidth         float32
+	sidebarPinned        bool
+	lastViewportW        float32
+	zoomPct              int
+	entries              []model.FileEntry
+	notice               string
+	virtualPreview       map[string]bool   // createNote preview tabs not yet written to disk
+	pluginInsertInFlight map[string]int    // tabs currently saving/rolling back a plugin EditorInsert
 	autoSaveDeferred     map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
 	diskWriteSeq         map[string]uint64 // monotonic per-path disk write sequence preventing stale save callbacks
 	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
 	headlessMainMu       sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
-	ghostTitle     string          // title typed on the no-note ghost page
-	noteSource     noteSourceView  // read-only Markdown source view of the active note
+	ghostTitle           string            // title typed on the no-note ghost page
+	noteSource           noteSourceView    // read-only Markdown source view of the active note
 
 	codec    *markdown.Codec
 	sessions map[string]*editor.Session
@@ -78,14 +78,14 @@ type Workspace struct {
 	recoveryContent string
 	recoveryVersion *int64
 
-	ai        *ai.Controller
-	modals    *modals.Manager
-	updater   *updater.Service
-	pluginsUI *pluginui.Controller
-	pluginUI  *pluginHostUI
-	palette   CommandPalette
-	quick     *modals.QuickNoteController
-	searchWin *modals.SearchWindowController
+	ai           *ai.Controller
+	modals       *modals.Manager
+	updater      *updater.Service
+	pluginsUI    *pluginui.Controller
+	pluginUI     *pluginHostUI
+	palette      CommandPalette
+	quick        *modals.QuickNoteController
+	searchWin    *modals.SearchWindowController
 	tarot        *tarot.Controller
 	tarotSyncKey string
 
@@ -138,25 +138,25 @@ func NewWorkspace(dataDir string) *Workspace {
 
 	codec := markdown.NewCodec()
 	w := &Workspace{
-		dataDir:             actualDir,
-		state:               st,
-		sidebarWidth:        SidebarDefaultW,
-		zoomPct:             zoomPctFromState(st.EditorZoom),
-		persistWindowBounds: true,
+		dataDir:              actualDir,
+		state:                st,
+		sidebarWidth:         SidebarDefaultW,
+		zoomPct:              zoomPctFromState(st.EditorZoom),
+		persistWindowBounds:  true,
 		virtualPreview:       make(map[string]bool),
 		pluginInsertInFlight: make(map[string]int),
 		autoSaveDeferred:     make(map[string]bool),
 		diskWriteSeq:         make(map[string]uint64),
 		lastDiskMarkdown:     make(map[string]string),
-		codec:               codec,
-		sessions:            make(map[string]*editor.Session),
-		surfaces:            make(map[string]*TabSurface),
-		nav:                 NewNavHistory(),
-		closed:              NewClosedTabs(),
-		tabMenu:             NewTabMenuState(),
-		sidebarUI:           NewSidebarUIState(),
-		historyView:         &PageHistoryView{Mode: "diff"},
-		lastSnapAt:          make(map[string]time.Time),
+		codec:                codec,
+		sessions:             make(map[string]*editor.Session),
+		surfaces:             make(map[string]*TabSurface),
+		nav:                  NewNavHistory(),
+		closed:               NewClosedTabs(),
+		tabMenu:              NewTabMenuState(),
+		sidebarUI:            NewSidebarUIState(),
+		historyView:          &PageHistoryView{Mode: "diff"},
+		lastSnapAt:           make(map[string]time.Time),
 	}
 	if st.SidebarWidth != nil && *st.SidebarWidth > 0 {
 		w.sidebarWidth = ClampSidebarWidth(*st.SidebarWidth)
@@ -432,6 +432,7 @@ func (w *Workspace) newEditorSession(cleanPath string, doc *model.Doc) *editor.S
 				OnChoose: func() {
 					sup.RunCommandAsync(item.PluginID, item.Command, plugins.CommandContext{
 						Note:      sup.ActiveNoteRel(),
+						File:      w.ActiveNotePath(),
 						Selection: sess.SelectedMarkdown(),
 						Source:    "editor_menu",
 					})
@@ -4318,10 +4319,6 @@ func (w *Workspace) handleAppShortcuts(c *ui.Context, vpW float32) {
 		w.copyActiveMarkdown(c.Services())
 		return
 	}
-	if matchRaw(copyPathShortcutSpec()) {
-		w.copyActiveFilePath(c.Services())
-		return
-	}
 	if c.Shortcut(ui.Cmd, ui.KeyS) {
 		w.FlushDirtySessions()
 		if theme.IsTarotMode() && w.tarot != nil {
@@ -4384,6 +4381,7 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 		if c.Shortcut(mods, key) {
 			sup.RunCommandAsync(cmd.PluginID, cmd.ID, plugins.CommandContext{
 				Note:      sup.ActiveNoteRel(),
+				File:      w.ActiveNotePath(),
 				Selection: w.activeSelectionText(),
 				Source:    "shortcut",
 			})
@@ -4413,28 +4411,8 @@ func isTextInputReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
 }
 
 func copyMarkdownShortcutSpec() string {
-	// Alt+Cmd+C on macOS, Ctrl+Alt+C on Windows/Linux (keeps Cmd/Ctrl+Shift+C free for Copy File Path).
+	// Alt+Cmd+C on macOS, Ctrl+Alt+C on Windows/Linux.
 	return "alt-cmd-c"
-}
-
-func copyPathShortcutSpec() string {
-	// Cmd+Shift+C on macOS, Ctrl+Shift+C on Windows/Linux.
-	return "cmd-shift-c"
-}
-
-func (w *Workspace) copyFilePath(path string, svc ui.Services) {
-	if path == "" {
-		return
-	}
-	svc.WriteClipboard(path)
-	w.setNotice(theme.Tr("已复制文件路径", "Copied file path"))
-}
-
-func (w *Workspace) copyActiveFilePath(svc ui.Services) {
-	w.mu.Lock()
-	active := w.state.ActiveTab
-	w.mu.Unlock()
-	w.copyFilePath(active, svc)
 }
 
 func (w *Workspace) copyActiveMarkdown(svc ui.Services) {
@@ -4730,23 +4708,23 @@ func (w *Workspace) Render(c *ui.Context) {
 		} else {
 			brandHasUpdate, brandUpdateChecking, brandUpdateTip, brandUpdateMenuLabel, brandUpdateHint := w.brandUpdateHint()
 			RenderTitlebar(c, TitlebarProps{
-				SidebarWide:       sidebarWide,
-				SidebarAutoHidden: sidebarAutoHidden,
-				SidebarFloating:   w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
-				SidebarWidth:      dockedSidebarWidth,
+				SidebarWide:            sidebarWide,
+				SidebarAutoHidden:      sidebarAutoHidden,
+				SidebarFloating:        w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
+				SidebarWidth:           dockedSidebarWidth,
 				InSettings:             inSettings,
 				SettingsTabLabel:       w.modals.ActiveSettingsTabTitle(),
 				RenderSettingsLeading:  w.modals.RenderSettingsTitlebarLeading,
 				RenderSettingsTrailing: w.modals.RenderSettingsTitlebarTrailing,
 				RenderSettingsOverlays: w.modals.RenderSettingsTitlebarOverlays,
 				AIImmersive:            aiImmersive,
-				AIEnabled:         aiEnabled,
-				AIOpen:            w.ai.IsOpen() || w.edgeFloat.RightOpen(),
-				FeedbackOpen:      w.modals.IsFeedbackOpen(),
-				HasFeedbackDraft:  hasFBDraft,
-				NotebookPath:      activeNB,
-				Tabs:              tabs,
-				ActiveTab:         activeTab,
+				AIEnabled:              aiEnabled,
+				AIOpen:                 w.ai.IsOpen() || w.edgeFloat.RightOpen(),
+				FeedbackOpen:           w.modals.IsFeedbackOpen(),
+				HasFeedbackDraft:       hasFBDraft,
+				NotebookPath:           activeNB,
+				Tabs:                   tabs,
+				ActiveTab:              activeTab,
 				IsDirty: func(path string) bool {
 					return dirtyTabs[path]
 				},
@@ -4876,9 +4854,6 @@ func (w *Workspace) Render(c *ui.Context) {
 					c.Services().WriteClipboard(markdownImageRef(activeTab, activeNB))
 					w.setNotice(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"))
 				},
-				OnCopyPath: func(path string) {
-					w.copyFilePath(path, c.Services())
-				},
 				OnOpenExternal: func() {
 					if activeTab != "" {
 						if mygo.App.IsReady() {
@@ -4937,13 +4912,13 @@ func (w *Workspace) Render(c *ui.Context) {
 						}
 					}
 				},
-				HiddenSlots:      w.pluginHiddenTitlebarSlots(),
-				AppVersion:       updater.CurrentVersion(),
-				HasUpdate:        brandHasUpdate,
-				UpdateChecking:   brandUpdateChecking,
-				UpdateTooltip:    brandUpdateTip,
-				UpdateMenuLabel:  brandUpdateMenuLabel,
-				UpdateHint:       brandUpdateHint,
+				HiddenSlots:     w.pluginHiddenTitlebarSlots(),
+				AppVersion:      updater.CurrentVersion(),
+				HasUpdate:       brandHasUpdate,
+				UpdateChecking:  brandUpdateChecking,
+				UpdateTooltip:   brandUpdateTip,
+				UpdateMenuLabel: brandUpdateMenuLabel,
+				UpdateHint:      brandUpdateHint,
 				OnOpenUpdater: func() {
 					// OpenUpdater already initiates a check when StatusIdle; only force a
 					// manual refresh if the updater was already settled at UpToDate/Error.
@@ -4967,6 +4942,8 @@ func (w *Workspace) Render(c *ui.Context) {
 				OnPluginButton:    w.onPluginTitlebarButton,
 				PluginPageMenu:    w.pluginPageMenuItems(),
 				OnPluginMenuItem:  w.onPluginPageMenuItem,
+				PluginTabMenu:     w.pluginTabMenuItems(),
+				OnPluginTabMenu:   w.onPluginTabMenuItem,
 			})
 		}
 
@@ -5133,7 +5110,7 @@ func (w *Workspace) Render(c *ui.Context) {
 									w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 								}
 							})
-							renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText)
+							renderPluginStatusStrip(c, w.Plugins(), w.activeSelectionText, w.ActiveNotePath)
 						})
 
 						aiOpen := w.ai.IsOpen()
@@ -5275,27 +5252,22 @@ func (w *Workspace) pluginSidebarMenuItems() []plugins.ResolvedMenuItem {
 	return sup.SidebarMenuItems()
 }
 
-func (w *Workspace) onPluginSidebarMenuItem(it plugins.ResolvedMenuItem, targetPath string, _ bool) {
+func (w *Workspace) onPluginSidebarMenuItem(it plugins.ResolvedMenuItem, targetPath string, isDir bool) {
 	sup := w.Plugins()
 	if sup == nil || it.Command == "" || targetPath == "" {
 		return
 	}
-	nb := sup.NotebookRoot()
-	if nb == "" {
+	rel := notebookRel(sup.NotebookRoot(), targetPath)
+	if rel == "" {
 		return
 	}
-	rel, err := filepath.Rel(filepath.Clean(nb), filepath.Clean(targetPath))
-	if err != nil {
-		return
+	cc := plugins.CommandContext{File: targetPath, Source: "sidebar_menu"}
+	if isDir {
+		cc.Folder = rel
+	} else {
+		cc.Note = rel
 	}
-	noteRel := filepath.ToSlash(rel)
-	if noteRel == "" || noteRel == "." || noteRel == ".." || strings.HasPrefix(noteRel, "../") || strings.HasPrefix(noteRel, "/") {
-		return
-	}
-	sup.RunCommandAsync(it.PluginID, it.Command, plugins.CommandContext{
-		Note:   noteRel,
-		Source: "sidebar_menu",
-	})
+	sup.RunCommandAsync(it.PluginID, it.Command, cc)
 }
 
 func (w *Workspace) renderPluginSidebarSections(c *ui.Context) {
@@ -5355,6 +5327,7 @@ func (w *Workspace) onPluginTitlebarButton(b plugins.ResolvedTitlebarButton) {
 		if sup := w.Plugins(); sup != nil {
 			sup.RunCommandAsync(b.PluginID, b.Command, plugins.CommandContext{
 				Note:      sup.ActiveNoteRel(),
+				File:      w.ActiveNotePath(),
 				Selection: w.activeSelectionText(),
 				Source:    "titlebar",
 			})
@@ -5377,9 +5350,49 @@ func (w *Workspace) onPluginPageMenuItem(it plugins.ResolvedMenuItem) {
 	}
 	sup.RunCommandAsync(it.PluginID, it.Command, plugins.CommandContext{
 		Note:      sup.ActiveNoteRel(),
+		File:      w.ActiveNotePath(),
 		Selection: w.activeSelectionText(),
 		Source:    "page_menu",
 	})
+}
+
+func (w *Workspace) pluginTabMenuItems() []plugins.ResolvedMenuItem {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	return sup.TabMenuItems()
+}
+
+// onPluginTabMenuItem runs a tab_menu command against the right-clicked tab,
+// which may be a file outside the current notebook.
+func (w *Workspace) onPluginTabMenuItem(it plugins.ResolvedMenuItem, path string) {
+	sup := w.Plugins()
+	if sup == nil || it.Command == "" || path == "" {
+		return
+	}
+	sup.RunCommandAsync(it.PluginID, it.Command, plugins.CommandContext{
+		Note:   notebookRel(sup.NotebookRoot(), path),
+		File:   path,
+		Source: "tab_menu",
+	})
+}
+
+// notebookRel returns path relative to root in slash form, or "" when path is
+// not inside root.
+func notebookRel(root, path string) string {
+	if root == "" || path == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || strings.HasPrefix(rel, "/") {
+		return ""
+	}
+	return rel
 }
 
 func (w *Workspace) renderPluginOverlays(c *ui.Context) {
@@ -5416,6 +5429,7 @@ func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 			}
 			sup.RunCommandAsync(pluginID, cmdID, plugins.CommandContext{
 				Note:      sup.ActiveNoteRel(),
+				File:      w.ActiveNotePath(),
 				Selection: w.activeSelectionText(),
 				Source:    "palette",
 			})
@@ -5523,9 +5537,6 @@ func (w *Workspace) renderSidebarColumn(
 		OnReorderNotebooks: w.ReorderNotebooks,
 		OnTrashItem: func(path string) {
 			_ = w.TrashWorkspaceItem(path)
-		},
-		OnCopyPath: func(path string) {
-			w.copyFilePath(path, c.Services())
 		},
 		OnRevealItem: func(path string) {
 			if mygo.App.IsReady() {
