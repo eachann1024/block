@@ -37,7 +37,7 @@ const (
 const blockSyncCredentialEvent = "plugin.credentials_migrate"
 
 var systemPermissions = map[Permission][4]string{
-	PermSystemNotify:   {"系统通知", "System Notifications", "在 Block 窗口外发送系统通知。", "Send system notifications outside the Block window."},
+	PermSystemNotify:   {"系统通知", "System Notifications", "发送操作系统原生系统通知。", "Send native operating system notifications."},
 	PermSystemSecrets:  {"系统凭据", "System Credentials", "在系统凭据库中读写该插件专属的凭据。", "Read and write this plugin's own credentials in the system credential store."},
 	PermSystemOpen:     {"打开系统链接", "Open Links and Reveal Files", "在用户操作时打开网页或在文件管理器中显示笔记本文件。", "Open a web page or reveal a notebook file in the file manager during a user action."},
 	PermSystemDialogs:  {"系统文件选择框", "System File Pickers", "在用户操作时弹出文件、文件夹或保存位置选择框。", "Show a native file, folder, or save-location picker during a user action."},
@@ -108,10 +108,36 @@ type systemFailureNotice struct {
 	allowed           func() bool
 }
 
+// systemNoticeBurst caps native notifications per plugin inside
+// systemNoticeWindow. With the 2-minute dedup window this bounds live keys to
+// 60, so the 64-entry dedup map never evicts a key that is still in force.
+const (
+	systemNoticeBurst  = 5
+	systemNoticeWindow = 10 * time.Second
+)
+
 type systemNotice struct {
 	at   time.Time
 	keys map[[32]byte]time.Time
+	sent []time.Time
 	done chan struct{}
+}
+
+// allowSend reports whether another delivery fits the per-plugin rate window
+// and records the attempt when it does.
+func (notice *systemNotice) allowSend(now time.Time) bool {
+	kept := notice.sent[:0]
+	for _, at := range notice.sent {
+		if now.Sub(at) < systemNoticeWindow {
+			kept = append(kept, at)
+		}
+	}
+	notice.sent = kept
+	if len(notice.sent) >= systemNoticeBurst {
+		return false
+	}
+	notice.sent = append(notice.sent, now)
+	return true
 }
 
 type systemBadge struct {
@@ -456,9 +482,14 @@ func (s *Supervisor) sendSystemNotice(ctx context.Context, id, title, body, tone
 			}
 		}
 		alreadyDelivered := now.Sub(prev.keys[key]) < 2*time.Minute
-		if alreadyDelivered || (id != "block-sync" && now.Sub(prev.at) < 10*time.Second) {
+		if alreadyDelivered {
 			s.system.mu.Unlock()
 			return true, alreadyDelivered, nil
+		}
+		if !prev.allowSend(now) {
+			s.system.notices[id] = prev
+			s.system.mu.Unlock()
+			return false, false, ErrSystemBusy
 		}
 		done := make(chan struct{})
 		prev.done = done
