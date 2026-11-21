@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T09:16:37.683Z",
-  "latest_version": "1.0.895",
-  "latest_tag": "v1.0.895",
+  "updated_at": "2026-11-21T09:21:46.378Z",
+  "latest_version": "1.0.896",
+  "latest_tag": "v1.0.896",
   "releases": [
+    {
+      "version": "1.0.896",
+      "tag": "v1.0.896",
+      "published_at": "2026-11-21T09:21:45Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.896",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "插件标题栏的操作按钮统一采用轻量的幽灵样式，并隐藏了多余的空闲状态显示，让界面更加整洁。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Plugin title bars now feature a unified, lightweight ghost style for action buttons and hide redundant idle statuses to keep the interface clean."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-macos-arm64.dmg",
+          "size": 15056331,
+          "sha256": "9ac35667a0281acaaa75a626417276621a4aa525f941ea3ebd6e2505b528c5fc"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-macos-x64.dmg",
+          "size": 16570092,
+          "sha256": "77b027d1fd610c74da62d2857a247d823fb593df9fbd0149c8008535df6a409e"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-windows-x64-setup.exe",
+          "size": 12049422,
+          "sha256": "47c0e75f9b71378ea1800635562171d01c1431d086ec13720a804275748fa1b8"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-linux-x64.deb",
+          "size": 10630880,
+          "sha256": "57049bcc2dda2ca7647e4a173fa43bee5883fff4d8fa82a6dfbf98f2bd0b2435"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.896/block-linux-x64.AppImage",
+          "size": 23566840,
+          "sha256": "e8d252a346a9c65daae1d3c770ae49305b7293037deee83d034a4b58117e832d"
+        }
+      ]
+    },
     {
       "version": "1.0.895",
       "tag": "v1.0.895",
@@ -32,38 +88,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.895/block-macos-arm64.dmg",
-          "size": 15047306,
-          "sha256": "0c24072df7e33e2346f31a4d513615c9c404b09590639a4034a6406c75e1ec07"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.895/block-macos-x64.dmg",
-          "size": 16568909,
-          "sha256": "ee9250178d834b7d211306ffa82508c3fc941b376d68b9d902c06d527d1cc49c"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.895/block-windows-x64-setup.exe",
-          "size": 12049775,
-          "sha256": "7335f284bf114c675efdfb10773e4d7387e7a3864bc35391c8e51308d2d4b16f"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.895/block-linux-x64.deb",
-          "size": 10635386,
-          "sha256": "1f08cc441a674987b1aabdea2fac8d1887df514ed0ded258b37442a0824ed2e6"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.895/block-linux-x64.AppImage",
-          "size": 23562744,
-          "sha256": "0549e412c534d242327dde52fb05d70f8c41255003f47995e952209d8e980812"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.894",
@@ -2615,27 +2640,6 @@
           "Fix selected feedback chip text contrast in dark mode.",
           "Fix chat composer multiline wrapping and bounded growth."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.301",
-      "tag": "v1.0.301",
-      "published_at": "2026-11-06T05:30:23Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.301",
-      "zh": {
-        "highlights": "本次无面向用户的可见更新。",
-        "new": [],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "No user-facing changes in this release.",
-        "new": [],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
