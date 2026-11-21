@@ -29,6 +29,7 @@ type PluginNavEntry struct {
 	Beta      bool
 	Lit       bool
 	StatusDot bool
+	Starting  bool
 	HasError  bool
 	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
 }
@@ -49,5 +50,5 @@ type PluginSettingsHost interface {
 	IsStoreLightboxOpen() bool
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
-	RenderSettingsSections(c *ui.Context, tab string)
+	RenderSettingsSections(c *ui.Context, tab string, onSelectTab func(nextTab string))
 }

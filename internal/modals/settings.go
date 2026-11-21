@@ -142,6 +142,10 @@ type Manager struct {
 	folderRuleDraft        string
 	folderRuleAdding       bool
 	searchIgnorePicker     internalui.DropdownSelectState
+	langPicker             internalui.DropdownSelectState
+	brandDecoPicker        internalui.DropdownSelectState
+	brandTempoPicker       internalui.DropdownSelectState
+	updateSourcePicker     internalui.DropdownSelectState
 	regexRuleDraft         string
 	folderRuleError        string
 	regexRuleError         string
@@ -322,7 +326,11 @@ func (m *Manager) OpenSettings(tab string) {
 	m.fontPickerOpen = ""
 	m.folderRuleError = ""
 	m.folderRuleAdding = false
-	m.searchIgnorePicker = internalui.DropdownSelectState{}
+	m.searchIgnorePicker = internalui.DropdownSelectState{Borderless: true}
+	m.langPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
+	m.brandDecoPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
+	m.brandTempoPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
+	m.updateSourcePicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
 	m.regexRuleError = ""
 	m.settingsOpen = true
 	m.notifySettingsTabChanged(previous, m.ActiveSettingsTab())
@@ -465,7 +473,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 					hovered := btn.Hovered()
 					pressed := btn.Pressed()
 					if active {
-						btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+						btn.Background(pal.Selected).Border(1, ui.Transparent)
 					} else if pressed || hovered {
 						btn.Background(chrome.Hover).Border(1, ui.Transparent)
 					} else {
@@ -557,17 +565,29 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 								btn.Border(1, ui.Transparent)
 							}
 							internalui.TactileCard(btn, hovered, pressed, active, false)
+							isPlugin := strings.HasPrefix(ent.TabID, TabPluginPrefix)
+							disabled := isPlugin && !ent.StatusDot
 							btn.Children(func() {
 								ic := pal.MonoIconColors(pal.TextSecondary)
-								if ent.Lit || active || hovered || pressed {
+								if disabled && !active && !hovered && !pressed {
+									ic = pal.MonoIconColors(pal.Placeholder)
+								} else if ent.Lit || active || hovered || pressed {
 									ic = pal.DuoIconColors(pal.Text)
 								}
 								if ent.DrawIcon != nil {
-									ent.DrawIcon(c, theme.IconRow, ic)
+									if disabled {
+										ui.Box(c).Shrink(0).Opacity(theme.DisabledOpacity).Children(func() {
+											ent.DrawIcon(c, theme.IconRow, ic)
+										})
+									} else {
+										ent.DrawIcon(c, theme.IconRow, ic)
+									}
 								}
 								col := pal.TextSecondary
 								weight := theme.WeightRegular
-								if active {
+								if disabled && !active && !hovered && !pressed {
+									col = pal.Placeholder
+								} else if active {
 									col = pal.Text
 									weight = theme.WeightControl
 								} else if hovered || pressed {
@@ -576,19 +596,25 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 								ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
 									ui.Text(c, ent.Title).FontSize(theme.FontBody).FontWeight(weight).TextColor(col).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 									if ent.Beta {
-										internalui.BetaBadge(c, true)
+										betaCol := pal.TextSecondary
+										if disabled {
+											betaCol = pal.Placeholder
+										}
+										ui.Text(c, "Beta").FontSize(theme.FontMicro).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightRegular).TextColor(betaCol).SingleLine().Shrink(0)
 									}
 								})
 								if ent.CountText != "" {
 									ui.Text(c, ent.CountText).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 										FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-								} else if ent.StatusDot {
-									dotColor := pal.Accent
-									if ent.HasError {
-										dotColor = pal.Danger
-									}
-									ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).Shrink(0).
-										Radius(theme.RadiusPill).Background(dotColor)
+								} else if isPlugin && ent.Starting {
+									ui.Spinner(c).FontSize(theme.IconMicro).TextColor(pal.Accent)
+								} else if isPlugin && ent.HasError {
+									ui.Text(c, theme.Tr("失败", "Failed")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.Danger).SingleLine().Shrink(0)
+								} else if disabled {
+									ui.Text(c, theme.Tr("已停用", "Disabled")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+										TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 								}
 							})
 							internalui.Probe(btn, navID)
@@ -882,7 +908,7 @@ func (m *Manager) renderSettingsAITab(c *ui.Context) {
 			})
 		}
 		if m.PluginHost != nil {
-			m.PluginHost.RenderSettingsSections(c, "ai")
+			m.PluginHost.RenderSettingsSections(c, "ai", m.selectSettingsTab)
 		}
 	})
 }
@@ -936,17 +962,18 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
-			langIdx := 0
+			langVal := string(model.LangZh)
 			if theme.Language() == model.LangEn {
-				langIdx = 1
+				langVal = string(model.LangEn)
 			}
+			m.langPicker.Compact = true
 			internalui.SettingsRow(c, theme.Tr("界面语言", "Language"), func() {
-				if internalui.SettingsSegmented(c, "settings-lang-seg", &langIdx, []internalui.SegmentOption{
-					{ID: "settings-lang-zh", Label: "简体中文"},
-					{ID: "settings-lang-en", Label: "English"},
-				}) {
+				if internalui.DropdownSelect(c, "settings-lang-select", &langVal, []internalui.SelectOption{
+					{ID: "settings-lang-zh", Value: string(model.LangZh), Label: "简体中文"},
+					{ID: "settings-lang-en", Value: string(model.LangEn), Label: "English"},
+				}, &m.langPicker, "") {
 					picked := model.LangZh
-					if langIdx == 1 {
+					if langVal == string(model.LangEn) {
 						picked = model.LangEn
 					}
 					theme.SetLanguage(picked)
@@ -959,23 +986,23 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			// Density decides how much is drawn and tempo how fast it moves; the two never mix.
 			density, tempo := st.BrandDeco.EffectiveDensity(), st.BrandDeco.EffectiveTempo()
 			decoOn := st.BrandDeco.Mode != model.BrandDecoOff
-			decoIdx := 3
+			decoVal := "rich"
 			switch {
 			case !decoOn:
-				decoIdx = 0
+				decoVal = "off"
 			case density == model.BrandDecoDensityMinimal:
-				decoIdx = 1
+				decoVal = "minimal"
 			case density == model.BrandDecoDensityCalm:
-				decoIdx = 2
+				decoVal = "calm"
 			}
-			tempoIdx := 2
+			tempoVal := "leisurely"
 			switch tempo {
 			case model.BrandDecoTempoStill:
-				tempoIdx = 0
+				tempoVal = "still"
 			case model.BrandDecoTempoSlow:
-				tempoIdx = 1
+				tempoVal = "slow"
 			case model.BrandDecoTempoBrisk:
-				tempoIdx = 3
+				tempoVal = "brisk"
 			}
 			// Writing either row stores both values explicitly and retires the legacy combined tier.
 			saveDeco := func(apply func(d *model.BrandDeco)) {
@@ -985,25 +1012,26 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					apply(&s.BrandDeco)
 				})
 			}
+			m.brandDecoPicker.Compact = true
 			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
-				if internalui.SettingsSegmented(c, "settings-brand-deco-seg", &decoIdx, []internalui.SegmentOption{
-					{ID: "settings-brand-deco-off", Label: theme.Tr("关闭", "Off")},
-					{ID: "settings-brand-deco-minimal", Label: theme.Tr("简约", "Minimal")},
-					{ID: "settings-brand-deco-calm", Label: theme.Tr("舒缓", "Calm")},
-					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
-				}) {
+				if internalui.DropdownSelect(c, "settings-brand-deco-select", &decoVal, []internalui.SelectOption{
+					{ID: "settings-brand-deco-off", Value: "off", Label: theme.Tr("关闭", "Off")},
+					{ID: "settings-brand-deco-minimal", Value: "minimal", Label: theme.Tr("简约", "Minimal")},
+					{ID: "settings-brand-deco-calm", Value: "calm", Label: theme.Tr("舒缓", "Calm")},
+					{ID: "settings-brand-deco-rich", Value: "rich", Label: theme.Tr("丰富", "Rich")},
+				}, &m.brandDecoPicker, "") {
 					saveDeco(func(d *model.BrandDeco) {
-						if decoIdx == 0 {
+						if decoVal == "off" {
 							d.Mode = model.BrandDecoOff
 							return
 						}
 						if d.Mode == model.BrandDecoOff {
 							d.Mode = model.BrandDecoByTime
 						}
-						switch decoIdx {
-						case 1:
+						switch decoVal {
+						case "minimal":
 							d.Density = model.BrandDecoDensityMinimal
-						case 2:
+						case "calm":
 							d.Density = model.BrandDecoDensityCalm
 						default:
 							d.Density = model.BrandDecoDensityRich
@@ -1012,20 +1040,21 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 			if decoOn {
+				m.brandTempoPicker.Compact = true
 				internalui.SettingsRow(c, theme.Tr("动画速度", "Animation Speed"), func() {
-					if internalui.SettingsSegmented(c, "settings-brand-tempo-seg", &tempoIdx, []internalui.SegmentOption{
-						{ID: "settings-brand-tempo-still", Label: theme.Tr("静止", "Still")},
-						{ID: "settings-brand-tempo-slow", Label: theme.Tr("缓慢", "Slow")},
-						{ID: "settings-brand-tempo-leisurely", Label: theme.Tr("悠闲", "Leisurely")},
-						{ID: "settings-brand-tempo-brisk", Label: theme.Tr("轻快", "Brisk")},
-					}) {
+					if internalui.DropdownSelect(c, "settings-brand-tempo-select", &tempoVal, []internalui.SelectOption{
+						{ID: "settings-brand-tempo-still", Value: "still", Label: theme.Tr("静止", "Still")},
+						{ID: "settings-brand-tempo-slow", Value: "slow", Label: theme.Tr("缓慢", "Slow")},
+						{ID: "settings-brand-tempo-leisurely", Value: "leisurely", Label: theme.Tr("悠闲", "Leisurely")},
+						{ID: "settings-brand-tempo-brisk", Value: "brisk", Label: theme.Tr("轻快", "Brisk")},
+					}, &m.brandTempoPicker, "") {
 						saveDeco(func(d *model.BrandDeco) {
-							switch tempoIdx {
-							case 0:
+							switch tempoVal {
+							case "still":
 								d.Tempo = model.BrandDecoTempoStill
-							case 1:
+							case "slow":
 								d.Tempo = model.BrandDecoTempoSlow
-							case 3:
+							case "brisk":
 								d.Tempo = model.BrandDecoTempoBrisk
 							default:
 								d.Tempo = model.BrandDecoTempoLeisurely
@@ -1112,12 +1141,21 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					ui.Text(c, verTitle).Font("monospace").FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
 					if snap.HasActionableUpdate() {
 						btnLabel := fmt.Sprintf(theme.Tr("更新至 v%s", "Update to v%s"), snap.LatestVersion)
-						upIc := icons.Download
 						if snap.Status == updater.StatusReady {
-							btnLabel = fmt.Sprintf(theme.Tr("重启更新 v%s", "Restart to v%s"), snap.LatestVersion)
-							upIc = icons.Refresh
+							btnLabel = fmt.Sprintf(theme.Tr("重启更新到 v%s", "Restart to v%s"), snap.LatestVersion)
 						}
-						btn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{ID: "settings-open-updater", Label: btnLabel, Leading: &upIc, Style: internalui.ButtonPrimary, Height: theme.HeightCompact, PaddingX: theme.Space10})
+						btn := ui.ButtonBase(c.Key("settings-open-updater")).Height(theme.HeightCompact).PaddingX(theme.Space10).
+							Gap(theme.Space6).AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(btnLabel)
+						if btn.Hovered() || btn.Pressed() {
+							btn.Background(pal.Selected)
+						}
+						btn.Children(func() {
+							ui.Box(c).Size(theme.UpdaterBadgeDotSize, theme.UpdaterBadgeDotSize).Shrink(0).
+								Radius(theme.RadiusPill).Background(pal.Accent)
+							ui.Text(c, btnLabel).FontSize(theme.FontSmall).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+						})
+						internalui.Probe(btn, "settings-open-updater")
 						if btn.Clicked() {
 							m.OpenUpdater()
 						}
@@ -1143,21 +1181,15 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			if m.Updater != nil {
 				srcMode = snap.SourceMode
 			}
-			srcIdx := 0
-			switch srcMode {
-			case updater.SourceMirror:
-				srcIdx = 1
-			case updater.SourceGitHub:
-				srcIdx = 2
-			}
+			srcVal := string(srcMode)
+			m.updateSourcePicker.Compact = true
 			internalui.SettingsRow(c, theme.Tr("更新源", "Update Source"), func() {
-				if internalui.SettingsSegmented(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
-					{ID: "settings-upd-src-auto", Label: theme.Tr("自动", "Auto")},
-					{ID: "settings-upd-src-mirror", Label: theme.Tr("国内加速", "Mirror")},
-					{ID: "settings-upd-src-github", Label: "GitHub"},
-				}) {
-					modes := []updater.SourceMode{updater.SourceAuto, updater.SourceMirror, updater.SourceGitHub}
-					picked := modes[srcIdx]
+				if internalui.DropdownSelect(c, "settings-update-source-select", &srcVal, []internalui.SelectOption{
+					{ID: "settings-upd-src-auto", Value: string(updater.SourceAuto), Label: theme.Tr("自动", "Auto")},
+					{ID: "settings-upd-src-mirror", Value: string(updater.SourceMirror), Label: theme.Tr("国内加速", "Mirror")},
+					{ID: "settings-upd-src-github", Value: string(updater.SourceGitHub), Label: "GitHub"},
+				}, &m.updateSourcePicker, "") {
+					picked := updater.NormalizeSourceMode(srcVal)
 					if m.Updater != nil {
 						m.Updater.SetSourceMode(picked)
 					} else {
@@ -1185,7 +1217,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 		})
 
 		if m.PluginHost != nil {
-			m.PluginHost.RenderSettingsSections(c, "appearance")
+			m.PluginHost.RenderSettingsSections(c, "appearance", m.selectSettingsTab)
 		}
 	})
 	_ = pal
@@ -1326,7 +1358,7 @@ func (m *Manager) fontPickerTrigger(c *ui.Context, id, role, label string, isDef
 }
 
 const (
-	fontPickerRowH          float32 = 34
+	fontPickerRowH          float32 = theme.HeightCompact
 	fontPickerVirtThreshold         = 24
 	fontPickerVirtOverscan          = 4
 )
@@ -1821,14 +1853,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						defHov := m.fontCursor < 0 && defRow.Hovered()
 						defPressed := defRow.Pressed()
 						defBG := ui.Transparent
-						switch {
-						case defSelected, defPressed:
-							defBG = pal.Selected
-						case defHighlighted || defHov:
+						if defHighlighted || defHov {
 							defBG = pal.MenuHover
 						}
 						internalui.AnimateSurfaceColors(defRow, defBG, ui.Transparent, false)
-						internalui.TactileCard(defRow, defHov || defHighlighted, defPressed, defSelected, false)
 						defRow.Children(func() {
 							suffix, gap := defaultFontSuffix()
 							ui.Row(c).AlignItems(ui.Center).Gap(gap).Grow(1).MinWidth(0).Children(func() {
@@ -1836,7 +1864,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 								ui.Text(c, suffix).FontSize(theme.FontBody).TextColor(pal.MenuMuted).SingleLine().Shrink(0)
 							})
 							if defSelected {
-								icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), defSelected || defHov || defPressed)
+								icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), defSelected || defHov || defPressed)
 							}
 						})
 						if defRow.Clicked() {
@@ -1856,16 +1884,10 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 					hovered := m.fontCursor < 0 && row.Hovered()
 					pressed := row.Pressed()
 					bg := ui.Transparent
-					switch {
-					case selected:
-						bg = pal.Selected
-					case pressed:
-						bg = pal.Selected
-					case highlighted || hovered:
+					if highlighted || hovered {
 						bg = pal.MenuHover
 					}
 					internalui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
-					internalui.TactileCard(row, hovered || highlighted, pressed, selected, false)
 					row.Children(func() {
 						var marks [][2]int
 						if strings.TrimSpace(m.fontQuery) != "" {
@@ -1873,7 +1895,7 @@ func (m *Manager) renderFontPickerOverlay(c *ui.Context) {
 						}
 						internalui.HighlightedText(c, f.Name, marks, theme.FontBody, 0, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
 						if selected {
-							icons.DrawAnimated(c, icons.Check, 16, pal.MonoIconColors(pal.Text), selected || hovered || pressed)
+							icons.DrawAnimated(c, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Accent), selected || hovered || pressed)
 						}
 					})
 					if row.Clicked() {
@@ -2006,7 +2028,7 @@ func (m *Manager) renderSettingsFoldersTab(c *ui.Context) {
 		})
 
 		if m.PluginHost != nil {
-			m.PluginHost.RenderSettingsSections(c, "folders")
+			m.PluginHost.RenderSettingsSections(c, "folders", m.selectSettingsTab)
 		}
 	})
 }
@@ -2290,7 +2312,7 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 			if m.shortcutConflictNotice != "" {
 				noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
 					Padding(theme.Space8, theme.Space12, theme.Space8, theme.Space12).Margin(0, 0, theme.Space8, 0).Radius(theme.RadiusMD).
-					Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.35))
+					Background(pal.WarningSurface)
 				internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
 				noticeRow.Children(func() {
 					ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
@@ -2324,7 +2346,7 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		})
 
 		if m.PluginHost != nil {
-			m.PluginHost.RenderSettingsSections(c, "shortcuts")
+			m.PluginHost.RenderSettingsSections(c, "shortcuts", m.selectSettingsTab)
 		}
 	})
 }
@@ -2354,18 +2376,18 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	internalui.TactileCard(btn, hovered, pressed, recording, false)
 	btn.Children(func() {
 		if recording {
-			ui.Box(c).PaddingX(6).Children(func() {
+			ui.Box(c).PaddingX(theme.Space6).Children(func() {
 				ui.Text(c, accLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 			})
 			return
 		}
 		for _, part := range hotkeyParts(spec) {
-			internalui.KeycapWithOptions(c, part, internalui.KeycapOptions{
-				Height:   theme.HeightMicro,
-				MinWidth: theme.HeightMicro,
-				PaddingX: theme.Space6,
-				Radius:   theme.RadiusSM,
-				Mono:     true,
+			internalui.ShortcutLabel(c, part, internalui.ShortcutLabelStyle{
+				FontSize:   theme.KeycapFontSize,
+				LineHeight: theme.LineMeta,
+				FontWeight: theme.WeightMono,
+				Color:      pal.TextSecondary,
+				IsShortcut: true,
 			})
 		}
 	})
@@ -2380,17 +2402,18 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 }
 
 func staticKeycapTray(c *ui.Context, id, spec string) {
+	pal := theme.Ocean()
 	tray := ui.Row(c.Key(id)).Height(theme.HeightCompact).Gap(theme.Space4).
 		AlignItems(ui.Center).Justify(ui.Center)
 	internalui.Probe(tray, id)
 	tray.Children(func() {
 		for _, part := range hotkeyParts(spec) {
-			internalui.KeycapWithOptions(c, part, internalui.KeycapOptions{
-				Height:   theme.HeightMicro,
-				MinWidth: theme.HeightMicro,
-				PaddingX: theme.Space6,
-				Radius:   theme.RadiusSM,
-				Mono:     true,
+			internalui.ShortcutLabel(c, part, internalui.ShortcutLabelStyle{
+				FontSize:   theme.KeycapFontSize,
+				LineHeight: theme.LineMeta,
+				FontWeight: theme.WeightMono,
+				Color:      pal.TextSecondary,
+				IsShortcut: true,
 			})
 		}
 	})
