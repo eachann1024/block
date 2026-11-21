@@ -215,6 +215,7 @@ type Session struct {
 	findToggleAt     time.Time
 	// Replace row of the find bar
 	findReplace             string
+	findReplaceOpen         bool
 	findReplaceHandle       ui.Handle
 	findReplaceFocusPending bool
 

@@ -5645,6 +5645,7 @@ func (s *Session) CloseFind() {
 		return
 	}
 	s.findOpen = false
+	s.findReplaceOpen = false
 	s.selAnchor = s.selHead
 	s.focusPending = true
 	s.focusPreventScroll = true
