@@ -269,66 +269,7 @@
           "zh": "在保存笔记时自动检测并上传其中的本地图片",
           "en": "Automatically detect and upload local images when a note is saved"
         }
-      },
-      "beta": true
-    },
-    {
-      "app": "blockmd",
-      "id": "block-migrator",
-      "name": {
-        "zh": "笔记迁移",
-        "en": "Migrator"
-      },
-      "version": "1.2.34",
-      "author": "eachann1024",
-      "repo": "eachann1024/block-migrator",
-      "summary": {
-        "zh": "从 Obsidian、Notion 与语雀导出目录或 ZIP 包迁移笔记，自动清洗语法并拷贝附件",
-        "en": "Migrate notes from Obsidian, Notion, and Yuque folders or ZIP archives with syntax cleanup and asset copy"
-      },
-      "download_url": "https://github.com/eachann1024/block-migrator/releases/download/v1.2.34/block-migrator-v1.2.34.tar.gz",
-      "sha256": "070cf8191997a0fea6d8c7628fbcb6e38f8c0305526ceb2f7cde061d568e1c72",
-      "downloads": 616,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T13:59:33Z",
-      "permissions": [
-        "storage",
-        "notes:read",
-        "notes:write"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
-        ],
-        "stroke_paths": [
-          "M4 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
-          "M8 13h8"
-        ],
-        "accent_paths": [
-          "M13 10l3 3-3 3",
-          "M8 16h3"
-        ]
-      },
-      "permission_reasons": {
-        "storage": {
-          "zh": "保存导入配置偏好、迁移统计与历史记录",
-          "en": "Save import preferences, migration statistics, and history"
-        },
-        "notes:read": {
-          "zh": "检查目标工作区现有笔记路径，避免导入时意外覆盖",
-          "en": "Check existing note paths in the workspace to avoid unintended overwrites"
-        },
-        "notes:write": {
-          "zh": "将转换后的 Markdown 笔记及附件写入当前工作区",
-          "en": "Write converted Markdown notes and attachments into the workspace"
-        }
-      },
-      "beta": true
+      }
     },
     {
       "app": "blockmd",
@@ -446,8 +387,7 @@
           "zh": "在「设置 → 外观」中嵌入顶栏图标管理区块并同步刷新",
           "en": "Embed titlebar icon settings under Appearance and refresh the UI"
         }
-      },
-      "beta": true
+      }
     },
     {
       "app": "blockmd",
