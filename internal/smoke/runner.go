@@ -1595,8 +1595,8 @@ func RunAll(baseTempDir string) (*Report, error) {
 				return
 			}
 
-			// Case B: Workspace Batch Annotation Rewrite (`CompletePrompt`)
-			if strings.Contains(sysText, "rewrite annotated spans") {
+			// Case B: Workspace Batch Annotation notes (`CompletePrompt`)
+			if strings.Contains(sysText, "margin notes") {
 				// Extract first annotation id from userText JSON
 				annID := "ann-1"
 				if idx := strings.Index(userText, `"id": "`); idx >= 0 {
@@ -1606,8 +1606,9 @@ func RunAll(baseTempDir string) (*Report, error) {
 					}
 				}
 				respJSON, _ := json.Marshal([]map[string]string{{
-					"id":          annID,
-					"replacement": "Live SSE Annotation Rewritten Span.",
+					"id":   annID,
+					"kind": "edit",
+					"text": "Live SSE Annotation Rewritten Span.",
 				}})
 				chunk, _ := json.Marshal(map[string]any{
 					"choices": []map[string]any{{
@@ -1734,7 +1735,14 @@ func RunAll(baseTempDir string) (*Report, error) {
 		if err := clickTarget(tt, "annotations-send-all"); err != nil {
 			return "", fmt.Errorf("expected titlebar annotations-send-all button: %w", err)
 		}
-		tt.Frame()
+		// 统一发送 runs in the background; wait for the accept button.
+		if err := waitUntil(3*time.Second, func() bool {
+			tt.Frame()
+			_, ok := blockui.TargetBounds("ann-accept-" + ann.ID)
+			return ok
+		}); err != nil {
+			return "", fmt.Errorf("expected ann-accept-%s after 统一发送: %w", ann.ID, err)
+		}
 		if err := clickTarget(tt, "ann-accept-"+ann.ID); err != nil {
 			return "", fmt.Errorf("expected ann-accept-%s after 统一发送: %w", ann.ID, err)
 		}
