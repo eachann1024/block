@@ -1097,10 +1097,28 @@ func (inst InstalledApp) credentialScope() string {
 // MatchesOfficialSource reports whether an installed plugin was genuinely installed
 // from the catalog's verified official repository (not a spoofed local directory copy).
 func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry StoreAppEntry) bool {
+	if SupersededLanguagePluginIDs[entry.ID] && installed.Manifest.ID == entry.ID {
+		entry = supersededLanguageCatalogEntry(entry.ID)
+	}
 	if !entry.Verified || !IsOfficialRepo(entry.Repo) {
 		return false
 	}
 	return s.matchesRepoSource(installed, entry, false)
+}
+
+// Keep the original catalog metadata available for source verification of
+// installed language plugins that are now hidden from the catalog.
+func supersededLanguageCatalogEntry(id string) StoreAppEntry {
+	builtinMu.RLock()
+	defer builtinMu.RUnlock()
+	if embeddedFallbackIndex != nil {
+		for _, entry := range embeddedFallbackIndex.Apps {
+			if entry.ID == id {
+				return entry
+			}
+		}
+	}
+	return StoreAppEntry{}
 }
 
 // MatchesReviewedSource reports whether an installed plugin was genuinely installed

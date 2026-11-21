@@ -673,11 +673,8 @@ func storeAppSource(ctrl *Controller, entry plugins.StoreAppEntry, installed plu
 }
 
 func storeAppIsOfficial(ctrl *Controller, entry plugins.StoreAppEntry, installed plugins.InstalledApp, isInstalled bool) bool {
-	if !entry.Verified || !plugins.IsOfficialRepo(entry.Repo) {
-		return false
-	}
 	if !isInstalled {
-		return true
+		return entry.Verified && plugins.IsOfficialRepo(entry.Repo)
 	}
 	if ctrl == nil || ctrl.sup == nil || ctrl.sup.Store() == nil {
 		return false
