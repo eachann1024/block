@@ -11,7 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const pluginDevGuideURL = "https://block.cooool.top/plugins/"
+const pluginDevGuideURL = "https://docs.block.cooool.top/plugins/"
 
 // storeCategoryIcon returns the Duo icon representing an App Store category
 // in empty states. Unknown categories fall back to the generic package glyph.
