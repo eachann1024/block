@@ -53,6 +53,7 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 		sup.EmitSystemEvent("network.changed", status.Online)
 	})
 	go watchPluginNetworkInterfaces(w.pluginUI.closing, sup)
+	go tickPluginSyncInterval(w.pluginUI.closing, sup)
 	onFocus := func() { sup.EmitSystemEvent("app.focus", false) }
 	if win := w.Window(); win != nil {
 		win.OnFocus(func() {
@@ -101,6 +102,19 @@ func (w *Workspace) AttachPluginSystem(reveal func()) {
 		watchWindow(win)
 	}
 	updateFocus()
+}
+
+func tickPluginSyncInterval(closing <-chan struct{}, sup *plugins.Supervisor) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-closing:
+			return
+		case <-ticker.C:
+			sup.EmitSyncInterval(mygo.Network.Status().Online)
+		}
+	}
 }
 
 func watchPluginNetworkInterfaces(closing <-chan struct{}, sup *plugins.Supervisor) {
