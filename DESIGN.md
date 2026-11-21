@@ -58,7 +58,8 @@
 - **设置分组卡片**：背景为 `paper`（`#ffffff` / `#222222`），边框 `1px solid border`（`#e4e6ea` / `#292929`），圆角引用 `theme.RadiusSurface`（`14px`），内边距 `18px 20px`，行间距 `14px–16px`。
 - **分段控制器（Segmented Control）**：外槽 `background: shell; border: 1px solid border; padding: 3px; gap: 2px`，外槽与内部按钮 `.seg`（高 `32px–34px`）圆角统一引用 `theme.RadiusControl`（`8px`），选中态 `background: selected; color: text-primary; box-shadow: inset 0 0 0 1px accent`。
 - **三联直选卡片（AI 服务商方案 C）**：仅保留 **DeepSeek**、**OpenAI 协议**、**Claude 协议** 三项，横排等宽，默认态 `background: shell; border: 1px solid border`，选中态 `background: selected; border: 1px solid accent; box-shadow: inset 0 0 0 1px accent`。
-- **全局拨弦开关（Pluck Switch）**：全应用所有布尔开关统一调用 `internal/ui.Switch` / `SwitchWithOptions` / `TogglePill`（禁止在业务包直调 `ui.SwitchBase`）。所有尺寸共用轻量轨道 `28×16`：开启为浅强调色底（`Accent` 24% 透明度）+ `12px` 强调色圆点，关闭为 `SwitchTrackOff` 浅灰底 + `10px` `SwitchKnobOff` 灰点，圆点无阴影无描边；主控位（如插件页头部）用 `SwitchHero`（同款轨道，仅点击高度 `44px`），旁边用「运行中 / 已停用」文字说明状态，不再配 `PluckDivider`。完整覆盖停用、悬停、双向按压拉伸、启动中转圈、失败红框抖动、禁用与键盘焦点环，静止零重绘且遵守减弱动态效果。
+- **全局拨弦开关（Pluck Switch）**：全应用所有布尔开关统一调用 `internal/ui.Switch` / `SwitchWithOptions` / `TogglePill`（禁止在业务包直调 `ui.SwitchBase`）。所有尺寸共用轻量轨道 `28×16`：开启为浅强调色底（`Accent` 24% 透明度）+ `12px` 强调色圆点，关闭为 `SwitchTrackOff` 浅灰底 + `10px` `SwitchKnobOff` 灰点，圆点无阴影无描边；主控位（如插件页顶栏）用 `SwitchHero`（同款轨道，仅点击高度 `44px`），不再配文字状态标签或 `PluckDivider`。完整覆盖停用、悬停、双向按压拉伸、启动中转圈、失败红框抖动、禁用与键盘焦点环，静止零重绘且遵守减弱动态效果。
+- **插件顶栏轻量操作（Titlebar Ghost Actions）**：所有插件（含第三方）在设置顶栏的主操作、重试、运行中与「⋯」按钮统一由宿主锁定为轻量幽灵样式（`HeightChrome` `26px`、圆角 `RadiusSM` `6px`、透明底、悬停 `ShellChrome().Hover`、按压 `Selected`），与开关之间以 `1×14px` 竖线分隔；正常闲置状态不平铺冗长描述（仅保留极简 `HH:MM` 时间并悬停显示完整信息），仅在告警或出错时展示红色错误胶囊与详情浮层。
 - **复选列表行（插件 checklist）**：选中状态只由强调色复选框表达，行本身保持透明底与 `1px solid border`，悬停/按下才用 `hover` 底色，**禁止选中后整行铺 `selected` 灰底**。
 
 ---
