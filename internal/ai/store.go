@@ -1093,7 +1093,7 @@ func (c *Controller) AddProviderEntry(presetID, name string, proto model.Protoco
 	}
 	if p := findProviderPreset(presetID); p != nil {
 		if trimmedName == "" {
-			trimmedName = p.DefaultName
+			trimmedName = theme.Tr(p.Zh, p.En)
 		}
 		if trimmedURL == "" {
 			trimmedURL = p.BaseURL

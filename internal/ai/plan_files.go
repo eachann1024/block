@@ -21,7 +21,7 @@ type planFileChange struct {
 
 func planFileChanges(plan *model.BatchPlan, undo bool) ([]planFileChange, error) {
 	if plan == nil || len(plan.Ops) == 0 || len(plan.Ops) > maxPlanPages {
-		return nil, errors.New("无效的 AI 修改计划")
+		return nil, errors.New(theme.Tr("无效的 AI 修改计划", "Invalid AI edit plan"))
 	}
 	var changes []planFileChange
 	seen := make(map[string]bool)
@@ -33,12 +33,12 @@ func planFileChanges(plan *model.BatchPlan, undo bool) ([]planFileChange, error)
 		expected, ok := plan.Expected[op.Page]
 		if !ok || expected != op.Old || seen[name] || len(op.New) > maxToolNoteBytes ||
 			(op.Kind != model.PlanOpReplace && op.Kind != model.PlanOpCreateNote) {
-			return nil, errors.New("计划缺少可验证的原文")
+			return nil, errors.New(theme.Tr("计划缺少可验证的原文", "The plan is missing verifiable original text"))
 		}
 		seen[name] = true
 		create := op.Kind == model.PlanOpCreateNote
 		if create && expected != "" {
-			return nil, errors.New("新建笔记计划包含原文")
+			return nil, errors.New(theme.Tr("新建笔记计划包含原文", "A create-note plan includes original text"))
 		}
 		if !checkMarkdownPreflight(expected, op.New) {
 			return nil, errors.New(theme.Tr("所选修改包含新增的不支持 Markdown 结构，请调整后重试。", "Selected changes introduce unsupported Markdown."))
@@ -92,7 +92,7 @@ func ApplyPlanFiles(host model.WorkspaceHost, plan *model.BatchPlan, undo bool) 
 	}
 	root, err := AuthorizedNotebookRoot(host, plan.Root)
 	if err != nil || root != plan.Root {
-		return errors.New("计划的笔记本已失去授权")
+		return errors.New(theme.Tr("计划的笔记本已失去授权", "The plan's notebook is no longer authorized"))
 	}
 	dir, err := openNotebook(root)
 	if err != nil {
@@ -118,7 +118,7 @@ func ApplyPlanFiles(host model.WorkspaceHost, plan *model.BatchPlan, undo bool) 
 				rollbackErr = errors.Join(rollbackErr, old.reverse().write(dir))
 			}
 			if rollbackErr != nil {
-				return errors.Join(err, fmt.Errorf("部分笔记无法撤回，请检查文件：%w", rollbackErr))
+				return errors.Join(err, fmt.Errorf("%s: %w", theme.Tr("部分笔记无法撤回，请检查文件", "Some notes could not be reverted. Check the files."), rollbackErr))
 			}
 			return err
 		}
@@ -130,7 +130,7 @@ func ApplyPlanFiles(host model.WorkspaceHost, plan *model.BatchPlan, undo bool) 
 func LocatePlanNote(host model.WorkspaceHost, root string, page string) (string, bool, error) {
 	canonical, workspaceRoot, err := resolveNotebook(host, root)
 	if err != nil || canonical != root {
-		return "", false, errors.New("计划的笔记本已失去授权")
+		return "", false, errors.New(theme.Tr("计划的笔记本已失去授权", "The plan's notebook is no longer authorized"))
 	}
 	name, err := noteFilename(page)
 	if err != nil {
@@ -159,7 +159,7 @@ func ReadPlanPreview(ctx context.Context, host model.WorkspaceHost, plan *model.
 	}
 	root, workspaceRoot, err := resolveNotebook(host, plan.Root)
 	if err != nil || root != plan.Root {
-		return "", "", false, errors.New("计划的笔记本已失去授权")
+		return "", "", false, errors.New(theme.Tr("计划的笔记本已失去授权", "The plan's notebook is no longer authorized"))
 	}
 	dir, err := openNotebook(root)
 	if err != nil {

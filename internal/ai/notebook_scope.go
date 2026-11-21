@@ -13,6 +13,7 @@ import (
 
 	"block/internal/files"
 	"block/internal/model"
+	"block/internal/theme"
 )
 
 const (
@@ -53,7 +54,7 @@ func (turn *assistantTurn) allowTool() bool {
 
 func canonicalNotebook(root string) (string, error) {
 	if !filepath.IsAbs(root) {
-		return "", errors.New("请选择一个已登记的笔记本")
+		return "", errors.New(theme.Tr("请选择一个已登记的笔记本", "Select a registered notebook"))
 	}
 	return filepath.EvalSymlinks(root)
 }
@@ -68,7 +69,7 @@ func AuthorizedNotebookRoot(host model.WorkspaceHost, requested string) (string,
 func resolveNotebook(host model.WorkspaceHost, requested string) (string, string, error) {
 	root, err := canonicalNotebook(requested)
 	if err != nil || host == nil {
-		return "", "", errors.New("请选择一个已登记的笔记本")
+		return "", "", errors.New(theme.Tr("请选择一个已登记的笔记本", "Select a registered notebook"))
 	}
 	active := filepath.Clean(host.ActiveNotebook())
 	var workspaceRoot string
@@ -84,7 +85,7 @@ func resolveNotebook(host model.WorkspaceHost, requested string) (string, string
 		}
 	}
 	if workspaceRoot == "" {
-		return "", "", errors.New("笔记本未授权")
+		return "", "", errors.New(theme.Tr("笔记本未授权", "Notebook is not authorized"))
 	}
 	return root, workspaceRoot, nil
 }
@@ -126,7 +127,7 @@ func (scope notebookScope) open(host model.WorkspaceHost) (*os.Root, error) {
 	info, err := dir.Stat(".")
 	if err != nil || scope.info == nil || !os.SameFile(scope.info, info) {
 		dir.Close()
-		return nil, errors.New("笔记本位置已变化")
+		return nil, errors.New(theme.Tr("笔记本位置已变化", "The notebook location has changed"))
 	}
 	return dir, nil
 }
@@ -144,7 +145,7 @@ func referencePageID(root, path string) string {
 
 func notePageID(root, abs string) (string, error) {
 	if root == "" || !filepath.IsAbs(abs) {
-		return "", errors.New("页面不在授权笔记本中")
+		return "", errors.New(theme.Tr("页面不在授权笔记本中", "The page is not in an authorized notebook"))
 	}
 	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
 	if err != nil {
@@ -152,7 +153,7 @@ func notePageID(root, abs string) (string, error) {
 	}
 	rel, err := filepath.Rel(root, filepath.Join(parent, filepath.Base(abs)))
 	if err != nil || !files.IsMarkdown(rel) {
-		return "", errors.New("页面不在授权笔记本中")
+		return "", errors.New(theme.Tr("页面不在授权笔记本中", "The page is not in an authorized notebook"))
 	}
 	if err := validateRelativePagePath(filepath.ToSlash(rel)); err != nil {
 		return "", err
@@ -183,7 +184,7 @@ func noteFilename(page string) (string, error) {
 func openNotebook(root string) (*os.Root, error) {
 	canonical, err := canonicalNotebook(root)
 	if err != nil || canonical != root {
-		return nil, errors.New("笔记本位置已变化")
+		return nil, errors.New(theme.Tr("笔记本位置已变化", "The notebook location has changed"))
 	}
 	return os.OpenRoot(root)
 }
@@ -200,7 +201,7 @@ func inspectNote(root *os.Root, name string) (os.FileInfo, error) {
 			return info, nil
 		}
 		if i == len(parts)-1 || !info.IsDir() {
-			return nil, errors.New("笔记路径包含链接或不受支持的文件")
+			return nil, errors.New(theme.Tr("笔记路径包含链接或不受支持的文件", "The note path contains a link or an unsupported file"))
 		}
 	}
 	return nil, os.ErrNotExist
@@ -215,7 +216,7 @@ func readNotebookNote(ctx context.Context, root *os.Root, name string) (string, 
 		return "", err
 	}
 	if info.Size() > maxToolNoteBytes {
-		return "", errors.New("笔记超过 AI 读取上限（256 KiB）")
+		return "", errors.New(theme.Tr("笔记超过 AI 读取上限（256 KiB）", "The note exceeds the AI read limit (256 KiB)"))
 	}
 	f, err := openNoteForRead(root, name)
 	if err != nil {
@@ -224,14 +225,14 @@ func readNotebookNote(ctx context.Context, root *os.Root, name string) (string, 
 	defer f.Close()
 	actual, err := f.Stat()
 	if err != nil || !actual.Mode().IsRegular() || !os.SameFile(info, actual) {
-		return "", errors.New("笔记在读取时已变化")
+		return "", errors.New(theme.Tr("笔记在读取时已变化", "The note changed while it was being read"))
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxToolNoteBytes+1))
 	if err != nil {
 		return "", err
 	}
 	if len(data) > maxToolNoteBytes || !utf8.Valid(data) {
-		return "", errors.New("笔记超过读取上限或不是 UTF-8")
+		return "", errors.New(theme.Tr("笔记超过读取上限或不是 UTF-8", "The note exceeds the read limit or is not UTF-8"))
 	}
 	return string(data), ctx.Err()
 }

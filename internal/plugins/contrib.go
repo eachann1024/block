@@ -1091,16 +1091,16 @@ type UIHost interface {
 type contribRegistry struct {
 	mu         sync.RWMutex
 	path       string
-	hidden     map[string]bool                                            // legacy global titlebar slot id -> hidden
-	hiddenBy   map[string]map[string]bool                                 // plugin id -> hidden titlebar slot ids
-	editorBG   map[string]EditorBackgroundState                           // plugin id -> editor background
-	backdropBy map[string]EditorBackdropState                             // plugin id -> custom vector backdrop
-	fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry // pluginID -> notebookRoot -> badgeID -> relPath -> entry
-	warmedUp   map[string]string                                          // plugin id -> initialized version
-	badges     map[string]string                                          // plugin slot id -> badge text
-	active     map[string]bool                                            // plugin slot id -> active
-	status     map[string]statusOverlay                                   // "<plugin>/<item>" -> text/icon
-	refreshed  map[string]time.Time                                       // surface refresh requests "<plugin>|<surface>"
+	hidden     map[string]bool                                                 // legacy global titlebar slot id -> hidden
+	hiddenBy   map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
+	editorBG   map[string]EditorBackgroundState                                // plugin id -> editor background
+	backdropBy map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
+	fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
+	warmedUp   map[string]string                                               // plugin id -> initialized version
+	badges     map[string]string                                               // plugin slot id -> badge text
+	active     map[string]bool                                                 // plugin slot id -> active
+	status     map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
+	refreshed  map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
 }
@@ -1113,12 +1113,12 @@ type statusOverlay struct {
 }
 
 type contribFile struct {
-	TitlebarHidden    []string                                                   `json:"titlebar_hidden,omitempty"`
-	TitlebarHiddenBy  map[string][]string                                        `json:"titlebar_hidden_by,omitempty"`
-	EditorBackgrounds map[string]EditorBackgroundState                           `json:"editor_backgrounds,omitempty"`
-	EditorBackdrops   map[string]EditorBackdropState                             `json:"editor_backdrops,omitempty"`
+	TitlebarHidden    []string                                                 `json:"titlebar_hidden,omitempty"`
+	TitlebarHiddenBy  map[string][]string                                      `json:"titlebar_hidden_by,omitempty"`
+	EditorBackgrounds map[string]EditorBackgroundState                         `json:"editor_backgrounds,omitempty"`
+	EditorBackdrops   map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
 	FileBadges        map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
-	WarmedUp          map[string]string                                          `json:"warmed_up,omitempty"`
+	WarmedUp          map[string]string                                        `json:"warmed_up,omitempty"`
 }
 
 func newContribRegistry(appDataDir string) *contribRegistry {

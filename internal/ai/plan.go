@@ -122,11 +122,11 @@ func checkMarkdownPreflight(before, after string) bool {
 
 func validateRelativePagePath(page string) error {
 	if strings.TrimSpace(page) == "" || !filepath.IsLocal(filepath.FromSlash(page)) || strings.ContainsAny(page, "\\:\x00") {
-		return errors.New("无效的笔记路径")
+		return errors.New(theme.Tr("无效的笔记路径", "Invalid note path"))
 	}
 	for _, part := range strings.Split(page, "/") {
 		if part == "" || strings.HasPrefix(part, ".") {
-			return errors.New("无效的笔记路径")
+			return errors.New(theme.Tr("无效的笔记路径", "Invalid note path"))
 		}
 	}
 	return nil
@@ -141,7 +141,7 @@ func (c *Controller) buildMockPlan(args map[string]any, root string) (string, *m
 	}
 	dir, err := openNotebook(scope.root)
 	if err != nil {
-		return marshalJSON(map[string]any{"error": "没有可用的授权笔记本"}), nil, nil
+		return marshalJSON(map[string]any{"error": theme.Tr("没有可用的授权笔记本", "No authorized notebook is available")}), nil, nil
 	}
 	defer dir.Close()
 	return buildBatchPlan(context.Background(), scope, dir, args)
@@ -153,18 +153,18 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 	}
 	rawOps, _ := args["operations"].([]any)
 	if len(rawOps) == 0 || len(rawOps) > 32 {
-		return fail("每份计划须有 1–32 个操作")
+		return fail(theme.Tr("每份计划须有 1–32 个操作", "Each plan needs 1–32 operations"))
 	}
 	var ops []model.PlanOp
 	byPage := make(map[string]int)
 	expected := make(map[string]string)
 	for _, raw := range rawOps {
 		if ctx.Err() != nil {
-			return fail("本轮已结束")
+			return fail(theme.Tr("本轮已结束", "This turn has ended"))
 		}
 		item, ok := raw.(map[string]any)
 		if !ok {
-			return fail("无效的计划操作")
+			return fail(theme.Tr("无效的计划操作", "Invalid plan operation"))
 		}
 		kind, _ := item["type"].(string)
 		page, _ := item["pageId"].(string)
@@ -185,11 +185,11 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		idx, found := byPage[name]
 		if !found {
 			if len(ops) >= maxPlanPages {
-				return fail("每份计划最多修改 12 篇笔记")
+				return fail(theme.Tr("每份计划最多修改 12 篇笔记", "A plan can change at most 12 notes"))
 			}
 			before, exists, err := snapshotNotebookNote(ctx, root, name)
 			if err != nil || exists == (kind == "create") {
-				return fail("笔记无法用于该操作，请核对原文及目标是否存在")
+				return fail(theme.Tr("笔记无法用于该操作，请核对原文及目标是否存在", "This note cannot be used. Check the original text and that the target exists."))
 			}
 			opKind := model.PlanOpReplace
 			if !exists {
@@ -200,21 +200,21 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 			expected[page] = before
 			ops = append(ops, model.PlanOp{Kind: opKind, Page: page, Old: before, New: before})
 		} else if kind == "create" {
-			return fail("同一笔记只能创建一次")
+			return fail(theme.Tr("同一笔记只能创建一次", "Each note can only be created once"))
 		}
 		op := &ops[idx]
 		switch kind {
 		case "create", "edit":
 			md, ok := item["markdown"].(string)
 			if !ok {
-				return fail("缺少 Markdown 内容")
+				return fail(theme.Tr("缺少 Markdown 内容", "Missing Markdown content"))
 			}
 			op.New = md
 		case "search_replace":
 			oldText, _ := item["oldString"].(string)
 			newText, ok := item["newString"].(string)
 			if !ok || oldText == "" || !strings.Contains(op.New, oldText) {
-				return fail("操作无法按顺序应用，请核对原文")
+				return fail(theme.Tr("操作无法按顺序应用，请核对原文", "Operations cannot be applied in order. Check the original text."))
 			}
 			count := 1
 			if all, _ := item["replaceAll"].(bool); all {
@@ -222,19 +222,19 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 			}
 			// Check the size before Replace can allocate the expanded document.
 			if int64(len(op.New))+int64(count)*int64(len(newText)-len(oldText)) > maxToolNoteBytes {
-				return fail("计划内容超过 AI 写入上限")
+				return fail(theme.Tr("计划内容超过 AI 写入上限", "Plan content exceeds the AI write limit"))
 			}
 			op.New = strings.Replace(op.New, oldText, newText, count)
 		default:
-			return fail("暂不支持该计划操作")
+			return fail(theme.Tr("暂不支持该计划操作", "This plan operation is not supported"))
 		}
 		if len(op.New) > maxToolNoteBytes {
-			return fail("计划内容超过 AI 写入上限")
+			return fail(theme.Tr("计划内容超过 AI 写入上限", "Plan content exceeds the AI write limit"))
 		}
 	}
 	for _, op := range ops {
 		if !checkMarkdownPreflight(op.Old, op.New) {
-			return fail("最终内容包含新增的未闭合代码围栏或 HTML 表格")
+			return fail(theme.Tr("最终内容包含新增的未闭合代码围栏或 HTML 表格", "The result adds an unclosed code fence or HTML table"))
 		}
 	}
 	summary, _ := args["summary"].(string)
@@ -247,7 +247,7 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 	}
 	return marshalJSON(map[string]any{
 		"status":  "awaiting_approval",
-		"message": "方案等待用户确认后写入，请勿重复提交。",
+		"message": theme.Tr("方案等待用户确认后写入，请勿重复提交。", "The plan waits for your confirmation before writing. Do not submit it again."),
 	}), plan, nil
 }
 
@@ -450,13 +450,13 @@ func collapsePlanOps(plan *model.BatchPlan) ([]model.PlanOp, error) {
 		}
 		if i, ok := index[name]; ok {
 			if merged[i].New != op.Old || op.Kind != model.PlanOpReplace {
-				return nil, errors.New("计划的中间版本无法验证")
+				return nil, errors.New(theme.Tr("计划的中间版本无法验证", "An intermediate plan version cannot be verified"))
 			}
 			merged[i].New = op.New
 			continue
 		}
 		if before, ok := plan.Expected[op.Page]; !ok || before != op.Old {
-			return nil, errors.New("计划缺少可验证的原文")
+			return nil, errors.New(theme.Tr("计划缺少可验证的原文", "The plan is missing verifiable original text"))
 		}
 		index[name] = len(merged)
 		merged = append(merged, op)
@@ -474,7 +474,7 @@ func (c *Controller) AcceptEditorPlan(review *model.BatchPlan) error {
 	active := c.activePlan
 	c.mu.RUnlock()
 	if review == nil || active == nil || active.Plan.ID != review.ID {
-		return errors.New("计划预览已失效")
+		return errors.New(theme.Tr("计划预览已失效", "The plan preview is no longer valid"))
 	}
 	return c.applyReviewedPlan(active.ConvID, active.MsgIndex, review, false)
 }
@@ -488,7 +488,7 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 	conv := c.findConvLocked(convID)
 	if conv == nil || c.currentID != convID || msgIdx < 0 || msgIdx >= len(conv.Messages) || !c.providerCfg.Enabled {
 		c.mu.Unlock()
-		return errors.New("计划已失效")
+		return errors.New(theme.Tr("计划已失效", "The plan is no longer valid"))
 	}
 	plan := conv.Messages[msgIdx].Plan
 	wantStatus := "pending"
@@ -498,11 +498,11 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 	if plan == nil || plan.Status != wantStatus || c.planInFlight != "" ||
 		(review != nil && (c.activePlan == nil || c.activePlan.ConvID != convID || c.activePlan.MsgIndex != msgIdx || review.ID != plan.ID)) {
 		c.mu.Unlock()
-		return errors.New("计划无法在当前状态下执行")
+		return errors.New(theme.Tr("计划无法在当前状态下执行", "The plan cannot run in its current state"))
 	}
 	selected, err := collapsePlanOps(plan)
 	if err == nil && review != nil && len(review.Ops) != len(selected) {
-		err = errors.New("计划预览已失效")
+		err = errors.New(theme.Tr("计划预览已失效", "The plan preview is no longer valid"))
 	}
 	if err == nil && !undo {
 		for i := range selected {
@@ -512,7 +512,7 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 			} else {
 				preview := review.Ops[i]
 				if preview.Page != op.Page || preview.Old != op.Old || preview.Kind != op.Kind {
-					err = errors.New("计划预览已失效")
+					err = errors.New(theme.Tr("计划预览已失效", "The plan preview is no longer valid"))
 					break
 				}
 				op.New = preview.New
@@ -528,7 +528,7 @@ func (c *Controller) applyReviewedPlan(convID uint64, msgIdx int, review *model.
 	if err == nil {
 		switch {
 		case host == nil:
-			err = errors.New("没有可用的工作区")
+			err = errors.New(theme.Tr("没有可用的工作区", "No workspace is available"))
 		case undo:
 			err = host.UndoLastPlan(&writePlan)
 		default:

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"block/internal/model"
+	"block/internal/theme"
 )
 
 var (
@@ -50,7 +51,7 @@ func poopDropCallout(kind string) model.CalloutKind {
 func poopDropDisplayText(plain, _ string) string {
 	plain = strings.TrimSpace(plain)
 	if plain == "" {
-		return "到此一拉"
+		return theme.Tr("到此一拉", "Dropped here")
 	}
 	return plain
 }
