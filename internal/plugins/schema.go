@@ -25,6 +25,7 @@ const (
 	KindTreemap   ItemKind = "treemap"
 	KindPreview   ItemKind = "preview"
 	KindLogList   ItemKind = "log_list"
+	KindIconStrip ItemKind = "icon_strip"
 )
 
 type ButtonVariant string
@@ -53,6 +54,51 @@ type UIKVRow struct {
 	Label   string `json:"label"`
 	Value   string `json:"value"`
 	Tooltip string `json:"tooltip,omitempty"`
+	Icon    *UIIcon `json:"icon,omitempty"`
+}
+
+// UIIcon references either a host built-in glyph by name or an inline
+// Scheme A two-tone vector (same shape as DuoIconSpec).
+type UIIcon struct {
+	Name        string   `json:"name,omitempty"`
+	ViewBox     string   `json:"view_box,omitempty"`
+	FillPaths   []string `json:"fill_paths,omitempty"`
+	StrokePaths []string `json:"stroke_paths,omitempty"`
+	AccentPaths []string `json:"accent_paths,omitempty"`
+	Tooltip     string   `json:"tooltip,omitempty"`
+}
+
+// Spec returns the inline vector form of the icon.
+func (ic UIIcon) Spec() DuoIconSpec {
+	return DuoIconSpec{ViewBox: ic.ViewBox, FillPaths: ic.FillPaths, StrokePaths: ic.StrokePaths, AccentPaths: ic.AccentPaths}
+}
+
+// IconFromSpec wraps a DuoIconSpec as a UIIcon.
+func IconFromSpec(spec DuoIconSpec) *UIIcon {
+	return &UIIcon{ViewBox: spec.ViewBox, FillPaths: spec.FillPaths, StrokePaths: spec.StrokePaths, AccentPaths: spec.AccentPaths}
+}
+
+const maxIconStripIcons = 32
+
+func validateUIIcon(field string, ic UIIcon) error {
+	if err := checkUserText(field+".tooltip", ic.Tooltip, false); err != nil {
+		return err
+	}
+	if ic.Name != "" {
+		if len(ic.StrokePaths) > 0 || len(ic.FillPaths) > 0 || len(ic.AccentPaths) > 0 {
+			return fmt.Errorf("%s uses either name or paths, not both", field)
+		}
+		if len(ic.Name) > 64 {
+			return fmt.Errorf("%s.name is too long", field)
+		}
+		for _, r := range ic.Name {
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+				return fmt.Errorf("%s.name %q must use lowercase letters, digits, or '-'", field, ic.Name)
+			}
+		}
+		return nil
+	}
+	return validateContribIcon(field, ic.Spec())
 }
 
 type UIMetric struct {
@@ -142,6 +188,8 @@ type UIItem struct {
 	EmptyText        string            `json:"empty_text,omitempty"`
 	Entries          []UILogEntry      `json:"entries,omitempty"`
 	VisibleWhen      *UIVisibleWhen    `json:"visible_when,omitempty"`
+	Icon             *UIIcon           `json:"icon,omitempty"`
+	Icons            []UIIcon          `json:"icons,omitempty"`
 }
 
 type UICard struct {
@@ -379,6 +427,17 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 	if item.AddFolder && item.Kind != KindChecklist {
 		return fmt.Errorf("%s.add_folder is only allowed on checklist", prefix)
 	}
+	if item.Icon != nil {
+		if item.Kind != KindSwitch {
+			return fmt.Errorf("%s.icon is only allowed on switch", prefix)
+		}
+		if err := validateUIIcon(prefix+".icon", *item.Icon); err != nil {
+			return err
+		}
+	}
+	if len(item.Icons) > 0 && item.Kind != KindIconStrip {
+		return fmt.Errorf("%s.icons is only allowed on icon_strip", prefix)
+	}
 	if item.VisibleWhen != nil {
 		if strings.TrimSpace(item.VisibleWhen.ControlID) == "" {
 			return fmt.Errorf("%s.visible_when.control_id is required", prefix)
@@ -508,6 +567,26 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 				return err
 			}
 			if err := checkUserText(fmt.Sprintf("%s.rows[%d].value", prefix, ri), row.Value, true); err != nil {
+				return err
+			}
+			if row.Icon != nil {
+				if err := validateUIIcon(fmt.Sprintf("%s.rows[%d].icon", prefix, ri), *row.Icon); err != nil {
+					return err
+				}
+			}
+		}
+	case KindIconStrip:
+		if err := checkText(prefix+".label", item.Label, false); err != nil {
+			return err
+		}
+		if err := checkText(prefix+".empty_text", item.EmptyText, false); err != nil {
+			return err
+		}
+		if len(item.Icons) > maxIconStripIcons {
+			return fmt.Errorf("%s.icons allows at most %d icons", prefix, maxIconStripIcons)
+		}
+		for ii, ic := range item.Icons {
+			if err := validateUIIcon(fmt.Sprintf("%s.icons[%d]", prefix, ii), ic); err != nil {
 				return err
 			}
 		}
