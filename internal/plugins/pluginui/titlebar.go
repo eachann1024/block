@@ -952,22 +952,17 @@ func (c *Controller) buildPluginMoreMenuItems(
 		})
 	}
 
-	// 3. View README + View in App Store (with mono version hint).
+	// 3. View in App Store detail (with mono version hint).
 	verHint := ""
 	if v := strings.TrimSpace(inst.Manifest.Version); v != "" {
 		verHint = "v" + strings.TrimPrefix(v, "v")
 	}
-	inCatalog := c.findCatalogEntry(pluginID) != nil
-	docIc := icons.Note
-	readmeHint := ""
-	if !inCatalog {
-		readmeHint = verHint
-	}
+	pkgIc := icons.Package
 	items = append(items, bui.MenuItemSpec{
-		ID:    "plugin-menu-readme-" + pluginID,
-		Label: theme.Tr("查看说明", "View README"),
-		Hint:  readmeHint,
-		Icon:  &docIc,
+		ID:    "plugin-menu-store-" + pluginID,
+		Label: theme.Tr("在应用商店查看", "View in App Store"),
+		Hint:  verHint,
+		Icon:  &pkgIc,
 		OnClick: func() {
 			c.CloseTitlebarOverlays()
 			c.openInstalledPluginReadme(inst)
@@ -976,23 +971,6 @@ func (c *Controller) buildPluginMoreMenuItems(
 			}
 		},
 	})
-	if inCatalog {
-		pkgIc := icons.Package
-		items = append(items, bui.MenuItemSpec{
-			ID:    "plugin-menu-store-" + pluginID,
-			Label: theme.Tr("在应用商店查看", "View in App Store"),
-			Hint:  verHint,
-			Icon:  &pkgIc,
-			OnClick: func() {
-				c.CloseTitlebarOverlays()
-				c.closeStoreReadme()
-				c.storeQuery = inst.Manifest.Name.Resolve(c.sup.Locale())
-				if onSelectTab != nil {
-					onSelectTab(modals.TabAppStore)
-				}
-			},
-		})
-	}
 
 	// 4. Reload runtime (true process restart for enabled non-declarative plugins).
 	if inst.Enabled && !declarative {
