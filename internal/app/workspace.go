@@ -56,6 +56,7 @@ type Workspace struct {
 	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
 	headlessMainMu       sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
 	ghostTitle     string          // title typed on the no-note ghost page
+	noteSource     noteSourceView  // read-only Markdown source view of the active note
 
 	codec    *markdown.Codec
 	sessions map[string]*editor.Session
@@ -4717,6 +4718,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				PreviewZoomPct:  zoomPctStr,
 				PreviewZoomFit:  zoomFit,
 				SVGShowSource:   svgShowSource,
+				NoteSourceView:  w.noteSourceActive(activeTab),
 				SourceWrap:      SourceSoftWrap(),
 				HasCopyableText: activeSurf != nil && activeSurf.HasCopyableText(),
 				CanFormatJSON:   activeSurf != nil && activeSurf.CanFormatJSON(),
@@ -4782,6 +4784,9 @@ func (w *Workspace) Render(c *ui.Context) {
 				},
 				OnCopyMarkdown: func() {
 					w.copyActiveMarkdown(c.Services())
+				},
+				OnToggleNoteSource: func() {
+					w.toggleNoteSource(activeTab, activeSess)
 				},
 				OnCopyContent: func() {
 					if activeSurf == nil {
@@ -5058,6 +5063,11 @@ func (w *Workspace) Render(c *ui.Context) {
 											}
 										},
 									)
+								case activeSess != nil && w.noteSourceActive(activeTab):
+									if w.pluginUI != nil {
+										w.pluginUI.setEditorFocus(activeTab, false)
+									}
+									w.renderNoteSource(c)
 								case activeSess != nil:
 									headlessLock := !mygo.App.IsReady()
 									if headlessLock {

@@ -181,6 +181,7 @@ type TitlebarProps struct {
 	PreviewZoomPct  string
 	PreviewZoomFit  bool
 	SVGShowSource   bool
+	NoteSourceView  bool
 	SourceWrap      bool
 	HasCopyableText bool
 	CanFormatJSON   bool
@@ -225,6 +226,7 @@ type TitlebarProps struct {
 	OnOpenHistory       func()
 	OnOpenExport        func()
 	OnCopyMarkdown      func()
+	OnToggleNoteSource  func()
 	OnCopyContent       func()
 	OnCopyAsMarkdown    func()
 	OnFormatJSON        func()
@@ -942,6 +944,13 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 			item("page-export-image", theme.Tr("生成图片…", "Export as Image…"), blockui.FormatShortcutDisplay(nonEmptyOr(p.ShortcutExport, "cmd-shift-e")), &icImg, p.OnOpenExport),
 			item("page-copy-md", theme.Tr("复制 Markdown", "Copy Markdown"), blockui.FormatShortcutDisplay(copyMarkdownShortcutSpec()), &icCopy, p.OnCopyMarkdown),
 		)
+		if p.OnToggleNoteSource != nil {
+			srcLabel := theme.Tr("查看源码", "View Source")
+			if p.NoteSourceView {
+				srcLabel = theme.Tr("返回编辑", "Back to Editor")
+			}
+			items = append(items, item("page-view-source", srcLabel, "", &icCode, p.OnToggleNoteSource))
+		}
 		if len(p.PluginPageMenu) > 0 {
 			items = append(items, blockui.MenuItemSpec{Separator: true})
 			legacyProbeIDs = make(map[string]string, len(p.PluginPageMenu))
