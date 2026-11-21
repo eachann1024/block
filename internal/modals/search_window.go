@@ -95,6 +95,7 @@ func (s *SearchWindowController) AttachDesktop() {
 			DisableFullScreen: true,
 			BackgroundColor:   "light-dark(#ffffff, #222222)",
 			Content:           ui.View(s.RenderView),
+			Page:              mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
 		})
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if IsAppQuitting() {
