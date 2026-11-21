@@ -251,12 +251,17 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 	if raw.AIError != nil {
 		aiErr = *raw.AIError
 	}
+	answer := ""
+	if raw.AIAnswer != nil {
+		answer = *raw.AIAnswer
+	}
 	if applied {
 		// Applied annotations show no card; their body / rewrite stay in the
 		// store (see modelToStoredAnnotation) so the Rust app keeps tracking them.
 		note = ""
 		rewrite = ""
 		aiErr = ""
+		answer = ""
 	}
 
 	return &model.Annotation{
@@ -269,6 +274,7 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 		Note:          note,
 		Reactions:     reactions,
 		RewriteResult: rewrite,
+		Answer:        answer,
 		AIError:       aiErr,
 		Applied:       applied,
 	}
@@ -309,6 +315,11 @@ func modelToStoredAnnotation(s *Session, ann *model.Annotation) (files.StoredAnn
 	if ann.AIError != "" {
 		v := ann.AIError
 		aiErr = &v
+	}
+	var aiAnswer *string
+	if ann.Answer != "" {
+		v := ann.Answer
+		aiAnswer = &v
 	}
 	applied := ann.Applied
 	body := ann.Note
@@ -370,6 +381,7 @@ func modelToStoredAnnotation(s *Session, ann *model.Annotation) (files.StoredAnn
 		Reactions:   reactions,
 		AIRewritten: aiRewritten,
 		AIError:     aiErr,
+		AIAnswer:    aiAnswer,
 		Applied:     &applied,
 	}, true
 }
@@ -404,11 +416,12 @@ func (s *Session) toggleReactionByID(id, emoji string) {
 func (s *Session) dismissAnnotationRewrite(id string) {
 	for _, ann := range s.annotations {
 		if ann.ID == id {
-			if ann.RewriteResult == "" && ann.AIError == "" {
+			if ann.RewriteResult == "" && ann.Answer == "" && ann.AIError == "" {
 				return
 			}
 			s.pushUndo()
 			ann.RewriteResult = ""
+			ann.Answer = ""
 			ann.AIError = ""
 			s.persistAnnotations()
 			return

@@ -85,6 +85,7 @@ type StoredAnnotation struct {
 	Reactions   []string                 `json:"reactions"`
 	AIRewritten *string                  `json:"ai_rewritten,omitempty"`
 	AIError     *string                  `json:"ai_error,omitempty"`
+	AIAnswer    *string                  `json:"ai_answer,omitempty"`
 	Applied     *bool                    `json:"applied,omitempty"`
 }
 

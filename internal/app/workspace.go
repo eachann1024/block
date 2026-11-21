@@ -606,8 +606,8 @@ func (w *Workspace) inlineAIOfflineFallback(ctxText, orig, draft, instruction st
 	}
 }
 
-func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Annotation) map[string]string {
-	out := make(map[string]string, len(pending))
+func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply {
+	out := make(map[string]model.AnnotationReply, len(pending))
 	if len(pending) == 0 || !w.ai.Enabled() {
 		return out
 	}
@@ -632,8 +632,11 @@ func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Ann
 			})
 		}
 		payload, _ := json.MarshalIndent(items, "", "  ")
-		sysPrompt := `You rewrite annotated spans in a Markdown document. Return ONLY valid JSON as an array of objects: [{"id":"...","replacement":"..."}]. Do not include markdown fences or extra prose.`
-		userPrompt := fmt.Sprintf("Document Markdown:\n%s\n\nAnnotations to rewrite:\n%s", docMarkdown, string(payload))
+		sysPrompt := `You handle margin notes on a Markdown document. For each note decide its intent:
+- "edit": the note asks to change the anchored text (rewrite, shorten, translate, fix, reformat). "text" is the full replacement for anchor_text only.
+- "answer": the note asks a question or wants an opinion, explanation or check, without asking for a change. "text" is a short, direct answer in the note's language; never a rewritten version of the text.
+When unsure, prefer "answer". Return ONLY valid JSON: [{"id":"...","kind":"edit"|"answer","text":"..."}]. No markdown fences or extra prose.`
+		userPrompt := fmt.Sprintf("Document Markdown:\n%s\n\nNotes:\n%s", docMarkdown, string(payload))
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		raw, err := w.ai.CompletePrompt(ctx, sysPrompt, userPrompt)
 		cancel()
@@ -641,52 +644,74 @@ func (w *Workspace) annotationAIRespond(docMarkdown string, pending []*model.Ann
 			clean := stripOuterMarkdownFence(raw)
 			type respItem struct {
 				ID          string `json:"id"`
+				Kind        string `json:"kind"`
+				Text        string `json:"text"`
 				Replacement string `json:"replacement"`
 			}
 			var parsed []respItem
 			if json.Unmarshal([]byte(clean), &parsed) == nil {
 				for _, it := range parsed {
-					if strings.TrimSpace(it.ID) != "" && strings.TrimSpace(it.Replacement) != "" {
-						out[it.ID] = it.Replacement
+					text := it.Text
+					if strings.TrimSpace(text) == "" {
+						text = it.Replacement
 					}
-				}
-			} else {
-				var asMap map[string]string
-				if json.Unmarshal([]byte(clean), &asMap) == nil {
-					for k, v := range asMap {
-						if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
-							out[k] = v
-						}
+					if strings.TrimSpace(it.ID) == "" || strings.TrimSpace(text) == "" {
+						continue
 					}
+					kind := "edit"
+					if strings.EqualFold(strings.TrimSpace(it.Kind), model.AnnotationReplyAnswer) {
+						kind = model.AnnotationReplyAnswer
+					}
+					out[it.ID] = model.AnnotationReply{Kind: kind, Text: text}
 				}
 			}
 		}
 	}
 
 	for _, a := range pending {
-		if a == nil || strings.TrimSpace(out[a.ID]) != "" {
+		if a == nil || strings.TrimSpace(out[a.ID].Text) != "" {
 			continue
 		}
 		anchor := strings.TrimSpace(a.QuotedText)
 		note := strings.TrimSpace(a.Note)
 		noteLower := strings.ToLower(note)
+		edit := func(text string) { out[a.ID] = model.AnnotationReply{Kind: "edit", Text: text} }
 		switch {
+		case looksLikeQuestion(note):
+			out[a.ID] = model.AnnotationReply{Kind: model.AnnotationReplyAnswer, Text: theme.Tr("AI 暂时连不上，稍后再发一次试试。", "AI is unavailable right now. Try sending again later.")}
 		case strings.Contains(note, "翻译") || strings.Contains(noteLower, "translate"):
-			out[a.ID] = fmt.Sprintf("Translated: %s", anchor)
+			edit(fmt.Sprintf("Translated: %s", anchor))
 		case strings.Contains(note, "加粗") || strings.Contains(noteLower, "bold"):
-			out[a.ID] = fmt.Sprintf("**%s**", anchor)
+			edit(fmt.Sprintf("**%s**", anchor))
 		case strings.Contains(note, "精简") || strings.Contains(noteLower, "concise") || strings.Contains(noteLower, "shorten"):
 			runes := []rune(anchor)
 			if len(runes) > 16 {
-				out[a.ID] = string(runes[:16])
+				edit(string(runes[:16]))
 			} else {
-				out[a.ID] = strings.TrimSuffix(strings.TrimSuffix(anchor, "。"), ".")
+				edit(strings.TrimSuffix(strings.TrimSuffix(anchor, "。"), "."))
 			}
 		default:
-			out[a.ID] = fmt.Sprintf("%s（%s）", anchor, note)
+			edit(fmt.Sprintf("%s（%s）", anchor, note))
 		}
 	}
 	return out
+}
+
+// looksLikeQuestion is the offline guess for notes that ask rather than request an edit.
+func looksLikeQuestion(note string) bool {
+	n := strings.TrimSpace(note)
+	if n == "" {
+		return false
+	}
+	if strings.HasSuffix(n, "?") || strings.HasSuffix(n, "？") || strings.HasSuffix(n, "吗") || strings.HasSuffix(n, "呢") {
+		return true
+	}
+	for _, p := range []string{"为什么", "什么", "怎么", "是否", "是不是", "能不能", "你觉得", "如何", "why", "what", "how", "is ", "does ", "should "} {
+		if strings.HasPrefix(strings.ToLower(n), p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *Workspace) wireQuickNoteCallbacks() {
@@ -4639,7 +4664,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	if aiEnabled && activeSess != nil {
 		for _, a := range activeSess.Annotations() {
 			body := strings.TrimSpace(a.Note) != ""
-			if body && a.RewriteResult == "" && !a.RewriteBusy {
+			if body && a.RewriteResult == "" && a.Answer == "" && !a.RewriteBusy && !a.Applied {
 				annDrafts++
 			}
 			annGenerating = annGenerating || a.RewriteBusy

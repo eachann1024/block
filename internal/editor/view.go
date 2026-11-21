@@ -336,6 +336,9 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 					ui.Box(c.Key("editor-bottom-margin")).FillWidth().MaxWidth(outerMaxW).
 						MinHeight(bottomMinH).Grow(1).Cursor(ui.CursorText)
 				}
+				if s.annotExtraBottom > 0 {
+					ui.Box(c.Key("editor-annotation-tail")).FillWidth().Height(s.annotExtraBottom).Shrink(0)
+				}
 			})
 		}
 
@@ -405,6 +408,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.renderCalloutMenuOverlay(c)
 		s.renderTableMenuOverlay(c)
 		s.renderInlineAIPanel(c)
+		s.pollAnnotationGeneration()
 		s.renderAnnotationRail(c)
 		s.renderAnnotationReactionPicker(c)
 		if s.frameAnnotations.hovered != s.hoveredAnnotID {
