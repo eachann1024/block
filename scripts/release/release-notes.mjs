@@ -12,11 +12,9 @@ import {
 export { lineMixesLanguages, validateReleaseNotes };
 
 const MAGPIE_ORIGIN = "http://100.115.90.80:3425";
-const GEMINI_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
-// 按顺序尝试，前一个失败才换下一个：Google AI Studio → Magpie gpt-6-luna → Magpie deepseek-flash（付费）。
+// 按顺序尝试，前一个失败才换下一个：Magpie gpt-6-luna（用户 codex 账号）→ Magpie deepseek-flash（付费）。不要用 Gemini，用户的 Gemini key 不可用。
 export const CHANGELOG_PROVIDERS = [
-  { model: "gemini-3.8-flash", via: "gemini" },
   { model: "gpt-6-luna", via: "magpie" },
   { model: "deepseek-flash", via: "magpie" },
 ];
@@ -197,16 +195,7 @@ export function resolveMagpieChatUrl(baseUrl) {
 export function resolveProviders(env) {
   const ready = [];
   const skipped = [];
-  for (const { model, via } of CHANGELOG_PROVIDERS) {
-    if (via === "gemini") {
-      const key = String(env.GEMINI_API_KEY || "").trim();
-      if (!key) {
-        skipped.push(`${model}：未配置 GEMINI_API_KEY`);
-        continue;
-      }
-      ready.push({ model, url: GEMINI_CHAT_URL, headers: { "content-type": "application/json", authorization: `Bearer ${key}` } });
-      continue;
-    }
+  for (const { model } of CHANGELOG_PROVIDERS) {
     if (env.MAGPIE_REACHABLE === "no") {
       skipped.push(`${model}：CI 未连通 Magpie`);
       continue;
