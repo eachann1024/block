@@ -212,6 +212,11 @@ type Session struct {
 	findCurrent      int
 	findInputHandle  ui.Handle
 	findFocusPending bool
+	findToggleAt     time.Time
+	// Replace row of the find bar
+	findReplace             string
+	findReplaceHandle       ui.Handle
+	findReplaceFocusPending bool
 
 	// Outline rail
 	outlineHovered      bool

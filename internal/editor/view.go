@@ -438,6 +438,11 @@ func SetFindShortcut(spec string) {
 	findShortcut.Store(spec)
 }
 
+func (s *Session) isFindShortcut(mods ui.Modifiers, key ui.Key) bool {
+	m, k, ok := appUi.ParseShortcut(findShortcut.Load().(string))
+	return ok && m == mods && k == key
+}
+
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	svc := c.Services()
 	annotInputFocused := s.HasAnnotationInputFocused(c)
@@ -452,7 +457,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 		return
 	}
 	if mods, key, ok := appUi.ParseShortcut(findShortcut.Load().(string)); ok && c.Shortcut(mods, key) {
-		s.OpenFind()
+		s.ToggleFind()
 	}
 	if !annotInputFocused && c.Shortcut(0, ui.KeyEscape) {
 		if s.dragBlockID != 0 {
@@ -1573,8 +1578,8 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				case mods == ui.Cmd|ui.Shift && (key == ui.KeyX || key == ui.KeyS):
 					s.ToggleMarkOnSelection(model.MarkStrike)
 					return true
-				case mods == ui.Cmd && key == ui.KeyF:
-					s.OpenFind()
+				case s.isFindShortcut(mods, key):
+					s.ToggleFind()
 					return true
 				case mods == 0 && key == ui.KeyEnter:
 					if s.handleEnterOnBlock(idx, curText, caret) {

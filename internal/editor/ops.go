@@ -5585,30 +5585,57 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 
 // --- Find ---
 
-func (s *Session) OpenFind() {
-	wasOpen := s.findOpen
-	oldPad := s.canvasTopPad()
-	s.findOpen = true
-	if !wasOpen {
-		if delta := s.canvasTopPad() - oldPad; delta > 0 {
-			s.shiftScrollY(delta)
+// findToggleGuard swallows a second trigger of the same key press (menu
+// accelerator + in-window shortcut) and key auto-repeat while held.
+const findToggleGuard = 250 * time.Millisecond
+
+// ToggleFind is the find shortcut: open (seeding the query from selected text),
+// or close when already open and there is no new selection to search for.
+func (s *Session) ToggleFind() {
+	now := time.Now()
+	if !s.findToggleAt.IsZero() && now.Sub(s.findToggleAt) < findToggleGuard {
+		s.findToggleAt = now
+		return
+	}
+	s.findToggleAt = now
+	if s.findOpen {
+		if seed := s.findSeedFromSelection(); seed == "" || strings.EqualFold(seed, s.findQuery) {
+			s.CloseFind()
+			return
 		}
 	}
+	s.OpenFind()
+}
+
+// findSeedFromSelection returns the selected single-line text usable as a query.
+func (s *Session) findSeedFromSelection() string {
+	if s.doc == nil || !s.hasNonEmptySelection() {
+		return ""
+	}
+	a, b := s.orderedSelection()
+	if a.Block != b.Block || a.Block < 0 || a.Block >= len(s.doc.Blocks) {
+		return ""
+	}
+	r := []rune(s.doc.Blocks[a.Block].PlainText())
+	lo, hi := clampInt(a.Offset, 0, len(r)), clampInt(b.Offset, 0, len(r))
+	if hi <= lo || hi-lo > 200 {
+		return ""
+	}
+	part := string(r[lo:hi])
+	if strings.ContainsAny(part, "\n\t") {
+		return ""
+	}
+	return part
+}
+
+// OpenFind shows the floating find bar. It never changes the document layout.
+func (s *Session) OpenFind() {
+	s.findOpen = true
 	s.findFocusPending = true
 	s.blockMenu = nil
 	s.toolbarPop = ""
-	if s.hasNonEmptySelection() {
-		a, b := s.orderedSelection()
-		if a.Block == b.Block && a.Block >= 0 && a.Block < len(s.doc.Blocks) {
-			r := []rune(s.doc.Blocks[a.Block].PlainText())
-			lo, hi := clampInt(a.Offset, 0, len(r)), clampInt(b.Offset, 0, len(r))
-			if hi > lo && hi-lo <= 80 {
-				part := string(r[lo:hi])
-				if !strings.Contains(part, "\n") {
-					s.findQuery = part
-				}
-			}
-		}
+	if seed := s.findSeedFromSelection(); seed != "" {
+		s.findQuery = seed
 	}
 	s.recomputeFind(true)
 }
@@ -5617,14 +5644,113 @@ func (s *Session) CloseFind() {
 	if !s.findOpen {
 		return
 	}
-	oldPad := s.canvasTopPad()
 	s.findOpen = false
-	if delta := s.canvasTopPad() - oldPad; delta < 0 {
-		s.shiftScrollY(delta)
-	}
 	s.selAnchor = s.selHead
 	s.focusPending = true
 	s.focusPreventScroll = true
+}
+
+// findMatchReplaceable reports whether a match lies in plain editable text.
+func (s *Session) findMatchReplaceable(m findMatch) bool {
+	if s.readOnly || s.doc == nil || m.BlockIdx < 0 || m.BlockIdx >= len(s.doc.Blocks) {
+		return false
+	}
+	b := &s.doc.Blocks[m.BlockIdx]
+	switch b.Kind {
+	case model.BlockCode, model.BlockRawHTML:
+		return true
+	case model.BlockTable, model.BlockImage, model.BlockDivider:
+		return false
+	}
+	for _, sp := range sliceSpans(b.Spans, m.StartRune, m.EndRune) {
+		if sp.ImageSrc != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// replaceFindMatchText swaps one match for repl, keeping the match's inline style.
+// Callers own undo and markDirty.
+func (s *Session) replaceFindMatchText(m findMatch, repl string) {
+	b := &s.doc.Blocks[m.BlockIdx]
+	if b.Kind == model.BlockCode || b.Kind == model.BlockRawHTML {
+		runes := []rune(b.Code)
+		lo := clampInt(m.StartRune, 0, len(runes))
+		hi := clampInt(m.EndRune, lo, len(runes))
+		b.SetText(string(runes[:lo]) + repl + string(runes[hi:]))
+		return
+	}
+	var ins []model.Span
+	if repl != "" {
+		sp := model.Span{}
+		if seg := sliceSpans(b.Spans, m.StartRune, m.EndRune); len(seg) > 0 {
+			sp = seg[0]
+		}
+		sp.Text = repl
+		ins = []model.Span{sp}
+	}
+	b.Spans, _ = replaceSpanRange(b.Spans, m.StartRune, m.EndRune, ins)
+	b.Dirty = true
+	b.CleanSource = ""
+}
+
+// ReplaceCurrentFind replaces the active match and moves on to the next one.
+func (s *Session) ReplaceCurrentFind() {
+	s.recomputeFind(false)
+	if len(s.findMatches) == 0 {
+		return
+	}
+	m := s.findMatches[s.findCurrent]
+	if !s.findMatchReplaceable(m) {
+		s.FindNext()
+		return
+	}
+	s.pushUndo()
+	s.replaceFindMatchText(m, s.findReplace)
+	s.markDirty()
+	s.refreshFindMatches()
+	if len(s.findMatches) == 0 {
+		s.findCurrent = 0
+		s.selAnchor = Position{Block: m.BlockIdx, Offset: m.StartRune + utf8.RuneCountInString(s.findReplace)}
+		s.selHead = s.selAnchor
+		s.selSyncPending = true
+		return
+	}
+	after := m.StartRune + utf8.RuneCountInString(s.findReplace)
+	next := sort.Search(len(s.findMatches), func(i int) bool {
+		x := s.findMatches[i]
+		return x.BlockIdx > m.BlockIdx || (x.BlockIdx == m.BlockIdx && x.StartRune >= after)
+	})
+	if next == len(s.findMatches) {
+		next = 0
+	}
+	s.findCurrent = next
+	s.gotoCurrentFindMatch()
+}
+
+// ReplaceAllFind replaces every editable match in one undo step.
+func (s *Session) ReplaceAllFind() int {
+	s.recomputeFind(false)
+	n := 0
+	for i := len(s.findMatches) - 1; i >= 0; i-- {
+		m := s.findMatches[i]
+		if !s.findMatchReplaceable(m) {
+			continue
+		}
+		if n == 0 {
+			s.pushUndo()
+		}
+		s.replaceFindMatchText(m, s.findReplace)
+		n++
+	}
+	if n == 0 {
+		return 0
+	}
+	s.markDirty()
+	s.refreshFindMatches()
+	s.findCurrent = 0
+	return n
 }
 
 func (s *Session) SetFindQuery(q string) {
