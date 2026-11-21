@@ -51,7 +51,6 @@ var validCategories = func() map[Category]bool {
 // existing store entries published before manifest.category was introduced.
 var legacyPluginCategories = map[string]Category{
 	"block-sync":        CategorySync,
-	"block-migrator":    CategoryPublish,
 	"block-image-host":  CategoryEdit,
 	"block-canvas-dots": CategoryAppearance,
 	"block-titlebar":    CategoryAppearance,

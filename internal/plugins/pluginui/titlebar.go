@@ -1081,10 +1081,6 @@ func shortPluginErrorLabel(pluginID string, failed, hasUninstErr bool, vs plugin
 		if vs.RetryKind == plugins.RetryKindNoteSaved || vs.FailedActionID == "sync_now" || vs.LastActionID == "sync_now" || vs.LastActionID == "confirm_sync" || vs.LastActionID == "confirm_sync_card" {
 			return theme.Tr("同步失败", "Sync failed")
 		}
-	case "block-migrator":
-		if vs.FailedActionID == "run_import" || vs.FailedActionID == "run_import_card" || vs.LastActionID == "run_import" {
-			return theme.Tr("迁入失败", "Import failed")
-		}
 	case "block-image-host":
 		if vs.FailedActionID == "upload_now" || vs.LastActionID == "upload_now" {
 			return theme.Tr("上传失败", "Upload failed")
