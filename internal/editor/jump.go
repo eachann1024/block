@@ -116,12 +116,10 @@ func (s *Session) baseCanvasTopPad() float32 {
 	return s.scale(editorTopPad)
 }
 
+// canvasTopPad stays fixed while the find bar is open: the bar floats over the
+// page, so opening it must not push the document down.
 func (s *Session) canvasTopPad() float32 {
-	base := s.baseCanvasTopPad()
-	if s.findOpen {
-		return max(base, s.findJumpTopClearance())
-	}
-	return base
+	return s.baseCanvasTopPad()
 }
 
 func (s *Session) shiftScrollY(delta float32) {
