@@ -90,13 +90,9 @@ func ResolveBrandMotion(deco model.BrandDeco) BrandMotion {
 	case model.BrandDecoDensityMinimal:
 		m.Density = BrandDensityMinimal
 	}
-	switch deco.EffectiveTempo() {
-	case model.BrandDecoTempoSlow:
-		m.Tempo = BrandTempoSlow
-	case model.BrandDecoTempoBrisk:
+	// Legacy still/slow values fall back to leisurely; only leisurely and brisk are offered.
+	if deco.EffectiveTempo() == model.BrandDecoTempoBrisk {
 		m.Tempo = BrandTempoBrisk
-	case model.BrandDecoTempoStill:
-		m.Tempo = BrandTempoStill
 	}
 	return m
 }
