@@ -10,14 +10,25 @@ import (
 // content column, flat sections whose title sits on a hairline-separated list
 // of rows. No cards, no nested borders.
 
+var (
+	settingsSectionRows        []int
+	settingsStandaloneHasTitle bool
+	settingsStandaloneRows     int
+)
+
 // SettingsSection renders a flat section column; place SettingsSectionTitle
 // first, then SettingsRow / SettingsRowFrame children.
 func SettingsSection(c *ui.Context, children func()) ui.Element {
+	settingsSectionRows = append(settingsSectionRows, 0)
+	defer func() {
+		settingsSectionRows = settingsSectionRows[:len(settingsSectionRows)-1]
+		settingsStandaloneHasTitle = false
+	}()
 	return ui.Column(c).FillWidth().MinWidth(0).Children(children)
 }
 
-// SettingsSectionTitle renders a section heading (14px, title weight, primary
-// text) with an optional trailing action (e.g. SettingsTextAction) on the right.
+// SettingsSectionTitle renders a quiet section heading (13px, control weight,
+// secondary text) with an optional trailing action (e.g. SettingsTextAction) on the right.
 func SettingsSectionTitle(c *ui.Context, title string, trailing func()) {
 	SettingsSectionTitleWithIcon(c, nil, title, trailing)
 }
@@ -26,14 +37,20 @@ func SettingsSectionTitle(c *ui.Context, title string, trailing func()) {
 // leading icon slot and trailing action.
 func SettingsSectionTitleWithIcon(c *ui.Context, leading func(), title string, trailing func()) {
 	pal := theme.Ocean()
+	if n := len(settingsSectionRows); n > 0 {
+		settingsSectionRows[n-1] = 0
+	} else {
+		settingsStandaloneHasTitle = true
+		settingsStandaloneRows = 0
+	}
 	ui.Row(c).FillWidth().MinWidth(0).Height(theme.SettingsSectionTitleH).Margin(0, 0, theme.Space6, 0).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
 		ui.Row(c).MinWidth(0).Shrink(1).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 			if leading != nil {
 				leading()
 			}
-			ui.Text(c, title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).
-				TextColor(pal.Text).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
+			ui.Text(c, title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).
+				TextColor(pal.TextSecondary).SingleLine().MinWidth(0).Shrink(1).Ellipsis("…")
 		})
 		if trailing != nil {
 			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space4).Children(trailing)
@@ -44,10 +61,21 @@ func SettingsSectionTitleWithIcon(c *ui.Context, leading func(), title string, t
 // SettingsRowFrame returns an unstyled-content row with the standard minimum
 // height and top hairline; callers add Children. Use for custom row layouts.
 func SettingsRowFrame(el ui.Element) ui.Element {
-	pal := theme.Ocean()
-	return el.FillWidth().MinWidth(0).MinHeight(theme.SettingsRowHeight).
-		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).
+	isFirst := false
+	if n := len(settingsSectionRows); n > 0 {
+		isFirst = settingsSectionRows[n-1] == 0
+		settingsSectionRows[n-1]++
+	} else if settingsStandaloneHasTitle {
+		isFirst = settingsStandaloneRows == 0
+		settingsStandaloneRows++
+	}
+	el.FillWidth().MinWidth(0).MinHeight(theme.SettingsRowHeight).
 		AlignItems(ui.Center).Gap(theme.Space16)
+	if !isFirst {
+		pal := theme.Ocean()
+		el.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+	}
+	return el
 }
 
 // SettingsRow renders "label …… control" on a hairline-topped row.

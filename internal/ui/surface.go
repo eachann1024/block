@@ -36,10 +36,9 @@ func PopoverSurface(el ui.Element) ui.Element {
 }
 
 // FocusedPopoverSurface styles el as a focused floating input popover (such as
-// the annotation composer): menu fill, accent border, RadiusLG, soft accent
-// focus halo, popover elevation and motion.
+// the annotation composer): menu fill, accent border, RadiusLG, popover elevation and motion.
 func FocusedPopoverSurface(el ui.Element) ui.Element {
 	pal := theme.Ocean()
 	el.Background(pal.Menu).Radius(theme.RadiusLG).Border(1, pal.Accent).Transition(PopupTransition())
-	return Elevate(el, theme.ElevationPopoverFocused)
+	return Elevate(el, theme.ElevationPopover)
 }

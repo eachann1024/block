@@ -22,11 +22,14 @@ type DropdownSelectState struct {
 	TriggerRect ui.Rect
 	Scroll      ui.ScrollState
 	Cursor      int
-	// MenuWidth, when set, is the menu's minimum width (default 220 or the trigger width).
+	// MenuWidth, when set, is the menu's minimum width (default 144 or the trigger width).
 	MenuWidth float32
 	// Compact fixes the trigger and menu width to fit the widest option (with room for the checkmark)
 	// instead of using the 180px form-field minimum.
 	Compact bool
+	// Borderless renders the trigger with a transparent background and no border at rest,
+	// revealing a light hover background on interaction.
+	Borderless bool
 }
 
 // DropdownSelect renders an Ocean Paper dropdown trigger button and viewport-aware floating menu.
@@ -55,10 +58,6 @@ func DropdownSelect(
 	}
 
 	open := state.Open
-	borderCol := pal.BtnBorder
-	if open {
-		borderCol = pal.Placeholder
-	}
 
 	if id != "" {
 		c.Key(id)
@@ -81,18 +80,34 @@ func DropdownSelect(
 
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
-	bg := pal.Shell
-	if pressed {
-		bg = pal.Shell.Mix(pal.Text, 0.09)
-	} else if hovered {
-		bg = pal.Shell.Mix(pal.Text, 0.05)
+	var bg, borderCol ui.Color
+	hasBorder := !state.Borderless
+	if state.Borderless {
+		bg = ui.Transparent
+		borderCol = ui.Transparent
+		if pressed {
+			bg = pal.Selected
+		} else if hovered || open {
+			bg = pal.Hover
+		}
+	} else {
+		borderCol = pal.BtnBorder
+		if open {
+			borderCol = pal.Placeholder
+		}
+		bg = pal.Shell
+		if pressed {
+			bg = pal.Shell.Mix(pal.Text, 0.09)
+		} else if hovered {
+			bg = pal.Shell.Mix(pal.Text, 0.05)
+		}
 	}
-	AnimateSurfaceColors(btn, bg, borderCol, true)
+	AnimateSurfaceColors(btn, bg, borderCol, hasBorder)
 	TactileCard(btn, hovered, pressed, open, false)
 
 	btn.DrawOver(func(_ *ui.Painter, r ui.Rect) {
 		state.TriggerRect = r
-		if id != "" {
+		if id != "" && IsProbeEnabled() {
 			RecordBounds(id, r)
 		}
 	})
@@ -116,10 +131,6 @@ func DropdownSelect(
 		}
 		icons.DrawAnimated(c, glyph, theme.IconInline, ic, open || hovered || pressed)
 	})
-	if id != "" {
-		Probe(btn, id)
-	}
-
 	if btn.Clicked() {
 		state.Open = !state.Open
 		state.Cursor = -1
@@ -139,7 +150,8 @@ func DropdownSelect(
 // SelectMenu renders the floating option menu below state.TriggerRect while state.Open is set,
 // so custom triggers can reuse DropdownSelect's popover. It returns the picked index, or -1.
 func SelectMenu(c *ui.Context, id string, options []SelectOption, state *DropdownSelectState, curVal string) int {
-	return selectMenu(c, id, options, state, curVal, 220)
+	contentW := compactSelectWidth(c, options, "")
+	return selectMenu(c, id, options, state, curVal, max(theme.SelectCompactMinWidth, contentW))
 }
 
 func selectMenu(c *ui.Context, id string, options []SelectOption, state *DropdownSelectState, curVal string, minW float32) int {

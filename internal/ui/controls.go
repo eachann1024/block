@@ -14,7 +14,7 @@ const (
 	IconChrome IconButtonVariant = iota
 	// IconPlain is an inline/compact button: 24 box, 14 glyph, radius 6.
 	IconPlain
-	// IconBordered is a sidebar-header style button: 32 box, paper fill, 1px btn border, 18 glyph.
+	// IconBordered is a sidebar-header style button: 32 box, transparent at rest, hover fill, 18 glyph.
 	IconBordered
 )
 
@@ -93,13 +93,6 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 	}
 	btn := ui.ButtonBase(c).Size(boxSize, boxSize).Shrink(0).Center().
 		Radius(radius).Cursor(cursor).Disabled(isDisabled).DimDisabled(false)
-	if opts.Variant == IconBordered {
-		if opts.CardBorder {
-			btn.Background(pal.Card).Border(1, pal.BtnBorder)
-		} else {
-			btn.Background(pal.Paper).Border(1, pal.BtnBorder)
-		}
-	}
 	a11yLabel := opts.Label
 	if a11yLabel == "" {
 		a11yLabel = opts.Tooltip
@@ -131,14 +124,7 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 
 	bgCol := ui.Transparent
 	bdCol := ui.Transparent
-	hasBorder := opts.Variant == IconBordered || (opts.Active && opts.ActiveStyle != ActiveAccentFlat)
-	if opts.Variant == IconBordered {
-		bgCol = pal.Paper
-		if opts.CardBorder {
-			bgCol = pal.Card
-		}
-		bdCol = pal.BtnBorder
-	}
+	hasBorder := opts.Active && opts.ActiveStyle != ActiveAccentFlat
 	switch {
 	case opts.Danger && pressed:
 		bgCol = pal.Danger.Alpha(0.22)
@@ -448,20 +434,20 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 	if segRad <= 0 {
 		segRad = theme.RadiusSM
 	}
-	trackBG, trackBorder := pal.Paper, pal.BtnBorder
+	trackBG := pal.Paper
 	if opts.CardTrack {
-		trackBG, trackBorder = pal.Card, pal.BtnBorder
+		trackBG = pal.Card
 	} else if opts.ShellTrack {
-		trackBG, trackBorder = pal.Shell, pal.Hairline
+		trackBG = pal.Shell
 	}
 	labelSize, labelLine := theme.FontBody, theme.LineBody
 	if opts.Quiet {
-		trackBG, trackBorder = ui.Transparent, pal.Hairline
+		trackBG = ui.Transparent
 		labelSize, labelLine = theme.FontSmall, theme.LineSmall
 	}
 	seg := ui.SegmentedBase(c, active, len(options))
 	track := seg.Track.Height(trackH).Padding(trackPad).Gap(theme.Space2).AlignItems(ui.Center).Radius(theme.RadiusMD).
-		Background(trackBG).Border(1, trackBorder)
+		Background(trackBG)
 	if opts.FillWidth {
 		track.FillWidth()
 	}
@@ -487,16 +473,14 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 			pressed := item.Pressed() && !disabled
 			isAct := i == *active
 			bg := ui.Transparent
-			bd := ui.Transparent
 			if isAct {
 				bg = pal.Selected
-				bd = pal.SelectedBorder
 			} else if pressed {
 				bg = pal.Selected
 			} else if hovered {
 				bg = pal.Hover
 			}
-			AnimateSurfaceColors(item, bg, bd, true)
+			AnimateSurfaceColors(item, bg, ui.Transparent, false)
 			TactileCard(item, hovered, pressed, isAct, disabled)
 			if opt.ID != "" {
 				Probe(item, opt.ID)
@@ -513,7 +497,7 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 	return *active != prev
 }
 
-// TogglePill renders the global Block Pluck Switch at standard size.
+// TogglePill renders the global Block Pluck Switch at compact size.
 // Kept as a compatibility wrapper so all existing callers automatically use
 // the unified SwitchWithOptions implementation.
 func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) bool {
@@ -521,6 +505,7 @@ func TogglePill(c *ui.Context, id, label string, value *bool, disabled bool) boo
 		ID:       id,
 		Label:    label,
 		Value:    value,
+		Size:     SwitchCompact,
 		Disabled: disabled,
 	})
 }
@@ -573,8 +558,6 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		fg, iconLine = pal.MenuDangerHoverFG, pal.MenuDangerHoverFG
 	case item.Danger:
 		fg, iconLine = pal.MenuDangerFG, pal.MenuDangerFG
-	case item.Checked:
-		bg = pal.Selected
 	case pressed:
 		bg = pal.Selected
 	case hovered:
@@ -631,7 +614,7 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 			icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol), active)
 		}
 		if item.Checked {
-			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Accent))
 		}
 	})
 	if item.ID != "" {
@@ -707,13 +690,13 @@ func InlineConfirm(c *ui.Context, opts InlineConfirmOptions) (confirmed, cancell
 		if opts.Danger {
 			switch {
 			case confirmPress:
-				confirmBtn.Background(pal.Danger).Border(1, pal.Danger)
+				confirmBtn.Background(pal.Danger)
 				confirmFG = pal.MenuDangerHoverFG
 			case confirmHover:
-				confirmBtn.Background(pal.MenuDangerHoverBG).Border(1, pal.MenuDangerHoverBG)
+				confirmBtn.Background(pal.MenuDangerHoverBG)
 				confirmFG = pal.MenuDangerHoverFG
 			default:
-				confirmBtn.Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35))
+				confirmBtn.Background(pal.DangerSurface)
 				confirmFG = pal.Danger
 			}
 		} else {

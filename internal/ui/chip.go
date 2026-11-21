@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"block/internal/icons"
 	"block/internal/theme"
 	"github.com/egoist/mygo/ui"
 )
@@ -34,9 +35,9 @@ func Chip(c *ui.Context, opts ChipOptions) ui.Element {
 		PaddingX(theme.Space8).Gap(theme.Space4)
 	switch {
 	case opts.Style == ChipPrimary && btn.Hovered():
-		btn.Background(pal.AccentHover)
+		btn.Background(pal.Accent.Alpha(0.18))
 	case opts.Style == ChipPrimary:
-		btn.Background(pal.Accent)
+		btn.Background(pal.Accent.Alpha(0.12))
 	case btn.Hovered():
 		btn.Background(pal.Hover)
 	}
@@ -49,7 +50,7 @@ func Chip(c *ui.Context, opts ChipOptions) ui.Element {
 		w := theme.WeightRegular
 		switch opts.Style {
 		case ChipPrimary:
-			fg, hint, w = pal.AccentText, pal.AccentText, theme.WeightControl
+			fg, hint, w = pal.Accent, pal.Accent, theme.WeightControl
 		case ChipMuted:
 			fg = pal.TextSecondary
 		}
@@ -101,44 +102,43 @@ func BetaBadge(c *ui.Context, compact bool) {
 	})
 }
 
-// OfficialBadge renders an Ocean Paper "Official" badge for verified first-party plugins.
-func OfficialBadge(c *ui.Context, compact bool) {
+// BetaBadgePlain renders a muted, borderless 11px "Beta" text label for dense lists such as sidebars.
+func BetaBadgePlain(c *ui.Context) {
+	pal := theme.Ocean()
+	ui.Text(c, "Beta").
+		FontSize(theme.FontMicro).
+		FixedLineHeight(theme.LineMeta).
+		FontWeight(theme.WeightRegular).
+		TextColor(pal.TextSecondary).
+		SingleLine().
+		Shrink(0)
+}
+
+func monochromeStatusBadge(c *ui.Context, label string, compact bool) {
 	pal := theme.Ocean()
 	h := theme.HeightMicro
-	padX := theme.Space8
 	if compact {
 		h = theme.KeycapHeight
-		padX = theme.Space6
 	}
-	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
-		Background(pal.Selected).Border(1, pal.TooltipAccent).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, theme.Tr("官方", "Official")).
+	ui.Row(c).Height(h).Gap(theme.Space4).Shrink(0).AlignItems(ui.Center).Children(func() {
+		icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+		ui.Text(c, label).
 			FontSize(theme.FontMicro).
 			FixedLineHeight(theme.LineMeta).
-			FontWeight(theme.WeightControl).
-			TextColor(pal.TooltipAccent).
+			FontWeight(theme.WeightRegular).
+			TextColor(pal.TextSecondary).
 			SingleLine()
 	})
 }
 
+// OfficialBadge renders an Ocean Paper "Official" badge for verified first-party plugins.
+func OfficialBadge(c *ui.Context, compact bool) {
+	monochromeStatusBadge(c, theme.Tr("官方", "Official"), compact)
+}
+
 // ReviewedBadge renders an Ocean Paper "Reviewed" badge for plugins from trusted reviewed authors.
 func ReviewedBadge(c *ui.Context, compact bool) {
-	pal := theme.Ocean()
-	h := theme.HeightMicro
-	padX := theme.Space8
-	if compact {
-		h = theme.KeycapHeight
-		padX = theme.Space6
-	}
-	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
-		Background(pal.SuccessSurface).Border(1, pal.Success).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, theme.Tr("已审核", "Reviewed")).
-			FontSize(theme.FontMicro).
-			FixedLineHeight(theme.LineMeta).
-			FontWeight(theme.WeightControl).
-			TextColor(pal.Success).
-			SingleLine()
-	})
+	monochromeStatusBadge(c, theme.Tr("已审核", "Reviewed"), compact)
 }
 
 // FileExtBadge renders a subtle Ocean Paper extension pill (e.g. JSON, PNG, MDX)

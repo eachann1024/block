@@ -11,6 +11,7 @@ import (
 
 // ShortcutLabelStyle configures typography and tint for ShortcutLabel.
 type ShortcutLabelStyle struct {
+	Font       string
 	FontSize   float32
 	LineHeight float32
 	FontWeight int
@@ -140,6 +141,9 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 	segs, hasKey := parseShortcutSegments(text, style.IsShortcut)
 	if !hasKey {
 		t := ui.Text(c, text).FontSize(style.FontSize).FixedLineHeight(lineH).TextColor(style.Color).SingleLine()
+		if style.Font != "" {
+			t.Font(style.Font)
+		}
 		if style.FontWeight > 0 {
 			t.FontWeight(style.FontWeight)
 		}
@@ -160,6 +164,9 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 				continue
 			}
 			t := ui.Text(c, seg.text).FontSize(style.FontSize).FixedLineHeight(lineH).TextColor(style.Color).SingleLine().Shrink(0)
+			if style.Font != "" {
+				t.Font(style.Font)
+			}
 			if style.FontWeight > 0 {
 				t.FontWeight(style.FontWeight)
 			}
