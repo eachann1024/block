@@ -6538,6 +6538,8 @@ const (
 	tokType
 	tokFunc
 )
+	tokInserted
+	tokDeleted
 
 type syntaxToken struct {
 	Start int // rune offset
@@ -6560,6 +6562,10 @@ func mapPluginTokenKind(k codeed.TokenKind) syntaxTokenKind {
 	case codeed.TokenFunction, codeed.TokenMeta:
 		return tokFunc
 	default:
+	case codeed.TokenInserted:
+		return tokInserted
+	case codeed.TokenDeleted:
+		return tokDeleted
 		return tokPlain
 	}
 }

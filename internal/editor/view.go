@@ -2429,6 +2429,10 @@ func syntaxTokenColor(kind syntaxTokenKind, dark bool) ui.Color {
 		return syn.Type
 	case tokFunc:
 		return syn.Func
+	case tokInserted:
+		return pal.DiffAddFG
+	case tokDeleted:
+		return pal.DiffDelFG
 	default:
 		return syn.Default
 	}
