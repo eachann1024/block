@@ -23,38 +23,101 @@ const (
 	storeSortName         = "name"
 )
 
+// renderStoreHeaderExtras draws one search field with an inline filter button;
+// source and sort live together in the button's menu so the header stays light.
 func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 	pal := theme.Ocean()
 	query := ctrl.storeQuery
-	input := ui.TextInput(c.Key("app-store-search"), &query).
-		Width(theme.StoreSearchWidth).MaxWidthPercent(100).MinWidth(0).Height(theme.HeightControl).
-		PaddingX(theme.Space12).Radius(theme.RadiusMD).FontSize(theme.FontBody).
-		FixedLineHeight(theme.LineBody).TextColor(pal.Text).PlaceholderColor(pal.Placeholder).
-		Label(theme.Tr("搜索插件或作者", "Search plugins or authors")).
-		Placeholder(theme.Tr("搜索插件或作者", "Search plugins or authors"))
-	border := pal.BtnBorder
-	if input.Focused() {
+	border := ui.Transparent
+	if ctrl.storeSearchFocused {
 		border = pal.Accent
 	}
-	input.Background(pal.Shell).Border(1, border)
-	bui.Probe(input, "app-store-search")
-	if input.Changed() {
-		ctrl.storeQuery = query
+	field := ui.Row(c.Key("app-store-search-field")).
+		Width(theme.StoreSearchFieldWidth).MaxWidthPercent(100).MinWidth(0).Height(theme.HeightControl).
+		Padding(0, theme.Space4, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).
+		Radius(theme.RadiusMD).Background(pal.Shell).Border(1, border)
+	field.Children(func() {
+		input := ui.TextInput(c.Key("app-store-search"), &query).
+			Grow(1).MinWidth(0).Height(theme.HeightControl).
+			Padding(0, 0, 0, theme.Space12).FontSize(theme.FontBody).
+			FixedLineHeight(theme.LineBody).TextColor(pal.Text).PlaceholderColor(pal.Placeholder).
+			Background(ui.Transparent).Border(0, ui.Transparent).
+			Label(theme.Tr("搜索插件或作者", "Search plugins or authors")).
+			Placeholder(theme.Tr("搜索插件或作者", "Search plugins or authors"))
+		ctrl.storeSearchFocused = input.Focused()
+		bui.Probe(input, "app-store-search")
+		if input.Changed() {
+			ctrl.storeQuery = query
+		}
+
+		filtered := ctrl.storeSource != "" || ctrl.storeSort != ""
+		filterBtn := bui.IconButton(c, icons.SortFilter, bui.IconButtonOptions{
+			ID:          "app-store-filter",
+			Size:        theme.StoreFilterButtonSize,
+			IconSize:    theme.IconRow,
+			Radius:      theme.RadiusSM,
+			Tooltip:     theme.Tr("来源与排序", "Source & Sort"),
+			Active:      ctrl.storeFilterOpen,
+			ActiveStyle: bui.ActiveAccent,
+			AlwaysDuo:   filtered,
+		})
+		if b := filterBtn.Bounds(); b.W > 0 {
+			ctrl.storeFilterAnchor = b
+		}
+		if filterBtn.Clicked() {
+			ctrl.storeFilterOpen = !ctrl.storeFilterOpen
+			ctrl.storeFilterCursor = -1
+		}
+	})
+	renderStoreFilterMenu(c, ctrl)
+}
+
+func renderStoreFilterMenu(c *ui.Context, ctrl *Controller) {
+	if !ctrl.storeFilterOpen || ctrl.storeFilterAnchor.W <= 0 {
+		return
 	}
-	ctrl.storeSourceMenu.Compact = true
-	ctrl.storeSourceMenu.Borderless = true
-	ctrl.storeSortMenu.Compact = true
-	ctrl.storeSortMenu.Borderless = true
-	bui.DropdownSelect(c, "app-store-source", &ctrl.storeSource, []bui.SelectOption{
-		{Label: theme.Tr("全部来源", "All sources")},
-		{Value: storeSourceOfficial, Label: theme.Tr("Block 官方", "Official by Block")},
-		{Value: storeSourceReviewed, Label: theme.Tr("已审核", "Reviewed")},
-		{Value: storeSourceUnreviewed, Label: theme.Tr("未审核", "Unreviewed")},
-	}, &ctrl.storeSourceMenu, "")
-	bui.DropdownSelect(c, "app-store-sort", &ctrl.storeSort, []bui.SelectOption{
-		{Label: theme.Tr("最多下载", "Most downloaded")},
-		{Value: storeSortName, Label: theme.Tr("按名称", "By name")},
-	}, &ctrl.storeSortMenu, "")
+	pick := func(target *string, value string) func() {
+		return func() {
+			*target = value
+			ctrl.storeFilterOpen = false
+		}
+	}
+	source, sortBy := ctrl.storeSource, ctrl.storeSort
+	items := []bui.MenuItemSpec{
+		{ID: "app-store-source-all", Label: theme.Tr("全部来源", "All sources"), Checked: source == "", OnClick: pick(&ctrl.storeSource, "")},
+		{ID: "app-store-source-official", Label: theme.Tr("Block 官方", "Official by Block"), Checked: source == storeSourceOfficial, OnClick: pick(&ctrl.storeSource, storeSourceOfficial)},
+		{ID: "app-store-source-reviewed", Label: theme.Tr("已审核", "Reviewed"), Checked: source == storeSourceReviewed, OnClick: pick(&ctrl.storeSource, storeSourceReviewed)},
+		{ID: "app-store-source-unreviewed", Label: theme.Tr("未审核", "Unreviewed"), Checked: source == storeSourceUnreviewed, OnClick: pick(&ctrl.storeSource, storeSourceUnreviewed)},
+		{Separator: true},
+		{ID: "app-store-sort-downloads", Label: theme.Tr("最多下载", "Most downloaded"), Checked: sortBy == "", OnClick: pick(&ctrl.storeSort, "")},
+		{ID: "app-store-sort-name", Label: theme.Tr("按名称", "By name"), Checked: sortBy == storeSortName, OnClick: pick(&ctrl.storeSort, storeSortName)},
+	}
+	vpW, vpH := c.Size()
+	menuW := min(theme.StoreFilterMenuWidth, max(vpW-theme.Space16, 1))
+	rows := float32(len(items) - 1)
+	estH := theme.MenuPadding*2 + rows*theme.MenuItemHeight + rows*theme.MenuGap + 7
+	spec := bui.PlaceBelow(ctrl.storeFilterAnchor).
+		WithAlignX(bui.AlignX{Kind: bui.AlignRight}).
+		WithGap(theme.Space6)
+	maxH := bui.MaxHeightForSpec(spec, vpW, vpH, 320)
+	popH := min(estH, maxH)
+	ox, oy := bui.ResolveOrigin(spec, menuW, popH, vpW, vpH)
+
+	ui.Overlay(c, func() {
+		scrim := ui.Box(c.Key("app-store-filter-scrim")).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+		c.Key("app-store-filter-menu")
+		card := bui.MenuSurface(ui.Column(c).Absolute().Left(ox).Top(oy).Width(menuW).MaxHeight(maxH).Role(ui.RoleMenu))
+		bui.NavigateMenu(c, card, items, &ctrl.storeFilterCursor)
+		bui.Probe(card, "app-store-filter-menu")
+		card.Children(func() {
+			for i, it := range items {
+				bui.MenuRow(c, it, i == ctrl.storeFilterCursor)
+			}
+		})
+		if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
+			ctrl.storeFilterOpen = false
+		}
+	})
 }
 
 type storeCard struct {

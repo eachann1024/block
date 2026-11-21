@@ -21,21 +21,23 @@ type Controller struct {
 	sup         *plugins.Supervisor
 	storeReadme *storeReadmePreview
 
-	mu              sync.Mutex
-	storeQuery      string
-	storeSource     string
-	storeSort       string
-	storeSourceMenu bui.DropdownSelectState
-	storeSortMenu   bui.DropdownSelectState
-	storeCategory   plugins.Category
-	onSuggestPlugin func(category plugins.Category)
-	manualSpec      string
-	drafts          map[string]map[string]string
-	lastSynced      map[string]map[string]string
-	secretRevealed  map[string]map[string]bool
-	selectStates    map[string]map[string]*bui.DropdownSelectState
-	treemapStates   map[string]map[string]*bui.TreemapState
-	cardExpanded    map[string]map[string]bool
+	mu                 sync.Mutex
+	storeQuery         string
+	storeSource        string
+	storeSort          string
+	storeFilterOpen    bool
+	storeFilterAnchor  ui.Rect
+	storeFilterCursor  int
+	storeSearchFocused bool
+	storeCategory      plugins.Category
+	onSuggestPlugin    func(category plugins.Category)
+	manualSpec         string
+	drafts             map[string]map[string]string
+	lastSynced         map[string]map[string]string
+	secretRevealed     map[string]map[string]bool
+	selectStates       map[string]map[string]*bui.DropdownSelectState
+	treemapStates      map[string]map[string]*bui.TreemapState
+	cardExpanded       map[string]map[string]bool
 
 	titlebarMenuOpen    bool
 	titlebarMenuTarget  string
@@ -131,8 +133,7 @@ func (c *Controller) RenderStoreFooter(ctx *ui.Context) {
 }
 
 func (c *Controller) closeStoreMenus() {
-	c.storeSourceMenu.Open = false
-	c.storeSortMenu.Open = false
+	c.storeFilterOpen = false
 }
 
 // InstalledCount returns the number of installed plugins that provide a Settings page.

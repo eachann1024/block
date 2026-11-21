@@ -211,6 +211,9 @@ const (
 	StoreCardPadBottom             = StoreCardInnerGap
 	StoreTitleWidth        float32 = 120
 	StoreSearchWidth       float32 = 192
+	StoreSearchFieldWidth  float32 = 280 // search field with the inline source/sort button
+	StoreFilterButtonSize  float32 = 26
+	StoreFilterMenuWidth   float32 = 200
 	StoreAuthorFadeWidth   float32 = 20
 	StoreDetailIconBox     float32 = 56  // app icon box in the in-place store detail header
 	StoreDetailIconGlyph   float32 = 28  // Duo icon size inside StoreDetailIconBox
