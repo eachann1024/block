@@ -4764,7 +4764,6 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 
 	modalOpen := open
 	title := theme.Tr("添加供应商", "Add Provider")
-	selBG := settingsSelectedSurface(pal)
 	ais := pal.AISurface()
 
 	bui.Dialog(cUI, "ai-add-provider-modal", title, &modalOpen, bui.ModalLayout{
@@ -4787,21 +4786,20 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 			})
 
 			// Exact 3 provider capsules: DeepSeek / OpenAI 兼容 / Claude 协议
-			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(8).Children(func() {
+			ui.Row(cUI).FillWidth().MinWidth(0).Wrap().Gap(theme.Space4).Children(func() {
 				for _, preset := range providerPresets {
 					pr := preset
 					isSel := selPreset == pr.ID
 					lbl := theme.Tr(pr.Zh, pr.En)
 					chipID := "ai-preset-" + pr.ID
-					chip := ui.ButtonBase(cUI.Key(chipID)).Grow(1).MinWidth(108).Height(34).PaddingX(10).Gap(7).
-						AlignItems(ui.Center).Justify(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(lbl)
+					chip := ui.ButtonBase(cUI.Key(chipID)).Grow(1).MinWidth(108).Height(theme.HeightCompact).PaddingX(theme.Space10).Gap(theme.Space6).
+						AlignItems(ui.Center).Justify(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(lbl)
 					hov := chip.Hovered()
 					prs := chip.Pressed()
-					bg := ais.CapsuleBG
-					bd := ais.CapsuleBorder
+					bg := ui.Transparent
+					bd := ui.Transparent
 					if isSel {
-						bg = selBG
-						bd = pal.SelectedBorder
+						bg = pal.Selected
 					} else if prs {
 						bg = ais.SelectedBG
 					} else if hov {
@@ -4811,8 +4809,12 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					bui.TactileCard(chip, hov, prs, isSel, false)
 					bui.Probe(chip, chipID)
 					chip.Children(func() {
+						col := pal.TextSecondary
+						if isSel || hov || prs {
+							col = pal.Text
+						}
 						icons.Draw(cUI, pr.Icon, 14, pal.MonoIconColors(pr.BrandColor))
-						ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+						ui.Text(cUI, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 					})
 					if chip.Clicked() {
 						c.mu.Lock()
@@ -4891,8 +4893,8 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 			})
 
 			if testErr != "" {
-				ui.Box(cUI).FillWidth().MinWidth(0).Padding(8, 12).Radius(theme.RadiusMD).
-					Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
+				ui.Box(cUI).FillWidth().MinWidth(0).Padding(theme.Space8, theme.Space12).Radius(theme.RadiusMD).
+					Background(pal.DangerSurface).Children(func() {
 					ui.Text(cUI, testErr).FontSize(theme.FontBody).TextColor(pal.Danger)
 				})
 			}
