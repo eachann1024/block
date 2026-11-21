@@ -985,10 +985,6 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			}
 			tempoVal := "leisurely"
 			switch tempo {
-			case model.BrandDecoTempoStill:
-				tempoVal = "still"
-			case model.BrandDecoTempoSlow:
-				tempoVal = "slow"
 			case model.BrandDecoTempoBrisk:
 				tempoVal = "brisk"
 			}
@@ -1030,22 +1026,16 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 			if decoOn {
-				tempoVals := []string{"still", "slow", "leisurely", "brisk"}
+				tempoVals := []string{"leisurely", "brisk"}
 				tempoIdx := slices.Index(tempoVals, tempoVal)
 				internalui.SettingsRow(c, theme.Tr("动画速度", "Animation Speed"), func() {
 					if internalui.SettingsSegmented(c, "settings-brand-tempo-seg", &tempoIdx, []internalui.SegmentOption{
-						{ID: "settings-brand-tempo-still", Label: theme.Tr("静止", "Still")},
-						{ID: "settings-brand-tempo-slow", Label: theme.Tr("缓慢", "Slow")},
 						{ID: "settings-brand-tempo-leisurely", Label: theme.Tr("悠闲", "Leisurely")},
 						{ID: "settings-brand-tempo-brisk", Label: theme.Tr("轻快", "Brisk")},
 					}) {
 						tempoVal = tempoVals[tempoIdx]
 						saveDeco(func(d *model.BrandDeco) {
 							switch tempoVal {
-							case "still":
-								d.Tempo = model.BrandDecoTempoStill
-							case "slow":
-								d.Tempo = model.BrandDecoTempoSlow
 							case "brisk":
 								d.Tempo = model.BrandDecoTempoBrisk
 							default:
