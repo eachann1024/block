@@ -874,6 +874,10 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 
 	hovered := btn.Hovered()
 	pressed := btn.Pressed()
+	hoverBG := pal.ShellChrome().Hover
+	if p.FloatingCard {
+		hoverBG = pal.Hover
+	}
 	rowBG := ui.Transparent
 	rowBD := ui.Transparent
 	switch {
@@ -881,13 +885,13 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		rowBG = pal.Selected
 		rowBD = pal.Accent
 	case isDropReorder:
-		rowBG = pal.Hover
+		rowBG = hoverBG
 	case highlighted:
 		rowBG = pal.Selected
 	case focused || pressed:
 		rowBG = pal.Selected
 	case menuTarget || hovered:
-		rowBG = pal.Hover
+		rowBG = hoverBG
 	}
 	blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
 
