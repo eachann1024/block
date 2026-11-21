@@ -625,7 +625,8 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 	if !m.IsRecordingShortcut() || m.recordingShortcut != "global_summon" {
 		t.Fatalf("expected recording global_summon, got %q", m.recordingShortcut)
 	}
-	tt.Key(ui.Cmd, ui.KeyF5)
+	// ui.Cmd is Ctrl off macOS; press Super so the recorded spec is cmd-f5 everywhere.
+	tt.Key(ui.Super, ui.KeyF5)
 	if got := EffectiveShortcut(*state, "global_summon"); got != "cmd-f5" {
 		t.Fatalf("expected global_summon=cmd-f5, got %q", got)
 	}
