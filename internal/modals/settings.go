@@ -142,10 +142,6 @@ type Manager struct {
 	folderRuleDraft        string
 	folderRuleAdding       bool
 	searchIgnorePicker     internalui.DropdownSelectState
-	langPicker             internalui.DropdownSelectState
-	brandDecoPicker        internalui.DropdownSelectState
-	brandTempoPicker       internalui.DropdownSelectState
-	updateSourcePicker     internalui.DropdownSelectState
 	regexRuleDraft         string
 	folderRuleError        string
 	regexRuleError         string
@@ -327,10 +323,6 @@ func (m *Manager) OpenSettings(tab string) {
 	m.folderRuleError = ""
 	m.folderRuleAdding = false
 	m.searchIgnorePicker = internalui.DropdownSelectState{Borderless: true}
-	m.langPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
-	m.brandDecoPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
-	m.brandTempoPicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
-	m.updateSourcePicker = internalui.DropdownSelectState{Compact: true, Borderless: true, Cursor: -1}
 	m.regexRuleError = ""
 	m.settingsOpen = true
 	m.notifySettingsTabChanged(previous, m.ActiveSettingsTab())
@@ -962,20 +954,16 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
-			langVal := string(model.LangZh)
+			langIdx := 0
 			if theme.Language() == model.LangEn {
-				langVal = string(model.LangEn)
+				langIdx = 1
 			}
-			m.langPicker.Compact = true
 			internalui.SettingsRow(c, theme.Tr("界面语言", "Language"), func() {
-				if internalui.DropdownSelect(c, "settings-lang-select", &langVal, []internalui.SelectOption{
-					{ID: "settings-lang-zh", Value: string(model.LangZh), Label: "简体中文"},
-					{ID: "settings-lang-en", Value: string(model.LangEn), Label: "English"},
-				}, &m.langPicker, "") {
-					picked := model.LangZh
-					if langVal == string(model.LangEn) {
-						picked = model.LangEn
-					}
+				if internalui.SettingsSegmented(c, "settings-lang-seg", &langIdx, []internalui.SegmentOption{
+					{ID: "settings-lang-zh", Label: "简体中文"},
+					{ID: "settings-lang-en", Label: "English"},
+				}) {
+					picked := []model.LanguageMode{model.LangZh, model.LangEn}[langIdx]
 					theme.SetLanguage(picked)
 					m.mutateState(func(s *model.AppState) {
 						s.Language = picked
@@ -1012,14 +1000,16 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					apply(&s.BrandDeco)
 				})
 			}
-			m.brandDecoPicker.Compact = true
+			decoVals := []string{"off", "minimal", "calm", "rich"}
+			decoIdx := slices.Index(decoVals, decoVal)
 			internalui.SettingsRow(c, theme.Tr("侧栏装饰动画", "Sidebar Decoration"), func() {
-				if internalui.DropdownSelect(c, "settings-brand-deco-select", &decoVal, []internalui.SelectOption{
-					{ID: "settings-brand-deco-off", Value: "off", Label: theme.Tr("关闭", "Off")},
-					{ID: "settings-brand-deco-minimal", Value: "minimal", Label: theme.Tr("简约", "Minimal")},
-					{ID: "settings-brand-deco-calm", Value: "calm", Label: theme.Tr("舒缓", "Calm")},
-					{ID: "settings-brand-deco-rich", Value: "rich", Label: theme.Tr("丰富", "Rich")},
-				}, &m.brandDecoPicker, "") {
+				if internalui.SettingsSegmented(c, "settings-brand-deco-seg", &decoIdx, []internalui.SegmentOption{
+					{ID: "settings-brand-deco-off", Label: theme.Tr("关闭", "Off")},
+					{ID: "settings-brand-deco-minimal", Label: theme.Tr("简约", "Minimal")},
+					{ID: "settings-brand-deco-calm", Label: theme.Tr("舒缓", "Calm")},
+					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
+				}) {
+					decoVal = decoVals[decoIdx]
 					saveDeco(func(d *model.BrandDeco) {
 						if decoVal == "off" {
 							d.Mode = model.BrandDecoOff
@@ -1040,14 +1030,16 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 			if decoOn {
-				m.brandTempoPicker.Compact = true
+				tempoVals := []string{"still", "slow", "leisurely", "brisk"}
+				tempoIdx := slices.Index(tempoVals, tempoVal)
 				internalui.SettingsRow(c, theme.Tr("动画速度", "Animation Speed"), func() {
-					if internalui.DropdownSelect(c, "settings-brand-tempo-select", &tempoVal, []internalui.SelectOption{
-						{ID: "settings-brand-tempo-still", Value: "still", Label: theme.Tr("静止", "Still")},
-						{ID: "settings-brand-tempo-slow", Value: "slow", Label: theme.Tr("缓慢", "Slow")},
-						{ID: "settings-brand-tempo-leisurely", Value: "leisurely", Label: theme.Tr("悠闲", "Leisurely")},
-						{ID: "settings-brand-tempo-brisk", Value: "brisk", Label: theme.Tr("轻快", "Brisk")},
-					}, &m.brandTempoPicker, "") {
+					if internalui.SettingsSegmented(c, "settings-brand-tempo-seg", &tempoIdx, []internalui.SegmentOption{
+						{ID: "settings-brand-tempo-still", Label: theme.Tr("静止", "Still")},
+						{ID: "settings-brand-tempo-slow", Label: theme.Tr("缓慢", "Slow")},
+						{ID: "settings-brand-tempo-leisurely", Label: theme.Tr("悠闲", "Leisurely")},
+						{ID: "settings-brand-tempo-brisk", Label: theme.Tr("轻快", "Brisk")},
+					}) {
+						tempoVal = tempoVals[tempoIdx]
 						saveDeco(func(d *model.BrandDeco) {
 							switch tempoVal {
 							case "still":
@@ -1181,15 +1173,15 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 			if m.Updater != nil {
 				srcMode = snap.SourceMode
 			}
-			srcVal := string(srcMode)
-			m.updateSourcePicker.Compact = true
+			srcModes := []updater.SourceMode{updater.SourceAuto, updater.SourceMirror, updater.SourceGitHub}
+			srcIdx := max(slices.Index(srcModes, srcMode), 0)
 			internalui.SettingsRow(c, theme.Tr("更新源", "Update Source"), func() {
-				if internalui.DropdownSelect(c, "settings-update-source-select", &srcVal, []internalui.SelectOption{
-					{ID: "settings-upd-src-auto", Value: string(updater.SourceAuto), Label: theme.Tr("自动", "Auto")},
-					{ID: "settings-upd-src-mirror", Value: string(updater.SourceMirror), Label: theme.Tr("国内加速", "Mirror")},
-					{ID: "settings-upd-src-github", Value: string(updater.SourceGitHub), Label: "GitHub"},
-				}, &m.updateSourcePicker, "") {
-					picked := updater.NormalizeSourceMode(srcVal)
+				if internalui.SettingsSegmented(c, "settings-update-source-seg", &srcIdx, []internalui.SegmentOption{
+					{ID: "settings-upd-src-auto", Label: theme.Tr("自动", "Auto")},
+					{ID: "settings-upd-src-mirror", Label: theme.Tr("国内加速", "Mirror")},
+					{ID: "settings-upd-src-github", Label: "GitHub"},
+				}) {
+					picked := srcModes[srcIdx]
 					if m.Updater != nil {
 						m.Updater.SetSourceMode(picked)
 					} else {
