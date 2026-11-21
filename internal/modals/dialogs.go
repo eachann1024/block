@@ -707,7 +707,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 	internalui.ModalCard(c, "export-modal", title, &open, 520, 480, func() {
 		ui.Column(c).FillWidth().Padding(22).Gap(16).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, title).FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
 				cls := internalui.IconButton(c, icons.Close, internalui.IconButtonOptions{
 					ID:    "export-close",
 					Label: theme.Tr("关闭", "Close"),
@@ -730,7 +730,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 				{model.ExportZIP, "ZIP"},
 			}
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
-				ui.Text(c, theme.Tr("导出格式", "Format")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("导出格式", "Format")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
 				ui.Row(c).FillWidth().Wrap().Gap(8).Children(func() {
 					for _, item := range formats {
 						style := internalui.ButtonSecondary
@@ -775,7 +775,7 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 
 			// Output path.
 			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				ui.Text(c, theme.Tr("输出路径", "Output Path")).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				ui.Text(c, theme.Tr("输出路径", "Output Path")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
 				in := ui.TextInput(c.Key("export-out-path"), &m.exportOutPath).
 					Placeholder("note.md").PlaceholderColor(pal.Placeholder).Label(theme.Tr("输出路径", "Output Path")).FillWidth()
 				internalui.Probe(in, "export-out-path")

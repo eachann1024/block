@@ -1636,7 +1636,7 @@ func renderTreeFileBadges(c *ui.Context, badges []plugins.ResolvedFileBadge, pal
 				if badge.Text != "" {
 					ui.Text(c, badge.Text).
 						Font("monospace").
-						FontSize(theme.FontMicro).
+						FontSize(theme.FontMeta).
 						FixedLineHeight(theme.LineMeta).
 						FontWeight(theme.WeightMono).
 						TextColor(toneCol).

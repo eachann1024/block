@@ -171,7 +171,7 @@ func renderPluginOverflowButton(c *ui.Context, p TitlebarProps, overflow []plugi
 				Center().Radius(theme.RadiusPill).Background(badgeBG).IgnoreInput(true).
 				Children(func() {
 					ui.Text(c, countText).FontSize(theme.FontMicro).LineHeight(1).
-						FontWeight(theme.WeightTitle).TextColor(badgeFG).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(badgeFG).SingleLine()
 				})
 		}
 	})
@@ -238,7 +238,7 @@ func renderPluginTitlebarButton(c *ui.Context, p TitlebarProps, b plugins.Resolv
 				Center().Radius(theme.RadiusPill).Background(pal.Accent).IgnoreInput(true).
 				Children(func() {
 					ui.Text(c, badge).FontSize(theme.FontMicro).LineHeight(1).
-						FontWeight(theme.WeightTitle).TextColor(pal.AccentText).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(pal.AccentText).SingleLine()
 				})
 		}
 	})
@@ -457,7 +457,7 @@ func renderSendAllSegment(c *ui.Context, p TitlebarProps) {
 		}
 		ui.Text(c, label).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
 		if p.AnnotDrafts > 0 && !p.AnnotGenerating {
-			ui.Text(c, strconv.Itoa(p.AnnotDrafts)).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Accent).SingleLine()
+			ui.Text(c, strconv.Itoa(p.AnnotDrafts)).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
 		}
 	})
 	blockui.Probe(btn, "annotations-send-all")

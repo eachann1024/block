@@ -714,7 +714,7 @@ func renderStoreDetailDownloads(c *ui.Context, ctrl *Controller, entry plugins.S
 	}
 	ui.Column(c.Key("app-store-detail-downloads")).AlignItems(ui.End).Shrink(0).Children(func() {
 		ui.Text(c, formatDownloadCount(downloads)).FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
-			FontWeight(theme.WeightTitle).FontFeatures("tnum").TextColor(pal.Text).SingleLine()
+			FontWeight(theme.WeightControl).FontFeatures("tnum").TextColor(pal.Text).SingleLine()
 		ui.Text(c, theme.Tr("次下载", "downloads")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 			TextColor(pal.TextSecondary).SingleLine()
 	})

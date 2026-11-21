@@ -517,8 +517,8 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 							})
 							ui.Row(c.Key("settings-installed-header")).FillWidth().Height(theme.SettingsSectionTitleH).
 								Padding(0, theme.Space4, 0, theme.Space10).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontBody).
-									FixedLineHeight(theme.LineBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Shrink(0)
+								ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
+									FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 								ui.Text(c, strconv.Itoa(m.PluginHost.InstalledCount())).Font("monospace").
 									FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).FontWeight(theme.WeightMono).
 									TextColor(pal.TextSecondary).SingleLine().Grow(1)
@@ -592,7 +592,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 										if disabled {
 											betaCol = pal.Placeholder
 										}
-										ui.Text(c, "Beta").FontSize(theme.FontMicro).FixedLineHeight(theme.LineMeta).
+										ui.Text(c, "Beta").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 											FontWeight(theme.WeightRegular).TextColor(betaCol).SingleLine().Shrink(0)
 									}
 								})
@@ -731,16 +731,13 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 		m.wasStoreDetail = inStoreDetail
 	}
 	scrollID, scroll := "settings-scroll", &m.settingsScroll
-	contentWidth, titleSize, padBottom := theme.SettingsContentMaxWidth, theme.FontHeading, float32(56)
-	if isPluginPage {
-		titleSize = theme.FontPage
-	}
+	contentWidth, padBottom := theme.SettingsContentMaxWidth, float32(56)
 	if IsStoreTab(tab) {
 		scrollID, scroll = "settings-store-detail-scroll", &m.storeDetailScroll
 	}
 	if listing {
 		scrollID, scroll = "settings-store-scroll", &m.storeScroll
-		contentWidth, titleSize, padBottom = theme.StoreContentMaxWidth, theme.FontPage, theme.Space24
+		contentWidth, padBottom = theme.StoreContentMaxWidth, theme.Space24
 		if padX > theme.Space16 {
 			padX = theme.StorePagePadding
 		}
@@ -774,7 +771,7 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 							}
 							title.Children(func() {
 								ui.Row(c).Grow(1).MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(titleSize).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+									ui.Text(c, m.resolveSettingsTabTitle(tab)).FontSize(theme.FontSettingsTitle).FixedLineHeight(theme.LineSettingsTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 									if IsPluginSystemTab(tab) && m.PluginHost != nil && m.PluginHost.TabIsBeta(tab) {
 										internalui.BetaBadge(c, false)
 									}
@@ -894,7 +891,7 @@ func (m *Manager) renderSettingsAITab(c *ui.Context) {
 			m.RenderAISettings(c)
 		} else {
 			internalui.SettingsSection(c, func() {
-				ui.Text(c, theme.Tr("AI 助手", "AI Assistant")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).TextColor(pal.Text)
+				internalui.SettingsSectionTitle(c, theme.Tr("AI 助手", "AI Assistant"), nil)
 				ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
 					FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})

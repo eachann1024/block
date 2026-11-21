@@ -86,8 +86,8 @@ func RenderPage(
 		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space12).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Row(c).Gap(theme.Space10).AlignItems(ui.Center).MinWidth(0).Grow(1).Children(func() {
 				ui.Text(c, page.Title).
-					FontSize(theme.FontPage).
-					FixedLineHeight(theme.LinePage).
+					FontSize(theme.FontSettingsTitle).
+					FixedLineHeight(theme.LineSettingsTitle).
 					FontWeight(theme.WeightTitle).
 					TextColor(pal.Text).
 					SingleLine().
@@ -824,7 +824,7 @@ func renderItem(
 							ui.Text(c, m.Label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 								TextColor(labelCol).SingleLine().Ellipsis("…")
 							ui.Text(c, m.Value).Font("monospace").FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
-								FontWeight(theme.WeightTitle).TextColor(valCol).SingleLine().Ellipsis("…")
+								FontWeight(theme.WeightControl).TextColor(valCol).SingleLine().Ellipsis("…")
 						})
 					}
 				})
@@ -1268,7 +1268,7 @@ func renderPreviewItem(c *ui.Context, pluginID string, pv *plugins.UIPreview) {
 		ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
 			ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(c, pv.Title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				if strings.TrimSpace(pv.Badge) != "" {
 					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
 						Background(pal.Selected).Border(1, ui.Transparent).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -1369,7 +1369,7 @@ func renderPreviewCards(c *ui.Context, pv *plugins.UIPreview, pcol theme.PluginP
 								FixedLineHeight(theme.LineMeta).TextColor(pcol.MutedFG).SingleLine()
 						}
 						ui.Text(c, card.Title).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-							FontWeight(theme.WeightTitle).TextColor(pcol.AccentFG).SingleLine().Ellipsis("…")
+							FontWeight(theme.WeightControl).TextColor(pcol.AccentFG).SingleLine().Ellipsis("…")
 						for _, ln := range splitPreviewLines(card.Body, 5) {
 							if strings.TrimSpace(ln) == "" {
 								continue

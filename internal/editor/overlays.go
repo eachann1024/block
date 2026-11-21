@@ -931,7 +931,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 	panel.Children(func() {
 		appUi.Scroll(c.Key("palette-scroll")).FillWidth().MaxHeight(appUi.MenuInnerMaxHeight(maxH)).Children(func() {
 			ui.Column(c.Key("palette-list")).FillWidth().Gap(theme.MenuGap).Children(func() {
-				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
+				ui.Text(c, theme.Tr("文字颜色", "Text color")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 					TextColor(pal.MenuMuted).Padding(theme.Space4, theme.Space10)
 				for i, sw := range swatches[:limit] {
 					name := sw.Name
@@ -967,7 +967,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 				}
 
 				ui.Box(c).FillWidth().Height(1).MarginY(theme.Space4).Background(pal.MenuSeparator)
-				ui.Text(c, theme.Tr("高亮背景", "Highlight")).FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).
+				ui.Text(c, theme.Tr("高亮背景", "Highlight")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
 					TextColor(pal.MenuMuted).Padding(theme.Space4, theme.Space10)
 
 				for j, bgName := range bgChoices {
@@ -2601,7 +2601,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 				}
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).Grow(1).MinWidth(0).Children(func() {
 					icons.Draw(c, icons.Sparkles, theme.IconAction, pal.MonoIconColors(pal.Accent))
-					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+					ui.Text(c, title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 				})
 				ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 					rejIc := icons.Close
@@ -2648,7 +2648,7 @@ func (s *Session) renderPlanDiffCard(c *ui.Context) {
 							Radius(theme.RadiusLG).Border(1, pal.Hairline).Clip().Children(func() {
 							ui.Row(c.Key("op-title")).FillWidth().Padding(theme.Space6, theme.Space10).Radius(theme.RadiusMD, theme.RadiusMD, 0, 0).
 								Background(pal.Shell).BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-								ui.Text(c, op.Page).FontSize(theme.FontBody).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+								ui.Text(c, op.Page).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 							})
 							selIdx := 0
 							for lineIdx, dl := range diff {

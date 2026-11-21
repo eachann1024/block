@@ -94,7 +94,7 @@ func BetaBadge(c *ui.Context, compact bool) {
 	ui.Row(c).Height(h).PaddingX(padX).Radius(theme.RadiusPill).Shrink(0).
 		Border(1, ring).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "Beta").
-			FontSize(theme.FontMicro).
+			FontSize(theme.FontMeta).
 			FixedLineHeight(theme.LineMeta).
 			FontWeight(theme.WeightRegular).
 			TextColor(pal.Warning).
@@ -102,11 +102,11 @@ func BetaBadge(c *ui.Context, compact bool) {
 	})
 }
 
-// BetaBadgePlain renders a muted, borderless 11px "Beta" text label for dense lists such as sidebars.
+// BetaBadgePlain renders a muted, borderless 12px "Beta" text label for dense lists such as sidebars.
 func BetaBadgePlain(c *ui.Context) {
 	pal := theme.Ocean()
 	ui.Text(c, "Beta").
-		FontSize(theme.FontMicro).
+		FontSize(theme.FontMeta).
 		FixedLineHeight(theme.LineMeta).
 		FontWeight(theme.WeightRegular).
 		TextColor(pal.TextSecondary).
@@ -123,7 +123,7 @@ func monochromeStatusBadge(c *ui.Context, label string, compact bool) {
 	ui.Row(c).Height(h).Gap(theme.Space4).Shrink(0).AlignItems(ui.Center).Children(func() {
 		icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
 		ui.Text(c, label).
-			FontSize(theme.FontMicro).
+			FontSize(theme.FontMeta).
 			FixedLineHeight(theme.LineMeta).
 			FontWeight(theme.WeightRegular).
 			TextColor(pal.TextSecondary).
@@ -154,7 +154,7 @@ func FileExtBadge(c *ui.Context, ext string, active bool) {
 		Background(pal.MenuHover).Border(1, pal.Hairline).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, ext).
 			Font("monospace").
-			FontSize(theme.FontMicro).
+			FontSize(theme.FontMeta).
 			FixedLineHeight(theme.LineMeta).
 			FontWeight(theme.WeightMono).
 			TextColor(fg).

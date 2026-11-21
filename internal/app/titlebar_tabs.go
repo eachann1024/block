@@ -189,7 +189,7 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, avail
 				TextColor(pal.TextSecondary).MaxWidth(120).SingleLine().Ellipsis("…").Shrink(0)
 		})
 		blockui.Probe(crumb, "titlebar-nb-crumb")
-		ui.Text(c, "/").FontSize(theme.FontTitle).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+		ui.Text(c, "/").FontSize(theme.FontBody).TextColor(pal.Placeholder).SingleLine().Shrink(0)
 	}
 
 	title := tabTitle(path)

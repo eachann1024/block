@@ -126,7 +126,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 
 					ui.Column(c).Gap(theme.Space4).Grow(1).MinWidth(0).Children(func() {
 						ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
-							ui.Text(c, title).FontSize(theme.FontEditor).FixedLineHeight(theme.LineTitle).
+							ui.Text(c, title).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
 								FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 
 							if snap.Notes.VersionCount > 1 {
@@ -134,7 +134,7 @@ func (m *Manager) renderUpdaterModal(c *ui.Context) {
 								ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).AlignItems(ui.Center).
 									Radius(theme.RadiusPill).Background(uPal.VersionPillBG).Border(1, uPal.VersionPillBorder).Children(func() {
 									ui.Text(c, countText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-										FontWeight(theme.WeightTitle).TextColor(uPal.VersionPillFG).SingleLine()
+										FontWeight(theme.WeightControl).TextColor(uPal.VersionPillFG).SingleLine()
 								})
 							}
 						})
@@ -335,7 +335,7 @@ func renderTaggedMergedSections(
 				ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space8).AlignItems(ui.Center).
 					Radius(theme.RadiusSM).Background(grp.bg).Children(func() {
 					ui.Text(c, grp.title).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						FontWeight(theme.WeightTitle).TextColor(grp.fg).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(grp.fg).SingleLine()
 				})
 				countLabel := fmt.Sprintf(updaterTr(showEn, "%d 项", "%d items"), len(grp.items))
 				ui.Text(c, countLabel).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
@@ -392,7 +392,7 @@ func renderVersionTimelineCard(
 					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).AlignItems(ui.Center).
 						Radius(theme.RadiusXS).Background(uPal.VersionPillBG).Children(func() {
 						ui.Text(c, updaterTr(showEn, "最新", "Latest")).FontSize(theme.FontMeta).
-							FixedLineHeight(theme.LineMeta).FontWeight(theme.WeightTitle).TextColor(uPal.VersionPillFG).SingleLine()
+							FixedLineHeight(theme.LineMeta).FontWeight(theme.WeightControl).TextColor(uPal.VersionPillFG).SingleLine()
 					})
 				}
 			})
@@ -449,7 +449,7 @@ func (m *Manager) renderUpdaterFooter(
 						)
 					}
 					ui.Text(c, titleText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 
 					var detailParts []string
 					if snap.TotalBytes > 0 && !snap.Preparing {
@@ -529,7 +529,7 @@ func (m *Manager) renderUpdaterFooter(
 				icons.DrawAnimated(c, icons.UpdateTangle, theme.IconAction, pal.DuoIconColors(pal.Accent), true)
 				ui.Text(c, updaterTr(showEn, "正在保存笔记并重启 Block…", "Saving notes and restarting Block…")).
 					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).Grow(1).MinWidth(0)
+					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
 			})
 			internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "正在重启…", "Restarting…"), nil, internalui.ButtonPrimary, true)
 		})

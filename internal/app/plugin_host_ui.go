@@ -568,8 +568,8 @@ func (h *pluginHostUI) renderDialog(c *ui.Context) {
 						pluginui.DrawDuoSpec(c, dlg.Icon, theme.IconRow, pal.DuoIconColors(pal.Text))
 					}
 					ui.Text(c, dlg.Title).
-						FontSize(theme.FontHeading).
-						FixedLineHeight(theme.LineHeading).
+						FontSize(theme.FontTitle).
+						FixedLineHeight(theme.LineTitle).
 						FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).
 						MinWidth(0).

@@ -230,7 +230,7 @@ func RenderStorageTreemap(
 					dot := ui.Box(c).Size(theme.Space8, theme.Space8).Shrink(0).Radius(theme.RadiusPill)
 					dot.Background(dot.AnimateColor("treemapDot-"+canvasKey, activeTC.Dot, FadeColor))
 					ui.Text(c, active.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
+						FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(0).SingleLine()
 					meta := active.Detail
 					if active.FileCount > 0 {
 						countLbl := fmt.Sprintf(theme.Tr("共 %d 个文件", "%d files"), active.FileCount)
@@ -247,7 +247,7 @@ func RenderStorageTreemap(
 				})
 				ui.Text(c, fmt.Sprintf("%s (%s)", FormatBytesIEC(active.Bytes), FormatPercent(active.Bytes, totalBytes))).
 					Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).Shrink(0).SingleLine()
+					FontWeight(theme.WeightControl).TextColor(pal.Text).Shrink(0).SingleLine()
 			})
 
 			if len(active.Entries) == 0 {
@@ -360,7 +360,7 @@ func renderTreemapSummaryHeader(c *ui.Context, sum *TreemapSummary) {
 			}
 			ui.Row(c).Gap(theme.Space10).AlignItems(ui.Baseline).Children(func() {
 				ui.Text(c, sum.TotalValue).Font("monospace").FontSize(theme.FontPage).FixedLineHeight(theme.LinePage).
-					FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+					FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 				if strings.TrimSpace(sum.SubText) != "" {
 					ui.Text(c, sum.SubText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 						TextColor(pal.TextSecondary).SingleLine()
@@ -378,7 +378,7 @@ func renderTreemapSummaryHeader(c *ui.Context, sum *TreemapSummary) {
 						ui.Text(c, m.Label).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 							TextColor(pal.TextSecondary).SingleLine()
 						ui.Text(c, m.Value).Font("monospace").FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-							FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+							FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
 					})
 				}
 			})
@@ -448,10 +448,10 @@ func renderBentoTile(
 			case bentoTierHero:
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space6).Children(func() {
 					ui.Text(c, item.Label).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontPage).FixedLineHeight(theme.LinePage).
-						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatPercent(item.Bytes, totalBytes)).Font("monospace").
 						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 						TextColor(tc.SubText).SingleLine()
@@ -465,10 +465,10 @@ func renderBentoTile(
 			case bentoTierSecondary:
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4).Children(func() {
 					ui.Text(c, item.Label).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
-						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).
-						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				})
 				ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).Children(func() {
 					ui.Text(c, FormatPercent(item.Bytes, totalBytes)).Font("monospace").
@@ -483,11 +483,11 @@ func renderBentoTile(
 
 			case bentoTierMedium:
 				ui.Text(c, item.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-					FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+					FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space2).Children(func() {
 					ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-						FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+						FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 					sub := FormatPercent(item.Bytes, totalBytes)
 					if item.FileCount > 0 {
 						sub = fmt.Sprintf(theme.Tr("%s · %d 项", "%s · %d"), sub, item.FileCount)
@@ -498,7 +498,7 @@ func renderBentoTile(
 
 			case bentoTierCompact:
 				ui.Text(c, item.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-					FontWeight(theme.WeightTitle).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
+					FontWeight(theme.WeightControl).TextColor(tc.TitleText).SingleLine().Ellipsis("…")
 				ui.Text(c, FormatBytesIEC(item.Bytes)).Font("monospace").
 					FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 					TextColor(tc.SubText).SingleLine().Ellipsis("…")
