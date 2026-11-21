@@ -185,14 +185,14 @@ example-sync/
          "action_feedback", "action_progress", "note_revision",
          "sidebar_sections", "file_badges", "sidebar_menu", "backdrops",
          "status_icon", "toast_icon", "notes_open", "log_actions", "panel_toggle",
-         "editor_insert_mode", "dialog_token", "checklist_add_folder"
+         "editor_insert_mode", "dialog_token", "checklist_add_folder", "item_icons"
        ]
      }
      ```
      - **运行时上下文**：`notebook_root` 仅在声明 `notes:read`、`notes:write` 或 `events:note_saved` 任一权限且目标笔记本非空时传入，否则为 `""`；`notebooks` 仅在声明 `notes:read` 时填充，否则为 `[]`。切换桌面笔记本不会立刻重启全部插件，仅在下次调用该插件且目标根目录与当前运行时上下文不同（含后台 `note.saved` 事件）时，宿主才关闭旧进程并按新 `notebook_root` 重新初始化。
      - `downloads_dir`（默认 `~/Downloads`，环境变量 `BLOCKMD_DOWNLOADS_DIR`）：**凡涉及导出文件、备份归档或清理转移的目录，一律默认输出到 `downloads_dir`**（单文件直接输出到 `downloads_dir/<文件名>`，多文件收拢到一个干净文件夹内，严禁默认塞进 `apps-data` 隐藏目录或在笔记本内新建 `.trash-*` 等隐藏目录）。
      - `ui_capabilities` 可能在旧宿主中省略，用于渐进启用特性：
-       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）。
+       `kv_tooltip`（`kv` 行提示）、`treemap`（空间分布图控件）、`host_perf`（`host.perf.snapshot`；注意本地 CLI 校验器尚未注入性能回调，调用会返回 `-32005`，插件应做降级处理）、`checklist`（多选勾选列表）、`checklist_add_folder`（`checklist.add_folder` 加号添加文件夹）、`form_layout`（`layout` 与 `group`）、`multi_notebook`（多笔记本列表与读写）、`card_collapse`（卡片折叠）、`metric_tone`（`metrics[].tone` 柔和色板）、`log_columns`（`log_list` 对齐列、`sub_text`/`ratio`/`tone`/`tooltip` 与 `→` 映射模式）、`file_picker`（`folder.accept_extensions`）、`action_feedback`（`plugin.action` 的 `ok`/`tone` 与内联/按钮反馈）、`action_progress`（`host.action.progress`）、`note_revision`（`revision`/`expected_revision` 乐观并发）、`sidebar_sections`（左侧栏插件分区）、`file_badges`（文件树行尾角标）、`sidebar_menu`（左侧栏文件树右键菜单）、`backdrops`（编辑区自定义矢量背景）、`status_icon`（底部状态栏图标）、`toast_icon`（Toast 图标）、`notes_open`（`host.notes.open` 跳转打开笔记）、`log_actions`（`log_list` 条目点击触发 `action_id`）、`panel_toggle`（`host.ui.toggle_panel` 原子切换侧栏面板）、`editor_insert_mode`（`host.editor.insert` 支持 `"mode": "insert"|"replace"` 非破坏插入）、`dialog_token`（`host.ui.open_dialog` 返回宿主确认句柄 `dialog_token`）、`item_icons`（`switch` / `kv` 行前置图标 `icon` 与 `icon_strip` 图标条）。
    - 返回 `result`：`{"ready": true}`。
 
 2. **`plugin.render`**
@@ -441,6 +441,7 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
      "value": true
    }
    ```
+   - **`icon`（可选，需 `"item_icons"` 能力；`kv` 的每行 `rows[].icon` 同理）**：行首图标。二选一：`{"name": "<宿主内置图标名>"}`（小写字母、数字与 `-`，未知名称渲染为空白），或与 `DuoIconSpec` 同形的内联矢量 `{"view_box": "0 0 24 24", "stroke_paths": [...], "fill_paths": [...], "accent_paths": [...]}`；可加 `tooltip`。`host.titlebar.get_items` 返回的 `items[].icon` 可直接透传。
 7. **`actions`（卡片内操作按钮行）**：不含 `id`/`label`，仅含非空 `buttons` 数组：
    ```json
    {
@@ -575,6 +576,15 @@ macOS 使用通知中心、钥匙串和 Dock。macOS 通知的点击目标可跨
     }
     ```
     其中 `total_bytes` 与两级 `bytes` 均为无符号整数（负数或小数会解码失败）；`summary` 若存在，`total_value` 必填（`summary.metrics[].tone` 可解码但渲染不消费）；每个 `tile` 的 `id`（唯一）与 `label` 必填，`color` 默认取 `tile.id`（柔和色板键）；每条 `entries` 的 `name` 必填，`path`/`count` 可选（`count <= 0` 汇总时按 `1` 计数）。
+
+15. **`icon_strip`（图标条预览，需 `"item_icons"` 能力）**：不含 `id`，`icons` 为图标数组（格式同 `switch.icon`，最多 32 个，可各带 `tooltip`），宿主按顺序右对齐绘制成顶栏样式的一行；`label` 可选（显示在左侧），`icons` 为空时显示可选的 `empty_text`。不能放入 `group`：
+    ```json
+    {
+      "kind": "icon_strip",
+      "icons": [{ "name": "message-square", "tooltip": "反馈" }, { "name": "more", "tooltip": "页面操作" }],
+      "empty_text": "未显示任何图标"
+    }
+    ```
 
 ---
 
@@ -780,7 +790,8 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 ### 8.5 UI 贡献宿主方法（Plugin -> Host）
 
 1. **`host.titlebar.get_items`**（需 `"ui:titlebar"`，参数 `{}`）
-   - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": ""}]}`
+   - 返回：`{"items": [{"id": "feedback", "label": "反馈", "locked": false, "hidden": false, "plugin": "", "icon": {"name": "message-square"}}]}`
+   - `icon` 为该槽位在顶栏实际使用的图标：内置槽位为宿主图标名 `{"name": ...}`，插件按钮为其声明的内联矢量（`view_box` / `stroke_paths` 等），可直接透传到 `switch.icon` 或 `icon_strip.icons`（旧宿主不返回该字段）。
    - 内置槽位 ID：`"feedback"`、`"ai"`、`"send_all"`、`"wrap"`、`"zoom"`、`"reveal"`、`"more"`（`locked: true`）；插件按钮槽位 ID 为 `"plugin:<pluginID>/<buttonID>"`。
 2. **`host.titlebar.set_hidden`**（需 `"ui:titlebar"`）
    - 参数：`{"hidden": ["feedback", "plugin:my-plugin/btn"]}`（按插件隔离持久化于 `<BlockAppData>/plugins/contrib-state.json`，停用插件时自动收回其隐藏设置）。
