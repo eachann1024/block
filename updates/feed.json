@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T09:25:04.140Z",
-  "latest_version": "1.0.897",
-  "latest_tag": "v1.0.897",
+  "updated_at": "2026-11-21T09:45:09.190Z",
+  "latest_version": "1.0.898",
+  "latest_tag": "v1.0.898",
   "releases": [
+    {
+      "version": "1.0.898",
+      "tag": "v1.0.898",
+      "published_at": "2026-11-21T09:45:08Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.898",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "批注边栏卡片中的 AI 回答现在会以只读 Markdown 格式呈现。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "AI answers in margin cards now render as read-only Markdown."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-macos-arm64.dmg",
+          "size": 15056067,
+          "sha256": "1a00ba7c788d0a9a5801ebc5504dbabbf7fc5fc8c2fd629c619a421539216ce9"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-macos-x64.dmg",
+          "size": 16574356,
+          "sha256": "1c6c2534e81d89466acdcf14347a2ba42c25058a1af19104a0586c7217846fca"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-windows-x64-setup.exe",
+          "size": 12053453,
+          "sha256": "0a01e69b62ebb09194a88b3d55e43f1d54c1c397d033b4efa37fff5203a1dc4e"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-linux-x64.deb",
+          "size": 10636894,
+          "sha256": "6c4310880f6501cf3c42ccf269f1af5f1ee10f117066962c6c6a14caa051950a"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.898/block-linux-x64.AppImage",
+          "size": 23575032,
+          "sha256": "ffe670210c5a2fed8e4d8ab3b8136ff51ab683d540b064bc4a8e8e81f87787f2"
+        }
+      ]
+    },
     {
       "version": "1.0.897",
       "tag": "v1.0.897",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-macos-arm64.dmg",
-          "size": 15058805,
-          "sha256": "05fb56733d5942a3d58799abd6f9ce141d1bbda485ab1cbedd38d476f9e17c37"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-macos-x64.dmg",
-          "size": 16574089,
-          "sha256": "f922f1eec1868d5522f9b4e2574aea7771450141967fa6fd3dcd78031faf4e1f"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-windows-x64-setup.exe",
-          "size": 12052399,
-          "sha256": "cfe7e4bde26bc3c5246f489a23ed94dbd8f3996c4142635ba14f9eba3b628cea"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-linux-x64.deb",
-          "size": 10645320,
-          "sha256": "8b356542e27afc57b3cd06fb739d1f6f6fed30c4c4ec66037a59d9f23e740994"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.897/block-linux-x64.AppImage",
-          "size": 23570936,
-          "sha256": "4b28b311c99500857c677a087d84dd936de62e333a294a7281af888026eae761"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.896",
@@ -2554,69 +2579,6 @@
           "The release ships the five installers, and a forced build still gets notes for every commit since the previous release.",
           "The Linux package can be published for Arch users."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.355",
-      "tag": "v1.0.355",
-      "published_at": "2026-11-07T05:00:27Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.355",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "AI 对话新增 Pi 后端，可在设置中选择显示哪些后端，智能体默认使用完整权限。",
-          "编辑器左上角新增大纲栏，悬停可查看标题，窄窗口下自动隐藏。",
-          "新增实时性能与存储监视器，用于查看应用运行状态与笔记本占用情况。",
-          "鼠标悬停在 AI 回复上时，右下角显示复制按钮。"
-        ],
-        "improvements": [
-          "AI 执行过程改为轻量文字展示，步骤默认折叠，并支持展开收起动画。",
-          "待确认的笔记修改计划可直接从对话中打开并在编辑器内审阅。",
-          "文件引用支持打开所在文件夹，并统一图标。",
-          "文件列表默认隐藏非 Markdown 文件，可在设置中调整。",
-          "调整设置页的关闭按钮和侧栏布局。",
-          "性能与存储信息改为统一卡片展示，笔记本占用单独列出。",
-          "macOS 主窗口与速记窗口可独立显示和隐藏，重新打开应用时显示主窗口。"
-        ],
-        "fixes": [
-          "修复新建对话后输入框没有获得焦点的问题。",
-          "修复切换对话时可能卡顿的问题。",
-          "修复“关于”窗口打开时的菜单响应问题。",
-          "恢复粘贴 Markdown 内容时的格式识别，以及使用快捷键唤出隐藏主窗口的功能。",
-          "修复小窗口中斜杠菜单滚动时抖动的问题。",
-          "修复跨多个选中块添加批注或回应时的问题，多行内容保存在同一条记录中。",
-          "修复工具栏、级联菜单和弹出窗口的位置与边缘对齐问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Added Pi backend for AI chat, settings to choose visible backends, and default full agent permissions.",
-          "Added an outline bar in the top-left corner of the editor that displays headings on hover and automatically hides in narrow windows.",
-          "Added a real-time performance and storage monitor to view application activity and notebook disk usage.",
-          "Hovering over an AI response now displays a copy button in the bottom-right corner."
-        ],
-        "improvements": [
-          "Streamlined the AI process view into lightweight text, with steps collapsed by default and animated expand and collapse.",
-          "Pending note modification plans can now be opened directly from chat into the editor for review.",
-          "File references now support opening the containing folder and use consistent icons.",
-          "The file list now hides non-Markdown files by default, which can be configured in settings.",
-          "Adjusted the settings page layout by updating the close button and simplifying the sidebar.",
-          "Consolidated performance and storage information into unified cards, with notebook storage listed separately.",
-          "The macOS main window and quick-note window can now be shown or hidden independently, and reopening the app displays the main window."
-        ],
-        "fixes": [
-          "Fixed an issue where the input box did not gain focus after starting a new chat.",
-          "Fixed potential stutter when switching between chats.",
-          "Fixed menu responsiveness issues when opening the About window.",
-          "Restored Markdown formatting recognition when pasting content, and restored the shortcut to summon the hidden main window.",
-          "Fixed scrolling jitter in the slash menu within compact windows.",
-          "Fixed issues when adding annotations or reactions across multiple selected blocks, keeping multiline content in a single record.",
-          "Fixed positioning and edge alignment issues for toolbars, cascading menus, and popups."
-        ],
-        "other": []
       },
       "assets": []
     }
