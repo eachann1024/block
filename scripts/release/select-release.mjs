@@ -239,8 +239,8 @@ function summary(line) {
 
 function warnGeneration(notes) {
   if (!notes?.generationFailed) return;
-  const reason = String(notes.reason || "grok-4.7 没有生成更新说明").replace(/[\r\n%]+/g, " ").replace(/::/g, " ").slice(0, 240);
-  const text = `grok-4.7 没有生成更新说明（${reason}）。本次发布说明不是模型结果。`;
+  const reason = String(notes.reason || "没有可用的模型").replace(/[\r\n%]+/g, " ").replace(/::/g, " ").slice(0, 480);
+  const text = `AI 没有生成更新说明（${reason}）。本次停止发版，不会用拼凑文案。`;
   console.log(`::warning title=release-notes::${text}`);
   summary(text);
 }
@@ -482,6 +482,7 @@ async function main() {
       summary("没有面向用户的新提交，因 force=true 使用手动发布说明。");
     } else {
       summary(`更新说明没有覆盖区间里的 ${commits.length} 条提交（${notes.reason || "空"}），停止发布。`);
+      if (notes.generationFailed) process.exitCode = 1;
       const plan = {
         shouldBuild: false,
         publish: false,
@@ -521,10 +522,8 @@ async function main() {
     auto_bump: autoBump,
   });
   const notesLabel = notes.source === "polished" && notes.model
-    ? `grok-4.7 响应模型 ${notes.model}`
-    : notes.generationFailed
-      ? "本地规则，grok-4.7 未生成"
-      : (notes.source || "fallback");
+    ? `AI 模型 ${notes.model}`
+    : (notes.source || "none");
   summary(`准备发布 Block ${tag}（autoBump=${autoBump}, notes=${notesLabel}）`);
 }
 

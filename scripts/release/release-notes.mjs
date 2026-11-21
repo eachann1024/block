@@ -2,20 +2,24 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describeCommit } from "./commit-blurb.mjs";
 import {
   EN_SECTIONS,
-  MAX_PER_SECTION,
   ZH_SECTIONS,
   lineMixesLanguages,
   validateReleaseNotes,
 } from "./release-notes-check.mjs";
 
-export const DEFAULT_CHANGELOG_MODEL = "grok-4.7";
 export { lineMixesLanguages, validateReleaseNotes };
 
-const GROK_47 = /^grok-4\.7(?:@[\w.+-]{1,32})?$/;
 const MAGPIE_ORIGIN = "http://100.115.90.80:3425";
+const GEMINI_CHAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+
+// 按顺序尝试，前一个失败才换下一个：Google AI Studio → Magpie gpt-6-luna → Magpie deepseek-flash（付费）。
+export const CHANGELOG_PROVIDERS = [
+  { model: "gemini-3.8-flash", via: "gemini" },
+  { model: "gpt-6-luna", via: "magpie" },
+  { model: "deepseek-flash", via: "magpie" },
+];
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(DIR, "../..");
@@ -140,74 +144,81 @@ function shortToken(value) {
   return /^[A-Za-z0-9_.:-]{1,40}$/.test(token) ? token : "";
 }
 
-function magpieErrorToken(data) {
+function errorToken(body) {
+  const data = Array.isArray(body) ? body[0] : body;
   if (!data || typeof data !== "object") return "";
   const error = data.error;
   if (typeof error === "string") return shortToken(error);
   if (error && typeof error === "object") {
-    return shortToken(error.type) || shortToken(error.code) || shortToken(error.kind);
+    return shortToken(error.status) || shortToken(error.type) || shortToken(error.code) || shortToken(error.kind);
   }
   return shortToken(data.type) || shortToken(data.code);
 }
 
-export function publicFailure(err) {
-  if (typeof err?.publicReason === "string" && err.publicReason) return err.publicReason;
+export function publicFailure(err, model = "模型") {
+  if (typeof err?.publicReason === "string" && err.publicReason) return `${model}：${err.publicReason}`;
   const name = err?.name || "";
   const msg = String(err?.message || "");
-  if (name === "TimeoutError" || /The operation was aborted|timeout/i.test(msg)) {
-    return "连接 Magpie 超时，grok-4.7 没有返回结果";
-  }
-  if (name === "AbortError") return "连接 Magpie 已中止，grok-4.7 没有返回结果";
+  if (name === "TimeoutError" || /The operation was aborted|timeout/i.test(msg)) return `${model}：请求超时`;
+  if (name === "AbortError") return `${model}：请求已中止`;
   const http = /^HTTP (\d{3})(?: ([A-Za-z0-9_.:-]{1,40}))?$/.exec(msg);
-  if (http) {
-    const code = http[2] ? `（${http[2]}）` : "";
-    return `Magpie HTTP ${http[1]}${code}，没有可用的 grok-4.7 结果`;
-  }
-  if (/redirect/i.test(msg)) return "Magpie 拒绝跳转到其他地址，未采用该结果";
-  if (/fetch failed|ECONN|ENOTFOUND|EHOSTUNREACH|network/i.test(msg)) {
-    return "无法连接 Magpie，grok-4.7 没有返回结果";
-  }
-  return "grok-4.7 没有生成更新说明";
+  if (http) return `${model}：HTTP ${http[1]}${http[2] ? `（${http[2]}）` : ""}`;
+  if (/redirect/i.test(msg)) return `${model}：拒绝跳转到其他地址`;
+  if (/fetch failed|ECONN|ENOTFOUND|EHOSTUNREACH|network/i.test(msg)) return `${model}：无法连接`;
+  return `${model}：没有生成更新说明`;
 }
 
-export function magpieHttpFailure(status, data) {
-  const token = magpieErrorToken(data);
-  const err = new Error(token ? `HTTP ${status} ${token}` : `HTTP ${status}`);
-  err.publicReason = publicFailure(err);
-  return err;
-}
-
-export function resolveChangelogModel(env) {
-  const requested = env.CHANGELOG_MODEL?.trim() || DEFAULT_CHANGELOG_MODEL;
-  if (!GROK_47.test(requested)) {
-    return { ok: false, reason: "CHANGELOG_MODEL 必须是 grok-4.7，未调用其他模型" };
-  }
-  return { ok: true, model: requested };
+function httpFailure(status, body) {
+  const token = errorToken(body);
+  return new Error(token ? `HTTP ${status} ${token}` : `HTTP ${status}`);
 }
 
 export function resolveMagpieChatUrl(baseUrl) {
   const raw = String(baseUrl || "").trim();
-  if (!raw) return { ok: false, reason: "未配置 MAGPIE_BASE_URL，未调用 grok-4.7" };
+  if (!raw) return { ok: false, reason: "未配置 MAGPIE_BASE_URL" };
   let url;
   try {
     url = new URL(raw);
   } catch {
-    return { ok: false, reason: "MAGPIE_BASE_URL 不是合法 URL，未调用模型" };
+    return { ok: false, reason: "MAGPIE_BASE_URL 不是合法 URL" };
   }
-  if (url.username || url.password) {
-    return { ok: false, reason: "MAGPIE_BASE_URL 不能携带凭据，未调用模型" };
+  if (url.username || url.password || url.search || url.hash) {
+    return { ok: false, reason: "MAGPIE_BASE_URL 不能带凭据、查询或片段" };
   }
   if (url.protocol !== "http:" || url.hostname !== "100.115.90.80" || url.port !== "3425") {
-    return { ok: false, reason: "MAGPIE_BASE_URL 只能是 http://100.115.90.80:3425，未调用其他地址" };
-  }
-  if (url.search || url.hash) {
-    return { ok: false, reason: "MAGPIE_BASE_URL 不能带查询或片段，未调用模型" };
+    return { ok: false, reason: "MAGPIE_BASE_URL 只能是 http://100.115.90.80:3425" };
   }
   const path = url.pathname.replace(/\/+$/, "");
-  if (path !== "" && path !== "/v1") {
-    return { ok: false, reason: "MAGPIE_BASE_URL 路径只能是空或 /v1，未调用模型" };
-  }
+  if (path !== "" && path !== "/v1") return { ok: false, reason: "MAGPIE_BASE_URL 路径只能是空或 /v1" };
   return { ok: true, url: `${MAGPIE_ORIGIN}/v1/chat/completions` };
+}
+
+// 把配置好的模型按顺序排出来；没配好的写明原因，不调用。
+export function resolveProviders(env) {
+  const ready = [];
+  const skipped = [];
+  for (const { model, via } of CHANGELOG_PROVIDERS) {
+    if (via === "gemini") {
+      const key = String(env.GEMINI_API_KEY || "").trim();
+      if (!key) {
+        skipped.push(`${model}：未配置 GEMINI_API_KEY`);
+        continue;
+      }
+      ready.push({ model, url: GEMINI_CHAT_URL, headers: { "content-type": "application/json", authorization: `Bearer ${key}` } });
+      continue;
+    }
+    if (env.MAGPIE_REACHABLE === "no") {
+      skipped.push(`${model}：CI 未连通 Magpie`);
+      continue;
+    }
+    const endpoint = resolveMagpieChatUrl(env.MAGPIE_BASE_URL);
+    if (!endpoint.ok) {
+      skipped.push(`${model}：${endpoint.reason}`);
+      continue;
+    }
+    ready.push({ model, url: endpoint.url, headers: { "content-type": "application/json" } });
+  }
+  return { ready, skipped };
 }
 
 function messageText(content) {
@@ -220,26 +231,25 @@ function messageText(content) {
   }).join("");
 }
 
+function baseModel(name) {
+  return String(name || "").trim().toLowerCase().split("@")[0].split("/").pop();
+}
+
 export function readCompletion(requested, data) {
-  const used = typeof data?.model === "string" ? data.model.trim() : "";
-  if (!GROK_47.test(used) || used.toLowerCase().split("@")[0] !== "grok-4.7") {
-    const err = new Error("响应没有 model");
-    err.publicReason = "响应没有 grok-4.7 的 model，不能当作生成成功";
-    throw err;
-  }
-  if (requested.toLowerCase().split("@")[0] !== "grok-4.7") {
-    const err = new Error("请求模型不是 grok-4.7");
-    err.publicReason = "请求模型不是 grok-4.7，未采用该结果";
+  const used = typeof data?.model === "string" && data.model.trim() ? data.model.trim() : requested;
+  if (baseModel(used) !== baseModel(requested)) {
+    const err = new Error("响应模型不符");
+    err.publicReason = `响应模型是 ${shortToken(used) || "未知"}，未采用`;
     throw err;
   }
   const raw = messageText(data?.choices?.[0]?.message?.content);
   if (!raw.trim()) {
     const err = new Error("模型返回为空");
-    err.publicReason = "响应没有 choices 内容，不能当作 grok-4.7 生成成功";
+    err.publicReason = "返回内容为空";
     err.retry = true;
     throw err;
   }
-  return { model: used, raw };
+  return { model: baseModel(used), raw };
 }
 
 async function readJsonBody(res) {
@@ -262,19 +272,20 @@ function commitLines(commits) {
   });
 }
 
-async function polishBatch({ version, commits, url, headers, model, system }) {
+async function polishBatch({ version, commits, provider, system }) {
+  const { model, url, headers } = provider;
   const inputLines = commitLines(commits);
   if (!inputLines.length) return { status: "empty", model };
   const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n")}`;
   let lastRaw = "";
-  let failure = "grok-4.7 没有生成更新说明";
+  let failure = `${model}：没有生成更新说明`;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const messages = [{ role: "system", content: system }, { role: "user", content: asked }];
     if (attempt > 1 && lastRaw) {
       messages.push({ role: "assistant", content: lastRaw });
       messages.push({
         role: "user",
-        content: "Proofread and rewrite. The previous draft failed release-note validation. Keep one language per line. English above ---, Simplified Chinese below. Output markdown only.",
+        content: "Proofread and rewrite. The previous draft failed release-note validation. Keep one language per line, one bullet per commit, English above ---, Simplified Chinese below. Output markdown only.",
       });
     }
     try {
@@ -286,10 +297,10 @@ async function polishBatch({ version, commits, url, headers, model, system }) {
         body: JSON.stringify({ model, temperature: 0.2, messages }),
       });
       const data = await readJsonBody(res);
-      if (!res.ok) throw magpieHttpFailure(res.status, data);
+      if (!res.ok) throw httpFailure(res.status, data);
       if (!data) {
         const err = new Error("响应不是 JSON");
-        err.publicReason = "响应不是 JSON，没有 grok-4.7 结果";
+        err.publicReason = "响应不是 JSON";
         throw err;
       }
       const completion = readCompletion(model, data);
@@ -298,14 +309,11 @@ async function polishBatch({ version, commits, url, headers, model, system }) {
       try {
         markdown = validateReleaseNotes(completion.raw);
       } catch {
-        const err = new Error("生成结果未通过更新说明校验");
-        err.publicReason = "生成结果未通过更新说明校验";
-        err.retry = true;
-        throw err;
+        markdown = "";
       }
       if (!markdown) {
-        const err = new Error("模型返回为空");
-        err.publicReason = "响应没有可用的更新说明";
+        const err = new Error("生成结果未通过更新说明校验");
+        err.publicReason = "生成结果未通过更新说明校验";
         err.retry = true;
         throw err;
       }
@@ -318,7 +326,7 @@ async function polishBatch({ version, commits, url, headers, model, system }) {
       }
       return { status: "polished", markdown, model: completion.model };
     } catch (err) {
-      failure = publicFailure(err);
+      failure = publicFailure(err, model);
       if (!err?.retry) break;
     }
   }
@@ -358,53 +366,49 @@ function mergePolishedBatches(markdowns) {
   return validateReleaseNotes(`${en}\n\n---\n\n${zh}`);
 }
 
-export async function polishReleaseNotes({ version, commits, env = process.env }) {
-  if (env.MAGPIE_REACHABLE === "no") {
-    return { status: "fallback", reason: "CI 未连通 100.115.90.80:3425，未调用 grok-4.7" };
-  }
-  const modelResult = resolveChangelogModel(env);
-  if (!modelResult.ok) return { status: "fallback", reason: modelResult.reason };
-  const endpoint = resolveMagpieChatUrl(env.MAGPIE_BASE_URL);
-  if (!endpoint.ok) return { status: "fallback", reason: endpoint.reason };
-  const model = modelResult.model;
-  if (!commits.length) return { status: "empty", model };
-  const headers = { "content-type": "application/json" };
-  const system = readFileSync(PROMPT_PATH, "utf8");
-  const url = endpoint.url;
-
+async function polishWith({ version, commits, provider, system, deadline }) {
   if (commits.length <= BATCH_THRESHOLD) {
-    return polishBatch({ version, commits, url, headers, model, system });
+    return polishBatch({ version, commits, provider, system });
   }
-
   const batchMarkdowns = [];
-  let usedModel = "";
-  const deadline = Date.now() + MAX_POLISH_MS;
   for (let offset = 0; offset < commits.length; offset += BATCH_SIZE) {
-    if (Date.now() >= deadline) {
-      return { status: "fallback", reason: "grok-4.7 多批生成超出时间预算，改用本地规则" };
-    }
+    if (Date.now() >= deadline) return { status: "fallback", reason: `${provider.model}：多批生成超出时间预算` };
     const batch = commits.slice(offset, offset + BATCH_SIZE);
-    const result = await polishBatch({ version, commits: batch, url, headers, model, system });
+    const result = await polishBatch({ version, commits: batch, provider, system });
     if (result.status !== "polished") {
       return result.status === "fallback"
         ? result
-        : { status: "fallback", reason: `第 ${offset / BATCH_SIZE + 1} 批没有生成结果` };
+        : { status: "fallback", reason: `${provider.model}：第 ${offset / BATCH_SIZE + 1} 批没有生成结果` };
     }
-    if (!result.model) return { status: "fallback", reason: "响应没有 grok-4.7 的 model，不能当作生成成功" };
-    usedModel = result.model;
     batchMarkdowns.push(result.markdown);
   }
   try {
     const markdown = mergePolishedBatches(batchMarkdowns);
-    if (!markdown || !usedModel) return { status: "fallback", reason: "生成结果未通过更新说明校验" };
+    if (!markdown) return { status: "fallback", reason: `${provider.model}：生成结果未通过更新说明校验` };
     const listed = listedItems(markdown);
-    if (listed < commits.length) {
-      return { status: "fallback", reason: `条目数 ${listed}/${commits.length}` };
-    }
-    return { status: "polished", markdown, model: usedModel };
+    if (listed < commits.length) return { status: "fallback", reason: `${provider.model}：条目数 ${listed}/${commits.length}` };
+    return { status: "polished", markdown, model: provider.model };
   } catch {
-    return { status: "fallback", reason: "生成结果未通过更新说明校验" };
+    return { status: "fallback", reason: `${provider.model}：生成结果未通过更新说明校验` };
   }
+}
+
+export async function polishReleaseNotes({ version, commits, env = process.env }) {
+  if (!commits.length) return { status: "empty" };
+  const { ready, skipped } = resolveProviders(env);
+  const reasons = [...skipped];
+  const system = readFileSync(PROMPT_PATH, "utf8");
+  const deadline = Date.now() + MAX_POLISH_MS;
+  for (const provider of ready) {
+    if (Date.now() >= deadline) {
+      reasons.push(`${provider.model}：总时间预算已用完，未调用`);
+      continue;
+    }
+    const result = await polishWith({ version, commits, provider, system, deadline });
+    if (result.status === "polished" && result.markdown) return { ...result, attempts: reasons };
+    reasons.push(result.reason || `${provider.model}：没有生成更新说明`);
+  }
+  return { status: "fallback", reason: reasons.join("；") || "没有可用的模型" };
 }
 
 function listedItems(markdown) {
@@ -425,76 +429,6 @@ function renderHalf(title, sections, buckets, lang) {
   return any ? lines.join("\n") : "";
 }
 
-function sanitizeFallbackBullet(text, cjk) {
-  let clean = String(text || "")
-    .replace(/`/g, "")
-    .replace(/\(#\d+\)/g, "")
-    .replace(/#\d+/g, "")
-    .replace(/\b[0-9a-f]{7,40}\b/gi, "")
-    .replace(/\b(?:gpui|wgpu|wasm|ipc|debounce|typecheck)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!clean) return "";
-  if (cjk) {
-    clean = clean.replace(/[.!?]+$/, "").trim();
-    if (!/[。！？]$/.test(clean)) clean += "。";
-  } else {
-    clean = clean.replace(/[。！？]+$/, "").trim();
-    if (!/[.!?]$/.test(clean)) clean += ".";
-  }
-  return clean;
-}
-
-function isValidFallbackPair(zh, en) {
-  if (!zh || !en) return false;
-  if (lineMixesLanguages(`- ${zh}`) || lineMixesLanguages(`- ${en}`)) return false;
-  try {
-    validateReleaseNotes(`## English\n\n### Improvements\n- ${en}\n\n---\n\n## 中文\n\n### 改进\n- ${zh}`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function fallbackReleaseNotes(commits) {
-  const buckets = [
-    { zh: [], en: [], seen: new Set() },
-    { zh: [], en: [], seen: new Set() },
-    { zh: [], en: [], seen: new Set() },
-    { zh: [], en: [], seen: new Set() },
-  ];
-  const kindIndex = { feat: 0, improve: 1, fix: 2, other: 3 };
-  const overflowSummary = {
-    zh: "以及更多细节优化与稳定性改进。",
-    en: "Additional refinements and stability improvements.",
-  };
-  for (const commit of commits.filter((item) => !isExcludedCommit(item))) {
-    const pair = describeCommit(commit);
-    const rawEn = commit.releaseNoteEn?.trim() ? commit.releaseNoteEn : pair.en;
-    const zh = sanitizeFallbackBullet(pair.zh, true);
-    const en = sanitizeFallbackBullet(rawEn, false);
-    const bucket = buckets[kindIndex[pair.kind] ?? 3];
-    if (!isValidFallbackPair(zh, en)) continue;
-    const key = `${zh}\x00${en}`;
-    if (bucket.seen.has(key)) continue;
-    if (bucket.zh.length >= MAX_PER_SECTION - 1) {
-      if (!bucket.seen.has("__overflow__")) {
-        bucket.seen.add("__overflow__");
-        bucket.zh.push(overflowSummary.zh);
-        bucket.en.push(overflowSummary.en);
-      }
-      continue;
-    }
-    bucket.seen.add(key);
-    bucket.zh.push(zh);
-    bucket.en.push(en);
-  }
-  const en = renderHalf("## English", EN_SECTIONS, buckets, "en");
-  const zh = renderHalf("## 中文", ZH_SECTIONS, buckets, "zh");
-  if (!en || !zh) return "";
-  return validateReleaseNotes(`${en}\n\n---\n\n${zh}`);
-}
-
 export async function buildReleaseNotes({ version, commits, env = process.env }) {
   const userCommits = commits.filter((commit) => !isExcludedCommit(commit));
   if (userCommits.length === 0) {
@@ -504,23 +438,8 @@ export async function buildReleaseNotes({ version, commits, env = process.env })
   if (polished.status === "polished" && polished.model) {
     return { skip: false, source: "polished", model: polished.model, generationFailed: false, markdown: polished.markdown };
   }
-  const reason = polished.reason || "grok-4.7 没有生成更新说明";
-  try {
-    const markdown = fallbackReleaseNotes(userCommits);
-    const listed = markdown ? listedItems(markdown) : 0;
-    if (markdown && listed > 0) {
-      return { skip: false, source: "fallback", reason, generationFailed: true, markdown };
-    }
-    return {
-      skip: true,
-      source: "fallback",
-      generationFailed: true,
-      reason: `本地规则只写了 ${listed}/${userCommits.length} 条（${reason}）`,
-      markdown: "",
-    };
-  } catch {
-    return { skip: true, source: "fallback", generationFailed: true, reason, markdown: "" };
-  }
+  // 所有模型都失败时不再拼凑文案，交给调用方停止发版。
+  return { skip: false, source: "none", generationFailed: true, reason: polished.reason || "没有可用的模型", markdown: "" };
 }
 
 if (import.meta.main) {
@@ -536,8 +455,6 @@ if (import.meta.main) {
     tagVersions: listGitTagVersions(ROOT),
   });
   const result = await buildReleaseNotes({ version, commits });
-  if (result.generationFailed) {
-    console.error(`警告：grok-4.7 没有生成更新说明（${result.reason}）。下面不是模型结果。`);
-  }
-  console.log(result.markdown || `跳过：${result.reason}`);
+  if (result.model) console.error(`更新说明由 ${result.model} 生成。`);
+  console.log(result.markdown || `没有生成：${result.reason}`);
 }

@@ -91,7 +91,8 @@ jobs:
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
         run: node scripts/release/select-release.mjs --preflight
       # 只在 main 确认需要发版（且非仅预览构建）时短时加入 tailnet。身份只存在 Environment release-notes。
-      # 目标只有 100.115.90.80:3425。不要 API key，不要公网地址，不要 3430。
+      # 更新说明先用 Google AI Studio（GEMINI_API_KEY），失败再经 tailnet 用 Magpie 的 gpt-6-luna、deepseek-flash。
+      # Magpie 目标只有 100.115.90.80:3425，不要公网地址，不要 3430。
       - name: Detect tailnet identity
         id: tailnet
         if: steps.preflight.outputs.needs_release == 'yes' && (github.event_name != 'workflow_dispatch' || inputs.publish == true)
@@ -103,7 +104,7 @@ jobs:
             echo "ready=yes" >> "$GITHUB_OUTPUT"
           else
             echo "ready=no" >> "$GITHUB_OUTPUT"
-            echo "::warning title=release-notes::未配置 Environment release-notes 的 TS_OAUTH_CLIENT_ID 或 TS_AUDIENCE，未加入 tailnet，不会调用 grok-4.7。"
+            echo "::warning title=release-notes::未配置 Environment release-notes 的 TS_OAUTH_CLIENT_ID 或 TS_AUDIENCE，未加入 tailnet，只能用 Gemini 生成更新说明。"
           fi
       - name: Join tailnet
         id: tailscale
@@ -127,7 +128,7 @@ jobs:
             echo "reachable=yes" >> "$GITHUB_OUTPUT"
           else
             echo "reachable=no" >> "$GITHUB_OUTPUT"
-            echo "::warning title=release-notes::100.115.90.80:3425 不可达，不会调用 grok-4.7。"
+            echo "::warning title=release-notes::100.115.90.80:3425 不可达，只能用 Gemini 生成更新说明。"
           fi
       - name: Check commits and generate release plan
         id: check
@@ -141,7 +142,7 @@ jobs:
           BLOCK_PREFLIGHT_PATH: ${{ runner.temp }}/release-preflight.json
           MAGPIE_BASE_URL: http://100.115.90.80:3425/v1
           MAGPIE_REACHABLE: ${{ steps.magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
-          CHANGELOG_MODEL: grok-4.7
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/release/select-release.mjs
       - uses: actions/upload-artifact@v4
         if: steps.check.outputs.should_build == 'yes'
