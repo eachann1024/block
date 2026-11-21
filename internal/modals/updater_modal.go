@@ -465,10 +465,8 @@ func (m *Manager) renderUpdaterFooter(
 				})
 
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-					abortBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
-						ID:       "updater-abort-download",
+					abortBtn := internalui.BtnCancel(c, "updater-abort-download", internalui.PresetOptions{
 						Label:    updaterTr(showEn, "取消", "Cancel"),
-						Style:    internalui.ButtonSecondary,
 						Height:   theme.HeightCompact,
 						PaddingX: theme.Space10,
 					})
@@ -476,9 +474,11 @@ func (m *Manager) renderUpdaterFooter(
 						m.Updater.CancelDownload()
 					}
 
+					bgIc := icons.ChevronDown
 					bgBtn := internalui.ActionButtonWithOptions(c, internalui.ActionButtonOptions{
 						ID:       "updater-bg-download",
 						Label:    updaterTr(showEn, "后台下载", "Hide"),
+						Leading:  &bgIc,
 						Style:    internalui.ButtonGhost,
 						Height:   theme.HeightCompact,
 						PaddingX: theme.Space10,
@@ -511,7 +511,9 @@ func (m *Manager) renderUpdaterFooter(
 			})
 
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-				laterBtn := internalui.ActionButton(c, "updater-cancel", updaterTr(showEn, "稍后提醒", "Later"), nil, internalui.ButtonSecondary, false)
+				laterBtn := internalui.BtnLater(c, "updater-cancel", internalui.PresetOptions{
+					Label: updaterTr(showEn, "稍后提醒", "Later"),
+				})
 				if laterBtn.Clicked() {
 					m.CloseUpdater()
 				}
@@ -531,7 +533,8 @@ func (m *Manager) renderUpdaterFooter(
 					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
 			})
-			internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "正在重启…", "Restarting…"), nil, internalui.ButtonPrimary, true)
+			refIc := icons.Refresh
+			internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "正在重启…", "Restarting…"), &refIc, internalui.ButtonPrimary, true)
 		})
 
 	case updater.StatusError:
@@ -572,12 +575,16 @@ func (m *Manager) renderUpdaterFooter(
 						c.OpenURL(snap.ReleaseURL)
 					}
 				}
-				closeBtn := internalui.ActionButton(c, "updater-cancel", updaterTr(showEn, "关闭", "Close"), nil, internalui.ButtonSecondary, false)
+				closeBtn := internalui.BtnClose(c, "updater-cancel", internalui.PresetOptions{
+					Label: updaterTr(showEn, "关闭", "Close"),
+				})
 				if closeBtn.Clicked() {
 					m.CloseUpdater()
 				}
-				retryIc := icons.Refresh
-				retryBtn := internalui.ActionButton(c, "updater-submit", updaterTr(showEn, "重试", "Retry"), &retryIc, internalui.ButtonPrimary, false)
+				retryBtn := internalui.BtnRetry(c, "updater-submit", internalui.PresetOptions{
+					Label: updaterTr(showEn, "重试", "Retry"),
+					Style: internalui.StyleRef(internalui.ButtonPrimary),
+				})
 				if retryBtn.Clicked() && m.Updater != nil {
 					m.Updater.CheckAsync(true)
 				}
@@ -590,11 +597,16 @@ func (m *Manager) renderUpdaterFooter(
 				TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
 
 			ui.Row(c).AlignItems(ui.Center).Gap(theme.Space8).Shrink(0).Children(func() {
-				dismissLabel := updaterTr(showEn, "关闭", "Close")
+				var cancelBtn ui.Element
 				if snap.HasActionableUpdate() {
-					dismissLabel = updaterTr(showEn, "稍后提醒", "Later")
+					cancelBtn = internalui.BtnLater(c, "updater-cancel", internalui.PresetOptions{
+						Label: updaterTr(showEn, "稍后提醒", "Later"),
+					})
+				} else {
+					cancelBtn = internalui.BtnClose(c, "updater-cancel", internalui.PresetOptions{
+						Label: updaterTr(showEn, "关闭", "Close"),
+					})
 				}
-				cancelBtn := internalui.ActionButton(c, "updater-cancel", dismissLabel, nil, internalui.ButtonSecondary, false)
 				if cancelBtn.Clicked() {
 					m.CloseUpdater()
 				}

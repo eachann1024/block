@@ -5678,9 +5678,7 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 			blockui.EmptyHeading(c, theme.Tr("打开一个文件夹开始记录", "Open a folder to start writing"))
 			blockui.EmptyLead(c, theme.Tr("笔记就是这个文件夹里的 Markdown 文件。", "Notes are the Markdown files in that folder."))
 			blockui.EmptyActions(c, func() {
-				if blockui.EmptyActionRow(c, "empty-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), func() {
-					blockui.EmptyActionIcon(c, icons.FolderOpen)
-				}, "").Clicked() {
+				if blockui.EmptyActionGlyphRow(c, "empty-choose-folder", theme.Tr("选择文件夹…", "Choose Folder…"), icons.FolderOpen, "").Clicked() {
 					w.ChooseNotebookDialog()
 				}
 				recent := make([]string, 0, 3)
@@ -5706,19 +5704,13 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 		icons.Mascot(c, icons.MascotEmptyFolder, theme.EmptyMascotSize)
 		blockui.EmptyHeading(c, theme.Tr("这个笔记本还没有笔记", "This notebook has no notes yet"))
 		blockui.EmptyActions(c, func() {
-			if blockui.EmptyActionRow(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), func() {
-				blockui.EmptyActionIcon(c, icons.NotePlus)
-			}, modals.EffectiveShortcut(st, "new_note")).Clicked() {
+			if blockui.EmptyActionGlyphRow(c, "empty-new-note", theme.Tr("新建笔记", "New Note"), icons.NotePlus, modals.EffectiveShortcut(st, "new_note")).Clicked() {
 				_, _ = w.CreateNewNote()
 			}
-			if blockui.EmptyActionRow(c, "empty-new-folder", theme.Tr("新建文件夹", "New Folder"), func() {
-				blockui.EmptyActionIcon(c, icons.FolderPlus)
-			}, "").Clicked() {
+			if blockui.EmptyActionGlyphRow(c, "empty-new-folder", theme.Tr("新建文件夹", "New Folder"), icons.FolderPlus, "").Clicked() {
 				_, _ = w.CreateNewFolder()
 			}
-			if blockui.EmptyActionRow(c, "empty-switch-notebook", theme.Tr("切换到其他笔记本", "Switch Notebook"), func() {
-				blockui.EmptyActionIcon(c, icons.FolderOpen)
-			}, "").Clicked() {
+			if blockui.EmptyActionGlyphRow(c, "empty-switch-notebook", theme.Tr("切换到其他笔记本", "Switch Notebook"), icons.FolderOpen, "").Clicked() {
 				w.ChooseNotebookDialog()
 			}
 		})

@@ -674,7 +674,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 			}},
 		})
 		searchBtn.Children(func() {
-			icons.Draw(c, icons.FindSearch, theme.IconChrome, sIcon)
+			icons.DrawAnimated(c, icons.FindSearch, theme.IconChrome, sIcon, sHov || sPress || p.SearchOpen)
 			ui.Text(c, searchLabel).FontSize(theme.FontBody).
 				TextColor(sFG).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
@@ -916,7 +916,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, folderGlyph, theme.IconRow, ic)
+			icons.DrawAnimated(c, folderGlyph, theme.IconRow, ic, hovered || menuTarget)
 		} else {
 			ic := pal.MonoIconColors(pal.TextSecondary)
 			if highlighted {
@@ -924,7 +924,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			} else if hovered || menuTarget {
 				ic = pal.DuoIconColors(pal.Text)
 			}
-			icons.Draw(c, icons.FileIconOrDefault(filepath.Base(entry.Path)), theme.IconRow, ic)
+			icons.DrawAnimated(c, icons.FileIconOrDefault(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -1262,14 +1262,14 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 										ic = pal.MonoIconColors(pal.TextSecondary)
 										nameColor = pal.TextSecondary
 									}
-									icons.Draw(c, icons.Folder, theme.IconRow, ic)
+									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, rowHover || kbActive)
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(nameColor).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if missing && !confirming && !rowHover {
 										ui.Text(c, theme.Tr("已移动或删除", "Moved or deleted")).FontSize(theme.FontSmall).TextColor(pal.Warning).Shrink(0).SingleLine()
 									}
 									if checked && !confirming && !(rowHover && p.OnForgetNotebook != nil) {
 										ui.Box(c).Size(theme.TreeMoreBtnSize, theme.TreeMoreBtnSize).Shrink(0).Center().Children(func() {
-											icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+											icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHover || kbActive)
 										})
 									}
 								})

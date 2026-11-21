@@ -207,6 +207,9 @@ const (
 	FolderTests     Icon = "folder-tests"
 	FolderGit       Icon = "folder-git"
 	FolderDeps      Icon = "folder-deps"
+	Clock           Icon = "clock"
+	SkipForward     Icon = "skip-forward"
+	Maximize        Icon = "maximize"
 )
 
 type MascotState string
@@ -357,14 +360,64 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 		case ChevronLeft:
 			sc := 1 + 0.13*p
 			root.Translate(-2.2*k*p, 0).Scale(sc, sc)
-		case Refresh, TbReset, UpdateTangle:
-			root.Rotate(42 * p)
+		case Refresh:
+			root.Rotate(-45 * p)
+		case TbReset, UpdateTangle:
+			root.Rotate(-42 * p)
 		case Trash:
-			root.Translate(0, -0.7*k*p).Rotate(-7*p)
+			root.Translate(0, -0.9*k*p).Rotate(-9*p)
 		case Pencil, Eraser, Cut:
 			root.Rotate(-6 * p)
 		case Drag:
 			sc := 1 + 0.12*p
+			root.Translate(0, -1.0*k*p).Scale(sc, sc)
+		case Clock:
+			sc := 1 + 0.05*p
+			root.Scale(sc, sc)
+		case SkipForward:
+			// Triangle layers shift right toward the vertical bar.
+		case Maximize:
+			sc := 1 + 0.14*p
+			root.Scale(sc, sc)
+		case TabClose, TabCloseAll, TabCloseOthers, TabCloseRight:
+			root.Translate(0, -0.7*k*p)
+		case Copy, Duplicate, LinkCopy:
+			sc := 1 + 0.05*p
+			root.Translate(0.8*k*p, -0.8*k*p).Scale(sc, sc)
+		case LinkEdit:
+			root.Translate(0, -0.6*k*p).Rotate(-6*p)
+		case LinkOff:
+			sc := 1 + 0.05*p
+			root.Rotate(8*p).Scale(sc, sc)
+		case Wrench, Tag, Paperclip:
+			root.Translate(0, -0.8*k*p).Rotate(-9*p)
+		case More:
+			sc := 1 + 0.08*p
+			root.Scale(sc, sc)
+		case Sliders, SortFilter:
+			sc := 1 + 0.06*p
+			root.Translate(0, -0.8*k*p).Scale(sc, sc)
+		case FindSearch:
+			root.Translate(-0.6*k*p, -0.6*k*p).Rotate(-6*p)
+		case TbPlus:
+			sc := 1 + 0.10*p
+			root.Rotate(90*p).Scale(sc, sc)
+		case TbMinus, Minus:
+			sc := 1 + 0.10*p
+			root.Scale(sc, sc)
+		case ColDelete, RowDelete:
+			root.Translate(0, -0.8*k*p).Rotate(-5*p)
+		case ColInsertLeft, ColInsertRight, RowInsertAbove, RowInsertBelow,
+			WindowMax, WindowRestore, Crop, SelectAll, History,
+			Eye, EyeOff, Stop, NotePlus, AiPlus:
+			sc := 1 + 0.05*p
+			root.Scale(sc, sc)
+		case Download, Upload, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+			LinkOpen, Plug, SidebarExpand, SidebarCollapse,
+			Sparkles, AiPolish, Star:
+			// Bespoke layer-level transforms handle motion below.
+		default:
+			sc := 1 + 0.05*p
 			root.Translate(0, -1.0*k*p).Scale(sc, sc)
 		}
 	}
@@ -424,6 +477,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						fl.Scale(sc, sc)
 					case Plug:
 						fl.Translate(1.2*k*p, -1.2*k*p)
+					case SkipForward:
+						fl.Translate(2.0*k*p, 0)
 					}
 				}
 			}
@@ -452,6 +507,8 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 						ln.Translate(0, 1.4*k*p)
 					case ArrowUp:
 						ln.Translate(0, -1.4*k*p)
+					case SkipForward:
+						ln.Translate(2.0*k*p, 0)
 					}
 				}
 			}
@@ -461,8 +518,28 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 				ac := ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(accCol)
 				if moving {
 					switch glyph {
-					case Plus, Close, Check, Zap, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut:
+					case Plus, Close, Check, Zap, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, TbChevron, TbChevronRight, Drag, Refresh, TbReset, UpdateTangle, Trash, Pencil, Eraser, Cut,
+						Copy, Duplicate, LinkCopy, LinkEdit, LinkOff, Wrench, Tag, Paperclip, TbPlus, TbMinus, Minus, ColDelete, RowDelete:
 						// Unified root transform already applied in sub-pixel lockstep with .line.
+					case Clock:
+						ac.Rotate(45 * p)
+					case SkipForward:
+						ac.Scale(1+0.08*p, 1+0.08*p)
+					case Maximize:
+						sc := 1 + 0.06*p
+						ac.Scale(sc, sc)
+					case TabClose:
+						ac.Rotate(90 * p)
+					case TabCloseAll:
+						ac.TransformOrigin(10.5/24.0, 13.0/24.0).Rotate(90 * p)
+					case TabCloseRight:
+						ac.Translate(1.8*k*p, 0)
+					case TabCloseOthers:
+						sc := 1 + 0.12*p
+						ac.Scale(sc, sc)
+					case More:
+						sc := 1 + 0.15*p
+						ac.Scale(sc, sc)
 					case Download, Upload:
 						ac.Scale(1+0.08*p, 1)
 					case Eye:
@@ -503,9 +580,6 @@ func DrawAnimated(c *ui.Context, glyph Icon, size float32, colors theme.IconColo
 					case Sliders:
 						sc := 1 + 0.08*p
 						ac.Scale(sc, sc)
-					case TbPlus:
-						sc := 1 + 0.12*p
-						ac.Rotate(90*p).Scale(sc, sc)
 					case NotePlus, AiPlus:
 						sc := 1 + 0.16*p
 						ac.Scale(sc, sc)

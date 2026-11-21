@@ -444,7 +444,7 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 				internalui.AnimateSurfaceColors(backRow, backBG, ui.Transparent, false)
 				internalui.TactileCard(backRow, backHov, backPress, false, false)
 				backRow.Children(func() {
-					icons.Draw(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG))
+					icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG), backHov || backPress)
 					ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).TextColor(backFG).SingleLine()
 				})
 				internalui.Probe(backRow, "settings-sidebar-back")

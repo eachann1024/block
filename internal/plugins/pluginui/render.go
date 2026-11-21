@@ -2070,7 +2070,7 @@ func renderChecklistItem(
 					bui.AnimateSurfaceColors(box, boxBG, boxBD, true)
 					box.Children(func() {
 						if checked {
-							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.AccentText))
+							icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.AccentText), hovered || pressed)
 						}
 					})
 

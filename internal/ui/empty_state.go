@@ -64,23 +64,41 @@ func EmptyActionSeparator(c *ui.Context) ui.Element {
 // EmptyActionRow renders one 36px action row: lead (an icon or badge), the
 // label, and a right-aligned shortcut keycap when shortcut is non-empty.
 func EmptyActionRow(c *ui.Context, id, label string, lead func(), shortcut string) ui.Element {
+	return emptyActionRow(c, id, label, func(_ bool) {
+		if lead != nil {
+			lead()
+		}
+	}, shortcut)
+}
+
+// EmptyActionGlyphRow renders an EmptyActionRow whose leading Duo icon animates on row hover or press.
+func EmptyActionGlyphRow(c *ui.Context, id, label string, glyph icons.Icon, shortcut string) ui.Element {
+	return emptyActionRow(c, id, label, func(active bool) {
+		pal := theme.Ocean()
+		icons.DrawAnimated(c, glyph, theme.IconAction, pal.DuoIconColors(pal.Accent), active)
+	}, shortcut)
+}
+
+func emptyActionRow(c *ui.Context, id, label string, lead func(active bool), shortcut string) ui.Element {
 	pal := theme.Ocean()
 	if id != "" {
 		c.Key(id)
 	}
 	row := ui.ButtonBase(c).FillWidth().Height(theme.HeightLarge).PaddingX(theme.Space10).Gap(theme.Space10).
 		AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(label)
+	hovered := row.Hovered()
+	pressed := row.Pressed()
 	bg := ui.Transparent
 	switch {
-	case row.Pressed():
+	case pressed:
 		bg = pal.Selected
-	case row.Hovered():
+	case hovered:
 		bg = pal.Hover
 	}
 	AnimateSurfaceColors(row, bg, ui.Transparent, false)
 	row.Children(func() {
 		if lead != nil {
-			lead()
+			lead(hovered || pressed)
 		}
 		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(theme.WeightControl).
 			TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -126,7 +144,7 @@ func GhostRow(c *ui.Context, id, label string, glyph icons.Icon) ui.Element {
 	row.Border(1, border)
 	AnimateSurfaceColors(row, bg, ui.Transparent, false)
 	row.Children(func() {
-		icons.Draw(c, glyph, theme.IconAction, pal.MonoIconColors(fg))
+		icons.DrawAnimated(c, glyph, theme.IconAction, pal.MonoIconColors(fg), hovered)
 		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 	})

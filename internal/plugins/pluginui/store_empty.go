@@ -44,6 +44,7 @@ type storeEmptySpec struct {
 	body         string
 	primaryID    string
 	primaryLabel string
+	primaryIcon  icons.Icon
 	onPrimary    func()
 	showGuide    bool
 }
@@ -66,6 +67,7 @@ func resolveStoreEmptySpec(
 			body:         body,
 			primaryID:    "app-store-empty-clear-search",
 			primaryLabel: theme.Tr("清除搜索", "Clear search"),
+			primaryIcon:  icons.Close,
 			onPrimary: func() {
 				ctrl.storeQuery = ""
 				c.Invalidate()
@@ -80,6 +82,7 @@ func resolveStoreEmptySpec(
 			body:         theme.Tr("切换来源筛选，或查看全部插件。", "Try switching the source filter or viewing all plugins."),
 			primaryID:    "app-store-empty-reset-filter",
 			primaryLabel: theme.Tr("重置筛选", "Reset filters"),
+			primaryIcon:  icons.Refresh,
 			onPrimary: func() {
 				ctrl.storeSource = ""
 				ctrl.setStoreCategory("")
@@ -96,6 +99,7 @@ func resolveStoreEmptySpec(
 			body:         body,
 			primaryID:    "app-store-empty-idea",
 			primaryLabel: theme.Tr("提交插件想法", "Suggest a plugin"),
+			primaryIcon:  icons.Plus,
 			onPrimary: func() {
 				ctrl.suggestPlugin(selectedCat)
 			},
@@ -109,6 +113,7 @@ func resolveStoreEmptySpec(
 		body:         theme.Tr("插件上架后会出现在这里。", "Plugins will appear here once published."),
 		primaryID:    "app-store-empty-idea",
 		primaryLabel: theme.Tr("提交插件想法", "Suggest a plugin"),
+		primaryIcon:  icons.Plus,
 		onPrimary: func() {
 			ctrl.suggestPlugin("")
 		},
@@ -168,9 +173,11 @@ func renderStoreEmptyState(
 			Justify(ui.Center).
 			Wrap().
 			Children(func() {
+				primaryIc := spec.primaryIcon
 				primary := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
 					ID:       spec.primaryID,
 					Label:    spec.primaryLabel,
+					Leading:  &primaryIc,
 					Style:    bui.ButtonAccentOutline,
 					Height:   theme.HeightControl,
 					PaddingX: theme.Space16,

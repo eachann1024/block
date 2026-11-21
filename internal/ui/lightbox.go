@@ -1096,9 +1096,11 @@ func renderLightboxFileCard(
 						TextColor(pal.TextSecondary).SingleLine().Shrink(1).MinWidth(0)
 
 					if cb.OnReveal != nil && !item.Unavailable {
+						revIc := icons.FolderReveal
 						revBtn := ActionButtonWithOptions(c, ActionButtonOptions{
 							ID:       id + "-text-reveal",
 							Label:    lightboxRevealLabel(),
+							Leading:  &revIc,
 							Style:    ButtonGhost,
 							Height:   theme.HeightMicro,
 							PaddingX: theme.Space8,

@@ -213,7 +213,7 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, avail
 	}
 	pill.Children(func() {
 		if external {
-			icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+			icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), pill.Hovered() || pill.Pressed())
 		}
 		ui.Text(c, title).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -357,7 +357,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		}
 		sel.Children(func() {
 			if external {
-				icons.Draw(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted))
+				icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), hovered || sel.Pressed())
 			}
 			tabLabel(c, label, fg)
 			if dirSuffix != "" {

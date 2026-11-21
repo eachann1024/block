@@ -956,7 +956,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(sw.FG).Border(1, pal.Hairline)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 						if curFG == name {
-							icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHovered || rowPressed || highlighted)
 						}
 					})
 					appUi.Probe(row, "fg-sw-"+name)
@@ -996,7 +996,7 @@ func (s *Session) renderPalettePanel(c *ui.Context, vp ui.Rect, winW, winH float
 						ui.Box(c).Size(theme.IconAction, theme.IconAction).Radius(theme.RadiusXS).Background(swatchCol).Border(1, pal.BtnBorder)
 						ui.Text(c, lbl).FontSize(theme.FontBody).TextColor(pal.Text).Grow(1).SingleLine()
 						if curBG == bgName {
-							icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text))
+							icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Text), rowHovered || rowPressed || highlighted)
 						}
 					})
 					appUi.Probe(row, "bg-sw-"+bgName)
@@ -2256,8 +2256,10 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 		if acc.Clicked() {
 			s.ApplyAnnotationRewrite(ann.ID, ann.RewriteResult)
 		}
-		dismiss := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-dismiss-" + ann.ID, Label: theme.Tr("忽略", "Dismiss"), Style: appUi.ButtonGhost, Height: theme.HeightCompact,
+		dismiss := appUi.BtnClose(c, "ann-dismiss-"+ann.ID, appUi.PresetOptions{
+			Label:  theme.Tr("忽略", "Dismiss"),
+			Style:  appUi.StyleRef(appUi.ButtonGhost),
+			Height: theme.HeightCompact,
 		})
 		if dismiss.Clicked() {
 			s.dismissAnnotationRewrite(ann.ID)

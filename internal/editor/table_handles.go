@@ -1802,7 +1802,7 @@ func (s *Session) renderTableBorderMenuOverlay(c *ui.Context) {
 									}
 									appUi.AnimateSurfaceColors(ab, bg, bd, active)
 									ab.Children(func() {
-										icons.Draw(c, opt.icon, theme.IconInline, pal.MonoIconColors(fg))
+										icons.DrawAnimated(c, opt.icon, theme.IconInline, pal.MonoIconColors(fg), hov || ab.Pressed())
 									})
 									appUi.Probe(ab, opt.id)
 									if !s.readOnly && ab.Clicked() {

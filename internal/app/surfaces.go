@@ -726,11 +726,12 @@ func (h *PageHistoryView) Render(
 				case h.SelectedID != "" && h.SelectedText == h.CurrentText:
 					restoreHint = theme.Tr("与当前版本内容相同", "Identical to current version")
 				}
+				histIc := icons.History
 				resBtn := blockui.ActionButton(
 					c,
 					"history-restore",
 					theme.Tr("恢复此版本", "Restore Version"),
-					nil,
+					&histIc,
 					blockui.ButtonPrimary,
 					!canRestore || h.ConfirmOpen,
 				)
@@ -793,8 +794,7 @@ func (h *PageHistoryView) Render(
 						if h.ErrorMsg != "" {
 							ui.Column(c).FillWidth().Padding(16).Radius(theme.RadiusMD).Background(pal.DangerSurface).Gap(8).Children(func() {
 								ui.Text(c, h.ErrorMsg).FontSize(theme.FontBody).TextColor(pal.Danger)
-								retryIc := icons.Refresh
-								retryBtn := blockui.ActionButton(c, "history-retry", theme.Tr("重试", "Retry"), &retryIc, blockui.ButtonSecondary, false)
+								retryBtn := blockui.BtnRetry(c, "history-retry", blockui.PresetOptions{})
 								if retryBtn.Clicked() && onRetry != nil {
 									onRetry()
 								}
@@ -931,7 +931,7 @@ func (h *PageHistoryView) Render(
 			})
 			ui.Text(c, theme.Tr("当前内容会保留在历史中。", "Current content will be retained in history.")).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			ui.Row(c).FillWidth().Justify(ui.End).Gap(8).Children(func() {
-				cancelBtn := blockui.ActionButton(c, "history-cancel-restore", theme.Tr("取消", "Cancel"), nil, blockui.ButtonSecondary, false)
+				cancelBtn := blockui.BtnCancel(c, "history-cancel-restore", blockui.PresetOptions{})
 				if cancelBtn.Clicked() {
 					h.ConfirmOpen = false
 				}

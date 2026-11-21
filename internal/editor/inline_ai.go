@@ -1812,7 +1812,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 						Label(theme.Tr("发送（回车）", "Send (Enter)"))
 					appUi.WrappedTooltip(c, sendBtn, theme.Tr("使用在线 AI 时，指令、选区或草稿，以及光标前的少量上下文会发给已配置的服务。", "With online AI, the configured provider receives your instruction, selection or draft, and a small amount of preceding text."))
 					sendBtn.Children(func() {
-						icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
+						icons.DrawAnimated(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG), canSend && (sendBtn.Hovered() || sendBtn.Pressed()))
 					})
 					appUi.Probe(sendBtn, "ai-send")
 					if sendBtn.Clicked() && canSend {
@@ -1874,7 +1874,7 @@ func (s *Session) renderInlineAIPanel(c *ui.Context) {
 										if it.Starred {
 											ic = theme.IconColors{Line: pal.Accent, Fill: pal.Accent, Accent: ui.Transparent}
 										}
-										icons.Draw(c, icons.Star, 13, ic)
+										icons.DrawAnimated(c, icons.Star, 13, ic, starBtn.Hovered() || starBtn.Pressed())
 									})
 									appUi.Probe(starBtn, starID)
 									if starBtn.Clicked() {

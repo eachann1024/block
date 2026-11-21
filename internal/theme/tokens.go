@@ -246,12 +246,12 @@ const (
 	SwitchHeroPad             float32 = 2
 	SwitchHeroPressStretch    float32 = 2
 	SwitchHeroHitH            float32 = 44
-	PluckDividerHeight        float32 = 20
-	PluginHeaderIconBox       float32 = 44
 	SwitchKnobOffSize         float32 = 10
 	SwitchOnTrackAlpha        float32 = 0.24
 	SwitchOnTrackHoverAlpha   float32 = 0.32
 	SwitchOnTrackPressedAlpha float32 = 0.40
+	PluckDividerHeight        float32 = 20
+	PluginHeaderIconBox       float32 = 44
 	PluginHeaderIconGlyph     float32 = 24
 	PluginHeaderIconRadius    float32 = 12
 	PluginTitlebarStatusMaxW  float32 = 240
