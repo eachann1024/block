@@ -84,7 +84,26 @@ func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
 		return lang, tag
 	}
 	lang := codeed.LanguageForText(filepath.Base(filePath), text)
-	return lang, files.LanguageTagForPath(filePath)
+	tag := files.LanguageTagForPath(filePath)
+	if tag == "plaintext" && lang != nil {
+		tag = sourceTagForLanguage(lang.Name)
+	}
+	return lang, tag
+}
+
+// sourceTagForLanguage turns a MyGo language name into the fence tag Markdown
+// code blocks use, e.g. "C++" -> "cpp".
+func sourceTagForLanguage(name string) string {
+	switch n := strings.ToLower(name); n {
+	case "c++":
+		return "cpp"
+	case "c#":
+		return "csharp"
+	case "shell":
+		return "bash"
+	default:
+		return n
+	}
 }
 
 // ensureCodeState creates the editor state from the surface's source text once
