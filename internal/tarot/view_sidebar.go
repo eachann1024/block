@@ -229,7 +229,11 @@ func (ctrl *Controller) RenderWritingSidebar(c *ui.Context, activeNotebook strin
 				footerBtn("tarot-search", theme.Tr("搜索", "Find"), host.OpenSearch)
 			})
 	})
-	ctrl.renderNotebookMenu(c, activeNotebook)
+	if host.DeferMenus != nil {
+		host.DeferMenus(func() { ctrl.renderNotebookMenu(c, activeNotebook) })
+	} else {
+		ctrl.renderNotebookMenu(c, activeNotebook)
+	}
 }
 
 func (ctrl *Controller) renderNotebookMenu(c *ui.Context, activeNotebook string) {

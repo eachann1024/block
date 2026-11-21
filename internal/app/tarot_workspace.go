@@ -23,6 +23,7 @@ const tarotPluginID = "block-tarot"
 
 func (w *Workspace) initTarot() {
 	w.tarot = tarot.NewController(w.dataDir, tarot.Host{
+		DeferMenus: w.deferChromePopup,
 		OpenNote: func(absPath string) {
 			if absPath == "" {
 				return
@@ -328,6 +329,8 @@ func (w *Workspace) renderTarotWorkspace(
 	edgeSafeR float32,
 ) {
 	w.syncTarotDeckIfNeeded(entries, activeNB, activeTab, activeDirty)
+	clear(w.chromePopups)
+	w.chromePopups = w.chromePopups[:0]
 
 	tc := theme.Tarot()
 	midPal := theme.TarotMidnightPalette()
@@ -375,7 +378,7 @@ func (w *Workspace) renderTarotWorkspace(
 
 				w.tarot.RenderWritingStage(c, effMainW, func(sheetW float32) {
 					if activeTab != "" && isExternalFile(activeTab, activeNB) {
-						renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell)
+						renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell, w.notifyPathCopied)
 					}
 					if toast != nil && toast.Active && toast.NotePath == activeTab {
 						toast.RenderBanner(
@@ -446,9 +449,6 @@ func (w *Workspace) renderTarotWorkspace(
 							allowGhostFocus := !w.modals.HasActiveModal() && !w.hasActivePluginModal() && !layout.SidebarDrawer
 							w.renderEmptyWorkspaceMascot(c, activeNB, len(entries) == 0, allowGhostFocus)
 						}
-						if w.pluginUI != nil {
-							w.pluginUI.renderToast(c)
-						}
 					})
 				})
 
@@ -484,6 +484,9 @@ func (w *Workspace) renderTarotWorkspace(
 				}
 			})
 		}
+
+		// Sidebar menus above editor floating toolbars, below modals.
+		w.flushChromePopups()
 
 		// 3. Modals, Command Palette & Plugin Overlays in Midnight palette.
 		theme.WithPalette(midPal, func() {

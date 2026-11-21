@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -25,6 +24,9 @@ const (
 	// pluginToastQueueMax bounds queued toasts so a chatty plugin cannot
 	// build an endless backlog while still allowing 4-tone showcase queues.
 	pluginToastQueueMax = 6
+	// pluginToastPerSourceMax bounds one plugin's share of the queue so it
+	// can never push out app notices (save failures etc.) or other plugins.
+	pluginToastPerSourceMax = 4
 )
 
 var errHostClosing = errors.New("host is shutting down")
@@ -34,12 +36,7 @@ type pluginToast struct {
 	PluginID string
 	Message  string
 	Tone     string
-	EventKey string
 	Icon     *plugins.DuoIconSpec
-	native   func(context.Context) error
-	allowed  func() bool
-	shown    bool
-	sending  bool
 }
 
 type pluginDialogRef struct {
@@ -61,9 +58,7 @@ type pluginHostUI struct {
 	nextToastID     uint64
 	nextDialogID    uint64
 	toasts          []pluginToast
-	deferredToasts  []pluginToast
 	toastTimer      *time.Timer
-	syncToastRetry  bool
 	activeDialog    *pluginDialogRef
 	activePanel     *pluginPanelRef
 	lastPanel       *pluginPanelRef
@@ -153,10 +148,10 @@ func normalizeToastTone(t string) string {
 }
 
 func (h *pluginHostUI) Toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) {
-	h.onMain(func() { h.toast(pluginID, message, tone, "", icon, nil, nil) })
+	h.onMain(func() { h.toast(pluginID, message, tone, icon) })
 }
 
-func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plugins.DuoIconSpec, native func(context.Context) error, allowed func() bool) bool {
+func (h *pluginHostUI) toast(pluginID, message, tone string, icon *plugins.DuoIconSpec) bool {
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		return false
@@ -168,34 +163,36 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		icCopy = &cp
 	}
 	h.mu.Lock()
-	for _, queue := range [][]pluginToast{h.toasts, h.deferredToasts} {
-		for index, toast := range queue {
-			if toast.PluginID == pluginID && toast.Message == msg && toast.Tone == normTone && toast.EventKey == eventKey {
-				if icCopy != nil {
-					queue[index].Icon = icCopy
-				}
-				h.mu.Unlock()
-				h.w.RequestRedraw()
-				return true
+	for index, toast := range h.toasts {
+		if toast.PluginID == pluginID && toast.Message == msg && toast.Tone == normTone {
+			if icCopy != nil {
+				h.toasts[index].Icon = icCopy
 			}
+			h.mu.Unlock()
+			h.w.RequestRedraw()
+			return true
 		}
 	}
-	if len(h.toasts)+len(h.deferredToasts) >= pluginToastQueueMax {
-		drop := 0
-		for index := 1; index < len(h.toasts); index++ {
-			if h.toasts[index].EventKey == "" {
-				drop = index
-				break
-			}
-		}
-		if drop == 0 {
-			if pluginID == "block-sync" && eventKey != "" {
-				h.syncToastRetry = true
-			}
+	if pluginID != "" && h.countToastsLocked(pluginID) >= pluginToastPerSourceMax {
+		if !h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == pluginID }) {
 			h.mu.Unlock()
 			return false
 		}
-		h.toasts = append(h.toasts[:drop], h.toasts[drop+1:]...)
+	}
+	if len(h.toasts) >= pluginToastQueueMax {
+		evicted := false
+		if pluginID != "" {
+			// A plugin may only displace its own backlog.
+			evicted = h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID == pluginID })
+		} else {
+			evicted = h.evictQueuedToastLocked(func(t pluginToast) bool { return t.PluginID != "" }) ||
+				h.evictQueuedToastLocked(func(t pluginToast) bool { return t.Tone != "error" }) ||
+				h.evictQueuedToastLocked(func(pluginToast) bool { return true })
+		}
+		if !evicted {
+			h.mu.Unlock()
+			return false
+		}
 	}
 	h.nextToastID++
 	id := h.nextToastID
@@ -204,20 +201,36 @@ func (h *pluginHostUI) toast(pluginID, message, tone, eventKey string, icon *plu
 		PluginID: pluginID,
 		Message:  msg,
 		Tone:     normTone,
-		EventKey: eventKey,
 		Icon:     icCopy,
-		native:   native,
-		allowed:  allowed,
 	})
-	if pluginID == "block-sync" && native != nil {
-		h.syncToastRetry = true
-	}
 	if len(h.toasts) == 1 {
 		h.scheduleToastTimerLocked(id)
 	}
 	h.mu.Unlock()
 	h.w.RequestRedraw()
 	return true
+}
+
+func (h *pluginHostUI) countToastsLocked(pluginID string) int {
+	n := 0
+	for _, t := range h.toasts {
+		if t.PluginID == pluginID {
+			n++
+		}
+	}
+	return n
+}
+
+// evictQueuedToastLocked drops the oldest queued (not yet visible) toast
+// matching keep; index 0 is on screen and owns the timer, so it is never evicted.
+func (h *pluginHostUI) evictQueuedToastLocked(match func(pluginToast) bool) bool {
+	for i := 1; i < len(h.toasts); i++ {
+		if match(h.toasts[i]) {
+			h.toasts = append(h.toasts[:i], h.toasts[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 func (h *pluginHostUI) scheduleToastTimerLocked(id uint64) {
@@ -234,95 +247,14 @@ func (h *pluginHostUI) expireToast(id uint64) {
 	if !ok || toast.ID != id {
 		return
 	}
-	if toast.native == nil || toast.shown || (toast.allowed != nil && !toast.allowed()) {
-		h.finishToast(id, false)
-		return
-	}
-	if win := h.w.Window(); win != nil && win.IsFocused() {
-		h.mu.Lock()
-		if len(h.toasts) != 0 && h.toasts[0].ID == id {
-			h.scheduleToastTimerLocked(id)
-		}
-		h.mu.Unlock()
-		h.w.RequestRedraw()
-		return
-	}
-	h.mu.Lock()
-	if len(h.toasts) == 0 || h.toasts[0].ID != id || h.toasts[0].sending {
-		h.mu.Unlock()
-		return
-	}
-	h.toasts[0].sending = true
-	h.mu.Unlock()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		err := toast.native(ctx)
-		h.onMain(func() {
-			if err == nil {
-				h.markToastDelivered(toast)
-			}
-			h.finishToast(id, err != nil && !errors.Is(err, plugins.ErrSystemCanceled))
-		})
-	}()
+	h.finishToast(id)
 }
 
-func (h *pluginHostUI) restoreDeferredToasts() {
-	h.mu.Lock()
-	if len(h.deferredToasts) == 0 {
-		h.mu.Unlock()
-		return
-	}
-	deferred := append([]pluginToast(nil), h.deferredToasts...)
-	h.mu.Unlock()
-	for index, toast := range deferred {
-		if toast.allowed != nil && !toast.allowed() {
-			deferred[index] = pluginToast{}
-		}
-	}
-	h.mu.Lock()
-	idle := len(h.toasts) == 0
-	for _, toast := range deferred {
-		if toast.ID != 0 {
-			h.toasts = append(h.toasts, toast)
-		}
-	}
-	h.deferredToasts = nil
-	if idle && len(h.toasts) != 0 {
-		h.scheduleToastTimerLocked(h.toasts[0].ID)
-	}
-	h.mu.Unlock()
-	h.w.RequestRedraw()
-}
-
-func (h *pluginHostUI) markToastDelivered(toast pluginToast) {
-	if sup := h.w.Plugins(); sup != nil {
-		sup.MarkSystemNoticeDelivered(toast.PluginID, toast.EventKey)
-		if toast.PluginID == "block-sync" {
-			sup.RetrySyncNotifications()
-		}
-	}
-}
-
-func (h *pluginHostUI) finishToast(id uint64, deferred bool) {
-	focused := false
-	if deferred {
-		win := h.w.Window()
-		focused = win != nil && win.IsFocused()
-	}
+func (h *pluginHostUI) finishToast(id uint64) {
 	h.mu.Lock()
 	if len(h.toasts) == 0 || h.toasts[0].ID != id {
 		h.mu.Unlock()
 		return
-	}
-	if deferred {
-		h.toasts[0].sending = false
-		if focused {
-			h.scheduleToastTimerLocked(id)
-			h.mu.Unlock()
-			return
-		}
-		h.deferredToasts = append(h.deferredToasts, h.toasts[0])
 	}
 	h.toasts[0] = pluginToast{}
 	h.toasts = h.toasts[1:]
@@ -333,14 +265,7 @@ func (h *pluginHostUI) finishToast(id uint64, deferred bool) {
 	if len(h.toasts) > 0 {
 		h.scheduleToastTimerLocked(h.toasts[0].ID)
 	}
-	retry := !deferred && h.syncToastRetry
-	if retry {
-		h.syncToastRetry = false
-	}
 	h.mu.Unlock()
-	if retry && h.w.Plugins() != nil {
-		h.w.Plugins().RetrySyncNotifications()
-	}
 	h.w.RequestRedraw()
 }
 
@@ -355,60 +280,42 @@ func (h *pluginHostUI) currentToast() (pluginToast, bool) {
 
 func (h *pluginHostUI) renderToast(c *ui.Context) {
 	toast, ok := h.currentToast()
-	if !ok || toast.sending {
+	if !ok {
 		return
 	}
-	if toast.native != nil {
-		if win := h.w.Window(); win == nil || !win.IsFocused() {
-			return
-		}
-		if !toast.shown && toast.allowed != nil && !toast.allowed() {
-			h.finishToast(toast.ID, false)
-			return
-		}
-	}
 	pal := theme.Ocean()
-	bg := pal.Menu
-	border := pal.MenuBorder
 	dotCol := pal.Accent
-	textCol := pal.Text
 	switch toast.Tone {
 	case "success":
-		bg = pal.SuccessSurface
-		border = pal.Success
 		dotCol = pal.Success
-		textCol = pal.Success
 	case "error":
-		bg = pal.DangerSurface
-		border = pal.Danger
 		dotCol = pal.Danger
-		textCol = pal.Danger
 	case "warning":
-		bg = pal.WarningSurface
-		border = pal.Warning
 		dotCol = pal.Warning
-		textCol = pal.Warning
 	}
 
-	layer := ui.Row(c.Key("plugin-toast-layer")).Absolute().
-		Bottom(theme.Space16).Left(theme.Space16).Right(theme.Space16).
+	layer := ui.Row(c.Key("global-toast-layer")).Absolute().
+		Bottom(theme.Space24).Left(theme.Space16).Right(theme.Space16).
 		Justify(ui.Center).PassThrough()
 	layer.Children(func() {
-		pill := ui.Row(c.Key("plugin-toast")).MaxWidth(480).
-			Padding(theme.Space6, theme.Space8, theme.Space6, theme.Space12).
+		// Key by toast ID so a press held on one toast cannot release onto the next.
+		pill := ui.Row(c.Key(fmt.Sprintf("global-toast-%d", toast.ID))).MaxWidth(480).
+			Padding(theme.Space8, theme.Space10, theme.Space8, theme.Space12).
 			Gap(theme.Space8).AlignItems(ui.Center).
-			Radius(theme.RadiusMD).Background(bg).Border(1, border).
+			Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder).
 			Transition(blockui.PopoverSpringTransition())
 		blockui.Elevate(pill, theme.ElevationPopover)
-		blockui.Probe(pill, "plugin-toast")
+		blockui.Probe(pill, "global-toast")
 		pill.Children(func() {
 			if toast.Icon != nil && len(toast.Icon.StrokePaths) > 0 {
 				ic := theme.IconColors{
-					Line:   textCol,
+					Line:   pal.Text,
 					Fill:   dotCol.Alpha(0.22),
 					Accent: dotCol,
 				}
 				pluginui.DrawDuoSpec(c, *toast.Icon, theme.IconAction, ic)
+			} else if toast.Tone == "success" {
+				icons.Draw(c, icons.Check, theme.IconAction, pal.MonoIconColors(dotCol))
 			} else {
 				ui.Box(c).Size(theme.Space6, theme.Space6).Radius(theme.RadiusPill).
 					Background(dotCol).Shrink(0)
@@ -417,13 +324,13 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 				FontSize(theme.FontSmall).
 				FixedLineHeight(theme.LineSmall).
 				FontWeight(theme.WeightControl).
-				TextColor(textCol).
+				TextColor(pal.Text).
 				MinWidth(0).
 				Shrink(1).
 				SingleLine().
 				Ellipsis("…")
 			cls := blockui.IconButton(c, icons.Close, blockui.IconButtonOptions{
-				ID:       "plugin-toast-close",
+				ID:       "global-toast-close",
 				Variant:  blockui.IconPlain,
 				Size:     theme.HeightMicro,
 				IconSize: theme.IconInline,
@@ -431,19 +338,10 @@ func (h *pluginHostUI) renderToast(c *ui.Context) {
 				Tooltip:  theme.Tr("关闭", "Dismiss"),
 			})
 			if cls.Clicked() {
-				h.finishToast(toast.ID, false)
+				h.finishToast(toast.ID)
 			}
 		})
 	})
-	if toast.native != nil && !toast.shown {
-		h.mu.Lock()
-		if len(h.toasts) != 0 && h.toasts[0].ID == toast.ID {
-			h.toasts[0].shown = true
-			h.scheduleToastTimerLocked(toast.ID)
-		}
-		h.mu.Unlock()
-		h.markToastDelivered(toast)
-	}
 }
 
 func (h *pluginHostUI) OpenDialog(pluginID, dialogID string, checkValid func() error) (string, error) {

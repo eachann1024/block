@@ -48,7 +48,7 @@ type Workspace struct {
 	lastViewportW        float32
 	zoomPct              int
 	entries              []model.FileEntry
-	notice               string
+	lastScanErr          string
 	virtualPreview       map[string]bool   // createNote preview tabs not yet written to disk
 	pluginInsertInFlight map[string]int    // tabs currently saving/rolling back a plugin EditorInsert
 	autoSaveDeferred     map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
@@ -73,6 +73,10 @@ type Workspace struct {
 	exportCtrl   *export.Controller
 	historyView  *PageHistoryView
 	historyToast *HistoryToast
+
+	// chromePopups holds sidebar/titlebar menu overlays queued during a frame;
+	// they are flushed after the editor so menus stack above editor toolbars.
+	chromePopups []func()
 
 	recoveryPath    string
 	recoveryContent string
@@ -918,7 +922,7 @@ func (w *Workspace) wireModalCallbacks() {
 		return files.DiffLines(oldText, newText)
 	}
 	w.modals.FeedbackNoticeFn = func(message, tone string) {
-		w.pluginUI.Toast("", message, tone, nil)
+		w.notify(message, tone)
 	}
 	w.modals.ExportFn = func(format model.ExportFormat, outPath string) error {
 		active := w.ActiveNotePath()
@@ -2432,7 +2436,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 		w.mu.Lock()
 		w.state = next
 		if switched {
-			w.notice = ""
+			w.lastScanErr = ""
 			w.sessions = make(map[string]*editor.Session)
 			w.surfaces = make(map[string]*TabSurface)
 			w.virtualPreview = make(map[string]bool)
@@ -2448,6 +2452,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 			w.sidebarUI.SortFilterOpen = false
 			w.sidebarUI.ContextOpen = false
 			w.sidebarUI.MoveSubmenuOpen = false
+			w.sidebarUI.MoveHoverHold = false
 			w.sidebarUI.ConfirmForgetNotebook = ""
 			w.sidebarUI.FocusDir = ""
 			w.sidebarUI.ExpandedDirs = make(map[string]bool)
@@ -2553,27 +2558,32 @@ func (w *Workspace) rescanNotebook() bool {
 	w.mu.RUnlock()
 	if folder == "" {
 		w.mu.Lock()
-		changed := len(w.entries) > 0 || w.notice != ""
+		changed := len(w.entries) > 0
 		w.entries = nil
-		w.notice = ""
+		w.lastScanErr = ""
 		w.mu.Unlock()
 		return changed
 	}
 	list, err := files.ScanNotebook(folder, opts)
 	w.mu.Lock()
 	var changed bool
+	var scanErr string
 	if err != nil {
 		errStr := err.Error()
-		changed = w.notice != errStr
-		w.notice = errStr
+		changed = w.lastScanErr != errStr
+		w.lastScanErr = errStr
+		if changed {
+			scanErr = errStr
+		}
 	} else {
-		changed = w.notice != "" || !fileTreeEqual(w.entries, list)
-		w.notice = ""
+		changed = !fileTreeEqual(w.entries, list)
+		w.lastScanErr = ""
 		w.entries = list
 	}
 	w.mu.Unlock()
 	if err != nil && changed {
 		files.LogWarnf("workspace scan failed: folder=%s err=%v", folder, err)
+		w.notify(scanErr, "error")
 	}
 	return changed
 }
@@ -3603,11 +3613,18 @@ func (w *Workspace) emitNoteOpenedIfChanged(active string) {
 	}
 }
 
+func (w *Workspace) notify(msg, tone string) {
+	if w.pluginUI != nil {
+		w.pluginUI.Toast("", msg, tone, nil)
+	}
+}
+
+func (w *Workspace) notifyPathCopied() {
+	w.notify(theme.Tr("已复制路径", "Copied path"), "success")
+}
+
 func (w *Workspace) setNotice(msg string) {
-	w.mu.Lock()
-	w.notice = msg
-	w.mu.Unlock()
-	w.RequestRedraw()
+	w.notify(msg, "error")
 }
 
 const (
@@ -4520,6 +4537,9 @@ func (w *Workspace) Render(c *ui.Context) {
 			ui.Column(c.Key("stage-export")).Fill().Transition(blockui.SurfaceStageTransition()).Children(func() {
 				w.exportCtrl.Render(c)
 			})
+			if w.pluginUI != nil {
+				w.pluginUI.renderToast(c)
+			}
 			blockui.RenderSmokeHUD(c)
 		})
 		return
@@ -4632,7 +4652,6 @@ func (w *Workspace) Render(c *ui.Context) {
 	activeNB := w.state.Folder
 	notebooks := append([]string(nil), w.state.Notebooks...)
 	entries := append([]model.FileEntry(nil), w.entries...)
-	notice := w.notice
 	hasFBDraft := w.state.FeedbackDraft != nil
 	toast := w.historyToast
 	stSnap := w.state
@@ -4700,6 +4719,8 @@ func (w *Workspace) Render(c *ui.Context) {
 	}
 
 	chrome := pal.ShellChrome()
+	clear(w.chromePopups)
+	w.chromePopups = w.chromePopups[:0]
 	c.Key("workspace-root")
 	root := ui.Column(c).Fill().Background(chrome.Ground).TextColor(pal.Text).Clip()
 	blockui.Probe(root, "workspace-root")
@@ -4742,6 +4763,7 @@ func (w *Workspace) Render(c *ui.Context) {
 		} else {
 			brandHasUpdate, brandUpdateChecking, brandUpdateTip, brandUpdateMenuLabel, brandUpdateHint := w.brandUpdateHint()
 			RenderTitlebar(c, TitlebarProps{
+				DeferMenus:             w.deferChromePopup,
 				SidebarWide:            sidebarWide,
 				SidebarAutoHidden:      sidebarAutoHidden,
 				SidebarFloating:        w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
@@ -4843,7 +4865,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 					if txt := activeSurf.CurrentText(); txt != "" {
 						c.Services().WriteClipboard(txt)
-						w.setNotice(theme.Tr("已复制全部内容", "Copied content"))
+						w.notify(theme.Tr("已复制全部内容", "Copied content"), "success")
 					}
 				},
 				OnCopyAsMarkdown: func() {
@@ -4852,7 +4874,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 					if fenced := activeSurf.MarkdownCodeFence(); fenced != "" {
 						c.Services().WriteClipboard(fenced)
-						w.setNotice(theme.Tr("已复制 Markdown 代码块", "Copied as Markdown code block"))
+						w.notify(theme.Tr("已复制 Markdown 代码块", "Copied as Markdown code block"), "success")
 					}
 				},
 				OnFormatJSON: func() {
@@ -4861,14 +4883,14 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 					changed, err := activeSurf.FormatJSON()
 					if err != nil {
-						w.setNotice(fmt.Sprintf(theme.Tr("JSON 格式有误：%v", "Invalid JSON: %v"), err))
+						w.notify(fmt.Sprintf(theme.Tr("JSON 格式有误：%v", "Invalid JSON: %v"), err), "error")
 						return
 					}
 					if !changed {
-						w.setNotice(theme.Tr("JSON 已是规范格式", "JSON is already formatted"))
+						w.notify(theme.Tr("JSON 已是规范格式", "JSON is already formatted"), "info")
 						return
 					}
-					w.setNotice(theme.Tr("已格式化 JSON", "Formatted JSON"))
+					w.notify(theme.Tr("已格式化 JSON", "Formatted JSON"), "success")
 					w.RequestRedraw()
 				},
 				OnCopyImage: func() {
@@ -4876,17 +4898,17 @@ func (w *Workspace) Render(c *ui.Context) {
 						return
 					}
 					if err := copyImageFileToClipboard(activeTab, c.Services()); err != nil {
-						w.setNotice(fmt.Sprintf(theme.Tr("复制图片失败：%v", "Failed to copy image: %v"), err))
+						w.notify(fmt.Sprintf(theme.Tr("复制图片失败：%v", "Failed to copy image: %v"), err), "error")
 						return
 					}
-					w.setNotice(theme.Tr("已复制图片", "Copied image"))
+					w.notify(theme.Tr("已复制图片", "Copied image"), "success")
 				},
 				OnCopyImageMarkdown: func() {
 					if activeTab == "" {
 						return
 					}
 					c.Services().WriteClipboard(markdownImageRef(activeTab, activeNB))
-					w.setNotice(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"))
+					w.notify(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"), "success")
 				},
 				OnOpenExternal: func() {
 					if activeTab != "" {
@@ -4999,7 +5021,7 @@ func (w *Workspace) Render(c *ui.Context) {
 					} else {
 						ui.Row(c.Key("docked-sidebar-workspace")).Shrink(0).FillHeight().
 							Transition(blockui.PanelContentSwapTransition()).Children(func() {
-							w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, false)
+							w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, false)
 						})
 					}
 				})
@@ -5058,7 +5080,7 @@ func (w *Workspace) Render(c *ui.Context) {
 							Background(pal.Paper).Transition(blockui.SurfaceStageTransition())
 						mainCol.Children(func() {
 							if activeTab != "" && isExternalFile(activeTab, activeNB) {
-								renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell)
+								renderExternalPathBar(c, activeTab, &w.extPathBar, w.openDirInShell, w.revealInShell, w.notifyPathCopied)
 							}
 							if toast != nil && toast.Active && toast.NotePath == activeTab {
 								toast.RenderBanner(
@@ -5172,7 +5194,7 @@ func (w *Workspace) Render(c *ui.Context) {
 			// Scheme A Edge-Summoned Floating Sidebar / AI Cards & Colored Edge Hot-Zones.
 			w.edgeFloat.RenderBodyOverlays(
 				c, body, w, vpW, inSettings, canEdgeLeft, canEdgeRight,
-				stSnap, activeNB, notebooks, entries, activeTab, notice, activeSess,
+				stSnap, activeNB, notebooks, entries, activeTab, activeSess,
 			)
 
 			// Floating Sidebar Card when narrow and explicitly toggled open via button / Alt+B (unified with Scheme A card).
@@ -5204,7 +5226,7 @@ func (w *Workspace) Render(c *ui.Context) {
 							w.RequestRedraw()
 						})
 					} else {
-						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, notice, true)
+						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, true)
 					}
 				})
 				renderEdgeHotZone(
@@ -5219,6 +5241,9 @@ func (w *Workspace) Render(c *ui.Context) {
 			}
 		})
 
+		// 2.9. Chrome menus (titlebar, sidebar) above editor floating toolbars.
+		w.flushChromePopups()
+
 		// 3. Modal Overlays (Search, About, Feedback, Performance, Updater).
 		w.modals.RenderModals(c)
 		w.renderPluginOverlays(c)
@@ -5226,6 +5251,19 @@ func (w *Workspace) Render(c *ui.Context) {
 		// 4. Visual Smoke HUD (click ripple + step banner when smoke mode is enabled).
 		blockui.RenderSmokeHUD(c)
 	})
+}
+
+func (w *Workspace) deferChromePopup(fn func()) {
+	w.chromePopups = append(w.chromePopups, fn)
+}
+
+func (w *Workspace) flushChromePopups() {
+	pending := w.chromePopups
+	w.chromePopups = w.chromePopups[:0]
+	for _, fn := range pending {
+		fn()
+	}
+	clear(pending)
 }
 
 func (w *Workspace) hasActivePluginModal() bool {
@@ -5478,7 +5516,6 @@ func (w *Workspace) renderSidebarColumn(
 	notebooks []string,
 	entries []model.FileEntry,
 	activeNote string,
-	notice string,
 	isDrawer bool,
 ) {
 	hideNonMD := true
@@ -5490,6 +5527,7 @@ func (w *Workspace) renderSidebarColumn(
 		hideAssets = *stSnap.HideAssetsFolder
 	}
 	RenderSidebar(c, SidebarProps{
+		DeferPopups:  w.deferChromePopup,
 		State:        w.sidebarUI,
 		Width:        &w.sidebarWidth,
 		FloatingCard: isDrawer,
@@ -5500,7 +5538,6 @@ func (w *Workspace) renderSidebarColumn(
 		Notebooks:         notebooks,
 		Entries:           entries,
 		ActiveNote:        activeNote,
-		Notice:            notice,
 		SettingsOpen:      w.modals.IsSettingsOpen(),
 		SearchOpen:        w.modals.IsSearchOpen(),
 		Busy:              w.isBusy(),
@@ -5619,10 +5656,7 @@ func (w *Workspace) togglePinnedPluginButton(slotID string) bool {
 	if err != nil {
 		files.LogWarnf("pinned plugin buttons save failed: %v", err)
 		msg := theme.Tr("保存固定设置失败", "Failed to save pinned buttons")
-		w.setNotice(msg)
-		if w.pluginUI != nil {
-			w.pluginUI.Toast("", msg, "error", nil)
-		}
+		w.notify(msg, "error")
 		w.RequestRedraw()
 		return false
 	}

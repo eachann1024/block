@@ -362,6 +362,7 @@ func renderExternalPathBar(
 	st *ExternalPathBarState,
 	onOpenDir func(dirPath string),
 	onRevealFile func(filePath string),
+	onCopied func(),
 ) {
 	crumbs := buildPathBreadcrumbs(absPath)
 	if len(crumbs) == 0 {
@@ -482,6 +483,9 @@ func renderExternalPathBar(
 				})
 				if copyBtn.Clicked() {
 					c.Services().WriteClipboard(absPath)
+					if onCopied != nil {
+						onCopied()
+					}
 					if st != nil {
 						st.CopiedPath = absPath
 						st.CopiedUntil = c.Now().Add(1500 * time.Millisecond)

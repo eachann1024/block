@@ -156,6 +156,9 @@ func navigateTitlebarMenu(c *ui.Context, card ui.Element, items []blockui.MenuIt
 
 // TitlebarProps supplies current state and callbacks to RenderTitlebar.
 type TitlebarProps struct {
+	// DeferMenus, when set, queues the menu overlays so they are built after
+	// the editor and stack above its floating toolbars.
+	DeferMenus             func(fn func())
 	SidebarWide            bool
 	SidebarAutoHidden      bool
 	SidebarWidth           float32
@@ -533,6 +536,10 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 		}
 	})
 
+	if p.DeferMenus != nil {
+		p.DeferMenus(func() { renderTitlebarMenus(c, p, availW) })
+		return
+	}
 	renderTitlebarMenus(c, p, availW)
 }
 
