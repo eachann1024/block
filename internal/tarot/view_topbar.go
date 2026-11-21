@@ -1,8 +1,6 @@
 package tarot
 
 import (
-	"time"
-
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -15,18 +13,6 @@ func (ctrl *Controller) RenderTopbar(c *ui.Context, sidebarOpen bool) {
 	room := ctrl.Room()
 	host := ctrl.Host()
 	active, hasActive := ctrl.ActiveNote()
-	now := time.Now()
-
-	ctrl.mu.RLock()
-	savedBadge := !ctrl.SavedBadgeUntil.IsZero() && now.Before(ctrl.SavedBadgeUntil)
-	savedRem := time.Duration(0)
-	if savedBadge {
-		savedRem = ctrl.SavedBadgeUntil.Sub(now)
-	}
-	ctrl.mu.RUnlock()
-	if savedBadge && savedRem > 0 {
-		c.After(savedRem)
-	}
 
 	tb := c.TitleBar()
 	leftLead := theme.Space16
@@ -159,45 +145,11 @@ func (ctrl *Controller) RenderTopbar(c *ui.Context, sidebarOpen bool) {
 			}
 		})
 
-		// Right section: Save + AI (on Writing) + 退出塔罗模式.
+		// Right section: AI (on Writing) + 退出塔罗模式.
 		right := ui.Row(c.Key("tarot-topbar-right")).Width(280).FillHeight().Shrink(0).
 			AlignItems(ui.Center).Justify(ui.End).Gap(theme.Space8).DragWindow()
 		right.Children(func() {
 			if room == RoomWriting {
-				saveLbl := theme.Tr("保存", "Save")
-				saveIcon := IconSave
-				saveFG := tc.TextWarm
-				saveBD := tc.GoldBorderMid
-				if savedBadge {
-					saveLbl = theme.Tr("已保存", "Saved")
-					saveIcon = IconCheck
-					saveFG = tc.GoldBright
-					saveBD = tc.GoldBright
-				}
-				saveBtn := ui.ButtonBase(c.Key("tarot-save")).Height(30).PaddingX(theme.Space12).
-					Gap(theme.Space6).Shrink(0).AlignItems(ui.Center).Radius(theme.RadiusSM).
-					Cursor(ui.CursorPointer).Label(saveLbl)
-				if saveBtn.Pressed() {
-					saveBtn.Background(tc.GoldPressWash)
-					saveBD = tc.GoldBright
-				} else if saveBtn.Hovered() {
-					saveBtn.Background(tc.GoldHoverWash)
-					saveBD = tc.GoldBright
-				}
-				saveBtn.Border(1, saveBD)
-				blockui.TactileButton(saveBtn, saveBtn.Hovered(), saveBtn.Pressed(), false)
-				saveBtn.Children(func() {
-					IconBox(c, saveIcon, theme.IconInline, saveFG)
-					ui.Text(c, saveLbl).FontSize(theme.FontSmall).TextColor(saveFG).SingleLine()
-				})
-				blockui.Probe(saveBtn, "tarot-save")
-				if saveBtn.Clicked() {
-					if host.SaveActiveNote != nil {
-						host.SaveActiveNote()
-					}
-					ctrl.TriggerSaveFlash()
-				}
-
 				if host.IsAIEnabled != nil && host.IsAIEnabled() {
 					aiOpen := host.IsAIOpen != nil && host.IsAIOpen()
 					aiBtn := ui.ButtonBase(c.Key("tarot-ai")).Height(30).PaddingX(theme.Space12).

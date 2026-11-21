@@ -28,9 +28,6 @@ func (w *Workspace) initTarot() {
 			}
 			_ = w.OpenNote(absPath, 0)
 		},
-		SaveActiveNote: func() {
-			_ = w.FlushDirtySessions()
-		},
 		ToggleAI: func() {
 			w.ToggleAIPanel()
 		},

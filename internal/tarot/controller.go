@@ -27,22 +27,21 @@ const (
 
 // Host decouples Tarot UI & rituals from Workspace internals.
 type Host struct {
-	OpenNote       func(absPath string)
-	SaveActiveNote func()
-	ToggleAI       func()
-	OpenAIWithMsg  func(prompt string)
-	ExitTarot      func()
-	ToggleSidebar  func()
-	NewNote        func()
-	OpenSearch     func()
-	OpenSettings   func()
-	RequestRedraw  func()
-	ReadNoteText   func(absPath string) string
-	CompleteAI     func(ctx context.Context, systemPrompt, userPrompt string) (string, error)
-	IsAIReady      func() bool
-	IsAIOpen       func() bool
-	IsAIEnabled    func() bool
-	IsAIStreaming  func() bool
+	OpenNote      func(absPath string)
+	ToggleAI      func()
+	OpenAIWithMsg func(prompt string)
+	ExitTarot     func()
+	ToggleSidebar func()
+	NewNote       func()
+	OpenSearch    func()
+	OpenSettings  func()
+	RequestRedraw func()
+	ReadNoteText  func(absPath string) string
+	CompleteAI    func(ctx context.Context, systemPrompt, userPrompt string) (string, error)
+	IsAIReady     func() bool
+	IsAIOpen      func() bool
+	IsAIEnabled   func() bool
+	IsAIStreaming func() bool
 }
 
 // TableState holds the 3-card spread ritual and its animation timeline.
@@ -111,10 +110,9 @@ type Controller struct {
 	Deck  DeckState
 
 	// Writing skin animations
-	SaveFlashAt     time.Time
-	SavedBadgeUntil time.Time
-	PageSwitchAt    time.Time
-	SidebarScroll   ui.ScrollState
+	SaveFlashAt   time.Time
+	PageSwitchAt  time.Time
+	SidebarScroll ui.ScrollState
 
 	// QuickNote skin animations
 	QuickSaveFlashAt time.Time
@@ -274,7 +272,6 @@ func (ctrl *Controller) OnNoteSaved(absPath string) {
 
 	ctrl.mu.Lock()
 	ctrl.SaveFlashAt = now
-	ctrl.SavedBadgeUntil = now.Add(1800 * time.Millisecond)
 	var card NoteCard
 	found := false
 	for _, n := range ctrl.notes {
@@ -311,7 +308,6 @@ func (ctrl *Controller) TriggerSaveFlash() {
 	now := time.Now()
 	ctrl.mu.Lock()
 	ctrl.SaveFlashAt = now
-	ctrl.SavedBadgeUntil = now.Add(1800 * time.Millisecond)
 	active := ctrl.activeNote
 	redraw := ctrl.host.RequestRedraw
 	ctrl.mu.Unlock()
