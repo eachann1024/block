@@ -84,8 +84,7 @@
           "zh": "系统唤醒或恢复联网后按现有规则补做自动同步",
           "en": "Resume automatic sync after waking or reconnecting, using the existing sync rules"
         }
-      },
-      "beta": true
+      }
     },
     {
       "app": "blockmd",
