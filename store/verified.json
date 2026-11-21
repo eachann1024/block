@@ -1,6 +1,4 @@
 {
   "block-sync": "blockmd-plugins/block-sync",
-  "block-poop-everywhere": "blockmd-plugins/block-poop-everywhere",
-  "block-lang-gomod": "blockmd-plugins/block-lang-gomod",
-  "block-lang-plist": "blockmd-plugins/block-lang-plist"
+  "block-poop-everywhere": "blockmd-plugins/block-poop-everywhere"
 }

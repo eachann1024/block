@@ -1106,19 +1106,19 @@ func (s *StoreManager) MatchesOfficialSource(installed InstalledApp, entry Store
 	return s.matchesRepoSource(installed, entry, false)
 }
 
-// Keep the original catalog metadata available for source verification of
-// installed language plugins that are now hidden from the catalog.
+// The final store entries still identify the origin of previously installed packages.
 func supersededLanguageCatalogEntry(id string) StoreAppEntry {
-	builtinMu.RLock()
-	defer builtinMu.RUnlock()
-	if embeddedFallbackIndex != nil {
-		for _, entry := range embeddedFallbackIndex.Apps {
-			if entry.ID == id {
-				return entry
-			}
-		}
+	if !SupersededLanguagePluginIDs[id] {
+		return StoreAppEntry{}
 	}
-	return StoreAppEntry{}
+	const version = "v1.0.3"
+	repo := "blockmd-plugins/" + id
+	return StoreAppEntry{
+		ID:          id,
+		Repo:        repo,
+		DownloadURL: "https://github.com/" + repo + "/releases/download/" + version + "/" + id + "-" + version + ".tar.gz",
+		Verified:    true,
+	}
 }
 
 // MatchesReviewedSource reports whether an installed plugin was genuinely installed
