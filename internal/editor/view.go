@@ -1298,7 +1298,8 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 			})
 		}
 		inOriginDrag := s.isMouseDragging() && s.mouseOriginBlock == idx
-		if isFocused && !readOnly && !s.needsDetachedSelectionFocus() && (!s.hasMultiBlockSelection() || inOriginDrag) {
+		showInlineDiff := s.blockHasInlineRewrite(idx) && s.annotInlineEditBlock != b.ID
+		if isFocused && !readOnly && !s.needsDetachedSelectionFocus() && (!s.hasMultiBlockSelection() || inOriginDrag) && !showInlineDiff {
 			s.renderEditableTextBlock(c, idx, b, fontSize, weight, lh, deleteArmed)
 			return
 		}
@@ -1331,6 +1332,13 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 						H: h,
 					}, selFill, theme.EditorSelectionRadius)
 				})
+			}
+		} else if showInlineDiff {
+			rt = ui.RichText(c.Key("rt"), s.buildInlineDiffDisplaySpans(idx, b, fontSize, weight)...).PreserveSpaces().FontSize(fontSize).FontWeight(weight).
+				LineHeight(lh).MinHeight(fontSize * lh).TextColor(textCol).FillWidth()
+			if !readOnly && rt.Clicked() {
+				s.annotInlineEditBlock = b.ID
+				s.FocusBlock(idx)
 			}
 		} else {
 			interactiveLinks := isHovered && !s.IsScrollingForHover(c.Now()) && blockHasLink(b)
@@ -1834,6 +1842,109 @@ func (s *Session) renderDisplaySpansChildren(c *ui.Context, _ int, b *model.Bloc
 			})
 		}
 	}
+}
+
+func (s *Session) blockHasInlineRewrite(idx int) bool {
+	if s.aiDisabled || len(s.annotations) == 0 {
+		return false
+	}
+	for _, ann := range s.annotations {
+		if !isAnnotationVisible(ann) {
+			continue
+		}
+		if _, _, ok := s.activeInlineRewrite(ann); !ok {
+			continue
+		}
+		if _, _, ok := s.annotationBlockRange(ann, idx); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) buildInlineDiffDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {
+	if b == nil || len(b.Spans) == 0 {
+		return nil
+	}
+	pal := theme.Ocean()
+	type inlineRW struct {
+		lo, hi     int
+		text       string
+		busy       bool
+		insertHere bool
+		inserted   bool
+	}
+	var rewrites []inlineRW
+	for _, ann := range s.annotations {
+		if !isAnnotationVisible(ann) {
+			continue
+		}
+		rwText, busy, ok := s.activeInlineRewrite(ann)
+		if !ok {
+			continue
+		}
+		lo, hi, ok := s.annotationBlockRange(ann, idx)
+		if !ok {
+			continue
+		}
+		aIdx := s.blockIndexByID(ann.StartBlockID)
+		bIdx := s.blockIndexByID(ann.EndBlockID)
+		endIdx := max(aIdx, bIdx)
+		rewrites = append(rewrites, inlineRW{
+			lo:         lo,
+			hi:         hi,
+			text:       rwText,
+			busy:       busy,
+			insertHere: idx == endIdx,
+		})
+	}
+
+	codeFG, codeBG, codePadX, codePadY, codeRadius := inlineCodeStyle(baseSize)
+	spans := s.splitSpansForHighlights(idx, b.ID, b.Spans)
+	out := make([]ui.Span, 0, len(spans)+len(rewrites))
+	pos := 0
+	for _, sp := range spans {
+		n := len([]rune(sp.Text))
+		s0, s1 := pos, pos+n
+		inRewrite := false
+		for i := range rewrites {
+			if s1 > rewrites[i].lo && s0 < rewrites[i].hi {
+				inRewrite = true
+				break
+			}
+		}
+		if inRewrite {
+			u, _ := buildPureSpan(sp, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+			u.Strikethrough = true
+			u.Color = pal.Placeholder
+			u.Background = ui.Color{}
+			out = append(out, u)
+		} else {
+			u, _ := s.buildDisplaySpan(idx, b, sp, s0, s1, baseSize, baseWeight, codeFG, codeBG, codePadX, codePadY, codeRadius)
+			out = append(out, u)
+		}
+		pos = s1
+		for i := range rewrites {
+			if rewrites[i].insertHere && !rewrites[i].inserted && rewrites[i].hi == pos {
+				rewrites[i].inserted = true
+				fg := pal.SelectionFG
+				bg := pal.AnnotationDone
+				if rewrites[i].busy {
+					fg = pal.TextSecondary
+					bg = pal.Hover
+				}
+				out = append(out, ui.Span{
+					Text:       rewrites[i].text,
+					Size:       baseSize,
+					Weight:     baseWeight,
+					Color:      fg,
+					Background: bg,
+					Radius:     theme.RadiusXS,
+				})
+			}
+		}
+	}
+	return out
 }
 
 func (s *Session) buildDisplaySpans(idx int, b *model.Block, baseSize float32, baseWeight int) []ui.Span {

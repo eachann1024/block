@@ -27,6 +27,7 @@ const (
 	KindPreview   ItemKind = "preview"
 	KindLogList   ItemKind = "log_list"
 	KindIconStrip ItemKind = "icon_strip"
+	KindProgress  ItemKind = "progress"
 )
 
 type ButtonVariant string
@@ -43,6 +44,8 @@ type UIOption struct {
 	Detail  string `json:"detail,omitempty"`
 	Badge   string `json:"badge,omitempty"`
 	Tooltip string `json:"tooltip,omitempty"`
+	Tone    string `json:"tone,omitempty"`
+	Channel string `json:"channel,omitempty"`
 }
 
 type UIButton struct {
@@ -144,14 +147,19 @@ type UITreemapTile struct {
 }
 
 type UILogEntry struct {
-	Title    string  `json:"title"`
-	SubText  string  `json:"sub_text,omitempty"`
-	Time     string  `json:"time,omitempty"`
-	Status   string  `json:"status,omitempty"`
-	Tone     string  `json:"tone,omitempty"`
-	Ratio    float64 `json:"ratio,omitempty"`
-	Tooltip  string  `json:"tooltip,omitempty"`
-	ActionID string  `json:"action_id,omitempty"`
+	Title    string   `json:"title"`
+	SubText  string   `json:"sub_text,omitempty"`
+	Time     string   `json:"time,omitempty"`
+	Status   string   `json:"status,omitempty"`
+	Tone     string   `json:"tone,omitempty"`
+	Ratio    float64  `json:"ratio,omitempty"`
+	Tooltip  string   `json:"tooltip,omitempty"`
+	ActionID string   `json:"action_id,omitempty"`
+	Kind     string   `json:"kind,omitempty"`    // "" | "event" | "span"
+	Badge    string   `json:"badge,omitempty"`   // short pill label for span rows
+	Span     string   `json:"span,omitempty"`    // time range label e.g. "16:09 → 16:53"
+	Tags     []string `json:"tags,omitempty"`    // compact chips for grouped files/items
+	Details  []string `json:"details,omitempty"` // expandable check timestamps/lines
 }
 
 type UIPreviewCard struct {
@@ -183,7 +191,8 @@ type UIItem struct {
 	Kind             ItemKind          `json:"kind"`
 	ID               string            `json:"id,omitempty"`
 	Label            string            `json:"label,omitempty"`
-	Layout           string            `json:"layout,omitempty"` // "" | "full" | "stacked"
+	Layout           string            `json:"layout,omitempty"`  // "" | "full" | "stacked"
+	Variant          string            `json:"variant,omitempty"` // log_list: "" | "list" | "timeline"
 	Value            any               `json:"value,omitempty"`
 	Placeholder      string            `json:"placeholder,omitempty"`
 	AcceptExtensions []string          `json:"accept_extensions,omitempty"`
@@ -202,6 +211,11 @@ type UIItem struct {
 	VisibleWhen      *UIVisibleWhen    `json:"visible_when,omitempty"`
 	Icon             *UIIcon           `json:"icon,omitempty"`
 	Icons            []UIIcon          `json:"icons,omitempty"`
+	Channel          string            `json:"channel,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	Tone             string            `json:"tone,omitempty"`
+	Progress         *float64          `json:"progress,omitempty"`
+	Tooltip          string            `json:"tooltip,omitempty"`
 }
 
 type UICard struct {
@@ -217,11 +231,14 @@ type UICard struct {
 // ActionProgress captures live progress reported by a plugin during an active
 // action via host.action.progress or declaratively on UIPage.Progress.
 type ActionProgress struct {
+	Channel     string  // optional channel ID for independent per-page/target progress
 	HasProgress bool
 	Progress    float64 // 0..1 ratio when HasProgress is true
 	Done        int     // completed items when Total > 0
 	Total       int     // total items when > 0
 	Label       string  // optional short override label
+	Tone        string  // optional status tone: "" | "accent" | "info" | "success" | "warning" | "danger"
+	Running     bool    // true while channel work is actively in-flight
 }
 
 type UIPage struct {
@@ -450,6 +467,9 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 	if len(item.Icons) > 0 && item.Kind != KindIconStrip {
 		return fmt.Errorf("%s.icons is only allowed on icon_strip", prefix)
 	}
+	if (item.Channel != "" || item.Status != "" || item.Tone != "" || item.Progress != nil || item.Tooltip != "") && item.Kind != KindProgress {
+		return fmt.Errorf("%s progress fields (channel/status/tone/progress/tooltip) are only allowed on progress", prefix)
+	}
 	if item.VisibleWhen != nil {
 		if strings.TrimSpace(item.VisibleWhen.ControlID) == "" {
 			return fmt.Errorf("%s.visible_when.control_id is required", prefix)
@@ -491,6 +511,20 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			}
 			if err := checkUserText(fmt.Sprintf("%s.options[%d].label", prefix, oi), opt.Label, true); err != nil {
 				return err
+			}
+			if err := checkUserText(fmt.Sprintf("%s.options[%d].tooltip", prefix, oi), opt.Tooltip, false); err != nil {
+				return err
+			}
+			if err := validateStatusTone(fmt.Sprintf("%s.options[%d].tone", prefix, oi), opt.Tone); err != nil {
+				return err
+			}
+			if opt.Channel != "" {
+				if item.Kind != KindSegmented {
+					return fmt.Errorf("%s.options[%d].channel is only allowed on segmented", prefix, oi)
+				}
+				if err := validateProgressChannel(fmt.Sprintf("%s.options[%d].channel", prefix, oi), opt.Channel); err != nil {
+					return err
+				}
 			}
 			if opt.Value == strVal {
 				matched = true
@@ -712,6 +746,11 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 		if err := checkText(prefix+".empty_text", item.EmptyText, true); err != nil {
 			return err
 		}
+		switch item.Variant {
+		case "", "list", "timeline":
+		default:
+			return fmt.Errorf("%s.variant %q is unsupported for log_list", prefix, item.Variant)
+		}
 		for ei, e := range item.Entries {
 			if err := checkUserText(fmt.Sprintf("%s.entries[%d].title", prefix, ei), e.Title, true); err != nil {
 				return err
@@ -728,12 +767,84 @@ func validateItem(prefix string, item UIItem, seenControls, seenActions map[stri
 			if err := checkUserText(fmt.Sprintf("%s.entries[%d].tooltip", prefix, ei), e.Tooltip, false); err != nil {
 				return err
 			}
+			switch e.Kind {
+			case "", "event", "span":
+			default:
+				return fmt.Errorf("%s.entries[%d].kind %q is unsupported", prefix, ei, e.Kind)
+			}
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].badge", prefix, ei), e.Badge, false); err != nil {
+				return err
+			}
+			if err := checkUserText(fmt.Sprintf("%s.entries[%d].span", prefix, ei), e.Span, false); err != nil {
+				return err
+			}
+			if len(e.Tags) > 24 {
+				return fmt.Errorf("%s.entries[%d].tags exceeds 24 items", prefix, ei)
+			}
+			for ti, tag := range e.Tags {
+				if err := checkUserText(fmt.Sprintf("%s.entries[%d].tags[%d]", prefix, ei, ti), tag, true); err != nil {
+					return err
+				}
+			}
+			if len(e.Details) > 64 {
+				return fmt.Errorf("%s.entries[%d].details exceeds 64 items", prefix, ei)
+			}
+			for di, det := range e.Details {
+				if err := checkUserText(fmt.Sprintf("%s.entries[%d].details[%d]", prefix, ei, di), det, true); err != nil {
+					return err
+				}
+			}
 			if e.ActionID != "" && (strings.TrimSpace(e.ActionID) == "" || len(e.ActionID) > 128 || ContainsEmoji(e.ActionID)) {
 				return fmt.Errorf("%s.entries[%d].action_id is invalid", prefix, ei)
 			}
 		}
+	case KindProgress:
+		if strings.TrimSpace(item.Label) == "" && strings.TrimSpace(item.Status) == "" {
+			return fmt.Errorf("%s requires label or status", prefix)
+		}
+		if err := checkText(prefix+".label", item.Label, false); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".status", item.Status, false); err != nil {
+			return err
+		}
+		if err := checkUserText(prefix+".tooltip", item.Tooltip, false); err != nil {
+			return err
+		}
+		if err := validateStatusTone(prefix+".tone", item.Tone); err != nil {
+			return err
+		}
+		if item.Channel != "" {
+			if err := validateProgressChannel(prefix+".channel", item.Channel); err != nil {
+				return err
+			}
+		}
+		if item.Progress != nil && !(*item.Progress >= 0 && *item.Progress <= 1) {
+			return fmt.Errorf("%s.progress must be between 0 and 1, got %v", prefix, *item.Progress)
+		}
 	default:
 		return fmt.Errorf("%s.kind %q is unsupported", prefix, item.Kind)
+	}
+	return nil
+}
+
+func validateStatusTone(field, tone string) error {
+	switch strings.ToLower(strings.TrimSpace(tone)) {
+	case "", "accent", "info", "success", "warning", "warn", "danger", "error":
+		return nil
+	default:
+		return fmt.Errorf("%s %q is unsupported", field, tone)
+	}
+}
+
+func validateProgressChannel(field, channel string) error {
+	if len(channel) > 64 {
+		return fmt.Errorf("%s is too long", field)
+	}
+	for _, r := range channel {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return fmt.Errorf("%s %q must use lowercase letters, digits, '-' or '_'", field, channel)
+		}
 	}
 	return nil
 }

@@ -250,7 +250,7 @@ func (s *Session) paintVectorBackdrop(p *ui.Painter, r ui.Rect, pal theme.Palett
 					}
 					var deg float32
 					if scatter {
-						hash := ((absRow*7 + col*13) % 5 + 5) % 5
+						hash := ((absRow*7+col*13)%5 + 5) % 5
 						deg = float32(hash-2) * 9
 					}
 					drawBackdropGlyph(p, fillSVG, strokeSVG, accentSVG, ui.Rect{X: x, Y: y, W: glyphSize, H: glyphSize}, deg, fillCol, strokeCol, accentCol)

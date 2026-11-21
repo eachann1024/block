@@ -469,6 +469,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 						}
 
 						anyDragOver := false
+						suppressHover := blockui.IsScrollingForHover(c, treeScroll)
 						rowGap := theme.TreeRowPitch - theme.HeightControl
 						canVirtTree := len(rows) > 100 && !blockui.IsProbeEnabled() && p.State.DropTargetPath == "" && p.State.RenamingPath == ""
 						firstIdx, lastIdx := 0, len(rows)
@@ -490,7 +491,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 								ui.Box(c.Key("tree-virt-top")).FillWidth().Height(max(topH, 0))
 							}
 							for i := firstIdx; i < lastIdx; i++ {
-								if renderTreeRow(c, p, rows[i], treeFocus) {
+								if renderTreeRow(c, p, rows[i], treeFocus, suppressHover) {
 									anyDragOver = true
 								}
 							}
@@ -732,7 +733,7 @@ func renderSidebarHeaderBar(c *ui.Context, p SidebarProps) {
 	})
 }
 
-func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.Element) bool {
+func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.Element, suppressHover bool) bool {
 	pal := theme.Ocean()
 	entry := *r.Entry
 	indent := theme.TreeRowPadLeft + float32(r.Depth)*theme.TreeIndentStep
@@ -869,7 +870,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		}
 	}
 
-	hovered := btn.Hovered()
+	hovered := !suppressHover && btn.Hovered()
 	pressed := btn.Pressed()
 	hoverBG := pal.ShellChrome().Hover
 	if p.FloatingCard {

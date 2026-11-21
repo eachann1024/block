@@ -144,15 +144,25 @@ func providerBrandVisual(id string, proto model.Protocol, baseURL string) (icons
 
 func providerDisplayName(id string, prof model.ProviderProfile) string {
 	if nm := strings.TrimSpace(prof.Name); nm != "" {
-		return nm
+		return presetDisplayName(nm)
 	}
 	if p := findProviderPreset(id); p != nil {
-		if p.DefaultName != "" {
-			return p.DefaultName
-		}
 		return theme.Tr(p.Zh, p.En)
 	}
 	return id
+}
+
+// presetDisplayName localizes a name that is still a built-in preset default.
+// A name the user typed is left unchanged.
+func presetDisplayName(name string) string {
+	nm := strings.TrimSpace(name)
+	for i := range providerPresets {
+		p := &providerPresets[i]
+		if nm == p.Zh || nm == p.En || nm == p.DefaultName {
+			return theme.Tr(p.Zh, p.En)
+		}
+	}
+	return nm
 }
 
 func normalizeProviderID(id string, proto model.Protocol, baseURL string) string {
@@ -792,7 +802,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			toolArgBytes += len(tc.ID) + len(tc.Function.Name) + len(tc.Function.Arguments)
 			if idx >= maxTurnTools || toolArgBytes > maxToolArgsBytes {
 				files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
-				emitSSE(ctx, out, sseEvent{err: "工具调用数量或参数超过上限"})
+				emitSSE(ctx, out, sseEvent{err: theme.Tr("工具调用数量或参数超过上限", "Too many tool calls, or the arguments are too large")})
 				return
 			}
 			for len(calls) <= idx {
@@ -936,7 +946,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 			if ev.ContentBlock != nil && ev.ContentBlock.Type == "tool_use" {
 				if len(calls) >= maxTurnTools {
 					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
-					emitSSE(ctx, out, sseEvent{err: "工具调用数量超过上限"})
+					emitSSE(ctx, out, sseEvent{err: theme.Tr("工具调用数量超过上限", "Too many tool calls")})
 					return
 				}
 				calls = append(calls, anthropicCall{
@@ -964,7 +974,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 				toolArgBytes += len(ev.Delta.PartialJSON)
 				if toolArgBytes > maxToolArgsBytes {
 					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool arguments limit exceeded"))
-					emitSSE(ctx, out, sseEvent{err: "工具参数超过上限"})
+					emitSSE(ctx, out, sseEvent{err: theme.Tr("工具参数超过上限", "Tool arguments exceed the limit")})
 					return
 				}
 				for i := range calls {
@@ -1366,8 +1376,11 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int
 	}
 	if step == maxBuiltinSteps {
 		msgs = append(msgs, map[string]any{
-			"role":    "system",
-			"content": "本轮工具调用已达上限。请根据已有工具结果回答，明确未完成或未覆盖的范围，不要声称全部完成。",
+			"role": "system",
+			"content": theme.Tr(
+				"本轮工具调用已达上限。请根据已有工具结果回答，明确未完成或未覆盖的范围，不要声称全部完成。",
+				"This turn has reached the tool-call limit. Answer from the tool results you already have, say what is unfinished or not covered, and do not claim that everything is done.",
+			),
 		})
 	}
 	return msgs
@@ -1438,7 +1451,7 @@ func (c *Controller) handleBuiltinToolCalls(turn *assistantTurn, step int, text,
 				continue
 			}
 		}
-		resJSON := marshalJSON(map[string]any{"error": "本轮工具调用已达到上限"})
+		resJSON := marshalJSON(map[string]any{"error": theme.Tr("本轮工具调用已达到上限", "This turn has reached the tool-call limit")})
 		var plan *model.BatchPlan
 		var sources []model.SourceNote
 		if turn.allowTool() {
@@ -1576,14 +1589,14 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		return marshalJSON(map[string]any{"error": message}), nil, nil
 	}
 	if ctx.Err() != nil {
-		return fail("本轮已结束")
+		return fail(theme.Tr("本轮已结束", "This turn has ended"))
 	}
 	if len(rawArgs) > maxToolArgsBytes {
-		return fail("工具参数超过上限")
+		return fail(theme.Tr("工具参数超过上限", "Tool arguments exceed the limit"))
 	}
 	var args map[string]any
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return fail("无效的工具参数")
+		return fail(theme.Tr("无效的工具参数", "Invalid tool arguments"))
 	}
 
 	if name == "loadSkill" {
@@ -1597,13 +1610,13 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 				}), nil, nil
 			}
 		}
-		return fail("未知 Skill")
+		return fail(theme.Tr("未知 Skill", "Unknown skill"))
 	}
 
 	if requested, exists := args["notebookRoot"]; exists {
 		value, ok := requested.(string)
 		if !ok || (value != "" && value != "current" && value != scope.root) {
-			return fail("本轮只授权发送时的笔记本")
+			return fail(theme.Tr("本轮只授权发送时的笔记本", "This turn is only authorized for the notebook that was open when you sent the message"))
 		}
 	}
 	c.mu.RLock()
@@ -1611,7 +1624,7 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 	c.mu.RUnlock()
 	root, err := scope.open(host)
 	if err != nil {
-		return fail("没有可用的授权笔记本")
+		return fail(theme.Tr("没有可用的授权笔记本", "No authorized notebook is available"))
 	}
 	defer root.Close()
 
@@ -1628,13 +1641,13 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		remaining := 4 * 1024 * 1024
 		for _, filename := range pages {
 			if ctx.Err() != nil {
-				return fail("本轮已结束")
+				return fail(theme.Tr("本轮已结束", "This turn has ended"))
 			}
 			page := displayPageID(filename)
 			item := map[string]string{"pageId": page, "title": pathBaseSlash(page)}
 			if name == "searchNotes" {
 				if lowQ == "" {
-					return fail("请提供搜索关键词")
+					return fail(theme.Tr("请提供搜索关键词", "Enter a search keyword"))
 				}
 				if remaining < maxToolNoteBytes {
 					limited = true
@@ -1668,11 +1681,11 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		}
 		filename, err := noteFilename(page)
 		if err != nil {
-			return fail("请使用授权笔记本内的相对页面名称")
+			return fail(theme.Tr("请使用授权笔记本内的相对页面名称", "Use a page path inside the authorized notebook"))
 		}
 		md, err := readNotebookNote(ctx, root, filename)
 		if err != nil {
-			return fail("无法读取页面，或笔记超过读取上限")
+			return fail(theme.Tr("无法读取页面，或笔记超过读取上限", "The page could not be read, or the note exceeds the read limit"))
 		}
 		src := []model.SourceNote{{Title: pathBaseSlash(page), Path: filepath.Join(scope.root, filename)}}
 		return marshalJSON(map[string]any{"pageId": displayPageID(filename), "title": pathBaseSlash(page), "markdown": md}), nil, src
@@ -1681,7 +1694,7 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		return buildBatchPlan(ctx, scope, root, args)
 
 	default:
-		return fail("未知工具：" + name)
+		return fail(theme.Tr("未知工具：", "Unknown tool: ") + name)
 	}
 }
 

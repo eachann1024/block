@@ -6086,6 +6086,103 @@ func (s *Session) updateAnnotationNote(id, note string) bool {
 	return false
 }
 
+type annotGenBatch struct {
+	seq     map[string]uint64
+	replies map[string]model.AnnotationReply
+}
+
+type annotationVersion struct {
+	Index  int
+	Prompt string
+	Kind   string
+	Text   string
+}
+
+// annotationVersions returns all completed reply versions for an annotation in chronological order.
+func annotationVersions(ann *model.Annotation) []annotationVersion {
+	if ann == nil {
+		return nil
+	}
+	versions := make([]annotationVersion, 0, len(ann.Thread)+1)
+	for _, t := range ann.Thread {
+		if strings.TrimSpace(t.A) == "" {
+			continue
+		}
+		kind := t.Kind
+		if kind == "" {
+			kind = "edit"
+		}
+		versions = append(versions, annotationVersion{
+			Index:  len(versions),
+			Prompt: t.Q,
+			Kind:   kind,
+			Text:   t.A,
+		})
+	}
+	if ann.Answer != "" {
+		versions = append(versions, annotationVersion{
+			Index:  len(versions),
+			Prompt: ann.Note,
+			Kind:   model.AnnotationReplyAnswer,
+			Text:   ann.Answer,
+		})
+	} else if ann.RewriteResult != "" {
+		versions = append(versions, annotationVersion{
+			Index:  len(versions),
+			Prompt: ann.Note,
+			Kind:   "edit",
+			Text:   ann.RewriteResult,
+		})
+	}
+	return versions
+}
+
+// activeAnnotationVersion returns the version currently inspected on the card (latest by default).
+func (s *Session) activeAnnotationVersion(ann *model.Annotation) (annotationVersion, int, int, bool) {
+	versions := annotationVersions(ann)
+	total := len(versions)
+	if total == 0 {
+		return annotationVersion{}, 0, 0, false
+	}
+	idx := total - 1
+	if s.annotVersionIdx != nil {
+		if saved, ok := s.annotVersionIdx[ann.ID]; ok {
+			idx = clampInt(saved, 0, total-1)
+		}
+	}
+	return versions[idx], idx, total, true
+}
+
+func (s *Session) setAnnotationVersion(id string, idx int) {
+	if s.annotVersionIdx == nil {
+		s.annotVersionIdx = make(map[string]int)
+	}
+	s.annotVersionIdx[id] = idx
+	s.annotInlineEditBlock = 0
+	s.requestRedraw()
+}
+
+// activeInlineRewrite reports whether ann should render an in-place revision inside the paragraph text.
+func (s *Session) activeInlineRewrite(ann *model.Annotation) (text string, busy bool, ok bool) {
+	if ann == nil || s.aiDisabled || ann.Applied || s.editingAnnotID == ann.ID {
+		return "", false, false
+	}
+	if ann.RewriteBusy {
+		for i := len(ann.Thread) - 1; i >= 0; i-- {
+			t := ann.Thread[i]
+			if strings.TrimSpace(t.A) != "" && t.Kind != model.AnnotationReplyAnswer {
+				return t.A, true, true
+			}
+		}
+		return "", false, false
+	}
+	ver, _, _, hasVer := s.activeAnnotationVersion(ann)
+	if !hasVer || ver.Kind == model.AnnotationReplyAnswer || strings.TrimSpace(ver.Text) == "" {
+		return "", false, false
+	}
+	return ver.Text, false, true
+}
+
 func (s *Session) SetAnnotationAIResponder(fn func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply) {
 	s.annotationAIResponder = fn
 }
@@ -6107,6 +6204,24 @@ func (s *Session) GeneratePendingAnnotations() int {
 	return s.startAnnotationGeneration(batch)
 }
 
+// GenerateAnnotationByID triggers AI generation for one pending annotation.
+func (s *Session) GenerateAnnotationByID(id string) bool {
+	if s.aiDisabled || s.annotationAIResponder == nil {
+		return false
+	}
+	s.ensureAnnotationsLoaded()
+	for _, a := range s.annotations {
+		if a == nil || a.ID != id || a.RewriteBusy || a.Applied {
+			continue
+		}
+		if strings.TrimSpace(a.Note) == "" {
+			continue
+		}
+		return s.startAnnotationGeneration([]*model.Annotation{a}) > 0
+	}
+	return false
+}
+
 // SendAnnotationFollowup files the card's current exchange into its thread and
 // asks the follow-up as the new note, for that card alone.
 func (s *Session) SendAnnotationFollowup(id, text string) bool {
@@ -6120,17 +6235,62 @@ func (s *Session) SendAnnotationFollowup(id, text string) bool {
 			continue
 		}
 		reply := a.Answer
+		kind := model.AnnotationReplyAnswer
 		if reply == "" {
 			reply = a.RewriteResult
+			kind = "edit"
 		}
 		s.pushUndo()
-		a.Thread = append(a.Thread, model.AnnotationTurn{Q: a.Note, A: reply})
+		a.Thread = append(a.Thread, model.AnnotationTurn{Q: a.Note, A: reply, Kind: kind})
 		a.Note = text
 		a.Answer = ""
 		a.RewriteResult = ""
 		a.AIError = ""
+		delete(s.annotVersionIdx, id)
+		s.annotInlineEditBlock = 0
 		s.persistAnnotations()
 		return s.startAnnotationGeneration([]*model.Annotation{a}) > 0
+	}
+	return false
+}
+
+// CancelAnnotationGeneration aborts an in-flight rewrite/follow-up for one card,
+// restoring the previous version and returning the follow-up text to its draft.
+func (s *Session) CancelAnnotationGeneration(id string) bool {
+	s.ensureAnnotationsLoaded()
+	for _, a := range s.annotations {
+		if a == nil || a.ID != id || !a.RewriteBusy {
+			continue
+		}
+		if s.annotGenSeq == nil {
+			s.annotGenSeq = make(map[string]uint64)
+		}
+		s.annotGenSeq[id]++
+		a.RewriteBusy = false
+		if n := len(a.Thread); n > 0 {
+			draftText := a.Note
+			prev := a.Thread[n-1]
+			a.Thread = a.Thread[:n-1]
+			a.Note = prev.Q
+			if prev.Kind == model.AnnotationReplyAnswer {
+				a.Answer = prev.A
+				a.RewriteResult = ""
+			} else {
+				a.RewriteResult = prev.A
+				a.Answer = ""
+			}
+			if draftText != "" {
+				if s.followupDrafts == nil {
+					s.followupDrafts = make(map[string]*string)
+				}
+				d := draftText
+				s.followupDrafts[id] = &d
+			}
+			delete(s.annotVersionIdx, id)
+			s.persistAnnotations()
+		}
+		s.requestRedraw()
+		return true
 	}
 	return false
 }
@@ -6139,7 +6299,11 @@ func (s *Session) startAnnotationGeneration(batch []*model.Annotation) int {
 	if s.aiDisabled || s.annotationAIResponder == nil || len(batch) == 0 {
 		return 0
 	}
+	if s.annotGenSeq == nil {
+		s.annotGenSeq = make(map[string]uint64)
+	}
 	pending := make([]*model.Annotation, 0, len(batch))
+	seqs := make(map[string]uint64, len(batch))
 	for _, a := range batch {
 		cp := *a
 		cp.Reactions = slices.Clone(a.Reactions)
@@ -6147,9 +6311,11 @@ func (s *Session) startAnnotationGeneration(batch []*model.Annotation) int {
 		pending = append(pending, &cp)
 		a.RewriteBusy = true
 		a.AIError = ""
+		s.annotGenSeq[a.ID]++
+		seqs[a.ID] = s.annotGenSeq[a.ID]
 	}
 	if s.annotGenCh == nil {
-		s.annotGenCh = make(chan map[string]model.AnnotationReply, 16)
+		s.annotGenCh = make(chan annotGenBatch, 16)
 	}
 	ch := s.annotGenCh
 	s.annotGenInFlight++
@@ -6170,7 +6336,7 @@ func (s *Session) startAnnotationGeneration(batch []*model.Annotation) int {
 				results[id] = model.AnnotationReply{}
 			}
 		}
-		ch <- results
+		ch <- annotGenBatch{seq: seqs, replies: results}
 		s.requestRedraw()
 	}()
 	return len(pending)
@@ -6183,9 +6349,9 @@ func (s *Session) pollAnnotationGeneration() {
 	}
 	updated := 0
 	for {
-		var results map[string]model.AnnotationReply
+		var batch annotGenBatch
 		select {
-		case results = <-s.annotGenCh:
+		case batch = <-s.annotGenCh:
 		default:
 			if updated > 0 {
 				s.persistAnnotations()
@@ -6197,7 +6363,10 @@ func (s *Session) pollAnnotationGeneration() {
 			if a == nil || !a.RewriteBusy {
 				continue
 			}
-			res, ok := results[a.ID]
+			if expectedSeq, ok := batch.seq[a.ID]; !ok || s.annotGenSeq[a.ID] != expectedSeq {
+				continue
+			}
+			res, ok := batch.replies[a.ID]
 			if !ok {
 				continue
 			}
@@ -6212,6 +6381,8 @@ func (s *Session) pollAnnotationGeneration() {
 				a.RewriteResult = res.Text
 			}
 			a.AIError = ""
+			delete(s.annotVersionIdx, a.ID)
+			s.annotInlineEditBlock = 0
 			updated++
 		}
 		if s.annotGenInFlight == 0 {
@@ -6320,6 +6491,9 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	ann.Answer = ""
 	ann.Thread = nil
 	ann.AIError = ""
+	delete(s.annotVersionIdx, ann.ID)
+	delete(s.annotThreadExpanded, ann.ID)
+	delete(s.followupDrafts, ann.ID)
 	if len(ann.Reactions) == 0 {
 		for i, item := range s.annotations {
 			if item.ID == ann.ID {

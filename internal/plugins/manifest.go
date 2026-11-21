@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -374,7 +376,10 @@ func (m *Manifest) Validate() error {
 	if ContainsEmoji(m.Name.Zh) || ContainsEmoji(m.Name.En) {
 		return errors.New("manifest.name must not contain emoji")
 	}
-	if !semverRe.MatchString(m.Version) {
+	// Validation must agree with the store's update comparison
+	// (golang.org/x/mod/semver), otherwise a version could pass here but
+	// sort as invalid and never surface as an update.
+	if !semverRe.MatchString(m.Version) || !semver.IsValid("v"+m.Version) {
 		return fmt.Errorf("manifest.version %q must be valid semver (e.g. 1.0.0)", m.Version)
 	}
 	if strings.TrimSpace(m.Author) == "" {
@@ -455,6 +460,22 @@ func ContainsEmoji(s string) bool {
 		case r >= 0x2600 && r <= 0x27BF:
 			return true
 		case r >= 0xFE00 && r <= 0xFE0F:
+			return true
+		case r >= 0x1F000 && r <= 0x1F2FF: // mahjong, cards, enclosed alphanumerics, regional indicators
+			return true
+		case r >= 0xE0020 && r <= 0xE007F: // tag sequences (subdivision flags)
+			return true
+		case r == 0x200D || r == 0x20E3: // ZWJ, keycap
+			return true
+		case r == 0x203C || r == 0x2049 || r == 0x24C2:
+			return true
+		case r == 0x231A || r == 0x231B || r == 0x2328 || r == 0x23CF:
+			return true
+		case r >= 0x23E9 && r <= 0x23F3, r >= 0x23F8 && r <= 0x23FA:
+			return true
+		case r >= 0x2B05 && r <= 0x2B07, r == 0x2B1B, r == 0x2B1C, r == 0x2B50, r == 0x2B55:
+			return true
+		case r == 0x3030 || r == 0x303D || r == 0x3297 || r == 0x3299:
 			return true
 		}
 	}

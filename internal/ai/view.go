@@ -4742,7 +4742,7 @@ func (c *Controller) openAddProviderModal() {
 	c.mu.Lock()
 	c.addProvModalOpen = true
 	c.addProvPreset = "openai"
-	c.addProvName = "OpenAI 兼容"
+	c.addProvName = theme.Tr("OpenAI 兼容", "OpenAI Compatible")
 	c.addProvProto = model.ProtocolOpenAI
 	c.addProvBaseURL = "https://api.openai.com/v1"
 	c.addProvAPIKey = ""
@@ -4829,7 +4829,7 @@ func (c *Controller) renderAddProviderModal(cUI *ui.Context, pal theme.Palette) 
 					if chip.Clicked() {
 						c.mu.Lock()
 						c.addProvPreset = pr.ID
-						c.addProvName = pr.DefaultName
+						c.addProvName = theme.Tr(pr.Zh, pr.En)
 						c.addProvProto = pr.Protocol
 						c.addProvBaseURL = pr.BaseURL
 						c.addProvTestOK = false

@@ -392,6 +392,9 @@ type SegmentOption struct {
 	ID       string
 	Label    string
 	Disabled bool
+	DotColor *ui.Color
+	Spinning bool
+	Tooltip  string
 }
 
 // SegmentedControlOptions configures optional layout overrides for SegmentedControlWithOptions.
@@ -489,10 +492,26 @@ func SegmentedControlWithOptions(c *ui.Context, id string, active *int, options 
 			if opt.ID != "" {
 				Probe(item, opt.ID)
 			}
+			if opt.Tooltip != "" {
+				WrappedTooltip(c, item, opt.Tooltip)
+			}
 			item.Children(func() {
 				col := pal.TextSecondary
 				if isAct || hovered || pressed {
 					col = pal.Text
+				}
+				if opt.Spinning || opt.DotColor != nil {
+					ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).MinWidth(0).Children(func() {
+						if opt.Spinning {
+							ui.Spinner(c).FontSize(theme.FontMeta).TextColor(pal.Accent).Label(opt.Label)
+						} else if opt.DotColor != nil {
+							ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
+								Radius(theme.RadiusPill).Background(*opt.DotColor).Shrink(0)
+						}
+						ui.Text(c, opt.Label).FontSize(labelSize).FixedLineHeight(labelLine).
+							FontWeight(theme.WeightControl).TextColor(col).SingleLine().Ellipsis("…")
+					})
+					return
 				}
 				ui.Text(c, opt.Label).FontSize(labelSize).FixedLineHeight(labelLine).FontWeight(theme.WeightControl).TextColor(col).SingleLine()
 			})

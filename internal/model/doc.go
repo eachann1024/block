@@ -436,8 +436,9 @@ type Annotation struct {
 
 // AnnotationTurn is one earlier round on an annotation: what was asked and what the AI said.
 type AnnotationTurn struct {
-	Q string `json:"q"`
-	A string `json:"a"`
+	Q    string `json:"q"`
+	A    string `json:"a"`
+	Kind string `json:"kind,omitempty"` // "" / "edit" / "answer"
 }
 
 // AnnotationReply is the AI's reply to one annotation: an edit proposal or an answer.

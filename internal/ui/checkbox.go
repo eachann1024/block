@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"math"
+	"testing"
+	"time"
+
 	"github.com/egoist/mygo/ui"
 
 	"block/internal/icons"
@@ -67,6 +71,17 @@ func Checkbox(c *ui.Context, id, label string, value *bool, disabled bool) bool 
 // continuous movement. Failed draws the fill in the danger color.
 func ProgressBar(c *ui.Context, id string, percent, height float32, failed bool) ui.Element {
 	pal := theme.Ocean()
+	fill := pal.Accent
+	if failed {
+		fill = pal.Danger
+	}
+	return ProgressBarWithColor(c, id, percent, height, fill)
+}
+
+// ProgressBarWithColor renders a determinate progress track with an explicit
+// semantic fill color.
+func ProgressBarWithColor(c *ui.Context, id string, percent, height float32, fill ui.Color) ui.Element {
+	pal := theme.Ocean()
 	percent = max(0, min(percent, 100))
 	radius := theme.RadiusPill
 	if height <= 2 {
@@ -75,12 +90,42 @@ func ProgressBar(c *ui.Context, id string, percent, height float32, failed bool)
 	track := ui.Box(c.Key(id)).FillWidth().Height(height).Shrink(0).Radius(radius).
 		Background(pal.Hairline).Clip().Role(ui.RoleProgress)
 	shown := SpringTo(track, "pbPct", percent)
-	fill := pal.Accent
-	if failed {
-		fill = pal.Danger
-	}
 	track.Children(func() {
 		ui.Box(c).WidthPercent(max(0, min(shown, 100))).Height(height).Radius(radius).Background(fill)
 	})
 	return track
+}
+
+const indeterminateBarCycle = 1400 * time.Millisecond
+
+// ProgressBarIndeterminate renders a smooth sweeping track for active stages
+// whose item count is not yet known (e.g. connecting or scanning remote state).
+func ProgressBarIndeterminate(c *ui.Context, id string, height float32, fill ui.Color) ui.Element {
+	pal := theme.Ocean()
+	radius := theme.RadiusPill
+	if height <= 2 {
+		radius = 0
+	}
+	return ui.Box(c.Key(id)).FillWidth().Height(height).Shrink(0).Radius(radius).
+		Background(pal.Hairline).Clip().Role(ui.RoleProgress).Draw(func(p *ui.Painter, r ui.Rect) {
+		if r.W <= 0 || r.H <= 0 {
+			return
+		}
+		segW := r.W * 0.34
+		t := float32(0.35)
+		if !testing.Testing() {
+			ms := indeterminateBarCycle.Milliseconds()
+			raw := float32(p.Now().UnixMilli()%ms) / float32(ms)
+			// Ease in-out sweep across the full width.
+			t = 0.5 - 0.5*float32(math.Cos(float64(raw)*math.Pi))
+			p.AnimationFrameRate(60)
+		}
+		x := r.X - segW + (r.W+segW)*t
+		barR := ui.Rect{X: x, Y: r.Y, W: segW, H: r.H}
+		rad := radius
+		if rad > r.H*0.5 {
+			rad = r.H * 0.5
+		}
+		p.Fill(barR, fill, rad)
+	})
 }

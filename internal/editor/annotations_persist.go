@@ -257,7 +257,7 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 	}
 	var thread []model.AnnotationTurn
 	for _, t := range raw.AIThread {
-		thread = append(thread, model.AnnotationTurn{Q: t.Q, A: t.A})
+		thread = append(thread, model.AnnotationTurn{Q: t.Q, A: t.A, Kind: t.Kind})
 	}
 	if applied {
 		// Applied annotations show no card; their body / rewrite stay in the
@@ -413,7 +413,7 @@ func storedThread(in []model.AnnotationTurn) []files.StoredAnnotationTurn {
 	}
 	out := make([]files.StoredAnnotationTurn, len(in))
 	for i, t := range in {
-		out[i] = files.StoredAnnotationTurn{Q: t.Q, A: t.A}
+		out[i] = files.StoredAnnotationTurn{Q: t.Q, A: t.A, Kind: t.Kind}
 	}
 	return out
 }
@@ -434,13 +434,17 @@ func (s *Session) toggleReactionByID(id, emoji string) {
 func (s *Session) dismissAnnotationRewrite(id string) {
 	for _, ann := range s.annotations {
 		if ann.ID == id {
-			if ann.RewriteResult == "" && ann.Answer == "" && ann.AIError == "" {
+			if ann.RewriteResult == "" && ann.Answer == "" && ann.AIError == "" && len(ann.Thread) == 0 {
 				return
 			}
 			s.pushUndo()
 			ann.RewriteResult = ""
 			ann.Answer = ""
 			ann.AIError = ""
+			ann.Thread = nil
+			delete(s.annotVersionIdx, id)
+			delete(s.annotThreadExpanded, id)
+			delete(s.followupDrafts, id)
 			s.persistAnnotations()
 			return
 		}
