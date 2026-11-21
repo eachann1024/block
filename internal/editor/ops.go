@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"block/internal/codepreview"
+	"block/internal/files"
 	"block/internal/fuzzy"
 	"block/internal/media"
 	"block/internal/model"
@@ -6537,9 +6538,9 @@ const (
 	tokNumber
 	tokType
 	tokFunc
-)
 	tokInserted
 	tokDeleted
+)
 
 type syntaxToken struct {
 	Start int // rune offset
@@ -6547,7 +6548,7 @@ type syntaxToken struct {
 	Kind  syntaxTokenKind
 }
 
-func mapPluginTokenKind(k codeed.TokenKind) syntaxTokenKind {
+func mapCodeTokenKind(k codeed.TokenKind) syntaxTokenKind {
 	switch k {
 	case codeed.TokenKeyword, codeed.TokenOperator, codeed.TokenTag:
 		return tokKeyword
@@ -6561,45 +6562,53 @@ func mapPluginTokenKind(k codeed.TokenKind) syntaxTokenKind {
 		return tokType
 	case codeed.TokenFunction, codeed.TokenMeta:
 		return tokFunc
-	default:
 	case codeed.TokenInserted:
 		return tokInserted
 	case codeed.TokenDeleted:
 		return tokDeleted
+	default:
 		return tokPlain
 	}
 }
 
+func codeSyntaxTokens(tokens []plugins.CodeRuneToken) []syntaxToken {
+	out := make([]syntaxToken, 0, len(tokens))
+	for _, token := range tokens {
+		if kind := mapCodeTokenKind(token.Kind); kind != tokPlain && token.End > token.Start {
+			out = append(out, syntaxToken{Start: token.Start, End: token.End, Kind: kind})
+		}
+	}
+	return out
+}
+
+func codeBlockCanUseLexer(src string) bool {
+	// Some lexers scan the rest of a line for each token. Bound that work on the UI thread.
+	const maxLineBytes = 4 * 1024
+	for line := range strings.SplitSeq(src, "\n") {
+		if len(line) > maxLineBytes {
+			return false
+		}
+	}
+	return true
+}
+
 func tokenizeCode(src, lang string) []syntaxToken {
-	if src == "" {
+	if src == "" || len(src) > files.HighlightLimit {
 		return nil
 	}
-	if ptoks, ok := plugins.TokenizeCodeByTag(lang, src); ok {
-		out := make([]syntaxToken, 0, len(ptoks))
-		for _, tk := range ptoks {
-			kind := mapPluginTokenKind(tk.Kind)
-			if kind != tokPlain && tk.End > tk.Start {
-				out = append(out, syntaxToken{Start: tk.Start, End: tk.End, Kind: kind})
-			}
-		}
-		return out
-	}
 	canon := codepreview.CanonicalLanguage(lang)
+	if codeBlockCanUseLexer(src) {
+		if tokens, ok := plugins.TokenizeCodeByTag(lang, src); ok {
+			return codeSyntaxTokens(tokens)
+		}
+		if l := codeed.LanguageNamed(canon); l != nil && l.Tokenizer != nil {
+			return codeSyntaxTokens(plugins.TokenizeTextWithTokenizer(l.Tokenizer, src))
+		}
+	}
 	if canon == "plaintext" {
 		return nil
 	}
-	// MyGo's editor ships real lexers for ~40 languages; prefer them over the
-	// keyword fallback below (kept for tags it lacks, such as Lean).
-	if l := codeed.LanguageNamed(canon); l != nil && l.Tokenizer != nil {
-		ptoks := plugins.TokenizeTextWithTokenizer(l.Tokenizer, src)
-		out := make([]syntaxToken, 0, len(ptoks))
-		for _, tk := range ptoks {
-			if kind := mapPluginTokenKind(tk.Kind); kind != tokPlain && tk.End > tk.Start {
-				out = append(out, syntaxToken{Start: tk.Start, End: tk.End, Kind: kind})
-			}
-		}
-		return out
-	}
+	// Use lightweight highlighting for long lines and tags without a lexer.
 	r := []rune(src)
 	n := len(r)
 	var out []syntaxToken
