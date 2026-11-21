@@ -509,9 +509,16 @@ func (c *Controller) inputBindingsForSurface(pluginID string, surface plugins.Su
 		}
 	}
 	stateKey := c.surfaceStateKey(pluginID, surface)
+	var pickChecklistFolder func(controlID, title string)
+	if c.sup.CanPickDirectory() {
+		pickChecklistFolder = func(controlID, title string) {
+			c.sup.PickChecklistFolderForControl(pluginID, surface, controlID, title)
+		}
+	}
 	return &InputBindings{
-		PickDirectory: pickDirectory,
-		PickFile:      pickFile,
+		PickDirectory:       pickDirectory,
+		PickFile:            pickFile,
+		PickChecklistFolder: pickChecklistFolder,
 		IsCardExpanded: func(cardID string, defaultCollapsed bool) bool {
 			c.mu.Lock()
 			defer c.mu.Unlock()

@@ -15,17 +15,18 @@ import (
 // InputBindings connects declarative controls to persistent string drafts,
 // dropdown popover states, directory pickers, and secret visibility toggles.
 type InputBindings struct {
-	SelectState        func(controlID string) *bui.DropdownSelectState
-	TreemapState       func(controlID string) *bui.TreemapState
-	OnTreemapSelect    func()
-	ResolveDraft       func(controlID, fallback string) string
-	OnDraftChanged     func(controlID, next string)
-	IsSecretShown      func(controlID string) bool
-	ToggleSecret       func(controlID string)
-	PickDirectory      func(controlID, title string)
-	PickFile           func(controlID, title string, extensions []string)
-	IsCardExpanded     func(cardID string, defaultCollapsed bool) bool
-	ToggleCardExpanded func(cardID string, defaultCollapsed bool)
+	SelectState         func(controlID string) *bui.DropdownSelectState
+	TreemapState        func(controlID string) *bui.TreemapState
+	OnTreemapSelect     func()
+	ResolveDraft        func(controlID, fallback string) string
+	OnDraftChanged      func(controlID, next string)
+	IsSecretShown       func(controlID string) bool
+	ToggleSecret        func(controlID string)
+	PickDirectory       func(controlID, title string)
+	PickFile            func(controlID, title string, extensions []string)
+	PickChecklistFolder func(controlID, title string)
+	IsCardExpanded      func(cardID string, defaultCollapsed bool) bool
+	ToggleCardExpanded  func(cardID string, defaultCollapsed bool)
 }
 
 // ActionFeedback describes the live execution and completion state of plugin actions.
@@ -240,7 +241,11 @@ func renderPageCardsWithScope(
 				}
 			}
 			bui.SettingsSection(c, func() {
-				mergedChecklist := len(visibleItems) == 1 &&
+				addFolderList := len(visibleItems) == 1 &&
+					visibleItems[0].Kind == plugins.KindChecklist &&
+					visibleItems[0].AddFolder &&
+					strings.TrimSpace(visibleItems[0].Label) == ""
+				mergedChecklist := addFolderList || len(visibleItems) == 1 &&
 					visibleItems[0].Kind == plugins.KindChecklist &&
 					strings.TrimSpace(visibleItems[0].Label) == "" &&
 					len(visibleItems[0].Options) > 1
@@ -267,7 +272,11 @@ func renderPageCardsWithScope(
 									SingleLine()
 							}
 							if mergedChecklist {
-								renderChecklistSelectAllAction(c, pluginID, visibleItems[0], values, fb.BusyAction != "", onChange)
+								if addFolderList {
+									renderChecklistAddFolderAction(c, pluginID, visibleItems[0], bindings, fb.BusyAction != "")
+								} else {
+									renderChecklistSelectAllAction(c, pluginID, visibleItems[0], values, fb.BusyAction != "", onChange)
+								}
 							}
 							if cd.Collapsible {
 								toggleLabel := theme.Tr("展开配置", "Expand")
@@ -300,7 +309,7 @@ func renderPageCardsWithScope(
 							ui.Column(c.Key(pluginItemKey(pluginID, cd.ID, i, it))).FillWidth().MinWidth(0).
 								Transition(bui.CascadeRowTransition(i)).Children(func() {
 								if mergedChecklist {
-									renderChecklistItem(c, pluginID, it, values, fb.BusyAction, true, onChange)
+									renderChecklistItem(c, pluginID, it, values, fb.BusyAction, true, bindings, onChange)
 									return
 								}
 								renderSectionItem(c, pluginID, it, i, len(visibleItems), values, fb, bindings, onChange, onAction)
@@ -529,7 +538,7 @@ func renderItem(
 		})
 
 	case plugins.KindChecklist:
-		renderChecklistItem(c, pluginID, item, values, busyAction, false, onChange)
+		renderChecklistItem(c, pluginID, item, values, busyAction, false, bindings, onChange)
 
 	case plugins.KindGroup:
 		visibleFields := make([]plugins.UIItem, 0, len(item.Fields))
@@ -1757,6 +1766,126 @@ func renderChecklistSelectAllAction(
 	}
 }
 
+func renderChecklistAddFolderAction(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	bindings *InputBindings,
+	disabled bool,
+) {
+	label := theme.Tr("添加文件夹", "Add Folder")
+	canPick := bindings != nil && bindings.PickChecklistFolder != nil
+	addBtn := bui.IconButton(c, icons.Plus, bui.IconButtonOptions{
+		ID:       "plugin-chk-add-" + pluginID + "-" + item.ID,
+		Label:    label,
+		Tooltip:  label,
+		Variant:  bui.IconChrome,
+		IconSize: theme.IconInline,
+		Disabled: disabled || !canPick,
+	})
+	if !disabled && canPick && addBtn.Clicked() {
+		bindings.PickChecklistFolder(item.ID, label)
+	}
+}
+
+func commitChecklistRemoval(
+	item plugins.UIItem,
+	values map[string]any,
+	removed string,
+	onChange func(controlID string, nextValue any, immediate bool),
+) {
+	current, ok := plugins.StringSliceValue(values[item.ID])
+	if !ok {
+		current, _ = plugins.StringSliceValue(item.Value)
+	}
+	next := make([]string, 0, len(current))
+	for _, entry := range current {
+		if entry != removed {
+			next = append(next, entry)
+		}
+	}
+	values[item.ID] = next
+	if onChange != nil {
+		onChange(item.ID, next, true)
+	}
+}
+
+func renderChecklistFolderRows(
+	c *ui.Context,
+	pluginID string,
+	item plugins.UIItem,
+	values map[string]any,
+	disabled bool,
+	onChange func(controlID string, nextValue any, immediate bool),
+) {
+	pal := theme.Ocean()
+	selectedSet, _ := checklistSelectionSet(item, values)
+	rows := make([]plugins.UIOption, 0, len(item.Options))
+	for _, opt := range item.Options {
+		if selectedSet[opt.Value] {
+			rows = append(rows, opt)
+		}
+	}
+	if len(rows) == 0 {
+		empty := strings.TrimSpace(item.EmptyText)
+		if empty == "" {
+			empty = theme.Tr("点击右上角 + 添加文件夹", "Click + to add a folder")
+		}
+		ui.Row(c).FillWidth().MinWidth(0).Padding(theme.Space12, theme.Space16).Radius(theme.RadiusLG).
+			Background(pal.Shell).Border(1, pal.Hairline).Children(func() {
+			ui.Text(c, empty).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		})
+		return
+	}
+	ui.Column(c.Key("plugin-chk-card-"+pluginID+"-"+item.ID)).FillWidth().MinWidth(0).
+		Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Clip().Children(func() {
+		for idx, opt := range rows {
+			o := opt
+			rowID := fmt.Sprintf("plugin-chk-%s-%s-%s", pluginID, item.ID, o.Value)
+			row := ui.Row(c.Key(rowID)).FillWidth().MinWidth(0).
+				MinHeight(theme.SettingsListRowHeight).Padding(theme.Space6, theme.Space16).
+				Gap(theme.Space12).AlignItems(ui.Center)
+			if idx > 0 {
+				row.BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+			}
+			row.Children(func() {
+				icons.Draw(c, icons.Folder, theme.IconAction, pal.DuoIconColors(pal.TextSecondary))
+				ui.Text(c, o.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+					FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Shrink(0)
+				if strings.TrimSpace(o.Badge) != "" {
+					ui.Row(c).Height(theme.HeightMicro).PaddingX(theme.Space6).Radius(theme.RadiusXS).
+						Background(pal.Shell).AlignItems(ui.Center).Shrink(0).Children(func() {
+						ui.Text(c, o.Badge).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).SingleLine()
+					})
+				}
+				ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+					if strings.TrimSpace(o.Detail) == "" {
+						return
+					}
+					detail := ui.Text(c, o.Detail).Font("monospace").FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+						TextColor(pal.TextSecondary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
+					if strings.TrimSpace(o.Tooltip) != "" {
+						bui.WrappedTooltip(c, detail, o.Tooltip)
+					}
+				})
+				removeLabel := theme.Tr("移除", "Remove")
+				removeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+					ID:       "plugin-chk-rm-" + pluginID + "-" + item.ID + "-" + o.Value,
+					Label:    removeLabel,
+					Tooltip:  removeLabel,
+					Variant:  bui.IconChrome,
+					IconSize: theme.IconInline,
+					Disabled: disabled,
+				})
+				if !disabled && removeBtn.Clicked() {
+					commitChecklistRemoval(item, values, o.Value, onChange)
+				}
+			})
+		}
+	})
+}
+
 func renderChecklistItem(
 	c *ui.Context,
 	pluginID string,
@@ -1764,6 +1893,7 @@ func renderChecklistItem(
 	values map[string]any,
 	busyAction string,
 	hideHeader bool,
+	bindings *InputBindings,
 	onChange func(controlID string, nextValue any, immediate bool),
 ) {
 	pal := theme.Ocean()
@@ -1772,6 +1902,20 @@ func renderChecklistItem(
 	selectedSet, _ := checklistSelectionSet(item, values)
 
 	ui.Column(c.Key("plugin-chk-" + pluginID + "-" + item.ID)).FillWidth().MinWidth(0).Gap(theme.Space8).Children(func() {
+		if item.AddFolder {
+			if !hideHeader {
+				ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+					if strings.TrimSpace(item.Label) != "" {
+						renderFieldLabel(c, item.Label)
+					} else {
+						ui.Box(c).Grow(1)
+					}
+					renderChecklistAddFolderAction(c, pluginID, item, bindings, disabled)
+				})
+			}
+			renderChecklistFolderRows(c, pluginID, item, values, disabled, onChange)
+			return
+		}
 		if len(item.Options) == 0 {
 			empty := strings.TrimSpace(item.EmptyText)
 			if empty == "" {
