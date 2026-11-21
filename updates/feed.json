@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T05:07:55.121Z",
-  "latest_version": "1.0.877",
-  "latest_tag": "v1.0.877",
+  "updated_at": "2026-11-21T05:12:58.587Z",
+  "latest_version": "1.0.878",
+  "latest_tag": "v1.0.878",
   "releases": [
+    {
+      "version": "1.0.878",
+      "tag": "v1.0.878",
+      "published_at": "2026-11-21T05:12:57Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.878",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "优化段落与列表拖拽移动时的跟手度与指示线。",
+          "优化智能体连接、模型选择与对话辅助体验。",
+          "打磨设置面板、快捷键与菜单界面细节。",
+          "优化了界面细节与日常编辑操作的顺滑度。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "Lighten shared controls, dropdowns, chips, and tooltips.",
+          "Lighten AI panel inputs and titlebar brand pill.",
+          "Lighten settings layout, controls, and plugin nav states.",
+          "Clarify plugin enablement states and lighten store views."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.878/block-macos-arm64.dmg",
+          "size": 15831992,
+          "sha256": "09ce215d3462d8bda28dc7b2e782276275815c70abcc57a8d6e85fea50034160"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.878/block-macos-x64.dmg",
+          "size": 17345933,
+          "sha256": "8c6884a2a431491fbea9a65a27e9b7721e01a7891380cea7f8390b74026e13b0"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.878/block-windows-x64-setup.exe",
+          "size": 12825261,
+          "sha256": "c6a1f50f9487368c8b114415f37cd9a14d3b0d37b2397197b5bba423d3d3e861"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.878/block-linux-x64.deb",
+          "size": 11403240,
+          "sha256": "131c1d90537cf8f407d7d0f0762cd6d82ff4b56edb69f669f67f75c295d9d050"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.878/block-linux-x64.AppImage",
+          "size": 24336888,
+          "sha256": "429b69c3797e355cd700a706c87a8fc248f29d8ff5519d908c75c337049edba0"
+        }
+      ]
+    },
     {
       "version": "1.0.877",
       "tag": "v1.0.877",
@@ -28,38 +90,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.877/block-macos-arm64.dmg",
-          "size": 15817822,
-          "sha256": "12ba3e20541209a3e48012e3af9d9144581ffb35ebaffeabd79dd3571de5425f"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.877/block-macos-x64.dmg",
-          "size": 17343066,
-          "sha256": "3aa420cf4967e06faca32dbd6f75614824db5bd5c0496d2075441ba5cffcc6b0"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.877/block-windows-x64-setup.exe",
-          "size": 12821922,
-          "sha256": "19cb323b51f1448394a1b3ef353d4f60a36746d9978e9c25a3e16066b2af30ad"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.877/block-linux-x64.deb",
-          "size": 11399744,
-          "sha256": "51e27daeca3b1e98522392d5572832968a5050bd4029a2b93b2642ecfffa13c2"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.877/block-linux-x64.AppImage",
-          "size": 24332792,
-          "sha256": "01d05a9db209ab4338386fb63a24805dd4056c3430d996330fa932bdeff470a6"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.876",
