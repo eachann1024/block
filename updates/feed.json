@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T08:41:28.513Z",
-  "latest_version": "1.0.892",
-  "latest_tag": "v1.0.892",
+  "updated_at": "2026-11-21T09:08:43.993Z",
+  "latest_version": "1.0.893",
+  "latest_tag": "v1.0.893",
   "releases": [
+    {
+      "version": "1.0.893",
+      "tag": "v1.0.893",
+      "published_at": "2026-11-21T09:08:43Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.893",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "商店搜索框现已将来源与排序选项整合为框内的筛选按钮。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "The Store search field now consolidates source and sorting options into an inline filter button."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-macos-arm64.dmg",
+          "size": 15047574,
+          "sha256": "245696014e5726348fef9f941bc56501fbcd0caea11254c7d40c502e1ba011d3"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-macos-x64.dmg",
+          "size": 16565124,
+          "sha256": "a0cc8460bee77eb2a2b571f15d999c25174d634e9849bd0e884eb1b238245318"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-windows-x64-setup.exe",
+          "size": 12048388,
+          "sha256": "500a977d33bde057699eea5f3d785454b756da8a04a6dbaceda330d3507e9031"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-linux-x64.deb",
+          "size": 10628164,
+          "sha256": "fc8f09df191c1e4ed3413acdf762e69a70bed1a97743f4095450735511d2c9b9"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.893/block-linux-x64.AppImage",
+          "size": 23554552,
+          "sha256": "35dcbdfb4330f3700a58e09e87fbb35b0699e23e319b4a6922f87b5eaabc9864"
+        }
+      ]
+    },
     {
       "version": "1.0.892",
       "tag": "v1.0.892",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-macos-arm64.dmg",
-          "size": 15038786,
-          "sha256": "c094fb03bfe3fc76ac20eec23cef1e6752708c36d84432f71dfc2cb3461e4e8a"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-macos-x64.dmg",
-          "size": 16560962,
-          "sha256": "028c4d516c457571517bab8381318eca13123491b196b0f99c1b8d9b894a32bb"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-windows-x64-setup.exe",
-          "size": 12046493,
-          "sha256": "96419da198f315c9e5d74ced6ef3c1c8fb133b610a665fa06432e52be50cb24b"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-linux-x64.deb",
-          "size": 10624204,
-          "sha256": "7747eeead6b01183f6c2148ab1d3b1a0883ff49359db7bb74fab6b300a749599"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-linux-x64.AppImage",
-          "size": 23554552,
-          "sha256": "98cee56531f7dcca258127b38c256ae43457af29ef9a9dcfdde5121c46d181e7"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.891",
