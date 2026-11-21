@@ -53,11 +53,44 @@ func DrawDuoSpec(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors t
 
 // DrawUIIcon renders a plugin UI icon: a host built-in glyph by name, or an inline vector.
 func DrawUIIcon(c *ui.Context, ic plugins.UIIcon, size float32, colors theme.IconColors) {
+	if ic.Chip != "" || ic.Dot {
+		ui.Box(c).Size(size, size).Shrink(0).Center().Children(func() {
+			if ic.Dot {
+				drawChipDot(c)
+			}
+		})
+		return
+	}
 	if ic.Name != "" {
 		icons.Draw(c, icons.Icon(ic.Name), size, colors)
 		return
 	}
 	DrawDuoSpec(c, ic.Spec(), size, colors)
+}
+
+func drawChipDot(c *ui.Context) {
+	ui.Box(c).Size(theme.Space8-1, theme.Space8-1).Shrink(0).Radius(theme.RadiusPill).Background(theme.Ocean().AnnotSendDot)
+}
+
+// DrawUIChip renders a text chip such as the titlebar "Send all" segment.
+func DrawUIChip(c *ui.Context, ic plugins.UIIcon) ui.Element {
+	pal := theme.Ocean()
+	chip := ui.Row(c).Height(theme.IconButtonBox).PaddingX(theme.Space8).Gap(theme.Space6).Shrink(0).
+		Radius(theme.RadiusSM).AlignItems(ui.Center)
+	fg := pal.Text
+	if ic.Dot {
+		chip.Background(pal.Selected)
+		fg = pal.AnnotSendFG
+	}
+	chip.Children(func() {
+		if ic.Dot {
+			drawChipDot(c)
+		}
+		if ic.Chip != "" {
+			ui.Text(c, ic.Chip).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+		}
+	})
+	return chip
 }
 
 // BuildMenuIcon builds and caches a native colored ui.MenuIcon from a plugin DuoIconSpec.
