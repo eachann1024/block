@@ -2394,8 +2394,7 @@ func (s *Session) renderAnnotationAnswer(c *ui.Context, ann *model.Annotation) {
 		ui.Text(c, ann.Note).FillWidth().MinWidth(0).
 			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 	}
-	ui.Text(c, ann.Answer).FillWidth().MinWidth(0).
-		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
+	s.annotationMarkdown(c, ann.Answer)
 	s.renderAnnotationFollowup(c, ann)
 }
 
