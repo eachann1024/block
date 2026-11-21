@@ -669,7 +669,7 @@ func TestShortcutSettingsCustomActionsConflictsExpandedKeysAndReset(t *testing.T
 	if err := tt.Click(formatShortcutLabel("cmd-f5")); err != nil {
 		t.Fatal(err)
 	}
-	tt.Key(ui.Cmd, ui.KeyBackslash)
+	tt.Key(ui.Super, ui.KeyBackslash)
 	if state.ShortcutQuick != "cmd-\\" {
 		t.Fatalf("expected ShortcutQuick=cmd-\\, got %q", state.ShortcutQuick)
 	}
