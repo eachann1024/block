@@ -13,6 +13,7 @@ import (
 	"block/internal/model"
 	appUi "block/internal/ui"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 )
 
 // Position identifies a rune offset within a block by block index.
@@ -247,6 +248,8 @@ type Session struct {
 	annotUnresolved       []files.StoredAnnotation          // stored entries whose anchor is not in this doc, written back verbatim
 	annotationAIResponder func(docMarkdown string, pending []*model.Annotation) map[string]model.AnnotationReply
 	annotGenCh            chan map[string]model.AnnotationReply
+	annotMDOpts           markdown.Options
+	annotMDKey            annotMDKey
 	annotGenInFlight      int
 	followupDrafts        map[string]*string
 	annotExtraBottom      float32
