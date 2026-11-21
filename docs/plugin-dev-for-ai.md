@@ -70,7 +70,6 @@ example-sync/
     "en": "Example Sync"
   },
   "version": "1.0.0",
-  "beta": true,
   "author": "Your Name",
   "repo": "your-org/example-sync",
   "summary": {
@@ -136,7 +135,11 @@ example-sync/
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：必填，匹配正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`（如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据；建议使用规范 SemVer，不要加前导零）。
-- `beta`：可选布尔值（默认 `false`，正式版省略即可）。仅当插件在 `manifest.json` 中显式声明 `"beta": true` 时，Block 才会在应用商店、设置侧栏与插件页标题旁显示 `Beta` 标识，商店采集器也会自动同步到 `store-index.json`。转正时删掉该字段即可，宿主不做硬编码。
+- `beta`：可选布尔值，默认 `false`，**正式版不要写这个字段**。写了 `"beta": true` 后，应用商店、设置侧栏和插件页标题旁会显示 `Beta` 标识，商店采集器也会同步到 `store-index.json`；转正时删掉该字段即可，宿主不做硬编码。
+  - **只有同时满足以下两条才标 `beta`**：
+    1. 功能还在试验，交互、设置项或存储格式随时可能大改，升级后可能需要用户重新配置；
+    2. 依赖的宿主能力尚未稳定，或作者明确还没完成真机验证。
+  - **以下情况不标 `beta`**：功能完整且已通过 `block-plugin-check`；只是新上架、版本号小或用户少；只是使用了新增的扩展点或权限；从宿主内置功能拆出来的插件（如复制路径）；涉及用户数据、需要长期可靠的插件（如同步）——这类插件要么达到正式质量再发布，要么不发布，不能用 `beta` 兜底。
 - `author`：必填非空字符串，禁止含 Emoji。
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
 - `summary`：`zh`（<= 80 个 Unicode 字符）与 `en`（<= 140 个 Unicode 字符）均必填，禁止含 Emoji。
