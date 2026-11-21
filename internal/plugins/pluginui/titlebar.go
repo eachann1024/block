@@ -203,7 +203,7 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 			}
 
 			target := storeDetailMenuTargetPrefix + entry.ID
-			c.renderMoreMenuTrigger(ctx, "store-detail-more-"+entry.ID, target, installingID != "")
+			c.renderMoreMenuTrigger(ctx, "store-detail-more-"+entry.ID, target, installingID != "", false)
 			return
 		}
 
@@ -259,15 +259,19 @@ func (c *Controller) renderPluginTitlebarTrailing(
 	vpW, _ := ctx.Size()
 	narrowTitlebar := vpW > 0 && vpW < 860
 
-	ui.Row(ctx.Key("plugin-tb-controls-"+pluginID)).Gap(theme.Space10).AlignItems(ui.Center).Shrink(0).Children(func() {
+	ui.Row(ctx.Key("plugin-tb-controls-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
+		hasLeadingContent := false
+
 		// ② Status slot: strictly 1 item following priority:
-		// Error > Starting > Running(empty) > Pending > Language extensions > Plugin status > None.
+		// Error > Starting > Running(empty) > Pending > Language extensions > Compact status > None.
 		switch {
 		case hasError:
+			hasLeadingContent = true
 			c.renderTitlebarErrorPill(ctx, pluginID, shortPluginErrorLabel(pluginID, failed, uninstErr != "", vs), errDetail)
 		case actionRunning:
-			// Progress is integrated directly into the running primary action pill.
+			// Progress is integrated directly into the running primary action control.
 		case starting:
+			hasLeadingContent = true
 			ui.Row(ctx.Key("plugin-tb-starting-"+pluginID)).Gap(theme.Space6).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Accent).Label(theme.Tr("启动中", "Starting"))
 				ui.Text(ctx, theme.Tr("启动中…", "Starting…")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
@@ -276,45 +280,49 @@ func (c *Controller) renderPluginTitlebarTrailing(
 		case narrowTitlebar:
 			// Keep breadcrumb, primary action, switch and overflow menu legible on narrow windows.
 		case live && vs.PendingSaves > 0:
+			hasLeadingContent = true
 			c.renderTitlebarPendingStatus(ctx, pluginID, vs.PendingSaves)
 		case declarative && inst.Enabled:
 			if exts := formatLanguageExtensions(inst); exts != "" {
+				hasLeadingContent = true
 				ui.Text(ctx, exts).Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
 			}
 		case live:
 			statusText, statusTone := resolvePluginTitlebarStatus(vs)
-			if statusText != "" {
-				renderTitlebarQuietStatus(ctx, statusText, statusTone)
+			if display, tip, ok := compactTitlebarStatus(statusText, statusTone); ok {
+				hasLeadingContent = true
+				renderTitlebarQuietStatus(ctx, display, tip, statusTone)
 			}
 		}
 
-		// ③ Primary action slot: at most 1 button.
+		// ③ Primary action slot: at most 1 button, locked to the lightweight ghost style
+		// for all built-in and third-party plugins.
 		// When a retried note.saved paused for confirmation, surface the plugin's primary action
 		// (e.g. Sync Now / Confirm Sync) instead of trapping the user behind a repeating Retry Sync button.
 		showRetryPrimary := hasError && !(vs.RetryKind == plugins.RetryKindNoteSaved && vs.SavePausedConfirm && live && primaryAct != nil)
 		switch {
 		case uninstBusy:
-			ui.Row(ctx.Key("plugin-tb-uninstalling-"+pluginID)).Height(theme.HeightCompact).PaddingX(theme.Space10).
-				Gap(theme.Space6).Radius(theme.RadiusMD).Background(pal.DangerSurface).
-				Border(1, pal.Danger.Alpha(0.35)).AlignItems(ui.Center).Shrink(0).Children(func() {
+			hasLeadingContent = true
+			ui.Row(ctx.Key("plugin-tb-uninstalling-"+pluginID)).Height(theme.HeightChrome).PaddingX(theme.Space8).
+				Gap(theme.Space6).Radius(theme.RadiusSM).Background(pal.DangerSurface).
+				AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Spinner(ctx).FontSize(theme.IconInline).TextColor(pal.Danger).Label(theme.Tr("卸载中", "Uninstalling"))
 				ui.Text(ctx, theme.Tr("卸载中…", "Uninstalling…")).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 					FontWeight(theme.WeightControl).TextColor(pal.Danger).SingleLine()
 			})
 		case actionRunning:
+			hasLeadingContent = true
 			c.renderRunningActionPill(ctx, pluginID, vs, primaryAct, canCancel)
 		case showRetryPrimary:
+			hasLeadingContent = true
 			retryLabel := resolvePluginRetryLabel(pluginID, failed, uninstErr != "", vs)
 			refIc := icons.Refresh
 			retryDisabled := vs.Loading || (uninstErr != "" && pluginBusyAny)
-			retryBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+			retryBtn := renderTitlebarGhostAction(ctx, titlebarGhostActionOpts{
 				ID:       "plugin-tb-retry-" + pluginID,
 				Label:    retryLabel,
 				Leading:  &refIc,
-				Style:    bui.ButtonPrimary,
-				Height:   theme.HeightCompact,
-				PaddingX: theme.Space12,
 				Disabled: retryDisabled,
 			})
 			if retryBtn.Clicked() && !retryDisabled {
@@ -337,27 +345,28 @@ func (c *Controller) renderPluginTitlebarTrailing(
 				}
 			}
 		case live && primaryAct != nil:
+			hasLeadingContent = true
 			b := *primaryAct
 			isSuccess := fb.BusyAction == "" && fb.LastActionButtonActive && fb.LastActionID == b.ID && fb.LastActionTone == "success"
-			style := mapButtonStyle(b.Variant)
+			tone := ""
 			var leading *icons.Icon
 			if isSuccess {
-				style = bui.ButtonSuccess
+				tone = "success"
 				chk := icons.Check
 				leading = &chk
 			} else {
+				if b.Variant == plugins.VariantDanger {
+					tone = "danger"
+				}
 				leading = resolveActionButtonIcon(b.ID)
 			}
 			label := resolveActionButtonLabel(b.ID, b.Label, false, isSuccess)
-			btn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
-				ID:                 "plugin-hdr-act-" + pluginID + "-" + b.ID,
-				Label:              label,
-				AccessibilityLabel: label,
-				Leading:            leading,
-				Style:              style,
-				Height:             theme.HeightCompact,
-				PaddingX:           theme.Space12,
-				Disabled:           vs.Loading,
+			btn := renderTitlebarGhostAction(ctx, titlebarGhostActionOpts{
+				ID:       "plugin-hdr-act-" + pluginID + "-" + b.ID,
+				Label:    label,
+				Leading:  leading,
+				Tone:     tone,
+				Disabled: vs.Loading,
 			})
 			if btn.Clicked() && !vs.Loading {
 				c.CloseTitlebarOverlays()
@@ -365,18 +374,14 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			}
 		}
 
-		// ④ Light enable switch (28x16, same as settings rows) with a plain state
-		// label. Reflects actual persisted enabled state; when startup failed, stays
-		// ON with error ring so toggling OFF disables cleanly.
-		switchVal := inst.Enabled
-		if !starting && !failed && !uninstBusy {
-			stateText, stateCol := theme.Tr("已停用", "Disabled"), pal.Placeholder
-			if switchVal {
-				stateText, stateCol = theme.Tr("运行中", "Running"), pal.TextSecondary
-			}
-			ui.Text(ctx, stateText).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-				FontWeight(theme.WeightRegular).TextColor(stateCol).SingleLine().Shrink(0)
+		if hasLeadingContent {
+			ui.Box(ctx).Size(1, 14).Background(pal.BtnBorder).MarginX(theme.Space2).Shrink(0)
 		}
+
+		// ④ Light enable switch (28x16, same as settings rows). Reflects actual
+		// persisted enabled state; when startup failed, stays ON with error ring
+		// so toggling OFF disables cleanly.
+		switchVal := inst.Enabled
 		phase := bui.SwitchIdle
 		if starting {
 			phase = bui.SwitchBusy
@@ -398,8 +403,8 @@ func (c *Controller) renderPluginTitlebarTrailing(
 			c.sup.SetPluginEnabled(pluginID, switchVal)
 		}
 
-		// ⑤ Unified "⋯" More menu trigger.
-		c.renderMoreMenuTrigger(ctx, "plugin-tb-more-"+pluginID, pluginID, uninstBusy)
+		// ⑤ Unified "⋯" More menu trigger (lightweight chrome icon button).
+		c.renderMoreMenuTrigger(ctx, "plugin-tb-more-"+pluginID, pluginID, uninstBusy, true)
 	})
 }
 
@@ -493,35 +498,136 @@ func (c *Controller) renderTitlebarPendingStatus(ctx *ui.Context, pluginID strin
 	})
 }
 
-func renderTitlebarQuietStatus(ctx *ui.Context, text, tone string) {
+type titlebarGhostActionOpts struct {
+	ID       string
+	Label    string
+	Leading  *icons.Icon
+	Tone     string // "", "success", "danger"
+	Disabled bool
+}
+
+// renderTitlebarGhostAction renders the unified lightweight ghost text button
+// for all plugin titlebar primary/retry actions so every plugin shares one calm
+// chrome style instead of heavy filled pills.
+func renderTitlebarGhostAction(ctx *ui.Context, opts titlebarGhostActionOpts) ui.Element {
+	pal := theme.Ocean()
+	cursor := ui.CursorPointer
+	if opts.Disabled {
+		cursor = ui.CursorDefault
+	}
+	btn := ui.ButtonBase(ctx.Key(opts.ID)).Height(theme.HeightChrome).
+		PaddingX(theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).
+		Radius(theme.RadiusSM).Cursor(cursor).Disabled(opts.Disabled).Shrink(0).Label(opts.Label)
+	hov := btn.Hovered() && !opts.Disabled
+	prs := btn.Pressed() && !opts.Disabled
+	bg := ui.Transparent
+	fg := pal.TextSecondary
+	switch opts.Tone {
+	case "success":
+		fg = pal.Success
+		if prs {
+			bg = pal.Selected
+		} else if hov {
+			bg = pal.ShellChrome().Hover
+		}
+	case "danger":
+		fg = pal.Danger
+		if prs {
+			bg = pal.Danger.Alpha(0.20)
+		} else if hov {
+			bg = pal.DangerSurface
+		}
+	default:
+		if prs {
+			bg = pal.Selected
+			fg = pal.Text
+		} else if hov {
+			bg = pal.ShellChrome().Hover
+			fg = pal.Text
+		}
+	}
+	bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	bui.TactileButton(btn, hov, prs, opts.Disabled)
+	if opts.Disabled {
+		btn.Opacity(theme.DisabledOpacity)
+	}
+	btn.Children(func() {
+		if opts.Leading != nil {
+			icons.DrawAnimated(ctx, *opts.Leading, theme.IconInline, pal.MonoIconColors(fg), hov || prs)
+		}
+		ui.Text(ctx, opts.Label).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+			FontWeight(theme.WeightControl).TextColor(fg).MaxWidth(150).SingleLine().Ellipsis("…")
+	})
+	if opts.ID != "" {
+		bui.Probe(btn, opts.ID)
+	}
+	return btn
+}
+
+// compactTitlebarStatus keeps warning/danger notices visible while collapsing
+// normal idle status to a compact HH:MM timestamp (with full text on hover).
+// Verbose normal status strings stay hidden so the titlebar remains quiet.
+func compactTitlebarStatus(text, tone string) (display, tooltip string, ok bool) {
+	s := strings.TrimSpace(text)
+	if s == "" {
+		return "", "", false
+	}
+	switch strings.ToLower(strings.TrimSpace(tone)) {
+	case "danger", "error", "warning", "warn":
+		return s, s, true
+	}
+	if hm := extractShortTime(s); hm != "" {
+		return hm, s, true
+	}
+	return "", "", false
+}
+
+func extractShortTime(s string) string {
+	isDigit := func(b byte) bool { return b >= '0' && b <= '9' }
+	for i := 0; i+4 < len(s); i++ {
+		if !isDigit(s[i]) || !isDigit(s[i+1]) || s[i+2] != ':' || !isDigit(s[i+3]) || !isDigit(s[i+4]) {
+			continue
+		}
+		if i > 0 && isDigit(s[i-1]) {
+			continue
+		}
+		if i+5 < len(s) && isDigit(s[i+5]) {
+			continue
+		}
+		hh := (s[i]-'0')*10 + (s[i+1] - '0')
+		mm := (s[i+3]-'0')*10 + (s[i+4] - '0')
+		if hh <= 23 && mm <= 59 {
+			return s[i : i+5]
+		}
+	}
+	return ""
+}
+
+func renderTitlebarQuietStatus(ctx *ui.Context, display, tooltip, tone string) {
 	pal := theme.Ocean()
 	textCol := pal.TextSecondary
 	dotCol, showDot := logToneDotColor(pal, tone)
-	if !showDot && isHealthySyncStatus(text) {
-		dotCol = pal.Success
-		showDot = true
-	}
 	switch strings.ToLower(strings.TrimSpace(tone)) {
 	case "danger", "error":
 		textCol = pal.Danger
 	case "warning", "warn":
 		textCol = pal.Warning
+	default:
+		showDot = false
 	}
-	wrap := ui.Row(ctx).Gap(theme.Space6).AlignItems(ui.Center).MaxWidth(theme.PluginTitlebarStatusMaxW).MinWidth(0).Shrink(1)
-	bui.WrappedTooltip(ctx, wrap, text)
+	wrap := ui.Row(ctx).Height(theme.HeightChrome).PaddingX(theme.Space6).Gap(theme.Space6).
+		AlignItems(ui.Center).MaxWidth(theme.PluginTitlebarStatusMaxW).MinWidth(0).Shrink(1)
+	if strings.TrimSpace(tooltip) != "" {
+		bui.WrappedTooltip(ctx, wrap, tooltip)
+	}
 	wrap.Children(func() {
 		if showDot {
 			ui.Box(ctx).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
 				Radius(theme.RadiusPill).Background(dotCol).Shrink(0)
 		}
-		ui.Text(ctx, text).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+		ui.Text(ctx, display).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
 			TextColor(textCol).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 	})
-}
-
-func isHealthySyncStatus(text string) bool {
-	s := strings.TrimSpace(text)
-	return strings.HasPrefix(s, "上次同步") || strings.HasPrefix(strings.ToLower(s), "last sync")
 }
 
 func (c *Controller) renderRunningActionPill(
@@ -553,7 +659,7 @@ func (c *Controller) renderRunningActionPill(
 	if canCancel {
 		cursor = ui.CursorPointer
 	}
-	padR := theme.Space10
+	padR := theme.Space8
 	if canCancel {
 		padR = theme.Space4
 	}
@@ -565,19 +671,19 @@ func (c *Controller) renderRunningActionPill(
 		a11y += theme.Tr("，点击取消", ", click to cancel")
 	}
 
-	pill := ui.ButtonBase(ctx.Key("plugin-tb-running-"+pluginID)).Height(theme.HeightCompact).
-		Padding(0, padR, 0, theme.Space10).Gap(theme.Space6).
-		AlignItems(ui.Center).Radius(theme.RadiusMD).
+	pill := ui.ButtonBase(ctx.Key("plugin-tb-running-"+pluginID)).Height(theme.HeightChrome).
+		Padding(0, padR, 0, theme.Space8).Gap(theme.Space6).
+		AlignItems(ui.Center).Radius(theme.RadiusSM).
 		Cursor(cursor).Disabled(!canCancel).DimDisabled(false).Shrink(0).Label(a11y)
 	hov := pill.Hovered() && canCancel
 	prs := pill.Pressed() && canCancel
-	bg := pal.Selected
+	bg := ui.Transparent
 	if prs {
-		bg = pal.Selected.Mix(pal.Accent, 0.12)
+		bg = pal.Selected
 	} else if hov {
-		bg = pal.Selected.Mix(pal.Accent, 0.06)
+		bg = pal.ShellChrome().Hover
 	}
-	bui.AnimateSurfaceColors(pill, bg, pal.SelectedBorder, true)
+	bui.AnimateSurfaceColors(pill, bg, ui.Transparent, false)
 	if canCancel {
 		bui.TactileButton(pill, hov, prs, false)
 		bui.Tooltip(ctx, pill, theme.Tr("点击取消当前任务", "Click to cancel task"))
@@ -591,7 +697,7 @@ func (c *Controller) renderRunningActionPill(
 				FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightMono).TextColor(pal.Accent).SingleLine().Shrink(0)
 		}
 		if canCancel {
-			chipBG := pal.Card
+			chipBG := ui.Transparent
 			sqCol := pal.Accent
 			if prs {
 				chipBG = pal.AccentPressed
@@ -615,9 +721,9 @@ func (c *Controller) renderRunningActionPill(
 	}
 }
 
-func (c *Controller) renderMoreMenuTrigger(ctx *ui.Context, id, target string, disabled bool) {
+func (c *Controller) renderMoreMenuTrigger(ctx *ui.Context, id, target string, disabled, ghost bool) {
 	open := c.titlebarMenuOpen && c.titlebarMenuTarget == target
-	btn := bui.IconButton(ctx, icons.More, bui.IconButtonOptions{
+	opts := bui.IconButtonOptions{
 		ID:          id,
 		Label:       theme.Tr("更多", "More"),
 		Tooltip:     theme.Tr("更多操作", "More actions"),
@@ -629,7 +735,15 @@ func (c *Controller) renderMoreMenuTrigger(ctx *ui.Context, id, target string, d
 		Active:      open,
 		ActiveStyle: bui.ActiveAccent,
 		Disabled:    disabled,
-	})
+	}
+	if ghost {
+		opts.Variant = bui.IconChrome
+		opts.CardBorder = false
+		opts.ChromeHover = true
+		opts.Size = theme.HeightChrome
+		opts.Radius = theme.RadiusSM
+	}
+	btn := bui.IconButton(ctx, icons.More, opts)
 	if open {
 		if b := btn.Bounds(); b.W > 0 {
 			c.titlebarMenuAnchor = b
