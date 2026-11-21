@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T08:38:51.700Z",
-  "latest_version": "1.0.891",
-  "latest_tag": "v1.0.891",
+  "updated_at": "2026-11-21T08:41:28.513Z",
+  "latest_version": "1.0.892",
+  "latest_tag": "v1.0.892",
   "releases": [
+    {
+      "version": "1.0.892",
+      "tag": "v1.0.892",
+      "published_at": "2026-11-21T08:41:28Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.892",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "查找和替换栏默认收起，点击切换按钮即可展开。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "The find and replace row is collapsed by default and can be expanded with a toggle."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-macos-arm64.dmg",
+          "size": 15038786,
+          "sha256": "c094fb03bfe3fc76ac20eec23cef1e6752708c36d84432f71dfc2cb3461e4e8a"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-macos-x64.dmg",
+          "size": 16560962,
+          "sha256": "028c4d516c457571517bab8381318eca13123491b196b0f99c1b8d9b894a32bb"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-windows-x64-setup.exe",
+          "size": 12046493,
+          "sha256": "96419da198f315c9e5d74ced6ef3c1c8fb133b610a665fa06432e52be50cb24b"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-linux-x64.deb",
+          "size": 10624204,
+          "sha256": "7747eeead6b01183f6c2148ab1d3b1a0883ff49359db7bb74fab6b300a749599"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.892/block-linux-x64.AppImage",
+          "size": 23554552,
+          "sha256": "98cee56531f7dcca258127b38c256ae43457af29ef9a9dcfdde5121c46d181e7"
+        }
+      ]
+    },
     {
       "version": "1.0.891",
       "tag": "v1.0.891",
@@ -32,38 +88,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-macos-arm64.dmg",
-          "size": 15039053,
-          "sha256": "0002ce5ac65ef7cb83af6e9242989c66db9819ac7ced9886a77526a0b6fb0786"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-macos-x64.dmg",
-          "size": 16559898,
-          "sha256": "3c884eba37136fba1486b64e895f74c2d9ea7823625d25aa4659cf3e25197528"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-windows-x64-setup.exe",
-          "size": 12046314,
-          "sha256": "4101c408b7efeae2e4ebaa830d70fd3c2c8890c53a04a79251fb9d9f92989554"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-linux-x64.deb",
-          "size": 10624932,
-          "sha256": "355b92777ec3f6ac98ebb6bd7bb34098e6f9439a1199a1ddacc2eaaeaa07d356"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-linux-x64.AppImage",
-          "size": 23550456,
-          "sha256": "1daa7dfbe8c97b6daaf2dac5385de588a18497b031035e96ede789682c2d550a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.890",
