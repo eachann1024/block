@@ -255,6 +255,10 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 	if raw.AIAnswer != nil {
 		answer = *raw.AIAnswer
 	}
+	var thread []model.AnnotationTurn
+	for _, t := range raw.AIThread {
+		thread = append(thread, model.AnnotationTurn{Q: t.Q, A: t.A})
+	}
 	if applied {
 		// Applied annotations show no card; their body / rewrite stay in the
 		// store (see modelToStoredAnnotation) so the Rust app keeps tracking them.
@@ -262,6 +266,7 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 		rewrite = ""
 		aiErr = ""
 		answer = ""
+		thread = nil
 	}
 
 	return &model.Annotation{
@@ -275,6 +280,7 @@ func storedToModelAnnotation(doc *model.Doc, raw files.StoredAnnotation) *model.
 		Reactions:     reactions,
 		RewriteResult: rewrite,
 		Answer:        answer,
+		Thread:        thread,
 		AIError:       aiErr,
 		Applied:       applied,
 	}
@@ -382,6 +388,7 @@ func modelToStoredAnnotation(s *Session, ann *model.Annotation) (files.StoredAnn
 		AIRewritten: aiRewritten,
 		AIError:     aiErr,
 		AIAnswer:    aiAnswer,
+		AIThread:    storedThread(ann.Thread),
 		Applied:     &applied,
 	}, true
 }
@@ -398,6 +405,17 @@ func (s *Session) onNotePathChanged(oldPath, newPath string) {
 	}
 	s.annotLoadedPath = ""
 	s.ensureAnnotationsLoaded()
+}
+
+func storedThread(in []model.AnnotationTurn) []files.StoredAnnotationTurn {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]files.StoredAnnotationTurn, len(in))
+	for i, t := range in {
+		out[i] = files.StoredAnnotationTurn{Q: t.Q, A: t.A}
+	}
+	return out
 }
 
 func (s *Session) toggleReactionByID(id, emoji string) {

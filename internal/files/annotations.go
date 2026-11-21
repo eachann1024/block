@@ -86,7 +86,14 @@ type StoredAnnotation struct {
 	AIRewritten *string                  `json:"ai_rewritten,omitempty"`
 	AIError     *string                  `json:"ai_error,omitempty"`
 	AIAnswer    *string                  `json:"ai_answer,omitempty"`
+	AIThread    []StoredAnnotationTurn   `json:"ai_thread,omitempty"`
 	Applied     *bool                    `json:"applied,omitempty"`
+}
+
+// StoredAnnotationTurn is one earlier note/reply round of a follow-up thread.
+type StoredAnnotationTurn struct {
+	Q string `json:"q"`
+	A string `json:"a"`
 }
 
 // AnnotationStore matches thinkly-fast's {"notes": {"<abs_path>": [...]}} format.

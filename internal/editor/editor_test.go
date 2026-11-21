@@ -1161,7 +1161,7 @@ func TestEditorZeroHoverAndFocusJitter(t *testing.T) {
 	if n := s.GeneratePendingAnnotations(); n != 2 {
 		t.Fatalf("expected 2 sent annotations, got %d", n)
 	}
-	for i := 0; i < 200 && s.annotGenCh != nil; i++ {
+	for i := 0; i < 200 && s.annotGenInFlight > 0; i++ {
 		time.Sleep(5 * time.Millisecond)
 		s.pollAnnotationGeneration()
 	}

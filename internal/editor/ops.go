@@ -6098,68 +6098,128 @@ func isPendingAnnotation(a *model.Annotation) bool {
 // background; replies land in pollAnnotationGeneration so the UI never blocks.
 func (s *Session) GeneratePendingAnnotations() int {
 	s.ensureAnnotationsLoaded()
-	if s.aiDisabled || s.annotationAIResponder == nil || len(s.annotations) == 0 || s.annotGenCh != nil {
-		return 0
-	}
-	var pending []*model.Annotation
+	var batch []*model.Annotation
 	for _, a := range s.annotations {
 		if isPendingAnnotation(a) {
-			cp := *a
-			if len(a.Reactions) > 0 {
-				cp.Reactions = slices.Clone(a.Reactions)
-			}
-			pending = append(pending, &cp)
-			a.RewriteBusy = true
-			a.AIError = ""
+			batch = append(batch, a)
 		}
 	}
-	if len(pending) == 0 {
+	return s.startAnnotationGeneration(batch)
+}
+
+// SendAnnotationFollowup files the card's current exchange into its thread and
+// asks the follow-up as the new note, for that card alone.
+func (s *Session) SendAnnotationFollowup(id, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" || s.aiDisabled || s.annotationAIResponder == nil {
+		return false
+	}
+	s.ensureAnnotationsLoaded()
+	for _, a := range s.annotations {
+		if a == nil || a.ID != id || a.RewriteBusy || a.Applied {
+			continue
+		}
+		reply := a.Answer
+		if reply == "" {
+			reply = a.RewriteResult
+		}
+		s.pushUndo()
+		a.Thread = append(a.Thread, model.AnnotationTurn{Q: a.Note, A: reply})
+		a.Note = text
+		a.Answer = ""
+		a.RewriteResult = ""
+		a.AIError = ""
+		s.persistAnnotations()
+		return s.startAnnotationGeneration([]*model.Annotation{a}) > 0
+	}
+	return false
+}
+
+func (s *Session) startAnnotationGeneration(batch []*model.Annotation) int {
+	if s.aiDisabled || s.annotationAIResponder == nil || len(batch) == 0 {
 		return 0
 	}
-	ch := make(chan map[string]model.AnnotationReply, 1)
-	s.annotGenCh = ch
+	pending := make([]*model.Annotation, 0, len(batch))
+	for _, a := range batch {
+		cp := *a
+		cp.Reactions = slices.Clone(a.Reactions)
+		cp.Thread = slices.Clone(a.Thread)
+		pending = append(pending, &cp)
+		a.RewriteBusy = true
+		a.AIError = ""
+	}
+	if s.annotGenCh == nil {
+		s.annotGenCh = make(chan map[string]model.AnnotationReply, 16)
+	}
+	ch := s.annotGenCh
+	s.annotGenInFlight++
 	responder := s.annotationAIResponder
 	docMarkdown := s.Markdown()
+	ids := make([]string, len(pending))
+	for i, a := range pending {
+		ids[i] = a.ID
+	}
 	go func() {
-		ch <- responder(docMarkdown, pending)
+		results := responder(docMarkdown, pending)
+		if results == nil {
+			results = map[string]model.AnnotationReply{}
+		}
+		// Every sent id gets an entry so its card leaves the busy state even without a reply.
+		for _, id := range ids {
+			if _, ok := results[id]; !ok {
+				results[id] = model.AnnotationReply{}
+			}
+		}
+		ch <- results
 		s.requestRedraw()
 	}()
 	return len(pending)
 }
 
-// pollAnnotationGeneration applies a finished background reply; call once per frame.
+// pollAnnotationGeneration applies finished background replies; call once per frame.
 func (s *Session) pollAnnotationGeneration() {
-	if s.annotGenCh == nil {
+	if s.annotGenCh == nil || s.annotGenInFlight == 0 {
 		return
 	}
-	var results map[string]model.AnnotationReply
-	select {
-	case results = <-s.annotGenCh:
-	default:
-		return
-	}
-	s.annotGenCh = nil
 	updated := 0
-	for _, a := range s.annotations {
-		if a == nil || !a.RewriteBusy {
-			continue
+	for {
+		var results map[string]model.AnnotationReply
+		select {
+		case results = <-s.annotGenCh:
+		default:
+			if updated > 0 {
+				s.persistAnnotations()
+			}
+			return
 		}
-		a.RewriteBusy = false
-		res, ok := results[a.ID]
-		text := strings.TrimSpace(res.Text)
-		if !ok || text == "" || a.Applied || strings.TrimSpace(a.Note) == "" {
-			continue
+		s.annotGenInFlight--
+		for _, a := range s.annotations {
+			if a == nil || !a.RewriteBusy {
+				continue
+			}
+			res, ok := results[a.ID]
+			if !ok {
+				continue
+			}
+			a.RewriteBusy = false
+			text := strings.TrimSpace(res.Text)
+			if text == "" || a.Applied || strings.TrimSpace(a.Note) == "" {
+				continue
+			}
+			if res.Kind == model.AnnotationReplyAnswer {
+				a.Answer = text
+			} else {
+				a.RewriteResult = res.Text
+			}
+			a.AIError = ""
+			updated++
 		}
-		if res.Kind == model.AnnotationReplyAnswer {
-			a.Answer = text
-		} else {
-			a.RewriteResult = res.Text
+		if s.annotGenInFlight == 0 {
+			if updated > 0 {
+				s.persistAnnotations()
+			}
+			return
 		}
-		a.AIError = ""
-		updated++
-	}
-	if updated > 0 {
-		s.persistAnnotations()
 	}
 }
 
@@ -6258,6 +6318,7 @@ func (s *Session) ApplyAnnotationRewrite(id, replacement string) bool {
 	ann.RewritePrompt = ""
 	ann.RewriteResult = ""
 	ann.Answer = ""
+	ann.Thread = nil
 	ann.AIError = ""
 	if len(ann.Reactions) == 0 {
 		for i, item := range s.annotations {

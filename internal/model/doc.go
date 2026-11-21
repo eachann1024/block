@@ -416,21 +416,28 @@ func (d *Doc) Title() string {
 // Annotation tracks single-block or multi-block margin notes, emoji reactions,
 // and AI rewrite proposals attached to block ranges.
 type Annotation struct {
-	ID            string   `json:"id"`
-	StartBlockID  BlockID  `json:"startBlockId"`
-	StartOffset   int      `json:"startOffset"` // rune offset in StartBlock
-	EndBlockID    BlockID  `json:"endBlockId"`
-	EndOffset     int      `json:"endOffset"` // rune offset in EndBlock
-	QuotedText    string   `json:"quotedText"`
-	Note          string   `json:"note,omitempty"`
-	Reactions     []string `json:"reactions,omitempty"`
-	RewritePrompt string   `json:"rewritePrompt,omitempty"`
-	RewriteResult string   `json:"rewriteResult,omitempty"`
-	Answer        string   `json:"answer,omitempty"` // AI reply when the note asks a question instead of requesting an edit
-	AIError       string   `json:"aiError,omitempty"`
-	Applied       bool     `json:"applied,omitempty"`
-	RewriteBusy   bool     `json:"-"`
-	CreatedAtUnix int64    `json:"createdAt"`
+	ID            string           `json:"id"`
+	StartBlockID  BlockID          `json:"startBlockId"`
+	StartOffset   int              `json:"startOffset"` // rune offset in StartBlock
+	EndBlockID    BlockID          `json:"endBlockId"`
+	EndOffset     int              `json:"endOffset"` // rune offset in EndBlock
+	QuotedText    string           `json:"quotedText"`
+	Note          string           `json:"note,omitempty"`
+	Reactions     []string         `json:"reactions,omitempty"`
+	RewritePrompt string           `json:"rewritePrompt,omitempty"`
+	RewriteResult string           `json:"rewriteResult,omitempty"`
+	Answer        string           `json:"answer,omitempty"` // AI reply when the note asks a question instead of requesting an edit
+	Thread        []AnnotationTurn `json:"thread,omitempty"` // earlier note/reply rounds; Note holds the latest follow-up
+	AIError       string           `json:"aiError,omitempty"`
+	Applied       bool             `json:"applied,omitempty"`
+	RewriteBusy   bool             `json:"-"`
+	CreatedAtUnix int64            `json:"createdAt"`
+}
+
+// AnnotationTurn is one earlier round on an annotation: what was asked and what the AI said.
+type AnnotationTurn struct {
+	Q string `json:"q"`
+	A string `json:"a"`
 }
 
 // AnnotationReply is the AI's reply to one annotation: an edit proposal or an answer.

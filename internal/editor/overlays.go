@@ -2286,6 +2286,15 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 		}
 		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
 			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		if isResult && ann.Answer != "" && !s.readOnly {
+			done := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
+				ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Size: theme.HeightMicro, IconSize: theme.IconInline,
+			})
+			if done.Clicked() {
+				s.deleteAnnotationByID(ann.ID)
+			}
+			return
+		}
 		if !showActions {
 			return
 		}
@@ -2303,6 +2312,12 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 	noteTxt := ann.Note
 	if noteTxt == "" && !s.aiDisabled {
 		noteTxt = ann.RewritePrompt
+	}
+	if n := len(ann.Thread); n > 0 && !s.aiDisabled {
+		if prev := strings.Join(strings.Fields(ann.Thread[n-1].A), " "); prev != "" {
+			ui.Text(c, prev).FillWidth().MinWidth(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Placeholder)
+		}
 	}
 	if noteTxt != "" {
 		if s.readOnly {
@@ -2369,6 +2384,7 @@ func (s *Session) renderAnnotationResult(c *ui.Context, ann *model.Annotation) {
 			s.dismissAnnotationRewrite(ann.ID)
 		}
 	})
+	s.renderAnnotationFollowup(c, ann)
 }
 
 // renderAnnotationAnswer shows the AI's reply to a question note: the question, then the answer; nothing to replace.
@@ -2380,17 +2396,48 @@ func (s *Session) renderAnnotationAnswer(c *ui.Context, ann *model.Annotation) {
 	}
 	ui.Text(c, ann.Answer).FillWidth().MinWidth(0).
 		FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text)
-	if s.readOnly {
+	s.renderAnnotationFollowup(c, ann)
+}
+
+// renderAnnotationFollowup is the always-there "追问…" line under an AI reply: type, Enter sends it for this card.
+func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation) {
+	if s.readOnly || s.aiDisabled || s.annotationAIResponder == nil {
 		return
 	}
-	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
-		chkIc := icons.Check
-		done := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
-			ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Leading: &chkIc, Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
+	pal := theme.Ocean()
+	if s.followupDrafts == nil {
+		s.followupDrafts = make(map[string]*string)
+	}
+	draft := s.followupDrafts[ann.ID]
+	if draft == nil {
+		draft = new(string)
+		s.followupDrafts[ann.ID] = draft
+	}
+	ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space6, 0, 0, 0).Gap(theme.Space8).Children(func() {
+		ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+		in := ui.TextAreaBase(c.Key("ann-followup-"+ann.ID), draft).FillWidth().MinWidth(0).Lines(1, 4).
+			Padding(0).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text).CaretColor(pal.Accent).
+			Placeholder(theme.Tr("追问…", "Follow up…")).PlaceholderColor(pal.Placeholder).Label(theme.Tr("追问", "Follow up"))
+		appUi.AutoHideScrollbars(c, in)
+		appUi.Probe(in, "ann-followup-"+ann.ID)
+		composing := in.Composing()
+		id := ann.ID
+		in.OnTextKey(func(k ui.TextKey) bool {
+			if composing {
+				return false
+			}
+			switch {
+			case k.Key == ui.KeyEscape:
+				*draft = ""
+				return true
+			case isAnnotationSubmitKey(k):
+				if s.SendAnnotationFollowup(id, k.Text()) {
+					delete(s.followupDrafts, id)
+				}
+				return true
+			}
+			return false
 		})
-		if done.Clicked() {
-			s.deleteAnnotationByID(ann.ID)
-		}
 	})
 }
 
@@ -2508,7 +2555,7 @@ func (s *Session) estimateAnnotationRowMetrics(ann *model.Annotation, isEditing 
 		lines := max((len([]rune(ann.Answer))+15)/16, 1)
 		height = 96 + float32(lines-1)*theme.LineBody
 	case !s.aiDisabled && ann.RewriteResult != "":
-		height = 122
+		height = 154
 	default:
 		lines := max((len([]rune(ann.Note))+11)/12, 1)
 		height = 64 + float32(lines-1)*theme.LineBody
