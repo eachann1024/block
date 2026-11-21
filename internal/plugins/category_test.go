@@ -8,12 +8,12 @@ import (
 
 func TestAllCategoriesOrderAndValidation(t *testing.T) {
 	want := []Category{
-		CategorySync,
+		CategoryAppearance,
 		CategoryEdit,
 		CategoryOrganize,
 		CategoryAI,
 		CategoryPublish,
-		CategoryAppearance,
+		CategorySync,
 		CategoryTools,
 		CategoryLanguage,
 	}
