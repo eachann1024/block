@@ -12,6 +12,7 @@
 
 - **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
+- **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python、Ruby、PHP、Lua、R、JavaScript、TypeScript、HTML、Vue、Svelte、CSS/SCSS/Less、JSON、YAML、TOML/INI、XML、Property List、SQL、GraphQL、Protobuf、Shell、Dockerfile、Makefile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
 - **生命周期**：首次安装纯声明式语言扩展时**自动启用**；在设置页停用或卸载插件时，编辑器与代码块高亮**实时生效**（移除对应语言注册）。
 - **系统「打开方式」自动关联**：启用、停用或卸载语言扩展时，宿主会在后台无感同步 `extensions` 到操作系统的「打开方式」菜单（macOS 通过用户目录隐形中转小壳自动跳过主程序已接管的纯文本与多段后缀；Windows 写当前用户 `HKCU` 专属 `Block.Document` ProgID 的 `OpenWithProgids`，均不抢占默认程序；Linux 维护 `NoDisplay=true` 的用户级 `block-plugins.desktop`，仅关联系统 MIME 数据库已收录的类型、不覆写主入口也不新增自定义 MIME，若桌面未给某细分子类型单独指定默认应用，部分桌面如 GNOME/GIO 可能优先按精确子类型回落），无需管理员权限；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
 
