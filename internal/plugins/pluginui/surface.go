@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"block/internal/icons"
+	"block/internal/modals"
 	"block/internal/plugins"
 	"block/internal/theme"
 	bui "block/internal/ui"
@@ -50,7 +51,7 @@ func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plu
 		if vs.Error != "" {
 			ui.Row(ctx.Key("plugin-error-"+scope)).FillWidth().MinWidth(0).
 				Padding(theme.Space10, theme.Space12).Gap(theme.Space12).Radius(theme.RadiusMD).
-				Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+				Background(pal.DangerSurface).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 				Transition(bui.CascadeRowTransition(0)).Children(func() {
 				ui.Text(ctx, vs.Error).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
 					TextColor(pal.Danger).Grow(1).MinWidth(0)
@@ -126,7 +127,7 @@ func (c *Controller) renderSurface(ctx *ui.Context, pluginID string, surface plu
 }
 
 // RenderSettingsSections appends plugin sections declared for a built-in settings tab.
-func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string) {
+func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string, onSelectTab func(nextTab string)) {
 	if c == nil || c.sup == nil {
 		return
 	}
@@ -137,6 +138,10 @@ func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string) {
 	pal := theme.Ocean()
 	for _, sec := range sections {
 		s := sec
+		inst, ok := c.sup.GetInstalled(s.PluginID)
+		if !ok || !inst.Enabled {
+			continue
+		}
 		ctx.Key("plugin-settings-sec-" + s.PluginID + "-" + s.ID)
 		bui.SettingsSection(ctx, func() {
 			if strings.TrimSpace(s.Title) != "" {
@@ -147,7 +152,24 @@ func (c *Controller) RenderSettingsSections(ctx *ui.Context, tab string) {
 						DrawDuoSpec(ctx, icSpec, theme.IconRow, pal.DuoIconColors(pal.Text))
 					}
 				}
-				bui.SettingsSectionTitleWithIcon(ctx, lead, s.Title, nil)
+				var trail func()
+				if onSelectTab != nil {
+					trail = func() {
+						jump := ui.ButtonBase(ctx.Key("plugin-sec-jump-" + s.PluginID + "-" + s.ID)).
+							Padding(theme.Space2, theme.Space6).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+							Label(theme.Tr("前往插件设置", "Open plugin settings"))
+						if jump.Hovered() {
+							jump.Background(pal.Hover)
+						}
+						jump.Children(func() {
+							icons.Draw(ctx, icons.TbChevronRight, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+						})
+						if jump.Clicked() {
+							onSelectTab(modals.TabPluginPrefix + s.PluginID)
+						}
+					}
+				}
+				bui.SettingsSectionTitleWithIcon(ctx, lead, s.Title, trail)
 			}
 			c.renderSurface(ctx, s.PluginID, s.Surface, s.Title)
 		})

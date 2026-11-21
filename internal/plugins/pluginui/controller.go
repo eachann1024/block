@@ -178,11 +178,13 @@ func (c *Controller) NavEntries() []modals.PluginNavEntry {
 		app := inst
 		hasErr := c.sup.HasPluginError(app.Manifest.ID)
 		lit := app.Enabled && !hasErr
+		_, starting, _, _ := c.pluginVisualState(app.Manifest.ID, app)
 		entries = append(entries, modals.PluginNavEntry{
 			TabID:     modals.TabPluginPrefix + app.Manifest.ID,
 			Title:     app.Manifest.Name.Resolve(locale),
 			Beta:      app.Manifest.Beta,
 			Lit:       lit,
+			Starting:  starting,
 			StatusDot: app.Enabled,
 			HasError:  hasErr,
 			DrawIcon: func(ctx *ui.Context, size float32, colors theme.IconColors) {
@@ -349,6 +351,13 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 	}
 	version := strings.TrimSpace(inst.Manifest.Version)
 
+	if !inst.Enabled {
+		ui.Row(ctx.Key("plugin-dormant-banner-" + inst.Manifest.ID)).FillWidth().MinWidth(0).
+			Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).Background(pal.Shell).Children(func() {
+			ui.Text(ctx, theme.Tr("已停用，以下设置在开启后生效", "Disabled — settings take effect when enabled")).
+				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
+		})
+	}
 	ui.Column(ctx.Key("plugin-dormant-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
 		Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).
 		Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline).

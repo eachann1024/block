@@ -1419,11 +1419,12 @@ func renderPreviewDiff(c *ui.Context, pv *plugins.UIPreview, pcol theme.PluginPr
 
 func renderPreviewPlan(c *ui.Context, pv *plugins.UIPreview, pcol theme.PluginPreviewColors) {
 	pal := theme.Ocean()
+	bg, fg, muted := planListColors(pal, pv.Palette, pcol)
 	ui.Column(c).FillWidth().MinWidth(0).Padding(theme.Space12, theme.Space16).Gap(theme.Space6).
-		Radius(theme.RadiusMD).Background(pcol.CardBG).Border(1, pal.Hairline).Children(func() {
+		Radius(theme.RadiusMD).Background(bg).Border(1, pal.Hairline).Children(func() {
 		lines := splitPreviewLines(pv.Body, 10)
 		if len(lines) == 0 {
-			ui.Text(c, pv.Title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+			ui.Text(c, pv.Title).FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(muted)
 			return
 		}
 		for _, ln := range lines {
@@ -1431,9 +1432,18 @@ func renderPreviewPlan(c *ui.Context, pv *plugins.UIPreview, pcol theme.PluginPr
 			if trimmed == "" {
 				continue
 			}
-			ui.Text(c, trimmed).Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+			ui.Text(c, trimmed).Font("monospace").FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(fg)
 		}
 	})
+}
+
+// planListColors keeps an operational change list on the app surface. paper and
+// warm are fixed light sheets; using them in dark mode paints light text on white.
+func planListColors(pal theme.Palette, preset string, pcol theme.PluginPreviewColors) (bg, fg, muted ui.Color) {
+	if pal.Dark && (preset == "paper" || preset == "warm") {
+		return pal.Card, pal.Text, pal.TextSecondary
+	}
+	return pcol.CardBG, pcol.BodyFG, pcol.MutedFG
 }
 
 func splitPreviewLines(raw string, maxLines int) []string {
