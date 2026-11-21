@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T03:25:46.073Z",
-  "latest_version": "1.0.869",
-  "latest_tag": "v1.0.869",
+  "updated_at": "2026-11-21T03:29:59.625Z",
+  "latest_version": "1.0.870",
+  "latest_tag": "v1.0.870",
   "releases": [
+    {
+      "version": "1.0.870",
+      "tag": "v1.0.870",
+      "published_at": "2026-11-21T03:29:59Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.870",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "优化侧栏文件树、标签页与笔记本切换体验。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Keep deck sidebar in file-tree order instead of active-first."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.870/block-macos-arm64.dmg",
+          "size": 15811133,
+          "sha256": "2922065ea93bdc229ac97bbd69f27189eb0c2265a8a5150697520a4db8f54536"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.870/block-macos-x64.dmg",
+          "size": 17341504,
+          "sha256": "fb2622d58c81edb0a04fe198d7ebd4345519f65c2e5f629232a632080cc89247"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.870/block-windows-x64-setup.exe",
+          "size": 12803223,
+          "sha256": "0e023a0a0edcebbd915f4dbe66903ebfd44baffd21c81cab0fb85a127d7289df"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.870/block-linux-x64.deb",
+          "size": 11388786,
+          "sha256": "f10d70d420553fb69382521695b9f76a5450de9a2f7a5beca55bdb90b821adc1"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.870/block-linux-x64.AppImage",
+          "size": 24312312,
+          "sha256": "92775ae6d6cac14efa9c97c94b053ce4276c828d2d43093cc3d1c5c2dfff2c7b"
+        }
+      ]
+    },
     {
       "version": "1.0.869",
       "tag": "v1.0.869",
@@ -34,38 +90,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.869/block-macos-arm64.dmg",
-          "size": 15811241,
-          "sha256": "ef44285b520a362c86a4975826106255e159b5988385b398302f9c46123aa90d"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.869/block-macos-x64.dmg",
-          "size": 17341467,
-          "sha256": "5f784b4641d4dee95db3abf5af6af7fe8ed1a94dbadc3b4277f08c41e3a30a58"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.869/block-windows-x64-setup.exe",
-          "size": 12803119,
-          "sha256": "36df21844589a0d4fc4298936e3787c6cb8a3c5248aa3b58baeb55a13e07af0e"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.869/block-linux-x64.deb",
-          "size": 11387002,
-          "sha256": "4397cd1c2fa123ef1a512da282989687ad82c90cb44031a819c025aad03f63ef"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.869/block-linux-x64.AppImage",
-          "size": 24316408,
-          "sha256": "88b807f4648688a8c8d6b307534f3ca20cc26b93c00e883bbc0f6a02cbbfbdce"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.868",
