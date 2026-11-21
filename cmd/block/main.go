@@ -224,7 +224,7 @@ func main() {
 				return
 			}
 			if sess := ws.ActiveSession(); sess != nil {
-				sess.OpenFind()
+				sess.ToggleFind()
 				ws.RequestRedraw()
 			}
 		},

@@ -877,14 +877,14 @@ func (q *QuickNoteController) Session() *editor.Session {
 	return q.sessions[q.activeSlot]
 }
 
-// OpenFind opens the in-note find bar inside the active Quick Note slot.
+// OpenFind toggles the in-note find bar inside the active Quick Note slot.
 func (q *QuickNoteController) OpenFind() {
 	q.mu.Lock()
 	sess := q.sessions[q.activeSlot]
 	win := q.win
 	q.mu.Unlock()
 	if sess != nil {
-		sess.OpenFind()
+		sess.ToggleFind()
 	}
 	if win != nil {
 		win.Invalidate()

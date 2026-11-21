@@ -125,96 +125,160 @@ func (s *Session) renderFindBar(c *ui.Context) {
 	}
 
 	ui.Overlay(c, func() {
-		bar := appUi.Elevate(ui.Row(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).MaxWidth(maxBarW).
-			Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space4).AlignItems(ui.Center).
+		bar := appUi.Elevate(ui.Column(c.Key("find-bar")).Absolute().Top(topY).Right(rightX).MaxWidth(maxBarW).
+			Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space4).
 			Radius(theme.RadiusXL).Background(pal.Menu).Border(theme.FindBarBorderWidth, pal.MenuBorder).
 			Transition(appUi.PopoverSpringTransition()), theme.ElevationPopover)
 		appUi.Probe(bar, "find-bar")
 		s.recordOverlayPanel("find-bar", bar)
 
 		bar.Children(func() {
-			icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
+			ui.Row(c.Key("find-row")).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+				icons.Draw(c, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
 
-			in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(theme.HeightCompact).
-				Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
-				Placeholder(theme.Tr("查找…", "Find…")).PlaceholderColor(pal.Placeholder).Label("find-input").
-				Bind(&s.findInputHandle)
-			appUi.Probe(in, "find-input")
-			in.OnTextKey(func(k ui.TextKey) bool {
-				if k.Key == ui.KeyEnter {
-					if k.Mods == ui.Shift {
-						s.FindPrev()
-					} else {
-						s.FindNext()
+				in := ui.TextInputBase(c.Key("find-input"), &s.findQuery).Width(inputW).Height(theme.HeightCompact).
+					Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+					Placeholder(theme.Tr("查找…", "Find…")).PlaceholderColor(pal.Placeholder).Label("find-input").
+					Bind(&s.findInputHandle)
+				appUi.Probe(in, "find-input")
+				in.OnTextKey(func(k ui.TextKey) bool {
+					if k.Key == ui.KeyEnter {
+						if k.Mods == ui.Shift {
+							s.FindPrev()
+						} else {
+							s.FindNext()
+						}
+						return true
 					}
-					return true
+					if k.Key == ui.KeyEscape {
+						s.CloseFind()
+						return true
+					}
+					if k.Key == ui.KeyTab && k.Mods == 0 && !s.readOnly {
+						s.findReplaceFocusPending = true
+						c.Invalidate()
+						return true
+					}
+					return false
+				})
+				if s.findFocusPending {
+					in.Focus()
+					s.findFocusPending = false
 				}
-				if k.Key == ui.KeyEscape {
+				if in.Changed() {
+					s.SetFindQuery(s.findQuery)
+				}
+
+				countText := ""
+				if s.findQuery != "" {
+					if len(s.findMatches) == 0 {
+						countText = theme.Tr("无结果", "No results")
+					} else {
+						countText = fmt.Sprintf("%d / %d", s.findCurrent+1, len(s.findMatches))
+					}
+				}
+				ui.Row(c).Width(72).PaddingX(theme.Space6).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, countText).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
+				})
+
+				ui.Box(c).Width(1).Height(theme.IconChrome).Margin(0, theme.Space2).Background(pal.SidebarBorder)
+
+				prevBtn := appUi.IconButton(c, icons.ChevronUp, appUi.IconButtonOptions{
+					ID:       "find-prev",
+					Label:    theme.Tr("上一处", "Previous match"),
+					Tooltip:  theme.Tr("上一处", "Previous match"),
+					Shortcut: formatShortcutDisplay("⇧↩", "Shift+Enter"),
+					Size:     theme.HeightControl,
+					IconSize: theme.IconInline,
+					Disabled: len(s.findMatches) == 0,
+				})
+				if prevBtn.Clicked() {
+					s.FindPrev()
+				}
+
+				nextBtn := appUi.IconButton(c, icons.ChevronDown, appUi.IconButtonOptions{
+					ID:       "find-next",
+					Label:    theme.Tr("下一处", "Next match"),
+					Tooltip:  theme.Tr("下一处", "Next match"),
+					Shortcut: formatShortcutDisplay("↩", "Enter"),
+					Size:     theme.HeightControl,
+					IconSize: theme.IconInline,
+					Disabled: len(s.findMatches) == 0,
+				})
+				if nextBtn.Clicked() {
+					s.FindNext()
+				}
+
+				closeBtn := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
+					ID:       "find-close",
+					Label:    theme.Tr("关闭查找", "Close find"),
+					Tooltip:  theme.Tr("关闭查找", "Close find"),
+					Shortcut: "Esc",
+					Size:     theme.HeightControl,
+					IconSize: theme.IconInline,
+				})
+				if closeBtn.Clicked() {
 					s.CloseFind()
-					return true
 				}
-				return false
 			})
-			if s.findFocusPending {
-				in.Focus()
-				s.findFocusPending = false
-			}
-			if in.Changed() {
-				s.SetFindQuery(s.findQuery)
-			}
-
-			countText := ""
-			if s.findQuery != "" {
-				if len(s.findMatches) == 0 {
-					countText = theme.Tr("无结果", "No results")
-				} else {
-					countText = fmt.Sprintf("%d / %d", s.findCurrent+1, len(s.findMatches))
-				}
-			}
-			ui.Row(c).Width(72).PaddingX(theme.Space6).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, countText).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
-			})
-
-			ui.Box(c).Width(1).Height(theme.IconChrome).Margin(0, theme.Space2).Background(pal.SidebarBorder)
-
-			prevBtn := appUi.IconButton(c, icons.ChevronUp, appUi.IconButtonOptions{
-				ID:       "find-prev",
-				Label:    theme.Tr("上一处", "Previous match"),
-				Tooltip:  theme.Tr("上一处", "Previous match"),
-				Shortcut: formatShortcutDisplay("⇧↩", "Shift+Enter"),
-				Size:     theme.HeightControl,
-				IconSize: theme.IconInline,
-				Disabled: len(s.findMatches) == 0,
-			})
-			if prevBtn.Clicked() {
-				s.FindPrev()
-			}
-
-			nextBtn := appUi.IconButton(c, icons.ChevronDown, appUi.IconButtonOptions{
-				ID:       "find-next",
-				Label:    theme.Tr("下一处", "Next match"),
-				Tooltip:  theme.Tr("下一处", "Next match"),
-				Shortcut: formatShortcutDisplay("↩", "Enter"),
-				Size:     theme.HeightControl,
-				IconSize: theme.IconInline,
-				Disabled: len(s.findMatches) == 0,
-			})
-			if nextBtn.Clicked() {
-				s.FindNext()
-			}
-
-			closeBtn := appUi.IconButton(c, icons.Close, appUi.IconButtonOptions{
-				ID:       "find-close",
-				Label:    theme.Tr("关闭查找", "Close find"),
-				Tooltip:  theme.Tr("关闭查找", "Close find"),
-				Shortcut: "Esc",
-				Size:     theme.HeightControl,
-				IconSize: theme.IconInline,
-			})
-			if closeBtn.Clicked() {
-				s.CloseFind()
+			if !s.readOnly {
+				s.renderFindReplaceRow(c, inputW)
 			}
 		})
+	})
+}
+
+func (s *Session) renderFindReplaceRow(c *ui.Context, inputW float32) {
+	pal := theme.Ocean()
+	ui.Row(c.Key("find-replace-row")).Gap(theme.Space4).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Width(theme.IconRow).Height(theme.IconRow)
+
+		in := ui.TextInputBase(c.Key("find-replace-input"), &s.findReplace).Width(inputW).Height(theme.HeightCompact).
+			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+			Placeholder(theme.Tr("替换为…", "Replace…")).PlaceholderColor(pal.Placeholder).Label("find-replace-input").
+			Bind(&s.findReplaceHandle)
+		appUi.Probe(in, "find-replace-input")
+		in.OnTextKey(func(k ui.TextKey) bool {
+			switch {
+			case k.Key == ui.KeyEnter && k.Mods == ui.Cmd:
+				s.ReplaceAllFind()
+				return true
+			case k.Key == ui.KeyEnter && k.Mods == 0:
+				s.ReplaceCurrentFind()
+				return true
+			case k.Key == ui.KeyEscape:
+				s.CloseFind()
+				return true
+			case k.Key == ui.KeyTab && k.Mods == ui.Shift:
+				s.findFocusPending = true
+				c.Invalidate()
+				return true
+			}
+			return false
+		})
+		if s.findReplaceFocusPending {
+			in.Focus()
+			s.findReplaceFocusPending = false
+		}
+
+		ui.Box(c).Grow(1)
+		none := len(s.findMatches) == 0
+		one := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "find-replace-one", Label: theme.Tr("替换", "Replace"), Style: appUi.ButtonGhost,
+			Height: theme.HeightControl, PaddingX: theme.Space8, RegularWeight: true, Disabled: none,
+		})
+		appUi.Probe(one, "find-replace-one")
+		if one.Clicked() {
+			s.ReplaceCurrentFind()
+		}
+		all := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+			ID: "find-replace-all", Label: theme.Tr("全部替换", "Replace all"), Style: appUi.ButtonGhost,
+			Height: theme.HeightControl, PaddingX: theme.Space8, RegularWeight: true, Disabled: none,
+		})
+		appUi.Probe(all, "find-replace-all")
+		if all.Clicked() {
+			s.ReplaceAllFind()
+		}
 	})
 }
 
