@@ -121,6 +121,9 @@ func TestSettingsNavigationControlsAndShortcutRecording(t *testing.T) {
 	if state.Theme != model.ThemeDark {
 		t.Fatalf("expected ThemeDark, got %q", state.Theme)
 	}
+	if err := tt.Click("简体中文"); err != nil {
+		t.Fatal(err)
+	}
 	if err := tt.Click("English"); err != nil {
 		t.Fatal(err)
 	}
