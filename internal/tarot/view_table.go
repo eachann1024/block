@@ -41,11 +41,77 @@ func (ctrl *Controller) RenderTableRoom(c *ui.Context) {
 		c.AnimationFrame()
 	}
 
+	winW, winH := c.Size()
+	lay := computeTableLayout(winW, winH)
+
 	ui.Row(c).Fill().Background(tc.Ground).Children(func() {
-		ctrl.renderTableSidebar(c, ts, noteCount, busy, shuffling, anyDealt, now, reduced)
-		ctrl.renderTableCenter(c, ts, busy, now, reduced)
-		ctrl.renderTableReadingAside(c, ts, busy, shuffling, anyDealt, allOpen, noteCount, now, reduced)
+		if lay.showSidebar {
+			ctrl.renderTableSidebar(c, lay, ts, noteCount, busy, shuffling, anyDealt, now, reduced)
+		}
+		ctrl.renderTableCenter(c, lay, ts, busy, now, reduced)
+		ctrl.renderTableReadingAside(c, lay, ts, busy, shuffling, anyDealt, allOpen, noteCount, now, reduced)
 	})
+}
+
+type tableLayout struct {
+	showSidebar bool
+	sidebarW    float32
+	asideW      float32
+	centerW     float32
+	centerH     float32
+	padX        float32
+	cardGap     float32
+	cardW       float32
+	cardH       float32
+	chartSize   float32
+}
+
+// computeTableLayout keeps three cards fully visible: side panels shrink first,
+// then the deck column folds into the reading aside, and card sizes snap to
+// 4pt steps so cached card bitmaps survive most resize frames.
+func computeTableLayout(winW, winH float32) tableLayout {
+	const centerMin = 480
+	lay := tableLayout{
+		showSidebar: true,
+		sidebarW:    theme.TarotSidebarWidth,
+		asideW:      theme.TarotReadingAsideWidth,
+		padX:        32,
+	}
+	switch {
+	case winW <= 0 || winW-lay.sidebarW-lay.asideW >= centerMin:
+	case winW-220-270 >= centerMin:
+		lay.sidebarW, lay.asideW = 220, 270
+	default:
+		lay.showSidebar = false
+		lay.sidebarW = 0
+		lay.asideW = min(theme.TarotReadingAsideWidth, max(float32(240), float32(math.Floor(float64(winW)*0.34))))
+	}
+	lay.centerW = max(float32(0), winW-lay.sidebarW-lay.asideW)
+	lay.centerH = max(float32(0), winH-theme.TarotTopbarHeight)
+	if lay.centerW < 520 {
+		lay.padX = 20
+	}
+
+	cardW := float32(196)
+	lay.cardGap = 56
+	if lay.centerW > 0 {
+		availW := lay.centerW - lay.padX*2
+		lay.cardGap = max(float32(14), min(float32(56), availW*0.07))
+		cardW = min(cardW, (availW-2*lay.cardGap)/3)
+	}
+	if lay.centerH > 0 {
+		availH := lay.centerH - 72 - 80 - 24
+		if availH > 0 {
+			cardW = min(cardW, availH*100.0/172.0)
+		}
+	}
+	cardW = max(float32(96), float32(math.Floor(float64(cardW)/4))*4)
+	lay.cardW = cardW
+	lay.cardH = float32(math.Round(float64(cardW) * 172.0 / 100.0))
+
+	chart := max(lay.centerW, lay.centerH) * 1.05
+	lay.chartSize = min(float32(900), float32(math.Ceil(float64(chart)/60))*60)
+	return lay
 }
 
 func tableHasActiveAnimation(ts TableState, now time.Time) bool {
@@ -77,6 +143,7 @@ func tableHasActiveAnimation(ts TableState, now time.Time) bool {
 
 func (ctrl *Controller) renderTableSidebar(
 	c *ui.Context,
+	lay tableLayout,
 	ts TableState,
 	noteCount int,
 	busy, shuffling, anyDealt bool,
@@ -84,14 +151,18 @@ func (ctrl *Controller) renderTableSidebar(
 	reduced bool,
 ) {
 	tc := theme.Tarot()
+	padX := float32(22)
+	if lay.sidebarW < theme.TarotSidebarWidth {
+		padX = 18
+	}
 	ui.Column(c).
-		Width(theme.TarotSidebarWidth).
+		Width(lay.sidebarW).
 		FillHeight().
 		Shrink(0).
 		Background(tc.ChromeBar).
 		BorderWidth(0, 1, 0, 0).
 		BorderColor(tc.GoldBorderHair).
-		Padding(28, 22, 28, 22).
+		Padding(28, padX, 28, padX).
 		Gap(28).
 		Children(func() {
 			// Header + fleuron divider
@@ -113,7 +184,7 @@ func (ctrl *Controller) renderTableSidebar(
 			})
 
 			// 6-layer stacked deck with riffle animation
-			ui.Box(c).Size(150, 257).AlignSelf(ui.Center).Margin(theme.Space10, 0, 0, 0).Children(func() {
+			ui.Box(c).Size(150, 257).AlignSelf(ui.Center).Margin(theme.Space10, 0, 0, 0).Cache().Children(func() {
 				// Soft cast shadow ellipse beneath deck
 				ui.Box(c).Absolute().Left(-8).Right(-14).Bottom(-13).Height(24).IgnoreInput(true).
 					Draw(func(p *ui.Painter, r ui.Rect) {
@@ -161,27 +232,31 @@ func (ctrl *Controller) renderTableSidebar(
 			})
 
 			// Draw & Shuffle buttons
-			ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
-				drawLabel := theme.Tr("抽三张牌", "Draw Three Cards")
-				if shuffling {
-					drawLabel = theme.Tr("洗牌中…", "Shuffling…")
-				} else if busy {
-					drawLabel = theme.Tr("牌在路上…", "Dealing…")
-				} else if anyDealt {
-					drawLabel = theme.Tr("重新抽三张", "Draw Three Again")
-				}
-
-				drawBtn := tarotGoldPrimaryButton(c, drawLabel, 46, "tarot-draw", busy, func() {
-					ctrl.DrawSpread()
-				})
-				drawBtn.FillWidth()
-
-				shuffleBtn := tarotGoldSecondaryButton(c, theme.Tr("洗牌", "Shuffle"), 46, "tarot-shuffle", busy, func() {
-					ctrl.ShuffleOnly()
-				})
-				shuffleBtn.FillWidth()
-			})
+			ctrl.renderTableDeckActions(c, 46, busy, shuffling, anyDealt)
 		})
+}
+
+func (ctrl *Controller) renderTableDeckActions(c *ui.Context, btnH float32, busy, shuffling, anyDealt bool) {
+	ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
+		drawLabel := theme.Tr("抽三张牌", "Draw Three Cards")
+		if shuffling {
+			drawLabel = theme.Tr("洗牌中…", "Shuffling…")
+		} else if busy {
+			drawLabel = theme.Tr("牌在路上…", "Dealing…")
+		} else if anyDealt {
+			drawLabel = theme.Tr("重新抽三张", "Draw Three Again")
+		}
+
+		drawBtn := tarotGoldPrimaryButton(c, drawLabel, btnH, "tarot-draw", busy, func() {
+			ctrl.DrawSpread()
+		})
+		drawBtn.FillWidth()
+
+		shuffleBtn := tarotGoldSecondaryButton(c, theme.Tr("洗牌", "Shuffle"), btnH, "tarot-shuffle", busy, func() {
+			ctrl.ShuffleOnly()
+		})
+		shuffleBtn.FillWidth()
+	})
 }
 
 func tableRiffleOffset(layer int, elapsedSec float64) (dx, dy, rot float32) {
@@ -214,50 +289,37 @@ func tableRiffleOffset(layer int, elapsedSec float64) (dx, dy, rot float32) {
 
 func (ctrl *Controller) renderTableCenter(
 	c *ui.Context,
+	lay tableLayout,
 	ts TableState,
 	busy bool,
 	now time.Time,
 	reduced bool,
 ) {
-	winW, winH := c.Size()
-	centerW := winW - theme.TarotSidebarWidth - theme.TarotReadingAsideWidth
-	cardW := float32(196)
-	cardGap := float32(56)
-	padX := float32(32)
-	if centerW > 0 {
-		availW := centerW - padX*2
-		if availW < 3*196+2*56 {
-			cardGap = max(float32(16), min(float32(44), (availW-3*156)/2))
-			cardW = max(float32(138), min(float32(196), (availW-2*cardGap)/3))
-		}
-	}
-	cardH := cardW * 172.0 / 100.0
-	if winH > 0 {
-		availH := winH - theme.TarotTopbarHeight - 170
-		if availH > 0 && cardH > availH {
-			cardH = max(float32(236), availH)
-			cardW = cardH * 100.0 / 172.0
-		}
-	}
+	cardW, cardH, cardGap, padX := lay.cardW, lay.cardH, lay.cardGap, lay.padX
+	chartSize := lay.chartSize
 
 	ui.Box(c).Grow(1).FillHeight().MinWidth(0).Center().Clip().
 		Padding(32, padX, 40, padX).
 		Draw(func(p *ui.Painter, r ui.Rect) {
 			PaintTableCloth(p, r, false)
-			chartSize := min(float32(900), max(r.W, r.H)*1.05)
-			chartRect := ui.Rect{
-				X: r.X + (r.W-chartSize)*0.5,
-				Y: r.Y + (r.H-chartSize)*0.5,
-				W: chartSize,
-				H: chartSize,
-			}
-			PaintStarChart(p, chartRect)
-			tarotPaintTableFrameAndCorners(p, r)
-			if r.W >= 420 && r.H >= 320 {
-				PaintCompass(p, ui.Rect{X: r.X + 38, Y: r.Y + r.H - 38 - 124, W: 124, H: 124})
-			}
 		}).
 		Children(func() {
+			ui.Row(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).Center().IgnoreInput(true).ZIndex(-1).Children(func() {
+				ui.Box(c).Size(chartSize, chartSize).Shrink(0).Cache().
+					Draw(func(p *ui.Painter, r ui.Rect) {
+						PaintStarChart(p, r)
+					})
+			})
+			ui.Box(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).IgnoreInput(true).ZIndex(-1).
+				Draw(func(p *ui.Painter, r ui.Rect) {
+					tarotPaintTableFrameAndCorners(p, r)
+				})
+			if lay.centerW >= 420 && lay.centerH >= 600 {
+				ui.Box(c).Absolute().Left(38).Bottom(38).Size(124, 124).IgnoreInput(true).ZIndex(-1).Cache().
+					Draw(func(p *ui.Painter, r ui.Rect) {
+						PaintCompass(p, r)
+					})
+			}
 			ui.Row(c).Gap(cardGap).AlignItems(ui.Start).Justify(ui.Center).Children(func() {
 				for i := 0; i < 3; i++ {
 					ctrl.renderTableCardSlot(c, ts, i, cardW, cardH, busy, now, reduced)
@@ -412,7 +474,7 @@ func (ctrl *Controller) renderTableCardSlot(
 
 							// Back face (visible when flipAngle < 90)
 							if showBack {
-								back := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(theme.TarotRadiusCard).Clip().
+								back := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(theme.TarotRadiusCard).Clip().Cache().
 									Draw(func(p *ui.Painter, r ui.Rect) {
 										PaintCardBack(p, r, theme.TarotRadiusCard, 1.1)
 									})
@@ -424,7 +486,7 @@ func (ctrl *Controller) renderTableCardSlot(
 
 							// Front face (visible when flipAngle > 90)
 							if showFront {
-								front := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(theme.TarotRadiusCard).Clip().
+								front := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(theme.TarotRadiusCard).Clip().Cache().
 									Padding(8).
 									Draw(func(p *ui.Painter, r ui.Rect) {
 										PaintCardFrame(p, r, theme.TarotRadiusCard)
@@ -593,6 +655,7 @@ func (ctrl *Controller) renderTableCardSlot(
 
 func (ctrl *Controller) renderTableReadingAside(
 	c *ui.Context,
+	lay tableLayout,
 	ts TableState,
 	busy, shuffling, anyDealt, allOpen bool,
 	noteCount int,
@@ -600,104 +663,129 @@ func (ctrl *Controller) renderTableReadingAside(
 	reduced bool,
 ) {
 	tc := theme.Tarot()
+	padX, padY := float32(30), float32(44)
+	if lay.asideW < theme.TarotReadingAsideWidth {
+		padX, padY = 22, 32
+	}
 	ui.Column(c).
-		Width(theme.TarotReadingAsideWidth).
+		Width(lay.asideW).
 		FillHeight().
 		Shrink(0).
 		Background(tc.PanelDark).
 		BorderWidth(0, 0, 0, 1).
 		BorderColor(tc.GoldBorderHair).
-		Padding(44, 30, 44, 30).
-		Gap(24).
 		Children(func() {
-			if ts.ReadingVisible && allOpen {
-				readOp := float32(1)
-				readDY := float32(0)
-				if !reduced && !ts.ReadingAt.IsZero() {
-					el := now.Sub(ts.ReadingAt).Seconds()
-					if el >= 0 && el < 0.90 {
-						t := tarotEaseOutCubic(tarotAnimClamp01(el / 0.90))
-						readOp = float32(t)
-						readDY = float32(8 * (1 - t))
-					}
-				}
-
-				ui.Column(c).FillWidth().Gap(28).Opacity(readOp).Translate(0, readDY).Children(func() {
-					ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
-						ui.Text(c, theme.Tr("解读", "Reading")).
-							Font(theme.TarotSerifFont()).
-							FontSize(theme.FontTitle).
-							FontWeight(theme.WeightTitle).
-							LetterSpacing(6).
-							TextColor(tc.Gold).
-							SingleLine()
-						tarotRenderFleuronDivider(c, true)
-					})
-
-					lineText := strings.TrimSpace(ts.AIReading)
-					if lineText == "" {
-						if ts.AILoading {
-							lineText = theme.Tr("正在结合你的笔记推演牌意…", "Weaving an editorial reading from your notes…")
-						} else if len(ts.Spread.Lines) > 0 {
-							lineText = ts.Spread.Lines[ts.AltIndex%len(ts.Spread.Lines)]
-						}
-					}
-
-					ui.Text(c, lineText).
-						FillWidth().
-						Font(theme.TarotSerifFont()).
-						FontSize(theme.TarotFontReading).
-						LineHeight(1.95).
-						TextColor(tc.TextPrimary)
-
-					ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
-						ctaLabel := fmt.Sprintf(theme.Tr("续写《%s》", "Continue \"%s\""), ts.Spread.CTATitle)
-						ctaBtn := tarotGoldPrimaryButton(c, ctaLabel, 46, "tarot-table-cta", ts.Spread.CTAPath == "", func() {
-							ctrl.OpenNoteFromRitual(ts.Spread.CTAPath, false)
-						})
-						ctaBtn.FillWidth()
-
-						altLabel := theme.Tr("换一种读法", "Another Angle")
-						if ts.AILoading {
-							altLabel = theme.Tr("推演中…", "Reading…")
-						}
-						altBtn := tarotGoldSecondaryButton(c, altLabel, 46, "tarot-table-alt", ts.AILoading, func() {
-							ctrl.NextReading()
-						})
-						altBtn.FillWidth()
-					})
+			blockui.Scroll(c.Key("tarot-table-aside")).Grow(1).MinHeight(0).FillWidth().Children(func() {
+				ui.Column(c).FillWidth().Padding(padY, padX, padY, padX).Gap(24).Children(func() {
+					ctrl.renderTableReadingBody(c, ts, busy, shuffling, anyDealt, allOpen, noteCount, now, reduced)
 				})
-				return
+			})
+			if !lay.showSidebar {
+				ui.Column(c).FillWidth().Shrink(0).Padding(theme.Space16, padX, padY*0.75, padX).
+					BorderWidth(1, 0, 0, 0).BorderColor(tc.GoldBorderHair).
+					Children(func() {
+						ctrl.renderTableDeckActions(c, 40, busy, shuffling, anyDealt)
+					})
+			}
+		})
+}
+
+func (ctrl *Controller) renderTableReadingBody(
+	c *ui.Context,
+	ts TableState,
+	busy, shuffling, anyDealt, allOpen bool,
+	noteCount int,
+	now time.Time,
+	reduced bool,
+) {
+	tc := theme.Tarot()
+	if ts.ReadingVisible && allOpen {
+		readOp := float32(1)
+		readDY := float32(0)
+		if !reduced && !ts.ReadingAt.IsZero() {
+			el := now.Sub(ts.ReadingAt).Seconds()
+			if el >= 0 && el < 0.90 {
+				t := tarotEaseOutCubic(tarotAnimClamp01(el / 0.90))
+				readOp = float32(t)
+				readDY = float32(8 * (1 - t))
+			}
+		}
+
+		ui.Column(c).FillWidth().Gap(28).Opacity(readOp).Translate(0, readDY).Children(func() {
+			ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
+				ui.Text(c, theme.Tr("解读", "Reading")).
+					Font(theme.TarotSerifFont()).
+					FontSize(theme.FontTitle).
+					FontWeight(theme.WeightTitle).
+					LetterSpacing(6).
+					TextColor(tc.Gold).
+					SingleLine()
+				tarotRenderFleuronDivider(c, true)
+			})
+
+			lineText := strings.TrimSpace(ts.AIReading)
+			if lineText == "" {
+				if ts.AILoading {
+					lineText = theme.Tr("正在结合你的笔记推演牌意…", "Weaving an editorial reading from your notes…")
+				} else if len(ts.Spread.Lines) > 0 {
+					lineText = ts.Spread.Lines[ts.AltIndex%len(ts.Spread.Lines)]
+				}
 			}
 
-			// Waiting state: breathing mystic eye + calm status hint
-			ui.Column(c).FillWidth().AlignItems(ui.Start).Gap(theme.Space16).Children(func() {
-				ui.Box(c).Size(44, 28).Draw(func(p *ui.Painter, r ui.Rect) {
-					alpha := float32(0.85)
-					if !p.Preferences().ReduceMotion {
-						phase := float64(p.Now().UnixMilli()%1800) / 1800.0
-						alpha = float32(0.35 + 0.65*(0.5-0.5*math.Cos(phase*2*math.Pi)))
-						p.AnimationFrameRate(30)
-					}
-					PaintMysticEye(p, r, alpha)
+			ui.Text(c, lineText).
+				FillWidth().
+				Font(theme.TarotSerifFont()).
+				FontSize(theme.TarotFontReading).
+				LineHeight(1.95).
+				TextColor(tc.TextPrimary)
+
+			ui.Column(c).FillWidth().Gap(theme.Space10).Children(func() {
+				ctaLabel := fmt.Sprintf(theme.Tr("续写《%s》", "Continue \"%s\""), ts.Spread.CTATitle)
+				ctaBtn := tarotGoldPrimaryButton(c, ctaLabel, 46, "tarot-table-cta", ts.Spread.CTAPath == "", func() {
+					ctrl.OpenNoteFromRitual(ts.Spread.CTAPath, false)
 				})
+				ctaBtn.FillWidth()
 
-				waitLabel := theme.Tr("牌桌已清空", "Table cleared")
-				if shuffling || busy {
-					waitLabel = theme.Tr("牌正在显影", "Cards emerging")
-				} else if anyDealt {
-					waitLabel = theme.Tr("翻开全部三张牌", "Reveal all three cards")
-				} else if noteCount == 0 {
-					waitLabel = theme.Tr("先写一篇笔记即可抽牌", "Create a note to draw")
+				altLabel := theme.Tr("换一种读法", "Another Angle")
+				if ts.AILoading {
+					altLabel = theme.Tr("推演中…", "Reading…")
 				}
-
-				ui.Text(c, waitLabel).
-					Font(theme.TarotSerifFont()).
-					FontSize(theme.TarotFontRomanSmall).
-					LetterSpacing(3.2).
-					TextColor(tc.TextMuted)
+				altBtn := tarotGoldSecondaryButton(c, altLabel, 46, "tarot-table-alt", ts.AILoading, func() {
+					ctrl.NextReading()
+				})
+				altBtn.FillWidth()
 			})
 		})
+		return
+	}
+
+	// Waiting state: breathing mystic eye + calm status hint
+	ui.Column(c).FillWidth().AlignItems(ui.Start).Gap(theme.Space16).Children(func() {
+		ui.Box(c).Size(44, 28).Draw(func(p *ui.Painter, r ui.Rect) {
+			alpha := float32(0.85)
+			if !p.Preferences().ReduceMotion {
+				phase := float64(p.Now().UnixMilli()%1800) / 1800.0
+				alpha = float32(0.35 + 0.65*(0.5-0.5*math.Cos(phase*2*math.Pi)))
+				p.AnimationFrameRate(30)
+			}
+			PaintMysticEye(p, r, alpha)
+		})
+
+		waitLabel := theme.Tr("牌桌已清空", "Table cleared")
+		if shuffling || busy {
+			waitLabel = theme.Tr("牌正在显影", "Cards emerging")
+		} else if anyDealt {
+			waitLabel = theme.Tr("翻开全部三张牌", "Reveal all three cards")
+		} else if noteCount == 0 {
+			waitLabel = theme.Tr("先写一篇笔记即可抽牌", "Create a note to draw")
+		}
+
+		ui.Text(c, waitLabel).
+			Font(theme.TarotSerifFont()).
+			FontSize(theme.TarotFontRomanSmall).
+			LetterSpacing(3.2).
+			TextColor(tc.TextMuted)
+	})
 }
 
 // --- Shared Tarot room helpers (used by view_table, view_daily, view_deck) ---
