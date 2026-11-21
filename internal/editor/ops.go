@@ -6463,18 +6463,49 @@ var codeLanguages = []codeLangOption{
 	{Tag: "mermaid", Label: "Mermaid"},
 	{Tag: "plaintext", Label: "Plain Text"},
 	{Tag: "bash", Label: "Bash"},
+	{Tag: "c", Label: "C"},
+	{Tag: "csharp", Label: "C#"},
+	{Tag: "cpp", Label: "C++"},
 	{Tag: "css", Label: "CSS"},
+	{Tag: "dart", Label: "Dart"},
+	{Tag: "diff", Label: "Diff"},
+	{Tag: "dockerfile", Label: "Dockerfile"},
+	{Tag: "erb", Label: "ERB"},
 	{Tag: "go", Label: "Go"},
+	{Tag: "gomod", Label: "Go Module"},
+	{Tag: "gosum", Label: "Go Checksum"},
+	{Tag: "graphql", Label: "GraphQL"},
+	{Tag: "hcl", Label: "HCL"},
 	{Tag: "html", Label: "HTML"},
+	{Tag: "ini", Label: "INI"},
+	{Tag: "java", Label: "Java"},
 	{Tag: "javascript", Label: "JavaScript"},
+	{Tag: "jinja", Label: "Jinja"},
 	{Tag: "json", Label: "JSON"},
+	{Tag: "kotlin", Label: "Kotlin"},
 	{Tag: "lean", Label: "Lean"},
+	{Tag: "less", Label: "Less"},
+	{Tag: "lua", Label: "Lua"},
+	{Tag: "makefile", Label: "Makefile"},
+	{Tag: "nix", Label: "Nix"},
+	{Tag: "php", Label: "PHP"},
+	{Tag: "plist", Label: "Property List"},
+	{Tag: "protobuf", Label: "Protobuf"},
 	{Tag: "python", Label: "Python"},
+	{Tag: "r", Label: "R"},
+	{Tag: "ruby", Label: "Ruby"},
 	{Tag: "rust", Label: "Rust"},
+	{Tag: "scala", Label: "Scala"},
+	{Tag: "scss", Label: "SCSS"},
 	{Tag: "sql", Label: "SQL"},
+	{Tag: "svelte", Label: "Svelte"},
+	{Tag: "swift", Label: "Swift"},
+	{Tag: "toml", Label: "TOML"},
 	{Tag: "typescript", Label: "TypeScript"},
+	{Tag: "vue", Label: "Vue"},
 	{Tag: "xml", Label: "XML"},
 	{Tag: "yaml", Label: "YAML"},
+	{Tag: "zig", Label: "Zig"},
 }
 
 func languageDisplayLabel(lang string) string {
@@ -6489,6 +6520,9 @@ func languageDisplayLabel(lang string) string {
 		if opt.Tag == c {
 			return opt.Label
 		}
+	}
+	if l := codeed.LanguageNamed(c); l != nil {
+		return l.Name
 	}
 	return strings.TrimSpace(lang)
 }
@@ -6547,6 +6581,18 @@ func tokenizeCode(src, lang string) []syntaxToken {
 	canon := codepreview.CanonicalLanguage(lang)
 	if canon == "plaintext" {
 		return nil
+	}
+	// MyGo's editor ships real lexers for ~40 languages; prefer them over the
+	// keyword fallback below (kept for tags it lacks, such as Lean).
+	if l := codeed.LanguageNamed(canon); l != nil && l.Tokenizer != nil {
+		ptoks := plugins.TokenizeTextWithTokenizer(l.Tokenizer, src)
+		out := make([]syntaxToken, 0, len(ptoks))
+		for _, tk := range ptoks {
+			if kind := mapPluginTokenKind(tk.Kind); kind != tokPlain && tk.End > tk.Start {
+				out = append(out, syntaxToken{Start: tk.Start, End: tk.End, Kind: kind})
+			}
+		}
+		return out
 	}
 	r := []rune(src)
 	n := len(r)
