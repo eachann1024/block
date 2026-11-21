@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T08:27:33.136Z",
-  "latest_version": "1.0.890",
-  "latest_tag": "v1.0.890",
+  "updated_at": "2026-11-21T08:38:51.700Z",
+  "latest_version": "1.0.891",
+  "latest_tag": "v1.0.891",
   "releases": [
+    {
+      "version": "1.0.891",
+      "tag": "v1.0.891",
+      "published_at": "2026-11-21T08:38:51Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.891",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "使用查找快捷键可打开搜索并自动填入选中的文本，也可替换单个或全部匹配项。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "查找栏现在浮动显示在页面上方，不会挤压笔记内容。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The find shortcut opens search with the selected text and supports replacing one or all matches."
+        ],
+        "improvements": [],
+        "fixes": [
+          "The find bar now floats over the page without pushing note content down."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-macos-arm64.dmg",
+          "size": 15039053,
+          "sha256": "0002ce5ac65ef7cb83af6e9242989c66db9819ac7ced9886a77526a0b6fb0786"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-macos-x64.dmg",
+          "size": 16559898,
+          "sha256": "3c884eba37136fba1486b64e895f74c2d9ea7823625d25aa4659cf3e25197528"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-windows-x64-setup.exe",
+          "size": 12046314,
+          "sha256": "4101c408b7efeae2e4ebaa830d70fd3c2c8890c53a04a79251fb9d9f92989554"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-linux-x64.deb",
+          "size": 10624932,
+          "sha256": "355b92777ec3f6ac98ebb6bd7bb34098e6f9439a1199a1ddacc2eaaeaa07d356"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.891/block-linux-x64.AppImage",
+          "size": 23550456,
+          "sha256": "1daa7dfbe8c97b6daaf2dac5385de588a18497b031035e96ede789682c2d550a"
+        }
+      ]
+    },
     {
       "version": "1.0.890",
       "tag": "v1.0.890",
@@ -48,38 +108,7 @@
           "Retired special cases for plugin migration have been removed."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-macos-arm64.dmg",
-          "size": 15033506,
-          "sha256": "c134b6f93c5ba05ee92fc606cf2fb1705d95cb69ed48aaf0a7ca7d08670b8636"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-macos-x64.dmg",
-          "size": 16553244,
-          "sha256": "1c7aa3657d3d0e9b2b8da8d7b063258e547f5d7a8d09fac57815572f2420d3e8"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-windows-x64-setup.exe",
-          "size": 12042448,
-          "sha256": "00e2b701918b95bf594fb05350e8329c451da2cf262f9cc462b54777d6f62b83"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-linux-x64.deb",
-          "size": 10620510,
-          "sha256": "1122ec0235fa237bbd2a62029d6f8f6bf4ff38cdfdfab0b5bbf2dbd94c1cc53b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-linux-x64.AppImage",
-          "size": 23546360,
-          "sha256": "f6d2a0b942ce5fbce3c8d0f36d05691672e23c70a392147699507752e4937861"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.889",
