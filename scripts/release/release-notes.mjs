@@ -12,9 +12,14 @@ import {
 export { lineMixesLanguages, validateReleaseNotes };
 
 const MAGPIE_ORIGIN = "http://100.115.90.80:3425";
+// 用户 Mac 上的 Magpie（Surge 内置 Tailscale 节点 surge-mac），只在在线时用。
+const MAC_MAGPIE_CHAT_URL = "http://100.118.27.43:3425/v1/chat/completions";
 
-// 按顺序尝试，前一个失败才换下一个：Magpie gpt-6-luna（用户 codex 账号）→ Magpie deepseek-flash（付费）。不要用 Gemini，用户的 Gemini key 不可用。
+// 按顺序尝试，前一个失败才换下一个：
+// Mac Magpie agy-cli/gemini-3.8-flash（用户 agy 账号，Mac 离线就跳过）→ VPS Magpie gpt-6-luna（用户 codex 账号）→ VPS Magpie deepseek-flash（付费）。
+// 不要用 Google AI Studio 的 Gemini key，用户的 key 不可用。
 export const CHANGELOG_PROVIDERS = [
+  { model: "agy-cli/gemini-3.8-flash", via: "mac" },
   { model: "gpt-6-luna", via: "magpie" },
   { model: "deepseek-flash", via: "magpie" },
 ];
@@ -195,7 +200,15 @@ export function resolveMagpieChatUrl(baseUrl) {
 export function resolveProviders(env) {
   const ready = [];
   const skipped = [];
-  for (const { model } of CHANGELOG_PROVIDERS) {
+  for (const { model, via } of CHANGELOG_PROVIDERS) {
+    if (via === "mac") {
+      if (env.MAC_MAGPIE_REACHABLE === "no") {
+        skipped.push(`${model}：Mac 不在线`);
+        continue;
+      }
+      ready.push({ model, url: MAC_MAGPIE_CHAT_URL, headers: { "content-type": "application/json" }, timeoutMs: 45_000 });
+      continue;
+    }
     if (env.MAGPIE_REACHABLE === "no") {
       skipped.push(`${model}：CI 未连通 Magpie`);
       continue;
@@ -262,7 +275,7 @@ function commitLines(commits) {
 }
 
 async function polishBatch({ version, commits, provider, system }) {
-  const { model, url, headers } = provider;
+  const { model, url, headers, timeoutMs = TIMEOUT_MS } = provider;
   const inputLines = commitLines(commits);
   if (!inputLines.length) return { status: "empty", model };
   const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n")}`;
@@ -282,7 +295,7 @@ async function polishBatch({ version, commits, provider, system }) {
         method: "POST",
         headers,
         redirect: "error",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify({ model, temperature: 0.2, messages }),
       });
       const data = await readJsonBody(res);
