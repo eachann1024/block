@@ -1,10 +1,86 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T08:03:37.993Z",
-  "latest_version": "1.0.889",
-  "latest_tag": "v1.0.889",
+  "updated_at": "2026-11-21T08:27:33.136Z",
+  "latest_version": "1.0.890",
+  "latest_tag": "v1.0.890",
   "releases": [
+    {
+      "version": "1.0.890",
+      "tag": "v1.0.890",
+      "published_at": "2026-11-21T08:27:32Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.890",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "现在可以在设置中自定义搜索、查找、新建笔记和人工智能面板的应用内快捷键。"
+        ],
+        "improvements": [
+          "人工智能与插件的错误消息现在同时提供中文和英文。",
+          "开关改为更轻巧的样式，轨道尺寸为 28×16，填充柔和的强调色，旋钮不带阴影，并在标题处显示状态文字。",
+          "界面统一了字号层级，设置标题为 20 像素，对话框标题为 15 像素，加粗标签更少，最小字号为 12 像素。",
+          "图标按钮新增预设样式，所有图标在悬停时都有动效，选中状态更柔和，并新增三个图标。",
+          "设置分类图标和应用商店图标已按统一的 24 像素网格重新绘制。"
+        ],
+        "fixes": [
+          "设置侧边栏的图标现在与文字标签居中对齐，选中的图标也不再移位。"
+        ],
+        "other": [
+          "移除了已停用的插件迁移特殊处理逻辑。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Settings now let you customize the in-app shortcuts for search, find, new note, and the AI panel."
+        ],
+        "improvements": [
+          "AI and plugin error messages now appear in both English and Chinese.",
+          "Switches now use a lighter design with a 28×16 track, a soft accent fill, a shadowless knob, and a state label in the header.",
+          "The interface now follows a unified type scale, with 20px settings titles, 15px dialog titles, fewer bold labels, and a 12px minimum text size.",
+          "Icon buttons now come with presets, every icon has a hover motion, selected states are softer, and three new icons have been added.",
+          "Settings category icons and App Store icons have been redrawn on a single 24px grid."
+        ],
+        "fixes": [
+          "Settings sidebar icons now sit centered with their labels, and the selected icon no longer shifts."
+        ],
+        "other": [
+          "Retired special cases for plugin migration have been removed."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-macos-arm64.dmg",
+          "size": 15033506,
+          "sha256": "c134b6f93c5ba05ee92fc606cf2fb1705d95cb69ed48aaf0a7ca7d08670b8636"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-macos-x64.dmg",
+          "size": 16553244,
+          "sha256": "1c7aa3657d3d0e9b2b8da8d7b063258e547f5d7a8d09fac57815572f2420d3e8"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-windows-x64-setup.exe",
+          "size": 12042448,
+          "sha256": "00e2b701918b95bf594fb05350e8329c451da2cf262f9cc462b54777d6f62b83"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-linux-x64.deb",
+          "size": 10620510,
+          "sha256": "1122ec0235fa237bbd2a62029d6f8f6bf4ff38cdfdfab0b5bbf2dbd94c1cc53b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.890/block-linux-x64.AppImage",
+          "size": 23546360,
+          "sha256": "f6d2a0b942ce5fbce3c8d0f36d05691672e23c70a392147699507752e4937861"
+        }
+      ]
+    },
     {
       "version": "1.0.889",
       "tag": "v1.0.889",
@@ -30,38 +106,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.889/block-macos-arm64.dmg",
-          "size": 15023174,
-          "sha256": "b2309f9ee69ae74951cebb8f58b338879adf17e077d1f777130e81eb641c750f"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.889/block-macos-x64.dmg",
-          "size": 16546254,
-          "sha256": "8dc6b5e360077e122a18ff04af80335b88697222bcdae84fde5f83d1cc0c8054"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.889/block-windows-x64-setup.exe",
-          "size": 12030932,
-          "sha256": "b2406ad9062aa5b4b7a941fced5982ee45f8ef32e570fa4cbb1c2bed7eb97df8"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.889/block-linux-x64.deb",
-          "size": 10611234,
-          "sha256": "d3834783c15f049a5709c31648df4b3670aafe5e95f1c4cd2b498175fed77faf"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.889/block-linux-x64.AppImage",
-          "size": 23538168,
-          "sha256": "44f0add2a8236d77242f1aac03198723777b076a68d4b26f2fe7a5b8d0dd2e5d"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.888",
