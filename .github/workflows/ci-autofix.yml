@@ -1,0 +1,155 @@
+# CI 在 main 上失败时自动修复：模型顺序直接引用 scripts/release/release-notes.mjs 的 CHANGELOG_PROVIDERS（当前 gpt-6-luna → deepseek-flash）。
+# 修好就以 github-actions[bot] 推一个 "fix(ci): autofix" 提交；修不好才开 Issue 并指派仓库主人（这一步才会发邮件）。
+# 想只在修不好时收到邮件，需要在 GitHub 通知设置里关闭 Actions 的邮件通知。
+
+name: CI Autofix
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-autofix
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    name: Repair failing CI
+    # 只修 main 上 push 触发的失败；自动修复自己的提交再失败不再循环修，直接开 Issue。
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    environment: release-notes
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      issues: write
+      id-token: write
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - name: Skip repeat repair of an autofix commit
+        id: guard
+        env:
+          HEAD_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          case "$HEAD_MESSAGE" in
+            "fix(ci): autofix"*) echo "loop=yes" >> "$GITHUB_OUTPUT" ;;
+            *) echo "loop=no" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.loop == 'no'
+        with:
+          ref: main
+          fetch-depth: 20
+      - name: Setup Node & Go
+        if: steps.guard.outputs.loop == 'no'
+        run: |
+          bash scripts/ci/setup-node.sh 22 &
+          pid_node=$!
+          bash scripts/ci/setup-go.sh &
+          pid_go=$!
+          wait "$pid_node"
+          wait "$pid_go"
+      - name: Cache Go modules
+        if: steps.guard.outputs.loop == 'no'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-mod
+          key: go-mod-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ hashFiles('go.sum') }}
+      - name: Cache Go build
+        if: steps.guard.outputs.loop == 'no'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-build
+          key: go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-${{ github.sha }}
+          restore-keys: |
+            go-build-ci-${{ runner.os }}-${{ runner.arch }}-go1.27-
+      # 与 release.yml 相同：模型经 tailnet 走 Magpie 100.115.90.80:3425，没有其他通道。
+      - name: Detect tailnet identity
+        id: tailnet
+        if: steps.guard.outputs.loop == 'no'
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+        run: |
+          if [ -n "$TS_OAUTH_CLIENT_ID" ] && [ -n "$TS_AUDIENCE" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::warning title=ci-autofix::未配置 TS_OAUTH_CLIENT_ID 或 TS_AUDIENCE，无法连 Magpie，只能开 Issue。"
+          fi
+      - name: Join tailnet
+        id: tailscale
+        if: steps.guard.outputs.loop == 'no' && steps.tailnet.outputs.ready == 'yes'
+        continue-on-error: true
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci-release-notes
+          version: "1.104.4"
+          ping: "100.115.90.80"
+          timeout: 1m
+          retry: "2"
+          args: --shields-up
+      - name: Check Magpie TCP 3425
+        id: magpie
+        if: steps.guard.outputs.loop == 'no' && steps.tailscale.outcome == 'success'
+        run: |
+          if timeout 10 bash -c 'echo >/dev/tcp/100.115.90.80/3425'; then
+            echo "reachable=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "reachable=no" >> "$GITHUB_OUTPUT"
+            echo "::warning title=ci-autofix::100.115.90.80:3425 不可达，只能开 Issue。"
+          fi
+      - name: Repair with model chain
+        id: fix
+        if: steps.guard.outputs.loop == 'no'
+        env:
+          MAGPIE_BASE_URL: http://100.115.90.80:3425/v1
+          MAGPIE_REACHABLE: ${{ steps.magpie.outputs.reachable == 'yes' && 'yes' || 'no' }}
+          AUTOFIX_REPORT: ${{ runner.temp }}/autofix-report.md
+        run: node scripts/ci/autofix.mjs
+      - name: Notify owner when repair failed
+        if: always() && (steps.guard.outputs.loop == 'yes' || steps.fix.outputs.status != 'fixed' && steps.fix.outputs.status != 'clean')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          FAILED_RUN: ${{ github.event.workflow_run.html_url }}
+          FAILED_SHA: ${{ github.event.workflow_run.head_sha }}
+          LOOP: ${{ steps.guard.outputs.loop }}
+          REPORT: ${{ runner.temp }}/autofix-report.md
+          SELF_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/issue.md"
+          {
+            echo "@$OWNER"
+            echo
+            if [ "$LOOP" = "yes" ]; then
+              echo "自动修复的提交推上去后 CI 仍然失败，不再循环修复。"
+            elif [ -s "$REPORT" ]; then
+              cat "$REPORT"
+            else
+              echo "自动修复流程本身出错，没有产出报告。"
+            fi
+            echo
+            echo "- 失败的 CI：$FAILED_RUN"
+            echo "- 失败提交：$FAILED_SHA"
+            echo "- 自动修复记录：$SELF_RUN"
+          } > "$body"
+          title="CI 失败且自动修复未成功"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$body"
+          else
+            gh issue create --title "$title" --body-file "$body" --assignee "$OWNER"
+          fi
