@@ -1597,7 +1597,7 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 		case up || left:
 			s.stepSlashMenu(false)
 		case enter:
-			if s.activateSlashMenu() {
+			if s.activateSlashMenu(svc) {
 				c.Invalidate()
 				return
 			}
@@ -1632,7 +1632,7 @@ func (s *Session) renderBlockMenuOverlay(c *ui.Context) {
 							SuppressHover: !menu.PointerActive,
 							OnClick: func() {
 								if !item.Disabled {
-									s.executeBlockCmd(menu.BlockIdx, menu.Mode, cmd)
+									s.executeBlockCmd(svc, menu.BlockIdx, menu.Mode, cmd)
 								}
 							},
 						}, !menu.PointerActive && i == menu.ActiveIndex)
@@ -1692,6 +1692,18 @@ func cmdIcon(cmd blockCmdKind) icons.Icon {
 		return icons.ArrowDown
 	case cmdDelete:
 		return icons.Trash
+	case cmdMediaFullscreen:
+		return icons.Maximize
+	case cmdAlignLeft:
+		return icons.AlignLeft
+	case cmdAlignCenter:
+		return icons.AlignCenter
+	case cmdAlignRight:
+		return icons.AlignRight
+	case cmdOpenExternal:
+		return icons.LinkOpen
+	case cmdTableToggleHeader:
+		return icons.Table
 	default:
 		return icons.Text
 	}

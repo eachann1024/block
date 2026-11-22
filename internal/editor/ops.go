@@ -4706,7 +4706,7 @@ func (s *Session) handleEnterOnBlock(idx int, text string, caretRune int) bool {
 	}
 	// If slash menu is open, Enter activates the selected item.
 	if s.blockMenu != nil && s.blockMenu.Mode == menuSlash && s.blockMenu.BlockIdx == idx {
-		if s.activateSlashMenu() {
+		if s.activateSlashMenu(ui.Services{}) {
 			return true
 		}
 	}
@@ -5223,35 +5223,8 @@ func turnCmdForKind(kind model.BlockKind) (blockCmdKind, bool) {
 	return 0, false
 }
 
-// allHandleMenuItems lists the handle menu of block idx; the conversion to its current kind is disabled.
-func allHandleMenuItems(idx, count int, hasFrontmatter bool, kind model.BlockKind, hasKind bool) []blockMenuItem {
-	if hasFrontmatter && idx == 0 {
-		return []blockMenuItem{
-			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true},
-		}
-	}
-	items := []blockMenuItem{
-		{Kind: cmdTurnParagraph, Label: theme.Tr("正文", "Text"), Keywords: "text paragraph", Hint: "⌘⌥0"},
-		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Hint: "⌘⌥1"},
-		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Hint: "⌘⌥2"},
-		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Hint: "⌘⌥3"},
-		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Hint: "⌘⌥5"},
-		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Hint: "⌘⌥6"},
-		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Hint: "⌘⌥4"},
-		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Hint: "⌘⌥9"},
-		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout")},
-		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Hint: "⌘⌥8"},
-		{Separator: true},
-		{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: "⌘D"},
-	}
-	if cur, ok := turnCmdForKind(kind); ok && hasKind {
-		for i := range items {
-			if items[i].Kind == cur && !items[i].Separator {
-				items[i].Disabled = true
-				break
-			}
-		}
-	}
+func appendCommonHandleItems(items []blockMenuItem, idx, count int, hasFrontmatter bool) []blockMenuItem {
+	items = append(items, blockMenuItem{Kind: cmdDuplicate, Label: theme.Tr("复制块", "Duplicate"), Hint: "⌘D"})
 	minMoveIdx := 0
 	if hasFrontmatter {
 		minMoveIdx = 1
@@ -5267,6 +5240,79 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool, kind model.BlockKin
 	return items
 }
 
+// allHandleMenuItems lists the handle menu of block idx, tailored to the block kind.
+func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []blockMenuItem {
+	if hasFrontmatter && idx == 0 {
+		return []blockMenuItem{
+			{Kind: cmdDelete, Label: theme.Tr("删除", "Delete"), Hint: "⌫", Danger: true},
+		}
+	}
+	if b != nil {
+		switch b.Kind {
+		case model.BlockImage:
+			var items []blockMenuItem
+			if strings.TrimSpace(b.ImageSrc) != "" {
+				items = append(items,
+					blockMenuItem{Kind: cmdMediaFullscreen, Label: theme.Tr("全屏查看", "Fullscreen"), Hint: "F"},
+					blockMenuItem{Kind: cmdOpenExternal, Label: theme.Tr("用默认程序打开", "Open externally")},
+					blockMenuItem{Separator: true},
+				)
+			}
+			curAlign := b.ImageAlign
+			if curAlign == "" {
+				curAlign = model.ImageAlignLeft
+			}
+			items = append(items,
+				blockMenuItem{Kind: cmdAlignLeft, Label: theme.Tr("左对齐", "Align left"), Disabled: curAlign == model.ImageAlignLeft},
+				blockMenuItem{Kind: cmdAlignCenter, Label: theme.Tr("居中对齐", "Align center"), Disabled: curAlign == model.ImageAlignCenter},
+				blockMenuItem{Kind: cmdAlignRight, Label: theme.Tr("右对齐", "Align right"), Disabled: curAlign == model.ImageAlignRight},
+				blockMenuItem{Separator: true},
+			)
+			return appendCommonHandleItems(items, idx, count, hasFrontmatter)
+		case model.BlockTable:
+			var items []blockMenuItem
+			if b.Table != nil && len(b.Table.Rows) > 0 {
+				hdrLbl := theme.Tr("隐藏表头行", "Hide header row")
+				if b.Table.NoHeaderRow {
+					hdrLbl = theme.Tr("显示表头行", "Show header row")
+				}
+				items = append(items,
+					blockMenuItem{Kind: cmdTableToggleHeader, Label: hdrLbl},
+					blockMenuItem{Separator: true},
+				)
+			}
+			return appendCommonHandleItems(items, idx, count, hasFrontmatter)
+		case model.BlockDivider, model.BlockRawHTML:
+			return appendCommonHandleItems(nil, idx, count, hasFrontmatter)
+		}
+	}
+
+	items := []blockMenuItem{
+		{Kind: cmdTurnParagraph, Label: theme.Tr("正文", "Text"), Keywords: "text paragraph", Hint: "⌘⌥0"},
+		{Kind: cmdTurnH1, Label: theme.Tr("一级标题", "Heading 1"), Hint: "⌘⌥1"},
+		{Kind: cmdTurnH2, Label: theme.Tr("二级标题", "Heading 2"), Hint: "⌘⌥2"},
+		{Kind: cmdTurnH3, Label: theme.Tr("三级标题", "Heading 3"), Hint: "⌘⌥3"},
+		{Kind: cmdTurnBullet, Label: theme.Tr("无序列表", "Bulleted list"), Hint: "⌘⌥5"},
+		{Kind: cmdTurnNumbered, Label: theme.Tr("有序列表", "Numbered list"), Hint: "⌘⌥6"},
+		{Kind: cmdTurnTodo, Label: theme.Tr("待办清单", "Checklist"), Hint: "⌘⌥4"},
+		{Kind: cmdTurnQuote, Label: theme.Tr("引用", "Quote"), Hint: "⌘⌥9"},
+		{Kind: cmdCallout, Label: theme.Tr("标注", "Callout")},
+		{Kind: cmdCode, Label: theme.Tr("代码块", "Code Block"), Hint: "⌘⌥8"},
+		{Separator: true},
+	}
+	if b != nil {
+		if cur, ok := turnCmdForKind(b.Kind); ok {
+			for i := range items {
+				if items[i].Kind == cur && !items[i].Separator {
+					items[i].Disabled = true
+					break
+				}
+			}
+		}
+	}
+	return appendCommonHandleItems(items, idx, count, hasFrontmatter)
+}
+
 func (s *Session) slashMenuEntries() []blockMenuItem {
 	if s.blockMenu == nil {
 		return nil
@@ -5274,16 +5320,15 @@ func (s *Session) slashMenuEntries() []blockMenuItem {
 	if s.blockMenu.Mode == menuHandle {
 		n := 0
 		hasFM := false
-		var kind model.BlockKind
-		hasKind := false
+		var blk *model.Block
 		if s.doc != nil {
 			n = len(s.doc.Blocks)
 			hasFM = n > 0 && isFrontmatterBlock(0, &s.doc.Blocks[0])
 			if bi := s.blockMenu.BlockIdx; bi >= 0 && bi < n {
-				kind, hasKind = s.doc.Blocks[bi].Kind, true
+				blk = &s.doc.Blocks[bi]
 			}
 		}
-		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM, kind, hasKind)
+		return allHandleMenuItems(s.blockMenu.BlockIdx, n, hasFM, blk)
 	}
 	all := slices.DeleteFunc(allSlashItems(), func(it blockMenuItem) bool {
 		return (s.minimal && it.Kind == cmdImage) || (s.aiDisabled && it.Kind == cmdAI)
@@ -5431,7 +5476,7 @@ func (s *Session) stepSlashMenu(down bool) bool {
 	return false
 }
 
-func (s *Session) activateSlashMenu() bool {
+func (s *Session) activateSlashMenu(svc ui.Services) bool {
 	if s.blockMenu == nil {
 		return false
 	}
@@ -5443,11 +5488,11 @@ func (s *Session) activateSlashMenu() bool {
 	if entries[idx].Separator || entries[idx].Disabled {
 		return false
 	}
-	s.executeBlockCmd(s.blockMenu.BlockIdx, s.blockMenu.Mode, entries[idx].Kind)
+	s.executeBlockCmd(svc, s.blockMenu.BlockIdx, s.blockMenu.Mode, entries[idx].Kind)
 	return true
 }
 
-func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind) {
+func (s *Session) executeBlockCmd(svc ui.Services, idx int, mode blockMenuMode, cmd blockCmdKind) {
 	s.blockMenu = nil
 	if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) {
 		return
@@ -5457,6 +5502,41 @@ func (s *Session) executeBlockCmd(idx int, mode blockMenuMode, cmd blockCmdKind)
 		(b.PlainText() == "" || strings.HasPrefix(b.PlainText(), "/") || strings.HasPrefix(b.PlainText(), "、"))
 
 	switch cmd {
+	case cmdMediaFullscreen:
+		if b.Kind == model.BlockImage && strings.TrimSpace(b.ImageSrc) != "" {
+			s.OpenMediaLightbox(b.ID)
+		}
+		return
+	case cmdOpenExternal:
+		if b.Kind == model.BlockImage && strings.TrimSpace(b.ImageSrc) != "" {
+			s.PauseAllVideos()
+			s.openBlockLink(svc, b.ImageSrc)
+		}
+		return
+	case cmdAlignLeft, cmdAlignCenter, cmdAlignRight:
+		if b.Kind != model.BlockImage {
+			return
+		}
+		align := model.ImageAlignLeft
+		switch cmd {
+		case cmdAlignCenter:
+			align = model.ImageAlignCenter
+		case cmdAlignRight:
+			align = model.ImageAlignRight
+		}
+		if b.ImageAlign == align || (b.ImageAlign == "" && align == model.ImageAlignLeft) {
+			return
+		}
+		s.pushUndo()
+		b.ImageAlign = align
+		b.Dirty = true
+		s.markDirty()
+		return
+	case cmdTableToggleHeader:
+		if b.Kind == model.BlockTable {
+			s.tableToggleHeaderRow(b.ID)
+		}
+		return
 	case cmdDuplicate:
 		s.duplicateBlock(idx)
 		return
