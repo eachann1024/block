@@ -19,10 +19,16 @@ const (
 	lightboxChromeIdleHide         = 2500 * time.Millisecond
 )
 
+// windowFullscreenCooldown blocks a new native fullscreen request while the
+// previous macOS space transition may still be animating; toggling mid-transition
+// can wedge the window server.
+const windowFullscreenCooldown = 1500 * time.Millisecond
+
 var (
 	windowFullscreenMu  sync.RWMutex
 	windowIsFullscreen  func() bool
 	windowSetFullscreen func(bool)
+	windowFullscreenAt  time.Time
 )
 
 // SetWindowFullscreenProvider registers host window fullscreen hooks so any
@@ -52,12 +58,16 @@ func isWindowFullscreen() bool {
 }
 
 func setWindowFullscreen(fs bool) {
-	windowFullscreenMu.RLock()
+	windowFullscreenMu.Lock()
 	fn := windowSetFullscreen
-	windowFullscreenMu.RUnlock()
-	if fn != nil {
-		fn(fs)
+	now := time.Now()
+	if fn == nil || (!windowFullscreenAt.IsZero() && now.Sub(windowFullscreenAt) < windowFullscreenCooldown) {
+		windowFullscreenMu.Unlock()
+		return
 	}
+	windowFullscreenAt = now
+	windowFullscreenMu.Unlock()
+	fn(fs)
 }
 
 // LightboxItem describes one attachment, image, animated GIF, or video rendered inside RenderLightbox.
@@ -91,20 +101,17 @@ type LightboxState struct {
 	CopiedUntil   time.Time
 	Video         VideoControlState
 	VideoFillMode bool
-	// AutoFullscreen requests entering native OS fullscreen when the lightbox opens.
-	AutoFullscreen bool
 
-	panDragging         bool
-	panScrollStartX     float32
-	panScrollStartY     float32
-	panMoved            bool
-	enteredFullscreen   bool
-	autoFullscreenFired bool
-	chromeLastActive    time.Time
-	chromePointerX      float32
-	chromePointerY      float32
-	chromeHasPointer    bool
-	toolbarHovered      bool
+	panDragging       bool
+	panScrollStartX   float32
+	panScrollStartY   float32
+	panMoved          bool
+	enteredFullscreen bool
+	chromeLastActive  time.Time
+	chromePointerX    float32
+	chromePointerY    float32
+	chromeHasPointer  bool
+	toolbarHovered    bool
 }
 
 // LightboxCallbacks supplies optional actions triggered from the lightbox chrome.
@@ -135,8 +142,6 @@ func (s *LightboxState) ResetView() {
 	s.FitScale = 0
 	s.Scroll = ui.ScrollState{}
 	s.VideoFillMode = false
-	s.AutoFullscreen = false
-	s.autoFullscreenFired = false
 	s.panDragging = false
 	s.panMoved = false
 	s.chromeLastActive = time.Time{}
@@ -336,13 +341,6 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		if st.chromeLastActive.IsZero() || indexChanged {
 			wakeChrome()
 		}
-		if st.AutoFullscreen && !st.autoFullscreenFired && hasWindowFullscreen() {
-			st.autoFullscreenFired = true
-			if !isWindowFullscreen() {
-				st.enteredFullscreen = true
-				setWindowFullscreen(true)
-			}
-		}
 		if px, py, ok := layer.PointerPosition(); ok {
 			if !st.chromeHasPointer || math.Abs(float64(px-st.chromePointerX)) > 1.0 || math.Abs(float64(py-st.chromePointerY)) > 1.0 {
 				st.chromePointerX = px
@@ -355,10 +353,6 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		// Keyboard shortcuts on the modal overlay.
 		if layer.OverlayShortcut(0, ui.KeyEscape) {
 			if st.enteredFullscreen && isWindowFullscreen() {
-				if st.AutoFullscreen {
-					closeLightbox()
-					return
-				}
 				st.enteredFullscreen = false
 				setWindowFullscreen(false)
 				wakeChrome()
@@ -1129,7 +1123,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								if imgKey == "" {
 									imgKey = fmt.Sprintf("idx-%d", st.Index)
 								}
-								frame := ui.ButtonBase(c.Key(id+"-image-"+imgKey)).
+								frame := ui.ButtonBase(c.Key(id + "-image-" + imgKey)).
 									Shrink(0).
 									Cursor(cursor).Label(displayName)
 								Probe(frame, id+"-image")
@@ -1213,11 +1207,11 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			})
 
 			if immersiveMedia {
-				ui.Column(c.Key(id+"-floating-top")).Absolute().Top(0).Left(0).Right(0).Children(func() {
+				ui.Column(c.Key(id + "-floating-top")).Absolute().Top(0).Left(0).Right(0).Children(func() {
 					renderTopChrome()
 				})
 				if multi && !chromeHidden {
-					ui.Column(c.Key(id+"-floating-bottom")).Absolute().Left(0).Right(0).Bottom(0).Children(func() {
+					ui.Column(c.Key(id + "-floating-bottom")).Absolute().Left(0).Right(0).Bottom(0).Children(func() {
 						renderFilmstrip()
 					})
 				}
