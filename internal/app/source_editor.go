@@ -80,7 +80,16 @@ func sourceEditorTheme(pal theme.Palette) *codeed.Theme {
 }
 
 func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
-	if lang, tag := plugins.ResolveCodeLanguageForFile(filePath); lang != nil {
+	if lang, tag := plugins.ResolvePluginCodeLanguageForFile(filePath); lang != nil {
+		if tag == "plist" {
+			lang = plistSourceLanguage(lang, text)
+		}
+		return lang, tag
+	}
+	if lang, tag := resolveBuiltinConfigByPathOrContent(filePath, text); lang != nil {
+		return lang, tag
+	}
+	if lang, tag := plugins.ResolveBuiltinCodeLanguageForFile(filePath); lang != nil {
 		if tag == "plist" {
 			lang = plistSourceLanguage(lang, text)
 		}
@@ -92,6 +101,129 @@ func resolveSourceLanguage(filePath, text string) (*codeed.Language, string) {
 		tag = sourceTagForLanguage(lang.Name)
 	}
 	return lang, tag
+}
+
+// resolveBuiltinConfigByPathOrContent handles ambiguous config filenames
+// (such as .conf, ~/.ssh/config, ghostty/config, .git/config) and extra
+// YAML/JSON/Shell config extensions that MyGo does not list directly.
+func resolveBuiltinConfigByPathOrContent(filePath, text string) (*codeed.Language, string) {
+	norm := strings.ToLower(filepath.ToSlash(filePath))
+	base := strings.ToLower(filepath.Base(filePath))
+	ext := strings.ToLower(filepath.Ext(base))
+
+	switch base {
+	case ".tmux.conf", "tmux.conf", ".zprofile", ".zshenv", ".zlogin", ".bash_aliases", ".bash_logout":
+		if l := codeed.LanguageNamed("shell"); l != nil {
+			return l, "bash"
+		}
+	case ".clang-tidy":
+		if l := codeed.LanguageNamed("yaml"); l != nil {
+			return l, "yaml"
+		}
+	case ".prettierrc", "jsconfig.json", "deno.jsonc":
+		if l := codeed.LanguageNamed("json"); l != nil {
+			return l, "json"
+		}
+	}
+
+	switch ext {
+	case ".stoverride":
+		if l := codeed.LanguageNamed("yaml"); l != nil {
+			return l, "yaml"
+		}
+	case ".jsonl", ".ndjson":
+		if l := codeed.LanguageNamed("json"); l != nil {
+			return l, "json"
+		}
+	}
+
+	switch {
+	case strings.HasSuffix(norm, "/.ssh/config") || strings.Contains(norm, "/.ssh/config.d/"):
+		return plugins.ResolveCodeLanguageByTag("sshconfig")
+	case strings.HasSuffix(norm, "/ghostty/config") || strings.HasSuffix(norm, "/git/config") || strings.HasSuffix(norm, "/.git/config"):
+		return plugins.ResolveCodeLanguageByTag("ini")
+	case strings.HasSuffix(norm, "/git/ignore"):
+		return plugins.ResolveCodeLanguageByTag("ignore")
+	}
+
+	if ext == ".conf" {
+		// Exact built-in filenames (e.g. nginx.conf, pip.conf, Surge.conf) take precedence.
+		if lang, tag := plugins.ResolveBuiltinCodeLanguageForFile(filePath); lang != nil {
+			return lang, tag
+		}
+		if isSurgeConfSource(text) {
+			return plugins.ResolveCodeLanguageByTag("surge")
+		}
+		if isNginxConfSource(text) {
+			return plugins.ResolveCodeLanguageByTag("nginx")
+		}
+		return plugins.ResolveCodeLanguageByTag("ini")
+	}
+	return nil, ""
+}
+
+func isSurgeConfSource(text string) bool {
+	const maxScan = 8192
+	sample := text
+	if len(sample) > maxScan {
+		sample = sample[:maxScan]
+	}
+	for line := range strings.SplitSeq(sample, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(t, "#!name=") || strings.HasPrefix(t, "#!desc=") || strings.HasPrefix(t, "#!category=") {
+			return true
+		}
+		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
+			sec := strings.ToLower(strings.TrimSpace(t[1 : len(t)-1]))
+			switch sec {
+			case "general", "proxy", "proxy group", "rule", "url rewrite", "header rewrite",
+				"body rewrite", "mitm", "script", "host", "panel", "map local", "replica",
+				"ssid setting", "rewrite", "filter_local", "rewrite_local", "server_local", "task_local":
+				return true
+			}
+			if strings.HasPrefix(sec, "wireguard ") {
+				return true
+			}
+		}
+		for _, prefix := range []string{"DOMAIN-SUFFIX,", "DOMAIN-KEYWORD,", "DOMAIN,", "IP-CIDR,", "RULE-SET,", "GEOIP,", "FINAL,"} {
+			if strings.HasPrefix(t, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isNginxConfSource(text string) bool {
+	const maxScan = 8192
+	sample := text
+	if len(sample) > maxScan {
+		sample = sample[:maxScan]
+	}
+	for line := range strings.SplitSeq(sample, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if strings.HasSuffix(t, "{") {
+			for _, kw := range []string{"server", "http", "events", "upstream", "location", "stream"} {
+				if t == kw+"{" || strings.HasPrefix(t, kw+" ") || strings.HasPrefix(t, kw+"\t") {
+					return true
+				}
+			}
+		}
+		if strings.HasSuffix(t, ";") {
+			for _, dir := range []string{"proxy_pass ", "server_name ", "listen ", "fastcgi_pass ", "try_files ", "ssl_certificate "} {
+				if strings.HasPrefix(t, dir) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // plistSourceLanguage preserves the highlighter and uses the source format's comment delimiters.
@@ -207,6 +339,11 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 		s.Source.Text = sb.String()
 		if s.Source.Language == "plist" {
 			st.Buffer.SetLanguage(plistSourceLanguage(st.Buffer.Language(), s.Source.Text))
+		} else if strings.EqualFold(filepath.Ext(s.Path), ".conf") {
+			if lang, tag := resolveSourceLanguage(s.Path, s.Source.Text); lang != nil && tag != s.Source.Language {
+				st.Buffer.SetLanguage(lang)
+				s.Source.Language = tag
+			}
 		}
 		if s.IsSVG {
 			s.reparseSVG()
