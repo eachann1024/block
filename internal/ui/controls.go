@@ -198,6 +198,7 @@ const (
 	ButtonSecondary ActionButtonStyle = iota
 	ButtonPrimary
 	ButtonAccentOutline
+	ButtonAccentSoft
 	ButtonGhost
 	ButtonDanger
 	ButtonSuccess
@@ -209,6 +210,7 @@ type ActionButtonOptions struct {
 	Label              string
 	AccessibilityLabel string
 	Leading            *icons.Icon
+	LeadingDot         bool
 	AlwaysDuo          bool
 	Style              ActionButtonStyle
 	Disabled           bool
@@ -222,6 +224,7 @@ type ActionButtonOptions struct {
 	Truncate           bool
 	SecondaryShellBG   bool
 	RegularWeight      bool
+	CompactText        bool
 }
 
 // ActionButton renders a clean Ocean Paper text (+ optional leading icon) button.
@@ -258,7 +261,11 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	if a11yLabel == "" {
 		a11yLabel = opts.Label
 	}
-	btn := ui.ButtonBase(c).Height(h).Gap(theme.Space6).AlignItems(ui.Center).Justify(ui.Center).
+	gap := theme.Space6
+	if opts.CompactText {
+		gap = theme.Space4
+	}
+	btn := ui.ButtonBase(c).Height(h).Gap(gap).AlignItems(ui.Center).Justify(ui.Center).
 		Radius(theme.RadiusMD).Cursor(cursor).Disabled(isDisabled).DimDisabled(false).Label(a11yLabel)
 	if opts.Width > 0 {
 		btn.Width(opts.Width)
@@ -291,15 +298,8 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		} else if hovered {
 			bg = pal.AccentHover
 		}
-	case ButtonAccentOutline:
-		fg = pal.Text
-		bg = pal.Selected
-		if pressed {
-			bg = pal.Selected.Mix(pal.Text, 0.08)
-		} else if hovered {
-			bg = pal.Selected.Mix(pal.Text, 0.04)
-		}
-		bd = pal.SelectedBorder
+	case ButtonAccentOutline, ButtonAccentSoft:
+		fg, bg, bd = accentOutlineColors(pal, opts.Style == ButtonAccentSoft, opts.Loading, hovered, pressed)
 		hasBorder = true
 	case ButtonDanger:
 		fg = pal.Danger
@@ -356,19 +356,28 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 	if opts.RegularWeight {
 		weight = theme.WeightRegular
 	}
+	fontSize, lineHeight := theme.FontBody, theme.LineBody
+	spinnerSize := theme.IconInline
+	if opts.CompactText {
+		fontSize, lineHeight = theme.FontSmall, theme.LineSmall
+		spinnerSize = theme.IconMicro
+	}
 	btn.Children(func() {
 		if opts.Loading {
 			spCol := fg
-			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost {
+			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline || opts.Style == ButtonAccentSoft {
 				spCol = pal.Accent
 			}
-			sp := ui.Spinner(c).FontSize(theme.IconInline).TextColor(spCol)
+			sp := ui.Spinner(c).FontSize(spinnerSize).TextColor(spCol)
 			if a11yLabel != "" {
 				sp.Label(a11yLabel)
 			}
+		} else if opts.LeadingDot {
+			ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
+				Radius(theme.RadiusPill).Background(fg).Shrink(0)
 		} else if opts.Leading != nil {
 			ic := pal.MonoIconColors(fg)
-			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline {
+			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline || opts.Style == ButtonAccentSoft {
 				if hovered || pressed {
 					ic = pal.DuoIconColors(fg)
 				} else if opts.AlwaysDuo {
@@ -377,7 +386,7 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			}
 			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
 		}
-		txt := ui.Text(c, opts.Label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).FontWeight(weight).TextColor(fg).SingleLine()
+		txt := ui.Text(c, opts.Label).FontSize(fontSize).FixedLineHeight(lineHeight).FontWeight(weight).TextColor(fg).SingleLine()
 		if opts.Truncate {
 			txt.MinWidth(0).Shrink(1).Ellipsis("…")
 		}
@@ -386,6 +395,31 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 		Probe(btn, opts.ID)
 	}
 	return btn
+}
+
+func accentOutlineColors(pal theme.Palette, soft, loading, hovered, pressed bool) (fg, bg, bd ui.Color) {
+	if loading {
+		return pal.TextSecondary, pal.Card, pal.Hairline
+	}
+	if pressed {
+		mix := float32(0.14)
+		if soft {
+			mix = 0.16
+		}
+		return pal.Accent, pal.Card.Mix(pal.Accent, mix), pal.Accent
+	}
+	if hovered {
+		mix := float32(0.08)
+		if soft {
+			mix = 0.12
+		}
+		return pal.Accent, pal.Card.Mix(pal.Accent, mix), pal.Accent
+	}
+	bg = pal.Card
+	if soft {
+		bg = pal.Card.Mix(pal.Accent, 0.08)
+	}
+	return pal.Accent, bg, pal.Accent.Alpha(0.38)
 }
 
 type SegmentOption struct {
