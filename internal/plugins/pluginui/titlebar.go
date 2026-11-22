@@ -165,8 +165,7 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 			return
 		}
 
-		hasUpdate := entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
-			semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+installedApp.Manifest.Version) > 0
+		hasUpdate := storeEntryHasUpdate(entry, installedApp)
 		pluginBusy := c.sup.IsPluginBusyAnyNotebook(entry.ID)
 		if hasUpdate {
 			lbl := theme.Tr("更新", "Update")
@@ -189,12 +188,13 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 		}
 
 		if installedApp.Manifest.HasSettingsPage() {
+			slidersIc := icons.Sliders
 			openBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
 				ID:       "app-store-detail-open",
 				Label:    theme.Tr("打开设置", "Open Settings"),
-				Style:    bui.ButtonSecondary,
+				Leading:  &slidersIc,
+				Style:    bui.ButtonPrimary,
 				Height:   theme.HeightCompact,
-				PaddingX: theme.Space10,
 			})
 			if openBtn.Clicked() && onSelectTab != nil {
 				c.CloseTitlebarOverlays()
@@ -228,6 +228,12 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 			c.uninstallPlugin(entry.ID, nil)
 		}
 	})
+}
+
+// storeEntryHasUpdate reports whether the store offers a newer version than the installed one.
+func storeEntryHasUpdate(entry plugins.StoreAppEntry, inst plugins.InstalledApp) bool {
+	return entry.DownloadURL != "" && strings.TrimSpace(entry.Version) != "" &&
+		semver.Compare("v"+strings.TrimPrefix(entry.Version, "v"), "v"+strings.TrimPrefix(inst.Manifest.Version, "v")) > 0
 }
 
 func (c *Controller) renderPluginTitlebarTrailing(
