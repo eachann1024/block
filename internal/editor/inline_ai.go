@@ -1678,9 +1678,9 @@ func (s *Session) renderPreviewNativeBlock(c *ui.Context, idx int, b *model.Bloc
 			}
 			spans := s.buildDisplaySpans(0, b, fontSize, weight)
 			if len(spans) == 0 {
-				ui.Text(c, " ").FontSize(fontSize).LineHeight(lh).Grow(1)
+				ui.Text(c, " ").FontSize(fontSize).LineHeight(lh).Grow(1).MinWidth(0)
 			} else {
-				ui.RichText(c, spans...).FontSize(fontSize).FontWeight(weight).LineHeight(lh).TextColor(pal.Text).Grow(1)
+				ui.RichText(c, spans...).FontSize(fontSize).FontWeight(weight).LineHeight(lh).TextColor(pal.Text).Grow(1).MinWidth(0)
 			}
 		})
 	default:

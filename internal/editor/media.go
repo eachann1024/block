@@ -786,13 +786,13 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 	card := ui.Row(c.Key(fmt.Sprintf("video-fallback-%d", id))).FillWidth().Height(64).PaddingX(theme.Space16).
 		AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space10).Background(pal.CodeBlockBG).Cursor(ui.CursorPointer)
 	card.Children(func() {
-		left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Shrink(1)
+		left := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space10).Shrink(1).MinWidth(0)
 		left.Children(func() {
-			badge := ui.Box(c).Size(theme.HeightControl, theme.HeightControl).Center().Radius(theme.RadiusMD).Background(pal.Selected)
+			badge := ui.Box(c).Size(theme.HeightControl, theme.HeightControl).Center().Radius(theme.RadiusMD).Background(pal.Selected).Shrink(0)
 			badge.Children(func() {
 				ui.Text(c, "▶").FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Accent).SingleLine()
 			})
-			ui.Text(c, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+			ui.Text(c, lbl).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…")
 		})
 		openBtn := appUi.IconButton(c, icons.LinkOpen, appUi.IconButtonOptions{
 			ID:       fmt.Sprintf("vid-open-%d", id),
