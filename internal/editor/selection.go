@@ -702,13 +702,16 @@ func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bo
 			return true
 		}
 	case ui.InputCompose:
-		if s.readOnly {
+		if s.readOnly || s.lightbox.Open {
 			return false
 		}
 		s.detachedCompose = ev.Text
 		return true
 	case ui.InputText:
 		s.detachedCompose = ""
+		if s.lightbox.Open {
+			return true
+		}
 		if s.readOnly || ev.Text == "" {
 			return false
 		}
@@ -752,6 +755,11 @@ func (s *Session) handleFocusedAtomicInput(svc ui.Services, ev ui.InputEvent) bo
 			return true
 		case s.hasMenuPopupOpen() && ev.Mods == 0 && (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown || ev.Key == ui.KeyLeft || ev.Key == ui.KeyRight || ev.Key == ui.KeyEnter || ev.Key == ui.KeyEscape):
 			return false
+		case !s.hasMenuPopupOpen() && !s.lightbox.Open && ev.Mods == 0 &&
+			(ev.Key == ui.KeyF || (theme.IsMacOS() && ev.Key == ui.KeySpace)) &&
+			s.doc.Blocks[idx].Kind == model.BlockImage && strings.TrimSpace(s.doc.Blocks[idx].ImageSrc) != "":
+			s.OpenMediaLightbox(s.doc.Blocks[idx].ID)
+			return true
 		case !s.readOnly && ev.Mods == 0 && ev.Key == ui.KeyEnter:
 			s.pushUndo()
 			nb := model.Block{ID: model.NewBlockID(), Kind: model.BlockParagraph, Dirty: true}

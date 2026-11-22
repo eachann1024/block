@@ -233,7 +233,7 @@ func (w *Workspace) handleWindowFileDrop(e *mygo.FileDropEvent) {
 	if e == nil || len(e.Paths) == 0 {
 		return
 	}
-	if w.modals.HasActiveModal() || w.hasActivePluginModal() || w.palette.IsOpen() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() || (w.ai != nil && w.ai.IsLightboxOpen()) || (w.pluginsUI != nil && w.pluginsUI.IsStoreLightboxOpen()) {
+	if w.modals.HasActiveModal() || w.hasActivePluginModal() || w.palette.IsOpen() || w.exportCtrl.IsOpen() || w.IsPageHistoryOpen() || (w.ai != nil && w.ai.IsLightboxOpen()) || (w.pluginsUI != nil && w.pluginsUI.IsStoreLightboxOpen()) || (w.ActiveSession() != nil && w.ActiveSession().IsLightboxOpen()) {
 		return
 	}
 	if w.isAIPanelVisible(0) && w.ai.ContainsPoint(float32(e.X), float32(e.Y)) {

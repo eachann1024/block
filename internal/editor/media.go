@@ -590,6 +590,7 @@ func (s *Session) openBlockLink(svc ui.Services, rawLink string) {
 }
 
 func (s *Session) resetMedia() {
+	s.lightbox.Open = false
 	s.closeVideoPlayers()
 	s.imageMu.Lock()
 	s.imageEpoch++
@@ -696,9 +697,10 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 	player, ok := s.resolveVideoPlayer(b.ImageSrc)
 	if ok {
 		ctrlState := s.videoCtrlState(b.ImageSrc)
-		thisExpanded, anyLightboxOpen := s.previewExpandedState(b.ImageSrc)
-		handleKeys := s.previewMedia != nil && !anyLightboxOpen && !thisExpanded &&
-			(s.activeVideoSrc == b.ImageSrc || (s.activeVideoSrc == "" && player.Playing()))
+		thisExpanded, anyLightboxOpen := s.mediaExpandedState(b.ImageSrc)
+		handleKeys := !anyLightboxOpen && !thisExpanded &&
+			((s.previewMedia != nil && (s.activeVideoSrc == b.ImageSrc || (s.activeVideoSrc == "" && player.Playing()))) ||
+				(s.previewMedia == nil && !s.hasBlockingOverlay() && s.activeVideoSrc == b.ImageSrc && s.hasFocusedBlockID(id)))
 		opts := appUi.VideoPlayerOptions{
 			ID:             fmt.Sprintf("video-stage-%d", id),
 			Label:          lbl,
@@ -718,6 +720,10 @@ func (s *Session) renderVideoContent(c *ui.Context, id model.BlockID, b *model.B
 				}
 			}
 		} else {
+			opts.OnExpand = func() {
+				s.activeVideoSrc = b.ImageSrc
+				s.OpenMediaLightbox(id)
+			}
 			opts.OnOpenExternal = func() {
 				s.openBlockLink(c.Services(), b.ImageSrc)
 			}
