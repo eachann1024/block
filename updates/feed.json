@@ -1,10 +1,82 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T11:41:23.995Z",
-  "latest_version": "1.0.910",
-  "latest_tag": "v1.0.910",
+  "updated_at": "2026-11-22T12:12:03.947Z",
+  "latest_version": "1.0.911",
+  "latest_tag": "v1.0.911",
   "releases": [
+    {
+      "version": "1.0.911",
+      "tag": "v1.0.911",
+      "published_at": "2026-11-22T12:12:03Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.911",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "浮动设置导航现在提供用于关闭面板的底栏。"
+        ],
+        "improvements": [
+          "快捷键符号现在能完整显示在槽位中，并保持垂直对齐。",
+          "快捷键符号的槽位宽度和符号间距现在保持一致。",
+          "侧边栏收起时现在会使用灵动过渡，展开时也会显示更清晰的提示。",
+          "进入窄版设置抽屉时，抽屉现在会保持打开，展开提示也会以动画呈现。"
+        ],
+        "fixes": [
+          "现在需要更明显的指针移动才会开始拖动，避免滚动时点击意外触发拖动。",
+          "打开视频时不再自动进入系统全屏，全屏切换也增加了频率限制。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Floating settings navigation now has a footer bar for dismissing the panel."
+        ],
+        "improvements": [
+          "Shortcut key glyphs now fit their slots and align vertically.",
+          "Shortcut key slots now have consistent widths and spacing between symbols.",
+          "The sidebar now uses a genie-style transition when collapsing and shows a clearer cue when expanding.",
+          "The narrow settings drawer now stays open when entered, and its expansion cue animates."
+        ],
+        "fixes": [
+          "Dragging now requires more pointer movement, preventing clicks from accidentally triggering a drag while scrolling.",
+          "Opening a video no longer automatically enters native fullscreen, and fullscreen toggles are now throttled."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-macos-arm64.dmg",
+          "size": 15167788,
+          "sha256": "f21420cc8e747095ddf3ef34d70cdff07b54cd4eae1e3068126864ea6cb118d4"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-macos-x64.dmg",
+          "size": 16708742,
+          "sha256": "1c3c528822511d7ab6b14889b3f8ea48d8a0e620ce3fc2d22be53f43ae5a97f4"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-windows-x64-setup.exe",
+          "size": 12180968,
+          "sha256": "63aec11b9fc1db96ddba92ba577f9d353b29940a7fecb7e13a7d068341763128"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-linux-x64.deb",
+          "size": 10727104,
+          "sha256": "94c0f041020634c7d2bee8bfbb0ff04c24a5bf83cc686dc36506ceed31823164"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-linux-x64.AppImage",
+          "size": 23673336,
+          "sha256": "3f79fb16fcab47fe6480e53070c8fa44007dac3e6590d7165c3a610b0fec66ac"
+        }
+      ]
+    },
     {
       "version": "1.0.910",
       "tag": "v1.0.910",
@@ -32,38 +104,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.910/block-macos-arm64.dmg",
-          "size": 15154620,
-          "sha256": "6836854a0a101c1bc4ccca466107e1dec68164d2b6750ae3ce45c5ec6e49297c"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.910/block-macos-x64.dmg",
-          "size": 16692966,
-          "sha256": "4cb12f433e9a1e8a9a29f6641ece2382f666ca2fa24afb7c4fe72d9f0192a152"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.910/block-windows-x64-setup.exe",
-          "size": 12167269,
-          "sha256": "445875436c7fb279f75f134c0dad1bd7f84f849eac8adbed9f56855092fe81b0"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.910/block-linux-x64.deb",
-          "size": 10721236,
-          "sha256": "ba901925d3f4cccf8074cdb2eb14cab77abac4165a6105c2a77bac89437b61d5"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.910/block-linux-x64.AppImage",
-          "size": 23669240,
-          "sha256": "260fce61933d23a60b3a953cf851bf191c66369129d953c7f1211dc2ec136c69"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.909",
@@ -1362,35 +1403,6 @@
         "fixes": [
           "Preserve notification identity through desktop delivery.",
           "Accept compound extensions in macOS fallback picker."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.861",
-      "tag": "v1.0.861",
-      "published_at": "2026-11-20T21:31:36Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.861",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Preserve sync notification identity and startup scope.",
-          "Load notification notes through their notebook root.",
-          "Enforce extension filters in macOS file picker fallback."
         ],
         "other": []
       },
