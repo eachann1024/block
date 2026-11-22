@@ -52,6 +52,12 @@ const (
 	cmdMoveUp
 	cmdMoveDown
 	cmdDelete
+	cmdMediaFullscreen
+	cmdAlignLeft
+	cmdAlignCenter
+	cmdAlignRight
+	cmdOpenExternal
+	cmdTableToggleHeader
 )
 
 type blockMenuItem struct {
@@ -287,6 +293,7 @@ type Session struct {
 	imagePopBlock          model.BlockID
 	imagePopKind           string // "", "more", "alt", "size", "crop"
 	imageAltDraft          string
+	lightbox               appUi.LightboxState
 	imageAltHandle         ui.Handle
 	imageMu                sync.Mutex
 	imageCache             map[string]ui.ImageSource
@@ -1234,7 +1241,8 @@ func (s *Session) hasBlockingOverlay() bool {
 		s.editingAnnotID != "" ||
 		s.reactionPickerAnnotID != "" ||
 		s.activePlan != nil ||
-		s.outlineHovered
+		s.outlineHovered ||
+		s.lightbox.Open
 }
 
 func (s *Session) closeTransientOverlays() {

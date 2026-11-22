@@ -416,6 +416,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 			c.Invalidate()
 		}
 		s.renderPlanDiffCard(c)
+		s.renderMediaLightbox(c)
 		if s.hasMenuPopupOpen() {
 			appUi.ReserveMenuNavKeys(c)
 		}
@@ -448,6 +449,9 @@ func (s *Session) isFindShortcut(mods ui.Modifiers, key ui.Key) bool {
 }
 
 func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
+	if s.lightbox.Open {
+		return
+	}
 	svc := c.Services()
 	annotInputFocused := s.HasAnnotationInputFocused(c)
 	// Only register window-level clipboard/selectAll shortcuts when no editor input
@@ -3258,8 +3262,9 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 		}
 	}
 	previewExpandable := s.previewMedia != nil && !isVideo && hasImage && s.onPreviewMediaOpen != nil
+	docExpandable := s.previewMedia == nil && !isVideo && hasImage
 	picCursor := ui.CursorDefault
-	if previewExpandable {
+	if previewExpandable || (docExpandable && readOnly) {
 		picCursor = ui.CursorZoomIn
 	} else if !readOnly && (isVideo || !hasImage) {
 		picCursor = ui.CursorPointer
@@ -3278,7 +3283,8 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				Cursor(picCursor).Border(1, picBorder)
 			picHovered := false
 			previewBadgeClicked := false
-			if previewExpandable {
+			docBadgeClicked := false
+			if previewExpandable || (docExpandable && readOnly) {
 				picHovered = picBox.Hovered()
 			} else if !readOnly {
 				picHovered = picBox.Hovered()
@@ -3384,10 +3390,16 @@ func (s *Session) renderImageBlock(c *ui.Context, idx int, b *model.Block, isFoc
 					if appUi.DrawMediaExpandBadge(c, fmt.Sprintf("img-expand-%d", id), theme.Tr("点击放大", "Click to zoom"), picHovered) {
 						previewBadgeClicked = true
 					}
+				} else if docExpandable {
+					if appUi.DrawMediaExpandBadge(c, fmt.Sprintf("img-expand-%d", id), theme.Tr("全屏查看", "Fullscreen"), picHovered) {
+						docBadgeClicked = true
+					}
 				}
 			})
 			if previewExpandable && (previewBadgeClicked || picBox.Clicked()) {
 				s.onPreviewMediaOpen(b.ImageSrc, false)
+			} else if docExpandable && (docBadgeClicked || picBox.DoubleClicked()) {
+				s.OpenMediaLightbox(id)
 			}
 
 			// Keep the visible grip compact while retaining a larger target for dragging.
@@ -3592,6 +3604,24 @@ func (s *Session) renderImageToolbar(c *ui.Context, idx int, b *model.Block) {
 			}
 
 			ui.Box(c).Width(1).Height(20).MarginX(2).Background(pal.Hairline)
+
+			if strings.TrimSpace(b.ImageSrc) != "" {
+				fullLbl := theme.Tr("全屏查看", "Fullscreen")
+				fullBtn := appUi.IconButton(c, icons.Maximize, appUi.IconButtonOptions{
+					ID:           "img-fullscreen",
+					Label:        fullLbl,
+					Tooltip:      fullLbl,
+					Shortcut:     "F",
+					TooltipPill:  true,
+					TooltipAbove: true,
+					Size:         theme.HeightCompact,
+					IconSize:     theme.IconAction,
+				})
+				s.recordOverlayBtn("img-fullscreen", fullBtn)
+				if fullBtn.Clicked() {
+					s.OpenMediaLightbox(id)
+				}
+			}
 
 			if !IsSupportedVideoPath(b.ImageSrc) {
 				uploadLbl := theme.Tr("更换图片", "Replace image")
