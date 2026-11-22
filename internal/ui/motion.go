@@ -154,6 +154,26 @@ func EdgeFloatCardTransition(fromRight bool) ui.ElementTransition {
 	}
 }
 
+// SettingsDrawerGenieTransition pulls the narrow Settings floating navigation
+// card toward the top-left sidebar toggle on exit (designs/settings-narrow-float
+// Scheme A), pairing with TransformOrigin(0.10, 0) so the user's eye follows
+// the collapse straight to the expand trigger.
+func SettingsDrawerGenieTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Duration:     180 * time.Millisecond,
+		Ease:         ui.CubicBezier(0.22, 1, 0.36, 1),
+		ExitDuration: 240 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.32, 0, 0.2, 1),
+		Colors:       true,
+		Shadows:      true,
+		Enter:        &ui.Motion{X: -12, Y: -10, Scale: 0.92, Opacity: 0.02},
+		Exit:         &ui.Motion{X: -18, Y: -22, Scale: 0.16, Opacity: 0},
+	}
+}
+
 // SpringPanelTo animates a layout scalar (such as handle-safe editor insets)
 // smoothly on SpringPanel, snapping immediately under tests or within 0.25 DIP.
 func SpringPanelTo(el ui.Element, key string, target float32) float32 {
