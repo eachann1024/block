@@ -910,10 +910,10 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 
 - **零进程与零权限**：当 `manifest.category` 为 `"language"`、`contributes.languages` 非空、且未声明 `entry.command`、`permissions`、`surfaces` 与任何运行时 UI 贡献（`titlebar_buttons` / `settings_sections` / `commands` / `page_menu` / `editor_menu` / `panels` / `status_items` / `dialogs`）时，插件以纯声明式模式加载，不启动任何外部子进程，安装页也不展示危险权限提示。
 - **双场景同步生效**：编译后的语法同时作用于**打开其他文件夹时的源码编辑器**与 **Markdown 代码块**（按 `aliases` 与 `id` 匹配语言标识）。
-- **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python、Ruby、PHP、Lua、R、JavaScript、TypeScript、HTML、Vue、Svelte、CSS/SCSS/Less、JSON/JSONC/JSONL、YAML（含 Clash/Stash `.stoverride`）、TOML、INI/Properties/systemd/xcconfig、Dotenv（`.env` / `.env.*`）、Surge/代理规则（`.sgmodule` / `.lpx` / `.plugin` / `.module` / `.list` 及 Surge `.conf`）、Nginx、Caddyfile、SSH Config、Ignore（`.gitignore` 等）、Hosts、XML、Property List（含 `.entitlements` / `.strings` / `.pbxproj`）、SQL、GraphQL、Protobuf、Shell、Dockerfile、Makefile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
+- **内置语言与覆盖顺序**：主程序已内置 C、C++、C#、Java、Kotlin、Scala、Groovy/Gradle（含 `Jenkinsfile`）、Swift、Dart、Go（含 `go.mod` / `go.sum`）、Rust、Python（含 `requirements.txt`）、Ruby、PHP、Lua、R、Elixir、JavaScript、TypeScript、HTML、Vue、Svelte、Astro、Handlebars/Mustache、EJS、Go/Helm 模板、CSS/SCSS/Less、JSON/JSONC/JSONL、YAML（含 Clash/Stash `.stoverride`）、TOML、INI/Properties/systemd/xcconfig、Dotenv（`.env` / `.env.*`）、Surge/代理规则（`.sgmodule` / `.lpx` / `.plugin` / `.module` / `.list` 及 Surge `.conf`）、Nginx、Apache/htaccess、HAProxy、Caddyfile、SSH Config、Crontab、Procfile、Ignore（`.gitignore` 等）、Hosts、HTTP 请求、XML、Property List（含 `.entitlements` / `.strings` / `.pbxproj`）、SQL、Prisma、GraphQL、Protobuf、Thrift、Shell、PowerShell、Windows Batch、Dockerfile、Makefile、CMake、Justfile、HCL、Nix、Zig、ERB、Jinja、Diff、Markdown 等常用语言，无需安装插件；语言扩展只需覆盖小众语言。已启用插件声明的文件名、后缀或标识与内置语言重名时，**插件优先**。
 - **生命周期**：首次安装纯声明式语言扩展时**自动启用**；纯声明式语言扩展不占用侧栏设置页，可在应用商店详情页管理与卸载（卸载或停用后编辑器与代码块高亮**实时生效**，移除对应语言注册）。若插件同时声明了 `entry.command` 或 `surfaces`，则作为混合型交互插件按普通插件生命周期管理。已安装的旧版 Go Modules 和 Property List 扩展仍可管理，并按安装来源显示认证状态。卸载后由主程序提供高亮。
 - **大代码块**：Markdown 代码块含超长单行时会使用基础高亮。整个代码块超过大小上限时会按纯文本显示，以保持编辑响应。
-- **系统「打开方式」自动关联**：启用、停用或卸载语言扩展时，宿主会在后台无感同步 `extensions` 到操作系统的「打开方式」菜单（macOS 通过用户目录隐形中转小壳自动跳过主程序已接管的纯文本与多段后缀；Windows 写当前用户 `HKCU` 专属 `Block.Document` ProgID 的 `OpenWithProgids`，均不抢占默认程序；Linux 维护 `NoDisplay=true` 的用户级 `block-plugins.desktop`，仅关联系统 MIME 数据库已收录的类型、不覆写主入口也不新增自定义 MIME，若桌面未给某细分子类型单独指定默认应用，部分桌面如 GNOME/GIO 可能优先按精确子类型回落），无需管理员权限；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
+- **系统「打开方式」自动关联**：主程序内置支持的全部语言与格式，以及已启用/停用/卸载的语言扩展，都会自动汇总并同步到 Windows、macOS、Linux 的系统「打开方式」菜单（打包期通过 `cmd/block-fileassoc` 自动生成 macOS `Info.plist`、Windows NSIS `OpenWithProgids` 与 Linux `block.desktop`；运行期自动增量同步，macOS 隐形中转小壳自动跳过主程序 `Info.plist` 与 `public.plain-text` 已接管的类型、Windows 写当前用户 `HKCU` 专属 `Block.Document` ProgID 的 `OpenWithProgids`、Linux 维护 `NoDisplay=true` 的用户级 `block-plugins.desktop` 并校验不覆盖主入口且不劫持现有非 Block 默认程序），均无需人工维护清单；仅靠 `filenames` 匹配的规则不会注册到系统菜单。
 
 ### 9.1 `contributes.languages` 字段定义
 
@@ -954,6 +954,7 @@ Grammar JSON 采用严格解码：**禁止重复键、禁止未知字段**。
 | 字段 | 必填 | 类型与约束 |
 | --- | --- | --- |
 | `match` | 是 | 非空 RE2 正则表达式字符串；编译时自动以 `\A(?:...)` 锚定到当前行扫描位置 |
+| `line_start` | 否 | 布尔值，默认 `false`；设为 `true` 时该规则仅在整行第 0 列（`pos == 0`）尝试匹配，用于整行行首定界符（如 frontmatter `---`、PowerShell here-string 结束符）而不改变已有规则的 `^` 语义 |
 | `token` | 否 | 字符串，合法 Token 名称之一（见下表，大小写不敏感） |
 | `captures` | 否 | 对象（`map[string]string`），键为 `"1"`–`"16"` 的捕获组编号（不可超过 `match` 的子表达式数量），值为合法 Token 名称 |
 | `next` | 否 | 字符串，切换到指定状态名（须存在于 `states` 中） |
