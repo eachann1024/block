@@ -1147,11 +1147,9 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 				return false
 			},
 			func(fs bool) {
-				go func() {
-					if cur := w.Window(); cur != nil && cur.IsFullScreen() != fs {
-						cur.SetFullScreen(fs)
-					}
-				}()
+				if cur := w.Window(); cur != nil && cur.IsFullScreen() != fs {
+					cur.SetFullScreen(fs)
+				}
 			},
 		)
 	}
