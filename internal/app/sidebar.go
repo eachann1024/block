@@ -34,10 +34,12 @@ type SidebarUIState struct {
 	DropTargetPath string
 	DropAfter      bool
 	DropIntoDir    bool
+	TreeDragGate   blockui.DragGate
 
 	PendingMiddleOpenPath string
 	NBDragTarget          string
 	NBDragAfter           bool
+	NBDragGate            blockui.DragGate
 	ConfirmForgetNotebook string
 
 	SwitcherOpen     bool
@@ -802,7 +804,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	if r.Depth > 0 {
 		btn.Transition(blockui.TreeRevealTransition(r.RevealOrder))
 	}
-	btn.Drag(treeDragItem{Path: entry.Path, IsDir: entry.IsDir})
+	p.State.TreeDragGate.Attach(btn, entry.Path, treeDragItem{Path: entry.Path, IsDir: entry.IsDir}, blockui.DefaultDragThreshold)
 	if !entry.IsDir {
 		btn.ObserveInput(func(ev ui.InputEvent) {
 			if ev.Kind == ui.InputPointerDown && ev.Button == 2 {
@@ -1184,9 +1186,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							nbDrop := false
 							nbAfter := false
 							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
-								if !confirming {
-									row.Drag(nbDragItem{Path: nb, Index: ix})
-								}
 								if dragged, over := ui.DragOver[nbDragItem](row); over && dragged.Path != "" && dragged.Path != nb {
 									b := row.Bounds()
 									_, py, hasPos := row.PointerPosition()
@@ -1250,6 +1249,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							row.Children(func() {
 								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
+								if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil && !confirming {
+									p.State.NBDragGate.Attach(sel, nb, nbDragItem{Path: nb, Index: ix}, blockui.DefaultDragThreshold)
+								}
 								sel.Children(func() {
 									ic := pal.MonoIconColors(pal.MenuIcon)
 									actIco := checked || confirming || rowHover || kbActive

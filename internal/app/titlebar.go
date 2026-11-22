@@ -69,6 +69,7 @@ type TabMenuState struct {
 	LastTabCount    int
 	DragTargetPath  string
 	DragAfter       bool
+	TabDragGate     blockui.DragGate
 	MiddleClosePath string
 }
 

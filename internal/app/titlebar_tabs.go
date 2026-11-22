@@ -249,9 +249,6 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		}
 		blockui.RichTooltip(c, pill, blockui.TooltipSpec{Rows: rows})
 	}
-	if !p.Busy && p.OnReorderTab != nil {
-		pill.Drag(tabDragItem{Path: path})
-	}
 	pill.ObserveInput(func(ev ui.InputEvent) {
 		if ev.Kind == ui.InputPointerDown && ev.Button == 2 && !p.Busy && p.MenuState != nil {
 			p.MenuState.MiddleClosePath = path
@@ -352,6 +349,13 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		sel = ui.ButtonBase(c.Key("tab-select:"+path)).Grow(1).MinWidth(0).FillHeight().Padding(0, 0, 0, theme.Space10).Gap(theme.Space6).
 			AlignItems(ui.Center).Justify(ui.Start).Cursor(tabCursor).Disabled(p.Busy).DimDisabled(false).
 			FocusRing(false).Role(ui.RoleTab).AccessSelected(active).Label(a11yLabel)
+		if !p.Busy && p.OnReorderTab != nil {
+			var gate *blockui.DragGate
+			if p.MenuState != nil {
+				gate = &p.MenuState.TabDragGate
+			}
+			gate.Attach(sel, path, tabDragItem{Path: path}, blockui.DefaultDragThreshold)
+		}
 		if tabCtxOpen {
 			sel.Bind(&p.MenuState.TabCtxTrigger)
 		}
@@ -420,7 +424,7 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		p.MenuState.TabMenuX = tx
 		p.MenuState.TabMenuY = ty
 		p.MenuState.MenuTrigger = &p.MenuState.TabCtxTrigger
-	case ((pressing && btn == 0) || sel.Clicked()) && !closeHover && !active && !p.Busy && !pill.Dragging():
+	case ((pressing && btn == 0) || sel.Clicked()) && !closeHover && !active && !p.Busy && !sel.Dragging():
 		if p.MenuState != nil {
 			p.MenuState.Close()
 		}
