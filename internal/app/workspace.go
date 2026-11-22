@@ -1133,6 +1133,19 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 		win.OnLeaveFullScreen(func() { w.scheduleSaveMainBounds() })
 		win.OnHide(func() { w.FlushWindowBounds() })
 		win.OnFileDrop(w.handleWindowFileDrop)
+		blockui.SetWindowFullscreenProvider(
+			func() bool {
+				if cur := w.Window(); cur != nil {
+					return cur.IsFullScreen()
+				}
+				return false
+			},
+			func(fs bool) {
+				if cur := w.Window(); cur != nil && cur.IsFullScreen() != fs {
+					cur.SetFullScreen(fs)
+				}
+			},
+		)
 	}
 
 	if folder != "" {

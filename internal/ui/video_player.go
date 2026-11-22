@@ -82,6 +82,7 @@ type VideoControlState struct {
 	ScrubTarget   time.Duration
 	VolScrubbing  bool
 	SpeedMenuOpen bool
+	DockHovered   bool
 
 	OSDText      string
 	OSDUntil     time.Time
@@ -510,16 +511,20 @@ type VideoPlayerOptions struct {
 	MaxHeight       float32
 	StageWidth      float32
 	StageHeight     float32
-	InLightbox      bool
-	FillMode        bool
-	HideVideo       bool
-	HandleKeyboard  bool
-	AllowVolumeKeys bool
-	KeyboardOverlay *ui.Element
-	OnExpand        func()
-	OnToggleFill    func()
-	OnOpenExternal  func()
-	OnInteract      func()
+	InLightbox         bool
+	FillMode           bool
+	HideVideo          bool
+	IsFullscreen       bool
+	ChromeHidden       bool
+	BottomInset        float32
+	HandleKeyboard     bool
+	AllowVolumeKeys    bool
+	KeyboardOverlay    *ui.Element
+	OnExpand           func()
+	OnToggleFullscreen func()
+	OnToggleFill       func()
+	OnOpenExternal     func()
+	OnInteract         func()
 }
 
 // HandleVideoShortcuts processes video keyboard controls (Space/K, Left/Right, Hold-Right 3x,
@@ -622,9 +627,10 @@ var (
 	svgVidVolHigh   *ui.SVG
 	svgVidVolLow    *ui.SVG
 	svgVidVolMute   *ui.SVG
-	svgVidLoop      *ui.SVG
-	svgVidExpand    *ui.SVG
-	svgVidFastSpeed *ui.SVG
+	svgVidLoop       *ui.SVG
+	svgVidExpand     *ui.SVG
+	svgVidExitExpand *ui.SVG
+	svgVidFastSpeed  *ui.SVG
 )
 
 func loadVideoIcons() {
@@ -643,6 +649,7 @@ func loadVideoIcons() {
 		svgVidVolMute = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 6.2h2.6l3.4-2.8v9.2L4.8 9.8H2.2z" fill="currentColor" stroke="none"/><path d="M10.5 6l3.5 4M14 6l-3.5 4"/></svg>`)
 		svgVidLoop = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5L13.8 4.8 11.5 7.1"/><path d="M2.5 7.8V6.3a1.5 1.5 0 0 1 1.5-1.5h9.5"/><path d="M4.5 13.5L2.2 11.2 4.5 8.9"/><path d="M13.5 8.2v1.5a1.5 1.5 0 0 1-1.5 1.5H2.5"/></svg>`)
 		svgVidExpand = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5h3.5V6"/><path d="M6 13.5H2.5V10"/><path d="M13.5 2.5L9.3 6.7"/><path d="M2.5 13.5l4.2-4.2"/></svg>`)
+		svgVidExitExpand = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 6H10V2.5"/><path d="M2.5 10H6v3.5"/><path d="M10 6l3.5-3.5"/><path d="M6 10l-3.5 3.5"/></svg>`)
 		svgVidFastSpeed = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"><path d="M1.8 4.2a.6.6 0 0 1 .93-.5l4.2 3.3a.6.6 0 0 1 0 .96l-4.2 3.3a.6.6 0 0 1-.93-.5V4.2z"/><path d="M6.8 4.2a.6.6 0 0 1 .93-.5l4.2 3.3a.6.6 0 0 1 0 .96l-4.2 3.3a.6.6 0 0 1-.93-.5V4.2z"/><path d="M11.8 4.2a.6.6 0 0 1 .93-.5l2.1 1.7a.6.6 0 0 1 0 .96l-2.1 1.7a.6.6 0 0 1-.93-.5V4.2z"/></svg>`)
 	})
 }
@@ -718,47 +725,43 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 		}
 	}
 
-	root := ui.Column(c.Key(opts.ID)).FillWidth().MinWidth(0)
+	st.DockHovered = false
+	darkDock := opts.InLightbox
+
+	var root ui.Element
 	if opts.InLightbox {
-		root.Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).Clip()
-		Elevate(root, theme.ElevationDialog)
+		root = ui.Box(c.Key(opts.ID)).
+			Width(max(opts.StageWidth, 240)).
+			Height(max(opts.StageHeight, 180)).
+			Background(pal.LightboxStageBG()).Clip()
 	} else {
-		root.Background(pal.CodeBlockBG)
+		root = ui.Column(c.Key(opts.ID)).FillWidth().MinWidth(0).Background(pal.CodeBlockBG)
 	}
 
 	if opts.HandleKeyboard && player != nil && !opts.HideVideo {
 		allowVol := opts.AllowVolumeKeys || opts.InLightbox || root.Hovered()
-		HandleVideoShortcuts(c, opts.KeyboardOverlay, player, st, allowVol, opts.OnExpand)
+		onF := opts.OnExpand
+		if opts.InLightbox && opts.OnToggleFullscreen != nil {
+			onF = opts.OnToggleFullscreen
+		}
+		HandleVideoShortcuts(c, opts.KeyboardOverlay, player, st, allowVol, onF)
 	}
 
 	root.Children(func() {
 		// 1. Video visual stage.
-		stage := ui.Box(c.Key(opts.ID + "-stage")).FillWidth().Center().Clip().
-			Background(pal.AISurface().MediaFrameBG)
+		stage := ui.Box(c.Key(opts.ID + "-stage")).Center().Clip()
+		if opts.InLightbox {
+			stage.Fill().Background(pal.LightboxStageBG())
+		} else {
+			stage.FillWidth().Background(pal.AISurface().MediaFrameBG)
+			if opts.MaxHeight > 0 {
+				stage.MaxHeight(opts.MaxHeight)
+			}
+		}
 
 		vw, vh := 0, 0
 		if player != nil {
 			vw, vh = player.Size()
-		}
-		if opts.InLightbox && opts.StageWidth > 0 && opts.StageHeight > 0 {
-			controlsReserve := theme.VideoScrubberHeight + theme.VideoControlBarHeight + theme.Space12
-			availW := max(opts.StageWidth, 240)
-			availH := max(opts.StageHeight-controlsReserve, 180)
-			if vw > 0 && vh > 0 {
-				scale := min(availW/float32(vw), availH/float32(vh))
-				if scale <= 0 {
-					scale = 1
-				}
-				w := min(availW, max(float32(vw)*scale, 320))
-				h := min(availH, max(float32(vh)*scale, 180))
-				stage.Width(w).Height(h)
-			} else {
-				w := min(availW, theme.LightboxVideoMaxWidth)
-				h := min(availH, w*9/16)
-				stage.Width(w).Height(h)
-			}
-		} else if opts.MaxHeight > 0 {
-			stage.MaxHeight(opts.MaxHeight)
 		}
 		if !opts.HideVideo {
 			stage.Cursor(ui.CursorPointer)
@@ -883,7 +886,9 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 				if opts.OnInteract != nil {
 					opts.OnInteract()
 				}
-				if opts.InLightbox && opts.OnToggleFill != nil {
+				if opts.InLightbox && opts.OnToggleFullscreen != nil {
+					opts.OnToggleFullscreen()
+				} else if opts.InLightbox && opts.OnToggleFill != nil {
 					opts.OnToggleFill()
 				} else if !opts.InLightbox && opts.OnExpand != nil {
 					st.EndBoost(target)
@@ -902,8 +907,19 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 		if opts.HideVideo || player == nil {
 			return
 		}
-		dock := ui.Column(c.Key(opts.ID+"-dock")).FillWidth().MinWidth(0).
-			Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+		if opts.InLightbox && opts.ChromeHidden && !st.Scrubbing && !st.VolScrubbing && !st.SpeedMenuOpen && player.Playing() {
+			return
+		}
+		dock := ui.Column(c.Key(opts.ID + "-dock")).MinWidth(0)
+		if darkDock {
+			dock.Absolute().Left(theme.Space16).Right(theme.Space16).Bottom(theme.Space12+opts.BottomInset).
+				Radius(theme.RadiusXL).Background(pal.LightboxChromeBG()).
+				Border(1, pal.LightboxChromeBorder()).Clip()
+			Elevate(dock, theme.ElevationDialog)
+		} else {
+			dock.FillWidth().Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
+		}
+		st.DockHovered = dock.Hovered()
 		dock.Children(func() {
 			dur := player.Duration()
 			pos := player.Position()
@@ -913,7 +929,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 			if st.Scrubbing {
 				pos = st.ScrubTarget
 			}
-			renderVideoScrubber(c, opts.ID+"-scrubber", pal, target, st, pos, dur, opts.OnInteract)
+			renderVideoScrubber(c, opts.ID+"-scrubber", pal, darkDock, target, st, pos, dur, opts.OnInteract)
 
 			// Controls row.
 			bar := ui.Row(c.Key(opts.ID+"-controls")).FillWidth().MinWidth(0).
@@ -931,7 +947,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						playIcon = svgVidReplay
 						playTip = theme.Tr("重新播放", "Replay")
 					}
-					playBtn := renderVideoGlyphButton(c, opts.ID+"-play", playIcon, playTip, "Space", false)
+					playBtn := renderVideoGlyphButton(c, opts.ID+"-play", playIcon, playTip, "Space", false, darkDock)
 					if opts.PlayProbeID != "" {
 						Probe(playBtn, opts.PlayProbeID)
 					}
@@ -942,7 +958,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						st.TogglePlayPause(target, now)
 					}
 
-					rewBtn := renderVideoGlyphButton(c, opts.ID+"-rew", svgVidRewind, theme.Tr("后退 5 秒", "Rewind 5s"), "←", false)
+					rewBtn := renderVideoGlyphButton(c, opts.ID+"-rew", svgVidRewind, theme.Tr("后退 5 秒", "Rewind 5s"), "←", false, darkDock)
 					if rewBtn.Clicked() {
 						if opts.OnInteract != nil {
 							opts.OnInteract()
@@ -950,7 +966,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						st.SeekBy(target, -videoSeekStep, now)
 					}
 
-					fwdBtn := renderVideoGlyphButton(c, opts.ID+"-fwd", svgVidForward, theme.Tr("快进 5 秒（按住 → 3 倍速）", "Forward 5s (Hold → for 3x)"), "→", false)
+					fwdBtn := renderVideoGlyphButton(c, opts.ID+"-fwd", svgVidForward, theme.Tr("快进 5 秒（按住 → 3 倍速）", "Forward 5s (Hold → for 3x)"), "→", false, darkDock)
 					if fwdBtn.Clicked() {
 						if opts.OnInteract != nil {
 							opts.OnInteract()
@@ -962,13 +978,17 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 					if dur > 0 {
 						timeStr += " / " + FormatMediaDuration(dur)
 					}
+					timeColor := pal.TextSecondary
+					if darkDock {
+						timeColor = pal.LightboxChromeMutedFG()
+					}
 					ui.Text(c, timeStr).
 						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						FontFeatures("tnum").TextColor(pal.TextSecondary).SingleLine().Shrink(0).
+						FontFeatures("tnum").TextColor(timeColor).SingleLine().Shrink(0).
 						Margin(0, 0, 0, theme.Space4)
 				})
 
-				// Right cluster: Mute + Volume slider, Speed selector, Loop, Expand, Open External.
+				// Right cluster: Mute + Volume slider, Speed selector, Loop, Expand/Fullscreen, Open External.
 				ui.Row(c).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0).Children(func() {
 					vol := player.Volume()
 					muted := player.Muted() || vol <= 0.001
@@ -980,7 +1000,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 					} else if vol < 0.5 {
 						volIcon = svgVidVolLow
 					}
-					muteBtn := renderVideoGlyphButton(c, opts.ID+"-mute", volIcon, volTip, "M", false)
+					muteBtn := renderVideoGlyphButton(c, opts.ID+"-mute", volIcon, volTip, "M", false, darkDock)
 					if muteBtn.Clicked() {
 						if opts.OnInteract != nil {
 							opts.OnInteract()
@@ -988,7 +1008,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						st.ToggleMute(target, now)
 					}
 
-					renderVideoVolumeSlider(c, opts.ID+"-vol", pal, target, st, vol, muted, opts.OnInteract)
+					renderVideoVolumeSlider(c, opts.ID+"-vol", pal, darkDock, target, st, vol, muted, opts.OnInteract)
 
 					// Playback speed pill (click to open compact speed picker or cycle).
 					shownRate := st.effectiveBaseRate(target)
@@ -1002,7 +1022,16 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						Label(theme.Tr("倍速", "Speed"))
 					speedBG := ui.Transparent
 					speedFG := pal.TextSecondary
-					if st.BoostActive || st.SpeedMenuOpen || math.Abs(shownRate-1.0) > 0.01 {
+					if darkDock {
+						speedFG = pal.LightboxChromeMutedFG()
+						if st.BoostActive || st.SpeedMenuOpen || math.Abs(shownRate-1.0) > 0.01 {
+							speedBG = pal.LightboxChromeActive()
+							speedFG = pal.LightboxChromeFG()
+						} else if speedBtn.Hovered() {
+							speedBG = pal.LightboxChromeHover()
+							speedFG = pal.LightboxChromeFG()
+						}
+					} else if st.BoostActive || st.SpeedMenuOpen || math.Abs(shownRate-1.0) > 0.01 {
 						speedBG = pal.Selected
 						speedFG = pal.Accent
 					} else if speedBtn.Hovered() {
@@ -1030,7 +1059,7 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						st.SpeedMenuOpen = !st.SpeedMenuOpen
 					}
 
-					loopBtn := renderVideoGlyphButton(c, opts.ID+"-loop", svgVidLoop, theme.Tr("循环播放", "Loop playback"), "R", player.Loop())
+					loopBtn := renderVideoGlyphButton(c, opts.ID+"-loop", svgVidLoop, theme.Tr("循环播放", "Loop playback"), "R", player.Loop(), darkDock)
 					if loopBtn.Clicked() {
 						if opts.OnInteract != nil {
 							opts.OnInteract()
@@ -1038,8 +1067,22 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 						st.ToggleLoop(target, now)
 					}
 
-					if !opts.InLightbox && opts.OnExpand != nil {
-						expBtn := renderVideoGlyphButton(c, opts.ID+"-expand", svgVidExpand, theme.Tr("放大观看", "Expand"), "F", false)
+					if opts.InLightbox && opts.OnToggleFullscreen != nil {
+						fsIcon := svgVidExpand
+						fsTip := theme.Tr("系统全屏", "System Fullscreen")
+						if opts.IsFullscreen {
+							fsIcon = svgVidExitExpand
+							fsTip = theme.Tr("退出全屏", "Exit Fullscreen")
+						}
+						fsBtn := renderVideoGlyphButton(c, opts.ID+"-fullscreen", fsIcon, fsTip, "F", opts.IsFullscreen, darkDock)
+						if fsBtn.Clicked() {
+							if opts.OnInteract != nil {
+								opts.OnInteract()
+							}
+							opts.OnToggleFullscreen()
+						}
+					} else if !opts.InLightbox && opts.OnExpand != nil {
+						expBtn := renderVideoGlyphButton(c, opts.ID+"-expand", svgVidExpand, theme.Tr("放大观看", "Expand"), "F", false, darkDock)
 						if expBtn.Clicked() {
 							st.EndBoost(target)
 							opts.OnExpand()
@@ -1065,13 +1108,21 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 			// Inline compact speed picker tray when opened.
 			if st.SpeedMenuOpen {
 				curBase := st.effectiveBaseRate(target)
+				trayBG := pal.Shell
+				trayBorder := pal.Hairline
+				trayMuted := pal.TextSecondary
+				if darkDock {
+					trayBG = pal.LightboxChromeBG()
+					trayBorder = pal.LightboxChromeBorder()
+					trayMuted = pal.LightboxChromeMutedFG()
+				}
 				ui.Row(c.Key(opts.ID+"-speed-tray")).FillWidth().
 					Padding(theme.Space6, theme.Space10, theme.Space8, theme.Space10).
 					Gap(theme.Space4).AlignItems(ui.Center).Justify(ui.End).
-					Background(pal.Shell).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
+					Background(trayBG).BorderWidth(1, 0, 0, 0).BorderColor(trayBorder).Children(func() {
 					ui.Text(c, theme.Tr("倍速", "Speed")).
 						FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-						TextColor(pal.TextSecondary).Margin(0, theme.Space6, 0, 0).SingleLine()
+						TextColor(trayMuted).Margin(0, theme.Space6, 0, 0).SingleLine()
 					for _, rate := range videoPlaybackRates {
 						r := rate
 						active := math.Abs(curBase-r) < 0.01
@@ -1081,7 +1132,16 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 							Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(lbl)
 						bg := ui.Transparent
 						fg := pal.TextSecondary
-						if active {
+						if darkDock {
+							fg = pal.LightboxChromeMutedFG()
+							if active {
+								bg = pal.LightboxChromeActive()
+								fg = pal.LightboxChromeFG()
+							} else if optBtn.Hovered() {
+								bg = pal.LightboxChromeHover()
+								fg = pal.LightboxChromeFG()
+							}
+						} else if active {
 							bg = pal.Selected
 							fg = pal.Accent
 						} else if optBtn.Hovered() {
@@ -1108,22 +1168,36 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 	return root
 }
 
-func renderVideoGlyphButton(c *ui.Context, id string, glyph *ui.SVG, tip, shortcut string, active bool) ui.Element {
+func renderVideoGlyphButton(c *ui.Context, id string, glyph *ui.SVG, tip, shortcut string, active, dark bool) ui.Element {
 	pal := theme.Ocean()
 	btn := ui.ButtonBase(c.Key(id)).
 		Size(theme.IconButtonBox, theme.IconButtonBox).Center().
 		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(tip)
 	bg := ui.Transparent
 	fg := pal.TextSecondary
-	if active {
-		bg = pal.Selected
-		fg = pal.Accent
-	} else if btn.Pressed() {
-		bg = pal.Selected
-		fg = pal.Text
-	} else if btn.Hovered() {
-		bg = pal.Hover
-		fg = pal.Text
+	if dark {
+		fg = pal.LightboxChromeMutedFG()
+		if active {
+			bg = pal.LightboxChromeActive()
+			fg = pal.LightboxChromeFG()
+		} else if btn.Pressed() {
+			bg = pal.LightboxChromeActive()
+			fg = pal.LightboxChromeFG()
+		} else if btn.Hovered() {
+			bg = pal.LightboxChromeHover()
+			fg = pal.LightboxChromeFG()
+		}
+	} else {
+		if active {
+			bg = pal.Selected
+			fg = pal.Accent
+		} else if btn.Pressed() {
+			bg = pal.Selected
+			fg = pal.Text
+		} else if btn.Hovered() {
+			bg = pal.Hover
+			fg = pal.Text
+		}
 	}
 	AnimateSurfaceColors(btn, bg, ui.Transparent, false)
 	if tip != "" {
@@ -1148,6 +1222,7 @@ func renderVideoScrubber(
 	c *ui.Context,
 	id string,
 	pal theme.Palette,
+	dark bool,
 	target videoControlTarget,
 	st *VideoControlState,
 	pos time.Duration,
@@ -1192,6 +1267,14 @@ func renderVideoScrubber(
 	}
 
 	expanded := hovered || st.Scrubbing
+	trackCol := pal.Hairline
+	hoverCol := pal.TextSecondary.Alpha(0.18)
+	thumbRing := pal.Paper
+	if dark {
+		trackCol = pal.LightboxChromeTrack()
+		hoverCol = pal.LightboxChromeFG().Alpha(0.32)
+		thumbRing = pal.LightboxChromeFG()
+	}
 	scrubber.Draw(func(p *ui.Painter, r ui.Rect) {
 		tw := max(r.W-2*padX, 1)
 		tx := r.X + padX
@@ -1200,10 +1283,10 @@ func renderVideoScrubber(
 			th = theme.VideoScrubberTrackHoverH
 		}
 		ty := r.Y + (r.H-th)*0.5
-		p.Fill(ui.Rect{X: tx, Y: ty, W: tw, H: th}, pal.Hairline, th*0.5)
+		p.Fill(ui.Rect{X: tx, Y: ty, W: tw, H: th}, trackCol, th*0.5)
 		if hovered && hasPos && dur > 0 {
 			hw := tw * float32(hoverRatio)
-			p.Fill(ui.Rect{X: tx, Y: ty, W: hw, H: th}, pal.TextSecondary.Alpha(0.18), th*0.5)
+			p.Fill(ui.Rect{X: tx, Y: ty, W: hw, H: th}, hoverCol, th*0.5)
 		}
 		fw := tw * progress
 		if fw > 0 {
@@ -1223,7 +1306,7 @@ func renderVideoScrubber(
 			}
 			p.Fill(thumbR, pal.Accent, thumbSize*0.5)
 			if expanded {
-				p.Stroke(thumbR, pal.Paper, thumbSize*0.5, 1.5)
+				p.Stroke(thumbR, thumbRing, thumbSize*0.5, 1.5)
 			}
 		}
 	})
@@ -1252,6 +1335,7 @@ func renderVideoVolumeSlider(
 	c *ui.Context,
 	id string,
 	pal theme.Palette,
+	dark bool,
 	target videoControlTarget,
 	st *VideoControlState,
 	vol float64,
@@ -1288,12 +1372,18 @@ func renderVideoVolumeSlider(
 		shownVol = 0
 	}
 	expanded := hovered || st.VolScrubbing
+	trackCol := pal.Hairline
+	thumbRing := pal.Paper
+	if dark {
+		trackCol = pal.LightboxChromeTrack()
+		thumbRing = pal.LightboxChromeFG()
+	}
 	slider.Draw(func(p *ui.Painter, r ui.Rect) {
 		tw := max(r.W-2*padX, 1)
 		tx := r.X + padX
 		th := theme.VideoScrubberTrackH
 		ty := r.Y + (r.H-th)*0.5
-		p.Fill(ui.Rect{X: tx, Y: ty, W: tw, H: th}, pal.Hairline, th*0.5)
+		p.Fill(ui.Rect{X: tx, Y: ty, W: tw, H: th}, trackCol, th*0.5)
 		fw := tw * shownVol
 		if fw > 0 {
 			p.Fill(ui.Rect{X: tx, Y: ty, W: fw, H: th}, pal.Accent, th*0.5)
@@ -1311,7 +1401,7 @@ func renderVideoVolumeSlider(
 		}
 		p.Fill(thumbR, pal.Accent, thumbSize*0.5)
 		if expanded {
-			p.Stroke(thumbR, pal.Paper, thumbSize*0.5, 1)
+			p.Stroke(thumbR, thumbRing, thumbSize*0.5, 1)
 		}
 	})
 }
