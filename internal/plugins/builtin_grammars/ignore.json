@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "._-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["[", "]"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "!",
+        "token": "keyword"
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "\\*\\*|[*?]",
+        "token": "operator"
+      },
+      {
+        "match": "\\[[^\\]\\r\\n]+\\]",
+        "token": "operator"
+      },
+      {
+        "match": "/(?:[ \\t]*)$",
+        "token": "type"
+      },
+      {
+        "match": "/",
+        "token": "punctuation"
+      },
+      {
+        "match": "[^#*?\\[\\]/\\\\!\\r\\n]+",
+        "token": "string"
+      }
+    ]
+  },
+  "sample": "# Dependencies & build artifacts\nnode_modules/\ndist/\n*.log\n.env.*\n!.env.example\n**/*.local"
+}

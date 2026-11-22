@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "https?://[^\\s;{}'\"]+",
+        "token": "link"
+      },
+      {
+        "match": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}|\\$[A-Za-z_][A-Za-z0-9_]*|\\$[0-9]+",
+        "token": "meta"
+      },
+      {
+        "match": "\\b(?:http|server|location|upstream|events|stream|mail|map|geo|types|limit_except|if|split_clients)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:listen|server_name|root|index|alias|try_files|return|rewrite|include|error_page|access_log|error_log|add_header|set|if|break|gzip|gzip_types|gzip_comp_level|gzip_min_length|gzip_vary|worker_processes|worker_connections|keepalive_timeout|client_max_body_size|sendfile|tcp_nopush|tcp_nodelay|default_type|resolver|proxy_pass|proxy_set_header|proxy_http_version|proxy_redirect|proxy_buffering|proxy_cache|proxy_cache_valid|proxy_read_timeout|proxy_connect_timeout|proxy_send_timeout|proxy_ssl_server_name|fastcgi_pass|fastcgi_param|fastcgi_index|grpc_pass|uwsgi_pass|ssl_certificate|ssl_certificate_key|ssl_protocols|ssl_ciphers|ssl_prefer_server_ciphers|ssl_session_cache|ssl_session_timeout|limit_req|limit_req_zone|limit_conn|limit_conn_zone|auth_basic|auth_basic_user_file|expires|deny|allow|real_ip_header|set_real_ip_from|keepalive|least_conn|ip_hash|hash|zone|pid|user)\\b",
+        "token": "property"
+      },
+      {
+        "match": "\\b(?:on|off|permanent|redirect|last|break|default_server|ssl|http2|http3|quic|reuseport|always|auto|main|combined|backup|down)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "~\\*|\\^~|[~=!]",
+        "token": "operator"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:ms|[smhdwkMgG])?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[{}();]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "server {\n    listen 443 ssl http2;\n    server_name block.example.com;\n\n    location /api/ {\n        proxy_pass http://127.0.0.1:8080;\n        proxy_set_header Host $host;\n        proxy_read_timeout 60s;\n    }\n}"
+}

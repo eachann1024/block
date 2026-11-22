@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["`", "`"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "`[^`]*`",
+        "token": "string"
+      },
+      {
+        "match": "https?://[^\\s{}'\"]+",
+        "token": "link"
+      },
+      {
+        "match": "\\{[\\w.$@:-]+\\}",
+        "token": "meta"
+      },
+      {
+        "match": "@[A-Za-z_][A-Za-z0-9_-]*",
+        "token": "meta"
+      },
+      {
+        "match": "(\\()([A-Za-z0-9_.-]+)(\\))",
+        "captures": {
+          "1": "punctuation",
+          "2": "heading",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b(?:reverse_proxy|file_server|handle_path|handle_errors|handle|route|encode|tls|header|redir|rewrite|import|log|root|respond|php_fastcgi|basic_auth|basicauth|uri|try_files|templates|push|request_body|bind|abort|error|map|vars|forward_auth|metrics|tracing|acme_server|header_up|header_down|transport|lb_policy|health_uri|health_interval|trusted_proxies|email|auto_https|servers|admin|debug|order|browse|hide|index|pass_thru|strip_prefix|replace|output|format|level|path|host|method|protocol|query|remote_ip|client_ip|expression|file)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:on|off|true|false|permanent|temporary|internal|gzip|zstd|br|http|https|h2c|stdout|stderr|discard)\\b",
+        "token": "constant"
+      },
+      {
+        "match": ":[0-9]{1,5}\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:ms|ns|us|[smhdw]|KB|MB|GB|KiB|MiB|GiB)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[{}()]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "block.example.com {\n    encode zstd gzip\n    @api path /api/*\n    reverse_proxy @api 127.0.0.1:8080 {\n        header_up Host {upstream_hostport}\n    }\n    file_server\n}"
+}

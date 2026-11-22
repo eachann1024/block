@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["\"", "\""],
+    ["'", "'"],
+    ["`", "`"],
+    ["{", "}"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(export)([ \\t]+)([A-Za-z_][A-Za-z0-9_.]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "keyword",
+          "3": "property",
+          "5": "operator"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_.]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "double_string"
+      },
+      {
+        "match": "'[^']*'",
+        "token": "string"
+      },
+      {
+        "match": "`[^`]*`",
+        "token": "string"
+      },
+      {
+        "match": "\\$\\{[^}]+\\}|\\$[A-Za-z_][A-Za-z0-9_]*",
+        "token": "meta"
+      },
+      {
+        "match": "[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s#\"']+",
+        "token": "link"
+      },
+      {
+        "match": "(?i)\\b(?:true|false|yes|no|on|off|null)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "double_string": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "\\$\\{[^}]+\\}|\\$[A-Za-z_][A-Za-z0-9_]*",
+        "token": "meta"
+      },
+      {
+        "match": "[^\"\\\\$]+",
+        "token": "string"
+      },
+      {
+        "match": "\\$",
+        "token": "string"
+      }
+    ]
+  },
+  "sample": "# Runtime environment\nNODE_ENV=production\nexport API_BASE=https://api.example.com/v1\nDATABASE_URL=\"postgres://user:${DB_PASS}@127.0.0.1:5432/app\"\nPORT=8080\nDEBUG=false"
+}

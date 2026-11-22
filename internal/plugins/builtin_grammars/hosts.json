@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "._-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [],
+  "auto_close": [],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b",
+        "token": "number"
+      },
+      {
+        "match": "(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[A-Za-z0-9._-]+)?",
+        "token": "number"
+      },
+      {
+        "match": "\\b(?:localhost|broadcasthost|ip6-localhost|ip6-loopback)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+",
+        "token": "property"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_-]*",
+        "token": "property"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Local development host overrides\n127.0.0.1       localhost\n::1             localhost\n127.0.0.1       api.local.test app.local.test"
+}

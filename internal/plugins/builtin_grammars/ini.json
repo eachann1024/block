@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "._-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["[", "]"],
+    ["{", "}"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["[", "]"],
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#include[ \\t]+(?:\"[^\"]*\"|<[^>]*>)",
+        "token": "meta"
+      },
+      {
+        "match": "[#;].*$",
+        "token": "comment"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(\\[)([^\\]\"\\r\\n]+)(\"[^\"]*\")(\\])",
+        "captures": {
+          "1": "punctuation",
+          "2": "heading",
+          "3": "string",
+          "4": "punctuation"
+        }
+      },
+      {
+        "match": "(\\[)([^\\]\\r\\n]+)(\\])",
+        "captures": {
+          "1": "punctuation",
+          "2": "heading",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "https?://[^\\s#;\"'<>]+",
+        "token": "link"
+      },
+      {
+        "match": "([A-Za-z0-9_*][A-Za-z0-9_.*\\-/\\[\\]]*)([ \\t]*)([=:])",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\\$\\{[^}]+\\}|\\$\\([^)]+\\)|%\\([^)]+\\)[a-zA-Z]",
+        "token": "meta"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "(?i)\\b(?:true|false|yes|no|on|off|null|none)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "[+-]?[0-9]+(?:\\.[0-9]+)?(?:[kKmMgGtT][iI]?[bB]?|[smhd])?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[\\[\\]{}()=,:;\\\\]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Service & app configuration\n[Unit]\nDescription = Block Sync Daemon\n\n[remote \"origin\"]\nurl = https://github.com/blockmd/block\nauto_sync = true\ninterval = 30s"
+}

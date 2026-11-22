@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "._-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "(#!)([A-Za-z0-9_-]+)([ \\t]*)(=)(.*)$",
+        "captures": {
+          "1": "meta",
+          "2": "property",
+          "4": "operator",
+          "5": "string"
+        }
+      },
+      {
+        "match": "https?://[^\\s,#;\"'<>]+",
+        "token": "link"
+      },
+      {
+        "match": "(?:#|;|//).*$",
+        "token": "comment"
+      },
+      {
+        "match": "(\\[)([^\\]\\r\\n]+)(\\])",
+        "captures": {
+          "1": "punctuation",
+          "2": "heading",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "%(?:APPEND|INSERT)%",
+        "token": "meta"
+      },
+      {
+        "match": "\\b(?:DOMAIN-SUFFIX|DOMAIN-KEYWORD|DOMAIN-WILDCARD|DOMAIN-REGEX|DOMAIN-SET|DOMAIN|IP-CIDR6|IP-CIDR|IP6-CIDR|IP-ASN|GEOIP|GEOSITE|USER-AGENT|URL-REGEX|PROCESS-NAME|SUBNET|DEST-PORT|DST-PORT|SRC-PORT|SRC-IP-CIDR|SRC-IP|IN-PORT|PROTOCOL|RULE-SET|SCRIPT|AND|OR|NOT|FINAL|MATCH|HOST-SUFFIX|HOST-KEYWORD|HOST-WILDCARD|HOST|URL-AND)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:REJECT-TINYGIF|REJECT-NO-DROP|REJECT-DROP|REJECT-200|REJECT-IMG|REJECT-DICT|REJECT-ARRAY|REJECT|DIRECT|PROXY|PASS|COMPATIBLE)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "([A-Za-z0-9_.*@/\\-]+)([ \\t]*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\\b(?:url-test|load-balance|http-request|http-response|force-remote-dns|extended-matching|no-resolve|dns-failed|socks5-tls|header-replace-regex|header-replace|header-add|header-del|reject-200|reject-img|reject-dict|reject-array|hysteria2|wireguard|select|fallback|smart|subnet|vmess|vless|trojan|snell|tuic|socks5|https|http|ssr|ss|ssh|direct|external|cron|event|generic|dns|header|reject|mock)\\b",
+        "token": "type"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9A-Fa-f]{0,4}:[0-9A-Fa-f:]+(?:/[0-9]{1,3})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b(?:true|false)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[(),=]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "#!name=Example Surge Module\n#!desc=Route domains and rewrite requests\n\n[General]\nloglevel = notify\ndns-server = 223.5.5.5, 1.1.1.1\n\n[Proxy]\nHK = ss, 198.51.100.1, 443, encrypt-method=aes-256-gcm, udp-relay=true\n\n[Proxy Group]\nProxy = select, HK, DIRECT\n\n[Rule]\nDOMAIN-SUFFIX,apple.com,DIRECT\nIP-CIDR,192.168.0.0/16,DIRECT,no-resolve\nRULE-SET,https://example.com/rules.list,Proxy\nFINAL,Proxy,dns-failed"
+}

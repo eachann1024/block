@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "._-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [],
+  "auto_close": [
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(?i)\\b(Host|Match|Include)\\b([ \\t]+)([^#\\r\\n]+)",
+        "captures": {
+          "1": "keyword",
+          "3": "heading"
+        }
+      },
+      {
+        "match": "(?i)\\b(?:HostName|User|Port|IdentityFile|IdentitiesOnly|ProxyJump|ProxyCommand|ForwardAgent|ForwardX11|ForwardX11Trusted|LocalForward|RemoteForward|DynamicForward|ServerAliveInterval|ServerAliveCountMax|StrictHostKeyChecking|UserKnownHostsFile|AddKeysToAgent|UseKeychain|Compression|ControlMaster|ControlPath|ControlPersist|SetEnv|SendEnv|AcceptEnv|PubkeyAuthentication|PasswordAuthentication|KbdInteractiveAuthentication|ChallengeResponseAuthentication|PermitRootLogin|AuthorizedKeysFile|AddressFamily|BindAddress|Ciphers|MACs|KexAlgorithms|HostKeyAlgorithms|PubkeyAcceptedAlgorithms|LogLevel|ConnectTimeout|ConnectionAttempts|RequestTTY|RemoteCommand|TCPKeepAlive|IPQoS|PreferredAuthentications|BatchMode|HashKnownHosts|VisualHostKey|CanonicalDomains|CanonicalizeHostname|CheckHostIP|ExitOnForwardFailure|GatewayPorts|IgnoreUnknown|NoHostAuthenticationForLocalhost|PermitLocalCommand|LocalCommand|UpdateHostKeys|VerifyHostKeyDNS|XAuthLocation|ListenAddress|Subsystem|AllowUsers|DenyUsers|AllowGroups|DenyGroups|MaxAuthTries|MaxSessions|ClientAliveInterval|ClientAliveCountMax|UsePAM|UseDNS|Banner)\\b",
+        "token": "property"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "%[%CdfGhiLlnprtu]",
+        "token": "meta"
+      },
+      {
+        "match": "(?:~|/)[^\\s#\"']+",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "(?i)\\b(?:yes|no|ask|auto|autoask|accept-new|none|any|force|quiet|all|prohibit-password|without-password)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b[0-9]+(?:[smhdw])?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[=,*?!]",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Bastion & production hosts\nHost prod-*\n  HostName 198.51.100.10\n  User deploy\n  Port 2222\n  IdentityFile ~/.ssh/id_ed25519\n  ForwardAgent yes\n  ServerAliveInterval 60"
+}
