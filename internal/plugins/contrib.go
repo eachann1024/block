@@ -2029,6 +2029,7 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 	// The note and selection belong to the notebook open right now; a command
 	// still queued after a notebook switch must not run against another one.
 	nbRoot := s.NotebookRoot()
+	notebookEpoch := s.notebookEpoch.Load()
 	switch cc.Source {
 	case "sidebar_menu":
 		if cc.Note == "" && cc.Folder == "" {
@@ -2053,7 +2054,7 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			return
 		}
 		defer unlock()
-		if s.NotebookRoot() != nbRoot {
+		if s.NotebookRoot() != nbRoot || s.notebookEpoch.Load() != notebookEpoch {
 			s.toast(pluginID, LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "warning", nil)
 			return
 		}
@@ -2075,8 +2076,22 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 		if cc.Note != "" || cc.Source == "sidebar_menu" || cc.Source == "tab_menu" {
 			s.contrib.setCommandNote(pluginID, cc.Note)
 		}
-		res, err := rt.Command(ctx, commandID, cc)
-		s.contrib.clearCommandNote(pluginID)
+		res, err := func() (*CommandResult, error) {
+			defer s.contrib.clearCommandNote(pluginID)
+			s.mu.Lock()
+			s.activeActionRT[pluginID] = rt
+			s.mu.Unlock()
+			defer func() {
+				s.mu.Lock()
+				if s.activeActionRT[pluginID] == rt {
+					delete(s.activeActionRT, pluginID)
+				}
+				s.mu.Unlock()
+			}()
+			scope := systemAction{notebookRoot: nbRoot, epoch: notebookEpoch}
+			cmdCtx := context.WithValue(ctx, systemActionKey{}, scope)
+			return rt.Command(cmdCtx, commandID, cc)
+		}()
 		if err != nil {
 			s.toast(pluginID, err.Error(), "error", nil)
 			return
