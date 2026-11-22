@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T08:25:38.348Z",
-  "latest_version": "1.0.903",
-  "latest_tag": "v1.0.903",
+  "updated_at": "2026-11-22T08:42:04.743Z",
+  "latest_version": "1.0.904",
+  "latest_tag": "v1.0.904",
   "releases": [
+    {
+      "version": "1.0.904",
+      "tag": "v1.0.904",
+      "published_at": "2026-11-22T08:42:04Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.904",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件命令现已支持由应用程序统一管理的快捷键。",
+          "快捷键设置页面现已采用分组展示，并新增了专门的插件快捷键设置区域。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin commands now support keyboard shortcuts managed directly by the application.",
+          "The shortcut settings page now organizes shortcuts into groups and adds a dedicated section for plugin shortcuts."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.904/block-macos-arm64.dmg",
+          "size": 15137683,
+          "sha256": "4cab29f3eea096bf1e9efe206963f495d64a186ae84dcc161579cff61b3e5e07"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.904/block-macos-x64.dmg",
+          "size": 16666679,
+          "sha256": "16bfb58e25155ebfa1efffada38ce4664f44882c70e209381eccf5485b2d7787"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.904/block-windows-x64-setup.exe",
+          "size": 12142243,
+          "sha256": "5e1812545388e04e4cc52b8f7b07515f55a5697092cb686f443dd41098dcea25"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.904/block-linux-x64.deb",
+          "size": 10697086,
+          "sha256": "13ed743c169d16a614b69812c794ebd8d3ad0ed0a1243592124c980007a6a92c"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.904/block-linux-x64.AppImage",
+          "size": 23644664,
+          "sha256": "6473abcc06756b992e4f263901fac00ea99a5792d46b328118df65d25ecade0e"
+        }
+      ]
+    },
     {
       "version": "1.0.903",
       "tag": "v1.0.903",
@@ -38,38 +96,7 @@
           "Added a theme design token to define the maximum width for annotation cards placed below content."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-macos-arm64.dmg",
-          "size": 15123315,
-          "sha256": "9d3044402b82704190638b49997d1bcbd4c0aed66c8c2d687029bc36e2149a0b"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-macos-x64.dmg",
-          "size": 16654923,
-          "sha256": "b9beb69043f82c0b978f4f0886d884ac8b4a9c982e05f92dabead9c428727456"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-windows-x64-setup.exe",
-          "size": 12131515,
-          "sha256": "8d06d85b5a75406208fd9b734e0436aa49e428309d9815ab6b9c055f8ff7be8e"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-linux-x64.deb",
-          "size": 10690336,
-          "sha256": "ef4c4a4746bbce618ac0470e7f000a42126c112d3930faff0486719cab61864b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-linux-x64.AppImage",
-          "size": 23632376,
-          "sha256": "71df14ec8652f16b88f6e2f18e6a7a243d343f41d3a42ac9a5f2ec911660c3c0"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.902",
@@ -2212,107 +2239,6 @@
           "Additional refinements and stability improvements."
         ],
         "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.854",
-      "tag": "v1.0.854",
-      "published_at": "2026-11-19T17:22:47Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.854",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化运行性能与资源占用表现。",
-          "改进表格编辑、列宽调整与单元格选择体验。",
-          "新增了一项提升日常记录与编辑效率的实用功能。",
-          "优化复制粘贴与文档格式转换的准确性。",
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。"
-        ],
-        "improvements": [
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "优化全局搜索、页内查找与大纲定位体验。",
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "优化了界面细节与日常编辑操作的顺滑度。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "改进表格编辑、列宽调整与单元格选择体验。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。",
-          "优化段落批注与表情回应的展示和交互细节。",
-          "优化运行性能与资源占用表现。",
-          "优化复制粘贴与文档格式转换的准确性。",
-          "支持应用内检查更新、跨版本日志展示与平滑升级。"
-        ],
-        "fixes": [
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "改进表格编辑、列宽调整与单元格选择体验。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "打磨设置面板、快捷键与菜单界面细节。"
-        ],
-        "other": [
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "完善了安装包构建与跨平台发布体验。",
-          "优化运行性能与资源占用表现。",
-          "优化复制粘贴与文档格式转换的准确性。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "打磨设置面板、快捷键与菜单界面细节。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Attach live editor selection snapshot to AI composer.",
-          "Replace rounded app icon with background-free cat mark.",
-          "Add host.perf.snapshot capability, treemap item, and live refresh.",
-          "Adopt 2D Bento storage map and inline hover breakdown without bottom pills.",
-          "Add amber and rose table tint tokens.",
-          "Replace 4-layer mascot SVGs with layered numbered SVGs.",
-          "Apply D1 low-saturation pastel palette to Bento storage tiles and breakdown bars.",
-          "Add settings layout and store detail dimension tokens.",
-          "Add SelectMenu dropdown helper."
-        ],
-        "improvements": [
-          "Optimize editor scroll smoothness by preserving layout cache, culling, and hover stability.",
-          "Simplify AI model selector labels and move AI settings into deck rail.",
-          "Keep default search body blank with generous reserved height.",
-          "Adjust editor body font size and surface tokens.",
-          "Refine Chip sizing and primary fill contrast.",
-          "Replace blue hover/selected tokens with neutral grays and add SelectedBorder.",
-          "Soften light table header background.",
-          "Soften dropdown trigger hover, press, and open border.",
-          "Replace blue notice border and swatch selection with neutral grays.",
-          "Cache note annotations by mtime and clean temp files once per process.",
-          "Shrink Myers diff trace allocations and prune empty history index keys.",
-          "Deduplicate clean-block checks and fast-path plain paragraphs on write.",
-          "Skip redundant macOS lsregister dumps when bundle marker matches."
-        ],
-        "fixes": [
-          "Track inline code edge for caret placement and IME composition.",
-          "Use EmptyPageStage for ghost page column width.",
-          "Hug short tab titles and left-align content.",
-          "Defer block focus and placeholder hints until input is focused.",
-          "Release controller mutex before previewing batch plans and polish AI view inputs.",
-          "Finish Codex and Agy chat turns.",
-          "Disable the block's own type in the handle menu."
-        ],
-        "other": [
-          "Update light tabs artboard and assets.",
-          "Add tab layout variants to edge-floating-panels.",
-          "Add empty-state design drafts and assets.",
-          "Add storage layout design drafts.",
-          "Sync official plugin Beta badges and image-host copy.",
-          "Add light, detail, and installed store artboards.",
-          "Add light folders settings artboards."
-        ]
       },
       "assets": []
     }
