@@ -352,17 +352,14 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 	}
 	version := strings.TrimSpace(inst.Manifest.Version)
 
-	if !inst.Enabled {
-		ui.Row(ctx.Key("plugin-dormant-banner-" + inst.Manifest.ID)).FillWidth().MinWidth(0).
-			Padding(theme.Space10, theme.Space12).Radius(theme.RadiusMD).Background(pal.Shell).Children(func() {
-			ui.Text(ctx, theme.Tr("已停用，以下设置在开启后生效", "Disabled — settings take effect when enabled")).
-				FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary)
-		})
-	}
 	ui.Column(ctx.Key("plugin-dormant-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
 		Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).
 		Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline).
 		Transition(bui.SurfaceStageTransition()).Children(func() {
+		if !inst.Enabled {
+			ui.Text(ctx, theme.Tr("已停用，开启右上角开关后生效", "Disabled — turn on the switch at top right to use it")).
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		}
 		if summary != "" {
 			ui.Text(ctx, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text)
 			ui.Box(ctx).FillWidth().Height(1).Background(pal.Hairline)
