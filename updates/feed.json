@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T09:39:45.163Z",
-  "latest_version": "1.0.906",
-  "latest_tag": "v1.0.906",
+  "updated_at": "2026-11-22T09:55:54.783Z",
+  "latest_version": "1.0.907",
+  "latest_tag": "v1.0.907",
   "releases": [
+    {
+      "version": "1.0.907",
+      "tag": "v1.0.907",
+      "published_at": "2026-11-22T09:55:54Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.907",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "在灯箱中打开视频时会自动进入原生全屏，并修复了深色界面外框样式的显示问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Videos opened in the lightbox viewer now automatically enter native fullscreen, and styling issues with dark interface chrome have been resolved."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-macos-arm64.dmg",
+          "size": 15142190,
+          "sha256": "1f69c114eb972dd6189581fabed6623a5635f3bd88eb98f98fd5e459d37a248c"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-macos-x64.dmg",
+          "size": 16676588,
+          "sha256": "120bf01ed60db6860c5bad278aba83dde6161360129491a2ed3ca78f8e1ee15e"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-windows-x64-setup.exe",
+          "size": 12149833,
+          "sha256": "1993d5f44418ea418190a7e1c0ad934cf07cef99f82b9672e6de7ff9b3844bc2"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-linux-x64.deb",
+          "size": 10707976,
+          "sha256": "24381477f17c55a863bd37fd60dc79353d67abfe102dbdcacc11afef8ec14904"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-linux-x64.AppImage",
+          "size": 23661048,
+          "sha256": "16f20496b3eebce094c9e501b7fb0307556fb67145fda6dc744963e254e36785"
+        }
+      ]
+    },
     {
       "version": "1.0.906",
       "tag": "v1.0.906",
@@ -28,38 +84,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-macos-arm64.dmg",
-          "size": 15140990,
-          "sha256": "970e3094fd1ed95c74cadf4056275f70c638ae665c162768e56c46c3612ae505"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-macos-x64.dmg",
-          "size": 16676160,
-          "sha256": "55a85510c5706fbd648afa7764ce937ed0116cb9365f3cd85a02e471492efb64"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-windows-x64-setup.exe",
-          "size": 12147965,
-          "sha256": "2345f608e8078f4b4235dcfc022e3c1e9559f26b4867b5af13b59c3b7172a5e9"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-linux-x64.deb",
-          "size": 10707208,
-          "sha256": "962b91aaa82d1d7f4db0b661ba0ba804a285ffdbe12f0218c6b1673f92bd46d2"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-linux-x64.AppImage",
-          "size": 23661048,
-          "sha256": "1515554b5f0049523c0367ef2f0af03610a312aa09e71ba9d25a6b428c1dd3c1"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.905",
@@ -1362,53 +1387,6 @@
         "fixes": [
           "Complete notification activation and sync failure handling.",
           "Select system-capable catalog variants."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.857",
-      "tag": "v1.0.857",
-      "published_at": "2026-11-20T20:18:59Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.857",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "新增了一项提升日常记录与编辑效率的实用功能。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Add cross-platform desktop system integration."
-        ],
-        "improvements": [],
-        "fixes": [
-          "Bind desktop calls to actions and recover interrupted trash.",
-          "Cancel macOS keychain commands on timeout.",
-          "Stage recycled files in Block data directory.",
-          "Revalidate notice targets and remove stale badges.",
-          "Preserve filenames containing newlines on macOS.",
-          "Report denied macOS notification permission.",
-          "Isolate system credentials by install source.",
-          "Notify when save-triggered sync fails to finish.",
-          "Retain original paths for items restored from Trash.",
-          "Recheck file picker actions and support folder multiselect."
         ],
         "other": []
       },
