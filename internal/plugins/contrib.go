@@ -1480,6 +1480,7 @@ type ResolvedMenuItem struct {
 	ID       string
 	Title    string
 	Command  string
+	Shortcut string
 	Icon     DuoIconSpec
 	OnNote   bool // sidebar_menu: shown on note rows
 	OnFolder bool // sidebar_menu: shown on folder rows
@@ -1767,12 +1768,19 @@ func (s *Supervisor) menuItems(pick func(*Contributes) []MenuContrib) []Resolved
 	loc := s.Locale()
 	var out []ResolvedMenuItem
 	for _, a := range s.enabledContribs() {
+		cmdShortcuts := make(map[string]string, len(a.Manifest.Contributes.Commands))
+		for _, cmd := range a.Manifest.Contributes.Commands {
+			if cmd.Shortcut != "" {
+				cmdShortcuts[cmd.ID] = cmd.Shortcut
+			}
+		}
 		for _, it := range pick(a.Manifest.Contributes) {
 			out = append(out, ResolvedMenuItem{
 				PluginID: a.Manifest.ID,
 				ID:       it.ID,
 				Title:    it.Title.Resolve(loc),
 				Command:  it.Command,
+				Shortcut: cmdShortcuts[it.Command],
 				Icon:     resolveContribIcon(it.Icon, a.Manifest.Icon),
 				OnNote:   it.showsOn(false),
 				OnFolder: it.showsOn(true),

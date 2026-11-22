@@ -151,6 +151,32 @@ func (c *Controller) InstalledCount() int {
 	return n
 }
 
+// CommandShortcuts returns enabled plugin commands for shortcut customization.
+// Passing an empty pluginID returns commands from every enabled plugin.
+func (c *Controller) CommandShortcuts(pluginID string) []modals.PluginCommandShortcut {
+	if c.sup == nil {
+		return nil
+	}
+	cmds := c.sup.Commands()
+	if len(cmds) == 0 {
+		return nil
+	}
+	out := make([]modals.PluginCommandShortcut, 0, len(cmds))
+	for _, cmd := range cmds {
+		if pluginID != "" && cmd.PluginID != pluginID {
+			continue
+		}
+		out = append(out, modals.PluginCommandShortcut{
+			PluginID:        cmd.PluginID,
+			PluginName:      cmd.PluginName,
+			CommandID:       cmd.ID,
+			Title:           cmd.Title,
+			DefaultShortcut: cmd.Shortcut,
+		})
+	}
+	return out
+}
+
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins with Settings pages.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
 	storeSpec := plugins.AppStoreIconSpec()

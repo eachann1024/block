@@ -231,6 +231,34 @@ func keyDisplayName(k ui.Key) string {
 // DefaultCommandPaletteShortcut is the default shortcut chord for the command palette.
 const DefaultCommandPaletteShortcut = "cmd-shift-p"
 
+// IsHostReservedShortcut reports chords the editor or app handles after plugin
+// shortcuts run (find, formatting, clipboard, zoom, tab navigation). Plugins
+// cannot bind them, so a plugin never shadows a built-in action.
+func IsHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
+	switch mods {
+	case ui.Cmd:
+		switch key {
+		case ui.KeyA, ui.KeyB, ui.KeyC, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyI,
+			ui.KeyS, ui.KeyU, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
+			ui.KeyEqual, ui.KeyMinus, ui.Key0, ui.KeyBackslash,
+			ui.KeyBracketLeft, ui.KeyBracketRight:
+			return true
+		}
+		return key >= ui.Key1 && key <= ui.Key9
+	case ui.Cmd | ui.Shift:
+		switch key {
+		case ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
+			ui.KeyBracketLeft, ui.KeyBracketRight:
+			return true
+		}
+	case ui.Cmd | ui.Shift | ui.Alt:
+		return key == ui.KeyV
+	case ui.Cmd | ui.Alt:
+		return key == ui.KeyC || key == ui.KeyLeft || key == ui.KeyRight
+	}
+	return false
+}
+
 // MatchShortcut reports whether the current frame's key press matches spec (e.g. "cmd-shift-t").
 func MatchShortcut(c *ui.Context, spec string) bool {
 	if c == nil {
