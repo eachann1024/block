@@ -23,9 +23,37 @@ import (
 )
 
 const (
-	defaultSearchShortcut = "cmd-shift-k"
-	defaultQuickShortcut  = "alt-n"
+	defaultSearchShortcut  = "cmd-shift-k"
+	defaultQuickShortcut   = "alt-n"
+	pluginShortcutDisabled = "-"
 )
+
+// PluginCommandShortcutAction returns the CustomShortcuts key for a plugin command.
+func PluginCommandShortcutAction(pluginID, commandID string) string {
+	return TabPluginPrefix + pluginID + "/" + commandID
+}
+
+// IsPluginCommandShortcutAction reports whether action refers to a plugin command shortcut.
+func IsPluginCommandShortcutAction(action string) bool {
+	return strings.HasPrefix(action, TabPluginPrefix)
+}
+
+// EffectivePluginCommandShortcut returns the active shortcut chord for a plugin
+// command, applying user overrides from AppState.CustomShortcuts.
+func EffectivePluginCommandShortcut(st model.AppState, pluginID, commandID, defaultShortcut string) string {
+	if st.CustomShortcuts != nil {
+		if raw, ok := st.CustomShortcuts[PluginCommandShortcutAction(pluginID, commandID)]; ok {
+			v := strings.TrimSpace(raw)
+			if v == pluginShortcutDisabled {
+				return ""
+			}
+			if v != "" {
+				return v
+			}
+		}
+	}
+	return strings.TrimSpace(defaultShortcut)
+}
 
 type shortcutActionSpec struct {
 	action   string
@@ -125,6 +153,7 @@ type Manager struct {
 	// Settings page state.
 	settingsOpen           bool
 	settingsTab            string
+	shortcutScope          int
 	recordingShortcut      string
 	justRecordedPasses     int
 	shortcutConflictNotice string
@@ -707,6 +736,10 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 			m.justRecordedPasses = 4
 			return
 		}
+		if (ev.Key == ui.KeyBackspace || ev.Key == ui.KeyDelete) && ev.Mods == 0 && IsPluginCommandShortcutAction(m.recordingShortcut) {
+			m.clearRecordedPluginShortcut(m.recordingShortcut)
+			return
+		}
 		if spec, ok := inputEventToShortcutSpec(ev); ok {
 			m.applyRecordedShortcut(m.recordingShortcut, spec)
 		}
@@ -819,6 +852,9 @@ func (m *Manager) renderSettingsBody(c *ui.Context, drawerOpen bool, onDismissDr
 					default:
 						if IsPluginSystemTab(tab) && m.PluginHost != nil {
 							m.PluginHost.RenderTabBody(c, tab, m.selectSettingsTab)
+							if pluginID, ok := strings.CutPrefix(tab, TabPluginPrefix); ok && pluginID != "" {
+								m.renderPluginShortcutsSection(c, pluginID)
+							}
 						}
 					}
 				})
@@ -2255,7 +2291,6 @@ func (m *Manager) saveFolderRules(rules []model.FolderRule) {
 
 // renderSettingsShortcutsTab renders the Shortcuts tab; every listed row is a recorder.
 func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
-	pal := theme.Ocean()
 	st := m.currentState()
 	searchSpec := EffectiveShortcut(st, "global_summon")
 	quickSpec := EffectiveShortcut(st, "quick_note")
@@ -2265,70 +2300,208 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 		strings.TrimSpace(st.ShortcutQuick) != "" ||
 		len(st.CustomShortcuts) > 0
 
+	var pluginCmds []PluginCommandShortcut
+	if m.PluginHost != nil {
+		pluginCmds = m.PluginHost.CommandShortcuts("")
+	}
+	hasPlugins := len(pluginCmds) > 0
+	if !hasPlugins {
+		m.shortcutScope = 0
+	}
+
+	resetAll := func() {
+		if !customized {
+			return
+		}
+		if internalui.SettingsTextAction(c, "settings-shortcuts-reset", theme.Tr("恢复默认", "Reset"), nil).Clicked() {
+			m.recordingShortcut = ""
+			m.shortcutConflictNotice = ""
+			m.mutateState(func(s *model.AppState) {
+				s.ShortcutSearch = ""
+				s.ShortcutQuick = ""
+				s.CustomShortcuts = nil
+			})
+		}
+	}
+
 	ui.Column(c.Key("settings-shortcuts-body")).FillWidth().Gap(theme.SettingsSectionGap).Children(func() {
-		internalui.SettingsSection(c, func() {
-			internalui.SettingsSectionTitle(c, theme.Tr("全局", "Global"), func() {
-				if !customized {
-					return
+		if hasPlugins {
+			ui.Row(c.Key("settings-shortcuts-toolbar")).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space12).Children(func() {
+				internalui.SettingsSegmented(c, "settings-shortcuts-scope", &m.shortcutScope, []internalui.SegmentOption{
+					{Label: theme.Tr("全部", "All")},
+					{Label: theme.Tr("内置", "Built-in")},
+					{Label: theme.Tr("插件", "Plugins")},
+				})
+				resetAll()
+			})
+		}
+
+		m.renderShortcutConflictNotice(c)
+
+		if m.shortcutScope == 0 || m.shortcutScope == 1 {
+			internalui.SettingsSection(c, func() {
+				var trailing func()
+				if !hasPlugins {
+					trailing = resetAll
 				}
-				if internalui.SettingsTextAction(c, "settings-shortcuts-reset", theme.Tr("恢复默认", "Reset"), nil).Clicked() {
-					m.recordingShortcut = ""
-					m.shortcutConflictNotice = ""
-					m.mutateState(func(s *model.AppState) {
-						s.ShortcutSearch = ""
-						s.ShortcutQuick = ""
-						s.CustomShortcuts = nil
+				internalui.SettingsSectionTitle(c, theme.Tr("全局", "Global"), trailing)
+
+				internalui.SettingsRow(c, theme.Tr("全局唤出", "Global Summon"), func() {
+					m.shortcutRecorderTray(c, "settings-rec-search", "global_summon", searchSpec)
+				})
+				internalui.SettingsRow(c, theme.Tr("速记小窗", "Quick Note"), func() {
+					m.shortcutRecorderTray(c, "settings-rec-quick", "quick_note", quickSpec)
+				})
+			})
+
+			internalui.SettingsSection(c, func() {
+				internalui.SettingsSectionTitle(c, theme.Tr("应用内", "In App"), nil)
+				internalui.SettingsRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
+					m.shortcutRecorderTray(c, "settings-keycap-search", "search", EffectiveShortcut(st, "search"))
+				})
+				internalui.SettingsRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
+					m.shortcutRecorderTray(c, "settings-keycap-find", "find", EffectiveShortcut(st, "find"))
+				})
+				internalui.SettingsRow(c, theme.Tr("新建笔记", "New Note"), func() {
+					m.shortcutRecorderTray(c, "settings-keycap-new", "new_note", EffectiveShortcut(st, "new_note"))
+				})
+				internalui.SettingsRow(c, theme.Tr("显示或隐藏侧栏", "Toggle Sidebar"), func() {
+					m.shortcutRecorderTray(c, "settings-keycap-sidebar", "toggle_sidebar", EffectiveShortcut(st, "toggle_sidebar"))
+				})
+				if m.AIEnabled == nil || m.AIEnabled() {
+					internalui.SettingsRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
+						m.shortcutRecorderTray(c, "settings-keycap-ai", "toggle_ai", EffectiveShortcut(st, "toggle_ai"))
 					})
 				}
+				internalui.SettingsRow(c, theme.Tr("导出与生成图片", "Export & Image"), func() {
+					m.shortcutRecorderTray(c, "settings-keycap-export", "export_image", EffectiveShortcut(st, "export_image"))
+				})
 			})
-			if m.shortcutConflictNotice != "" {
-				noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
-					Padding(theme.Space8, theme.Space12, theme.Space8, theme.Space12).Margin(0, 0, theme.Space8, 0).Radius(theme.RadiusMD).
-					Background(pal.WarningSurface)
-				internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
-				noticeRow.Children(func() {
-					ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
+		}
+
+		if (m.shortcutScope == 0 || m.shortcutScope == 2) && hasPlugins {
+			pal := theme.Ocean()
+			type pluginGroup struct {
+				id   string
+				name string
+				cmds []PluginCommandShortcut
+			}
+			var groups []pluginGroup
+			groupIdx := make(map[string]int, len(pluginCmds))
+			for _, cmd := range pluginCmds {
+				idx, ok := groupIdx[cmd.PluginID]
+				if !ok {
+					idx = len(groups)
+					groupIdx[cmd.PluginID] = idx
+					name := strings.TrimSpace(cmd.PluginName)
+					if name == "" {
+						name = cmd.PluginID
+					}
+					groups = append(groups, pluginGroup{id: cmd.PluginID, name: name})
+				}
+				groups[idx].cmds = append(groups[idx].cmds, cmd)
+			}
+			for _, grp := range groups {
+				internalui.SettingsSection(c, func() {
+					internalui.SettingsSectionTitle(c, grp.name, func() {
+						ui.Text(c, theme.Tr("插件", "Plugin")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(pal.TextSecondary).SingleLine()
+					})
+					for _, cmd := range grp.cmds {
+						action := PluginCommandShortcutAction(cmd.PluginID, cmd.CommandID)
+						eff := EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.CommandID, cmd.DefaultShortcut)
+						probeID := "settings-keycap-plugin-" + cmd.PluginID + "-" + cmd.CommandID
+						internalui.SettingsRow(c, cmd.Title, func() {
+							m.shortcutRecorderTray(c, probeID, action, eff)
+						})
+					}
 				})
 			}
+		}
 
-			internalui.SettingsRow(c, theme.Tr("全局唤出", "Global Summon"), func() {
-				m.shortcutRecorderTray(c, "settings-rec-search", "global_summon", searchSpec)
-			})
-			internalui.SettingsRow(c, theme.Tr("速记小窗", "Quick Note"), func() {
-				m.shortcutRecorderTray(c, "settings-rec-quick", "quick_note", quickSpec)
-			})
-		})
-
-		internalui.SettingsSection(c, func() {
-			internalui.SettingsSectionTitle(c, theme.Tr("应用内", "In App"), nil)
-			internalui.SettingsRow(c, theme.Tr("搜索笔记", "Search Notes"), func() {
-				m.shortcutRecorderTray(c, "settings-keycap-search", "search", EffectiveShortcut(st, "search"))
-			})
-			internalui.SettingsRow(c, theme.Tr("当前笔记查找", "Find in Note"), func() {
-				m.shortcutRecorderTray(c, "settings-keycap-find", "find", EffectiveShortcut(st, "find"))
-			})
-			internalui.SettingsRow(c, theme.Tr("新建笔记", "New Note"), func() {
-				m.shortcutRecorderTray(c, "settings-keycap-new", "new_note", EffectiveShortcut(st, "new_note"))
-			})
-			if m.AIEnabled == nil || m.AIEnabled() {
-				internalui.SettingsRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
-					m.shortcutRecorderTray(c, "settings-keycap-ai", "toggle_ai", EffectiveShortcut(st, "toggle_ai"))
-				})
-			}
-		})
-
-		if m.PluginHost != nil {
+		if m.PluginHost != nil && (m.shortcutScope == 0 || m.shortcutScope == 2) {
 			m.PluginHost.RenderSettingsSections(c, "shortcuts", m.selectSettingsTab)
 		}
+	})
+}
+
+func (m *Manager) renderPluginShortcutsSection(c *ui.Context, pluginID string) {
+	if m.PluginHost == nil {
+		return
+	}
+	cmds := m.PluginHost.CommandShortcuts(pluginID)
+	if len(cmds) == 0 {
+		return
+	}
+	st := m.currentState()
+	customized := false
+	for _, cmd := range cmds {
+		eff := EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.CommandID, cmd.DefaultShortcut)
+		if normalizeShortcutSpec(eff) != normalizeShortcutSpec(cmd.DefaultShortcut) {
+			customized = true
+			break
+		}
+	}
+	ui.Box(c.Key("plugin-shortcuts-wrap-"+pluginID)).FillWidth().Margin(theme.SettingsSectionGap, 0, 0, 0).Children(func() {
+		internalui.SettingsSection(c, func() {
+			internalui.SettingsSectionTitle(c, theme.Tr("快捷键", "Shortcuts"), func() {
+				if customized {
+					if internalui.SettingsTextAction(c, "plugin-shortcuts-reset-"+pluginID, theme.Tr("恢复默认", "Reset"), nil).Clicked() {
+						m.recordingShortcut = ""
+						m.shortcutConflictNotice = ""
+						m.mutateState(func(s *model.AppState) {
+							if s.CustomShortcuts == nil {
+								return
+							}
+							for _, cmd := range cmds {
+								delete(s.CustomShortcuts, PluginCommandShortcutAction(cmd.PluginID, cmd.CommandID))
+							}
+							if len(s.CustomShortcuts) == 0 {
+								s.CustomShortcuts = nil
+							}
+						})
+					}
+				}
+				if internalui.SettingsTextAction(c, "plugin-shortcuts-all-"+pluginID, theme.Tr("全部快捷键", "All Shortcuts"), nil).Clicked() {
+					m.selectSettingsTab("shortcuts")
+				}
+			})
+			m.renderShortcutConflictNotice(c)
+			for _, cmd := range cmds {
+				action := PluginCommandShortcutAction(cmd.PluginID, cmd.CommandID)
+				eff := EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.CommandID, cmd.DefaultShortcut)
+				probeID := "plugin-keycap-" + cmd.PluginID + "-" + cmd.CommandID
+				internalui.SettingsRow(c, cmd.Title, func() {
+					m.shortcutRecorderTray(c, probeID, action, eff)
+				})
+			}
+		})
+	})
+}
+
+func (m *Manager) renderShortcutConflictNotice(c *ui.Context) {
+	if m.shortcutConflictNotice == "" {
+		return
+	}
+	pal := theme.Ocean()
+	noticeRow := ui.Row(c.Key("settings-shortcut-conflict-notice")).FillWidth().
+		Padding(theme.Space8, theme.Space12, theme.Space8, theme.Space12).Margin(0, 0, theme.Space8, 0).Radius(theme.RadiusMD).
+		Background(pal.WarningSurface)
+	internalui.Probe(noticeRow, "settings-shortcut-conflict-notice")
+	noticeRow.Children(func() {
+		ui.Text(c, m.shortcutConflictNotice).FontSize(theme.FontBody).TextColor(pal.Warning)
 	})
 }
 
 func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 	pal := theme.Ocean()
 	recording := m.recordingShortcut == kind
+	emptySpec := strings.TrimSpace(spec) == ""
 	accLabel := formatShortcutLabel(spec)
 	if recording {
 		accLabel = theme.Tr("按下快捷键…", "Press shortcut…")
+	} else if emptySpec {
+		accLabel = theme.Tr("点击设置", "Click to set")
 	}
 	trayBG := ui.Transparent
 	borderCol := ui.Transparent
@@ -2350,6 +2523,12 @@ func (m *Manager) shortcutRecorderTray(c *ui.Context, id, kind, spec string) {
 		if recording {
 			ui.Box(c).PaddingX(theme.Space6).Children(func() {
 				ui.Text(c, accLabel).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+			})
+			return
+		}
+		if emptySpec {
+			ui.Box(c).PaddingX(theme.Space6).Children(func() {
+				ui.Text(c, accLabel).FontSize(theme.FontBody).TextColor(pal.TextSecondary).SingleLine()
 			})
 			return
 		}
@@ -2491,16 +2670,95 @@ func setActionShortcut(s *model.AppState, action, spec string) {
 	}
 }
 
+func (m *Manager) pluginCommandShortcutByAction(action string) (PluginCommandShortcut, bool) {
+	if m.PluginHost == nil || !IsPluginCommandShortcutAction(action) {
+		return PluginCommandShortcut{}, false
+	}
+	for _, cmd := range m.PluginHost.CommandShortcuts("") {
+		if PluginCommandShortcutAction(cmd.PluginID, cmd.CommandID) == action {
+			return cmd, true
+		}
+	}
+	return PluginCommandShortcut{}, false
+}
+
+func (m *Manager) effectiveActionShortcut(st model.AppState, action string) string {
+	if IsPluginCommandShortcutAction(action) {
+		if cmd, ok := m.pluginCommandShortcutByAction(action); ok {
+			return EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.CommandID, cmd.DefaultShortcut)
+		}
+		if st.CustomShortcuts != nil {
+			v := strings.TrimSpace(st.CustomShortcuts[action])
+			if v == pluginShortcutDisabled {
+				return ""
+			}
+			return v
+		}
+		return ""
+	}
+	return EffectiveShortcut(st, action)
+}
+
+func setPluginCommandShortcut(s *model.AppState, action, defaultSpec, spec string) {
+	normSpec := normalizeShortcutSpec(spec)
+	normDef := normalizeShortcutSpec(defaultSpec)
+	if normSpec == normDef {
+		setActionShortcut(s, action, "")
+		return
+	}
+	if normSpec == "" {
+		setActionShortcut(s, action, pluginShortcutDisabled)
+		return
+	}
+	setActionShortcut(s, action, spec)
+}
+
+func (m *Manager) clearRecordedPluginShortcut(action string) {
+	m.recordingShortcut = ""
+	m.justRecordedPasses = 4
+	m.shortcutConflictNotice = ""
+	defaultSpec := ""
+	if cmd, ok := m.pluginCommandShortcutByAction(action); ok {
+		defaultSpec = cmd.DefaultShortcut
+	}
+	m.mutateState(func(s *model.AppState) {
+		setPluginCommandShortcut(s, action, defaultSpec, "")
+	})
+}
+
 func (m *Manager) applyRecordedShortcut(action, spec string) {
 	m.recordingShortcut = ""
 	m.justRecordedPasses = 4
 	normNew := normalizeShortcutSpec(spec)
+	if IsPluginCommandShortcutAction(action) {
+		if mods, key, ok := internalui.ParseShortcut(spec); ok && internalui.IsHostReservedShortcut(mods, key) {
+			m.shortcutConflictNotice = theme.Tr("该快捷键为系统保留，请选择其他组合", "This shortcut is reserved by Block")
+			return
+		}
+	}
 	var conflictMsg string
+	var pluginCmds []PluginCommandShortcut
+	if m.PluginHost != nil {
+		pluginCmds = m.PluginHost.CommandShortcuts("")
+	}
+	actionDefault := ""
+	if IsPluginCommandShortcutAction(action) {
+		for _, cmd := range pluginCmds {
+			if PluginCommandShortcutAction(cmd.PluginID, cmd.CommandID) == action {
+				actionDefault = cmd.DefaultShortcut
+				break
+			}
+		}
+	}
 
 	m.mutateState(func(s *model.AppState) {
-		prevSpec := EffectiveShortcut(*s, action)
+		prevSpec := m.effectiveActionShortcut(*s, action)
 		if normalizeShortcutSpec(prevSpec) == normNew {
-			setActionShortcut(s, action, spec)
+			if IsPluginCommandShortcutAction(action) {
+				setPluginCommandShortcut(s, action, actionDefault, spec)
+			} else {
+				setActionShortcut(s, action, spec)
+			}
 			return
 		}
 		for _, other := range shortcutActionSpecs {
@@ -2508,12 +2766,19 @@ func (m *Manager) applyRecordedShortcut(action, spec string) {
 				continue
 			}
 			if normalizeShortcutSpec(EffectiveShortcut(*s, other.action)) == normNew {
+				otherLabel := theme.Tr(other.zh, other.en)
+				if prevSpec == "" {
+					conflictMsg = theme.Tr(
+						fmt.Sprintf("该快捷键已被「%s」占用", otherLabel),
+						fmt.Sprintf("Shortcut is already used by %s", otherLabel),
+					)
+					return
+				}
 				reassigned := prevSpec
 				if normalizeShortcutSpec(prevSpec) == normalizeShortcutSpec(other.def) {
 					reassigned = ""
 				}
 				setActionShortcut(s, other.action, reassigned)
-				otherLabel := theme.Tr(other.zh, other.en)
 				conflictMsg = theme.Tr(
 					fmt.Sprintf("已将冲突快捷键从「%s」调整为 %s", otherLabel, formatShortcutLabel(prevSpec)),
 					fmt.Sprintf("Reassigned conflicting shortcut from %s to %s", otherLabel, formatShortcutLabel(prevSpec)),
@@ -2521,7 +2786,41 @@ func (m *Manager) applyRecordedShortcut(action, spec string) {
 				break
 			}
 		}
-		setActionShortcut(s, action, spec)
+		if conflictMsg == "" {
+			for _, other := range pluginCmds {
+				otherAction := PluginCommandShortcutAction(other.PluginID, other.CommandID)
+				if otherAction == action {
+					continue
+				}
+				otherEff := EffectivePluginCommandShortcut(*s, other.PluginID, other.CommandID, other.DefaultShortcut)
+				if otherEff != "" && normalizeShortcutSpec(otherEff) == normNew {
+					swapSpec := prevSpec
+					if swapSpec != "" {
+						if mods, key, ok := internalui.ParseShortcut(swapSpec); ok && internalui.IsHostReservedShortcut(mods, key) {
+							swapSpec = ""
+						}
+					}
+					setPluginCommandShortcut(s, otherAction, other.DefaultShortcut, swapSpec)
+					if swapSpec == "" {
+						conflictMsg = theme.Tr(
+							fmt.Sprintf("已清除冲突快捷键「%s」的绑定", other.Title),
+							fmt.Sprintf("Cleared conflicting shortcut from %s", other.Title),
+						)
+					} else {
+						conflictMsg = theme.Tr(
+							fmt.Sprintf("已将冲突快捷键从「%s」调整为 %s", other.Title, formatShortcutLabel(swapSpec)),
+							fmt.Sprintf("Reassigned conflicting shortcut from %s to %s", other.Title, formatShortcutLabel(swapSpec)),
+						)
+					}
+					break
+				}
+			}
+		}
+		if IsPluginCommandShortcutAction(action) {
+			setPluginCommandShortcut(s, action, actionDefault, spec)
+		} else {
+			setActionShortcut(s, action, spec)
+		}
 	})
 	m.shortcutConflictNotice = conflictMsg
 }
