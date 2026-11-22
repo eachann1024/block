@@ -781,30 +781,8 @@ func (h *pluginHostUI) SetTarotMode(enabled *bool, toggle bool, room string) (pl
 	return <-ch, nil
 }
 
-// isHostReservedShortcut reports chords the editor or app handles after plugin
-// shortcuts run (find, formatting, clipboard, zoom, tab navigation). Plugins
-// cannot bind them, so a plugin never shadows a built-in action.
+// isHostReservedShortcut delegates to internal/ui.IsHostReservedShortcut so
+// Settings shortcut recording and runtime dispatch share one source of truth.
 func isHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
-	switch mods {
-	case ui.Cmd:
-		switch key {
-		case ui.KeyA, ui.KeyB, ui.KeyC, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyI,
-			ui.KeyS, ui.KeyU, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
-			ui.KeyEqual, ui.KeyMinus, ui.Key0, ui.KeyBackslash,
-			ui.KeyBracketLeft, ui.KeyBracketRight:
-			return true
-		}
-		return key >= ui.Key1 && key <= ui.Key9
-	case ui.Cmd | ui.Shift:
-		switch key {
-		case ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
-			ui.KeyBracketLeft, ui.KeyBracketRight:
-			return true
-		}
-	case ui.Cmd | ui.Shift | ui.Alt:
-		return key == ui.KeyV
-	case ui.Cmd | ui.Alt:
-		return key == ui.KeyC || key == ui.KeyLeft || key == ui.KeyRight
-	}
-	return false
+	return blockui.IsHostReservedShortcut(mods, key)
 }

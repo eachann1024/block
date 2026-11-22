@@ -34,6 +34,17 @@ type PluginNavEntry struct {
 	DrawIcon  func(c *ui.Context, size float32, colors theme.IconColors)
 }
 
+// PluginCommandShortcut describes one enabled plugin command whose shortcut
+// can be viewed and customized from Settings (both the plugin's own page and
+// the global Shortcuts tab).
+type PluginCommandShortcut struct {
+	PluginID        string
+	PluginName      string
+	CommandID       string
+	Title           string
+	DefaultShortcut string
+}
+
 // PluginSettingsHost decouples Settings UI chrome from the App Store & out-of-process plugin runtime.
 type PluginSettingsHost interface {
 	SettingsTabChanged(previous, current string)
@@ -51,4 +62,5 @@ type PluginSettingsHost interface {
 	RenderHeaderExtras(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderTabBody(c *ui.Context, tab string, onSelectTab func(nextTab string))
 	RenderSettingsSections(c *ui.Context, tab string, onSelectTab func(nextTab string))
+	CommandShortcuts(pluginID string) []PluginCommandShortcut
 }

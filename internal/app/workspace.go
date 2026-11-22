@@ -4431,11 +4431,13 @@ func (w *Workspace) handlePluginCommandShortcuts(c *ui.Context) {
 		return
 	}
 	textFocused := c.FocusTakesText()
+	st := w.State()
 	for _, cmd := range sup.Commands() {
-		if cmd.Shortcut == "" {
+		spec := modals.EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.ID, cmd.Shortcut)
+		if spec == "" {
 			continue
 		}
-		mods, key, ok := blockui.ParseShortcut(cmd.Shortcut)
+		mods, key, ok := blockui.ParseShortcut(spec)
 		if !ok || isHostReservedShortcut(mods, key) {
 			continue
 		}
@@ -5331,12 +5333,25 @@ func (w *Workspace) pluginSidebarFileBadges(activeNB string) map[string][]plugin
 	return sup.FileBadgesForNotebook(activeNB)
 }
 
+func (w *Workspace) applyPluginMenuShortcuts(items []plugins.ResolvedMenuItem) []plugins.ResolvedMenuItem {
+	if len(items) == 0 {
+		return items
+	}
+	st := w.State()
+	for i := range items {
+		if items[i].Command != "" {
+			items[i].Shortcut = modals.EffectivePluginCommandShortcut(st, items[i].PluginID, items[i].Command, items[i].Shortcut)
+		}
+	}
+	return items
+}
+
 func (w *Workspace) pluginSidebarMenuItems() []plugins.ResolvedMenuItem {
 	sup := w.Plugins()
 	if sup == nil {
 		return nil
 	}
-	return sup.SidebarMenuItems()
+	return w.applyPluginMenuShortcuts(sup.SidebarMenuItems())
 }
 
 func (w *Workspace) onPluginSidebarMenuItem(it plugins.ResolvedMenuItem, targetPath string, isDir bool) {
@@ -5427,7 +5442,7 @@ func (w *Workspace) pluginPageMenuItems() []plugins.ResolvedMenuItem {
 	if sup == nil {
 		return nil
 	}
-	return sup.PageMenuItems()
+	return w.applyPluginMenuShortcuts(sup.PageMenuItems())
 }
 
 func (w *Workspace) onPluginPageMenuItem(it plugins.ResolvedMenuItem) {
@@ -5448,7 +5463,7 @@ func (w *Workspace) pluginTabMenuItems() []plugins.ResolvedMenuItem {
 	if sup == nil {
 		return nil
 	}
-	return sup.TabMenuItems()
+	return w.applyPluginMenuShortcuts(sup.TabMenuItems())
 }
 
 // onPluginTabMenuItem runs a tab_menu command against the right-clicked tab,
@@ -5490,6 +5505,7 @@ func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 	if w.palette.IsOpen() {
 		var items []PaletteItem
 		if sup := w.Plugins(); sup != nil {
+			st := w.State()
 			for _, cmd := range sup.Commands() {
 				var ic *plugins.DuoIconSpec
 				if len(cmd.Icon.StrokePaths) > 0 {
@@ -5500,7 +5516,7 @@ func (w *Workspace) renderPluginOverlays(c *ui.Context) {
 					ID:       cmd.PluginID + "/" + cmd.ID,
 					Title:    cmd.Title,
 					Subtitle: cmd.PluginName,
-					Shortcut: cmd.Shortcut,
+					Shortcut: modals.EffectivePluginCommandShortcut(st, cmd.PluginID, cmd.ID, cmd.Shortcut),
 					Icon:     ic,
 				})
 			}
