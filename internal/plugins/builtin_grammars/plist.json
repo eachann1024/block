@@ -100,6 +100,13 @@
         "token": "comment"
       },
       {
+        "match": "(\"(?:\\\\.|[^\"\\\\])*\")(\\s*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
         "match": "\"(?:\\\\.|[^\"\\\\])*\"",
         "token": "string"
       },

@@ -837,27 +837,67 @@ func LanguageGeneration() uint64 {
 	return activeLangGen.Load()
 }
 
-// ResolveCodeLanguageForFile matches filePath against active language plugins
-// (exact filename first, then longest matching extension such as .d.ts before
-// .ts). Returns (nil, "") when none match.
-func ResolveCodeLanguageForFile(filePath string) (*codeed.Language, string) {
-	base := strings.ToLower(filepath.Base(filePath))
-	for _, snap := range languageSnapshots() {
-		if info := snap.byFilename[base]; info != nil {
+func resolveInSnapshot(snap *languageSnapshot, base string) (*codeed.Language, string) {
+	if snap == nil {
+		return nil, ""
+	}
+	if info := snap.byFilename[base]; info != nil {
+		return info.CodeLang, info.Contrib.ID
+	}
+	for i := strings.IndexByte(base, '.'); i >= 0 && i < len(base)-1; {
+		if info := snap.byExt[base[i:]]; info != nil {
 			return info.CodeLang, info.Contrib.ID
 		}
-		for i := strings.IndexByte(base, '.'); i >= 0 && i < len(base)-1; {
-			if info := snap.byExt[base[i:]]; info != nil {
-				return info.CodeLang, info.Contrib.ID
-			}
-			next := strings.IndexByte(base[i+1:], '.')
-			if next < 0 {
-				break
-			}
-			i += 1 + next
+		next := strings.IndexByte(base[i+1:], '.')
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	return nil, ""
+}
+
+// ResolvePluginCodeLanguageForFile matches filePath against enabled user
+// language plugins only (excluding built-in grammars).
+func ResolvePluginCodeLanguageForFile(filePath string) (*codeed.Language, string) {
+	base := strings.ToLower(filepath.Base(filePath))
+	return resolveInSnapshot(activeLangSnap.Load(), base)
+}
+
+// ResolveBuiltinCodeLanguageForFile matches filePath against built-in grammars
+// only (including .env.* prefix matching).
+func ResolveBuiltinCodeLanguageForFile(filePath string) (*codeed.Language, string) {
+	base := strings.ToLower(filepath.Base(filePath))
+	b := builtinLanguages()
+	if lang, tag := resolveInSnapshot(b, base); lang != nil {
+		return lang, tag
+	}
+	if b != nil && strings.HasPrefix(base, ".env.") {
+		if info := b.byTag["dotenv"]; info != nil {
+			return info.CodeLang, info.Contrib.ID
 		}
 	}
 	return nil, ""
+}
+
+// ResolveCodeLanguageForFile matches filePath against active language plugins
+// first, then built-in grammars (exact filename first, then longest matching
+// extension such as .d.ts before .ts). Returns (nil, "") when none match.
+func ResolveCodeLanguageForFile(filePath string) (*codeed.Language, string) {
+	if lang, tag := ResolvePluginCodeLanguageForFile(filePath); lang != nil {
+		return lang, tag
+	}
+	return ResolveBuiltinCodeLanguageForFile(filePath)
+}
+
+// ResolveCodeLanguageByTag returns the compiled editor language and canonical
+// language ID matching tag (enabled plugins first, then built-in grammars).
+func ResolveCodeLanguageByTag(tag string) (*codeed.Language, string) {
+	info := lookupLanguageTag(tag)
+	if info == nil || info.CodeLang == nil {
+		return nil, ""
+	}
+	return info.CodeLang, info.Contrib.ID
 }
 
 // languageSnapshots returns enabled plugin languages first, then built-in
