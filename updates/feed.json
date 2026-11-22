@@ -1,10 +1,76 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T07:21:58.663Z",
-  "latest_version": "1.0.902",
-  "latest_tag": "v1.0.902",
+  "updated_at": "2026-11-22T08:25:38.348Z",
+  "latest_version": "1.0.903",
+  "latest_tag": "v1.0.903",
   "releases": [
+    {
+      "version": "1.0.903",
+      "tag": "v1.0.903",
+      "published_at": "2026-11-22T08:25:37Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.903",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "批注卡片现已自适应窄栏、宽屏以及段落下方等多种视图布局。"
+        ],
+        "improvements": [
+          "界面按钮恢复了强调色边框样式，并新增了柔和、圆点和紧凑等多种外观选项。",
+          "商店中的卡片操作按钮统一采用了边框样式与规范的固定尺寸。"
+        ],
+        "fixes": [],
+        "other": [
+          "在主题设计规范中新增了段落下方批注卡片的最大宽度配置。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Annotation cards now adapt flexibly across narrow, wide, and below-paragraph views."
+        ],
+        "improvements": [
+          "Interface buttons now feature restored accent outlines alongside new soft, dot, and compact appearance options.",
+          "Card action buttons in the store now use a unified outline style with standardized fixed dimensions."
+        ],
+        "fixes": [],
+        "other": [
+          "Added a theme design token to define the maximum width for annotation cards placed below content."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-macos-arm64.dmg",
+          "size": 15123315,
+          "sha256": "9d3044402b82704190638b49997d1bcbd4c0aed66c8c2d687029bc36e2149a0b"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-macos-x64.dmg",
+          "size": 16654923,
+          "sha256": "b9beb69043f82c0b978f4f0886d884ac8b4a9c982e05f92dabead9c428727456"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-windows-x64-setup.exe",
+          "size": 12131515,
+          "sha256": "8d06d85b5a75406208fd9b734e0436aa49e428309d9815ab6b9c055f8ff7be8e"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-linux-x64.deb",
+          "size": 10690336,
+          "sha256": "ef4c4a4746bbce618ac0470e7f000a42126c112d3930faff0486719cab61864b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.903/block-linux-x64.AppImage",
+          "size": 23632376,
+          "sha256": "71df14ec8652f16b88f6e2f18e6a7a243d343f41d3a42ac9a5f2ec911660c3c0"
+        }
+      ]
+    },
     {
       "version": "1.0.902",
       "tag": "v1.0.902",
@@ -30,38 +96,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-macos-arm64.dmg",
-          "size": 15121863,
-          "sha256": "d8318556577b7fe74bf837c3995e40c5c947167518b5494f021e648bf038dccf"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-macos-x64.dmg",
-          "size": 16651497,
-          "sha256": "59b9c4bc0115c4a9233ddf3373831a0cecde1bcedb391f57303197f8bcfe1a1d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-windows-x64-setup.exe",
-          "size": 12126915,
-          "sha256": "8e525ebc09a1465295d8ad02e4129c57fe0dfecf77729f32967904d231a3e4f4"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-linux-x64.deb",
-          "size": 10697502,
-          "sha256": "0af44dfd7dffa4c19190f40c6aedd441f220d2d02cf779d82b2e269b23856164"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-linux-x64.AppImage",
-          "size": 23624184,
-          "sha256": "fddbb19696c2682ec6ce090976baf19848955480016dd5ea9397a6bd746b46bb"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.901",
@@ -2278,69 +2313,6 @@
           "Add light, detail, and installed store artboards.",
           "Add light folders settings artboards."
         ]
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.696",
-      "tag": "v1.0.696",
-      "published_at": "2026-11-19T06:04:09Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.696",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "改进表格编辑、列宽调整与单元格选择体验。",
-          "新增了一项提升日常记录与编辑效率的实用功能。",
-          "优化智能体连接、模型选择与对话辅助体验。"
-        ],
-        "improvements": [
-          "优化了界面细节与日常编辑操作的顺滑度。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。",
-          "优化全局搜索、页内查找与大纲定位体验。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化段落批注与表情回应的展示和交互细节。"
-        ],
-        "fixes": [
-          "优化复制粘贴与文档格式转换的准确性。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Replace header icon with looping cat blink mark.",
-          "Add paper style.go, paper themes.go.",
-          "Add note statistics and tab file reveal.",
-          "Simplify AI settings to single-column accordion, add provider modal, and enforce full permissions.",
-          "Replace fake status pill with muted status text and enable toggle.",
-          "Keep only 3 API provider presets and add T3 Code-style local agent onboarding."
-        ],
-        "improvements": [
-          "Polish quick capture and dot pager controls.",
-          "Implement differentiated 12-theme paper export rendering and theme picker thumbnails.",
-          "Keep the outline rail below window popups.",
-          "Render app version in muted secondary text.",
-          "Use native fonts for the default interface and editor.",
-          "Hide AI actions when the assistant is disabled.",
-          "Rebuild website hero mock to match real app shell with tabs, rendered blocks and adaptive layout.",
-          "Prefer available right margin for annotation badges."
-        ],
-        "fixes": [
-          "Deduplicate LaunchServices app registrations and add Markdown document icon.",
-          "Paint brand scene behind panels and make sidebar search transparent.",
-          "Unify two-step Cmd+A block selection across Quick Note and all block types.",
-          "Fix paper export fidelity and preserve long documents."
-        ],
-        "other": []
       },
       "assets": []
     }
