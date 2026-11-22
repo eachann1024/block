@@ -1418,15 +1418,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						},
 					},
 				)
-				var treePlugins []plugins.ResolvedMenuItem
+				items = append(items, blockui.MenuItemSpec{Separator: true})
 				for _, pm := range p.PluginContextMenu {
 					if (targetDir && pm.OnFolder) || (!targetDir && pm.OnNote) {
-						treePlugins = append(treePlugins, pm)
-					}
-				}
-				if len(treePlugins) > 0 {
-					items = append(items, blockui.MenuItemSpec{Separator: true})
-					for _, pm := range treePlugins {
 						pmItem := pm
 						spec := blockui.MenuItemSpec{
 							ID:    "tree-plugin:" + pmItem.PluginID + "/" + pmItem.ID,
@@ -1448,6 +1442,17 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					}
 				}
 				items = append(items,
+					blockui.MenuItemSpec{
+						ID:    "reveal",
+						Label: revealFileLabel(),
+						Icon:  &icReveal,
+						OnClick: func() {
+							p.State.ClosePopups()
+							if p.OnRevealItem != nil {
+								p.OnRevealItem(targetPath)
+							}
+						},
+					},
 					blockui.MenuItemSpec{Separator: true},
 					blockui.MenuItemSpec{
 						ID:       "trash",
@@ -1459,18 +1464,6 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							p.State.ClosePopups()
 							if p.OnTrashItem != nil {
 								p.OnTrashItem(targetPath)
-							}
-						},
-					},
-					blockui.MenuItemSpec{Separator: true},
-					blockui.MenuItemSpec{
-						ID:    "reveal",
-						Label: revealFileLabel(),
-						Icon:  &icReveal,
-						OnClick: func() {
-							p.State.ClosePopups()
-							if p.OnRevealItem != nil {
-								p.OnRevealItem(targetPath)
 							}
 						},
 					},
