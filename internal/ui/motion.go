@@ -10,12 +10,18 @@ import (
 
 // Scheme A uses short ease-out transitions with immediate state colors.
 var (
-	motionEase = ui.CubicBezier(0.2, 0.8, 0.25, 1)
+	motionEase     = ui.CubicBezier(0.2, 0.8, 0.25, 1)
+	treeDrawerEase = ui.CubicBezier(0.22, 1, 0.36, 1)
 
 	// Shared scalar presets for controls and panel layout.
 	SpringTactile = ui.Animation{Duration: 100 * time.Millisecond, Ease: motionEase}
 	SpringPanel   = ui.Animation{Duration: 150 * time.Millisecond, Ease: motionEase}
 	jumpScroll    = ui.Animation{Duration: 160 * time.Millisecond, Ease: motionEase}
+
+	// Sidebar tree damped-drawer presets (Scheme A: smooth open, crisp close).
+	TreeDrawerOpen  = ui.Animation{Duration: 220 * time.Millisecond, Ease: treeDrawerEase}
+	TreeDrawerClose = ui.Animation{Duration: 150 * time.Millisecond, Ease: treeDrawerEase}
+	TreeChevronAnim = ui.Animation{Duration: 180 * time.Millisecond, Ease: treeDrawerEase}
 
 	// FadeColor is used where the moving indicator itself also changes tint.
 	FadeColor = ui.Animation{
@@ -25,6 +31,31 @@ var (
 		NonMotion: true,
 	}
 )
+
+// TreeDrawerProgress animates a sidebar folder drawer between 0 (collapsed) and
+// 1 (expanded), snapping immediately during tests.
+func TreeDrawerProgress(el ui.Element, key string, expanded bool) (float32, bool) {
+	target := float32(0)
+	anim := TreeDrawerClose
+	if expanded {
+		target = 1
+		anim = TreeDrawerOpen
+	}
+	if testing.Testing() {
+		return target, true
+	}
+	p := el.AnimateTo(key, target, anim)
+	settled := el.Settled(key)
+	if p < 0 {
+		p = 0
+	} else if p > 1 {
+		p = 1
+	}
+	if settled || almostZero(p-target, 0.001) {
+		return target, settled
+	}
+	return p, false
+}
 
 // JumpScrollAnimation returns the scroll animation for in-document jumps,
 // snapping immediately during tests or initial tab mount when smooth is false.

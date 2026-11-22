@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -42,22 +43,27 @@ var knownTextExts = map[string]bool{
 	"toml": true, "ini": true, "cfg": true, "cnf": true, "conf": true, "env": true, "properties": true,
 	"sgmodule": true, "sgsnippet": true, "dconf": true, "lpx": true, "plugin": true, "module": true, "qx": true, "snippet": true, "list": true, "stoverride": true,
 	"nginx": true, "nginxconf": true, "caddy": true, "caddyfile": true, "sshconfig": true, "xcconfig": true, "hosts": true,
+	"htaccess": true, "apacheconf": true, "vhost": true, "haproxy": true, "cron": true, "crontab": true, "procfile": true, "pip": true,
 	"service": true, "socket": true, "timer": true, "target": true, "mount": true, "desktop": true, "inf": true,
 	"json": true, "jsonc": true, "json5": true, "jsonl": true, "ndjson": true, "xml": true, "svg": true, "xsl": true,
 	"html": true, "htm": true, "xhtml": true, "css": true, "scss": true, "less": true,
+	"hbs": true, "handlebars": true, "mustache": true, "hjs": true, "ejs": true,
+	"tmpl": true, "gotmpl": true, "gohtml": true, "tpl": true,
+	"http": true, "rest": true, "prisma": true, "thrift": true,
 	"yml": true, "yaml": true,
 	"js": true, "jsx": true, "mjs": true, "cjs": true,
 	"ts": true, "tsx": true, "mts": true, "cts": true,
 	"py": true, "rs": true, "go": true, "java": true,
 	"c": true, "h": true, "cc": true, "cpp": true, "hpp": true, "hh": true,
 	"cs": true, "rb": true, "php": true, "lua": true, "sql": true,
-	"sh": true, "bash": true, "zsh": true, "fish": true, "ps1": true, "bat": true, "cmd": true,
+	"sh": true, "bash": true, "zsh": true, "fish": true, "ps1": true, "psm1": true, "psd1": true, "ps1xml": true, "bat": true, "cmd": true,
 	"vue": true, "svelte": true, "astro": true,
-	"lock": true, "gradle": true, "mod": true, "sum": true, "work": true, "plist": true, "entitlements": true, "strings": true, "pbxproj": true,
+	"lock": true, "gradle": true, "groovy": true, "gvy": true, "gy": true, "gsh": true, "cmake": true, "just": true,
+	"mod": true, "sum": true, "work": true, "plist": true, "entitlements": true, "strings": true, "pbxproj": true,
 	"rst": true, "tex": true, "latex": true, "ltx": true,
 	"lean": true, "mmd": true, "mermaid": true, "bib": true, "graphql": true, "proto": true, "zig": true,
 	"kt": true, "kts": true, "swift": true, "dart": true,
-	"ex": true, "exs": true, "erl": true, "hs": true, "ml": true, "clj": true, "scala": true,
+	"ex": true, "exs": true, "heex": true, "leex": true, "eex": true, "erl": true, "hs": true, "ml": true, "clj": true, "scala": true,
 	"diff": true, "patch": true,
 	"gitignore": true, "dockerignore": true, "npmignore": true, "prettierignore": true, "eslintignore": true, "cursorignore": true, "hgignore": true, "ignore": true, "editorconfig": true,
 	"npmrc": true, "prettierrc": true, "eslintrc": true, "babelrc": true,
@@ -66,6 +72,17 @@ var knownTextExts = map[string]bool{
 
 func extOf(path string) string {
 	return strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+}
+
+// KnownTextExtensions returns the sorted dot-prefixed text, config, and code
+// file extensions recognized by Block.
+func KnownTextExtensions() []string {
+	out := make([]string, 0, len(knownTextExts))
+	for ext := range knownTextExts {
+		out = append(out, "."+ext)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsSVGPath reports whether path has an .svg extension (case-insensitive).

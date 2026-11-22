@@ -3,35 +3,22 @@
 package plugins
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"mime"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
 const (
-	linuxCustomMIMEPrefix  = "application/x-block-ext-"
-	linuxHelperDesktopName = "block-plugins.desktop"
-	linuxManagedMarker     = "# Managed-By=block-file-associations"
-	linuxLegacyMIMEPackage = "block-plugins.xml"
+	linuxLegacyHelperDesktopName = "block-plugins.desktop"
+	linuxManagedMarker           = "# Managed-By=block-file-associations"
+	linuxLegacyMIMEPackage       = "block-plugins.xml"
 )
-
-func isFileAssocLockPIDAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
-}
 
 func linuxXDGDataHome() string {
 	if xdg := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); xdg != "" {
@@ -43,29 +30,14 @@ func linuxXDGDataHome() string {
 	return ""
 }
 
-func linuxXDGDataDirs(dataHome string) []string {
-	dirsEnv := strings.TrimSpace(os.Getenv("XDG_DATA_DIRS"))
-	if dirsEnv == "" {
-		dirsEnv = "/usr/local/share:/usr/share"
+func linuxXDGConfigHome() string {
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Clean(xdg)
 	}
-	var out []string
-	seen := make(map[string]struct{})
-	add := func(d string) {
-		clean := filepath.Clean(strings.TrimSpace(d))
-		if clean == "" || clean == "." {
-			return
-		}
-		if _, dup := seen[clean]; dup {
-			return
-		}
-		seen[clean] = struct{}{}
-		out = append(out, clean)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config")
 	}
-	add(dataHome)
-	for _, d := range filepath.SplitList(dirsEnv) {
-		add(d)
-	}
-	return out
+	return ""
 }
 
 func resolveLinuxDesktopExec() (string, error) {
@@ -95,130 +67,44 @@ func resolveLinuxDesktopExec() (string, error) {
 	return raw, nil
 }
 
-// buildLinuxDesktopExecLine builds the Freedesktop Desktop Entry Exec= value.
-// For paths containing literal '%', GIO checks argv[0] before field-code
-// expansion yet expands '%' across the entire Exec line on launch; wrapping
-// through /usr/bin/env -- with '%%' lets GIO both validate argv[0] and pass
-// the literal '%' path at launch time.
-func buildLinuxDesktopExecLine(path string) string {
-	encoded := encodeDesktopExecToken(path)
-	if strings.Contains(path, "%") {
-		encoded = strings.ReplaceAll(encoded, "%", "%%")
-		return "/usr/bin/env -- " + encoded + " %F"
-	}
-	return encoded + " %F"
+// linuxHelperDesktopIDForExec derives a stable per-installation helper desktop
+// file ID so coexisting Linux installs (system .deb, user ~/.local/bin, or
+// multiple AppImages) never overwrite each other's Exec= target or MimeType=.
+func linuxHelperDesktopIDForExec(execPath string) string {
+	return "block-assoc-" + stableInstallScopeHash(canonicalLinuxExecPath(execPath)) + ".desktop"
 }
 
-func encodeDesktopExecToken(path string) string {
-	const reserved = " \t\n\"'\\><~|&;$*?#()`"
-	quoted := path
-	if strings.ContainsAny(path, reserved) {
-		var b strings.Builder
-		b.WriteByte('"')
-		for i := 0; i < len(path); i++ {
-			c := path[i]
-			if c == '"' || c == '`' || c == '$' || c == '\\' {
-				b.WriteByte('\\')
-			}
-			b.WriteByte(c)
-		}
-		b.WriteByte('"')
-		quoted = b.String()
-	}
-	return strings.ReplaceAll(quoted, `\`, `\\`)
-}
-
-type linuxGlobMatch struct {
-	mimeType string
-	weight   int
-}
-
-func loadLinuxMIMEGlobs(dataHome string) map[string][]string {
-	bestByExt := make(map[string][]linuxGlobMatch)
-	seen := make(map[string]map[string]int)
-	blockedLower := make(map[string]struct{})
-
-	// Scan XDG data dirs from highest precedence (dataHome) to system defaults.
-	// Per Shared MIME-info spec, __NOGLOBS__ suppresses globs for that MIME type
-	// from LOWER-precedence directories while still honoring replacement globs
-	// declared in the SAME directory.
-	for _, baseDir := range linuxXDGDataDirs(dataHome) {
-		f, err := os.Open(filepath.Join(baseDir, "mime", "globs2"))
-		if err != nil {
-			continue
-		}
-		dirBlocked := make(map[string]struct{})
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
+// loadActiveMainLinuxDesktopMIMEs inspects XDG application directories in
+// precedence order for launchable non-managed main Block desktop entries
+// (block-user.desktop and block.desktop) that target execPath, returning the
+// MIME types already covered by this installation's main entry.
+func loadActiveMainLinuxDesktopMIMEs(dataHome, execPath string) map[string]struct{} {
+	dataDirs := linuxXDGDataDirsFromEnv(dataHome, os.Getenv("XDG_DATA_DIRS"))
+	out := make(map[string]struct{})
+	for _, desktopID := range []string{"block-user.desktop", "block.desktop"} {
+		for _, baseDir := range dataDirs {
+			p := filepath.Join(baseDir, "applications", desktopID)
+			raw, err := os.ReadFile(p)
+			if err != nil {
 				continue
 			}
-			parts := strings.Split(line, ":")
-			if len(parts) < 3 {
+			if strings.Contains(string(raw), linuxManagedMarker) {
 				continue
 			}
-			weight, wErr := strconv.Atoi(strings.TrimSpace(parts[0]))
-			if wErr != nil {
-				weight = 50
+			entry := parseLinuxDesktopEntry(raw)
+			if entry.Hidden {
+				break
 			}
-			mimeType := strings.TrimSpace(parts[1])
-			pattern := strings.TrimSpace(parts[2])
-			if mimeType == "" || strings.HasPrefix(mimeType, linuxCustomMIMEPrefix) {
+			if !isLinuxDesktopEntryLaunchable(entry) {
 				continue
 			}
-			if pattern == "__NOGLOBS__" {
-				dirBlocked[mimeType] = struct{}{}
-				continue
-			}
-			if _, suppressed := blockedLower[mimeType]; suppressed {
-				continue
-			}
-			if !strings.HasPrefix(pattern, "*.") {
-				continue
-			}
-			if len(parts) >= 4 && strings.Contains(parts[3], "cs") && pattern != strings.ToLower(pattern) {
-				continue
-			}
-			ext := strings.ToLower(pattern[1:])
-			if strings.ContainsAny(ext, "*?[]") {
-				continue
-			}
-			if seen[ext] == nil {
-				seen[ext] = make(map[string]int)
-			}
-			if prevW, ok := seen[ext][mimeType]; ok {
-				if weight <= prevW {
-					continue
+			if linuxDesktopEntryTargetsExec(entry, execPath) {
+				for _, mt := range entry.MIMETypes {
+					out[mt] = struct{}{}
 				}
 			}
-			seen[ext][mimeType] = weight
-			bestByExt[ext] = append(bestByExt[ext], linuxGlobMatch{mimeType: mimeType, weight: weight})
+			break
 		}
-		f.Close()
-		for mimeType := range dirBlocked {
-			blockedLower[mimeType] = struct{}{}
-		}
-	}
-
-	out := make(map[string][]string, len(bestByExt))
-	for ext, matches := range bestByExt {
-		sort.Slice(matches, func(i, j int) bool {
-			if matches[i].weight != matches[j].weight {
-				return matches[i].weight > matches[j].weight
-			}
-			return matches[i].mimeType < matches[j].mimeType
-		})
-		var types []string
-		dedup := make(map[string]struct{}, len(matches))
-		for _, m := range matches {
-			if _, ok := dedup[m.mimeType]; ok {
-				continue
-			}
-			dedup[m.mimeType] = struct{}{}
-			types = append(types, m.mimeType)
-		}
-		out[ext] = types
 	}
 	return out
 }
@@ -263,110 +149,20 @@ func removeLegacyLinuxCustomMIME(dataHome string) error {
 	return nil
 }
 
-func cleanupPlatformFileAssociations(appDataDir string, _ bool) error {
-	dataHome := linuxXDGDataHome()
-	if dataHome == "" {
-		return nil
+func equalStringMaps(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	desktopDir := filepath.Join(dataHome, "applications")
-	helperDesktop := filepath.Join(desktopDir, linuxHelperDesktopName)
-	legacyDesktop := filepath.Join(desktopDir, "block.desktop")
-
-	var firstErr error
-	if err := removeLegacyLinuxCustomMIME(dataHome); err != nil {
-		firstErr = err
-	}
-	desktopChanged := false
-	if _, err := os.Stat(helperDesktop); err == nil {
-		if rmErr := os.Remove(helperDesktop); rmErr != nil && !os.IsNotExist(rmErr) {
-			if firstErr == nil {
-				firstErr = rmErr
-			}
-		} else {
-			desktopChanged = true
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
 		}
 	}
-	if raw, err := os.ReadFile(legacyDesktop); err == nil && strings.Contains(string(raw), linuxManagedMarker) {
-		_ = os.Remove(legacyDesktop)
-		desktopChanged = true
-	}
-	if desktopChanged {
-		if err := runLinuxToolIfPresent("update-desktop-database", desktopDir); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
+	return true
 }
 
-// syncPlatformFileAssociations manages a dedicated NoDisplay=true helper entry
-// (~/.local/share/applications/block-plugins.desktop) for extensions already
-// recognized by shared-mime-info / system MIME tables. It intentionally avoids
-// defining synthetic custom MIME types so GIO never promotes Block over the
-// user's default plain-text editor, and never overwrites block.desktop.
-func syncPlatformFileAssociations(appDataDir string, pluginExts []string) error {
-	dataHome := linuxXDGDataHome()
-	if dataHome == "" {
-		return nil
-	}
-	execPath, err := resolveLinuxDesktopExec()
-	if err != nil {
-		return fmt.Errorf("resolve executable: %w", err)
-	}
-
-	desktopDir := filepath.Join(dataHome, "applications")
-	helperDesktop := filepath.Join(desktopDir, linuxHelperDesktopName)
-	prev, hasPrev := loadFileAssocState(appDataDir)
-
-	// Migrate away from any legacy managed block.desktop override or custom MIME xml.
-	legacyDesktop := filepath.Join(desktopDir, "block.desktop")
-	if raw, err := os.ReadFile(legacyDesktop); err == nil && strings.Contains(string(raw), linuxManagedMarker) {
-		_ = os.Remove(legacyDesktop)
-	}
-	_ = removeLegacyLinuxCustomMIME(dataHome)
-
-	globs := loadLinuxMIMEGlobs(dataHome)
-	var mimeList []string
-	for _, ext := range pluginExts {
-		if matched := globs[ext]; len(matched) > 0 {
-			mimeList = append(mimeList, matched...)
-			continue
-		}
-		if mt := mime.TypeByExtension(ext); mt != "" {
-			if idx := strings.IndexByte(mt, ';'); idx >= 0 {
-				mt = strings.TrimSpace(mt[:idx])
-			}
-			if mt != "" && mt != "application/octet-stream" {
-				mimeList = append(mimeList, mt)
-			}
-		}
-	}
-	mimeList = unionSortedStrings(mimeList)
-
-	if len(mimeList) == 0 {
-		if err := cleanupPlatformFileAssociations(appDataDir, false); err != nil {
-			return err
-		}
-		if hasPrev && len(prev.Extensions) > 0 {
-			return saveFileAssocState(appDataDir, fileAssocState{
-				ExecutablePath: execPath,
-				Extensions:     []string{},
-			})
-		}
-		return nil
-	}
-
-	if hasPrev &&
-		prev.Version == fileAssocStateVersion &&
-		prev.ExecutablePath == execPath &&
-		equalStringSlices(prev.Extensions, mimeList) {
-		if _, err := os.Stat(helperDesktop); err == nil {
-			return nil
-		}
-	}
-
-	ensureLinuxAppImageIcon(dataHome)
-
-	desktopContent := strings.Join([]string{
+func buildLinuxHelperDesktopContent(execPath string, mimeList []string) string {
+	return strings.Join([]string{
 		linuxManagedMarker,
 		"[Desktop Entry]",
 		"Type=Application",
@@ -380,17 +176,381 @@ func syncPlatformFileAssociations(appDataDir string, pluginExts []string) error 
 		"StartupWMClass=block",
 		"",
 	}, "\n")
+}
+
+func loadLinuxScopeState(st fileAssocState, desktopID, execPath string) (linuxAssocScopeState, bool) {
+	if st.LinuxScopes != nil {
+		if sc, ok := st.LinuxScopes[desktopID]; ok {
+			return sc, true
+		}
+	}
+	// Migrate legacy top-level Linux state only if it belonged to this executable.
+	if st.ExecutablePath != "" && canonicalLinuxExecPath(st.ExecutablePath) == canonicalLinuxExecPath(execPath) {
+		return linuxAssocScopeState{
+			DesktopID:           desktopID,
+			ExecutablePath:      st.ExecutablePath,
+			Extensions:          st.Extensions,
+			PinnedLinuxDefaults: cloneStringMap(st.PinnedLinuxDefaults),
+		}, true
+	}
+	return linuxAssocScopeState{}, false
+}
+
+func saveLinuxScopeState(appDataDir string, prev fileAssocState, desktopID string, sc linuxAssocScopeState) error {
+	next := prev
+	if next.LinuxScopes == nil {
+		next.LinuxScopes = make(map[string]linuxAssocScopeState)
+		if prev.ExecutablePath != "" && canonicalLinuxExecPath(prev.ExecutablePath) != canonicalLinuxExecPath(sc.ExecutablePath) &&
+			(len(prev.Extensions) > 0 || len(prev.PinnedLinuxDefaults) > 0) {
+			oldID := linuxHelperDesktopIDForExec(prev.ExecutablePath)
+			if oldID != desktopID {
+				next.LinuxScopes[oldID] = linuxAssocScopeState{
+					DesktopID:           oldID,
+					ExecutablePath:      prev.ExecutablePath,
+					Extensions:          prev.Extensions,
+					PinnedLinuxDefaults: cloneStringMap(prev.PinnedLinuxDefaults),
+				}
+			}
+		}
+	}
+	sc.DesktopID = desktopID
+	next.LinuxScopes[desktopID] = sc
+	next.ExecutablePath = sc.ExecutablePath
+	next.Extensions = sc.Extensions
+	next.PinnedLinuxDefaults = cloneStringMap(sc.PinnedLinuxDefaults)
+	return saveFileAssocState(appDataDir, next)
+}
+
+func linuxLegacyDesktopOwnedOrOrphaned(desktopPath, execPath string) bool {
+	raw, err := os.ReadFile(desktopPath)
+	if err != nil {
+		return false
+	}
+	entry := parseLinuxDesktopEntry(raw)
+	if linuxDesktopEntryTargetsExec(entry, execPath) {
+		return true
+	}
+	return !isLinuxDesktopEntryLaunchable(entry)
+}
+
+func cleanupPlatformFileAssociations(appDataDir string, _ bool) error {
+	dataHome := linuxXDGDataHome()
+	if dataHome == "" {
+		return nil
+	}
+	configHome := linuxXDGConfigHome()
+	execPath, _ := resolveLinuxDesktopExec()
+	desktopDir := filepath.Join(dataHome, "applications")
+	helperDesktopName := ""
+	if execPath != "" {
+		helperDesktopName = linuxHelperDesktopIDForExec(execPath)
+	}
+	legacyHelperDesktop := filepath.Join(desktopDir, linuxLegacyHelperDesktopName)
+	legacyMainDesktop := filepath.Join(desktopDir, "block.desktop")
+	prev, _ := loadFileAssocState(appDataDir)
+	scopePrev, _ := loadLinuxScopeState(prev, helperDesktopName, execPath)
+
+	var firstErr error
+	if len(scopePrev.PinnedLinuxDefaults) > 0 {
+		if _, err := reconcileLinuxPinnedDefaults(configHome, scopePrev.PinnedLinuxDefaults, nil); err != nil {
+			firstErr = err
+		}
+	}
+	// If the tracked user main desktop entry is no longer present under user
+	// applications, also clean up Block-managed main desktop pins.
+	mainDesktopID := strings.TrimSpace(prev.LinuxMainDesktopID)
+	if mainDesktopID == "" {
+		mainDesktopID = "block-user.desktop"
+	}
+	if len(prev.PinnedLinuxMainDefaults) > 0 {
+		_, errTracked := os.Stat(filepath.Join(desktopDir, mainDesktopID))
+		_, errLegacy := os.Stat(legacyMainDesktop)
+		if os.IsNotExist(errTracked) && (mainDesktopID == "block.desktop" || os.IsNotExist(errLegacy)) {
+			if _, rmErr := reconcileLinuxPinnedDefaults(configHome, prev.PinnedLinuxMainDefaults, nil); rmErr != nil && firstErr == nil {
+				firstErr = rmErr
+			} else {
+				prev.PinnedLinuxMainDefaults = nil
+				prev.LinuxMainDesktopID = ""
+			}
+		}
+	}
+	if err := removeLegacyLinuxCustomMIME(dataHome); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	desktopChanged := false
+	if helperDesktopName != "" {
+		helperDesktop := filepath.Join(desktopDir, helperDesktopName)
+		if _, err := os.Stat(helperDesktop); err == nil {
+			if rmErr := os.Remove(helperDesktop); rmErr != nil && !os.IsNotExist(rmErr) {
+				if firstErr == nil {
+					firstErr = rmErr
+				}
+			} else {
+				desktopChanged = true
+			}
+		}
+	}
+	if execPath != "" && linuxLegacyDesktopOwnedOrOrphaned(legacyHelperDesktop, execPath) {
+		if rmErr := os.Remove(legacyHelperDesktop); rmErr == nil {
+			desktopChanged = true
+		} else if !os.IsNotExist(rmErr) && firstErr == nil {
+			firstErr = rmErr
+		}
+	}
+	if raw, err := os.ReadFile(legacyMainDesktop); err == nil && strings.Contains(string(raw), linuxManagedMarker) {
+		if execPath == "" || linuxLegacyDesktopOwnedOrOrphaned(legacyMainDesktop, execPath) {
+			_ = os.Remove(legacyMainDesktop)
+			desktopChanged = true
+		}
+	}
+	if desktopChanged {
+		if err := runLinuxToolIfPresent("update-desktop-database", desktopDir); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+	if prev.LinuxScopes != nil && helperDesktopName != "" {
+		delete(prev.LinuxScopes, helperDesktopName)
+	}
+	if len(prev.LinuxScopes) > 0 || len(prev.PinnedLinuxMainDefaults) > 0 {
+		if len(prev.LinuxScopes) > 0 {
+			keys := make([]string, 0, len(prev.LinuxScopes))
+			for k := range prev.LinuxScopes {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			keep := prev.LinuxScopes[keys[0]]
+			prev.ExecutablePath = keep.ExecutablePath
+			prev.Extensions = keep.Extensions
+			prev.PinnedLinuxDefaults = cloneStringMap(keep.PinnedLinuxDefaults)
+		} else {
+			prev.ExecutablePath = ""
+			prev.Extensions = []string{}
+			prev.PinnedLinuxDefaults = nil
+		}
+		return saveFileAssocState(appDataDir, prev)
+	}
+	_ = os.Remove(fileAssocStatePath(appDataDir))
+	return nil
+}
+
+// syncPlatformFileAssociations manages a dedicated per-installation
+// NoDisplay=true helper entry (~/.local/share/applications/block-assoc-<hash>.desktop)
+// for safe text/code MIME types not already covered by a launchable main
+// desktop entry for this executable. For MIME types whose implicit default
+// (including inherited defaults such as text/plain -> text/x-go or another
+// Block installation's desktop ID) would otherwise be displaced, it preserves
+// the existing effective default in $XDG_CONFIG_HOME/mimeapps.list (with
+// write-ahead ownership journaling and rollback on failure) and verifies both
+// default preservation and Open-With availability against the host OS resolver.
+func syncPlatformFileAssociations(appDataDir string, managedExts []string) error {
+	dataHome := linuxXDGDataHome()
+	if dataHome == "" {
+		return nil
+	}
+	configHome := linuxXDGConfigHome()
+	execPath, err := resolveLinuxDesktopExec()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+
+	desktopDir := filepath.Join(dataHome, "applications")
+	helperDesktopName := linuxHelperDesktopIDForExec(execPath)
+	helperDesktop := filepath.Join(desktopDir, helperDesktopName)
+	prev, hasPrev := loadFileAssocState(appDataDir)
+	scopePrev, hasScopePrev := loadLinuxScopeState(prev, helperDesktopName, execPath)
+	prevHelperPins := cloneStringMap(scopePrev.PinnedLinuxDefaults)
+
+	xdgDataDirs := os.Getenv("XDG_DATA_DIRS")
+	mimeEnv := linuxMIMEEnv{
+		dataDirs:       linuxXDGDataDirsFromEnv(dataHome, xdgDataDirs),
+		configDirs:     linuxXDGConfigDirsFromEnv(configHome, os.Getenv("XDG_CONFIG_DIRS")),
+		currentDesktop: os.Getenv("XDG_CURRENT_DESKTOP"),
+	}
+
+	// Migrate away from any legacy managed block.desktop override, legacy
+	// shared block-plugins.desktop (only when owned by this execPath and not
+	// referenced as a user default), or custom MIME xml.
+	legacyMainDesktop := filepath.Join(desktopDir, "block.desktop")
+	if raw, err := os.ReadFile(legacyMainDesktop); err == nil && strings.Contains(string(raw), linuxManagedMarker) {
+		if linuxLegacyDesktopOwnedOrOrphaned(legacyMainDesktop, execPath) && !linuxDesktopIDReferencedAsDefault("block.desktop", mimeEnv) {
+			_ = os.Remove(legacyMainDesktop)
+		}
+	}
+	legacyHelperDesktop := filepath.Join(desktopDir, linuxLegacyHelperDesktopName)
+	if linuxLegacyDesktopOwnedOrOrphaned(legacyHelperDesktop, execPath) && !linuxDesktopIDReferencedAsDefault(linuxLegacyHelperDesktopName, mimeEnv) {
+		_ = os.Remove(legacyHelperDesktop)
+	}
+	_ = removeLegacyLinuxCustomMIME(dataHome)
+
+	resolvedMIMEs := ResolveLinuxMIMETypesForExtensions(managedExts, dataHome, xdgDataDirs)
+	mainMIMEs := loadActiveMainLinuxDesktopMIMEs(dataHome, execPath)
+	candidates := make([]string, 0, len(resolvedMIMEs))
+	for _, mt := range resolvedMIMEs {
+		if _, covered := mainMIMEs[mt]; covered {
+			continue
+		}
+		candidates = append(candidates, mt)
+	}
+
+	userMimeappsPath := ""
+	if configHome != "" {
+		userMimeappsPath = filepath.Join(configHome, "mimeapps.list")
+	}
+
+	safeDirect, needsPin, expectedDefaults := planLinuxDesktopMIMEs(
+		candidates, mimeEnv, helperDesktopName, 0, userMimeappsPath, prevHelperPins,
+	)
+
+	// Persist intended pin ownership BEFORE modifying mimeapps.list so a crash
+	// or unwritable state file never leaves unowned pins behind.
+	journalPins := func(pins map[string]string) error {
+		return saveLinuxScopeState(appDataDir, prev, helperDesktopName, linuxAssocScopeState{
+			DesktopID:           helperDesktopName,
+			ExecutablePath:      execPath,
+			Extensions:          scopePrev.Extensions,
+			PinnedLinuxDefaults: cloneStringMap(pins),
+		})
+	}
+
+	activePinned := cloneStringMap(prevHelperPins)
+	var verifiedPinned []string
+	if len(needsPin) > 0 || len(prevHelperPins) > 0 {
+		if err := journalPins(unionStringMaps(prevHelperPins, needsPin)); err != nil {
+			return fmt.Errorf("persist file association journal: %w", err)
+		}
+		pinned, pinErr := reconcileLinuxPinnedDefaults(configHome, prevHelperPins, needsPin)
+		if pinErr != nil {
+			// Cannot preserve existing defaults safely; keep only directly safe MIME types
+			// and restore previous pin metadata so cleanup reflects actual disk state.
+			activePinned = cloneStringMap(prevHelperPins)
+			_ = journalPins(activePinned)
+		} else {
+			activePinned = pinned
+			if len(needsPin) > 0 {
+				var failed []string
+				verifiedPinned, failed = verifyLinuxPinnedMIMEs(needsPin, mimeEnv, helperDesktopName)
+				if len(failed) > 0 {
+					for _, mt := range failed {
+						delete(needsPin, mt)
+					}
+					if rolled, rollErr := reconcileLinuxPinnedDefaults(configHome, activePinned, needsPin); rollErr == nil {
+						activePinned = rolled
+					}
+				}
+			}
+		}
+	}
+
+	mimeList := unionSortedStrings(safeDirect, verifiedPinned)
+
+	if len(mimeList) == 0 {
+		if _, err := os.Stat(helperDesktop); err == nil {
+			if rmErr := os.Remove(helperDesktop); rmErr != nil && !os.IsNotExist(rmErr) {
+				return rmErr
+			}
+			_ = runLinuxToolIfPresent("update-desktop-database", desktopDir)
+		}
+		if len(activePinned) > 0 {
+			if _, rmErr := reconcileLinuxPinnedDefaults(configHome, activePinned, nil); rmErr != nil {
+				return rmErr
+			}
+			activePinned = nil
+		}
+		if hasScopePrev || len(prevHelperPins) > 0 {
+			return saveLinuxScopeState(appDataDir, prev, helperDesktopName, linuxAssocScopeState{
+				DesktopID:           helperDesktopName,
+				ExecutablePath:      execPath,
+				Extensions:          []string{},
+				PinnedLinuxDefaults: nil,
+			})
+		}
+		return nil
+	}
+
+	if hasPrev &&
+		prev.Version == fileAssocStateVersion &&
+		hasScopePrev &&
+		scopePrev.ExecutablePath == execPath &&
+		equalStringSlices(scopePrev.Extensions, mimeList) &&
+		equalStringMaps(prevHelperPins, activePinned) {
+		if _, err := os.Stat(helperDesktop); err == nil {
+			return nil
+		}
+	}
+
+	ensureLinuxAppImageIcon(dataHome)
+
+	prevHelperBytes, hadPrevHelper := readFileIfExists(helperDesktop)
+	rollbackFailure := func() {
+		if hadPrevHelper {
+			_ = writeFileAtomic(helperDesktop, prevHelperBytes, 0o644)
+		} else {
+			_ = os.Remove(helperDesktop)
+		}
+		_ = runLinuxToolIfPresent("update-desktop-database", desktopDir)
+		if rolled, rollErr := reconcileLinuxPinnedDefaults(configHome, activePinned, prevHelperPins); rollErr == nil {
+			_ = journalPins(rolled)
+		} else {
+			_ = journalPins(activePinned)
+		}
+	}
+
+	desktopContent := buildLinuxHelperDesktopContent(execPath, mimeList)
 	if err := writeFileAtomic(helperDesktop, []byte(desktopContent), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", linuxHelperDesktopName, err)
+		rollbackFailure()
+		return fmt.Errorf("write %s: %w", helperDesktopName, err)
 	}
 	if err := runLinuxToolIfPresent("update-desktop-database", desktopDir); err != nil {
+		rollbackFailure()
 		return fmt.Errorf("update-desktop-database: %w", err)
 	}
 
-	return saveFileAssocState(appDataDir, fileAssocState{
-		ExecutablePath: execPath,
-		Extensions:     mimeList,
-	})
+	// Post-write verification against the host OS resolver (gio / xdg-mime).
+	// If any MIME type shifted its real system default or failed to appear in
+	// Open With, drop it immediately and roll back its pin.
+	okMIMEs, badMIMEs := verifyLinuxSystemRegistration(mimeList, expectedDefaults, mimeEnv, helperDesktopName, 0)
+	if len(badMIMEs) > 0 {
+		mimeList = okMIMEs
+		badSet := make(map[string]struct{}, len(badMIMEs))
+		for _, mt := range badMIMEs {
+			badSet[mt] = struct{}{}
+		}
+		trimmedPins := make(map[string]string, len(activePinned))
+		for mt, app := range activePinned {
+			if _, isBad := badSet[mt]; !isBad {
+				trimmedPins[mt] = app
+			}
+		}
+		if rolled, rollErr := reconcileLinuxPinnedDefaults(configHome, activePinned, trimmedPins); rollErr == nil {
+			activePinned = rolled
+		}
+		if len(mimeList) == 0 {
+			_ = os.Remove(helperDesktop)
+		} else {
+			if err := writeFileAtomic(helperDesktop, []byte(buildLinuxHelperDesktopContent(execPath, mimeList)), 0o644); err != nil {
+				rollbackFailure()
+				return fmt.Errorf("rewrite verified %s: %w", helperDesktopName, err)
+			}
+		}
+		if err := runLinuxToolIfPresent("update-desktop-database", desktopDir); err != nil {
+			rollbackFailure()
+			return fmt.Errorf("update-desktop-database: %w", err)
+		}
+	}
+
+	if err := saveLinuxScopeState(appDataDir, prev, helperDesktopName, linuxAssocScopeState{
+		DesktopID:           helperDesktopName,
+		ExecutablePath:      execPath,
+		Extensions:          mimeList,
+		PinnedLinuxDefaults: activePinned,
+	}); err != nil {
+		rollbackFailure()
+		return fmt.Errorf("persist file association state: %w", err)
+	}
+	return nil
 }
 
 func runLinuxToolIfPresent(name string, args ...string) error {

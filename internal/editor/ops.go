@@ -6940,9 +6940,14 @@ var codeLanguages = []codeLangOption{
 	{Tag: "markdown", Label: "Markdown"},
 	{Tag: "mermaid", Label: "Mermaid"},
 	{Tag: "plaintext", Label: "Plain Text"},
+	{Tag: "apache", Label: "Apache"},
+	{Tag: "astro", Label: "Astro"},
 	{Tag: "bash", Label: "Bash"},
+	{Tag: "batch", Label: "Batch"},
 	{Tag: "c", Label: "C"},
 	{Tag: "caddyfile", Label: "Caddyfile"},
+	{Tag: "cmake", Label: "CMake"},
+	{Tag: "crontab", Label: "Crontab"},
 	{Tag: "csharp", Label: "C#"},
 	{Tag: "cpp", Label: "C++"},
 	{Tag: "css", Label: "CSS"},
@@ -6950,20 +6955,28 @@ var codeLanguages = []codeLangOption{
 	{Tag: "diff", Label: "Diff"},
 	{Tag: "dockerfile", Label: "Dockerfile"},
 	{Tag: "dotenv", Label: "Dotenv"},
+	{Tag: "ejs", Label: "EJS"},
+	{Tag: "elixir", Label: "Elixir"},
 	{Tag: "erb", Label: "ERB"},
 	{Tag: "go", Label: "Go"},
 	{Tag: "gomod", Label: "Go Module"},
 	{Tag: "gosum", Label: "Go Checksum"},
+	{Tag: "gotmpl", Label: "Go Template"},
 	{Tag: "graphql", Label: "GraphQL"},
+	{Tag: "groovy", Label: "Groovy"},
+	{Tag: "handlebars", Label: "Handlebars"},
+	{Tag: "haproxy", Label: "HAProxy"},
 	{Tag: "hcl", Label: "HCL"},
 	{Tag: "hosts", Label: "Hosts"},
 	{Tag: "html", Label: "HTML"},
+	{Tag: "http", Label: "HTTP"},
 	{Tag: "ignore", Label: "Ignore File"},
 	{Tag: "ini", Label: "INI"},
 	{Tag: "java", Label: "Java"},
 	{Tag: "javascript", Label: "JavaScript"},
 	{Tag: "jinja", Label: "Jinja"},
 	{Tag: "json", Label: "JSON"},
+	{Tag: "just", Label: "Justfile"},
 	{Tag: "kotlin", Label: "Kotlin"},
 	{Tag: "lean", Label: "Lean"},
 	{Tag: "less", Label: "Less"},
@@ -6973,9 +6986,13 @@ var codeLanguages = []codeLangOption{
 	{Tag: "nix", Label: "Nix"},
 	{Tag: "php", Label: "PHP"},
 	{Tag: "plist", Label: "Property List"},
+	{Tag: "powershell", Label: "PowerShell"},
+	{Tag: "prisma", Label: "Prisma"},
+	{Tag: "procfile", Label: "Procfile"},
 	{Tag: "protobuf", Label: "Protobuf"},
 	{Tag: "python", Label: "Python"},
 	{Tag: "r", Label: "R"},
+	{Tag: "requirements", Label: "Pip Requirements"},
 	{Tag: "ruby", Label: "Ruby"},
 	{Tag: "rust", Label: "Rust"},
 	{Tag: "scala", Label: "Scala"},
@@ -6985,6 +7002,7 @@ var codeLanguages = []codeLangOption{
 	{Tag: "surge", Label: "Surge / Proxy Rules"},
 	{Tag: "svelte", Label: "Svelte"},
 	{Tag: "swift", Label: "Swift"},
+	{Tag: "thrift", Label: "Thrift"},
 	{Tag: "toml", Label: "TOML"},
 	{Tag: "typescript", Label: "TypeScript"},
 	{Tag: "vue", Label: "Vue"},
@@ -7066,8 +7084,14 @@ func codeSyntaxTokens(tokens []plugins.CodeRuneToken) []syntaxToken {
 }
 
 func codeBlockCanUseLexer(src string) bool {
-	// Some lexers scan the rest of a line for each token. Bound that work on the UI thread.
-	const maxLineBytes = 4 * 1024
+	// Bound both per-line and whole-block scanning work on the UI thread.
+	const (
+		maxLineBytes  = 4 * 1024
+		maxBlockBytes = 32 * 1024
+	)
+	if len(src) > maxBlockBytes {
+		return false
+	}
 	for line := range strings.SplitSeq(src, "\n") {
 		if len(line) > maxLineBytes {
 			return false
@@ -7082,11 +7106,14 @@ func tokenizeCode(src, lang string) []syntaxToken {
 	}
 	canon := codepreview.CanonicalLanguage(lang)
 	if codeBlockCanUseLexer(src) {
-		if tokens, ok := plugins.TokenizeCodeByTag(lang, src); ok {
+		const lexerBudget = 15 * time.Millisecond
+		if tokens, ok := plugins.TokenizeCodeByTagBudget(lang, src, lexerBudget); ok {
 			return codeSyntaxTokens(tokens)
 		}
 		if l := codeed.LanguageNamed(canon); l != nil && l.Tokenizer != nil {
-			return codeSyntaxTokens(plugins.TokenizeTextWithTokenizer(l.Tokenizer, src))
+			if tokens, ok := plugins.TokenizeTextWithTokenizerBudget(l.Tokenizer, src, lexerBudget); ok {
+				return codeSyntaxTokens(tokens)
+			}
 		}
 	}
 	if canon == "plaintext" {

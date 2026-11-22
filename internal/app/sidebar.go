@@ -237,6 +237,77 @@ type flatTreeRow struct {
 	RevealOrder int
 }
 
+func countVisibleDescendants(entries []model.FileEntry, expanded map[string]bool) int {
+	n := 0
+	for i := range entries {
+		e := &entries[i]
+		n++
+		if e.IsDir && expanded[e.Path] && len(e.Children) > 0 {
+			n += countVisibleDescendants(e.Children, expanded)
+		}
+	}
+	return n
+}
+
+func renderTreeEntries(c *ui.Context, p SidebarProps, entries []model.FileEntry, depth int, rowGap float32, treeFocus ui.Element, suppressHover bool, anyDragOver *bool) {
+	for idx := range entries {
+		e := &entries[idx]
+		exp := e.IsDir && p.State.ExpandedDirs[e.Path]
+		row := flatTreeRow{
+			Entry:    e,
+			Depth:    depth,
+			ChildIdx: idx,
+			Expanded: exp,
+		}
+		if !e.IsDir || len(e.Children) == 0 {
+			if renderTreeRow(c, p, row, treeFocus, suppressHover) {
+				*anyDragOver = true
+			}
+			continue
+		}
+
+		c.Key("tree-node:" + e.Path)
+		node := ui.Column(c).FillWidth()
+		progress, settled := blockui.TreeDrawerProgress(node, "drawerOpen", exp)
+		node.Children(func() {
+			if renderTreeRow(c, p, row, treeFocus, suppressHover) {
+				*anyDragOver = true
+			}
+			if !exp && progress <= 0.001 {
+				return
+			}
+			if exp && settled && progress >= 0.999 {
+				c.Key("tree-drawer:" + e.Path)
+				ui.Column(c).FillWidth().Padding(rowGap, 0, 0, 0).Gap(rowGap).Children(func() {
+					renderTreeEntries(c, p, e.Children, depth+1, rowGap, treeFocus, suppressHover, anyDragOver)
+				})
+				return
+			}
+
+			visCount := countVisibleDescendants(e.Children, p.State.ExpandedDirs)
+			if visCount <= 0 {
+				return
+			}
+			drawerH := float32(visCount) * theme.TreeRowPitch * progress
+			op := progress
+			if !exp {
+				op = progress * progress
+			}
+			slideY := (1 - progress) * -6
+
+			c.Key("tree-drawer:" + e.Path)
+			drawer := ui.Box(c).FillWidth().Height(drawerH).Clip()
+			drawer.Children(func() {
+				inner := ui.Column(c).FillWidth().Padding(rowGap, 0, 0, 0).Gap(rowGap).
+					Opacity(op).Translate(0, slideY)
+				inner.Children(func() {
+					renderTreeEntries(c, p, e.Children, depth+1, rowGap, treeFocus, suppressHover || !exp, anyDragOver)
+				})
+			})
+		})
+	}
+}
+
 func flattenEntries(entries []model.FileEntry, depth int, expanded map[string]bool, out *[]flatTreeRow) {
 	for idx := range entries {
 		e := &entries[idx]
@@ -488,18 +559,22 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 							}
 						}
 						ui.Column(c).FillWidth().Gap(rowGap).Children(func() {
-							if firstIdx > 0 {
-								topH := float32(firstIdx)*theme.TreeRowPitch - rowGap
-								ui.Box(c.Key("tree-virt-top")).FillWidth().Height(max(topH, 0))
-							}
-							for i := firstIdx; i < lastIdx; i++ {
-								if renderTreeRow(c, p, rows[i], treeFocus, suppressHover) {
-									anyDragOver = true
+							if canVirtTree {
+								if firstIdx > 0 {
+									topH := float32(firstIdx)*theme.TreeRowPitch - rowGap
+									ui.Box(c.Key("tree-virt-top")).FillWidth().Height(max(topH, 0))
 								}
-							}
-							if rem := len(rows) - lastIdx; rem > 0 {
-								botH := float32(rem)*theme.TreeRowPitch - rowGap
-								ui.Box(c.Key("tree-virt-bot")).FillWidth().Height(max(botH, 0))
+								for i := firstIdx; i < lastIdx; i++ {
+									if renderTreeRow(c, p, rows[i], treeFocus, suppressHover) {
+										anyDragOver = true
+									}
+								}
+								if rem := len(rows) - lastIdx; rem > 0 {
+									botH := float32(rem)*theme.TreeRowPitch - rowGap
+									ui.Box(c.Key("tree-virt-bot")).FillWidth().Height(max(botH, 0))
+								}
+							} else {
+								renderTreeEntries(c, p, p.Entries, 0, rowGap, treeFocus, suppressHover, &anyDragOver)
 							}
 						})
 						if !anyDragOver && p.State.DropTargetPath != "" {
@@ -801,9 +876,6 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	btn := ui.ButtonBase(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
-	if r.Depth > 0 {
-		btn.Transition(blockui.TreeRevealTransition(r.RevealOrder))
-	}
 	p.State.TreeDragGate.Attach(btn, entry.Path, treeDragItem{Path: entry.Path, IsDir: entry.IsDir}, blockui.DefaultDragThreshold)
 	if !entry.IsDir {
 		btn.ObserveInput(func(ev ui.InputEvent) {
@@ -901,7 +973,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			if r.Expanded {
 				chevTarget = 90
 			}
-			chevDeg := btn.AnimateTo("dirChev", chevTarget, blockui.SpringTactile)
+			chevDeg := btn.AnimateTo("dirChev", chevTarget, blockui.TreeChevronAnim)
 			chevBox := ui.Box(c).Size(theme.IconRow, theme.IconRow).Shrink(0).Center()
 			if chevDeg != 0 {
 				chevBox.Rotate(chevDeg)
@@ -928,6 +1000,9 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if entry.IsDir && !r.Expanded && p.ActiveNote != "" && isSameOrDescendant(p.ActiveNote, entry.Path) {
+			ui.Box(c).Size(6, 6).Radius(theme.RadiusPill).Background(pal.Accent).Shrink(0)
+		}
 		if extBadge != "" {
 			blockui.FileExtBadge(c, extBadge, highlighted)
 		}

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"block/internal/files"
@@ -60,12 +61,13 @@ type LanguageGrammar struct {
 
 // GrammarRule is a single anchored RE2 match rule inside a grammar state.
 type GrammarRule struct {
-	Match    string            `json:"match"`
-	Token    string            `json:"token,omitempty"`
-	Captures map[string]string `json:"captures,omitempty"`
-	Next     string            `json:"next,omitempty"`
-	Push     string            `json:"push,omitempty"`
-	Pop      bool              `json:"pop,omitempty"`
+	Match     string            `json:"match"`
+	LineStart bool              `json:"line_start,omitempty"`
+	Token     string            `json:"token,omitempty"`
+	Captures  map[string]string `json:"captures,omitempty"`
+	Next      string            `json:"next,omitempty"`
+	Push      string            `json:"push,omitempty"`
+	Pop       bool              `json:"pop,omitempty"`
 }
 
 // CodeRuneToken is a syntax-highlighted rune span returned for Markdown code
@@ -349,12 +351,13 @@ type compiledCapture struct {
 }
 
 type compiledRule struct {
-	re         *regexp.Regexp
-	kind       codeed.TokenKind
-	hasKind    bool
-	captures   []compiledCapture
-	transKind  uint8 // 0=none, 1=next, 2=push, 3=pop
-	transState uint64
+	re            *regexp.Regexp
+	kind          codeed.TokenKind
+	hasKind       bool
+	lineStartOnly bool
+	captures      []compiledCapture
+	transKind     uint8 // 0=none, 1=next, 2=push, 3=pop
+	transState    uint64
 }
 
 const (
@@ -417,14 +420,52 @@ func appendMergedToken(tokens []codeed.Token, end int, kind codeed.TokenKind) []
 	return append(tokens, codeed.Token{End: end, Kind: kind})
 }
 
+// maxSourceLineTokenizeTime caps per-line tokenization in the interactive
+// source editor so a pathological regex or third-party grammar cannot stall
+// the UI thread on long or adversarial lines.
+const maxSourceLineTokenizeTime = 15 * time.Millisecond
+
 func (t *grammarTokenizer) Tokenize(line string, state uint64, tokens []codeed.Token) ([]codeed.Token, uint64) {
-	n := len(line)
-	if n == 0 {
+	if len(line) == 0 {
 		return tokens, state
 	}
+	deadline := time.Now().Add(maxSourceLineTokenizeTime)
+	toks, nextState, ok := t.tokenizeWithDeadline(line, state, tokens, deadline)
+	if !ok {
+		return appendMergedToken(toks, len(line), codeed.TokenText), nextState
+	}
+	return toks, nextState
+}
+
+func (t *grammarTokenizer) tokenizeWithDeadline(line string, state uint64, tokens []codeed.Token, deadline time.Time) ([]codeed.Token, uint64, bool) {
+	origLen := len(line)
+	if origLen == 0 {
+		return tokens, state, true
+	}
+	// Strip a trailing CR (from CRLF sources) before applying line-anchored
+	// rules such as `---[ \t]*$`, while keeping final token coverage equal to
+	// len(line) so byte offsets remain exact.
+	trimmedCR := false
+	if line[origLen-1] == '\r' {
+		line = line[:origLen-1]
+		trimmedCR = true
+	}
+	n := len(line)
+	if n == 0 {
+		if trimmedCR {
+			tokens = appendMergedToken(tokens, origLen, codeed.TokenText)
+		}
+		return tokens, state, true
+	}
+	hasDeadline := !deadline.IsZero()
 	pos := 0
 	zeroSteps := 0
+	steps := 0
 	for pos < n {
+		if hasDeadline && (steps&0x0f) == 0 && steps > 0 && time.Now().After(deadline) {
+			return tokens, state, false
+		}
+		steps++
 		stIdx := int(state & stateFrameMask)
 		if stIdx < 0 || stIdx >= len(t.states) {
 			stIdx = 0
@@ -433,8 +474,15 @@ func (t *grammarTokenizer) Tokenize(line string, state uint64, tokens []codeed.T
 		rules := t.states[stIdx]
 		matched := false
 		rem := line[pos:]
+		checkPerRule := hasDeadline && len(rem) >= 1024
 		for i := range rules {
+			if checkPerRule && (i&0x03) == 0 && i > 0 && time.Now().After(deadline) {
+				return tokens, state, false
+			}
 			rule := &rules[i]
+			if rule.lineStartOnly && pos != 0 {
+				continue
+			}
 			if len(rule.captures) == 0 {
 				loc := rule.re.FindStringIndex(rem)
 				if loc == nil {
@@ -517,7 +565,10 @@ func (t *grammarTokenizer) Tokenize(line string, state uint64, tokens []codeed.T
 			tokens = appendMergedToken(tokens, pos, codeed.TokenText)
 		}
 	}
-	return tokens, state
+	if trimmedCR {
+		tokens = appendMergedToken(tokens, origLen, codeed.TokenText)
+	}
+	return tokens, state, true
 }
 
 func compileLanguageGrammar(contrib LanguageContrib, g *LanguageGrammar) (*codeed.Language, codeed.Tokenizer, error) {
@@ -550,7 +601,10 @@ func compileLanguageGrammar(contrib LanguageContrib, g *LanguageGrammar) (*codee
 			if err != nil {
 				return nil, nil, fmt.Errorf("grammar state %q rule[%d] regex: %w", name, ri, err)
 			}
-			cr := compiledRule{re: re}
+			cr := compiledRule{
+				re:            re,
+				lineStartOnly: r.LineStart,
+			}
 			if r.Token != "" {
 				k, _ := parseTokenKind(r.Token)
 				cr.kind = k
@@ -668,9 +722,23 @@ func ValidatePluginLanguages(pluginDir string, m *Manifest) error {
 // TokenizeTextWithTokenizer runs tok line-by-line across src and returns rune-offset
 // syntax tokens suitable for Markdown code blocks and Settings highlight previews.
 func TokenizeTextWithTokenizer(tok codeed.Tokenizer, src string) []CodeRuneToken {
+	out, _ := TokenizeTextWithTokenizerBudget(tok, src, 0)
+	return out
+}
+
+// TokenizeTextWithTokenizerBudget runs tok line-by-line across src with an
+// optional wall-clock budget. When maxTime > 0 and the deadline is exceeded,
+// it aborts early and returns (nil, false) so callers can fall back to a
+// linear-time lightweight highlighter without stalling the UI thread.
+func TokenizeTextWithTokenizerBudget(tok codeed.Tokenizer, src string, maxTime time.Duration) ([]CodeRuneToken, bool) {
 	if tok == nil || src == "" {
-		return nil
+		return nil, true
 	}
+	var deadline time.Time
+	if maxTime > 0 {
+		deadline = time.Now().Add(maxTime)
+	}
+	gtok, isGrammar := tok.(*grammarTokenizer)
 	var (
 		out      []CodeRuneToken
 		buf      []codeed.Token
@@ -679,6 +747,9 @@ func TokenizeTextWithTokenizer(tok codeed.Tokenizer, src string) []CodeRuneToken
 		start    int
 	)
 	for start <= len(src) {
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return nil, false
+		}
 		relEnd := strings.IndexByte(src[start:], '\n')
 		var line string
 		var nextStart int
@@ -689,8 +760,24 @@ func TokenizeTextWithTokenizer(tok codeed.Tokenizer, src string) []CodeRuneToken
 			line = src[start : start+relEnd]
 			nextStart = start + relEnd + 1
 		}
+		// Recognize CRLF (and trailing CR) line endings so end-of-line anchors
+		// like `---[ \t]*$` match Windows-formatted sources, while preserving
+		// exact rune offsets back into the original src.
+		hasCR := false
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+			hasCR = true
+		}
 		if len(line) > 0 {
-			buf, state = tok.Tokenize(line, state, buf[:0])
+			if isGrammar && !deadline.IsZero() {
+				var ok bool
+				buf, state, ok = gtok.tokenizeWithDeadline(line, state, buf[:0], deadline)
+				if !ok {
+					return nil, false
+				}
+			} else {
+				buf, state = tok.Tokenize(line, state, buf[:0])
+			}
 			bytePos := 0
 			runePos := runeBase
 			for _, tk := range buf {
@@ -711,12 +798,15 @@ func TokenizeTextWithTokenizer(tok codeed.Tokenizer, src string) []CodeRuneToken
 			}
 			runeBase += utf8.RuneCountInString(line)
 		}
+		if hasCR {
+			runeBase++ // '\r'
+		}
 		if relEnd >= 0 {
 			runeBase++ // '\n'
 		}
 		start = nextStart
 	}
-	return out
+	return out, true
 }
 
 // ---------------------------------------------------------------------------
@@ -754,10 +844,16 @@ func SyncActiveLanguages(installed []InstalledApp) {
 // SyncActiveLanguagesSeq compiles and publishes installed languages only if seq
 // is zero or at least as new as the last published sequence number.
 func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
+	appDataDir := files.AppDataDir()
+	appsRoot := filepath.Join(appDataDir, "apps")
+	useDiskState := true
 	snap := newLanguageSnapshot()
 	for _, app := range installed {
 		if !app.Enabled || app.InstallDir == "" || app.Manifest.Contributes == nil || len(app.Manifest.Contributes.Languages) == 0 {
 			continue
+		}
+		if !isPathWithinDir(appsRoot, app.InstallDir) {
+			useDiskState = false
 		}
 		root, err := os.OpenRoot(app.InstallDir)
 		if err != nil {
@@ -782,7 +878,7 @@ func SyncActiveLanguagesSeq(installed []InstalledApp, seq uint64) {
 	}
 	activeLangSnap.Store(snap)
 	gen := activeLangGen.Add(1)
-	scheduleFileAssociationSync(files.AppDataDir(), snap, gen)
+	scheduleFileAssociationSync(appDataDir, snap, gen, useDiskState)
 	activeLangPublishMu.Unlock()
 }
 
@@ -935,11 +1031,17 @@ func ResolveLanguageTagDisplay(tag, locale string) (string, bool) {
 
 // TokenizeCodeByTag highlights src using an active language plugin matching tag.
 func TokenizeCodeByTag(tag, src string) ([]CodeRuneToken, bool) {
+	return TokenizeCodeByTagBudget(tag, src, 0)
+}
+
+// TokenizeCodeByTagBudget highlights src using an active or built-in language
+// matching tag, aborting and returning (nil, false) if maxTime is exceeded.
+func TokenizeCodeByTagBudget(tag, src string, maxTime time.Duration) ([]CodeRuneToken, bool) {
 	info := lookupLanguageTag(tag)
 	if info == nil || info.Tokenizer == nil {
 		return nil, false
 	}
-	return TokenizeTextWithTokenizer(info.Tokenizer, src), true
+	return TokenizeTextWithTokenizerBudget(info.Tokenizer, src, maxTime)
 }
 
 // ActiveLanguagesForPlugin returns compiled language details for pluginID.

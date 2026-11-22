@@ -56,6 +56,17 @@ func IsMarkdown(name string) bool {
 	return markdownExtension(name) != ""
 }
 
+// MarkdownExtensions returns the sorted dot-prefixed Markdown file extensions
+// recognized by Block (e.g. ".markdown", ".md", ".mdx").
+func MarkdownExtensions() []string {
+	out := make([]string, 0, len(markdownExtensions))
+	for ext := range markdownExtensions {
+		out = append(out, "."+ext)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // HasHiddenExtension reports whether name uses the canonical ".md" extension
 // that Block hides in note titles and auto-preserves on rename. Variant
 // Markdown extensions (e.g. ".mdx", ".markdown") stay visible to avoid
