@@ -5314,12 +5314,8 @@ func (w *Workspace) Render(c *ui.Context) {
 			// Floating Sidebar Card when narrow and explicitly toggled open via button / Alt+B (unified with Scheme A card).
 			if layout.SidebarDrawer && !aiImmersive {
 				c.Key("sidebar-drawer-scrim")
-				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
-				if inSettings {
-					scrim.Background(pal.Scrim().Alpha(0.42)).Transition(blockui.ScrimFadeTransition())
-				} else {
-					scrim.Background(ui.Transparent)
-				}
+				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+					Background(ui.Transparent)
 				blockui.Probe(scrim, "sidebar-drawer-scrim")
 				if scrim.Clicked() {
 					w.ToggleSidebar(vpW)
