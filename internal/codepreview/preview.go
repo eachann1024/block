@@ -31,7 +31,7 @@ func CanonicalLanguage(tag string) string {
 		return "html"
 	case "javascript", "js", "jsx":
 		return "javascript"
-	case "json", "jsonc":
+	case "json", "jsonc", "json5", "jsonl", "ndjson", "singbox", "sing-box", "v2ray", "xray":
 		return "json"
 	case "lean", "lean4":
 		return "lean"
@@ -45,7 +45,7 @@ func CanonicalLanguage(tag string) string {
 		return "typescript"
 	case "xml", "svg":
 		return "xml"
-	case "yaml", "yml", "yaml-frontmatter", "frontmatter":
+	case "yaml", "yml", "yaml-frontmatter", "frontmatter", "clash", "mihomo", "stash", "stoverride":
 		return "yaml"
 	default:
 		return fields[0]
