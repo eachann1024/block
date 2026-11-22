@@ -209,6 +209,7 @@ const (
 	StoreCardPadTop                = CardPadY
 	StoreCardPadX                  = Space20
 	StoreCardPadBottom             = StoreCardInnerGap
+	StoreCardActionWidth   float32 = 72  // uniform width for App Store card action buttons
 	StoreTitleWidth        float32 = 120
 	StoreSearchWidth       float32 = 192
 	StoreSearchFieldWidth  float32 = 280 // search field with the inline source/sort button
