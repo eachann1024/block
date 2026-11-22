@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T10:44:57.250Z",
-  "latest_version": "1.0.908",
-  "latest_tag": "v1.0.908",
+  "updated_at": "2026-11-22T11:33:20.753Z",
+  "latest_version": "1.0.909",
+  "latest_tag": "v1.0.909",
   "releases": [
+    {
+      "version": "1.0.909",
+      "tag": "v1.0.909",
+      "published_at": "2026-11-22T11:33:20Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.909",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "侧边栏右键菜单中，定位条目的选项现已调整至移至废纸篓之前。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "The sidebar context menu now places the option to reveal an item before the option to move it to the trash."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.909/block-macos-arm64.dmg",
+          "size": 15141154,
+          "sha256": "02ed13e916d295d24dc7d52894ccd53111443bff550590ce539c5d1e15cbb009"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.909/block-macos-x64.dmg",
+          "size": 16676982,
+          "sha256": "d563ba9e3771de14eda0c37a1625b3895271bcea19f699cf276ff2413728f818"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.909/block-windows-x64-setup.exe",
+          "size": 12150344,
+          "sha256": "92c02711dabb74f443ea1c5b78183df2ab8ae1f536f24a016dd5f672625a31f9"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.909/block-linux-x64.deb",
+          "size": 10711284,
+          "sha256": "e0702a1d7f57fcad47c5ae5b6b05821d034c7d78fc04170b6a4dfcb691c1505d"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.909/block-linux-x64.AppImage",
+          "size": 23652856,
+          "sha256": "d3aa4a6000610f3cbea799df4fb67393e72e1c8afd8ea42798c538480c424f64"
+        }
+      ]
+    },
     {
       "version": "1.0.908",
       "tag": "v1.0.908",
@@ -30,38 +86,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-macos-arm64.dmg",
-          "size": 15141129,
-          "sha256": "3e383aae1232d94483e6467886f0044ffe652df1353fffe6bd33b83711d6bd87"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-macos-x64.dmg",
-          "size": 16676508,
-          "sha256": "a8afa8b58203f43bfe1cf88a0880cb806ae913d9234b8eb4f950b42545016dce"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-windows-x64-setup.exe",
-          "size": 12150686,
-          "sha256": "3bcafe5c76ae60f069aacacc354f05a6a3712d610e905f576bba55d1b6bdd859"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-linux-x64.deb",
-          "size": 10711718,
-          "sha256": "fc12808f2f563d6e31082de1b17545fccd1b809195a3ff4bd6984fc7351b724f"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-linux-x64.AppImage",
-          "size": 23656952,
-          "sha256": "9f2bf1d19365b6fc1281aef96ddaad33a06c8699ef84d08891ae0a16abae6b6d"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.907",
@@ -1362,31 +1387,6 @@
         "improvements": [],
         "fixes": [
           "Preserve per-notebook notification routes."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.859",
-      "tag": "v1.0.859",
-      "published_at": "2026-11-20T21:05:45Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.859",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Deliver scoped desktop notifications and sync outcomes."
         ],
         "other": []
       },
