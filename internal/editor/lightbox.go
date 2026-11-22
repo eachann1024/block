@@ -103,6 +103,7 @@ func (s *Session) OpenMediaLightbox(blockID model.BlockID) {
 	s.lightbox.Open = true
 	s.lightbox.Index = idx
 	s.lightbox.ResetView()
+	s.lightbox.AutoFullscreen = entry.isVideo
 }
 
 // mediaExpandedState reports whether src is currently displayed in an open lightbox

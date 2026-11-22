@@ -516,6 +516,7 @@ type VideoPlayerOptions struct {
 	HideVideo          bool
 	IsFullscreen       bool
 	ChromeHidden       bool
+	TopInset           float32
 	BottomInset        float32
 	HandleKeyboard     bool
 	AllowVolumeKeys    bool
@@ -837,7 +838,8 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 
 			// Floating top-center OSD pill: persistent during 3x hold boost, transient for seek/volume/speed/loop.
 			if !opts.HideVideo && (st.BoostActive || osdActive) {
-				ui.Row(c).Absolute().Top(theme.Space12).Left(0).Right(0).Justify(ui.Center).IgnoreInput(true).Children(func() {
+				osdTop := max(opts.TopInset, theme.Space12)
+				ui.Row(c).Absolute().Top(osdTop).Left(0).Right(0).Justify(ui.Center).IgnoreInput(true).Children(func() {
 					pill := ui.Row(c.Key(opts.ID+"-osd")).
 						Padding(theme.Space6, theme.Space12).Gap(theme.Space6).
 						AlignItems(ui.Center).Radius(theme.RadiusPill).
@@ -912,10 +914,10 @@ func RenderVideoPlayer(c *ui.Context, player *ui.VideoPlayer, st *VideoControlSt
 		}
 		dock := ui.Column(c.Key(opts.ID + "-dock")).MinWidth(0)
 		if darkDock {
-			dock.Absolute().Left(theme.Space16).Right(theme.Space16).Bottom(theme.Space12+opts.BottomInset).
-				Radius(theme.RadiusXL).Background(pal.LightboxChromeBG()).
-				Border(1, pal.LightboxChromeBorder()).Clip()
-			Elevate(dock, theme.ElevationDialog)
+			dock.Absolute().Left(0).Right(0).Bottom(opts.BottomInset).
+				Padding(theme.Space4, theme.Space16, theme.Space6, theme.Space16).
+				Background(pal.LightboxChromeBG()).
+				BorderWidth(1, 0, 0, 0).BorderColor(pal.LightboxChromeBorder()).Clip()
 		} else {
 			dock.FillWidth().Background(pal.Paper).BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline)
 		}
