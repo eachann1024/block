@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"strings"
 	"unicode"
 
@@ -42,6 +43,10 @@ func keyRuneIcon(r rune) (icons.Icon, bool) {
 		return icons.ArrowUp, true
 	case '↓':
 		return icons.ArrowDown, true
+	case '←':
+		return icons.ArrowLeft, true
+	case '→':
+		return icons.ArrowRight, true
 	default:
 		return "", false
 	}
@@ -99,19 +104,30 @@ func parseShortcutSegments(text string, isShortcut bool) (segs []shortcutSegment
 	return segs, hasKey
 }
 
-func keyGlyphSize(glyph icons.Icon, fontSize float32) float32 {
-	const targetInkEm float32 = 0.78
+// keyGlyphMetrics returns the SVG render box size and the fixed layout slot width
+// for a shortcut glyph so every key symbol shares identical ink height, stroke weight,
+// optical sidebearing, and vertical centering across macOS, Windows, and Linux.
+func keyGlyphMetrics(glyph icons.Icon, fontSize float32) (svgSize, slotW float32) {
+	const (
+		targetInkEm float32 = 0.75
+		plusInkEm   float32 = 0.56
+	)
 	switch glyph {
-	case icons.KeyCommand:
-		// key-command spans 16.8 / 24 units (5:5:5 Apple loop proportions).
-		return fontSize * (targetInkEm / (16.8 / 24.0))
 	case icons.KeyPlus:
 		// key-plus spans 16.1 / 24 units; 0.56em matches compact connector proportions.
-		return fontSize * (0.56 / (16.1 / 24.0))
+		svgSize = fontSize * (plusInkEm / (16.1 / 24.0))
+		slotW = float32(math.Round(float64(fontSize * 0.84)))
+	case icons.ArrowUp, icons.ArrowDown, icons.ArrowLeft, icons.ArrowRight:
+		// Arrow icons span 14.5 / 24 units along their primary axis.
+		svgSize = fontSize * (targetInkEm / (14.5 / 24.0))
+		slotW = float32(math.Round(float64(fontSize * 0.92)))
 	default:
-		// key-option, key-shift, key-return, key-backspace, key-control span ~14.5 / 24 units.
-		return fontSize * (targetInkEm / (14.5 / 24.0))
+		// key-command, key-option, key-shift, key-control, key-return, key-backspace
+		// are all normalized onto one 16.8 / 24 optical ink grid (1.8 stroke).
+		svgSize = fontSize * (targetInkEm / (16.8 / 24.0))
+		slotW = float32(math.Round(float64(fontSize * 0.92)))
 	}
+	return svgSize, slotW
 }
 
 func needsLatinCapNudge(s string) bool {
@@ -131,7 +147,7 @@ func needsLatinCapNudge(s string) bool {
 	return hasAlnum
 }
 
-// ShortcutLabel renders text with embedded keycap glyphs (`⌘`, `⌥`, `↩`, `⇧`, `⌃`, `⌫`, `↑`, `↓`, `+`)
+// ShortcutLabel renders text with embedded keycap glyphs (`⌘`, `⌥`, `↩`, `⇧`, `⌃`, `⌫`, `↑`, `↓`, `←`, `→`, `+`)
 // as centered vector icons sharing one vertical center with surrounding text (thinkly-fast ui/shortcut_label.rs).
 func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Element {
 	lineH := style.LineHeight
@@ -158,9 +174,14 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 	row.Children(func() {
 		for _, seg := range segs {
 			if seg.key != "" {
-				iconSize := keyGlyphSize(seg.key, style.FontSize)
-				ic := icons.Draw(c, seg.key, iconSize, pal.MonoIconColors(style.Color))
-				ic.Center()
+				svgSize, slotW := keyGlyphMetrics(seg.key, style.FontSize)
+				slot := ui.Box(c).Size(slotW, lineH).Shrink(0)
+				slot.Children(func() {
+					icons.Draw(c, seg.key, svgSize, pal.MonoIconColors(style.Color)).
+						Absolute().
+						Left((slotW - svgSize) / 2).
+						Top((lineH - svgSize) / 2)
+				})
 				continue
 			}
 			t := ui.Text(c, seg.text).FontSize(style.FontSize).FixedLineHeight(lineH).TextColor(style.Color).SingleLine().Shrink(0)
