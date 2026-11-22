@@ -489,6 +489,28 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 						renderStoreSource(c, entry.Author, card.source, cardBG)
 					})
 				})
+				if card.isInstalled && entry.ID != plugins.DiagnosticsPluginID && storeEntryHasUpdate(entry, card.installed) {
+					label, glyph := theme.Tr("更新", "Update"), icons.Refresh
+					if busy {
+						label = theme.Tr("更新中…", "Updating…")
+					}
+					pluginBusy := ctrl.sup.IsPluginBusyAnyNotebook(entry.ID)
+					disabled := (installingID != "" && !busy) || (pluginBusy && !busy)
+					upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+						ID: "app-store-update-" + entry.ID, Label: label, Leading: &glyph,
+						Style: bui.ButtonAccentOutline, Disabled: disabled,
+						Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
+					})
+					if upBtn.Hovered() {
+						actionHovered = true
+					}
+					if upBtn.Clicked() && !busy && !disabled {
+						actionHandled = true
+						ctrl.closeStoreMenus()
+						ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
+					}
+					return
+				}
 				if card.isInstalled {
 					if hasSettings {
 						openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
