@@ -982,7 +982,7 @@ func renderHistoryCleanDoc(c *ui.Context, doc *model.Doc, edFont, codeFont strin
 						}
 						rowEl.Children(func() {
 							for _, cell := range r {
-								ui.Box(c).Grow(1).Padding(6, 10).Children(func() {
+								ui.Box(c).Grow(1).MinWidth(0).Padding(6, 10).Children(func() {
 									t := ui.Text(c, cell.PlainText()).FontSize(theme.FontBody).TextColor(pal.Text)
 									if rIdx == 0 {
 										t.FontWeight(theme.WeightTitle)

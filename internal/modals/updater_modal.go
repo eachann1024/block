@@ -281,7 +281,7 @@ func renderTaggedMergedSections(
 		ui.Row(c.Key("merged-hl")).FillWidth().Padding(theme.Space12, theme.Space16).
 			Radius(theme.RadiusLG).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
 			ui.Text(c, hl).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-				FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1)
+				FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
 		})
 	}
 
@@ -347,7 +347,7 @@ func renderTaggedMergedSections(
 					b := bullet
 					ui.Row(c.Key(fmt.Sprintf("merged-%s-%d", grp.id, i))).FillWidth().Gap(theme.Space8).AlignItems(ui.Start).Children(func() {
 						renderAccentBulletDot(c, pal)
-						ui.Text(c, b.Text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1)
+						ui.Text(c, b.Text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
 						if showVersionTag && b.Version != "" {
 							verTag := b.Version
 							if !strings.HasPrefix(verTag, "v") {
@@ -412,7 +412,7 @@ func renderVersionTimelineCard(
 				text := line
 				ui.Row(c.Key(fmt.Sprintf("ver-%s-%d", entry.Version, i))).FillWidth().Gap(theme.Space8).AlignItems(ui.Start).Children(func() {
 					renderAccentBulletDot(c, pal)
-					ui.Text(c, text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1)
+					ui.Text(c, text).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Grow(1).MinWidth(0)
 				})
 			}
 		})

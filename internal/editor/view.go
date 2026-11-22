@@ -1090,7 +1090,7 @@ func (s *Session) renderBlockRowMeta(c *ui.Context, idx int, readOnly bool, meta
 			if b.Kind.IsList() {
 				bodyMaxW = max(stdW-markerW-indentPx, s.scale(240))
 			}
-			body := ui.Column(c.Key("body")).Grow(1).Shrink(1).MaxWidth(bodyMaxW)
+			body := ui.Column(c.Key("body")).Grow(1).Shrink(1).MinWidth(0).MaxWidth(bodyMaxW)
 			body.Children(func() {
 				if isCollapsedDrag {
 					s.renderCollapsedDragBlock(c, idx, b)
@@ -2691,7 +2691,7 @@ func (s *Session) renderTableBlock(c *ui.Context, idx int, b *model.Block, isFoc
 				})
 			}
 			if needHScroll {
-				hs := appUi.ScrollHorizontal(c.Key("table-hscroll"), s.tableHScroll(id)).Grow(1).Shrink(1)
+				hs := appUi.ScrollHorizontal(c.Key("table-hscroll"), s.tableHScroll(id)).Grow(1).Shrink(1).MinWidth(0)
 				hs.Children(func() {
 					buildGrid()
 				})

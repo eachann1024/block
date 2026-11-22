@@ -1616,7 +1616,7 @@ func (c *Controller) renderProcessCard(cUI *ui.Context, pal theme.Palette, turnK
 								stepTitle := ui.Text(cUI, st.Title).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine().Shrink(0)
 								if detail == "" {
 									// 无详情时由标题占满剩余宽度，避免整行被居中。
-									stepTitle.Grow(1)
+									stepTitle.Grow(1).MinWidth(0)
 								} else {
 									ui.Text(cUI, detail).FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 								}
@@ -2039,7 +2039,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 
 	card.Children(func() {
 		ui.Row(cUI).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
-			ui.Text(cUI, q.Prompt).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1)
+			ui.Text(cUI, q.Prompt).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).MinWidth(0)
 			closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 				ID:       "ai-question-dismiss",
 				Label:    theme.Tr("收起问题", "Dismiss question"),
@@ -2104,7 +2104,7 @@ func (c *Controller) renderQuestionCard(cUI *ui.Context, pal theme.Palette, conv
 					if on {
 						fg = pal.Text
 					}
-					ui.Text(cUI, opt.Label).FontSize(theme.FontBody).TextColor(fg).Grow(1)
+					ui.Text(cUI, opt.Label).FontSize(theme.FontBody).TextColor(fg).Grow(1).MinWidth(0)
 				})
 				if row.Clicked() {
 					c.mu.Lock()
@@ -2338,7 +2338,7 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 		box.MaxWidth(720).Margin(0, ui.Auto)
 	}
 	box.Children(func() {
-		ui.Column(cUI).Grow(1).Padding(10, 12).Gap(6).Radius(theme.RadiusMD).
+		ui.Column(cUI).Grow(1).MinWidth(0).Padding(10, 12).Gap(6).Radius(theme.RadiusMD).
 			Background(pal.DangerSurface).Border(1, pal.Danger.Alpha(0.35)).Children(func() {
 			ui.Row(cUI).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(cUI, theme.Tr("本轮失败原因", "Request failed")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Danger)
@@ -2388,7 +2388,7 @@ func (c *Controller) renderDeferredDraftBanner(cUI *ui.Context, pal theme.Palett
 	}
 	row.Children(func() {
 		ui.Text(cUI, theme.Tr("上一条未完成的草稿可恢复。", "An unfinished draft can be restored.")).
-			FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1)
+			FontSize(theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0)
 		histIc := icons.History
 		btn := bui.ActionButton(cUI, "ai-restore-draft", theme.Tr("恢复草稿", "Restore draft"), &histIc, bui.ButtonSecondary, !canRestore)
 		if !canRestore {

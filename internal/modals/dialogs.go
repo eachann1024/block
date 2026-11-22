@@ -789,9 +789,9 @@ func (m *Manager) renderExportModal(c *ui.Context) {
 			// Footer status + action.
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(10).Children(func() {
 				if m.exportErr != "" {
-					ui.Text(c, m.exportErr).FontSize(theme.FontBody).TextColor(pal.Danger).Grow(1)
+					ui.Text(c, m.exportErr).FontSize(theme.FontBody).TextColor(pal.Danger).Grow(1).MinWidth(0)
 				} else if m.exportStatus != "" {
-					ui.Text(c, m.exportStatus).FontSize(theme.FontBody).TextColor(pal.Success).Grow(1)
+					ui.Text(c, m.exportStatus).FontSize(theme.FontBody).TextColor(pal.Success).Grow(1).MinWidth(0)
 				} else {
 					ui.Box(c).Grow(1)
 				}

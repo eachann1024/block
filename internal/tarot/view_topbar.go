@@ -105,7 +105,7 @@ func (ctrl *Controller) RenderTopbar(c *ui.Context, sidebarOpen bool) {
 		})
 
 		// Center navigation: 写作 / 牌桌 / 牌册 (none underlined on Daily room).
-		nav := ui.Row(c.Key("tarot-topbar-nav")).Grow(1).FillHeight().AlignItems(ui.Center).
+		nav := ui.Row(c.Key("tarot-topbar-nav")).Grow(1).MinWidth(0).FillHeight().AlignItems(ui.Center).
 			Justify(ui.Center).Gap(theme.Space4).DragWindow()
 		nav.Children(func() {
 			type navDef struct {
