@@ -42,11 +42,15 @@ type Workspace struct {
 	dataDir string
 	win     *mygo.Window
 
-	state                model.AppState
-	sidebarWidth         float32
-	sidebarPinned        bool
-	lastViewportW        float32
-	zoomPct              int
+	state                   model.AppState
+	sidebarWidth            float32
+	sidebarPinned           bool
+	lastViewportW           float32
+	sidebarExpandCueAt      time.Time
+	sidebarExpandCuePending bool
+	wasSidebarDocked        bool
+	wasInSettings           bool
+	zoomPct                 int
 	entries              []model.FileEntry
 	lastScanErr          string
 	virtualPreview       map[string]bool   // createNote preview tabs not yet written to disk
@@ -2167,11 +2171,55 @@ func (w *Workspace) OpenSettings(tab string) {
 	if !wasOpen {
 		w.mu.Lock()
 		w.state.SidebarCollapsed = false
-		w.sidebarPinned = false
+		vpW := w.effectiveViewportWidthLocked(0)
+		sbW := ClampSidebarWidth(w.sidebarWidth)
+		// On narrow viewports where Settings cannot dock the navigation column,
+		// open it as a floating card first so the user sees it before hiding.
+		w.sidebarPinned = sbW+SettingsFloor > vpW+0.5
 		w.mu.Unlock()
+		w.clearSidebarExpandCue()
 	}
 	w.modals.OpenSettings(tab)
 	w.RequestRedraw()
+}
+
+func (w *Workspace) effectiveViewportWidthLocked(viewportWidth float32) float32 {
+	if viewportWidth <= 0 {
+		viewportWidth = w.lastViewportW
+	}
+	if viewportWidth <= 0 && w.win != nil {
+		cw, _ := w.win.ContentSize()
+		if cw > 0 {
+			z := float32(w.zoomPct) / 100.0
+			if z <= 0 {
+				z = 1.0
+			}
+			viewportWidth = float32(cw) / z
+		}
+	}
+	if viewportWidth <= 0 {
+		viewportWidth = 1100
+	}
+	return viewportWidth
+}
+
+func (w *Workspace) triggerSidebarExpandCue() {
+	w.mu.Lock()
+	w.sidebarExpandCuePending = true
+	w.sidebarExpandCueAt = time.Time{}
+	w.mu.Unlock()
+	w.RequestRedraw()
+}
+
+func (w *Workspace) clearSidebarExpandCue() {
+	w.mu.Lock()
+	w.clearSidebarExpandCueLocked()
+	w.mu.Unlock()
+}
+
+func (w *Workspace) clearSidebarExpandCueLocked() {
+	w.sidebarExpandCuePending = false
+	w.sidebarExpandCueAt = time.Time{}
 }
 
 func (w *Workspace) RequestRedraw() {
@@ -3501,37 +3549,30 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	w.edgeFloat.DismissAll(w)
 	if wasEdgeLeft {
 		w.sidebarUI.CancelRename()
-		w.RequestRedraw()
+		if w.modals.IsSettingsOpen() {
+			w.triggerSidebarExpandCue()
+		} else {
+			w.RequestRedraw()
+		}
 		return
 	}
 
 	w.mu.Lock()
-	if viewportWidth <= 0 {
-		viewportWidth = w.lastViewportW
-	}
-	if viewportWidth <= 0 && w.win != nil {
-		cw, _ := w.win.ContentSize()
-		if cw > 0 {
-			z := float32(w.zoomPct) / 100.0
-			if z <= 0 {
-				z = 1.0
-			}
-			viewportWidth = float32(cw) / z
-		}
-	}
-	if viewportWidth <= 0 {
-		viewportWidth = 1100
-	}
+	viewportWidth = w.effectiveViewportWidthLocked(viewportWidth)
 	layout := ResolveShellLayout(w.shellInputLocked(viewportWidth))
 	w.sidebarUI.CancelRename()
+	triggerCue := false
 	if layout.SidebarDrawer {
 		w.sidebarPinned = false
+		triggerCue = true
 	} else if layout.SidebarDocked {
 		w.state.SidebarCollapsed = true
 		w.sidebarPinned = false
+		w.clearSidebarExpandCueLocked()
 	} else {
 		w.state.SidebarCollapsed = false
 		w.sidebarPinned = true
+		w.clearSidebarExpandCueLocked()
 	}
 	collapsed := w.state.SidebarCollapsed
 	w.mu.Unlock()
@@ -3539,7 +3580,11 @@ func (w *Workspace) ToggleSidebar(viewportWidth float32) {
 	_, _ = files.UpdateState(func(st *model.AppState) {
 		st.SidebarCollapsed = collapsed
 	})
-	w.RequestRedraw()
+	if triggerCue {
+		w.triggerSidebarExpandCue()
+	} else {
+		w.RequestRedraw()
+	}
 }
 
 func (w *Workspace) onAIEnabledChanged(enabled bool) {
@@ -4664,13 +4709,35 @@ func (w *Workspace) Render(c *ui.Context) {
 	w.handleAppShortcuts(c, vpW)
 	w.flushOrScheduleDirtySessions()
 
+	inSettingsNow := w.modals.IsSettingsOpen()
 	w.mu.Lock()
 	w.lastViewportW = vpW
+	leftSettings := w.wasInSettings && !inSettingsNow
+	if leftSettings {
+		w.sidebarPinned = false
+		w.clearSidebarExpandCueLocked()
+	}
 	in := w.shellInputLocked(vpW)
 	layout := ResolveShellLayout(in)
 	if layout.SidebarDocked && !layout.ChatFullscreen {
 		w.sidebarPinned = false
 	}
+	aiImmersiveNow := layout.ChatFullscreen && !inSettingsNow
+	autoYielded := w.wasInSettings == inSettingsNow &&
+		w.wasSidebarDocked && layout.SidebarYielded && !layout.SidebarDrawer && !aiImmersiveNow
+	w.wasSidebarDocked = layout.SidebarDocked
+	w.wasInSettings = inSettingsNow
+	if layout.SidebarDocked || layout.SidebarDrawer || aiImmersiveNow {
+		w.clearSidebarExpandCueLocked()
+	} else if autoYielded || w.sidebarExpandCuePending {
+		now := c.Now()
+		if now.IsZero() {
+			now = time.Now()
+		}
+		w.sidebarExpandCueAt = now
+		w.sidebarExpandCuePending = false
+	}
+	sidebarExpandCueAt := w.sidebarExpandCueAt
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	var dirtyTabs map[string]bool
 	for _, tp := range tabs {
@@ -4695,6 +4762,13 @@ func (w *Workspace) Render(c *ui.Context) {
 	toast := w.historyToast
 	stSnap := w.state
 	w.mu.Unlock()
+	if leftSettings {
+		w.edgeFloat.DismissAll(w)
+	}
+	if w.edgeFloat.LeftOpen() && !sidebarExpandCueAt.IsZero() {
+		w.clearSidebarExpandCue()
+		sidebarExpandCueAt = time.Time{}
+	}
 	sourceSoftWrap = stSnap.SourceSoftWrap
 
 	inSettings := w.modals.IsSettingsOpen()
@@ -4806,6 +4880,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				SidebarWide:            sidebarWide,
 				SidebarAutoHidden:      sidebarAutoHidden,
 				SidebarFloating:        w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
+				SidebarExpandCueAt:     sidebarExpandCueAt,
 				SidebarWidth:           dockedSidebarWidth,
 				InSettings:             inSettings,
 				SettingsTabLabel:       w.modals.ActiveSettingsTabTitle(),
@@ -5239,8 +5314,12 @@ func (w *Workspace) Render(c *ui.Context) {
 			// Floating Sidebar Card when narrow and explicitly toggled open via button / Alt+B (unified with Scheme A card).
 			if layout.SidebarDrawer && !aiImmersive {
 				c.Key("sidebar-drawer-scrim")
-				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-					Background(ui.Transparent)
+				scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+				if inSettings {
+					scrim.Background(pal.Scrim().Alpha(0.42)).Transition(blockui.ScrimFadeTransition())
+				} else {
+					scrim.Background(ui.Transparent)
+				}
 				blockui.Probe(scrim, "sidebar-drawer-scrim")
 				if scrim.Clicked() {
 					w.ToggleSidebar(vpW)
@@ -5248,21 +5327,23 @@ func (w *Workspace) Render(c *ui.Context) {
 				efPal := pal.EdgeFloat()
 				drawerW := min(ClampSidebarWidth(w.sidebarWidth), max(vpW-40, SidebarMinW))
 				c.Key("sidebar-drawer-panel")
-				drawer := blockui.Elevate(
-					ui.Row(c).Absolute().
-						Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
-						Width(drawerW).Radius(theme.RadiusLG).Clip().
-						Background(pal.Sidebar).Border(1, efPal.CardBorder).
-						Transition(blockui.EdgeFloatCardTransition(false)),
-					theme.ElevationDrawer,
-				)
+				drawerBox := ui.Row(c).Absolute().
+					Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
+					Width(drawerW).Radius(theme.RadiusLG).Clip().
+					Background(pal.Sidebar).Border(1, efPal.CardBorder)
+				if inSettings {
+					drawerBox.TransformOrigin(0.10, 0).Transition(blockui.SettingsDrawerGenieTransition())
+				} else {
+					drawerBox.Transition(blockui.EdgeFloatCardTransition(false))
+				}
+				drawer := blockui.Elevate(drawerBox, theme.ElevationDrawer)
 				drawer.Children(func() {
 					if inSettings {
 						w.modals.RenderSettingsSidebar(c, true, func() {
 							w.mu.Lock()
 							w.sidebarPinned = false
 							w.mu.Unlock()
-							w.RequestRedraw()
+							w.triggerSidebarExpandCue()
 						})
 					} else {
 						w.renderSidebarColumn(c, stSnap, activeNB, notebooks, entries, activeTab, true)

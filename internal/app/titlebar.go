@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
+	"time"
 
 	"block/internal/files"
 	"block/internal/icons"
@@ -194,9 +196,10 @@ type TitlebarProps struct {
 	CanForward bool
 	Busy       bool
 
-	ShortcutSidebar string
-	SidebarFloating bool
-	ShortcutNewTab  string
+	ShortcutSidebar    string
+	SidebarFloating    bool
+	SidebarExpandCueAt time.Time
+	ShortcutNewTab     string
 	ShortcutAI      string
 	ShortcutExport  string
 
@@ -355,37 +358,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 			if p.AIImmersive {
 				return
 			}
-			sidebarOpen := p.SidebarWide || p.SidebarFloating
-			glyph := icons.SidebarExpand
-			if sidebarOpen {
-				glyph = icons.SidebarCollapse
-			}
-			sbSc := nonEmptyOr(p.ShortcutSidebar, "alt-b")
-			var tip string
-			if p.InSettings {
-				if sidebarOpen {
-					tip = theme.Tr("收起导航", "Collapse Navigation")
-				} else {
-					tip = theme.Tr("展开导航", "Expand Navigation")
-				}
-			} else {
-				if sidebarOpen {
-					tip = theme.Tr("收起侧栏", "Collapse Sidebar")
-				} else {
-					tip = theme.Tr("展开侧栏", "Expand Sidebar")
-				}
-			}
-			sbBtn := blockui.IconButton(c, glyph, blockui.IconButtonOptions{
-				ID:          "sidebar-toggle",
-				Tooltip:     tip,
-				Shortcut:    blockui.FormatShortcutDisplay(sbSc),
-				Active:      p.SidebarFloating,
-				ActiveStyle: blockui.ActiveAccent,
-				ChromeHover: true,
-			})
-			if sbBtn.Clicked() && p.OnToggleSidebar != nil {
-				p.OnToggleSidebar()
-			}
+			renderSidebarToggleButton(c, p)
 
 			if !p.HideMark {
 				renderBrandMark(c, p)
@@ -1219,4 +1192,220 @@ func buildTabContextItems(p TitlebarProps) []blockui.MenuItemSpec {
 			},
 		},
 	}...)
+}
+
+func renderSidebarToggleButton(c *ui.Context, p TitlebarProps) {
+	pal := theme.Ocean()
+	sidebarOpen := p.SidebarWide || p.SidebarFloating
+	glyph := icons.SidebarExpand
+	if sidebarOpen {
+		glyph = icons.SidebarCollapse
+	}
+	sbSc := nonEmptyOr(p.ShortcutSidebar, "alt-b")
+	var tip string
+	if p.InSettings {
+		if sidebarOpen {
+			tip = theme.Tr("收起导航", "Collapse Navigation")
+		} else {
+			tip = theme.Tr("展开导航", "Expand Navigation")
+		}
+	} else {
+		if sidebarOpen {
+			tip = theme.Tr("收起侧栏", "Collapse Sidebar")
+		} else {
+			tip = theme.Tr("展开侧栏", "Expand Sidebar")
+		}
+	}
+
+	now := c.Now()
+	if now.IsZero() {
+		now = time.Now()
+	}
+	cueHold := theme.SidebarExpandCueHoldMs * time.Millisecond
+	var elapsedMs float32
+	cueActive := false
+	if !sidebarOpen && !p.SidebarExpandCueAt.IsZero() {
+		el := now.Sub(p.SidebarExpandCueAt)
+		if el >= 0 && el < cueHold {
+			cueActive = true
+			elapsedMs = float32(el.Seconds() * 1000)
+		}
+	}
+
+	ringStart := float32(theme.SidebarExpandCueRingDelayMs)
+	ringDur := float32(theme.SidebarExpandCueRingMs)
+	ringEnd := ringStart + ringDur
+	nudgeStart := float32(theme.SidebarExpandCueNudgeDelayMs)
+	nudgeDur := float32(theme.SidebarExpandCueNudgeMs)
+	nudgeEnd := nudgeStart + nudgeDur
+	activeMotionEnd := max(ringEnd, nudgeEnd)
+
+	if cueActive && !testing.Testing() {
+		if elapsedMs < activeMotionEnd {
+			c.AnimationFrame()
+		} else {
+			remaining := cueHold - now.Sub(p.SidebarExpandCueAt)
+			if remaining > 0 {
+				c.After(remaining)
+			}
+		}
+	}
+
+	btn := ui.ButtonBase(c.Key("sidebar-toggle")).Height(theme.ChromeBoxSize).Shrink(0).
+		AlignItems(ui.Center).Justify(ui.Center).Radius(theme.RadiusMD).
+		Cursor(ui.CursorPointer).Label(tip)
+	blockui.RichTooltip(c, btn, blockui.TooltipSpec{
+		Placement: blockui.TooltipBelow,
+		Rows: []blockui.TooltipRow{{
+			Trigger:  tip,
+			Shortcut: blockui.FormatShortcutDisplay(sbSc),
+		}},
+	})
+
+	pillTarget := float32(0)
+	if cueActive {
+		pillTarget = 1
+	}
+	pillP := pillTarget
+	if !testing.Testing() {
+		pillP = btn.AnimateTo("sidebarExpandPill", pillTarget, ui.Animation{
+			Duration: theme.SidebarExpandCuePillMs * time.Millisecond,
+			Ease:     ui.CubicBezier(0.22, 1, 0.36, 1),
+		})
+	}
+	if pillP < 0 {
+		pillP = 0
+	} else if pillP > 1 {
+		pillP = 1
+	}
+
+	basePad := (theme.ChromeBoxSize - theme.IconChrome) / 2
+	padL := basePad + (theme.Space8-basePad)*pillP
+	padR := basePad + (theme.Space10-basePad)*pillP
+	btn.Padding(0, padR, 0, padL)
+
+	hovered := btn.Hovered()
+	pressed := btn.Pressed()
+
+	bgCol := ui.Transparent
+	bdCol := ui.Transparent
+	hasBorder := false
+	switch {
+	case pillP >= 0.01:
+		fillAlpha := float32(0.18)
+		if hovered || pressed {
+			fillAlpha = 0.26
+		}
+		bgCol = pal.Accent.Alpha(fillAlpha * pillP)
+		bdCol = pal.Accent.Alpha(0.56 * pillP)
+		hasBorder = true
+	case p.SidebarFloating:
+		bgCol = pal.Selected
+	case hovered || pressed:
+		bgCol = pal.ShellChrome().Hover
+	}
+	blockui.AnimateSurfaceColors(btn, bgCol, bdCol, hasBorder)
+	blockui.TactileButton(btn, hovered, pressed, false)
+
+	nudgeX := float32(0)
+	if cueActive && !testing.Testing() {
+		nudgeX = sidebarCueArrowNudge(elapsedMs, nudgeStart, nudgeDur)
+	}
+
+	iconColors := pal.MonoIconColors(pal.TextSecondary)
+	switch {
+	case pillP >= 0.01 || p.SidebarFloating:
+		iconColors = pal.DuoIconColors(pal.Accent)
+	case hovered || pressed:
+		iconColors = pal.DuoIconColors(pal.Text)
+	}
+	playIconHover := hovered || pressed || (cueActive && !testing.Testing() && elapsedMs < nudgeEnd)
+
+	labelText := theme.Tr("展开", "Expand")
+	labelFullW := theme.SidebarExpandCueLabelWidthZH
+	if labelText == "Expand" {
+		labelFullW = theme.SidebarExpandCueLabelWidthEN
+	}
+
+	btn.Children(func() {
+		iconWrap := ui.Box(c).Size(theme.IconChrome, theme.IconChrome).Shrink(0).Center()
+		if nudgeX != 0 {
+			iconWrap.Translate(nudgeX, 0)
+		}
+		iconWrap.Children(func() {
+			icons.DrawAnimated(c, glyph, theme.IconChrome, iconColors, playIconHover)
+		})
+
+		if pillP > 0.005 {
+			textAlpha := (pillP - 0.15) / 0.85
+			if textAlpha < 0 {
+				textAlpha = 0
+			} else if textAlpha > 1 {
+				textAlpha = 1
+			}
+			ui.Row(c.Key("sidebar-toggle-pill-label")).Width(labelFullW*pillP).Height(theme.ChromeBoxSize).
+				Shrink(0).AlignItems(ui.Center).Clip().Opacity(textAlpha).Children(func() {
+				ui.Box(c).Width(theme.Space4).Shrink(0)
+				ui.Text(c, labelText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+					FontWeight(theme.WeightControl).TextColor(pal.Accent).SingleLine()
+			})
+		}
+
+		if cueActive && !testing.Testing() && elapsedMs <= ringEnd {
+			cueAt := p.SidebarExpandCueAt
+			accent := pal.Accent
+			ui.Box(c.Key("sidebar-toggle-pill-ring")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+				Draw(func(painter *ui.Painter, r ui.Rect) {
+					elMs := float32(painter.Now().Sub(cueAt).Seconds() * 1000)
+					if elMs < ringStart || elMs > ringEnd {
+						return
+					}
+					u := (elMs - ringStart) / ringDur
+					inv := 1 - u
+					e := 1 - inv*inv*inv
+					ex := (r.W*0.14 + 3) * e
+					ey := (r.H * 0.26) * e
+					ringRect := ui.Rect{
+						X: r.X - ex,
+						Y: r.Y - ey,
+						W: r.W + ex*2,
+						H: r.H + ey*2,
+					}
+					alpha := 0.78 * (1 - e)
+					if alpha > 0.005 {
+						painter.Stroke(ringRect, accent.Alpha(alpha), theme.RadiusMD+ey*0.35, theme.SidebarExpandCueRingWidth)
+					}
+				})
+		}
+	})
+	blockui.Probe(btn, "sidebar-toggle")
+	if btn.Clicked() && p.OnToggleSidebar != nil {
+		p.OnToggleSidebar()
+	}
+}
+
+func sidebarCueArrowNudge(elapsedMs, startMs, durMs float32) float32 {
+	if elapsedMs < startMs || elapsedMs > startMs+durMs || durMs <= 0 {
+		return 0
+	}
+	u := (elapsedMs - startMs) / durMs
+	smooth := func(t float32) float32 {
+		if t <= 0 {
+			return 0
+		}
+		if t >= 1 {
+			return 1
+		}
+		return t * t * (3 - 2*t)
+	}
+	switch {
+	case u < 0.28:
+		return 2.4 * smooth(u/0.28)
+	case u < 0.52:
+		return 2.4 * (1 - smooth((u-0.28)/0.24))
+	case u < 0.74:
+		return 2.0 * smooth((u-0.52)/0.22)
+	default:
+		return 2.0 * (1 - smooth((u-0.74)/0.26))
+	}
 }

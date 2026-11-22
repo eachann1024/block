@@ -333,22 +333,24 @@ func (ef *EdgeFloatController) RenderBodyOverlays(
 	// 3. Rounded Floating Left Sidebar Card.
 	if canLeft && ef.active == edgeSideLeft {
 		c.Key("edge-float-sidebar")
-		card := blockui.Elevate(
-			ui.Row(c).Absolute().
-				Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
-				Width(leftCardW).Radius(theme.RadiusLG).Clip().
-				Background(pal.Sidebar).Border(1, efPal.CardBorder).
-				Bind(&ef.leftCardHandle).
-				Transition(blockui.EdgeFloatCardTransition(false)),
-			theme.ElevationDrawer,
-		)
+		cardBox := ui.Row(c).Absolute().
+			Left(theme.EdgeFloatInset).Top(0).Bottom(theme.EdgeFloatInset).
+			Width(leftCardW).Radius(theme.RadiusLG).Clip().
+			Background(pal.Sidebar).Border(1, efPal.CardBorder).
+			Bind(&ef.leftCardHandle)
+		if inSettings {
+			cardBox.TransformOrigin(0.10, 0).Transition(blockui.SettingsDrawerGenieTransition())
+		} else {
+			cardBox.Transition(blockui.EdgeFloatCardTransition(false))
+		}
+		card := blockui.Elevate(cardBox, theme.ElevationDrawer)
 		ef.cardHovered = card.Hovered()
 		blockui.Probe(card, "edge-float-sidebar")
 		card.Children(func() {
 			if inSettings {
 				w.modals.RenderSettingsSidebar(c, true, func() {
 					ef.closeSide(w, edgeSideLeft, false)
-					w.RequestRedraw()
+					w.triggerSidebarExpandCue()
 				})
 			} else {
 				w.renderFloatingSidebarCard(c, leftCardW, stSnap, activeNB, notebooks, entries, activeTab)
