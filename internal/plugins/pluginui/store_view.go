@@ -1,6 +1,7 @@
 package pluginui
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -23,10 +24,63 @@ const (
 	storeSortName         = "name"
 )
 
-// renderStoreHeaderExtras draws one search field with an inline filter button;
-// source and sort live together in the button's menu so the header stays light.
+func updatableStoreEntries(ctrl *Controller) []plugins.StoreAppEntry {
+	if ctrl == nil || ctrl.sup == nil {
+		return nil
+	}
+	installed := ctrl.sup.Installed()
+	installedMap := make(map[string]plugins.InstalledApp, len(installed))
+	for _, app := range installed {
+		installedMap[app.Manifest.ID] = app
+	}
+	entries := buildStoreEntries(ctrl.sup.Catalog(), installed)
+	var out []plugins.StoreAppEntry
+	for _, entry := range entries {
+		app, isInstalled := installedMap[entry.ID]
+		if isInstalled && entry.ID != plugins.DiagnosticsPluginID && storeEntryHasUpdate(entry, app) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// renderStoreHeaderExtras draws an Update All button (when updates exist) and
+// one search field with an inline filter button; source and sort live together
+// in the button's menu so the header stays light.
 func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 	pal := theme.Ocean()
+	refreshing, installingID, _, _ := ctrl.sup.StoreStatus()
+	batchUpdating := ctrl.sup.IsBatchUpdating()
+	updatable := updatableStoreEntries(ctrl)
+	if !refreshing && (batchUpdating || len(updatable) > 0) {
+		glyph := icons.Refresh
+		label := theme.Tr(fmt.Sprintf("一键更新 (%d)", len(updatable)), fmt.Sprintf("Update All (%d)", len(updatable)))
+		if batchUpdating {
+			label = theme.Tr("更新中…", "Updating…")
+		}
+		allBusy := len(updatable) > 0
+		for _, entry := range updatable {
+			if !ctrl.sup.IsPluginBusyAnyNotebook(entry.ID) {
+				allBusy = false
+				break
+			}
+		}
+		disabled := (installingID != "" && !batchUpdating) || (!batchUpdating && allBusy)
+		upAllBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+			ID:       "app-store-update-all",
+			Label:    label,
+			Leading:  &glyph,
+			Style:    bui.ButtonAccentOutline,
+			Disabled: disabled,
+			Loading:  batchUpdating,
+			Height:   theme.HeightControl,
+			PaddingX: theme.Space12,
+		})
+		if upAllBtn.Clicked() && !batchUpdating && !disabled && len(updatable) > 0 {
+			ctrl.closeStoreMenus()
+			ctrl.sup.UpdateEntriesAsync(updatable, ctrl.clearPluginState)
+		}
+	}
 	query := ctrl.storeQuery
 	border := ui.Transparent
 	if ctrl.storeSearchFocused {
