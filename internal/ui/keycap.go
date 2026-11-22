@@ -104,10 +104,10 @@ func parseShortcutSegments(text string, isShortcut bool) (segs []shortcutSegment
 	return segs, hasKey
 }
 
-// keyGlyphMetrics returns the SVG render box size and the fixed layout slot width
-// for a shortcut glyph so every key symbol shares identical ink height, stroke weight,
-// optical sidebearing, and vertical centering across macOS, Windows, and Linux.
-func keyGlyphMetrics(glyph icons.Icon, fontSize float32) (svgSize, slotW float32) {
+// keyGlyphMetrics returns the SVG render box size and optical ink width for a
+// shortcut glyph so every key symbol shares identical ink height, stroke weight,
+// vertical centering, and uniform inter-token spacing across macOS, Windows, and Linux.
+func keyGlyphMetrics(glyph icons.Icon, fontSize float32) (svgSize, inkW float32) {
 	const (
 		targetInkEm float32 = 0.75
 		plusInkEm   float32 = 0.56
@@ -115,19 +115,33 @@ func keyGlyphMetrics(glyph icons.Icon, fontSize float32) (svgSize, slotW float32
 	switch glyph {
 	case icons.KeyPlus:
 		// key-plus spans 16.1 / 24 units; 0.56em matches compact connector proportions.
-		svgSize = fontSize * (plusInkEm / (16.1 / 24.0))
-		slotW = float32(math.Round(float64(fontSize * 0.84)))
-	case icons.ArrowUp, icons.ArrowDown, icons.ArrowLeft, icons.ArrowRight:
-		// Arrow icons span 14.5 / 24 units along their primary axis.
+		inkW = fontSize * plusInkEm
+		svgSize = inkW / (16.1 / 24.0)
+	case icons.ArrowUp, icons.ArrowDown:
+		// Vertical arrow icons span 14.5 / 24 tall and 12.0 / 24 wide.
 		svgSize = fontSize * (targetInkEm / (14.5 / 24.0))
-		slotW = float32(math.Round(float64(fontSize * 0.92)))
+		inkW = svgSize * (12.0 / 24.0)
+	case icons.ArrowLeft, icons.ArrowRight:
+		// Horizontal arrow icons span 14.5 / 24 wide and 12.0 / 24 tall.
+		inkW = fontSize * targetInkEm
+		svgSize = inkW / (14.5 / 24.0)
 	default:
 		// key-command, key-option, key-shift, key-control, key-return, key-backspace
 		// are all normalized onto one 16.8 / 24 optical ink grid (1.8 stroke).
-		svgSize = fontSize * (targetInkEm / (16.8 / 24.0))
-		slotW = float32(math.Round(float64(fontSize * 0.92)))
+		inkW = fontSize * targetInkEm
+		svgSize = inkW / (16.8 / 24.0)
 	}
-	return svgSize, slotW
+	return svgSize, inkW
+}
+
+// shortcutTokenGap returns the uniform horizontal gap between adjacent shortcut
+// tokens (icons and key labels), matching theme.Space4 (4px) at 12px meta size.
+func shortcutTokenGap(fontSize float32) float32 {
+	g := float32(math.Round(float64(fontSize * 0.30)))
+	if g < 2 {
+		return 2
+	}
+	return g
 }
 
 func needsLatinCapNudge(s string) bool {
@@ -171,10 +185,18 @@ func ShortcutLabel(c *ui.Context, text string, style ShortcutLabelStyle) ui.Elem
 	pal := theme.Ocean()
 
 	row := ui.Row(c).Height(lineH).Shrink(0).AlignItems(ui.Center)
+	if style.IsShortcut {
+		row.Gap(shortcutTokenGap(style.FontSize))
+	}
 	row.Children(func() {
 		for _, seg := range segs {
 			if seg.key != "" {
-				svgSize, slotW := keyGlyphMetrics(seg.key, style.FontSize)
+				svgSize, inkW := keyGlyphMetrics(seg.key, style.FontSize)
+				slotW := float32(math.Round(float64(inkW)))
+				if !style.IsShortcut {
+					// Add 1px breathing room per side when a key glyph sits inline in prose.
+					slotW += 2
+				}
 				slot := ui.Box(c).Size(slotW, lineH).Shrink(0)
 				slot.Children(func() {
 					icons.Draw(c, seg.key, svgSize, pal.MonoIconColors(style.Color)).

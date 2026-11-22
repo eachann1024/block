@@ -56,7 +56,14 @@ func Chip(c *ui.Context, opts ChipOptions) ui.Element {
 		}
 		ui.Text(c, opts.Label).FontSize(theme.FontMeta).FontWeight(w).TextColor(fg).SingleLine()
 		if opts.Hint != "" {
-			ui.Text(c, opts.Hint).Font("monospace").FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(hint).SingleLine()
+			ShortcutLabel(c, opts.Hint, ShortcutLabelStyle{
+				Font:       "monospace",
+				FontSize:   theme.FontMeta,
+				LineHeight: theme.LineMeta,
+				FontWeight: theme.WeightMono,
+				Color:      hint,
+				IsShortcut: true,
+			})
 		}
 	})
 	if opts.ID != "" {
