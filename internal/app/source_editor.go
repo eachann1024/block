@@ -144,10 +144,18 @@ func resolveBuiltinConfigByPathOrContent(filePath, text string) (*codeed.Languag
 		return plugins.ResolveCodeLanguageByTag("ini")
 	case strings.HasSuffix(norm, "/git/ignore"):
 		return plugins.ResolveCodeLanguageByTag("ignore")
+	case strings.HasPrefix(base, "procfile."):
+		return plugins.ResolveCodeLanguageByTag("procfile")
+	case strings.HasPrefix(base, "jenkinsfile."):
+		return plugins.ResolveCodeLanguageByTag("groovy")
+	case isRequirementsFilename(base, ext):
+		return plugins.ResolveCodeLanguageByTag("requirements")
+	case (strings.Contains(norm, "/cron.d/") || strings.HasPrefix(norm, "cron.d/")) && ext == "":
+		return plugins.ResolveCodeLanguageByTag("crontab")
 	}
 
 	if ext == ".conf" {
-		// Exact built-in filenames (e.g. nginx.conf, pip.conf, Surge.conf) take precedence.
+		// Exact built-in filenames (e.g. nginx.conf, httpd.conf, haproxy.conf, pip.conf, Surge.conf) take precedence.
 		if lang, tag := plugins.ResolveBuiltinCodeLanguageForFile(filePath); lang != nil {
 			return lang, tag
 		}
@@ -157,9 +165,31 @@ func resolveBuiltinConfigByPathOrContent(filePath, text string) (*codeed.Languag
 		if isNginxConfSource(text) {
 			return plugins.ResolveCodeLanguageByTag("nginx")
 		}
+		if isApacheConfSource(text) {
+			return plugins.ResolveCodeLanguageByTag("apache")
+		}
+		if isHAProxyConfSource(text) {
+			return plugins.ResolveCodeLanguageByTag("haproxy")
+		}
 		return plugins.ResolveCodeLanguageByTag("ini")
 	}
 	return nil, ""
+}
+
+func isRequirementsFilename(base, ext string) bool {
+	if ext != ".txt" && ext != ".in" {
+		return false
+	}
+	stem := strings.TrimSuffix(base, ext)
+	if stem == "requirements" || stem == "constraints" {
+		return true
+	}
+	for _, prefix := range []string{"requirements-", "requirements.", "constraints-", "constraints."} {
+		if strings.HasPrefix(stem, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func isSurgeConfSource(text string) bool {
@@ -218,6 +248,61 @@ func isNginxConfSource(text string) bool {
 		if strings.HasSuffix(t, ";") {
 			for _, dir := range []string{"proxy_pass ", "server_name ", "listen ", "fastcgi_pass ", "try_files ", "ssl_certificate "} {
 				if strings.HasPrefix(t, dir) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func isApacheConfSource(text string) bool {
+	const maxScan = 8192
+	sample := text
+	if len(sample) > maxScan {
+		sample = sample[:maxScan]
+	}
+	for line := range strings.SplitSeq(sample, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		low := strings.ToLower(t)
+		for _, tag := range []string{"<virtualhost", "<directory", "<location", "<files", "<ifmodule", "<proxy"} {
+			if strings.HasPrefix(low, tag) {
+				return true
+			}
+		}
+		for _, dir := range []string{"rewriteengine ", "rewriterule ", "rewritecond ", "documentroot ", "proxypass ", "allowoverride "} {
+			if strings.HasPrefix(low, dir) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isHAProxyConfSource(text string) bool {
+	const maxScan = 8192
+	sample := text
+	if len(sample) > maxScan {
+		sample = sample[:maxScan]
+	}
+	sectionSeen := false
+	for line := range strings.SplitSeq(sample, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		low := strings.ToLower(t)
+		if low == "global" || low == "defaults" ||
+			strings.HasPrefix(low, "frontend ") || strings.HasPrefix(low, "backend ") || strings.HasPrefix(low, "listen ") {
+			sectionSeen = true
+			continue
+		}
+		if sectionSeen {
+			for _, dir := range []string{"bind ", "default_backend ", "use_backend ", "balance ", "server ", "option ", "mode http", "mode tcp"} {
+				if strings.HasPrefix(low, dir) {
 					return true
 				}
 			}

@@ -2,10 +2,6 @@
 
 package plugins
 
-func isFileAssocLockPIDAlive(pid int) bool {
-	return false
-}
-
 func syncPlatformFileAssociations(appDataDir string, pluginExts []string) error {
 	return nil
 }
