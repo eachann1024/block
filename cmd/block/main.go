@@ -46,10 +46,28 @@ func main() {
 	flag.BoolVar(&mockAIFlag, "mock-ai", false, "Enable deterministic offline AI responder for E2E verification")
 	flag.BoolVar(&versionFlag, "version", false, "Print version and exit")
 	flag.BoolVar(&cleanupFileAssocFlg, "cleanup-file-associations", false, "Remove current user's Block-managed OS file associations and exit")
+	var syncSysLinuxDesktopFlg bool
+	var cleanupSysLinuxDesktopFlg bool
+	flag.BoolVar(&syncSysLinuxDesktopFlg, "sync-system-linux-desktop", false, "Sync system Linux block.desktop with default-app protection and exit")
+	flag.BoolVar(&cleanupSysLinuxDesktopFlg, "cleanup-system-linux-desktop", false, "Remove Block-managed system Linux default-app pins and exit")
 	flag.Parse()
 
 	if versionFlag {
 		fmt.Println(updater.CurrentVersion())
+		return
+	}
+	if syncSysLinuxDesktopFlg {
+		if err := plugins.SyncSystemLinuxDesktop(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if cleanupSysLinuxDesktopFlg {
+		if err := plugins.CleanupSystemLinuxDesktop(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		return
 	}
 	if cleanupFileAssocFlg {
