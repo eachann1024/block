@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,6 +138,7 @@ type Supervisor struct {
 	uninstallErrors    map[string]string
 	storeRefreshing    bool
 	installingID       string
+	batchUpdating      bool
 	replacingID        string
 	stopping           bool
 	storeErr           string
@@ -762,6 +764,13 @@ func (s *Supervisor) StoreStatus() (refreshing bool, installingID string, errMsg
 	return s.storeRefreshing, s.installingID, s.storeErr, s.storeNotice
 }
 
+// IsBatchUpdating reports whether an Update All operation is in progress.
+func (s *Supervisor) IsBatchUpdating() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.batchUpdating
+}
+
 func (s *Supervisor) ClearStoreMessage() {
 	s.mu.Lock()
 	if s.storeErr == "" && s.storeNotice == "" {
@@ -813,6 +822,94 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 	}, onInstalled)
 }
 
+// UpdateEntriesAsync sequentially updates all provided store entries while updating UI progress per plugin.
+func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled func(pluginID string)) {
+	s.mu.Lock()
+	if s.stopping || s.installingID != "" {
+		s.mu.Unlock()
+		return
+	}
+	queue := make([]StoreAppEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.ID == "" || entry.ID == DiagnosticsPluginID || s.isPluginBusyLocked(entry.ID) {
+			continue
+		}
+		queue = append(queue, entry)
+	}
+	if len(queue) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	s.batchUpdating = true
+	s.installingID = queue[0].ID
+	s.storeErr = ""
+	s.storeNotice = ""
+	s.mu.Unlock()
+	s.notifyChanged()
+
+	go func() {
+		updated := 0
+		var failedMsgs []string
+		for _, entry := range queue {
+			s.mu.Lock()
+			if s.stopping {
+				s.batchUpdating = false
+				s.installingID = ""
+				s.mu.Unlock()
+				s.notifyChanged()
+				return
+			}
+			s.installingID = entry.ID
+			s.mu.Unlock()
+			s.notifyChanged()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			inst, err := s.store.InstallEntryExplicit(ctx, entry)
+			cancel()
+			if err != nil {
+				failedMsgs = append(failedMsgs, fmt.Sprintf("%s: %v", entry.ID, err))
+				continue
+			}
+
+			installedList, _ := s.store.ListInstalled()
+			s.mu.Lock()
+			langSnap := s.applyInstalledLocked(inst, installedList)
+			langSeq := NextLanguageSyncSeq()
+			s.mu.Unlock()
+
+			SyncActiveLanguagesSeq(langSnap, langSeq)
+			if onInstalled != nil {
+				onInstalled(inst.Manifest.ID)
+			}
+			s.warmupPluginAsync(inst.Manifest.ID)
+			updated++
+			s.notifyChanged()
+		}
+
+		s.mu.Lock()
+		s.batchUpdating = false
+		s.installingID = ""
+		s.replacingID = ""
+		isEn := normalizeLocale(s.Locale()) == "en"
+		if updated > 0 {
+			if isEn {
+				if updated == 1 {
+					s.storeNotice = "Updated 1 plugin"
+				} else {
+					s.storeNotice = fmt.Sprintf("Updated %d plugins", updated)
+				}
+			} else {
+				s.storeNotice = fmt.Sprintf("已更新 %d 个插件", updated)
+			}
+		}
+		if len(failedMsgs) > 0 {
+			s.storeErr = strings.Join(failedMsgs, "; ")
+		}
+		s.mu.Unlock()
+		s.notifyChanged()
+	}()
+}
+
 func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(pluginID string)) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
@@ -847,6 +944,19 @@ func (s *Supervisor) startInstallAsync(
 	}()
 }
 
+func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []InstalledApp) []InstalledApp {
+	for i := range installedList {
+		installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
+	}
+	s.installed = installedList
+	langSnap := append([]InstalledApp(nil), s.installed...)
+	if inst != nil {
+		delete(s.runtimes, inst.Manifest.ID)
+		s.deleteViewsForPluginLocked(inst.Manifest.ID)
+	}
+	return langSnap
+}
+
 func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string)) {
 	installedList, _ := s.store.ListInstalled()
 
@@ -859,14 +969,8 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		s.notifyChanged()
 		return
 	}
-	for i := range installedList {
-		installedList[i].Enabled = s.store.IsEnabled(installedList[i].Manifest.ID)
-	}
-	s.installed = installedList
-	langSnap := append([]InstalledApp(nil), s.installed...)
+	langSnap := s.applyInstalledLocked(inst, installedList)
 	langSeq := NextLanguageSyncSeq()
-	delete(s.runtimes, inst.Manifest.ID)
-	s.deleteViewsForPluginLocked(inst.Manifest.ID)
 	s.mu.Unlock()
 	SyncActiveLanguagesSeq(langSnap, langSeq)
 	if onInstalled != nil {
