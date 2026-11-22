@@ -29,8 +29,6 @@ type readmeResult struct {
 	err    error
 }
 
-const storeReadmeIdleTimeout = 10 * time.Second
-
 type readmeMediaEntry struct {
 	src     string
 	alt     string
@@ -61,8 +59,6 @@ type storeReadmePreview struct {
 	changelogErr     error
 	changelogDark    bool
 	changelogEditor  *editor.Session
-	lastRenderedAt   time.Time
-	idleTimer        *time.Timer
 }
 
 func readmeLocaleKey(locale string) string {
@@ -151,30 +147,6 @@ func (ctrl *Controller) resolveStoreDetailState() (
 	return entry, installedApp, isInstalled, installingID, true
 }
 
-func (ctrl *Controller) touchStoreReadmeRendered(preview *storeReadmePreview) {
-	ctrl.mu.Lock()
-	defer ctrl.mu.Unlock()
-	if ctrl.storeReadme != preview {
-		return
-	}
-	preview.lastRenderedAt = time.Now()
-	if preview.idleTimer != nil {
-		preview.idleTimer.Reset(storeReadmeIdleTimeout)
-	}
-}
-
-func (ctrl *Controller) closeStoreReadmeIfNotRenderedRecently(maxAge time.Duration) {
-	ctrl.mu.Lock()
-	preview := ctrl.storeReadme
-	if preview == nil || time.Since(preview.lastRenderedAt) < maxAge {
-		ctrl.mu.Unlock()
-		return
-	}
-	ctrl.detachStoreReadmeLocked(preview)
-	ctrl.mu.Unlock()
-	releaseStoreReadmePreview(preview)
-}
-
 func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed plugins.InstalledApp) {
 	ctrl.closeStoreReadme()
 	locale := ctrl.sup.Locale()
@@ -182,18 +154,14 @@ func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed p
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan readmeResult, 1)
 	preview := &storeReadmePreview{
-		entry:          entry,
-		installed:      installed,
-		locale:         readmeLocaleKey(locale),
-		dark:           dark,
-		ctx:            ctx,
-		cancel:         cancel,
-		pending:        result,
-		lastRenderedAt: time.Now(),
+		entry:     entry,
+		installed: installed,
+		locale:    readmeLocaleKey(locale),
+		dark:      dark,
+		ctx:       ctx,
+		cancel:    cancel,
+		pending:   result,
 	}
-	preview.idleTimer = time.AfterFunc(storeReadmeIdleTimeout, func() {
-		ctrl.closeStoreReadmeIfIdle(preview)
-	})
 	ctrl.mu.Lock()
 	ctrl.storeReadme = preview
 	ctrl.mu.Unlock()
@@ -214,30 +182,7 @@ func (ctrl *Controller) loadStoreReadme(entry plugins.StoreAppEntry, installed p
 	}()
 }
 
-func (ctrl *Controller) closeStoreReadmeIfIdle(preview *storeReadmePreview) {
-	ctrl.mu.Lock()
-	if ctrl.storeReadme != preview {
-		ctrl.mu.Unlock()
-		return
-	}
-	elapsed := time.Since(preview.lastRenderedAt)
-	if elapsed < storeReadmeIdleTimeout {
-		if preview.idleTimer != nil {
-			preview.idleTimer.Reset(storeReadmeIdleTimeout - elapsed)
-		}
-		ctrl.mu.Unlock()
-		return
-	}
-	ctrl.detachStoreReadmeLocked(preview)
-	ctrl.mu.Unlock()
-	releaseStoreReadmePreview(preview)
-}
-
 func (ctrl *Controller) detachStoreReadmeLocked(preview *storeReadmePreview) {
-	if preview.idleTimer != nil {
-		preview.idleTimer.Stop()
-		preview.idleTimer = nil
-	}
 	if ctrl.storeReadme == preview {
 		ctrl.storeReadme = nil
 	}
@@ -389,7 +334,6 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 	if preview == nil {
 		return
 	}
-	ctrl.touchStoreReadmeRendered(preview)
 	ctrl.pollStoreReadme(c, preview)
 	ctrl.pollStoreChangelog(preview)
 

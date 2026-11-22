@@ -153,7 +153,6 @@ func (c *Controller) InstalledCount() int {
 
 // NavEntries returns the lower-partition Settings sidebar entries: App Store followed by installed plugins with Settings pages.
 func (c *Controller) NavEntries() []modals.PluginNavEntry {
-	c.closeStoreReadmeIfNotRenderedRecently(2 * time.Second)
 	storeSpec := plugins.AppStoreIconSpec()
 	var installed []plugins.InstalledApp
 	if c.sup != nil {
