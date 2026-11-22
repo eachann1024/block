@@ -111,6 +111,9 @@ function writeAppDir(binary, appDir) {
   }
 
   copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(appDir, "block.png"));
+  // Omit static MimeType= from the AppImage desktop payload so integrators
+  // (e.g. AppImageLauncher) never displace existing default editors without
+  // target-machine protection; Block registers protected associations on launch.
   writeFileSync(join(appDir, "block.desktop"), [
     "[Desktop Entry]",
     "Type=Application",
@@ -118,8 +121,8 @@ function writeAppDir(binary, appDir) {
     "Exec=block %F",
     "Icon=block",
     "Categories=Office;TextEditor;Utility;",
-    "MimeType=text/markdown;text/x-markdown;",
     "Terminal=false",
+    "StartupWMClass=block",
     "",
   ].join("\n"));
   writeFileSync(join(appDir, "AppRun"), [

@@ -38,6 +38,10 @@ function stagePayload(root, binary) {
   copyFileSync(binary, join(binDir, "block"));
   chmodSync(join(binDir, "block"), 0o755);
   copyFileSync(resolve(ROOT, "assets/app-icon/icon-1024.png"), join(iconDir, "block.png"));
+  // Ship base block.desktop without MimeType= in the static payload so root
+  // package install never overrides any user's private default fallback (e.g.
+  // text/plain -> text/x-go); per-user Open-With associations are synchronized
+  // in each user's own session with full default-application protection.
   writeFileSync(join(appDir, "block.desktop"), [
     "[Desktop Entry]",
     "Type=Application",
@@ -45,8 +49,8 @@ function stagePayload(root, binary) {
     "Exec=block %F",
     "Icon=block",
     "Categories=Office;TextEditor;Utility;",
-    "MimeType=text/markdown;text/x-markdown;",
     "Terminal=false",
+    "StartupWMClass=block",
     "",
   ].join("\n"));
 }
@@ -77,6 +81,38 @@ function buildDeb(binary, version, names) {
       " A block-based notes editor.",
       "",
     ].join("\n"));
+    const postinst = join(root, "DEBIAN/postinst");
+    writeFileSync(postinst, [
+      "#!/bin/sh",
+      "set -e",
+      'if [ "$1" = "configure" ] && [ -x /usr/bin/block ]; then',
+      "  /usr/bin/block --sync-system-linux-desktop || true",
+      "fi",
+      "",
+    ].join("\n"));
+    chmodSync(postinst, 0o755);
+    const prerm = join(root, "DEBIAN/prerm");
+    writeFileSync(prerm, [
+      "#!/bin/sh",
+      "set -e",
+      'if { [ "$1" = "remove" ] || [ "$1" = "purge" ]; } && [ -x /usr/bin/block ]; then',
+      "  /usr/bin/block --cleanup-system-linux-desktop || true",
+      "fi",
+      "",
+    ].join("\n"));
+    chmodSync(prerm, 0o755);
+    const postrm = join(root, "DEBIAN/postrm");
+    writeFileSync(postrm, [
+      "#!/bin/sh",
+      "set -e",
+      'if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then',
+      "  if command -v update-desktop-database >/dev/null 2>&1; then",
+      "    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true",
+      "  fi",
+      "fi",
+      "",
+    ].join("\n"));
+    chmodSync(postrm, 0o755);
     const outfile = join(RELEASE_DIR, installerFor({ platform: "linux", arch: names.label, kind: "deb" }));
     run("dpkg-deb", ["--root-owner-group", ...debThreadArgs(), "--build", root, outfile]);
     console.log(`  ${outfile}`);
