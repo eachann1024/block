@@ -377,32 +377,61 @@ func renderPluginDormantOverview(ctx *ui.Context, ctrl *Controller, inst plugins
 	}
 	version := strings.TrimSpace(inst.Manifest.Version)
 
-	ui.Column(ctx.Key("plugin-dormant-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
-		Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).
-		Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline).
-		Transition(bui.SurfaceStageTransition()).Children(func() {
+	ui.Column(ctx.Key("plugin-dormant-wrap-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
+		Gap(theme.SettingsSectionGap).Transition(bui.SurfaceStageTransition()).Children(func() {
 		if !inst.Enabled {
-			ui.Text(ctx, theme.Tr("已停用，开启右上角开关后生效", "Disabled — turn on the switch at top right to use it")).
-				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
-		}
-		if summary != "" {
-			ui.Text(ctx, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text)
-			ui.Box(ctx).FillWidth().Height(1).Background(pal.Hairline)
-		}
-		metaRow := func(k, v string) {
-			if strings.TrimSpace(v) == "" {
-				return
+			appName := strings.TrimSpace(inst.Manifest.Name.Resolve(locale))
+			bannerTitle := theme.Tr("插件已停用", "Plugin disabled")
+			if appName != "" {
+				bannerTitle = theme.Tr(appName+"已停用", appName+" is disabled")
 			}
-			ui.Row(ctx).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(ctx, k).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Shrink(0)
-				ui.Text(ctx, v).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+			ui.Row(ctx.Key("plugin-disabled-banner-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
+				Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).AlignItems(ui.Center).
+				Radius(theme.RadiusXL).Background(pal.WarningSurface).Border(1, pal.Warning).Children(func() {
+				ui.Box(ctx).Width(theme.HeightLarge).Height(theme.HeightLarge).Shrink(0).
+					Radius(theme.RadiusLG).Background(pal.Card).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+					icons.Draw(ctx, icons.PauseCircle, theme.IconRow, theme.IconColors{Line: pal.Warning})
+				})
+				ui.Column(ctx).Grow(1).MinWidth(0).Gap(theme.Space2).Children(func() {
+					ui.Text(ctx, bannerTitle).FontSize(theme.FontTitle).FixedLineHeight(theme.LineTitle).
+						FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine().Ellipsis("…")
+					ui.Text(ctx, theme.Tr("启用后即可使用插件功能与设置项", "Enable to use this plugin's features and settings")).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+				})
+				enableBtn := bui.ActionButtonWithOptions(ctx, bui.ActionButtonOptions{
+					ID:     "plugin-dormant-enable-" + inst.Manifest.ID,
+					Label:  theme.Tr("立即启用", "Enable"),
+					Style:  bui.ButtonPrimary,
+					Height: theme.HeightControl,
+				})
+				if enableBtn.Clicked() {
+					ctrl.sup.SetPluginEnabled(inst.Manifest.ID, true)
+				}
 			})
 		}
-		metaRow(theme.Tr("分类", "Category"), category)
-		metaRow(theme.Tr("来源", "Source"), source)
-		if version != "" {
-			metaRow(theme.Tr("版本", "Version"), "v"+strings.TrimPrefix(version, "v"))
-		}
+
+		ui.Column(ctx.Key("plugin-dormant-"+inst.Manifest.ID)).FillWidth().MinWidth(0).
+			Padding(theme.CardPadY, theme.CardPadX).Gap(theme.Space12).
+			Radius(theme.RadiusXL).Background(pal.Card).Border(1, pal.Hairline).Children(func() {
+			if summary != "" {
+				ui.Text(ctx, summary).FontSize(theme.FontBody).FixedLineHeight(theme.LineTitle).TextColor(pal.Text)
+				ui.Box(ctx).FillWidth().Height(1).Background(pal.Hairline)
+			}
+			metaRow := func(k, v string) {
+				if strings.TrimSpace(v) == "" {
+					return
+				}
+				ui.Row(ctx).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+					ui.Text(ctx, k).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).Shrink(0)
+					ui.Text(ctx, v).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.TextSecondary).SingleLine().Ellipsis("…")
+				})
+			}
+			metaRow(theme.Tr("分类", "Category"), category)
+			metaRow(theme.Tr("来源", "Source"), source)
+			if version != "" {
+				metaRow(theme.Tr("版本", "Version"), "v"+strings.TrimPrefix(version, "v"))
+			}
+		})
 	})
 }
 

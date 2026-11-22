@@ -633,8 +633,13 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 									ui.Text(c, theme.Tr("失败", "Failed")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 										TextColor(pal.Danger).SingleLine().Shrink(0)
 								} else if disabled {
-									ui.Text(c, theme.Tr("已停用", "Disabled")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-										TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+									ui.Row(c).Height(theme.Space20).PaddingX(theme.Space8).Gap(theme.Space6).
+										AlignItems(ui.Center).Radius(theme.RadiusPill).Background(pal.WarningSurface).Shrink(0).Children(func() {
+										ui.Box(c).Width(theme.UpdaterBadgeDotSize).Height(theme.UpdaterBadgeDotSize).
+											Radius(theme.RadiusPill).Background(pal.Warning)
+										ui.Text(c, theme.Tr("未启用", "Disabled")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+											FontWeight(theme.WeightControl).TextColor(pal.Warning).SingleLine().Shrink(0)
+									})
 								}
 							})
 							internalui.Probe(btn, navID)
