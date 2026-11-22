@@ -1129,8 +1129,14 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 		win.OnResize(func() { w.scheduleSaveMainBounds() })
 		win.OnMaximize(func() { w.scheduleSaveMainBounds() })
 		win.OnUnmaximize(func() { w.scheduleSaveMainBounds() })
-		win.OnEnterFullScreen(func() { w.scheduleSaveMainBounds() })
-		win.OnLeaveFullScreen(func() { w.scheduleSaveMainBounds() })
+		win.OnEnterFullScreen(func() {
+			w.scheduleSaveMainBounds()
+			w.RequestRedraw()
+		})
+		win.OnLeaveFullScreen(func() {
+			w.scheduleSaveMainBounds()
+			w.RequestRedraw()
+		})
 		win.OnHide(func() { w.FlushWindowBounds() })
 		win.OnFileDrop(w.handleWindowFileDrop)
 		blockui.SetWindowFullscreenProvider(
@@ -1141,9 +1147,11 @@ func (w *Workspace) AttachWindow(win *mygo.Window) {
 				return false
 			},
 			func(fs bool) {
-				if cur := w.Window(); cur != nil && cur.IsFullScreen() != fs {
-					cur.SetFullScreen(fs)
-				}
+				go func() {
+					if cur := w.Window(); cur != nil && cur.IsFullScreen() != fs {
+						cur.SetFullScreen(fs)
+					}
+				}()
 			},
 		)
 	}

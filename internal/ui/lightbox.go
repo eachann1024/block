@@ -91,17 +91,20 @@ type LightboxState struct {
 	CopiedUntil   time.Time
 	Video         VideoControlState
 	VideoFillMode bool
+	// AutoFullscreen requests entering native OS fullscreen when the lightbox opens.
+	AutoFullscreen bool
 
-	panDragging       bool
-	panScrollStartX   float32
-	panScrollStartY   float32
-	panMoved          bool
-	enteredFullscreen bool
-	chromeLastActive  time.Time
-	chromePointerX    float32
-	chromePointerY    float32
-	chromeHasPointer  bool
-	toolbarHovered    bool
+	panDragging         bool
+	panScrollStartX     float32
+	panScrollStartY     float32
+	panMoved            bool
+	enteredFullscreen   bool
+	autoFullscreenFired bool
+	chromeLastActive    time.Time
+	chromePointerX      float32
+	chromePointerY      float32
+	chromeHasPointer    bool
+	toolbarHovered      bool
 }
 
 // LightboxCallbacks supplies optional actions triggered from the lightbox chrome.
@@ -132,6 +135,8 @@ func (s *LightboxState) ResetView() {
 	s.FitScale = 0
 	s.Scroll = ui.ScrollState{}
 	s.VideoFillMode = false
+	s.AutoFullscreen = false
+	s.autoFullscreenFired = false
 	s.panDragging = false
 	s.panMoved = false
 	s.chromeLastActive = time.Time{}
@@ -331,6 +336,13 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		if st.chromeLastActive.IsZero() || indexChanged {
 			wakeChrome()
 		}
+		if st.AutoFullscreen && !st.autoFullscreenFired && hasWindowFullscreen() {
+			st.autoFullscreenFired = true
+			if !isWindowFullscreen() {
+				st.enteredFullscreen = true
+				setWindowFullscreen(true)
+			}
+		}
 		if px, py, ok := layer.PointerPosition(); ok {
 			if !st.chromeHasPointer || math.Abs(float64(px-st.chromePointerX)) > 1.0 || math.Abs(float64(py-st.chromePointerY)) > 1.0 {
 				st.chromePointerX = px
@@ -343,6 +355,10 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		// Keyboard shortcuts on the modal overlay.
 		if layer.OverlayShortcut(0, ui.KeyEscape) {
 			if st.enteredFullscreen && isWindowFullscreen() {
+				if st.AutoFullscreen {
+					closeLightbox()
+					return
+				}
 				st.enteredFullscreen = false
 				setWindowFullscreen(false)
 				wakeChrome()
@@ -490,23 +506,34 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			drawH        float32
 		)
 
-		renderTopChrome := func() {
-			// Clear OS window controls (macOS traffic lights, Windows/Linux caption buttons)
-			// and keep the empty titlebar band draggable without dismissing the lightbox.
-			if titleClearance > 0 {
-				titleStripEl = ui.Row(c.Key(id+"-titlebar-strip")).
-					FillWidth().Height(titleClearance).Shrink(0).
-					Padding(0, tb.Right, 0, tb.Left)
-				titleStripEl.Children(func() {
-					ui.Box(c).Fill().DragWindow()
-				})
-			}
+		headerH := max(titleClearance, theme.LightboxToolbarHeight)
 
-			if chromeHidden {
+		renderTopChrome := func() {
+			darkChrome := immersiveMedia
+			if !darkChrome {
+				// Clear OS window controls (macOS traffic lights, Windows/Linux caption buttons)
+				// and keep the empty titlebar band draggable without dismissing the lightbox.
+				if titleClearance > 0 {
+					titleStripEl = ui.Row(c.Key(id+"-titlebar-strip")).
+						FillWidth().Height(titleClearance).Shrink(0).
+						Padding(0, tb.Right, 0, tb.Left)
+					titleStripEl.Children(func() {
+						ui.Box(c).Fill().DragWindow()
+					})
+				}
+			} else if chromeHidden {
+				// Keep the hidden titlebar band draggable while controls are auto-hidden.
+				if titleClearance > 0 {
+					titleStripEl = ui.Row(c.Key(id+"-titlebar-strip")).
+						FillWidth().Height(titleClearance).Shrink(0).
+						Padding(0, tb.Right, 0, tb.Left)
+					titleStripEl.Children(func() {
+						ui.Box(c).Fill().DragWindow()
+					})
+				}
 				return
 			}
 
-			darkChrome := immersiveMedia
 			toolbarBG := pal.Menu
 			toolbarBorder := pal.MenuBorder
 			titleFG := pal.Text
@@ -520,276 +547,299 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				countBG = pal.LightboxChromeHover()
 			}
 
-			ui.Row(c).FillWidth().Padding(toolbarTopGap, theme.Space16, 0, theme.Space16).Shrink(0).Children(func() {
+			renderToolbarContent := func() {
+				// Left: icon + filename + meta + index counter.
+				leftRow := ui.Row(c).Grow(1).Shrink(1).MinWidth(0).Height(headerH).
+					AlignItems(ui.Center).Gap(theme.Space8)
+				if darkChrome && titleClearance > 0 {
+					leftRow.DragWindow()
+				}
+				leftRow.Children(func() {
+					leadIcon := icons.Note
+					if item.IsVideo {
+						leadIcon = icons.Video
+					} else if item.IsImage || item.IsAnimation {
+						leadIcon = icons.Image
+					}
+					leadColors := pal.DuoIconColors(mutedFG)
+					if darkChrome {
+						leadColors = pal.MonoIconColors(mutedFG)
+					}
+					icons.Draw(c, leadIcon, theme.IconAction, leadColors)
+
+					ui.Text(c, displayName).
+						FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
+						FontWeight(theme.WeightControl).TextColor(titleFG).
+						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+
+					if item.Meta != "" {
+						ui.Text(c, item.Meta).
+							FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+							TextColor(mutedFG).SingleLine().Shrink(0)
+					}
+
+					if multi {
+						countText := fmt.Sprintf("%d / %d", st.Index+1, len(items))
+						countEl := ui.Row(c.Key(id + "-count")).
+							Height(theme.HeightMicro).PaddingX(theme.Space6).Shrink(0).
+							Center().Radius(theme.RadiusSM).Background(countBG)
+						countEl.Children(func() {
+							ui.Text(c, countText).
+								FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightMono).TextColor(mutedFG).SingleLine()
+						})
+						Probe(countEl, id+"-count")
+					}
+				})
+
+				// Right: zoom cluster (image only) + copy + open + reveal + fullscreen (non-video) + help + remove + close.
+				ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+					itemKey := item.ID
+					if itemKey == "" {
+						itemKey = fmt.Sprintf("idx-%d", st.Index)
+					}
+					if canZoom {
+						minZ := effectiveMinZoom(st.FitScale)
+						effectiveZoom := clampLightboxZoom(st.Zoom, minZ)
+						if st.FitMode {
+							if st.FitScale > 0 {
+								effectiveZoom = st.FitScale
+							} else if item.ImageW > 0 && item.ImageH > 0 && vpWinW > 0 && vpWinH > 0 {
+								estAvailW := max(vpWinW-2*theme.Space12, 1)
+								estAvailH := max(vpWinH-2*theme.Space12, 1)
+								effectiveZoom = min(float32(1.0), min(estAvailW/float32(item.ImageW), estAvailH/float32(item.ImageH)))
+								minZ = effectiveMinZoom(effectiveZoom)
+							} else {
+								effectiveZoom = 1.0
+							}
+						}
+						pctText := fmt.Sprintf("%d%%", int(math.Round(float64(effectiveZoom*100))))
+
+						zoomBG := pal.Card
+						zoomBorder := pal.BtnBorder
+						if darkChrome {
+							zoomBG = pal.LightboxChromeHover()
+							zoomBorder = pal.LightboxChromeBorder()
+						}
+						zoomCluster := ui.Row(c.Key(id+"-zoom")).
+							Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(theme.Space2).
+							AlignItems(ui.Center).Radius(theme.RadiusMD).
+							Background(zoomBG).Border(1, zoomBorder)
+						Probe(zoomCluster, id+"-zoom")
+
+						zoomCluster.Children(func() {
+							outBtn := renderLightboxToolbarIcon(c, id+"-zoom-out", icons.TbMinus, theme.Tr("缩小", "Zoom Out"), "-", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom <= minZ+0.001)
+							if outBtn.Clicked() {
+								stepZoom(1.0 / lightboxZoomStep)
+							}
+
+							pctBtn := ui.ButtonBase(c.Key(id + "-zoom-pct")).
+								Height(theme.HeightMicro).PaddingX(theme.Space6).
+								Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pctText)
+							if pctBtn.Hovered() {
+								if darkChrome {
+									pctBtn.Background(pal.LightboxChromeHover())
+								} else {
+									pctBtn.Background(pal.Hover)
+								}
+							}
+							RichTooltip(c, pctBtn, TooltipSpec{
+								Placement: TooltipBelow,
+								Rows: []TooltipRow{{
+									Trigger:  theme.Tr("切换 100% / 适应窗口", "Toggle 100% / Fit"),
+									Shortcut: "1",
+								}},
+							})
+							pctBtn.Children(func() {
+								ui.Text(c, pctText).
+									FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+									FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
+							})
+							Probe(pctBtn, id+"-zoom-pct")
+							if pctBtn.Clicked() {
+								if st.FitMode {
+									setActualZoom()
+								} else {
+									setFitZoom()
+								}
+							}
+
+							inBtn := renderLightboxToolbarIcon(c, id+"-zoom-in", icons.TbPlus, theme.Tr("放大", "Zoom In"), "=", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom >= lightboxMaxZoom-0.001)
+							if inBtn.Clicked() {
+								stepZoom(lightboxZoomStep)
+							}
+
+							fitLabel := theme.Tr("适应", "Fit")
+							fitBtn := ui.ButtonBase(c.Key(id+"-zoom-fit")).
+								Height(theme.HeightMicro).PaddingX(theme.Space6).
+								Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).
+								Cursor(ui.CursorPointer).Label(fitLabel)
+							if st.FitMode {
+								if darkChrome {
+									fitBtn.Background(pal.LightboxChromeActive()).Border(1, pal.LightboxChromeBorder())
+								} else {
+									fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+								}
+							} else if fitBtn.Hovered() {
+								if darkChrome {
+									fitBtn.Background(pal.LightboxChromeHover())
+								} else {
+									fitBtn.Background(pal.Hover)
+								}
+							}
+							RichTooltip(c, fitBtn, TooltipSpec{
+								Placement: TooltipBelow,
+								Rows: []TooltipRow{{
+									Trigger:  theme.Tr("适应窗口", "Fit to Window"),
+									Shortcut: "0",
+								}},
+							})
+							fitBtn.Children(func() {
+								ui.Text(c, fitLabel).
+									FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
+									FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
+							})
+							Probe(fitBtn, id+"-zoom-fit")
+							if fitBtn.Clicked() {
+								if st.FitMode {
+									setActualZoom()
+								} else {
+									setFitZoom()
+								}
+							}
+						})
+					}
+
+					canCopy := canZoom || item.TextPreview != "" || item.OpenURL != ""
+					if cb.OnCopy != nil && canCopy {
+						copiedActive := !st.CopiedUntil.IsZero() && now.Before(st.CopiedUntil)
+						if copiedActive {
+							if rem := st.CopiedUntil.Sub(now); rem > 0 {
+								c.After(rem + 5*time.Millisecond)
+							}
+						}
+						copyIcon := icons.Copy
+						copyTip := theme.Tr("复制", "Copy")
+						if item.IsVideo && item.OpenURL != "" {
+							copyTip = theme.Tr("复制链接", "Copy Link")
+						}
+						if copiedActive {
+							copyIcon = icons.Check
+							copyTip = theme.Tr("已复制", "Copied")
+						}
+						copyShortcut := ""
+						if canZoom || item.OpenURL != "" {
+							copyShortcut = "cmd-c"
+						}
+						copyBtn := renderLightboxToolbarIcon(c, id+"-copy-"+itemKey, copyIcon, copyTip, copyShortcut, theme.IconButtonBox, theme.IconAction, darkChrome, copiedActive, false, item.Unavailable || item.Loading)
+						Probe(copyBtn, id+"-copy")
+						if copyBtn.Clicked() {
+							if cb.OnCopy(st.Index) {
+								st.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
+								c.After(1505 * time.Millisecond)
+							}
+						}
+					}
+
+					if cb.OnOpenURL != nil && item.OpenURL != "" {
+						openBtn := renderLightboxToolbarIcon(c, id+"-open-url-"+itemKey, icons.LinkOpen, theme.Tr("在浏览器中打开", "Open in Browser"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
+						Probe(openBtn, id+"-open-url")
+						if openBtn.Clicked() {
+							cb.OnOpenURL(st.Index)
+						}
+					}
+
+					if cb.OnReveal != nil && !item.Unavailable {
+						revBtn := renderLightboxToolbarIcon(c, id+"-reveal-"+itemKey, icons.FolderReveal, lightboxRevealLabel(), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
+						Probe(revBtn, id+"-reveal")
+						if revBtn.Clicked() {
+							cb.OnReveal(st.Index)
+						}
+					}
+
+					if canWinFS && !activeVideo {
+						fsGlyph := svgVidExpand
+						fsTip := theme.Tr("系统全屏", "System Fullscreen")
+						if isWinFS {
+							fsGlyph = svgVidExitExpand
+							fsTip = theme.Tr("退出全屏", "Exit Fullscreen")
+						}
+						fsBtn := renderLightboxToolbarSVG(c, id+"-fullscreen", fsGlyph, fsTip, "F", darkChrome, isWinFS)
+						Probe(fsBtn, id+"-fullscreen")
+						if fsBtn.Clicked() {
+							wakeChrome()
+							toggleWindowFullscreen()
+						}
+					}
+
+					// Contextual keyboard/mouse shortcuts help button.
+					helpBtn := renderLightboxToolbarIcon(c, id+"-help", icons.HelpCircle, "", "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
+					if activeVideo {
+						switchChord := FormatShortcutDisplay("cmd-left") + " / " + FormatShortcutDisplay("cmd-right")
+						TooltipCard(c, helpBtn, TooltipCardSpec{
+							Title: theme.Tr("视频快捷键", "Video Shortcuts"),
+							Body: theme.Tr(
+								"空格：播放/暂停 · ← / →：后退/快进 5 秒\n按住 → 或鼠标右键：3x 倍速，松开恢复原速\n↑ / ↓：调节音量 · M：静音 · R：循环 · < / >：倍速",
+								"Space: Play/Pause · ← / →: Seek ±5s\nHold → or Right-click: 3x speed, release to restore\n↑ / ↓: Volume · M: Mute · R: Loop · < / >: Speed",
+							),
+							Note: fmt.Sprintf(
+								theme.Tr("F 或双击：系统全屏 · %s 切换媒体", "F or double-click: System fullscreen · %s switch media"),
+								switchChord,
+							),
+							Placement: TooltipBelow,
+						})
+					} else {
+						TooltipCard(c, helpBtn, TooltipCardSpec{
+							Title: theme.Tr("预览快捷键", "Viewer Shortcuts"),
+							Body: theme.Tr(
+								"点击图片：切换 100% / 适应窗口 · 拖拽平移大图\n+ / - / 0 / 1：缩放与复位 · 方向键：平移或切换",
+								"Click image: Toggle 100% / Fit · Drag to pan when zoomed\n+ / - / 0 / 1: Zoom & reset · Arrows: Pan or switch",
+							),
+							Note:      theme.Tr("F 系统全屏 · Esc 关闭预览", "F fullscreen · Esc to close"),
+							Placement: TooltipBelow,
+						})
+					}
+
+					if item.CanRemove && cb.OnRemove != nil {
+						remBtn := renderLightboxToolbarIcon(c, id+"-remove-"+itemKey, icons.Trash, theme.Tr("移除附件", "Remove Attachment"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, true, false)
+						Probe(remBtn, id+"-remove")
+						if remBtn.Clicked() {
+							cb.OnRemove(st.Index)
+						}
+					}
+
+					closeBtn := renderLightboxToolbarIcon(c, id+"-close", icons.Close, theme.Tr("关闭", "Close"), "esc", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
+					if closeBtn.Clicked() {
+						closeLightbox()
+					}
+				})
+			}
+
+			if darkChrome {
+				padL := max(tb.Left+theme.Space12, theme.Space16)
+				padR := max(tb.Right+theme.Space12, theme.Space16)
 				toolbarEl = ui.Row(c.Key(id+"-toolbar")).
-					FillWidth().Height(theme.LightboxToolbarHeight).
-					PaddingX(theme.Space12).Gap(theme.Space12).
+					FillWidth().Height(headerH).Shrink(0).
+					Padding(0, padR, 0, padL).Gap(theme.Space12).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween).
-					Radius(theme.RadiusXL).Background(toolbarBG).Border(1, toolbarBorder).
-					Transition(ModalSpringTransition())
-				Elevate(toolbarEl, theme.ElevationDialog)
+					Background(toolbarBG).BorderWidth(0, 0, 1, 0).BorderColor(toolbarBorder)
 				Probe(toolbarEl, id+"-toolbar")
 				st.toolbarHovered = toolbarEl.Hovered()
-
-				toolbarEl.Children(func() {
-					// Left: icon + filename + meta + index counter.
-					ui.Row(c).Grow(1).Shrink(1).MinWidth(0).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
-						leadIcon := icons.Note
-						if item.IsVideo {
-							leadIcon = icons.Video
-						} else if item.IsImage || item.IsAnimation {
-							leadIcon = icons.Image
-						}
-						icons.Draw(c, leadIcon, theme.IconAction, pal.DuoIconColors(mutedFG))
-
-						ui.Text(c, displayName).
-							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-							FontWeight(theme.WeightControl).TextColor(titleFG).
-							SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-
-						if item.Meta != "" {
-							ui.Text(c, item.Meta).
-								FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-								TextColor(mutedFG).SingleLine().Shrink(0)
-						}
-
-						if multi {
-							countText := fmt.Sprintf("%d / %d", st.Index+1, len(items))
-							countEl := ui.Row(c.Key(id + "-count")).
-								Height(theme.HeightMicro).PaddingX(theme.Space6).Shrink(0).
-								Center().Radius(theme.RadiusSM).Background(countBG)
-							countEl.Children(func() {
-								ui.Text(c, countText).
-									FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-									FontWeight(theme.WeightMono).TextColor(mutedFG).SingleLine()
-							})
-							Probe(countEl, id+"-count")
-						}
-					})
-
-					// Right: zoom cluster (image only) + copy + open + reveal + fullscreen + help + remove + close.
-					ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
-						itemKey := item.ID
-						if itemKey == "" {
-							itemKey = fmt.Sprintf("idx-%d", st.Index)
-						}
-						if canZoom {
-							minZ := effectiveMinZoom(st.FitScale)
-							effectiveZoom := clampLightboxZoom(st.Zoom, minZ)
-							if st.FitMode {
-								if st.FitScale > 0 {
-									effectiveZoom = st.FitScale
-								} else if item.ImageW > 0 && item.ImageH > 0 && vpWinW > 0 && vpWinH > 0 {
-									estAvailW := max(vpWinW-2*theme.Space12, 1)
-									estAvailH := max(vpWinH-2*theme.Space12, 1)
-									effectiveZoom = min(float32(1.0), min(estAvailW/float32(item.ImageW), estAvailH/float32(item.ImageH)))
-									minZ = effectiveMinZoom(effectiveZoom)
-								} else {
-									effectiveZoom = 1.0
-								}
-							}
-							pctText := fmt.Sprintf("%d%%", int(math.Round(float64(effectiveZoom*100))))
-
-							zoomBG := pal.Card
-							zoomBorder := pal.BtnBorder
-							if darkChrome {
-								zoomBG = pal.LightboxChromeHover()
-								zoomBorder = pal.LightboxChromeBorder()
-							}
-							zoomCluster := ui.Row(c.Key(id+"-zoom")).
-								Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(theme.Space2).
-								AlignItems(ui.Center).Radius(theme.RadiusMD).
-								Background(zoomBG).Border(1, zoomBorder)
-							Probe(zoomCluster, id+"-zoom")
-
-							zoomCluster.Children(func() {
-								outBtn := renderLightboxToolbarIcon(c, id+"-zoom-out", icons.TbMinus, theme.Tr("缩小", "Zoom Out"), "-", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom <= minZ+0.001)
-								if outBtn.Clicked() {
-									stepZoom(1.0 / lightboxZoomStep)
-								}
-
-								pctBtn := ui.ButtonBase(c.Key(id + "-zoom-pct")).
-									Height(theme.HeightMicro).PaddingX(theme.Space6).
-									Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pctText)
-								if pctBtn.Hovered() {
-									if darkChrome {
-										pctBtn.Background(pal.LightboxChromeHover())
-									} else {
-										pctBtn.Background(pal.Hover)
-									}
-								}
-								RichTooltip(c, pctBtn, TooltipSpec{
-									Placement: TooltipBelow,
-									Rows: []TooltipRow{{
-										Trigger:  theme.Tr("切换 100% / 适应窗口", "Toggle 100% / Fit"),
-										Shortcut: "1",
-									}},
-								})
-								pctBtn.Children(func() {
-									ui.Text(c, pctText).
-										FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-										FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
-								})
-								Probe(pctBtn, id+"-zoom-pct")
-								if pctBtn.Clicked() {
-									if st.FitMode {
-										setActualZoom()
-									} else {
-										setFitZoom()
-									}
-								}
-
-								inBtn := renderLightboxToolbarIcon(c, id+"-zoom-in", icons.TbPlus, theme.Tr("放大", "Zoom In"), "=", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom >= lightboxMaxZoom-0.001)
-								if inBtn.Clicked() {
-									stepZoom(lightboxZoomStep)
-								}
-
-								fitLabel := theme.Tr("适应", "Fit")
-								fitBtn := ui.ButtonBase(c.Key(id+"-zoom-fit")).
-									Height(theme.HeightMicro).PaddingX(theme.Space6).
-									Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).
-									Cursor(ui.CursorPointer).Label(fitLabel)
-								if st.FitMode {
-									if darkChrome {
-										fitBtn.Background(pal.LightboxChromeActive()).Border(1, pal.LightboxChromeBorder())
-									} else {
-										fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
-									}
-								} else if fitBtn.Hovered() {
-									if darkChrome {
-										fitBtn.Background(pal.LightboxChromeHover())
-									} else {
-										fitBtn.Background(pal.Hover)
-									}
-								}
-								RichTooltip(c, fitBtn, TooltipSpec{
-									Placement: TooltipBelow,
-									Rows: []TooltipRow{{
-										Trigger:  theme.Tr("适应窗口", "Fit to Window"),
-										Shortcut: "0",
-									}},
-								})
-								fitBtn.Children(func() {
-									ui.Text(c, fitLabel).
-										FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-										FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
-								})
-								Probe(fitBtn, id+"-zoom-fit")
-								if fitBtn.Clicked() {
-									if st.FitMode {
-										setActualZoom()
-									} else {
-										setFitZoom()
-									}
-								}
-							})
-						}
-
-						canCopy := canZoom || item.TextPreview != "" || item.OpenURL != ""
-						if cb.OnCopy != nil && canCopy {
-							copiedActive := !st.CopiedUntil.IsZero() && now.Before(st.CopiedUntil)
-							if copiedActive {
-								if rem := st.CopiedUntil.Sub(now); rem > 0 {
-									c.After(rem + 5*time.Millisecond)
-								}
-							}
-							copyIcon := icons.Copy
-							copyTip := theme.Tr("复制", "Copy")
-							if item.IsVideo && item.OpenURL != "" {
-								copyTip = theme.Tr("复制链接", "Copy Link")
-							}
-							if copiedActive {
-								copyIcon = icons.Check
-								copyTip = theme.Tr("已复制", "Copied")
-							}
-							copyShortcut := ""
-							if canZoom || item.OpenURL != "" {
-								copyShortcut = "cmd-c"
-							}
-							copyBtn := renderLightboxToolbarIcon(c, id+"-copy-"+itemKey, copyIcon, copyTip, copyShortcut, theme.IconButtonBox, theme.IconAction, darkChrome, copiedActive, false, item.Unavailable || item.Loading)
-							Probe(copyBtn, id+"-copy")
-							if copyBtn.Clicked() {
-								if cb.OnCopy(st.Index) {
-									st.CopiedUntil = c.Now().Add(1500 * time.Millisecond)
-									c.After(1505 * time.Millisecond)
-								}
-							}
-						}
-
-						if cb.OnOpenURL != nil && item.OpenURL != "" {
-							openBtn := renderLightboxToolbarIcon(c, id+"-open-url-"+itemKey, icons.LinkOpen, theme.Tr("在浏览器中打开", "Open in Browser"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
-							Probe(openBtn, id+"-open-url")
-							if openBtn.Clicked() {
-								cb.OnOpenURL(st.Index)
-							}
-						}
-
-						if cb.OnReveal != nil && !item.Unavailable {
-							revBtn := renderLightboxToolbarIcon(c, id+"-reveal-"+itemKey, icons.FolderReveal, lightboxRevealLabel(), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
-							Probe(revBtn, id+"-reveal")
-							if revBtn.Clicked() {
-								cb.OnReveal(st.Index)
-							}
-						}
-
-						if canWinFS {
-							fsGlyph := svgVidExpand
-							fsTip := theme.Tr("系统全屏", "System Fullscreen")
-							if isWinFS {
-								fsGlyph = svgVidExitExpand
-								fsTip = theme.Tr("退出全屏", "Exit Fullscreen")
-							}
-							fsBtn := renderLightboxToolbarSVG(c, id+"-fullscreen", fsGlyph, fsTip, "F", darkChrome, isWinFS)
-							Probe(fsBtn, id+"-fullscreen")
-							if fsBtn.Clicked() {
-								wakeChrome()
-								toggleWindowFullscreen()
-							}
-						}
-
-						// Contextual keyboard/mouse shortcuts help button.
-						helpBtn := renderLightboxToolbarIcon(c, id+"-help", icons.HelpCircle, "", "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
-						if activeVideo {
-							switchChord := FormatShortcutDisplay("cmd-left") + " / " + FormatShortcutDisplay("cmd-right")
-							TooltipCard(c, helpBtn, TooltipCardSpec{
-								Title: theme.Tr("视频快捷键", "Video Shortcuts"),
-								Body: theme.Tr(
-									"空格：播放/暂停 · ← / →：后退/快进 5 秒\n按住 → 或鼠标右键：3x 倍速，松开恢复原速\n↑ / ↓：调节音量 · M：静音 · R：循环 · < / >：倍速",
-									"Space: Play/Pause · ← / →: Seek ±5s\nHold → or Right-click: 3x speed, release to restore\n↑ / ↓: Volume · M: Mute · R: Loop · < / >: Speed",
-								),
-								Note: fmt.Sprintf(
-									theme.Tr("F 或双击：系统全屏 · %s 切换媒体", "F or double-click: System fullscreen · %s switch media"),
-									switchChord,
-								),
-								Placement: TooltipBelow,
-							})
-						} else {
-							TooltipCard(c, helpBtn, TooltipCardSpec{
-								Title: theme.Tr("预览快捷键", "Viewer Shortcuts"),
-								Body: theme.Tr(
-									"点击图片：切换 100% / 适应窗口 · 拖拽平移大图\n+ / - / 0 / 1：缩放与复位 · 方向键：平移或切换",
-									"Click image: Toggle 100% / Fit · Drag to pan when zoomed\n+ / - / 0 / 1: Zoom & reset · Arrows: Pan or switch",
-								),
-								Note:      theme.Tr("F 系统全屏 · Esc 关闭预览", "F fullscreen · Esc to close"),
-								Placement: TooltipBelow,
-							})
-						}
-
-						if item.CanRemove && cb.OnRemove != nil {
-							remBtn := renderLightboxToolbarIcon(c, id+"-remove-"+itemKey, icons.Trash, theme.Tr("移除附件", "Remove Attachment"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, true, false)
-							Probe(remBtn, id+"-remove")
-							if remBtn.Clicked() {
-								cb.OnRemove(st.Index)
-							}
-						}
-
-						closeBtn := renderLightboxToolbarIcon(c, id+"-close", icons.Close, theme.Tr("关闭", "Close"), "esc", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
-						if closeBtn.Clicked() {
-							closeLightbox()
-						}
-					})
+				toolbarEl.Children(renderToolbarContent)
+			} else {
+				ui.Row(c).FillWidth().Padding(toolbarTopGap, theme.Space16, 0, theme.Space16).Shrink(0).Children(func() {
+					toolbarEl = ui.Row(c.Key(id+"-toolbar")).
+						FillWidth().Height(theme.LightboxToolbarHeight).
+						PaddingX(theme.Space12).Gap(theme.Space12).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						Radius(theme.RadiusXL).Background(toolbarBG).Border(1, toolbarBorder).
+						Transition(ModalSpringTransition())
+					Elevate(toolbarEl, theme.ElevationDialog)
+					Probe(toolbarEl, id+"-toolbar")
+					st.toolbarHovered = toolbarEl.Hovered()
+					toolbarEl.Children(renderToolbarContent)
 				})
-			})
+			}
 		}
 
 		renderFilmstrip := func() {
@@ -862,13 +912,29 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									case it.Loading:
 										ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
 									case it.IsVideo:
-										icons.Duo(c, icons.Video, theme.IconRow, isSelected)
+										if immersiveMedia {
+											fg := pal.LightboxChromeMutedFG()
+											if isSelected {
+												fg = pal.LightboxChromeFG()
+											}
+											icons.Draw(c, icons.Video, theme.IconRow, pal.MonoIconColors(fg))
+										} else {
+											icons.Duo(c, icons.Video, theme.IconRow, isSelected)
+										}
 									default:
 										glyph := icons.Note
 										if it.IsImage || it.IsAnimation {
 											glyph = icons.Image
 										}
-										icons.Duo(c, glyph, theme.IconRow, isSelected)
+										if immersiveMedia {
+											fg := pal.LightboxChromeMutedFG()
+											if isSelected {
+												fg = pal.LightboxChromeFG()
+											}
+											icons.Draw(c, glyph, theme.IconRow, pal.MonoIconColors(fg))
+										} else {
+											icons.Duo(c, glyph, theme.IconRow, isSelected)
+										}
 									}
 								})
 								Probe(thumb, thumbID)
@@ -980,6 +1046,10 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								if multi {
 									bottomInset = theme.LightboxFilmstripThumb + theme.Space12*2 + theme.Space8
 								}
+								topInset := theme.Space16
+								if !chromeHidden {
+									topInset = headerH + theme.Space12
+								}
 								contentEl = RenderVideoPlayer(c, item.Video, &st.Video, VideoPlayerOptions{
 									ID:                 id + "-video-" + vidKey,
 									Label:              displayName,
@@ -989,6 +1059,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									FillMode:           st.VideoFillMode,
 									IsFullscreen:       isWinFS,
 									ChromeHidden:       chromeHidden,
+									TopInset:           topInset,
 									BottomInset:        bottomInset,
 									OnToggleFullscreen: onToggleFS,
 									OnToggleFill: func() {
@@ -1237,7 +1308,7 @@ func renderLightboxToolbarIcon(
 		}
 	}
 	btn.Children(func() {
-		icons.Draw(c, icon, iconSize, pal.DuoIconColors(fg))
+		icons.Draw(c, icon, iconSize, pal.MonoIconColors(fg))
 	})
 	return btn
 }
@@ -1340,7 +1411,7 @@ func renderLightboxNavButton(
 		})
 	}
 	btn.Children(func() {
-		icons.Draw(c, icon, theme.IconChrome, pal.DuoIconColors(fg))
+		icons.Draw(c, icon, theme.IconChrome, pal.MonoIconColors(fg))
 	})
 	return btn
 }
