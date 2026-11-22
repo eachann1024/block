@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T09:55:54.783Z",
-  "latest_version": "1.0.907",
-  "latest_tag": "v1.0.907",
+  "updated_at": "2026-11-22T10:44:57.250Z",
+  "latest_version": "1.0.908",
+  "latest_tag": "v1.0.908",
   "releases": [
+    {
+      "version": "1.0.908",
+      "tag": "v1.0.908",
+      "published_at": "2026-11-22T10:44:56Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.908",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "横向行布局中的连续长词和超长字符串不再会超出容器边界。",
+          "插件在执行命令时现在可以正常发起系统交互与提示，不再遭遇权限错误。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Unbroken words and long text strings in horizontal row layouts no longer overflow their container boundaries.",
+          "Plugin commands can now trigger interactive system prompts and actions without encountering authorization errors."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-macos-arm64.dmg",
+          "size": 15141129,
+          "sha256": "3e383aae1232d94483e6467886f0044ffe652df1353fffe6bd33b83711d6bd87"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-macos-x64.dmg",
+          "size": 16676508,
+          "sha256": "a8afa8b58203f43bfe1cf88a0880cb806ae913d9234b8eb4f950b42545016dce"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-windows-x64-setup.exe",
+          "size": 12150686,
+          "sha256": "3bcafe5c76ae60f069aacacc354f05a6a3712d610e905f576bba55d1b6bdd859"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-linux-x64.deb",
+          "size": 10711718,
+          "sha256": "fc12808f2f563d6e31082de1b17545fccd1b809195a3ff4bd6984fc7351b724f"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.908/block-linux-x64.AppImage",
+          "size": 23656952,
+          "sha256": "9f2bf1d19365b6fc1281aef96ddaad33a06c8699ef84d08891ae0a16abae6b6d"
+        }
+      ]
+    },
     {
       "version": "1.0.907",
       "tag": "v1.0.907",
@@ -28,38 +86,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-macos-arm64.dmg",
-          "size": 15142190,
-          "sha256": "1f69c114eb972dd6189581fabed6623a5635f3bd88eb98f98fd5e459d37a248c"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-macos-x64.dmg",
-          "size": 16676588,
-          "sha256": "120bf01ed60db6860c5bad278aba83dde6161360129491a2ed3ca78f8e1ee15e"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-windows-x64-setup.exe",
-          "size": 12149833,
-          "sha256": "1993d5f44418ea418190a7e1c0ad934cf07cef99f82b9672e6de7ff9b3844bc2"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-linux-x64.deb",
-          "size": 10707976,
-          "sha256": "24381477f17c55a863bd37fd60dc79353d67abfe102dbdcacc11afef8ec14904"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.907/block-linux-x64.AppImage",
-          "size": 23661048,
-          "sha256": "16f20496b3eebce094c9e501b7fb0307556fb67145fda6dc744963e254e36785"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.906",
@@ -1360,33 +1387,6 @@
         "improvements": [],
         "fixes": [
           "Deliver scoped desktop notifications and sync outcomes."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.858",
-      "tag": "v1.0.858",
-      "published_at": "2026-11-20T20:45:44Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.858",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Complete notification activation and sync failure handling.",
-          "Select system-capable catalog variants."
         ],
         "other": []
       },
