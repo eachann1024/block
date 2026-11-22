@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T12:12:03.947Z",
-  "latest_version": "1.0.911",
-  "latest_tag": "v1.0.911",
+  "updated_at": "2026-11-22T12:39:28.410Z",
+  "latest_version": "1.0.912",
+  "latest_tag": "v1.0.912",
   "releases": [
+    {
+      "version": "1.0.912",
+      "tag": "v1.0.912",
+      "published_at": "2026-11-22T12:39:27Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.912",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "图标选择器中新增了圆形暂停图标，可用于页面和笔记块。"
+        ],
+        "improvements": [
+          "插件设置中的已禁用插件现以高亮横幅与侧边栏状态标签醒目提示，便于快速识别停用状态。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The icon picker now includes a pause-circle icon for pages and blocks."
+        ],
+        "improvements": [
+          "Disabled plugins now display highlighted banners and sidebar status pills in settings, making inactive plugins easier to identify."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-macos-arm64.dmg",
+          "size": 15170469,
+          "sha256": "8161067bd8f673f366398cc9bd711761be52a72dcbe6fb6e5247b10a1d647437"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-macos-x64.dmg",
+          "size": 16708152,
+          "sha256": "aad7bbe68d0df48689098d91c9bdb93b714855651239575ab3e1efdfa0d475dd"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-windows-x64-setup.exe",
+          "size": 12182576,
+          "sha256": "b477372a089c9607e5ba1107b9d3904eab461e648b0eb5c5a6fe4df72e8ce9ff"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-linux-x64.deb",
+          "size": 10729576,
+          "sha256": "e3b367cf70d2ad20097bee2ad56fd0b2b415a81d9aa0940f43c4c3c465ae3327"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-linux-x64.AppImage",
+          "size": 23677432,
+          "sha256": "ed4aa61c4e36a019f00a383570d156fc0c051fe3b128489827e826b88ee20153"
+        }
+      ]
+    },
     {
       "version": "1.0.911",
       "tag": "v1.0.911",
@@ -44,38 +104,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-macos-arm64.dmg",
-          "size": 15167788,
-          "sha256": "f21420cc8e747095ddf3ef34d70cdff07b54cd4eae1e3068126864ea6cb118d4"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-macos-x64.dmg",
-          "size": 16708742,
-          "sha256": "1c3c528822511d7ab6b14889b3f8ea48d8a0e620ce3fc2d22be53f43ae5a97f4"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-windows-x64-setup.exe",
-          "size": 12180968,
-          "sha256": "63aec11b9fc1db96ddba92ba577f9d353b29940a7fecb7e13a7d068341763128"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-linux-x64.deb",
-          "size": 10727104,
-          "sha256": "94c0f041020634c7d2bee8bfbb0ff04c24a5bf83cc686dc36506ceed31823164"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.911/block-linux-x64.AppImage",
-          "size": 23673336,
-          "sha256": "3f79fb16fcab47fe6480e53070c8fa44007dac3e6590d7165c3a610b0fec66ac"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.910",
@@ -1376,33 +1405,6 @@
         "improvements": [],
         "fixes": [
           "Keep notifications distinct across desktop backends."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.862",
-      "tag": "v1.0.862",
-      "published_at": "2026-11-20T21:39:14Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.862",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Preserve notification identity through desktop delivery.",
-          "Accept compound extensions in macOS fallback picker."
         ],
         "other": []
       },
