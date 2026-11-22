@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-21T10:08:49.843Z",
-  "latest_version": "1.0.899",
-  "latest_tag": "v1.0.899",
+  "updated_at": "2026-11-22T06:18:25.168Z",
+  "latest_version": "1.0.900",
+  "latest_tag": "v1.0.900",
   "releases": [
+    {
+      "version": "1.0.900",
+      "tag": "v1.0.900",
+      "published_at": "2026-11-22T06:18:24Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.900",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "应用详情页现在将「打开设置」设为主要操作，并提供共享的更新检查。",
+          "有新版本可用时，应用卡片现在显示「更新」而非「打开」。",
+          "Hero 开关现在会描出轨道轮廓，让标题栏中的切换按钮保持清晰可见。",
+          "已停用插件的提示现在显示在休眠概览卡片中。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [
+          "App details now make Open Settings the primary action and share the update check.",
+          "App cards now show Update instead of Open when a newer version is available.",
+          "Hero switches now outline their tracks so title bar toggles remain visible.",
+          "Disabled plugin notices now appear within the dormant overview card."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-macos-arm64.dmg",
+          "size": 15120117,
+          "sha256": "68565678a98511ed0f6c31b650eb6c7687b6a3e84ee83b77992c215ba33cbc5a"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-macos-x64.dmg",
+          "size": 16651704,
+          "sha256": "d25788251ced321d2125c86276160e434ec2a0efa3732d2ec85853dcd656a6f7"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-windows-x64-setup.exe",
+          "size": 12126631,
+          "sha256": "d49eb7a9c0f7212161309c75f8ba89ee1ae4fbdc5d6db345d3ffeeb7fc4f86b8"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-linux-x64.deb",
+          "size": 10696312,
+          "sha256": "60d425e1ca3219032ae8f506e151be9647b561c07891a1291a02ae7aacd2bdca"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-linux-x64.AppImage",
+          "size": 23624184,
+          "sha256": "a612e70bbc57344f3de04c9bda9c0a717c167fcd15ebbb2ac3489d5f15d07345"
+        }
+      ]
+    },
     {
       "version": "1.0.899",
       "tag": "v1.0.899",
@@ -30,38 +92,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-macos-arm64.dmg",
-          "size": 15083256,
-          "sha256": "073d97bcc616e57ee29c7144a1045ca2f569f895281dad7bff2561a84610e5a6"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-macos-x64.dmg",
-          "size": 16607156,
-          "sha256": "5484d5b8b4b0b9dd35cbc338e989590f0dda6c1df3e1449a5642ff560901c401"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-windows-x64-setup.exe",
-          "size": 12088480,
-          "sha256": "8490b8e07f47dd15b24b6f5ebaf3c7881bf47a6e7d8f74c5a62513b3c2e543c6"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-linux-x64.deb",
-          "size": 10662414,
-          "sha256": "84eb0ae7f2ece2b4f5e4af65d0665929efa6b6ec058565b12acbe0377d654f08"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.899/block-linux-x64.AppImage",
-          "size": 23599608,
-          "sha256": "924df26bcdceed1686b84f957e70d9d9377614ce12902752884949f7dca5cd31"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.898",
@@ -2320,211 +2351,6 @@
           "Fixed release tag normalization when matching installer assets from the update feed."
         ],
         "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.631",
-      "tag": "v1.0.631",
-      "published_at": "2026-11-18T14:49:56Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.631",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "助手与模型选择器支持搜索过滤与思考强度调节。",
-          "助手给出的多处修改会直接展示增删对比，包括表格变动。",
-          "助手设置改为左右分栏卡片，切换与配置智能体更直观。",
-          "优化段落批注与表情回应的展示和交互细节。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "侧栏文件列表与笔记本支持拖拽排序，并带有清晰的插入指示线。",
-          "在标题行首增减井号即可快速切换标题级别。",
-          "手动拖拽排好的笔记文件顺序会在切换笔记本后继续保留。",
-          "导出窗口会自动记住你上次选择的纸张主题与页眉页脚开关。",
-          "助手设置支持接入本地智能体服务协同编辑笔记。",
-          "选中笔记里的图片或附件卡片后，可以直接复制为文件粘贴到别处。",
-          "行内助手支持保存常用提问、实时流式生成，取消后恢复原先输入。",
-          "打开任意笔记都会直接转为原生段落与块结构进行编辑。",
-          "行内助手常用指令升级为可收藏的快捷标签，最多紧凑展示三行。",
-          "编辑器加入呼吸闪烁光标、空行快捷提示、多级列表引导线与纸感待办框。",
-          "窄窗口下表情回应与批注卡片会直接贴在对应段落下方展示。",
-          "支持选择电脑上已安装的任意字体，文字光标高度会随所选字体自动贴合。",
-          "新增应用内自动更新，自动汇总跨版本中英双语更新日志，支持国内加速镜像与 GitHub 原生源切换及重启前自动保存笔记。",
-          "升级应用内更新弹窗为紧凑分类卡片，支持中英文一键预览、跨版本来源标记与全链路诊断日志。"
-        ],
-        "improvements": [
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "优化了界面细节与日常编辑操作的顺滑度。",
-          "优化字体渲染、输入法候选框与文字光标定位。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化全局搜索、页内查找与大纲定位体验。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。",
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。",
-          "窗口变窄时会尽可能保留设置页左侧分类导航。",
-          "顶栏右侧操作按钮的边距与窗口左上角交通灯对称协调。",
-          "助手回复直接采用与正文一致的排版样式展示。",
-          "空白标题行会显示淡淡的层级占位提示。",
-          "日志纸张导出主题去掉背景点阵，版面更干净。",
-          "新插入的图片默认铺满正文宽度，两侧缩放手柄更好拖拽。",
-          "导出长图与网页时使用统一简洁的品牌角标。",
-          "跨段落、列表与表格的复制粘贴行为更加统一自然。",
-          "设置页里的文件夹规则排版更紧凑，名称输入框更宽。",
-          "打开模型选择器时直接展示已缓存列表，不必每次重新加载。",
-          "精简设置页左侧导航栏，去掉重复的状态文字。",
-          "导出笔记时会记住上次保存的文件夹位置。",
-          "导出可编辑文档时的字号与行距同纸张预览保持一致。",
-          "启动时并行加载界面字体，主窗口打开更快。",
-          "启动应用时首屏直接呈现上次打开的笔记，无需等待闪烁。",
-          "全应用的图标字号、选中态底色与字阶层级做了统一梳理。",
-          "展开箭头与关闭按钮换用更纤细利落的线条图标。",
-          "提示块去掉右上角多余标签，图标与标题垂直居中对齐。",
-          "列表与菜单行首图标尺寸统一放大，视觉对齐更清晰。",
-          "划词工具栏保持单行紧凑排列，超出项自动收入更多菜单。",
-          "空行左侧的插入加号只在鼠标指向该行时显示，编辑区更安静。"
-        ],
-        "fixes": [
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化段落批注与表情回应的展示和交互细节。",
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "优化运行性能与资源占用表现。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "改进表格编辑、列宽调整与单元格选择体验。",
-          "优化全局搜索、页内查找与大纲定位体验。",
-          "打开笔记本切换菜单时准确高亮当前所在的笔记本。",
-          "修复云盘同步冲突与高频对话刷新时的偶发卡顿。",
-          "特殊字符与转义符号在保存和重新打开后保持原样。",
-          "重启应用后自动恢复笔记本文件夹访问授权，无需重复选择。",
-          "缺少斜体字库的字体也能正常渲染斜体样式。",
-          "拆分或导入有序列表后会自动重新连续编号。",
-          "没有自带粗体字重的字体也能清晰显示加粗效果。",
-          "点击大纲标题跳转章节时不会打乱当前文字光标的位置。",
-          "划词工具栏只在支持文字排版的段落中弹出。",
-          "导出文档时完整保留表格列宽，并正常渲染本地与网络图片。",
-          "多篇笔记切换时各自保留独立的视图滚动与段落尺寸。",
-          "在标题、引用和列表中复制粘贴行内格式文字更加准确。",
-          "助手设置面板边缘圆角与卡片布局更加稳固整齐。",
-          "导出包含链接的表格时，单元格里的链接样式完整保留。",
-          "连续输入或删除文字时，页面滚动位置平稳不跳动。",
-          "修复若干异常退出与配置保存问题，提升长时间使用稳定性。",
-          "复制选中文本时会完整保留粗体、链接与列表等原有格式。",
-          "复制多层缩进列表或局部表格时，粘贴格式更干净规整。",
-          "打开弹窗或菜单时自动收起段落把手，输入框文字垂直居中。",
-          "滚动长笔记或切换窗口时，正在进行的行内助手预览不会中断。",
-          "改进复杂块结构的读写还原，反复保存不会丢失原本排版。",
-          "行内助手预览内容的段落与列表缩进同正文完全一致。",
-          "批注高亮底色与行内代码圆角框的高度整齐一致。",
-          "文字光标与字体基线精准对齐，并在行尾留出舒适间距。",
-          "点选表情回应后会自动收起文字光标，批注修改也支持撤销。",
-          "窄窗口下的块底批注在长文档滚动和标题折叠时保持稳定显示。",
-          "空段落保存为干净的空行，不再写入旧版注释标记。",
-          "中文输入法拼写过程中会自动隐藏空行快捷键提示，避免遮挡输入文字。"
-        ],
-        "other": [
-          "精简不再使用的语音听写辅助模块，减小安装包体积。"
-        ]
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "The agent and model picker adds search filtering and thinking depth controls.",
-          "Assistant edit plans display inline additions and deletions, including table changes.",
-          "Redesigned assistant settings into a split view for easier agent setup.",
-          "Add independent annotation model and reasoning settings.",
-          "Support dragging blocks into nested list content.",
-          "Support persistent notebook drag reordering.",
-          "Sidebar files and notebooks can be reordered by dragging with clear drop lines.",
-          "Typing or removing hash marks at the start of a heading changes its level.",
-          "Manual file ordering in the sidebar stays intact when switching notebooks.",
-          "Export remembers your chosen paper theme and page element toggles.",
-          "Added local agent integration for collaborative note editing.",
-          "Selected images and file cards in a note can be copied directly as files.",
-          "Inline assistant supports saved prompts, live streaming output, and input recovery on cancel.",
-          "Every note opens directly as native editable blocks without fallback views.",
-          "Inline assistant presets are unified into starred prompt chips arranged in up to three rows.",
-          "Added a blinking caret, empty-line shortcut hints, nested list guides, and paper-style to-do boxes.",
-          "In narrow windows, reactions and annotations sit directly beneath their block.",
-          "You can pick any font installed on your computer, and the text caret adapts to the font metrics.",
-          "Added in-app updates with cross-version bilingual release notes, mirror and GitHub failover, and automatic note saving before restart.",
-          "Redesigned the in-app update dialog with grouped category cards, instant language preview, version badges, and full diagnostic logging."
-        ],
-        "improvements": [
-          "Refine AI deck thinking header and enlarge fullscreen popover layout.",
-          "Improve local build feedback and development iteration.",
-          "Use SF Pro as the default interface font.",
-          "Seat chrome buttons flush against the window and sidebar edges.",
-          "Anchor the search folder menu to its trigger button.",
-          "Anchor floating menus to the trigger that is on screen now.",
-          "Reuse shared interface controls without changing Ocean Paper visuals.",
-          "Keep block drags captured until release and separate insertion slots.",
-          "Make nested block drops easier to target and more visible.",
-          "Settings keeps its side navigation visible longer before collapsing in narrow windows.",
-          "Title-bar buttons match the edge spacing of the window controls.",
-          "Assistant replies render with the same clean typography as the note editor.",
-          "Empty headings display a subtle level placeholder.",
-          "Removed the background dot grid from the Journal export paper theme.",
-          "Newly inserted images fit the content width by default with smoother resize handles.",
-          "Exported images and pages share a cleaner, consistent watermark.",
-          "Copy and paste work consistently across paragraphs, lists, and tables.",
-          "Folder rule settings have a tighter layout and a wider name field.",
-          "The model picker opens right away using its cached list.",
-          "Removed duplicate status labels from the settings navigation sidebar.",
-          "Exporting a note remembers the folder you chose last time.",
-          "Exported documents match the typography shown in the paper preview.",
-          "Interface fonts load in parallel on startup so the window opens faster.",
-          "Launching the app shows your last open note immediately on the first frame.",
-          "Icon sizes, selection highlights, and type sizes are unified across the app.",
-          "Chevrons and close buttons use cleaner, lighter stroke icons.",
-          "Callout blocks drop extra corner tags and center their icon with the heading.",
-          "Leading icons in lists and menus are slightly larger and cleaner to scan.",
-          "The selection toolbar stays on a single row and tucks extra actions into a menu.",
-          "The plus button on an empty line only appears when you point at that line."
-        ],
-        "fixes": [
-          "List every commit since the previous release.",
-          "Hide titlebar batch send button when AI is disabled.",
-          "Make the trash shortcut readable on the danger row.",
-          "Add status for the settings agent rail.",
-          "Stop live usage numbers from shifting the layout.",
-          "Add spacing beside the titlebar sidebar toggle.",
-          "Add a visible line after a folded heading without expanding it.",
-          "Fix progressive select all in table cells.",
-          "Fix global search content previews and match navigation.",
-          "Opening the notebook switcher highlights the active notebook right away.",
-          "Fixed occasional stalls during cloud drive sync conflicts and rapid chat updates.",
-          "Special characters and entities round-trip cleanly when saving notes.",
-          "Notebook folder permissions are restored automatically across restarts.",
-          "Fonts without a native italic face still render slanted text cleanly.",
-          "Numbered lists renumber cleanly after splitting or importing items.",
-          "Fonts without a dedicated bold face still render clear bold text.",
-          "Clicking an outline heading scrolls to the section without moving your caret.",
-          "The selection toolbar only appears inside text blocks that support formatting.",
-          "Exports preserve table column widths and include both local and web images.",
-          "Switching notes keeps each note's scroll position and block layout separate.",
-          "Copying and pasting styled text inside headings, quotes, and lists is more accurate.",
-          "Agent settings keep a steady layout with cleaner rounded corners.",
-          "Links inside table cells keep their theme styling when exported.",
-          "Typing or deleting text no longer causes the scroll position to bounce.",
-          "Fixed several stability and state-saving issues during long sessions.",
-          "Copying selected text preserves bold, links, lists, and other formatting.",
-          "Copying indented list items or partial table selections produces cleaner text.",
-          "Block handles stay hidden while a dialog or menu is open, and input text sits centered.",
-          "Scrolling the note or switching windows no longer interrupts an active inline assistant session.",
-          "Complex blocks keep their formatting reliably across repeated saves.",
-          "Inline assistant previews match the spacing and list markers of the note.",
-          "Annotation highlights now line up cleanly with inline code chips.",
-          "The text caret aligns with the font baseline and leaves comfortable space at the end of a line.",
-          "Picking a reaction hides the text caret, and annotation edits can be undone.",
-          "Inline block-foot annotations in narrow windows stay stable while scrolling or folding headings.",
-          "Empty paragraphs now save as clean blank lines without legacy comment markers.",
-          "Empty-line shortcut hints now hide automatically while typing with an input method."
-        ],
-        "other": [
-          "Removed the legacy dictation helper to keep the app lean."
-        ]
       },
       "assets": []
     }
