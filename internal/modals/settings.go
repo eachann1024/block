@@ -175,6 +175,7 @@ type Manager struct {
 	regexRuleError         string
 	advancedRulesOpen      bool
 	settingsScroll         ui.ScrollState
+	settingsSidebarScroll  ui.ScrollState
 	storeScroll            ui.ScrollState
 	storeDetailScroll      ui.ScrollState
 	wasStoreDetail         bool
@@ -457,31 +458,29 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 			col.Background(pal.Sidebar)
 		}
 		col.Children(func() {
-			ui.Column(c).Padding(4, 8, 8, 12).Gap(2).Grow(1).Children(func() {
-				backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
-					Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).
-					Cursor(ui.CursorPointer).Label(theme.Tr("返回", "Back"))
-				backHov := backRow.Hovered()
-				backPress := backRow.Pressed()
-				backBG := ui.Transparent
-				backFG := pal.TextSecondary
-				if backHov || backPress {
-					backBG = chrome.Hover
-					backFG = pal.Text
-				}
-				internalui.AnimateSurfaceColors(backRow, backBG, ui.Transparent, false)
-				internalui.TactileCard(backRow, backHov, backPress, false, false)
-				backRow.Children(func() {
-					icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG), backHov || backPress)
-					ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(backFG).SingleLine()
-				})
-				internalui.Probe(backRow, "settings-sidebar-back")
-				if backRow.Clicked() {
-					if isDrawer && onDismissDrawer != nil {
-						onDismissDrawer()
+			internalui.Scroll(c.Key("settings-sidebar-scroll"), &m.settingsSidebarScroll).Grow(1).MinHeight(0).FillWidth().Children(func() {
+				ui.Column(c).FillWidth().Padding(4, 8, 8, 12).Gap(2).Children(func() {
+					backRow := ui.ButtonBase(c.Key("settings-sidebar-back")).FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).Gap(theme.Space10).
+						Margin(0, 0, 8, 0).AlignItems(ui.Center).Justify(ui.Start).Radius(theme.RadiusMD).
+						Cursor(ui.CursorPointer).Label(theme.Tr("返回", "Back"))
+					backHov := backRow.Hovered()
+					backPress := backRow.Pressed()
+					backBG := ui.Transparent
+					backFG := pal.TextSecondary
+					if backHov || backPress {
+						backBG = chrome.Hover
+						backFG = pal.Text
 					}
-					m.CloseSettings()
-				}
+					internalui.AnimateSurfaceColors(backRow, backBG, ui.Transparent, false)
+					internalui.TactileCard(backRow, backHov, backPress, false, false)
+					backRow.Children(func() {
+						icons.DrawAnimated(c, icons.ArrowLeft, 16, pal.MonoIconColors(backFG), backHov || backPress)
+						ui.Text(c, theme.Tr("返回", "Back")).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(backFG).SingleLine()
+					})
+					internalui.Probe(backRow, "settings-sidebar-back")
+					if backRow.Clicked() {
+						m.CloseSettings()
+					}
 
 				for i, spec := range settingsTabs {
 					active := tab == spec.id
@@ -651,7 +650,45 @@ func (m *Manager) RenderSettingsSidebar(c *ui.Context, isDrawer bool, onDismissD
 						}
 					}
 				}
+				})
 			})
+			if isDrawer && onDismissDrawer != nil {
+				st := m.currentState()
+				sbSpec := EffectiveShortcut(st, "toggle_sidebar")
+				ui.Column(c.Key("settings-drawer-footer")).FillWidth().Shrink(0).
+					Padding(theme.Space8, theme.Space8, theme.Space8, theme.Space12).Gap(theme.Space8).Children(func() {
+					ui.Box(c).FillWidth().Height(1).Background(pal.Hairline)
+					dismissBtn := ui.ButtonBase(c.Key("settings-drawer-dismiss")).FillWidth().Height(theme.HeightControl).
+						PaddingX(theme.Space10).Gap(theme.Space8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
+						Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
+						Label(theme.Tr("收起浮窗导航", "Collapse Navigation"))
+					dHov := dismissBtn.Hovered()
+					dPress := dismissBtn.Pressed()
+					dBG := chrome.Hover
+					dFG := pal.TextSecondary
+					if dHov || dPress {
+						dBG = pal.Selected
+						dFG = pal.Text
+					}
+					internalui.AnimateSurfaceColors(dismissBtn, dBG, ui.Transparent, false)
+					internalui.TactileCard(dismissBtn, dHov, dPress, false, false)
+					dismissBtn.Children(func() {
+						ui.Row(c).AlignItems(ui.Center).Gap(theme.Space6).MinWidth(0).Shrink(1).Children(func() {
+							icons.DrawAnimated(c, icons.SidebarCollapse, theme.IconAction, pal.DuoIconColors(pal.Accent), dHov || dPress)
+							ui.Text(c, theme.Tr("收起浮窗导航", "Collapse Navigation")).
+								FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
+								FontWeight(theme.WeightControl).TextColor(dFG).SingleLine().Ellipsis("…")
+						})
+						if sbSpec != "" {
+							internalui.ShortcutKeycap(c, sbSpec)
+						}
+					})
+					internalui.Probe(dismissBtn, "settings-drawer-dismiss")
+					if dismissBtn.Clicked() {
+						onDismissDrawer()
+					}
+				})
+			}
 		})
 		if !isDrawer && m.SidebarWidth != nil {
 			if internalui.SeamlessResizeHandle(c, "settings-sidebar-resize", m.SidebarWidth, theme.SidebarMinWidth, theme.SidebarMaxWidth, theme.SidebarDefaultWidth) && m.OnSidebarWidthChanged != nil {
