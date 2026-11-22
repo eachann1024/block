@@ -709,6 +709,10 @@ func (rt *Runtime) abort() {
 	})
 }
 
+func isInteractivePluginRPC(method string) bool {
+	return method == "plugin.action" || method == "plugin.command"
+}
+
 func (rt *Runtime) call(ctx context.Context, method string, params any, out any) error {
 	select {
 	case rt.callGate <- struct{}{}:
@@ -750,7 +754,7 @@ func (rt *Runtime) call(ctx context.Context, method string, params any, out any)
 		Method:  method,
 		Params:  paramsRaw,
 	}
-	if scope, ok := ctx.Value(systemActionKey{}).(systemAction); ok && method == "plugin.action" {
+	if scope, ok := ctx.Value(systemActionKey{}).(systemAction); ok && isInteractivePluginRPC(method) {
 		scope.ctx, scope.rpcID = ctx, idKey
 		rt.systemAction.Store(&scope)
 		defer rt.systemAction.CompareAndSwap(&scope, nil)
