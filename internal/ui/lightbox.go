@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"block/internal/icons"
@@ -11,11 +12,53 @@ import (
 )
 
 const (
-	lightboxMinZoom  float32 = 0.25
-	lightboxMaxZoom  float32 = 4.0
-	lightboxZoomStep float32 = 1.2
-	lightboxPanStep  float32 = 80
+	lightboxMinZoom        float32 = 0.25
+	lightboxMaxZoom        float32 = 4.0
+	lightboxZoomStep       float32 = 1.2
+	lightboxPanStep        float32 = 80
+	lightboxChromeIdleHide         = 2500 * time.Millisecond
 )
+
+var (
+	windowFullscreenMu  sync.RWMutex
+	windowIsFullscreen  func() bool
+	windowSetFullscreen func(bool)
+)
+
+// SetWindowFullscreenProvider registers host window fullscreen hooks so any
+// RenderLightbox instance can enter or leave native OS fullscreen on demand.
+func SetWindowFullscreenProvider(isFS func() bool, setFS func(bool)) {
+	windowFullscreenMu.Lock()
+	windowIsFullscreen = isFS
+	windowSetFullscreen = setFS
+	windowFullscreenMu.Unlock()
+}
+
+func hasWindowFullscreen() bool {
+	windowFullscreenMu.RLock()
+	ok := windowIsFullscreen != nil && windowSetFullscreen != nil
+	windowFullscreenMu.RUnlock()
+	return ok
+}
+
+func isWindowFullscreen() bool {
+	windowFullscreenMu.RLock()
+	fn := windowIsFullscreen
+	windowFullscreenMu.RUnlock()
+	if fn == nil {
+		return false
+	}
+	return fn()
+}
+
+func setWindowFullscreen(fs bool) {
+	windowFullscreenMu.RLock()
+	fn := windowSetFullscreen
+	windowFullscreenMu.RUnlock()
+	if fn != nil {
+		fn(fs)
+	}
+}
 
 // LightboxItem describes one attachment, image, animated GIF, or video rendered inside RenderLightbox.
 type LightboxItem struct {
@@ -49,10 +92,16 @@ type LightboxState struct {
 	Video         VideoControlState
 	VideoFillMode bool
 
-	panDragging     bool
-	panScrollStartX float32
-	panScrollStartY float32
-	panMoved        bool
+	panDragging       bool
+	panScrollStartX   float32
+	panScrollStartY   float32
+	panMoved          bool
+	enteredFullscreen bool
+	chromeLastActive  time.Time
+	chromePointerX    float32
+	chromePointerY    float32
+	chromeHasPointer  bool
+	toolbarHovered    bool
 }
 
 // LightboxCallbacks supplies optional actions triggered from the lightbox chrome.
@@ -85,6 +134,9 @@ func (s *LightboxState) ResetView() {
 	s.VideoFillMode = false
 	s.panDragging = false
 	s.panMoved = false
+	s.chromeLastActive = time.Time{}
+	s.chromeHasPointer = false
+	s.toolbarHovered = false
 	s.Video.ResetTransient()
 }
 
@@ -173,9 +225,28 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		if item.Video != nil {
 			st.Video.EndPlayerBoost(item.Video)
 		}
+		if st.enteredFullscreen {
+			st.enteredFullscreen = false
+			if isWindowFullscreen() {
+				setWindowFullscreen(false)
+			}
+		}
 		st.Open = false
 		if cb.OnClose != nil {
 			cb.OnClose()
+		}
+	}
+
+	toggleWindowFullscreen := func() {
+		if !hasWindowFullscreen() {
+			return
+		}
+		if isWindowFullscreen() {
+			st.enteredFullscreen = false
+			setWindowFullscreen(false)
+		} else {
+			st.enteredFullscreen = true
+			setWindowFullscreen(true)
 		}
 	}
 
@@ -230,9 +301,15 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 	}
 
 	ui.Overlay(c, func() {
+		loadVideoIcons()
+		immersiveMedia := activeVideo || canZoom
+		scrimColor := pal.LightboxScrim()
+		if immersiveMedia {
+			scrimColor = pal.LightboxStageBG()
+		}
 		scrim := ui.Box(c.Key(id + "-scrim")).
 			Absolute().Left(0).Right(0).Top(0).Bottom(0).
-			Background(pal.LightboxScrim()).
+			Background(scrimColor).
 			Transition(ScrimFadeTransition())
 		Probe(scrim, id+"-scrim")
 
@@ -247,8 +324,30 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		indexChanged := local.lastIndex != st.Index
 		local.lastIndex = st.Index
 
+		now := c.Now()
+		wakeChrome := func() {
+			st.chromeLastActive = now
+		}
+		if st.chromeLastActive.IsZero() || indexChanged {
+			wakeChrome()
+		}
+		if px, py, ok := layer.PointerPosition(); ok {
+			if !st.chromeHasPointer || math.Abs(float64(px-st.chromePointerX)) > 1.0 || math.Abs(float64(py-st.chromePointerY)) > 1.0 {
+				st.chromePointerX = px
+				st.chromePointerY = py
+				st.chromeHasPointer = true
+				wakeChrome()
+			}
+		}
+
 		// Keyboard shortcuts on the modal overlay.
 		if layer.OverlayShortcut(0, ui.KeyEscape) {
+			if st.enteredFullscreen && isWindowFullscreen() {
+				st.enteredFullscreen = false
+				setWindowFullscreen(false)
+				wakeChrome()
+				return
+			}
 			closeLightbox()
 			return
 		}
@@ -257,10 +356,12 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				layer.OverlayShortcut(0, ui.KeyPageUp) ||
 				layer.OverlayShortcut(0, ui.KeyBracketLeft) {
 				selectItem((st.Index - 1 + len(items)) % len(items))
+				wakeChrome()
 			} else if layer.OverlayShortcut(ui.Cmd, ui.KeyRight) ||
 				layer.OverlayShortcut(0, ui.KeyPageDown) ||
 				layer.OverlayShortcut(0, ui.KeyBracketRight) {
 				selectItem((st.Index + 1) % len(items))
+				wakeChrome()
 			}
 		}
 
@@ -270,8 +371,19 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		activeVideo = itemHasActiveVideo(item)
 
 		if activeVideo {
-			HandleVideoShortcuts(c, &layer, item.Video, &st.Video, true, nil)
+			var onF func()
+			if hasWindowFullscreen() {
+				onF = func() {
+					wakeChrome()
+					toggleWindowFullscreen()
+				}
+			}
+			HandleVideoShortcuts(c, &layer, item.Video, &st.Video, true, onF)
 		} else {
+			if hasWindowFullscreen() && layer.OverlayShortcut(0, ui.KeyF) && !c.ShortcutRepeated() {
+				toggleWindowFullscreen()
+				wakeChrome()
+			}
 			if canZoom && !st.FitMode && st.Scroll.MaxX > 0.5 {
 				if layer.OverlayShortcut(0, ui.KeyLeft) {
 					panStage(-lightboxPanStep, 0)
@@ -336,12 +448,31 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		}
 		canZoom = itemCanZoom(item)
 		activeVideo = itemHasActiveVideo(item)
+		immersiveMedia = activeVideo || canZoom
+		if immersiveMedia {
+			scrim.Background(pal.LightboxStageBG())
+		}
+
+		chromeHidden := false
+		if activeVideo && item.Video.Playing() &&
+			!st.Video.Scrubbing && !st.Video.VolScrubbing && !st.Video.SpeedMenuOpen &&
+			!st.Video.DockHovered && !st.toolbarHovered {
+			idle := now.Sub(st.chromeLastActive)
+			if idle >= lightboxChromeIdleHide {
+				chromeHidden = true
+			} else {
+				c.After(lightboxChromeIdleHide - idle + 20*time.Millisecond)
+			}
+		}
+		st.toolbarHovered = false
 
 		vpWinW, vpWinH := c.Size()
 		tb := c.TitleBar()
 		titleClearance := lightboxTitlebarClearance(tb)
 		toolbarTopGap := lightboxToolbarTopGap(titleClearance)
 		toolbarTopTotal := titleClearance + toolbarTopGap
+		isWinFS := isWindowFullscreen()
+		canWinFS := hasWindowFullscreen()
 
 		var (
 			titleStripEl ui.Element
@@ -354,13 +485,14 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			stageW       float32
 			stageH       float32
 			stagePadX    = theme.LightboxStagePad
+			stagePadY    = theme.LightboxStagePad
 			drawW        float32
 			drawH        float32
 		)
 
-		layer.Children(func() {
-			// 0. Clear OS window controls (macOS traffic lights, Windows/Linux caption buttons)
-			//    and keep the empty titlebar band draggable without dismissing the lightbox.
+		renderTopChrome := func() {
+			// Clear OS window controls (macOS traffic lights, Windows/Linux caption buttons)
+			// and keep the empty titlebar band draggable without dismissing the lightbox.
 			if titleClearance > 0 {
 				titleStripEl = ui.Row(c.Key(id+"-titlebar-strip")).
 					FillWidth().Height(titleClearance).Shrink(0).
@@ -370,16 +502,34 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				})
 			}
 
-			// 1. Top floating Ocean Paper toolbar.
+			if chromeHidden {
+				return
+			}
+
+			darkChrome := immersiveMedia
+			toolbarBG := pal.Menu
+			toolbarBorder := pal.MenuBorder
+			titleFG := pal.Text
+			mutedFG := pal.TextSecondary
+			countBG := pal.Hover
+			if darkChrome {
+				toolbarBG = pal.LightboxChromeBG()
+				toolbarBorder = pal.LightboxChromeBorder()
+				titleFG = pal.LightboxChromeFG()
+				mutedFG = pal.LightboxChromeMutedFG()
+				countBG = pal.LightboxChromeHover()
+			}
+
 			ui.Row(c).FillWidth().Padding(toolbarTopGap, theme.Space16, 0, theme.Space16).Shrink(0).Children(func() {
 				toolbarEl = ui.Row(c.Key(id+"-toolbar")).
 					FillWidth().Height(theme.LightboxToolbarHeight).
 					PaddingX(theme.Space12).Gap(theme.Space12).
 					AlignItems(ui.Center).Justify(ui.SpaceBetween).
-					Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
+					Radius(theme.RadiusXL).Background(toolbarBG).Border(1, toolbarBorder).
 					Transition(ModalSpringTransition())
 				Elevate(toolbarEl, theme.ElevationDialog)
 				Probe(toolbarEl, id+"-toolbar")
+				st.toolbarHovered = toolbarEl.Hovered()
 
 				toolbarEl.Children(func() {
 					// Left: icon + filename + meta + index counter.
@@ -390,34 +540,34 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						} else if item.IsImage || item.IsAnimation {
 							leadIcon = icons.Image
 						}
-						icons.Draw(c, leadIcon, theme.IconAction, pal.DuoIconColors(pal.TextSecondary))
+						icons.Draw(c, leadIcon, theme.IconAction, pal.DuoIconColors(mutedFG))
 
 						ui.Text(c, displayName).
 							FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).
-							FontWeight(theme.WeightControl).TextColor(pal.Text).
+							FontWeight(theme.WeightControl).TextColor(titleFG).
 							SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 
 						if item.Meta != "" {
 							ui.Text(c, item.Meta).
 								FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-								TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+								TextColor(mutedFG).SingleLine().Shrink(0)
 						}
 
 						if multi {
 							countText := fmt.Sprintf("%d / %d", st.Index+1, len(items))
 							countEl := ui.Row(c.Key(id + "-count")).
 								Height(theme.HeightMicro).PaddingX(theme.Space6).Shrink(0).
-								Center().Radius(theme.RadiusSM).Background(pal.Hover)
+								Center().Radius(theme.RadiusSM).Background(countBG)
 							countEl.Children(func() {
 								ui.Text(c, countText).
 									FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
-									FontWeight(theme.WeightMono).TextColor(pal.TextSecondary).SingleLine()
+									FontWeight(theme.WeightMono).TextColor(mutedFG).SingleLine()
 							})
 							Probe(countEl, id+"-count")
 						}
 					})
 
-					// Right: zoom cluster (image only) + copy + reveal + remove + close.
+					// Right: zoom cluster (image only) + copy + open + reveal + fullscreen + help + remove + close.
 					ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
 						itemKey := item.ID
 						if itemKey == "" {
@@ -430,14 +580,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								if st.FitScale > 0 {
 									effectiveZoom = st.FitScale
 								} else if item.ImageW > 0 && item.ImageH > 0 && vpWinW > 0 && vpWinH > 0 {
-									estChromeH := toolbarTopTotal + theme.LightboxToolbarHeight + theme.Space12
-									estPadX := theme.LightboxStagePad
-									if multi {
-										estChromeH += theme.LightboxFilmstripThumb + theme.Space12*3 + theme.Space2
-										estPadX += theme.HeightLarge
-									}
-									estAvailW := max(vpWinW-2*estPadX, 1)
-									estAvailH := max(vpWinH-estChromeH-2*theme.LightboxStagePad, 1)
+									estAvailW := max(vpWinW-2*theme.Space12, 1)
+									estAvailH := max(vpWinH-2*theme.Space12, 1)
 									effectiveZoom = min(float32(1.0), min(estAvailW/float32(item.ImageW), estAvailH/float32(item.ImageH)))
 									minZ = effectiveMinZoom(effectiveZoom)
 								} else {
@@ -446,21 +590,20 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							}
 							pctText := fmt.Sprintf("%d%%", int(math.Round(float64(effectiveZoom*100))))
 
+							zoomBG := pal.Card
+							zoomBorder := pal.BtnBorder
+							if darkChrome {
+								zoomBG = pal.LightboxChromeHover()
+								zoomBorder = pal.LightboxChromeBorder()
+							}
 							zoomCluster := ui.Row(c.Key(id+"-zoom")).
 								Height(theme.HeightCompact).PaddingX(theme.Space4).Gap(theme.Space2).
 								AlignItems(ui.Center).Radius(theme.RadiusMD).
-								Background(pal.Card).Border(1, pal.BtnBorder)
+								Background(zoomBG).Border(1, zoomBorder)
 							Probe(zoomCluster, id+"-zoom")
 
 							zoomCluster.Children(func() {
-								outBtn := IconButton(c, icons.TbMinus, IconButtonOptions{
-									ID:       id + "-zoom-out",
-									Size:     theme.HeightMicro,
-									IconSize: theme.IconInline,
-									Tooltip:  theme.Tr("缩小", "Zoom Out"),
-									Shortcut: "-",
-									Disabled: effectiveZoom <= minZ+0.001,
-								})
+								outBtn := renderLightboxToolbarIcon(c, id+"-zoom-out", icons.TbMinus, theme.Tr("缩小", "Zoom Out"), "-", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom <= minZ+0.001)
 								if outBtn.Clicked() {
 									stepZoom(1.0 / lightboxZoomStep)
 								}
@@ -469,7 +612,11 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									Height(theme.HeightMicro).PaddingX(theme.Space6).
 									Center().Radius(theme.RadiusXS).Cursor(ui.CursorPointer).Label(pctText)
 								if pctBtn.Hovered() {
-									pctBtn.Background(pal.Hover)
+									if darkChrome {
+										pctBtn.Background(pal.LightboxChromeHover())
+									} else {
+										pctBtn.Background(pal.Hover)
+									}
 								}
 								RichTooltip(c, pctBtn, TooltipSpec{
 									Placement: TooltipBelow,
@@ -481,7 +628,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								pctBtn.Children(func() {
 									ui.Text(c, pctText).
 										FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-										FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+										FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
 								})
 								Probe(pctBtn, id+"-zoom-pct")
 								if pctBtn.Clicked() {
@@ -492,14 +639,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									}
 								}
 
-								inBtn := IconButton(c, icons.TbPlus, IconButtonOptions{
-									ID:       id + "-zoom-in",
-									Size:     theme.HeightMicro,
-									IconSize: theme.IconInline,
-									Tooltip:  theme.Tr("放大", "Zoom In"),
-									Shortcut: "=",
-									Disabled: effectiveZoom >= lightboxMaxZoom-0.001,
-								})
+								inBtn := renderLightboxToolbarIcon(c, id+"-zoom-in", icons.TbPlus, theme.Tr("放大", "Zoom In"), "=", theme.HeightMicro, theme.IconInline, darkChrome, false, false, effectiveZoom >= lightboxMaxZoom-0.001)
 								if inBtn.Clicked() {
 									stepZoom(lightboxZoomStep)
 								}
@@ -510,9 +650,17 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									Center().Radius(theme.RadiusXS).Border(1, ui.Transparent).
 									Cursor(ui.CursorPointer).Label(fitLabel)
 								if st.FitMode {
-									fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+									if darkChrome {
+										fitBtn.Background(pal.LightboxChromeActive()).Border(1, pal.LightboxChromeBorder())
+									} else {
+										fitBtn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+									}
 								} else if fitBtn.Hovered() {
-									fitBtn.Background(pal.Hover)
+									if darkChrome {
+										fitBtn.Background(pal.LightboxChromeHover())
+									} else {
+										fitBtn.Background(pal.Hover)
+									}
 								}
 								RichTooltip(c, fitBtn, TooltipSpec{
 									Placement: TooltipBelow,
@@ -524,7 +672,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								fitBtn.Children(func() {
 									ui.Text(c, fitLabel).
 										FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).
-										FontWeight(theme.WeightControl).TextColor(pal.Text).SingleLine()
+										FontWeight(theme.WeightControl).TextColor(titleFG).SingleLine()
 								})
 								Probe(fitBtn, id+"-zoom-fit")
 								if fitBtn.Clicked() {
@@ -539,7 +687,6 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 
 						canCopy := canZoom || item.TextPreview != "" || item.OpenURL != ""
 						if cb.OnCopy != nil && canCopy {
-							now := c.Now()
 							copiedActive := !st.CopiedUntil.IsZero() && now.Before(st.CopiedUntil)
 							if copiedActive {
 								if rem := st.CopiedUntil.Sub(now); rem > 0 {
@@ -559,14 +706,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 							if canZoom || item.OpenURL != "" {
 								copyShortcut = "cmd-c"
 							}
-							copyBtn := IconButton(c, copyIcon, IconButtonOptions{
-								ID:       id + "-copy-" + itemKey,
-								Variant:  IconChrome,
-								Tooltip:  copyTip,
-								Shortcut: copyShortcut,
-								Disabled: item.Unavailable || item.Loading,
-								Active:   copiedActive,
-							})
+							copyBtn := renderLightboxToolbarIcon(c, id+"-copy-"+itemKey, copyIcon, copyTip, copyShortcut, theme.IconButtonBox, theme.IconAction, darkChrome, copiedActive, false, item.Unavailable || item.Loading)
 							Probe(copyBtn, id+"-copy")
 							if copyBtn.Clicked() {
 								if cb.OnCopy(st.Index) {
@@ -577,11 +717,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						}
 
 						if cb.OnOpenURL != nil && item.OpenURL != "" {
-							openBtn := IconButton(c, icons.LinkOpen, IconButtonOptions{
-								ID:      id + "-open-url-" + itemKey,
-								Variant: IconChrome,
-								Tooltip: theme.Tr("在浏览器中打开", "Open in Browser"),
-							})
+							openBtn := renderLightboxToolbarIcon(c, id+"-open-url-"+itemKey, icons.LinkOpen, theme.Tr("在浏览器中打开", "Open in Browser"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
 							Probe(openBtn, id+"-open-url")
 							if openBtn.Clicked() {
 								cb.OnOpenURL(st.Index)
@@ -589,23 +725,30 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						}
 
 						if cb.OnReveal != nil && !item.Unavailable {
-							revBtn := IconButton(c, icons.FolderReveal, IconButtonOptions{
-								ID:      id + "-reveal-" + itemKey,
-								Variant: IconChrome,
-								Tooltip: lightboxRevealLabel(),
-							})
+							revBtn := renderLightboxToolbarIcon(c, id+"-reveal-"+itemKey, icons.FolderReveal, lightboxRevealLabel(), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
 							Probe(revBtn, id+"-reveal")
 							if revBtn.Clicked() {
 								cb.OnReveal(st.Index)
 							}
 						}
 
+						if canWinFS {
+							fsGlyph := svgVidExpand
+							fsTip := theme.Tr("系统全屏", "System Fullscreen")
+							if isWinFS {
+								fsGlyph = svgVidExitExpand
+								fsTip = theme.Tr("退出全屏", "Exit Fullscreen")
+							}
+							fsBtn := renderLightboxToolbarSVG(c, id+"-fullscreen", fsGlyph, fsTip, "F", darkChrome, isWinFS)
+							Probe(fsBtn, id+"-fullscreen")
+							if fsBtn.Clicked() {
+								wakeChrome()
+								toggleWindowFullscreen()
+							}
+						}
+
 						// Contextual keyboard/mouse shortcuts help button.
-						helpBtn := IconButton(c, icons.HelpCircle, IconButtonOptions{
-							ID:      id + "-help",
-							Variant: IconChrome,
-							Label:   theme.Tr("快捷键说明", "Keyboard shortcuts"),
-						})
+						helpBtn := renderLightboxToolbarIcon(c, id+"-help", icons.HelpCircle, "", "", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
 						if activeVideo {
 							switchChord := FormatShortcutDisplay("cmd-left") + " / " + FormatShortcutDisplay("cmd-right")
 							TooltipCard(c, helpBtn, TooltipCardSpec{
@@ -615,7 +758,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									"Space: Play/Pause · ← / →: Seek ±5s\nHold → or Right-click: 3x speed, release to restore\n↑ / ↓: Volume · M: Mute · R: Loop · < / >: Speed",
 								),
 								Note: fmt.Sprintf(
-									theme.Tr("双击视频切换填充模式 · %s 切换媒体", "Double-click to toggle fill · %s switch media"),
+									theme.Tr("F 或双击：系统全屏 · %s 切换媒体", "F or double-click: System fullscreen · %s switch media"),
 									switchChord,
 								),
 								Placement: TooltipBelow,
@@ -627,43 +770,138 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									"点击图片：切换 100% / 适应窗口 · 拖拽平移大图\n+ / - / 0 / 1：缩放与复位 · 方向键：平移或切换",
 									"Click image: Toggle 100% / Fit · Drag to pan when zoomed\n+ / - / 0 / 1: Zoom & reset · Arrows: Pan or switch",
 								),
-								Note:      theme.Tr("Esc 关闭预览", "Esc to close"),
+								Note:      theme.Tr("F 系统全屏 · Esc 关闭预览", "F fullscreen · Esc to close"),
 								Placement: TooltipBelow,
 							})
 						}
 
 						if item.CanRemove && cb.OnRemove != nil {
-							remBtn := IconButton(c, icons.Trash, IconButtonOptions{
-								ID:      id + "-remove-" + itemKey,
-								Variant: IconChrome,
-								Danger:  true,
-								Tooltip: theme.Tr("移除附件", "Remove Attachment"),
-							})
+							remBtn := renderLightboxToolbarIcon(c, id+"-remove-"+itemKey, icons.Trash, theme.Tr("移除附件", "Remove Attachment"), "", theme.IconButtonBox, theme.IconAction, darkChrome, false, true, false)
 							Probe(remBtn, id+"-remove")
 							if remBtn.Clicked() {
 								cb.OnRemove(st.Index)
 							}
 						}
 
-						closeBtn := IconButton(c, icons.Close, IconButtonOptions{
-							ID:       id + "-close",
-							Variant:  IconChrome,
-							Tooltip:  theme.Tr("关闭", "Close"),
-							Shortcut: "esc",
-						})
+						closeBtn := renderLightboxToolbarIcon(c, id+"-close", icons.Close, theme.Tr("关闭", "Close"), "esc", theme.IconButtonBox, theme.IconAction, darkChrome, false, false, false)
 						if closeBtn.Clicked() {
 							closeLightbox()
 						}
 					})
 				})
 			})
+		}
 
-			// 2. Central stage + floating prev/next navigation.
+		renderFilmstrip := func() {
+			if !multi || chromeHidden {
+				return
+			}
+			stripBG := pal.Menu
+			stripBorder := pal.MenuBorder
+			thumbBG := pal.AISurface().MediaFrameBG
+			thumbBorder := pal.Hairline
+			if immersiveMedia {
+				stripBG = pal.LightboxChromeBG()
+				stripBorder = pal.LightboxChromeBorder()
+				thumbBG = pal.LightboxStageBG()
+				thumbBorder = pal.LightboxChromeBorder()
+			}
+			ui.Row(c).FillWidth().Padding(0, theme.Space16, theme.Space12, theme.Space16).
+				Justify(ui.Center).Shrink(0).Children(func() {
+				filmstripEl = ui.Row(c.Key(id+"-filmstrip")).
+					MaxWidth(max(vpWinW-2*theme.Space16, 1)).
+					Padding(theme.Space6).
+					Radius(theme.RadiusXL).Background(stripBG).Border(1, stripBorder).
+					Transition(ModalSpringTransition())
+				Elevate(filmstripEl, theme.ElevationDialog)
+				Probe(filmstripEl, id+"-filmstrip")
+				if filmstripEl.Hovered() {
+					st.toolbarHovered = true
+				}
+
+				filmstripEl.Children(func() {
+					stripScroll := ScrollHorizontal(c.Key(id + "-filmstrip-scroll")).Shrink(1).MinWidth(0)
+					stripScroll.Children(func() {
+						ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+							for i, it := range items {
+								idx := i
+								isSelected := idx == st.Index
+								thumbID := fmt.Sprintf("%s-thumb-%d", id, idx)
+								thumbLabel := it.Name
+								if thumbLabel == "" {
+									thumbLabel = fmt.Sprintf("#%d", idx+1)
+								}
+
+								borderW := float32(1)
+								borderCol := thumbBorder
+								if isSelected {
+									borderW = 2
+									borderCol = pal.Accent
+								}
+
+								thumb := ui.ButtonBase(c.Key(thumbID)).
+									Size(theme.LightboxFilmstripThumb, theme.LightboxFilmstripThumb).Shrink(0).
+									Center().Radius(theme.RadiusMD).
+									Background(thumbBG).
+									Border(borderW, borderCol).Clip().
+									Cursor(ui.CursorPointer).
+									Role(ui.RoleTab).AccessSelected(isSelected).Label(thumbLabel)
+								if !isSelected && thumb.Hovered() {
+									if immersiveMedia {
+										thumb.Border(borderW, pal.LightboxChromeFG())
+									} else {
+										thumb.Border(borderW, pal.TextSecondary)
+									}
+								}
+								TactileCard(thumb, thumb.Hovered(), thumb.Pressed(), isSelected, false)
+
+								thumb.Children(func() {
+									switch {
+									case it.IsImage && !it.IsAnimation && it.Image != nil && !it.Unavailable:
+										ui.Image(c, it.Image).Fill().Fit(ui.Cover).Clip()
+									case it.Loading:
+										ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
+									case it.IsVideo:
+										icons.Duo(c, icons.Video, theme.IconRow, isSelected)
+									default:
+										glyph := icons.Note
+										if it.IsImage || it.IsAnimation {
+											glyph = icons.Image
+										}
+										icons.Duo(c, glyph, theme.IconRow, isSelected)
+									}
+								})
+								Probe(thumb, thumbID)
+								if isSelected && indexChanged {
+									thumb.ScrollIntoView()
+								}
+								if thumb.Clicked() {
+									selectItem(idx)
+								}
+							}
+						})
+					})
+				})
+			})
+		}
+
+		layer.Children(func() {
+			if !immersiveMedia {
+				renderTopChrome()
+			}
+
+			// Central stage + floating prev/next navigation.
 			stageWrap := ui.Box(c.Key(id + "-stage-wrap")).
 				Grow(1).Shrink(1).FillWidth().MinWidth(0).MinHeight(0)
+			if immersiveMedia {
+				stageWrap.Fill()
+			}
 
 			if b := stageWrap.LayoutBounds(); b.W > 0 && b.H > 0 {
 				stageW, stageH = b.W, b.H
+			} else if immersiveMedia {
+				stageW = max(vpWinW, 1)
+				stageH = max(vpWinH, 1)
 			} else {
 				stageW = max(vpWinW, 1)
 				chromeH := toolbarTopTotal + theme.LightboxToolbarHeight + theme.Space12
@@ -673,7 +911,15 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				stageH = max(vpWinH-chromeH, 1)
 			}
 
-			if multi {
+			if immersiveMedia {
+				if activeVideo {
+					stagePadX = 0
+					stagePadY = 0
+				} else {
+					stagePadX = theme.Space12
+					stagePadY = theme.Space12
+				}
+			} else if multi {
 				stagePadX = theme.LightboxStagePad + theme.HeightLarge
 			}
 
@@ -684,7 +930,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 				stageEl.Children(func() {
 					ui.Column(c).
 						MinWidth(stageW).MinHeight(stageH).
-						Padding(theme.LightboxStagePad, stagePadX, theme.LightboxStagePad, stagePadX).
+						Padding(stagePadY, stagePadX, stagePadY, stagePadX).
 						Center().
 						Children(func() {
 							switch {
@@ -723,23 +969,33 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								if vidKey == "" {
 									vidKey = fmt.Sprintf("idx-%d", st.Index)
 								}
-								vidWrap := ui.Column(c.Key(id+"-video-wrap-"+vidKey)).
-									MaxWidth(min(max(stageW-2*stagePadX, 320), theme.LightboxVideoMaxWidth)).
-									Shrink(0)
-								vidWrap.Children(func() {
-									RenderVideoPlayer(c, item.Video, &st.Video, VideoPlayerOptions{
-										ID:          id + "-video-" + vidKey,
-										Label:       displayName,
-										StageWidth:  min(max(stageW-2*stagePadX, 320), theme.LightboxVideoMaxWidth),
-										StageHeight: max(stageH-2*theme.LightboxStagePad, 220),
-										InLightbox:  true,
-										FillMode:    st.VideoFillMode,
-										OnToggleFill: func() {
-											st.VideoFillMode = !st.VideoFillMode
-										},
-									})
+								var onToggleFS func()
+								if canWinFS {
+									onToggleFS = func() {
+										wakeChrome()
+										toggleWindowFullscreen()
+									}
+								}
+								bottomInset := float32(0)
+								if multi {
+									bottomInset = theme.LightboxFilmstripThumb + theme.Space12*2 + theme.Space8
+								}
+								contentEl = RenderVideoPlayer(c, item.Video, &st.Video, VideoPlayerOptions{
+									ID:                 id + "-video-" + vidKey,
+									Label:              displayName,
+									StageWidth:         max(stageW, 240),
+									StageHeight:        max(stageH, 180),
+									InLightbox:         true,
+									FillMode:           st.VideoFillMode,
+									IsFullscreen:       isWinFS,
+									ChromeHidden:       chromeHidden,
+									BottomInset:        bottomInset,
+									OnToggleFullscreen: onToggleFS,
+									OnToggleFill: func() {
+										st.VideoFillMode = !st.VideoFillMode
+									},
+									OnInteract: wakeChrome,
 								})
-								contentEl = vidWrap
 
 							case canZoom:
 								iw, ih := float32(item.ImageW), float32(item.ImageH)
@@ -767,9 +1023,8 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									ih = 240
 								}
 
-								frameChrome := (theme.Space2 + 1) * 2
-								availW := max(stageW-2*stagePadX-frameChrome, 1)
-								availH := max(stageH-2*theme.LightboxStagePad-frameChrome, 1)
+								availW := max(stageW-2*stagePadX, 1)
+								availH := max(stageH-2*stagePadY, 1)
 								fitScale := min(float32(1.0), min(availW/iw, availH/ih))
 								if fitScale <= 0 {
 									fitScale = 0.01
@@ -804,20 +1059,14 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 									imgKey = fmt.Sprintf("idx-%d", st.Index)
 								}
 								frame := ui.ButtonBase(c.Key(id+"-image-"+imgKey)).
-									Shrink(0).Padding(theme.Space2).
-									Radius(theme.RadiusLG).
-									Background(pal.AISurface().MediaFrameBG).
-									Border(1, pal.Hairline).
+									Shrink(0).
 									Cursor(cursor).Label(displayName)
-								Elevate(frame, theme.ElevationDialog)
 								Probe(frame, id+"-image")
 								frame.Children(func() {
 									if item.IsAnimation && item.Video != nil {
-										ui.Video(c, item.Video).Size(drawW, drawH).Shrink(0).
-											Radius(theme.RadiusMD).Clip().Label(displayName)
+										ui.Video(c, item.Video).Size(drawW, drawH).Shrink(0).Clip().Label(displayName)
 									} else {
-										ui.Image(c, item.Image).Size(drawW, drawH).Shrink(0).
-											Radius(theme.RadiusMD).Clip()
+										ui.Image(c, item.Image).Size(drawW, drawH).Shrink(0).Clip()
 									}
 								})
 								dx, dy, dragging := frame.Dragged()
@@ -855,12 +1104,12 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 								contentEl = frame
 
 							default:
-								contentEl = renderLightboxFileCard(c, id, st, item, cb, pal, displayName, stageW-2*stagePadX, stageH-2*theme.LightboxStagePad)
+								contentEl = renderLightboxFileCard(c, id, st, item, cb, pal, displayName, stageW-2*stagePadX, stageH-2*stagePadY)
 							}
 						})
 				})
 
-				if multi {
+				if multi && !chromeHidden {
 					navSize := theme.HeightLarge
 					navTop := max((stageH-navSize)*0.5, theme.Space8)
 					prevShortcut := "←"
@@ -870,108 +1119,39 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 						nextShortcut = "cmd-right"
 					}
 
-					prevBtn = IconButton(c, icons.ChevronLeft, IconButtonOptions{
-						ID:       id + "-prev",
-						Variant:  IconBordered,
-						Size:     navSize,
-						IconSize: theme.IconChrome,
-						Radius:   theme.RadiusPill,
-						Tooltip:  theme.Tr("上一个", "Previous"),
-						Shortcut: prevShortcut,
-					}).Absolute().Left(theme.Space16).Top(navTop)
+					prevBtn = renderLightboxNavButton(c, id+"-prev", icons.ChevronLeft, navSize, theme.Tr("上一个", "Previous"), prevShortcut, immersiveMedia).
+						Absolute().Left(theme.Space16).Top(navTop)
 					Elevate(prevBtn, theme.ElevationDialog)
+					if prevBtn.Hovered() {
+						st.toolbarHovered = true
+					}
 					if prevBtn.Clicked() {
 						selectItem((st.Index - 1 + len(items)) % len(items))
 					}
 
-					nextBtn = IconButton(c, icons.ChevronRight, IconButtonOptions{
-						ID:       id + "-next",
-						Variant:  IconBordered,
-						Size:     navSize,
-						IconSize: theme.IconChrome,
-						Radius:   theme.RadiusPill,
-						Tooltip:  theme.Tr("下一个", "Next"),
-						Shortcut: nextShortcut,
-					}).Absolute().Right(theme.Space16).Top(navTop)
+					nextBtn = renderLightboxNavButton(c, id+"-next", icons.ChevronRight, navSize, theme.Tr("下一个", "Next"), nextShortcut, immersiveMedia).
+						Absolute().Right(theme.Space16).Top(navTop)
 					Elevate(nextBtn, theme.ElevationDialog)
+					if nextBtn.Hovered() {
+						st.toolbarHovered = true
+					}
 					if nextBtn.Clicked() {
 						selectItem((st.Index + 1) % len(items))
 					}
 				}
 			})
 
-			// 3. Bottom compact filmstrip when multiple attachments exist.
-			if multi {
-				ui.Row(c).FillWidth().Padding(0, theme.Space16, theme.Space12, theme.Space16).
-					Justify(ui.Center).Shrink(0).Children(func() {
-					filmstripEl = ui.Row(c.Key(id+"-filmstrip")).
-						MaxWidth(max(vpWinW-2*theme.Space16, 1)).
-						Padding(theme.Space6).
-						Radius(theme.RadiusXL).Background(pal.Menu).Border(1, pal.MenuBorder).
-						Transition(ModalSpringTransition())
-					Elevate(filmstripEl, theme.ElevationDialog)
-					Probe(filmstripEl, id+"-filmstrip")
-
-					filmstripEl.Children(func() {
-						stripScroll := ScrollHorizontal(c.Key(id + "-filmstrip-scroll")).Shrink(1).MinWidth(0)
-						stripScroll.Children(func() {
-							ui.Row(c).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
-								for i, it := range items {
-									idx := i
-									isSelected := idx == st.Index
-									thumbID := fmt.Sprintf("%s-thumb-%d", id, idx)
-									thumbLabel := it.Name
-									if thumbLabel == "" {
-										thumbLabel = fmt.Sprintf("#%d", idx+1)
-									}
-
-									borderW := float32(1)
-									borderCol := pal.Hairline
-									if isSelected {
-										borderW = 2
-										borderCol = pal.Accent
-									}
-
-									thumb := ui.ButtonBase(c.Key(thumbID)).
-										Size(theme.LightboxFilmstripThumb, theme.LightboxFilmstripThumb).Shrink(0).
-										Center().Radius(theme.RadiusMD).
-										Background(pal.AISurface().MediaFrameBG).
-										Border(borderW, borderCol).Clip().
-										Cursor(ui.CursorPointer).
-										Role(ui.RoleTab).AccessSelected(isSelected).Label(thumbLabel)
-									if !isSelected && thumb.Hovered() {
-										thumb.Border(borderW, pal.TextSecondary)
-									}
-									TactileCard(thumb, thumb.Hovered(), thumb.Pressed(), isSelected, false)
-
-									thumb.Children(func() {
-										switch {
-										case it.IsImage && !it.IsAnimation && it.Image != nil && !it.Unavailable:
-											ui.Image(c, it.Image).Fill().Fit(ui.Cover).Clip()
-										case it.Loading:
-											ui.Spinner(c).FontSize(theme.IconInline).TextColor(pal.Accent)
-										case it.IsVideo:
-											icons.Duo(c, icons.Video, theme.IconRow, isSelected)
-										default:
-											glyph := icons.Note
-											if it.IsImage || it.IsAnimation {
-												glyph = icons.Image
-											}
-											icons.Duo(c, glyph, theme.IconRow, isSelected)
-										}
-									})
-									Probe(thumb, thumbID)
-									if isSelected && indexChanged {
-										thumb.ScrollIntoView()
-									}
-									if thumb.Clicked() {
-										selectItem(idx)
-									}
-								}
-							})
-						})
-					})
+			if immersiveMedia {
+				ui.Column(c.Key(id+"-floating-top")).Absolute().Top(0).Left(0).Right(0).Children(func() {
+					renderTopChrome()
 				})
+				if multi && !chromeHidden {
+					ui.Column(c.Key(id+"-floating-bottom")).Absolute().Left(0).Right(0).Bottom(0).Children(func() {
+						renderFilmstrip()
+					})
+				}
+			} else {
+				renderFilmstrip()
 			}
 		})
 
@@ -982,7 +1162,7 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 			(nextBtn.Valid() && nextBtn.PressedInside()) ||
 			(filmstripEl.Valid() && filmstripEl.PressedInside())
 
-		stageOverflow := canZoom && (drawW > max(stageW-2*stagePadX, 1) || drawH > max(stageH-2*theme.LightboxStagePad, 1))
+		stageOverflow := canZoom && (drawW > max(stageW-2*stagePadX, 1) || drawH > max(stageH-2*stagePadY, 1))
 		overStageScrollbar := stageOverflow && stageEl.Valid() &&
 			pointerOverScrollbarTrack(c, stageEl, axisVertical|axisHorizontal)
 
@@ -991,6 +1171,178 @@ func RenderLightbox(c *ui.Context, id string, st *LightboxState, items []Lightbo
 		}
 		local.mountedFrames++
 	})
+}
+
+func renderLightboxToolbarIcon(
+	c *ui.Context,
+	id string,
+	icon icons.Icon,
+	tooltip string,
+	shortcut string,
+	size float32,
+	iconSize float32,
+	dark bool,
+	active bool,
+	danger bool,
+	disabled bool,
+) ui.Element {
+	if !dark {
+		return IconButton(c, icon, IconButtonOptions{
+			ID:       id,
+			Variant:  IconChrome,
+			Size:     size,
+			IconSize: iconSize,
+			Tooltip:  tooltip,
+			Shortcut: shortcut,
+			Active:   active,
+			Danger:   danger,
+			Disabled: disabled,
+		})
+	}
+	pal := theme.Ocean()
+	btn := ui.ButtonBase(c.Key(id)).
+		Size(size, size).Center().
+		Radius(theme.RadiusSM).Label(tooltip)
+	if !disabled {
+		btn.Cursor(ui.CursorPointer)
+	}
+	bg := ui.Transparent
+	fg := pal.LightboxChromeMutedFG()
+	if disabled {
+		fg = pal.LightboxChromeMutedFG().Alpha(0.42)
+	} else if danger {
+		if btn.Hovered() || btn.Pressed() {
+			bg = pal.Danger.Alpha(0.18)
+			fg = pal.Danger
+		}
+	} else if active {
+		bg = pal.LightboxChromeActive()
+		fg = pal.LightboxChromeFG()
+	} else if btn.Pressed() {
+		bg = pal.LightboxChromeActive()
+		fg = pal.LightboxChromeFG()
+	} else if btn.Hovered() {
+		bg = pal.LightboxChromeHover()
+		fg = pal.LightboxChromeFG()
+	}
+	AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	if tooltip != "" {
+		if shortcut != "" {
+			RichTooltip(c, btn, TooltipSpec{
+				Placement: TooltipBelow,
+				Rows:      []TooltipRow{{Trigger: tooltip, Shortcut: shortcut}},
+			})
+		} else {
+			Tooltip(c, btn, tooltip)
+		}
+	}
+	btn.Children(func() {
+		icons.Draw(c, icon, iconSize, pal.DuoIconColors(fg))
+	})
+	return btn
+}
+
+func renderLightboxToolbarSVG(
+	c *ui.Context,
+	id string,
+	glyph *ui.SVG,
+	tooltip string,
+	shortcut string,
+	dark bool,
+	active bool,
+) ui.Element {
+	pal := theme.Ocean()
+	btn := ui.ButtonBase(c.Key(id)).
+		Size(theme.IconButtonBox, theme.IconButtonBox).Center().
+		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(tooltip)
+	bg := ui.Transparent
+	fg := pal.TextSecondary
+	if dark {
+		fg = pal.LightboxChromeMutedFG()
+		if active {
+			bg = pal.LightboxChromeActive()
+			fg = pal.LightboxChromeFG()
+		} else if btn.Pressed() {
+			bg = pal.LightboxChromeActive()
+			fg = pal.LightboxChromeFG()
+		} else if btn.Hovered() {
+			bg = pal.LightboxChromeHover()
+			fg = pal.LightboxChromeFG()
+		}
+	} else {
+		if active {
+			bg = pal.Selected
+			fg = pal.Accent
+		} else if btn.Pressed() {
+			bg = pal.Selected
+			fg = pal.Text
+		} else if btn.Hovered() {
+			bg = pal.Hover
+			fg = pal.Text
+		}
+	}
+	AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+	if tooltip != "" {
+		if shortcut != "" {
+			RichTooltip(c, btn, TooltipSpec{
+				Placement: TooltipBelow,
+				Rows:      []TooltipRow{{Trigger: tooltip, Shortcut: shortcut}},
+			})
+		} else {
+			Tooltip(c, btn, tooltip)
+		}
+	}
+	btn.Children(func() {
+		if glyph != nil {
+			ui.Icon(c, glyph).Size(theme.IconAction, theme.IconAction).TextColor(fg)
+		}
+	})
+	return btn
+}
+
+func renderLightboxNavButton(
+	c *ui.Context,
+	id string,
+	icon icons.Icon,
+	size float32,
+	tooltip string,
+	shortcut string,
+	dark bool,
+) ui.Element {
+	if !dark {
+		return IconButton(c, icon, IconButtonOptions{
+			ID:       id,
+			Variant:  IconBordered,
+			Size:     size,
+			IconSize: theme.IconChrome,
+			Radius:   theme.RadiusPill,
+			Tooltip:  tooltip,
+			Shortcut: shortcut,
+		})
+	}
+	pal := theme.Ocean()
+	btn := ui.ButtonBase(c.Key(id)).
+		Size(size, size).Center().
+		Radius(theme.RadiusPill).Cursor(ui.CursorPointer).
+		Border(1, pal.LightboxChromeBorder()).Label(tooltip)
+	bg := pal.LightboxChromeBG()
+	fg := pal.LightboxChromeFG()
+	if btn.Pressed() {
+		bg = pal.LightboxChromeActive()
+	} else if btn.Hovered() {
+		bg = pal.ImageOverlayBadgeHoverBG()
+	}
+	AnimateSurfaceColors(btn, bg, pal.LightboxChromeBorder(), false)
+	if tooltip != "" {
+		RichTooltip(c, btn, TooltipSpec{
+			Placement: TooltipBelow,
+			Rows:      []TooltipRow{{Trigger: tooltip, Shortcut: shortcut}},
+		})
+	}
+	btn.Children(func() {
+		icons.Draw(c, icon, theme.IconChrome, pal.DuoIconColors(fg))
+	})
+	return btn
 }
 
 func renderLightboxStatusCard(

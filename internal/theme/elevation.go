@@ -106,3 +106,43 @@ func (p Palette) ImageOverlayBadgeHoverBG() ui.Color {
 func (p Palette) ImageOverlayBadgeFG() ui.Color {
 	return ui.Hex("#f4f5f7")
 }
+
+// LightboxStageBG is the opaque theater backdrop behind full-window media viewers.
+func (p Palette) LightboxStageBG() ui.Color {
+	return ui.Hex("#0c0e12")
+}
+
+// LightboxChromeBG is the translucent dark floating surface for lightbox toolbars and video controls.
+func (p Palette) LightboxChromeBG() ui.Color {
+	return ui.RGBA(0x14, 0x17, 0x1e, 0.80)
+}
+
+// LightboxChromeBorder is the subtle hairline border around dark floating lightbox chrome.
+func (p Palette) LightboxChromeBorder() ui.Color {
+	return ui.RGBA(0xff, 0xff, 0xff, 0.14)
+}
+
+// LightboxChromeHover is the hover fill for buttons inside dark floating lightbox chrome.
+func (p Palette) LightboxChromeHover() ui.Color {
+	return ui.RGBA(0xff, 0xff, 0xff, 0.14)
+}
+
+// LightboxChromeActive is the pressed/selected fill for buttons inside dark floating lightbox chrome.
+func (p Palette) LightboxChromeActive() ui.Color {
+	return ui.RGBA(0xff, 0xff, 0xff, 0.22)
+}
+
+// LightboxChromeFG is the primary light text/icon color inside dark floating lightbox chrome.
+func (p Palette) LightboxChromeFG() ui.Color {
+	return ui.Hex("#f4f5f7")
+}
+
+// LightboxChromeMutedFG is the secondary light text/icon color inside dark floating lightbox chrome.
+func (p Palette) LightboxChromeMutedFG() ui.Color {
+	return ui.RGBA(0xf4, 0xf5, 0xf7, 0.68)
+}
+
+// LightboxChromeTrack is the slider track background inside dark floating video controls.
+func (p Palette) LightboxChromeTrack() ui.Color {
+	return ui.RGBA(0xff, 0xff, 0xff, 0.24)
+}
