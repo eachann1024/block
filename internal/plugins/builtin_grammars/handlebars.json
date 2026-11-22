@@ -1,0 +1,318 @@
+{
+  "schema_version": 1,
+  "block_comment": ["{{!--", "--}}"],
+  "word_chars": "_-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{{", "}}"],
+    ["{{{", "}}}"],
+    ["(", ")"],
+    ["<", ">"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "\\{\\{~?!--",
+        "token": "comment",
+        "push": "hbs_block_comment"
+      },
+      {
+        "match": "\\{\\{~?!",
+        "token": "comment",
+        "push": "hbs_comment"
+      },
+      {
+        "match": "\\{\\{~?\\{",
+        "token": "meta",
+        "push": "hbs_unescaped"
+      },
+      {
+        "match": "(\\{\\{~?)([#^/>])",
+        "captures": {
+          "1": "meta",
+          "2": "keyword"
+        },
+        "push": "hbs_expr"
+      },
+      {
+        "match": "\\{\\{~?",
+        "token": "meta",
+        "push": "hbs_expr"
+      },
+      {
+        "match": "<!--",
+        "token": "comment",
+        "push": "html_comment"
+      },
+      {
+        "match": "(</?)([A-Za-z][A-Za-z0-9:-]*)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "html_tag"
+      },
+      {
+        "match": "&[A-Za-z0-9#]+;",
+        "token": "escape"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "hbs_block_comment": [
+      {
+        "match": "--~?\\}\\}",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ],
+    "hbs_comment": [
+      {
+        "match": "~?\\}\\}",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^}~]+|[}~]",
+        "token": "comment"
+      }
+    ],
+    "hbs_unescaped": [
+      {
+        "match": "\\}~?\\}\\}",
+        "token": "meta",
+        "pop": true
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "@[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "\\b(?:true|false|null|undefined)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "variable"
+      },
+      {
+        "match": "[./=]",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "hbs_expr": [
+      {
+        "match": "~?\\}\\}",
+        "token": "meta",
+        "pop": true
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:if|else|unless|each|with|lookup|log|as|let|in|this)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:true|false|null|undefined)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "@[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\.\\./|\\./",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_-]*",
+        "token": "variable"
+      },
+      {
+        "match": "[()\\[\\]|.]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "html_tag": [
+      {
+        "match": "/?>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\\{\\{~?!--",
+        "token": "comment",
+        "push": "hbs_block_comment"
+      },
+      {
+        "match": "\\{\\{~?!",
+        "token": "comment",
+        "push": "hbs_comment"
+      },
+      {
+        "match": "\\{\\{~?\\{",
+        "token": "meta",
+        "push": "hbs_unescaped"
+      },
+      {
+        "match": "(\\{\\{~?)([#^/>])",
+        "captures": {
+          "1": "meta",
+          "2": "keyword"
+        },
+        "push": "hbs_expr"
+      },
+      {
+        "match": "\\{\\{~?",
+        "token": "meta",
+        "push": "hbs_expr"
+      },
+      {
+        "match": "([A-Za-z_:][A-Za-z0-9_.:-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "attr_dq"
+      },
+      {
+        "match": "'",
+        "token": "string",
+        "push": "attr_sq"
+      },
+      {
+        "match": "[A-Za-z_:][A-Za-z0-9_.:-]*",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "attr_dq": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\{\\{~?\\{",
+        "token": "meta",
+        "push": "hbs_unescaped"
+      },
+      {
+        "match": "(\\{\\{~?)([#^/>])",
+        "captures": {
+          "1": "meta",
+          "2": "keyword"
+        },
+        "push": "hbs_expr"
+      },
+      {
+        "match": "\\{\\{~?",
+        "token": "meta",
+        "push": "hbs_expr"
+      },
+      {
+        "match": "[^\"{\\\\]+|\\\\.|\\{",
+        "token": "string"
+      }
+    ],
+    "attr_sq": [
+      {
+        "match": "'",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\{\\{~?\\{",
+        "token": "meta",
+        "push": "hbs_unescaped"
+      },
+      {
+        "match": "(\\{\\{~?)([#^/>])",
+        "captures": {
+          "1": "meta",
+          "2": "keyword"
+        },
+        "push": "hbs_expr"
+      },
+      {
+        "match": "\\{\\{~?",
+        "token": "meta",
+        "push": "hbs_expr"
+      },
+      {
+        "match": "[^'{\\\\]+|\\\\.|\\{",
+        "token": "string"
+      }
+    ],
+    "html_comment": [
+      {
+        "match": "-->",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ]
+  },
+  "sample": "{{!-- User list partial --}}\n<section class=\"users\">\n  {{#if users}}\n    <ul>\n      {{#each users as |user|}}\n        <li data-index=\"{{@index}}\">\n          {{> userCard name=user.name active=true}}\n          {{{user.bioHtml}}}\n        </li>\n      {{/each}}\n    </ul>\n  {{else}}\n    <p>{{! Empty state }}No users found.</p>\n  {{/if}}\n</section>"
+}

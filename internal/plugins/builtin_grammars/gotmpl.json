@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "block_comment": ["{{/*", "*/}}"],
+  "word_chars": "_.",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{{", "}}"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["`", "`"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "\\{\\{-?[ \\t]*/\\*",
+        "token": "comment",
+        "push": "tmpl_comment"
+      },
+      {
+        "match": "\\{\\{-?",
+        "token": "meta",
+        "push": "tmpl"
+      },
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "<!--",
+        "token": "comment",
+        "push": "html_comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "tmpl_comment": [
+      {
+        "match": "\\*/[ \\t]*-?\\}\\}",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "tmpl": [
+      {
+        "match": "-?\\}\\}",
+        "token": "meta",
+        "pop": true
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "`",
+        "token": "string",
+        "push": "raw_string"
+      },
+      {
+        "match": "\\b(?:if|else|end|range|with|define|template|block|return|break|continue)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:and|call|html|index|slice|js|len|not|or|print|printf|println|urlquery|eq|ne|lt|le|gt|ge|include|tpl|toYaml|fromYaml|toJson|fromJson|toToml|required|fail|default|empty|coalesce|ternary|dict|list|append|prepend|concat|uniq|has|merge|mergeOverwrite|pluck|keys|values|pick|omit|set|unset|get|hasKey|indent|nindent|trim|trimAll|trimPrefix|trimSuffix|upper|lower|title|replace|regexMatch|regexReplaceAll|split|splitList|join|quote|squote|cat|b64enc|b64dec|sha256sum|lookup|semver|semverCompare|kindIs|typeIs|atoi|int|int64|float64|toString|add|sub|mul|div|mod|seq|until|now|date|ago|trunc|contains|hasPrefix|hasSuffix)\\b",
+        "token": "function"
+      },
+      {
+        "match": "\\b(?:true|false|nil)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\$[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "\\.[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "property"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f_]+\\b|\\b0[oO][0-7_]+\\b|\\b0[bB][01_]+\\b|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": ":=|\\|",
+        "token": "operator"
+      },
+      {
+        "match": "[().,]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "raw_string": [
+      {
+        "match": "`",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^`]+",
+        "token": "string"
+      }
+    ],
+    "html_comment": [
+      {
+        "match": "-->",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ]
+  },
+  "sample": "{{/* Helm Deployment template */}}\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ include \"chart.fullname\" . }}\n  labels:\n    {{- include \"chart.labels\" . | nindent 4 }}\nspec:\n  replicas: {{ .Values.replicaCount | default 2 }}\n  {{- if .Values.enabled }}\n  {{- $port := .Values.service.port }}\n  template:\n    spec:\n      containers:\n        - name: {{ .Chart.Name | quote }}\n          ports:\n            - containerPort: {{ $port }}\n  {{- end }}"
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["<", ">"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["<", ">"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(</?)([A-Za-z_][A-Za-z0-9_:-]*)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "tag_block"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "https?://[^\\s\"'<>]+",
+        "token": "link"
+      },
+      {
+        "match": "%\\{[A-Za-z0-9_:-]+\\}|\\$[0-9]+",
+        "token": "variable"
+      },
+      {
+        "match": "\\[[A-Za-z0-9_=,-]+\\]",
+        "token": "meta"
+      },
+      {
+        "match": "(?i)\\b(?:RewriteEngine|RewriteBase|RewriteCond|RewriteRule|RewriteMap|RewriteOptions|LoadModule|Include|IncludeOptional|Define|UnDefine|Require|Order|Allow|Deny|Satisfy|Options|AllowOverride)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "(?i)\\b(?:ServerName|ServerAlias|ServerAdmin|ServerRoot|DocumentRoot|Listen|User|Group|DirectoryIndex|ErrorLog|CustomLog|LogLevel|LogFormat|Redirect|RedirectMatch|RedirectPermanent|RedirectTemp|ProxyPass|ProxyPassReverse|ProxyPreserveHost|ProxyRequests|SSLEngine|SSLCertificateFile|SSLCertificateKeyFile|SSLCertificateChainFile|SSLProtocol|SSLCipherSuite|SSLHonorCipherOrder|Header|RequestHeader|ExpiresActive|ExpiresDefault|ExpiresByType|AddType|AddHandler|SetHandler|SetEnv|SetEnvIf|PassEnv|UnsetEnv|Alias|AliasMatch|ScriptAlias|ErrorDocument|AuthType|AuthName|AuthUserFile|AuthGroupFile|Timeout|KeepAlive|MaxKeepAliveRequests|KeepAliveTimeout|Protocols|FallbackResource)\\b",
+        "token": "property"
+      },
+      {
+        "match": "(?i)\\b(?:On|Off|None|All|Indexes|FollowSymLinks|SymLinksIfOwnerMatch|ExecCGI|Includes|MultiViews|granted|denied|valid-user|any|ip|host|env|local|permanent|temp|seeother|gone|combined|common|warn|info|debug)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?:/[0-9]{1,2})?(?::[0-9]{1,5})?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9]+\\b",
+        "token": "number"
+      },
+      {
+        "match": "[!=~]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[\\[\\]()<>]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "tag_block": [
+      {
+        "match": ">",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]{1,5})?\\b|\\*:[0-9]{1,5}\\b|\\b[0-9]+\\b",
+        "token": "number"
+      },
+      {
+        "match": "[!~]",
+        "token": "operator"
+      },
+      {
+        "match": "[^\\s>\"']+",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Virtual host & rewrite rules\n<VirtualHost *:443>\n    ServerName block.example.com\n    DocumentRoot \"/var/www/html\"\n    SSLEngine On\n\n    <Directory \"/var/www/html\">\n        Options -Indexes +FollowSymLinks\n        AllowOverride All\n        Require all granted\n    </Directory>\n\n    <IfModule mod_rewrite.c>\n        RewriteEngine On\n        RewriteCond %{REQUEST_FILENAME} !-f\n        RewriteRule ^/old/(.*)$ /new/$1 [L,R=301]\n    </IfModule>\n</VirtualHost>"
+}

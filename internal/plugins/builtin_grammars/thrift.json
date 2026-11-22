@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "block_comment": ["/*", "*/"],
+  "word_chars": "_",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["<", ">"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["<", ">"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:namespace|cpp_namespace|php_namespace|py_module|perl_package|ruby_namespace|smalltalk_category|smalltalk_prefix|java_package|cocoa_prefix|csharp_namespace|delphi_namespace|st_namespace|xsd_all|xsd_optional|xsd_nillable|xsd_namespace|xsd_attrs|include|cpp_include|void|const|typedef|enum|struct|union|exception|service|extends|oneway|async|throws|required|optional)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:bool|byte|i8|i16|i32|i64|double|string|binary|slist|list|map|set|uuid)\\b",
+        "token": "type"
+      },
+      {
+        "match": "\\b(?:true|false)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "([0-9]+)([ \\t]*)(:)",
+        "captures": {
+          "1": "number",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f]+\\b|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+        "token": "type"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "=",
+        "token": "operator"
+      },
+      {
+        "match": "[{}()<>\\[\\].,;:]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ]
+  },
+  "sample": "namespace go block.api\ninclude \"shared.thrift\"\n\nconst i32 DEFAULT_LIMIT = 100\n\nenum NoteStatus {\n  DRAFT = 1,\n  PUBLISHED = 2\n}\n\nexception NotFoundException {\n  1: required string message\n}\n\nstruct Note {\n  1: required i64 id,\n  2: required string title,\n  3: optional list<string> tags,\n  4: optional NoteStatus status = NoteStatus.DRAFT\n}\n\nservice NoteService {\n  Note getNote(1: i64 id) throws (1: NotFoundException err),\n  oneway void ping()\n}"
+}

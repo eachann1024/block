@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "block_comment": ["<%#", "%>"],
+  "word_chars": "_$",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["<%", "%>"],
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["<", ">"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "<%%|%%>",
+        "token": "escape"
+      },
+      {
+        "match": "<%#",
+        "token": "comment",
+        "push": "ejs_comment"
+      },
+      {
+        "match": "<%[=\\-_]?",
+        "token": "meta",
+        "push": "ejs_tag"
+      },
+      {
+        "match": "<!--",
+        "token": "comment",
+        "push": "html_comment"
+      },
+      {
+        "match": "(</?)([A-Za-z][A-Za-z0-9:-]*)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "html_tag"
+      },
+      {
+        "match": "&[A-Za-z0-9#]+;",
+        "token": "escape"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "ejs_comment": [
+      {
+        "match": "[-_]?%>",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^\\-%]+|[\\-%]",
+        "token": "comment"
+      }
+    ],
+    "ejs_tag": [
+      {
+        "match": "[-_]?%>",
+        "token": "meta",
+        "pop": true
+      },
+      {
+        "match": "//(?:[^\\-%\\r\\n]|-[^%\\r\\n]|%[^>\\r\\n])*",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/\\[)",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/\\[)",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "`(?:\\\\.|[^`\\\\\\r\\n])*(?:`|$)",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|function|const|let|var|try|catch|finally|throw|new|typeof|instanceof|in|of|async|await|include)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:true|false|null|undefined|NaN|Infinity|locals)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f_]+\\b|\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9_]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_$][A-Za-z0-9_$]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "=>|===|!==|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\.\\.\\.|[+\\-*/%=<>!&|^~?:]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[{}()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "html_tag": [
+      {
+        "match": "/?>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "<%#",
+        "token": "comment",
+        "push": "ejs_comment"
+      },
+      {
+        "match": "<%[=\\-_]?",
+        "token": "meta",
+        "push": "ejs_tag"
+      },
+      {
+        "match": "([A-Za-z_:][A-Za-z0-9_.:-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "attr_dq"
+      },
+      {
+        "match": "'",
+        "token": "string",
+        "push": "attr_sq"
+      },
+      {
+        "match": "[A-Za-z_:][A-Za-z0-9_.:-]*",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "attr_dq": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "<%#",
+        "token": "comment",
+        "push": "ejs_comment"
+      },
+      {
+        "match": "<%[=\\-_]?",
+        "token": "meta",
+        "push": "ejs_tag"
+      },
+      {
+        "match": "[^\"<\\\\]+|\\\\.|<",
+        "token": "string"
+      }
+    ],
+    "attr_sq": [
+      {
+        "match": "'",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "<%#",
+        "token": "comment",
+        "push": "ejs_comment"
+      },
+      {
+        "match": "<%[=\\-_]?",
+        "token": "meta",
+        "push": "ejs_tag"
+      },
+      {
+        "match": "[^'<\\\\]+|\\\\.|<",
+        "token": "string"
+      }
+    ],
+    "html_comment": [
+      {
+        "match": "-->",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "js_regex": [
+      {
+        "match": "\\A",
+        "line_start": true,
+        "pop": true
+      },
+      {
+        "match": "/[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "regexp"
+      },
+      {
+        "match": "\\[$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\[",
+        "token": "regexp",
+        "next": "js_regex_class"
+      },
+      {
+        "match": "[^/\\[\\\\\\r\\n]+$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^/\\[\\\\\\r\\n]+",
+        "token": "regexp"
+      },
+      {
+        "match": "\\\\$",
+        "token": "regexp",
+        "pop": true
+      }
+    ],
+    "js_regex_class": [
+      {
+        "match": "\\A",
+        "line_start": true,
+        "pop": true
+      },
+      {
+        "match": "\\\\.$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "regexp"
+      },
+      {
+        "match": "\\]$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\]",
+        "token": "regexp",
+        "next": "js_regex"
+      },
+      {
+        "match": "[^\\]\\\\\\r\\n]+$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^\\]\\\\\\r\\n]+",
+        "token": "regexp"
+      },
+      {
+        "match": "\\\\$",
+        "token": "regexp",
+        "pop": true
+      }
+    ]
+  },
+  "sample": "<%# Render user profile %>\n<%- include('partials/header', { title: pageTitle }) %>\n<div class=\"profile\" data-id=\"<%= user.id %>\">\n  <h1><%= user.name %></h1>\n  <% if (user.isAdmin) { -%>\n    <span class=\"badge\">Admin</span>\n  <% } else { -%>\n    <span class=\"badge\">Member</span>\n  <% } %>\n</div>"
+}

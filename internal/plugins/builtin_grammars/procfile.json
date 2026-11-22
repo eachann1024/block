@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "https?://[^\\s\"']+",
+        "token": "link"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'[^']*'",
+        "token": "string"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(:[ \\t]+)",
+        "captures": {
+          "1": "keyword",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(:[ \\t]*)$",
+        "captures": {
+          "1": "keyword",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\$\\{[A-Za-z_][A-Za-z0-9_:-]*\\}|\\$[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "--[A-Za-z0-9_-]+|-[A-Za-z0-9]+",
+        "token": "attribute"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "&&|\\|\\||>>|[|>;=]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.:/-]*",
+        "token": "text"
+      },
+      {
+        "match": "[()\\[\\]{},]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Application process definitions\nweb: bundle exec puma -C config/puma.rb -p ${PORT:-3000}\nworker: bundle exec sidekiq -c 5 -q default -q mailers\nrelease: bundle exec rails db:migrate\nvite: pnpm dev --port 5173 --host \"0.0.0.0\""
+}

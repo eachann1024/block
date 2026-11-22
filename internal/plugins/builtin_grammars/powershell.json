@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "block_comment": ["<#", "#>"],
+  "word_chars": "_-$",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "<#",
+        "token": "comment",
+        "push": "block_comment"
+      },
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "@\"[ \\t]*$",
+        "token": "string",
+        "push": "here_dq"
+      },
+      {
+        "match": "@'[ \\t]*$",
+        "token": "string",
+        "push": "here_sq"
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "dq_string"
+      },
+      {
+        "match": "'(?:''|[^'])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\[[A-Za-z_][A-Za-z0-9_.,\\[\\] ]*\\]",
+        "token": "type"
+      },
+      {
+        "match": "(?i)\\$(?:true|false|null)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\$\\{[^}${\\r\\n]{1,128}\\}|\\$[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z_][A-Za-z0-9_]*)?|\\$\\$|\\$\\?|\\$\\^",
+        "token": "variable"
+      },
+      {
+        "match": "(?i)\\b(?:begin|break|catch|class|continue|data|define|do|dynamicparam|else|elseif|end|enum|exit|filter|finally|for|foreach|from|function|if|in|param|process|return|switch|throw|trap|try|until|using|var|while|workflow|parallel|sequence)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "(?i)-(?:eq|ne|gt|ge|lt|le|ceq|cne|cgt|cge|clt|cle|ieq|ine|igt|ige|ilt|ile|like|notlike|clike|cnotlike|ilike|inotlike|match|notmatch|cmatch|cnotmatch|imatch|inotmatch|contains|notcontains|ccontains|cnotcontains|icontains|inotcontains|in|notin|cin|cnotin|replace|creplace|ireplace|split|csplit|isplit|join|is|isnot|as|and|or|xor|not|band|bor|bxor|bnot|shl|shr|f)\\b",
+        "token": "operator"
+      },
+      {
+        "match": "\\b[A-Za-z]+-[A-Za-z][A-Za-z0-9_]*\\b",
+        "token": "function"
+      },
+      {
+        "match": "-[A-Za-z_][A-Za-z0-9_]*",
+        "token": "attribute"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f]+[LlUu]?\\b|\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?:KB|MB|GB|TB|PB)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\+\\+|--|\\.\\.|::|[+\\-*/%=<>!&|^|]",
+        "token": "operator"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_]*",
+        "token": "text"
+      },
+      {
+        "match": "[{}()\\[\\].,;:]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "block_comment": [
+      {
+        "match": "#>",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^#]+|#",
+        "token": "comment"
+      }
+    ],
+    "dq_string": [
+      {
+        "match": "\"\"",
+        "token": "escape"
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "`.",
+        "token": "escape"
+      },
+      {
+        "match": "\\$\\(",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\\$\\{[^}${\\r\\n]{1,128}\\}|\\$[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z_][A-Za-z0-9_]*)?",
+        "token": "variable"
+      },
+      {
+        "match": "[^\"`$]+|[`$]",
+        "token": "string"
+      }
+    ],
+    "here_dq": [
+      {
+        "match": "\"@",
+        "line_start": true,
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "`.",
+        "token": "escape"
+      },
+      {
+        "match": "\\$\\(",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\\$\\{[^}${\\r\\n]{1,128}\\}|\\$[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z_][A-Za-z0-9_]*)?",
+        "token": "variable"
+      },
+      {
+        "match": "[^\"`$]+|[\"`$]",
+        "token": "string"
+      }
+    ],
+    "here_sq": [
+      {
+        "match": "'@",
+        "line_start": true,
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^']+|'",
+        "token": "string"
+      }
+    ],
+    "interp": [
+      {
+        "match": "\\)",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\\(",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\"(?:`\"|[^\"])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:''|[^'])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\$[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z_][A-Za-z0-9_]*)?",
+        "token": "variable"
+      },
+      {
+        "match": "\\b[A-Za-z]+-[A-Za-z][A-Za-z0-9_]*\\b",
+        "token": "function"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "text"
+      },
+      {
+        "match": "[+\\-*/%=<>!&|.,;]",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "<#\n  Deploy Block application bundle\n#>\nparam(\n    [Parameter(Mandatory = $true)]\n    [string]$Environment = 'production',\n    [int]$Retries = 3\n)\n\n$ErrorActionPreference = 'Stop'\n$targetDir = Join-Path $env:TEMP \"block-$Environment\"\n\nif ((Test-Path $targetDir) -and $Retries -gt 0) {\n    Write-Output \"Deploying $($Environment.ToUpper()) to $targetDir\"\n}\n\n$banner = @\"\nEnvironment: $Environment\nReady: $true\n\"@"
+}

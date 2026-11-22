@@ -1,0 +1,353 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_?!",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "~r\"\"\"",
+        "token": "regexp",
+        "push": "heredoc_regexp"
+      },
+      {
+        "match": "~R\"\"\"",
+        "token": "regexp",
+        "push": "heredoc_regexp_raw"
+      },
+      {
+        "match": "~r'''",
+        "token": "regexp",
+        "push": "heredoc_regexp_sq"
+      },
+      {
+        "match": "~R'''",
+        "token": "regexp",
+        "push": "heredoc_regexp_sq_raw"
+      },
+      {
+        "match": "~[a-z]\"\"\"",
+        "token": "string",
+        "push": "heredoc_dq"
+      },
+      {
+        "match": "~[A-Z]\"\"\"",
+        "token": "string",
+        "push": "heredoc_dq_raw"
+      },
+      {
+        "match": "~[a-z]'''",
+        "token": "string",
+        "push": "heredoc_sq"
+      },
+      {
+        "match": "~[A-Z]'''",
+        "token": "string",
+        "push": "heredoc_sq_raw"
+      },
+      {
+        "match": "~[rR](?:/(?:\\\\.|[^/\\\\\\r\\n])*(?:/[A-Za-z]*|$)|\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"[A-Za-z]*|$)|'(?:\\\\.|[^'\\\\\\r\\n])*(?:'[A-Za-z]*|$)|\\((?:\\\\.|[^)\\\\\\r\\n])*(?:\\)[A-Za-z]*|$)|\\[(?:\\\\.|[^\\]\\\\\\r\\n])*(?:\\][A-Za-z]*|$)|\\{(?:\\\\.|[^}\\\\\\r\\n])*(?:\\}[A-Za-z]*|$)|<(?:\\\\.|[^>\\\\\\r\\n])*(?:>[A-Za-z]*|$)|\\|(?:\\\\.|[^|\\\\\\r\\n])*(?:\\|[A-Za-z]*|$))",
+        "token": "regexp"
+      },
+      {
+        "match": "~[A-Za-z](?:/(?:\\\\.|[^/\\\\\\r\\n])*(?:/[A-Za-z]*|$)|\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"[A-Za-z]*|$)|'(?:\\\\.|[^'\\\\\\r\\n])*(?:'[A-Za-z]*|$)|\\((?:\\\\.|[^)\\\\\\r\\n])*(?:\\)[A-Za-z]*|$)|\\[(?:\\\\.|[^\\]\\\\\\r\\n])*(?:\\][A-Za-z]*|$)|\\{(?:\\\\.|[^}\\\\\\r\\n])*(?:\\}[A-Za-z]*|$)|<(?:\\\\.|[^>\\\\\\r\\n])*(?:>[A-Za-z]*|$)|\\|(?:\\\\.|[^|\\\\\\r\\n])*(?:\\|[A-Za-z]*|$))",
+        "token": "string"
+      },
+      {
+        "match": "\\?(?:\\\\(?:x[0-9A-Fa-f]{1,2}|u\\{[0-9A-Fa-f]+\\}|u[0-9A-Fa-f]{4}|.)|[^\\s\\\\])",
+        "token": "number"
+      },
+      {
+        "match": "\"\"\"",
+        "token": "string",
+        "push": "heredoc_dq"
+      },
+      {
+        "match": "'''",
+        "token": "string",
+        "push": "heredoc_sq"
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "dq_string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "@[a-z_][A-Za-z0-9_]*",
+        "token": "meta"
+      },
+      {
+        "match": ":\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)|:'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)|:[A-Za-z_][A-Za-z0-9_@]*[?!]?",
+        "token": "constant"
+      },
+      {
+        "match": "\\b(?:defmodule|defprotocol|defimpl|defstruct|defexception|defmacro|defmacrop|defguard|defguardp|defdelegate|defoverridable|defp|def|do|end|else|fn|when|with|case|cond|for|receive|after|try|rescue|catch|raise|reraise|throw|quote|unquote|unquote_splicing|alias|import|require|use|and|or|not|in|if|unless)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:true|false|nil)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "::",
+        "token": "operator"
+      },
+      {
+        "match": "([a-z_][A-Za-z0-9_]*[?!]?)([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+        "token": "type"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f_]+\\b|\\b0[oO][0-7_]+\\b|\\b0[bB][01_]+\\b|\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9_]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([a-z_][A-Za-z0-9_]*[?!]?)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\|>|<-|->|=>|\\+\\+|--|<>|===|!==|==|!=|<=|>=|=~|&&|\\|\\||<<<|>>>|<<|>>|\\\\|\\.{2,3}|[+\\-*/=<>!&|^~]",
+        "token": "operator"
+      },
+      {
+        "match": "[a-z_][A-Za-z0-9_]*[?!]?",
+        "token": "variable"
+      },
+      {
+        "match": "%?\\{|\\}|[()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "dq_string": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\(?:[abdefnrstv\"'\\\\#]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\})",
+        "token": "escape"
+      },
+      {
+        "match": "#\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "[^\"\\\\#]+|[\\\\#]",
+        "token": "string"
+      }
+    ],
+    "heredoc_dq": [
+      {
+        "match": "\"\"\"[A-Za-z]*",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\(?:[abdefnrstv\"'\\\\#]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\})",
+        "token": "escape"
+      },
+      {
+        "match": "#\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "[^\"\\\\#]+|[\"#\\\\]",
+        "token": "string"
+      }
+    ],
+    "heredoc_dq_raw": [
+      {
+        "match": "\"\"\"[A-Za-z]*",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^\"]+|\"",
+        "token": "string"
+      }
+    ],
+    "heredoc_sq": [
+      {
+        "match": "'''[A-Za-z]*",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "#\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "[^'\\\\#]+|['#\\\\]",
+        "token": "string"
+      }
+    ],
+    "heredoc_sq_raw": [
+      {
+        "match": "'''[A-Za-z]*",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^']+|'",
+        "token": "string"
+      }
+    ],
+    "heredoc_regexp": [
+      {
+        "match": "\"\"\"[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "#\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "[^\"\\\\#]+|[\"#\\\\]",
+        "token": "regexp"
+      }
+    ],
+    "heredoc_regexp_raw": [
+      {
+        "match": "\"\"\"[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^\"]+|\"",
+        "token": "regexp"
+      }
+    ],
+    "heredoc_regexp_sq": [
+      {
+        "match": "'''[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "#\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "[^'\\\\#]+|['#\\\\]",
+        "token": "regexp"
+      }
+    ],
+    "heredoc_regexp_sq_raw": [
+      {
+        "match": "'''[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^']+|'",
+        "token": "regexp"
+      }
+    ],
+    "interp": [
+      {
+        "match": "\\}",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": ":[A-Za-z_][A-Za-z0-9_@]*[?!]?",
+        "token": "constant"
+      },
+      {
+        "match": "\\b(?:true|false|nil)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+        "token": "type"
+      },
+      {
+        "match": "\\b[0-9][0-9_]*(?:\\.[0-9_]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([a-z_][A-Za-z0-9_]*[?!]?)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "[a-z_][A-Za-z0-9_]*[?!]?",
+        "token": "variable"
+      },
+      {
+        "match": "\\|>|[+\\-*/=<>!&|.,()\\[\\]]",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "defmodule Block.Parser do\n  @moduledoc \"\"\"\n  Parses config tokens.\n  \"\"\"\n  alias Block.Token\n\n  @pattern ~r/^[a-z_]+$/i\n  @modes ~w(fast strict)\n\n  def parse(input, opts \\\\ []) do\n    with {:ok, data} <- normalize(input),\n         true <- Regex.match?(@pattern, data) do\n      \"Parsed #{data} with #{inspect(opts)}\"\n      |> String.trim()\n    else\n      _ -> {:error, :invalid}\n    end\n  end\n\n  defp normalize(val) when is_binary(val), do: {:ok, val}\n  defp normalize(_), do: {:error, :unsupported}\nend"
+}

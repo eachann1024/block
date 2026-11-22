@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_.-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(?:git\\+|hg\\+|svn\\+|bzr\\+)?https?://[^\\s#]+",
+        "token": "link"
+      },
+      {
+        "match": "(?:--(?:requirement|constraint|editable|index-url|extra-index-url|no-index|find-links|trusted-host|hash|no-binary|only-binary|prefer-binary|pre|use-pep517|config-settings|global-option|build-option|platform|python-version|implementation|abi)\\b|-[rcelqfU]\\b)",
+        "token": "keyword"
+      },
+      {
+        "match": "--[A-Za-z0-9_-]+",
+        "token": "attribute"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "(\\[)([A-Za-z0-9_., -]+)(\\])",
+        "captures": {
+          "1": "punctuation",
+          "2": "type",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "(===|==|!=|<=|>=|~=|<|>)([ \\t]*)([A-Za-z0-9.*+_!-]+)",
+        "captures": {
+          "1": "operator",
+          "3": "number"
+        }
+      },
+      {
+        "match": "\\b(?:python_version|python_full_version|os_name|sys_platform|platform_machine|platform_python_implementation|platform_release|platform_system|platform_version|implementation_name|implementation_version|extra)\\b",
+        "token": "property"
+      },
+      {
+        "match": "\\b(?:and|or|not|in)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "[A-Za-z0-9][A-Za-z0-9._-]*",
+        "token": "variable"
+      },
+      {
+        "match": "@|\\\\",
+        "token": "operator"
+      },
+      {
+        "match": "[;,()=]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Core dependencies\n--index-url https://pypi.org/simple\n-r base.txt\n\nfastapi[standard]>=0.115.0,<1.0\nuvicorn==0.32.1\npydantic~=2.10\nhttpx>=0.27.0; python_version >= \"3.11\" and sys_platform != \"win32\"\n-e git+https://github.com/encode/starlette.git@main#egg=starlette\nrequests==2.32.3 --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175"
+}
