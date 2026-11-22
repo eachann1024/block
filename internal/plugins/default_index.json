@@ -2,7 +2,7 @@
   "app": "blockmd",
   "schema_version": 1,
   "topic": "blockmd-plugin",
-  "updated_at": "2026-11-20T15:59:52Z",
+  "updated_at": "2026-11-22T06:19:21Z",
   "apps": [
     {
       "app": "blockmd",
@@ -11,19 +11,758 @@
         "zh": "同步",
         "en": "Sync"
       },
-      "version": "1.3.73",
+      "version": "1.3.44",
       "author": "Block Community",
       "repo": "blockmd-plugins/block-sync",
       "summary": {
         "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
         "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.73/block-sync-v1.3.73.tar.gz",
-      "sha256": "886ce280edf522d379b1e91fa63e60117420a3fd0be2f777b381d6b18a8a43b9",
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.44/block-sync-v1.3.44.tar.gz",
+      "sha256": "568b59736dfaf8aefddac049e68aed9d3adae621072be4b2a5ea4ee72f547d29",
       "downloads": 1281,
       "stars": 0,
       "verified": true,
-      "updated_at": "2026-11-20T20:19:37Z",
+      "updated_at": "2026-11-20T14:03:35Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "network",
+        "events:note_saved"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"
+        ],
+        "stroke_paths": [
+          "M7.5 10.5A5 5 0 0 1 16.2 8.5",
+          "M16.5 13.5A5 5 0 0 1 7.8 15.5"
+        ],
+        "accent_paths": [
+          "M16.5 5.8V8.8H13.5",
+          "M7.5 18.2V15.2H10.5"
+        ]
+      },
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存各笔记本的同步配置、同步状态元信息与近期同步日志",
+          "en": "Save per-notebook sync settings, sync state metadata, and recent logs"
+        },
+        "notes:read": {
+          "zh": "读取待同步笔记与附件内容，用于增量比对与上传",
+          "en": "Read notes and attachments for incremental comparison and upload"
+        },
+        "notes:write": {
+          "zh": "将远端拉取的新增或更新笔记、冲突副本写入本地工作区",
+          "en": "Write remote note updates and conflict copies into the local workspace"
+        },
+        "network": {
+          "zh": "连接 WebDAV 服务器或远程 Git 仓库执行双向同步",
+          "en": "Connect to WebDAV servers or remote Git repositories for sync"
+        },
+        "events:note_saved": {
+          "zh": "在笔记保存后自动触发增量同步",
+          "en": "Automatically trigger incremental sync when a note is saved"
+        }
+      },
+      "beta": true,
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-sync.json",
+      "changelog": [
+        {
+          "version": "1.3.44",
+          "tag": "v1.3.44",
+          "published_at": "2026-11-20T14:03:35Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.44",
+          "en": {
+            "other": [
+              "fix(markdown): unify code segment scanner across list containers and escape rewritten links (`0738412`)",
+              "fix(mirror): harden inode stash fallbacks and support .git pointer files in cleanup (`6f2136f`)",
+              "fix(webdav): keep placeholder on unknown PUT transport outcome (`43f731b`)",
+              "fix(git): support .git pointer markers and enforce strict tracked file listing (`63cf680`)",
+              "fix(sync): verify physical target directory identities before mirror/git writes (`1745e12`)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-poop-everywhere",
+      "name": {
+        "zh": "到处拉屎",
+        "en": "Poop Everywhere"
+      },
+      "version": "1.0.28",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-poop-everywhere",
+      "summary": {
+        "zh": "官方全扩展点示范插件：覆盖顶栏、侧栏、文件树角标、编辑区背景、面板、菜单、状态栏与弹窗",
+        "en": "Official kitchen-sink demo covering titlebar, sidebar sections, file badges, editor backdrops, panels, menus, status bar, and dialogs"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/download/v1.0.28/block-poop-everywhere-v1.0.28.tar.gz",
+      "sha256": "2d066d82850cce2f9cf722e123bc29888b8f937f9e241c098af7ec0f4d1cc626",
+      "downloads": 71,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-21T07:39:42Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "events:note_saved",
+        "ui:titlebar",
+        "ui:commands",
+        "ui:panels",
+        "ui:status",
+        "ui:notify",
+        "ui:sidebar",
+        "ui:appearance",
+        "editor:read",
+        "editor:write",
+        "events:workspace"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M12 3c1.6 1 2.4 2.2 2.2 3.6 1.7.3 2.8 1.4 2.8 2.9 0 .5-.1 1-.4 1.4 1.5.4 2.4 1.5 2.4 2.9 0 .6-.2 1.2-.5 1.7 1 .5 1.5 1.3 1.5 2.3 0 1.6-1.3 2.7-3 2.7H7c-1.7 0-3-1.1-3-2.7 0-1 .5-1.8 1.5-2.3-.3-.5-.5-1.1-.5-1.7 0-1.4.9-2.5 2.4-2.9-.3-.4-.4-.9-.4-1.4 0-1.5 1.1-2.6 2.8-2.9C10.6 5.5 11 4.2 12 3Z"
+        ],
+        "stroke_paths": [
+          "M12 3c1.6 1 2.4 2.2 2.2 3.6 1.7.3 2.8 1.4 2.8 2.9 0 .5-.1 1-.4 1.4 1.5.4 2.4 1.5 2.4 2.9 0 .6-.2 1.2-.5 1.7 1 .5 1.5 1.3 1.5 2.3 0 1.6-1.3 2.7-3 2.7H7c-1.7 0-3-1.1-3-2.7 0-1 .5-1.8 1.5-2.3-.3-.5-.5-1.1-.5-1.7 0-1.4.9-2.5 2.4-2.9-.3-.4-.4-.9-.4-1.4 0-1.5 1.1-2.6 2.8-2.9C10.6 5.5 11 4.2 12 3Z"
+        ],
+        "accent_paths": [
+          "M9.2 10.9h4.2",
+          "M7.4 15.5h6.6"
+        ]
+      },
+      "category": "tools",
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存拉屎风格、背景参数、笔记本白名单与战况记录。",
+          "en": "Save style preferences, backdrop settings, notebook allowlist, and drop history."
+        },
+        "notes:read": {
+          "zh": "扫描笔记中的标记数量、展示统计并支持点击列表打开对应笔记。",
+          "en": "Scan notes for drop markers, compute stats, and jump to notes from lists."
+        },
+        "notes:write": {
+          "zh": "向笔记写入可识别标记并在冲水时精确清理插件留下的标记行。",
+          "en": "Insert identifiable drop markers into notes and cleanly remove them on flush."
+        },
+        "events:note_saved": {
+          "zh": "保存笔记后自动重算该页标记数并刷新文件树角标与状态栏。",
+          "en": "Recount drop markers after note saves and refresh file badges and status bar."
+        },
+        "ui:titlebar": {
+          "zh": "在顶栏挂载面板、快捷拉一坨与冲水按钮，并动态展示数量角标。",
+          "en": "Mount panel, quick-drop, and flush buttons in the titlebar with live badges."
+        },
+        "ui:commands": {
+          "zh": "向命令面板、默认快捷键、页面「…」菜单与编辑器右键菜单注册操作。",
+          "en": "Register commands, default shortcuts, page menu items, and editor menu items."
+        },
+        "ui:panels": {
+          "zh": "在右侧打开「屎量面板」展示实时统计、战报与快捷操作。",
+          "en": "Open the right-hand Poop Board side panel for live metrics and actions."
+        },
+        "ui:status": {
+          "zh": "在底部状态栏展示带图标的当前总数，点击可一键切换右侧面板。",
+          "en": "Display a live icon counter in the bottom status bar to toggle the board."
+        },
+        "ui:notify": {
+          "zh": "弹出四类语气带图标轻提示，并在冲水前打开二次确认弹窗。",
+          "en": "Show icon-bearing toasts across all tones and open a flush confirmation dialog."
+        },
+        "ui:sidebar": {
+          "zh": "在左侧栏挂载「今日屎迹」分区、文件树行尾角标与笔记右键菜单。",
+          "en": "Add Today's Drops sidebar section, file-tree row badges, and tree context actions."
+        },
+        "ui:appearance": {
+          "zh": "在编辑区背景层绘制可调图案、密度与暗色夜光效果的矢量水印。",
+          "en": "Render configurable vector patterns, watermarks, and dark-glow editor backdrops."
+        },
+        "editor:read": {
+          "zh": "读取当前编辑器选中文本，以便将其包装成带附言的标记块。",
+          "en": "Read the active editor selection to wrap selected text into a marked block."
+        },
+        "editor:write": {
+          "zh": "在当前光标处插入标记块，或直接替换选中的正文内容。",
+          "en": "Insert marked blocks at the caret or replace the active editor selection."
+        },
+        "events:workspace": {
+          "zh": "监听笔记切换、深浅色主题与语言变化事件并同步界面状态。",
+          "en": "React to note open, theme change, and locale change workspace events."
+        }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-poop-everywhere.json",
+      "changelog": [
+        {
+          "version": "1.0.28",
+          "tag": "v1.0.28",
+          "published_at": "2026-11-21T07:39:42Z",
+          "html_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/tag/v1.0.28",
+          "en": {
+            "other": [
+              "chore: simplify status copy and remove redundant counts (`f94ee08`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.27",
+          "tag": "v1.0.27",
+          "published_at": "2026-11-21T06:16:54Z",
+          "html_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/tag/v1.0.27",
+          "en": {
+            "other": [
+              "feat: remove appearance settings section and ui:settings permission (`56e9cea`)",
+              "refactor: remove settings_section surface and update extension map (`ae76a15`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.23",
+          "tag": "v1.0.23",
+          "published_at": "2026-11-20T17:55:50Z",
+          "html_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/tag/v1.0.23",
+          "en": {
+            "other": [
+              "fix: keep everyday settings to three choices (`906357f`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.9",
+          "tag": "v1.0.9",
+          "published_at": "2026-11-20T15:58:54Z",
+          "html_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/tag/v1.0.9",
+          "en": {
+            "other": [
+              "fix(backdrop): apply editor background from settings (`1fca85b`)",
+              "fix: harden nested CommonMark parsing, link titles, legacy list wraps, and O(N) bq refdefs (v1.0.9) (`574d405`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.8",
+          "tag": "v1.0.8",
+          "published_at": "2026-11-20T15:03:58Z",
+          "html_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/tag/v1.0.8",
+          "en": {
+            "other": [
+              "chore(git): ignore local agent prompts, design files, and build artifacts (`ef85173`)",
+              "fix: harden CommonMark container parsing, legacy wrap stripping, caption safety, dialog token validation, IPC queueing, and O(N) line splitting (v1.0.8) (`b1e8e8c`)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-image-host",
+      "name": {
+        "zh": "图床上传",
+        "en": "Image Host"
+      },
+      "version": "1.2.34",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-image-host",
+      "summary": {
+        "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
+        "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
+      },
+      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.34/block-image-host-v1.2.34.tar.gz",
+      "sha256": "f68a9d840904d3daec5bbc8dc2353643ab7b4b73131ebecf4750c1a5aea8d42f",
+      "downloads": 941,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-21T07:55:38Z",
+      "permissions": [
+        "storage",
+        "notes:read",
+        "notes:write",
+        "network",
+        "events:note_saved"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"
+        ],
+        "accent_paths": [
+          "M16.5 14V7.5",
+          "M14 10l2.5-2.5L19 10",
+          "M9 9.25a1.25 1.25 0 1 0 0 .01"
+        ]
+      },
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存图床服务商凭证、命名规则与上传记录",
+          "en": "Save image host credentials, naming rules, and upload logs"
+        },
+        "notes:read": {
+          "zh": "读取笔记正文与本地图片引用，筛选需要上传的图片",
+          "en": "Read note content and local image links to find images to upload"
+        },
+        "notes:write": {
+          "zh": "图片上传成功后将笔记中的本地路径替换为远程图床链接",
+          "en": "Replace local image paths with uploaded remote URLs in notes"
+        },
+        "network": {
+          "zh": "向 Cloudflare R2、S3 兼容存储或 GitHub 仓库上传图片",
+          "en": "Upload images to Cloudflare R2, S3-compatible storage, or GitHub"
+        },
+        "events:note_saved": {
+          "zh": "在保存笔记时自动检测并上传其中的本地图片",
+          "en": "Automatically detect and upload local images when a note is saved"
+        }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-image-host.json",
+      "changelog": [
+        {
+          "version": "1.2.34",
+          "tag": "v1.2.34",
+          "published_at": "2026-11-21T07:55:38Z",
+          "html_url": "https://github.com/eachann1024/block-image-host/releases/tag/v1.2.34",
+          "en": {
+            "other": [
+              "chore: drop beta flag (`b531b2e`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.33",
+          "tag": "v1.2.33",
+          "published_at": "2026-11-21T07:39:34Z",
+          "html_url": "https://github.com/eachann1024/block-image-host/releases/tag/v1.2.33",
+          "en": {
+            "other": [
+              "chore: simplify status copy and remove redundant counts (`dc2871e`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.32",
+          "tag": "v1.2.32",
+          "published_at": "2026-11-21T03:50:20Z",
+          "html_url": "https://github.com/eachann1024/block-image-host/releases/tag/v1.2.32",
+          "en": {
+            "other": [
+              "feat: list only folders the user adds with the plus button (`4587c65`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.31",
+          "tag": "v1.2.31",
+          "published_at": "2026-11-20T13:59:37Z",
+          "html_url": "https://github.com/eachann1024/block-image-host/releases/tag/v1.2.31",
+          "en": {
+            "other": [
+              "feat: unify titlebar actions, status badge, and deduplicated upload progress (`656feb2`)",
+              "chore(git): ignore local agent prompts, design files, and build artifacts (`78634b1`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.27",
+          "tag": "v1.2.27",
+          "published_at": "2026-11-20T09:09:41Z",
+          "html_url": "https://github.com/eachann1024/block-image-host/releases/tag/v1.2.27",
+          "en": {
+            "other": [
+              "fix(parser): handle inline list fenced code blocks and indented code after headings (`e452d46`)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-canvas-dots",
+      "name": {
+        "zh": "编辑器背景",
+        "en": "Editor Background"
+      },
+      "version": "1.2.31",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-canvas-dots",
+      "summary": {
+        "zh": "为笔记铺上与行高对齐的点阵或方格，增加对比度，稳定追踪每一行",
+        "en": "Line-aligned dot or grid background for notes, adding contrast to track each line"
+      },
+      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.31/block-canvas-dots-v1.2.31.tar.gz",
+      "sha256": "a3d126f9fede8c1c1cc18246d1cfed27b7ae133137d696a36558c8cd7cec0203",
+      "downloads": 92,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-21T09:24:46Z",
+      "permissions": [
+        "storage",
+        "ui:settings"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Z"
+        ],
+        "stroke_paths": [
+          "M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Z",
+          "M8.5 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M12 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M15.5 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M8.5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M15.5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M8.5 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M12 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M15.5 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"
+        ],
+        "accent_paths": [
+          "M12 12m-1.2 0a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0"
+        ]
+      },
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存背景样式、对比度与对齐方式设置",
+          "en": "Save editor background style, contrast, and alignment preferences"
+        },
+        "ui:settings": {
+          "zh": "应用并切换编辑器点阵或方格背景",
+          "en": "Apply and toggle editor dot or grid backgrounds"
+        }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-canvas-dots.json",
+      "changelog": [
+        {
+          "version": "1.2.31",
+          "tag": "v1.2.31",
+          "published_at": "2026-11-21T09:24:46Z",
+          "html_url": "https://github.com/eachann1024/block-canvas-dots/releases/tag/v1.2.31",
+          "zh": {
+            "other": [
+              "本次为维护版本，没有面向用户的变化。"
+            ]
+          },
+          "en": {
+            "other": [
+              "This is a maintenance release with no user-facing changes."
+            ]
+          }
+        },
+        {
+          "version": "1.2.29",
+          "tag": "v1.2.29",
+          "published_at": "2026-11-21T06:16:42Z",
+          "html_url": "https://github.com/eachann1024/block-canvas-dots/releases/tag/v1.2.29",
+          "en": {
+            "other": [
+              "feat(manifest): remove appearance settings section and bump version to 1.2.1 (`0f56922`)",
+              "refactor(ui): remove settings_section surface handling (`795f75f`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.25",
+          "tag": "v1.2.25",
+          "published_at": "2026-11-20T13:59:33Z",
+          "html_url": "https://github.com/eachann1024/block-canvas-dots/releases/tag/v1.2.25",
+          "en": {
+            "other": [
+              "chore(git): ignore local agent prompts, design files, and build artifacts (`ad4e323`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.22",
+          "tag": "v1.2.22",
+          "published_at": "2026-11-20T08:53:47Z",
+          "html_url": "https://github.com/eachann1024/block-canvas-dots/releases/tag/v1.2.22",
+          "en": {
+            "other": [
+              "feat(ui): expose Reset Default action inside Appearance settings section (`afdf6ad`)"
+            ]
+          }
+        },
+        {
+          "version": "1.2.21",
+          "tag": "v1.2.21",
+          "published_at": "2026-11-20T08:33:38Z",
+          "html_url": "https://github.com/eachann1024/block-canvas-dots/releases/tag/v1.2.21",
+          "en": {
+            "other": [
+              "feat(ui): refresh sibling settings surface when background changes (`e776e11`)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-titlebar",
+      "name": {
+        "zh": "顶栏图标",
+        "en": "Titlebar Icons"
+      },
+      "version": "1.0.24",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-titlebar",
+      "summary": {
+        "zh": "自定义顶栏右上角显示的图标，隐藏不需要的按钮",
+        "en": "Choose which icons appear in the top-right titlebar"
+      },
+      "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.24/block-titlebar-v1.0.24.tar.gz",
+      "sha256": "fd83da3b13c244667b268b8ac97e0c2379cd82e158bcd4cb0511900554cb4f1a",
+      "downloads": 86,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-21T07:55:30Z",
+      "permissions": [
+        "storage",
+        "ui:titlebar"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4H4V6Z"
+        ],
+        "stroke_paths": [
+          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
+          "M4 10h16",
+          "M7.5 14h6",
+          "M7.5 17h4"
+        ],
+        "accent_paths": [
+          "M11 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M14 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+          "M17 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"
+        ]
+      },
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存已隐藏的顶栏图标列表配置",
+          "en": "Save the list of hidden titlebar icons"
+        },
+        "ui:titlebar": {
+          "zh": "读取顶栏图标项并控制各个按钮的显示与隐藏",
+          "en": "Read titlebar items and control visibility of individual buttons"
+        }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-titlebar.json",
+      "changelog": [
+        {
+          "version": "1.0.24",
+          "tag": "v1.0.24",
+          "published_at": "2026-11-21T07:55:30Z",
+          "html_url": "https://github.com/eachann1024/block-titlebar/releases/tag/v1.0.24",
+          "en": {
+            "other": [
+              "chore: drop beta flag (`8c0ade0`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.23",
+          "tag": "v1.0.23",
+          "published_at": "2026-11-21T06:16:44Z",
+          "html_url": "https://github.com/eachann1024/block-titlebar/releases/tag/v1.0.23",
+          "en": {
+            "other": [
+              "feat(manifest): remove appearance settings section and ui:settings permission (`9f95c33`)",
+              "refactor(ui): remove settings_section surface handling (`8d5f268`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.19",
+          "tag": "v1.0.19",
+          "published_at": "2026-11-21T04:59:32Z",
+          "html_url": "https://github.com/eachann1024/block-titlebar/releases/tag/v1.0.19",
+          "en": {
+            "other": [
+              "feat(ui): group titlebar icons into Markdown and Source Mode with per-mode previews (`ea142d1`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.18",
+          "tag": "v1.0.18",
+          "published_at": "2026-11-21T03:55:14Z",
+          "html_url": "https://github.com/eachann1024/block-titlebar/releases/tag/v1.0.18",
+          "en": {
+            "other": [
+              "feat(ui): show real titlebar icons and a live preview strip (`284a99b`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.17",
+          "tag": "v1.0.17",
+          "published_at": "2026-11-20T13:59:41Z",
+          "html_url": "https://github.com/eachann1024/block-titlebar/releases/tag/v1.0.17",
+          "en": {
+            "other": [
+              "chore(git): ignore local agent prompts, design files, and build artifacts (`128746c`)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "blockmd",
+      "id": "block-tarot",
+      "name": {
+        "zh": "塔罗模式",
+        "en": "Tarot Mode"
+      },
+      "version": "1.0.13",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-tarot",
+      "summary": {
+        "zh": "午夜铜版塔罗皮肤与写作仪式：牌桌三张牌阵、每日一牌反问、大阿卡纳牌册与速记换肤",
+        "en": "Midnight Copperplate tarot skin and writing rituals: 3-card spread, daily card reflection, 22 Major Arcana deck, and Quick Note skin"
+      },
+      "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.13/block-tarot-v1.0.13.tar.gz",
+      "sha256": "7149faee25d8cff7715ecda9955609d3ee99591505a9c194e468678e45d25ba6",
+      "downloads": 53,
+      "stars": 0,
+      "verified": false,
+      "updated_at": "2026-11-21T06:16:49Z",
+      "permissions": [
+        "storage",
+        "ui:titlebar",
+        "ui:commands",
+        "ui:notify",
+        "events:workspace"
+      ],
+      "surfaces": [
+        "settings_page"
+      ],
+      "icon": {
+        "view_box": "0 0 24 24",
+        "fill_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z"
+        ],
+        "stroke_paths": [
+          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z",
+          "M12 6.8l3.8 5.2-3.8 5.2L8.2 12 12 6.8Z"
+        ],
+        "accent_paths": [
+          "M12 9.5v5",
+          "M9.5 12h5"
+        ]
+      },
+      "permission_reasons": {
+        "storage": {
+          "zh": "保存塔罗模式开关偏好，在重启后恢复状态",
+          "en": "Save Tarot Mode toggle preference across restarts"
+        },
+        "ui:titlebar": {
+          "zh": "在顶栏挂载塔罗模式月亮快捷切换按钮",
+          "en": "Show the Tarot Mode moon toggle button in the titlebar"
+        },
+        "ui:commands": {
+          "zh": "向命令面板注册切换塔罗模式与打开各仪式房间的快捷命令",
+          "en": "Register command palette actions for Tarot Mode and ritual rooms"
+        },
+        "ui:notify": {
+          "zh": "切换塔罗模式或进入仪式房间时显示状态提示",
+          "en": "Show status feedback when toggling Tarot Mode or opening ritual rooms"
+        },
+        "events:workspace": {
+          "zh": "监听语言与主题切换事件，同步更新顶栏按钮与界面状态",
+          "en": "Listen to locale and theme change events to sync button and UI state"
+        }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-tarot.json",
+      "changelog": [
+        {
+          "version": "1.0.13",
+          "tag": "v1.0.13",
+          "published_at": "2026-11-21T06:16:49Z",
+          "html_url": "https://github.com/eachann1024/block-tarot/releases/tag/v1.0.13",
+          "en": {
+            "other": [
+              "feat(manifest): remove appearance settings section and ui:settings permission (`c18ba31`)",
+              "refactor(ui): remove settings_section surface handling (`7fcb3ca`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.10",
+          "tag": "v1.0.10",
+          "published_at": "2026-11-20T13:59:43Z",
+          "html_url": "https://github.com/eachann1024/block-tarot/releases/tag/v1.0.10",
+          "en": {
+            "other": [
+              "chore(git): ignore local agent prompts, design files, and build artifacts (`602557f`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.7",
+          "tag": "v1.0.7",
+          "published_at": "2026-11-20T08:33:39Z",
+          "html_url": "https://github.com/eachann1024/block-tarot/releases/tag/v1.0.7",
+          "en": {
+            "other": [
+              "fix(ui): avoid duplicate Appearance section title and handle locale.changed (`b0e483b`)"
+            ]
+          }
+        },
+        {
+          "version": "1.0.6",
+          "tag": "v1.0.6",
+          "published_at": "2026-11-20T07:08:17Z",
+          "html_url": "https://github.com/eachann1024/block-tarot/releases/tag/v1.0.6",
+          "en": {
+            "other": [
+              "Automated release from `76d9989`."
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "system_apps": [
+    {
+      "app": "blockmd",
+      "id": "block-sync",
+      "name": {
+        "zh": "同步",
+        "en": "Sync"
+      },
+      "version": "1.3.108",
+      "author": "Block Community",
+      "repo": "blockmd-plugins/block-sync",
+      "summary": {
+        "zh": "支持本地目录镜像、WebDAV 与 Git 仓库的多端增量同步",
+        "en": "Incremental notebook sync via local mirror, WebDAV, and Git"
+      },
+      "download_url": "https://github.com/blockmd-plugins/block-sync/releases/download/v1.3.108/block-sync-v1.3.108.tar.gz",
+      "sha256": "ce8485a198ce5bfec17c9a18eb175a8ae611e9ada35f82c26568c40329fb292f",
+      "downloads": 1281,
+      "stars": 0,
+      "verified": true,
+      "updated_at": "2026-11-22T06:18:39Z",
       "permissions": [
         "storage",
         "notes:read",
@@ -84,44 +823,108 @@
           "zh": "系统唤醒或恢复联网后按现有规则补做自动同步",
           "en": "Resume automatic sync after waking or reconnecting, using the existing sync rules"
         }
-      }
+      },
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-sync.json",
+      "changelog": [
+        {
+          "version": "1.3.108",
+          "tag": "v1.3.108",
+          "published_at": "2026-11-22T06:18:39Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.108",
+          "zh": {
+            "new": [
+              "同步插件现已支持同时向多个目标执行同步，并为各个通道独立显示实时进度。"
+            ],
+            "fixes": [
+              "同步插件现会在保存设置时拦截清空唯一同步目标的操作，防止所有同步目的地被意外移除。"
+            ]
+          },
+          "en": {
+            "new": [
+              "Sync now supports simultaneous synchronization across multiple targets and displays independent real-time progress for each channel."
+            ],
+            "fixes": [
+              "Sync now rejects saving configuration changes that would clear the only remaining sync target, preventing all destinations from being accidentally removed."
+            ]
+          }
+        },
+        {
+          "version": "1.3.102",
+          "tag": "v1.3.102",
+          "published_at": "2026-11-21T09:24:53Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.102",
+          "zh": {
+            "other": [
+              "本次为维护版本，没有面向用户的变化。"
+            ]
+          },
+          "en": {
+            "other": [
+              "This is a maintenance release with no user-facing changes."
+            ]
+          }
+        },
+        {
+          "version": "1.3.100",
+          "tag": "v1.3.100",
+          "published_at": "2026-11-21T09:16:40Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.100",
+          "en": {
+            "other": [
+              "feat(sync): record scheduled no-op checks and render timeline quiet spans (`63d5689`)"
+            ]
+          }
+        },
+        {
+          "version": "1.3.99",
+          "tag": "v1.3.99",
+          "published_at": "2026-11-21T07:39:29Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.99",
+          "en": {
+            "other": [
+              "chore: simplify status copy and remove redundant counts (`367e44e`)"
+            ]
+          }
+        },
+        {
+          "version": "1.3.98",
+          "tag": "v1.3.98",
+          "published_at": "2026-11-21T07:24:35Z",
+          "html_url": "https://github.com/blockmd-plugins/block-sync/releases/tag/v1.3.98",
+          "en": {
+            "other": [
+              "chore: drop beta flag (`119c5ea`)"
+            ]
+          }
+        }
+      ]
     },
     {
       "app": "blockmd",
-      "id": "block-poop-everywhere",
+      "id": "block-copy-path",
       "name": {
-        "zh": "到处拉屎",
-        "en": "Poop Everywhere"
+        "zh": "复制路径",
+        "en": "Copy Path"
       },
-      "version": "1.0.9",
-      "author": "Block Community",
-      "repo": "blockmd-plugins/block-poop-everywhere",
+      "version": "1.0.3",
+      "author": "eachann1024",
+      "repo": "eachann1024/block-copy-path",
       "summary": {
-        "zh": "官方全扩展点示范插件：覆盖顶栏、侧栏、文件树角标、编辑区背景、面板、菜单、状态栏与弹窗",
-        "en": "Official kitchen-sink demo covering titlebar, sidebar sections, file badges, editor backdrops, panels, menus, status bar, and dialogs"
+        "zh": "在页面菜单、标签页和文件树右键里复制文件路径，可选完整路径、相对路径或文件名",
+        "en": "Copy a file path from the page menu, tab or file tree, as a full path, relative path or file name"
       },
-      "download_url": "https://github.com/blockmd-plugins/block-poop-everywhere/releases/download/v1.0.9/block-poop-everywhere-v1.0.9.tar.gz",
-      "sha256": "98a5dcba1ff311de489bd27700d386a743a10605c2c77c47bae9d770586ac303",
-      "downloads": 37,
+      "download_url": "https://github.com/eachann1024/block-copy-path/releases/download/v1.0.3/block-copy-path-v1.0.3.tar.gz",
+      "sha256": "1382f91dc76e34306e54b4070f0ba0e457b29b259e12737c6ee2cc28b69fbf3a",
+      "downloads": 13,
       "stars": 0,
-      "verified": true,
-      "updated_at": "2026-11-20T15:58:54Z",
+      "verified": false,
+      "updated_at": "2026-11-21T07:24:30Z",
       "permissions": [
         "storage",
-        "notes:read",
-        "notes:write",
-        "events:note_saved",
-        "ui:titlebar",
-        "ui:settings",
         "ui:commands",
-        "ui:panels",
-        "ui:status",
-        "ui:notify",
         "ui:sidebar",
-        "ui:appearance",
-        "editor:read",
-        "editor:write",
-        "events:workspace"
+        "notes:path",
+        "system:clipboard_write"
       ],
       "surfaces": [
         "settings_page"
@@ -129,337 +932,64 @@
       "icon": {
         "view_box": "0 0 24 24",
         "fill_paths": [
-          "M12 3c1.6 1 2.4 2.2 2.2 3.6 1.7.3 2.8 1.4 2.8 2.9 0 .5-.1 1-.4 1.4 1.5.4 2.4 1.5 2.4 2.9 0 .6-.2 1.2-.5 1.7 1 .5 1.5 1.3 1.5 2.3 0 1.6-1.3 2.7-3 2.7H7c-1.7 0-3-1.1-3-2.7 0-1 .5-1.8 1.5-2.3-.3-.5-.5-1.1-.5-1.7 0-1.4.9-2.5 2.4-2.9-.3-.4-.4-.9-.4-1.4 0-1.5 1.1-2.6 2.8-2.9C10.6 5.5 11 4.2 12 3Z"
+          "M10.25 8.25h7.5a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-7.5a2 2 0 0 1-2-2v-7.5a2 2 0 0 1 2-2Z"
         ],
         "stroke_paths": [
-          "M12 3c1.6 1 2.4 2.2 2.2 3.6 1.7.3 2.8 1.4 2.8 2.9 0 .5-.1 1-.4 1.4 1.5.4 2.4 1.5 2.4 2.9 0 .6-.2 1.2-.5 1.7 1 .5 1.5 1.3 1.5 2.3 0 1.6-1.3 2.7-3 2.7H7c-1.7 0-3-1.1-3-2.7 0-1 .5-1.8 1.5-2.3-.3-.5-.5-1.1-.5-1.7 0-1.4.9-2.5 2.4-2.9-.3-.4-.4-.9-.4-1.4 0-1.5 1.1-2.6 2.8-2.9C10.6 5.5 11 4.2 12 3Z"
+          "M10.25 8.25h7.5a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-7.5a2 2 0 0 1-2-2v-7.5a2 2 0 0 1 2-2Z",
+          "M15.75 8.25V5.75a1.5 1.5 0 0 0-1.5-1.5h-8.5a1.5 1.5 0 0 0-1.5 1.5v8.5a1.5 1.5 0 0 0 1.5 1.5h2.5"
         ],
         "accent_paths": [
-          "M9.2 10.9h4.2",
-          "M7.4 15.5h6.6"
+          "M11.5 14h5"
         ]
       },
       "category": "tools",
       "permission_reasons": {
         "storage": {
-          "zh": "保存拉屎风格、背景参数、笔记本白名单与战况记录。",
-          "en": "Save style preferences, backdrop settings, notebook allowlist, and drop history."
-        },
-        "notes:read": {
-          "zh": "扫描笔记中的标记数量、展示统计并支持点击列表打开对应笔记。",
-          "en": "Scan notes for drop markers, compute stats, and jump to notes from lists."
-        },
-        "notes:write": {
-          "zh": "向笔记写入可识别标记并在冲水时精确清理插件留下的标记行。",
-          "en": "Insert identifiable drop markers into notes and cleanly remove them on flush."
-        },
-        "events:note_saved": {
-          "zh": "保存笔记后自动重算该页标记数并刷新文件树角标与状态栏。",
-          "en": "Recount drop markers after note saves and refresh file badges and status bar."
-        },
-        "ui:titlebar": {
-          "zh": "在顶栏挂载面板、快捷拉一坨与冲水按钮，并动态展示数量角标。",
-          "en": "Mount panel, quick-drop, and flush buttons in the titlebar with live badges."
-        },
-        "ui:settings": {
-          "zh": "在「外观」内置设置页末尾追加编辑区矢量背景与夜光快捷设置卡片。",
-          "en": "Embed quick backdrop and dark-glow controls inside Appearance settings."
+          "zh": "保存你选的复制格式",
+          "en": "Save the copy format you chose"
         },
         "ui:commands": {
-          "zh": "向命令面板、默认快捷键、页面「…」菜单与编辑器右键菜单注册操作。",
-          "en": "Register commands, default shortcuts, page menu items, and editor menu items."
-        },
-        "ui:panels": {
-          "zh": "在右侧打开「屎量面板」展示实时统计、战报与快捷操作。",
-          "en": "Open the right-hand Poop Board side panel for live metrics and actions."
-        },
-        "ui:status": {
-          "zh": "在底部状态栏展示带图标的当前总数，点击可一键切换右侧面板。",
-          "en": "Display a live icon counter in the bottom status bar to toggle the board."
-        },
-        "ui:notify": {
-          "zh": "弹出四类语气带图标轻提示，并在冲水前打开二次确认弹窗。",
-          "en": "Show icon-bearing toasts across all tones and open a flush confirmation dialog."
+          "zh": "在页面菜单、标签页右键和快捷键 Cmd+Shift+C 中提供复制入口",
+          "en": "Add the copy action to the page menu, tab menu and the Cmd+Shift+C shortcut"
         },
         "ui:sidebar": {
-          "zh": "在左侧栏挂载「今日屎迹」分区、文件树行尾角标与笔记右键菜单。",
-          "en": "Add Today's Drops sidebar section, file-tree row badges, and tree context actions."
+          "zh": "在文件树笔记与文件夹的右键菜单中提供复制入口",
+          "en": "Add the copy action to the file tree menu for notes and folders"
         },
-        "ui:appearance": {
-          "zh": "在编辑区背景层绘制可调图案、密度与暗色夜光效果的矢量水印。",
-          "en": "Render configurable vector patterns, watermarks, and dark-glow editor backdrops."
+        "notes:path": {
+          "zh": "拿到你右键或正在查看的文件路径，不读取内容",
+          "en": "Get the path of the file you right-clicked or are viewing, without reading it"
         },
-        "editor:read": {
-          "zh": "读取当前编辑器选中文本，以便将其包装成带附言的标记块。",
-          "en": "Read the active editor selection to wrap selected text into a marked block."
-        },
-        "editor:write": {
-          "zh": "在当前光标处插入标记块，或直接替换选中的正文内容。",
-          "en": "Insert marked blocks at the caret or replace the active editor selection."
-        },
-        "events:workspace": {
-          "zh": "监听笔记切换、深浅色主题与语言变化事件并同步界面状态。",
-          "en": "React to note open, theme change, and locale change workspace events."
+        "system:clipboard_write": {
+          "zh": "把路径写入剪贴板",
+          "en": "Write the path to the clipboard"
         }
-      }
-    },
-    {
-      "app": "blockmd",
-      "id": "block-image-host",
-      "name": {
-        "zh": "图床上传",
-        "en": "Image Host"
       },
-      "version": "1.2.31",
-      "author": "eachann1024",
-      "repo": "eachann1024/block-image-host",
-      "summary": {
-        "zh": "支持 Cloudflare R2、S3 兼容存储与 GitHub 仓库的笔记图片自动上传",
-        "en": "Upload local note images to Cloudflare R2, S3-compatible storage, or GitHub"
-      },
-      "download_url": "https://github.com/eachann1024/block-image-host/releases/download/v1.2.31/block-image-host-v1.2.31.tar.gz",
-      "sha256": "15d41f7778b6dffccfd20c2b7382d891566cbf2f3e16eb527f73dae51a17b19f",
-      "downloads": 941,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T13:59:37Z",
-      "permissions": [
-        "storage",
-        "notes:read",
-        "notes:write",
-        "network",
-        "events:note_saved"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z"
-        ],
-        "stroke_paths": [
-          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
-          "M4.5 16.5l4.2-4.2a1.4 1.4 0 0 1 2 0L14 15.6"
-        ],
-        "accent_paths": [
-          "M16.5 14V7.5",
-          "M14 10l2.5-2.5L19 10",
-          "M9 9.25a1.25 1.25 0 1 0 0 .01"
-        ]
-      },
-      "permission_reasons": {
-        "storage": {
-          "zh": "保存图床服务商凭证、命名规则与上传记录",
-          "en": "Save image host credentials, naming rules, and upload logs"
+      "changelog_url": "https://raw.githubusercontent.com/blockmd-plugins/store-index/main/changelogs/block-copy-path.json",
+      "changelog": [
+        {
+          "version": "1.0.3",
+          "tag": "v1.0.3",
+          "published_at": "2026-11-21T07:24:30Z",
+          "html_url": "https://github.com/eachann1024/block-copy-path/releases/tag/v1.0.3",
+          "en": {
+            "other": [
+              "chore: drop beta flag (`ad5a3d1`)"
+            ]
+          }
         },
-        "notes:read": {
-          "zh": "读取笔记正文与本地图片引用，筛选需要上传的图片",
-          "en": "Read note content and local image links to find images to upload"
-        },
-        "notes:write": {
-          "zh": "图片上传成功后将笔记中的本地路径替换为远程图床链接",
-          "en": "Replace local image paths with uploaded remote URLs in notes"
-        },
-        "network": {
-          "zh": "向 Cloudflare R2、S3 兼容存储或 GitHub 仓库上传图片",
-          "en": "Upload images to Cloudflare R2, S3-compatible storage, or GitHub"
-        },
-        "events:note_saved": {
-          "zh": "在保存笔记时自动检测并上传其中的本地图片",
-          "en": "Automatically detect and upload local images when a note is saved"
+        {
+          "version": "1.0.2",
+          "tag": "v1.0.2",
+          "published_at": "2026-11-21T07:06:32Z",
+          "html_url": "https://github.com/eachann1024/block-copy-path/releases/tag/v1.0.2",
+          "en": {
+            "other": [
+              "Automated release from `06c236d`."
+            ]
+          }
         }
-      }
-    },
-    {
-      "app": "blockmd",
-      "id": "block-canvas-dots",
-      "name": {
-        "zh": "编辑器背景",
-        "en": "Editor Background"
-      },
-      "version": "1.2.25",
-      "author": "eachann1024",
-      "repo": "eachann1024/block-canvas-dots",
-      "summary": {
-        "zh": "为笔记铺上与行高对齐的点阵或方格，增加对比度，稳定追踪每一行",
-        "en": "Line-aligned dot or grid background for notes, adding contrast to track each line"
-      },
-      "download_url": "https://github.com/eachann1024/block-canvas-dots/releases/download/v1.2.25/block-canvas-dots-v1.2.25.tar.gz",
-      "sha256": "4de6eb77061ccdd6b17b57626d8f6cb999c16348c5a12e25b21d851f39b62663",
-      "downloads": 61,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T13:59:33Z",
-      "permissions": [
-        "storage",
-        "ui:settings"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Z"
-        ],
-        "stroke_paths": [
-          "M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Z",
-          "M8.5 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M12 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M15.5 8.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M8.5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M15.5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M8.5 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M12 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M15.5 15.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"
-        ],
-        "accent_paths": [
-          "M12 12m-1.2 0a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0"
-        ]
-      },
-      "permission_reasons": {
-        "storage": {
-          "zh": "保存背景样式、对比度与对齐方式设置",
-          "en": "Save editor background style, contrast, and alignment preferences"
-        },
-        "ui:settings": {
-          "zh": "在外观设置中应用并切换编辑器点阵或方格背景",
-          "en": "Apply and toggle editor dot or grid backgrounds in Appearance settings"
-        }
-      }
-    },
-    {
-      "app": "blockmd",
-      "id": "block-titlebar",
-      "name": {
-        "zh": "顶栏图标",
-        "en": "Titlebar Icons"
-      },
-      "version": "1.0.17",
-      "author": "eachann1024",
-      "repo": "eachann1024/block-titlebar",
-      "summary": {
-        "zh": "自定义顶栏右上角显示的图标，隐藏不需要的按钮",
-        "en": "Choose which icons appear in the top-right titlebar"
-      },
-      "download_url": "https://github.com/eachann1024/block-titlebar/releases/download/v1.0.17/block-titlebar-v1.0.17.tar.gz",
-      "sha256": "714174bc47d35e50cdeb4fa38bb20ee75129f4e1f1c859a49b318e21d0aa4639",
-      "downloads": 51,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T13:59:41Z",
-      "permissions": [
-        "storage",
-        "ui:titlebar",
-        "ui:settings"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4H4V6Z"
-        ],
-        "stroke_paths": [
-          "M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Z",
-          "M4 10h16",
-          "M7.5 14h6",
-          "M7.5 17h4"
-        ],
-        "accent_paths": [
-          "M11 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M14 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
-          "M17 7m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"
-        ]
-      },
-      "permission_reasons": {
-        "storage": {
-          "zh": "保存已隐藏的顶栏图标列表配置",
-          "en": "Save the list of hidden titlebar icons"
-        },
-        "ui:titlebar": {
-          "zh": "读取顶栏图标项并控制各个按钮的显示与隐藏",
-          "en": "Read titlebar items and control visibility of individual buttons"
-        },
-        "ui:settings": {
-          "zh": "在「设置 → 外观」中嵌入顶栏图标管理区块并同步刷新",
-          "en": "Embed titlebar icon settings under Appearance and refresh the UI"
-        }
-      }
-    },
-    {
-      "app": "blockmd",
-      "id": "block-tarot",
-      "name": {
-        "zh": "塔罗模式",
-        "en": "Tarot Mode"
-      },
-      "version": "1.0.10",
-      "author": "eachann1024",
-      "repo": "eachann1024/block-tarot",
-      "summary": {
-        "zh": "午夜铜版塔罗皮肤与写作仪式：牌桌三张牌阵、每日一牌反问、大阿卡纳牌册与速记换肤",
-        "en": "Midnight Copperplate tarot skin and writing rituals: 3-card spread, daily card reflection, 22 Major Arcana deck, and Quick Note skin"
-      },
-      "download_url": "https://github.com/eachann1024/block-tarot/releases/download/v1.0.10/block-tarot-v1.0.10.tar.gz",
-      "sha256": "2d4cb7d3b0e8936e23920e6bfc52078c2477bbf03840fa432864923b874d3053",
-      "downloads": 23,
-      "stars": 0,
-      "verified": false,
-      "updated_at": "2026-11-20T13:59:43Z",
-      "permissions": [
-        "storage",
-        "ui:titlebar",
-        "ui:settings",
-        "ui:commands",
-        "ui:notify",
-        "events:workspace"
-      ],
-      "surfaces": [
-        "settings_page"
-      ],
-      "icon": {
-        "view_box": "0 0 24 24",
-        "fill_paths": [
-          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z"
-        ],
-        "stroke_paths": [
-          "M5.5 3.5h13a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5a1.5 1.5 0 0 1 1.5-1.5Z",
-          "M12 6.8l3.8 5.2-3.8 5.2L8.2 12 12 6.8Z"
-        ],
-        "accent_paths": [
-          "M12 9.5v5",
-          "M9.5 12h5"
-        ]
-      },
-      "permission_reasons": {
-        "storage": {
-          "zh": "保存塔罗模式开关偏好，在重启后恢复状态",
-          "en": "Save Tarot Mode toggle preference across restarts"
-        },
-        "ui:titlebar": {
-          "zh": "在顶栏挂载塔罗模式月亮快捷切换按钮",
-          "en": "Show the Tarot Mode moon toggle button in the titlebar"
-        },
-        "ui:settings": {
-          "zh": "在外观设置中切换塔罗皮肤及进入牌桌、每日一牌与牌册房间",
-          "en": "Toggle Tarot skin in Appearance settings and open tarot ritual rooms"
-        },
-        "ui:commands": {
-          "zh": "向命令面板注册切换塔罗模式与打开各仪式房间的快捷命令",
-          "en": "Register command palette actions for Tarot Mode and ritual rooms"
-        },
-        "ui:notify": {
-          "zh": "切换塔罗模式或进入仪式房间时显示状态提示",
-          "en": "Show status feedback when toggling Tarot Mode or opening ritual rooms"
-        },
-        "events:workspace": {
-          "zh": "监听语言与主题切换事件，同步更新顶栏按钮与界面状态",
-          "en": "Listen to locale and theme change events to sync button and UI state"
-        }
-      }
+      ]
     }
   ]
 }
