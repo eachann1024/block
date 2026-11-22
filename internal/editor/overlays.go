@@ -2118,8 +2118,34 @@ func outlineBarWidth(level int) float32 {
 // --- 6. Right-side annotations & block-foot fallback ---
 
 const (
-	annotationCardMinWidth float32 = 180
+	annotationCardMinWidth     float32 = 180
+	annotationCardWideMinWidth float32 = 360
 )
+
+type annotationLayoutMode uint8
+
+const (
+	annotLayoutBelow annotationLayoutMode = iota
+	annotLayoutNarrow
+	annotLayoutWide
+)
+
+func annotationLayoutForWidth(maxW float32) annotationLayoutMode {
+	if maxW <= 0 {
+		return annotLayoutBelow
+	}
+	if maxW < annotationCardWideMinWidth {
+		return annotLayoutNarrow
+	}
+	return annotLayoutWide
+}
+
+func annotationContentPadLeft(mode annotationLayoutMode) float32 {
+	if mode == annotLayoutNarrow {
+		return 0
+	}
+	return theme.Space20
+}
 
 type anchoredAnnotation struct {
 	ann     *model.Annotation
@@ -2246,15 +2272,19 @@ func (s *Session) annotationBlockInEditMode(ann *model.Annotation) bool {
 
 func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, maxW float32) {
 	pal := theme.Ocean()
-	compact := maxW > 0 && maxW < 360
+	mode := annotationLayoutForWidth(maxW)
 	editing := s.editingAnnotID == ann.ID && !s.readOnly
 	busy := !s.aiDisabled && !editing && ann.RewriteBusy
 	activeVer, verIdx, verTotal, hasVer := s.activeAnnotationVersion(ann)
 	isResult := !s.aiDisabled && !editing && !busy && hasVer
 
-	card := ui.Column(c.Key("annotation-card-" + ann.ID)).MinWidth(0).
-		Padding(theme.Space6, theme.Space8, theme.Space6, theme.Space10).
-		Gap(theme.Space4).Radius(theme.RadiusLG).Clip().
+	padTop, padRight, padBottom, padLeft := theme.Space8, theme.Space8, theme.Space8, theme.Space10
+	if mode == annotLayoutBelow {
+		padTop, padRight, padBottom, padLeft = theme.Space10, theme.Space12, theme.Space12, theme.Space12
+	}
+	card := ui.Column(c.Key("annotation-card-"+ann.ID)).MinWidth(0).
+		Padding(padTop, padRight, padBottom, padLeft).
+		Gap(theme.Space6).Radius(theme.RadiusLG).Clip().
 		Transition(appUi.GutterHandleTransition())
 	if maxW > 0 {
 		card.Width(maxW).MaxWidthPercent(100)
@@ -2278,13 +2308,13 @@ func (s *Session) renderAnnotationItem(c *ui.Context, ann *model.Annotation, max
 			s.renderAnnotationHeader(c, ann, false, false)
 			s.renderAnnotationEditor(c, ann)
 		case busy:
-			s.renderAnnotationBusy(c, ann, compact)
+			s.renderAnnotationBusy(c, ann, mode)
 		case isResult:
-			s.renderAnnotationResultBar(c, ann, activeVer, verIdx, verTotal, compact)
+			s.renderAnnotationResultBar(c, ann, activeVer, verIdx, verTotal, mode)
 		default:
-			if compact {
+			if mode == annotLayoutNarrow {
 				s.renderAnnotationHeader(c, ann, false, hot && !s.readOnly)
-				s.renderAnnotationNote(c, ann, true)
+				s.renderAnnotationNote(c, ann)
 			} else {
 				s.renderAnnotationNoteBar(c, ann)
 			}
@@ -2313,7 +2343,7 @@ func (s *Session) renderAnnotationHeader(c *ui.Context, ann *model.Annotation, i
 				head = theme.Tr("AI 回答", "AI answer")
 			}
 		}
-		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+		ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").
 			FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 		if !showActions {
 			return
@@ -2377,7 +2407,7 @@ func (s *Session) renderAnnotationNoteBar(c *ui.Context, ann *model.Annotation) 
 	})
 }
 
-func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation, compact bool) {
+func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation) {
 	pal := theme.Ocean()
 	noteTxt := ann.Note
 	if noteTxt == "" && !s.aiDisabled {
@@ -2409,9 +2439,8 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation, com
 	if !canRewrite {
 		return
 	}
-	_ = compact
 	sparkles := icons.Sparkles
-	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Children(func() {
+	ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).Justify(ui.End).Children(func() {
 		apply := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
 			ID: "annotation-accept-" + ann.ID, Label: theme.Tr("按批注改写", "Rewrite"), Leading: &sparkles,
 			Style: appUi.ButtonSecondary, Height: theme.HeightCompact,
@@ -2427,7 +2456,7 @@ func (s *Session) renderAnnotationNote(c *ui.Context, ann *model.Annotation, com
 }
 
 // renderAnnotationBusy renders the in-flight generation bar (C3) with stop control and prompt history.
-func (s *Session) renderAnnotationBusy(c *ui.Context, ann *model.Annotation, compact bool) {
+func (s *Session) renderAnnotationBusy(c *ui.Context, ann *model.Annotation, mode annotationLayoutMode) {
 	pal := theme.Ocean()
 	isFollowup := len(ann.Thread) > 0
 	statusLabel := theme.Tr("思考中…", "Thinking…")
@@ -2459,13 +2488,14 @@ func (s *Session) renderAnnotationBusy(c *ui.Context, ann *model.Annotation, com
 		prompts = append(prompts, ann.Note)
 	}
 	if len(prompts) > 0 {
-		s.renderAnnotationPromptHistory(c, ann.ID, prompts, len(prompts)-1, false, compact)
+		s.renderAnnotationPromptHistory(c, ann.ID, prompts, len(prompts)-1, false, mode)
 	}
 }
 
 // renderAnnotationResultBar renders Scheme C's control bar for single-turn (C2) and multi-turn (C4) results.
-func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation, activeVer annotationVersion, verIdx, verTotal int, compact bool) {
+func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation, activeVer annotationVersion, verIdx, verTotal int, mode annotationLayoutMode) {
 	pal := theme.Ocean()
+	narrow := mode == annotLayoutNarrow
 	isAnswer := activeVer.Kind == model.AnnotationReplyAnswer
 	versions := annotationVersions(ann)
 
@@ -2474,8 +2504,14 @@ func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation
 			return
 		}
 		if isAnswer {
-			done := appUi.IconButton(c, icons.Check, appUi.IconButtonOptions{
-				ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Size: theme.HeightCompact, IconSize: theme.IconInline,
+			checkIc := icons.Check
+			padX := theme.Space10
+			if narrow {
+				padX = theme.Space8
+			}
+			done := appUi.ActionButtonWithOptions(c, appUi.ActionButtonOptions{
+				ID: "ann-answer-done-" + ann.ID, Label: theme.Tr("知道了", "Got it"), Leading: &checkIc,
+				Style: appUi.ButtonSecondary, SecondaryShellBG: true, Height: theme.HeightCompact, PaddingX: padX,
 			})
 			if done.Clicked() {
 				s.deleteAnnotationByID(ann.ID)
@@ -2498,7 +2534,9 @@ func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation
 		}
 	}
 
-	// Top row: sparkles + version switcher (or single-turn prompt) + actions (wide mode).
+	inlinePromptInHeader := mode == annotLayoutBelow && isAnswer && verTotal == 1 && strings.TrimSpace(activeVer.Prompt) != ""
+
+	// Top row: sparkles + version switcher / title / inline prompt + right-aligned actions.
 	ui.Row(c).FillWidth().MinWidth(0).MinHeight(theme.HeightCompact).AlignItems(ui.Center).Gap(theme.Space8).Children(func() {
 		ui.Row(c).Width(theme.IconInline).Shrink(0).Center().Children(func() {
 			icons.Draw(c, icons.Sparkles, theme.IconInline, pal.MonoIconColors(pal.Accent))
@@ -2523,73 +2561,90 @@ func (s *Session) renderAnnotationResultBar(c *ui.Context, ann *model.Annotation
 					s.setAnnotationVersion(ann.ID, verIdx+1)
 				}
 			})
-		case !compact && !isAnswer:
+		case !narrow && !isAnswer:
 			ui.Text(c, theme.Tr("批注", "Note")).Shrink(0).SingleLine().
 				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Placeholder)
-			ui.Text(c, activeVer.Prompt).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+			ui.Text(c, activeVer.Prompt).Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").
 				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+		case inlinePromptInHeader:
+			ui.Text(c, theme.Tr("AI 回答", "AI answer")).Shrink(0).SingleLine().
+				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
+			ui.Row(c).Grow(1).Shrink(1).MinWidth(0).Padding(0, 0, 0, theme.Space8).AlignItems(ui.Center).Gap(theme.Space6).Children(func() {
+				ui.Text(c, theme.Tr("批注", "Note")).Shrink(0).SingleLine().
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Placeholder)
+				ui.Text(c, activeVer.Prompt).Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").
+					FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.Text)
+			})
 		default:
 			head := theme.Tr("AI 改写", "AI rewrite")
 			if isAnswer {
 				head = theme.Tr("AI 回答", "AI answer")
 			}
-			ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().
+			ui.Text(c, head).Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").
 				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary)
 		}
-		if !compact {
-			renderActions()
+		if (isAnswer || !narrow) && !s.readOnly {
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(theme.Space4).Children(renderActions)
 		}
 	})
 
-	// Multi-turn prompt history (or single-turn prompt in compact / answer mode).
-	if verTotal > 1 || isAnswer || compact {
+	// Multi-turn prompt history (or single-turn prompt when not already placed in the header).
+	if verTotal > 1 || narrow || (isAnswer && !inlinePromptInHeader) {
 		prompts := make([]string, len(versions))
 		for i, v := range versions {
 			prompts[i] = v.Prompt
 		}
 		if len(prompts) > 0 && (verTotal > 1 || strings.TrimSpace(prompts[0]) != "") {
-			s.renderAnnotationPromptHistory(c, ann.ID, prompts, verIdx, verTotal > 1, compact)
+			s.renderAnnotationPromptHistory(c, ann.ID, prompts, verIdx, verTotal > 1, mode)
 		}
 	}
 
 	// Body preview: always shown for AI answers; for rewrites, shown only when the paragraph
 	// is focused for editing (so inline diff in the paragraph yields cleanly to the editor input).
-	if isAnswer {
-		padLeft := theme.Space20
-		if compact {
-			padLeft = 0
-		}
+	padLeft := annotationContentPadLeft(mode)
+	renderBodyWrap := func(fn func()) {
 		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space2, 0, theme.Space2, padLeft).Children(func() {
-			s.annotationMarkdown(c, activeVer.Text)
+			col := ui.Column(c).FillWidth().MinWidth(0).Gap(theme.Space4)
+			if mode == annotLayoutBelow {
+				col.MaxWidth(theme.AnnotBelowContentMaxWidth)
+			}
+			col.Children(fn)
+		})
+	}
+	if isAnswer {
+		renderBodyWrap(func() {
+			s.annotationMarkdown(c, activeVer.Text, mode)
 		})
 	} else if s.annotationBlockInEditMode(ann) {
-		padLeft := theme.Space20
-		if compact {
-			padLeft = 0
-		}
-		ui.Box(c).FillWidth().MinWidth(0).Padding(theme.Space2, 0, theme.Space2, padLeft).Children(func() {
+		renderBodyWrap(func() {
+			fontSize, lineH := theme.FontBody, theme.LineTitle
+			switch mode {
+			case annotLayoutNarrow:
+				fontSize, lineH = theme.FontSmall, theme.LineBody
+			case annotLayoutBelow:
+				fontSize, lineH = theme.FontEditor, theme.LineEditor
+				if q := strings.TrimSpace(ann.QuotedText); q != "" {
+					ui.Text(c, q).FillWidth().MinWidth(0).
+						FontSize(theme.FontSmall).FixedLineHeight(theme.LineBody).TextColor(pal.Placeholder).Strikethrough()
+				}
+			}
 			ui.Text(c, activeVer.Text).FillWidth().MinWidth(0).
-				FontSize(theme.FontSmall).FixedLineHeight(theme.LineSmall).TextColor(pal.SelectionFG)
+				FontSize(fontSize).FixedLineHeight(lineH).TextColor(pal.SelectionFG)
 		})
 	}
 
-	// Narrow rail fallback: put actions on their own row so buttons never clip.
-	if compact && !s.readOnly {
-		ui.Row(c).FillWidth().Padding(theme.Space4, 0, 0, 0).AlignItems(ui.Center).Gap(theme.Space4).Children(func() {
-			renderActions()
-		})
+	// Narrow rail fallback: put rewrite actions on their own right-aligned row above follow-up.
+	if narrow && !isAnswer && !s.readOnly {
+		ui.Row(c).FillWidth().Padding(theme.Space2, 0, 0, 0).AlignItems(ui.Center).Justify(ui.End).Gap(theme.Space4).Children(renderActions)
 	}
 
-	s.renderAnnotationFollowup(c, ann, verTotal > 1)
+	s.renderAnnotationFollowup(c, ann, verTotal > 1, mode)
 }
 
 // renderAnnotationPromptHistory displays initial note + follow-up rounds, folding middle turns when > 2.
-func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompts []string, activeIdx int, selectable, compact bool) {
+func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompts []string, activeIdx int, selectable bool, mode annotationLayoutMode) {
 	pal := theme.Ocean()
-	padLeft := theme.Space20
-	if compact {
-		padLeft = 0
-	}
+	padLeft := annotationContentPadLeft(mode)
 	expanded := s.annotThreadExpanded != nil && s.annotThreadExpanded[id]
 
 	renderTurnRow := func(turnIdx int, text string) {
@@ -2626,7 +2681,11 @@ func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompt
 		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(theme.Space8).Children(rowFn)
 	}
 
-	ui.Column(c).FillWidth().MinWidth(0).Padding(0, 0, 0, padLeft).Gap(theme.Space2).Children(func() {
+	histCol := ui.Column(c).FillWidth().MinWidth(0).Padding(0, 0, 0, padLeft).Gap(theme.Space2)
+	if mode == annotLayoutBelow {
+		histCol.MaxWidth(theme.AnnotBelowContentMaxWidth + padLeft)
+	}
+	histCol.Children(func() {
 		n := len(prompts)
 		if n <= 2 || expanded {
 			for i, p := range prompts {
@@ -2690,7 +2749,7 @@ func (s *Session) renderAnnotationPromptHistory(c *ui.Context, id string, prompt
 }
 
 // renderAnnotationFollowup is the rounded follow-up input bar under an AI reply: type, Enter or click arrow to send.
-func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation, hasMultipleTurns bool) {
+func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation, hasMultipleTurns bool, mode annotationLayoutMode) {
 	if s.readOnly || s.aiDisabled || s.annotationAIResponder == nil {
 		return
 	}
@@ -2710,57 +2769,63 @@ func (s *Session) renderAnnotationFollowup(c *ui.Context, ann *model.Annotation,
 	hasDraft := strings.TrimSpace(*draft) != ""
 	id := ann.ID
 
-	ui.Row(c.Key("ann-followup-wrap-"+id)).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).
-		Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space6).
-		AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell).Children(func() {
-		in := ui.TextAreaBase(c.Key("ann-followup-"+id), draft).Grow(1).Shrink(1).MinWidth(0).Lines(1, 4).
-			Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
-			Placeholder(ph).PlaceholderColor(pal.Placeholder).Label(theme.Tr("追问", "Follow up"))
-		appUi.AutoHideScrollbars(c, in)
-		appUi.Probe(in, "ann-followup-"+id)
-		composing := in.Composing()
-		in.OnTextKey(func(k ui.TextKey) bool {
-			if composing {
+	padTop, padLeft := float32(0), float32(0)
+	if mode == annotLayoutBelow {
+		padTop, padLeft = theme.Space2, theme.Space20
+	}
+	ui.Box(c).FillWidth().MinWidth(0).Padding(padTop, 0, 0, padLeft).Children(func() {
+		ui.Row(c.Key("ann-followup-wrap-"+id)).FillWidth().MinWidth(0).MinHeight(theme.HeightControl).
+			Padding(theme.Space4, theme.Space4, theme.Space4, theme.Space10).Gap(theme.Space6).
+			AlignItems(ui.Center).Radius(theme.RadiusMD).Background(pal.Shell).Children(func() {
+			in := ui.TextAreaBase(c.Key("ann-followup-"+id), draft).Grow(1).Shrink(1).MinWidth(0).Lines(1, 4).
+				Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).CaretColor(pal.Accent).
+				Placeholder(ph).PlaceholderColor(pal.Placeholder).Label(theme.Tr("追问", "Follow up"))
+			appUi.AutoHideScrollbars(c, in)
+			appUi.Probe(in, "ann-followup-"+id)
+			composing := in.Composing()
+			in.OnTextKey(func(k ui.TextKey) bool {
+				if composing {
+					return false
+				}
+				switch {
+				case k.Key == ui.KeyEscape:
+					*draft = ""
+					return true
+				case isAnnotationSubmitKey(k):
+					if s.SendAnnotationFollowup(id, k.Text()) {
+						delete(s.followupDrafts, id)
+					}
+					return true
+				}
 				return false
+			})
+
+			sendBG := pal.BtnBorder
+			sendFG := pal.AccentText
+			if hasDraft {
+				sendBG = pal.Accent
 			}
-			switch {
-			case k.Key == ui.KeyEscape:
-				*draft = ""
-				return true
-			case isAnnotationSubmitKey(k):
-				if s.SendAnnotationFollowup(id, k.Text()) {
+			sendBtn := ui.ButtonBase(c.Key("ann-followup-send-"+id)).Size(theme.IconButtonBox, theme.IconButtonBox).
+				Shrink(0).Center().Radius(theme.RadiusPill).Background(sendBG).
+				Label(theme.Tr("发送追问", "Send follow-up"))
+			if hasDraft {
+				sendBtn.Cursor(ui.CursorPointer)
+				if sendBtn.Hovered() {
+					sendBtn.Background(pal.AccentHover)
+				}
+			} else {
+				sendBtn.Disabled(true)
+			}
+			sendBtn.Children(func() {
+				icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
+			})
+			appUi.Probe(sendBtn, "ann-followup-send-"+id)
+			if hasDraft && sendBtn.Clicked() {
+				if s.SendAnnotationFollowup(id, *draft) {
 					delete(s.followupDrafts, id)
 				}
-				return true
 			}
-			return false
 		})
-
-		sendBG := pal.BtnBorder
-		sendFG := pal.AccentText
-		if hasDraft {
-			sendBG = pal.Accent
-		}
-		sendBtn := ui.ButtonBase(c.Key("ann-followup-send-"+id)).Size(theme.IconButtonBox, theme.IconButtonBox).
-			Shrink(0).Center().Radius(theme.RadiusPill).Background(sendBG).
-			Label(theme.Tr("发送追问", "Send follow-up"))
-		if hasDraft {
-			sendBtn.Cursor(ui.CursorPointer)
-			if sendBtn.Hovered() {
-				sendBtn.Background(pal.AccentHover)
-			}
-		} else {
-			sendBtn.Disabled(true)
-		}
-		sendBtn.Children(func() {
-			icons.Draw(c, icons.ArrowUp, theme.IconMicro, pal.MonoIconColors(sendFG))
-		})
-		appUi.Probe(sendBtn, "ann-followup-send-"+id)
-		if hasDraft && sendBtn.Clicked() {
-			if s.SendAnnotationFollowup(id, *draft) {
-				delete(s.followupDrafts, id)
-			}
-		}
 	})
 }
 
