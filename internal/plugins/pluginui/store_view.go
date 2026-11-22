@@ -543,82 +543,7 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 						renderStoreSource(c, entry.Author, card.source, cardBG)
 					})
 				})
-				if card.isInstalled && entry.ID != plugins.DiagnosticsPluginID && storeEntryHasUpdate(entry, card.installed) {
-					label, glyph := theme.Tr("更新", "Update"), icons.Refresh
-					if busy {
-						label = theme.Tr("更新中…", "Updating…")
-					}
-					pluginBusy := ctrl.sup.IsPluginBusyAnyNotebook(entry.ID)
-					disabled := (installingID != "" && !busy) || (pluginBusy && !busy)
-					upBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-						ID: "app-store-update-" + entry.ID, Label: label, Leading: &glyph,
-						Style: bui.ButtonAccentOutline, Disabled: disabled,
-						Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
-					})
-					if upBtn.Hovered() {
-						actionHovered = true
-					}
-					if upBtn.Clicked() && !busy && !disabled {
-						actionHandled = true
-						ctrl.closeStoreMenus()
-						ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
-					}
-					return
-				}
-				if card.isInstalled {
-					if hasSettings {
-						openBtn := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-							ID:       "app-store-open-" + entry.ID,
-							Label:    theme.Tr("打开", "Open"),
-							Style:    bui.ButtonSecondary,
-							Disabled: busy,
-							Loading:  busy,
-							Height:   theme.HeightCompact,
-							PaddingX: theme.Space10,
-						})
-						if openBtn.Hovered() {
-							actionHovered = true
-						}
-						if openBtn.Clicked() && !busy {
-							actionHandled = true
-							ctrl.closeStoreMenus()
-							if onSelectTab != nil {
-								onSelectTab(modals.TabPluginPrefix + entry.ID)
-							} else {
-								ctrl.openStoreReadme(entry, card.installed)
-								c.Invalidate()
-							}
-						}
-					} else {
-						ui.Row(c.Key("app-store-installed-"+entry.ID)).Height(theme.HeightCompact).
-							PaddingX(theme.Space8).Gap(theme.Space4).Radius(theme.RadiusMD).
-							Background(sc.InstalledPillBG).Border(1, pal.Hairline).AlignItems(ui.Center).Shrink(0).Children(func() {
-							icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
-							ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
-								FixedLineHeight(theme.LineSmall).TextColor(pal.TextSecondary).SingleLine()
-						})
-					}
-					return
-				}
-
-				label, glyph := theme.Tr("安装", "Install"), icons.Download
-				if busy {
-					label = theme.Tr("安装中…", "Installing…")
-				}
-				disabled := installingID != "" && !busy
-				button := bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
-					ID: "app-store-install-" + entry.ID, Label: label, Leading: &glyph,
-					Style: bui.ButtonAccentOutline, Disabled: disabled,
-					Loading: busy, Height: theme.HeightCompact, PaddingX: theme.Space8,
-				})
-				if button.Hovered() {
-					actionHovered = true
-				}
-				if button.Clicked() && !busy && !disabled {
-					actionHandled = true
-					ctrl.closeStoreMenus()
-					ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
-				}
+				actionHandled, actionHovered = renderStoreCardAction(c, ctrl, card, busy, hasSettings, installingID, onSelectTab)
 			})
 			bui.FadedTextPreview(c, strings.TrimSpace(entry.Summary.Resolve(locale)), 2,
 				theme.FontBody, theme.LineTitle, pal.TextSecondary, cardBG)
@@ -632,6 +557,95 @@ func renderStoreCard(c *ui.Context, ctrl *Controller, card storeCard, locale, in
 		ctrl.openStoreReadme(entry, card.installed)
 		c.Invalidate()
 	}
+}
+
+func storeCardActionButton(
+	c *ui.Context,
+	id, label string,
+	style bui.ActionButtonStyle,
+	leadingDot, disabled, busy bool,
+) ui.Element {
+	return bui.ActionButtonWithOptions(c, bui.ActionButtonOptions{
+		ID:          id,
+		Label:       label,
+		Style:       style,
+		LeadingDot:  leadingDot,
+		CompactText: true,
+		Disabled:    disabled,
+		Loading:     busy,
+		Height:      theme.HeightCompact,
+		MinWidth:    theme.StoreCardActionWidth,
+		PaddingX:    theme.Space6,
+	})
+}
+
+func renderStoreCardAction(
+	c *ui.Context,
+	ctrl *Controller,
+	card storeCard,
+	busy, hasSettings bool,
+	installingID string,
+	onSelectTab func(nextTab string),
+) (actionHandled, actionHovered bool) {
+	pal := theme.Ocean()
+	entry := card.entry
+	if card.isInstalled && entry.ID != plugins.DiagnosticsPluginID && storeEntryHasUpdate(entry, card.installed) {
+		label := theme.Tr("更新", "Update")
+		if busy {
+			label = theme.Tr("更新中", "Updating")
+		}
+		pluginBusy := ctrl.sup.IsPluginBusyAnyNotebook(entry.ID)
+		disabled := (installingID != "" && !busy) || (pluginBusy && !busy)
+		upBtn := storeCardActionButton(c, "app-store-update-"+entry.ID, label, bui.ButtonAccentSoft, true, disabled, busy)
+		actionHovered = upBtn.Hovered()
+		if upBtn.Clicked() && !busy && !disabled {
+			actionHandled = true
+			ctrl.closeStoreMenus()
+			ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
+		}
+		return actionHandled, actionHovered
+	}
+	if card.isInstalled && hasSettings {
+		openBtn := storeCardActionButton(c, "app-store-open-"+entry.ID, theme.Tr("打开", "Open"), bui.ButtonSecondary, false, busy, busy)
+		actionHovered = openBtn.Hovered()
+		if openBtn.Clicked() && !busy {
+			actionHandled = true
+			ctrl.closeStoreMenus()
+			if onSelectTab != nil {
+				onSelectTab(modals.TabPluginPrefix + entry.ID)
+			} else {
+				ctrl.openStoreReadme(entry, card.installed)
+				c.Invalidate()
+			}
+		}
+		return actionHandled, actionHovered
+	}
+	if card.isInstalled {
+		ui.Row(c.Key("app-store-installed-"+entry.ID)).
+			MinWidth(theme.StoreCardActionWidth).Height(theme.HeightCompact).
+			PaddingX(theme.Space6).Gap(theme.Space4).Radius(theme.RadiusMD).
+			Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Children(func() {
+			icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+			ui.Text(c, theme.Tr("已安装", "Installed")).FontSize(theme.FontSmall).
+				FixedLineHeight(theme.LineSmall).FontWeight(theme.WeightControl).
+				TextColor(pal.TextSecondary).SingleLine()
+		})
+		return false, false
+	}
+
+	label := theme.Tr("安装", "Install")
+	if busy {
+		label = theme.Tr("安装中", "Installing")
+	}
+	disabled := installingID != "" && !busy
+	btn := storeCardActionButton(c, "app-store-install-"+entry.ID, label, bui.ButtonAccentOutline, false, disabled, busy)
+	actionHovered = btn.Hovered()
+	if btn.Clicked() && !busy && !disabled {
+		actionHandled = true
+		ctrl.closeStoreMenus()
+		ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
+	}
+	return actionHandled, actionHovered
 }
 
 func renderStoreSource(c *ui.Context, author, source string, fadeBG ui.Color) {
@@ -771,7 +785,7 @@ func renderStoreSkeleton(c *ui.Context) {
 							bar(0, theme.LineMeta).WidthPercent(60)
 							bar(0, theme.StoreSkeletonLineH).WidthPercent(45)
 						})
-						bar(theme.StoreIconBoxSize+theme.Space16, theme.HeightCompact)
+						bar(theme.StoreCardActionWidth, theme.HeightCompact).Radius(theme.RadiusMD)
 					})
 					ui.Column(c).FillWidth().Height(2 * theme.LineTitle).Gap(theme.Space10).Justify(ui.Center).Children(func() {
 						for _, pct := range []float32{94, 72} {

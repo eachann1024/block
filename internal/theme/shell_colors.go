@@ -96,7 +96,6 @@ type StoreCardColors struct {
 	CategoryBG         ui.Color
 	ExtBG              ui.Color
 	ExtBorder          ui.Color
-	InstalledPillBG    ui.Color
 }
 
 // StoreCard returns the tinted App Store card token set for p.
@@ -115,7 +114,6 @@ func (p Palette) StoreCard() StoreCardColors {
 			CategoryBG:         ui.Hex("#15243c"),
 			ExtBG:              ui.Hex("#0a1322"),
 			ExtBorder:          ui.RGBA(201, 162, 90, 0.24),
-			InstalledPillBG:    ui.Hex("#15243c"),
 		}
 	}
 	if p.Tarot && !p.Dark {
@@ -132,7 +130,6 @@ func (p Palette) StoreCard() StoreCardColors {
 			CategoryBG:         ui.Hex("#e5dac1"),
 			ExtBG:              ui.Hex("#f6f0e2"),
 			ExtBorder:          ui.RGBA(167, 132, 63, 0.28),
-			InstalledPillBG:    ui.Hex("#e5dac1"),
 		}
 	}
 	if p.Dark {
@@ -149,7 +146,6 @@ func (p Palette) StoreCard() StoreCardColors {
 			CategoryBG:         ui.Hex("#292929"),
 			ExtBG:              ui.Hex("#282828"),
 			ExtBorder:          ui.Hex("#353535"),
-			InstalledPillBG:    ui.Hex("#262626"),
 		}
 	}
 	return StoreCardColors{
@@ -165,7 +161,6 @@ func (p Palette) StoreCard() StoreCardColors {
 		CategoryBG:         ui.Hex("#ecece9"),
 		ExtBG:              ui.Hex("#ffffff"),
 		ExtBorder:          ui.Hex("#e2e4e8"),
-		InstalledPillBG:    ui.Hex("#efefed"),
 	}
 }
 
