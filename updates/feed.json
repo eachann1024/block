@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T06:18:25.168Z",
-  "latest_version": "1.0.900",
-  "latest_tag": "v1.0.900",
+  "updated_at": "2026-11-22T06:38:59.953Z",
+  "latest_version": "1.0.901",
+  "latest_tag": "v1.0.901",
   "releases": [
+    {
+      "version": "1.0.901",
+      "tag": "v1.0.901",
+      "published_at": "2026-11-22T06:38:59Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.901",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "插件商店中的插件详情页在闲置时不再自动关闭。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Plugin detail pages in the store now remain open instead of automatically closing when idle."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-macos-arm64.dmg",
+          "size": 15117041,
+          "sha256": "8626e7d6e8994d71461b98275031750056e61ab8a6458baa7be265cf1058f668"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-macos-x64.dmg",
+          "size": 16646897,
+          "sha256": "caf409aa11e1dd433a18f35dd3792fa76e0a21f868920a02219eecba6fc54977"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-windows-x64-setup.exe",
+          "size": 12122081,
+          "sha256": "acc55e18c89e7b4a9359565418ea9d31e97c01e2893fef4019432e6e249641f4"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-linux-x64.deb",
+          "size": 10686616,
+          "sha256": "f9d2077e7f158326c85bea2a3b0202eb8bb467760f4812b108e672fbca5950cd"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-linux-x64.AppImage",
+          "size": 23620088,
+          "sha256": "2b8fee2f668e1e8ab13f0e0d8ed98c2a91ffc68aeb086f1fb38e41861e56771a"
+        }
+      ]
+    },
     {
       "version": "1.0.900",
       "tag": "v1.0.900",
@@ -34,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-macos-arm64.dmg",
-          "size": 15120117,
-          "sha256": "68565678a98511ed0f6c31b650eb6c7687b6a3e84ee83b77992c215ba33cbc5a"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-macos-x64.dmg",
-          "size": 16651704,
-          "sha256": "d25788251ced321d2125c86276160e434ec2a0efa3732d2ec85853dcd656a6f7"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-windows-x64-setup.exe",
-          "size": 12126631,
-          "sha256": "d49eb7a9c0f7212161309c75f8ba89ee1ae4fbdc5d6db345d3ffeeb7fc4f86b8"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-linux-x64.deb",
-          "size": 10696312,
-          "sha256": "60d425e1ca3219032ae8f506e151be9647b561c07891a1291a02ae7aacd2bdca"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.900/block-linux-x64.AppImage",
-          "size": 23624184,
-          "sha256": "a612e70bbc57344f3de04c9bda9c0a717c167fcd15ebbb2ac3489d5f15d07345"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.899",
@@ -2324,31 +2349,6 @@
         ],
         "fixes": [
           "Downsample 4x preview bitmap to fit GPU texture limit and update scale tests."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.633",
-      "tag": "v1.0.633",
-      "published_at": "2026-11-18T15:08:22Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.633",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复静态更新索引解析安装包标签时偶发漏匹配的问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Fixed release tag normalization when matching installer assets from the update feed."
         ],
         "other": []
       },
