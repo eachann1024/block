@@ -191,6 +191,17 @@ const (
 	EdgeFloatDwellMs             = 140
 	EdgeFloatLeaveMs             = 120
 
+	// Narrow sidebar expand-pill cue timings & geometry (designs/settings-narrow-float Scheme A).
+	SidebarExpandCueHoldMs       = 2400
+	SidebarExpandCuePillMs       = 260
+	SidebarExpandCueRingDelayMs  = 80
+	SidebarExpandCueRingMs       = 720
+	SidebarExpandCueNudgeDelayMs = 140
+	SidebarExpandCueNudgeMs      = 950
+	SidebarExpandCueLabelWidthZH float32 = 30
+	SidebarExpandCueLabelWidthEN float32 = 48
+	SidebarExpandCueRingWidth    float32 = 1.5
+
 	// Full-screen AI chat history drawer metrics.
 	AIHistoryDrawerWidth     float32 = 300
 	AIHistoryDrawerRowHeight float32 = 36
