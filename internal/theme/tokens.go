@@ -25,12 +25,12 @@ const (
 // Type scale (6 UI steps + editor body). Every UI text uses one of these sizes
 // with its paired line height.
 const (
-	FontMicro   float32 = 11 // compact monogram badges, micro keycaps, hour-range tags
-	FontMeta    float32 = 12 // shortcut hints, counters, keycaps
-	FontSmall   float32 = 13 // tooltips, secondary lines, compact buttons
-	FontBody    float32 = 14 // controls, list rows, UI body (baseline)
-	FontTitle   float32 = 15 // card titles, dialog titles
-	FontEditor  float32 = 15 // editor body copy
+	FontMicro         float32 = 11 // compact monogram badges, micro keycaps, hour-range tags
+	FontMeta          float32 = 12 // shortcut hints, counters, keycaps
+	FontSmall         float32 = 13 // tooltips, secondary lines, compact buttons
+	FontBody          float32 = 14 // controls, list rows, UI body (baseline)
+	FontTitle         float32 = 15 // card titles, dialog titles
+	FontEditor        float32 = 15 // editor body copy
 	FontHeading       float32 = 18 // panel headings, empty-state titles
 	FontSettingsTitle float32 = 20 // settings, plugin & store page titles
 	FontPage          float32 = 24 // large display numbers, about modal title
@@ -44,7 +44,7 @@ const (
 	LineHeading       float32 = 26
 	LineSettingsTitle float32 = 28
 	LinePage          float32 = 32
-	LineDisplay float32 = 40
+	LineDisplay       float32 = 40
 )
 
 // Font weights: 3 UI weights; 500 only for monospace (code, keycaps).
@@ -105,11 +105,13 @@ const (
 
 	// Settings pages: centred content column, flat sections with hairline rows.
 	SettingsContentMaxWidth float32 = 600
-	SettingsRowHeight       float32 = 44
-	SettingsListRowHeight   float32 = 48
-	SettingsSectionTitleH   float32 = 28
-	SettingsSectionGap      float32 = 32
-	SettingsFormLabelWidth  float32 = 72
+	// Below-paragraph annotation card content measure (matches SettingsContentMaxWidth).
+	AnnotBelowContentMaxWidth float32 = 600
+	SettingsRowHeight         float32 = 44
+	SettingsListRowHeight     float32 = 48
+	SettingsSectionTitleH     float32 = 28
+	SettingsSectionGap        float32 = 32
+	SettingsFormLabelWidth    float32 = 72
 
 	CardPadY float32 = 18
 	CardPadX         = Space20
@@ -180,8 +182,8 @@ const (
 	ComposerTailSpace = 2 * LineBody // blank lines kept below the caret in growing text areas
 
 	// Edge hot-zone & floating Sidebar / AI card metrics (Scheme A).
-	EdgeHotZoneWidth     float32 = 8 // outer window-edge pointer sensor width
-	EdgeStripIdleWidth   float32 = 3 // resting colored edge indicator bar width
+	EdgeHotZoneWidth     float32 = 8      // outer window-edge pointer sensor width
+	EdgeStripIdleWidth   float32 = 3      // resting colored edge indicator bar width
 	EdgeFloatInset               = Space8 // = stage card side/bottom gutter; floating cards sit flush on the card (top 0)
 	EdgeFloatGutterGap           = Space6
 	EdgeFloatSafeClear   float32 = 10 // minimum clearance between edge strip and 54px handle gutter
@@ -209,7 +211,7 @@ const (
 	StoreCardPadTop                = CardPadY
 	StoreCardPadX                  = Space20
 	StoreCardPadBottom             = StoreCardInnerGap
-	StoreCardActionWidth   float32 = 72  // uniform width for App Store card action buttons
+	StoreCardActionWidth   float32 = 72 // uniform width for App Store card action buttons
 	StoreTitleWidth        float32 = 120
 	StoreSearchWidth       float32 = 192
 	StoreSearchFieldWidth  float32 = 280 // search field with the inline source/sort button
@@ -317,22 +319,22 @@ const (
 	VideoOSDVolumeBarH       float32 = 4
 
 	// Tarot mode ("午夜铜版") typography, radii, and layout metrics.
-	TarotTopbarHeight       float32 = 44
-	TarotSidebarWidth       float32 = 260
-	TarotReadingAsideWidth  float32 = 320
-	TarotDeckAsideWidth     float32 = 380
-	TarotSheetMaxWidth      float32 = 820
-	TarotRadiusCard         float32 = 12
-	TarotRadiusDailyCard    float32 = 16
-	TarotRadiusDeckDetail   float32 = 14
-	TarotFontRomanSmall     float32 = 16
-	TarotFontRomanCard      float32 = 22
-	TarotFontRomanDetail    float32 = 26
-	TarotFontRomanDaily     float32 = 32
-	TarotFontReading        float32 = 19
-	TarotFontCardTitle      float32 = 15
-	TarotFontDailyTitle     float32 = 20
-	TarotFontPosLabel       float32 = 20
-	TarotFontDeckHeading    float32 = 28
-	TarotWeightBold                 = 650
+	TarotTopbarHeight      float32 = 44
+	TarotSidebarWidth      float32 = 260
+	TarotReadingAsideWidth float32 = 320
+	TarotDeckAsideWidth    float32 = 380
+	TarotSheetMaxWidth     float32 = 820
+	TarotRadiusCard        float32 = 12
+	TarotRadiusDailyCard   float32 = 16
+	TarotRadiusDeckDetail  float32 = 14
+	TarotFontRomanSmall    float32 = 16
+	TarotFontRomanCard     float32 = 22
+	TarotFontRomanDetail   float32 = 26
+	TarotFontRomanDaily    float32 = 32
+	TarotFontReading       float32 = 19
+	TarotFontCardTitle     float32 = 15
+	TarotFontDailyTitle    float32 = 20
+	TarotFontPosLabel      float32 = 20
+	TarotFontDeckHeading   float32 = 28
+	TarotWeightBold                = 650
 )
