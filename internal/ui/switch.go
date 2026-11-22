@@ -387,6 +387,12 @@ func SwitchWithOptions(c *ui.Context, opts SwitchOptions) bool {
 			trackCol = pal.SwitchTrackHover
 		}
 		p.Fill(trackRect, trackCol, trackR)
+		// Hero switches sit on the shell titlebar, where the quiet off track blends in:
+		// outline it so the off state still reads as a control.
+		if opts.Size == SwitchHero && fillA < 0.5 {
+			p.Stroke(ui.Rect{X: trackRect.X + 0.5, Y: trackRect.Y + 0.5, W: trackRect.W - 1, H: trackRect.H - 1},
+				pal.BtnBorder, trackR-0.5, 1)
+		}
 
 		// Animated light-accent fill sweeping from left (trackH -> trackW).
 		if fillA > 0.005 {
