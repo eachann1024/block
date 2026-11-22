@@ -105,6 +105,7 @@ const (
 	TbReset         Icon = "tb-reset"
 	NoteCheck       Icon = "note-check"
 	HelpCircle      Icon = "help-circle"
+	PauseCircle     Icon = "pause-circle"
 	FolderReveal    Icon = "folder-reveal"
 	SidebarCollapse Icon = "sidebar-collapse"
 	SidebarExpand   Icon = "sidebar-expand"
