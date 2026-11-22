@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T12:39:28.410Z",
-  "latest_version": "1.0.912",
-  "latest_tag": "v1.0.912",
+  "updated_at": "2026-11-22T12:47:40.280Z",
+  "latest_version": "1.0.913",
+  "latest_tag": "v1.0.913",
   "releases": [
+    {
+      "version": "1.0.913",
+      "tag": "v1.0.913",
+      "published_at": "2026-11-22T12:47:39Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.913",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "窄窗口下的设置抽屉不再显示暗色背景遮罩。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "The settings drawer no longer displays a dark background overlay in narrow windows."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.913/block-macos-arm64.dmg",
+          "size": 15170462,
+          "sha256": "8e24eae12d048ebb8fdb0cdc1c8ab17ab163688bf21e7b0f21f50210777fce9d"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.913/block-macos-x64.dmg",
+          "size": 16709546,
+          "sha256": "c5ff190dd817305865d05f350cc57dda6d5dffb7fa9195b52c1aef7aaabb14f3"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.913/block-windows-x64-setup.exe",
+          "size": 12182271,
+          "sha256": "ae8e907fb8a2d22e6641e96394ba85bd2b9678a5d279916826d6d95747a628c0"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.913/block-linux-x64.deb",
+          "size": 10729770,
+          "sha256": "901282c11e83b78d14b731a043e799db9711434ea54ab2b7924eea10e52cc47e"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.913/block-linux-x64.AppImage",
+          "size": 23677432,
+          "sha256": "c94a30026e60d1fee33ce250e00f5d2836549e5caa8a65ee7b2812068b26be1b"
+        }
+      ]
+    },
     {
       "version": "1.0.912",
       "tag": "v1.0.912",
@@ -32,38 +88,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-macos-arm64.dmg",
-          "size": 15170469,
-          "sha256": "8161067bd8f673f366398cc9bd711761be52a72dcbe6fb6e5247b10a1d647437"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-macos-x64.dmg",
-          "size": 16708152,
-          "sha256": "aad7bbe68d0df48689098d91c9bdb93b714855651239575ab3e1efdfa0d475dd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-windows-x64-setup.exe",
-          "size": 12182576,
-          "sha256": "b477372a089c9607e5ba1107b9d3904eab461e648b0eb5c5a6fe4df72e8ce9ff"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-linux-x64.deb",
-          "size": 10729576,
-          "sha256": "e3b367cf70d2ad20097bee2ad56fd0b2b415a81d9aa0940f43c4c3c465ae3327"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.912/block-linux-x64.AppImage",
-          "size": 23677432,
-          "sha256": "ed4aa61c4e36a019f00a383570d156fc0c051fe3b128489827e826b88ee20153"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.911",
@@ -1380,31 +1405,6 @@
         "fixes": [
           "Dispatch and retry queued sync notices.",
           "Bound native plugin notices and reuse case aliases."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.863",
-      "tag": "v1.0.863",
-      "published_at": "2026-11-20T21:51:31Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.863",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Keep notifications distinct across desktop backends."
         ],
         "other": []
       },
