@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T09:19:06.190Z",
-  "latest_version": "1.0.905",
-  "latest_tag": "v1.0.905",
+  "updated_at": "2026-11-22T09:39:45.163Z",
+  "latest_version": "1.0.906",
+  "latest_tag": "v1.0.906",
   "releases": [
+    {
+      "version": "1.0.906",
+      "tag": "v1.0.906",
+      "published_at": "2026-11-22T09:39:44Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.906",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "媒体预览现在会在铺满视口的深色灯箱中打开，并支持系统原生全屏浏览。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Media previews now open in a full-bleed dark lightbox with support for native fullscreen mode."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-macos-arm64.dmg",
+          "size": 15140990,
+          "sha256": "970e3094fd1ed95c74cadf4056275f70c638ae665c162768e56c46c3612ae505"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-macos-x64.dmg",
+          "size": 16676160,
+          "sha256": "55a85510c5706fbd648afa7764ce937ed0116cb9365f3cd85a02e471492efb64"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-windows-x64-setup.exe",
+          "size": 12147965,
+          "sha256": "2345f608e8078f4b4235dcfc022e3c1e9559f26b4867b5af13b59c3b7172a5e9"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-linux-x64.deb",
+          "size": 10707208,
+          "sha256": "962b91aaa82d1d7f4db0b661ba0ba804a285ffdbe12f0218c6b1673f92bd46d2"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.906/block-linux-x64.AppImage",
+          "size": 23661048,
+          "sha256": "1515554b5f0049523c0367ef2f0af03610a312aa09e71ba9d25a6b428c1dd3c1"
+        }
+      ]
+    },
     {
       "version": "1.0.905",
       "tag": "v1.0.905",
@@ -32,38 +88,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.905/block-macos-arm64.dmg",
-          "size": 15143164,
-          "sha256": "2e8873166c406c8db852e56bb58ddfc7eb6f3e250f4908dd375ffa624fee94b2"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.905/block-macos-x64.dmg",
-          "size": 16673577,
-          "sha256": "ddb0a7959073f2efbb4093ec62f367bd38635f047aa3dc4b25f13bdd40a17908"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.905/block-windows-x64-setup.exe",
-          "size": 12145310,
-          "sha256": "412a561644facc5a688c2e64124d710077b5c99cadce2080fe37d985566a7063"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.905/block-linux-x64.deb",
-          "size": 10715444,
-          "sha256": "0995e98b2c8c85c05948a81d19b692a5739fc94cfc3f77b927e9d62ae8d652e4"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.905/block-linux-x64.AppImage",
-          "size": 23648760,
-          "sha256": "611b1566477c00f8dcaf7e25fe5458c833f61fb4bf0520878cf39b17b7dc026a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.904",
@@ -1384,53 +1409,6 @@
           "Notify when save-triggered sync fails to finish.",
           "Retain original paths for items restored from Trash.",
           "Recheck file picker actions and support folder multiselect."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.856",
-      "tag": "v1.0.856",
-      "published_at": "2026-11-20T18:11:21Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.856",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化智能体连接、模型选择与对话辅助体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化侧栏文件树、标签页与笔记本切换体验。",
-          "优化段落与列表拖拽移动时的跟手度与指示线。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Paginate GitHub releases in store crawler with latest fallback.",
-          "Recheck soon when the server counted an earlier day.",
-          "Serialize headless editor render with pluginHostUI.onMainWait.",
-          "Retry a success reply that does not name the counted day.",
-          "Treat a counted day that is not a real date as a failed ping.",
-          "Allow canceling a queued note retry before it starts.",
-          "Paint plugin drop quotes as callout chips.",
-          "Align sidebar plugin cards with the file tree.",
-          "Keep plugin buttons inline whenever they fit.",
-          "Fold plugin icons, then yield sidebar, before squeezing tabs.",
-          "Give short tabs' spare width to long titles and always yield sidebar before squeezing tabs.",
-          "Hide poop marker syntax inside drop quotes."
         ],
         "other": []
       },
