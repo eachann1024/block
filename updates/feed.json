@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-22T06:38:59.953Z",
-  "latest_version": "1.0.901",
-  "latest_tag": "v1.0.901",
+  "updated_at": "2026-11-22T07:21:58.663Z",
+  "latest_version": "1.0.902",
+  "latest_tag": "v1.0.902",
   "releases": [
+    {
+      "version": "1.0.902",
+      "tag": "v1.0.902",
+      "published_at": "2026-11-22T07:21:58Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.902",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件管理器现在支持按顺序批量应用更新。",
+          "插件商店的搜索框旁新增「全部更新」按钮。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The plugin supervisor now supports applying batch updates sequentially.",
+          "The plugin store now has an Update All button beside the search box."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-macos-arm64.dmg",
+          "size": 15121863,
+          "sha256": "d8318556577b7fe74bf837c3995e40c5c947167518b5494f021e648bf038dccf"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-macos-x64.dmg",
+          "size": 16651497,
+          "sha256": "59b9c4bc0115c4a9233ddf3373831a0cecde1bcedb391f57303197f8bcfe1a1d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-windows-x64-setup.exe",
+          "size": 12126915,
+          "sha256": "8e525ebc09a1465295d8ad02e4129c57fe0dfecf77729f32967904d231a3e4f4"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-linux-x64.deb",
+          "size": 10697502,
+          "sha256": "0af44dfd7dffa4c19190f40c6aedd441f220d2d02cf779d82b2e269b23856164"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.902/block-linux-x64.AppImage",
+          "size": 23624184,
+          "sha256": "fddbb19696c2682ec6ce090976baf19848955480016dd5ea9397a6bd746b46bb"
+        }
+      ]
+    },
     {
       "version": "1.0.901",
       "tag": "v1.0.901",
@@ -28,38 +86,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-macos-arm64.dmg",
-          "size": 15117041,
-          "sha256": "8626e7d6e8994d71461b98275031750056e61ab8a6458baa7be265cf1058f668"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-macos-x64.dmg",
-          "size": 16646897,
-          "sha256": "caf409aa11e1dd433a18f35dd3792fa76e0a21f868920a02219eecba6fc54977"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-windows-x64-setup.exe",
-          "size": 12122081,
-          "sha256": "acc55e18c89e7b4a9359565418ea9d31e97c01e2893fef4019432e6e249641f4"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-linux-x64.deb",
-          "size": 10686616,
-          "sha256": "f9d2077e7f158326c85bea2a3b0202eb8bb467760f4812b108e672fbca5950cd"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.901/block-linux-x64.AppImage",
-          "size": 23620088,
-          "sha256": "2b8fee2f668e1e8ab13f0e0d8ed98c2a91ffc68aeb086f1fb38e41861e56771a"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.900",
@@ -2312,43 +2339,6 @@
           "Paint brand scene behind panels and make sidebar search transparent.",
           "Unify two-step Cmd+A block selection across Quick Note and all block types.",
           "Fix paper export fidelity and preserve long documents."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.645",
-      "tag": "v1.0.645",
-      "published_at": "2026-11-18T15:35:16Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.645",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化智能体连接、模型选择与对话辅助体验。"
-        ],
-        "improvements": [
-          "优化了界面细节与日常编辑操作的顺滑度。",
-          "支持应用内检查更新、跨版本日志展示与平滑升级。",
-          "优化笔记导出排版、纸张主题与图片渲染效果。"
-        ],
-        "fixes": [
-          "支持应用内检查更新、跨版本日志展示与平滑升级。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Add trailing block controls and context menus."
-        ],
-        "improvements": [
-          "Align app store cards and link plugin READMEs.",
-          "Verify plugin ownership and make updates and notebook retries recoverable.",
-          "Split export.go by concern (themes, html, scene, paint, pdf, docx)."
-        ],
-        "fixes": [
-          "Downsample 4x preview bitmap to fit GPU texture limit and update scale tests."
         ],
         "other": []
       },
