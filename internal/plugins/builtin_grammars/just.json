@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"],
+    ["`", "`"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#!.*$",
+        "token": "meta"
+      },
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "```",
+        "token": "string",
+        "push": "tbt_string"
+      },
+      {
+        "match": "\"\"\"",
+        "token": "string",
+        "push": "tdq_string"
+      },
+      {
+        "match": "'''",
+        "token": "string",
+        "push": "tsq_string"
+      },
+      {
+        "match": "`",
+        "token": "string",
+        "push": "bt_string"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'[^']*'",
+        "token": "string"
+      },
+      {
+        "match": "\\{\\{[^{}\\r\\n]+\\}\\}",
+        "token": "meta"
+      },
+      {
+        "match": "https?://[^\\s\"'`]+",
+        "token": "link"
+      },
+      {
+        "match": "(\\[)([A-Za-z_][A-Za-z0-9_-]*(?:\\([^)\\r\\n]*\\))?(?:[ \\t]*,[ \\t]*[A-Za-z_][A-Za-z0-9_-]*(?:\\([^)\\r\\n]*\\))?)*)(\\])",
+        "captures": {
+          "1": "punctuation",
+          "2": "attribute",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b(?:set|export|alias|import|mod|if|else)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:true|false)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(:=)",
+        "captures": {
+          "1": "variable",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "(@?[A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(:)(?:[ \\t]|$)",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\$[A-Za-z_][A-Za-z0-9_]*|\\$\\{[A-Za-z_][A-Za-z0-9_:-]*\\}",
+        "token": "variable"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "==|!=|=~|:=|[+*=&|/!@?]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_-]*",
+        "token": "text"
+      },
+      {
+        "match": "[()\\[\\]{},:]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "bt_string": [
+      {
+        "match": "`",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\{\\{[^{}\\r\\n]+\\}\\}",
+        "token": "meta"
+      },
+      {
+        "match": "[^`{]+|\\{",
+        "token": "string"
+      }
+    ],
+    "tbt_string": [
+      {
+        "match": "```",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\{\\{[^{}\\r\\n]+\\}\\}",
+        "token": "meta"
+      },
+      {
+        "match": "[^`{]+|[`{]",
+        "token": "string"
+      }
+    ],
+    "tdq_string": [
+      {
+        "match": "\"\"\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "[^\"\\\\]+|[\"\\\\]",
+        "token": "string"
+      }
+    ],
+    "tsq_string": [
+      {
+        "match": "'''",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^']+|'",
+        "token": "string"
+      }
+    ]
+  },
+  "sample": "# Justfile tasks\nset dotenv-load := true\nexport RUST_LOG := \"info\"\n\napp_name := `basename \"$PWD\"`\nalias b := build\n\n[private]\ndefault:\n  @just --list\n\n[doc(\"Build release binary\")]\nbuild target=\"release\":\n  echo \"Building {{app_name}} ({{target}})\"\n  cargo build --{{target}}\n\n[unix]\nsummary:\n  #!/usr/bin/env bash\n  set -euo pipefail\n  echo \"Done\""
+}

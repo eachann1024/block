@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "block_comment": ["/*", "*/"],
+  "word_chars": "_$",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#!.*$",
+        "token": "meta"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "\"\"\"",
+        "token": "string",
+        "push": "tdq_string"
+      },
+      {
+        "match": "'''",
+        "token": "string",
+        "push": "tsq_string"
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "dq_string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "@[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "meta"
+      },
+      {
+        "match": "\\b(?:abstract|as|assert|break|case|catch|class|const|continue|def|default|do|else|enum|extends|final|finally|for|goto|if|implements|import|in|instanceof|interface|native|new|package|private|protected|public|return|static|strictfp|super|switch|synchronized|this|throw|throws|trait|transient|try|var|void|volatile|while)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:pipeline|agent|stages|stage|steps|post|environment|options|parameters|triggers|tools|when|parallel|matrix|script|always|success|failure|unstable|changed|cleanup|plugins|dependencies|repositories|buildscript|subprojects|allprojects|task|tasks|sourceSets|configurations|publishing|publications|implementation|api|testImplementation|runtimeOnly|compileOnly|annotationProcessor|classpath|mavenCentral|google|gradlePluginPortal|apply|sh|bat|echo|checkout|dir|withEnv|withCredentials|timeout|retry|sleep|error|input|stash|unstash|archiveArtifacts|junit)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:boolean|byte|char|double|float|int|long|short|String|Integer|Long|Double|Float|Boolean|Object|List|Map|Set|Closure|File|GString|BigDecimal|BigInteger|Pattern|Matcher|Exception|RuntimeException|Project|Task)\\b",
+        "token": "type"
+      },
+      {
+        "match": "\\b(?:true|false|null|any|none)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f_]+[LlGg]?\\b|\\b0[bB][01_]+[LlGg]?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9_]+)?[LlFfDdGg]?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "->|===|!==|<=>|==~|=~|==|!=|<=|>=|&&|\\|\\||\\?\\.|\\?:|\\*\\.|\\.\\.<|\\.\\.|<<|>>|\\+\\+|--|[+\\-*/%=<>!&|^~?:]",
+        "token": "operator"
+      },
+      {
+        "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+        "token": "type"
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[{}()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "dq_string": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\(?:[btnfr\"'\\\\$]|u[0-9A-Fa-f]{4})",
+        "token": "escape"
+      },
+      {
+        "match": "\\$\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\\$[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "variable"
+      },
+      {
+        "match": "[^\"\\\\$]+|\\\\|\\$",
+        "token": "string"
+      }
+    ],
+    "tdq_string": [
+      {
+        "match": "\"\"\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\(?:[btnfr\"'\\\\$]|u[0-9A-Fa-f]{4})",
+        "token": "escape"
+      },
+      {
+        "match": "\\$\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\\$[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "variable"
+      },
+      {
+        "match": "[^\"\\\\$]+|[\"$\\\\]",
+        "token": "string"
+      }
+    ],
+    "tsq_string": [
+      {
+        "match": "'''",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "[^'\\\\]+|['\\\\]",
+        "token": "string"
+      }
+    ],
+    "interp": [
+      {
+        "match": "\\}",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "interp"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[+\\-*/%=<>!&|?.:,()\\[\\]]",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "@Grab('org.apache.groovy:groovy-json:4.0.0')\nplugins {\n    id 'java'\n    id 'application'\n}\n\nrepositories {\n    mavenCentral()\n}\n\ndependencies {\n    implementation 'com.google.guava:guava:33.2.1-jre'\n}\n\ndef greet(String name) {\n    return \"Hello, ${name}!\"\n}\n\npipeline {\n    agent any\n    stages {\n        stage('Build') {\n            steps {\n                sh './gradlew build'\n            }\n        }\n    }\n}"
+}

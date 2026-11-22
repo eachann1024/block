@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["{{", "}}"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "###.*$",
+        "token": "heading"
+      },
+      {
+        "match": "#///.*$|#.*$|//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "(@[A-Za-z_][A-Za-z0-9_.-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "variable",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\\{\\{[A-Za-z0-9_.$-]+\\}\\}",
+        "token": "meta"
+      },
+      {
+        "match": "https?://[^\\s\"'{}]+",
+        "token": "link"
+      },
+      {
+        "match": "\\b(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE|GRAPHQL|GRPC|WEBSOCKET)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\bHTTP/(?:1\\.[01]|2(?:\\.0)?|3(?:\\.0)?)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "(\"(?:\\\\.|[^\"\\\\])*\")([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\])*'",
+        "token": "string"
+      },
+      {
+        "match": "([A-Za-z][A-Za-z0-9-]*)([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b(?:true|false|null)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[{}()\\[\\],:=?&]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "@baseUrl = https://api.example.com/v1\n@token = demo-secret-token\n\n### Create a new note\n#/// Creates a workspace note item\nPOST {{baseUrl}}/notes HTTP/1.1\nAuthorization: Bearer {{token}}\nContent-Type: application/json\n\n{\n  \"title\": \"Meeting Summary\",\n  \"pinned\": true,\n  \"priority\": 1\n}"
+}

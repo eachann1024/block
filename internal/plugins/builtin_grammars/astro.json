@@ -1,0 +1,827 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "block_comment": ["<!--", "-->"],
+  "word_chars": "_-$:",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["<", ">"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""],
+    ["'", "'"],
+    ["`", "`"]
+  ],
+  "initial_state": "doc_start",
+  "states": {
+    "doc_start": [
+      {
+        "match": "---[ \\t]*$",
+        "line_start": true,
+        "token": "meta",
+        "next": "frontmatter"
+      },
+      {
+        "match": "[ \\t]+$",
+        "line_start": true,
+        "token": "text"
+      },
+      {
+        "match": "\\A",
+        "next": "root"
+      }
+    ],
+    "root": [
+      {
+        "match": "<!--",
+        "token": "comment",
+        "push": "html_comment"
+      },
+      {
+        "match": "\\{/\\*",
+        "token": "comment",
+        "push": "jsx_comment"
+      },
+      {
+        "match": "(?i)(<)(script)(/>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "(?i)(<)(script)(>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "push": "script_body"
+      },
+      {
+        "match": "(?i)(<)(script)([ \\t]+|$)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "script_tag"
+      },
+      {
+        "match": "(?i)(<)(style)(/>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "(?i)(<)(style)(>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "push": "style_body"
+      },
+      {
+        "match": "(?i)(<)(style)([ \\t]+|$)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "style_tag"
+      },
+      {
+        "match": "(</?)([A-Z][A-Za-z0-9_.]*)",
+        "captures": {
+          "1": "punctuation",
+          "2": "type"
+        },
+        "push": "html_tag"
+      },
+      {
+        "match": "(</?)([a-z][A-Za-z0-9_-]*|Fragment)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag"
+        },
+        "push": "html_tag"
+      },
+      {
+        "match": "<>",
+        "token": "punctuation"
+      },
+      {
+        "match": "</>",
+        "token": "punctuation"
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "expr"
+      },
+      {
+        "match": "&[A-Za-z0-9#]+;",
+        "token": "escape"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "frontmatter": [
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "`",
+        "token": "string",
+        "push": "template_string"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/\\[)",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/\\[)",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "---[ \\t]*$",
+        "line_start": true,
+        "token": "meta",
+        "next": "root"
+      },
+      {
+        "match": "\\b(?:import|export|from|as|type|interface|const|let|var|function|async|await|return|if|else|for|of|in|while|do|switch|case|default|break|continue|try|catch|finally|throw|new|class|extends|implements|public|private|protected|readonly|static|typeof|keyof|infer|satisfies|declare|enum|namespace|void|delete|yield)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:string|number|boolean|bigint|symbol|object|any|unknown|never|Record|Partial|Required|Readonly|Pick|Omit|Promise|Array|Map|Set|Props|AstroComponentFactory|ImageMetadata)\\b",
+        "token": "type"
+      },
+      {
+        "match": "\\b(?:true|false|null|undefined|NaN|Infinity|Astro)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b0[xX][0-9A-Fa-f_]+n?\\b|\\b0[bB][01_]+n?\\b|\\b0[oO][0-7_]+n?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9_]+)?n?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_$][A-Za-z0-9_$]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "=>|===|!==|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\.\\.\\.|[+\\-*/%=<>!&|^~?:]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[{}()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "html_tag": [
+      {
+        "match": "/?>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "(?:client|class|set|define|is|transition):[A-Za-z0-9_-]+",
+        "token": "meta"
+      },
+      {
+        "match": "([A-Za-z_:][A-Za-z0-9_.:-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "expr"
+      },
+      {
+        "match": "[A-Za-z_:][A-Za-z0-9_.:-]*",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "expr": [
+      {
+        "match": "\\}",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "expr"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "`",
+        "token": "string",
+        "push": "template_string"
+      },
+      {
+        "match": "([=(,:;!&|?\\[][ \\t]*)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "([=(,:;!&|?\\[][ \\t]*)(/\\[)",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/\\[)",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "(</?)([A-Z][A-Za-z0-9_.]*)(/?>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "type",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "(</?)([a-z][A-Za-z0-9_-]*)(/?>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "\\b(?:const|let|var|function|async|await|return|if|else|for|of|in|typeof|instanceof|new|as|true|false|null|undefined)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_$][A-Za-z0-9_$]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "=>|===|!==|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\.\\.\\.|[+\\-*/%=<>!&|^~?:]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "script_tag": [
+      {
+        "match": "/>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": ">",
+        "token": "punctuation",
+        "next": "script_body"
+      },
+      {
+        "match": "(?:is|define):[A-Za-z0-9_-]+",
+        "token": "meta"
+      },
+      {
+        "match": "([A-Za-z_:][A-Za-z0-9_.:-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "\\{",
+        "token": "punctuation",
+        "push": "expr"
+      },
+      {
+        "match": "[A-Za-z_:][A-Za-z0-9_.:-]*",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "script_body": [
+      {
+        "match": "(?i)(</)(script)([ \\t]*>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "pop": true
+      },
+      {
+        "match": "(?i)//(?:[^<]|<(?:/(?:s(?:c(?:r(?:i(?:p(?:t[ \\t]*[^ \\t>]|[^t])|[^p])|[^i])|[^r])|[^c])|[^s])|[^/]))*(?:<(?:/(?:s(?:c(?:r(?:i(?:p(?:t[ \\t]*)?)?)?)?)?)?)?$)?",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "script_c_comment"
+      },
+      {
+        "match": "`",
+        "token": "string",
+        "push": "template_string"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "([=(,:;!&|?{\\[][ \\t]*)(/\\[)",
+        "captures": {
+          "1": "operator",
+          "2": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/(?:\\\\.|[^/*\\[\\\\\\r\\n]))",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex"
+      },
+      {
+        "match": "(\\b(?:return|typeof|void|delete|in|of|case|throw|yield|await)\\b)([ \\t]+)(/\\[)",
+        "captures": {
+          "1": "keyword",
+          "3": "regexp"
+        },
+        "push": "js_regex_class"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:import|export|from|as|const|let|var|function|async|await|return|if|else|for|of|in|while|switch|case|default|break|continue|try|catch|finally|throw|new|class|extends|typeof|instanceof)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:true|false|null|undefined)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_$][A-Za-z0-9_$]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "=>|===|!==|==|!=|<=|>=|&&|\\|\\||\\?\\?|[+\\-*/%=<>!&|^~?:]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_$][A-Za-z0-9_$]*",
+        "token": "variable"
+      },
+      {
+        "match": "[{}()\\[\\].,;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "<",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "style_tag": [
+      {
+        "match": "/>",
+        "token": "punctuation",
+        "pop": true
+      },
+      {
+        "match": ">",
+        "token": "punctuation",
+        "next": "style_body"
+      },
+      {
+        "match": "(?:is|define):[A-Za-z0-9_-]+",
+        "token": "meta"
+      },
+      {
+        "match": "([A-Za-z_:][A-Za-z0-9_.:-]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "attribute",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": "[A-Za-z_:][A-Za-z0-9_.:-]*",
+        "token": "attribute"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "style_body": [
+      {
+        "match": "(?i)(</)(style)([ \\t]*>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "pop": true
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "style_c_comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\\\r\\n])*(?:\"|$)",
+        "token": "string"
+      },
+      {
+        "match": "'(?:\\\\.|[^'\\\\\\r\\n])*(?:'|$)",
+        "token": "string"
+      },
+      {
+        "match": ":global\\b|@[A-Za-z-]+|!important\\b",
+        "token": "meta"
+      },
+      {
+        "match": "#[0-9A-Fa-f]{3,8}\\b",
+        "token": "constant"
+      },
+      {
+        "match": "([A-Za-z-]+)([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?(?:px|rem|em|vh|vw|%|s|ms|deg|fr)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "[.#][A-Za-z_-][A-Za-z0-9_-]*",
+        "token": "tag"
+      },
+      {
+        "match": "[{}()\\[\\]:;,]",
+        "token": "punctuation"
+      },
+      {
+        "match": "<",
+        "token": "operator"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "template_string": [
+      {
+        "match": "`",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\$\\{",
+        "token": "punctuation",
+        "push": "expr"
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "[^`\\\\$]+",
+        "token": "string"
+      },
+      {
+        "match": "\\$",
+        "token": "string"
+      }
+    ],
+    "html_comment": [
+      {
+        "match": "-->",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^-]+|-",
+        "token": "comment"
+      }
+    ],
+    "jsx_comment": [
+      {
+        "match": "\\*/\\}",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ],
+    "script_c_comment": [
+      {
+        "match": "(?i)(</)(script)([ \\t]*>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "next": "root"
+      },
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*<]+|[*<]",
+        "token": "comment"
+      }
+    ],
+    "style_c_comment": [
+      {
+        "match": "(?i)(</)(style)([ \\t]*>)",
+        "captures": {
+          "1": "punctuation",
+          "2": "tag",
+          "3": "punctuation"
+        },
+        "next": "root"
+      },
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*<]+|[*<]",
+        "token": "comment"
+      }
+    ],
+    "js_regex": [
+      {
+        "match": "\\A",
+        "line_start": true,
+        "pop": true
+      },
+      {
+        "match": "/[A-Za-z]*",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "regexp"
+      },
+      {
+        "match": "\\[$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\[",
+        "token": "regexp",
+        "next": "js_regex_class"
+      },
+      {
+        "match": "[^/\\[\\\\\\r\\n]+$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^/\\[\\\\\\r\\n]+",
+        "token": "regexp"
+      },
+      {
+        "match": "\\\\$",
+        "token": "regexp",
+        "pop": true
+      }
+    ],
+    "js_regex_class": [
+      {
+        "match": "\\A",
+        "line_start": true,
+        "pop": true
+      },
+      {
+        "match": "\\\\.$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "regexp"
+      },
+      {
+        "match": "\\]$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "\\]",
+        "token": "regexp",
+        "next": "js_regex"
+      },
+      {
+        "match": "[^\\]\\\\\\r\\n]+$",
+        "token": "regexp",
+        "pop": true
+      },
+      {
+        "match": "[^\\]\\\\\\r\\n]+",
+        "token": "regexp"
+      },
+      {
+        "match": "\\\\$",
+        "token": "regexp",
+        "pop": true
+      }
+    ]
+  },
+  "sample": "---\nimport Layout from '../layouts/Layout.astro';\nimport Card from '../components/Card.astro';\n\ninterface Props {\n  title: string;\n  items?: string[];\n}\n\nconst { title, items = ['Astro', 'Block'] } = Astro.props;\n---\n\n<!-- Component template -->\n<Layout title={title}>\n  <main class:list={['container', { active: items.length > 0 }]}>\n    <h1>{title}</h1>\n    {items.map((item) => <Card name={item} client:load />)}\n  </main>\n</Layout>\n\n<style>\n  .container {\n    padding: 1.5rem;\n    color: #1f2937;\n  }\n</style>"
+}

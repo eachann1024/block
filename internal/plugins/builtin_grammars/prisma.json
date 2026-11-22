@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "line_comment": "//",
+  "block_comment": ["/*", "*/"],
+  "word_chars": "_@",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "///.*$",
+        "token": "comment"
+      },
+      {
+        "match": "//.*$",
+        "token": "comment"
+      },
+      {
+        "match": "/\\*",
+        "token": "comment",
+        "push": "c_comment"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "\\b(?:datasource|generator|model|enum|type|view)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "\\b(?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes|Unsupported)\\b",
+        "token": "type"
+      },
+      {
+        "match": "@@[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "meta"
+      },
+      {
+        "match": "@[A-Za-z_][A-Za-z0-9_.]*",
+        "token": "attribute"
+      },
+      {
+        "match": "\\b(?:true|false|null|Cascade|Restrict|NoAction|SetNull|SetDefault|Asc|Desc)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(:)",
+        "captures": {
+          "1": "property",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(=)",
+        "captures": {
+          "1": "property",
+          "3": "operator"
+        }
+      },
+      {
+        "match": "-?[0-9]+(?:\\.[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+        "token": "type"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "[?=]",
+        "token": "operator"
+      },
+      {
+        "match": "[{}()\\[\\].,:]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "c_comment": [
+      {
+        "match": "\\*/",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^*]+|\\*",
+        "token": "comment"
+      }
+    ]
+  },
+  "sample": "/// Primary database connection\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\ngenerator client {\n  provider = \"prisma-client-js\"\n}\n\nenum Role {\n  USER\n  ADMIN\n}\n\nmodel User {\n  id        Int      @id @default(autoincrement())\n  email     String   @unique\n  role      Role     @default(USER)\n  posts     Post[]\n  createdAt DateTime @default(now()) @map(\"created_at\")\n\n  @@index([email])\n  @@map(\"users\")\n}"
+}

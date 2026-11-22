@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "word_chars": "_-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["(", ")"],
+    ["{", "}"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["\"", "\""],
+    ["'", "'"],
+    ["(", ")"]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "@(?:reboot|yearly|annually|monthly|weekly|daily|midnight|hourly)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_]*)([ \\t]*)(=)([ \\t]*)(.*)$",
+        "captures": {
+          "1": "variable",
+          "3": "operator",
+          "5": "string"
+        }
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\\\])*\"",
+        "token": "string"
+      },
+      {
+        "match": "'[^']*'",
+        "token": "string"
+      },
+      {
+        "match": "https?://[^\\s\"']+",
+        "token": "link"
+      },
+      {
+        "match": "\\$\\{[A-Za-z_][A-Za-z0-9_:-]*\\}|\\$[A-Za-z_][A-Za-z0-9_]*",
+        "token": "variable"
+      },
+      {
+        "match": "(?i)\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|sun|mon|tue|wed|thu|fri|sat)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\*/[0-9]+\\b|[0-9]+-[0-9]+(?:/[0-9]+)?\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\b[0-9]+\\b",
+        "token": "number"
+      },
+      {
+        "match": "\\*",
+        "token": "constant"
+      },
+      {
+        "match": "--?[A-Za-z0-9_-]+",
+        "token": "attribute"
+      },
+      {
+        "match": "(?:/[A-Za-z0-9._-]+)+/?",
+        "token": "string"
+      },
+      {
+        "match": "2>&1|1>&2|>>|&&|\\|\\||[><|;&/,\\-]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[()\\[\\]{}]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "# Scheduled maintenance tasks\nSHELL=/bin/bash\nPATH=/usr/local/bin:/usr/bin:/bin\nMAILTO=\"ops@example.com\"\n\n@reboot /usr/local/bin/init-cache.sh\n@daily /usr/local/bin/rotate-logs.sh --keep 14\n\n*/5 * * * * /usr/bin/curl -fsS https://health.example.com/ping >/dev/null 2>&1\n30 2 * * mon-fri /opt/backup/run.sh --target \"$HOME/backups\"\n0 0 1 jan,jul * /usr/local/bin/audit.py"
+}

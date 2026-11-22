@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "line_comment": "REM",
+  "word_chars": "_-",
+  "tab_size": 4,
+  "hard_tabs": false,
+  "brackets": [
+    ["(", ")"]
+  ],
+  "auto_close": [
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "(?i)\\bREM\\b.*$",
+        "token": "comment"
+      },
+      {
+        "match": "::.*$",
+        "token": "comment"
+      },
+      {
+        "match": ":[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "heading"
+      },
+      {
+        "match": "%~[fdpnxsatz]*(?:\\$PATH:)?[0-9*]|%%[A-Za-z0-9_]|%[A-Za-z_][A-Za-z0-9_]*%|![A-Za-z_][A-Za-z0-9_]*!|%[0-9*]",
+        "token": "variable"
+      },
+      {
+        "match": "\"(?:\\\\.|[^\"\\r\\n])*\"",
+        "token": "string"
+      },
+      {
+        "match": "https?://[^\\s\"']+",
+        "token": "link"
+      },
+      {
+        "match": "(?i)\\b(?:if|else|for|in|do|goto|call|exit|setlocal|endlocal|enabledelayedexpansion|disabledelayedexpansion|not|exist|defined|errorlevel|cmdextversion|equ|neq|lss|leq|gtr|geq|on|off)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "(?i)\\b(?:echo|set|cd|chdir|dir|copy|xcopy|robocopy|move|del|erase|ren|rename|md|mkdir|rd|rmdir|type|more|find|findstr|sort|cls|pause|title|color|prompt|path|pushd|popd|shift|start|timeout|tasklist|taskkill|where|whoami|ver|vol|assoc|ftype|mklink|attrib|icacls|reg|sc|net|ping|curl)\\b",
+        "token": "function"
+      },
+      {
+        "match": "(?i)\\b(?:nul|con|prn|aux|true|false)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\^.",
+        "token": "escape"
+      },
+      {
+        "match": "/[A-Za-z0-9?_-]+",
+        "token": "attribute"
+      },
+      {
+        "match": "\\b[0-9]+\\b",
+        "token": "number"
+      },
+      {
+        "match": "2>&1|1>&2|>>|<<|&&|\\|\\||[@><|=]",
+        "token": "operator"
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_.-]*",
+        "token": "text"
+      },
+      {
+        "match": "[(),;]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ]
+  },
+  "sample": "@echo off\nsetlocal enabledelayedexpansion\nREM Build and package Windows release\n:: Set output directory\n\nset \"APP_NAME=block\"\nset \"OUT_DIR=%~dp0dist\"\n\nif not exist \"%OUT_DIR%\" mkdir \"%OUT_DIR%\"\nfor %%f in (src\\*.go) do (\n    echo Processing %%f\n)\n\ncall :verify\nif errorlevel 1 exit /b 1\ngoto :eof\n\n:verify\necho %APP_NAME% ready >nul 2>&1"
+}

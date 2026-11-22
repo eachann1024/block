@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "line_comment": "#",
+  "block_comment": ["#[[", "]]"],
+  "word_chars": "_-",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "brackets": [
+    ["(", ")"],
+    ["{", "}"],
+    ["[", "]"]
+  ],
+  "auto_close": [
+    ["(", ")"],
+    ["{", "}"],
+    ["[", "]"],
+    ["\"", "\""]
+  ],
+  "initial_state": "root",
+  "states": {
+    "root": [
+      {
+        "match": "#\\[\\[",
+        "token": "comment",
+        "push": "bracket_comment"
+      },
+      {
+        "match": "#\\[=\\[",
+        "token": "comment",
+        "push": "bracket_comment_eq"
+      },
+      {
+        "match": "#\\[==\\[",
+        "token": "comment",
+        "push": "bracket_comment_eq2"
+      },
+      {
+        "match": "#.*$",
+        "token": "comment"
+      },
+      {
+        "match": "\\[\\[",
+        "token": "string",
+        "push": "bracket_str"
+      },
+      {
+        "match": "\\[=\\[",
+        "token": "string",
+        "push": "bracket_str_eq"
+      },
+      {
+        "match": "\\[==\\[",
+        "token": "string",
+        "push": "bracket_str_eq2"
+      },
+      {
+        "match": "\"",
+        "token": "string",
+        "push": "dq_string"
+      },
+      {
+        "match": "\\$ENV\\{[A-Za-z0-9_./+-]{1,128}\\}|\\$CACHE\\{[A-Za-z0-9_./+-]{1,128}\\}|\\$\\{[A-Za-z0-9_./+-]{1,128}\\}",
+        "token": "variable"
+      },
+      {
+        "match": "\\$<[^<>$\\r\\n]{1,128}>",
+        "token": "meta"
+      },
+      {
+        "match": "\\$<[A-Za-z0-9_:-]+:|\\$<",
+        "token": "meta"
+      },
+      {
+        "match": "(?i)\\b(?:if|elseif|else|endif|foreach|endforeach|while|endwhile|function|endfunction|macro|endmacro|return|break|continue|block|endblock)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "(?i)\\b(?:cmake_minimum_required|cmake_policy|project|add_executable|add_library|add_subdirectory|add_custom_command|add_custom_target|add_dependencies|add_compile_definitions|add_compile_options|add_link_options|add_definitions|add_test|target_link_libraries|target_include_directories|target_compile_definitions|target_compile_options|target_compile_features|target_sources|target_link_options|target_precompile_headers|set|unset|option|list|string|math|file|configure_file|find_package|find_library|find_path|find_program|find_file|include|include_directories|link_directories|link_libraries|install|export|enable_testing|ctest_test|message|set_property|get_property|set_target_properties|get_target_property|set_source_files_properties|define_property|execute_process|FetchContent_Declare|FetchContent_MakeAvailable|ExternalProject_Add|pkg_check_modules|try_compile|try_run)\\b",
+        "token": "function"
+      },
+      {
+        "match": "\\b(?:PUBLIC|PRIVATE|INTERFACE|SHARED|STATIC|MODULE|OBJECT|IMPORTED|ALIAS|GLOBAL|REQUIRED|COMPONENTS|OPTIONAL_COMPONENTS|CONFIG|QUIET|EXACT|PATHS|HINTS|NAMES|TARGET|TARGETS|FILES|DIRECTORY|PROGRAMS|DESTINATION|ARCHIVE|LIBRARY|RUNTIME|INCLUDES|COMMAND|ARGS|WORKING_DIRECTORY|DEPENDS|OUTPUT|COMMENT|USES_TERMINUS|VERBATIM|APPEND|PREPEND|INSERT|REMOVE_ITEM|REMOVE_AT|LENGTH|GET|FIND|JOIN|SORT|MATCH|REGEX|REPLACE|STRINGS|READ|WRITE|GLOB|GLOB_RECURSE|MAKE_DIRECTORY|COPY|INSTALL|FATAL_ERROR|SEND_ERROR|WARNING|AUTHOR_WARNING|STATUS|VERBOSE|DEBUG|TRACE|AND|OR|NOT|EQUAL|LESS|GREATER|STRLESS|STRGREATER|STREQUAL|VERSION_LESS|VERSION_GREATER|VERSION_EQUAL|MATCHES|DEFINED|EXISTS|IS_DIRECTORY|IS_ABSOLUTE|POLICY|PARENT_SCOPE|CACHE|FORCE|INTERNAL|STRING|BOOL|FILEPATH|PATH|IN|LISTS|ITEMS|RANGE|ZIP_LISTS|PROPERTIES|VERSION|SOVERSION|LANGUAGES|CXX|C|CUDA|ASM)\\b",
+        "token": "keyword"
+      },
+      {
+        "match": "(?i)\\b(?:ON|OFF|TRUE|FALSE|YES|NO|IGNORE|NOTFOUND)\\b",
+        "token": "constant"
+      },
+      {
+        "match": "\\b[0-9]+(?:\\.[0-9]+)*\\b",
+        "token": "number"
+      },
+      {
+        "match": "([A-Za-z_][A-Za-z0-9_-]*)([ \\t]*)(\\()",
+        "captures": {
+          "1": "function",
+          "3": "punctuation"
+        }
+      },
+      {
+        "match": "[A-Za-z_][A-Za-z0-9_./+-]*",
+        "token": "text"
+      },
+      {
+        "match": "[(){}\\[\\];,]",
+        "token": "punctuation"
+      },
+      {
+        "match": "[ \\t]+",
+        "token": "text"
+      }
+    ],
+    "bracket_comment": [
+      {
+        "match": "\\]\\]",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "comment"
+      }
+    ],
+    "bracket_comment_eq": [
+      {
+        "match": "\\]=\\]",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "comment"
+      }
+    ],
+    "bracket_comment_eq2": [
+      {
+        "match": "\\]==\\]",
+        "token": "comment",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "comment"
+      }
+    ],
+    "bracket_str": [
+      {
+        "match": "\\]\\]",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "string"
+      }
+    ],
+    "bracket_str_eq": [
+      {
+        "match": "\\]=\\]",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "string"
+      }
+    ],
+    "bracket_str_eq2": [
+      {
+        "match": "\\]==\\]",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "[^\\]]+|\\]",
+        "token": "string"
+      }
+    ],
+    "dq_string": [
+      {
+        "match": "\"",
+        "token": "string",
+        "pop": true
+      },
+      {
+        "match": "\\\\.",
+        "token": "escape"
+      },
+      {
+        "match": "\\$ENV\\{[A-Za-z0-9_./+-]{1,128}\\}|\\$CACHE\\{[A-Za-z0-9_./+-]{1,128}\\}|\\$\\{[A-Za-z0-9_./+-]{1,128}\\}",
+        "token": "variable"
+      },
+      {
+        "match": "\\$<[^<>$\\r\\n]{1,128}>",
+        "token": "meta"
+      },
+      {
+        "match": "\\$<[A-Za-z0-9_:-]+:|\\$<",
+        "token": "meta"
+      },
+      {
+        "match": "[^\"\\\\$]+|[\\\\$]",
+        "token": "string"
+      }
+    ]
+  },
+  "sample": "#[[ Project configuration ]]\ncmake_minimum_required(VERSION 3.28)\nproject(block_engine VERSION 1.2.0 LANGUAGES CXX)\n\nset(CMAKE_CXX_STANDARD 20)\noption(BUILD_TESTS \"Enable unit tests\" ON)\n\nfind_package(OpenSSL REQUIRED)\n\nadd_library(core STATIC src/core.cpp)\ntarget_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)\ntarget_link_libraries(core PRIVATE OpenSSL::SSL $<$<BOOL:${BUILD_TESTS}>:GTest::gtest>)"
+}
