@@ -4,6 +4,7 @@ import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadFileAssociations } from "./file-associations.mjs";
 import { resolveLocalBuildVersion } from "./local-version.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -31,75 +32,81 @@ export function logIssue(level, msg) {
   } catch {}
 }
 
-export const markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext", "mdx"];
-
-const plistKeys = [
-  ["CFBundleName", appName],
-  ["CFBundleDisplayName", "Block"],
-  ["CFBundleIdentifier", bundleId],
-  ["CFBundleExecutable", "block"],
-  ["CFBundlePackageType", "APPL"],
-  ["CFBundleIconFile", "AppIcon"],
-  ["CFBundleVersion", "1.0.0"],
-  ["CFBundleShortVersionString", "1.0.0"],
-  ["LSMinimumSystemVersion", "12.0"],
-  ["NSHighResolutionCapable", true],
-  ["NSHumanReadableCopyright", "Copyright © 2026 Block Contributors"],
-  ["NSPrincipalClass", "NSApplication"],
-  ["NSSupportsAutomaticGraphicsSwitching", true],
-  [
-    "CFBundleURLTypes",
+function buildPlistKeys(version, { markdownExtensions, documentExtensions }) {
+  const documentTypes = [
+    {
+      CFBundleTypeName: "Markdown Document",
+      CFBundleTypeIconFile: "DocumentIcon.icns",
+      CFBundleTypeRole: "Editor",
+      LSHandlerRank: "Owner",
+      CFBundleTypeExtensions: markdownExtensions,
+      CFBundleTypeMIMETypes: ["text/markdown", "text/x-markdown"],
+      CFBundleTypeOSTypes: ["TEXT", "utxt", "TUTX", "****"],
+    },
+    {
+      CFBundleTypeName: "Markdown Content",
+      CFBundleTypeIconFile: "DocumentIcon.icns",
+      CFBundleTypeRole: "Editor",
+      LSHandlerRank: "Default",
+      LSItemContentTypes: ["net.daringfireball.markdown", "public.markdown"],
+    },
+    {
+      CFBundleTypeName: "Plain Text Document",
+      CFBundleTypeIconFile: "DocumentIcon.icns",
+      CFBundleTypeRole: "Editor",
+      LSHandlerRank: "Alternate",
+      LSItemContentTypes: ["public.plain-text"],
+    },
+  ];
+  if (documentExtensions.length > 0) {
+    documentTypes.push({
+      CFBundleTypeName: "Block Code and Config Document",
+      CFBundleTypeRole: "Editor",
+      LSHandlerRank: "Alternate",
+      CFBundleTypeExtensions: documentExtensions,
+    });
+  }
+  return [
+    ["CFBundleName", appName],
+    ["CFBundleDisplayName", "Block"],
+    ["CFBundleIdentifier", bundleId],
+    ["CFBundleExecutable", "block"],
+    ["CFBundlePackageType", "APPL"],
+    ["CFBundleIconFile", "AppIcon"],
+    ["CFBundleVersion", version],
+    ["CFBundleShortVersionString", version],
+    ["LSMinimumSystemVersion", "12.0"],
+    ["NSHighResolutionCapable", true],
+    ["NSHumanReadableCopyright", "Copyright © 2026 Block Contributors"],
+    ["NSPrincipalClass", "NSApplication"],
+    ["NSSupportsAutomaticGraphicsSwitching", true],
     [
-      {
-        CFBundleURLName: bundleId,
-        CFBundleURLSchemes: ["block", "blockmd"],
-      },
-    ],
-  ],
-  [
-    "CFBundleDocumentTypes",
-    [
-      {
-        CFBundleTypeName: "Markdown Document",
-        CFBundleTypeIconFile: "DocumentIcon.icns",
-        CFBundleTypeRole: "Editor",
-        LSHandlerRank: "Owner",
-        CFBundleTypeExtensions: markdownExtensions,
-        CFBundleTypeMIMETypes: ["text/markdown", "text/x-markdown"],
-        CFBundleTypeOSTypes: ["TEXT", "utxt", "TUTX", "****"],
-      },
-      {
-        CFBundleTypeName: "Markdown Content",
-        CFBundleTypeIconFile: "DocumentIcon.icns",
-        CFBundleTypeRole: "Editor",
-        LSHandlerRank: "Default",
-        LSItemContentTypes: ["net.daringfireball.markdown", "public.markdown"],
-      },
-      {
-        CFBundleTypeName: "Plain Text Document",
-        CFBundleTypeIconFile: "DocumentIcon.icns",
-        CFBundleTypeRole: "Editor",
-        LSHandlerRank: "Alternate",
-        LSItemContentTypes: ["public.plain-text"],
-      },
-    ],
-  ],
-  [
-    "UTImportedTypeDeclarations",
-    [
-      {
-        UTTypeIdentifier: "net.daringfireball.markdown",
-        UTTypeDescription: "Markdown Document",
-        UTTypeIconFile: "DocumentIcon.icns",
-        UTTypeConformsTo: ["public.utf8-plain-text", "public.plain-text", "public.text"],
-        UTTypeTagSpecification: {
-          "public.filename-extension": markdownExtensions,
-          "public.mime-type": ["text/markdown", "text/x-markdown"],
+      "CFBundleURLTypes",
+      [
+        {
+          CFBundleURLName: bundleId,
+          CFBundleURLSchemes: ["block", "blockmd"],
         },
-      },
+      ],
     ],
-  ],
-];
+    ["CFBundleDocumentTypes", documentTypes],
+    [
+      "UTImportedTypeDeclarations",
+      [
+        {
+          UTTypeIdentifier: "net.daringfireball.markdown",
+          UTTypeDescription: "Markdown Document",
+          UTTypeIconFile: "DocumentIcon.icns",
+          UTTypeConformsTo: ["public.utf8-plain-text", "public.plain-text", "public.text"],
+          UTTypeTagSpecification: {
+            "public.filename-extension": markdownExtensions,
+            "public.mime-type": ["text/markdown", "text/x-markdown"],
+          },
+        },
+      ],
+    ],
+  ];
+}
 
 export function readAppVersion(root = repoRoot) {
   try {
@@ -118,11 +125,18 @@ export function buildVersion(root = repoRoot) {
 }
 
 export function plist(version = buildVersion()) {
-  const body = plistKeys
-    .map(([key, value]) => [key, key === "CFBundleShortVersionString" || key === "CFBundleVersion" ? version : value])
+  const assoc = loadFileAssociations(repoRoot);
+  const body = buildPlistKeys(version, assoc)
     .map(([key, value]) => `  <key>${key}</key>\n${tag(value, "  ")}`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${body}\n</dict>\n</plist>\n`;
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 function tag(value, indent = "") {
@@ -134,11 +148,11 @@ function tag(value, indent = "") {
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value)
-      .map(([k, v]) => `${indent}  <key>${k}</key>\n${tag(v, `${indent}  `)}`)
+      .map(([k, v]) => `${indent}  <key>${escapeXml(k)}</key>\n${tag(v, `${indent}  `)}`)
       .join("\n");
     return `${indent}<dict>\n${entries}\n${indent}</dict>`;
   }
-  return `${indent}<string>${value}</string>`;
+  return `${indent}<string>${escapeXml(value)}</string>`;
 }
 
 export function run(command, args, options = {}) {

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { renderWindowsNsisFileAssociations } from "../file-associations.mjs";
 import { installerFor } from "./allowed-assets.mjs";
 import { canReuseReleaseBinary, goRelease, releaseBinaryPath, run } from "./go-release.mjs";
 import { applyReleasePlanVersion, assertValidWindowsPEVersion, readPackageVersion, ROOT } from "./select-release.mjs";
@@ -23,10 +25,16 @@ export async function packageWindows() {
   assert.ok(existsSync(binary), `Release binary missing at ${binary}`);
   mkdirSync(RELEASE_DIR, { recursive: true });
   const outfile = join(RELEASE_DIR, SETUP_NAME);
-  const script = resolve(ROOT, "scripts/release/block.nsi");
-  // `File` looks beside the .nsi, and a path containing "/" is parsed as a switch.
-  const staged = join(dirname(script), "block.exe");
-  copyFileSync(binary, staged);
+  const srcScript = resolve(ROOT, "scripts/release/block.nsi");
+  // Stage script, binary, generated .nsh, and installer output in an isolated
+  // per-run temp directory so concurrent packaging runs never clobber each other.
+  const workDir = mkdtempSync(join(tmpdir(), "block-nsis-"));
+  const workScript = join(workDir, "block.nsi");
+  const staged = join(workDir, "block.exe");
+  const assocNshName = "block-fileassoc.nsh";
+  const assocNshPath = join(workDir, assocNshName);
+  const stagedOutfile = join(workDir, SETUP_NAME);
+  const publishTmp = join(RELEASE_DIR, `.${SETUP_NAME}.tmp-${process.pid}-${Date.now()}`);
   const makensis = [
     process.env.MAKENSIS,
     process.platform === "win32" ? "C:\\Program Files (x86)\\NSIS\\makensis.exe" : null,
@@ -34,14 +42,22 @@ export async function packageWindows() {
   ].find((path) => path && existsSync(path)) || "makensis";
   const defineFlag = process.platform === "win32" ? "/D" : "-D";
   try {
+    copyFileSync(srcScript, workScript);
+    writeFileSync(assocNshPath, renderWindowsNsisFileAssociations(ROOT), "utf8");
+    copyFileSync(binary, staged);
     run(makensis, [
       `${defineFlag}VERSION=${version}`,
-      `${defineFlag}OUTFILE=${outfile.replaceAll("\\", "/")}`,
+      `${defineFlag}OUTFILE=${stagedOutfile.replaceAll("\\", "/")}`,
       `${defineFlag}BINARY=block.exe`,
-      script,
+      `${defineFlag}ASSOC_NSH=${assocNshName}`,
+      workScript,
     ]);
+    assert.ok(existsSync(stagedOutfile), `Failed to create ${SETUP_NAME}`);
+    copyFileSync(stagedOutfile, publishTmp);
+    renameSync(publishTmp, outfile);
   } finally {
-    rmSync(staged, { force: true });
+    rmSync(publishTmp, { force: true });
+    rmSync(workDir, { recursive: true, force: true });
   }
   assert.ok(existsSync(outfile), `Failed to create ${SETUP_NAME}`);
   console.log(`Packaged Block v${version}:`);
