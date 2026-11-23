@@ -1,0 +1,28 @@
+# Block 文档中心
+
+> Block（https://block.cooool.top）是一款面向 macOS、Windows 与 Linux 的免费开源（Apache 2.0）本地优先 Markdown 块笔记软件。本站点提供 Block 的插件开发规范、清单与权限模型、JSON-RPC 2.0 协议、宿主界面扩展、声明式语言扩展及 AI 全量单文件指南。
+
+## 文档中心
+
+- [文档中心首页](https://docs.block.cooool.top/): Block 文档总入口、核心规范与插件开发章节导航
+
+## 插件开发章节
+
+- [1. 架构与硬边界](https://docs.block.cooool.top/plugins/): 独立进程模型、超时与体积上限、设置页挂载、商店分类与信任等级、强制校验规则
+- [2. 清单与权限](https://docs.block.cooool.top/plugins/manifest): 目录结构、`manifest.json` 字段约束、26 项权限与 `permission_reasons` 自定义缘由
+- [3. 协议、UI 与骨架](https://docs.block.cooool.top/plugins/protocol-and-ui): 双向 JSON-RPC 2.0、`host.*` 方法、15 种 `UIPage` 控件与 Python 标准库骨架
+- [4. 检查与上架](https://docs.block.cooool.top/plugins/check-and-store): `block-plugin-check` 本地协议检查、三层双语门禁与 `blockmd-plugin` 商店自动采集
+- [5. 宿主界面扩展](https://docs.block.cooool.top/plugins/ui-contributions): 顶栏按钮、内置设置分区、命令菜单、侧边面板、状态栏、弹窗与编辑器/外观宿主方法
+- [6. 语言扩展](https://docs.block.cooool.top/plugins/languages): 零子进程、零权限声明式语法高亮扩展（`contributes.languages` + `grammars/*.json`）
+
+## AI 全量单文件规范
+
+- [plugin-dev-for-ai.md](https://docs.block.cooool.top/plugin-dev-for-ai.md): 由 `docs/plugins/*.md` 自动拼装生成的自包含完整插件开发规范，适合直接交给 AI 工具从零构建 Block 原生插件
+
+## 官网与 Agent 入口
+
+- [Block 官网](https://block.cooool.top/): 产品介绍、对比矩阵、扩展生态与全平台下载入口
+- [官网 llms.txt](https://block.cooool.top/llms.txt): 官网产品概览与核心特性摘要
+- [官网 llms-full.txt](https://block.cooool.top/llms-full.txt): 官网完整产品上下文与 FAQ
+- [最新版本接口 (latest.json)](https://block.cooool.top/api/latest.json): 最新版本号与各平台安装包下载元数据
+- [GitHub 仓库](https://github.com/eachann1024/block): Block 桌面端源码、文档源与 Release 发布页
