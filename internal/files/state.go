@@ -168,6 +168,13 @@ func normalizeState(st *model.AppState) {
 		}
 		st.PinnedPluginButtons = cleanPinned
 	}
+
+	if st.BrandDeco.Motion != "" {
+		if st.BrandDeco.Density == "" && st.BrandDeco.Motion == model.BrandDecoMotionCalm {
+			st.BrandDeco.Density = model.BrandDecoDensityCalm
+		}
+		st.BrandDeco.Motion = ""
+	}
 }
 
 func loadStateLocked(path string) (model.AppState, error) {

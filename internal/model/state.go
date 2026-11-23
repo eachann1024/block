@@ -222,7 +222,7 @@ const (
 )
 
 // BrandDecoMotion is the legacy combined motion tier. It is only read as a fallback when
-// Density and Tempo are both unset, so states saved by older builds keep their meaning.
+// Density is unset, so states saved by older builds keep their density preference.
 type BrandDecoMotion string
 
 const (
@@ -231,7 +231,7 @@ const (
 	BrandDecoMotionStill BrandDecoMotion = "still"
 )
 
-// BrandDecoDensity controls how many scene elements are drawn; it never changes their speed.
+// BrandDecoDensity controls how many scene elements are drawn; animation tempo is always leisurely.
 type BrandDecoDensity string
 
 const (
@@ -240,23 +240,12 @@ const (
 	BrandDecoDensityMinimal BrandDecoDensity = "minimal"
 )
 
-// BrandDecoTempo controls how fast the scene animates; it never changes what is drawn.
-type BrandDecoTempo string
-
-const (
-	BrandDecoTempoLeisurely BrandDecoTempo = ""
-	BrandDecoTempoSlow      BrandDecoTempo = "slow"
-	BrandDecoTempoBrisk     BrandDecoTempo = "brisk"
-	BrandDecoTempoStill     BrandDecoTempo = "still"
-)
-
 // BrandDeco stores the window brand decoration preferences; its zero value is the default
 // (scene follows the time of day, all elements, leisurely motion, sun/moon, cat and logo shown).
 type BrandDeco struct {
 	Mode     BrandDecoMode    `json:"mode,omitempty"`
 	Motion   BrandDecoMotion  `json:"motion,omitempty"`
 	Density  BrandDecoDensity `json:"density,omitempty"`
-	Tempo    BrandDecoTempo   `json:"tempo,omitempty"`
 	PinLight string           `json:"pin_light,omitempty"`
 	PinDark  string           `json:"pin_dark,omitempty"`
 	HideOrb  bool             `json:"hide_orb,omitempty"`
@@ -266,18 +255,10 @@ type BrandDeco struct {
 
 // EffectiveDensity resolves the element density, honoring the legacy Motion value.
 func (d BrandDeco) EffectiveDensity() BrandDecoDensity {
-	if d.Density == "" && d.Tempo == "" && d.Motion == BrandDecoMotionCalm {
+	if d.Density == "" && d.Motion == BrandDecoMotionCalm {
 		return BrandDecoDensityCalm
 	}
 	return d.Density
-}
-
-// EffectiveTempo resolves the animation tempo, honoring the legacy Motion value.
-func (d BrandDeco) EffectiveTempo() BrandDecoTempo {
-	if d.Density == "" && d.Tempo == "" && d.Motion == BrandDecoMotionStill {
-		return BrandDecoTempoStill
-	}
-	return d.Tempo
 }
 
 func DefaultAppState(defaultLang LanguageMode) AppState {

@@ -1046,8 +1046,7 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				}
 			})
 
-			// Density decides how much is drawn and tempo how fast it moves; the two never mix.
-			density, tempo := st.BrandDeco.EffectiveDensity(), st.BrandDeco.EffectiveTempo()
+			density := st.BrandDeco.EffectiveDensity()
 			decoOn := st.BrandDeco.Mode != model.BrandDecoOff
 			decoVal := "rich"
 			switch {
@@ -1057,19 +1056,6 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 				decoVal = "minimal"
 			case density == model.BrandDecoDensityCalm:
 				decoVal = "calm"
-			}
-			tempoVal := "leisurely"
-			switch tempo {
-			case model.BrandDecoTempoBrisk:
-				tempoVal = "brisk"
-			}
-			// Writing either row stores both values explicitly and retires the legacy combined tier.
-			saveDeco := func(apply func(d *model.BrandDeco)) {
-				m.mutateState(func(s *model.AppState) {
-					s.BrandDeco.Density, s.BrandDeco.Tempo = density, tempo
-					s.BrandDeco.Motion = model.BrandDecoMotionRich
-					apply(&s.BrandDeco)
-				})
 			}
 			decoVals := []string{"off", "minimal", "calm", "rich"}
 			decoIdx := slices.Index(decoVals, decoVal)
@@ -1081,45 +1067,27 @@ func (m *Manager) renderSettingsAppearanceTab(c *ui.Context) {
 					{ID: "settings-brand-deco-rich", Label: theme.Tr("丰富", "Rich")},
 				}) {
 					decoVal = decoVals[decoIdx]
-					saveDeco(func(d *model.BrandDeco) {
+					m.mutateState(func(s *model.AppState) {
+						s.BrandDeco.Density = density
+						s.BrandDeco.Motion = model.BrandDecoMotionRich
 						if decoVal == "off" {
-							d.Mode = model.BrandDecoOff
+							s.BrandDeco.Mode = model.BrandDecoOff
 							return
 						}
-						if d.Mode == model.BrandDecoOff {
-							d.Mode = model.BrandDecoByTime
+						if s.BrandDeco.Mode == model.BrandDecoOff {
+							s.BrandDeco.Mode = model.BrandDecoByTime
 						}
 						switch decoVal {
 						case "minimal":
-							d.Density = model.BrandDecoDensityMinimal
+							s.BrandDeco.Density = model.BrandDecoDensityMinimal
 						case "calm":
-							d.Density = model.BrandDecoDensityCalm
+							s.BrandDeco.Density = model.BrandDecoDensityCalm
 						default:
-							d.Density = model.BrandDecoDensityRich
+							s.BrandDeco.Density = model.BrandDecoDensityRich
 						}
 					})
 				}
 			})
-			if decoOn {
-				tempoVals := []string{"leisurely", "brisk"}
-				tempoIdx := slices.Index(tempoVals, tempoVal)
-				internalui.SettingsRow(c, theme.Tr("动画速度", "Animation Speed"), func() {
-					if internalui.SettingsSegmented(c, "settings-brand-tempo-seg", &tempoIdx, []internalui.SegmentOption{
-						{ID: "settings-brand-tempo-leisurely", Label: theme.Tr("悠闲", "Leisurely")},
-						{ID: "settings-brand-tempo-brisk", Label: theme.Tr("轻快", "Brisk")},
-					}) {
-						tempoVal = tempoVals[tempoIdx]
-						saveDeco(func(d *model.BrandDeco) {
-							switch tempoVal {
-							case "brisk":
-								d.Tempo = model.BrandDecoTempoBrisk
-							default:
-								d.Tempo = model.BrandDecoTempoLeisurely
-							}
-						})
-					}
-				})
-			}
 		})
 
 		// Card 2: Editor Typography & Fonts (app_settings_tabs.rs:67-70).

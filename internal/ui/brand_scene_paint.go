@@ -83,7 +83,7 @@ func PaintBrandSceneBand(el ui.Element, id BrandSceneID, ground ui.Color, opts B
 		}
 		targetRate := float32(0)
 		if !reduced {
-			targetRate = opts.Motion.Tempo.rate()
+			targetRate = brandSceneLeisurelyRate
 		}
 		targetM := float32(0)
 		if targetRate > 0 {
