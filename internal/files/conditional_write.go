@@ -851,3 +851,404 @@ func WriteNoteConditionalFingerprint(path, content string, expected int64) (int6
 	}
 	return fingerprintBytes(data), nil
 }
+
+// ReadNoteInRoot reads a regular Markdown note strictly confined inside confineRoot
+// via os.Root + O_NONBLOCK|O_NOFOLLOW, verifying both the root directory identity
+// (expectedRootInfo) and target file identity (expectedInfo).
+func ReadNoteInRoot(confineRoot, confineRel string, expectedRootInfo, expectedInfo os.FileInfo) (string, int64, error) {
+	if strings.TrimSpace(confineRoot) == "" {
+		return "", 0, errors.New(theme.Tr("无效的受限目录", "Invalid confined directory"))
+	}
+	cleanRel := filepath.Clean(confineRel)
+	if cleanRel == "." || !filepath.IsLocal(cleanRel) {
+		return "", 0, errors.New(theme.Tr("目标路径超出允许范围", "Target path escapes allowed directory"))
+	}
+	root, err := os.OpenRoot(confineRoot)
+	if err != nil {
+		return "", 0, err
+	}
+	defer root.Close()
+
+	if expectedRootInfo != nil {
+		rInfo, _, rErr := RootDirIdentityToken(root)
+		if rErr != nil || !os.SameFile(rInfo, expectedRootInfo) {
+			return "", 0, errors.New(theme.Tr("受限目录身份已变化", "Confined root directory identity changed"))
+		}
+	}
+	if err := verifyNoSymlinkPathInRoot(root, cleanRel); err != nil {
+		return "", 0, err
+	}
+
+	f, info, err := OpenRootRegularNonBlockNoFollow(root, cleanRel)
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if expectedInfo != nil && !os.SameFile(info, expectedInfo) {
+		return "", 0, errors.New(theme.Tr("目标文件身份已变化", "Target file identity changed"))
+	}
+	if info.Size() > TextLimit {
+		return "", 0, errors.New(theme.Tr("文件超过 5 MB 大小上限", "File exceeds 5 MB size limit"))
+	}
+	data, err := io.ReadAll(io.LimitReader(f, TextLimit+1))
+	if err != nil {
+		return "", 0, err
+	}
+	if int64(len(data)) > TextLimit {
+		return "", 0, errors.New(theme.Tr("文件超过 5 MB 大小上限", "File exceeds 5 MB size limit"))
+	}
+	return string(data), fingerprintBytes(data), nil
+}
+
+// ReadNoteChecked reads a regular Markdown note without following a leaf symlink,
+// verifying that the opened descriptor still matches expectedInfo.
+func ReadNoteChecked(path string, expectedInfo os.FileInfo) (string, int64, error) {
+	f, info, err := OpenRegularNonBlockNoFollow(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if expectedInfo != nil && !os.SameFile(info, expectedInfo) {
+		return "", 0, errors.New(theme.Tr("目标文件身份已变化", "Target file identity changed"))
+	}
+	if info.Size() > TextLimit {
+		return "", 0, errors.New(theme.Tr("文件超过 5 MB 大小上限", "File exceeds 5 MB size limit"))
+	}
+	data, err := io.ReadAll(io.LimitReader(f, TextLimit+1))
+	if err != nil {
+		return "", 0, err
+	}
+	if int64(len(data)) > TextLimit {
+		return "", 0, errors.New(theme.Tr("文件超过 5 MB 大小上限", "File exceeds 5 MB size limit"))
+	}
+	return string(data), fingerprintBytes(data), nil
+}
+
+// WriteNoteConditionalFingerprintInRoot atomically writes content to confineRel strictly
+// inside confineRoot via os.Root, refusing symlinks and aborting if either the confined
+// root directory identity, target file's inode identity, or content fingerprint changed.
+func WriteNoteConditionalFingerprintInRoot(confineRoot, confineRel, content string, expected int64, expectedRootInfo, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+	return WriteBytesConditionalFingerprintInRoot(confineRoot, confineRel, []byte(content), expected, expectedRootInfo, expectedInfo)
+}
+
+// WriteNoteConditionalFingerprintChecked atomically writes content to path without
+// following a final-component symlink, aborting if either the target file's inode
+// identity (expectedInfo) or content fingerprint (expected) changed.
+func WriteNoteConditionalFingerprintChecked(path, content string, expected int64, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+	return WriteBytesConditionalFingerprintChecked(path, []byte(content), expected, expectedInfo)
+}
+
+// WriteBytesConditionalFingerprintInRoot atomically writes raw bytes to confineRel
+// strictly inside confineRoot via os.Root, enforcing root identity, regular-file,
+// inode-identity, and fingerprint checks before and after swap.
+func WriteBytesConditionalFingerprintInRoot(confineRoot, confineRel string, data []byte, expected int64, expectedRootInfo, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+	if strings.TrimSpace(confineRoot) == "" {
+		return 0, nil, "", errors.New(theme.Tr("无效的受限目录", "Invalid confined directory"))
+	}
+	cleanRel := filepath.Clean(confineRel)
+	if cleanRel == "." || !filepath.IsLocal(cleanRel) {
+		return 0, nil, "", errors.New(theme.Tr("目标路径超出允许范围", "Target path escapes allowed directory"))
+	}
+	root, err := os.OpenRoot(confineRoot)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	defer root.Close()
+
+	if expectedRootInfo != nil {
+		rInfo, _, rErr := RootDirIdentityToken(root)
+		if rErr != nil || !os.SameFile(rInfo, expectedRootInfo) {
+			return 0, nil, "", errors.New(theme.Tr("受限目录身份已变化，未覆盖", "Confined root directory identity changed and was not overwritten"))
+		}
+	}
+	if err := verifyNoSymlinkPathInRoot(root, cleanRel); err != nil {
+		return 0, nil, "", errors.New(theme.Tr("目标文件身份已变化，未覆盖", "Target file identity changed and was not overwritten"))
+	}
+
+	parent := filepath.Dir(cleanRel)
+	dir := root
+	if parent != "." && parent != "" {
+		sub, err := root.OpenRoot(parent)
+		if err != nil {
+			return 0, nil, "", err
+		}
+		defer sub.Close()
+		dir = sub
+	}
+	return writeBytesConditionalFingerprintInDir(dir, filepath.Base(cleanRel), data, expected, expectedInfo)
+}
+
+// WriteBytesConditionalFingerprintChecked atomically writes raw bytes to path without
+// following a final-component symlink, enforcing regular-file, inode-identity, and
+// fingerprint checks before and after swap.
+func WriteBytesConditionalFingerprintChecked(path string, data []byte, expected int64, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+	clean := filepath.Clean(path)
+	dir, err := os.OpenRoot(filepath.Dir(clean))
+	if err != nil {
+		return 0, nil, "", err
+	}
+	defer dir.Close()
+	return writeBytesConditionalFingerprintInDir(dir, filepath.Base(clean), data, expected, expectedInfo)
+}
+
+func writeBytesConditionalFingerprintInDir(dir *os.Root, base string, data []byte, expected int64, expectedInfo os.FileInfo) (int64, os.FileInfo, string, error) {
+	conflictErr := errors.New(theme.Tr("磁盘上的文件已修改，未覆盖", "The file changed on disk and was not overwritten"))
+	identityErr := errors.New(theme.Tr("目标文件身份已变化，未覆盖", "Target file identity changed and was not overwritten"))
+
+	unlockPath := lockConditionalWritePath(dir.Name(), base)
+	defer unlockPath()
+
+	linfo, err := dir.Lstat(base)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil, "", conflictErr
+		}
+		return 0, nil, "", err
+	}
+	if !linfo.Mode().IsRegular() {
+		return 0, nil, "", identityErr
+	}
+	if expectedInfo != nil && !os.SameFile(linfo, expectedInfo) {
+		return 0, nil, "", identityErr
+	}
+	curBytes, tooLarge, rErr := readAllCappedInDir(dir, base, TextLimit)
+	if rErr != nil {
+		if errors.Is(rErr, errNotRegularFile) {
+			return 0, nil, "", identityErr
+		}
+		return 0, nil, "", rErr
+	}
+	if tooLarge || fingerprintBytes(curBytes) != expected {
+		return 0, nil, "", conflictErr
+	}
+
+	perm := linfo.Mode().Perm()
+	var (
+		tmpPath string
+		tmpFile *os.File
+	)
+	for range 100 {
+		candidate := allocPrivateTempName("tmp")
+		f, openErr := dir.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		if openErr == nil {
+			tmpPath = candidate
+			tmpFile = f
+			break
+		}
+		if !errors.Is(openErr, os.ErrExist) {
+			return 0, nil, "", openErr
+		}
+	}
+	if tmpFile == nil {
+		return 0, nil, "", errors.New(theme.Tr("无法创建临时文件", "Cannot allocate temporary file"))
+	}
+
+	var (
+		ourTmpInfo os.FileInfo
+		ourTmpID   string
+	)
+	keepTmp := false
+	defer func() {
+		if keepTmp || tmpPath == "" {
+			return
+		}
+		if ourTmpInfo == nil || sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+			_ = dir.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return 0, nil, "", err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return 0, nil, "", err
+	}
+	st, stErr := tmpFile.Stat()
+	if stErr != nil || !st.Mode().IsRegular() {
+		_ = tmpFile.Close()
+		if stErr != nil {
+			return 0, nil, "", stErr
+		}
+		return 0, nil, "", identityErr
+	}
+	ourTmpInfo = st
+	ourTmpID = FileIdentityToken(ourTmpInfo, tmpFile)
+	if err := tmpFile.Close(); err != nil {
+		return 0, nil, "", err
+	}
+	// Verify tmpPath still names our exact staged temp file before publishing.
+	if !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+		keepTmp = true
+		return 0, nil, "", conflictErr
+	}
+
+	swapped, swapErr := swapFilesInDir(dir, tmpPath, base)
+	if swapped {
+		if swapErr != nil {
+			if errors.Is(swapErr, os.ErrNotExist) {
+				return 0, nil, "", conflictErr
+			}
+			return 0, nil, "", swapErr
+		}
+		publishedInfo, pubStErr := dir.Lstat(base)
+		publishedOK := pubStErr == nil && publishedInfo.Mode().IsRegular() && os.SameFile(publishedInfo, ourTmpInfo)
+
+		oldInfo, stErr := dir.Lstat(tmpPath)
+		identityOK := stErr == nil && oldInfo.Mode().IsRegular() && (expectedInfo == nil || os.SameFile(oldInfo, expectedInfo))
+		var oldBytes []byte
+		var oldTooLarge bool
+		var oldReadErr error
+		if identityOK {
+			oldBytes, oldTooLarge, oldReadErr = readAllCappedInDir(dir, tmpPath, TextLimit)
+		}
+		if !publishedOK || !identityOK || oldReadErr != nil || oldTooLarge || fingerprintBytes(oldBytes) != expected {
+			_, rbErr := swapFilesInDir(dir, tmpPath, base)
+			if rbErr == nil {
+				// After rollback swap, tmpPath should hold whatever had been at base
+				// right after the first swap (ourTmpInfo normally, or publishedInfo if
+				// tmpPath had been replaced before the first swap).
+				expectedRolledOut := ourTmpInfo
+				if !publishedOK && pubStErr == nil {
+					expectedRolledOut = publishedInfo
+				}
+				if !sameInodeInDir(dir, tmpPath, expectedRolledOut) {
+					_, rb2Err := swapFilesInDir(dir, tmpPath, base)
+					if rb2Err == nil {
+						if !sameInodeInDir(dir, tmpPath, expectedRolledOut) {
+							finHash := ""
+							if finBytes, _, finReadErr := readAllCappedInDir(dir, tmpPath, TextLimit); finReadErr == nil {
+								finHash = conditionalSHA256Hex(finBytes)
+							}
+							preserveExternalConflictInDir(dir, tmpPath, base, finHash)
+							keepTmp = true
+						}
+					} else {
+						rbHash := ""
+						if rbBytes, _, rbReadErr := readAllCappedInDir(dir, tmpPath, TextLimit); rbReadErr == nil {
+							rbHash = conditionalSHA256Hex(rbBytes)
+						}
+						preserveExternalConflictInDir(dir, tmpPath, base, rbHash)
+						keepTmp = true
+					}
+				}
+				if !publishedOK && !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+					keepTmp = true
+				}
+			} else {
+				oldHash := ""
+				if identityOK && oldReadErr == nil && !oldTooLarge {
+					oldHash = conditionalSHA256Hex(oldBytes)
+				}
+				preserveExternalConflictInDir(dir, tmpPath, base, oldHash)
+				keepTmp = true
+			}
+			if !publishedOK {
+				return 0, nil, "", conflictErr
+			}
+			if !identityOK {
+				return 0, nil, "", identityErr
+			}
+			if oldReadErr != nil && !errors.Is(oldReadErr, errNotRegularFile) {
+				return 0, nil, "", oldReadErr
+			}
+			return 0, nil, "", conflictErr
+		}
+		stashReplacedInodeInDir(dir, tmpPath, base)
+		keepTmp = true
+		if file, oErr := dir.Open("."); oErr == nil {
+			_ = file.Sync()
+			_ = file.Close()
+		}
+		return fingerprintBytes(data), ourTmpInfo, ourTmpID, nil
+	}
+
+	if !probeHardLinkInDir(dir, tmpPath) {
+		return 0, nil, "", conflictErr
+	}
+	curInfoBefore, stErr := dir.Lstat(base)
+	if stErr != nil || !curInfoBefore.Mode().IsRegular() || curInfoBefore.Size() > TextLimit {
+		return 0, nil, "", identityErr
+	}
+	if expectedInfo != nil && !os.SameFile(curInfoBefore, expectedInfo) {
+		return 0, nil, "", identityErr
+	}
+	movedOld := ""
+	for range 50 {
+		cand := allocPrivateTempName("old")
+		if _, lErr := dir.Lstat(cand); lErr == nil {
+			continue
+		}
+		if renErr := dir.Rename(base, cand); renErr != nil {
+			if errors.Is(renErr, os.ErrNotExist) {
+				return 0, nil, "", conflictErr
+			}
+			return 0, nil, "", renErr
+		}
+		movedOld = cand
+		break
+	}
+	if movedOld == "" {
+		return 0, nil, "", conflictErr
+	}
+	movedInfo, mStErr := dir.Lstat(movedOld)
+	identityOK := mStErr == nil && movedInfo.Mode().IsRegular() && (expectedInfo == nil || os.SameFile(movedInfo, expectedInfo))
+	var oldBytes []byte
+	var oldTooLarge bool
+	var oldReadErr error
+	if identityOK {
+		oldBytes, oldTooLarge, oldReadErr = readAllCappedInDir(dir, movedOld, TextLimit)
+	}
+	if !identityOK || oldReadErr != nil || oldTooLarge || fingerprintBytes(oldBytes) != expected {
+		oldHash := ""
+		if identityOK && oldReadErr == nil && !oldTooLarge {
+			oldHash = conditionalSHA256Hex(oldBytes)
+		}
+		restoreMovedOldInDir(dir, movedOld, base, oldHash, false)
+		if !identityOK {
+			return 0, nil, "", identityErr
+		}
+		if oldReadErr != nil && !errors.Is(oldReadErr, errNotRegularFile) {
+			return 0, nil, "", oldReadErr
+		}
+		return 0, nil, "", conflictErr
+	}
+	if !sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+		keepTmp = true
+		restoreMovedOldInDir(dir, movedOld, base, conditionalSHA256Hex(oldBytes), false)
+		return 0, nil, "", conflictErr
+	}
+	if pubErr := dir.Link(tmpPath, base); pubErr != nil {
+		if errors.Is(pubErr, os.ErrExist) {
+			stashReplacedInodeInDir(dir, movedOld, base)
+			return 0, nil, "", conflictErr
+		}
+		restoreMovedOldInDir(dir, movedOld, base, conditionalSHA256Hex(oldBytes), false)
+		return 0, nil, "", pubErr
+	}
+	// Verify base actually points to our staged temp file inode after Link.
+	if !sameInodeInDir(dir, base, ourTmpInfo) {
+		keepTmp = true
+		if swappedBack, _ := swapFilesInDir(dir, movedOld, base); !swappedBack {
+			if curBase, bErr := dir.Lstat(base); bErr == nil && curBase.Mode().IsRegular() && !os.SameFile(curBase, ourTmpInfo) {
+				_ = dir.Rename(movedOld, base)
+			}
+		} else {
+			stashReplacedInodeInDir(dir, movedOld, base)
+		}
+		return 0, nil, "", conflictErr
+	}
+	stashReplacedInodeInDir(dir, movedOld, base)
+	if sameInodeInDir(dir, tmpPath, ourTmpInfo) {
+		_ = dir.Remove(tmpPath)
+	}
+	keepTmp = true
+	if file, oErr := dir.Open("."); oErr == nil {
+		_ = file.Sync()
+		_ = file.Close()
+	}
+	return fingerprintBytes(data), ourTmpInfo, ourTmpID, nil
+}
