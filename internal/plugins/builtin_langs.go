@@ -213,10 +213,17 @@ var builtinLanguageContribs = []LanguageContrib{
 	{
 		ID:         "elixir",
 		Name:       LocalizedText{Zh: "Elixir", En: "Elixir"},
-		Extensions: []string{".ex", ".exs", ".heex", ".leex", ".eex"},
+		Extensions: []string{".ex", ".exs"},
 		Filenames:  []string{"mix.exs"},
-		Aliases:    []string{"elixir", "ex", "exs", "heex"},
+		Aliases:    []string{"elixir", "ex", "exs"},
 		Grammar:    "builtin_grammars/elixir.json",
+	},
+	{
+		ID:         "heex",
+		Name:       LocalizedText{Zh: "HEEx / EEx 模板", En: "HEEx / EEx"},
+		Extensions: []string{".heex", ".leex", ".eex"},
+		Aliases:    []string{"heex", "leex", "eex", "elixir-html"},
+		Grammar:    "builtin_grammars/heex.json",
 	},
 	{
 		ID:         "thrift",
@@ -260,7 +267,7 @@ var builtinLanguageContribs = []LanguageContrib{
 	{
 		ID:         "powershell",
 		Name:       LocalizedText{Zh: "PowerShell", En: "PowerShell"},
-		Extensions: []string{".ps1", ".psm1", ".psd1", ".ps1xml"},
+		Extensions: []string{".ps1", ".psm1", ".psd1"},
 		Aliases:    []string{"powershell", "ps1", "pwsh", "posh"},
 		Grammar:    "builtin_grammars/powershell.json",
 	},

@@ -7,13 +7,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sys/windows"
 )
 
-var fileAssocProcLockMu sync.Mutex
+var (
+	fileAssocProcLocksMu sync.Mutex
+	fileAssocProcLocks   = map[string]*sync.Mutex{}
+)
+
+func procFileAssocMutex(dir string) *sync.Mutex {
+	key := strings.ToLower(filepath.Clean(dir))
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != "" {
+		key = strings.ToLower(filepath.Clean(resolved))
+	}
+	fileAssocProcLocksMu.Lock()
+	defer fileAssocProcLocksMu.Unlock()
+	mu := fileAssocProcLocks[key]
+	if mu == nil {
+		mu = &sync.Mutex{}
+		fileAssocProcLocks[key] = mu
+	}
+	return mu
+}
 
 func isFileAssocLockPIDAlive(pid int) bool {
 	if pid <= 0 {
@@ -45,8 +64,9 @@ func acquireFileAssocLock(appDataDir string, timeout time.Duration) (func(), err
 		return func() {}, err
 	}
 
+	procMu := procFileAssocMutex(appDataDir)
 	deadline := time.Now().Add(timeout)
-	for !fileAssocProcLockMu.TryLock() {
+	for !procMu.TryLock() {
 		if time.Now().After(deadline) {
 			_ = f.Close()
 			return func() {}, fmt.Errorf("timed out waiting for in-process file association lock")
@@ -63,12 +83,12 @@ func acquireFileAssocLock(appDataDir string, timeout time.Duration) (func(), err
 		}
 		if !errors.Is(err, windows.ERROR_LOCK_VIOLATION) && !errors.Is(err, windows.ERROR_IO_PENDING) {
 			_ = f.Close()
-			fileAssocProcLockMu.Unlock()
+			procMu.Unlock()
 			return func() {}, fmt.Errorf("LockFileEx %s: %w", lockPath, err)
 		}
 		if time.Now().After(deadline) {
 			_ = f.Close()
-			fileAssocProcLockMu.Unlock()
+			procMu.Unlock()
 			return func() {}, fmt.Errorf("timed out waiting for %s", lockPath)
 		}
 		time.Sleep(25 * time.Millisecond)
@@ -79,7 +99,7 @@ func acquireFileAssocLock(appDataDir string, timeout time.Duration) (func(), err
 		var unlockOL windows.Overlapped
 		_ = windows.UnlockFileEx(h, 0, 1, 0, &unlockOL)
 		_ = f.Close()
-		fileAssocProcLockMu.Unlock()
+		procMu.Unlock()
 		return func() {}, legacyErr
 	}
 
@@ -90,7 +110,7 @@ func acquireFileAssocLock(appDataDir string, timeout time.Duration) (func(), err
 			var unlockOL windows.Overlapped
 			_ = windows.UnlockFileEx(h, 0, 1, 0, &unlockOL)
 			_ = f.Close()
-			fileAssocProcLockMu.Unlock()
+			procMu.Unlock()
 		})
 	}, nil
 }

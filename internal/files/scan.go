@@ -103,6 +103,65 @@ func isCommonIgnoredName(name string) bool {
 	return strings.EqualFold(name, "thumbs.db") || strings.EqualFold(name, "desktop.ini")
 }
 
+var allowedConfigDotfiles = map[string]bool{
+	".env":            true,
+	".htaccess":       true,
+	".justfile":       true,
+	".editorconfig":   true,
+	".gitignore":      true,
+	".gitattributes":  true,
+	".gitmodules":     true,
+	".gitconfig":      true,
+	".gitkeep":        true,
+	".dockerignore":   true,
+	".npmignore":      true,
+	".prettierignore": true,
+	".eslintignore":   true,
+	".cursorignore":   true,
+	".hgignore":       true,
+	".ignore":         true,
+	".vscodeignore":   true,
+	".helmignore":     true,
+	".gcloudignore":   true,
+	".cfignore":       true,
+	".npmrc":          true,
+	".yarnrc":         true,
+	".pypirc":         true,
+	".flake8":         true,
+	".pylintrc":       true,
+	".coveragerc":     true,
+	".wgetrc":         true,
+	".curlrc":         true,
+	".prettierrc":     true,
+	".eslintrc":       true,
+	".babelrc":        true,
+	".clang-tidy":     true,
+	".tmux.conf":      true,
+	".zprofile":       true,
+	".zshenv":         true,
+	".zlogin":         true,
+	".zshrc":          true,
+	".bashrc":         true,
+	".bash_aliases":   true,
+	".bash_logout":    true,
+	".profile":        true,
+}
+
+func isAllowedConfigDotfile(name string) bool {
+	if !strings.HasPrefix(name, ".") {
+		return false
+	}
+	low := strings.ToLower(name)
+	if allowedConfigDotfiles[low] {
+		return true
+	}
+	if strings.HasPrefix(low, ".env.") && len(low) > len(".env.") &&
+		!strings.HasSuffix(low, ".swp") && !strings.HasSuffix(low, "~") {
+		return true
+	}
+	return false
+}
+
 func isIgnoredFile(name string) bool {
 	return strings.HasPrefix(name, ".") || isCommonIgnoredName(name)
 }
@@ -164,7 +223,7 @@ func readScanLevel(dir string, opts ScanOptions, depth int) ([]model.FileEntry, 
 			continue
 		}
 
-		if isIgnoredFile(rawName) {
+		if isIgnoredFile(rawName) && (opts.HideNonMarkdown || !isAllowedConfigDotfile(rawName)) {
 			continue
 		}
 		mdExt := markdownExtension(rawName)

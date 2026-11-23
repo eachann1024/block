@@ -2,6 +2,7 @@ package files
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"block/internal/model"
@@ -25,7 +27,11 @@ const (
 	sniffBytes = 4096
 )
 
-var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+var (
+	utf8BOM    = []byte{0xEF, 0xBB, 0xBF}
+	utf16LEBOM = []byte{0xFF, 0xFE}
+	utf16BEBOM = []byte{0xFE, 0xFF}
+)
 
 var rasterImageExts = map[string]bool{
 	"png":  true,
@@ -129,7 +135,7 @@ func LanguageTagForPath(path string) string {
 		return "sql"
 	case "typescript", "ts", "tsx", "mts", "cts":
 		return "typescript"
-	case "xml", "svg", "xsl":
+	case "xml", "svg", "xsl", "ps1xml":
 		return "xml"
 	case "yaml", "yml", "yaml-frontmatter", "frontmatter":
 		return "yaml"
@@ -339,7 +345,7 @@ func decodeSource(path string, data []byte, svg bool) (model.SourceFile, string)
 		if err != nil {
 			return model.SourceFile{}, theme.Tr("无法解析二进制 Plist 文件", "Failed to decode binary plist")
 		}
-		if int64(len(xmlText)) > TextLimit {
+		if ExceedsTextSizeLimit(int64(len(data)), int64(len(xmlText))) {
 			return model.SourceFile{}, theme.Tr("文件超过 5 MB", "File is larger than 5 MB")
 		}
 		if lineTooLong(xmlText) {
@@ -358,18 +364,32 @@ func decodeSource(path string, data []byte, svg bool) (model.SourceFile, string)
 		}, ""
 	}
 	bom := false
+	enc := model.TextEncodingUTF8
 	rest := data
-	if bytes.HasPrefix(data, utf8BOM) {
+	var text string
+	if utf16Text, utf16Enc, hasUTF16BOM, utf16Err := decodeUTF16BOM(data); hasUTF16BOM {
+		if utf16Err != "" {
+			return model.SourceFile{}, utf16Err
+		}
+		if ExceedsTextSizeLimit(int64(len(data)), int64(len(utf16Text))) {
+			return model.SourceFile{}, theme.Tr("文件超过 5 MB", "File is larger than 5 MB")
+		}
 		bom = true
-		rest = data[len(utf8BOM):]
+		enc = utf16Enc
+		text = utf16Text
+	} else {
+		if bytes.HasPrefix(data, utf8BOM) {
+			bom = true
+			rest = data[len(utf8BOM):]
+		}
+		if hasBinaryControls(rest) {
+			return model.SourceFile{}, theme.Tr("包含二进制内容", "File contains binary data")
+		}
+		if !utf8.Valid(rest) {
+			return model.SourceFile{}, theme.Tr("不是有效的 UTF-8", "Not valid UTF-8")
+		}
+		text = string(rest)
 	}
-	if hasBinaryControls(rest) {
-		return model.SourceFile{}, theme.Tr("包含二进制内容", "File contains binary data")
-	}
-	if !utf8.Valid(rest) {
-		return model.SourceFile{}, theme.Tr("不是有效的 UTF-8", "Not valid UTF-8")
-	}
-	text := string(rest)
 	if lineTooLong(text) {
 		return model.SourceFile{}, theme.Tr("单行过长，无法预览", "A line is too long to preview")
 	}
@@ -377,12 +397,155 @@ func decodeSource(path string, data []byte, svg bool) (model.SourceFile, string)
 	return model.SourceFile{
 		Text:            text,
 		BOM:             bom,
+		Encoding:        enc,
 		DiskFingerprint: fingerprintBytes(data),
 		Language:        LanguageTagForPath(path),
 		Highlight:       len(text) <= HighlightLimit,
 		HTML:            ext == "html" || ext == "htm" || ext == "xhtml",
 		SVG:             svg,
 	}, ""
+}
+
+// decodeUTF16BOM decodes UTF-16 LE (0xFF 0xFE) or UTF-16 BE (0xFE 0xFF) text
+// with strict surrogate validation and binary-control rejection.
+func decodeUTF16BOM(data []byte) (string, model.TextEncoding, bool, string) {
+	var enc model.TextEncoding
+	var order binary.ByteOrder
+	switch {
+	case bytes.HasPrefix(data, utf16LEBOM):
+		// Reject UTF-32 LE BOM (0xFF 0xFE 0x00 0x00) explicitly as binary.
+		if len(data) >= 4 && data[2] == 0 && data[3] == 0 {
+			return "", model.TextEncodingUTF8, true, theme.Tr("包含二进制内容", "File contains binary data")
+		}
+		enc = model.TextEncodingUTF16LE
+		order = binary.LittleEndian
+	case bytes.HasPrefix(data, utf16BEBOM):
+		enc = model.TextEncodingUTF16BE
+		order = binary.BigEndian
+	default:
+		return "", model.TextEncodingUTF8, false, ""
+	}
+	rest := data[2:]
+	if len(rest)%2 != 0 {
+		return "", enc, true, theme.Tr("不是有效的 UTF-16", "Not valid UTF-16")
+	}
+	units := make([]uint16, len(rest)/2)
+	for i := range units {
+		units[i] = order.Uint16(rest[i*2:])
+	}
+	var b strings.Builder
+	b.Grow(len(units))
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		var r rune
+		switch {
+		case u >= 0xD800 && u <= 0xDBFF:
+			if i+1 >= len(units) {
+				return "", enc, true, theme.Tr("不是有效的 UTF-16", "Not valid UTF-16")
+			}
+			low := units[i+1]
+			if low < 0xDC00 || low > 0xDFFF {
+				return "", enc, true, theme.Tr("不是有效的 UTF-16", "Not valid UTF-16")
+			}
+			r = utf16.DecodeRune(rune(u), rune(low))
+			i++
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return "", enc, true, theme.Tr("不是有效的 UTF-16", "Not valid UTF-16")
+		default:
+			r = rune(u)
+		}
+		if r == 0 || (r < 0x20 && r != '\t' && r != '\n' && r != '\r') {
+			return "", enc, true, theme.Tr("包含二进制内容", "File contains binary data")
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), enc, true, ""
+}
+
+// ExceedsTextSizeLimit reports whether either the raw on-disk encoded byte size
+// or the decoded UTF-8 text byte size exceeds TextLimit (5 MiB). Both open and
+// save paths share this invariant so saved content can always be reopened.
+func ExceedsTextSizeLimit(rawBytes, decodedBytes int64) bool {
+	return rawBytes > TextLimit || decodedBytes > TextLimit
+}
+
+// EncodedSourceByteLen returns the exact byte size that EncodeSourceText would
+// produce for (text, bom, enc) without allocating the encoded buffer.
+func EncodedSourceByteLen(text string, bom bool, enc model.TextEncoding) int64 {
+	switch enc {
+	case model.TextEncodingUTF16LE, model.TextEncodingUTF16BE:
+		var total int64 = 2 // UTF-16 BOM
+		for _, r := range text {
+			if r >= 0x10000 && r <= 0x10FFFF {
+				total += 4
+			} else {
+				total += 2
+			}
+		}
+		return total
+	default:
+		total := int64(len(text))
+		if bom {
+			total += int64(len(utf8BOM))
+		}
+		return total
+	}
+}
+
+// EncodeSourceText serializes UTF-8 text back to disk bytes preserving the
+// original BOM and UTF-8 / UTF-16 LE / UTF-16 BE encoding.
+func EncodeSourceText(text string, bom bool, enc model.TextEncoding) []byte {
+	switch enc {
+	case model.TextEncodingUTF16LE, model.TextEncodingUTF16BE:
+		units := utf16.Encode([]rune(text))
+		out := make([]byte, 2+len(units)*2)
+		var order binary.ByteOrder
+		if enc == model.TextEncodingUTF16LE {
+			copy(out, utf16LEBOM)
+			order = binary.LittleEndian
+		} else {
+			copy(out, utf16BEBOM)
+			order = binary.BigEndian
+		}
+		for i, u := range units {
+			order.PutUint16(out[2+i*2:], u)
+		}
+		return out
+	default:
+		if bom {
+			out := make([]byte, len(utf8BOM)+len(text))
+			copy(out, utf8BOM)
+			copy(out[len(utf8BOM):], text)
+			return out
+		}
+		return []byte(text)
+	}
+}
+
+// DetectFileTextEncoding inspects the leading BOM bytes of path on disk so
+// out-of-band saves preserve UTF-8 BOM and UTF-16 LE/BE encodings.
+func DetectFileTextEncoding(path string) (bool, model.TextEncoding) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, model.TextEncodingUTF8
+	}
+	defer func() { _ = f.Close() }()
+	var head [4]byte
+	n, err := f.Read(head[:])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, model.TextEncodingUTF8
+	}
+	b := head[:n]
+	if bytes.HasPrefix(b, utf8BOM) {
+		return true, model.TextEncodingUTF8
+	}
+	if bytes.HasPrefix(b, utf16LEBOM) && !(len(b) >= 4 && b[2] == 0 && b[3] == 0) {
+		return true, model.TextEncodingUTF16LE
+	}
+	if bytes.HasPrefix(b, utf16BEBOM) {
+		return true, model.TextEncodingUTF16BE
+	}
+	return false, model.TextEncodingUTF8
 }
 
 func lineTooLong(text string) bool {
@@ -409,6 +572,26 @@ func hasBinaryControls(data []byte) bool {
 }
 
 func sampleIsText(data []byte) bool {
+	if bytes.HasPrefix(data, utf16LEBOM) || bytes.HasPrefix(data, utf16BEBOM) {
+		sample := data
+		if len(sample) > 2 && len(sample)%2 != 0 {
+			sample = sample[:len(sample)-1]
+		}
+		// Drop a trailing high surrogate if sniffBytes truncated a surrogate pair.
+		if len(sample) >= 4 {
+			var last uint16
+			if bytes.HasPrefix(data, utf16LEBOM) {
+				last = binary.LittleEndian.Uint16(sample[len(sample)-2:])
+			} else {
+				last = binary.BigEndian.Uint16(sample[len(sample)-2:])
+			}
+			if last >= 0xD800 && last <= 0xDBFF {
+				sample = sample[:len(sample)-2]
+			}
+		}
+		_, _, hasBOM, errMsg := decodeUTF16BOM(sample)
+		return hasBOM && errMsg == ""
+	}
 	end := 0
 	for i := len(data) - 1; i >= 0; i-- {
 		if data[i] < 0x80 {

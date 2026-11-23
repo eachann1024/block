@@ -1290,10 +1290,34 @@ func resolveLinuxEffectiveDefaultAppAtDir(
 	extraMIMEs map[string]struct{},
 	ignoreDesktopID string,
 ) string {
+	var ignoreSet map[string]struct{}
+	if ignoreDesktopID != "" {
+		ignoreSet = map[string]struct{}{ignoreDesktopID: {}}
+	}
+	return resolveLinuxEffectiveDefaultAppAtDirExcluding(
+		mimeType, env, apps, perDirHandlers, subclasses,
+		extraDesktopID, extraDirIdx, extraMIMEs, ignoreSet,
+	)
+}
+
+func resolveLinuxEffectiveDefaultAppAtDirExcluding(
+	mimeType string,
+	env linuxMIMEEnv,
+	apps linuxMIMEAppsHierarchy,
+	perDirHandlers []map[string][]string,
+	subclasses map[string][]string,
+	extraDesktopID string,
+	extraDirIdx int,
+	extraMIMEs map[string]struct{},
+	ignoreDesktopIDs map[string]struct{},
+) string {
 	visited := make(map[string]struct{})
 	queue := []string{strings.ToLower(strings.TrimSpace(mimeType))}
 	isAvailable := func(id string) bool {
-		if id == "" || id == ignoreDesktopID {
+		if id == "" {
+			return false
+		}
+		if _, ignored := ignoreDesktopIDs[id]; ignored {
 			return false
 		}
 		if id == extraDesktopID {
@@ -1533,8 +1557,54 @@ func planLinuxHelperMIMEs(
 	userMimeappsPath string,
 	prevPinned map[string]string,
 ) (safeWithoutPin []string, needsPin map[string]string) {
-	safe, pin, _ := planLinuxDesktopMIMEs(candidates, env, helperDesktopID, 0, userMimeappsPath, prevPinned)
+	safe, pin, _ := planLinuxDesktopMIMEs(candidates, env, helperDesktopID, 0, userMimeappsPath, prevPinned, nil)
 	return safe, pin
+}
+
+// discoverLinuxDesktopOverrideNames scans the XDG config and application
+// directories for any desktop-specific `<desktop>-mimeapps.list` files so
+// headless syncs (where XDG_CURRENT_DESKTOP is unset, e.g. under sudo/dpkg)
+// never pin a generic mimeapps.list fallback that would override a desktop
+// session's inherited default (such as gnome-mimeapps.list).
+func discoverLinuxDesktopOverrideNames(env linuxMIMEEnv) []string {
+	seen := make(map[string]struct{})
+	scanDir := func(dir string) {
+		if strings.TrimSpace(dir) == "" {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, ent := range entries {
+			if ent.IsDir() {
+				continue
+			}
+			name := strings.ToLower(strings.TrimSpace(ent.Name()))
+			if !strings.HasSuffix(name, "-mimeapps.list") {
+				continue
+			}
+			desktop := strings.TrimSuffix(name, "-mimeapps.list")
+			if desktop != "" {
+				seen[desktop] = struct{}{}
+			}
+		}
+	}
+	for _, dir := range env.configDirs {
+		scanDir(dir)
+	}
+	for _, dir := range env.dataDirs {
+		scanDir(filepath.Join(dir, "applications"))
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func planLinuxDesktopMIMEs(
@@ -1544,6 +1614,7 @@ func planLinuxDesktopMIMEs(
 	targetDirIdx int,
 	targetMimeappsPath string,
 	prevPinned map[string]string,
+	pinHoldersByMIME map[string]map[string]struct{},
 ) (safeWithoutPin []string, needsPin map[string]string, expectedDefaults map[string]string) {
 	if len(candidates) == 0 {
 		return nil, nil, nil
@@ -1552,6 +1623,47 @@ func planLinuxDesktopMIMEs(
 	baseApps := cloneLinuxMIMEAppsWithoutPins(actualApps, targetMimeappsPath, prevPinned)
 	perDir := loadLinuxDirMIMEHandlers(env.dataDirs)
 	subclasses := loadLinuxMIMESubclasses(env.dataDirs)
+
+	// Always inspect every other desktop-specific *-mimeapps.list present on
+	// disk (plus the generic desktop-agnostic view when XDG_CURRENT_DESKTOP is
+	// set) so writing a generic pin into mimeapps.list — or adding desktopID
+	// without a pin — can never displace another desktop environment's default
+	// (e.g. GNOME vs. KDE configuring different text/plain editors for the same
+	// user account).
+	type altDesktopPlan struct {
+		env      linuxMIMEEnv
+		baseApps linuxMIMEAppsHierarchy
+	}
+	var altDesktops []altDesktopPlan
+	curDesktopSet := make(map[string]struct{})
+	for _, part := range strings.Split(strings.ToLower(strings.TrimSpace(env.currentDesktop)), ":") {
+		if p := strings.TrimSpace(part); p != "" {
+			curDesktopSet[p] = struct{}{}
+		}
+	}
+	for _, d := range discoverLinuxDesktopOverrideNames(env) {
+		if _, isCur := curDesktopSet[strings.ToLower(d)]; isCur {
+			continue
+		}
+		dEnv := env
+		dEnv.currentDesktop = d
+		dEnv.systemQuery = nil
+		dActual := loadLinuxMIMEAppsHierarchy(dEnv)
+		altDesktops = append(altDesktops, altDesktopPlan{
+			env:      dEnv,
+			baseApps: cloneLinuxMIMEAppsWithoutPins(dActual, targetMimeappsPath, prevPinned),
+		})
+	}
+	if len(curDesktopSet) > 0 {
+		gEnv := env
+		gEnv.currentDesktop = ""
+		gEnv.systemQuery = nil
+		gActual := loadLinuxMIMEAppsHierarchy(gEnv)
+		altDesktops = append(altDesktops, altDesktopPlan{
+			env:      gEnv,
+			baseApps: cloneLinuxMIMEAppsWithoutPins(gActual, targetMimeappsPath, prevPinned),
+		})
+	}
 
 	// Detect which MIME types desktopID currently declares on disk (if any) so we
 	// only query the live system resolver for MIME types not already affected by
@@ -1570,13 +1682,21 @@ func planLinuxDesktopMIMEs(
 	needsPin = make(map[string]string)
 	expectedDefaults = make(map[string]string, len(candidates))
 	for _, mt := range candidates {
-		beforeBase := resolveLinuxEffectiveDefaultAppAtDir(
+		// Exclude desktopID itself PLUS any other live Block desktop ID that
+		// currently holds a managed pin on mt, so an already-pinned sibling
+		// Block installation never masquerades as the pre-Block default when
+		// managed pins are stripped in baseApps.
+		ignoreSet := map[string]struct{}{desktopID: {}}
+		for holderID := range pinHoldersByMIME[mt] {
+			ignoreSet[holderID] = struct{}{}
+		}
+		beforeBase := resolveLinuxEffectiveDefaultAppAtDirExcluding(
 			mt, env, baseApps, perDir, subclasses,
-			"", targetDirIdx, nil, desktopID,
+			"", targetDirIdx, nil, ignoreSet,
 		)
-		afterBase := resolveLinuxEffectiveDefaultAppAtDir(
+		afterBase := resolveLinuxEffectiveDefaultAppAtDirExcluding(
 			mt, env, baseApps, perDir, subclasses,
-			desktopID, targetDirIdx, map[string]struct{}{mt: {}}, desktopID,
+			desktopID, targetDirIdx, map[string]struct{}{mt: {}}, ignoreSet,
 		)
 
 		// When desktopID is not yet registered for mt and we don't have an active
@@ -1586,8 +1706,8 @@ func planLinuxDesktopMIMEs(
 		// IDs) so one Block installation never displaces a different Block
 		// installation's default.
 		_, alreadyInDesktop := existingDesktopMIMEs[mt]
-		_, alreadyPinned := prevPinned[mt]
-		if !alreadyInDesktop && !alreadyPinned {
+		pinnedApp, alreadyManagedPin := prevPinned[mt]
+		if !alreadyInDesktop && !alreadyManagedPin {
 			if sysDef, _, sysOK := queryLinuxSystemDefaultApp(mt, env); sysOK && sysDef != "" && sysDef != desktopID {
 				if sysDef != beforeBase {
 					beforeBase = sysDef
@@ -1599,10 +1719,52 @@ func planLinuxDesktopMIMEs(
 					}
 				}
 			}
+		} else if !alreadyInDesktop && alreadyManagedPin && pinnedApp != "" && pinnedApp != desktopID && beforeBase == "" {
+			// Another Block scope already holds a managed pin for mt (e.g.
+			// originally discovered via gio/distro-only defaults). Inherit that
+			// expected default so this scope also records a shared pin dependency.
+			beforeBase = pinnedApp
+			if afterBase != pinnedApp {
+				afterBase = desktopID
+			}
 		}
 
 		if beforeBase != "" && beforeBase != desktopID {
 			expectedDefaults[mt] = beforeBase
+		}
+
+		// If XDG_CURRENT_DESKTOP was unset and any desktop-specific
+		// *-mimeapps.list resolves mt differently (or would be disrupted by
+		// desktopID / a generic pin), defer registering mt until the real
+		// desktop session runs so we never override a desktop-specific default.
+		if len(altDesktops) > 0 {
+			deferForDesktop := false
+			willPin := beforeBase != "" && beforeBase != desktopID && afterBase != beforeBase
+			for _, alt := range altDesktops {
+				altBefore := resolveLinuxEffectiveDefaultAppAtDirExcluding(
+					mt, alt.env, alt.baseApps, perDir, subclasses,
+					"", targetDirIdx, nil, ignoreSet,
+				)
+				altAfter := resolveLinuxEffectiveDefaultAppAtDirExcluding(
+					mt, alt.env, alt.baseApps, perDir, subclasses,
+					desktopID, targetDirIdx, map[string]struct{}{mt: {}}, ignoreSet,
+				)
+				if willPin {
+					if altBefore != "" && altBefore != beforeBase {
+						deferForDesktop = true
+						break
+					}
+				} else {
+					if altBefore != "" && altBefore != desktopID && altAfter != altBefore {
+						deferForDesktop = true
+						break
+					}
+				}
+			}
+			if deferForDesktop {
+				delete(expectedDefaults, mt)
+				continue
+			}
 		}
 
 		if beforeBase == "" || beforeBase == desktopID || afterBase == beforeBase {
@@ -1736,12 +1898,493 @@ func mergeLinuxMimeappsLines(
 	return outLines, activePinned, changed
 }
 
+// resolveLinuxMimeappsTarget inspects <configHome>/mimeapps.list without
+// clobbering symlinks (e.g. dotfiles managers). If mimeapps.list is a symlink
+// to an existing regular file, writes are staged and atomically renamed onto
+// the resolved target path so the symlink remains intact. Dangling symlinks,
+// non-regular files, or unwritable target directories return an error so the
+// caller skips displacement-risk registrations safely.
+func resolveLinuxMimeappsTarget(configHome string) (linkPath, targetPath, targetDir string, existed bool, mode os.FileMode, err error) {
+	linkPath = filepath.Join(configHome, "mimeapps.list")
+	linfo, lerr := os.Lstat(linkPath)
+	if os.IsNotExist(lerr) {
+		return linkPath, linkPath, configHome, false, 0o644, nil
+	}
+	if lerr != nil {
+		return "", "", "", false, 0, lerr
+	}
+	if linfo.Mode()&os.ModeSymlink != 0 {
+		resolved, rerr := filepath.EvalSymlinks(linkPath)
+		if rerr != nil {
+			return "", "", "", false, 0, fmt.Errorf("resolve mimeapps.list symlink: %w", rerr)
+		}
+		st, serr := os.Stat(resolved)
+		if serr != nil {
+			return "", "", "", false, 0, fmt.Errorf("stat mimeapps.list symlink target: %w", serr)
+		}
+		if !st.Mode().IsRegular() {
+			return "", "", "", false, 0, fmt.Errorf("mimeapps.list symlink target %s is not a regular file", resolved)
+		}
+		return linkPath, resolved, filepath.Dir(resolved), true, st.Mode().Perm(), nil
+	}
+	if !linfo.Mode().IsRegular() {
+		return "", "", "", false, 0, fmt.Errorf("%s is not a regular file", linkPath)
+	}
+	return linkPath, linkPath, configHome, true, linfo.Mode().Perm(), nil
+}
+
+// readLinuxMimeappsSingleDefaults reads [Default Applications] single-entry
+// values from <configHome>/mimeapps.list (following symlinks) for crash
+// recovery of two-phase pin transactions.
+func readLinuxMimeappsSingleDefaults(configHome string) map[string]string {
+	if strings.TrimSpace(configHome) == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(configHome, "mimeapps.list"))
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]string)
+	section := ""
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			section = trimmed
+			continue
+		}
+		if section != "[Default Applications]" || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		mt := strings.ToLower(strings.TrimSpace(k))
+		if mt == "" {
+			continue
+		}
+		var ids []string
+		for _, part := range strings.Split(v, ";") {
+			if p := strings.TrimSpace(part); p != "" {
+				ids = append(ids, p)
+			}
+		}
+		if len(ids) == 1 {
+			out[mt] = ids[0]
+		} else {
+			delete(out, mt)
+		}
+	}
+	return out
+}
+
+// recoverLinuxPendingPins reconciles an interrupted two-phase pin transaction
+// (old committed values vs. pending desired values) against the actual
+// mimeapps.list content on disk so ownership of neither old nor new values is
+// lost after a mid-transaction crash.
+func recoverLinuxPendingPins(configHome string, committed, pending map[string]string, hasPendingTx bool) map[string]string {
+	if !hasPendingTx && len(pending) == 0 {
+		return cloneStringMap(committed)
+	}
+	onDisk := readLinuxMimeappsSingleDefaults(configHome)
+	keys := make(map[string]struct{}, len(committed)+len(pending))
+	for k := range committed {
+		keys[k] = struct{}{}
+	}
+	for k := range pending {
+		keys[k] = struct{}{}
+	}
+	actual := make(map[string]string, len(keys))
+	for mt := range keys {
+		cur, exists := onDisk[mt]
+		if !exists || cur == "" {
+			continue
+		}
+		if pVal := pending[mt]; pVal != "" && cur == pVal {
+			actual[mt] = pVal
+			continue
+		}
+		if cVal := committed[mt]; cVal != "" && cur == cVal {
+			actual[mt] = cVal
+			continue
+		}
+	}
+	if len(actual) == 0 {
+		return nil
+	}
+	return actual
+}
+
+// recoverAllLinuxStatePins resolves any interrupted two-phase pin transactions
+// across both the main desktop scope and all per-installation helper scopes.
+func recoverAllLinuxStatePins(st *fileAssocState, configHome string) {
+	if st == nil {
+		return
+	}
+	if st.PendingLinuxMainPinTx || len(st.PendingPinnedLinuxMainDefaults) > 0 {
+		st.PinnedLinuxMainDefaults = recoverLinuxPendingPins(
+			configHome, st.PinnedLinuxMainDefaults, st.PendingPinnedLinuxMainDefaults, st.PendingLinuxMainPinTx,
+		)
+		st.PendingPinnedLinuxMainDefaults = nil
+		st.PendingLinuxMainPinTx = false
+	}
+	if len(st.LinuxScopes) > 0 {
+		for id, sc := range st.LinuxScopes {
+			if sc.PendingPinTx || len(sc.PendingPinnedLinuxDefaults) > 0 {
+				sc.PinnedLinuxDefaults = recoverLinuxPendingPins(
+					configHome, sc.PinnedLinuxDefaults, sc.PendingPinnedLinuxDefaults, sc.PendingPinTx,
+				)
+				sc.PendingPinnedLinuxDefaults = nil
+				sc.PendingPinTx = false
+				st.LinuxScopes[id] = sc
+			}
+		}
+	}
+}
+
+// linuxHelperDesktopIDForExec derives a stable per-installation helper desktop
+// file ID so coexisting Linux installs (system .deb, user ~/.local/bin, or
+// multiple AppImages) never overwrite each other's Exec= target or MimeType=.
+func linuxHelperDesktopIDForExec(execPath string) string {
+	return "block-assoc-" + stableInstallScopeHash(canonicalLinuxExecPath(execPath)) + ".desktop"
+}
+
+// linuxSharedXDGDir returns the shared per-XDG_CONFIG_HOME coordination
+// directory used by all Block installations that mutate the same user
+// mimeapps.list — even when those installations use separate BLOCK_DATA_DIR
+// app data directories.
+func linuxSharedXDGDir(configHome string) string {
+	c := strings.TrimSpace(configHome)
+	if c == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Clean(c), ".block-fileassoc")
+}
+
+func sameCanonicalDir(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	ca, cb := filepath.Clean(a), filepath.Clean(b)
+	if ra, err := filepath.EvalSymlinks(ca); err == nil && ra != "" {
+		ca = ra
+	}
+	if rb, err := filepath.EvalSymlinks(cb); err == nil && rb != "" {
+		cb = rb
+	}
+	return ca == cb
+}
+
+// acquireLinuxXDGStateLock acquires an OS lock anchored to configHome so
+// installations using different appDataDirs but sharing the same mimeapps.list
+// strictly serialize mutations and share pin ownership records.
+func acquireLinuxXDGStateLock(appDataDir, configHome string, timeout time.Duration) (func(), error) {
+	xdgDir := linuxSharedXDGDir(configHome)
+	if xdgDir == "" || sameCanonicalDir(appDataDir, xdgDir) {
+		return func() {}, nil
+	}
+	return acquireFileAssocLock(xdgDir, timeout)
+}
+
+func mergeLinuxAssocStates(base, extra fileAssocState) fileAssocState {
+	out := base
+	if out.LinuxScopes == nil && len(extra.LinuxScopes) > 0 {
+		out.LinuxScopes = make(map[string]linuxAssocScopeState, len(extra.LinuxScopes))
+	}
+	for id, sc := range extra.LinuxScopes {
+		if existing, ok := out.LinuxScopes[id]; ok {
+			merged := existing
+			if merged.DataHome == "" {
+				merged.DataHome = sc.DataHome
+			}
+			if merged.ExecutablePath == "" {
+				merged.ExecutablePath = sc.ExecutablePath
+			}
+			if len(merged.Extensions) == 0 {
+				merged.Extensions = sc.Extensions
+			}
+			merged.PinnedLinuxDefaults = unionStringMaps(sc.PinnedLinuxDefaults, merged.PinnedLinuxDefaults)
+			if sc.PendingPinTx || len(sc.PendingPinnedLinuxDefaults) > 0 {
+				merged.PendingPinTx = true
+				merged.PendingPinnedLinuxDefaults = unionStringMaps(sc.PendingPinnedLinuxDefaults, merged.PendingPinnedLinuxDefaults)
+			}
+			out.LinuxScopes[id] = merged
+		} else {
+			out.LinuxScopes[id] = sc
+		}
+	}
+	if out.LinuxMainDesktopID == "" {
+		out.LinuxMainDesktopID = extra.LinuxMainDesktopID
+	}
+	if out.LinuxMainDataHome == "" {
+		out.LinuxMainDataHome = extra.LinuxMainDataHome
+	}
+	out.PinnedLinuxMainDefaults = unionStringMaps(extra.PinnedLinuxMainDefaults, out.PinnedLinuxMainDefaults)
+	if extra.PendingLinuxMainPinTx || len(extra.PendingPinnedLinuxMainDefaults) > 0 {
+		out.PendingLinuxMainPinTx = true
+		out.PendingPinnedLinuxMainDefaults = unionStringMaps(extra.PendingPinnedLinuxMainDefaults, out.PendingPinnedLinuxMainDefaults)
+	}
+	return out
+}
+
+// loadLinuxXDGMergedState loads and merges Linux pin ownership state from both
+// appDataDir and the shared XDG config coordination directory, recovering any
+// interrupted two-phase pin transactions.
+func loadLinuxXDGMergedState(appDataDir, configHome string) (merged fileAssocState, local fileAssocState, hasLocal bool, shared fileAssocState, hasShared bool) {
+	if strings.TrimSpace(appDataDir) != "" {
+		local, hasLocal = loadFileAssocState(appDataDir)
+	}
+	if xdgDir := linuxSharedXDGDir(configHome); xdgDir != "" && !sameCanonicalDir(appDataDir, xdgDir) {
+		shared, hasShared = loadFileAssocState(xdgDir)
+	}
+	merged = mergeLinuxAssocStates(local, shared)
+	recoverAllLinuxStatePins(&merged, configHome)
+	recoverAllLinuxStatePins(&local, configHome)
+	recoverAllLinuxStatePins(&shared, configHome)
+	return merged, local, hasLocal, shared, hasShared
+}
+
+// syncLinuxScopePinsSidecar writes (or removes when empty) a tiny TSV sidecar
+// (<mime>\t<appID>) in linuxSharedXDGDir(configHome) containing every unique
+// (mime, appID) pair from both committed and pending pin maps so POSIX shell
+// deferred uninstall scripts share exact journal parity with Go runtime recovery.
+func syncLinuxScopePinsSidecar(configHome, desktopID, dataHome string, committed, pending map[string]string) error {
+	xdgDir := linuxSharedXDGDir(configHome)
+	if xdgDir == "" || strings.TrimSpace(desktopID) == "" || strings.ContainsAny(desktopID, "/\\") {
+		return nil
+	}
+	sidecar := filepath.Join(xdgDir, "pins-"+desktopID+".tsv")
+	pairSet := make(map[string]struct{}, len(committed)+len(pending))
+	addMap := func(m map[string]string) {
+		for rawMT, rawApp := range m {
+			mt := strings.TrimSpace(rawMT)
+			app := strings.TrimSpace(rawApp)
+			if mt != "" && app != "" {
+				pairSet[mt+"\t"+app] = struct{}{}
+			}
+		}
+	}
+	addMap(committed)
+	addMap(pending)
+	if len(pairSet) == 0 {
+		_ = os.Remove(sidecar)
+		return nil
+	}
+	pairs := make([]string, 0, len(pairSet))
+	for p := range pairSet {
+		pairs = append(pairs, p)
+	}
+	sort.Strings(pairs)
+	var b strings.Builder
+	if strings.TrimSpace(dataHome) != "" {
+		b.WriteString("#data_home=" + filepath.Clean(dataHome) + "\n")
+	}
+	for _, p := range pairs {
+		b.WriteString(p + "\n")
+	}
+	return writeFileAtomic(sidecar, []byte(b.String()), 0o644)
+}
+
+// linuxScopeExplicitlyUninstalled reports whether an OS package uninstaller
+// recorded an explicit uninstall marker for desktopID matching execPath AND
+// execPath is confirmed absent on disk. This prevents coexisting installations
+// from pruning a portable/AppImage install whose external drive is merely
+// unmounted.
+func linuxScopeExplicitlyUninstalled(desktopID, execPath string) bool {
+	if strings.TrimSpace(desktopID) == "" || strings.ContainsAny(desktopID, "/\\") || desktopID == "." || desktopID == ".." {
+		return false
+	}
+	canonExec := canonicalLinuxExecPath(execPath)
+	if canonExec == "" {
+		return false
+	}
+	markerPath := filepath.Join("/var/lib/block/pending-uninstall", desktopID)
+	raw, err := os.ReadFile(markerPath)
+	if err != nil {
+		return false
+	}
+	recorded := canonicalLinuxExecPath(strings.TrimSpace(string(raw)))
+	if recorded == "" || recorded != canonExec {
+		return false
+	}
+	_, statErr := os.Stat(execPath)
+	return os.IsNotExist(statErr)
+}
+
+// hasDesktopSpecificMIMEApps reports whether any desktop-prefixed
+// (<desktop>-mimeapps.list, e.g. gnome-mimeapps.list) file exists in the XDG
+// hierarchy. When XDG_CURRENT_DESKTOP is unset and such a file exists,
+// computing pins from generic mimeapps.list would risk overriding the real
+// desktop's inherited defaults.
+func hasDesktopSpecificMIMEApps(env linuxMIMEEnv) bool {
+	scanDir := func(dir string) bool {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return false
+		}
+		for _, ent := range entries {
+			name := ent.Name()
+			if strings.HasSuffix(name, "-mimeapps.list") && name != "mimeapps.list" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, dir := range env.configDirs {
+		if scanDir(dir) {
+			return true
+		}
+	}
+	for _, dir := range env.dataDirs {
+		if scanDir(filepath.Join(dir, "applications")) {
+			return true
+		}
+	}
+	return false
+}
+
+// collectOtherLinuxPinnedDefaults gathers active Block-managed pins currently
+// depended on by OTHER live Block installations sharing the same user
+// mimeapps.list, so cleaning up or updating one installation never removes a
+// default pin that another still-installed Block copy relies on.
+func collectOtherLinuxPinnedDefaults(st fileAssocState, desktopDir string, excludeMain bool, excludeScopeID string) map[string]string {
+	pins, _ := collectOtherLinuxPinsAndHolders(st, desktopDir, excludeMain, excludeScopeID)
+	return pins
+}
+
+// collectOtherLinuxPinsAndHolders returns both the merged map of pins held by
+// other live Block scopes AND, per MIME type, the set of other live Block
+// desktop IDs that hold a managed pin for that MIME type.
+func collectOtherLinuxPinsAndHolders(st fileAssocState, desktopDir string, excludeMain bool, excludeScopeID string) (map[string]string, map[string]map[string]struct{}) {
+	out := make(map[string]string)
+	holders := make(map[string]map[string]struct{})
+	addHolder := func(mt, id string) {
+		if mt == "" || id == "" {
+			return
+		}
+		if holders[mt] == nil {
+			holders[mt] = make(map[string]struct{})
+		}
+		holders[mt][id] = struct{}{}
+	}
+	filePresentIn := func(dir, desktopID string) bool {
+		if dir == "" || desktopID == "" {
+			return true
+		}
+		_, err := os.Stat(filepath.Join(dir, desktopID))
+		return err == nil
+	}
+	if !excludeMain && len(st.PinnedLinuxMainDefaults) > 0 {
+		mainID := strings.TrimSpace(st.LinuxMainDesktopID)
+		if mainID == "" {
+			mainID = "block-user.desktop"
+		}
+		mainDesktopDir := desktopDir
+		if strings.TrimSpace(st.LinuxMainDataHome) != "" {
+			mainDesktopDir = filepath.Join(filepath.Clean(st.LinuxMainDataHome), "applications")
+		}
+		presentMain := filePresentIn(mainDesktopDir, mainID)
+		presentLegacy := mainID != "block.desktop" && filePresentIn(mainDesktopDir, "block.desktop")
+		if presentMain || presentLegacy {
+			for mt, app := range st.PinnedLinuxMainDefaults {
+				if app != "" {
+					out[mt] = app
+					if presentMain {
+						addHolder(mt, mainID)
+					}
+					if presentLegacy {
+						addHolder(mt, "block.desktop")
+					}
+				}
+			}
+		}
+	}
+	if len(st.LinuxScopes) > 0 {
+		ids := make([]string, 0, len(st.LinuxScopes))
+		for id := range st.LinuxScopes {
+			if id == excludeScopeID {
+				continue
+			}
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			sc := st.LinuxScopes[id]
+			scopeDesktopDir := desktopDir
+			if strings.TrimSpace(sc.DataHome) != "" {
+				scopeDesktopDir = filepath.Join(filepath.Clean(sc.DataHome), "applications")
+			}
+			if len(sc.PinnedLinuxDefaults) == 0 || !filePresentIn(scopeDesktopDir, id) {
+				continue
+			}
+			for mt, app := range sc.PinnedLinuxDefaults {
+				if app != "" {
+					if _, exists := out[mt]; !exists {
+						out[mt] = app
+					}
+					addHolder(mt, id)
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, holders
+}
+
+// mergeLinuxPinsPreservingOthers merges selfDesired with otherPins while never
+// overwriting an existing pin held by another live Block installation.
+func mergeLinuxPinsPreservingOthers(otherPins, selfDesired map[string]string) map[string]string {
+	if len(otherPins) == 0 && len(selfDesired) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(otherPins)+len(selfDesired))
+	for mt, app := range otherPins {
+		if app != "" {
+			out[mt] = app
+		}
+	}
+	for mt, app := range selfDesired {
+		if app == "" {
+			continue
+		}
+		if _, held := out[mt]; !held {
+			out[mt] = app
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// subsetLinuxPins extracts the subset of allActive pins corresponding to keys
+// requested by selfDesired so each scope only records its own dependencies.
+func subsetLinuxPins(allActive, selfDesired map[string]string) map[string]string {
+	if len(allActive) == 0 || len(selfDesired) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(selfDesired))
+	for mt := range selfDesired {
+		if app, ok := allActive[mt]; ok && app != "" {
+			out[mt] = app
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // reconcileLinuxPinnedDefaults updates [Default Applications] in
 // <configDir>/mimeapps.list to preserve implicit non-Block defaults while
-// never overwriting user-chosen defaults, cleanly removing Block-managed pins
-// that are no longer needed, and detecting concurrent external edits (e.g.
-// from GNOME/KDE Settings) before commit so their changes are merged rather
-// than clobbered by a stale snapshot.
+// never overwriting user-chosen defaults, preserving symlinks to dotfiles by
+// atomically updating their real target file, cleanly removing Block-managed
+// pins that are no longer needed, and detecting concurrent external edits
+// (e.g. from GNOME/KDE Settings) before commit so their changes are merged
+// rather than clobbered by a stale snapshot.
 func reconcileLinuxPinnedDefaults(
 	configHome string,
 	prevPinned map[string]string,
@@ -1753,21 +2396,30 @@ func reconcileLinuxPinnedDefaults(
 	if len(prevPinned) == 0 && len(desiredPins) == 0 {
 		return nil, nil
 	}
-	mimeappsPath := filepath.Join(configHome, "mimeapps.list")
 	const maxAttempts = 6
+	var lastPath string
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		rawBefore, err := os.ReadFile(mimeappsPath)
-		existed := err == nil
-		if err != nil && !os.IsNotExist(err) {
+		_, targetPath, targetDir, existed, mode, err := resolveLinuxMimeappsTarget(configHome)
+		if err != nil {
 			return nil, err
 		}
+		lastPath = targetPath
 		if !existed && len(desiredPins) == 0 {
 			return nil, nil
 		}
+
+		var rawBefore []byte
 		var stBefore os.FileInfo
 		if existed {
-			stBefore, _ = os.Stat(mimeappsPath)
+			rawBefore, err = os.ReadFile(targetPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return nil, err
+			}
+			stBefore, _ = os.Stat(targetPath)
 		}
 
 		var lines []string
@@ -1792,10 +2444,10 @@ func reconcileLinuxPinnedDefaults(
 			payload = []byte(strings.Join(outLines, "\n") + "\n")
 		}
 
-		if err := os.MkdirAll(configHome, 0o755); err != nil {
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return nil, err
 		}
-		tmp, err := os.CreateTemp(configHome, ".block-mimeapps-*.tmp")
+		tmp, err := os.CreateTemp(targetDir, ".block-mimeapps-*.tmp")
 		if err != nil {
 			return nil, err
 		}
@@ -1809,7 +2461,7 @@ func reconcileLinuxPinnedDefaults(
 			return nil, err
 		}
 		_ = tmp.Sync()
-		if err := tmp.Chmod(0o644); err != nil {
+		if err := tmp.Chmod(mode); err != nil {
 			cleanupTmp()
 			return nil, err
 		}
@@ -1822,22 +2474,29 @@ func reconcileLinuxPinnedDefaults(
 			linuxMimeappsBeforeCommitHook()
 		}
 
-		// Re-check the target file right before committing so any concurrent edit
-		// made by a desktop settings app between read and commit is merged
-		// instead of overwritten.
-		rawNow, errNow := os.ReadFile(mimeappsPath)
-		nowExists := errNow == nil
-		if errNow != nil && !os.IsNotExist(errNow) {
+		// Re-check both symlink resolution and target content right before
+		// committing so any concurrent edit made by a desktop settings app or
+		// dotfiles tool between read and commit is merged instead of clobbered.
+		_, targetPathNow, _, nowExists, _, errNow := resolveLinuxMimeappsTarget(configHome)
+		if errNow != nil {
 			_ = os.Remove(tmpPath)
 			return nil, errNow
 		}
 		concurrentChange := false
-		if existed != nowExists {
+		if existed != nowExists || targetPathNow != targetPath {
 			concurrentChange = true
 		} else if existed {
-			if !bytes.Equal(rawBefore, rawNow) {
+			rawNow, readErrNow := os.ReadFile(targetPath)
+			if readErrNow != nil {
+				if os.IsNotExist(readErrNow) {
+					concurrentChange = true
+				} else {
+					_ = os.Remove(tmpPath)
+					return nil, readErrNow
+				}
+			} else if !bytes.Equal(rawBefore, rawNow) {
 				concurrentChange = true
-			} else if stNow, stErrNow := os.Stat(mimeappsPath); stBefore != nil && stErrNow == nil {
+			} else if stNow, stErrNow := os.Stat(targetPath); stBefore != nil && stErrNow == nil {
 				if !os.SameFile(stBefore, stNow) || !stBefore.ModTime().Equal(stNow.ModTime()) {
 					concurrentChange = true
 				}
@@ -1848,7 +2507,7 @@ func reconcileLinuxPinnedDefaults(
 			continue
 		}
 
-		if err := os.Rename(tmpPath, mimeappsPath); err != nil {
+		if err := os.Rename(tmpPath, targetPath); err != nil {
 			_ = os.Remove(tmpPath)
 			return nil, err
 		}
@@ -1858,7 +2517,7 @@ func reconcileLinuxPinnedDefaults(
 		return activePinned, nil
 	}
 
-	return nil, fmt.Errorf("concurrent modification conflict updating %s", mimeappsPath)
+	return nil, fmt.Errorf("concurrent modification conflict updating %s", lastPath)
 }
 
 // verifyLinuxPinnedMIMEs reloads the XDG mimeapps hierarchy after pinning and
@@ -1973,6 +2632,18 @@ func verifyLinuxSystemRegistration(
 	return okMIMEs, badMIMEs
 }
 
+func equalStringMaps(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
 func cloneStringMap(src map[string]string) map[string]string {
 	if len(src) == 0 {
 		return nil
@@ -2075,6 +2746,13 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 		}
 		defer unlock()
 	}
+	if !opts.SystemMode && opts.TargetConfigDir != "" {
+		unlockXDG, err := acquireLinuxXDGStateLock(opts.StateDir, opts.TargetConfigDir, 10*time.Second)
+		if err != nil {
+			return fmt.Errorf("lock XDG file association state: %w", err)
+		}
+		defer unlockXDG()
+	}
 
 	dataDirs := opts.DataDirs
 	if len(dataDirs) == 0 {
@@ -2139,9 +2817,13 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 	resolved := ResolveLinuxMIMETypesForExtensions(BuiltinAssocExtensions(), dataHomeForResolve, strings.Join(extraDataDirs, ":"))
 	candidates := unionSortedStrings(LinuxPackageMIMETypes(), resolved)
 
-	var prev fileAssocState
-	if opts.StateDir != "" {
+	var prev, localState, sharedState fileAssocState
+	if !opts.SystemMode {
+		prev, localState, _, sharedState, _ = loadLinuxXDGMergedState(opts.StateDir, opts.TargetConfigDir)
+	} else if opts.StateDir != "" {
 		prev, _ = loadFileAssocState(opts.StateDir)
+		recoverAllLinuxStatePins(&prev, opts.TargetConfigDir)
+		localState = prev
 	}
 	prevMainPins := cloneStringMap(prev.PinnedLinuxMainDefaults)
 
@@ -2165,55 +2847,93 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 		return fmt.Errorf("invalid desktop ID %q", desktopID)
 	}
 
-	safeDirect, needsPin, expectedDefaults := planLinuxDesktopMIMEs(
-		candidates, env, desktopID, targetDirIdx, targetMimeappsPath, prevMainPins,
-	)
+	desktopDir := filepath.Join(targetDataClean, "applications")
+	var otherPins map[string]string
+	var pinHolders map[string]map[string]struct{}
+	if !opts.SystemMode {
+		otherPins, pinHolders = collectOtherLinuxPinsAndHolders(prev, desktopDir, true, desktopID)
+	}
+	allManagedPins := unionStringMaps(otherPins, prevMainPins)
 
-	// Write-ahead ownership journal BEFORE mutating mimeapps.list or desktop
-	// files so a crash or unwritable state path never orphans Block-managed
-	// pins or leaves dangling desktop entries behind.
-	saveMainPins := func(pins map[string]string) error {
-		if opts.StateDir == "" {
-			return nil
-		}
-		st := prev
-		st.LinuxMainDesktopID = desktopID
-		st.PinnedLinuxMainDefaults = cloneStringMap(pins)
-		return saveFileAssocState(opts.StateDir, st)
+	// If XDG_CURRENT_DESKTOP is unset while desktop-specific *-mimeapps.list
+	// files exist (e.g. gnome-mimeapps.list), we cannot reliably know the real
+	// desktop session's inherited defaults, so install the launcher cleanly
+	// without MimeType= claims and let the desktop session sync handle them.
+	ambiguousDesktop := !opts.SystemMode && strings.TrimSpace(env.currentDesktop) == "" && hasDesktopSpecificMIMEApps(env)
+
+	var safeDirect []string
+	var needsPin, expectedDefaults map[string]string
+	if !ambiguousDesktop {
+		safeDirect, needsPin, expectedDefaults = planLinuxDesktopMIMEs(
+			candidates, env, desktopID, targetDirIdx, targetMimeappsPath, allManagedPins, pinHolders,
+		)
 	}
 
+	// Two-phase write-ahead ownership journal BEFORE mutating mimeapps.list so
+	// a crash before or after mimeapps commit never loses ownership of either
+	// old committed values or newly written values.
+	saveMainPinJournal := func(committed, pending map[string]string, pendingTx bool) error {
+		applyMain := func(st fileAssocState) fileAssocState {
+			st.LinuxMainDesktopID = desktopID
+			st.LinuxMainDataHome = targetDataClean
+			st.PinnedLinuxMainDefaults = cloneStringMap(committed)
+			st.PendingPinnedLinuxMainDefaults = cloneStringMap(pending)
+			st.PendingLinuxMainPinTx = pendingTx
+			return st
+		}
+		if opts.StateDir != "" {
+			localState = applyMain(localState)
+			if err := saveFileAssocState(opts.StateDir, localState); err != nil {
+				return err
+			}
+		}
+		if !opts.SystemMode && opts.TargetConfigDir != "" {
+			xdgDir := linuxSharedXDGDir(opts.TargetConfigDir)
+			if xdgDir != "" && !sameCanonicalDir(opts.StateDir, xdgDir) {
+				sharedState = applyMain(sharedState)
+				if err := saveFileAssocState(xdgDir, sharedState); err != nil {
+					return err
+				}
+			}
+			if err := syncLinuxScopePinsSidecar(opts.TargetConfigDir, desktopID, targetDataClean, committed, pending); err != nil && (len(committed) > 0 || len(pending) > 0) {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Phase 1 (add-only BEFORE mutating the .desktop file): write any newly
+	// required pins while retaining all existing prevMainPins so a crash before
+	// the updated .desktop + desktop database are published can never leave the
+	// old .desktop file claiming a MIME type without its default-app pin.
 	activePinned := cloneStringMap(prevMainPins)
+	desiredFinalPins := cloneStringMap(needsPin)
 	var verifiedPinned []string
-	if len(needsPin) > 0 || len(prevMainPins) > 0 {
-		if err := saveMainPins(unionStringMaps(prevMainPins, needsPin)); err != nil {
+	if len(needsPin) > 0 {
+		stage1SelfPins := unionStringMaps(prevMainPins, needsPin)
+		stage1Combined := mergeLinuxPinsPreservingOthers(otherPins, stage1SelfPins)
+		if err := saveMainPinJournal(prevMainPins, stage1SelfPins, true); err != nil {
 			return fmt.Errorf("persist file association journal: %w", err)
 		}
-		pinned, pinErr := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, prevMainPins, needsPin)
+		allActive, pinErr := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, allManagedPins, stage1Combined)
 		if pinErr != nil {
-			// Cannot safely pin in TargetConfigDir (e.g. read-only /etc/xdg);
-			// restore journaled state and omit displacement-risk MIME types.
+			// Cannot safely pin in TargetConfigDir (e.g. read-only /etc/xdg or
+			// unwritable symlink target); restore journaled state and omit
+			// displacement-risk MIME types.
 			activePinned = cloneStringMap(prevMainPins)
-			_ = saveMainPins(activePinned)
-			needsPin = nil
+			_ = saveMainPinJournal(activePinned, nil, false)
+			desiredFinalPins = nil
 		} else {
-			activePinned = pinned
-			if len(needsPin) > 0 {
-				var failed []string
-				verifiedPinned, failed = verifyLinuxPinnedMIMEsAtDir(needsPin, env, desktopID, targetDirIdx)
-				if len(failed) > 0 {
-					for _, mt := range failed {
-						delete(needsPin, mt)
-					}
-					if rolled, rollErr := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, activePinned, needsPin); rollErr == nil {
-						activePinned = rolled
-					}
-				}
+			activePinned = subsetLinuxPins(allActive, stage1SelfPins)
+			var failed []string
+			verifiedPinned, failed = verifyLinuxPinnedMIMEsAtDir(needsPin, env, desktopID, targetDirIdx)
+			for _, mt := range failed {
+				delete(desiredFinalPins, mt)
 			}
 		}
 	}
 
 	mimeList := unionSortedStrings(safeDirect, verifiedPinned)
-	desktopDir := filepath.Join(targetDataClean, "applications")
 	desktopPath := filepath.Join(desktopDir, desktopID)
 	prevDesktopBytes, hadPrevDesktop := readFileIfExists(desktopPath)
 
@@ -2229,10 +2949,13 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 			_ = os.Remove(desktopPath)
 		}
 		_ = updateDB(desktopDir)
-		if rolled, err := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, activePinned, prevMainPins); err == nil {
-			_ = saveMainPins(rolled)
+		prevCombined := unionStringMaps(otherPins, activePinned)
+		restoreCombined := mergeLinuxPinsPreservingOthers(otherPins, prevMainPins)
+		_ = saveMainPinJournal(activePinned, prevMainPins, true)
+		if rolled, err := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, prevCombined, restoreCombined); err == nil {
+			_ = saveMainPinJournal(subsetLinuxPins(rolled, prevMainPins), nil, false)
 		} else {
-			_ = saveMainPins(activePinned)
+			_ = saveMainPinJournal(activePinned, nil, false)
 		}
 	}
 
@@ -2250,19 +2973,12 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 	okMIMEs, badMIMEs := verifyLinuxSystemRegistration(mimeList, expectedDefaults, env, desktopID, targetDirIdx)
 	if len(badMIMEs) > 0 {
 		mimeList = okMIMEs
-		badSet := make(map[string]struct{}, len(badMIMEs))
 		for _, mt := range badMIMEs {
-			badSet[mt] = struct{}{}
+			delete(desiredFinalPins, mt)
 		}
-		trimmedPins := make(map[string]string, len(activePinned))
-		for mt, app := range activePinned {
-			if _, isBad := badSet[mt]; !isBad {
-				trimmedPins[mt] = app
-			}
-		}
-		if rolled, rollErr := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, activePinned, trimmedPins); rollErr == nil {
-			activePinned = rolled
-		}
+		// Rewrite the .desktop entry and refresh the desktop database BEFORE
+		// removing pins so a failure never drops default protection while the
+		// .desktop entry still claims those MIME types.
 		content = buildMainLinuxDesktopContent(opts.ExecPath, mimeList)
 		if err := writeFileAtomic(desktopPath, []byte(content), 0o644); err != nil {
 			rollbackAll()
@@ -2274,7 +2990,20 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 		}
 	}
 
-	if err := saveMainPins(activePinned); err != nil {
+	// Phase 3 (prune obsolete pins ONLY AFTER the updated .desktop entry and
+	// desktop database have been committed).
+	if !equalStringMaps(activePinned, desiredFinalPins) {
+		prevCombined := unionStringMaps(otherPins, activePinned)
+		finalCombined := mergeLinuxPinsPreservingOthers(otherPins, desiredFinalPins)
+		if err := saveMainPinJournal(activePinned, desiredFinalPins, true); err != nil {
+			return fmt.Errorf("persist file association cleanup journal: %w", err)
+		}
+		if rolled, rollErr := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, prevCombined, finalCombined); rollErr == nil {
+			activePinned = subsetLinuxPins(rolled, desiredFinalPins)
+		}
+	}
+
+	if err := saveMainPinJournal(activePinned, nil, false); err != nil {
 		rollbackAll()
 		return fmt.Errorf("persist file association state: %w", err)
 	}
@@ -2297,7 +3026,9 @@ func InstallLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 }
 
 // CleanupLinuxDesktopEntry removes Block-managed main-desktop pins recorded in
-// opts.StateDir without touching any user- or admin-modified defaults.
+// opts.StateDir (and the shared XDG pin registry for user installs) without
+// touching any user- or admin-modified defaults, while retaining any pins still
+// depended on by other live Block installations.
 func CleanupLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 	if opts.StateDir != "" {
 		unlock, err := acquireFileAssocLock(opts.StateDir, 10*time.Second)
@@ -2306,22 +3037,71 @@ func CleanupLinuxDesktopEntry(opts LinuxDesktopInstallOptions) error {
 		}
 		defer unlock()
 	}
-	var prev fileAssocState
-	if opts.StateDir != "" {
+	if !opts.SystemMode && opts.TargetConfigDir != "" {
+		unlockXDG, err := acquireLinuxXDGStateLock(opts.StateDir, opts.TargetConfigDir, 10*time.Second)
+		if err != nil {
+			return fmt.Errorf("lock XDG file association state: %w", err)
+		}
+		defer unlockXDG()
+	}
+	var prev, localState, sharedState fileAssocState
+	if !opts.SystemMode {
+		prev, localState, _, sharedState, _ = loadLinuxXDGMergedState(opts.StateDir, opts.TargetConfigDir)
+	} else if opts.StateDir != "" {
 		prev, _ = loadFileAssocState(opts.StateDir)
+		recoverAllLinuxStatePins(&prev, opts.TargetConfigDir)
+		localState = prev
+	}
+	desktopID := strings.TrimSpace(opts.DesktopID)
+	if desktopID == "" {
+		if opts.SystemMode {
+			desktopID = "block.desktop"
+		} else {
+			desktopID = strings.TrimSpace(prev.LinuxMainDesktopID)
+			if desktopID == "" {
+				desktopID = "block-user.desktop"
+			}
+		}
+	}
+	var otherPins map[string]string
+	if !opts.SystemMode {
+		desktopDir := ""
+		if strings.TrimSpace(opts.TargetDataDir) != "" {
+			desktopDir = filepath.Join(filepath.Clean(opts.TargetDataDir), "applications")
+		}
+		otherPins = collectOtherLinuxPinnedDefaults(prev, desktopDir, true, desktopID)
 	}
 	if len(prev.PinnedLinuxMainDefaults) > 0 && opts.TargetConfigDir != "" {
-		if _, err := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, prev.PinnedLinuxMainDefaults, nil); err != nil {
+		prevCombined := unionStringMaps(otherPins, prev.PinnedLinuxMainDefaults)
+		if _, err := reconcileLinuxPinnedDefaults(opts.TargetConfigDir, prevCombined, otherPins); err != nil {
 			return err
 		}
 	}
+	clearMain := func(st *fileAssocState) {
+		st.PinnedLinuxMainDefaults = nil
+		st.PendingPinnedLinuxMainDefaults = nil
+		st.PendingLinuxMainPinTx = false
+		st.LinuxMainDesktopID = ""
+		st.LinuxMainDataHome = ""
+	}
 	if opts.StateDir != "" {
-		prev.PinnedLinuxMainDefaults = nil
-		prev.LinuxMainDesktopID = ""
-		if opts.SystemMode {
+		clearMain(&localState)
+		if opts.SystemMode || len(localState.LinuxScopes) == 0 {
 			_ = os.Remove(fileAssocStatePath(opts.StateDir))
 		} else {
-			_ = saveFileAssocState(opts.StateDir, prev)
+			_ = saveFileAssocState(opts.StateDir, localState)
+		}
+	}
+	if !opts.SystemMode && opts.TargetConfigDir != "" {
+		_ = syncLinuxScopePinsSidecar(opts.TargetConfigDir, desktopID, "", nil, nil)
+		xdgDir := linuxSharedXDGDir(opts.TargetConfigDir)
+		if xdgDir != "" && !sameCanonicalDir(opts.StateDir, xdgDir) {
+			clearMain(&sharedState)
+			if len(sharedState.LinuxScopes) == 0 {
+				_ = os.Remove(fileAssocStatePath(xdgDir))
+			} else {
+				_ = saveFileAssocState(xdgDir, sharedState)
+			}
 		}
 	}
 	return nil

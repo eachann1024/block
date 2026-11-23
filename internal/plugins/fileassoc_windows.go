@@ -16,14 +16,21 @@ import (
 )
 
 const (
-	winBlockMachineProgID     = "Block.Machine.Document"
-	winBlockMachineUserProgID = "Block.Machine.User.Document"
-	winBlockUserProgID        = "Block.User.Document"
-	winBlockLegacyProgID      = "Block.Document"
-	winBlockPortableProgID    = "Block.Portable.Document"
-	winSHCNEAssocChanged      = 0x08000000
-	winSHCNFIdList            = 0x0000
+	winBlockMachineProgID          = "Block.Machine.Document"
+	winBlockMachineProgIDPrefix    = "Block.Machine."
+	winBlockMachineUserProgID      = "Block.Machine.User.Document"
+	winBlockMachineUserProgIDPref  = "Block.Machine.User."
+	winBlockUserProgID             = "Block.User.Document"
+	winBlockLegacyProgID           = "Block.Document"
+	winBlockLegacyPortableProgID   = "Block.Portable.Document"
+	winBlockPortableProgIDPrefix   = "Block.Portable."
+	winSHCNEAssocChanged           = 0x08000000
+	winSHCNFIdList                 = 0x0000
 )
+
+func LinuxHelperDesktopID() string {
+	return ""
+}
 
 var (
 	winShell32DLL     = syscall.NewLazyDLL("shell32.dll")
@@ -40,6 +47,64 @@ func normalizeWinPath(p string) string {
 		p = resolved
 	}
 	return strings.ToLower(filepath.Clean(p))
+}
+
+// winMachineProgIDForExe searches HKLM\Software\Classes\Block.Machine.* and
+// HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Block* to find the
+// exact machine-wide ProgID whose open command or InstallLocation matches
+// exePath, supporting multiple side-by-side NSIS installs (e.g. C:\Block-A and
+// D:\Block-B) as well as legacy shared Block.Machine.Document.
+func winMachineProgIDForExe(exePath string) string {
+	normExe := normalizeWinPath(exePath)
+	if normExe == "" {
+		return ""
+	}
+	if clsKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Classes`, registry.ENUMERATE_SUB_KEYS); err == nil {
+		names, _ := clsKey.ReadSubKeyNames(-1)
+		clsKey.Close()
+		sort.Strings(names)
+		for _, name := range names {
+			if !strings.HasPrefix(name, winBlockMachineProgIDPrefix) {
+				continue
+			}
+			k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Classes\`+name+`\shell\open\command`, registry.QUERY_VALUE)
+			if err != nil {
+				continue
+			}
+			cmd, _, err := k.GetStringValue("")
+			k.Close()
+			if err == nil && normalizeWinPath(extractWinCommandExePath(cmd)) == normExe {
+				return name
+			}
+		}
+	}
+	if uninstKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, registry.ENUMERATE_SUB_KEYS); err == nil {
+		names, _ := uninstKey.ReadSubKeyNames(-1)
+		uninstKey.Close()
+		sort.Strings(names)
+		for _, name := range names {
+			if name != "Block" && !strings.HasPrefix(name, "Block-") {
+				continue
+			}
+			k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall\`+name, registry.QUERY_VALUE)
+			if err != nil {
+				continue
+			}
+			loc, _, locErr := k.GetStringValue("InstallLocation")
+			progID, _, _ := k.GetStringValue("BlockMachineProgID")
+			k.Close()
+			if locErr == nil && strings.TrimSpace(loc) != "" {
+				candExe := filepath.Join(strings.TrimSpace(loc), "block.exe")
+				if normalizeWinPath(candExe) == normExe {
+					if strings.TrimSpace(progID) != "" {
+						return strings.TrimSpace(progID)
+					}
+					return winBlockMachineProgID
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func winMachineInstallExePath() string {
@@ -93,24 +158,29 @@ func extractWinCommandExePath(cmd string) string {
 
 // resolveWinProgID assigns a dedicated HKCU runtime ProgID per installation
 // scope so coexisting installs never overwrite each other's commands or state:
-//   - Per-machine NSIS install -> Block.Machine.User.Document (HKCU plugin deltas)
+//   - Per-machine NSIS install -> Block.Machine.User.<12-hex-hash> (HKCU plugin
+//     deltas scoped per install directory, paired with its HKLM machineProgID)
 //   - Per-user install (%LOCALAPPDATA%\Programs\Block) -> Block.User.Document
-//   - Portable / ad-hoc binary -> Block.Portable.Document
-// Legacy Block.Document is never reused directly by new installs so an older
-// portable or system install's default association is never hijacked.
-func resolveWinProgID(exePath string) (progID string, isMachineInstalled bool) {
+//   - Portable / ad-hoc binary -> Block.Portable.<12-hex-hash>
+// Legacy Block.Document, Block.Machine.User.Document, and
+// Block.Portable.Document are never reused directly by new installs so an older
+// install's default association is never hijacked.
+func resolveWinProgID(exePath string) (progID string, machineProgID string) {
 	normExe := normalizeWinPath(exePath)
-	if machineExe := winMachineInstallExePath(); machineExe != "" && normalizeWinPath(machineExe) == normExe {
-		return winBlockMachineUserProgID, true
+	if mProgID := winMachineProgIDForExe(exePath); mProgID != "" {
+		return winBlockMachineUserProgIDPref + stableInstallScopeHash(normExe), mProgID
 	}
 	if userExe := winUserInstallExePath(); userExe != "" && normalizeWinPath(userExe) == normExe {
-		return winBlockUserProgID, false
+		return winBlockUserProgID, ""
 	}
-	return winBlockPortableProgID, false
+	return winBlockPortableProgIDPrefix + stableInstallScopeHash(normExe), ""
 }
 
-func winMachineProgIDMatches(exePath string) bool {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Classes\`+winBlockMachineProgID+`\shell\open\command`, registry.QUERY_VALUE)
+func winMachineProgIDMatchesFor(machineProgID, exePath string) bool {
+	if strings.TrimSpace(machineProgID) == "" {
+		return false
+	}
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Classes\`+machineProgID+`\shell\open\command`, registry.QUERY_VALUE)
 	if err != nil {
 		return false
 	}
@@ -122,13 +192,16 @@ func winMachineProgIDMatches(exePath string) bool {
 	return normalizeWinPath(extractWinCommandExePath(val)) == normalizeWinPath(exePath)
 }
 
-func winMachineHasOpenWithProgid(ext string) bool {
+func winMachineHasOpenWithProgidFor(ext, machineProgID string) bool {
+	if strings.TrimSpace(machineProgID) == "" {
+		return false
+	}
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Classes\`+ext+`\OpenWithProgids`, registry.QUERY_VALUE)
 	if err != nil {
 		return false
 	}
 	defer k.Close()
-	_, _, err = k.GetValue(winBlockMachineProgID, nil)
+	_, _, err = k.GetValue(machineProgID, nil)
 	return err == nil
 }
 
@@ -320,11 +393,54 @@ func migrateWinLegacyProgID(oldProgID string, candidateExts []string, forwardExe
 	return unionSortedStrings(remaining), false, firstErr
 }
 
+// collectWinPendingUninstallExes reads explicit uninstall records written by
+// Block's installer/uninstaller (HKLM/HKCU\Software\Block\PendingCleanup\*)
+// so cross-install cleanup only removes ProgIDs whose owning installation was
+// explicitly uninstalled, never temporarily offline portable/removable drives
+// (even when the drive letter has since been reassigned to another disk).
+func collectWinPendingUninstallExes() map[string]struct{} {
+	out := make(map[string]struct{})
+	scanRoot := func(root registry.Key) {
+		parent, err := registry.OpenKey(root, `Software\Block\PendingCleanup`, registry.ENUMERATE_SUB_KEYS)
+		if err != nil {
+			return
+		}
+		defer parent.Close()
+		names, err := parent.ReadSubKeyNames(-1)
+		if err != nil {
+			return
+		}
+		for _, sub := range names {
+			k, kerr := registry.OpenKey(parent, sub, registry.QUERY_VALUE)
+			if kerr != nil {
+				continue
+			}
+			exe, _, verr := k.GetStringValue("ExecutablePath")
+			k.Close()
+			if verr == nil {
+				if norm := normalizeWinPath(exe); norm != "" {
+					out[norm] = struct{}{}
+				}
+			}
+		}
+	}
+	scanRoot(registry.LOCAL_MACHINE)
+	scanRoot(registry.CURRENT_USER)
+	return out
+}
+
 // cleanupOrphanedWinProgID removes a per-user ProgID and its OpenWithProgids
-// entries if its registered executable no longer exists on disk.
-func cleanupOrphanedWinProgID(progID string, candidateExts []string) {
+// entries ONLY if its registered executable is explicitly listed in
+// uninstalledExes (recorded by an uninstaller) AND no longer exists on disk.
+func cleanupOrphanedWinProgID(progID string, candidateExts []string, uninstalledExes map[string]struct{}) {
+	if len(uninstalledExes) == 0 {
+		return
+	}
 	targetExe := winProgIDCommandExe(progID)
 	if targetExe == "" {
+		return
+	}
+	if _, explicitlyUninstalled := uninstalledExes[normalizeWinPath(targetExe)]; !explicitlyUninstalled {
 		return
 	}
 	if _, statErr := os.Stat(targetExe); statErr == nil || !errors.Is(statErr, os.ErrNotExist) {
@@ -337,6 +453,71 @@ func cleanupOrphanedWinProgID(progID string, candidateExts []string) {
 		_ = removeWinOpenWithProgid(ext, progID)
 	}
 	deleteRegTree(registry.CURRENT_USER, `Software\Classes\`+progID)
+}
+
+// cleanupOrphanedWinScopedProgIDs removes any per-user Block.* ProgID (other
+// than excludeProgID) whose owning installation has an explicit uninstall
+// record and whose executable no longer exists on disk, preserving temporarily
+// offline portable installs on removable or reassigned drives.
+func cleanupOrphanedWinScopedProgIDs(candidateExts []string, excludeProgID string) {
+	uninstalledExes := collectWinPendingUninstallExes()
+	if len(uninstalledExes) == 0 {
+		return
+	}
+	clsKey, err := registry.OpenKey(registry.CURRENT_USER, `Software\Classes`, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return
+	}
+	names, _ := clsKey.ReadSubKeyNames(-1)
+	clsKey.Close()
+	for _, name := range names {
+		if !strings.HasPrefix(name, "Block.") {
+			continue
+		}
+		if strings.EqualFold(name, excludeProgID) {
+			continue
+		}
+		cleanupOrphanedWinProgID(name, candidateExts, uninstalledExes)
+	}
+}
+
+// collectOwnedWinLegacyProgIDs returns legacy HKCU ProgIDs (Block.Document,
+// Block.Portable.Document, or a previously recorded LegacyProgID) that belong
+// exclusively to this executable and should be migrated away from while
+// preserving any extensions still defaulted to them.
+func collectOwnedWinLegacyProgIDs(progID, exePath string, prev fileAssocState, hasPrev bool, scopePrev winAssocScopeState, allDesired []string) (legacyIDs []string, candidateExts []string) {
+	seen := make(map[string]struct{}, 3)
+	add := func(id string, extra []string) {
+		if id == "" || id == progID {
+			return
+		}
+		if _, dup := seen[id]; dup {
+			return
+		}
+		seen[id] = struct{}{}
+		legacyIDs = append(legacyIDs, id)
+		candidateExts = unionSortedStrings(candidateExts, extra, BuiltinAssocExtensions(), allDesired)
+	}
+	if scopePrev.LegacyProgID != "" && scopePrev.LegacyProgID != progID &&
+		winLegacyProgIDOwnedByMigration(scopePrev.LegacyProgID, exePath, scopePrev.ExecutablePath) {
+		add(scopePrev.LegacyProgID, scopePrev.LegacyExtensions)
+	}
+	for _, legacyID := range []string{winBlockLegacyProgID, winBlockLegacyPortableProgID, winBlockMachineUserProgID} {
+		if legacyID == progID {
+			continue
+		}
+		if !winLegacyProgIDOwnedByMigration(legacyID, exePath, prev.ExecutablePath) {
+			continue
+		}
+		cmdExe := winProgIDCommandExe(legacyID)
+		if cmdExe != "" && normalizeWinPath(cmdExe) == normalizeWinPath(exePath) {
+			add(legacyID, prev.Extensions)
+		} else if hasPrev && (prev.ProgID == legacyID || (legacyID == winBlockLegacyProgID && prev.ProgID == "")) &&
+			normalizeWinPath(prev.ExecutablePath) == normalizeWinPath(exePath) {
+			add(legacyID, prev.Extensions)
+		}
+	}
+	return legacyIDs, candidateExts
 }
 
 func loadWinScopeState(st fileAssocState, progID string) (winAssocScopeState, bool) {
@@ -407,22 +588,21 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 	}
 	allDesired := unionSortedStrings(builtinMarkdownExtensions(), filtered)
 
-	progID, isMachineInstalled := resolveWinProgID(exePath)
+	progID, machineProgID := resolveWinProgID(exePath)
 
-	// If a previously run portable binary was deleted, clean up its orphaned
-	// Block.Portable.Document entry when an installed copy runs.
-	if progID != winBlockPortableProgID {
-		cleanupOrphanedWinProgID(winBlockPortableProgID, unionSortedStrings(BuiltinAssocExtensions(), allDesired))
-	}
+	// Clean up any orphaned Block.* ProgIDs whose executables were deleted
+	// from disk (including machine-wide installs uninstalled while this user
+	// was logged out), without touching live coexisting installs.
+	cleanupOrphanedWinScopedProgIDs(unionSortedStrings(BuiltinAssocExtensions(), allDesired), progID)
 
-	// For a machine-wide NSIS install whose HKLM Block.Machine.Document already
+	// For a machine-wide NSIS install whose HKLM Block.Machine.* already
 	// points to this executable, only register delta extensions (e.g. newly
-	// installed language plugins) under HKCU Block.Machine.User.Document.
+	// installed language plugins) under HKCU Block.Machine.User.<hash>.
 	desired := allDesired
-	if isMachineInstalled && winMachineProgIDMatches(exePath) {
+	if machineProgID != "" && winMachineProgIDMatchesFor(machineProgID, exePath) {
 		delta := make([]string, 0, len(allDesired))
 		for _, ext := range allDesired {
-			if !winMachineHasOpenWithProgid(ext) {
+			if !winMachineHasOpenWithProgidFor(ext, machineProgID) {
 				delta = append(delta, ext)
 			}
 		}
@@ -437,25 +617,11 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 		return nil
 	}
 
-	// Detect an owned legacy ProgID that needs migration (for example:
-	// - an older portable/user/machine build upgraded from HKCU Block.Document).
-	// Never migrate Block.Document when its registered command points to a
+	// Detect owned legacy ProgIDs that need migration (e.g., an older build
+	// upgraded from HKCU Block.Document or shared Block.Portable.Document).
+	// Never migrate a legacy ProgID whose registered command points to a
 	// different still-existing Block executable on disk.
-	var pendingLegacyProgID string
-	var pendingLegacyExts []string
-	if scopePrev.LegacyProgID != "" && scopePrev.LegacyProgID != progID && winLegacyProgIDOwnedByMigration(scopePrev.LegacyProgID, exePath, scopePrev.ExecutablePath) {
-		pendingLegacyProgID = scopePrev.LegacyProgID
-		pendingLegacyExts = unionSortedStrings(scopePrev.LegacyExtensions, BuiltinAssocExtensions(), allDesired)
-	} else if progID != winBlockLegacyProgID && winLegacyProgIDOwnedByMigration(winBlockLegacyProgID, exePath, prev.ExecutablePath) {
-		cmdExe := winProgIDCommandExe(winBlockLegacyProgID)
-		if cmdExe != "" && normalizeWinPath(cmdExe) == normalizeWinPath(exePath) {
-			pendingLegacyProgID = winBlockLegacyProgID
-			pendingLegacyExts = unionSortedStrings(prev.Extensions, BuiltinAssocExtensions(), allDesired)
-		} else if hasPrev && (prev.ProgID == "" || prev.ProgID == winBlockLegacyProgID) && normalizeWinPath(prev.ExecutablePath) == normalizeWinPath(exePath) {
-			pendingLegacyProgID = winBlockLegacyProgID
-			pendingLegacyExts = unionSortedStrings(prev.Extensions, BuiltinAssocExtensions(), allDesired)
-		}
-	}
+	pendingLegacyProgIDs, pendingLegacyExts := collectOwnedWinLegacyProgIDs(progID, exePath, prev, hasPrev, scopePrev, allDesired)
 
 	// Discover extensions actually registered for progID in HKCU so stale
 	// OpenWithProgids entries are cleaned up even if file-associations.json was
@@ -506,15 +672,17 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 
 		nextLegacyProgID := ""
 		var nextLegacyExts []string
-		if pendingLegacyProgID != "" {
-			rem, retainedDef, migErr := migrateWinLegacyProgID(pendingLegacyProgID, pendingLegacyExts, exePath)
+		for _, legacyID := range pendingLegacyProgIDs {
+			rem, retainedDef, migErr := migrateWinLegacyProgID(legacyID, pendingLegacyExts, exePath)
 			changed = true
 			if migErr != nil && firstErr == nil {
 				firstErr = migErr
 			}
 			if retainedDef || migErr != nil || len(rem) > 0 {
-				nextLegacyProgID = pendingLegacyProgID
-				nextLegacyExts = rem
+				if nextLegacyProgID == "" {
+					nextLegacyProgID = legacyID
+				}
+				nextLegacyExts = unionSortedStrings(nextLegacyExts, rem)
 			}
 		}
 		if changed {
@@ -556,7 +724,7 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 	if hasPrev &&
 		prev.Version == fileAssocStateVersion &&
 		hasScopePrev &&
-		pendingLegacyProgID == "" &&
+		len(pendingLegacyProgIDs) == 0 &&
 		scopePrev.LegacyProgID == "" &&
 		scopePrev.ExecutablePath == exePath &&
 		equalStringSlices(scopePrev.Extensions, desired) &&
@@ -603,22 +771,27 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 		}
 	}
 
-	// Only retire the old ProgID after the new ProgID and its OpenWithProgids
-	// entries succeeded, and keep it forwarding if still referenced as default.
+	// Only retire owned legacy ProgIDs after the new ProgID and its
+	// OpenWithProgids entries succeeded, and keep them forwarding if still
+	// referenced as a user default.
 	nextLegacyProgID := ""
 	var nextLegacyExts []string
-	if pendingLegacyProgID != "" {
+	if len(pendingLegacyProgIDs) > 0 {
 		if firstErr == nil {
-			rem, retainedDef, migErr := migrateWinLegacyProgID(pendingLegacyProgID, pendingLegacyExts, exePath)
-			if migErr != nil {
-				firstErr = migErr
-			}
-			if retainedDef || migErr != nil || len(rem) > 0 {
-				nextLegacyProgID = pendingLegacyProgID
-				nextLegacyExts = rem
+			for _, legacyID := range pendingLegacyProgIDs {
+				rem, retainedDef, migErr := migrateWinLegacyProgID(legacyID, pendingLegacyExts, exePath)
+				if migErr != nil && firstErr == nil {
+					firstErr = migErr
+				}
+				if retainedDef || migErr != nil || len(rem) > 0 {
+					if nextLegacyProgID == "" {
+						nextLegacyProgID = legacyID
+					}
+					nextLegacyExts = unionSortedStrings(nextLegacyExts, rem)
+				}
 			}
 		} else {
-			nextLegacyProgID = pendingLegacyProgID
+			nextLegacyProgID = pendingLegacyProgIDs[0]
 			nextLegacyExts = pendingLegacyExts
 		}
 	}
@@ -669,12 +842,15 @@ func cleanupPlatformFileAssociations(appDataDir string, _ bool) error {
 	if scopePrev.LegacyProgID != "" && scopePrev.LegacyProgID != ownedProgID && winLegacyProgIDOwnedByMigration(scopePrev.LegacyProgID, exePath, scopePrev.ExecutablePath) {
 		addProgID(scopePrev.LegacyProgID)
 	}
-	if ownedProgID != winBlockLegacyProgID {
-		cmdExe := winProgIDCommandExe(winBlockLegacyProgID)
-		if cmdExe != "" && normalizeWinPath(cmdExe) == normalizeWinPath(exePath) {
-			addProgID(winBlockLegacyProgID)
+	for _, legacyID := range []string{winBlockLegacyProgID, winBlockLegacyPortableProgID, winBlockMachineUserProgID} {
+		if ownedProgID != legacyID {
+			cmdExe := winProgIDCommandExe(legacyID)
+			if cmdExe != "" && normalizeWinPath(cmdExe) == normalizeWinPath(exePath) {
+				addProgID(legacyID)
+			}
 		}
 	}
+	cleanupOrphanedWinScopedProgIDs(allExts, ownedProgID)
 
 	var firstErr error
 	var remaining []string
@@ -769,7 +945,7 @@ func registerWinProgID(progID, exePath string) error {
 	openCmd := winOpenCommand(exePath)
 	iconVal := fmt.Sprintf(`"%s",0`, exePath)
 	friendlyApp := "Block"
-	if progID == winBlockPortableProgID {
+	if strings.HasPrefix(progID, winBlockPortableProgIDPrefix) {
 		friendlyApp = "Block (Portable)"
 	}
 

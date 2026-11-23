@@ -1599,8 +1599,15 @@ func (w *Workspace) writeNoteLocked(absPath, content string) error {
 				return err
 			}
 		} else {
-			bom := existingSurf != nil && existingSurf.Source.BOM
-			if _, err := files.WriteRawFileAtomic(clean, content, bom); err != nil {
+			var bom bool
+			var enc model.TextEncoding
+			if existingSurf != nil {
+				bom = existingSurf.Source.BOM
+				enc = existingSurf.Source.Encoding
+			} else {
+				bom, enc = files.DetectFileTextEncoding(clean)
+			}
+			if _, _, err := files.WriteSourceFileAtomic(clean, content, bom, enc); err != nil {
 				files.LogErrorf("note save failed: path=%s bytes=%d err=%v", clean, len(content), err)
 				return err
 			}

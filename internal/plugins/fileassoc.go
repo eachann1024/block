@@ -20,7 +20,7 @@ import (
 	codeed "github.com/egoist/mygo/ui/editor"
 )
 
-const fileAssocStateVersion = 6
+const fileAssocStateVersion = 7
 
 var (
 	assocExtRe     = regexp.MustCompile(`^\.[a-z0-9][a-z0-9._+-]{0,31}$`)
@@ -153,10 +153,13 @@ type winAssocScopeState struct {
 }
 
 type linuxAssocScopeState struct {
-	DesktopID           string            `json:"desktop_id,omitempty"`
-	ExecutablePath      string            `json:"executable_path,omitempty"`
-	Extensions          []string          `json:"extensions,omitempty"`
-	PinnedLinuxDefaults map[string]string `json:"pinned_linux_defaults,omitempty"`
+	DesktopID                  string            `json:"desktop_id,omitempty"`
+	DataHome                   string            `json:"data_home,omitempty"`
+	ExecutablePath             string            `json:"executable_path,omitempty"`
+	Extensions                 []string          `json:"extensions,omitempty"`
+	PinnedLinuxDefaults        map[string]string `json:"pinned_linux_defaults,omitempty"`
+	PendingPinnedLinuxDefaults map[string]string `json:"pending_pinned_linux_defaults,omitempty"`
+	PendingPinTx               bool              `json:"pending_pin_tx,omitempty"`
 }
 
 type macAssocScopeState struct {
@@ -180,14 +183,17 @@ type fileAssocState struct {
 	WinScopes               map[string]winAssocScopeState   `json:"win_scopes,omitempty"`
 	LinuxScopes             map[string]linuxAssocScopeState `json:"linux_scopes,omitempty"`
 	MacScopes               map[string]macAssocScopeState   `json:"mac_scopes,omitempty"`
-	LinuxMainDesktopID      string                          `json:"linux_main_desktop_id,omitempty"`
+	LinuxMainDesktopID             string                          `json:"linux_main_desktop_id,omitempty"`
+	LinuxMainDataHome              string                          `json:"linux_main_data_home,omitempty"`
 	ExecutablePath          string                          `json:"executable_path,omitempty"`
 	ExecutableSize          int64                           `json:"executable_size,omitempty"`
 	ExecutableMtime         int64                           `json:"executable_mtime,omitempty"`
 	Extensions              []string                        `json:"extensions"`
 	CustomMIMEs             []string                        `json:"custom_mimes,omitempty"`
-	PinnedLinuxDefaults     map[string]string               `json:"pinned_linux_defaults,omitempty"`
-	PinnedLinuxMainDefaults map[string]string               `json:"pinned_linux_main_defaults,omitempty"`
+	PinnedLinuxDefaults            map[string]string               `json:"pinned_linux_defaults,omitempty"`
+	PinnedLinuxMainDefaults        map[string]string               `json:"pinned_linux_main_defaults,omitempty"`
+	PendingPinnedLinuxMainDefaults map[string]string               `json:"pending_pinned_linux_main_defaults,omitempty"`
+	PendingLinuxMainPinTx          bool                            `json:"pending_linux_main_pin_tx,omitempty"`
 }
 
 func stableInstallScopeHash(canonicalPath string) string {
@@ -276,6 +282,92 @@ func CleanupFileAssociations(appDataDir string, isolated bool) error {
 	return cleanupPlatformFileAssociations(dir, isolated)
 }
 
+// SyncCurrentExecFileAssociations synchronously registers OS "Open With" file
+// associations for the currently running executable using built-in languages
+// plus persisted enabled plugin languages. Used when a secondary instance from
+// another install directory hands off to an already-running primary instance
+// and exits early, so the secondary installation still registers its own
+// install-scoped Open-With entry.
+func SyncCurrentExecFileAssociations(appDataDir string) error {
+	dir := strings.TrimSpace(appDataDir)
+	if dir == "" {
+		return nil
+	}
+	unlock, err := acquireFileAssocLock(dir, 10*time.Second)
+	if err != nil {
+		files.LogWarnf("file association sync lock failed: %v", err)
+		return err
+	}
+	defer unlock()
+
+	pluginExts, loadErr := loadPersistedPluginAssocExtensions(dir)
+	if loadErr != nil {
+		files.LogWarnf("file association sync skipped: failed to read persisted plugin state under %s: %v", dir, loadErr)
+		return loadErr
+	}
+	managedExts := unionSortedStrings(BuiltinAssocExtensions(), pluginExts)
+	if syncErr := syncPlatformFileAssociations(dir, managedExts); syncErr != nil {
+		files.LogWarnf("file association sync failed: %v", syncErr)
+		return syncErr
+	}
+	return nil
+}
+
+// SyncLinuxUserFileAssociations runs protected per-user Linux Open-With
+// registration for the current non-root user. Invoked by Debian package
+// postinst (after dropping privileges to the installing user with their real
+// desktop session environment) and by /etc/xdg/autostart/block-fileassoc.desktop
+// so Block appears in file manager "Open With" menus before first launch
+// without displacing existing defaults.
+//
+// When requireDesktopSession is true (package postinst), syncing is deferred
+// whenever XDG_CURRENT_DESKTOP is absent so desktop-specific *-mimeapps.list
+// defaults (such as gnome-mimeapps.list) are never misread from a headless
+// elevated shell.
+func SyncLinuxUserFileAssociations(appDataDir string, requireDesktopSession bool) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("refusing to sync per-user Linux file associations as root")
+	}
+	if requireDesktopSession && strings.TrimSpace(os.Getenv("XDG_CURRENT_DESKTOP")) == "" {
+		return nil
+	}
+	dir := strings.TrimSpace(appDataDir)
+	if dir == "" {
+		return fmt.Errorf("app data directory is required")
+	}
+	unlock, err := acquireFileAssocLock(dir, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	pluginExts, loadErr := loadPersistedPluginAssocExtensions(dir)
+	if loadErr != nil {
+		return fmt.Errorf("read persisted plugin state: %w", loadErr)
+	}
+	managedExts := unionSortedStrings(BuiltinAssocExtensions(), pluginExts)
+	return syncPlatformFileAssociations(dir, managedExts)
+}
+
+// CurrentLinuxHelperDesktopID returns the deterministic per-executable Linux
+// helper desktop entry ID (block-assoc-<hash>.desktop) for the running binary.
+func CurrentLinuxHelperDesktopID() (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil && resolved != "" {
+		exe = resolved
+	}
+	return linuxHelperDesktopIDForExec(filepath.Clean(exe)), nil
+}
+
 func normalizeAssocExtension(raw string) (string, bool) {
 	ext := strings.ToLower(strings.TrimSpace(raw))
 	if !assocExtRe.MatchString(ext) {
@@ -331,29 +423,24 @@ func isPathWithinDir(parent, child string) bool {
 
 // loadPersistedPluginAssocExtensions re-reads installed plugin manifests and
 // disabled-plugins.json from appDataDir while holding the cross-process
-// file-association lock. This guarantees that a delayed worker from another
-// Block instance cannot overwrite a newer enable/disable/uninstall made by a
-// concurrent instance sharing the same data directory.
-func loadPersistedPluginAssocExtensions(appDataDir string) ([]string, bool) {
+// file-association lock. It uses the exact same disabled-plugins.json reader
+// and validator as StoreManager so invalid/null state is never treated as
+// "all plugins enabled".
+func loadPersistedPluginAssocExtensions(appDataDir string) ([]string, error) {
 	appsRoot := filepath.Join(appDataDir, "apps")
 	cacheRoot := filepath.Join(appDataDir, "apps-cache")
+
+	disabled, stateErr := loadDisabledPluginState(cacheRoot)
+	if stateErr != nil {
+		return nil, stateErr
+	}
 
 	entries, err := os.ReadDir(appsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, true
+			return nil, nil
 		}
-		return nil, false
-	}
-
-	disabled := map[string]bool{}
-	disabledPath := filepath.Join(cacheRoot, "disabled-plugins.json")
-	if raw, readErr := os.ReadFile(disabledPath); readErr == nil {
-		if unmarshalErr := json.Unmarshal(raw, &disabled); unmarshalErr != nil {
-			return nil, false
-		}
-	} else if !os.IsNotExist(readErr) {
-		return nil, false
+		return nil, err
 	}
 
 	seen := make(map[string]struct{})
@@ -396,7 +483,7 @@ func loadPersistedPluginAssocExtensions(appDataDir string) ([]string, bool) {
 		root.Close()
 	}
 	sort.Strings(out)
-	return out, true
+	return out, nil
 }
 
 func scheduleFileAssociationSync(appDataDir string, snap *languageSnapshot, gen uint64, useDiskState bool) {
@@ -450,10 +537,10 @@ func runFileAssociationWorker() {
 		exts := req.extensions
 		skip := false
 		if req.useDiskState {
-			if diskExts, ok := loadPersistedPluginAssocExtensions(req.appDataDir); ok {
+			if diskExts, loadErr := loadPersistedPluginAssocExtensions(req.appDataDir); loadErr == nil {
 				exts = unionSortedStrings(BuiltinAssocExtensions(), diskExts)
 			} else {
-				files.LogWarnf("file association sync skipped: failed to read persisted plugin state under %s", req.appDataDir)
+				files.LogWarnf("file association sync skipped: failed to read persisted plugin state under %s: %v", req.appDataDir, loadErr)
 				skip = true
 			}
 		}
