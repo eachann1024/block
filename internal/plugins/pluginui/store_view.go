@@ -54,7 +54,7 @@ func renderStoreHeaderExtras(c *ui.Context, ctrl *Controller) {
 		})
 		if upAllBtn.Clicked() && !batchUpdating && !disabled && len(updatable) > 0 {
 			ctrl.closeStoreMenus()
-			ctrl.sup.UpdateEntriesAsync(updatable, ctrl.clearPluginState)
+			ctrl.RequestUpdateAll(updatable, ctrl.clearPluginState)
 		}
 	}
 	query := ctrl.storeQuery
@@ -364,7 +364,7 @@ func renderManualInstallRow(c *ui.Context, ctrl *Controller, installingID string
 		})
 		if (btn.Clicked() || submitted) && !disabled && !manualBusy {
 			source := spec
-			ctrl.sup.InstallFromSourceAsync(source, func(pluginID string) {
+			ctrl.RequestManualInstall(source, func(pluginID string) {
 				ctrl.clearManualSpec()
 				ctrl.clearPluginState(pluginID)
 			})
@@ -414,7 +414,7 @@ func renderStoreCardAction(
 		if upBtn.Clicked() && !busy && !disabled {
 			actionHandled = true
 			ctrl.closeStoreMenus()
-			ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
+			ctrl.RequestInstallEntry(entry, ctrl.clearPluginState)
 		}
 		return actionHandled, actionHovered
 	}
@@ -456,7 +456,7 @@ func renderStoreCardAction(
 	if btn.Clicked() && !busy && !disabled {
 		actionHandled = true
 		ctrl.closeStoreMenus()
-		ctrl.sup.InstallEntryAsync(entry, ctrl.clearPluginState)
+		ctrl.RequestInstallEntry(entry, ctrl.clearPluginState)
 	}
 	return actionHandled, actionHovered
 }

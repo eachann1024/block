@@ -699,27 +699,41 @@ func (s *Supervisor) OnNotebookSwitched() {
 }
 
 func shouldAutoWarmupPlugin(m Manifest) bool {
-	if m.HasPermission(PermUIAppearance) || m.HasPermission(PermUISidebar) || m.HasPermission(PermUIStatus) || m.HasPermission(PermUITitlebar) {
+	if m.IsDeclarativeOnly() {
+		return false
+	}
+	if m.EffectiveCategory() == CategoryAppearance || m.ID == "block-titlebar" || m.HasDeclaredPermission(PermUITitlebar) {
 		return true
 	}
-	if m.HasPermission(PermUISettings) && m.Contributes != nil {
-		for _, sec := range m.Contributes.SettingsSections {
-			if sec.Tab == "appearance" {
-				return true
-			}
+	if m.Contributes == nil {
+		return false
+	}
+	if len(m.Contributes.Backdrops) > 0 ||
+		len(m.Contributes.SidebarSections) > 0 ||
+		len(m.Contributes.FileBadges) > 0 ||
+		len(m.Contributes.FileIcons) > 0 ||
+		len(m.Contributes.StatusItems) > 0 ||
+		len(m.Contributes.TitlebarButtons) > 0 ||
+		len(m.Contributes.MenubarItems) > 0 {
+		return true
+	}
+	for _, sec := range m.Contributes.SettingsSections {
+		if sec.Tab == "appearance" {
+			return true
 		}
 	}
 	return false
 }
 
 func needsTransientUISync(m Manifest) bool {
-	if m.HasPermission(PermUIStatus) || m.HasPermission(PermUISidebar) {
-		return true
+	if m.IsDeclarativeOnly() || m.Contributes == nil {
+		return false
 	}
-	if m.HasPermission(PermUITitlebar) && m.Contributes != nil && len(m.Contributes.TitlebarButtons) > 0 {
-		return true
-	}
-	return false
+	return len(m.Contributes.StatusItems) > 0 ||
+		len(m.Contributes.SidebarSections) > 0 ||
+		len(m.Contributes.FileBadges) > 0 ||
+		len(m.Contributes.FileIcons) > 0 ||
+		len(m.Contributes.TitlebarButtons) > 0
 }
 
 // warmupPluginAsync initializes a newly installed or enabled UI plugin in the
@@ -731,14 +745,11 @@ func (s *Supervisor) warmupPluginAsync(pluginID string) {
 		return
 	}
 	inst, ok := s.GetInstalled(pluginID)
-	if !ok || !inst.Enabled {
+	if !ok || !inst.Enabled || inst.Manifest.IsDeclarativeOnly() {
 		return
 	}
-	if !inst.Manifest.HasPermission(PermUISettings) &&
-		!inst.Manifest.HasPermission(PermUITitlebar) &&
-		!inst.Manifest.HasPermission(PermUISidebar) &&
-		!inst.Manifest.HasPermission(PermUIAppearance) &&
-		!inst.Manifest.HasPermission(PermUIStatus) {
+	if !shouldAutoWarmupPlugin(inst.Manifest) &&
+		(inst.Manifest.Contributes == nil || len(inst.Manifest.Contributes.SettingsSections) == 0) {
 		return
 	}
 	version := inst.Manifest.Version
@@ -815,6 +826,17 @@ func formatStoreError(err error, locale string) string {
 		}
 		return "网络连接中断，下载失败，请稍后重试"
 	}
+	var permErr *PermissionEscalationError
+	if errors.As(err, &permErr) {
+		labels := make([]string, 0, len(permErr.Added))
+		for _, p := range permErr.Added {
+			labels = append(labels, PermissionLabel(p, locale))
+		}
+		if isEn {
+			return fmt.Sprintf("New permissions require confirmation: %s", strings.Join(labels, ", "))
+		}
+		return fmt.Sprintf("新增权限需要先确认：%s", strings.Join(labels, "、"))
+	}
 	return err.Error()
 }
 
@@ -842,13 +864,26 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 }
 
 func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(pluginID string)) {
-	s.startInstallAsync(entry.ID, func(ctx context.Context) (*InstalledApp, error) {
+	_, wasUpdate := s.GetInstalled(entry.ID)
+	s.startInstallAsync(entry.ID, wasUpdate, func(ctx context.Context) (*InstalledApp, error) {
 		return s.store.InstallEntryExplicit(ctx, entry)
 	}, onInstalled)
 }
 
-// UpdateEntriesAsync sequentially updates all provided store entries while updating UI progress per plugin.
-func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled func(pluginID string)) {
+// InstallEntryConfirmedAsync installs or updates a catalog entry after the user
+// has approved approvedPermissions (or when no sensitive permissions are added).
+func (s *Supervisor) InstallEntryConfirmedAsync(entry StoreAppEntry, approvedPermissions []Permission, onInstalled func(pluginID string)) bool {
+	_, wasUpdate := s.GetInstalled(entry.ID)
+	approvedCopy := append([]Permission(nil), approvedPermissions...)
+	return s.startInstallAsync(entry.ID, wasUpdate, func(ctx context.Context) (*InstalledApp, error) {
+		return s.store.InstallEntryConfirmed(ctx, entry, approvedCopy)
+	}, onInstalled)
+}
+
+// UpdateEntriesAsync sequentially updates all provided store entries that do
+// not introduce new sensitive permissions. Any entries that require new
+// permissions are skipped and returned via onDone so the UI can prompt the user.
+func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled func(pluginID string), onDone func(escalated []StoreAppEntry)) {
 	s.mu.Lock()
 	if s.stopping || s.installingID != "" {
 		s.mu.Unlock()
@@ -863,6 +898,9 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 	}
 	if len(queue) == 0 {
 		s.mu.Unlock()
+		if onDone != nil {
+			onDone(nil)
+		}
 		return
 	}
 	s.batchUpdating = true
@@ -875,6 +913,7 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 	go func() {
 		updated := 0
 		var failedMsgs []string
+		var escalated []StoreAppEntry
 		for _, entry := range queue {
 			s.mu.Lock()
 			if s.stopping {
@@ -889,9 +928,14 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			s.notifyChanged()
 
 			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			inst, err := s.store.InstallEntryExplicit(ctx, entry)
+			inst, err := s.store.UpdateEntryNoEscalation(ctx, entry)
 			cancel()
 			if err != nil {
+				var permErr *PermissionEscalationError
+				if errors.As(err, &permErr) {
+					escalated = append(escalated, entry)
+					continue
+				}
 				failedMsgs = append(failedMsgs, fmt.Sprintf("%s: %s", entry.ID, formatStoreError(err, s.Locale())))
 				continue
 			}
@@ -915,22 +959,53 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 		s.batchUpdating = false
 		s.installingID = ""
 		s.replacingID = ""
-		isEn := normalizeLocale(s.Locale()) == "en"
+		locale := s.Locale()
+		isEn := normalizeLocale(locale) == "en"
+		var summaryMsg string
 		if updated > 0 {
 			if isEn {
 				if updated == 1 {
-					s.storeNotice = "Updated 1 plugin"
+					summaryMsg = "Updated 1 plugin"
 				} else {
-					s.storeNotice = fmt.Sprintf("Updated %d plugins", updated)
+					summaryMsg = fmt.Sprintf("Updated %d plugins", updated)
 				}
 			} else {
-				s.storeNotice = fmt.Sprintf("已更新 %d 个插件", updated)
+				summaryMsg = fmt.Sprintf("已更新 %d 个插件", updated)
 			}
+			s.storeNotice = summaryMsg
 		}
+		var errBody string
 		if len(failedMsgs) > 0 {
-			s.storeErr = strings.Join(failedMsgs, "; ")
+			errBody = strings.Join(failedMsgs, "; ")
+			s.storeErr = errBody
 		}
 		s.mu.Unlock()
+
+		if updated > 0 && errBody == "" {
+			s.NotifyHost(ToastRequest{
+				Message: summaryMsg,
+				Tone:    "success",
+			})
+		} else if updated > 0 && errBody != "" {
+			s.NotifyHost(ToastRequest{
+				Message: summaryMsg,
+				Body:    errBody,
+				Tone:    "warning",
+			})
+		} else if errBody != "" {
+			failTitle := "插件更新失败"
+			if isEn {
+				failTitle = "Plugin update failed"
+			}
+			s.NotifyHost(ToastRequest{
+				Message: failTitle,
+				Body:    errBody,
+				Tone:    "error",
+			})
+		}
+		if onDone != nil {
+			onDone(escalated)
+		}
 		s.notifyChanged()
 	}()
 }
@@ -940,20 +1015,96 @@ func (s *Supervisor) InstallFromSourceAsync(spec string, onInstalled func(plugin
 	if spec == "" {
 		return
 	}
-	s.startInstallAsync("__manual__", func(ctx context.Context) (*InstalledApp, error) {
+	s.startInstallAsync("__manual__", false, func(ctx context.Context) (*InstalledApp, error) {
 		return s.store.InstallFromSourceExplicit(ctx, spec)
+	}, onInstalled)
+}
+
+// StageManualInstallAsync downloads/copies and validates a manual plugin source
+// without installing it. If no sensitive permissions require confirmation it
+// commits immediately; otherwise it hands the staged package to onNeedsConfirm.
+func (s *Supervisor) StageManualInstallAsync(spec string, onNeedsConfirm func(*StagedPlugin), onInstalled func(pluginID string)) bool {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return false
+	}
+	s.mu.Lock()
+	if s.stopping || s.installingID != "" {
+		s.mu.Unlock()
+		return false
+	}
+	s.installingID = "__manual__"
+	s.storeErr = ""
+	s.storeNotice = ""
+	s.mu.Unlock()
+	s.notifyChanged()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		staged, err := s.store.StageManualSource(ctx, spec)
+		if err != nil {
+			s.finishInstallAsync(nil, err, nil, false)
+			return
+		}
+		if !staged.NeedsConfirmation() {
+			s.mu.Lock()
+			stopping := s.stopping
+			if stopping {
+				s.installingID = ""
+				s.replacingID = ""
+			}
+			s.mu.Unlock()
+			if stopping {
+				staged.Cleanup()
+				return
+			}
+			var approved []Permission
+			if staged.Previous != nil {
+				approved = staged.Previous.Permissions
+			}
+			inst, commitErr := s.store.CommitStagedPlugin(staged, approved)
+			s.finishInstallAsync(inst, commitErr, onInstalled, staged.IsUpdate)
+			return
+		}
+		s.mu.Lock()
+		stopping := s.stopping
+		s.installingID = ""
+		s.replacingID = ""
+		s.mu.Unlock()
+		if stopping || onNeedsConfirm == nil {
+			staged.Cleanup()
+			s.notifyChanged()
+			return
+		}
+		onNeedsConfirm(staged)
+		s.notifyChanged()
+	}()
+	return true
+}
+
+// CommitStagedInstallAsync installs a previously staged manual plugin after
+// user permission confirmation. Returns false if another install is active.
+func (s *Supervisor) CommitStagedInstallAsync(staged *StagedPlugin, approvedPermissions []Permission, onInstalled func(pluginID string)) bool {
+	if staged == nil {
+		return false
+	}
+	approvedCopy := append([]Permission(nil), approvedPermissions...)
+	return s.startInstallAsync(staged.Manifest.ID, staged.IsUpdate, func(_ context.Context) (*InstalledApp, error) {
+		return s.store.CommitStagedPlugin(staged, approvedCopy)
 	}, onInstalled)
 }
 
 func (s *Supervisor) startInstallAsync(
 	installingKey string,
+	wasUpdate bool,
 	install func(context.Context) (*InstalledApp, error),
 	onInstalled func(pluginID string),
-) {
+) bool {
 	s.mu.Lock()
 	if s.stopping || s.installingID != "" {
 		s.mu.Unlock()
-		return
+		return false
 	}
 	s.installingID = installingKey
 	s.storeErr = ""
@@ -965,8 +1116,9 @@ func (s *Supervisor) startInstallAsync(
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		inst, err := install(ctx)
-		s.finishInstallAsync(inst, err, onInstalled)
+		s.finishInstallAsync(inst, err, onInstalled, wasUpdate)
 	}()
+	return true
 }
 
 func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []InstalledApp) []InstalledApp {
@@ -982,16 +1134,33 @@ func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []In
 	return langSnap
 }
 
-func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string)) {
+func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string), wasUpdate bool) {
 	installedList, _ := s.store.ListInstalled()
 	locale := s.Locale()
+	isEn := normalizeLocale(locale) == "en"
 
 	s.mu.Lock()
 	s.installingID = ""
 	s.replacingID = ""
 	if err != nil {
-		s.storeErr = formatStoreError(err, locale)
+		msg := formatStoreError(err, locale)
+		s.storeErr = msg
 		s.mu.Unlock()
+		title := "插件安装失败"
+		if wasUpdate {
+			title = "插件更新失败"
+		}
+		if isEn {
+			title = "Plugin install failed"
+			if wasUpdate {
+				title = "Plugin update failed"
+			}
+		}
+		s.NotifyHost(ToastRequest{
+			Message: title,
+			Body:    msg,
+			Tone:    "error",
+		})
 		s.notifyChanged()
 		return
 	}
@@ -1003,6 +1172,26 @@ func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstall
 		onInstalled(inst.Manifest.ID)
 	}
 	s.warmupPluginAsync(inst.Manifest.ID)
+	name := inst.Manifest.Name.Resolve(locale)
+	if name == "" {
+		name = inst.Manifest.ID
+	}
+	title := fmt.Sprintf("已安装 %s", name)
+	if wasUpdate {
+		title = fmt.Sprintf("已更新 %s", name)
+	}
+	if isEn {
+		title = fmt.Sprintf("Installed %s", name)
+		if wasUpdate {
+			title = fmt.Sprintf("Updated %s", name)
+		}
+	}
+	ic := inst.Manifest.Icon
+	s.NotifyHost(ToastRequest{
+		Message: title,
+		Tone:    "success",
+		Icon:    &ic,
+	})
 	s.notifyChanged()
 }
 

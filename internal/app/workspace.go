@@ -350,6 +350,12 @@ func NewWorkspace(dataDir string) *Workspace {
 	w.pluginsUI.SetOnSuggestPlugin(func(_ plugins.Category) {
 		w.modals.OpenFeedbackWithCategory("idea")
 	})
+	w.pluginsUI.SetOnOpenStore(func() {
+		w.OpenSettings(modals.TabAppStore)
+	})
+	w.pluginsUI.SetIsStoreVisible(func() bool {
+		return w.modals != nil && w.modals.IsStoreVisible()
+	})
 	w.quick = modals.NewQuickNoteController(actualDir, w, codec)
 	w.searchWin = modals.NewSearchWindowController(w)
 
@@ -4504,8 +4510,15 @@ func (w *Workspace) emitNoteOpenedIfChanged(active string) {
 }
 
 func (w *Workspace) notify(msg, tone string) {
+	w.notifyBanner(plugins.ToastRequest{
+		Message: msg,
+		Tone:    tone,
+	})
+}
+
+func (w *Workspace) notifyBanner(req plugins.ToastRequest) {
 	if w.pluginUI != nil {
-		w.pluginUI.Toast("", msg, tone, nil)
+		w.pluginUI.Toast(req)
 	}
 }
 
@@ -6221,6 +6234,9 @@ func (w *Workspace) hasActivePluginModal() bool {
 	if w.palette.IsOpen() {
 		return true
 	}
+	if w.pluginsUI != nil && w.pluginsUI.HasPermissionModal() {
+		return true
+	}
 	return w.pluginUI != nil && w.pluginUI.hasDialog()
 }
 
@@ -6469,9 +6485,12 @@ func notebookRel(root, path string) string {
 }
 
 func (w *Workspace) renderPluginOverlays(c *ui.Context) {
+	if w.pluginsUI != nil {
+		w.pluginsUI.RenderPermissionModal(c)
+	}
 	if w.pluginUI != nil {
-		w.pluginUI.renderToast(c)
 		w.pluginUI.renderDialog(c)
+		w.pluginUI.renderToast(c)
 	}
 	if w.palette.IsOpen() {
 		var items []PaletteItem

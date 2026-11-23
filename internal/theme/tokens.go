@@ -348,4 +348,12 @@ const (
 	TarotFontPosLabel      float32 = 20
 	TarotFontDeckHeading   float32 = 28
 	TarotWeightBold                = 650
+
+	// Top-right notification banner & plugin permission confirmation modal metrics.
+	ToastBannerWidth         float32 = 360
+	ToastBannerMinHeight     float32 = 44
+	ToastBannerIconBox       float32 = 20
+	PermissionModalWidth     float32 = 460
+	PermissionModalMaxHeight float32 = 540
+	PermissionModalIconBox   float32 = 36
 )

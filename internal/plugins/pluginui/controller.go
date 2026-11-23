@@ -33,6 +33,9 @@ type Controller struct {
 	storeBaseSnap      *storeBaseSnapshot
 	storeViewSnap      *storeViewSnapshot
 	onSuggestPlugin    func(category plugins.Category)
+	onOpenStore        func()
+	isStoreVisibleFn   func() bool
+	permQueue          []pendingPermissionPrompt
 	manualSpec         string
 	drafts             map[string]map[string]string
 	lastSynced         map[string]map[string]string
