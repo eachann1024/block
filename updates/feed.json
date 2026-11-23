@@ -1,10 +1,82 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-23T16:19:27.368Z",
-  "latest_version": "1.0.914",
-  "latest_tag": "v1.0.914",
+  "updated_at": "2026-11-23T17:41:45.524Z",
+  "latest_version": "1.0.915",
+  "latest_tag": "v1.0.915",
   "releases": [
+    {
+      "version": "1.0.915",
+      "tag": "v1.0.915",
+      "published_at": "2026-11-23T17:41:44Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.915",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件现在可以通过宿主接口将文件移入回收站，操作前会检查文件版本。",
+          "活动日志现在会记录用户移入回收站的操作、插件文件写入，以及通过插件日志接口写入的内容。"
+        ],
+        "improvements": [
+          "插件分类现在按作用位置排列，同步和导入导出归入工具分类。",
+          "插件分类现在由各自的清单决定，官方插件必须声明分类。"
+        ],
+        "fixes": [
+          "从行内文本或表格单元格复制纯文本时，不再包含 Markdown 标记。",
+          "输入法提交带后续文本的反引号时，现在也能正确转换为行内代码。",
+          "不确定进度条现在会保持在轨道范围内。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugins can now move files to the trash through a host API that checks the file revision before acting.",
+          "The activity log now records user trash actions, plugin file writes, and entries written through the plugin logging API."
+        ],
+        "improvements": [
+          "Plugin categories are now ordered by where they operate, with sync and import/export grouped under Tools.",
+          "Plugin categories are now determined by each plugin’s manifest, and official plugins must declare a category."
+        ],
+        "fixes": [
+          "Plain text copied from inline text or table cells no longer includes Markdown markers.",
+          "Inline code is now correctly converted when an IME commits backticks followed by additional text.",
+          "Indeterminate progress bars now stay within the bounds of their tracks."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-macos-arm64.dmg",
+          "size": 15302775,
+          "sha256": "53ad9a3e359d19488ff8a355990d4bf8202a2ae2ecbef41079034c318f03e502"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-macos-x64.dmg",
+          "size": 16842795,
+          "sha256": "1e16eef0a27596f1d638213936b2e7205969377b07f8b6b6f09ebadf488b7119"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-windows-x64-setup.exe",
+          "size": 12256106,
+          "sha256": "1811fd19f68f8b1b04b72e688325d77008c6a7dfb3b1b27b02164fc5d2bf06b4"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-linux-x64.deb",
+          "size": 10848140,
+          "sha256": "644b298a7edc380a5e95e4611dd08597ad0ad141b5d4e76c9908ca4147851125"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-linux-x64.AppImage",
+          "size": 23800312,
+          "sha256": "6ef828278fc1607139cd944a6f5b65f78327bba4bae30af34df769c81326b830"
+        }
+      ]
+    },
     {
       "version": "1.0.914",
       "tag": "v1.0.914",
@@ -38,38 +110,7 @@
           "The app now includes an installation manifest for the Block binary."
         ]
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.914/block-macos-arm64.dmg",
-          "size": 15280767,
-          "sha256": "30f5f965a6bb8ac8754576661169ab2f1a43f55bc1bfbb2d997bbd61b0340a25"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.914/block-macos-x64.dmg",
-          "size": 16828113,
-          "sha256": "e305fb3dd5a67ab945fdcd2422731b5ca22d4d2b4f165e00e992ddbb30c0f26a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.914/block-windows-x64-setup.exe",
-          "size": 12247600,
-          "sha256": "5d9e728e1b267285ea174492f71cb1404d5eaf9d3f82609bbe8fd75db39f2d18"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.914/block-linux-x64.deb",
-          "size": 10838852,
-          "sha256": "a0d5743c421478af4425dc1fe3f3f696b71409cfd0d91481c6a47b1543cf2251"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.914/block-linux-x64.AppImage",
-          "size": 23792120,
-          "sha256": "511df018af9d889f4e4f14813da58a6a665a896f519de9a784f079f6c56a0440"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.913",
@@ -1384,35 +1425,6 @@
         "improvements": [],
         "fixes": [
           "Defer undeliverable plugin alerts until focus returns."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.865",
-      "tag": "v1.0.865",
-      "published_at": "2026-11-20T22:24:10Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.865",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "支持应用内检查更新、跨版本日志展示与平滑升级。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Deliver queued plugin alerts after focus changes.",
-          "Stage plugin trash on the source volume.",
-          "Separate compatible and system plugin releases."
         ],
         "other": []
       },
