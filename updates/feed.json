@@ -1,10 +1,84 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-23T18:28:55.654Z",
-  "latest_version": "1.0.917",
-  "latest_tag": "v1.0.917",
+  "updated_at": "2026-11-23T19:43:11.210Z",
+  "latest_version": "1.0.918",
+  "latest_tag": "v1.0.918",
   "releases": [
+    {
+      "version": "1.0.918",
+      "tag": "v1.0.918",
+      "published_at": "2026-11-23T19:43:10Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.918",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主题：用户可以选择图标着色，并在侧边栏图标磁贴上看到悬停样式。",
+          "插件接口：插件可以提供文件图标，系统也会验证插件包并支持这项扩展。",
+          "侧边栏：图标选择器不会遮挡内容，所选图标也会与对应标签页保持同步。",
+          "编辑器：按住 Command 或 Control 并点击行内路径链接，可以打开受限路径并预览外部文件。",
+          "标签栏：用户可以在后台打开标签页、恢复受限路径的标签页，并显示标签页所在目录。"
+        ],
+        "improvements": [
+          "文件管理：文件分类不会阻塞操作，并通过文件身份检查确保写入目标正确。",
+          "编辑器：源文档中的行列位置可以对应到可见块或表格单元格。"
+        ],
+        "fixes": [
+          "插件商店：归档下载会在镜像间切换重试，网络错误提示也更加清晰。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Themes: Users can choose icon tint colors and see a hover style on sidebar icon tiles.",
+          "Plugin API: Plugins can contribute file icons, with pack validation and host support for the new contribution.",
+          "Sidebar: Users can choose an icon from a picker that stays visible, and the selected icon stays in sync with its tab.",
+          "Editor: Users can Command-click or Control-click inline path links to open confined paths and preview external files.",
+          "Tabs: Users can open tabs in the background, restore tabs with confined paths, and reveal a tab’s directory."
+        ],
+        "improvements": [
+          "Files: File classification runs without blocking, and file identity checks help ensure writes apply to the intended file.",
+          "Editor: Source line and column positions can be mapped to their visible block or table cell."
+        ],
+        "fixes": [
+          "Plugin Store: Archive downloads retry with mirror failover, and network errors are reported more clearly."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-macos-arm64.dmg",
+          "size": 15494076,
+          "sha256": "da45fe8d837feb4694191e073314e49767ab312b26ccf6311d6e60967e4c15f1"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-macos-x64.dmg",
+          "size": 17067789,
+          "sha256": "b27fb1a11f586326c218ec9418b92a226f90f8e4fcc5cd02601e3bae70d3fbc3"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-windows-x64-setup.exe",
+          "size": 12466989,
+          "sha256": "ae9e4f0386a987e628b753b3f1ec86bd5466fa3c25e24ab6d93d24f0c856aabc"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-linux-x64.deb",
+          "size": 11017054,
+          "sha256": "2bb6a180971f8b07e8ab94f5632c5c85d3bcc873cca929dd7fff4d3b382d56c2"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-linux-x64.AppImage",
+          "size": 23984632,
+          "sha256": "fa150c7a32eb3487f9d8b853e162f6e029ac911d68b6a507ca47cb80c086ccc0"
+        }
+      ]
+    },
     {
       "version": "1.0.917",
       "tag": "v1.0.917",
@@ -36,38 +110,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-macos-arm64.dmg",
-          "size": 15315409,
-          "sha256": "fb894f71421a8b41f37cad8b6db38588c378b35bdb4ec5bb0627e30ef3639961"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-macos-x64.dmg",
-          "size": 16856192,
-          "sha256": "e857a6f08cc7a7afd123cd984f62f99f09acdabda45db20b7653e19d20bbc168"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-windows-x64-setup.exe",
-          "size": 12287537,
-          "sha256": "28d216304b88b9c542ab661b1af96acfbbb4fd9da65b5b93a5db0bf15545022f"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-linux-x64.deb",
-          "size": 10881890,
-          "sha256": "f466e0097df20c2eacbbff733b2b0ae83b619194531201ed00c0b7833c7aa02b"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-linux-x64.AppImage",
-          "size": 23828984,
-          "sha256": "fe406d97a89c5da5f40a29e40d79664381287641979f451feab9550aed3b3dc4"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.916",
@@ -1411,31 +1454,6 @@
           "Remove redundant save button from topbar.",
           "Drop roman numeral column from deck sidebar rows."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.868",
-      "tag": "v1.0.868",
-      "published_at": "2026-11-21T03:18:08Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.868",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化复制粘贴与文档格式转换的准确性。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Markdown."
-        ],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
