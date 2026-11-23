@@ -10,6 +10,9 @@ export const MAX_PER_SECTION = 200;
 const CJK = /[\u3400-\u9fff]/;
 const EN_CLAUSE = /[A-Za-z]{2,}(?:['’][A-Za-z]+)?(?:\s+[A-Za-z]{2,}(?:['’][A-Za-z]+)?){1,}/;
 const BANNED = /`|#\d+|\b[0-9a-f]{7,40}\b|\b(?:gpui|wgpu|wasm|ipc|debounce|typecheck)\b/i;
+// 每条以「功能位置：」开头，告诉读者去哪里看变化。
+const ZH_AREA = /^[^：:。]{2,12}：\S/;
+const EN_AREA = /^[A-Z][A-Za-z0-9&' -]{1,30}: \S/;
 const DATE_LINE = /^(?:📅|\d{4}-\d{2}-\d{2}\b|##\s+\d{4})/;
 
 export const EN_FOOTER = [
@@ -80,6 +83,8 @@ function rebuildHalf(half, { title, sections, footerHeading, footer, cjk }) {
     if (!end.test(item)) item += punct;
     const rendered = `- ${item}`;
     assert.ok(!lineMixesLanguages(rendered), `mixed language line: ${rendered}`);
+    if (cjk) assert.ok(ZH_AREA.test(item), `Chinese bullet needs "功能位置：" prefix: ${item}`);
+    else assert.ok(EN_AREA.test(item), `English bullet needs "Area: " prefix: ${item}`);
     if (cjk) assert.ok(CJK.test(item), `Chinese bullet has no Chinese: ${item}`);
     else assert.ok(!CJK.test(item), `English bullet has Chinese: ${item}`);
     count += 1;
