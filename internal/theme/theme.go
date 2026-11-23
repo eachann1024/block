@@ -389,6 +389,138 @@ func (p Palette) MonoIconColors(c ui.Color) IconColors {
 	}
 }
 
+// IconTint names one of the Ocean Paper custom icon accent tints.
+type IconTint string
+
+const (
+	IconTintNone   IconTint = "none"
+	IconTintBlue   IconTint = "blue"
+	IconTintTeal   IconTint = "teal"
+	IconTintGreen  IconTint = "green"
+	IconTintAmber  IconTint = "amber"
+	IconTintRed    IconTint = "red"
+	IconTintPurple IconTint = "purple"
+)
+
+// IconTints lists the icon picker tint swatches in display order.
+var IconTints = []IconTint{
+	IconTintNone,
+	IconTintBlue,
+	IconTintTeal,
+	IconTintGreen,
+	IconTintAmber,
+	IconTintRed,
+	IconTintPurple,
+}
+
+// NormalizeIconTint canonicalizes any tint string to a known IconTint.
+func NormalizeIconTint(raw string) IconTint {
+	switch IconTint(raw) {
+	case IconTintBlue, IconTintTeal, IconTintGreen, IconTintAmber, IconTintRed, IconTintPurple:
+		return IconTint(raw)
+	default:
+		return IconTintNone
+	}
+}
+
+// IconTintLabel returns the localized display name for tint.
+func IconTintLabel(t IconTint) string {
+	switch t {
+	case IconTintBlue:
+		return Tr("蓝", "Blue")
+	case IconTintTeal:
+		return Tr("青", "Teal")
+	case IconTintGreen:
+		return Tr("绿", "Green")
+	case IconTintAmber:
+		return Tr("琥珀", "Amber")
+	case IconTintRed:
+		return Tr("红", "Red")
+	case IconTintPurple:
+		return Tr("紫", "Purple")
+	default:
+		return Tr("默认", "Default")
+	}
+}
+
+// IconTintHue returns the semantic hue for a chromatic IconTint.
+func (p Palette) IconTintHue(t IconTint) (ui.Color, bool) {
+	if p.Dark {
+		switch t {
+		case IconTintBlue:
+			return ui.Hex("#779de8"), true
+		case IconTintTeal:
+			return ui.Hex("#4fb8cf"), true
+		case IconTintGreen:
+			return ui.Hex("#5cb883"), true
+		case IconTintAmber:
+			return ui.Hex("#dfae52"), true
+		case IconTintRed:
+			return ui.Hex("#e8776c"), true
+		case IconTintPurple:
+			return ui.Hex("#a987e0"), true
+		}
+		return ui.Color{}, false
+	}
+	switch t {
+	case IconTintBlue:
+		return ui.Hex("#547dd0"), true
+	case IconTintTeal:
+		return ui.Hex("#2f9fb8"), true
+	case IconTintGreen:
+		return ui.Hex("#3f9a62"), true
+	case IconTintAmber:
+		return ui.Hex("#c08a2f"), true
+	case IconTintRed:
+		return ui.Hex("#d0574b"), true
+	case IconTintPurple:
+		return ui.Hex("#8a5fc0"), true
+	}
+	return ui.Color{}, false
+}
+
+// IconTintSwatch returns the swatch dot color for t in the icon picker footer.
+func (p Palette) IconTintSwatch(t IconTint) ui.Color {
+	if hue, ok := p.IconTintHue(t); ok {
+		return hue
+	}
+	return p.MenuMuted
+}
+
+// TintedDuoIconColors returns Scheme A two-tone icon colors for a custom file icon
+// with optional tint and interactive hover accent highlight.
+func (p Palette) TintedDuoIconColors(t IconTint, line ui.Color, accentHover bool) IconColors {
+	if hue, ok := p.IconTintHue(t); ok {
+		fillAlpha := float32(0.24)
+		if p.Dark {
+			fillAlpha = 0.36
+		}
+		return IconColors{
+			Line:   line,
+			Fill:   hue.Alpha(fillAlpha),
+			Accent: hue,
+		}
+	}
+	accent := line
+	if accentHover {
+		accent = p.Accent
+	}
+	return IconColors{
+		Line:   line,
+		Fill:   p.IconFill,
+		Accent: accent,
+	}
+}
+
+// SidebarIconTileHover returns the subtle translucent tile highlight shown behind
+// an interactive sidebar file icon on hover or while its picker is open.
+func (p Palette) SidebarIconTileHover() ui.Color {
+	if p.Dark {
+		return ui.RGBA(0xff, 0xff, 0xff, 0.10)
+	}
+	return ui.RGBA(0, 0, 0, 0.07)
+}
+
 // EditorSelectionBG returns the unified soft translucent selection fill shared by
 // empty-line bands and inline text selection pills (Option B).
 func (p Palette) EditorSelectionBG() ui.Color {
