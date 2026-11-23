@@ -6,6 +6,7 @@ import { sourceLinks } from "./source-links.mjs";
 const docsRoot = resolve(__dirname, "..");
 const repo = "https://github.com/eachann1024/block";
 const aiGuide = "plugin-dev-for-ai.md";
+const llmsTxt = "llms.txt";
 
 export default defineConfig({
   lang: "zh-CN",
@@ -15,7 +16,7 @@ export default defineConfig({
   base: "/",
   cleanUrls: true,
   lastUpdated: true,
-  srcExclude: [aiGuide, "node_modules/**"],
+  srcExclude: [aiGuide, llmsTxt, "node_modules/**"],
   rewrites: {
     "README.md": "index.md",
     "plugins/README.md": "plugins/index.md",
@@ -77,6 +78,9 @@ export default defineConfig({
     },
   },
   async buildEnd(site) {
-    await copyFile(resolve(docsRoot, aiGuide), resolve(site.outDir, aiGuide));
+    await Promise.all([
+      copyFile(resolve(docsRoot, aiGuide), resolve(site.outDir, aiGuide)),
+      copyFile(resolve(docsRoot, llmsTxt), resolve(site.outDir, llmsTxt)),
+    ]);
   },
 });
