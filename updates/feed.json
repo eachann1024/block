@@ -1,10 +1,74 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-23T18:20:42.661Z",
-  "latest_version": "1.0.916",
-  "latest_tag": "v1.0.916",
+  "updated_at": "2026-11-23T18:28:55.654Z",
+  "latest_version": "1.0.917",
+  "latest_tag": "v1.0.917",
   "releases": [
+    {
+      "version": "1.0.917",
+      "tag": "v1.0.917",
+      "published_at": "2026-11-23T18:28:55Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.917",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：新增系统菜单栏扩展点和对应的菜单栏权限，插件可以在系统菜单栏中添加自己的条目。"
+        ],
+        "improvements": [
+          "插件菜单栏图标：菜单栏中的插件图标现在可以展开菜单、使用剪贴板，并在 macOS 上支持拖放。"
+        ],
+        "fixes": [
+          "空状态：空面板的侧边留白现在会随面板宽度调整。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins can now add their own items to the system menu bar through a new extension point and a matching menu bar permission."
+        ],
+        "improvements": [
+          "Menu Bar Icons: Plugin icons in the menu bar can now open menus, work with the clipboard, and support drag and drop on macOS."
+        ],
+        "fixes": [
+          "Empty State: The side gutter of an empty pane now sizes itself to the pane's width."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-macos-arm64.dmg",
+          "size": 15315409,
+          "sha256": "fb894f71421a8b41f37cad8b6db38588c378b35bdb4ec5bb0627e30ef3639961"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-macos-x64.dmg",
+          "size": 16856192,
+          "sha256": "e857a6f08cc7a7afd123cd984f62f99f09acdabda45db20b7653e19d20bbc168"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-windows-x64-setup.exe",
+          "size": 12287537,
+          "sha256": "28d216304b88b9c542ab661b1af96acfbbb4fd9da65b5b93a5db0bf15545022f"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-linux-x64.deb",
+          "size": 10881890,
+          "sha256": "f466e0097df20c2eacbbff733b2b0ae83b619194531201ed00c0b7833c7aa02b"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.917/block-linux-x64.AppImage",
+          "size": 23828984,
+          "sha256": "fe406d97a89c5da5f40a29e40d79664381287641979f451feab9550aed3b3dc4"
+        }
+      ]
+    },
     {
       "version": "1.0.916",
       "tag": "v1.0.916",
@@ -32,38 +96,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-macos-arm64.dmg",
-          "size": 15291762,
-          "sha256": "23eb1ccbf3c657356f2df59a8136b5388ff6d833f04788ff43fc65a47cdc1a63"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-macos-x64.dmg",
-          "size": 16840133,
-          "sha256": "1b0dee158f93b4892ae9a11216ac384cdddb1225f3331db2eeb126f676bd76bd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-windows-x64-setup.exe",
-          "size": 12254266,
-          "sha256": "891163867f3d9fd2965dc4214e25013eb4936f8bb25b4e3ce25244e71b7e209a"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-linux-x64.deb",
-          "size": 10849626,
-          "sha256": "9e033b1e8c0965babac69e6fdd1c7a777b7ca62f81f1c9dae75f53e4490f9e69"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-linux-x64.AppImage",
-          "size": 23796216,
-          "sha256": "ef6a5caa66fe68aab5073ecca439552cb38d53010f95ac04c119908eef6ca698"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.915",
@@ -1403,33 +1436,6 @@
         ],
         "improvements": [],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.867",
-      "tag": "v1.0.867",
-      "published_at": "2026-11-20T23:21:36Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.867",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Cancel native file dialogs with their actions.",
-          "Acknowledge notifications after delivery."
-        ],
         "other": []
       },
       "assets": []
