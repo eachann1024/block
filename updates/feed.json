@@ -1,10 +1,70 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-23T17:41:45.524Z",
-  "latest_version": "1.0.915",
-  "latest_tag": "v1.0.915",
+  "updated_at": "2026-11-23T18:20:42.661Z",
+  "latest_version": "1.0.916",
+  "latest_tag": "v1.0.916",
   "releases": [
+    {
+      "version": "1.0.916",
+      "tag": "v1.0.916",
+      "published_at": "2026-11-23T18:20:41Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.916",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "商店新增紧凑样式的排行榜列表，按下载量进行排序，并通过缓存列表计算提升加载与浏览速度。"
+        ],
+        "improvements": [
+          "设置中不再提供动画速度选项，并将界面动画统一锁定为舒缓节奏。"
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "The store now features a compact leaderboard ranked by download count, with cached list computations for faster loading and browsing."
+        ],
+        "improvements": [
+          "Settings no longer includes the animation speed option, locking interface animations to a leisurely tempo."
+        ],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-macos-arm64.dmg",
+          "size": 15291762,
+          "sha256": "23eb1ccbf3c657356f2df59a8136b5388ff6d833f04788ff43fc65a47cdc1a63"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-macos-x64.dmg",
+          "size": 16840133,
+          "sha256": "1b0dee158f93b4892ae9a11216ac384cdddb1225f3331db2eeb126f676bd76bd"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-windows-x64-setup.exe",
+          "size": 12254266,
+          "sha256": "891163867f3d9fd2965dc4214e25013eb4936f8bb25b4e3ce25244e71b7e209a"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-linux-x64.deb",
+          "size": 10849626,
+          "sha256": "9e033b1e8c0965babac69e6fdd1c7a777b7ca62f81f1c9dae75f53e4490f9e69"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.916/block-linux-x64.AppImage",
+          "size": 23796216,
+          "sha256": "ef6a5caa66fe68aab5073ecca439552cb38d53010f95ac04c119908eef6ca698"
+        }
+      ]
+    },
     {
       "version": "1.0.915",
       "tag": "v1.0.915",
@@ -44,38 +104,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-macos-arm64.dmg",
-          "size": 15302775,
-          "sha256": "53ad9a3e359d19488ff8a355990d4bf8202a2ae2ecbef41079034c318f03e502"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-macos-x64.dmg",
-          "size": 16842795,
-          "sha256": "1e16eef0a27596f1d638213936b2e7205969377b07f8b6b6f09ebadf488b7119"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-windows-x64-setup.exe",
-          "size": 12256106,
-          "sha256": "1811fd19f68f8b1b04b72e688325d77008c6a7dfb3b1b27b02164fc5d2bf06b4"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-linux-x64.deb",
-          "size": 10848140,
-          "sha256": "644b298a7edc380a5e95e4611dd08597ad0ad141b5d4e76c9908ca4147851125"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.915/block-linux-x64.AppImage",
-          "size": 23800312,
-          "sha256": "6ef828278fc1607139cd944a6f5b65f78327bba4bae30af34df769c81326b830"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.914",
@@ -1400,31 +1429,6 @@
         "fixes": [
           "Cancel native file dialogs with their actions.",
           "Acknowledge notifications after delivery."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.866",
-      "tag": "v1.0.866",
-      "published_at": "2026-11-20T22:37:27Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.866",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Defer undeliverable plugin alerts until focus returns."
         ],
         "other": []
       },
