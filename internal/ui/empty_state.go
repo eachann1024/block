@@ -20,8 +20,26 @@ func EmptyPageStage(c *ui.Context, bg ui.Color, width float32, content func()) u
 	return emptyStage(c, bg, width, true, content)
 }
 
+// emptyStageGutterMax matches the editor's side gutter (54px handle + 14px
+// gap), so the ghost page's text lines up with the note it turns into.
+const emptyStageGutterMax float32 = 68
+
+// emptyStageGutter sizes the side padding to the pane: roomy panes get the
+// editor gutter, narrow ones shrink it proportionally down to Space24.
+func emptyStageGutter(paneW float32) float32 {
+	hi := emptyStageGutterMax
+	if z := theme.Zoom(); z > 0 {
+		hi *= z
+	}
+	if paneW <= 0 {
+		return hi
+	}
+	return min(max(paneW*0.1, theme.Space24), hi)
+}
+
 func emptyStage(c *ui.Context, bg ui.Color, width float32, fill bool, content func()) ui.Element {
-	stage := ui.Column(c).Fill().AlignItems(ui.Center).Padding(0, theme.Space24).Background(bg)
+	stage := ui.Column(c).Fill().AlignItems(ui.Center).Background(bg)
+	stage.Padding(0, emptyStageGutter(stage.Bounds().W))
 	stage.Children(func() {
 		ui.Box(c).FillWidth().Grow(theme.EmptyLiftTop).Shrink(1)
 		col := ui.Column(c).MaxWidth(width).MinWidth(0).Shrink(0).AlignItems(ui.Start)
