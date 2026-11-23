@@ -336,6 +336,7 @@ func NewWorkspace(dataDir string) *Workspace {
 			}()
 		},
 		ApplyNoteWrite: w.applyPluginNoteWrite,
+		ApplyNoteTrash: w.applyPluginNoteTrash,
 		OnChanged: func() {
 			w.syncTarotWithPluginState(false)
 			w.RequestRedraw()
@@ -1742,6 +1743,43 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 		w.RequestRedraw()
 	}
 	return changed, err
+}
+
+// applyPluginNoteTrash moves a plugin-targeted file to Trash only when no open
+// editor holds unsaved or diverged content for it, then closes its tabs.
+func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() error) error {
+	apply := func() error {
+		w.bgSaveMu.Lock()
+		defer w.bgSaveMu.Unlock()
+		w.mu.RLock()
+		sessPath := w.openSessionPathLocked(absPath)
+		sess := w.sessions[sessPath]
+		isVirtual := w.virtualPreview[sessPath]
+		lastDiskMD, hasLastDisk := w.lastDiskMarkdown[filepath.Clean(sessPath)]
+		w.mu.RUnlock()
+		if sess != nil && (isVirtual || sess.Dirty() || (hasLastDisk && sess.Markdown() != lastDiskMD)) {
+			return plugins.ErrNoteConflict
+		}
+		if err := verify(); err != nil {
+			return err
+		}
+		if err := trash(); err != nil {
+			return err
+		}
+		w.removeClosedOrDeletedPath(sessPath)
+		return nil
+	}
+	err := errors.New("editor is unavailable for plugin trash")
+	if mygo.App.IsReady() {
+		mygo.RunOnMain(func() { err = apply() })
+	} else {
+		err = apply()
+	}
+	if err == nil {
+		w.RescanNotebook()
+		w.RequestRedraw()
+	}
+	return err
 }
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {

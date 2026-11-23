@@ -67,18 +67,21 @@ type PerfSnapshot struct {
 }
 
 type HostConfig struct {
-	PluginDir        string
-	DataDir          string
-	DownloadsDir     string
-	NotebookRoot     string
-	ActiveNote       string
-	Locale           string
-	Theme            string
-	Tarot            bool
-	HostVersion      string
-	GetNotebooks     func() []string
-	GetPerfSnapshot  func(refreshDisk bool) (*PerfSnapshot, error)
-	ApplyNoteWrite   func(absPath, content string, write func() (bool, error)) (bool, error)
+	PluginDir       string
+	DataDir         string
+	DownloadsDir    string
+	NotebookRoot    string
+	ActiveNote      string
+	Locale          string
+	Theme           string
+	Tarot           bool
+	HostVersion     string
+	GetNotebooks    func() []string
+	GetPerfSnapshot func(refreshDisk bool) (*PerfSnapshot, error)
+	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
+	// ApplyNoteTrash runs verify then trash under the editor save lock so an
+	// open note with unsaved edits is never moved to Trash by a plugin.
+	ApplyNoteTrash   func(absPath string, verify, trash func() error) error
 	OnNoteWritten    func(pluginID, notebookRoot, absPath string)
 	OnActionProgress func(rt *Runtime, progress ActionProgress)
 	OpenNote         func(notebookRoot, relPath string, rootInfo os.FileInfo, content []byte) error
@@ -1185,6 +1188,74 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		}
 		return map[string]any{"ok": true, "changed": changed}, nil
 
+	case "host.notes.trash":
+		if !rt.manifest.HasPermission(PermNotesWrite) {
+			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:write"}
+		}
+		var p struct {
+			NotebookRoot     string  `json:"notebook_root"`
+			Path             string  `json:"path"`
+			ExpectedRevision *string `json:"expected_revision"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
+		// Trashing is only allowed against a known revision so a plugin can never
+		// discard content it has not seen.
+		if p.ExpectedRevision == nil || strings.TrimSpace(*p.ExpectedRevision) == "" {
+			return nil, &rpcError{Code: -32602, Message: "host.notes.trash requires expected_revision"}
+		}
+		expected := strings.ToLower(strings.TrimSpace(*p.ExpectedRevision))
+		rootPath, cleanRel, err := rt.notebookFilePath(p.NotebookRoot, p.Path, false)
+		if err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		defer root.Close()
+		abs := filepath.Join(rootPath, cleanRel)
+		verify := func() error {
+			if rt.closed.Load() {
+				return errors.New("plugin is stopping")
+			}
+			if _, err := rt.resolveNotebookRoot(rootPath); err != nil {
+				return err
+			}
+			rev, err := pluginFileRevision(root, cleanRel)
+			if err != nil {
+				return err
+			}
+			if rev != expected {
+				return ErrNoteConflict
+			}
+			return nil
+		}
+		trash := func() error { return files.TrashItem(abs) }
+		if rt.cfg.ApplyNoteTrash != nil {
+			err = rt.cfg.ApplyNoteTrash(abs, verify, trash)
+		} else {
+			rt.noteMu.Lock()
+			if err = verify(); err == nil {
+				err = trash()
+			}
+			rt.noteMu.Unlock()
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]any{"ok": true, "trashed": false}, nil
+		}
+		if errors.Is(err, ErrNoteConflict) {
+			files.LogWarnf("plugin trash skipped (changed): plugin=%s path=%s", rt.manifest.ID, abs)
+			return nil, &rpcError{Code: -32006, Message: err.Error()}
+		}
+		if err != nil {
+			files.LogErrorf("plugin trash failed: plugin=%s path=%s err=%v", rt.manifest.ID, abs, err)
+			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		files.LogInfof("plugin trashed file: plugin=%s path=%s", rt.manifest.ID, abs)
+		return map[string]any{"ok": true, "trashed": true}, nil
+
 	case "host.notes.open":
 		if !rt.manifest.HasPermission(PermNotesRead) {
 			return nil, &rpcError{Code: -32001, Message: "missing permission: notes:read"}
@@ -1554,7 +1625,28 @@ func readLimited(reader io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// pluginFileRevision hashes a regular notebook file without size limits so
+// attachments can be verified before they are trashed.
+func pluginFileRevision(root *os.Root, name string) (string, error) {
+	file, _, err := openPluginFile(root, name)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
 func (rt *Runtime) notebookNotePath(requestedRoot, rel string) (string, string, error) {
+	return rt.notebookFilePath(requestedRoot, rel, true)
+}
+
+// notebookFilePath validates a visible file inside a registered notebook;
+// markdownOnly restricts it to supported note extensions.
+func (rt *Runtime) notebookFilePath(requestedRoot, rel string, markdownOnly bool) (string, string, error) {
 	if strings.TrimSpace(rel) == "" {
 		return "", "", errors.New("note path is empty")
 	}
@@ -1563,7 +1655,7 @@ func (rt *Runtime) notebookNotePath(requestedRoot, rel string) (string, string, 
 		return "", "", err
 	}
 	cleaned := filepath.Clean(filepath.FromSlash(rel))
-	if !filepath.IsLocal(cleaned) || strings.Contains(cleaned, ":") || !files.IsMarkdown(cleaned) {
+	if !filepath.IsLocal(cleaned) || strings.Contains(cleaned, ":") || (markdownOnly && !files.IsMarkdown(cleaned)) {
 		return "", "", fmt.Errorf("path %q escapes notebook root", rel)
 	}
 	for part := range strings.SplitSeq(cleaned, string(filepath.Separator)) {
