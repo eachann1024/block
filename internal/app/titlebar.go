@@ -181,6 +181,7 @@ type TitlebarProps struct {
 	Tabs         []string
 	ActiveTab    string
 	IsDirty      func(path string) bool
+	FileIcons    map[string]plugins.ResolvedFileIcon
 
 	ActiveSurface   TitlebarSurfaceKind
 	SourceStatus    string

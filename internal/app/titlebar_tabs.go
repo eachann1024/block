@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"block/internal/icons"
+	"block/internal/plugins"
+	"block/internal/plugins/pluginui"
 	"block/internal/theme"
 	blockui "block/internal/ui"
 	"github.com/egoist/mygo/ui"
@@ -42,6 +44,18 @@ func multiTabStripChrome(n int) float32 {
 	return float32(n-1)*tabStripGap + 20 + (theme.ChromeBoxSize + tabStripGap) + (tabDragSpacerW + tabStripGap)
 }
 
+func titlebarTabCustomIcon(p TitlebarProps, path string) (plugins.ResolvedFileIcon, bool) {
+	if len(p.FileIcons) == 0 || isExternalFile(path, p.NotebookPath) {
+		return plugins.ResolvedFileIcon{}, false
+	}
+	rel := sidebarRelPath(p.NotebookPath, path)
+	if rel == "" {
+		return plugins.ResolvedFileIcon{}, false
+	}
+	ic, ok := p.FileIcons[rel]
+	return ic, ok
+}
+
 // multiTabNaturalWidths is each pill's width with its full title (capped at tabMaxW).
 func multiTabNaturalWidths(c *ui.Context, p TitlebarProps) []float32 {
 	dirSuffixes := tabDirSuffixes(p.Tabs)
@@ -55,6 +69,8 @@ func multiTabNaturalWidths(c *ui.Context, p TitlebarProps) []float32 {
 		}
 		if isExternalFile(path, p.NotebookPath) {
 			w += theme.IconMicro + theme.Space6
+		} else if _, ok := titlebarTabCustomIcon(p, path); ok {
+			w += theme.IconInline + theme.Space6
 		}
 		out[i] = min(w, tabMaxW)
 	}
@@ -214,6 +230,9 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, avail
 	pill.Children(func() {
 		if external {
 			icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), pill.Hovered() || pill.Pressed())
+		} else if customIcon, ok := titlebarTabCustomIcon(p, path); ok {
+			pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
+				pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Text, false))
 		}
 		ui.Text(c, title).FontSize(theme.FontSmall).LineHeight(20.0 / theme.FontSmall).
 			FontWeight(theme.WeightRegular).TextColor(pal.Text).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -362,6 +381,9 @@ func renderMultiTab(c *ui.Context, p TitlebarProps, ix int, path, dirSuffix stri
 		sel.Children(func() {
 			if external {
 				icons.DrawAnimated(c, icons.LinkOpen, theme.IconMicro, pal.MonoIconColors(pal.MenuMuted), hovered || sel.Pressed())
+			} else if customIcon, ok := titlebarTabCustomIcon(p, path); ok {
+				pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconInline,
+					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), fg, false))
 			}
 			tabLabel(c, label, fg)
 			if dirSuffix != "" {

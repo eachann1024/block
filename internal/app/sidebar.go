@@ -54,11 +54,28 @@ type SidebarUIState struct {
 	ContextIsDir    bool
 	ContextX        float32
 	ContextY        float32
+	ContextRowBounds  ui.Rect
+	ContextIconBounds ui.Rect
 	MoveSubmenuOpen bool
 	MoveRowBounds   ui.Rect
 	// MoveHoverHold blocks hover from reopening the cascade after a keyboard
 	// close until the pointer leaves the "Move to…" row.
 	MoveHoverHold bool
+
+	IconPickerOpen          bool
+	IconPickerPath          string
+	IconPickerIsDir         bool
+	IconPickerIconBounds    ui.Rect
+	IconPickerRowBounds     ui.Rect
+	IconPickerQuery         string
+	IconPickerLastQuery     string
+	IconPickerTint          theme.IconTint
+	IconPickerActiveCat     string
+	IconPickerJumpCat       string
+	IconPickerFocus         bool
+	IconPickerRevealCurrent bool
+	IconPickerInput         ui.Handle
+	IconPickerScroll        ui.ScrollState
 
 	treeScroll ui.ScrollState
 	treeRows   []flatTreeRow
@@ -119,7 +136,7 @@ func sidebarContextSnapshot(s *SidebarUIState) sidebarContextKey {
 
 // ClosePopups closes switcher, sort/filter, and tree context menus.
 func (s *SidebarUIState) ClosePopups() bool {
-	had := s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen
+	had := s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen || s.IconPickerOpen
 	s.SwitcherOpen = false
 	s.SortFilterOpen = false
 	s.ConfirmForgetNotebook = ""
@@ -127,12 +144,42 @@ func (s *SidebarUIState) ClosePopups() bool {
 	s.MoveSubmenuOpen = false
 	s.MoveHoverHold = false
 	s.MenuCursor, s.MoveCursor = -1, -1
+	if s.IconPickerOpen {
+		s.IconPickerOpen = false
+		s.IconPickerPath = ""
+		s.IconPickerQuery = ""
+		s.IconPickerLastQuery = ""
+		s.IconPickerJumpCat = ""
+		s.IconPickerFocus = false
+		s.IconPickerRevealCurrent = false
+		s.IconPickerInput.CancelFocus()
+	}
 	return had
+}
+
+// OpenIconPicker opens the floating custom file/folder icon picker anchored to
+// the sidebar row and its leading icon button.
+func (s *SidebarUIState) OpenIconPicker(path string, isDir bool, iconRect, rowRect ui.Rect, curTint theme.IconTint) {
+	s.ClearDrag()
+	s.ClosePopups()
+	s.IconPickerOpen = true
+	s.IconPickerPath = path
+	s.IconPickerIsDir = isDir
+	s.IconPickerIconBounds = iconRect
+	s.IconPickerRowBounds = rowRect
+	s.IconPickerQuery = ""
+	s.IconPickerLastQuery = ""
+	s.IconPickerTint = theme.NormalizeIconTint(string(curTint))
+	s.IconPickerActiveCat = ""
+	s.IconPickerJumpCat = ""
+	s.IconPickerFocus = true
+	s.IconPickerRevealCurrent = true
+	s.IconPickerScroll.Y = 0
 }
 
 // HasActiveOverlay reports whether a sidebar popup or inline rename is active.
 func (s *SidebarUIState) HasActiveOverlay() bool {
-	return s != nil && (s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen || s.RenamingPath != "")
+	return s != nil && (s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen || s.IconPickerOpen || s.RenamingPath != "")
 }
 
 // StartRename enters inline rename mode for path.
@@ -224,6 +271,9 @@ type SidebarProps struct {
 	RequestRedraw        func()
 	OnOpenSettings       func()
 	FileBadges           map[string][]plugins.ResolvedFileBadge
+	FileIcons            map[string]plugins.ResolvedFileIcon
+	FileIconPack         *plugins.ResolvedFileIconPack
+	OnSetFileIcon        func(pluginID, relPath, iconID, tint string)
 	PluginContextMenu    []plugins.ResolvedMenuItem
 	OnPluginContextMenu  func(item plugins.ResolvedMenuItem, targetPath string, isDir bool)
 	RenderPluginSections func(c *ui.Context)
@@ -499,7 +549,7 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 			treeContainer.Children(func() {
 				c.Key("file-tree-focus")
 				treeFocus := ui.Column(c).Fill().Focusable().FocusRing(false)
-				if p.State.RenamingPath == "" && !p.State.SwitcherOpen && !p.State.ContextOpen {
+				if p.State.RenamingPath == "" && !p.State.SwitcherOpen && !p.State.ContextOpen && !p.State.IconPickerOpen {
 					switch blockui.MatchTreeShortcut(treeFocus) {
 					case blockui.TreeKeyRename:
 						if p.State.FocusDir != "" {
@@ -833,11 +883,17 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		box := ui.Row(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).AlignItems(ui.Center).
 			Radius(theme.RadiusMD).Background(pal.Paper).Border(1, pal.Accent)
 		box.Children(func() {
-			glyph := icons.FileIconOrDefault(filepath.Base(entry.Path))
-			if entry.IsDir {
-				glyph = icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
+			rel := sidebarRelPath(p.ActiveNotebook, entry.Path)
+			if customIcon, ok := p.FileIcons[rel]; ok {
+				pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconRow,
+					pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), pal.Accent, false))
+			} else {
+				glyph := icons.FileIconOrDefault(filepath.Base(entry.Path))
+				if entry.IsDir {
+					glyph = icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
+				}
+				icons.Draw(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent))
 			}
-			icons.Draw(c, glyph, theme.IconRow, pal.DuoIconColors(pal.Accent))
 			c.Key("tree-rename-input")
 			inp := ui.TextInput(c, &p.State.RenameBuffer).Grow(1).FontSize(theme.FontBody).TextColor(pal.Text).
 				BorderWidth(0).Background(ui.Transparent).Padding(0)
@@ -871,9 +927,23 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	activeFolder := focused && p.ActiveNote == ""
 	highlighted := selected || activeFolder
 	menuTarget := p.State.ContextOpen && p.State.ContextPath == entry.Path
+	iconPickerTarget := p.State.IconPickerOpen && p.State.IconPickerPath == entry.Path
+
+	relPath := sidebarRelPath(p.ActiveNotebook, entry.Path)
+	customIcon, hasCustomIcon := p.FileIcons[relPath]
+	pickerEnabled := p.FileIconPack != nil && p.FileIconPack.Picker && p.OnSetFileIcon != nil && relPath != ""
+
+	rowLeftPad := indent
+	rowGap := theme.Space6
+	if pickerEnabled {
+		rowGap = theme.Space4
+		if !entry.IsDir {
+			rowLeftPad = max(indent-3, theme.Space4)
+		}
+	}
 
 	c.Key(rowKey)
-	btn := ui.ButtonBase(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, indent).Gap(6).
+	btn := ui.ButtonBase(c).FillWidth().Height(theme.HeightControl).Padding(0, 8, 0, rowLeftPad).Gap(rowGap).
 		AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
 		FocusRing(false).Role(ui.RoleTreeItem).Selected(highlighted).Label(entry.Name)
 	p.State.TreeDragGate.Attach(btn, entry.Path, treeDragItem{Path: entry.Path, IsDir: entry.IsDir}, blockui.DefaultDragThreshold)
@@ -962,10 +1032,40 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		rowBG = pal.Selected
 	case focused || pressed:
 		rowBG = pal.Selected
-	case menuTarget || hovered:
+	case menuTarget || iconPickerTarget || hovered:
 		rowBG = hoverBG
 	}
 	blockui.AnimateSurfaceColors(btn, rowBG, rowBD, true)
+
+	var iconClicked, iconRightClicked bool
+	var iconRect ui.Rect
+
+	drawLeadingIcon := func(lineHot, accentHot bool) {
+		if hasCustomIcon {
+			lineCol := pal.TextSecondary
+			if lineHot {
+				lineCol = pal.Text
+			}
+			ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(customIcon.Tint), lineCol, accentHot)
+			pluginui.DrawFileIcon(c, customIcon.Ref, customIcon.Spec, theme.IconRow, ic)
+			return
+		}
+		var glyph icons.Icon
+		if entry.IsDir {
+			glyph = icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
+		} else {
+			glyph = icons.FileIconOrDefault(filepath.Base(entry.Path))
+		}
+		var ic theme.IconColors
+		if accentHot {
+			ic = theme.IconColors{Line: pal.Text, Fill: pal.IconFill, Accent: pal.Accent}
+		} else if lineHot {
+			ic = pal.DuoIconColors(pal.Text)
+		} else {
+			ic = pal.MonoIconColors(pal.TextSecondary)
+		}
+		icons.DrawAnimated(c, glyph, theme.IconRow, ic, hovered || menuTarget || accentHot)
+	}
 
 	btn.Children(func() {
 		if entry.IsDir {
@@ -981,22 +1081,43 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 			chevBox.Children(func() {
 				icons.Draw(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(pal.TextSecondary))
 			})
-			folderGlyph := icons.FolderIcon(filepath.Base(entry.Path), r.Expanded)
-			ic := pal.MonoIconColors(pal.TextSecondary)
-			if highlighted {
-				ic = pal.DuoIconColors(pal.Text)
-			} else if hovered || menuTarget {
-				ic = pal.DuoIconColors(pal.Text)
+		}
+		if pickerEnabled {
+			iconBtn := ui.ButtonBase(c.Key("tree-icon:" + entry.Path)).
+				Size(theme.IconButtonBox, theme.IconButtonBox).Shrink(0).Center().
+				Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+				Label(theme.Tr("更换图标", "Change Icon"))
+			iHov := !suppressHover && iconBtn.Hovered()
+			iPrs := iconBtn.Pressed()
+			tileBG := ui.Transparent
+			tileBD := ui.Transparent
+			switch {
+			case iconPickerTarget:
+				tileBG = pal.Accent.Alpha(0.14)
+				if pal.Dark {
+					tileBG = pal.Accent.Alpha(0.24)
+				}
+				tileBD = pal.Accent.Alpha(0.45)
+			case iHov || iPrs:
+				tileBG = pal.SidebarIconTileHover()
 			}
-			icons.DrawAnimated(c, folderGlyph, theme.IconRow, ic, hovered || menuTarget)
+			blockui.AnimateSurfaceColors(iconBtn, tileBG, tileBD, false)
+			blockui.TactileButton(iconBtn, iHov || iconPickerTarget, iPrs, false)
+			if !iconPickerTarget {
+				blockui.RichTooltip(c, iconBtn, blockui.TooltipSpec{
+					Placement: blockui.TooltipAbove,
+					Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("更换图标", "Change Icon")}},
+				})
+			}
+			iconBtn.Children(func() {
+				drawLeadingIcon(highlighted || hovered || menuTarget || iHov || iconPickerTarget, iHov || iPrs || iconPickerTarget)
+			})
+			blockui.Probe(iconBtn, "tree-icon:"+entry.Path)
+			iconRect = iconBtn.Bounds()
+			iconClicked = iconBtn.Clicked()
+			iconRightClicked = iconBtn.RightClicked()
 		} else {
-			ic := pal.MonoIconColors(pal.TextSecondary)
-			if highlighted {
-				ic = pal.DuoIconColors(pal.Text)
-			} else if hovered || menuTarget {
-				ic = pal.DuoIconColors(pal.Text)
-			}
-			icons.DrawAnimated(c, icons.FileIconOrDefault(filepath.Base(entry.Path)), theme.IconRow, ic, hovered || menuTarget)
+			drawLeadingIcon(highlighted || hovered || menuTarget, false)
 		}
 		rowTitle, extBadge := splitSidebarFileLabel(entry)
 		ui.Text(c, rowTitle).FontSize(theme.FontBody).FontWeight(theme.WeightRegular).TextColor(pal.Text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -1006,14 +1127,20 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 		if extBadge != "" {
 			blockui.FileExtBadge(c, extBadge, highlighted)
 		}
-		if !entry.IsDir && len(p.FileBadges) > 0 && p.ActiveNotebook != "" {
-			if rel, err := filepath.Rel(filepath.Clean(p.ActiveNotebook), filepath.Clean(entry.Path)); err == nil {
-				if badges := p.FileBadges[filepath.ToSlash(rel)]; len(badges) > 0 {
-					renderTreeFileBadges(c, badges, pal)
-				}
+		if !entry.IsDir && len(p.FileBadges) > 0 && p.ActiveNotebook != "" && relPath != "" {
+			if badges := p.FileBadges[relPath]; len(badges) > 0 {
+				renderTreeFileBadges(c, badges, pal)
 			}
 		}
 	})
+	if iconPickerTarget {
+		if iconRect.W > 0 {
+			p.State.IconPickerIconBounds = iconRect
+		}
+		if rb := btn.Bounds(); rb.W > 0 {
+			p.State.IconPickerRowBounds = rb
+		}
+	}
 	if isDropReorder || blockui.IsProbeEnabled() {
 		btn.DrawOver(func(pt *ui.Painter, rect ui.Rect) {
 			if blockui.IsProbeEnabled() {
@@ -1031,14 +1158,14 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 
 	openContextMenu := func(cx, cy float32) {
 		p.State.ClearDrag()
-		p.State.SwitcherOpen = false
-		p.State.SortFilterOpen = false
-		p.State.MenuCursor, p.State.MoveCursor = -1, -1
+		p.State.ClosePopups()
 		p.State.ContextOpen = true
 		p.State.ContextPath = entry.Path
 		p.State.ContextIsDir = entry.IsDir
 		p.State.ContextX = cx
 		p.State.ContextY = cy
+		p.State.ContextRowBounds = btn.Bounds()
+		p.State.ContextIconBounds = iconRect
 		p.State.MoveSubmenuOpen = false
 		p.State.MoveRowBounds = ui.Rect{}
 		p.State.MoveHoverHold = false
@@ -1055,7 +1182,17 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 				p.OnOpenNote(entry.Path, true)
 			}
 		}
-	} else if btn.RightClicked() {
+	} else if iconClicked && pickerEnabled {
+		if iconPickerTarget {
+			p.State.ClosePopups()
+		} else {
+			curTint := theme.IconTintNone
+			if hasCustomIcon {
+				curTint = theme.NormalizeIconTint(customIcon.Tint)
+			}
+			p.State.OpenIconPicker(entry.Path, entry.IsDir, iconRect, btn.Bounds(), curTint)
+		}
+	} else if btn.RightClicked() || iconRightClicked {
 		b := btn.Bounds()
 		cx, cy := b.X+24, b.Y+b.H
 		if px, py, ok := btn.PointerPosition(); ok {
@@ -1085,10 +1222,15 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 	vpW, vpH := c.Size()
 
 	ui.Overlay(c, func() {
-		if !p.State.SwitcherOpen && !p.State.SortFilterOpen && !p.State.ContextOpen {
+		if !p.State.SwitcherOpen && !p.State.SortFilterOpen && !p.State.ContextOpen && !p.State.IconPickerOpen {
 			return
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
+
+		if p.State.IconPickerOpen {
+			renderSidebarIconPicker(c, p, scrim, vpW, vpH)
+			return
+		}
 
 		if p.State.SortFilterOpen {
 			items := []blockui.MenuItemSpec{
@@ -1481,6 +1623,25 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							p.State.StartRename(targetPath, targetDir)
 						},
 					},
+				)
+				if p.FileIconPack != nil && p.OnSetFileIcon != nil && sidebarRelPath(p.ActiveNotebook, targetPath) != "" {
+					icChangeIcon := icons.Sparkles
+					rowBounds := p.State.ContextRowBounds
+					iconBounds := p.State.ContextIconBounds
+					items = append(items, blockui.MenuItemSpec{
+						ID:    "change-icon",
+						Label: theme.Tr("更换图标…", "Change Icon…"),
+						Icon:  &icChangeIcon,
+						OnClick: func() {
+							curTint := theme.IconTintNone
+							if existing, ok := p.FileIcons[sidebarRelPath(p.ActiveNotebook, targetPath)]; ok {
+								curTint = theme.NormalizeIconTint(existing.Tint)
+							}
+							p.State.OpenIconPicker(targetPath, targetDir, iconBounds, rowBounds, curTint)
+						},
+					})
+				}
+				items = append(items,
 					blockui.MenuItemSpec{
 						ID:         "tree-move-row",
 						Label:      theme.Tr("移动到…", "Move to…"),
