@@ -57,6 +57,7 @@ func contribPermissionLabel(p Permission, en bool) (string, bool) {
 		PermEditorEdit:   {"编辑正文", "Edit Note Text"},
 		PermEventsUI:     {"界面事件", "Workspace Events"},
 		PermNotesPath:    {"文件路径", "File Paths"},
+		PermUIMenubar:    {"菜单栏图标", "Menu Bar Icon"},
 	}
 	l, ok := labels[p]
 	if !ok {
@@ -118,6 +119,10 @@ func contribPermissionDescription(p Permission, en bool) (string, bool) {
 			"在你触发插件命令时，获取目标文件在本机上的完整路径（含笔记本外打开的文件），不读取文件内容。",
 			"Receive the full on-disk path of the target file (including files opened outside notebooks) when you run a plugin command. File contents are not read.",
 		},
+		PermUIMenubar: {
+			"在系统菜单栏放一个图标，可点开菜单，也可把文件、图片或文字拖到图标上交给插件处理。",
+			"Place an icon in the system menu bar with a menu, and accept files, images, or text dropped on it.",
+		},
 	}
 	d, ok := descs[p]
 	if !ok {
@@ -162,6 +167,7 @@ type Contributes struct {
 	Backdrops        []BackdropContrib        `json:"backdrops,omitempty"`
 	StatusItems      []StatusItemContrib      `json:"status_items,omitempty"`
 	Dialogs          []DialogContrib          `json:"dialogs,omitempty"`
+	MenubarItems     []MenubarItemContrib     `json:"menubar_items,omitempty"`
 	Languages        []LanguageContrib        `json:"languages,omitempty"`
 }
 
@@ -279,7 +285,7 @@ func (c *Contributes) hasRuntimeContributions() bool {
 	return c != nil && (len(c.TitlebarButtons) > 0 || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
 		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 || len(c.TabMenu) > 0 ||
 		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 ||
-		len(c.Backdrops) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0)
+		len(c.Backdrops) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
 }
 
 func (c *Contributes) empty() bool {
@@ -620,6 +626,7 @@ func (m *Manifest) validateContributes() error {
 		need("backdrops", len(c.Backdrops), PermUIAppearance),
 		need("status_items", len(c.StatusItems), PermUIStatus),
 		need("dialogs", len(c.Dialogs), PermUINotify),
+		need("menubar_items", len(c.MenubarItems), PermUIMenubar),
 	} {
 		if chk != nil {
 			return chk
@@ -805,6 +812,9 @@ func (m *Manifest) validateContributes() error {
 				return err
 			}
 		}
+	}
+	if err := c.validateMenubarItems(); err != nil {
+		return err
 	}
 	for _, d := range c.Dialogs {
 		if err := id("dialogs", d.ID); err != nil {
@@ -1100,6 +1110,7 @@ type contribRegistry struct {
 	badges     map[string]string                                               // plugin slot id -> badge text
 	active     map[string]bool                                                 // plugin slot id -> active
 	status     map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
+	menubar    map[string]menubarOverlay                                       // "<plugin>/<item>" -> title/tooltip/dynamic menu
 	refreshed  map[string]time.Time                                            // surface refresh requests "<plugin>|<surface>"
 	// commandNote maps a plugin to the note its in-flight command targets.
 	commandNote map[string]string
@@ -1132,6 +1143,7 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		badges:     map[string]string{},
 		active:     map[string]bool{},
 		status:     map[string]statusOverlay{},
+		menubar:    map[string]menubarOverlay{},
 		refreshed:  map[string]time.Time{},
 
 		commandNote: map[string]string{},
@@ -1394,6 +1406,11 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	for id := range r.status {
 		if strings.HasPrefix(id, pluginID+"/") {
 			delete(r.status, id)
+		}
+	}
+	for id := range r.menubar {
+		if strings.HasPrefix(id, pluginID+"/") {
+			delete(r.menubar, id)
 		}
 	}
 	for id := range r.refreshed {
@@ -1990,7 +2007,14 @@ type CommandContext struct {
 	Folder    string `json:"folder,omitempty"` // sidebar_menu on a folder row: notebook-relative folder path
 	File      string `json:"file,omitempty"`   // absolute path of the target file or folder; only sent with notes:path
 	Selection string `json:"selection,omitempty"`
-	Source    string `json:"source"` // palette | shortcut | titlebar | page_menu | editor_menu | sidebar_menu | tab_menu | status
+	Source    string `json:"source"` // palette | shortcut | titlebar | page_menu | editor_menu | sidebar_menu | tab_menu | status | menubar | menubar_drop
+	// Menu bar sources: the item, a dynamic entry's payload, and what was
+	// dropped or pasted (Kind is files | image | text; images arrive as files).
+	MenubarItem string   `json:"menubar_item,omitempty"`
+	Payload     string   `json:"payload,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Files       []string `json:"files,omitempty"`
+	Text        string   `json:"text,omitempty"`
 }
 
 // CommandResult extends ActionResult with command-specific toast presentation fields.
@@ -1999,6 +2023,7 @@ type CommandResult struct {
 	Tone           string
 	Status         string
 	ShowPluginIcon *bool
+	CopyText       string
 }
 
 // Command invokes plugin.command on the runtime.
@@ -2011,6 +2036,7 @@ func (rt *Runtime) Command(ctx context.Context, commandID string, cc CommandCont
 		Tone           string `json:"tone,omitempty"`
 		Status         string `json:"status,omitempty"`
 		ShowPluginIcon *bool  `json:"show_plugin_icon,omitempty"`
+		CopyText       string `json:"copy_text,omitempty"`
 	}
 	if err := rt.call(ctx, "plugin.command", map[string]any{"command_id": commandID, "context": cc}, &res); err != nil {
 		return nil, err
@@ -2020,6 +2046,7 @@ func (rt *Runtime) Command(ctx context.Context, commandID string, cc CommandCont
 		Tone:           strings.TrimSpace(res.Tone),
 		Status:         strings.TrimSpace(res.Status),
 		ShowPluginIcon: res.ShowPluginIcon,
+		CopyText:       res.CopyText,
 	}, nil
 }
 
@@ -2045,22 +2072,32 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			cc.Note = s.ActiveNoteRel()
 		}
 	}
+	// Menu bar commands usually run while Block is in the background, so
+	// their result goes to the menu bar host, which also copies copy_text.
+	fromMenubar := cc.Source == CommandSourceMenubar || cc.Source == CommandSourceMenubarDrop
+	report := func(msg, tone, copyText string, ic *DuoIconSpec) {
+		if h, ok := s.cfg.UI.(MenubarFeedbackHost); ok && (fromMenubar || copyText != "") {
+			h.MenubarFeedback(pluginID, msg, tone, copyText, ic)
+			return
+		}
+		s.toast(pluginID, msg, tone, ic)
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
 		if err != nil {
-			s.toast(pluginID, err.Error(), "error", nil)
+			report(err.Error(), "error", "", nil)
 			return
 		}
 		defer unlock()
 		if s.NotebookRoot() != nbRoot || s.notebookEpoch.Load() != notebookEpoch {
-			s.toast(pluginID, LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "warning", nil)
+			report(LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "warning", "", nil)
 			return
 		}
 		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		if err != nil {
-			s.toast(pluginID, err.Error(), "error", nil)
+			report(err.Error(), "error", "", nil)
 			return
 		}
 		if !rt.manifest.HasPermission(PermEditorRead) {
@@ -2093,10 +2130,10 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			return rt.Command(cmdCtx, commandID, cc)
 		}()
 		if err != nil {
-			s.toast(pluginID, err.Error(), "error", nil)
+			report(err.Error(), "error", "", nil)
 			return
 		}
-		if res != nil && res.Status != "" {
+		if res != nil && (res.Status != "" || res.CopyText != "") {
 			tone := res.Tone
 			if tone == "" {
 				tone = "info"
@@ -2106,7 +2143,7 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 				cp := rt.manifest.Icon
 				ic = &cp
 			}
-			s.toast(pluginID, res.Status, tone, ic)
+			report(res.Status, tone, res.CopyText, ic)
 		}
 		s.notifyRedraw()
 	}()
@@ -2162,7 +2199,7 @@ func missingPerm(p Permission) *rpcError {
 func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, params json.RawMessage) (res any, rerr *rpcError, ok bool) {
 	if !strings.HasPrefix(method, "host.titlebar.") && !strings.HasPrefix(method, "host.status.") &&
 		!strings.HasPrefix(method, "host.ui.") && !strings.HasPrefix(method, "host.editor.") &&
-		!strings.HasPrefix(method, "host.sidebar.") {
+		!strings.HasPrefix(method, "host.sidebar.") && method != "host.menubar.set" {
 		return nil, nil, false
 	}
 	m := rt.manifest
@@ -2286,6 +2323,10 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		s.contrib.mu.Unlock()
 		s.mu.RUnlock()
 		return map[string]any{"ok": true}, nil, true
+
+	case "host.menubar.set":
+		res, e := s.setMenubar(rt, params)
+		return res, e, true
 
 	case "host.status.set":
 		if !m.HasPermission(PermUIStatus) {
