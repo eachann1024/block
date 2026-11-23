@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"block/internal/model"
 	"block/internal/theme"
 	"github.com/egoist/mygo"
 )
@@ -357,10 +358,13 @@ func fingerprintBytes(data []byte) int64 {
 
 // TextFingerprint identifies the exact UTF-8 bytes of a file, including its BOM.
 func TextFingerprint(text string, bom bool) int64 {
-	if bom {
-		text = "\ufeff" + text
-	}
-	return fingerprintBytes([]byte(text))
+	return SourceTextFingerprint(text, bom, model.TextEncodingUTF8)
+}
+
+// SourceTextFingerprint identifies the exact disk bytes of a source file
+// including its BOM and UTF-8 / UTF-16 encoding.
+func SourceTextFingerprint(text string, bom bool, enc model.TextEncoding) int64 {
+	return fingerprintBytes(EncodeSourceText(text, bom, enc))
 }
 
 // CheckTextVersion detects an external modification before replacing a file.
@@ -431,15 +435,36 @@ func WriteNoteAtomic(path, content string) (int64, error) {
 // directory, prepending a UTF-8 BOM (0xEF 0xBB 0xBF) when bom is true, and
 // returns the written byte fingerprint.
 func WriteRawFileAtomic(path, text string, bom bool) (int64, error) {
-	var data []byte
-	if bom {
-		data = make([]byte, len(utf8BOM)+len(text))
-		copy(data, utf8BOM)
-		copy(data[len(utf8BOM):], text)
-	} else {
-		data = []byte(text)
+	fp, _, err := WriteSourceFileAtomic(path, text, bom, model.TextEncodingUTF8)
+	return fp, err
+}
+
+// WriteSourceFileAtomic atomically writes text to path preserving its original
+// BOM and text encoding (UTF-8, UTF-16 LE, or UTF-16 BE), returning the new
+// fingerprint and exact written byte size. It rejects writes where either the
+// encoded on-disk size or the decoded UTF-8 size exceeds TextLimit so saving
+// multi-byte encodings (such as UTF-16 with ASCII or CJK text) never writes a
+// file that cannot be reopened.
+func WriteSourceFileAtomic(path, text string, bom bool, enc model.TextEncoding) (int64, int64, error) {
+	decodedSize := int64(len(text))
+	if ExceedsTextSizeLimit(EncodedSourceByteLen(text, bom, enc), decodedSize) {
+		return 0, 0, fmt.Errorf("%s", theme.Tr(
+			"文件超过 5 MB 大小上限，未保存",
+			"File exceeds 5 MB size limit; changes were not saved",
+		))
 	}
-	return WriteBytesAtomic(path, data)
+	data := EncodeSourceText(text, bom, enc)
+	if ExceedsTextSizeLimit(int64(len(data)), decodedSize) {
+		return 0, 0, fmt.Errorf("%s", theme.Tr(
+			"文件超过 5 MB 大小上限，未保存",
+			"File exceeds 5 MB size limit; changes were not saved",
+		))
+	}
+	fp, err := WriteBytesAtomic(path, data)
+	if err != nil {
+		return 0, 0, err
+	}
+	return fp, int64(len(data)), nil
 }
 
 // WriteBytesAtomic atomically writes raw bytes to path via a temp file in the

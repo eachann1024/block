@@ -244,9 +244,9 @@ func (s *StoreManager) disabledPluginsPath() string {
 	return filepath.Join(s.CacheRoot, "disabled-plugins.json")
 }
 
-func (s *StoreManager) loadDisabledLocked() (map[string]bool, error) {
+func loadDisabledPluginState(cacheRoot string) (map[string]bool, error) {
 	out := map[string]bool{}
-	root, err := os.OpenRoot(s.CacheRoot)
+	root, err := os.OpenRoot(cacheRoot)
 	if errors.Is(err, os.ErrNotExist) {
 		return out, nil
 	}
@@ -254,20 +254,28 @@ func (s *StoreManager) loadDisabledLocked() (map[string]bool, error) {
 		return nil, err
 	}
 	defer root.Close()
-	raw, err := readPluginFile(root, filepath.Base(s.disabledPluginsPath()), 1024*1024)
+	raw, err := readPluginFile(root, "disabled-plugins.json", 1024*1024)
 	if errors.Is(err, os.ErrNotExist) {
 		return out, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, errors.New("disabled plugin state must be a JSON object")
+	}
+	if err := json.Unmarshal(trimmed, &out); err != nil {
 		return nil, fmt.Errorf("read disabled plugin state: %w", err)
 	}
 	if out == nil {
 		return nil, errors.New("disabled plugin state must be an object")
 	}
 	return out, nil
+}
+
+func (s *StoreManager) loadDisabledLocked() (map[string]bool, error) {
+	return loadDisabledPluginState(s.CacheRoot)
 }
 
 func (s *StoreManager) saveDisabledLocked(disabled map[string]bool) error {

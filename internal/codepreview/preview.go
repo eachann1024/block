@@ -43,7 +43,7 @@ func CanonicalLanguage(tag string) string {
 		return "sql"
 	case "typescript", "ts", "tsx":
 		return "typescript"
-	case "xml", "svg":
+	case "xml", "svg", "ps1xml":
 		return "xml"
 	case "yaml", "yml", "yaml-frontmatter", "frontmatter", "clash", "mihomo", "stash", "stoverride":
 		return "yaml"

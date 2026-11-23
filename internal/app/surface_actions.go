@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"block/internal/model"
 	"block/internal/theme"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
@@ -250,6 +251,10 @@ func (s *TabSurface) sourceFormatLabel() string {
 	enc := "UTF-8"
 	if s.Source.BinaryPlist {
 		enc = theme.Tr("二进制 Plist", "Binary Plist")
+	} else if s.Source.Encoding == model.TextEncodingUTF16LE {
+		enc = "UTF-16 LE"
+	} else if s.Source.Encoding == model.TextEncodingUTF16BE {
+		enc = "UTF-16 BE"
 	} else if s.Source.BOM {
 		enc = "UTF-8 BOM"
 	}

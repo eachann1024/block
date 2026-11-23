@@ -130,9 +130,18 @@ const (
 	OpenKindBlocked
 )
 
+type TextEncoding uint8
+
+const (
+	TextEncodingUTF8 TextEncoding = iota
+	TextEncodingUTF16LE
+	TextEncodingUTF16BE
+)
+
 type SourceFile struct {
 	Text            string
 	BOM             bool
+	Encoding        TextEncoding
 	BinaryPlist     bool
 	DiskFingerprint int64
 	Language        string

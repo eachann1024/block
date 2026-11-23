@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -134,6 +135,10 @@ func resolveBuiltinConfigByPathOrContent(filePath, text string) (*codeed.Languag
 	case ".jsonl", ".ndjson":
 		if l := codeed.LanguageNamed("json"); l != nil {
 			return l, "json"
+		}
+	case ".ps1xml":
+		if l := codeed.LanguageNamed("xml"); l != nil {
+			return l, "xml"
 		}
 	}
 
@@ -444,7 +449,7 @@ func (s *TabSurface) saveSource() error {
 	}
 	expectedFP := s.DiskFingerprint
 	if expectedFP == 0 {
-		expectedFP = files.TextFingerprint(s.SavedText, s.Source.BOM)
+		expectedFP = files.SourceTextFingerprint(s.SavedText, s.Source.BOM, s.Source.Encoding)
 	}
 	if s.Source.BinaryPlist {
 		encoded, err := files.EncodeBinaryPlist(s.Source.Text)
@@ -455,6 +460,17 @@ func (s *TabSurface) saveSource() error {
 				s.StatusMsg = msg
 			}
 			return err
+		}
+		if files.ExceedsTextSizeLimit(int64(len(encoded)), int64(len(s.Source.Text))) {
+			msg := theme.Tr(
+				"文件超过 5 MB 大小上限，未保存",
+				"File exceeds 5 MB size limit; changes were not saved",
+			)
+			if s.StatusMsg != msg {
+				files.LogErrorf("source save blocked (size limit): path=%s raw=%d decoded=%d", s.Path, len(encoded), len(s.Source.Text))
+				s.StatusMsg = msg
+			}
+			return errors.New(msg)
 		}
 		if err := files.CheckTextVersion(s.Path, expectedFP); err != nil {
 			files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
@@ -477,10 +493,24 @@ func (s *TabSurface) saveSource() error {
 		s.StatusMsg = ""
 		return nil
 	}
+	encodedSize := files.EncodedSourceByteLen(s.Source.Text, s.Source.BOM, s.Source.Encoding)
+	decodedSize := int64(len(s.Source.Text))
+	if files.ExceedsTextSizeLimit(encodedSize, decodedSize) {
+		msg := theme.Tr(
+			"文件超过 5 MB 大小上限，未保存",
+			"File exceeds 5 MB size limit; changes were not saved",
+		)
+		if s.StatusMsg != msg {
+			files.LogErrorf("source save blocked (size limit): path=%s raw=%d decoded=%d", s.Path, encodedSize, decodedSize)
+			s.StatusMsg = msg
+		}
+		return errors.New(msg)
+	}
 	err := files.CheckTextVersion(s.Path, expectedFP)
 	var newFP int64
+	var writtenSize int64
 	if err == nil {
-		newFP, err = files.WriteRawFileAtomic(s.Path, s.Source.Text, s.Source.BOM)
+		newFP, writtenSize, err = files.WriteSourceFileAtomic(s.Path, s.Source.Text, s.Source.BOM, s.Source.Encoding)
 	}
 	if err != nil {
 		files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
@@ -490,11 +520,7 @@ func (s *TabSurface) saveSource() error {
 	s.SavedText = s.Source.Text
 	s.DiskFingerprint = newFP
 	s.Source.DiskFingerprint = newFP
-	size := int64(len(s.Source.Text))
-	if s.Source.BOM {
-		size += 3
-	}
-	s.FileSize = size
+	s.FileSize = writtenSize
 	if s.code != nil {
 		s.code.Buffer.MarkSaved()
 	}

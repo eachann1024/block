@@ -14,22 +14,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"block/internal/updater"
 	"github.com/ebitengine/purego"
+	"golang.org/x/sys/unix"
 )
 
 const (
 	macAssocHelperBundleID       = "dev.eachann.block.associations"
 	macAssocHelperBundleIDPrefix = "dev.eachann.block.associations."
+	macAssocWatchAgentPrefix     = "dev.eachann.block.assoc-watch."
 	macAssocHelperExecName       = "block-opener"
 	macLSRegisterPath            = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 	macCodesignPath              = "/usr/bin/codesign"
 	macPlutilPath                = "/usr/bin/plutil"
+	macLaunchctlPath             = "/bin/launchctl"
 	macDefaultMainAppPath        = "/Applications/Block.app"
 	kCFStringEncodingUTF8        = 0x08000100
 	kLSRolesViewer               = 0x00000002
@@ -52,7 +57,505 @@ var (
 
 	macReconciledOnce atomic.Bool
 	macLSRegSuffixRe  = regexp.MustCompile(`\s+\(0x[0-9a-fA-F]+\)\s*$`)
+
+	macFSGetPathOnce sync.Once
+	macFSGetPathFn   func(buf *byte, bufSize uintptr, fsid *[2]int32, objID uint64) int64
 )
+
+func LinuxHelperDesktopID() string {
+	return ""
+}
+
+func isMacTrashPath(p string) bool {
+	if p == "" {
+		return false
+	}
+	clean := filepath.Clean(p)
+	return strings.Contains(clean, "/.Trash/") || strings.HasSuffix(clean, "/.Trash") ||
+		strings.Contains(clean, "/.Trashes/") || strings.HasSuffix(clean, "/.Trashes")
+}
+
+func isMacUnmountedVolumePath(p string) bool {
+	clean := filepath.Clean(strings.TrimSpace(p))
+	if !strings.HasPrefix(clean, "/Volumes/") {
+		return false
+	}
+	rest := strings.TrimPrefix(clean, "/Volumes/")
+	if rest == "" {
+		return false
+	}
+	volName := rest
+	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
+		volName = rest[:idx]
+	}
+	if volName == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join("/Volumes", volName))
+	return os.IsNotExist(err)
+}
+
+func macPathFileIdentity(p string) (fsidStr string, fileIDStr string) {
+	if strings.TrimSpace(p) == "" {
+		return "", ""
+	}
+	var st unix.Stat_t
+	if err := unix.Stat(p, &st); err != nil {
+		return "", ""
+	}
+	var sfs unix.Statfs_t
+	if err := unix.Statfs(p, &sfs); err != nil {
+		return "", ""
+	}
+	return fmt.Sprintf("%d:%d", sfs.Fsid.Val[0], sfs.Fsid.Val[1]), strconv.FormatUint(st.Ino, 10)
+}
+
+func resolveMacMovedPathByFileID(fsidStr, fileIDStr string) string {
+	fsidStr = strings.TrimSpace(fsidStr)
+	fileIDStr = strings.TrimSpace(fileIDStr)
+	if fsidStr == "" || fileIDStr == "" {
+		return ""
+	}
+	parts := strings.Split(fsidStr, ":")
+	if len(parts) != 2 {
+		return ""
+	}
+	v0, err0 := strconv.ParseInt(parts[0], 10, 32)
+	v1, err1 := strconv.ParseInt(parts[1], 10, 32)
+	ino, err2 := strconv.ParseUint(fileIDStr, 10, 64)
+	if err0 != nil || err1 != nil || err2 != nil || ino == 0 {
+		return ""
+	}
+	macFSGetPathOnce.Do(func() {
+		lib, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			return
+		}
+		sym, err := purego.Dlsym(lib, "fsgetpath")
+		if err != nil {
+			return
+		}
+		purego.RegisterFunc(&macFSGetPathFn, sym)
+	})
+	if macFSGetPathFn == nil {
+		return ""
+	}
+	fsid := [2]int32{int32(v0), int32(v1)}
+	var buf [4096]byte
+	n := macFSGetPathFn(&buf[0], uintptr(len(buf)), &fsid, ino)
+	if n <= 0 {
+		return ""
+	}
+	if int(n) > len(buf) {
+		n = int64(len(buf))
+	}
+	end := bytes.IndexByte(buf[:n], 0)
+	if end < 0 {
+		end = int(n)
+	}
+	resolved := strings.TrimSpace(string(buf[:end]))
+	if resolved == "" {
+		return ""
+	}
+	_ = unsafe.Sizeof(fsid)
+	return resolved
+}
+
+// pruneStaleMacHelperScopes removes helper bundles in Associations/<scopeKey>
+// (and stale state.MacScopes records) whose recorded target app/executable was
+// deleted or moved away. When an app was moved to currentTarget:
+//   - if forceRemoveMoved is true (uninstall) or LaunchServices no longer
+//     references the old scope as a default, the old scope is unregistered and
+//     removed immediately;
+//   - if the app was moved to another live path still existing on disk (not in
+//     Trash), that live installation's helper is left untouched.
+//   - if the target was deleted or moved to Trash, the stale helper is always
+//     unregistered from LaunchServices and removed from disk.
+func validMacAssocScopeKey(scopeKey string) bool {
+	if scopeKey == "" || scopeKey == "." || scopeKey == ".." {
+		return false
+	}
+	for i := 0; i < len(scopeKey); i++ {
+		c := scopeKey[i]
+		isLower := c >= 'a' && c <= 'z'
+		isUpper := c >= 'A' && c <= 'Z'
+		isDigit := c >= '0' && c <= '9'
+		if !isLower && !isUpper && !isDigit && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// isPathStrictlyWithinDir checks that candidate is strictly inside rootDir (never
+// equal to rootDir, never escaping via ".." or symlinks). If candidate exists on
+// disk, it must not itself be a symlink.
+func isPathStrictlyWithinDir(rootDir, candidate string) bool {
+	if strings.TrimSpace(rootDir) == "" || strings.TrimSpace(candidate) == "" {
+		return false
+	}
+	canonRoot := canonicalMacPath(rootDir)
+	if canonRoot == "" {
+		return false
+	}
+	if linfo, err := os.Lstat(candidate); err == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	cleanCand := filepath.Clean(candidate)
+	parent := filepath.Dir(cleanCand)
+	canonParent := canonicalMacPath(parent)
+	if canonParent == "" {
+		return false
+	}
+	resolvedCand := filepath.Join(canonParent, filepath.Base(cleanCand))
+	rel, err := filepath.Rel(canonRoot, resolvedCand)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return false
+	}
+	return true
+}
+
+// resolveValidatedMacHelperScope derives the only permitted scope directory and
+// helper bundle path for bundleID under assocDir, refusing any tampered or
+// out-of-tree path and verifying CFBundleIdentifier when Info.plist is present.
+func resolveValidatedMacHelperScope(assocDir, bundleID string) (scopeKey, scopeDir, helperApp string, ok bool) {
+	if !strings.HasPrefix(bundleID, macAssocHelperBundleIDPrefix) {
+		return "", "", "", false
+	}
+	scopeKey = strings.TrimPrefix(bundleID, macAssocHelperBundleIDPrefix)
+	if !validMacAssocScopeKey(scopeKey) {
+		return "", "", "", false
+	}
+	scopeDir = filepath.Join(assocDir, scopeKey)
+	helperApp = filepath.Join(scopeDir, "Block.app")
+	if !isPathStrictlyWithinDir(assocDir, scopeDir) || !isPathStrictlyWithinDir(assocDir, helperApp) {
+		return "", "", "", false
+	}
+	if _, err := os.Stat(helperApp); err == nil {
+		if gotID := readMacPlistTopLevelString(helperApp, "CFBundleIdentifier"); gotID != "" && gotID != bundleID {
+			return "", "", "", false
+		}
+	}
+	return scopeKey, scopeDir, helperApp, true
+}
+
+func macAssocWatchAgentLabel(scopeKey string) string {
+	return macAssocWatchAgentPrefix + scopeKey
+}
+
+func macAssocWatchAgentPlistPath(scopeKey string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" || !validMacAssocScopeKey(scopeKey) {
+		return ""
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", macAssocWatchAgentLabel(scopeKey)+".plist")
+}
+
+func shouldManageMacWatchAgent(appDataDir string) bool {
+	if strings.TrimSpace(os.Getenv("BLOCK_DATA_DIR")) != "" || strings.TrimSpace(os.Getenv("MYGO_AUTOMATION")) != "" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return false
+	}
+	defaultDir := filepath.Join(home, "Library", "Application Support", "Block")
+	return canonicalMacPath(appDataDir) == canonicalMacPath(defaultDir)
+}
+
+func buildMacAssocWatchAgentPlist(label, helperExecPath, watchPath string) []byte {
+	var b strings.Builder
+	writeTag := func(indent, tag, val string) {
+		b.WriteString(indent + "<" + tag + ">")
+		_ = xml.EscapeText(&b, []byte(val))
+		b.WriteString("</" + tag + ">\n")
+	}
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
+	b.WriteString(`<plist version="1.0">` + "\n<dict>\n")
+	b.WriteString("  <key>Label</key>\n")
+	writeTag("  ", "string", label)
+	b.WriteString("  <key>ProgramArguments</key>\n  <array>\n")
+	writeTag("    ", "string", helperExecPath)
+	writeTag("    ", "string", "--prune-if-orphaned")
+	b.WriteString("  </array>\n")
+	b.WriteString("  <key>WatchPaths</key>\n  <array>\n")
+	writeTag("    ", "string", watchPath)
+	b.WriteString("  </array>\n")
+	b.WriteString("  <key>RunAtLoad</key>\n  <true/>\n")
+	b.WriteString("  <key>ThrottleInterval</key>\n  <integer>2</integer>\n")
+	b.WriteString("  <key>ProcessType</key>\n  <string>Background</string>\n")
+	b.WriteString("</dict>\n</plist>\n")
+	return []byte(b.String())
+}
+
+func installMacAssocWatchAgent(appDataDir, scopeKey, helperExecPath, watchPath string) {
+	if !shouldManageMacWatchAgent(appDataDir) || !validMacAssocScopeKey(scopeKey) || strings.TrimSpace(helperExecPath) == "" || strings.TrimSpace(watchPath) == "" {
+		return
+	}
+	plistPath := macAssocWatchAgentPlistPath(scopeKey)
+	if plistPath == "" {
+		return
+	}
+	label := macAssocWatchAgentLabel(scopeKey)
+	want := buildMacAssocWatchAgentPlist(label, helperExecPath, watchPath)
+	if cur, err := os.ReadFile(plistPath); err == nil && bytes.Equal(cur, want) {
+		return
+	}
+	if err := writeFileAtomic(plistPath, want, 0o644); err != nil {
+		return
+	}
+	domain := fmt.Sprintf("gui/%d", os.Getuid())
+	_ = runCommandTimeout(5*time.Second, macLaunchctlPath, "bootout", domain+"/"+label)
+	_ = runCommandTimeout(5*time.Second, macLaunchctlPath, "bootstrap", domain, plistPath)
+}
+
+func removeMacAssocWatchAgent(appDataDir, scopeKey string) {
+	if !shouldManageMacWatchAgent(appDataDir) || !validMacAssocScopeKey(scopeKey) {
+		return
+	}
+	plistPath := macAssocWatchAgentPlistPath(scopeKey)
+	if plistPath == "" {
+		return
+	}
+	label := macAssocWatchAgentLabel(scopeKey)
+	domain := fmt.Sprintf("gui/%d", os.Getuid())
+	_ = runCommandTimeout(5*time.Second, macLaunchctlPath, "bootout", domain+"/"+label)
+	_ = os.Remove(plistPath)
+}
+
+// CleanupOrphanedMacRelayScope is invoked by an external macOS association
+// helper bundle when it detects that its owning Block.app has been deleted or
+// moved into Trash. It validates ownership strictly inside appDataDir/Associations,
+// unregisters the helper from LaunchServices, removes the helper bundle and its
+// WatchPaths LaunchAgent, and clears its MacScopes entry under the shared lock.
+func CleanupOrphanedMacRelayScope(appDataDir, bundleID, selfHelperApp string) error {
+	if strings.TrimSpace(appDataDir) == "" || strings.TrimSpace(bundleID) == "" {
+		return nil
+	}
+	unlock, err := acquireFileAssocLock(appDataDir, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	assocDir := filepath.Join(appDataDir, "Associations")
+	scopeKey, scopeDir, helperApp, ok := resolveValidatedMacHelperScope(assocDir, bundleID)
+	if !ok {
+		return fmt.Errorf("refusing cleanup for invalid mac helper scope %q", bundleID)
+	}
+	if selfHelperApp != "" && canonicalMacPath(selfHelperApp) != canonicalMacPath(helperApp) {
+		return fmt.Errorf("refusing cleanup for mismatched mac helper path")
+	}
+
+	recoverMacHelperStaging(scopeDir, helperApp, false)
+	_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-u", helperApp)
+	pruneStaleMacHelperRegistrations(bundleID, "")
+	if isPathStrictlyWithinDir(assocDir, helperApp) {
+		_ = os.RemoveAll(helperApp)
+	}
+	if isPathStrictlyWithinDir(assocDir, scopeDir) {
+		_ = os.Remove(scopeDir)
+	}
+	removeMacAssocWatchAgent(appDataDir, scopeKey)
+
+	if prev, hasPrev := loadFileAssocState(appDataDir); hasPrev && prev.MacScopes != nil {
+		if _, exists := prev.MacScopes[bundleID]; exists {
+			delete(prev.MacScopes, bundleID)
+			if len(prev.MacScopes) > 0 {
+				keys := make([]string, 0, len(prev.MacScopes))
+				for k := range prev.MacScopes {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				keep := prev.MacScopes[keys[0]]
+				prev.AppVersion = keep.AppVersion
+				prev.AppPath = keep.AppPath
+				prev.ExecutablePath = keep.ExecutablePath
+				prev.ExecutableSize = keep.ExecutableSize
+				prev.ExecutableMtime = keep.ExecutableMtime
+				prev.Extensions = keep.Extensions
+				_ = saveFileAssocState(appDataDir, prev)
+			} else {
+				_ = os.Remove(fileAssocStatePath(appDataDir))
+			}
+		}
+	}
+	return nil
+}
+
+func pruneStaleMacHelperScopes(
+	appDataDir string,
+	currentScopeKey string,
+	currentBundleID string,
+	currentTarget string,
+	state *fileAssocState,
+	managedExts []string,
+	isolated bool,
+	forceRemoveMoved bool,
+) bool {
+	assocDir := filepath.Join(appDataDir, "Associations")
+	canonicalCur := canonicalMacPath(currentTarget)
+	changed := false
+
+	removeScope := func(scopeKey, scopeDir, helperApp, bundleID string) {
+		safeScopeDir := scopeDir != "" && isPathStrictlyWithinDir(assocDir, scopeDir)
+		safeHelperApp := helperApp != "" && isPathStrictlyWithinDir(assocDir, helperApp)
+		if safeScopeDir && safeHelperApp {
+			recoverMacHelperStaging(scopeDir, helperApp, false)
+		}
+		if safeHelperApp {
+			_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-u", helperApp)
+			_ = os.RemoveAll(helperApp)
+		}
+		if !isolated && bundleID != "" {
+			pruneStaleMacHelperRegistrations(bundleID, "")
+		}
+		if safeScopeDir {
+			_ = os.Remove(scopeDir)
+		}
+		if !isolated && scopeKey != "" {
+			removeMacAssocWatchAgent(appDataDir, scopeKey)
+		}
+		if state != nil && state.MacScopes != nil && bundleID != "" {
+			if _, ok := state.MacScopes[bundleID]; ok {
+				delete(state.MacScopes, bundleID)
+				changed = true
+			}
+		}
+	}
+
+	seenBundles := make(map[string]struct{})
+	if entries, err := os.ReadDir(assocDir); err == nil {
+		for _, ent := range entries {
+			if !ent.IsDir() {
+				continue
+			}
+			name := ent.Name()
+			if name == currentScopeKey || name == "Block.app" || strings.HasPrefix(name, ".") || !validMacAssocScopeKey(name) {
+				continue
+			}
+			scopeDir := filepath.Join(assocDir, name)
+			helperApp := filepath.Join(scopeDir, "Block.app")
+			if !isPathStrictlyWithinDir(assocDir, scopeDir) || !isPathStrictlyWithinDir(assocDir, helperApp) {
+				continue
+			}
+			bundleID := readMacPlistTopLevelString(helperApp, "CFBundleIdentifier")
+			if bundleID == "" {
+				bundleID = macAssocHelperBundleIDPrefix + name
+			} else if !strings.HasPrefix(bundleID, macAssocHelperBundleIDPrefix) {
+				continue
+			}
+			if bundleID == currentBundleID {
+				continue
+			}
+			seenBundles[bundleID] = struct{}{}
+
+			target := readMacPlistTopLevelString(helperApp, "BlockMainAppPath")
+			if target == "" {
+				target = readMacPlistTopLevelString(helperApp, "BlockMainExecPath")
+			}
+			var prevExts []string
+			if state != nil && state.MacScopes != nil {
+				if sc, ok := state.MacScopes[bundleID]; ok {
+					prevExts = sc.Extensions
+					if target == "" {
+						target = sc.AppPath
+					}
+					if target == "" {
+						target = sc.ExecutablePath
+					}
+				}
+			}
+
+			if target != "" && isMacUnmountedVolumePath(target) {
+				continue
+			}
+			if target != "" && !isMacTrashPath(target) {
+				if _, statErr := os.Stat(target); statErr == nil {
+					continue
+				} else if !os.IsNotExist(statErr) {
+					continue
+				}
+			}
+
+			// Target is missing at recorded path or in Trash. Check whether
+			// the same file object moved elsewhere on the volume.
+			fsidStr := readMacPlistTopLevelString(helperApp, "BlockMainAppFSID")
+			fileIDStr := readMacPlistTopLevelString(helperApp, "BlockMainAppFileID")
+			movedTo := resolveMacMovedPathByFileID(fsidStr, fileIDStr)
+			if movedTo != "" && !isMacTrashPath(movedTo) {
+				if canonicalCur != "" && canonicalMacPath(movedTo) == canonicalCur {
+					// This exact installation moved from target -> currentTarget.
+					if !forceRemoveMoved {
+						refExts, hasUTIRef := macHelperReferencedDefaultExtensions(bundleID, prevExts, managedExts)
+						if len(refExts) > 0 || hasUTIRef {
+							// Keep as forwarding relay while LaunchServices still
+							// points user defaults at this old bundle ID.
+							continue
+						}
+					}
+					removeScope(name, scopeDir, helperApp, bundleID)
+					changed = true
+					continue
+				}
+				// Moved to a different live location not equal to currentTarget.
+				continue
+			}
+
+			// Target was deleted or moved into Trash: always clean up stale relay.
+			removeScope(name, scopeDir, helperApp, bundleID)
+			changed = true
+		}
+	}
+
+	// Prune any orphaned state.MacScopes entries whose helper directory is gone
+	// or whose target path no longer exists. Never trust sc.HelperPath directly:
+	// always re-derive and validate the helper path under assocDir from bundleID.
+	if state != nil && state.MacScopes != nil {
+		for bundleID, sc := range state.MacScopes {
+			if bundleID == currentBundleID {
+				continue
+			}
+			if _, checked := seenBundles[bundleID]; checked {
+				continue
+			}
+			target := sc.AppPath
+			if target == "" {
+				target = sc.ExecutablePath
+			}
+			if target != "" && isMacUnmountedVolumePath(target) {
+				continue
+			}
+			targetMissing := target == "" || isMacTrashPath(target)
+			if !targetMissing {
+				if _, statErr := os.Stat(target); os.IsNotExist(statErr) {
+					targetMissing = true
+				}
+			}
+			scopeKey, derivedScopeDir, derivedHelperApp, validScope := resolveValidatedMacHelperScope(assocDir, bundleID)
+			helperMissing := !validScope
+			if validScope {
+				if _, statErr := os.Stat(derivedHelperApp); os.IsNotExist(statErr) {
+					helperMissing = true
+				}
+			}
+			if targetMissing || helperMissing {
+				if validScope {
+					removeScope(scopeKey, derivedScopeDir, derivedHelperApp, bundleID)
+				} else {
+					// Invalid or out-of-tree entry: drop state metadata only,
+					// never delete anything outside assocDir.
+					delete(state.MacScopes, bundleID)
+				}
+				changed = true
+			}
+		}
+	}
+	return changed
+}
 
 func initMacUTType() {
 	macUTOnce.Do(func() {
@@ -685,6 +1188,7 @@ func cleanupPlatformFileAssociations(appDataDir string, isolated bool) error {
 	}
 	scopeKey, helperBundleID, _ := macInstallScopeIdentity(mainAppPath, exePath)
 	helperApp := macHelperBundlePath(appDataDir, scopeKey)
+	recoverMacHelperStaging(filepath.Dir(helperApp), helperApp, false)
 	_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-u", helperApp)
 	if !isolated {
 		pruneStaleMacHelperRegistrations(helperBundleID, "")
@@ -693,6 +1197,9 @@ func cleanupPlatformFileAssociations(appDataDir string, isolated bool) error {
 		return err
 	}
 	_ = os.Remove(filepath.Dir(helperApp))
+	if !isolated {
+		removeMacAssocWatchAgent(appDataDir, scopeKey)
+	}
 
 	legacyHelperApp := macLegacyHelperBundlePath(appDataDir)
 	if macLegacyHelperOwnedOrOrphaned(legacyHelperApp, mainAppPath) {
@@ -704,7 +1211,12 @@ func cleanupPlatformFileAssociations(appDataDir string, isolated bool) error {
 	}
 
 	prev, hasPrev := loadFileAssocState(appDataDir)
-	if !hasPrev {
+	currentTarget := mainAppPath
+	if currentTarget == "" {
+		currentTarget = exePath
+	}
+	pruned := pruneStaleMacHelperScopes(appDataDir, scopeKey, helperBundleID, currentTarget, &prev, nil, isolated, true)
+	if !hasPrev && !pruned {
 		return nil
 	}
 	if prev.MacScopes != nil {
@@ -877,22 +1389,37 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 	assocDir := filepath.Join(appDataDir, "Associations")
 	scopeAssocDir := filepath.Join(assocDir, scopeKey)
 	helperApp := macHelperBundlePath(appDataDir, scopeKey)
+	// Recover any interrupted staging transaction (restoring Block.previous.app
+	// if needed and pruning leftover .Block.staging-* directories) before
+	// checking current state.
+	recoverMacHelperStaging(scopeAssocDir, helperApp, true)
 	prev, hasPrev := loadFileAssocState(appDataDir)
+	currentTarget := mainAppPath
+	if currentTarget == "" {
+		currentTarget = exePath
+	}
+	prunedStale := pruneStaleMacHelperScopes(appDataDir, scopeKey, helperBundleID, currentTarget, &prev, managedExts, false, false)
 	scopePrev, hasScopePrev := loadMacScopeState(prev, helperBundleID, mainAppPath, exePath)
 	firstRun := macReconciledOnce.CompareAndSwap(false, true)
 
 	// Retire the legacy shared helper bundle (dev.eachann.block.associations)
-	// ONLY if it belongs to this exact installation (or an already-removed app)
-	// AND LaunchServices no longer references it as a user default. A legacy
-	// helper owned by another live Block.app or still referenced as a default
-	// is left intact so existing defaults keep forwarding to their original app.
+	// if it points to a deleted/trashed app, OR if it belongs to this exact
+	// installation AND LaunchServices no longer references it as a user default.
 	legacyHelperApp := macLegacyHelperBundlePath(appDataDir)
 	if macLegacyHelperOwnedOrOrphaned(legacyHelperApp, mainAppPath) {
+		legacyTarget := readMacPlistTopLevelString(legacyHelperApp, "BlockMainAppPath")
+		legacyDeleted := legacyTarget != "" && (isMacTrashPath(legacyTarget) || func() bool {
+			if isMacUnmountedVolumePath(legacyTarget) {
+				return false
+			}
+			_, err := os.Stat(legacyTarget)
+			return os.IsNotExist(err)
+		}())
 		legacyRefExts, legacyUTIRef := macHelperReferencedDefaultExtensions(macAssocHelperBundleID, prev.Extensions, managedExts)
-		if len(legacyRefExts) == 0 && !legacyUTIRef {
+		if legacyDeleted || (len(legacyRefExts) == 0 && !legacyUTIRef) {
 			_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-u", legacyHelperApp)
 			_ = os.RemoveAll(legacyHelperApp)
-			if firstRun {
+			if firstRun || legacyDeleted {
 				pruneStaleMacHelperRegistrations(macAssocHelperBundleID, "")
 			}
 		}
@@ -920,10 +1447,11 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 		} else if hasScopePrev && len(scopePrev.Extensions) > 0 {
 			_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-u", helperApp)
 		}
+		removeMacAssocWatchAgent(appDataDir, scopeKey)
 		if firstRun {
 			pruneStaleMacHelperRegistrations(helperBundleID, "")
 		}
-		if hasScopePrev && (len(scopePrev.Extensions) > 0 || prev.Version != fileAssocStateVersion) {
+		if (hasScopePrev && (len(scopePrev.Extensions) > 0 || prev.Version != fileAssocStateVersion)) || prunedStale {
 			return saveMacScopeState(appDataDir, prev, helperBundleID, macAssocScopeState{
 				BundleID:       helperBundleID,
 				HelperPath:     helperApp,
@@ -948,6 +1476,7 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 	helperPlistPath := filepath.Join(helperApp, "Contents", "Info.plist")
 
 	if hasPrev &&
+		!prunedStale &&
 		prev.Version == fileAssocStateVersion &&
 		hasScopePrev &&
 		scopePrev.BundleID == helperBundleID &&
@@ -964,6 +1493,7 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 					pruneStaleMacHelperRegistrations(helperBundleID, helperApp)
 					_ = runCommandTimeout(10*time.Second, macLSRegisterPath, "-f", helperApp)
 				}
+				installMacAssocWatchAgent(appDataDir, scopeKey, helperExecPath, currentTarget)
 				return nil
 			}
 		}
@@ -1003,7 +1533,7 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 		}
 	}
 
-	plistBytes := buildMacHelperInfoPlist(helperBundleID, appVer, mainAppPath, bareExts)
+	plistBytes := buildMacHelperInfoPlist(helperBundleID, appVer, mainAppPath, exePath, bareExts)
 	if err := writeFileAtomic(filepath.Join(stagedApp, "Contents", "Info.plist"), plistBytes, 0o644); err != nil {
 		return fmt.Errorf("write staged Info.plist: %w", err)
 	}
@@ -1021,30 +1551,54 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 
 	backupApp := filepath.Join(stagingDir, "Block.previous.app")
 	hadExisting := false
+	usedAtomicSwap := false
 	if _, err := os.Stat(helperApp); err == nil {
-		if err := os.Rename(helperApp, backupApp); err != nil {
-			return fmt.Errorf("move previous helper aside: %w", err)
-		}
 		hadExisting = true
 	}
 
+	if hadExisting {
+		if swapErr := unix.RenamexNp(stagedApp, helperApp, unix.RENAME_SWAP); swapErr == nil {
+			// Single kernel-atomic exchange on APFS/HFS+: helperApp now holds the
+			// new signed bundle and stagedApp holds the previous bundle, with zero
+			// window where helperApp is absent on disk.
+			usedAtomicSwap = true
+		} else if swapErr == unix.ENOTSUP || swapErr == unix.EINVAL || swapErr == unix.ENOSYS {
+			if err := os.Rename(helperApp, backupApp); err != nil {
+				return fmt.Errorf("move previous helper aside: %w", err)
+			}
+			if err := os.Rename(stagedApp, helperApp); err != nil {
+				_ = os.Rename(backupApp, helperApp)
+				return fmt.Errorf("publish helper bundle: %w", err)
+			}
+		} else {
+			return fmt.Errorf("atomic swap helper bundle: %w", swapErr)
+		}
+	} else {
+		if err := os.Rename(stagedApp, helperApp); err != nil {
+			return fmt.Errorf("publish helper bundle: %w", err)
+		}
+	}
+
 	rollbackPublished := func() {
+		if usedAtomicSwap {
+			if unix.RenamexNp(stagedApp, helperApp, unix.RENAME_SWAP) == nil {
+				_ = runCommandTimeout(5*time.Second, macLSRegisterPath, "-f", helperApp)
+				return
+			}
+		}
 		_ = runCommandTimeout(5*time.Second, macLSRegisterPath, "-u", helperApp)
 		_ = os.RemoveAll(helperApp)
 		if hadExisting {
-			if os.Rename(backupApp, helperApp) == nil {
+			restoreSrc := backupApp
+			if usedAtomicSwap {
+				restoreSrc = stagedApp
+			}
+			if os.Rename(restoreSrc, helperApp) == nil {
 				_ = runCommandTimeout(5*time.Second, macLSRegisterPath, "-f", helperApp)
 			}
 		} else {
 			_ = os.Remove(scopeAssocDir)
 		}
-	}
-
-	if err := os.Rename(stagedApp, helperApp); err != nil {
-		if hadExisting {
-			_ = os.Rename(backupApp, helperApp)
-		}
-		return fmt.Errorf("publish helper bundle: %w", err)
 	}
 
 	if err := runCommandTimeout(10*time.Second, macLSRegisterPath, "-f", helperApp); err != nil {
@@ -1069,7 +1623,43 @@ func syncPlatformFileAssociations(appDataDir string, managedExts []string) error
 		rollbackPublished()
 		return fmt.Errorf("persist file association state: %w", err)
 	}
+	installMacAssocWatchAgent(appDataDir, scopeKey, helperExecPath, currentTarget)
 	return nil
+}
+
+// recoverMacHelperStaging repairs or cleans leftover .Block.staging-* dirs left
+// behind if a previous helper bundle publish was killed mid-flight. Caller must
+// already hold the cross-process file-association lock.
+func recoverMacHelperStaging(scopeAssocDir, helperApp string, restoreIfMissing bool) {
+	entries, err := os.ReadDir(scopeAssocDir)
+	if err != nil {
+		return
+	}
+	_, helperErr := os.Stat(helperApp)
+	helperMissing := os.IsNotExist(helperErr)
+	for _, ent := range entries {
+		if !ent.IsDir() || !strings.HasPrefix(ent.Name(), ".Block.staging-") {
+			continue
+		}
+		stagePath := filepath.Join(scopeAssocDir, ent.Name())
+		if restoreIfMissing && helperMissing {
+			prevApp := filepath.Join(stagePath, "Block.previous.app")
+			if st, err := os.Stat(prevApp); err == nil && st.IsDir() {
+				if os.Rename(prevApp, helperApp) == nil {
+					_ = runCommandTimeout(5*time.Second, macLSRegisterPath, "-f", helperApp)
+					helperMissing = false
+				}
+			}
+		}
+		if subEnts, err := os.ReadDir(stagePath); err == nil {
+			for _, sub := range subEnts {
+				if strings.HasSuffix(sub.Name(), ".app") {
+					_ = runCommandTimeout(5*time.Second, macLSRegisterPath, "-u", filepath.Join(stagePath, sub.Name()))
+				}
+			}
+		}
+		_ = os.RemoveAll(stagePath)
+	}
 }
 
 func normalizedMacBundleVersion(version string) string {
@@ -1080,7 +1670,7 @@ func normalizedMacBundleVersion(version string) string {
 	return ver
 }
 
-func buildMacHelperInfoPlist(bundleID, version, mainAppPath string, bareExts []string) []byte {
+func buildMacHelperInfoPlist(bundleID, version, mainAppPath, exePath string, bareExts []string) []byte {
 	if strings.TrimSpace(bundleID) == "" {
 		bundleID = macAssocHelperBundleID
 	}
@@ -1100,8 +1690,16 @@ func buildMacHelperInfoPlist(bundleID, version, mainAppPath string, bareExts []s
 	writePlistKV(&b, "CFBundleShortVersionString", ver)
 	writePlistKV(&b, "LSMinimumSystemVersion", "12.0")
 	b.WriteString("  <key>LSUIElement</key>\n  <true/>\n")
+	identityTarget := mainAppPath
 	if mainAppPath != "" {
 		writePlistKV(&b, "BlockMainAppPath", mainAppPath)
+	} else if exePath != "" {
+		writePlistKV(&b, "BlockMainExecPath", exePath)
+		identityTarget = exePath
+	}
+	if fsidStr, fileIDStr := macPathFileIdentity(identityTarget); fsidStr != "" && fileIDStr != "" {
+		writePlistKV(&b, "BlockMainAppFSID", fsidStr)
+		writePlistKV(&b, "BlockMainAppFileID", fileIDStr)
 	}
 	if len(bareExts) > 0 {
 		b.WriteString("  <key>CFBundleDocumentTypes</key>\n  <array>\n    <dict>\n")
