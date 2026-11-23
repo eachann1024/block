@@ -7,12 +7,14 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -190,6 +192,47 @@ var DefaultStoreIndexURLs = []string{
 	"https://cdn.jsdelivr.net/gh/blockmd-plugins/store-index@main/store-index.json",
 }
 
+// archiveMirrorPrefixes are SHA-256-verified fallback relays for GitHub Release archives,
+// matching internal/updater/sources.go. Never used without an expected SHA-256 digest.
+var archiveMirrorPrefixes = []string{
+	"https://gh-proxy.com/",
+	"https://ghproxy.net/",
+}
+
+const archiveAttemptTimeout = 15 * time.Second
+
+type storeNetworkError struct {
+	host string
+	err  error
+}
+
+func (e *storeNetworkError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.host != "" {
+		return fmt.Sprintf("download from %s: %v", e.host, e.err)
+	}
+	if e.err != nil {
+		return e.err.Error()
+	}
+	return "network download failed"
+}
+
+func (e *storeNetworkError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+var (
+	errArchiveTooManyRedirects = errors.New("too many plugin archive redirects")
+	errArchiveRedirectSource   = errors.New("plugin archive redirect changed its source")
+	errCatalogRedirectSource   = errors.New("plugin catalog redirect changed its source")
+	errArchiveInvalidURL       = errors.New("plugin archive requires an HTTPS URL without credentials or a fragment")
+)
+
 // StoreManager manages isolated plugin installations under <BlockAppData>/apps/<id>/,
 // isolated per-plugin storage under <BlockAppData>/apps-data/<id>/, and store index cache
 // under <BlockAppData>/apps-cache/store-index.json without touching Block's core state.json.
@@ -214,12 +257,18 @@ func NewStoreManager(blockAppDataDir string) *StoreManager {
 	if custom := strings.TrimSpace(os.Getenv("BLOCKMD_STORE_URL")); custom != "" {
 		urls = append([]string{custom}, urls...)
 	}
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = http.ProxyFromEnvironment
+	tr.ResponseHeaderTimeout = 10 * time.Second
 	return &StoreManager{
 		AppsRoot:  filepath.Join(blockAppDataDir, "apps"),
 		DataRoot:  filepath.Join(blockAppDataDir, "apps-data"),
 		CacheRoot: filepath.Join(blockAppDataDir, "apps-cache"),
 		IndexURLs: urls,
-		HTTP:      &http.Client{Timeout: 20 * time.Second},
+		HTTP: &http.Client{
+			Transport: tr,
+			Timeout:   20 * time.Second,
+		},
 	}
 }
 
@@ -455,14 +504,14 @@ func (s *StoreManager) RefreshCatalog(ctx context.Context) (*StoreIndex, error) 
 		client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 			target, err := parseArchiveURL(next.URL.String())
 			if err != nil || len(via) >= 10 || target.Host != indexURL.Host {
-				return errors.New("plugin catalog redirect changed its source")
+				return errCatalogRedirectSource
 			}
 			return nil
 		}
 		resp, err := client.Do(req)
 		if err != nil {
 			srcCancel()
-			lastErr = err
+			lastErr = sanitizeHTTPError(err, indexURL)
 			continue
 		}
 		const maxIndexBytes = 8 * 1024 * 1024
@@ -755,7 +804,7 @@ func parseArchiveURL(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" {
-		return nil, errors.New("plugin archive requires an HTTPS URL without credentials or a fragment")
+		return nil, errArchiveInvalidURL
 	}
 	u.Host = strings.ToLower(u.Host)
 	return u, nil
@@ -786,20 +835,92 @@ func githubArchiveRepo(u *url.URL) string {
 	return strings.ToLower(slug)
 }
 
+func isGitHubReleaseAssetURL(u *url.URL) bool {
+	if u == nil || u.Scheme != "https" || u.Host != "github.com" || githubArchiveRepo(u) == "" {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	return len(parts) >= 6 && parts[2] == "releases" && parts[3] == "download" && parts[4] != "" && parts[5] != ""
+}
+
+func verifyArchiveSHA256(data []byte, expectedSHA256 string) error {
+	expected := strings.TrimSpace(expectedSHA256)
+	if expected == "" {
+		return nil
+	}
+	sum := sha256.Sum256(data)
+	got := hex.EncodeToString(sum[:])
+	if !strings.EqualFold(got, expected) {
+		return fmt.Errorf("sha256 mismatch: expected %s, got %s", expected, got)
+	}
+	return nil
+}
+
+func isArchivePolicyError(err error) bool {
+	return errors.Is(err, errArchiveTooManyRedirects) ||
+		errors.Is(err, errArchiveRedirectSource) ||
+		errors.Is(err, errCatalogRedirectSource) ||
+		errors.Is(err, errArchiveInvalidURL)
+}
+
+func sanitizeHTTPError(err error, fallbackURL *url.URL) error {
+	if err == nil {
+		return nil
+	}
+	var netWrap *storeNetworkError
+	if errors.As(err, &netWrap) {
+		return err
+	}
+	host := ""
+	if fallbackURL != nil {
+		host = strings.ToLower(fallbackURL.Host)
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		if isArchivePolicyError(ue.Err) {
+			return ue.Err
+		}
+		if parsed, pErr := url.Parse(ue.URL); pErr == nil && parsed.Host != "" {
+			host = strings.ToLower(parsed.Host)
+		}
+		return &storeNetworkError{host: host, err: ue.Err}
+	}
+	if isArchivePolicyError(err) {
+		return err
+	}
+	return &storeNetworkError{host: host, err: err}
+}
+
+func isFastRetryableArchiveErr(err error) bool {
+	if err == nil || isArchivePolicyError(err) {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "unexpected eof") ||
+		strings.Contains(msg, "forcibly closed") ||
+		strings.Contains(msg, "http 5") ||
+		strings.Contains(msg, "sha256 mismatch")
+}
+
 func (s *StoreManager) installArchive(ctx context.Context, archiveURL *url.URL, expectedSHA256, source string, entry *StoreAppEntry, allowReplace bool) (*InstalledApp, error) {
 	if err := s.EnsureDirs(); err != nil {
 		return nil, err
 	}
-	data, err := s.fetchArchiveBytes(ctx, archiveURL)
+	data, err := s.fetchVerifiedArchiveBytes(ctx, archiveURL, expectedSHA256)
 	if err != nil {
 		return nil, err
-	}
-	if expectedSHA256 != "" {
-		sum := sha256.Sum256(data)
-		got := hex.EncodeToString(sum[:])
-		if !strings.EqualFold(got, strings.TrimSpace(expectedSHA256)) {
-			return nil, fmt.Errorf("sha256 mismatch: expected %s, got %s", expectedSHA256, got)
-		}
 	}
 	tmpExtract, err := os.MkdirTemp(s.CacheRoot, "extract-*")
 	if err != nil {
@@ -817,36 +938,124 @@ func (s *StoreManager) installArchive(ctx context.Context, archiveURL *url.URL, 
 	return s.installDirectory(pluginRoot, source, entry, allowReplace)
 }
 
-func (s *StoreManager) fetchArchiveBytes(ctx context.Context, archiveURL *url.URL) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL.String(), nil)
+func (s *StoreManager) fetchVerifiedArchiveBytes(ctx context.Context, archiveURL *url.URL, expectedSHA256 string) ([]byte, error) {
+	tryFetch := func(targetURL *url.URL, freshConn bool) ([]byte, error) {
+		data, err := s.fetchArchiveBytes(ctx, targetURL, archiveURL, freshConn)
+		if err != nil {
+			return nil, err
+		}
+		if err := verifyArchiveSHA256(data, expectedSHA256); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+
+	data, primaryErr := tryFetch(archiveURL, false)
+	if primaryErr == nil {
+		return data, nil
+	}
+	if ctx.Err() != nil {
+		return nil, primaryErr
+	}
+
+	// Retry once on a fresh HTTP/1.1 connection for fast transient EOF/reset errors
+	// (avoids stale keep-alive / HTTP/2 EOF from release-assets.githubusercontent.com or proxies).
+	if isFastRetryableArchiveErr(primaryErr) {
+		if data, retryErr := tryFetch(archiveURL, true); retryErr == nil {
+			return data, nil
+		} else {
+			primaryErr = retryErr
+		}
+		if ctx.Err() != nil {
+			return nil, primaryErr
+		}
+	}
+
+	// Only fail over to mirrors when a pinned SHA-256 digest guarantees archive integrity.
+	if strings.TrimSpace(expectedSHA256) != "" && isGitHubReleaseAssetURL(archiveURL) {
+		for _, prefix := range archiveMirrorPrefixes {
+			if ctx.Err() != nil {
+				break
+			}
+			mirrorURL, err := parseArchiveURL(prefix + archiveURL.String())
+			if err != nil {
+				continue
+			}
+			if data, err := tryFetch(mirrorURL, true); err == nil {
+				return data, nil
+			}
+		}
+	}
+	return nil, primaryErr
+}
+
+func (s *StoreManager) fetchArchiveBytes(ctx context.Context, targetURL, canonicalURL *url.URL, freshConn bool) ([]byte, error) {
+	reqCtx, cancel := withStageTimeout(ctx, archiveAttemptTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, targetURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Block-AppStore/1.0 (blockmd)")
-	client := *s.HTTP
+	if freshConn {
+		req.Close = true
+	}
+
+	var client http.Client
+	if s.HTTP != nil {
+		client = *s.HTTP
+	} else {
+		client = http.Client{Timeout: 20 * time.Second}
+	}
+	if freshConn {
+		var baseTr *http.Transport
+		if client.Transport == nil {
+			baseTr, _ = http.DefaultTransport.(*http.Transport)
+		} else {
+			baseTr, _ = client.Transport.(*http.Transport)
+		}
+		if baseTr != nil {
+			retryTr := baseTr.Clone()
+			retryTr.DisableKeepAlives = true
+			retryTr.ForceAttemptHTTP2 = false
+			retryTr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+			defer retryTr.CloseIdleConnections()
+			client.Transport = retryTr
+		}
+	}
+
+	repo := githubArchiveRepo(canonicalURL)
+	isMirror := targetURL.Host != canonicalURL.Host
 	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
-			return errors.New("too many plugin archive redirects")
+			return errArchiveTooManyRedirects
 		}
 		u, err := parseArchiveURL(next.URL.String())
 		if err != nil {
 			return err
 		}
-		repo := githubArchiveRepo(archiveURL)
-		if repo != "" {
+		if isMirror {
+			if u.Host == targetURL.Host || (repo != "" && (githubArchiveRepo(u) == repo ||
+				u.Host == "release-assets.githubusercontent.com" ||
+				u.Host == "objects.githubusercontent.com")) {
+				return nil
+			}
+		} else if repo != "" {
 			// GitHub serves source archives and release assets on separate hosts.
 			if githubArchiveRepo(u) == repo || u.Host == "release-assets.githubusercontent.com" ||
 				u.Host == "objects.githubusercontent.com" {
 				return nil
 			}
-		} else if u.Host == archiveURL.Host {
+		} else if u.Host == canonicalURL.Host {
 			return nil
 		}
-		return errors.New("plugin archive redirect changed its source")
+		return errArchiveRedirectSource
 	}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, sanitizeHTTPError(err, targetURL)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -855,7 +1064,18 @@ func (s *StoreManager) fetchArchiveBytes(ctx context.Context, archiveURL *url.UR
 	if resp.ContentLength > maxArchiveBytes {
 		return nil, errors.New("plugin archive exceeds download limit")
 	}
-	return readLimited(resp.Body, maxArchiveBytes)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxArchiveBytes+1))
+	if err != nil {
+		errURL := targetURL
+		if resp.Request != nil && resp.Request.URL != nil {
+			errURL = resp.Request.URL
+		}
+		return nil, sanitizeHTTPError(err, errURL)
+	}
+	if int64(len(data)) > maxArchiveBytes {
+		return nil, errors.New("plugin archive exceeds download limit")
+	}
+	return data, nil
 }
 
 func (s *StoreManager) installBuiltin(id string, entry *StoreAppEntry, allowReplace bool) (*InstalledApp, error) {
