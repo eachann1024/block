@@ -3089,10 +3089,27 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	w.mu.Unlock()
 
 	w.persistTabs(tabs, active)
+
+	if sup := w.Plugins(); sup != nil {
+		if nbRoot := w.ActiveNotebook(); nbRoot != "" {
+			oldRel := sidebarRelPath(nbRoot, cleanFrom)
+			newRel := sidebarRelPath(nbRoot, cleanTo)
+			if oldRel != "" && newRel != "" {
+				sup.RenameFileIconPath(nbRoot, oldRel, newRel)
+			}
+		}
+	}
 }
 
 func (w *Workspace) removeClosedOrDeletedPath(target string) {
 	cleanTarget := filepath.Clean(target)
+	if sup := w.Plugins(); sup != nil {
+		if nbRoot := w.ActiveNotebook(); nbRoot != "" {
+			if rel := sidebarRelPath(nbRoot, cleanTarget); rel != "" {
+				sup.DeleteFileIconPath(nbRoot, rel)
+			}
+		}
+	}
 	prefix := cleanTarget + string(filepath.Separator)
 	matches := func(p string) bool {
 		cp := filepath.Clean(p)
@@ -4941,6 +4958,7 @@ func (w *Workspace) Render(c *ui.Context) {
 				NotebookPath:           activeNB,
 				Tabs:                   tabs,
 				ActiveTab:              activeTab,
+				FileIcons:              w.pluginTitlebarFileIcons(activeNB),
 				IsDirty: func(path string) bool {
 					return dirtyTabs[path]
 				},
@@ -5478,6 +5496,43 @@ func (w *Workspace) pluginSidebarFileBadges(activeNB string) map[string][]plugin
 	return sup.FileBadgesForNotebook(activeNB)
 }
 
+func (w *Workspace) pluginSidebarFileIconPack() *plugins.ResolvedFileIconPack {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	return sup.ActiveFileIconPicker()
+}
+
+func (w *Workspace) pluginSidebarFileIcons(activeNB string) map[string]plugins.ResolvedFileIcon {
+	sup := w.Plugins()
+	if sup == nil || activeNB == "" {
+		return nil
+	}
+	return sup.FileIconsForNotebook(activeNB)
+}
+
+func (w *Workspace) pluginTitlebarFileIcons(activeNB string) map[string]plugins.ResolvedFileIcon {
+	pack := w.pluginSidebarFileIconPack()
+	if pack == nil || !pack.SyncTabs {
+		return nil
+	}
+	return w.pluginSidebarFileIcons(activeNB)
+}
+
+func (w *Workspace) onSetSidebarFileIcon(pluginID, relPath, iconID, tint string) {
+	sup := w.Plugins()
+	activeNB := w.ActiveNotebook()
+	if sup == nil || activeNB == "" {
+		return
+	}
+	if err := sup.SetFileIconDirect(pluginID, activeNB, relPath, iconID, tint); err != nil {
+		files.LogWarnf("set sidebar file icon failed: plugin=%s rel=%s icon=%s err=%v", pluginID, relPath, iconID, err)
+		return
+	}
+	w.RequestRedraw()
+}
+
 func (w *Workspace) applyPluginMenuShortcuts(items []plugins.ResolvedMenuItem) []plugins.ResolvedMenuItem {
 	if len(items) == 0 {
 		return items
@@ -5803,6 +5858,9 @@ func (w *Workspace) renderSidebarColumn(
 			w.OpenSettings("ai")
 		},
 		FileBadges:           w.pluginSidebarFileBadges(activeNB),
+		FileIcons:            w.pluginSidebarFileIcons(activeNB),
+		FileIconPack:         w.pluginSidebarFileIconPack(),
+		OnSetFileIcon:        w.onSetSidebarFileIcon,
 		PluginContextMenu:    w.pluginSidebarMenuItems(),
 		OnPluginContextMenu:  w.onPluginSidebarMenuItem,
 		RenderPluginSections: w.renderPluginSidebarSections,

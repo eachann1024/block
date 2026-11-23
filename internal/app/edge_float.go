@@ -502,6 +502,9 @@ func (w *Workspace) renderFloatingSidebarCard(
 			w.OpenSettings("ai")
 		},
 		FileBadges:           w.pluginSidebarFileBadges(activeNB),
+		FileIcons:            w.pluginSidebarFileIcons(activeNB),
+		FileIconPack:         w.pluginSidebarFileIconPack(),
+		OnSetFileIcon:        w.onSetSidebarFileIcon,
 		PluginContextMenu:    w.pluginSidebarMenuItems(),
 		OnPluginContextMenu:  w.onPluginSidebarMenuItem,
 		RenderPluginSections: w.renderPluginSidebarSections,
