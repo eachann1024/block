@@ -236,6 +236,24 @@ type inlineTok struct {
 	hasFG      bool
 	hasBG      bool
 	hasLnk     bool
+	srcStart   int
+	srcEnd     int
+	innerStart int
+	innerEnd   int
+}
+
+func shiftInlineTokOffsets(toks []*inlineTok, delta int) {
+	if delta == 0 {
+		return
+	}
+	for _, t := range toks {
+		t.srcStart += delta
+		t.srcEnd += delta
+		if t.innerStart > 0 || t.innerEnd > 0 {
+			t.innerStart += delta
+			t.innerEnd += delta
+		}
+	}
 }
 
 func isCJKOrFullwidth(r rune) bool {
@@ -447,22 +465,22 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			if i+1 < n {
 				next := s[i+1]
 				if next == '\n' {
-					toks = append(toks, &inlineTok{kind: tokText, text: "\n"})
+					toks = append(toks, &inlineTok{kind: tokText, text: "\n", srcStart: i, srcEnd: i + 2})
 					i += 2
 					continue
 				}
 				if next == '\r' && i+2 < n && s[i+2] == '\n' {
-					toks = append(toks, &inlineTok{kind: tokText, text: "\n"})
+					toks = append(toks, &inlineTok{kind: tokText, text: "\n", srcStart: i, srcEnd: i + 3})
 					i += 3
 					continue
 				}
 				if isASCIIPunctByte(next) {
-					toks = append(toks, &inlineTok{kind: tokText, text: string(next)})
+					toks = append(toks, &inlineTok{kind: tokText, text: string(next), srcStart: i, srcEnd: i + 2})
 					i += 2
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: "\\"})
+			toks = append(toks, &inlineTok{kind: tokText, text: "\\", srcStart: i, srcEnd: i + 1})
 			i++
 
 		case '`':
@@ -472,12 +490,24 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			}
 			end := st.findClosingBackticks(i+run, run)
 			if end >= 0 {
-				inner := s[i+run : end]
-				inner = normalizeCodeSpanContent(inner)
-				toks = append(toks, &inlineTok{kind: tokCode, text: inner})
+				rawInner := s[i+run : end]
+				inner := normalizeCodeSpanContent(rawInner)
+				inStart, inEnd := i+run, end
+				if len(inner) == len(rawInner)-2 && len(rawInner) >= 2 && rawInner[0] == ' ' && rawInner[len(rawInner)-1] == ' ' {
+					inStart++
+					inEnd--
+				}
+				toks = append(toks, &inlineTok{
+					kind:       tokCode,
+					text:       inner,
+					srcStart:   i,
+					srcEnd:     end + run,
+					innerStart: inStart,
+					innerEnd:   inEnd,
+				})
 				i = end + run
 			} else {
-				toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+				toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run], srcStart: i, srcEnd: i + run})
 				i += run
 			}
 
@@ -489,31 +519,33 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			if b == '~' && run == 1 {
 				if end, inner, ok := findDelimNoSpaceEnd(s, i+1, '~'); ok {
 					toks = append(toks,
-						&inlineTok{kind: tokOpenStyle, tag: "sub", isMark: model.MarkSubscript},
-						&inlineTok{kind: tokText, text: inner},
-						&inlineTok{kind: tokCloseStyle, tag: "sub"},
+						&inlineTok{kind: tokOpenStyle, tag: "sub", isMark: model.MarkSubscript, srcStart: i, srcEnd: i + 1},
+						&inlineTok{kind: tokText, text: inner, srcStart: i + 1, srcEnd: end},
+						&inlineTok{kind: tokCloseStyle, tag: "sub", srcStart: end, srcEnd: end + 1},
 					)
 					i = end + 1
 					continue
 				}
-				toks = append(toks, &inlineTok{kind: tokText, text: "~"})
+				toks = append(toks, &inlineTok{kind: tokText, text: "~", srcStart: i, srcEnd: i + 1})
 				i++
 				continue
 			}
 			if b == '~' && run != 2 {
-				toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+				toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run], srcStart: i, srcEnd: i + run})
 				i += run
 				continue
 			}
 			op, cl := classifyDelim(s, i, i+run, b)
 			toks = append(toks, &inlineTok{
-				kind:  tokDelim,
-				text:  s[i : i+run],
-				ch:    b,
-				count: run,
-				orig:  run,
-				canOp: op,
-				canCl: cl,
+				kind:     tokDelim,
+				text:     s[i : i+run],
+				ch:       b,
+				count:    run,
+				orig:     run,
+				canOp:    op,
+				canCl:    cl,
+				srcStart: i,
+				srcEnd:   i + run,
 			})
 			i += run
 
@@ -525,15 +557,15 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			if run == 1 {
 				if end, inner, ok := findDelimNoSpaceEnd(s, i+1, '^'); ok {
 					toks = append(toks,
-						&inlineTok{kind: tokOpenStyle, tag: "sup", isMark: model.MarkSuperscript},
-						&inlineTok{kind: tokText, text: inner},
-						&inlineTok{kind: tokCloseStyle, tag: "sup"},
+						&inlineTok{kind: tokOpenStyle, tag: "sup", isMark: model.MarkSuperscript, srcStart: i, srcEnd: i + 1},
+						&inlineTok{kind: tokText, text: inner, srcStart: i + 1, srcEnd: end},
+						&inlineTok{kind: tokCloseStyle, tag: "sup", srcStart: end, srcEnd: end + 1},
 					)
 					i = end + 1
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run], srcStart: i, srcEnd: i + run})
 			i += run
 
 		case '$':
@@ -543,12 +575,19 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			}
 			if run == 1 {
 				if end, inner, ok := findInlineMathEnd(s, i+1); ok {
-					toks = append(toks, &inlineTok{kind: tokMath, text: inner})
+					toks = append(toks, &inlineTok{
+						kind:       tokMath,
+						text:       inner,
+						srcStart:   i,
+						srcEnd:     end + 1,
+						innerStart: i + 1,
+						innerEnd:   end,
+					})
 					i = end + 1
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run], srcStart: i, srcEnd: i + run})
 			i += run
 
 		case '=':
@@ -560,19 +599,22 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 				if end, ok := findDoubleEqualEnd(s, i+2); ok {
 					innerToks := scanInlineTokensWithCtx(s[i+2:end], defs, inLink, hooks.at(i+2))
 					resolveDelimiters(innerToks)
+					shiftInlineTokOffsets(innerToks, i+2)
 					toks = append(toks, &inlineTok{
-						kind:  tokOpenStyle,
-						tag:   "mark",
-						style: inlineStyle{bgColor: "yellow"},
-						hasBG: true,
+						kind:     tokOpenStyle,
+						tag:      "mark",
+						style:    inlineStyle{bgColor: "yellow"},
+						hasBG:    true,
+						srcStart: i,
+						srcEnd:   i + 2,
 					})
 					toks = append(toks, innerToks...)
-					toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: "mark"})
+					toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: "mark", srcStart: end, srcEnd: end + 2})
 					i = end + 2
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run]})
+			toks = append(toks, &inlineTok{kind: tokText, text: s[i : i+run], srcStart: i, srcEnd: i + run})
 			i += run
 
 		case '!':
@@ -603,17 +645,19 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 						plainAlt = fallbackImageAlt(dest)
 					}
 					toks = append(toks, &inlineTok{
-						kind:  tokImage,
-						text:  plainAlt,
-						tag:   title,
-						canOp: altEmpty,
-						style: inlineStyle{link: dest},
+						kind:     tokImage,
+						text:     plainAlt,
+						tag:      title,
+						canOp:    altEmpty,
+						style:    inlineStyle{link: dest},
+						srcStart: i,
+						srcEnd:   i + 1 + consumed,
 					})
 					i += 1 + consumed
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: "!"})
+			toks = append(toks, &inlineTok{kind: tokText, text: "!", srcStart: i, srcEnd: i + 1})
 			i++
 
 		case '[':
@@ -623,7 +667,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 					fnLabel := s[i+2 : i+2+closeFn]
 					afterFn := i + 2 + closeFn + 1
 					if !strings.ContainsAny(fnLabel, " \t\r\n[]") && (afterFn >= n || s[afterFn] != '(') {
-						toks = append(toks, &inlineTok{kind: tokText, text: s[i:afterFn]})
+						toks = append(toks, &inlineTok{kind: tokText, text: s[i:afterFn], srcStart: i, srcEnd: afterFn})
 						i = afterFn
 						continue
 					}
@@ -631,11 +675,12 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			}
 			if !inLink && htmlLinkDepth == 0 && i < lastCB && (st.unclosedBrackets == nil || !st.unclosedBrackets[i]) {
 				if label, dest, linkTitle, refKey, consumed, ok := tryParseLinkOrImageWithTitleRefAt(st, i, defs, false); ok {
-					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest, linkTitle: linkTitle}})
+					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: dest, linkTitle: linkTitle}, srcStart: i, srcEnd: i + 1})
 					innerToks := scanInlineTokensWithCtx(label, defs, true, hooks.at(i+1))
 					resolveDelimiters(innerToks)
+					shiftInlineTokOffsets(innerToks, i+1)
 					toks = append(toks, innerToks...)
-					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					toks = append(toks, &inlineTok{kind: tokLinkClose, srcStart: i + 1 + len(label), srcEnd: i + consumed})
 					if refKey != "" && hooks != nil {
 						if hooks.used != nil {
 							hooks.used[refKey] = true
@@ -654,7 +699,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 					continue
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: "["})
+			toks = append(toks, &inlineTok{kind: tokText, text: "[", srcStart: i, srcEnd: i + 1})
 			i++
 
 		case '<':
@@ -670,9 +715,9 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 			lastGT, lastDQ, lastSQ := st.getTagBounds()
 			if i < lastGT {
 				if addr, linkURL, consumed, ok := tryParseAutolink(s[i : lastGT+1]); ok {
-					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}})
-					toks = append(toks, &inlineTok{kind: tokText, text: addr})
-					toks = append(toks, &inlineTok{kind: tokLinkClose})
+					toks = append(toks, &inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}, srcStart: i, srcEnd: i + 1})
+					toks = append(toks, &inlineTok{kind: tokText, text: addr, srcStart: i + 1, srcEnd: i + consumed - 1})
+					toks = append(toks, &inlineTok{kind: tokLinkClose, srcStart: i + consumed - 1, srcEnd: i + consumed})
 					i += consumed
 					continue
 				}
@@ -683,13 +728,21 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, tok[0].tag, true, tok[0].tag == "span"); okLit {
 								extraOpen := *tok[0]
 								extraOpen.isMark &^= model.MarkMath
+								extraOpen.srcStart, extraOpen.srcEnd = i, i+consumed
 								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
 								if hasExtra {
 									toks = append(toks, &extraOpen)
 								}
-								toks = append(toks, &inlineTok{kind: tokMath, text: litText})
+								toks = append(toks, &inlineTok{
+									kind:       tokMath,
+									text:       litText,
+									srcStart:   i,
+									srcEnd:     closeEnd,
+									innerStart: i + consumed,
+									innerEnd:   i + consumed + len(litText),
+								})
 								if hasExtra {
-									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag})
+									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag, srcStart: closeEnd, srcEnd: closeEnd})
 								}
 								i = closeEnd
 								continue
@@ -700,13 +753,21 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							if litText, closeEnd, okLit := scanLiteralHTMLBody(s, i+consumed, "code", true, false); okLit {
 								extraOpen := *tok[0]
 								extraOpen.isMark &^= model.MarkCode
+								extraOpen.srcStart, extraOpen.srcEnd = i, i+consumed
 								hasExtra := extraOpen.isMark != 0 || extraOpen.hasFG || extraOpen.hasBG || extraOpen.hasLnk
 								if hasExtra {
 									toks = append(toks, &extraOpen)
 								}
-								toks = append(toks, &inlineTok{kind: tokCode, text: litText})
+								toks = append(toks, &inlineTok{
+									kind:       tokCode,
+									text:       litText,
+									srcStart:   i,
+									srcEnd:     closeEnd,
+									innerStart: i + consumed,
+									innerEnd:   i + consumed + len(litText),
+								})
 								if hasExtra {
-									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag})
+									toks = append(toks, &inlineTok{kind: tokCloseStyle, tag: extraOpen.tag, srcStart: closeEnd, srcEnd: closeEnd})
 								}
 								i = closeEnd
 								continue
@@ -714,6 +775,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 						}
 						if tok != nil {
 							for _, t := range tok {
+								t.srcStart, t.srcEnd = i, i+consumed
 								if t.kind == tokOpenStyle && t.tag == "a" && t.hasLnk {
 									htmlLinkDepth++
 								} else if t.kind == tokCloseStyle && t.tag == "a" && htmlLinkDepth > 0 {
@@ -722,7 +784,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 							}
 							toks = append(toks, tok...)
 						} else {
-							toks = append(toks, &inlineTok{kind: tokText, text: rawTag})
+							toks = append(toks, &inlineTok{kind: tokText, text: rawTag, srcStart: i, srcEnd: i + consumed})
 						}
 						i += consumed
 						continue
@@ -731,25 +793,25 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 					}
 				}
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: "<"})
+			toks = append(toks, &inlineTok{kind: tokText, text: "<", srcStart: i, srcEnd: i + 1})
 			i++
 
 		case '&':
 			if decoded, consumed, ok := tryDecodeEntity(s[i:]); ok {
-				toks = append(toks, &inlineTok{kind: tokText, text: decoded})
+				toks = append(toks, &inlineTok{kind: tokText, text: decoded, srcStart: i, srcEnd: i + consumed})
 				i += consumed
 				continue
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: "&"})
+			toks = append(toks, &inlineTok{kind: tokText, text: "&", srcStart: i, srcEnd: i + 1})
 			i++
 
 		default:
 			if !inLink && htmlLinkDepth == 0 && (b == 'h' || b == 'H') {
 				if disp, linkURL, consumed, ok := tryParseBareAutolink(s, i); ok {
 					toks = append(toks,
-						&inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}},
-						&inlineTok{kind: tokText, text: disp},
-						&inlineTok{kind: tokLinkClose},
+						&inlineTok{kind: tokLinkOpen, style: inlineStyle{link: linkURL}, srcStart: i, srcEnd: i},
+						&inlineTok{kind: tokText, text: disp, srcStart: i, srcEnd: i + consumed},
+						&inlineTok{kind: tokLinkClose, srcStart: i + consumed, srcEnd: i + consumed},
 					)
 					i += consumed
 					continue
@@ -771,7 +833,7 @@ func scanInlineTokensWithCtx(s string, defs map[string]refDef, inLink bool, hook
 				_, sz := utf8.DecodeRuneInString(s[i:])
 				i += sz
 			}
-			toks = append(toks, &inlineTok{kind: tokText, text: s[start:i]})
+			toks = append(toks, &inlineTok{kind: tokText, text: s[start:i], srcStart: start, srcEnd: i})
 		}
 	}
 	return toks
