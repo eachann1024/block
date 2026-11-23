@@ -2,4 +2,7 @@
 
 package files
 
-const oNonBlockFlag = 0
+const (
+	oNonBlockFlag = 0
+	oNoFollowFlag = 0
+)

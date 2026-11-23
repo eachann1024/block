@@ -20,6 +20,8 @@ import (
 const (
 	// TextLimit is the maximum file size (5 MiB) opened as editable text/Markdown/SVG.
 	TextLimit int64 = 5 * 1024 * 1024
+	// PreviewLimit is the maximum file size (16 MiB) read for image/SVG previews.
+	PreviewLimit int64 = 16 * 1024 * 1024
 	// HighlightLimit is the maximum UTF-8 text length (128 KiB) eligible for syntax highlighting.
 	HighlightLimit = 128 * 1024
 
@@ -144,12 +146,196 @@ func LanguageTagForPath(path string) string {
 	}
 }
 
+// ErrNotRegularFile is returned when a non-regular filesystem node (FIFO, socket,
+// device, or directory) is encountered where a regular file is required.
+var ErrNotRegularFile = errors.New("not a regular file")
+
+// OpenRegularNonBlockNoFollow opens path without blocking on FIFOs and without
+// following a final-component symlink (on Unix), verifying regular-file mode on
+// the opened descriptor.
+func OpenRegularNonBlockNoFollow(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|oNonBlockFlag|oNoFollowFlag, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, nil, ErrNotRegularFile
+	}
+	return f, info, nil
+}
+
+// OpenRootRegularNonBlockNoFollow opens rel strictly inside root without blocking
+// on FIFOs and without following a final-component symlink (on Unix), verifying
+// regular-file mode on the opened descriptor.
+func OpenRootRegularNonBlockNoFollow(root *os.Root, rel string) (*os.File, os.FileInfo, error) {
+	f, err := root.OpenFile(rel, os.O_RDONLY|oNonBlockFlag|oNoFollowFlag, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, nil, ErrNotRegularFile
+	}
+	return f, info, nil
+}
+
+// ReadBoundedRegular reads up to capBytes from a regular file using O_NONBLOCK
+// and descriptor-level mode verification so FIFOs/devices never block.
+func ReadBoundedRegular(path string, capBytes int64) ([]byte, bool, error) {
+	return readBounded(path, capBytes)
+}
+
+// RootDirIdentityToken returns the FileInfo and stable cross-restart identity token
+// of the directory bound to root by opening "." directly through root.
+func RootDirIdentityToken(root *os.Root) (os.FileInfo, string, error) {
+	if root == nil {
+		return nil, "", errors.New("nil root")
+	}
+	d, err := root.Open(".")
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = d.Close() }()
+	info, err := d.Stat()
+	if err != nil {
+		return nil, "", err
+	}
+	if !info.IsDir() {
+		return nil, "", errors.New("root is not a directory")
+	}
+	return info, FileIdentityToken(info, d), nil
+}
+
+// FileIdentityMatches checks whether info/f matches a previously recorded identity token.
+func FileIdentityMatches(info os.FileInfo, f *os.File, token string) bool {
+	if token == "" {
+		return false
+	}
+	got := FileIdentityToken(info, f)
+	return got != "" && got == token
+}
+
+func verifyNoSymlinkPathInRoot(root *os.Root, cleanRel string) error {
+	parts := strings.Split(filepath.ToSlash(cleanRel), "/")
+	for i := range parts {
+		prefix := filepath.FromSlash(strings.Join(parts[:i+1], "/"))
+		info, err := root.Lstat(prefix)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return ErrNotRegularFile
+		}
+	}
+	return nil
+}
+
 // ClassifyFile inspects path and classifies how it should be opened in the editor,
 // aligning with thinkly-fast/src/files/classify.rs.
+// Opens once with O_NONBLOCK and verifies regular-file mode on the opened descriptor
+// so a TOCTOU swap to a FIFO/device never blocks the UI thread.
 func ClassifyFile(path string) (model.ClassifiedFile, error) {
-	info, err := os.Stat(path)
+	cf, _, _, err := ClassifyFileWithInfo(path)
+	return cf, err
+}
+
+// ClassifyFileWithInfo classifies path from a single non-blocking open descriptor
+// and also returns the opened file's FileInfo and stable cross-restart identity token.
+func ClassifyFileWithInfo(path string) (model.ClassifiedFile, os.FileInfo, string, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|oNonBlockFlag, 0)
 	if err != nil {
-		return model.ClassifiedFile{}, fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+		return model.ClassifiedFile{}, nil, "", fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+	}
+	id := FileIdentityToken(info, f)
+	cf, err := ClassifyFileHandle(path, f, info)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", err
+	}
+	return cf, info, id, nil
+}
+
+// ClassifyFileInRoot opens and classifies confineRel strictly inside confineRoot via os.Root,
+// verifying both the root directory identity and the target regular file identity.
+func ClassifyFileInRoot(confineRoot, confineRel string, expectedRootInfo os.FileInfo, expectedRootID string, expectedFileInfo os.FileInfo, expectedFileID string) (cf model.ClassifiedFile, fInfo os.FileInfo, fID string, rInfo os.FileInfo, rID string, err error) {
+	if strings.TrimSpace(confineRoot) == "" {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("无效的受限目录", "Invalid confined directory"))
+	}
+	cleanRel := filepath.Clean(confineRel)
+	if cleanRel == "." || !filepath.IsLocal(cleanRel) {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("目标路径超出允许范围", "Target path escapes allowed directory"))
+	}
+	root, err := os.OpenRoot(confineRoot)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	defer func() { _ = root.Close() }()
+
+	rInfo, rID, err = RootDirIdentityToken(root)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	if expectedRootInfo != nil && !os.SameFile(rInfo, expectedRootInfo) {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("受限目录身份已变化", "Confined root directory identity changed"))
+	}
+	if expectedRootID != "" && rID != expectedRootID {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("受限目录身份已变化", "Confined root directory identity changed"))
+	}
+	if err = verifyNoSymlinkPathInRoot(root, cleanRel); err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	linfo, err := root.Lstat(cleanRel)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	if !linfo.Mode().IsRegular() {
+		return model.ClassifiedFile{}, nil, "", nil, "", ErrNotRegularFile
+	}
+	f, fInfo, err := OpenRootRegularNonBlockNoFollow(root, cleanRel)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	defer func() { _ = f.Close() }()
+
+	if !os.SameFile(linfo, fInfo) {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("目标文件身份已变化", "Target file identity changed"))
+	}
+	fID = FileIdentityToken(fInfo, f)
+	if expectedFileInfo != nil && !os.SameFile(fInfo, expectedFileInfo) {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("目标文件身份已变化", "Target file identity changed"))
+	}
+	if expectedFileID != "" && fID != expectedFileID {
+		return model.ClassifiedFile{}, nil, "", nil, "", errors.New(theme.Tr("目标文件身份已变化", "Target file identity changed"))
+	}
+	absPath := filepath.Clean(filepath.Join(confineRoot, cleanRel))
+	cf, err = ClassifyFileHandle(absPath, f, fInfo)
+	if err != nil {
+		return model.ClassifiedFile{}, nil, "", nil, "", err
+	}
+	return cf, fInfo, fID, rInfo, rID, nil
+}
+
+// ClassifyFileHandle classifies an already-opened file descriptor without re-opening
+// path from disk, reading bounded preview/source bytes directly from f.
+func ClassifyFileHandle(path string, f *os.File, info os.FileInfo) (model.ClassifiedFile, error) {
+	if f == nil || info == nil {
+		return model.ClassifiedFile{}, errors.New("missing file handle")
 	}
 	if !info.Mode().IsRegular() {
 		return model.ClassifiedFile{
@@ -160,33 +346,115 @@ func ClassifyFile(path string) (model.ClassifiedFile, error) {
 
 	rawSize := info.Size()
 	if IsImagePath(path) && !IsSVGPath(path) {
+		if rawSize > PreviewLimit {
+			return model.ClassifiedFile{
+				Kind:    model.OpenKindBlocked,
+				Reason:  theme.Tr("文件超过预览大小上限", "File exceeds preview size limit"),
+				RawSize: rawSize,
+			}, nil
+		}
+		data, err := io.ReadAll(io.LimitReader(f, PreviewLimit+1))
+		if err != nil {
+			return model.ClassifiedFile{}, fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+		}
+		if int64(len(data)) > PreviewLimit {
+			return model.ClassifiedFile{
+				Kind:    model.OpenKindBlocked,
+				Reason:  theme.Tr("文件超过预览大小上限", "File exceeds preview size limit"),
+				RawSize: int64(len(data)),
+			}, nil
+		}
 		return model.ClassifiedFile{
-			Kind:    model.OpenKindPreview,
-			RawSize: rawSize,
+			Kind:         model.OpenKindPreview,
+			PreviewBytes: data,
+			RawSize:      int64(len(data)),
 		}, nil
 	}
 
 	if rawSize > TextLimit {
-		return classifyOverLimit(path, rawSize), nil
+		if IsSVGPath(path) {
+			if rawSize > PreviewLimit {
+				return model.ClassifiedFile{
+					Kind:    model.OpenKindBlocked,
+					Reason:  theme.Tr("文件超过预览大小上限", "File exceeds preview size limit"),
+					RawSize: rawSize,
+				}, nil
+			}
+			data, err := io.ReadAll(io.LimitReader(f, PreviewLimit+1))
+			if err != nil {
+				return model.ClassifiedFile{}, fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+			}
+			if int64(len(data)) > PreviewLimit {
+				return model.ClassifiedFile{
+					Kind:    model.OpenKindBlocked,
+					Reason:  theme.Tr("文件超过预览大小上限", "File exceeds preview size limit"),
+					RawSize: int64(len(data)),
+				}, nil
+			}
+			return model.ClassifiedFile{
+				Kind:         model.OpenKindPreview,
+				PreviewBytes: data,
+				RawSize:      int64(len(data)),
+			}, nil
+		}
+		var sample []byte
+		buf := make([]byte, sniffBytes)
+		if n, rErr := f.Read(buf); n > 0 && (rErr == nil || errors.Is(rErr, io.EOF)) {
+			sample = buf[:n]
+		}
+		return classifyOverLimitSample(path, rawSize, sample), nil
 	}
 
-	data, tooLarge, err := readBounded(path, TextLimit)
+	if IsSVGPath(path) {
+		data, err := io.ReadAll(io.LimitReader(f, PreviewLimit+1))
+		if err != nil {
+			return model.ClassifiedFile{}, fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
+		}
+		if int64(len(data)) > PreviewLimit {
+			return model.ClassifiedFile{
+				Kind:    model.OpenKindBlocked,
+				Reason:  theme.Tr("文件超过预览大小上限", "File exceeds preview size limit"),
+				RawSize: int64(len(data)),
+			}, nil
+		}
+		if int64(len(data)) > TextLimit {
+			return model.ClassifiedFile{
+				Kind:         model.OpenKindPreview,
+				PreviewBytes: data,
+				RawSize:      int64(len(data)),
+			}, nil
+		}
+		return classifyBytes(path, data), nil
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, TextLimit+1))
 	if err != nil {
 		return model.ClassifiedFile{}, fmt.Errorf("%s: %w", theme.Tr("无法读取", "Cannot read"), err)
 	}
-	if tooLarge {
-		return classifyOverLimit(path, int64(len(data))), nil
+	if int64(len(data)) > TextLimit {
+		sample := data
+		if len(sample) > sniffBytes {
+			sample = sample[:sniffBytes]
+		}
+		return classifyOverLimitSample(path, int64(len(data)), sample), nil
 	}
 
 	return classifyBytes(path, data), nil
 }
 
 func readBounded(path string, capBytes int64) ([]byte, bool, error) {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|oNonBlockFlag, 0)
 	if err != nil {
 		return nil, false, err
 	}
 	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, errors.New("not a regular file")
+	}
 
 	data, err := io.ReadAll(io.LimitReader(f, capBytes+1))
 	if err != nil {
@@ -199,6 +467,10 @@ func readBounded(path string, capBytes int64) ([]byte, bool, error) {
 }
 
 func classifyOverLimit(path string, rawSize int64) model.ClassifiedFile {
+	return classifyOverLimitSample(path, rawSize, sniffHead(path))
+}
+
+func classifyOverLimitSample(path string, rawSize int64, sample []byte) model.ClassifiedFile {
 	if IsSVGPath(path) {
 		return model.ClassifiedFile{
 			Kind:    model.OpenKindPreview,
@@ -206,7 +478,6 @@ func classifyOverLimit(path string, rawSize int64) model.ClassifiedFile {
 		}
 	}
 	name := filepath.Base(path)
-	sample := sniffHead(path)
 	textual := IsMarkdown(name) || knownTextExts[extOf(path)] || sampleIsText(sample)
 	reason := theme.Tr("此文件类型暂不支持", "This file type is not supported")
 	if textual {
@@ -220,11 +491,15 @@ func classifyOverLimit(path string, rawSize int64) model.ClassifiedFile {
 }
 
 func sniffHead(path string) []byte {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|oNonBlockFlag, 0)
 	if err != nil {
 		return nil
 	}
 	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
 
 	buf := make([]byte, sniffBytes)
 	n, err := f.Read(buf)
@@ -282,8 +557,9 @@ func classifyBytes(path string, data []byte) model.ClassifiedFile {
 		src, errMsg := decodeSource(path, data, true)
 		if errMsg != "" {
 			return model.ClassifiedFile{
-				Kind:    model.OpenKindPreview,
-				RawSize: rawSize,
+				Kind:         model.OpenKindPreview,
+				PreviewBytes: data,
+				RawSize:      rawSize,
 			}
 		}
 		return model.ClassifiedFile{

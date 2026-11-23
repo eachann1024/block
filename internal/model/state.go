@@ -1,5 +1,7 @@
 package model
 
+import "os"
+
 type ThemeMode string
 
 const (
@@ -151,11 +153,56 @@ type SourceFile struct {
 }
 
 type ClassifiedFile struct {
-	Kind    OpenKind
-	Text    string      // For OpenKindMarkdown
-	Source  *SourceFile // For OpenKindSource, or editable SVG when Kind == OpenKindPreview
-	Reason  string      // For OpenKindBlocked
-	RawSize int64
+	Kind         OpenKind
+	Text         string      // For OpenKindMarkdown
+	Source       *SourceFile // For OpenKindSource, or editable SVG when Kind == OpenKindPreview
+	PreviewBytes []byte      // Bounded regular-file preview bytes for OpenKindPreview (SVG or raster image)
+	Reason       string      // For OpenKindBlocked
+	RawSize      int64
+}
+
+// VerifiedFileTarget records the verified filesystem identity and optional os.Root
+// confinement of a file already opened, checked, and classified from disk.
+type VerifiedFileTarget struct {
+	AbsPath         string
+	ConfineRoot     string
+	ConfineRel      string
+	ConfineRootInfo os.FileInfo
+	FileInfo        os.FileInfo
+	RootIdentity    string
+	FileIdentity    string
+	EnforceIdentity bool
+}
+
+// PreparedTabTarget carries the background-verified tab resolution result so the
+// main thread can apply tab state without performing any blocking filesystem I/O.
+type PreparedTabTarget struct {
+	TabPath           string
+	ReusedTab         bool
+	Verified          VerifiedFileTarget
+	NoteDir           string
+	NoteDirInfo       os.FileInfo
+	ProjRoot          string
+	ProjRootInfo      os.FileInfo
+	NoteBelongsToProj bool
+}
+
+// PreparedDirectoryTarget carries the background-resolved directory reveal target
+// so the main thread can update sidebar focus or hand off to the OS shell without I/O.
+type PreparedDirectoryTarget struct {
+	AbsPath        string
+	InNotebook     bool
+	NotebookFolder string
+	NotebookDir    string
+}
+
+// PersistedTabBinding stores confined root & file identity metadata in state.json
+// so restarted sessions can re-verify confined tabs before restoring them.
+type PersistedTabBinding struct {
+	ConfineRoot  string `json:"confine_root,omitempty"`
+	ConfineRel   string `json:"confine_rel,omitempty"`
+	RootIdentity string `json:"root_identity,omitempty"`
+	FileIdentity string `json:"file_identity,omitempty"`
 }
 
 // AppState matches ~/Library/Application Support/Block/state.json 1:1.
@@ -181,8 +228,9 @@ type AppState struct {
 	ShortcutSearch        string              `json:"shortcut_search,omitempty"`
 	ShortcutQuick         string              `json:"shortcut_quick,omitempty"`
 	CustomShortcuts       map[string]string   `json:"custom_shortcuts,omitempty"`
-	OpenTabs              []string            `json:"open_tabs,omitempty"`
-	ActiveTab             string              `json:"active_tab,omitempty"`
+	OpenTabs              []string                       `json:"open_tabs,omitempty"`
+	ActiveTab             string                         `json:"active_tab,omitempty"`
+	TabBindings           map[string]PersistedTabBinding `json:"tab_bindings,omitempty"`
 	LastFormatColors      *LastFormatColors   `json:"last_format_colors,omitempty"`
 	ExportPreferences     *ExportPreferences  `json:"export_preferences,omitempty"`
 	ExportDirectory       string              `json:"export_directory,omitempty"`
