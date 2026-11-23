@@ -91,7 +91,7 @@ export function listCommits(root = ROOT, rangeSpec = "-n 20") {
     "--date=format-local:%Y-%m-%d",
     "--name-only",
     "-z",
-    `--format=${COMMIT_MARKER}%x00%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)%x00`,
+    `--format=${COMMIT_MARKER}%x00%H%x00%an%x00%cd%x00%s%x00%(trailers:key=Release-Note,valueonly,separator=%x20)%x00%(trailers:key=Release-Note-En,valueonly,separator=%x20)%x00%b%x00`,
   ];
   if (rangeSpec.startsWith("-n")) args.push(...rangeSpec.split(/\s+/));
   else args.push(rangeSpec);
@@ -117,7 +117,8 @@ export function listCommits(root = ROOT, rangeSpec = "-n 20") {
     const subject = tokens[idx + 4] || "";
     const releaseNoteRaw = tokens[idx + 5] || "";
     const releaseNoteEnRaw = tokens[idx + 6] || "";
-    idx += 7;
+    const body = cleanBody(tokens[idx + 7] || "");
+    idx += 8;
     const paths = [];
     while (idx < tokens.length) {
       const next = tokens[idx].replace(/^\n+/, "");
@@ -135,10 +136,25 @@ export function listCommits(root = ROOT, rangeSpec = "-n 20") {
       subject,
       releaseNote: split.zh,
       releaseNoteEn: (releaseNoteEnRaw || "").trim() || split.en,
+      body,
       paths,
     });
   }
   return commits;
+}
+
+const TRAILER_LINE = /^(?:Release-Note(?:-En)?|Co-authored-by|Signed-off-by|Change-Id):/i;
+const MAX_BODY = 600;
+const MAX_PATHS = 8;
+
+// 提交正文去掉 trailer 和空行，压成一行，给模型判断用户能感受到什么。
+function cleanBody(raw) {
+  const text = String(raw)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !TRAILER_LINE.test(line))
+    .join(" ");
+  return text.length > MAX_BODY ? `${text.slice(0, MAX_BODY)}…` : text;
 }
 
 function shortToken(value) {
@@ -265,12 +281,17 @@ async function readJsonBody(res) {
 }
 
 function commitLines(commits) {
-  return commits.map(({ subject, releaseNote = "", releaseNoteEn = "" }) => {
+  return commits.map(({ subject, releaseNote = "", releaseNoteEn = "", body = "", paths = [] }, i) => {
     const clean = subject.replace(/\s*\(#\d+\)$/, "").trim();
-    if (releaseNote && releaseNoteEn) return `${clean} | ${releaseNote} ||| ${releaseNoteEn}`;
-    if (releaseNote) return `${clean} | ${releaseNote}`;
-    if (releaseNoteEn) return `${clean} ||| ${releaseNoteEn}`;
-    return clean;
+    let head = clean;
+    if (releaseNote && releaseNoteEn) head = `${clean} | ${releaseNote} ||| ${releaseNoteEn}`;
+    else if (releaseNote) head = `${clean} | ${releaseNote}`;
+    else if (releaseNoteEn) head = `${clean} ||| ${releaseNoteEn}`;
+    const lines = [`${i + 1}. ${head}`];
+    if (body) lines.push(`   body: ${body}`);
+    const shown = paths.filter((p) => !isNonShippablePath(p)).slice(0, MAX_PATHS);
+    if (shown.length) lines.push(`   files: ${shown.join(", ")}${paths.length > shown.length ? ", …" : ""}`);
+    return lines.join("\n");
   });
 }
 
@@ -278,7 +299,7 @@ async function polishBatch({ version, commits, provider, system }) {
   const { model, url, headers, timeoutMs = TIMEOUT_MS } = provider;
   const inputLines = commitLines(commits);
   if (!inputLines.length) return { status: "empty", model };
-  const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n")}`;
+  const asked = `These are the only commits for Block ${version} since the previous tag (${inputLines.length}):\n\n${inputLines.join("\n\n")}`;
   let lastRaw = "";
   let failure = `${model}：没有生成更新说明`;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -287,7 +308,7 @@ async function polishBatch({ version, commits, provider, system }) {
       messages.push({ role: "assistant", content: lastRaw });
       messages.push({
         role: "user",
-        content: "Proofread and rewrite. The previous draft failed release-note validation. Keep one language per line, one bullet per commit, English above ---, Simplified Chinese below. Output markdown only.",
+        content: "Proofread and rewrite. The previous draft failed release-note validation. Keep one language per line, one bullet per commit, start every bullet with its feature area (English \"Area: ...\", Chinese \"功能位置：...\"), English above ---, Simplified Chinese below. Output markdown only.",
       });
     }
     try {
