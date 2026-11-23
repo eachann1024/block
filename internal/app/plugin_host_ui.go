@@ -71,17 +71,21 @@ type pluginHostUI struct {
 
 	closing     chan struct{}
 	closingOnce sync.Once
+
+	menubar *pluginMenubar // system tray icons of plugins
 }
 
 var _ plugins.UIHost = (*pluginHostUI)(nil)
 
 func newPluginHostUI(w *Workspace) *pluginHostUI {
-	return &pluginHostUI{
+	h := &pluginHostUI{
 		w:             w,
 		panelWidthVal: ChatDefaultW,
 		insertSource:  map[string]string{},
 		closing:       make(chan struct{}),
 	}
+	h.startMenubar()
+	return h
 }
 
 // HostClosing unblocks plugin calls waiting on the UI thread; the supervisor
