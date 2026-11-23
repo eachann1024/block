@@ -3,16 +3,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"block/internal/files"
+	"block/internal/plugins"
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 	"github.com/egoist/mygo"
@@ -36,6 +39,12 @@ const (
 func maybeRunMacOpenRelay() bool {
 	if len(os.Args) == 0 || filepath.Base(os.Args[0]) != macRelayExecName {
 		return false
+	}
+	for _, arg := range os.Args[1:] {
+		if arg == "--prune-if-orphaned" {
+			pruneSelfMacRelayIfOrphaned()
+			return true
+		}
 	}
 
 	var (
@@ -213,14 +222,128 @@ func setMacActivationPolicyAccessory() {
 	nsApp.Send(objc.RegisterName("setActivationPolicy:"), uintptr(1))
 }
 
-func forwardPathsToMainMacBlock(paths []string) {
-	mainApp := resolveMainMacBlockAppPath()
-	if mainApp != "" {
-		if err := runMacOpen(append([]string{"-a", mainApp}, paths...)...); err == nil {
+var (
+	macRelayFSGetPathOnce sync.Once
+	macRelayFSGetPathFn   func(buf *byte, bufSize uintptr, fsid *[2]int32, objID uint64) int64
+)
+
+func isMacRelayTrashPath(p string) bool {
+	if p == "" {
+		return false
+	}
+	clean := filepath.Clean(p)
+	return strings.Contains(clean, "/.Trash/") || strings.HasSuffix(clean, "/.Trash") ||
+		strings.Contains(clean, "/.Trashes/") || strings.HasSuffix(clean, "/.Trashes")
+}
+
+func resolveMacRelayMovedPath(fsidStr, fileIDStr string) string {
+	fsidStr = strings.TrimSpace(fsidStr)
+	fileIDStr = strings.TrimSpace(fileIDStr)
+	if fsidStr == "" || fileIDStr == "" {
+		return ""
+	}
+	parts := strings.Split(fsidStr, ":")
+	if len(parts) != 2 {
+		return ""
+	}
+	v0, err0 := strconv.ParseInt(parts[0], 10, 32)
+	v1, err1 := strconv.ParseInt(parts[1], 10, 32)
+	ino, err2 := strconv.ParseUint(fileIDStr, 10, 64)
+	if err0 != nil || err1 != nil || err2 != nil || ino == 0 {
+		return ""
+	}
+	macRelayFSGetPathOnce.Do(func() {
+		lib, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
 			return
-		} else {
+		}
+		sym, err := purego.Dlsym(lib, "fsgetpath")
+		if err != nil {
+			return
+		}
+		purego.RegisterFunc(&macRelayFSGetPathFn, sym)
+	})
+	if macRelayFSGetPathFn == nil {
+		return ""
+	}
+	fsid := [2]int32{int32(v0), int32(v1)}
+	var buf [4096]byte
+	n := macRelayFSGetPathFn(&buf[0], uintptr(len(buf)), &fsid, ino)
+	if n <= 0 {
+		return ""
+	}
+	if int(n) > len(buf) {
+		n = int64(len(buf))
+	}
+	end := bytes.IndexByte(buf[:n], 0)
+	if end < 0 {
+		end = int(n)
+	}
+	return strings.TrimSpace(string(buf[:end]))
+}
+
+// resolveMacRelayTargetFromPlist resolves the exact target installation recorded
+// in a helper bundle's Info.plist. When BlockMainAppPath or BlockMainExecPath
+// is present (pinned == true), the relay preserves installation identity: if
+// the bundle moved on the same volume, it follows its file ID via fsgetpath,
+// and if the installation was deleted or trashed, it refuses to hand off files
+// to any other Block copy.
+func resolveMacRelayTargetFromPlist(raw []byte) (appPath string, execPath string, pinned bool) {
+	recordedApp := extractPlistStringValue(raw, "BlockMainAppPath")
+	recordedExec := extractPlistStringValue(raw, "BlockMainExecPath")
+	fsidStr := extractPlistStringValue(raw, "BlockMainAppFSID")
+	fileIDStr := extractPlistStringValue(raw, "BlockMainAppFileID")
+
+	if recordedApp != "" {
+		if !isMacRelayTrashPath(recordedApp) && isVerifiedMainBlockBundle(recordedApp) {
+			return recordedApp, "", true
+		}
+		if moved := resolveMacRelayMovedPath(fsidStr, fileIDStr); moved != "" && !isMacRelayTrashPath(moved) && isVerifiedMainBlockBundle(moved) {
+			return moved, "", true
+		}
+		return "", "", true
+	}
+	if recordedExec != "" {
+		if !isMacRelayTrashPath(recordedExec) {
+			if st, err := os.Stat(recordedExec); err == nil && !st.IsDir() {
+				return "", recordedExec, true
+			}
+		}
+		if moved := resolveMacRelayMovedPath(fsidStr, fileIDStr); moved != "" && !isMacRelayTrashPath(moved) {
+			if st, err := os.Stat(moved); err == nil && !st.IsDir() {
+				return "", moved, true
+			}
+		}
+		return "", "", true
+	}
+	return "", "", false
+}
+
+func forwardPathsToMainMacBlock(paths []string) {
+	mainApp, mainExec, pinned := resolveMainMacBlockTarget()
+	if mainApp != "" {
+		if err := runMacOpen(append([]string{"-a", mainApp}, paths...)...); err != nil {
 			files.LogWarnf("mac open relay -a %s failed: %v", mainApp, err)
 		}
+		return
+	}
+	if mainExec != "" {
+		cmd := exec.Command(mainExec, paths...)
+		if err := cmd.Start(); err != nil {
+			files.LogWarnf("mac open relay exec %s failed: %v", mainExec, err)
+		}
+		return
+	}
+	if pinned {
+		// Target installation was deleted or moved to Trash; do not silently
+		// forward files to a different Block installation. If the target is not
+		// merely on a temporarily unmounted external volume, unregister and
+		// remove this orphaned external association helper immediately.
+		if !isMacRelayTargetOnUnmountedVolume() {
+			selfCleanupOrphanedMacRelay()
+		}
+		files.LogWarnf("mac open relay target installation no longer available; refusing cross-install fallback")
+		return
 	}
 	if err := runMacOpen(append([]string{"-b", macRelayBundleID}, paths...)...); err != nil {
 		files.LogWarnf("mac open relay -b %s failed: %v", macRelayBundleID, err)
@@ -233,19 +356,119 @@ func runMacOpen(args ...string) error {
 	return exec.CommandContext(ctx, "/usr/bin/open", args...).Run()
 }
 
-func resolveMainMacBlockAppPath() string {
+func isMacRelayUnmountedVolumePath(p string) bool {
+	clean := filepath.Clean(strings.TrimSpace(p))
+	if !strings.HasPrefix(clean, "/Volumes/") {
+		return false
+	}
+	rest := strings.TrimPrefix(clean, "/Volumes/")
+	vol := rest
+	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
+		vol = rest[:idx]
+	}
+	if vol == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join("/Volumes", vol))
+	return os.IsNotExist(err)
+}
+
+func readSelfMacRelayPlist() (helperAppPath string, raw []byte) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", nil
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil && resolved != "" {
+		exe = resolved
+	}
+	// Expected layout: <appDataDir>/Associations/<scopeKey>/Block.app/Contents/MacOS/block-opener
+	contentsDir := filepath.Dir(filepath.Dir(exe))
+	helperAppPath = filepath.Dir(contentsDir)
+	raw, err = os.ReadFile(filepath.Join(contentsDir, "Info.plist"))
+	if err != nil {
+		return helperAppPath, nil
+	}
+	return helperAppPath, raw
+}
+
+func isMacRelayTargetOnUnmountedVolume() bool {
+	_, raw := readSelfMacRelayPlist()
+	if len(raw) == 0 {
+		return false
+	}
+	target := extractPlistStringValue(raw, "BlockMainAppPath")
+	if target == "" {
+		target = extractPlistStringValue(raw, "BlockMainExecPath")
+	}
+	return target != "" && isMacRelayUnmountedVolumePath(target)
+}
+
+func pruneSelfMacRelayIfOrphaned() {
+	_, raw := readSelfMacRelayPlist()
+	if len(raw) == 0 {
+		return
+	}
+	target := extractPlistStringValue(raw, "BlockMainAppPath")
+	if target == "" {
+		target = extractPlistStringValue(raw, "BlockMainExecPath")
+	}
+	if target != "" && isMacRelayUnmountedVolumePath(target) {
+		return
+	}
+	appPath, execPath, pinned := resolveMacRelayTargetFromPlist(raw)
+	if !pinned || appPath != "" || execPath != "" {
+		return
+	}
+	// If the target disappeared without moving into Trash, debounce briefly so
+	// an in-flight in-place upgrade swap is never mistaken for an uninstall.
+	fsidStr := extractPlistStringValue(raw, "BlockMainAppFSID")
+	fileIDStr := extractPlistStringValue(raw, "BlockMainAppFileID")
+	moved := resolveMacRelayMovedPath(fsidStr, fileIDStr)
+	if moved == "" || !isMacRelayTrashPath(moved) {
+		time.Sleep(500 * time.Millisecond)
+		appPath2, execPath2, pinned2 := resolveMacRelayTargetFromPlist(raw)
+		if !pinned2 || appPath2 != "" || execPath2 != "" {
+			return
+		}
+	}
+	selfCleanupOrphanedMacRelay()
+}
+
+func selfCleanupOrphanedMacRelay() {
+	helperApp, raw := readSelfMacRelayPlist()
+	if helperApp == "" || len(raw) == 0 {
+		return
+	}
+	bundleID := extractPlistStringValue(raw, "CFBundleIdentifier")
+	if bundleID == "" {
+		return
+	}
+	// Derive appDataDir from <appDataDir>/Associations/<scopeKey>/Block.app
+	scopeDir := filepath.Dir(helperApp)
+	assocDir := filepath.Dir(scopeDir)
+	if filepath.Base(helperApp) != "Block.app" || filepath.Base(assocDir) != "Associations" {
+		return
+	}
+	appDataDir := filepath.Dir(assocDir)
+	if err := plugins.CleanupOrphanedMacRelayScope(appDataDir, bundleID, helperApp); err != nil {
+		files.LogWarnf("mac open relay self-cleanup failed: %v", err)
+	}
+}
+
+func resolveMainMacBlockTarget() (appPath string, execPath string, pinned bool) {
 	if exe, err := os.Executable(); err == nil {
 		plistPath := filepath.Join(filepath.Dir(exe), "..", "Info.plist")
 		if raw, err := os.ReadFile(plistPath); err == nil {
-			if p := extractPlistStringValue(raw, "BlockMainAppPath"); p != "" && isVerifiedMainBlockBundle(p) {
-				return p
+			appPath, execPath, pinned = resolveMacRelayTargetFromPlist(raw)
+			if pinned {
+				return appPath, execPath, true
 			}
 		}
 	}
 	if isVerifiedMainBlockBundle(macRelayDefaultApp) {
-		return macRelayDefaultApp
+		return macRelayDefaultApp, "", false
 	}
-	return ""
+	return "", "", false
 }
 
 // isVerifiedMainBlockBundle ensures the target path is actually a Block.app
