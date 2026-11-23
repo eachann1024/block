@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -795,6 +796,28 @@ func (s *Supervisor) RefreshCatalogAsync() {
 	s.notifyChanged()
 }
 
+func formatStoreError(err error, locale string) string {
+	if err == nil {
+		return ""
+	}
+	isEn := normalizeLocale(locale) == "en"
+	var netWrap *storeNetworkError
+	if errors.As(err, &netWrap) {
+		var netErr net.Error
+		if errors.Is(netWrap, context.DeadlineExceeded) || (errors.As(netWrap, &netErr) && netErr.Timeout()) {
+			if isEn {
+				return "Download timed out. Check your connection and try again."
+			}
+			return "网络请求超时，请检查网络后重试"
+		}
+		if isEn {
+			return "Network connection interrupted. Please try again."
+		}
+		return "网络连接中断，下载失败，请稍后重试"
+	}
+	return err.Error()
+}
+
 func (s *Supervisor) startCatalogRefreshLocked() {
 	s.storeRefreshing = true
 	s.storeErr = ""
@@ -804,13 +827,14 @@ func (s *Supervisor) startCatalogRefreshLocked() {
 		ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
 		defer cancel()
 		idx, err := s.store.RefreshCatalog(ctx)
+		locale := s.Locale()
 		s.mu.Lock()
 		s.storeRefreshing = false
 		if idx != nil {
 			s.catalog = idx
 		}
 		if err != nil && (idx == nil || len(idx.Apps) == 0) {
-			s.storeErr = err.Error()
+			s.storeErr = formatStoreError(err, locale)
 		}
 		s.mu.Unlock()
 		s.notifyChanged()
@@ -868,7 +892,7 @@ func (s *Supervisor) UpdateEntriesAsync(entries []StoreAppEntry, onInstalled fun
 			inst, err := s.store.InstallEntryExplicit(ctx, entry)
 			cancel()
 			if err != nil {
-				failedMsgs = append(failedMsgs, fmt.Sprintf("%s: %v", entry.ID, err))
+				failedMsgs = append(failedMsgs, fmt.Sprintf("%s: %s", entry.ID, formatStoreError(err, s.Locale())))
 				continue
 			}
 
@@ -960,12 +984,13 @@ func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []In
 
 func (s *Supervisor) finishInstallAsync(inst *InstalledApp, err error, onInstalled func(pluginID string)) {
 	installedList, _ := s.store.ListInstalled()
+	locale := s.Locale()
 
 	s.mu.Lock()
 	s.installingID = ""
 	s.replacingID = ""
 	if err != nil {
-		s.storeErr = err.Error()
+		s.storeErr = formatStoreError(err, locale)
 		s.mu.Unlock()
 		s.notifyChanged()
 		return
