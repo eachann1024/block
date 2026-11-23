@@ -119,6 +119,9 @@ func run() error {
 		if err := plugins.ValidatePluginLanguages(dir, m); err != nil {
 			return fmt.Errorf("local seed %q languages: %w", dir, err)
 		}
+		if err := plugins.ValidatePluginFileIcons(dir, m); err != nil {
+			return fmt.Errorf("local seed %q file_icons: %w", dir, err)
+		}
 		isVerified, err := verified.check(m.ID, m.Repo, m.Repo)
 		if err != nil {
 			return fmt.Errorf("local seed %q: %w", dir, err)
@@ -130,6 +133,9 @@ func run() error {
 		if isVerified || plugins.IsOfficialRepo(m.Repo) {
 			if err := plugins.ValidateManifestEnglish(m); err != nil {
 				return fmt.Errorf("local seed %q manifest English: %w", dir, err)
+			}
+			if err := plugins.ValidatePluginFileIconsBilingual(dir, m); err != nil {
+				return fmt.Errorf("local seed %q file_icons English: %w", dir, err)
 			}
 			if err := plugins.ValidateBilingualDocs(dir); err != nil {
 				return fmt.Errorf("local seed %q bilingual docs: %w", dir, err)
@@ -562,6 +568,9 @@ func verifyRemotePlugin(
 	if err := plugins.ValidatePluginLanguages(pluginRoot, m); err != nil {
 		return nil, fmt.Errorf("plugin languages check failed: %w", err)
 	}
+	if err := plugins.ValidatePluginFileIcons(pluginRoot, m); err != nil {
+		return nil, fmt.Errorf("plugin file_icons check failed: %w", err)
+	}
 	isVerified, err := verified.check(m.ID, repo.FullName, m.Repo)
 	if err != nil {
 		return nil, err
@@ -569,6 +578,9 @@ func verifyRemotePlugin(
 	if isVerified || plugins.IsOfficialRepo(repo.FullName) {
 		if err := plugins.ValidateManifestEnglish(m); err != nil {
 			return nil, fmt.Errorf("official plugin manifest English check failed: %w", err)
+		}
+		if err := plugins.ValidatePluginFileIconsBilingual(pluginRoot, m); err != nil {
+			return nil, fmt.Errorf("official plugin file_icons English check failed: %w", err)
 		}
 		if err := plugins.ValidateBilingualDocs(pluginRoot); err != nil {
 			return nil, fmt.Errorf("official plugin bilingual docs check failed: %w", err)

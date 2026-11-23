@@ -950,6 +950,11 @@ func validateCandidateDir(tmpDir string, entry *StoreAppEntry) (*Manifest, error
 			return nil, err
 		}
 	}
+	if m.Contributes != nil && len(m.Contributes.FileIcons) > 0 {
+		if err := ValidatePluginFileIcons(tmpDir, m); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
 }
 

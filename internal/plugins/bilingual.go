@@ -139,6 +139,11 @@ func ValidateManifestEnglish(m *Manifest) error {
 			return err
 		}
 	}
+	for i, fi := range m.Contributes.FileIcons {
+		if err := check(fmt.Sprintf("manifest.contributes.file_icons[%d].title.en", i), fi.Title.En); err != nil {
+			return err
+		}
+	}
 	for i, item := range m.Contributes.SidebarMenu {
 		if err := check(fmt.Sprintf("manifest.contributes.sidebar_menu[%d].title.en", i), item.Title.En); err != nil {
 			return err
