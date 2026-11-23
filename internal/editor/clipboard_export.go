@@ -54,7 +54,7 @@ func (s *Session) writeSelectionToClipboard(svc ui.Services) bool {
 			}
 			if !whole {
 				if grid := extractTableMultiCellGrid(blk.Table, a.Offset, b.Offset); len(grid) > 0 {
-					s.writeTableCellsClipboard(svc, md, grid)
+					s.writeTableCellsClipboard(svc, serializeTableMultiCellPlain(blk.Table, a.Offset, b.Offset), md, grid)
 					return true
 				}
 			}
@@ -83,10 +83,16 @@ func hasInlineImageSpan(spans []model.Span) bool {
 	return false
 }
 
+// writeInlineSpansClipboard keeps text/plain free of Markdown markers (like Notion / Feishu text
+// selections) while text/markdown and HTML carry formatting for rich targets and Block itself.
 func (s *Session) writeInlineSpansClipboard(svc ui.Services, md string, spans []model.Span) {
+	plain := model.PlainTextOfSpans(spans)
+	if plain == "" {
+		plain = md
+	}
 	reps := make([]transfer.Representation, 0, 3)
 	reps = append(reps,
-		transfer.Bytes(transfer.Text, []byte(md)),
+		transfer.Bytes(transfer.Text, []byte(plain)),
 		transfer.Bytes(transfer.Markdown, []byte(md)),
 	)
 	if len(spans) > 0 {
@@ -124,16 +130,19 @@ func (s *Session) writeRichClipboard(svc ui.Services, md string, doc *model.Doc,
 	svc.WriteClipboardData(transfer.New(transfer.NewItem(reps...)))
 }
 
-// writeTableCellsClipboard writes tab/newline plain text alongside an HTML table fragment
-// for partial multi-cell, row, or column table copies.
-func (s *Session) writeTableCellsClipboard(svc ui.Services, plain string, rows [][]model.TableCell) {
-	if plain == "" && len(rows) == 0 {
+// writeTableCellsClipboard writes unformatted tab/newline text/plain (spreadsheet friendly),
+// tab/newline Markdown, and an HTML table fragment for partial multi-cell, row, or column table copies.
+func (s *Session) writeTableCellsClipboard(svc ui.Services, plain, md string, rows [][]model.TableCell) {
+	if md == "" && len(rows) == 0 {
 		return
+	}
+	if strings.Trim(plain, "\t\n") == "" {
+		plain = md
 	}
 	reps := make([]transfer.Representation, 0, 3)
 	reps = append(reps,
 		transfer.Bytes(transfer.Text, []byte(plain)),
-		transfer.Bytes(transfer.Markdown, []byte(plain)),
+		transfer.Bytes(transfer.Markdown, []byte(md)),
 	)
 	if len(rows) > 0 {
 		var sb strings.Builder

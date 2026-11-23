@@ -65,22 +65,25 @@ func TestCopyAndCutAllRichTextBlockKinds(t *testing.T) {
 			// macOS Edit -> Copy (RoleCopy / Cmd+C sends InputCommand("copy"))
 			tt.SetClipboard("stale")
 			tt.Command("copy")
-			if got := tt.Clipboard(); got != "**agent-desktop**" {
-				t.Fatalf("%s: Command(copy) got %q, want %q", tc.name, got, "**agent-desktop**")
+			if got := tt.Clipboard(); got != "agent-desktop" {
+				t.Fatalf("%s: Command(copy) got %q, want %q", tc.name, got, "agent-desktop")
+			}
+			if got := clipboardMarkdown(tt); got != "**agent-desktop**" {
+				t.Fatalf("%s: Command(copy) text/markdown got %q, want %q", tc.name, got, "**agent-desktop**")
 			}
 
 			// Direct Cmd+C key event (Windows/Linux or non-menu path)
 			tt.SetClipboard("stale")
 			tt.Key(ui.Cmd, ui.KeyC)
-			if got := tt.Clipboard(); got != "**agent-desktop**" {
-				t.Fatalf("%s: Key(Cmd+C) got %q, want %q", tc.name, got, "**agent-desktop**")
+			if got := tt.Clipboard(); got != "agent-desktop" {
+				t.Fatalf("%s: Key(Cmd+C) got %q, want %q", tc.name, got, "agent-desktop")
 			}
 
 			// macOS Edit -> Cut must both write Markdown to clipboard and delete selection.
 			tt.SetClipboard("stale")
 			tt.Command("cut")
-			if got := tt.Clipboard(); got != "**agent-desktop**" {
-				t.Fatalf("%s: Command(cut) clipboard got %q, want %q", tc.name, got, "**agent-desktop**")
+			if got := tt.Clipboard(); got != "agent-desktop" {
+				t.Fatalf("%s: Command(cut) clipboard got %q, want %q", tc.name, got, "agent-desktop")
 			}
 			if got := s.doc.Blocks[0].PlainText(); got != "prefix  suffix" {
 				t.Fatalf("%s: Command(cut) remaining text got %q, want %q", tc.name, got, "prefix  suffix")
@@ -294,19 +297,22 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 
 		tt.SetClipboard("stale")
 		tt.Command("copy")
-		if got := tt.Clipboard(); got != "**Bold**" {
-			t.Fatalf("Table single cell Command(copy) got %q, want %q", got, "**Bold**")
+		if got := tt.Clipboard(); got != "Bold" {
+			t.Fatalf("Table single cell Command(copy) got %q, want %q", got, "Bold")
+		}
+		if got := clipboardMarkdown(tt); got != "**Bold**" {
+			t.Fatalf("Table single cell text/markdown got %q, want %q", got, "**Bold**")
 		}
 
 		tt.SetClipboard("stale")
 		tt.Key(ui.Cmd, ui.KeyC)
-		if got := tt.Clipboard(); got != "**Bold**" {
+		if got := clipboardMarkdown(tt); got != "**Bold**" {
 			t.Fatalf("Table single cell Key(Cmd+C) got %q, want %q", got, "**Bold**")
 		}
 
 		tt.SetClipboard("stale")
 		tt.Command("cut")
-		if got := tt.Clipboard(); got != "**Bold**" {
+		if got := clipboardMarkdown(tt); got != "**Bold**" {
 			t.Fatalf("Table single cell Command(cut) clipboard got %q, want %q", got, "**Bold**")
 		}
 		if got := s.doc.Blocks[0].Table.Rows[0][0].PlainText(); got != "Hi " {
@@ -333,13 +339,16 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 
 		tt.SetClipboard("stale")
 		tt.Command("copy")
-		if got := tt.Clipboard(); got != "`Code`\nRow2A" {
-			t.Fatalf("Table multi-cell Command(copy) got %q, want %q", got, "`Code`\nRow2A")
+		if got := tt.Clipboard(); got != "Code\nRow2A" {
+			t.Fatalf("Table multi-cell Command(copy) got %q, want %q", got, "Code\nRow2A")
+		}
+		if got := clipboardMarkdown(tt); got != "`Code`\nRow2A" {
+			t.Fatalf("Table multi-cell text/markdown got %q, want %q", got, "`Code`\nRow2A")
 		}
 
 		tt.SetClipboard("stale")
 		tt.Key(ui.Cmd, ui.KeyC)
-		if got := tt.Clipboard(); got != "`Code`\nRow2A" {
+		if got := clipboardMarkdown(tt); got != "`Code`\nRow2A" {
 			t.Fatalf("Table multi-cell Key(Cmd+C) got %q, want %q", got, "`Code`\nRow2A")
 		}
 	})
@@ -381,8 +390,11 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		tt.Frame()
 		tt.SetClipboard("stale")
 		menuCopy()
-		if got := tt.Clipboard(); got != "Hi **Bold**\t`Code`" {
-			t.Fatalf("Table row menu Command(copy) got %q, want %q", got, "Hi **Bold**\t`Code`")
+		if got := tt.Clipboard(); got != "Hi Bold\tCode" {
+			t.Fatalf("Table row menu Command(copy) got %q, want %q", got, "Hi Bold\tCode")
+		}
+		if got := clipboardMarkdown(tt); got != "Hi **Bold**\t`Code`" {
+			t.Fatalf("Table row menu text/markdown got %q, want %q", got, "Hi **Bold**\t`Code`")
 		}
 
 		// Column handle menu selected -> both Command(copy) and Key(Cmd+C) copy column values.
@@ -392,7 +404,7 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		tt.Frame()
 		tt.SetClipboard("stale")
 		menuCopy()
-		if got := tt.Clipboard(); got != "`Code`\nRow2B" {
+		if got := clipboardMarkdown(tt); got != "`Code`\nRow2B" {
 			t.Fatalf("Table col menu Command(copy) got %q, want %q", got, "`Code`\nRow2B")
 		}
 
@@ -413,7 +425,7 @@ func TestCopyAndCutTableAllSelectionModes(t *testing.T) {
 		tt.Frame()
 		tt.SetClipboard("stale")
 		tt.Key(ui.Cmd, ui.KeyC)
-		if got := tt.Clipboard(); got != "Hi **Bold**\t`Code`" {
+		if got := clipboardMarkdown(tt); got != "Hi **Bold**\t`Code`" {
 			t.Fatalf("Table row menu Key(Cmd+C) got %q, want %q", got, "Hi **Bold**\t`Code`")
 		}
 	})
@@ -761,14 +773,14 @@ func TestWindowsLinuxCUAClipboardShortcuts(t *testing.T) {
 	// Ctrl+Insert copies Markdown in RichInput
 	tt.SetClipboard("stale")
 	tt.Key(ui.Ctrl, ui.KeyInsert)
-	if got := tt.Clipboard(); got != "**beta**" {
+	if got := clipboardMarkdown(tt); got != "**beta**" {
 		t.Fatalf("RichInput Ctrl+Insert got %q, want %q", got, "**beta**")
 	}
 
 	// Shift+Delete cuts in RichInput
 	tt.SetClipboard("stale")
 	tt.Key(ui.Shift, ui.KeyDelete)
-	if got := tt.Clipboard(); got != "**beta**" {
+	if got := clipboardMarkdown(tt); got != "**beta**" {
 		t.Fatalf("RichInput Shift+Delete clipboard got %q, want %q", got, "**beta**")
 	}
 	if got := s.doc.Blocks[0].PlainText(); got != "alpha " {
@@ -818,7 +830,7 @@ func TestKeyDownCmdXAndStagedTableCmdANotHijackedByGlobalShortcuts(t *testing.T)
 
 	tt.SetClipboard("stale")
 	tt.Key(ui.Cmd, ui.KeyX)
-	if got := tt.Clipboard(); got != "**cutme**" {
+	if got := clipboardMarkdown(tt); got != "**cutme**" {
 		t.Fatalf("RichInput Key(Cmd+X) clipboard got %q, want %q", got, "**cutme**")
 	}
 	if got := s.doc.Blocks[0].PlainText(); got != "keep " {
@@ -1020,7 +1032,7 @@ func TestTableRectangularCopyCutPasteFidelityAndReadOnly(t *testing.T) {
 		s.tableMenuIndex = 0
 		tt.Frame()
 		tt.Key(ui.Cmd, ui.KeyC)
-		if got := tt.Clipboard(); got != "   \t  **Hi**  " {
+		if got := clipboardMarkdown(tt); got != "   \t  **Hi**  " {
 			t.Fatalf("Row copy with spaces got %q, want %q", got, "   \t  **Hi**  ")
 		}
 
@@ -1130,4 +1142,13 @@ func TestTableRectangularCopyCutPasteFidelityAndReadOnly(t *testing.T) {
 			t.Fatalf("ReadOnly table menu Cmd+X mutated table")
 		}
 	})
+}
+
+// clipboardMarkdown returns the text/markdown representation; text/plain stays unformatted for inline copies.
+func clipboardMarkdown(tt *ui.Tester) string {
+	raw, err := tt.ClipboardData().Read(transfer.Markdown)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
