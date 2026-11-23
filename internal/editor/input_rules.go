@@ -711,7 +711,23 @@ func applyInlineInputRules(spans []model.Span, caretRune, insLen int, allowImage
 		}
 	}
 
-	// 3. Multi-rune commit interior bare URLs followed by whitespace (e.g. `https://example.com/$x foo`).
+	// 3. Multi-rune commit whose construct closes before trailing text (e.g. IME committing "“`code`”" at once).
+	if insLen > 1 && insLen <= 256 {
+		scanLo := max(caretRune-insLen, 0)
+		for e := caretRune - 1; e > scanLo; e-- {
+			res := tryInlineConstructEndingAt(spans, r, e, false)
+			if !res.changed {
+				continue
+			}
+			res.caret = caretRune - (n - utf8.RuneCountInString(model.PlainTextOfSpans(res.spans)))
+			res.codeEdge = appUi.RichCodeEdgeNone
+			res.clearMask = 0
+			res.clearBG = false
+			return res
+		}
+	}
+
+	// 4. Multi-rune commit interior bare URLs followed by whitespace (e.g. `https://example.com/$x foo`).
 	if insLen > 1 {
 		scanLo := max(caretRune-insLen, 0)
 		if updated, ok := autolinkBareURLsInWindow(spans, r, scanLo, caretRune); ok {
