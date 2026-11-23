@@ -38,6 +38,9 @@ func main() {
 		}
 		fmt.Printf("[WARN] category: %s\n", notice)
 	}
+	if redundant := m.RedundantPermissions(); len(redundant) > 0 {
+		fmt.Printf("[WARN] permissions: %v are now granted automatically and no longer need to be declared in manifest.json\n", redundant)
+	}
 
 	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
 		if err := plugins.ValidatePluginLanguages(pluginDir, m); err != nil {
