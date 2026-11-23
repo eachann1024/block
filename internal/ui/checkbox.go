@@ -121,11 +121,13 @@ func ProgressBarIndeterminate(c *ui.Context, id string, height float32, fill ui.
 			p.AnimationFrameRate(60)
 		}
 		x := r.X - segW + (r.W+segW)*t
-		barR := ui.Rect{X: x, Y: r.Y, W: segW, H: r.H}
-		rad := radius
-		if rad > r.H*0.5 {
-			rad = r.H * 0.5
+		x0 := max(x, r.X)
+		x1 := min(x+segW, r.X+r.W)
+		if x1 <= x0 {
+			return
 		}
+		barR := ui.Rect{X: x0, Y: r.Y, W: x1 - x0, H: r.H}
+		rad := min(radius, min(barR.W, r.H)*0.5)
 		p.Fill(barR, fill, rad)
 	})
 }
