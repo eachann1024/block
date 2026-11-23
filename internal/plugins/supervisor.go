@@ -104,6 +104,7 @@ type SupervisorConfig struct {
 	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
 	AddNotebook     func(path string) error
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
+	ApplyNoteTrash  func(absPath string, verify, trash func() error) error
 	OnChanged       func()
 	OnRedraw        func()
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
@@ -1711,6 +1712,7 @@ func (s *Supervisor) ensureRuntimeWithLocale(ctx context.Context, pluginID, nbRo
 		GetNotebooks:      s.Notebooks,
 		GetPerfSnapshot:   s.cfg.GetPerfSnapshot,
 		ApplyNoteWrite:    s.cfg.ApplyNoteWrite,
+		ApplyNoteTrash:    s.cfg.ApplyNoteTrash,
 		OnNoteWritten:     s.notifyNoteWritten,
 		OnActionProgress:  s.reportActionProgress,
 		OpenNote:          openNoteFn,
