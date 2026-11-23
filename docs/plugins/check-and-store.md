@@ -19,7 +19,7 @@ CGO_ENABLED=0 go -C /path/to/block run ./cmd/block-plugin-check /绝对路径/�
   2. 校验根目录存在精确命名的普通文件 `README.md`（<= 512 KiB UTF-8，非空且含中文）与 `README.en.md`（<= 512 KiB UTF-8，非空、不含中文字符或中文标点、且与 `README.md` 不同）；
   3. 交互式插件分别以 `locale="zh"` 与 `locale="en"` 各运行一轮完整检查，校验英文模式下全部界面文案与动作反馈零中文残留，且中英文初始渲染输出不同（注意：CLI 不自动调用 `plugin.command`，命令返回文案需在桌面端英文模式下复测）。
 
-终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。注意：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
+终端输出 `[PASS] Plugin "<id>" passed all Block App Store checks.` 且退出码为 `0` 表示本地协议检查通过。若清单仍声明了已默认放行的权限（如 `storage`、`ui:*`、`system:notify`、`system:badge`），校验器会输出 `[WARN]` 提示删减（不阻断通过）。注意：CLI 仅提供单个临时笔记本、不校验桌面默认停用与编辑器脏状态写保护，且未注入 `GetPerfSnapshot`（调用 `host.perf.snapshot` 会收到 `-32005`）；上传、同步、迁移与真实桌面交互仍需在 Block 桌面端使用临时笔记本进一步验证。
 
 ---
 
@@ -38,7 +38,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
    - **索引校验与同步字段**：采集器先对归档原始字节计算 `sha256` 并提取根或单层顶层目录下的 `manifest.json`（不运行 `block-plugin-check`，版本以包内 `manifest.version` 为准），依次执行 `app == "blockmd"`、非空 `id`、保留 ID 与 `blocklist` 过滤、官方 `verified.json` 1:1 绑定、官方插件双语文档（`README.md` 中文 + `README.en.md` 纯英文）、双语无 Emoji 清单与显式商店分类（`category` 必填且不得为已停用的 `sync` / `publish`）校验、`repo` 匹配、声明式语法文件编译校验与跨仓重复 `id` 处理（若上一版索引中已有归属仓库则保留原归属，否则全部剔除），并将 `category`、`permission_reasons` 与 `file_extensions`（最多 6 个展示标签）同步到商店索引；若任一官方认证条目缺失或校验不通过，整轮索引生成会直接失败。
    - **更新日志采集与对外接口**：采集器在拉取插件 Releases 时，自动提取最近版本的结构化双语更新日志（解析 `## 中文` / `## English` 与 `新增功能` / `体验优化` / `问题修复` / `其他改动`），在 `store-index.json` 的每个插件条目中内联最近 5 条 `changelog` 与 `changelog_url`，同时在 `blockmd-plugins/store-index` 仓库的 `changelogs/<id>.json`（附带 jsDelivr 镜像）对外提供最多 20 条完整版本历史的只读 JSON API。Block 应用商店详情页提供「说明 / 更新日志」标签页展示版本变更，插件亦可通过 `host.store.changelog` RPC 读取同源更新日志。
    - **商店排序规则**：索引 `downloads` 为该仓库各 Release 附件下载次数之和，采集时更新。应用商店列表默认按 `downloads` 从高到低排列并标注名次，下载量相同时按名称、再按 `id` 排列；有搜索词时先按匹配度排列，再按下载量；筛选菜单选「按名称」时不按下载量排列、不标名次。本机安装只计入展示数字，不改变名次，直到下次索引更新。
-   - **桌面端不同安装来源的校验力度**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会校验清单与打包上限，但不做商店 `sha256`/索引比对。
+   - **桌面端不同安装来源的校验力度与权限确认**：从应用商店或手动输入商店插件 `id` 安装时，强制 HTTPS（<= 4096 字节、无凭据与 fragment、限制重定向主机）、核对 `sha256` 及包内清单的 `id`/`version`/`permissions` 集合与（非空时）`repo`；手动输入 `owner/repo`、`github:owner/repo`、`https://github.com/owner/repo`（拉取 `HEAD` 源码包）或直接 HTTPS 压缩包 URL（同样受 URL 长度、凭据、fragment 与重定向主机约束）或本地目录路径（支持 `~/`、`file://` 或点击「本地目录」）会先暂存并校验清单与打包上限，但不做商店 `sha256`/索引比对。无论商店还是手动来源，首次安装请求 5 类敏感权限任一项或更新新增敏感权限时，桌面端均会先弹出权限确认卡片，用户确认后才落盘；「全部更新」会先自动更新无新增敏感权限的插件，将新增敏感权限的插件留待用户逐项确认（若此时已离开商店页，则通过右上角通知横幅引导返回确认）。
 
 - 带系统权限的发行包通过索引的 `system_apps` 提供，支持该字段的 Block 会优先选用。旧客户端从 `apps` 读取已验证的兼容包。同步插件为旧客户端保留 v1.3.44。随包索引与采集器使用相同分流规则，采集器校验兼容包的固定 SHA-256 后才写入索引。
 
