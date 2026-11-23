@@ -30,6 +30,8 @@ type Controller struct {
 	storeFilterCursor  int
 	storeSearchFocused bool
 	storeCategory      plugins.Category
+	storeBaseSnap      *storeBaseSnapshot
+	storeViewSnap      *storeViewSnapshot
 	onSuggestPlugin    func(category plugins.Category)
 	manualSpec         string
 	drafts             map[string]map[string]string
