@@ -203,6 +203,7 @@ type StoreManager struct {
 	dlLoaded      bool
 	dlCachePath   string
 	dlCounts      map[string]int
+	dlGen         int
 	stateMu       sync.Mutex
 	installMu     sync.Mutex
 	beforeReplace func(pluginID string) error
@@ -358,11 +359,20 @@ func (s *StoreManager) IncrementDownloads(pluginID string) int {
 	defer s.dlMu.Unlock()
 	deltas := s.loadDownloadDeltasLocked()
 	deltas[pluginID]++
+	s.dlGen++
 	next := deltas[pluginID]
 	if raw, err := json.MarshalIndent(deltas, "", "  "); err == nil {
 		_ = os.WriteFile(s.downloadCountsPath(), raw, 0o644)
 	}
 	return next
+}
+
+// DownloadDeltaGeneration changes whenever a local download is recorded, so
+// cached store listings know to re-rank.
+func (s *StoreManager) DownloadDeltaGeneration() int {
+	s.dlMu.Lock()
+	defer s.dlMu.Unlock()
+	return s.dlGen
 }
 
 // EffectiveDownloads returns the catalog download baseline plus local recorded downloads for entry.ID.
