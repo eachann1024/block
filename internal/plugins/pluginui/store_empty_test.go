@@ -12,11 +12,9 @@ import (
 
 func TestStoreCategoryIconCoversAllCategoriesAndFallback(t *testing.T) {
 	want := map[plugins.Category]icons.Icon{
-		plugins.CategorySync:       icons.Refresh,
 		plugins.CategoryEdit:       icons.Pencil,
 		plugins.CategoryOrganize:   icons.Tag,
 		plugins.CategoryAI:         icons.Sparkles,
-		plugins.CategoryPublish:    icons.Upload,
 		plugins.CategoryAppearance: icons.TbPalette,
 		plugins.CategoryTools:      icons.Wrench,
 		plugins.CategoryLanguage:   icons.Code,

@@ -363,7 +363,7 @@ func (m *Manifest) Validate() error {
 	if !pluginIDRe.MatchString(m.ID) {
 		return fmt.Errorf("manifest.id %q must match %s", m.ID, pluginIDRe.String())
 	}
-	if m.Category != "" && !ValidCategory(m.Category) {
+	if m.Category != "" && !AcceptedCategory(m.Category) {
 		return fmt.Errorf("manifest.category %q is not a valid category (allowed: %s)", m.Category, AllowedCategoryNames())
 	}
 	hasLanguages := m.Contributes != nil && len(m.Contributes.Languages) > 0
