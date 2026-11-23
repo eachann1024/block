@@ -2,10 +2,12 @@ package app
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"block/internal/files"
+	"block/internal/model"
 	"block/internal/plugins"
 	"block/internal/theme"
 	blockui "block/internal/ui"
@@ -394,6 +396,45 @@ func (s *TabSurface) ensureCodeState() *codeed.State {
 	return s.code
 }
 
+// JumpToLine moves the source editor caret to a 1-based line (and optional 1-based rune column)
+// and schedules centering the viewport on that line.
+func (s *TabSurface) JumpToLine(line, col int) {
+	if s == nil || !s.HasSource || s.Kind != model.OpenKindSource || line <= 0 {
+		return
+	}
+	st := s.ensureCodeState()
+	if st == nil || st.Buffer == nil {
+		return
+	}
+	snap := st.Buffer.Snapshot()
+	lineCount := snap.LineCount()
+	if lineCount <= 0 {
+		return
+	}
+	line0 := line - 1
+	if line0 >= lineCount {
+		line0 = lineCount - 1
+	}
+	byteCol := 0
+	if col > 1 {
+		lineText := snap.Line(line0)
+		runeIdx := 0
+		found := false
+		for off := range lineText {
+			if runeIdx == col-1 {
+				byteCol = off
+				found = true
+				break
+			}
+			runeIdx++
+		}
+		if !found {
+			byteCol = len(lineText)
+		}
+	}
+	st.GoTo(codeed.Pos{Line: line0, Col: byteCol})
+}
+
 // renderSourceEditor shows non-Markdown text as a full-bleed code editor (Zed/VS Code
 // style): gutter flush left, current-line band, syntax colors, no paper margins.
 func (s *TabSurface) renderSourceEditor(c *ui.Context) {
@@ -472,16 +513,42 @@ func (s *TabSurface) saveSource() error {
 			}
 			return errors.New(msg)
 		}
-		if err := files.CheckTextVersion(s.Path, expectedFP); err != nil {
-			files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
-			s.StatusMsg = err.Error()
-			return err
+		var (
+			newFP   int64
+			newInfo os.FileInfo
+			newID   string
+			binding model.VerifiedFileTarget
+			hasBind bool
+		)
+		if s.GetBinding != nil {
+			binding, hasBind = s.GetBinding()
 		}
-		newFP, err := files.WriteBytesAtomic(s.Path, encoded)
+		if hasBind && binding.ConfineRoot != "" {
+			newFP, newInfo, newID, err = files.WriteBytesConditionalFingerprintInRoot(
+				binding.ConfineRoot, binding.ConfineRel, encoded, expectedFP, binding.ConfineRootInfo, binding.FileInfo,
+			)
+		} else if hasBind && binding.FileInfo != nil {
+			newFP, newInfo, newID, err = files.WriteBytesConditionalFingerprintChecked(
+				s.Path, encoded, expectedFP, binding.FileInfo,
+			)
+		} else {
+			if err = files.CheckTextVersion(s.Path, expectedFP); err == nil {
+				newFP, err = files.WriteBytesAtomic(s.Path, encoded)
+				if err == nil {
+					if st, stErr := os.Lstat(s.Path); stErr == nil {
+						newInfo = st
+						newID = files.FileIdentityToken(st, nil)
+					}
+				}
+			}
+		}
 		if err != nil {
 			files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
 			s.StatusMsg = err.Error()
 			return err
+		}
+		if newInfo != nil && s.OnSavedIdentity != nil {
+			s.OnSavedIdentity(newInfo, newID)
 		}
 		s.SavedText = s.Source.Text
 		s.DiskFingerprint = newFP
@@ -506,16 +573,49 @@ func (s *TabSurface) saveSource() error {
 		}
 		return errors.New(msg)
 	}
-	err := files.CheckTextVersion(s.Path, expectedFP)
-	var newFP int64
-	var writtenSize int64
-	if err == nil {
-		newFP, writtenSize, err = files.WriteSourceFileAtomic(s.Path, s.Source.Text, s.Source.BOM, s.Source.Encoding)
+	var (
+		newFP       int64
+		newInfo     os.FileInfo
+		newID       string
+		writtenSize int64
+		err         error
+		binding     model.VerifiedFileTarget
+		hasBind     bool
+	)
+	if s.GetBinding != nil {
+		binding, hasBind = s.GetBinding()
+	}
+	if hasBind && (binding.ConfineRoot != "" || binding.FileInfo != nil) {
+		rawBytes := files.EncodeSourceText(s.Source.Text, s.Source.BOM, s.Source.Encoding)
+		writtenSize = int64(len(rawBytes))
+		if binding.ConfineRoot != "" {
+			newFP, newInfo, newID, err = files.WriteBytesConditionalFingerprintInRoot(
+				binding.ConfineRoot, binding.ConfineRel, rawBytes, expectedFP, binding.ConfineRootInfo, binding.FileInfo,
+			)
+		} else {
+			newFP, newInfo, newID, err = files.WriteBytesConditionalFingerprintChecked(
+				s.Path, rawBytes, expectedFP, binding.FileInfo,
+			)
+		}
+	} else {
+		err = files.CheckTextVersion(s.Path, expectedFP)
+		if err == nil {
+			newFP, writtenSize, err = files.WriteSourceFileAtomic(s.Path, s.Source.Text, s.Source.BOM, s.Source.Encoding)
+			if err == nil {
+				if st, stErr := os.Lstat(s.Path); stErr == nil {
+					newInfo = st
+					newID = files.FileIdentityToken(st, nil)
+				}
+			}
+		}
 	}
 	if err != nil {
 		files.LogErrorf("source save failed: path=%s err=%v", s.Path, err)
 		s.StatusMsg = err.Error()
 		return err
+	}
+	if newInfo != nil && s.OnSavedIdentity != nil {
+		s.OnSavedIdentity(newInfo, newID)
 	}
 	s.SavedText = s.Source.Text
 	s.DiskFingerprint = newFP

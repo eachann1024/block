@@ -121,6 +121,114 @@ func (h *quickSessionHost) OpenNote(absPath string, lineHint int) error {
 	return nil
 }
 
+func (h *quickSessionHost) OpenNoteAt(absPath string, lineHint, colHint int) error {
+	if h.q.host != nil {
+		if ph, ok := h.q.host.(interface {
+			OpenNoteAt(absPath string, lineHint, colHint int) error
+		}); ok {
+			return ph.OpenNoteAt(absPath, lineHint, colHint)
+		}
+		return h.q.host.OpenNote(absPath, lineHint)
+	}
+	return nil
+}
+
+func (h *quickSessionHost) OpenClassifiedAt(target model.VerifiedFileTarget, cf model.ClassifiedFile, lineHint, colHint int) error {
+	if h.q.host != nil {
+		if ch, ok := h.q.host.(interface {
+			OpenClassifiedAt(target model.VerifiedFileTarget, cf model.ClassifiedFile, lineHint, colHint int) error
+		}); ok {
+			return ch.OpenClassifiedAt(target, cf, lineHint, colHint)
+		}
+		return h.OpenNoteAt(target.AbsPath, lineHint, colHint)
+	}
+	return nil
+}
+
+func (h *quickSessionHost) PrepareClassifiedTarget(target model.VerifiedFileTarget) (model.PreparedTabTarget, error) {
+	if h.q.host != nil {
+		if ph, ok := h.q.host.(interface {
+			PrepareClassifiedTarget(target model.VerifiedFileTarget) (model.PreparedTabTarget, error)
+		}); ok {
+			return ph.PrepareClassifiedTarget(target)
+		}
+	}
+	return model.PreparedTabTarget{TabPath: target.AbsPath, Verified: target}, nil
+}
+
+func (h *quickSessionHost) ApplyPreparedClassifiedAt(prep model.PreparedTabTarget, cf model.ClassifiedFile, lineHint, colHint int) error {
+	if h.q.host != nil {
+		if ph, ok := h.q.host.(interface {
+			ApplyPreparedClassifiedAt(prep model.PreparedTabTarget, cf model.ClassifiedFile, lineHint, colHint int) error
+		}); ok {
+			return ph.ApplyPreparedClassifiedAt(prep, cf, lineHint, colHint)
+		}
+		return h.OpenClassifiedAt(prep.Verified, cf, lineHint, colHint)
+	}
+	return nil
+}
+
+func (h *quickSessionHost) PrepareRevealDirectory(absPath string) model.PreparedDirectoryTarget {
+	if h.q.host != nil {
+		if ph, ok := h.q.host.(interface {
+			PrepareRevealDirectory(absPath string) model.PreparedDirectoryTarget
+		}); ok {
+			return ph.PrepareRevealDirectory(absPath)
+		}
+	}
+	return model.PreparedDirectoryTarget{AbsPath: absPath}
+}
+
+func (h *quickSessionHost) ApplyPreparedRevealDirectory(prep model.PreparedDirectoryTarget) {
+	if h.q.host != nil {
+		if ph, ok := h.q.host.(interface {
+			ApplyPreparedRevealDirectory(prep model.PreparedDirectoryTarget)
+		}); ok {
+			ph.ApplyPreparedRevealDirectory(prep)
+			return
+		}
+	}
+	h.RevealDirectory(prep.AbsPath)
+}
+
+func (h *quickSessionHost) RunOnMain(fn func()) bool {
+	if h.q.host != nil {
+		if ah, ok := h.q.host.(interface{ RunOnMain(func()) bool }); ok {
+			return ah.RunOnMain(fn)
+		}
+	}
+	return false
+}
+
+func (h *quickSessionHost) RevealPath(absPath string) {
+	if h.q.host != nil {
+		if rh, ok := h.q.host.(interface{ RevealPath(string) }); ok {
+			rh.RevealPath(absPath)
+		}
+	}
+}
+
+func (h *quickSessionHost) RevealDirectory(absPath string) {
+	if h.q.host != nil {
+		if dh, ok := h.q.host.(interface{ RevealDirectory(string) }); ok {
+			dh.RevealDirectory(absPath)
+			return
+		}
+		if rh, ok := h.q.host.(interface{ RevealPath(string) }); ok {
+			rh.RevealPath(absPath)
+		}
+	}
+}
+
+func (h *quickSessionHost) NotifyPathError(msg string) {
+	h.q.setNotice(msg, false)
+	if h.q.host != nil {
+		if nh, ok := h.q.host.(interface{ NotifyPathError(string) }); ok {
+			nh.NotifyPathError(msg)
+		}
+	}
+}
+
 func (h *quickSessionHost) PreviewPlanInEditor(*model.BatchPlan) error { return nil }
 func (h *quickSessionHost) ApplyBatchPlan(*model.BatchPlan) error      { return nil }
 func (h *quickSessionHost) RejectBatchPlan(string) error               { return nil }
