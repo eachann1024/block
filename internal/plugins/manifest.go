@@ -109,9 +109,9 @@ func PermissionDescription(p Permission, locale string) string {
 		return "在当前已打开笔记本中创建、修改或更新笔记文件。"
 	case PermNetwork:
 		if en {
-			return "Declares that this plugin may make outbound network requests (such as sync, image hosting, or remote APIs)."
+			return "Self-declared by the plugin (such as sync, image hosting, or remote APIs). Block does not sandbox outbound network access."
 		}
-		return "声明该插件可能发起外部网络请求（如同步、图床或调用远程 API）。"
+		return "插件自述会发起外部网络请求（如同步、图床或调用远程 API）；Block 不在进程层拦截联网。"
 	case PermEventNoteSaved:
 		if en {
 			return "Receive notifications whenever a note is saved so the plugin can run automatic workflows."
@@ -123,6 +123,141 @@ func PermissionDescription(p Permission, locale string) string {
 		}
 		return string(p)
 	}
+}
+
+// PermissionCategory groups sensitive permissions shown in install and update
+// confirmation modals. Only permissions in these 5 categories require explicit
+// user confirmation; all UI/storage/workspace-event capabilities are exempt.
+type PermissionCategory string
+
+const (
+	PermCategoryNotes       PermissionCategory = "notes"
+	PermCategoryCredentials PermissionCategory = "credentials"
+	PermCategoryClipboard   PermissionCategory = "clipboard"
+	PermCategorySystem      PermissionCategory = "system"
+	PermCategoryNetwork     PermissionCategory = "network"
+)
+
+// PermissionCategoryOrder defines the stable display order of the 5 sensitive categories.
+var PermissionCategoryOrder = []PermissionCategory{
+	PermCategoryNotes,
+	PermCategoryCredentials,
+	PermCategoryClipboard,
+	PermCategorySystem,
+	PermCategoryNetwork,
+}
+
+// PermissionCategoryOf returns the sensitive category of p, or ("", false) when
+// p does not require user consent (UI contributions, private storage, events,
+// OS notifications, and dock badge).
+func PermissionCategoryOf(p Permission) (PermissionCategory, bool) {
+	switch p {
+	case PermNotesRead, PermNotesWrite, PermNotesPath, PermEditorRead, PermEditorEdit:
+		return PermCategoryNotes, true
+	case PermSystemSecrets:
+		return PermCategoryCredentials, true
+	case PermClipboardRead, PermClipboardWrite:
+		return PermCategoryClipboard, true
+	case PermSystemTrash, PermSystemOpen, PermSystemDialogs:
+		return PermCategorySystem, true
+	case PermNetwork:
+		return PermCategoryNetwork, true
+	default:
+		return "", false
+	}
+}
+
+// IsSensitivePermission reports whether p belongs to one of the 5 user-consent
+// permission categories.
+func IsSensitivePermission(p Permission) bool {
+	_, ok := PermissionCategoryOf(p)
+	return ok
+}
+
+// IsExemptPermission reports whether p is a valid permission that is now granted
+// automatically without needing to be declared in manifest.permissions.
+// Event hooks (events:note_saved, events:system, events:workspace) remain silent
+// opt-in subscription flags (never prompting the user) and therefore return false.
+func IsExemptPermission(p Permission) bool {
+	if !validPermissions[p] || IsSensitivePermission(p) {
+		return false
+	}
+	return p != PermEventNoteSaved && p != PermEventsSystem && p != PermEventsUI
+}
+
+// PermissionCategoryLabel returns the localized heading for a sensitive category.
+func PermissionCategoryLabel(cat PermissionCategory, locale string) string {
+	en := strings.HasPrefix(strings.ToLower(locale), "en")
+	switch cat {
+	case PermCategoryNotes:
+		if en {
+			return "Notes & Editor"
+		}
+		return "笔记与编辑"
+	case PermCategoryCredentials:
+		if en {
+			return "System Credentials"
+		}
+		return "系统凭据"
+	case PermCategoryClipboard:
+		if en {
+			return "Clipboard"
+		}
+		return "剪贴板"
+	case PermCategorySystem:
+		if en {
+			return "System Files & Actions"
+		}
+		return "系统文件与外部操作"
+	case PermCategoryNetwork:
+		if en {
+			return "Network Access (Self-Declared)"
+		}
+		return "网络访问（插件自述）"
+	default:
+		return string(cat)
+	}
+}
+
+// SensitivePermissions filters perms to sensitive permissions in stable order (deduped).
+func SensitivePermissions(perms []Permission) []Permission {
+	if len(perms) == 0 {
+		return nil
+	}
+	seen := make(map[Permission]bool, len(perms))
+	out := make([]Permission, 0, len(perms))
+	for _, p := range perms {
+		if !IsSensitivePermission(p) || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
+}
+
+// AddedSensitivePermissions returns sensitive permissions present in next that
+// were not declared in current.
+func AddedSensitivePermissions(current, next []Permission) []Permission {
+	if len(next) == 0 {
+		return nil
+	}
+	have := make(map[Permission]bool, len(current))
+	for _, p := range current {
+		if IsSensitivePermission(p) {
+			have[p] = true
+		}
+	}
+	seen := make(map[Permission]bool, len(next))
+	var added []Permission
+	for _, p := range next {
+		if !IsSensitivePermission(p) || have[p] || seen[p] {
+			continue
+		}
+		seen[p] = true
+		added = append(added, p)
+	}
+	return added
 }
 
 // ClonePermissionReasons returns a shallow copy of reasons, or nil when empty.
@@ -141,6 +276,9 @@ type Surface string
 
 const (
 	SurfaceSettingsPage Surface = "settings_page"
+	// SurfaceToast is passed to plugin.action when a user clicks an action
+	// button on a notification banner created by host.ui.toast.
+	SurfaceToast Surface = "toast"
 )
 
 var validSurfaces = map[Surface]bool{
@@ -160,6 +298,10 @@ func (t LocalizedText) Resolve(locale string) string {
 		return strings.TrimSpace(t.Zh)
 	}
 	return strings.TrimSpace(t.En)
+}
+
+func (t LocalizedText) IsEmpty() bool {
+	return strings.TrimSpace(t.Zh) == "" && strings.TrimSpace(t.En) == ""
 }
 
 type EntrySpec struct {
@@ -343,13 +485,81 @@ func scanJSONValueNoDupKeys(dec *json.Decoder) error {
 	return nil
 }
 
-func (m *Manifest) HasPermission(p Permission) bool {
+// HasDeclaredPermission reports whether p is explicitly listed in m.Permissions.
+func (m *Manifest) HasDeclaredPermission(p Permission) bool {
+	if m == nil {
+		return false
+	}
 	for _, item := range m.Permissions {
 		if item == p {
 			return true
 		}
 	}
 	return false
+}
+
+// HasPermission reports whether the plugin is allowed to use capability p.
+// Exempt UI, private storage, OS notification, and dock-badge capabilities are
+// granted automatically without needing manifest declaration. Event hooks
+// (events:*) remain opt-in subscriptions checked against manifest.permissions.
+func (m *Manifest) HasPermission(p Permission) bool {
+	if m == nil {
+		return false
+	}
+	if IsExemptPermission(p) {
+		return true
+	}
+	return m.HasDeclaredPermission(p)
+}
+
+// RedundantPermissions returns permissions declared in m.Permissions that are
+// now exempt and no longer need to be declared.
+func (m *Manifest) RedundantPermissions() []Permission {
+	if m == nil || len(m.Permissions) == 0 {
+		return nil
+	}
+	var out []Permission
+	for _, p := range m.Permissions {
+		if IsExemptPermission(p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ToastToneIconSpec returns an Ocean Paper Scheme A 24x24 icon for a built-in
+// notification tone ("success", "warning", "error", or "info").
+func ToastToneIconSpec(tone string) DuoIconSpec {
+	switch normalizeTone(tone) {
+	case "success":
+		return DuoIconSpec{
+			ViewBox:     "0 0 24 24",
+			FillPaths:   []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			StrokePaths: []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			AccentPaths: []string{"M8.5 12.4L10.9 14.8L15.8 9.6"},
+		}
+	case "warning":
+		return DuoIconSpec{
+			ViewBox:     "0 0 24 24",
+			FillPaths:   []string{"M10.42 4.65L3.12 17.3A1.8 1.8 0 0 0 4.68 20H19.32A1.8 1.8 0 0 0 20.88 17.3L13.58 4.65A1.8 1.8 0 0 0 10.42 4.65Z"},
+			StrokePaths: []string{"M10.42 4.65L3.12 17.3A1.8 1.8 0 0 0 4.68 20H19.32A1.8 1.8 0 0 0 20.88 17.3L13.58 4.65A1.8 1.8 0 0 0 10.42 4.65Z"},
+			AccentPaths: []string{"M12 9.2V13.6M12 16.6V16.7"},
+		}
+	case "error":
+		return DuoIconSpec{
+			ViewBox:     "0 0 24 24",
+			FillPaths:   []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			StrokePaths: []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			AccentPaths: []string{"M9.2 9.2L14.8 14.8M14.8 9.2L9.2 14.8"},
+		}
+	default:
+		return DuoIconSpec{
+			ViewBox:     "0 0 24 24",
+			FillPaths:   []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			StrokePaths: []string{"M12 3A9 9 0 1 1 3 12A9 9 0 0 1 12 3Z"},
+			AccentPaths: []string{"M12 11.2V16M12 8.2V8.3"},
+		}
+	}
 }
 
 func (m *Manifest) HasSurface(s Surface) bool {
