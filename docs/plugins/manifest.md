@@ -25,7 +25,7 @@ example-sync/
   "app": "blockmd",
   "schema_version": 1,
   "id": "example-sync",
-  "category": "sync",
+  "category": "tools",
   "name": {
     "zh": "示例同步",
     "en": "Example Sync"
@@ -85,14 +85,14 @@ example-sync/
 - `app`：必填固定字符串 **`"blockmd"`**（用于插件生态识别与自动采集验真）。
 - `schema_version`：必填固定整数 `1`。
 - `id`：必填，匹配正则 `^[a-z0-9][a-z0-9-]{1,47}$`（不可使用保留 ID `block-diagnostics`）。
-- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。Block 是笔记软件，应用商店只按以下 6 个分类与顺序展示标签：
-  1. `"appearance"`：外观 / Appearance（主题、字体、图标）
-  2. `"edit"`：写作 / Writing（排版、模板、纠错）
-  3. `"organize"`：整理 / Organize（标签、笔记互链、目录、快速查找）
-  4. `"ai"`：AI / AI（润色、总结、问答助手）
-  5. `"publish"`：导入导出 / Import & Export（从其他软件搬入笔记、导出为网页等格式）
-  6. `"sync"`：同步 / Sync（网盘存储、跨设备查看）
-  - 另有两个不显示标签的值：`"tools"`（其他 / Other，只出现在「全部」）与 `"language"`（代码高亮 / Code Highlighting，平时不在列表中出现，仅在搜索或已安装时可见）。
+- `category`：可选字符串（声明 `contributes.languages` 时**必填 `"language"`**）。分类只看插件作用在哪里，应用商店按以下 5 个分类与顺序展示标签：
+  1. `"appearance"`：外观 / Appearance（改的是界面长什么样：主题、字体、图标、界面布局）
+  2. `"edit"`：编辑 / Editing（改的是一篇笔记里面：语法扩展、模板、图片、公式、图表）
+  3. `"organize"`：整理 / Organize（管的是笔记和笔记之间：标签、互链、搜索、大纲、归档）
+  4. `"ai"`：AI / AI（靠模型完成：润色、总结、问答、生成）
+  5. `"tools"`：工具 / Tools（干的是笔记之外的事：同步备份、导入导出、发布分享、系统集成、外部服务）
+  - 另有一个不显示标签的值：`"language"`（代码高亮 / Code Highlighting，平时不在列表中出现，仅在搜索或已安装时可见）。
+  - 已停用的 `"sync"` 与 `"publish"` 仍可通过校验，但统一归入 `"tools"`；新插件不要再使用。
   - **向后兼容**：普通插件未填 `category` 时默认归入 `"tools"`（历史已上架插件另有兼容映射）；商店索引会自动同步 `category` 与 `file_extensions`。
 - `name`：`zh` 与 `en` 均必填非空，禁止含 Emoji。
 - `version`：必填，须同时满足正则 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$` 与标准 SemVer 合法性（`golang.org/x/mod/semver`，与商店更新比较共用同一规则；如 `"1.0.0"`、`"1.0.0-beta.1"`，不支持 `+build` 元数据、禁止前导零与空预发布段如 `2.0.0-..`）。
