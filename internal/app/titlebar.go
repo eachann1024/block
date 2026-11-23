@@ -311,7 +311,7 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 	pal := theme.Ocean()
 	tb := c.TitleBar()
 	leftLead := float32(10)
-	if theme.IsMacOS() {
+	if blockui.MacTrafficLightClear() {
 		leftLead = max(80, tb.Left+12)
 	}
 

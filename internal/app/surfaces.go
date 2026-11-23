@@ -640,7 +640,7 @@ func (h *PageHistoryView) Render(
 	}
 	narrowHist := vpW < 780
 	leftLead := float32(12)
-	if theme.IsMacOS() {
+	if blockui.MacTrafficLightClear() {
 		leftLead = max(82, tb.Left+12)
 	}
 	trailingPad := float32(12)
