@@ -124,16 +124,20 @@
      2. 读取磁盘旧文件并逐字节比较：若文件已存在且内容完全相同，直接返回 `{"ok": true, "changed": false}`（即使 `expected_revision` 为 `""` 或旧哈希，也不报错、不写盘、不记历史、不触发事件）。
      3. 核对 `expected_revision`：省略或传 `null` 跳过校验；传 `""` 要求文件尚不存在；传读取时的 64 位小写 SHA-256 哈希则要求磁盘当前内容匹配，否则返回 `-32006`（不提供对外部写入进程的原子 CAS）。
    - 实际写入时原子落盘、尽力记录「插件保存」版本历史、刷新干净的编辑器标签页并向其他订阅插件派发 `note.saved`。响应不含新 `revision`，连续修改前请重新 `host.notes.read`。
-8. **`host.notes.open`**（需 `"notes:read"`）
+8. **`host.notes.trash`**（需 `"notes:write"`）
+   - `{"notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "expected_revision": "<读取时的 SHA-256>"}` -> 移入系统回收站返回 `{"ok": true, "trashed": true}`，文件已不存在返回 `{"ok": true, "trashed": false}`。
+   - 供同步类插件把远端删除落到本地，不弹确认框；因此 **`expected_revision` 必填**（省略或空串报 `-32602`），须等于磁盘当前字节的 64 位小写 SHA-256，否则报 `-32006`，插件绝不会删掉自己没读到过的内容。
+   - 路径规则同 `read`/`write`，但也允许笔记本内的附件等非 Markdown 普通文件（仍拒绝 `.` 开头路径段与符号链接）。目标笔记在编辑器中有未保存修改或处于虚拟预览时报 `-32006`；成功后宿主关闭对应标签页并重新扫描笔记本。需要用户逐次确认的删除请改用 `host.system.trash`。
+9. **`host.notes.open`**（需 `"notes:read"`）
    - `{"notebook_root": "/abs/path/to/notebook", "path": "welcome.md"}`（`notebook_root` 可选；严格校验目标为已注册笔记本内的合法普通 Markdown 文件且非符号链接）-> 在桌面编辑器中切换打开目标笔记（若设置页开着会自动收起）并返回 `{"ok": true, "path": "welcome.md"}`；无 UI 宿主环境（如 CLI 校验）返回 `-32005`。
-9. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
+10. **`host.action.progress`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"action_progress"`，旧宿主不支持时不得发送）
    - 在 `plugin.action` 执行期间实时上报进度，推荐以 JSON-RPC 2.0 通知（省略 `id`，无需等待响应，宿主走内联快速通道以保证顺序且不占并发槽）发送，也支持普通调用（返回 `{"ok": true}`）：
      - 计数模式：`{"done": 12, "total": 48}`（`total > 0`，宿主在标题栏运行胶囊中展示 `12/48`）
      - 百分比模式：`{"progress": 0.32}`（`0.0`–`1.0`，仅在未传 `total` 时生效，宿主在标题栏运行胶囊中展示 `32%`）
      - 可选 `label` 覆盖运行动词（最多 32 字符；默认由宿主按 `action_id` 推断，如 `同步中` / `迁入中` / `上传中`）
      - 分通道模式（需 `"progress_bar"`）：附加可选 `channel`（最多 64 字符，小写字母/数字/`-`/`_`）、`tone`（`""` | `"accent"` | `"info"` | `"success"` | `"warning"` | `"danger"`）与 `running`（布尔值，省略时按是否达终态自动推断），宿主将进度路由至绑定相同 `channel` 的 `progress` 控件与 `segmented` 选项，互不覆盖顶栏总进度。
    - 空载荷或无效参数不会覆盖当前进度；动作结束或取消时宿主自动清空进度，并在内部节流重绘（保留首帧与末帧）。
-9. **`host.perf.snapshot`**（需 `"notes:read"`）
+11. **`host.perf.snapshot`**（需 `"notes:read"`）
    - `{"refresh_disk": false}`（可选，解码失败按 `false`；仅在宿主尚无磁盘扫描缓存时，传 `false` 才会触发首次扫描，内置性能窗口可能已生成缓存）-> 返回宿主资源与 7 类磁盘占用摘要（分类 ID：`notes`、`assets`、`history`、`recovery`、`ai_sessions`、`logs`、`config`；每类 `entries` 最多前 6 条摘要；`scan_error`、`file_count`、`entries` 与明细 `path`/`count` 可省略；磁盘扫描异常写在成功响应的 `scan_error` 中，仅回调不可用或失败时返回 `-32005`）：
      ```json
      {
@@ -156,9 +160,13 @@
      }
      ```
 
-10. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
+12. **`host.store.changelog`**（无需额外权限；须先在 `plugin.initialize` 的 `ui_capabilities` 中检查 `"store_changelog"`）
     - 查询指定插件（省略 `id` 时默认查当前插件自身）的商店更新日志：`{"id": "block-sync", "locale": "zh-CN", "limit": 10}`（`id`、`locale`、`limit` 均可选，`limit` 默认 `10`、上限 `20`）。
     - 宿主按「商店静态 JSON API（`changelogs/<id>.json` + jsDelivr 镜像）→ GitHub Releases API → 商店索引内联 `changelog` → 本地 `CHANGELOG.md`」顺序解析，返回结构化 `PluginChangelog`（含 `id`、`repo`、`latest_version`、`changelog_url`、`source`、`releases[]` 及双语 `zh`/`en` 分组条目）；暂无更新日志返回 `-32004`，拉取失败返回 `-32005`。
+
+13. **`host.log`**（无需额外权限；旧宿主返回 `-32601`，插件应静默停用）
+    - `{"entries": [{"level": "info", "event": "delete_remote", "notebook_root": "/abs/path/to/notebook", "path": "notes/old.md", "protocol": "webdav", "detail": "成功"}]}` -> `{"ok": true}`，把插件自己的操作记录写进宿主诊断日志 `logs/block.log`，便于用户反馈时一并导出。
+    - `level` 取 `info`（默认）/`warn`/`error`；每次最多 200 条，超出部分丢弃；各字段折叠为单行并截断至 400 字节。合法的笔记本相对 `path` 会被换成绝对路径再脱敏，与宿主自身日志的路径代号一致。**不得传入笔记正文或密钥。**
 
 ### 3.3 系统集成
 

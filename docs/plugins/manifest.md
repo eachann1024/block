@@ -108,7 +108,7 @@ example-sync/
 - `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
   - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set` / `host.storage.set_many`）
   - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
-  - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`）
+  - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`），或按版本号把笔记本内文件移入回收站（`host.notes.trash`）
   - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
   - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
   - `"notes:path"`：在 `plugin.command` 的 `context.file` 中接收目标文件的本机绝对路径（含笔记本外打开的文件），不授予读取内容的能力
