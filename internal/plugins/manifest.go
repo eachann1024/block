@@ -217,7 +217,22 @@ func (m *Manifest) EffectiveCategory() Category {
 		return CategoryTools
 	}
 	hasLangs := m.Contributes != nil && len(m.Contributes.Languages) > 0
-	return ResolveCategory(m.Category, m.ID, hasLangs)
+	return ResolveCategory(m.Category, hasLangs)
+}
+
+// CategoryNotice explains how m's category could be declared better, or
+// returns "" when the manifest declares a current category explicitly.
+func (m *Manifest) CategoryNotice() string {
+	if m == nil {
+		return ""
+	}
+	if m.Category == "" {
+		return fmt.Sprintf("manifest.category is not declared; the plugin defaults to %q", m.EffectiveCategory())
+	}
+	if RetiredCategory(m.Category) {
+		return fmt.Sprintf("manifest.category %q is retired; use %q", m.Category, m.EffectiveCategory())
+	}
+	return ""
 }
 
 // IsDeclarativeOnly reports whether m is a zero-process, zero-permission

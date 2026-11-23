@@ -32,6 +32,13 @@ func main() {
 	fmt.Printf("[OK] manifest: app=%s id=%s category=%s (%s / %s v%s beta=%v) surfaces=%v permissions=%v\n",
 		m.App, m.ID, m.EffectiveCategory(), m.Name.Zh, m.Name.En, m.Version, m.Beta, m.Surfaces, m.Permissions)
 
+	if notice := m.CategoryNotice(); notice != "" {
+		if plugins.IsOfficialRepo(m.Repo) {
+			fail("official plugin category: %s", notice)
+		}
+		fmt.Printf("[WARN] category: %s\n", notice)
+	}
+
 	if m.Contributes != nil && len(m.Contributes.Languages) > 0 {
 		if err := plugins.ValidatePluginLanguages(pluginDir, m); err != nil {
 			fail("language grammar validation failed: %v", err)

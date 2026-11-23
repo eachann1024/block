@@ -134,6 +134,9 @@ func run() error {
 			if err := plugins.ValidateBilingualDocs(dir); err != nil {
 				return fmt.Errorf("local seed %q bilingual docs: %w", dir, err)
 			}
+			if notice := m.CategoryNotice(); notice != "" {
+				return fmt.Errorf("local seed %q category: %s", dir, notice)
+			}
 		}
 		entries = append(entries, entryFromManifest(m, "builtin://"+m.ID, "", defaultSeedDownloads(m.ID), 0, nowStr, m.Repo, isVerified))
 	}
@@ -215,7 +218,7 @@ func run() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		client := &http.Client{Timeout: 30 * time.Second}
 		legacy, err := verifyRemotePlugin(ctx, client, *apiBase, os.Getenv("GITHUB_TOKEN"),
-			ghRepo{FullName: entry.Repo, Stargazers: entry.Stars}, legacySyncURL, entry.Downloads, legacySyncPublishedAt, blocklist, verified)
+			ghRepo{FullName: entry.Repo, Stargazers: entry.Stars}, legacySyncURL, entry.Downloads, legacySyncPublishedAt, blocklist, verified, false)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("verify compatible Sync release: %w", err)
@@ -374,7 +377,7 @@ func crawlGitHub(
 		if downloadURL == "" {
 			continue
 		}
-		entry, err := verifyRemotePlugin(ctx, client, base, token, repo, downloadURL, downloads, updatedAt, blocklist, verified)
+		entry, err := verifyRemotePlugin(ctx, client, base, token, repo, downloadURL, downloads, updatedAt, blocklist, verified, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[WARN] skip %s: %v\n", repo.FullName, err)
 			continue
@@ -527,6 +530,7 @@ func verifyRemotePlugin(
 	updatedAt string,
 	blocklist map[string]bool,
 	verified verifiedRegistry,
+	requireOfficialCategory bool,
 ) (*plugins.StoreAppEntry, error) {
 	data, err := downloadBytes(ctx, client, downloadURL, apiBase, token)
 	if err != nil {
@@ -568,6 +572,10 @@ func verifyRemotePlugin(
 		}
 		if err := plugins.ValidateBilingualDocs(pluginRoot); err != nil {
 			return nil, fmt.Errorf("official plugin bilingual docs check failed: %w", err)
+		}
+		// The pinned compatible Sync release predates manifest.category.
+		if notice := m.CategoryNotice(); requireOfficialCategory && notice != "" {
+			return nil, fmt.Errorf("official plugin category check failed: %s", notice)
 		}
 	}
 	entry := entryFromManifest(m, downloadURL, shaHex, downloads, repo.Stargazers, updatedAt, repo.FullName, isVerified)
