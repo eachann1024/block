@@ -48,7 +48,22 @@ func DrawDuoSpec(c *ui.Context, spec plugins.DuoIconSpec, size float32, colors t
 				ui.Icon(c, acc).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Accent)
 			}
 		}
+		if colors.Accent.A > 0 && len(spec.AccentFillPaths) > 0 {
+			if af := cachedLayerSVG("fill", spec.AccentFillPaths); af != nil {
+				ui.Icon(c, af).Absolute().Top(0).Left(0).Size(size, size).TextColor(colors.Accent)
+			}
+		}
 	})
+}
+
+// DrawFileIcon renders a resolved custom file icon (either a host built-in ref
+// or an inline DuoIconSpec) at the given size and colors.
+func DrawFileIcon(c *ui.Context, ref string, spec plugins.DuoIconSpec, size float32, colors theme.IconColors) {
+	if ref != "" {
+		icons.Draw(c, icons.Icon(ref), size, colors)
+		return
+	}
+	DrawDuoSpec(c, spec, size, colors)
 }
 
 // DrawUIIcon renders a plugin UI icon: a host built-in glyph by name, or an inline vector.
@@ -144,7 +159,7 @@ func assembleColoredSVG(spec plugins.DuoIconSpec, colors theme.IconColors) strin
 			b.WriteString(hex)
 			b.WriteString(`" fill-opacity="`)
 			b.WriteString(op)
-			b.WriteString(`" stroke="none">`)
+			b.WriteString(`" fill-rule="evenodd" stroke="none">`)
 		} else {
 			b.WriteString(`<g fill="none" stroke="`)
 			b.WriteString(hex)
@@ -167,6 +182,7 @@ func assembleColoredSVG(spec plugins.DuoIconSpec, colors theme.IconColors) strin
 	writeGroup(true, spec.FillPaths, colors.Fill)
 	writeGroup(false, spec.StrokePaths, colors.Line)
 	writeGroup(false, spec.AccentPaths, colors.Accent)
+	writeGroup(true, spec.AccentFillPaths, colors.Accent)
 	if !hasPath {
 		return ""
 	}
@@ -203,7 +219,7 @@ func assembleLayerSVG(layer string, paths []string) string {
 	hasPath := false
 	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">`)
 	if layer == "fill" {
-		b.WriteString(`<g fill="black" stroke="none">`)
+		b.WriteString(`<g fill="black" fill-rule="evenodd" stroke="none">`)
 	} else {
 		b.WriteString(`<g fill="none" stroke="black" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">`)
 	}

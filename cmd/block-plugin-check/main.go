@@ -46,12 +46,21 @@ func main() {
 		fmt.Printf("[OK] languages: %d grammar(s) compiled cleanly (tags=%v)\n",
 			len(m.Contributes.Languages), m.DisplayFileExtensions())
 	}
+	if m.Contributes != nil && len(m.Contributes.FileIcons) > 0 {
+		if err := plugins.ValidatePluginFileIcons(pluginDir, m); err != nil {
+			fail("file icon pack validation failed: %v", err)
+		}
+		fmt.Printf("[OK] file_icons: %d icon pack(s) validated cleanly\n", len(m.Contributes.FileIcons))
+	}
 
 	isOfficial := plugins.IsOfficialRepo(m.Repo)
 	requireBilingual := *bilingualFlag || isOfficial
 	if requireBilingual {
 		if err := plugins.ValidateManifestEnglish(m); err != nil {
 			fail("manifest English validation failed: %v", err)
+		}
+		if err := plugins.ValidatePluginFileIconsBilingual(pluginDir, m); err != nil {
+			fail("file icon pack English validation failed: %v", err)
 		}
 		if err := plugins.ValidateBilingualDocs(pluginDir); err != nil {
 			fail("bilingual docs validation failed: %v", err)

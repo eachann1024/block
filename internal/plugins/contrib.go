@@ -26,7 +26,7 @@ const (
 	PermUIPanels     Permission = "ui:panels"     // side panels
 	PermUIStatus     Permission = "ui:status"     // status bar items
 	PermUINotify     Permission = "ui:notify"     // toasts and plugin dialogs
-	PermUISidebar    Permission = "ui:sidebar"    // left sidebar sections, file tree badges & context menu
+	PermUISidebar    Permission = "ui:sidebar"    // left sidebar sections, file tree icons/badges & context menu
 	PermUIAppearance Permission = "ui:appearance" // custom vector editor canvas backdrops
 	PermEditorRead   Permission = "editor:read"
 	PermEditorEdit   Permission = "editor:write"
@@ -96,8 +96,8 @@ func contribPermissionDescription(p Permission, en bool) (string, bool) {
 			"Show in-app toast notifications or native declarative dialogs.",
 		},
 		PermUISidebar: {
-			"在左侧栏底部添加扩展分区、在文件树笔记旁显示自定义角标，或追加侧栏右键菜单项。",
-			"Add sections to the left sidebar, show custom badges on file tree notes, or add sidebar context menu items.",
+			"在左侧栏底部添加扩展分区、自定义文件树笔记与文件夹图标或角标，或追加侧栏右键菜单项。",
+			"Add sections to the left sidebar, customize file tree note/folder icons or badges, or add sidebar context menu items.",
 		},
 		PermUIAppearance: {
 			"在编辑区背景层绘制自定义矢量水印或平铺图案（自动限制透明度以保证阅读清晰）。",
@@ -164,6 +164,7 @@ type Contributes struct {
 	Panels           []PanelContrib           `json:"panels,omitempty"`
 	SidebarSections  []SidebarSectionContrib  `json:"sidebar_sections,omitempty"`
 	FileBadges       []FileBadgeContrib       `json:"file_badges,omitempty"`
+	FileIcons        []FileIconPackContrib    `json:"file_icons,omitempty"`
 	Backdrops        []BackdropContrib        `json:"backdrops,omitempty"`
 	StatusItems      []StatusItemContrib      `json:"status_items,omitempty"`
 	Dialogs          []DialogContrib          `json:"dialogs,omitempty"`
@@ -284,7 +285,7 @@ type DialogContrib struct {
 func (c *Contributes) hasRuntimeContributions() bool {
 	return c != nil && (len(c.TitlebarButtons) > 0 || len(c.SettingsSections) > 0 || len(c.Commands) > 0 ||
 		len(c.PageMenu) > 0 || len(c.EditorMenu) > 0 || len(c.SidebarMenu) > 0 || len(c.TabMenu) > 0 ||
-		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 ||
+		len(c.Panels) > 0 || len(c.SidebarSections) > 0 || len(c.FileBadges) > 0 || len(c.FileIcons) > 0 ||
 		len(c.Backdrops) > 0 || len(c.StatusItems) > 0 || len(c.Dialogs) > 0 || len(c.MenubarItems) > 0)
 }
 
@@ -558,7 +559,7 @@ func validateContribIcon(field string, ic DuoIconSpec) error {
 		return fmt.Errorf("%s needs view_box \"0 0 24 24\" and at least one stroke path", field)
 	}
 	paths, size := 0, 0
-	for _, layer := range [][]string{ic.FillPaths, ic.StrokePaths, ic.AccentPaths} {
+	for _, layer := range [][]string{ic.FillPaths, ic.StrokePaths, ic.AccentPaths, ic.AccentFillPaths} {
 		paths += len(layer)
 		for _, d := range layer {
 			size += len(d)
@@ -595,6 +596,7 @@ var contribLimits = []struct {
 	{"panels", 8, func(c Contributes) int { return len(c.Panels) }},
 	{"sidebar_sections", 4, func(c Contributes) int { return len(c.SidebarSections) }},
 	{"file_badges", 4, func(c Contributes) int { return len(c.FileBadges) }},
+	{"file_icons", 1, func(c Contributes) int { return len(c.FileIcons) }},
 	{"backdrops", 8, func(c Contributes) int { return len(c.Backdrops) }},
 	{"status_items", 4, func(c Contributes) int { return len(c.StatusItems) }},
 	{"dialogs", 16, func(c Contributes) int { return len(c.Dialogs) }},
@@ -623,6 +625,7 @@ func (m *Manifest) validateContributes() error {
 		need("panels", len(c.Panels), PermUIPanels),
 		need("sidebar_sections", len(c.SidebarSections), PermUISidebar),
 		need("file_badges", len(c.FileBadges), PermUISidebar),
+		need("file_icons", len(c.FileIcons), PermUISidebar),
 		need("backdrops", len(c.Backdrops), PermUIAppearance),
 		need("status_items", len(c.StatusItems), PermUIStatus),
 		need("dialogs", len(c.Dialogs), PermUINotify),
@@ -768,6 +771,19 @@ func (m *Manifest) validateContributes() error {
 		}
 		if strings.TrimSpace(fb.Tooltip.Zh) != "" || strings.TrimSpace(fb.Tooltip.En) != "" {
 			if err := validateContribText("contributes.file_badges.tooltip", fb.Tooltip); err != nil {
+				return err
+			}
+		}
+	}
+	for _, fi := range c.FileIcons {
+		if err := id("file_icons", fi.ID); err != nil {
+			return err
+		}
+		if _, err := validateFileIconPackPath(fi.Pack); err != nil {
+			return err
+		}
+		if strings.TrimSpace(fi.Title.Zh) != "" || strings.TrimSpace(fi.Title.En) != "" {
+			if err := validateContribText("contributes.file_icons.title", fi.Title); err != nil {
 				return err
 			}
 		}
@@ -1104,9 +1120,12 @@ type contribRegistry struct {
 	hidden     map[string]bool                                                 // legacy global titlebar slot id -> hidden
 	hiddenBy   map[string]map[string]bool                                      // plugin id -> hidden titlebar slot ids
 	editorBG   map[string]EditorBackgroundState                                // plugin id -> editor background
-	backdropBy map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
-	fileBadges map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
-	warmedUp   map[string]string                                               // plugin id -> initialized version
+	backdropBy      map[string]EditorBackdropState                                  // plugin id -> custom vector backdrop
+	fileBadges      map[string]map[string]map[string]map[string]FileBadgeEntry      // pluginID -> notebookRoot -> badgeID -> relPath -> entry
+	fileIcons       map[string]map[string]map[string]FileIconEntry                  // pluginID -> notebookRoot -> relPath -> entry
+	fileIconPrefs   map[string]FileIconPrefs                                        // pluginID -> picker/sync_tabs overrides
+	fileIconRecents map[string][]string                                             // pluginID -> recent icon ids
+	warmedUp        map[string]string                                               // plugin id -> initialized version
 	badges     map[string]string                                               // plugin slot id -> badge text
 	active     map[string]bool                                                 // plugin slot id -> active
 	status     map[string]statusOverlay                                        // "<plugin>/<item>" -> text/icon
@@ -1129,6 +1148,9 @@ type contribFile struct {
 	EditorBackgrounds map[string]EditorBackgroundState                         `json:"editor_backgrounds,omitempty"`
 	EditorBackdrops   map[string]EditorBackdropState                           `json:"editor_backdrops,omitempty"`
 	FileBadges        map[string]map[string]map[string]map[string]FileBadgeEntry `json:"file_badges,omitempty"`
+	FileIcons         map[string]map[string]map[string]FileIconEntry           `json:"file_icons,omitempty"`
+	FileIconPrefs     map[string]FileIconPrefs                                 `json:"file_icon_prefs,omitempty"`
+	FileIconRecents   map[string][]string                                      `json:"file_icon_recents,omitempty"`
 	WarmedUp          map[string]string                                        `json:"warmed_up,omitempty"`
 }
 
@@ -1137,9 +1159,12 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 		hidden:     map[string]bool{},
 		hiddenBy:   map[string]map[string]bool{},
 		editorBG:   map[string]EditorBackgroundState{},
-		backdropBy: map[string]EditorBackdropState{},
-		fileBadges: map[string]map[string]map[string]map[string]FileBadgeEntry{},
-		warmedUp:   map[string]string{},
+		backdropBy:      map[string]EditorBackdropState{},
+		fileBadges:      map[string]map[string]map[string]map[string]FileBadgeEntry{},
+		fileIcons:       map[string]map[string]map[string]FileIconEntry{},
+		fileIconPrefs:   map[string]FileIconPrefs{},
+		fileIconRecents: map[string][]string{},
+		warmedUp:        map[string]string{},
 		badges:     map[string]string{},
 		active:     map[string]bool{},
 		status:     map[string]statusOverlay{},
@@ -1218,6 +1243,78 @@ func newContribRegistry(appDataDir string) *contribRegistry {
 					}
 					if len(nbMap) > 0 {
 						r.fileBadges[pluginID] = nbMap
+					}
+				}
+				for pluginID, byRoot := range f.FileIcons {
+					if strings.TrimSpace(pluginID) == "" || len(byRoot) == 0 {
+						continue
+					}
+					nbMap := make(map[string]map[string]FileIconEntry, len(byRoot))
+					for nbRoot, entries := range byRoot {
+						ck := cleanNotebookKey(nbRoot)
+						if ck == "" || len(entries) == 0 {
+							continue
+						}
+						em := make(map[string]FileIconEntry, min(len(entries), maxFileIconsPerScope))
+						for rel, ent := range entries {
+							if len(em) >= maxFileIconsPerScope {
+								break
+							}
+							iconID := strings.TrimSpace(ent.Icon)
+							if iconID == "" || !fileIconIDRe.MatchString(iconID) {
+								continue
+							}
+							if norm, ok := normalizeFileIconRelPath(rel); ok {
+								em[norm] = FileIconEntry{
+									Icon: iconID,
+									Tint: normalizeFileIconTint(ent.Tint),
+								}
+							}
+						}
+						if len(em) > 0 {
+							nbMap[ck] = em
+						}
+					}
+					if len(nbMap) > 0 {
+						r.fileIcons[pluginID] = nbMap
+					}
+				}
+				for pluginID, pref := range f.FileIconPrefs {
+					if strings.TrimSpace(pluginID) == "" {
+						continue
+					}
+					var cp FileIconPrefs
+					if pref.Picker != nil {
+						v := *pref.Picker
+						cp.Picker = &v
+					}
+					if pref.SyncTabs != nil {
+						v := *pref.SyncTabs
+						cp.SyncTabs = &v
+					}
+					if cp.Picker != nil || cp.SyncTabs != nil {
+						r.fileIconPrefs[pluginID] = cp
+					}
+				}
+				for pluginID, rec := range f.FileIconRecents {
+					if strings.TrimSpace(pluginID) == "" || len(rec) == 0 {
+						continue
+					}
+					var list []string
+					seen := map[string]bool{}
+					for _, raw := range rec {
+						id := strings.TrimSpace(raw)
+						if id == "" || !fileIconIDRe.MatchString(id) || seen[id] {
+							continue
+						}
+						seen[id] = true
+						list = append(list, id)
+						if len(list) >= maxFileIconRecents {
+							break
+						}
+					}
+					if len(list) > 0 {
+						r.fileIconRecents[pluginID] = list
 					}
 				}
 				for pluginID, ver := range f.WarmedUp {
@@ -1302,6 +1399,62 @@ func (r *contribRegistry) saveLocked() {
 			fileBadges = nil
 		}
 	}
+	var fileIcons map[string]map[string]map[string]FileIconEntry
+	if len(r.fileIcons) > 0 {
+		fileIcons = make(map[string]map[string]map[string]FileIconEntry, len(r.fileIcons))
+		for pid, byRoot := range r.fileIcons {
+			nbCopy := make(map[string]map[string]FileIconEntry, len(byRoot))
+			for nb, entries := range byRoot {
+				if len(entries) == 0 {
+					continue
+				}
+				entCopy := make(map[string]FileIconEntry, len(entries))
+				for rel, ent := range entries {
+					entCopy[rel] = ent
+				}
+				nbCopy[nb] = entCopy
+			}
+			if len(nbCopy) > 0 {
+				fileIcons[pid] = nbCopy
+			}
+		}
+		if len(fileIcons) == 0 {
+			fileIcons = nil
+		}
+	}
+	var fileIconPrefs map[string]FileIconPrefs
+	if len(r.fileIconPrefs) > 0 {
+		fileIconPrefs = make(map[string]FileIconPrefs, len(r.fileIconPrefs))
+		for pid, pref := range r.fileIconPrefs {
+			var cp FileIconPrefs
+			if pref.Picker != nil {
+				v := *pref.Picker
+				cp.Picker = &v
+			}
+			if pref.SyncTabs != nil {
+				v := *pref.SyncTabs
+				cp.SyncTabs = &v
+			}
+			if cp.Picker != nil || cp.SyncTabs != nil {
+				fileIconPrefs[pid] = cp
+			}
+		}
+		if len(fileIconPrefs) == 0 {
+			fileIconPrefs = nil
+		}
+	}
+	var fileIconRecents map[string][]string
+	if len(r.fileIconRecents) > 0 {
+		fileIconRecents = make(map[string][]string, len(r.fileIconRecents))
+		for pid, rec := range r.fileIconRecents {
+			if len(rec) > 0 {
+				fileIconRecents[pid] = append([]string(nil), rec...)
+			}
+		}
+		if len(fileIconRecents) == 0 {
+			fileIconRecents = nil
+		}
+	}
 	var warmed map[string]string
 	if len(r.warmedUp) > 0 {
 		warmed = make(map[string]string, len(r.warmedUp))
@@ -1315,6 +1468,9 @@ func (r *contribRegistry) saveLocked() {
 		EditorBackgrounds: bgs,
 		EditorBackdrops:   backdrops,
 		FileBadges:        fileBadges,
+		FileIcons:         fileIcons,
+		FileIconPrefs:     fileIconPrefs,
+		FileIconRecents:   fileIconRecents,
 		WarmedUp:          warmed,
 	}, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(r.path), 0o755)
@@ -1387,6 +1543,18 @@ func (r *contribRegistry) forgetPlugin(pluginID string, clearLegacyTitlebar bool
 	}
 	if _, ok := r.fileBadges[pluginID]; ok {
 		delete(r.fileBadges, pluginID)
+		changed = true
+	}
+	if _, ok := r.fileIcons[pluginID]; ok {
+		delete(r.fileIcons, pluginID)
+		changed = true
+	}
+	if _, ok := r.fileIconPrefs[pluginID]; ok {
+		delete(r.fileIconPrefs, pluginID)
+		changed = true
+	}
+	if _, ok := r.fileIconRecents[pluginID]; ok {
+		delete(r.fileIconRecents, pluginID)
 		changed = true
 	}
 	if _, ok := r.warmedUp[pluginID]; ok {
@@ -2870,6 +3038,12 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		s.contrib.mu.Unlock()
 		s.mu.RUnlock()
 		return map[string]any{"ok": true, "count": count}, nil, true
+
+	case "host.sidebar.get_file_icons":
+		return s.handleSidebarGetFileIcons(m, rt, decode)
+
+	case "host.sidebar.set_file_icons":
+		return s.handleSidebarSetFileIcons(m, rt, decode)
 
 	case "host.editor.selection":
 		if !m.HasPermission(PermEditorRead) {

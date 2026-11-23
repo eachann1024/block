@@ -168,10 +168,11 @@ type EntrySpec struct {
 
 // DuoIconSpec describes an Ocean Paper Scheme A two-tone icon in 24x24 space.
 type DuoIconSpec struct {
-	ViewBox     string   `json:"view_box"`
-	FillPaths   []string `json:"fill_paths,omitempty"`
-	StrokePaths []string `json:"stroke_paths"`
-	AccentPaths []string `json:"accent_paths,omitempty"`
+	ViewBox         string   `json:"view_box"`
+	FillPaths       []string `json:"fill_paths,omitempty"`
+	StrokePaths     []string `json:"stroke_paths"`
+	AccentPaths     []string `json:"accent_paths,omitempty"`
+	AccentFillPaths []string `json:"accent_fill_paths,omitempty"`
 }
 
 // AppStoreIconSpec returns the three-tiles-plus-add icon for the App Store sidebar entry.
