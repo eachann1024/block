@@ -1,4 +1,9 @@
 {
   "block-sync": "blockmd-plugins/block-sync",
-  "block-poop-everywhere": "blockmd-plugins/block-poop-everywhere"
+  "block-poop-everywhere": "blockmd-plugins/block-poop-everywhere",
+  "block-image-host": "blockmd-plugins/block-image-host",
+  "block-canvas-dots": "blockmd-plugins/block-canvas-dots",
+  "block-titlebar": "blockmd-plugins/block-titlebar",
+  "block-tarot": "blockmd-plugins/block-tarot",
+  "block-copy-path": "blockmd-plugins/block-copy-path"
 }
