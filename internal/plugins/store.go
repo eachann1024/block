@@ -56,7 +56,7 @@ type StoreAppEntry struct {
 
 // EffectiveCategory returns the canonical App Store category for e.
 func (e StoreAppEntry) EffectiveCategory() Category {
-	return ResolveCategory(e.Category, e.ID, len(e.FileExtensions) > 0)
+	return ResolveCategory(e.Category, len(e.FileExtensions) > 0)
 }
 
 type StoreIndex struct {

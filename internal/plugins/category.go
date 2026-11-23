@@ -57,16 +57,6 @@ var validCategories = func() map[Category]bool {
 	return m
 }()
 
-// legacyPluginCategories provides backwards-compatible category defaults for
-// existing store entries published before manifest.category was introduced.
-var legacyPluginCategories = map[string]Category{
-	"block-sync":        CategoryTools,
-	"block-image-host":  CategoryEdit,
-	"block-canvas-dots": CategoryAppearance,
-	"block-titlebar":    CategoryAppearance,
-	"block-tarot":       CategoryAppearance,
-}
-
 // AllCategories returns every canonical manifest category: the store tabs in
 // display order, followed by the hidden CategoryLanguage.
 func AllCategories() []Category {
@@ -95,6 +85,13 @@ func AllowedCategoryNames() string {
 // ValidCategory reports whether c is one of the canonical plugin categories.
 func ValidCategory(c Category) bool {
 	return validCategories[c]
+}
+
+// RetiredCategory reports whether c is a former store tab that manifests may
+// still declare but new plugins should no longer use.
+func RetiredCategory(c Category) bool {
+	_, ok := retiredCategories[c]
+	return ok
 }
 
 // AcceptedCategory reports whether a manifest may declare c: a canonical
@@ -204,9 +201,11 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 	return title, body
 }
 
-// ResolveCategory determines the effective App Store category for a plugin,
-// falling back gracefully for legacy manifests without an explicit category.
-func ResolveCategory(explicit Category, pluginID string, hasLanguages bool) Category {
+// ResolveCategory determines the effective App Store category for a plugin.
+// The manifest alone decides the category: retired values map to their
+// replacement, language packs default to CategoryLanguage, and everything
+// else without a category falls back to CategoryTools.
+func ResolveCategory(explicit Category, hasLanguages bool) Category {
 	if ValidCategory(explicit) {
 		return explicit
 	}
@@ -215,9 +214,6 @@ func ResolveCategory(explicit Category, pluginID string, hasLanguages bool) Cate
 	}
 	if hasLanguages {
 		return CategoryLanguage
-	}
-	if cat, ok := legacyPluginCategories[strings.ToLower(strings.TrimSpace(pluginID))]; ok {
-		return cat
 	}
 	return CategoryTools
 }
