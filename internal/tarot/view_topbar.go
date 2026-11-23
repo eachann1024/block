@@ -16,7 +16,7 @@ func (ctrl *Controller) RenderTopbar(c *ui.Context, sidebarOpen bool) {
 
 	tb := c.TitleBar()
 	leftLead := theme.Space16
-	if theme.IsMacOS() {
+	if blockui.MacTrafficLightClear() {
 		leftLead = max(float32(82), tb.Left+theme.Space12)
 	}
 

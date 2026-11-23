@@ -57,6 +57,12 @@ func isWindowFullscreen() bool {
 	return fn()
 }
 
+// MacTrafficLightClear reports whether the macOS traffic lights are on screen
+// and need left clearance; they hide in full screen.
+func MacTrafficLightClear() bool {
+	return theme.IsMacOS() && !isWindowFullscreen()
+}
+
 func setWindowFullscreen(fs bool) {
 	windowFullscreenMu.Lock()
 	fn := windowSetFullscreen
