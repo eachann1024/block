@@ -3,6 +3,7 @@ pkgbase = block-bin
 	pkgver = 1.0.355
 	pkgrel = 1
 	url = https://block.cooool.top
+	install = block-bin.install
 	arch = x86_64
 	license = Apache-2.0
 	depends = gcc-libs

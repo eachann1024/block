@@ -21,6 +21,7 @@ depends=(
 )
 provides=('block')
 conflicts=('block')
+install=block-bin.install
 options=('!strip' '!debug')
 noextract=("block-linux-x64-${pkgver}.deb")
 source=("block-linux-x64-${pkgver}.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb")
@@ -33,4 +34,7 @@ package() {
   install -Dm755 "${srcdir}/usr/bin/block" "${pkgdir}/usr/bin/block"
   install -Dm644 "${srcdir}/usr/share/applications/block.desktop" "${pkgdir}/usr/share/applications/block.desktop"
   install -Dm644 "${srcdir}/usr/share/icons/hicolor/1024x1024/apps/block.png" "${pkgdir}/usr/share/icons/hicolor/1024x1024/apps/block.png"
+  if [[ -f "${srcdir}/etc/xdg/autostart/block-fileassoc.desktop" ]]; then
+    install -Dm644 "${srcdir}/etc/xdg/autostart/block-fileassoc.desktop" "${pkgdir}/etc/xdg/autostart/block-fileassoc.desktop"
+  fi
 }
