@@ -41,17 +41,12 @@ example-sync/
     "command": ["python3", "-u", "main.py"]
   },
   "permissions": [
-    "storage",
     "notes:read",
     "notes:write",
     "network",
     "events:note_saved"
   ],
   "permission_reasons": {
-    "storage": {
-      "zh": "保存同步通道配置、凭据摘要与最近同步记录。",
-      "en": "Store sync target configuration, credentials, and recent sync history."
-    },
     "notes:read": {
       "zh": "扫描已选笔记本中的 Markdown 文件以计算增量差异。",
       "en": "Scan Markdown files in selected notebooks to compute incremental diffs."
@@ -63,10 +58,6 @@ example-sync/
     "network": {
       "zh": "连接 WebDAV 服务器或远程 Git 仓库收发笔记变更。",
       "en": "Connect to WebDAV servers or remote Git repositories to transfer changes."
-    },
-    "events:note_saved": {
-      "zh": "在保存笔记后自动触发后台增量同步。",
-      "en": "Automatically trigger incremental background sync after saving a note."
     }
   },
   "surfaces": [
@@ -107,19 +98,23 @@ example-sync/
 - `repo`：可选，GitHub 仓库标识 `"owner/repo"`（匹配 `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`）。上架应用商店时若填写，必须与实际 GitHub 仓库一致（不区分大小写）。
 - `summary`：`zh`（<= 80 个 Unicode 字符）与 `en`（<= 140 个 Unicode 字符）均必填，禁止含 Emoji。
 - `entry.command`：非空字符串数组（纯声明式语言扩展可省略或为空；若 `category: "language"` 同时声明了 `entry.command` 或 `surfaces`/`permissions`，则按交互式插件生命周期运行，不再走纯声明式自动启用），工作目录固定为插件安装目录；`command[0]` 须为 `PATH` 可执行文件名或插件目录内相对普通文件（如 `"./bin/plugin"`）。Python 脚本必须传 `"-u"`（或每次写 `stdout` 后 `flush=True`）并确保标准流使用 UTF-8。
-- `permissions`：可选数组（按需声明），仅允许以下枚举值且不可重复：
-  - `"storage"`：读写插件私有键值存储（`host.storage.get` / `host.storage.set` / `host.storage.set_many`）
-  - `"notes:read"`：读取当前活动笔记、全部已注册笔记本、笔记列表/内容、打开指定笔记与宿主性能快照（`host.notes.active` / `host.notebooks.list` / `host.notes.list` / `host.notes.read` / `host.notes.open` / `host.perf.snapshot`，以及 `plugin.initialize` 中的 `notebooks`）
-  - `"notes:write"`：在已注册的笔记本内写入 Markdown 文件（`host.notes.write`），或按版本号把笔记本内文件移入回收站（`host.notes.trash`）
-  - `"network"`：声明插件会发起外部网络或远端命令请求（如 WebDAV / Git / S3）
-  - `"events:note_saved"`：订阅宿主笔记保存事件（`plugin.event`）
-  - `"notes:path"`：在 `plugin.command` 的 `context.file` 中接收目标文件的本机绝对路径（含笔记本外打开的文件），不授予读取内容的能力
-  - `"system:notify"`、`"system:secrets"`、`"system:open"`、`"system:dialogs"`、`"system:clipboard_read"`、`"system:clipboard_write"`、`"system:trash"`、`"system:badge"`、`"events:system"`。见[系统集成](protocol-and-ui.md#_3-3-系统集成)。
-  - 以及第 8 节定义的 12 项 UI / 编辑器 / 事件扩展权限（`"notes:path"` 已在上方列出）（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`、`"editor:read"`、`"editor:write"`、`"events:workspace"`）
-- `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐填写以帮助用户在安装前理解用途）：
+- `permissions`：可选数组（按需声明），不可重复。权限按是否涉及用户数据或外部系统分为三层：
+  - **5 类敏感权限（需用户安装/更新确认，共 12 项）**：仅当插件用到以下能力时才需声明；首次安装或更新新增其中任一项时，宿主会弹出确认卡片请用户点头：
+    1. **笔记与编辑**：`"notes:read"`（列举、读取与打开笔记及性能快照）、`"notes:write"`（写入笔记及按版本号移入回收站）、`"notes:path"`（在 `plugin.command` 的 `context.file` 中接收本机绝对路径，不读内容）、`"editor:read"`（读取编辑器选区）、`"editor:write"`（向编辑器插入/替换内容）
+    2. **系统凭据**：`"system:secrets"`（读写系统钥匙串/凭据管理器中该插件隔离的凭据）
+    3. **剪贴板**：`"system:clipboard_read"`（读取系统剪贴板）、`"system:clipboard_write"`（写入系统剪贴板）
+    4. **系统文件与外部操作**：`"system:trash"`（经原生确认框移入回收站）、`"system:open"`（打开网页链接或在文件管理器定位文件）、`"system:dialogs"`（打开系统文件/目录选择框）
+    5. **网络访问（插件自述）**：`"network"`（声明插件会发起外部网络或远端命令请求；Block 不在进程层拦截联网，仅向用户如实展示）
+    - 系统集成接口细则见[系统集成](protocol-and-ui.md#_3-3-系统集成)。
+  - **静默事件订阅（按需声明，不弹窗确认，共 3 项）**：仅作为事件订阅开关，不会触发安装/更新权限弹窗：
+    - `"events:note_saved"`：订阅笔记保存事件（`plugin.event`）
+    - `"events:system"`：订阅系统唤醒、网络变化与焦点事件（`plugin.event`）
+    - `"events:workspace"`：订阅工作区 `note.opened` / `theme.changed` / `locale.changed` 事件（仅投递给已运行进程）
+  - **已免声明能力（默认放行，无需写入 `permissions`）**：插件私有存储 `"storage"`、全部界面扩展 `"ui:*"`（`"ui:titlebar"`、`"ui:settings"`、`"ui:commands"`、`"ui:panels"`、`"ui:status"`、`"ui:notify"`、`"ui:sidebar"`、`"ui:appearance"`、`"ui:menubar"`）、系统原生通知 `"system:notify"` 与 Dock 角标 `"system:badge"` 均已默认放行，新插件直接调用或通过 `contributes` 声明即可。旧插件清单保留这些字段仍完全兼容，`block-plugin-check` 会以 `[WARN]` 提醒可删减。
+- `permission_reasons`：**可选对象**（`map<Permission, LocalizedText>`，非必填；推荐为敏感权限填写以帮助用户在安装或更新确认时理解用途）：
   - 每个键必须是合法权限枚举，且**必须已声明在 `manifest.permissions` 中**（不可为未申请的权限填写缘由）。
   - 每项须提供 `zh` 或 `en` 至少其一非空文本（启用双语门禁的官方或 `-bilingual` 插件必须同时提供纯英文 `en`），长度限制 `zh <= 80` 个 Unicode 字符、`en <= 140` 个 Unicode 字符，**严禁包含 Emoji**。
-  - **展示规则**：在应用商店详情页鼠标悬停权限胶囊时，若填写了自定义缘由，气泡优先显示该插件的具体用途，并在下方附带系统默认权限边界说明；若未填写，宿主自动展示内置的双语权限说明。商店采集器会将 `permission_reasons` 同步写入 `store-index.json`。
+  - **展示规则**：在安装/更新权限确认卡片以及应用商店详情页权限胶囊中，仅展示上述 5 类敏感权限；若填写了自定义缘由，优先显示该插件的具体用途，未填写时宿主自动展示内置的双语权限说明。商店采集器会将 `permission_reasons` 同步写入 `store-index.json`。
 - `surfaces`：可选数组；需要独立设置页时声明 `["settings_page"]`（其余设置分区、侧边面板、弹窗表面通过 `contributes` 自动派生，详见第 8 节）。语言扩展、主题/外观等无需独立设置页的插件可省略或为空数组 `[]`，安装后不占用侧栏设置页，直接在应用商店详情页管理与卸载。
 - `contributes`：可选对象，向宿主顶栏、内置设置标签页、命令面板/快捷键、菜单、侧边面板、状态栏、弹窗或声明式语言语法（`languages`）注入扩展贡献，详见第 8 节与第 9 节。
 - `icon`：Ocean Paper 双色矢量图标，`view_box` 固定为 `"0 0 24 24"`，`stroke_paths` 至少含 1 条合法 SVG `d` 路径，`fill_paths` 与 `accent_paths` 可选。

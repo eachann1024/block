@@ -18,7 +18,7 @@
 | 章节 | 文件 | 说明 |
 | --- | --- | --- |
 | 1. 架构与硬边界 | [plugins/README.md](plugins/README.md) | 独立进程模型、超时与体积上限、设置页挂载、商店分类与信任等级、强制校验规则 |
-| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 字段约束、26 项权限与 `permission_reasons` 自定义缘由 |
+| 2. 清单与权限 | [plugins/manifest.md](plugins/manifest.md) | 目录结构、`manifest.json` 字段约束、5 类敏感权限与 `permission_reasons` 自定义缘由 |
 | 3. 协议、UI 与骨架 | [plugins/protocol-and-ui.md](plugins/protocol-and-ui.md) | 双向 JSON-RPC 2.0、`host.*` 方法、15 种 `UIPage` 控件与 Python 标准库骨架 |
 | 4. 检查与上架 | [plugins/check-and-store.md](plugins/check-and-store.md) | `block-plugin-check` 本地协议检查、三层双语门禁与 `blockmd-plugin` 商店自动采集 |
 | 5. 宿主界面扩展 | [plugins/ui-contributions.md](plugins/ui-contributions.md) | 顶栏按钮、内置设置分区、命令菜单、侧边面板、状态栏、弹窗与编辑器/外观宿主方法 |
