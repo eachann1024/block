@@ -32,7 +32,7 @@ const (
 	brandOrbX        float32 = 190
 )
 
-// BrandDensity controls how many scene elements are drawn. It never changes their speed.
+// BrandDensity controls how many scene elements are drawn. Animation speed is always leisurely.
 type BrandDensity uint8
 
 const (
@@ -41,34 +41,12 @@ const (
 	BrandDensityMinimal                     // Only the landscape, the orb and the landmark figures.
 )
 
-// BrandTempo controls how fast the scene animates. It never changes what is drawn.
-type BrandTempo uint8
+// brandSceneLeisurelyRate is the fixed unhurried animation clock speed for all brand scenes.
+const brandSceneLeisurelyRate float32 = 0.64
 
-const (
-	BrandTempoLeisurely BrandTempo = iota // Default unhurried pace.
-	BrandTempoSlow                        // Noticeably slower than the default.
-	BrandTempoBrisk                       // The liveliest pace.
-	BrandTempoStill                       // Static illustrated band with zero per-frame animation.
-)
-
-// BrandMotion is the runtime pairing of element density and animation tempo.
+// BrandMotion holds the runtime brand scene motion settings.
 type BrandMotion struct {
 	Density BrandDensity
-	Tempo   BrandTempo
-}
-
-// rate returns the scene clock speed multiplier for the tempo.
-func (t BrandTempo) rate() float32 {
-	switch t {
-	case BrandTempoStill:
-		return 0
-	case BrandTempoSlow:
-		return 0.4
-	case BrandTempoBrisk:
-		return 1
-	default:
-		return 0.64
-	}
 }
 
 // BrandScenePaintOpts configures how PaintBrandSceneBand renders and animates the top band.
@@ -81,7 +59,7 @@ type BrandScenePaintOpts struct {
 	Now        time.Time
 }
 
-// ResolveBrandMotion converts persisted BrandDeco preferences into runtime density and tempo.
+// ResolveBrandMotion converts persisted BrandDeco preferences into runtime motion settings.
 func ResolveBrandMotion(deco model.BrandDeco) BrandMotion {
 	var m BrandMotion
 	switch deco.EffectiveDensity() {
@@ -89,10 +67,6 @@ func ResolveBrandMotion(deco model.BrandDeco) BrandMotion {
 		m.Density = BrandDensityCalm
 	case model.BrandDecoDensityMinimal:
 		m.Density = BrandDensityMinimal
-	}
-	// Legacy still/slow values fall back to leisurely; only leisurely and brisk are offered.
-	if deco.EffectiveTempo() == model.BrandDecoTempoBrisk {
-		m.Tempo = BrandTempoBrisk
 	}
 	return m
 }
