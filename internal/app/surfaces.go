@@ -44,22 +44,25 @@ type TabSurface struct {
 	SavedText       string
 	DiskFingerprint int64
 	FileSize        int64
-	BlockedReason string
-	StatusMsg     string
+	BlockedReason   string
+	StatusMsg       string
+	GetBinding      func() (model.VerifiedFileTarget, bool)
+	OnSavedIdentity func(newInfo os.FileInfo, newID string)
 
 	SVGShowSource bool
 	Zoom          float32
 	ZoomFitMode   bool
 
-	imgMu      sync.Mutex
-	ImgSrc     ui.ImageSource
-	ImgLoaded  bool
-	ImgLoading bool
-	ImgErr     string
-	OnRedraw   func()
-	SVGSrc     *ui.SVG
-	SVGText    string
-	SVGParsed  bool
+	imgMu        sync.Mutex
+	PreviewBytes []byte
+	ImgSrc       ui.ImageSource
+	ImgLoaded    bool
+	ImgLoading   bool
+	ImgErr       string
+	OnRedraw     func()
+	SVGSrc       *ui.SVG
+	SVGText      string
+	SVGParsed    bool
 
 	// FitScale is the scale Fit mode drew the preview at in the last frame,
 	// shown as the titlebar zoom percentage.
@@ -72,6 +75,16 @@ type TabSurface struct {
 
 // NewTabSurface constructs a TabSurface from a ClassifiedFile.
 func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
+	return newTabSurfaceOpts(path, cf, false)
+}
+
+// NewTabSurfacePreloaded constructs a TabSurface from an already-verified and
+// classified file without performing any fallback filesystem I/O on the UI thread.
+func NewTabSurfacePreloaded(path string, cf model.ClassifiedFile) *TabSurface {
+	return newTabSurfaceOpts(path, cf, true)
+}
+
+func newTabSurfaceOpts(path string, cf model.ClassifiedFile, preloaded bool) *TabSurface {
 	var src model.SourceFile
 	hasSource := cf.Source != nil
 	if hasSource {
@@ -82,13 +95,26 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 	}
 	isSVG := files.IsSVGPath(path) || src.SVG
 	isHTML := src.HTML || strings.EqualFold(src.Language, "html")
-	var fileSize int64
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		fileSize = info.Size()
+	fileSize := cf.RawSize
+	if fileSize == 0 {
+		switch {
+		case hasSource:
+			fileSize = int64(len(src.Text))
+		case len(cf.PreviewBytes) > 0:
+			fileSize = int64(len(cf.PreviewBytes))
+		case !preloaded:
+			if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+				fileSize = info.Size()
+			}
+		}
 	}
 	diskFP := src.DiskFingerprint
 	if hasSource && diskFP == 0 {
 		diskFP = files.TextFingerprint(src.Text, src.BOM)
+	}
+	var previewBytes []byte
+	if !isSVG && len(cf.PreviewBytes) > 0 {
+		previewBytes = cf.PreviewBytes
 	}
 	s := &TabSurface{
 		Path:            path,
@@ -103,11 +129,16 @@ func NewTabSurface(path string, cf model.ClassifiedFile) *TabSurface {
 		BlockedReason:   cf.Reason,
 		Zoom:            1.0,
 		ZoomFitMode:     true,
+		PreviewBytes:    previewBytes,
 	}
 	if isSVG {
 		if !hasSource {
-			if raw, err := os.ReadFile(path); err == nil {
-				s.Source.Text = string(raw)
+			if len(cf.PreviewBytes) > 0 {
+				s.Source.Text = string(cf.PreviewBytes)
+			} else if !preloaded && cf.Kind == model.OpenKindPreview && (cf.RawSize == 0 || cf.RawSize <= files.PreviewLimit) {
+				if raw, over, err := files.ReadBoundedRegular(path, files.PreviewLimit); err == nil && !over {
+					s.Source.Text = string(raw)
+				}
 			}
 		}
 		s.reparseSVG()
@@ -137,28 +168,37 @@ func (s *TabSurface) ensureImageLoaded() {
 	}
 	onRedraw := s.OnRedraw
 	path := s.Path
+	preBytes := s.PreviewBytes
+	loadImage := func() (ui.ImageSource, string) {
+		raw := preBytes
+		if len(raw) == 0 {
+			var over bool
+			var err error
+			raw, over, err = files.ReadBoundedRegular(path, files.PreviewLimit)
+			if err != nil {
+				return nil, err.Error()
+			}
+			if over {
+				return nil, theme.Tr("文件超过预览大小上限", "File exceeds preview size limit")
+			}
+		}
+		decoded, decErr := ui.DecodeImage(raw)
+		if decErr != nil {
+			return nil, decErr.Error()
+		}
+		return decoded, ""
+	}
 	if onRedraw != nil && !testing.Testing() && !blockui.IsProbeEnabled() {
 		s.ImgLoading = true
 		s.imgMu.Unlock()
 		go func() {
-			raw, err := os.ReadFile(path)
-			var src ui.ImageSource
-			var errStr string
-			if err != nil {
-				errStr = err.Error()
-			} else {
-				decoded, decErr := ui.DecodeImage(raw)
-				if decErr != nil {
-					errStr = decErr.Error()
-				} else {
-					src = decoded
-				}
-			}
+			src, errStr := loadImage()
 			s.imgMu.Lock()
 			s.ImgLoading = false
 			s.ImgLoaded = true
 			s.ImgSrc = src
 			s.ImgErr = errStr
+			s.PreviewBytes = nil
 			s.imgMu.Unlock()
 			onRedraw()
 		}()
@@ -167,22 +207,11 @@ func (s *TabSurface) ensureImageLoaded() {
 	s.ImgLoaded = true
 	s.imgMu.Unlock()
 
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		s.imgMu.Lock()
-		s.ImgErr = err.Error()
-		s.imgMu.Unlock()
-		return
-	}
-	src, err := ui.DecodeImage(raw)
-	if err != nil {
-		s.imgMu.Lock()
-		s.ImgErr = err.Error()
-		s.imgMu.Unlock()
-		return
-	}
+	src, errStr := loadImage()
 	s.imgMu.Lock()
 	s.ImgSrc = src
+	s.ImgErr = errStr
+	s.PreviewBytes = nil
 	s.imgMu.Unlock()
 }
 

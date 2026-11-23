@@ -62,10 +62,11 @@ type Workspace struct {
 	ghostTitle           string            // title typed on the no-note ghost page
 	noteSource           noteSourceView    // read-only Markdown source view of the active note
 
-	codec    *markdown.Codec
-	sessions map[string]*editor.Session
-	surfaces map[string]*TabSurface
-	nav      *NavHistory
+	codec       *markdown.Codec
+	sessions    map[string]*editor.Session
+	surfaces    map[string]*TabSurface
+	tabBindings map[string]model.VerifiedFileTarget
+	nav         *NavHistory
 	closed   *ClosedTabs
 	tabOps   TabStripOps
 
@@ -159,6 +160,7 @@ func NewWorkspace(dataDir string) *Workspace {
 		codec:                codec,
 		sessions:             make(map[string]*editor.Session),
 		surfaces:             make(map[string]*TabSurface),
+		tabBindings:          make(map[string]model.VerifiedFileTarget),
 		nav:                  NewNavHistory(),
 		closed:               NewClosedTabs(),
 		tabMenu:              NewTabMenuState(),
@@ -1033,14 +1035,68 @@ func (w *Workspace) hydrateInitialWorkspace() {
 			w.RescanNotebook()
 		}
 	}
+	persistedBindings := w.state.TabBindings
 	validTabs := make([]string, 0, len(w.state.OpenTabs))
 	seen := make(map[string]bool, len(w.state.OpenTabs))
+	preloaded := make(map[string]model.ClassifiedFile)
+	restoredBindings := make(map[string]model.VerifiedFileTarget)
 	for _, p := range w.state.OpenTabs {
 		if strings.TrimSpace(p) == "" {
 			continue
 		}
 		clean := filepath.Clean(p)
 		if seen[clean] {
+			continue
+		}
+		if pb, hasPB := persistedBindings[clean]; hasPB && (pb.ConfineRoot != "" || pb.FileIdentity != "") {
+			if pb.ConfineRoot != "" {
+				if pb.ConfineRel == "" || pb.RootIdentity == "" || pb.FileIdentity == "" {
+					continue
+				}
+				cf, fInfo, fID, rInfo, rID, err := files.ClassifyFileInRoot(
+					pb.ConfineRoot, pb.ConfineRel, nil, pb.RootIdentity, nil, pb.FileIdentity,
+				)
+				if err != nil {
+					continue
+				}
+				seen[clean] = true
+				validTabs = append(validTabs, clean)
+				preloaded[clean] = cf
+				restoredBindings[clean] = model.VerifiedFileTarget{
+					AbsPath:         clean,
+					ConfineRoot:     pb.ConfineRoot,
+					ConfineRel:      pb.ConfineRel,
+					ConfineRootInfo: rInfo,
+					FileInfo:        fInfo,
+					RootIdentity:    rID,
+					FileIdentity:    fID,
+					EnforceIdentity: true,
+				}
+				continue
+			}
+			f, fInfo, err := files.OpenRegularNonBlockNoFollow(clean)
+			if err != nil {
+				continue
+			}
+			okID := files.FileIdentityMatches(fInfo, f, pb.FileIdentity)
+			var cf model.ClassifiedFile
+			var cfErr error
+			if okID {
+				cf, cfErr = files.ClassifyFileHandle(clean, f, fInfo)
+			}
+			_ = f.Close()
+			if !okID || cfErr != nil {
+				continue
+			}
+			seen[clean] = true
+			validTabs = append(validTabs, clean)
+			preloaded[clean] = cf
+			restoredBindings[clean] = model.VerifiedFileTarget{
+				AbsPath:         clean,
+				FileInfo:        fInfo,
+				FileIdentity:    pb.FileIdentity,
+				EnforceIdentity: true,
+			}
 			continue
 		}
 		if info, err := os.Stat(clean); err == nil && info.Mode().IsRegular() {
@@ -1066,9 +1122,19 @@ func (w *Workspace) hydrateInitialWorkspace() {
 			active = ""
 		}
 	}
-	changed := active != w.state.ActiveTab || !stringSlicesEqual(validTabs, w.state.OpenTabs)
+	changed := active != w.state.ActiveTab || !stringSlicesEqual(validTabs, w.state.OpenTabs) || len(persistedBindings) != len(restoredBindings)
 	w.state.OpenTabs = validTabs
 	w.state.ActiveTab = active
+	if len(restoredBindings) > 0 {
+		w.mu.Lock()
+		if w.tabBindings == nil {
+			w.tabBindings = make(map[string]model.VerifiedFileTarget, len(restoredBindings))
+		}
+		for k, v := range restoredBindings {
+			w.tabBindings[k] = v
+		}
+		w.mu.Unlock()
+	}
 	if changed {
 		w.persistTabs(validTabs, active)
 	}
@@ -1084,7 +1150,22 @@ func (w *Workspace) hydrateInitialWorkspace() {
 				dir = parent
 			}
 		}
-		_ = w.ensureTabLoaded(active)
+		if cf, ok := preloaded[active]; ok {
+			b := restoredBindings[active]
+			noteDir, noteDirInfo, projRoot, projRootInfo, belongs := capturePathScopeAnchor(active, w.state.Folder)
+			prep := model.PreparedTabTarget{
+				TabPath:           active,
+				Verified:          b,
+				NoteDir:           noteDir,
+				NoteDirInfo:       noteDirInfo,
+				ProjRoot:          projRoot,
+				ProjRootInfo:      projRootInfo,
+				NoteBelongsToProj: belongs,
+			}
+			w.installClassifiedTabPrepared(active, cf, &b, &prep, true)
+		} else {
+			_ = w.ensureTabLoaded(active)
+		}
 		w.nav.Push(active)
 	}
 	if w.state.Folder != "" {
@@ -1315,6 +1396,33 @@ func (w *Workspace) ActiveSurface() *TabSurface {
 	return w.SurfaceFor(w.ActiveNotePath())
 }
 
+func capturePathScopeAnchor(tabPath, projRoot string) (noteDir string, noteDirInfo os.FileInfo, cleanProj string, projRootInfo os.FileInfo, noteBelongsToProj bool) {
+	if strings.TrimSpace(tabPath) != "" {
+		noteDir = filepath.Clean(filepath.Dir(tabPath))
+		if st, err := os.Stat(noteDir); err == nil && st.IsDir() {
+			noteDirInfo = st
+		}
+	}
+	if strings.TrimSpace(projRoot) != "" {
+		cleanProj = filepath.Clean(projRoot)
+		if st, err := os.Stat(cleanProj); err == nil && st.IsDir() {
+			projRootInfo = st
+		}
+	}
+	if noteDir != "" && cleanProj != "" {
+		if rel, err := filepath.Rel(cleanProj, noteDir); err == nil && (rel == "." || filepath.IsLocal(rel)) {
+			noteBelongsToProj = true
+		} else if realProj, errP := filepath.EvalSymlinks(cleanProj); errP == nil && realProj != "" {
+			if realNote, errN := filepath.EvalSymlinks(noteDir); errN == nil && realNote != "" {
+				if relR, errR := filepath.Rel(realProj, realNote); errR == nil && (relR == "." || filepath.IsLocal(relR)) {
+					noteBelongsToProj = true
+				}
+			}
+		}
+	}
+	return
+}
+
 func (w *Workspace) ensureTabLoaded(path string) error {
 	clean := filepath.Clean(path)
 	w.mu.RLock()
@@ -1326,32 +1434,207 @@ func (w *Workspace) ensureTabLoaded(path string) error {
 		w.mu.RUnlock()
 		return nil
 	}
+	binding, hasBind := w.tabBindings[clean]
+	folder := w.state.Folder
 	w.mu.RUnlock()
 
-	cf, err := files.ClassifyFile(clean)
-	if err != nil {
-		files.LogErrorf("note read failed: path=%s err=%v", clean, err)
-		return err
+	var (
+		cf       model.ClassifiedFile
+		verified model.VerifiedFileTarget
+		err      error
+	)
+	if hasBind && binding.ConfineRoot != "" {
+		var fInfo, rInfo os.FileInfo
+		var fID, rID string
+		cf, fInfo, fID, rInfo, rID, err = files.ClassifyFileInRoot(
+			binding.ConfineRoot, binding.ConfineRel,
+			binding.ConfineRootInfo, binding.RootIdentity,
+			binding.FileInfo, binding.FileIdentity,
+		)
+		if err != nil {
+			files.LogErrorf("confined note read failed: path=%s err=%v", clean, err)
+			return err
+		}
+		binding.ConfineRootInfo = rInfo
+		binding.RootIdentity = rID
+		binding.FileInfo = fInfo
+		binding.FileIdentity = fID
+		binding.EnforceIdentity = true
+		verified = binding
+	} else if hasBind && binding.EnforceIdentity {
+		f, fInfo, openErr := files.OpenRegularNonBlockNoFollow(clean)
+		if openErr != nil {
+			files.LogErrorf("checked note read failed: path=%s err=%v", clean, openErr)
+			return openErr
+		}
+		okID := true
+		if binding.FileInfo != nil && !os.SameFile(fInfo, binding.FileInfo) {
+			okID = false
+		}
+		if okID && binding.FileIdentity != "" && !files.FileIdentityMatches(fInfo, f, binding.FileIdentity) {
+			okID = false
+		}
+		if okID {
+			cf, err = files.ClassifyFileHandle(clean, f, fInfo)
+		} else {
+			err = errors.New("target file identity changed")
+		}
+		fID := files.FileIdentityToken(fInfo, f)
+		_ = f.Close()
+		if err != nil {
+			files.LogErrorf("checked note read failed: path=%s err=%v", clean, err)
+			return err
+		}
+		binding.FileInfo = fInfo
+		binding.FileIdentity = fID
+		verified = binding
+	} else {
+		var fInfo os.FileInfo
+		var fID string
+		cf, fInfo, fID, err = files.ClassifyFileWithInfo(clean)
+		if err != nil {
+			files.LogErrorf("note read failed: path=%s err=%v", clean, err)
+			return err
+		}
+		verified = model.VerifiedFileTarget{
+			AbsPath:         clean,
+			FileInfo:        fInfo,
+			FileIdentity:    fID,
+			EnforceIdentity: false,
+		}
 	}
-	w.installClassifiedTab(clean, cf)
+	noteDir, noteDirInfo, projRoot, projRootInfo, belongs := capturePathScopeAnchor(clean, folder)
+	prep := model.PreparedTabTarget{
+		TabPath:           clean,
+		Verified:          verified,
+		NoteDir:           noteDir,
+		NoteDirInfo:       noteDirInfo,
+		ProjRoot:          projRoot,
+		ProjRootInfo:      projRootInfo,
+		NoteBelongsToProj: belongs,
+	}
+	w.installClassifiedTabPrepared(clean, cf, &verified, &prep, false)
 	return nil
 }
 
+func (w *Workspace) tabBinding(path string) (model.VerifiedFileTarget, bool) {
+	clean := filepath.Clean(path)
+	w.mu.RLock()
+	b, ok := w.tabBindings[clean]
+	w.mu.RUnlock()
+	return b, ok
+}
+
+func (w *Workspace) updateTabBindingIdentity(path string, info os.FileInfo, id string) {
+	if info == nil && id == "" {
+		return
+	}
+	clean := filepath.Clean(path)
+	var persistTabs []string
+	var persistActive string
+	needPersist := false
+	w.mu.Lock()
+	b, ok := w.tabBindings[clean]
+	if !ok {
+		b = model.VerifiedFileTarget{AbsPath: clean}
+	}
+	if info != nil {
+		b.FileInfo = info
+	}
+	if id != "" {
+		b.FileIdentity = id
+	}
+	if w.tabBindings == nil {
+		w.tabBindings = make(map[string]model.VerifiedFileTarget)
+	}
+	w.tabBindings[clean] = b
+	if b.ConfineRoot != "" || b.EnforceIdentity {
+		needPersist = true
+		persistTabs = append([]string(nil), w.state.OpenTabs...)
+		persistActive = w.state.ActiveTab
+	}
+	w.mu.Unlock()
+	if needPersist {
+		w.persistTabs(persistTabs, persistActive)
+	}
+}
+
+func (w *Workspace) readTabDiskNote(path string) (string, int64, error) {
+	if b, ok := w.tabBinding(path); ok {
+		if b.ConfineRoot != "" {
+			return files.ReadNoteInRoot(b.ConfineRoot, b.ConfineRel, b.ConfineRootInfo, b.FileInfo)
+		}
+		if b.EnforceIdentity && b.FileInfo != nil {
+			return files.ReadNoteChecked(path, b.FileInfo)
+		}
+	}
+	return files.ReadNote(path)
+}
+
+func (w *Workspace) ensureClassifiedTabLoaded(clean string, cf model.ClassifiedFile, verified *model.VerifiedFileTarget, prep *model.PreparedTabTarget, preloaded bool) {
+	w.mu.RLock()
+	if _, ok := w.sessions[clean]; ok {
+		w.mu.RUnlock()
+		return
+	}
+	if _, ok := w.surfaces[clean]; ok {
+		w.mu.RUnlock()
+		return
+	}
+	w.mu.RUnlock()
+	w.installClassifiedTabPrepared(clean, cf, verified, prep, preloaded)
+}
+
 func (w *Workspace) installClassifiedTab(clean string, cf model.ClassifiedFile) {
+	w.installClassifiedTabPrepared(clean, cf, nil, nil, false)
+}
+
+func (w *Workspace) installClassifiedTabPrepared(clean string, cf model.ClassifiedFile, verified *model.VerifiedFileTarget, prep *model.PreparedTabTarget, preloaded bool) {
 	files.LogInfof("note opened: path=%s bytes=%d kind=%s", clean, cf.RawSize, openKindName(cf.Kind))
 	if cf.Kind == model.OpenKindMarkdown {
 		doc := w.codec.Parse(cf.Text)
 		sess := w.newEditorSession(clean, doc)
 		sess.SetDiskFingerprint(files.TextFingerprint(cf.Text, false))
+		if prep != nil {
+			sess.SetPathScopeAnchor(prep.NoteDir, prep.NoteDirInfo, prep.ProjRoot, prep.ProjRootInfo, prep.NoteBelongsToProj)
+		}
 		w.mu.Lock()
+		if oldSess := w.sessions[clean]; oldSess != nil && oldSess != sess {
+			defer oldSess.Close()
+		}
 		delete(w.surfaces, clean)
 		w.sessions[clean] = sess
+		if verified != nil {
+			if w.tabBindings == nil {
+				w.tabBindings = make(map[string]model.VerifiedFileTarget)
+			}
+			v := *verified
+			v.AbsPath = clean
+			w.tabBindings[clean] = v
+		} else {
+			delete(w.tabBindings, clean)
+		}
 		w.mu.Unlock()
 		return
 	}
 
-	surf := NewTabSurface(clean, cf)
+	var surf *TabSurface
+	if preloaded {
+		surf = NewTabSurfacePreloaded(clean, cf)
+	} else {
+		surf = NewTabSurface(clean, cf)
+	}
 	surf.OnRedraw = w.RequestRedraw
+	surf.GetBinding = func() (model.VerifiedFileTarget, bool) {
+		b, ok := w.tabBinding(surf.Path)
+		if !ok || (b.ConfineRoot == "" && !b.EnforceIdentity) {
+			return model.VerifiedFileTarget{}, false
+		}
+		return b, true
+	}
+	surf.OnSavedIdentity = func(newInfo os.FileInfo, newID string) {
+		w.updateTabBindingIdentity(surf.Path, newInfo, newID)
+	}
 	w.mu.Lock()
 	if oldSess := w.sessions[clean]; oldSess != nil {
 		delete(w.sessions, clean)
@@ -1359,6 +1642,16 @@ func (w *Workspace) installClassifiedTab(clean string, cf model.ClassifiedFile) 
 		defer oldSess.Close()
 	}
 	w.surfaces[clean] = surf
+	if verified != nil {
+		if w.tabBindings == nil {
+			w.tabBindings = make(map[string]model.VerifiedFileTarget)
+		}
+		v := *verified
+		v.AbsPath = clean
+		w.tabBindings[clean] = v
+	} else {
+		delete(w.tabBindings, clean)
+	}
 	w.mu.Unlock()
 }
 
@@ -1375,7 +1668,7 @@ func (w *Workspace) OpenExportStage() bool {
 	wholeDoc, selectionDoc := sess.Doc(), sess.SelectedDoc()
 	w.FlushDirtySessions()
 	if selectionDoc == nil && !sess.Dirty() {
-		if diskText, _, err := files.ReadNote(active); err == nil && diskText != sess.Markdown() {
+		if diskText, _, err := w.readTabDiskNote(active); err == nil && diskText != sess.Markdown() {
 			wholeDoc = w.codec.Parse(diskText)
 		}
 	}
@@ -1411,7 +1704,7 @@ func (w *Workspace) OpenPageHistory() bool {
 	if err := w.FlushDirtySessions(); err != nil {
 		return false
 	}
-	curText, fingerprint, err := files.ReadNote(active)
+	curText, fingerprint, err := w.readTabDiskNote(active)
 	if err != nil {
 		w.setNotice(err.Error())
 		return false
@@ -1783,7 +2076,127 @@ func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() er
 }
 
 func (w *Workspace) OpenNote(absPath string, lineHint int) error {
-	return w.openNoteInternal(absPath, true, true, lineHint)
+	return w.openNoteInternalPos(absPath, true, true, lineHint, 0)
+}
+
+func (w *Workspace) OpenNoteAt(absPath string, lineHint, colHint int) error {
+	return w.openNoteInternalPos(absPath, true, true, lineHint, colHint)
+}
+
+// OpenClassifiedAt opens an already-validated and classified file without
+// re-opening absPath from disk. Reuses existing tabs by verified file identity
+// and verifies the bound path still refers to target.FileInfo before binding.
+func (w *Workspace) OpenClassifiedAt(target model.VerifiedFileTarget, cf model.ClassifiedFile, lineHint, colHint int) error {
+	prep, err := w.PrepareClassifiedTarget(target)
+	if err != nil {
+		return err
+	}
+	return w.ApplyPreparedClassifiedAt(prep, cf, lineHint, colHint)
+}
+
+// PrepareClassifiedTarget runs off the UI thread to match an already-verified file
+// against open tabs, validate its bound path on disk, and capture its directory scope
+// anchor so ApplyPreparedClassifiedAt can apply tab state with zero blocking I/O.
+func (w *Workspace) PrepareClassifiedTarget(target model.VerifiedFileTarget) (model.PreparedTabTarget, error) {
+	return w.prepareVerifiedOpenTabTarget(target)
+}
+
+// ApplyPreparedClassifiedAt applies a background-prepared verified tab target on the
+// main thread without performing blocking filesystem I/O against the target or open tabs.
+func (w *Workspace) ApplyPreparedClassifiedAt(prep model.PreparedTabTarget, cf model.ClassifiedFile, lineHint, colHint int) error {
+	return w.applyPreparedClassifiedPos(prep, cf, true, true, lineHint, colHint)
+}
+
+func (w *Workspace) RunOnMain(fn func()) bool {
+	if fn == nil || !mygo.App.IsReady() {
+		return false
+	}
+	mygo.RunOnMain(fn)
+	return true
+}
+
+func (w *Workspace) RevealPath(absPath string) {
+	w.revealInShell(absPath)
+}
+
+// PrepareRevealDirectory resolves whether absPath belongs to the active notebook
+// on a background goroutine so ApplyPreparedRevealDirectory does no blocking I/O.
+func (w *Workspace) PrepareRevealDirectory(absPath string) model.PreparedDirectoryTarget {
+	clean := filepath.Clean(strings.TrimSpace(absPath))
+	if clean == "" {
+		return model.PreparedDirectoryTarget{}
+	}
+	w.mu.RLock()
+	folder := w.state.Folder
+	w.mu.RUnlock()
+
+	if folder != "" {
+		realRoot, errRoot := filepath.EvalSymlinks(folder)
+		realTarget, errTarget := filepath.EvalSymlinks(clean)
+		if errRoot == nil && errTarget == nil {
+			if rel, err := filepath.Rel(realRoot, realTarget); err == nil && (rel == "." || filepath.IsLocal(rel)) {
+				nbDir := filepath.Clean(folder)
+				if rel != "." {
+					nbDir = filepath.Clean(filepath.Join(folder, rel))
+				}
+				return model.PreparedDirectoryTarget{
+					AbsPath:        clean,
+					InNotebook:     true,
+					NotebookFolder: folder,
+					NotebookDir:    nbDir,
+				}
+			}
+		}
+	}
+	return model.PreparedDirectoryTarget{AbsPath: clean}
+}
+
+// ApplyPreparedRevealDirectory applies a background-resolved directory reveal target
+// on the main thread without calling EvalSymlinks or Stat on the target path.
+func (w *Workspace) ApplyPreparedRevealDirectory(prep model.PreparedDirectoryTarget) {
+	if prep.AbsPath == "" {
+		return
+	}
+	if prep.InNotebook && prep.NotebookFolder != "" && prep.NotebookDir != "" {
+		w.mu.Lock()
+		stillSameFolder := w.state.Folder == prep.NotebookFolder
+		wasCollapsed := false
+		if stillSameFolder {
+			dir := prep.NotebookDir
+			for dir != "" && dir != prep.NotebookFolder && strings.HasPrefix(dir, prep.NotebookFolder+string(filepath.Separator)) {
+				w.sidebarUI.ExpandedDirs[dir] = true
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					break
+				}
+				dir = parent
+			}
+			w.sidebarUI.FocusDir = prep.NotebookDir
+			wasCollapsed = w.state.SidebarCollapsed
+			w.state.SidebarCollapsed = false
+			w.sidebarPinned = true
+			w.clearSidebarExpandCueLocked()
+		}
+		w.mu.Unlock()
+		if stillSameFolder {
+			if wasCollapsed {
+				_, _ = files.UpdateState(func(st *model.AppState) {
+					st.SidebarCollapsed = false
+				})
+			}
+			w.RequestRedraw()
+			return
+		}
+	}
+	w.revealInShell(prep.AbsPath)
+}
+
+func (w *Workspace) RevealDirectory(absPath string) {
+	w.ApplyPreparedRevealDirectory(w.PrepareRevealDirectory(absPath))
+}
+
+func (w *Workspace) NotifyPathError(msg string) {
+	w.setNotice(msg)
 }
 
 // openRootValidatedNote opens a note already verified and read through an
@@ -1879,14 +2292,273 @@ func (w *Workspace) openRootValidatedNote(notebookRoot, relPath string, rootInfo
 }
 
 func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav bool, lineHint int) error {
+	return w.openNoteInternalPos(absPath, forceNewTab, recordNav, lineHint, 0)
+}
+
+func (w *Workspace) canonicalOpenTabPath(clean string) string {
+	w.mu.RLock()
+	tabsSnap := append([]string(nil), w.state.OpenTabs...)
+	activeSnap := w.state.ActiveTab
+	folder := w.state.Folder
+	w.mu.RUnlock()
+
+	if activeSnap != "" && !slices.Contains(tabsSnap, activeSnap) {
+		tabsSnap = append(tabsSnap, activeSnap)
+	}
+	if existing := findExistingTabForFile(tabsSnap, clean); existing != "" {
+		return existing
+	}
+	if lstat, err := os.Lstat(clean); err == nil && lstat.Mode()&os.ModeSymlink != 0 {
+		if realTarget, evalErr := filepath.EvalSymlinks(clean); evalErr == nil && realTarget != "" {
+			if folder != "" {
+				if realRoot, rootErr := filepath.EvalSymlinks(folder); rootErr == nil {
+					if rel, relErr := filepath.Rel(realRoot, realTarget); relErr == nil && rel != "." && filepath.IsLocal(rel) {
+						nbPath := filepath.Clean(filepath.Join(folder, rel))
+						if sameFileOnDisk(nbPath, realTarget) {
+							return nbPath
+						}
+					}
+				}
+			}
+			return filepath.Clean(realTarget)
+		}
+	}
+	return clean
+}
+
+func mergeTabBindingOnReuse(tabPath string, existing, incoming model.VerifiedFileTarget) model.VerifiedFileTarget {
+	out := incoming
+	out.AbsPath = tabPath
+	out.EnforceIdentity = true
+	if out.ConfineRoot == "" && existing.ConfineRoot != "" {
+		out.ConfineRoot = existing.ConfineRoot
+		out.ConfineRel = existing.ConfineRel
+		out.ConfineRootInfo = existing.ConfineRootInfo
+		out.RootIdentity = existing.RootIdentity
+	}
+	return out
+}
+
+func (w *Workspace) prepareVerifiedOpenTabTarget(target model.VerifiedFileTarget) (model.PreparedTabTarget, error) {
+	if strings.TrimSpace(target.AbsPath) == "" {
+		return model.PreparedTabTarget{}, errors.New("empty note path")
+	}
+	clean := filepath.Clean(target.AbsPath)
+	target.AbsPath = clean
+	target.EnforceIdentity = true
+
+	w.mu.RLock()
+	tabsSnap := append([]string(nil), w.state.OpenTabs...)
+	activeSnap := w.state.ActiveTab
+	folder := w.state.Folder
+	bindingsSnap := make(map[string]model.VerifiedFileTarget, len(w.tabBindings))
+	for k, v := range w.tabBindings {
+		bindingsSnap[k] = v
+	}
+	loadedSnap := make(map[string]bool, len(w.sessions)+len(w.surfaces))
+	dirtySnap := make(map[string]bool, len(w.sessions)+len(w.surfaces))
+	for k, s := range w.sessions {
+		loadedSnap[k] = true
+		if s != nil && s.Dirty() {
+			dirtySnap[k] = true
+		}
+	}
+	for k, sf := range w.surfaces {
+		loadedSnap[k] = true
+		if sf != nil && sf.IsDirty() {
+			dirtySnap[k] = true
+		}
+	}
+	w.mu.RUnlock()
+
+	if activeSnap != "" && !slices.Contains(tabsSnap, activeSnap) {
+		tabsSnap = append(tabsSnap, activeSnap)
+	}
+
+	buildPrepared := func(tabPath string, reused bool, merged model.VerifiedFileTarget) model.PreparedTabTarget {
+		noteDir, noteDirInfo, projRoot, projRootInfo, belongs := capturePathScopeAnchor(tabPath, folder)
+		return model.PreparedTabTarget{
+			TabPath:           tabPath,
+			ReusedTab:         reused,
+			Verified:          merged,
+			NoteDir:           noteDir,
+			NoteDirInfo:       noteDirInfo,
+			ProjRoot:          projRoot,
+			ProjRootInfo:      projRootInfo,
+			NoteBelongsToProj: belongs,
+		}
+	}
+
+	// 1. Reuse an already-open tab matching the verified file's exact identity.
+	if target.FileInfo != nil {
+		// Pass 1a: in-memory check against recorded file identities (zero disk I/O).
+		for _, t := range tabsSnap {
+			ct := filepath.Clean(t)
+			if b, ok := bindingsSnap[ct]; ok && b.FileInfo != nil && os.SameFile(b.FileInfo, target.FileInfo) {
+				return buildPrepared(ct, true, mergeTabBindingOnReuse(ct, b, target)), nil
+			}
+		}
+		// Pass 1b: unloaded lazy tabs only (runs off the UI thread).
+		for _, t := range tabsSnap {
+			ct := filepath.Clean(t)
+			if loadedSnap[ct] {
+				continue
+			}
+			if info, err := os.Stat(ct); err == nil && info.Mode().IsRegular() && os.SameFile(info, target.FileInfo) {
+				return buildPrepared(ct, true, mergeTabBindingOnReuse(ct, bindingsSnap[ct], target)), nil
+			}
+		}
+	}
+
+	// 2. Verify the bound path still refers to the exact verified regular file
+	// without following any newly-introduced leaf symlink or swapped confined root.
+	chosenPath := clean
+	if target.ConfineRoot != "" {
+		root, err := os.OpenRoot(target.ConfineRoot)
+		if err != nil {
+			return model.PreparedTabTarget{}, err
+		}
+		rInfo, rID, rErr := files.RootDirIdentityToken(root)
+		var linfo os.FileInfo
+		var lErr error
+		if rErr == nil {
+			if target.ConfineRootInfo != nil && !os.SameFile(rInfo, target.ConfineRootInfo) {
+				rErr = errors.New("confined root directory changed while opening")
+			} else if target.RootIdentity != "" && rID != target.RootIdentity {
+				rErr = errors.New("confined root directory changed while opening")
+			} else {
+				linfo, lErr = root.Lstat(target.ConfineRel)
+			}
+		}
+		_ = root.Close()
+		if rErr != nil {
+			return model.PreparedTabTarget{}, rErr
+		}
+		if lErr != nil {
+			return model.PreparedTabTarget{}, lErr
+		}
+		if !linfo.Mode().IsRegular() || (target.FileInfo != nil && !os.SameFile(linfo, target.FileInfo)) {
+			return model.PreparedTabTarget{}, errors.New("target file changed while opening")
+		}
+	} else {
+		// Unconfined absolute target: prefer notebook display path only if its leaf is a
+		// regular file matching the exact verified inode.
+		matchedNotebook := false
+		if folder != "" {
+			if realRoot, rootErr := filepath.EvalSymlinks(folder); rootErr == nil {
+				if rel, relErr := filepath.Rel(realRoot, clean); relErr == nil && rel != "." && filepath.IsLocal(rel) {
+					nbPath := filepath.Clean(filepath.Join(folder, rel))
+					if linfo, lErr := os.Lstat(nbPath); lErr == nil && linfo.Mode().IsRegular() &&
+						(target.FileInfo == nil || os.SameFile(linfo, target.FileInfo)) {
+						chosenPath = nbPath
+						matchedNotebook = true
+					}
+				}
+			}
+		}
+		if !matchedNotebook {
+			curInfo, err := os.Lstat(clean)
+			if err != nil {
+				return model.PreparedTabTarget{}, err
+			}
+			if !curInfo.Mode().IsRegular() || (target.FileInfo != nil && !os.SameFile(curInfo, target.FileInfo)) {
+				return model.PreparedTabTarget{}, errors.New("target file changed while opening")
+			}
+		}
+	}
+
+	if loadedSnap[chosenPath] && dirtySnap[chosenPath] {
+		if b, ok := bindingsSnap[chosenPath]; ok && b.FileInfo != nil && target.FileInfo != nil && !os.SameFile(b.FileInfo, target.FileInfo) {
+			return model.PreparedTabTarget{}, errors.New("target file identity conflicts with unsaved open tab")
+		}
+	}
+
+	target.AbsPath = chosenPath
+	return buildPrepared(chosenPath, false, target), nil
+}
+
+func (w *Workspace) openNoteInternalPos(absPath string, forceNewTab bool, recordNav bool, lineHint, colHint int) error {
 	if strings.TrimSpace(absPath) == "" {
 		return errors.New("empty note path")
 	}
-	clean := filepath.Clean(absPath)
+	clean := w.canonicalOpenTabPath(filepath.Clean(absPath))
 	if err := w.ensureTabLoaded(clean); err != nil {
 		return err
 	}
+	return w.focusLoadedTabPos(clean, forceNewTab, recordNav, lineHint, colHint, false)
+}
 
+func (w *Workspace) applyPreparedClassifiedPos(prep model.PreparedTabTarget, cf model.ClassifiedFile, forceNewTab bool, recordNav bool, lineHint, colHint int) error {
+	if strings.TrimSpace(prep.TabPath) == "" {
+		return errors.New("empty note path")
+	}
+	clean := filepath.Clean(prep.TabPath)
+	verified := prep.Verified
+	verified.AbsPath = clean
+	verified.EnforceIdentity = true
+
+	bindingChanged := false
+	if prep.ReusedTab {
+		w.mu.Lock()
+		sess := w.sessions[clean]
+		surf := w.surfaces[clean]
+		alreadyLoaded := sess != nil || surf != nil
+		if alreadyLoaded {
+			if curB, ok := w.tabBindings[clean]; ok && curB.FileInfo != nil && verified.FileInfo != nil && !os.SameFile(curB.FileInfo, verified.FileInfo) {
+				w.mu.Unlock()
+				return errors.New("open tab file identity changed while opening")
+			}
+			prevB, hadPrev := w.tabBindings[clean]
+			if w.tabBindings == nil {
+				w.tabBindings = make(map[string]model.VerifiedFileTarget)
+			}
+			w.tabBindings[clean] = verified
+			if !hadPrev || prevB.ConfineRoot != verified.ConfineRoot || prevB.ConfineRel != verified.ConfineRel ||
+				prevB.RootIdentity != verified.RootIdentity || prevB.FileIdentity != verified.FileIdentity || !prevB.EnforceIdentity {
+				bindingChanged = true
+			}
+			if sess != nil && (prep.NoteDirInfo != nil || prep.ProjRootInfo != nil) {
+				sess.SetPathScopeAnchor(prep.NoteDir, prep.NoteDirInfo, prep.ProjRoot, prep.ProjRootInfo, prep.NoteBelongsToProj)
+			}
+		}
+		w.mu.Unlock()
+		if !alreadyLoaded {
+			w.installClassifiedTabPrepared(clean, cf, &verified, &prep, true)
+			bindingChanged = true
+		}
+	} else {
+		w.mu.RLock()
+		existingSess := w.sessions[clean]
+		existingSurf := w.surfaces[clean]
+		curB, hasCurB := w.tabBindings[clean]
+		w.mu.RUnlock()
+
+		sameExisting := (existingSess != nil || existingSurf != nil) &&
+			hasCurB && curB.FileInfo != nil && verified.FileInfo != nil && os.SameFile(curB.FileInfo, verified.FileInfo)
+		if sameExisting {
+			w.mu.Lock()
+			if w.tabBindings == nil {
+				w.tabBindings = make(map[string]model.VerifiedFileTarget)
+			}
+			w.tabBindings[clean] = mergeTabBindingOnReuse(clean, curB, verified)
+			if existingSess != nil && (prep.NoteDirInfo != nil || prep.ProjRootInfo != nil) {
+				existingSess.SetPathScopeAnchor(prep.NoteDir, prep.NoteDirInfo, prep.ProjRoot, prep.ProjRootInfo, prep.NoteBelongsToProj)
+			}
+			w.mu.Unlock()
+			bindingChanged = true
+		} else {
+			if (existingSess != nil && existingSess.Dirty()) || (existingSurf != nil && existingSurf.IsDirty()) {
+				return errors.New("target file identity conflicts with unsaved open tab")
+			}
+			w.installClassifiedTabPrepared(clean, cf, &verified, &prep, true)
+			bindingChanged = true
+		}
+	}
+
+	return w.focusLoadedTabPos(clean, forceNewTab, recordNav, lineHint, colHint, bindingChanged)
+}
+
+func (w *Workspace) focusLoadedTabPos(clean string, forceNewTab bool, recordNav bool, lineHint, colHint int, bindingChanged bool) error {
 	w.modals.CloseSettings()
 	w.exportCtrl.Close()
 	w.historyView.Close()
@@ -1947,12 +2619,14 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		if s := w.sessions[prevActive]; s != nil && !inFlight && !s.Dirty() && (!hasLastDisk || s.Markdown() == lastDiskMD) {
 			evictedSess = s
 			delete(w.sessions, prevActive)
+			delete(w.tabBindings, prevClean)
 			delete(w.virtualPreview, prevActive)
 			delete(w.lastSnapAt, prevActive)
 			delete(w.lastDiskMarkdown, prevClean)
 		}
 		if sf := w.surfaces[prevActive]; sf != nil && !sf.IsDirty() {
 			delete(w.surfaces, prevActive)
+			delete(w.tabBindings, prevClean)
 		}
 	}
 
@@ -1966,6 +2640,7 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 	}
 
 	sess := w.sessions[clean]
+	surf := w.surfaces[clean]
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
 	tabsChanged := active != prevActive || len(tabs) != len(prevTabs)
@@ -1993,9 +2668,11 @@ func (w *Workspace) openNoteInternal(absPath string, forceNewTab bool, recordNav
 		sess.ClearFocus()
 	}
 	if sess != nil && lineHint > 0 {
-		sess.JumpToSearchHit(model.SearchHit{Line: lineHint, Column: -1})
+		sess.JumpToSourcePos(lineHint, colHint)
+	} else if surf != nil && lineHint > 0 {
+		surf.JumpToLine(lineHint, colHint)
 	}
-	if tabsChanged {
+	if tabsChanged || bindingChanged {
 		w.persistTabs(tabs, active)
 	}
 	w.RequestRedraw()
@@ -2351,6 +3028,7 @@ func (w *Workspace) SetNotebook(folder string) error {
 	if switched {
 		w.sessions = make(map[string]*editor.Session)
 		w.surfaces = make(map[string]*TabSurface)
+		w.tabBindings = make(map[string]model.VerifiedFileTarget)
 		w.virtualPreview = make(map[string]bool)
 		w.lastSnapAt = make(map[string]time.Time)
 		w.lastDiskMarkdown = make(map[string]string)
@@ -2566,6 +3244,7 @@ func (w *Workspace) ForgetNotebook(root string) {
 			w.lastScanErr = ""
 			w.sessions = make(map[string]*editor.Session)
 			w.surfaces = make(map[string]*TabSurface)
+			w.tabBindings = make(map[string]model.VerifiedFileTarget)
 			w.virtualPreview = make(map[string]bool)
 			w.lastSnapAt = make(map[string]time.Time)
 			w.lastDiskMarkdown = make(map[string]string)
@@ -3062,11 +3741,17 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	}
 	w.lastDiskMarkdown = nextDiskMD
 
+	type renamedSessEntry struct {
+		path string
+		sess *editor.Session
+	}
+	var renamedSessions []renamedSessEntry
 	nextSessions := make(map[string]*editor.Session, len(w.sessions))
 	for k, sess := range w.sessions {
 		if next, ok := rebase(k); ok {
 			sess.SetNotePath(next)
 			nextSessions[next] = sess
+			renamedSessions = append(renamedSessions, renamedSessEntry{path: next, sess: sess})
 		} else {
 			nextSessions[k] = sess
 		}
@@ -3084,9 +3769,38 @@ func (w *Workspace) rebaseRenamedPaths(from, to string) {
 	}
 	w.surfaces = nextSurfaces
 
+	nextBindings := make(map[string]model.VerifiedFileTarget, len(w.tabBindings))
+	for k, b := range w.tabBindings {
+		if next, ok := rebase(k); ok {
+			b.AbsPath = next
+			if b.ConfineRoot != "" {
+				if rel, err := filepath.Rel(b.ConfineRoot, next); err == nil && filepath.IsLocal(rel) {
+					b.ConfineRel = rel
+				} else {
+					b.ConfineRoot = ""
+					b.ConfineRel = ""
+					b.ConfineRootInfo = nil
+					b.RootIdentity = ""
+				}
+			}
+			nextBindings[filepath.Clean(next)] = b
+		} else {
+			nextBindings[k] = b
+		}
+	}
+	w.tabBindings = nextBindings
+
 	tabs := append([]string(nil), w.state.OpenTabs...)
 	active := w.state.ActiveTab
+	folder := w.state.Folder
 	w.mu.Unlock()
+
+	for _, rs := range renamedSessions {
+		if rs.sess != nil {
+			noteDir, noteDirInfo, projRoot, projRootInfo, belongs := capturePathScopeAnchor(rs.path, folder)
+			rs.sess.SetPathScopeAnchor(noteDir, noteDirInfo, projRoot, projRootInfo, belongs)
+		}
+	}
 
 	w.persistTabs(tabs, active)
 
@@ -3132,6 +3846,11 @@ func (w *Workspace) removeClosedOrDeletedPath(target string) {
 	for k := range w.surfaces {
 		if matches(k) {
 			delete(w.surfaces, k)
+		}
+	}
+	for k := range w.tabBindings {
+		if matches(k) {
+			delete(w.tabBindings, k)
 		}
 	}
 	w.closed.RemoveUnder(cleanTarget)
@@ -3249,6 +3968,7 @@ func (w *Workspace) CloseTab(path string) {
 	closedSess := w.sessions[clean]
 	delete(w.sessions, clean)
 	delete(w.surfaces, clean)
+	delete(w.tabBindings, clean)
 	delete(w.lastDiskMarkdown, clean)
 	if w.historyToast != nil && filepath.Clean(w.historyToast.NotePath) == clean {
 		w.historyToast = nil
@@ -3379,6 +4099,7 @@ func (w *Workspace) CloseOtherTabs(keepPath string) {
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
+		delete(w.tabBindings, filepath.Clean(p))
 		delete(w.lastSnapAt, p)
 		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
@@ -3449,6 +4170,7 @@ func (w *Workspace) CloseTabsToRight(pivotPath string) {
 		delete(w.virtualPreview, p)
 		delete(w.sessions, p)
 		delete(w.surfaces, p)
+		delete(w.tabBindings, filepath.Clean(p))
 		delete(w.lastSnapAt, p)
 		delete(w.lastDiskMarkdown, filepath.Clean(p))
 	}
@@ -3502,6 +4224,7 @@ func (w *Workspace) CloseAllTabs() {
 	w.virtualPreview = make(map[string]bool)
 	w.sessions = make(map[string]*editor.Session)
 	w.surfaces = make(map[string]*TabSurface)
+	w.tabBindings = make(map[string]model.VerifiedFileTarget)
 	w.lastSnapAt = make(map[string]time.Time)
 	w.lastDiskMarkdown = make(map[string]string)
 	w.historyToast = nil
@@ -3729,10 +4452,35 @@ func (w *Workspace) ZoomPct() int {
 	return w.zoomPct
 }
 
+func (w *Workspace) snapshotPersistedTabBindingsLocked(tabs []string) map[string]model.PersistedTabBinding {
+	var out map[string]model.PersistedTabBinding
+	for _, t := range tabs {
+		clean := filepath.Clean(t)
+		b, ok := w.tabBindings[clean]
+		if !ok || (b.ConfineRoot == "" && !b.EnforceIdentity) {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]model.PersistedTabBinding)
+		}
+		out[clean] = model.PersistedTabBinding{
+			ConfineRoot:  b.ConfineRoot,
+			ConfineRel:   b.ConfineRel,
+			RootIdentity: b.RootIdentity,
+			FileIdentity: b.FileIdentity,
+		}
+	}
+	return out
+}
+
 func (w *Workspace) persistTabs(tabs []string, active string) {
+	w.mu.RLock()
+	bindings := w.snapshotPersistedTabBindingsLocked(tabs)
+	w.mu.RUnlock()
 	_, _ = files.UpdateState(func(st *model.AppState) {
 		st.OpenTabs = append([]string(nil), tabs...)
 		st.ActiveTab = active
+		st.TabBindings = bindings
 	})
 	w.emitNoteOpenedIfChanged(active)
 }
@@ -4204,9 +4952,32 @@ func (w *Workspace) saveSessionMarkdownOpts(path string, sess *editor.Session, t
 		return errSaveSuperseded
 	}
 	w.markSelfWriteWindow(800 * time.Millisecond)
-	fingerprint, err := files.WriteNoteConditionalFingerprint(path, text, sess.DiskFingerprint())
+	var (
+		fingerprint int64
+		newInfo     os.FileInfo
+		newID       string
+		err         error
+	)
+	if binding, ok := w.tabBinding(path); ok && binding.ConfineRoot != "" {
+		fingerprint, newInfo, newID, err = files.WriteNoteConditionalFingerprintInRoot(
+			binding.ConfineRoot, binding.ConfineRel, text, sess.DiskFingerprint(), binding.ConfineRootInfo, binding.FileInfo,
+		)
+	} else if ok && binding.EnforceIdentity && binding.FileInfo != nil {
+		fingerprint, newInfo, newID, err = files.WriteNoteConditionalFingerprintChecked(
+			path, text, sess.DiskFingerprint(), binding.FileInfo,
+		)
+	} else {
+		fingerprint, err = files.WriteNoteConditionalFingerprint(path, text, sess.DiskFingerprint())
+		if err == nil {
+			if st, stErr := os.Lstat(path); stErr == nil {
+				newInfo = st
+				newID = files.FileIdentityToken(st, nil)
+			}
+		}
+	}
 	if err == nil {
 		sess.SetDiskFingerprint(fingerprint)
+		w.updateTabBindingIdentity(path, newInfo, newID)
 		clean := filepath.Clean(path)
 		w.mu.Lock()
 		w.bumpDiskWriteSeqLocked(clean)
