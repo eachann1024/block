@@ -7,11 +7,17 @@ import (
 
 // Category classifies plugins in the Block App Store.
 //
-// Block is a note app, so the store only shows six everyday categories.
-// CategoryTools ("other") and CategoryLanguage (code highlighting) stay valid
-// manifest values for compatibility, but have no store tab: "other" plugins
-// only appear under "All", and language packs stay out of sight unless the
-// user searches for them or already has them installed.
+// Categories answer one question: where does the plugin act?
+//   - appearance: how the interface looks
+//   - edit:       inside a single note
+//   - organize:   between notes
+//   - ai:         done by a model
+//   - tools:      outside the notes (sync, import/export, publishing, integrations)
+//
+// CategoryLanguage (code highlighting) stays a valid manifest value without a
+// store tab: language packs stay out of sight unless the user searches for
+// them or already has them installed. The retired "sync" and "publish" values
+// are still accepted in manifests and resolve to CategoryTools.
 type Category string
 
 const (
@@ -19,8 +25,6 @@ const (
 	CategoryEdit       Category = "edit"
 	CategoryOrganize   Category = "organize"
 	CategoryAI         Category = "ai"
-	CategoryPublish    Category = "publish"
-	CategorySync       Category = "sync"
 	CategoryTools      Category = "tools"
 	CategoryLanguage   Category = "language"
 )
@@ -31,13 +35,19 @@ var storeCategories = []Category{
 	CategoryEdit,
 	CategoryOrganize,
 	CategoryAI,
-	CategoryPublish,
-	CategorySync,
+	CategoryTools,
 }
 
-// orderedCategories lists every valid manifest category: store tabs first,
-// then the hidden ones.
-var orderedCategories = append(append([]Category{}, storeCategories...), CategoryTools, CategoryLanguage)
+// orderedCategories lists every canonical manifest category: store tabs
+// first, then the hidden language category.
+var orderedCategories = append(append([]Category{}, storeCategories...), CategoryLanguage)
+
+// retiredCategories are former store tabs that manifests may still declare;
+// they resolve to their replacement category.
+var retiredCategories = map[Category]Category{
+	"sync":    CategoryTools,
+	"publish": CategoryTools,
+}
 
 var validCategories = func() map[Category]bool {
 	m := make(map[Category]bool, len(orderedCategories))
@@ -50,15 +60,15 @@ var validCategories = func() map[Category]bool {
 // legacyPluginCategories provides backwards-compatible category defaults for
 // existing store entries published before manifest.category was introduced.
 var legacyPluginCategories = map[string]Category{
-	"block-sync":        CategorySync,
+	"block-sync":        CategoryTools,
 	"block-image-host":  CategoryEdit,
 	"block-canvas-dots": CategoryAppearance,
 	"block-titlebar":    CategoryAppearance,
 	"block-tarot":       CategoryAppearance,
 }
 
-// AllCategories returns every valid manifest category: the store tabs in
-// display order, followed by the hidden CategoryTools and CategoryLanguage.
+// AllCategories returns every canonical manifest category: the store tabs in
+// display order, followed by the hidden CategoryLanguage.
 func AllCategories() []Category {
 	out := make([]Category, len(orderedCategories))
 	copy(out, orderedCategories)
@@ -87,6 +97,13 @@ func ValidCategory(c Category) bool {
 	return validCategories[c]
 }
 
+// AcceptedCategory reports whether a manifest may declare c: a canonical
+// category or a retired one that still resolves to a canonical category.
+func AcceptedCategory(c Category) bool {
+	_, retired := retiredCategories[c]
+	return ValidCategory(c) || retired
+}
+
 // CategoryLabel returns the localized display name for c.
 func CategoryLabel(c Category, locale string) string {
 	en := strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en")
@@ -98,9 +115,9 @@ func CategoryLabel(c Category, locale string) string {
 		return "外观"
 	case CategoryEdit:
 		if en {
-			return "Writing"
+			return "Editing"
 		}
-		return "写作"
+		return "编辑"
 	case CategoryOrganize:
 		if en {
 			return "Organize"
@@ -108,21 +125,11 @@ func CategoryLabel(c Category, locale string) string {
 		return "整理"
 	case CategoryAI:
 		return "AI"
-	case CategoryPublish:
-		if en {
-			return "Import & Export"
-		}
-		return "导入导出"
-	case CategorySync:
-		if en {
-			return "Sync"
-		}
-		return "同步"
 	case CategoryTools:
 		if en {
-			return "Other"
+			return "Tools"
 		}
-		return "其他"
+		return "工具"
 	case CategoryLanguage:
 		if en {
 			return "Code Highlighting"
@@ -152,17 +159,11 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 		title = fmt.Sprintf("「%s」暂无插件", label)
 	}
 	switch c {
-	case CategorySync:
-		if en {
-			body = "Plugins that back up notes and keep them in sync across devices will appear here once published."
-		} else {
-			body = "把笔记存到网盘、多台设备随时查看的插件，上架后会出现在这里。"
-		}
 	case CategoryEdit:
 		if en {
-			body = "Plugins for formatting, templates, and proofreading will appear here once published."
+			body = "Plugins that work inside a note, such as syntax, templates, images, and diagrams, will appear here once published."
 		} else {
-			body = "排版、模板、纠错这类让写作更顺手的插件，上架后会出现在这里。"
+			body = "在一篇笔记里帮你干活的插件，比如语法扩展、模板、图片和图表，上架后会出现在这里。"
 		}
 	case CategoryOrganize:
 		if en {
@@ -176,12 +177,6 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 		} else {
 			body = "帮你润色、总结和随时问答的 AI 插件，上架后会出现在这里。"
 		}
-	case CategoryPublish:
-		if en {
-			body = "Plugins that bring notes in from other apps or export them as web pages and more will appear here once published."
-		} else {
-			body = "把别家笔记搬进来、或导出成网页等格式的插件，上架后会出现在这里。"
-		}
 	case CategoryAppearance:
 		if en {
 			body = "Plugins for themes, fonts, and icons will appear here once published."
@@ -190,9 +185,9 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 		}
 	case CategoryTools:
 		if en {
-			body = "Plugins that do not fit other categories will appear here once published."
+			body = "Plugins that work outside your notes, such as backup, moving, sharing, and connecting other apps, will appear here once published."
 		} else {
-			body = "暂时不好归类的插件，上架后会出现在这里。"
+			body = "在笔记之外帮你干活的插件，比如备份、搬运、分享和其他软件打通，上架后会出现在这里。"
 		}
 	case CategoryLanguage:
 		if en {
@@ -214,6 +209,9 @@ func CategoryEmptyCopy(c Category, locale string) (title, body string) {
 func ResolveCategory(explicit Category, pluginID string, hasLanguages bool) Category {
 	if ValidCategory(explicit) {
 		return explicit
+	}
+	if replacement, ok := retiredCategories[explicit]; ok {
+		return replacement
 	}
 	if hasLanguages {
 		return CategoryLanguage

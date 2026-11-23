@@ -12,8 +12,6 @@ func TestAllCategoriesOrderAndValidation(t *testing.T) {
 		CategoryEdit,
 		CategoryOrganize,
 		CategoryAI,
-		CategoryPublish,
-		CategorySync,
 		CategoryTools,
 		CategoryLanguage,
 	}
@@ -82,7 +80,7 @@ func TestManifestAcceptsNewCategories(t *testing.T) {
 			Icon:          AppStoreIconSpec(),
 		}
 	}
-	for _, cat := range []Category{CategoryOrganize, CategoryAI, CategoryPublish} {
+	for _, cat := range []Category{CategoryOrganize, CategoryAI, CategoryTools} {
 		m := base(cat)
 		if err := m.Validate(); err != nil {
 			t.Errorf("Manifest.Validate() failed for category %q: %v", cat, err)
@@ -91,12 +89,21 @@ func TestManifestAcceptsNewCategories(t *testing.T) {
 			t.Errorf("EffectiveCategory() = %q, want %q", m.EffectiveCategory(), cat)
 		}
 	}
+	for _, retired := range []Category{"sync", "publish"} {
+		m := base(retired)
+		if err := m.Validate(); err != nil {
+			t.Errorf("Manifest.Validate() failed for retired category %q: %v", retired, err)
+		}
+		if m.EffectiveCategory() != CategoryTools {
+			t.Errorf("EffectiveCategory(%q) = %q, want %q", retired, m.EffectiveCategory(), CategoryTools)
+		}
+	}
 	invalid := base(Category("export"))
 	err := invalid.Validate()
 	if err == nil {
 		t.Fatal("expected error for invalid category \"export\"")
 	}
-	if !strings.Contains(err.Error(), "organize") || !strings.Contains(err.Error(), "publish") {
+	if !strings.Contains(err.Error(), "organize") || !strings.Contains(err.Error(), "tools") {
 		t.Fatalf("expected updated allowed list in error, got: %v", err)
 	}
 }

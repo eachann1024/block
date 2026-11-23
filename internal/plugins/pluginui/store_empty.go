@@ -17,16 +17,12 @@ const pluginDevGuideURL = "https://docs.block.cooool.top/plugins/"
 // in empty states. Unknown categories fall back to the generic package glyph.
 func storeCategoryIcon(cat plugins.Category) icons.Icon {
 	switch cat {
-	case plugins.CategorySync:
-		return icons.Refresh
 	case plugins.CategoryEdit:
 		return icons.Pencil
 	case plugins.CategoryOrganize:
 		return icons.Tag
 	case plugins.CategoryAI:
 		return icons.Sparkles
-	case plugins.CategoryPublish:
-		return icons.Upload
 	case plugins.CategoryAppearance:
 		return icons.TbPalette
 	case plugins.CategoryTools:
