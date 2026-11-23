@@ -8,7 +8,7 @@
 
 ## 8. UI contributions（宿主界面扩展贡献）
 
-插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、编辑区自定义矢量背景、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标，并按需申请对应的 UI 权限、编辑器/界面事件权限与文件路径权限。
+插件可通过 `manifest.json` 的 `contributes` 字段在宿主设置页之外挂载顶栏按钮、内置设置标签页分区、命令/快捷键、页面/编辑器/侧栏/标签页右键菜单、左侧栏分区、文件树行角标、文件树自定义图标包、编辑区自定义矢量背景、右侧边栏面板、状态栏条目、弹窗与系统菜单栏图标，并按需申请对应的 UI 权限、编辑器/界面事件权限与文件路径权限。
 
 ### 8.1 新增权限（13 项）
 
@@ -21,7 +21,7 @@
 | `"ui:status"` | 底部状态栏条目 | `contributes.status_items`、`host.status.set` |
 | `"ui:menubar"` | 系统菜单栏图标（macOS 菜单栏、Windows / Linux 通知区域），含菜单与拖放 | `contributes.menubar_items`、`host.menubar.set` |
 | `"ui:notify"` | 应用内全局通知与插件弹窗 | `contributes.dialogs`、`host.ui.toast`、`host.ui.open_dialog` / `close_dialog` |
-| `"ui:sidebar"` | 左侧栏分区、文件树角标与侧栏右键菜单 | `contributes.sidebar_sections`、`contributes.file_badges`、`contributes.sidebar_menu`、`host.sidebar.set_badges` / `get_badges` |
+| `"ui:sidebar"` | 左侧栏分区、文件树角标、自定义图标包与侧栏右键菜单 | `contributes.sidebar_sections`、`contributes.file_badges`、`contributes.file_icons`、`contributes.sidebar_menu`、`host.sidebar.set_badges` / `get_badges`、`host.sidebar.set_file_icons` / `get_file_icons` |
 | `"ui:appearance"` | 编辑区自定义矢量背景（水印/平铺图案） | `contributes.backdrops`、`host.ui.backdrop` / `set_backdrop` |
 | `"editor:read"` | 读取当前编辑器选区 | `host.editor.selection` |
 | `"editor:write"` | 替换选区或光标处插入文本 | `host.editor.insert` |
@@ -33,7 +33,7 @@
 通用校验规则：
 - 所有贡献项 `id` 必须匹配正则 `^[a-z][a-z0-9_-]{0,31}$`，且在同一类别内不可重复。
 - 所有 `LocalizedText`（`title`、`tooltip` 等）均须同时提供非空 `zh` 与 `en`，且禁止包含 Emoji；所有 `icon`（`DuoIconSpec`）须满足 `view_box == "0 0 24 24"` 且至少包含 1 条 `stroke_paths`；三层路径合计最多 16 条、路径数据合计最多 4096 字节。
-- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`backdrops` 8、`status_items` 4、`dialogs` 16、`menubar_items` 2。
+- 数量上限：`titlebar_buttons` 3、`settings_sections` 8、`commands` 64、`page_menu` 16、`editor_menu` 16、`sidebar_menu` 16、`tab_menu` 16、`panels` 8、`sidebar_sections` 4、`file_badges` 4、`file_icons` 1、`backdrops` 8、`status_items` 4、`dialogs` 16、`menubar_items` 2。
 - 只要声明了某类非空贡献数组，`manifest.permissions` 中就必须包含对应的权限。
 
 1. **`titlebar_buttons`**（需 `"ui:titlebar"`，最多 **3** 个）：在顶栏右侧挂载图标按钮。顶栏有空位时所有插件按钮都直接显示，仅在空间不足时把放不下的按钮收起；用户可在「更多插件」菜单（点星标或在选中/悬停行按 `P`）或右键/聚焦顶栏插件图标（按 `P` / `Shift+F10`）固定常用按钮（最多固定 3 个，优先展示；槽位满时优先回收已停用/卸载项，有效项满 3 个时替换最早固定项并提示），其余按声明顺序收进顶栏的「更多插件」菜单（带计数角标、插件图标与活跃/角标提示）。菜单行文字取 `tooltip`（缺省为 `id`），因此务必填写可读的 `tooltip`。
@@ -67,6 +67,9 @@
    - 对应渲染表面：`"sidebar_section:<id>"`。
 9. **`file_badges`**（需 `"ui:sidebar"`，最多 **4** 个）：声明左侧栏文件树笔记行尾角标图标，运行时通过 `host.sidebar.set_badges` 按笔记相对路径推送（单行最多展示 2 个角标，停用或卸载插件立即清除）。
    - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（可选 `LocalizedText`）。
+9.1. **`file_icons`**（需 `"ui:sidebar"`，最多 **1** 个）：声明左侧栏文件与文件夹自定义图标包及原生交互选择器；停用或卸载插件时立即恢复默认图标。
+   - `id`（必填）、`pack`（必填，插件目录内相对 `.json` 路径，<= 512 KiB）、`title`（可选 `LocalizedText`）、`picker`（可选 bool，启用点击侧栏行首图标打开选择器）、`sync_tabs`（可选 bool，同步在顶栏标签页显示自定义图标）。
+   - 图标包 JSON 顶层字段：`schema_version`（固定 `1`）、`categories`（1–16 项，含 `id`、`name`、`icon`）与 `icons`（1–256 项，含 `id`、`category`、`name`、可选 `keywords`，且 `ref` 宿主内置图标名与 `spec` 内联 `DuoIconSpec` 二选一）。
 10. **`backdrops`**（需 `"ui:appearance"`，最多 **8** 个）：声明编辑区自定义矢量背景图案，运行时通过 `host.ui.set_backdrop` 启用、切换或调节（宿主自动钳制透明度在 `0.03`–`0.25` 以保证正文清晰可读，停用或卸载插件立即消失）。
     - `id`（必填）、`title`（必填 `LocalizedText`）、`icon`（必填 `DuoIconSpec`）。
     - `pattern`（可选：`"scatter"` | `"grid"` | `"watermark"` | `"corners"`，默认 `"scatter"`）、`density`（可选：`"sparse"` | `"medium"` | `"dense"`，默认 `"medium"`）、`opacity`（可选：`0.01`–`0.35`，渲染钳制 `0.03`–`0.25`，默认 `0.09`）、`tint`（可选：`"accent"` | `"muted"` | `"warm"` | `"glow"`，默认 `"accent"`）、`dark_glow`（可选 bool，深色主题下提亮为夜光质感）。
@@ -169,6 +172,9 @@
 9. **`host.sidebar.set_badges` / `host.sidebar.get_badges`**（需 `"ui:sidebar"`）
    - `host.sidebar.set_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"text": "2", "tooltip": "含 2 处标记", "tone": "accent"}}}`（`notebook_root` 可选，省略时取当前笔记本；`entries` 最多 512 项，相对路径不可包含 `..` 或 `:`，`text` 禁 Emoji 且 <= 4 字符，`tooltip` 禁 Emoji 且 <= 120 字符，`tone` 支持 `"accent"` | `"success"` | `"warning"` | `"danger"`；`patch: true` 时传 `null` 可删除单项，`clear: true` 一键清空；按插件与笔记本持久化于 `contrib-state.json`）。
    - `host.sidebar.get_badges` 参数：`{"badge_id": "poop-mark", "notebook_root": "..."}` -> 返回 `{"entries": {...}}`。
+9.1. **`host.sidebar.set_file_icons` / `host.sidebar.get_file_icons`**（需 `"ui:sidebar"` 且声明 `contributes.file_icons`）
+   - `host.sidebar.set_file_icons` 参数：`{"notebook_root": "/abs/path/to/notebook", "clear": false, "patch": false, "entries": {"welcome.md": {"icon": "wave", "tint": "blue"}}, "prefs": {"picker": true, "sync_tabs": true}}`（`notebook_root` 省略时取当前笔记本；`entries` 最多 2048 项，`icon` 须存在于图标包，`tint` 支持 `"none"` | `"blue"` | `"teal"` | `"green"` | `"amber"` | `"red"` | `"purple"`；`patch: true` 时传 `null` 删除单项，`clear: true` 清空当前笔记本映射；`prefs` 覆盖选择器与标签页同步开关；文件重命名/移入回收站时宿主自动同步路径）。
+   - `host.sidebar.get_file_icons` 参数：`{"notebook_root": "..."}` -> 返回 `{"notebook_root": "...", "entries": {...}, "recent": [...], "prefs": {"picker": true, "sync_tabs": true}}`。
 10. **`host.ui.backdrop` / `host.ui.set_backdrop`**（需 `"ui:appearance"`）
     - `host.ui.backdrop`（参数 `{}`）：返回本插件当前持久化的编辑区矢量背景状态 `{"id": "...", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.09, "tint": "accent", "dark_glow": false}`。
     - `host.ui.set_backdrop`（参数：`{"id": "poop-wallpaper", "enabled": true, "pattern": "scatter", "density": "medium", "opacity": 0.10, "tint": "accent", "dark_glow": false}`，未传的样式字段保留同 `id` 已有值或清单默认值）：实时更新编辑区矢量背景并持久化于 `contrib-state.json`，停用插件时自动失效，返回归一化后的状态对象。
