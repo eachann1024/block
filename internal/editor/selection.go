@@ -2,6 +2,7 @@ package editor
 
 import (
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"unicode"
@@ -962,14 +963,101 @@ func (s *Session) stepVisibleBlock(from, dir int) int {
 
 // --- Mouse Pointer Hit-Testing & Multi-Block Drag Selection ---
 
+func (s *Session) isAnyInputComposing() bool {
+	if s == nil {
+		return false
+	}
+	if s.detachedCompose != "" {
+		return true
+	}
+	for _, st := range s.richInputs {
+		if st != nil && st.Composing() {
+			return true
+		}
+	}
+	for _, st := range s.tableInputs {
+		if st != nil && st.Composing() {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Session) clearInlinePathContextMenuLock() {
+	s.ctxMenuPtrValid = false
+	s.ctxMenuLocked = false
+	s.ctxMenuLockedFromPtr = false
+	s.ctxMenuLockedValid = false
+	s.ctxMenuLockedRaw = ""
+	s.ctxMenuLockedTarget = resolvedPathTarget{}
+	s.ctxMenuOwnerKey = ""
+}
+
 func (s *Session) onScrollObserveInput(ev ui.InputEvent) {
+	isContextClick := ev.Kind == ui.InputPointerDown && (ev.Button == 1 || (runtime.GOOS == "darwin" && ev.Button == 0 && ev.Mods&ui.Ctrl != 0))
+	if isContextClick {
+		var pt ui.Point
+		switch {
+		case !s.embedded && s.scrollRect.W > 0:
+			pt = ui.Point{X: s.scrollRect.X + ev.X, Y: s.scrollRect.Y + ev.Y}
+		case s.editorRect.W > 0:
+			pt = ui.Point{X: s.editorRect.X + ev.X, Y: s.editorRect.Y + ev.Y}
+		default:
+			if wp, ok := s.windowPointerStatus(); ok {
+				pt = wp
+			}
+		}
+		s.clearInlinePathContextMenuLock()
+		s.lastPressCmdIntact = false
+		s.ctxMenuPtrValid = true
+		s.ctxMenuPtrWin = pt
+		return
+	}
 	if ev.Kind == ui.InputPointerDown && ev.Button == 0 {
+		s.clearInlinePathContextMenuLock()
 		s.lastPressMods = ev.Mods
+		s.lastPressCmdIntact = ev.Mods == ui.Cmd
 		s.lastPressClicks = max(ev.Clicks, 1)
 		s.lastPressLocal = ui.Point{X: ev.X, Y: ev.Y}
 		s.lastPressScrollY = s.bodyScroll.Y
+		s.lastPressCanceled = false
+		s.lastPressComposing = s.isAnyInputComposing()
+		s.lastReleaseMods = 0
+		s.lastReleaseValid = false
 		s.pressJustBegan = true
 		s.navCarry = false
+		return
+	}
+	if ev.Kind == ui.InputPointerDown {
+		s.clearInlinePathContextMenuLock()
+		s.lastPressCmdIntact = false
+		return
+	}
+	if ev.Kind == ui.InputPointerUp && ev.Button == 0 {
+		s.lastReleaseMods = ev.Mods
+		s.lastReleaseValid = true
+		if ev.Canceled {
+			s.lastPressCanceled = true
+			s.lastPressCmdIntact = false
+		} else if ev.Mods != ui.Cmd {
+			s.lastPressCmdIntact = false
+		}
+		return
+	}
+	if s.lastPressCmdIntact {
+		switch ev.Kind {
+		case ui.InputKeyDown, ui.InputKeyUp, ui.InputPointerMove, ui.InputScroll, ui.InputZoom:
+			if ev.Mods != ui.Cmd {
+				s.lastPressCmdIntact = false
+			}
+		case ui.InputText, ui.InputCompose, ui.InputCommand:
+			s.lastPressCmdIntact = false
+		}
+	}
+	if ev.Kind == ui.InputKeyDown {
+		// Any key press reaching the editor means any previously shown native context menu
+		// has closed, and Shift+F10 / KeyContextMenu begins a new keyboard menu instance.
+		s.clearInlinePathContextMenuLock()
 	}
 }
 
@@ -1041,6 +1129,9 @@ func (s *Session) preUpdateFocusedDrag(c *ui.Context, root ui.Element) {
 func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Element, readOnly bool) {
 	_, _, canvasHeld := canvas.Dragged()
 	canvasClicked := canvas.Clicked()
+	if s.lastPressCmdIntact && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
+		s.lastPressCmdIntact = false
+	}
 	if canvasHeld {
 		wx, wy := s.windowPointer(root)
 		curPt := ui.Point{X: wx, Y: wy}
@@ -1135,16 +1226,22 @@ func (s *Session) updateCanvasMouseSelection(c *ui.Context, root, canvas ui.Elem
 	if s.mouseMode != mouseSelNone && s.mouseOriginBlock < 0 {
 		mode := s.mouseMode
 		dragged := s.mouseDragged
+		canceled := s.lastPressCanceled || canvas.PressCanceled() || !c.WindowActive()
 		endPt := s.mouseCurPt
 		if !dragged && (s.mouseStartPt.X != 0 || s.mouseStartPt.Y != 0) {
 			endPt = s.mouseStartPt
 		}
-		if mode == mouseSelBox && dragged {
-			s.applyBoxSelection(endPt.X, endPt.Y)
-		}
 		s.mouseMode = mouseSelNone
 		s.mouseDragged = false
 		s.pressJustBegan = false
+		s.lastPressCanceled = false
+		if canceled {
+			s.lastPressCmdIntact = false
+			return
+		}
+		if mode == mouseSelBox && dragged {
+			s.applyBoxSelection(endPt.X, endPt.Y)
+		}
 		s.finishCanvasPointerSelection(c, mode, dragged, endPt, readOnly)
 		return
 	}
@@ -1202,15 +1299,38 @@ func (s *Session) finishCanvasPointerSelection(c *ui.Context, mode mouseSelMode,
 	if s.doc == nil || len(s.doc.Blocks) == 0 {
 		return
 	}
-	if mode == mouseSelText && !dragged && (readOnly || s.lastPressMods&ui.Cmd != 0) {
+	releaseMods := c.Modifiers()
+	if s.lastReleaseValid {
+		releaseMods = s.lastReleaseMods
+	}
+	s.lastReleaseValid = false
+	cmdIntact := s.lastPressCmdIntact && c.WindowActive() && c.Modifiers() == ui.Cmd
+	s.lastPressCmdIntact = false
+	exactCmdClick := cmdIntact && s.lastPressMods == ui.Cmd && releaseMods == ui.Cmd && s.lastPressClicks == 1 && !s.lastPressComposing && !s.isAnyInputComposing()
+	if mode == mouseSelText && !dragged && c.WindowActive() && (readOnly || exactCmdClick) {
 		pos := s.hitPositionAtPoint(pt.X, pt.Y)
 		if pos.Block >= 0 && pos.Block < len(s.doc.Blocks) {
-			if link := spanLinkAtOffset(&s.doc.Blocks[pos.Block], pos.Offset); link != "" {
+			blk := &s.doc.Blocks[pos.Block]
+			link := s.hitExplicitLinkAtPoint(pos.Block, blk, pt)
+			if link == "" && blk.Kind != model.BlockTable {
+				link = spanLinkAtOffset(blk, pos.Offset)
+			}
+			if link != "" {
 				s.selAnchor = pos
 				s.selHead = pos
 				s.openBlockLink(c.Services(), link)
 				s.scheduleRebuild(c)
 				return
+			}
+			if exactCmdClick && s.previewMedia == nil {
+				if cand, ok := s.hitInlinePathAtPoint(pos.Block, blk, pt); ok {
+					res, ready := s.probeInlinePath(cand.raw)
+					if !ready || res.exists || res.permErr {
+						s.openInlinePathLink(c.Services(), cand.raw)
+						s.scheduleRebuild(c)
+						return
+					}
+				}
 			}
 		}
 	}

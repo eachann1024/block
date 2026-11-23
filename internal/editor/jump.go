@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -32,6 +33,128 @@ func (s *Session) JumpToSearchHit(hit model.SearchHit) {
 	if target, ok := source.Locate(line, column, hit.Query); ok {
 		s.jumpTo(target.Block, target.Row, target.Column)
 	}
+}
+
+// JumpToSourcePos jumps to a 1-based Markdown source line and optional 1-based rune column,
+// mapping multi-line code blocks, raw HTML, tables, and rich text blocks to an intra-block range.
+func (s *Session) JumpToSourcePos(line, col int) {
+	if s == nil || s.doc == nil || line <= 0 {
+		return
+	}
+	source := markdown.MapSource(s.doc)
+	srcLines := strings.Split(source.Text, "\n")
+	if len(srcLines) == 0 {
+		return
+	}
+	clampedLine := min(line, len(srcLines))
+	byteCol := -1
+	if col > 0 {
+		byteCol = runeColToByteOffset(srcLines[clampedLine-1], col)
+	}
+	target, ok := source.Locate(clampedLine, byteCol, "")
+	if !ok {
+		s.JumpToSearchHit(model.SearchHit{Line: line, Column: -1})
+		return
+	}
+	if target.Block < 0 || target.Block >= len(s.doc.Blocks) {
+		return
+	}
+	block := &s.doc.Blocks[target.Block]
+	if block.Table != nil {
+		if col > 0 && target.Row >= 0 && target.Column >= 0 &&
+			target.Row < len(block.Table.Rows) && target.Column < len(block.Table.Rows[target.Row]) {
+			if cellVisCol, okCol := source.TableCellVisibleColumn(target.Block, clampedLine, col); okCol {
+				cellPlain := block.Table.Rows[target.Row][target.Column].PlainText()
+				if startRune, endRune, okRange := textLineColRuneRange(cellPlain, 0, cellVisCol); okRange {
+					s.jumpToRange(target.Block, target.Row, target.Column, startRune, endRune)
+					return
+				}
+			}
+		}
+		s.jumpTo(target.Block, target.Row, target.Column)
+		return
+	}
+	relLine, contentCol, hasPos := source.BlockContentPosition(target.Block, clampedLine, col)
+	if block.Kind == model.BlockCode || block.Kind == model.BlockRawHTML {
+		if !hasPos {
+			relLine, contentCol = 0, col
+		}
+		if startRune, endRune, okRange := textLineColRuneRange(block.Code, relLine, contentCol); okRange {
+			s.jumpToRange(target.Block, -1, -1, startRune, endRune)
+			return
+		}
+		s.jumpTo(target.Block, -1, -1)
+		return
+	}
+	plain := block.PlainText()
+	if !hasPos {
+		relLine, contentCol = 0, col
+	}
+	if (relLine > 0 || contentCol > 0) && plain != "" {
+		if startRune, endRune, okRange := textLineColRuneRange(plain, relLine, contentCol); okRange {
+			s.jumpToRange(target.Block, -1, -1, startRune, endRune)
+			return
+		}
+	}
+	s.jumpTo(target.Block, -1, -1)
+}
+
+func runeColToByteOffset(lineText string, col1 int) int {
+	if col1 <= 1 {
+		return 0
+	}
+	runeIdx := 0
+	for off := range lineText {
+		if runeIdx == col1-1 {
+			return off
+		}
+		runeIdx++
+	}
+	return len(lineText)
+}
+
+// textLineColRuneRange maps a 0-based line index and optional 1-based rune column inside text
+// to a non-empty [startRune, endRune) range for matchLineOffsetInBlock.
+func textLineColRuneRange(text string, line0, col1 int) (startRune, endRune int, ok bool) {
+	total := utf8.RuneCountInString(text)
+	if total == 0 {
+		return 0, 0, false
+	}
+	if line0 < 0 {
+		line0 = 0
+	}
+	lines := strings.Split(text, "\n")
+	if line0 >= len(lines) {
+		line0 = len(lines) - 1
+	}
+	lineStart := 0
+	for i := 0; i < line0; i++ {
+		lineStart += utf8.RuneCountInString(lines[i]) + 1
+	}
+	lineLen := utf8.RuneCountInString(lines[line0])
+	lineEnd := lineStart + lineLen
+	if col1 > 0 {
+		pos := min(lineStart+col1-1, lineEnd)
+		startRune = pos
+		endRune = min(pos+1, total)
+		if endRune <= startRune && startRune > 0 {
+			startRune--
+		}
+	} else {
+		startRune = lineStart
+		endRune = lineEnd
+		if endRune <= startRune {
+			if startRune < total {
+				endRune = startRune + 1
+			} else if startRune > 0 {
+				startRune--
+			}
+		}
+	}
+	if endRune <= startRune {
+		return 0, 0, false
+	}
+	return startRune, endRune, true
 }
 
 // JumpToBlock is used by the outline. Jumping preserves the editing caret.

@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -142,7 +143,7 @@ func blockLinkRanges(b *model.Block) []appUi.RichLinkRange {
 	pos := 0
 	for _, sp := range b.Spans {
 		n := utf8.RuneCountInString(sp.Text)
-		if sp.Link != "" && n > 0 {
+		if sp.Link != "" && !strings.HasPrefix(sp.Link, inlinePathLinkPrefix) && n > 0 {
 			out = append(out, appUi.RichLinkRange{Start: pos, End: pos + n, URL: sp.Link})
 		}
 		pos += n

@@ -46,6 +46,10 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		s.bumpDocRev()
 	}
 	s.readOnly = readOnly
+	s.framePathHover = nil
+	if s.lastPressCmdIntact && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
+		s.lastPressCmdIntact = false
+	}
 	s.ensureAnnotationsLoaded()
 	s.pollInlineAI()
 
@@ -198,6 +202,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 						s.SelectAllBlocks()
 					}
 				}
+				s.appendInlinePathContextMenu(m, svcCanvas, "canvas")
 				if s.ExtraContextItems != nil {
 					if extra := s.ExtraContextItems(); len(extra) > 0 {
 						sepAdded := false
@@ -343,7 +348,8 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		}
 
 		if s.embedded {
-			renderCanvas()
+			col := ui.Box(c.Key("embedded-input-obs")).Fill().ObserveInput(s.onScrollObserveInput)
+			col.Children(renderCanvas)
 		} else {
 			// Main scrollable document body
 			scroll := appUi.Scroll(c.Key("editor-scroll"), &s.bodyScroll).Fill().
@@ -417,6 +423,7 @@ func (s *Session) Render(c *ui.Context, viewportWidth float32, readOnly bool) {
 		}
 		s.renderPlanDiffCard(c)
 		s.renderMediaLightbox(c)
+		s.renderHoveredPathTooltip(c)
 		if s.hasMenuPopupOpen() {
 			appUi.ReserveMenuNavKeys(c)
 		}
@@ -1317,6 +1324,7 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 			plain = poopDropDisplayText(plain, drop)
 		}
 		var rt ui.Element
+		var pathCursor bool
 		if len(b.Spans) == 0 || plain == "" {
 			rt = ui.Text(c.Key("rt-empty"), "").PreserveSpaces().FontSize(fontSize).FontWeight(weight).LineHeight(lh).
 				MinHeight(fontSize * lh).TextColor(pal.Placeholder).FillWidth()
@@ -1358,6 +1366,8 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 			}
 			bands := s.blockHighlightBands(idx, b, pal, true)
 			codeRanges := blockCodeRanges(b, fontSize)
+			var pathLinks []appUi.RichLinkRange
+			cmdActive := c.WindowActive() && c.Modifiers() == ui.Cmd && s.previewMedia == nil
 			if len(bands) > 0 || len(codeRanges) > 0 {
 				blockID := b.ID
 				spansCopy := b.Spans
@@ -1370,6 +1380,14 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 				var hasPtr bool
 				if len(codeRanges) > 0 {
 					ptrWin, hasPtr = s.windowPointerStatus()
+					if cmdActive && hasPtr && isHovered && !s.IsScrollingForHover(c.Now()) {
+						if pPlain, lay, origin, ok := s.richBlockTextLayout(idx, b); ok {
+							if pr, hit := s.hoveredInlinePathRange(b.Spans, pPlain, lay, origin, ptrWin, true); hit {
+								pathLinks = []appUi.RichLinkRange{pr}
+								pathCursor = true
+							}
+						}
+					}
 				}
 				appUi.DrawRichDecorations(c, rt, plain, func(w float32) *ui.TextLayout {
 					return s.cachedShapeBlock(blockID, plain, spansCopy, idx, edFont, fontSize, weight, lh, w, true)
@@ -1377,6 +1395,7 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 					FontSize:     fontSize,
 					Spans:        pureSpans,
 					Bands:        bands,
+					Links:        pathLinks,
 					CodeRanges:   codeRanges,
 					CodeBG:       pal.InlineCodeBG,
 					CodeHoverBG:  pal.InlineCodeHoverBG,
@@ -1388,13 +1407,16 @@ func (s *Session) renderRichTextBlock(c *ui.Context, idx int, b *model.Block, is
 					HasChipBG:    blockHasChipBG(b),
 					PointerWin:   ptrWin,
 					HasPointer:   hasPtr,
+					CmdActive:    cmdActive,
 				})
 			}
 		}
 		if edFont != "" {
 			rt.Font(edFont)
 		}
-		if !readOnly {
+		if pathCursor {
+			rt.Cursor(ui.CursorPointer)
+		} else if !readOnly {
 			rt.Cursor(ui.CursorText)
 		}
 		s.recordBlockTextLayoutBounds(b.ID, rt)
@@ -1408,7 +1430,7 @@ func spanLinkAtOffset(b *model.Block, off int) string {
 	pos := 0
 	for _, sp := range b.Spans {
 		next := pos + len([]rune(sp.Text))
-		if off >= pos && off <= next && sp.Link != "" {
+		if off >= pos && off <= next && sp.Link != "" && !strings.HasPrefix(sp.Link, inlinePathLinkPrefix) {
 			return sp.Link
 		}
 		pos = next
@@ -1458,6 +1480,19 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			}
 		}
 
+		svcBlock := c.Services()
+		focusBlockID := b.ID
+		blockLinks := blockLinkRanges(b)
+		if c.WindowActive() && c.Modifiers() == ui.Cmd && s.previewMedia == nil && !s.IsScrollingForHover(c.Now()) && !st.Composing() {
+			if ptrWin, hasPtr := s.windowPointerStatus(); hasPtr {
+				if pPlain, lay, origin, ok := s.richBlockTextLayout(idx, b); ok {
+					if pr, hit := s.hoveredInlinePathRange(b.Spans, pPlain, lay, origin, ptrWin, true); hit {
+						blockLinks = append(blockLinks, pr)
+					}
+				}
+			}
+		}
+
 		in := appUi.RichInput(c, st, appUi.RichInputOptions{
 			Key:               "input",
 			Text:              draft,
@@ -1480,7 +1515,7 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 			Anchor:            s.selAnchor.Offset,
 			Caret:             s.selHead.Offset,
 			Bands:             s.blockHighlightBands(idx, b, pal, multiSel || s.toolbarPop == "comment"),
-			Links:             blockLinkRanges(b),
+			Links:             blockLinks,
 			CodeRanges:        blockCodeRanges(b, fontSize),
 			CodeBG:            pal.InlineCodeBG,
 			CodeHoverBG:       pal.InlineCodeHoverBG,
@@ -1541,7 +1576,16 @@ func (s *Session) renderEditableTextBlock(c *ui.Context, idx int, b *model.Block
 				return s.PastePlainFromClipboard(svc, pasted, true)
 			},
 			OnOpenLink: func(url string) {
-				s.openBlockLink(c.Services(), url)
+				s.openBlockLink(svcBlock, url)
+			},
+			OnResolveCmdLink: func(pt ui.Point, lay *ui.TextLayout, text string) string {
+				if s.doc == nil || idx < 0 || idx >= len(s.doc.Blocks) || s.doc.Blocks[idx].ID != focusBlockID {
+					return ""
+				}
+				return s.resolveCmdClickPathAtPoint(s.doc.Blocks[idx].Spans, text, lay, pt)
+			},
+			OnContextMenu: func(m *ui.Menu) {
+				s.appendInlinePathContextMenu(m, svcBlock, fmt.Sprintf("block:%d", focusBlockID))
 			},
 			CarryColumnX: carryX,
 			CarryColumn:  carry,
@@ -1826,7 +1870,7 @@ func (s *Session) renderDisplaySpansChildren(c *ui.Context, _ int, b *model.Bloc
 			if el.Hovered() {
 				el.Underline()
 			}
-			if s.readOnly || c.Modifiers()&ui.Cmd != 0 {
+			if s.readOnly || c.Modifiers() == ui.Cmd {
 				el.Cursor(ui.CursorPointer)
 			}
 			linkTrigger := theme.Tr("⌘ + 点击", "⌘ + Click")
@@ -2858,6 +2902,33 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					}}
 				}
 			}
+			if jumpTarget && s.jump.endRune > s.jump.startRune && s.jump.startRune >= 0 && cellLen > 0 {
+				jLo := clampInt(s.jump.startRune, 0, cellLen)
+				jHi := clampInt(s.jump.endRune, 0, cellLen)
+				if jHi > jLo {
+					cellBands = append(cellBands, appUi.RichBand{
+						Start:    jLo,
+						End:      jHi,
+						Fill:     pal.Editor().JumpRing.Alpha(s.jumpAlpha * 0.45),
+						Radius:   theme.RadiusXS,
+						PadX:     1.5,
+						TintOver: true,
+					})
+				}
+			}
+			svcCell := c.Services()
+			cellLinks := blockLinkRanges(&cellBlock)
+			if c.WindowActive() && c.Modifiers() == ui.Cmd && s.previewMedia == nil && !s.IsScrollingForHover(c.Now()) && !st.Composing() {
+				if ptrWin, hasPtr := s.windowPointerStatus(); hasPtr {
+					if s.doc != nil && blockIdx >= 0 && blockIdx < len(s.doc.Blocks) {
+						if _, cPlain, lay, origin, ok := s.tableCellTextLayout(&s.doc.Blocks[blockIdx], rIdx, cIdx); ok {
+							if pr, hit := s.hoveredInlinePathRange(cellBlock.Spans, cPlain, lay, origin, ptrWin, true); hit {
+								cellLinks = append(cellLinks, pr)
+							}
+						}
+					}
+				}
+			}
 			in := appUi.RichInput(c, st, appUi.RichInputOptions{
 				Key:               "cell-in",
 				Text:              draft,
@@ -2881,7 +2952,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 				Anchor:            relA,
 				Caret:             relB,
 				Bands:             cellBands,
-				Links:             blockLinkRanges(&cellBlock),
+				Links:             cellLinks,
 				CodeRanges:        blockCodeRanges(&cellBlock, tFontSz),
 				CodeBG:            pal.InlineCodeBG,
 				CodeHoverBG:       pal.InlineCodeHoverBG,
@@ -2934,7 +3005,20 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					return s.PastePlainFromClipboard(svc, pasted, true)
 				},
 				OnOpenLink: func(url string) {
-					s.openBlockLink(c.Services(), url)
+					s.openBlockLink(svcCell, url)
+				},
+				OnResolveCmdLink: func(pt ui.Point, lay *ui.TextLayout, text string) string {
+					if s.doc == nil || blockIdx < 0 || blockIdx >= len(s.doc.Blocks) || s.doc.Blocks[blockIdx].ID != blockID {
+						return ""
+					}
+					tblNow := s.doc.Blocks[blockIdx].Table
+					if tblNow == nil || rIdx < 0 || rIdx >= len(tblNow.Rows) || cIdx < 0 || cIdx >= len(tblNow.Rows[rIdx]) {
+						return ""
+					}
+					return s.resolveCmdClickPathAtPoint(tblNow.Rows[rIdx][cIdx].Spans, text, lay, pt)
+				},
+				OnContextMenu: func(m *ui.Menu) {
+					s.appendInlinePathContextMenu(m, svcCell, fmt.Sprintf("cell:%d:%d:%d", blockID, rIdx, cIdx))
 				},
 				OnKey: func(key ui.Key, mods ui.Modifiers, curCellText string, cAnchor, cCaret int) bool {
 					s.caretHidden = false
@@ -3034,6 +3118,7 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 		} else {
 			txt := cell.PlainText()
 			var t ui.Element
+			var cellPathCursor bool
 			if txt == "" {
 				t = ui.Text(c.Key("cell-txt"), "").PreserveSpaces().FontSize(tFontSz).LineHeight(lhFactor).
 					MinHeight(tLineH).FontWeight(weight).TextColor(textCol).FillWidth()
@@ -3071,6 +3156,22 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						}}
 					}
 				}
+				if jumpTarget && s.jump.endRune > s.jump.startRune && s.jump.startRune >= 0 && cellLen > 0 {
+					jLo := clampInt(s.jump.startRune, 0, cellLen)
+					jHi := clampInt(s.jump.endRune, 0, cellLen)
+					if jHi > jLo {
+						cellBands = append(cellBands, appUi.RichBand{
+							Start:    jLo,
+							End:      jHi,
+							Fill:     pal.Editor().JumpRing.Alpha(s.jumpAlpha * 0.45),
+							Radius:   theme.RadiusXS,
+							PadX:     1.5,
+							TintOver: true,
+						})
+					}
+				}
+				var cellPathLinks []appUi.RichLinkRange
+				cmdActive := c.WindowActive() && c.Modifiers() == ui.Cmd && s.previewMedia == nil
 				if len(cellBands) > 0 || len(codeRanges) > 0 {
 					spansCopy := pureSpans
 					cellKey := tableCellKey{BlockID: blockID, Row: rIdx, Col: cIdx}
@@ -3079,6 +3180,16 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 					var hasPtr bool
 					if len(codeRanges) > 0 {
 						ptrWin, hasPtr = s.windowPointerStatus()
+						if cmdActive && hasPtr && !s.IsScrollingForHover(c.Now()) && s.doc != nil && blockIdx >= 0 && blockIdx < len(s.doc.Blocks) {
+							if cr, ok := s.tableCellRect(blockID, rIdx, cIdx); ok && cr.Contains(ptrWin.X, ptrWin.Y) {
+								if _, cPlain, lay, origin, ok := s.tableCellTextLayout(&s.doc.Blocks[blockIdx], rIdx, cIdx); ok {
+									if pr, hit := s.hoveredInlinePathRange(cellBlock.Spans, cPlain, lay, origin, ptrWin, true); hit {
+										cellPathLinks = []appUi.RichLinkRange{pr}
+										cellPathCursor = true
+									}
+								}
+							}
+						}
 					}
 					appUi.DrawRichDecorations(c, t, txt, func(w float32) *ui.TextLayout {
 						return s.cachedShapeTableCell(cellKey, cellPlain, spansCopy, edFont, tFontSz, weight, lhFactor, cellAlign, w)
@@ -3086,23 +3197,28 @@ func (s *Session) renderTableCell(c *ui.Context, blockIdx int, blockID model.Blo
 						FontSize:     tFontSz,
 						Spans:        spansCopy,
 						Bands:        cellBands,
+						Links:        cellPathLinks,
 						CodeRanges:   codeRanges,
 						CodeBG:       pal.InlineCodeBG,
 						CodeHoverBG:  pal.InlineCodeHoverBG,
 						CodeEditBG:   pal.InlineCodeEditBG,
 						SelRange:     cellSelRange,
 						OpaqueRanges: blockOpaqueBGRanges(&cellBlock),
+						LinkColor:    pal.Link,
 						CaretPos:     -1,
 						HasChipBG:    blockHasChipBG(&cellBlock),
 						PointerWin:   ptrWin,
 						HasPointer:   hasPtr,
+						CmdActive:    cmdActive,
 					})
 				}
 			}
 			if edFont != "" {
 				t.Font(edFont)
 			}
-			if !readOnly {
+			if cellPathCursor {
+				t.Cursor(ui.CursorPointer)
+			} else if !readOnly {
 				t.Cursor(ui.CursorText)
 			}
 			if cellAlign != ui.Start {
