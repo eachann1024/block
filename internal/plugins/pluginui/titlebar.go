@@ -153,7 +153,7 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 				Loading:  busy,
 			})
 			if btn.Clicked() && !busy {
-				c.sup.InstallEntryAsync(entry, nil)
+				c.RequestInstallEntry(entry, nil)
 			}
 			return
 		}
@@ -183,7 +183,7 @@ func (c *Controller) renderStoreDetailTitlebarTrailing(ctx *ui.Context, onSelect
 				Loading:  busy,
 			})
 			if upBtn.Clicked() && !busy && !pluginBusy {
-				c.sup.InstallEntryAsync(entry, c.clearPluginState)
+				c.RequestInstallEntry(entry, c.clearPluginState)
 			}
 		}
 

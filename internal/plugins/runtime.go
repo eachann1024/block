@@ -536,7 +536,7 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 		"sidebar_sections", "file_badges", "sidebar_menu", "backdrops", "status_icon", "toast_icon",
 		"notes_open", "log_actions", "action_progress", "panel_toggle", "editor_insert_mode", "dialog_token",
 		"checklist_add_folder", "item_icons", "tab_menu", "file_path", "log_timeline",
-		"progress_bar", "segmented_status",
+		"progress_bar", "segmented_status", "toast_banner", "open_settings",
 	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")

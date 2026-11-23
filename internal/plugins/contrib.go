@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // UI contribution permissions. Each contribution kind in manifest.contributes
@@ -608,33 +609,6 @@ func (m *Manifest) validateContributes() error {
 	if c.empty() {
 		return nil
 	}
-	need := func(kind string, n int, p Permission) error {
-		if n > 0 && !m.HasPermission(p) {
-			return fmt.Errorf("contributes.%s requires permission %q", kind, p)
-		}
-		return nil
-	}
-	for _, chk := range []error{
-		need("titlebar_buttons", len(c.TitlebarButtons), PermUITitlebar),
-		need("settings_sections", len(c.SettingsSections), PermUISettings),
-		need("commands", len(c.Commands), PermUICommands),
-		need("page_menu", len(c.PageMenu), PermUICommands),
-		need("editor_menu", len(c.EditorMenu), PermUICommands),
-		need("sidebar_menu", len(c.SidebarMenu), PermUISidebar),
-		need("tab_menu", len(c.TabMenu), PermUICommands),
-		need("panels", len(c.Panels), PermUIPanels),
-		need("sidebar_sections", len(c.SidebarSections), PermUISidebar),
-		need("file_badges", len(c.FileBadges), PermUISidebar),
-		need("file_icons", len(c.FileIcons), PermUISidebar),
-		need("backdrops", len(c.Backdrops), PermUIAppearance),
-		need("status_items", len(c.StatusItems), PermUIStatus),
-		need("dialogs", len(c.Dialogs), PermUINotify),
-		need("menubar_items", len(c.MenubarItems), PermUIMenubar),
-	} {
-		if chk != nil {
-			return chk
-		}
-	}
 	seen := map[string]bool{}
 	id := func(kind, v string) error {
 		if !contribIDRe.MatchString(v) {
@@ -1089,10 +1063,31 @@ const (
 	maxFileBadgesPerRow   = 2
 )
 
+// ToastAction describes an optional single action button rendered on a
+// top-right notification banner. Clicking it triggers plugin.action with
+// surface="toast" and action_id=ID.
+type ToastAction struct {
+	ID      string         `json:"id"`
+	Label   string         `json:"label"`
+	Payload map[string]any `json:"payload,omitempty"`
+}
+
+// ToastRequest describes an in-app top-right notification banner.
+type ToastRequest struct {
+	PluginID string
+	Message  string
+	Body     string
+	Tone     string
+	Icon     *DuoIconSpec
+	Action   *ToastAction
+	OnAction func() // Host-internal action callback when PluginID == ""
+}
+
 // UIHost is implemented by the app so plugins can drive host UI. All methods
 // may be called from plugin goroutines and must be safe off the UI thread.
 type UIHost interface {
-	Toast(pluginID, message, tone string, icon *DuoIconSpec)
+	Toast(req ToastRequest) bool
+	OpenPluginSettings(pluginID string)
 	OpenDialog(pluginID, dialogID string, checkValid func() error) (string, error)
 	ActiveDialogToken(pluginID, dialogID string) string
 	CloseDialog(pluginID, dialogID string)
@@ -1748,7 +1743,7 @@ func (s *Supervisor) enabledContribs() []InstalledApp {
 }
 
 func isLegacyTitlebarManager(a InstalledApp) bool {
-	return a.Manifest.HasPermission(PermUITitlebar) &&
+	return (a.Manifest.ID == "block-titlebar" || a.Manifest.HasDeclaredPermission(PermUITitlebar)) &&
 		(a.Manifest.Contributes == nil || len(a.Manifest.Contributes.TitlebarButtons) == 0)
 }
 
@@ -1775,7 +1770,7 @@ func (s *Supervisor) TitlebarHidden(slotID string) bool {
 	enabledTitlebarIDs := make([]string, 0, len(s.installed))
 	hasLegacyManager := false
 	for _, a := range s.installed {
-		if a.Enabled && a.Manifest.HasPermission(PermUITitlebar) {
+		if a.Enabled {
 			enabledTitlebarIDs = append(enabledTitlebarIDs, a.Manifest.ID)
 			if isLegacyTitlebarManager(a) {
 				hasLegacyManager = true
@@ -2190,7 +2185,9 @@ type CommandResult struct {
 	OK             *bool
 	Tone           string
 	Status         string
+	Body           string
 	ShowPluginIcon *bool
+	Action         *ToastAction
 	CopyText       string
 }
 
@@ -2200,11 +2197,13 @@ func (rt *Runtime) Command(ctx context.Context, commandID string, cc CommandCont
 		return nil, fmt.Errorf("command %q not declared in manifest", commandID)
 	}
 	var res struct {
-		OK             *bool  `json:"ok,omitempty"`
-		Tone           string `json:"tone,omitempty"`
-		Status         string `json:"status,omitempty"`
-		ShowPluginIcon *bool  `json:"show_plugin_icon,omitempty"`
-		CopyText       string `json:"copy_text,omitempty"`
+		OK             *bool        `json:"ok,omitempty"`
+		Tone           string       `json:"tone,omitempty"`
+		Status         string       `json:"status,omitempty"`
+		Body           string       `json:"body,omitempty"`
+		ShowPluginIcon *bool        `json:"show_plugin_icon,omitempty"`
+		Action         *ToastAction `json:"action,omitempty"`
+		CopyText       string       `json:"copy_text,omitempty"`
 	}
 	if err := rt.call(ctx, "plugin.command", map[string]any{"command_id": commandID, "context": cc}, &res); err != nil {
 		return nil, err
@@ -2213,7 +2212,9 @@ func (rt *Runtime) Command(ctx context.Context, commandID string, cc CommandCont
 		OK:             res.OK,
 		Tone:           strings.TrimSpace(res.Tone),
 		Status:         strings.TrimSpace(res.Status),
+		Body:           strings.TrimSpace(res.Body),
 		ShowPluginIcon: res.ShowPluginIcon,
+		Action:         res.Action,
 		CopyText:       res.CopyText,
 	}, nil
 }
@@ -2243,29 +2244,37 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 	// Menu bar commands usually run while Block is in the background, so
 	// their result goes to the menu bar host, which also copies copy_text.
 	fromMenubar := cc.Source == CommandSourceMenubar || cc.Source == CommandSourceMenubarDrop
-	report := func(msg, tone, copyText string, ic *DuoIconSpec) {
+	report := func(msg, body, tone, copyText string, ic *DuoIconSpec, act *ToastAction) {
+		req := ToastRequest{
+			PluginID: pluginID,
+			Message:  msg,
+			Body:     body,
+			Tone:     normalizeTone(tone),
+			Icon:     ic,
+			Action:   act,
+		}
 		if h, ok := s.cfg.UI.(MenubarFeedbackHost); ok && (fromMenubar || copyText != "") {
-			h.MenubarFeedback(pluginID, msg, tone, copyText, ic)
+			h.MenubarFeedback(req, copyText)
 			return
 		}
-		s.toast(pluginID, msg, tone, ic)
+		s.toastReq(req)
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
 		if err != nil {
-			report(err.Error(), "error", "", nil)
+			report(err.Error(), "", "error", "", nil, nil)
 			return
 		}
 		defer unlock()
 		if s.NotebookRoot() != nbRoot || s.notebookEpoch.Load() != notebookEpoch {
-			report(LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "warning", "", nil)
+			report(LocalizedText{Zh: "笔记本已切换，命令未执行", En: "Notebook changed; command not run"}.Resolve(s.Locale()), "", "warning", "", nil, nil)
 			return
 		}
 		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
 		if err != nil {
-			report(err.Error(), "error", "", nil)
+			report(err.Error(), "", "error", "", nil, nil)
 			return
 		}
 		if !rt.manifest.HasPermission(PermEditorRead) {
@@ -2298,20 +2307,75 @@ func (s *Supervisor) RunCommandAsync(pluginID, commandID string, cc CommandConte
 			return rt.Command(cmdCtx, commandID, cc)
 		}()
 		if err != nil {
-			report(err.Error(), "error", "", nil)
+			report(err.Error(), "", "error", "", nil, nil)
 			return
 		}
 		if res != nil && (res.Status != "" || res.CopyText != "") {
-			tone := res.Tone
-			if tone == "" {
-				tone = "info"
-			}
+			tone := normalizeTone(res.Tone)
 			var ic *DuoIconSpec
 			if res.ShowPluginIcon == nil || *res.ShowPluginIcon {
 				cp := rt.manifest.Icon
 				ic = &cp
 			}
-			report(res.Status, tone, res.CopyText, ic)
+			var act *ToastAction
+			if res.Action != nil {
+				if cleanAct, actErr := normalizeToastAction(res.Action); actErr == nil {
+					act = cleanAct
+				}
+			}
+			report(truncateRunes(res.Status, 160), truncateRunes(res.Body, 1000), tone, res.CopyText, ic, act)
+		}
+		s.notifyRedraw()
+	}()
+}
+
+// TriggerToastActionAsync invokes plugin.action with surface="toast" when the
+// user clicks the action button on a plugin's notification banner.
+func (s *Supervisor) TriggerToastActionAsync(pluginID, actionID string, payload map[string]any) {
+	if s == nil || strings.TrimSpace(pluginID) == "" || strings.TrimSpace(actionID) == "" {
+		return
+	}
+	nbRoot := s.NotebookRoot()
+	notebookEpoch := s.notebookEpoch.Load()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		unlock, err := s.lockPluginRPCContext(ctx, pluginID)
+		if err != nil {
+			s.toast(pluginID, err.Error(), "error", nil)
+			return
+		}
+		defer unlock()
+		if !s.IsPluginEnabled(pluginID) {
+			return
+		}
+		rt, err := s.ensureRuntime(ctx, pluginID, nbRoot)
+		if err != nil {
+			s.toast(pluginID, err.Error(), "error", nil)
+			return
+		}
+		rt.SetNotebookRoot(nbRoot)
+		rt.SetActiveNote(s.activeNoteFor(nbRoot))
+		s.mu.Lock()
+		s.activeActionRT[pluginID] = rt
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			if s.activeActionRT[pluginID] == rt {
+				delete(s.activeActionRT, pluginID)
+			}
+			s.mu.Unlock()
+		}()
+		scope := systemAction{notebookRoot: nbRoot, epoch: notebookEpoch}
+		actCtx := context.WithValue(ctx, systemActionKey{}, scope)
+		res, err := rt.Action(actCtx, SurfaceToast, actionID, payload)
+		if err != nil {
+			s.toast(pluginID, err.Error(), "error", nil)
+			return
+		}
+		if res != nil && strings.TrimSpace(res.Status) != "" {
+			cp := rt.manifest.Icon
+			s.toast(pluginID, truncateRunes(strings.TrimSpace(res.Status), 160), normalizeTone(res.Tone), &cp)
 		}
 		s.notifyRedraw()
 	}()
@@ -2347,10 +2411,27 @@ func (s *Supervisor) EmitWorkspaceEvent(event string, data map[string]any) {
 	}
 }
 
-func (s *Supervisor) toast(pluginID, msg, tone string, icon *DuoIconSpec) {
-	if s.cfg.UI != nil && strings.TrimSpace(msg) != "" {
-		s.cfg.UI.Toast(pluginID, msg, tone, icon)
+func (s *Supervisor) toast(pluginID, msg, tone string, icon *DuoIconSpec) bool {
+	return s.toastReq(ToastRequest{
+		PluginID: pluginID,
+		Message:  msg,
+		Tone:     normalizeTone(tone),
+		Icon:     icon,
+	})
+}
+
+func (s *Supervisor) toastReq(req ToastRequest) bool {
+	if s == nil || s.cfg.UI == nil || strings.TrimSpace(req.Message) == "" {
+		return false
 	}
+	req.Tone = normalizeTone(req.Tone)
+	return s.cfg.UI.Toast(req)
+}
+
+// NotifyHost emits a host-originated global top-right notification banner.
+func (s *Supervisor) NotifyHost(req ToastRequest) bool {
+	req.PluginID = ""
+	return s.toastReq(req)
 }
 
 // ---------------------------------------------------------------------------
@@ -2434,7 +2515,7 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			}
 			next[id] = true
 		}
-		isLegacyMgr := m.HasPermission(PermUITitlebar) &&
+		isLegacyMgr := (m.ID == "block-titlebar" || m.HasDeclaredPermission(PermUITitlebar)) &&
 			(m.Contributes == nil || len(m.Contributes.TitlebarButtons) == 0)
 		s.mu.RLock()
 		if !s.isRuntimeActiveLocked(m.ID, rt) {
@@ -2560,19 +2641,19 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 		return map[string]any{"ok": true}, nil, true
 
 	case "host.ui.toast":
-		if !m.HasPermission(PermUINotify) {
-			return nil, missingPerm(PermUINotify), true
-		}
 		var p struct {
 			Message        string       `json:"message"`
+			Body           string       `json:"body"`
 			Tone           string       `json:"tone"`
 			Icon           *DuoIconSpec `json:"icon"`
-			ShowPluginIcon bool         `json:"show_plugin_icon"`
+			ShowPluginIcon *bool        `json:"show_plugin_icon"`
+			Action         *ToastAction `json:"action"`
 		}
 		if e := decode(&p); e != nil {
 			return nil, e, true
 		}
-		if strings.TrimSpace(p.Message) == "" {
+		msg := strings.TrimSpace(p.Message)
+		if msg == "" {
 			return nil, rpcErr(-32602, "message is required"), true
 		}
 		var ic *DuoIconSpec
@@ -2582,11 +2663,36 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 			}
 			cp := *p.Icon
 			ic = &cp
-		} else if p.ShowPluginIcon {
+		} else if p.ShowPluginIcon == nil || *p.ShowPluginIcon {
 			cp := m.Icon
 			ic = &cp
 		}
-		s.toast(m.ID, truncateRunes(p.Message, 160), normalizeTone(p.Tone), ic)
+		var act *ToastAction
+		if p.Action != nil {
+			cleanAct, err := normalizeToastAction(p.Action)
+			if err != nil {
+				return nil, rpcErr(-32602, err.Error()), true
+			}
+			act = cleanAct
+		}
+		shown := s.toastReq(ToastRequest{
+			PluginID: m.ID,
+			Message:  truncateRunes(msg, 160),
+			Body:     truncateRunes(strings.TrimSpace(p.Body), 1000),
+			Tone:     normalizeTone(p.Tone),
+			Icon:     ic,
+			Action:   act,
+		})
+		return map[string]any{"ok": true, "shown": shown}, nil, true
+
+	case "host.ui.open_settings":
+		if !m.HasSettingsPage() {
+			return nil, rpcErr(-32602, "plugin declares no settings_page"), true
+		}
+		if ui == nil {
+			return nil, rpcErr(-32005, "settings host unavailable"), true
+		}
+		ui.OpenPluginSettings(m.ID)
 		return map[string]any{"ok": true}, nil, true
 
 	case "host.ui.open_dialog", "host.ui.close_dialog":
@@ -3131,11 +3237,48 @@ func (s *Supervisor) dispatchContribHostMethod(rt *Runtime, method string, param
 const maxPluginNoteWrite = 4 * 1024 * 1024
 
 func normalizeTone(t string) string {
-	switch t {
-	case "success", "error", "warning":
-		return t
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "success":
+		return "success"
+	case "error", "danger":
+		return "error"
+	case "warning", "warn":
+		return "warning"
+	default:
+		return "info"
 	}
-	return "info"
+}
+
+func normalizeToastAction(a *ToastAction) (*ToastAction, error) {
+	if a == nil {
+		return nil, nil
+	}
+	id := strings.TrimSpace(a.ID)
+	label := strings.TrimSpace(a.Label)
+	if id == "" || utf8.RuneCountInString(id) > 64 || strings.ContainsAny(id, "\r\n\t\x00") {
+		return nil, errors.New("host.ui.toast.action.id must be a non-empty string (<=64 chars)")
+	}
+	if label == "" || utf8.RuneCountInString(label) > 24 {
+		return nil, errors.New("host.ui.toast.action.label must be a non-empty string (<=24 chars)")
+	}
+	if ContainsEmoji(label) {
+		return nil, errors.New("host.ui.toast.action.label must not contain emoji")
+	}
+	var payload map[string]any
+	if len(a.Payload) > 0 {
+		raw, err := json.Marshal(a.Payload)
+		if err != nil || len(raw) > 4096 {
+			return nil, errors.New("host.ui.toast.action.payload must serialize to <=4KB JSON")
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return nil, errors.New("invalid host.ui.toast.action.payload")
+		}
+	}
+	return &ToastAction{
+		ID:      id,
+		Label:   label,
+		Payload: payload,
+	}, nil
 }
 
 func truncateRunes(s string, n int) string {

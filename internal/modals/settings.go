@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"block/internal/fuzzy"
@@ -153,6 +154,7 @@ type Manager struct {
 	// Settings page state.
 	settingsOpen           bool
 	settingsTab            string
+	storeVisible           atomic.Bool
 	shortcutScope          int
 	recordingShortcut      string
 	justRecordedPasses     int
@@ -301,6 +303,16 @@ func (m *Manager) IsSettingsOpen() bool {
 	return m.settingsOpen
 }
 
+// IsStoreVisible reports whether the App Store settings tab is currently open.
+// Safe to call from any goroutine.
+func (m *Manager) IsStoreVisible() bool {
+	return m != nil && m.storeVisible.Load()
+}
+
+func (m *Manager) syncStoreVisible() {
+	m.storeVisible.Store(m.settingsOpen && IsStoreTab(m.ActiveSettingsTab()))
+}
+
 // ActiveSettingsTab returns the currently active Settings tab ID.
 func (m *Manager) ActiveSettingsTab() string {
 	if m.settingsTab == "" {
@@ -354,6 +366,7 @@ func (m *Manager) OpenSettings(tab string) {
 	m.searchIgnorePicker = internalui.DropdownSelectState{Borderless: true}
 	m.regexRuleError = ""
 	m.settingsOpen = true
+	m.syncStoreVisible()
 	m.notifySettingsTabChanged(previous, m.ActiveSettingsTab())
 	m.requestRedraw()
 }
@@ -365,6 +378,7 @@ func (m *Manager) CloseSettings() {
 	}
 	previous := m.ActiveSettingsTab()
 	m.settingsOpen = false
+	m.syncStoreVisible()
 	m.notifySettingsTabChanged(previous, "")
 	m.recordingShortcut = ""
 	m.justRecordedPasses = 0
@@ -943,6 +957,7 @@ func (m *Manager) selectSettingsTab(tab string) {
 	m.fontPickerOpen = ""
 	m.searchIgnorePicker.Open = false
 	m.settingsTab = tab
+	m.syncStoreVisible()
 	if previous == tab && IsStoreTab(tab) && m.PluginHost != nil && !m.PluginHost.StoreListing(tab) {
 		m.PluginHost.SettingsTabChanged(previous, tab)
 		return

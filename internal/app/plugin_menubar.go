@@ -210,26 +210,33 @@ func (m *pluginMenubar) runEntry(pluginID, itemID string, e plugins.ResolvedMenu
 // MenubarFeedback reports a menu bar command's result: copyText goes to the
 // clipboard, and the message shows as a toast while Block is in front, or as
 // a system notification while it is not.
-func (h *pluginHostUI) MenubarFeedback(pluginID, message, tone, copyText string, icon *plugins.DuoIconSpec) {
+func (h *pluginHostUI) MenubarFeedback(req plugins.ToastRequest, copyText string) {
 	h.onMain(func() {
 		if copyText != "" && mygo.App.IsReady() {
 			if err := mygo.Clipboard.Write(transfer.TextData(copyText)); err != nil {
-				message, tone = theme.Tr("无法写入剪贴板", "Could not write to the clipboard"), "error"
+				req.Message = theme.Tr("无法写入剪贴板", "Could not write to the clipboard")
+				req.Body = ""
+				req.Tone = "error"
+				req.Action = nil
 			}
 		}
-		if strings.TrimSpace(message) == "" {
+		if strings.TrimSpace(req.Message) == "" {
 			return
 		}
 		win := h.w.Window()
 		if !mygo.App.IsReady() || (mygo.App.IsActive() && win != nil && win.IsFocused()) {
-			h.toast(pluginID, message, tone, icon)
+			h.toastReq(req)
 			return
 		}
 		title := "Block"
-		if h.menubar != nil && h.menubar.names[pluginID] != "" {
-			title = h.menubar.names[pluginID]
+		if h.menubar != nil && h.menubar.names[req.PluginID] != "" {
+			title = h.menubar.names[req.PluginID]
 		}
-		n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: message, Silent: tone != "error"})
+		body := req.Message
+		if strings.TrimSpace(req.Body) != "" {
+			body += "\n" + strings.TrimSpace(req.Body)
+		}
+		n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body, Silent: req.Tone != "error"})
 		go func() { _ = n.Show() }()
 	})
 }

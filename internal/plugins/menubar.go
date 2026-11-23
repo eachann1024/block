@@ -510,18 +510,24 @@ func (s *Supervisor) installedManifest(pluginID string) (*Manifest, bool) {
 // MenubarFeedbackHost is implemented by hosts that can report the result of
 // a menu bar command while Block may be in the background.
 type MenubarFeedbackHost interface {
-	MenubarFeedback(pluginID, message, tone, copyText string, icon *DuoIconSpec)
+	MenubarFeedback(req ToastRequest, copyText string)
 }
 
 func (s *Supervisor) menubarFeedback(pluginID, message, tone, copyText string) {
+	var icon *DuoIconSpec
+	if m, ok := s.installedManifest(pluginID); ok {
+		cp := m.Icon
+		icon = &cp
+	}
+	req := ToastRequest{
+		PluginID: pluginID,
+		Message:  message,
+		Tone:     normalizeTone(tone),
+		Icon:     icon,
+	}
 	if h, ok := s.cfg.UI.(MenubarFeedbackHost); ok {
-		var icon *DuoIconSpec
-		if m, ok := s.installedManifest(pluginID); ok {
-			cp := m.Icon
-			icon = &cp
-		}
-		h.MenubarFeedback(pluginID, message, tone, copyText, icon)
+		h.MenubarFeedback(req, copyText)
 		return
 	}
-	s.toast(pluginID, message, tone, nil)
+	s.toastReq(req)
 }

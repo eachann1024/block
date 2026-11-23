@@ -138,7 +138,9 @@ func (ctrl *Controller) resolveStoreDetailState() (
 				merged = make(map[plugins.Permission]plugins.LocalizedText, len(installedApp.Manifest.PermissionReasons))
 			}
 			for perm, reason := range installedApp.Manifest.PermissionReasons {
-				merged[perm] = reason
+				if !inCatalog || merged[perm].IsEmpty() {
+					merged[perm] = reason
+				}
 			}
 			entry.PermissionReasons = merged
 		}
@@ -709,7 +711,8 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 	author := strings.TrimSpace(entry.Author)
 	repo := strings.TrimSpace(entry.Repo)
 	catLabel := plugins.CategoryLabel(entry.EffectiveCategory(), locale)
-	if ver == "" && author == "" && repo == "" && catLabel == "" && len(entry.Permissions) == 0 && len(entry.FileExtensions) == 0 {
+	sensitivePerms := plugins.SensitivePermissions(entry.Permissions)
+	if ver == "" && author == "" && repo == "" && catLabel == "" && len(sensitivePerms) == 0 && len(entry.FileExtensions) == 0 {
 		return
 	}
 
@@ -758,13 +761,13 @@ func renderStoreDetailMeta(c *ui.Context, entry plugins.StoreAppEntry, locale st
 				}
 			})
 		}
-		if len(entry.Permissions) == 0 {
+		if len(sensitivePerms) == 0 {
 			return
 		}
 		ui.Row(c).FillWidth().MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Wrap().Children(func() {
 			ui.Text(c, theme.Tr("需要权限", "Permissions")).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
 				TextColor(pal.TextSecondary).SingleLine().Margin(0, theme.Space4, 0, 0)
-			for _, p := range entry.Permissions {
+			for _, p := range sensitivePerms {
 				perm := p
 				label := plugins.PermissionLabel(perm, locale)
 				customReason := ""

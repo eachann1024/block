@@ -328,6 +328,22 @@ func OutlinePopoverTransition() ui.ElementTransition {
 	}
 }
 
+// ToastBannerTransition slides top-right notification banners in from the right edge.
+func ToastBannerTransition() ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	return ui.ElementTransition{
+		Animation:    &SpringPanel,
+		ExitDuration: 110 * time.Millisecond,
+		ExitEase:     motionEase,
+		Colors:       true,
+		Shadows:      true,
+		Enter:        &ui.Motion{X: 16, Opacity: 0.08},
+		Exit:         &ui.Motion{X: 12, Opacity: 0},
+	}
+}
+
 // GutterHandleTransition shows per-row editor affordances (block handles, the
 // trailing add button) without overshoot, entering no slower than it leaves:
 // a pointer that leaves and returns mid-animation resumes from the leaving copy
