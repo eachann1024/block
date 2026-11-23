@@ -836,7 +836,7 @@ func TestSelectedMarkdownAndSelectedDoc(t *testing.T) {
 	s.SelectRange(0, 6, 0, 11) // "World" (Bold)
 	tt := ui.NewTester(makeSessionView(s, false), 900, 500)
 	tt.Key(ui.Cmd, ui.KeyC)
-	if got := tt.Clipboard(); got != "**World**" {
+	if got := clipboardMarkdown(tt); got != "**World**" {
 		t.Fatalf("expected Cmd+C to copy **World**, got %q", got)
 	}
 }

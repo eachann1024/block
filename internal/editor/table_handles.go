@@ -750,16 +750,18 @@ func (s *Session) tableCopyMenuSelection(svc ui.Services, idx int, kind string, 
 			return false
 		}
 		parts := make([]string, len(tbl.Rows[targetRow]))
+		plainParts := make([]string, len(tbl.Rows[targetRow]))
 		rowCopy := make([]model.TableCell, len(tbl.Rows[targetRow]))
 		for cIdx, cell := range tbl.Rows[targetRow] {
 			parts[cIdx] = sanitizeTableCellTSV(serializeInlineBlockMarkdown(cell.Spans, s.codec))
+			plainParts[cIdx] = sanitizeTableCellTSV(cell.PlainText())
 			rowCopy[cIdx] = model.TableCell{
 				Spans: append([]model.Span(nil), cell.Spans...),
 				Align: cell.Align,
 				Tint:  cell.Tint,
 			}
 		}
-		s.writeTableCellsClipboard(svc, strings.Join(parts, "\t"), [][]model.TableCell{rowCopy})
+		s.writeTableCellsClipboard(svc, strings.Join(plainParts, "\t"), strings.Join(parts, "\t"), [][]model.TableCell{rowCopy})
 		return true
 	case "col":
 		maxCols := tableMaxCols(tbl)
@@ -767,11 +769,13 @@ func (s *Session) tableCopyMenuSelection(svc ui.Services, idx int, kind string, 
 			return false
 		}
 		parts := make([]string, 0, len(tbl.Rows))
+		plainParts := make([]string, 0, len(tbl.Rows))
 		rows := make([][]model.TableCell, 0, len(tbl.Rows))
 		for _, row := range tbl.Rows {
 			if targetCol < len(row) {
 				cell := row[targetCol]
 				parts = append(parts, sanitizeTableCellTSV(serializeInlineBlockMarkdown(cell.Spans, s.codec)))
+				plainParts = append(plainParts, sanitizeTableCellTSV(cell.PlainText()))
 				rows = append(rows, []model.TableCell{{
 					Spans: append([]model.Span(nil), cell.Spans...),
 					Align: cell.Align,
@@ -779,10 +783,11 @@ func (s *Session) tableCopyMenuSelection(svc ui.Services, idx int, kind string, 
 				}})
 			} else {
 				parts = append(parts, "")
+				plainParts = append(plainParts, "")
 				rows = append(rows, []model.TableCell{{}})
 			}
 		}
-		s.writeTableCellsClipboard(svc, strings.Join(parts, "\n"), rows)
+		s.writeTableCellsClipboard(svc, strings.Join(plainParts, "\n"), strings.Join(parts, "\n"), rows)
 		return true
 	}
 	return false

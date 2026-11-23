@@ -386,6 +386,17 @@ func sanitizeTableCellTSV(s string) string {
 }
 
 func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune int, codec model.MarkdownCodec) string {
+	return serializeTableMultiCell(tbl, startRune, endRune, func(spans []model.Span) string {
+		return serializeInlineBlockMarkdown(spans, codec)
+	})
+}
+
+// serializeTableMultiCellPlain mirrors serializeTableMultiCellMarkdown without inline Markdown markers.
+func serializeTableMultiCellPlain(tbl *model.TableData, startRune, endRune int) string {
+	return serializeTableMultiCell(tbl, startRune, endRune, model.PlainTextOfSpans)
+}
+
+func serializeTableMultiCell(tbl *model.TableData, startRune, endRune int, cellText func([]model.Span) string) string {
 	if tbl == nil || startRune >= endRune {
 		return ""
 	}
@@ -403,7 +414,7 @@ func serializeTableMultiCellMarkdown(tbl *model.TableData, startRune, endRune in
 				if ovLo < ovHi {
 					rowTouched = true
 					sub := sliceSpansForClipboard(cell.Spans, ovLo, ovHi)
-					cellParts = append(cellParts, sanitizeTableCellTSV(serializeInlineBlockMarkdown(sub, codec)))
+					cellParts = append(cellParts, sanitizeTableCellTSV(cellText(sub)))
 				}
 			} else if startRune <= cStart && cStart <= endRune {
 				rowTouched = true
