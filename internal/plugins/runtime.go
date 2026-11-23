@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -539,6 +540,11 @@ func (rt *Runtime) Initialize(ctx context.Context) error {
 	}
 	if rt.cfg.SystemIntegration {
 		capabilities = append(capabilities, "system_integration")
+	}
+	// Every desktop host has menu bar icons; only macOS takes drops on them.
+	capabilities = append(capabilities, "menubar")
+	if goruntime.GOOS == "darwin" {
+		capabilities = append(capabilities, "menubar_drop")
 	}
 	capabilities = append(capabilities, "store_changelog")
 	params := map[string]any{
