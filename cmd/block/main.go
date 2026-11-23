@@ -48,12 +48,24 @@ func main() {
 	flag.BoolVar(&cleanupFileAssocFlg, "cleanup-file-associations", false, "Remove current user's Block-managed OS file associations and exit")
 	var syncSysLinuxDesktopFlg bool
 	var cleanupSysLinuxDesktopFlg bool
+	var syncUserLinuxFileAssocFlg bool
+	var requireDesktopSessionFlg bool
+	var printLinuxHelperIDFlg bool
 	flag.BoolVar(&syncSysLinuxDesktopFlg, "sync-system-linux-desktop", false, "Sync system Linux block.desktop with default-app protection and exit")
 	flag.BoolVar(&cleanupSysLinuxDesktopFlg, "cleanup-system-linux-desktop", false, "Remove Block-managed system Linux default-app pins and exit")
+	flag.BoolVar(&syncUserLinuxFileAssocFlg, "sync-user-linux-file-associations", false, "Sync current non-root user's protected Linux Open-With associations and exit")
+	flag.BoolVar(&requireDesktopSessionFlg, "require-desktop-session", false, "With --sync-user-linux-file-associations, skip silently when XDG_CURRENT_DESKTOP is unset")
+	flag.BoolVar(&printLinuxHelperIDFlg, "print-linux-helper-id", false, "Print this installation's Linux helper desktop ID and exit")
 	flag.Parse()
 
 	if versionFlag {
 		fmt.Println(updater.CurrentVersion())
+		return
+	}
+	if printLinuxHelperIDFlg {
+		if id := plugins.LinuxHelperDesktopID(); id != "" {
+			fmt.Println(id)
+		}
 		return
 	}
 	if syncSysLinuxDesktopFlg {
@@ -65,6 +77,16 @@ func main() {
 	}
 	if cleanupSysLinuxDesktopFlg {
 		if err := plugins.CleanupSystemLinuxDesktop(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if syncUserLinuxFileAssocFlg {
+		if dataDirFlag != "" {
+			files.SetDataDirOverride(dataDirFlag)
+		}
+		if err := plugins.SyncLinuxUserFileAssociations(files.AppDataDir(), requireDesktopSessionFlg); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -91,6 +113,9 @@ func main() {
 
 	if !isIsolatedRun {
 		if !mygo.App.RequestSingleInstanceLock() {
+			if strings.TrimSpace(os.Getenv("BLOCK_DATA_DIR")) == "" {
+				_ = plugins.SyncCurrentExecFileAssociations(files.AppDataDir())
+			}
 			return
 		}
 		if strings.TrimSpace(os.Getenv("BLOCK_DATA_DIR")) == "" {
