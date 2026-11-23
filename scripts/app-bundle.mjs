@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, appendFileSync, constants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -372,20 +372,68 @@ export function refreshUserIconCache() {
   } catch {}
 }
 
-export function pruneLaunchServicesRegistrations(canonicalPath = installPath) {
+function tryRealpath(p) {
+  const abs = resolve(p);
+  try {
+    return realpathSync(abs);
+  } catch {
+    return abs;
+  }
+}
+
+function isConfirmedStaleMacBundlePath(rawPath, canonicalReal, explicitStaleSet) {
+  const abs = resolve(rawPath);
+  const real = tryRealpath(abs);
+  if (real === canonicalReal || abs === canonicalReal) return false;
+  if (explicitStaleSet.has(abs) || explicitStaleSet.has(real)) return true;
+  if (
+    abs.includes("/.block-install.") ||
+    abs.includes("/.Trash/") ||
+    abs.includes("/.Trashes/")
+  ) {
+    return true;
+  }
+  // Never unregister another coexisting live Block.app installation on disk.
+  if (existsSync(abs)) return false;
+  // Do not treat an unmounted external volume (/Volumes/<name>/...) as deleted.
+  const volMatch = abs.match(/^\/Volumes\/([^/]+)\//);
+  if (volMatch && !existsSync(`/Volumes/${volMatch[1]}`)) {
+    return false;
+  }
+  return true;
+}
+
+export function pruneLaunchServicesRegistrations(canonicalPath = installPath, explicitStalePaths = []) {
   if (process.platform !== "darwin") return;
-  const canonical = resolve(canonicalPath);
+  const canonical = tryRealpath(canonicalPath);
+  const explicitStaleSet = new Set();
+  for (const p of explicitStalePaths) {
+    if (typeof p === "string" && p.trim() !== "") {
+      explicitStaleSet.add(resolve(p));
+      explicitStaleSet.add(tryRealpath(p));
+    }
+  }
+  const stale = new Set();
+  for (const p of explicitStalePaths) {
+    if (typeof p === "string" && p.trim() !== "") {
+      const abs = resolve(p);
+      if (abs !== canonical && tryRealpath(abs) !== canonical) {
+        stale.add(abs);
+      }
+    }
+  }
   const res = spawnSync(lsregisterPath, ["-dump"], {
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
   });
   if (res.status === 0 && typeof res.stdout === "string") {
-    const stale = new Set();
     let curPath = "";
     let curId = "";
     const flush = () => {
       if (curPath && (acceptedBundleIds.has(curId) || curId === legacyBundleId)) {
-        if (resolve(curPath) !== canonical) stale.add(curPath);
+        if (isConfirmedStaleMacBundlePath(curPath, canonical, explicitStaleSet)) {
+          stale.add(curPath);
+        }
       }
       curPath = "";
       curId = "";
@@ -409,9 +457,9 @@ export function pruneLaunchServicesRegistrations(canonicalPath = installPath) {
       }
     }
     flush();
-    for (const path of stale) {
-      unregisterMacBundle(path);
-    }
+  }
+  for (const path of stale) {
+    unregisterMacBundle(path);
   }
   if (existsSync(canonical)) {
     spawnSync(lsregisterPath, ["-f", canonical], { stdio: "ignore" });

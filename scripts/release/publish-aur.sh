@@ -120,8 +120,8 @@ grep -q "pkgrel = ${pkgrel}" "$srcinfo"
 grep -q "noextract = block-linux-x64-${pkgver}.deb" "$srcinfo"
 grep -q "block-linux-x64-${pkgver}.deb::https://github.com/eachann1024/block/releases/download/v${pkgver}/block-linux-x64.deb" "$srcinfo"
 grep -q "sha256sums = ${sha}" "$srcinfo"
-cp "$pkgbuild" "$root/packaging/aur/.SRCINFO" "$work/aur/"
-git -C "$work/aur" add PKGBUILD .SRCINFO
+cp "$pkgbuild" "$root/packaging/aur/.SRCINFO" "$root/packaging/aur/block-bin.install" "$work/aur/"
+git -C "$work/aur" add PKGBUILD .SRCINFO block-bin.install
 if git -C "$work/aur" diff --cached --quiet; then
   echo "AUR block-bin already matches ${pkgver}."
   exit 0
