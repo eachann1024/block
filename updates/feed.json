@@ -1,10 +1,68 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-23T19:43:11.210Z",
-  "latest_version": "1.0.918",
-  "latest_tag": "v1.0.918",
+  "updated_at": "2026-11-23T20:48:03.084Z",
+  "latest_version": "1.0.919",
+  "latest_tag": "v1.0.919",
   "releases": [
+    {
+      "version": "1.0.919",
+      "tag": "v1.0.919",
+      "published_at": "2026-11-23T20:48:02Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.919",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件接口：插件采用了更简洁的权限模型，并在申请额外权限时进行分阶段检查。",
+          "插件权限：Block 现在会在右上角显示通知横幅，并提供用于管理插件权限的弹窗。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin API: Plugins now use a simpler permission model with staged checks when requesting additional permissions.",
+          "Plugin permissions: Block now displays notification banners in the top right and provides a modal for managing plugin permissions."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.919/block-macos-arm64.dmg",
+          "size": 15532889,
+          "sha256": "98f8e2755bf8f9e8be9a0ec381fec2bcec9eebfddca529a59ac7fb15ae12f2ae"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.919/block-macos-x64.dmg",
+          "size": 17108814,
+          "sha256": "94e400064f243a9d5247e1c561fe53c06fff4b9df4e9676638136f54930bcef9"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.919/block-windows-x64-setup.exe",
+          "size": 12501052,
+          "sha256": "32a69b2e7ed044a92ff0d753dfd16e60eac47d1cff4033c2200b814ed222b894"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.919/block-linux-x64.deb",
+          "size": 11043036,
+          "sha256": "ff6fb778e649a382c632497745068e974f8f12d6f9a293c3c3be6f2550a5feed"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.919/block-linux-x64.AppImage",
+          "size": 24013304,
+          "sha256": "a3808c2901cd259347ab8b1ac5d6e755e3c51ca77ec590ede66a426a0e4668c4"
+        }
+      ]
+    },
     {
       "version": "1.0.918",
       "tag": "v1.0.918",
@@ -46,38 +104,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-macos-arm64.dmg",
-          "size": 15494076,
-          "sha256": "da45fe8d837feb4694191e073314e49767ab312b26ccf6311d6e60967e4c15f1"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-macos-x64.dmg",
-          "size": 17067789,
-          "sha256": "b27fb1a11f586326c218ec9418b92a226f90f8e4fcc5cd02601e3bae70d3fbc3"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-windows-x64-setup.exe",
-          "size": 12466989,
-          "sha256": "ae9e4f0386a987e628b753b3f1ec86bd5466fa3c25e24ab6d93d24f0c856aabc"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-linux-x64.deb",
-          "size": 11017054,
-          "sha256": "2bb6a180971f8b07e8ab94f5632c5c85d3bcc873cca929dd7fff4d3b382d56c2"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.918/block-linux-x64.AppImage",
-          "size": 23984632,
-          "sha256": "fa150c7a32eb3487f9d8b853e162f6e029ac911d68b6a507ca47cb80c086ccc0"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.917",
@@ -1422,37 +1449,6 @@
         "improvements": [],
         "fixes": [
           "Keep deck sidebar in file-tree order instead of active-first."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.869",
-      "tag": "v1.0.869",
-      "published_at": "2026-11-21T03:25:45Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.869",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "优化侧栏文件树、标签页与笔记本切换体验。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。",
-          "改进表格编辑、列宽调整与单元格选择体验。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Switch notebooks from deck sidebar footer."
-        ],
-        "improvements": [],
-        "fixes": [
-          "Remove redundant save button from topbar.",
-          "Drop roman numeral column from deck sidebar rows."
         ],
         "other": []
       },
