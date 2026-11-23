@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"block/internal/files"
 	"block/internal/icons"
 	"block/internal/media"
 	"block/internal/model"
@@ -567,26 +566,15 @@ func (s *Session) openBlockLink(svc ui.Services, rawLink string) {
 	if s.previewMedia != nil {
 		return
 	}
+	if inlineRaw, ok := decodeInlinePathLink(rawLink); ok {
+		s.openInlinePathLink(svc, inlineRaw)
+		return
+	}
 	if href := media.WebLink(rawLink); href != "" {
 		svc.OpenURL(href)
 		return
 	}
-	path, ok := media.LocalTarget(s.mediaDir(), rawLink)
-	if !ok {
-		return
-	}
-	if files.IsMarkdown(path) && s.host != nil {
-		_ = s.host.OpenNote(path, 0)
-		return
-	}
-	// Open known document and media types. The shell can run some file types.
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".pdf", ".txt", ".csv", ".tsv", ".rtf", ".docx", ".xlsx", ".pptx",
-		".odt", ".ods", ".odp", ".zip", ".png", ".jpg", ".jpeg", ".gif",
-		".webp", ".bmp", ".mp3", ".wav", ".m4a", ".flac", ".mp4", ".mov",
-		".m4v", ".webm", ".mkv", ".avi", ".ogv":
-		svc.OpenURL(localFileURL(path))
-	}
+	s.openLocalMarkdownLink(svc, rawLink)
 }
 
 func (s *Session) resetMedia() {

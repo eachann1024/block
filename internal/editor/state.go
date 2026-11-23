@@ -366,6 +366,32 @@ type Session struct {
 	overlayPanelRects map[string]ui.Rect
 	annotRowHeights   map[string]float32
 	frameAnnotations  annotationFrame
+	// Inline path link async probe cache, per-frame hover tooltip & context menu lock
+	pathProbeMu          sync.Mutex
+	pathProbeCache       map[pathProbeKey]pathProbeEntry
+	pathProbeInFlight    int
+	pathProbeEpoch       uint64
+	pathOpenSeq          uint64
+	pathOpenInFlight     int
+	pathScopeMu          sync.RWMutex
+	pathScope            pathScopeAnchor
+	framePathHover       *hoveredPathTooltip
+	lastPressCanceled    bool
+	lastPressComposing   bool
+	lastPressCmdIntact   bool
+	lastReleaseMods      ui.Modifiers
+	lastReleaseValid     bool
+	ctxMenuPtrValid      bool
+	ctxMenuPtrWin        ui.Point
+	ctxMenuLocked        bool
+	ctxMenuLockedFromPtr bool
+	ctxMenuLockedValid   bool
+	ctxMenuLockedRaw     string
+	ctxMenuLockedTarget  resolvedPathTarget
+	ctxMenuLockedSel     Position
+	ctxMenuOwnerKey      string
+	ctxMenuSeq           uint64
+
 	readOnly          bool
 	minimal           bool
 	embedded          bool
@@ -425,6 +451,7 @@ func NewSession(notePath string, doc *model.Doc, codec model.MarkdownCodec, host
 	}
 	s.docRevAtomic.Store(s.docRev)
 	s.savedMarkdown = s.Markdown()
+	s.initDefaultPathScope()
 	return s
 }
 
@@ -466,6 +493,8 @@ func (s *Session) SetNotePath(p string) {
 	old := s.notePath
 	s.notePath = p
 	s.resetMedia()
+	s.resetPathProbeCache()
+	s.refreshPathScopeOnNoteChange()
 	s.onNotePathChanged(old, p)
 }
 
@@ -491,6 +520,7 @@ func (s *Session) SetDoc(doc *model.Doc) {
 	s.mouseOriginBlock = -1
 	s.mouseDragged = false
 	s.pressJustBegan = false
+	s.lastPressCmdIntact = false
 	s.resetBlockDrag()
 	s.firstLineDeleteArmed = false
 	s.clearAutoConvertState()
@@ -573,6 +603,7 @@ func (s *Session) Close() {
 	}
 	s.cancelInlineAI()
 	s.resetMedia()
+	s.resetPathProbeCache()
 	clear(s.textLayoutCache)
 	clear(s.tableCellLayouts)
 	clear(s.codeSyntaxCache)

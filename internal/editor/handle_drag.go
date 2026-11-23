@@ -18,6 +18,16 @@ const blockDragThreshold float64 = 4
 // onGutterInput hides idle block handles until the pointer moves or clicks.
 func (s *Session) onGutterInput(ev ui.InputEvent) {
 	switch ev.Kind {
+	case ui.InputKeyDown, ui.InputKeyUp, ui.InputPointerMove, ui.InputScroll, ui.InputZoom:
+		if ev.Mods != ui.Cmd {
+			s.lastPressCmdIntact = false
+			s.cancelAllPendingRichLinks()
+		}
+	case ui.InputText, ui.InputCompose, ui.InputCommand:
+		s.lastPressCmdIntact = false
+		s.cancelAllPendingRichLinks()
+	}
+	switch ev.Kind {
 	case ui.InputPointerDown:
 		s.typingPointer = nil
 		return

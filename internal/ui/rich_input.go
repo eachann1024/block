@@ -28,8 +28,9 @@ type RichBand struct {
 
 // RichLinkRange marks a [Start, End) rune range linked to URL.
 type RichLinkRange struct {
-	Start, End int
-	URL        string
+	Start, End   int
+	URL          string
+	ModifierOnly bool
 }
 
 // RichCodeEdge disambiguates caret placement and typing style at inline-code boundaries.
@@ -77,6 +78,7 @@ type RichDecorOptions struct {
 	HasPointer      bool
 	LocalPointer    ui.Point
 	HasLocalPointer bool
+	CmdActive       bool
 }
 
 // RichInputOptions configures a single-block rich text editor whose glyph shaping and inline
@@ -144,6 +146,10 @@ type RichInputOptions struct {
 	CarryColumn  bool
 	// OnOpenLink opens a clicked link (e.g. Cmd+Click).
 	OnOpenLink func(url string)
+	// OnResolveCmdLink resolves a modifier-only link target on Cmd+Click even before async hover completes.
+	OnResolveCmdLink func(pt ui.Point, lay *ui.TextLayout, text string) string
+	// OnContextMenu appends optional host items to the RichInput context menu.
+	OnContextMenu func(m *ui.Menu)
 }
 
 type richLayoutKey struct {
@@ -195,12 +201,13 @@ type RichInputState struct {
 	detached            bool
 	onDetachedReplace   func(delStart, delEnd int, ins string)
 
-	dragging  bool
-	dragUnit  int
-	dragStart [2]int
-	pressPt   ui.Point
-	pressMods ui.Modifiers
-	pressLink string
+	dragging         bool
+	dragUnit         int
+	dragStart        [2]int
+	pressPt          ui.Point
+	pressMods        ui.Modifiers
+	pressLink        string
+	pressLinkPending bool
 
 	layKey       richLayoutKey
 	layout       *ui.TextLayout
@@ -224,8 +231,9 @@ type RichInputState struct {
 	onPastePlain    func(svc ui.Services, pastedText string) bool
 	onKey           func(key ui.Key, mods ui.Modifiers, curText string, anchor, caret int) bool
 	onText          func(text string, anchor, caret int) bool
-	onEdge          func(RichEdge) bool
-	onOpenLink      func(url string)
+	onEdge           func(RichEdge) bool
+	onOpenLink       func(url string)
+	onResolveCmdLink func(pt ui.Point, lay *ui.TextLayout, text string) string
 
 	edgeSyncedInChange bool
 	blinkPos           int
@@ -267,6 +275,12 @@ func (s *RichInputState) SetCodeEdge(edge RichCodeEdge) {
 // CodeEdge reports the current inline-code boundary state for the caret.
 func (s *RichInputState) CodeEdge() RichCodeEdge {
 	return s.codeEdge
+}
+
+// CancelPendingLink cancels any armed Cmd+Click link gesture on this input.
+func (s *RichInputState) CancelPendingLink() {
+	s.pressLink = ""
+	s.pressLinkPending = false
 }
 
 func (s *RichInputState) codeRangeEndingAt(pos int) (RichCodeRange, bool) {
@@ -325,7 +339,7 @@ func (s *RichInputState) OrderedSelection() (lo, hi int) {
 
 // Dragging reports whether a pointer drag gesture initiated inside this input is active.
 func (s *RichInputState) Dragging() bool {
-	return s.dragging
+	return s.dragging && !s.pressLinkPending
 }
 
 // Composing reports whether an IME preedit session is active.
@@ -1135,16 +1149,16 @@ func (s *RichInputState) moveVertical(dir int, extend bool) bool {
 	return true
 }
 
-func (s *RichInputState) linkAtPoint(pt ui.Point) string {
+func (s *RichInputState) linkAtPoint(pt ui.Point, cmdActive bool) string {
 	if len(s.links) == 0 || s.Composing() {
 		return ""
 	}
 	lay := s.currentLayout()
 	for _, lr := range s.links {
-		if lr.URL == "" || lr.End <= lr.Start {
+		if lr.URL == "" || lr.End <= lr.Start || (lr.ModifierOnly && !cmdActive) {
 			continue
 		}
-		for _, rect := range richLinkRects(lay, s.text, lr) {
+		for _, rect := range RichLinkRects(lay, s.text, lr) {
 			if rect.Contains(pt.X, pt.Y) {
 				return lr.URL
 			}
@@ -1153,7 +1167,11 @@ func (s *RichInputState) linkAtPoint(pt ui.Point) string {
 	return ""
 }
 
-func richLinkRects(lay *ui.TextLayout, text string, link RichLinkRange) []ui.Rect {
+// RichLinkRects returns the visual selection rectangles covering link inside lay.
+func RichLinkRects(lay *ui.TextLayout, text string, link RichLinkRange) []ui.Rect {
+	if lay == nil || link.End <= link.Start {
+		return nil
+	}
 	return lay.SelectionRects(ui.TextInputRange{
 		Start: runeToUTF16Off(text, link.Start),
 		End:   runeToUTF16Off(text, link.End),
@@ -1579,6 +1597,18 @@ func (s *RichInputState) handleKey(key ui.Key, mods ui.Modifiers) bool {
 }
 
 func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
+	if s.pressLink != "" || s.pressLinkPending {
+		switch ev.Kind {
+		case ui.InputKeyDown, ui.InputKeyUp, ui.InputPointerMove, ui.InputScroll, ui.InputZoom:
+			if ev.Mods != ui.Cmd {
+				s.pressLink = ""
+				s.pressLinkPending = false
+			}
+		case ui.InputText, ui.InputCompose, ui.InputCommand:
+			s.pressLink = ""
+			s.pressLinkPending = false
+		}
+	}
 	switch ev.Kind {
 	case ui.InputKeyDown:
 		return s.handleKey(ev.Key, ev.Mods)
@@ -1610,13 +1640,29 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 
 	case ui.InputPointerDown:
 		if ev.Button != 0 {
+			if s.pressLinkPending {
+				s.dragging = false
+			}
+			s.pressLink = ""
+			s.pressLinkPending = false
 			return false
 		}
 		s.pressPt = ui.Point{X: ev.X, Y: ev.Y}
 		s.pressMods = ev.Mods
 		s.pressLink = ""
-		if ev.Clicks == 1 && ev.Mods&ui.Cmd != 0 && s.onOpenLink != nil {
-			s.pressLink = s.linkAtPoint(s.pressPt)
+		s.pressLinkPending = false
+		if ev.Clicks == 1 && ev.Mods == ui.Cmd && s.onOpenLink != nil && !s.Composing() {
+			s.pressLink = s.linkAtPoint(s.pressPt, true)
+			if s.pressLink == "" && s.onResolveCmdLink != nil {
+				s.pressLink = s.onResolveCmdLink(s.pressPt, s.currentLayout(), s.text)
+			}
+			if s.pressLink != "" {
+				s.pressLinkPending = true
+				s.dragging = true
+				s.dragUnit = 1
+				s.dragStart = [2]int{s.anchor, s.caret}
+				return true
+			}
 		}
 		if s.Composing() {
 			s.UnmarkText()
@@ -1671,6 +1717,20 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		if !s.dragging {
 			return false
 		}
+		if s.pressLinkPending {
+			dx, dy := ev.X-s.pressPt.X, ev.Y-s.pressPt.Y
+			if dx*dx+dy*dy < 9 {
+				return true
+			}
+			s.pressLink = ""
+			s.pressLinkPending = false
+			lay := s.currentLayout()
+			startCP := lay.PositionAt(s.pressPt)
+			startPos := utf16ToRuneOff(s.text, startCP.Index)
+			s.resetColumn()
+			s.moveCaretTo(startPos, startCP.Affinity, s.pressMods&ui.Shift != 0)
+			s.dragStart = [2]int{s.anchor, s.caret}
+		}
 		lay := s.currentLayout()
 		cp := lay.PositionAt(ui.Point{X: ev.X, Y: ev.Y})
 		pos := utf16ToRuneOff(s.text, cp.Index)
@@ -1706,13 +1766,19 @@ func (s *RichInputState) handleInput(ev ui.InputEvent) bool {
 		return true
 
 	case ui.InputPointerUp:
+		if ev.Button != 0 {
+			s.pressLink = ""
+			s.pressLinkPending = false
+			return false
+		}
 		if !s.dragging {
 			return false
 		}
 		s.dragging = false
+		s.pressLinkPending = false
 		link := s.pressLink
 		s.pressLink = ""
-		if link != "" && !ev.Canceled && s.onOpenLink != nil {
+		if link != "" && !ev.Canceled && ev.Mods == ui.Cmd && s.onOpenLink != nil {
 			s.onOpenLink(link)
 		}
 		return true
@@ -2115,8 +2181,11 @@ func DrawRichDecorations(c *ui.Context, target ui.Element, text string, layFn fu
 			if lr.End <= lr.Start {
 				continue
 			}
-			rects := richLinkRects(lay, text, lr)
-			show := opts.CaretPos >= 0 && opts.CaretPos >= lr.Start && opts.CaretPos <= lr.End
+			if lr.ModifierOnly && !opts.CmdActive {
+				continue
+			}
+			rects := RichLinkRects(lay, text, lr)
+			show := !lr.ModifierOnly && opts.CaretPos >= 0 && opts.CaretPos >= lr.Start && opts.CaretPos <= lr.End
 			if !show && inside && r.W > 0 {
 				for _, sr := range rects {
 					if px >= sr.X && px <= sr.X+sr.W && py >= sr.Y && py <= sr.Y+sr.H {
@@ -2216,6 +2285,11 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	st.onText = opts.OnText
 	st.onEdge = opts.OnEdge
 	st.onOpenLink = opts.OnOpenLink
+	st.onResolveCmdLink = opts.OnResolveCmdLink
+	if (st.pressLink != "" || st.pressLinkPending) && (!c.WindowActive() || c.Modifiers() != ui.Cmd) {
+		st.pressLink = ""
+		st.pressLinkPending = false
+	}
 
 	n := utf8.RuneCountInString(opts.Text)
 	if !st.Composing() && st.text != opts.Text {
@@ -2276,6 +2350,9 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 	box.ContextMenu(func(m *ui.Menu) {
 		if !opts.ReadOnly {
 			m.EditItems()
+			if opts.OnContextMenu != nil {
+				opts.OnContextMenu(m)
+			}
 			return
 		}
 		lo, hi := st.OrderedSelection()
@@ -2285,6 +2362,9 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 		m.Separator()
 		if m.Item(theme.Tr("全选", "Select All")).Disabled(st.text == "").Chosen() {
 			st.handleCommand("selectAll")
+		}
+		if opts.OnContextMenu != nil {
+			opts.OnContextMenu(m)
 		}
 	})
 
@@ -2324,6 +2404,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 		caretAlpha = alpha
 	}
 
+	cmdActive := c.WindowActive() && c.Modifiers() == ui.Cmd
 	var localPtr ui.Point
 	var hasLocalPtr bool
 	if len(codeRanges) > 0 || len(opts.Links) > 0 {
@@ -2333,7 +2414,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			hasLocalPtr = true
 		}
 	}
-	if hasLocalPtr && opts.OnOpenLink != nil && c.Modifiers()&ui.Cmd != 0 && st.linkAtPoint(localPtr) != "" {
+	if hasLocalPtr && opts.OnOpenLink != nil && cmdActive && st.linkAtPoint(localPtr, true) != "" {
 		box.Cursor(ui.CursorPointer)
 	}
 
@@ -2374,6 +2455,7 @@ func RichInput(c *ui.Context, st *RichInputState, opts RichInputOptions) ui.Elem
 			HasChipBG:       opts.HasChipBG,
 			LocalPointer:    localPtr,
 			HasLocalPointer: hasLocalPtr,
+			CmdActive:       cmdActive,
 		})
 	})
 
