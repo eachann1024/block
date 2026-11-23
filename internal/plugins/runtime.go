@@ -105,11 +105,14 @@ type ActionResult struct {
 }
 
 const (
-	maxStderrBytes    = 64 * 1024
-	maxPluginStorage  = 8 * 1024 * 1024
-	maxPluginNote     = 16 * 1024 * 1024
-	maxPluginRPCLine  = maxPluginNote*6 + 2*1024*1024 // worst-case 6x JSON \u00xx escape + RPC envelope
-	maxPluginHostRPCs = 8
+	maxStderrBytes = 64 * 1024
+	// host.log caps so a plugin cannot flood block.log.
+	maxPluginLogEntries = 200
+	maxPluginLogField   = 400
+	maxPluginStorage    = 8 * 1024 * 1024
+	maxPluginNote       = 16 * 1024 * 1024
+	maxPluginRPCLine    = maxPluginNote*6 + 2*1024*1024 // worst-case 6x JSON \u00xx escape + RPC envelope
+	maxPluginHostRPCs   = 8
 )
 
 type ringBuffer struct {
@@ -1158,6 +1161,8 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
 		abs := filepath.Join(rootPath, cleanRel)
+		_, priorErr := root.Lstat(cleanRel)
+		created := errors.Is(priorErr, os.ErrNotExist)
 		write := func() (bool, error) {
 			if rt.closed.Load() {
 				return false, errors.New("plugin is stopping")
@@ -1182,6 +1187,9 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 		}
 		if err != nil {
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
+		}
+		if changed {
+			files.LogInfof("plugin note written: plugin=%s path=%s created=%t", rt.manifest.ID, abs, created)
 		}
 		if changed && rt.cfg.OnNoteWritten != nil {
 			rt.cfg.OnNoteWritten(rt.manifest.ID, rootPath, abs)
@@ -1301,6 +1309,46 @@ func (rt *Runtime) dispatchHostMethod(method string, params json.RawMessage, act
 			return nil, &rpcError{Code: -32004, Message: err.Error()}
 		}
 		return map[string]any{"ok": true, "path": filepath.ToSlash(cleanRel)}, nil
+
+	case "host.log":
+		var p struct {
+			Entries []struct {
+				Level        string `json:"level"`
+				Event        string `json:"event"`
+				NotebookRoot string `json:"notebook_root"`
+				Path         string `json:"path"`
+				Protocol     string `json:"protocol"`
+				Detail       string `json:"detail"`
+			} `json:"entries"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcError{Code: -32602, Message: err.Error()}
+		}
+		if len(p.Entries) > maxPluginLogEntries {
+			p.Entries = p.Entries[:maxPluginLogEntries]
+		}
+		for _, e := range p.Entries {
+			// Notebook-relative paths are logged as absolute paths so their masked
+			// tags match the host's own note lines in block.log.
+			target := pluginLogField(e.Path)
+			if target != "" {
+				if rootPath, cleanRel, err := rt.notebookFilePath(e.NotebookRoot, e.Path, false); err == nil {
+					target = filepath.Join(rootPath, cleanRel)
+				}
+			}
+			event := pluginLogField(e.Event)
+			proto := pluginLogField(e.Protocol)
+			detail := pluginLogField(e.Detail)
+			switch strings.ToLower(strings.TrimSpace(e.Level)) {
+			case "error":
+				files.LogErrorf("plugin %s: event=%s protocol=%s path=%s detail=%s", rt.manifest.ID, event, proto, target, detail)
+			case "warn", "warning":
+				files.LogWarnf("plugin %s: event=%s protocol=%s path=%s detail=%s", rt.manifest.ID, event, proto, target, detail)
+			default:
+				files.LogInfof("plugin %s: event=%s protocol=%s path=%s detail=%s", rt.manifest.ID, event, proto, target, detail)
+			}
+		}
+		return map[string]any{"ok": true}, nil
 
 	case "host.action.progress":
 		var p struct {
@@ -1623,6 +1671,19 @@ func readLimited(reader io.Reader, limit int64) ([]byte, error) {
 		return nil, errors.New("plugin data exceeds size limit")
 	}
 	return data, nil
+}
+
+// pluginLogField flattens one plugin-supplied log value to a short single line.
+func pluginLogField(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > maxPluginLogField {
+		cut := maxPluginLogField
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut] + "…"
+	}
+	return s
 }
 
 // pluginFileRevision hashes a regular notebook file without size limits so

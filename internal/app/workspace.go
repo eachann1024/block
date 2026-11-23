@@ -2974,6 +2974,7 @@ func (w *Workspace) trashWorkspaceItem(path string, moveToTrash func() error) er
 		w.setNotice(err.Error())
 		return err
 	}
+	files.LogInfof("note trashed by user: path=%s", path)
 	w.removeClosedOrDeletedPath(path)
 	w.RescanNotebook()
 	w.RequestRedraw()
