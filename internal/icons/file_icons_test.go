@@ -1,6 +1,8 @@
 package icons
 
 import (
+	"io/fs"
+	"strings"
 	"testing"
 
 	"block/assets"
@@ -8,115 +10,82 @@ import (
 )
 
 func TestFileAndFolderSVGsParse(t *testing.T) {
-	type layerSpec struct {
-		icon   Icon
-		fill   bool
-		line   bool
-		accent bool
+	entries, err := fs.ReadDir(assets.FS, "icons")
+	if err != nil {
+		t.Fatalf("fs.ReadDir(icons): %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("assets/icons is empty")
 	}
 
-	specs := []layerSpec{
-		// Reused existing (20)
-		{Note, true, true, true},
-		{LangPlain, true, true, true},
-		{Code, true, true, true},
-		{LangJs, true, true, true},
-		{LangTs, true, true, true},
-		{LangPython, true, true, true},
-		{LangRust, true, true, true},
-		{LangHtml, true, true, true},
-		{LangCss, true, true, true},
-		{LangBash, true, true, true},
-		{LangSql, true, true, true},
-		{LangJson, true, true, true},
-		{LangYaml, true, true, true},
-		{LangXml, true, true, true},
-		{LangLean, true, true, true},
-		{Image, true, true, true},
-		{Video, true, true, true},
-		{Folder, true, true, true},
-		{FolderOpen, true, true, true},
-		{Package, true, true, true},
-
-		// New documents (6)
-		{FilePdf, true, true, true},
-		{FileWord, true, true, true},
-		{FileSheet, true, true, true},
-		{FileSlides, true, true, true},
-		{FileLog, true, true, true},
-		{FileBook, true, true, true},
-
-		// New code languages (12)
-		{LangReact, true, true, true},
-		{LangGo, true, true, true},
-		{LangJava, true, true, true},
-		{LangKotlin, true, true, true},
-		{LangSwift, true, true, false},
-		{LangC, true, true, true},
-		{LangCpp, true, true, true},
-		{LangCsharp, true, true, true},
-		{LangRuby, true, true, false},
-		{LangPhp, true, true, true},
-		{LangLua, true, true, true},
-		{LangVue, true, true, true},
-
-		// New config & data (3)
-		{FileConfig, true, true, true},
-		{FileEnv, true, true, true},
-		{FileLock, true, true, true},
-
-		// New media (3)
-		{FileSvg, false, true, true},
-		{FileAudio, true, true, true},
-		{FileFont, true, true, false},
-
-		// New archive, binary, special, store tag (8)
-		{FileArchive, true, true, true},
-		{FileBinary, true, true, true},
-		{FileReadme, true, true, true},
-		{FileLicense, true, true, true},
-		{FileDocker, true, true, true},
-		{FileGit, true, true, false},
-		{Wrench, false, true, true},
-		{Tag, true, true, true},
-
-		// New semantic folders (6)
-		{FolderSrc, true, true, true},
-		{FolderDocs, true, true, true},
-		{FolderAssets, true, true, true},
-		{FolderTests, true, true, true},
-		{FolderGit, true, true, true},
-		{FolderDeps, true, true, true},
+	validSuffixes := map[string]bool{
+		"fill":   true,
+		"shade":  true,
+		"line":   true,
+		"detail": true,
+		"accent": true,
 	}
+	layersByIcon := make(map[Icon]map[string]bool)
 
-	if len(specs) != 58 {
-		t.Fatalf("expected 58 icon specs (56 file/folder + Tag + Wrench), got %d", len(specs))
-	}
-
-	checkLayer := func(glyph Icon, suffix string, expected bool) {
-		t.Helper()
-		rel := "icons/" + string(glyph) + "." + suffix + ".svg"
-		raw, err := assets.Read(rel)
-		if !expected {
-			if err == nil {
-				t.Errorf("%s: expected absent layer, but file exists (%d bytes)", rel, len(raw))
-			}
-			return
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".svg") {
+			continue
 		}
+		stem := strings.TrimSuffix(name, ".svg")
+		dot := strings.LastIndexByte(stem, '.')
+		if dot <= 0 || dot == len(stem)-1 {
+			t.Errorf("icons/%s: expected <name>.<layer>.svg", name)
+			continue
+		}
+		glyph := Icon(stem[:dot])
+		layer := stem[dot+1:]
+		if !validSuffixes[layer] {
+			t.Errorf("icons/%s: unexpected layer suffix %q", name, layer)
+			continue
+		}
+		rel := "icons/" + name
+		raw, err := assets.Read(rel)
 		if err != nil {
 			t.Errorf("%s: assets.Read failed: %v", rel, err)
-			return
+			continue
 		}
 		parsed, err := ui.ParseSVG(raw)
 		if err != nil || parsed == nil {
 			t.Errorf("%s: ui.ParseSVG failed: parsed=%v err=%v", rel, parsed, err)
+			continue
 		}
+		if layersByIcon[glyph] == nil {
+			layersByIcon[glyph] = make(map[string]bool)
+		}
+		layersByIcon[glyph][layer] = true
 	}
 
-	for _, sp := range specs {
-		checkLayer(sp.icon, "fill", sp.fill)
-		checkLayer(sp.icon, "line", sp.line)
-		checkLayer(sp.icon, "accent", sp.accent)
+	if len(layersByIcon) != 190 {
+		t.Errorf("expected 190 distinct icons in assets/icons, got %d", len(layersByIcon))
+	}
+
+	// Every file/folder/tag/wrench icon must exist with at least a primary line layer.
+	required := []Icon{
+		Note, LangPlain, Code, LangJs, LangTs, LangPython, LangRust, LangHtml, LangCss,
+		LangBash, LangSql, LangJson, LangYaml, LangXml, LangLean, Image, Video, Folder,
+		FolderOpen, Package, FilePdf, FileWord, FileSheet, FileSlides, FileLog, FileBook,
+		LangReact, LangGo, LangJava, LangKotlin, LangSwift, LangC, LangCpp, LangCsharp,
+		LangRuby, LangPhp, LangLua, LangVue, FileConfig, FileEnv, FileLock, FileSvg,
+		FileAudio, FileFont, FileArchive, FileBinary, FileReadme, FileLicense, FileDocker,
+		FileGit, Wrench, Tag, FolderSrc, FolderDocs, FolderAssets, FolderTests, FolderGit,
+		FolderDeps,
+	}
+	for _, glyph := range required {
+		ls := layersByIcon[glyph]
+		if !ls["line"] {
+			t.Errorf("icon %q: missing required .line.svg layer", glyph)
+		}
+	}
+	for glyph, ls := range layersByIcon {
+		if !ls["line"] && !ls["accent"] {
+			t.Errorf("icon %q: must have at least .line.svg or .accent.svg", glyph)
+		}
 	}
 }
 
