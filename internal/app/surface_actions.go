@@ -166,7 +166,7 @@ func (s *TabSurface) HasCopyableText() bool {
 	if s == nil {
 		return false
 	}
-	return s.HasSource || (s.IsSVG && s.Source.Text != "")
+	return (s.HasSource || s.IsSVG) && s.CurrentText() != ""
 }
 
 // CanFormatJSON reports whether this surface edits a JSON file.
@@ -208,32 +208,6 @@ func (s *TabSurface) FormatJSON() (changed bool, err error) {
 		return true, err
 	}
 	return true, nil
-}
-
-// MarkdownCodeFence wraps the surface's source text in a safe fenced Markdown code block.
-func (s *TabSurface) MarkdownCodeFence() string {
-	if s == nil {
-		return ""
-	}
-	text := s.CurrentText()
-	lang := s.fenceLanguageTag()
-	fence := strings.Repeat("`", max(3, maxConsecutiveBackticks(text)+1))
-	body := strings.TrimRight(text, "\r\n")
-	if body == "" {
-		return fence + lang + "\n" + fence
-	}
-	return fence + lang + "\n" + body + "\n" + fence
-}
-
-func (s *TabSurface) fenceLanguageTag() string {
-	if s.IsSVG {
-		return "svg"
-	}
-	if tag := strings.ToLower(strings.TrimSpace(s.Source.Language)); tag != "" && tag != "text" && tag != "plain" {
-		return tag
-	}
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(s.Path), "."))
-	return ext
 }
 
 func (s *TabSurface) sourceFormatBadges() []string {
@@ -286,42 +260,6 @@ func formatFileBytes(n int64) string {
 	default:
 		return fmt.Sprintf("%.2f GB", float64(n)/(1024*1024*1024))
 	}
-}
-
-func maxConsecutiveBackticks(s string) int {
-	best, cur := 0, 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '`' {
-			cur++
-			if cur > best {
-				best = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	return best
-}
-
-// markdownImageRef builds a clean Markdown image reference for filePath, using a
-// relative path when filePath resides inside notebookDir.
-func markdownImageRef(filePath, notebookDir string) string {
-	base := filepath.Base(filePath)
-	alt := strings.TrimSuffix(base, filepath.Ext(base))
-	target := base
-	if notebookDir != "" {
-		if rel, err := filepath.Rel(notebookDir, filePath); err == nil && rel != "" && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
-			target = filepath.ToSlash(rel)
-		} else {
-			target = filepath.ToSlash(filePath)
-		}
-	} else {
-		target = filepath.ToSlash(filePath)
-	}
-	if strings.ContainsAny(target, " ()") {
-		target = "<" + target + ">"
-	}
-	return fmt.Sprintf("![%s](%s)", alt, target)
 }
 
 // copyImageFileToClipboard encodes path as PNG (passing PNG files through verbatim)

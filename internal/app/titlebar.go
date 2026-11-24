@@ -238,13 +238,11 @@ type TitlebarProps struct {
 	OnOpenHistory       func()
 	OnOpenExport        func()
 	OnCopyMarkdown      func()
-	OnToggleNoteSource  func()
-	OnCopyContent       func()
-	OnCopyAsMarkdown    func()
-	OnFormatJSON        func()
-	OnCopyImage         func()
-	OnCopyImageMarkdown func()
-	OnOpenExternal      func()
+	OnToggleNoteSource func()
+	OnCopyContent      func()
+	OnFormatJSON       func()
+	OnCopyImage        func()
+	OnOpenExternal     func()
 	OnRevealPath        func(path string)
 	NoteStats           func() (characters, blocks int)
 	PageStats           func() []PageMenuStat
@@ -1070,10 +1068,7 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 			if surface == SurfaceSVG {
 				copyLabel = theme.Tr("复制 SVG 源码", "Copy SVG Source")
 			}
-			items = append(items,
-				item("page-copy-content", copyLabel, "", &icCopy, p.OnCopyContent),
-				item("page-copy-md-fence", theme.Tr("复制为 Markdown 代码块", "Copy as Markdown Block"), "", &icCode, p.OnCopyAsMarkdown),
-			)
+			items = append(items, item("page-copy-content", copyLabel, "", &icCopy, p.OnCopyContent))
 		}
 		if p.CanFormatJSON {
 			items = append(items, item("page-format-json", theme.Tr("格式化 JSON", "Format JSON"), "", &icFormat, p.OnFormatJSON))
@@ -1081,15 +1076,9 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 		if surface == SurfaceHTML {
 			items = append(items, item("page-open-browser", theme.Tr("在浏览器中打开", "Open in Browser"), "", &icOpen, p.OnOpenInBrowser))
 		}
-		if surface == SurfaceSVG {
-			items = append(items, item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown))
-		}
 	case SurfaceImagePreview:
 		appendZoomItems()
-		items = append(items,
-			item("page-copy-image", theme.Tr("复制图片", "Copy Image"), "", &icCopy, p.OnCopyImage),
-			item("page-copy-md-image", theme.Tr("复制为 Markdown 图片", "Copy as Markdown Image"), "", &icImg, p.OnCopyImageMarkdown),
-		)
+		items = append(items, item("page-copy-image", theme.Tr("复制图片", "Copy Image"), "", &icCopy, p.OnCopyImage))
 	}
 
 	items = appendPluginPageItems(items)
