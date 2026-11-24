@@ -1,10 +1,78 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T14:47:12.284Z",
-  "latest_version": "1.0.935",
-  "latest_tag": "v1.0.935",
+  "updated_at": "2026-11-24T16:22:06.908Z",
+  "latest_version": "1.0.936",
+  "latest_tag": "v1.0.936",
   "releases": [
+    {
+      "version": "1.0.936",
+      "tag": "v1.0.936",
+      "published_at": "2026-11-24T16:22:06Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.936",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "插件商店：插件说明文档现已支持播放动态 SVG 图像。"
+        ],
+        "improvements": [],
+        "fixes": [
+          "标题栏：通过标题栏按钮打开 HTML 与 SVG 文件时，现在会正确调用系统默认浏览器，而不是重新激活 Block 窗口。",
+          "编辑器：解决了自动换行快捷键与标题栏按钮的状态冲突，确保按钮的高亮状态与文本的实际换行效果保持同步。",
+          "插件商店：插件说明文档现已支持共享仅有英文版本的 SVG 图片，确保在各语言界面下都能正常显示插图。"
+        ],
+        "other": [
+          "主题：补充了内置字体的底层数据定义。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Plugin Store: Plugin READMEs now support playing animated SVG images."
+        ],
+        "improvements": [],
+        "fixes": [
+          "Titlebar: Opening HTML and SVG files from the titlebar button now correctly launches the system default browser instead of reactivating Block.",
+          "Editor: Resolved a state conflict between the soft wrap shortcut and the titlebar button, ensuring the toggle highlight stays in sync with actual line wrapping.",
+          "Plugin Store: Plugin READMEs now support sharing English-only SVG images, ensuring illustrations display properly in localized views."
+        ],
+        "other": [
+          "Themes: Added underlying data definitions for built-in fonts."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-macos-arm64.dmg",
+          "size": 15937849,
+          "sha256": "e85a43a1813a9f6ed1f9831c5b6911bf7e969abf446268fdc0f1cba26e798bad"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-macos-x64.dmg",
+          "size": 17583372,
+          "sha256": "a27694e194b2a2e55deb5f18b6e9350a2abe2dc10cd1fea6642abfafa890da4d"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-windows-x64-setup.exe",
+          "size": 13355243,
+          "sha256": "fbe3acf300ce0feeb8a5600803b78bb0e8760868e042d99faf039d4ec41834e3"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-linux-x64.deb",
+          "size": 10835936,
+          "sha256": "3c7a4cb5c794d536bd3f8a0675582dfea572934e5f2576aa67be9d853d0d301e"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.936/block-linux-x64.AppImage",
+          "size": 23890424,
+          "sha256": "ab30144635265420c44de01a6092c3e58d865d20f7515d9eea706e93417ce71d"
+        }
+      ]
+    },
     {
       "version": "1.0.935",
       "tag": "v1.0.935",
@@ -34,38 +102,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-macos-arm64.dmg",
-          "size": 15885573,
-          "sha256": "79f5feedad823ea6bd1d9635ef214ec1018bbba2d578450ff5e224962fecedfa"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-macos-x64.dmg",
-          "size": 17520746,
-          "sha256": "afb120b85ad9900b3f5778466da8bf1fc479104c480d59524967d7260153a48a"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-windows-x64-setup.exe",
-          "size": 13289676,
-          "sha256": "c59b91b69f49c9b3cfa226389560f1302bcfd8227d2936f2d3838acaeeb867f3"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-linux-x64.deb",
-          "size": 10788166,
-          "sha256": "dbc945b5a376fb0c3e666d80ca9d4e878a9753975dd1c5fe64d1f1282ce3f58f"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.935/block-linux-x64.AppImage",
-          "size": 23828984,
-          "sha256": "57703876606c48adc1b234748c0cf511be0ccf32e6750684ea8a8cd58d4e2107"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.934",
@@ -1629,35 +1666,6 @@
           "Valid comments are now preserved in property lists.",
           "Source verification now remains available for retired language plugins."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.886",
-      "tag": "v1.0.886",
-      "published_at": "2026-11-21T07:08:13Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.886",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "插件现在可以为标签页和侧边栏文件夹添加菜单，并读取当前笔记的文件路径。"
-        ],
-        "improvements": [
-          "现在可以在标签页和文件夹菜单中使用“复制文件路径”命令。"
-        ],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Plugins can now add menus to tabs and sidebar folders, and access the current note’s file path."
-        ],
-        "improvements": [
-          "The Copy File Path command is now available in tab and folder menus."
-        ],
-        "fixes": [],
         "other": []
       },
       "assets": []
