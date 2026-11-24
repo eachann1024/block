@@ -202,7 +202,7 @@ func (c *Controller) renderPanelHeader(cUI *ui.Context, pal theme.Palette, fulls
 
 		closeBtn := bui.IconButton(cUI, icons.Close, bui.IconButtonOptions{
 			ID:      "ai-chat-close",
-			Label:   theme.Tr("关闭 AI 面板", "Close AI panel"),
+			Label:   theme.Tr("关闭 AI Agent 面板", "Close AI Agent panel"),
 			Tooltip: theme.Tr("关闭", "Close"),
 		})
 		if closeBtn.Clicked() {
@@ -442,11 +442,11 @@ func (c *Controller) deleteConversation(id uint64) {
 }
 
 func (c *Controller) renderBlockedCover(cUI *ui.Context, pal theme.Palette, fullscreen bool, enabled bool) {
-	title := theme.Tr("先完成 AI 配置", "Configure AI Assistant")
-	cta := theme.Tr("前往设置", "Open AI Settings")
+	title := theme.Tr("先完成 AI Agent 配置", "Configure AI Agent")
+	cta := theme.Tr("前往设置", "Open AI Agent Settings")
 	mascot := icons.MascotAIGreeting
 	if !enabled {
-		title = theme.Tr("先启用 AI 助手", "Enable AI Assistant")
+		title = theme.Tr("先启用 AI Agent", "Enable AI Agent")
 		mascot = icons.MascotAIDisabled
 	}
 	width := theme.EmptyActionWidth
@@ -2357,7 +2357,7 @@ func (c *Controller) renderTurnError(cUI *ui.Context, pal theme.Palette, fullscr
 			ui.Text(cUI, errText).FontSize(theme.FontBody).TextColor(pal.Text)
 			if needSettings && c.host != nil {
 				slIc := icons.Sliders
-				btn := bui.ActionButton(cUI, "ai-chat-settings", theme.Tr("打开 AI 设置", "Open AI settings"), &slIc, bui.ButtonSecondary, false)
+				btn := bui.ActionButton(cUI, "ai-chat-settings", theme.Tr("打开 AI Agent 设置", "Open AI Agent settings"), &slIc, bui.ButtonSecondary, false)
 				if btn.Clicked() {
 					c.host.OpenSettings("ai")
 				}
@@ -3642,7 +3642,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 							if btn.Clicked() {
 								c.mu.Lock()
 								if c.streaming {
-									c.turnError = theme.Tr("请等待当前回复结束后再切换智能体", "Wait for the current response before changing agent")
+									c.turnError = theme.Tr("请等待当前回复结束后再切换 Agent", "Wait for the current response before changing agent")
 									c.mu.Unlock()
 								} else {
 									changed := c.selectedBackendLocked() != k
@@ -3675,7 +3675,7 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 
 						ui.Box(cUI).Size(1, 14).Shrink(0).Margin(0, 3).Background(pal.Hairline)
 
-						setLbl := theme.Tr("AI 设置", "AI settings")
+						setLbl := theme.Tr("AI Agent 设置", "AI Agent settings")
 						setBtn := ui.ButtonBase(cUI.Key("ai-deck-settings")).Size(tabSz, tabSz).Shrink(0).Center().
 							Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(setLbl)
 						bui.Tooltip(cUI, setBtn, setLbl)
@@ -3912,7 +3912,7 @@ func formatBackendVersionTag(st BackendStatus, hasStatus bool) string {
 	}
 }
 
-// RenderSettingsTab renders the Settings > AI Assistant tab.
+// RenderSettingsTab renders the Settings > AI Agent tab.
 func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	c.mu.Lock()
 	c.services = cUI.Services()
@@ -3985,11 +3985,11 @@ func (c *Controller) RenderSettingsTab(cUI *ui.Context) {
 	}
 
 	root.Children(func() {
-		// 0. Master AI Assistant toggle row.
+		// 0. Master AI Agent toggle row.
 		bui.SettingsSection(cUI, func() {
 			en := cfg.Enabled
-			row := bui.SettingsRow(cUI, theme.Tr("启用 AI 助手", "Enable AI Assistant"), func() {
-				if bui.TogglePill(cUI, "ai-enabled-switch", theme.Tr("启用 AI 助手", "Enable AI Assistant"), &en, false) {
+			row := bui.SettingsRow(cUI, theme.Tr("启用 AI Agent", "Enable AI Agent"), func() {
+				if bui.TogglePill(cUI, "ai-enabled-switch", theme.Tr("启用 AI Agent", "Enable AI Agent"), &en, false) {
 					cfg.Enabled = en
 					_ = c.SaveProviderConfig(cfg)
 				}

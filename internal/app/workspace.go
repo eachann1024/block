@@ -534,7 +534,7 @@ func stripOuterMarkdownFence(raw string) string {
 
 func (w *Workspace) inlineAIStreamRespond(ctx context.Context, ctxText, orig, draft, instruction string, onDelta func(string)) (string, error) {
 	if !w.ai.Enabled() {
-		return "", errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+		return "", errors.New(theme.Tr("AI Agent 已关闭", "AI Agent is off"))
 	}
 	inst := strings.TrimSpace(instruction)
 	src := strings.TrimSpace(orig)
@@ -760,7 +760,7 @@ func (w *Workspace) wireQuickNoteCallbacks() {
 			return "", ctx.Err()
 		}
 		if !w.ai.Enabled() {
-			return "", errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+			return "", errors.New(theme.Tr("AI Agent 已关闭", "AI Agent is off"))
 		}
 		if err == nil && strings.TrimSpace(out) != "" {
 			return out, nil
@@ -2726,7 +2726,7 @@ func (w *Workspace) PreviewBatchPlanContext(ctx context.Context, plan *model.Bat
 			return err
 		}
 		if !w.ai.Enabled() {
-			return errors.New(theme.Tr("AI 助手已关闭", "AI Assistant is off"))
+			return errors.New(theme.Tr("AI Agent 已关闭", "AI Agent is off"))
 		}
 		paths := w.aiPlanEditorPaths(target)
 		for _, path := range paths {
@@ -6868,7 +6868,7 @@ func (w *Workspace) renderGhostPage(c *ui.Context, st model.AppState, allowAutoF
 				blockui.EmptyHint(c, func() { blockui.ShortcutKeycap(c, sc) }, theme.Tr("搜索", "Search"))
 			}
 			if sc := modals.EffectiveShortcut(st, "toggle_ai"); sc != "" {
-				blockui.EmptyHint(c, func() { blockui.ShortcutKeycap(c, sc) }, theme.Tr("AI 助手", "AI Assistant"))
+				blockui.EmptyHint(c, func() { blockui.ShortcutKeycap(c, sc) }, theme.Tr("AI Agent", "AI Agent"))
 			}
 		})
 	})

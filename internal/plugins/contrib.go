@@ -896,7 +896,7 @@ func builtinTitlebarSlots(en bool) []TitlebarSlot {
 	}
 	return []TitlebarSlot{
 		{ID: TitlebarSlotFeedback, Label: tr("反馈", "Feedback"), Icon: &UIIcon{Name: "message-square"}},
-		{ID: TitlebarSlotAI, Label: tr("AI 助手", "AI Assistant"), Icon: &UIIcon{Name: "sparkles"}},
+		{ID: TitlebarSlotAI, Label: tr("AI Agent", "AI Agent"), Icon: &UIIcon{Name: "sparkles"}},
 		{ID: TitlebarSlotSendAll, Label: tr("统一发送批注", "Send All Annotations"), Icon: &UIIcon{Chip: tr("统一发送", "Send all"), Dot: true}},
 		{ID: TitlebarSlotWrap, Label: tr("自动换行", "Word Wrap"), Icon: &UIIcon{Name: "wrap"}},
 		{ID: TitlebarSlotZoom, Label: tr("缩放", "Zoom"), Icon: &UIIcon{Name: "tb-plus"}},

@@ -111,7 +111,7 @@ func BuildMenuBarForOS(goos string, shortcuts map[string]string, act MenuActions
 		{ID: "menu-toggle-sidebar", Label: theme.Tr("显示或隐藏侧栏", "Toggle Sidebar"), Accelerator: accel("toggle_sidebar", "alt-b"), Click: call(act.OnToggleSidebar)},
 	}
 	if act.OnToggleAIPanel != nil {
-		viewSubmenu = append(viewSubmenu, &mygo.MenuItem{ID: "menu-toggle-ai", Label: theme.Tr("AI 面板", "AI Panel"), Accelerator: accel("toggle_ai", "cmd-j"), Click: call(act.OnToggleAIPanel)})
+		viewSubmenu = append(viewSubmenu, &mygo.MenuItem{ID: "menu-toggle-ai", Label: theme.Tr("AI Agent 面板", "AI Agent Panel"), Accelerator: accel("toggle_ai", "cmd-j"), Click: call(act.OnToggleAIPanel)})
 	}
 	viewSubmenu = append(viewSubmenu,
 		mygo.Separator(),
