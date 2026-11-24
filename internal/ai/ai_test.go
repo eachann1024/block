@@ -391,10 +391,12 @@ func TestMCPBridgeProtocol(t *testing.T) {
 	ctrl, host, _ := setupReadyController(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	turn := &assistantTurn{ctx: ctx, cancel: cancel, notebookScope: captureNotebook(host)}
+	turn := &assistantTurn{ctx: ctx, cancel: cancel, notebookScope: captureNotebook(host), convID: 1, serial: 1}
 	ctrl.mu.Lock()
-	ctrl.turn = turn
-	ctrl.streaming = true
+	st := ctrl.ensureRunStateLocked(1)
+	st.turn = turn
+	st.serial = 1
+	st.streaming = true
 	ctrl.mu.Unlock()
 	bridge, err := startMCPBridge(ctrl, turn)
 	if err != nil {
@@ -1529,5 +1531,422 @@ exit 1
 	}
 	if !gotCodexText || !gotCodexTool {
 		t.Fatalf("expected Codex streamed text & tool trace, got %+v", codexConv.Messages)
+	}
+}
+
+func TestNotebookIsolationAndLegacyInference(t *testing.T) {
+	theme.SetLanguage(model.LangZh)
+	dataDir := t.TempDir()
+	nbA := t.TempDir()
+	nbB := t.TempDir()
+	host := newFakeHost(nbA)
+	host.notebooks = []string{nbA, nbB}
+	noteA := filepath.Join(nbA, "alpha.md")
+	noteB := filepath.Join(nbB, "beta.md")
+	if err := host.WriteNote(noteA, "# Alpha\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.WriteNote(noteB, "# Beta\n"); err != nil {
+		t.Fatal(err)
+	}
+	host.activeNote = noteA
+
+	ctrl := NewController(dataDir, host, nil)
+	if err := ctrl.SaveProviderConfig(model.AIProviderConfig{
+		Enabled: true, Provider: "openai", Protocol: model.ProtocolOpenAI,
+		BaseURL: "http://127.0.0.1:1/v1", APIKey: "k", Model: "m",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctrl.EnableMockResponder(true)
+
+	ctrl.SendPrompt("hello in A")
+	waitUntil(t, 2*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 2
+	})
+	convA := ctrl.CurrentConversation()
+	if convA == nil || convA.Notebook != normalizeNotebookRoot(nbA) {
+		t.Fatalf("expected convA bound to nbA, got %+v", convA)
+	}
+	ctrl.SetDraftText("draft A")
+
+	// Switch to nbB.
+	host.mu.Lock()
+	host.root = nbB
+	host.activeNote = noteB
+	host.mu.Unlock()
+	ctrl.OnNotebookSwitched(nbB)
+
+	if ctrl.CurrentConversation() != nil {
+		t.Fatal("expected fresh blank conversation on nbB")
+	}
+	if ctrl.ActiveDraftText() != "" {
+		t.Fatalf("expected empty draft on nbB, got %q", ctrl.ActiveDraftText())
+	}
+	if got := ctrl.Conversations(); len(got) != 0 {
+		t.Fatalf("expected 0 conversations in nbB, got %d", len(got))
+	}
+
+	ctrl.SendPrompt("hello in B")
+	waitUntil(t, 2*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 2
+	})
+	convB := ctrl.CurrentConversation()
+	if convB == nil || convB.Notebook != normalizeNotebookRoot(nbB) {
+		t.Fatalf("expected convB bound to nbB, got %+v", convB)
+	}
+	ctrl.SetDraftText("draft B")
+
+	// Switch back to nbA: convA and draft A should be restored.
+	host.mu.Lock()
+	host.root = nbA
+	host.activeNote = noteA
+	host.mu.Unlock()
+	ctrl.OnNotebookSwitched(nbA)
+
+	if cur := ctrl.CurrentConversation(); cur == nil || cur.ID != convA.ID {
+		t.Fatalf("expected convA (%d) restored on nbA, got %+v", convA.ID, cur)
+	}
+	if ctrl.ActiveDraftText() != "draft A" {
+		t.Fatalf("expected draft A restored, got %q", ctrl.ActiveDraftText())
+	}
+	if got := ctrl.Conversations(); len(got) != 1 || got[0].ID != convA.ID {
+		t.Fatalf("expected only convA in nbA Conversations(), got %+v", got)
+	}
+
+	// Verify reload restores ByNotebook and infers legacy conversations without Notebook.
+	ctrl.mu.Lock()
+	ctrl.convs = append(ctrl.convs,
+		model.Conversation{
+			ID:       901,
+			Title:    "Legacy Plan",
+			Messages: []model.ChatMessage{{Role: "tool", Plan: &model.BatchPlan{Root: nbB}}},
+		},
+		model.Conversation{
+			ID:       902,
+			Title:    "Legacy Sources",
+			Messages: []model.ChatMessage{{Role: "assistant", Sources: []model.SourceNote{{Path: noteA}}}},
+		},
+		model.Conversation{
+			ID:       903,
+			Title:    "Legacy Refs",
+			Messages: []model.ChatMessage{{Role: "user", Refs: []string{noteB}}},
+		},
+	)
+	ctrl.persistChatsLocked()
+	ctrl.mu.Unlock()
+
+	reloaded := NewController(dataDir, host, nil)
+	if cur := reloaded.CurrentConversation(); cur == nil || cur.ID != convA.ID {
+		t.Fatalf("expected reloaded nbA conversation %d, got %+v", convA.ID, cur)
+	}
+	if reloaded.ActiveDraftText() != "draft A" {
+		t.Fatalf("expected reloaded draft A, got %q", reloaded.ActiveDraftText())
+	}
+	var idsA []uint64
+	for _, c := range reloaded.Conversations() {
+		idsA = append(idsA, c.ID)
+	}
+	if len(idsA) != 2 || idsA[0] != convA.ID || idsA[1] != 902 {
+		t.Fatalf("unexpected nbA conversations after legacy inference: %v", idsA)
+	}
+
+	host.mu.Lock()
+	host.root = nbB
+	host.activeNote = noteB
+	host.mu.Unlock()
+	reloaded.OnNotebookSwitched(nbB)
+	if cur := reloaded.CurrentConversation(); cur == nil || cur.ID != convB.ID {
+		t.Fatalf("expected reloaded nbB conversation %d, got %+v", convB.ID, cur)
+	}
+	if reloaded.ActiveDraftText() != "draft B" {
+		t.Fatalf("expected reloaded draft B, got %q", reloaded.ActiveDraftText())
+	}
+	if gotB := reloaded.Conversations(); len(gotB) != 3 {
+		t.Fatalf("expected 3 conversations in nbB (convB + 901 + 903), got %d", len(gotB))
+	}
+}
+
+func TestBackgroundStreamAndPlanIsolationAcrossNotebookSwitch(t *testing.T) {
+	theme.SetLanguage(model.LangZh)
+	dataDir := t.TempDir()
+	nbA := t.TempDir()
+	nbB := t.TempDir()
+	host := newFakeHost(nbA)
+	host.notebooks = []string{nbA, nbB}
+	noteA := filepath.Join(nbA, "alpha.md")
+	noteB := filepath.Join(nbB, "beta.md")
+	if err := host.WriteNote(noteA, "# Alpha\n\nold line\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.WriteNote(noteB, "# Beta\n"); err != nil {
+		t.Fatal(err)
+	}
+	host.activeNote = noteA
+
+	switched := make(chan struct{})
+	reqCount := 0
+	var reqMu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqMu.Lock()
+		reqCount++
+		turnStep := reqCount
+		reqMu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		if turnStep == 1 {
+			// Wait until the UI switches to nbB before emitting the tool call & finishing step 1.
+			<-switched
+			argsJSON, _ := json.Marshal(map[string]any{
+				"summary": "Update Alpha",
+				"operations": []map[string]any{{
+					"type":      "search_replace",
+					"pageId":    "alpha",
+					"oldString": "old line",
+					"newString": "new line",
+				}},
+			})
+			chunk, _ := json.Marshal(map[string]any{
+				"choices": []map[string]any{{
+					"delta": map[string]any{
+						"tool_calls": []map[string]any{{
+							"index": 0,
+							"id":    "call_plan_1",
+							"function": map[string]any{
+								"name":      "executeBatchPlan",
+								"arguments": string(argsJSON),
+							},
+						}},
+					},
+				}},
+			})
+			_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", chunk)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return
+		}
+		chunk, _ := json.Marshal(map[string]any{
+			"choices": []map[string]any{{
+				"delta": map[string]any{"content": "Background reply done."},
+			}},
+		})
+		_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", chunk)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	ctrl := NewController(dataDir, host, nil)
+	if err := ctrl.SaveProviderConfig(model.AIProviderConfig{
+		Enabled: true, Provider: "openai", Protocol: model.ProtocolOpenAI,
+		BaseURL: srv.URL, APIKey: "k", Model: "m",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl.SendPrompt("edit alpha")
+	convA := ctrl.CurrentConversation()
+	if convA == nil || !ctrl.IsStreaming() {
+		t.Fatal("expected convA streaming after SendPrompt")
+	}
+
+	// Switch to nbB while convA is still streaming.
+	host.mu.Lock()
+	host.root = nbB
+	host.activeNote = noteB
+	host.mu.Unlock()
+	ctrl.OnNotebookSwitched(nbB)
+	close(switched)
+
+	if ctrl.IsStreaming() {
+		t.Fatal("expected nbB view not streaming while convA streams in background")
+	}
+
+	// Wait for convA background stream to complete in the background.
+	waitUntil(t, 4*time.Second, func() bool {
+		ctrl.mu.RLock()
+		defer ctrl.mu.RUnlock()
+		c := ctrl.findConvLocked(convA.ID)
+		return c != nil && !ctrl.isConvStreamingLocked(convA.ID) && len(c.Messages) >= 4
+	})
+
+	// While still on nbB, ActivePlan and host.previewed must remain untouched.
+	if ctrl.ActivePlan() != nil {
+		t.Fatalf("expected no active plan in nbB, got %+v", ctrl.ActivePlan())
+	}
+	host.mu.Lock()
+	previewedOnB := len(host.previewed)
+	host.mu.Unlock()
+	if previewedOnB != 0 {
+		t.Fatalf("expected no editor plan preview triggered while viewing nbB, got %d", previewedOnB)
+	}
+
+	// Switch back to nbA -> convA reply is persisted and its pending plan becomes active.
+	host.mu.Lock()
+	host.root = nbA
+	host.activeNote = noteA
+	host.mu.Unlock()
+	ctrl.OnNotebookSwitched(nbA)
+
+	cur := ctrl.CurrentConversation()
+	if cur == nil || cur.ID != convA.ID {
+		t.Fatalf("expected convA restored, got %+v", cur)
+	}
+	var gotReply bool
+	for _, m := range cur.Messages {
+		if m.Role == "assistant" && strings.Contains(m.Content, "Background reply done.") {
+			gotReply = true
+		}
+	}
+	if !gotReply {
+		t.Fatalf("expected background assistant reply persisted in convA, got %+v", cur.Messages)
+	}
+	if ctrl.ActivePlan() == nil || ctrl.ActivePlan().Page != "alpha" {
+		t.Fatalf("expected pending plan for alpha linked upon switching back, got %+v", ctrl.ActivePlan())
+	}
+}
+
+func TestPageTrajectoryAndEmptyPageIDGuards(t *testing.T) {
+	theme.SetLanguage(model.LangZh)
+	dataDir := t.TempDir()
+	nbRoot := t.TempDir()
+	host := newFakeHost(nbRoot)
+	noteA := filepath.Join(nbRoot, "alpha.md")
+	noteB := filepath.Join(nbRoot, "beta.md")
+	if err := host.WriteNote(noteA, "# Alpha\n\nhello\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.WriteNote(noteB, "# Beta\n\nworld\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := NewController(dataDir, host, nil)
+	ctrl.EnableMockResponder(true)
+	if err := ctrl.SaveProviderConfig(model.AIProviderConfig{
+		Enabled: true, Provider: "openai", Protocol: model.ProtocolOpenAI,
+		BaseURL: "http://127.0.0.1:1/v1", APIKey: "k", Model: "m",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check readPage schema requires pageId.
+	var foundReadPage bool
+	for _, raw := range builtinToolDefinitions() {
+		item, _ := raw.(map[string]any)
+		fn, _ := item["function"].(map[string]any)
+		if fn["name"] != "readPage" {
+			continue
+		}
+		foundReadPage = true
+		params, _ := fn["parameters"].(map[string]any)
+		req, _ := params["required"].([]string)
+		if len(req) != 1 || req[0] != "pageId" {
+			t.Fatalf("expected readPage required=[\"pageId\"], got %+v", params["required"])
+		}
+	}
+	if !foundReadPage {
+		t.Fatal("readPage definition missing")
+	}
+
+	// Turn 1 with alpha open: OriginPage == "alpha", user msg ActivePage == "alpha".
+	host.activeNote = noteA
+	ctrl.SendPrompt("first turn")
+	waitUntil(t, 2*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 2
+	})
+	conv := ctrl.CurrentConversation()
+	if conv.OriginPage != "alpha" {
+		t.Fatalf("expected OriginPage=alpha, got %q", conv.OriginPage)
+	}
+	if conv.Messages[0].ActivePage != "alpha" {
+		t.Fatalf("expected first user ActivePage=alpha, got %q", conv.Messages[0].ActivePage)
+	}
+
+	// Before switching page, scope allows default page alpha.
+	scopeUnchanged := scopeForNotebook(host, nbRoot)
+	scopeUnchanged.originPage = conv.OriginPage
+	scopeUnchanged.pageSwitched = conversationPageSwitched(conv, scopeUnchanged.page)
+	if scopeUnchanged.pageSwitched {
+		t.Fatal("expected pageSwitched=false while still on alpha")
+	}
+	resOK, _, _ := ctrl.executeTool(context.Background(), scopeUnchanged, "readPage", `{}`)
+	if !strings.Contains(resOK, "# Alpha") {
+		t.Fatalf("expected empty pageId readPage to succeed before switching page, got %s", resOK)
+	}
+
+	// Switch to beta and send Turn 2.
+	host.mu.Lock()
+	host.activeNote = noteB
+	host.mu.Unlock()
+	ctrl.SendPrompt("second turn")
+	waitUntil(t, 2*time.Second, func() bool {
+		c := ctrl.CurrentConversation()
+		return c != nil && !ctrl.IsStreaming() && len(c.Messages) >= 4
+	})
+	conv = ctrl.CurrentConversation()
+	if conv.OriginPage != "alpha" {
+		t.Fatalf("expected OriginPage to stay alpha, got %q", conv.OriginPage)
+	}
+	var userActivePages []string
+	for _, m := range conv.Messages {
+		if m.Role == "user" {
+			userActivePages = append(userActivePages, m.ActivePage)
+		}
+	}
+	if len(userActivePages) != 2 || userActivePages[0] != "alpha" || userActivePages[1] != "beta" {
+		t.Fatalf("unexpected user ActivePage trajectory: %v", userActivePages)
+	}
+
+	// Both builtin and CLI prompts include trajectory header + historical ActivePage tag.
+	scopeSwitched := scopeForNotebook(host, nbRoot)
+	scopeSwitched.originPage = conv.OriginPage
+	scopeSwitched.pageSwitched = conversationPageSwitched(conv, scopeSwitched.page)
+	if !scopeSwitched.pageSwitched {
+		t.Fatal("expected pageSwitched=true after switching to beta")
+	}
+	turn := &assistantTurn{notebookScope: scopeSwitched, convID: conv.ID, userIndex: len(conv.Messages) - 2}
+	ctrl.mu.RLock()
+	builtinMsgs := ctrl.buildBuiltinAPIMessagesLocked(turn, 0)
+	ctrl.mu.RUnlock()
+	sysText, _ := builtinMsgs[0]["content"].(string)
+	if !strings.Contains(sysText, "会话起点页：alpha") || !strings.Contains(sysText, "本条发送时打开的页面：beta") {
+		t.Fatalf("builtin system prompt missing page trajectory: %s", sysText)
+	}
+	cliPrompt := cliTurnPrompt(scopeSwitched, conv.Messages, len(conv.Messages)-2)
+	if !strings.Contains(cliPrompt, "会话起点页：alpha") || !strings.Contains(cliPrompt, "[发送时打开页面: alpha]") {
+		t.Fatalf("CLI prompt missing page trajectory or historical ActivePage: %s", cliPrompt)
+	}
+
+	// Empty pageId is rejected for readPage and non-create executeBatchPlan when pageSwitched.
+	resReadErr, _, _ := ctrl.executeTool(context.Background(), scopeSwitched, "readPage", `{}`)
+	if !strings.Contains(resReadErr, "切换过打开页面") {
+		t.Fatalf("expected bilingual switched-page error on readPage, got %s", resReadErr)
+	}
+	resPlanErr, planNil, _ := ctrl.executeTool(context.Background(), scopeSwitched, "executeBatchPlan", `{"operations":[{"type":"search_replace","oldString":"world","newString":"new"}]}`)
+	if planNil != nil || !strings.Contains(resPlanErr, "切换过打开页面") {
+		t.Fatalf("expected bilingual switched-page error on executeBatchPlan, got %s", resPlanErr)
+	}
+
+	// create operation without pageId remains allowed.
+	resCreateOK, createPlan, _ := ctrl.executeTool(context.Background(), scopeSwitched, "executeBatchPlan", `{"operations":[{"type":"create","title":"gamma","markdown":"# Gamma"}]}`)
+	if createPlan == nil || !strings.Contains(resCreateOK, "awaiting_approval") {
+		t.Fatalf("expected create operation without pageId to succeed, got %s", resCreateOK)
+	}
+
+	// No default open page also rejects empty pageId.
+	scopeNoPage := notebookScope{root: scopeSwitched.root, info: scopeSwitched.info}
+	resNoPageRead, _, _ := ctrl.executeTool(context.Background(), scopeNoPage, "readPage", `{}`)
+	if !strings.Contains(resNoPageRead, "没有默认打开的页面") {
+		t.Fatalf("expected no-default-page error on readPage, got %s", resNoPageRead)
+	}
+	resNoPagePlan, _, _ := ctrl.executeTool(context.Background(), scopeNoPage, "executeBatchPlan", `{"operations":[{"type":"edit","markdown":"# X"}]}`)
+	if !strings.Contains(resNoPagePlan, "没有默认打开的页面") {
+		t.Fatalf("expected no-default-page error on executeBatchPlan, got %s", resNoPagePlan)
 	}
 }
