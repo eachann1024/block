@@ -72,18 +72,17 @@ func normalizeLangTag(raw string) string {
 }
 
 // posixPreferredLanguages parses standard POSIX / GNU gettext locale variables
-// (LC_ALL, LC_MESSAGES, LANGUAGE, LANG) in precedence order.
+// (LC_ALL, LC_MESSAGES, LANG, and LANGUAGE) following gettext precedence:
+// LC_ALL > LC_MESSAGES > LANG select the single effective locale, while
+// LANGUAGE provides a colon-separated override/fallback list unless the
+// effective locale is C or POSIX.
 func posixPreferredLanguages() []string {
-	lcAll := strings.TrimSpace(os.Getenv("LC_ALL"))
-	lcMsg := strings.TrimSpace(os.Getenv("LC_MESSAGES"))
-	lang := strings.TrimSpace(os.Getenv("LANG"))
-
-	effective := lcAll
+	effective := strings.TrimSpace(os.Getenv("LC_ALL"))
 	if effective == "" {
-		effective = lcMsg
+		effective = strings.TrimSpace(os.Getenv("LC_MESSAGES"))
 	}
 	if effective == "" {
-		effective = lang
+		effective = strings.TrimSpace(os.Getenv("LANG"))
 	}
 	if isPosixCLocale(effective) {
 		return []string{"en"}
@@ -92,15 +91,19 @@ func posixPreferredLanguages() []string {
 	var out []string
 	if language := strings.TrimSpace(os.Getenv("LANGUAGE")); language != "" {
 		for _, part := range strings.Split(language, ":") {
-			if p := strings.TrimSpace(part); p != "" {
-				out = append(out, p)
+			p := strings.TrimSpace(part)
+			if p == "" {
+				continue
 			}
+			if isPosixCLocale(p) {
+				// Per GNU gettext, C/POSIX in LANGUAGE terminates fallback to English.
+				return append(out, "en")
+			}
+			out = append(out, p)
 		}
 	}
-	for _, v := range []string{lcAll, lcMsg, lang} {
-		if v != "" {
-			out = append(out, v)
-		}
+	if effective != "" {
+		out = append(out, effective)
 	}
 	return out
 }
