@@ -157,6 +157,41 @@ func (s *Session) HandleMindMapZoom(mode int) bool {
 	return true
 }
 
+// OpenMindMapFind opens the in-canvas find bar when a MindMap block is open in
+// fullscreen or currently holds focus.
+func (s *Session) OpenMindMapFind() bool {
+	return s.openMindMapFind(nil)
+}
+
+func (s *Session) openMindMapFind(c *ui.Context) bool {
+	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
+		return false
+	}
+	var target *mindmap.BlockState
+	for i := range s.doc.Blocks {
+		b := &s.doc.Blocks[i]
+		if b.Kind != model.BlockCode || codepreview.CanonicalLanguage(b.Language) != "mindmap" {
+			continue
+		}
+		st := s.mindMapStates[b.ID]
+		if st == nil {
+			continue
+		}
+		if st.Fullscreen {
+			target = st
+			break
+		}
+		if st.LastCanvasFocused || (c != nil && st.HasFocus(c)) || (c == nil && i == s.focusedBlock && (st.EditingID != 0 || st.LinkNodeID != 0 || st.FindOpen)) {
+			target = st
+		}
+	}
+	if target == nil {
+		return false
+	}
+	target.OpenFind()
+	return true
+}
+
 func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnly bool) mindmap.Callbacks {
 	svc := c.Services()
 	return mindmap.Callbacks{
@@ -192,8 +227,23 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 				s.Redo()
 			}
 		},
+		CanUndo: s.CanUndo,
+		CanRedo: s.CanRedo,
 		OnOpenLink: func(target string) {
 			s.openBlockLink(svc, target)
+		},
+		OnCheckLinkStatus: func(target string) mindmap.LinkStatus {
+			if strings.TrimSpace(target) == "" {
+				return mindmap.LinkStatusNone
+			}
+			if mindmap.ClassifyLink(target) == mindmap.LinkWeb {
+				return mindmap.LinkStatusExternal
+			}
+			known, exists := s.CheckLocalLinkExists(target)
+			if !known || exists {
+				return mindmap.LinkStatusValid
+			}
+			return mindmap.LinkStatusBroken
 		},
 		OnListNotes: func() []mindmap.NoteCandidate {
 			if s.host == nil {
@@ -207,6 +257,27 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 			if err != nil {
 				return nil
 			}
+			noteDir := ""
+			if strings.TrimSpace(s.notePath) != "" {
+				noteDir = s.mediaDir()
+			}
+			projRoot := s.projectRootDir()
+			if projRoot == "" {
+				projRoot = nb
+			}
+			anchor := s.pathScopeSnapshot(noteDir, projRoot)
+			sameTarget := func(rel, targetAbs string) bool {
+				res := resolveMarkdownLocalTarget(rel, noteDir, projRoot, anchor)
+				if !res.exists || res.isDir {
+					return false
+				}
+				if filepath.Clean(res.absPath) == filepath.Clean(targetAbs) {
+					return true
+				}
+				fiA, errA := os.Stat(res.absPath)
+				fiB, errB := os.Stat(targetAbs)
+				return errA == nil && errB == nil && os.SameFile(fiA, fiB)
+			}
 			var out []mindmap.NoteCandidate
 			var walk func(list []model.FileEntry)
 			walk = func(list []model.FileEntry) {
@@ -218,13 +289,24 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 					if !e.IsMarkdown {
 						continue
 					}
-					rel, rErr := filepath.Rel(nb, e.Path)
+					nbRel, rErr := filepath.Rel(nb, e.Path)
 					if rErr != nil {
-						rel = e.RawName
+						nbRel = e.RawName
+					}
+					displayRel := filepath.ToSlash(nbRel)
+					linkRel := displayRel
+					if noteDir != "" {
+						if noteRel, nErr := filepath.Rel(noteDir, e.Path); nErr == nil && noteRel != "" {
+							cand := filepath.ToSlash(noteRel)
+							if sameTarget(cand, e.Path) {
+								linkRel = cand
+							}
+						}
 					}
 					out = append(out, mindmap.NoteCandidate{
-						Title:   e.Name,
-						RelPath: filepath.ToSlash(rel),
+						Title:       e.Name,
+						RelPath:     linkRel,
+						DisplayPath: displayRel,
 					})
 				}
 			}

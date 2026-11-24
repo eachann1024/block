@@ -1744,6 +1744,12 @@ func cmdIcon(cmd blockCmdKind) icons.Icon {
 		return icons.LinkOpen
 	case cmdTableToggleHeader:
 		return icons.Table
+	case cmdMindMapToggleLayout:
+		return icons.Columns
+	case cmdMindMapFullscreen:
+		return icons.Maximize
+	case cmdMindMapExport:
+		return icons.Download
 	default:
 		return icons.Text
 	}

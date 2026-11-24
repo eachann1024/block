@@ -1231,6 +1231,7 @@ type preparedPathActionKind uint8
 const (
 	pathActionNone preparedPathActionKind = iota
 	pathActionPermissionDenied
+	pathActionNotFound
 	pathActionRevealPath
 	pathActionRevealDir
 	pathActionOpenClassified
@@ -1643,6 +1644,10 @@ func (s *Session) applyPreparedPathAction(svc ui.Services, act preparedPathActio
 	switch act.kind {
 	case pathActionPermissionDenied:
 		s.notifyPathPermissionError()
+	case pathActionNotFound:
+		if s.onNotify != nil {
+			s.onNotify(theme.Tr("目标笔记或文件不存在", "Target note or file does not exist"), "warning")
+		}
 	case pathActionRevealPath:
 		s.revealPath(act.path)
 	case pathActionRevealDir:
@@ -1732,16 +1737,48 @@ func (s *Session) runPathAction(svc ui.Services, work func(noteDir, projRoot str
 	}()
 }
 
+// CheckLocalLinkExists checks whether a local Markdown link target exists within
+// the current note/notebook security boundary. When neither a note path nor an
+// active notebook root is available, known is false to avoid false-positive
+// broken-link warnings.
+func (s *Session) CheckLocalLinkExists(rawLink string) (known bool, exists bool) {
+	if s == nil || s.previewMedia != nil {
+		return false, false
+	}
+	raw := strings.TrimSpace(rawLink)
+	if raw == "" {
+		return false, false
+	}
+	projRoot := s.projectRootDir()
+	if strings.TrimSpace(s.notePath) == "" && projRoot == "" {
+		return false, false
+	}
+	noteDir := s.mediaDir()
+	anchor := s.pathScopeSnapshot(noteDir, projRoot)
+	res := resolveMarkdownLocalTarget(raw, noteDir, projRoot, anchor)
+	if res.permErr {
+		return false, false
+	}
+	if !res.exists || res.isDir {
+		return true, false
+	}
+	return true, true
+}
+
 // openLocalMarkdownLink opens an ordinary Markdown local link using the exact same
 // root-confined relative path policy, executable-first check, and staged external
 // viewer handling as inline relative paths.
 func (s *Session) openLocalMarkdownLink(svc ui.Services, rawLink string) {
-	if s == nil || s.previewMedia != nil {
+	if s == nil || s.previewMedia != nil || strings.TrimSpace(rawLink) == "" {
 		return
 	}
 	s.runPathAction(svc, func(noteDir, projRoot string, anchor pathScopeAnchor, hasHost bool) preparedPathAction {
 		res := resolveMarkdownLocalTarget(rawLink, noteDir, projRoot, anchor)
-		return prepareConfinedTargetAction(res, true, hasHost)
+		act := prepareConfinedTargetAction(res, true, hasHost)
+		if act.kind == pathActionNone && !res.exists && !res.permErr {
+			return preparedPathAction{kind: pathActionNotFound}
+		}
+		return act
 	})
 }
 

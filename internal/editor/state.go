@@ -60,6 +60,9 @@ const (
 	cmdAlignRight
 	cmdOpenExternal
 	cmdTableToggleHeader
+	cmdMindMapToggleLayout
+	cmdMindMapFullscreen
+	cmdMindMapExport
 )
 
 type blockMenuItem struct {

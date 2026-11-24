@@ -227,6 +227,12 @@ func main() {
 			ws.QuickNote().OpenFind(replace)
 			return
 		}
+		if !replace && !ws.Modals().IsSettingsOpen() && !ws.Modals().HasActiveModal() && !ws.Export().IsOpen() && !ws.IsPageHistoryOpen() && ws.ActiveSurface() == nil {
+			if sess := ws.ActiveSession(); sess != nil && !sess.IsLightboxOpen() && sess.OpenMindMapFind() {
+				ws.RequestRedraw()
+				return
+			}
+		}
 		ws.TriggerFind(replace)
 	}
 

@@ -5296,6 +5296,16 @@ func allHandleMenuItems(idx, count int, hasFrontmatter bool, b *model.Block) []b
 			return appendCommonHandleItems(items, idx, count, hasFrontmatter)
 		case model.BlockDivider, model.BlockRawHTML:
 			return appendCommonHandleItems(nil, idx, count, hasFrontmatter)
+		case model.BlockCode:
+			if codepreview.CanonicalLanguage(b.Language) == "mindmap" {
+				items := []blockMenuItem{
+					{Kind: cmdMindMapToggleLayout, Label: theme.Tr("切换布局（右展/平衡）", "Toggle Layout")},
+					{Kind: cmdMindMapFullscreen, Label: theme.Tr("全屏查看", "Fullscreen")},
+					{Kind: cmdMindMapExport, Label: theme.Tr("导出思维导图", "Export Mind Map")},
+					{Separator: true},
+				}
+				return appendCommonHandleItems(items, idx, count, hasFrontmatter)
+			}
 		}
 	}
 
@@ -5547,6 +5557,23 @@ func (s *Session) executeBlockCmd(svc ui.Services, idx int, mode blockMenuMode, 
 	case cmdTableToggleHeader:
 		if b.Kind == model.BlockTable {
 			s.tableToggleHeaderRow(b.ID)
+		}
+		return
+	case cmdMindMapToggleLayout:
+		if b.Kind == model.BlockCode && codepreview.CanonicalLanguage(b.Language) == "mindmap" {
+			s.mindMapState(b.ID).ToggleLayout()
+		}
+		return
+	case cmdMindMapFullscreen:
+		if b.Kind == model.BlockCode && codepreview.CanonicalLanguage(b.Language) == "mindmap" {
+			st := s.mindMapState(b.ID)
+			st.Fullscreen = true
+			st.AutoFitPending = true
+		}
+		return
+	case cmdMindMapExport:
+		if b.Kind == model.BlockCode && codepreview.CanonicalLanguage(b.Language) == "mindmap" {
+			s.mindMapState(b.ID).OpenExportMenu()
 		}
 		return
 	case cmdDuplicate:
