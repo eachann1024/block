@@ -6131,15 +6131,6 @@ func (w *Workspace) Render(c *ui.Context) {
 						w.notify(theme.Tr("已复制全部内容", "Copied content"), "success")
 					}
 				},
-				OnCopyAsMarkdown: func() {
-					if activeSurf == nil {
-						return
-					}
-					if fenced := activeSurf.MarkdownCodeFence(); fenced != "" {
-						c.Services().WriteClipboard(fenced)
-						w.notify(theme.Tr("已复制 Markdown 代码块", "Copied as Markdown code block"), "success")
-					}
-				},
 				OnFormatJSON: func() {
 					if activeSurf == nil {
 						return
@@ -6165,13 +6156,6 @@ func (w *Workspace) Render(c *ui.Context) {
 						return
 					}
 					w.notify(theme.Tr("已复制图片", "Copied image"), "success")
-				},
-				OnCopyImageMarkdown: func() {
-					if activeTab == "" {
-						return
-					}
-					c.Services().WriteClipboard(markdownImageRef(activeTab, activeNB))
-					w.notify(theme.Tr("已复制 Markdown 图片链接", "Copied Markdown image link"), "success")
 				},
 				OnOpenExternal: func() {
 					if activeTab != "" {
