@@ -108,6 +108,18 @@ async function exitCodeWithin(run, label, timeoutMs) {
   return code;
 }
 
+function readLastUpdateError() {
+  const res = runPowershell(
+    "(Get-ItemProperty -Path 'HKCU:\\Software\\Block' -Name 'LastUpdateError' -ErrorAction SilentlyContinue).LastUpdateError",
+  );
+  return res.stdout.trim();
+}
+
+function describeDirAcl(dir) {
+  const res = spawnSync("icacls", [dir], { encoding: "utf8" });
+  return `${res.stdout || ""}${res.stderr || ""}`.trim();
+}
+
 function blockProcessPaths() {
   const res = runPowershell(
     "Get-Process block -ErrorAction SilentlyContinue | ForEach-Object { $_.Path }",
@@ -472,7 +484,15 @@ async function machineInstallCoexistenceAndUpdate() {
 
   const updateRun = startSetup(["/S", "/UPDATE", `/D=${MACHINE_DIR}`]);
   const updateCode = await exitCodeWithin(updateRun, "setup /S /UPDATE (machine)", 180_000);
-  assert.equal(updateCode, 0, `setup /S /UPDATE (machine) exited ${updateCode}`);
+  if (updateCode !== 0) {
+    const lastErr = readLastUpdateError();
+    const aclInfo = describeDirAcl(MACHINE_DIR);
+    assert.equal(
+      updateCode,
+      0,
+      `setup /S /UPDATE (machine) exited ${updateCode}\nLastUpdateError: ${lastErr || "(empty)"}\nicacls:\n${aclInfo}`,
+    );
+  }
   assertInstalled("machine-wide updater install", {
     dir: MACHINE_DIR,
     exe: MACHINE_EXE,
