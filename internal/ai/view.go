@@ -3432,66 +3432,185 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 
 	wide := fullscreen || panelW >= 500
 	var targetW float32
-	if fullscreen {
-		targetW = 688
-	} else if wide {
-		targetW = min(max(panelW-24, 460), 640)
-	} else {
-		targetW = min(max(panelW-24, 308), 420)
+	switch {
+	case fullscreen:
+		targetW = 460
+	case wide:
+		targetW = min(max(panelW-24, 360), 440)
+	default:
+		targetW = min(max(panelW-24, 308), 400)
 	}
 	popW := min(targetW, max(winW-16, 1))
 
 	spec := bui.PlaceAbove(trigger).WithAlignX(bui.AlignX{Kind: bui.AlignPinLeft}).WithGap(4).WithMargin(8)
 	maxH := bui.MaxHeightForSpec(spec, winW, winH, max(winH-16, bui.MinScrollHeight))
 
-	headerH := float32(38)
-	headerPX := float32(10)
-	listH := float32(172)
-	listPad := float32(6)
-	listGap := float32(2)
-	railW := float32(42)
-	railPadY, railPadX, railGap := float32(8), float32(4), float32(6)
-	btnSz, icoSz := float32(34), float32(18)
-	rowH, rowPX := float32(34), float32(10)
+	// Light single-column deck: search and backend tabs share one header row,
+	// the model list hugs its content, thinking level sits in a quiet footer.
+	panelPad := theme.Space4
+	headerH := float32(34)
+	tabSz, tabIco := theme.HeightChrome, float32(15)
+	rowH := theme.HeightControl
+	rowPX := theme.Space8
+	listGap := theme.Space2
+	listPadY := theme.Space2
+	maxRows := 7
 	if wide {
-		headerH = 44
-		headerPX = 14
-		listH = 220
-		listPad = 8
-		listGap = 3
-		railW = 54
-		railPadY, railPadX, railGap = 10, 6, 8
-		btnSz, icoSz = 38, 20
-		rowH, rowPX = 38, 12
+		headerH = 38
+		tabSz, tabIco = theme.HeightCompact, theme.IconAction
+		rowH = 34
+		maxRows = 8
 	}
 	if fullscreen {
-		listH = 276
+		maxRows = 9
 	}
-	overhead := headerH + 4
-	if !wide {
-		overhead += 38
+	footerH := theme.HeightControl + theme.Space2
+
+	type deckModelFilterCacheKey struct{}
+	type deckModelFilterCache struct {
+		valid    bool
+		query    string
+		count    int
+		hash     uint64
+		filtered []ModelOption
 	}
-	effectiveListH := min(listH, max(maxH-overhead, 64))
+	deckCache := ui.Local(anchor, deckModelFilterCacheKey{}, func() deckModelFilterCache { return deckModelFilterCache{} })
+	filterDeckModels := func(rawQ string) []ModelOption {
+		q := strings.TrimSpace(rawQ)
+		if q == "" {
+			return models
+		}
+		mh := hashModelOptions64(models)
+		if deckCache.valid && deckCache.query == q && deckCache.count == len(models) && deckCache.hash == mh {
+			return deckCache.filtered
+		}
+		type scoredModel struct {
+			opt   ModelOption
+			score int
+		}
+		var scored []scoredModel
+		for _, m := range models {
+			if sc, ok := fuzzy.Score(q, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
+				scored = append(scored, scoredModel{opt: m, score: sc})
+			}
+		}
+		sort.SliceStable(scored, func(i, j int) bool {
+			return scored[i].score > scored[j].score
+		})
+		out := make([]ModelOption, len(scored))
+		for i, s := range scored {
+			out[i] = s.opt
+		}
+		*deckCache = deckModelFilterCache{
+			valid: true, query: q, count: len(models), hash: mh, filtered: out,
+		}
+		return out
+	}
+	lowQ := strings.TrimSpace(search)
+	filtered := filterDeckModels(lowQ)
+
+	// List height hugs the rows (plus group captions) up to maxRows.
+	listContentH := listPadY * 2
+	if len(filtered) == 0 {
+		listContentH += 36
+	} else {
+		lastGrp := ""
+		for idx, m := range filtered {
+			if grp := strings.TrimSpace(m.Group); grp != "" && grp != lastGrp {
+				lastGrp = grp
+				capTop := theme.Space6
+				if idx == 0 {
+					capTop = theme.Space2
+				}
+				listContentH += capTop + theme.LineMeta + theme.Space2 + listGap
+			}
+			listContentH += rowH
+			if idx > 0 {
+				listContentH += listGap
+			}
+		}
+	}
+	listMaxH := listPadY*2 + float32(maxRows)*rowH + float32(maxRows-1)*listGap
+	overhead := panelPad*2 + headerH + footerH + 2
+	effectiveListH := min(min(listContentH, listMaxH), max(maxH-overhead, 64))
 	popH := min(effectiveListH+overhead, maxH)
 	x, y := bui.ResolveOrigin(spec, popW, popH, winW, winH)
 
 	ais := pal.AISurface()
 	ui.Overlay(cUI, func() {
 		panel := bui.Elevate(ui.Column(cUI.Key("ai-agent-deck")).Absolute().Left(x).Top(y).
-			Width(popW).MaxHeight(maxH).Radius(theme.RadiusXL).
+			Width(popW).MaxHeight(maxH).Padding(panelPad).Radius(theme.RadiusLG).
 			Background(pal.Menu).Border(1, pal.MenuBorder).Clip().
 			Transition(probeSafeTransition(bui.PopoverSpringTransition())), theme.ElevationPopover)
 		bui.Probe(panel, "ai-deck")
 
 		panel.Children(func() {
-			// Full-height split: left backend icon rail (with AI Settings pinned at bottom) + right model/thinking split.
-			ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
-				// 1. Left backend icon rail (recessed surface, full height).
-				_ = railPadX
-				ui.Column(cUI).Width(railW).Shrink(0).Padding(railPadY, 0).Gap(railGap).
-					Background(ais.RailBG).BorderWidth(0, 1, 0, 0).BorderColor(pal.Hairline).
-					AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-					ui.Column(cUI).FillWidth().Gap(railGap).AlignItems(ui.Center).Children(func() {
+			centerCol := ui.Column(cUI).FillWidth().MinWidth(0)
+			type deckModelCursorKey struct{}
+			deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
+			bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
+			if *deckCursor >= len(filtered) {
+				*deckCursor = len(filtered) - 1
+			}
+			centerCol.Children(func() {
+				// 1. Header: search input + backend tabs + settings.
+				ui.Row(cUI).FillWidth().MinWidth(0).Height(headerH).Padding(0, theme.Space2, 0, theme.Space8).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
+					icons.Draw(cUI, icons.FindSearch, theme.IconInline, pal.MonoIconColors(pal.Placeholder))
+					q := search
+					sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
+						Grow(1).MinWidth(0).Height(24).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
+						CaretColor(pal.Accent).CaretWidth(2).
+						Placeholder(theme.Tr("搜索模型…", "Search models…")).PlaceholderColor(pal.Placeholder).
+						Bind(&c.deckSearchHandle).AutoFocus()
+					bui.Probe(sInput, "ai-deck-search")
+					if sInput.Changed() {
+						*deckCursor = 0
+						c.deckScroll.Y = 0
+						lowQ = strings.TrimSpace(q)
+						filtered = filterDeckModels(lowQ)
+						c.mu.Lock()
+						c.deckSearch = q
+						c.mu.Unlock()
+					}
+					sInput.OnTextKey(func(k ui.TextKey) bool {
+						switch k.Key {
+						case ui.KeyEscape:
+							c.mu.Lock()
+							c.deckOpen = false
+							c.mu.Unlock()
+							return true
+						case ui.KeyDown:
+							if len(filtered) > 0 {
+								*deckCursor = (*deckCursor + 1 + len(filtered)) % len(filtered)
+							}
+							return true
+						case ui.KeyUp:
+							if len(filtered) > 0 {
+								if *deckCursor <= 0 {
+									*deckCursor = len(filtered) - 1
+								} else {
+									*deckCursor--
+								}
+							}
+							return true
+						case ui.KeyEnter:
+							if *deckCursor >= 0 && *deckCursor < len(filtered) {
+								pickVal := filtered[*deckCursor].Value
+								c.mu.Lock()
+								if c.streaming {
+									c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+								} else {
+									_ = c.setBackendModelLocked(selected, pickVal)
+									c.deckOpen = false
+								}
+								c.mu.Unlock()
+								return true
+							}
+						}
+						return false
+					})
+
+					ui.Row(cUI).Shrink(0).Gap(1).AlignItems(ui.Center).Children(func() {
 						for _, kind := range visible {
 							k := kind
 							cardID := "ai-backend-" + backendProbeSuffix(k)
@@ -3502,74 +3621,68 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 								c.mu.RUnlock()
 								return ok && (st.State == BackendStateReady || st.State == BackendStateInstalled)
 							}()
-							ui.Box(cUI.Key("wrap-" + cardID)).FillWidth().Height(btnSz).Center().Children(func() {
-								btn := ui.ButtonBase(cUI.Key(cardID)).Size(btnSz, btnSz).Center().
-									Radius(theme.RadiusMD).Cursor(ui.CursorPointer).
-									Label(backendLabel(k))
-								bui.Tooltip(cUI, btn, backendLabel(k))
-								hovered := btn.Hovered()
-								pressed := btn.Pressed()
-								bg := ui.Transparent
-								if active || pressed {
-									bg = ais.SelectedBG
-								} else if hovered {
-									bg = ais.HoverBG
+							btn := ui.ButtonBase(cUI.Key(cardID)).Size(tabSz, tabSz).Shrink(0).Center().
+								Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
+								Label(backendLabel(k))
+							bui.Tooltip(cUI, btn, backendLabel(k))
+							hovered := btn.Hovered()
+							pressed := btn.Pressed()
+							bg := ui.Transparent
+							if active || pressed {
+								bg = ais.SelectedBG
+							} else if hovered {
+								bg = ais.HoverBG
+							}
+							bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+							bui.TactileButton(btn, hovered, pressed, false)
+							bui.Probe(btn, cardID)
+							btn.Children(func() {
+								icCol := pal.Placeholder
+								if active || hovered || pressed {
+									icCol = pal.Text
 								}
-								bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
-								bui.TactileButton(btn, hovered, pressed, false)
-								bui.Probe(btn, cardID)
-								btn.Children(func() {
-									icCol := pal.TextSecondary
-									if active || hovered || pressed {
-										icCol = pal.Text
+								icons.Brand(cUI, k, tabIco, icCol)
+								dot := ui.Box(cUI.Key("dot-"+cardID)).Absolute().Right(3).Bottom(3).Size(4, 4).
+									Radius(theme.RadiusPill).Background(pal.TextSecondary)
+								targetDot := float32(0)
+								if !ready {
+									targetDot = 1.0
+									if hovered || active {
+										targetDot = 1.25
 									}
-									icons.Brand(cUI, k, icoSz, icCol)
-									dot := ui.Box(cUI.Key("dot-"+cardID)).Absolute().Right(4).Bottom(4).Size(5, 5).
-										Radius(theme.RadiusPill).Background(pal.TextSecondary)
-									targetDot := float32(0)
-									if !ready {
-										targetDot = 1.0
-										if hovered || active {
-											targetDot = 1.25
-										}
-									}
-									dotSc := dot.AnimateTo("dotSc", targetDot, bui.SpringTactile)
-									if dotSc > 0.02 {
-										dot.Scale(dotSc, dotSc).Opacity(min(dotSc, 1))
-									} else {
-										dot.Opacity(0)
-									}
-								})
-								if active {
-									ui.Box(cUI).Absolute().Right(0).Top(8).Size(2.5, btnSz-16).
-										Radius(theme.RadiusPill).Background(pal.Accent)
 								}
-								if btn.Clicked() {
-									c.mu.Lock()
-									if c.streaming {
-										c.turnError = theme.Tr("请等待当前回复结束后再切换智能体", "Wait for the current response before changing agent")
-										c.mu.Unlock()
-									} else {
-										changed := c.selectedBackendLocked() != k
-										c.selectBackendLocked(k)
-										if changed {
-											c.deckSearch = ""
-										}
-										shouldRefresh := !c.mockResponder
-										c.mu.Unlock()
-										if shouldRefresh {
-											c.refreshModelsAsync(k)
-										}
-									}
+								dotSc := dot.AnimateTo("dotSc", targetDot, bui.SpringTactile)
+								if dotSc > 0.02 {
+									dot.Scale(dotSc, dotSc).Opacity(min(dotSc, 1))
+								} else {
+									dot.Opacity(0)
 								}
 							})
+							if btn.Clicked() {
+								c.mu.Lock()
+								if c.streaming {
+									c.turnError = theme.Tr("请等待当前回复结束后再切换智能体", "Wait for the current response before changing agent")
+									c.mu.Unlock()
+								} else {
+									changed := c.selectedBackendLocked() != k
+									c.selectBackendLocked(k)
+									if changed {
+										c.deckSearch = ""
+									}
+									shouldRefresh := !c.mockResponder
+									c.mu.Unlock()
+									if shouldRefresh {
+										c.refreshModelsAsync(k)
+									}
+								}
+							}
 						}
-					})
 
-					setLbl := theme.Tr("AI 设置", "AI settings")
-					ui.Box(cUI.Key("wrap-ai-deck-settings")).FillWidth().Height(btnSz).Center().Children(func() {
-						setBtn := ui.ButtonBase(cUI.Key("ai-deck-settings")).Size(btnSz, btnSz).Center().
-							Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(setLbl)
+						ui.Box(cUI).Size(1, 14).Shrink(0).Margin(0, 3).Background(pal.Hairline)
+
+						setLbl := theme.Tr("AI 设置", "AI settings")
+						setBtn := ui.ButtonBase(cUI.Key("ai-deck-settings")).Size(tabSz, tabSz).Shrink(0).Center().
+							Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(setLbl)
 						bui.Tooltip(cUI, setBtn, setLbl)
 						setHov := setBtn.Hovered()
 						setPrs := setBtn.Pressed()
@@ -3583,11 +3696,11 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 						bui.TactileButton(setBtn, setHov, setPrs, false)
 						bui.Probe(setBtn, "ai-deck-settings")
 						setBtn.Children(func() {
-							icCol := pal.TextSecondary
+							icCol := pal.Placeholder
 							if setHov || setPrs {
 								icCol = pal.Text
 							}
-							icons.DrawAnimated(cUI, icons.Sliders, icoSz-2, pal.MonoIconColors(icCol), setHov || setPrs)
+							icons.DrawAnimated(cUI, icons.Sliders, tabIco, pal.MonoIconColors(icCol), setHov || setPrs)
 						})
 						if setBtn.Clicked() {
 							c.mu.Lock()
@@ -3600,267 +3713,125 @@ func (c *Controller) renderDeckPopover(cUI *ui.Context, pal theme.Palette, ancho
 					})
 				})
 
-				ui.Column(cUI).Grow(1).MinWidth(0).Children(func() {
-					ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
-						// 2. Center search + model list (+ compact thinking row when !wide).
-						centerCol := ui.Column(cUI).Grow(1).MinWidth(0)
-						type deckModelCursorKey struct{}
-						deckCursor := ui.Local(centerCol, deckModelCursorKey{}, func() int { return -1 })
-						bui.ObserveMenuPointer(cUI, centerCol, deckCursor)
-						type deckModelFilterCacheKey struct{}
-						type deckModelFilterCache struct {
-							valid    bool
-							query    string
-							count    int
-							hash     uint64
-							filtered []ModelOption
+				// 2. Model list: active row carries a leading check, no fill.
+				bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
+					FillWidth().Height(effectiveListH).Padding(listPadY, 0).Gap(listGap).Children(func() {
+					if len(filtered) == 0 {
+						msg := theme.Tr("暂无可选模型", "No models available")
+						if lowQ != "" {
+							msg = theme.Tr("无匹配模型", "No matching models")
+						} else if mStatus == "loading" {
+							msg = theme.Tr("正在获取模型…", "Loading models…")
+						} else if strings.HasPrefix(mStatus, "error:") {
+							msg = theme.Tr("无法获取模型", "Models unavailable")
 						}
-						deckCache := ui.Local(centerCol, deckModelFilterCacheKey{}, func() deckModelFilterCache { return deckModelFilterCache{} })
-						filterDeckModels := func(rawQ string) []ModelOption {
-							q := strings.TrimSpace(rawQ)
-							if q == "" {
-								return models
-							}
-							mh := hashModelOptions64(models)
-							if deckCache.valid && deckCache.query == q && deckCache.count == len(models) && deckCache.hash == mh {
-								return deckCache.filtered
-							}
-							type scoredModel struct {
-								opt   ModelOption
-								score int
-							}
-							var scored []scoredModel
-							for _, m := range models {
-								if sc, ok := fuzzy.Score(q, []string{m.Label, m.Value}, []string{m.Group}, true); ok {
-									scored = append(scored, scoredModel{opt: m, score: sc})
-								}
-							}
-							sort.SliceStable(scored, func(i, j int) bool {
-								return scored[i].score > scored[j].score
-							})
-							out := make([]ModelOption, len(scored))
-							for i, s := range scored {
-								out[i] = s.opt
-							}
-							*deckCache = deckModelFilterCache{
-								valid: true, query: q, count: len(models), hash: mh, filtered: out,
-							}
-							return out
-						}
-						lowQ := strings.TrimSpace(search)
-						filtered := filterDeckModels(lowQ)
-						if *deckCursor >= len(filtered) {
-							*deckCursor = len(filtered) - 1
-						}
-						centerCol.Children(func() {
-							ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).Gap(8).AlignItems(ui.Center).
-								BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-								icons.Draw(cUI, icons.FindSearch, theme.IconRow, pal.MonoIconColors(pal.TextSecondary))
-								q := search
-								sInput := ui.TextInputBase(cUI.Key("ai-deck-search"), &q).
-									Grow(1).Height(24).Padding(0).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(pal.Text).
-									CaretColor(pal.Accent).CaretWidth(2).
-									Placeholder(theme.Tr("搜索模型…", "Search models…")).PlaceholderColor(pal.Placeholder).
-									Bind(&c.deckSearchHandle).AutoFocus()
-								bui.Probe(sInput, "ai-deck-search")
-								if sInput.Changed() {
-									*deckCursor = 0
-									c.deckScroll.Y = 0
-									lowQ = strings.TrimSpace(q)
-									filtered = filterDeckModels(lowQ)
-									c.mu.Lock()
-									c.deckSearch = q
-									c.mu.Unlock()
-								}
-								sInput.OnTextKey(func(k ui.TextKey) bool {
-									switch k.Key {
-									case ui.KeyEscape:
-										c.mu.Lock()
-										c.deckOpen = false
-										c.mu.Unlock()
-										return true
-									case ui.KeyDown:
-										if len(filtered) > 0 {
-											*deckCursor = (*deckCursor + 1 + len(filtered)) % len(filtered)
-										}
-										return true
-									case ui.KeyUp:
-										if len(filtered) > 0 {
-											if *deckCursor <= 0 {
-												*deckCursor = len(filtered) - 1
-											} else {
-												*deckCursor--
-											}
-										}
-										return true
-									case ui.KeyEnter:
-										if *deckCursor >= 0 && *deckCursor < len(filtered) {
-											pickVal := filtered[*deckCursor].Value
-											c.mu.Lock()
-											if c.streaming {
-												c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
-											} else {
-												_ = c.setBackendModelLocked(selected, pickVal)
-												c.deckOpen = false
-											}
-											c.mu.Unlock()
-											return true
-										}
-									}
-									return false
-								})
-							})
-
-							bui.Scroll(cUI.Key("ai-deck-models"), &c.deckScroll).
-								FillWidth().Height(effectiveListH).Padding(listPad).Gap(listGap).Children(func() {
-								if len(filtered) == 0 {
-									msg := theme.Tr("暂无可选模型", "No models available")
-									if lowQ != "" {
-										msg = theme.Tr("无匹配模型", "No matching models")
-									} else if mStatus == "loading" {
-										msg = theme.Tr("正在获取模型…", "Loading models…")
-									} else if strings.HasPrefix(mStatus, "error:") {
-										msg = theme.Tr("无法获取模型", "Models unavailable")
-									}
-									ui.Box(cUI).Height(36).PaddingX(12).AlignItems(ui.Center).Children(func() {
-										ui.Text(cUI, msg).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-									})
-									return
-								}
-								lastGroup := ""
-								for idx, m := range filtered {
-									if grp := strings.TrimSpace(m.Group); grp != "" && grp != lastGroup {
-										lastGroup = grp
-										topPad := float32(6)
-										if idx == 0 {
-											topPad = 2
-										}
-										ui.Box(cUI.Key(fmt.Sprintf("ai-model-grp-%d-%s", idx, grp))).FillWidth().Padding(topPad, rowPX, 2, rowPX).Children(func() {
-											ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
-										})
-									}
-									active := m.Value == curModel
-									highlighted := idx == *deckCursor
-									mID := fmt.Sprintf("ai-model-%d", idx)
-									row := ui.ButtonBase(cUI.Key(mID)).FillWidth().Height(rowH).PaddingX(rowPX).Gap(8).
-										AlignItems(ui.Center).Radius(theme.RadiusMD).
-										Cursor(ui.CursorPointer).Label(m.Label).
-										Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
-									bui.RevealOnHighlight(row, highlighted)
-									hovered := highlighted || (*deckCursor < 0 && row.Hovered())
-									pressed := row.Pressed()
-									bg := ui.Transparent
-									if active || pressed {
-										bg = ais.SelectedBG
-									} else if hovered {
-										bg = ais.HoverBG
-									}
-									bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
-									bui.TactileCard(row, hovered, pressed, false, false)
-									bui.Probe(row, mID)
-									row.Children(func() {
-										fw := theme.WeightRegular
-										if active {
-											fw = theme.WeightControl
-										}
-										var marks [][2]int
-										if lowQ != "" {
-											marks = fuzzy.HighlightRanges(m.Label, lowQ)
-										}
-										bui.HighlightedText(cUI, m.Label, marks, theme.FontBody, fw, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
-										if active {
-											icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), active)
-										}
-									})
-									if row.Clicked() {
-										c.mu.Lock()
-										if c.streaming {
-											c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
-										} else {
-											_ = c.setBackendModelLocked(selected, m.Value)
-											c.deckOpen = false
-										}
-										c.mu.Unlock()
-									}
-								}
-							})
-
-							if !wide {
-								levels := []string{"low", "medium", "high"}
-								levelIdx := 2
-								for i, lv := range levels {
-									if lv == curThinking {
-										levelIdx = i
-									}
-								}
-								ui.Row(cUI).FillWidth().Padding(6, 10).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-									BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Children(func() {
-									ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-									if bui.SegmentedControl(cUI, "ai-deck-thinking", &levelIdx, []bui.SegmentOption{
-										{ID: "ai-thinking-low", Label: "Low"},
-										{ID: "ai-thinking-medium", Label: "Medium"},
-										{ID: "ai-thinking-high", Label: "High"},
-									}) {
-										c.mu.Lock()
-										_ = c.setBackendThinkingLocked(selected, levels[levelIdx])
-										c.mu.Unlock()
-									}
-								})
-							}
+						ui.Box(cUI).Height(36).PaddingX(theme.Space8).AlignItems(ui.Center).Children(func() {
+							ui.Text(cUI, msg).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 						})
-
-						// 3. Right Thinking Level column in wide/fullscreen mode.
-						if wide {
-							thinkW := float32(176)
-							if fullscreen {
-								thinkW = 216
+						return
+					}
+					lastGroup := ""
+					for idx, m := range filtered {
+						if grp := strings.TrimSpace(m.Group); grp != "" && grp != lastGroup {
+							lastGroup = grp
+							topPad := theme.Space6
+							if idx == 0 {
+								topPad = theme.Space2
 							}
-							ui.Column(cUI).Width(thinkW).Shrink(0).BorderWidth(0, 0, 0, 1).BorderColor(pal.Hairline).Children(func() {
-								ui.Row(cUI).FillWidth().Height(headerH).PaddingX(headerPX).AlignItems(ui.Center).
-									BorderWidth(0, 0, 1, 0).BorderColor(pal.Hairline).Children(func() {
-									ui.Text(cUI, theme.Tr("思考强度", "Thinking Level")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary)
-								})
-								ui.Column(cUI).FillWidth().Padding(8).Gap(4).Children(func() {
-									for _, lv := range []struct{ id, label string }{
-										{"low", "Low"},
-										{"medium", "Medium"},
-										{"high", "High"},
-									} {
-										level := lv.id
-										isAct := curThinking == level || (curThinking == "" && level == "high")
-										btnID := "ai-thinking-" + level
-										btn := ui.ButtonBase(cUI.Key(btnID)).FillWidth().Height(36).PaddingX(12).
-											AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(theme.RadiusMD).
-											Cursor(ui.CursorPointer).Label(lv.label)
-										hovered := btn.Hovered()
-										pressed := btn.Pressed()
-										bg := ui.Transparent
-										if isAct || pressed {
-											bg = ais.SelectedBG
-										} else if hovered {
-											bg = ais.HoverBG
-										}
-										bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
-										bui.TactileCard(btn, hovered, pressed, false, false)
-										bui.Probe(btn, btnID)
-										btn.Children(func() {
-											fw := theme.WeightRegular
-											if isAct {
-												fw = theme.WeightControl
-											}
-											ui.Text(cUI, lv.label).FontSize(theme.FontBody).FontWeight(fw).TextColor(pal.Text)
-											if isAct {
-												icons.DrawAnimated(cUI, icons.Check, 14, pal.MonoIconColors(pal.Text), isAct)
-											}
-										})
-										if btn.Clicked() {
-											c.mu.Lock()
-											_ = c.setBackendThinkingLocked(selected, level)
-											c.mu.Unlock()
-										}
-									}
-								})
+							ui.Box(cUI.Key(fmt.Sprintf("ai-model-grp-%d-%s", idx, grp))).FillWidth().Padding(topPad, rowPX, theme.Space2, rowPX).Children(func() {
+								ui.Text(cUI, grp).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(pal.TextSecondary).SingleLine()
 							})
+						}
+						active := m.Value == curModel
+						highlighted := idx == *deckCursor
+						mID := fmt.Sprintf("ai-model-%d", idx)
+						row := ui.ButtonBase(cUI.Key(mID)).FillWidth().MinWidth(0).Height(rowH).PaddingX(rowPX).Gap(theme.Space8).
+							AlignItems(ui.Center).Radius(theme.RadiusMD).
+							Cursor(ui.CursorPointer).Label(m.Label).
+							Transition(probeSafeTransition(bui.CascadeItemTransition(idx, false)))
+						bui.RevealOnHighlight(row, highlighted)
+						hovered := highlighted || (*deckCursor < 0 && row.Hovered())
+						pressed := row.Pressed()
+						bg := ui.Transparent
+						if pressed {
+							bg = ais.SelectedBG
+						} else if hovered {
+							bg = ais.HoverBG
+						}
+						bui.AnimateSurfaceColors(row, bg, ui.Transparent, false)
+						bui.TactileCard(row, hovered, pressed, false, false)
+						bui.Probe(row, mID)
+						row.Children(func() {
+							ui.Box(cUI).Size(theme.IconInline, theme.IconInline).Shrink(0).Center().Children(func() {
+								if active {
+									icons.DrawAnimated(cUI, icons.Check, theme.IconInline, pal.MonoIconColors(pal.Text), active)
+								}
+							})
+							fw := theme.WeightRegular
+							if active {
+								fw = theme.WeightControl
+							}
+							var marks [][2]int
+							if lowQ != "" {
+								marks = fuzzy.HighlightRanges(m.Label, lowQ)
+							}
+							bui.HighlightedText(cUI, m.Label, marks, theme.FontBody, fw, pal.Text, pal.SearchHighlight).Grow(1).MinWidth(0)
+						})
+						if row.Clicked() {
+							c.mu.Lock()
+							if c.streaming {
+								c.turnError = theme.Tr("请等待当前回复结束后再切换模型", "Wait for the current response before changing model")
+							} else {
+								_ = c.setBackendModelLocked(selected, m.Value)
+								c.deckOpen = false
+							}
+							c.mu.Unlock()
+						}
+					}
+				})
+
+				// 3. Footer: quiet thinking-level text segments.
+				ui.Row(cUI).FillWidth().Height(footerH).Padding(theme.Space2, theme.Space2, 0, theme.Space8).Gap(theme.Space8).
+					AlignItems(ui.Center).Justify(ui.SpaceBetween).
+					BorderWidth(1, 0, 0, 0).BorderColor(ais.HoverBG).Children(func() {
+					ui.Text(cUI, theme.Tr("思考", "Thinking")).FontSize(theme.FontSmall).TextColor(pal.Placeholder).SingleLine().Shrink(0)
+					ui.Row(cUI).Shrink(0).AlignItems(ui.Center).Children(func() {
+						for _, lv := range []struct{ id, label string }{
+							{"low", "Low"},
+							{"medium", "Medium"},
+							{"high", "High"},
+						} {
+							level := lv.id
+							isAct := curThinking == level || (curThinking == "" && level == "high")
+							btnID := "ai-thinking-" + level
+							btn := ui.ButtonBase(cUI.Key(btnID)).Height(theme.IconButtonBox).PaddingX(theme.Space8).Center().
+								Radius(theme.RadiusSM).Cursor(ui.CursorPointer).Label(lv.label)
+							hovered := btn.Hovered()
+							pressed := btn.Pressed()
+							bg := ui.Transparent
+							if pressed {
+								bg = ais.SelectedBG
+							} else if isAct || hovered {
+								bg = ais.HoverBG
+							}
+							bui.AnimateSurfaceColors(btn, bg, ui.Transparent, false)
+							bui.TactileButton(btn, hovered, pressed, false)
+							bui.Probe(btn, btnID)
+							btn.Children(func() {
+								col := pal.Placeholder
+								fw := theme.WeightRegular
+								if isAct {
+									col, fw = pal.Text, theme.WeightControl
+								} else if hovered || pressed {
+									col = pal.TextSecondary
+								}
+								ui.Text(cUI, lv.label).FontSize(theme.FontSmall).FontWeight(fw).TextColor(col).SingleLine()
+							})
+							if btn.Clicked() {
+								c.mu.Lock()
+								_ = c.setBackendThinkingLocked(selected, level)
+								c.mu.Unlock()
+							}
 						}
 					})
 				})
