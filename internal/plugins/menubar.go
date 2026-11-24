@@ -374,10 +374,12 @@ func (p MenubarPayload) Empty() bool {
 func (s *Supervisor) RunMenubarCommand(pluginID, itemID, commandID, entryPayload string, clip *MenubarPayload) {
 	m, ok := s.installedManifest(pluginID)
 	if !ok || !m.HasPermission(PermUIMenubar) {
+		s.menubarFeedback(pluginID, "", "", "")
 		return
 	}
 	it, ok := m.menubarItem(itemID)
 	if !ok || !m.Contributes.hasCommand(commandID) {
+		s.menubarFeedback(pluginID, "", "", "")
 		return
 	}
 	cc := CommandContext{Source: CommandSourceMenubar, MenubarItem: itemID, Payload: entryPayload}
