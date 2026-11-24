@@ -271,15 +271,31 @@ func resolveStrings(override string) stringsTable {
 }
 
 func matchLocaleTable(raw string) (stringsTable, bool) {
-	tag := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(raw, "_", "-")))
+	s := strings.TrimSpace(raw)
+	if i := strings.IndexAny(s, ".@"); i >= 0 {
+		s = s[:i]
+	}
+	tag := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s, "_", "-")))
 	if tag == "" {
 		return stringsTable{}, false
+	}
+	if tag == "c" || tag == "posix" {
+		return localeCatalog["en"], true
 	}
 	parts := strings.Split(tag, "-")
 	primary := parts[0]
 	if primary == "zh" {
+		// Explicit script subtags (Hans/Hant) always win over region inference.
 		for _, sub := range parts[1:] {
-			if sub == "hant" || sub == "tw" || sub == "hk" || sub == "mo" {
+			if sub == "hans" {
+				return localeCatalog["zh-Hans"], true
+			}
+			if sub == "hant" {
+				return localeCatalog["zh-Hant"], true
+			}
+		}
+		for _, sub := range parts[1:] {
+			if sub == "tw" || sub == "hk" || sub == "mo" {
 				return localeCatalog["zh-Hant"], true
 			}
 		}
