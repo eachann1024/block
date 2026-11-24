@@ -63,8 +63,10 @@ type SidebarUIState struct {
 	MoveHoverHold bool
 
 	IconPickerOpen          bool
+	IconPickerNotebook      string
 	IconPickerPath          string
 	IconPickerIsDir         bool
+	IconPickerAnchor        string // "tree", "footer", "switcher", "titlebar"
 	IconPickerIconBounds    ui.Rect
 	IconPickerRowBounds     ui.Rect
 	IconPickerQuery         string
@@ -134,6 +136,25 @@ func sidebarContextSnapshot(s *SidebarUIState) sidebarContextKey {
 	return sidebarContextKey{s.ContextOpen, s.ContextPath, s.ContextX, s.ContextY}
 }
 
+// CloseIconPicker closes only the floating custom icon picker, leaving any
+// parent popup such as the notebook switcher intact.
+func (s *SidebarUIState) CloseIconPicker() bool {
+	if !s.IconPickerOpen {
+		return false
+	}
+	s.IconPickerOpen = false
+	s.IconPickerNotebook = ""
+	s.IconPickerPath = ""
+	s.IconPickerAnchor = ""
+	s.IconPickerQuery = ""
+	s.IconPickerLastQuery = ""
+	s.IconPickerJumpCat = ""
+	s.IconPickerFocus = false
+	s.IconPickerRevealCurrent = false
+	s.IconPickerInput.CancelFocus()
+	return true
+}
+
 // ClosePopups closes switcher, sort/filter, and tree context menus.
 func (s *SidebarUIState) ClosePopups() bool {
 	had := s.SwitcherOpen || s.SortFilterOpen || s.ContextOpen || s.IconPickerOpen
@@ -144,16 +165,7 @@ func (s *SidebarUIState) ClosePopups() bool {
 	s.MoveSubmenuOpen = false
 	s.MoveHoverHold = false
 	s.MenuCursor, s.MoveCursor = -1, -1
-	if s.IconPickerOpen {
-		s.IconPickerOpen = false
-		s.IconPickerPath = ""
-		s.IconPickerQuery = ""
-		s.IconPickerLastQuery = ""
-		s.IconPickerJumpCat = ""
-		s.IconPickerFocus = false
-		s.IconPickerRevealCurrent = false
-		s.IconPickerInput.CancelFocus()
-	}
+	s.CloseIconPicker()
 	return had
 }
 
@@ -163,8 +175,44 @@ func (s *SidebarUIState) OpenIconPicker(path string, isDir bool, iconRect, rowRe
 	s.ClearDrag()
 	s.ClosePopups()
 	s.IconPickerOpen = true
+	s.IconPickerNotebook = ""
 	s.IconPickerPath = path
 	s.IconPickerIsDir = isDir
+	s.IconPickerAnchor = "tree"
+	s.IconPickerIconBounds = iconRect
+	s.IconPickerRowBounds = rowRect
+	s.IconPickerQuery = ""
+	s.IconPickerLastQuery = ""
+	s.IconPickerTint = theme.NormalizeIconTint(string(curTint))
+	s.IconPickerActiveCat = ""
+	s.IconPickerJumpCat = ""
+	s.IconPickerFocus = true
+	s.IconPickerRevealCurrent = true
+	s.IconPickerScroll.Y = 0
+}
+
+// OpenNotebookIconPicker opens the floating custom icon picker for notebookRoot itself.
+// When anchor is "switcher", the notebook switcher menu stays open beside the picker.
+func (s *SidebarUIState) OpenNotebookIconPicker(notebookRoot string, iconRect, rowRect ui.Rect, anchor string, curTint theme.IconTint) {
+	if notebookRoot == "" {
+		return
+	}
+	s.ClearDrag()
+	if anchor == "switcher" {
+		s.SortFilterOpen = false
+		s.ConfirmForgetNotebook = ""
+		s.ContextOpen = false
+		s.MoveSubmenuOpen = false
+		s.MoveHoverHold = false
+		s.CloseIconPicker()
+	} else {
+		s.ClosePopups()
+	}
+	s.IconPickerOpen = true
+	s.IconPickerNotebook = notebookRoot
+	s.IconPickerPath = notebookRoot
+	s.IconPickerIsDir = true
+	s.IconPickerAnchor = anchor
 	s.IconPickerIconBounds = iconRect
 	s.IconPickerRowBounds = rowRect
 	s.IconPickerQuery = ""
@@ -272,8 +320,9 @@ type SidebarProps struct {
 	OnOpenSettings       func()
 	FileBadges           map[string][]plugins.ResolvedFileBadge
 	FileIcons            map[string]plugins.ResolvedFileIcon
+	NotebookIcons        map[string]plugins.ResolvedFileIcon
 	FileIconPack         *plugins.ResolvedFileIconPack
-	OnSetFileIcon        func(pluginID, relPath, iconID, tint string)
+	OnSetFileIcon        func(pluginID, notebookRoot, relPath, iconID, tint string)
 	PluginContextMenu    []plugins.ResolvedMenuItem
 	OnPluginContextMenu  func(item plugins.ResolvedMenuItem, targetPath string, isDir bool)
 	RenderPluginSections func(c *ui.Context)
@@ -666,8 +715,19 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				if p.ActiveNotebook != "" {
 					nbTitle = noteDisplayTitle(p.ActiveNotebook, true)
 				}
+				nbIcon, hasNBIcon := sidebarNotebookIcon(p, p.ActiveNotebook)
+				nbPickerEnabled := p.ActiveNotebook != "" && p.FileIconPack != nil && p.FileIconPack.Picker && p.OnSetFileIcon != nil
+				nbPickerTarget := nbPickerEnabled && p.State.IconPickerOpen && p.State.IconPickerAnchor == "footer" &&
+					filepath.Clean(p.State.IconPickerPath) == filepath.Clean(p.ActiveNotebook)
+
+				swPadL := float32(8)
+				swGap := float32(8)
+				if nbPickerEnabled {
+					swPadL = 6
+					swGap = 6
+				}
 				c.Key("notebook-switcher")
-				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(32).PaddingX(8).Gap(8).
+				sw := ui.ButtonBase(c).Grow(1).MinWidth(0).Height(32).Padding(0, 8, 0, swPadL).Gap(swGap).
 					AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
 					Label(nbTitle)
 				swHovered := sw.Hovered()
@@ -682,9 +742,58 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				}
 				blockui.AnimateSurfaceColors(sw, swBG, swBD, p.State.SwitcherOpen)
 				blockui.TactileCard(sw, swHovered, swPressed, p.State.SwitcherOpen, false)
+				var nbIconClicked bool
+				var nbIconRect ui.Rect
+				drawFooterNBIcon := func(lineHot, accentHot bool) {
+					if hasNBIcon {
+						lineCol := pal.Text
+						if !lineHot {
+							lineCol = pal.TextSecondary
+						}
+						ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(nbIcon.Tint), lineCol, false)
+						pluginui.DrawFileIconAnimated(c, nbIcon.Ref, nbIcon.Spec, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen || accentHot)
+						return
+					}
+					blockui.MonogramBadge(c, nbTitle)
+				}
 				sw.Children(func() {
 					if p.ActiveNotebook != "" {
-						blockui.MonogramBadge(c, nbTitle)
+						if nbPickerEnabled {
+							iconBtn := ui.ButtonBase(c.Key("notebook-switcher-icon")).
+								Size(theme.IconButtonBox, theme.IconButtonBox).Shrink(0).Center().
+								Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+								Label(theme.Tr("更换图标", "Change Icon"))
+							iHov := iconBtn.Hovered()
+							iPrs := iconBtn.Pressed()
+							tileBG := ui.Transparent
+							tileBD := ui.Transparent
+							switch {
+							case nbPickerTarget:
+								tileBG = pal.Accent.Alpha(0.14)
+								if pal.Dark {
+									tileBG = pal.Accent.Alpha(0.24)
+								}
+								tileBD = pal.Accent.Alpha(0.45)
+							case iHov || iPrs:
+								tileBG = pal.SidebarIconTileHover()
+							}
+							blockui.AnimateSurfaceColors(iconBtn, tileBG, tileBD, false)
+							blockui.TactileButton(iconBtn, iHov || nbPickerTarget, iPrs, false)
+							if !nbPickerTarget {
+								blockui.RichTooltip(c, iconBtn, blockui.TooltipSpec{
+									Placement: blockui.TooltipAbove,
+									Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("更换图标", "Change Icon")}},
+								})
+							}
+							iconBtn.Children(func() {
+								drawFooterNBIcon(true, iHov || iPrs || nbPickerTarget)
+							})
+							blockui.Probe(iconBtn, "notebook-switcher-icon")
+							nbIconRect = iconBtn.Bounds()
+							nbIconClicked = iconBtn.Clicked()
+						} else {
+							drawFooterNBIcon(true, false)
+						}
 					} else {
 						ic := pal.DuoIconColors(pal.Text)
 						icons.DrawAnimated(c, icons.FolderOpen, theme.IconRow, ic, swHovered || swPressed || p.State.SwitcherOpen)
@@ -709,8 +818,24 @@ func RenderSidebar(c *ui.Context, p SidebarProps) {
 				blockui.Probe(sw, "notebook-switcher")
 				if b := sw.Bounds(); b.W > 0 {
 					p.State.SwitcherBounds = b
+					if nbPickerTarget {
+						p.State.IconPickerRowBounds = b
+					}
 				}
-				if sw.Clicked() {
+				if nbPickerTarget && nbIconRect.W > 0 {
+					p.State.IconPickerIconBounds = nbIconRect
+				}
+				if nbIconClicked && nbPickerEnabled {
+					if nbPickerTarget {
+						p.State.ClosePopups()
+					} else {
+						curTint := theme.IconTintNone
+						if hasNBIcon {
+							curTint = theme.NormalizeIconTint(nbIcon.Tint)
+						}
+						p.State.OpenNotebookIconPicker(p.ActiveNotebook, nbIconRect, sw.Bounds(), "footer", curTint)
+					}
+				} else if sw.Clicked() {
 					next := !p.State.SwitcherOpen
 					p.State.ClosePopups()
 					p.State.SwitcherOpen = next
@@ -924,7 +1049,7 @@ func renderTreeRow(c *ui.Context, p SidebarProps, r flatTreeRow, treeFocus ui.El
 	activeFolder := focused && p.ActiveNote == ""
 	highlighted := selected || activeFolder
 	menuTarget := p.State.ContextOpen && p.State.ContextPath == entry.Path
-	iconPickerTarget := p.State.IconPickerOpen && p.State.IconPickerPath == entry.Path
+	iconPickerTarget := p.State.IconPickerOpen && (p.State.IconPickerAnchor == "" || p.State.IconPickerAnchor == "tree") && p.State.IconPickerPath == entry.Path
 
 	relPath := sidebarRelPath(p.ActiveNotebook, entry.Path)
 	customIcon, hasCustomIcon := p.FileIcons[relPath]
@@ -1217,7 +1342,7 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 		}
 		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0)
 
-		if p.State.IconPickerOpen {
+		if p.State.IconPickerOpen && !p.State.SwitcherOpen {
 			renderSidebarIconPicker(c, p, scrim, vpW, vpH)
 			return
 		}
@@ -1365,7 +1490,9 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				}})
 			}
 			choices = append(choices, add)
-			blockui.NavigateMenu(c, card, choices, &p.State.MenuCursor)
+			if !p.State.IconPickerOpen {
+				blockui.NavigateMenu(c, card, choices, &p.State.MenuCursor)
+			}
 			blockui.Probe(card, "notebook-switcher-pop")
 			card.Children(func() {
 				if p.State.ConfirmForgetNotebook != "" {
@@ -1388,8 +1515,18 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							checked := nb == p.ActiveNotebook
 							confirming := p.State.ConfirmForgetNotebook == nb
 							missing := avail.Missing(nb)
+							nbIcon, hasNBIcon := sidebarNotebookIcon(p, nb)
+							rowPickerEnabled := !missing && !confirming && p.FileIconPack != nil && p.FileIconPack.Picker && p.OnSetFileIcon != nil
+							rowPickerTarget := rowPickerEnabled && p.State.IconPickerOpen && p.State.IconPickerAnchor == "switcher" &&
+								filepath.Clean(p.State.IconPickerPath) == filepath.Clean(nb)
+							rowPadL := float32(10)
+							selGap := float32(8)
+							if rowPickerEnabled {
+								rowPadL = 7
+								selGap = 6
+							}
 							c.Key("nb-item:" + nb)
-							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, 10).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusMD)
+							row := ui.Row(c).FillWidth().Height(theme.MenuItemHeight).Padding(0, 7, 0, rowPadL).Gap(4).AlignItems(ui.Center).Radius(theme.RadiusMD)
 							nbDrop := false
 							nbAfter := false
 							if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil {
@@ -1454,20 +1591,69 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 							}
 							blockui.AnimateSurfaceColors(row, nbBG, ui.Transparent, false)
 							row.Children(func() {
-								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(8).AlignItems(ui.Center).
+								sel := ui.ButtonBase(c).Grow(1).MinWidth(0).FillHeight().Gap(selGap).AlignItems(ui.Center).
 									Cursor(ui.CursorPointer).Label(noteDisplayTitle(nb, true))
 								if len(p.Notebooks) > 1 && p.OnReorderNotebooks != nil && !confirming {
 									p.State.NBDragGate.Attach(sel, nb, nbDragItem{Path: nb, Index: ix}, blockui.DefaultDragThreshold)
 								}
+								var rowIconClicked bool
+								var rowIconRect ui.Rect
+								drawNBRowIcon := func(lineHot, accentHot bool) {
+									actIco := checked || confirming || rowHover || kbActive || accentHot
+									lineCol := pal.MenuIcon
+									if missing {
+										lineCol = pal.TextSecondary
+									} else if lineHot {
+										lineCol = pal.Text
+									}
+									if hasNBIcon {
+										ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(nbIcon.Tint), lineCol, false)
+										pluginui.DrawFileIconAnimated(c, nbIcon.Ref, nbIcon.Spec, theme.IconRow, ic, actIco)
+										return
+									}
+									icons.DrawAnimated(c, icons.Folder, theme.IconRow, pal.DuoIconColors(lineCol), actIco)
+								}
 								sel.Children(func() {
-									ic := pal.DuoIconColors(pal.MenuIcon)
-									actIco := checked || confirming || rowHover || kbActive
 									nameColor := pal.Text
 									if missing {
-										ic = pal.DuoIconColors(pal.TextSecondary)
 										nameColor = pal.TextSecondary
 									}
-									icons.DrawAnimated(c, icons.Folder, theme.IconRow, ic, actIco)
+									if rowPickerEnabled {
+										iconBtn := ui.ButtonBase(c.Key("nb-switcher-icon:"+nb)).
+											Size(theme.IconButtonBox, theme.IconButtonBox).Shrink(0).Center().
+											Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+											Label(theme.Tr("更换图标", "Change Icon"))
+										iHov := iconBtn.Hovered()
+										iPrs := iconBtn.Pressed()
+										tileBG := ui.Transparent
+										tileBD := ui.Transparent
+										switch {
+										case rowPickerTarget:
+											tileBG = pal.Accent.Alpha(0.14)
+											if pal.Dark {
+												tileBG = pal.Accent.Alpha(0.24)
+											}
+											tileBD = pal.Accent.Alpha(0.45)
+										case iHov || iPrs:
+											tileBG = pal.SidebarIconTileHover()
+										}
+										blockui.AnimateSurfaceColors(iconBtn, tileBG, tileBD, false)
+										blockui.TactileButton(iconBtn, iHov || rowPickerTarget, iPrs, false)
+										if !rowPickerTarget {
+											blockui.RichTooltip(c, iconBtn, blockui.TooltipSpec{
+												Placement: blockui.TooltipAbove,
+												Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("更换图标", "Change Icon")}},
+											})
+										}
+										iconBtn.Children(func() {
+											drawNBRowIcon(checked || rowHover || kbActive || iHov || rowPickerTarget, iHov || iPrs || rowPickerTarget)
+										})
+										blockui.Probe(iconBtn, "nb-switcher-icon:"+nb)
+										rowIconRect = iconBtn.Bounds()
+										rowIconClicked = iconBtn.Clicked()
+									} else {
+										drawNBRowIcon(checked || rowHover || kbActive, false)
+									}
 									ui.Text(c, noteDisplayTitle(nb, true)).FontSize(theme.FontBody).TextColor(nameColor).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 									if missing && !confirming && !rowHover {
 										ui.Text(c, theme.Tr("已移动或删除", "Moved or deleted")).FontSize(theme.FontSmall).TextColor(pal.Warning).Shrink(0).SingleLine()
@@ -1478,11 +1664,29 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 										})
 									}
 								})
+								if rowPickerTarget {
+									if rowIconRect.W > 0 {
+										p.State.IconPickerIconBounds = rowIconRect
+									}
+									if rb := row.Bounds(); rb.W > 0 {
+										p.State.IconPickerRowBounds = rb
+									}
+								}
 								blockui.Probe(sel, "nb-select:"+nb)
 								if missing {
 									sel.Tooltip(nb)
 								}
-								if sel.Clicked() {
+								if rowIconClicked && rowPickerEnabled {
+									if rowPickerTarget {
+										p.State.CloseIconPicker()
+									} else {
+										curTint := theme.IconTintNone
+										if hasNBIcon {
+											curTint = theme.NormalizeIconTint(nbIcon.Tint)
+										}
+										p.State.OpenNotebookIconPicker(nb, rowIconRect, row.Bounds(), "switcher", curTint)
+									}
+								} else if sel.Clicked() {
 									if confirming {
 										p.State.ConfirmForgetNotebook = ""
 									} else {
@@ -1544,10 +1748,16 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					})
 				})
 			})
-			if card.PressedOutside() {
+			var pickerCard ui.Element
+			if p.State.IconPickerOpen {
+				pickerCard = renderSidebarIconPickerCard(c, p, scrim, vpW, vpH)
+			}
+			if card.PressedOutside() && (!pickerCard.Valid() || pickerCard.PressedOutside()) {
 				p.State.ClosePopups()
 			} else if scrim.OverlayShortcut(0, ui.KeyEscape) {
-				if p.State.ConfirmForgetNotebook != "" {
+				if p.State.IconPickerOpen {
+					p.State.CloseIconPicker()
+				} else if p.State.ConfirmForgetNotebook != "" {
 					p.State.ConfirmForgetNotebook = ""
 				} else {
 					p.State.ClosePopups()

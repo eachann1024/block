@@ -82,7 +82,8 @@ type Workspace struct {
 
 	// chromePopups holds sidebar/titlebar menu overlays queued during a frame;
 	// they are flushed after the editor so menus stack above editor toolbars.
-	chromePopups []func()
+	chromePopups        []func()
+	sidebarPopupsQueued bool
 
 	recoveryPath    string
 	recoveryContent string
@@ -5682,6 +5683,7 @@ func (w *Workspace) Render(c *ui.Context) {
 	chrome := pal.ShellChrome()
 	clear(w.chromePopups)
 	w.chromePopups = w.chromePopups[:0]
+	w.sidebarPopupsQueued = false
 	c.Key("workspace-root")
 	root := ui.Column(c).Fill().Background(chrome.Ground).TextColor(pal.Text).Clip()
 	blockui.Probe(root, "workspace-root")
@@ -5723,27 +5725,61 @@ func (w *Workspace) Render(c *ui.Context) {
 			w.tabMenu.Close()
 		} else {
 			brandHasUpdate, brandUpdateChecking, brandUpdateTip, brandUpdateMenuLabel, brandUpdateHint := w.brandUpdateHint()
+			tbIconPack := w.pluginSidebarFileIconPack()
+			tbNBIcon := w.pluginNotebookIcon(activeNB)
+			tbNBPicker := activeNB != "" && tbIconPack != nil && tbIconPack.Picker
+			tbNBPickerActive := tbNBPicker && w.sidebarUI != nil && w.sidebarUI.IconPickerOpen &&
+				w.sidebarUI.IconPickerAnchor == "titlebar" &&
+				filepath.Clean(w.sidebarUI.IconPickerPath) == filepath.Clean(activeNB)
 			RenderTitlebar(c, TitlebarProps{
-				DeferMenus:             w.deferChromePopup,
-				SidebarWide:            sidebarWide,
-				SidebarAutoHidden:      sidebarAutoHidden,
-				SidebarFloating:        w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
-				SidebarExpandCueAt:     sidebarExpandCueAt,
-				SidebarWidth:           dockedSidebarWidth,
-				InSettings:             inSettings,
-				SettingsTabLabel:       w.modals.ActiveSettingsTabTitle(),
-				RenderSettingsLeading:  w.modals.RenderSettingsTitlebarLeading,
-				RenderSettingsTrailing: w.modals.RenderSettingsTitlebarTrailing,
-				RenderSettingsOverlays: w.modals.RenderSettingsTitlebarOverlays,
-				AIImmersive:            aiImmersive,
-				AIEnabled:              aiEnabled,
-				AIOpen:                 w.ai.IsOpen() || w.edgeFloat.RightOpen(),
-				FeedbackOpen:           w.modals.IsFeedbackOpen(),
-				HasFeedbackDraft:       hasFBDraft,
-				NotebookPath:           activeNB,
-				Tabs:                   tabs,
-				ActiveTab:              activeTab,
-				FileIcons:              w.pluginTitlebarFileIcons(activeNB),
+				DeferMenus:               w.deferChromePopup,
+				SidebarWide:              sidebarWide,
+				SidebarAutoHidden:        sidebarAutoHidden,
+				SidebarFloating:          w.edgeFloat.LeftOpen() || layout.SidebarDrawer,
+				SidebarExpandCueAt:       sidebarExpandCueAt,
+				SidebarWidth:             dockedSidebarWidth,
+				InSettings:               inSettings,
+				SettingsTabLabel:         w.modals.ActiveSettingsTabTitle(),
+				RenderSettingsLeading:    w.modals.RenderSettingsTitlebarLeading,
+				RenderSettingsTrailing:   w.modals.RenderSettingsTitlebarTrailing,
+				RenderSettingsOverlays:   w.modals.RenderSettingsTitlebarOverlays,
+				AIImmersive:              aiImmersive,
+				AIEnabled:                aiEnabled,
+				AIOpen:                   w.ai.IsOpen() || w.edgeFloat.RightOpen(),
+				FeedbackOpen:             w.modals.IsFeedbackOpen(),
+				HasFeedbackDraft:         hasFBDraft,
+				NotebookPath:             activeNB,
+				NotebookIcon:             tbNBIcon,
+				NotebookIconPicker:       tbNBPicker,
+				NotebookIconPickerActive: tbNBPickerActive,
+				OnClickNotebookIcon: func(iconRect, rowRect ui.Rect) {
+					if w.sidebarUI == nil || activeNB == "" {
+						return
+					}
+					if tbNBPickerActive {
+						w.sidebarUI.ClosePopups()
+						return
+					}
+					curTint := theme.IconTintNone
+					if tbNBIcon != nil {
+						curTint = theme.NormalizeIconTint(tbNBIcon.Tint)
+					}
+					w.sidebarUI.OpenNotebookIconPicker(activeNB, iconRect, rowRect, "titlebar", curTint)
+				},
+				OnUpdateNotebookIconBounds: func(iconRect, rowRect ui.Rect) {
+					if w.sidebarUI == nil {
+						return
+					}
+					if iconRect.W > 0 {
+						w.sidebarUI.IconPickerIconBounds = iconRect
+					}
+					if rowRect.W > 0 {
+						w.sidebarUI.IconPickerRowBounds = rowRect
+					}
+				},
+				Tabs:      tabs,
+				ActiveTab: activeTab,
+				FileIcons: w.pluginTitlebarFileIcons(activeNB),
 				IsDirty: func(path string) bool {
 					return dirtyTabs[path]
 				},
@@ -6215,6 +6251,21 @@ func (w *Workspace) Render(c *ui.Context) {
 		})
 
 		// 2.9. Chrome menus (titlebar, sidebar) above editor floating toolbars.
+		// If the icon picker was opened from the titlebar while the sidebar is hidden,
+		// render its overlay directly so clicking the titlebar notebook icon still works.
+		if !w.sidebarPopupsQueued && !inSettings && !aiImmersive && w.sidebarUI != nil && w.sidebarUI.IconPickerOpen {
+			nbIcons := w.pluginNotebookIcons(notebooks, activeNB)
+			w.deferChromePopup(func() {
+				renderSidebarPopups(c, SidebarProps{
+					State:          w.sidebarUI,
+					ActiveNotebook: activeNB,
+					FileIcons:      w.pluginSidebarFileIcons(activeNB),
+					NotebookIcons:  nbIcons,
+					FileIconPack:   w.pluginSidebarFileIconPack(),
+					OnSetFileIcon:  w.onSetSidebarFileIcon,
+				})
+			})
+		}
 		w.flushChromePopups()
 
 		// 3. Modal Overlays (Search, About, Feedback, Performance, Updater).
@@ -6337,6 +6388,33 @@ func (w *Workspace) pluginSidebarFileIcons(activeNB string) map[string]plugins.R
 	return sup.FileIconsForNotebook(activeNB)
 }
 
+func (w *Workspace) pluginNotebookIcon(nbRoot string) *plugins.ResolvedFileIcon {
+	sup := w.Plugins()
+	if sup == nil || nbRoot == "" {
+		return nil
+	}
+	ic, ok := sup.NotebookIcon(nbRoot)
+	if !ok {
+		return nil
+	}
+	return &ic
+}
+
+func (w *Workspace) pluginNotebookIcons(notebooks []string, activeNB string) map[string]plugins.ResolvedFileIcon {
+	sup := w.Plugins()
+	if sup == nil {
+		return nil
+	}
+	list := notebooks
+	if activeNB != "" && !slices.Contains(list, activeNB) {
+		list = append(append([]string(nil), list...), activeNB)
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	return sup.NotebookIcons(list)
+}
+
 func (w *Workspace) pluginTitlebarFileIcons(activeNB string) map[string]plugins.ResolvedFileIcon {
 	pack := w.pluginSidebarFileIconPack()
 	if pack == nil || !pack.SyncTabs {
@@ -6345,14 +6423,17 @@ func (w *Workspace) pluginTitlebarFileIcons(activeNB string) map[string]plugins.
 	return w.pluginSidebarFileIcons(activeNB)
 }
 
-func (w *Workspace) onSetSidebarFileIcon(pluginID, relPath, iconID, tint string) {
+func (w *Workspace) onSetSidebarFileIcon(pluginID, notebookRoot, relPath, iconID, tint string) {
 	sup := w.Plugins()
-	activeNB := w.ActiveNotebook()
-	if sup == nil || activeNB == "" {
+	targetNB := notebookRoot
+	if targetNB == "" {
+		targetNB = w.ActiveNotebook()
+	}
+	if sup == nil || targetNB == "" {
 		return
 	}
-	if err := sup.SetFileIconDirect(pluginID, activeNB, relPath, iconID, tint); err != nil {
-		files.LogWarnf("set sidebar file icon failed: plugin=%s rel=%s icon=%s err=%v", pluginID, relPath, iconID, err)
+	if err := sup.SetFileIconDirect(pluginID, targetNB, relPath, iconID, tint); err != nil {
+		files.LogWarnf("set sidebar file icon failed: plugin=%s nb=%s rel=%s icon=%s err=%v", pluginID, targetNB, relPath, iconID, err)
 		return
 	}
 	w.RequestRedraw()
@@ -6585,6 +6666,7 @@ func (w *Workspace) renderSidebarColumn(
 	if stSnap.HideAssetsFolder != nil {
 		hideAssets = *stSnap.HideAssetsFolder
 	}
+	w.sidebarPopupsQueued = true
 	RenderSidebar(c, SidebarProps{
 		DeferPopups:  w.deferChromePopup,
 		State:        w.sidebarUI,
@@ -6687,6 +6769,7 @@ func (w *Workspace) renderSidebarColumn(
 		},
 		FileBadges:           w.pluginSidebarFileBadges(activeNB),
 		FileIcons:            w.pluginSidebarFileIcons(activeNB),
+		NotebookIcons:        w.pluginNotebookIcons(notebooks, activeNB),
 		FileIconPack:         w.pluginSidebarFileIconPack(),
 		OnSetFileIcon:        w.onSetSidebarFileIcon,
 		PluginContextMenu:    w.pluginSidebarMenuItems(),
@@ -6812,10 +6895,17 @@ func (w *Workspace) renderEmptyWorkspaceMascot(c *ui.Context, activeNB string, e
 				if len(recent) > 0 {
 					blockui.EmptyActionSeparator(c)
 				}
+				recentIcons := w.pluginNotebookIcons(recent, "")
 				for i, nb := range recent {
 					title := noteDisplayTitle(nb, true)
+					nbIcon, hasNBIcon := recentIcons[nb]
 					if blockui.EmptyActionRow(c, fmt.Sprintf("empty-recent-notebook-%d", i), title, func() {
-						blockui.MonogramBadge(c, title)
+						if hasNBIcon {
+							ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(nbIcon.Tint), pal.Text, false)
+							pluginui.DrawFileIcon(c, nbIcon.Ref, nbIcon.Spec, theme.IconRow, ic)
+						} else {
+							blockui.MonogramBadge(c, title)
+						}
 					}, "").Clicked() {
 						_ = w.SetNotebook(nb)
 					}

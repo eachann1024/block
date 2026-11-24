@@ -29,13 +29,14 @@ const (
 )
 
 // placeIconPicker resolves (x, y, maxH) for the icon picker popover so it never
-// obscures the clicked sidebar icon.
+// obscures the clicked icon.
 //
-// Tier 1: float directly right of the icon tile, top edge level with the row.
-// Tier 2 (window too narrow): place strictly below or strictly above the icon
-// while capping height to available vertical room so clamping never pulls the
-// popover back on top of the icon.
-func placeIconPicker(iconRect, rowRect ui.Rect, popW, popH, vpW, vpH float32) (ox, oy, finalH float32) {
+// Tier 1: float directly right of the icon tile (or right of the full switcher
+// row when anchor == "switcher"), top edge level with the row.
+// Tier 2 (titlebar anchor or window too narrow): place strictly below or
+// strictly above the icon while capping height to available vertical room so
+// clamping never pulls the popover back on top of the icon.
+func placeIconPicker(iconRect, rowRect ui.Rect, anchor string, popW, popH, vpW, vpH float32) (ox, oy, finalH float32) {
 	const (
 		margin float32 = 8
 		gapX   float32 = 6
@@ -52,45 +53,51 @@ func placeIconPicker(iconRect, rowRect ui.Rect, popW, popH, vpW, vpH float32) (o
 		return float32(math.Round(float64(v)))
 	}
 
-	if iconRect.W > 0 && iconRect.H > 0 {
-		rightOfIcon := iconRect.X + iconRect.W + gapX
-		if rightOfIcon+popW <= vpW-margin {
-			// Start level with the clicked row so the popover never rises above it.
-			anchorY := iconRect.Y
-			if rowRect.H > 0 && rowRect.Y <= iconRect.Y && rowRect.Y+rowRect.H >= iconRect.Y+iconRect.H {
-				anchorY = rowRect.Y
+	if anchor != "titlebar" {
+		sideRef := iconRect
+		if anchor == "switcher" && rowRect.W > 0 && rowRect.H > 0 {
+			sideRef = rowRect
+		}
+		if sideRef.W > 0 && sideRef.H > 0 {
+			rightOfRef := sideRef.X + sideRef.W + gapX
+			if rightOfRef+popW <= vpW-margin {
+				// Start level with the clicked row so the popover never rises above it.
+				anchorY := sideRef.Y
+				if rowRect.H > 0 && rowRect.Y <= sideRef.Y && rowRect.Y+rowRect.H >= sideRef.Y+sideRef.H {
+					anchorY = rowRect.Y
+				}
+				return round(rightOfRef), round(clampY(anchorY, finalH)), finalH
 			}
-			return round(rightOfIcon), round(clampY(anchorY, finalH)), finalH
 		}
 	}
 
-	anchor := iconRect
-	if anchor.W <= 0 && anchor.H <= 0 {
-		anchor = rowRect
+	rectAnchor := iconRect
+	if rectAnchor.W <= 0 && rectAnchor.H <= 0 {
+		rectAnchor = rowRect
 	}
-	if anchor.W <= 0 && anchor.H <= 0 {
-		anchor = ui.Rect{X: 24, Y: 80, W: 22, H: 22}
+	if rectAnchor.W <= 0 && rectAnchor.H <= 0 {
+		rectAnchor = ui.Rect{X: 24, Y: 80, W: 22, H: 22}
 	}
 
 	minX := margin
 	maxX := max(vpW-margin-popW, minX)
-	ox = max(min(anchor.X, maxX), minX)
+	ox = max(min(rectAnchor.X, maxX), minX)
 
-	spaceBelow := (vpH - margin) - (anchor.Y + anchor.H + gapY)
-	spaceAbove := (anchor.Y - gapY) - margin
+	spaceBelow := (vpH - margin) - (rectAnchor.Y + rectAnchor.H + gapY)
+	spaceAbove := (rectAnchor.Y - gapY) - margin
 	if spaceBelow >= finalH || spaceBelow >= spaceAbove {
 		if spaceBelow > 0 {
 			finalH = min(finalH, max(spaceBelow, 120))
 		}
-		oy = anchor.Y + anchor.H + gapY
+		oy = rectAnchor.Y + rectAnchor.H + gapY
 		if oy+finalH > vpH-margin {
-			oy = max(vpH-margin-finalH, anchor.Y+anchor.H+2)
+			oy = max(vpH-margin-finalH, rectAnchor.Y+rectAnchor.H+2)
 		}
 	} else {
 		if spaceAbove > 0 {
 			finalH = min(finalH, max(spaceAbove, 120))
 		}
-		oy = max(anchor.Y-gapY-finalH, margin)
+		oy = max(rectAnchor.Y-gapY-finalH, margin)
 	}
 	return round(ox), round(oy), finalH
 }
@@ -137,21 +144,75 @@ func matchFileIconDef(ic plugins.FileIconDef, catName plugins.LocalizedText, ter
 	return true
 }
 
+func sidebarNotebookIcon(p SidebarProps, nbRoot string) (plugins.ResolvedFileIcon, bool) {
+	if nbRoot == "" {
+		return plugins.ResolvedFileIcon{}, false
+	}
+	if ic, ok := p.NotebookIcons[nbRoot]; ok {
+		return ic, true
+	}
+	cleanTarget := filepath.Clean(nbRoot)
+	for k, ic := range p.NotebookIcons {
+		if filepath.Clean(k) == cleanTarget {
+			return ic, true
+		}
+	}
+	if p.ActiveNotebook != "" && filepath.Clean(p.ActiveNotebook) == cleanTarget {
+		if ic, ok := p.FileIcons[plugins.NotebookFileIconRelPath]; ok {
+			return ic, true
+		}
+	}
+	return plugins.ResolvedFileIcon{}, false
+}
+
+func iconPickerTarget(state *SidebarUIState, activeNB string) (nbRoot, rel string) {
+	if state == nil || state.IconPickerPath == "" {
+		return "", ""
+	}
+	nbRoot = state.IconPickerNotebook
+	if nbRoot == "" {
+		nbRoot = activeNB
+	}
+	if nbRoot == "" {
+		return "", ""
+	}
+	if filepath.Clean(state.IconPickerPath) == filepath.Clean(nbRoot) {
+		return nbRoot, plugins.NotebookFileIconRelPath
+	}
+	return nbRoot, sidebarRelPath(nbRoot, state.IconPickerPath)
+}
+
 func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vpW, vpH float32) {
-	pack := p.FileIconPack
-	if pack == nil || pack.Pack == nil || len(pack.Pack.Icons) == 0 || p.OnSetFileIcon == nil {
-		p.State.ClosePopups()
+	card := renderSidebarIconPickerCard(c, p, scrim, vpW, vpH)
+	if !card.Valid() {
 		return
 	}
-	rel := sidebarRelPath(p.ActiveNotebook, p.State.IconPickerPath)
-	if rel == "" {
+	if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
 		p.State.ClosePopups()
-		return
+	}
+}
+
+func renderSidebarIconPickerCard(c *ui.Context, p SidebarProps, scrim ui.Element, vpW, vpH float32) ui.Element {
+	pack := p.FileIconPack
+	if pack == nil || pack.Pack == nil || len(pack.Pack.Icons) == 0 || p.OnSetFileIcon == nil {
+		p.State.CloseIconPicker()
+		return ui.Element{}
+	}
+	nbRoot, rel := iconPickerTarget(p.State, p.ActiveNotebook)
+	if nbRoot == "" || rel == "" {
+		p.State.CloseIconPicker()
+		return ui.Element{}
 	}
 
 	pal := theme.Ocean()
 	loc := iconPickerLocale()
-	curIcon, hasCustom := p.FileIcons[rel]
+	var curIcon plugins.ResolvedFileIcon
+	var hasCustom bool
+	if rel == plugins.NotebookFileIconRelPath {
+		curIcon, hasCustom = sidebarNotebookIcon(p, nbRoot)
+	} else {
+		curIcon, hasCustom = p.FileIcons[rel]
+	}
 	activeTint := p.State.IconPickerTint
 	if hasCustom {
 		activeTint = theme.NormalizeIconTint(curIcon.Tint)
@@ -162,7 +223,7 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 
 	popW := min(iconPickerWidth, max(vpW-16, 220))
 	popH := min(iconPickerMaxHeight, max(vpH-16, iconPickerMinHeight))
-	ox, oy, finalH := placeIconPicker(p.State.IconPickerIconBounds, p.State.IconPickerRowBounds, popW, popH, vpW, vpH)
+	ox, oy, finalH := placeIconPicker(p.State.IconPickerIconBounds, p.State.IconPickerRowBounds, p.State.IconPickerAnchor, popW, popH, vpW, vpH)
 
 	queryTrim := strings.TrimSpace(p.State.IconPickerQuery)
 	if p.State.IconPickerQuery != p.State.IconPickerLastQuery {
@@ -196,13 +257,13 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 
 	applyIcon := func(iconID string) {
 		p.State.IconPickerTint = activeTint
-		p.OnSetFileIcon(pack.PluginID, rel, iconID, string(activeTint))
+		p.OnSetFileIcon(pack.PluginID, nbRoot, rel, iconID, string(activeTint))
 	}
 
 	applyTint := func(tint theme.IconTint) {
 		p.State.IconPickerTint = tint
 		if hasCustom {
-			p.OnSetFileIcon(pack.PluginID, rel, curIcon.IconID, string(tint))
+			p.OnSetFileIcon(pack.PluginID, nbRoot, rel, curIcon.IconID, string(tint))
 			return
 		}
 		fallback := "note"
@@ -210,13 +271,13 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 			fallback = "folder"
 		}
 		if _, ok := pack.ByID[fallback]; ok {
-			p.OnSetFileIcon(pack.PluginID, rel, fallback, string(tint))
+			p.OnSetFileIcon(pack.PluginID, nbRoot, rel, fallback, string(tint))
 		}
 	}
 
 	resetIcon := func() {
 		p.State.IconPickerTint = theme.IconTintNone
-		p.OnSetFileIcon(pack.PluginID, rel, "", string(theme.IconTintNone))
+		p.OnSetFileIcon(pack.PluginID, nbRoot, rel, "", string(theme.IconTintNone))
 	}
 
 	showRail := !searching && len(pack.Pack.Categories) > 1
@@ -363,6 +424,8 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 							if p.State.IconPickerQuery != "" {
 								p.State.IconPickerQuery = ""
 								p.State.IconPickerScroll.Y = 0
+							} else if p.State.SwitcherOpen {
+								p.State.CloseIconPicker()
 							} else {
 								p.State.ClosePopups()
 							}
@@ -574,7 +637,5 @@ func renderSidebarIconPicker(c *ui.Context, p SidebarProps, scrim ui.Element, vp
 			})
 	})
 
-	if card.PressedOutside() || scrim.OverlayShortcut(0, ui.KeyEscape) {
-		p.State.ClosePopups()
-	}
+	return card
 }
