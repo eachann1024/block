@@ -11,40 +11,46 @@ import (
 	"block/internal/icons"
 	"block/internal/theme"
 	bui "block/internal/ui"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
 // NoteCandidate represents a notebook file selectable in the Link-to-Note picker.
 type NoteCandidate struct {
-	Title   string
-	RelPath string
+	Title       string
+	RelPath     string
+	DisplayPath string
 }
 
 // Callbacks bridges mindmap block actions back to the host editor and workspace.
 type Callbacks struct {
-	OnChange         func(newMarkdown string)
-	OnUndo           func()
-	OnRedo           func()
-	OnOpenLink       func(target string)
-	OnListNotes      func() []NoteCandidate
-	OnPickImportFile func(onImported func(root *Node, report ImportReport))
-	OnSaveExportFile func(defaultName, ext string, data []byte, onDone func(err error))
-	OnNotify         func(msg, tone string)
-	OnRequestFocus   func()
-	ReadOnly         bool
+	OnChange          func(newMarkdown string)
+	OnUndo            func()
+	OnRedo            func()
+	CanUndo           func() bool
+	CanRedo           func() bool
+	OnOpenLink        func(target string)
+	OnCheckLinkStatus func(target string) LinkStatus
+	OnListNotes       func() []NoteCandidate
+	OnPickImportFile  func(onImported func(root *Node, report ImportReport))
+	OnSaveExportFile  func(defaultName, ext string, data []byte, onDone func(err error))
+	OnNotify          func(msg, tone string)
+	OnRequestFocus    func()
+	ReadOnly          bool
 }
 
 // BlockState keeps all interactive runtime state for one mindmap block.
 type BlockState struct {
-	Root        *Node
-	NextID      int
-	LastSource  string
-	SelectedID  int
-	HoveredID   int
-	View        ViewMode
-	Layout      LayoutMode
-	LayoutSet   bool
-	Fullscreen  bool
+	Root       *Node
+	NextID     int
+	LastSource string
+	SelectedID int
+	HoveredID  int
+	HoveredHit HitKind
+	View       ViewMode
+	Layout     LayoutMode
+	LayoutSet  bool
+	Fullscreen bool
 
 	Camera               Camera
 	CameraInit           bool
@@ -81,13 +87,33 @@ type BlockState struct {
 	EditFocusPending   bool
 	EditHandle         ui.Handle
 
+	linkStatusCache   map[string]LinkStatus
+	linkStatusChecked time.Time
+
 	LinkNodeID       int
 	LinkDraft        string
 	LinkFocusPending bool
+	LinkActiveIdx    int
+	LinkBrokenNotice bool
 	LinkHandle       ui.Handle
+	LinkListScroll   ui.ScrollState
 
-	ExportMenuOpen bool
-	ImportResult   *ImportReport
+	FindOpen         bool
+	FindQuery        string
+	FindFocusPending bool
+	FindMatchIDs     []int
+	FindMatchSet     map[int]bool
+	FindCurrentIdx   int
+	FindHandle       ui.Handle
+
+	ExportMenuOpen   bool
+	ExportMenuScroll ui.ScrollState
+	ExportTheme      ExportTheme
+	ShortcutsOpen    bool
+	ShortcutsScroll  ui.ScrollState
+	ImportResult     *ImportReport
+	ImportUndoBefore string
+	ImportUndoAfter  string
 
 	Undo [][]byte
 	Redo [][]byte
@@ -145,13 +171,38 @@ func (st *BlockState) SyncSource(src string, cfg Config) {
 	st.Undo = st.Undo[:0]
 	st.Redo = st.Redo[:0]
 	st.OutlineUndoNodeID = 0
+	st.clearTransientNodeState()
+	if st.ImportUndoAfter != "" && src != st.ImportUndoAfter {
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+	}
+	st.invalidateLinkStatusCache()
 	if st.Root != nil && st.Root.FindByID(st.SelectedID) == nil {
 		st.SelectedID = st.Root.ID
 	}
 	if st.OutlineZoomID != 0 && (st.Root == nil || st.Root.FindByID(st.OutlineZoomID) == nil) {
 		st.OutlineZoomID = 0
 	}
+	if st.FindOpen {
+		st.recomputeFind(false)
+	}
 	st.AutoFitPending = true
+}
+
+func (st *BlockState) clearTransientNodeState() {
+	st.LinkNodeID = 0
+	st.LinkFocusPending = false
+	st.LinkBrokenNotice = false
+	st.EditingID = 0
+	st.EditFocusPending = false
+	st.EditSelectAll = false
+	st.EditCompose = ""
+	st.editLastLayoutText = ""
+	st.ComposeText = ""
+	st.Measure.ClearTextOverride()
+	st.resetDrag()
+	st.HoveredID = 0
+	st.HoveredHit = HitNone
 }
 
 // HasFocus reports whether any interactive MindMap control currently owns keyboard focus.
@@ -162,6 +213,7 @@ func (st *BlockState) HasFocus(c *ui.Context) bool {
 	return st.CanvasHandle.Focused(c) ||
 		st.EditHandle.Focused(c) ||
 		st.LinkHandle.Focused(c) ||
+		st.FindHandle.Focused(c) ||
 		st.OutlineHandle.FocusWithin(c) ||
 		st.SourceHandle.Focused(c)
 }
@@ -207,6 +259,13 @@ func (st *BlockState) commitChange(cb Callbacks) {
 	}
 	md := SerializeMarkdown(st.Root)
 	st.LastSource = md
+	if st.ImportUndoAfter != "" && md != st.ImportUndoAfter {
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+	}
+	if st.FindOpen {
+		st.recomputeFind(false)
+	}
 	if cb.OnChange != nil {
 		cb.OnChange(md)
 	}
@@ -725,6 +784,7 @@ func (st *BlockState) opUndo(cb Callbacks) {
 	if cb.ReadOnly {
 		return
 	}
+	st.clearTransientNodeState()
 	if cb.OnUndo != nil {
 		cb.OnUndo()
 		return
@@ -749,6 +809,7 @@ func (st *BlockState) opRedo(cb Callbacks) {
 	if cb.ReadOnly {
 		return
 	}
+	st.clearTransientNodeState()
 	if cb.OnRedo != nil {
 		cb.OnRedo()
 		return
@@ -948,24 +1009,134 @@ func (st *BlockState) finishEdit(commit bool, cb Callbacks) {
 	st.EditFresh = false
 }
 
+func (st *BlockState) canUndo(cb Callbacks) bool {
+	if cb.ReadOnly {
+		return false
+	}
+	if cb.CanUndo != nil {
+		return cb.CanUndo()
+	}
+	return len(st.Undo) > 0
+}
+
+func (st *BlockState) canRedo(cb Callbacks) bool {
+	if cb.ReadOnly {
+		return false
+	}
+	if cb.CanRedo != nil {
+		return cb.CanRedo()
+	}
+	return len(st.Redo) > 0
+}
+
+func (st *BlockState) invalidateLinkStatusCache() {
+	if st.linkStatusCache != nil {
+		clear(st.linkStatusCache)
+	}
+	st.linkStatusChecked = time.Time{}
+}
+
+func (st *BlockState) resolveLinkStatusCached(now time.Time, target string, cb Callbacks) LinkStatus {
+	s := strings.TrimSpace(target)
+	if s == "" {
+		return LinkStatusNone
+	}
+	if ClassifyLink(s) == LinkWeb {
+		return LinkStatusExternal
+	}
+	if cb.OnCheckLinkStatus == nil {
+		return LinkStatusValid
+	}
+	if st.linkStatusCache == nil || st.linkStatusChecked.IsZero() || now.Sub(st.linkStatusChecked) >= 2*time.Second {
+		st.linkStatusCache = make(map[string]LinkStatus, 8)
+		st.linkStatusChecked = now
+	}
+	if cached, ok := st.linkStatusCache[s]; ok {
+		return cached
+	}
+	status := cb.OnCheckLinkStatus(s)
+	st.linkStatusCache[s] = status
+	return status
+}
+
+func (st *BlockState) checkLinkStatusFresh(now time.Time, target string, cb Callbacks) LinkStatus {
+	s := strings.TrimSpace(target)
+	if s == "" {
+		return LinkStatusNone
+	}
+	if ClassifyLink(s) == LinkWeb {
+		return LinkStatusExternal
+	}
+	if cb.OnCheckLinkStatus == nil {
+		return LinkStatusValid
+	}
+	status := cb.OnCheckLinkStatus(s)
+	if st.linkStatusCache == nil {
+		st.linkStatusCache = make(map[string]LinkStatus, 8)
+	}
+	st.linkStatusCache[s] = status
+	st.linkStatusChecked = now
+	return status
+}
+
+func (st *BlockState) openNodeLink(now time.Time, n *Node, cb Callbacks) {
+	if n == nil {
+		return
+	}
+	target := strings.TrimSpace(n.Link)
+	if target == "" {
+		return
+	}
+	status := st.checkLinkStatusFresh(now, target, cb)
+	if status == LinkStatusBroken {
+		if !cb.ReadOnly {
+			st.SelectedID = n.ID
+			st.beginLinkEditBroken(n)
+		} else if cb.OnNotify != nil {
+			cb.OnNotify(theme.Tr("目标笔记不存在或已移动", "Linked note is missing or moved"), "warning")
+		}
+		return
+	}
+	if st.Fullscreen {
+		st.Fullscreen = false
+		st.AutoFitPending = true
+	}
+	if cb.OnOpenLink != nil {
+		cb.OnOpenLink(target)
+	}
+}
+
 func (st *BlockState) beginLinkEdit(n *Node) {
 	if n == nil {
 		return
 	}
 	st.EditingID = 0
+	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
+	st.ImportResult = nil
 	st.LinkNodeID = n.ID
 	st.LinkDraft = n.Link
+	st.LinkActiveIdx = -1
+	st.LinkBrokenNotice = false
+	st.LinkListScroll.Y = 0
 	st.LinkFocusPending = true
+}
+
+func (st *BlockState) beginLinkEditBroken(n *Node) {
+	st.beginLinkEdit(n)
+	st.LinkBrokenNotice = true
 }
 
 func (st *BlockState) applyLink(target string, cb Callbacks) {
 	if cb.ReadOnly || st.LinkNodeID == 0 || st.Root == nil {
 		st.LinkNodeID = 0
+		st.LinkBrokenNotice = false
 		return
 	}
 	n := st.Root.FindByID(st.LinkNodeID)
 	st.LinkNodeID = 0
 	st.LinkFocusPending = false
+	st.LinkBrokenNotice = false
 	if n == nil {
 		return
 	}
@@ -973,24 +1144,177 @@ func (st *BlockState) applyLink(target string, cb Callbacks) {
 	if target != n.Link {
 		st.pushUndo()
 		n.Link = target
+		st.invalidateLinkStatusCache()
 		st.commitChange(cb)
 	}
+}
+
+// OpenFind opens the in-canvas MindMap find bar (switching to Map view if needed).
+func (st *BlockState) OpenFind() {
+	if st == nil {
+		return
+	}
+	if st.View != ViewMap {
+		st.View = ViewMap
+		st.AutoFitPending = true
+	}
+	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
+	st.LinkNodeID = 0
+	st.FindOpen = true
+	st.FindFocusPending = true
+	if strings.TrimSpace(st.FindQuery) != "" {
+		st.recomputeFind(true)
+	}
+}
+
+// CloseFind closes the in-canvas MindMap find bar and clears highlights.
+func (st *BlockState) CloseFind() {
+	if st == nil {
+		return
+	}
+	st.FindOpen = false
+	st.FindFocusPending = false
+	st.FindMatchIDs = nil
+	st.FindMatchSet = nil
+	st.FindCurrentIdx = 0
+}
+
+func (st *BlockState) recomputeFind(expandAndCenter bool) {
+	matches := FindMatches(st.Root, st.FindQuery)
+	if len(matches) == 0 {
+		st.FindMatchIDs = nil
+		st.FindMatchSet = nil
+		st.FindCurrentIdx = 0
+		return
+	}
+	ids := make([]int, len(matches))
+	set := make(map[int]bool, len(matches))
+	for i, m := range matches {
+		ids[i] = m.ID
+		set[m.ID] = true
+		if expandAndCenter {
+			ExpandAncestors(m)
+		}
+	}
+	st.FindMatchIDs = ids
+	st.FindMatchSet = set
+	if st.FindCurrentIdx < 0 || st.FindCurrentIdx >= len(ids) {
+		st.FindCurrentIdx = 0
+	}
+	if expandAndCenter {
+		curID := ids[st.FindCurrentIdx]
+		st.SelectedID = curID
+		st.EnsureVisiblePending = true
+	}
+}
+
+func (st *BlockState) stepFind(delta int) {
+	n := len(st.FindMatchIDs)
+	if n == 0 || st.Root == nil {
+		return
+	}
+	st.FindCurrentIdx = ((st.FindCurrentIdx+delta)%n + n) % n
+	curID := st.FindMatchIDs[st.FindCurrentIdx]
+	if node := st.Root.FindByID(curID); node != nil {
+		ExpandAncestors(node)
+		st.SelectedID = node.ID
+		st.EnsureVisiblePending = true
+	}
+}
+
+// ToggleLayout switches between right-side and balanced layouts.
+func (st *BlockState) ToggleLayout() {
+	if st == nil {
+		return
+	}
+	if st.Layout == LayoutRight {
+		st.Layout = LayoutBoth
+	} else {
+		st.Layout = LayoutRight
+	}
+	st.LayoutSet = true
+	st.AutoFitPending = true
+}
+
+// OpenExportMenu opens the MindMap export menu popover.
+func (st *BlockState) OpenExportMenu() {
+	if st == nil {
+		return
+	}
+	if st.View == ViewSource {
+		st.View = ViewMap
+		st.AutoFitPending = true
+	}
+	st.LinkNodeID = 0
+	st.ShortcutsOpen = false
+	st.ImportResult = nil
+	st.ImportUndoBefore = ""
+	st.ImportUndoAfter = ""
+	st.ExportMenuScroll.Y = 0
+	st.ExportMenuOpen = true
 }
 
 func (st *BlockState) applyImportedTree(root *Node, report ImportReport, cb Callbacks) {
 	if cb.ReadOnly || root == nil {
 		return
 	}
-	st.pushUndo()
+	prevSource := st.LastSource
+	nextSource := SerializeMarkdown(root)
+	changed := nextSource != prevSource
+	if changed {
+		st.pushUndo()
+	}
+	st.clearTransientNodeState()
 	st.Root = root
 	st.NextID = maxNodeID(root)
 	st.SelectedID = root.ID
 	st.AutoFitPending = true
 	st.View = ViewMap
+	st.invalidateLinkStatusCache()
 	if report.HasDropped() || report.Nodes > 0 {
 		rep := report
 		st.ImportResult = &rep
 	}
+	if changed {
+		st.ImportUndoBefore = prevSource
+		st.ImportUndoAfter = nextSource
+		st.commitChange(cb)
+	} else {
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+		if st.FindOpen {
+			st.recomputeFind(false)
+		}
+	}
+}
+
+func (st *BlockState) canUndoImport(cb Callbacks) bool {
+	if cb.ReadOnly || st.ImportUndoBefore == "" || st.ImportUndoAfter == "" {
+		return false
+	}
+	return st.LastSource == st.ImportUndoAfter
+}
+
+func (st *BlockState) opUndoImport(cb Callbacks) {
+	if !st.canUndoImport(cb) {
+		st.ImportResult = nil
+		st.ImportUndoBefore = ""
+		st.ImportUndoAfter = ""
+		return
+	}
+	before := st.ImportUndoBefore
+	st.ImportResult = nil
+	st.ImportUndoBefore = ""
+	st.ImportUndoAfter = ""
+	st.clearTransientNodeState()
+	st.pushUndo()
+	restored := ParseMarkdown(before)
+	st.Root = restored
+	st.NextID = max(st.NextID, maxNodeID(restored))
+	st.SelectedID = restored.ID
+	st.AutoFitPending = true
+	st.invalidateLinkStatusCache()
 	st.commitChange(cb)
 }
 
@@ -999,6 +1323,7 @@ func (st *BlockState) triggerImport(cb Callbacks) {
 		return
 	}
 	st.ExportMenuOpen = false
+	st.ShortcutsOpen = false
 	cb.OnPickImportFile(func(root *Node, report ImportReport) {
 		st.applyImportedTree(root, report, cb)
 	})
@@ -1009,7 +1334,7 @@ func (st *BlockState) triggerExport(format Format, cb Callbacks) {
 		return
 	}
 	st.ExportMenuOpen = false
-	pal := theme.Ocean()
+	pal := ResolveExportPalette(st.ExportTheme)
 	data, err := ExportBytes(st.Root, st.Layout, format, pal)
 	if err != nil {
 		if cb.OnNotify != nil {
@@ -1029,6 +1354,36 @@ func (st *BlockState) triggerExport(format Format, cb Callbacks) {
 		}
 		cb.OnNotify(theme.Tr("已导出 "+base+"."+ext, "Exported "+base+"."+ext), "success")
 	})
+}
+
+func (st *BlockState) copyPNGToClipboard(c *ui.Context, cb Callbacks) {
+	if st.Root == nil || c == nil {
+		return
+	}
+	st.ExportMenuOpen = false
+	pal := ResolveExportPalette(st.ExportTheme)
+	data, err := ExportPNG(st.Root, st.Layout, pal)
+	if err != nil {
+		if cb.OnNotify != nil {
+			cb.OnNotify(theme.Tr("复制图片失败：", "Copy PNG failed: ")+err.Error(), "danger")
+		}
+		return
+	}
+	c.Services().WriteClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, data))))
+	if cb.OnNotify != nil {
+		cb.OnNotify(theme.Tr("已复制 PNG 图片", "Copied PNG image"), "success")
+	}
+}
+
+func (st *BlockState) copyMarkdownToClipboard(c *ui.Context, cb Callbacks) {
+	if st.Root == nil || c == nil {
+		return
+	}
+	st.ExportMenuOpen = false
+	c.Services().WriteClipboard(SerializeMarkdown(st.Root))
+	if cb.OnNotify != nil {
+		cb.OnNotify(theme.Tr("已复制 Markdown", "Copied Markdown"), "success")
+	}
 }
 
 func sanitizeFileBase(name string) string {
@@ -1108,9 +1463,13 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 	st.SyncSource(source, cfg)
 	pal := theme.Ocean()
 
-	if st.EditingID == 0 && st.LinkNodeID == 0 && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
+	if st.EditingID == 0 && st.LinkNodeID == 0 && !st.FindHandle.Focused(c) && !st.OutlineHandle.FocusWithin(c) && c.Shortcut(0, ui.KeyEscape) {
 		if st.DragActive || st.DragNodeID != 0 {
 			st.resetDrag()
+		} else if st.FindOpen {
+			st.CloseFind()
+		} else if st.ShortcutsOpen {
+			st.ShortcutsOpen = false
 		} else if st.ImportResult != nil {
 			st.ImportResult = nil
 		} else if st.ExportMenuOpen {
@@ -1170,52 +1529,105 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 		p.Line(r.X, r.Y+r.H-0.5, r.X+r.W, r.Y+r.H-0.5, 1, pal.Hairline)
 	})
 	hdr.Children(func() {
-		// Left: Neutral-ring segmented view switcher (导图 / 大纲 / 源码) so it never competes with card focus Accent.
-		seg := ui.Row(c.Key("mm-seg-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
-		seg.Children(func() {
-			tabs := []struct {
-				mode  ViewMode
-				icon  icons.Icon
-				label string
-			}{
-				{ViewMap, icons.Diagram, theme.Tr("导图", "Map")},
-				{ViewOutline, icons.ListBullet, theme.Tr("大纲", "Outline")},
-				{ViewSource, icons.Source, theme.Tr("源码", "Source")},
-			}
-			for _, tab := range tabs {
-				active := st.View == tab.mode
-				btn := ui.ButtonBase(c.Key("mm-tab-"+id+"-"+string(tab.mode))).
-					Height(theme.HeightChrome).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-					AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).Label(tab.label)
-				hov := btn.Hovered()
-				prs := btn.Pressed()
-				bg := ui.Transparent
-				border := ui.Transparent
-				fg := pal.TextSecondary
-				if active {
-					bg = pal.Selected
-					border = pal.SelectedBorder
-					fg = pal.Text
-				} else if hov || prs {
-					bg = pal.Hover
-					fg = pal.Text
+		// Left: Neutral-ring segmented view switcher (导图 / 大纲 / 源码) + Task progress pill.
+		leftGroup := ui.Row(c.Key("mm-hdr-left-" + id)).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0)
+		leftGroup.Children(func() {
+			seg := ui.Row(c.Key("mm-seg-" + id)).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
+			seg.Children(func() {
+				tabs := []struct {
+					mode  ViewMode
+					icon  icons.Icon
+					label string
+				}{
+					{ViewMap, icons.Diagram, theme.Tr("导图", "Map")},
+					{ViewOutline, icons.ListBullet, theme.Tr("大纲", "Outline")},
+					{ViewSource, icons.Source, theme.Tr("源码", "Source")},
 				}
-				bui.AnimateSurfaceColors(btn, bg, border, active)
-				btn.Children(func() {
-					icons.DrawAnimated(c, tab.icon, theme.IconInline, pal.DuoIconColors(fg), active || hov || prs)
-					ui.Text(c, tab.label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
-				})
-				if btn.Clicked() {
-					st.finishEdit(true, cb)
-					st.LinkNodeID = 0
-					st.ExportMenuOpen = false
-					st.OutlineUndoNodeID = 0
-					if st.View != tab.mode {
-						st.HintScroll.X = 0
+				for _, tab := range tabs {
+					active := st.View == tab.mode
+					btn := ui.ButtonBase(c.Key("mm-tab-"+id+"-"+string(tab.mode))).
+						Height(theme.HeightChrome).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+						AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).Label(tab.label)
+					hov := btn.Hovered()
+					prs := btn.Pressed()
+					bg := ui.Transparent
+					border := ui.Transparent
+					fg := pal.TextSecondary
+					if active {
+						bg = pal.Selected
+						border = pal.SelectedBorder
+						fg = pal.Text
+					} else if hov || prs {
+						bg = pal.Hover
+						fg = pal.Text
 					}
-					st.View = tab.mode
-					if tab.mode == ViewMap {
-						st.AutoFitPending = true
+					bui.AnimateSurfaceColors(btn, bg, border, active)
+					btn.Children(func() {
+						icons.DrawAnimated(c, tab.icon, theme.IconInline, pal.DuoIconColors(fg), active || hov || prs)
+						ui.Text(c, tab.label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+					})
+					if btn.Clicked() {
+						st.finishEdit(true, cb)
+						st.LinkNodeID = 0
+						st.ExportMenuOpen = false
+						st.ShortcutsOpen = false
+						st.OutlineUndoNodeID = 0
+						if st.View != tab.mode {
+							st.HintScroll.X = 0
+						}
+						st.View = tab.mode
+						if tab.mode == ViewMap {
+							st.AutoFitPending = true
+						}
+					}
+				}
+			})
+
+			// Task progress pill (click to jump to next incomplete task).
+			if st.Root != nil {
+				if totalTasks, doneTasks := st.Root.CountTaskStats(); totalTasks > 0 {
+					allDone := doneTasks == totalTasks
+					pillTip := theme.Tr("定位下一个未完成任务", "Jump to next incomplete task")
+					if allDone {
+						pillTip = theme.Tr("全部任务已完成", "All tasks completed")
+					}
+					pill := ui.ButtonBase(c.Key("mm-task-prog-"+id)).
+						Height(theme.HeightCompact).PaddingX(theme.Space8).Radius(theme.RadiusPill).
+						AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).
+						Label(pillTip)
+					pillHov := pill.Hovered() || pill.Pressed()
+					bg := pal.Hover
+					fg := pal.TextSecondary
+					border := pal.Hairline
+					if allDone {
+						bg = pal.SuccessSurface
+						fg = pal.Success
+						border = pal.Success.Alpha(0.28)
+					} else if pillHov {
+						bg = pal.SelectionBG
+						fg = pal.Accent
+						border = pal.Accent.Alpha(0.35)
+					}
+					pill.Background(bg).Border(1, border)
+					bui.Tooltip(c, pill, pillTip)
+					pill.Children(func() {
+						icons.DrawAnimated(c, icons.Check, theme.IconMicro, pal.MonoIconColors(fg), pillHov || allDone)
+						ui.Text(c, fmt.Sprintf("%d/%d", doneTasks, totalTasks)).
+							FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(fg).SingleLine()
+					})
+					if pill.Clicked() {
+						if next := NextUndoneTask(st.Root, st.SelectedID); next != nil {
+							ExpandAncestors(next)
+							st.SelectedID = next.ID
+							st.EnsureVisiblePending = true
+							if st.View == ViewOutline {
+								st.focusOutlineNode(next.ID, 0)
+							} else if st.View == ViewSource {
+								st.View = ViewMap
+								st.EnsureVisiblePending = true
+							}
+							c.Invalidate()
+						}
 					}
 				}
 			}
@@ -1231,8 +1643,40 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				return other
 			}
 
+			// Undo / Redo chrome buttons in Map and Outline views.
+			if st.View != ViewSource && !cb.ReadOnly {
+				st.renderHeaderHistoryBtn(c, "mm-undo-"+id, false, st.canUndo(cb), theme.Tr("撤销", "Undo"), k("⌘Z", "Ctrl+Z"), func() {
+					st.opUndo(cb)
+					c.Invalidate()
+				})
+				st.renderHeaderHistoryBtn(c, "mm-redo-"+id, true, st.canRedo(cb), theme.Tr("重做", "Redo"), k("⌘⇧Z", "Ctrl+Y"), func() {
+					st.opRedo(cb)
+					c.Invalidate()
+				})
+				ui.Box(c).Size(1, theme.Space12).Margin(0, theme.Space2).Background(pal.Hairline).Shrink(0)
+			}
+
 			switch st.View {
 			case ViewMap:
+				findTip := theme.Tr("查找节点", "Find in map")
+				findBtn := bui.IconButton(c, icons.FindSearch, bui.IconButtonOptions{
+					ID:       "mm-find-" + id,
+					Label:    findTip,
+					Tooltip:  findTip,
+					Shortcut: k("⌘F", "Ctrl+F"),
+					Size:     theme.HeightChrome,
+					IconSize: theme.IconAction,
+					Radius:   theme.RadiusSM,
+					Active:   st.FindOpen,
+				})
+				if findBtn.Clicked() {
+					if st.FindOpen {
+						st.CloseFind()
+					} else {
+						st.OpenFind()
+					}
+				}
+
 				layIcon := icons.AlignLeft
 				layTip := theme.Tr("切换为左右平衡布局", "Switch to balanced layout")
 				if st.Layout == LayoutBoth {
@@ -1248,13 +1692,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 					Radius:   theme.RadiusSM,
 				})
 				if layBtn.Clicked() {
-					if st.Layout == LayoutRight {
-						st.Layout = LayoutBoth
-					} else {
-						st.Layout = LayoutRight
-					}
-					st.LayoutSet = true
-					st.AutoFitPending = true
+					st.ToggleLayout()
 				}
 
 				fitTip := theme.Tr("适配画布", "Fit to view")
@@ -1365,6 +1803,10 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				expBtn := bui.IconButton(c, icons.Download, expOpts)
 				if expBtn.Clicked() {
 					st.ExportMenuOpen = !st.ExportMenuOpen
+					if st.ExportMenuOpen {
+						st.ShortcutsOpen = false
+						st.LinkNodeID = 0
+					}
 				}
 			}
 
@@ -1389,12 +1831,65 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				st.finishEdit(true, cb)
 				st.LinkNodeID = 0
 				st.ExportMenuOpen = false
+				st.ShortcutsOpen = false
 				st.Fullscreen = !fullscreen
 				st.AutoFitPending = true
 				c.Invalidate()
 			}
 		})
 	})
+}
+
+func (st *BlockState) renderHeaderHistoryBtn(c *ui.Context, key string, isRedo, enabled bool, label, shortcut string, onClick func()) {
+	pal := theme.Ocean()
+	btn := ui.ButtonBase(c.Key(key)).
+		Size(theme.HeightChrome, theme.HeightChrome).Center().
+		Radius(theme.RadiusSM).Shrink(0).Disabled(!enabled).Label(label)
+	if enabled {
+		btn.Cursor(ui.CursorPointer)
+	}
+	hov := enabled && btn.Hovered()
+	prs := enabled && btn.Pressed()
+	bg := ui.Transparent
+	if prs {
+		bg = pal.Selected
+	} else if hov {
+		bg = pal.Hover
+	}
+	btn.Background(bg)
+	if enabled {
+		bui.TooltipShortcut(c, btn, label, shortcut)
+	}
+	fg := pal.TextSecondary.Alpha(0.32)
+	if enabled {
+		fg = pal.TextSecondary
+		if hov || prs {
+			fg = pal.Text
+		}
+	}
+	btn.Draw(func(p *ui.Painter, r ui.Rect) {
+		cx := r.X + r.W*0.5
+		cy := r.Y + r.H*0.5
+		dir := float32(-1)
+		if isRedo {
+			dir = 1
+		}
+		var path ui.Path
+		path.Cap(ui.RoundCap).Join(ui.RoundJoin)
+		// Curved undo/redo shaft
+		path.MoveTo(cx+dir*4.2, cy-2.0)
+		path.LineTo(cx-dir*1.4, cy-2.0)
+		path.CubeTo(cx-dir*5.0, cy-2.0, cx-dir*5.0, cy+3.5, cx-dir*1.0, cy+3.5)
+		path.LineTo(cx+dir*2.4, cy+3.5)
+		// Arrowhead at top tip
+		path.MoveTo(cx+dir*2.0, cy-4.4)
+		path.LineTo(cx+dir*4.6, cy-2.0)
+		path.LineTo(cx+dir*2.0, cy+0.4)
+		p.StrokePath(&path, 1.4, fg)
+	})
+	if btn.Clicked() && enabled && onClick != nil {
+		onClick()
+	}
 }
 
 // --- Body Area (Map / Outline / Source + Floating Overlays) ---
@@ -1421,14 +1916,20 @@ func (st *BlockState) renderBody(c *ui.Context, id string, fixedHeight float32, 
 			st.renderCanvasView(c, id, cb)
 		}
 
+		if st.FindOpen && st.View == ViewMap {
+			st.renderFindBar(c, id, cb)
+		}
 		if st.ExportMenuOpen {
-			st.renderExportMenu(c, id, cb)
+			st.renderExportMenu(c, id, fixedHeight, cb)
 		}
 		if st.LinkNodeID != 0 {
 			st.renderLinkPopover(c, id, cb)
 		}
+		if st.ShortcutsOpen {
+			st.renderShortcutsPopover(c, id)
+		}
 		if st.ImportResult != nil {
-			st.renderImportResultCard(c, id)
+			st.renderImportResultCard(c, id, cb)
 		}
 	})
 }
@@ -1596,15 +2097,13 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.beginLinkEdit(n)
 			}
 			if strings.TrimSpace(n.Link) != "" {
-				target := n.Link
 				if m.Item(theme.Tr("打开链接", "Open Link")).Chosen() {
-					if cb.OnOpenLink != nil {
-						cb.OnOpenLink(target)
-					}
+					st.openNodeLink(c.Now(), n, cb)
 				}
 				if m.Item(theme.Tr("移除链接", "Remove Link")).Chosen() {
 					st.pushUndo()
 					n.Link = ""
+					st.invalidateLinkStatusCache()
 					st.commitChange(cb)
 				}
 			}
@@ -1696,17 +2195,22 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				return true
 			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTest(st.Root, wx, wy)
+			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, st.SelectedID}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 			if hit.Node != nil {
 				st.HoveredID = hit.Node.ID
+				st.HoveredHit = hit.Kind
 			} else {
 				st.HoveredID = 0
+				st.HoveredHit = HitNone
 			}
 			return false
 
 		case ui.InputPointerDown:
 			st.ExportMenuOpen = false
+			st.ShortcutsOpen = false
 			st.ImportResult = nil
+			st.ImportUndoBefore = ""
+			st.ImportUndoAfter = ""
 			st.LinkNodeID = 0
 			st.ComposeText = ""
 			st.lastKeyMod = 0
@@ -1715,7 +2219,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.finishEdit(true, cb)
 			}
 			wx, wy := st.Camera.ScreenToWorld(ev.X, ev.Y)
-			hit := HitTest(st.Root, wx, wy)
+			hit := HitTestWithActions(st.Root, [2]int{st.HoveredID, st.SelectedID}, cb.ReadOnly, wx, wy, st.Camera.Scale)
 
 			if ev.Button == 1 {
 				// Right-click selects hit node before ContextMenu opens.
@@ -1744,6 +2248,20 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			}
 
 			switch hit.Kind {
+			case HitLinkBadge:
+				st.SelectedID = hit.Node.ID
+				st.openNodeLink(c.Now(), hit.Node, cb)
+				return true
+			case HitHoverFold:
+				st.SelectedID = hit.Node.ID
+				hit.Node.Folded = !hit.Node.Folded
+				return true
+			case HitHoverAdd:
+				if !cb.ReadOnly {
+					st.SelectedID = hit.Node.ID
+					st.opAddChild(cb)
+				}
+				return true
 			case HitCheckbox:
 				st.opFlipTaskDone(hit.Node, cb)
 				return true
@@ -1753,8 +2271,8 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				return true
 			case HitNode:
 				st.SelectedID = hit.Node.ID
-				if (ev.Mods&(ui.Cmd|ui.Ctrl)) != 0 && strings.TrimSpace(hit.Node.Link) != "" && cb.OnOpenLink != nil {
-					cb.OnOpenLink(hit.Node.Link)
+				if (ev.Mods&(ui.Cmd|ui.Ctrl)) != 0 && strings.TrimSpace(hit.Node.Link) != "" {
+					st.openNodeLink(c.Now(), hit.Node, cb)
 					return true
 				}
 				if ev.Clicks >= 2 && !cb.ReadOnly {
@@ -1876,9 +2394,27 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			if st.EditingID != 0 || st.LinkNodeID != 0 {
 				return false
 			}
-			if ev.Key == ui.KeyEscape && (st.DragActive || st.DragNodeID != 0) {
-				st.resetDrag()
-				return true
+			if ev.Key == ui.KeyEscape {
+				if st.DragActive || st.DragNodeID != 0 {
+					st.resetDrag()
+					return true
+				}
+				if st.FindOpen {
+					st.CloseFind()
+					return true
+				}
+				if st.ShortcutsOpen {
+					st.ShortcutsOpen = false
+					return true
+				}
+				if st.ExportMenuOpen {
+					st.ExportMenuOpen = false
+					return true
+				}
+				if st.ImportResult != nil {
+					st.ImportResult = nil
+					return true
+				}
 			}
 			return st.handleCanvasKey(c, ev.Key, ev.Mods, cb)
 		}
@@ -1888,8 +2424,35 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 	canvasHovered := canvas.Hovered()
 	if !canvasHovered && !st.Panning && st.DragNodeID == 0 && st.HoveredID != 0 {
 		st.HoveredID = 0
+		st.HoveredHit = HitNone
 	}
 
+	// Dynamic canvas cursor: pointer over interactive badges/buttons, grab on draggable nodes, grabbing when panning/dragging.
+	switch {
+	case st.Panning || st.DragActive:
+		canvas.Cursor(ui.CursorGrabbing)
+	case canvasHovered && st.HoveredID != 0:
+		switch st.HoveredHit {
+		case HitLinkBadge, HitCheckbox, HitFoldBadge, HitHoverFold, HitHoverAdd:
+			canvas.Cursor(ui.CursorPointer)
+		case HitNode:
+			if !cb.ReadOnly && st.Root != nil {
+				if hn := st.Root.FindByID(st.HoveredID); hn != nil && hn.Parent != nil {
+					canvas.Cursor(ui.CursorGrab)
+				} else {
+					canvas.Cursor(ui.CursorDefault)
+				}
+			} else {
+				canvas.Cursor(ui.CursorDefault)
+			}
+		default:
+			canvas.Cursor(ui.CursorDefault)
+		}
+	default:
+		canvas.Cursor(ui.CursorDefault)
+	}
+
+	now := c.Now()
 	// Paint native vector mindmap.
 	canvas.Draw(func(p *ui.Painter, r ui.Rect) {
 		if st.Root == nil || r.W <= 0 || r.H <= 0 {
@@ -1923,15 +2486,29 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 			}
 		}
 		hoveredID := st.HoveredID
+		hoveredHit := st.HoveredHit
 		if !canvasHovered {
 			hoveredID = 0
+			hoveredHit = HitNone
+		}
+		findCurID := 0
+		if st.FindOpen && len(st.FindMatchIDs) > 0 && st.FindCurrentIdx >= 0 && st.FindCurrentIdx < len(st.FindMatchIDs) {
+			findCurID = st.FindMatchIDs[st.FindCurrentIdx]
 		}
 		opt := PaintOptions{
 			SelectedID: st.SelectedID,
 			HoveredID:  hoveredID,
+			HoveredHit: hoveredHit,
 			EditingID:  paintEditID,
 			Palette:    pal,
 			Background: pal.CodeBG,
+			ReadOnly:   cb.ReadOnly,
+			LinkStatusFn: func(target string) LinkStatus {
+				return st.resolveLinkStatusCached(now, target, cb)
+			},
+			FindActive:    st.FindOpen && strings.TrimSpace(st.FindQuery) != "",
+			FindMatchIDs:  st.FindMatchSet,
+			FindCurrentID: findCurID,
 		}
 		if st.DragActive && st.DragNodeID != 0 {
 			opt.DragNodeID = st.DragNodeID
@@ -1942,6 +2519,25 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		}
 		PaintScene(p, st.Root, r, st.Camera, opt)
 	})
+
+	// Floating link hover tooltip when pointer hovers a node's link badge.
+	if canvasHovered && st.HoveredID != 0 && st.HoveredHit == HitLinkBadge && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && st.Root != nil {
+		if hn := st.Root.FindByID(st.HoveredID); hn != nil && strings.TrimSpace(hn.Link) != "" {
+			st.renderLinkHoverTooltip(c, id, hn, cw, ch, cb)
+		}
+	}
+
+	// Bottom-left selected node quick action bar (Task toggle, Link edit, Add child).
+	if !cb.ReadOnly && st.SelectedID != 0 && st.EditingID == 0 && st.LinkNodeID == 0 && !st.DragActive && !st.Panning && !st.ExportMenuOpen && !st.ShortcutsOpen && st.ImportResult == nil && st.Root != nil {
+		if sel := st.Root.FindByID(st.SelectedID); sel != nil {
+			st.renderSelectionQuickBar(c, id, sel, cb)
+		}
+	}
+
+	// Bottom-right floating Zoom & Fold-All HUD.
+	if st.Root != nil && !st.ShortcutsOpen {
+		st.renderZoomHUD(c, id)
+	}
 
 	// Transparent inline IME composition preview while directly typing CJK on a selected node.
 	if st.ComposeText != "" && st.EditingID == 0 && !cb.ReadOnly && st.Root != nil {
@@ -2084,14 +2680,18 @@ func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette, activeText s
 	padTop := max(centerY-textBlockH*0.5-edY, 0)
 
 	insetX := max(float32(2)*scale, 1.5)
+	rightReserve := insetX
+	if strings.TrimSpace(n.Link) != "" {
+		rightReserve = (nodePadRight(n) + layoutLinkBadge + layoutLinkGap) * scale
+	}
 	edX := sx + insetX
-	edW := max(sw-insetX*2, 24)
+	edW := max(sw-insetX-rightReserve, 24)
 	align := ui.Center
 	if n.Task != nil {
 		textLeft := nodeContentLeft(n) + layoutTaskBox + layoutTaskGap
 		offX := (textLeft - n.X) * scale
 		edX = sx + offX
-		edW = max(sw-offX-insetX, 24)
+		edW = max(sw-offX-rightReserve, 24)
 		align = ui.Start
 	}
 
@@ -2197,6 +2797,9 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 			return st.opPaste(c, cb)
 		case ui.KeyD:
 			st.opDuplicate(cb)
+			return true
+		case ui.KeyF:
+			st.OpenFind()
 			return true
 		case ui.KeyL:
 			if !cb.ReadOnly {
@@ -2347,6 +2950,317 @@ func (st *BlockState) handleCanvasKey(c *ui.Context, key ui.Key, mods ui.Modifie
 	return false
 }
 
+// --- Canvas Floating HUDs & Tooltips ---
+
+func (st *BlockState) renderLinkHoverTooltip(c *ui.Context, id string, n *Node, cw, ch float32, cb Callbacks) {
+	pal := theme.Ocean()
+	status := st.resolveLinkStatusCached(c.Now(), n.Link, cb)
+	lb := nodeLinkBadgeCircle(n)
+	sx, sy := st.Camera.WorldToScreen(lb.cx, lb.cy)
+	scale := st.Camera.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+
+	label := n.Link
+	prefix := "↗ "
+	fg := pal.Text
+	bg := pal.TooltipBG
+	border := pal.TooltipBorder
+	switch status {
+	case LinkStatusBroken:
+		prefix = "! "
+		label = theme.Tr("目标笔记不存在 · 点击重连：", "Missing note · click to reconnect: ") + n.Link
+		fg = pal.Warning
+		bg = pal.WarningSurface
+		border = pal.Warning.Alpha(0.55)
+	case LinkStatusValid:
+		prefix = "↳ "
+	}
+
+	const maxTipW float32 = 260
+	const tipH float32 = 28
+	tx := clampFloat32(sx-40, theme.Space8, max(theme.Space8, cw-maxTipW-theme.Space8))
+	ty := sy - lb.r*scale - tipH - theme.Space8
+	if ty < theme.Space8 {
+		ty = sy + lb.r*scale + theme.Space8
+	}
+	ty = clampFloat32(ty, theme.Space8, max(theme.Space8, ch-tipH-theme.Space8))
+
+	tip := ui.Row(c.Key("mm-link-tip-"+id)).Absolute().Left(tx).Top(ty).
+		MaxWidth(maxTipW).Height(tipH).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
+		Radius(theme.RadiusMD).Background(bg).Border(1, border).IgnoreInput(true)
+	bui.Elevate(tip, theme.ElevationPopover)
+	tip.Children(func() {
+		ui.Text(c, prefix+label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+			TextColor(fg).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+	})
+}
+
+func (st *BlockState) renderSelectionQuickBar(c *ui.Context, id string, sel *Node, cb Callbacks) {
+	pal := theme.Ocean()
+	bar := ui.Row(c.Key("mm-sel-bar-"+id)).Absolute().Left(theme.Space10).Bottom(theme.Space10).
+		Height(theme.HeightChrome).PaddingX(theme.Space4).AlignItems(ui.Center).Gap(theme.Space2).
+		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder)
+	bui.Elevate(bar, theme.ElevationPopover)
+	bar.Children(func() {
+		renderPillBtn := func(key string, icon icons.Icon, label string, active, warn bool, onClick func()) {
+			btn := ui.ButtonBase(c.Key(key)).
+				Height(theme.HeightMicro + theme.Space4).PaddingX(theme.Space6).Radius(theme.RadiusPill).
+				AlignItems(ui.Center).Gap(theme.Space4).Cursor(ui.CursorPointer).Shrink(0).Label(label)
+			hov := btn.Hovered() || btn.Pressed()
+			bg := ui.Transparent
+			fg := pal.TextSecondary
+			if warn {
+				bg = pal.WarningSurface
+				fg = pal.Warning
+			} else if active {
+				bg = pal.SelectionBG
+				fg = pal.Accent
+			} else if hov {
+				bg = pal.Hover
+				fg = pal.Text
+			}
+			btn.Background(bg)
+			btn.Children(func() {
+				icons.DrawAnimated(c, icon, theme.IconMicro, pal.MonoIconColors(fg), active || hov || warn)
+				ui.Text(c, label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+			})
+			if btn.Clicked() && onClick != nil {
+				onClick()
+			}
+		}
+
+		// One-click task toggle for non-root nodes.
+		if sel.Parent != nil {
+			taskLbl := theme.Tr("设任务", "Task")
+			if sel.Task != nil {
+				taskLbl = theme.Tr("取消任务", "No Task")
+			}
+			renderPillBtn("mm-qb-task-"+id, icons.Todo, taskLbl, sel.Task != nil, false, func() {
+				st.opToggleTask(sel, cb)
+			})
+			if sel.Task != nil {
+				doneLbl := theme.Tr("完成", "Done")
+				if *sel.Task {
+					doneLbl = theme.Tr("未完", "Undone")
+				}
+				renderPillBtn("mm-qb-done-"+id, icons.Check, doneLbl, *sel.Task, false, func() {
+					st.opFlipTaskDone(sel, cb)
+				})
+			}
+		}
+
+		// Link button (shows broken state if link is missing).
+		hasLink := strings.TrimSpace(sel.Link) != ""
+		linkWarn := hasLink && st.resolveLinkStatusCached(c.Now(), sel.Link, cb) == LinkStatusBroken
+		linkLbl := theme.Tr("链接", "Link")
+		if linkWarn {
+			linkLbl = theme.Tr("重连", "Fix Link")
+		} else if hasLink {
+			linkLbl = theme.Tr("编辑链接", "Edit Link")
+		}
+		renderPillBtn("mm-qb-link-"+id, icons.TbLink, linkLbl, hasLink && !linkWarn, linkWarn, func() {
+			if linkWarn {
+				st.beginLinkEditBroken(sel)
+			} else {
+				st.beginLinkEdit(sel)
+			}
+		})
+
+		// Quick add child button.
+		renderPillBtn("mm-qb-add-"+id, icons.Plus, theme.Tr("子节点", "Child"), false, false, func() {
+			st.opAddChild(cb)
+		})
+	})
+}
+
+func (st *BlockState) renderZoomHUD(c *ui.Context, id string) {
+	pal := theme.Ocean()
+	k := func(mac, other string) string {
+		if theme.IsMacOS() {
+			return mac
+		}
+		return other
+	}
+	hud := ui.Row(c.Key("mm-zoom-hud-"+id)).Absolute().Right(theme.Space10).Bottom(theme.Space10).
+		Height(theme.HeightChrome).PaddingX(theme.Space4).AlignItems(ui.Center).Gap(theme.Space2).
+		Radius(theme.RadiusPill).Background(pal.Menu).Border(1, pal.MenuBorder)
+	bui.Elevate(hud, theme.ElevationPopover)
+	hud.Children(func() {
+		anyFolded := st.hasAnyFolded()
+		foldIcon := icons.FoldAll
+		foldTip := theme.Tr("折叠所有子分支", "Collapse all branches")
+		if anyFolded {
+			foldIcon = icons.UnfoldAll
+			foldTip = theme.Tr("展开所有分支", "Expand all branches")
+		}
+		foldBtn := bui.IconButton(c, foldIcon, bui.IconButtonOptions{
+			ID:       "mm-hud-fold-" + id,
+			Label:    foldTip,
+			Tooltip:  foldTip,
+			Shortcut: k("⌘⌥/", "Ctrl+Alt+/"),
+			Size:     theme.HeightMicro + theme.Space4,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusPill,
+		})
+		if foldBtn.Clicked() {
+			st.opToggleExpandCollapseAll()
+		}
+
+		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+
+		outBtn := bui.IconButton(c, icons.TbMinus, bui.IconButtonOptions{
+			ID:       "mm-hud-zout-" + id,
+			Label:    theme.Tr("缩小", "Zoom out"),
+			Tooltip:  theme.Tr("缩小", "Zoom out"),
+			Shortcut: k("⌘-", "Ctrl+-"),
+			Size:     theme.HeightMicro + theme.Space4,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusPill,
+		})
+		if outBtn.Clicked() {
+			st.ZoomBy(1.0 / 1.15)
+		}
+
+		scalePct := int(math.Round(float64(st.Camera.Scale * 100)))
+		if scalePct <= 0 {
+			scalePct = 100
+		}
+		pctBtn := ui.ButtonBase(c.Key("mm-hud-zpct-"+id)).
+			Height(theme.HeightMicro + theme.Space4).MinWidth(42).PaddingX(theme.Space4).
+			Radius(theme.RadiusPill).Center().Cursor(ui.CursorPointer).Shrink(0).
+			Label(theme.Tr("适配画布", "Fit to view"))
+		if pctBtn.Hovered() || pctBtn.Pressed() {
+			pctBtn.Background(pal.Hover)
+		}
+		bui.TooltipShortcut(c, pctBtn, theme.Tr("点击适配画布", "Click to fit view"), k("⌘0", "Ctrl+0"))
+		pctBtn.Children(func() {
+			ui.Text(c, fmt.Sprintf("%d%%", scalePct)).
+				FontSize(theme.FontMeta).FontWeight(theme.WeightMono).TextColor(pal.Text).SingleLine()
+		})
+		if pctBtn.Clicked() {
+			st.AutoFitPending = true
+		}
+
+		inBtn := bui.IconButton(c, icons.TbPlus, bui.IconButtonOptions{
+			ID:       "mm-hud-zin-" + id,
+			Label:    theme.Tr("放大", "Zoom in"),
+			Tooltip:  theme.Tr("放大", "Zoom in"),
+			Shortcut: k("⌘+", "Ctrl++"),
+			Size:     theme.HeightMicro + theme.Space4,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusPill,
+		})
+		if inBtn.Clicked() {
+			st.ZoomBy(1.15)
+		}
+	})
+}
+
+func (st *BlockState) renderFindBar(c *ui.Context, id string, cb Callbacks) {
+	pal := theme.Ocean()
+	bar := ui.Row(c.Key("mm-find-bar-"+id)).Absolute().Top(theme.Space8).Right(theme.Space10).
+		Height(theme.HeightControl + theme.Space4).PaddingX(theme.Space6).AlignItems(ui.Center).Gap(theme.Space4).
+		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
+	bui.Elevate(bar, theme.ElevationPopover)
+	bar.Children(func() {
+		icons.DrawAnimated(c, icons.FindSearch, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary), false)
+		prevQuery := st.FindQuery
+		inp := ui.TextInputBase(c.Key("mm-find-in-"+id), &st.FindQuery).
+			Width(156).Height(theme.HeightCompact).PaddingX(theme.Space4).
+			Background(ui.Transparent).BorderWidth(0).
+			FontSize(theme.FontSmall).TextColor(pal.Text).
+			Placeholder(theme.Tr("查找节点或链接…", "Find nodes or links…")).
+			PlaceholderColor(pal.Placeholder).CaretColor(pal.Accent).
+			Bind(&st.FindHandle)
+		if st.FindFocusPending {
+			st.FindFocusPending = false
+			st.FindHandle.SelectAll(c)
+		}
+		inp.HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind != ui.InputKeyDown {
+				return false
+			}
+			switch ev.Key {
+			case ui.KeyEscape:
+				st.CloseFind()
+				st.CanvasHandle.Focus()
+				return true
+			case ui.KeyEnter:
+				if (ev.Mods & ui.Shift) != 0 {
+					st.stepFind(-1)
+				} else {
+					st.stepFind(1)
+				}
+				return true
+			case ui.KeyDown:
+				st.stepFind(1)
+				return true
+			case ui.KeyUp:
+				st.stepFind(-1)
+				return true
+			}
+			return false
+		})
+		if st.FindQuery != prevQuery {
+			st.FindCurrentIdx = 0
+			st.recomputeFind(true)
+		}
+
+		qTrim := strings.TrimSpace(st.FindQuery)
+		countText := ""
+		countCol := pal.TextSecondary
+		if qTrim != "" {
+			if len(st.FindMatchIDs) == 0 {
+				countText = "0/0"
+				countCol = pal.Danger
+			} else {
+				countText = fmt.Sprintf("%d/%d", st.FindCurrentIdx+1, len(st.FindMatchIDs))
+			}
+		}
+		if countText != "" {
+			ui.Text(c, countText).FontSize(theme.FontMeta).FontWeight(theme.WeightMono).
+				TextColor(countCol).PaddingX(theme.Space4).SingleLine().Shrink(0)
+		}
+
+		hasMatches := len(st.FindMatchIDs) > 0
+		prevBtn := bui.IconButton(c, icons.ChevronUp, bui.IconButtonOptions{
+			ID:       "mm-find-prev-" + id,
+			Label:    theme.Tr("上一个", "Previous match"),
+			Size:     theme.HeightMicro + theme.Space2,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusSM,
+			Disabled: !hasMatches,
+		})
+		if prevBtn.Clicked() && hasMatches {
+			st.stepFind(-1)
+		}
+		nextBtn := bui.IconButton(c, icons.ChevronDown, bui.IconButtonOptions{
+			ID:       "mm-find-next-" + id,
+			Label:    theme.Tr("下一个", "Next match"),
+			Size:     theme.HeightMicro + theme.Space2,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusSM,
+			Disabled: !hasMatches,
+		})
+		if nextBtn.Clicked() && hasMatches {
+			st.stepFind(1)
+		}
+		closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+			ID:       "mm-find-close-" + id,
+			Label:    theme.Tr("关闭查找", "Close find"),
+			Size:     theme.HeightMicro + theme.Space2,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusSM,
+		})
+		if closeBtn.Clicked() {
+			st.CloseFind()
+			st.CanvasHandle.Focus()
+		}
+	})
+}
+
 // --- Source View ---
 
 func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool, cb Callbacks) {
@@ -2366,29 +3280,103 @@ func (st *BlockState) renderSourceView(c *ui.Context, id string, fullscreen bool
 	if codeFont == "" || strings.EqualFold(codeFont, "auto") {
 		codeFont = "JetBrains Mono, Menlo, Monaco, Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, monospace"
 	}
-	ta := ui.TextAreaBase(c.Key("mm-src-"+id), &draft).Fill().
-		Padding(padY, padX).BorderWidth(0).Background(pal.CodeBG).
-		Font(codeFont).FontSize(theme.FontSmall).LineHeight(1.6).
-		TextColor(pal.CodeBlock().TextFG).
-		Placeholder(theme.Tr("# 中心主题\n- 分支一", "# Central Topic\n- Branch 1")).
-		PlaceholderColor(pal.Placeholder).
-		CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
-		Bind(&st.SourceHandle)
-	if cb.ReadOnly {
-		ta.ReadOnly(true)
-	}
-	bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
-	if !cb.ReadOnly && (ta.Changed() || draft != prev) {
-		st.SyncSource(draft, Config{})
-		if cb.OnChange != nil {
-			cb.OnChange(draft)
+
+	col := ui.Column(c.Key("mm-src-col-" + id)).Fill()
+	col.Children(func() {
+		ta := ui.TextAreaBase(c.Key("mm-src-"+id), &draft).FillWidth().Grow(1).MinHeight(0).
+			Padding(padY, padX).BorderWidth(0).Background(pal.CodeBG).
+			Font(codeFont).FontSize(theme.FontSmall).LineHeight(1.6).
+			TextColor(pal.CodeBlock().TextFG).
+			Placeholder(theme.Tr("# 中心主题\n- 分支一", "# Central Topic\n- Branch 1")).
+			PlaceholderColor(pal.Placeholder).
+			CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
+			Bind(&st.SourceHandle)
+		if cb.ReadOnly {
+			ta.ReadOnly(true)
 		}
-	}
+		bui.AutoHideScrollbars(c, ta, &st.SourceScroll)
+		if !cb.ReadOnly && (ta.Changed() || draft != prev) {
+			st.SyncSource(draft, Config{})
+			if cb.OnChange != nil {
+				cb.OnChange(draft)
+			}
+		}
+
+		// Bottom syntax status bar with live counts, syntax warnings, and quick template inserts.
+		issues := CheckSourceSyntax(draft)
+		nodes, tasks, links := st.Root.CountStats()
+		bar := ui.Row(c.Key("mm-src-bar-"+id)).FillWidth().Height(theme.HeightControl).Shrink(0).
+			PaddingX(theme.Space10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8).
+			Background(pal.HintBand)
+		bar.DrawOver(func(p *ui.Painter, r ui.Rect) {
+			p.Line(r.X, r.Y+0.5, r.X+r.W, r.Y+0.5, 1, pal.Hairline)
+		})
+		bar.Children(func() {
+			left := ui.Row(c.Key("mm-src-stat-"+id)).AlignItems(ui.Center).Gap(theme.Space8).Grow(1).Shrink(1).MinWidth(0)
+			left.Children(func() {
+				statStr := fmt.Sprintf(
+					theme.Tr("%d 节点 · %d 任务 · %d 链接", "%d nodes · %d tasks · %d links"),
+					nodes, tasks, links,
+				)
+				ui.Text(c, statStr).FontSize(theme.FontMeta).FontWeight(theme.WeightMono).
+					TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+				if len(issues) > 0 {
+					warnMsg := fmt.Sprintf("L%d: %s", issues[0].Line, issues[0].Message)
+					if len(issues) > 1 {
+						warnMsg += fmt.Sprintf(" (+%d)", len(issues)-1)
+					}
+					badge := ui.Row(c.Key("mm-src-warn-"+id)).Height(theme.HeightMicro + theme.Space2).
+						PaddingX(theme.Space6).AlignItems(ui.Center).Radius(theme.RadiusSM).
+						Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.45)).
+						Shrink(1).MinWidth(0)
+					badge.Children(func() {
+						ui.Text(c, warnMsg).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+							TextColor(pal.Warning).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+					})
+				}
+			})
+
+			if !cb.ReadOnly {
+				right := ui.Row(c.Key("mm-src-ins-"+id)).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
+				right.Children(func() {
+					insertSnippet := func(snippet string) {
+						next := draft
+						if next != "" && !strings.HasSuffix(next, "\n") {
+							next += "\n"
+						}
+						next += snippet
+						st.SyncSource(next, Config{})
+						if cb.OnChange != nil {
+							cb.OnChange(next)
+						}
+						c.Invalidate()
+					}
+					renderInsBtn := func(key, label, snippet string) {
+						btn := ui.ButtonBase(c.Key(key)).Height(theme.HeightMicro + theme.Space2).
+							PaddingX(theme.Space6).Radius(theme.RadiusSM).Border(1, pal.BtnBorder).
+							Background(pal.Paper).Center().Cursor(ui.CursorPointer).Shrink(0).Label(label)
+						if btn.Hovered() || btn.Pressed() {
+							btn.Background(pal.Hover)
+						}
+						btn.Children(func() {
+							ui.Text(c, label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+								TextColor(pal.TextSecondary).SingleLine()
+						})
+						if btn.Clicked() {
+							insertSnippet(snippet)
+						}
+					}
+					renderInsBtn("mm-src-ins-task-"+id, theme.Tr("+ 任务", "+ Task"), theme.Tr("- [ ] 待办事项", "- [ ] Todo item"))
+					renderInsBtn("mm-src-ins-link-"+id, theme.Tr("+ 内链", "+ Link"), theme.Tr("- [相关笔记](note.md)", "- [Related Note](note.md)"))
+				})
+			}
+		})
+	})
 }
 
 // --- Export Dropdown Menu ---
 
-func (st *BlockState) renderExportMenu(c *ui.Context, id string, cb Callbacks) {
+func (st *BlockState) renderExportMenu(c *ui.Context, id string, fixedHeight float32, cb Callbacks) {
 	pal := theme.Ocean()
 	// Backdrop to close on outside click.
 	scrim := ui.Box(c.Key("mm-exp-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
@@ -2397,86 +3385,286 @@ func (st *BlockState) renderExportMenu(c *ui.Context, id string, cb Callbacks) {
 		return
 	}
 
+	availH := st.LastCanvasH
+	if availH <= 0 {
+		availH = fixedHeight
+	}
+	if availH <= 0 {
+		availH = 310
+	}
+	maxMenuH := max(float32(140), availH-theme.Space12)
+
 	panel := ui.Column(c.Key("mm-exp-menu-"+id)).Absolute().Top(theme.Space6).Right(theme.Space8).
-		Width(204).Padding(theme.MenuPadding).Gap(theme.MenuGap).
+		Width(228).MaxHeight(maxMenuH).Padding(theme.MenuPadding).
 		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
 	bui.Elevate(panel, theme.ElevationPopover)
 	panel.Children(func() {
-		ui.Text(c, theme.Tr("导出为", "Export as")).
-			FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).TextColor(pal.TextSecondary).
-			Padding(theme.Space4, theme.Space8, theme.Space2, theme.Space8).SingleLine()
+		scrollMaxH := max(float32(120), maxMenuH-theme.MenuPadding*2)
+		scr := bui.Scroll(c.Key("mm-exp-scroll-"+id), &st.ExportMenuScroll).
+			FillWidth().MaxHeight(scrollMaxH)
+		scr.Children(func() {
+			content := ui.Column(c.Key("mm-exp-content-" + id)).FillWidth().Gap(theme.MenuGap)
+			content.Children(func() {
+				// Background theme selector for raster/PDF exports.
+				ui.Text(c, theme.Tr("导出背景", "Export background")).
+					FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).TextColor(pal.TextSecondary).
+					Padding(theme.Space4, theme.Space8, theme.Space2, theme.Space8).SingleLine()
 
-		renderFmtRow := func(label, ext string, format Format) {
-			row := ui.ButtonBase(c.Key("mm-exp-item-"+id+"-"+ext)).
-				FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-				AlignItems(ui.Center).Justify(ui.SpaceBetween).Cursor(ui.CursorPointer).Label(label)
-			if row.Hovered() || row.Pressed() {
-				row.Background(pal.MenuHover)
-			}
-			row.Children(func() {
-				ui.Text(c, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
-					TextColor(pal.Text).SingleLine().Shrink(1).MinWidth(0)
-				ui.Text(c, "."+ext).FontSize(theme.FontMeta).FontWeight(theme.WeightMono).
-					TextColor(pal.TextSecondary).SingleLine().Shrink(0)
-			})
-			if row.Clicked() {
-				st.triggerExport(format, cb)
-			}
-		}
-
-		renderFmtRow("Markdown", "md", FormatMarkdown)
-		renderFmtRow("OPML", "opml", FormatOPML)
-		renderFmtRow("FreeMind", "mm", FormatFreeMind)
-		renderFmtRow("XMind", "xmind", FormatXMind)
-
-		ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
-
-		renderFmtRow(theme.Tr("PNG 图片", "PNG Image"), "png", FormatPNG)
-		renderFmtRow("PDF", "pdf", FormatPDF)
-
-		if !cb.ReadOnly {
-			ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
-			impRow := ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
-				FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-				AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
-			impHot := impRow.Hovered() || impRow.Pressed()
-			if impHot {
-				impRow.Background(pal.MenuHover)
-			}
-			impRow.Children(func() {
-				ic := pal.DuoIconColors(pal.TextSecondary)
-				if impHot {
-					ic = pal.DuoIconColors(pal.Text)
+				curTheme := st.ExportTheme
+				if curTheme == "" {
+					curTheme = ExportThemeAuto
 				}
-				icons.DrawAnimated(c, icons.Upload, theme.IconInline, ic, impHot)
-				ui.Text(c, theme.Tr("导入文件", "Import File")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
-					TextColor(pal.Text).SingleLine()
+				themeRow := ui.Row(c.Key("mm-exp-theme-"+id)).FillWidth().PaddingX(theme.Space4).Gap(theme.Space2)
+				themeRow.Children(func() {
+					opts := []struct {
+						mode  ExportTheme
+						label string
+					}{
+						{ExportThemeAuto, theme.Tr("跟随", "Auto")},
+						{ExportThemeLight, theme.Tr("浅色", "Light")},
+						{ExportThemeDark, theme.Tr("深色", "Dark")},
+					}
+					for _, o := range opts {
+						active := curTheme == o.mode
+						btn := ui.ButtonBase(c.Key("mm-exp-th-"+id+"-"+string(o.mode))).
+							Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
+							Radius(theme.RadiusSM).Center().Cursor(ui.CursorPointer).Label(o.label)
+						if active {
+							btn.Background(pal.Selected).Border(1, pal.SelectedBorder)
+						} else if btn.Hovered() || btn.Pressed() {
+							btn.Background(pal.MenuHover)
+						}
+						fg := pal.TextSecondary
+						if active {
+							fg = pal.Text
+						}
+						btn.Children(func() {
+							ui.Text(c, o.label).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).TextColor(fg).SingleLine()
+						})
+						if btn.Clicked() {
+							st.ExportTheme = o.mode
+						}
+					}
+				})
+
+				ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
+
+				// Quick clipboard copy actions.
+				renderClipRow := func(key string, icon icons.Icon, label string, onClick func()) {
+					row := ui.ButtonBase(c.Key(key)).
+						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+						AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(label)
+					hot := row.Hovered() || row.Pressed()
+					if hot {
+						row.Background(pal.MenuHover)
+					}
+					row.Children(func() {
+						ic := pal.DuoIconColors(pal.TextSecondary)
+						if hot {
+							ic = pal.DuoIconColors(pal.Text)
+						}
+						icons.DrawAnimated(c, icon, theme.IconInline, ic, hot)
+						ui.Text(c, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+							TextColor(pal.Text).SingleLine().Shrink(1).MinWidth(0)
+					})
+					if row.Clicked() && onClick != nil {
+						onClick()
+					}
+				}
+
+				renderClipRow("mm-exp-copy-png-"+id, icons.Image, theme.Tr("复制 PNG 图片", "Copy PNG Image"), func() {
+					st.copyPNGToClipboard(c, cb)
+				})
+				renderClipRow("mm-exp-copy-md-"+id, icons.Copy, theme.Tr("复制 Markdown", "Copy Markdown"), func() {
+					st.copyMarkdownToClipboard(c, cb)
+				})
+
+				ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
+
+				ui.Text(c, theme.Tr("导出文件", "Export file")).
+					FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).TextColor(pal.TextSecondary).
+					Padding(theme.Space2, theme.Space8, theme.Space2, theme.Space8).SingleLine()
+
+				renderFmtRow := func(label, ext string, format Format) {
+					row := ui.ButtonBase(c.Key("mm-exp-item-"+id+"-"+ext)).
+						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+						AlignItems(ui.Center).Justify(ui.SpaceBetween).Cursor(ui.CursorPointer).Label(label)
+					if row.Hovered() || row.Pressed() {
+						row.Background(pal.MenuHover)
+					}
+					row.Children(func() {
+						ui.Text(c, label).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+							TextColor(pal.Text).SingleLine().Shrink(1).MinWidth(0)
+						ui.Text(c, "."+ext).FontSize(theme.FontMeta).FontWeight(theme.WeightMono).
+							TextColor(pal.TextSecondary).SingleLine().Shrink(0)
+					})
+					if row.Clicked() {
+						st.triggerExport(format, cb)
+					}
+				}
+
+				renderFmtRow("Markdown", "md", FormatMarkdown)
+				renderFmtRow("OPML", "opml", FormatOPML)
+				renderFmtRow("FreeMind", "mm", FormatFreeMind)
+				renderFmtRow("XMind", "xmind", FormatXMind)
+
+				ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
+
+				renderFmtRow(theme.Tr("PNG 图片", "PNG Image"), "png", FormatPNG)
+				renderFmtRow("PDF", "pdf", FormatPDF)
+
+				if !cb.ReadOnly {
+					ui.Box(c).FillWidth().Height(1).Margin(theme.Space4, theme.Space2).Background(pal.MenuSeparator)
+					impRow := ui.ButtonBase(c.Key("mm-exp-imp-"+id)).
+						FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+						AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(theme.Tr("导入文件", "Import File"))
+					impHot := impRow.Hovered() || impRow.Pressed()
+					if impHot {
+						impRow.Background(pal.MenuHover)
+					}
+					impRow.Children(func() {
+						ic := pal.DuoIconColors(pal.TextSecondary)
+						if impHot {
+							ic = pal.DuoIconColors(pal.Text)
+						}
+						icons.DrawAnimated(c, icons.Upload, theme.IconInline, ic, impHot)
+						ui.Text(c, theme.Tr("导入文件", "Import File")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+							TextColor(pal.Text).SingleLine()
+					})
+					if impRow.Clicked() {
+						st.triggerImport(cb)
+					}
+				}
 			})
-			if impRow.Clicked() {
-				st.triggerImport(cb)
-			}
-		}
+		})
 	})
 }
 
-// --- Link-to-Note Popover (Cmd+K) ---
+// --- Link-to-Note Popover (Anchored to Selected Node with Keyboard Navigation) ---
 
 func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) {
 	pal := theme.Ocean()
 	scrim := ui.Box(c.Key("mm-link-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
 	if scrim.Clicked() {
 		st.LinkNodeID = 0
+		st.LinkBrokenNotice = false
 		return
 	}
 
-	panel := ui.Column(c.Key("mm-link-pop-"+id)).Absolute().Top(theme.Space12).Right(theme.Space12).
-		Width(280).Padding(theme.Space12).Gap(theme.Space8).
+	var targetNode *Node
+	if st.Root != nil {
+		targetNode = st.Root.FindByID(st.LinkNodeID)
+	}
+	if targetNode == nil {
+		st.LinkNodeID = 0
+		st.LinkBrokenNotice = false
+		return
+	}
+
+	// Filter candidate notes upfront so Up/Down/Enter keyboard navigation and list rendering share exact items.
+	var filtered []NoteCandidate
+	if cb.OnListNotes != nil {
+		notes := cb.OnListNotes()
+		q := strings.ToLower(strings.TrimSpace(st.LinkDraft))
+		for _, nc := range notes {
+			disp := nc.DisplayPath
+			if disp == "" {
+				disp = nc.RelPath
+			}
+			if q != "" && !strings.Contains(strings.ToLower(nc.Title), q) &&
+				!strings.Contains(strings.ToLower(nc.RelPath), q) &&
+				!strings.Contains(strings.ToLower(disp), q) {
+				continue
+			}
+			filtered = append(filtered, nc)
+			if len(filtered) >= 30 {
+				break
+			}
+		}
+	}
+	if st.LinkActiveIdx >= len(filtered) {
+		st.LinkActiveIdx = len(filtered) - 1
+	}
+	if st.LinkActiveIdx < -1 {
+		st.LinkActiveIdx = -1
+	}
+
+	const (
+		linkListMaxH      float32 = 160
+		linkCandidateRowH float32 = 40
+		linkCandidateGap  float32 = theme.Space2
+	)
+	ensureCandidateVisible := func(idx int) {
+		if idx < 0 || idx >= len(filtered) {
+			return
+		}
+		step := linkCandidateRowH + linkCandidateGap
+		rowTop := float32(idx) * step
+		rowBot := rowTop + linkCandidateRowH
+		if rowTop < st.LinkListScroll.Y {
+			st.LinkListScroll.Y = rowTop
+		} else if rowBot > st.LinkListScroll.Y+linkListMaxH {
+			st.LinkListScroll.Y = rowBot - linkListMaxH
+		}
+		totalH := float32(len(filtered))*step - linkCandidateGap
+		maxY := max(float32(0), totalH-linkListMaxH)
+		if st.LinkListScroll.MaxY > 0 {
+			maxY = st.LinkListScroll.MaxY
+		}
+		st.LinkListScroll.Y = clampFloat32(st.LinkListScroll.Y, 0, maxY)
+	}
+
+	const popW float32 = 312
+	estH := float32(124)
+	if st.LinkBrokenNotice {
+		estH += 34
+	}
+	if len(filtered) > 0 {
+		estH += min(float32(len(filtered))*38, 160) + theme.Space8
+	}
+
+	panel := ui.Column(c.Key("mm-link-pop-"+id)).Absolute().
+		Width(popW).Padding(theme.Space12).Gap(theme.Space8).
 		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
+
+	// Anchor popover cleanly near the target node when in Map view, flipping above if near bottom edge.
+	if st.View == ViewMap && st.LastCanvasW > 0 && st.LastCanvasH > 0 {
+		scale := st.Camera.Scale
+		if scale <= 0 {
+			scale = 1
+		}
+		sx, sy := st.Camera.WorldToScreen(targetNode.X, targetNode.Y-targetNode.H/2)
+		sh := targetNode.H * scale
+		px := clampFloat32(sx, theme.Space8, max(theme.Space8, st.LastCanvasW-popW-theme.Space8))
+		py := sy + sh + theme.Space8
+		if py+estH > st.LastCanvasH-theme.Space8 {
+			above := sy - estH - theme.Space8
+			if above >= theme.Space8 {
+				py = above
+			} else {
+				py = clampFloat32(py, theme.Space8, max(theme.Space8, st.LastCanvasH-estH-theme.Space8))
+			}
+		}
+		panel.Left(px).Top(py)
+	} else {
+		panel.Top(theme.Space12).Right(theme.Space12)
+	}
+
 	bui.Elevate(panel, theme.ElevationPopover)
 	panel.Children(func() {
 		ui.Text(c, theme.Tr("链接到笔记或网址", "Link to Note or URL")).
 			FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
 
+		if st.LinkBrokenNotice {
+			warn := ui.Row(c.Key("mm-link-warn-"+id)).FillWidth().Padding(theme.Space6, theme.Space8).
+				Radius(theme.RadiusSM).Background(pal.WarningSurface).Border(1, pal.Warning.Alpha(0.45))
+			warn.Children(func() {
+				ui.Text(c, theme.Tr("目标笔记不存在或已移动，请重新选择或移除链接", "Target note missing or moved; pick a new target or remove link")).
+					FontSize(theme.FontMeta).TextColor(pal.Warning)
+			})
+		}
+
+		prevDraft := st.LinkDraft
 		inp := ui.TextInputBase(c.Key("mm-link-in-"+id), &st.LinkDraft).
 			FillWidth().Height(theme.HeightControl).PaddingX(theme.Space8).
 			Radius(theme.RadiusMD).Background(pal.Paper).Border(1, pal.BtnBorder).
@@ -2493,85 +3681,306 @@ func (st *BlockState) renderLinkPopover(c *ui.Context, id string, cb Callbacks) 
 				return false
 			}
 			switch ev.Key {
+			case ui.KeyDown:
+				if len(filtered) > 0 {
+					st.LinkActiveIdx = (st.LinkActiveIdx + 1) % len(filtered)
+					ensureCandidateVisible(st.LinkActiveIdx)
+					return true
+				}
+			case ui.KeyUp:
+				if len(filtered) > 0 {
+					if st.LinkActiveIdx <= 0 {
+						st.LinkActiveIdx = len(filtered) - 1
+					} else {
+						st.LinkActiveIdx--
+					}
+					ensureCandidateVisible(st.LinkActiveIdx)
+					return true
+				}
 			case ui.KeyEnter:
-				st.applyLink(st.LinkDraft, cb)
-				st.CanvasHandle.Focus()
+				if st.LinkActiveIdx >= 0 && st.LinkActiveIdx < len(filtered) {
+					st.applyLink(filtered[st.LinkActiveIdx].RelPath, cb)
+				} else {
+					st.applyLink(st.LinkDraft, cb)
+				}
+				if st.View == ViewMap {
+					st.CanvasHandle.Focus()
+				}
 				return true
 			case ui.KeyEscape:
 				st.LinkNodeID = 0
-				st.CanvasHandle.Focus()
+				st.LinkBrokenNotice = false
+				if st.View == ViewMap {
+					st.CanvasHandle.Focus()
+				}
 				return true
 			}
 			return false
 		})
-
-		// Matching notes from current notebook.
-		if cb.OnListNotes != nil {
-			notes := cb.OnListNotes()
-			q := strings.ToLower(strings.TrimSpace(st.LinkDraft))
-			shown := 0
-			for _, nc := range notes {
-				if q != "" && !strings.Contains(strings.ToLower(nc.Title), q) && !strings.Contains(strings.ToLower(nc.RelPath), q) {
-					continue
-				}
-				if shown >= 5 {
-					break
-				}
-				shown++
-				cand := nc
-				row := ui.ButtonBase(c.Key("mm-link-note-"+id+"-"+cand.RelPath)).
-					FillWidth().Height(theme.MenuItemHeight).PaddingX(theme.Space8).Radius(theme.RadiusSM).
-					AlignItems(ui.Center).Gap(theme.Space6).Cursor(ui.CursorPointer).Label(cand.Title)
-				rowHot := row.Hovered() || row.Pressed()
-				if rowHot {
-					row.Background(pal.MenuHover)
-				}
-				row.Children(func() {
-					ic := pal.DuoIconColors(pal.TextSecondary)
-					if rowHot {
-						ic = pal.DuoIconColors(pal.Text)
-					}
-					icons.DrawAnimated(c, icons.Note, theme.IconInline, ic, rowHot)
-					ui.Text(c, cand.Title).FontSize(theme.FontSmall).TextColor(pal.Text).
-						Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
-				})
-				if row.Clicked() {
-					st.applyLink(cand.RelPath, cb)
-					st.CanvasHandle.Focus()
-				}
-			}
+		if st.LinkDraft != prevDraft {
+			st.LinkActiveIdx = -1
+			st.LinkListScroll.Y = 0
 		}
 
-		btnRow := ui.Row(c.Key("mm-link-btns-"+id)).FillWidth().Justify(ui.End).Gap(theme.Space6)
-		btnRow.Children(func() {
-			cancel := ui.ButtonBase(c.Key("mm-link-cancel-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space10).
-				Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
-				Label(theme.Tr("取消", "Cancel"))
-			cancel.Children(func() {
-				ui.Text(c, theme.Tr("取消", "Cancel")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+		// Scrollable candidate list with relative directory path.
+		if len(filtered) > 0 {
+			listScr := bui.Scroll(c.Key("mm-link-list-"+id), &st.LinkListScroll).
+				FillWidth().MaxHeight(linkListMaxH)
+			listScr.Children(func() {
+				listCol := ui.Column(c.Key("mm-link-col-" + id)).FillWidth().Gap(linkCandidateGap)
+				listCol.Children(func() {
+					for i, nc := range filtered {
+						idx := i
+						cand := nc
+						isActive := st.LinkActiveIdx == idx
+						row := ui.ButtonBase(c.Key("mm-link-note-"+id+"-"+cand.RelPath)).
+							FillWidth().Height(linkCandidateRowH).PaddingX(theme.Space8).Radius(theme.RadiusSM).
+							AlignItems(ui.Center).Gap(theme.Space8).Cursor(ui.CursorPointer).Label(cand.Title)
+						rowHot := row.Hovered() || row.Pressed()
+						if isActive {
+							row.Background(pal.SelectionBG)
+						} else if rowHot {
+							row.Background(pal.MenuHover)
+						}
+						row.Children(func() {
+							icCol := pal.TextSecondary
+							if isActive {
+								icCol = pal.Accent
+							} else if rowHot {
+								icCol = pal.Text
+							}
+							icons.DrawAnimated(c, icons.Note, theme.IconInline, pal.DuoIconColors(icCol), isActive || rowHot)
+							infoCol := ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(theme.Space2)
+							infoCol.Children(func() {
+								titleCol := pal.Text
+								if isActive {
+									titleCol = pal.SelectionFG
+								}
+								ui.Text(c, cand.Title).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+									TextColor(titleCol).SingleLine().Ellipsis("…")
+								dispPath := cand.DisplayPath
+								if dispPath == "" {
+									dispPath = cand.RelPath
+								}
+								dir := filepath.ToSlash(filepath.Dir(dispPath))
+								pathLabel := dispPath
+								if dir != "." && dir != "" {
+									pathLabel = dir + "/"
+								}
+								ui.Text(c, pathLabel).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).
+									SingleLine().Ellipsis("…")
+							})
+						})
+						if row.Clicked() {
+							st.applyLink(cand.RelPath, cb)
+							if st.View == ViewMap {
+								st.CanvasHandle.Focus()
+							}
+						}
+					}
+				})
 			})
-			if cancel.Clicked() {
-				st.LinkNodeID = 0
-				st.CanvasHandle.Focus()
-			}
+		}
 
-			okBtn := ui.ButtonBase(c.Key("mm-link-ok-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space12).
-				Radius(theme.RadiusMD).Background(pal.Accent).Center().Cursor(ui.CursorPointer).
-				Label(theme.Tr("确定", "Apply"))
-			okBtn.Children(func() {
-				ui.Text(c, theme.Tr("确定", "Apply")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Paper).SingleLine()
+		// Footer action bar: [Remove] [Open] ... [Cancel] [Apply]
+		btnRow := ui.Row(c.Key("mm-link-btns-"+id)).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space6)
+		btnRow.Children(func() {
+			leftBtns := ui.Row(c.Key("mm-link-lbtns-" + id)).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
+			leftBtns.Children(func() {
+				if strings.TrimSpace(targetNode.Link) != "" {
+					remBtn := ui.ButtonBase(c.Key("mm-link-rem-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space8).
+						Radius(theme.RadiusMD).Center().Cursor(ui.CursorPointer).
+						Label(theme.Tr("移除", "Remove"))
+					if remBtn.Hovered() || remBtn.Pressed() {
+						remBtn.Background(pal.DangerSurface)
+					}
+					remBtn.Children(func() {
+						ui.Text(c, theme.Tr("移除", "Remove")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+							TextColor(pal.MenuDangerFG).SingleLine()
+					})
+					if remBtn.Clicked() {
+						st.applyLink("", cb)
+						if st.View == ViewMap {
+							st.CanvasHandle.Focus()
+						}
+					}
+				}
+				draftTrim := strings.TrimSpace(st.LinkDraft)
+				if draftTrim != "" && st.resolveLinkStatusCached(c.Now(), draftTrim, cb) != LinkStatusBroken {
+					openBtn := ui.ButtonBase(c.Key("mm-link-open-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space8).
+						Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
+						Label(theme.Tr("打开", "Open"))
+					if openBtn.Hovered() || openBtn.Pressed() {
+						openBtn.Background(pal.Hover)
+					}
+					openBtn.Children(func() {
+						ui.Text(c, theme.Tr("打开", "Open")).FontSize(theme.FontSmall).TextColor(pal.Accent).SingleLine()
+					})
+					if openBtn.Clicked() {
+						st.applyLink(draftTrim, cb)
+						st.openNodeLink(c.Now(), targetNode, cb)
+					}
+				}
 			})
-			if okBtn.Clicked() {
-				st.applyLink(st.LinkDraft, cb)
-				st.CanvasHandle.Focus()
-			}
+
+			rightBtns := ui.Row(c.Key("mm-link-rbtns-" + id)).AlignItems(ui.Center).Gap(theme.Space6).Shrink(0)
+			rightBtns.Children(func() {
+				cancel := ui.ButtonBase(c.Key("mm-link-cancel-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space10).
+					Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
+					Label(theme.Tr("取消", "Cancel"))
+				if cancel.Hovered() || cancel.Pressed() {
+					cancel.Background(pal.Hover)
+				}
+				cancel.Children(func() {
+					ui.Text(c, theme.Tr("取消", "Cancel")).FontSize(theme.FontSmall).TextColor(pal.TextSecondary).SingleLine()
+				})
+				if cancel.Clicked() {
+					st.LinkNodeID = 0
+					st.LinkBrokenNotice = false
+					if st.View == ViewMap {
+						st.CanvasHandle.Focus()
+					}
+				}
+
+				okBtn := ui.ButtonBase(c.Key("mm-link-ok-"+id)).Height(theme.HeightCompact).PaddingX(theme.Space12).
+					Radius(theme.RadiusMD).Background(pal.Accent).Center().Cursor(ui.CursorPointer).
+					Label(theme.Tr("确定", "Apply"))
+				if okBtn.Hovered() {
+					okBtn.Background(pal.AccentHover)
+				}
+				okBtn.Children(func() {
+					ui.Text(c, theme.Tr("确定", "Apply")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).TextColor(pal.Paper).SingleLine()
+				})
+				if okBtn.Clicked() {
+					if st.LinkActiveIdx >= 0 && st.LinkActiveIdx < len(filtered) {
+						st.applyLink(filtered[st.LinkActiveIdx].RelPath, cb)
+					} else {
+						st.applyLink(st.LinkDraft, cb)
+					}
+					if st.View == ViewMap {
+						st.CanvasHandle.Focus()
+					}
+				}
+			})
 		})
 	})
 }
 
-// --- Import Result Card (matches mindmap-b-lite.html .res card) ---
+// --- Grouped Shortcut Cheat-Sheet Popover ---
 
-func (st *BlockState) renderImportResultCard(c *ui.Context, id string) {
+func (st *BlockState) renderShortcutsPopover(c *ui.Context, id string) {
+	pal := theme.Ocean()
+	scrim := ui.Box(c.Key("mm-sc-scrim-"+id)).Absolute().Left(0).Top(0).Right(0).Bottom(0).Background(ui.Transparent)
+	if scrim.Clicked() {
+		st.ShortcutsOpen = false
+		return
+	}
+
+	k := func(mac, other string) string {
+		if theme.IsMacOS() {
+			return mac
+		}
+		return other
+	}
+	type scEntry struct {
+		keys  []string
+		label string
+	}
+	type scGroup struct {
+		title string
+		items []scEntry
+	}
+	groups := []scGroup{
+		{
+			title: theme.Tr("建树与编辑", "Tree & Editing"),
+			items: []scEntry{
+				{[]string{"Tab"}, theme.Tr("添加子节点", "Add child")},
+				{[]string{"↵"}, theme.Tr("下方同级节点", "Add sibling below")},
+				{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("上方同级节点", "Add sibling above")},
+				{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("插入父节点", "Insert parent")},
+				{[]string{"F2"}, theme.Tr("重命名节点", "Rename node")},
+				{[]string{"⌫"}, theme.Tr("删除分支", "Delete branch")},
+				{[]string{k("⌥⌫", "Alt+Del")}, theme.Tr("仅删当前节点", "Delete single node")},
+			},
+		},
+		{
+			title: theme.Tr("层级与移动", "Structure & Move"),
+			items: []scEntry{
+				{[]string{k("⌥↑↓", "Alt+↑↓")}, theme.Tr("同级上下移动", "Move up / down")},
+				{[]string{k("⌥←→", "Alt+←→")}, theme.Tr("升级 / 降级节点", "Promote / demote")},
+				{[]string{k("⌘D", "Ctrl+D")}, theme.Tr("创建分支副本", "Duplicate branch")},
+				{[]string{k("⌘Z", "Ctrl+Z")}, theme.Tr("撤销", "Undo")},
+				{[]string{k("⌘⇧Z", "Ctrl+Y")}, theme.Tr("重做", "Redo")},
+			},
+		},
+		{
+			title: theme.Tr("任务、链接与画布", "Tasks, Links & Canvas"),
+			items: []scEntry{
+				{[]string{k("⌘⌥T", "Ctrl+Alt+T")}, theme.Tr("设为 / 取消任务", "Toggle task")},
+				{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("切换任务完成", "Toggle done")},
+				{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("编辑节点链接", "Edit link")},
+				{[]string{"Space"}, theme.Tr("折叠 / 展开分支", "Fold / unfold")},
+				{[]string{k("⌘⌥/", "Ctrl+Alt+/")}, theme.Tr("全部折叠 / 展开", "Fold / unfold all")},
+				{[]string{k("⌘F", "Ctrl+F")}, theme.Tr("画布内查找", "Find in map")},
+				{[]string{k("⌘±", "Ctrl+±")}, theme.Tr("缩放画布", "Zoom in / out")},
+				{[]string{k("⌘0", "Ctrl+0")}, theme.Tr("适配画布", "Fit to view")},
+			},
+		},
+	}
+
+	panel := ui.Column(c.Key("mm-sc-pop-"+id)).Absolute().Right(theme.Space10).Bottom(theme.Space8).
+		Width(320).MaxHeight(300).Padding(theme.Space12).Gap(theme.Space8).
+		Radius(theme.RadiusLG).Background(pal.Menu).Border(1, pal.MenuBorder)
+	bui.Elevate(panel, theme.ElevationPopover)
+	panel.Children(func() {
+		hdr := ui.Row(c.Key("mm-sc-hdr-" + id)).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Shrink(0)
+		hdr.Children(func() {
+			ui.Text(c, theme.Tr("快捷键速查", "Keyboard Shortcuts")).
+				FontSize(theme.FontSmall).FontWeight(theme.WeightTitle).TextColor(pal.Text).SingleLine()
+			closeBtn := bui.IconButton(c, icons.Close, bui.IconButtonOptions{
+				ID:       "mm-sc-close-" + id,
+				Label:    theme.Tr("关闭", "Close"),
+				Size:     theme.HeightMicro + theme.Space2,
+				IconSize: theme.IconMicro,
+				Radius:   theme.RadiusSM,
+			})
+			if closeBtn.Clicked() {
+				st.ShortcutsOpen = false
+			}
+		})
+
+		scr := bui.Scroll(c.Key("mm-sc-scroll-"+id), &st.ShortcutsScroll).FillWidth().Grow(1).MinHeight(0)
+		scr.Children(func() {
+			list := ui.Column(c).FillWidth().Gap(theme.Space10)
+			list.Children(func() {
+				for _, g := range groups {
+					grp := ui.Column(c).FillWidth().Gap(theme.Space4)
+					grp.Children(func() {
+						ui.Text(c, g.title).FontSize(theme.FontMeta).FontWeight(theme.WeightTitle).
+							TextColor(pal.TextSecondary).SingleLine()
+						for _, it := range g.items {
+							row := ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(theme.Space8)
+							row.Children(func() {
+								ui.Text(c, it.label).FontSize(theme.FontSmall).TextColor(pal.Text).
+									SingleLine().Shrink(1).MinWidth(0)
+								keysRow := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space2).Shrink(0)
+								keysRow.Children(func() {
+									for _, kk := range it.keys {
+										bui.Keycap(c, kk)
+									}
+								})
+							})
+						}
+					})
+				}
+			})
+		})
+	})
+}
+
+// --- Import Result Card (with one-click Undo Import) ---
+
+func (st *BlockState) renderImportResultCard(c *ui.Context, id string, cb Callbacks) {
 	rep := st.ImportResult
 	if rep == nil {
 		return
@@ -2638,20 +4047,41 @@ func (st *BlockState) renderImportResultCard(c *ui.Context, id string) {
 			renderStatRow(theme.Tr("其余画布", "Extra Sheets"), droppedFmt(rep.ExtraSheets), true)
 		}
 
-		btn := ui.ButtonBase(c.Key("mm-imp-ok-"+id)).FillWidth().Height(theme.HeightCompact).
-			Margin(theme.Space6, 0, 0, 0).Radius(theme.RadiusMD).
-			Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
-			Label(theme.Tr("知道了", "Got it"))
-		if btn.Hovered() || btn.Pressed() {
-			btn.Background(pal.Hover)
-		}
-		btn.Children(func() {
-			ui.Text(c, theme.Tr("知道了", "Got it")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
-				TextColor(pal.Text).SingleLine()
+		btnRow := ui.Row(c.Key("mm-imp-btns-"+id)).FillWidth().Margin(theme.Space6, 0, 0, 0).Gap(theme.Space6)
+		btnRow.Children(func() {
+			if st.canUndoImport(cb) {
+				undoBtn := ui.ButtonBase(c.Key("mm-imp-undo-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
+					Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
+					Label(theme.Tr("撤销导入", "Undo Import"))
+				if undoBtn.Hovered() || undoBtn.Pressed() {
+					undoBtn.Background(pal.Hover)
+				}
+				undoBtn.Children(func() {
+					ui.Text(c, theme.Tr("撤销导入", "Undo Import")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+						TextColor(pal.TextSecondary).SingleLine()
+				})
+				if undoBtn.Clicked() {
+					st.opUndoImport(cb)
+					c.Invalidate()
+				}
+			}
+
+			okBtn := ui.ButtonBase(c.Key("mm-imp-ok-"+id)).Grow(1).Shrink(1).MinWidth(0).Height(theme.HeightCompact).
+				Radius(theme.RadiusMD).Border(1, pal.BtnBorder).Background(pal.Paper).Center().Cursor(ui.CursorPointer).
+				Label(theme.Tr("知道了", "Got it"))
+			if okBtn.Hovered() || okBtn.Pressed() {
+				okBtn.Background(pal.Hover)
+			}
+			okBtn.Children(func() {
+				ui.Text(c, theme.Tr("知道了", "Got it")).FontSize(theme.FontSmall).FontWeight(theme.WeightControl).
+					TextColor(pal.Text).SingleLine()
+			})
+			if okBtn.Clicked() {
+				st.ImportResult = nil
+				st.ImportUndoBefore = ""
+				st.ImportUndoAfter = ""
+			}
 		})
-		if btn.Clicked() {
-			st.ImportResult = nil
-		}
 	})
 }
 
@@ -2739,6 +4169,34 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 				})
 			}
 		})
+
+		// Pinned right-side ? Shortcuts button opening the grouped shortcut cheat-sheet.
+		ui.Box(c).Size(1, theme.Space12).Background(pal.Hairline).Shrink(0)
+		scBtn := ui.ButtonBase(c.Key("mm-sc-btn-"+id)).
+			Height(theme.HeightControl).PaddingX(theme.Space8).AlignItems(ui.Center).Gap(theme.Space4).
+			Cursor(ui.CursorPointer).Shrink(0).Label(theme.Tr("快捷键", "Shortcuts"))
+		scHot := scBtn.Hovered() || scBtn.Pressed()
+		scFG := pal.TextSecondary
+		if st.ShortcutsOpen {
+			scBtn.Background(pal.SelectionBG)
+			scFG = pal.Accent
+		} else if scHot {
+			scBtn.Background(pal.Hover)
+			scFG = pal.Text
+		}
+		scBtn.Children(func() {
+			icons.DrawAnimated(c, icons.HelpCircle, theme.IconMicro, pal.MonoIconColors(scFG), st.ShortcutsOpen || scHot)
+			ui.Text(c, theme.Tr("快捷键", "Keys")).FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+				TextColor(scFG).SingleLine()
+		})
+		if scBtn.Clicked() {
+			st.ShortcutsOpen = !st.ShortcutsOpen
+			if st.ShortcutsOpen {
+				st.ExportMenuOpen = false
+				st.LinkNodeID = 0
+				st.ImportResult = nil
+			}
+		}
 	})
 
 	// Smooth stepped edge fades when overflowing horizontally on ultra-narrow windows.
