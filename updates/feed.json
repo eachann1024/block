@@ -1,10 +1,66 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T06:13:53.102Z",
-  "latest_version": "1.0.925",
-  "latest_tag": "v1.0.925",
+  "updated_at": "2026-11-24T06:31:30.207Z",
+  "latest_version": "1.0.926",
+  "latest_tag": "v1.0.926",
   "releases": [
+    {
+      "version": "1.0.926",
+      "tag": "v1.0.926",
+      "published_at": "2026-11-24T06:31:29Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.926",
+      "zh": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "思维导图：修复了切换全屏模式时可能导致应用崩溃的问题。"
+        ],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [],
+        "improvements": [],
+        "fixes": [
+          "Mind Map: Fixed a crash that could occur when toggling full-screen mode."
+        ],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-macos-arm64.dmg",
+          "size": 15727530,
+          "sha256": "51a1302812ef0049049d744ea575fd5332ef5e19b5b3bbe2fe9ff3b64b33d580"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-macos-x64.dmg",
+          "size": 17317204,
+          "sha256": "e455bedbe14852ac367ae660dd1123e9ed53657fa987680d2b30dc81a85f7f76"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-windows-x64-setup.exe",
+          "size": 12661210,
+          "sha256": "94ad3db5cdf6d0f771d6921a03db8985f8b4f47b9fe560be91f1035338cac247"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-linux-x64.deb",
+          "size": 11166428,
+          "sha256": "ed472b0e9bb3adba03df72cfe5ab8d23cf385c54806818db27e9e98398f52eb6"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-linux-x64.AppImage",
+          "size": 24173048,
+          "sha256": "f52cf8543d568724a33e66b8d10251a454c51aadb7dfa11ff10795d8804790c0"
+        }
+      ]
+    },
     {
       "version": "1.0.925",
       "tag": "v1.0.925",
@@ -34,38 +90,7 @@
         "fixes": [],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-macos-arm64.dmg",
-          "size": 15734570,
-          "sha256": "1fe344041efa5c7d159d0e95a60b308c409e53d99a22f5bd17b87ee3c850b3e8"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-macos-x64.dmg",
-          "size": 17317200,
-          "sha256": "19f3e3dbacb42a2f73c937210a7978cc5889c5a377f7ebc7af2130e770be2ecd"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-windows-x64-setup.exe",
-          "size": 12660920,
-          "sha256": "8471643f383c5da8d73add162ca5f1311153b83d409c6e894ebd7e305185668f"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-linux-x64.deb",
-          "size": 11165530,
-          "sha256": "35d4896f9709e5579a47aebc99b5e1992955b3405754337d3ab02d9970aeae99"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-linux-x64.AppImage",
-          "size": 24173048,
-          "sha256": "2865657e3597c70fb757bb316a4646a21d075d5500f5dd0fd4b6ffcdc16097ee"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.924",
@@ -1430,35 +1455,6 @@
         "improvements": [],
         "fixes": [
           "Polished interface details and everyday editing reliability."
-        ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.876",
-      "tag": "v1.0.876",
-      "published_at": "2026-11-21T05:01:23Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.876",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "打磨设置面板、快捷键与菜单界面细节。"
-        ],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Support text chips in plugin UI icons."
-        ],
-        "improvements": [],
-        "fixes": [
-          "Describe send all slot as the real send chip."
         ],
         "other": []
       },
