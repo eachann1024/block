@@ -533,12 +533,151 @@ LangString INST_FAIL_RELAUNCH ${LANG_PORTUGUESEBR} "Falha ao iniciar o Block atu
 LangString INST_FAIL_RELAUNCH ${LANG_RUSSIAN} "Не удалось запустить обновлённый Block; восстановлена предыдущая версия."
 LangString INST_FAIL_RELAUNCH ${LANG_ITALIAN} "Impossibile avviare la nuova versione di Block; versione precedente ripristinata."
 
+; Match $LANGUAGE against the full Windows preferred UI language list
+; (GetUserPreferredUILanguages with MUI_LANGUAGE_NAME) so both fallback setup
+; pages and the uninstaller follow the exact same preference order as Block's
+; custom setup window (e.g. ca-ES -> es-ES resolves to Spanish instead of
+; falling straight to English).
+!macro BLOCK_SELECT_PREFERRED_LANGUAGE PREFIX
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Push $5
+  Push $6
+  Push $7
+  Push $8
+  Push $9
+
+  StrCpy $0 0
+  StrCpy $1 0
+  System::Call 'kernel32::GetUserPreferredUILanguages(i 8, *i r0 .r0, p 0, *i r1 .r1) i .r2'
+  IntCmp $2 0 ${PREFIX}_done
+  IntCmp $1 1 ${PREFIX}_done ${PREFIX}_done 0
+
+  IntOp $3 $1 + 2
+  IntOp $3 $3 * 2
+  System::Alloc $3
+  Pop $4
+  IntCmp $4 0 ${PREFIX}_done
+
+  System::Call 'kernel32::GetUserPreferredUILanguages(i 8, *i r0 .r0, p r4, *i r1 .r1) i .r2'
+  IntCmp $2 0 ${PREFIX}_free
+
+  StrCpy $5 $4
+  ${PREFIX}_next_tag:
+    System::Call 'kernel32::lstrlenW(p r5) i .r7'
+    IntCmp $7 0 ${PREFIX}_fallback_en
+    System::Call 'kernel32::lstrcpynW(t .r6, p r5, i 128)'
+    IntOp $7 $7 + 1
+    IntOp $7 $7 * 2
+    IntOp $5 $5 + $7
+
+    StrCpy $8 "$6-" 3
+    StrCmp $8 "en-" 0 +3
+      StrCpy $LANGUAGE ${LANG_ENGLISH}
+      Goto ${PREFIX}_free
+    StrCmp $8 "ja-" 0 +3
+      StrCpy $LANGUAGE ${LANG_JAPANESE}
+      Goto ${PREFIX}_free
+    StrCmp $8 "ko-" 0 +3
+      StrCpy $LANGUAGE ${LANG_KOREAN}
+      Goto ${PREFIX}_free
+    StrCmp $8 "fr-" 0 +3
+      StrCpy $LANGUAGE ${LANG_FRENCH}
+      Goto ${PREFIX}_free
+    StrCmp $8 "de-" 0 +3
+      StrCpy $LANGUAGE ${LANG_GERMAN}
+      Goto ${PREFIX}_free
+    StrCmp $8 "ru-" 0 +3
+      StrCpy $LANGUAGE ${LANG_RUSSIAN}
+      Goto ${PREFIX}_free
+    StrCmp $8 "it-" 0 +3
+      StrCpy $LANGUAGE ${LANG_ITALIAN}
+      Goto ${PREFIX}_free
+    StrCmp $8 "es-" ${PREFIX}_match_es 0
+    StrCmp $8 "pt-" ${PREFIX}_match_pt 0
+    StrCmp $8 "zh-" ${PREFIX}_match_zh ${PREFIX}_next_tag
+
+  ${PREFIX}_match_es:
+    StrCmp $6 "es" ${PREFIX}_es_spain 0
+    StrCmp $6 "es-ES" ${PREFIX}_es_spain 0
+    StrCpy $LANGUAGE ${LANG_SPANISHINTERNATIONAL}
+    Goto ${PREFIX}_free
+  ${PREFIX}_es_spain:
+    StrCpy $LANGUAGE ${LANG_SPANISH}
+    Goto ${PREFIX}_free
+
+  ${PREFIX}_match_pt:
+    StrCmp $6 "pt-BR" 0 ${PREFIX}_pt_std
+    StrCpy $LANGUAGE ${LANG_PORTUGUESEBR}
+    Goto ${PREFIX}_free
+  ${PREFIX}_pt_std:
+    StrCpy $LANGUAGE ${LANG_PORTUGUESE}
+    Goto ${PREFIX}_free
+
+  ; Inspect zh-* subtags with explicit script (Hans/Hant) taking priority over region.
+  ${PREFIX}_match_zh:
+    StrCpy $9 "0" ; 1 if TradChinese region (TW/HK/MO) seen
+    StrCpy $2 "$6" "" 3 ; remainder after "zh-"
+  ${PREFIX}_zh_loop:
+    StrCmp $2 "" ${PREFIX}_zh_finish
+    StrCpy $3 0
+    StrLen $0 $2
+  ${PREFIX}_zh_scan:
+    IntCmp $3 $0 ${PREFIX}_zh_got_tok ${PREFIX}_zh_got_tok 0
+    StrCpy $8 $2 1 $3
+    StrCmp $8 "-" ${PREFIX}_zh_got_tok 0
+    StrCmp $8 "_" ${PREFIX}_zh_got_tok 0
+    IntOp $3 $3 + 1
+    Goto ${PREFIX}_zh_scan
+  ${PREFIX}_zh_got_tok:
+    StrCpy $8 $2 $3
+    IntOp $3 $3 + 1
+    StrCpy $2 $2 "" $3
+    StrCmp $8 "Hans" ${PREFIX}_zh_simp 0
+    StrCmp $8 "Hant" ${PREFIX}_zh_trad 0
+    StrCmp $8 "TW" ${PREFIX}_zh_mark_trad 0
+    StrCmp $8 "HK" ${PREFIX}_zh_mark_trad 0
+    StrCmp $8 "MO" ${PREFIX}_zh_mark_trad ${PREFIX}_zh_loop
+  ${PREFIX}_zh_mark_trad:
+    StrCpy $9 "1"
+    Goto ${PREFIX}_zh_loop
+  ${PREFIX}_zh_finish:
+    StrCmp $9 "1" ${PREFIX}_zh_trad ${PREFIX}_zh_simp
+  ${PREFIX}_zh_trad:
+    StrCpy $LANGUAGE ${LANG_TRADCHINESE}
+    Goto ${PREFIX}_free
+  ${PREFIX}_zh_simp:
+    StrCpy $LANGUAGE ${LANG_SIMPCHINESE}
+    Goto ${PREFIX}_free
+
+  ${PREFIX}_fallback_en:
+    StrCpy $LANGUAGE ${LANG_ENGLISH}
+
+  ${PREFIX}_free:
+    System::Free $4
+  ${PREFIX}_done:
+  Pop $9
+  Pop $8
+  Pop $7
+  Pop $6
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+!macroend
+
 ; Block defaults to a per-user install in %LOCALAPPDATA%\Programs\Block so
 ; in-app updates run seamlessly with no installer window and no UAC prompt.
 ; Machine-wide installs (e.g. C:\Program Files\Block or /ALLUSERS) remain fully
 ; supported: interactive installs elevate on demand, and /UPDATE runs completely
 ; silently before relaunching Block.
 Function .onInit
+  !insertmacro BLOCK_SELECT_PREFERRED_LANGUAGE init_lang
   StrCpy $BLOCK_IS_UPDATE ""
   StrCpy $BLOCK_FORCE_ALLUSERS ""
 
@@ -784,6 +923,7 @@ Section "Install"
 SectionEnd
 
 Function un.onInit
+  !insertmacro BLOCK_SELECT_PREFERRED_LANGUAGE un_init_lang
   !insertmacro BLOCK_CHECK_ADMIN un_init_adm
   !insertmacro BLOCK_COMPUTE_SCOPE_HASH un_init_hash
   StrCpy $BLOCK_FORCE_ALLUSERS ""
