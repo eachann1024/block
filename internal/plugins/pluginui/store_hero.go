@@ -144,6 +144,10 @@ func renderStoreHero(
 	}
 
 	slide := slides[idx]
+	dir := ctrl.storeHeroDir
+	if dir == 0 {
+		dir = 1
+	}
 	entry := slide.card.entry
 	pal := theme.Ocean()
 	hc := pal.StoreHero(slide.spec.tone)
@@ -163,15 +167,16 @@ func renderStoreHero(
 	wrap.Children(func() {
 		card := ui.ButtonBase(c.Key("app-store-hero-card")).
 			FillWidth().MinWidth(0).Height(theme.StoreHeroHeight).
-			Radius(theme.RadiusXL).Clip().Cursor(ui.CursorPointer).Label(name)
+			Radius(theme.RadiusXL).Clip().Cursor(ui.CursorPointer).Label(name).
+			ChildExit(bui.CarouselSlideExit(dir))
 		hovered, pressed := card.Hovered(), card.Pressed()
 		cardHovered = hovered || pressed
 
-		bgStart := card.AnimateColor("heroBgS", hc.BGStart, bui.FadeColor)
-		bgMid := card.AnimateColor("heroBgM", hc.BGMid, bui.FadeColor)
-		bgEnd := card.AnimateColor("heroBgE", hc.BGEnd, bui.FadeColor)
-		glowPrimary := card.AnimateColor("heroGlowP", hc.GlowPrimary, bui.FadeColor)
-		glowSecondary := card.AnimateColor("heroGlowS", hc.GlowSecondary, bui.FadeColor)
+		bgStart := card.AnimateColor("heroBgS", hc.BGStart, bui.HeroSurfaceFade)
+		bgMid := card.AnimateColor("heroBgM", hc.BGMid, bui.HeroSurfaceFade)
+		bgEnd := card.AnimateColor("heroBgE", hc.BGEnd, bui.HeroSurfaceFade)
+		glowPrimary := card.AnimateColor("heroGlowP", hc.GlowPrimary, bui.HeroSurfaceFade)
+		glowSecondary := card.AnimateColor("heroGlowS", hc.GlowSecondary, bui.HeroSurfaceFade)
 		targetBorder := hc.Border
 		if hovered || pressed {
 			targetBorder = hc.HoverBorder
@@ -221,10 +226,10 @@ func renderStoreHero(
 
 		card.Children(func() {
 			inner := ui.Row(c.Key("app-store-hero-slide-"+entry.ID)).
-				Fill().MinWidth(0).
+				Absolute().Fill().MinWidth(0).
 				Padding(theme.StoreHeroPadY, theme.StoreHeroPadX).
 				Gap(theme.Space20).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				Transition(bui.PanelContentSwapTransition())
+				Transition(bui.CarouselSlideTransition(dir))
 
 			inner.Children(func() {
 				// Left editorial copy and action column.
@@ -290,7 +295,18 @@ func renderStoreHero(
 						artH = theme.StoreHeroArtH
 						artW = artH * (460.0 / 220.0)
 					}
-					ui.Box(c).Size(artW, artH).Shrink(0).Center().PassThrough().Children(func() {
+					artBox := ui.Box(c.Key("app-store-hero-art-"+entry.ID)).
+						Size(artW, artH).Shrink(0).Center().PassThrough().
+						Transition(bui.CarouselArtParallaxTransition(dir))
+					hoverTarget := float32(0)
+					if hovered && !c.Preferences().ReduceMotion {
+						hoverTarget = 1
+					}
+					artLift := card.AnimateTo("heroArtHover", hoverTarget, bui.TreeDrawerOpen)
+					if artLift > 0.001 {
+						artBox.Translate(0, -2.5*artLift).Scale(1+0.02*artLift, 1+0.02*artLift)
+					}
+					artBox.Children(func() {
 						ui.Image(c, heroArt.WithDark(theme.IsDark())).Size(artW, artH)
 					})
 				}
@@ -321,7 +337,7 @@ func renderStoreHero(
 					pagerHovered = true
 				}
 				if prevBtn.Clicked() {
-					ctrl.selectStoreHero((idx-1+len(slides))%len(slides), true, now)
+					ctrl.selectStoreHero((idx-1+len(slides))%len(slides), -1, true, now)
 					c.Invalidate()
 				}
 
@@ -339,7 +355,14 @@ func renderStoreHero(
 						}
 					},
 					OnSelect: func(slot int) {
-						ctrl.selectStoreHero(slot, true, now)
+						if slot == idx {
+							return
+						}
+						stepDir := 1
+						if slot < idx {
+							stepDir = -1
+						}
+						ctrl.selectStoreHero(slot, stepDir, true, now)
 						c.Invalidate()
 					},
 				})
@@ -359,7 +382,7 @@ func renderStoreHero(
 					pagerHovered = true
 				}
 				if nextBtn.Clicked() {
-					ctrl.selectStoreHero((idx+1)%len(slides), true, now)
+					ctrl.selectStoreHero((idx+1)%len(slides), 1, true, now)
 					c.Invalidate()
 				}
 			})
@@ -367,14 +390,17 @@ func renderStoreHero(
 	})
 
 	// Gentle auto-advance only while untouched, unhovered, and motion is allowed.
-	if len(slides) > 1 && !ctrl.storeHeroPaused && !cardHovered && !pagerHovered &&
-		installingID == "" && !c.Preferences().ReduceMotion {
-		elapsed := now.Sub(ctrl.storeHeroLastSwitch)
-		if elapsed >= storeHeroAutoAdvance {
-			ctrl.selectStoreHero((idx+1)%len(slides), false, now)
-			c.Invalidate()
+	if len(slides) > 1 && !ctrl.storeHeroPaused && installingID == "" && !c.Preferences().ReduceMotion {
+		if cardHovered || pagerHovered {
+			ctrl.storeHeroLastSwitch = now
 		} else {
-			c.After(storeHeroAutoAdvance - elapsed)
+			elapsed := now.Sub(ctrl.storeHeroLastSwitch)
+			if elapsed >= storeHeroAutoAdvance {
+				ctrl.selectStoreHero((idx+1)%len(slides), 1, false, now)
+				c.Invalidate()
+			} else {
+				c.After(storeHeroAutoAdvance - elapsed)
+			}
 		}
 	}
 }

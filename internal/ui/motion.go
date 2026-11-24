@@ -30,6 +30,15 @@ var (
 		Oklab:     true,
 		NonMotion: true,
 	}
+
+	// HeroSurfaceFade smoothly blends showcase card gradients and ambient glows
+	// across featured carousel slides in Oklab space.
+	HeroSurfaceFade = ui.Animation{
+		Duration:  380 * time.Millisecond,
+		Ease:      treeDrawerEase,
+		Oklab:     true,
+		NonMotion: true,
+	}
 )
 
 // TreeDrawerProgress animates a sidebar folder drawer between 0 (collapsed) and
@@ -422,5 +431,55 @@ func ResizeHandleTransition(inward float32) ui.ElementTransition {
 		ExitDuration: 70 * time.Millisecond,
 		Enter:        &ui.Motion{X: min(max(inward, -3), 3), Opacity: 0.3},
 		Exit:         &ui.Motion{Opacity: 0},
+	}
+}
+
+// CarouselSlideExit returns the directional exit motion for a carousel slide
+// leaving its host card. Pair with Element.ChildExit on the slide container.
+func CarouselSlideExit(dir int) ui.Motion {
+	d := float32(1)
+	if dir < 0 {
+		d = -1
+	}
+	return ui.Motion{X: -40 * d, Opacity: 0, Scale: 0.985}
+}
+
+// CarouselSlideTransition slides and cross-fades a featured carousel slide
+// along the navigation direction (dir >= 0 forward, dir < 0 backward).
+func CarouselSlideTransition(dir int) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	d := float32(1)
+	if dir < 0 {
+		d = -1
+	}
+	exit := CarouselSlideExit(dir)
+	return ui.ElementTransition{
+		Duration:     360 * time.Millisecond,
+		Ease:         treeDrawerEase,
+		ExitDuration: 240 * time.Millisecond,
+		ExitEase:     ui.CubicBezier(0.32, 0, 0.2, 1),
+		Colors:       true,
+		Enter:        &ui.Motion{X: 48 * d, Opacity: 0.01, Scale: 0.985},
+		Exit:         &exit,
+	}
+}
+
+// CarouselArtParallaxTransition adds subtle horizontal depth to a carousel
+// slide's illustration as it enters alongside the copy column.
+func CarouselArtParallaxTransition(dir int) ui.ElementTransition {
+	if testing.Testing() {
+		return ui.ElementTransition{Duration: -1}
+	}
+	d := float32(1)
+	if dir < 0 {
+		d = -1
+	}
+	return ui.ElementTransition{
+		Duration:     420 * time.Millisecond,
+		Ease:         treeDrawerEase,
+		ExitDuration: -1,
+		Enter:        &ui.Motion{X: 22 * d, Scale: 0.96, Opacity: 0.01},
 	}
 }
