@@ -113,8 +113,8 @@ func providerEndpoint(raw string) (*url.URL, error) {
 	endpoint, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || endpoint.Hostname() == "" || endpoint.User != nil ||
 		endpoint.ForceQuery || endpoint.RawQuery != "" || endpoint.Fragment != "" ||
-		(endpoint.Scheme != "https" && (endpoint.Scheme != "http" || !loopbackProviderHost(endpoint.Hostname()))) {
-		return nil, errors.New(theme.Tr("供应商地址必须使用 HTTPS，本机回环服务可使用 HTTP", "Use HTTPS for the provider endpoint. HTTP is allowed for loopback services."))
+		(endpoint.Scheme != "https" && endpoint.Scheme != "http") {
+		return nil, errors.New(theme.Tr("请填写有效的 HTTP 或 HTTPS 供应商地址", "Enter a valid HTTP or HTTPS provider URL"))
 	}
 	return endpoint, nil
 }
@@ -586,8 +586,45 @@ type sseEvent struct {
 	settings  bool
 }
 
+type lineReader struct {
+	r    *bufio.Reader
+	line []byte
+	err  error
+}
+
+func newLineReader(r io.Reader) *lineReader {
+	return &lineReader{r: bufio.NewReaderSize(r, 64*1024)}
+}
+
+func (lr *lineReader) Scan() bool {
+	if lr.err != nil {
+		return false
+	}
+	b, err := lr.r.ReadBytes('\n')
+	if len(b) > 0 {
+		if b[len(b)-1] == '\n' {
+			b = b[:len(b)-1]
+		}
+		if len(b) > 0 && b[len(b)-1] == '\r' {
+			b = b[:len(b)-1]
+		}
+		lr.line = b
+		if err != nil && !errors.Is(err, io.EOF) {
+			lr.err = err
+		}
+		return true
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		lr.err = err
+	}
+	return false
+}
+
+func (lr *lineReader) Bytes() []byte { return lr.line }
+func (lr *lineReader) Text() string  { return string(lr.line) }
+func (lr *lineReader) Err() error    { return lr.err }
+
 var sharedHTTPClient = &http.Client{
-	Timeout: 180 * time.Second,
 	CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	},
@@ -625,22 +662,66 @@ func doJSONRequest(ctx context.Context, cfg model.AIProviderConfig, path string,
 }
 
 func readHTTPError(resp *http.Response) string {
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	raw, _ := io.ReadAll(resp.Body)
+	return formatHTTPErrorBody(resp.StatusCode, raw)
+}
+
+func formatHTTPErrorBody(statusCode int, raw []byte) string {
 	var parsed map[string]any
 	if json.Unmarshal(raw, &parsed) == nil {
 		if errObj, ok := parsed["error"].(map[string]any); ok {
 			if msg, ok := errObj["message"].(string); ok && msg != "" {
-				return formatProviderError(fmt.Sprintf("HTTP %d: %s", resp.StatusCode, msg))
+				return formatProviderError(fmt.Sprintf("HTTP %d: %s", statusCode, msg))
 			}
 		}
 		if msg, ok := parsed["message"].(string); ok && msg != "" {
-			return formatProviderError(fmt.Sprintf("HTTP %d: %s", resp.StatusCode, msg))
+			return formatProviderError(fmt.Sprintf("HTTP %d: %s", statusCode, msg))
 		}
 	}
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
 		return theme.Tr("密钥无效或未配置", "Invalid or missing API Key")
 	}
-	return fmt.Sprintf("AI service returned %d", resp.StatusCode)
+	return fmt.Sprintf("AI service returned %d", statusCode)
+}
+
+func parseAnthropicMaxTokensCap(raw []byte, attempted int) int {
+	low := strings.ToLower(string(raw))
+	if !strings.Contains(low, "max_tokens") {
+		return 0
+	}
+	readIntAt := func(s string) int {
+		s = strings.TrimLeft(s, " :=(")
+		j := 0
+		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+			j++
+		}
+		if j == 0 {
+			return 0
+		}
+		n, err := strconv.Atoi(s[:j])
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	for _, marker := range []string{">", "<=", "at most", "exceeds", "exceed", "maximum of", "limit of"} {
+		idx := 0
+		for {
+			pos := strings.Index(low[idx:], marker)
+			if pos < 0 {
+				break
+			}
+			after := idx + pos + len(marker)
+			if n := readIntAt(low[after:]); n > 0 && n < attempted {
+				return n
+			}
+			idx = after
+		}
+	}
+	if attempted > 8192 {
+		return 8192
+	}
+	return 0
 }
 
 // listBuiltinModels queries GET /models from the configured OpenAI/DeepSeek/Anthropic endpoint.
@@ -648,39 +729,63 @@ func listBuiltinModels(ctx context.Context, cfg model.AIProviderConfig) ([]strin
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return nil, errors.New(theme.Tr("请前往「设置 › AI Agent」配置服务商与接口地址", "Go to Settings › AI Agent to configure a provider and Base URL"))
 	}
-	keyReq := true
-	if p := findProviderPreset(cfg.Provider); p != nil {
-		keyReq = p.KeyRequired
+	endpoint, err := providerEndpoint(cfg.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	keyReq := !loopbackProviderHost(endpoint.Hostname())
+	if p := findProviderPreset(cfg.Provider); p != nil && !p.KeyRequired {
+		keyReq = false
 	}
 	if keyReq && strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, errors.New(theme.Tr("请前往「设置 › AI Agent」选择服务商并填写 API 密钥", "Go to Settings › AI Agent to select a provider and enter an API Key"))
 	}
-	path := "/models"
-	if cfg.Protocol == model.ProtocolAnthropic {
-		path = "/models?limit=1000"
+	type modelItem struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
 	}
-	resp, err := doJSONRequest(ctx, cfg, path, nil)
-	if err != nil {
-		return nil, errors.New(formatProviderError(err.Error()))
+	var all []modelItem
+	seenCursors := make(map[string]bool)
+	afterID := ""
+	for {
+		path := "/models"
+		if cfg.Protocol == model.ProtocolAnthropic {
+			path = "/models?limit=1000"
+			if afterID != "" {
+				path += "&after_id=" + url.QueryEscape(afterID)
+			}
+		}
+		resp, err := doJSONRequest(ctx, cfg, path, nil)
+		if err != nil {
+			return nil, errors.New(formatProviderError(err.Error()))
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			errMsg := readHTTPError(resp)
+			_ = resp.Body.Close()
+			return nil, errors.New(errMsg)
+		}
+		var payload struct {
+			Data    []modelItem `json:"data"`
+			HasMore bool        `json:"has_more"`
+			LastID  string      `json:"last_id"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&payload)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, payload.Data...)
+		if cfg.Protocol != model.ProtocolAnthropic || !payload.HasMore || payload.LastID == "" || seenCursors[payload.LastID] {
+			break
+		}
+		seenCursors[payload.LastID] = true
+		afterID = payload.LastID
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.New(readHTTPError(resp))
-	}
-	var payload struct {
-		Data []struct {
-			ID      string `json:"id"`
-			Created int64  `json:"created"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	sort.SliceStable(payload.Data, func(i, j int) bool {
-		return payload.Data[i].Created > payload.Data[j].Created
+	sort.SliceStable(all, func(i, j int) bool {
+		return all[i].Created > all[j].Created
 	})
-	ids := make([]string, 0, len(payload.Data))
-	for _, item := range payload.Data {
+	ids := make([]string, 0, len(all))
+	for _, item := range all {
 		if strings.TrimSpace(item.ID) != "" {
 			ids = append(ids, item.ID)
 		}
@@ -775,9 +880,7 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 	}
 
 	var calls []streamToolCall
-	var toolArgBytes int
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	scanner := newLineReader(resp.Body)
 	completed := false
 	gotAny := false
 	finishReason := ""
@@ -850,12 +953,6 @@ func streamOpenAISSE(ctx context.Context, cfg model.AIProviderConfig, msgs []map
 			} else if tc.ID == "" && tc.Function.Name == "" && len(calls) > 0 {
 				idx = len(calls) - 1
 			}
-			toolArgBytes += len(tc.ID) + len(tc.Function.Name) + len(tc.Function.Arguments)
-			if idx >= maxTurnTools || toolArgBytes > maxToolArgsBytes {
-				files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
-				emitSSE(ctx, out, sseEvent{err: theme.Tr("工具调用数量或参数超过上限", "Too many tool calls, or the arguments are too large")})
-				return
-			}
 			for len(calls) <= idx {
 				calls = append(calls, streamToolCall{})
 			}
@@ -909,9 +1006,13 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 	start := time.Now()
 	files.LogInfof("ai request started: provider=%s protocol=%s model=%s", cfg.Provider, cfg.Protocol, cfg.Model)
 	systemText, anthropicMsgs := convertMessagesToAnthropic(msgs)
-	maxTokens := 16384
-	if (cfg.Provider == "deepseek" || strings.Contains(strings.ToLower(cfg.BaseURL), "api.deepseek.com")) && thinkingLevel == "" {
-		maxTokens = 8192
+	maxTokens := 64000
+	if cfg.Provider == "deepseek" || strings.Contains(strings.ToLower(cfg.BaseURL), "api.deepseek.com") {
+		if thinkingLevel == "" {
+			maxTokens = 8192
+		} else {
+			maxTokens = 65536
+		}
 	}
 	body := map[string]any{
 		"model":      cfg.Model,
@@ -936,6 +1037,24 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 		emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error()), settings: true})
 		return
 	}
+	if resp.StatusCode == http.StatusBadRequest {
+		rawErr, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if capTokens := parseAnthropicMaxTokensCap(rawErr, maxTokens); capTokens > 0 {
+			body["max_tokens"] = capTokens
+			resp, err = doJSONRequest(ctx, cfg, "/messages", body)
+			if err != nil {
+				files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), err)
+				emitSSE(ctx, out, sseEvent{err: formatProviderError(err.Error()), settings: true})
+				return
+			}
+		} else {
+			errMsg := formatHTTPErrorBody(resp.StatusCode, rawErr)
+			files.LogErrorf("ai request failed: provider=%s model=%s status=%d elapsed=%s", cfg.Provider, cfg.Model, resp.StatusCode, time.Since(start).Round(time.Millisecond))
+			emitSSE(ctx, out, sseEvent{err: errMsg})
+			return
+		}
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errMsg := readHTTPError(resp)
@@ -952,9 +1071,7 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 		call     streamToolCall
 	}
 	var calls []anthropicCall
-	var toolArgBytes int
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	scanner := newLineReader(resp.Body)
 	completed := false
 	stopReason := ""
 
@@ -1013,11 +1130,6 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 			return
 		case "content_block_start":
 			if ev.ContentBlock != nil && ev.ContentBlock.Type == "tool_use" {
-				if len(calls) >= maxTurnTools {
-					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool call limit exceeded"))
-					emitSSE(ctx, out, sseEvent{err: theme.Tr("工具调用数量超过上限", "Too many tool calls")})
-					return
-				}
 				calls = append(calls, anthropicCall{
 					blockIdx: ev.Index,
 					call: streamToolCall{
@@ -1040,12 +1152,6 @@ func streamAnthropicSSE(ctx context.Context, cfg model.AIProviderConfig, msgs []
 					emitSSE(ctx, out, sseEvent{thinking: ev.Delta.Thinking})
 				}
 			case "input_json_delta":
-				toolArgBytes += len(ev.Delta.PartialJSON)
-				if toolArgBytes > maxToolArgsBytes {
-					files.LogErrorf("ai request failed: provider=%s model=%s elapsed=%s err=%v", cfg.Provider, cfg.Model, time.Since(start).Round(time.Millisecond), errors.New("tool arguments limit exceeded"))
-					emitSSE(ctx, out, sseEvent{err: theme.Tr("工具参数超过上限", "Tool arguments exceed the limit")})
-					return
-				}
 				for i := range calls {
 					if calls[i].blockIdx == ev.Index {
 						calls[i].call.Arguments += ev.Delta.PartialJSON
@@ -1202,13 +1308,13 @@ func builtinToolDefinitions() []any {
 			"type":       "object",
 			"properties": map[string]any{},
 		}),
-		fn("listPages", "列出本轮笔记本内的页面，结果可能有上限。", map[string]any{
+		fn("listPages", "列出本轮笔记本内的页面。", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"notebookRoot": map[string]any{"type": "string"},
 			},
 		}),
-		fn("searchNotes", "在笔记本中按关键词搜索页面，返回前 20 条命中及命中行号与上下文片段。", map[string]any{
+		fn("searchNotes", "在笔记本中按关键词搜索页面，返回所有命中及命中行号与上下文片段。", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query":        map[string]any{"type": "string"},
@@ -1216,7 +1322,7 @@ func builtinToolDefinitions() []any {
 			},
 			"required": []string{"query"},
 		}),
-		fn("readPage", "读取已保存的 Markdown 笔记，最多 256 KiB；请始终明确传入 pageId。大文档可用 startLine（从 1 开始）和 lineCount 按行分段读取。", map[string]any{
+		fn("readPage", "读取已保存的 Markdown 笔记；请始终明确传入 pageId。大文档可用 startLine（从 1 开始）和 lineCount 按行分段读取。", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"pageId":       map[string]any{"type": "string"},
@@ -1279,16 +1385,13 @@ func (c *Controller) startBuiltinTurn(turn *assistantTurn, step int) {
 		return
 	}
 	st := c.ensureRunStateLocked(turn.convID)
-	msgs := c.buildBuiltinAPIMessagesLocked(turn, step)
+	msgs := c.buildBuiltinAPIMessagesLocked(turn)
 	st.partialText.Reset()
 	st.partialThink.Reset()
 	st.partialSteps = nil
 	c.mu.Unlock()
 
-	var tools []any
-	if step < maxBuiltinSteps {
-		tools = builtinToolDefinitions()
-	}
+	tools := builtinToolDefinitions()
 	events := make(chan sseEvent, 32)
 	go streamBuiltinCompletion(turn.ctx, turn.cfg, msgs, tools, turn.thinking, events)
 
@@ -1326,19 +1429,6 @@ func (c *Controller) startBuiltinTurn(turn *assistantTurn, step int) {
 			if ev.done {
 				if turn.convID == c.currentID {
 					c.clearStreamRedrawLocked()
-				}
-				if len(ev.toolCalls) > 0 && step >= maxBuiltinSteps {
-					st.streaming = false
-					c.finishConvTurnLocked(turn.convID)
-					st.turnError = theme.Tr("已达到工具调用上限，请缩小范围后继续。", "Tool limit reached. Narrow the scope and continue.")
-					st.partialText.Reset()
-					st.partialThink.Reset()
-					st.partialSteps = nil
-					c.recordTurnOutcomeForConvLocked(turn.convID, "failed")
-					c.restoreFailedDraftForConvLocked(turn.convID)
-					c.mu.Unlock()
-					c.requestRedraw()
-					return
 				}
 				text := st.partialText.String()
 				think := st.partialThink.String()
@@ -1378,7 +1468,7 @@ func (c *Controller) startBuiltinTurn(turn *assistantTurn, step int) {
 					return
 				}
 				c.requestRedraw()
-				if !waitingQuestion && step < maxBuiltinSteps {
+				if !waitingQuestion {
 					c.startBuiltinTurn(turn, step+1)
 				}
 				return
@@ -1402,7 +1492,7 @@ func (c *Controller) startBuiltinTurn(turn *assistantTurn, step int) {
 	}()
 }
 
-func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int) []map[string]any {
+func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn) []map[string]any {
 	markdownMD := strings.TrimSpace(assets.ReadSkill("markdown.md"))
 	var sysParts []string
 	if agentsMD := strings.TrimSpace(assets.ReadSkill("AGENTS.md")); agentsMD != "" {
@@ -1464,15 +1554,6 @@ func (c *Controller) buildBuiltinAPIMessagesLocked(turn *assistantTurn, step int
 				msgs = append(msgs, map[string]any{"role": m.Role, "content": content})
 			}
 		}
-	}
-	if step == maxBuiltinSteps {
-		msgs = append(msgs, map[string]any{
-			"role": "system",
-			"content": theme.Tr(
-				"本轮工具调用已达上限。请根据已有工具结果回答，明确未完成或未覆盖的范围，不要声称全部完成。",
-				"This turn has reached the tool-call limit. Answer from the tool results you already have, say what is unfinished or not covered, and do not claim that everything is done.",
-			),
-		})
 	}
 	return msgs
 }
@@ -1542,12 +1623,10 @@ func (c *Controller) handleBuiltinToolCalls(turn *assistantTurn, step int, text,
 				continue
 			}
 		}
-		resJSON := marshalJSON(map[string]any{"error": theme.Tr("本轮工具调用已达到上限", "This turn has reached the tool-call limit")})
-		var plan *model.BatchPlan
-		var sources []model.SourceNote
-		if turn.allowTool() {
-			resJSON, plan, sources = c.executeTool(turn.ctx, turn.notebookScope, tc.Name, tc.Arguments)
+		if !turn.allowTool() {
+			return false, true
 		}
+		resJSON, plan, sources := c.executeTool(turn.ctx, turn.notebookScope, tc.Name, tc.Arguments)
 		msg := model.ChatMessage{
 			Role:       "tool",
 			Content:    resJSON,
@@ -1684,9 +1763,6 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 	if ctx.Err() != nil {
 		return fail(theme.Tr("本轮已结束", "This turn has ended"))
 	}
-	if len(rawArgs) > maxToolArgsBytes {
-		return fail(theme.Tr("工具参数超过上限", "Tool arguments exceed the limit"))
-	}
 	var args map[string]any
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
 		return fail(theme.Tr("无效的工具参数", "Invalid tool arguments"))
@@ -1726,12 +1802,11 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		return marshalJSON(map[string]any{"notebooks": []string{"current"}, "name": filepath.Base(scope.root)}), nil, nil
 
 	case "listPages", "listNotebookFiles", "searchNotes":
-		pages, limited := notebookPages(ctx, root)
+		pages := notebookPages(ctx, root)
 		sort.Strings(pages)
 		q, _ := args["query"].(string)
 		lowQ := strings.ToLower(strings.TrimSpace(q))
 		results := make([]map[string]any, 0, len(pages))
-		remaining := 4 * 1024 * 1024
 		for _, filename := range pages {
 			if ctx.Err() != nil {
 				return fail(theme.Tr("本轮已结束", "This turn has ended"))
@@ -1742,31 +1817,22 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 				if lowQ == "" {
 					return fail(theme.Tr("请提供搜索关键词", "Enter a search keyword"))
 				}
-				if remaining < maxToolNoteBytes {
-					limited = true
-					break
-				}
 				body, err := readNotebookNote(ctx, root, filename)
-				remaining -= len(body)
 				if !strings.Contains(strings.ToLower(page), lowQ) && (err != nil || !strings.Contains(strings.ToLower(body), lowQ)) {
 					continue
 				}
-				snippet, matchLine := searchMatchSnippet(body, q, 240)
+				snippet, matchLine := searchMatchSnippet(body, q)
 				item["snippet"] = snippet
 				if matchLine > 0 {
 					item["line"] = matchLine
 				}
 			}
 			results = append(results, item)
-			if name == "searchNotes" && len(results) == 20 {
-				limited = true
-				break
-			}
 		}
 		if name == "searchNotes" {
-			return marshalJSON(map[string]any{"query": q, "results": results, "limited": limited}), nil, nil
+			return marshalJSON(map[string]any{"query": q, "results": results}), nil, nil
 		}
-		return marshalJSON(map[string]any{"pages": results, "limited": limited}), nil, nil
+		return marshalJSON(map[string]any{"pages": results}), nil, nil
 
 	case "readPage", "readNote":
 		page, _ := args["pageId"].(string)
@@ -1794,7 +1860,7 @@ func (c *Controller) executeTool(ctx context.Context, scope notebookScope, name,
 		}
 		md, err := readNotebookNote(ctx, root, filename)
 		if err != nil {
-			return fail(theme.Tr("无法读取页面，或笔记超过读取上限", "The page could not be read, or the note exceeds the read limit"))
+			return fail(theme.Tr("无法读取页面", "The page could not be read"))
 		}
 		sliced, totalLines, actualStart, actualEnd, hasMore := sliceMarkdownLines(md, startLine, lineCount)
 		src := []model.SourceNote{{Title: pathBaseSlash(page), Path: filepath.Join(scope.root, filename)}}
@@ -1869,46 +1935,15 @@ func sliceMarkdownLines(md string, startLine, lineCount int) (slice string, tota
 	return strings.Join(parts[startLine-1:endIdx], ""), totalLines, startLine, endIdx, endIdx < totalLines
 }
 
-func searchMatchSnippet(body, query string, maxRunes int) (string, int) {
-	if maxRunes <= 0 {
-		return "", 0
-	}
+func searchMatchSnippet(body, query string) (string, int) {
 	lowQ := strings.ToLower(strings.TrimSpace(query))
 	if lowQ == "" {
-		return truncateRunes(strings.TrimSpace(body), maxRunes), 0
+		return strings.TrimSpace(body), 0
 	}
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
-		lowLine := strings.ToLower(line)
-		byteIdx := strings.Index(lowLine, lowQ)
-		if byteIdx < 0 {
+		if !strings.Contains(strings.ToLower(line), lowQ) {
 			continue
-		}
-		trimmed := strings.TrimSpace(line)
-		if len([]rune(trimmed)) > maxRunes {
-			lineRunes := []rune(line)
-			prefixRunes := len([]rune(lowLine[:byteIdx]))
-			if prefixRunes > len(lineRunes) {
-				prefixRunes = len(lineRunes)
-			}
-			qRunes := len([]rune(query))
-			start := prefixRunes - (maxRunes-qRunes)/2
-			if start < 0 {
-				start = 0
-			}
-			end := start + maxRunes
-			if end > len(lineRunes) {
-				end = len(lineRunes)
-				start = max(0, end-maxRunes)
-			}
-			win := strings.TrimSpace(string(lineRunes[start:end]))
-			if start > 0 {
-				win = "…" + win
-			}
-			if end < len(lineRunes) {
-				win += "…"
-			}
-			return win, i + 1
 		}
 		var ctxLines []string
 		if i > 0 {
@@ -1916,17 +1951,13 @@ func searchMatchSnippet(body, query string, maxRunes int) (string, int) {
 				ctxLines = append(ctxLines, prev)
 			}
 		}
-		ctxLines = append(ctxLines, trimmed)
+		ctxLines = append(ctxLines, strings.TrimSpace(line))
 		for j := i + 1; j < len(lines) && j <= i+2; j++ {
 			if next := strings.TrimSpace(lines[j]); next != "" {
 				ctxLines = append(ctxLines, next)
 			}
 		}
-		joined := strings.Join(ctxLines, "\n")
-		if len([]rune(joined)) > maxRunes {
-			return truncateRunes(joined, maxRunes) + "…", i + 1
-		}
-		return joined, i + 1
+		return strings.Join(ctxLines, "\n"), i + 1
 	}
 	var preview []string
 	for _, line := range lines {
@@ -1937,11 +1968,7 @@ func searchMatchSnippet(body, query string, maxRunes int) (string, int) {
 			}
 		}
 	}
-	joined := strings.Join(preview, "\n")
-	if len([]rune(joined)) > maxRunes {
-		return truncateRunes(joined, maxRunes) + "…", 0
-	}
-	return joined, 0
+	return strings.Join(preview, "\n"), 0
 }
 
 func marshalJSON(v any) string {

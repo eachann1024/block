@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -20,7 +19,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"block/internal/files"
 	"block/internal/model"
@@ -166,7 +164,7 @@ func AgentDriverGuide(kind model.BackendKind) (installCmd, loginCmd string) {
 	case model.BackendClaude:
 		return "npm install -g @anthropic-ai/claude-code", "claude auth login"
 	case model.BackendDsh:
-		return "npm install -g @deepseek-ai/dsh@" + supportedDshVersion, ""
+		return "npm install -g @deepseek-ai/dsh", ""
 	case model.BackendPi:
 		return "npm install -g --ignore-scripts @earendil-works/pi-coding-agent", "pi"
 	case model.BackendAgy:
@@ -276,9 +274,6 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 			return BackendStatus{State: BackendStateError, Message: "Claude CLI version check failed"}
 		}
 		ver := strings.TrimSpace(string(out))
-		if !claudeVersionOK(ver) {
-			return BackendStatus{State: BackendStateUnsupported, Version: ver, Message: "Claude CLI 2.1.318+ required: " + ver}
-		}
 		authOut, err := cliCommand(ctx, "claude", "auth", "status", "--json").Output()
 		if err == nil {
 			var auth struct {
@@ -304,9 +299,6 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 		if err != nil {
 			return BackendStatus{State: BackendStateError, Message: err.Error()}
 		}
-		if ver != supportedDshVersion {
-			return BackendStatus{State: BackendStateUnsupported, Version: ver, Message: dshVersionError(ver).Error()}
-		}
 		if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {
 			return BackendStatus{State: BackendStateUnauth, Version: ver, Message: dshCredentialError().Error()}
 		}
@@ -329,30 +321,6 @@ func ProbeBackend(kind model.BackendKind) BackendStatus {
 	default:
 		return BackendStatus{State: BackendStateMissing}
 	}
-}
-
-func claudeVersionOK(ver string) bool {
-	tok := strings.Fields(ver)
-	if len(tok) == 0 {
-		return false
-	}
-	parts := strings.Split(tok[0], ".")
-	if len(parts) < 3 {
-		return false
-	}
-	maj, err1 := strconv.Atoi(parts[0])
-	minV, err2 := strconv.Atoi(parts[1])
-	pat, err3 := strconv.Atoi(parts[2])
-	if err1 != nil || err2 != nil || err3 != nil {
-		return false
-	}
-	if maj != 2 {
-		return maj > 2
-	}
-	if minV != 1 {
-		return minV > 1
-	}
-	return pat >= 318
 }
 
 func (c *Controller) probeAllBackendsAsync() {
@@ -1045,7 +1013,6 @@ func piSupportsApprove(ctx context.Context, path, dir string) bool {
 	defer cancel()
 	cmd := cliCommandAt(helpCtx, path, "--help")
 	cmd.Dir = dir
-	cmd.Env = restrictedCLIEnv(cmd.Env, nil)
 	cmd.WaitDelay = 500 * time.Millisecond
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -1135,8 +1102,7 @@ func listClaudeModels(parent context.Context) ([]ModelOption, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		scanner := newLineReader(stdout)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if !strings.HasPrefix(line, "{") {
@@ -1220,8 +1186,7 @@ func listCodexModels(parent context.Context) ([]ModelOption, error) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		scanner := newLineReader(stdout)
 
 		sendRPC := func(payload map[string]any) error {
 			raw, err := json.Marshal(payload)
@@ -1289,8 +1254,8 @@ func listCodexModels(parent context.Context) ([]ModelOption, error) {
 
 		var opts []ModelOption
 		var cursor any
-		for page := 0; page < 20; page++ {
-			reqID := 2 + page
+		seenCursors := make(map[string]bool)
+		for reqID := 2; ; reqID++ {
 			if err := sendRPC(map[string]any{
 				"id":     reqID,
 				"method": "model/list",
@@ -1333,9 +1298,10 @@ func listCodexModels(parent context.Context) ([]ModelOption, error) {
 				opts = append(opts, ModelOption{Value: val, Label: lbl})
 			}
 			nextCur, _ := res["nextCursor"].(string)
-			if nextCur == "" {
+			if nextCur == "" || seenCursors[nextCur] {
 				break
 			}
+			seenCursors[nextCur] = true
 			cursor = nextCur
 		}
 		done <- result{opts: opts}
@@ -1401,7 +1367,7 @@ func startMCPBridge(ctrl *Controller, turn *assistantTurn) (*mcpBridgeServer, er
 			Method  string         `json:"method"`
 			Params  map[string]any `json:"params"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxToolArgsBytes)).Decode(&rpc); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&rpc); err != nil {
 			writeRPCError(w, rpc.ID, -32700, "invalid JSON")
 			return
 		}
@@ -1438,8 +1404,8 @@ func startMCPBridge(ctrl *Controller, turn *assistantTurn) (*mcpBridgeServer, er
 			}
 			writeRPCResult(w, rpc.ID, map[string]any{"tools": tools})
 		case "tools/call":
-			if !turn.allowTool() {
-				writeRPCError(w, rpc.ID, -32000, "Tool limit reached or turn finished")
+			if turn.ctx.Err() != nil {
+				writeRPCError(w, rpc.ID, -32000, "Turn finished")
 				return
 			}
 			name, _ := rpc.Params["name"].(string)
@@ -1484,7 +1450,7 @@ func startMCPBridge(ctrl *Controller, turn *assistantTurn) (*mcpBridgeServer, er
 	})
 
 	srv := &http.Server{
-		Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 15 * time.Second,
+		Handler:     mux,
 		BaseContext: func(net.Listener) context.Context { return turn.ctx },
 	}
 	go func() {
@@ -1603,9 +1569,7 @@ func (c *Controller) startExternalTurn(turn *assistantTurn, kind model.BackendKi
 
 func cliTurnPrompt(scope notebookScope, messages []model.ChatMessage, userIndex int) string {
 	var entries []string
-	remaining := 16_000
-	truncatedHistory := false
-	for i := userIndex - 1; i >= 0; i-- {
+	for i := 0; i < userIndex; i++ {
 		m := messages[i]
 		if m.Role != "user" && m.Role != "assistant" {
 			continue
@@ -1617,18 +1581,7 @@ func cliTurnPrompt(scope notebookScope, messages []model.ChatMessage, userIndex 
 		if strings.TrimSpace(raw) == "" {
 			continue
 		}
-		if remaining <= 0 || len(entries) >= 16 {
-			truncatedHistory = true
-			break
-		}
-		rawRunes := utf8.RuneCountInString(raw)
-		text := truncateRunes(raw, remaining)
-		if rawRunes > remaining {
-			truncatedHistory = true
-			text += "\n... (history entry truncated)"
-		}
-		remaining -= utf8.RuneCountInString(text)
-		entries = append(entries, m.Role+": "+text)
+		entries = append(entries, m.Role+": "+raw)
 	}
 	m := messages[userIndex]
 	curText := userMessageModelText(m, true)
@@ -1639,11 +1592,8 @@ func cliTurnPrompt(scope notebookScope, messages []model.ChatMessage, userIndex 
 	var prompt strings.Builder
 	prompt.WriteString(ctxHeader)
 	prompt.WriteString("\n\nPrevious chat messages:\n")
-	if truncatedHistory {
-		prompt.WriteString("(Earlier conversation history truncated)\n")
-	}
-	for i := len(entries) - 1; i >= 0; i-- {
-		prompt.WriteString(entries[i])
+	for _, entry := range entries {
+		prompt.WriteString(entry)
 		prompt.WriteString("\n")
 	}
 	prompt.WriteString("\nCurrent user message:\n")
@@ -1686,8 +1636,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		_ = root.Close()
 		workDir = turn.root
 	}
-	processCtx, noteActivity, stopIdleTimer := withCLIIdleTimeout(turn.ctx, cliIdleTimeout)
-	defer stopIdleTimer()
+	processCtx := turn.ctx
 
 	var bridge *mcpBridgeServer
 	if kind == model.BackendClaude || kind == model.BackendCodex || kind == model.BackendAgy {
@@ -1699,7 +1648,6 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	}
 
 	var args []string
-	var authVars []string
 	switch kind {
 	case model.BackendClaude:
 		mcpCfg, _ := json.Marshal(map[string]any{
@@ -1725,20 +1673,17 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		if modelName != "" && modelName != "default" {
 			args = append(args, "--model", modelName)
 		}
-		authVars = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
 
 	case model.BackendCodex:
 		// This per-turn bridge enforces notebook access and keeps edits in Block's review flow.
 		config := fmt.Sprintf("mcp_servers={block={url=%q,bearer_token_env_var=%q,default_tools_approval_mode=\"approve\"}}", bridge.addr, "BLOCK_MCP_TOKEN")
 		args = []string{"-c", config, "-c", fmt.Sprintf("features.shell_tool=%t", turn.nativeTools), "app-server"}
-		authVars = []string{"OPENAI_API_KEY", "CODEX_HOME"}
 
 	case model.BackendDsh:
-		args, err = dshCLIArgs(processCtx, turn.cliPath, dir, turn.nativeTools)
+		args, err = dshCLIArgs(dir, turn.nativeTools)
 		if err != nil {
 			return err
 		}
-		authVars = []string{"DEEPSEEK_API_KEY"}
 
 	case model.BackendPi:
 		args = []string{"--mode", "json", "--thinking", turn.thinking}
@@ -1751,7 +1696,6 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		if modelName != "" && modelName != "default" {
 			args = append(args, "--model", modelName)
 		}
-		authVars = []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"}
 
 	case model.BackendAgy:
 		args = []string{"acp", "--process-per-session"}
@@ -1760,17 +1704,18 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 		} else {
 			args = append(args, "--sandbox", "--include-default-customizations=false")
 		}
-		authVars = []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_CONFIG"}
 	}
 
 	cmd := cliCommandAt(processCtx, turn.cliPath, args...)
 	cmd.WaitDelay = 3 * time.Second
 	cmd.Dir = workDir
-	cmd.Env = restrictedCLIEnv(cmd.Env, authVars)
+	if kind == model.BackendClaude {
+		cmd.Env = envWithout(cmd.Env, "CLAUDECODE")
+	}
 	if kind == model.BackendCodex {
 		cmd.Env = append(cmd.Env, "BLOCK_MCP_TOKEN="+bridge.token)
 	}
-	if kind == model.BackendDsh {
+	if kind == model.BackendDsh && !turn.nativeTools {
 		cmd.Env = append(cmd.Env, "DSH_HOME="+filepath.Join(dir, "dsh-home"))
 	}
 
@@ -1788,8 +1733,8 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	if err != nil {
 		return err
 	}
-	stderrBuf := &limitedBuffer{limit: 16 * 1024}
-	cmd.Stderr = stderrBuf
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -1797,9 +1742,7 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	stopClosingStdout := context.AfterFunc(processCtx, func() { _ = stdout.Close() })
 	defer stopClosingStdout()
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	scanner.Split(cliActivitySplit(noteActivity))
+	scanner := newLineReader(stdout)
 	switch kind {
 	case model.BackendCodex:
 		err = c.streamCodex(turn, scanner, stdin, workDir, prompt, modelName)
@@ -1852,30 +1795,6 @@ func (c *Controller) runCLIAdapterProcess(turn *assistantTurn, kind model.Backen
 	return errors.Join(err, waitErr)
 }
 
-type limitedBuffer struct {
-	buf   bytes.Buffer
-	limit int
-}
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	rem := b.limit - b.buf.Len()
-	if rem > 0 {
-		if len(p) > rem {
-			_, _ = b.buf.Write(p[:rem])
-		} else {
-			_, _ = b.buf.Write(p)
-		}
-	}
-	return len(p), nil
-}
-
-func (b *limitedBuffer) String() string {
-	return b.buf.String()
-}
-
 func rpcIDMatches(id any, wanted string) bool {
 	if wanted == "" || id == nil {
 		return false
@@ -1918,23 +1837,7 @@ func trimBlockMCPToolPrefix(name string) (string, bool) {
 	return "", false
 }
 
-func restrictedCLIEnv(env []string, authVars []string) []string {
-	allowed := append([]string{"HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "TMP", "TEMP",
-		"APPDATA", "LOCALAPPDATA", "USERPROFILE", "SystemRoot", "LANG", "LC_ALL"}, authVars...)
-	var result []string
-	for _, entry := range env {
-		name, _, _ := strings.Cut(entry, "=")
-		for _, key := range allowed {
-			if strings.EqualFold(name, key) {
-				result = append(result, entry)
-				break
-			}
-		}
-	}
-	return result
-}
-
-func (c *Controller) streamCodex(turn *assistantTurn, scanner *bufio.Scanner, stdin io.Writer, dir, prompt, modelName string) error {
+func (c *Controller) streamCodex(turn *assistantTurn, scanner *lineReader, stdin io.Writer, dir, prompt, modelName string) error {
 	out := json.NewEncoder(stdin)
 	send := func(id int, method string, params any) error {
 		frame := map[string]any{"method": method, "params": params}
@@ -2067,7 +1970,7 @@ func (c *Controller) streamCodex(turn *assistantTurn, scanner *bufio.Scanner, st
 	return err
 }
 
-func (c *Controller) streamAgy(turn *assistantTurn, scanner *bufio.Scanner, stdin io.Writer, dir, prompt, modelName string, bridge *mcpBridgeServer) error {
+func (c *Controller) streamAgy(turn *assistantTurn, scanner *lineReader, stdin io.Writer, dir, prompt, modelName string, bridge *mcpBridgeServer) error {
 	out := json.NewEncoder(stdin)
 	send := func(id int, method string, params any) error {
 		frame := map[string]any{

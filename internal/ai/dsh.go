@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -17,35 +16,16 @@ import (
 	"block/internal/theme"
 )
 
-// The SDK profile's plugin IDs are version-specific. Check the installed
-// runtime before relying on the patch to disable its local capabilities.
-const supportedDshVersion = "0.2.2-rc.5"
-
 func dshVersion(ctx context.Context) (string, error) {
 	out, err := cliCommand(ctx, "dsh", "--version").Output()
 	return strings.TrimSpace(string(out)), err
-}
-
-func dshVersionError(version string) error {
-	return fmt.Errorf(theme.Tr("Block 支持 dsh %s，当前为 %s。", "Block supports dsh %s. Found %s."), supportedDshVersion, version)
 }
 
 func dshCredentialError() error {
 	return errors.New(theme.Tr("请为 Block 的启动环境设置 DEEPSEEK_API_KEY。", "Set DEEPSEEK_API_KEY in Block's launch environment."))
 }
 
-func dshCLIArgs(ctx context.Context, executable, settingsDir string, nativeTools bool) ([]string, error) {
-	versionCommand := cliCommandAt(ctx, executable, "--version")
-	versionCommand.Dir = settingsDir
-	versionCommand.Env = restrictedCLIEnv(versionCommand.Env, nil)
-	output, err := versionCommand.Output()
-	if err != nil {
-		return nil, err
-	}
-	version := strings.TrimSpace(string(output))
-	if version != supportedDshVersion {
-		return nil, dshVersionError(version)
-	}
+func dshCLIArgs(settingsDir string, nativeTools bool) ([]string, error) {
 	if strings.TrimSpace(os.Getenv("DEEPSEEK_API_KEY")) == "" {
 		return nil, dshCredentialError()
 	}
@@ -54,16 +34,8 @@ func dshCLIArgs(ctx context.Context, executable, settingsDir string, nativeTools
 	profile := "sdk-minimal"
 	if nativeTools {
 		profile = "sdk"
-		// The user enabled native tools. The Block adapter handles foreground
-		// turns, so disable background jobs and tools without a host UI.
 		patch.WriteString("- id: sandbox-policy\n  config:\n    mode: danger-full-access\n    workspaceRoot: !!js process.cwd()\n")
 		patch.WriteString("- id: approval\n  config:\n    policy: never\n")
-		for _, id := range []string{
-			"session-telemetry-otel", "session-log-deepseek", "plugin-package-inventory-deepseek",
-			"tool-plugin-manager", "tool-schedule", "schedule", "tool-ask-user",
-		} {
-			fmt.Fprintf(&patch, "- id: %s\n  disabled: true\n", id)
-		}
 	} else {
 		for _, id := range []string{
 			"persistent-bash", "persistent-pwsh", "terminal-bash", "terminal-pwsh",
@@ -81,7 +53,7 @@ func dshCLIArgs(ctx context.Context, executable, settingsDir string, nativeTools
 	return []string{"--profile", profile, "--patch", path}, nil
 }
 
-func (c *Controller) streamDsh(turn *assistantTurn, scanner *bufio.Scanner, stdin io.Writer, dir, prompt, modelName string) error {
+func (c *Controller) streamDsh(turn *assistantTurn, scanner *lineReader, stdin io.Writer, dir, prompt, modelName string) error {
 	nativeTools := turn.nativeTools
 	var session [16]byte
 	if _, err := rand.Read(session[:]); err != nil {

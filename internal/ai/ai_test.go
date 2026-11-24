@@ -1912,7 +1912,7 @@ func TestPageTrajectoryAndEmptyPageIDGuards(t *testing.T) {
 	}
 	turn := &assistantTurn{notebookScope: scopeSwitched, convID: conv.ID, userIndex: len(conv.Messages) - 2}
 	ctrl.mu.RLock()
-	builtinMsgs := ctrl.buildBuiltinAPIMessagesLocked(turn, 0)
+	builtinMsgs := ctrl.buildBuiltinAPIMessagesLocked(turn)
 	ctrl.mu.RUnlock()
 	sysText, _ := builtinMsgs[0]["content"].(string)
 	if !strings.Contains(sysText, "会话起点页：alpha") || !strings.Contains(sysText, "本条发送时打开的页面：beta") {
