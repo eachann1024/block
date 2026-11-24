@@ -170,6 +170,7 @@ func renderMindmapRaster(root *Node, layout LayoutMode, pal theme.Palette) (*ima
 				FillBackground: true,
 				Background:     bg,
 				ForceLabels:    true,
+				ExportMode:     true,
 			})
 		})
 	}, renderW, renderH, renderScale)

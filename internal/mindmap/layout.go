@@ -22,8 +22,12 @@ const (
 	layoutLeafGap     float32 = 3
 	layoutTaskBox     float32 = 13
 	layoutTaskGap     float32 = 5
+	layoutLinkBadge   float32 = 16
+	layoutLinkGap     float32 = 5
 	layoutFoldOffset  float32 = 13
 	layoutFoldRadius  float32 = 8.5
+	layoutActionBtnR  float32 = 7.5
+	layoutActionGap   float32 = 17
 )
 
 // Bounds holds the world-space bounding box of a laid-out mind map.
@@ -63,6 +67,9 @@ const (
 	HitNode
 	HitCheckbox
 	HitFoldBadge
+	HitLinkBadge
+	HitHoverFold
+	HitHoverAdd
 )
 
 // HitResult identifies the clicked mind map element.
@@ -127,9 +134,10 @@ type measureKey struct {
 	text    string
 	depth   int
 	hasTask bool
+	hasLink bool
 }
 
-// MeasureNodeWidth returns the horizontal DIP width of node n, caching by (text, depth, hasTask).
+// MeasureNodeWidth returns the horizontal DIP width of node n, caching by (text, depth, hasTask, hasLink).
 func (mc *MeasureCache) MeasureNodeWidth(n *Node, tm TextMeasurer) float32 {
 	w, _ := mc.MeasureNodeSize(n, tm)
 	return w
@@ -142,20 +150,21 @@ func (mc *MeasureCache) MeasureNodeSize(n *Node, tm TextMeasurer) (float32, floa
 	if mc != nil && mc.overrideID != 0 && n.ID == mc.overrideID {
 		text = mc.overrideText
 	}
+	hasLink := strings.TrimSpace(n.Link) != ""
 	if mc == nil {
-		return estimateNodeSizeText(text, n.Depth, n.Task != nil, tm)
+		return estimateNodeSizeText(text, n.Depth, n.Task != nil, hasLink, tm)
 	}
 	if mc.sizes == nil {
 		mc.sizes = make(map[measureKey]nodeSize, 64)
 	}
-	k := measureKey{text: text, depth: min(n.Depth, 2), hasTask: n.Task != nil}
+	k := measureKey{text: text, depth: min(n.Depth, 2), hasTask: n.Task != nil, hasLink: hasLink}
 	if sz, ok := mc.sizes[k]; ok {
 		return sz.w, sz.h
 	}
 	if len(mc.sizes) > 8192 {
 		clear(mc.sizes)
 	}
-	w, h := estimateNodeSizeText(text, n.Depth, n.Task != nil, tm)
+	w, h := estimateNodeSizeText(text, n.Depth, n.Task != nil, hasLink, tm)
 	if tm != nil {
 		mc.sizes[k] = nodeSize{w: w, h: h}
 	}
@@ -215,7 +224,7 @@ func fallbackLineWidth(line string, sz float32) float32 {
 	return units * sz
 }
 
-func estimateNodeSizeText(text string, depth int, hasTask bool, tm TextMeasurer) (float32, float32) {
+func estimateNodeSizeText(text string, depth int, hasTask, hasLink bool, tm TextMeasurer) (float32, float32) {
 	lines := strings.Split(text, "\n")
 	sz := nodeFontSize(depth)
 	wt := nodeFontWeight(depth)
@@ -245,6 +254,9 @@ func estimateNodeSizeText(text string, depth int, hasTask bool, tm TextMeasurer)
 	}
 	if hasTask {
 		padX += layoutTaskBox + layoutTaskGap
+	}
+	if hasLink {
+		padX += layoutLinkBadge + layoutLinkGap
 	}
 	minW := float32(44)
 	if depth == 0 {
@@ -425,11 +437,198 @@ func FitCamera(bounds Bounds, vw, vh, padX, padY float32) Camera {
 	}
 }
 
-// HitTest finds which node, task checkbox, or fold badge lies under world point (wx, wy).
-func HitTest(root *Node, wx, wy float32) HitResult {
+type worldCircle struct {
+	cx, cy, r float32
+}
+
+func (c worldCircle) hit(wx, wy, pad float32) bool {
+	dx, dy := wx-c.cx, wy-c.cy
+	rr := c.r + pad
+	return dx*dx+dy*dy <= rr*rr
+}
+
+func nodePadRight(n *Node) float32 {
+	switch n.Depth {
+	case 0:
+		return 14
+	case 1:
+		return 10
+	default:
+		return 6
+	}
+}
+
+const (
+	minLinkBadgeScreenR float32 = 5.5
+	minActionBtnScreenR float32 = 6.0
+)
+
+func effectiveWorldRadius(worldR, scale, minScreenR float32) float32 {
+	if scale <= 0 {
+		scale = 1
+	}
+	if minScreenR <= 0 {
+		return worldR
+	}
+	return max(worldR, minScreenR/scale)
+}
+
+func nodeLinkBadgeCircle(n *Node) worldCircle {
+	cx := n.X + n.W - nodePadRight(n) - layoutLinkBadge*0.5
+	cy := nodeFirstLineCenterY(n)
+	return worldCircle{cx: cx, cy: cy, r: layoutLinkBadge * 0.5}
+}
+
+func nodeLinkBadgeCircleAtScale(n *Node, scale float32) worldCircle {
+	base := nodeLinkBadgeCircle(n)
+	base.r = effectiveWorldRadius(base.r, scale, minLinkBadgeScreenR)
+	return base
+}
+
+func nodeActionButtonsAtScale(n *Node, readOnly bool, scale float32) (foldBtn worldCircle, showFold bool, addBtn worldCircle, showAdd bool) {
+	if n == nil {
+		return
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	r := effectiveWorldRadius(layoutActionBtnR, scale, minActionBtnScreenR)
+	minGap := max(float32(layoutActionGap), r*2+4/scale)
+	edgeGap := max(float32(11), r+3/scale)
+	ay := n.Y
+	if n.Depth > 1 {
+		ay = n.Y + n.H/2
+	}
+	dir := n.Dir
+	if dir == 0 {
+		dir = 1
+	}
+	edgeX := n.X + n.W
+	sign := float32(1)
+	if dir < 0 {
+		edgeX = n.X
+		sign = -1
+	}
+	if n.Folded && len(n.Children) > 0 {
+		if !readOnly {
+			showAdd = true
+			addBtn = worldCircle{
+				cx: edgeX + sign*(layoutFoldOffset+layoutFoldRadius+r+4/scale),
+				cy: ay,
+				r:  r,
+			}
+		}
+		return
+	}
+	if len(n.Children) > 0 {
+		showFold = true
+		foldBtn = worldCircle{cx: edgeX + sign*edgeGap, cy: ay, r: r}
+		if !readOnly {
+			showAdd = true
+			addBtn = worldCircle{cx: edgeX + sign*(edgeGap+minGap), cy: ay, r: r}
+		}
+		return
+	}
+	if !readOnly {
+		showAdd = true
+		addBtn = worldCircle{cx: edgeX + sign*max(float32(12), r+3/scale), cy: ay, r: r}
+	}
+	return
+}
+
+func isNodeVisibleInTree(n *Node) bool {
+	if n == nil {
+		return false
+	}
+	for p := n.Parent; p != nil; p = p.Parent {
+		if p.Folded {
+			return false
+		}
+	}
+	return true
+}
+
+// HitTestWithActions extends HitTestAtScale by testing the floating collapse (−) and add (+)
+// action buttons on activeIDs (typically [HoveredID, SelectedID]) and preserving a small
+// hover bridge between the node edge and those buttons.
+func HitTestWithActions(root *Node, activeIDs [2]int, readOnly bool, wx, wy, scale float32) HitResult {
 	if root == nil {
 		return HitResult{}
 	}
+	if scale <= 0 {
+		scale = 1
+	}
+	hitPad := 2.0 / scale
+	seen := [2]int{}
+	for idx, id := range activeIDs {
+		if id == 0 || (idx == 1 && id == seen[0]) {
+			continue
+		}
+		seen[idx] = id
+		n := root.FindByID(id)
+		if n == nil || !isNodeVisibleInTree(n) {
+			continue
+		}
+		foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
+		if showFold && foldBtn.hit(wx, wy, hitPad) {
+			return HitResult{Kind: HitHoverFold, Node: n}
+		}
+		if showAdd && addBtn.hit(wx, wy, hitPad) {
+			return HitResult{Kind: HitHoverAdd, Node: n}
+		}
+	}
+
+	hit := HitTestAtScale(root, wx, wy, scale)
+	if hit.Kind != HitNone {
+		return hit
+	}
+
+	// Keep hover sticky across the small gap between the hovered node's edge and its action buttons.
+	if activeIDs[0] != 0 {
+		if n := root.FindByID(activeIDs[0]); n != nil && isNodeVisibleInTree(n) {
+			foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, readOnly, scale)
+			if showFold || showAdd {
+				ay := n.Y
+				if n.Depth > 1 {
+					ay = n.Y + n.H/2
+				}
+				minX, maxX := n.X, n.X+n.W
+				btnR := float32(0)
+				if showFold {
+					minX = min(minX, foldBtn.cx-foldBtn.r-hitPad)
+					maxX = max(maxX, foldBtn.cx+foldBtn.r+hitPad)
+					btnR = max(btnR, foldBtn.r)
+				}
+				if showAdd {
+					minX = min(minX, addBtn.cx-addBtn.r-hitPad)
+					maxX = max(maxX, addBtn.cx+addBtn.r+hitPad)
+					btnR = max(btnR, addBtn.r)
+				}
+				top := min(n.Y-n.H/2, ay-btnR-hitPad)
+				bot := max(n.Y+n.H/2, ay+btnR+hitPad)
+				if wx >= minX && wx <= maxX && wy >= top && wy <= bot {
+					return HitResult{Kind: HitNone, Node: n}
+				}
+			}
+		}
+	}
+	return HitResult{}
+}
+
+// HitTest finds which node, link badge, task checkbox, or fold badge lies under world point (wx, wy).
+func HitTest(root *Node, wx, wy float32) HitResult {
+	return HitTestAtScale(root, wx, wy, 1)
+}
+
+// HitTestAtScale matches the rendered minimum screen-space geometry for badges at any zoom level.
+func HitTestAtScale(root *Node, wx, wy, scale float32) HitResult {
+	if root == nil {
+		return HitResult{}
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	badgePad := 2.0 / scale
 	var hit HitResult
 	var walk func(n *Node) bool
 	walk = func(n *Node) bool {
@@ -447,6 +646,15 @@ func HitTest(root *Node, wx, wy float32) HitResult {
 			r := layoutFoldRadius + 4
 			if dx*dx+dy*dy <= r*r {
 				hit = HitResult{Kind: HitFoldBadge, Node: n}
+				return true
+			}
+		}
+
+		// Check link badge using the exact scale-clamped circle geometry used for painting.
+		if strings.TrimSpace(n.Link) != "" {
+			lb := nodeLinkBadgeCircleAtScale(n, scale)
+			if lb.hit(wx, wy, badgePad) {
+				hit = HitResult{Kind: HitLinkBadge, Node: n}
 				return true
 			}
 		}
@@ -559,13 +767,24 @@ func nodeFirstLineCenterY(n *Node) float32 {
 type PaintOptions struct {
 	SelectedID int
 	HoveredID  int
+	HoveredHit HitKind
 	EditingID  int
 	Palette    theme.Palette
-	// Background fills the viewport before painting if transparent is false.
+	// Background fills the viewport before painting if FillBackground is true.
 	FillBackground bool
 	Background     ui.Color
 	// ForceLabels keeps node text visible even at small export scales.
 	ForceLabels bool
+	ReadOnly    bool
+	ExportMode  bool
+
+	// LinkStatusFn classifies a node's link target for visual badge styling.
+	LinkStatusFn func(target string) LinkStatus
+
+	// Canvas find highlight state.
+	FindActive    bool
+	FindMatchIDs  map[int]bool
+	FindCurrentID int
 
 	// Drag-and-drop preview state (all zero when not dragging).
 	DragNodeID   int
@@ -618,6 +837,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 			col := branches[n.Branch%len(branches)]
 			if draggedNode != nil && draggedNode.IsAncestorOf(n) {
 				col = col.Alpha(0.35)
+			} else if opt.FindActive && !opt.FindMatchIDs[n.ID] {
+				col = col.Alpha(0.28)
 			}
 			if n.Parent != nil {
 				par := n.Parent
@@ -733,11 +954,27 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		}
 		paintEdges(root)
 
-		// Pass 2: Nodes, checkboxes, labels, fold badges, hover & selection rings.
+		// Pass 2: Nodes, checkboxes, labels, link badges, fold badges, hover & selection rings.
+		resolveLinkStatus := func(raw string) LinkStatus {
+			if strings.TrimSpace(raw) == "" {
+				return LinkStatusNone
+			}
+			if opt.LinkStatusFn != nil {
+				return opt.LinkStatusFn(raw)
+			}
+			if ClassifyLink(raw) == LinkWeb {
+				return LinkStatusExternal
+			}
+			return LinkStatusValid
+		}
+
 		var paintNodes func(n *Node)
 		paintNodes = func(n *Node) {
 			col := branches[n.Branch%len(branches)]
 			dimmed := draggedNode != nil && draggedNode.IsAncestorOf(n)
+			isFindMatch := opt.FindActive && opt.FindMatchIDs[n.ID]
+			isFindCurrent := opt.FindActive && n.ID == opt.FindCurrentID
+			findDimmed := opt.FindActive && !isFindMatch
 			nodeVisible := n.X+n.W >= visMinX && n.X <= visMaxX && n.Y+n.H/2 >= visMinY && n.Y-n.H/2 <= visMaxY
 
 			if nodeVisible {
@@ -750,6 +987,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				isEditing := n.ID == opt.EditingID
 				isSelected := n.ID == opt.SelectedID && !isEditing
 				isHovered := n.ID == opt.HoveredID && !isSelected && !isEditing && opt.DragNodeID == 0
+				hasLink := strings.TrimSpace(n.Link) != ""
+				linkStatus := LinkStatusNone
+				if hasLink {
+					linkStatus = resolveLinkStatus(n.Link)
+				}
 
 				pad := float32(3) * scale
 				ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
@@ -761,6 +1003,12 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 
 				leafR := ui.Rect{X: sx, Y: sy, W: sw, H: max((n.H-layoutLeafGap)*scale, 1)}
 				leafRad := theme.RadiusSM * scale
+				dimFactor := float32(1)
+				if dimmed {
+					dimFactor = 0.35
+				} else if findDimmed {
+					dimFactor = 0.28
+				}
 
 				switch n.Depth {
 				case 0:
@@ -775,7 +1023,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						p.Fill(rect, pal.Text, rootRad)
 						p.Stroke(rect, pal.Accent, rootRad, max(1.5*scale, 1.2))
 					} else {
-						p.Fill(rect, pal.Text, rootRad)
+						rootBG := pal.Text
+						if dimFactor < 1 {
+							rootBG = rootBG.Alpha(dimFactor)
+						}
+						p.Fill(rect, rootBG, rootRad)
 					}
 				case 1:
 					rad := theme.RadiusMD * scale
@@ -799,7 +1051,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							fillCol = pal.SelectionBG
 							strokeCol = pal.Accent
 							strokeW = max(1.5*scale, 1.2)
-							if dimmed {
+							if dimFactor < 1 {
 								fillCol = fillCol.Alpha(0.45)
 								strokeCol = strokeCol.Alpha(0.45)
 							}
@@ -807,9 +1059,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							if isHovered {
 								fillCol = col.Alpha(0.22)
 							}
-							if dimmed {
+							if dimFactor < 1 {
 								fillCol = col.Alpha(0.06)
-								strokeCol = col.Alpha(0.35)
+								strokeCol = col.Alpha(dimFactor)
 							}
 						}
 						p.Fill(rect, fillCol, rad)
@@ -817,8 +1069,6 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					}
 				default:
 					if isEditing {
-						// Expand symmetrically around leafR (+layoutLeafGap top & bottom) so the chip
-						// stays centered on nodeTextCenterY(n) (0px jump) while meeting the branch line cleanly.
 						editLeafR := ui.Rect{
 							X: sx,
 							Y: sy - layoutLeafGap*scale,
@@ -843,7 +1093,7 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						p.Stroke(editLeafR, col, leafRad, max(1.5*scale, 1.1))
 					} else if isSelected {
 						selBG := pal.SelectionBG
-						if dimmed {
+						if dimFactor < 1 {
 							selBG = selBG.Alpha(0.45)
 						}
 						p.Fill(leafR, selBG, leafRad)
@@ -853,6 +1103,32 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							hoverAlpha = 0.08
 						}
 						p.Fill(leafR, pal.Text.Alpha(hoverAlpha), leafRad)
+					}
+				}
+
+				// Find match highlight fill & active match focus ring.
+				if isFindMatch && !isEditing {
+					hlFill := pal.FindMatch
+					if isFindCurrent {
+						hlFill = pal.FindActive
+					}
+					switch n.Depth {
+					case 0:
+						p.Fill(ringR, hlFill.Alpha(0.45), ringRad)
+						if isFindCurrent {
+							p.Stroke(ringR, pal.FindRing, ringRad, max(2*scale, 1.6))
+						}
+					case 1:
+						rad := theme.RadiusMD * scale
+						p.Fill(rect, hlFill.Alpha(0.55), rad)
+						if isFindCurrent {
+							p.Stroke(ringR, pal.FindRing, ringRad, max(2*scale, 1.6))
+						}
+					default:
+						p.Fill(leafR, hlFill.Alpha(0.65), leafRad)
+						if isFindCurrent {
+							p.Stroke(leafR, pal.FindRing, leafRad, max(1.8*scale, 1.4))
+						}
 					}
 				}
 
@@ -876,8 +1152,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					cbRad := float32(3.5) * scale
 					if *n.Task {
 						acc := pal.Accent
-						if dimmed {
-							acc = acc.Alpha(0.35)
+						if dimFactor < 1 {
+							acc = acc.Alpha(dimFactor)
 						}
 						p.Fill(cbR, acc, cbRad)
 						var ck ui.Path
@@ -889,8 +1165,8 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					} else {
 						p.Fill(cbR, pal.Paper, cbRad)
 						borderC := pal.TextSecondary
-						if dimmed {
-							borderC = borderC.Alpha(0.35)
+						if dimFactor < 1 {
+							borderC = borderC.Alpha(dimFactor)
 						}
 						p.Stroke(cbR, borderC, cbRad, max(1.2*scale, 1))
 					}
@@ -901,16 +1177,20 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					txtColor := pal.Text
 					if n.Depth == 0 {
 						txtColor = pal.Paper
-					} else if strings.TrimSpace(n.Link) != "" {
-						txtColor = pal.Accent
+					} else if hasLink {
+						if linkStatus == LinkStatusBroken {
+							txtColor = pal.Warning
+						} else {
+							txtColor = pal.Accent
+						}
 					} else if isSelected && (n.Task == nil || !*n.Task) {
 						txtColor = pal.SelectionFG
 					}
 					if n.Task != nil && *n.Task {
 						txtColor = txtColor.Alpha(0.55)
 					}
-					if dimmed {
-						txtColor = txtColor.Alpha(0.35)
+					if dimFactor < 1 {
+						txtColor = txtColor.Alpha(dimFactor)
 					}
 
 					fontSize := nodeFontSize(n.Depth) * scale
@@ -926,6 +1206,11 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 						lineH := nodeLineHeight(n.Depth) * scale
 						totalH := float32(len(lines)) * lineH
 						textTop := wyToScreen(ty) - totalH*0.5
+
+						textAreaRight := n.X + n.W - nodePadRight(n)
+						if hasLink {
+							textAreaRight -= layoutLinkBadge + layoutLinkGap
+						}
 						for i, line := range lines {
 							if line == "" {
 								continue
@@ -939,7 +1224,12 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 							tw, th := p.MeasureText(0, sp)
 							drawX := wxToScreen(tx)
 							if n.Task == nil {
-								drawX = sx + (sw-tw)*0.5
+								if hasLink {
+									availW := max((textAreaRight-tx)*scale, tw)
+									drawX = wxToScreen(tx) + (availW-tw)*0.5
+								} else {
+									drawX = sx + (sw-tw)*0.5
+								}
 							}
 							lineCenterY := textTop + (float32(i)+0.5)*lineH
 							p.RichText(drawX, lineCenterY-th*0.5, 0, sp)
@@ -947,10 +1237,24 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					}
 				}
 
+				// Clickable link indicator badge on ALL depths (including root depth 0!).
+				if hasLink {
+					lb := nodeLinkBadgeCircle(n)
+					if !opt.ExportMode {
+						lb = nodeLinkBadgeCircleAtScale(n, scale)
+					}
+					badgeHot := !opt.ExportMode && n.ID == opt.HoveredID && opt.HoveredHit == HitLinkBadge
+					badgeAlpha := dimFactor
+					if isEditing {
+						badgeAlpha *= 0.45
+					}
+					paintLinkBadge(p, wxToScreen(lb.cx), wyToScreen(lb.cy), lb.r*scale, scale, pal, linkStatus, n.Depth == 0, badgeHot, badgeAlpha)
+				}
+
 				// Root node uses an outset selection pill ring; depth >= 1 uses soft selection tint.
 				if isSelected && n.Depth == 0 {
 					ringStroke := pal.Accent
-					if dimmed {
+					if dimFactor < 1 {
 						ringStroke = pal.Accent.Alpha(0.45)
 					}
 					p.Stroke(ringR, ringStroke, ringRad, max(1.6*scale, 1.2))
@@ -974,28 +1278,40 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				if n.Depth > 1 {
 					by = n.Y + n.H/2
 				}
-				if bx+layoutFoldRadius >= visMinX && bx-layoutFoldRadius <= visMaxX && by+layoutFoldRadius >= visMinY && by-layoutFoldRadius <= visMaxY {
+				if bx+layoutFoldRadius*2 >= visMinX && bx-layoutFoldRadius*2 <= visMaxX && by+layoutFoldRadius >= visMinY && by-layoutFoldRadius <= visMaxY {
 					bc := branches[0]
 					if n.Depth > 0 {
 						bc = branches[n.Branch%len(branches)]
 					}
+					dimFactor := float32(1)
 					if dimmed {
-						bc = bc.Alpha(0.35)
+						dimFactor = 0.35
+					} else if findDimmed {
+						dimFactor = 0.28
+					}
+					if dimFactor < 1 {
+						bc = bc.Alpha(dimFactor)
 					}
 					scx := wxToScreen(bx)
 					scy := wyToScreen(by)
 					sr := layoutFoldRadius * scale
-					badgeR := ui.Rect{X: scx - sr, Y: scy - sr, W: sr * 2, H: sr * 2}
-					p.Fill(badgeR, bg, sr)
-					p.Stroke(badgeR, bc, sr, max(1.2*scale, 1))
-					label := fmt.Sprintf("%d", n.DescendantCount())
-					fs := max(float32(10)*scale, 6)
+					label := fmt.Sprintf("+%d", n.DescendantCount())
+					fs := max(float32(9.5)*scale, 6)
 					txtC := pal.Text
-					if dimmed {
-						txtC = txtC.Alpha(0.35)
+					if dimFactor < 1 {
+						txtC = txtC.Alpha(dimFactor)
 					}
 					sp := ui.Span{Text: label, Size: fs, Weight: theme.WeightMono, Color: txtC}
 					tw, th := p.MeasureText(0, sp)
+					pillW := max(sr*2, tw+7*scale)
+					pillH := sr * 2
+					badgeR := ui.Rect{X: scx - pillW*0.5, Y: scy - pillH*0.5, W: pillW, H: pillH}
+					fillC := bg
+					if !opt.ExportMode && n.ID == opt.HoveredID && opt.HoveredHit == HitFoldBadge {
+						fillC = pal.Hover
+					}
+					p.Fill(badgeR, fillC, sr)
+					p.Stroke(badgeR, bc, sr, max(1.2*scale, 1))
 					p.RichText(scx-tw*0.5, scy-th*0.5, 0, sp)
 				}
 				return
@@ -1006,44 +1322,264 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 		}
 		paintNodes(root)
 
-		// Pass 3: Drag-and-drop insertion indicator and floating ghost pill.
-		if draggedNode != nil {
-			if opt.DragTargetID != 0 && (opt.DragPos == DropBefore || opt.DragPos == DropAfter) {
-				if target := root.FindByID(opt.DragTargetID); target != nil {
-					lineY := target.Y - target.H/2 - 4
-					if opt.DragPos == DropAfter {
-						lineY = target.Y + target.H/2 + 4
-					}
-					sx1 := wxToScreen(target.X)
-					sx2 := wxToScreen(target.X + target.W)
-					sy := wyToScreen(lineY)
-					p.Line(sx1, sy, sx2, sy, max(2.2*scale, 2), pal.Accent)
-					dotX := sx1
-					if target.Dir < 0 {
-						dotX = sx2
-					}
-					dotR := max(3.5*scale, 3)
-					p.Fill(ui.Rect{X: dotX - dotR, Y: sy - dotR, W: dotR * 2, H: dotR * 2}, pal.Accent, dotR)
+		// Pass 2.5: Floating hover/selected collapse (−) and quick-add (+) action circles.
+		if !opt.ExportMode && opt.EditingID == 0 && opt.DragNodeID == 0 {
+			paintActionsFor := func(nodeID int) {
+				if nodeID == 0 {
+					return
+				}
+				n := root.FindByID(nodeID)
+				if n == nil || !isNodeVisibleInTree(n) {
+					return
+				}
+				foldBtn, showFold, addBtn, showAdd := nodeActionButtonsAtScale(n, opt.ReadOnly, scale)
+				col := branches[n.Branch%len(branches)]
+				if n.Depth == 0 {
+					col = pal.Accent
+				}
+				if showFold {
+					hot := n.ID == opt.HoveredID && opt.HoveredHit == HitHoverFold
+					paintCanvasCircleAction(p, wxToScreen(foldBtn.cx), wyToScreen(foldBtn.cy), foldBtn.r*scale, scale, pal, col, false, hot)
+				}
+				if showAdd {
+					hot := n.ID == opt.HoveredID && opt.HoveredHit == HitHoverAdd
+					paintCanvasCircleAction(p, wxToScreen(addBtn.cx), wyToScreen(addBtn.cy), addBtn.r*scale, scale, pal, pal.Accent, true, hot)
 				}
 			}
+			if opt.SelectedID != 0 {
+				paintActionsFor(opt.SelectedID)
+			}
+			if opt.HoveredID != 0 && opt.HoveredID != opt.SelectedID {
+				paintActionsFor(opt.HoveredID)
+			}
+		}
 
-			// Floating ghost pill following pointer.
-			label := strings.ReplaceAll(strings.TrimSpace(draggedNode.Text), "\n", " ")
+		// Pass 3: Drag-and-drop insertion indicator and semantic floating ghost card.
+		if draggedNode != nil {
+			var targetNode *Node
+			if opt.DragTargetID != 0 {
+				targetNode = root.FindByID(opt.DragTargetID)
+			}
+			if targetNode != nil && (opt.DragPos == DropBefore || opt.DragPos == DropAfter) {
+				lineY := targetNode.Y - targetNode.H/2 - 4
+				if opt.DragPos == DropAfter {
+					lineY = targetNode.Y + targetNode.H/2 + 4
+				}
+				sx1 := wxToScreen(targetNode.X)
+				sx2 := wxToScreen(targetNode.X + targetNode.W)
+				sy := wyToScreen(lineY)
+				p.Line(sx1, sy, sx2, sy, max(2.2*scale, 2), pal.Accent)
+				dotX := sx1
+				if targetNode.Dir < 0 {
+					dotX = sx2
+				}
+				dotR := max(3.5*scale, 3)
+				p.Fill(ui.Rect{X: dotX - dotR, Y: sy - dotR, W: dotR * 2, H: dotR * 2}, pal.Accent, dotR)
+			}
+
+			// Floating ghost card following pointer with live drop-position semantics.
+			label := truncateRunes(strings.ReplaceAll(strings.TrimSpace(draggedNode.Text), "\n", " "), 18)
 			if label == "" {
 				label = " "
 			}
-			sp := ui.Span{Text: label, Size: theme.FontSmall, Weight: theme.WeightControl, Color: pal.Text}
-			tw, th := p.MeasureText(0, sp)
-			pillW := min(max(tw+theme.Space20, 64), 220)
+			titleSpan := ui.Span{Text: label, Size: theme.FontSmall, Weight: theme.WeightControl, Color: pal.Text}
+			tw, th := p.MeasureText(0, titleSpan)
+
+			hintText := ""
+			if targetNode != nil && opt.DragPos != DropNone {
+				tLbl := truncateRunes(strings.ReplaceAll(strings.TrimSpace(targetNode.Text), "\n", " "), 12)
+				if tLbl == "" {
+					tLbl = theme.Tr("节点", "Node")
+				}
+				switch opt.DragPos {
+				case DropInside:
+					hintText = theme.Tr("↳ 放入「"+tLbl+"」下", "↳ Into \""+tLbl+"\"")
+				case DropBefore:
+					hintText = theme.Tr("↑ 移到「"+tLbl+"」前", "↑ Before \""+tLbl+"\"")
+				case DropAfter:
+					hintText = theme.Tr("↓ 移到「"+tLbl+"」后", "↓ After \""+tLbl+"\"")
+				}
+			}
+
+			var hw, hh float32
+			var hintSpan ui.Span
+			if hintText != "" {
+				hintSpan = ui.Span{Text: hintText, Size: theme.FontMeta, Weight: theme.WeightControl, Color: pal.Accent}
+				hw, hh = p.MeasureText(0, hintSpan)
+			}
+
+			contentW := max(tw, hw)
+			pillW := min(max(contentW+theme.Space20, 76), 248)
 			pillH := max(th+theme.Space10, theme.HeightCompact)
+			if hintText != "" {
+				pillH = th + hh + theme.Space12 + 2
+			}
 			gx := r.X + opt.DragGhostX + theme.Space12
 			gy := r.Y + opt.DragGhostY - pillH*0.5
+			if gx+pillW > r.X+r.W-6 {
+				gx = r.X + opt.DragGhostX - pillW - theme.Space10
+			}
+			if gx < r.X+6 {
+				gx = r.X + 6
+			}
+			if gy+pillH > r.Y+r.H-6 {
+				gy = r.Y + r.H - pillH - 6
+			}
+			if gy < r.Y+6 {
+				gy = r.Y + 6
+			}
 			pillR := ui.Rect{X: gx, Y: gy, W: pillW, H: pillH}
-			p.Fill(pillR, pal.Menu.Alpha(0.94), theme.RadiusMD)
+			p.Fill(pillR, pal.Menu.Alpha(0.95), theme.RadiusMD)
 			p.Stroke(pillR, pal.Accent, theme.RadiusMD, 1.4)
 			p.Clip(pillR, theme.RadiusMD, func() {
-				p.RichText(gx+theme.Space10, gy+(pillH-th)*0.5, 0, sp)
+				if hintText == "" {
+					p.RichText(gx+theme.Space10, gy+(pillH-th)*0.5, 0, titleSpan)
+				} else {
+					p.RichText(gx+theme.Space10, gy+theme.Space6, 0, titleSpan)
+					p.RichText(gx+theme.Space10, gy+theme.Space6+th+2, 0, hintSpan)
+				}
 			})
 		}
 	})
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "…"
+}
+
+func paintLinkBadge(p *ui.Painter, cx, cy, sr, scale float32, pal theme.Palette, status LinkStatus, isRoot, isHot bool, alpha float32) {
+	if sr <= 0 {
+		return
+	}
+	r := ui.Rect{X: cx - sr, Y: cy - sr, W: sr * 2, H: sr * 2}
+	var bg, border, fg ui.Color
+	switch status {
+	case LinkStatusBroken:
+		if isRoot {
+			bg = pal.Warning
+			border = pal.Paper.Alpha(0.5)
+			fg = pal.Paper
+		} else {
+			bg = pal.WarningSurface
+			if isHot {
+				bg = pal.Warning.Alpha(0.24)
+			}
+			border = pal.Warning
+			fg = pal.Warning
+		}
+	default:
+		if isRoot {
+			bgAlpha := float32(0.18)
+			if isHot {
+				bgAlpha = 0.34
+			}
+			bg = pal.Paper.Alpha(bgAlpha)
+			border = pal.Paper.Alpha(0.45)
+			fg = pal.Paper
+		} else {
+			bgAlpha := float32(0.12)
+			if isHot {
+				bgAlpha = 0.26
+			}
+			bg = pal.Accent.Alpha(bgAlpha)
+			border = pal.Accent.Alpha(0.38)
+			if isHot {
+				border = pal.Accent
+			}
+			fg = pal.Accent
+		}
+	}
+	if alpha < 1 {
+		bg = bg.Alpha(alpha)
+		border = border.Alpha(alpha)
+		fg = fg.Alpha(alpha)
+	}
+
+	p.Fill(r, bg, sr)
+	p.Stroke(r, border, sr, max(1.0*scale, 0.9))
+
+	sw := max(1.3*scale, 1.0)
+	switch status {
+	case LinkStatusBroken:
+		// Crisp exclamation mark inside warning badge.
+		var ex ui.Path
+		ex.Cap(ui.RoundCap)
+		ex.MoveTo(cx, cy-sr*0.42)
+		ex.LineTo(cx, cy+sr*0.08)
+		p.StrokePath(&ex, sw, fg)
+		dotR := max(0.95*scale, 0.8)
+		p.Fill(ui.Rect{X: cx - dotR, Y: cy + sr*0.36 - dotR, W: dotR * 2, H: dotR * 2}, fg, dotR)
+	case LinkStatusExternal:
+		// Crisp external-link northeast arrow (↗).
+		d := sr * 0.38
+		var arr ui.Path
+		arr.Cap(ui.RoundCap).Join(ui.RoundJoin)
+		arr.MoveTo(cx-d, cy+d)
+		arr.LineTo(cx+d, cy-d)
+		arr.MoveTo(cx-d*0.1, cy-d)
+		arr.LineTo(cx+d, cy-d)
+		arr.LineTo(cx+d, cy+d*0.1)
+		p.StrokePath(&arr, sw, fg)
+	default:
+		// Crisp interlocking note-link glyph (two tilted link brackets + bridge).
+		d := sr * 0.42
+		var ln ui.Path
+		ln.Cap(ui.RoundCap).Join(ui.RoundJoin)
+		// Top-right hook
+		ln.MoveTo(cx-d*0.1, cy-d*0.55)
+		ln.LineTo(cx+d*0.45, cy-d*0.55)
+		ln.LineTo(cx+d*0.45, cy+d*0.05)
+		// Bottom-left hook
+		ln.MoveTo(cx+d*0.1, cy+d*0.55)
+		ln.LineTo(cx-d*0.45, cy+d*0.55)
+		ln.LineTo(cx-d*0.45, cy-d*0.05)
+		// Diagonal link bar
+		ln.MoveTo(cx-d*0.32, cy+d*0.32)
+		ln.LineTo(cx+d*0.32, cy-d*0.32)
+		p.StrokePath(&ln, sw, fg)
+	}
+}
+
+func paintCanvasCircleAction(p *ui.Painter, cx, cy, sr, scale float32, pal theme.Palette, accent ui.Color, isPlus, isHot bool) {
+	if sr <= 0 {
+		return
+	}
+	r := ui.Rect{X: cx - sr, Y: cy - sr, W: sr * 2, H: sr * 2}
+	bg := pal.Paper
+	border := accent.Alpha(0.55)
+	fg := pal.TextSecondary
+	if isPlus {
+		fg = accent
+	}
+	if isHot {
+		if isPlus {
+			bg = accent
+			border = accent
+			fg = pal.Paper
+		} else {
+			bg = pal.Hover
+			border = accent
+			fg = pal.Text
+		}
+	}
+	p.Fill(r, bg, sr)
+	p.Stroke(r, border, sr, max(1.1*scale, 1.0))
+	arm := sr * 0.44
+	sw := max(1.4*scale, 1.1)
+	var glyph ui.Path
+	glyph.Cap(ui.RoundCap)
+	glyph.MoveTo(cx-arm, cy)
+	glyph.LineTo(cx+arm, cy)
+	if isPlus {
+		glyph.MoveTo(cx, cy-arm)
+		glyph.LineTo(cx, cy+arm)
+	}
+	p.StrokePath(&glyph, sw, fg)
 }
