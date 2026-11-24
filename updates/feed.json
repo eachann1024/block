@@ -1,10 +1,72 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T06:04:44.414Z",
-  "latest_version": "1.0.924",
-  "latest_tag": "v1.0.924",
+  "updated_at": "2026-11-24T06:13:53.102Z",
+  "latest_version": "1.0.925",
+  "latest_tag": "v1.0.925",
   "releases": [
+    {
+      "version": "1.0.925",
+      "tag": "v1.0.925",
+      "published_at": "2026-11-24T06:13:52Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.925",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "主题：新增海洋纸思维导图分支配色方案。",
+          "思维导图：内置原生思维导图引擎与矢量渲染器，并支持六种数据格式的解析与导出。",
+          "编辑器：支持插入原生思维导图代码块，并提供全屏编辑模式与统一的撤销历史。",
+          "插件接口：新增思维导图状态接口，支持插件与工作区中的思维导图进行状态交互。"
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Themes: The theme options now include an Ocean Paper color palette for mind map branches.",
+          "Mind Maps: A native mind map engine provides vector rendering and supports six data formats.",
+          "Editor: The editor now supports native mind map code blocks with fullscreen editing and unified undo history.",
+          "Plugin API: New mind map state interfaces allow plugins to interact with workspace mind maps."
+        ],
+        "improvements": [],
+        "fixes": [],
+        "other": []
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-macos-arm64.dmg",
+          "size": 15734570,
+          "sha256": "1fe344041efa5c7d159d0e95a60b308c409e53d99a22f5bd17b87ee3c850b3e8"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-macos-x64.dmg",
+          "size": 17317200,
+          "sha256": "19f3e3dbacb42a2f73c937210a7978cc5889c5a377f7ebc7af2130e770be2ecd"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-windows-x64-setup.exe",
+          "size": 12660920,
+          "sha256": "8471643f383c5da8d73add162ca5f1311153b83d409c6e894ebd7e305185668f"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-linux-x64.deb",
+          "size": 11165530,
+          "sha256": "35d4896f9709e5579a47aebc99b5e1992955b3405754337d3ab02d9970aeae99"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.925/block-linux-x64.AppImage",
+          "size": 24173048,
+          "sha256": "2865657e3597c70fb757bb316a4646a21d075d5500f5dd0fd4b6ffcdc16097ee"
+        }
+      ]
+    },
     {
       "version": "1.0.924",
       "tag": "v1.0.924",
@@ -30,38 +92,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-macos-arm64.dmg",
-          "size": 15561422,
-          "sha256": "b0a9290aa17c49c55f29e64cb3c4f1112bcc26419519cc09a7cbd06fa7b9d1f1"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-macos-x64.dmg",
-          "size": 17141332,
-          "sha256": "ca793624c98a66604163d5a510ed4326f8e0b1189c4afaf5922eb2180f83cd4d"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-windows-x64-setup.exe",
-          "size": 12528395,
-          "sha256": "087cc3e016e4cbef257ea13ff0192f7ab9eca78357d5292a9bd6145a2b9dcdca"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-linux-x64.deb",
-          "size": 11064030,
-          "sha256": "d277a74b7131911395656b872ab106e14a44440ece95e920beb9c3d34791fe07"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.924/block-linux-x64.AppImage",
-          "size": 24041976,
-          "sha256": "791aca4a94669d2942700738d25ea02bbd8fa9c3d13030f9d667c590a2d7dde3"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.923",
@@ -1429,33 +1460,6 @@
         "fixes": [
           "Describe send all slot as the real send chip."
         ],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.875",
-      "tag": "v1.0.875",
-      "published_at": "2026-11-21T03:57:03Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.875",
-      "zh": {
-        "highlights": "",
-        "new": [
-          "打磨设置面板、快捷键与菜单界面细节。",
-          "打磨设置面板、快捷键与菜单界面细节。"
-        ],
-        "improvements": [],
-        "fixes": [],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [
-          "Add row icons and icon strip to plugin UI.",
-          "Expose real icons on titlebar slots."
-        ],
-        "improvements": [],
-        "fixes": [],
         "other": []
       },
       "assets": []
