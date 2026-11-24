@@ -123,6 +123,7 @@
    - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行", "body": "可选正文", "action": {"id": "open_settings", "label": "查看"}, "show_plugin_icon": true, "copy_text": "https://..."}`（字段均可选；`status` 非空时宿主会在右上角弹出对应 `tone` 的通知横幅，`tone` 支持 `"info"` / `"success"` / `"warning"`(`"warn"`) / `"error"`(`"danger"`)，默认 `"info"` 并自动附带插件图标，传 `"show_plugin_icon": false` 改用内置类型图标）。
      - `copy_text`：宿主把这段文本写入系统剪贴板，适合上传后返回链接。命令结束时 Block 可能在后台，插件无法调用需要窗口焦点的剪贴板接口，请用本字段。
      - 菜单栏来源的命令在 Block 窗口处于前台时以 Toast 提示 `status`，否则改为系统通知。
+     - 菜单栏来源的命令执行期间，图标旁显示 `…`；结束后 `status` 会在图标旁短暂显示约 4 秒（超长截断，悬停可看全文），系统通知关闭时用户也能看到反馈。命令无 `status` 时直接恢复插件自己的标题。
 
 2. **工作区 `plugin.event`**（Host -> Plugin，需 `"events:workspace"`）
    - 仅向**已启动运行中**的插件派发（5 秒超时），宿主**不会**为这类事件冷启动已停止的插件。
