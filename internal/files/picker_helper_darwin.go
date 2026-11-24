@@ -149,10 +149,18 @@ func runDarwinPickerHelperServer() {
 
 	writeResp(darwinPanelResponse{Ready: true})
 
-	// Main-thread state for active request cancellation.
+	// Pre-create NSSavePanel right after announcing open-panel readiness so
+	// export/save dialogs via the warm helper also open instantaneously.
 	var activeID int64
 	var activePanel objc.ID
 	parentPID := int32(os.Getppid())
+	postHelperMain(func() {
+		darwinWithAutoreleasePool(func() {
+			if darwinCachedSavePanel.panel == 0 && activePanel == 0 && darwinBundleIntact() {
+				_, _ = darwinEnsureCachedPanel(true)
+			}
+		})
+	})
 
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
@@ -219,6 +227,11 @@ func runDarwinPickerHelperServer() {
 					})
 					defer completion.Release()
 
+					targetLevel := cp.defaultLevel
+					if r.WindowLevel > targetLevel {
+						targetLevel = r.WindowLevel + 1
+					}
+					pickerSend(panel, "setLevel:", targetLevel)
 					darwinActivateSelf()
 					if !cp.shownOnce {
 						pickerSend(panel, "center")
@@ -472,7 +485,7 @@ func (m *darwinHelperManager) prewarmAsync() {
 	}()
 }
 
-func (m *darwinHelperManager) pick(ctx context.Context, req darwinPanelRequest, allowed func() bool) ([]string, error) {
+func (m *darwinHelperManager) pick(ctx context.Context, win *mygo.Window, req darwinPanelRequest, allowed func() bool) ([]string, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -515,13 +528,22 @@ func (m *darwinHelperManager) pick(ctx context.Context, req darwinPanelRequest, 
 
 		// Yield activation cooperatively to the helper PID on macOS 14+ so its
 		// NSOpenPanel/NSSavePanel immediately becomes key in front of Block.
+		// Also read the parent window level so floating windows like Quick Note
+		// never sit on top of the helper's panel.
 		if mygo.App.IsReady() {
 			helperPID := int32(h.pid)
+			var parentLevel int
 			mygo.RunOnMain(func() {
 				darwinWithAutoreleasePool(func() {
+					if win != nil {
+						if parent := objc.ID(win.NativeHandle()); parent != 0 {
+							parentLevel = objc.Send[int](parent, objc.RegisterName("level"))
+						}
+					}
 					darwinYieldActivationToPID(helperPID)
 				})
 			})
+			req.WindowLevel = parentLevel
 		}
 
 		if err := h.sendRequest(req); err != nil {
