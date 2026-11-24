@@ -19,7 +19,9 @@ import (
 	blockui "block/internal/ui"
 	"block/internal/updater"
 	"github.com/egoist/mygo"
+	_ "github.com/egoist/mygo/locales/ja"
 	_ "github.com/egoist/mygo/locales/zh-Hans"
+	_ "github.com/egoist/mygo/locales/zh-Hant"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -129,7 +131,7 @@ func main() {
 	}
 
 	mygo.App.SetName("Block")
-	mygo.App.SetLanguages("zh-Hans", "en")
+	mygo.App.SetLanguages("en", "zh-Hans", "zh-Hant", "ja")
 	if smokeFlag || os.Getenv("MYGO_AUTOMATION") != "" {
 		blockui.EnableSmokeMode()
 	}
