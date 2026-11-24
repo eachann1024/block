@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"block/internal/files"
@@ -112,13 +113,14 @@ func (e *SendError) sessionExpired() bool {
 
 // Report is everything one feedback submission carries.
 type Report struct {
-	Category    string
-	Message     string
-	Contact     string
-	AppVersion  string
-	Lang        string
-	Attachments []Attachment
-	Log         string // masked diagnostic log; empty = not attached
+	ClientRequestID string // optional idempotency key; auto-generated when empty
+	Category        string
+	Message         string
+	Contact         string
+	AppVersion      string
+	Lang            string
+	Attachments     []Attachment
+	Log             string // masked diagnostic log; empty = not attached
 }
 
 // PartState is the upload state of one part.
@@ -245,7 +247,8 @@ type Sender struct {
 	lastTick         time.Time
 }
 
-func newClientRequestID() string {
+// NewClientRequestID generates a 32-hex idempotency key for a feedback report.
+func NewClientRequestID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return fmt.Sprintf("req%016x", time.Now().UnixNano())
@@ -255,11 +258,15 @@ func newClientRequestID() string {
 
 // NewSender prepares a submission; nothing is sent until Start.
 func NewSender(r Report, onChange func()) *Sender {
+	reqID := strings.TrimSpace(r.ClientRequestID)
+	if reqID == "" {
+		reqID = NewClientRequestID()
+	}
 	s := &Sender{
 		report:          r,
 		endpoint:        Endpoint(),
 		clientToken:     ClientToken(),
-		clientRequestID: newClientRequestID(),
+		clientRequestID: reqID,
 		onChange:        onChange,
 		paths:           map[string]string{},
 		client: &http.Client{Transport: &http.Transport{
@@ -646,7 +653,39 @@ func (s *Sender) putPart(ctx context.Context, id string) *SendError {
 		s.mu.Unlock()
 	}
 
+	reqCtx, cancelReq := context.WithCancel(ctx)
+	defer cancelReq()
+
+	var (
+		stallMu   sync.Mutex
+		stallDone bool
+		sentBytes int64
+		stallTmr  *time.Timer
+	)
+	if size > 0 {
+		stallTmr = time.AfterFunc(uploadStallTimeout, cancelReq)
+		defer func() {
+			stallMu.Lock()
+			stallDone = true
+			stallTmr.Stop()
+			stallMu.Unlock()
+		}()
+	}
+
 	counted := &countingReader{r: body, onRead: func(n int) {
+		if stallTmr != nil {
+			stallMu.Lock()
+			sentBytes += int64(n)
+			if !stallDone {
+				if sentBytes >= size {
+					stallDone = true
+					stallTmr.Stop()
+				} else {
+					stallTmr.Reset(uploadStallTimeout)
+				}
+			}
+			stallMu.Unlock()
+		}
 		s.setPart(id, func(p *Part) {
 			p.Sent += int64(n)
 			s.snap.Sent += int64(n)
@@ -654,7 +693,7 @@ func (s *Sender) putPart(ctx context.Context, id string) *SendError {
 		s.notify(false)
 	}}
 	u := s.endpoint + "/reports/" + url.PathEscape(s.reportID) + "/parts/" + url.PathEscape(id)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, u, counted)
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPut, u, counted)
 	if err != nil {
 		return &SendError{Kind: ErrNotConfigured, Err: err}
 	}
@@ -663,6 +702,31 @@ func (s *Sender) putPart(ctx context.Context, id string) *SendError {
 	httpReq.Header.Set("X-Part-Name", url.PathEscape(name))
 	_, sendErr := s.do(httpReq)
 	return sendErr
+}
+
+const (
+	responseBodyTimeout = 30 * time.Second
+	uploadStallTimeout  = 60 * time.Second
+)
+
+func readResponseBody(ctx context.Context, body io.ReadCloser, limit int64, timeout time.Duration) ([]byte, error) {
+	var timedOut atomic.Bool
+	timer := time.AfterFunc(timeout, func() {
+		timedOut.Store(true)
+		_ = body.Close()
+	})
+	defer timer.Stop()
+	data, err := io.ReadAll(io.LimitReader(body, limit))
+	if err != nil {
+		if timedOut.Load() && ctx.Err() == nil {
+			return nil, context.DeadlineExceeded
+		}
+		return nil, err
+	}
+	if timedOut.Load() && ctx.Err() == nil {
+		return nil, context.DeadlineExceeded
+	}
+	return data, nil
 }
 
 func parseRetryAfter(raw string) time.Duration {
@@ -694,7 +758,10 @@ func (s *Sender) do(req *http.Request) ([]byte, *SendError) {
 		return nil, &SendError{Kind: ErrOffline, Err: err}
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	body, err := readResponseBody(req.Context(), resp.Body, 64*1024, responseBodyTimeout)
+	if err != nil {
+		return nil, &SendError{Kind: ErrOffline, Err: err}
+	}
 	var errPayload struct {
 		Code string `json:"code"`
 	}

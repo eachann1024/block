@@ -1,8 +1,11 @@
 package modals
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,8 +55,10 @@ type feedbackUI struct {
 	logScroll   ui.ScrollState
 	copiedAt    time.Time
 
-	sender      *feedback.Sender
-	sendContact string
+	sender        *feedback.Sender
+	sendContact   string
+	lastRequestID string // reused when resending identical content after cancel
+	lastSubmitKey string
 
 	mu    sync.Mutex
 	inbox []func() // worker results, applied on the UI thread by pumpFeedback
@@ -354,16 +359,28 @@ func (m *Manager) submitFeedback() {
 		m.finishFeedbackSent(contact)
 		return
 	}
-	report := feedback.Report{
-		Category:    normalizeFeedbackCat(m.feedbackCategory),
-		Message:     msg,
-		Contact:     contact,
-		AppVersion:  updater.CurrentVersion(),
-		Lang:        string(theme.Language()),
-		Attachments: append([]feedback.Attachment(nil), m.fb.attachments...),
-	}
+	cat := normalizeFeedbackCat(m.feedbackCategory)
+	atts := append([]feedback.Attachment(nil), m.fb.attachments...)
+	logText := ""
 	if m.feedbackLogAttached() {
-		report.Log = m.fb.log.Text
+		logText = m.fb.log.Text
+	}
+	submitKey := feedbackSubmitKey(cat, msg, contact, atts, logText)
+	reqID := m.fb.lastRequestID
+	if reqID == "" || m.fb.lastSubmitKey != submitKey {
+		reqID = feedback.NewClientRequestID()
+		m.fb.lastRequestID = reqID
+		m.fb.lastSubmitKey = submitKey
+	}
+	report := feedback.Report{
+		ClientRequestID: reqID,
+		Category:        cat,
+		Message:         msg,
+		Contact:         contact,
+		AppVersion:      updater.CurrentVersion(),
+		Lang:            string(theme.Language()),
+		Attachments:     atts,
+		Log:             logText,
 	}
 	m.persistFeedbackDraft()
 	m.fb.sendContact = contact
@@ -371,10 +388,35 @@ func (m *Manager) submitFeedback() {
 	m.fb.sender.Start()
 }
 
+func feedbackSubmitKey(category, msg, contact string, atts []feedback.Attachment, logText string) string {
+	h := sha256.New()
+	writeField := func(s string) {
+		h.Write([]byte(strconv.Itoa(len(s))))
+		h.Write([]byte{':'})
+		h.Write([]byte(s))
+		h.Write([]byte{'\n'})
+	}
+	writeField(category)
+	writeField(msg)
+	writeField(contact)
+	writeField(strconv.Itoa(len(atts)))
+	for _, a := range atts {
+		writeField(a.ID)
+		writeField(a.Path)
+		writeField(a.UploadPath)
+		writeField(a.Name)
+		writeField(strconv.FormatInt(a.Bytes, 10))
+	}
+	writeField(logText)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // finishFeedbackSent switches to the thank-you state and drops everything
 // the report carried.
 func (m *Manager) finishFeedbackSent(contact string) {
 	m.fb.sender = nil
+	m.fb.lastRequestID = ""
+	m.fb.lastSubmitKey = ""
 	for _, a := range m.fb.attachments {
 		a.Discard()
 	}
