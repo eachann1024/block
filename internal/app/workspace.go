@@ -52,24 +52,24 @@ type Workspace struct {
 	wasSidebarDocked        bool
 	wasInSettings           bool
 	zoomPct                 int
-	entries              []model.FileEntry
-	lastScanErr          string
-	virtualPreview       map[string]bool   // createNote preview tabs not yet written to disk
-	pluginInsertInFlight map[string]int    // tabs currently saving/rolling back a plugin EditorInsert
-	autoSaveDeferred     map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
-	diskWriteSeq         map[string]uint64 // monotonic per-path disk write sequence preventing stale save callbacks
-	lastDiskMarkdown     map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
-	headlessMainMu       sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
-	ghostTitle           string            // title typed on the no-note ghost page
-	noteSource           noteSourceView    // editable Markdown source view of the active note
+	entries                 []model.FileEntry
+	lastScanErr             string
+	virtualPreview          map[string]bool   // createNote preview tabs not yet written to disk
+	pluginInsertInFlight    map[string]int    // tabs currently saving/rolling back a plugin EditorInsert
+	autoSaveDeferred        map[string]bool   // tabs skipped by autosave while pluginInsertInFlight > 0
+	diskWriteSeq            map[string]uint64 // monotonic per-path disk write sequence preventing stale save callbacks
+	lastDiskMarkdown        map[string]string // last markdown actually written to disk per clean path (catches mid-save undo)
+	headlessMainMu          sync.Mutex        // serializes headless editor render with pluginHostUI.onMainWait when !mygo.App.IsReady()
+	ghostTitle              string            // title typed on the no-note ghost page
+	noteSource              noteSourceView    // editable Markdown source view of the active note
 
 	codec       *markdown.Codec
 	sessions    map[string]*editor.Session
 	surfaces    map[string]*TabSurface
 	tabBindings map[string]model.VerifiedFileTarget
 	nav         *NavHistory
-	closed   *ClosedTabs
-	tabOps   TabStripOps
+	closed      *ClosedTabs
+	tabOps      TabStripOps
 
 	tabMenu    *TabMenuState
 	sidebarUI  *SidebarUIState
@@ -6203,13 +6203,25 @@ func (w *Workspace) Render(c *ui.Context) {
 					}
 				},
 				OnOpenInBrowser: func() {
-					if activeTab != "" {
-						if mygo.App.IsReady() {
-							_ = mygo.Shell.OpenPath(activeTab)
-						} else {
-							c.OpenURL(LocalFileURL(activeTab))
-						}
+					if activeTab == "" {
+						return
 					}
+					if !mygo.App.IsReady() {
+						c.OpenURL(LocalFileURL(activeTab))
+						return
+					}
+					path := activeTab
+					go func() {
+						err := openFileInDefaultBrowser(path)
+						if err == nil {
+							return
+						}
+						files.LogWarnf("open in browser failed: path=%s err=%v", path, err)
+						mygo.RunOnMain(func() {
+							w.notify(theme.Tr("无法在浏览器中打开此文件", "Couldn't open this file in a browser"), "error")
+							w.RequestRedraw()
+						})
+					}()
 				},
 				HiddenSlots:     w.pluginHiddenTitlebarSlots(),
 				AppVersion:      updater.CurrentVersion(),
