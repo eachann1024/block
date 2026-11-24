@@ -71,7 +71,7 @@ var shortcutActionSpecs = []shortcutActionSpec{
 	{action: "find", buttonID: "settings-keycap-find", def: "cmd-f", zh: "当前笔记查找", en: "Find in Note"},
 	{action: "new_note", buttonID: "settings-rec-new-note", def: "cmd-n", zh: "新建笔记", en: "New Note"},
 	{action: "toggle_sidebar", buttonID: "settings-rec-sidebar", def: "alt-b", zh: "显示或隐藏侧栏", en: "Toggle Sidebar"},
-	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI 助手面板", en: "AI Assistant Panel"},
+	{action: "toggle_ai", buttonID: "settings-rec-ai", def: "cmd-j", zh: "AI Agent 面板", en: "AI Agent Panel"},
 	{action: "export_image", buttonID: "settings-rec-export", def: "cmd-shift-e", zh: "导出与生成图片", en: "Export & Image"},
 }
 
@@ -396,7 +396,7 @@ type settingsTabSpec struct {
 
 var settingsTabs = []settingsTabSpec{
 	{id: "appearance", icon: icons.SettingsAppearance, zh: "外观与字体", en: "Appearance & Fonts"},
-	{id: "ai", icon: icons.SettingsAI, zh: "AI 助手", en: "AI Assistant"},
+	{id: "ai", icon: icons.SettingsAI, zh: "AI Agent", en: "AI Agent"},
 	{id: "folders", icon: icons.SettingsFolder, zh: "文件夹", en: "Folders"},
 	{id: "shortcuts", icon: icons.SettingsShortcuts, zh: "快捷键", en: "Shortcuts"},
 }
@@ -422,7 +422,7 @@ func settingsTabTitle(tab string) string {
 			return theme.Tr(spec.zh, spec.en)
 		}
 	}
-	return theme.Tr("AI 助手", "AI Assistant")
+	return theme.Tr("AI Agent", "AI Agent")
 }
 
 // RenderSettings draws the full-window Settings page (standalone layout with responsive sidebar yielding).
@@ -983,7 +983,7 @@ func (m *Manager) renderSettingsAITab(c *ui.Context) {
 			m.RenderAISettings(c)
 		} else {
 			internalui.SettingsSection(c, func() {
-				internalui.SettingsSectionTitle(c, theme.Tr("AI 助手", "AI Assistant"), nil)
+				internalui.SettingsSectionTitle(c, theme.Tr("AI Agent", "AI Agent"), nil)
 				ui.Text(c, theme.Tr("在工作区接入 AI 提供商与模型配置。", "Configure AI providers and model backends in the workspace.")).
 					FontSize(theme.FontBody).TextColor(pal.TextSecondary)
 			})
@@ -2393,7 +2393,7 @@ func (m *Manager) renderSettingsShortcutsTab(c *ui.Context) {
 					m.shortcutRecorderTray(c, "settings-keycap-sidebar", "toggle_sidebar", EffectiveShortcut(st, "toggle_sidebar"))
 				})
 				if m.AIEnabled == nil || m.AIEnabled() {
-					internalui.SettingsRow(c, theme.Tr("AI 助手面板", "AI Assistant Panel"), func() {
+					internalui.SettingsRow(c, theme.Tr("AI Agent 面板", "AI Agent Panel"), func() {
 						m.shortcutRecorderTray(c, "settings-keycap-ai", "toggle_ai", EffectiveShortcut(st, "toggle_ai"))
 					})
 				}

@@ -294,7 +294,7 @@ func noteDisplayTitle(p string, isDir bool) string {
 func localizeSettingsTabLabel(tab string) string {
 	switch tab {
 	case "ai":
-		return theme.Tr("AI 助手", "AI Assistant")
+		return theme.Tr("AI Agent", "AI Agent")
 	case "appearance":
 		return theme.Tr("外观与字体", "Appearance & Fonts")
 	case "folders":

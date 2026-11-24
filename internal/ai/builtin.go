@@ -369,10 +369,10 @@ func resolveProviderExecutionConfig(cfg model.AIProviderConfig) model.AIProvider
 func validateProviderConfig(cfg model.AIProviderConfig) (string, bool) {
 	cfg = resolveProviderExecutionConfig(cfg)
 	if !cfg.Enabled {
-		return theme.Tr("请先在「设置 › AI 助手」开启 AI 功能", "Enable AI Assistant in Settings › AI Assistant first"), true
+		return theme.Tr("请先在「设置 › AI Agent」启用 AI Agent", "Enable AI Agent in Settings › AI Agent first"), true
 	}
 	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return theme.Tr("请前往「设置 › AI 助手」配置供应商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL"), true
+		return theme.Tr("请前往「设置 › AI Agent」配置供应商与接口地址", "Go to Settings › AI Agent to configure a provider and Base URL"), true
 	}
 	endpoint, err := providerEndpoint(cfg.BaseURL)
 	if err != nil {
@@ -383,10 +383,10 @@ func validateProviderConfig(cfg model.AIProviderConfig) (string, bool) {
 		keyReq = false
 	}
 	if keyReq && strings.TrimSpace(cfg.APIKey) == "" {
-		return theme.Tr("请前往「设置 › AI 助手」填写 API 密钥", "Go to Settings › AI Assistant to enter an API Key"), true
+		return theme.Tr("请前往「设置 › AI Agent」填写 API 密钥", "Go to Settings › AI Agent to enter an API Key"), true
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
-		return theme.Tr("请前往对话栏或「设置 › AI 助手」选择默认模型", "Select a default model in chat or Settings › AI Assistant"), true
+		return theme.Tr("请前往对话栏或「设置 › AI Agent」选择默认模型", "Select a default model in chat or Settings › AI Agent"), true
 	}
 	return "", false
 }
@@ -603,14 +603,14 @@ func readHTTPError(resp *http.Response) string {
 // listBuiltinModels queries GET /models from the configured OpenAI/DeepSeek/Anthropic endpoint.
 func listBuiltinModels(ctx context.Context, cfg model.AIProviderConfig) ([]string, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return nil, errors.New(theme.Tr("请前往「设置 › AI 助手」配置服务商与接口地址", "Go to Settings › AI Assistant to configure a provider and Base URL"))
+		return nil, errors.New(theme.Tr("请前往「设置 › AI Agent」配置服务商与接口地址", "Go to Settings › AI Agent to configure a provider and Base URL"))
 	}
 	keyReq := true
 	if p := findProviderPreset(cfg.Provider); p != nil {
 		keyReq = p.KeyRequired
 	}
 	if keyReq && strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, errors.New(theme.Tr("请前往「设置 › AI 助手」选择服务商并填写 API 密钥", "Go to Settings › AI Assistant to select a provider and enter an API Key"))
+		return nil, errors.New(theme.Tr("请前往「设置 › AI Agent」选择服务商并填写 API 密钥", "Go to Settings › AI Agent to select a provider and enter an API Key"))
 	}
 	path := "/models"
 	if cfg.Protocol == model.ProtocolAnthropic {

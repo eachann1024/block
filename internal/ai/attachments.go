@@ -281,7 +281,7 @@ func (c *Controller) prepareAttachments(atts []model.Attachment, builtin, native
 			}
 		}
 		if !nativeTools {
-			return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("当前 AI 无法读取此附件，请移除附件或切换智能体。", "This AI cannot read this attachment. Remove it or switch agents."))
+			return "", nil, fmt.Errorf("%q: %s", a.Name, theme.Tr("当前 AI 无法读取此附件，请移除附件或切换 Agent。", "This AI cannot read this attachment. Remove it or switch agents."))
 		}
 		fmt.Fprintf(&b, theme.Tr("\n\n# 用户附件：%q\n\n本地路径：%q（%s，%d 字节）", "\n\n# User attachment: %q\n\nLocal path: %q (%s, %d bytes)"), a.Name, a.Path, a.Mime, a.Size)
 	}

@@ -303,7 +303,7 @@ func renderAIButton(c *ui.Context, p TitlebarProps) {
 	sc := nonEmptyOr(p.ShortcutAI, "cmd-j")
 	btn := blockui.IconButton(c, icons.Sparkles, blockui.IconButtonOptions{
 		ID:          "titlebar-ai",
-		Tooltip:     theme.Tr("AI 助手", "AI Assistant"),
+		Tooltip:     theme.Tr("AI Agent", "AI Agent"),
 		Shortcut:    blockui.FormatShortcutDisplay(sc),
 		Active:      p.AIOpen,
 		ActiveStyle: blockui.ActiveAccent,
