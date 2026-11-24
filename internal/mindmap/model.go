@@ -181,6 +181,16 @@ func (n *Node) FindByID(id int) *Node {
 	return nil
 }
 
+// IsAncestorOf reports whether n is an ancestor of (or identical to) target.
+func (n *Node) IsAncestorOf(target *Node) bool {
+	for cur := target; cur != nil; cur = cur.Parent {
+		if cur == n {
+			return true
+		}
+	}
+	return false
+}
+
 // DescendantCount returns the number of descendants below n (excluding n itself).
 func (n *Node) DescendantCount() int {
 	if n == nil {
@@ -388,6 +398,112 @@ func SerializeMarkdown(root *Node) string {
 	}
 	writeChildren(root, 0)
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// SerializeSubtreeMarkdown serializes a single node (and its descendants) for clipboard copy.
+// A plain leaf without task/link/children is copied as plain text for easy pasting elsewhere;
+// structured subtrees, tasks, or links are serialized as clean Markdown list items.
+func SerializeSubtreeMarkdown(n *Node) string {
+	if n == nil {
+		return ""
+	}
+	if len(n.Children) == 0 && n.Task == nil && strings.TrimSpace(n.Link) == "" {
+		return strings.ReplaceAll(strings.TrimSpace(n.Text), "\n", " ")
+	}
+	var b strings.Builder
+	var writeNode func(cur *Node, depth int)
+	writeNode = func(cur *Node, depth int) {
+		for i := 0; i < depth; i++ {
+			b.WriteString("  ")
+		}
+		b.WriteString("- ")
+		if cur.Task != nil {
+			if *cur.Task {
+				b.WriteString("[x] ")
+			} else {
+				b.WriteString("[ ] ")
+			}
+		}
+		b.WriteString(formatNodeText(cur))
+		b.WriteByte('\n')
+		for _, ch := range cur.Children {
+			writeNode(ch, depth+1)
+		}
+	}
+	writeNode(n, 0)
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// ParseClipboardNodes parses plain text, indented outlines, or Markdown lists/headings
+// from the clipboard into one or more top-level Node subtrees without wrapping them
+// in a synthetic root node.
+func ParseClipboardNodes(src string) []*Node {
+	src = strings.ReplaceAll(src, "\r\n", "\n")
+	src = strings.ReplaceAll(src, "\r", "\n")
+	if inner, ok := extractFencedMindMap(src); ok {
+		src = inner
+	}
+	type stackEntry struct {
+		node    *Node
+		indent  int
+		heading int
+	}
+	virtualRoot := &Node{}
+	stack := []stackEntry{{node: virtualRoot, indent: -1, heading: 0}}
+
+	for _, rawLine := range strings.Split(src, "\n") {
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" {
+			continue
+		}
+		if lvl, rest, ok := parseHeadingLine(trimmed); ok {
+			task, restText := parseTaskPrefix(rest)
+			text, link := parseInlineLink(restText)
+			if text == "" {
+				continue
+			}
+			for len(stack) > 1 && (stack[len(stack)-1].heading == 0 || stack[len(stack)-1].heading >= lvl) {
+				stack = stack[:len(stack)-1]
+			}
+			parent := stack[len(stack)-1].node
+			node := &Node{Text: text, Link: link, Task: task, Parent: parent}
+			parent.Children = append(parent.Children, node)
+			stack = append(stack, stackEntry{node: node, indent: -1, heading: lvl})
+			continue
+		}
+		if indent, content, ok := parseListLine(rawLine); ok {
+			task, rest := parseTaskPrefix(content)
+			text, link := parseInlineLink(rest)
+			if text == "" {
+				continue
+			}
+			for len(stack) > 1 && stack[len(stack)-1].heading == 0 && stack[len(stack)-1].indent >= indent {
+				stack = stack[:len(stack)-1]
+			}
+			parent := stack[len(stack)-1].node
+			node := &Node{Text: text, Link: link, Task: task, Parent: parent}
+			parent.Children = append(parent.Children, node)
+			stack = append(stack, stackEntry{node: node, indent: indent, heading: 0})
+			continue
+		}
+		indent := countLeadingIndent(rawLine)
+		task, rest := parseTaskPrefix(trimmed)
+		text, link := parseInlineLink(rest)
+		if text == "" {
+			continue
+		}
+		for len(stack) > 1 && stack[len(stack)-1].heading == 0 && stack[len(stack)-1].indent >= indent {
+			stack = stack[:len(stack)-1]
+		}
+		parent := stack[len(stack)-1].node
+		node := &Node{Text: text, Link: link, Task: task, Parent: parent}
+		parent.Children = append(parent.Children, node)
+		stack = append(stack, stackEntry{node: node, indent: indent, heading: 0})
+	}
+	for _, ch := range virtualRoot.Children {
+		ch.RepairParents(nil)
+	}
+	return virtualRoot.Children
 }
 
 func formatNodeText(n *Node) string {

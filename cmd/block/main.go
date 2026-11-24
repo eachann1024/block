@@ -293,6 +293,10 @@ func main() {
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
+			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(0) {
+				ws.RequestRedraw()
+				return
+			}
 			ws.ResetZoomPct()
 		},
 		OnZoomIn: func() {
@@ -306,6 +310,10 @@ func main() {
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
 				return
 			}
+			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(1) {
+				ws.RequestRedraw()
+				return
+			}
 			ws.StepZoomPct(app.MainZoomStepPct)
 		},
 		OnZoomOut: func() {
@@ -317,6 +325,10 @@ func main() {
 				return
 			}
 			if ws.Modals().IsSettingsOpen() || ws.Modals().HasActiveModal() || ws.Export().IsOpen() || ws.IsPageHistoryOpen() {
+				return
+			}
+			if sess := ws.ActiveSession(); sess != nil && sess.HandleMindMapZoom(-1) {
+				ws.RequestRedraw()
 				return
 			}
 			ws.StepZoomPct(-app.MainZoomStepPct)

@@ -466,7 +466,7 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	// Only register window-level clipboard/selectAll shortcuts when no editor input
 	// holds focus; otherwise c.Shortcut claims the key in mygo before RichInput /
 	// multi-sel-focus HandleInput can handle single-block Cmd+X or staged table Cmd+A.
-	canGlobalClip := s.inlineAI == nil && !s.findOpen && !s.HasFocus(c) && !c.FocusTakesText()
+	canGlobalClip := s.inlineAI == nil && !s.findOpen && !s.HasFocus(c) && !c.FocusTakesText() && !mindMapFocused
 	if canGlobalClip && (s.hasNonEmptySelection() || s.hasFocusedAtomicBlock()) && c.Shortcut(ui.Cmd, ui.KeyC) {
 		s.CopySelection(svc)
 	}
@@ -547,7 +547,9 @@ func (s *Session) handleGlobalShortcuts(c *ui.Context, readOnly bool) {
 	if !s.hasBlockingOverlay() && canGlobalClip && c.Shortcut(ui.Cmd, ui.KeyA) {
 		s.SelectCurrentBlockOrAll()
 	}
-	s.handleGlobalBlockShortcuts(c)
+	if !mindMapFocused {
+		s.handleGlobalBlockShortcuts(c)
+	}
 }
 
 func blockMargins(b *model.Block) (top, bottom float32) {
