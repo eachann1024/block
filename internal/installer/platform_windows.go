@@ -41,9 +41,12 @@ type shellExecuteInfoW struct {
 }
 
 var (
-	shell32DLL          = syscall.NewLazyDLL("shell32.dll")
-	procIsUserAnAdmin   = shell32DLL.NewProc("IsUserAnAdmin")
-	procShellExecuteExW = shell32DLL.NewProc("ShellExecuteExW")
+	shell32DLL              = syscall.NewLazyDLL("shell32.dll")
+	procIsUserAnAdmin       = shell32DLL.NewProc("IsUserAnAdmin")
+	procShellExecuteExW     = shell32DLL.NewProc("ShellExecuteExW")
+	netapi32DLL             = syscall.NewLazyDLL("netapi32.dll")
+	procNetLocalGroupGetMem = netapi32DLL.NewProc("NetLocalGroupGetMembers")
+	procNetApiBufferFree    = netapi32DLL.NewProc("NetApiBufferFree")
 )
 
 func defaultInstallDir() string {
@@ -200,20 +203,79 @@ const (
 	)
 )
 
-func isPrivilegedOwnerSID(sid *windows.SID) bool {
+type localGroupMembersInfo0 struct {
+	sid *windows.SID
+}
+
+// privilegedAdminSIDs builds the set of SIDs trusted to own or modify files in
+// a machine-wide (/ALLUSERS) installation directory: SYSTEM, Administrators,
+// TrustedInstaller, members of the local Administrators group (which Windows
+// can materialize as file/folder owners via CREATOR OWNER), and the current
+// elevated user token when running as admin.
+func privilegedAdminSIDs() map[string]bool {
+	allowed := map[string]bool{
+		sidLocalSystem:      true,
+		sidAdministrators:   true,
+		sidTrustedInstaller: true,
+	}
+	if isCurrentProcessAdmin() {
+		if tu, err := windows.GetCurrentProcessToken().GetTokenUser(); err == nil && tu != nil && tu.User.Sid != nil {
+			allowed[tu.User.Sid.String()] = true
+		}
+	}
+	adminGroupSID, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		return allowed
+	}
+	groupName, _, _, err := adminGroupSID.LookupAccount("")
+	if err != nil || groupName == "" {
+		return allowed
+	}
+	groupPtr, err := windows.UTF16PtrFromString(groupName)
+	if err != nil {
+		return allowed
+	}
+	var (
+		buf          *localGroupMembersInfo0
+		entriesRead  uint32
+		totalEntries uint32
+		resumeHandle uintptr
+	)
+	const maxPreferredLength = ^uint32(0)
+	ret, _, _ := procNetLocalGroupGetMem.Call(
+		0,
+		uintptr(unsafe.Pointer(groupPtr)),
+		0, // level 0: LOCALGROUP_MEMBERS_INFO_0 (SID only)
+		uintptr(unsafe.Pointer(&buf)),
+		uintptr(maxPreferredLength),
+		uintptr(unsafe.Pointer(&entriesRead)),
+		uintptr(unsafe.Pointer(&totalEntries)),
+		uintptr(unsafe.Pointer(&resumeHandle)),
+	)
+	if buf != nil {
+		defer procNetApiBufferFree.Call(uintptr(unsafe.Pointer(buf)))
+	}
+	// NERR_Success (0) or ERROR_MORE_DATA (234)
+	if (ret == 0 || ret == 234) && buf != nil && entriesRead > 0 {
+		items := unsafe.Slice(buf, entriesRead)
+		for _, item := range items {
+			if item.sid != nil {
+				allowed[item.sid.String()] = true
+			}
+		}
+	}
+	return allowed
+}
+
+func isPrivilegedOwnerSID(sid *windows.SID, adminSIDs map[string]bool) bool {
 	if sid == nil {
 		return false
 	}
-	switch sid.String() {
-	case sidLocalSystem, sidAdministrators, sidTrustedInstaller:
-		return true
-	default:
-		return false
-	}
+	return adminSIDs[sid.String()]
 }
 
-func isPrivilegedWriteSID(sid *windows.SID, allowCreatorOwner bool) bool {
-	if isPrivilegedOwnerSID(sid) {
+func isPrivilegedWriteSID(sid *windows.SID, allowCreatorOwner bool, adminSIDs map[string]bool) bool {
+	if isPrivilegedOwnerSID(sid, adminSIDs) {
 		return true
 	}
 	return allowCreatorOwner && sid != nil && sid.String() == sidCreatorOwner
@@ -278,13 +340,14 @@ func validateMachineInstallDir(dir string) error {
 		return fmt.Errorf("volume root missing: %s", chain[0])
 	}
 
+	adminSIDs := privilegedAdminSIDs()
 	for i, p := range chain {
 		if !exists[i] {
 			break
 		}
 		isTarget := i == len(chain)-1
 		nextExists := !isTarget && exists[i+1]
-		if err := checkProtectedACL(p, isTarget || !nextExists); err != nil {
+		if err := checkProtectedACL(p, isTarget || !nextExists, adminSIDs); err != nil {
 			return err
 		}
 	}
@@ -308,7 +371,7 @@ func validateMachineInstallDir(dir string) error {
 			if a&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 				return fmt.Errorf("reparse point not allowed at %s", fp)
 			}
-			if err := checkProtectedACL(fp, true); err != nil {
+			if err := checkProtectedACL(fp, true, adminSIDs); err != nil {
 				return err
 			}
 		}
@@ -324,7 +387,7 @@ func validateMachineInstallDir(dir string) error {
 // When false (higher ancestor whose child already exists, e.g. C:\ above
 // C:\Program Files), effective tamper rights (FILE_DELETE_CHILD, WRITE_DAC,
 // WRITE_OWNER, GENERIC_ALL) for non-privileged SIDs are rejected.
-func checkProtectedACL(path string, strictWriteCheck bool) error {
+func checkProtectedACL(path string, strictWriteCheck bool, adminSIDs map[string]bool) error {
 	sd, err := windows.GetNamedSecurityInfo(
 		path,
 		windows.SE_FILE_OBJECT,
@@ -343,8 +406,8 @@ func checkProtectedACL(path string, strictWriteCheck bool) error {
 	if err != nil {
 		return fmt.Errorf("read owner for %s: %w", path, err)
 	}
-	if !isPrivilegedOwnerSID(owner) {
-		return fmt.Errorf("unprivileged owner on %s", path)
+	if !isPrivilegedOwnerSID(owner, adminSIDs) {
+		return fmt.Errorf("unprivileged owner %s on %s", owner.String(), path)
 	}
 	dacl, _, err := sd.DACL()
 	if err != nil {
@@ -382,14 +445,14 @@ func checkProtectedACL(path string, strictWriteCheck bool) error {
 			// CREATOR OWNER is only safe on an inherit-only ACE when no
 			// non-privileged account can create children here (verified by
 			// rejecting all other non-privileged write ACEs in this same loop).
-			if isPrivilegedWriteSID(sid, inheritOnly) {
+			if isPrivilegedWriteSID(sid, inheritOnly, adminSIDs) {
 				continue
 			}
 			if (!inheritOnly || inheritable) && (mask&winWriteOrModifyMask != 0) {
 				return fmt.Errorf("non-admin principal %s has write access on %s", sid.String(), path)
 			}
 		} else {
-			if inheritOnly || isPrivilegedWriteSID(sid, false) {
+			if inheritOnly || isPrivilegedWriteSID(sid, false, adminSIDs) {
 				continue
 			}
 			if mask&winAncestorTamperMask != 0 {
