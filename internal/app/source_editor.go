@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"block/internal/editor"
 	"block/internal/files"
 	"block/internal/model"
 	"block/internal/plugins"
@@ -435,16 +436,43 @@ func (s *TabSurface) JumpToLine(line, col int) {
 	st.GoTo(codeed.Pos{Line: line0, Col: byteCol})
 }
 
+func sourceFindBindings(bindings []codeed.Binding) []codeed.Binding {
+	mods, key, ok := blockui.ParseShortcut(editor.FindShortcut())
+	if !ok || (mods == ui.Cmd && key == ui.KeyF) {
+		return bindings[:0]
+	}
+	return append(bindings[:0],
+		codeed.Binding{Mods: mods, Key: key, Command: codeed.Find},
+		codeed.Binding{Mods: ui.Cmd, Key: ui.KeyF, Command: codeed.NoCommand},
+	)
+}
+
+// OpenFind opens the source editor's find (or find-and-replace) bar and focuses its query input.
+// For editable SVG files currently in preview mode, it switches to source mode first.
+func (s *TabSurface) OpenFind(replace bool) bool {
+	if !s.IsEditableSource() {
+		return false
+	}
+	if s.IsSVG && !s.SVGShowSource {
+		s.SVGShowSource = true
+	}
+	st := s.ensureCodeState()
+	if st == nil {
+		return false
+	}
+	if replace && !st.ReadOnly {
+		return st.Run(codeed.FindReplace)
+	}
+	return st.Run(codeed.Find)
+}
+
 // renderSourceEditor shows non-Markdown text as a full-bleed code editor (Zed/VS Code
 // style): gutter flush left, current-line band, syntax colors, no paper margins.
 func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	pal := theme.Ocean()
 	st := s.ensureCodeState()
 
-	_, codeFont, _ := theme.Typography()
-	if strings.TrimSpace(codeFont) == "" {
-		codeFont = "monospace"
-	}
+	codeFont := theme.ResolvedCodeFont()
 	z := theme.Zoom()
 	if z <= 0 {
 		z = 1.0
@@ -453,6 +481,7 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	st.LineHeight = 1.54
 	st.SoftWrap = sourceSoftWrap
 	st.Theme = sourceEditorTheme(pal)
+	st.Bindings = sourceFindBindings(st.Bindings)
 
 	c.Key("source-surface:" + s.Path)
 	outer := ui.Column(c).Fill().Background(pal.Paper)

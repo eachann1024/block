@@ -149,6 +149,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						ID:       "find-replace-toggle",
 						Label:    label,
 						Tooltip:  label,
+						Shortcut: formatShortcutDisplay("⌥⌘F", "Ctrl+H"),
 						Size:     theme.HeightControl,
 						IconSize: theme.IconInline,
 					})
@@ -175,6 +176,29 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						} else {
 							s.FindNext()
 						}
+						return true
+					}
+					if k.Key == ui.KeyF3 && (k.Mods == 0 || k.Mods == ui.Shift) {
+						if k.Mods == ui.Shift {
+							s.FindPrev()
+						} else {
+							s.FindNext()
+						}
+						return true
+					}
+					if theme.IsMacOS() && k.Key == ui.KeyG && (k.Mods == ui.Cmd || k.Mods == ui.Cmd|ui.Shift) {
+						if k.Mods&ui.Shift != 0 {
+							s.FindPrev()
+						} else {
+							s.FindNext()
+						}
+						return true
+					}
+					if canReplace && ((!theme.IsMacOS() && k.Mods == ui.Cmd && k.Key == ui.KeyH) ||
+						(theme.IsMacOS() && k.Mods == ui.Cmd|ui.Alt && k.Key == ui.KeyF)) {
+						s.findReplaceOpen = true
+						s.findReplaceFocusPending = true
+						c.Invalidate()
 						return true
 					}
 					if k.Key == ui.KeyEscape {
@@ -273,6 +297,20 @@ func (s *Session) renderFindReplaceRow(c *ui.Context, inputW float32) {
 				return true
 			case k.Key == ui.KeyEnter && k.Mods == 0:
 				s.ReplaceCurrentFind()
+				return true
+			case k.Key == ui.KeyF3 && (k.Mods == 0 || k.Mods == ui.Shift):
+				if k.Mods == ui.Shift {
+					s.FindPrev()
+				} else {
+					s.FindNext()
+				}
+				return true
+			case theme.IsMacOS() && k.Key == ui.KeyG && (k.Mods == ui.Cmd || k.Mods == ui.Cmd|ui.Shift):
+				if k.Mods&ui.Shift != 0 {
+					s.FindPrev()
+				} else {
+					s.FindNext()
+				}
 				return true
 			case k.Key == ui.KeyEscape:
 				s.CloseFind()

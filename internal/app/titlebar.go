@@ -631,6 +631,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps, availW float32
 			Size:     22,
 			IconSize: 13,
 			Tooltip:  theme.Tr("缩小", "Zoom Out"),
+			Shortcut: blockui.FormatShortcutDisplay("cmd--"),
 		})
 		if outBtn.Clicked() && p.OnPreviewZoomStep != nil {
 			p.OnPreviewZoomStep(1.0 / 1.2)
@@ -652,6 +653,7 @@ func renderZoomCluster(c *ui.Context, id string, p TitlebarProps, availW float32
 			Size:     22,
 			IconSize: 13,
 			Tooltip:  theme.Tr("放大", "Zoom In"),
+			Shortcut: blockui.FormatShortcutDisplay("cmd-="),
 		})
 		if inBtn.Clicked() && p.OnPreviewZoomStep != nil {
 			p.OnPreviewZoomStep(1.2)
@@ -987,21 +989,22 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 			return
 		}
 		items = append(items,
-			item("page-zoom-in", theme.Tr("放大", "Zoom In"), "", &icZoomIn, func() {
+			item("page-zoom-in", theme.Tr("放大", "Zoom In"), blockui.FormatShortcutDisplay("cmd-="), &icZoomIn, func() {
 				if p.OnPreviewZoomStep != nil {
 					p.OnPreviewZoomStep(1.2)
 				}
 			}),
-			item("page-zoom-out", theme.Tr("缩小", "Zoom Out"), "", &icZoomOut, func() {
+			item("page-zoom-out", theme.Tr("缩小", "Zoom Out"), blockui.FormatShortcutDisplay("cmd--"), &icZoomOut, func() {
 				if p.OnPreviewZoomStep != nil {
 					p.OnPreviewZoomStep(1.0 / 1.2)
 				}
 			}),
 			blockui.MenuItemSpec{
-				ID:    "page-zoom-actual",
-				Label: theme.Tr("实际大小", "Actual Size"),
-				Hint:  "100%",
-				Icon:  &icZoomReset,
+				ID:       "page-zoom-actual",
+				Label:    theme.Tr("实际大小", "Actual Size"),
+				Hint:     "100%",
+				Shortcut: blockui.FormatShortcutDisplay("cmd-0"),
+				Icon:     &icZoomReset,
 				OnClick: func() {
 					p.MenuState.Close()
 					if p.OnPreviewActual != nil {

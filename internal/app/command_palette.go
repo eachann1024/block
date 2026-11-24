@@ -168,6 +168,13 @@ func (p *CommandPalette) Render(c *ui.Context, items []PaletteItem, onRun func(P
 		MaxHeight: maxCardH,
 		Centered:  true,
 	}, func() {
+		if blockui.MatchShortcut(c, blockui.DefaultCommandPaletteShortcut) ||
+			(!theme.IsMacOS() && (c.Shortcut(0, ui.KeyF1) || c.Shortcut(ui.Ctrl, ui.KeyF4))) {
+			if !c.ShortcutRepeated() {
+				p.Close()
+				return
+			}
+		}
 		if p.focusPending {
 			p.inputHandle.Focus()
 			p.focusPending = false
@@ -345,7 +352,11 @@ func renderPaletteFooter(c *ui.Context, pal theme.Palette) {
 		BorderWidth(1, 0, 0, 0).BorderColor(pal.Hairline).Background(pal.Sidebar).
 		Children(func() {
 			renderPaletteHint(c, pal, []string{"↑", "↓"}, theme.Tr("选择", "Select"))
-			renderPaletteHint(c, pal, []string{"↵"}, theme.Tr("运行", "Run"))
+			enterKey := "↵"
+			if !theme.IsMacOS() {
+				enterKey = "Enter"
+			}
+			renderPaletteHint(c, pal, []string{enterKey}, theme.Tr("运行", "Run"))
 			renderPaletteHint(c, pal, []string{"esc"}, theme.Tr("关闭", "Close"))
 		})
 }

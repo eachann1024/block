@@ -1781,11 +1781,15 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 				items = blankTreeMenuItems(p)
 			} else {
 				if !targetDir {
+					openNewTabShortcut := theme.Tr("⌘+点击", "⌘+Click")
+					if !theme.IsMacOS() {
+						openNewTabShortcut = theme.Tr("Ctrl+点击", "Ctrl+Click")
+					}
 					items = append(items,
 						blockui.MenuItemSpec{
 							ID:       "open-new-tab",
 							Label:    theme.Tr("新标签页", "Open in New Tab"),
-							Shortcut: theme.Tr("⌘+点击", "⌘+Click"),
+							Shortcut: openNewTabShortcut,
 							Icon:     &icOpen,
 							OnClick: func() {
 								p.State.ClosePopups()
@@ -1810,11 +1814,15 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 						blockui.MenuItemSpec{Separator: true},
 					)
 				}
+				renameShortcut := "↵"
+				if !theme.IsMacOS() {
+					renameShortcut = "F2"
+				}
 				items = append(items,
 					blockui.MenuItemSpec{
 						ID:       "rename",
 						Label:    theme.Tr("重命名", "Rename"),
-						Shortcut: "↵",
+						Shortcut: renameShortcut,
 						Icon:     &icRename,
 						OnClick: func() {
 							p.State.StartRename(targetPath, targetDir)
@@ -1890,11 +1898,16 @@ func renderSidebarPopups(c *ui.Context, p SidebarProps) {
 					},
 					blockui.MenuItemSpec{Separator: true},
 					blockui.MenuItemSpec{
-						ID:       "trash",
-						Label:    theme.Tr("移到废纸篓", "Move to Trash"),
-						Shortcut: blockui.FormatShortcutDisplay("cmd-backspace"),
-						Icon:     &icTrash,
-						Danger:   true,
+						ID:    "trash",
+						Label: theme.Tr("移到废纸篓", "Move to Trash"),
+						Shortcut: func() string {
+							if theme.IsMacOS() {
+								return blockui.FormatShortcutDisplay("cmd-backspace")
+							}
+							return blockui.FormatShortcutDisplay("delete")
+						}(),
+						Icon:   &icTrash,
+						Danger: true,
 						OnClick: func() {
 							p.State.ClosePopups()
 							if p.OnTrashItem != nil {

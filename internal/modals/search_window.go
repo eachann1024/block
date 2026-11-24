@@ -502,7 +502,13 @@ func (s *SearchWindowController) RenderView(c *ui.Context) {
 			s.runSearch()
 		}
 	}
-	if root.Shortcut(ui.Cmd, ui.KeyW) {
+	if !theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyQ) {
+		if mygo.App.IsReady() {
+			mygo.App.Quit()
+		}
+		return
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyW) || (!theme.IsMacOS() && c.Shortcut(ui.Ctrl, ui.KeyF4)) {
 		s.Hide()
 	}
 	if mods, key, ok := internalui.ParseShortcut(EffectiveShortcut(s.currentState(), "global_summon")); ok {

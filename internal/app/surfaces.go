@@ -334,6 +334,34 @@ func (s *TabSurface) ZoomFit() {
 	s.ZoomFitMode = true
 }
 
+// IsPreviewZoomActive reports whether this surface is currently displaying a zoomable image or SVG preview.
+func (s *TabSurface) IsPreviewZoomActive() bool {
+	if s == nil {
+		return false
+	}
+	if s.IsSVG {
+		return !s.SVGShowSource || !s.HasSource
+	}
+	return s.Kind == model.OpenKindPreview
+}
+
+// HandlePreviewZoom applies a zoom shortcut when this surface is showing an image or SVG preview.
+// A zero delta restores the actual size.
+func (s *TabSurface) HandlePreviewZoom(delta int) bool {
+	if !s.IsPreviewZoomActive() {
+		return false
+	}
+	switch {
+	case delta > 0:
+		s.ZoomStep(1.2)
+	case delta < 0:
+		s.ZoomStep(1.0 / 1.2)
+	default:
+		s.ZoomActual()
+	}
+	return true
+}
+
 // SourceStatusLabel returns an exceptional status notice (e.g. read-only preview
 // or transient error/status message) for titlebar display. Routine language and
 // encoding metadata stay hidden to keep the titlebar uncluttered.

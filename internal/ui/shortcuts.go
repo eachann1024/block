@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"block/internal/theme"
@@ -25,8 +26,10 @@ func ParseShortcut(spec string) (ui.Modifiers, ui.Key, bool) {
 			continue
 		}
 		switch p {
-		case "cmd", "cmdorctrl", "meta", "super", "command":
+		case "cmd", "cmdorctrl", "meta", "super", "command", "secondary":
 			mods |= ui.Cmd
+		case "win":
+			mods |= ui.Super
 		case "ctrl", "control":
 			mods |= ui.Ctrl
 		case "alt", "opt", "option":
@@ -133,7 +136,7 @@ func FormatShortcutDisplay(spec string) string {
 		parts = append(parts, "Shift")
 	}
 	if mods&ui.Super != 0 {
-		parts = append(parts, "Super")
+		parts = append(parts, desktopSuperLabel())
 	}
 	parts = append(parts, keyDisplayName(key))
 	return strings.Join(parts, "+")
@@ -148,7 +151,11 @@ func ToMyGoAccelerator(spec string) string {
 	var parts []string
 	if mods&ui.Cmd != 0 {
 		parts = append(parts, "CmdOrCtrl")
-	} else if mods&ui.Ctrl != 0 {
+	}
+	if mods&ui.Super != 0 && ui.Cmd != ui.Super {
+		parts = append(parts, "Super")
+	}
+	if mods&ui.Ctrl != 0 && ui.Cmd != ui.Ctrl {
 		parts = append(parts, "Ctrl")
 	}
 	if mods&ui.Alt != 0 {
@@ -158,16 +165,34 @@ func ToMyGoAccelerator(spec string) string {
 		parts = append(parts, "Shift")
 	}
 	keyStr := keyDisplayName(key)
-	if key == ui.KeyBackspace {
+	switch key {
+	case ui.KeyBackspace:
 		keyStr = "Backspace"
-	} else if key == ui.KeyEscape {
+	case ui.KeyDelete:
+		keyStr = "Delete"
+	case ui.KeyEscape:
 		keyStr = "Escape"
+	case ui.KeyLeft:
+		keyStr = "Left"
+	case ui.KeyRight:
+		keyStr = "Right"
+	case ui.KeyUp:
+		keyStr = "Up"
+	case ui.KeyDown:
+		keyStr = "Down"
 	}
 	if keyStr == "" {
 		return ""
 	}
 	parts = append(parts, keyStr)
 	return strings.Join(parts, "+")
+}
+
+func desktopSuperLabel() string {
+	if runtime.GOOS == "windows" {
+		return "Win"
+	}
+	return "Super"
 }
 
 func keyDisplayName(k ui.Key) string {
@@ -203,7 +228,10 @@ func keyDisplayName(k ui.Key) string {
 	case ui.KeySpace:
 		return "Space"
 	case ui.KeyBackspace:
-		return "⌫"
+		if theme.IsMacOS() {
+			return "⌫"
+		}
+		return "Backspace"
 	case ui.KeyDelete:
 		return "Del"
 	case ui.KeyLeft:
@@ -229,20 +257,57 @@ func keyDisplayName(k ui.Key) string {
 }
 
 // DefaultCommandPaletteShortcut is the default shortcut chord for the command palette.
-const DefaultCommandPaletteShortcut = "cmd-shift-p"
+const (
+	DefaultCommandPaletteShortcut = "cmd-shift-p"
+	SettingsShortcut              = "cmd-,"
+)
+
+// FindReplaceShortcut returns the platform's chord for find and replace.
+func FindReplaceShortcut() string {
+	if theme.IsMacOS() {
+		return "cmd-alt-f"
+	}
+	return "cmd-h"
+}
+
+// IsFixedAppShortcut reports app commands whose shortcuts cannot be reassigned.
+func IsFixedAppShortcut(mods ui.Modifiers, key ui.Key) bool {
+	if mods == ui.Cmd {
+		switch key {
+		case ui.KeyComma, ui.KeyO, ui.KeyQ, ui.KeyS, ui.KeyW:
+			return true
+		case ui.KeyH:
+			return !theme.IsMacOS()
+		}
+	}
+	if mods == ui.Cmd|ui.Shift && (key == ui.KeyP || key == ui.KeyT) {
+		return true
+	}
+	return (theme.IsMacOS() && mods == ui.Cmd|ui.Alt && key == ui.KeyF) ||
+		(!theme.IsMacOS() && mods == ui.Ctrl && key == ui.KeyF4)
+}
 
 // IsHostReservedShortcut reports chords the editor or app handles after plugin
 // shortcuts run (find, formatting, clipboard, zoom, tab navigation). Plugins
 // cannot bind them, so a plugin never shadows a built-in action.
 func IsHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
+	if IsFixedAppShortcut(mods, key) {
+		return true
+	}
 	switch mods {
+	case 0:
+		return key == ui.KeyF2 || (!theme.IsMacOS() && (key == ui.KeyF1 || key == ui.KeyF3 || key == ui.KeyF11))
+	case ui.Shift:
+		return !theme.IsMacOS() && key == ui.KeyF3
 	case ui.Cmd:
 		switch key {
 		case ui.KeyA, ui.KeyB, ui.KeyC, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyI,
-			ui.KeyS, ui.KeyU, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
+			ui.KeyU, ui.KeyV, ui.KeyX, ui.KeyY, ui.KeyZ,
 			ui.KeyEqual, ui.KeyMinus, ui.Key0, ui.KeyBackslash,
 			ui.KeyBracketLeft, ui.KeyBracketRight:
 			return true
+		case ui.KeyG:
+			return theme.IsMacOS()
 		}
 		return key >= ui.Key1 && key <= ui.Key9
 	case ui.Cmd | ui.Shift:
@@ -250,11 +315,19 @@ func IsHostReservedShortcut(mods ui.Modifiers, key ui.Key) bool {
 		case ui.KeyS, ui.KeyV, ui.KeyX, ui.KeyZ, ui.KeyEqual, ui.KeyMinus,
 			ui.KeyBracketLeft, ui.KeyBracketRight:
 			return true
+		case ui.KeyG:
+			return theme.IsMacOS()
 		}
 	case ui.Cmd | ui.Shift | ui.Alt:
 		return key == ui.KeyV
 	case ui.Cmd | ui.Alt:
 		return key == ui.KeyC || key == ui.KeyLeft || key == ui.KeyRight
+	}
+	if mods == ui.Ctrl && (key == ui.KeyTab || key == ui.KeyPageUp || key == ui.KeyPageDown) {
+		return true
+	}
+	if mods == (ui.Ctrl|ui.Shift) && key == ui.KeyTab {
+		return true
 	}
 	return false
 }

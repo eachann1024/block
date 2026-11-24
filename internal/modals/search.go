@@ -968,7 +968,7 @@ func (m *Manager) renderSearchModal(c *ui.Context) {
 				m.runSearch()
 			}
 		}
-		if backdrop.OverlayShortcut(ui.Cmd, ui.KeyW) {
+		if backdrop.OverlayShortcut(ui.Cmd, ui.KeyW) || (!theme.IsMacOS() && backdrop.OverlayShortcut(ui.Ctrl, ui.KeyF4)) {
 			m.CloseSearch()
 		}
 		if !wasScopeOpen && (card.PressedOutside() || backdrop.OverlayShortcut(0, ui.KeyEscape)) {
@@ -1082,6 +1082,13 @@ func renderSearchHeaderView(
 					return true
 				case ui.KeyW:
 					if k.Mods == ui.Cmd {
+						if cb.onClose != nil {
+							cb.onClose()
+						}
+						return true
+					}
+				case ui.KeyF4:
+					if !theme.IsMacOS() && k.Mods == ui.Ctrl {
 						if cb.onClose != nil {
 							cb.onClose()
 						}
