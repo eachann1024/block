@@ -244,6 +244,8 @@ Function .onInit
   ExecWait '"$PLUGINSDIR\block-setup.exe" --installer-ui' $R3
   IfErrors init_fallback
   StrCmp $R3 "0" 0 init_fallback
+    ; Quit inside .onInit exits with 2 ("aborted by script") unless told otherwise.
+    SetErrorLevel 0
     Quit
   init_fallback:
     ClearErrors
