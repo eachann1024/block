@@ -228,6 +228,17 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, fullscreen boo
 		padX = theme.Space24
 	}
 
+	if !fullscreen && st.consumeFullscreenFocusRestore() {
+		if st.OutlineFocusID == 0 || st.Root == nil || st.Root.FindByID(st.OutlineFocusID) == nil {
+			st.OutlineFocusID = activeRoot.ID
+		}
+		st.OutlineFocusPending = true
+		st.OutlineFocusPreventScroll = true
+		if cb.OnRequestFocus != nil {
+			cb.OnRequestFocus()
+		}
+	}
+
 	focusJustMoved := false
 	focusIDAtStart := 0
 	if st.OutlineFocusPending {
@@ -409,7 +420,12 @@ func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *N
 		})
 
 		if st.OutlineFocusPending && st.OutlineFocusID == rootID {
-			ta.Focus()
+			if st.OutlineFocusPreventScroll {
+				ta.Focus(ui.FocusOptions{PreventScroll: true})
+				st.OutlineFocusPreventScroll = false
+			} else {
+				ta.Focus()
+			}
 			st.OutlineFocusPending = false
 			*focusJustMoved = true
 			if st.OutlineCaretPending {
@@ -654,7 +670,12 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 				})
 
 				if st.OutlineFocusPending && st.OutlineFocusID == nodeID {
-					ta.Focus()
+					if st.OutlineFocusPreventScroll {
+						ta.Focus(ui.FocusOptions{PreventScroll: true})
+						st.OutlineFocusPreventScroll = false
+					} else {
+						ta.Focus()
+					}
 					st.OutlineFocusPending = false
 					*focusJustMoved = true
 					if st.OutlineCaretPending {
@@ -1076,8 +1097,7 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 		return
 	case outlineActExitFullscreen:
 		if fullscreen {
-			st.Fullscreen = false
-			st.AutoFitPending = true
+			st.ExitFullscreen(cb)
 			c.Invalidate()
 		}
 		return
