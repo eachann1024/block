@@ -539,11 +539,18 @@ func (st *BlockState) RenderInline(c *ui.Context, id string, source string, cfg 
 				if exitBtn.Clicked() {
 					st.Fullscreen = false
 					st.AutoFitPending = true
+					c.Invalidate()
 				}
 			})
 			return
 		}
 		st.renderHeader(c, id, false, cb)
+		if st.Fullscreen {
+			// Fullscreen was just toggled on during header click; defer body/hint rendering
+			// to RenderFullscreen in this frame so ui.Handle/ScrollState are never bound twice.
+			c.Invalidate()
+			return
+		}
 		st.renderBody(c, id, cfg.InlineHeightDIP(), false, cb)
 		if cfg.ShowHints {
 			st.renderHintBar(c, id)
@@ -567,6 +574,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 		} else {
 			st.Fullscreen = false
 			st.AutoFitPending = true
+			c.Invalidate()
 			return
 		}
 	}
@@ -583,6 +591,10 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 	bui.Probe(overlay, "mm-fullscreen-"+id)
 	overlay.Children(func() {
 		st.renderHeader(c, id+"-fs", true, cb)
+		if !st.Fullscreen {
+			c.Invalidate()
+			return
+		}
 		st.renderBody(c, id+"-fs", 0, true, cb)
 		if cfg.ShowHints {
 			st.renderHintBar(c, id+"-fs")
@@ -720,9 +732,11 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 			})
 			if fsBtn.Clicked() {
 				st.finishEdit(true, cb)
+				st.LinkNodeID = 0
 				st.ExportMenuOpen = false
 				st.Fullscreen = !fullscreen
 				st.AutoFitPending = true
+				c.Invalidate()
 			}
 		})
 	})
