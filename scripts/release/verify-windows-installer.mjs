@@ -89,9 +89,10 @@ function killBlock() {
 function assertInstalled(label) {
   assert.ok(existsSync(APP_EXE), `${label}: ${APP_EXE} is missing`);
   assert.ok(existsSync(UNINSTALL_EXE), `${label}: ${UNINSTALL_EXE} is missing`);
+  // The NSIS setup is a 32-bit process, so its HKLM writes land in the 32-bit view.
   const reg = spawnSync(
     "reg",
-    ["query", "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "/s", "/d", "/f", INSTALL_DIR],
+    ["query", "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "/s", "/d", "/f", INSTALL_DIR, "/reg:32"],
     { encoding: "utf8" },
   );
   assert.equal(reg.status, 0, `${label}: no uninstall entry points at ${INSTALL_DIR}\n${reg.stdout}${reg.stderr}`);
