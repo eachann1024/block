@@ -858,6 +858,16 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 			c.scrollToBottom = false
 		}
 	}
+	// 贴底跟随：在底部时内容增长（发消息、流式输出、动画撑高）一直钉在底部；
+	// 用户上滑就停止跟随，滑回底部又恢复。Y/MaxY 是上一帧布局夹紧后的值。
+	if convID != 0 && prevConvID == convID {
+		atBottom := c.messagesScroll.Y >= c.messagesScroll.MaxY-2
+		if c.scrollToBottom && !atBottom {
+			c.scrollToBottom = false
+		} else if !c.scrollToBottom && atBottom {
+			c.scrollToBottom = true
+		}
+	}
 	needScrollBottom := c.scrollToBottom && convID != 0
 	if needScrollBottom {
 		c.messagesScroll.X = 0
@@ -875,18 +885,10 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	scroll := bui.Scroll(cUI.Key("ai-chat-scroll"), &c.messagesScroll).FillWidth().Grow(1)
 	bui.Probe(scroll, "ai-chat-scroll")
 	scrollH := scroll.Bounds().H
-	if needScrollBottom {
-		if scrollH > 0 {
-			c.mu.Lock()
-			if c.currentID == convID {
-				c.scrollToBottom = false
-			}
-			c.mu.Unlock()
-		} else {
-			c.requestRedraw()
-		}
+	if needScrollBottom && scrollH <= 0 {
+		c.requestRedraw()
 	}
-	scrollY := c.messagesScroll.Y
+	scrollY := min(c.messagesScroll.Y, c.messagesScroll.MaxY)
 	overscan := max(scrollH*1.5, 600)
 	visTop := scrollY - overscan
 	visBot := scrollY + scrollH + overscan
