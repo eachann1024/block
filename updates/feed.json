@@ -1,10 +1,82 @@
 {
   "schema_version": 1,
   "repo": "eachann1024/block",
-  "updated_at": "2026-11-24T06:31:30.207Z",
-  "latest_version": "1.0.926",
-  "latest_tag": "v1.0.926",
+  "updated_at": "2026-11-24T07:07:54.096Z",
+  "latest_version": "1.0.927",
+  "latest_tag": "v1.0.927",
   "releases": [
+    {
+      "version": "1.0.927",
+      "tag": "v1.0.927",
+      "published_at": "2026-11-24T07:07:53Z",
+      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.927",
+      "zh": {
+        "highlights": "",
+        "new": [
+          "安装包：Windows 安装程序改用自定义安装窗口，不再显示系统默认向导。"
+        ],
+        "improvements": [
+          "安装包：macOS 磁盘映像的安装窗口换上自定义背景，拖拽安装的布局更整齐。"
+        ],
+        "fixes": [
+          "自动更新：Windows 上更新改为就地安装，已有安装会直接升级，不再要求重新选择安装位置。"
+        ],
+        "other": [
+          "安装包：发版打包时，Windows 安装流程改由自定义安装窗口处理。",
+          "安装包：Windows 安装包的校验步骤改为读取 32 位注册表视图，已安装项能被正确检查。",
+          "安装包：自定义窗口完成安装后，安装程序以成功状态退出。"
+        ]
+      },
+      "en": {
+        "highlights": "",
+        "new": [
+          "Installer: The Windows installer now opens a custom setup window instead of the default system wizard."
+        ],
+        "improvements": [
+          "Installer: The macOS disk image now uses a styled drag-to-install window with a custom background and tidier layout."
+        ],
+        "fixes": [
+          "Updates: On Windows, updates are now installed in place, so an existing installation is upgraded directly without asking for a new install location."
+        ],
+        "other": [
+          "Installer: Release packaging now hands the Windows installation off to the custom setup window.",
+          "Installer: The Windows installer verification step now reads the 32-bit registry view, so installed entries are checked correctly.",
+          "Installer: Setup now exits with a success status once the custom window has finished the installation."
+        ]
+      },
+      "assets": [
+        {
+          "name": "block-macos-arm64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-macos-arm64.dmg",
+          "size": 15533269,
+          "sha256": "5abfa09277eee664ccd64f6251864beae5cbf6e7c5af215073c82ef802d4e122"
+        },
+        {
+          "name": "block-macos-x64.dmg",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-macos-x64.dmg",
+          "size": 17124530,
+          "sha256": "80a31fa497c5c26c9ff9375f50b3fe57534ea17ddf217537cbe210ff5248b25a"
+        },
+        {
+          "name": "block-windows-x64-setup.exe",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-windows-x64-setup.exe",
+          "size": 12836606,
+          "sha256": "66a4dbeee858d934bc4bce4805cb2b6cd72716ce7d93a02a6bfb122050ea9190"
+        },
+        {
+          "name": "block-linux-x64.deb",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-linux-x64.deb",
+          "size": 11183994,
+          "sha256": "376c685ea3cb80e03a31817939db78802dc0df40e45407523ff2d4ebd1a9bdb4"
+        },
+        {
+          "name": "block-linux-x64.AppImage",
+          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.927/block-linux-x64.AppImage",
+          "size": 24181240,
+          "sha256": "a5d6dfece6084582a8ff8470a4dcfc5a65f78bda8e5c0a067a18b1faf7d81724"
+        }
+      ]
+    },
     {
       "version": "1.0.926",
       "tag": "v1.0.926",
@@ -28,38 +100,7 @@
         ],
         "other": []
       },
-      "assets": [
-        {
-          "name": "block-macos-arm64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-macos-arm64.dmg",
-          "size": 15727530,
-          "sha256": "51a1302812ef0049049d744ea575fd5332ef5e19b5b3bbe2fe9ff3b64b33d580"
-        },
-        {
-          "name": "block-macos-x64.dmg",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-macos-x64.dmg",
-          "size": 17317204,
-          "sha256": "e455bedbe14852ac367ae660dd1123e9ed53657fa987680d2b30dc81a85f7f76"
-        },
-        {
-          "name": "block-windows-x64-setup.exe",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-windows-x64-setup.exe",
-          "size": 12661210,
-          "sha256": "94ad3db5cdf6d0f771d6921a03db8985f8b4f47b9fe560be91f1035338cac247"
-        },
-        {
-          "name": "block-linux-x64.deb",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-linux-x64.deb",
-          "size": 11166428,
-          "sha256": "ed472b0e9bb3adba03df72cfe5ab8d23cf385c54806818db27e9e98398f52eb6"
-        },
-        {
-          "name": "block-linux-x64.AppImage",
-          "browser_download_url": "https://github.com/eachann1024/block/releases/download/v1.0.926/block-linux-x64.AppImage",
-          "size": 24173048,
-          "sha256": "f52cf8543d568724a33e66b8d10251a454c51aadb7dfa11ff10795d8804790c0"
-        }
-      ]
+      "assets": []
     },
     {
       "version": "1.0.925",
@@ -1431,31 +1472,6 @@
           "Clarify plugin enablement states and lighten store views."
         ],
         "fixes": [],
-        "other": []
-      },
-      "assets": []
-    },
-    {
-      "version": "1.0.877",
-      "tag": "v1.0.877",
-      "published_at": "2026-11-21T05:07:54Z",
-      "html_url": "https://github.com/eachann1024/block/releases/tag/v1.0.877",
-      "zh": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "修复了一处日常编辑与界面交互中的细节问题。"
-        ],
-        "other": []
-      },
-      "en": {
-        "highlights": "",
-        "new": [],
-        "improvements": [],
-        "fixes": [
-          "Polished interface details and everyday editing reliability."
-        ],
         "other": []
       },
       "assets": []
