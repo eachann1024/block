@@ -672,6 +672,7 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 			layBtn := bui.IconButton(c, layIcon, bui.IconButtonOptions{
 				ID:       "mm-layout-" + id,
 				Label:    layTip,
+				Tooltip:  layTip,
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
 			})
@@ -685,9 +686,11 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 				st.AutoFitPending = true
 			}
 
+			fitTip := theme.Tr("适配画布", "Fit to view")
 			fitBtn := bui.IconButton(c, icons.TbReset, bui.IconButtonOptions{
 				ID:       "mm-fit-" + id,
-				Label:    theme.Tr("适配画布", "Fit to view"),
+				Label:    fitTip,
+				Tooltip:  fitTip,
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
 			})
@@ -696,37 +699,53 @@ func (st *BlockState) renderHeader(c *ui.Context, id string, fullscreen bool, cb
 			}
 
 			if !cb.ReadOnly {
+				impSpec := bui.TooltipSpec{
+					Rows: []bui.TooltipRow{{
+						Trigger: theme.Tr("导入", "Import"),
+						Detail:  ".md / .opml / .mm / .xmind",
+					}},
+				}
 				impBtn := bui.IconButton(c, icons.Upload, bui.IconButtonOptions{
-					ID:       "mm-import-" + id,
-					Label:    theme.Tr("导入 (.md / .opml / .mm / .xmind)", "Import (.md / .opml / .mm / .xmind)"),
-					Size:     theme.HeightChrome,
-					IconSize: theme.IconAction,
+					ID:          "mm-import-" + id,
+					Label:       theme.Tr("导入 (.md / .opml / .mm / .xmind)", "Import (.md / .opml / .mm / .xmind)"),
+					TooltipSpec: &impSpec,
+					Size:        theme.HeightChrome,
+					IconSize:    theme.IconAction,
 				})
 				if impBtn.Clicked() {
 					st.triggerImport(cb)
 				}
 			}
 
-			expBtn := bui.IconButton(c, icons.Download, bui.IconButtonOptions{
+			expTip := theme.Tr("导出", "Export")
+			expOpts := bui.IconButtonOptions{
 				ID:       "mm-export-" + id,
-				Label:    theme.Tr("导出", "Export"),
+				Label:    expTip,
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
 				Active:   st.ExportMenuOpen,
-			})
+			}
+			if !st.ExportMenuOpen {
+				expOpts.Tooltip = expTip
+			}
+			expBtn := bui.IconButton(c, icons.Download, expOpts)
 			if expBtn.Clicked() {
 				st.ExportMenuOpen = !st.ExportMenuOpen
 			}
 
 			fsIcon := icons.Maximize
 			fsTip := theme.Tr("全屏", "Fullscreen")
+			fsShortcut := ""
 			if fullscreen {
 				fsIcon = icons.Close
 				fsTip = theme.Tr("退出全屏", "Exit fullscreen")
+				fsShortcut = "Esc"
 			}
 			fsBtn := bui.IconButton(c, fsIcon, bui.IconButtonOptions{
 				ID:       "mm-fs-" + id,
 				Label:    fsTip,
+				Tooltip:  fsTip,
+				Shortcut: fsShortcut,
 				Size:     theme.HeightChrome,
 				IconSize: theme.IconAction,
 			})
