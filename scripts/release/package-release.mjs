@@ -88,7 +88,7 @@ function verifyDmgBundle(dmgPath) {
 
     const mountedApp = join(mountPoint, `${appName}.app`);
     const mountedBin = join(mountedApp, "Contents", "MacOS", appName);
-    const applicationsLink = join(mountPoint, "Applications");
+    const applicationsLink = join(mountPoint, " ");
     assert.ok(existsSync(mountedApp), `Mounted DMG missing ${appName}.app`);
     assert.ok(existsSync(mountedBin), `Mounted DMG missing ${appName}.app/Contents/MacOS/${appName}`);
     assert.ok(lstatSync(applicationsLink).isSymbolicLink(), "Mounted DMG missing Applications symlink");

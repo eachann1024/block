@@ -10,7 +10,10 @@ volume_name = "Block"
 format = "UDZO"
 filesystem = "HFS+"
 files = [app]
-symlinks = {"Applications": "/Applications"}
+# Use a single-space symlink name (the Chromium/Brave DMG convention) so Finder
+# renders the universal macOS Applications folder icon without a hardcoded
+# English "Applications" label on non-English systems.
+symlinks = {" ": "/Applications"}
 background = defines["background"]  # noqa: F821
 
 show_status_bar = False
@@ -26,4 +29,4 @@ arrange_by = None
 icon_size = 96
 text_size = 12
 label_pos = "bottom"
-icon_locations = {app_name: (170, 168), "Applications": (430, 168)}
+icon_locations = {app_name: (170, 168), " ": (430, 168)}
