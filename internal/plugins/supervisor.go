@@ -63,6 +63,7 @@ type PluginViewState struct {
 	FailedNoteRoot    string
 	SavePausedConfirm bool
 	failedSaves       map[string]string
+	failedSaveEvents  map[string]failedNoteEvent
 	savePausedConfirm map[string]bool
 	queuedSaves       map[string]*noteSaveRequest
 	activeSaves       int
@@ -105,7 +106,7 @@ type SupervisorConfig struct {
 	PickFile        func(title, defaultPath string, extensions []string, onPicked func(path string))
 	AddNotebook     func(path string) error
 	ApplyNoteWrite  func(absPath, content string, write func() (bool, error)) (bool, error)
-	ApplyNoteTrash  func(absPath string, verify, trash func() error) error
+	ApplyNoteTrash  func(pluginID, absPath string, verify, trash func() error) error
 	OnChanged       func()
 	OnRedraw        func()
 	// UI lets plugins drive host UI (toasts, dialogs, panels, editor).
@@ -2757,22 +2758,77 @@ func (s *Supervisor) RetrySurfaceAsync(pluginID string, surface Surface) {
 		if noteRoot == "" {
 			noteRoot = nbRoot
 		}
-		relSlash, ok := relativeNotePath(noteRoot, notePath)
-		if !ok {
-			s.mu.Unlock()
-			s.ReloadSurfaceViewAsync(pluginID, surface)
-			return
-		}
 		target := s.views[viewKey{pluginID, noteRoot, SurfaceSettingsPage}]
 		if target == nil || target.BusyAction != "" {
 			s.mu.Unlock()
 			return
 		}
+		failedEvt, hasFailedEvt := target.failedSaveEvents[notePath]
+		if !hasFailedEvt {
+			if strings.HasPrefix(notePath, "dir:") {
+				cleanDir := filepath.Clean(strings.TrimPrefix(notePath, "dir:"))
+				relFolder, ok := relativeNotePath(noteRoot, cleanDir)
+				if !ok || relFolder == "" || relFolder == "." {
+					s.mu.Unlock()
+					s.ReloadSurfaceViewAsync(pluginID, surface)
+					return
+				}
+				failedEvt = failedNoteEvent{
+					event:     "note.deleted",
+					absPath:   cleanDir,
+					relFolder: relFolder,
+				}
+			} else {
+				relSlash, ok := relativeNotePath(noteRoot, notePath)
+				if !ok || relSlash == "" || relSlash == "." {
+					s.mu.Unlock()
+					s.ReloadSurfaceViewAsync(pluginID, surface)
+					return
+				}
+				failedEvt = failedNoteEvent{
+					event:    "note.saved",
+					absPath:  notePath,
+					relSlash: relSlash,
+				}
+			}
+		} else if failedEvt.relFolder == "" && failedEvt.relSlash == "" {
+			relSlash, ok := relativeNotePath(noteRoot, failedEvt.absPath)
+			if !ok || relSlash == "" || relSlash == "." {
+				s.mu.Unlock()
+				s.ReloadSurfaceViewAsync(pluginID, surface)
+				return
+			}
+			if strings.HasPrefix(notePath, "dir:") {
+				failedEvt.relFolder = relSlash
+			} else {
+				failedEvt.relSlash = relSlash
+			}
+		}
 		target.BusyAction = "__retry_note_saved__"
 		target.retrySavePath = notePath
 		s.mu.Unlock()
 		s.notifyChanged()
-		s.queueNoteSaved(pluginID, noteRoot, notePath, relSlash)
+		if failedEvt.event == "note.deleted" {
+			if failedEvt.relFolder != "" || strings.HasPrefix(notePath, "dir:") {
+				cleanDir := failedEvt.absPath
+				if cleanDir == "" {
+					cleanDir = filepath.Clean(strings.TrimPrefix(notePath, "dir:"))
+				}
+				s.queueFolderDeleted(pluginID, noteRoot, cleanDir, failedEvt.relFolder)
+				return
+			}
+			absPath := failedEvt.absPath
+			if absPath == "" {
+				absPath = notePath
+			}
+			s.queueNoteDeleted(pluginID, noteRoot, absPath, failedEvt.relSlash)
+			return
+		}
+		absPath := failedEvt.absPath
+		if absPath == "" {
+			absPath = notePath
+		}
+		s.queueNoteSaved(pluginID, noteRoot, absPath, failedEvt.relSlash)
 		return
 	}
 	s.mu.Unlock()
@@ -3074,6 +3130,7 @@ func (s *Supervisor) clearSyncedNotebookErrorsLocked(pluginID string, roots []st
 	for key, view := range s.views {
 		if key.pluginID == pluginID && key.surface == SurfaceSettingsPage && view != nil && syncedRoots[syncNotebookKey(key.notebookRoot)] {
 			clear(view.failedSaves)
+			clear(view.failedSaveEvents)
 			clear(view.savePausedConfirm)
 		}
 	}
