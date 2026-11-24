@@ -69,9 +69,52 @@ type HitResult struct {
 	Node *Node
 }
 
+// TextMeasurer is satisfied by both *ui.Painter and *ui.Context so layout
+// during build and paint shares exact native text measurements.
+type TextMeasurer interface {
+	MeasureText(width float32, spans ...ui.Span) (float32, float32)
+}
+
+func validMeasurer(tm TextMeasurer) TextMeasurer {
+	switch v := tm.(type) {
+	case nil:
+		return nil
+	case *ui.Painter:
+		if v == nil {
+			return nil
+		}
+	case *ui.Context:
+		if v == nil {
+			return nil
+		}
+	}
+	return tm
+}
+
 // MeasureCache caches estimated or measured node widths so repeated pan/zoom frames are O(1).
 type MeasureCache struct {
-	widths map[measureKey]float32
+	widths       map[measureKey]float32
+	overrideID   int
+	overrideText string
+}
+
+// SetTextOverride temporarily substitutes text for nodeID during layout measurement
+// (e.g. live inline editing or IME composition) without mutating the node itself.
+func (mc *MeasureCache) SetTextOverride(nodeID int, text string) {
+	if mc == nil {
+		return
+	}
+	mc.overrideID = nodeID
+	mc.overrideText = text
+}
+
+// ClearTextOverride removes any active inline editing width override.
+func (mc *MeasureCache) ClearTextOverride() {
+	if mc == nil {
+		return
+	}
+	mc.overrideID = 0
+	mc.overrideText = ""
 }
 
 type measureKey struct {
@@ -81,22 +124,27 @@ type measureKey struct {
 }
 
 // MeasureNodeWidth returns the horizontal DIP width of node n, caching by (text, depth, hasTask).
-func (mc *MeasureCache) MeasureNodeWidth(n *Node, p *ui.Painter) float32 {
+func (mc *MeasureCache) MeasureNodeWidth(n *Node, tm TextMeasurer) float32 {
+	tm = validMeasurer(tm)
+	text := n.Text
+	if mc != nil && mc.overrideID != 0 && n.ID == mc.overrideID {
+		text = mc.overrideText
+	}
 	if mc == nil {
-		return estimateNodeWidth(n, p)
+		return estimateNodeWidthText(text, n.Depth, n.Task != nil, tm)
 	}
 	if mc.widths == nil {
 		mc.widths = make(map[measureKey]float32, 64)
 	}
-	k := measureKey{text: n.Text, depth: min(n.Depth, 2), hasTask: n.Task != nil}
+	k := measureKey{text: text, depth: min(n.Depth, 2), hasTask: n.Task != nil}
 	if w, ok := mc.widths[k]; ok {
 		return w
 	}
 	if len(mc.widths) > 8192 {
 		clear(mc.widths)
 	}
-	w := estimateNodeWidth(n, p)
-	if p != nil {
+	w := estimateNodeWidthText(text, n.Depth, n.Task != nil, tm)
+	if tm != nil {
 		mc.widths[k] = w
 	}
 	return w
@@ -120,19 +168,18 @@ func nodeFontWeight(depth int) int {
 	}
 }
 
-func estimateNodeWidth(n *Node, p *ui.Painter) float32 {
-	text := n.Text
+func estimateNodeWidthText(text string, depth int, hasTask bool, tm TextMeasurer) float32 {
 	if text == "" {
 		text = " "
 	}
 	var textW float32
-	if p != nil {
-		sz := nodeFontSize(n.Depth)
-		wt := nodeFontWeight(n.Depth)
-		textW, _ = p.MeasureText(0, ui.Span{Text: text, Size: sz, Weight: wt})
+	if tm != nil {
+		sz := nodeFontSize(depth)
+		wt := nodeFontWeight(depth)
+		textW, _ = tm.MeasureText(0, ui.Span{Text: text, Size: sz, Weight: wt})
 	} else {
-		// Fast deterministic fallback when measuring outside a Painter (e.g. hit-tests or tests).
-		sz := nodeFontSize(n.Depth)
+		// Fast deterministic fallback when measuring outside a TextMeasurer (e.g. hit-tests or tests).
+		sz := nodeFontSize(depth)
 		var units float32
 		for _, r := range text {
 			switch {
@@ -149,7 +196,7 @@ func estimateNodeWidth(n *Node, p *ui.Painter) float32 {
 		textW = units * sz
 	}
 	var padX float32
-	switch n.Depth {
+	switch depth {
 	case 0:
 		padX = 36
 	case 1:
@@ -157,23 +204,24 @@ func estimateNodeWidth(n *Node, p *ui.Painter) float32 {
 	default:
 		padX = 16
 	}
-	if n.Task != nil {
+	if hasTask {
 		padX += layoutTaskBox + layoutTaskGap
 	}
 	minW := float32(44)
-	if n.Depth == 0 {
+	if depth == 0 {
 		minW = 76
-	} else if n.Depth == 1 {
+	} else if depth == 1 {
 		minW = 54
 	}
 	return max(float32(math.Ceil(float64(textW+padX))), minW)
 }
 
 // ComputeLayout performs an O(N) MindNode-style tree layout and returns the world bounding box.
-func ComputeLayout(root *Node, mode LayoutMode, p *ui.Painter, mc *MeasureCache) Bounds {
+func ComputeLayout(root *Node, mode LayoutMode, tm TextMeasurer, mc *MeasureCache) Bounds {
 	if root == nil {
 		return Bounds{}
 	}
+	tm = validMeasurer(tm)
 
 	// Pass 1: annotate Depth, Branch, W, H.
 	var prep func(n, parent *Node, depth, branch int)
@@ -189,7 +237,7 @@ func ComputeLayout(root *Node, mode LayoutMode, p *ui.Painter, mc *MeasureCache)
 		default:
 			n.H = layoutLeafH
 		}
-		n.W = mc.MeasureNodeWidth(n, p)
+		n.W = mc.MeasureNodeWidth(n, tm)
 		for i, ch := range n.Children {
 			b := branch
 			if depth == 0 {
@@ -560,25 +608,46 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					midX := (px + nx) * 0.5
 					var path ui.Path
 					path.Cap(ui.RoundCap).Join(ui.RoundJoin)
-					path.MoveTo(wxToScreen(px), wyToScreen(py))
+					if par.Depth > 1 && par.ID == opt.EditingID {
+						// Tuck outgoing curve start under the editing chip's rounded bottom corner.
+						tuck := min(float32(6), par.W*0.5)
+						startX := px + tuck
+						if d > 0 {
+							startX = px - tuck
+						}
+						path.MoveTo(wxToScreen(startX), wyToScreen(py))
+						path.LineTo(wxToScreen(px), wyToScreen(py))
+					} else {
+						path.MoveTo(wxToScreen(px), wyToScreen(py))
+					}
 					path.CubeTo(
 						wxToScreen(midX), wyToScreen(py),
 						wxToScreen(midX), wyToScreen(ny),
 						wxToScreen(nx), wyToScreen(ny),
 					)
 					if n.Depth > 1 {
-						endX := n.X
-						if d > 0 {
-							endX = n.X + n.W
+						if n.ID == opt.EditingID {
+							// Tuck incoming curve cleanly into the editing chip corner to avoid double lines.
+							tuck := min(float32(6), n.W*0.5)
+							tuckX := nx - tuck
+							if d > 0 {
+								tuckX = nx + tuck
+							}
+							path.LineTo(wxToScreen(tuckX), wyToScreen(ny))
+						} else {
+							endX := n.X
+							if d > 0 {
+								endX = n.X + n.W
+							}
+							path.LineTo(wxToScreen(endX), wyToScreen(ny))
 						}
-						path.LineTo(wxToScreen(endX), wyToScreen(ny))
 					}
 					sw := float32(1.6)
 					if n.Depth == 1 {
 						sw = 2.2
 					}
 					p.StrokePath(&path, max(sw*scale, 1), col)
-					if n.Depth > 1 && n.ID == opt.SelectedID {
+					if n.Depth > 1 && n.ID == opt.SelectedID && n.ID != opt.EditingID {
 						var selLine ui.Path
 						selLine.Cap(ui.RoundCap)
 						selLine.MoveTo(wxToScreen(n.X+0.5), wyToScreen(ny))
@@ -594,6 +663,14 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				if n.Dir > 0 {
 					bx = n.X + n.W + layoutFoldOffset
 					startX = n.X + n.W
+				}
+				if n.Depth > 1 && n.ID == opt.EditingID {
+					tuck := min(float32(6), n.W*0.5)
+					if n.Dir > 0 {
+						startX -= tuck
+					} else {
+						startX += tuck
+					}
 				}
 				by := n.Y
 				if n.Depth > 1 {
@@ -631,8 +708,9 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 				sh := n.H * scale
 				rect := ui.Rect{X: sx, Y: sy, W: sw, H: sh}
 
-				isSelected := n.ID == opt.SelectedID
-				isHovered := n.ID == opt.HoveredID && !isSelected && opt.DragNodeID == 0
+				isEditing := n.ID == opt.EditingID
+				isSelected := n.ID == opt.SelectedID && !isEditing
+				isHovered := n.ID == opt.HoveredID && !isSelected && !isEditing && opt.DragNodeID == 0
 
 				pad := float32(3) * scale
 				ringR := ui.Rect{X: sx - pad, Y: sy - pad, W: sw + pad*2, H: sh + pad*2}
@@ -646,33 +724,84 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 
 				switch n.Depth {
 				case 0:
-					p.Fill(rect, pal.Text, sh*0.5)
+					if isEditing {
+						haloW := float32(3.5) * scale
+						haloR := ui.Rect{X: sx - haloW, Y: sy - haloW, W: sw + haloW*2, H: sh + haloW*2}
+						haloAlpha := float32(0.24)
+						if pal.Dark {
+							haloAlpha = 0.30
+						}
+						p.Fill(haloR, pal.Accent.Alpha(haloAlpha), haloR.H*0.5)
+						p.Fill(rect, pal.Text, sh*0.5)
+						p.Stroke(rect, pal.Accent, sh*0.5, max(1.5*scale, 1.2))
+					} else {
+						p.Fill(rect, pal.Text, sh*0.5)
+					}
 				case 1:
 					rad := theme.RadiusMD * scale
-					fillCol := col.Alpha(0.13)
-					strokeCol := col
-					strokeW := max(1.2*scale, 1)
-					if isSelected {
-						fillCol = pal.SelectionBG
-						strokeCol = pal.Accent
-						strokeW = max(1.5*scale, 1.2)
-						if dimmed {
-							fillCol = fillCol.Alpha(0.45)
-							strokeCol = strokeCol.Alpha(0.45)
+					if isEditing {
+						haloW := float32(3.5) * scale
+						haloR := ui.Rect{X: sx - haloW, Y: sy - haloW, W: sw + haloW*2, H: sh + haloW*2}
+						haloAlpha := float32(0.22)
+						mixT := float32(0.10)
+						if pal.Dark {
+							haloAlpha = 0.28
+							mixT = 0.16
 						}
+						p.Fill(haloR, col.Alpha(haloAlpha), rad+haloW)
+						p.Fill(rect, pal.Card.Mix(col, mixT), rad)
+						p.Stroke(rect, col, rad, max(1.6*scale, 1.2))
 					} else {
-						if isHovered {
-							fillCol = col.Alpha(0.22)
+						fillCol := col.Alpha(0.13)
+						strokeCol := col
+						strokeW := max(1.2*scale, 1)
+						if isSelected {
+							fillCol = pal.SelectionBG
+							strokeCol = pal.Accent
+							strokeW = max(1.5*scale, 1.2)
+							if dimmed {
+								fillCol = fillCol.Alpha(0.45)
+								strokeCol = strokeCol.Alpha(0.45)
+							}
+						} else {
+							if isHovered {
+								fillCol = col.Alpha(0.22)
+							}
+							if dimmed {
+								fillCol = col.Alpha(0.06)
+								strokeCol = col.Alpha(0.35)
+							}
 						}
-						if dimmed {
-							fillCol = col.Alpha(0.06)
-							strokeCol = col.Alpha(0.35)
-						}
+						p.Fill(rect, fillCol, rad)
+						p.Stroke(rect, strokeCol, rad, strokeW)
 					}
-					p.Fill(rect, fillCol, rad)
-					p.Stroke(rect, strokeCol, rad, strokeW)
 				default:
-					if isSelected {
+					if isEditing {
+						// Expand symmetrically around leafR (+layoutLeafGap top & bottom) so the chip
+						// stays centered on nodeTextCenterY(n) (0px jump) while meeting the branch line cleanly.
+						editLeafR := ui.Rect{
+							X: sx,
+							Y: sy - layoutLeafGap*scale,
+							W: sw,
+							H: (n.H + layoutLeafGap) * scale,
+						}
+						haloW := float32(3.0) * scale
+						haloR := ui.Rect{
+							X: editLeafR.X - haloW,
+							Y: editLeafR.Y - haloW,
+							W: editLeafR.W + haloW*2,
+							H: editLeafR.H + haloW*2,
+						}
+						haloAlpha := float32(0.20)
+						mixT := float32(0.09)
+						if pal.Dark {
+							haloAlpha = 0.28
+							mixT = 0.14
+						}
+						p.Fill(haloR, col.Alpha(haloAlpha), leafRad+haloW)
+						p.Fill(editLeafR, pal.Card.Mix(col, mixT), leafRad)
+						p.Stroke(editLeafR, col, leafRad, max(1.5*scale, 1.1))
+					} else if isSelected {
 						selBG := pal.SelectionBG
 						if dimmed {
 							selBG = selBG.Alpha(0.45)
@@ -696,38 +825,38 @@ func PaintScene(p *ui.Painter, root *Node, r ui.Rect, cam Camera, opt PaintOptio
 					}
 				}
 
-				if n.ID != opt.EditingID {
-					tx := nodeContentLeft(n)
-					ty := nodeTextCenterY(n)
-					if n.Task != nil {
-						cbX := wxToScreen(tx)
-						cbY := wyToScreen(ty - layoutTaskBox/2)
-						cbS := layoutTaskBox * scale
-						cbR := ui.Rect{X: cbX, Y: cbY, W: cbS, H: cbS}
-						cbRad := float32(3.5) * scale
-						if *n.Task {
-							acc := pal.Accent
-							if dimmed {
-								acc = acc.Alpha(0.35)
-							}
-							p.Fill(cbR, acc, cbRad)
-							var ck ui.Path
-							ck.Cap(ui.RoundCap).Join(ui.RoundJoin)
-							ck.MoveTo(cbX+cbS*0.24, cbY+cbS*0.52)
-							ck.LineTo(cbX+cbS*0.43, cbY+cbS*0.71)
-							ck.LineTo(cbX+cbS*0.76, cbY+cbS*0.30)
-							p.StrokePath(&ck, max(1.5*scale, 1), pal.Paper)
-						} else {
-							p.Fill(cbR, pal.Paper, cbRad)
-							borderC := pal.TextSecondary
-							if dimmed {
-								borderC = borderC.Alpha(0.35)
-							}
-							p.Stroke(cbR, borderC, cbRad, max(1.2*scale, 1))
+				tx := nodeContentLeft(n)
+				ty := nodeTextCenterY(n)
+				if n.Task != nil {
+					cbX := wxToScreen(tx)
+					cbY := wyToScreen(ty - layoutTaskBox/2)
+					cbS := layoutTaskBox * scale
+					cbR := ui.Rect{X: cbX, Y: cbY, W: cbS, H: cbS}
+					cbRad := float32(3.5) * scale
+					if *n.Task {
+						acc := pal.Accent
+						if dimmed {
+							acc = acc.Alpha(0.35)
 						}
-						tx += layoutTaskBox + layoutTaskGap
+						p.Fill(cbR, acc, cbRad)
+						var ck ui.Path
+						ck.Cap(ui.RoundCap).Join(ui.RoundJoin)
+						ck.MoveTo(cbX+cbS*0.24, cbY+cbS*0.52)
+						ck.LineTo(cbX+cbS*0.43, cbY+cbS*0.71)
+						ck.LineTo(cbX+cbS*0.76, cbY+cbS*0.30)
+						p.StrokePath(&ck, max(1.5*scale, 1), pal.Paper)
+					} else {
+						p.Fill(cbR, pal.Paper, cbRad)
+						borderC := pal.TextSecondary
+						if dimmed {
+							borderC = borderC.Alpha(0.35)
+						}
+						p.Stroke(cbR, borderC, cbRad, max(1.2*scale, 1))
 					}
+					tx += layoutTaskBox + layoutTaskGap
+				}
 
+				if !isEditing {
 					txtColor := pal.Text
 					if n.Depth == 0 {
 						txtColor = pal.Paper
