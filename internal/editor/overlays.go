@@ -229,7 +229,7 @@ func (s *Session) renderFindBar(c *ui.Context) {
 						countText = fmt.Sprintf("%d / %d", s.findCurrent+1, len(s.findMatches))
 					}
 				}
-				ui.Row(c).Width(72).PaddingX(theme.Space6).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).PaddingX(theme.Space6).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, countText).FontSize(theme.FontMeta).TextColor(pal.TextSecondary).SingleLine()
 				})
 
