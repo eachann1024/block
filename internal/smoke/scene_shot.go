@@ -1,0 +1,340 @@
+package smoke
+
+import (
+	"encoding/json"
+	"fmt"
+	"image/png"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"block/internal/app"
+	"block/internal/modals"
+	"block/internal/model"
+	"block/internal/theme"
+	blockui "block/internal/ui"
+	"github.com/egoist/mygo/ui"
+)
+
+const defaultSceneShotOutDir = "/Users/eachann/Work/block/tmp/shots"
+
+// ShotSize describes an offscreen render viewport in logical pixels.
+type ShotSize struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// ProbeAnomaly records a blockui probe with non-positive dimensions or
+// coordinates extending outside the rendered window viewport.
+type ProbeAnomaly struct {
+	ID     string  `json:"id"`
+	X      float32 `json:"x"`
+	Y      float32 `json:"y"`
+	W      float32 `json:"w"`
+	H      float32 `json:"h"`
+	Reason string  `json:"reason"`
+}
+
+// SceneShotResult summarizes one rendered (scene, theme, size) snapshot.
+type SceneShotResult struct {
+	Scene      string         `json:"scene"`
+	Theme      string         `json:"theme"`
+	Size       string         `json:"size"`
+	Width      int            `json:"width"`
+	Height     int            `json:"height"`
+	ImagePath  string         `json:"image_path"`
+	ProbeCount int            `json:"probe_count"`
+	Anomalies  []ProbeAnomaly `json:"anomalies,omitempty"`
+	DurationMs int64          `json:"duration_ms"`
+}
+
+// SceneShotSummary is written to summary.json in the output directory.
+type SceneShotSummary struct {
+	GeneratedAt  string            `json:"generated_at"`
+	OutputDir    string            `json:"output_dir"`
+	TotalShots   int               `json:"total_shots"`
+	AnomalyCount int               `json:"anomaly_count"`
+	Shots        []SceneShotResult `json:"shots"`
+}
+
+// SceneShotConfig controls offscreen scene snapshot generation.
+type SceneShotConfig struct {
+	Scenes []string
+	Themes []string
+	Sizes  []ShotSize
+	OutDir string
+}
+
+// ParseSceneShotEnv reads BLOCK_SHOT_SCENES, BLOCK_SHOT_THEMES, BLOCK_SHOT_SIZES,
+// and BLOCK_SHOT_OUT. If BLOCK_SHOT_SCENES is empty, ok is false.
+func ParseSceneShotEnv() (SceneShotConfig, bool, error) {
+	rawScenes := strings.TrimSpace(os.Getenv("BLOCK_SHOT_SCENES"))
+	if rawScenes == "" {
+		return SceneShotConfig{}, false, nil
+	}
+	scenes := splitCSVLower(rawScenes)
+	if len(scenes) == 0 {
+		return SceneShotConfig{}, false, nil
+	}
+
+	rawThemes := strings.TrimSpace(os.Getenv("BLOCK_SHOT_THEMES"))
+	if rawThemes == "" {
+		rawThemes = "light,dark"
+	}
+	themes := splitCSVLower(rawThemes)
+	for _, th := range themes {
+		if th != "light" && th != "dark" {
+			return SceneShotConfig{}, false, fmt.Errorf("unsupported BLOCK_SHOT_THEMES entry %q (want light or dark)", th)
+		}
+	}
+
+	rawSizes := strings.TrimSpace(os.Getenv("BLOCK_SHOT_SIZES"))
+	if rawSizes == "" {
+		rawSizes = "1280x800,760x560"
+	}
+	var sizes []ShotSize
+	for _, token := range splitCSVLower(rawSizes) {
+		sz, err := parseShotSize(token)
+		if err != nil {
+			return SceneShotConfig{}, false, err
+		}
+		sizes = append(sizes, sz)
+	}
+
+	outDir := strings.TrimSpace(os.Getenv("BLOCK_SHOT_OUT"))
+	if outDir == "" {
+		outDir = defaultSceneShotOutDir
+	}
+
+	return SceneShotConfig{
+		Scenes: scenes,
+		Themes: themes,
+		Sizes:  sizes,
+		OutDir: outDir,
+	}, true, nil
+}
+
+func splitCSVLower(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.ToLower(strings.TrimSpace(part))
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func parseShotSize(raw string) (ShotSize, error) {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(raw)), "x")
+	if len(parts) != 2 {
+		return ShotSize{}, fmt.Errorf("invalid BLOCK_SHOT_SIZES entry %q (want WxH)", raw)
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return ShotSize{}, fmt.Errorf("invalid BLOCK_SHOT_SIZES dimensions %q", raw)
+	}
+	return ShotSize{Width: w, Height: h}, nil
+}
+
+// RunSceneShots renders every (scene, theme, size) combination offscreen with
+// ui.Tester, exports PNGs and summary.json into cfg.OutDir, and checks all
+// registered blockui probes for non-positive size or viewport overflow.
+func RunSceneShots(baseTempDir string, cfg SceneShotConfig) (*SceneShotSummary, error) {
+	if err := os.MkdirAll(cfg.OutDir, 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir out dir: %w", err)
+	}
+	if strings.TrimSpace(baseTempDir) == "" {
+		tmp, err := os.MkdirTemp("", "block-scene-shot-*")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		baseTempDir = tmp
+	}
+
+	prevDark := theme.IsDark()
+	defer theme.SetDark(prevDark)
+	theme.SetLanguage(model.LangZh)
+
+	summary := &SceneShotSummary{
+		GeneratedAt: time.Now().Format(time.RFC3339),
+		OutputDir:   cfg.OutDir,
+	}
+
+	shotIndex := 0
+	for _, scene := range cfg.Scenes {
+		for _, th := range cfg.Themes {
+			for _, sz := range cfg.Sizes {
+				shotIndex++
+				res, err := renderSingleSceneShot(baseTempDir, shotIndex, scene, th, sz, cfg.OutDir)
+				if err != nil {
+					return summary, err
+				}
+				summary.Shots = append(summary.Shots, res)
+				summary.TotalShots++
+				summary.AnomalyCount += len(res.Anomalies)
+			}
+		}
+	}
+
+	summaryPath := filepath.Join(cfg.OutDir, "summary.json")
+	raw, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return summary, fmt.Errorf("marshal summary.json: %w", err)
+	}
+	if err := os.WriteFile(summaryPath, append(raw, '\n'), 0o644); err != nil {
+		return summary, fmt.Errorf("write summary.json: %w", err)
+	}
+	return summary, nil
+}
+
+func renderSingleSceneShot(baseTempDir string, idx int, scene, th string, sz ShotSize, outDir string) (SceneShotResult, error) {
+	t0 := time.Now()
+	shotDir := filepath.Join(baseTempDir, fmt.Sprintf("shot-%02d-%s-%s-%dx%d", idx, scene, th, sz.Width, sz.Height))
+	dataDir := filepath.Join(shotDir, "app-data")
+	nbDir := filepath.Join(shotDir, "notebook")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return SceneShotResult{}, err
+	}
+	if err := os.MkdirAll(filepath.Join(nbDir, "Projects"), 0o755); err != nil {
+		return SceneShotResult{}, err
+	}
+
+	sampleNotePath := filepath.Join(nbDir, "Ocean Paper.md")
+	sampleContent := strings.Join([]string{
+		"# Ocean Paper 设计基线",
+		"",
+		"这是一段用于离屏渲染与布局自检的示例笔记，包含常规段落、待办与代码块。",
+		"",
+		"- [x] 完成离线场景快照器",
+		"- [ ] 检查亮暗色与宽窄窗几何边界",
+		"",
+		"```go",
+		"package main",
+		"",
+		"func main() {",
+		`    println("Ocean Paper")`,
+		"}",
+		"```",
+		"",
+	}, "\n")
+	if err := os.WriteFile(sampleNotePath, []byte(sampleContent), 0o644); err != nil {
+		return SceneShotResult{}, err
+	}
+	if err := os.WriteFile(filepath.Join(nbDir, "Projects", "Roadmap.md"), []byte("# Roadmap\n\n- Q4 Release\n"), 0o644); err != nil {
+		return SceneShotResult{}, err
+	}
+
+	blockui.ResetSmoke()
+	defer blockui.ResetSmoke()
+
+	dark := th == "dark"
+	theme.SetDark(dark)
+
+	ws := app.NewWorkspace(dataDir)
+	defer func() {
+		if sup := ws.Plugins(); sup != nil {
+			sup.ShutdownAll()
+		}
+	}()
+	if err := ws.SetNotebook(nbDir); err != nil {
+		return SceneShotResult{}, fmt.Errorf("SetNotebook: %w", err)
+	}
+	if err := ws.OpenNote(sampleNotePath, 0); err != nil {
+		return SceneShotResult{}, fmt.Errorf("OpenNote: %w", err)
+	}
+
+	tt := ui.NewTester(ws.Render, sz.Width, sz.Height)
+	tt.SetDark(dark)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+
+	switch scene {
+	case "workspace":
+		// Already in active workspace with sample note open.
+	case "settings":
+		ws.OpenSettings("appearance")
+	case "store":
+		ws.OpenSettings(modals.TabAppStore)
+	case "export":
+		if !ws.OpenExportStage() {
+			return SceneShotResult{}, fmt.Errorf("OpenExportStage returned false for scene %q", scene)
+		}
+	case "find":
+		tt.Key(ui.Cmd, ui.KeyF)
+		tt.Frame()
+		tt.Advance(200 * time.Millisecond)
+		tt.Type("Ocean")
+	default:
+		return SceneShotResult{}, fmt.Errorf("unknown scene %q (supported: workspace, settings, store, export, find)", scene)
+	}
+
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+
+	img := tt.Image()
+	if img == nil {
+		return SceneShotResult{}, fmt.Errorf("ui.Tester.Image() returned nil for %s/%s/%dx%d", scene, th, sz.Width, sz.Height)
+	}
+
+	sizeLabel := fmt.Sprintf("%dx%d", sz.Width, sz.Height)
+	outName := fmt.Sprintf("%s_%s_%s.png", scene, th, sizeLabel)
+	outPath := filepath.Join(outDir, outName)
+	f, err := os.Create(outPath)
+	if err != nil {
+		return SceneShotResult{}, fmt.Errorf("create %s: %w", outPath, err)
+	}
+	if err := png.Encode(f, img); err != nil {
+		_ = f.Close()
+		return SceneShotResult{}, fmt.Errorf("encode %s: %w", outPath, err)
+	}
+	if err := f.Close(); err != nil {
+		return SceneShotResult{}, fmt.Errorf("close %s: %w", outPath, err)
+	}
+
+	targets := blockui.AllTargets()
+	anomalies := inspectProbeBounds(targets, sz.Width, sz.Height)
+
+	return SceneShotResult{
+		Scene:      scene,
+		Theme:      th,
+		Size:       sizeLabel,
+		Width:      sz.Width,
+		Height:     sz.Height,
+		ImagePath:  outPath,
+		ProbeCount: len(targets),
+		Anomalies:  anomalies,
+		DurationMs: time.Since(t0).Milliseconds(),
+	}, nil
+}
+
+func inspectProbeBounds(targets map[string]ui.Rect, viewW, viewH int) []ProbeAnomaly {
+	const eps = float32(0.5)
+	var anomalies []ProbeAnomaly
+	for id, r := range targets {
+		var reasons []string
+		if r.W <= 0 || r.H <= 0 {
+			reasons = append(reasons, "non-positive size")
+		}
+		if r.X < -eps || r.Y < -eps || r.X+r.W > float32(viewW)+eps || r.Y+r.H > float32(viewH)+eps {
+			reasons = append(reasons, "exceeds viewport bounds")
+		}
+		if len(reasons) > 0 {
+			anomalies = append(anomalies, ProbeAnomaly{
+				ID:     id,
+				X:      r.X,
+				Y:      r.Y,
+				W:      r.W,
+				H:      r.H,
+				Reason: strings.Join(reasons, "; "),
+			})
+		}
+	}
+	return anomalies
+}
