@@ -16,6 +16,10 @@
     "ai:map": "python3 scripts/gen_ai_map.py",
     "docs:sync": "bun scripts/sync_plugin_docs.mjs",
     "docs:check": "bun scripts/sync_plugin_docs.mjs --check",
-    "logs": "tail -n 100 -f \"$HOME/Library/Application Support/Block/logs/block.log\""
+    "logs": "tail -n 100 -f \"$HOME/Library/Application Support/Block/logs/block.log\"",
+    "shot": "BLOCK_SHOT_SCENES=${SCENES:-workspace,settings,store,export,find} CGO_ENABLED=0 go test ./internal/smoke -run TestSceneShot",
+    "ship": "bun scripts/ship.mjs",
+    "plugins:ops": "bun scripts/plugins-ops.mjs",
+    "plugins:check": "bun scripts/plugins-ops.mjs check"
   }
 }
