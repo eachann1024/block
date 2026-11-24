@@ -82,7 +82,7 @@ func OpenDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.OpenDial
 	defer fileDialogBusy.Store(false)
 
 	if win == nil {
-		win = mygo.FocusedWindow()
+		win = resolveDialogWindow(win)
 	}
 	if opts.Directory {
 		opts.DefaultPath = resolveExistingDir(opts.DefaultPath)
@@ -156,7 +156,7 @@ func SaveDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.SaveDial
 	defer fileDialogBusy.Store(false)
 
 	if win == nil {
-		win = mygo.FocusedWindow()
+		win = resolveDialogWindow(win)
 	}
 
 	if runtime.GOOS == "darwin" {
@@ -182,12 +182,30 @@ func SaveDialogGuarded(ctx context.Context, win *mygo.Window, opts mygo.SaveDial
 	return chosen, err
 }
 
+func resolveDialogWindow(win *mygo.Window) *mygo.Window {
+	if win != nil {
+		return win
+	}
+	if focused := mygo.FocusedWindow(); focused != nil && !focused.IsDestroyed() {
+		return focused
+	}
+	for _, candidate := range mygo.Windows() {
+		if candidate != nil && !candidate.IsDestroyed() && candidate.IsVisible() {
+			return candidate
+		}
+	}
+	return nil
+}
+
 func resolveExistingDir(raw string) string {
 	p := strings.TrimSpace(raw)
 	if p == "" {
 		return ""
 	}
 	cur := filepath.Clean(p)
+	if !filepath.IsAbs(cur) {
+		return ""
+	}
 	for {
 		if st, err := os.Stat(cur); err == nil {
 			if st.IsDir() {
@@ -375,7 +393,9 @@ func saveDialogDarwinOsascript(ctx context.Context, opts mygo.SaveDialogOptions)
 	defaultName := ""
 	if strings.TrimSpace(opts.DefaultPath) != "" {
 		clean := filepath.Clean(strings.TrimSpace(opts.DefaultPath))
-		if st, err := os.Stat(clean); err == nil && st.IsDir() {
+		if !filepath.IsAbs(clean) {
+			defaultName = filepath.Base(clean)
+		} else if st, err := os.Stat(clean); err == nil && st.IsDir() {
 			defaultDir = clean
 		} else {
 			defaultDir = resolveExistingDir(filepath.Dir(clean))

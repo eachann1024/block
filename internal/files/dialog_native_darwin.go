@@ -37,6 +37,7 @@ type darwinPanelRequest struct {
 	ShowHiddenFiles            bool               `json:"showHiddenFiles,omitempty"`
 	CreateDirectories          bool               `json:"createDirectories,omitempty"`
 	TreatPackagesAsDirectories bool               `json:"treatPackagesAsDirectories,omitempty"`
+	WindowLevel                int                `json:"windowLevel,omitempty"`
 	Filters                    []darwinFileFilter `json:"filters,omitempty"`
 }
 
@@ -131,6 +132,7 @@ type cachedDarwinPanel struct {
 	defaultTitle          string
 	defaultPrompt         string
 	defaultNameFieldLabel string
+	defaultLevel          int
 	shownOnce             bool
 }
 
@@ -153,7 +155,9 @@ var darwinMIMEKindUTIs = map[string]string{
 
 var darwinCommonExtensions = []string{
 	"png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
+	"heic", "heif", "tiff", "mp4", "mov", "m4v", "webm", "mkv", "avi",
 	"md", "markdown", "pdf", "html", "txt", "json", "zip",
+	"xmind", "mm", "opml",
 }
 
 func pickerSend(receiver objc.ID, selector string, args ...any) objc.ID {
@@ -276,6 +280,7 @@ func darwinEnsureCachedPanel(save bool) (*cachedDarwinPanel, error) {
 	slot.panel = panel
 	slot.defaultTitle = pickerGoString(pickerSend(panel, "title"))
 	slot.defaultPrompt = pickerGoString(pickerSend(panel, "prompt"))
+	slot.defaultLevel = objc.Send[int](panel, objc.RegisterName("level"))
 	if save {
 		slot.defaultNameFieldLabel = pickerGoString(pickerSend(panel, "nameFieldLabel"))
 	}
@@ -303,6 +308,12 @@ func resolveDarwinDefaultLocation(raw string, isSave bool) (dir, name string) {
 		return "", ""
 	}
 	clean := filepath.Clean(trimmed)
+	if !filepath.IsAbs(clean) {
+		if isSave {
+			return "", filepath.Base(clean)
+		}
+		return "", ""
+	}
 	if info, err := os.Stat(clean); err == nil && info.IsDir() {
 		return clean, ""
 	}
@@ -463,6 +474,8 @@ func darwinConfigurePanel(cp *cachedDarwinPanel, req darwinPanelRequest) {
 	pickerSend(panel, "setCanCreateDirectories:", req.CreateDirectories)
 	pickerSend(panel, "setTreatsFilePackagesAsDirectories:", req.TreatPackagesAsDirectories)
 
+	darwinApplyPanelFilters(panel, req.Filters, req.Directory)
+
 	dir, name := resolveDarwinDefaultLocation(req.DefaultPath, isSave)
 	if dir != "" {
 		url := pickerSend(objc.ID(objc.GetClass("NSURL")), "fileURLWithPath:isDirectory:", pickerString(dir), true)
@@ -473,8 +486,6 @@ func darwinConfigurePanel(cp *cachedDarwinPanel, req darwinPanelRequest) {
 	if isSave {
 		pickerSend(panel, "setNameFieldStringValue:", pickerString(name))
 	}
-
-	darwinApplyPanelFilters(panel, req.Filters, req.Directory)
 }
 
 func darwinExtractPanelPaths(panel objc.ID, isSave bool) []string {
@@ -617,6 +628,13 @@ func showDarwinNativePanel(ctx context.Context, win *mygo.Window, req darwinPane
 				if useSheet {
 					pickerSend(panel, "beginSheetModalForWindow:completionHandler:", parent, completion)
 				} else {
+					targetLevel := cp.defaultLevel
+					if parent != 0 {
+						if parentLevel := objc.Send[int](parent, objc.RegisterName("level")); parentLevel > targetLevel {
+							targetLevel = parentLevel + 1
+						}
+					}
+					pickerSend(panel, "setLevel:", targetLevel)
 					darwinActivateSelf()
 					if !cp.shownOnce {
 						pickerSend(panel, "center")
@@ -673,23 +691,27 @@ func PrewarmFileDialogs() {
 			})
 		})
 		go func() {
-			time.Sleep(1800 * time.Millisecond)
-			deadline := time.Now().Add(12 * time.Second)
-			for time.Now().Before(deadline) {
-				if !mygo.App.IsReady() || fileDialogBusy.Load() {
-					return
+			waitForIdle := func(initialDelay, maxWait time.Duration) bool {
+				time.Sleep(initialDelay)
+				deadline := time.Now().Add(maxWait)
+				for time.Now().Before(deadline) {
+					if !mygo.App.IsReady() || fileDialogBusy.Load() {
+						return false
+					}
+					if !darwinBundleIntact() {
+						darwinHelperMgr.prewarmAsync()
+						return false
+					}
+					idleSec, ok := darwinSecondsSinceLastKeyOrClick()
+					if !ok || idleSec >= 0.25 {
+						return true
+					}
+					time.Sleep(250 * time.Millisecond)
 				}
-				if !darwinBundleIntact() {
-					darwinHelperMgr.prewarmAsync()
-					return
-				}
-				idleSec, ok := darwinSecondsSinceLastKeyOrClick()
-				if !ok || idleSec >= 0.25 {
-					break
-				}
-				time.Sleep(250 * time.Millisecond)
+				return mygo.App.IsReady() && !fileDialogBusy.Load() && darwinBundleIntact()
 			}
-			if !mygo.App.IsReady() || fileDialogBusy.Load() || !darwinBundleIntact() {
+
+			if !waitForIdle(1800*time.Millisecond, 12*time.Second) {
 				return
 			}
 			mygo.RunOnMain(func() {
@@ -700,6 +722,20 @@ func PrewarmFileDialogs() {
 					if _, err := darwinEnsureCachedPanel(false); err == nil {
 						darwinPrewarmCommonUTTypes()
 					}
+				})
+			})
+
+			// Stagger NSSavePanel pre-creation so export/save pickers also open
+			// instantaneously on the first click without adding startup stutter.
+			if !waitForIdle(400*time.Millisecond, 12*time.Second) {
+				return
+			}
+			mygo.RunOnMain(func() {
+				darwinWithAutoreleasePool(func() {
+					if darwinPanelActive || darwinCachedSavePanel.panel != 0 || !darwinBundleIntact() {
+						return
+					}
+					_, _ = darwinEnsureCachedPanel(true)
 				})
 			})
 		}()
@@ -736,7 +772,7 @@ func openDialogDarwin(ctx context.Context, win *mygo.Window, opts mygo.OpenDialo
 	if allowed != nil && !allowed() {
 		return nil, context.Canceled
 	}
-	paths, helperErr := darwinHelperMgr.pick(ctx, req, allowed)
+	paths, helperErr := darwinHelperMgr.pick(ctx, win, req, allowed)
 	if helperErr == nil {
 		if allowed == nil {
 			refocusWindow(win)
@@ -786,7 +822,7 @@ func saveDialogDarwin(ctx context.Context, win *mygo.Window, opts mygo.SaveDialo
 	if allowed != nil && !allowed() {
 		return "", context.Canceled
 	}
-	paths, helperErr := darwinHelperMgr.pick(ctx, req, allowed)
+	paths, helperErr := darwinHelperMgr.pick(ctx, win, req, allowed)
 	if helperErr == nil {
 		if allowed == nil {
 			refocusWindow(win)
