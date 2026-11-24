@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,12 +54,43 @@ type ActivePlanPreview struct {
 	IsCreate   bool
 }
 
+var htmlTableTagRE = regexp.MustCompile(`(?i)<(/?)(table|thead|tbody|tfoot|tr|td|th)(?:\s[^>]*|/)?>`)
+
+func stripInlineCodeSpans(line string) string {
+	spans := bui.CodeSpans(line)
+	if len(spans) == 0 {
+		return line
+	}
+	buf := []byte(line)
+	for _, sp := range spans {
+		for k := sp[0]; k < sp[1] && k < len(buf); k++ {
+			buf[k] = ' '
+		}
+	}
+	return string(buf)
+}
+
 func unclosedConstructs(src string) []string {
 	var issues []string
 	var fenceChar byte
 	var fenceWidth int
 	inFence := false
-	inTable := false
+	tableDepth := 0
+	innerDepth := map[string]int{}
+
+	hasOpenInner := func() bool {
+		for _, n := range innerDepth {
+			if n > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	resetInner := func() {
+		for k := range innerDepth {
+			innerDepth[k] = 0
+		}
+	}
 
 	for _, raw := range strings.Split(src, "\n") {
 		trimmed := strings.TrimLeft(raw, " \t")
@@ -85,19 +117,53 @@ func unclosedConstructs(src string) []string {
 				continue
 			}
 		}
-		low := strings.ToLower(trimmed)
-		if strings.HasPrefix(low, "<table") && !strings.Contains(low, "</table>") {
-			inTable = true
-		}
-		if inTable && strings.Contains(low, "</table>") {
-			inTable = false
+		clean := stripInlineCodeSpans(raw)
+		for _, m := range htmlTableTagRE.FindAllStringSubmatch(clean, -1) {
+			full := m[0]
+			closing := m[1] == "/"
+			tag := strings.ToLower(m[2])
+			if !closing && strings.HasSuffix(full, "/>") {
+				continue
+			}
+			if tag == "table" {
+				if closing {
+					if tableDepth == 0 {
+						issues = append(issues, "orphan_html_table_tag")
+					} else {
+						tableDepth--
+						if tableDepth == 0 && hasOpenInner() {
+							issues = append(issues, "unclosed_html_table_tag")
+							resetInner()
+						}
+					}
+				} else {
+					tableDepth++
+				}
+				continue
+			}
+			if closing {
+				if tableDepth == 0 || innerDepth[tag] == 0 {
+					issues = append(issues, "orphan_html_table_tag")
+				} else {
+					innerDepth[tag]--
+				}
+			} else {
+				if tableDepth == 0 {
+					issues = append(issues, "orphan_html_table_tag")
+				} else {
+					innerDepth[tag]++
+				}
+			}
 		}
 	}
 	if inFence {
 		issues = append(issues, "unclosed_fence")
 	}
-	if inTable {
+	for range tableDepth {
 		issues = append(issues, "unclosed_html_table")
+	}
+	if hasOpenInner() {
+		issues = append(issues, "unclosed_html_table_tag")
 	}
 	return issues
 }
@@ -213,12 +279,23 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 		case "search_replace":
 			oldText, _ := item["oldString"].(string)
 			newText, ok := item["newString"].(string)
-			if !ok || oldText == "" || !strings.Contains(op.New, oldText) {
+			if !ok || oldText == "" {
 				return fail(theme.Tr("操作无法按顺序应用，请核对原文", "Operations cannot be applied in order. Check the original text."))
 			}
-			count := 1
-			if all, _ := item["replaceAll"].(bool); all {
-				count = strings.Count(op.New, oldText)
+			matches := strings.Count(op.New, oldText)
+			if matches == 0 {
+				return fail(theme.Tr("操作无法按顺序应用，请核对原文", "Operations cannot be applied in order. Check the original text."))
+			}
+			all, _ := item["replaceAll"].(bool)
+			if !all && matches > 1 {
+				return fail(fmt.Sprintf(
+					theme.Tr("oldString 在原文中匹配到 %d 处，无法唯一定位；请补充更多上下文，或明确设置 replaceAll: true", "oldString matched %d occurrences; provide more surrounding context or set replaceAll: true"),
+					matches,
+				))
+			}
+			count := matches
+			if !all {
+				count = 1
 			}
 			// Check the size before Replace can allocate the expanded document.
 			if int64(len(op.New))+int64(count)*int64(len(newText)-len(oldText)) > maxToolNoteBytes {
@@ -234,7 +311,7 @@ func buildBatchPlan(ctx context.Context, scope notebookScope, root *os.Root, arg
 	}
 	for _, op := range ops {
 		if !checkMarkdownPreflight(op.Old, op.New) {
-			return fail(theme.Tr("最终内容包含新增的未闭合代码围栏或 HTML 表格", "The result adds an unclosed code fence or HTML table"))
+			return fail(theme.Tr("最终内容包含新增的未闭合代码围栏或破损 HTML 表格标签", "The result adds an unclosed code fence or malformed HTML table tags"))
 		}
 	}
 	summary, _ := args["summary"].(string)
