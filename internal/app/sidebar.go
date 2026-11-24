@@ -69,14 +69,10 @@ type SidebarUIState struct {
 	IconPickerAnchor        string // "tree", "footer", "switcher", "titlebar"
 	IconPickerIconBounds    ui.Rect
 	IconPickerRowBounds     ui.Rect
-	IconPickerQuery         string
-	IconPickerLastQuery     string
 	IconPickerTint          theme.IconTint
 	IconPickerActiveCat     string
 	IconPickerJumpCat       string
-	IconPickerFocus         bool
 	IconPickerRevealCurrent bool
-	IconPickerInput         ui.Handle
 	IconPickerScroll        ui.ScrollState
 
 	treeScroll ui.ScrollState
@@ -146,12 +142,8 @@ func (s *SidebarUIState) CloseIconPicker() bool {
 	s.IconPickerNotebook = ""
 	s.IconPickerPath = ""
 	s.IconPickerAnchor = ""
-	s.IconPickerQuery = ""
-	s.IconPickerLastQuery = ""
 	s.IconPickerJumpCat = ""
-	s.IconPickerFocus = false
 	s.IconPickerRevealCurrent = false
-	s.IconPickerInput.CancelFocus()
 	return true
 }
 
@@ -181,12 +173,9 @@ func (s *SidebarUIState) OpenIconPicker(path string, isDir bool, iconRect, rowRe
 	s.IconPickerAnchor = "tree"
 	s.IconPickerIconBounds = iconRect
 	s.IconPickerRowBounds = rowRect
-	s.IconPickerQuery = ""
-	s.IconPickerLastQuery = ""
 	s.IconPickerTint = theme.NormalizeIconTint(string(curTint))
 	s.IconPickerActiveCat = ""
 	s.IconPickerJumpCat = ""
-	s.IconPickerFocus = true
 	s.IconPickerRevealCurrent = true
 	s.IconPickerScroll.Y = 0
 }
@@ -215,12 +204,9 @@ func (s *SidebarUIState) OpenNotebookIconPicker(notebookRoot string, iconRect, r
 	s.IconPickerAnchor = anchor
 	s.IconPickerIconBounds = iconRect
 	s.IconPickerRowBounds = rowRect
-	s.IconPickerQuery = ""
-	s.IconPickerLastQuery = ""
 	s.IconPickerTint = theme.NormalizeIconTint(string(curTint))
 	s.IconPickerActiveCat = ""
 	s.IconPickerJumpCat = ""
-	s.IconPickerFocus = true
 	s.IconPickerRevealCurrent = true
 	s.IconPickerScroll.Y = 0
 }
