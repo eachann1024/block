@@ -78,7 +78,7 @@ func (s *Session) HasMindMapFullscreen() bool {
 			continue
 		}
 		if !live[id] {
-			st.Fullscreen = false
+			st.CancelFullscreen()
 			continue
 		}
 		if st.Fullscreen {
@@ -110,10 +110,9 @@ func (s *Session) CloseMindMapFullscreen() {
 	if s == nil {
 		return
 	}
-	for _, st := range s.mindMapStates {
-		if st != nil && st.Fullscreen {
-			st.Fullscreen = false
-			st.AutoFitPending = true
+	for id, st := range s.mindMapStates {
+		if st != nil && st.IsFullscreenOverlayActive() {
+			st.ExitFullscreen(s.mindMapCallbacks(nil, id, s.readOnly))
 		}
 	}
 }
@@ -193,7 +192,6 @@ func (s *Session) openMindMapFind(c *ui.Context) bool {
 }
 
 func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnly bool) mindmap.Callbacks {
-	svc := c.Services()
 	return mindmap.Callbacks{
 		ReadOnly: readOnly,
 		OnChange: func(newMarkdown string) {
@@ -230,7 +228,9 @@ func (s *Session) mindMapCallbacks(c *ui.Context, blockID model.BlockID, readOnl
 		CanUndo: s.CanUndo,
 		CanRedo: s.CanRedo,
 		OnOpenLink: func(target string) {
-			s.openBlockLink(svc, target)
+			if c != nil {
+				s.openBlockLink(c.Services(), target)
+			}
 		},
 		OnCheckLinkStatus: func(target string) mindmap.LinkStatus {
 			if strings.TrimSpace(target) == "" {
@@ -524,6 +524,7 @@ func writeFileAtomic(dest string, data []byte, perm os.FileMode) error {
 
 func (s *Session) renderMindMapCodeBlock(c *ui.Context, idx int, b *model.Block, isFocused, _ bool, readOnly bool) {
 	st := s.mindMapState(b.ID)
+	st.SetEditorBounds(s.editorRect)
 	cfg := s.effectiveMindMapConfig()
 	id := fmt.Sprintf("block-%d", b.ID)
 	cb := s.mindMapCallbacks(c, b.ID, readOnly)
@@ -534,9 +535,7 @@ func (s *Session) renderMindMapFullscreen(c *ui.Context, readOnly bool) {
 	if s == nil || s.doc == nil || len(s.mindMapStates) == 0 {
 		return
 	}
-	if !s.HasMindMapFullscreen() {
-		return
-	}
+	_ = s.HasMindMapFullscreen()
 	cfg := s.effectiveMindMapConfig()
 	for i := range s.doc.Blocks {
 		b := &s.doc.Blocks[i]
@@ -544,9 +543,10 @@ func (s *Session) renderMindMapFullscreen(c *ui.Context, readOnly bool) {
 			continue
 		}
 		st := s.mindMapStates[b.ID]
-		if st == nil || !st.Fullscreen {
+		if st == nil || !st.IsFullscreenOverlayActive() {
 			continue
 		}
+		st.SetEditorBounds(s.editorRect)
 		id := fmt.Sprintf("block-%d", b.ID)
 		cb := s.mindMapCallbacks(c, b.ID, readOnly)
 		st.RenderFullscreen(c, id, b.Code, cfg, cb)
