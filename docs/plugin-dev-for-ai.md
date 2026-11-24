@@ -817,7 +817,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
 13. **`menubar_items`**（最多 **2** 个）：在系统菜单栏放一个图标，Block 窗口不在前台也能用，适合截图上传、快速记录这类随手操作。插件启用后图标出现，停用或卸载后消失。
     - `id`（必填）、`icon`（必填 `DuoIconSpec`）、`tooltip`（必填 `LocalizedText`）。菜单栏图标按系统模板图只画 `stroke_paths` 与 `accent_paths` 的线条，`fill_paths` 不绘制。
     - 点击行为：`command`（点击直接执行，须引用 `commands[].id`）、`menu`（点击弹出菜单，最多 16 条）、`drop`（接收拖放）。`command` 与 `menu` 不能同时声明；三者全省略时校验失败。插件声明了 `settings_page` 且图标有菜单时，菜单末尾自动追加「插件设置…」。
-    - `menu[]` 条目：`{"id", "title": LocalizedText, "command", "input"}` 或分隔线 `{"separator": true}`（分隔线不能带其他字段）。`input` 仅接受 `"clipboard"`：点击时宿主读取剪贴板，按 `drop` 的规则过滤后随命令下发（未声明 `drop` 时接收文件、图片与文本）；剪贴板里没有可接收的内容时不执行命令并提示用户。
+    - `menu[]` 条目：`{"id", "title": LocalizedText, "command", "input"}` 或分隔线 `{"separator": true}`（分隔线不能带其他字段）。`input` 仅接受 `"clipboard"`（须声明 `"system:clipboard_read"` 权限）：点击时宿主读取剪贴板，按 `drop` 的规则过滤后随命令下发（未声明 `drop` 时接收文件、图片与文本）；剪贴板里没有可接收的内容时不执行命令并提示用户。
     - `drop`：`{"command", "accept": ["files", "image", "text"], "extensions": ["png", "jpg"]}`。`command` 必填；`accept` 省略时为 `["files", "image"]`；`extensions` 为小写、不带点的扩展名（最多 32 个），只限制 `files`，省略时接收任意普通文件。拖放目前仅 macOS 支持（以 `ui_capabilities` 含 `menubar_drop` 为准），其余平台图标与菜单照常工作。
     - 被引用的命令同样出现在命令面板，从命令面板触发时没有 `context.files` 等菜单栏字段，插件需自行兜底。
     - 示例：
@@ -865,7 +865,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
      - 菜单栏来源额外下发：`context.menubar_item`（图标 `id`）、`context.payload`（动态菜单条目的 `payload`）、`context.kind`（`"files"` | `"image"` | `"text"`，仅拖放或 `input: "clipboard"` 时）、`context.files`（本机绝对路径，最多 50 个）、`context.text`（最多 64 KiB）。
      - 一次拖放或粘贴只下发一种内容，优先级为文件、图片、文本（从 Finder 拖文件时附带的文件名文本会被忽略）。图片数据（截图、网页图片）由宿主存为 PNG 后以 `files` 下发，`kind` 为 `"image"`；这些临时文件位于插件专属目录，超过 24 小时自动清理，需要保留时请自行复制。
    - 返回 `result`：`{"ok": true, "tone": "info", "status": "已执行", "body": "可选正文", "action": {"id": "open_settings", "label": "查看"}, "show_plugin_icon": true, "copy_text": "https://..."}`（字段均可选；`status` 非空时宿主会在右上角弹出对应 `tone` 的通知横幅，`tone` 支持 `"info"` / `"success"` / `"warning"`(`"warn"`) / `"error"`(`"danger"`)，默认 `"info"` 并自动附带插件图标，传 `"show_plugin_icon": false` 改用内置类型图标）。
-     - `copy_text`：宿主把这段文本写入系统剪贴板，适合上传后返回链接。命令结束时 Block 可能在后台，插件无法调用需要窗口焦点的剪贴板接口，请用本字段。
+     - `copy_text`（须声明 `"system:clipboard_write"` 权限）：宿主把这段文本写入系统剪贴板，适合上传后返回链接。命令结束时 Block 可能在后台，插件无法调用需要窗口焦点的剪贴板接口，请用本字段。
      - 菜单栏来源的命令在 Block 窗口处于前台时以 Toast 提示 `status`，否则改为系统通知。
      - 菜单栏来源的命令执行期间，图标旁显示 `…`；结束后 `status` 会在图标旁短暂显示约 4 秒（超长截断，悬停可看全文），系统通知关闭时用户也能看到反馈。命令无 `status` 时直接恢复插件自己的标题。
 
@@ -914,7 +914,7 @@ Block 应用商店采用无审批自动采集机制，发布步骤如下：
      - **图标保证**：每条横幅必定带图标——优先使用显式传入的 `icon`；否则默认自动使用插件 `manifest.icon`（无需再传 `show_plugin_icon: true`）；显式传 `"show_plugin_icon": false` 时改用宿主内置类型图标（✓ / ! / × / i）。
      - **停留与交互**：`info` / `success` 4 秒自动收起，`warning` 6 秒自动收起，`error` 及带 `action` 的横幅不自动消失（须手动关闭）；鼠标悬停时暂停倒计时。
      - `action`：可选单个按钮（`id` 匹配 `^[a-z][a-z0-9_-]{0,31}$`，`label` 非空、禁 Emoji、截断至 24 字符，可选 `payload` 对象）。用户点击后关闭横幅并回调 `plugin.action`（`surface: "toast"`，`action_id: action.id`，`values: action.payload`）。
-   - 返回：`{"ok": true, "shown": true|false}`（`shown: false` 表示因队列限流被丢弃）。
+   - 返回：`{"ok": true, "shown": true|false, "queued": true|false}`（`shown: true` 表示已立即上屏，`queued: true` 表示已进入等待队列，两者均为 `false` 表示因队列限流被丢弃）。
 5.1. **`host.ui.open_settings`**（无需声明权限；需先检查 `ui_capabilities` 包含 `"open_settings"` 且插件声明了 `"settings_page"`）
    - 参数：`{}`。直接打开当前插件的设置页，适合在 `surface: "toast"` 的动作回调中引导用户查看详情或配置。
    - 返回：`{"ok": true}`（无宿主 UI 时返回 `-32005`）。
