@@ -584,6 +584,9 @@ func main() {
 				launchNotification = ""
 			}
 		}
+		if !smokeFlag && !smokeOnceFlag && os.Getenv("MYGO_AUTOMATION") == "" {
+			ws.AI().PrewarmModelsAsync()
+		}
 		if launchStoreLink != "" {
 			handleDeepLink(launchStoreLink)
 			launchStoreLink = ""

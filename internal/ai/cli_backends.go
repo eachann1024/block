@@ -763,6 +763,40 @@ func (c *Controller) refreshModelsAsync(kind model.BackendKind) {
 	}()
 }
 
+func (c *Controller) refreshVisibleModelsAsync() {
+	c.mu.RLock()
+	if !c.providerCfg.Enabled || c.mockResponder {
+		c.mu.RUnlock()
+		return
+	}
+	visible := c.visibleBackendsLocked()
+	c.mu.RUnlock()
+	for _, kind := range visible {
+		c.refreshModelsAsync(kind)
+	}
+}
+
+// PrewarmModelsAsync probes CLI backends and fetches model lists for every
+// visible backend in the background when AI is enabled, so opening or switching
+// tabs in the model picker rarely waits on a loading skeleton.
+func (c *Controller) PrewarmModelsAsync() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if !c.providerCfg.Enabled || c.mockResponder {
+		c.mu.Unlock()
+		return
+	}
+	c.panelProbedOnce = true
+	c.mu.Unlock()
+
+	go func() {
+		c.probeAllBackendsAsync()
+		c.refreshVisibleModelsAsync()
+	}()
+}
+
 func (c *Controller) refreshAnnotationModelsAsync(kind model.BackendKind) {
 	if kind == "" {
 		kind = model.BackendBuiltin

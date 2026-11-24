@@ -1056,12 +1056,15 @@ func (c *Controller) SaveProviderConfig(cfg model.AIProviderConfig) error {
 		c.turnErrorSettings = false
 	}
 	c.invalidateModelCacheLocked(model.BackendBuiltin)
-	shouldRefresh := norm.Enabled && (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
+	shouldPrewarm := enabledChanged && norm.Enabled && !c.mockResponder
+	shouldRefresh := !shouldPrewarm && norm.Enabled && (c.panelProbedOnce || c.settingsProbedOnce) && !c.mockResponder
 	c.mu.Unlock()
 	if enabledChanged && onEnabledChanged != nil {
 		onEnabledChanged(norm.Enabled)
 	}
-	if shouldRefresh {
+	if shouldPrewarm {
+		c.PrewarmModelsAsync()
+	} else if shouldRefresh {
 		c.refreshModelsAsync(model.BackendBuiltin)
 	}
 	c.requestRedraw()
@@ -1403,7 +1406,12 @@ func (c *Controller) SetBackendEnabled(kind model.BackendKind, on bool) error {
 		c.mu.Unlock()
 		return err
 	}
+	_, hasOv := c.statusOverrides[kind]
+	shouldRefresh := on && c.providerCfg.Enabled && !c.mockResponder && !hasOv && (c.panelProbedOnce || c.settingsProbedOnce)
 	c.mu.Unlock()
+	if shouldRefresh {
+		c.refreshModelsAsync(kind)
+	}
 	c.requestRedraw()
 	return nil
 }
