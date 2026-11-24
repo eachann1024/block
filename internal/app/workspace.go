@@ -2064,7 +2064,8 @@ func (w *Workspace) applyPluginNoteWrite(absPath, content string, write func() (
 
 // applyPluginNoteTrash moves a plugin-targeted file to Trash only when no open
 // editor holds unsaved or diverged content for it, then closes its tabs.
-func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() error) error {
+func (w *Workspace) applyPluginNoteTrash(pluginID, absPath string, verify, trash func() error) error {
+	trashedPath := absPath
 	apply := func() error {
 		w.bgSaveMu.Lock()
 		defer w.bgSaveMu.Unlock()
@@ -2085,6 +2086,7 @@ func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() er
 		if err := trash(); err != nil {
 			return err
 		}
+		trashedPath = sessPath
 		w.removeClosedOrDeletedPath(sessPath)
 		return nil
 	}
@@ -2095,6 +2097,9 @@ func (w *Workspace) applyPluginNoteTrash(absPath string, verify, trash func() er
 		err = apply()
 	}
 	if err == nil {
+		if sup := w.Plugins(); sup != nil {
+			sup.NotifyNoteDeletedFrom(pluginID, trashedPath)
+		}
 		w.RescanNotebook()
 		w.RequestRedraw()
 	}
@@ -3658,11 +3663,13 @@ func (w *Workspace) finishSidebarRename(oldPath, newName string) error {
 func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error) {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
-	if err := w.flushDirtySessionsLocked(); err != nil {
+	if err := w.flushDirtySessionsExceptLocked(oldPath); err != nil {
 		files.LogErrorf("rename failed: path=%s err=%v", oldPath, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
+	info, statErr := os.Lstat(oldPath)
+	isDir := statErr == nil && info.IsDir()
 	newPath, err := files.RenameItem(oldPath, newName)
 	if err != nil {
 		files.LogErrorf("rename failed: path=%s err=%v", oldPath, err)
@@ -3674,6 +3681,18 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 	w.mu.Lock()
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
+	if sup := w.Plugins(); sup != nil {
+		if isDir {
+			sup.NotifyFolderDeleted(oldPath)
+		} else {
+			if files.IsMarkdown(oldPath) {
+				sup.NotifyNoteDeleted(oldPath)
+			}
+			if files.IsMarkdown(newPath) {
+				sup.NotifyNoteSaved(newPath)
+			}
+		}
+	}
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return newPath, nil
@@ -3683,11 +3702,13 @@ func (w *Workspace) RenameWorkspaceItem(oldPath, newName string) (string, error)
 func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
-	if err := w.flushDirtySessionsLocked(); err != nil {
+	if err := w.flushDirtySessionsExceptLocked(srcPath); err != nil {
 		files.LogErrorf("move failed: src=%s dst=%s err=%v", srcPath, dstDir, err)
 		w.setNotice(err.Error())
 		return "", err
 	}
+	info, statErr := os.Lstat(srcPath)
+	isDir := statErr == nil && info.IsDir()
 	newPath, err := files.MoveItem(srcPath, dstDir)
 	if err != nil {
 		files.LogErrorf("move failed: src=%s dst=%s err=%v", srcPath, dstDir, err)
@@ -3700,6 +3721,18 @@ func (w *Workspace) MoveWorkspaceItem(srcPath, dstDir string) (string, error) {
 	w.mu.Lock()
 	w.state.FileOrder = nextState.FileOrder
 	w.mu.Unlock()
+	if sup := w.Plugins(); sup != nil {
+		if isDir {
+			sup.NotifyFolderDeleted(srcPath)
+		} else {
+			if files.IsMarkdown(srcPath) {
+				sup.NotifyNoteDeleted(srcPath)
+			}
+			if files.IsMarkdown(newPath) {
+				sup.NotifyNoteSaved(newPath)
+			}
+		}
+	}
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return newPath, nil
@@ -3713,11 +3746,14 @@ func (w *Workspace) TrashWorkspaceItem(path string) error {
 func (w *Workspace) trashWorkspaceItem(path string, moveToTrash func() error) error {
 	w.bgSaveMu.Lock()
 	defer w.bgSaveMu.Unlock()
-	if err := w.flushDirtySessionsLocked(); err != nil {
+	if err := w.flushDirtySessionsExceptLocked(path); err != nil {
 		files.LogErrorf("trash failed: path=%s err=%v", path, err)
 		w.setNotice(err.Error())
 		return err
 	}
+	info, statErr := os.Lstat(path)
+	isDir := statErr == nil && info.IsDir()
+	isMarkdown := statErr == nil && !info.IsDir() && files.IsMarkdown(path)
 	if err := moveToTrash(); err != nil {
 		files.LogErrorf("trash failed: path=%s err=%v", path, err)
 		w.setNotice(err.Error())
@@ -3725,6 +3761,13 @@ func (w *Workspace) trashWorkspaceItem(path string, moveToTrash func() error) er
 	}
 	files.LogInfof("note trashed by user: path=%s", path)
 	w.removeClosedOrDeletedPath(path)
+	if sup := w.Plugins(); sup != nil {
+		if isDir {
+			sup.NotifyFolderDeleted(path)
+		} else if isMarkdown {
+			sup.NotifyNoteDeleted(path)
+		}
+	}
 	w.RescanNotebook()
 	w.RequestRedraw()
 	return nil
@@ -4879,7 +4922,24 @@ func (w *Workspace) flushDirtySessions() error {
 }
 
 func (w *Workspace) flushDirtySessionsLocked() error {
+	return w.flushDirtySessionsExceptLocked("")
+}
+
+func (w *Workspace) flushDirtySessionsExceptLocked(skipPath string) error {
 	w.syncNoteSourceBuffer()
+	cleanSkip := ""
+	skipPrefix := ""
+	if strings.TrimSpace(skipPath) != "" {
+		cleanSkip = filepath.Clean(skipPath)
+		skipPrefix = cleanSkip + string(filepath.Separator)
+	}
+	shouldNotify := func(p string) bool {
+		if cleanSkip == "" {
+			return true
+		}
+		cp := filepath.Clean(p)
+		return cp != cleanSkip && !strings.HasPrefix(cp, skipPrefix)
+	}
 	w.mu.Lock()
 	w.saveGeneration++
 	if w.autoSaveTimer != nil {
@@ -4929,7 +4989,7 @@ func (w *Workspace) flushDirtySessionsLocked() error {
 	}
 	var firstErr error
 	for _, p := range paths {
-		if err := w.flushSingleSessionLocked(p); err != nil && firstErr == nil {
+		if err := w.flushSingleSessionLockedOpts(p, shouldNotify(p)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -4946,6 +5006,10 @@ func (w *Workspace) flushSingleSession(path string) error {
 }
 
 func (w *Workspace) flushSingleSessionLocked(path string) error {
+	return w.flushSingleSessionLockedOpts(path, true)
+}
+
+func (w *Workspace) flushSingleSessionLockedOpts(path string, notifyPlugins bool) error {
 	if w.noteSourceActive(path) {
 		w.syncNoteSourceBuffer()
 	}
@@ -4979,6 +5043,11 @@ func (w *Workspace) flushSingleSessionLocked(path string) error {
 	} else if !sess.Dirty() && (!hasLastDisk || md == lastDiskMD) {
 		return nil
 	}
+	if !sess.Dirty() && !sourceDirty && hasLastDisk {
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+	}
 	if err := w.saveSessionMarkdown(path, sess, md); err != nil {
 		return err
 	}
@@ -4994,7 +5063,9 @@ func (w *Workspace) flushSingleSessionLocked(path string) error {
 		w.lastSnapAt[path] = now
 		w.mu.Unlock()
 	}
-	w.notifyPluginNoteSaved(path)
+	if notifyPlugins {
+		w.notifyPluginNoteSaved(path)
+	}
 	return nil
 }
 
