@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const storeHeroAutoAdvance = 8 * time.Second
+const storeHeroAutoAdvance = 5 * time.Second
 
 type storeHeroSpec struct {
 	pluginID string
@@ -163,6 +163,8 @@ func renderStoreHero(
 
 	cardHovered := false
 	pagerHovered := false
+	autoActive := len(slides) > 1 && !ctrl.storeHeroPaused && installingID == "" && !c.Preferences().ReduceMotion
+	countdownRemain := float32(0)
 
 	wrap.Children(func() {
 		card := ui.ButtonBase(c.Key("app-store-hero-card")).
@@ -177,6 +179,12 @@ func renderStoreHero(
 		bgEnd := card.AnimateColor("heroBgE", hc.BGEnd, bui.HeroSurfaceFade)
 		glowPrimary := card.AnimateColor("heroGlowP", hc.GlowPrimary, bui.HeroSurfaceFade)
 		glowSecondary := card.AnimateColor("heroGlowS", hc.GlowSecondary, bui.HeroSurfaceFade)
+		progressAccent := card.AnimateColor("heroProgAcc", hc.AccentBG, bui.HeroSurfaceFade)
+		targetBarAlpha := float32(0)
+		if autoActive {
+			targetBarAlpha = 1
+		}
+		barAlpha := card.AnimateTo("heroProgAlpha", targetBarAlpha, bui.SpringPanel)
 		targetBorder := hc.Border
 		if hovered || pressed {
 			targetBorder = hc.HoverBorder
@@ -311,6 +319,25 @@ func renderStoreHero(
 					})
 				}
 			})
+
+			if barAlpha > 0.01 {
+				ui.Box(c.Key("app-store-hero-countdown")).
+					Absolute().Left(0).Right(0).Bottom(0).Height(3).PassThrough().
+					Draw(func(p *ui.Painter, bounds ui.Rect) {
+						if bounds.W <= 0 {
+							return
+						}
+						p.Fill(bounds, progressAccent.Alpha(0.16*barAlpha), 0)
+						if fillW := bounds.W * countdownRemain; fillW > 0.5 {
+							p.Fill(ui.Rect{
+								X: bounds.X,
+								Y: bounds.Y,
+								W: fillW,
+								H: bounds.H,
+							}, progressAccent.Alpha(0.78*barAlpha), theme.RadiusPill)
+						}
+					})
+			}
 		})
 
 		bui.Probe(card, "app-store-hero-card")
@@ -390,18 +417,24 @@ func renderStoreHero(
 	})
 
 	// Gentle auto-advance only while untouched, unhovered, and motion is allowed.
-	if len(slides) > 1 && !ctrl.storeHeroPaused && installingID == "" && !c.Preferences().ReduceMotion {
+	if autoActive {
 		if cardHovered || pagerHovered {
 			ctrl.storeHeroLastSwitch = now
 		} else {
-			elapsed := now.Sub(ctrl.storeHeroLastSwitch)
-			if elapsed >= storeHeroAutoAdvance {
+			if delta := now.Sub(ctrl.storeHeroLastSwitch); delta > 0 {
+				ctrl.storeHeroElapsed += delta
+			}
+			ctrl.storeHeroLastSwitch = now
+			if ctrl.storeHeroElapsed >= storeHeroAutoAdvance {
 				ctrl.selectStoreHero((idx+1)%len(slides), 1, false, now)
 				c.Invalidate()
 			} else {
-				c.After(storeHeroAutoAdvance - elapsed)
+				rem := storeHeroAutoAdvance - ctrl.storeHeroElapsed
+				c.After(bui.CarouselTickInterval(rem))
 			}
 		}
+		remain := 1 - float32(ctrl.storeHeroElapsed)/float32(storeHeroAutoAdvance)
+		countdownRemain = min(max(remain, 0), 1)
 	}
 }
 

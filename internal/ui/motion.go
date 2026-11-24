@@ -483,3 +483,12 @@ func CarouselArtParallaxTransition(dir int) ui.ElementTransition {
 		Enter:        &ui.Motion{X: 22 * d, Scale: 0.96, Opacity: 0.01},
 	}
 }
+
+// CarouselTickInterval returns the next repaint delay for a smooth countdown
+// progress indicator, jumping straight to the remaining duration under tests.
+func CarouselTickInterval(remaining time.Duration) time.Duration {
+	if testing.Testing() || remaining <= 16*time.Millisecond {
+		return remaining
+	}
+	return 16 * time.Millisecond
+}
