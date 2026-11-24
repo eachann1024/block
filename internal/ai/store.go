@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -136,17 +135,20 @@ type Controller struct {
 	deferredDrafts   []model.SentDraft
 	tabDrafts        map[uint64]tabDraft
 
-	composerEpoch     int
-	composerHandle    ui.Handle
-	composerComposing bool
-	composerSelectEnd bool
-	messagesList      ui.ListState
-	messagesScroll    ui.ScrollState
-	scrollToBottom    bool
-	pickerList        ui.ListState
-	mdOpts            markdown.Options
-	mdThemeKey        mdPaletteKey
-	streamCache       *chatStreamCache
+	composerEpoch       int
+	composerHandle      ui.Handle
+	composerComposing   bool
+	composerSelectEnd   bool
+	messagesList        ui.ListState
+	messagesScroll      ui.ScrollState
+	scrollToBottom      bool
+	scrollToBottomForce bool
+	lastScrollY         float32
+	lastScrollMaxY      float32
+	pickerList          ui.ListState
+	mdOpts              markdown.Options
+	mdThemeKey          mdPaletteKey
+	streamCache         *chatStreamCache
 
 	pickIndex        int
 	pickerDismissed  bool
@@ -1618,6 +1620,7 @@ func (c *Controller) NewConversation() {
 	delete(c.tabDrafts, 0)
 	c.currentID = 0
 	c.scrollToBottom = false
+	c.scrollToBottomForce = false
 	c.draftText = ""
 	c.draftRefs = nil
 	c.draftSkills = nil
@@ -1647,6 +1650,7 @@ func (c *Controller) SelectConversation(id uint64) {
 		c.historyOpen = false
 		if id != 0 {
 			c.scrollToBottom = true
+			c.scrollToBottomForce = true
 		}
 		linkedPlan := c.linkLatestPendingPlanLocked()
 		c.mu.Unlock()
@@ -1659,6 +1663,7 @@ func (c *Controller) SelectConversation(id uint64) {
 	c.clearActivePlanLocked()
 	c.currentID = id
 	c.scrollToBottom = id != 0
+	c.scrollToBottomForce = id != 0
 	c.historyOpen = false
 	c.lightboxOpen = false
 	c.turnError = ""
@@ -2035,10 +2040,10 @@ func (c *Controller) SendPrompt(text string) {
 		}
 		c.turn = turn
 		c.streaming = true
-		// 新一轮开始：回到底部并持续跟随，直到用户主动上滑。
-		c.scrollToBottom = true
-		c.messagesScroll.Y = math.MaxFloat32
 	}
+	// 新一轮开始：回到底部并持续跟随，直到用户主动上滑或展开查看旧内容。
+	c.scrollToBottom = true
+	c.scrollToBottomForce = true
 	c.mu.Unlock()
 
 	c.requestRedraw()
