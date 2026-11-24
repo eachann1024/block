@@ -61,8 +61,8 @@ func TestFileAndFolderSVGsParse(t *testing.T) {
 		layersByIcon[glyph][layer] = true
 	}
 
-	if len(layersByIcon) != 190 {
-		t.Errorf("expected 190 distinct icons in assets/icons, got %d", len(layersByIcon))
+	if len(layersByIcon) != 192 {
+		t.Errorf("expected 192 distinct icons in assets/icons, got %d", len(layersByIcon))
 	}
 
 	// Every file/folder/tag/wrench icon must exist with at least a primary line layer.

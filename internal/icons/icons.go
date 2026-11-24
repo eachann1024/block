@@ -33,6 +33,8 @@ const (
 	ChevronLeft     Icon = "chevron-left"
 	ChevronDown     Icon = "chevron-down"
 	ChevronUp       Icon = "chevron-up"
+	FoldAll         Icon = "fold-all"
+	UnfoldAll       Icon = "unfold-all"
 	Download        Icon = "download"
 	Copy            Icon = "copy"
 	Check           Icon = "check"
