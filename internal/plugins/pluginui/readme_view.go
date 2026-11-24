@@ -414,6 +414,7 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		preview.changelogMu.Unlock()
 	}
 	_, _, storeErr, _ := ctrl.sup.StoreStatus()
+	source := storeAppSource(ctrl, entry, installedApp, isInstalled)
 
 	page := ui.Column(c.Key("app-store-detail-" + entry.ID)).FillWidth().MinWidth(0).Gap(theme.Space24)
 	pageW := page.Bounds().W
@@ -434,16 +435,17 @@ func renderStoreDetail(c *ui.Context, ctrl *Controller, onSelectTab func(nextTab
 		}
 
 		ui.Row(c.Key("app-store-detail-head")).FillWidth().MinWidth(0).Gap(theme.Space16).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(theme.StoreDetailIconBox, theme.StoreDetailIconBox).Shrink(0).Center().
-				Radius(theme.RadiusXL).Background(pal.Shell).Children(func() {
-				DrawDuoSpec(c, entry.Icon, theme.StoreDetailIconGlyph, pal.DuoIconColors(pal.Text))
-			})
+			renderStorePluginIcon(
+				c, entry, source == storeSourceOfficial,
+				theme.StoreDetailIconBox, theme.StoreDetailIconGlyph, theme.RadiusXL,
+				pal.Shell, ui.Transparent, pal.DuoIconColors(pal.Text), false,
+			)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(theme.Space4).Children(func() {
 				ui.Row(c).MinWidth(0).Gap(theme.Space6).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, entry.Name.Resolve(locale)).
 						FontSize(theme.FontHeading).FixedLineHeight(theme.LineHeading).FontWeight(theme.WeightTitle).
 						TextColor(pal.Text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-					switch storeAppSource(ctrl, entry, installedApp, isInstalled) {
+					switch source {
 					case storeSourceOfficial:
 						bui.OfficialBadge(c, true)
 					case storeSourceUnreviewed:

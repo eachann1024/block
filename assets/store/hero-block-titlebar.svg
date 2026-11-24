@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 220" width="460" height="220">
+<style>
+  .win-frame { fill: #ffffff; stroke: #dcdde2; }
+  .bar-strip { fill: #f5f6f8; stroke: #e3e5ea; }
+  .tab-active { fill: #ffffff; stroke: #d8dce4; }
+  .slot-on { fill: #ffffff; stroke: #d8dce4; }
+  .slot-off { fill: #f2f3f6; stroke: #cfd4de; }
+  .slot-hi { fill: #eaf8f1; stroke: #36b582; }
+  .panel-card { fill: #ffffff; stroke: #dcdde2; }
+  .row-hi { fill: #f3f5f8; }
+  .bar-1 { fill: #2c323d; }
+  .bar-2 { fill: #8d95a5; }
+  .ico-ink { stroke: #475060; }
+  .ico-dim { stroke: #b2b8c4; }
+  .paper-shadow { fill: #191c24; opacity: 0.065; }
+  .paper-shadow2 { fill: #191c24; opacity: 0.035; }
+  .sw-off { fill: #d5d9e1; }
+  .sw-knob { fill: #ffffff; }
+  .guide-line { stroke: #35b482; opacity: 0.65; }
+  .grid-line { stroke: #8a92a4; opacity: 0.1; }
+  .spark-ico { fill: #e5972a; fill-opacity: 0.22; stroke: #d07f1a; }
+  @media (prefers-color-scheme: dark) {
+    .win-frame { fill: #1d1f26; stroke: #313542; }
+    .bar-strip { fill: #23262f; stroke: #343946; }
+    .tab-active { fill: #2c303b; stroke: #414757; }
+    .slot-on { fill: #2a2e39; stroke: #3d4352; }
+    .slot-off { fill: #20232b; stroke: #393e4c; }
+    .slot-hi { fill: #1d352d; stroke: #4cd29d; }
+    .panel-card { fill: #1f222a; stroke: #343846; }
+    .row-hi { fill: #282c36; }
+    .bar-1 { fill: #e3e6ee; }
+    .bar-2 { fill: #848c9e; }
+    .ico-ink { stroke: #cdd3e0; }
+    .ico-dim { stroke: #555c6e; }
+    .paper-shadow { fill: #000000; opacity: 0.36; }
+    .paper-shadow2 { fill: #000000; opacity: 0.2; }
+    .sw-off { fill: #3c414f; }
+    .sw-knob { fill: #f0f2f7; }
+    .guide-line { stroke: #55d8a4; opacity: 0.72; }
+    .grid-line { stroke: #8d96ab; opacity: 0.08; }
+    .spark-ico { fill: #f5b856; fill-opacity: 0.22; stroke: #f5b856; }
+  }
+</style>
+<defs>
+  <radialGradient id="htb-glow1" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0%" stop-color="#43c490" stop-opacity="0.18"/>
+    <stop offset="100%" stop-color="#43c490" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="htb-glow2" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0%" stop-color="#f2b857" stop-opacity="0.14"/>
+    <stop offset="100%" stop-color="#f2b857" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="htb-sw-on" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#44c48f"/>
+    <stop offset="100%" stop-color="#279c6f"/>
+  </linearGradient>
+</defs>
+
+<!-- Soft studio lighting & subtle architectural horizontal guide lines -->
+<circle cx="318" cy="64" r="92" fill="url(#htb-glow1)"/>
+<circle cx="136" cy="144" r="84" fill="url(#htb-glow2)"/>
+<g class="grid-line" stroke-width="1">
+  <line x1="24" y1="36" x2="436" y2="36"/>
+  <line x1="24" y1="74" x2="436" y2="74"/>
+  <line x1="24" y1="186" x2="436" y2="186"/>
+</g>
+
+<!-- Elevated realistic Block window top bar -->
+<g transform="translate(26 24)">
+  <rect class="paper-shadow2" x="3" y="8" width="406" height="44" rx="13"/>
+  <rect class="paper-shadow" x="1" y="4" width="406" height="44" rx="12"/>
+  <rect class="bar-strip" x="0" y="0" width="406" height="44" rx="12" stroke-width="1.15"/>
+
+  <!-- Traffic light dots -->
+  <circle cx="18" cy="22" r="4" fill="#f06a62"/>
+  <circle cx="31" cy="22" r="4" fill="#f4bc46"/>
+  <circle cx="44" cy="22" r="4" fill="#46c471"/>
+
+  <!-- Active note tab capsule -->
+  <rect class="tab-active" x="62" y="10" width="112" height="24" rx="7.5" stroke-width="1"/>
+  <rect x="71" y="17" width="10" height="10" rx="3" fill="#46c48e" opacity="0.24"/>
+  <circle cx="76" cy="22" r="2.2" fill="#2a9e71"/>
+  <rect class="bar-1" x="88" y="19.5" width="58" height="5" rx="2.5" opacity="0.82"/>
+
+  <!-- Right-side customizable titlebar icon slots -->
+  <!-- Slot 1: Search (visible) -->
+  <rect class="slot-on" x="234" y="9" width="26" height="26" rx="7" stroke-width="1"/>
+  <g class="ico-ink" fill="none" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="246" cy="21" r="4.2"/>
+    <path d="M249.2 24.2 L252 27"/>
+  </g>
+
+  <!-- Slot 2: Outline (highlighted & linked to switch panel) -->
+  <rect class="slot-hi" x="268" y="9" width="26" height="26" rx="7" stroke-width="1.4"/>
+  <path d="M275 18 H287 M275 22 H284 M275 26 H286" fill="none" stroke="#229669" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- Slot 3: History (hidden dashed ghost slot) -->
+  <rect class="slot-off" x="302" y="9" width="26" height="26" rx="7" stroke-width="1.1" stroke-dasharray="3 2.5"/>
+  <g class="ico-dim" fill="none" stroke-width="1.4" stroke-linecap="round">
+    <circle cx="315" cy="22" r="4.8"/>
+    <path d="M315 19.5 V22.2 L317 23.4"/>
+  </g>
+
+  <!-- Slot 4: Export (visible) -->
+  <rect class="slot-on" x="336" y="9" width="26" height="26" rx="7" stroke-width="1"/>
+  <g class="ico-ink" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M349 25 V17.5 M346 20.5 L349 17.5 L352 20.5"/>
+    <path d="M344.5 26.5 H353.5"/>
+  </g>
+
+  <!-- Slot 5: Sparkle AI (visible) -->
+  <rect class="slot-on" x="370" y="9" width="26" height="26" rx="7" stroke-width="1"/>
+  <path class="spark-ico" d="M383 15.8 L384.4 20.6 L389.2 22 L384.4 23.4 L383 28.2 L381.6 23.4 L376.8 22 L381.6 20.6 Z" stroke-width="1.35" stroke-linejoin="round"/>
+</g>
+
+<!-- Connector line from highlighted titlebar slot to toggle card -->
+<path class="guide-line" d="M307 62 C307 82 288 86 266 96" fill="none" stroke-width="1.6" stroke-dasharray="3.5 3.5" stroke-linecap="round"/>
+<circle cx="307" cy="62" r="3" fill="#2ea879"/>
+
+<!-- Floating Titlebar Visibility Switch Panel -->
+<g transform="translate(88 88)">
+  <rect class="paper-shadow2" x="4" y="10" width="234" height="114" rx="14"/>
+  <rect class="paper-shadow" x="2" y="5" width="234" height="114" rx="13"/>
+  <rect class="panel-card" x="0" y="0" width="234" height="114" rx="12.5" stroke-width="1.15"/>
+
+  <!-- Row 1: Highlighted ON row -->
+  <rect class="row-hi" x="9" y="10" width="216" height="30" rx="8"/>
+  <path d="M21 21 H31 M21 25 H28.5 M21 29 H30" fill="none" stroke="#229669" stroke-width="1.6" stroke-linecap="round"/>
+  <rect class="bar-1" x="42" y="22.5" width="84" height="5" rx="2.5"/>
+  <!-- Ocean Paper 28x16 style ON switch -->
+  <rect x="184" y="17" width="30" height="16" rx="8" fill="url(#htb-sw-on)"/>
+  <circle class="sw-knob" cx="206" cy="25" r="5.6"/>
+
+  <!-- Row 2: Hidden OFF row -->
+  <g class="ico-dim" fill="none" stroke-width="1.5" stroke-linecap="round">
+    <circle cx="26" cy="57" r="5"/>
+    <path d="M26 54.4 V57.2 L28.2 58.4"/>
+  </g>
+  <rect class="bar-2" x="42" y="54.5" width="68" height="5" rx="2.5" opacity="0.65"/>
+  <!-- OFF switch -->
+  <rect class="sw-off" x="184" y="49" width="30" height="16" rx="8"/>
+  <circle class="sw-knob" cx="192" cy="57" r="5"/>
+
+  <!-- Row 3: Visible ON row -->
+  <path class="spark-ico" d="M26 84.5 L27.2 88.2 L31 89.4 L27.2 90.6 L26 94.3 L24.8 90.6 L21 89.4 L24.8 88.2 Z" stroke-width="1.35" stroke-linejoin="round"/>
+  <rect class="bar-1" x="42" y="86.5" width="76" height="5" rx="2.5" opacity="0.82"/>
+  <!-- ON switch -->
+  <rect x="184" y="81" width="30" height="16" rx="8" fill="url(#htb-sw-on)"/>
+  <circle class="sw-knob" cx="206" cy="89" r="5.6"/>
+</g>
+</svg>

@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 220" width="460" height="220">
+<style>
+  .node-card { fill: #ffffff; stroke: #eadccf; }
+  .root-card { fill: #fffdf9; stroke: #e37e3c; }
+  .paper-shadow { fill: #4a2610; opacity: 0.065; }
+  .paper-shadow2 { fill: #4a2610; opacity: 0.035; }
+  .bar-1 { fill: #3b2d26; }
+  .bar-2 { fill: #9c8a7e; }
+  .dot-grid { fill: #b5845a; opacity: 0.14; }
+  .key-pill { fill: #f7efe6; stroke: #e5d5c3; }
+  @media (prefers-color-scheme: dark) {
+    .node-card { fill: #25201e; stroke: #403632; }
+    .root-card { fill: #2d231e; stroke: #f29a58; }
+    .paper-shadow { fill: #000000; opacity: 0.36; }
+    .paper-shadow2 { fill: #000000; opacity: 0.2; }
+    .bar-1 { fill: #efe4dc; }
+    .bar-2 { fill: #9c8c82; }
+    .dot-grid { fill: #d8ad84; opacity: 0.11; }
+    .key-pill { fill: #2c2420; stroke: #4b3d35; }
+  }
+</style>
+<defs>
+  <radialGradient id="hmm-glow" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0%" stop-color="#f29b4b" stop-opacity="0.22"/>
+    <stop offset="100%" stop-color="#f29b4b" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="hmm-root-dot" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#f5a342"/>
+    <stop offset="100%" stop-color="#d85838"/>
+  </linearGradient>
+</defs>
+
+<!-- Warm golden canvas bloom & faint dot grid -->
+<circle cx="222" cy="110" r="108" fill="url(#hmm-glow)"/>
+<g class="dot-grid">
+  <circle cx="48" cy="26" r="1.2"/><circle cx="76" cy="26" r="1.2"/><circle cx="104" cy="26" r="1.2"/><circle cx="356" cy="26" r="1.2"/><circle cx="384" cy="26" r="1.2"/><circle cx="412" cy="26" r="1.2"/>
+  <circle cx="48" cy="54" r="1.2"/><circle cx="412" cy="54" r="1.2"/>
+  <circle cx="48" cy="166" r="1.2"/><circle cx="412" cy="166" r="1.2"/>
+  <circle cx="48" cy="194" r="1.2"/><circle cx="76" cy="194" r="1.2"/><circle cx="384" cy="194" r="1.2"/><circle cx="412" cy="194" r="1.2"/>
+</g>
+
+<!-- Bidirectional organic bezier branches -->
+<!-- Left branches -->
+<path d="M180 108 C154 108 152 68 124 68" fill="none" stroke="#2fa87e" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M180 112 C154 112 152 150 124 150" fill="none" stroke="#8565d8" stroke-width="2.2" stroke-linecap="round"/>
+
+<!-- Right branches -->
+<path d="M276 106 C302 106 304 48 330 48" fill="none" stroke="#e5972a" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M276 110 H330" fill="none" stroke="#e06152" stroke-width="2.3" stroke-linecap="round"/>
+<path d="M276 114 C302 114 304 170 330 170" fill="none" stroke="#2a9aa6" stroke-width="2.2" stroke-linecap="round"/>
+
+<!-- Secondary sub-branches on top-right node -->
+<path d="M406 48 C416 48 418 35 426 35" fill="none" stroke="#e5972a" stroke-opacity="0.65" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M406 48 C416 48 418 61 426 61" fill="none" stroke="#e5972a" stroke-opacity="0.65" stroke-width="1.6" stroke-linecap="round"/>
+
+<!-- Left top node: Jade -->
+<g transform="translate(30 50)">
+  <rect class="paper-shadow" x="1" y="3.5" width="94" height="36" rx="10.5"/>
+  <rect class="node-card" x="0" y="0" width="94" height="36" rx="10.5" stroke-width="1.15"/>
+  <rect x="8" y="10" width="4" height="16" rx="2" fill="#2fa87e"/>
+  <rect class="bar-1" x="19" y="12" width="52" height="4.8" rx="2.4" opacity="0.88"/>
+  <rect class="bar-2" x="19" y="21" width="38" height="3.8" rx="1.9" opacity="0.62"/>
+</g>
+
+<!-- Left bottom node: Iris -->
+<g transform="translate(36 132)">
+  <rect class="paper-shadow" x="1" y="3.5" width="88" height="36" rx="10.5"/>
+  <rect class="node-card" x="0" y="0" width="88" height="36" rx="10.5" stroke-width="1.15"/>
+  <rect x="8" y="10" width="4" height="16" rx="2" fill="#8565d8"/>
+  <rect class="bar-1" x="19" y="12" width="44" height="4.8" rx="2.4" opacity="0.88"/>
+  <rect class="bar-2" x="19" y="21" width="52" height="3.8" rx="1.9" opacity="0.62"/>
+</g>
+
+<!-- Center focal Root Topic node -->
+<g transform="translate(174 84)">
+  <rect class="paper-shadow2" x="3" y="8" width="106" height="52" rx="16"/>
+  <rect class="paper-shadow" x="1" y="4" width="106" height="52" rx="15"/>
+  <rect class="root-card" x="0" y="0" width="106" height="52" rx="15" stroke-width="1.8"/>
+  <circle cx="22" cy="26" r="10.5" fill="url(#hmm-root-dot)"/>
+  <path d="M22 20.5 L23.5 24.5 L27.5 26 L23.5 27.5 L22 31.5 L20.5 27.5 L16.5 26 L20.5 24.5 Z" fill="#fffaf2"/>
+  <rect class="bar-1" x="40" y="18.5" width="50" height="6" rx="3"/>
+  <rect class="bar-2" x="40" y="29" width="36" height="4.5" rx="2.25" opacity="0.68"/>
+</g>
+
+<!-- Right top node: Warm amber -->
+<g transform="translate(328 31)">
+  <rect class="paper-shadow" x="1" y="3.5" width="78" height="34" rx="10"/>
+  <rect class="node-card" x="0" y="0" width="78" height="34" rx="10" stroke-width="1.15"/>
+  <circle cx="14" cy="17" r="4.2" fill="#e5972a"/>
+  <rect class="bar-1" x="24" y="14.5" width="42" height="4.8" rx="2.4" opacity="0.88"/>
+</g>
+<circle cx="430" cy="35" r="4" fill="#f3b24c"/>
+<circle cx="430" cy="61" r="4" fill="#f3b24c" opacity="0.65"/>
+
+<!-- Right middle active selected node: Coral -->
+<g transform="translate(328 90)">
+  <rect class="paper-shadow" x="2" y="4.5" width="96" height="40" rx="11.5"/>
+  <rect class="node-card" x="0" y="0" width="96" height="40" rx="11.5" stroke="#e06152" stroke-width="1.5"/>
+  <circle cx="15" cy="20" r="4.8" fill="#e06152"/>
+  <rect class="bar-1" x="26" y="13" width="54" height="5" rx="2.5"/>
+  <rect class="bar-2" x="26" y="22.5" width="38" height="4" rx="2" opacity="0.65"/>
+</g>
+
+<!-- Right bottom node: Teal -->
+<g transform="translate(328 153)">
+  <rect class="paper-shadow" x="1" y="3.5" width="84" height="34" rx="10"/>
+  <rect class="node-card" x="0" y="0" width="84" height="34" rx="10" stroke-width="1.15"/>
+  <circle cx="14" cy="17" r="4.2" fill="#2a9aa6"/>
+  <rect class="bar-1" x="24" y="14.5" width="46" height="4.8" rx="2.4" opacity="0.88"/>
+</g>
+
+<!-- Quiet floating action pills at bottom center (layout & add node icons) -->
+<g transform="translate(182 178)">
+  <rect class="key-pill" x="0" y="0" width="36" height="22" rx="7" stroke-width="1"/>
+  <path d="M12 11 H24 M20.5 7.5 L24 11 L20.5 14.5 M15.5 7.5 L12 11 L15.5 14.5" fill="none" stroke="#c77a38" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect class="key-pill" x="44" y="0" width="36" height="22" rx="7" stroke-width="1"/>
+  <path d="M58 11 H66 M62 7 V15" fill="none" stroke="#c77a38" stroke-width="1.6" stroke-linecap="round"/>
+</g>
+</svg>
