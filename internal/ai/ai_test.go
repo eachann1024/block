@@ -637,15 +637,6 @@ func TestUIPanelCoverDraftsPickerAndCards(t *testing.T) {
 		t.Fatal("expected ai-process-tool-detail-0 expanded")
 	}
 
-	srcToggle, ok := bui.TargetCenter("ai-sources-toggle")
-	if !ok {
-		t.Fatal("missing ai-sources-toggle")
-	}
-	tt.ClickAt(srcToggle.X, srcToggle.Y)
-	if !tt.HasText("daily.md") {
-		t.Fatal("expected source note daily.md listed")
-	}
-
 	scroll, ok := bui.TargetBounds("ai-chat-scroll")
 	if !ok {
 		t.Fatal("missing chat scroll area")
@@ -1538,75 +1529,5 @@ exit 1
 	}
 	if !gotCodexText || !gotCodexTool {
 		t.Fatalf("expected Codex streamed text & tool trace, got %+v", codexConv.Messages)
-	}
-}
-
-func TestUISourcesExpandScrollsIntoView(t *testing.T) {
-	bui.ResetSmoke()
-	bui.EnableSmokeMode()
-	defer bui.DisableSmokeMode()
-
-	ctrl, host, _ := setupReadyController(t)
-	ctrl.SetOpen(true)
-
-	srcPath := filepath.Join(host.ActiveNotebook(), "未命名 2.md")
-	var lines []string
-	for i := 1; i <= 24; i++ {
-		lines = append(lines, fmt.Sprintf("- 第 %d 条说明内容，用于撑高聊天消息流以触发滚动条。", i))
-	}
-	ctrl.mu.Lock()
-	convID := uint64(42)
-	ctrl.convs = append(ctrl.convs, model.Conversation{
-		ID:      convID,
-		Title:   "长对话来源展开",
-		Backend: model.BackendBuiltin,
-		Messages: []model.ChatMessage{
-			{Role: "user", Content: "帮我检查一下仓库"},
-			{
-				Role:    "assistant",
-				Content: strings.Join(lines, "\n"),
-				Sources: []model.SourceNote{
-					{Title: "未命名 2", Path: srcPath},
-				},
-			},
-		},
-	})
-	ctrl.currentID = convID
-	ctrl.scrollToBottom = true
-	ctrl.mu.Unlock()
-
-	tt := ui.NewTester(ctrl.RenderPanel, 440, 520)
-	tt.Frame()
-
-	scrollBounds, ok := bui.TargetBounds("ai-chat-scroll")
-	if !ok {
-		t.Fatal("missing ai-chat-scroll")
-	}
-	srcToggle, ok := bui.TargetCenter("ai-sources-toggle")
-	if !ok {
-		t.Fatal("missing ai-sources-toggle")
-	}
-	if srcToggle.Y < scrollBounds.Y || srcToggle.Y > scrollBounds.Y+scrollBounds.H {
-		t.Fatalf("expected ai-sources-toggle inside scroll viewport %+v, got %+v", scrollBounds, srcToggle)
-	}
-
-	tt.ClickAt(srcToggle.X, srcToggle.Y)
-	tt.Frame()
-
-	srcID := fmt.Sprintf("ai-source-%d-0-0", convID)
-	srcBounds, ok := bui.TargetBounds(srcID)
-	if !ok {
-		t.Fatalf("missing expanded source card %s", srcID)
-	}
-	if srcBounds.Y < scrollBounds.Y || srcBounds.Y+srcBounds.H > scrollBounds.Y+scrollBounds.H {
-		t.Fatalf("expanded source card %+v should fit inside scroll viewport %+v without clipping", srcBounds, scrollBounds)
-	}
-
-	tt.ClickAt(srcBounds.X+srcBounds.W/2, srcBounds.Y+srcBounds.H/2)
-	host.mu.Lock()
-	opened := append([]string(nil), host.openedNotes...)
-	host.mu.Unlock()
-	if len(opened) == 0 || opened[len(opened)-1] != srcPath {
-		t.Fatalf("expected clicking expanded source card to open %q, got %v", srcPath, opened)
 	}
 }

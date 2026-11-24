@@ -876,7 +876,7 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 	expandedSnap := make(map[string]bool, len(turns))
 	for i := range turns {
 		k := turns[i].key
-		if c.expandedProcess[k] || c.expandedSources[k] {
+		if c.expandedProcess[k] {
 			expandedSnap[k] = true
 		}
 	}
@@ -973,9 +973,6 @@ func (c *Controller) renderMessageStream(cUI *ui.Context, pal theme.Palette, ful
 						}
 					}
 
-					if len(t.sources) > 0 {
-						c.renderSourcesCard(cUI, pal, t.key, t.sources)
-					}
 				})
 				if b := turnWrap.Bounds(); b.H > 0 {
 					turnHeights[t.key] = b.H
@@ -1744,64 +1741,6 @@ func processStepIcon(kind model.ToolKind) icons.Icon {
 		return icons.ToolRun
 	}
 	return icons.ToolRead
-}
-
-func (c *Controller) renderSourcesCard(cUI *ui.Context, pal theme.Palette, turnKey string, sources []model.SourceNote) {
-	c.mu.RLock()
-	expanded := c.expandedSources[turnKey]
-	c.mu.RUnlock()
-	ais := pal.AISurface()
-
-	card := ui.Column(cUI.Key("ai-sources-" + turnKey)).FillWidth().Gap(6).
-		Transition(probeSafeTransition(bui.CascadeItemTransition(0, false)))
-	bui.Probe(card, "ai-context-card")
-	bui.RevealOnExpand(card, expanded)
-	card.Children(func() {
-		toggle := ui.ButtonBase(cUI.Key("ai-sources-toggle-" + turnKey)).Height(28).PaddingX(6).Gap(8).
-			AlignItems(ui.Center).Radius(theme.RadiusSM).Cursor(ui.CursorPointer).
-			Label(theme.Tr("参考笔记", "Sources"))
-		bui.Probe(toggle, "ai-sources-toggle")
-		toggle.Children(func() {
-			ui.Text(cUI, theme.Tr("参考笔记", "Sources")).FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text)
-			ui.Box(cUI).Padding(2, 6).Radius(theme.RadiusXS).Background(ais.CapsuleBG).Children(func() {
-				ui.Textf(cUI, "%d", len(sources)).FontSize(theme.FontBody).TextColor(pal.TextSecondary)
-			})
-		})
-		if toggle.Clicked() {
-			c.mu.Lock()
-			c.expandedSources[turnKey] = !c.expandedSources[turnKey]
-			c.mu.Unlock()
-		}
-
-		if expanded {
-			for i, src := range sources {
-				srcID := fmt.Sprintf("ai-source-%s-%d", turnKey, i)
-				btn := ui.ButtonBase(cUI.Key(srcID)).FillWidth().Padding(8, 10).Gap(8).
-					AlignItems(ui.Center).Radius(theme.RadiusMD).Cursor(ui.CursorPointer).Label(src.Title).
-					Transition(probeSafeTransition(bui.CascadeItemTransition(i, false)))
-				hovered := btn.Hovered()
-				pressed := btn.Pressed()
-				bg := ais.WellBG
-				if pressed {
-					bg = ais.SelectedBG
-				} else if hovered {
-					bg = ais.HoverBG
-				}
-				bui.AnimateSurfaceColors(btn, bg, pal.Hairline, true)
-				bui.TactileCard(btn, hovered, pressed, false, false)
-				bui.Probe(btn, srcID)
-				btn.Children(func() {
-					active := hovered || pressed
-					icons.DrawAnimated(cUI, icons.Note, theme.IconRow, pal.DuoIconColors(pal.Text), active)
-					ui.Text(cUI, src.Title+".md").FontSize(theme.FontBody).FontWeight(theme.WeightControl).TextColor(pal.Text).Grow(1).SingleLine()
-					icons.DrawAnimated(cUI, icons.ChevronRight, theme.IconInline, pal.HoverIconColors(active), active)
-				})
-				if btn.Clicked() && c.host != nil {
-					_ = c.host.OpenNote(src.Path, 0)
-				}
-			}
-		}
-	})
 }
 
 func (c *Controller) renderPlanCard(cUI *ui.Context, pal theme.Palette, convID uint64, msgIdx int, plan *model.BatchPlan) {

@@ -223,7 +223,6 @@ type Controller struct {
 
 	expandedProcess     map[string]bool
 	expandedStepDetails map[string]bool
-	expandedSources     map[string]bool
 	expandedNotes       map[string]bool
 	questionUI          map[string]*questionUIState
 	approvalUI          map[string]*approvalUIState
@@ -303,7 +302,6 @@ func NewController(dataDir string, host model.WorkspaceHost, codec model.Markdow
 		planSelections:        make(map[planSelKey]*diffSelection),
 		expandedProcess:       make(map[string]bool),
 		expandedStepDetails:   make(map[string]bool),
-		expandedSources:       make(map[string]bool),
 		expandedNotes:         make(map[string]bool),
 		questionUI:            make(map[string]*questionUIState),
 		approvalUI:            make(map[string]*approvalUIState),
