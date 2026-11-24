@@ -127,6 +127,7 @@ type Supervisor struct {
 	notebookEpoch      atomic.Uint64
 	catalog            *StoreIndex
 	installed          []InstalledApp
+	installEpoch       map[string]uint64
 	runtimes           map[string]*Runtime
 	views              map[viewKey]*PluginViewState
 	lastViewRoot       map[surfaceKey]string
@@ -157,6 +158,7 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 		contrib:            newContribRegistry(cfg.AppDataDir),
 		catalog:            sm.LoadCachedOrSeedCatalog(),
 		installed:          installed,
+		installEpoch:       make(map[string]uint64),
 		runtimes:           make(map[string]*Runtime),
 		views:              make(map[viewKey]*PluginViewState),
 		lastViewRoot:       make(map[surfaceKey]string),
@@ -185,6 +187,7 @@ func (s *Supervisor) preparePluginReplacement(pluginID string) error {
 		return errors.New("plugin has an active task running; wait or cancel it before updating")
 	}
 	s.replacingID = pluginID
+	s.installEpoch[pluginID]++
 	rt := s.runtimes[pluginID]
 	delete(s.runtimes, pluginID)
 	delete(s.activeActionKey, pluginID)
@@ -201,6 +204,25 @@ func (s *Supervisor) preparePluginReplacement(pluginID string) error {
 
 func (s *Supervisor) Store() *StoreManager {
 	return s.store
+}
+
+// MatchesEntrySource reports whether an already-installed plugin matches the
+// recorded installation provenance of catalog entry.
+func (s *Supervisor) MatchesEntrySource(installed InstalledApp, entry StoreAppEntry) bool {
+	if s == nil || s.store == nil {
+		return false
+	}
+	return s.store.MatchesEntrySource(installed, entry)
+}
+
+// PluginHasPermission reports whether pluginID is currently installed, enabled,
+// and holds permission p.
+func (s *Supervisor) PluginHasPermission(pluginID string, p Permission) bool {
+	if s == nil || strings.TrimSpace(pluginID) == "" {
+		return false
+	}
+	m, ok := s.installedManifest(pluginID)
+	return ok && m.HasPermission(p)
 }
 
 func (s *Supervisor) Locale() string {
@@ -621,6 +643,9 @@ func (s *Supervisor) SetPluginEnabled(pluginID string, enabled bool) {
 			}
 		}
 	}
+	if changed {
+		s.installEpoch[pluginID]++
+	}
 	if !enabled {
 		rt = s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
@@ -832,6 +857,18 @@ func formatStoreError(err error, locale string) string {
 		for _, p := range permErr.Added {
 			labels = append(labels, PermissionLabel(p, locale))
 		}
+		if permErr.SourceChanged {
+			if len(labels) == 0 {
+				if isEn {
+					return "Plugin source changed and requires confirmation before replacing"
+				}
+				return "插件来源已变更，替换前需要先确认"
+			}
+			if isEn {
+				return fmt.Sprintf("Plugin source changed and requires confirmation: %s", strings.Join(labels, ", "))
+			}
+			return fmt.Sprintf("插件来源已变更，需重新确认权限：%s", strings.Join(labels, "、"))
+		}
 		if isEn {
 			return fmt.Sprintf("New permissions require confirmation: %s", strings.Join(labels, ", "))
 		}
@@ -872,11 +909,11 @@ func (s *Supervisor) InstallEntryAsync(entry StoreAppEntry, onInstalled func(plu
 
 // InstallEntryConfirmedAsync installs or updates a catalog entry after the user
 // has approved approvedPermissions (or when no sensitive permissions are added).
-func (s *Supervisor) InstallEntryConfirmedAsync(entry StoreAppEntry, approvedPermissions []Permission, onInstalled func(pluginID string)) bool {
+func (s *Supervisor) InstallEntryConfirmedAsync(entry StoreAppEntry, approvedPermissions []Permission, allowSourceChange bool, onInstalled func(pluginID string)) bool {
 	_, wasUpdate := s.GetInstalled(entry.ID)
 	approvedCopy := append([]Permission(nil), approvedPermissions...)
 	return s.startInstallAsync(entry.ID, wasUpdate, func(ctx context.Context) (*InstalledApp, error) {
-		return s.store.InstallEntryConfirmed(ctx, entry, approvedCopy)
+		return s.store.InstallEntryConfirmed(ctx, entry, approvedCopy, allowSourceChange)
 	}, onInstalled)
 }
 
@@ -1128,6 +1165,7 @@ func (s *Supervisor) applyInstalledLocked(inst *InstalledApp, installedList []In
 	s.installed = installedList
 	langSnap := append([]InstalledApp(nil), s.installed...)
 	if inst != nil {
+		s.installEpoch[inst.Manifest.ID]++
 		delete(s.runtimes, inst.Manifest.ID)
 		s.deleteViewsForPluginLocked(inst.Manifest.ID)
 	}
@@ -1236,6 +1274,7 @@ func (s *Supervisor) UninstallAsync(pluginID string, onDone func()) {
 				break
 			}
 		}
+		s.installEpoch[pluginID]++
 		rt := s.runtimes[pluginID]
 		delete(s.runtimes, pluginID)
 		delete(s.activeActionKey, pluginID)
