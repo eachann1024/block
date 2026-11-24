@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -2036,6 +2037,9 @@ func (c *Controller) SendPrompt(text string) {
 		}
 		c.turn = turn
 		c.streaming = true
+		// 新一轮开始：回到底部并持续跟随，直到用户主动上滑。
+		c.scrollToBottom = true
+		c.messagesScroll.Y = math.MaxFloat32
 	}
 	c.mu.Unlock()
 
