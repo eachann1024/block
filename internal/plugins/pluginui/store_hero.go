@@ -164,7 +164,10 @@ func renderStoreHero(
 	cardHovered := false
 	pagerHovered := false
 	autoActive := len(slides) > 1 && !ctrl.storeHeroPaused && installingID == "" && !c.Preferences().ReduceMotion
-	countdownRemain := float32(0)
+	countdownProgress := float32(0)
+	if autoActive {
+		countdownProgress = min(max(float32(ctrl.storeHeroElapsed)/float32(storeHeroAutoAdvance), 0), 1)
+	}
 
 	wrap.Children(func() {
 		card := ui.ButtonBase(c.Key("app-store-hero-card")).
@@ -180,11 +183,6 @@ func renderStoreHero(
 		glowPrimary := card.AnimateColor("heroGlowP", hc.GlowPrimary, bui.HeroSurfaceFade)
 		glowSecondary := card.AnimateColor("heroGlowS", hc.GlowSecondary, bui.HeroSurfaceFade)
 		progressAccent := card.AnimateColor("heroProgAcc", hc.AccentBG, bui.HeroSurfaceFade)
-		targetBarAlpha := float32(0)
-		if autoActive {
-			targetBarAlpha = 1
-		}
-		barAlpha := card.AnimateTo("heroProgAlpha", targetBarAlpha, bui.SpringPanel)
 		targetBorder := hc.Border
 		if hovered || pressed {
 			targetBorder = hc.HoverBorder
@@ -319,25 +317,6 @@ func renderStoreHero(
 					})
 				}
 			})
-
-			if barAlpha > 0.01 {
-				ui.Box(c.Key("app-store-hero-countdown")).
-					Absolute().Left(0).Right(0).Bottom(0).Height(3).PassThrough().
-					Draw(func(p *ui.Painter, bounds ui.Rect) {
-						if bounds.W <= 0 {
-							return
-						}
-						p.Fill(bounds, progressAccent.Alpha(0.16*barAlpha), 0)
-						if fillW := bounds.W * countdownRemain; fillW > 0.5 {
-							p.Fill(ui.Rect{
-								X: bounds.X,
-								Y: bounds.Y,
-								W: fillW,
-								H: bounds.H,
-							}, progressAccent.Alpha(0.78*barAlpha), theme.RadiusPill)
-						}
-					})
-			}
 		})
 
 		bui.Probe(card, "app-store-hero-card")
@@ -369,10 +348,14 @@ func renderStoreHero(
 				}
 
 				pager := bui.DotPager(c, bui.DotPagerOptions{
-					PagerID:  "app-store-hero-pager",
-					IDPrefix: "app-store-hero-dot",
-					Count:    len(slides),
-					Active:   idx,
+					PagerID:           "app-store-hero-pager",
+					IDPrefix:          "app-store-hero-dot",
+					Count:             len(slides),
+					Active:            idx,
+					CountdownMode:     true,
+					CountdownRunning:  autoActive,
+					CountdownProgress: countdownProgress,
+					AccentColor:       progressAccent,
 					SlotTooltip: func(slot int) *bui.TooltipSpec {
 						if slot < 0 || slot >= len(slides) {
 							return nil
@@ -433,8 +416,6 @@ func renderStoreHero(
 				c.After(bui.CarouselTickInterval(rem))
 			}
 		}
-		remain := 1 - float32(ctrl.storeHeroElapsed)/float32(storeHeroAutoAdvance)
-		countdownRemain = min(max(remain, 0), 1)
 	}
 }
 

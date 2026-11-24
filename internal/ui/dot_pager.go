@@ -26,11 +26,21 @@ type DotPagerOptions struct {
 	Tooltip     string
 	SlotTooltip func(index int) *TooltipSpec
 	OnSelect    func(index int)
+
+	// Optional morphing capsule countdown mode for auto-advancing carousels.
+	CountdownMode     bool
+	CountdownRunning  bool
+	CountdownProgress float32  // 0..1 forward fill progress for the active capsule
+	AccentColor       ui.Color // optional active tint; defaults to pal.Accent
 }
 
 // DotPager renders the recessed-track circular bead pager ("嵌槽圆珠")
-// driven by the shared short control animation.
+// driven by the shared short control animation. When CountdownMode is enabled,
+// the active bead morphs into a pill track that fills forward from 0 to 1.
 func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
+	if opts.CountdownMode {
+		return capsuleCountdownPager(c, opts)
+	}
 	pal := theme.Ocean()
 	dp := pal.DotPager()
 
@@ -149,6 +159,114 @@ func DotPager(c *ui.Context, opts DotPagerOptions) ui.Element {
 						ui.Box(c).Size(coreSz, coreSz).Radius(theme.RadiusPill).Background(dp.Core)
 					})
 				})
+			}
+		})
+	})
+	return pager
+}
+
+func capsuleCountdownPager(c *ui.Context, opts DotPagerOptions) ui.Element {
+	pal := theme.Ocean()
+	dp := pal.DotPager()
+
+	accent := opts.AccentColor
+	if accent.A == 0 {
+		accent = pal.Accent
+	}
+	pagerID := opts.PagerID
+	if pagerID == "" {
+		pagerID = opts.IDPrefix + "-pager"
+	}
+	pager := ui.Row(c.Key(pagerID)).Height(dotPagerTrackH).PaddingX(dotPagerTrackPad + 1).
+		AlignItems(ui.Center).Radius(theme.RadiusPill).KeepFocus()
+	AnimateSurfaceColors(pager, dp.TrackBG, dp.TrackBorder, true)
+	Probe(pager, pagerID)
+
+	progress := min(max(opts.CountdownProgress, 0), 1)
+
+	pager.Children(func() {
+		inner := ui.Row(c.Key(pagerID + "-inner")).FillHeight().Gap(theme.Space4).AlignItems(ui.Center)
+		inner.Children(func() {
+			for i := 0; i < opts.Count; i++ {
+				slot := i
+				isActive := slot == opts.Active
+				dotID := fmt.Sprintf("%s-%d", opts.IDPrefix, slot)
+
+				targetPillW := float32(7)
+				if isActive {
+					if opts.CountdownRunning {
+						targetPillW = 34
+					} else {
+						targetPillW = 18
+					}
+				}
+				btn := ui.ButtonBase(c.Key(dotID)).Height(dotPagerSlotSize).Center().
+					Radius(theme.RadiusPill).Cursor(ui.CursorPointer).KeepFocus().
+					Role(ui.RoleTab).AccessSelected(isActive).
+					Label(fmt.Sprintf("Slot %d", slot+1))
+				hovered := btn.Hovered()
+				pressed := btn.Pressed()
+
+				pillW := btn.AnimateTo("capW", targetPillW, TreeDrawerOpen)
+				hitW := max(pillW+6, 14)
+				btn.Width(hitW)
+
+				if opts.SlotTooltip != nil {
+					if spec := opts.SlotTooltip(slot); spec != nil {
+						RichTooltip(c, btn, *spec)
+					}
+				} else if opts.Tooltip != "" {
+					Tooltip(c, btn, opts.Tooltip)
+				}
+
+				targetTrackCol := dp.Idle
+				if isActive {
+					if opts.CountdownRunning {
+						targetTrackCol = accent.Alpha(0.22)
+					} else {
+						targetTrackCol = accent
+					}
+				} else if hovered || pressed {
+					targetTrackCol = dp.Hover
+				}
+				trackCol := btn.AnimateColor("capTrackCol", targetTrackCol, FadeColor)
+				fillCol := btn.AnimateColor("capFillCol", accent, FadeColor)
+
+				targetScale := float32(1)
+				if !isActive && hovered {
+					targetScale = 1.18
+				} else if pressed {
+					targetScale = 0.92
+				}
+				pillScale := btn.AnimateTo("capScale", targetScale, SpringTactile)
+
+				activeNow := isActive
+				runningNow := opts.CountdownRunning
+				btn.Children(func() {
+					pill := ui.Box(c).Size(pillW, 7).Radius(theme.RadiusPill).Clip().
+						Draw(func(p *ui.Painter, bounds ui.Rect) {
+							p.Fill(bounds, trackCol, theme.RadiusPill)
+							if activeNow && runningNow {
+								baseW := min(bounds.H, bounds.W)
+								fillW := baseW + (bounds.W-baseW)*progress
+								if fillW > 0.5 {
+									p.Fill(ui.Rect{
+										X: bounds.X,
+										Y: bounds.Y,
+										W: fillW,
+										H: bounds.H,
+									}, fillCol, theme.RadiusPill)
+								}
+							}
+						})
+					if !almostZero(pillScale-1, 0.005) {
+						pill.Scale(pillScale, pillScale)
+					}
+				})
+				Probe(btn, dotID)
+				if btn.Clicked() && opts.OnSelect != nil {
+					opts.OnSelect(slot)
+				}
 			}
 		})
 	})

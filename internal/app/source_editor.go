@@ -472,7 +472,10 @@ func (s *TabSurface) renderSourceEditor(c *ui.Context) {
 	pal := theme.Ocean()
 	st := s.ensureCodeState()
 
-	codeFont := theme.ResolvedCodeFont()
+	_, codeFont, _ := theme.Typography()
+	if strings.TrimSpace(codeFont) == "" {
+		codeFont = "monospace"
+	}
 	z := theme.Zoom()
 	if z <= 0 {
 		z = 1.0
