@@ -911,7 +911,7 @@ func (st *BlockState) finishEdit(commit bool, cb Callbacks) {
 	st.ComposeText = ""
 	st.Measure.ClearTextOverride()
 	if commit && n != nil {
-		trimmed := strings.TrimSpace(st.EditDraft)
+		trimmed := normalizeNodeText(st.EditDraft)
 		if trimmed != "" && trimmed != n.Text {
 			if !st.EditFresh {
 				st.pushUndo()
@@ -1083,7 +1083,7 @@ func (st *BlockState) RenderFullscreen(c *ui.Context, id string, source string, 
 	st.SyncSource(source, cfg)
 	pal := theme.Ocean()
 
-	if c.Shortcut(0, ui.KeyEscape) && st.EditingID == 0 && st.LinkNodeID == 0 {
+	if st.EditingID == 0 && st.LinkNodeID == 0 && c.Shortcut(0, ui.KeyEscape) {
 		if st.DragActive || st.DragNodeID != 0 {
 			st.resetDrag()
 		} else if st.ImportResult != nil {
@@ -1825,7 +1825,7 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 	// Transparent inline IME composition preview while directly typing CJK on a selected node.
 	if st.ComposeText != "" && st.EditingID == 0 && !cb.ReadOnly && st.Root != nil {
 		if n := st.selectedNode(); n != nil {
-			m := st.inlineEditMetrics(n, pal)
+			m := st.inlineEditMetrics(n, pal, st.ComposeText)
 			compBox := ui.Row(c.Key("mm-ime-compose-"+id)).
 				Absolute().Left(m.x).Top(m.y).Width(m.w).Height(m.h).
 				Background(ui.Transparent).IgnoreInput(true).
@@ -1838,14 +1838,34 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		}
 	}
 
-	// Transparent inline node text editor aligned 1:1 inside the Scheme C vector node.
+	// Transparent multi-line inline node editor aligned 1:1 inside the Scheme C vector node.
 	if st.EditingID != 0 && !cb.ReadOnly {
 		if n := st.Root.FindByID(st.EditingID); n != nil {
-			m := st.inlineEditMetrics(n, pal)
-			input := ui.TextInputBase(c.Key(fmt.Sprintf("mm-inline-edit-%s-%d-%d", id, st.EditingID, st.EditSeq)), &st.EditDraft).
+			input := ui.TextAreaBase(c.Key(fmt.Sprintf("mm-inline-edit-%s-%d-%d", id, st.EditingID, st.EditSeq)), &st.EditDraft)
+			if updatedText := st.EditDraft + st.EditCompose; updatedText != activeEditText {
+				activeEditText = updatedText
+				st.editLastLayoutText = updatedText
+				st.Measure.SetTextOverride(st.EditingID, updatedText)
+				ComputeLayout(st.Root, st.Layout, c, &st.Measure)
+				if en := st.Root.FindByID(st.EditingID); en != nil {
+					n = en
+					scale := st.Camera.Scale
+					if scale <= 0 {
+						scale = 1
+					}
+					if en.W <= (cw-72)/scale {
+						st.ensureNodeVisible(en, cw, ch)
+					}
+				}
+			}
+			m := st.inlineEditMetrics(n, pal, activeEditText)
+			input.
 				Absolute().Left(m.x).Top(m.y).Width(m.w).Height(m.h).
+				Padding(m.padTop, 0, 0, 0).
 				Background(ui.Transparent).
 				FontSize(m.fontSize).FontWeight(m.fontWeight).
+				FixedLineHeight(m.lineHeight).
+				NoWrap().Scrollbars(false).
 				TextAlign(m.align).TextColor(m.textColor).
 				CaretColor(m.caretColor).CaretWidth(m.caretWidth).
 				SelectionColor(m.selColor).
@@ -1866,18 +1886,15 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.EditCompose = ""
 				}
 			})
-			input.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind != ui.InputKeyDown {
-					return false
-				}
-				switch ev.Key {
+			input.OnTextKey(func(k ui.TextKey) bool {
+				switch k.Key {
 				case ui.KeyEnter:
-					if ev.Mods == ui.Shift {
-						st.finishEdit(true, cb)
-						st.opAddSiblingBefore(cb)
-						return true
+					if k.Mods == ui.Shift {
+						// Shift+Enter inserts a line break inside the topic text.
+						return false
 					}
-					if ev.Mods == 0 {
+					if k.Mods == 0 {
+						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
 						st.CanvasHandle.Focus()
 						return true
@@ -1887,12 +1904,14 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 					st.CanvasHandle.Focus()
 					return true
 				case ui.KeyTab:
-					if ev.Mods == ui.Shift {
+					if k.Mods == ui.Shift {
+						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
 						st.opInsertParent(cb)
 						return true
 					}
-					if ev.Mods == 0 {
+					if k.Mods == 0 {
+						st.EditDraft = k.Text()
 						st.finishEdit(true, cb)
 						st.opAddChild(cb)
 						return true
@@ -1909,6 +1928,8 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 
 type inlineEditMetrics struct {
 	x, y, w, h float32
+	padTop     float32
+	lineHeight float32
 	fontSize   float32
 	fontWeight int
 	textColor  ui.Color
@@ -1918,7 +1939,7 @@ type inlineEditMetrics struct {
 	align      ui.Align
 }
 
-func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette) inlineEditMetrics {
+func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette, activeText string) inlineEditMetrics {
 	scale := st.Camera.Scale
 	if scale <= 0 {
 		scale = 1
@@ -1932,6 +1953,15 @@ func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette) inlineEditMe
 		edY = sy - layoutLeafGap*scale
 		edH = (n.H + layoutLeafGap) * scale
 	}
+	lineCount := strings.Count(activeText, "\n") + 1
+	if lineCount < 1 {
+		lineCount = 1
+	}
+	lineH := max(nodeLineHeight(n.Depth)*scale, 8)
+	textBlockH := float32(lineCount) * lineH
+	_, centerY := st.Camera.WorldToScreen(n.X, nodeTextCenterY(n))
+	padTop := max(centerY-textBlockH*0.5-edY, 0)
+
 	insetX := max(float32(2)*scale, 1.5)
 	edX := sx + insetX
 	edW := max(sw-insetX*2, 24)
@@ -1967,6 +1997,8 @@ func (st *BlockState) inlineEditMetrics(n *Node, pal theme.Palette) inlineEditMe
 		y:          edY,
 		w:          edW,
 		h:          edH,
+		padTop:     padTop,
+		lineHeight: lineH,
 		fontSize:   max(nodeFontSize(n.Depth)*scale, 6),
 		fontWeight: nodeFontWeight(n.Depth),
 		textColor:  textCol,
@@ -2207,7 +2239,7 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, cb Callbacks) 
 				return
 			}
 			// Root heading row
-			ui.Text(c, st.Root.Text).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).
+			ui.Text(c, strings.ReplaceAll(st.Root.Text, "\n", " ")).FontSize(theme.FontTitle).FontWeight(theme.WeightTitle).
 				TextColor(pal.Text).Margin(0, 0, theme.Space6, 0).SingleLine()
 
 			var renderChildren func(parent *Node, depth int)
@@ -2263,7 +2295,7 @@ func (st *BlockState) renderOutlineView(c *ui.Context, id string, cb Callbacks) 
 						if node.Task != nil && *node.Task {
 							txtCol = txtCol.Alpha(0.55)
 						}
-						ui.Text(c, node.Text).FontSize(theme.FontSmall).TextColor(txtCol).
+						ui.Text(c, strings.ReplaceAll(node.Text, "\n", " ")).FontSize(theme.FontSmall).TextColor(txtCol).
 							Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…")
 					})
 					if row.Clicked() {
@@ -2613,17 +2645,28 @@ func (st *BlockState) renderHintBar(c *ui.Context, id string) {
 				}
 				return other
 			}
-			items := []hintItem{
-				{[]string{"Tab"}, theme.Tr("子节点", "Child")},
-				{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
-				{[]string{"↵", k("⇧↵", "Shift+↵")}, theme.Tr("同级", "Sibling")},
-				{[]string{k("⌥↑", "Alt+↑"), k("⌥↓", "Alt+↓")}, theme.Tr("移动", "Move")},
-				{[]string{k("⌥←", "Alt+←"), k("⌥→", "Alt+→")}, theme.Tr("升降级", "Level")},
-				{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("任务", "Task")},
-				{[]string{"Space"}, theme.Tr("折叠", "Fold")},
-				{[]string{"⌫"}, theme.Tr("删除", "Delete")},
-				{[]string{"F2"}, theme.Tr("改名", "Rename")},
-				{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("链接", "Link")},
+			var items []hintItem
+			if st.EditingID != 0 {
+				items = []hintItem{
+					{[]string{"↵"}, theme.Tr("完成", "Done")},
+					{[]string{k("⇧↵", "Shift+↵")}, theme.Tr("换行", "Newline")},
+					{[]string{"Tab"}, theme.Tr("子节点", "Child")},
+					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
+					{[]string{"Esc"}, theme.Tr("取消", "Cancel")},
+				}
+			} else {
+				items = []hintItem{
+					{[]string{"Tab"}, theme.Tr("子节点", "Child")},
+					{[]string{k("⇧Tab", "Shift+Tab")}, theme.Tr("父节点", "Parent")},
+					{[]string{"↵", k("⇧↵", "Shift+↵")}, theme.Tr("同级", "Sibling")},
+					{[]string{k("⌥↑", "Alt+↑"), k("⌥↓", "Alt+↓")}, theme.Tr("移动", "Move")},
+					{[]string{k("⌥←", "Alt+←"), k("⌥→", "Alt+→")}, theme.Tr("升降级", "Level")},
+					{[]string{k("⌘↵", "Ctrl+↵")}, theme.Tr("任务", "Task")},
+					{[]string{"Space"}, theme.Tr("折叠", "Fold")},
+					{[]string{"⌫"}, theme.Tr("删除", "Delete")},
+					{[]string{"F2"}, theme.Tr("改名", "Rename")},
+					{[]string{k("⌘L", "Ctrl+L")}, theme.Tr("链接", "Link")},
+				}
 			}
 			for _, it := range items {
 				itemRow := ui.Row(c).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
