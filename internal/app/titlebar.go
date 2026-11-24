@@ -205,8 +205,8 @@ type TitlebarProps struct {
 	SidebarFloating    bool
 	SidebarExpandCueAt time.Time
 	ShortcutNewTab     string
-	ShortcutAI      string
-	ShortcutExport  string
+	ShortcutAI         string
+	ShortcutExport     string
 
 	// Annotation summary for the titlebar send segment (thinkly-fast annotation_summary).
 	AnnotDrafts       int
@@ -222,36 +222,36 @@ type TitlebarProps struct {
 	ShortcutNewNote string
 	OnOpenSearch    func()
 
-	OnToggleSidebar     func()
-	OnCloseSettings     func()
-	OnBack              func()
-	OnForward           func()
-	OnSelectTab         func(path string)
-	OnCloseTab          func(path string)
-	OnCloseOthers       func(keepPath string)
-	OnCloseRight        func(pivotPath string)
-	OnCloseAll          func()
-	OnReorderTab        func(srcPath, targetPath string, after bool)
-	OnNewNote           func()
-	OnToggleFeedback    func()
-	OnToggleAI          func()
-	OnOpenHistory       func()
-	OnOpenExport        func()
-	OnCopyMarkdown      func()
+	OnToggleSidebar    func()
+	OnCloseSettings    func()
+	OnBack             func()
+	OnForward          func()
+	OnSelectTab        func(path string)
+	OnCloseTab         func(path string)
+	OnCloseOthers      func(keepPath string)
+	OnCloseRight       func(pivotPath string)
+	OnCloseAll         func()
+	OnReorderTab       func(srcPath, targetPath string, after bool)
+	OnNewNote          func()
+	OnToggleFeedback   func()
+	OnToggleAI         func()
+	OnOpenHistory      func()
+	OnOpenExport       func()
+	OnCopyMarkdown     func()
 	OnToggleNoteSource func()
 	OnCopyContent      func()
 	OnFormatJSON       func()
 	OnCopyImage        func()
 	OnOpenExternal     func()
-	OnRevealPath        func(path string)
-	NoteStats           func() (characters, blocks int)
-	PageStats           func() []PageMenuStat
-	OnPreviewZoomStep   func(factor float32)
-	OnPreviewActual     func()
-	OnPreviewFit        func()
-	OnSelectSVGSource   func(showSource bool)
-	OnToggleSourceWrap  func()
-	OnOpenInBrowser     func()
+	OnRevealPath       func(path string)
+	NoteStats          func() (characters, blocks int)
+	PageStats          func() []PageMenuStat
+	OnPreviewZoomStep  func(factor float32)
+	OnPreviewActual    func()
+	OnPreviewFit       func()
+	OnSelectSVGSource  func(showSource bool)
+	OnToggleSourceWrap func()
+	OnOpenInBrowser    func()
 
 	HiddenSlots       map[string]bool
 	PluginButtons     []plugins.ResolvedTitlebarButton
@@ -554,6 +554,7 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
+		renderOpenInBrowserButton(c, p, availW)
 		svgIdx := 0
 		if p.SVGShowSource {
 			svgIdx = 1
@@ -573,22 +574,28 @@ func renderNonNoteTitlebarTools(c *ui.Context, p TitlebarProps, surface Titlebar
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
-		if !isNarrowTitlebar(vpW, availW) {
-			openBtn := blockui.IconButton(c, icons.LinkOpen, blockui.IconButtonOptions{
-				ID:          "html-browser",
-				Tooltip:     theme.Tr("在浏览器中打开", "Open in Browser"),
-				ChromeHover: true,
-			})
-			if openBtn.Clicked() && p.OnOpenInBrowser != nil {
-				p.OnOpenInBrowser()
-			}
-		}
+		renderOpenInBrowserButton(c, p, availW)
 		renderSourceWrapButton(c, p, availW)
 	case SurfaceCode:
 		if showStatus {
 			renderSourceStatusText(c, p.SourceStatus, isSaveError)
 		}
 		renderSourceWrapButton(c, p, availW)
+	}
+}
+
+func renderOpenInBrowserButton(c *ui.Context, p TitlebarProps, availW float32) {
+	vpW, _ := c.Size()
+	if isNarrowTitlebar(vpW, availW) {
+		return
+	}
+	openBtn := blockui.IconButton(c, icons.LinkOpen, blockui.IconButtonOptions{
+		ID:          "html-browser",
+		Tooltip:     theme.Tr("在浏览器中打开", "Open in Browser"),
+		ChromeHover: true,
+	})
+	if openBtn.Clicked() && p.OnOpenInBrowser != nil {
+		p.OnOpenInBrowser()
 	}
 }
 
@@ -1073,7 +1080,7 @@ func buildPageMenuItems(p TitlebarProps, surface TitlebarSurfaceKind, vpW, avail
 		if p.CanFormatJSON {
 			items = append(items, item("page-format-json", theme.Tr("格式化 JSON", "Format JSON"), "", &icFormat, p.OnFormatJSON))
 		}
-		if surface == SurfaceHTML {
+		if surface == SurfaceHTML || surface == SurfaceSVG {
 			items = append(items, item("page-open-browser", theme.Tr("在浏览器中打开", "Open in Browser"), "", &icOpen, p.OnOpenInBrowser))
 		}
 	case SurfaceImagePreview:
@@ -1359,7 +1366,7 @@ func renderSidebarToggleButton(c *ui.Context, p TitlebarProps) {
 			} else if textAlpha > 1 {
 				textAlpha = 1
 			}
-			ui.Row(c.Key("sidebar-toggle-pill-label")).Width(labelFullW*pillP).Height(theme.ChromeBoxSize).
+			ui.Row(c.Key("sidebar-toggle-pill-label")).Width(labelFullW * pillP).Height(theme.ChromeBoxSize).
 				Shrink(0).AlignItems(ui.Center).Clip().Opacity(textAlpha).Children(func() {
 				ui.Box(c).Width(theme.Space4).Shrink(0)
 				ui.Text(c, labelText).FontSize(theme.FontMeta).FixedLineHeight(theme.LineMeta).
