@@ -1728,6 +1728,11 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 		return false
 	})
 
+	canvasHovered := canvas.Hovered()
+	if !canvasHovered && !st.Panning && st.DragNodeID == 0 && st.HoveredID != 0 {
+		st.HoveredID = 0
+	}
+
 	// Paint native vector mindmap.
 	canvas.Draw(func(p *ui.Painter, r ui.Rect) {
 		if st.Root == nil || r.W <= 0 || r.H <= 0 {
@@ -1745,9 +1750,13 @@ func (st *BlockState) renderCanvasView(c *ui.Context, id string, cb Callbacks) {
 				st.ensureNodeVisible(sel, r.W, r.H)
 			}
 		}
+		hoveredID := st.HoveredID
+		if !canvasHovered {
+			hoveredID = 0
+		}
 		opt := PaintOptions{
 			SelectedID: st.SelectedID,
-			HoveredID:  st.HoveredID,
+			HoveredID:  hoveredID,
 			EditingID:  st.EditingID,
 			Palette:    pal,
 			Background: pal.CodeBG,
