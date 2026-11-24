@@ -160,31 +160,25 @@ func IconButton(c *ui.Context, glyph icons.Icon, opts IconButtonOptions) ui.Elem
 			return
 		}
 		var ic theme.IconColors
+		lit := hovered || pressed || opts.Active
 		switch {
 		case opts.Danger && (hovered || pressed || opts.Active):
-			ic = pal.MonoIconColors(pal.Danger)
+			ic = pal.TintedIconColors(pal.Danger)
+			lit = false
 		case opts.Active:
-			ic = theme.IconColors{
-				Line:   pal.Accent,
-				Fill:   pal.Accent.Alpha(0.18),
-				Accent: pal.Accent,
-			}
+			ic = pal.LitDuoIconColors(pal.Accent)
 		case hovered || pressed:
 			ic = pal.DuoIconColors(pal.Text)
 		case opts.AlwaysDuo:
 			ic = pal.DuoIconColors(pal.TextSecondary)
 		case opts.Variant == IconBordered:
-			ic = pal.MonoIconColors(pal.Text)
+			ic = pal.DuoIconColors(pal.Text)
 		case opts.RestColor.A > 0:
-			ic = pal.MonoIconColors(opts.RestColor)
+			ic = pal.DuoIconColors(opts.RestColor)
 		default:
-			ic = pal.MonoIconColors(pal.TextSecondary)
+			ic = pal.DuoIconColors(pal.TextSecondary)
 		}
-		icoWrap := ui.Box(c).Size(glyphSize, glyphSize).Shrink(0)
-		TactileIcon(icoWrap, pressed, isDisabled)
-		icoWrap.Children(func() {
-			icons.DrawAnimated(c, glyph, glyphSize, ic, hovered || pressed)
-		})
+		icons.DrawAnimated(c, glyph, glyphSize, ic, lit)
 	})
 	if opts.ID != "" {
 		Probe(btn, opts.ID)
@@ -376,13 +370,16 @@ func ActionButtonWithOptions(c *ui.Context, opts ActionButtonOptions) ui.Element
 			ui.Box(c).Size(theme.StoreStatusDotSize, theme.StoreStatusDotSize).
 				Radius(theme.RadiusPill).Background(fg).Shrink(0)
 		} else if opts.Leading != nil {
-			ic := pal.MonoIconColors(fg)
-			if opts.Style == ButtonSecondary || opts.Style == ButtonGhost || opts.Style == ButtonAccentOutline || opts.Style == ButtonAccentSoft {
-				if hovered || pressed {
-					ic = pal.DuoIconColors(fg)
-				} else if opts.AlwaysDuo {
-					ic = pal.DuoIconColors(pal.TextSecondary)
-				}
+			var ic theme.IconColors
+			switch opts.Style {
+			case ButtonPrimary:
+				ic = pal.MonoIconColors(fg)
+			case ButtonDanger:
+				ic = pal.TintedIconColors(pal.Danger)
+			case ButtonSuccess:
+				ic = pal.TintedIconColors(pal.Success)
+			default:
+				ic = pal.DuoIconColors(fg)
 			}
 			icons.DrawAnimated(c, *opts.Leading, theme.IconAction, ic, hovered || pressed)
 		}
@@ -627,19 +624,23 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 	row.Children(func() {
 		if item.Icon != nil || item.CustomIcon != nil {
 			var ic theme.IconColors
+			lit := active || item.Checked
 			switch {
 			case item.Danger && active:
-				ic = theme.IconColors{Line: pal.MenuDangerHoverFG, Fill: pal.MenuDangerHoverFG.Alpha(0.20), Accent: pal.MenuDangerHoverFG}
+				ic = pal.TintedIconColors(pal.MenuDangerHoverFG)
+				lit = false
 			case item.Danger:
-				ic = pal.MonoIconColors(iconLine)
-			case active || item.Checked:
-				ic = pal.DuoIconColors(iconLine)
+				ic = pal.TintedIconColors(iconLine)
+				lit = false
 			default:
-				ic = pal.MonoIconColors(iconLine)
+				ic = pal.DuoIconColors(iconLine)
 			}
 			if item.Icon != nil {
-				icons.DrawAnimated(c, *item.Icon, theme.IconRow, ic, active)
+				icons.DrawAnimated(c, *item.Icon, theme.IconRow, ic, lit)
 			} else {
+				if lit && ic.Lit {
+					ic = pal.LitDuoIconColors(iconLine)
+				}
 				item.CustomIcon(c, theme.IconRow, ic)
 			}
 		}
@@ -665,13 +666,17 @@ func MenuRow(c *ui.Context, item MenuItemSpec, highlighted bool) ui.Element {
 		}
 		if item.HasSubmenu {
 			chevCol := pal.MenuMuted
+			chevIC := pal.DuoIconColors(chevCol)
+			chevLit := active
 			if item.Danger && active {
 				chevCol = pal.MenuDangerHoverFG
+				chevIC = pal.TintedIconColors(chevCol)
+				chevLit = false
 			}
-			icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, pal.MonoIconColors(chevCol), active)
+			icons.DrawAnimated(c, icons.TbChevronRight, theme.IconInline, chevIC, chevLit)
 		}
 		if item.Checked {
-			icons.DrawAnimated(c, icons.Check, theme.IconMenuCheck, pal.MonoIconColors(pal.Accent), active)
+			icons.Draw(c, icons.Check, theme.IconMenuCheck, pal.MinimalIconColors(pal.Accent))
 		}
 	})
 	if item.ID != "" {

@@ -128,7 +128,7 @@ func monochromeStatusBadge(c *ui.Context, label string, compact bool) {
 		h = theme.KeycapHeight
 	}
 	ui.Row(c).Height(h).Gap(theme.Space4).Shrink(0).AlignItems(ui.Center).Children(func() {
-		icons.Draw(c, icons.Check, theme.IconMicro, pal.MonoIconColors(pal.TextSecondary))
+		icons.Draw(c, icons.Check, theme.IconMicro, pal.MinimalIconColors(pal.TextSecondary))
 		ui.Text(c, label).
 			FontSize(theme.FontMeta).
 			FixedLineHeight(theme.LineMeta).

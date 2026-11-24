@@ -79,11 +79,6 @@ func TactileCard(el ui.Element, _ bool, pressed, _, disabled bool) ui.Element {
 	return pressScale(el, pressed && !disabled, 0.99)
 }
 
-// TactileIcon scales an icon down on press and springs back on release.
-func TactileIcon(el ui.Element, pressed, disabled bool) ui.Element {
-	return pressScale(el, pressed && !disabled, 0.88)
-}
-
 func pressScale(el ui.Element, pressed bool, pressedScale float32) ui.Element {
 	if testing.Testing() {
 		return el

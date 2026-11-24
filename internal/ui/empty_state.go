@@ -162,7 +162,7 @@ func GhostRow(c *ui.Context, id, label string, glyph icons.Icon) ui.Element {
 	row.Border(1, border)
 	AnimateSurfaceColors(row, bg, ui.Transparent, false)
 	row.Children(func() {
-		icons.DrawAnimated(c, glyph, theme.IconAction, pal.MonoIconColors(fg), hovered)
+		icons.DrawAnimated(c, glyph, theme.IconAction, pal.DuoIconColors(fg), hovered)
 		ui.Text(c, label).FontSize(theme.FontBody).FixedLineHeight(theme.LineBody).TextColor(fg).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 	})
