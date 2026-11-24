@@ -16,6 +16,7 @@ on:
       - 'DESIGN.md'
       - '.github/pull_request_template.md'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/pr-media.yml'
       - '.github/workflows/prune-release-assets.yml'
       - 'scripts/lint_design.py'
       - 'scripts/gen_ai_map.py'
