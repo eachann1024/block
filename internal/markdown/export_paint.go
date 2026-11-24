@@ -209,8 +209,18 @@ func paintExportRaster(ctx context.Context, sc exportScene, top, h int, scale fl
 					if sc.title.mark == TitleMarkBand {
 						titleTop = 0
 					}
-					if sc.title.y+sc.title.h+64 >= from && titleTop <= to {
+					titleBottom := maxFloat32(sc.title.bottomY, sc.title.textY+sc.title.h)
+					if titleBottom+64 >= from && titleTop <= to {
 						paintExportHeader(p, sc)
+					}
+				}
+				if sc.noTitleBar.present {
+					if sc.noTitleBar.kind == NoTitleBarGradient {
+						if sc.cardRect.W > 0 && sc.cardRect.Y+16 >= from && sc.cardRect.Y-16 <= to {
+							paintNoTitleBar(p, sc)
+						}
+					} else if sc.noTitleBar.y+sc.noTitleBar.h+32 >= from && sc.noTitleBar.y-32 <= to {
+						paintNoTitleBar(p, sc)
 					}
 				}
 				for _, b := range sc.blocks {
@@ -399,13 +409,25 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 			w := orF(o.W, 1)
 			y0, y1 := float32(0), pageRect.H
 			if w < 1 {
-				y0 = pal.PadTop
+				y0 = effectivePadTop(pal, sc.legacy, sc.showTitle)
 				y1 = maxFloat32(pageRect.H-pal.PadBottom, y0+20)
 			}
 			y0 = maxFloat32(y0, from)
 			y1 = minFloat32(y1, to)
 			if y1 > y0 {
 				p.Line(x, y0, x, y1, w, o.Color)
+			}
+
+		case OrnamentRegMarks:
+			arm := orF(o.Size, 14) * 0.5
+			cy := o.Y + arm
+			if cy+arm+8 >= from && cy-arm-8 <= to {
+				lx := o.X + arm
+				rx := pageRect.W - o.X - arm
+				for _, cx := range []float32{lx, rx} {
+					p.Line(cx-arm, cy, cx+arm, cy, 1, o.Color)
+					p.Line(cx, cy-arm, cx, cy+arm, 1, o.Color)
+				}
 			}
 
 		case OrnamentSprockets:
@@ -442,12 +464,19 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 		case OrnamentStamp:
 			if os.textLay != nil {
 				lw, lh := os.textLay.Size()
-				if o.Y+maxFloat32(lw, lh)+32 >= from && o.Y-32 <= to {
-					sx := pageRect.W - o.X - lw
-					sy := o.Y
+				sx := pageRect.W - o.X - lw
+				sy := o.Y
+				angle := o.Angle
+				col := o.Color
+				if os.relocated {
+					sy = sc.bodyBottom + 6
+					angle = -5
+					col = col.Alpha(0.82)
+				}
+				if sy+maxFloat32(lw, lh)+32 >= from && sy-32 <= to {
 					cx, cy := sx+lw*0.5, sy+lh*0.5
-					p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
-						p.TextLayout(os.textLay, sx, sy, o.Color)
+					p.Transform(ui.Rotation(angle), cx, cy, func() {
+						p.TextLayout(os.textLay, sx, sy, col)
 					})
 				}
 			}
@@ -459,14 +488,19 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 				inset = pal.Card.Inset
 			}
 			sy := inset + o.X + o.Y
+			col := o.Color
+			if os.relocated {
+				sy = sc.bodyBottom + 8
+				col = col.Alpha(0.84)
+			}
 			if sy+d+32 >= from && sy-32 <= to {
 				sx := pageRect.W - inset - o.X - d
 				cx, cy := sx+d*0.5, sy+d*0.5
 				p.Transform(ui.Rotation(o.Angle), cx, cy, func() {
 					outer := (&ui.Path{}).Circle(cx, cy, d*0.5)
 					inner := (&ui.Path{}).Circle(cx, cy, d*0.5-5)
-					p.StrokePath(outer, 1.5, o.Color)
-					p.StrokePath(inner, 0.6, o.Color)
+					p.StrokePath(outer, 1.5, col)
+					p.StrokePath(inner, 0.6, col)
 					if os.textLay != nil {
 						_, h1 := os.textLay.Size()
 						h2 := float32(0)
@@ -478,9 +512,9 @@ func paintOrnaments(p *ui.Painter, sc exportScene, pageRect ui.Rect, from, to fl
 							totalH += 4 + h2
 						}
 						ty := cy - totalH*0.5
-						p.TextLayout(os.textLay, sx, ty, o.Color)
+						p.TextLayout(os.textLay, sx, ty, col)
 						if os.text2Lay != nil {
-							p.TextLayout(os.text2Lay, sx, ty+h1+4, o.Color)
+							p.TextLayout(os.text2Lay, sx, ty+h1+4, col)
 						}
 					}
 				})
@@ -519,19 +553,20 @@ func paintWashiStrip(p *ui.Painter, cx, cy, w, h, angle float32, col ui.Color) {
 	})
 }
 
+func paintCrescentMoon(p *ui.Painter, cx, cy, s, strokeW float32, col ui.Color) {
+	moonPath := &ui.Path{}
+	moonPath.MoveTo(cx+4.5*s, cy-5.5*s)
+	moonPath.CubeTo(cx-2.5*s, cy-6.5*s, cx-6.5*s, cy+1.5*s, cx-1.5*s, cy+5.8*s)
+	moonPath.CubeTo(cx+2.2*s, cy+8.2*s, cx+6.5*s, cy+5.5*s, cx+6.8*s, cy+2.2*s)
+	moonPath.CubeTo(cx+2.2*s, cy+3.8*s, cx-0.8*s, cy-0.5*s, cx+4.5*s, cy-5.5*s)
+	moonPath.Close().Cap(ui.RoundCap).Join(ui.RoundJoin)
+	p.StrokePath(moonPath, strokeW, col)
+}
+
 func paintMeta(p *ui.Painter, m metaScene, pal PaperThemeSpec) {
 	leftX := m.x
 	if m.moon {
-		// Draw crisp crescent moon icon before meta text (Night).
-		cy := m.y + 9
-		cx := m.x + 7
-		moonPath := &ui.Path{}
-		moonPath.MoveTo(cx+4.5, cy-5.5)
-		moonPath.CubeTo(cx-2.5, cy-6.5, cx-6.5, cy+1.5, cx-1.5, cy+5.8)
-		moonPath.CubeTo(cx+2.2, cy+8.2, cx+6.5, cy+5.5, cx+6.8, cy+2.2)
-		moonPath.CubeTo(cx+2.2, cy+3.8, cx-0.8, cy-0.5, cx+4.5, cy-5.5)
-		moonPath.Close().Cap(ui.RoundCap).Join(ui.RoundJoin)
-		p.StrokePath(moonPath, 1.5, pal.Accent)
+		paintCrescentMoon(p, m.x+7, m.y+9, 1.0, 1.5, pal.Accent)
 		leftX += 22
 	}
 
@@ -573,39 +608,54 @@ func paintMeta(p *ui.Painter, m metaScene, pal PaperThemeSpec) {
 func paintExportHeader(p *ui.Painter, sc exportScene) {
 	pal := sc.pal
 	t := sc.title
-	x, w, hy, th := t.x, t.w, t.y, t.h
+	x, w, th := t.x, t.w, t.h
+	tx, ty := t.textX, t.textY
 	titleCol := t.color
 	if sc.legacy {
-		p.TextLayout(t.layout, x, hy, titleCol)
-		p.Fill(ui.Rect{X: x, Y: hy + th + 14, W: w, H: 2}, pal.Accent, 1)
+		p.TextLayout(t.layout, tx, ty, titleCol)
+		p.Fill(ui.Rect{X: x, Y: ty + th + 14, W: w, H: 2}, pal.Accent, 1)
 		return
 	}
 
 	ruleCol := orC(t.ruleCol, pal.Accent)
+	if t.topRule {
+		p.Line(x, t.y+4, x+w, t.y+4, 1, orC(t.ruleCol, pal.Title).Alpha(0.45))
+	}
+	if t.topTick.A > 0 {
+		p.Fill(ui.Rect{X: x, Y: t.y + 2, W: 32, H: 3}, t.topTick, 0)
+	}
+	if t.moon {
+		firstH := t.fontSize * 1.35
+		if lines := t.layout.Lines(); len(lines) > 0 && lines[0].Rect.H > 0 {
+			firstH = lines[0].Rect.H
+		}
+		paintCrescentMoon(p, x+11, ty+firstH*0.48, 1.35, 1.8, pal.Accent)
+	}
+
 	switch t.mark {
 	case TitleMarkRule:
 		rw := w * orF(t.ruleWidth, 1)
 		rh := orF(t.ruleThick, 2)
 		rc := orC(t.ruleCol, pal.Title)
-		p.Fill(ui.Rect{X: x, Y: hy + th + 20, W: rw, H: rh}, rc, 0)
+		p.Fill(ui.Rect{X: x, Y: ty + th + 20, W: rw, H: rh}, rc, 0)
 
 	case TitleMarkBar:
-		p.Fill(ui.Rect{X: x, Y: hy + th + 18, W: 48, H: 4}, ruleCol, 2)
+		p.Fill(ui.Rect{X: x, Y: ty + th + 18, W: 48, H: 4}, ruleCol, 2)
 
 	case TitleMarkWavy:
 		ww := w * orF(t.ruleWidth, 0.42)
 		if ww < 96 {
 			ww = 96
 		}
-		paintWaveLine(p, x+1, hy+th+14, ww, 3.8, 15, 2.2, ruleCol)
+		paintWaveLine(p, x+1, ty+th+14, ww, 3.8, 15, 2.2, ruleCol)
 
 	case TitleMarkDoubleRule:
 		dc := orC(t.ruleCol, pal.Divider)
-		p.Fill(ui.Rect{X: x, Y: hy + th + 18, W: w, H: 3}, dc, 0)
-		p.Fill(ui.Rect{X: x, Y: hy + th + 24, W: w, H: 1}, dc, 0)
+		p.Fill(ui.Rect{X: x, Y: ty + th + 18, W: w, H: 3}, dc, 0)
+		p.Fill(ui.Rect{X: x, Y: ty + th + 24, W: w, H: 1}, dc, 0)
 
 	case TitleMarkRing:
-		wy := hy + th + 22
+		wy := ty + th + 22
 		ring := (&ui.Path{}).Circle(x+5, wy, 4.5)
 		p.StrokePath(ring, 1.2, ruleCol)
 		p.Line(x+18, wy, x+w, wy, 1, ruleCol)
@@ -619,17 +669,17 @@ func paintExportHeader(p *ui.Painter, sc exportScene) {
 			}
 		}
 		bw := minFloat32(maxFloat32(maxLW+18, w*0.45), w)
-		p.Fill(ui.Rect{X: x + 6, Y: hy + 10, W: bw, H: maxFloat32(th-4, 24)}, ruleCol, 0)
+		p.Fill(ui.Rect{X: tx + 6, Y: ty + 10, W: bw, H: maxFloat32(th-4, 24)}, ruleCol, 0)
 
 	case TitleMarkBand:
-		p.Fill(ui.Rect{X: 0, Y: 0, W: sc.width, H: hy + th + 44}, pal.Accent, 0)
+		p.Fill(ui.Rect{X: 0, Y: 0, W: sc.width, H: ty + th + 44}, pal.Accent, 0)
 		titleCol = pal.Accent2
 
 	case TitleMarkHighlight:
 		ink := ui.Color{R: ruleCol.R, G: ruleCol.G, B: ruleCol.B, A: 105}
 		for _, ln := range t.layout.Lines() {
 			lineH := orF(ln.Rect.H, t.fontSize*1.3)
-			p.Fill(ui.Rect{X: x + ln.Rect.X - 4, Y: hy + ln.Rect.Y + lineH*0.5, W: ln.Rect.W + 8, H: lineH * 0.38}, ink, 2)
+			p.Fill(ui.Rect{X: tx + ln.Rect.X - 4, Y: ty + ln.Rect.Y + lineH*0.5, W: ln.Rect.W + 8, H: lineH * 0.38}, ink, 2)
 		}
 
 	case TitleMarkCursor:
@@ -638,11 +688,78 @@ func paintExportHeader(p *ui.Painter, sc exportScene) {
 			last := lines[len(lines)-1]
 			lineH := orF(last.Rect.H, t.fontSize*1.3)
 			cw := float32(math.Round(float64(t.fontSize * 0.52)))
-			cx := minFloat32(x+last.Rect.X+last.Rect.W+8, x+w-cw)
-			p.Fill(ui.Rect{X: cx, Y: hy + last.Rect.Y + lineH*0.16, W: cw, H: lineH * 0.7}, pal.Accent, 0)
+			cx := minFloat32(tx+last.Rect.X+last.Rect.W+8, x+w-cw)
+			p.Fill(ui.Rect{X: cx, Y: ty + last.Rect.Y + lineH*0.16, W: cw, H: lineH * 0.7}, pal.Accent, 0)
 		}
 	}
-	p.TextLayout(t.layout, x, hy, titleCol)
+	p.TextLayout(t.layout, tx, ty, titleCol)
+}
+
+func paintNoTitleBar(p *ui.Painter, sc exportScene) {
+	nb := sc.noTitleBar
+	switch nb.kind {
+	case NoTitleBarDiamond:
+		cy := nb.y + nb.h*0.5
+		cx := nb.x + nb.w*0.5
+		d := float32(7)
+		if nb.centered {
+			span := minFloat32(48, nb.w*0.18)
+			p.Line(cx-12-span, cy, cx-12, cy, 1, nb.color2)
+			p.Line(cx+12, cy, cx+12+span, cy, 1, nb.color2)
+		} else {
+			p.Line(nb.x, cy, cx-14, cy, 0.8, nb.color2)
+			p.Line(cx+14, cy, nb.x+nb.w, cy, 0.8, nb.color2)
+		}
+		p.Transform(ui.Rotation(45), cx, cy, func() {
+			p.Fill(ui.Rect{X: cx - d*0.5, Y: cy - d*0.5, W: d, H: d}, nb.color, 0)
+		})
+
+	case NoTitleBarOverprint:
+		p.Fill(ui.Rect{X: nb.x, Y: nb.y, W: nb.w * 0.62, H: 5}, nb.color, 0)
+		p.Fill(ui.Rect{X: nb.x + nb.w*0.14, Y: nb.y + 4, W: nb.w * 0.54, H: 5}, nb.color2, 0)
+
+	case NoTitleBarDoubleRule:
+		p.Fill(ui.Rect{X: nb.x, Y: nb.y, W: nb.w, H: 3}, nb.color, 0)
+		p.Fill(ui.Rect{X: nb.x, Y: nb.y + 6, W: nb.w, H: 1}, nb.color, 0)
+
+	case NoTitleBarSplitBar:
+		gap := float32(8)
+		leftW := (nb.w - gap) * 0.8
+		rightW := nb.w - gap - leftW
+		p.Fill(ui.Rect{X: nb.x, Y: nb.y, W: leftW, H: 6}, nb.color, 0)
+		p.Fill(ui.Rect{X: nb.x + leftW + gap, Y: nb.y, W: rightW, H: 6}, nb.color2, 0)
+
+	case NoTitleBarRing:
+		cy := nb.y + nb.h*0.5
+		ring := (&ui.Path{}).Circle(nb.x+5, cy, 4.5)
+		p.StrokePath(ring, 1.2, nb.color)
+		p.Line(nb.x+18, cy, nb.x+nb.w, cy, 1, nb.color.Alpha(0.75))
+
+	case NoTitleBarGradient:
+		if sc.cardRect.W > 0 {
+			rad := float32(0)
+			if sc.pal.Card != nil {
+				rad = sc.pal.Card.Radius
+			}
+			p.Clip(sc.cardRect, rad, func() {
+				p.FillGradient(ui.Rect{X: sc.cardRect.X, Y: sc.cardRect.Y, W: sc.cardRect.W, H: 2.5}, ui.LinearGradient{
+					Angle: 90,
+					From:  nb.color,
+					To:    nb.color2,
+				}, 0)
+			})
+		}
+
+	case NoTitleBarTickRule:
+		cy := nb.y + nb.h*0.5
+		p.Fill(ui.Rect{X: nb.x, Y: cy - 1.5, W: 28, H: 3}, nb.color, 0)
+		p.Line(nb.x+38, cy, nb.x+nb.w, cy, 1, nb.color2)
+
+	case NoTitleBarMoonRule:
+		cy := nb.y + nb.h*0.5
+		paintCrescentMoon(p, nb.x+8, cy, 1.05, 1.5, nb.color)
+		p.Line(nb.x+26, cy, nb.x+nb.w, cy, 1, nb.color2)
+	}
 }
 
 func paintWaveLine(p *ui.Painter, x, midY, width, amp, period, strokeW float32, col ui.Color) {

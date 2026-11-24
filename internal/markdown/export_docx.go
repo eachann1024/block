@@ -141,7 +141,16 @@ func docxBorderSz(px float32) int {
 func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) ([]byte, error) {
 	pal, legacy := resolveExportPaper(prefs)
 	pageW := float32(resolveExportWidth(prefs))
+	showTitle := resolveShowTitle(prefs)
 	topM, rightM, bottomM, leftM := pal.Margins()
+	if !showTitle && !legacy {
+		topM = effectivePadTop(pal, legacy, showTitle)
+		if pal.Card != nil {
+			topM += pal.Card.top()
+		} else if pal.Style.Sections != nil {
+			topM += pal.Style.Sections.PadY
+		}
+	}
 	contentW := pageW - leftM - rightM
 	if contentW < 240 {
 		contentW = 240
@@ -152,7 +161,6 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 	assets := &docxAssets{nextRelID: 3, imageBytes: maxExportImageBytes}
 	var body strings.Builder
 
-	showTitle := resolveShowTitle(prefs)
 	title := resolveTitleText(doc, notePath, prefs)
 	vars := newTemplateVars(notePath, title, time.Now().UTC())
 	if showTitle {
@@ -160,6 +168,8 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			body.WriteString(renderDOCXMeta(pal, vars, contentW))
 		}
 		body.WriteString(renderDOCXTitle(pal, legacy, title, pageW, topM, rightM, leftM))
+	} else {
+		body.WriteString(renderDOCXNoTitleBar(pal, legacy, contentW))
 	}
 
 	bodyBlocks := projectExportPreviews(exportBodyBlocks(doc.Blocks, title, showTitle))
@@ -249,6 +259,25 @@ func exportDOCX(doc *model.Doc, notePath string, prefs model.ExportPreferences) 
 			body.WriteString(renderDOCXHeading(b, lvl, h2Count, indentPx, pal, legacy, assets))
 
 		default:
+			lead := !legacy && (pal.Style.Lead.Weight > 0 || pal.Style.Lead.Color.A > 0 || pal.Style.Lead.Family != "") && isLeadParagraph(bodyBlocks, i)
+			if lead {
+				leadPal := pal
+				if pal.Style.Lead.Family != "" {
+					leadPal.BodyFamily = pal.Style.Lead.Family
+				}
+				leadBold := orI(pal.Style.Lead.Weight, 600) >= 600
+				leadCol := orC(pal.Style.Lead.Color, pal.Title)
+				runs := renderDOCXRuns(b.Spans, leadPal, legacy, leadBold, false, bodyHalfPt, leadCol, assets)
+				before := 0
+				if i > 0 {
+					before = 140
+				}
+				body.WriteString(fmt.Sprintf(
+					`<w:p><w:pPr><w:keepNext/><w:ind w:left="%d"/><w:spacing w:before="%d" w:after="80" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
+					docxTwips(indentPx), before, line240, runs,
+				))
+				continue
+			}
 			runs := renderDOCXRuns(b.Spans, pal, legacy, false, false, bodyHalfPt, pal.Text, assets)
 			body.WriteString(fmt.Sprintf(
 				`<w:p><w:pPr>%s<w:ind w:left="%d"/><w:spacing w:before="0" w:after="140" w:line="%d" w:lineRule="auto"/></w:pPr>%s</w:p>`,
@@ -505,6 +534,10 @@ func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM,
 	}
 
 	var run strings.Builder
+	if !legacy && pal.Style.Title.Moon {
+		run.WriteString(fmt.Sprintf(`<w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr><w:t xml:space="preserve">☾ </w:t></w:r>`,
+			docxHex(pal.Accent), halfPt))
+	}
 	if !legacy && pal.Style.Title.Prefix != "" {
 		run.WriteString(fmt.Sprintf(`<w:r><w:rPr>%s%s<w:color w:val="%s"/><w:sz w:val="%d"/><w:szCs w:val="%d"/></w:rPr>%s</w:r>`,
 			docxFontXML(fam), boldXML, docxHex(pal.Secondary), halfPt, halfPt, docxTextXML(pal.Style.Title.Prefix)))
@@ -525,27 +558,91 @@ func renderDOCXTitle(pal PaperThemeSpec, legacy bool, title string, pageW, topM,
 	if (!legacy && pal.Style.Title.Center) || pal.Mark == TitleMarkDoubleRule {
 		jc = `<w:jc w:val="center"/>`
 	}
-	bdr := fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(pal.Accent))
+	topBdr := ""
+	if !legacy {
+		if pal.Style.Title.TopRule {
+			topBdr = fmt.Sprintf(`<w:top w:val="single" w:sz="4" w:space="8" w:color="%s"/>`,
+				docxHexOn(orC(pal.Style.Title.RuleColor, pal.Title).Alpha(0.45), pal.InnerCanvas))
+		} else if pal.Style.Title.TopTick.A > 0 {
+			topBdr = fmt.Sprintf(`<w:top w:val="single" w:sz="12" w:space="6" w:color="%s"/>`, docxHex(pal.Style.Title.TopTick))
+		}
+	}
+	botBdr := fmt.Sprintf(`<w:bottom w:val="single" w:sz="12" w:space="6" w:color="%s"/>`, docxHex(pal.Accent))
 	if !legacy {
 		rc := orC(pal.Style.Title.RuleColor, pal.Accent)
 		switch pal.Mark {
 		case TitleMarkNone, TitleMarkHighlight, TitleMarkCursor, TitleMarkOffset:
-			bdr = ""
+			botBdr = ""
 		case TitleMarkDoubleRule:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="double" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(orC(pal.Style.Title.RuleColor, pal.Divider)))
+			botBdr = fmt.Sprintf(`<w:bottom w:val="double" w:sz="8" w:space="6" w:color="%s"/>`, docxHex(orC(pal.Style.Title.RuleColor, pal.Divider)))
 		case TitleMarkRule:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="%d" w:space="6" w:color="%s"/></w:pBdr>`,
+			botBdr = fmt.Sprintf(`<w:bottom w:val="single" w:sz="%d" w:space="6" w:color="%s"/>`,
 				docxBorderSz(orF(pal.Style.Title.RuleThick, 1.5)), docxHex(orC(pal.Style.Title.RuleColor, pal.Title)))
 		case TitleMarkRing, TitleMarkBar:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="single" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(rc))
+			botBdr = fmt.Sprintf(`<w:bottom w:val="single" w:sz="8" w:space="6" w:color="%s"/>`, docxHex(rc))
 		case TitleMarkWavy:
-			bdr = fmt.Sprintf(`<w:pBdr><w:bottom w:val="wave" w:sz="8" w:space="6" w:color="%s"/></w:pBdr>`, docxHex(rc))
+			botBdr = fmt.Sprintf(`<w:bottom w:val="wave" w:sz="8" w:space="6" w:color="%s"/>`, docxHex(rc))
 		}
+	}
+	bdr := ""
+	if topBdr != "" || botBdr != "" {
+		bdr = "<w:pBdr>" + topBdr + botBdr + "</w:pBdr>"
 	}
 	return fmt.Sprintf(
 		`<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:keepNext/>%s%s<w:spacing w:before="0" w:after="260"/></w:pPr>%s</w:p>`,
 		jc, bdr, run.String(),
 	)
+}
+
+func renderDOCXNoTitleBar(pal PaperThemeSpec, legacy bool, contentW float32) string {
+	nb := pal.Style.NoTitleBar
+	if legacy || nb.Kind == NoTitleBarNone {
+		return ""
+	}
+	c1 := docxHexOn(orC(nb.Color, pal.Accent), pal.InnerCanvas)
+	c2 := docxHexOn(orC(nb.Color2, pal.Divider), pal.InnerCanvas)
+	switch nb.Kind {
+	case NoTitleBarDiamond:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="0" w:after="200"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="18"/></w:rPr><w:t>────  </w:t></w:r><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="18"/></w:rPr><w:t>◆</w:t></w:r><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="18"/></w:rPr><w:t>  ────</w:t></w:r></w:p>`,
+			c2, c1, c2,
+		)
+	case NoTitleBarDoubleRule:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:bottom w:val="double" w:sz="12" w:space="1" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="220" w:line="40" w:lineRule="exact"/></w:pPr></w:p>`,
+			c1,
+		)
+	case NoTitleBarSplitBar, NoTitleBarOverprint:
+		rule := func(hex string, sz int) string {
+			return fmt.Sprintf(`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="%d" w:space="0" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`, sz, hex)
+		}
+		leftW := contentW * 0.78
+		rightW := contentW - leftW
+		return renderDOCXBoxCells([]docxBoxCell{{leftW, rule(c1, 24)}, {rightW, rule(c2, 24)}}, contentW, 0, pal.InnerCanvas, "", 0, 0) +
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="160" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`
+	case NoTitleBarRing:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="200"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="18"/></w:rPr><w:t>○</w:t></w:r></w:p>`,
+			c1, c1,
+		)
+	case NoTitleBarGradient:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="10" w:space="4" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="160" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`,
+			c1,
+		)
+	case NoTitleBarTickRule:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="4" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="200"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="16"/></w:rPr><w:t>━━</w:t></w:r></w:p>`,
+			c2, c1,
+		)
+	case NoTitleBarMoonRule:
+		return fmt.Sprintf(
+			`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="4" w:color="%s"/></w:pBdr><w:spacing w:before="0" w:after="200"/></w:pPr><w:r><w:rPr><w:color w:val="%s"/><w:sz w:val="22"/></w:rPr><w:t>☾</w:t></w:r></w:p>`,
+			c2, c1,
+		)
+	default:
+		return ""
+	}
 }
 
 func renderDOCXHeading(b *model.Block, lvl, h2Idx int, indentPx float32, pal PaperThemeSpec, legacy bool, assets *docxAssets) string {

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"block/internal/codepreview"
 	"block/internal/media"
@@ -25,7 +26,7 @@ const (
 	ExportScale        = 4.0
 	exportScale        = ExportScale
 	maxPDFPageHeightPt = 1152
-	watermarkLabel     = "Block"
+	watermarkLabel     = "cooool.top"
 )
 
 func parseExportThemeName(raw string) (model.ExportTheme, bool) {
@@ -537,4 +538,148 @@ func safeArchiveName(raw, fallback string) string {
 		return "_" + name
 	}
 	return name
+}
+
+func isEmptyParagraphBlock(b *model.Block) bool {
+	return b.Kind == model.BlockParagraph && len(b.Spans) == 0
+}
+
+func trimEmptyEdgeBlocks(blocks []model.Block) []model.Block {
+	for len(blocks) > 0 && isEmptyParagraphBlock(&blocks[0]) {
+		blocks = blocks[1:]
+	}
+	for len(blocks) > 0 && isEmptyParagraphBlock(&blocks[len(blocks)-1]) {
+		blocks = blocks[:len(blocks)-1]
+	}
+	return blocks
+}
+
+// isLeadParagraph reports whether blocks[idx] is a short single-line paragraph
+// that acts as a group label immediately above a list.
+func isLeadParagraph(blocks []model.Block, idx int) bool {
+	if idx < 0 || idx+1 >= len(blocks) {
+		return false
+	}
+	b := &blocks[idx]
+	next := &blocks[idx+1]
+	if b.Kind != model.BlockParagraph || b.Indent != 0 || !next.Kind.IsList() {
+		return false
+	}
+	if b.QuoteDepth != next.QuoteDepth {
+		return false
+	}
+	txt := strings.TrimSpace(b.PlainText())
+	if txt == "" || strings.ContainsRune(txt, '\n') {
+		return false
+	}
+	return utf8.RuneCountInString(txt) <= 42
+}
+
+// partitionSectionCards groups bodyBlocks into floating cards for SectionCards themes (Mist).
+// Priority: H2 headings -> H1/H3 headings -> dividers -> short lead+list groups -> single card.
+func partitionSectionCards(blocks []model.Block, showTitle bool) (intro []model.Block, runs [][]model.Block) {
+	splitByKind := func(kind model.BlockKind) (bool, []model.Block, [][]model.Block) {
+		first := -1
+		for i := range blocks {
+			if blocks[i].Kind == kind {
+				first = i
+				break
+			}
+		}
+		if first < 0 {
+			return false, nil, nil
+		}
+		in := trimEmptyEdgeBlocks(blocks[:first])
+		var out [][]model.Block
+		idx := first
+		for idx < len(blocks) {
+			start := idx
+			idx++
+			for idx < len(blocks) && blocks[idx].Kind != kind {
+				idx++
+			}
+			if chunk := trimEmptyEdgeBlocks(blocks[start:idx]); len(chunk) > 0 {
+				out = append(out, chunk)
+			}
+		}
+		return true, in, out
+	}
+
+	if ok, in, out := splitByKind(model.BlockHeading2); ok {
+		return in, out
+	}
+	if ok, in, out := splitByKind(model.BlockHeading1); ok {
+		return in, out
+	}
+	if ok, in, out := splitByKind(model.BlockHeading3); ok {
+		return in, out
+	}
+
+	hasDiv := false
+	for i := range blocks {
+		if blocks[i].Kind == model.BlockDivider {
+			hasDiv = true
+			break
+		}
+	}
+	if hasDiv {
+		var chunks [][]model.Block
+		start := 0
+		for i := range blocks {
+			if blocks[i].Kind == model.BlockDivider {
+				if chunk := trimEmptyEdgeBlocks(blocks[start:i]); len(chunk) > 0 {
+					chunks = append(chunks, chunk)
+				}
+				start = i + 1
+			}
+		}
+		if chunk := trimEmptyEdgeBlocks(blocks[start:]); len(chunk) > 0 {
+			chunks = append(chunks, chunk)
+		}
+		if len(chunks) > 0 {
+			if showTitle {
+				return nil, chunks
+			}
+			return chunks[0], chunks[1:]
+		}
+	}
+
+	leadCount := 0
+	firstLead := -1
+	for i := range blocks {
+		if isLeadParagraph(blocks, i) {
+			if firstLead < 0 {
+				firstLead = i
+			}
+			leadCount++
+		}
+	}
+	if leadCount >= 2 || (leadCount == 1 && (showTitle || len(trimEmptyEdgeBlocks(blocks[:firstLead])) > 0)) {
+		in := trimEmptyEdgeBlocks(blocks[:firstLead])
+		var out [][]model.Block
+		idx := firstLead
+		for idx < len(blocks) {
+			start := idx
+			idx++
+			for idx < len(blocks) && !isLeadParagraph(blocks, idx) {
+				idx++
+			}
+			if chunk := trimEmptyEdgeBlocks(blocks[start:idx]); len(chunk) > 0 {
+				out = append(out, chunk)
+			}
+		}
+		return in, out
+	}
+
+	return trimEmptyEdgeBlocks(blocks), nil
+}
+
+func effectivePadTop(pal PaperThemeSpec, legacy, showTitle bool) float32 {
+	if showTitle || legacy {
+		return pal.PadTop
+	}
+	if pal.Card != nil || pal.Style.Sections != nil {
+		return minFloat32(pal.PadTop, 44)
+	}
+	return minFloat32(pal.PadTop, 56)
 }
