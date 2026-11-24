@@ -3117,6 +3117,9 @@ func (w *Workspace) SetNotebook(folder string) error {
 		if sup := w.Plugins(); sup != nil {
 			sup.OnNotebookSwitched()
 		}
+		if w.ai != nil {
+			w.ai.OnNotebookSwitched(clean)
+		}
 	}
 	if w.win != nil {
 		w.startWatching(clean)
@@ -3340,6 +3343,9 @@ func (w *Workspace) ForgetNotebook(root string) {
 		}
 		if sup := w.Plugins(); sup != nil {
 			sup.OnNotebookSwitched()
+		}
+		if w.ai != nil {
+			w.ai.OnNotebookSwitched(next.Folder)
 		}
 	}
 	if w.searchWin != nil {
