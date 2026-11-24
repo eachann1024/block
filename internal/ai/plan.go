@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -653,6 +654,60 @@ func (c *Controller) DismissEditorPlan(planID string) {
 			return
 		}
 	}
+}
+
+// RetryPlan rejects a pending plan and resends the user request that produced it.
+// The composer draft the user may be typing is kept.
+func (c *Controller) RetryPlan(planID string) error {
+	c.mu.Lock()
+	conv := c.findConvLocked(c.currentID)
+	if conv == nil || planID == "" || c.planInFlight == planID {
+		c.mu.Unlock()
+		return errors.New(theme.Tr("计划已失效", "The plan is no longer valid"))
+	}
+	if c.streaming {
+		c.mu.Unlock()
+		return errors.New(theme.Tr("AI 正在回复，请稍后重试", "AI is still replying. Try again shortly."))
+	}
+	var ask *model.ChatMessage
+	for i, message := range conv.Messages {
+		if plan := message.Plan; plan != nil && plan.ID == planID && plan.Status == "pending" {
+			for j := i; j >= 0; j-- {
+				if conv.Messages[j].Role == "user" {
+					ask = &conv.Messages[j]
+					break
+				}
+			}
+			if ask == nil || strings.TrimSpace(ask.Content) == "" {
+				break
+			}
+			plan.Status = "rejected"
+			if c.activePlan != nil && c.activePlan.Plan.ID == planID {
+				c.clearActivePlanLocked()
+			}
+			c.persistChatsLocked()
+			break
+		}
+	}
+	if ask == nil || strings.TrimSpace(ask.Content) == "" {
+		c.mu.Unlock()
+		return errors.New(theme.Tr("找不到这次修改对应的请求", "The request for this change was not found"))
+	}
+	text := ask.Content
+	refs, skills := slices.Clone(ask.Refs), slices.Clone(ask.Skills)
+	draftText, draftRefs, draftSkills := c.draftText, c.draftRefs, c.draftSkills
+	draftAtts, draftSel := c.draftAttachments, c.draftSelection
+	c.draftRefs, c.draftSkills, c.draftAttachments, c.draftSelection = refs, skills, nil, nil
+	c.mu.Unlock()
+
+	c.SendPrompt(text)
+
+	c.mu.Lock()
+	c.draftText, c.draftRefs, c.draftSkills = draftText, draftRefs, draftSkills
+	c.draftAttachments, c.draftSelection = draftAtts, draftSel
+	c.mu.Unlock()
+	c.requestRedraw()
+	return nil
 }
 
 // RejectPlan cancels a pending plan without touching any files on disk.

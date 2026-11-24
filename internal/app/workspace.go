@@ -2760,6 +2760,10 @@ func (w *Workspace) PreviewBatchPlanContext(ctx context.Context, plan *model.Bat
 			if err := w.OpenNote(target, 0); err != nil {
 				return err
 			}
+			// One pending plan per note: a newer request replaces the unreviewed one.
+			if prev := sess.ActivePlan(); prev != nil && prev.ID != plan.ID {
+				w.ai.DismissEditorPlan(prev.ID)
+			}
 			sess.SetActivePlan(plan)
 		}
 		w.RequestRedraw()
@@ -2835,7 +2839,11 @@ func (w *Workspace) executeAIPlan(plan *model.BatchPlan, undo bool) error {
 			if sess := w.sessions[target]; sess != nil {
 				sess.SetActivePlan(nil)
 				sess.SetDiskFingerprint(files.TextFingerprint(content, false))
-				sess.SetDoc(doc)
+				if undo || op.Kind == model.PlanOpCreateNote {
+					sess.SetDoc(doc)
+				} else {
+					sess.ApplyAcceptedDoc(doc)
+				}
 				sess.MarkSaved()
 				w.bumpDiskWriteSeqLocked(target)
 				delete(w.lastDiskMarkdown, filepath.Clean(target))
@@ -2877,6 +2885,15 @@ func (w *Workspace) RejectBatchPlan(planID string) error {
 	w.emitNoteOpenedIfChanged(active)
 	w.RequestRedraw()
 	return nil
+}
+
+// RetryBatchPlan drops a pending plan and asks the AI again with the same request.
+func (w *Workspace) RetryBatchPlan(planID string) error {
+	if err := w.ai.RetryPlan(planID); err != nil {
+		w.setNotice(err.Error())
+		return err
+	}
+	return w.RejectBatchPlan(planID)
 }
 
 func (w *Workspace) UndoLastPlan(plan *model.BatchPlan) error {
