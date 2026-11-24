@@ -4988,7 +4988,6 @@ func (c *Controller) openAddAgentModal() {
 	}
 	c.addAgentModalOpen = true
 	c.addAgentStep = 1
-	c.addAgentShowMore = false
 	c.addAgentKind = pick
 	c.addAgentName = nm
 	c.addAgentBinPath = opt.BinaryPath
@@ -5044,7 +5043,6 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 	c.mu.RLock()
 	open := c.addAgentModalOpen
 	step := c.addAgentStep
-	showMore := c.addAgentShowMore
 	selKind := c.addAgentKind
 	draftName := c.addAgentName
 	draftBin := c.addAgentBinPath
@@ -5081,10 +5079,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 	title := theme.Tr("添加本机 Agent", "Add Local Agent")
 	ais := pal.AISurface()
 
-	drivers := []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi}
-	if showMore {
-		drivers = append(drivers, model.BackendAgy)
-	}
+	drivers := []model.BackendKind{model.BackendCodex, model.BackendClaude, model.BackendDsh, model.BackendPi, model.BackendAgy}
 
 	bui.Dialog(cUI, "ai-add-agent-modal", title, &modalOpen, bui.ModalLayout{
 		Width:     440,
@@ -5200,17 +5195,7 @@ func (c *Controller) renderAddAgentModal(cUI *ui.Context, pal theme.Palette, bac
 					}
 				})
 
-				ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(8).Children(func() {
-					if !showMore {
-						moreBtn := bui.BtnMore(cUI, "ai-agent-show-more", bui.PresetOptions{})
-						if moreBtn.Clicked() {
-							c.mu.Lock()
-							c.addAgentShowMore = true
-							c.mu.Unlock()
-						}
-					} else {
-						ui.Box(cUI)
-					}
+				ui.Row(cUI).FillWidth().MinWidth(0).AlignItems(ui.Center).Justify(ui.End).Gap(8).Children(func() {
 					cancelBtn := bui.BtnCancel(cUI, "ai-add-agent-cancel", bui.PresetOptions{})
 					if cancelBtn.Clicked() {
 						modalOpen = false

@@ -259,7 +259,6 @@ type Controller struct {
 
 	addAgentModalOpen bool
 	addAgentStep      int
-	addAgentShowMore  bool
 	addAgentKind      model.BackendKind
 	addAgentName      string
 	addAgentBinPath   string
