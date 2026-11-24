@@ -182,6 +182,68 @@ func tabTitle(path string) string {
 	return theme.Tr("未命名", "Untitled")
 }
 
+// renderTitlebarNotebookIcon draws the active notebook's custom icon (or monogram
+// badge) in the titlebar breadcrumb / zero-tab header, and makes it clickable when
+// the custom icon picker is active.
+func renderTitlebarNotebookIcon(c *ui.Context, p TitlebarProps, nbTitle string, rowEl ui.Element) {
+	pal := theme.Ocean()
+	drawGlyph := func(lineHot, accentHot bool) {
+		if p.NotebookIcon != nil {
+			lineCol := pal.TextSecondary
+			if lineHot {
+				lineCol = pal.Text
+			}
+			ic := pal.TintedDuoIconColors(theme.NormalizeIconTint(p.NotebookIcon.Tint), lineCol, false)
+			pluginui.DrawFileIconAnimated(c, p.NotebookIcon.Ref, p.NotebookIcon.Spec, theme.IconRow, ic, accentHot)
+			return
+		}
+		blockui.MonogramBadge(c, nbTitle)
+	}
+	if !p.NotebookIconPicker || p.OnClickNotebookIcon == nil {
+		drawGlyph(true, false)
+		return
+	}
+	iconBtn := ui.ButtonBase(c.Key("titlebar-nb-icon")).
+		Size(theme.IconButtonBox, theme.IconButtonBox).Shrink(0).Center().
+		Radius(theme.RadiusSM).Cursor(ui.CursorPointer).FocusRing(false).
+		Label(theme.Tr("更换图标", "Change Icon"))
+	iHov := iconBtn.Hovered()
+	iPrs := iconBtn.Pressed()
+	active := p.NotebookIconPickerActive
+	tileBG := ui.Transparent
+	tileBD := ui.Transparent
+	switch {
+	case active:
+		tileBG = pal.Accent.Alpha(0.14)
+		if pal.Dark {
+			tileBG = pal.Accent.Alpha(0.24)
+		}
+		tileBD = pal.Accent.Alpha(0.45)
+	case iHov || iPrs:
+		tileBG = pal.SidebarIconTileHover()
+	}
+	blockui.AnimateSurfaceColors(iconBtn, tileBG, tileBD, false)
+	blockui.TactileButton(iconBtn, iHov || active, iPrs, false)
+	if !active {
+		blockui.RichTooltip(c, iconBtn, blockui.TooltipSpec{
+			Placement: blockui.TooltipBelow,
+			Rows:      []blockui.TooltipRow{{Trigger: theme.Tr("更换图标", "Change Icon")}},
+		})
+	}
+	iconBtn.Children(func() {
+		drawGlyph(true, iHov || iPrs || active)
+	})
+	blockui.Probe(iconBtn, "titlebar-nb-icon")
+	iconRect := iconBtn.Bounds()
+	rowRect := rowEl.Bounds()
+	if active && p.OnUpdateNotebookIconBounds != nil && iconRect.W > 0 {
+		p.OnUpdateNotebookIconBounds(iconRect, rowRect)
+	}
+	if iconBtn.Clicked() {
+		p.OnClickNotebookIcon(iconRect, rowRect)
+	}
+}
+
 // renderSingleTab renders the notebook badge + breadcrumb + active page title on the drag area.
 // In narrow windows or tight center cells, the notebook prefix collapses so the filename stays readable.
 func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, availW float32) {
@@ -196,11 +258,15 @@ func renderSingleTab(c *ui.Context, p TitlebarProps, path string, centerW, avail
 	}
 
 	if nbTitle != "" && !compactCrumb {
+		crumbGap := float32(7)
+		if p.NotebookIconPicker && p.OnClickNotebookIcon != nil {
+			crumbGap = 5
+		}
 		c.Key("titlebar-nb-crumb")
-		crumb := ui.Row(c).Height(tabPillH).PaddingX(6).Gap(7).Shrink(0).
+		crumb := ui.Row(c).Height(tabPillH).PaddingX(6).Gap(crumbGap).Shrink(0).
 			AlignItems(ui.Center).DragWindow()
 		crumb.Children(func() {
-			blockui.MonogramBadge(c, nbTitle)
+			renderTitlebarNotebookIcon(c, p, nbTitle, crumb)
 			ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).
 				TextColor(pal.TextSecondary).MaxWidth(120).SingleLine().Ellipsis("…").Shrink(0)
 		})

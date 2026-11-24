@@ -18,11 +18,14 @@ import (
 
 const (
 	CurrentFileIconPackSchemaVersion = 1
-	maxFileIconPackBytes             = 512 * 1024
-	maxFileIconCategories            = 16
-	maxFileIconDefs                  = 256
-	maxFileIconsPerScope             = 2048
-	maxFileIconRecents               = 6
+	// NotebookFileIconRelPath is the reserved relative path key storing a
+	// notebook's own custom icon inside that notebook's file-icon map.
+	NotebookFileIconRelPath = "."
+	maxFileIconPackBytes    = 512 * 1024
+	maxFileIconCategories   = 16
+	maxFileIconDefs         = 256
+	maxFileIconsPerScope    = 2048
+	maxFileIconRecents      = 6
 )
 
 var fileIconIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
@@ -118,6 +121,9 @@ func normalizeFileIconTint(raw string) string {
 }
 
 func normalizeFileIconRelPath(raw string) (string, bool) {
+	if raw == NotebookFileIconRelPath {
+		return NotebookFileIconRelPath, true
+	}
 	return normalizeBadgeRelPath(raw)
 }
 
@@ -494,8 +500,86 @@ func (s *Supervisor) FileIconsForNotebook(notebookRoot string) map[string]Resolv
 	return out
 }
 
-// SetFileIconDirect applies or clears one custom file/folder icon directly from
-// the native sidebar icon picker UI without cold-starting the plugin process.
+// NotebookIcon returns the resolved custom icon assigned to notebookRoot itself
+// (stored under NotebookFileIconRelPath), or false if none is active.
+func (s *Supervisor) NotebookIcon(notebookRoot string) (ResolvedFileIcon, bool) {
+	if s == nil || s.contrib == nil || notebookRoot == "" {
+		return ResolvedFileIcon{}, false
+	}
+	m := s.NotebookIcons([]string{notebookRoot})
+	ic, ok := m[notebookRoot]
+	return ic, ok
+}
+
+// NotebookIcons returns a map from each notebook path in notebooks to its
+// resolved custom notebook icon (stored under NotebookFileIconRelPath).
+func (s *Supervisor) NotebookIcons(notebooks []string) map[string]ResolvedFileIcon {
+	if s == nil || s.contrib == nil || len(notebooks) == 0 {
+		return nil
+	}
+	contribs := s.enabledContribs()
+	var out map[string]ResolvedFileIcon
+	for _, a := range contribs {
+		if !a.Manifest.HasPermission(PermUISidebar) || len(a.Manifest.Contributes.FileIcons) == 0 {
+			continue
+		}
+		spec := a.Manifest.Contributes.FileIcons[0]
+		s.contrib.mu.RLock()
+		byRoot := s.contrib.fileIcons[a.Manifest.ID]
+		var matched map[string]FileIconEntry
+		if len(byRoot) > 0 {
+			for _, nb := range notebooks {
+				if out != nil {
+					if _, exists := out[nb]; exists {
+						continue
+					}
+				}
+				nbKey := cleanNotebookKey(nb)
+				if nbKey == "" {
+					continue
+				}
+				if ent, ok := byRoot[nbKey][NotebookFileIconRelPath]; ok && ent.Icon != "" {
+					if matched == nil {
+						matched = make(map[string]FileIconEntry, len(notebooks))
+					}
+					matched[nb] = ent
+				}
+			}
+		}
+		s.contrib.mu.RUnlock()
+		if len(matched) == 0 {
+			continue
+		}
+		_, byID, err := loadCachedFileIconPack(a.InstallDir, spec.Pack)
+		if err != nil || len(byID) == 0 {
+			continue
+		}
+		for nb, ent := range matched {
+			def, ok := byID[ent.Icon]
+			if !ok {
+				continue
+			}
+			if out == nil {
+				out = make(map[string]ResolvedFileIcon, len(matched))
+			}
+			resolved := ResolvedFileIcon{
+				PluginID: a.Manifest.ID,
+				PackID:   spec.ID,
+				IconID:   def.ID,
+				Tint:     normalizeFileIconTint(ent.Tint),
+				Ref:      def.Ref,
+			}
+			if def.Spec != nil {
+				resolved.Spec = *def.Spec
+			}
+			out[nb] = resolved
+		}
+	}
+	return out
+}
+
+// SetFileIconDirect applies or clears one custom file/folder/notebook icon
+// directly from the native icon picker UI without cold-starting the plugin.
 func (s *Supervisor) SetFileIconDirect(pluginID, notebookRoot, relPath, iconID, tint string) error {
 	if s == nil || s.contrib == nil {
 		return errors.New("plugin supervisor unavailable")
@@ -585,7 +669,7 @@ func (s *Supervisor) RenameFileIconPath(notebookRoot, oldRel, newRel string) {
 	}
 	oldNorm, ok1 := normalizeFileIconRelPath(oldRel)
 	newNorm, ok2 := normalizeFileIconRelPath(newRel)
-	if !ok1 || !ok2 || oldNorm == newNorm {
+	if !ok1 || !ok2 || oldNorm == newNorm || oldNorm == NotebookFileIconRelPath || newNorm == NotebookFileIconRelPath {
 		return
 	}
 	prefix := oldNorm + "/"
@@ -632,7 +716,7 @@ func (s *Supervisor) DeleteFileIconPath(notebookRoot, relPath string) {
 		return
 	}
 	norm, ok := normalizeFileIconRelPath(relPath)
-	if !ok {
+	if !ok || norm == NotebookFileIconRelPath {
 		return
 	}
 	prefix := norm + "/"

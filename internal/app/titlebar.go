@@ -177,11 +177,16 @@ type TitlebarProps struct {
 	FeedbackOpen           bool
 	HasFeedbackDraft       bool
 
-	NotebookPath string
-	Tabs         []string
-	ActiveTab    string
-	IsDirty      func(path string) bool
-	FileIcons    map[string]plugins.ResolvedFileIcon
+	NotebookPath               string
+	NotebookIcon               *plugins.ResolvedFileIcon
+	NotebookIconPicker         bool
+	NotebookIconPickerActive   bool
+	OnClickNotebookIcon        func(iconRect, rowRect ui.Rect)
+	OnUpdateNotebookIconBounds func(iconRect, rowRect ui.Rect)
+	Tabs                       []string
+	ActiveTab                  string
+	IsDirty                    func(path string) bool
+	FileIcons                  map[string]plugins.ResolvedFileIcon
 
 	ActiveSurface   TitlebarSurfaceKind
 	SourceStatus    string
@@ -421,11 +426,15 @@ func RenderTitlebar(c *ui.Context, p TitlebarProps) {
 				return
 			}
 			if len(p.Tabs) == 0 {
-				drag := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(7).PaddingX(6).DragWindow()
+				dragGap := float32(7)
+				if p.NotebookPath != "" && p.NotebookIconPicker && p.OnClickNotebookIcon != nil {
+					dragGap = 5
+				}
+				drag := ui.Row(c).Fill().MinWidth(0).AlignItems(ui.Center).Gap(dragGap).PaddingX(6).DragWindow()
 				drag.Children(func() {
 					if p.NotebookPath != "" {
 						nbTitle := noteDisplayTitle(p.NotebookPath, true)
-						blockui.MonogramBadge(c, nbTitle)
+						renderTitlebarNotebookIcon(c, p, nbTitle, drag)
 						ui.Text(c, nbTitle).FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 					} else {
 						ui.Text(c, "Block").FontSize(theme.FontBody).LineHeight(20.0 / theme.FontBody).TextColor(pal.TextSecondary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
