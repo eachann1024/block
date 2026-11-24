@@ -2,16 +2,13 @@
 
 -
 
-## 截图 / 演示（必填） / Screenshots or demo (required)
+## 改动演示（必填） / Demo of the change (required)
 
-请用截图明确标出改动位置。涉及界面或交互的改动，强烈建议附上 GIF 或短视频演示——这是最推荐的方式。
+所有 PR 都必须附上改动流程的演示，优先级：**视频 > GIF > 截图**，至少要有一张图片，并标出改动位置。纯文档改动请附上渲染后的页面截图。
 
-Please highlight the changed areas in your screenshots. For UI or interaction changes, a GIF or short video demo is strongly preferred.
+Every PR must include a demo of the change. Preference: **video > GIF > screenshot**. At least one image is required, with the changed areas highlighted. For docs-only changes, attach a screenshot of the rendered page.
 
 -
 
-> 缺少截图或演示的 PR，通常会先放着不处理。  
-> PRs without screenshots or a demo are usually left pending.
->
-> 纯文档或不影响界面的改动，在上方写明原因即可（例如「纯文档，无界面改动」）。  
-> Docs-only or non-UI changes: state that clearly above (e.g. "docs-only, no UI change").
+> 描述中没有图片或视频的 PR，会被 `PR media check` 拦下，不会被处理。  
+> PRs without an image or video in the description fail the `PR media check` and will not be reviewed.
