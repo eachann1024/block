@@ -41,6 +41,8 @@ const (
 	outlineActZoomTo
 	outlineActZoomOut
 	outlineActExitFullscreen
+	outlineActAddChild
+	outlineActDeleteNode
 )
 
 type outlineAction struct {
@@ -339,104 +341,129 @@ func (st *BlockState) renderOutlineBreadcrumb(c *ui.Context, id string, activeRo
 
 func (st *BlockState) renderOutlineTitle(c *ui.Context, id string, activeRoot *Node, fullscreen bool, focusJustMoved *bool, cb Callbacks) {
 	pal := theme.Ocean()
-	draft := activeRoot.Text
-	ta := ui.TextAreaBase(c.Key(fmt.Sprintf("mm-out-title-%s-%d", id, activeRoot.ID)), &draft).
-		FillWidth().Lines(1, 20).Scrollbars(false).
-		Background(ui.Transparent).BorderWidth(0).
-		Padding(theme.Space2, theme.Space4, theme.Space8, theme.Space4).
-		Font(theme.ResolvedEditorFont()).
-		FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).
-		FixedLineHeight(theme.LineHeading).
-		TextColor(pal.Text).CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
-		Placeholder(theme.Tr("输入主题…", "Untitled topic…")).PlaceholderColor(pal.Placeholder).
-		Label(theme.Tr("中心主题", "Central topic"))
-	bui.Probe(ta, fmt.Sprintf("mm-out-title-%s-%d", id, activeRoot.ID))
-	if cb.ReadOnly {
-		ta.ReadOnly(true)
-	}
-
 	rootID := activeRoot.ID
-	ta.OnTextKey(func(k ui.TextKey) bool {
-		if isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyZ {
-			if !cb.ReadOnly {
-				st.outlinePending = &outlineAction{kind: outlineActUndo}
-				return true
-			}
-		}
-		if (isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyZ) || (isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyY) {
-			if !cb.ReadOnly {
-				st.outlinePending = &outlineAction{kind: outlineActRedo}
-				return true
-			}
-		}
-		if isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod {
-			st.outlinePending = &outlineAction{kind: outlineActToggleFoldAll}
-			return true
-		}
-		if k.Mods == 0 && k.Key == ui.KeyEscape {
-			if st.OutlineZoomID != 0 {
-				st.outlinePending = &outlineAction{kind: outlineActZoomOut}
-				return true
-			}
-			if fullscreen {
-				st.outlinePending = &outlineAction{kind: outlineActExitFullscreen}
-				return true
-			}
-		}
-		if k.Mods == 0 && k.Key == ui.KeyEnter {
-			if !cb.ReadOnly {
-				st.outlinePending = &outlineAction{kind: outlineActTitleEnter}
-				return true
-			}
-		}
-		if k.Mods == 0 && k.Key == ui.KeyDown {
-			live := k.Text()
-			_, s1 := st.estimateOutlineSelection(rootID, live)
-			runes := []rune(live)
-			if !strings.ContainsRune(string(runes[s1:]), '\n') {
-				st.outlinePending = &outlineAction{kind: outlineActTitleDown}
-				return true
-			}
-		}
-		return false
-	})
+	draft := activeRoot.Text
+	titleRow := ui.Row(c.Key(fmt.Sprintf("mm-out-title-row-%s-%d", id, rootID))).
+		FillWidth().Padding(theme.Space2, theme.Space4, theme.Space8, theme.Space4).
+		AlignItems(ui.Start).Gap(theme.Space6).Radius(theme.RadiusSM)
+	titleHovered := titleRow.Hovered()
 
-	if st.OutlineFocusPending && st.OutlineFocusID == rootID {
-		ta.Focus()
-		st.OutlineFocusPending = false
-		*focusJustMoved = true
-		if st.OutlineCaretPending {
-			pos := clampInt(st.OutlineCaretTarget, 0, utf8.RuneCountInString(draft))
-			ta.SetTextSelection(pos, pos)
-			st.OutlineCaretPending = false
+	titleRow.Children(func() {
+		ta := ui.TextAreaBase(c.Key(fmt.Sprintf("mm-out-title-%s-%d", id, rootID)), &draft).
+			Grow(1).Shrink(1).MinWidth(0).Lines(1, 20).Scrollbars(false).
+			Background(ui.Transparent).BorderWidth(0).Padding(0).
+			Font(theme.ResolvedEditorFont()).
+			FontSize(theme.FontHeading).FontWeight(theme.WeightTitle).
+			FixedLineHeight(theme.LineHeading).
+			TextColor(pal.Text).CaretColor(pal.Accent).SelectionColor(pal.EditorSelectionBG()).
+			Placeholder(theme.Tr("输入主题…", "Untitled topic…")).PlaceholderColor(pal.Placeholder).
+			Label(theme.Tr("中心主题", "Central topic"))
+		bui.Probe(ta, fmt.Sprintf("mm-out-title-%s-%d", id, rootID))
+		if cb.ReadOnly {
+			ta.ReadOnly(true)
+		}
+
+		ta.OnTextKey(func(k ui.TextKey) bool {
+			if isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyZ {
+				if !cb.ReadOnly {
+					st.outlinePending = &outlineAction{kind: outlineActUndo}
+					return true
+				}
+			}
+			if (isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyZ) || (isOutlinePrimaryMod(k.Mods) && k.Key == ui.KeyY) {
+				if !cb.ReadOnly {
+					st.outlinePending = &outlineAction{kind: outlineActRedo}
+					return true
+				}
+			}
+			if isOutlinePrimaryShiftMod(k.Mods) && k.Key == ui.KeyPeriod {
+				st.outlinePending = &outlineAction{kind: outlineActToggleFoldAll}
+				return true
+			}
+			if k.Mods == 0 && k.Key == ui.KeyEscape {
+				if st.OutlineZoomID != 0 {
+					st.outlinePending = &outlineAction{kind: outlineActZoomOut}
+					return true
+				}
+				if fullscreen {
+					st.outlinePending = &outlineAction{kind: outlineActExitFullscreen}
+					return true
+				}
+			}
+			if k.Mods == 0 && k.Key == ui.KeyEnter {
+				if !cb.ReadOnly {
+					st.outlinePending = &outlineAction{kind: outlineActTitleEnter}
+					return true
+				}
+			}
+			if k.Mods == 0 && k.Key == ui.KeyDown {
+				live := k.Text()
+				_, s1 := st.estimateOutlineSelection(rootID, live)
+				runes := []rune(live)
+				if !strings.ContainsRune(string(runes[s1:]), '\n') {
+					st.outlinePending = &outlineAction{kind: outlineActTitleDown}
+					return true
+				}
+			}
+			return false
+		})
+
+		if st.OutlineFocusPending && st.OutlineFocusID == rootID {
+			ta.Focus()
+			st.OutlineFocusPending = false
+			*focusJustMoved = true
+			if st.OutlineCaretPending {
+				pos := clampInt(st.OutlineCaretTarget, 0, utf8.RuneCountInString(draft))
+				ta.SetTextSelection(pos, pos)
+				st.OutlineCaretPending = false
+				st.OutlineSelNodeID = rootID
+				st.OutlineSelStart = pos
+				st.OutlineSelEnd = pos
+				st.OutlineSelRuneLen = utf8.RuneCountInString(draft)
+			}
+		}
+
+		taFocused := ta.Focused()
+		if !st.OutlineFocusPending && !*focusJustMoved && taFocused {
+			if st.OutlineFocusID != rootID {
+				c.Invalidate()
+			}
+			st.OutlineFocusID = rootID
+			st.SelectedID = rootID
+			s0, s1 := ta.TextSelection()
 			st.OutlineSelNodeID = rootID
-			st.OutlineSelStart = pos
-			st.OutlineSelEnd = pos
+			st.OutlineSelStart = s0
+			st.OutlineSelEnd = s1
 			st.OutlineSelRuneLen = utf8.RuneCountInString(draft)
 		}
-	}
 
-	if !st.OutlineFocusPending && !*focusJustMoved && ta.Focused() {
-		st.OutlineFocusID = rootID
-		st.SelectedID = rootID
-		s0, s1 := ta.TextSelection()
-		st.OutlineSelNodeID = rootID
-		st.OutlineSelStart = s0
-		st.OutlineSelEnd = s1
-		st.OutlineSelRuneLen = utf8.RuneCountInString(draft)
-	}
-
-	if !cb.ReadOnly && ta.Changed() {
-		next := normalizeNodeLineEndings(draft)
-		if next != activeRoot.Text {
-			if st.OutlineUndoNodeID != rootID {
-				st.pushUndo()
-				st.OutlineUndoNodeID = rootID
+		if !cb.ReadOnly && ta.Changed() {
+			next := normalizeNodeLineEndings(draft)
+			if next != activeRoot.Text {
+				if st.OutlineUndoNodeID != rootID {
+					st.pushUndo()
+					st.OutlineUndoNodeID = rootID
+				}
+				activeRoot.Text = next
+				st.commitChange(cb)
 			}
-			activeRoot.Text = next
-			st.commitChange(cb)
 		}
-	}
+
+		hasLink := strings.TrimSpace(activeRoot.Link) != ""
+		showActions := !cb.ReadOnly && (titleHovered || st.OutlineFocusID == rootID || taFocused || st.LinkNodeID == rootID)
+		if hasLink || showActions {
+			trail := ui.Row(c.Key(fmt.Sprintf("mm-out-title-trail-%s-%d", id, rootID))).
+				Height(theme.LineHeading).AlignItems(ui.Center).Gap(theme.Space4).Shrink(0)
+			trail.Children(func() {
+				if hasLink {
+					st.renderOutlineLinkBadge(c, fmt.Sprintf("mm-out-title-link-%s-%d", id, rootID), activeRoot, true, cb)
+				}
+				if showActions {
+					st.renderOutlineNodeQuickActions(c, fmt.Sprintf("mm-out-title-act-%s-%d", id, rootID), activeRoot, false, cb)
+				}
+			})
+		}
+	})
 }
 
 func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node, depth int, fullscreen bool, focusJustMoved *bool, cb Callbacks) {
@@ -508,10 +535,16 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 				})
 
 				// Direct-edit multi-line text area (Mubu flow).
+				hasLink := strings.TrimSpace(node.Link) != ""
+				linkBroken := hasLink && st.resolveLinkStatusCached(c.Now(), node.Link, cb) == LinkStatusBroken
 				draft := node.Text
 				txtCol := pal.Text
-				if strings.TrimSpace(node.Link) != "" {
-					txtCol = pal.Accent
+				if hasLink {
+					if linkBroken {
+						txtCol = pal.Warning
+					} else {
+						txtCol = pal.Accent
+					}
 				}
 				if node.Task != nil && *node.Task {
 					txtCol = pal.TextSecondary.Alpha(0.62)
@@ -635,7 +668,11 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 					}
 				}
 
-				if !st.OutlineFocusPending && !*focusJustMoved && ta.Focused() {
+				taFocused := ta.Focused()
+				if !st.OutlineFocusPending && !*focusJustMoved && taFocused {
+					if st.OutlineFocusID != nodeID {
+						c.Invalidate()
+					}
 					st.OutlineFocusID = nodeID
 					st.SelectedID = nodeID
 					s0, s1 := ta.TextSelection()
@@ -667,20 +704,20 @@ func (st *BlockState) renderOutlineBranch(c *ui.Context, id string, parent *Node
 					}
 				}
 
-				// Compact link-open button at row tail when the node carries a link.
-				if strings.TrimSpace(node.Link) != "" && cb.OnOpenLink != nil {
-					linkBtn := bui.IconButton(c, icons.LinkOpen, bui.IconButtonOptions{
-						ID:       fmt.Sprintf("mm-out-link-%s-%d", id, node.ID),
-						Label:    theme.Tr("打开链接", "Open link"),
-						Tooltip:  node.Link,
-						Variant:  bui.IconPlain,
-						Size:     theme.HeightMicro,
-						IconSize: theme.IconMicro,
-						Radius:   theme.RadiusXS,
+				// Link jump button and hover/focus row-tail quick actions.
+				showActions := !cb.ReadOnly && (rowHovered || focused || taFocused || st.LinkNodeID == node.ID)
+				if hasLink || showActions {
+					trail := ui.Row(c.Key(fmt.Sprintf("mm-out-trail-%s-%d", id, node.ID))).
+						Height(theme.LineTitle).AlignItems(ui.Center).Gap(theme.Space2).
+						Margin(0, 0, 0, theme.Space4).Shrink(0)
+					trail.Children(func() {
+						if hasLink {
+							st.renderOutlineLinkBadge(c, fmt.Sprintf("mm-out-link-%s-%d", id, node.ID), node, false, cb)
+						}
+						if showActions {
+							st.renderOutlineNodeQuickActions(c, fmt.Sprintf("mm-out-act-%s-%d", id, node.ID), node, node.Parent != nil, cb)
+						}
 					})
-					if linkBtn.Clicked() {
-						cb.OnOpenLink(node.Link)
-					}
 				}
 			})
 
@@ -803,6 +840,178 @@ func (st *BlockState) renderOutlineCheckbox(c *ui.Context, id string, node *Node
 	}
 }
 
+func outlineLinkBadgeLabel(target string, status LinkStatus) string {
+	s := strings.TrimSpace(target)
+	if status == LinkStatusExternal {
+		for _, pfx := range []string{"https://", "http://", "mailto:"} {
+			if len(s) > len(pfx) && strings.EqualFold(s[:len(pfx)], pfx) {
+				s = s[len(pfx):]
+				break
+			}
+		}
+		return strings.TrimRight(s, "/")
+	}
+	s = strings.ReplaceAll(s, "\\", "/")
+	if idx := strings.LastIndex(s, "/"); idx >= 0 && idx+1 < len(s) {
+		s = s[idx+1:]
+	}
+	s = strings.TrimSuffix(s, ".md")
+	s = strings.TrimSuffix(s, ".MD")
+	if s == "" {
+		return strings.TrimSpace(target)
+	}
+	return s
+}
+
+func (st *BlockState) renderOutlineLinkBadge(c *ui.Context, key string, node *Node, showLabel bool, cb Callbacks) {
+	pal := theme.Ocean()
+	target := strings.TrimSpace(node.Link)
+	status := st.resolveLinkStatusCached(c.Now(), target, cb)
+
+	glyph := icons.TbLink
+	tip := target
+	switch status {
+	case LinkStatusBroken:
+		glyph = icons.LinkOff
+		tip = theme.Tr("目标笔记不存在 · 点击重连：", "Missing note · click to reconnect: ") + target
+	case LinkStatusExternal:
+		glyph = icons.LinkOpen
+	}
+
+	btn := ui.ButtonBase(c.Key(key)).AlignItems(ui.Center).Cursor(ui.CursorPointer).Label(tip)
+	if showLabel {
+		btn.Height(theme.HeightMicro).PaddingX(theme.Space8).Radius(theme.RadiusPill).
+			Gap(theme.Space4).MaxWidth(220).Shrink(0)
+	} else {
+		btn.Size(theme.HeightMicro, theme.HeightMicro).Center().Radius(theme.RadiusXS).Shrink(0)
+	}
+	bui.Tooltip(c, btn, tip)
+
+	hov := btn.Hovered()
+	prs := btn.Pressed()
+	var fg, bg, bd ui.Color
+	hasBorder := false
+	switch status {
+	case LinkStatusBroken:
+		fg = pal.Warning
+		bg = pal.WarningSurface
+		bd = pal.Warning.Alpha(0.45)
+		if prs {
+			bg = pal.Warning.Alpha(0.26)
+			bd = pal.Warning
+		} else if hov {
+			bg = pal.Warning.Alpha(0.20)
+			bd = pal.Warning
+		}
+		hasBorder = true
+	default:
+		fg = pal.Accent
+		if showLabel {
+			bg = pal.Accent.Alpha(0.10)
+			bd = pal.Accent.Alpha(0.32)
+			if prs {
+				bg = pal.SelectionBG
+				bd = pal.Accent
+			} else if hov {
+				bg = pal.SelectionBG
+				bd = pal.Accent.Alpha(0.65)
+			}
+			hasBorder = true
+		} else {
+			bg = ui.Transparent
+			bd = ui.Transparent
+			if prs {
+				bg = pal.Selected
+			} else if hov {
+				bg = pal.Hover
+			}
+		}
+	}
+
+	bui.AnimateSurfaceColors(btn, bg, bd, hasBorder)
+	bui.TactileButton(btn, hov, prs, false)
+	btn.Children(func() {
+		icons.DrawAnimated(c, glyph, theme.IconMicro, pal.DuoIconColors(fg), hov || prs)
+		if showLabel {
+			ui.Text(c, outlineLinkBadgeLabel(target, status)).
+				FontSize(theme.FontMeta).FontWeight(theme.WeightControl).
+				TextColor(fg).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		}
+	})
+	bui.Probe(btn, key)
+	if btn.Clicked() {
+		st.openNodeLink(c.Now(), node, cb)
+		c.Invalidate()
+	}
+}
+
+func (st *BlockState) renderOutlineNodeQuickActions(c *ui.Context, keyPrefix string, node *Node, allowDelete bool, cb Callbacks) {
+	pal := theme.Ocean()
+	addBtn := bui.IconButton(c, icons.Plus, bui.IconButtonOptions{
+		ID:       keyPrefix + "-add",
+		Label:    theme.Tr("添加子节点", "Add child"),
+		Tooltip:  theme.Tr("添加子节点", "Add child"),
+		Variant:  bui.IconPlain,
+		Size:     theme.HeightMicro,
+		IconSize: theme.IconMicro,
+		Radius:   theme.RadiusXS,
+	})
+	if addBtn.Clicked() {
+		st.outlinePending = &outlineAction{kind: outlineActAddChild, nodeID: node.ID}
+	}
+
+	hasLink := strings.TrimSpace(node.Link) != ""
+	linkBroken := hasLink && st.resolveLinkStatusCached(c.Now(), node.Link, cb) == LinkStatusBroken
+	linkGlyph := icons.TbLink
+	linkTip := theme.Tr("添加链接", "Add link")
+	if linkBroken {
+		linkGlyph = icons.LinkEdit
+		linkTip = theme.Tr("重新选择链接", "Reconnect link")
+	} else if hasLink {
+		linkGlyph = icons.LinkEdit
+		linkTip = theme.Tr("编辑链接", "Edit link")
+	}
+	linkOpts := bui.IconButtonOptions{
+		ID:       keyPrefix + "-link",
+		Label:    linkTip,
+		Tooltip:  linkTip,
+		Variant:  bui.IconPlain,
+		Size:     theme.HeightMicro,
+		IconSize: theme.IconMicro,
+		Radius:   theme.RadiusXS,
+	}
+	if linkBroken {
+		linkOpts.RestColor = pal.Warning
+	} else if hasLink {
+		linkOpts.RestColor = pal.Accent
+	}
+	linkEditBtn := bui.IconButton(c, linkGlyph, linkOpts)
+	if linkEditBtn.Clicked() {
+		if linkBroken {
+			st.beginLinkEditBroken(node)
+		} else {
+			st.beginLinkEdit(node)
+		}
+		c.Invalidate()
+	}
+
+	if allowDelete {
+		delBtn := bui.IconButton(c, icons.Trash, bui.IconButtonOptions{
+			ID:       keyPrefix + "-del",
+			Label:    theme.Tr("删除分支", "Delete branch"),
+			Tooltip:  theme.Tr("删除分支", "Delete branch"),
+			Variant:  bui.IconPlain,
+			Size:     theme.HeightMicro,
+			IconSize: theme.IconMicro,
+			Radius:   theme.RadiusXS,
+			Danger:   true,
+		})
+		if delBtn.Clicked() {
+			st.outlinePending = &outlineAction{kind: outlineActDeleteNode, nodeID: node.ID}
+		}
+	}
+}
+
 func matchOutlineTodoPrefix(s string) (done bool, rest string, ok bool) {
 	switch {
 	case strings.HasPrefix(s, "[] "):
@@ -896,6 +1105,23 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 			c.Invalidate()
 		}
 		return
+	case outlineActAddChild:
+		if cb.ReadOnly {
+			return
+		}
+		target := activeRoot.FindByID(act.nodeID)
+		if target == nil {
+			return
+		}
+		st.pushUndo()
+		st.OutlineUndoNodeID = 0
+		target.Folded = false
+		created := &Node{ID: st.allocID(), Text: "", Parent: target}
+		target.Children = append(target.Children, created)
+		st.commitChange(cb)
+		st.focusOutlineNode(created.ID, 0)
+		c.Invalidate()
+		return
 	}
 
 	node := activeRoot.FindByID(act.nodeID)
@@ -905,6 +1131,37 @@ func (st *BlockState) applyOutlineAction(c *ui.Context, act *outlineAction, full
 	live := normalizeNodeLineEndings(act.text)
 
 	switch act.kind {
+	case outlineActDeleteNode:
+		if cb.ReadOnly || node.Parent == nil {
+			return
+		}
+		parent := node.Parent
+		idx := node.IndexInParent()
+		if idx < 0 {
+			return
+		}
+		st.pushUndo()
+		st.OutlineUndoNodeID = 0
+		if st.LinkNodeID != 0 && (st.LinkNodeID == node.ID || node.FindByID(st.LinkNodeID) != nil) {
+			st.LinkNodeID = 0
+			st.LinkBrokenNotice = false
+		}
+		parent.Children = append(parent.Children[:idx], parent.Children[idx+1:]...)
+		st.commitChange(cb)
+		if st.OutlineFocusID == 0 || st.OutlineFocusID == node.ID || node.FindByID(st.OutlineFocusID) != nil {
+			var nextFocus *Node
+			if idx < len(parent.Children) {
+				nextFocus = parent.Children[idx]
+			} else if idx-1 >= 0 {
+				nextFocus = parent.Children[idx-1]
+			} else {
+				nextFocus = parent
+			}
+			if nextFocus != nil {
+				st.focusOutlineNode(nextFocus.ID, utf8.RuneCountInString(nextFocus.Text))
+			}
+		}
+		c.Invalidate()
 	case outlineActToggleFold:
 		if len(node.Children) > 0 {
 			node.Folded = !node.Folded
